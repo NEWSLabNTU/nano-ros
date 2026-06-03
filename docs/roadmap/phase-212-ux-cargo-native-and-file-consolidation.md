@@ -2256,10 +2256,20 @@ asymmetry rationale.
 - [x] **No `nros build` / `nros test` / `nros flash` / `nros monitor`
       / `nros sign` / `nros emit` verbs.** Phase-doc grep checked in CI
       via `phase212_non_goals_grep.rs` (5/5 passing). (Non-Goals)
-- [ ] **A failing rustc / cmake / clang diagnostic in any test fixture
+- [x] **A failing rustc / cmake / clang diagnostic in any test fixture
       reaches the user's terminal verbatim** — no aggregation, no
       truncation. CI test injects a synthetic compile error and greps for
-      the original message.
+      the original message. Landed 2026-06-03 in `27fa1295c`
+      (`phase212_diagnostic_verbatim.rs` + two stock-tooling fixtures
+      under `packages/testing/nros-tests/fixtures/diagnostic_{rustc,
+      cmake}_fixture/`). Asserts both the well-known diagnostic prefix
+      (`error[E0432]: unresolved import` / `Could not find a package
+      configuration file provided by`) AND the offending identifier the
+      user wrote appear verbatim on stderr — guards against wrappers
+      that rewrite the prefix OR elide the actionable span. Clang
+      variant folded into the rustc path (same "pass stderr through
+      unchanged" contract). Hard-fails on missing cargo / cmake — both
+      are tier-0 SDK requirements.
 - [x] **Pre-212 files forbidden in the tree** — `nros.toml`,
       `component_nros.toml`, `gen-app-config.py`, `app_config.h.in`
       per-example bakers, committed `metadata/*.json`. Regression test
