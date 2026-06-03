@@ -76,6 +76,14 @@ else
     source scripts/build/codegen-stamp.sh
     export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \
               nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources
+    # Phase 214.M.2 — re-append the patched libc to NuttX fixtures'
+    # `.cargo/config.toml` after `nros ws sync` runs. Workaround until
+    # the CLI bug that drops `[patch.crates-io]` from the rendered
+    # `cargo_config` template is fixed upstream. No-op for non-NuttX
+    # fixtures. See `scripts/build/nuttx-libc-patch.sh`.
+    # shellcheck source=scripts/build/nuttx-libc-patch.sh
+    source scripts/build/nuttx-libc-patch.sh
+    export -f nros_nuttx_libc_patch
     nros_fixture_build_one() {
         local dir envstr args
         IFS=$'\x1f' read -r dir envstr args <<< "$1"
@@ -95,6 +103,9 @@ else
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$dir"
             NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws sync "$dir" >/dev/null
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$dir"
+            # Phase 214.M.2 — fix up the rendered `.cargo/config.toml`
+            # for NuttX fixtures (no-op for other platforms).
+            NROS_REPO_DIR="$NROS_REPO_ROOT" nros_nuttx_libc_patch "$dir"
         fi
         # shellcheck disable=SC2086
         ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args --quiet )

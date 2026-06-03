@@ -17,3 +17,13 @@ rustflags = [
 CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
 CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 
+
+# Phase 214.M — patched libc for build-std (post-`ws sync` fix-up
+# from scripts/build/nuttx-libc-patch.sh). The pinned nightly's
+# `std` references `libc::_SC_HOST_NAME_MAX`, which crates.io
+# `libc 0.2.183` does not expose for the NuttX target. The patched
+# fork at `third-party/nuttx/libc/` adds it. `nros-board.toml`
+# declares this patch but `nros ws sync` 0.3.7 strips it from the
+# rendered config — re-append until the upstream CLI is fixed.
+[patch.crates-io]
+libc = { path = "../../../../third-party/nuttx/libc" }
