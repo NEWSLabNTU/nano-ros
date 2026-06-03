@@ -422,7 +422,7 @@ fold cleanly.
 
 **Work Items:**
 
-- [ ] **214.F.1 Target-gate host-only crate deps (Path B)** — add
+- [x] **214.F.1 Target-gate host-only crate deps (Path B)** — add
       `[target.'cfg(not(target_os = "none"))'.dependencies]` blocks
       to `nros-board-{posix,native,nuttx}` + `nros-msg-to-idl`,
       moving every `[dependencies]` entry that pulls `nros/std` or
@@ -436,11 +436,41 @@ fold cleanly.
       std/posix-c errors. (Pre-existing clippy lints in
       `nros-platform` may surface — file under sibling track.)
 
+      **Landed** in this commit. `nros-board-{posix,native,nuttx}`
+      had every `[dependencies]` entry (apart from no_std-friendly
+      `nros-board-common` in the nuttx façade) moved into
+      `[target.'cfg(not(target_os = "none"))'.dependencies]`.
+      `nros-msg-to-idl` was inspected and found to have no
+      `nros`/`nros-platform` deps at all (only `clap`) — no edit
+      needed; the doc list mentioned it as the candidate set but
+      its `[dependencies]` doesn't actually leak.
+      `cargo tree -i nros-serdes --target thumbv7em-none-eabihf
+      --no-default-features --workspace --edges=normal,build` now
+      contains zero `nros-board-{posix,native}` entries, and the
+      `--edges=features` view shows no `feature "std"` paths
+      originating from any board crate (residual `std` paths
+      come from `[dev-dependencies]` on `nros-node` /
+      `nros-rmw-cyclonedds` — Track 214.F.2 scope).
+      `just check-workspace-embedded` advances past the std /
+      posix-c errors and now stops on the pre-existing
+      `nros-platform/src/board/runtime.rs:{83,95}`
+      `clippy::result_unit_err` lints (file under a sibling track —
+      they predate this Path B edit; reproduced on a clean stash
+      of `main`).
+
 - [ ] **214.F.1.fallback Path A — recipe excludes** — if Path B
       breaks `just check-workspace` (host build) by making host-only
       crates uncompilable under host targets too (shouldn't happen,
       but verify), revert to adding `--exclude` flags in
       `check-workspace-embedded`. Smaller change; less rigorous.
+
+      **Not needed.** Path B verified clean on host:
+      `cargo check -p nros-board-posix` + `cargo check
+      -p nros-board-native` both pass; `cargo test -p nros-node
+      --features rmw-cyclonedds --lib` keeps its 149 tests green;
+      `cargo test -p nros-serdes --lib` keeps its 46 tests green;
+      `cargo test -p nros-rmw-cyclonedds --no-default-features`
+      keeps the K.7 smoke green.
 
 - [ ] **214.F.2 Address residual dev-dep unification** — once Path B
       removes the dominant leak source, the residual dev-dep leak
@@ -450,11 +480,30 @@ fold cleanly.
       carve-out the original spec described.
       **Acceptance**: `cargo tree -i nros-serdes …` is std-free.
 
+      **Status after F.1.** Residual `feature "std"` activations
+      remain in the `--edges=features` view, all sourced from
+      `[dev-dependencies]` on `nros-node` (pulling
+      `nros-platform-cffi` with `posix-c-port`) and on
+      `nros-rmw-cyclonedds` (the `bridge-stub` feature pulls
+      `nros-node`). These are the dev-dep leaks the original
+      Track F framing described; they survive Path B because Path B
+      only target-gates `[dependencies]`, not `[dev-dependencies]`.
+      The sibling-test-crate carve-out the original spec described
+      still applies — F.2 remains open.
+
 - [ ] **214.F.3 CI guard against future feature unification regressions**
       — add a smoke test that runs `cargo tree -i nros-serdes
       --target thumbv7em-none-eabihf --no-default-features
       --workspace` and asserts the output is missing the substring
       `feature "std"`. Wire into `just check-workspace-embedded`.
+
+      **Status after F.1.** Still open. The assertion can't go
+      green until F.2 closes the dev-dep half of the leak — the
+      `cargo tree --edges=features` output above still contains
+      `feature "std"` strings sourced from dev-deps. Sequence:
+      land F.2 → land F.3 (the guard) → relax to
+      `--edges=normal,build` if dev-dep filtering needs a
+      different threshold.
 
 ---
 

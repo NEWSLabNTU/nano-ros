@@ -12,6 +12,15 @@ publish = false
 # `Board*` trait method to the `nros-board-posix` family driver.
 
 [dependencies]
+# Phase 214.F.1 (Path B) — host-only shim. Every dep below activates
+# `nros/std`, `nros/platform-posix`, or `nros-rmw-zenoh/platform-posix`
+# on shared workspace crates. Workspace feature unification
+# (resolver=2) leaks those activations into embedded targets unless
+# we target-gate the whole `[dependencies]` block on
+# `cfg(not(target_os = "none"))`. Under thumb/riscv-none cargo sees
+# this crate as dep-less and skips it, so its feature flags drop out
+# of the unified set.
+[target.'cfg(not(target_os = "none"))'.dependencies]
 # Trait surface (BoardEntry, BoardInit, BoardPrint, BoardExit, RuntimeCtx).
 nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
 # Family driver this shim plugs.

@@ -12,6 +12,16 @@ publish = false
 # Unix targets.
 
 [dependencies]
+# Phase 214.F.1 (Path B) — every dep this crate needs activates
+# `nros/std` or `nros/platform-posix` on a shared workspace crate
+# (nros-serdes, nros-core, nros-platform). Under workspace feature
+# unification (resolver=2) those activations leak into embedded
+# targets, even though this crate is host-only and cargo skips
+# compiling it under `target_os = "none"`. Gating the entire
+# `[dependencies]` block on `cfg(not(target_os = "none"))` removes
+# the leak: under thumb/riscv-none the crate appears dep-less,
+# so its feature flags drop out of the unified set.
+[target.'cfg(not(target_os = "none"))'.dependencies]
 # Trait surface (BoardEntry, BoardInit, BoardPrint, BoardExit, RuntimeCtx).
 nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
