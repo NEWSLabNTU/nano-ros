@@ -320,6 +320,15 @@ language-agnostic.**
 "Component pkg" terminology retires in favour of "Node pkg" — matches
 ROS 2 composable-node naming.
 
+**Phase 212.J.5 resolution (2026-06-03).** Bringup pkg `package.xml`
+omits `<buildtool_depend>` since `nros launch` reads `launch/` from the
+source tree, not from an install share path. Users wanting `ros2
+launch <bringup>` compatibility add
+`<buildtool_depend>ament_cmake</buildtool_depend>` themselves. The
+`nros` CLI's generator (`nros emit package-xml`, internal helper) skips
+the tag for the same reason; closes OPEN 3 in §10 and the §4 open
+question.
+
 ### 11.2 Canonical workspace layout
 
 ```
