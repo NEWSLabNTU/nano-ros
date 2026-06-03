@@ -1416,6 +1416,71 @@ canonical-shape regression test can run green tree-wide:
       zenoh-pico submodule synced). **Unblocks:**
       §Acceptance "All 7 RTOS adapters ship a working bringup
       fixture" flip (FreeRTOS row).
+- [ ] **M-F.15 H.3 FreeRTOS Entry pkg firmware link fails:
+      `_start` undefined** (nano-ros) — Surfaced 2026-06-03 by
+      the post-M-F.12 + M-F.13 re-audit of §Acceptance "All 7
+      RTOS adapters". The H.3 test
+      `phase212_h3_freertos::freertos_qemu_mps2_an385_entry_pkg_firmware_builds`
+      reaches link time then hard-fails with `rust-lld: error:
+      undefined symbol: _start`. The macro re-export work
+      (M-F.13 path (b)) is structurally orthogonal to `_start`
+      resolution (that's the BSP / runtime contract surface, not
+      a Rust dep graph thing) — but the test was never run
+      end-to-end during the M-F.13 wave (the `phase212_macro_one_dep`
+      stand-in exercised macro expansion on a native target
+      only). The H.3 fixture's `firmware/src/main.rs` uses
+      `#![no_std] + #![no_main] + #[unsafe(no_mangle)] pub
+      extern "C" fn main() -> i32` — `_start` is expected from
+      the BSP crate `nros-board-mps2-an385-freertos` (FreeRTOS
+      startup .S file) or a startup runtime crate the firmware
+      pulls indirectly. The firmware Cargo.toml depends on
+      `nros-board-mps2-an385-freertos` + `nros-platform` +
+      `panic-semihosting` + the two Component pkgs; none of
+      those obviously provides `_start`.
+      **Investigation paths:**
+      - **(a)** Look at the `nros-board-mps2-an385-freertos`
+        BSP crate's `build.rs` to see if it links a startup
+        object (`.o`/`.a` from a `.S` file). If yes, verify
+        the cargo build script's `cargo:rustc-link-lib=` /
+        `cargo:rustc-link-arg=` directives reach the firmware
+        link command.
+      - **(b)** Check whether `cortex-m-rt` is pulled in
+        anywhere in the dep graph — `_start` is its canonical
+        provider for embedded Cortex-M binaries. If absent,
+        the Entry pkg pattern may need an explicit
+        `cortex-m-rt` dep in `firmware/Cargo.toml` (or the BSP
+        crate must re-export it transitively).
+      - **(c)** Compare the failing Entry pkg firmware to the
+        prior M.5.a baker shape that worked — what symbol
+        provided `_start` then? If the BSP previously owned it
+        and the migration to N.7 step-5 (Entry pkg) dropped
+        the BSP→firmware startup wiring, that's the regression.
+      - **(d)** Bisect: was the test ever passing on
+        `phase-212-acceptance-rtos-bringup-verify` (`b0b9a365c`,
+        2026-06-02)? The audit report said it HARD FAILED with
+        a different error (`E0433: failed to resolve … nros_platform`)
+        — that was M-F.13's pre-existing UX issue. After the
+        E0433 cleared via M-F.13 path (b), the next error in
+        the chain (`_start` link) surfaced. So M-F.15 was
+        masked by M-F.13 — not a regression introduced by it,
+        but uncovered by it.
+      **Recommended first move:** path (b) — verify `cortex-m-rt`
+      presence. The Entry pkg pattern's spec promises Entry pkg
+      ~10-30 LoC `main.rs` board-agnostic, so the BSP crate
+      MUST own `_start` provisioning transitively. If
+      `cortex-m-rt` needs to be in the firmware Cargo.toml as a
+      direct dep, that's an Entry pkg UX gap separate from
+      M-F.13's macro emission UX gap.
+      **Files:** `packages/boards/nros-board-mps2-an385-freertos/
+      build.rs` (likely fix site — add `_start` provisioning),
+      `packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos/
+      firmware/Cargo.toml` (potentially add `cortex-m-rt` dep
+      if path (b) is the resolution). **Acceptance:**
+      `phase212_h3_freertos::freertos_qemu_mps2_an385_entry_pkg_firmware_builds`
+      passes on a FreeRTOS-provisioned host. **Blocks:**
+      §Acceptance "All 7 RTOS adapters ship a working bringup
+      fixture" flip (FreeRTOS row, the sole remaining hard
+      blocker after M-F.12 + M-F.13).
 - **Tests** (per-wave, gated on SDK availability):
   - [ ] `native_rust_talker_listener_e2e_<rmw>` per RMW
   - [ ] `native_cpp_talker_listener_e2e_<rmw>` per RMW
@@ -1988,48 +2053,36 @@ asymmetry rationale.
       like the `orchestration_*` Phase 211 surface).
 - [ ] **All 7 RTOS adapters ship a working bringup fixture under the
       new shape** (Zephyr, NuttX, FreeRTOS, ThreadX, ESP-IDF, PlatformIO,
-      PX4). (212.H + 212.M) — partial as of 2026-06-02 audit
-      (`phase-212-acceptance-rtos-bringup-verify` branch). Adapter
-      shim files + bringup fixtures all exist (every
+      PX4). (212.H + 212.M) — partial as of 2026-06-03 re-audit
+      (`phase-212-acceptance-rtos-bringup-reaudit` post-M-F.12 + M-F.13
+      wave). Adapter shim files + bringup fixtures all exist (every
       `multi_pkg_workspace_<rtos>/` dir present; every adapter shim
       under the 200-LoC budget per §H.8). Per-adapter gate test
       status:
-      - **Zephyr** — `phase212_h1_zephyr` SDK-skips cleanly without
-        `ZEPHYR_BASE`; fixture
-        `multi_pkg_workspace_zephyr/zephyr_app/` calls
-        `nros_system_generate(demo_bringup)`. Adapter shim
+      - **Zephyr** — `phase212_h1_zephyr::zephyr_native_sim_2_component_bringup_builds_and_publishes`
+        SKIPS on `[SKIPPED] nros codegen-system verb unavailable —
+        Phase 212.E not landed in installed CLI` — transitions
+        SKIP → PASS once 212.E.1 stub lands in nros-cli (W.4 of
+        2026-06-03 wave). Adapter shim
         `zephyr/cmake/nros_system_generate.cmake` 131/200 LoC.
-      - **NuttX** — `phase212_h2_nuttx::template_files_exist_and_loc_under_budget`
-        passes; the build-step
-        `nuttx_qemu_arm_2_component_bringup_builds` HARD FAILS on
-        host w/ NuttX provisioned because
-        `scripts/nuttx/stage-external-apps.sh` invokes
-        `scripts/nuttx/gen-app-config.py`, which expects the
-        `cmake/templates/nros_app_config.h.in` template retired by
-        `f473b78b4` (212.M-F.10). Adapter dir
+      - **NuttX** — both `template_files_exist_and_loc_under_budget`
+        AND `nuttx_qemu_arm_2_component_bringup_builds` PASS (2/2)
+        after M-F.12 closure (`23b221a9b`). Adapter dir
         `integrations/nuttx/apps-external-template/` ships the
         Make.defs + Makefile + Kconfig + README; fixture
-        `multi_pkg_workspace_nuttx/src/demo_bringup` exists. **Gap:**
-        either drop the legacy nuttx-examples staging from the
-        staging script (Phase 212.M sweep should retire the
-        `examples/qemu-arm-nuttx/{c,cpp}/...` loop on lines 88–123
-        once the Phase 212 bringup path is the only one), or
-        re-introduce the template under a 212.M-aware shape. Adapter
-        shim dir 137/200 LoC.
-      - **FreeRTOS** — `phase212_h3_freertos::freertos_qemu_mps2_an385_2_component_bringup_builds`
-        WAS failing in the worktree (FreeRTOS toolchain present): the
-        `efa778162` (212.N.7 step-3.4) macro change made
-        `nros::component!()` emit `::nros_platform::*` references in
-        the consumer pkg, but the fixture's
-        `multi_pkg_workspace_freertos/src/{talker,listener}_pkg/Cargo.toml`
-        only depends on `nros`, not `nros_platform`. The ThreadX-side
-        H.4 fixture sidesteps this by hand-writing the FFI export
-        (no `nros::component!()` invocation). **Resolved by M-F.13
-        path (b):** `nros::component!()` now emits through
-        `::nros::__macro_support::nros_platform::*`, so the fixture
-        works with only `nros` as a dep. Adapter is the BSP crate's
-        `build.rs` (not a separate shim file — per the H.8 LoC table
-        — H.3 makes the cargo path itself the adapter).
+        `multi_pkg_workspace_nuttx/src/demo_bringup` exists.
+        Adapter shim dir 137/200 LoC.
+      - **FreeRTOS** — `phase212_h3_freertos::freertos_qemu_mps2_an385_entry_pkg_firmware_builds`
+        **FAILS** in the worktree with `rust-lld: error: undefined
+        symbol: _start`. Surfaced 2026-06-03 by the re-audit after
+        M-F.13 path (b) landed (`060e4727a`). The M-F.13 macro
+        re-export work is structurally orthogonal to the link
+        failure — `_start` resolution is the BSP / runtime contract
+        — but the test was never run end-to-end during the M-F.13
+        wave (the M-F.13 stand-in `phase212_macro_one_dep`
+        exercised macro expansion on a native target only). Logged
+        as **M-F.15** below for follow-up investigation. Adapter
+        is the BSP crate's `build.rs` (not a separate shim file).
       - **ThreadX** — `phase212_h4_threadx::threadx_linux_2_component_bringup_builds_and_publishes`
         is `#[ignore]`'d on `212.M.10: nros plan does not yet read
         [package.metadata.nros.component]` — `nros plan` (in the
@@ -2054,14 +2107,20 @@ asymmetry rationale.
         reason). Adapter shim `integrations/px4/module-template/`
         51/200 LoC.
 
-      Flippable to [x] once: (1) NuttX legacy-staging fix lands
-      (drop or replace `gen-app-config.py` invocation in
-      `scripts/nuttx/stage-external-apps.sh`); (2) FreeRTOS fixture
-      pkgs gain a direct `nros_platform` dep OR the macro emits a
-      re-exported path; (3) H.4 + H.7 `#[ignore]`'s drop (gated on
-      out-of-tree `nros-cli` 212.M.10 work + 212.M-F.8). Audit
-      verified via `cargo test -p nros-tests --test
-      phase212_h{1..8}_*` on `phase-212-acceptance-rtos-bringup-verify`.
+      **Re-audit 2026-06-03 status (post-M-F.12 + M-F.13 wave):**
+      blockers (1) and (2) from the prior audit ARE both closed —
+      H.2 now passes 2/2 (M-F.12 = `23b221a9b`) and the macro
+      re-export contract ships through `nros::__macro_support`
+      (M-F.13 = `060e4727a`). The H.3 build-step regression
+      `_start` is the new sole hard blocker (M-F.15, below).
+      Flippable to [x] once: (1) M-F.15 H.3 link path fix lands;
+      (2) H.4 + H.7 `#[ignore]`'s drop (gated on out-of-tree
+      `nros-cli` 212.M.10 work + 212.M-F.8); (3) H.1 + H.5 land
+      their SDK-gated runtimes (Phase 212.E.1 stub via W.4 of the
+      2026-06-03 wave covers H.1; H.5 stays SDK-gated until CI
+      runs an `$IDF_PATH`-provisioned lane). Re-audit verified
+      via `cargo test -p nros-tests --test phase212_h{1..8}_*`
+      at HEAD `060e4727a` on 2026-06-03.
 - [x] **Each adapter shim ≤200 LoC; cmake `nano_ros_workspace_metadata
       ()` ≤150 LoC.** CI gate via the in-process `tokei` crate
       (no `tokei` CLI install required — activated H.8 2026-06-02 in
