@@ -60,7 +60,18 @@ static mut NET_IFACE: MaybeUninit<Interface> = MaybeUninit::uninit();
 #[cfg(feature = "wifi")]
 static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 
-/// Helper to create a socket set with pre-allocated storage
+/// Helper to create a socket set with pre-allocated storage.
+///
+/// # Safety
+///
+/// Must only be called once during program initialization. Internally this
+/// invokes `nros_smoltcp::get_socket_storage()`, which hands out a `&'static
+/// mut` reference to a process-wide `static mut` socket storage array; calling
+/// this helper more than once (directly or via `init_hardware`) would alias
+/// that mutable reference and is undefined behaviour. The returned
+/// `SocketSet<'static>` borrows from that storage and must outlive any handle
+/// obtained from it — on this bare-metal target the program never exits, so
+/// the static lifetime is the real lifetime.
 #[cfg(feature = "wifi")]
 unsafe fn create_socket_set() -> SocketSet<'static> {
     let storage = unsafe { nros_smoltcp::get_socket_storage() };
@@ -187,8 +198,35 @@ pub fn init_hardware(config: &NodeConfig) {
 
         // Get MAC address from WiFi STA device
         let wifi_dev = interfaces.sta;
-        // Safety: WifiDevice<'d> uses PhantomData<&'d ()> — same layout for all 'd.
-        // Stored in static that is never dropped (no_std bare-metal, no exit).
+        // SAFETY: This transmute synthesises `WifiDevice<'static>` from a
+        // `WifiDevice<'d>` borrowed off `interfaces` (which in turn borrows
+        // from `radio_controller`). Soundness rests on three invariants
+        // that hold for this ESP32 bare-metal entry point:
+        //   1. Layout compatibility — esp-radio's `WifiDevice<'d>` carries
+        //      its lifetime only through `PhantomData<&'d ()>`, so all
+        //      lifetime parameterisations share identical layout/ABI; the
+        //      transmute is a pure lifetime cast, not a representation
+        //      cast.
+        //   2. Real lifetime ≥ 'static — `radio_controller` and
+        //      `wifi_controller` are both `mem::forget`-ed below (see the
+        //      "Prevent ... from being dropped" block), and `init_hardware`
+        //      runs from `run()`, which is `-> !` (the program never
+        //      returns). The WiFi hardware therefore stays initialised and
+        //      the borrowed-from storage stays live for the entire
+        //      program lifetime, so synthesising `'static` here does not
+        //      outlive the underlying owner.
+        //   3. No drop of the synthesised value — `WIFI_DEV` is a process-
+        //      wide `static mut MaybeUninit<WifiDevice<'static>>` that is
+        //      written exactly once (this site, gated by `init_hardware`
+        //      being called once per `run()`) and never `assume_init_drop`-
+        //      ed. Future maintainers MUST NOT add a `Drop` path for
+        //      `WIFI_DEV`, nor a code path that calls `init_hardware`
+        //      twice; either would invalidate the 'static synthesis.
+        // The cleaner `MaybeUninit` shape (path α from the audit) is
+        // already in place — `WIFI_DEV` is `MaybeUninit<WifiDevice<'static>>`
+        // and the write goes through `MaybeUninit::write`. The remaining
+        // unsafety is the lifetime cast, which the upstream esp-radio API
+        // does not give us a safe alternative for.
         unsafe { WIFI_DEV.write(core::mem::transmute(wifi_dev)) };
         let wifi_dev = unsafe { WIFI_DEV.assume_init_mut() };
 
