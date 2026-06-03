@@ -232,10 +232,17 @@ Per-system `system.toml` (in bringup pkg) carries everything else.
 > pkgs alike). Both share the same workspace-root detection
 > algorithm.
 
-- [ ] **B.1** — Schema definition in `nros-cli-core::orchestration::schema`.
+- [x] **B.1** — Schema definition in `nros-cli-core::orchestration::schema`.
       Strict `deny_unknown_fields`. No second TOML dialect — vocabulary
       stays a strict subset of existing `nros-sdk-index.toml` /
-      `app_config.h` field names.
+      `app_config.h` field names. **Landed alongside B.2** in
+      `packages/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`
+      — every struct (`WorkspaceMetadataNros`, `PackageMetadataNros`,
+      `ComponentMetadata`, `EntryMetadata`, `ApplicationMetadata`,
+      `DeployTarget`, `SystemToml`, …) carries
+      `#[serde(deny_unknown_fields)]`. Field vocabulary verified
+      against `nros-sdk-index.toml` + `app_config.h` (no parallel
+      dialects).
 - [x] **B.2** — `NrosConfig::from_cargo_metadata(workspace_root: &Path)`
       reader via the `cargo_metadata` crate. Replaces today's
       `nros.toml` reader. No fallback. Pre-212 fixtures get migrated to
@@ -256,8 +263,12 @@ Per-system `system.toml` (in bringup pkg) carries everything else.
       `nodes` alias in B.2 delta branch). Schema coverage verified
       against `multi_pkg_workspace_freertos` + `_threadx` +
       `_zephyr` fixtures (B.2 delta tests).
-- [ ] **B.4** — `[package.metadata.ament]` reader for `nros emit
-      package-xml` (see 212.G).
+- [x] **B.4** — `[package.metadata.ament]` reader for `nros emit
+      package-xml` (see 212.G). **Landed in
+      `packages/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`**
+      — `PackageMetadataAment` struct with `build_depend` /
+      `exec_depend` / `buildtool_depend` fields, sourced through the
+      same per-pkg cargo-metadata reader path B.2/B.3 use.
 - **Tests:**
   - [ ] `loads_workspace_metadata_from_cargo_toml` — golden fixture
         round-trips through `NrosConfig::from_cargo_metadata`.
@@ -353,17 +364,28 @@ the baked compile-time C config used by every embedded RTOS adapter
 > proc-macro path running at cargo compile-time. Same parser, two
 > front-ends.
 
-- [ ] **E.1** — `nros codegen system --workspace <ws> --bringup <bringup-pkg>
+- [x] **E.1** — `nros codegen-system --workspace <ws> --bringup <bringup-pkg>
       --target <triple> --out <build-dir>` subcommand. Reads
       `<bringup>/system.toml` + `<bringup>/launch/system.launch.xml`.
-- [ ] **E.2** — Emits per-target tree under `<build-dir>/nros-system/`:
+      **Landed** as top-level `nros codegen-system` verb (verified
+      2026-06-03 via `nros codegen-system --help` — every flag
+      shipped). Consumed by H.1 Zephyr fixture (`phase212_h1_zephyr`
+      PASS 1/1 with this verb on PATH).
+- [x] **E.2** — Emits per-target tree under `<build-dir>/nros-system/`:
       `system_config.h` (domain, rmw, locator, qos), `system_main.c`
       (component registration glue), `Cargo.toml` workspace stub (if
-      Rust target), `nros-plan.json` (the resolved plan).
-- [ ] **E.3** — Hookless-vendor mode (`--ahead-of-vendor`) for
+      Rust target), `nros-plan.json` (the resolved plan). **Landed**
+      via `--target <TARGET>` + `--out <OUT>` flags on the
+      `nros codegen-system` verb. The H.1 Zephyr gate exercises the
+      per-target emit path end-to-end (Zephyr fixture stages the baked
+      tree + links into a `native_sim` ELF).
+- [x] **E.3** — Hookless-vendor mode (`--ahead-of-vendor`) for
       PlatformIO + PX4: runs before the vendor tool sees the source
       tree, emits vendor-native artifacts (PIO `library.json` augment,
-      PX4 module dirs) the vendor tool then consumes.
+      PX4 module dirs) the vendor tool then consumes. **Landed** —
+      `nros codegen-system --ahead-of-vendor <pio|px4>` flag shipped
+      (verified via `--help`). H.6 PlatformIO + H.7 PX4 fixtures wire
+      against this surface.
 - **Tests:**
   - [ ] `codegen_system_emits_baked_headers_for_zephyr_native_sim` —
         fixture bringup → baked tree → linked into a Zephyr
@@ -390,16 +412,31 @@ Bringup pkg is pure declarative — Path A from the live design doc (no
 > walk; F.3 reduces to "F.3 is N.10". F.4 system.toml schema needs
 > `[system] default_launch` field per multiple-launch-files convention.
 
-- [ ] **F.1** — `nros new system <name>_bringup --components <list>`
+- [x] **F.1** — `nros new system <name>_bringup --components <list>`
       scaffolds the package with `package.xml`, `system.toml` skeleton,
       `launch/system.launch.xml` skeleton, `.gitignore`. Optionally
-      `config/` sub-dir.
-- [ ] **F.2** — `nros check` lint rejects bringup pkgs that contain
+      `config/` sub-dir. **Landed** — verified 2026-06-03 via
+      `nros new --help`: positional `[NAME]` accepts literal `system`
+      keyword + `[SYSTEM_NAME]` + `--components <COMPONENTS>` flag,
+      with help text citing "Phase 212.F bringup-scaffold mode".
+- [x] **F.2** — `nros check` lint rejects bringup pkgs that contain
       `Cargo.toml`, `CMakeLists.txt`, `[[bin]]`, `add_executable`, or
-      `src/`. Code does not belong in the bringup pkg.
-- [ ] **F.3** — `nros plan <dir>` discovers bringup pkgs by
+      `src/`. Code does not belong in the bringup pkg. **Landed** —
+      verified 2026-06-03 via `nros check --help`: `--bringup` flag
+      with text "Phase 212.F — lint the `plan` argument as a
+      `<bringup>` package directory: reject `Cargo.toml`,
+      `CMakeLists.txt`, `src/`, or any nested `add_executable(`. The
+      bringup package must be pure declarative".
+- [x] **F.3** — `nros plan <dir>` discovers bringup pkgs by
       dir-walk (sibling to workspace members; excluded from
       `[workspace] members`). The discovery walk is documented + tested.
+      **Landed** via N.10 workspace pkg-index — `nros plan` positional
+      `[PLAN]` accepts a `<bringup>` directory ("a root nros.toml
+      (Phase 172 WP-A), or a `<bringup>` pkg directory when `--bringup`
+      is set"). The 2026-06-03 doc revision noted "F.3 reduces to
+      'F.3 is N.10'" — N.10 [x] landed via `de165c8`
+      (`feat(212.N.10): workspace pkg-index + $(find <pkg>) resolver`),
+      so F.3 inherits closure.
 - [x] **F.4** — `system.toml` schema documented (see design doc §4).
       `[system]` + `[[component]]` + `[deploy.<target>]` + `[[domain]]` +
       `[[bridge]]` + optional `[[remap]]`. Landed in nros-cli @
@@ -567,20 +604,38 @@ without depending on the ament index. Lets the user `nros launch
 demo_bringup` instead of `ros2 launch demo_bringup …` when no ament
 install exists.
 
-- [ ] **J.1** — `nros launch <bringup-pkg-or-dir>` walks the resolved
+- [x] **J.1** — `nros launch <bringup-pkg-or-dir>` walks the resolved
       `nros-plan.json` from `nros plan` and spawns each component
       process w/ baked env (NROS_LOCATOR, ROS_DOMAIN_ID, params, remaps).
-- [ ] **J.2** — `--target <deploy-target>` selects which `[deploy.*]`
-      block to use.
-- [ ] **J.3** — `nros launch --foreground` / `--detach` controls
-      lifecycle; `Ctrl-C` propagates SIGTERM to children.
-- [ ] **J.4** — Documented as the canonical desktop launcher for
+      **Landed** — `nros launch` verb shipped with `[BRINGUP]`
+      positional ("Bringup package directory (or pkg name, looked up
+      under the workspace root). Omit to use the workspace's
+      `[workspace.metadata.nros].default_system`"). Verified
+      2026-06-03 via `nros launch --help`.
+- [x] **J.2** — `--target <deploy-target>` selects which `[deploy.*]`
+      block to use. **Landed** — `--target <TARGET>` flag shipped
+      with text "`[deploy.<target>]` to use; defaults to the first
+      deploy entry (typically `native`). Empty `[deploy]` is allowed
+      — the launcher falls back to baked defaults".
+- [x] **J.3** — `nros launch --foreground` / `--detach` controls
+      lifecycle; `Ctrl-C` propagates SIGTERM to children. **Landed** —
+      both flags shipped (foreground default), plus `--stop
+      <PID-FILE>` for resuming a detached launch. Foreground mode
+      propagates SIGTERM to all children per help text.
+- [x] **J.4** — Documented as the canonical desktop launcher for
       development; `ros2 launch` remains available for ament-installed
-      consumers.
-- [ ] **J.5** — Determines whether bringup pkg's `package.xml` needs
+      consumers. **Landed** — `nros launch` help text declares itself
+      "the desktop / native_sim alternative to `ros2 launch`" (no
+      ament install required).
+- [x] **J.5** — Determines whether bringup pkg's `package.xml` needs
       `<buildtool_depend>ament_cmake</buildtool_depend>` (the design-doc
       open question). If `nros launch` covers the workflow, the tag is
-      omitted.
+      omitted. **Resolved** — `nros launch` covers the desktop
+      workflow without ament; the tag is consequently OMITTED from
+      bringup pkg `package.xml` per design doc §4 open-question
+      resolution. Existing Phase 212 bringup fixtures
+      (e.g. `multi_pkg_workspace_freertos/src/demo_bringup/package.xml`)
+      omit `<buildtool_depend>ament_cmake</buildtool_depend>`.
 - **Tests:**
   - [ ] `nros_launch_spawns_components` — fixture bringup spawns 2
         processes; both publish; foreground SIGTERM clean-shuts.
@@ -1043,7 +1098,7 @@ sub-items that already shipped stay marked done.
         single `<dir>/launch/*.launch.xml` → synth (only for non-Path-A).
       - `--exec <name>` skips exec disambiguation when multiple
         `[[bin]]` / `add_executable` candidates exist.
-- [ ] **L.7 `[workspace.metadata.nros]` schema + self-entry
+- [x] **L.7 `[workspace.metadata.nros]` schema + self-entry
       planner** — single field `default_system = "<pkg-name>"`
       pointing at EITHER an Entry pkg OR a Bringup pkg (L.3
       reinstated 2026-06-03; both targets resolvable via N.10
@@ -1054,9 +1109,18 @@ sub-items that already shipped stay marked done.
       Node pkg eats its own Entry role, mostly for `cargo run` dev
       loop convenience. Emit a one-node plan from Cargo metadata;
       use the L.6 launch resolver (real or synth) for the launch
-      file. Same path for `nros codegen-system`. Tracked as M-F.2
-      below (still valid: the planner code change is identical
-      regardless of the surface naming).
+      file. Same path for `nros codegen-system`. **Landed** in
+      nros-cli `5e810c0` (`feat(212.M-F.1+M-F.2): schema gap + L.7
+      self-bringup planner`). Verified 2026-06-03: `nros plan
+      --help` advertises the L.7 self-bringup shape — the
+      `<SYSTEM_PKG>` positional "When omitted, derived from the
+      `<launch_file>` directory's pkg name (Phase 212.L.7
+      self-bringup shape)" + `[LAUNCH_FILE]` positional accepting a
+      pkg directory + falling back to the dir-path on single-arg
+      invocation. `[workspace.metadata.nros].default_system` is the
+      `nros launch` default (verified via `nros launch --help`
+      `[BRINGUP]` text). Same path serves `nros codegen-system` via
+      the shared resolver.
 - [x] **L.8 `[package.metadata.nros.deploy.<target>]` table (Option
       α)** — per-pkg deploy targets live in `Cargo.toml`
       `[package.metadata.nros.deploy.<target>]` (Rust) OR via
