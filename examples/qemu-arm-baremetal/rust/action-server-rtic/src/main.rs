@@ -29,6 +29,18 @@ use rtic_monotonics::systick::prelude::*;
 
 systick_monotonic!(Mono, 1000);
 
+// Phase 213.E.1 — zenoh locator overridable at build time via `NROS_LOCATOR`
+// env-var (compile-time, keeps `#![no_std]` clean). Falls back to the QEMU
+// slirp fixture default. MAC/IP/gateway tuples stay literal for now —
+// board-internal smoltcp tuning, not user-facing config.
+// TODO(213.E later): move MAC/IP/gateway to
+// [package.metadata.nros.deploy.<target>] once macro/board-crate plumbing
+// lands.
+const LOCATOR: &str = match option_env!("NROS_LOCATOR") {
+    Some(s) => s,
+    None => "tcp/10.0.2.2:7470",
+};
+
 // Type aliases for RTIC Local struct annotations
 type NrosExecutor = Executor;
 type NrosActionServer = nros::ActionServer<Fibonacci>;
@@ -53,7 +65,7 @@ mod app {
         ip: [10, 0, 2, 10],
         prefix: 24,
         gateway: [10, 0, 2, 2],
-        zenoh_locator: "tcp/10.0.2.2:7470",
+        zenoh_locator: LOCATOR,
         domain_id: 0,
     };
         nros_board_mps2_an385::init_hardware(&config);

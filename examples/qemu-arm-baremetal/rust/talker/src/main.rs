@@ -21,6 +21,18 @@ use std_msgs::msg::Int32;
 
 static LOGGER: Logger = Logger::new("talker");
 
+// Phase 213.E.1 — zenoh locator overridable at build time via `NROS_LOCATOR`
+// env-var (compile-time, keeps `#![no_std]` clean). Falls back to the QEMU
+// slirp fixture default. MAC/IP/gateway tuples stay literal for now —
+// board-internal smoltcp tuning, not user-facing config.
+// TODO(213.E later): move MAC/IP/gateway to
+// [package.metadata.nros.deploy.<target>] once macro/board-crate plumbing
+// lands.
+const LOCATOR: &str = match option_env!("NROS_LOCATOR") {
+    Some(s) => s,
+    None => "tcp/10.0.2.2:7450",
+};
+
 #[nros_board_mps2_an385::entry]
 fn main() -> ! {
     run(Config {
@@ -28,7 +40,7 @@ fn main() -> ! {
         ip: [10, 0, 2, 10],
         prefix: 24,
         gateway: [10, 0, 2, 2],
-        zenoh_locator: "tcp/10.0.2.2:7450",
+        zenoh_locator: LOCATOR,
         domain_id: 0,
     }, |config| {
         nros_log::register_logger(&LOGGER);
