@@ -13,6 +13,10 @@
 #[cfg(not(any(feature = "wifi", feature = "serial")))]
 compile_error!("Enable at least one transport: `wifi` or `serial`");
 
+// Phase 214.E.2 — at-most-one-transport guard.
+#[cfg(all(feature = "wifi", feature = "serial"))]
+compile_error!("Pick exactly one transport: `wifi` and `serial` are mutually exclusive");
+
 #[cfg(feature = "wifi")]
 use core::mem::MaybeUninit;
 

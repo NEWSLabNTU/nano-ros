@@ -7,6 +7,10 @@
 #[cfg(not(any(feature = "ethernet", feature = "serial")))]
 compile_error!("Enable at least one transport: `ethernet` or `serial`");
 
+// Phase 214.E.2 — at-most-one-transport guard.
+#[cfg(all(feature = "ethernet", feature = "serial"))]
+compile_error!("Pick exactly one transport: `ethernet` and `serial` are mutually exclusive");
+
 use esp_hal::rng::Rng;
 
 use nros_platform_esp32_qemu::random;

@@ -279,10 +279,15 @@ pub fn __fsp_println(s: &str) {
     }
     let bytes = s.as_bytes();
     if !bytes.is_empty() {
+        // Phase 214.E.1 — bounds-check the i32 cast. log strings are
+        // ≤256 bytes in practice, but explicit truncation guard so a
+        // pathological caller doesn't wrap to a negative length and
+        // crash the FSP `tcu_print_msg` length validator.
+        let len = i32::try_from(bytes.len()).unwrap_or(i32::MAX);
         unsafe {
             tcu_print_msg(
                 bytes.as_ptr() as *const core::ffi::c_char,
-                bytes.len() as i32,
+                len,
                 false,
             );
         }

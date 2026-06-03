@@ -7,6 +7,13 @@
 #[cfg(not(any(feature = "ethernet", feature = "serial")))]
 compile_error!("Enable at least one transport: `ethernet` or `serial`");
 
+// Phase 214.E.2 — at-most-one-transport guard. Per CLAUDE.md "Board
+// Transport Features": `Config` fields are `#[cfg(feature)]`-gated and
+// the runtime locator selects a single transport; enabling both at
+// compile time builds redundant smoltcp/UART glue and is a config error.
+#[cfg(all(feature = "ethernet", feature = "serial"))]
+compile_error!("Pick exactly one transport: `ethernet` and `serial` are mutually exclusive");
+
 use core::mem::MaybeUninit;
 
 use cortex_m_semihosting::hprintln;
