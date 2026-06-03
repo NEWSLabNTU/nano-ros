@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+  Phase 212.O.4 fixture — bringup pkg.
+  DELIBERATELY no Cargo.toml in this directory: the §212.N.10 workspace
+  pkg-index discovers this pkg by walking `package.xml` files (NOT by
+  consulting cargo-metadata). The companion test asserts a build that
+  references this pkg via `nros::main!(launch = "demo_bringup:...")`
+  succeeds even though cargo never sees the directory as a member.
+-->
+<package format="3">
+  <name>demo_bringup</name>
+  <version>0.1.0</version>
+  <description>Phase 212.O.4 fixture — Cargo.toml-free bringup pkg.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <exec_depend>node_a</exec_depend>
+  <exec_depend>node_b</exec_depend>
+  <exec_depend>node_c</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<!--
+  Phase 212.O.4 fixture — 3-node launch driving `demo_entry`.
+  The N.9 macro emits one `::<pkg>::register(runtime)?;` call per
+  `<node pkg="..."/>`. Each `pkg=` attribute name MUST resolve through
+  the N.10 pkg-index (package.xml walk) since `demo_bringup` itself is
+  invisible to cargo-metadata.
+-->
+<launch>
+    <node pkg="node_a" exec="node_a"/>
+    <node pkg="node_b" exec="node_b"/>
+    <node pkg="node_c" exec="node_c"/>
+</launch>

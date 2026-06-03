@@ -1,0 +1,31 @@
+[package]
+name = "demo_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "demo_entry"
+path = "src/main.rs"
+
+# Phase 212.N.9 form-3+ Entry pkg. `nros::main!(launch = "demo_bringup:...")`
+# reads this section's `deploy = "native"` to pick the board crate.
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+# DELIBERATELY single-dep on `nros` (matches `nros::main!` design lock).
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
+# Board crate — supplies the `NativeBoard` ZST referenced by the
+# macro-emitted `<Board as BoardEntry>::run(...)` call.
+nros-board-native = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-native" }
+# The macro emits `::node_a::register(runtime)?;`, etc. The bin target
+# must link each rlib for those calls to compile + resolve.
+node_a = { path = "../node_a" }
+node_b = { path = "../node_b" }
+node_c = { path = "../node_c" }

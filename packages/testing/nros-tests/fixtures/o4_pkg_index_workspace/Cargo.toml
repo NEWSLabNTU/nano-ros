@@ -1,0 +1,29 @@
+# Phase 212.O.4 fixture — `n10_pkg_index_resolves_across_workspace`.
+#
+# A workspace with three Rust Node pkgs + one Cargo.toml-free bringup
+# pkg + one Rust Entry pkg. The fixture proves the §212.N.10 workspace
+# pkg-index resolves the bringup via `package.xml` walk (NOT via
+# cargo-metadata): `demo_bringup` deliberately ships WITHOUT a
+# Cargo.toml so a cargo-metadata-only resolver could never see it.
+#
+# Layout:
+#   src/node_a/        — Rust Node pkg.
+#   src/node_b/        — Rust Node pkg.
+#   src/node_c/        — Rust Node pkg.
+#   src/demo_bringup/  — Bringup pkg (package.xml + launch/system.launch.xml
+#                        only, NO Cargo.toml).
+#   src/demo_entry/    — Rust Entry pkg whose `src/main.rs` is
+#                        `nros::main!(launch = "demo_bringup:system.launch.xml");`
+#
+# `demo_bringup` is intentionally OMITTED from `[workspace] members` —
+# the pkg-index walks every `package.xml` under the workspace root,
+# independent of the cargo workspace member list.
+
+[workspace]
+members = [
+    "src/node_a",
+    "src/node_b",
+    "src/node_c",
+    "src/demo_entry",
+]
+resolver = "2"

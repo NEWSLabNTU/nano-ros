@@ -1,0 +1,21 @@
+[package]
+name = "node_a"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "node_a::NodeA"
+name = "node_a"
+default_namespace = "/"
+
+[dependencies]
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
