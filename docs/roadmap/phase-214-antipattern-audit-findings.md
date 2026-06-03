@@ -258,7 +258,7 @@ lifetime transmute footgun. All in board crates / nros-node.
       `expect` so a pathological caller is clamped rather than
       panicking inside the FSP println path. Landed in `d7c7b4444`.
 
-- [ ] **214.E.2 Dual-transport `compile_error!` guard** — per slice 8
+- [x] **214.E.2 Dual-transport `compile_error!` guard** — per slice 8
       audit: board crates enforce ≥1 transport (`ethernet` OR `serial`)
       but allow both ON simultaneously. Per CLAUDE.md Phase 162 policy
       ("≥1 transport required"), the intent is **exactly one**. Add
@@ -266,7 +266,24 @@ lifetime transmute footgun. All in board crates / nros-node.
       "...")` to each of 4 board crates: esp32-qemu, mps2-an385,
       stm32f4, esp32 (esp32's pair is wifi/serial — same shape).
       **Acceptance**: `cargo check -p <board> --features "ethernet
-      serial"` fails with the guard message.
+      serial"` fails with the guard message. **Landed `d7c7b4444`**
+      (`fix(214.E): Orin SPE i32 cast bounds-check + dual-transport
+      guards`); the at-most-one-transport `compile_error!` sits next
+      to the existing at-least-one-transport guard in `src/node.rs`
+      of all four crates:
+      - `packages/boards/nros-board-mps2-an385/src/node.rs`
+        (ethernet ↔ serial)
+      - `packages/boards/nros-board-stm32f4/src/node.rs`
+        (ethernet ↔ serial)
+      - `packages/boards/nros-board-esp32-qemu/src/node.rs`
+        (ethernet ↔ serial)
+      - `packages/boards/nros-board-esp32/src/node.rs`
+        (wifi ↔ serial)
+      Verified 2026-06-04 on the worktree: per-crate
+      `cargo check --target <embedded-target>` is clean on default
+      features; `cargo check --target <embedded-target> --features
+      "<a> <b>"` fails with `"Pick exactly one transport: <a> and
+      <b> are mutually exclusive"` on all four.
 
 ---
 
