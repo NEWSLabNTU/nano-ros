@@ -94,130 +94,145 @@ extern "C" fn _start() -> ! {
     // `on_wake` / `on_dispatch` hooks have a time source.
     wake_probe::set_cycle_reader(Some(dwt_cycle_reader));
 
-    run(
-        Config::from_toml(include_str!("../nros.toml")),
-        |config| {
-            let exec_config = ExecutorConfig::new(config.zenoh_locator)
-                .domain_id(config.domain_id)
-                .node_name("wake-latency");
-            nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-            let mut executor = Executor::open(&exec_config)?;
-            let nid = executor.node_builder("wake-latency").build()?;
-            let publisher = {
-                let mut node = executor.create_node("wake-latency")?;
-                node.create_publisher::<Int32>("/wake-latency")?
+    // Phase 212.M-F.18 — build-time `Config` literal supersedes
+    // the pre-212 `Config::from_toml(include_str!(...))` sidecar.
+    // Transcribed verbatim from the retired `nros.toml`: ip
+    // 10.0.2.21/24 (netmask derived from CIDR /24 → 255.255.255.0),
+    // mac 02:00:00:00:00:01, gateway 10.0.2.2, locator
+    // tcp/10.0.2.2:7451, domain_id 0. The `[node.rt]` block in
+    // the retired toml set every scheduling field to its board-
+    // crate `Default::default()` value (app_priority=12,
+    // app_stack_bytes=262144, zenoh_read/lease_priority=16,
+    // zenoh_read/lease_stack_bytes=5120, poll_priority=16,
+    // poll_interval_ms=5) so `..Config::default()` is exact.
+    // Bench fixtures are static — no runtime parameter sweep —
+    // so the literal matches the §M.10 native example pattern
+    // (ref: commit `e6f4cb346`).
+    let config = Config {
+        mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
+        ip: [10, 0, 2, 21],
+        netmask: [255, 255, 255, 0],
+        gateway: [10, 0, 2, 2],
+        zenoh_locator: "tcp/10.0.2.2:7451",
+        domain_id: 0,
+        ..Config::default()
+    };
+    run(config, |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("wake-latency");
+        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+        let mut executor = Executor::open(&exec_config)?;
+        let nid = executor.node_builder("wake-latency").build()?;
+        let publisher = {
+            let mut node = executor.create_node("wake-latency")?;
+            node.create_publisher::<Int32>("/wake-latency")?
+        };
+
+        // Fan-out scenarios: register the extra idle subs
+        // BEFORE the active one so the dispatch loop has to
+        // walk past them per wake. The probe only counts
+        // ACTIVE subscription dispatches (the
+        // `/wake-latency` topic), so the idle subs add
+        // fan-out cost without polluting the latency
+        // distribution.
+        #[cfg(feature = "scenario-fanout")]
+        for i in 0..4 {
+            let topic: heapless::String<32> = {
+                let mut s = heapless::String::new();
+                let _ = core::fmt::write(&mut s, format_args!("/idle-{}", i));
+                s
             };
+            let _ = executor
+                .node_mut(nid)
+                .create_subscription::<Int32, _>(topic.as_str(), |_: &Int32| {});
+        }
 
-            // Fan-out scenarios: register the extra idle subs
-            // BEFORE the active one so the dispatch loop has to
-            // walk past them per wake. The probe only counts
-            // ACTIVE subscription dispatches (the
-            // `/wake-latency` topic), so the idle subs add
-            // fan-out cost without polluting the latency
-            // distribution.
-            #[cfg(feature = "scenario-fanout")]
-            for i in 0..4 {
-                let topic: heapless::String<32> = {
-                    let mut s = heapless::String::new();
-                    let _ = core::fmt::write(
-                        &mut s,
-                        format_args!("/idle-{}", i),
-                    );
-                    s
-                };
-                let _ = executor.node_mut(nid).create_subscription::<Int32, _>(
-                    topic.as_str(),
-                    |_: &Int32| {},
-                );
-            }
+        executor.node_mut(nid).create_subscription::<Int32, _>(
+            "/wake-latency",
+            |_msg: &Int32| {
+                // No-op cb body. The probe's `on_dispatch`
+                // hook fires before this runs and captures
+                // `T1 - T0` automatically.
+            },
+        )?;
 
-            executor.node_mut(nid).create_subscription::<Int32, _>(
-                "/wake-latency",
-                |_msg: &Int32| {
-                    // No-op cb body. The probe's `on_dispatch`
-                    // hook fires before this runs and captures
-                    // `T1 - T0` automatically.
-                },
-            )?;
+        println!("scenario={}", SCENARIO_NAME);
+        println!("system_core_clock_hz={}", SYSTEM_CORE_CLOCK_HZ);
+        println!("target_samples={}", TARGET_SAMPLES);
+        println!("publishing on /wake-latency");
 
-            println!("scenario={}", SCENARIO_NAME);
-            println!("system_core_clock_hz={}", SYSTEM_CORE_CLOCK_HZ);
-            println!("target_samples={}", TARGET_SAMPLES);
-            println!("publishing on /wake-latency");
+        // Burst scenario: emit 10 messages back-to-back per
+        // "tick" so multiple wakes pile into one cv-wait
+        // cycle. Per the 141.D.3 spec this is the worst-case
+        // path the executor must handle.
+        #[cfg(feature = "scenario-burst")]
+        const BURST: u32 = 10;
+        #[cfg(not(feature = "scenario-burst"))]
+        const BURST: u32 = 1;
 
-            // Burst scenario: emit 10 messages back-to-back per
-            // "tick" so multiple wakes pile into one cv-wait
-            // cycle. Per the 141.D.3 spec this is the worst-case
-            // path the executor must handle.
-            #[cfg(feature = "scenario-burst")]
-            const BURST: u32 = 10;
-            #[cfg(not(feature = "scenario-burst"))]
-            const BURST: u32 = 1;
-
-            let mut emitted: i32 = 0;
-            executor.register_timer(
-                nros::TimerDuration::from_millis(10), // 100 Hz
-                move || {
-                    for _ in 0..BURST {
-                        let _ = publisher.publish(&Int32 { data: emitted });
-                        emitted = emitted.wrapping_add(1);
-                    }
-                },
-            )?;
-
-            // Spin until we have enough samples. Each
-            // `spin_once` advances both the publisher timer +
-            // any pending wake-cb dispatches; the probe ring
-            // fills via the dispatch hook. Exit once the ring's
-            // monotonic write counter clears `TARGET_SAMPLES`.
-            loop {
-                executor.spin_once(core::time::Duration::from_millis(10));
-                let mut scratch = [0u64; 1];
-                let (_, total) = wake_probe::drain(&mut scratch);
-                if total >= TARGET_SAMPLES {
-                    break;
+        let mut emitted: i32 = 0;
+        executor.register_timer(
+            nros::TimerDuration::from_millis(10), // 100 Hz
+            move || {
+                for _ in 0..BURST {
+                    let _ = publisher.publish(&Int32 { data: emitted });
+                    emitted = emitted.wrapping_add(1);
                 }
+            },
+        )?;
+
+        // Spin until we have enough samples. Each
+        // `spin_once` advances both the publisher timer +
+        // any pending wake-cb dispatches; the probe ring
+        // fills via the dispatch hook. Exit once the ring's
+        // monotonic write counter clears `TARGET_SAMPLES`.
+        loop {
+            executor.spin_once(core::time::Duration::from_millis(10));
+            let mut scratch = [0u64; 1];
+            let (_, total) = wake_probe::drain(&mut scratch);
+            if total >= TARGET_SAMPLES {
+                break;
             }
+        }
 
-            // Bucketize the full ring into a histogram + dump
-            // CSV in the v1 format the host harness parses.
-            // `cycles_to_ns` partial-applied to the board's
-            // SYSCLK gives the probe deltas in ns.
-            let mut hist = wake_probe::Histogram::new();
-            let _ = wake_probe::drain_into::<{ wake_probe::PROBE_SAMPLE_CAP }>(
-                &mut hist,
-                |c| cycles_to_ns(c as u32, SYSTEM_CORE_CLOCK_HZ),
-            );
+        // Bucketize the full ring into a histogram + dump
+        // CSV in the v1 format the host harness parses.
+        // `cycles_to_ns` partial-applied to the board's
+        // SYSCLK gives the probe deltas in ns.
+        let mut hist = wake_probe::Histogram::new();
+        let _ = wake_probe::drain_into::<{ wake_probe::PROBE_SAMPLE_CAP }>(&mut hist, |c| {
+            cycles_to_ns(c as u32, SYSTEM_CORE_CLOCK_HZ)
+        });
 
-            // The board's `println!` writes through the
-            // semihosting UART. Wrap that as a
-            // `core::fmt::Write` adapter so `write_csv` can
-            // emit through it without pulling `std`.
-            struct UartWriter;
-            impl core::fmt::Write for UartWriter {
-                fn write_str(&mut self, s: &str) -> core::fmt::Result {
-                    // `println!` adds a trailing newline. To
-                    // preserve the on-the-wire CSV format
-                    // (one record per line, no double-newlines)
-                    // strip a trailing `\n` if present and use
-                    // `println!` for each pre-split chunk.
-                    for chunk in s.split_inclusive('\n') {
-                        let bare = chunk.strip_suffix('\n').unwrap_or(chunk);
-                        println!("{}", bare);
-                    }
-                    Ok(())
+        // The board's `println!` writes through the
+        // semihosting UART. Wrap that as a
+        // `core::fmt::Write` adapter so `write_csv` can
+        // emit through it without pulling `std`.
+        struct UartWriter;
+        impl core::fmt::Write for UartWriter {
+            fn write_str(&mut self, s: &str) -> core::fmt::Result {
+                // `println!` adds a trailing newline. To
+                // preserve the on-the-wire CSV format
+                // (one record per line, no double-newlines)
+                // strip a trailing `\n` if present and use
+                // `println!` for each pre-split chunk.
+                for chunk in s.split_inclusive('\n') {
+                    let bare = chunk.strip_suffix('\n').unwrap_or(chunk);
+                    println!("{}", bare);
                 }
+                Ok(())
             }
-            let _ = wake_probe::write_csv(&mut UartWriter, &hist);
+        }
+        let _ = wake_probe::write_csv(&mut UartWriter, &hist);
 
-            // Best-effort exit. `panic-semihosting`'s exit
-            // feature routes a controlled "exit 0" through
-            // ARMSemihosting. QEMU sees the
-            // SYS_EXIT_EXTENDED and drops back to the harness.
-            cortex_m_semihosting::debug::exit(cortex_m_semihosting::debug::EXIT_SUCCESS);
+        // Best-effort exit. `panic-semihosting`'s exit
+        // feature routes a controlled "exit 0" through
+        // ARMSemihosting. QEMU sees the
+        // SYS_EXIT_EXTENDED and drops back to the harness.
+        cortex_m_semihosting::debug::exit(cortex_m_semihosting::debug::EXIT_SUCCESS);
 
-            #[allow(unreachable_code)]
-            Ok::<(), NodeError>(())
-        },
-    )
+        #[allow(unreachable_code)]
+        Ok::<(), NodeError>(())
+    })
 }

@@ -13,6 +13,12 @@ name = "qemu-bsp-large-msg-test"
 test = false
 bench = false
 
+# Phase 212.M-F.18 — Application pkg shape (matches §M.10 native
+# example pattern). Single-board bare-metal bench fixture; deploy
+# target is the platform path the binary runs on.
+[package.metadata.nros.application]
+deploy = ["qemu-arm-baremetal"]
+
 [features]
 default = []
 docker = ["nros-board-mps2-an385/docker"]

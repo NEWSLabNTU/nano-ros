@@ -13,6 +13,12 @@ name = "wake-latency-cortex-m3"
 test = false
 bench = false
 
+# Phase 212.M-F.18 — Application pkg shape (matches §M.10 native
+# example pattern). Single-board FreeRTOS bench fixture; deploy
+# target is the platform path the binary runs on.
+[package.metadata.nros.application]
+deploy = ["qemu-arm-freertos"]
+
 [features]
 default = []
 # Phase 141.D scenarios — exactly one must be active at build
