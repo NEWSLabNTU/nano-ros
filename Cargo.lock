@@ -2306,6 +2306,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-rmw-cyclonedds"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "heapless 0.8.0",
+ "nros-serdes",
+ "spin",
+]
+
+[[package]]
 name = "nros-rmw-cyclonedds-sys"
 version = "0.1.0"
 dependencies = [

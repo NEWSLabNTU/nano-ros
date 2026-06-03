@@ -87,6 +87,12 @@ add_library(nros_rmw_cyclonedds STATIC
     src/graph.cpp
     src/qos.cpp
     src/sertype_min.cpp
+    # Phase 212.K.7.4 — C++ bridge for the Rust DescriptorBuilder.
+    # Currently a stub returning UnsupportedFieldType until the
+    # Cyclone DDS pin advances to a release exposing the public
+    # `ddsi_dynamic_type_*` API; the Rust ABI is stable so only this
+    # TU's body needs to change at that point.
+    bridge/dynamic_type_builder.cpp
     ${_NROS_GRAPH_DESC_SRCS}
 )
 add_library(NrosRmwCyclonedds::NrosRmwCyclonedds ALIAS nros_rmw_cyclonedds)

@@ -43,6 +43,12 @@ members = [
     # `packages/dds/nros-rmw-cyclonedds/` CMake project or by the
     # Zephyr module's `CONFIG_NROS_RMW_CYCLONEDDS` branch.
     "packages/dds/nros-rmw-cyclonedds-sys",
+    # Phase 212.K.7 — Rust shim co-located with the Cyclone DDS C++
+    # backend. `no_std`, alloc-free; provides the runtime descriptor
+    # builder + bounded type registry that supersedes the per-msg-pkg
+    # `cyclonedds` Cargo feature pattern. The C++ backend is still
+    # built by the sibling CMake project.
+    "packages/dds/nros-rmw-cyclonedds",
     # Phase 212.K.1 — build-only sys crate that vendors Cyclone DDS via
     # the `cmake` build-script crate. Provides libddsc + idlc to
     # downstream crates via the `DEP_DDSC_*` metadata exports.
