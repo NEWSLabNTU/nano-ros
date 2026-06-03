@@ -2512,7 +2512,7 @@ canonical-shape regression test can run green tree-wide:
       (`examples/qemu-arm-nuttx/{c,cpp}/` retirement) tracked
       separately; the H.2 NuttX work item stays `[x]` per
       M-F.12.
-- [ ] **M-F.17 nros plan source-metadata α-bridge** (nros-cli) —
+- [~] **M-F.17 nros plan source-metadata α-bridge** (nros-cli) —
       THE M.10 RUNTIME UNBLOCK. Tree state has every Phase 212-
       migrated fixture carrying `[package.metadata.nros.component]`
       in `Cargo.toml` (M.10 sweep). nros-cli M-F.1+M-F.2
@@ -2599,7 +2599,7 @@ canonical-shape regression test can run green tree-wide:
       **Blocks:** every M.10-gated `#[ignore]` line in
       `phase212_h{1,4,5,7}*.rs`. SINGLE BIGGEST OPEN PHASE 212
       RUNTIME GATE.
-- [ ] **M-F.18 M.10 bench-fixture tail** (nano-ros) — 2 residual
+- [x] **M-F.18 M.10 bench-fixture tail** (nano-ros) — 2 residual
       `nros.toml` files in
       `packages/testing/nros-bench/{large-msg-baremetal,
       wake-latency-cortex-m3}/` survived the M.10 examples sweep.
@@ -2620,7 +2620,7 @@ lists. Each item is a self-contained agent task, file-scope
 disjoint from siblings so they can run in parallel without
 rebase conflict.
 
-- [ ] **O.1 `freertos_board_run_executes_run_plan`** (N tests)
+- [~] **O.1 `freertos_board_run_executes_run_plan`** (N tests)
       — runtime gate for the FreeRTOS-side Entry pkg's
       `BoardEntry::run` lifecycle under QEMU. Sibling of the
       already-landed posix-side `entry_poc_boots_through_board_
@@ -2630,7 +2630,7 @@ rebase conflict.
       missing `THREADX_DIR`-equivalent gates (QEMU + cross
       toolchain). Scope: nano-ros only.
 
-- [ ] **O.2 `entry_pkg_metadata_required_board`** (nros-cli
+- [~] **O.2 `entry_pkg_metadata_required_board`** (nros-cli
       `check`) — `nros check` hard-error test for missing
       `[package.metadata.nros.entry] deploy = "<board>"`. Fixture:
       a Cargo.toml with `[package.metadata.nros.entry]` but no
@@ -2638,14 +2638,14 @@ rebase conflict.
       diagnostic identifying the missing field. Scope: nros-cli
       `check_workspace` lints + integration test.
 
-- [ ] **O.3 `board_agnostic_run_plan_links_against_any_board`**
+- [~] **O.3 `board_agnostic_run_plan_links_against_any_board`**
       (N tests) — same compiled `run_plan` rlib links under at
       least 2 distinct Board impls (`nros-board-posix` +
       `nros-board-qemu-mps2-an385-freertos`) in a single fixture.
       Proves the §212.N.4 emit is genuinely board-agnostic.
       Scope: nano-ros only. New fixture + test.
 
-- [ ] **O.4 `n10_pkg_index_resolves_across_workspace`** (N.10
+- [~] **O.4 `n10_pkg_index_resolves_across_workspace`** (N.10
       test) — fixture: workspace with 3 Node pkgs + 1 bringup pkg
       + 1 Entry pkg. `nros::main!(launch =
       "demo_bringup:system.launch.xml")` resolves via
@@ -2654,7 +2654,7 @@ rebase conflict.
       no acceptance test was wired. Scope: nano-ros only (or
       nros-cli if the pkg-index resolution is CLI-side).
 
-- [ ] **O.5 `n11_launch_xml_ros2_compat_smoke`** (N.11 test) —
+- [~] **O.5 `n11_launch_xml_ros2_compat_smoke`** (N.11 test) —
       copy-paste a stock nav2-style launch.xml (`<node>` +
       `<arg>` + `<include>` + `$(find <pkg>)`) into a fixture;
       codegen accepts it + emits correct `run_plan` body. The
@@ -2662,13 +2662,13 @@ rebase conflict.
       body); no smoke gate. Scope: nano-ros fixture + test, or
       nros-cli integration test under `tests/launch_xml/`.
 
-- [ ] **O.6 `application_pkg_with_rtos_deploy_is_rejected`**
+- [~] **O.6 `application_pkg_with_rtos_deploy_is_rejected`**
       (nros-cli `check`) — `nros check` rejects an Application
       pkg manifest naming an RTOS in `deploy = [...]` (Application
       pkgs are native-only per §212.L.2 / M-F.1). Fixture +
       assert. Scope: nros-cli only.
 
-- [ ] **O.7 `msg_to_cyclone_idl_rust_port_matches_python_output`**
+- [~] **O.7 `msg_to_cyclone_idl_rust_port_matches_python_output`**
       (212.K.3 parity test) — port verification: the Rust
       `nros-msg-to-idl` produces output identical to the retired
       Python `msg_to_cyclone_idl.py` for a corpus of `.msg` /
