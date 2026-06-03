@@ -70,9 +70,21 @@ fn run_app(config: &Config) -> Result<(), NodeError> {
     }
 }
 
+/// Locator override (`NROS_LOCATOR`) baked at build time; `no_std` so the
+/// runtime `env::var` path is unavailable. Default targets the QEMU
+/// host-loopback zenohd at fixture port 7553.
+const LOCATOR: &str = match option_env!("NROS_LOCATOR") {
+    Some(v) => v,
+    None => "tcp/10.0.2.2:7553",
+};
+
+// TODO(213.E): plumb a build-time override for `domain_id` (Kconfig-style)
+// alongside the locator. Low priority — fixtures rarely vary the domain.
+const DOMAIN_ID: u32 = 0;
+
 /// Pure-cargo entry used by the existing zenoh fixture path.
 pub fn start_from_reset() -> ! {
-    run(Config { zenoh_locator: "tcp/10.0.2.2:7553", domain_id: 0, ..Default::default() }, run_app)
+    run(Config { zenoh_locator: LOCATOR, domain_id: DOMAIN_ID, ..Default::default() }, run_app)
 }
 
 /// C entry point used by the CMake/CycloneDDS staticlib path.
@@ -80,7 +92,7 @@ pub fn start_from_reset() -> ! {
 #[unsafe(no_mangle)]
 pub extern "C" fn app_main() -> ! {
     println!("Starting Rust CycloneDDS talker");
-    let config = Config { zenoh_locator: "tcp/10.0.2.2:7553", domain_id: 0, ..Default::default() };
+    let config = Config { zenoh_locator: LOCATOR, domain_id: DOMAIN_ID, ..Default::default() };
     if let Err(e) = run_app(&config) {
         println!("Application error: {:?}", e);
     }

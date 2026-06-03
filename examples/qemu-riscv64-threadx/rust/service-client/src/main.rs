@@ -16,9 +16,21 @@ fn register_rmw() -> Result<(), &'static str> {
 }
 
 
+/// Locator override (`NROS_LOCATOR`) baked at build time; `no_std` so the
+/// runtime `env::var` path is unavailable. Default targets the QEMU
+/// host-loopback zenohd at fixture port 7463.
+const LOCATOR: &str = match option_env!("NROS_LOCATOR") {
+    Some(v) => v,
+    None => "tcp/10.0.2.2:7463",
+};
+
+// TODO(213.E): plumb a build-time override for `domain_id` (Kconfig-style)
+// alongside the locator. Low priority — fixtures rarely vary the domain.
+const DOMAIN_ID: u32 = 0;
+
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {
-    run(Config { zenoh_locator: "tcp/10.0.2.2:7463", domain_id: 0, ..Default::default() }, |config| {
+    run(Config { zenoh_locator: LOCATOR, domain_id: DOMAIN_ID, ..Default::default() }, |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_client");
