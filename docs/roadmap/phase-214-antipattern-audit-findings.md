@@ -965,12 +965,30 @@ semantics).
       | `migrate` | ✗ | ✓ |
       | `new system` | ✓ | ✓ |
 
-- [ ] **214.N.2 Bump nros-cli pin** — once Track I lands, the same
+- [x] **214.N.2 Bump nros-cli pin** — once Track I lands, the same
       bump probably covers most of N. Re-run the failing tests.
       Remaining real fails after the bump need per-test triage.
       **Acceptance**: post-bump, `cargo nextest run -p nros-tests
       --test phase212_l_check_lints` etc. passes or surfaces a
-      semantic mismatch that needs a follow-up.
+      semantic mismatch that needs a follow-up. **No-op landed**:
+      the latest tagged release is `nros-v0.3.7` (2026-05-29) and
+      `scripts/install-nros.sh::NROS_VERSION` is already pinned to
+      it. The missing verbs and refined semantics live on nros-cli
+      `main` (commits after the tag — `212.J.1+J.2` `nros launch`,
+      `212.I.*` migrate workspace, `212.E.*` `codegen-system`,
+      `212.F.1+F.2` `nros new system` + `check --bringup` rejection
+      of code-bearing bringups, `210.D.1` `nros ws sync` dedup, …)
+      and have not yet been cut into a release. Remediation today is
+      the Path B source-build documented at
+      `scripts/install-nros.sh:18-37`
+      (`NROS_FROM_SOURCE=/path/to/nros-cli scripts/install-nros.sh`,
+      verified locally with nros-cli @ `1c92310` — the source-build
+      binary still self-reports as `0.3.7` because the Cargo
+      manifests have not been bumped). Re-evaluate this item once
+      nros-cli cuts a `0.4.x` tag carrying `launch` + `migrate` +
+      `codegen-system` + the post-212.I Cargo.toml emitter + the
+      `.nros/launch` pidfile path; bumping `NROS_VERSION` then will
+      flip the N.3 skip-gates back to PASS automatically.
 
 - [ ] **214.N.3 Skip-gate behaviour-drift tests on outdated CLI** —
       for tests that exercise behaviour the installed CLI doesn't
