@@ -1148,17 +1148,27 @@ marker.
 
 **Work Items:**
 
-- [ ] **214.R.1 JUnit post-processor `skip!` rewrite** — small
+- [x] **214.R.1 JUnit post-processor `skip!` rewrite** — small
       script that reads `target/nextest/default/junit.xml`,
       rewrites every `<failure message="[SKIPPED] …">` to
       `<skipped …>`, drops the testcase from the failure count.
       Hook into the platform recipes' tail.
       **Acceptance**: `xrce test` (10/10 SKIPPED-as-FAIL today)
-      reports 0 failures post-rewrite.
+      reports 0 failures post-rewrite. **Done** —
+      `scripts/test/rewrite-skipped-junit.py` (Python stdlib,
+      idempotent, atomic tmp+rename). Hooked into
+      `justfile::{test, test-all, test-failed, _nextest-platform}`
+      and `just/xrce.just::{test, test-ros2, test-c}` via the
+      private `_rewrite-skipped-junit` recipe. Verified end-to-end
+      against the 212.L6 launch_synth junit (3 SKIPPED failures
+      rewrote to `<skipped>`, `failures="3"` → `failures="0"`).
 
-- [ ] **214.R.2 Document tally semantics** — explain in
+- [x] **214.R.2 Document tally semantics** — explain in
       `docs/development/test-harness.md` that `[SKIPPED]` failures
       are not regressions; the tally script is the source of truth.
+      **Done** — `docs/development/test-harness.md` (new) covers
+      the `[SKIPPED]` panic contract, the rewriter, hook points,
+      tally consumers, and forbidden patterns.
 
 ---
 
