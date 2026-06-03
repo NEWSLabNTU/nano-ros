@@ -1337,10 +1337,14 @@ don't.
       <plat> test` showing the build-fixture recipe body inlined
       ahead of the test body.
 
-- [ ] **214.Q.2 Document the contract** — one paragraph in
+- [x] **214.Q.2 Document the contract** — one paragraph in
       `docs/development/test-harness.md` (create if absent) stating
       "per-plat `test` always sequences `build-fixtures` first; the
       harness fails loud on missing fixtures rather than rebuilding".
+      **Landed**: added "Build-fixtures ordering" section to
+      `docs/development/test-harness.md` citing Q.1 commit
+      `d7e895228` and
+      `packages/testing/nros-tests/src/fixtures/binaries/mod.rs::require_prebuilt_binary`.
 
 ---
 

@@ -8,6 +8,28 @@ For a recipe-level cheat-sheet (which `just <plat> test` exists,
 which platform groups run under `just test-all`, where junit lives,
 etc.) see `book/src/reference/build-commands.md`.
 
+## Build-fixtures ordering
+
+Per-platform `test` always sequences `build-fixtures` first; the
+harness fails loud on missing fixtures rather than rebuilding. Test
+recipes assume fixtures are present + at the canonical paths from
+`examples/fixtures.toml` — when missing, the harness asserts with
+the source location and the expected fixture path, instead of
+silently re-running cargo-build.
+
+Wired in Phase 214.Q.1 (`d7e895228`) by adding `build-fixtures` as a
+just-recipe prereq head form (`test verbose="": build-fixtures`) on
+every per-platform module — native, zephyr, esp32, freertos, nuttx,
+threadx-linux, threadx-riscv64, qemu-baremetal. Cyclonedds uses
+CTest with `test: build-rmw` as its equivalent. The fail-loud
+assertion lives in `packages/testing/nros-tests/src/fixtures/binaries/mod.rs::require_prebuilt_binary`
+— it returns `TestError::BuildFailed("Test fixture binary not
+prebuilt: <path>. Run `just build-test-fixtures` first.")` instead
+of invoking cargo. Builds inside test bodies historically stretched
+a 14 s test to 125 s on a saturated host racing against QEMU +
+zenohd; the prereq-then-assert shape keeps build and run phases
+cooperatively sequenced.
+
 ## Skip vs. failure tally semantics
 
 ### The skip contract
@@ -161,6 +183,8 @@ documented escape hatch. Use it sparingly.
 
 * CLAUDE.md → "Practices" — the parent contract.
 * `packages/testing/nros-tests/src/lib.rs:51` — `skip!` macro.
+* `packages/testing/nros-tests/src/fixtures/binaries/mod.rs` —
+  `require_prebuilt_binary` (Build-fixtures ordering contract).
 * `scripts/test/rewrite-skipped-junit.py` — the post-processor.
 * `scripts/test/failed-filterset.py` — the rerun-failures filterset.
 * `book/src/reference/build-commands.md` — recipe cheat-sheet.
