@@ -1911,7 +1911,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       `nros-build = { git = "github.com/NEWSLabNTU/nros-cli",
       branch = "main" }`. Board-agnostic emit (board choice lives
       in user `main.rs`'s `Board::run` closure).
-- [ ] **N.5 Single-node codegen** (scope-revised 2026-06-03 per
+- [x] **N.5 Single-node codegen** (scope-revised 2026-06-03 per
       `docs/design/multi-node-workspace-layout.md` §11) — Node pkg
       with `[package.metadata.nros.entry] deploy = "<board>"` becomes
       self-runnable. User writes one-line `src/main.rs`:
@@ -1923,7 +1923,16 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       file containing only `nros::main!();`, no codegen-bin
       collisions. Same single-deploy constraint as the original
       (one `deploy = "<board>"` value per pkg; cross-target builds
-      go through dedicated Entry pkgs).
+      go through dedicated Entry pkgs). **Subsumed by N.9** —
+      `nros::main!()` proc-macro family landed; the in-tree
+      reference fixture is `examples/native/rust/entry-poc/`
+      (Cargo.toml carries `[package.metadata.nros.entry] deploy =
+      "native"`; `src/main.rs` is the single-line `nros::main!();`
+      shape). Gate test
+      `packages/testing/nros-tests/tests/phase212_n_entry_poc_runs.rs`
+      asserts both the compile path + the `<NativeBoard as
+      BoardEntry>::run` lifecycle path execute end-to-end (2/2
+      PASS at HEAD `ec82c0c8d`).
 - [x] **N.6 Rename `nano_ros_application` → `nano_ros_entry`** —
       cmake fn rename per L.9. Add `BOARD <board>` arg. Update every
       existing caller (after wave-1 native/cpp sweep) — single

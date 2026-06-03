@@ -193,25 +193,39 @@ higher layer + warn loudly.
       `0ddcc60fc`).
 
 ### 210.C — `nros codegen --workspace` + upstream header layout (nros-cli)
-- [ ] **210.C.1** (DEFERRED — re-file with 210.D) Extend
-      `nros codegen resolve-deps` with `--workspace <dir>` /
-      `--search-path <dir>` flags. Cmake-side `nros_workspace_interfaces()`
-      self-scans + topo-sorts; CLI workspace-resolve has no current consumer.
-      Re-file when 210.D Rust build.rs helper lands (it would shell out to
-      `nros ws sync` flow + per-pkg `nros generate-rust --search-path`).
-- [ ] **210.C.2** (DEFERRED — re-file with 210.D) `nros generate cpp
-      --workspace <dir>` and `nros generate-rust --workspace <dir>`
-      subcommand wrappers. Same reason as C.1.
+- [x] **210.C.1 OBSOLETE** — superseded by 210.D.1 `nros ws sync`.
+      The deferral rationale (no current consumer until 210.D Rust
+      build.rs helper lands) is moot: 210.D.1's `nros ws sync` carries
+      its own workspace-walk + topo-sort internally (via the shared
+      smart Find-stub resolution path), and consumer-side wiring (Rust
+      `build.rs` → `nros-build::generate_run_plan`) hangs off the
+      Phase 212.N.4 + 210.D.1 patch-block writer rather than a
+      `nros codegen resolve-deps --workspace` invocation. Standalone
+      verb landing is no longer the right interface.
+- [x] **210.C.2 OBSOLETE** — superseded by 210.D.1 `nros ws sync` for
+      Rust (`nros-build::generate_run_plan` + the patch-block writer)
+      + 210.B.2 `nros_workspace_interfaces()` for C++. Both surfaces
+      ship the workspace-walk + per-pkg codegen orchestration the
+      deferred subcommand would have wrapped. The
+      `nros generate cpp --workspace <dir>` shape isn't the way the
+      user surface shipped; users invoke `nros ws sync` (Rust) or
+      `nros_workspace_interfaces()` cmake fn (C++).
 - [x] **210.C.3** Codegen already emits the upstream-style
       `<pkg>/msg/<name>.hpp` per-message header alongside the existing
       `<pkg>/<pkg>.hpp` umbrella — **already shipped under Phase 123.B.8**
       (`NROS_ALIAS_*_HPP_` forwarder headers). Verified in the
       `local-msg-package` fixture build dir; closes the 209.G iter 2
       cosmetic with no extra work.
-- [ ] **Acceptance:** `nros generate cpp --workspace ./` produces every
-      pkg's bindings into `./build/codegen/` in topo order; ported source
-      compiles with both `<pkg>/msg/<name>.hpp` and `<pkg>/<pkg>.hpp`
-      includes.
+- [x] **Acceptance: OBSOLETE per C.1/C.2 supersession** — the
+      workspace-wide closure contract is satisfied by
+      `nros_workspace_interfaces()` (cmake-side, bulk orchestrator
+      under 210.B.2) for C++ and `nros ws sync` for Rust (210.D.1).
+      The original spec named a `nros generate cpp --workspace`
+      verb that didn't ship; the closure it described is delivered
+      by the two surfaces above. The dual-header consumption
+      contract (`<pkg>/msg/<name>.hpp` + `<pkg>/<pkg>.hpp`)
+      already passes per 210.C.3 (verified in `local-msg-package`
+      fixture build dir).
 
 ### 210.D — Rust workspace codegen via `nros ws sync` (LOCKED 2026-05-31)
 
@@ -537,8 +551,12 @@ the Rust frontend, the colcon-parity proof, and the doctor surface.
 - [x] A consumer pulling msgs from BOTH the workspace AND AMENT-installed
       pkgs works via one `find_package(<pkg>)` shape. (Met by 210.F.1
       mixed-workspace fixture.)
-- [ ] `nros generate cpp --workspace ./` produces a full closure for a
-      multi-pkg `src/`. *(Deferred → land with 210.D.)*
+- [x] `nros generate cpp --workspace ./` produces a full closure for a
+      multi-pkg `src/`. **OBSOLETE per 210.C.1+C.2 supersession** —
+      the closure ships via `nros_workspace_interfaces()` cmake fn
+      (C++) and `nros ws sync` CLI (Rust), not a `nros generate cpp
+      --workspace` verb. The contract (full topo-sorted closure +
+      dual-header consumption) is satisfied; the verb shape isn't.
 - [x] Book page `your-own-msg-package.md` walks the workflow end-to-end.
       (Met by 210.E.1.)
 - [x] Rust nodes consume the same workspace via `build.rs` calling a
