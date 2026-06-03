@@ -37,7 +37,7 @@ set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
 add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
 
 # `NanoRosNodeRegister.cmake` ships the §212.L.9 cmake fns
-# (`nano_ros_entry`, `nano_ros_component_register`,
+# (`nano_ros_entry`, `nano_ros_node_register`,
 # `nano_ros_deploy`). Per-example include matches the §212.M.2 pattern.
 include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
 

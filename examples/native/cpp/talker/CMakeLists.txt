@@ -25,7 +25,7 @@ set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
 add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
 
 # `NanoRosNodeRegister.cmake` ships the §212.L.9 cmake fns
-# (`nano_ros_entry`, `nano_ros_component_register`,
+# (`nano_ros_entry`, `nano_ros_node_register`,
 # `nano_ros_deploy`). The root CMake does NOT auto-load it today, so
 # the per-example CMakeLists includes it directly — same pattern as
 # the §212.L.9 fixture tests (`phase212_l9_cmake_fns.rs`).

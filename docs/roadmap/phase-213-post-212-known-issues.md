@@ -152,17 +152,33 @@ bodies) +
       sweep retires every callsite next; the shim stays as a one-
       release safety net.
 
-- [ ] **213.B.2** — Mechanical sweep: rename callsites
+- [x] **213.B.2** — Mechanical sweep: rename callsites
       `nano_ros_component_register(...)` → `nano_ros_node_register(...)`
       across 32 example `CMakeLists.txt` + 2 test bodies. After this
       lands, the B.1 deprecation shim is unused but stays as a one-
       release safety net (drop in a future phase). Same sweep for
       `nano_ros_application(...)` → `nano_ros_entry(...)` in 18 native
-      C/C++ examples.
-      **Acceptance**: `git grep nano_ros_component_register` returns
-      only the deprecation shim in cmake + historical roadmap notes;
-      `git grep nano_ros_application` returns only the deprecation shim
-      + roadmap. cmake configure clean on the 50 affected examples.
+      C/C++ examples. **Done 2026-06-03**:
+      - **B.2.a** `nano_ros_component_register` → `nano_ros_node_register`
+        landed in `16573b430` (33 callsites: 30 example CMakeLists +
+        3 test bodies). Note: phase doc said "32 + 2" but actual was
+        30 + 3 — `examples/threadx-linux/c/*` has zero callsites
+        (different binding pattern), and the test mention count was
+        across 3 files (`phase212_l9_cmake_fns.rs` +
+        `phase212_d_workspace_metadata.rs` + `phase212_h7_px4.rs`),
+        not 2.
+      - **B.2.b** `nano_ros_application` → `nano_ros_entry` landed in
+        `b4ac2c7d2` (18 native CMakeLists: 10 native/c + 8 native/cpp).
+      - **B.2.c** Talker doc-comment cleanup landed in this commit —
+        two leftover narrative refs to `nano_ros_component_register`
+        in `examples/native/{c,cpp}/talker/CMakeLists.txt` comment
+        blocks renamed to the new fn name (callsites already used
+        `nano_ros_entry`).
+      **Acceptance verified**: `git grep nano_ros_component_register`
+      now returns only the deprecation shim in cmake + roadmap doc
+      refs (zero example/test callsites). `git grep
+      nano_ros_application examples/native/` returns zero callsites.
+      Lint quartet (L.9 + D + M.12 + pre-212-forbidden) stays green.
 
 ---
 
