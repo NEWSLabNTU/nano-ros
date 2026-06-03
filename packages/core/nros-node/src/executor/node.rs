@@ -1250,6 +1250,8 @@ impl<'e> NodeCtx<'e> {
     ) -> Result<super::types::HandleId, NodeError>
     where
         Svc: RosService + 'static,
+        Svc::Request: crate::cyclonedds_register::MessageForRmw,
+        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         self.executor.register_service_sized_on::<
@@ -1279,6 +1281,8 @@ impl<'c, 'e, 't> CtxServiceBuilder<'c, 'e, 't> {
     pub fn build<Svc, F>(self, callback: F) -> Result<super::types::HandleId, NodeError>
     where
         Svc: RosService + 'static,
+        Svc::Request: crate::cyclonedds_register::MessageForRmw,
+        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         self.ctx.executor.register_service_sized_on::<

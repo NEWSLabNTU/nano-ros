@@ -936,6 +936,74 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       --features rmw-cyclonedds` → 156 pass (149+2+5 baseline),
       `cargo test -p nros-rmw-cyclonedds` → 13 pass.
 
+- [x] **K.7.7.b** — **Service + action example migration to
+      RMW-agnostic msg deps (build only).** Landed 2026-06-03 against
+      nros-cli `440c2f4` (K.7.1.c). The six in-scope
+      `examples/native/rust/` examples — `service-server`,
+      `service-client`, `service-client-async`, `action-server`,
+      `action-client`, `action-client-async` — now build cleanly under
+      `cargo build --no-default-features --features rmw-cyclonedds`.
+      Migration steps mirrored K.7.7:
+      * Re-ran `nros ws sync` per example to regen the `generated/`
+        trees (which now carry the K.7.1.c `impl
+        ::nros_serdes::Message` blocks for `*_Request` / `*_Response`
+        / `*Goal` / `*Result` / `*Feedback`).
+      * Each example's `rmw-cyclonedds` feature forwards to
+        `nros-rmw-cyclonedds-sys/vendored` + `nros/rmw-cyclonedds`
+        (same pattern as K.7.7).
+      * The two async variants (`service-client-async`,
+        `action-client-async`) previously hard-coded
+        `nros_rmw_zenoh::register()`; added the same `[features]
+        rmw-{zenoh,cyclonedds,xrce}` mutually-exclusive block + cfg
+        dispatch in `src/main.rs` that the four sync siblings already
+        used.
+      * **Plumbing fix:** `Executor::register_service{,_sized,
+        _sized_on,_on}` now calls `cyclonedds_register::register_type::
+        <Svc::Request>()` + `register_type::<Svc::Reply>()` before
+        creating the service endpoint (K.7.6.b only wired the typed
+        `Node::create_service*` path; the spin-arena
+        `register_service*` callback shape used by the
+        `service-server` example was a gap). Bounds widened to
+        `Svc::{Request,Reply}: MessageForRmw`. `NodeCtx::create_service`
+        + `CtxServiceBuilder::build` mirror the new bounds since they
+        delegate to `register_service_sized_on`.
+      **E2E status — partial:**
+      * **Pub/sub regression check:** `talker` → `listener` on Cyclone
+        loopback (ROS_DOMAIN_ID=79) still passes (`Received: 0..6`).
+      * **Service:** server boots + creates service successfully
+        (Cyclone descriptors found for `AddTwoInts_Request` /
+        `AddTwoInts_Response`), client boots + `wait_for_service`
+        returns true, `client.call` succeeds, but every request times
+        out (server's `try_recv_request` never observes the request).
+        This is a pre-existing native-Rust-Cyclone-service issue
+        independent of K.7.1.c — the C/C++ Cyclone service E2E
+        (`test_native_cyclonedds_service` in
+        `packages/testing/nros-tests/tests/native_api.rs`) passes from
+        the same backend on the same fixture; needs a follow-up to
+        chase the Rust-specific service request-path discrepancy.
+      * **Action:** all three action examples build but
+        `node.create_action_server::<Fibonacci>` fails at runtime with
+        `ActionCreationFailed`. Root cause is the **K.7.1.d gap**
+        called out in the K.7.7.b task note: action plumbing creates
+        Cyclone service endpoints for the implicit
+        `SendGoal_Request/Response`, `GetResult_Request/Response`,
+        `CancelGoal_Request/Response` types and the `FeedbackMessage`
+        + `GoalStatusArray` topics, none of which are emitted by
+        K.7.1.c codegen (they live in manually-written `RosAction`
+        protocol plumbing in `nros-node`). The `register_type::<A::
+        {Goal,Result,Feedback}>` calls in `Node::create_action_*` are
+        not enough — `descriptors_for_service` then asks the registry
+        for the wrapped envelope types and gets `nullptr`. Unblocking
+        action E2E requires either (a) extending codegen to emit
+        `Message` impls for the envelope structs, or (b) registering
+        the envelopes from the action plumbing layer itself.
+      Files: `examples/native/rust/{service-server,service-client,
+      service-client-async,action-server,action-client,
+      action-client-async}/Cargo.toml` (+ `src/main.rs` for the two
+      async variants), `packages/core/nros-node/src/executor/spin.rs`
+      (4 `register_service*` methods), `packages/core/nros-node/src/
+      executor/node.rs` (2 ctx-shape callers).
+
 - [x] **K.7.8** — **`nros-rmw-cyclonedds` registry hardening tests.**
       Landed as three new test entry points in
       `packages/dds/nros-rmw-cyclonedds/tests/`, all exercising the

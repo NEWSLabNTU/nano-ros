@@ -2520,6 +2520,8 @@ impl Executor {
     ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
+        Svc::Request: crate::cyclonedds_register::MessageForRmw,
+        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         self.register_service_sized::<Svc, F, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, callback)
@@ -2533,9 +2535,17 @@ impl Executor {
     ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
+        Svc::Request: crate::cyclonedds_register::MessageForRmw,
+        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         type Entry<Svc, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, F, RQ, RP>;
+
+        // Phase 212.K.7.7.b — register both halves of the service round-trip
+        // under cyclonedds. No-op for other RMWs. Mirrors the K.7.6.b hook
+        // on `Node::create_service_sized`.
+        crate::cyclonedds_register::register_type::<Svc::Request>()?;
+        crate::cyclonedds_register::register_type::<Svc::Reply>()?;
 
         let slot = self.next_entry_slot()?;
         let node_name: heapless::String<64> = self.node_name.clone();
@@ -2591,9 +2601,15 @@ impl Executor {
     ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
+        Svc::Request: crate::cyclonedds_register::MessageForRmw,
+        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         type Entry<Svc, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, F, RQ, RP>;
+
+        // Phase 212.K.7.7.b — see `register_service_sized`.
+        crate::cyclonedds_register::register_type::<Svc::Request>()?;
+        crate::cyclonedds_register::register_type::<Svc::Reply>()?;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = {
@@ -2660,6 +2676,8 @@ impl Executor {
     ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
+        Svc::Request: crate::cyclonedds_register::MessageForRmw,
+        Svc::Reply: crate::cyclonedds_register::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         self.register_service_sized_on::<

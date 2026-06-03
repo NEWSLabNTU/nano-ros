@@ -30,6 +30,34 @@ static LOGGER: Logger = Logger::new("action-client-async");
 
 extern crate nros_platform_cffi as _;
 
+// Phase 118 — RMW selection is build-time via the mutually exclusive
+// `rmw-{zenoh,cyclonedds,xrce}` features.
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-cyclonedds",
+    feature = "rmw-xrce"
+)))]
+compile_error!(
+    "action-client-async requires exactly one of `rmw-zenoh`, \
+     `rmw-cyclonedds`, or `rmw-xrce` to be enabled.",
+);
+
+fn register_rmw() -> Result<(), &'static str> {
+    #[cfg(feature = "rmw-zenoh")]
+    {
+        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
+    }
+    #[cfg(feature = "rmw-cyclonedds")]
+    {
+        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
+    }
+    #[cfg(feature = "rmw-xrce")]
+    {
+        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
+    }
+    Ok(())
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     nros_log::register_logger(&LOGGER);
@@ -51,7 +79,7 @@ async fn main() {
     // Phase 104.A — explicit RMW backend registration. The auto-ctor
     // in `.init_array` doesn't survive Rust's archive-walk linkage
     // when no symbol from the rlib is otherwise referenced.
-    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+    register_rmw().expect("Failed to register RMW backend");
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     // Create action client — owned type, no lifetime tied to node or executor.
