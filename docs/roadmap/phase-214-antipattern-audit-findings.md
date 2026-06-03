@@ -903,13 +903,23 @@ const yet; (3) carry a local libc patch.
       **Acceptance**: documented remedy with a concrete fix-up
       script.
 
-- [ ] **214.M.2 Land remedy** — based on M.1: add a
-      post-`ws sync` shell helper that re-appends the libc
-      `[patch.crates-io]` block to NuttX `.cargo/config.toml`.
-      Path (1) (libc PR) + path (2) (toolchain pin) are both
-      unnecessary — the patched libc already defines the symbol;
-      the bug is in `nros ws sync` 0.3.7 stripping the patch from
-      the rendered template.
+- [x] **214.M.2 Land remedy** — added
+      `scripts/build/nuttx-libc-patch.sh` exposing
+      `nros_nuttx_libc_patch <example_dir>` and wired it into
+      `scripts/build/fixtures-build.sh` directly after the per-dir
+      `nros ws sync` call. The helper is **idempotent** (skips when
+      the patch is already present), **target-gated** (no-op for
+      non-NuttX fixtures via the `target = "armv7a-nuttx-eabi…"`
+      check), and computes the libc path **relative to the example
+      dir** (cargo resolves `[patch.crates-io]` in
+      `.cargo/config.toml` against the invocation cwd, matching the
+      smoke fixture's 5-up convention). Verified: `just nuttx
+      build-examples` now compiles `libc v0.2.183
+      (third-party/nuttx/libc)` + `std` cleanly; the `_SC_HOST_NAME_MAX`
+      error is gone. Unrelated Phase 214.J codegen drift in
+      `action-server` (`Vec<_, 64>` vs `Vec<_, 16>`) is still
+      present and tracked under the Phase 214.J / `nros ws sync`
+      regeneration follow-ups, not this track.
       **Acceptance**: `just nuttx build-examples` passes the std /
       libc build step.
 
