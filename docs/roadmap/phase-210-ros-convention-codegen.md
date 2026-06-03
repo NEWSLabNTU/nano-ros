@@ -398,12 +398,42 @@ upstream shape; the patch table is auto-managed metadata at the bottom.
       "Exit non-zero if any patch block is missing or stale (CI hook;
       also used by `nros ws status`)" — verified 2026-06-03 via
       `nros ws sync --help`).
-- [ ] Editing any `*.msg` file → `nros ws sync` regenerates ONLY the
+- [~] Editing any `*.msg` file → `nros ws sync` regenerates ONLY the
       affected crate (mtime check) + leaves the patch block untouched (no
-      churn).
-- [ ] In a Cargo workspace (real `[workspace] members = [...]` at umbrella
+      churn). **Partial close 2026-06-03** (Z.4 audit):
+      - **Patch-block-untouched** half is MET. Verified against a
+        `cp -r examples/templates/local-msg-package /tmp/lmp-test`
+        copy: pre-sync the BEGIN/END nros-managed patch block
+        md5-hashes to `661760a75c08eb89d86e4b20e48e266e`; editing
+        `src/local_msgs/msg/Greeting.msg` (added `string new_field`)
+        + re-running `nros ws sync` leaves the block byte-identical
+        (post-sync md5 unchanged).
+      - **mtime-check half is NOT met**: `nros ws sync --verbose`
+        emits a `codegen <pkg>` line for every workspace + AMENT pkg
+        regardless of which `*.msg` changed (e.g. editing
+        `local_msgs/msg/Greeting.msg` still prints `codegen std_msgs`,
+        `codegen builtin_interfaces`, `codegen extra_msgs`, etc.).
+        The codegen step does re-emit the changed crate's Rust
+        sources (`generated/local_msgs/src/msg/greeting.rs` gains
+        `pub new_field: heapless::String<256>`), but the per-pkg
+        skip-on-unchanged-mtime optimisation isn't implemented.
+        Follow-up: add an `mtime(highest *.msg) > mtime(generated
+        Cargo.toml)` guard inside `nros ws sync`'s per-pkg loop
+        before invoking the codegen. Not a correctness gap (output
+        is identical when content is identical), only a churn
+        gap — large workspaces re-codegen every pkg on every
+        invocation today.
+- [x] In a Cargo workspace (real `[workspace] members = [...]` at umbrella
       Cargo.toml), `nros ws sync` writes the patch block to the umbrella,
-      NOT to the member pkg.
+      NOT to the member pkg. **Verified 2026-06-03** (Z.4 audit) via a
+      synthetic umbrella at `/tmp/ws-test/Cargo.toml` carrying
+      `[workspace] members = ["src/rust_consumer"]` with the member's
+      empty `[workspace]` marker dropped. `nros ws sync` reports
+      `refreshed [patch.crates-io] block in /tmp/ws-test/Cargo.toml`
+      (umbrella path); post-sync the umbrella carries 1 ×
+      `[patch.crates-io]` + BEGIN/END markers and the member
+      `src/rust_consumer/Cargo.toml` carries 0 × `[patch.crates-io]`
+      + 0 × BEGIN/END markers — exactly the contract.
 
 ### 210.E — UX + docs + in-tree migration
 - [x] **210.E.1** Book page `book/src/getting-started/your-own-msg-package.md`
