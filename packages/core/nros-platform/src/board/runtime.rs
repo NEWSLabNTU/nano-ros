@@ -80,6 +80,14 @@ pub trait NodeRuntime {
     /// when the executor rejects the registration (no detail surfaces
     /// across the trait — Node pkgs map this back to
     /// [`RuntimeError::NodeRegister`] with the pkg name).
+    ///
+    /// `Result<_, ()>` is deliberate: the sole caller (the
+    /// `nros::node!` macro expansion in `nros-macros`) discards the
+    /// unit error and substitutes the static pkg name via
+    /// `RuntimeError::NodeRegister(pkg)`. A bespoke error enum would
+    /// add a one-shot variant nothing else consumes — `#[allow]`
+    /// instead.
+    #[allow(clippy::result_unit_err)]
     fn register_dispatch_slot_dyn(
         &mut self,
         register: NodeRegisterFn,
@@ -92,6 +100,15 @@ pub trait NodeRuntime {
     /// Drive the underlying executor for at most `timeout_ms`
     /// milliseconds. `Ok(())` on a clean spin (including timeout);
     /// `Err(())` if the executor surfaces a spin error.
+    ///
+    /// `Result<_, ()>` is deliberate: the board entry-point callers
+    /// (`nros-board-{freertos,nuttx,threadx}` spin loops) only
+    /// `{:?}`-print the error and `B::exit_failure()` — a typed enum
+    /// would carry no extra info across the trait boundary, since the
+    /// underlying `ExecutorError` from `nros::node_runtime` is mapped
+    /// to `()` at the impl site (`impl NodeRuntime for
+    /// ExecutorNodeRuntime`). `#[allow]` keeps the surface narrow.
+    #[allow(clippy::result_unit_err)]
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()>;
 }
 
