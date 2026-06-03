@@ -2047,7 +2047,7 @@ canonical-shape regression test can run green tree-wide:
       dir (Cargo.toml / CMakeLists.txt-driven) in addition to the
       Path A bringup case. Unblocks Zephyr single-pkg Rust examples;
       M.3 C+C++ Zephyr sweep remains its own wave.
-- [~] **M-F.4 `TickCtx` client API gap** — substrate landed
+- [x] **M-F.4 `TickCtx` client API gap** — substrate landed
       2026-06-02. `nros::component::ClientDispatch` trait (sibling
       to `ActionExecutor`) defines `call_raw` (service-client) +
       `send_goal_raw` (action-client). `TickCtx` carries
@@ -2512,7 +2512,7 @@ canonical-shape regression test can run green tree-wide:
       (`examples/qemu-arm-nuttx/{c,cpp}/` retirement) tracked
       separately; the H.2 NuttX work item stays `[x]` per
       M-F.12.
-- [~] **M-F.17 nros plan source-metadata α-bridge** (nros-cli) —
+- [x] **M-F.17 nros plan source-metadata α-bridge** (nros-cli) —
       THE M.10 RUNTIME UNBLOCK. Tree state has every Phase 212-
       migrated fixture carrying `[package.metadata.nros.component]`
       in `Cargo.toml` (M.10 sweep). nros-cli M-F.1+M-F.2
@@ -2630,7 +2630,7 @@ rebase conflict.
       missing `THREADX_DIR`-equivalent gates (QEMU + cross
       toolchain). Scope: nano-ros only.
 
-- [~] **O.2 `entry_pkg_metadata_required_board`** (nros-cli
+- [x] **O.2 `entry_pkg_metadata_required_board`** (nros-cli
       `check`) — `nros check` hard-error test for missing
       `[package.metadata.nros.entry] deploy = "<board>"`. Fixture:
       a Cargo.toml with `[package.metadata.nros.entry]` but no
@@ -2645,7 +2645,7 @@ rebase conflict.
       Proves the §212.N.4 emit is genuinely board-agnostic.
       Scope: nano-ros only. New fixture + test.
 
-- [~] **O.4 `n10_pkg_index_resolves_across_workspace`** (N.10
+- [x] **O.4 `n10_pkg_index_resolves_across_workspace`** (N.10
       test) — fixture: workspace with 3 Node pkgs + 1 bringup pkg
       + 1 Entry pkg. `nros::main!(launch =
       "demo_bringup:system.launch.xml")` resolves via
@@ -2662,13 +2662,13 @@ rebase conflict.
       body); no smoke gate. Scope: nano-ros fixture + test, or
       nros-cli integration test under `tests/launch_xml/`.
 
-- [~] **O.6 `application_pkg_with_rtos_deploy_is_rejected`**
+- [x] **O.6 `application_pkg_with_rtos_deploy_is_rejected`**
       (nros-cli `check`) — `nros check` rejects an Application
       pkg manifest naming an RTOS in `deploy = [...]` (Application
       pkgs are native-only per §212.L.2 / M-F.1). Fixture +
       assert. Scope: nros-cli only.
 
-- [~] **O.7 `msg_to_cyclone_idl_rust_port_matches_python_output`**
+- [x] **O.7 `msg_to_cyclone_idl_rust_port_matches_python_output`**
       (212.K.3 parity test) — port verification: the Rust
       `nros-msg-to-idl` produces output identical to the retired
       Python `msg_to_cyclone_idl.py` for a corpus of `.msg` /
