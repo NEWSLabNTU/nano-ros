@@ -41,10 +41,27 @@ fn platformio_integration_shell_smoke() {
 
     let root = workspace_root();
     let shell = root.join("integrations/platformio");
-    assert!(
-        shell.join("library.json").exists(),
-        "integrations/platformio/library.json missing",
-    );
+
+    // Phase 214.L.2 — the original Phase 139 PlatformIO library
+    // shell (`library.json` + `library.properties` +
+    // `examples/talker/platformio.ini`) was removed in Phase 208.D.8
+    // (commit 6382cd655, 2026-05-30). Phase 212.H.6 later
+    // reintroduced PlatformIO support but as an ahead-of-vendor
+    // `extra_script` adapter (`nros_codegen.py`), NOT a PIO Library
+    // Manager shell, so the original assertions no longer match the
+    // tree's intended shape. Skip cleanly when the legacy library
+    // manifest is absent rather than re-introducing the deprecated
+    // shape.
+    if !shell.join("library.json").exists() {
+        nros_tests::skip!(
+            "integrations/platformio/library.json absent — Phase 208.D.8 \
+             retired the PIO Library Manager shell; Phase 212.H.6 \
+             reintroduced PlatformIO as an extra_script adapter \
+             (integrations/platformio/nros_codegen.py), not a library \
+             manifest"
+        );
+    }
+
     assert!(
         shell.join("library.properties").exists(),
         "integrations/platformio/library.properties missing",
