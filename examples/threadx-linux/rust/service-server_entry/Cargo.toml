@@ -14,13 +14,13 @@ path = "src/main.rs"
 deploy = "threadx-linux"
 
 [dependencies]
+# Phase 213.C.3 — `nros::main!()` proc-macro lives here.
+nros = { path = "../../../../packages/core/nros" }
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
 threadx_linux_rs_service_server = { path = "../service-server" }
 
-[build-dependencies]
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
-
+# Phase 208.F1 — standalone workspace root.
 [workspace]
 
 [patch.crates-io]

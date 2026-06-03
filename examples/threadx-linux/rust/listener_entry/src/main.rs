@@ -1,21 +1,12 @@
-//! Phase 212.N.7 step-2 — ThreadX-Linux Rust listener Entry pkg.
+//! Phase 213.C.3 — N.9 macro shape.
 //!
-//! Pairs with the sibling Node pkg `threadx_linux_rs_listener`.
-//! Board choice (`ThreadxLinux`) lives here; the codegen-emitted
-//! `run_plan` stays board-agnostic so the same Node pkg
-//! `register` fn links under any tier-1 board impl.
+//! `nros::main!()` (no args) reads
+//! `[package.metadata.nros.entry] deploy = "threadx-linux"` from this
+//! pkg's `Cargo.toml`, maps `"threadx-linux"` →
+//! `::nros_board_threadx_linux::ThreadxLinux`, and emits `fn main()`
+//! that delegates to `<ThreadxLinux as BoardEntry>::run(...)`. The
+//! sibling Node pkg `threadx_linux_rs_listener` is linked via the
+//! `[dependencies]` block; its `register` symbol is the macro's
+//! dispatch target.
 
-use nros_board_threadx_linux::ThreadxLinux;
-use nros_platform::BoardEntry;
-
-// Phase 212.N.4 — codegen-emitted body. Step-2 ships an empty stub.
-include!(concat!(env!("OUT_DIR"), "/run_plan.rs"));
-
-fn main() {
-    let outcome: Result<(), nros_platform::RuntimeError> =
-        <ThreadxLinux as BoardEntry>::run(|runtime| run_plan(runtime));
-    if let Err(err) = outcome {
-        eprintln!("threadx_linux_rs_listener_entry: run_plan failed: {err}");
-        std::process::exit(1);
-    }
-}
+nros::main!();
