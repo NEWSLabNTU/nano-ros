@@ -5,6 +5,11 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_RING_DEPTH");
 
+    // Phase 214.C.3 — default coordinated with
+    // `packages/core/nros-node/build.rs::NROS_SUBSCRIPTION_BUFFER_SIZE`
+    // (also 1024). If you change one, change the other — they share the
+    // wire-format expectation. Both can be overridden independently via
+    // their respective env vars.
     let sub_size: usize = env_usize("ZPICO_SUBSCRIBER_BUFFER_SIZE", 1024);
     let svc_size: usize = env_usize("ZPICO_SERVICE_BUFFER_SIZE", 1024);
     // Phase 160.C.2 — bumped 10_000 → 30_000. The original 10 s default

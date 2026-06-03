@@ -199,11 +199,23 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
         buf.batch_multicast_size
     )
     .unwrap();
-    // NuttX over QEMU slirp needs a longer timeout for the zenoh handshake.
+    // Phase 214.C.1 — socket-timeout defaults named for self-doc.
+    // GENERIC_SOCKET_TIMEOUT_MS: hosted + most embedded targets (handshake
+    // completes well under a tick).
+    // NUTTX_SOCKET_TIMEOUT_MS: NuttX over QEMU slirp needs a longer timeout
+    // for the zenoh handshake (Phase 160.C.2 — slirp can drop early packets
+    // during DHCP/ARP settling).
+    const GENERIC_SOCKET_TIMEOUT_MS: u32 = 100;
+    const NUTTX_SOCKET_TIMEOUT_MS: u32 = 5000;
+    const Z_TRANSPORT_LEASE_MS: u32 = 10_000;
     let target = std::env::var("TARGET").unwrap_or_default();
-    let socket_timeout = if target.contains("nuttx") { 5000 } else { 100 };
+    let socket_timeout = if target.contains("nuttx") {
+        NUTTX_SOCKET_TIMEOUT_MS
+    } else {
+        GENERIC_SOCKET_TIMEOUT_MS
+    };
     writeln!(header, "#define Z_CONFIG_SOCKET_TIMEOUT {}", socket_timeout).unwrap();
-    writeln!(header, "#define Z_TRANSPORT_LEASE 10000").unwrap();
+    writeln!(header, "#define Z_TRANSPORT_LEASE {}", Z_TRANSPORT_LEASE_MS).unwrap();
     writeln!(header, "#define Z_TRANSPORT_LEASE_EXPIRE_FACTOR 3").unwrap();
     writeln!(header, "#define ZP_PERIODIC_SCHEDULER_MAX_TASKS 8").unwrap();
     writeln!(header).unwrap();

@@ -12,6 +12,12 @@
 
 use std::{env, fs, path::PathBuf};
 
+// Phase 214.C.2 — single source-of-truth for XRCE transport MTU defaults.
+// UDP/TCP/custom share a 4096-byte default; serial uses a smaller 512-byte
+// default (UART throughput floor).
+const XRCE_TRANSPORT_MTU_DEFAULT: &str = "4096";
+const XRCE_SERIAL_MTU_DEFAULT: &str = "512";
+
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let workspace = manifest_dir
@@ -352,17 +358,19 @@ fn generate_uxr_config(
         .replace("@UCLIENT_MAX_SESSION_CONNECTION_ATTEMPTS@", "10")
         .replace("@UCLIENT_MIN_SESSION_CONNECTION_INTERVAL@", "1000")
         .replace("@UCLIENT_MIN_HEARTBEAT_TIME_INTERVAL@", "100")
-        .replace("@UCLIENT_UDP_TRANSPORT_MTU@", "4096")
-        .replace("@UCLIENT_TCP_TRANSPORT_MTU@", "4096")
-        .replace("@UCLIENT_SERIAL_TRANSPORT_MTU@", "512")
+        // Phase 214.C.2 — MTU defaults from named consts at file top.
+        .replace("@UCLIENT_UDP_TRANSPORT_MTU@", XRCE_TRANSPORT_MTU_DEFAULT)
+        .replace("@UCLIENT_TCP_TRANSPORT_MTU@", XRCE_TRANSPORT_MTU_DEFAULT)
+        .replace("@UCLIENT_SERIAL_TRANSPORT_MTU@", XRCE_SERIAL_MTU_DEFAULT)
         .replace(
             "@UCLIENT_CUSTOM_TRANSPORT_MTU@",
             // Phase 207.6 — env-tunable so RAM-tight bare-metal nodes can
             // drop the per-session stream buffers (`STREAM_BUFFER_SIZE =
             // CUSTOM_TRANSPORT_MTU × STREAM_HISTORY`) by an order of
             // magnitude. Min 128 (smaller breaks the framing/header
-            // assumptions); default 4096 keeps hosted behaviour.
-            &env::var("NROS_XRCE_CUSTOM_TRANSPORT_MTU").unwrap_or_else(|_| "4096".into()),
+            // assumptions); default tracks XRCE_TRANSPORT_MTU_DEFAULT.
+            &env::var("NROS_XRCE_CUSTOM_TRANSPORT_MTU")
+                .unwrap_or_else(|_| XRCE_TRANSPORT_MTU_DEFAULT.into()),
         )
         .replace("@UCLIENT_SHARED_MEMORY_MAX_ENTITIES@", "4")
         .replace("@UCLIENT_SHARED_MEMORY_STATIC_MEM_SIZE@", "10")

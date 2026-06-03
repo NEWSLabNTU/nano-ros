@@ -26,6 +26,11 @@ fn main() {
     // --- Primary user-facing knobs ---
     let max_cbs = env_usize("NROS_EXECUTOR_MAX_CBS", 4);
     let max_sc = env_usize("NROS_EXECUTOR_MAX_SC", 8);
+    // Phase 214.C.3 — default coordinated with
+    // `packages/zpico/nros-rmw-zenoh/build.rs::ZPICO_SUBSCRIBER_BUFFER_SIZE`
+    // (also 1024). If you change one, change the other — they share the
+    // wire-format expectation. Both can be overridden independently via
+    // their respective env vars.
     let rx_buf_size = env_usize("NROS_SUBSCRIPTION_BUFFER_SIZE", 1024);
     let param_svc_buf = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", 4096);
     // Phase 104.C.2 — multi-Node-per-Executor (rclcpp `add_node`
@@ -46,8 +51,23 @@ fn main() {
     // Embedded targets that never instantiate an `ActionClient` can
     // override the derived size with `NROS_EXECUTOR_ARENA_SIZE`. A
     // pub/sub-only workload only needs `3 × rx_buf + 512` per entry.
-    let per_entry = 3 * 4480 + 3 * rx_buf_size + 1536;
-    let derived_arena = (max_cbs * per_entry + 2048).max(8192);
+    //
+    // Phase 214.C.4 — magic-number breakdown for `4480` and friends:
+    //   ACTION_CLIENT_SERVICE_BUF   = 4096  // pending_request blocking-fallback buf
+    //   ACTION_CLIENT_HEADER_OVERHD =  384  // ~256 hdr + alignment slack
+    //   ACTION_CLIENT_PER_SERVICE   = 4480  // = SERVICE_BUF + HEADER_OVERHD
+    //   ACTION_CLIENT_SERVICES      =    3  // goal_send + cancel + get_result
+    //   ACTION_CLIENT_SUB_OVERHEAD  = 1536  // 1 CffiSubscriber + ~256 entry slop
+    const ACTION_CLIENT_PER_SERVICE: usize = 4096 + 384;
+    const ACTION_CLIENT_SERVICES: usize = 3;
+    const ACTION_CLIENT_FEEDBACK_SUBS: usize = 3; // goal + result + feedback rx
+    const ACTION_CLIENT_SUB_OVERHEAD: usize = 1536;
+    const ARENA_BASE_OVERHEAD: usize = 2048;
+    const ARENA_FLOOR: usize = 8192;
+    let per_entry = ACTION_CLIENT_SERVICES * ACTION_CLIENT_PER_SERVICE
+        + ACTION_CLIENT_FEEDBACK_SUBS * rx_buf_size
+        + ACTION_CLIENT_SUB_OVERHEAD;
+    let derived_arena = (max_cbs * per_entry + ARENA_BASE_OVERHEAD).max(ARENA_FLOOR);
     let arena_size = env_usize("NROS_EXECUTOR_ARENA_SIZE", derived_arena);
 
     let contents = format!(
