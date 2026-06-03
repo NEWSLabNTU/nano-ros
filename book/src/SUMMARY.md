@@ -24,6 +24,7 @@
 - [ESP32 (ESP-IDF component)](./getting-started/integration-esp-idf.md)
 - [Bare-metal Cortex-M3](./getting-started/bare-metal.md)
 - [PX4 Autopilot](./getting-started/px4.md)
+- [ARM FVP (Cortex-A SMP)](./getting-started/arm-fvp.md)
 - [Native POSIX (reference)](./platform-guides/native-posix.md)
 
 # User Guide

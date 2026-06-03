@@ -110,9 +110,16 @@ accepts the Arm EULA, installs the FVP locally, and exports
       `arm-fvp-installer` as a known installer; `nros doctor` matches
       and flags missing `ARM_FVP_DIR` as a warning (not a hard fail,
       gated).
-- [ ] **217.B.3** Book/reference doc — point at
+- [~] **217.B.3** Book/reference doc — point at
       `docs/reference/environment-variables.md` for `ARM_FVP_DIR` +
-      `ARMFVP_BIN_PATH` (existing convention).
+      `ARMFVP_BIN_PATH` (existing convention). **Partial
+      2026-06-04** — book surfaces landed:
+      `book/src/reference/environment-variables.md` carries a new
+      "ARM FVP (`FVP_BaseR_AEMv8R`)" section pointing at the
+      getting-started chapter; `book/src/reference/supported-boards.md`
+      adds an Arm FVP row pointing at the same chapter. CLI
+      installer + `nros doctor` cross-references will land with
+      217.B.1 / 217.B.2.
 
 **Files:** `scripts/installers/arm-fvp-installer.sh` (new),
 `docs/reference/environment-variables.md`.
@@ -153,13 +160,15 @@ Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
 **Files:** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` (new tree),
 `just/zephyr.just`.
 
-### 217.E — Book chapter (OPEN)
+### 217.E — Book chapter (LANDED 2026-06-04)
 
-- [ ] **217.E.1** `book/src/getting-started/arm-fvp.md` — setup
-      (license + `ARM_FVP_DIR`), build, run, debug (gdb stub via FVP
-      `--cadi-server`), parity vs Corellium AVH cloud path (cross-ref
-      out-of-tree).
-- [ ] **217.E.2** Updates `SUMMARY.md` (mdBook nav).
+- [x] **217.E.1** `book/src/getting-started/arm-fvp.md` — setup
+      (license + `ARM_FVP_DIR` / `ARMFVP_BIN_PATH`), build, run,
+      expected UART output, ROS 2 interop check, cross-refs to
+      Phase 117/217 + the example README. AVH cloud parity noted
+      as out-of-scope.
+- [x] **217.E.2** Updates `SUMMARY.md` (mdBook nav) — `ARM FVP
+      (Cortex-A SMP)` entry under **Embedded Starters**.
 
 ## Acceptance
 

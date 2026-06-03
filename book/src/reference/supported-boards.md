@@ -26,6 +26,7 @@ them.
 | RP2040       | Raspberry Pi Pico    | Cortex-M0+         | Armv6-M    | bare / FreeRTOS | Untested | Bare-metal Cortex-M3 path — Cortex-M0+ has only 4 NVIC priority levels (per-callback OS-priority dispatch is disqualified — pub/sub still works fine) |
 | QEMU         | `virt` RISC-V64      | rv64gc             | RISC-V     | ThreadX       | Tested   | `examples/threadx-riscv64/`                                       |
 | QEMU         | Cortex-A9 (Versatile)| Cortex-A9          | Armv7-A    | Zephyr / NuttX | Tested   | Zephyr `-b qemu_cortex_a9`, NuttX `qemu-armv7a`                    |
+| Arm FVP      | `Base_RevC AEMv8R` (SMP) | Cortex-A SMP   | Armv8-R    | Zephyr 3.7    | Tested (build); license-gated runtime | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-aemv8r{,-cyclonedds}` + `run-fvp-aemv8r{,-cyclonedds}` |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |
 | Linux host   | (native)             | x86-64 / aarch64    | x86 / Arm  | POSIX         | Tested   | `examples/native/`                                                  |
 | Apple Silicon| (native)             | aarch64             | Armv8.5-A  | POSIX (macOS) | Ready    | `examples/native/` (no QEMU step required)                          |

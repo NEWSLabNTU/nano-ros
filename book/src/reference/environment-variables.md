@@ -46,6 +46,23 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `SSID`           | WiFi network name for ESP32 examples                                                               | Required for `build-examples-esp32` |
 | `PASSWORD`       | WiFi password for ESP32 examples                                                                   | Required for `build-examples-esp32` |
 
+### ARM FVP (`FVP_BaseR_AEMv8R`)
+
+License-gated — nano-ros does not download the binary. Set one of
+the discovery vars after accepting the Arm EULA and installing
+locally. See the [ARM FVP getting-started chapter](../getting-started/arm-fvp.md)
+for the end-to-end build+run walk-through.
+
+| Variable          | Description                                                                          | Default |
+|-------------------|--------------------------------------------------------------------------------------|---------|
+| `ARMFVP_BIN_PATH` | Directory containing `FVP_BaseR_AEMv8R` (Zephyr-canonical, highest priority).        | (unset) |
+| `ARM_FVP_DIR`     | Install root; resolver scans `models/Linux64_GCC-*/` underneath. Matches sdk-index.  | (unset) |
+
+If neither is set, `scripts/zephyr/resolve-fvp-bin.sh` falls back
+to `dirname $(command -v FVP_BaseR_AEMv8R)`. Phase 217.A —
+`just zephyr run-fvp-aemv8r{,-cyclonedds}` skips gracefully when
+the binary can't be resolved.
+
 ### FreeRTOS / NuttX / ThreadX SDK Paths
 
 These are auto-resolved by justfile recipes (defaulting to `external/` paths from `just freertos setup` / `just nuttx setup` / `just threadx_linux setup`). Override via env vars if sources are elsewhere.
