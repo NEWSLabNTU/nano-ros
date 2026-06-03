@@ -48,7 +48,14 @@ rmw-cffi = ["dep:nros-rmw-cffi"]
 # user-feature contract while making the build-time presence detection
 # work. See `build.rs` and `docs/roadmap/phase-214-antipattern-audit-findings.md`
 # Track S.
-__cyclonedds-link = ["dep:nros-rmw-cyclonedds-sys"]
+__cyclonedds-link = ["dep:nros-rmw-cyclonedds-sys", "__cyclonedds-detect"]
+# Phase 214.S.4.b — bare detect path. Emits the
+# `rmw_cyclonedds_present` cfg WITHOUT bringing the production
+# `nros-rmw-cyclonedds-sys` archive into the dep graph. Used by the
+# K.7.6.b `cyclonedds_register_smoke` test, which relies on the
+# dev-dep on `nros-rmw-cyclonedds[bridge-stub]` for the bridge
+# symbols. Production callers stay on `__cyclonedds-link`.
+__cyclonedds-detect = []
 # Phase 124.B.7.c — POSIX signal-handler-safe wake via eventfd + a
 # runtime-owned worker thread that forwards eventfd writes to the
 # Executor's wake condvar. Linux-only (eventfd). Off by default;

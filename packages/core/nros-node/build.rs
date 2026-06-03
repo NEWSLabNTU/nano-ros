@@ -14,6 +14,13 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(has_rmw)");
     // Phase 214.S.2 — auto-detected via cargo `links =` env vars.
     println!("cargo:rustc-check-cfg=cfg(rmw_cyclonedds_present)");
+    // Phase 214.S.4.b — only emitted when `__cyclonedds-link` is on
+    // (i.e. the production `-sys` archive is in the dep graph). The
+    // K.7.6.b `cyclonedds_register_smoke` test enables
+    // `rmw_cyclonedds_present` via the lighter `__cyclonedds-detect`
+    // path which leaves `-sys` out and supplies the bridge symbols
+    // through its dev-dep on `nros-rmw-cyclonedds[bridge-stub]`.
+    println!("cargo:rustc-check-cfg=cfg(cyclonedds_link_keepalive)");
 
     // Emit `has_rmw` cfg when any RMW backend feature is active, or
     // when compiling for tests (unit tests use MockSession).
@@ -45,9 +52,20 @@ fn main() {
     println!("cargo:rerun-if-env-changed=DEP_CYCLONEDDS_PRESENT");
     let cyclonedds_present = env::var_os("DEP_CYCLONEDDS_PRESENT").is_some()
         || env::var("CARGO_FEATURE___NROS_CYCLONEDDS_DETECT").is_ok()
+        || env::var("CARGO_FEATURE___CYCLONEDDS_DETECT").is_ok()
         || env::vars().any(|(k, _)| k.starts_with("DEP_CYCLONEDDS_"));
     if cyclonedds_present {
         println!("cargo:rustc-cfg=rmw_cyclonedds_present");
+    }
+    // Phase 214.S.4.b — `__cyclonedds-link` is the path that ALSO
+    // brings the production `-sys` archive into the dep graph. Only
+    // here do we need the Rust-side keep-alive that pins it through
+    // rust-lld's gc-sections so the linkme self-register section
+    // survives. The bare detect path (smoke test) leaves keepalive
+    // off; the dev-dep on `nros-rmw-cyclonedds[bridge-stub]` supplies
+    // the bridge symbols.
+    if env::var("CARGO_FEATURE___CYCLONEDDS_LINK").is_ok() {
+        println!("cargo:rustc-cfg=cyclonedds_link_keepalive");
     }
 
     // --- Primary user-facing knobs ---

@@ -66,6 +66,46 @@
 
 use nros_core::RosMessage;
 
+// ============================================================================
+// Phase 214.S.4.b — link-graph keep-alive for `nros-rmw-cyclonedds-sys`
+// ============================================================================
+//
+// The Cyclone backend's C++ register entry (`nros_rmw_cyclonedds_register`)
+// and its linkme self-register section live inside `nros-rmw-cyclonedds-sys`
+// (and its C++ companion `nros-rmw-cyclonedds`). Without an explicit Rust-
+// side reference to a symbol from that crate, rust-lld drops the rlib from
+// the final link and the C++ static-init register TU is pruned along with
+// it.
+//
+// Before S.4.b, example `src/main.rs` carried `nros_rmw_cyclonedds_sys::
+// register()` directly which doubled as the symbol-drag. S.4.b moves that
+// keep-alive in here so user crates can collapse their `rmw-cyclonedds`
+// feature to strict 1-entry parity (`["nros/rmw-cyclonedds"]`) with the
+// zenoh / xrce siblings — no `dep:nros-rmw-cyclonedds-sys` activator and
+// no direct `register()` call in user code. The linkme self-register
+// section inside `-sys` (Phase 128.B.3) fires the register on
+// `nros::init` via the cffi-rmw walker.
+//
+// Mirrors the existing pattern in `nros-platform::__FORCE_LINK_CFFI`
+// (`packages/core/nros-platform/src/lib.rs:83`) which keeps
+// `nros-platform-cffi` alive through `nros-rmw-zenoh`.
+//
+// Gated on a separate cfg from `rmw_cyclonedds_present` because the
+// `cyclonedds_register_smoke` test enables the latter via the lighter
+// `__cyclonedds-detect` feature path (no `-sys` dep, bridge symbols
+// from `nros-rmw-cyclonedds[bridge-stub]` dev-dep). Production
+// callers go through the umbrella's `__cyclonedds-link` which emits
+// BOTH `rmw_cyclonedds_present` AND `cyclonedds_link_keepalive`.
+// Pinning the `-sys` rlib under the bare detect path would force
+// rust-lld to whole-archive the production C++ libnros_rmw_cyclonedds
+// in alongside the bridge-stub Rust impls → duplicate-symbol link
+// failure on the smoke test.
+#[cfg(cyclonedds_link_keepalive)]
+#[used]
+#[doc(hidden)]
+pub static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
+    nros_rmw_cyclonedds_sys::register;
+
 /// Bound used in place of bare `RosMessage` on typed creators.
 ///
 /// Equivalent to `RosMessage` without `cfg(rmw_cyclonedds_present)`;

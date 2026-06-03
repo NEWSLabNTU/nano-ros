@@ -22,15 +22,14 @@ deploy = ["native"]
 # experience.
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-# Phase 214.S.4 — collapsed from the 3-entry form (boilerplate `vendored`
-# entry + redundant umbrella ref). The `dep:` activator stays because
-# the example references `nros_rmw_cyclonedds_sys::register` directly
-# from `src/main.rs` (the call also acts as the rlib symbol-drag that
-# keeps the backend's linkme self-register section alive — full strict
-# 1-entry parity is blocked on adding an explicit `extern crate
-# nros_rmw_cyclonedds_sys as _;` inside `nros-node` under the
-# `__cyclonedds-link` feature; tracked as 214.S.4.b).
-rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys", "nros/rmw-cyclonedds"]
+# Phase 214.S.4.b — strict 1-entry parity with rmw-zenoh / rmw-xrce.
+# The umbrella `nros/rmw-cyclonedds` pulls `nros-rmw-cyclonedds-sys`
+# into `nros-node` via the private `__cyclonedds-link` feature and
+# keeps it alive in the link via `nros-node`'s `#[used]
+# __FORCE_LINK_CYCLONEDDS_SYS` static. No `dep:` activator + no direct
+# `register()` call needed in `src/main.rs` — the linkme self-register
+# section fires inside `nros::init` via the cffi-rmw walker.
+rmw-cyclonedds = ["nros/rmw-cyclonedds"]
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
 # Carry-over feature gates that previously lived in
@@ -59,10 +58,6 @@ env_logger = "0.11"
 # is enabled per build; the cfg-chain in `src/main.rs` calls the
 # corresponding `register()` entry.
 nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
-# Phase 214.S.4 — vendor build is now the default (S.1); drop
-# `default-features = false` so `cargo build --features rmw-cyclonedds`
-# Just Works without an extra `--features` flag on the dep.
-nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone

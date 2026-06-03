@@ -1618,20 +1618,53 @@ Two redundant entries on cyclonedds:
       **Acceptance**: `git grep -nE '"nros-rmw-cyclonedds-sys/vendored"'
       examples/` returns nothing.
 
-- [ ] **214.S.4.b Add `extern crate` symbol-drag inside `nros-node`**
-      (follow-up to 214.S.4) — under the `__cyclonedds-link` private
-      feature, add `extern crate nros_rmw_cyclonedds_sys as _;` in
-      `nros-node/src/lib.rs` (or reference any symbol from `-sys`'s
-      lib.rs) so the rlib's CGU survives cargo's dead-code archive
-      walk on the final binary. Once landed, every example's
-      cyclonedds row collapses to true strict 1-entry parity
-      `["nros/rmw-cyclonedds"]` AND the src-level
-      `nros_rmw_cyclonedds_sys::register()` call goes away (linkme
-      `nros_rmw_register_backend!` self-register fires at startup).
-      **Files**: `packages/core/nros-node/src/lib.rs`,
-      `packages/core/nros-node/Cargo.toml` (optional dep is already in
-      place via S.2/S.3). Out of scope for 214 wave 3 (touches
-      `packages/`).
+- [x] **214.S.4.b Add `extern crate` symbol-drag inside `nros-node`**
+      (2026-06-04, this commit) — used the `#[used]` static variant
+      (matches the existing `nros-platform::__FORCE_LINK_CFFI` pattern
+      at `packages/core/nros-platform/src/lib.rs:83`): a
+      `#[used] #[doc(hidden)] pub static __FORCE_LINK_CYCLONEDDS_SYS:
+      fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
+      nros_rmw_cyclonedds_sys::register;` lives in
+      `nros-node/src/cyclonedds_register.rs` under a new
+      `cfg(cyclonedds_link_keepalive)` gate. The cfg is emitted by
+      `nros-node/build.rs` only when the `__cyclonedds-link` private
+      feature is active — NOT under the lighter
+      `__cyclonedds-detect` feature path used by the
+      `cyclonedds_register_smoke` test (which dev-deps on
+      `nros-rmw-cyclonedds[bridge-stub]` for the bridge symbols and
+      would otherwise hit a rust-lld duplicate-symbol failure if the
+      production `-sys` archive were also pinned in). The static
+      forces cargo to keep the `nros-rmw-cyclonedds-sys` rlib live in
+      the final link, which in turn keeps its
+      `cargo:rustc-link-lib=static:+whole-archive,-bundle=nros_rmw_cyclonedds`
+      directive in effect and pulls the C++
+      `nros_rmw_cyclonedds_register_descriptor` +
+      `nros_cyclonedds_build_descriptor_from_schema` symbols in.
+      Per-example diffs: every `examples/native/rust/*/Cargo.toml`
+      `rmw-cyclonedds` row collapses to strict 1-entry parity (the
+      action examples still carry the orthogonal `dep:nros-rmw-
+      cyclonedds` + `dep:action_msgs` entries for the K.7.4.c
+      cancel/status registration which is a separate S.5.c concern);
+      the direct `nros_rmw_cyclonedds_sys = { ... optional = true }`
+      dep declaration was deleted from every example. The
+      `register_rmw()` block in each example `src/main.rs` no longer
+      references `nros_rmw_cyclonedds_sys::register` — the linkme
+      self-register section inside `-sys` (Phase 128.B.3) fires on
+      `nros::init` via the cffi-rmw walker. **Files**:
+      `packages/core/nros-node/Cargo.toml` (new
+      `__cyclonedds-detect` private feature; `__cyclonedds-link` now
+      activates both `dep:nros-rmw-cyclonedds-sys` + the detect
+      feature), `packages/core/nros-node/build.rs` (emits
+      `cyclonedds_link_keepalive` cfg gated on
+      `CARGO_FEATURE___CYCLONEDDS_LINK`),
+      `packages/core/nros-node/src/cyclonedds_register.rs` (the
+      `#[used]` static); plus 8 `examples/native/rust/*/Cargo.toml`
+      + 8 `src/main.rs` example diffs. **Acceptance**:
+      `git grep -nE '"dep:nros-rmw-cyclonedds-sys"' examples/` is
+      empty; `cargo test -p nros-node --features __cyclonedds-detect
+      --test cyclonedds_register_smoke` → 2 pass;
+      `cargo test -p nros-rmw-cyclonedds --no-default-features` →
+      23 pass.
 
 - [x] **214.S.5 Add FreeRTOS rust + threadx-linux `rmw-cyclonedds`
       row** (2026-06-04, this commit) — every

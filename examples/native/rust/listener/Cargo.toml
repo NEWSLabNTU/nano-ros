@@ -21,7 +21,7 @@ rmw-zenoh = ["dep:nros-rmw-zenoh"]
 # Phase 214.S.4 — collapsed from the 3-entry form. `dep:` activator
 # stays for `nros_rmw_cyclonedds_sys::register` symbol-drag in
 # `src/main.rs` (see talker for the 214.S.4.b follow-up rationale).
-rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys", "nros/rmw-cyclonedds"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds"]  # Phase 214.S.4.b — strict 1-entry parity
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
 # Zenoh-specific feature carry-overs (silently no-op under
@@ -38,9 +38,6 @@ log = "0.4"
 env_logger = "0.11"
 
 nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
-# Phase 214.S.4 — vendor is default (S.1), so the `default-features = false`
-# is no longer needed.
-nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone

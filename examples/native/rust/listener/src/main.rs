@@ -41,11 +41,11 @@ fn register_rmw() -> Result<(), &'static str> {
     {
         nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
     }
-    #[cfg(feature = "rmw-cyclonedds")]
-    {
-        // Phase 214.S.4 — symbol-drag for `-sys` rlib (see talker).
-        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
-    }
+    // Phase 214.S.4.b — no explicit cyclonedds register call. See
+    // talker for the link-keep-alive rationale (the
+    // __FORCE_LINK_CYCLONEDDS_SYS static inside nros-node::
+    // cyclonedds_register pins the -sys rlib so its linkme
+    // self-register section fires inside nros::init).
     #[cfg(feature = "rmw-xrce")]
     {
         nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
