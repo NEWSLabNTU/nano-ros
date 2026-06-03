@@ -1444,7 +1444,9 @@ canonical-shape regression test can run green tree-wide:
       recipe were intentionally NOT touched — they are downstream
       of M-F.12 and warrant a follow-up M-F sweep (those callers
       now stage an empty external-apps tree but otherwise no
-      longer crash on the missing template).
+      longer crash on the missing template). **The follow-up sweep
+      landed under M-F.16 — see entry below; the make-path callers
+      M-F.12 carried over are now gone.**
 - [x] **M-F.13 FreeRTOS fixture macro/dep mismatch after N.7
       step-3.4** (nano-ros) — Surfaced by the same audit
       (`b0b9a365c`). The `efa778162` (212.N.7 step-3.4) commit
@@ -1557,6 +1559,67 @@ canonical-shape regression test can run green tree-wide:
       §Acceptance "All 7 RTOS adapters ship a working bringup
       fixture" flip (FreeRTOS row, the sole remaining hard
       blocker after M-F.12 + M-F.13).
+- [x] **M-F.16 Phase 157.C make-build path retired** (nano-ros) —
+      The M-F.12 callout explicitly carried a "follow-up sweep"
+      flag for three downstream callers the per-example loop
+      retirement left orphaned. Sweep A landed across four
+      atomic commits on `phase-212-mf16-nuttx-make-path-
+      retirement`:
+      - **commit 1/4 (`5fe6cf517`):** delete the orphan
+        `scripts/nuttx/gen-interfaces.py`,
+        `scripts/nuttx/gen-cpp-ffi-crates.py`, and
+        `scripts/nuttx/gen-wrappers.sh` driver scripts the
+        retired staging loop invoked. References in
+        `just/nuttx.just` (the host-codegen build preamble
+        comment) and `scripts/nuttx/stage-external-apps.sh`'s
+        M-F.12 callout updated to drop the deleted names.
+      - **commit 2/4 (`36eea68ef`):** delete the
+        `build-fixtures-make` recipe in `just/nuttx.just`
+        (~115 lines: NuttX kernel configure + host codegen +
+        stage-external-apps + olddefconfig + per-example make
+        clean + kernel `make`) and the
+        `just nuttx build-fixtures-make` invocation at the tail
+        of `just nuttx build-fixtures`. `just --list --justfile
+        just/nuttx.just` confirms the recipe no longer surfaces.
+      - **commit 3/4 (`81c7d4b40`):** delete
+        `packages/testing/nros-tests/tests/nuttx_make_e2e.rs`
+        (the parity test the recipe drove) and clean up the
+        stale `build-fixtures-make` comment in
+        `phase212_h2_nuttx.rs::nuttx_qemu_arm_2_component_
+        bringup_builds`'s `make context` step.
+      - **commit 4/4 (this commit):** flip M-F.12's "follow-up
+        sweep" callout to resolved + drop this M-F.16 entry.
+      Out of scope (Sweep B): retiring
+      `examples/qemu-arm-nuttx/{c,cpp}/` — those directories
+      are ACTIVE cmake/Corrosion consumers (the
+      `nros-tests/fixtures/binaries/nuttx.rs` builder + the
+      cmake-path `nuttx_qemu` integration tests + book +
+      `c-api-cmake.md` reference + the
+      `nros-board-nuttx-qemu-arm/nros-nuttx-ffi/build.rs`
+      include path), NOT Phase 157.C make-path. Sweep B is a
+      much larger decision deferred to a separate M-F entry.
+      **Files:** `scripts/nuttx/gen-interfaces.py` (DELETED),
+      `scripts/nuttx/gen-cpp-ffi-crates.py` (DELETED),
+      `scripts/nuttx/gen-wrappers.sh` (DELETED),
+      `scripts/nuttx/stage-external-apps.sh` (comment update),
+      `just/nuttx.just` (recipe + caller + comments deleted),
+      `packages/testing/nros-tests/tests/nuttx_make_e2e.rs`
+      (DELETED),
+      `packages/testing/nros-tests/tests/phase212_h2_nuttx.rs`
+      (comment update),
+      `docs/roadmap/phase-212-ux-cargo-native-and-file-
+      consolidation.md` (this entry + M-F.12 callout).
+      **Acceptance:** Phase 212 sanity quartet
+      (`phase212_m12_example_shape` +
+      `phase212_pre_212_files_forbidden` + `phase212_h2_nuttx`
+      + `phase212_non_goals_grep`) unchanged from origin/main
+      baseline — h2_nuttx + pre_212_files_forbidden +
+      non_goals_grep PASS; m12_example_shape's one
+      `component_or_application_classification_present` failure
+      pre-existed and is unrelated to NuttX. **Blocks:** Sweep B
+      (`examples/qemu-arm-nuttx/{c,cpp}/` retirement) tracked
+      separately; the H.2 NuttX work item stays `[x]` per
+      M-F.12.
 - **Tests** (per-wave, gated on SDK availability):
   - [ ] `native_rust_talker_listener_e2e_<rmw>` per RMW
   - [ ] `native_cpp_talker_listener_e2e_<rmw>` per RMW
