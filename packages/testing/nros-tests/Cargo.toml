@@ -402,5 +402,16 @@ path = "tests/phase212_examples_canonical_shape.rs"
 name = "phase212_pre_212_files_forbidden"
 path = "tests/phase212_pre_212_files_forbidden.rs"
 
+# Phase 210.F.4 — workspace-over-AMENT shadowing regression. Drives the
+# `examples/templates/workspace-shadowing/` smoke fixture through
+# cmake configure + build, then asserts (via `nm`) that the
+# workspace `std_msgs` shadow (carrying `Marker.msg`) was the one
+# linked — NOT the AMENT-installed `std_msgs`, which ships no
+# `Marker.msg`. Skips cleanly if AMENT isn't sourced (the shadowing
+# contract degenerates without an AMENT layer to displace).
+[[test]]
+name = "phase210_f4_shadowing"
+path = "tests/phase210_f4_shadowing.rs"
+
 [lints]
 workspace = true
