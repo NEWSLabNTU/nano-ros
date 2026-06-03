@@ -127,6 +127,46 @@ ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
 configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DBUILD_IDLC=ON -DBUILD_TESTING=OFF -DBUILD_DDSPERF=OFF"
 install = "cmake --build build --parallel $(nproc) --target install"
 
+# play_launch_parser — the launch-graph parser the `nros plan` /
+# `nros codegen-system` resolver shells out to when synthesising or
+# multi-resolving `<pkg>/launch/*.launch.xml` (Phase 212.L.6). The
+# resolver builds the XML body (synth-from-Component-pkg OR pkg-named
+# vs system.launch.xml precedence) in-memory and pipes it through this
+# binary to get the `record.json` the planner consumes. Without it the
+# Phase 212 L.6 gate tests (`phase212_l6_launch_synth::*`) skip clean;
+# with it they transition SKIP -> PASS, closing the §Acceptance
+# "Launch file synthesis works" + "Multi-launch resolution works"
+# bullets.
+#
+# Source-build only — the upstream `jerry73204/play_launch_parser` repo
+# is a Rust workspace (no PyPI package, no prebuilt release tags), so
+# install via `cargo install --path crates/play_launch_parser` (same
+# shape as `[tool.nros]` / `[tool.zenohd]`). Pinned to a SHA on `main`
+# (no upstream tags yet) — same convention the `[tool.cyclonedds]` row
+# uses to pin a SHA on the NEWSLabNTU fork's `nano-ros` branch. The
+# cmd-line surface the L.6 resolver requires (`play_launch_parser --help`,
+# the `launch <pkg> <file>` subcommand) has been stable across the
+# pinned `main` window, but bumping the SHA is the explicit signal to
+# re-run the L.6 gate tests.
+#
+# Build-time prereq: a Python dev install (pyo3 `auto-initialize` links
+# libpythonX.Y at build time). On the default-tier host that's already
+# present (apt `python3`/`python3-dev` covered by `just workspace
+# apt-packages`); on bare-bones CI it would be the one extra apt
+# package, but neither tier moves a module without docs + orchestrator
+# updates so this stays implicit (the `workspace` module is the
+# umbrella). Header/binary-only install at well under the 500 MB /
+# 5 min `default` tier policy in `docs/development/sdk-tiers.md`,
+# idempotent (the `just workspace install-play-launch-parser` recipe
+# gates on a `.installed-version` stamp).
+[tool.play_launch_parser]
+version = "0.1.0-nros1"
+upstream = "098ccb43328bca3c35320bb3adac27a11035b15d" # = source.ref (main SHA, no upstream tags)
+[tool.play_launch_parser.source]
+git = "https://github.com/jerry73204/play_launch_parser"
+ref = "098ccb43328bca3c35320bb3adac27a11035b15d"
+install = "cargo install --path crates/play_launch_parser --root {prefix} --locked"
+
 # Corrosion — the CMake ↔ Rust/Cargo bridge that `corrosion_import_crate()`
 # in mixed-language workspaces (Phase 212 — `cmake/NanoRosThreadxSystemCodegen.cmake`,
 # `multi_pkg_workspace_mixed` fixture, examples/native/rust talker/listener
