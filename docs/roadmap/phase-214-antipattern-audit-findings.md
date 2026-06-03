@@ -299,8 +299,10 @@ lifetime transmute footgun. All in board crates / nros-node.
       the 8-assoc-type trait.
 - [ ] Track K: `just zephyr test` from clean workspace passes the
       26 fixture-dependent tests.
-- [ ] Track L: `integrations/{zephyr,esp-idf,platformio}/` shells
+- [x] Track L: `integrations/{zephyr,esp-idf,platformio}/` shells
       restored or test-gated; no bare-FAIL on missing manifests.
+      Skip-gated all three (208.D.7 / 208.D.8 / 208.D.10 deletions);
+      see L.1 inventory + L.2 action.
 - [ ] Track M: `just nuttx build-fixtures` succeeds on the pinned
       nightly + libc combo.
 - [ ] Track N: phase212 / orchestration tests pass or
@@ -825,7 +827,7 @@ cleanup. Diff against the Phase 139 archive doc to figure out which.
 
 **Work Items:**
 
-- [ ] **214.L.1 Inventory `integrations/` tree** — `find
+- [x] **214.L.1 Inventory `integrations/` tree** — `find
       integrations/ -maxdepth 2 -type f` vs the contract in the
       three failing tests. Diff against
       `docs/roadmap/archived/phase-139-*.md` to identify whether the
@@ -833,7 +835,27 @@ cleanup. Diff against the Phase 139 archive doc to figure out which.
       **Acceptance**: a written inventory pinned to each test's
       expected files.
 
-- [ ] **214.L.2 Restore or skip-gate** — for each missing shell:
+      | Asserted path | Phase 139 shipped? | Current location | Deletion commit |
+      |---|---|---|---|
+      | `integrations/zephyr/module.yml` | yes (139.1) | `zephyr/module.yml` | `18d92325d` (208.D.7) |
+      | `integrations/zephyr/CMakeLists.txt` | yes (139.1) | `zephyr/CMakeLists.txt` | `18d92325d` (208.D.7) |
+      | `integrations/zephyr/Kconfig` | yes (139.1) | `zephyr/Kconfig` | `18d92325d` (208.D.7) |
+      | `integrations/esp-idf/idf_component.yml` | yes (139.2, `9f010cc07`) | `integrations/nano-ros/idf_component.yml` | `6382cd655` (208.D.10 rename) |
+      | `integrations/esp-idf/CMakeLists.txt` | yes (139.2) | `integrations/nano-ros/CMakeLists.txt` | `6382cd655` (208.D.10 rename) |
+      | `integrations/esp-idf/Kconfig.projbuild` | yes (139.2) | `integrations/nano-ros/Kconfig.projbuild` | `6382cd655` (208.D.10 rename) |
+      | `integrations/platformio/library.json` | yes (139.3, `3c208edad`) | retired (212.H.6 adapter is `extra_script`, not a PIO Library Manager shell) | `6382cd655` (208.D.8) |
+      | `integrations/platformio/library.properties` | yes (139.3) | retired (see above) | `6382cd655` (208.D.8) |
+      | `integrations/platformio/examples/talker/platformio.ini` | yes (139.3) | retired (see above) | `6382cd655` (208.D.8) |
+
+      Verdict: every asserted path was once shipped by Phase 139 and
+      later **intentionally relocated or retired** in Phase 208.D
+      (D.7 fold, D.8 PlatformIO retire, D.10 rename). Restoring
+      them would re-introduce duplicate surfaces and (for
+      PlatformIO) collide with the 212.H.6 `extra_script` adapter
+      shape — none of which the parent phase doc owns. Path
+      forward: skip-gate.
+
+- [x] **214.L.2 Restore or skip-gate** — for each missing shell:
       either restore the manifest files from git history (if a
       deletion) or change the integration test to gate on shell
       presence with `nros_tests::skip!` (if intentionally deferred).
@@ -842,6 +864,15 @@ cleanup. Diff against the Phase 139 archive doc to figure out which.
       --test integration_esp_idf --test integration_platformio`
       either passes or skips with a clear `[SKIPPED]` reason; no
       bare-FAIL.
+
+      Action: **skip-gate all three** with a `[SKIPPED]` reason
+      that pins each to the Phase 208.D commit that retired or
+      relocated the asserted path. No file restored — the
+      replacement surfaces (`zephyr/`, `integrations/nano-ros/`,
+      `integrations/platformio/nros_codegen.py`) live elsewhere
+      and aren't part of this contract. Files touched:
+      `packages/testing/nros-tests/tests/integration_zephyr.rs`,
+      `…/integration_esp_idf.rs`, `…/integration_platformio.rs`.
 
 ---
 
