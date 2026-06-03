@@ -1477,8 +1477,12 @@ canonical-shape regression test can run green tree-wide:
       zenoh-pico submodule synced). **Unblocks:**
       §Acceptance "All 7 RTOS adapters ship a working bringup
       fixture" flip (FreeRTOS row).
-- [ ] **M-F.15 H.3 FreeRTOS Entry pkg firmware link fails:
-      `_start` undefined** (nano-ros) — Surfaced 2026-06-03 by
+- [x] **M-F.15 H.3 FreeRTOS Entry pkg firmware link fails:
+      `_start` undefined** (nano-ros) — RESOLVED 2026-06-03 by
+      `4f0136d8e` (Reset_Handler ↔ Rust-entry contract: rename
+      `_start`→`main` in `c/board_mps2.c` + flip `zpico-sys`'s
+      `freertos` Cargo feature on so `zpico_set_task_config` resolves).
+      Surfaced 2026-06-03 by
       the post-M-F.12 + M-F.13 re-audit of §Acceptance "All 7
       RTOS adapters". The H.3 test
       `phase212_h3_freertos::freertos_qemu_mps2_an385_entry_pkg_firmware_builds`
@@ -2240,16 +2244,18 @@ asymmetry rationale.
         `multi_pkg_workspace_nuttx/src/demo_bringup` exists.
         Adapter shim dir 137/200 LoC.
       - **FreeRTOS** — `phase212_h3_freertos::freertos_qemu_mps2_an385_entry_pkg_firmware_builds`
-        **FAILS** in the worktree with `rust-lld: error: undefined
-        symbol: _start`. Surfaced 2026-06-03 by the re-audit after
-        M-F.13 path (b) landed (`060e4727a`). The M-F.13 macro
-        re-export work is structurally orthogonal to the link
-        failure — `_start` resolution is the BSP / runtime contract
-        — but the test was never run end-to-end during the M-F.13
-        wave (the M-F.13 stand-in `phase212_macro_one_dep`
-        exercised macro expansion on a native target only). Logged
-        as **M-F.15** below for follow-up investigation. Adapter
-        is the BSP crate's `build.rs` (not a separate shim file).
+        PASSES (1/1) after M-F.15 closure (`4f0136d8e`, 2026-06-03).
+        Root cause was the Reset_Handler ↔ Rust-entry contract: the
+        N.7 step-5 migration (`570eb2e9d`) flipped the firmware's
+        Rust entry from `extern "C" fn _start` to `extern "C" fn main`
+        but the BSP crate's `c/board_mps2.c::Reset_Handler` still
+        called `extern void _start(void)` (retired together with the
+        baker crate in `d99386173`). Localized two-line fix renamed
+        the C-side call site to `(void)main()` + flipped `zpico-sys`'s
+        `freertos` Cargo feature on (so `zpico_set_task_config`
+        resolves in the `[platform.freertos-lwip]` manifest path).
+        Adapter is the BSP crate's `build.rs` (not a separate shim
+        file).
       - **ThreadX** — `phase212_h4_threadx::threadx_linux_2_component_bringup_builds_and_publishes`
         is `#[ignore]`'d on `212.M.10: nros plan does not yet read
         [package.metadata.nros.component]` — `nros plan` (in the
@@ -2274,20 +2280,21 @@ asymmetry rationale.
         reason). Adapter shim `integrations/px4/module-template/`
         51/200 LoC.
 
-      **Re-audit 2026-06-03 status (post-M-F.12 + M-F.13 wave):**
-      blockers (1) and (2) from the prior audit ARE both closed —
-      H.2 now passes 2/2 (M-F.12 = `23b221a9b`) and the macro
-      re-export contract ships through `nros::__macro_support`
-      (M-F.13 = `060e4727a`). The H.3 build-step regression
-      `_start` is the new sole hard blocker (M-F.15, below).
-      Flippable to [x] once: (1) M-F.15 H.3 link path fix lands;
-      (2) H.4 + H.7 `#[ignore]`'s drop (gated on out-of-tree
-      `nros-cli` 212.M.10 work + 212.M-F.8); (3) H.1 + H.5 land
-      their SDK-gated runtimes (Phase 212.E.1 stub via W.4 of the
-      2026-06-03 wave covers H.1; H.5 stays SDK-gated until CI
-      runs an `$IDF_PATH`-provisioned lane). Re-audit verified
+      **Re-audit 2026-06-03 status (post-M-F.12 + M-F.13 + M-F.15
+      wave):** blockers (1), (2), and (3) from the prior audit are
+      now all closed — H.2 passes 2/2 (M-F.12 = `23b221a9b`), the
+      macro re-export contract ships through `nros::__macro_support`
+      (M-F.13 = `060e4727a`), and H.3 builds cleanly on a
+      FreeRTOS-provisioned host (M-F.15 = `4f0136d8e`). Three
+      remaining blockers to a `[x]` flip are SDK-gated / out-of-tree
+      `nros-cli` work, not nano-ros code. Flippable to [x] once:
+      (1) H.4 + H.7 `#[ignore]`'s drop (gated on out-of-tree
+      `nros-cli` 212.M.10 work + 212.M-F.8); (2) H.1 lands its
+      Phase 212.E.1 stub via W.4 of the 2026-06-03 wave (the
+      SKIP→PASS transition); (3) H.5 stays SDK-gated until CI
+      runs an `$IDF_PATH`-provisioned lane. Re-audit verified
       via `cargo test -p nros-tests --test phase212_h{1..8}_*`
-      at HEAD `060e4727a` on 2026-06-03.
+      at HEAD `4f0136d8e` on 2026-06-03 (H.3 transitions FAIL → PASS).
 - [x] **Each adapter shim ≤200 LoC; cmake `nano_ros_workspace_metadata
       ()` ≤150 LoC.** CI gate via the in-process `tokei` crate
       (no `tokei` CLI install required — activated H.8 2026-06-02 in
