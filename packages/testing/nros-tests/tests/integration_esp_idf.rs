@@ -27,6 +27,22 @@ fn have(cmd: &str) -> bool {
 fn esp_idf_integration_shell_smoke() {
     let root = workspace_root();
 
+    // Phase 214.L.2 — `integrations/esp-idf/` was renamed to
+    // `integrations/nano-ros/` in Phase 208.D.10 (commit 6382cd655,
+    // 2026-05-30): ESP-IDF resolves `REQUIRES nano-ros` to the
+    // component-basename, so the on-disk dir name must match the
+    // component name. The three manifest files now live at
+    // `integrations/nano-ros/{idf_component.yml,CMakeLists.txt,
+    // Kconfig.projbuild}`. Skip cleanly when the legacy `esp-idf/`
+    // dir is absent rather than re-introducing the duplicate.
+    if !root.join("integrations/esp-idf/idf_component.yml").exists() {
+        nros_tests::skip!(
+            "integrations/esp-idf/idf_component.yml absent — Phase 208.D.10 \
+             renamed the dir to integrations/nano-ros/ (ESP-IDF \
+             component-basename requirement)"
+        );
+    }
+
     let env_shim = std::env::var("NROS_ESP_IDF_ENV_SHIM")
         .ok()
         .map(PathBuf::from);
