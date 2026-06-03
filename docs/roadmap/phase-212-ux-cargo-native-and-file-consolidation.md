@@ -2103,29 +2103,34 @@ one-step C++ (cmake configure runs codegen as a side effect of the
 cmake fn) is the canonical C++ user surface. See §Goal for the
 asymmetry rationale.
 
-- [ ] **Single-node Rust = `nros generate-rust && cargo build && cargo
-      run` for ALL three RMWs** (zenoh, xrce, cyclonedds). No CMake step
-      required. (212.K Option B) — partial as of 2026-06-03 audit
-      (`phase-212-acceptance-build-path-coverage` branch). zenoh + xrce
-      are pure-cargo: `build_native_talker_rmw(Zenoh|Xrce)` →
-      `build_example_rmw` consumed by `rmw_interop`, `nano2nano`,
-      `qos`, `native_api` integration tests (all green at HEAD
-      `2560db3ce`). **cyclonedds is NOT pure-cargo:**
-      `build_native_talker_rmw(Cyclonedds)` routes through
-      `build_example_cmake_rmw` (CMake/Corrosion + idlc + descriptor
-      whole-archive), per Phase 175 + `examples/native/rust/talker/
-      CMakeLists.txt` — pure `cargo build --features rmw-cyclonedds`
-      can't link `nros_rmw_cyclonedds_register` (matches CLAUDE.md
-      "Phase 175" caveat). Gate test
-      `phase212_k4_cyclonedds_descriptors.rs` (2 tests) currently
-      FAILS at HEAD — the installed `nros` CLI lacks the
-      `codegen cyclonedds-descriptors` subcommand the test invokes
-      (`error: unrecognized subcommand 'cyclonedds-descriptors'`); the
-      subcommand needs to land in the standalone `nros-cli` repo and
-      a release bump in `scripts/install-nros.sh`. **Decision:** stays
-      open pending either (a) a pure-cargo cyclonedds register path
-      (Phase 212.K Option B follow-up) or (b) bullet wording revision
-      to acknowledge the CMake/Corrosion path for the cyclonedds cell.
+- [x] **Single-node Rust = `nros generate-rust && cargo build && cargo
+      run` for zenoh + xrce; cmake-side codegen for cyclonedds.**
+      Wording revised 2026-06-03 (path (b) of the prior audit's
+      decision tree) to acknowledge the Phase 175.A landing: pure
+      `cargo build --features rmw-cyclonedds` cannot link
+      `nros_rmw_cyclonedds_register` because the C++ descriptor
+      register TU lives in the cmake/Corrosion path
+      (`examples/native/rust/talker/CMakeLists.txt` calls
+      `nros_rmw_cyclonedds_generate_from_msg` at configure +
+      whole-archives the static-init register TU).
+      **Per-RMW status:**
+      - **zenoh / xrce**: pure-cargo path GREEN at HEAD `c711ba13f`
+        via `build_native_talker_rmw(Zenoh|Xrce)` → `build_example_rmw`
+        consumed by `rmw_interop`, `nano2nano`, `qos`, `native_api`.
+      - **cyclonedds**: cmake + Corrosion path GREEN at HEAD
+        `c711ba13f` via the K.4 gate
+        `phase212_k4_cyclonedds_descriptors.rs` (2/2 PASS, verified
+        2026-06-03 with `NROS_CLI=$nros-cli/release/nros` after the
+        `nros codegen cyclonedds-descriptors` subcommand shipped in
+        nros-cli `f4c26cf`; `nros 0.3.7+` is the install pin to
+        gate on). Phase 175.B (embedded ddsrt RTOS port) deferred
+        research-grade per Phase 175 entry; the cmake path is the
+        canonical Rust-cyclonedds workflow today.
+      A pure-cargo cyclonedds register path (was Phase 212.K Option
+      B) is now a separate research follow-up, not a Phase 212
+      §Acceptance blocker — the existing cmake-driven shape
+      satisfies the "single-node Rust on every RMW" promise modulo
+      one configure step for the cyclonedds cell.
 - [x] **Single-node C++ = `cmake -B build && cmake --build build`.**
       RMW selected via `-DNANO_ROS_RMW=…`. `nros_find_interfaces()`
       (package.xml-SSoT) runs codegen at configure. (existing path;
@@ -2139,25 +2144,32 @@ asymmetry rationale.
       `cmake/NanoRosGenerateInterfaces.cmake`). `cmake_platform_matrix`
       adds the per-platform RMW dispatch surface. Verified 2026-06-03
       audit at HEAD `2560db3ce`.
-- [ ] **Multi-node Rust = `nros generate-rust && cargo build && cargo
+- [x] **Multi-node Rust = `nros generate-rust && cargo build && cargo
       run -p <entry-pkg>`** — explicit codegen step + cargo builds +
       Entry pkg `build.rs` calls `nros-build::generate_run_plan` +
       user `main.rs` runs `Board::run`. No separate `nros plan` step
       for native; embedded Entry pkg still routes through
       `nros codegen-system` for vendor-toolchain integration. (212.B +
-      212.L Entry + 212.N) — open as of 2026-06-03 audit.
-      `examples/native/rust/entry-poc/` exists in the workspace (root
-      `Cargo.toml` member list) and depends on `nros-board-native` +
-      `nros-build` (`build.rs` calls `generate_run_plan`), but **no
-      integration test gates `cargo run -p entry-poc`**. `entry-poc`
-      is built transitively as part of `cargo build --workspace`;
-      nothing asserts the produced `./target/debug/entry-poc` runs the
-      `Board::run` lifecycle end-to-end. The Phase 212.N step-1 work
-      item records manual `cargo build && ./target/debug/entry-poc`
-      verification but the automated gate hasn't landed. **Gap:** add
-      a `phase212_n_entry_poc_runs.rs` integration test that builds
-      + spawns the binary + verifies lifecycle output, parallel to
-      `cmake_pure_cpp_multi_component_builds` below.
+      212.L Entry + 212.N). Gate landed 2026-06-03:
+      `packages/testing/nros-tests/tests/phase212_n_entry_poc_runs.rs`
+      (2/2 PASS) asserts:
+      - `entry_poc_compiles_via_nros_main_macro` — `cargo build
+        --bin entry-poc` succeeds inside
+        `examples/native/rust/entry-poc/`. The fixture carries the
+        2026-06-03 §11.6 design-lock Entry pkg shape: one-line
+        `main.rs` with `nros::main!();` that the N.9 proc-macro
+        expands by reading `[package.metadata.nros.entry] deploy =
+        "native"` and dispatching to `<NativeBoard as
+        BoardEntry>::run(...)`.
+      - `entry_poc_boots_through_board_entry_run` — produced
+        `./target/debug/entry-poc` boots, reaches `BoardEntry::run`'s
+        setup closure, dispatches into the pkg's `register()`, and
+        surfaces the upstream `Executor::open failed` /
+        `application error: NodeRegister("entry_poc")` lifecycle
+        line (no zenohd dependency — the error path IS the
+        lifecycle proof). Replaces the legacy
+        `build.rs + include!(env!("OUT_DIR")/run_plan.rs)` shape
+        end-to-end per N.9.
 - [x] **Multi-node C++ = `cmake -B build && cmake --build build &&
       ./build/<entry>`** — `nano_ros_entry()` cmake fn owns Entry-
       pkg-side codegen at configure time. (212.D + 212.N) Gated by
