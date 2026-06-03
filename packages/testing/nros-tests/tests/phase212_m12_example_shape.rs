@@ -278,11 +278,18 @@ fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
         .and_then(|p| p.get("metadata"))
         .and_then(|m| m.get("nros"));
 
+    // Phase 212.N.12 — `node` is the canonical spelling for the
+    // single-shape Component pkg surface; `component` is accepted as a
+    // deprecated alias. Treat either as the "Component pkg" classification.
+    // (`PackageMetadataNros::validate` in nros-cli rejects both at once;
+    // M.12 inherits that mutex by virtue of accepting either, not both.)
     let component = nros.and_then(|n| n.get("component"));
+    let node = nros.and_then(|n| n.get("node"));
     let application = nros.and_then(|n| n.get("application"));
     let entry = nros.and_then(|n| n.get("entry"));
 
     let component_class = component
+        .or(node)
         .and_then(|c| c.get("class"))
         .and_then(|c| c.as_str())
         .map(str::to_owned);
@@ -297,7 +304,7 @@ fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
     }
 
     Ok(ProofKindClassification {
-        is_component: component.is_some(),
+        is_component: component.is_some() || node.is_some(),
         is_application: application.is_some(),
         is_entry: entry.is_some(),
         component_class,
