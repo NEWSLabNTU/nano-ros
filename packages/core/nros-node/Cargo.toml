@@ -34,6 +34,15 @@ scheduler-time-triggered = []
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi"]
+# Phase 212.K.7.6.b — wire `nros_rmw_cyclonedds::register::<M>()` into
+# the typed pub/sub/service/action creators on the Rust side. With this
+# feature off the bridge module in `cyclonedds_register.rs` compiles to
+# no-ops (zenoh + xrce paths unaffected). With it on the typed
+# creators tighten `M: RosMessage` to `M: RosMessage + Message` via
+# the `MessageForRmw` helper trait, and every creation routes through
+# the runtime descriptor builder + bounded registry shipped in
+# `nros-rmw-cyclonedds`. See `src/cyclonedds_register.rs`.
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds", "dep:nros-serdes"]
 # Phase 124.B.7.c — POSIX signal-handler-safe wake via eventfd + a
 # runtime-owned worker thread that forwards eventfd writes to the
 # Executor's wake condvar. Linux-only (eventfd). Off by default;
@@ -130,6 +139,15 @@ log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
 nros-rcl-interfaces = { version = "0.1.0", path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
 nros-lifecycle-msgs = { version = "0.1.0", path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs", default-features = false, optional = true }
+# Phase 212.K.7.6.b — runtime cyclonedds descriptor registry. Optional
+# because zenoh + xrce builds don't link the Cyclone backend; the
+# `MessageForRmw` helper trait still compiles (it falls back to plain
+# `RosMessage`) without this dep. See `src/cyclonedds_register.rs`.
+nros-rmw-cyclonedds = { version = "0.1.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false, optional = true }
+# Used by the cyclonedds register bridge for the `schema::Message` super
+# trait. Pulled in by the `rmw-cyclonedds` feature alongside
+# `nros-rmw-cyclonedds`.
+nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false, optional = true }
 
 # Phase 124.B.7.c — POSIX signalfd / eventfd worker (only on
 # Linux + std). Other targets compile without this dep; the
@@ -139,6 +157,12 @@ libc = { version = "0.2", optional = true }
 
 [dev-dependencies]
 nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }
+# Phase 212.K.7.6.b — pull the cyclonedds bridge stubs into nros-node's
+# unit-test link line so `cargo test --features rmw-cyclonedds` resolves
+# `nros_cyclonedds_build_descriptor_from_schema` /
+# `nros_rmw_cyclonedds_register_descriptor` without dragging in the
+# real C++ TU. Production builds (no `bridge-stub`) link the C++ bridge.
+nros-rmw-cyclonedds = { version = "0.1.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false, features = ["bridge-stub"] }
 
 [lints]
 workspace = true

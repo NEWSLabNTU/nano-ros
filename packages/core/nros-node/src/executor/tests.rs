@@ -46,6 +46,21 @@ impl RosMessage for TestMsg {
     const TYPE_HASH: &'static str = "test_hash";
 }
 
+// Phase 212.K.7.6.b — minimal `Message` impl so the typed creators
+// (which gain a `MessageForRmw` bound that tightens to
+// `RosMessage + Message` under `rmw-cyclonedds`) still accept this
+// test fixture. The codegen template emits both impls for real msg
+// crates; here we mirror it by hand.
+#[cfg(feature = "rmw-cyclonedds")]
+impl nros_serdes::schema::Message for TestMsg {
+    const TYPE_NAME: &'static str = "test/msg/TestMsg";
+    const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+        name: "data",
+        ty: nros_serdes::schema::FieldType::Int32,
+        offset: 0,
+    }];
+}
+
 impl Serialize for TestMsg {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         writer.write_i32(self.data)
@@ -1188,6 +1203,16 @@ impl RosMessage for TestGoal {
     const TYPE_HASH: &'static str = "test_hash";
 }
 
+#[cfg(feature = "rmw-cyclonedds")]
+impl nros_serdes::schema::Message for TestGoal {
+    const TYPE_NAME: &'static str = "test/action/TestAction_Goal";
+    const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+        name: "order",
+        ty: nros_serdes::schema::FieldType::Int32,
+        offset: 0,
+    }];
+}
+
 impl Serialize for TestGoal {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         writer.write_i32(self.order)
@@ -1212,6 +1237,16 @@ impl RosMessage for TestResult {
     const TYPE_HASH: &'static str = "test_hash";
 }
 
+#[cfg(feature = "rmw-cyclonedds")]
+impl nros_serdes::schema::Message for TestResult {
+    const TYPE_NAME: &'static str = "test/action/TestAction_Result";
+    const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+        name: "value",
+        ty: nros_serdes::schema::FieldType::Int32,
+        offset: 0,
+    }];
+}
+
 impl Serialize for TestResult {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         writer.write_i32(self.value)
@@ -1234,6 +1269,16 @@ struct TestFeedback {
 impl RosMessage for TestFeedback {
     const TYPE_NAME: &'static str = "test/action/TestAction_Feedback";
     const TYPE_HASH: &'static str = "test_hash";
+}
+
+#[cfg(feature = "rmw-cyclonedds")]
+impl nros_serdes::schema::Message for TestFeedback {
+    const TYPE_NAME: &'static str = "test/action/TestAction_Feedback";
+    const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+        name: "progress",
+        ty: nros_serdes::schema::FieldType::Int32,
+        offset: 0,
+    }];
 }
 
 impl Serialize for TestFeedback {
@@ -2357,6 +2402,16 @@ impl RosMessage for TestServiceRequest {
     const TYPE_HASH: &'static str = "test_hash";
 }
 
+#[cfg(feature = "rmw-cyclonedds")]
+impl nros_serdes::schema::Message for TestServiceRequest {
+    const TYPE_NAME: &'static str = "test/srv/TestService_Request";
+    const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+        name: "a",
+        ty: nros_serdes::schema::FieldType::Int32,
+        offset: 0,
+    }];
+}
+
 impl Serialize for TestServiceRequest {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         writer.write_i32(self.a)
@@ -2374,6 +2429,16 @@ impl Deserialize for TestServiceRequest {
 impl RosMessage for TestServiceReply {
     const TYPE_NAME: &'static str = "test/srv/TestService_Reply";
     const TYPE_HASH: &'static str = "test_hash";
+}
+
+#[cfg(feature = "rmw-cyclonedds")]
+impl nros_serdes::schema::Message for TestServiceReply {
+    const TYPE_NAME: &'static str = "test/srv/TestService_Reply";
+    const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+        name: "sum",
+        ty: nros_serdes::schema::FieldType::Int32,
+        offset: 0,
+    }];
 }
 
 impl Serialize for TestServiceReply {

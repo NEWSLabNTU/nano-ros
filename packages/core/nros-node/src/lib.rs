@@ -64,6 +64,8 @@ extern crate alloc;
 
 pub mod c_waker;
 pub mod config;
+/// Phase 212.K.7.6.b — runtime cyclonedds type-descriptor registry hook.
+pub mod cyclonedds_register;
 pub mod executor;
 pub mod lifecycle;
 pub mod limits;
@@ -157,8 +159,7 @@ pub use executor::{
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
     LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec,
-    RawActiveGoal,
-    RawServiceClient, RawServiceServer, RawSubscription, RecvView, Subscription,
+    RawActiveGoal, RawServiceClient, RawServiceServer, RawSubscription, RecvView, Subscription,
 };
 
 // Phase 173.5 — bridge multi-session spec (consumed by the generated

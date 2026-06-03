@@ -2157,6 +2157,8 @@ dependencies = [
  "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-cffi",
+ "nros-rmw-cyclonedds",
+ "nros-serdes",
  "portable-atomic",
  "portable-atomic-util",
 ]

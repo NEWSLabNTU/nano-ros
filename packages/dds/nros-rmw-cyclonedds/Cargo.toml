@@ -20,6 +20,15 @@ default = []
 # `no_std`-only contract. Test code never enables `std`; the
 # `#[cfg(test)]` tree compiles under `no_std + alloc-free`.
 std = []
+# Phase 212.K.7.6.b — expose the in-tree `#[cfg(test)]` stubs for
+# `nros_cyclonedds_build_descriptor_from_schema` and
+# `nros_rmw_cyclonedds_register_descriptor` to downstream test
+# builds (notably `nros-node`'s unit tests under
+# `--features rmw-cyclonedds`) that would otherwise fail to link
+# the C++ bridge symbols. Production builds NEVER enable this; the
+# real C++ TU lives in the sibling CMake project. See
+# `src/bridge.rs::test_stub` for the implementation.
+bridge-stub = []
 
 [dependencies]
 # K.7.3 schema introspection trait + types.

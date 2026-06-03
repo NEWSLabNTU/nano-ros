@@ -961,7 +961,9 @@ impl Executor {
                     feature = "platform-threadx",
                 )
             ))]
-            wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
+            wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(
+                false,
+            )),
             #[cfg(all(
                 feature = "alloc",
                 not(feature = "std"),
@@ -1102,7 +1104,9 @@ impl Executor {
                     feature = "platform-threadx",
                 )
             ))]
-            wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
+            wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(
+                false,
+            )),
             #[cfg(all(
                 feature = "alloc",
                 not(feature = "std"),
@@ -1473,17 +1477,20 @@ impl Executor {
     /// Backs `node.publisher(t).typed::<M>().build()` on the
     /// executor-borrowing [`NodeCtx`](super::node::NodeCtx); the returned
     /// handle is owned and outlives the `NodeCtx`.
-    pub fn create_publisher_on<M: RosMessage>(
+    pub fn create_publisher_on<M: crate::cyclonedds_register::MessageForRmw>(
         &mut self,
         node_id: super::node_record::NodeId,
         topic_name: &str,
         qos: QosSettings,
     ) -> Result<crate::executor::handles::EmbeddedPublisher<M>, NodeError> {
+        // Phase 212.K.7.6.b — register `M`'s cyclonedds descriptor before
+        // creating the underlying publisher handle. No-op for other RMWs.
+        crate::cyclonedds_register::register_type::<M>()?;
         let handle = self.create_raw_publisher_handle_on(
             node_id,
             topic_name,
-            M::TYPE_NAME,
-            M::TYPE_HASH,
+            <M as RosMessage>::TYPE_NAME,
+            <M as RosMessage>::TYPE_HASH,
             qos,
         )?;
         Ok(crate::executor::handles::EmbeddedPublisher {
@@ -1662,10 +1669,12 @@ impl Executor {
         // `if let Some(wake) = self.node_wake.as_ref()` predicate.
         let node_wake = self.node_wake_alloc.as_ref()?;
         if self.wake_ctx_alloc.is_none() {
-            self.wake_ctx_alloc = Some(portable_atomic_util::Arc::new(super::wake_alloc::WakeCtxAlloc {
-                flag: portable_atomic_util::Arc::clone(&self.wake_flag_alloc),
-                node_wake: portable_atomic_util::Arc::clone(node_wake),
-            }));
+            self.wake_ctx_alloc = Some(portable_atomic_util::Arc::new(
+                super::wake_alloc::WakeCtxAlloc {
+                    flag: portable_atomic_util::Arc::clone(&self.wake_flag_alloc),
+                    node_wake: portable_atomic_util::Arc::clone(node_wake),
+                },
+            ));
         }
         let arc = self.wake_ctx_alloc.as_ref().expect("just set");
         Some(portable_atomic_util::Arc::as_ptr(arc) as *mut core::ffi::c_void)
@@ -2073,10 +2082,13 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: crate::cyclonedds_register::MessageForRmw + 'static,
         F: FnMut(&M) + 'static,
     {
         type Entry<M, F> = SubBufferedEntry<M, F>;
+
+        // Phase 212.K.7.6.b — see `create_publisher_on`.
+        crate::cyclonedds_register::register_type::<M>()?;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = {
@@ -2086,7 +2098,12 @@ impl Executor {
                 .ok_or(NodeError::InvalidSchedContextBinding)?;
             (r.name.clone(), r.namespace.clone(), r.session_idx)
         };
-        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
+        let mut topic = TopicInfo::new(
+            topic_name,
+            <M as RosMessage>::TYPE_NAME,
+            <M as RosMessage>::TYPE_HASH,
+        )
+        .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
@@ -2350,10 +2367,13 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: crate::cyclonedds_register::MessageForRmw + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
     {
         type Entry<M, F, const N: usize> = SubInfoEntry<M, F, N>;
+
+        // Phase 212.K.7.6.b — see `create_publisher_on`.
+        crate::cyclonedds_register::register_type::<M>()?;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -2366,7 +2386,12 @@ impl Executor {
             }
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
-        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
+        let mut topic = TopicInfo::new(
+            topic_name,
+            <M as RosMessage>::TYPE_NAME,
+            <M as RosMessage>::TYPE_HASH,
+        )
+        .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
@@ -2418,10 +2443,13 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: crate::cyclonedds_register::MessageForRmw + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
     {
         type Entry<M, F, const N: usize> = SubSafetyEntry<M, F, N>;
+
+        // Phase 212.K.7.6.b — see `create_publisher_on`.
+        crate::cyclonedds_register::register_type::<M>()?;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -2434,7 +2462,12 @@ impl Executor {
             }
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
-        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
+        let mut topic = TopicInfo::new(
+            topic_name,
+            <M as RosMessage>::TYPE_NAME,
+            <M as RosMessage>::TYPE_HASH,
+        )
+        .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }

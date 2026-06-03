@@ -156,10 +156,12 @@ impl TypeRegistry {
         self.table.is_empty()
     }
 
-    /// Test-only — clear the cache. Lives behind `#[cfg(test)]` so
-    /// production code can't accidentally invalidate descriptor
-    /// pointers Cyclone is still using.
-    #[cfg(test)]
+    /// Test-only — clear the cache. Lives behind `#[cfg(test)]` or
+    /// the `bridge-stub` feature so production code can't accidentally
+    /// invalidate descriptor pointers Cyclone is still using. The
+    /// `bridge-stub` arm is for downstream crates' test builds (notably
+    /// `nros-node`'s K.7.6.b smoke).
+    #[cfg(any(test, feature = "bridge-stub"))]
     pub fn clear_for_test(&mut self) {
         self.table.clear();
     }

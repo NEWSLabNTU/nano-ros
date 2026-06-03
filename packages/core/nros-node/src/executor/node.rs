@@ -5,7 +5,10 @@ use core::marker::PhantomData;
 use nros_core::{RosAction, RosMessage, RosService};
 use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session as _, TopicInfo, TransportError};
 
-use crate::session;
+use crate::{
+    cyclonedds_register::{MessageForRmw, register_type},
+    session,
+};
 
 use super::{
     handles::{
@@ -152,7 +155,7 @@ impl<'a> NodeHandle<'a> {
     // -- Publishers --
 
     /// Create a publisher for the given topic.
-    pub fn create_publisher<M: RosMessage>(
+    pub fn create_publisher<M: MessageForRmw>(
         &mut self,
         topic_name: &str,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
@@ -160,11 +163,15 @@ impl<'a> NodeHandle<'a> {
     }
 
     /// Create a publisher with custom QoS settings.
-    pub fn create_publisher_with_qos<M: RosMessage>(
+    pub fn create_publisher_with_qos<M: MessageForRmw>(
         &mut self,
         topic_name: &str,
         qos: QosSettings,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
+        // Phase 212.K.7.6.b — under `rmw-cyclonedds`, ensure the runtime
+        // type-descriptor exists before the cffi vtable creates the
+        // entity. No-op for other RMWs.
+        register_type::<M>()?;
         // Phase 108.B — synchronous QoS validation against backend's
         // `supported_qos_policies()` mask. No silent downgrade.
         qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
@@ -174,8 +181,8 @@ impl<'a> NodeHandle<'a> {
             &self.name,
             &self.namespace,
             topic_name,
-            M::TYPE_NAME,
-            M::TYPE_HASH,
+            <M as RosMessage>::TYPE_NAME,
+            <M as RosMessage>::TYPE_HASH,
         );
         let handle = self
             .session
@@ -247,7 +254,7 @@ impl<'a> NodeHandle<'a> {
     // -- Subscriptions --
 
     /// Create a subscription for the given topic.
-    pub fn create_subscription<M: RosMessage>(
+    pub fn create_subscription<M: MessageForRmw>(
         &mut self,
         topic_name: &str,
     ) -> Result<Subscription<M>, NodeError> {
@@ -255,7 +262,7 @@ impl<'a> NodeHandle<'a> {
     }
 
     /// Create a subscription with custom buffer size.
-    pub fn create_subscription_sized<M: RosMessage, const RX_BUF: usize>(
+    pub fn create_subscription_sized<M: MessageForRmw, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
     ) -> Result<Subscription<M, RX_BUF>, NodeError> {
@@ -263,11 +270,13 @@ impl<'a> NodeHandle<'a> {
     }
 
     /// Create a subscription with custom QoS and buffer size.
-    pub fn create_subscription_with_qos<M: RosMessage, const RX_BUF: usize>(
+    pub fn create_subscription_with_qos<M: MessageForRmw, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
         qos: QosSettings,
     ) -> Result<Subscription<M, RX_BUF>, NodeError> {
+        // Phase 212.K.7.6.b — see `create_publisher_with_qos`.
+        register_type::<M>()?;
         qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
             .map_err(NodeError::Transport)?;
         let topic = Self::topic_info(
@@ -275,8 +284,8 @@ impl<'a> NodeHandle<'a> {
             &self.name,
             &self.namespace,
             topic_name,
-            M::TYPE_NAME,
-            M::TYPE_HASH,
+            <M as RosMessage>::TYPE_NAME,
+            <M as RosMessage>::TYPE_HASH,
         );
         let handle = self
             .session
@@ -334,7 +343,11 @@ impl<'a> NodeHandle<'a> {
     pub fn create_service<Svc: RosService>(
         &mut self,
         service_name: &str,
-    ) -> Result<EmbeddedServiceServer<Svc>, NodeError> {
+    ) -> Result<EmbeddedServiceServer<Svc>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
         self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QosSettings::services_default())
     }
 
@@ -344,7 +357,11 @@ impl<'a> NodeHandle<'a> {
         &mut self,
         service_name: &str,
         qos: QosSettings,
-    ) -> Result<EmbeddedServiceServer<Svc>, NodeError> {
+    ) -> Result<EmbeddedServiceServer<Svc>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
         self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, qos)
     }
 
@@ -353,7 +370,15 @@ impl<'a> NodeHandle<'a> {
         &mut self,
         service_name: &str,
         qos: QosSettings,
-    ) -> Result<EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
+    ) -> Result<EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
+        // Phase 212.K.7.6.b — register both halves of the service round-trip
+        // under cyclonedds. No-op for other RMWs.
+        register_type::<Svc::Request>()?;
+        register_type::<Svc::Reply>()?;
         // Phase 193.5 — validate the service profile against the backend's
         // supported policies (mirrors pub/sub); no silent downgrade. RELIABLE is
         // effectively required for request/reply, so a backend that only honours
@@ -384,7 +409,11 @@ impl<'a> NodeHandle<'a> {
     pub fn create_client<Svc: RosService>(
         &mut self,
         service_name: &str,
-    ) -> Result<EmbeddedServiceClient<Svc>, NodeError> {
+    ) -> Result<EmbeddedServiceClient<Svc>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
         self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QosSettings::services_default())
     }
 
@@ -393,7 +422,11 @@ impl<'a> NodeHandle<'a> {
         &mut self,
         service_name: &str,
         qos: QosSettings,
-    ) -> Result<EmbeddedServiceClient<Svc>, NodeError> {
+    ) -> Result<EmbeddedServiceClient<Svc>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
         self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, qos)
     }
 
@@ -402,7 +435,14 @@ impl<'a> NodeHandle<'a> {
         &mut self,
         service_name: &str,
         qos: QosSettings,
-    ) -> Result<EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
+    ) -> Result<EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
+        // Phase 212.K.7.6.b — see `create_service_sized`.
+        register_type::<Svc::Request>()?;
+        register_type::<Svc::Reply>()?;
         // Phase 193.5 — validate against the backend's supported policies (no
         // silent downgrade); request/reply effectively requires RELIABLE.
         qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
@@ -743,7 +783,12 @@ impl<'a> NodeHandle<'a> {
     pub fn create_action_server<A: RosAction>(
         &mut self,
         action_name: &str,
-    ) -> Result<ActionServer<A>, NodeError> {
+    ) -> Result<ActionServer<A>, NodeError>
+    where
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+    {
         self.create_action_server_sized::<A, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(action_name)
     }
 
@@ -757,7 +802,17 @@ impl<'a> NodeHandle<'a> {
     >(
         &mut self,
         action_name: &str,
-    ) -> Result<ActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>, NodeError> {
+    ) -> Result<ActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>, NodeError>
+    where
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+    {
+        // Phase 212.K.7.6.b — register all three legs of the action
+        // round-trip under cyclonedds. No-op for other RMWs.
+        register_type::<A::Goal>()?;
+        register_type::<A::Result>()?;
+        register_type::<A::Feedback>()?;
         let action_info =
             Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
@@ -863,7 +918,12 @@ impl<'a> NodeHandle<'a> {
     pub fn create_action_client<A: RosAction>(
         &mut self,
         action_name: &str,
-    ) -> Result<ActionClient<A>, NodeError> {
+    ) -> Result<ActionClient<A>, NodeError>
+    where
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+    {
         self.create_action_client_sized::<A, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(action_name)
     }
 
@@ -876,7 +936,16 @@ impl<'a> NodeHandle<'a> {
     >(
         &mut self,
         action_name: &str,
-    ) -> Result<ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError> {
+    ) -> Result<ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError>
+    where
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+    {
+        // Phase 212.K.7.6.b — see `create_action_server_sized`.
+        register_type::<A::Goal>()?;
+        register_type::<A::Result>()?;
+        register_type::<A::Feedback>()?;
         let action_info =
             Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
@@ -980,7 +1049,7 @@ impl<'n, 'a, 't> PublisherBuilder<'n, 'a, 't> {
     }
 
     /// Typed publisher for a ROS message `M` (mirrors rclcpp/rclrs).
-    pub fn typed<M: RosMessage>(self) -> TypedPublisherBuilder<'n, 'a, 't, M> {
+    pub fn typed<M: MessageForRmw>(self) -> TypedPublisherBuilder<'n, 'a, 't, M> {
         TypedPublisherBuilder {
             node: self.node,
             topic: self.topic,
@@ -1014,7 +1083,7 @@ pub struct TypedPublisherBuilder<'n, 'a, 't, M> {
     _phantom: PhantomData<M>,
 }
 
-impl<'n, 'a, 't, M: RosMessage> TypedPublisherBuilder<'n, 'a, 't, M> {
+impl<'n, 'a, 't, M: MessageForRmw> TypedPublisherBuilder<'n, 'a, 't, M> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
@@ -1095,7 +1164,7 @@ impl<'e> NodeCtx<'e> {
     }
 
     /// Convenient typed publisher (the `fork` tier — rclcpp/rclrs shape).
-    pub fn create_publisher<M: RosMessage>(
+    pub fn create_publisher<M: MessageForRmw>(
         &mut self,
         topic: &str,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
@@ -1127,7 +1196,7 @@ impl<'e> NodeCtx<'e> {
         callback: F,
     ) -> Result<super::types::HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: MessageForRmw + 'static,
         F: FnMut(&M) + 'static,
     {
         self.executor
@@ -1235,7 +1304,7 @@ impl<'c, 'e, 't> CtxPublisherBuilder<'c, 'e, 't> {
     }
 
     /// Typed publisher for a ROS message `M`.
-    pub fn typed<M: RosMessage>(self) -> CtxTypedPublisherBuilder<'c, 'e, 't, M> {
+    pub fn typed<M: MessageForRmw>(self) -> CtxTypedPublisherBuilder<'c, 'e, 't, M> {
         CtxTypedPublisherBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -1268,7 +1337,7 @@ pub struct CtxTypedPublisherBuilder<'c, 'e, 't, M> {
     _phantom: PhantomData<M>,
 }
 
-impl<'c, 'e, 't, M: RosMessage> CtxTypedPublisherBuilder<'c, 'e, 't, M> {
+impl<'c, 'e, 't, M: MessageForRmw> CtxTypedPublisherBuilder<'c, 'e, 't, M> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
@@ -1321,7 +1390,7 @@ impl<'c, 'e, 't> SubscriptionBuilder<'c, 'e, 't> {
     }
 
     /// Typed subscription for a ROS message `M`.
-    pub fn typed<M: RosMessage + 'static>(self) -> TypedSubscriptionBuilder<'c, 'e, 't, M> {
+    pub fn typed<M: MessageForRmw + 'static>(self) -> TypedSubscriptionBuilder<'c, 'e, 't, M> {
         TypedSubscriptionBuilder {
             ctx: self.ctx,
             topic: self.topic,
@@ -1364,7 +1433,7 @@ pub struct TypedSubscriptionBuilder<
     _phantom: PhantomData<M>,
 }
 
-impl<'c, 'e, 't, M: RosMessage + 'static, const RX: usize>
+impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
     TypedSubscriptionBuilder<'c, 'e, 't, M, RX>
 {
     pub fn qos(mut self, qos: QosSettings) -> Self {
@@ -1452,7 +1521,9 @@ pub struct TypedSubInfoBuilder<
     _phantom: PhantomData<M>,
 }
 
-impl<'c, 'e, 't, M: RosMessage + 'static, const RX: usize> TypedSubInfoBuilder<'c, 'e, 't, M, RX> {
+impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
+    TypedSubInfoBuilder<'c, 'e, 't, M, RX>
+{
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
@@ -1511,7 +1582,7 @@ pub struct TypedSubSafetyBuilder<
 }
 
 #[cfg(feature = "safety-e2e")]
-impl<'c, 'e, 't, M: RosMessage + 'static, const RX: usize>
+impl<'c, 'e, 't, M: MessageForRmw + 'static, const RX: usize>
     TypedSubSafetyBuilder<'c, 'e, 't, M, RX>
 {
     pub fn qos(mut self, qos: QosSettings) -> Self {
@@ -1712,6 +1783,20 @@ mod builder_tests {
         fn deserialize(_r: &mut CdrReader) -> Result<Self, DeserError> {
             Ok(Self)
         }
+    }
+    // Phase 212.K.7.6.b — minimal single-field `Message` impl so
+    // `TypedPublisherBuilder::build` resolves under the cyclonedds-tightened
+    // bound AND the runtime register call succeeds. `DescriptorBuilder`
+    // rejects empty `FIELDS` with `BuildError::EmptySchema`; pretend
+    // there's one byte so the bridge stub returns a non-NULL pointer.
+    #[cfg(feature = "rmw-cyclonedds")]
+    impl nros_serdes::schema::Message for TestMsg {
+        const TYPE_NAME: &'static str = "test/msg/TestMsg";
+        const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+            name: "data",
+            ty: nros_serdes::schema::FieldType::Uint8,
+            offset: 0,
+        }];
     }
 
     fn s(v: &str) -> heapless::String<64> {

@@ -190,8 +190,8 @@ unsafe extern "C" {
 // out under `#[cfg(test)]` so the registry + builder logic compiles
 // and exercises end-to-end without dragging in `libddsc`.
 
-#[cfg(test)]
-pub(crate) mod test_stub {
+#[cfg(any(test, feature = "bridge-stub"))]
+pub mod test_stub {
     use core::{
         ffi::{c_char, c_int, c_void},
         sync::atomic::{AtomicI32, AtomicUsize, Ordering},
@@ -201,11 +201,11 @@ pub(crate) mod test_stub {
 
     /// Set to a non-zero `BridgeError` code to force the stub to
     /// fail the next call (used by `BuildError` mapping tests).
-    pub(crate) static FORCED_ERROR: AtomicI32 = AtomicI32::new(0);
+    pub static FORCED_ERROR: AtomicI32 = AtomicI32::new(0);
 
     /// Increments each time the stub fakes a successful build. Let
     /// tests assert the registry's cache-hit behaviour.
-    pub(crate) static BUILD_COUNTER: AtomicUsize = AtomicUsize::new(0);
+    pub static BUILD_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     /// Pretend-descriptor pool. We hand out unique non-NULL pointers
     /// (the index of `STUB_DESCRIPTORS`) so the registry can store +
