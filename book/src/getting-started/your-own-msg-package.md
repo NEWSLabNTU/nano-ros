@@ -198,6 +198,58 @@ Find-stub forwarding `find_package(my_msgs)` → `my_msgs::my_msgs`.
 Shadowing — a workspace `my_msgs` and an AMENT `my_msgs` resolve to the
 workspace one, with a `message(STATUS ...)` line noting the shadow.
 
+## Shadowing contract
+
+When two layers carry the same package name (e.g. a workspace
+`std_msgs` and `/opt/ros/<distro>/share/std_msgs/`), the **higher
+layer wins** — silently and deterministically. Concretely:
+
+1. **`NROS_INTERFACE_SEARCH_PATH` > `AMENT_PREFIX_PATH` > bundled.**
+   The smart Find-stub
+   (`cmake/compat/stubs/_NrosFindRosMsgPackage.cmake`) walks the
+   three layers in order; the first hit wins. Lower layers are
+   skipped entirely.
+
+2. **The configure pass emits a `message(STATUS ...)` line** noting
+   the resolved path, e.g.
+
+   ```
+   -- nros: find_package(std_msgs) -> /path/to/workspace/src/std_msgs
+   ```
+
+   Grep your configure log for `nros: find_package(<pkg>)` to confirm
+   which layer supplied each pkg.
+
+3. **Intra-workspace shadowing** — when two roots under
+   `NROS_INTERFACE_SEARCH_PATH` both ship the same pkg, the
+   `nros_workspace_interfaces()` bulk orchestrator keeps the
+   earlier-listed one and warns about the shadowed copy.
+
+4. **No partial overrides.** Shadowing is whole-package: a workspace
+   pkg replaces ALL of an AMENT pkg's interfaces, not a subset. If
+   you only want to add `MyExtraMsg.msg` to `std_msgs`, ship a
+   separate pkg (e.g. `my_std_extra_msgs`) — don't shadow.
+
+### Compile-time fail-safe
+
+Shadowing is observed at compile time: if your workspace `std_msgs`
+declares a `Marker.msg` and your consumer includes
+`"std_msgs/msg/marker.hpp"`, the build only succeeds when the
+workspace copy is the one linked. AMENT's `std_msgs` ships no
+`Marker.msg`, so a fall-through resolves to a missing header. The
+build outcome is the strongest evidence — `nm` on the linked binary
+is the symbol-level corroborator.
+
+### Reference fixture for shadowing
+
+The canonical smoke proof for the Layer 1 > Layer 2 case ships at
+[`examples/templates/workspace-shadowing/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/workspace-shadowing) —
+a workspace `std_msgs` carrying a `Marker.msg` shadows the
+AMENT-installed `std_msgs`. The fixture's `README.md` walks through
+the `cmake` + `nm` verification. A regression test
+(`packages/testing/nros-tests/tests/phase210_f4_shadowing.rs`)
+re-runs the same proof in CI when AMENT is sourced.
+
 ## Reference fixture
 
 [`examples/templates/local-msg-package/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/local-msg-package)
