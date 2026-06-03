@@ -5,6 +5,9 @@ use core::marker::PhantomData;
 use nros_core::RosAction;
 use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
 
+#[allow(unused_imports)]
+use crate::cyclonedds_register::{MessageForRmw, register_type};
+
 use super::{
     action_core::{ActionClientCore, ActionServerCore, RawActiveGoal},
     arena::{
@@ -95,8 +98,14 @@ impl Executor {
     ) -> Result<ActionServerHandle<A>, NodeError>
     where
         A: RosAction + 'static,
-        A::Goal: Clone,
-        A::Result: Clone + Default,
+        A::Goal: Clone + MessageForRmw,
+        A::Result: Clone + Default + MessageForRmw,
+        A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
         GoalF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse + 'static,
         CancelF:
             FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse + 'static,
@@ -125,12 +134,32 @@ impl Executor {
     ) -> Result<ActionServerHandle<A>, NodeError>
     where
         A: RosAction + 'static,
-        A::Goal: Clone,
-        A::Result: Clone + Default,
+        A::Goal: Clone + MessageForRmw,
+        A::Result: Clone + Default + MessageForRmw,
+        A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
         GoalF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse + 'static,
         CancelF:
             FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse + 'static,
     {
+        // Phase 212.K.7.6.b + K.7.7.c — under `rmw-cyclonedds`, register
+        // the user-facing message types AND the five action-protocol
+        // envelope types with the cyclonedds runtime registry before
+        // creating the underlying service / topic entities. No-op for
+        // other RMWs. See `Node::create_action_server_sized` for the
+        // detailed rationale.
+        register_type::<A::Goal>()?;
+        register_type::<A::Result>()?;
+        register_type::<A::Feedback>()?;
+        register_type::<A::SendGoalRequest>()?;
+        register_type::<A::SendGoalResponse>()?;
+        register_type::<A::GetResultRequest>()?;
+        register_type::<A::GetResultResponse>()?;
+        register_type::<A::FeedbackMessage>()?;
         type Entry<
             A,
             GoalF,

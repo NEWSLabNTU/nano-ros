@@ -1301,6 +1301,14 @@ impl RosAction for TestAction {
     type Goal = TestGoal;
     type Result = TestResult;
     type Feedback = TestFeedback;
+    // For tests the envelope types reuse the inner message types: the executor
+    // tests only exercise the spin-arena registration path, not on-wire CDR
+    // round-trips of the action service shapes.
+    type SendGoalRequest = TestGoal;
+    type SendGoalResponse = TestResult;
+    type GetResultRequest = TestGoal;
+    type GetResultResponse = TestResult;
+    type FeedbackMessage = TestFeedback;
     const ACTION_NAME: &'static str = "test/action/dds_/TestAction_";
     const ACTION_HASH: &'static str = "test_hash";
 }

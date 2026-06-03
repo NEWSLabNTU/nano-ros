@@ -38,10 +38,18 @@ use nros_serdes::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Seria
 /// Trait for ROS 2 action types
 ///
 /// This trait defines the associated types and metadata for a ROS 2 action.
-/// Actions consist of three message types:
+/// Actions consist of three user-facing message types plus five action-protocol
+/// envelope types used on the wire (Phase 212.K.7.1.d/b):
+///
+/// User-facing:
 /// - `Goal`: Sent by client to initiate the action
 /// - `Result`: Returned by server when action completes
 /// - `Feedback`: Sent by server during execution to report progress
+///
+/// Wire envelopes (auto-emitted by `nros generate rust`):
+/// - `SendGoalRequest` / `SendGoalResponse`: `<Action>_SendGoal` service shape
+/// - `GetResultRequest` / `GetResultResponse`: `<Action>_GetResult` service shape
+/// - `FeedbackMessage`: `<Action>_FeedbackMessage` topic shape
 pub trait RosAction: Sized {
     /// Goal message sent by client to initiate the action
     type Goal: RosMessage;
@@ -51,6 +59,21 @@ pub trait RosAction: Sized {
 
     /// Feedback message sent by server during execution
     type Feedback: RosMessage;
+
+    /// `<Action>_SendGoal_Request` service envelope (wire-level send-goal request)
+    type SendGoalRequest: RosMessage;
+
+    /// `<Action>_SendGoal_Response` service envelope (wire-level send-goal reply)
+    type SendGoalResponse: RosMessage;
+
+    /// `<Action>_GetResult_Request` service envelope (wire-level get-result request)
+    type GetResultRequest: RosMessage;
+
+    /// `<Action>_GetResult_Response` service envelope (wire-level get-result reply)
+    type GetResultResponse: RosMessage;
+
+    /// `<Action>_FeedbackMessage` topic envelope (wire-level feedback message)
+    type FeedbackMessage: RosMessage;
 
     /// Action type name (e.g., "example_interfaces::action::dds_::Fibonacci_")
     const ACTION_NAME: &'static str;

@@ -190,6 +190,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "builtin_interfaces"
+version = "1.2.2"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -213,7 +222,7 @@ dependencies = [
 [[package]]
 name = "cargo-nano-ros"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#440c2f49e8f8a8dcfa7ded2a72ee6e3d46f32363"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#1c92310f89c8140dd57464c007ad7260767470d1"
 dependencies = [
  "cargo_metadata",
  "clap",
@@ -480,9 +489,11 @@ dependencies = [
 name = "example_interfaces"
 version = "0.9.3"
 dependencies = [
+ "builtin_interfaces",
  "heapless",
  "nros-core",
  "nros-serdes",
+ "unique_identifier_msgs",
 ]
 
 [[package]]
@@ -907,7 +918,7 @@ dependencies = [
 [[package]]
 name = "nros-build"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#440c2f49e8f8a8dcfa7ded2a72ee6e3d46f32363"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#1c92310f89c8140dd57464c007ad7260767470d1"
 dependencies = [
  "eyre",
  "nros-cli-core",
@@ -924,7 +935,7 @@ version = "0.1.0"
 [[package]]
 name = "nros-cli-core"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#440c2f49e8f8a8dcfa7ded2a72ee6e3d46f32363"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#1c92310f89c8140dd57464c007ad7260767470d1"
 dependencies = [
  "cargo-nano-ros",
  "cargo_metadata",
@@ -974,7 +985,7 @@ dependencies = [
 [[package]]
 name = "nros-msg-to-idl"
 version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#440c2f49e8f8a8dcfa7ded2a72ee6e3d46f32363"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#1c92310f89c8140dd57464c007ad7260767470d1"
 
 [[package]]
 name = "nros-node"
@@ -1274,7 +1285,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#440c2f49e8f8a8dcfa7ded2a72ee6e3d46f32363"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#1c92310f89c8140dd57464c007ad7260767470d1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1285,7 +1296,7 @@ dependencies = [
 [[package]]
 name = "rosidl-bindgen"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#440c2f49e8f8a8dcfa7ded2a72ee6e3d46f32363"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#1c92310f89c8140dd57464c007ad7260767470d1"
 dependencies = [
  "askama",
  "clap",
@@ -1299,7 +1310,7 @@ dependencies = [
 [[package]]
 name = "rosidl-codegen"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#440c2f49e8f8a8dcfa7ded2a72ee6e3d46f32363"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#1c92310f89c8140dd57464c007ad7260767470d1"
 dependencies = [
  "askama",
  "rosidl-parser",
@@ -1310,7 +1321,7 @@ dependencies = [
 [[package]]
 name = "rosidl-parser"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#440c2f49e8f8a8dcfa7ded2a72ee6e3d46f32363"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#1c92310f89c8140dd57464c007ad7260767470d1"
 dependencies = [
  "chumsky",
  "logos",
@@ -1671,6 +1682,15 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "unique_identifier_msgs"
+version = "2.2.1"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
 
 [[package]]
 name = "utf8parse"
@@ -2058,11 +2078,3 @@ dependencies = [
 [[patch.unused]]
 name = "action_msgs"
 version = "1.2.2"
-
-[[patch.unused]]
-name = "builtin_interfaces"
-version = "1.2.2"
-
-[[patch.unused]]
-name = "unique_identifier_msgs"
-version = "2.2.1"

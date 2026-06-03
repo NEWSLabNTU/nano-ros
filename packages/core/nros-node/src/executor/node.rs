@@ -788,6 +788,11 @@ impl<'a> NodeHandle<'a> {
         A::Goal: MessageForRmw,
         A::Result: MessageForRmw,
         A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
     {
         self.create_action_server_sized::<A, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(action_name)
     }
@@ -807,12 +812,27 @@ impl<'a> NodeHandle<'a> {
         A::Goal: MessageForRmw,
         A::Result: MessageForRmw,
         A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
     {
-        // Phase 212.K.7.6.b — register all three legs of the action
-        // round-trip under cyclonedds. No-op for other RMWs.
+        // Phase 212.K.7.6.b + K.7.7.c — register the three user-facing
+        // message types AND the five action-protocol envelope types under
+        // cyclonedds. No-op for other RMWs. The envelopes are needed
+        // because the action service shapes (`*_SendGoal_Request`,
+        // `*_GetResult_Response`, …) are the actual on-wire CDR types,
+        // and the C++ Cyclone bridge auto-prepends a cdds_request_header_t
+        // for any TYPE_NAME ending `_Request`/`_Response`/`_Reply`.
         register_type::<A::Goal>()?;
         register_type::<A::Result>()?;
         register_type::<A::Feedback>()?;
+        register_type::<A::SendGoalRequest>()?;
+        register_type::<A::SendGoalResponse>()?;
+        register_type::<A::GetResultRequest>()?;
+        register_type::<A::GetResultResponse>()?;
+        register_type::<A::FeedbackMessage>()?;
         let action_info =
             Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 
@@ -923,6 +943,11 @@ impl<'a> NodeHandle<'a> {
         A::Goal: MessageForRmw,
         A::Result: MessageForRmw,
         A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
     {
         self.create_action_client_sized::<A, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(action_name)
     }
@@ -941,11 +966,21 @@ impl<'a> NodeHandle<'a> {
         A::Goal: MessageForRmw,
         A::Result: MessageForRmw,
         A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
     {
-        // Phase 212.K.7.6.b — see `create_action_server_sized`.
+        // Phase 212.K.7.6.b + K.7.7.c — see `create_action_server_sized`.
         register_type::<A::Goal>()?;
         register_type::<A::Result>()?;
         register_type::<A::Feedback>()?;
+        register_type::<A::SendGoalRequest>()?;
+        register_type::<A::SendGoalResponse>()?;
+        register_type::<A::GetResultRequest>()?;
+        register_type::<A::GetResultResponse>()?;
+        register_type::<A::FeedbackMessage>()?;
         let action_info =
             Self::action_info(self.domain_id, action_name, A::ACTION_NAME, A::ACTION_HASH);
 

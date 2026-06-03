@@ -1004,6 +1004,59 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       (4 `register_service*` methods), `packages/core/nros-node/src/
       executor/node.rs` (2 ctx-shape callers).
 
+- [x] **K.7.7.c** — **Action envelope wire-up in `nros-node`.** Lands
+      step (b) of the K.7.7.b "Action" follow-up: register the action
+      service-shape envelopes from the action plumbing layer itself.
+      Picks up nros-cli `1c92310` (K.7.1.d.b) which now emits the five
+      envelope types as associated types on `impl RosAction for <A>`:
+      `SendGoal_{Request,Response}`, `GetResult_{Request,Response}`,
+      `FeedbackMessage`.
+
+      Changes:
+      * `RosAction` trait (`packages/core/nros-core/src/action.rs`) —
+        extend with five new associated types (`SendGoalRequest`,
+        `SendGoalResponse`, `GetResultRequest`, `GetResultResponse`,
+        `FeedbackMessage`), each bound `: RosMessage`. The codegen
+        `impl RosAction for <Action>` emitted by `nros ws sync` already
+        wires these as of K.7.1.d.b.
+      * `Node::create_action_{server,client}_sized`
+        (`packages/core/nros-node/src/executor/node.rs`) — call
+        `register_type::<A::{SendGoalRequest, SendGoalResponse,
+        GetResultRequest, GetResultResponse, FeedbackMessage}>()`
+        alongside the existing three `<A::{Goal, Result, Feedback}>`
+        registrations. `where`-clauses tightened with
+        `MessageForRmw` bounds on the five new associated types.
+      * `Executor::register_action_server_sized` + wrapper
+        (`packages/core/nros-node/src/executor/action.rs`) — same
+        envelope registrations on the spin-arena typed path, matching
+        the K.7.7.b service-side coverage of both `Node::create_*`
+        and `Executor::register_*` paths.
+      * Test fixtures in `executor/tests.rs` + `nros/src/node.rs` —
+        provide the five new associated types on the in-tree
+        `RosAction` impls used for unit tests.
+
+      **E2E status — still blocked:** the action plumbing now feeds
+      every envelope through the cyclonedds registry, but the
+      `ActionCreationFailed` panic persists. New failure point is the
+      hard-coded `cancel_goal_server` create with type_name
+      `action_msgs::srv::dds_::CancelGoal_`: `CancelGoalResponse`
+      contains `goals_canceling: sequence<GoalInfo>` which the C++
+      dynamic descriptor builder rejects with
+      `NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE` (sequence-of-nested
+      is unsupported; only sequence-of-primitive works). The CMake/
+      Zephyr action e2e bypasses this by static-init registering
+      `idlc`-generated action_msgs descriptors via
+      `NrosZephyrCycloneddsActionTypes.cmake`. Unblocking the
+      pure-cargo native action e2e requires either (a) extending the
+      dynamic builder C++ side (`bridge/dynamic_type_builder.cpp`) to
+      emit JEQ chains for sequence-of-nested, or (b) baking the
+      action_msgs IDL into `nros-rmw-cyclonedds-sys`'s vendored
+      build like the existing `rmw_dds_common_graph` descriptor.
+
+      Files: `packages/core/nros-core/src/action.rs`,
+      `packages/core/nros-node/src/executor/{node,action,tests}.rs`,
+      `packages/core/nros/src/node.rs`.
+
 - [x] **K.7.8** — **`nros-rmw-cyclonedds` registry hardening tests.**
       Landed as three new test entry points in
       `packages/dds/nros-rmw-cyclonedds/tests/`, all exercising the

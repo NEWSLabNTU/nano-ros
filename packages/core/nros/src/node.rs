@@ -1287,6 +1287,11 @@ mod tests {
         type Goal = TestMsg;
         type Result = TestMsg;
         type Feedback = TestMsg;
+        type SendGoalRequest = TestMsg;
+        type SendGoalResponse = TestMsg;
+        type GetResultRequest = TestMsg;
+        type GetResultResponse = TestMsg;
+        type FeedbackMessage = TestMsg;
 
         const ACTION_NAME: &'static str = "test_msgs::action::dds_::Test_";
         const ACTION_HASH: &'static str = "test_action_hash";
