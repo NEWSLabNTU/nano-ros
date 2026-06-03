@@ -19,7 +19,7 @@ set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
 add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
 include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
 
-nano_ros_application(
+nano_ros_entry(
     NAME c_logging
     SOURCES src/main.c
     DEPLOY native)

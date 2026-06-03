@@ -18,7 +18,7 @@ include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
 # Generate C msg bindings for THIS pkg's own msg/ dir.
 nros_generate_interfaces(${PROJECT_NAME} SKIP_INSTALL)
 
-nano_ros_application(
+nano_ros_entry(
     NAME test_messages
     SOURCES src/main.c
     DEPLOY native)
