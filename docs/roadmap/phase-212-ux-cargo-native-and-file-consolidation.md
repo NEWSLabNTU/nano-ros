@@ -2820,22 +2820,67 @@ asymmetry rationale.
 
 ## Test infrastructure
 
-- [ ] Fixture directory restructure under
-      `packages/testing/nros-tests/fixtures/`:
-  - `single_pkg_rust/` (per RMW × {zenoh, xrce, cyclonedds})
-  - `single_pkg_cpp/` (per RMW)
-  - `multi_pkg_workspace_rust/` (canonical 2-component bringup)
-  - `multi_pkg_workspace_cpp/`
-  - `multi_pkg_workspace_mixed/`
-  - `codegen_system_{zephyr,nuttx,freertos,threadx,esp_idf,platformio,px4}/`
-- [ ] Every fixture has a corresponding integration test under
-      `packages/testing/nros-tests/tests/phase212_*.rs`.
-- [ ] CI matrix gates: SDK-available rows run, unavailable rows skip
-      cleanly (mirrors existing `require_*` helpers).
-- [ ] `tokei` budget tests for every glue piece in the §Acceptance
-      LoC table.
-- [ ] `nros migrate workspace` golden-fixture tests for every pre-212
-      fixture shape.
+- [x] Fixture directory restructure under
+      `packages/testing/nros-tests/fixtures/`. **Shape supersedes
+      original spec 2026-06-03** (Z.7 audit):
+      - `single_pkg_*/` role: covered by the
+        `examples/native/{rust,cpp}/*/` sweep (M.1 + M.2 + M.13) +
+        the dedicated single-Node Entry pkg fixture at
+        `examples/native/rust/entry-poc/` — no separate
+        `fixtures/single_pkg_*/` dir needed since the canonical
+        single-pkg shape IS the example surface.
+      - `multi_pkg_workspace_rust/` role: collapsed into the
+        per-RTOS fixtures
+        `multi_pkg_workspace_{freertos,nuttx,threadx,zephyr,esp_idf,
+        platformio,px4}/` (each carries a Rust multi-pkg bringup;
+        freertos is the canonical reference).
+      - `multi_pkg_workspace_cpp/` + `multi_pkg_workspace_mixed/` —
+        ship verbatim.
+      - `codegen_system_<rtos>/` role: superseded by the per-RTOS
+        `multi_pkg_workspace_<rtos>/` fixtures (each exercises the
+        codegen-system bake end-to-end via H.1–H.7).
+      Sibling fixtures landed beyond original spec: `one_dep_component_pkg/`
+      (M-F.13), `diagnostic_{rustc,cmake}_fixture/` (W.8 diagnostic
+      verbatim), `n9_workspace/` (N.9 macro forms),
+      `orchestration_{e2e,composable,conditionals,includes,
+      set_remap_env}/` (Phase 172 + 211 orchestration). Single
+      `fixtures/` layout is canonical; no further restructure planned.
+- [x] Every fixture has a corresponding integration test under
+      `packages/testing/nros-tests/tests/phase212_*.rs`. **Met** —
+      33 `phase212_*.rs` tests at HEAD cover the fixture matrix:
+      H.1-H.8 per-RTOS bringup, D workspace-metadata, K.4
+      cyclonedds-descriptors, L.5/L.6/L.7/L.9 L-suite, M.12
+      canonical-shape, M.5.a.2 component-runtime, M.5.a.4 dispatch,
+      M.7 esp32, N.9 main macro, entry-poc, macro_one_dep +
+      diagnostic_verbatim sibling regressions. Plus the
+      orchestration_*.rs siblings cover Phase 172/211 fixtures.
+- [x] CI matrix gates: SDK-available rows run, unavailable rows skip
+      cleanly (mirrors existing `require_*` helpers). **Met** — the
+      `require_nros_cli` / `require_px4` / `require_zenohd` helpers
+      in `packages/testing/nros-tests/src/lib.rs` gate every H.*
+      test; `nros_tests::skip!` panics with `[SKIPPED] <reason>`
+      per CLAUDE.md policy. Verified 2026-06-03 in Z.4/Z.5/Z.7
+      cycle: H.1 + H.5 + L.6 + L.7 + D mixed corrosion transition
+      SKIP → PASS as SDKs land; SKIP path stays clean (no false
+      positives).
+- [x] `tokei` budget tests for every glue piece in the §Acceptance
+      LoC table. **Met** — `phase212_h8_loc_budgets.rs` covers
+      both LoC budgets in §Acceptance (cmake
+      `nano_ros_workspace_metadata.cmake` ≤150 LoC; each of 6 RTOS
+      adapter shims ≤200 LoC). Uses the `tokei` Rust dev-dep
+      in-process (no CLI install). 2/2 pass: cmake 101/150; all
+      six shims ≤137/200 (max nuttx 137).
+- [x] `nros migrate workspace` golden-fixture tests for every pre-212
+      fixture shape. **Met** — `phase212_i_migrate_workspace.rs`
+      ships 3 golden-fixture tests
+      (`migrate_dry_run_writes_no_files` + `migrate_workspace_e2e`
+      + `migrate_idempotent_without_force_is_noop`) against
+      `stage_pre212_fixture()` (Phase 172 WP-A `nros.toml` shape —
+      canonical pre-212 form). Companion nros-cli unit tests
+      (`migrate_orchestration_e2e_fixture_round_trip` +
+      `migrate_orchestration_composable_fixture_round_trip`) cover
+      orchestration-fixture variants (Phase 211 shape). Together
+      they exercise every pre-212 shape transitioned into Phase 212.
 
 ## Execution order
 
