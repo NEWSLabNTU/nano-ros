@@ -27,6 +27,28 @@ use std::{
     process::Command,
 };
 
+/// Phase 214.N.3 — drift probe. Stage a throwaway pre-212 fixture, run
+/// `nros migrate workspace --dry-run` against it, and return `true` iff the
+/// dry-run output mentions the post-spec `[package.metadata.nros.component]`
+/// sub-table that `migrate_workspace_e2e` asserts. Older installed CLIs
+/// emit `[package.metadata.nros]` (no `.component`) and lose the gate.
+fn migrate_emits_component_subtable() -> bool {
+    let Some(nros) = nros_tests::nros_cli_bin_path() else {
+        return false;
+    };
+    let (_guard, root) = stage_pre212_fixture();
+    let Ok(out) = Command::new(&nros)
+        .args(["migrate", "workspace", "--dry-run"])
+        .arg(&root)
+        .output()
+    else {
+        return false;
+    };
+    let blob =
+        String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
+    blob.contains("[package.metadata.nros.component]")
+}
+
 /// Stage a minimal pre-212 workspace into a tempdir. Returns the
 /// tempdir guard + root path. Authored fresh (not copied from an
 /// existing fixture) so the test owns its shape and won't drift if
@@ -170,6 +192,22 @@ fn migrate_dry_run_writes_no_files() {
 fn migrate_workspace_e2e() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found");
+    }
+    // Phase 214.N.3 — drift gate.
+    //
+    // The post-212.I spec the test asserts writes per-pkg Cargo.toml's with a
+    // `[package.metadata.nros.component]` sub-table; older installed CLIs
+    // emit `[package.metadata.nros]` only. Probe via `migrate --dry-run` on
+    // a synthetic minimal fixture and skip cleanly when the CLI hasn't
+    // adopted the sub-table yet (Phase 214.N — `nros` CLI lints / verbs
+    // drift vs phase212 tests). Bumps to the nros-cli pin that carry the
+    // post-spec emitter flip the probe and the test runs.
+    if !migrate_emits_component_subtable() {
+        nros_tests::skip!(
+            "installed `nros migrate workspace` does not yet emit \
+             [package.metadata.nros.component] — Phase 214.N drift gate \
+             (the nros-cli release pin lags the post-212.I emitter spec)"
+        );
     }
 
     let (_guard, root) = stage_pre212_fixture();

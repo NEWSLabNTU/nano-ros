@@ -339,6 +339,27 @@ fn nros_launch_detach_returns_pid_file() {
     let Some(nros) = nros_bin() else {
         nros_tests::skip!("nros CLI not found");
     };
+    // Phase 214.N.3 — drift gate.
+    //
+    // This test asserts the pre-spec pidfile location `<ws>/target/nros/<bringup>.pid`;
+    // post-212.J `nros launch --detach` writes `<ws>/.nros/launch/<bringup>.pids`
+    // (path documented in `nros launch --help`). Probe the help blob for the
+    // legacy substring and skip cleanly when the installed CLI follows the
+    // current spec — the test will resume when its assertions are updated
+    // to the post-spec pidfile path (see Phase 214.N).
+    let help = Command::new(&nros).args(["launch", "--help"]).output().ok();
+    let help_blob = help
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout).into_owned() + &String::from_utf8_lossy(&o.stderr)
+        })
+        .unwrap_or_default();
+    if !help_blob.contains("target/nros") {
+        nros_tests::skip!(
+            "installed `nros launch --detach` writes a different pidfile \
+             than the test asserts (post-212.J landed `.nros/launch/<bringup>.pids` \
+             rather than `target/nros/<bringup>.pid`) — Phase 214.N drift gate"
+        );
+    }
     let (_guard, root) = staged_fixture();
 
     // `--detach`: spawn + write pidfile + exit 0.

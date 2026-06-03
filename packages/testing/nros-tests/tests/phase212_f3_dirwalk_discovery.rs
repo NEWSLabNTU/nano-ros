@@ -16,7 +16,22 @@
 //! Skips cleanly via `nros_tests::skip!` when the `nros` CLI (installed
 //! at `~/.nros/bin/nros` by `scripts/install-nros.sh`) cannot be resolved.
 
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::Path,
+    process::{Command, Stdio},
+};
+
+/// Probe `play_launch_parser --version` to decide whether `nros plan` can
+/// resolve a `system.launch.xml`. Used by Phase 214.N.3 skip-gates.
+fn play_launch_parser_available() -> bool {
+    Command::new("play_launch_parser")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok()
+}
 
 /// Stage a Path A workspace at `root` with the given top-level Cargo.toml.
 /// The fixture is:
@@ -148,6 +163,16 @@ fn nros_plan_discovers_sibling_bringup_via_dirwalk() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found (run scripts/install-nros.sh)");
     }
+    // Phase 214.N.3 — `nros plan` shells out to `play_launch_parser` to
+    // resolve `system.launch.xml`. When that parser is missing the verb
+    // returns a hard error; gate the dirwalk-discovery assertion on its
+    // availability rather than letting `nros plan` fail for an unrelated
+    // tooling-precondition reason.
+    if !play_launch_parser_available() {
+        nros_tests::skip!(
+            "play_launch_parser not on PATH (pip install play-launch-parser, or build its binary)"
+        );
+    }
     let td = tempfile::tempdir().expect("tempdir");
     stage_fixture(
         td.path(),
@@ -169,6 +194,12 @@ default_system = "demo_bringup"
 fn nros_plan_finds_bringup_when_in_workspace_exclude() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found (run scripts/install-nros.sh)");
+    }
+    // Phase 214.N.3 — same precondition as the sibling test above.
+    if !play_launch_parser_available() {
+        nros_tests::skip!(
+            "play_launch_parser not on PATH (pip install play-launch-parser, or build its binary)"
+        );
     }
     let td = tempfile::tempdir().expect("tempdir");
     stage_fixture(
