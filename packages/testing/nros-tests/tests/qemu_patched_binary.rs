@@ -13,11 +13,25 @@
 //! `qemu-system-arm` keeps the rest of the test suite working and
 //! is covered by the existing `qemu_supports_dgram_unix` gate inside
 //! the dgram-using tests; it is not the focus of this test.
+//!
+//! Phase 214.O.2 — skip-gate is hoisted into `require_patched_qemu()`
+//! so every test body starts with one statement that either returns
+//! the resolved path or panics with `[SKIPPED] …`. The previous
+//! skip-then-assert shape was correct (`nros_tests::skip!` is a
+//! `panic!()`-shaped macro so the subsequent asserts never run on a
+//! missing SDK), but a reader could not tell at a glance whether the
+//! assert was reachable on the skip path. The hoisted gate makes the
+//! intent explicit, matches the Phase 212.H test pattern, and removes
+//! the in-body `if !path.is_absolute() { skip!(…) } if !path.exists()
+//! { skip!(…) }` duplication.
 
 use std::path::PathBuf;
 
-#[test]
-fn test_qemu_system_arm_resolves_to_patched_build() {
+/// Resolve `qemu_system_arm_path()` to an absolute, existing patched
+/// binary, or `nros_tests::skip!` with the canonical "run `just qemu
+/// setup-qemu`" hint. Callers can then proceed unconditionally — every
+/// test body below assumes the returned path is a real file.
+fn require_patched_qemu() -> PathBuf {
     let path: PathBuf = nros_tests::qemu::qemu_system_arm_path().into();
     if !path.is_absolute() {
         nros_tests::skip!(
@@ -32,6 +46,12 @@ fn test_qemu_system_arm_resolves_to_patched_build() {
             path.display()
         );
     }
+    path
+}
+
+#[test]
+fn test_qemu_system_arm_resolves_to_patched_build() {
+    let path = require_patched_qemu();
     // Accept the project-local build, an explicit override, or the
     // `nros setup` store qemu (the same patched `11.0.0-nros*` dist).
     let from_store =
@@ -49,10 +69,7 @@ fn test_qemu_system_arm_resolves_to_patched_build() {
 
 #[test]
 fn test_patched_qemu_supports_dgram_unix() {
-    let path: PathBuf = nros_tests::qemu::qemu_system_arm_path().into();
-    if !path.is_absolute() || !path.exists() {
-        nros_tests::skip!("Patched qemu-system-arm not built — run `just qemu setup-qemu`.");
-    }
+    let path = require_patched_qemu();
     let supports = nros_tests::fixtures::qemu_supports_dgram_unix();
     assert!(
         supports,
@@ -65,10 +82,7 @@ fn test_patched_qemu_supports_dgram_unix() {
 
 #[test]
 fn test_patched_qemu_version_at_least_7_2() {
-    let path: PathBuf = nros_tests::qemu::qemu_system_arm_path().into();
-    if !path.is_absolute() || !path.exists() {
-        nros_tests::skip!("Patched qemu-system-arm not built — run `just qemu setup-qemu`.");
-    }
+    let path = require_patched_qemu();
     let out = nros_tests::qemu::qemu_system_arm_cmd()
         .arg("--version")
         .output()
