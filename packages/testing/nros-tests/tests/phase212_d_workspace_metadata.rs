@@ -150,8 +150,7 @@ fn cmake_workspace_metadata_emits_components_cmake() {
     );
     let body = fs::read_to_string(&metadata).expect("read nros-metadata.json");
     assert!(
-        body.contains("\"name\": \"talker\"")
-            && body.contains("\"class\": \"talker_pkg::Talker\""),
+        body.contains("\"name\": \"talker\"") && body.contains("\"class\": \"talker_pkg::Talker\""),
         "metadata missing talker component entry:\n{body}"
     );
     assert!(

@@ -158,9 +158,7 @@ impl BoardEntry for PosixBoard {
         let exec_cfg = ::nros::ExecutorConfig::from_env();
         let mut crt_real: Option<::nros::node_runtime::ExecutorNodeRuntime> =
             match ::nros::Executor::open(&exec_cfg) {
-                Ok(e) => {
-                    Some(::nros::node_runtime::ExecutorNodeRuntime::from_executor(e))
-                }
+                Ok(e) => Some(::nros::node_runtime::ExecutorNodeRuntime::from_executor(e)),
                 Err(err) => {
                     <Self as BoardPrint>::println(format_args!(
                         "nros: Executor::open failed ({err:?}); proceeding with NullNodeRuntime — \

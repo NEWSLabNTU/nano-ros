@@ -5,12 +5,12 @@ use core::marker::PhantomData;
 use crate::{
     CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus, ParameterType,
     QosSettings, RosAction, RosMessage, RosService, TimerDuration,
-    node_metadata::{
-        CallbackEffectKind, CallbackEffectMetadata, NodeMetadataError, EntityKind,
-        EntityMetadata, EntityMetadataSpec, MetadataRecorder, MetadataString, NodeId,
-        ParameterDefault, SourceLocationMetadata, copy_str, entity_metadata,
-    },
     heapless::Vec,
+    node_metadata::{
+        CallbackEffectKind, CallbackEffectMetadata, EntityKind, EntityMetadata, EntityMetadataSpec,
+        MetadataRecorder, MetadataString, NodeId, NodeMetadataError, ParameterDefault,
+        SourceLocationMetadata, copy_str, entity_metadata,
+    },
 };
 
 // Phase 212.N.7 step-6 closing sweep — `component_register_symbol`
@@ -42,12 +42,8 @@ impl NodeDeclError {
     /// Human-readable static message for diagnostics that cross FFI/plugin boundaries.
     pub const fn message(self) -> &'static str {
         match self {
-            Self::Metadata(NodeMetadataError::Capacity) => {
-                "component metadata capacity exceeded"
-            }
-            Self::Metadata(NodeMetadataError::NameTooLong) => {
-                "component metadata name too long"
-            }
+            Self::Metadata(NodeMetadataError::Capacity) => "component metadata capacity exceeded",
+            Self::Metadata(NodeMetadataError::NameTooLong) => "component metadata name too long",
             Self::Metadata(NodeMetadataError::UnknownNode) => {
                 "component entity references an unknown node"
             }
@@ -1136,11 +1132,7 @@ impl<'a> TickCtx<'a> {
     /// Send a raw-CDR action-client goal and return the assigned
     /// [`GoalId`] (M-F.4 — tick-only). Result + feedback streams arrive
     /// via callback dispatch; this method only kicks off the request.
-    pub fn send_goal_raw(
-        &mut self,
-        action: EntityId<'_>,
-        goal_cdr: &[u8],
-    ) -> NodeResult<GoalId> {
+    pub fn send_goal_raw(&mut self, action: EntityId<'_>, goal_cdr: &[u8]) -> NodeResult<GoalId> {
         self.clients.send_goal_raw(action.as_str(), goal_cdr)
     }
 
@@ -1227,9 +1219,7 @@ pub fn __private_node_state_into_raw<C: ExecutableNode>(state: C::State) -> *mut
 }
 
 /// Run component registration against an in-memory metadata recorder.
-pub fn record_node_metadata<C: Node>(
-    recorder: &mut dyn NodeRuntime,
-) -> NodeResult<()> {
+pub fn record_node_metadata<C: Node>(recorder: &mut dyn NodeRuntime) -> NodeResult<()> {
     register_node::<C>(recorder)
 }
 
@@ -1374,9 +1364,7 @@ mod tests {
 
         assert_eq!(
             runtime.create_node(NodeId::new("node"), NodeOptions::new("other")),
-            Err(NodeDeclError::Metadata(
-                NodeMetadataError::DuplicateId
-            ))
+            Err(NodeDeclError::Metadata(NodeMetadataError::DuplicateId))
         );
         assert_eq!(
             runtime.record_callback_effect(
@@ -1384,9 +1372,7 @@ mod tests {
                 CallbackEffectKind::Reads,
                 EntityId::new("missing")
             ),
-            Err(NodeDeclError::Metadata(
-                NodeMetadataError::UnknownEntity
-            ))
+            Err(NodeDeclError::Metadata(NodeMetadataError::UnknownEntity))
         );
     }
 
@@ -1399,9 +1385,7 @@ mod tests {
             .reads(EntityId::new("missing"));
         assert!(matches!(
             result,
-            Err(NodeDeclError::Metadata(
-                NodeMetadataError::UnknownEntity
-            ))
+            Err(NodeDeclError::Metadata(NodeMetadataError::UnknownEntity))
         ));
     }
 

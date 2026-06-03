@@ -414,10 +414,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             .map_err(|_| NodeMetadataError::Capacity)
     }
 
-    pub(crate) fn push_entity(
-        &mut self,
-        entity: EntityMetadata,
-    ) -> Result<(), NodeMetadataError> {
+    pub(crate) fn push_entity(&mut self, entity: EntityMetadata) -> Result<(), NodeMetadataError> {
         if !self.has_node(&entity.node_id) {
             return Err(NodeMetadataError::UnknownNode);
         }

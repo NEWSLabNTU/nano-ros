@@ -81,11 +81,8 @@ fn walk(root: &Path, mut visit: impl FnMut(&Path)) {
                 .and_then(|n| n.to_str())
                 .unwrap_or_default();
             match name {
-                "target" | "build" | "generated" | ".cargo" | "node_modules"
-                | ".git" => continue,
-                n if n.starts_with("build-") || n.starts_with("target-") => {
-                    continue
-                }
+                "target" | "build" | "generated" | ".cargo" | "node_modules" | ".git" => continue,
+                n if n.starts_with("build-") || n.starts_with("target-") => continue,
                 _ => stack.push(path),
             }
         }
@@ -165,7 +162,10 @@ const UNMIGRATED_LEAF_SUFFIXES: &[&str] = &[
 /// Trees explicitly NOT migrated; included here for documentation +
 /// to give a precise `[SKIPPED]` message.
 const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
-    ("examples/esp32/", "M.7 BLOCKED — ESP-IDF sweep not yet executed"),
+    (
+        "examples/esp32/",
+        "M.7 BLOCKED — ESP-IDF sweep not yet executed",
+    ),
     (
         "examples/qemu-esp32-baremetal/",
         "M.7 territory — ESP32 bare-metal, not in M sweep table",
@@ -260,12 +260,11 @@ struct ProofKindClassification {
 }
 
 fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
-    let body = fs::read_to_string(path)
-        .map_err(|e| format!("read {}: {}", path.display(), e))?;
+    let body = fs::read_to_string(path).map_err(|e| format!("read {}: {}", path.display(), e))?;
     // toml 0.9: the `FromStr` impl on `toml::Value` is value-shaped
     // (rejects top-level tables); use `toml::from_str` for full docs.
-    let value: toml::Value = toml::from_str(&body)
-        .map_err(|e| format!("toml parse {}: {}", path.display(), e))?;
+    let value: toml::Value =
+        toml::from_str(&body).map_err(|e| format!("toml parse {}: {}", path.display(), e))?;
 
     let package_name = value
         .get("package")
@@ -408,9 +407,7 @@ fn component_or_application_classification_present() {
         // renamed-from-application shape for Entry pkgs (post-N.7).
         // Node pkgs use `[...component]`; Application/Entry pkgs
         // pick exactly one of `[...application]` / `[...entry]`.
-        let kinds = (cls.is_component as u8)
-            + (cls.is_application as u8)
-            + (cls.is_entry as u8);
+        let kinds = (cls.is_component as u8) + (cls.is_application as u8) + (cls.is_entry as u8);
         match kinds {
             0 => bad.push((rel, "declares NEITHER component nor application/entry")),
             1 => {}
@@ -573,21 +570,13 @@ fn pre_212_files_forbidden_in_migrated_examples() {
         }
         for forbidden in ALWAYS_FORBIDDEN {
             if dir.join(forbidden).is_file() {
-                violations.push(format!(
-                    "{}/{}",
-                    rel.to_string_lossy(),
-                    forbidden
-                ));
+                violations.push(format!("{}/{}", rel.to_string_lossy(), forbidden));
             }
         }
         if rel.to_string_lossy().contains("qemu-arm-nuttx/") {
             for forbidden in NUTTX_FORBIDDEN {
                 if dir.join(forbidden).is_file() {
-                    violations.push(format!(
-                        "{}/{}",
-                        rel.to_string_lossy(),
-                        forbidden
-                    ));
+                    violations.push(format!("{}/{}", rel.to_string_lossy(), forbidden));
                 }
             }
         }
@@ -601,17 +590,11 @@ fn pre_212_files_forbidden_in_migrated_examples() {
             if let Ok(entries) = fs::read_dir(&metadata_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        == Some("json")
-                    {
+                    if path.extension().and_then(|s| s.to_str()) == Some("json") {
                         violations.push(format!(
                             "{}/metadata/{} (build artifact must live in target/, not committed)",
                             rel.to_string_lossy(),
-                            path.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("?")
+                            path.file_name().and_then(|n| n.to_str()).unwrap_or("?")
                         ));
                     }
                 }

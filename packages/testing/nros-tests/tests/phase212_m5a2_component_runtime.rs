@@ -28,11 +28,10 @@ use std::{
 };
 
 use nros::{
-    CdrReader, CdrWriter, DeserError, Deserialize, Executor, ExecutorNodeRuntime,
-    ExecutorConfig, SerError, Serialize,
+    CdrReader, CdrWriter, DeserError, Deserialize, Executor, ExecutorConfig, ExecutorNodeRuntime,
+    SerError, Serialize,
     component::{
-        CallbackCtx, Node, NodeContext, NodeDeclError, NodeResult,
-        ExecutableNode, NodeOptions,
+        CallbackCtx, ExecutableNode, Node, NodeContext, NodeDeclError, NodeOptions, NodeResult,
     },
     component_metadata::{CallbackId, EntityId, NodeId as MetaNodeId},
 };
@@ -178,9 +177,7 @@ fn runtime_registers_single_component_and_spins_once(zenohd_unique: ZenohRouter)
         .domain_id(174);
     let executor = Executor::open(&config).expect("Executor::open failed");
     let mut runtime = ExecutorNodeRuntime::from_executor(executor);
-    let handle = runtime
-        .register_node::<TimerOnly>()
-        .expect("register_node");
+    let handle = runtime.register_node::<TimerOnly>().expect("register_node");
     assert_eq!(handle.slot(), 0);
     assert_eq!(runtime.component_count(), 1);
 
@@ -227,9 +224,7 @@ fn runtime_creates_publisher_for_declared_entity(zenohd_unique: ZenohRouter) {
         .domain_id(175);
     let executor = Executor::open(&cfg).expect("Executor::open failed");
     let mut runtime = ExecutorNodeRuntime::from_executor(executor);
-    runtime
-        .register_node::<Talker>()
-        .expect("register Talker");
+    runtime.register_node::<Talker>().expect("register Talker");
 
     // Spin for ~250 ms; the talker's 100 ms timer should fire 2× and
     // each fire publishes via the resolver-backed `CallbackCtx::publish`.

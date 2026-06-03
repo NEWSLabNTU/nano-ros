@@ -57,7 +57,10 @@ fn walk(dir: &Path, hits: &mut Vec<PathBuf>) {
             hits.push(p.clone());
         } else if name.ends_with(".json") {
             // Committed `metadata/*.json` build artifacts.
-            if let Some(parent) = p.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str())
+            if let Some(parent) = p
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
                 && parent == "metadata"
             {
                 hits.push(p);
@@ -83,12 +86,7 @@ fn examples_tree_has_no_pre_212_files() {
     if !hits.is_empty() {
         let lines: Vec<String> = hits
             .iter()
-            .map(|p| {
-                format!(
-                    "  - {}",
-                    p.strip_prefix(&root).unwrap_or(p).display()
-                )
-            })
+            .map(|p| format!("  - {}", p.strip_prefix(&root).unwrap_or(p).display()))
             .collect();
         panic!(
             "Phase 212.M.12: {} pre-212 file(s) found under examples/. \
@@ -118,12 +116,7 @@ fn nros_tests_fixtures_have_no_pre_212_files() {
     if !hits.is_empty() {
         let lines: Vec<String> = hits
             .iter()
-            .map(|p| {
-                format!(
-                    "  - {}",
-                    p.strip_prefix(&root).unwrap_or(p).display()
-                )
-            })
+            .map(|p| format!("  - {}", p.strip_prefix(&root).unwrap_or(p).display()))
             .collect();
         panic!(
             "Phase 212.M.12: {} pre-212 file(s) found under \

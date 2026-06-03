@@ -145,6 +145,7 @@ extern crate alloc;
 #[used]
 pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_LINK_CFFI;
 
+pub mod guide;
 pub mod node;
 pub mod node_metadata;
 /// Phase 212.M.5.a.2 — executor-backed component runtime.
@@ -158,7 +159,6 @@ pub mod node_metadata;
 /// when an RMW backend is linked.
 #[cfg(feature = "rmw-cffi")]
 pub mod node_runtime;
-pub mod guide;
 
 /// Phase 212.L.5 — top-level init API.
 ///
@@ -221,16 +221,16 @@ pub use node::__private_node_state_into_raw;
 #[cfg(feature = "std")]
 pub use node_metadata::SourceMetadataExport;
 pub use node_metadata::{
-    CallbackEffectKind, CallbackEffectMetadata, CallbackId, NodeMetadataError, EntityId,
-    EntityKind, EntityMetadata, MetadataRecorder, MetadataString, NodeId, NodeMetadata,
-    ParameterDefault, SourceLocationMetadata, SourceNameKind,
+    CallbackEffectKind, CallbackEffectMetadata, CallbackId, EntityId, EntityKind, EntityMetadata,
+    MetadataRecorder, MetadataString, NodeId, NodeMetadata, NodeMetadataError, ParameterDefault,
+    SourceLocationMetadata, SourceNameKind,
 };
 #[cfg(all(feature = "rmw-cffi", feature = "std"))]
 pub use node_runtime::nros_run_components;
 #[cfg(feature = "rmw-cffi")]
 pub use node_runtime::{
-    NodeDispatchFn, RegisteredNode, NodeInitFn, NodeRegisterFn, NodeTickFn,
-    ExecutorNodeRuntime, ExecutorError,
+    ExecutorError, ExecutorNodeRuntime, NodeDispatchFn, NodeInitFn, NodeRegisterFn, NodeTickFn,
+    RegisteredNode,
 };
 // Phase 212.N.12 — canonical `nros::node!()` macro. Replaces the legacy
 // `nros::node!()` macro (retired in the N.12 hard rename — both the
@@ -466,8 +466,7 @@ pub use nros_node::{
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
     LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec,
-    RawActiveGoal,
-    RawSubscription, RecvView, SessionSpec, Subscription,
+    RawActiveGoal, RawSubscription, RecvView, SessionSpec, Subscription,
 };
 
 // Phase 173.5 — board config traits. `BoardConfig` (read locator /

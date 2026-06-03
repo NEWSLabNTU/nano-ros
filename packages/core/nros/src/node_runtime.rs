@@ -353,9 +353,7 @@ impl ExecutorNodeRuntime {
     /// declared node / pub / sub / timer materialises as a real
     /// executor handle, and subscription + timer callbacks are wired
     /// to dispatch into [`ExecutableNode::on_callback`].
-    pub fn register_node<C: ExecutableNode + 'static>(
-        &mut self,
-    ) -> NodeResult<RegisteredNode<C>>
+    pub fn register_node<C: ExecutableNode + 'static>(&mut self) -> NodeResult<RegisteredNode<C>>
     where
         C::State: 'static,
     {

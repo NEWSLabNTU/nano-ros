@@ -29,8 +29,7 @@
 //!   verbatim. No zenoh router needed to gate the proc-macro
 //!   plumbing.
 
-use std::path::PathBuf;
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 fn entry_poc_dir() -> PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
@@ -81,9 +80,7 @@ fn entry_poc_boots_through_board_entry_run() {
     let bin = dir.join("target/debug/entry-poc");
     assert!(bin.is_file(), "binary not produced at {}", bin.display());
 
-    let output = Command::new(&bin)
-        .output()
-        .expect("spawn entry-poc binary");
+    let output = Command::new(&bin).output().expect("spawn entry-poc binary");
     // The Board's println-based lifecycle reporter writes to stdout
     // (not stderr). Inspect both streams to keep the assertion robust
     // against any future stderr-route refactor.
