@@ -19,6 +19,16 @@ proc-macro = true
 syn = { workspace = true }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
+# Phase 212.N.9 — `nros::main!()` proc-macro family. The macro needs:
+#   * `toml` to parse the Entry pkg's `Cargo.toml`
+#     (`[package.metadata.nros.entry] deploy = "<board>"`) and the
+#     bringup pkg's `system.toml` (`[system] default_launch = "..."`).
+#   * `nros-build` (from the standalone nros-cli repo) for the shared
+#     workspace pkg-index walk + ROS 2 launch.xml parser landed in
+#     N.10 + N.11. Proc-macro crates can carry arbitrary deps because
+#     they run at the consumer's compile time on the host.
+toml = "0.8"
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
 
 [lints]
 workspace = true

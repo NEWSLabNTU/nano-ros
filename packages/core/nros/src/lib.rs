@@ -237,6 +237,10 @@ pub use nros_macros::component;
 // rename). `nros::component!()` stays as a deprecated alias that forwards
 // to the same emit (see `nros-macros::component`/`node`).
 pub use nros_macros::node;
+// Phase 212.N.9 — `nros::main!()` proc-macro family. One-line Entry-pkg
+// `main.rs` (replaces the legacy `build.rs + include!()` shape). See
+// `docs/design/multi-node-workspace-layout.md` §11.6.
+pub use nros_macros::main;
 
 // ============================================================================
 // Phase 212.N.12 — Component → Node rename aliases

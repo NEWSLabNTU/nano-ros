@@ -6,6 +6,40 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Fields, LitStr, Path, parse_macro_input};
 
+// Phase 212.N.9 — `nros::main!()` proc-macro family. Replaces today's
+// Entry-pkg `build.rs + include!(concat!(env!("OUT_DIR"), "/run_plan.rs"))`
+// shape with a one-line `main.rs`. See `main_macro.rs` for the impl.
+mod main_macro;
+
+/// One-line `fn main()` for Entry pkgs. Four forms:
+///
+/// ```ignore
+/// nros::main!();                                          // single-node self-bringup
+/// nros::main!(board = NativeBoard);                       // single-node, explicit board
+/// nros::main!(launch = "demo_bringup");                   // multi-node, default launch
+/// nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, explicit file
+/// nros::main!(
+///     board  = NativeBoard,
+///     launch = "demo_bringup:sim.launch.xml",
+///     args   = [("use_sim", "true")],
+/// );
+/// ```
+///
+/// Reads `[package.metadata.nros.entry] deploy = "<board>"` from the
+/// Entry pkg's own `Cargo.toml` when `board = …` is absent; consults
+/// the workspace pkg-index (Phase 212.N.10) to resolve the bringup
+/// pkg's launch file (Phase 212.N.11 parser).
+///
+/// Emits `fn main()` that delegates to
+/// `<Board as ::nros::__macro_support::nros_platform::BoardEntry>::run(...)`,
+/// dispatching one `<pkg>::register(runtime)?;` call per
+/// launch-XML `<node>` entry. See `docs/design/multi-node-workspace-layout.md`
+/// §11.6 for the design lock.
+#[proc_macro]
+pub fn main(input: TokenStream) -> TokenStream {
+    main_macro::expand(input)
+}
+
 /// Sanitise a cargo package name into a C-identifier-safe symbol component.
 ///
 /// Cargo allows `-` in package names; C identifiers don't. Each non
