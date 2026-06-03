@@ -220,6 +220,18 @@ Workspace-root `Cargo.toml` carries `[workspace.metadata.nros]` w/
 `Cargo.toml` carries `[package.metadata.nros.component]` w/ overrides.
 Per-system `system.toml` (in bringup pkg) carries everything else.
 
+> **2026-06-03 revision**: B.2's "workspace_root scan via cargo
+> metadata" is the **cargo-side metadata reader** (reads
+> `[package.metadata.nros.node]` / `[deploy.<target>]` / etc from
+> each cargo workspace member). **Pkg-name → pkg-dir discovery
+> across the workspace** is now N.10's job (workspace walk for
+> `package.xml`), because Bringup pkgs are not cargo workspace
+> members. B + N.10 are complementary: B reads per-pkg metadata
+> from cargo workspace members; N.10 builds the global pkg-name
+> index from `package.xml` files (cargo-visible + cargo-invisible
+> pkgs alike). Both share the same workspace-root detection
+> algorithm.
+
 - [ ] **B.1** — Schema definition in `nros-cli-core::orchestration::schema`.
       Strict `deny_unknown_fields`. No second TOML dialect — vocabulary
       stays a strict subset of existing `nros-sdk-index.toml` /
@@ -324,6 +336,12 @@ Single host-time verb that reads `system.toml` + `launch/*.xml` and emits
 the baked compile-time C config used by every embedded RTOS adapter
 (replaces today's per-example `app_config.h` baker).
 
+> **2026-06-03 revision** — E shares its launch.xml parser with N.11
+> and its pkg-name resolver with N.10. E is the embedded /
+> ahead-of-vendor (PIO, PX4) codegen path; N.9 is the Rust
+> proc-macro path running at cargo compile-time. Same parser, two
+> front-ends.
+
 - [ ] **E.1** — `nros codegen system --workspace <ws> --bringup <bringup-pkg>
       --target <triple> --out <build-dir>` subcommand. Reads
       `<bringup>/system.toml` + `<bringup>/launch/system.launch.xml`.
@@ -354,6 +372,12 @@ the baked compile-time C config used by every embedded RTOS adapter
 
 Bringup pkg is pure declarative — Path A from the live design doc (no
 `Cargo.toml`, excluded from workspace members).
+
+> **2026-06-03 revision** — bringup pkg is REINSTATED as **optional**
+> per L.3 + design doc §11 (the 2026-06-02 retirement is lifted).
+> F.3's "dirwalk discovery" is now N.10's `package.xml` workspace
+> walk; F.3 reduces to "F.3 is N.10". F.4 system.toml schema needs
+> `[system] default_launch` field per multiple-launch-files convention.
 
 - [ ] **F.1** — `nros new system <name>_bringup --components <list>`
       scaffolds the package with `package.xml`, `system.toml` skeleton,
@@ -639,7 +663,13 @@ sub-items that already shipped stay marked done.
       + optional launch. No user `main()` either language — codegen
       synthesises native `main` into `target/nros-system/<pkg>/` (out-
       of-tree) and `system_main.c` for embedded.
-- [~] **L.2 Entry pkg shape** — partial close 2026-06-02 audit.
+- [~] **L.2 Entry pkg shape** — partial close 2026-06-02 audit;
+      shape **further revised 2026-06-03** to use the N.9
+      `nros::main!()` proc-macro instead of `build.rs +
+      include!()`. Today's wave-4 Entry pkgs use the old shape;
+      migration to the macro shape lands with N.9. Post-N.9 the
+      Entry pkg drops `nros-build` build-dep, drops `build.rs`,
+      collapses `main.rs` to one line.
 
       Core Rust Entry pkg infrastructure LANDED via Phase 212.N.7
       step-1 → step-3 (`276663897` N.3 tier-1 per-board shims +
@@ -712,16 +742,37 @@ sub-items that already shipped stay marked done.
       pkg dir. Embedded single-Component case still requires a
       hand-written `main.rs` (board init non-trivial).
 
-- [x] **L.3 Bringup pkg shape — RETIRED (2026-06-02)**. The Path A
-      code-free bringup pkg concept introduced in the 2026-05 draft
-      is subsumed by Entry pkg. Deploy / domain / bridge config
-      moves into Entry pkg's `Cargo.toml` `[package.metadata.nros.*]`
-      tables. The launch file lives next to Entry pkg. `system.toml`
-      is RETIRED as a Phase-212 artifact — `nros check` rejects it
-      everywhere. Users wanting ROS 2 colcon-convention
-      `<system>_bringup` pkg may author a launch-files convenience
-      dir / pkg w/o `Cargo.toml` themselves, but nano-ros tooling
-      does not produce or consume one.
+- [~] **L.3 Bringup pkg shape — REINSTATED as optional (2026-06-03)**.
+      Supersedes the 2026-06-02 retirement. Per
+      `docs/design/multi-node-workspace-layout.md` §11 lock, Bringup
+      pkg returns as one of three pkg roles (Bringup + Node + Entry)
+      and is **optional**: required only when ≥2 Entry pkgs share a
+      topology (multi-target deployment). Single-Entry workspaces
+      fold `launch/` + `system.toml` into the Entry pkg.
+
+      Locked shape — pure declarative, language-agnostic, **no
+      Cargo.toml, no CMakeLists.txt**:
+      ```
+      <system>_bringup/
+      ├── package.xml          # <exec_depend>s
+      ├── system.toml          # [system] default_launch + [deploy.<target>]
+      ├── launch/
+      │   ├── system.launch.xml
+      │   ├── talker_only.launch.xml
+      │   └── sim.launch.xml
+      ├── config/
+      │   └── params.yaml
+      └── README.md
+      ```
+
+      Multiple launch files in one bringup pkg (nav2 convention).
+      `system.toml` is REINSTATED (the 2026-06-02 ban is lifted) —
+      `nros check` allows it inside bringup pkgs ONLY; outside bringup
+      pkgs it still rejects. F.4 documents the schema.
+
+      Discovery: by workspace walk for `package.xml` (N.10), NOT via
+      cargo metadata. Bringup pkg has no Cargo.toml and is NOT a
+      cargo workspace member.
 - [x] **L.4 `<pkg>::<Class>` enforcement** — `nros check` MUST reject a
       component pkg whose `class` field doesn't start with the pkg
       directory name (which equals `Cargo.toml::[package].name` for
@@ -753,19 +804,19 @@ sub-items that already shipped stay marked done.
       - `--exec <name>` skips exec disambiguation when multiple
         `[[bin]]` / `add_executable` candidates exist.
 - [ ] **L.7 `[workspace.metadata.nros]` schema + self-entry
-      planner** — single field `default_system = "<entry-pkg-name>"`
-      pointing at an Entry pkg (post-redesign — the Path A bringup
-      case is RETIRED per revised L.3). **Self-entry planner
-      support**: `nros plan <pkg-dir>` accepts a single Component
-      pkg dir where the dir has `Cargo.toml` + `[package.metadata.
-      nros.component]` + `[package.metadata.nros.entry] deploy =
-      "<board>"` — single Component pkg eats its own Entry role,
-      mostly for `cargo run` dev loop convenience. Emit a one-
-      component plan from Cargo metadata; use the L.6 launch
-      resolver (real or synth) for the launch file. Same path for
-      `nros codegen-system`. Tracked as M-F.2 below (still valid:
-      the planner code change is identical regardless of the
-      surface naming).
+      planner** — single field `default_system = "<pkg-name>"`
+      pointing at EITHER an Entry pkg OR a Bringup pkg (L.3
+      reinstated 2026-06-03; both targets resolvable via N.10
+      workspace walk). **Self-entry planner support**:
+      `nros plan <pkg-dir>` accepts a single Node pkg dir where the
+      dir has `Cargo.toml` + `[package.metadata.nros.node]` +
+      `[package.metadata.nros.entry] deploy = "<board>"` — single
+      Node pkg eats its own Entry role, mostly for `cargo run` dev
+      loop convenience. Emit a one-node plan from Cargo metadata;
+      use the L.6 launch resolver (real or synth) for the launch
+      file. Same path for `nros codegen-system`. Tracked as M-F.2
+      below (still valid: the planner code change is identical
+      regardless of the surface naming).
 - [x] **L.8 `[package.metadata.nros.deploy.<target>]` table (Option
       α)** — per-pkg deploy targets live in `Cargo.toml`
       `[package.metadata.nros.deploy.<target>]` (Rust) OR via
@@ -2249,7 +2300,7 @@ S = small (≤1d), M = medium (1–3d), L = large (≥1w).
 9. **212.I migration tooling (INTERNAL, hidden CLI)** (M) — shipped + I.3 fixture sweep done
 10. **212.J `nros launch`** (M) — shipped
 11. **212.K cyclonedds-sys + wrapper** (L) — shipped + K.4 Option B (codegen-driven descriptors) shipped
-12. **212.L Pkg shape + unified launch model** (L) — IN PROGRESS; lock canonical shapes + lints + launch synth (Bringup pkg RETIRED 2026-06-02 per N redesign)
+12. **212.L Pkg shape + unified launch model** (L) — IN PROGRESS; lock canonical shapes + lints + launch synth. L.3 Bringup pkg REINSTATED 2026-06-03 as optional (supersedes 2026-06-02 retirement) per `docs/design/multi-node-workspace-layout.md` §11.
 13. **212.M Example migration sweep + pre-212 cleanup** (L) — IN PROGRESS; tree-wide sweep + lint enforcement
 14. **212.N Component + Entry pkg taxonomy (Board family)** (L) — NEW 2026-06-02; platform-agnostic Board trait + family + codegen lib split; N.7 retires M.5.a baker; N.9–N.12 added 2026-06-03 (proc-macro `nros::main!()` + workspace-walk pkg index + ROS 2 launch.xml verbatim + Component→Node rename) per `docs/design/multi-node-workspace-layout.md` §11 lock
 15. **Acceptance verification + CI gates** (M)
