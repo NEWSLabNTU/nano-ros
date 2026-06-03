@@ -348,7 +348,7 @@ platforms — they just need to be applied uniformly:
 5 sub-tracks; **file-disjoint by platform/lang**; dispatch in
 parallel:
 
-- [ ] **213.E.1 qemu-arm-baremetal/rust** — externalise MAC, IP,
+- [x] **213.E.1 qemu-arm-baremetal/rust** — externalise MAC, IP,
       gateway, locator, domain_id from 10 example source files. Move
       to `[package.metadata.nros.deploy.<target>]` in each example's
       `Cargo.toml`, OR to board-crate-side defaults the example reads
@@ -361,7 +361,7 @@ parallel:
       ?(2|10)\]|\\b[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:'
       examples/qemu-arm-baremetal/rust/*/src/` returns no matches.
 
-- [ ] **213.E.2 qemu-esp32-baremetal/rust** — externalise the
+- [x] **213.E.2 qemu-esp32-baremetal/rust** — externalise the
       hardcoded `mac_addr` / `ip` / `gateway` / `locator` /
       `domain_id` in 2 example sources. The peer `esp32/rust/`
       already uses metadata for this; copy that pattern.
@@ -370,7 +370,7 @@ parallel:
       **Acceptance**: 2 files have no literal locator / IP / MAC; the
       values come from per-example `Cargo.toml` metadata.
 
-- [ ] **213.E.3 qemu-riscv64-threadx/rust** — externalise locator +
+- [x] **213.E.3 qemu-riscv64-threadx/rust** — externalise locator +
       domain_id from 6 Rust examples (the `lib.rs` / `main.rs` split
       that the threadx-linux/rust path already abstracted via
       `ExecutorConfig::from_env_or(default)`).
@@ -379,7 +379,7 @@ parallel:
       **Acceptance**: `git grep -nE '"tcp/10\.0\.2\.2:75' examples/
       qemu-riscv64-threadx/rust/` returns no matches.
 
-- [ ] **213.E.4 qemu-riscv64-threadx/c** — replace hardcoded
+- [x] **213.E.4 qemu-riscv64-threadx/c** — replace hardcoded
       `nros_support_init("tcp/10.0.2.2:75XX", 0)` with the env-or-
       literal pattern that `native/c/` already uses verbatim:
       ```c
@@ -394,7 +394,7 @@ parallel:
       **Acceptance**: same shape as `examples/native/c/talker/src/
       main.c`'s env-fallback block.
 
-- [ ] **213.E.5 threadx-linux/c** — same as 213.E.4 but for
+- [x] **213.E.5 threadx-linux/c** — same as 213.E.4 but for
       `tcp/127.0.0.1:75XX` host-loopback defaults.
       **Files**: `examples/threadx-linux/c/*/src/main.c` (6 files).
       **Acceptance**: matches the native/c env-fallback shape.
