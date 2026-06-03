@@ -27,7 +27,7 @@ tier. Valid tiers are `base` and `all`. Legacy aliases `minimal` and
 
 | Tier | Modules | Use case |
 |------|---------|----------|
-| `base` | `workspace` (incl. **Corrosion** → `~/.nros/sdk/corrosion/`, ninja, make, rust pinned toolchains), `zenohd` | First-time users who want native nano-ros examples and standard ROS/zenoh workflows without every RTOS SDK |
+| `base` | `workspace` (incl. **Corrosion** → `~/.nros/sdk/corrosion/`, **play_launch_parser** → `~/.nros/sdk/play_launch_parser/`, ninja, make, rust pinned toolchains), `zenohd` | First-time users who want native nano-ros examples and standard ROS/zenoh workflows without every RTOS SDK |
 | platform-specific | one module, e.g. `zephyr`, `nuttx`, `esp_idf`, `px4` | Developers focused on one target platform |
 | `all` | `workspace`, `verification`, `zenohd`, `qemu`, `freertos`, `nuttx`, `threadx_{linux,riscv64}`, `esp32`, `zephyr`, `xrce`, `rmw_zenoh`, `orin_spe`, `cyclonedds`, `platformio`, `esp_idf`, `px4` | Contributors preparing for `just build-test-fixtures` and `just test-all` |
 
@@ -44,6 +44,23 @@ well under the 500 MB / 5 min `default` tier policy, idempotent
 (stamp-file gated). Phase 212.D + H.4 mixed Rust+C++ workspace tests
 (`phase212_d_workspace_metadata::cmake_mixed_corrosion_bridge_builds`)
 green-path here once the workspace module runs.
+
+**play_launch_parser** (the Rust binary the Phase 212.L.6 launch-graph
+resolver in `nros plan` / `nros codegen-system` shells out to for
+synth-from-Component and multi-launch precedence resolution) is
+installed by `just workspace install-play-launch-parser` to
+`~/.nros/sdk/play_launch_parser/` whenever the `workspace` module
+runs — same `base`/`all` reach as Corrosion. The pin is in
+`just/workspace.just::PLAY_LAUNCH_PARSER_VERSION` (a SHA on `main`,
+no upstream release tags); the SDK-index counterpart
+`[tool.play_launch_parser]` in `nros-sdk-index.toml` carries the same
+SHA so `nros setup --tool play_launch_parser` lands an equivalent
+install. Binary-only install at well under the 500 MB / 5 min
+`default` tier policy, idempotent (stamp-file gated). Phase 212.L.6
+gate tests (`phase212_l6_launch_synth::nros_plan_synthesises_launch_for_single_pkg_no_launch_file`,
+`nros_plan_picks_pkg_named_default`,
+`nros_plan_refuses_path_a_bringup_with_no_launch`) green-path here
+once the workspace module runs; they SKIP cleanly when it hasn't.
 
 `all` is intentionally explicit because it pulls many submodules and
 installs large SDKs. A module never moves between tiers without bumping

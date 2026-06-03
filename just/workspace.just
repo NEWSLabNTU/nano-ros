@@ -23,6 +23,17 @@ MAKE_VERSION := "4.4.1"
 # `CMAKE_PREFIX_PATH=$HOME/.nros/sdk/corrosion`. Phase 212.H.4.
 CORROSION_VERSION := "v0.5.1"
 
+# Pinned play_launch_parser SHA. Used by the Phase 212.L.6 launch-graph
+# resolver in `nros plan` / `nros codegen-system` (synth-from-Component
+# + multi-launch precedence). No upstream release tags exist on
+# `jerry73204/play_launch_parser` — pinned to a SHA on `main` (same
+# convention `[tool.cyclonedds]` uses); bumping is the signal to re-run
+# the L.6 gate tests `phase212_l6_launch_synth::*`. Kept in lockstep
+# with `nros-sdk-index.toml::[tool.play_launch_parser]` so a
+# `just workspace install-play-launch-parser` and a
+# `nros setup --tool play_launch_parser` land the same revision.
+PLAY_LAUNCH_PARSER_VERSION := "098ccb43328bca3c35320bb3adac27a11035b15d"
+
 # Workspace module — host-agnostic dev environment setup.
 #
 # "workspace" here means the developer's dev workspace (host OS packages,
@@ -47,6 +58,7 @@ setup:
     @just workspace install-ninja
     @just workspace install-make
     @just workspace install-corrosion
+    @just workspace install-play-launch-parser
     @just workspace rust-pinned-toolchains
     @just workspace rust-targets
     @just workspace cargo-tools
@@ -166,6 +178,43 @@ install-corrosion:
     echo "[corrosion] installed $want at $prefix"
     echo "[corrosion] consumers should pass CMAKE_PREFIX_PATH=$prefix or set it globally."
 
+# Install play_launch_parser into `~/.nros/sdk/play_launch_parser/`.
+# The Phase 212.L.6 launch-graph resolver in `nros plan` /
+# `nros codegen-system` shells out to this binary for both synth (a
+# Component pkg without a launch file) and multi-launch resolution
+# (`<pkg>.launch.xml` > `system.launch.xml` precedence). Lives under
+# `~/.nros/sdk/` (not third-party/) because it's a per-developer
+# install consumed via PATH, not a repo-relative tool. Idempotent:
+# skips when the pinned SHA is already installed. Pinned to a SHA on
+# `main` (no upstream tags). Matches `[tool.play_launch_parser]` in
+# `nros-sdk-index.toml` so the just-recipe and `nros setup --tool` land
+# the same revision. `.envrc` adds `~/.nros/sdk/play_launch_parser/bin`
+# to PATH so the L.6 gate tests' `play_launch_parser_available()` probe
+# (`Command::new("play_launch_parser").arg("--help")`) finds it.
+[group("setup")]
+install-play-launch-parser:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want="{{PLAY_LAUNCH_PARSER_VERSION}}"
+    prefix="$HOME/.nros/sdk/play_launch_parser"
+    stamp="$prefix/.installed-version"
+    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
+        echo "[play_launch_parser] $want already installed ($prefix)"
+        exit 0
+    fi
+    mkdir -p "$prefix"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    echo "[play_launch_parser] cloning $want..."
+    git clone https://github.com/jerry73204/play_launch_parser.git "$tmp/src"
+    git -C "$tmp/src" checkout --quiet "$want"
+    echo "[play_launch_parser] building (cargo install)..."
+    cargo install --path "$tmp/src/crates/play_launch_parser" \
+        --root "$prefix" --locked >/dev/null
+    echo "$want" > "$stamp"
+    echo "[play_launch_parser] installed $want at $prefix"
+    echo "[play_launch_parser] ensure $prefix/bin is on PATH (direnv .envrc does this)."
+
 # Diagnose workspace install status (read-only).
 # Returns exit 1 if anything is missing.
 [group("setup")]
@@ -208,6 +257,15 @@ doctor:
         echo "  [OK] corrosion {{CORROSION_VERSION}} (~/.nros/sdk/corrosion)"
     else
         echo "  [MISSING] corrosion {{CORROSION_VERSION}} (run: just workspace install-corrosion)"
+        fail=1
+    fi
+
+    # --- play_launch_parser (Phase 212.L.6 launch-graph resolver) ---
+    plp_stamp="$HOME/.nros/sdk/play_launch_parser/.installed-version"
+    if [ -f "$plp_stamp" ] && [ "$(cat "$plp_stamp" 2>/dev/null)" = "{{PLAY_LAUNCH_PARSER_VERSION}}" ]; then
+        echo "  [OK] play_launch_parser {{PLAY_LAUNCH_PARSER_VERSION}} (~/.nros/sdk/play_launch_parser)"
+    else
+        echo "  [MISSING] play_launch_parser {{PLAY_LAUNCH_PARSER_VERSION}} (run: just workspace install-play-launch-parser)"
         fail=1
     fi
 
