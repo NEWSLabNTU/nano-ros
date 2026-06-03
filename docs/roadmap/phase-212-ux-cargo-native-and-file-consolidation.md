@@ -568,11 +568,25 @@ baked tree from 212.E.
         Entry-pkg redesign (M-F.15).
   - [x] `threadx_linux_2_component_bringup_builds_and_publishes` —
         `tests/phase212_h4_threadx.rs:145` (exact name).
-  - [ ] `threadx_riscv64_qemu_2_component_bringup_builds` (deferred —
-        no companion `_2_component_bringup_builds` test landed for the
-        RV64 ThreadX board; `phase212_h4_threadx.rs` covers only the
-        `threadx-linux` variant. Track under §212.H follow-up before
-        closing H).
+  - [x] `threadx_riscv64_qemu_2_component_bringup_builds` —
+        `tests/phase212_h4_threadx.rs` (exact name). Configure-only
+        sibling of the threadx-linux variant: stages
+        `multi_pkg_workspace_threadx`, configures the existing
+        `threadx_app/CMakeLists.txt` with `-DNANO_ROS_BOARD=
+        riscv64-qemu` + `THREADX_DIR` / `NETX_DIR` /
+        `THREADX_CONFIG_DIR` / `NETX_CONFIG_DIR`, asserts the
+        codegen surface emits identical artifacts
+        (`nros-system/system_main.c` with both
+        `__nros_component_{talker,listener}_pkg_register` entries +
+        `nros-system/Cargo.toml` stub + `nros_components.cmake`).
+        Build step skipped — the fixture's host-shaped
+        `threadx_app/main.c` won't link bare-metal RV64 without an
+        entry.s + linker script (firmware fixture is a separate
+        scope). Skip semantics gated on `THREADX_DIR` +
+        `NETX_DIR` + `riscv64-unknown-elf-gcc` via
+        `nros_tests::fixtures::threadx_riscv64`. Same `#[ignore]`
+        as the threadx-linux sibling pending the M.10 `nros plan`
+        Cargo-native parser bring-up in nros-cli.
   - [x] `esp_idf_esp32c3_2_component_bringup_builds` —
         `tests/phase212_h5_esp_idf.rs:59` (exact name).
   - [x] `platformio_zephyr_framework_2_component_bringup_builds` —

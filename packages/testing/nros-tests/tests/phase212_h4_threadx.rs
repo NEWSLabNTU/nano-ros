@@ -299,3 +299,121 @@ fn threadx_linux_2_component_bringup_corrosion_imports_rust() {
         "Corrosion-imported Rust entries didn't fire:\n{out}"
     );
 }
+
+// =============================================================================
+// Phase 212.H.4 — RISC-V 64 QEMU companion (configure-only)
+// =============================================================================
+//
+// Sibling of `threadx_linux_2_component_bringup_builds_and_publishes`
+// that exercises the SAME `nros_threadx_codegen_system(...)` helper +
+// `cmake/platform/nano-ros-threadx.cmake` switch under
+// `NANO_ROS_BOARD=riscv64-qemu`. The threadx-linux variant is
+// host-linked + runnable; the rv64-qemu variant is a bare-metal cross-
+// compile that needs an entry.s + linker script + ThreadX startup —
+// out of scope for this codegen-surface audit.
+//
+// The test asserts the cmake CONFIGURE step on the existing
+// `multi_pkg_workspace_threadx` fixture succeeds under
+// `-DNANO_ROS_BOARD=riscv64-qemu` and emits the codegen artifacts
+// (system_main.c, Cargo.toml stub, components cmake). The build step
+// is deliberately skipped — `threadx_app/main.c` is host-shaped and
+// wouldn't link without a bare-metal entry/linker script. A full
+// rv64-qemu firmware fixture is a separate scope.
+
+fn rv64_threadx_prereqs() -> Option<(PathBuf, PathBuf)> {
+    use nros_tests::fixtures::threadx_riscv64::{
+        is_netx_available, is_riscv_gcc_available, is_threadx_available,
+    };
+    if !require_test_prereqs().is_some() {
+        return None;
+    }
+    if !is_threadx_available() {
+        return None;
+    }
+    if !is_netx_available() {
+        return None;
+    }
+    if !is_riscv_gcc_available() {
+        return None;
+    }
+    let threadx_dir = PathBuf::from(std::env::var("THREADX_DIR").ok()?);
+    let netx_dir = PathBuf::from(std::env::var("NETX_DIR").ok()?);
+    Some((threadx_dir, netx_dir))
+}
+
+/// Phase 212.H.4 sibling — RISC-V 64 QEMU cross-platform codegen +
+/// platform-module dispatch verification. Configure-only: the
+/// `multi_pkg_workspace_threadx` fixture's `threadx_app/main.c` is
+/// host-shaped and won't link bare-metal RV64 without an entry.s +
+/// linker script (separate firmware fixture, out of H.4 scope).
+#[ignore = "212.M.10: nros plan does not yet read [package.metadata.nros.component] (Cargo-native source metadata)"]
+#[test]
+fn threadx_riscv64_qemu_2_component_bringup_builds() {
+    let Some((threadx_dir, netx_dir)) = rv64_threadx_prereqs() else {
+        nros_tests::skip!(
+            "rv64 ThreadX prereqs missing (nros CLI / cmake / THREADX_DIR / NETX_DIR / riscv64-unknown-elf-gcc)"
+        );
+    };
+
+    let board_config_dir = workspace_root()
+        .join("packages/boards/nros-board-threadx-qemu-riscv64/config");
+    assert!(
+        board_config_dir.is_dir(),
+        "missing board config dir at {} — tx_user.h / nx_user.h / link.lds source",
+        board_config_dir.display()
+    );
+
+    let (_guard, root) = stage_fixture("multi_pkg_workspace_threadx");
+    let app_src = root.join("threadx_app");
+    let build_dir = app_src.join("build");
+
+    let configure = Command::new("cmake")
+        .args(["-S"])
+        .arg(&app_src)
+        .args(["-B"])
+        .arg(&build_dir)
+        .arg("-DNANO_ROS_BOARD=riscv64-qemu")
+        .arg(format!("-DTHREADX_DIR={}", threadx_dir.display()))
+        .arg(format!("-DNETX_DIR={}", netx_dir.display()))
+        .arg(format!(
+            "-DTHREADX_CONFIG_DIR={}",
+            board_config_dir.display()
+        ))
+        .arg(format!("-DNETX_CONFIG_DIR={}", board_config_dir.display()))
+        .output()
+        .expect("spawn cmake configure");
+    assert!(
+        configure.status.success(),
+        "cmake configure (rv64-qemu) failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&configure.stdout),
+        String::from_utf8_lossy(&configure.stderr)
+    );
+
+    // Same codegen surface as the threadx-linux variant — verifies the
+    // platform module's codegen path is board-agnostic.
+    let sys_main = build_dir.join("nros-system/system_main.c");
+    let sys_cargo = build_dir.join("nros-system/Cargo.toml");
+    let components_cmake = build_dir.join("nros_components.cmake");
+    assert!(
+        sys_main.is_file(),
+        "missing {} after rv64-qemu configure",
+        sys_main.display()
+    );
+    assert!(
+        sys_cargo.is_file(),
+        "missing {} after rv64-qemu configure",
+        sys_cargo.display()
+    );
+    assert!(
+        components_cmake.is_file(),
+        "missing {} after rv64-qemu configure",
+        components_cmake.display()
+    );
+
+    let sys_main_body = fs::read_to_string(&sys_main).expect("read system_main.c");
+    assert!(
+        sys_main_body.contains("__nros_component_talker_pkg_register")
+            && sys_main_body.contains("__nros_component_listener_pkg_register"),
+        "rv64-qemu system_main.c missing per-component register entries:\n{sys_main_body}"
+    );
+}
