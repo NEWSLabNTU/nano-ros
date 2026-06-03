@@ -67,9 +67,9 @@ Open (concrete acceptance below):
 * 210.C.1 / C.2 — `nros codegen resolve-deps --workspace` +
   `nros generate cpp --workspace`. Blocked on 210.D needing them; still
   deferred (sync handles the resolve+codegen path internally).
-* 210.D.2 — convert `examples/native/rust/talker`. Deferred → 210.E.3.d
-  (whole rust-example fleet migration; talker is multi-RMW with a cmake
-  cyclone variant on top, safer to migrate as one unit).
+* 210.D.2 — convert `examples/native/rust/talker`. Done as part of
+  210.E.3.d (whole rust-example fleet migration; talker landed via
+  K.7.7 `fcbc498cc`).
 * 210.E.3.c — Zephyr cpp examples. **DONE.** `zephyr/CMakeLists.txt`
   promotes `NROS_REPO_DIR` to `CACHE PATH` so the app's
   `include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")`
@@ -81,10 +81,17 @@ Open (concrete acceptance below):
   / service-{server,client} / action-{server,client}) use the
   canonical `find_package(<msg_pkg>) + ament_target_dependencies`
   shape.
-* 210.E.3.d — Rust example migration (D.2 talker + others). DEFERRED.
-  Talker is multi-RMW with cmake-cyclonedds; needs a dedicated rust-
-  migration plan. `nros ws sync` single-pkg-mode is in place for the
-  swap.
+* 210.E.3.d — Rust example migration (D.2 talker + others). **DONE
+  2026-06-03.** All 21 native rust examples now host the canonical
+  `[patch.crates-io]` block in `Cargo.toml` (BEGIN/END nros-managed
+  markers); the orphan `.cargo/config.toml [patch.crates-io]` table
+  has been retired tree-wide for `examples/native/rust/`. Sweep
+  landed across three waves: K.7.7 (talker / listener pub/sub),
+  K.7.7.b (services + actions regular variants), and the Z.8 E.3.d
+  sweep (`listener-rtic` pilot + 13 follow-up commits) covering
+  every RTIC + async + custom-* + serial-* + lifecycle-node variant
+  and the `custom-msg` special-case (full migration via
+  hand-mirrored BEGIN/END block).
 * 210.F.3 — `nros ws doctor` + `list` + `status` + `clean` siblings.
 * 210.F.4 — shadowing matrix smoke fixture + book doc.
 
@@ -332,14 +339,15 @@ patch authority (cargo's rule: patch only in workspace root or
 standalone pkg). The user's Cargo workspace layout — whatever it is —
 is respected.
 
-#### 210.D.2 — Convert one rust example — **DEFERRED to 210.E.3.d**
+#### 210.D.2 — Convert one rust example — **DONE via 210.E.3.d**
 
 `examples/native/rust/talker` is multi-RMW (zenoh/cyclonedds/xrce) with a
-sibling cmake-cyclonedds variant on top. The patch table needs to live
-alongside the cmake-driven cyclone build, not replace it; the safe
-migration lands as part of the whole rust-example fleet migration in
-210.E.3.d. The `nros ws sync` single-pkg-mode (commit `190b891` in
-nros-cli) is in place so the migration is a swap-in when E.3.d runs.
+sibling cmake-cyclonedds variant on top. The patch table needed to live
+alongside the cmake-driven cyclone build, not replace it; the migration
+landed as part of the whole rust-example fleet sweep in 210.E.3.d
+(K.7.7 wave, commit `fcbc498cc`). The orphan
+`.cargo/config.toml [patch.crates-io]` has been retired tree-wide for
+`examples/native/rust/` (E.3.d sweep, 2026-06-03).
 
 #### 210.D.3 — Rust mixed-workspace fixture sibling — **LANDED 2026-05-31**
 
@@ -446,10 +454,13 @@ upstream shape; the patch table is auto-managed metadata at the bottom.
       `nros_*` cmake calls; only `find_package` + `target_link_libraries`
       + (optionally) `nros_workspace_interfaces()` if the user has
       workspace-local pkgs. Cross-ref the `local-msg-package` fixture.
-- [ ] **210.E.3** Migrate the in-tree per-pkg `nros_generate_interfaces
+- [x] **210.E.3** Migrate the in-tree per-pkg `nros_generate_interfaces
       (<pkg>)` call sites to the `find_package(<pkg>) +
-      ament_target_dependencies` shape. Incremental — examples that
-      explicitly want the bundled-pkg form keep it.
+      ament_target_dependencies` shape. **DONE 2026-06-03** — all
+      four sub-items (a/b/c/d) flipped to [x]; E.3.d (rust example
+      `.cargo/config.toml [patch.crates-io]` retirement) closed the
+      umbrella. Incremental — examples that explicitly want the
+      bundled-pkg form keep it.
       **Sub-items**:
       * **210.E.3.a** — Native fixtures: `examples/native/cpp/{talker,
         listener,service-*,action-*}/`. **DONE 2026-05-31** (commit
@@ -491,11 +502,25 @@ upstream shape; the patch table is auto-managed metadata at the bottom.
         Zephyr cpp/cyclonedds/talker-aemv8r carve-out preserved
         per CLAUDE.md.
       * **210.E.3.d — Rust examples (`.cargo/config.toml [patch.crates-io]`
-        deprecation + talker D.2 migration).** DEFERRED. Touches every
-        rust example. Talker is multi-RMW with a cmake-cyclonedds
-        variant. The `nros ws sync` single-pkg-mode (nros-cli commit
-        `190b891`) is in place so the swap is mechanical when a
-        dedicated rust-migration phase runs.
+        deprecation + talker D.2 migration).** **DONE 2026-06-03.**
+        All 21 native rust examples are on the canonical Cargo.toml
+        BEGIN/END nros-managed `[patch.crates-io]` block; every
+        orphan `.cargo/config.toml` carrying `[patch.crates-io]`
+        has been deleted from `examples/native/rust/`. Sweep
+        landed across three waves:
+          - K.7.7 — talker / listener pub/sub (zenoh + cyclonedds
+            CMake/Corrosion variants), commit `fcbc498cc`.
+          - K.7.7.b — services + actions regular (non-RTIC,
+            non-async) variants.
+          - Z.8 E.3.d sweep — `listener-rtic` pilot (`71833a5e9`)
+            + 13 follow-up chore commits covering every RTIC +
+            async + custom-* + serial-* + lifecycle-node variant
+            and the `custom-msg` special-case (full migration via
+            hand-mirrored BEGIN/END block sibling reference, since
+            the installed `nros` CLI does not yet expose
+            `nros ws sync`).
+        `cargo test -p nros-tests --test phase212_pre_212_files_forbidden
+        --test phase212_m12_example_shape` stays green post-sweep.
 - [x] **210.E.4** Mark `nros_generate_interfaces(<pkg>)` +
       `nros_find_interfaces()` deprecated in their function-header
       comments; point to `rosidl_generate_interfaces` + `find_package`.
