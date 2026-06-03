@@ -1094,7 +1094,7 @@ semantics).
       `.nros/launch` pidfile path; bumping `NROS_VERSION` then will
       flip the N.3 skip-gates back to PASS automatically.
 
-- [ ] **214.N.3 Skip-gate behaviour-drift tests on outdated CLI** —
+- [x] **214.N.3 Skip-gate behaviour-drift tests on outdated CLI** —
       for tests that exercise behaviour the installed CLI doesn't
       yet have, add `if installed_nros_version() < "X.Y.Z" {
       nros_tests::skip!(...) }` rather than letting them FAIL.
@@ -1102,7 +1102,36 @@ semantics).
       `nros codegen-system verb unavailable — Phase 212.E not landed
       in installed CLI`.
       **Acceptance**: pre-bump runs SKIP cleanly; post-bump runs
-      flip to PASS.
+      flip to PASS. **Landed**: a `nros --version`-driven semver
+      gate is not viable today — both the release tarball and a
+      `NROS_FROM_SOURCE` build of `main` self-report `0.3.7` (the
+      Cargo manifests have not been bumped on `main`), so the
+      semver string carries no distinguishing signal. Each drift
+      gate instead probes a **behaviour marker** unique to the
+      post-spec CLI (`nros launch --help | grep 'target/nros'` for
+      the legacy pidfile path; `nros migrate workspace --dry-run`
+      stdout for `[package.metadata.nros.component]`) and skips
+      when the marker is absent. Three tests gated:
+      - `phase212_f3_dirwalk_discovery::{nros_plan_discovers_sibling_bringup_via_dirwalk,
+        nros_plan_finds_bringup_when_in_workspace_exclude}` — added
+        a `play_launch_parser_available()` precondition probe (the
+        underlying `nros plan` shells out to `play_launch_parser`
+        unconditionally; without the probe the verb returned a hard
+        error rather than a clean skip).
+      - `phase212_i_migrate_workspace::migrate_workspace_e2e` —
+        added a `migrate_emits_component_subtable()` probe.
+      - `phase212_j_launch::nros_launch_detach_returns_pid_file` —
+        added a `nros launch --help`-based pidfile-location probe.
+
+      Out of N's scope (separate triage required):
+      - `phase212_h1_zephyr::zephyr_native_sim_2_component_bringup_builds_and_publishes`
+        and `phase212_mf3_zephyr_self_pkg::*` — both TIMEOUT at the
+        nextest 60-second cap during the Zephyr west build, not at
+        any CLI verb call. The existing `nros codegen-system --help`
+        gate at `phase212_h1_zephyr.rs:84` works as designed once
+        the CLI ships the verb; the residual fail is a slow-build
+        problem (raise the nextest timeout or drop the tests from
+        the default-tier sweep).
 
 ---
 
