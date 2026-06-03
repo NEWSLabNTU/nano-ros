@@ -8,10 +8,10 @@ description = "Phase 212.M.10 mixed fixture — Rust Component pkg (Corrosion-br
 [lib]
 crate-type = ["staticlib", "rlib"]
 
-# Phase 212.L.1 Component pkg shape — `[package.metadata.nros.component]`
+# Phase 212.L.1 Component pkg shape — `[package.metadata.nros.node]`
 # replaces the retired `component_nros.toml` sidecar + `metadata/*.json`.
 # `class` is the `<pkg>::<UserClass>` form (L.4 — pkg dir name = pkg name).
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 class = "talker_pkg::Talker"
 name = "talker"
 default_namespace = "/"

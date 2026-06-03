@@ -11,7 +11,7 @@ crate-type = ["staticlib"]
 
 [dependencies]
 
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 default_namespace = "/"
 
 [package.metadata.ament]

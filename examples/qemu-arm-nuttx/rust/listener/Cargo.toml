@@ -13,7 +13,7 @@ crate-type = ["rlib", "staticlib"]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-nuttx", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
 
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 class = "nuttx_rs_listener::Listener"
 name = "listener"
 default_namespace = "/"

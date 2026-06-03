@@ -7,6 +7,6 @@ publish = false
 [lib]
 crate-type = ["staticlib", "rlib"]
 
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 name = "talker"
 default_namespace = "/"

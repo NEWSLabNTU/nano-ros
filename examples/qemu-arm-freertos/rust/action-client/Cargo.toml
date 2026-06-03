@@ -13,7 +13,7 @@ crate-type = ["rlib", "staticlib"]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos", "ros-humble"] }
 example_interfaces = { version = "*", default-features = false }
 
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 class = "freertos_rs_action_client::FibonacciClient"
 name = "action_client"
 default_namespace = "/"

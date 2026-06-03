@@ -45,7 +45,7 @@ zephyr-build = "0.1.0"
 
 # Phase 212.L.1 Component pkg metadata. `class` MUST match the
 # `<pkg-name>::<UserClass>` shape that `nros check` (L.4) enforces.
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 class = "nros_zephyr_listener::Listener"
 name = "listener"
 default_namespace = "/"

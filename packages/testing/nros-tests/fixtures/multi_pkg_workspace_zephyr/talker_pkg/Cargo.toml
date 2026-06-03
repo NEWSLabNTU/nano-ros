@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 name       = "talker_pkg"
 crate-type = ["staticlib", "rlib"]
 
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 default_namespace = "/"
 parameters = {}
 remaps = []

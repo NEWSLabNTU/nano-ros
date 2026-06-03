@@ -15,7 +15,7 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
 example_interfaces = { version = "*", default-features = false }
 
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 class = "threadx_linux_rs_service_server::ServiceServer"
 name = "service_server"
 default_namespace = "/"

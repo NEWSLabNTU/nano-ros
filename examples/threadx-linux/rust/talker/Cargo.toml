@@ -20,7 +20,7 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
 std_msgs = { version = "*", default-features = false }
 
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 class = "threadx_linux_rs_talker::Talker"
 name = "talker"
 default_namespace = "/"

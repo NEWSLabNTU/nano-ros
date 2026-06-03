@@ -7,8 +7,8 @@ edition = "2021"
 
 [package.metadata.nros]
 
-[package.metadata.nros.components.worker_a]
+[package.metadata.nros.nodes.worker_a]
 
-[package.metadata.nros.components.worker_b]
+[package.metadata.nros.nodes.worker_b]
 
 [package.metadata.ament]

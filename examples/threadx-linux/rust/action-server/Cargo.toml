@@ -16,7 +16,7 @@ nros-platform = { path = "../../../../packages/core/nros-platform", default-feat
 example_interfaces = { version = "*", default-features = false }
 heapless = { version = "0.8", default-features = false }
 
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 class = "threadx_linux_rs_action_server::ActionServer"
 name = "action_server"
 default_namespace = "/"
