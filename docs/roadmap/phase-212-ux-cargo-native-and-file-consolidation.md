@@ -1553,36 +1553,19 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       `nros-build = { git = "github.com/NEWSLabNTU/nros-cli",
       branch = "main" }`. Board-agnostic emit (board choice lives
       in user `main.rs`'s `Board::run` closure).
-- [ ] **N.5 `nros-build::generate_single_node_main(Board)`
-      convenience** — for the L.7 single-Component-pkg case, emit
-      a thin `$OUT_DIR/main.rs` skeleton in addition to
-      `run_plan.rs` so `cargo run` Just Works without a separate
-      Entry pkg dir. Triggered when Cargo metadata declares
-      `[package.metadata.nros.entry] deploy = "<board>"` directly
-      on a Component pkg. Embedded boards still require a hand-
-      written Entry pkg (board init is non-trivial; convenience is
-      native-host only at first).
-
-      **Status:** non-blocking UX polish; defer post-Phase 212.
-      The explicit Entry pkg pattern (N.4 already shipped) handles
-      every single-node case today — users write a sibling
-      `<pkg>_entry/` dir (~3-LoC build.rs + ~10-LoC main.rs). N.5
-      would collapse that single dir for native-only single-
-      Component-pkg cases (getting-started demos, one-shot
-      iteration). Trade-offs:
-      - Pro: simpler "hello world" — single pkg + `cargo run`.
-      - Con: the same Cargo.toml must declare BOTH `[lib]` (for
-        the Component impl) AND `[[bin]]` pointing at the codegen-
-        emitted `$OUT_DIR/main.rs` — awkward + risks colliding
-        with user-supplied `src/main.rs`.
-      - Con: native-only asymmetry (embedded still requires
-        explicit Entry pkg) creates a two-pattern UX that learners
-        must reason about.
-      - Con: codegen-emitted `main.rs` paths in `[[bin]]` need
-        platform support that's still settling.
-      Revisit once the wave-4 Entry pkg pattern has soaked for a
-      release + a clean "single-pkg cargo run" UX story emerges
-      from real usage feedback.
+- [ ] **N.5 Single-node codegen** (scope-revised 2026-06-03 per
+      `docs/design/multi-node-workspace-layout.md` §11) — Node pkg
+      with `[package.metadata.nros.entry] deploy = "<board>"` becomes
+      self-runnable. User writes one-line `src/main.rs`:
+      `nros::main!();` (no args; the macro reads the pkg's own
+      metadata + emits the Board boot + register call for this pkg).
+      Trade-offs from the original N.5 spec (separate `[[bin]]`
+      pointing at `$OUT_DIR/main.rs`) are dissolved by the
+      proc-macro shape — user keeps a normal committed `src/main.rs`
+      file containing only `nros::main!();`, no codegen-bin
+      collisions. Same single-deploy constraint as the original
+      (one `deploy = "<board>"` value per pkg; cross-target builds
+      go through dedicated Entry pkgs).
 - [x] **N.6 Rename `nano_ros_application` → `nano_ros_entry`** —
       cmake fn rename per L.9. Add `BOARD <board>` arg. Update every
       existing caller (after wave-1 native/cpp sweep) — single
@@ -1799,6 +1782,73 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       cookbook to `book/src/user-guide/`. Update
       `docs/design/multi-node-workspace-layout.md` to reflect the
       Entry pkg as composition root (replacing Bringup pkg).
+- [ ] **N.9 `nros::main!()` / `nros::launch!()` proc-macro family**
+      (2026-06-03 design lock per
+      `docs/design/multi-node-workspace-layout.md` §11.6). Replaces
+      today's `build.rs + include!(env!("OUT_DIR")/run_plan.rs)`
+      shape end-to-end. Four forms:
+      ```rust
+      nros::main!();                                          // single-node self-bringup
+      nros::main!(board = NativeBoard);                       // single-node, explicit board
+      nros::main!(launch = "demo_bringup");                   // multi-node, default launch
+      nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, explicit file
+      nros::main!(board = X, launch = "Y:Z.xml", args = [...]);
+      ```
+      Macro at expansion time invokes N.10 (pkg-index) + N.11
+      (launch.xml parser) inside the proc-macro crate. Errors
+      surface as compile-time spans pointing at the launch.xml line
+      that misparsed. Entry pkg `Cargo.toml` drops the `nros-build`
+      build-dep; `main.rs` collapses to one line.
+      **Files:** `packages/core/nros-macros/src/{main,launch}.rs`
+      (NEW), `nros-cli/packages/nros-build/src/{pkg_index,
+      launch_parser}.rs` (NEW shared codegen library), Entry-pkg
+      `Cargo.toml` sweep (drop build-dep).
+- [ ] **N.10 Workspace pkg-index + `$(find <pkg>)` resolver**
+      (2026-06-03 design lock §11.4). Language-agnostic build-time
+      mechanism shared by N.9 (Rust proc-macro) and the future C++
+      cmake fn `nros_entry(...)`. Algorithm:
+      1. Walk up from `CARGO_MANIFEST_DIR` / `CMAKE_SOURCE_DIR`
+         looking for workspace root markers in order:
+         `NROS_WORKSPACE_ROOT` env → `.colcon_workspace` /
+         `COLCON_IGNORE` → `Cargo.toml` `[workspace]` → `.git/`.
+      2. Recurse from root, collect `package.xml` files. Pkg name =
+         `<name>` element; pkg dir = parent.
+      3. Cache at `$OUT_DIR/.nros-pkg-index.json` keyed on combined
+         `package.xml` mtimes.
+      4. Expose `resolve_pkg(name) -> PathBuf` + `resolve_find_substitution(
+         expr) -> String` to launch-parser callers.
+      Identical algorithm runs from Rust (proc-macro) AND from cmake
+      (configure-time fn). **Files:** `nros-cli/packages/nros-build/
+      src/pkg_index.rs` (NEW).
+- [ ] **N.11 ROS 2 launch.xml parser (v1 tag set)** (2026-06-03
+      design lock §11.5). Copy-paste compatibility with nav2 /
+      Autoware / turtlebot3 launch.xml files. Tag set:
+      `<launch>`, `<arg>`, `<node>`, `<param>`, `<remap>`,
+      `<group>`, `<include>`. Substitutions: `$(find <pkg>)`,
+      `$(var <arg>)`, `$(env <name>)`. Python `.launch.py` form is
+      out of scope (revisit on user demand — would need a Python
+      interpreter at build time). Parser feeds N.9's emit and is
+      shared with the future C++ cmake fn. **Files:**
+      `nros-cli/packages/nros-build/src/launch_parser.rs` (NEW),
+      `packages/testing/nros-tests/tests/phase212_n11_launch_parser_*.
+      rs` (NEW per-tag regression tests).
+- [ ] **N.12 Component → Node rename sweep.** Mechanical rename
+      across the workspace. Affects:
+      - `nros::component!()` macro → `nros::node!()`. Keep
+        `nros::component!()` as deprecated alias for one release.
+      - `Component` trait → `Node` trait. Same alias policy.
+      - `ComponentRuntime` trait → `NodeRuntime` trait.
+      - `ExecutorComponentRuntime` → `ExecutorNodeRuntime`.
+      - `RuntimeError::ComponentRegister` → `RuntimeError::NodeRegister`.
+      - `[package.metadata.nros.component]` → `[package.metadata.nros
+        .node]`. Loader accepts both; warns on `.component`.
+      - "Component pkg" doc terminology → "Node pkg".
+      - Internal symbol mangling `__nros_component_<pkg>_*` →
+        `__nros_node_<pkg>_*` (already retired by N.7 step-6, just
+        ident hygiene in remaining internals).
+      Single mechanical wave; can land via parallel worktree agents
+      per directory. **Files:** workspace-wide; tracked via
+      `git grep -E '\\bComponent(Runtime)?\\b|nros::component!'`.
 - **Tests:**
   - [ ] `posix_board_run_executes_run_plan` — host POSIX Entry pkg
         from a 2-component launch XML reaches `run_plan` body +
@@ -1806,15 +1856,32 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
   - [ ] `freertos_board_run_executes_run_plan` — same fixture under
         `nros-board-qemu-mps2-an385-freertos` reaches `run_plan` +
         spins under QEMU.
-  - [ ] `single_node_native_convenience_generates_main` —
-        `generate_single_node_main` emits both files; `cargo run`
-        prints expected output.
+  - [ ] `single_node_native_macro_generates_main` (N.5/N.9 joint
+        test) — a Node pkg with `[package.metadata.nros.entry]
+        deploy = "native"` and `src/main.rs` containing just
+        `nros::main!();` compiles + runs; `cargo run -p <pkg>`
+        prints expected publisher output.
   - [ ] `entry_pkg_metadata_required_board` — Entry pkg without
         `[package.metadata.nros.entry] deploy = "<board>"` →
         `nros check` hard error.
   - [ ] `board_agnostic_run_plan_links_against_any_board` — same
         compiled `run_plan` rlib links under at least 2 distinct
         Board impls (posix + freertos) in the test fixture.
+  - [ ] `n9_main_macro_expands_for_each_form` — Entry pkg using
+        each of the four `nros::main!(...)` forms (no-arg, board=,
+        launch=, all-explicit) compiles + runs. (N.9)
+  - [ ] `n10_pkg_index_resolves_across_workspace` — given fixture
+        workspace with 3 Node pkgs + 1 bringup pkg + 1 Entry pkg,
+        `nros::main!(launch = "demo_bringup:system.launch.xml")`
+        resolves via `package.xml` walk; no `Cargo.toml` on bringup
+        pkg required. (N.10)
+  - [ ] `n11_launch_xml_ros2_compat_smoke` — copy-paste a stock
+        nav2-style launch.xml (`<node>` + `<arg>` + `<include>` +
+        `$(find <pkg>)`) into the fixture; codegen accepts it +
+        emits correct run_plan body. (N.11)
+  - [ ] `n12_node_macro_alias_emits_deprecation_warning` —
+        `nros::component!()` invocation under N.12 emits a
+        deprecation warning pointing at `nros::node!()`. (N.12)
 - **Files:** `packages/core/nros-platform/src/board/{mod,init,
   print,exit,transport,network,entry}.rs` (NEW),
   `packages/boards/nros-board-{posix,freertos,threadx,zephyr,nuttx,
@@ -2184,7 +2251,7 @@ S = small (≤1d), M = medium (1–3d), L = large (≥1w).
 11. **212.K cyclonedds-sys + wrapper** (L) — shipped + K.4 Option B (codegen-driven descriptors) shipped
 12. **212.L Pkg shape + unified launch model** (L) — IN PROGRESS; lock canonical shapes + lints + launch synth (Bringup pkg RETIRED 2026-06-02 per N redesign)
 13. **212.M Example migration sweep + pre-212 cleanup** (L) — IN PROGRESS; tree-wide sweep + lint enforcement
-14. **212.N Component + Entry pkg taxonomy (Board family)** (L) — NEW 2026-06-02; platform-agnostic Board trait + family + codegen lib split; N.7 retires M.5.a baker
+14. **212.N Component + Entry pkg taxonomy (Board family)** (L) — NEW 2026-06-02; platform-agnostic Board trait + family + codegen lib split; N.7 retires M.5.a baker; N.9–N.12 added 2026-06-03 (proc-macro `nros::main!()` + workspace-walk pkg index + ROS 2 launch.xml verbatim + Component→Node rename) per `docs/design/multi-node-workspace-layout.md` §11 lock
 15. **Acceptance verification + CI gates** (M)
 
 ## Non-Goals

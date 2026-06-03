@@ -4,24 +4,34 @@
 
 **LIVE doc, WIP.** Audience = phase-212 implementers + reviewers. Expect open questions throughout, expect pushback. Decisions marked **LOCKED** are settled; **OPEN:** marks live debate.
 
-> **Revision 2026-06-02 — Entry pkg supersedes Bringup pkg.** The
-> "orchestration package" / "Bringup pkg" composition root described
-> through §3-§10 below is **retired** as of Phase 212.N: the **Entry
-> pkg** (per-board binary, owns `Cargo.toml` + `main.rs` + launch file
-> + deploy config) subsumes its role. Where this doc still says
-> "bringup pkg", read it as "Entry pkg" — the structural arguments
-> (per-system definition, no workspace-root `system.toml`, ROS muscle
-> memory) survive; what changes is that the composition root is a
-> normal compiled binary crate with a small `main.rs` calling
-> `<Board as BoardEntry>::run(setup)`, not a code-free declarative
-> directory. The retired `system.toml` is replaced by
-> `[package.metadata.nros.*]` tables in the Entry pkg's `Cargo.toml`.
-> See `book/src/user-guide/component-and-entry-pkg.md` for the
-> user-facing cookbook and `book/src/porting/board-trait.md` for the
-> Board trait family that the Entry pkg drives. A full rewrite of §4
-> + §5 + §7 to the Entry-pkg shape is tracked under Phase 212.N.8;
-> the sections below stay as the historical Path-A bringup-pkg
-> design until then.
+> **Revision 2026-06-03 — Three roles: Bringup pkg + Node pkg + Entry pkg.**
+> Supersedes the 2026-06-02 "Entry pkg subsumes Bringup pkg" revision.
+> See §11 (LOCKED) for the canonical shape:
+>
+> - **Bringup pkg** — pure declarative (`package.xml` + `system.toml`
+>   + `launch/*.launch.xml` + `config/`). No `Cargo.toml`, no
+>   `CMakeLists.txt`. **Optional**: required only when ≥2 Entry pkgs
+>   share one system topology (multi-target deployment). Single-Entry
+>   workspaces fold the launch + system.toml into the Entry pkg.
+> - **Node pkg** (renamed from "Component pkg") — Rust lib OR C++ lib
+>   carrying one or more `nros::node!()` / `NROS_NODE()` declarations.
+>   ROS 2 composable-node parallel.
+> - **Entry pkg** — language-specific binary that boots the topology
+>   against one Board. Rust: `nros::main!(...)` proc-macro reads
+>   workspace pkg index + launch XML at expansion time and emits
+>   `fn main`. C++ (future): `NROS_MAIN(...)` + `nros_entry(...)`
+>   cmake fn with identical resolution semantics.
+>
+> Pkg discovery is **language-agnostic** — workspace walk for
+> `package.xml` files, identical to ament. Launch XML is the **ROS 2
+> schema verbatim** — copy-paste from nav2/Autoware works (tags +
+> `$(find <pkg>)` resolved at build time). Python `.launch.py` not
+> v1; XML only.
+>
+> §3-§10 below retain the historical 2026-06-02 Path-A bringup-pkg
+> analysis as design context. The 2026-06-02 banner's claim that
+> Bringup pkg is RETIRED is itself superseded — §11 reinstates it as
+> optional.
 
 ---
 
@@ -289,3 +299,233 @@ Steps 4–5 unchanged. Step 4's `nros plan` becomes either bare `nros plan robot
 5. **Document `nros plan <dir>` discovery semantics** once Path A vs B settled. Update Phase 212.B writeup.
 6. **Validate OPEN 9 (embedded multi-component)** on Zephyr w/ a 2-component bringup → one west app linking both. Phase 172.K.5 generator output should already cover this; confirm.
 7. **Update `docs/design/ros2-user-workflow.md` §"nros new system"** scaffolding to match §4 LOCKED shape (Path A, no Cargo.toml in bringup). Today's writeup pre-dates this design doc.
+
+---
+
+## 11. LOCKED 2026-06-03 — Three-pkg-role shape + ROS 2 launch compat
+
+Supersedes §4-§5 + §7's bringup-pkg shape. Driven by two user constraints:
+**(a) ROS 2 launch.xml from nav2/Autoware must copy-paste and Just Work;
+(b) C++ Entry pkg is on the future roadmap, so resolution must be
+language-agnostic.**
+
+### 11.1 Three pkg roles
+
+| role | shape | required? |
+|---|---|---|
+| **Bringup pkg** | pure declarative: `package.xml` + `system.toml` + `launch/*.launch.xml` + `config/`. No Cargo.toml, no CMakeLists.txt. | Optional — only when ≥2 Entry pkgs share one topology |
+| **Node pkg** | language-specific lib carrying `nros::node!()` (Rust) / `NROS_NODE()` (C++) declarations. `package.xml` + `Cargo.toml` (Rust) / `CMakeLists.txt` (C++). | Yes (one per node) |
+| **Entry pkg** | language-specific binary that boots a topology against a Board. `package.xml` + `Cargo.toml` + `src/main.rs` with `nros::main!(...)` (Rust). C++ future: `CMakeLists.txt` with `nros_entry(...)` cmake fn + `main.cpp` with `NROS_MAIN(...)`. | Yes (one per deploy target) |
+
+"Component pkg" terminology retires in favour of "Node pkg" — matches
+ROS 2 composable-node naming.
+
+### 11.2 Canonical workspace layout
+
+```
+my_ws/
+├── Cargo.toml                            # [workspace] (Rust path)
+├── CMakeLists.txt                        # OPTIONAL (C++-majority path)
+├── .colcon_workspace                     # OPTIONAL marker for ament discovery
+└── src/
+    ├── talker_pkg/                       # Rust Node pkg
+    │   ├── package.xml
+    │   ├── Cargo.toml
+    │   └── src/lib.rs
+    ├── perception_cpp/                   # C++ Node pkg (future)
+    │   ├── package.xml
+    │   ├── CMakeLists.txt
+    │   └── src/perception.cpp
+    ├── demo_bringup/                     # Bringup pkg (pure declarative)
+    │   ├── package.xml
+    │   ├── system.toml                   # [system] + [deploy.<target>]
+    │   ├── launch/
+    │   │   ├── system.launch.xml         # default
+    │   │   ├── talker_only.launch.xml
+    │   │   └── sim.launch.xml
+    │   ├── config/
+    │   │   └── params.yaml
+    │   └── README.md
+    └── native_entry/                     # Entry pkg (Rust)
+        ├── package.xml
+        ├── Cargo.toml
+        └── src/main.rs                   # nros::main!(launch = "demo_bringup:system.launch.xml")
+```
+
+For a workspace with one Entry pkg + one Node pkg, fold the bringup
+pkg's `launch/` + `system.toml` into the Entry pkg directly. No
+duplication SSoT problem because there's only one boot path.
+
+### 11.3 Bringup pkg with multiple launch files (nav2 convention)
+
+`<system>_bringup/launch/` holds many `.launch.xml` files. Each is a
+distinct topology entry point. `system.toml` carries
+`[system] default_launch = "system.launch.xml"`. Users select with
+`nros launch <bringup-pkg> [--launch <file>]` or with macro
+`launch = "<bringup>:<file>"`. NOT split across `<sub>_launch` pkgs.
+
+Naming: `<system>_bringup` default; `<system>_launch` accepted alias.
+Matches nav2 / Autoware / turtlebot3.
+
+### 11.4 Pkg discovery — workspace walk
+
+Language-agnostic. Build-time mechanism (compile-time for proc-macro,
+configure-time for cmake fn):
+
+1. **Workspace root detection** — walk up from
+   `CARGO_MANIFEST_DIR` / `CMAKE_SOURCE_DIR` looking for, in order:
+   1. `NROS_WORKSPACE_ROOT` env var (explicit override).
+   2. `.colcon_workspace` marker or `COLCON_IGNORE` ancestor.
+   3. `Cargo.toml` containing `[workspace]`.
+   4. `.git/` (last-resort fallback).
+2. **Pkg-index build** — recurse from workspace root, collect every
+   `package.xml`. Pkg name = `<name>` element; pkg dir = parent dir.
+3. **Cache** — emit `$OUT_DIR/.nros-pkg-index.json` keyed on combined
+   `package.xml` mtimes. Re-scan only when mtime changes.
+
+Identical algorithm runs from Rust proc-macro AND C++ cmake fn — the
+shared logic lives in `nros-build` library, surfaced through both
+front-ends.
+
+### 11.5 Launch XML — ROS 2 schema verbatim
+
+Tags supported at v1:
+
+- `<launch>` — root.
+- `<arg name="..." default="..." value="..." />` — launch arg.
+- `<node pkg="..." exec="..." name="..." namespace="..." />` — spawn.
+- `<param name="..." value="..." />` — per-node param.
+- `<remap from="..." to="..." />` — topic/service remap.
+- `<group ns="..." />` — namespace wrapper.
+- `<include file="..." />` — recursive XML pull; args pass-through.
+
+Substitutions supported v1:
+
+- `$(find <pkg>)` — resolves to pkg source dir via the workspace pkg-
+  index.
+- `$(var <arg>)` — launch-arg reference.
+- `$(env <name>)` — env lookup at build time.
+
+Stock ROS 2 launch.xml from nav2 / Autoware / turtlebot3 paste in,
+**Just Works** modulo unsupported tags. Python `.launch.py` form is
+NOT supported v1; require XML.
+
+### 11.6 Macro surface — Rust
+
+```rust
+// Single-node self-bringup — reads [package.metadata.nros.entry] deploy
+nros::main!();
+
+// Single-node, explicit board override
+nros::main!(board = NativeBoard);
+
+// Multi-node, default launch from bringup pkg's system.toml
+nros::main!(launch = "demo_bringup");
+
+// Multi-node, explicit launch file
+nros::main!(launch = "demo_bringup:sim.launch.xml");
+
+// All explicit
+nros::main!(
+    board  = NativeBoard,
+    launch = "demo_bringup:sim.launch.xml",
+    args   = [("use_sim", "true")],
+);
+```
+
+One macro, four forms. Replaces today's `build.rs + include!()`
+shape end-to-end — Entry pkg `Cargo.toml` drops the `nros-build`
+build-dep, `main.rs` collapses to one line.
+
+### 11.7 Macro surface — C++ (future)
+
+Design parity:
+
+```cpp
+#include <nros/main.hpp>
+NROS_MAIN(nros::board::NativeBoard, "demo_bringup:sim.launch.xml");
+```
+
+```cmake
+find_package(nano_ros REQUIRED)
+nros_entry(
+    NAME    native_entry
+    BOARD   native
+    LAUNCH  "demo_bringup:sim.launch.xml"
+)
+```
+
+Both call shared `nros-build` codegen via cmake-driven shell. Same
+pkg-index + launch parser + emitted boot stub.
+
+### 11.8 Custom spin loop — escape hatch
+
+When users want their own executor lifecycle, they skip
+`nros::main!()` and write `main.rs` directly:
+
+```rust
+use nros::{Executor, ExecutorConfig, BoardEntry};
+use nros_board_native::NativeBoard;
+
+fn main() {
+    let outcome = <NativeBoard as BoardEntry>::run(|runtime| {
+        runtime.runtime.register_dispatch_slot_dyn(
+            __nros_component_talker_register,
+            __nros_component_talker_init,
+            __nros_component_talker_dispatch,
+            __nros_component_talker_tick,
+            "talker_pkg",
+        )?;
+        Ok(())
+    });
+    outcome.unwrap();
+}
+```
+
+Or, even fully manual:
+
+```rust
+fn main() -> Result<(), Box<dyn Error>> {
+    let executor = nros::Executor::open(&ExecutorConfig::default())?;
+    let node = executor.create_node("my_talker")?;
+    let publisher = node.create_publisher::<Int32>("/chatter", QoS::default())?;
+    loop {
+        publisher.publish(&Int32 { data: 0 })?;
+        std::thread::sleep(Duration::from_secs(1));
+    }
+}
+```
+
+`nros::main!()` is convenience; `BoardEntry::run` + manual register
+is the universal escape hatch; pure `Executor::open` is the rclcpp-
+style direct path.
+
+### 11.9 Rejected alternatives (this round)
+
+- **Cargo-metadata-based pkg discovery.** Rust-only; would force a
+  stub `Cargo.toml` on bringup pkgs; doesn't extend to C++. Replaced
+  by language-agnostic workspace walk.
+- **Workspace-root `[workspace.metadata.nros.bringups]` index.**
+  Adding a bringup pkg = 2 edits (create dir + register in root
+  table). Silent breakage on missed registration. Replaced by
+  automatic `package.xml` walk.
+- **Bringup pkg mandatory.** Over-prescription for single-target
+  workspaces.
+- **Custom launch XML schema.** Breaks copy-paste from
+  nav2/Autoware/turtlebot3.
+- **Python `.launch.py` v1.** Needs a Python interpreter at build
+  time; revisit on demand.
+- **Splitting launches across `<sub>_launch` sibling pkgs.**
+  Un-ROS-2-idiomatic at our scale (nav2 et al. ship one bringup pkg
+  with many launches inside).
+
+### 11.10 Work items (cross-refs to phase doc)
+
+- **N.5** (scope updated) — single-node codegen path. `nros::main!()`
+  no-arg form reads `[package.metadata.nros.entry] deploy = "X"`,
+  emits Board boot + this-pkg register.
+- **N.9** — `nros::main!()` / `nros::launch!()` proc-macro family.
+- **N.10** — workspace-walk pkg-index + `$(find <pkg>)` resolver.
+- **N.11** — ROS 2 launch.xml parser supporting the v1 tag set.
+- **N.12** — Component → Node rename sweep (mechanical, single wave).
+- **(future)** — C++ Entry pkg surface (`NROS_MAIN` + `nros_entry`).
