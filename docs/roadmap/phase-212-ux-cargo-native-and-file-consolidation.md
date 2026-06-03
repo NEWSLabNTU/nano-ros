@@ -698,11 +698,23 @@ install exists.
         PID file the user can stop via `nros launch --stop`. Landed
         in nros-cli as `nros_launch_detach_writes_pid_file`
         (`cmd/launch.rs:845`).
-  - [ ] `ros2_launch_still_works_after_ament_install` — verifies the
-        non-nros path remains compatible when the user does install via
-        a colcon outer. (needs verification — TODO; no matching test
-        landed in nros-cli or nano-ros. May reasonably be covered by
-        an external rmw-zenoh interop fixture but not yet wired here.)
+  - [x] `ros2_launch_still_works_after_ament_install` — **RETIRED
+        2026-06-04** (superseded by §212.J as the canonical desktop
+        launcher; see §212.O.8 audit). Per §212.J.4/J.5 + Notes
+        §3744-3748, Phase 212 commits to `nros launch` as the
+        supported front-end and OMITS
+        `<buildtool_depend>ament_cmake</buildtool_depend>` from
+        bringup/Entry pkg `package.xml`. The §212.L Entry pkg
+        redesign retired the Bringup pkg shape and with it the
+        in-tree ament-install obligation. No active `ament_install_*`
+        production path exists in `cmake/` to regress
+        (`cmake/compat/NrosRclcppCompat.cmake` only provides
+        consumption-side shims for stock rclcpp code). Stock
+        `ros2 launch` against an ament-installed nano-ros pkg is
+        an opt-in alternative the user wires via a colcon outer;
+        that integration is OUT-of-scope for Phase 212 acceptance
+        and will be filed as its own phase if/when a concrete
+        consumer materialises.
 - **Files:**
   `nros-cli/packages/nros-cli-core/src/cmd/launch.rs`.
 
@@ -2664,12 +2676,22 @@ rebase conflict.
       `nros-msg-to-idl` crate; corpus fixture under
       `tests/fixtures/msg_to_cyclone_idl/`.
 
-- [ ] **O.8 `ros2_launch_still_works_after_ament_install`**
-      (Phase 211 ament-install acceptance) — verifies the
-      ament-install path doesn't break stock `ros2 launch`
-      consumption. May be obsolete post-Phase 212 redesign —
-      audit before implementing. If still relevant: nano-ros
-      fixture + test gated on `colcon` / `ros2` availability.
+- [x] **O.8 `ros2_launch_still_works_after_ament_install`**
+      — **RETIRED 2026-06-04** (audit complete). Superseded by
+      §212.J `nros launch` as the canonical desktop launcher;
+      §212.J.4 commits Phase 212 to that path and §212.J.5 OMITS
+      `<buildtool_depend>ament_cmake</buildtool_depend>` from
+      bringup/Entry pkg `package.xml`. Notes §3744-3748 confirms
+      "Phase 212 commits to 212.J as the canonical path; colcon
+      outer integration becomes an opt-in alternative." Phase
+      212.L's Entry pkg redesign retired the Bringup pkg shape
+      and with it the in-tree ament-install obligation. No
+      active `ament_install_*` production callsite exists under
+      `cmake/` to regress (only `cmake/compat/NrosRclcppCompat.
+      cmake` ships consumption-side shims for stock rclcpp code).
+      Cross-ref §212.J Tests bullet for the matching retirement
+      note. Reopen as a fresh phase if a concrete colcon-outer
+      consumer materialises.
 
 - **Tests** (per-wave, gated on SDK availability):
   - [x] `native_rust_talker_listener_e2e_<rmw>` per RMW —
