@@ -31,6 +31,20 @@ fn have(cmd: &str) -> bool {
 fn zephyr_integration_shell_smoke() {
     let root = workspace_root();
 
+    // Phase 214.L.2 — the legacy `integrations/zephyr/` shell was
+    // folded into the canonical `zephyr/` module in Phase 208.D.7
+    // (commit 18d92325d, 2026-05-30): `module.yml`, `Kconfig`, and
+    // `CMakeLists.txt` were superseded by the in-tree Zephyr module
+    // at `zephyr/`; only `west.yml` survived, moved to
+    // `zephyr/west.yml`. Skip cleanly when the legacy shell path is
+    // absent rather than re-introducing the duplicate surface.
+    if !root.join("integrations/zephyr/module.yml").exists() {
+        nros_tests::skip!(
+            "integrations/zephyr/module.yml absent — Phase 208.D.7 folded the \
+             shell into zephyr/ (canonical module lives at zephyr/module.yml)"
+        );
+    }
+
     // Phase 150.G — auto-detect ZEPHYR_BASE at the canonical
     // in-tree path provisioned by `scripts/zephyr/setup.sh`
     // (`<root>/zephyr-workspace/zephyr/`) when the caller hasn't
