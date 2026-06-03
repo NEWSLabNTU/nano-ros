@@ -873,16 +873,45 @@ const yet; (3) carry a local libc patch.
 
 **Work Items:**
 
-- [ ] **214.M.1 Reproduce + diagnose remedy path** — try
-      `rustup install nightly-2026-03-15` (or any commit before the
-      hostname commit) and `RUSTC_BOOTSTRAP=1 cargo build`. If that
-      passes, the toolchain pin is the lever.
-      **Acceptance**: documented remedy with a concrete bump.
+- [x] **214.M.1 Reproduce + diagnose remedy path** — reproduced
+      cleanly: `cargo build --release` in
+      `examples/qemu-arm-nuttx/rust/listener/` against the pinned
+      nightly-2026-04-11 fails with `error[E0425]: cannot find value
+      \`_SC_HOST_NAME_MAX\` in crate \`libc\`` at
+      `…/nightly-…/lib/rustlib/src/rust/library/std/src/sys/net/hostname/unix.rs:8`.
+      The pinned nightly's `std` references `libc::_SC_HOST_NAME_MAX`;
+      the **patched libc fork** at `third-party/nuttx/libc/` defines
+      it (`bc6c8dfc6 Add _SC_HOST_NAME_MAX for NuttX target` →
+      `src/unix/nuttx/mod.rs:515`), but crates.io `libc 0.2.183` —
+      the version `std`'s `Cargo.toml` pulls — does NOT. Root cause
+      is **not** the toolchain (path 2 unnecessary) and **not** the
+      libc fork (path 1 unnecessary — fix is already there).
+      Root cause is that `nros` 0.3.7's `ws sync` strips the
+      `[patch.crates-io]` block from the rendered
+      `.cargo/config.toml`, even though
+      `packages/boards/nros-board-nuttx-qemu-arm/nros-board.toml`
+      declares `libc = { path = "${workspace}/third-party/nuttx/libc" }`
+      in its `cargo_config` template (verified by diffing the template
+      against the rendered output — only the `[patch.crates-io]`
+      lines are missing). The smoke fixture at
+      `packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/`
+      stays green only because it lacks a `package.xml` so
+      `ws sync` skips it entirely.
+      **Remedy**: post-`ws sync` shell fix-up that re-appends the
+      libc patch (path 3 variant — workspace-local patch, no
+      upstream CLI change).
+      **Acceptance**: documented remedy with a concrete fix-up
+      script.
 
-- [ ] **214.M.2 Land remedy** — either bump
-      `rust-toolchain.toml` to the working nightly OR submit a
-      libc PR + carry it via `[patch.crates-io]` until merged.
-      **Acceptance**: `just nuttx build-fixtures` succeeds.
+- [ ] **214.M.2 Land remedy** — based on M.1: add a
+      post-`ws sync` shell helper that re-appends the libc
+      `[patch.crates-io]` block to NuttX `.cargo/config.toml`.
+      Path (1) (libc PR) + path (2) (toolchain pin) are both
+      unnecessary — the patched libc already defines the symbol;
+      the bug is in `nros ws sync` 0.3.7 stripping the patch from
+      the rendered template.
+      **Acceptance**: `just nuttx build-examples` passes the std /
+      libc build step.
 
 ---
 
