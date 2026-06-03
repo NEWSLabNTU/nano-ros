@@ -233,6 +233,51 @@ pub use component_runtime::{
     ExecutorComponentRuntime, ExecutorError,
 };
 pub use nros_macros::component;
+// Phase 212.N.12 — canonical `nros::node!()` macro (Component → Node
+// rename). `nros::component!()` stays as a deprecated alias that forwards
+// to the same emit (see `nros-macros::component`/`node`).
+pub use nros_macros::node;
+
+// ============================================================================
+// Phase 212.N.12 — Component → Node rename aliases
+// ============================================================================
+//
+// The user-facing surface is "Node" (matches rclcpp_components / ROS 2
+// launch.xml `<node pkg=…>`). The legacy `Component*` names stay as
+// deprecated re-export aliases for one release; downstream code that
+// still imports `nros::Component`, `nros::ComponentContext`, etc. keeps
+// compiling with a deprecation warning.
+// NOTES on rename conflicts:
+// - `Component` → `Node` trait alias is dropped at the crate root because
+//   `nros_node::Node` (the concrete in-memory node struct created via
+//   `node_builder()`) already occupies the `Node` name. Until that struct
+//   gets a clarifying rename (out of N.12 scope), the trait stays known
+//   at the crate root as `Component` (its idiomatic Rust name is
+//   `nros::Component`, and that name keeps round-tripping). The pkg-level
+//   metadata table key + the user-facing macro renames (`nros::node!`,
+//   `[package.metadata.nros.node]`) cover the public-facing surface.
+// - `ComponentError` is NOT aliased to `NodeError` because
+//   `nros_node::NodeError` already occupies that name — use
+//   `nros::ComponentError` / `nros::NodeDeclError` for the
+//   component-declaration error type.
+pub use component::{
+    ComponentActionClient as NodeActionClient, ComponentActionServer as NodeActionServer,
+    ComponentContext as NodeContext, ComponentError as NodeDeclError,
+    ComponentNode as DeclaredNode, ComponentNodeRuntime as DeclaredNodeRuntime,
+    ComponentParameter as NodeParameter, ComponentPublisher as NodePublisher,
+    ComponentResult as NodeResult, ComponentRuntime as NodeRuntime,
+    ComponentRuntimeAdapter as NodeRuntimeAdapter,
+    ComponentServiceClient as NodeServiceClient, ComponentServiceServer as NodeServiceServer,
+    ComponentSubscription as NodeSubscription, ComponentTimer as NodeTimer,
+    ExecutableComponent as ExecutableNode, MISSING_COMPONENT_EXPORT_ERROR as MISSING_NODE_EXPORT_ERROR,
+};
+#[cfg(feature = "rmw-cffi")]
+pub use component::ComponentExecutorRuntime as NodeExecutorRuntime;
+pub use component::{
+    record_component_metadata as record_node_metadata, register_component as register_node,
+};
+#[cfg(feature = "rmw-cffi")]
+pub use component_runtime::ExecutorComponentRuntime as ExecutorNodeRuntime;
 
 // Re-export node types
 pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriberHandle};
@@ -631,5 +676,19 @@ mod tests {
 
         let _ = NodeConfig::new("test_node", "/");
         let _ = QosSettings::BEST_EFFORT;
+    }
+
+    /// Phase 212.N.12 — verify the Node* aliases compile alongside the
+    /// legacy Component* names. The aliases are `pub use … as …` so this
+    /// test is a name-resolution smoke check rather than a runtime test.
+    #[test]
+    fn phase_212_n_12_node_aliases_resolve() {
+        // Canonical "Node*" names (post-rename).
+        fn _take_node_ctx<C: crate::Component>(_: &mut crate::NodeContext<'_, dyn crate::NodeRuntime>) {}
+        // The legacy "Component*" names still resolve.
+        fn _take_component_ctx(_: &mut crate::ComponentContext<'_, dyn crate::ComponentRuntime>) {}
+        // Result type aliases co-exist.
+        let _: crate::NodeResult<()> = Ok(());
+        let _: crate::ComponentResult<()> = Ok(());
     }
 }

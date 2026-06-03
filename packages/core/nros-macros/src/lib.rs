@@ -172,17 +172,22 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-/// Export a Rust type implementing `nros::Component` as the package component.
+/// Export a Rust type implementing `nros::Node` as the package node.
+///
+/// Phase 212.N.12 — `nros::node!()` is the canonical name (matches the
+/// rclcpp_components / ROS 2 launch.xml `<node pkg=…>` convention). The
+/// legacy `nros::component!()` macro is kept as a deprecated alias that
+/// forwards to this one.
 ///
 /// # Example
 ///
 /// ```ignore
 /// struct Talker;
 ///
-/// impl nros::Component for Talker {
+/// impl nros::Node for Talker {
 ///     const NAME: &'static str = "talker";
 ///
-///     fn register(ctx: &mut nros::ComponentContext<'_>) -> nros::ComponentResult<()> {
+///     fn register(ctx: &mut nros::NodeContext<'_>) -> nros::NodeResult<()> {
 ///         let mut node = ctx.create_node(
 ///             nros::NodeId::new("node"),
 ///             nros::NodeOptions::new("talker"),
@@ -195,10 +200,20 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// nros::component!(Talker);
+/// nros::node!(Talker);
 /// ```
 #[proc_macro]
+pub fn node(input: TokenStream) -> TokenStream {
+    component_impl(input)
+}
+
+/// Deprecated alias for [`node!`] (Phase 212.N.12). Forwards verbatim.
+#[proc_macro]
 pub fn component(input: TokenStream) -> TokenStream {
+    component_impl(input)
+}
+
+fn component_impl(input: TokenStream) -> TokenStream {
     let component_ty = parse_macro_input!(input as Path);
 
     // Phase 212.N.7 step-3.4 — the package-name string handed to
@@ -311,7 +326,7 @@ pub fn component(input: TokenStream) -> TokenStream {
                     tick_opaque,
                     #pkg_name_lit,
                 )
-                .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::ComponentRegister(#pkg_name_lit))
+                .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister(#pkg_name_lit))
         }
     };
 

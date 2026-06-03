@@ -40,6 +40,10 @@ pub use board::{
     ComponentDispatchFn, ComponentInitFn, ComponentRegisterFn, ComponentRuntime, ComponentTickFn,
     NetworkWait, NullComponentRuntime, RuntimeCtx, RuntimeError, TransportBringup,
 };
+// Phase 212.N.12 — Component → Node rename aliases at the crate root.
+pub use board::{
+    NodeDispatchFn, NodeInitFn, NodeRegisterFn, NodeRuntime, NodeTickFn, NullNodeRuntime,
+};
 // Phase 212.N.2 — `NetworkError` is the return type any external
 // `NetworkWait` impl carries, so it needs to be reachable at the
 // crate root. The `board` module stays private; this re-export keeps

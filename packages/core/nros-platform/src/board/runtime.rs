@@ -235,15 +235,35 @@ impl<'a> RuntimeCtx<'a> {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum RuntimeError {
-    /// A component's `register(runtime)` call failed. The string
-    /// carries the component pkg name.
-    ComponentRegister(&'static str),
+    /// A node's `register(runtime)` call failed. The string carries the
+    /// node pkg name.
+    ///
+    /// Phase 212.N.12 renamed `ComponentRegister` → `NodeRegister` to
+    /// match the rclcpp_components / ROS 2 launch.xml `<node pkg=…>`
+    /// convention. The old variant stays as a deprecated alias for one
+    /// release.
+    NodeRegister(&'static str),
+}
+
+impl RuntimeError {
+    /// Deprecated alias for [`Self::NodeRegister`] (Phase 212.N.12).
+    /// Constructs the renamed variant; old hand-written `match`
+    /// arms that read `RuntimeError::ComponentRegister(_)` keep
+    /// compiling as long as they match `NodeRegister` instead.
+    #[deprecated(
+        since = "212.N.12",
+        note = "renamed to `RuntimeError::NodeRegister`; remove in a future release"
+    )]
+    #[allow(non_snake_case)]
+    pub const fn ComponentRegister(msg: &'static str) -> Self {
+        Self::NodeRegister(msg)
+    }
 }
 
 impl core::fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::ComponentRegister(msg) => write!(f, "component register failed: {msg}"),
+            Self::NodeRegister(msg) => write!(f, "node register failed: {msg}"),
         }
     }
 }

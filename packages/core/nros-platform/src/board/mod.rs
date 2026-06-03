@@ -64,6 +64,14 @@ pub use runtime::{
     ComponentDispatchFn, ComponentInitFn, ComponentRegisterFn, ComponentRuntime, ComponentTickFn,
     NullComponentRuntime, RuntimeCtx, RuntimeError,
 };
+// Phase 212.N.12 — Component → Node rename aliases. The user-facing
+// trait/typedef surface is "Node*"; the legacy "Component*" names stay
+// as deprecated re-export aliases for one release.
+pub use runtime::{
+    ComponentDispatchFn as NodeDispatchFn, ComponentInitFn as NodeInitFn,
+    ComponentRegisterFn as NodeRegisterFn, ComponentRuntime as NodeRuntime,
+    ComponentTickFn as NodeTickFn, NullComponentRuntime as NullNodeRuntime,
+};
 pub use transport::TransportBringup;
 
 /// Super-trait every board impl carries (mirrors
