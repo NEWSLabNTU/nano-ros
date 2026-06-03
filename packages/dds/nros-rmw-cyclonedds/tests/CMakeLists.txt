@@ -208,6 +208,25 @@ if(_addtwoints_sources)
     endif()
 endif()
 
+# Phase 212.K.7.4.b — dynamic-type bridge smoke. Calls
+# `nros_cyclonedds_build_descriptor_from_schema` directly with a
+# primitive-only schema and verifies the returned descriptor passes
+# `dds_create_topic`. No idlc / no codegen path — proves the
+# synthesised descriptor is well-formed enough for Cyclone.
+add_executable(nros_rmw_cyclonedds_dynamic_bridge_smoke
+    dynamic_bridge_smoke.cpp
+)
+target_link_libraries(nros_rmw_cyclonedds_dynamic_bridge_smoke
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+add_test(
+    NAME nros_rmw_cyclonedds_dynamic_bridge_smoke
+    COMMAND nros_rmw_cyclonedds_dynamic_bridge_smoke
+)
+set_tests_properties(nros_rmw_cyclonedds_dynamic_bridge_smoke
+    PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
+
 # Phase 117.X.2: topic-prefix helper unit test (no DDS interaction).
 add_executable(nros_rmw_cyclonedds_topic_prefix_test
     topic_prefix_test.cpp
