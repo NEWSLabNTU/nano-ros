@@ -389,9 +389,19 @@ Bringup pkg is pure declarative — Path A from the live design doc (no
 - [ ] **F.3** — `nros plan <dir>` discovers bringup pkgs by
       dir-walk (sibling to workspace members; excluded from
       `[workspace] members`). The discovery walk is documented + tested.
-- [ ] **F.4** — `system.toml` schema documented (see design doc §4).
+- [x] **F.4** — `system.toml` schema documented (see design doc §4).
       `[system]` + `[[component]]` + `[deploy.<target>]` + `[[domain]]` +
-      `[[bridge]]` + optional `[[remap]]`.
+      `[[bridge]]` + optional `[[remap]]`. Landed in nros-cli @
+      `7fac5d10c42cd9162800a31b18312c59946ab7e2` at
+      `docs/system-toml-schema-v0.1.md`. Frozen v0.1 covers every
+      top-level table + key, `deny_unknown_fields` policy + the
+      2026-06-03 `[system].default_launch` field + 5-step multi-launch
+      resolution semantics (deploy override → CLI flag → macro arg →
+      `default_launch` → hard fallback). Cross-refs design doc §4 +
+      §11.3. §12 "Known gaps" surfaces four parser-vs-schema follow-ups
+      (parser `default_launch` field; deploy fixture drift; PlatformIO
+      `framework` key; vec-rename note) — F.4 itself is doc-only per
+      scope.
 - **Tests:**
   - [ ] `nros_new_system_scaffolds_bringup_pkg` — invocation produces
         the expected file tree.
