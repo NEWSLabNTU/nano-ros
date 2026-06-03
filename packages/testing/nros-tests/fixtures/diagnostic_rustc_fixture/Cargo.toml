@@ -1,0 +1,17 @@
+[package]
+name = "diagnostic_rustc_fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+# Phase 212 §Acceptance — diagnostic-verbatim regression fixture.
+# This crate exists ONLY to emit a known rustc error[E0432] that
+# `phase212_diagnostic_verbatim` asserts reaches the user's terminal
+# untouched. Do not depend on, link, or build it from anywhere else.
+# Stock cargo only — no nros workspace deps (the contract is "any
+# diagnostic", not just nros's).
+
+[workspace]
