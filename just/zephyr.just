@@ -849,6 +849,78 @@ build-fvp-aemv8r-cyclonedds:
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
 
+# Phase 214.A — run the Phase 117.13 talker build on the ARM Fast Models
+# `FVP_BaseR_AEMv8R` (license-gated; see `nros-sdk-index.toml`
+# `[gated.arm-fvp]`). Resolves the FVP binary directory via
+# `scripts/zephyr/resolve-fvp-bin.sh` (ARMFVP_BIN_PATH /
+# ARM_FVP_DIR / PATH); then shells `west build -t run`, which drives
+# Zephyr's `cmake/emu/armfvp.cmake` target with the canonical
+# `boards/arm/fvp_baser_aemv8r/board.cmake` `-C` flags for the
+# AEMv8-R aarch64 SMP target. UART0–3 pipe to stdout (unbuffered) per
+# the board's `-C bp.pl011_uart*.out_file=-`.
+[group("examples")]
+run-fvp-aemv8r:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr/FVP run skip: west not found"; exit 0
+    fi
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr/FVP run skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+    fi
+    build_dir="$workspace/build-fvp-aemv8r-talker"
+    if [ ! -f "$build_dir/zephyr/zephyr.elf" ]; then
+        echo "Zephyr/FVP run skip: $build_dir/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-aemv8r\` first"
+        exit 0
+    fi
+    nros_root="$(pwd)"
+    if ! armfvp_dir="$("$nros_root/scripts/zephyr/resolve-fvp-bin.sh")"; then
+        echo "Zephyr/FVP run skip: ARM FVP binary not resolved (see message above)"
+        exit 0
+    fi
+    echo "FVP binary dir: $armfvp_dir"
+    sdk="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export ZEPHYR_SDK_INSTALL_DIR="$sdk"
+    export ARMFVP_BIN_PATH="$armfvp_dir"
+    echo "Launching FVP_BaseR_AEMv8R on build-fvp-aemv8r-talker ..."
+    west build -d build-fvp-aemv8r-talker -t run
+
+# Phase 214.A — run the Phase 117.14 cpp/cyclonedds talker on the FVP.
+# Same resolver + west invocation as `run-fvp-aemv8r`; reuses the
+# build dir from `build-fvp-aemv8r-cyclonedds`.
+[group("examples")]
+run-fvp-aemv8r-cyclonedds:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr/FVP-Cyclone run skip: west not found"; exit 0
+    fi
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr/FVP-Cyclone run skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+    fi
+    build_dir="$workspace/build-aemv8r-cyclonedds-talker"
+    if [ ! -f "$build_dir/zephyr/zephyr.elf" ]; then
+        echo "Zephyr/FVP-Cyclone run skip: $build_dir/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-aemv8r-cyclonedds\` first"
+        exit 0
+    fi
+    nros_root="$(pwd)"
+    if ! armfvp_dir="$("$nros_root/scripts/zephyr/resolve-fvp-bin.sh")"; then
+        echo "Zephyr/FVP-Cyclone run skip: ARM FVP binary not resolved (see message above)"
+        exit 0
+    fi
+    echo "FVP binary dir: $armfvp_dir"
+    sdk="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export ZEPHYR_SDK_INSTALL_DIR="$sdk"
+    export ARMFVP_BIN_PATH="$armfvp_dir"
+    echo "Launching FVP_BaseR_AEMv8R on build-aemv8r-cyclonedds-talker ..."
+    west build -d build-aemv8r-cyclonedds-talker -t run
+
 # Phase 117.13 — Zephyr build smoke for the NXP X-S32Z270-DC (DC2)
 # RTU0 Cortex-R52 target (Phase 117.11's reference platform). Reuses
 # cleanly when west / Zephyr workspace / arm-zephyr-eabi SDK aren't

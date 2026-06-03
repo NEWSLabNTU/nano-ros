@@ -32,7 +32,22 @@ fragments via `-DEXTRA_CONF_FILE=...`.
 ## Runtime
 
 ARM FVP `Base_RevC AEMv8R` is license-gated (Arm Development
-Studio). Pair with:
+Studio / [Arm Ecosystem FVPs](
+https://developer.arm.com/downloads/-/arm-ecosystem-fvps)). After
+accepting the EULA + installing locally, point nano-ros at it:
+
+```sh
+export ARM_FVP_DIR=/path/to/Base_RevC_AEMv8R   # or ARMFVP_BIN_PATH=<dir>
+just zephyr run-fvp-aemv8r-cyclonedds
+```
+
+Phase 214.A — the recipe resolves `FVP_BaseR_AEMv8R` via
+`scripts/zephyr/resolve-fvp-bin.sh` and shells `west build -t run`,
+which drives Zephyr's `cmake/emu/armfvp.cmake` with the canonical
+`board.cmake` `-C` flags (UART 0–3 → stdout, GICv3, NUM_CORES from
+`CONFIG_MP_MAX_NUM_CPUS`).
+
+Pair with:
 
 - A second `native_sim` instance running
   `examples/zephyr/cpp/dds/listener` for an in-tree round-trip.
