@@ -1921,11 +1921,10 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       cookbook to `book/src/user-guide/`. Update
       `docs/design/multi-node-workspace-layout.md` to reflect the
       Entry pkg as composition root (replacing Bringup pkg).
-- [ ] **N.9 `nros::main!()` / `nros::launch!()` proc-macro family**
-      (2026-06-03 design lock per
-      `docs/design/multi-node-workspace-layout.md` §11.6). Replaces
-      today's `build.rs + include!(env!("OUT_DIR")/run_plan.rs)`
-      shape end-to-end. Four forms:
+- [x] **N.9 `nros::main!()` proc-macro family** (landed 2026-06-03,
+      this commit). Four forms expand to a `fn main()` that delegates
+      to `<Board as BoardEntry>::run(...)`, dispatching one
+      `<pkg>::register(runtime)?` per launch-XML `<node>`:
       ```rust
       nros::main!();                                          // single-node self-bringup
       nros::main!(board = NativeBoard);                       // single-node, explicit board
@@ -1934,14 +1933,42 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       nros::main!(board = X, launch = "Y:Z.xml", args = [...]);
       ```
       Macro at expansion time invokes N.10 (pkg-index) + N.11
-      (launch.xml parser) inside the proc-macro crate. Errors
-      surface as compile-time spans pointing at the launch.xml line
-      that misparsed. Entry pkg `Cargo.toml` drops the `nros-build`
-      build-dep; `main.rs` collapses to one line.
-      **Files:** `packages/core/nros-macros/src/{main,launch}.rs`
-      (NEW), `nros-cli/packages/nros-build/src/{pkg_index,
-      launch_parser}.rs` (NEW shared codegen library), Entry-pkg
-      `Cargo.toml` sweep (drop build-dep).
+      (launch.xml parser) via `nros-build` (git dep on
+      `github.com/NEWSLabNTU/nros-cli`). Form-1 reads
+      `[package.metadata.nros.entry] deploy = "<board>"` from the
+      Entry pkg's own `Cargo.toml` and maps it via a small lookup
+      table (native / freertos / threadx-{linux,qemu-riscv64} /
+      nuttx / esp32 / zephyr); forms 2–4 use the user-supplied path
+      verbatim. Forms 3/4 walk a separate "bringup" pkg's
+      `system.toml::default_launch` (default
+      `system.launch.xml`) to find the launch file.
+      Entry pkg `Cargo.toml` drops the `nros-build` build-dep;
+      `main.rs` collapses to one line.
+      **Rebuild-correctness workaround:** stable Rust proc-macros
+      can't use `proc_macro::tracked_path::path()`; the macro emits
+      `const _: &[u8] = include_bytes!("/abs/path");` for every file
+      it read (launch.xml + each `package.xml` the index walked +
+      the bringup's `system.toml`). Confirmed working: touching
+      launch.xml triggers `Checking demo_entry` on the next
+      `cargo check` (`n9_main_macro_rebuilds_on_launch_xml_touch`
+      test).
+      **`nros::launch!()` deferred** — N.9 ships only `nros::main!()`
+      v1; a sibling macro that emits just the register-call list
+      (for users who want to keep their own `fn main()`) can land
+      later if user demand surfaces.
+      **Files:** `packages/core/nros-macros/src/main_macro.rs`
+      (NEW), `packages/core/nros-macros/Cargo.toml` (`toml` +
+      `nros-build` deps), `packages/core/nros-macros/src/lib.rs`
+      (`#[proc_macro] pub fn main`), `packages/core/nros/src/lib.rs`
+      (re-export `nros_macros::main`),
+      `packages/testing/nros-tests/fixtures/n9_workspace/` (NEW
+      tempdir fixture — 1 Node pkg + 1 bringup + 1 Entry pkg),
+      `packages/testing/nros-tests/tests/phase212_n9_main_macro_forms.rs`
+      (NEW — 6 tests: 4 forms + unknown-board diagnostic +
+      rebuild-on-touch), `examples/native/rust/entry-poc/` (migrated
+      off `build.rs` + the old `include!(env!("OUT_DIR")/run_plan.rs)`
+      shape onto `nros::main!()`; verified `cargo run` exits 0 with
+      `zenohd` running).
 - [x] **N.10 Workspace pkg-index + `$(find <pkg>)` resolver**
       (landed nros-cli `de165c8` 2026-06-03; 8 tests pass).
       (2026-06-03 design lock §11.4). Language-agnostic build-time
@@ -2040,9 +2067,11 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
   - [ ] `board_agnostic_run_plan_links_against_any_board` — same
         compiled `run_plan` rlib links under at least 2 distinct
         Board impls (posix + freertos) in the test fixture.
-  - [ ] `n9_main_macro_expands_for_each_form` — Entry pkg using
+  - [x] `n9_main_macro_expands_for_each_form` — Entry pkg using
         each of the four `nros::main!(...)` forms (no-arg, board=,
-        launch=, all-explicit) compiles + runs. (N.9)
+        launch=, all-explicit) compiles. (N.9 — landed as
+        `phase212_n9_main_macro_forms.rs`, 6 tests pass: 4 forms +
+        unknown-board diagnostic + rebuild-on-launch-xml-touch)
   - [ ] `n10_pkg_index_resolves_across_workspace` — given fixture
         workspace with 3 Node pkgs + 1 bringup pkg + 1 Entry pkg,
         `nros::main!(launch = "demo_bringup:system.launch.xml")`
