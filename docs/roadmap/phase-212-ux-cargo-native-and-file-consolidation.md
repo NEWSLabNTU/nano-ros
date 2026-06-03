@@ -900,22 +900,52 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       `cargo build --features rmw-cyclonedds` succeeds and runs an
       end-to-end exchange with `zenohd` / Cyclone router.
 
-- [ ] **K.7.8** — **`nros-rmw-cyclonedds` registry tests.** Gated on
-      K.7.6.b so a real typed-creator call path exists to exercise.
-      * `bounded_registry_overflow_panics_at_compile_time` — exceed
-        `NROS_CYCLONEDDS_MAX_TYPES` during a fixture build; verify
-        the `const _: () = assert!(...)` fires.
-      * `first_use_registers_subsequent_hits_cache` — twin
-        `create_publisher<M>()` calls; first triggers Cyclone
-        descriptor build, second is a hashmap-hit; cache-hit count
-        observed via `#[cfg(test)]` counter.
-      * `multi_thread_first_use_race` (POSIX): N threads call
-        `register_or_lookup::<M>()` concurrently; exactly one
-        Cyclone descriptor allocation.
-      * `nostd_alloc_free_link_smoke` — link a bare-metal
-        `nros-rmw-cyclonedds` consumer w/ `#![no_std] +
-        #![cfg(not(feature = "alloc"))]`; no
-        `alloc::alloc::alloc` symbol resolves from the Rust side.
+- [x] **K.7.8** — **`nros-rmw-cyclonedds` registry hardening tests.**
+      Landed as three new test entry points in
+      `packages/dds/nros-rmw-cyclonedds/tests/`, all exercising the
+      registry / builder via the `bridge-stub` feature (no `libddsc`
+      link required):
+      * `tests/registry_race.rs` (gated
+        `#[cfg(all(feature = "std", feature = "bridge-stub"))]`,
+        sub-tests serialised via an in-file `Mutex`):
+        - `register_same_type_from_many_threads_builds_once` — 16
+          barrier-sync'd threads register the same `Message` impl;
+          asserts `BUILD_COUNTER == 1` (single bridge call across
+          racers) AND every returned descriptor pointer matches.
+        - `register_distinct_types_concurrently_each_builds_once` —
+          two 8-thread cohorts register `A` and `B` from a shared
+          barrier; asserts `BUILD_COUNTER == 2` (per-type) and that
+          `A` and `B` map to distinct pointers.
+        - `repeated_register_after_cache_clear_rebuilds_once` —
+          verifies `TypeRegistry::clear_for_test()` (gated behind
+          `bridge-stub` per K.7.6.b) actually empties the cache.
+      * `tests/bare_metal_link.rs` (gated `#[cfg(feature = "std")]`,
+        both tests `#[ignore]`-marked so they run only via
+        `-- --ignored`):
+        - `bare_metal_no_std_clean` — spawns
+          `cargo build -p nros-rmw-cyclonedds --no-default-features
+          --target thumbv7m-none-eabi` from a hosted test process;
+          asserts success + `libnros_rmw_cyclonedds*.rlib` lands in
+          `target/thumbv7m-none-eabi/debug/deps/`. Skips with a
+          `[SKIPPED]` log line when the target isn't installed (the
+          gate is `rustup target list --installed`).
+        - `bare_metal_no_alloc_symbols` — shells out to the new
+          `tests/alloc_free_audit.sh`.
+      * `tests/alloc_free_audit.sh` — standalone-runnable script
+        that builds the crate for `thumbv7m-none-eabi
+        --no-default-features`, locates the freshest
+        `libnros_rmw_cyclonedds*.rlib` under `target/.../deps`, and
+        greps the `nm` output for `_ZN5alloc[0-9]…` and
+        `__rust_(alloc|dealloc|realloc|alloc_zeroed)`. Exits 0 with
+        zero hits, 1 with hits or missing tooling. Verified clean
+        on 2026-06-03 — zero alloc symbols in the bare-metal rlib.
+      Side-fix in `tests/registry_smoke.rs`: the local
+      `extern "C"` stubs are now gated
+      `#[cfg(not(feature = "bridge-stub"))]` so they don't
+      duplicate-symbol with the lib's `test_stub` module when the
+      feature is enabled. Default `cargo test -p nros-rmw-cyclonedds
+      --no-default-features` still passes the same 13 tests (10
+      unit + 3 integration smoke); the new test files are gated out.
 
 - [x] **K.7.9** — **Doc updates.** Status block + per-item commit
       hashes landed at the top of this section; runtime-introspection

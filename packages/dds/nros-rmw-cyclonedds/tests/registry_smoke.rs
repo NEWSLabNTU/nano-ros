@@ -6,6 +6,7 @@
 //! the sibling CMakeLists.txt). Cargo discovers `tests/*.rs`; the
 //! C++ files are ignored.
 
+#[cfg(not(feature = "bridge-stub"))]
 use core::ffi::{c_char, c_int, c_void};
 
 use nros_rmw_cyclonedds::dynamic_type::{BuildError, DescriptorBuilder};
@@ -16,8 +17,15 @@ use nros_serdes::schema::{Field, FieldType, Message, NestedType};
 // `#[cfg(test)]` stub lives behind the lib crate's unit-test cfg,
 // which doesn't apply to integration-test binaries. Pretend the
 // build always succeeds and hand back a stable non-NULL pointer.
+//
+// Under the `bridge-stub` feature (K.7.6.b / K.7.8) the lib crate
+// already exports these symbols from `bridge::test_stub`, so this
+// local copy MUST be gated out to avoid a duplicate-symbol link
+// failure.
+#[cfg(not(feature = "bridge-stub"))]
 static STUB_BACKING: u8 = 0;
 
+#[cfg(not(feature = "bridge-stub"))]
 #[unsafe(no_mangle)]
 extern "C" fn nros_cyclonedds_build_descriptor_from_schema(
     _type_name: *const c_char,
@@ -30,6 +38,7 @@ extern "C" fn nros_cyclonedds_build_descriptor_from_schema(
     &STUB_BACKING as *const u8 as *const c_void
 }
 
+#[cfg(not(feature = "bridge-stub"))]
 #[unsafe(no_mangle)]
 extern "C" fn nros_rmw_cyclonedds_register_descriptor(
     _type_name: *const c_char,
