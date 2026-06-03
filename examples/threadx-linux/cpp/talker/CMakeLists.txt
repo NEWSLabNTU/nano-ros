@@ -23,7 +23,7 @@ find_package(std_msgs REQUIRED)
 #   2. Synthesise the ThreadX system_main (self-bringup: this pkg IS
 #      its own bringup; `nros plan` reads system.toml in this dir).
 #   3. Build the executable + link the synthesised system + platform.
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosComponentRegister.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 nano_ros_component_register(
     NAME    talker
     CLASS   threadx_linux_cpp_talker::Talker

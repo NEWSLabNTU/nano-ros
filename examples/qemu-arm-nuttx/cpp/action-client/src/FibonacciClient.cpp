@@ -28,5 +28,5 @@ namespace nuttx_cpp_action_client {
 
 } // namespace nuttx_cpp_action_client
 
-NROS_COMPONENT_REGISTER(nuttx_cpp_action_client::FibonacciClient,
+NROS_NODE_REGISTER(nuttx_cpp_action_client::FibonacciClient,
                         "nuttx_cpp_action_client::FibonacciClient");

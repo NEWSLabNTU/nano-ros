@@ -36,4 +36,4 @@ namespace nuttx_cpp_talker {
 
 } // namespace nuttx_cpp_talker
 
-NROS_COMPONENT_REGISTER(nuttx_cpp_talker::Talker, "nuttx_cpp_talker::Talker");
+NROS_NODE_REGISTER(nuttx_cpp_talker::Talker, "nuttx_cpp_talker::Talker");

@@ -3,11 +3,11 @@
 ///
 /// Subscribes to `std_msgs/Int32` on `/chatter`. The generated runtime
 /// owns init / executor / spin; this file declares the component class
-/// + exports the register trampoline via `NROS_COMPONENT_REGISTER`.
+/// + exports the register trampoline via `NROS_NODE_REGISTER`.
 
 #include <cstdint>
 
-#include <nros/component.hpp>
+#include <nros/node_pkg.hpp>
 #include <nros/nros.hpp>
 #include "std_msgs.hpp"
 
@@ -36,5 +36,5 @@ class Listener {
 
 } // namespace threadx_linux_cpp_listener
 
-NROS_COMPONENT_REGISTER(threadx_linux_cpp_listener::Listener,
+NROS_NODE_REGISTER(threadx_linux_cpp_listener::Listener,
                         "threadx_linux_cpp_listener::Listener");

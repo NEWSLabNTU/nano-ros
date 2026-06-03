@@ -2,7 +2,7 @@
 #ifndef FREERTOS_CPP_SERVICE_CLIENT_ADDTWOINTS_CLIENT_HPP
 #define FREERTOS_CPP_SERVICE_CLIENT_ADDTWOINTS_CLIENT_HPP
 
-#include <nros/component.hpp>
+#include <nros/node_pkg.hpp>
 
 namespace freertos_cpp_service_client {
 

@@ -27,7 +27,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn cmake_module_path() -> PathBuf {
-    workspace_root().join("cmake/NanoRosComponentRegister.cmake")
+    workspace_root().join("cmake/NanoRosNodeRegister.cmake")
 }
 
 fn require_prereqs() -> bool {

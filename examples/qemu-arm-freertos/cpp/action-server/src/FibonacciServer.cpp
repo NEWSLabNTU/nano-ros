@@ -26,5 +26,5 @@ namespace freertos_cpp_action_server {
 
 } // namespace freertos_cpp_action_server
 
-NROS_COMPONENT_REGISTER(freertos_cpp_action_server::FibonacciServer,
+NROS_NODE_REGISTER(freertos_cpp_action_server::FibonacciServer,
                         "freertos_cpp_action_server::FibonacciServer");

@@ -13,7 +13,7 @@ set(NANO_ROS_RMW zenoh)
 
 set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
 add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
-include("${_NANO_ROS_ROOT}/cmake/NanoRosComponentRegister.cmake")
+include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
 
 # Generate C msg bindings for THIS pkg's own msg/ dir.
 nros_generate_interfaces(${PROJECT_NAME} SKIP_INSTALL)

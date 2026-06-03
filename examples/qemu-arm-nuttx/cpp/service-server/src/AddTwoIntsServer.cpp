@@ -25,5 +25,5 @@ namespace nuttx_cpp_service_server {
 
 } // namespace nuttx_cpp_service_server
 
-NROS_COMPONENT_REGISTER(nuttx_cpp_service_server::AddTwoIntsServer,
+NROS_NODE_REGISTER(nuttx_cpp_service_server::AddTwoIntsServer,
                         "nuttx_cpp_service_server::AddTwoIntsServer");

@@ -25,7 +25,7 @@
 #include "nros/lifecycle.h"
 #include "nros/action.h"
 #include "nros/parameter.h"
-#include "nros/component.h"
+#include "nros/node_pkg.h"
 #include "nros/cdr.h"
 #include "nros/clock.h"
 

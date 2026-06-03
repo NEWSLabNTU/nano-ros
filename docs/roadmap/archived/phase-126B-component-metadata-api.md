@@ -84,7 +84,7 @@ Integrated Rust metadata coverage includes:
 - runtime adapter coverage for stable node IDs, executor node-handle mapping,
   duplicate node rejection, and unknown callback-effect entity rejection.
 - C and C++ component declaration headers:
-  `nros/component.h`, `nros/component.hpp`, and `nros/component_node.hpp`.
+  `nros/node_pkg.h`, `nros/node_pkg.hpp`, and `nros/declared_node.hpp`.
 
 Latest focused validation:
 
@@ -114,9 +114,9 @@ Next coverage focus:
 - `packages/core/nros/src/lib.rs`
 - `packages/core/nros-macros/src/lib.rs`
 - `packages/core/nros-node/src/executor/node_record.rs`
-- `packages/core/nros-c/include/nros/component.h`
-- `packages/core/nros-cpp/include/nros/component.hpp`
-- `packages/core/nros-cpp/include/nros/component_node.hpp`
+- `packages/core/nros-c/include/nros/node_pkg.h`
+- `packages/core/nros-cpp/include/nros/node_pkg.hpp`
+- `packages/core/nros-cpp/include/nros/declared_node.hpp`
 - later: `packages/core/nros-c/src/component.rs` generated thunk/runtime bridge
 
 ## Acceptance criteria

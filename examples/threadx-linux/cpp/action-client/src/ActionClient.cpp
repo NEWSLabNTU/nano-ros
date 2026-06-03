@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include <nros/component.hpp>
+#include <nros/node_pkg.hpp>
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
@@ -31,5 +31,5 @@ class ActionClient {
 
 } // namespace threadx_linux_cpp_action_client
 
-NROS_COMPONENT_REGISTER(threadx_linux_cpp_action_client::ActionClient,
+NROS_NODE_REGISTER(threadx_linux_cpp_action_client::ActionClient,
                         "threadx_linux_cpp_action_client::ActionClient");

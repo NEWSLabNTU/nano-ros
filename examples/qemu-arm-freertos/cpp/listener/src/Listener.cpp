@@ -26,5 +26,5 @@ namespace freertos_cpp_listener {
 
 } // namespace freertos_cpp_listener
 
-NROS_COMPONENT_REGISTER(freertos_cpp_listener::Listener,
+NROS_NODE_REGISTER(freertos_cpp_listener::Listener,
                         "freertos_cpp_listener::Listener");

@@ -1,4 +1,4 @@
-# cmake/NanoRosComponentRegister.cmake — Phase 212.L.9 / 212.N.6
+# cmake/NanoRosNodeRegister.cmake — Phase 212.L.9 / 212.N.6
 #
 # C++ cmake fn surface for the three Phase 212.L pkg shapes:
 #
@@ -33,10 +33,10 @@
 # N.6 body for the renamed fn lives in `NanoRosEntry.cmake` so this
 # file stays under the cap.
 
-if(DEFINED _NROS_COMPONENT_REGISTER_INCLUDED)
+if(DEFINED _NROS_NODE_REGISTER_INCLUDED)
     return()
 endif()
-set(_NROS_COMPONENT_REGISTER_INCLUDED TRUE)
+set(_NROS_NODE_REGISTER_INCLUDED TRUE)
 
 define_property(GLOBAL PROPERTY NROS_COMPONENTS_JSON
     BRIEF_DOCS "Accumulated component JSON fragments"
@@ -107,7 +107,7 @@ function(nano_ros_component_register)
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/src")
         # Phase 212.M.5.a.1 — inject the per-pkg mangle token so
-        # `NROS_COMPONENT_REGISTER(...)` expands to
+        # `NROS_NODE_REGISTER(...)` expands to
         # `__nros_component_<pkg>_register`. Sanitise `-` → `_` so
         # cargo-style names with hyphens are still valid C identifiers.
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")

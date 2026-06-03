@@ -77,7 +77,7 @@ language = "rust"
 [linkage]
 crate_name = "talker_pkg"
 executable = "talker"
-exported_symbol = "nros_component_talker"
+exported_symbol = "nros_node_talker"
 "#,
     )
     .expect("write component_nros.toml");

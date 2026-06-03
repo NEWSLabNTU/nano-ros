@@ -2,7 +2,7 @@
 #ifndef FREERTOS_CPP_TALKER_TALKER_HPP
 #define FREERTOS_CPP_TALKER_TALKER_HPP
 
-#include <nros/component.hpp>
+#include <nros/node_pkg.hpp>
 
 namespace freertos_cpp_talker {
 

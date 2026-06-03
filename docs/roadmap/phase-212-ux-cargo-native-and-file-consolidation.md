@@ -887,7 +887,7 @@ sub-items that already shipped stay marked done.
   - [ ] `cargo_config_patch_lint` — per-pkg `.cargo/config.toml` w/
         `[patch.crates-io]` → diagnostic.
 - **Files:**
-  `cmake/NanoRosComponentRegister.cmake` (NEW — C++ cmake fns),
+  `cmake/NanoRosNodeRegister.cmake` (NEW — C++ cmake fns),
   `nros-cli/packages/nros-cli-core/src/cmd/check.rs` (L.4 + L.8 + L.11
   lints), `nros-cli/packages/nros-cli-core/src/orchestration/launch_synth.rs`
   (NEW — L.6 synthesis), companion design docs.

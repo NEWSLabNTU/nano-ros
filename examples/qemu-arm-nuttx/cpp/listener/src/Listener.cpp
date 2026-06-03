@@ -25,5 +25,5 @@ namespace nuttx_cpp_listener {
 
 } // namespace nuttx_cpp_listener
 
-NROS_COMPONENT_REGISTER(nuttx_cpp_listener::Listener,
+NROS_NODE_REGISTER(nuttx_cpp_listener::Listener,
                         "nuttx_cpp_listener::Listener");

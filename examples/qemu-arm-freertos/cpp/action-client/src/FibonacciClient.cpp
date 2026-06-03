@@ -31,5 +31,5 @@ namespace freertos_cpp_action_client {
 
 } // namespace freertos_cpp_action_client
 
-NROS_COMPONENT_REGISTER(freertos_cpp_action_client::FibonacciClient,
+NROS_NODE_REGISTER(freertos_cpp_action_client::FibonacciClient,
                         "freertos_cpp_action_client::FibonacciClient");

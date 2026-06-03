@@ -25,5 +25,5 @@ namespace nuttx_cpp_action_server {
 
 } // namespace nuttx_cpp_action_server
 
-NROS_COMPONENT_REGISTER(nuttx_cpp_action_server::FibonacciServer,
+NROS_NODE_REGISTER(nuttx_cpp_action_server::FibonacciServer,
                         "nuttx_cpp_action_server::FibonacciServer");

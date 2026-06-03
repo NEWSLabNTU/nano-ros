@@ -8,7 +8,7 @@
 #
 # `nano_ros_deploy(...)` carries the per-target rmw + domain_id that
 # used to live in the retired `src/demo_bringup/system.toml`. The
-# included module (NanoRosComponentRegister) is pulled in by the
+# included module (NanoRosNodeRegister) is pulled in by the
 # top-level CMakeLists so `@NANO_ROS_ROOT@` has already been
 # substituted by the integration test's stage step.
 

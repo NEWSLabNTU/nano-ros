@@ -21,7 +21,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Resolve the cmake fn registry. The fixture lives under
 # `packages/testing/nros-tests/fixtures/multi_pkg_workspace_px4/<pkg>/`
 # so the repo root is six levels up.
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../cmake/NanoRosComponentRegister.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_component_register(
     NAME    talker

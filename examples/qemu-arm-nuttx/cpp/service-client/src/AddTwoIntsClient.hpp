@@ -2,7 +2,7 @@
 #ifndef NUTTX_CPP_SERVICE_CLIENT_ADDTWOINTSCLIENT_HPP
 #define NUTTX_CPP_SERVICE_CLIENT_ADDTWOINTSCLIENT_HPP
 
-#include <nros/component.hpp>
+#include <nros/node_pkg.hpp>
 
 namespace nuttx_cpp_service_client {
 

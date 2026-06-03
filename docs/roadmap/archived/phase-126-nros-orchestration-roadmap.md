@@ -134,8 +134,8 @@ Primary files:
 - `packages/core/nros/src/component.rs` (new)
 - `packages/core/nros/src/component_metadata.rs` (new)
 - `packages/core/nros-macros/src/lib.rs`
-- later: `packages/core/nros-c/include/nros/component.h`
-- later: `packages/core/nros-cpp/include/nros/component.hpp`
+- later: `packages/core/nros-c/include/nros/node_pkg.h`
+- later: `packages/core/nros-cpp/include/nros/node_pkg.hpp`
 
 Output: Rust component packages emit source metadata in host metadata mode.
 

@@ -14,7 +14,7 @@ cmake_minimum_required(VERSION 3.22)
 project(multi_pkg_workspace_cpp C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-include("@NANO_ROS_ROOT@/cmake/NanoRosComponentRegister.cmake")
+include("@NANO_ROS_ROOT@/cmake/NanoRosNodeRegister.cmake")
 
 # Per-deploy config (§212.L — Entry pkgs are native-only at this surface).
 nano_ros_deploy(TARGET native RMW zenoh DOMAIN_ID 0)

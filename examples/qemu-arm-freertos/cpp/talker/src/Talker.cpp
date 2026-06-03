@@ -37,5 +37,5 @@ namespace freertos_cpp_talker {
 
 } // namespace freertos_cpp_talker
 
-NROS_COMPONENT_REGISTER(freertos_cpp_talker::Talker,
+NROS_NODE_REGISTER(freertos_cpp_talker::Talker,
                         "freertos_cpp_talker::Talker");

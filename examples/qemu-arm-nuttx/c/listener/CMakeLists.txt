@@ -10,7 +10,7 @@ set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD    nuttx-qemu-arm)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosComponentRegister.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
 
 nano_ros_component_register(

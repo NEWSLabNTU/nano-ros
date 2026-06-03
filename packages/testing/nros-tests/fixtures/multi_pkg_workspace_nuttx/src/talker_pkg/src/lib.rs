@@ -9,6 +9,6 @@
 #![no_std]
 
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_component_talker(_ctx: *mut core::ffi::c_void) -> i32 {
+pub extern "C" fn nros_node_talker(_ctx: *mut core::ffi::c_void) -> i32 {
     0
 }

@@ -10,7 +10,7 @@
 #ifndef NROS_CPP_COMPONENT_HPP
 #define NROS_CPP_COMPONENT_HPP
 
-#include "nros/component_node.hpp"
+#include "nros/declared_node.hpp"
 
 namespace nros {
 
@@ -84,7 +84,7 @@ using ComponentRegisterFn = int32_t (*)(ComponentContext& context);
 #define _NROS_CPP_CONCAT(a, b) a##b
 #define _NROS_CPP_CONCAT_X(a, b) _NROS_CPP_CONCAT(a, b)
 #define _NROS_CPP_REG_SYM(pkg) _NROS_CPP_CONCAT_X(__nros_component_, _NROS_CPP_CONCAT_X(pkg, _register))
-#define _NROS_CPP_PRESENT_SYM(pkg) _NROS_CPP_CONCAT_X(__NROS_COMPONENT_, _NROS_CPP_CONCAT_X(pkg, _EXPORT_PRESENT))
+#define _NROS_CPP_PRESENT_SYM(pkg) _NROS_CPP_CONCAT_X(__NROS_NODE_PKG_, _NROS_CPP_CONCAT_X(pkg, _EXPORT_PRESENT))
 #define _NROS_CPP_CLASS_SYM(pkg) _NROS_CPP_CONCAT_X(__nros_component_, _NROS_CPP_CONCAT_X(pkg, _class_name))
 
 #define NROS_COMPONENTS_REGISTER_NODE(ComponentType)                                               \
@@ -106,7 +106,7 @@ using ComponentRegisterFn = int32_t (*)(ComponentContext& context);
 // `NROS_COMPONENTS_REGISTER_NODE(UserClass)` but adds a fixed-storage
 // symbol carrying the qualified class string so the codegen + lint side
 // can sanity-check the binding.
-#define NROS_COMPONENT_REGISTER(UserClass, QualifiedClassName)                                     \
+#define NROS_NODE_REGISTER(UserClass, QualifiedClassName)                                     \
     extern "C" int32_t _NROS_CPP_REG_SYM(NROS_PKG_NAME)(::nros::ComponentContext& context) {       \
         return (UserClass::register_component(context)).raw();                                     \
     }                                                                                              \

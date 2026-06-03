@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-#include <nros/component.hpp>
+#include <nros/node_pkg.hpp>
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
@@ -34,5 +34,5 @@ class ServiceServer {
 
 } // namespace threadx_linux_cpp_service_server
 
-NROS_COMPONENT_REGISTER(threadx_linux_cpp_service_server::ServiceServer,
+NROS_NODE_REGISTER(threadx_linux_cpp_service_server::ServiceServer,
                         "threadx_linux_cpp_service_server::ServiceServer");

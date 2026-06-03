@@ -26,5 +26,5 @@ namespace freertos_cpp_service_server {
 
 } // namespace freertos_cpp_service_server
 
-NROS_COMPONENT_REGISTER(freertos_cpp_service_server::AddTwoIntsServer,
+NROS_NODE_REGISTER(freertos_cpp_service_server::AddTwoIntsServer,
                         "freertos_cpp_service_server::AddTwoIntsServer");

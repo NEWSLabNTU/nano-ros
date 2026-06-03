@@ -2,7 +2,7 @@
 #ifndef NUTTX_CPP_TALKER_TALKER_HPP
 #define NUTTX_CPP_TALKER_TALKER_HPP
 
-#include <nros/component.hpp>
+#include <nros/node_pkg.hpp>
 
 namespace nuttx_cpp_talker {
 

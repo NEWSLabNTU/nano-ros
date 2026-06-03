@@ -1272,7 +1272,7 @@ mod tests {
             .to_source_metadata_json(
                 &SourceMetadataExport::new("demo_nodes_rs", "talker")
                     .executable("talker")
-                    .exported_symbol("nros_component_talker")
+                    .exported_symbol("nros_node_talker")
                     .source_artifacts(&["src/talker.rs"]),
             )
             .unwrap();

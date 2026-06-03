@@ -11,7 +11,7 @@ project(brake_arbiter_pkg VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../cmake/NanoRosComponentRegister.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_component_register(
     NAME    brake_arbiter

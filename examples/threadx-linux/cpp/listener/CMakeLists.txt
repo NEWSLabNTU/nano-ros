@@ -16,7 +16,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.cmake")
 find_package(std_msgs REQUIRED)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosComponentRegister.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 nano_ros_component_register(
     NAME    listener
     CLASS   threadx_linux_cpp_listener::Listener

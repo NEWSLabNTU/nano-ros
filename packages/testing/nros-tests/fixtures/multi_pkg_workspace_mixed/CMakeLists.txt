@@ -24,7 +24,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Pull in the §212.L.9 cmake fn surface (nano_ros_component_register,
 # nano_ros_deploy, nano_ros_entry) from the workspace root. The
 # integration test rewrites @NANO_ROS_ROOT@ at stage time.
-include("@NANO_ROS_ROOT@/cmake/NanoRosComponentRegister.cmake")
+include("@NANO_ROS_ROOT@/cmake/NanoRosNodeRegister.cmake")
 
 # Corrosion bridges the Rust component into cmake's superbuild.
 find_package(Corrosion QUIET)

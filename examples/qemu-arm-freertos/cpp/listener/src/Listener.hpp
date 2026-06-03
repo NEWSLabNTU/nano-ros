@@ -2,7 +2,7 @@
 #ifndef FREERTOS_CPP_LISTENER_LISTENER_HPP
 #define FREERTOS_CPP_LISTENER_LISTENER_HPP
 
-#include <nros/component.hpp>
+#include <nros/node_pkg.hpp>
 
 namespace freertos_cpp_listener {
 

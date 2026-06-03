@@ -4,11 +4,11 @@
 /// Publishes `std_msgs/Int32` on `/chatter`. The generated runtime
 /// (emitted by `nros codegen-system` via the H.4 ThreadX adapter) owns
 /// init / executor / spin; this file declares the component class +
-/// exports the register trampoline via `NROS_COMPONENT_REGISTER`.
+/// exports the register trampoline via `NROS_NODE_REGISTER`.
 
 #include <cstdint>
 
-#include <nros/component.hpp>
+#include <nros/node_pkg.hpp>
 #include <nros/nros.hpp>
 #include "std_msgs.hpp"
 
@@ -36,5 +36,5 @@ class Talker {
 
 } // namespace threadx_linux_cpp_talker
 
-NROS_COMPONENT_REGISTER(threadx_linux_cpp_talker::Talker,
+NROS_NODE_REGISTER(threadx_linux_cpp_talker::Talker,
                         "threadx_linux_cpp_talker::Talker");

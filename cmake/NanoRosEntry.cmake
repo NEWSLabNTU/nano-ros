@@ -4,7 +4,7 @@
 #   [BOARD <board>] DEPLOY <target1> [<target2> ...])`.
 #
 # This is the rename of the pre-N.6 `nano_ros_application` per Phase
-# 212.L.9 + 212.N — see `cmake/NanoRosComponentRegister.cmake` for the
+# 212.L.9 + 212.N — see `cmake/NanoRosNodeRegister.cmake` for the
 # legacy alias (DEPRECATION shim that forwards here). Both names
 # resolve so the in-tree caller migration (212.N.7 wave) can land
 # incrementally without breaking the configure step.
@@ -25,7 +25,7 @@
 #
 # Side effect: appends an entry to the GLOBAL `NROS_APPLICATIONS_JSON`
 # property and rewrites `${CMAKE_BINARY_DIR}/nros-metadata.json` via
-# `_nros_metadata_emit()` (defined in NanoRosComponentRegister.cmake;
+# `_nros_metadata_emit()` (defined in NanoRosNodeRegister.cmake;
 # we depend on it being included alongside this module).
 
 if(DEFINED _NROS_ENTRY_INCLUDED)
@@ -34,10 +34,10 @@ endif()
 set(_NROS_ENTRY_INCLUDED TRUE)
 
 # Pull in the shared metadata-emit helper + GLOBAL property
-# definitions. `NanoRosComponentRegister.cmake` is the SSoT for those
+# definitions. `NanoRosNodeRegister.cmake` is the SSoT for those
 # (it predates this module). The include is guarded inside that file,
 # so re-including is a no-op when callers already loaded it.
-include("${CMAKE_CURRENT_LIST_DIR}/NanoRosComponentRegister.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 
 function(nano_ros_entry)
     cmake_parse_arguments(_NRA "" "NAME;BOARD" "SOURCES;DEPLOY" ${ARGN})
