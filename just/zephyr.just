@@ -173,7 +173,11 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     case "{{example}}" in
     rust/*)
         echo "Zephyr: generating Rust interface crates for {{example}}"
+        # Phase 214.J.2 — wipe `generated/` on trait-surface drift before sync.
+        source "$(pwd)/scripts/build/codegen-stamp.sh"
+        NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_check_or_wipe "$src"
         NROS_REPO_DIR="$(pwd)" "$codegen_tool" ws sync "$src"
+        NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$src"
         ;;
     esac
     # CONF_FILE = base + RMW overlay + (native_sim) the version-aware NSOS
@@ -342,15 +346,22 @@ build-fixtures:
     # scheduling expensive west builds. Direct `just zephyr build-fixtures`
     # is allowed, so do not rely solely on the root `generate-bindings`
     # prerequisite.
+    # Phase 214.J.2 — also force regen when the in-tree trait surface
+    # (RosAction etc.) drifts since the cached `generated/`, which the
+    # mtime-only check above can miss.
+    source scripts/build/codegen-stamp.sh
     echo "  → zephyr Rust generated-dir preflight"
     nros_cli="$(nros_cli_bin)"
     while IFS= read -r pkg; do
         dir="$(dirname "$pkg")"
         stamp="$dir/build/.nros-ws-sync.stamp"
-        if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ "$pkg" -nt "$stamp" ]; then
+        # Wipe `generated/` if the trait-surface hash has drifted.
+        NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_check_or_wipe "$dir"
+        if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ "$pkg" -nt "$stamp" ] || [ ! -d "$dir/generated" ]; then
             echo "    ws sync: $dir"
             mkdir -p "$dir/build"
             NROS_REPO_DIR="$(pwd)" "$nros_cli" ws sync "$dir"
+            NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$dir"
             touch "$stamp"
         fi
     done < <(find examples/zephyr/rust -mindepth 2 -maxdepth 2 -name package.xml | sort)

@@ -114,6 +114,8 @@ build-fixture-rust:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    # Phase 214.J.2 — codegen-stamp guard for trait-surface drift.
+    source scripts/build/codegen-stamp.sh
     nros_cli="$(nros_cli_bin)"
     # Phase 210.E.3.d.native — pre-cargo codegen via `nros ws sync` writes
     # the auto-managed [patch.crates-io] block into each example's Cargo.toml
@@ -123,8 +125,10 @@ build-fixture-rust:
     nros_repo_root="$PWD"
     for ex in talker listener service-server service-client action-server \
               action-client custom-transport-talker custom-transport-listener; do
-        NROS_REPO_DIR="$nros_repo_root" "$nros_cli" ws sync \
-            "examples/native/rust/$ex" >/dev/null
+        dir="examples/native/rust/$ex"
+        NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
+        NROS_REPO_DIR="$nros_repo_root" "$nros_cli" ws sync "$dir" >/dev/null
+        NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh native rust
     echo "Native rust fixtures built (from examples/fixtures.toml)."
@@ -136,6 +140,8 @@ build-fixture-extras:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    # Phase 214.J.2 — codegen-stamp guard for trait-surface drift.
+    source scripts/build/codegen-stamp.sh
     source scripts/build/cmake-incremental.sh
     repo_root="$PWD"
     echo "Building native C/C++ + Cyclone test fixtures..."
@@ -156,7 +162,11 @@ build-fixture-extras:
             native/rust/talker|native/rust/listener)
                 # Phase 210.E.3.d.native — same swap as build-fixture-role-
                 # examples: `ws sync` for the patch-table + codegen flow.
-                NROS_REPO_DIR="$repo_root" "$nros_cli" ws sync "examples/$1" >/dev/null ;;
+                # Phase 214.J.2 — also wipe `generated/` if trait surface
+                # has drifted since the previous sync.
+                NROS_REPO_DIR="$repo_root" nros_codegen_stamp_check_or_wipe "examples/$1"
+                NROS_REPO_DIR="$repo_root" "$nros_cli" ws sync "examples/$1" >/dev/null
+                NROS_REPO_DIR="$repo_root" nros_codegen_stamp_write "examples/$1" ;;
         esac
     }
     # Phase 169/175/186 — native talker/listener Cyclone cells. Pure-cargo can't

@@ -58,6 +58,9 @@ build-examples:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    # Phase 214.J.2 — guard `ws sync` against stale `generated/` after trait
+    # surface drift (see scripts/build/codegen-stamp.sh).
+    source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
@@ -72,7 +75,10 @@ build-examples:
     # Codegen prep (per-platform); build options come from the SSOT manifest
     # (examples/fixtures.toml) via the shared builder. Phase 181.4.d.
     for example in talker listener service-server service-client action-server action-client; do
-        NROS_REPO_DIR="$PWD" "$nros_cli" ws sync examples/qemu-arm-freertos/rust/$example >/dev/null
+        dir="examples/qemu-arm-freertos/rust/$example"
+        NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
+        NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
+        NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh freertos rust
     echo "FreeRTOS QEMU examples built!"
@@ -89,6 +95,8 @@ build-fixture-extras:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    # Phase 214.J.2 — codegen-stamp helpers for `ws sync` invocations below.
+    source scripts/build/codegen-stamp.sh
     source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
@@ -159,7 +167,9 @@ build-fixture-extras:
             continue
         fi
         echo "  → freertos/rust/${case} (-DNROS_RMW=cyclonedds, self-provision, build-cyclonedds/)"
+        NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe examples/qemu-arm-freertos/rust/${case}
         NROS_REPO_DIR="$PWD" "$nros_cli" ws sync examples/qemu-arm-freertos/rust/${case} >/dev/null
+        NROS_REPO_DIR="$PWD" nros_codegen_stamp_write examples/qemu-arm-freertos/rust/${case}
         rm -rf examples/qemu-arm-freertos/rust/${case}/build-cyclonedds
         cmake -S examples/qemu-arm-freertos/rust/${case} \
               -B examples/qemu-arm-freertos/rust/${case}/build-cyclonedds \

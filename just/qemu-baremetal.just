@@ -59,6 +59,9 @@ build:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    # Phase 214.J.2 — guard `ws sync` against stale `generated/` after trait-
+    # surface drift (see scripts/build/codegen-stamp.sh).
+    source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
     echo "Building QEMU ARM examples..."
@@ -71,7 +74,9 @@ build:
         # need codegen before cargo can resolve the patch path. Mirrors
         # build-fixtures; the gitignored generated/ dirs come from package.xml.
         if [ -f "$dir/package.xml" ]; then
+            NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
             NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
+            NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
         (cd "$dir" && cargo build $cargo_profile_args)
     done
@@ -89,7 +94,9 @@ build:
         # path-deps builtin_interfaces/std_msgs) need codegen before cargo resolves
         # the generated/ [patch.crates-io] path.
         if [ -f "$dir/package.xml" ]; then
+            NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
             NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
+            NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
         (cd "$dir" && cargo build $cargo_profile_args)
     done
@@ -130,6 +137,12 @@ build-fixtures:
         packages/reference/qemu-smoltcp-bridge
     )
     export NROS_CLI="$(nros_cli_bin)"
+    # Phase 214.J.2 — guard `ws sync` against stale `generated/` after trait
+    # surface drift (see scripts/build/codegen-stamp.sh).
+    source scripts/build/codegen-stamp.sh
+    export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \
+              nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources
+    export NROS_REPO_DIR="$PWD"
     build_one() {
         local dir="$1"
         echo "  → $dir"
@@ -141,7 +154,9 @@ build-fixtures:
         # crates have no package.xml and skip this. Mirrors the native
         # build-fixture recipe's `ensure_native_rust_generated`.
         if [ -f "$dir/package.xml" ]; then
-            NROS_REPO_DIR="$PWD" "$NROS_CLI" ws sync "$dir" >/dev/null
+            nros_codegen_stamp_check_or_wipe "$dir"
+            "$NROS_CLI" ws sync "$dir" >/dev/null
+            nros_codegen_stamp_write "$dir"
         fi
         ( cd "$dir" && cargo build $cargo_profile_args --quiet )
     }

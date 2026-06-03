@@ -766,13 +766,33 @@ above.
       mtimes, not the in-tree trait surface; 214.J.2 below closes
       that gap.
 
-- [ ] **214.J.2 build.rs should check trait surface vs cached
+- [x] **214.J.2 build.rs should check trait surface vs cached
       output** — add a quick generation-stamp check (write a hash of
       the trait surface alongside the generated file; rebuild if
       mismatched). Avoids future silent staleness.
       **Acceptance**: touching the `RosAction` trait forces a
       `generated/` rebuild on next `cargo build` without manual
       `clean-bindings`.
+      **Landed 2026-06-04** as a shell-side guard (shared helper,
+      not per-example `build.rs`). Codegen for these examples runs
+      in the per-platform `just` recipe via `nros ws sync $dir`
+      *before* cargo touches the patch table, so a `build.rs`
+      check would fire too late — cargo errors on missing patch
+      paths long before any build script runs. The guard lives in
+      `scripts/build/codegen-stamp.sh` (SHA-256 of every Rust
+      source whose shape MUST match cli codegen output —
+      currently just `packages/core/nros-core/src/action.rs`,
+      stamp written to `<dir>/generated/.codegen-stamp`) and is
+      wired into every `ws sync` callsite in `just/qemu-
+      baremetal.just`, `just/freertos.just`, `just/threadx-
+      riscv64.just` (via `scripts/build/fixtures-build.sh`),
+      `just/zephyr.just`, and `just/native.just`. Each callsite
+      now reads:
+      `nros_codegen_stamp_check_or_wipe $dir && nros ws sync $dir
+      && nros_codegen_stamp_write $dir`. Verified end-to-end on
+      `action-server-rtic`: drift → wipe → fresh sync → 5-type
+      output. Smoke test: `tmp/test-codegen-stamp.sh` (7 cases,
+      all pass).
 
 ---
 

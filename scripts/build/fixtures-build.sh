@@ -72,6 +72,10 @@ else
     # skip). --force is idempotent so recipes that also codegen (freertos) are fine.
     NROS_CLI="$(nros_cli_bin)"; export NROS_CLI
     NROS_REPO_ROOT="${NROS_REPO_ROOT:-$PWD}"; export NROS_REPO_ROOT
+    # shellcheck source=scripts/build/codegen-stamp.sh
+    source scripts/build/codegen-stamp.sh
+    export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \
+              nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources
     nros_fixture_build_one() {
         local dir envstr args
         IFS=$'\x1f' read -r dir envstr args <<< "$1"
@@ -84,7 +88,13 @@ else
         # [patch.crates-io] chunks. Native rust adopters only — embedded
         # rust fixtures still pre-codegen separately until E.3.d.embedded.
         if [ -f "$dir/package.xml" ]; then
+            # Phase 214.J.2 — wipe `<dir>/generated/` if the hash of the
+            # trait surface(s) tied to codegen shape (e.g. `RosAction`)
+            # has drifted since the previous `ws sync`. Prevents the
+            # stale-3-type-action shape that Phase 214.J first surfaced.
+            NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$dir"
             NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws sync "$dir" >/dev/null
+            NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$dir"
         fi
         # shellcheck disable=SC2086
         ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args --quiet )
