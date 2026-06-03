@@ -322,3 +322,101 @@ runs.
 `nano_ros_application` (N.6) and `nano_ros_component_register` (N.12,
 once B.1 lands) stay for one release cycle. Future phase retires both
 once all callsites + downstream users migrate.
+
+---
+
+## Track E — Hardcoded board config externalisation
+
+**Surfaced 2026-06-03 by a follow-on audit (`Explore`-mode agent on
+`bba61e09c`)**. 55 findings across 5 platform/lang slots: per-example
+Rust + C source embeds network config literals (MAC, IP, gateway,
+zenoh locator, domain_id) that should come from config (nros.toml /
+`Cargo.toml [package.metadata.nros.deploy.<target>]` / launch-XML
+overlay / env-var). Working escape patterns already exist on two
+platforms — they just need to be applied uniformly:
+
+- **Rust embedded** — board crate exposes `Config::from_metadata()`
+  reading `[package.metadata.nros.deploy.<target>]` at build-time
+  (same pattern N.9 macro uses for `deploy = "<board>"`). Already in
+  `esp32/rust/` Cargo.toml metadata.
+- **C embedded** — `getenv("NROS_LOCATOR") ?: literal` pattern.
+  Already in `native/c/` source verbatim.
+
+**Axis 1** (platform leaks) and **Axis 3** (debug prints) came back
+✅ clean — no work items needed.
+
+5 sub-tracks; **file-disjoint by platform/lang**; dispatch in
+parallel:
+
+- [ ] **213.E.1 qemu-arm-baremetal/rust** — externalise MAC, IP,
+      gateway, locator, domain_id from 10 example source files. Move
+      to `[package.metadata.nros.deploy.<target>]` in each example's
+      `Cargo.toml`, OR to board-crate-side defaults the example reads
+      via `Config::from_metadata()`. Pick whichever matches the
+      existing N.9 deploy-key pattern.
+      **Files**: `examples/qemu-arm-baremetal/rust/*/src/main.rs`
+      (10 files: talker, listener, service-{client,server},
+      action-{client,server} + RTIC variants).
+      **Acceptance**: `git grep -nE '"tcp/10\.0\.2\.2:|\[10, ?0, ?2,
+      ?(2|10)\]|\\b[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:'
+      examples/qemu-arm-baremetal/rust/*/src/` returns no matches.
+
+- [ ] **213.E.2 qemu-esp32-baremetal/rust** — externalise the
+      hardcoded `mac_addr` / `ip` / `gateway` / `locator` /
+      `domain_id` in 2 example sources. The peer `esp32/rust/`
+      already uses metadata for this; copy that pattern.
+      **Files**: `examples/qemu-esp32-baremetal/rust/{talker,
+      listener}/src/main.rs`.
+      **Acceptance**: 2 files have no literal locator / IP / MAC; the
+      values come from per-example `Cargo.toml` metadata.
+
+- [ ] **213.E.3 qemu-riscv64-threadx/rust** — externalise locator +
+      domain_id from 6 Rust examples (the `lib.rs` / `main.rs` split
+      that the threadx-linux/rust path already abstracted via
+      `ExecutorConfig::from_env_or(default)`).
+      **Files**: `examples/qemu-riscv64-threadx/rust/{talker,
+      listener,service-*,action-*}/src/{lib,main}.rs` (6 examples).
+      **Acceptance**: `git grep -nE '"tcp/10\.0\.2\.2:75' examples/
+      qemu-riscv64-threadx/rust/` returns no matches.
+
+- [ ] **213.E.4 qemu-riscv64-threadx/c** — replace hardcoded
+      `nros_support_init("tcp/10.0.2.2:75XX", 0)` with the env-or-
+      literal pattern that `native/c/` already uses verbatim:
+      ```c
+      const char *loc = getenv("NROS_LOCATOR");
+      if (!loc) loc = "tcp/10.0.2.2:7553"; /* fixture default */
+      int domain = 0;
+      if (const char *d = getenv("ROS_DOMAIN_ID")) domain = atoi(d);
+      nros_support_init(loc, domain);
+      ```
+      **Files**: `examples/qemu-riscv64-threadx/c/*/src/main.c`
+      (6 files).
+      **Acceptance**: same shape as `examples/native/c/talker/src/
+      main.c`'s env-fallback block.
+
+- [ ] **213.E.5 threadx-linux/c** — same as 213.E.4 but for
+      `tcp/127.0.0.1:75XX` host-loopback defaults.
+      **Files**: `examples/threadx-linux/c/*/src/main.c` (6 files).
+      **Acceptance**: matches the native/c env-fallback shape.
+
+### Track E acceptance
+
+- [ ] All 5 sub-tracks landed; `git grep -nE '"tcp/(127\.0\.0\.1|10\.
+      0\.2\.2):(74|75)[0-9][0-9]"' examples/ | grep -v
+      'tests\|fixtures\|generated'` returns ≤ 2 matches (the
+      `native/{c,cpp}/` literal fallbacks per the documented escape
+      pattern).
+- [ ] No regression on existing tests; CI `just test-all` skips on
+      unprovisioned SDKs as before.
+
+### Notes
+
+**Why per-platform sub-tracks vs one big sweep**: the Rust path needs
+`Config::from_metadata()` plumbing in the board crates that don't have
+it yet (qemu-arm-baremetal + qemu-esp32-baremetal + qemu-riscv64-
+threadx). The C path is a mechanical `getenv() ?: literal` rewrite.
+Splitting by platform/lang gives each agent a coherent scope.
+
+**Out of scope** — Axis 1 (platform leaks) and Axis 3 (debug prints)
+came back clean. The 2 esp32 `esp_println!("[poll] ...")` lines are
+Phase 127.A expected diagnostics, not noise.
