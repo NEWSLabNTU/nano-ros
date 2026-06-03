@@ -25,7 +25,9 @@ rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-cyclonedds   = [
     "dep:nros-rmw-cyclonedds-sys",
     "nros-rmw-cyclonedds-sys/vendored",
-    "std_msgs/cyclonedds",
+    # Phase 212.K.7.2 — `<pkg>/cyclonedds` feature ref dropped; the
+    # nros-rmw-cyclonedds runtime registry handles cyclonedds descriptor
+    # wiring via runtime introspection (no per-msg-crate feature gate).
 ]
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
