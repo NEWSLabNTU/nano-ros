@@ -282,14 +282,14 @@ talker_pkg/CMakeLists.txt`.
 
 ## Acceptance
 
-- [ ] All 4 Track A items landed. Fresh `git clone && just <plat> setup`
+- [x] All 4 Track A items landed. Fresh `git clone && just <plat> setup`
       works for every documented board (no "board not found in index"
       error).
-- [ ] Track B.1 landed before B.2 (alias provides a definition; sweep
+- [x] Track B.1 landed before B.2 (alias provides a definition; sweep
       removes need for it). Embedded C/C++ examples configure clean.
-- [ ] All 3 Track C slots merged independently. Wave-4 Entry pkgs
+- [x] All 3 Track C slots merged independently. Wave-4 Entry pkgs
       drop `build.rs`; `main.rs` is one line; `cargo build` clean.
-- [ ] Track D fixture include is path-policy compliant.
+- [x] Track D fixture include is path-policy compliant.
 - [ ] Phase doc retired to `archived/` once all checkboxes flip.
 
 ---
@@ -401,12 +401,12 @@ parallel:
 
 ### Track E acceptance
 
-- [ ] All 5 sub-tracks landed; `git grep -nE '"tcp/(127\.0\.0\.1|10\.
+- [x] All 5 sub-tracks landed; `git grep -nE '"tcp/(127\.0\.0\.1|10\.
       0\.2\.2):(74|75)[0-9][0-9]"' examples/ | grep -v
       'tests\|fixtures\|generated'` returns ≤ 2 matches (the
       `native/{c,cpp}/` literal fallbacks per the documented escape
       pattern).
-- [ ] No regression on existing tests; CI `just test-all` skips on
+- [x] No regression on existing tests; CI `just test-all` skips on
       unprovisioned SDKs as before.
 
 ### Notes
