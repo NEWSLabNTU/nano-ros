@@ -2500,6 +2500,177 @@ canonical-shape regression test can run green tree-wide:
       (`examples/qemu-arm-nuttx/{c,cpp}/` retirement) tracked
       separately; the H.2 NuttX work item stays `[x]` per
       M-F.12.
+- [ ] **M-F.17 nros plan source-metadata α-bridge** (nros-cli) —
+      THE M.10 RUNTIME UNBLOCK. Tree state has every Phase 212-
+      migrated fixture carrying `[package.metadata.nros.component]`
+      in `Cargo.toml` (M.10 sweep). nros-cli M-F.1+M-F.2
+      (`5e810c0`) shipped the schema reader
+      (`cargo_metadata_schema.rs::ComponentMetadata`), but
+      `nros plan`'s planner (`orchestration/planner.rs:1821`)
+      queries a `metadata: &[JsonArtifact]` slice populated from
+      sidecar `metadata/*.json` artifacts only
+      (`workspace.rs::Package::metadata_files` walks `metadata/` /
+      `nros/` / `target/nros/` for `*.json` — empty post-M.10).
+      Net: `find_source_metadata` returns `None` for every
+      component → `missing-source-metadata` diagnostic fires →
+      configure fails → every H.x integration test stays
+      `#[ignore]`d (h1 partial, h4 both variants, h5, h7).
+
+      **Fix shape (α — single ingestion point):**
+      1. **`Package::cargo_component_metadata: Vec<...>`** — new
+         field on `orchestration/workspace.rs::Package`. Populated
+         by `discover_package` reading `<root>/Cargo.toml`'s
+         `[package.metadata.nros.component]` (single) AND
+         `[package.metadata.nros.components.*]` (multi) via the
+         existing M-F.1 schema. Carries the strict subset the
+         planner needs: `package` (from `[package].name`),
+         `component` / `executable` (from `metadata.name` or
+         class-basename), `class`, `default_namespace`. Empty Vec
+         when no Cargo.toml or no `[package.metadata.nros.{
+         component,components}]`.
+      2. **`Workspace::synthetic_metadata_artifacts() -> Vec<
+         JsonArtifact>`** — converts each pkg's
+         `cargo_component_metadata` into a synthetic
+         `JsonArtifact { path: <Cargo.toml>, value: <synth Value> }`.
+         Synth value carries the minimum keys the downstream
+         readers consume (`package` / `component` / `executable` /
+         `language` for `metadata_matches`; `class` /
+         `default_namespace` for downstream emit; plus
+         `"synthetic": true` + `"synthetic_source": "cargo_
+         metadata"` for diagnostics + dedup audits).
+      3. **`planner.rs::plan_system`** wires both: load file
+         artifacts AS TODAY, then `metadata.extend(workspace.
+         synthetic_metadata_artifacts());`. Synthetic appended
+         AFTER file artifacts so any user-shipped sidecar JSON
+         wins the `schema_components` `seen` dedup (back-compat
+         for pre-M.10 fixtures still shipping sidecar JSON).
+
+      **Acceptance:**
+      - Unit tests in nros-cli-core (`cargo_metadata_schema`
+        round-trip + `Workspace::synthetic_metadata_artifacts`
+        per-fixture).
+      - Integration test
+        `phase212_l7_self_bringup_consumes_cargo_metadata` (new
+        in nros-cli) — point `nros plan` at a Phase 212-shape
+        fixture with only `[package.metadata.nros.component]`,
+        assert configure succeeds + diagnostic count stays 0.
+      - Once the nros-cli branch lands + the installed CLI bumps
+        (`scripts/install-nros.sh` pin), un-`#[ignore]`:
+        `phase212_h1_zephyr` (M.10-gated subset),
+        `phase212_h4_threadx` (both variants — incl. the new
+        rv64-qemu sibling at `phase212_h4_threadx.rs`),
+        `phase212_h5_esp_idf`, `phase212_h7_px4`.
+      - Diagnostic surface stays honest: missing-source-metadata
+        STILL fires when neither sidecar JSON NOR cargo metadata
+        exists. Synthetic is additive, not silencing.
+
+      **Out of scope:** the synthetic artifact's `nodes` /
+      `publishers` / `subscribers` / `services` / `actions` tree
+      is INTENTIONALLY ABSENT — Phase 212-redesign runtime
+      carries that info via `Component::register(ctx)`'s
+      `ctx.create_*` calls at Executor::open time, not via
+      static planner metadata. Synthetic artifacts only satisfy
+      the planner's "this component exists + has a register
+      symbol" contract; entities materialize at runtime.
+
+      **Files (nros-cli):** `packages/nros-cli-core/src/
+      orchestration/workspace.rs`, `packages/nros-cli-core/src/
+      orchestration/planner.rs`, new fixture under
+      `packages/nros-cli-core/tests/fixtures/orchestration/`,
+      `tests/orchestration_self_bringup_cargo_metadata.rs`.
+
+      **Files (nano-ros, after CLI bump):**
+      `scripts/install-nros.sh` SHA bump; un-`#[ignore]` lines in
+      `packages/testing/nros-tests/tests/phase212_h{1_zephyr,4_
+      threadx,5_esp_idf,7_px4}.rs`.
+
+      **Blocks:** every M.10-gated `#[ignore]` line in
+      `phase212_h{1,4,5,7}*.rs`. SINGLE BIGGEST OPEN PHASE 212
+      RUNTIME GATE.
+- [ ] **M-F.18 M.10 bench-fixture tail** (nano-ros) — 2 residual
+      `nros.toml` files in
+      `packages/testing/nros-bench/{large-msg-baremetal,
+      wake-latency-cortex-m3}/` survived the M.10 examples sweep.
+      They're bench fixtures NOT examples, so the
+      `phase212_pre_212_files_forbidden` lint (scoped to
+      `examples/` + fixture dirs) doesn't hit them — but they're
+      still `nros.toml` shape per §Non-Goals. Migrate to the
+      Component pkg shape (board crate Config literal in
+      `src/main.rs` + `[package.metadata.nros.application]` /
+      `[package.metadata.nros.component]` in `Cargo.toml`) OR
+      formally exempt as benchmark special-cases with a doc note
+      explaining the carve-out. Smallest scope; agent-friendly.
+
+### §212.O — Acceptance test fill-ins (parallel-dispatchable)
+
+The 7 remaining `[ ]` tests in §212.M / §212.N test acceptance
+lists. Each item is a self-contained agent task, file-scope
+disjoint from siblings so they can run in parallel without
+rebase conflict.
+
+- [ ] **O.1 `freertos_board_run_executes_run_plan`** (N tests)
+      — runtime gate for the FreeRTOS-side Entry pkg's
+      `BoardEntry::run` lifecycle under QEMU. Sibling of the
+      already-landed posix-side `entry_poc_boots_through_board_
+      entry_run`. Fixture: the existing M-F.15-shipped FreeRTOS
+      Entry pkg firmware build target. New test file
+      `tests/phase212_n_freertos_run_plan_runtime.rs`. Skip on
+      missing `THREADX_DIR`-equivalent gates (QEMU + cross
+      toolchain). Scope: nano-ros only.
+
+- [ ] **O.2 `entry_pkg_metadata_required_board`** (nros-cli
+      `check`) — `nros check` hard-error test for missing
+      `[package.metadata.nros.entry] deploy = "<board>"`. Fixture:
+      a Cargo.toml with `[package.metadata.nros.entry]` but no
+      `deploy` field. Assert: `nros check` exits non-zero with a
+      diagnostic identifying the missing field. Scope: nros-cli
+      `check_workspace` lints + integration test.
+
+- [ ] **O.3 `board_agnostic_run_plan_links_against_any_board`**
+      (N tests) — same compiled `run_plan` rlib links under at
+      least 2 distinct Board impls (`nros-board-posix` +
+      `nros-board-qemu-mps2-an385-freertos`) in a single fixture.
+      Proves the §212.N.4 emit is genuinely board-agnostic.
+      Scope: nano-ros only. New fixture + test.
+
+- [ ] **O.4 `n10_pkg_index_resolves_across_workspace`** (N.10
+      test) — fixture: workspace with 3 Node pkgs + 1 bringup pkg
+      + 1 Entry pkg. `nros::main!(launch =
+      "demo_bringup:system.launch.xml")` resolves via
+      `package.xml` walk; no Cargo.toml on bringup pkg required.
+      The §212.N.10 pkg-index landed (`de165c8` in nros-cli) but
+      no acceptance test was wired. Scope: nano-ros only (or
+      nros-cli if the pkg-index resolution is CLI-side).
+
+- [ ] **O.5 `n11_launch_xml_ros2_compat_smoke`** (N.11 test) —
+      copy-paste a stock nav2-style launch.xml (`<node>` +
+      `<arg>` + `<include>` + `$(find <pkg>)`) into a fixture;
+      codegen accepts it + emits correct `run_plan` body. The
+      `launch_synth` parser supports the directives (per N.11
+      body); no smoke gate. Scope: nano-ros fixture + test, or
+      nros-cli integration test under `tests/launch_xml/`.
+
+- [ ] **O.6 `application_pkg_with_rtos_deploy_is_rejected`**
+      (nros-cli `check`) — `nros check` rejects an Application
+      pkg manifest naming an RTOS in `deploy = [...]` (Application
+      pkgs are native-only per §212.L.2 / M-F.1). Fixture +
+      assert. Scope: nros-cli only.
+
+- [ ] **O.7 `msg_to_cyclone_idl_rust_port_matches_python_output`**
+      (212.K.3 parity test) — port verification: the Rust
+      `nros-msg-to-idl` produces output identical to the retired
+      Python `msg_to_cyclone_idl.py` for a corpus of `.msg` /
+      `.srv` / `.action` files. Scope: nros-cli's
+      `nros-msg-to-idl` crate; corpus fixture under
+      `tests/fixtures/msg_to_cyclone_idl/`.
+
+- [ ] **O.8 `ros2_launch_still_works_after_ament_install`**
+      (Phase 211 ament-install acceptance) — verifies the
+      ament-install path doesn't break stock `ros2 launch`
+      consumption. May be obsolete post-Phase 212 redesign —
+      audit before implementing. If still relevant: nano-ros
+      fixture + test gated on `colcon` / `ros2` availability.
+
 - **Tests** (per-wave, gated on SDK availability):
   - [x] `native_rust_talker_listener_e2e_<rmw>` per RMW —
         covered by `test_native_talker_listener_communication`
