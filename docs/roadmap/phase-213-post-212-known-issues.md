@@ -247,12 +247,23 @@ Solo / inline; trivial.
 **Files**: `packages/testing/nros-tests/fixtures/multi_pkg_workspace_px4/
 talker_pkg/CMakeLists.txt`.
 
-- [ ] **213.D.1** — Replace the 6-level walk-up include with an env-
+- [x] **213.D.1** — Replace the 6-level walk-up include with an env-
       var-driven path: either pass `-DNANO_ROS_CMAKE_DIR=...` from the
       test driver into the cmake configure, or restructure the fixture
-      to use `find_package`-style lookup.
-      **Acceptance**: `git grep '\.\./.\.\./.\.\./.\.\./.\.\./\.\.'`
-      under `packages/testing/nros-tests/fixtures/` returns no results.
+      to use `find_package`-style lookup. **Done 2026-06-03** —
+      both `talker_pkg/CMakeLists.txt` and
+      `brake_arbiter_pkg/CMakeLists.txt` swapped the 6-level walk-up
+      for an `NANO_ROS_CMAKE_DIR` env-var / `-D` shape with a clear
+      fatal error if neither is set. Test drivers + manual users
+      invoke cmake with `-DNANO_ROS_CMAKE_DIR=<repo>/cmake` or
+      `export NANO_ROS_CMAKE_DIR=<repo>/cmake`. Note: H.7 test is
+      `#[ignore]`'d (uses `nros codegen-system` rather than direct
+      cmake configure), so the test driver itself didn't need an
+      update; the fix is forward-compatible for future direct cmake
+      invocations.
+      **Acceptance verified**: `git grep '\.\./.\.\./.\.\./.\.\./.\.\./\.\.'`
+      under `packages/testing/nros-tests/fixtures/` returns ZERO
+      results. 4-level + 5-level walk-up patterns also clear.
 
 ---
 

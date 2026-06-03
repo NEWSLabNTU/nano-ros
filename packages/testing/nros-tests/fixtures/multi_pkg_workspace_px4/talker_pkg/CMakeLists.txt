@@ -18,10 +18,21 @@ project(talker_pkg VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Resolve the cmake fn registry. The fixture lives under
-# `packages/testing/nros-tests/fixtures/multi_pkg_workspace_px4/<pkg>/`
-# so the repo root is six levels up.
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../cmake/NanoRosNodeRegister.cmake")
+# Resolve the cmake fn registry. Phase 213.D.1 — the fixture lives
+# under `packages/testing/nros-tests/fixtures/multi_pkg_workspace_px4/
+# <pkg>/`, but a 6-level walk-up include violates CLAUDE.md's "no
+# walk-up paths" policy. Test drivers + manual users pass
+# `-DNANO_ROS_CMAKE_DIR=<repo>/cmake` (or export the env var) to point
+# at the source-side cmake module dir.
+if(NOT DEFINED NANO_ROS_CMAKE_DIR AND DEFINED ENV{NANO_ROS_CMAKE_DIR})
+    set(NANO_ROS_CMAKE_DIR "$ENV{NANO_ROS_CMAKE_DIR}")
+endif()
+if(NOT NANO_ROS_CMAKE_DIR)
+    message(FATAL_ERROR
+        "NANO_ROS_CMAKE_DIR not set — pass -DNANO_ROS_CMAKE_DIR=<repo>/cmake "
+        "or export it as an env var (Phase 213.D.1 walk-up retirement).")
+endif()
+include("${NANO_ROS_CMAKE_DIR}/NanoRosNodeRegister.cmake")
 
 nano_ros_node_register(
     NAME    talker
