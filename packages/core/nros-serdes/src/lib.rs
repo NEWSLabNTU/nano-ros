@@ -36,6 +36,7 @@ extern crate alloc;
 pub mod cdr;
 pub mod error;
 pub mod primitives;
+pub mod schema;
 pub mod traits;
 
 #[cfg(test)]
@@ -43,6 +44,7 @@ mod compat_tests;
 
 pub use cdr::{CdrReader, CdrWriter};
 pub use error::{DeserError, SerError};
+pub use schema::{Field, FieldType, Message, NestedType};
 pub use traits::{Deserialize, Serialize};
 
 /// Length of the CDR encapsulation header (representation identifier + options).
