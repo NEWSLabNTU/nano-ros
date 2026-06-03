@@ -91,7 +91,14 @@ static int      cfg_irq_num   = 1;
 /* FFI: called from Rust to set config. Signature matches the
  * unified 5-arg form (Phase 152.2.B.4). The `interface_name`
  * parameter is unused here — bare-metal RISC-V QEMU has no
- * host network interface to bind to. */
+ * host network interface to bind to.
+ *
+ * Return type is `void` by contract — Phase 214.A.1: this impl
+ * is pure memcpy into static storage, has no meaningful failure
+ * modes, and is called from board startup before networking
+ * begins. Callers (e.g. `startup.c`) do not capture a return
+ * code. If a future revision adds I/O or validation that can
+ * fail, this contract changes; bump to `int` + propagate. */
 void nros_threadx_set_config(
     const uint8_t *ip,
     const uint8_t *netmask,

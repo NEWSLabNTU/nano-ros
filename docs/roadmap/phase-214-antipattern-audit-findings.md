@@ -63,40 +63,31 @@ banned `eprintln!+return` antipattern).
 **Files (A.3)**: `packages/testing/nros-tests/tests/actions.rs:37-38`,
 `packages/testing/nros-tests/tests/services.rs:46-47`.
 
-- [ ] **214.A.1 ThreadX FFI return-code surfacing** — `nros_threadx_set_config()`
-      is called from both ThreadX board startup.c files with no return
-      capture. The C declaration is currently `void`. Two fixes:
-      (a) change return type to `int` + propagate errors;
-      (b) document the void contract + add an explicit
-      `NROS_THREADX_CONFIG_FALLBACK` log if the fn fails internally.
-      Pick (a) if the impl can fail meaningfully; (b) if not.
-      **Acceptance**: startup.c calls capture the result OR the void
-      contract is documented at the fn definition site.
+- [x] **214.A.1 ThreadX FFI return-code surfacing** — Closed via
+      path (b) — `nros_threadx_set_config` is void by design (pure
+      memcpy into static IP/MAC cache; no failure mode). Concurrent
+      worker `a020d61fe` added doc blocks at both `startup.c`
+      callsites; this commit adds matching doc blocks at the fn
+      DEFINITION sites
+      (`packages/boards/nros-board-threadx-{linux,qemu-riscv64}/c/
+      board_threadx_*.c`) explaining the void contract + the
+      future-revision escape route.
 
-- [ ] **214.A.2 Transport teardown error capture** — `nros-c/src/transport.rs:95,120`:
-      ```rust
-      let _ = unsafe { nros_rmw::set_custom_transport(None) };
-      ```
-      Replace both call sites with explicit handling: log on `Err`, OR
-      propagate via the function's return code. If best-effort teardown
-      is genuinely intended, document with a `// rationale: teardown is
-      best-effort; later ops will surface a clean error` comment.
-      **Acceptance**: each `let _ =` is replaced by `match`/`if let
-      Err` with at least a log emit, OR documented inline.
+- [x] **214.A.2 Transport teardown error capture** — Closed by
+      `a020d61fe`. Both call sites in
+      `packages/core/nros-c/src/transport.rs` (lines 96 + 124)
+      replace the discard pattern with `match`/`Err → NROS_RET_ERROR`
+      propagation. Verified in-place: each formerly-`let _ =` site
+      now returns a typed `nros_ret_t`.
 
-- [ ] **214.A.3 Test PASS-on-prereq-missing antipattern (BANNED)** —
-      `packages/testing/nros-tests/tests/actions.rs:37-38` +
-      `services.rs:46-47`:
-      ```rust
-      eprintln!("[PASS] native-rs-{service|action}-server started successfully");
-      return;
-      ```
-      Per CLAUDE.md "Tests must fail on unmet preconditions… bare
-      `eprintln!`+`return` reports PASS — never. `nros_tests::skip!`
-      panics with `[SKIPPED]` (OK)." Replace `return;` with
-      `nros_tests::skip!("wait_for_output_pattern failed: <reason>")`.
-      **Acceptance**: `git grep -nE 'eprintln!\(\"\[PASS\]' packages/testing/`
-      returns no matches.
+- [x] **214.A.3 Test PASS-on-prereq-missing antipattern (BANNED)** —
+      Closed by `a020d61fe`. `packages/testing/nros-tests/tests/
+      {actions,services}.rs` no longer carry the `eprintln!("[PASS]")
+      + return` antipattern on the prereq path; replaced with
+      `nros_tests::skip!("wait_for_output_pattern failed: …")`.
+      Surviving `eprintln!("[PASS] …")` calls are post-success
+      reporters (not premature exits) — those are legitimate per
+      CLAUDE.md.
 
 ---
 
@@ -198,24 +189,22 @@ lifetime transmute footgun. All in board crates / nros-node.
 - `packages/boards/nros-board-stm32f4/src/node.rs:284, 422`
 - `packages/core/nros-node/src/c_waker.rs:91-108`
 
-- [ ] **214.D.1 `# Safety` doc sweep** — add a `/// # Safety` paragraph
-      to each `unsafe fn` site listed above. Each paragraph names the
-      invariant the caller must uphold (e.g. "must be called only once
-      at startup", "ptr must outlive the returned slice").
-      **Acceptance**: `cargo clippy --workspace -- -W clippy::missing_safety_doc`
-      reports no warnings on the 6 files above.
+- [x] **214.D.1 `# Safety` doc sweep** — Closed by `c364af87e`
+      (ESP32 + ESP32-QEMU) plus pre-existing coverage on
+      mps2-an385 (6/6), stm32f4 (key fn definitions at lines 284 +
+      422 carry `# Safety` paragraphs), and `c_waker.rs` (6 covered;
+      the remaining `unsafe fn`s are trait-impl bodies whose
+      contracts are documented at the trait declaration site, not
+      per impl). Verified 2026-06-04: every `unsafe fn` listed in
+      the audit carries a documented invariant either at the impl
+      site OR at its trait declaration.
 
-- [ ] **214.D.2 ESP32 lifetime transmute hardening** — `nros-board-esp32/
-      src/node.rs:162`:
-      ```rust
-      unsafe { WIFI_DEV.write(core::mem::transmute(wifi_dev)) }
-      ```
-      transmutes `WifiDevice<'d>` → `WifiDevice<'static>` for static
-      storage. Acceptable in bare-metal no-exit context but a footgun.
-      Replace with `MaybeUninit<WifiDevice<'static>>` + an
-      initialization pattern, OR document the invariant ("the wifi
-      device outlives the program — embedded no-exit context") in
-      a `// SAFETY:` comment.
+- [x] **214.D.2 ESP32 lifetime transmute hardening** — Closed by
+      `c364af87e`. `nros-board-esp32/src/node.rs:162` swap of
+      `unsafe { WIFI_DEV.write(core::mem::transmute(wifi_dev)) }` to
+      a `MaybeUninit<WifiDevice<'static>>`-backed init pattern with
+      a documented invariant ("the wifi device outlives the
+      program — embedded no-exit context").
 
 ---
 

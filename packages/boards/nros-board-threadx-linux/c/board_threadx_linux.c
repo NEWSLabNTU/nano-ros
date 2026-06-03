@@ -28,7 +28,15 @@ static uint8_t cfg_mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 /* FFI: called from Rust to set config. Signature kept for
  * compatibility with the Rust glue. The netmask / gateway /
- * interface_name parameters are ignored under NSOS. */
+ * interface_name parameters are ignored under NSOS.
+ *
+ * Return type is `void` by contract — Phase 214.A.1: this impl
+ * is pure memcpy into static storage (NULL-guarded), has no
+ * meaningful failure modes, and is called from board startup
+ * before networking begins. Callers (e.g. `startup.c`) do not
+ * capture a return code. If a future revision adds I/O or
+ * validation that can fail, this contract changes; bump to
+ * `int` + propagate. */
 void nros_threadx_set_config(
     const uint8_t *ip,
     const uint8_t *netmask,
