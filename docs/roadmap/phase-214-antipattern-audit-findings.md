@@ -308,8 +308,8 @@ lifetime transmute footgun. All in board crates / nros-node.
       24 violators triaged.
 - [ ] Track P: both embedded cyclonedds e2e tests receive ≥1
       message over 3 reruns.
-- [ ] Track Q: every per-platform `test` recipe sequences
-      `build-fixtures` first (umbrella for H and K).
+- [x] Track Q: every per-platform `test` recipe sequences
+      `build-fixtures` first (umbrella for H and K) — `42c657bd0`.
 - [ ] Track R: `[SKIPPED]` panics no longer count as
       failures in the tally script's output.
 - [ ] Phase doc retired to `archived/` when all checkboxes flip.
@@ -531,7 +531,7 @@ that.
 
 **Work Items:**
 
-- [ ] **214.H.1 `just native test` runs `build-test-fixtures` first**
+- [x] **214.H.1 `just native test` runs `build-test-fixtures` first**
       — add `just build-test-fixtures` (or the narrower
       `build-fixture-rust` + `build-fixture-extras`) as a recipe
       dependency of `just native test`. Match the pattern already
@@ -540,9 +540,16 @@ that.
       **Acceptance**: a fresh `just native test` from a clean clone
       passes the 38 fixture-dependent tests without a separate
       manual prebuild step.
+      **Superseded by Track Q.1 (`42c657bd0`)** — the umbrella
+      sweep added `test: build-fixtures` to `just/native.just`
+      (along with zephyr + esp32) using the recipe-head dep form.
 
-- [ ] **214.H.2 Same audit for every `just <plat> test`** — see
+- [x] **214.H.2 Same audit for every `just <plat> test`** — see
       Track Q for the umbrella; H.2 is the per-recipe survey.
+      **Closed by Q.1 (`42c657bd0`)** — the 8-module audit found
+      5 platforms (freertos, nuttx, threadx-linux, threadx-riscv64,
+      qemu-baremetal) already had the dep; the remaining 3 (native,
+      zephyr, esp32) were patched.
 
 ---
 
@@ -694,13 +701,18 @@ error.
 
 **Work Items:**
 
-- [ ] **214.K.1 `just zephyr test` runs `build-fixtures` first** —
+- [x] **214.K.1 `just zephyr test` runs `build-fixtures` first** —
       same pattern as Track H, narrowed to the zephyr build matrix.
       Consider both `build-fixtures` (full) and a narrower `build-
       examples-test-only` if full takes too long.
       **Acceptance**: fresh `just zephyr test` from a clean workspace
       passes the 26 fixture-dependent tests without a manual
       prebuild.
+      **Superseded by Track Q.1 (`42c657bd0`)** — the umbrella
+      sweep added `test: build-fixtures` to `just/zephyr.just`
+      using the recipe-head dep form (full `build-fixtures`, not a
+      narrower variant; wall-clock budget acceptable per Track Q
+      tradeoff note).
 
 ---
 
@@ -968,13 +980,22 @@ don't.
 
 **Work Items:**
 
-- [ ] **214.Q.1 Add `build-fixtures` as prereq on every `test`
+- [x] **214.Q.1 Add `build-fixtures` as prereq on every `test`
       recipe** — mechanical sweep across the 8 platform modules.
       Use `just`'s `dep` syntax (`test: build-fixtures` head form)
       so a `--dry-run` invocation also reflects the dependency.
       **Acceptance**: `just native test` from a clean workspace
       passes the fixture-dependent tests in one invocation;
       similarly for the other 7 platforms.
+      **Landed `42c657bd0`** — audit of 8 modules found 5 already
+      had `test: build-fixtures` (freertos, nuttx, threadx-linux,
+      threadx-riscv64, qemu-baremetal); patched the 3 remaining
+      (native, zephyr, esp32) to match. Cyclonedds uses CTest +
+      `test: build-rmw`, not the nextest-fixture pattern, and was
+      left untouched. Pattern used: `recipe: dep` head form (not
+      in-body `just build-fixtures && …`), confirmed by `just -n
+      <plat> test` showing the build-fixture recipe body inlined
+      ahead of the test body.
 
 - [ ] **214.Q.2 Document the contract** — one paragraph in
       `docs/development/test-harness.md` (create if absent) stating
