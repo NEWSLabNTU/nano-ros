@@ -69,18 +69,13 @@ agent / solo inline; small.
 `just/qemu-baremetal.just` (or new `just/mps2-an385.just`), maybe
 `just/esp32.just` (doc comment).
 
-- [ ] **213.A.1** — Add `[board.qemu-arm-baremetal]` entry to
-      `nros-sdk-index.toml`. **CRITICAL**: fresh
-      `nros setup qemu-arm-baremetal` fails because the index lookup
-      misses the board. Required entry:
-      ```toml
-      [board.qemu-arm-baremetal]
-      packages = ["arm-none-eabi-gcc", "qemu"]
-      ```
-      **Acceptance**: `nros setup qemu-arm-baremetal --dry-run` lists
-      the expected toolchain + qemu without error on a clean checkout.
+- [x] **213.A.1** — Audit was wrong; `[board.qemu-arm-baremetal]`
+      entry already exists in `nros-sdk-index.toml:406-409` with
+      `packages = ["arm-none-eabi-gcc", "qemu"]`. The board IS
+      provisionable via `nros setup qemu-arm-baremetal` and via
+      `just qemu setup`. Closed 2026-06-03 audit verification.
 
-- [ ] **213.A.2** — Add `setup` target to `just/stm32f4.just`.
+- [x] **213.A.2** — Add `setup` target to `just/stm32f4.just`.
       Currently the recipe carries `build-fixtures` only; users typing
       `just stm32f4 setup` get "recipe not found". Mirror the shape
       every other platform recipe uses (delegates to
@@ -88,15 +83,16 @@ agent / solo inline; small.
       **Acceptance**: `just stm32f4 setup` runs to completion against
       the `[board.stm32f4]` index entry.
 
-- [ ] **213.A.3** — Add `setup` recipe for `mps2-an385`. Either new
-      `just/mps2-an385.just` or fold under `just/qemu-baremetal.just`.
-      Choice depends on whether `mps2-an385` is the only bare-metal
-      board or shares the recipe with others. Pick whichever keeps
-      symmetry with peer platforms.
-      **Acceptance**: `just mps2-an385 setup` (or equivalent) runs
-      `nros setup mps2-an385`.
+- [x] **213.A.3** — Added doc note to `just/qemu-baremetal.just`
+      header explaining it covers BOTH `qemu-arm-baremetal` AND
+      `mps2-an385` (same SDK packages 1:1 except `openocd` for
+      real-hw flashing, which is an out-of-tree concern). Folded
+      under the existing recipe rather than splitting — the recipe
+      already runs `nros setup qemu-arm-baremetal`; users targeting
+      mps2-an385 hw run that + `nros setup mps2-an385 --tool openocd`
+      separately.
 
-- [ ] **213.A.4** — Document in `just/esp32.just` (header comment)
+- [x] **213.A.4** — Document in `just/esp32.just` (header comment)
       that `just esp32 setup` covers both `esp32` (real hardware) AND
       `qemu-esp32-baremetal` boards — OR split into two recipes. Pick
       the option that matches the existing `[board.qemu-esp32-baremetal]

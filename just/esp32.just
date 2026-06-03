@@ -11,6 +11,14 @@ default:
 # itself is cross-compiled by `zpico-sys/build.rs` during the
 # example's cargo build; no standalone library build step is needed
 # or wired up anywhere in the project.
+#
+# Phase 213.A.4 — this recipe covers BOTH ESP32 boards:
+#   * `[board.esp32]` (real hardware; ESP32-C3 RISC-V)
+#   * `[board.qemu-esp32-baremetal]` (Espressif QEMU fork, esp32c3 machine)
+# Both have `packages = []` in the index — the riscv32 target comes from
+# `just workspace rust-targets` (rustup), and the QEMU fork is the
+# source-built `[tool.esp32-qemu]`. There is no `just qemu-esp32-baremetal
+# setup` sibling; this recipe is the single entry point for both.
 [group("setup")]
 setup:
     #!/usr/bin/env bash

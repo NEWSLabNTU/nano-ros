@@ -3,6 +3,17 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
+# Install STM32F4 prerequisites (arm-none-eabi-gcc + openocd) via `nros setup`.
+# Phase 213.A.2 — thin caller of `nros setup stm32f4`, matching the pattern
+# every other platform setup recipe uses. Real hardware uses openocd to flash;
+# the recipe does NOT pull a qemu fork (stm32f4 is not a QEMU board).
+[group("setup")]
+setup:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    "$(nros_cli_bin)" setup stm32f4 --rmw zenoh
+
 # Build STM32F4 core artifacts.
 [group("main")]
 build:

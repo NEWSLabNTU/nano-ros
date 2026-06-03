@@ -272,6 +272,15 @@ run-networked TAP="tap-qemu0" IP="192.0.2.10" BINARY="":
 # qemu-system-arm under build/qemu/). Building patched QEMU is
 # idempotent and short-circuits when build/qemu/bin/qemu-system-arm
 # is newer than every patch file.
+#
+# Phase 213.A.3 — this recipe covers BOTH boards built on this toolchain:
+#   * `[board.qemu-arm-baremetal]` (QEMU + arm-none-eabi-gcc)
+#   * `[board.mps2-an385]` (same toolchain; real hw uses openocd separately)
+# There is no `just mps2-an385 setup` sibling — the recipe is shared because
+# the SDK packages overlap 1:1 and mps2-an385's only divergence is `openocd`
+# for real-hw flashing (out-of-tree concern). Users targeting mps2-an385
+# should run `just qemu setup` AND `nros setup mps2-an385 --tool openocd`
+# (the latter when flashing real hardware).
 [group("setup")]
 setup:
     #!/usr/bin/env bash
