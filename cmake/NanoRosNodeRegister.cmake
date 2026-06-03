@@ -21,6 +21,14 @@
 #       argument to `nano_ros_entry`. The shim will be retired once
 #       the in-tree caller migration (212.N.7 wave) completes.
 #
+#   * `nano_ros_component_register(...)` — DEPRECATED 213.B.1 backward-
+#       compat shim. The Phase 212.N.12 hard rename swept
+#       `Component → Node` across the code surface but missed this
+#       cmake fn name, leaving every embedded C/C++ example calling it
+#       failing at configure time. Emits `MESSAGE(DEPRECATION …)` and
+#       forwards every argument to `nano_ros_node_register`. Retired
+#       after the 213.B.2 caller sweep.
+#
 #   * `nano_ros_deploy(TARGET <name> RMW <rmw> DOMAIN_ID <n>
 #       [LOCATOR <uri>])`
 #       — records per-target rmw / domain_id / locator config.
@@ -141,6 +149,21 @@ function(nano_ros_application)
         "nano_ros_entry(...) instead. The shim will be retired in a "
         "future phase (212.N.7 caller migration).")
     nano_ros_entry(${ARGV})
+endfunction()
+
+# Phase 213.B.1 — backward-compat shim. `nano_ros_component_register`
+# was renamed to `nano_ros_node_register` per the 212.N.12 hard rename,
+# which swept `Component → Node` across the code surface but missed
+# this cmake fn name — leaving every embedded C/C++ example calling it
+# failing at configure time. This shim forwards every argument to the
+# new fn and emits a DEPRECATION warning. Retired after the 213.B.2
+# caller sweep lands.
+function(nano_ros_component_register)
+    message(DEPRECATION
+        "nano_ros_component_register is renamed to "
+        "nano_ros_node_register — use nano_ros_node_register(...) "
+        "instead. The shim will be retired in a future release.")
+    nano_ros_node_register(${ARGV})
 endfunction()
 
 function(nano_ros_deploy)
