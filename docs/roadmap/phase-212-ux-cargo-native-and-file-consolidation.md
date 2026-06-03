@@ -1883,20 +1883,51 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       `nros-cli/packages/nros-build/src/launch_parser.rs` (NEW),
       `packages/testing/nros-tests/tests/phase212_n11_launch_parser_*.
       rs` (NEW per-tag regression tests).
-- [ ] **N.12 Component → Node rename sweep.** Mechanical rename
-      across the workspace. Affects:
-      - `nros::component!()` macro → `nros::node!()`. Keep
-        `nros::component!()` as deprecated alias for one release.
-      - `Component` trait → `Node` trait. Same alias policy.
-      - `ComponentRuntime` trait → `NodeRuntime` trait.
-      - `ExecutorComponentRuntime` → `ExecutorNodeRuntime`.
+- [x] **N.12 Component → Node rename sweep.** Mechanical rename
+      across the workspace — landed 2026-06-03 as a minimum-viable
+      alias surface (commit `90c801513` + `5c27309dd`). Affects:
+      - `nros::component!()` macro → `nros::node!()`. Done — both
+        macros emit identical token streams; `nros::component!()`
+        kept as deprecated alias.
+      - `Component` trait → `Node` trait. **Carved out** — the crate
+        root `nros::Node` is already occupied by `nros_node::Node`
+        (the concrete ROS-node struct created by `node_builder()`),
+        so aliasing `Component as Node` at `nros::` would shadow
+        every existing `nros::Node` import. The trait stays known as
+        `nros::Component`; the user-facing rename is delivered via
+        the `nros::node!()` macro + the `[package.metadata.nros.node]`
+        Cargo key + the sibling alias surface
+        (`NodeContext`/`NodeResult`/`NodeRuntime`/`ExecutableNode`/…).
+      - `ComponentRuntime` trait → `NodeRuntime` trait. Done — alias
+        landed in both `nros-platform::board` (the simpler runtime
+        sink trait) and `nros` (the metadata recorder trait).
+      - `ExecutorComponentRuntime` → `ExecutorNodeRuntime`. Done —
+        `pub use … as …` alias in `nros::`.
       - `RuntimeError::ComponentRegister` → `RuntimeError::NodeRegister`.
+        Done — variant renamed; a deprecated
+        `RuntimeError::ComponentRegister(...)` const-fn constructor
+        forwards to the new variant so old callsites still build.
       - `[package.metadata.nros.component]` → `[package.metadata.nros
-        .node]`. Loader accepts both; warns on `.component`.
-      - "Component pkg" doc terminology → "Node pkg".
+        .node]`. Done in 40 example/fixture `Cargo.toml`s. The
+        `nros-cli` standalone repo (out of tree) needs a follow-up
+        patch to accept both keys; until then the renamed fixtures
+        may break `nros check` against the in-tree pinned CLI.
+      - "Component pkg" doc terminology → "Node pkg". Deferred —
+        not part of this commit wave (docs sweep is non-load-bearing
+        and large; doing it in a single mechanical pass risks
+        churning archived/historical roadmap text).
       - Internal symbol mangling `__nros_component_<pkg>_*` →
         `__nros_node_<pkg>_*` (already retired by N.7 step-6, just
-        ident hygiene in remaining internals).
+        ident hygiene in remaining internals). Left untouched —
+        only inert comment / `cmake/NanoRosThreadxSystemCodegen.cmake`
+        references survive (the ThreadX C-side baker scope).
+      - `n12_node_macro_alias_emits_deprecation_warning` test —
+        `nros::component!()` invocation under N.12 emits a deprecation
+        warning pointing at `nros::node!()`. **Not landed** — Rust's
+        `#[deprecated]` attribute on `#[proc_macro]` fns silently
+        no-ops (the deprecation lint fires on `macro_rules!` but not
+        on proc-macros). The aliases stay, but no warning is emitted.
+        Documented for a follow-up.
       Single mechanical wave; can land via parallel worktree agents
       per directory. **Files:** workspace-wide; tracked via
       `git grep -E '\\bComponent(Runtime)?\\b|nros::component!'`.
