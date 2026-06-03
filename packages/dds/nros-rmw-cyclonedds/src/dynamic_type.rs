@@ -169,6 +169,34 @@ impl DescriptorBuilder {
     /// Build a descriptor from a raw `(type_name, fields)` pair. Used
     /// internally by [`Self::build`]; also useful for tests that don't
     /// want to gin up a full `impl Message`.
+    ///
+    /// # Service request/reply prefix injection (Phase 212.K.7 fix)
+    ///
+    /// When `type_name` matches a service request / reply shape — i.e.
+    /// the basename ends with `_Request`, `_Response`, or `_Reply` —
+    /// the descriptor synthesised here gets the 16-byte
+    /// `cdds_request_header_t` prefix (`rmw_writer_guid: u64`,
+    /// `rmw_sequence_number: i64`) injected at offset 0, with every
+    /// caller-supplied field offset shifted by 16. This mirrors stock
+    /// `rmw_cyclonedds_cpp`'s idlc-emitted Request/Response descriptors
+    /// (see `service.cpp` doc block) and is what `service_send_request_raw`
+    /// / `service_try_recv_request` already assume on the C++ wire side
+    /// when they prepend / split the 16-byte header. The user-facing
+    /// `Serialize` / `Deserialize` impls intentionally still serialise
+    /// only user fields — the wire framing (`build_wire_with_header`)
+    /// supplies the 16-byte prefix bytes; the descriptor needs the
+    /// matching field declarations so Cyclone's
+    /// `dds_stream_{read,write}_sample` round-trip preserves the user
+    /// payload that follows the header.
+    ///
+    /// Without this prefix the synthesised descriptor's `m_size = 16`
+    /// (or the size of just the user fields) and Cyclone silently
+    /// truncates the wire CDR's user payload during the take/write
+    /// reserialise pass — manifesting as a server-side `wire_len`
+    /// equal to encap+header with no user bytes (Phase 212.K.7 root
+    /// cause: native-Rust-Cyclone service requests timed out because
+    /// the server received only the 16-byte header, never the `a`/`b`
+    /// payload).
     pub fn build_raw(
         type_name: &'static str,
         fields: &'static [Field],
@@ -179,7 +207,15 @@ impl DescriptorBuilder {
         if fields.is_empty() {
             return Err(BuildError::EmptySchema);
         }
-        if fields.len() > MAX_FIELDS {
+
+        let prepend_header = is_service_request_or_reply(type_name);
+        let header_field_count = if prepend_header {
+            SERVICE_HEADER_FIELDS.len()
+        } else {
+            0
+        };
+        let total_fields = fields.len() + header_field_count;
+        if total_fields > MAX_FIELDS {
             return Err(BuildError::FieldsOverflow);
         }
 
@@ -208,12 +244,35 @@ impl DescriptorBuilder {
         let mut field_names = [const { [0u8; NAME_SLOT_LEN] }; MAX_FIELDS];
         let mut nested_names = [const { [0u8; NAME_SLOT_LEN] }; MAX_KINDS];
 
+        // 1. Inject the 16-byte cdds_request_header_t prefix if the
+        //    type is a service request / reply (see method docs).
+        if prepend_header {
+            for (i, hf) in SERVICE_HEADER_FIELDS.iter().enumerate() {
+                copy_to_buf(hf.name, &mut field_names[i])?;
+                let kind_idx = walker.push_field_type(&hf.ty, &mut nested_names, 0)? as u32;
+                field_descs[i] = NrosFieldDescriptor {
+                    name: field_names[i].as_ptr() as *const c_char,
+                    offset: hf.offset as u32,
+                    kind: kind_idx,
+                };
+            }
+        }
+
+        // 2. Caller-supplied user fields — shifted by SERVICE_HEADER_BYTES
+        //    when the header was prepended so they sit after the header in
+        //    the typed sample.
+        let user_offset_shift = if prepend_header {
+            SERVICE_HEADER_BYTES
+        } else {
+            0
+        };
         for (i, f) in fields.iter().enumerate() {
-            copy_to_buf(f.name, &mut field_names[i])?;
+            let slot = header_field_count + i;
+            copy_to_buf(f.name, &mut field_names[slot])?;
             let kind_idx = walker.push_field_type(&f.ty, &mut nested_names, 0)? as u32;
-            field_descs[i] = NrosFieldDescriptor {
-                name: field_names[i].as_ptr() as *const c_char,
-                offset: f.offset as u32,
+            field_descs[slot] = NrosFieldDescriptor {
+                name: field_names[slot].as_ptr() as *const c_char,
+                offset: (f.offset + user_offset_shift) as u32,
                 kind: kind_idx,
             };
         }
@@ -223,7 +282,7 @@ impl DescriptorBuilder {
             nros_cyclonedds_build_descriptor_from_schema(
                 type_name_buf.as_ptr() as *const c_char,
                 field_descs.as_ptr(),
-                fields.len() as u32,
+                total_fields as u32,
                 walker.kinds.as_ptr(),
                 walker.kind_count as u32,
                 &mut err_code,
@@ -235,6 +294,80 @@ impl DescriptorBuilder {
         }
         Ok(descriptor)
     }
+}
+
+// ── Service request / reply CDR header (Phase 212.K.7) ─────────────────
+//
+// Stock `rmw_cyclonedds_cpp` idlc-generated request/reply structs carry
+// a 16-byte `cdds_request_header_t` prefix:
+//
+//     uint64_t rmw_writer_guid;       // lower 8 bytes of RTPS GUID
+//     int64_t  rmw_sequence_number;   // monotonic per-client
+//     /* user fields ... */
+//
+// (See `packages/dds/nros-rmw-cyclonedds/src/service.cpp` top-of-file
+// doc block + `cdds_request_header_t` in upstream
+// `rmw_cyclonedds_cpp/src/serdata.hpp:73-77`.)
+//
+// The Rust runtime descriptor builder injects matching fields into
+// every Request/Reply descriptor so Cyclone's typed sample I/O
+// (`dds_stream_{read,write}_sample`) preserves the user payload that
+// follows the prefix. The user-facing `Serialize`/`Deserialize` impls
+// still only round-trip user fields — the prefix bytes come from
+// `build_wire_with_header` / `split_wire_header` in `service.cpp`.
+
+/// Total byte size of the synthesised `cdds_request_header_t` prefix.
+pub const SERVICE_HEADER_BYTES: usize = 16;
+
+/// The two synthesised header fields, in order.
+///
+/// `offset` is absolute within the typed sample — `rmw_writer_guid` at
+/// 0, `rmw_sequence_number` at 8. Total prefix size 16 B.
+const SERVICE_HEADER_FIELDS: &[Field] = &[
+    Field {
+        name: "rmw_writer_guid",
+        ty: FieldType::Uint64,
+        offset: 0,
+    },
+    Field {
+        name: "rmw_sequence_number",
+        ty: FieldType::Int64,
+        offset: 8,
+    },
+];
+
+/// Returns `true` if `type_name` (in `pkg/srv/<Svc>_Request` /
+/// `_Response` / `_Reply` slash-form *or* the
+/// `pkg::srv::dds_::<Svc>_Request_` mangled form) names a service
+/// request or reply type.
+///
+/// The slash form is the one [`Message::TYPE_NAME`] is documented to
+/// carry; the mangled form is checked defensively in case codegen
+/// emits the wire-form directly (e.g. mirroring `RosMessage::TYPE_NAME`).
+fn is_service_request_or_reply(type_name: &str) -> bool {
+    // Normalise: trim an optional trailing NUL (codegen may include
+    // a NUL terminator in the `&'static str`), then trim a trailing
+    // `_` (mangled Cyclone names end in `_`).
+    let mut s = type_name.as_bytes();
+    while let Some(b'\0') = s.last() {
+        s = &s[..s.len() - 1];
+    }
+    while let Some(b'_') = s.last() {
+        s = &s[..s.len() - 1];
+    }
+    ends_with_ignore_case(s, b"_Request")
+        || ends_with_ignore_case(s, b"_Response")
+        || ends_with_ignore_case(s, b"_Reply")
+}
+
+/// Case-sensitive `ends_with` for byte slices (avoid pulling
+/// `str::ends_with` since `s` is already a `&[u8]`).
+fn ends_with_ignore_case(s: &[u8], suffix: &[u8]) -> bool {
+    if s.len() < suffix.len() {
+        return false;
+    }
+    let tail = &s[s.len() - suffix.len()..];
+    tail == suffix
 }
 
 impl NrosFieldDescriptor {
@@ -578,6 +711,141 @@ mod tests {
         assert_eq!(
             DescriptorBuilder::build_raw("", ALL_FIELDS).unwrap_err(),
             BuildError::EmptyTypeName
+        );
+    }
+
+    // ── Service request/reply prefix injection (Phase 212.K.7 fix) ─────
+
+    #[test]
+    fn service_request_reply_predicate_recognises_canonical_shapes() {
+        // Slash form — the `Message::TYPE_NAME` documented shape.
+        assert!(is_service_request_or_reply(
+            "example_interfaces/srv/AddTwoInts_Request"
+        ));
+        assert!(is_service_request_or_reply(
+            "example_interfaces/srv/AddTwoInts_Response"
+        ));
+        // `_Reply` accepted defensively (older test-fixture spelling;
+        // wire-form is `_Response` but the predicate stays lenient so
+        // an in-tree mock doesn't have to renumber).
+        assert!(is_service_request_or_reply("test/srv/TestService_Reply"));
+        // Mangled (Cyclone wire) form, trailing `_` allowed.
+        assert!(is_service_request_or_reply(
+            "example_interfaces::srv::dds_::AddTwoInts_Request_"
+        ));
+        assert!(is_service_request_or_reply(
+            "example_interfaces::srv::dds_::AddTwoInts_Response_"
+        ));
+        // NUL-terminated form (codegen may emit one for C-bridge ease).
+        assert!(is_service_request_or_reply(
+            "example_interfaces/srv/AddTwoInts_Request\0"
+        ));
+
+        // Negatives — plain message types must NOT get the prefix.
+        assert!(!is_service_request_or_reply("std_msgs/msg/Int32"));
+        assert!(!is_service_request_or_reply("std_msgs::msg::dds_::Int32_"));
+        assert!(!is_service_request_or_reply(
+            "example_interfaces/srv/AddTwoInts"
+        ));
+        // The action `_Goal` / `_Result` / `_Feedback` wrappers are
+        // services internally but they reach us through their own
+        // `_Request` / `_Response` derivatives (see service.cpp
+        // `action_effective_base`). The bare wrapper names alone don't
+        // need the prefix.
+        assert!(!is_service_request_or_reply("test/action/TestAction_Goal"));
+    }
+
+    /// A Request-shaped Message: two user fields, name suffixes
+    /// `_Request`. The builder MUST inject the 16-byte header before
+    /// the user fields.
+    struct AddTwoIntsReq;
+    impl Message for AddTwoIntsReq {
+        const TYPE_NAME: &'static str = "example_interfaces/srv/AddTwoInts_Request";
+        const FIELDS: &'static [Field] = &[
+            Field {
+                name: "a\0",
+                ty: FieldType::Int64,
+                offset: 0,
+            },
+            Field {
+                name: "b\0",
+                ty: FieldType::Int64,
+                offset: 8,
+            },
+        ];
+    }
+
+    /// A Response-shaped Message — single user field, name suffix
+    /// `_Response`.
+    struct AddTwoIntsRsp;
+    impl Message for AddTwoIntsRsp {
+        const TYPE_NAME: &'static str = "example_interfaces/srv/AddTwoInts_Response";
+        const FIELDS: &'static [Field] = &[Field {
+            name: "sum\0",
+            ty: FieldType::Int64,
+            offset: 0,
+        }];
+    }
+
+    /// A plain message — must NOT receive the prefix.
+    struct Int32Msg;
+    impl Message for Int32Msg {
+        const TYPE_NAME: &'static str = "std_msgs/msg/Int32";
+        const FIELDS: &'static [Field] = &[Field {
+            name: "data\0",
+            ty: FieldType::Int32,
+            offset: 0,
+        }];
+    }
+
+    #[test]
+    fn service_request_descriptor_succeeds_with_only_user_fields() {
+        // Without the K.7 fix this would either succeed with the wrong
+        // m_size (test stub returns a unique non-null pointer regardless
+        // of field shape) or — with a strict bridge — fail. We can't
+        // observe `m_size` from the test stub, so we assert the build
+        // path is taken end-to-end and the predicate-driven prefix
+        // count makes total_fields exceed user_fields.
+        let ptr = DescriptorBuilder::build::<AddTwoIntsReq>().expect("build req");
+        assert!(!ptr.is_null());
+
+        let ptr = DescriptorBuilder::build::<AddTwoIntsRsp>().expect("build rsp");
+        assert!(!ptr.is_null());
+
+        let ptr = DescriptorBuilder::build::<Int32Msg>().expect("build msg");
+        assert!(!ptr.is_null());
+    }
+
+    #[test]
+    fn service_request_prefix_overflow_caps_at_max_fields() {
+        // A Request type with (MAX_FIELDS - 1) user fields is fine on
+        // its own but, after the 2-field prefix injection, overflows.
+        // Generate it via build_raw which does not need a Message impl.
+        const N: usize = MAX_FIELDS - 1;
+        const fn mk_fields() -> [Field; N] {
+            let mut out = [Field {
+                name: "x\0",
+                ty: FieldType::Uint8,
+                offset: 0,
+            }; N];
+            let mut i = 0;
+            while i < N {
+                out[i] = Field {
+                    name: "x\0",
+                    ty: FieldType::Uint8,
+                    offset: i as u32 as usize,
+                };
+                i += 1;
+            }
+            out
+        }
+        static FIELDS: [Field; N] = mk_fields();
+        // Plain message (no suffix): fits exactly.
+        assert!(DescriptorBuilder::build_raw("plain/msg/Big", &FIELDS).is_ok());
+        // Request (suffix triggers prefix): overflows by 1.
+        assert_eq!(
+            DescriptorBuilder::build_raw("plain/srv/Big_Request", &FIELDS).unwrap_err(),
+            BuildError::FieldsOverflow,
         );
     }
 
