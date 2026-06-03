@@ -631,6 +631,12 @@ impl Ros2Liveliness {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Phase 212.x3 — `TopicKeyExpr` is only re-exported as `QosKeyExpr` at the
+    // module top, so the tests that call `topic.to_key()` / `topic.to_key_wildcard()`
+    // need it in scope explicitly. Without this, every platform-feature build of
+    // `cargo check --tests` fails E0599 (default features skip the `shim` module
+    // entirely and so don't surface it).
+    use crate::keyexpr::TopicKeyExpr;
 
     // ========================================================================
     // Error Conversion Tests
