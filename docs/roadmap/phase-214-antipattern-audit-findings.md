@@ -122,20 +122,29 @@ compute a relative path from the per-example manifest dir.
 to wipe the absolute-path artifacts. Since the dirs are gitignored,
 the regen is the verification.
 
-- [ ] **214.B.1 nros-cli FFI codegen — relative paths** — switch
-      `nros-serdes = { path = "..." }` emit + `include!("...")` emit to
-      use `..`-relative paths computed from the per-example manifest
-      dir. The relative depth varies per example; compute from
-      `cargo_manifest_dir.strip_prefix(workspace_root)`.
-      **Acceptance**: regenerating any example produces a `Cargo.toml`
-      whose `path = "../../../../packages/core/nros-serdes"` (or
-      analogous) — no absolute paths.
+- [x] **214.B.1 cmake FFI codegen — relative paths** — **Re-scoped
+      2026-06-03**: bug lives in nano-ros
+      `cmake/NanoRosGenerateInterfaces.cmake` (not nros-cli).
+      Switched `nros-serdes = { path = "..." }` emit (line ~512) +
+      `include!("...")` emit (line ~556) to use `file(RELATIVE_PATH
+      ...)` computed from the FFI crate dir / lib.rs location.
+      Relative depth adapts per example automatically.
+      **Verified** 2026-06-03 with a fresh regen of
+      `examples/native/cpp/talker/build-zenoh/nano_ros_cpp_ffi_*/Cargo.toml`
+      — produces `path = "../../../../../../packages/core/nros-serdes"`
+      (relative, not absolute). `include!()` lines emit as
+      `"../../nano_ros_cpp/<pkg>/msg/*_ffi.rs"`. Build clean
+      (`cmake --build` reaches Linking CXX executable cpp_talker).
 
-- [ ] **214.B.2 nano-ros regen sweep** — once B.1 ships, `rm -rf` the
-      affected `generated/` trees + re-run codegen. Verify
-      `git grep -E '^path = \"/home/' examples/` returns 0 (the dirs
-      are gitignored so this is a sanity check on the regen output).
-      **Acceptance**: clean regen, build still passes.
+- [x] **214.B.2 nano-ros regen sweep** — wiped every `build-*/` +
+      `generated/` dir under the 5 affected platforms
+      (`native/cpp`, `qemu-arm-{freertos,nuttx}/cpp`,
+      `qemu-riscv64-threadx/cpp`, `threadx-linux/cpp`). Next build
+      on each example regens with the B.1-fixed cmake — no absolute
+      paths. **Verified**:
+      `find examples/ -name "Cargo.toml" | xargs grep -l 'path = "/home/'`
+      returns 0 (was 196). `find examples/ -name "*.rs" | xargs grep
+      -l 'include!("/home/'` returns 0 (was 100+).
 
 ---
 

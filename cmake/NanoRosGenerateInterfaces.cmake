@@ -506,9 +506,13 @@ function(nros_generate_interfaces target)
 
       file(MAKE_DIRECTORY "${_ffi_crate_src}")
 
-      # Generate Cargo.toml from template
+      # Generate Cargo.toml from template.
+      # Phase 214.B.1 — emit a path RELATIVE to the FFI crate dir, not the
+      # absolute repo path. Absolute paths broke clean clones + CI on
+      # different paths. The Cargo.toml's `path = "..."` is interpreted
+      # relative to the manifest dir, so a relative emit is portable.
       set(FFI_TARGET "${target}")
-      set(SERDES_DIR "${_serdes_dir}")
+      file(RELATIVE_PATH SERDES_DIR "${_ffi_crate_dir}" "${_serdes_dir}")
       configure_file(
         "${_NANO_ROS_CMAKE_DIR}/cpp_ffi_Cargo.toml.in"
         "${_ffi_crate_dir}/Cargo.toml"
@@ -549,11 +553,16 @@ function(nros_generate_interfaces target)
       if(_ffi_rs_all)
         list(REMOVE_DUPLICATES _ffi_rs_all)
       endif()
+      # Phase 214.B.1 — emit include!() paths RELATIVE to the lib.rs
+      # location, not absolute. Same rationale as the SERDES_DIR fix
+      # above: absolute paths broke clean clones + CI on different
+      # paths.
       foreach(_rs_file ${_ffi_rs_all})
         # Skip mod.rs — we use include!() instead
         get_filename_component(_rs_name "${_rs_file}" NAME)
         if(NOT _rs_name STREQUAL "mod.rs")
-          string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")
+          file(RELATIVE_PATH _rs_rel "${_ffi_crate_src}" "${_rs_file}")
+          string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_rel}\");\n")
         endif()
       endforeach()
 
