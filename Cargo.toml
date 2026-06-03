@@ -422,6 +422,16 @@ nros-rmw-zenoh = { version = "0.1.0", path = "packages/zpico/nros-rmw-zenoh", de
 # Used by nros / nros-node when `rmw-xrce-cffi` feature is on, and
 # by example crates that opt into the cffi-via-C-backend path.
 nros-rmw-xrce-cffi = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce-cffi", default-features = false }
+# Phase 214.S.2 — `nros-rmw-cyclonedds-sys` is referenced as a
+# workspace dep from `nros-node` (private optional, `__cyclonedds-link`
+# feature) and the `nros` umbrella (`rmw-cyclonedds` feature). Carries
+# `links = "cyclonedds"` so any direct dependent's build script
+# auto-detects presence via `DEP_CYCLONEDDS_PRESENT=1`. **Keeps default
+# features on** — `vendored` is part of the default set (S.1) so any
+# `cargo build` that pulls this crate gets the in-tree C++ backend
+# compiled. External CMake / Zephyr consumers that supply the symbols
+# elsewhere opt out via `default-features = false` at the dep-site.
+nros-rmw-cyclonedds-sys = { version = "0.1.0", path = "packages/dds/nros-rmw-cyclonedds-sys" }
 nros-rmw-cffi = { version = "0.1.0", path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { version = "0.1.0", path = "packages/core/nros-node", default-features = false }
 nros-log = { version = "0.1.0", path = "packages/core/nros-log" }

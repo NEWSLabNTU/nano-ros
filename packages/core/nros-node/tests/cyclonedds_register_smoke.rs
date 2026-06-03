@@ -13,7 +13,7 @@
 //! Cyclone build. The stub hands back unique non-NULL pointers per
 //! call, which is exactly what the registry expects to cache.
 
-#![cfg(feature = "rmw-cyclonedds")]
+#![cfg(rmw_cyclonedds_present)]
 
 use core::sync::atomic::Ordering;
 

@@ -10,6 +10,13 @@ homepage.workspace = true
 documentation.workspace = true
 publish = false
 build = "build.rs"
+# Phase 214.S.2 — carry a `links = "cyclonedds"` marker so any direct
+# dependent's build script receives `DEP_CYCLONEDDS_*` env vars. The
+# value `"cyclonedds"` is distinct from `cyclonedds-sys`'s
+# `links = "ddsc"` (which exports the actual libddsc include/idlc
+# paths). This crate's `links =` only signals presence; we emit a
+# single `cargo:present=1` for downstream cfg-detection.
+links = "cyclonedds"
 
 # Mirror of `nros-rmw-xrce-cffi`. Rust users call `register()` once
 # before any session creation; the underlying C++ Cyclone DDS
@@ -23,7 +30,14 @@ path = "src/lib.rs"
 crate-type = ["rlib"]
 
 [features]
-default = ["linkme-register"]
+# Phase 214.S.1 — `vendored` is now part of the default feature set so
+# `cargo build -p nros-rmw-cyclonedds-sys` (and any downstream that
+# pulls this crate via `dep:` or workspace path) builds the C++
+# backend end-to-end without requiring `--features vendored`. Matches
+# the zenoh + xrce backends, which always vendor their underlying
+# libraries. Existing CMake / Zephyr consumers that supply the same
+# symbols externally must opt out via `default-features = false`.
+default = ["linkme-register", "vendored"]
 # Phase 128.B.3 — see nros-rmw-xrce-cffi for the same feature.
 linkme-register = ["nros-rmw-cffi/linkme-register"]
 # Phase 144.3 — toggled on when emitting this crate as a top-level
@@ -35,8 +49,9 @@ std = []
 # `rmw_dds_common_graph` descriptor as part of this crate's build,
 # linking against `cyclonedds-sys`'s libddsc. Lets pure-cargo native
 # examples link Cyclone end-to-end without the CMake outer step.
-# Off by default so the existing CMake / Zephyr consumers (who supply
-# the same symbols externally) don't double-link.
+# Phase 214.S.1 promoted this to a default — kept as a named feature
+# so external CMake / Zephyr consumers can opt out via
+# `default-features = false`.
 vendored = ["dep:cyclonedds-sys", "dep:cc"]
 
 [dependencies]

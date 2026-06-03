@@ -1508,29 +1508,48 @@ Two redundant entries on cyclonedds:
 
 **Work Items:**
 
-- [ ] **214.S.1 Make `vendored` the default feature of
-      `nros-rmw-cyclonedds-sys`** — flip the manifest, drop the
-      `[features.no-default-vendor]` escape hatch if nothing in tree
-      uses it. **Acceptance**: `cargo build -p nros-rmw-cyclonedds-sys`
-      vendors cyclonedds C++ without explicit `--features vendored`.
+- [x] **214.S.1 Make `vendored` the default feature of
+      `nros-rmw-cyclonedds-sys`** (`29c4fbd4e`) — flipped `default = ["linkme-register",
+      "vendored"]` in `packages/dds/nros-rmw-cyclonedds-sys/Cargo.toml`.
+      No `no-default-vendor` escape hatch was present; the `vendored`
+      feature itself stays named so external CMake / Zephyr consumers
+      (Zephyr module's `CONFIG_NROS_RMW_CYCLONEDDS` branch, standalone
+      CMake project) can opt out via `default-features = false`. The
+      workspace dep-site for the umbrella uses `default-features = true`
+      so umbrella callers get vendor by default. **Verified**: `cargo
+      build -p nros-rmw-cyclonedds-sys` vendors C++ without
+      `--features vendored`.
 
-- [ ] **214.S.2 Auto-detect cyclonedds-sys in `nros-node`** — use
-      cargo's `links =` mechanism (set `links = "cyclonedds"` on
-      `nros-rmw-cyclonedds-sys`'s manifest; have `nros-node/build.rs`
-      probe `DEP_CYCLONEDDS_PRESENT` and emit a `--cfg
-      rmw_cyclonedds_present` rustc-cfg). Replace every K.7.6.b
-      `#[cfg(feature = "rmw-cyclonedds")]` gate with
-      `#[cfg(rmw_cyclonedds_present)]`. **Acceptance**: the
-      typed-creator hook fires whenever `nros-rmw-cyclonedds-sys`
-      is in the dep graph — no user-facing feature needed on
-      `nros-node`.
+- [x] **214.S.2 Auto-detect cyclonedds-sys in `nros-node`** (`29c4fbd4e`) — added
+      `links = "cyclonedds"` to `nros-rmw-cyclonedds-sys/Cargo.toml`
+      and `cargo:present=1` to its `build.rs`. `nros-node/build.rs`
+      probes `DEP_CYCLONEDDS_PRESENT` (and `CARGO_FEATURE___CYCLONEDDS_LINK`
+      as a redundant trigger) and emits `cargo:rustc-cfg=rmw_cyclonedds_present`.
+      Replaced every `#[cfg(feature = "rmw-cyclonedds")]` (in
+      `cyclonedds_register.rs`, `executor/node.rs`, `executor/tests.rs`,
+      `tests/cyclonedds_register_smoke.rs`) with
+      `#[cfg(rmw_cyclonedds_present)]`. **Cargo `links =` env-var
+      caveat**: `DEP_*` propagates to **direct** dependents only — the
+      umbrella `nros` depending on `-sys` does not let `nros-node`'s
+      build script see the env vars. To preserve the no-user-feature
+      contract while supplying that direct edge, `nros-node` carries a
+      private internal feature `__cyclonedds-link` (underscore-prefixed,
+      not user-facing) that activates a direct optional dep on
+      `nros-rmw-cyclonedds-sys`. The umbrella flips it from
+      `nros/rmw-cyclonedds`. `nros-rmw-cyclonedds` (logic crate) +
+      `nros-serdes` are now **unconditional** deps of `nros-node`
+      (no_std, no link-time cost when the cfg is off, since `extern
+      "C"` decls only generate references when the K.7.6.b hook is
+      compiled in).
 
-- [ ] **214.S.3 Drop the `nros/rmw-cyclonedds` umbrella feature** —
-      delete the `rmw-cyclonedds = ["nros-node/rmw-cyclonedds"]`
-      pass-through in `packages/core/nros/Cargo.toml`. Replace with
-      the parity shape: `rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]`.
-      Acceptance: `nros`'s feature surface for `rmw-{zenoh,xrce,cyclonedds}`
-      is structurally identical (one `dep:` entry each).
+- [x] **214.S.3 Drop the `nros/rmw-cyclonedds` umbrella feature** (`29c4fbd4e`) —
+      `packages/core/nros/Cargo.toml`'s `rmw-cyclonedds` is now
+      `["dep:nros-rmw-cyclonedds-sys", "nros-node/__cyclonedds-link"]`
+      (two entries — see S.2 caveat for why the second is required).
+      Added `nros-rmw-cyclonedds-sys = { workspace = true, optional =
+      true }` to `[dependencies]`. Structurally close to zenoh/xrce
+      shape (one `dep:` entry each); the second entry is a private
+      `nros-node` feature, not user-facing surface.
 
 - [ ] **214.S.4 Sweep example Cargo.toml shapes** — for every
       `examples/**/Cargo.toml` carrying the 3-entry cyclonedds

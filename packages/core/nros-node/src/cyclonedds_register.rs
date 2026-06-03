@@ -9,15 +9,28 @@
 //! entity so the descriptor exists in the registry when
 //! `dds_create_topic` runs in the C++ bridge.
 //!
-//! # Feature gating
+//! # cfg gating (Phase 214.S.2 — auto-detected, not feature-gated)
 //!
-//! This module compiles to no-ops unless the `rmw-cyclonedds` feature is
-//! active on `nros-node`. Each typed creator calls
-//! [`register_type::<M>`] unconditionally; the body is empty without the
-//! feature so zenoh/xrce paths pay nothing. With the feature on, the
-//! caller pays one mutex acquisition + one `FnvIndexMap` lookup per
-//! creator invocation (idempotent; the registry caches the descriptor
-//! pointer on the first hit).
+//! This module compiles to no-ops unless `cfg(rmw_cyclonedds_present)`
+//! is on. The cfg is emitted by `nros-node/build.rs` when:
+//!
+//! * the sibling `nros-rmw-cyclonedds-sys` shim crate (which carries
+//!   `links = "cyclonedds"`) is in the dep graph, surfacing
+//!   `DEP_CYCLONEDDS_PRESENT=1` to our build script; **or**
+//! * the private internal `__cyclonedds-link` feature is on (the umbrella
+//!   `nros/rmw-cyclonedds` activates it; this guarantees a direct edge to
+//!   the linking crate exists, since cargo's `DEP_*` env-vars only
+//!   propagate to *direct* dependents).
+//!
+//! Net effect: callers depend on `nros = { features = ["rmw-cyclonedds"] }`
+//! and the K.7.6.b hook lights up automatically — no user-facing feature
+//! flag on `nros-node` (was: `feature = "rmw-cyclonedds"`, dropped in
+//! Phase 214.S.2). Each typed creator calls [`register_type::<M>`]
+//! unconditionally; the body is empty when the cfg is off so zenoh/xrce
+//! paths pay nothing. With the cfg on, the caller pays one mutex
+//! acquisition + one `FnvIndexMap` lookup per creator invocation
+//! (idempotent; the registry caches the descriptor pointer on the
+//! first hit).
 //!
 //! # Trait bound — [`MessageForRmw`]
 //!
@@ -31,8 +44,8 @@
 //! Compromise: introduce a sealed helper trait
 //! [`MessageForRmw`] that is **the bound the typed creators use** in
 //! place of bare `M: RosMessage`. It is a blanket impl over
-//! `RosMessage` whose extra requirement is `Message` when the
-//! `rmw-cyclonedds` feature is on, and just `RosMessage` when it is off.
+//! `RosMessage` whose extra requirement is `Message` when
+//! `cfg(rmw_cyclonedds_present)` is on, and just `RosMessage` when off.
 //!
 //! Net effect: a msg crate that impls `RosMessage` works as-is for
 //! zenoh + xrce builds; for cyclonedds builds it must additionally impl
@@ -55,20 +68,20 @@ use nros_core::RosMessage;
 
 /// Bound used in place of bare `RosMessage` on typed creators.
 ///
-/// Equivalent to `RosMessage` without the `rmw-cyclonedds` feature; equal
-/// to `RosMessage + nros_serdes::schema::Message` with it.
+/// Equivalent to `RosMessage` without `cfg(rmw_cyclonedds_present)`;
+/// equal to `RosMessage + nros_serdes::schema::Message` with it.
 ///
 /// See module-level docs for the rationale.
-#[cfg(feature = "rmw-cyclonedds")]
+#[cfg(rmw_cyclonedds_present)]
 pub trait MessageForRmw: RosMessage + nros_serdes::schema::Message {}
 
-#[cfg(feature = "rmw-cyclonedds")]
+#[cfg(rmw_cyclonedds_present)]
 impl<T> MessageForRmw for T where T: RosMessage + nros_serdes::schema::Message {}
 
-#[cfg(not(feature = "rmw-cyclonedds"))]
+#[cfg(not(rmw_cyclonedds_present))]
 pub trait MessageForRmw: RosMessage {}
 
-#[cfg(not(feature = "rmw-cyclonedds"))]
+#[cfg(not(rmw_cyclonedds_present))]
 impl<T> MessageForRmw for T where T: RosMessage {}
 
 // ============================================================================
@@ -77,7 +90,7 @@ impl<T> MessageForRmw for T where T: RosMessage {}
 
 /// Register `M`'s cyclonedds topic descriptor with the runtime registry.
 ///
-/// No-op when the `rmw-cyclonedds` feature is off. With the feature on,
+/// No-op when `cfg(rmw_cyclonedds_present)` is off. With the cfg on,
 /// delegates to `nros_rmw_cyclonedds::register::<M>()`. The first call
 /// for a given `M::TYPE_NAME` builds the descriptor via the C++ bridge
 /// and caches it; subsequent calls are O(1) lookups.
@@ -85,13 +98,13 @@ impl<T> MessageForRmw for T where T: RosMessage {}
 /// Returns `Ok(())` on success or `NodeError::Transport(
 /// TransportError::PublisherCreationFailed)` on any
 /// [`nros_rmw_cyclonedds::BuildError`].
-#[allow(unused_variables)] // M unused without the feature
+#[allow(unused_variables)] // M unused without the cfg
 #[inline]
 pub fn register_type<M: MessageForRmw>() -> Result<(), crate::NodeError> {
-    #[cfg(feature = "rmw-cyclonedds")]
+    #[cfg(rmw_cyclonedds_present)]
     {
         // SAFETY-OF-INPUT: `M: Message` is enforced by the `MessageForRmw`
-        // bound under the cyclonedds feature, so `register::<M>()`
+        // bound under `rmw_cyclonedds_present`, so `register::<M>()`
         // receives the schema it expects.
         nros_rmw_cyclonedds::register::<M>().map_err(|err| {
             #[cfg(feature = "log")]

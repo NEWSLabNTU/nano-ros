@@ -50,15 +50,20 @@ rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 # `target_link_libraries(... NanoRos::Rmw::<name>)`. `rmw-cffi` is
 # the only Rust feature that still gates the vtable runtime.
 
-# Phase 212.K.7.7 — pass-through for the new `nros-node/rmw-cyclonedds`
-# feature added in K.7.6.b. With it enabled, every typed
-# `create_publisher` / `create_subscription` / … routes through
-# `nros_rmw_cyclonedds::register::<M>()` before the cffi vtable
-# creates the underlying entity, populating the runtime descriptor
-# cache that the C++ bridge reads in `dds_create_topic`. Callers also
-# depend on the matching `nros-rmw-cyclonedds-sys` shim crate to drag
-# in the C++ backend register entry.
-rmw-cyclonedds = ["nros-node/rmw-cyclonedds"]
+# Phase 214.S.3 — collapse to 1-style entry shape matching zenoh +
+# xrce. Activates the cyclonedds backend by pulling `dep:nros-rmw-
+# cyclonedds-sys` (the C++ register shim, default-vendored as of
+# 214.S.1) AND flipping `nros-node`'s private `__cyclonedds-link`
+# feature so its build script sees `DEP_CYCLONEDDS_PRESENT=1` and
+# emits `cfg(rmw_cyclonedds_present)`. That cfg flips the K.7.6.b
+# `cyclonedds_register::register_type::<M>()` hook on in every typed
+# creator (`create_publisher`, `create_subscription`, `create_client`,
+# `create_service`, `create_action_*`), routing through the runtime
+# descriptor builder that the C++ bridge reads in `dds_create_topic`.
+# Two-entry only because cargo's `links =` env-var hand-off does not
+# propagate transitively — see `packages/core/nros-node/Cargo.toml`
+# and `packages/core/nros-node/build.rs` for the auto-detect path.
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys", "nros-node/__cyclonedds-link"]
 
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix.
@@ -164,6 +169,13 @@ nros-macros = { version = "0.1.0", path = "../nros-macros" }
 nros-node = { version = "0.1.0", path = "../nros-node", default-features = false }
 nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
 nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
+# Phase 214.S.3 — pulled in by the `rmw-cyclonedds` umbrella feature.
+# Defaults left ON so the `vendored` feature (214.S.1, now part of the
+# default set) compiles the C++ backend end-to-end with no boilerplate
+# at the example dep-site. External consumers that supply the symbols
+# from CMake / Zephyr opt out via `default-features = false` at the
+# umbrella's `[dependencies]` entry on their side.
+nros-rmw-cyclonedds-sys = { workspace = true, optional = true }
 # Phase 128.G — bridge surface (manifest-driven multi-RMW). Optional;
 # only pulled in when the umbrella's `bridge` or `config` feature is
 # enabled.

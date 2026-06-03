@@ -1828,7 +1828,7 @@ mod builder_tests {
     // bound AND the runtime register call succeeds. `DescriptorBuilder`
     // rejects empty `FIELDS` with `BuildError::EmptySchema`; pretend
     // there's one byte so the bridge stub returns a non-NULL pointer.
-    #[cfg(feature = "rmw-cyclonedds")]
+    #[cfg(rmw_cyclonedds_present)]
     impl nros_serdes::schema::Message for TestMsg {
         const TYPE_NAME: &'static str = "test/msg/TestMsg";
         const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {

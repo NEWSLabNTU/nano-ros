@@ -18,7 +18,18 @@
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
-    // Off-by-default. The default register-shim build is symbol-only.
+    // Phase 214.S.2 — emit a presence marker via `links = "cyclonedds"`
+    // so any direct dependent's build script sees
+    // `DEP_CYCLONEDDS_PRESENT=1` and can flip its own rustc-cfg.
+    // `nros-node` uses this to auto-fire the K.7.6.b
+    // `cyclonedds_register::register_type::<M>()` hook in typed
+    // creators without a `nros-node/rmw-cyclonedds` feature flag.
+    println!("cargo:present=1");
+
+    // Phase 214.S.1 — vendored is now part of the default feature set
+    // (was opt-in before). Existing CMake / Zephyr consumers that
+    // supply the symbols externally opt out via
+    // `default-features = false`.
     #[cfg(feature = "vendored")]
     vendored_build();
 }

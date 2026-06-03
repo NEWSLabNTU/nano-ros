@@ -12,6 +12,8 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
     println!("cargo:rustc-check-cfg=cfg(has_rmw)");
+    // Phase 214.S.2 — auto-detected via cargo `links =` env vars.
+    println!("cargo:rustc-check-cfg=cfg(rmw_cyclonedds_present)");
 
     // Emit `has_rmw` cfg when any RMW backend feature is active, or
     // when compiling for tests (unit tests use MockSession).
@@ -21,6 +23,31 @@ fn main() {
         || env::var("CARGO_FEATURE_RMW_UORB").is_ok();
     if has_rmw {
         println!("cargo:rustc-cfg=has_rmw");
+    }
+
+    // Phase 214.S.2 — auto-detect `nros-rmw-cyclonedds-sys` via cargo's
+    // `links = "cyclonedds"` metadata bridge. When that crate is in the
+    // dep graph as a direct dep, cargo exposes its `cargo:present=1`
+    // metadata as `DEP_CYCLONEDDS_PRESENT=1` here. We also fall back to
+    // probing the legacy `CARGO_FEATURE___NROS_CYCLONEDDS_DETECT`
+    // internal feature (umbrella-activated) for cases where the umbrella
+    // pulls the dep in but cargo's env-var propagation does not reach
+    // this build script (the `DEP_*` mechanism only fires for *direct*
+    // dependents of the linking crate; the umbrella keeps a private
+    // `__nros-cyclonedds-detect` feature on `nros-node` that flips on
+    // a direct optional dep, ensuring at least one direct edge exists).
+    //
+    // Either path alone is sufficient to emit `rmw_cyclonedds_present`
+    // and fire the K.7.6.b typed-creator hook. No user-facing feature
+    // on `nros-node` — callers depend on the umbrella's
+    // `nros/rmw-cyclonedds` (which drags `nros-rmw-cyclonedds-sys` in
+    // and toggles the private detect feature).
+    println!("cargo:rerun-if-env-changed=DEP_CYCLONEDDS_PRESENT");
+    let cyclonedds_present = env::var_os("DEP_CYCLONEDDS_PRESENT").is_some()
+        || env::var("CARGO_FEATURE___NROS_CYCLONEDDS_DETECT").is_ok()
+        || env::vars().any(|(k, _)| k.starts_with("DEP_CYCLONEDDS_"));
+    if cyclonedds_present {
+        println!("cargo:rustc-cfg=rmw_cyclonedds_present");
     }
 
     // --- Primary user-facing knobs ---

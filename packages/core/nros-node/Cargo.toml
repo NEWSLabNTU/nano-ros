@@ -34,15 +34,21 @@ scheduler-time-triggered = []
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi"]
-# Phase 212.K.7.6.b — wire `nros_rmw_cyclonedds::register::<M>()` into
-# the typed pub/sub/service/action creators on the Rust side. With this
-# feature off the bridge module in `cyclonedds_register.rs` compiles to
-# no-ops (zenoh + xrce paths unaffected). With it on the typed
-# creators tighten `M: RosMessage` to `M: RosMessage + Message` via
-# the `MessageForRmw` helper trait, and every creation routes through
-# the runtime descriptor builder + bounded registry shipped in
-# `nros-rmw-cyclonedds`. See `src/cyclonedds_register.rs`.
-rmw-cyclonedds = ["dep:nros-rmw-cyclonedds", "dep:nros-serdes"]
+# Phase 214.S.2 — INTERNAL feature. The umbrella `nros/rmw-cyclonedds`
+# activates this (via `nros-node/__cyclonedds-link`) so the K.7.6.b
+# typed-creator hook (`cyclonedds_register::register_type::<M>()`)
+# fires via `cfg(rmw_cyclonedds_present)`. **Not user-facing** —
+# downstream callers depend on `nros = { features = ["rmw-cyclonedds"] }`
+# (umbrella shape) instead. The underscore prefix marks it private; we
+# kept the feature mechanism because cargo's `links =` env-var hand-off
+# (which K.7.6.b's design intended to use) only propagates to *direct*
+# dependents of the linking crate (`nros-rmw-cyclonedds-sys`). Pulling
+# the sys crate into `nros-node` as a direct optional dep gated by this
+# private feature is the smallest delta that preserves the no-extra-
+# user-feature contract while making the build-time presence detection
+# work. See `build.rs` and `docs/roadmap/phase-214-antipattern-audit-findings.md`
+# Track S.
+__cyclonedds-link = ["dep:nros-rmw-cyclonedds-sys"]
 # Phase 124.B.7.c — POSIX signal-handler-safe wake via eventfd + a
 # runtime-owned worker thread that forwards eventfd writes to the
 # Executor's wake condvar. Linux-only (eventfd). Off by default;
@@ -139,15 +145,27 @@ log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
 nros-rcl-interfaces = { version = "0.1.0", path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
 nros-lifecycle-msgs = { version = "0.1.0", path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs", default-features = false, optional = true }
-# Phase 212.K.7.6.b — runtime cyclonedds descriptor registry. Optional
-# because zenoh + xrce builds don't link the Cyclone backend; the
-# `MessageForRmw` helper trait still compiles (it falls back to plain
-# `RosMessage`) without this dep. See `src/cyclonedds_register.rs`.
-nros-rmw-cyclonedds = { version = "0.1.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false, optional = true }
-# Used by the cyclonedds register bridge for the `schema::Message` super
-# trait. Pulled in by the `rmw-cyclonedds` feature alongside
-# `nros-rmw-cyclonedds`.
-nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false, optional = true }
+# Phase 214.S.2 — runtime cyclonedds descriptor registry. Always linked
+# because the `MessageForRmw` helper trait + `cyclonedds_register`
+# module both reference it unconditionally; the no_std crate carries
+# only Rust glue (descriptor builder + bounded registry) and `extern
+# "C"` decls. Those decls become link-time references only when the
+# K.7.6.b `register_type::<M>()` hook is actually compiled in (gated by
+# `cfg(rmw_cyclonedds_present)` — emitted by `build.rs` when the
+# sibling `-sys` shim is in the dep graph). Pure zenoh / xrce builds
+# pay zero link-time cost for the bridge symbols.
+nros-rmw-cyclonedds = { version = "0.1.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false }
+# Used by the cyclonedds register bridge for the `schema::Message`
+# super trait + by every typed creator's `MessageForRmw` bound. Always
+# linked — `no_std` schema-only crate, ~negligible footprint without
+# downstream serializer glue.
+nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false }
+# Phase 214.S.2 — direct optional dep on the C++ backend shim. Pulled
+# in by the private `__cyclonedds-link` feature (activated by
+# `nros/rmw-cyclonedds`). Its `links = "cyclonedds"` metadata bridge
+# sets `DEP_CYCLONEDDS_PRESENT=1` in this crate's build script, which
+# emits `cfg(rmw_cyclonedds_present)` and turns the K.7.6.b hook on.
+nros-rmw-cyclonedds-sys = { workspace = true, optional = true }
 
 # Phase 124.B.7.c — POSIX signalfd / eventfd worker (only on
 # Linux + std). Other targets compile without this dep; the
