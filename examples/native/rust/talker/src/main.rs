@@ -51,6 +51,12 @@ fn register_rmw() -> Result<(), &'static str> {
     }
     #[cfg(feature = "rmw-cyclonedds")]
     {
+        // Phase 214.S.4 — still required: the explicit call is the
+        // rlib symbol-drag that keeps `-sys` (and its linkme self-
+        // register section) alive in the final binary. Strict 1-entry
+        // parity needs an `extern crate nros_rmw_cyclonedds_sys as _;`
+        // inside nros-node under `__cyclonedds-link` — tracked as
+        // 214.S.4.b (out-of-scope for this commit).
         nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
     }
     #[cfg(feature = "rmw-xrce")]

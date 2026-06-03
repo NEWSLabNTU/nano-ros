@@ -713,10 +713,7 @@ fn main() {
     // (the resulting rlib must not be loaded at runtime — that's
     // already the same contract the no-backend-selected path emits
     // above).
-    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some()
-        && !use_freertos
-        && any_explicit
-    {
+    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && !use_freertos && any_explicit {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
         let mut alias_build = cc::Build::new();

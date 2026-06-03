@@ -77,8 +77,9 @@ use std::{
 
 use nros_tests::{
     fixtures::{
-        QemuProcess, is_qemu_available,
+        QemuProcess,
         freertos::{is_arm_gcc_available, is_freertos_available, is_lwip_available},
+        is_qemu_available,
     },
     project_root,
 };
@@ -118,9 +119,7 @@ fn require_freertos_qemu_prereqs() -> Option<String> {
         return Some("arm-none-eabi-gcc not found".to_string());
     }
     if !is_freertos_available() {
-        return Some(
-            "FREERTOS_DIR not set or invalid — run `just freertos setup`".to_string(),
-        );
+        return Some("FREERTOS_DIR not set or invalid — run `just freertos setup`".to_string());
     }
     if !is_lwip_available() {
         return Some("LWIP_DIR not set or invalid — run `just freertos setup`".to_string());
@@ -177,10 +176,7 @@ fn freertos_board_run_executes_run_plan() {
 
     let dir = talker_entry_dir();
     if !dir.is_dir() {
-        nros_tests::skip!(
-            "FreeRTOS Entry pkg fixture missing at {}",
-            dir.display()
-        );
+        nros_tests::skip!("FreeRTOS Entry pkg fixture missing at {}", dir.display());
     }
 
     let bin = match build_or_locate_entry_binary(&dir) {

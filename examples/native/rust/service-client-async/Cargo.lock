@@ -190,6 +190,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "builtin_interfaces"
+version = "1.2.2"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -480,9 +489,11 @@ dependencies = [
 name = "example_interfaces"
 version = "0.9.3"
 dependencies = [
+ "builtin_interfaces",
  "heapless",
  "nros-core",
  "nros-serdes",
+ "unique_identifier_msgs",
 ]
 
 [[package]]
@@ -848,6 +859,7 @@ dependencies = [
  "nros-platform",
  "nros-rmw",
  "nros-rmw-cffi",
+ "nros-rmw-cyclonedds-sys",
  "nros-serdes",
  "paste",
  "portable-atomic-util",
@@ -949,6 +961,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-rmw-cyclonedds",
+ "nros-rmw-cyclonedds-sys",
  "nros-serdes",
  "portable-atomic",
  "portable-atomic-util",
@@ -1631,6 +1644,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
+name = "unique_identifier_msgs"
+version = "2.2.1"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
 name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2016,11 +2038,3 @@ dependencies = [
 [[patch.unused]]
 name = "action_msgs"
 version = "1.2.2"
-
-[[patch.unused]]
-name = "builtin_interfaces"
-version = "1.2.2"
-
-[[patch.unused]]
-name = "unique_identifier_msgs"
-version = "2.2.1"

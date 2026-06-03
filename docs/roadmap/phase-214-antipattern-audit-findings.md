@@ -313,8 +313,13 @@ lifetime transmute footgun. All in board crates / nros-node.
       "unrecognized subcommand 'ws'" (2026-06-04). Pin bump to a tagged
       release deferred until nros-cli ships the post-`0.3.7` work
       (210.D.1, 212.E, 212.J, K.7.1.{c,d,d.b}) — maintainer-only.
-- [ ] Track J: cached `RosAction` generated trees regen-clean against
-      the 8-assoc-type trait.
+- [x] Track J: cached `RosAction` generated trees regen-clean against
+      the 8-assoc-type trait. Subsumed by 214.S.6 regen sweep
+      (2026-06-04, this commit) — `nros ws sync` against the fresh
+      CLI emits the 5 envelope `type SendGoal*/GetResult*/FeedbackMessage`
+      assoc-types for every action example (`qemu-arm-baremetal/rust/
+      action-{client,server}-rtic`, `qemu-riscv64-threadx/rust/
+      action-{client,server}`, plus the 3 native rust action examples).
 - [ ] Track K: `just zephyr test` from clean workspace passes the
       26 fixture-dependent tests.
 - [x] Track L: `integrations/{zephyr,esp-idf,platformio}/` shells
@@ -1591,36 +1596,86 @@ Two redundant entries on cyclonedds:
       shape (one `dep:` entry each); the second entry is a private
       `nros-node` feature, not user-facing surface.
 
-- [ ] **214.S.4 Sweep example Cargo.toml shapes** — for every
-      `examples/**/Cargo.toml` carrying the 3-entry cyclonedds
-      feature row, collapse to:
-      ```toml
-      rmw-cyclonedds = ["nros/rmw-cyclonedds"]
-      ```
-      (matching the zenoh `rmw-zenoh = ["nros/rmw-zenoh"]` shape).
-      Drop the `vendored` ref + the explicit `dep:nros-rmw-cyclonedds-sys`
-      ref. Includes the K.7.7.b svc/action examples + K.7.7 pub/sub
-      pair. **Acceptance**: `git grep -nE '"nros-rmw-cyclonedds-sys/vendored"'`
-      returns nothing in `examples/`.
+- [x] **214.S.4 Sweep example Cargo.toml shapes** (2026-06-04, this
+      commit) — every `examples/native/rust/*/Cargo.toml` collapsed from
+      the 3-entry form (`dep:-sys` + `-sys/vendored` + `nros/rmw-cyclonedds`)
+      to 2-entry: `["dep:nros-rmw-cyclonedds-sys", "nros/rmw-cyclonedds"]`.
+      Dropped: the `vendored` ref (now S.1's default) + the
+      `default-features = false` on the `-sys` dep declaration. **Strict
+      1-entry parity (`["nros/rmw-cyclonedds"]` alone) blocked on
+      214.S.4.b**: the example src calls `nros_rmw_cyclonedds_sys::register`
+      directly, which (a) needs the crate as a *direct* dep so `use`
+      resolves, and (b) acts as the rlib symbol-drag keeping the backend's
+      linkme self-register section alive in the final binary. Without an
+      explicit `extern crate nros_rmw_cyclonedds_sys as _;` inside
+      `nros-node` (under the `__cyclonedds-link` feature), dropping the
+      example's direct dep + call causes
+      `-l static:+whole-archive,-bundle=nros_rmw_cyclonedds` to be
+      pruned and the C++ `nros_rmw_cyclonedds_register_descriptor` /
+      `nros_cyclonedds_build_descriptor_from_schema` symbols go
+      undefined at link time. Verified for all 8 native rust examples
+      (`cargo build --no-default-features --features rmw-cyclonedds`).
+      **Acceptance**: `git grep -nE '"nros-rmw-cyclonedds-sys/vendored"'
+      examples/` returns nothing.
 
-- [ ] **214.S.5 Add FreeRTOS rust `rmw-cyclonedds` row** — every
-      `examples/qemu-arm-freertos/rust/*/Cargo.toml` today lacks any
-      cyclonedds feature path entirely. Add the same parity row
-      `rmw-cyclonedds = ["nros/rmw-cyclonedds"]` per S.4. May
-      require a BSP-side gate (Phase 184.8 Zephyr mutex-pool sizing
-      analog for FreeRTOS) — file as 214.S.5.b if so. Same applies
-      to `examples/threadx-linux/rust/*/Cargo.toml` if any are
-      missing the cyclonedds row.
+- [ ] **214.S.4.b Add `extern crate` symbol-drag inside `nros-node`**
+      (follow-up to 214.S.4) — under the `__cyclonedds-link` private
+      feature, add `extern crate nros_rmw_cyclonedds_sys as _;` in
+      `nros-node/src/lib.rs` (or reference any symbol from `-sys`'s
+      lib.rs) so the rlib's CGU survives cargo's dead-code archive
+      walk on the final binary. Once landed, every example's
+      cyclonedds row collapses to true strict 1-entry parity
+      `["nros/rmw-cyclonedds"]` AND the src-level
+      `nros_rmw_cyclonedds_sys::register()` call goes away (linkme
+      `nros_rmw_register_backend!` self-register fires at startup).
+      **Files**: `packages/core/nros-node/src/lib.rs`,
+      `packages/core/nros-node/Cargo.toml` (optional dep is already in
+      place via S.2/S.3). Out of scope for 214 wave 3 (touches
+      `packages/`).
 
-- [ ] **214.S.6 Regen sweep against fresh CLI (Track J overlap)** —
-      with the Cargo.toml shapes corrected, regen every example's
-      `generated/` tree via the post-K.7.1.b nros CLI (Track I env-
-      var path) so `impl ::nros_serdes::Message` lands in every
-      generated msg crate. Coordinate with Track J (its scope is
-      narrower — only the `RosAction` drift; S.6 covers msg + svc +
-      action). Acceptance: `cargo build --features rmw-cyclonedds`
-      runs end-to-end on every native rust example without manifest
-      or codegen errors.
+- [x] **214.S.5 Add FreeRTOS rust + threadx-linux `rmw-cyclonedds`
+      row** (2026-06-04, this commit) — every
+      `examples/qemu-arm-freertos/rust/<example>/Cargo.toml` and
+      `examples/threadx-linux/rust/<example>/Cargo.toml` Component pkg
+      (12 total: talker, listener, service-{client,server},
+      action-{client,server} × 2 RTOS) got a new `[features]` section
+      with the 1-entry parity row `rmw-cyclonedds =
+      ["nros/rmw-cyclonedds"]`. Default deploy rmw stays `zenoh` per
+      `[package.metadata.nros.deploy.<rtos>].rmw`. The new row is purely
+      declarative on the Component pkg side (no `cfg(feature =
+      "rmw-cyclonedds")` callsites in src — Component pkgs delegate RMW
+      selection to the Entry pkg + generated runtime). `_entry`
+      packages skipped (they're plumbing, not user-facing examples).
+
+- [ ] **214.S.5.b Cargo host-build of FreeRTOS Component pkgs**
+      (follow-up to 214.S.5) — `cargo build --features rmw-cyclonedds`
+      from inside `examples/qemu-arm-freertos/rust/talker/` fails the
+      host build with "no global memory allocator found" + "panic
+      handler required" + "unwinding panics not supported without
+      std". This is the existing Component pkg shape (`no_std` lib
+      crate without an `_entry` cross-compile context); not specific
+      to cyclonedds. The parity row from S.5 lights up only when the
+      crate is consumed by a properly cross-compiled Entry pkg. Out
+      of scope for 214 wave 3; tracked here for follow-up either to
+      gate the cargo command behind the target triple or to surface a
+      better diagnostic.
+
+- [x] **214.S.6 Regen sweep against fresh CLI (Track J overlap)**
+      (2026-06-04, this commit) — every rust example dir (96 with
+      both `package.xml` + `Cargo.toml`) had its `generated/` tree
+      wiped + regenerated via `nros ws sync` against a fresh-built
+      `nros` binary at `~/repos/nros-cli/packages/target/release/nros`
+      (carries K.7.1.b + .c + .d + .d.b). 96/96 succeeded.
+      `impl ::nros_serdes::Message` lands in every generated msg
+      crate. The 5-envelope `RosAction` shape (J target) emits
+      cleanly for `qemu-arm-baremetal/rust/action-{client,server}-rtic`
+      + `qemu-riscv64-threadx/rust/action-{client,server}` (cross-
+      verified). The regen also retouched the `# === nros-managed
+      [patch.crates-io] ===` blocks across many example Cargo.tomls
+      (the new CLI emits a smaller, only-as-needed patch list) —
+      committed as part of this sweep. Acceptance: `cargo build
+      --no-default-features --features rmw-cyclonedds` works on every
+      native rust example (8/8).
 
 **Acceptance for Track S**:
 - `git grep -nE '"nros-rmw-cyclonedds-sys/vendored"'` returns nothing.

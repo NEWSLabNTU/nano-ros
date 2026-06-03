@@ -28,6 +28,7 @@ fn register_rmw() -> Result<(), &'static str> {
     }
     #[cfg(feature = "rmw-cyclonedds")]
     {
+        // Phase 214.S.4 — symbol-drag for `-sys` rlib (see talker).
         nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
     }
     #[cfg(feature = "rmw-xrce")]

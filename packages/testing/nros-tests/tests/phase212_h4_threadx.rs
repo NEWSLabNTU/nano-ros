@@ -355,8 +355,8 @@ fn threadx_riscv64_qemu_2_component_bringup_builds() {
         );
     };
 
-    let board_config_dir = workspace_root()
-        .join("packages/boards/nros-board-threadx-qemu-riscv64/config");
+    let board_config_dir =
+        workspace_root().join("packages/boards/nros-board-threadx-qemu-riscv64/config");
     assert!(
         board_config_dir.is_dir(),
         "missing board config dir at {} — tx_user.h / nx_user.h / link.lds source",

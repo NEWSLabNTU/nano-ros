@@ -14,16 +14,9 @@ deploy = ["native"]
 # Phase 118 — RMW selected at build time via mutually exclusive features.
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-cyclonedds = [
-    "dep:nros-rmw-cyclonedds-sys",
-    "nros-rmw-cyclonedds-sys/vendored",
-    # Phase 212.K.7.7.b — forward to `nros/rmw-cyclonedds` so the typed
-    # `create_action_client::<A>()` path inside `nros-node` calls
-    # `nros_rmw_cyclonedds::register::<A::{Goal,Result,Feedback}>()`
-    # and populates the runtime descriptor cache the C++ bridge reads in
-    # `dds_create_topic`.
-    "nros/rmw-cyclonedds",
-]
+# Phase 214.S.4 — collapsed from 3-entry form. `dep:` activator stays
+# for `nros_rmw_cyclonedds_sys::register` symbol-drag (see talker).
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys", "nros/rmw-cyclonedds"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 
 [dependencies]
@@ -32,7 +25,8 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
 # `Executor::open`.
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "ros-humble"], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
+# Phase 214.S.4 — vendor default per S.1; `default-features = false` dropped.
+nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
