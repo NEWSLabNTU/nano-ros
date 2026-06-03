@@ -1,4 +1,4 @@
-//! NuttX QEMU ARM Fibonacci action client — Phase 212.L Component pkg.
+//! NuttX QEMU ARM Fibonacci action client — Phase 212.L Node pkg.
 //!
 //! Declarative: node + action client.
 //!
@@ -7,23 +7,23 @@
 //! callbacks land via `on_callback` once codegen wires the feedback-
 //! stream + result-subscriber + `GoalStatusArray` topics through to
 //! dispatch. The in-tree `UnsupportedClients` stub returns
-//! `ComponentError::Runtime` from `send_goal_raw` until the M-F.4.a
+//! `NodeDeclError::Runtime` from `send_goal_raw` until the M-F.4.a
 //! `GenClientDispatch` reaches the installed nros-cli.
 
 #![no_std]
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions, TickCtx,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions, TickCtx,
 };
 
 pub struct FibonacciClient;
 
-impl Component for FibonacciClient {
+impl Node for FibonacciClient {
     const NAME: &'static str = "fibonacci_action_client";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(
             NodeId::new("node"),
             NodeOptions::new("fibonacci_action_client"),
@@ -39,7 +39,7 @@ pub struct State {
     sent: bool,
 }
 
-impl ExecutableComponent for FibonacciClient {
+impl ExecutableNode for FibonacciClient {
     type State = State;
 
     fn init() -> Self::State {
@@ -69,10 +69,10 @@ impl ExecutableComponent for FibonacciClient {
         {
             state.sent = true;
         }
-        // On `Err(ComponentError::Runtime)` (today's stub), `sent`
+        // On `Err(NodeDeclError::Runtime)` (today's stub), `sent`
         // stays false — the next tick retries. Once M-F.4.a ships the
         // real dispatch, the first successful send flips the flag.
     }
 }
 
-nros::component!(FibonacciClient);
+nros::node!(FibonacciClient);

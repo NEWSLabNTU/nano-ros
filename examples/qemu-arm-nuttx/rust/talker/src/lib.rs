@@ -1,9 +1,9 @@
-//! NuttX QEMU ARM Talker — Phase 212.L Component pkg.
+//! NuttX QEMU ARM Talker — Phase 212.L Node pkg.
 //!
 //! Publishes `std_msgs/Int32` on `/chatter` once per second.
 //!
-//! Component pkg shape: `register()` declares node + publisher + timer;
-//! `ExecutableComponent::on_callback("on_tick")` runs the timer body
+//! Node pkg shape: `register()` declares node + publisher + timer;
+//! `ExecutableNode::on_callback("on_tick")` runs the timer body
 //! (bump counter, publish). The generated runtime — emitted by
 //! `nros codegen-system --pkg <this-dir>` via the H.2 NuttX adapter
 //! shim — owns `nros::init`, executor open, RMW registration, and the
@@ -12,18 +12,18 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions, TimerDuration,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions, TimerDuration,
 };
 use std_msgs::msg::Int32;
 
 /// Talker component — counter state + chatter publish on every tick.
 pub struct Talker;
 
-impl Component for Talker {
+impl Node for Talker {
     const NAME: &'static str = "talker";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("talker"))?;
         let _pub = node.create_publisher::<Int32>(EntityId::new("pub_chatter"), "/chatter")?;
         let _timer = node.create_timer(
@@ -37,7 +37,7 @@ impl Component for Talker {
     }
 }
 
-impl ExecutableComponent for Talker {
+impl ExecutableNode for Talker {
     /// Monotonic counter — the next int32 to publish.
     type State = i32;
 
@@ -54,4 +54,4 @@ impl ExecutableComponent for Talker {
     }
 }
 
-nros::component!(Talker);
+nros::node!(Talker);

@@ -2,7 +2,7 @@
 //!
 //! Three patterns are supported (per the Phase 212.L canonical pkg shape):
 //!
-//! 1. **Component pkg** — register via the [`nros::component!`](crate::component)
+//! 1. **Node pkg** — register via the [`nros::node!`](crate::component)
 //!    macro (Phase 172 W.3); the generated runtime owns the spin loop.
 //! 2. **Application pkg + launch-aware** — call [`init_with_launch_auto`] (or
 //!    [`init_with_launch`] for an explicit path). The returned [`Context`]

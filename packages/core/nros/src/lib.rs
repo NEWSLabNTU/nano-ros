@@ -145,19 +145,19 @@ extern crate alloc;
 #[used]
 pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_LINK_CFFI;
 
-pub mod component;
-pub mod component_metadata;
+pub mod node;
+pub mod node_metadata;
 /// Phase 212.M.5.a.2 — executor-backed component runtime.
 ///
-/// Binds [`Component`] / [`ExecutableComponent`] to a live
-/// [`Executor`] so a Component pkg can actually run (versus
-/// [`MetadataRecorder`](component_metadata::MetadataRecorder) which
+/// Binds [`Node`] / [`ExecutableNode`] to a live
+/// [`Executor`] so a Node pkg can actually run (versus
+/// [`MetadataRecorder`](node_metadata::MetadataRecorder) which
 /// is the planner-side metadata sink).
 ///
 /// Gated on `rmw-cffi`; the underlying [`Executor`] is only present
 /// when an RMW backend is linked.
 #[cfg(feature = "rmw-cffi")]
-pub mod component_runtime;
+pub mod node_runtime;
 pub mod guide;
 
 /// Phase 212.L.5 — top-level init API.
@@ -199,89 +199,47 @@ pub use nros_core::heapless;
 
 // Re-export component-mode API
 #[cfg(feature = "rmw-cffi")]
-pub use component::ComponentExecutorRuntime;
+pub use node::NodeExecutorRuntime;
 // Phase 212.M.5.a.2 — executor-backed runtime entry points.
 // (`component_register_symbol` retired in the Phase 212.N.7 closing
 // sweep — the helper had no live callers after the BSP baker + macro
 // extern emit were deleted.)
-pub use component::{
-    ActionExecutor, CallbackCtx, CallbackEffects, ClientDispatch, Component, ComponentActionClient,
-    ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentNodeRuntime,
-    ComponentParameter, ComponentPublisher, ComponentResult, ComponentRuntime,
-    ComponentRuntimeAdapter, ComponentRuntimeNode, ComponentServiceClient, ComponentServiceServer,
-    ComponentSubscription, ComponentTimer, ExecutableComponent, MISSING_COMPONENT_EXPORT_ERROR,
-    NodeOptions, PublisherResolver, TickCtx, record_component_metadata, register_component,
+pub use node::{
+    ActionExecutor, CallbackCtx, CallbackEffects, ClientDispatch, DeclaredNode,
+    DeclaredNodeRuntime, ExecutableNode, MISSING_NODE_EXPORT_ERROR, Node, NodeActionClient,
+    NodeActionServer, NodeContext, NodeDeclError, NodeOptions, NodeParameter, NodePublisher,
+    NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient, NodeServiceServer,
+    NodeSubscription, NodeTimer, PublisherResolver, RuntimeNodeRecord, TickCtx,
+    record_node_metadata, register_node,
 };
-// Phase 212.M.5.a.4 — internal helper consumed by `nros::component!()`
+// Phase 212.M.5.a.4 — internal helper consumed by `nros::node!()`
 // for the BSP dispatch path. Public-but-doc-hidden so the macro expand
-// resolves it as `::nros::__private_component_state_into_raw`.
+// resolves it as `::nros::__private_node_state_into_raw`.
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
-pub use component::__private_component_state_into_raw;
+pub use node::__private_node_state_into_raw;
 #[cfg(feature = "std")]
-pub use component_metadata::SourceMetadataExport;
-pub use component_metadata::{
-    CallbackEffectKind, CallbackEffectMetadata, CallbackId, ComponentMetadataError, EntityId,
+pub use node_metadata::SourceMetadataExport;
+pub use node_metadata::{
+    CallbackEffectKind, CallbackEffectMetadata, CallbackId, NodeMetadataError, EntityId,
     EntityKind, EntityMetadata, MetadataRecorder, MetadataString, NodeId, NodeMetadata,
     ParameterDefault, SourceLocationMetadata, SourceNameKind,
 };
 #[cfg(all(feature = "rmw-cffi", feature = "std"))]
-pub use component_runtime::nros_run_components;
+pub use node_runtime::nros_run_components;
 #[cfg(feature = "rmw-cffi")]
-pub use component_runtime::{
-    ComponentDispatchFn, ComponentHandle, ComponentInitFn, ComponentRegisterFn, ComponentTickFn,
-    ExecutorComponentRuntime, ExecutorError,
+pub use node_runtime::{
+    NodeDispatchFn, RegisteredNode, NodeInitFn, NodeRegisterFn, NodeTickFn,
+    ExecutorNodeRuntime, ExecutorError,
 };
-pub use nros_macros::component;
-// Phase 212.N.12 — canonical `nros::node!()` macro (Component → Node
-// rename). `nros::component!()` stays as a deprecated alias that forwards
-// to the same emit (see `nros-macros::component`/`node`).
+// Phase 212.N.12 — canonical `nros::node!()` macro. Replaces the legacy
+// `nros::node!()` macro (retired in the N.12 hard rename — both the
+// proc-macro forwarder and the Cargo metadata key are gone).
 pub use nros_macros::node;
 // Phase 212.N.9 — `nros::main!()` proc-macro family. One-line Entry-pkg
 // `main.rs` (replaces the legacy `build.rs + include!()` shape). See
 // `docs/design/multi-node-workspace-layout.md` §11.6.
 pub use nros_macros::main;
-
-// ============================================================================
-// Phase 212.N.12 — Component → Node rename aliases
-// ============================================================================
-//
-// The user-facing surface is "Node" (matches rclcpp_components / ROS 2
-// launch.xml `<node pkg=…>`). The legacy `Component*` names stay as
-// deprecated re-export aliases for one release; downstream code that
-// still imports `nros::Component`, `nros::ComponentContext`, etc. keeps
-// compiling with a deprecation warning.
-// NOTES on rename conflicts:
-// - `Component` → `Node` trait alias is dropped at the crate root because
-//   `nros_node::Node` (the concrete in-memory node struct created via
-//   `node_builder()`) already occupies the `Node` name. Until that struct
-//   gets a clarifying rename (out of N.12 scope), the trait stays known
-//   at the crate root as `Component` (its idiomatic Rust name is
-//   `nros::Component`, and that name keeps round-tripping). The pkg-level
-//   metadata table key + the user-facing macro renames (`nros::node!`,
-//   `[package.metadata.nros.node]`) cover the public-facing surface.
-// - `ComponentError` is NOT aliased to `NodeError` because
-//   `nros_node::NodeError` already occupies that name — use
-//   `nros::ComponentError` / `nros::NodeDeclError` for the
-//   component-declaration error type.
-pub use component::{
-    ComponentActionClient as NodeActionClient, ComponentActionServer as NodeActionServer,
-    ComponentContext as NodeContext, ComponentError as NodeDeclError,
-    ComponentNode as DeclaredNode, ComponentNodeRuntime as DeclaredNodeRuntime,
-    ComponentParameter as NodeParameter, ComponentPublisher as NodePublisher,
-    ComponentResult as NodeResult, ComponentRuntime as NodeRuntime,
-    ComponentRuntimeAdapter as NodeRuntimeAdapter,
-    ComponentServiceClient as NodeServiceClient, ComponentServiceServer as NodeServiceServer,
-    ComponentSubscription as NodeSubscription, ComponentTimer as NodeTimer,
-    ExecutableComponent as ExecutableNode, MISSING_COMPONENT_EXPORT_ERROR as MISSING_NODE_EXPORT_ERROR,
-};
-#[cfg(feature = "rmw-cffi")]
-pub use component::ComponentExecutorRuntime as NodeExecutorRuntime;
-pub use component::{
-    record_component_metadata as record_node_metadata, register_component as register_node,
-};
-#[cfg(feature = "rmw-cffi")]
-pub use component_runtime::ExecutorComponentRuntime as ExecutorNodeRuntime;
 
 // Re-export node types
 pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriberHandle};
@@ -519,17 +477,17 @@ pub use nros_node::{
 // transport-layer `TransportConfig` already re-exported above.
 pub use nros_platform::{BoardConfig, BoardTransportConfig};
 
-/// Implementation detail — used by `nros::component!()` macro expansion.
+/// Implementation detail — used by `nros::node!()` macro expansion.
 ///
 /// Re-exports `nros_platform` so the macro's emitted trampoline can
-/// reference `RuntimeCtx` / `RuntimeError` / the `Component*Fn`
-/// fn-pointer aliases without forcing every consumer Component pkg's
+/// reference `RuntimeCtx` / `RuntimeError` / the `Node*Fn`
+/// fn-pointer aliases without forcing every consumer Node pkg's
 /// `Cargo.toml` to carry an explicit `nros-platform` dep on top of
 /// `nros`. Phase 212.M-F.13 path (b).
 ///
 /// Not part of the public API — paths under this module may change at
 /// any time. End users should depend on `nros` alone and invoke
-/// `nros::component!()`; the macro routes through here automatically.
+/// `nros::node!()`; the macro routes through here automatically.
 #[doc(hidden)]
 pub mod __macro_support {
     pub use ::nros_platform;
@@ -606,17 +564,16 @@ pub mod prelude {
 
     // Re-export component-mode API.
     #[cfg(feature = "rmw-cffi")]
-    pub use crate::ComponentExecutorRuntime;
+    pub use crate::NodeExecutorRuntime;
     #[cfg(feature = "std")]
     pub use crate::SourceMetadataExport;
     pub use crate::{
-        CallbackEffectKind, CallbackEffects, CallbackId, Component, ComponentActionClient,
-        ComponentActionServer, ComponentContext, ComponentError, ComponentNode,
-        ComponentNodeRuntime, ComponentParameter, ComponentPublisher, ComponentResult,
-        ComponentRuntime, ComponentRuntimeAdapter, ComponentRuntimeNode, ComponentServiceClient,
-        ComponentServiceServer, ComponentSubscription, ComponentTimer, EntityId, EntityKind,
-        MetadataRecorder, NodeId, NodeOptions, ParameterDefault, SourceLocationMetadata,
-        SourceNameKind, component, record_component_metadata, register_component,
+        CallbackEffectKind, CallbackEffects, CallbackId, DeclaredNode, DeclaredNodeRuntime,
+        EntityId, EntityKind, MetadataRecorder, Node, NodeActionClient, NodeActionServer,
+        NodeContext, NodeDeclError, NodeId, NodeOptions, NodeParameter, NodePublisher, NodeResult,
+        NodeRuntime, NodeRuntimeAdapter, NodeServiceClient, NodeServiceServer, NodeSubscription,
+        NodeTimer, ParameterDefault, RuntimeNodeRecord, SourceLocationMetadata, SourceNameKind,
+        node, record_node_metadata, register_node,
     };
 
     // Re-export lifecycle types
@@ -683,17 +640,15 @@ mod tests {
         let _ = QosSettings::BEST_EFFORT;
     }
 
-    /// Phase 212.N.12 — verify the Node* aliases compile alongside the
-    /// legacy Component* names. The aliases are `pub use … as …` so this
-    /// test is a name-resolution smoke check rather than a runtime test.
+    /// Phase 212.N.12 — verify the Node* canonical names resolve after
+    /// the hard rename. The Component* aliases were dropped in the same
+    /// phase; their absence is enforced by the workspace audit (no live
+    /// `Component*` ident remains in core / examples / tests).
     #[test]
-    fn phase_212_n_12_node_aliases_resolve() {
-        // Canonical "Node*" names (post-rename).
-        fn _take_node_ctx<C: crate::Component>(_: &mut crate::NodeContext<'_, dyn crate::NodeRuntime>) {}
-        // The legacy "Component*" names still resolve.
-        fn _take_component_ctx(_: &mut crate::ComponentContext<'_, dyn crate::ComponentRuntime>) {}
-        // Result type aliases co-exist.
+    fn phase_212_n_12_node_names_resolve() {
+        // Canonical "Node*" trait + context names (post-rename).
+        fn _take_node_ctx<N: crate::Node>(_: &mut crate::NodeContext<'_, dyn crate::NodeRuntime>) {}
+        // Result type resolves.
         let _: crate::NodeResult<()> = Ok(());
-        let _: crate::ComponentResult<()> = Ok(());
     }
 }

@@ -3,7 +3,7 @@
 //! Phase 212 is a clean break from the pre-212 `nros.toml` +
 //! `component_nros.toml` + `gen-app-config.py` + `app_config.h.in` +
 //! committed `metadata/*.json` shape. The 2026-06-02 §212.L redesign
-//! locks the canonical Component pkg + Entry pkg taxonomy (the
+//! locks the canonical Node pkg + Entry pkg taxonomy (the
 //! Bringup pkg is RETIRED, subsumed by Entry pkg — see
 //! `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
 //! §212.L + §212.N).

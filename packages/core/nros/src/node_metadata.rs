@@ -1,4 +1,4 @@
-//! Component source metadata recorded without opening middleware.
+//! Node source metadata recorded without opening middleware.
 
 use crate::{
     ParameterType, QosSettings,
@@ -42,7 +42,7 @@ impl SourceLocationMetadata {
 
     /// Capture the Rust caller location.
     #[track_caller]
-    pub fn caller() -> Result<Self, ComponentMetadataError> {
+    pub fn caller() -> Result<Self, NodeMetadataError> {
         let location = core::panic::Location::caller();
         Ok(Self {
             artifact: copy_str(location.file())?,
@@ -81,7 +81,7 @@ impl ParameterDefault {
     }
 
     /// Default JSON-compatible value for a parameter type.
-    pub fn for_type(param_type: ParameterType) -> Result<Self, ComponentMetadataError> {
+    pub fn for_type(param_type: ParameterType) -> Result<Self, NodeMetadataError> {
         Ok(match param_type {
             ParameterType::Bool => Self::Bool(false),
             ParameterType::Integer => Self::Integer(0),
@@ -194,7 +194,7 @@ pub enum CallbackEffectKind {
 
 /// Metadata recorder/runtime error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComponentMetadataError {
+pub enum NodeMetadataError {
     /// Fixed recorder capacity exhausted.
     Capacity,
     /// Stable ID, node name, namespace, topic, service, action, or parameter name was too long.
@@ -300,10 +300,10 @@ impl<'a> SourceMetadataExport<'a> {
     }
 }
 
-pub(crate) fn copy_str(value: &str) -> Result<MetadataString, ComponentMetadataError> {
+pub(crate) fn copy_str(value: &str) -> Result<MetadataString, NodeMetadataError> {
     let mut out = MetadataString::new();
     out.push_str(value)
-        .map_err(|_| ComponentMetadataError::NameTooLong)?;
+        .map_err(|_| NodeMetadataError::NameTooLong)?;
     Ok(out)
 }
 
@@ -399,9 +399,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         name: &str,
         namespace: &str,
         domain_id: u32,
-    ) -> Result<(), ComponentMetadataError> {
+    ) -> Result<(), NodeMetadataError> {
         if self.has_node(id.as_str()) {
-            return Err(ComponentMetadataError::DuplicateId);
+            return Err(NodeMetadataError::DuplicateId);
         }
 
         self.nodes
@@ -411,23 +411,23 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 namespace: copy_str(namespace)?,
                 domain_id,
             })
-            .map_err(|_| ComponentMetadataError::Capacity)
+            .map_err(|_| NodeMetadataError::Capacity)
     }
 
     pub(crate) fn push_entity(
         &mut self,
         entity: EntityMetadata,
-    ) -> Result<(), ComponentMetadataError> {
+    ) -> Result<(), NodeMetadataError> {
         if !self.has_node(&entity.node_id) {
-            return Err(ComponentMetadataError::UnknownNode);
+            return Err(NodeMetadataError::UnknownNode);
         }
         if self.has_entity(&entity.id) {
-            return Err(ComponentMetadataError::DuplicateId);
+            return Err(NodeMetadataError::DuplicateId);
         }
 
         self.entities
             .push(entity)
-            .map_err(|_| ComponentMetadataError::Capacity)
+            .map_err(|_| NodeMetadataError::Capacity)
     }
 
     pub(crate) fn push_callback_effect(
@@ -435,9 +435,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         callback_id: CallbackId<'_>,
         kind: CallbackEffectKind,
         entity_id: EntityId<'_>,
-    ) -> Result<(), ComponentMetadataError> {
+    ) -> Result<(), NodeMetadataError> {
         if !self.has_entity(entity_id.as_str()) {
-            return Err(ComponentMetadataError::UnknownEntity);
+            return Err(NodeMetadataError::UnknownEntity);
         }
 
         self.callback_effects
@@ -446,7 +446,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 kind,
                 entity_id: copy_str(entity_id.as_str())?,
             })
-            .map_err(|_| ComponentMetadataError::Capacity)
+            .map_err(|_| NodeMetadataError::Capacity)
     }
 
     pub(crate) fn has_node(&self, id: &str) -> bool {
@@ -712,7 +712,7 @@ pub(crate) struct EntityMetadataSpec<'a> {
 
 pub(crate) fn entity_metadata(
     spec: EntityMetadataSpec<'_>,
-) -> Result<EntityMetadata, ComponentMetadataError> {
+) -> Result<EntityMetadata, NodeMetadataError> {
     let EntityMetadataSpec {
         id,
         node_id,
@@ -1141,7 +1141,7 @@ mod tests {
 
         assert_eq!(
             recorder.push_entity(first),
-            Err(ComponentMetadataError::DuplicateId)
+            Err(NodeMetadataError::DuplicateId)
         );
     }
 
@@ -1154,7 +1154,7 @@ mod tests {
 
         assert_eq!(
             recorder.push_node(NodeId::new("node"), "other", "/", 0),
-            Err(ComponentMetadataError::DuplicateId)
+            Err(NodeMetadataError::DuplicateId)
         );
 
         let entity = entity_metadata(EntityMetadataSpec {
@@ -1170,7 +1170,7 @@ mod tests {
 
         assert_eq!(
             recorder.push_entity(entity),
-            Err(ComponentMetadataError::UnknownNode)
+            Err(NodeMetadataError::UnknownNode)
         );
     }
 

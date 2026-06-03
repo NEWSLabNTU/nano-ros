@@ -8,7 +8,7 @@
 //! Step-2 ships no `launch/*.xml` — `nros_build::generate_run_plan`
 //! falls through to a stub body (mirrors the §212.N.7 step-1 POC).
 //! A future commit lands a real `launch/system.launch.xml` that maps
-//! the sibling Component pkg's `register` fn to a `<node>` entry.
+//! the sibling Node pkg's `register` fn to a `<node>` entry.
 
 fn main() {
     let launch =

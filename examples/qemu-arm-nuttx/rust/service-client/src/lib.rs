@@ -1,4 +1,4 @@
-//! NuttX QEMU ARM AddTwoInts service client — Phase 212.L Component pkg.
+//! NuttX QEMU ARM AddTwoInts service client — Phase 212.L Node pkg.
 //!
 //! Declarative metadata: node + service client + driver timer.
 //!
@@ -8,23 +8,23 @@
 //! see `TickCtx` docs). Once `nros::TickCtx::call` returns the typed
 //! `AddTwoIntsResponse`, the body would log / store `sum`; here we
 //! just observe the dispatch outcome (the in-tree `UnsupportedClients`
-//! stub returns `ComponentError::Runtime` until the M-F.4.a-shipped
+//! stub returns `NodeDeclError::Runtime` until the M-F.4.a-shipped
 //! `GenClientDispatch` reaches the installed nros-cli).
 
 #![no_std]
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions, TickCtx, TimerDuration,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions, TickCtx, TimerDuration,
 };
 
 pub struct AddTwoIntsClient;
 
-impl Component for AddTwoIntsClient {
+impl Node for AddTwoIntsClient {
     const NAME: &'static str = "add_two_ints_client";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node =
             ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_client"))?;
         let _client =
@@ -46,7 +46,7 @@ pub struct State {
     counter: i64,
 }
 
-impl ExecutableComponent for AddTwoIntsClient {
+impl ExecutableNode for AddTwoIntsClient {
     type State = State;
 
     fn init() -> Self::State {
@@ -78,15 +78,15 @@ impl ExecutableComponent for AddTwoIntsClient {
         };
         // Stack-buf sizes: AddTwoInts request = 2 × i64 + CDR header = 24 B;
         // response = 1 × i64 + header = 16 B. 64 each is generous.
-        let _: nros::ComponentResult<AddTwoIntsResponse> =
+        let _: nros::NodeResult<AddTwoIntsResponse> =
             ctx.call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
                 EntityId::new("client_add"),
                 &req,
             );
         // Result discarded: until M-F.4.a reaches the installed CLI, the
-        // runtime returns `ComponentError::Runtime`; once it ships, the
+        // runtime returns `NodeDeclError::Runtime`; once it ships, the
         // returned `AddTwoIntsResponse.sum` is what we'd log here.
     }
 }
 
-nros::component!(AddTwoIntsClient);
+nros::node!(AddTwoIntsClient);

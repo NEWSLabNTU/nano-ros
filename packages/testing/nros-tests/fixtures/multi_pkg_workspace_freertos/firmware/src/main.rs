@@ -17,8 +17,8 @@ use nros_board_mps2_an385_freertos::Mps2An385;
 use nros_platform::BoardEntry;
 use panic_semihosting as _;
 
-// Phase 212.M.5.a.3 — keep the per-pkg Component crates alive against
-// `--gc-sections`. `nros::component!()` emits its symbols with
+// Phase 212.M.5.a.3 — keep the per-pkg Node crates alive against
+// `--gc-sections`. `nros::node!()` emits its symbols with
 // `#[unsafe(no_mangle)]` + a `#[used]` presence marker, but cargo only
 // pulls the rlibs into the link graph when the binary references *some*
 // symbol from each — `extern crate _` is the canonical no-cost

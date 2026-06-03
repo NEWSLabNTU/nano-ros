@@ -1,6 +1,6 @@
 //! Phase 212.N.7 step-2 — Entry pkg for the NuttX QEMU ARM listener.
 //!
-//! Sibling to the `listener` Component pkg. See the talker_entry crate
+//! Sibling to the `listener` Node pkg. See the talker_entry crate
 //! docs for the full lifecycle + NuttX caveat. The body becomes real
 //! once codegen wires `nuttx_rs_listener::register(runtime)` into
 //! `run_plan` per launch XML.

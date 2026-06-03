@@ -204,7 +204,7 @@ fn cmake_pure_cpp_multi_component_builds() {
         String::from_utf8_lossy(&build.stderr)
     );
 
-    // §212.L taxonomy: Component pkgs build to STATIC libs and only the
+    // §212.L taxonomy: Node pkgs build to STATIC libs and only the
     // Entry pkg becomes an executable. The fixture's Entry pkg is
     // `demo_entry` (§212.L.3 — replaces the retired Bringup pkg).
     let demo_entry = build_dir.join("src/demo_entry/demo_entry");

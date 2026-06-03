@@ -37,12 +37,8 @@ mod resolve;
 // `nros_platform::board::*`.
 pub use board::{
     Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, BoardTransportConfig,
-    ComponentDispatchFn, ComponentInitFn, ComponentRegisterFn, ComponentRuntime, ComponentTickFn,
-    NetworkWait, NullComponentRuntime, RuntimeCtx, RuntimeError, TransportBringup,
-};
-// Phase 212.N.12 — Component → Node rename aliases at the crate root.
-pub use board::{
-    NodeDispatchFn, NodeInitFn, NodeRegisterFn, NodeRuntime, NodeTickFn, NullNodeRuntime,
+    NetworkWait, NodeDispatchFn, NodeInitFn, NodeRegisterFn, NodeRuntime, NodeTickFn,
+    NullNodeRuntime, RuntimeCtx, RuntimeError, TransportBringup,
 };
 // Phase 212.N.2 — `NetworkError` is the return type any external
 // `NetworkWait` impl carries, so it needs to be reachable at the

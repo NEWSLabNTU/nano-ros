@@ -1,13 +1,13 @@
-//! Phase 212.M-F.13 path (b) — `nros::component!()` resolves with only
+//! Phase 212.M-F.13 path (b) — `nros::node!()` resolves with only
 //! `nros` as a Cargo dep.
 //!
-//! Guards the macro re-export path: `nros::component!()` expansion
-//! references `RuntimeCtx` / `RuntimeError` / the four `Component*Fn`
+//! Guards the macro re-export path: `nros::node!()` expansion
+//! references `RuntimeCtx` / `RuntimeError` / the four `Node*Fn`
 //! aliases via `::nros::__macro_support::nros_platform::*`. If
 //! someone retargets back to bare `::nros_platform::*` (the
 //! pre-M-F.13 shape that triggered the original FreeRTOS fixture
 //! breakage) or removes the `__macro_support` re-export from
-//! `packages/core/nros/src/lib.rs`, a downstream Component pkg that
+//! `packages/core/nros/src/lib.rs`, a downstream Node pkg that
 //! only depends on `nros` fails with `error[E0433]: failed to
 //! resolve: use of unresolved module or unlinked crate
 //! 'nros_platform'`.
@@ -136,7 +136,7 @@ fn one_dep_component_pkg_compiles_without_explicit_nros_platform_dep() {
     assert!(
         out.status.success(),
         "cargo check on `one_dep_component_pkg` failed — the \
-        `nros::component!()` macro emit no longer resolves through \
+        `nros::node!()` macro emit no longer resolves through \
         `nros::__macro_support::nros_platform`. Check that\n  \
         - `packages/core/nros/src/lib.rs` still defines `pub mod \
         __macro_support {{ pub use ::nros_platform; }}`\n  \

@@ -173,8 +173,8 @@ impl nros_platform::BoardEntry for OrinSpe {
         <Self as BoardInit>::init_hardware();
 
         // Phase 212.N.7 step-3.2 — placeholder runtime; step-3.5 wires
-        // the real `ExecutorComponentRuntime`.
-        let mut crt = nros_platform::NullComponentRuntime;
+        // the real `ExecutorNodeRuntime`.
+        let mut crt = nros_platform::NullNodeRuntime;
         let mut runtime = nros_platform::RuntimeCtx::with_runtime(&mut crt);
         match setup(&mut runtime) {
             Ok(()) => {

@@ -4,7 +4,7 @@
 //! `nros-board-bare-metal` direct-exec family driver via a single
 //! `BoardEntry::run` one-liner. The legacy `run()`/`init_hardware()`
 //! free functions (in `node.rs`) stay untouched — they keep working
-//! for Component pkgs that haven't migrated to the 212.N codegen yet.
+//! for Node pkgs that haven't migrated to the 212.N codegen yet.
 //!
 //! ## Surface
 //!

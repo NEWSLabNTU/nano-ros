@@ -140,11 +140,11 @@ where
     B::init_hardware();
 
     // 2. Boot-stack RuntimeCtx placeholder. 212.N.7 step-3.5 swaps
-    //    this for the real `ExecutorComponentRuntime`; today the
-    //    runtime slot is `NullComponentRuntime` (every register call
+    //    this for the real `ExecutorNodeRuntime`; today the
+    //    runtime slot is `NullNodeRuntime` (every register call
     //    errors loud). 212.N.4 codegen will hand a populated
     //    `RuntimeCtx` in via a different entry point.
-    let mut crt = ::nros_platform::NullComponentRuntime;
+    let mut crt = ::nros_platform::NullNodeRuntime;
     let mut ctx = RuntimeCtx::with_runtime(&mut crt);
 
     // 3. User closure on the boot stack.

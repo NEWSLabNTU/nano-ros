@@ -1,16 +1,16 @@
 //! Phase 212.M.5.a.4 / N.7 — component dispatch path integration.
 //!
 //! Originally the test exercised the BSP-baker fn-pointer ABI: the
-//! `nros::component!()` macro emitted four `__nros_component_<pkg>_*`
+//! `nros::node!()` macro emitted four `__nros_component_<pkg>_*`
 //! externs and the test called `register_dispatch_slot(...)` with those
 //! symbols directly. Phase 212.N.7 step-6 dropped the global symbols —
 //! the macro now emits ONE public item, `pub fn register(runtime)`, and
 //! the four typed fns live as local items inside it. The
-//! Component-pkg-facing entry point is `<pkg>::register(&mut RuntimeCtx)`.
+//! Node-pkg-facing entry point is `<pkg>::register(&mut RuntimeCtx)`.
 //!
 //! This rewrite preserves the original coverage (callback fires + the
 //! publisher resolver routes the dispatched publish) by going through
-//! the new path: build a real `ExecutorComponentRuntime`, wrap it in a
+//! the new path: build a real `ExecutorNodeRuntime`, wrap it in a
 //! `RuntimeCtx`, invoke the macro-emitted `register(runtime)` wrapper,
 //! then spin. Same end-state asserts as before.
 
@@ -24,9 +24,9 @@ use std::{
 };
 
 use nros::{
-    CallbackCtx, CdrReader, CdrWriter, ComponentContext, ComponentResult, DeserError, Deserialize,
-    Executor, ExecutorComponentRuntime, ExecutorConfig, SerError, Serialize, TickCtx,
-    component::{Component, ExecutableComponent, NodeOptions},
+    CallbackCtx, CdrReader, CdrWriter, NodeContext, NodeResult, DeserError, Deserialize,
+    Executor, ExecutorNodeRuntime, ExecutorConfig, SerError, Serialize, TickCtx,
+    component::{Node, ExecutableNode, NodeOptions},
     component_metadata::{CallbackId, EntityId, NodeId as MetaNodeId},
 };
 use nros_platform::RuntimeCtx;
@@ -70,9 +70,9 @@ static TALKER_FIRES: AtomicU32 = AtomicU32::new(0);
 static TALKER_PUB_ERRORS: AtomicU32 = AtomicU32::new(0);
 
 struct Talker;
-impl Component for Talker {
+impl Node for Talker {
     const NAME: &'static str = "m5a4_talker";
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(
             MetaNodeId::new("node"),
             NodeOptions::new("m5a4_talker_node"),
@@ -86,7 +86,7 @@ impl Component for Talker {
         Ok(())
     }
 }
-impl ExecutableComponent for Talker {
+impl ExecutableNode for Talker {
     type State = i32;
     fn init() -> Self::State {
         0
@@ -107,9 +107,9 @@ impl ExecutableComponent for Talker {
 
 // Phase 212.N.7 step-3.4 — the macro emits a single `pub fn register`
 // wrapper at this file's scope. Bind it to a distinct local name so we
-// can call it without conflicting with `Component::register` (the
+// can call it without conflicting with `Node::register` (the
 // declarative-side method bound on the `Talker` type above).
-nros::component!(Talker);
+nros::node!(Talker);
 use self::register as talker_register;
 
 // =============================================================================
@@ -129,12 +129,12 @@ fn dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
         .node_name("m5a4_dispatch")
         .domain_id(180);
     let executor = Executor::open(&cfg).expect("Executor::open failed");
-    let mut runtime = ExecutorComponentRuntime::from_executor(executor);
+    let mut runtime = ExecutorNodeRuntime::from_executor(executor);
 
     // Phase 212.N.7 — register through the new `pub fn register(runtime)`
-    // wrapper emitted by `nros::component!(Talker)`. The wrapper
+    // wrapper emitted by `nros::node!(Talker)`. The wrapper
     // transmutes the four typed local fns to the platform-layer opaque
-    // aliases and forwards to `ExecutorComponentRuntime::register_dispatch_slot_dyn`
+    // aliases and forwards to `ExecutorNodeRuntime::register_dispatch_slot_dyn`
     // (the impl in `component_runtime.rs` transmutes them back). Same
     // dispatch path the previous test exercised via the four globally
     // mangled symbols — now via the wrapper-emitted local fns.
@@ -179,7 +179,7 @@ fn dispatch_routes_publisher_resolver(zenohd_unique: ZenohRouter) {
         .node_name("m5a4_pub_resolver")
         .domain_id(181);
     let executor = Executor::open(&cfg).expect("Executor::open failed");
-    let mut runtime = ExecutorComponentRuntime::from_executor(executor);
+    let mut runtime = ExecutorNodeRuntime::from_executor(executor);
 
     {
         let mut ctx = RuntimeCtx::with_runtime(&mut runtime);

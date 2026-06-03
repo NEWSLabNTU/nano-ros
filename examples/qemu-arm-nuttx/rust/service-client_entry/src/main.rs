@@ -1,6 +1,6 @@
 //! Phase 212.N.7 step-2 — Entry pkg for the NuttX QEMU ARM service-client.
 //!
-//! Sibling to the `service-client` Component pkg. See the talker_entry
+//! Sibling to the `service-client` Node pkg. See the talker_entry
 //! crate docs for the full lifecycle + NuttX caveat.
 
 #![cfg_attr(not(target_os = "nuttx"), allow(dead_code))]

@@ -15,14 +15,14 @@
 
 #![no_std]
 
-use nros::{Component, ComponentContext, ComponentResult};
+use nros::{Node, NodeContext, NodeResult};
 
 pub struct EntryPoc;
 
-impl Component for EntryPoc {
+impl Node for EntryPoc {
     const NAME: &'static str = "entry_poc";
 
-    fn register(_ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(_ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         // No node / publisher / subscription — keeps the POC's
         // exit-0 contract under the no-zenohd CI environment.
         Ok(())

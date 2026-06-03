@@ -103,7 +103,7 @@ fn nano_ros_component_register_emits_metadata() {
         body.contains("\"lang\": \"cpp\""),
         "metadata lang mismatch:\n{body}"
     );
-    // Component STATIC lib must be addressable.
+    // Node STATIC lib must be addressable.
     let body_lc = body.to_lowercase();
     assert!(
         body_lc.contains("\"pkg_dir\""),

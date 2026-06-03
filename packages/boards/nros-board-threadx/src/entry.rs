@@ -119,7 +119,7 @@ where
     let closure = unsafe { core::ptr::read(&ctx.closure) };
 
     // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
-    // `ExecutorComponentRuntime` so the codegen-emitted
+    // `ExecutorNodeRuntime` so the codegen-emitted
     // `run_plan(runtime)` body can register components against a
     // live RMW session. Locator + domain_id come from the per-board
     // `ThreadxConfig` (the overlay's TOML / default), NOT env vars
@@ -138,7 +138,7 @@ where
             B::exit_failure();
         }
     };
-    let mut crt = ::nros::component_runtime::ExecutorComponentRuntime::from_executor(executor);
+    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     let mut runtime = RuntimeCtx::with_runtime(&mut crt);
 
     match closure(&mut runtime) {
@@ -151,7 +151,7 @@ where
             // this thread, so we loop forever. `spin_once` errors trip
             // exit_failure (a working bring-up never gets here).
             loop {
-                if let Err(err) = ::nros_platform::ComponentRuntime::spin_once(&mut crt, 10) {
+                if let Err(err) = ::nros_platform::NodeRuntime::spin_once(&mut crt, 10) {
                     B::println(format_args!(""));
                     B::println(format_args!("spin_once error: {:?}", err));
                     B::exit_failure();

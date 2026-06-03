@@ -1,5 +1,5 @@
 //! FreeRTOS QEMU MPS2-AN385 AddTwoInts service client —
-//! Phase 212.L Component pkg.
+//! Phase 212.L Node pkg.
 //!
 //! Phase 212.M.5.b — declarative-metadata-only.
 //! Service-client runtime body deferred to M-F.4 (TickCtx call() seam).
@@ -13,16 +13,16 @@
 
 use example_interfaces::srv::AddTwoInts;
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions, TimerDuration,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions, TimerDuration,
 };
 
 pub struct AddTwoIntsClient;
 
-impl Component for AddTwoIntsClient {
+impl Node for AddTwoIntsClient {
     const NAME: &'static str = "add_two_ints_client";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node =
             ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_client"))?;
         let _client =
@@ -36,7 +36,7 @@ impl Component for AddTwoIntsClient {
     }
 }
 
-impl ExecutableComponent for AddTwoIntsClient {
+impl ExecutableNode for AddTwoIntsClient {
     /// Index into the canned test-case table for the next call.
     type State = u8;
 
@@ -57,4 +57,4 @@ impl ExecutableComponent for AddTwoIntsClient {
     }
 }
 
-nros::component!(AddTwoIntsClient);
+nros::node!(AddTwoIntsClient);

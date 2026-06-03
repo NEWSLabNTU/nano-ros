@@ -231,7 +231,7 @@ where
     let _ = std::io::stdout().flush();
 
     // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
-    // `ExecutorComponentRuntime` so the codegen-emitted
+    // `ExecutorNodeRuntime` so the codegen-emitted
     // `run_plan(runtime)` body can register components against a
     // live RMW session. NuttX uses env-derived config (it ships
     // `std` + libc `getenv`); ROS_DOMAIN_ID / NROS_LOCATOR /
@@ -247,7 +247,7 @@ where
             std::process::exit(1);
         }
     };
-    let mut crt = ::nros::component_runtime::ExecutorComponentRuntime::from_executor(executor);
+    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     let mut runtime = nros_platform::RuntimeCtx::with_runtime(&mut crt);
     let setup_result = setup(&mut runtime);
 
@@ -264,7 +264,7 @@ where
     // dispatching component callbacks. Spin forever like the FreeRTOS
     // / ThreadX siblings; the user terminates via signal or shell.
     loop {
-        if let Err(err) = nros_platform::ComponentRuntime::spin_once(&mut crt, 10) {
+        if let Err(err) = nros_platform::NodeRuntime::spin_once(&mut crt, 10) {
             eprintln!("spin_once error: {:?}", err);
             let _ = std::io::stderr().flush();
             std::process::exit(1);

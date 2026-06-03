@@ -1,4 +1,4 @@
-//! ThreadX Linux Action Client — Phase 212.L Component pkg.
+//! ThreadX Linux Action Client — Phase 212.L Node pkg.
 //!
 //! Declares an `example_interfaces/Fibonacci` action client on
 //! `/fibonacci`. Phase 212.M-F.4.b transcription: one-shot
@@ -6,23 +6,23 @@
 //! callbacks land via `on_callback` once codegen wires the feedback-
 //! stream + result-subscriber + `GoalStatusArray` topics through
 //! to dispatch. The in-tree `UnsupportedClients` stub returns
-//! `ComponentError::Runtime` until the M-F.4.a `GenClientDispatch`
+//! `NodeDeclError::Runtime` until the M-F.4.a `GenClientDispatch`
 //! reaches the installed nros-cli.
 
 #![no_std]
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions, TickCtx,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions, TickCtx,
 };
 
 pub struct ActionClient;
 
-impl Component for ActionClient {
+impl Node for ActionClient {
     const NAME: &'static str = "action_client";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(
             NodeId::new("node"),
             NodeOptions::new("fibonacci_action_client"),
@@ -38,7 +38,7 @@ pub struct State {
     sent: bool,
 }
 
-impl ExecutableComponent for ActionClient {
+impl ExecutableNode for ActionClient {
     type State = State;
 
     fn init() -> Self::State {
@@ -66,4 +66,4 @@ impl ExecutableComponent for ActionClient {
     }
 }
 
-nros::component!(ActionClient);
+nros::node!(ActionClient);

@@ -1,5 +1,5 @@
 //! FreeRTOS QEMU MPS2-AN385 AddTwoInts service server —
-//! Phase 212.L Component pkg.
+//! Phase 212.L Node pkg.
 //!
 //! Declarative: node + service server with a `handle_add` callback.
 //! Body: reads typed request, writes typed reply through the W.5.3 reply
@@ -9,16 +9,16 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions,
 };
 
 pub struct AddTwoIntsServer;
 
-impl Component for AddTwoIntsServer {
+impl Node for AddTwoIntsServer {
     const NAME: &'static str = "add_two_ints_server";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node =
             ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_server"))?;
         let _srv = node.create_service_server::<AddTwoInts>(
@@ -30,7 +30,7 @@ impl Component for AddTwoIntsServer {
     }
 }
 
-impl ExecutableComponent for AddTwoIntsServer {
+impl ExecutableNode for AddTwoIntsServer {
     type State = ();
 
     fn init() -> Self::State {}
@@ -45,4 +45,4 @@ impl ExecutableComponent for AddTwoIntsServer {
     }
 }
 
-nros::component!(AddTwoIntsServer);
+nros::node!(AddTwoIntsServer);

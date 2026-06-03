@@ -44,7 +44,7 @@ pub fn main(input: TokenStream) -> TokenStream {
 ///
 /// Cargo allows `-` in package names; C identifiers don't. Each non
 /// `[A-Za-z0-9_]` byte is replaced with `_` so the result is a valid
-/// suffix for the per-pkg register symbol emitted by [`component!`].
+/// suffix for the per-pkg register symbol emitted by [`node!`].
 ///
 /// Crate-private (proc-macro crates can't export non-macro items); the
 /// `sanitize_tests` module exercises it directly.
@@ -210,8 +210,8 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 ///
 /// Phase 212.N.12 — `nros::node!()` is the canonical name (matches the
 /// rclcpp_components / ROS 2 launch.xml `<node pkg=…>` convention). The
-/// legacy `nros::component!()` macro is kept as a deprecated alias that
-/// forwards to this one.
+/// legacy `nros::node!()` macro and `Component*` trait family were
+/// retired in the same phase.
 ///
 /// # Example
 ///
@@ -238,22 +238,16 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro]
 pub fn node(input: TokenStream) -> TokenStream {
-    component_impl(input)
+    node_impl(input)
 }
 
-/// Deprecated alias for [`node!`] (Phase 212.N.12). Forwards verbatim.
-#[proc_macro]
-pub fn component(input: TokenStream) -> TokenStream {
-    component_impl(input)
-}
-
-fn component_impl(input: TokenStream) -> TokenStream {
-    let component_ty = parse_macro_input!(input as Path);
+fn node_impl(input: TokenStream) -> TokenStream {
+    let node_ty = parse_macro_input!(input as Path);
 
     // Phase 212.N.7 step-3.4 — the package-name string handed to
     // `register_dispatch_slot_dyn` (diagnostics) +
     // `RuntimeError::ComponentRegister` is the sanitised pkg-name used by
-    // the codegen-emitted `run_plan` to reference each Component pkg, so
+    // the codegen-emitted `run_plan` to reference each Node pkg, so
     // the two strings round-trip 1:1.
     //
     // `proc_macro::tracked_env::var` is still unstable, so we use plain
@@ -280,7 +274,7 @@ fn component_impl(input: TokenStream) -> TokenStream {
         // wrapper. The codegen-emitted `run_plan(runtime)` body
         // (`nros-build::generate_run_plan`) dispatches one
         // `<pkg>::register(runtime)?` call per launch-XML `<node>` entry,
-        // so every Component pkg whose `lib.rs` invokes `nros::component!()`
+        // so every Node pkg whose `lib.rs` invokes `nros::node!()`
         // gets a stable per-pkg API here.
         //
         // SAFETY (transmutes below): typed `fn(args...) -> ret` /
@@ -288,14 +282,14 @@ fn component_impl(input: TokenStream) -> TokenStream {
         // `extern "Rust" fn()` aliases share the same ABI representation
         // (one pointer); the transmute is purely a type-level
         // reinterpretation. The impl-side transmute on the other side
-        // (`nros::component_runtime`) recovers the same typed signature
+        // (`nros::node_runtime`) recovers the same typed signature
         // before invoking — the round-trip is type-preserving so long
         // as both sides agree on the typed signature, which they do
         // (both live in `nros`).
         //
         // Phase 212.M-F.13 path (b): emit references go through
         // `::nros::__macro_support::nros_platform::*` rather than the
-        // bare `::nros_platform::*` path so Component pkgs only need
+        // bare `::nros_platform::*` path so Node pkgs only need
         // a single `nros` dep in their `Cargo.toml`. The
         // `__macro_support` module is a `#[doc(hidden)]` re-export
         // alias maintained by `packages/core/nros/src/lib.rs`.
@@ -307,13 +301,13 @@ fn component_impl(input: TokenStream) -> TokenStream {
             // Entry-pkg path resolves them via the wrapper's
             // `fn` coercion + transmute instead of a mangled
             // global symbol.
-            fn r(ctx: &mut ::nros::ComponentContext<'_>) -> ::nros::ComponentResult<()> {
-                <#component_ty as ::nros::Component>::register(ctx)
+            fn r(ctx: &mut ::nros::NodeContext<'_>) -> ::nros::NodeResult<()> {
+                <#node_ty as ::nros::Node>::register(ctx)
             }
             fn i() -> *mut () {
-                let state: <#component_ty as ::nros::ExecutableComponent>::State =
-                    <#component_ty as ::nros::ExecutableComponent>::init();
-                ::nros::__private_component_state_into_raw::<#component_ty>(state)
+                let state: <#node_ty as ::nros::ExecutableNode>::State =
+                    <#node_ty as ::nros::ExecutableNode>::init();
+                ::nros::__private_node_state_into_raw::<#node_ty>(state)
             }
             unsafe fn d(
                 state: *mut (),
@@ -324,31 +318,31 @@ fn component_impl(input: TokenStream) -> TokenStream {
                 // pointer to this `State`; the runtime never dispatches
                 // concurrently against the same slot.
                 let s = unsafe {
-                    &mut *(state as *mut <#component_ty as ::nros::ExecutableComponent>::State)
+                    &mut *(state as *mut <#node_ty as ::nros::ExecutableNode>::State)
                 };
-                <#component_ty as ::nros::ExecutableComponent>::on_callback(s, callback, ctx);
+                <#node_ty as ::nros::ExecutableNode>::on_callback(s, callback, ctx);
             }
             unsafe fn t(state: *mut (), ctx: &mut ::nros::TickCtx<'_>) {
                 // SAFETY: same provenance as `d()`.
                 let s = unsafe {
-                    &mut *(state as *mut <#component_ty as ::nros::ExecutableComponent>::State)
+                    &mut *(state as *mut <#node_ty as ::nros::ExecutableNode>::State)
                 };
-                <#component_ty as ::nros::ExecutableComponent>::tick(s, ctx);
+                <#node_ty as ::nros::ExecutableNode>::tick(s, ctx);
             }
 
-            let register_opaque: ::nros::__macro_support::nros_platform::ComponentRegisterFn = unsafe {
+            let register_opaque: ::nros::__macro_support::nros_platform::NodeRegisterFn = unsafe {
                 ::core::mem::transmute(
-                    r as fn(&mut ::nros::ComponentContext<'_>) -> ::nros::ComponentResult<()>,
+                    r as fn(&mut ::nros::NodeContext<'_>) -> ::nros::NodeResult<()>,
                 )
             };
-            let init_opaque: ::nros::__macro_support::nros_platform::ComponentInitFn =
+            let init_opaque: ::nros::__macro_support::nros_platform::NodeInitFn =
                 unsafe { ::core::mem::transmute(i as fn() -> *mut ()) };
-            let dispatch_opaque: ::nros::__macro_support::nros_platform::ComponentDispatchFn = unsafe {
+            let dispatch_opaque: ::nros::__macro_support::nros_platform::NodeDispatchFn = unsafe {
                 ::core::mem::transmute(
                     d as unsafe fn(*mut (), ::nros::CallbackId<'_>, &mut ::nros::CallbackCtx<'_>),
                 )
             };
-            let tick_opaque: ::nros::__macro_support::nros_platform::ComponentTickFn = unsafe {
+            let tick_opaque: ::nros::__macro_support::nros_platform::NodeTickFn = unsafe {
                 ::core::mem::transmute(t as unsafe fn(*mut (), &mut ::nros::TickCtx<'_>))
             };
             runtime

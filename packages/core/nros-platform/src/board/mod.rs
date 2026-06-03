@@ -41,7 +41,7 @@
 //! (`Board`, `BoardInit`, `BoardPrint`, `BoardExit`, `BoardEntry`,
 //! `DirectExec`, `run`) stay as-is during the transition. Phase
 //! 212.N.7 retires the M.5.a FreeRTOS BSP baker and migrates every
-//! Component pkg to the new shape; at that point the legacy
+//! Node pkg to the new shape; at that point the legacy
 //! `nros-board-common` traits become `pub use` re-exports of this
 //! module (or get retired entirely if no consumer remains).
 
@@ -61,16 +61,8 @@ pub use init::BoardInit;
 pub use network::NetworkWait;
 pub use print::BoardPrint;
 pub use runtime::{
-    ComponentDispatchFn, ComponentInitFn, ComponentRegisterFn, ComponentRuntime, ComponentTickFn,
-    NullComponentRuntime, RuntimeCtx, RuntimeError,
-};
-// Phase 212.N.12 — Component → Node rename aliases. The user-facing
-// trait/typedef surface is "Node*"; the legacy "Component*" names stay
-// as deprecated re-export aliases for one release.
-pub use runtime::{
-    ComponentDispatchFn as NodeDispatchFn, ComponentInitFn as NodeInitFn,
-    ComponentRegisterFn as NodeRegisterFn, ComponentRuntime as NodeRuntime,
-    ComponentTickFn as NodeTickFn, NullComponentRuntime as NullNodeRuntime,
+    NodeDispatchFn, NodeInitFn, NodeRegisterFn, NodeRuntime, NodeTickFn, NullNodeRuntime,
+    RuntimeCtx, RuntimeError,
 };
 pub use transport::TransportBringup;
 

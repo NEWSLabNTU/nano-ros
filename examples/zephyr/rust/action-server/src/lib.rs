@@ -1,4 +1,4 @@
-//! Zephyr Fibonacci action server — Phase 212.M.3 / Phase 212.L Component pkg.
+//! Zephyr Fibonacci action server — Phase 212.M.3 / Phase 212.L Node pkg.
 //!
 //! Declarative: node + action server with distinct goal / cancel /
 //! accepted callbacks. Bodies:
@@ -11,16 +11,16 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    CallbackCtx, CallbackId, CancelResponse, Component, ComponentContext, ComponentResult,
-    EntityId, ExecutableComponent, GoalResponse, GoalStatus, NodeId, NodeOptions, TickCtx,
+    CallbackCtx, CallbackId, CancelResponse, Node, NodeContext, NodeResult,
+    EntityId, ExecutableNode, GoalResponse, GoalStatus, NodeId, NodeOptions, TickCtx,
 };
 
 pub struct FibonacciServer;
 
-impl Component for FibonacciServer {
+impl Node for FibonacciServer {
     const NAME: &'static str = "fibonacci_action_server";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(
             NodeId::new("node"),
             NodeOptions::new("fibonacci_action_server"),
@@ -36,7 +36,7 @@ impl Component for FibonacciServer {
     }
 }
 
-impl ExecutableComponent for FibonacciServer {
+impl ExecutableNode for FibonacciServer {
     type State = ();
 
     fn init() -> Self::State {}
@@ -103,4 +103,4 @@ impl ExecutableComponent for FibonacciServer {
     }
 }
 
-nros::component!(FibonacciServer);
+nros::node!(FibonacciServer);

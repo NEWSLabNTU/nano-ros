@@ -1,4 +1,4 @@
-//! ThreadX Linux Service Server — Phase 212.L Component pkg.
+//! ThreadX Linux Service Server — Phase 212.L Node pkg.
 //!
 //! Handles `example_interfaces/AddTwoInts` requests on `/add_two_ints`.
 //! The body deserializes the request from `CallbackCtx::message`, sums
@@ -9,16 +9,16 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions,
 };
 
 pub struct ServiceServer;
 
-impl Component for ServiceServer {
+impl Node for ServiceServer {
     const NAME: &'static str = "service_server";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node =
             ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_server"))?;
         let _srv = node.create_service_server::<AddTwoInts>(
@@ -30,7 +30,7 @@ impl Component for ServiceServer {
     }
 }
 
-impl ExecutableComponent for ServiceServer {
+impl ExecutableNode for ServiceServer {
     /// Count of handled requests.
     type State = u32;
 
@@ -49,4 +49,4 @@ impl ExecutableComponent for ServiceServer {
     }
 }
 
-nros::component!(ServiceServer);
+nros::node!(ServiceServer);

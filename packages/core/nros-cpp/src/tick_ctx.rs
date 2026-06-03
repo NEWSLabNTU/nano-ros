@@ -28,7 +28,7 @@
 //! generated runtime starts passing a real non-null tick-ctx handle, both
 //! FFI symbols return `NROS_CPP_RET_ERROR` — matching the
 //! [`UnsupportedClients`] stub on the Rust side
-//! (`ComponentError::Runtime` for every method). The symbols exist + are
+//! (`NodeDeclError::Runtime` for every method). The symbols exist + are
 //! callable; the runtime returns an error until codegen + BSP plumbing
 //! reach them. C++ user code can write tick bodies against the typed
 //! `TickCtx::call<Req, Resp>()` / `TickCtx::send_goal<G>()` wrappers today;
@@ -88,8 +88,8 @@ pub unsafe extern "C" fn nros_cpp_tick_ctx_call_raw(
     // lands (M-F.4.a) and the generated runtime passes a real non-null
     // tick-ctx handle, return `NROS_CPP_RET_ERROR` for every well-formed
     // call. Matches the `UnsupportedClients` stub in `nros-node`'s
-    // `ExecutorComponentRuntime::run_ticks` which routes every method to
-    // `ComponentError::Runtime`. The symbol exists + is callable; the
+    // `ExecutorNodeRuntime::run_ticks` which routes every method to
+    // `NodeDeclError::Runtime`. The symbol exists + is callable; the
     // runtime returns an error until plumbing reaches it.
     let _ = tick_ctx;
     let _ = (request_cdr, request_len);

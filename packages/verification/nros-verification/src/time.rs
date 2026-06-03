@@ -165,9 +165,9 @@ proof fn time_add_sub_inverse(t_nanos: i64, d_nanos: i64)
     ensures
         // Nanos-level cancellation
         t_nanos + d_nanos - d_nanos == t_nanos,
-        // Component-level cancellation (sec field)
+        // Node-level cancellation (sec field)
         (t_nanos + d_nanos - d_nanos) / 1_000_000_000 == t_nanos / 1_000_000_000,
-        // Component-level cancellation (nanosec field)
+        // Node-level cancellation (nanosec field)
         (t_nanos + d_nanos - d_nanos) % 1_000_000_000 == t_nanos % 1_000_000_000,
 {
 }

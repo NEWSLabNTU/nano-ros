@@ -11,7 +11,7 @@
 //! - Pattern 2 `nros::init_with_launch(path)` — explicit-path variant.
 //!   Verifies path existence; XML parse is the same follow-up.
 //!
-//! Pattern 1 (`nros::component!`) is covered by the existing component
+//! Pattern 1 (`nros::node!`) is covered by the existing component
 //! macro tests in Phase 172.W.3 (`nros-macros` unit tests +
 //! `component_runtime_*` integration suites) — not re-asserted here.
 //!

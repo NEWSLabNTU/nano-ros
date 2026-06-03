@@ -6,9 +6,9 @@
 //! BoardEntry>::run`'s setup closure.
 //!
 //! This step-2 sweep ships an empty `launch/system.launch.xml` so the
-//! emitted `run_plan` body is `Ok(())`. The Component pkg's
+//! emitted `run_plan` body is `Ok(())`. The Node pkg's
 //! `register()` wrapper is presently a TODO stub (see the sibling
-//! Component pkg's `lib.rs` for the gap); wiring the live registration
+//! Node pkg's `lib.rs` for the gap); wiring the live registration
 //! path is step-3+ work.
 
 fn main() {

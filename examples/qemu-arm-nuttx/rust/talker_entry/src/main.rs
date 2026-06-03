@@ -1,6 +1,6 @@
 //! Phase 212.N.7 step-2 — Entry pkg for the NuttX QEMU ARM talker.
 //!
-//! Sibling to the `talker` Component pkg. Same shape as
+//! Sibling to the `talker` Node pkg. Same shape as
 //! `examples/native/rust/entry-poc/src/main.rs`, swapping
 //! `NativeBoard` for `QemuArmVirt` (NuttX tier-1).
 //!

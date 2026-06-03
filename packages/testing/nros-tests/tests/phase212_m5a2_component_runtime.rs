@@ -1,8 +1,8 @@
-//! Phase 212.M.5.a.2 — `ExecutorComponentRuntime` integration tests.
+//! Phase 212.M.5.a.2 — `ExecutorNodeRuntime` integration tests.
 //!
 //! Exercises the executor-backed component runtime added in
 //! `packages/core/nros/src/component_runtime.rs`. The runtime binds
-//! the [`Component`] / [`ExecutableComponent`] traits to a live
+//! the [`Node`] / [`ExecutableNode`] traits to a live
 //! [`nros::Executor`] — registering components materialises their
 //! nodes / pubs / subs / timers on the real executor, and fired
 //! callbacks dispatch back into the component's `on_callback` body.
@@ -28,11 +28,11 @@ use std::{
 };
 
 use nros::{
-    CdrReader, CdrWriter, DeserError, Deserialize, Executor, ExecutorComponentRuntime,
+    CdrReader, CdrWriter, DeserError, Deserialize, Executor, ExecutorNodeRuntime,
     ExecutorConfig, SerError, Serialize,
     component::{
-        CallbackCtx, Component, ComponentContext, ComponentError, ComponentResult,
-        ExecutableComponent, NodeOptions,
+        CallbackCtx, Node, NodeContext, NodeDeclError, NodeResult,
+        ExecutableNode, NodeOptions,
     },
     component_metadata::{CallbackId, EntityId, NodeId as MetaNodeId},
 };
@@ -77,9 +77,9 @@ impl nros::RosMessage for TestMsg {
 /// bumps a static counter via the component `State`, which we then
 /// read out post-spin.
 struct TimerOnly;
-impl Component for TimerOnly {
+impl Node for TimerOnly {
     const NAME: &'static str = "timer_only";
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(MetaNodeId::new("node"), NodeOptions::new("timer_only"))?;
         let _t = node.create_timer(
             EntityId::new("tick"),
@@ -89,7 +89,7 @@ impl Component for TimerOnly {
         Ok(())
     }
 }
-impl ExecutableComponent for TimerOnly {
+impl ExecutableNode for TimerOnly {
     /// Use an `Arc<AtomicU32>` so the test can observe the count even
     /// though the runtime never surfaces a typed slot borrow.
     type State = Arc<AtomicU32>;
@@ -111,9 +111,9 @@ fn timer_only_count() -> &'static Arc<AtomicU32> {
 /// Talker: one node, one publisher on `/chatter`, one timer at 100 ms
 /// that publishes `TestMsg { data: state }` then bumps state.
 struct Talker;
-impl Component for Talker {
+impl Node for Talker {
     const NAME: &'static str = "talker";
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(MetaNodeId::new("node"), NodeOptions::new("talker_node"))?;
         let _p = node.create_publisher::<TestMsg>(EntityId::new("pub_chatter"), "/m5a2_chatter")?;
         let _t = node.create_timer(
@@ -124,7 +124,7 @@ impl Component for Talker {
         Ok(())
     }
 }
-impl ExecutableComponent for Talker {
+impl ExecutableNode for Talker {
     type State = i32;
     fn init() -> Self::State {
         0
@@ -145,16 +145,16 @@ impl ExecutableComponent for Talker {
 static TALKER_FIRES: AtomicU32 = AtomicU32::new(0);
 static TALKER_PUB_ERRORS: AtomicU32 = AtomicU32::new(0);
 
-/// Component whose declarative `register` always errors — used to
+/// Node whose declarative `register` always errors — used to
 /// verify the runtime rolls back on init failure.
 struct FailingComp;
-impl Component for FailingComp {
+impl Node for FailingComp {
     const NAME: &'static str = "failing";
-    fn register(_ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
-        Err(ComponentError::Runtime)
+    fn register(_ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+        Err(NodeDeclError::Runtime)
     }
 }
-impl ExecutableComponent for FailingComp {
+impl ExecutableNode for FailingComp {
     type State = ();
     fn init() -> Self::State {}
     fn on_callback(_s: &mut (), _cb: CallbackId<'_>, _ctx: &mut CallbackCtx<'_>) {}
@@ -177,10 +177,10 @@ fn runtime_registers_single_component_and_spins_once(zenohd_unique: ZenohRouter)
         .node_name("m5a2_timer_only")
         .domain_id(174);
     let executor = Executor::open(&config).expect("Executor::open failed");
-    let mut runtime = ExecutorComponentRuntime::from_executor(executor);
+    let mut runtime = ExecutorNodeRuntime::from_executor(executor);
     let handle = runtime
-        .register_component::<TimerOnly>()
-        .expect("register_component");
+        .register_node::<TimerOnly>()
+        .expect("register_node");
     assert_eq!(handle.slot(), 0);
     assert_eq!(runtime.component_count(), 1);
 
@@ -226,9 +226,9 @@ fn runtime_creates_publisher_for_declared_entity(zenohd_unique: ZenohRouter) {
         .node_name("m5a2_pub_only")
         .domain_id(175);
     let executor = Executor::open(&cfg).expect("Executor::open failed");
-    let mut runtime = ExecutorComponentRuntime::from_executor(executor);
+    let mut runtime = ExecutorNodeRuntime::from_executor(executor);
     runtime
-        .register_component::<Talker>()
+        .register_node::<Talker>()
         .expect("register Talker");
 
     // Spin for ~250 ms; the talker's 100 ms timer should fire 2× and
@@ -263,10 +263,10 @@ fn runtime_propagates_init_failure(zenohd_unique: ZenohRouter) {
         .node_name("m5a2_failing")
         .domain_id(176);
     let executor = Executor::open(&config).expect("Executor::open failed");
-    let mut runtime = ExecutorComponentRuntime::from_executor(executor);
+    let mut runtime = ExecutorNodeRuntime::from_executor(executor);
 
-    let r = runtime.register_component::<FailingComp>();
-    assert!(matches!(r, Err(ComponentError::Runtime)));
+    let r = runtime.register_node::<FailingComp>();
+    assert!(matches!(r, Err(NodeDeclError::Runtime)));
     assert_eq!(
         runtime.component_count(),
         0,
@@ -289,12 +289,12 @@ fn runtime_propagates_init_failure(zenohd_unique: ZenohRouter) {
 // exchange therefore needs an out-of-process fixture pair, which the runtime
 // API supports the same way the existing `examples/native/rust/{talker,
 // listener}` consume `Executor::open` directly — the runtime adds the
-// wrap-each-binary-in-`ExecutorComponentRuntime` step without changing the
+// wrap-each-binary-in-`ExecutorNodeRuntime` step without changing the
 // pub/sub data path. See the M.5.a.3 BSP baker wave for that lifecycle test.
 //
 // What this file does prove for M.5.a.2:
 // * `runtime_registers_single_component_and_spins_once` — the
-//   `ExecutableComponent::on_callback` dispatch fires for a real
+//   `ExecutableNode::on_callback` dispatch fires for a real
 //   live-executor timer.
 // * `runtime_creates_publisher_for_declared_entity` — the publisher
 //   resolver path is materialised and `CallbackCtx::publish` resolves

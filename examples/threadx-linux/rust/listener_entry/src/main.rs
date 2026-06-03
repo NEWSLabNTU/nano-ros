@@ -1,8 +1,8 @@
 //! Phase 212.N.7 step-2 — ThreadX-Linux Rust listener Entry pkg.
 //!
-//! Pairs with the sibling Component pkg `threadx_linux_rs_listener`.
+//! Pairs with the sibling Node pkg `threadx_linux_rs_listener`.
 //! Board choice (`ThreadxLinux`) lives here; the codegen-emitted
-//! `run_plan` stays board-agnostic so the same Component pkg
+//! `run_plan` stays board-agnostic so the same Node pkg
 //! `register` fn links under any tier-1 board impl.
 
 use nros_board_threadx_linux::ThreadxLinux;

@@ -1,4 +1,4 @@
-//! Zephyr AddTwoInts service client — Phase 212.M.3 / Phase 212.L Component pkg.
+//! Zephyr AddTwoInts service client — Phase 212.M.3 / Phase 212.L Node pkg.
 //!
 //! Declarative metadata: node + service client + driver timer.
 //!
@@ -7,23 +7,23 @@
 //! dispatch lives in `tick` (the only place `&mut Executor` is free —
 //! see `TickCtx` docs). Until `nros::TickCtx::call`'s underlying
 //! `ClientDispatch` impl ships in the installed nros-cli (M-F.4.a),
-//! the in-tree `UnsupportedClients` stub returns `ComponentError::
+//! the in-tree `UnsupportedClients` stub returns `NodeDeclError::
 //! Runtime`; the body still compiles + the seam is honest.
 
 #![no_std]
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions, TickCtx, TimerDuration,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions, TickCtx, TimerDuration,
 };
 
 pub struct AddTwoIntsClient;
 
-impl Component for AddTwoIntsClient {
+impl Node for AddTwoIntsClient {
     const NAME: &'static str = "add_two_ints_client";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node =
             ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_client"))?;
         let _client =
@@ -45,7 +45,7 @@ pub struct State {
     counter: i64,
 }
 
-impl ExecutableComponent for AddTwoIntsClient {
+impl ExecutableNode for AddTwoIntsClient {
     type State = State;
 
     fn init() -> Self::State {
@@ -75,7 +75,7 @@ impl ExecutableComponent for AddTwoIntsClient {
             a: state.counter,
             b: state.counter.wrapping_add(1),
         };
-        let _: nros::ComponentResult<AddTwoIntsResponse> =
+        let _: nros::NodeResult<AddTwoIntsResponse> =
             ctx.call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
                 EntityId::new("client_add"),
                 &req,
@@ -83,4 +83,4 @@ impl ExecutableComponent for AddTwoIntsClient {
     }
 }
 
-nros::component!(AddTwoIntsClient);
+nros::node!(AddTwoIntsClient);

@@ -85,7 +85,7 @@ default_system = "bringup_pkg"
     )
     .unwrap();
 
-    // Component pkg with a single [[bin]].
+    // Node pkg with a single [[bin]].
     fs::create_dir_all(root.join("alpha_pkg/src")).unwrap();
     fs::write(
         root.join("alpha_pkg/Cargo.toml"),

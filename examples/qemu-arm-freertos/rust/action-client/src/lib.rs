@@ -1,5 +1,5 @@
 //! FreeRTOS QEMU MPS2-AN385 Fibonacci action client —
-//! Phase 212.L Component pkg.
+//! Phase 212.L Node pkg.
 //!
 //! Phase 212.M.5.b — declarative-metadata-only.
 //! Service-client runtime body deferred to M-F.4 (TickCtx call() seam) —
@@ -12,16 +12,16 @@
 
 use example_interfaces::action::Fibonacci;
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions,
 };
 
 pub struct FibonacciClient;
 
-impl Component for FibonacciClient {
+impl Node for FibonacciClient {
     const NAME: &'static str = "fibonacci_action_client";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(
             NodeId::new("node"),
             NodeOptions::new("fibonacci_action_client"),
@@ -32,7 +32,7 @@ impl Component for FibonacciClient {
     }
 }
 
-impl ExecutableComponent for FibonacciClient {
+impl ExecutableNode for FibonacciClient {
     type State = ();
 
     fn init() -> Self::State {}
@@ -49,4 +49,4 @@ impl ExecutableComponent for FibonacciClient {
     }
 }
 
-nros::component!(FibonacciClient);
+nros::node!(FibonacciClient);

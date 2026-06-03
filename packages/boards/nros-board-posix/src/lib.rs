@@ -110,7 +110,7 @@ impl BoardEntry for PosixBoard {
     /// 2. Open the live [`nros::Executor`] from the env-derived
     ///    [`nros::ExecutorConfig`] (`ROS_DOMAIN_ID`, `NROS_LOCATOR`,
     ///    `NROS_SESSION_MODE`) and wrap it in an
-    ///    [`nros::component_runtime::ExecutorComponentRuntime`] —
+    ///    [`nros::node_runtime::ExecutorNodeRuntime`] —
     ///    Phase 212.N.7 step-3.5. The codegen-emitted
     ///    `run_plan(runtime)` body now talks to a real executor.
     /// 3. Build a [`RuntimeCtx`] backed by that runtime.
@@ -129,7 +129,7 @@ impl BoardEntry for PosixBoard {
     /// happens *inside* `setup`"). The change here is that the open
     /// step is now done **for** the closure rather than by it — the
     /// `setup` body receives a live runtime sink through
-    /// `RuntimeCtx::runtime` and dispatches Component pkg `register`
+    /// `RuntimeCtx::runtime` and dispatches Node pkg `register`
     /// calls into it.
     fn run<F, E>(setup: F) -> Result<(), E>
     where
@@ -139,7 +139,7 @@ impl BoardEntry for PosixBoard {
         <Self as BoardInit>::init_hardware();
 
         // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
-        // `ExecutorComponentRuntime` so the codegen-emitted
+        // `ExecutorNodeRuntime` so the codegen-emitted
         // `run_plan(runtime)` body can register components against a
         // live RMW session. Env-derived config picks up
         // `ROS_DOMAIN_ID` / `NROS_LOCATOR` / `NROS_SESSION_MODE` at
@@ -148,7 +148,7 @@ impl BoardEntry for PosixBoard {
         //
         // If executor open fails (no RMW backend linked, or the
         // configured router/peer is unreachable), we fall back to
-        // [`nros_platform::NullComponentRuntime`] so the setup closure
+        // [`nros_platform::NullNodeRuntime`] so the setup closure
         // still runs. The fall-back errors loud on any
         // `register_dispatch_slot_dyn` call — meaning a launch.xml
         // with zero `<node>` entries (e.g. the Phase 212.N.7 step-1
@@ -156,20 +156,20 @@ impl BoardEntry for PosixBoard {
         // workload that tries to register components fails fast with
         // `RuntimeError::ComponentRegister` (no silent no-op).
         let exec_cfg = ::nros::ExecutorConfig::from_env();
-        let mut crt_real: Option<::nros::component_runtime::ExecutorComponentRuntime> =
+        let mut crt_real: Option<::nros::node_runtime::ExecutorNodeRuntime> =
             match ::nros::Executor::open(&exec_cfg) {
                 Ok(e) => {
-                    Some(::nros::component_runtime::ExecutorComponentRuntime::from_executor(e))
+                    Some(::nros::node_runtime::ExecutorNodeRuntime::from_executor(e))
                 }
                 Err(err) => {
                     <Self as BoardPrint>::println(format_args!(
-                        "nros: Executor::open failed ({err:?}); proceeding with NullComponentRuntime — \
+                        "nros: Executor::open failed ({err:?}); proceeding with NullNodeRuntime — \
                      `run_plan` register calls will fail loud."
                     ));
                     None
                 }
             };
-        let mut crt_null = ::nros_platform::NullComponentRuntime;
+        let mut crt_null = ::nros_platform::NullNodeRuntime;
         let result = match crt_real.as_mut() {
             Some(crt) => {
                 let mut runtime = RuntimeCtx::with_runtime(crt);

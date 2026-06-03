@@ -10,14 +10,14 @@
 
 #![no_std]
 
-use nros::{Component, ComponentContext, ComponentResult, NodeId, NodeOptions};
+use nros::{Node, NodeContext, NodeResult, NodeId, NodeOptions};
 
 pub struct DemoEntry;
 
-impl Component for DemoEntry {
+impl Node for DemoEntry {
     const NAME: &'static str = "demo_entry";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let _node =
             ctx.create_node(NodeId::new("node"), NodeOptions::new("demo_entry"))?;
         Ok(())

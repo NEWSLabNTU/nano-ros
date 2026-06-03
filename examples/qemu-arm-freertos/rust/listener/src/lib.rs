@@ -1,4 +1,4 @@
-//! FreeRTOS QEMU MPS2-AN385 Listener — Phase 212.L Component pkg.
+//! FreeRTOS QEMU MPS2-AN385 Listener — Phase 212.L Node pkg.
 //!
 //! Subscribes to `std_msgs/Int32` on `/chatter` and tracks the last seen
 //! value. The BSP-generated runtime owns init / executor / spin.
@@ -6,17 +6,17 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions,
 };
 use std_msgs::msg::Int32;
 
 pub struct Listener;
 
-impl Component for Listener {
+impl Node for Listener {
     const NAME: &'static str = "listener";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("listener"))?;
         let _sub = node.create_subscription::<Int32>(
             EntityId::new("sub_chatter"),
@@ -27,7 +27,7 @@ impl Component for Listener {
     }
 }
 
-impl ExecutableComponent for Listener {
+impl ExecutableNode for Listener {
     /// Last value seen on `/chatter`.
     type State = i32;
 
@@ -44,4 +44,4 @@ impl ExecutableComponent for Listener {
     }
 }
 
-nros::component!(Listener);
+nros::node!(Listener);

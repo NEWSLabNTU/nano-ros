@@ -4,14 +4,14 @@
 
 #![no_std]
 
-use nros::{Component, ComponentContext, ComponentResult, NodeId, NodeOptions};
+use nros::{Node, NodeContext, NodeResult, NodeId, NodeOptions};
 
 pub struct Listener;
 
-impl Component for Listener {
+impl Node for Listener {
     const NAME: &'static str = "listener";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let _node = ctx.create_node(NodeId::new("node"), NodeOptions::new("listener"))?;
         Ok(())
     }
@@ -19,4 +19,4 @@ impl Component for Listener {
 
 // Phase 212.M.5.a.4 — see the talker pkg for rationale.
 nros::declarative_component!(Listener);
-nros::component!(Listener);
+nros::node!(Listener);

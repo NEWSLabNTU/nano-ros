@@ -5,11 +5,11 @@
 //!
 //! * **every example leaf has a `package.xml`** (the `<exec_depend>`
 //!   SSoT for codegen / bringup verb).
-//! * **Component XOR Application classification** — every example
+//! * **Node XOR Application classification** — every example
 //!   Rust crate carries exactly one of `[package.metadata.nros.
 //!   component]`, `[package.metadata.nros.application]`, or
 //!   `[package.metadata.nros.entry]` (Phase 212.N.6 rename).
-//! * **`<pkg>::<Class>` class string** — Component pkgs' `class` field
+//! * **`<pkg>::<Class>` class string** — Node pkgs' `class` field
 //!   starts with the Cargo `[package].name`-mangled identifier so
 //!   codegen + humans land in the same crate (L.4 lint).
 //! * **deploy target matches platform path** — every key under
@@ -141,7 +141,7 @@ const MIGRATED_PREFIXES: &[&str] = &[
     // stm32f4/rust/{talker, *-rtic} migrated 2026-06-02 — they
     // carry [package.metadata.nros.application] deploy = ["stm32f4"]
     // (M.11-equivalent sweep). The Embassy variant stays carved out
-    // in UNMIGRATED_PREFIXES below pending M-F.5 async-Component work.
+    // in UNMIGRATED_PREFIXES below pending M-F.5 async-Node work.
     "examples/stm32f4/rust/",
 ];
 
@@ -191,7 +191,7 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
     (
         "examples/stm32f4/rust/talker-embassy/",
         "stm32f4 Embassy variant — pre-212 shape, no package.xml; \
-         falls under M-F.5 async-Component work",
+         falls under M-F.5 async-Node work",
     ),
     // `examples/native/rust/bridge/` UNMIGRATED entry retired 2026-06-02:
     // the sole occupant (`tt-zenoh-to-xrce`) moved to `examples/bridges/`
@@ -279,8 +279,8 @@ fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
         .and_then(|m| m.get("nros"));
 
     // Phase 212.N.12 — `node` is the canonical spelling for the
-    // single-shape Component pkg surface; `component` is accepted as a
-    // deprecated alias. Treat either as the "Component pkg" classification.
+    // single-shape Node pkg surface; `component` is accepted as a
+    // deprecated alias. Treat either as the "Node pkg" classification.
     // (`PackageMetadataNros::validate` in nros-cli rejects both at once;
     // M.12 inherits that mutex by virtue of accepting either, not both.)
     let component = nros.and_then(|n| n.get("component"));
@@ -378,7 +378,7 @@ fn every_example_leaf_has_package_xml() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 2 — Component XOR Application classification
+// Test 2 — Node XOR Application classification
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -406,7 +406,7 @@ fn component_or_application_classification_present() {
         };
         // Phase 212.N.6 added `[package.metadata.nros.entry]` as the
         // renamed-from-application shape for Entry pkgs (post-N.7).
-        // Component pkgs use `[...component]`; Application/Entry pkgs
+        // Node pkgs use `[...component]`; Application/Entry pkgs
         // pick exactly one of `[...application]` / `[...entry]`.
         let kinds = (cls.is_component as u8)
             + (cls.is_application as u8)
@@ -419,7 +419,7 @@ fn component_or_application_classification_present() {
     }
     assert!(
         bad.is_empty(),
-        "Component/Application classification failures:\n  {}",
+        "Node/Application classification failures:\n  {}",
         bad.iter()
             .map(|(p, why)| format!("{} — {}", p.to_string_lossy(), why))
             .collect::<Vec<_>>()
@@ -492,7 +492,7 @@ fn deploy_targets_match_platform_path() {
         };
         if cls.deploy_targets.is_empty() {
             // Application pkgs may omit deploy when they only ship
-            // host-side; tolerated. Component pkgs without a deploy
+            // host-side; tolerated. Node pkgs without a deploy
             // table would be caught at codegen time, not here.
             continue;
         }

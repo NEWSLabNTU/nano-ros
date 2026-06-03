@@ -31,7 +31,7 @@
 //
 // TODO(N.7 ThreadX migration): Phase 212.N.7 step-6 retired the
 // Rust-side `__nros_component_<pkg>_*` extern symbols (the
-// `nros::component!()` macro now emits one public `register(runtime)`
+// `nros::node!()` macro now emits one public `register(runtime)`
 // wrapper instead). The ThreadX C-side `system_main.c` baker
 // (`cmake/NanoRosThreadxSystemCodegen.cmake`) is untouched by that
 // retirement — it still emits `__nros_component_<pkg>_register` extern

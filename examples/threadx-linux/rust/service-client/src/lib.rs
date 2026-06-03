@@ -1,26 +1,26 @@
-//! ThreadX Linux Service Client — Phase 212.L Component pkg.
+//! ThreadX Linux Service Client — Phase 212.L Node pkg.
 //!
 //! Declares a service client for `example_interfaces/AddTwoInts` on
 //! `/add_two_ints`. Phase 212.M-F.4.b transcription: one-shot
 //! `send_request` on the first `tick` call. Until the M-F.4.a
 //! `GenClientDispatch` reaches the installed nros-cli, the in-tree
-//! `UnsupportedClients` stub returns `ComponentError::Runtime`; the
+//! `UnsupportedClients` stub returns `NodeDeclError::Runtime`; the
 //! body still compiles + the seam is honest.
 
 #![no_std]
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions, TickCtx,
+    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
+    ExecutableNode, NodeId, NodeOptions, TickCtx,
 };
 
 pub struct ServiceClient;
 
-impl Component for ServiceClient {
+impl Node for ServiceClient {
     const NAME: &'static str = "service_client";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node =
             ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_client"))?;
         let _client =
@@ -34,7 +34,7 @@ pub struct State {
     sent: bool,
 }
 
-impl ExecutableComponent for ServiceClient {
+impl ExecutableNode for ServiceClient {
     type State = State;
 
     fn init() -> Self::State {
@@ -53,7 +53,7 @@ impl ExecutableComponent for ServiceClient {
             return;
         }
         let req = AddTwoIntsRequest { a: 7, b: 35 };
-        let result: nros::ComponentResult<AddTwoIntsResponse> =
+        let result: nros::NodeResult<AddTwoIntsResponse> =
             ctx.call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
                 EntityId::new("cli_add"),
                 &req,
@@ -64,4 +64,4 @@ impl ExecutableComponent for ServiceClient {
     }
 }
 
-nros::component!(ServiceClient);
+nros::node!(ServiceClient);

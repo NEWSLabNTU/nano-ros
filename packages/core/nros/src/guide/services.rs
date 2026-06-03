@@ -62,4 +62,4 @@
 //!
 //! See `examples/native/rust/service-client-async/` (tokio) for a complete
 //! working example. The Zephyr Embassy variant was dropped 2026-06-02 per
-//! Phase 212.M-F.5 — pending an async-`Component` trait decision.
+//! Phase 212.M-F.5 — pending an async-`Node` trait decision.

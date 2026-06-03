@@ -25,7 +25,7 @@ pub struct CapacitySpec {
     pub max_interfaces: usize,
 }
 
-/// Component implementation linked into the generated binary.
+/// Node implementation linked into the generated binary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ComponentSpec {
     pub id: &'static str,

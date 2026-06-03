@@ -1,7 +1,7 @@
 //! Phase 212.M-F.3 — Zephyr H.1 adapter shim accepts self-pkg bringup.
 //!
 //! The M-F.2 nros-cli planner accepts an L.7 self-pkg bringup: a single
-//! Component / Application Cargo pkg carrying
+//! Node / Application Cargo pkg carrying
 //! `[package.metadata.nros.deploy.zephyr]` (no sibling Path A
 //! `system.toml`). This file drives the M-F.3 shim extension that
 //! teaches `zephyr/cmake/nros_system_generate.cmake::

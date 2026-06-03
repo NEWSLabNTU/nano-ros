@@ -1,26 +1,26 @@
-//! ThreadX Linux Action Server — Phase 212.L Component pkg.
+//! ThreadX Linux Action Server — Phase 212.L Node pkg.
 //!
 //! Declares an `example_interfaces/Fibonacci` action server on
 //! `/fibonacci`. The goal-decision callback accepts non-negative
 //! orders; the cancel-decision callback always accepts. Goal
 //! execution (computing the sequence, publishing feedback,
-//! completing the goal) runs from `ExecutableComponent::tick`
+//! completing the goal) runs from `ExecutableNode::tick`
 //! (W.5.6 — needs the executor, hence tick-only).
 
 #![no_std]
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    CallbackCtx, CallbackId, CancelResponse, Component, ComponentContext, ComponentResult,
-    EntityId, ExecutableComponent, GoalId, GoalResponse, GoalStatus, NodeId, NodeOptions, TickCtx,
+    CallbackCtx, CallbackId, CancelResponse, Node, NodeContext, NodeResult,
+    EntityId, ExecutableNode, GoalId, GoalResponse, GoalStatus, NodeId, NodeOptions, TickCtx,
 };
 
 pub struct ActionServer;
 
-impl Component for ActionServer {
+impl Node for ActionServer {
     const NAME: &'static str = "action_server";
 
-    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(
             NodeId::new("node"),
             NodeOptions::new("fibonacci_action_server"),
@@ -36,7 +36,7 @@ impl Component for ActionServer {
     }
 }
 
-impl ExecutableComponent for ActionServer {
+impl ExecutableNode for ActionServer {
     /// Goals completed so far (informational).
     type State = u32;
 
@@ -73,7 +73,7 @@ impl ExecutableComponent for ActionServer {
 
         for goal_id in pending {
             // Compute a fixed-length feedback sequence + publish each
-            // step. The Component pkg shape doesn't surface the goal
+            // step. The Node pkg shape doesn't surface the goal
             // payload at tick time (W.5.6 minimum), so we pick a fixed
             // order = 5 and emit it incrementally.
             const ORDER: i32 = 5;
@@ -110,4 +110,4 @@ impl ExecutableComponent for ActionServer {
     }
 }
 
-nros::component!(ActionServer);
+nros::node!(ActionServer);

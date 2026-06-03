@@ -38,7 +38,7 @@ const COMPONENTS: &[&str] = &["talker", "brake_arbiter"];
             fixture has been migrated to the §212.L.9 cmake fn shape \
             (`nano_ros_component_register` + `nano_ros_deploy`); the \
             `nros codegen-system --ahead-of-vendor --target px4` driver \
-            needs a follow-up to read the Component pkg surface instead \
+            needs a follow-up to read the Node pkg surface instead \
             of `system.toml`, plus a board overlay edit to enable the \
             emitted modules."]
 fn px4_sitl_2_component_module_builds() {

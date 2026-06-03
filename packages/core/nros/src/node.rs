@@ -5,8 +5,8 @@ use core::marker::PhantomData;
 use crate::{
     CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus, ParameterType,
     QosSettings, RosAction, RosMessage, RosService, TimerDuration,
-    component_metadata::{
-        CallbackEffectKind, CallbackEffectMetadata, ComponentMetadataError, EntityKind,
+    node_metadata::{
+        CallbackEffectKind, CallbackEffectMetadata, NodeMetadataError, EntityKind,
         EntityMetadata, EntityMetadataSpec, MetadataRecorder, MetadataString, NodeId,
         ParameterDefault, SourceLocationMetadata, copy_str, entity_metadata,
     },
@@ -21,61 +21,61 @@ use crate::{
 // path calls `<pkg>::register(runtime)` through the path API, so this
 // helper has no live callers.
 
-/// Clear diagnostic for packages missing [`nros::component!`](crate::component!).
-pub const MISSING_COMPONENT_EXPORT_ERROR: &str = "package has no exported nros component";
+/// Clear diagnostic for packages missing [`nros::node!`](crate::node!).
+pub const MISSING_NODE_EXPORT_ERROR: &str = "package has no exported nros component";
 
 /// Result type for component declarations.
-pub type ComponentResult<T = ()> = Result<T, ComponentError>;
+pub type NodeResult<T = ()> = Result<T, NodeDeclError>;
 
-/// Component declaration error.
+/// Node declaration error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComponentError {
+pub enum NodeDeclError {
     /// Metadata recorder rejected the declaration.
-    Metadata(ComponentMetadataError),
-    /// Host/runtime discovery could not find `nros::component!` export.
+    Metadata(NodeMetadataError),
+    /// Host/runtime discovery could not find `nros::node!` export.
     MissingExport,
     /// Generated runtime rejected the declaration.
     Runtime,
 }
 
-impl ComponentError {
+impl NodeDeclError {
     /// Human-readable static message for diagnostics that cross FFI/plugin boundaries.
     pub const fn message(self) -> &'static str {
         match self {
-            Self::Metadata(ComponentMetadataError::Capacity) => {
+            Self::Metadata(NodeMetadataError::Capacity) => {
                 "component metadata capacity exceeded"
             }
-            Self::Metadata(ComponentMetadataError::NameTooLong) => {
+            Self::Metadata(NodeMetadataError::NameTooLong) => {
                 "component metadata name too long"
             }
-            Self::Metadata(ComponentMetadataError::UnknownNode) => {
+            Self::Metadata(NodeMetadataError::UnknownNode) => {
                 "component entity references an unknown node"
             }
-            Self::Metadata(ComponentMetadataError::UnknownEntity) => {
+            Self::Metadata(NodeMetadataError::UnknownEntity) => {
                 "component callback effect references an unknown entity"
             }
-            Self::Metadata(ComponentMetadataError::DuplicateId) => {
+            Self::Metadata(NodeMetadataError::DuplicateId) => {
                 "component metadata contains a duplicate stable ID"
             }
-            Self::MissingExport => MISSING_COMPONENT_EXPORT_ERROR,
+            Self::MissingExport => MISSING_NODE_EXPORT_ERROR,
             Self::Runtime => "component runtime rejected declaration",
         }
     }
 }
 
-impl From<ComponentMetadataError> for ComponentError {
-    fn from(value: ComponentMetadataError) -> Self {
+impl From<NodeMetadataError> for NodeDeclError {
+    fn from(value: NodeMetadataError) -> Self {
         Self::Metadata(value)
     }
 }
 
 /// Rust component entry point.
-pub trait Component {
+pub trait Node {
     /// Source component name used in metadata and diagnostics.
     const NAME: &'static str;
 
     /// Declare nodes, entities, callbacks, params, and optional effects.
-    fn register(context: &mut ComponentContext<'_>) -> ComponentResult<()>;
+    fn register(context: &mut NodeContext<'_>) -> NodeResult<()>;
 }
 
 /// Runtime-neutral node construction options.
@@ -113,12 +113,12 @@ impl<'a> NodeOptions<'a> {
 }
 
 /// Declaration sink implemented by metadata recorders and generated runtimes.
-pub trait ComponentRuntime {
+pub trait NodeRuntime {
     /// Declare a component node.
-    fn create_node(&mut self, id: NodeId<'_>, options: NodeOptions<'_>) -> ComponentResult<()>;
+    fn create_node(&mut self, id: NodeId<'_>, options: NodeOptions<'_>) -> NodeResult<()>;
 
     /// Declare a publisher, subscription, timer, service, action, or parameter.
-    fn create_entity(&mut self, metadata: EntityMetadata) -> ComponentResult<()>;
+    fn create_entity(&mut self, metadata: EntityMetadata) -> NodeResult<()>;
 
     /// Add optional callback effect metadata.
     fn record_callback_effect(
@@ -126,18 +126,18 @@ pub trait ComponentRuntime {
         callback_id: CallbackId<'_>,
         kind: CallbackEffectKind,
         entity_id: EntityId<'_>,
-    ) -> ComponentResult<()>;
+    ) -> NodeResult<()>;
 }
 
-impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usize> ComponentRuntime
+impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usize> NodeRuntime
     for MetadataRecorder<MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>
 {
-    fn create_node(&mut self, id: NodeId<'_>, options: NodeOptions<'_>) -> ComponentResult<()> {
+    fn create_node(&mut self, id: NodeId<'_>, options: NodeOptions<'_>) -> NodeResult<()> {
         self.push_node(id, options.name, options.namespace, options.domain_id)?;
         Ok(())
     }
 
-    fn create_entity(&mut self, metadata: EntityMetadata) -> ComponentResult<()> {
+    fn create_entity(&mut self, metadata: EntityMetadata) -> NodeResult<()> {
         self.push_entity(metadata)?;
         Ok(())
     }
@@ -147,7 +147,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         callback_id: CallbackId<'_>,
         kind: CallbackEffectKind,
         entity_id: EntityId<'_>,
-    ) -> ComponentResult<()> {
+    ) -> NodeResult<()> {
         self.push_callback_effect(callback_id, kind, entity_id)?;
         Ok(())
     }
@@ -159,7 +159,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
 /// component node ID to a concrete executor-side node handle; entity callback
 /// registration is completed by generated code that owns the actual callback
 /// functions.
-pub trait ComponentNodeRuntime {
+pub trait DeclaredNodeRuntime {
     /// Concrete node handle owned by the runtime executor.
     type NodeHandle: Copy + Eq;
 
@@ -168,17 +168,17 @@ pub trait ComponentNodeRuntime {
         &mut self,
         id: NodeId<'_>,
         options: NodeOptions<'_>,
-    ) -> ComponentResult<Self::NodeHandle>;
+    ) -> NodeResult<Self::NodeHandle>;
 }
 
 /// Recorded runtime node mapping.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ComponentRuntimeNode<H: Copy + Eq> {
+pub struct RuntimeNodeRecord<H: Copy + Eq> {
     stable_id: MetadataString,
     handle: H,
 }
 
-impl<H: Copy + Eq> ComponentRuntimeNode<H> {
+impl<H: Copy + Eq> RuntimeNodeRecord<H> {
     /// Stable component node ID.
     pub fn stable_id(&self) -> &str {
         &self.stable_id
@@ -191,26 +191,26 @@ impl<H: Copy + Eq> ComponentRuntimeNode<H> {
 }
 
 /// Runtime adapter used by generated main ownership code.
-pub struct ComponentRuntimeAdapter<
+pub struct NodeRuntimeAdapter<
     'a,
-    R: ComponentNodeRuntime + ?Sized,
-    const MAX_NODES: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_NODES },
-    const MAX_ENTITIES: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_ENTITIES },
-    const MAX_CALLBACKS: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_CALLBACKS },
+    R: DeclaredNodeRuntime + ?Sized,
+    const MAX_NODES: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_NODES },
+    const MAX_ENTITIES: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_ENTITIES },
+    const MAX_CALLBACKS: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_CALLBACKS },
 > {
     node_runtime: &'a mut R,
-    nodes: Vec<ComponentRuntimeNode<R::NodeHandle>, MAX_NODES>,
+    nodes: Vec<RuntimeNodeRecord<R::NodeHandle>, MAX_NODES>,
     entities: Vec<EntityMetadata, MAX_ENTITIES>,
     callback_effects: Vec<CallbackEffectMetadata, MAX_CALLBACKS>,
 }
 
 impl<
     'a,
-    R: ComponentNodeRuntime + ?Sized,
+    R: DeclaredNodeRuntime + ?Sized,
     const MAX_NODES: usize,
     const MAX_ENTITIES: usize,
     const MAX_CALLBACKS: usize,
-> ComponentRuntimeAdapter<'a, R, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>
+> NodeRuntimeAdapter<'a, R, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>
 {
     /// Build a runtime adapter around a generated executor owner.
     pub fn new(node_runtime: &'a mut R) -> Self {
@@ -223,7 +223,7 @@ impl<
     }
 
     /// Runtime node mappings in declaration order.
-    pub fn nodes(&self) -> &[ComponentRuntimeNode<R::NodeHandle>] {
+    pub fn nodes(&self) -> &[RuntimeNodeRecord<R::NodeHandle>] {
         &self.nodes
     }
 
@@ -242,7 +242,7 @@ impl<
         self.nodes
             .iter()
             .find(|node| node.stable_id() == stable_id.as_str())
-            .map(ComponentRuntimeNode::handle)
+            .map(RuntimeNodeRecord::handle)
     }
 
     fn contains_node(&self, stable_id: &str) -> bool {
@@ -257,36 +257,36 @@ impl<
 }
 
 impl<
-    R: ComponentNodeRuntime + ?Sized,
+    R: DeclaredNodeRuntime + ?Sized,
     const MAX_NODES: usize,
     const MAX_ENTITIES: usize,
     const MAX_CALLBACKS: usize,
-> ComponentRuntime for ComponentRuntimeAdapter<'_, R, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>
+> NodeRuntime for NodeRuntimeAdapter<'_, R, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>
 {
-    fn create_node(&mut self, id: NodeId<'_>, options: NodeOptions<'_>) -> ComponentResult<()> {
+    fn create_node(&mut self, id: NodeId<'_>, options: NodeOptions<'_>) -> NodeResult<()> {
         if self.contains_node(id.as_str()) {
-            return Err(ComponentMetadataError::DuplicateId.into());
+            return Err(NodeMetadataError::DuplicateId.into());
         }
         let handle = self.node_runtime.build_component_node(id, options)?;
         self.nodes
-            .push(ComponentRuntimeNode {
+            .push(RuntimeNodeRecord {
                 stable_id: copy_str(id.as_str())?,
                 handle,
             })
-            .map_err(|_| ComponentError::Metadata(ComponentMetadataError::Capacity))?;
+            .map_err(|_| NodeDeclError::Metadata(NodeMetadataError::Capacity))?;
         Ok(())
     }
 
-    fn create_entity(&mut self, metadata: EntityMetadata) -> ComponentResult<()> {
+    fn create_entity(&mut self, metadata: EntityMetadata) -> NodeResult<()> {
         if !self.contains_node(metadata.node_id.as_str()) {
-            return Err(ComponentMetadataError::UnknownNode.into());
+            return Err(NodeMetadataError::UnknownNode.into());
         }
         if self.contains_entity(metadata.id.as_str()) {
-            return Err(ComponentMetadataError::DuplicateId.into());
+            return Err(NodeMetadataError::DuplicateId.into());
         }
         self.entities
             .push(metadata)
-            .map_err(|_| ComponentError::Metadata(ComponentMetadataError::Capacity))?;
+            .map_err(|_| NodeDeclError::Metadata(NodeMetadataError::Capacity))?;
         Ok(())
     }
 
@@ -295,9 +295,9 @@ impl<
         callback_id: CallbackId<'_>,
         kind: CallbackEffectKind,
         entity_id: EntityId<'_>,
-    ) -> ComponentResult<()> {
+    ) -> NodeResult<()> {
         if !self.contains_entity(entity_id.as_str()) {
-            return Err(ComponentMetadataError::UnknownEntity.into());
+            return Err(NodeMetadataError::UnknownEntity.into());
         }
         self.callback_effects
             .push(CallbackEffectMetadata {
@@ -305,44 +305,44 @@ impl<
                 kind,
                 entity_id: copy_str(entity_id.as_str())?,
             })
-            .map_err(|_| ComponentError::Metadata(ComponentMetadataError::Capacity))?;
+            .map_err(|_| NodeDeclError::Metadata(NodeMetadataError::Capacity))?;
         Ok(())
     }
 }
 
 #[cfg(feature = "rmw-cffi")]
-impl ComponentNodeRuntime for crate::Executor {
+impl DeclaredNodeRuntime for crate::Executor {
     type NodeHandle = nros_node::executor::NodeId;
 
     fn build_component_node(
         &mut self,
         _id: NodeId<'_>,
         options: NodeOptions<'_>,
-    ) -> ComponentResult<Self::NodeHandle> {
+    ) -> NodeResult<Self::NodeHandle> {
         self.node_builder(options.name)
             .namespace(options.namespace)
             .domain_id(options.domain_id)
             .build()
-            .map_err(|_| ComponentError::Runtime)
+            .map_err(|_| NodeDeclError::Runtime)
     }
 }
 
 /// Runtime adapter backed by [`Executor`](crate::Executor).
 #[cfg(feature = "rmw-cffi")]
-pub type ComponentExecutorRuntime<
+pub type NodeExecutorRuntime<
     'a,
-    const MAX_NODES: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_NODES },
-    const MAX_ENTITIES: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_ENTITIES },
-    const MAX_CALLBACKS: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_CALLBACKS },
-> = ComponentRuntimeAdapter<'a, crate::Executor, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>;
+    const MAX_NODES: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_NODES },
+    const MAX_ENTITIES: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_ENTITIES },
+    const MAX_CALLBACKS: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_CALLBACKS },
+> = NodeRuntimeAdapter<'a, crate::Executor, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>;
 
-/// Component declaration context. Does not own middleware transport.
-pub struct ComponentContext<'a, R: ComponentRuntime + ?Sized = dyn ComponentRuntime + 'a> {
+/// Node declaration context. Does not own middleware transport.
+pub struct NodeContext<'a, R: NodeRuntime + ?Sized = dyn NodeRuntime + 'a> {
     component_name: &'static str,
     runtime: &'a mut R,
 }
 
-impl<'a, R: ComponentRuntime + ?Sized> ComponentContext<'a, R> {
+impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
     /// Build a context over a metadata recorder or generated runtime.
     pub fn new(component_name: &'static str, runtime: &'a mut R) -> Self {
         Self {
@@ -361,9 +361,9 @@ impl<'a, R: ComponentRuntime + ?Sized> ComponentContext<'a, R> {
         &mut self,
         id: NodeId<'id>,
         options: NodeOptions<'_>,
-    ) -> ComponentResult<ComponentNode<'_, 'id, R>> {
+    ) -> NodeResult<DeclaredNode<'_, 'id, R>> {
         self.runtime.create_node(id, options)?;
-        Ok(ComponentNode {
+        Ok(DeclaredNode {
             runtime: self.runtime,
             id,
         })
@@ -379,12 +379,12 @@ impl<'a, R: ComponentRuntime + ?Sized> ComponentContext<'a, R> {
 }
 
 /// Declared component node.
-pub struct ComponentNode<'ctx, 'id, R: ComponentRuntime + ?Sized = dyn ComponentRuntime + 'ctx> {
+pub struct DeclaredNode<'ctx, 'id, R: NodeRuntime + ?Sized = dyn NodeRuntime + 'ctx> {
     runtime: &'ctx mut R,
     id: NodeId<'id>,
 }
 
-impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
+impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Stable node ID.
     pub const fn id(&self) -> NodeId<'id> {
         self.id
@@ -396,7 +396,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         &mut self,
         id: EntityId<'entity>,
         topic: &str,
-    ) -> ComponentResult<ComponentPublisher<'entity, M>> {
+    ) -> NodeResult<NodePublisher<'entity, M>> {
         self.create_publisher_with_qos::<M>(id, topic, QosSettings::default())
     }
 
@@ -407,7 +407,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         topic: &str,
         qos: QosSettings,
-    ) -> ComponentResult<ComponentPublisher<'entity, M>> {
+    ) -> NodeResult<NodePublisher<'entity, M>> {
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -419,7 +419,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         })?;
         metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
-        Ok(ComponentPublisher::new(id))
+        Ok(NodePublisher::new(id))
     }
 
     /// Declare a subscription. Stable subscription and callback IDs are required.
@@ -429,7 +429,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         callback_id: CallbackId<'callback>,
         topic: &str,
-    ) -> ComponentResult<ComponentSubscription<'entity, M>> {
+    ) -> NodeResult<NodeSubscription<'entity, M>> {
         self.create_subscription_with_qos::<M>(id, callback_id, topic, QosSettings::default())
     }
 
@@ -441,7 +441,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         callback_id: CallbackId<'callback>,
         topic: &str,
         qos: QosSettings,
-    ) -> ComponentResult<ComponentSubscription<'entity, M>> {
+    ) -> NodeResult<NodeSubscription<'entity, M>> {
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -455,7 +455,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
         self.runtime.create_entity(metadata)?;
-        Ok(ComponentSubscription::new(id))
+        Ok(NodeSubscription::new(id))
     }
 
     /// Declare a timer. Stable timer and callback IDs are required.
@@ -465,7 +465,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         callback_id: CallbackId<'callback>,
         period: TimerDuration,
-    ) -> ComponentResult<ComponentTimer<'entity>> {
+    ) -> NodeResult<NodeTimer<'entity>> {
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -480,7 +480,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         metadata.source = metadata.callback_source.clone();
         metadata.period_ms = Some(period.as_millis());
         self.runtime.create_entity(metadata)?;
-        Ok(ComponentTimer::new(id))
+        Ok(NodeTimer::new(id))
     }
 
     /// Declare a service server. Stable service and callback IDs are required.
@@ -490,7 +490,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         callback_id: CallbackId<'callback>,
         service_name: &str,
-    ) -> ComponentResult<ComponentServiceServer<'entity, S>> {
+    ) -> NodeResult<NodeServiceServer<'entity, S>> {
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -504,7 +504,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
         self.runtime.create_entity(metadata)?;
-        Ok(ComponentServiceServer::new(id))
+        Ok(NodeServiceServer::new(id))
     }
 
     /// Declare a service client. Stable service client ID is required.
@@ -513,7 +513,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         &mut self,
         id: EntityId<'entity>,
         service_name: &str,
-    ) -> ComponentResult<ComponentServiceClient<'entity, S>> {
+    ) -> NodeResult<NodeServiceClient<'entity, S>> {
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -525,7 +525,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         })?;
         metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
-        Ok(ComponentServiceClient::new(id))
+        Ok(NodeServiceClient::new(id))
     }
 
     /// Declare an action server. Stable action and callback IDs are required.
@@ -535,7 +535,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         callback_id: CallbackId<'callback>,
         action_name: &str,
-    ) -> ComponentResult<ComponentActionServer<'entity, A>> {
+    ) -> NodeResult<NodeActionServer<'entity, A>> {
         self.create_action_server_with_callbacks::<A>(
             id,
             callback_id,
@@ -554,7 +554,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         cancel_callback_id: CallbackId<'cancel>,
         accepted_callback_id: CallbackId<'accepted>,
         action_name: &str,
-    ) -> ComponentResult<ComponentActionServer<'entity, A>> {
+    ) -> NodeResult<NodeActionServer<'entity, A>> {
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -572,7 +572,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         metadata.action_accepted_source = metadata.callback_source.clone();
         metadata.source = metadata.callback_source.clone();
         self.runtime.create_entity(metadata)?;
-        Ok(ComponentActionServer::new(id))
+        Ok(NodeActionServer::new(id))
     }
 
     /// Declare an action client. Stable action client ID is required.
@@ -581,7 +581,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         &mut self,
         id: EntityId<'entity>,
         action_name: &str,
-    ) -> ComponentResult<ComponentActionClient<'entity, A>> {
+    ) -> NodeResult<NodeActionClient<'entity, A>> {
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -593,7 +593,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         })?;
         metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
-        Ok(ComponentActionClient::new(id))
+        Ok(NodeActionClient::new(id))
     }
 
     /// Declare a parameter. Stable parameter ID is required.
@@ -603,7 +603,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         name: &str,
         parameter_type: ParameterType,
-    ) -> ComponentResult<ComponentParameter<'entity>> {
+    ) -> NodeResult<NodeParameter<'entity>> {
         self.declare_parameter_with_default(id, name, ParameterDefault::for_type(parameter_type)?)
     }
 
@@ -614,7 +614,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         name: &str,
         default: ParameterDefault,
-    ) -> ComponentResult<ComponentParameter<'entity>> {
+    ) -> NodeResult<NodeParameter<'entity>> {
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.id,
@@ -628,7 +628,7 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         metadata.parameter_default = Some(default);
         metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
-        Ok(ComponentParameter::new(id))
+        Ok(NodeParameter::new(id))
     }
 
     /// Record optional effects for a callback.
@@ -644,28 +644,28 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
 }
 
 /// Builder for optional callback effect metadata.
-pub struct CallbackEffects<'ctx, 'id, R: ComponentRuntime + ?Sized = dyn ComponentRuntime + 'ctx> {
+pub struct CallbackEffects<'ctx, 'id, R: NodeRuntime + ?Sized = dyn NodeRuntime + 'ctx> {
     runtime: &'ctx mut R,
     id: CallbackId<'id>,
 }
 
-impl<'ctx, 'id, R: ComponentRuntime + ?Sized> CallbackEffects<'ctx, 'id, R> {
+impl<'ctx, 'id, R: NodeRuntime + ?Sized> CallbackEffects<'ctx, 'id, R> {
     /// Record that callback reads from an entity.
-    pub fn reads(self, entity_id: EntityId<'_>) -> ComponentResult<Self> {
+    pub fn reads(self, entity_id: EntityId<'_>) -> NodeResult<Self> {
         self.runtime
             .record_callback_effect(self.id, CallbackEffectKind::Reads, entity_id)?;
         Ok(self)
     }
 
     /// Record that callback publishes via an entity.
-    pub fn publishes(self, entity_id: EntityId<'_>) -> ComponentResult<Self> {
+    pub fn publishes(self, entity_id: EntityId<'_>) -> NodeResult<Self> {
         self.runtime
             .record_callback_effect(self.id, CallbackEffectKind::Publishes, entity_id)?;
         Ok(self)
     }
 
     /// Record that callback writes to an entity or parameter.
-    pub fn writes(self, entity_id: EntityId<'_>) -> ComponentResult<Self> {
+    pub fn writes(self, entity_id: EntityId<'_>) -> NodeResult<Self> {
         self.runtime
             .record_callback_effect(self.id, CallbackEffectKind::Writes, entity_id)?;
         Ok(self)
@@ -697,20 +697,20 @@ macro_rules! component_handle {
     };
 }
 
-component_handle!(ComponentPublisher, M);
-component_handle!(ComponentSubscription, M);
-component_handle!(ComponentServiceServer, S);
-component_handle!(ComponentServiceClient, S);
-component_handle!(ComponentActionServer, A);
-component_handle!(ComponentActionClient, A);
-component_handle!(ComponentTimer);
-component_handle!(ComponentParameter);
+component_handle!(NodePublisher, M);
+component_handle!(NodeSubscription, M);
+component_handle!(NodeServiceServer, S);
+component_handle!(NodeServiceClient, S);
+component_handle!(NodeActionServer, A);
+component_handle!(NodeActionClient, A);
+component_handle!(NodeTimer);
+component_handle!(NodeParameter);
 
 // ============================================================================
 // Phase 172 W.5.1 — executable component layer (callback bodies)
 // ============================================================================
 //
-// The declarative `Component::register` above stays the planning/metadata SSOT.
+// The declarative `Node::register` above stays the planning/metadata SSOT.
 // This layer binds *runnable* bodies: the generated runtime builds the
 // component `State` once, then routes each fired callback to `on_callback` with
 // a `CallbackCtx` that exposes the triggering payload + an immediate publish
@@ -728,9 +728,9 @@ component_handle!(ComponentParameter);
 /// implement this.
 pub trait PublisherResolver {
     /// Publish raw CDR bytes through the publisher with this stable entity id.
-    /// `Err(ComponentError::Runtime)` if no such publisher is registered or the
+    /// `Err(NodeDeclError::Runtime)` if no such publisher is registered or the
     /// transport rejects the write.
-    fn publish_raw(&self, entity_id: &str, data: &[u8]) -> ComponentResult<()>;
+    fn publish_raw(&self, entity_id: &str, data: &[u8]) -> NodeResult<()>;
 }
 
 /// Where a service / action-result callback body writes its reply (W.5.3): the
@@ -833,35 +833,35 @@ impl<'a> CallbackCtx<'a> {
 
     /// Set the action goal-callback's accept/reject decision (W.5.3). `Err` when
     /// the callback is not a goal decision.
-    pub fn set_goal_response(&mut self, response: GoalResponse) -> ComponentResult<()> {
+    pub fn set_goal_response(&mut self, response: GoalResponse) -> NodeResult<()> {
         match &mut self.decision {
             Some(DecisionSink::Goal(slot)) => {
                 **slot = response;
                 Ok(())
             }
-            _ => Err(ComponentError::Runtime),
+            _ => Err(NodeDeclError::Runtime),
         }
     }
 
     /// Set the action cancel-callback's accept/reject decision (W.5.3). `Err` when
     /// the callback is not a cancel decision.
-    pub fn set_cancel_response(&mut self, response: CancelResponse) -> ComponentResult<()> {
+    pub fn set_cancel_response(&mut self, response: CancelResponse) -> NodeResult<()> {
         match &mut self.decision {
             Some(DecisionSink::Cancel(slot)) => {
                 **slot = response;
                 Ok(())
             }
-            _ => Err(ComponentError::Runtime),
+            _ => Err(NodeDeclError::Runtime),
         }
     }
 
     /// Write the service / action reply as raw CDR bytes (W.5.3). `Err` when the
     /// callback has no reply sink (timer / subscription) or the reply exceeds the
     /// lent buffer.
-    pub fn reply_raw(&mut self, data: &[u8]) -> ComponentResult<()> {
-        let sink = self.reply.as_mut().ok_or(ComponentError::Runtime)?;
+    pub fn reply_raw(&mut self, data: &[u8]) -> NodeResult<()> {
+        let sink = self.reply.as_mut().ok_or(NodeDeclError::Runtime)?;
         if data.len() > sink.buf.len() {
-            return Err(ComponentError::Runtime);
+            return Err(NodeDeclError::Runtime);
         }
         sink.buf[..data.len()].copy_from_slice(data);
         *sink.written = data.len();
@@ -869,12 +869,12 @@ impl<'a> CallbackCtx<'a> {
     }
 
     /// Serialize `msg` and write it as the service / action reply (W.5.3).
-    pub fn reply<M: RosMessage, const N: usize>(&mut self, msg: &M) -> ComponentResult<()> {
+    pub fn reply<M: RosMessage, const N: usize>(&mut self, msg: &M) -> NodeResult<()> {
         let mut buf = [0u8; N];
         let mut writer =
-            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| NodeDeclError::Runtime)?;
         msg.serialize(&mut writer)
-            .map_err(|_| ComponentError::Runtime)?;
+            .map_err(|_| NodeDeclError::Runtime)?;
         let len = writer.position();
         self.reply_raw(&buf[..len])
     }
@@ -886,14 +886,14 @@ impl<'a> CallbackCtx<'a> {
 
     /// Deserialize the triggering payload as `M` (subscription / service-request
     /// bodies). `Err` if the payload is malformed for `M`.
-    pub fn message<M: RosMessage>(&self) -> ComponentResult<M> {
+    pub fn message<M: RosMessage>(&self) -> NodeResult<M> {
         let mut reader =
-            crate::CdrReader::new_with_header(self.payload).map_err(|_| ComponentError::Runtime)?;
-        M::deserialize(&mut reader).map_err(|_| ComponentError::Runtime)
+            crate::CdrReader::new_with_header(self.payload).map_err(|_| NodeDeclError::Runtime)?;
+        M::deserialize(&mut reader).map_err(|_| NodeDeclError::Runtime)
     }
 
     /// Publish raw CDR bytes through the named publisher entity (immediate).
-    pub fn publish_raw(&self, publisher: EntityId<'_>, data: &[u8]) -> ComponentResult<()> {
+    pub fn publish_raw(&self, publisher: EntityId<'_>, data: &[u8]) -> NodeResult<()> {
         self.publishers.publish_raw(publisher.as_str(), data)
     }
 
@@ -904,18 +904,18 @@ impl<'a> CallbackCtx<'a> {
         &self,
         publisher: EntityId<'_>,
         msg: &M,
-    ) -> ComponentResult<()> {
+    ) -> NodeResult<()> {
         let mut buf = [0u8; N];
         let mut writer =
-            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| NodeDeclError::Runtime)?;
         msg.serialize(&mut writer)
-            .map_err(|_| ComponentError::Runtime)?;
+            .map_err(|_| NodeDeclError::Runtime)?;
         let len = writer.position();
         self.publish_raw(publisher, &buf[..len])
     }
 }
 
-/// The executable counterpart of [`Component`] (W.5.1).
+/// The executable counterpart of [`Node`] (W.5.1).
 ///
 /// `register` (declarative) stays the planning SSOT; this binds runnable
 /// bodies. The generated runtime builds [`State`](Self::State) once via
@@ -926,7 +926,7 @@ impl<'a> CallbackCtx<'a> {
 ///
 /// Action result/feedback need `&mut Executor` (`complete_goal_raw` /
 /// `publish_feedback_raw`), which a mid-spin *callback* can't hold (the executor
-/// is borrowed) — so they run from [`ExecutableComponent::tick`], between spins.
+/// is borrowed) — so they run from [`ExecutableNode::tick`], between spins.
 /// The generated runtime implements this over the real executor + the action
 /// servers' handles (resolved by stable action entity id); the component never
 /// sees the executor directly. Kept as a trait so [`TickCtx`] stays `no_std` +
@@ -939,7 +939,7 @@ pub trait ActionExecutor {
         goal_id: &GoalId,
         status: GoalStatus,
         result: &[u8],
-    ) -> ComponentResult<()>;
+    ) -> NodeResult<()>;
 
     /// Publish raw CDR feedback for `goal_id` on action `action_entity`.
     fn publish_feedback_raw(
@@ -947,7 +947,7 @@ pub trait ActionExecutor {
         action_entity: &str,
         goal_id: &GoalId,
         feedback: &[u8],
-    ) -> ComponentResult<()>;
+    ) -> NodeResult<()>;
 
     /// Visit every goal on `action_entity` that has been accepted but not yet
     /// completed, with its id + current status. The execution seam: a `tick` body
@@ -960,7 +960,7 @@ pub trait ActionExecutor {
 ///
 /// Service-client `call` + action-client `send_goal` need `&mut Executor`
 /// (the W.5.6 client handles live on the executor), which a mid-spin
-/// callback can't hold. They run from [`ExecutableComponent::tick`], between
+/// callback can't hold. They run from [`ExecutableNode::tick`], between
 /// spins. The generated runtime impls this over the real executor + the
 /// service/action client handles (resolved by stable client entity id); the
 /// component never sees the executor directly. Kept as a trait so [`TickCtx`]
@@ -985,16 +985,16 @@ pub trait ClientDispatch {
         service_entity: &str,
         request_cdr: &[u8],
         response_buf: &mut [u8],
-    ) -> ComponentResult<usize>;
+    ) -> NodeResult<usize>;
 
     /// Send an action-client goal request on `action_entity` carrying
     /// CDR `goal_cdr`; return the assigned [`GoalId`] (server-stamped on
     /// the goal-accept response). Result + feedback streams arrive via
     /// callback dispatch — not this method.
-    fn send_goal_raw(&mut self, action_entity: &str, goal_cdr: &[u8]) -> ComponentResult<GoalId>;
+    fn send_goal_raw(&mut self, action_entity: &str, goal_cdr: &[u8]) -> NodeResult<GoalId>;
 }
 
-/// Context handed to [`ExecutableComponent::tick`] (W.5.6 + M-F.4): the per-spin
+/// Context handed to [`ExecutableNode::tick`] (W.5.6 + M-F.4): the per-spin
 /// hook that runs *between* callback dispatch, where the executor is free.
 /// Exposes the immediate publish path (like `CallbackCtx`) plus executor-backed
 /// action-server ops (complete goal / publish feedback) AND executor-backed
@@ -1021,7 +1021,7 @@ impl<'a> TickCtx<'a> {
     }
 
     /// Publish raw CDR bytes through the named publisher entity (immediate).
-    pub fn publish_raw(&self, publisher: EntityId<'_>, data: &[u8]) -> ComponentResult<()> {
+    pub fn publish_raw(&self, publisher: EntityId<'_>, data: &[u8]) -> NodeResult<()> {
         self.publishers.publish_raw(publisher.as_str(), data)
     }
 
@@ -1030,12 +1030,12 @@ impl<'a> TickCtx<'a> {
         &self,
         publisher: EntityId<'_>,
         msg: &M,
-    ) -> ComponentResult<()> {
+    ) -> NodeResult<()> {
         let mut buf = [0u8; N];
         let mut writer =
-            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| NodeDeclError::Runtime)?;
         msg.serialize(&mut writer)
-            .map_err(|_| ComponentError::Runtime)?;
+            .map_err(|_| NodeDeclError::Runtime)?;
         let len = writer.position();
         self.publish_raw(publisher, &buf[..len])
     }
@@ -1048,14 +1048,14 @@ impl<'a> TickCtx<'a> {
         goal_id: &GoalId,
         status: GoalStatus,
         result: &R,
-    ) -> ComponentResult<()> {
+    ) -> NodeResult<()> {
         // Header-less inner CDR: the executor's `complete_goal_raw` frames the
         // outer envelope (matches the typed `ActionServerHandle::complete_goal`).
         let mut buf = [0u8; N];
         let mut writer = crate::CdrWriter::new(&mut buf);
         result
             .serialize(&mut writer)
-            .map_err(|_| ComponentError::Runtime)?;
+            .map_err(|_| NodeDeclError::Runtime)?;
         let len = writer.position();
         self.actions
             .complete_goal_raw(action.as_str(), goal_id, status, &buf[..len])
@@ -1080,14 +1080,14 @@ impl<'a> TickCtx<'a> {
         action: EntityId<'_>,
         goal_id: &GoalId,
         feedback: &F,
-    ) -> ComponentResult<()> {
+    ) -> NodeResult<()> {
         // Header-less inner CDR: the executor's `publish_feedback_raw` frames the
         // outer envelope (matches the typed `ActionServerHandle::publish_feedback`).
         let mut buf = [0u8; N];
         let mut writer = crate::CdrWriter::new(&mut buf);
         feedback
             .serialize(&mut writer)
-            .map_err(|_| ComponentError::Runtime)?;
+            .map_err(|_| NodeDeclError::Runtime)?;
         let len = writer.position();
         self.actions
             .publish_feedback_raw(action.as_str(), goal_id, &buf[..len])
@@ -1101,7 +1101,7 @@ impl<'a> TickCtx<'a> {
         service: EntityId<'_>,
         request_cdr: &[u8],
         response_buf: &mut [u8],
-    ) -> ComponentResult<usize> {
+    ) -> NodeResult<usize> {
         self.clients
             .call_raw(service.as_str(), request_cdr, response_buf)
     }
@@ -1114,13 +1114,13 @@ impl<'a> TickCtx<'a> {
         &mut self,
         service: EntityId<'_>,
         request: &Req,
-    ) -> ComponentResult<Resp> {
+    ) -> NodeResult<Resp> {
         let mut req_buf = [0u8; REQ_N];
         let mut writer =
-            crate::CdrWriter::new_with_header(&mut req_buf).map_err(|_| ComponentError::Runtime)?;
+            crate::CdrWriter::new_with_header(&mut req_buf).map_err(|_| NodeDeclError::Runtime)?;
         request
             .serialize(&mut writer)
-            .map_err(|_| ComponentError::Runtime)?;
+            .map_err(|_| NodeDeclError::Runtime)?;
         let req_len = writer.position();
 
         let mut resp_buf = [0u8; RESP_N];
@@ -1129,8 +1129,8 @@ impl<'a> TickCtx<'a> {
                 .call_raw(service.as_str(), &req_buf[..req_len], &mut resp_buf)?;
 
         let mut reader = crate::CdrReader::new_with_header(&resp_buf[..resp_len])
-            .map_err(|_| ComponentError::Runtime)?;
-        Resp::deserialize(&mut reader).map_err(|_| ComponentError::Runtime)
+            .map_err(|_| NodeDeclError::Runtime)?;
+        Resp::deserialize(&mut reader).map_err(|_| NodeDeclError::Runtime)
     }
 
     /// Send a raw-CDR action-client goal and return the assigned
@@ -1140,7 +1140,7 @@ impl<'a> TickCtx<'a> {
         &mut self,
         action: EntityId<'_>,
         goal_cdr: &[u8],
-    ) -> ComponentResult<GoalId> {
+    ) -> NodeResult<GoalId> {
         self.clients.send_goal_raw(action.as_str(), goal_cdr)
     }
 
@@ -1151,18 +1151,18 @@ impl<'a> TickCtx<'a> {
         &mut self,
         action: EntityId<'_>,
         goal: &G,
-    ) -> ComponentResult<GoalId> {
+    ) -> NodeResult<GoalId> {
         let mut buf = [0u8; N];
         let mut writer =
-            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| NodeDeclError::Runtime)?;
         goal.serialize(&mut writer)
-            .map_err(|_| ComponentError::Runtime)?;
+            .map_err(|_| NodeDeclError::Runtime)?;
         let len = writer.position();
         self.clients.send_goal_raw(action.as_str(), &buf[..len])
     }
 }
 
-pub trait ExecutableComponent: Component {
+pub trait ExecutableNode: Node {
     /// Per-instance mutable state shared across the component's callbacks.
     type State;
 
@@ -1181,20 +1181,20 @@ pub trait ExecutableComponent: Component {
     fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
 }
 
-/// Emit a no-op [`ExecutableComponent`] impl for a declarative-only component
+/// Emit a no-op [`ExecutableNode`] impl for a declarative-only component
 /// (W.5.1). The generated runtime calls `on_callback` unconditionally, so a
-/// component instantiated into a generated binary must impl `ExecutableComponent`;
+/// component instantiated into a generated binary must impl `ExecutableNode`;
 /// components without callback bodies use this to satisfy that contract:
 ///
 /// ```ignore
-/// pub struct Component;
-/// impl nros::Component for Component { /* register(...) */ }
-/// nros::declarative_component!(Component);
+/// pub struct Node;
+/// impl nros::Node for Node { /* register(...) */ }
+/// nros::declarative_component!(Node);
 /// ```
 #[macro_export]
 macro_rules! declarative_component {
     ($ty:ty) => {
-        impl $crate::ExecutableComponent for $ty {
+        impl $crate::ExecutableNode for $ty {
             type State = ();
             fn init() -> Self::State {}
             fn on_callback(
@@ -1208,29 +1208,29 @@ macro_rules! declarative_component {
 }
 
 /// Run component registration against any component runtime.
-pub fn register_component<C: Component>(runtime: &mut dyn ComponentRuntime) -> ComponentResult<()> {
-    let mut context = ComponentContext::new(C::NAME, runtime);
+pub fn register_node<C: Node>(runtime: &mut dyn NodeRuntime) -> NodeResult<()> {
+    let mut context = NodeContext::new(C::NAME, runtime);
     C::register(&mut context)
 }
 
 /// Phase 212.M.5.a.4 internal — `Box`-erase a freshly built component
 /// `State` to the type-erased `*mut ()` ABI the BSP path uses. Called
-/// only from the `nros::component!()` macro emit; not public API.
+/// only from the `nros::node!()` macro emit; not public API.
 ///
 /// The returned pointer is a leaked `Box`; the BSP runtime keeps it
 /// alive for the firmware lifetime (embedded slots never deallocate).
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
-pub fn __private_component_state_into_raw<C: ExecutableComponent>(state: C::State) -> *mut () {
+pub fn __private_node_state_into_raw<C: ExecutableNode>(state: C::State) -> *mut () {
     extern crate alloc;
     alloc::boxed::Box::into_raw(alloc::boxed::Box::new(state)) as *mut ()
 }
 
 /// Run component registration against an in-memory metadata recorder.
-pub fn record_component_metadata<C: Component>(
-    recorder: &mut dyn ComponentRuntime,
-) -> ComponentResult<()> {
-    register_component::<C>(recorder)
+pub fn record_node_metadata<C: Node>(
+    recorder: &mut dyn NodeRuntime,
+) -> NodeResult<()> {
+    register_node::<C>(recorder)
 }
 
 #[cfg(test)]
@@ -1244,17 +1244,17 @@ mod tests {
         created: Vec<MetadataString, 4>,
     }
 
-    impl ComponentNodeRuntime for FakeNodeRuntime {
+    impl DeclaredNodeRuntime for FakeNodeRuntime {
         type NodeHandle = u8;
 
         fn build_component_node(
             &mut self,
             _id: NodeId<'_>,
             options: NodeOptions<'_>,
-        ) -> ComponentResult<Self::NodeHandle> {
+        ) -> NodeResult<Self::NodeHandle> {
             self.created
                 .push(copy_str(options.name)?)
-                .map_err(|_| ComponentError::Metadata(ComponentMetadataError::Capacity))?;
+                .map_err(|_| NodeDeclError::Metadata(NodeMetadataError::Capacity))?;
             let handle = self.next;
             self.next += 1;
             Ok(handle)
@@ -1304,10 +1304,10 @@ mod tests {
 
     struct TalkerComponent;
 
-    impl Component for TalkerComponent {
+    impl Node for TalkerComponent {
         const NAME: &'static str = "talker_component";
 
-        fn register(context: &mut ComponentContext<'_>) -> ComponentResult<()> {
+        fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
             let mut node = context.create_node(NodeId::new("node"), NodeOptions::new("talker"))?;
             let _publisher =
                 node.create_publisher::<TestMsg>(EntityId::new("pub_chatter"), "chatter")?;
@@ -1333,7 +1333,7 @@ mod tests {
     #[test]
     fn component_records_metadata_without_transport() {
         let mut recorder = MetadataRecorder::<2, 8, 4>::new();
-        record_component_metadata::<TalkerComponent>(&mut recorder).unwrap();
+        record_node_metadata::<TalkerComponent>(&mut recorder).unwrap();
 
         assert_eq!(recorder.nodes().len(), 1);
         assert_eq!(recorder.nodes()[0].name.as_str(), "talker");
@@ -1353,9 +1353,9 @@ mod tests {
     #[test]
     fn runtime_adapter_maps_stable_nodes_to_runtime_handles() {
         let mut node_runtime = FakeNodeRuntime::default();
-        let mut runtime = ComponentRuntimeAdapter::<_, 2, 8, 4>::new(&mut node_runtime);
+        let mut runtime = NodeRuntimeAdapter::<_, 2, 8, 4>::new(&mut node_runtime);
 
-        register_component::<TalkerComponent>(&mut runtime).unwrap();
+        register_node::<TalkerComponent>(&mut runtime).unwrap();
 
         assert_eq!(runtime.nodes().len(), 1);
         assert_eq!(runtime.nodes()[0].stable_id(), "node");
@@ -1367,15 +1367,15 @@ mod tests {
     #[test]
     fn runtime_adapter_rejects_duplicate_nodes_and_unknown_effect_entities() {
         let mut node_runtime = FakeNodeRuntime::default();
-        let mut runtime = ComponentRuntimeAdapter::<_, 1, 1, 1>::new(&mut node_runtime);
+        let mut runtime = NodeRuntimeAdapter::<_, 1, 1, 1>::new(&mut node_runtime);
         runtime
             .create_node(NodeId::new("node"), NodeOptions::new("talker"))
             .unwrap();
 
         assert_eq!(
             runtime.create_node(NodeId::new("node"), NodeOptions::new("other")),
-            Err(ComponentError::Metadata(
-                ComponentMetadataError::DuplicateId
+            Err(NodeDeclError::Metadata(
+                NodeMetadataError::DuplicateId
             ))
         );
         assert_eq!(
@@ -1384,8 +1384,8 @@ mod tests {
                 CallbackEffectKind::Reads,
                 EntityId::new("missing")
             ),
-            Err(ComponentError::Metadata(
-                ComponentMetadataError::UnknownEntity
+            Err(NodeDeclError::Metadata(
+                NodeMetadataError::UnknownEntity
             ))
         );
     }
@@ -1393,14 +1393,14 @@ mod tests {
     #[test]
     fn component_rejects_effect_for_unknown_entity() {
         let mut recorder = MetadataRecorder::<1, 1, 1>::new();
-        let mut context = ComponentContext::new("test", &mut recorder);
+        let mut context = NodeContext::new("test", &mut recorder);
         let result = context
             .callback(CallbackId::new("cb"))
             .reads(EntityId::new("missing"));
         assert!(matches!(
             result,
-            Err(ComponentError::Metadata(
-                ComponentMetadataError::UnknownEntity
+            Err(NodeDeclError::Metadata(
+                NodeMetadataError::UnknownEntity
             ))
         ));
     }
@@ -1408,21 +1408,21 @@ mod tests {
     #[test]
     fn component_missing_export_error_message_is_clear() {
         assert_eq!(
-            ComponentError::MissingExport.message(),
-            MISSING_COMPONENT_EXPORT_ERROR
+            NodeDeclError::MissingExport.message(),
+            MISSING_NODE_EXPORT_ERROR
         );
         assert_eq!(
-            ComponentError::MissingExport.message(),
+            NodeDeclError::MissingExport.message(),
             "package has no exported nros component"
         );
     }
 
     struct RobotComponent;
 
-    impl Component for RobotComponent {
+    impl Node for RobotComponent {
         const NAME: &'static str = "robot_component";
 
-        fn register(context: &mut ComponentContext<'_>) -> ComponentResult<()> {
+        fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
             {
                 let mut sensors = context
                     .create_node(NodeId::new("node_sensors"), NodeOptions::new("sensors"))?;
@@ -1470,7 +1470,7 @@ mod tests {
     #[test]
     fn component_api_records_multi_node_services_actions_and_defaults() {
         let mut recorder = MetadataRecorder::<4, 12, 4>::new();
-        record_component_metadata::<RobotComponent>(&mut recorder).unwrap();
+        record_node_metadata::<RobotComponent>(&mut recorder).unwrap();
 
         assert_eq!(recorder.nodes().len(), 2);
         assert_eq!(recorder.nodes()[0].id.as_str(), "node_sensors");
@@ -1549,7 +1549,7 @@ mod tests {
     #[test]
     fn component_api_json_contains_planner_callback_links() {
         let mut recorder = MetadataRecorder::<4, 12, 4>::new();
-        record_component_metadata::<RobotComponent>(&mut recorder).unwrap();
+        record_node_metadata::<RobotComponent>(&mut recorder).unwrap();
 
         let json = recorder
             .to_source_metadata_json(&crate::SourceMetadataExport::new(
@@ -1574,9 +1574,9 @@ mod tests {
 
     // W.5.1 — an executable component callback runs its body: mutates state +
     // publishes immediately through the resolver (the substrate the generator
-    // will wire). `TalkerComponent` already impls `Component` (declarative);
-    // here it also impls `ExecutableComponent`.
-    impl ExecutableComponent for TalkerComponent {
+    // will wire). `TalkerComponent` already impls `Node` (declarative);
+    // here it also impls `ExecutableNode`.
+    impl ExecutableNode for TalkerComponent {
         type State = u32;
 
         fn init() -> u32 {
@@ -1600,7 +1600,7 @@ mod tests {
             last: RefCell<Option<(MetadataString, usize)>>,
         }
         impl PublisherResolver for RecordingResolver {
-            fn publish_raw(&self, entity_id: &str, data: &[u8]) -> ComponentResult<()> {
+            fn publish_raw(&self, entity_id: &str, data: &[u8]) -> NodeResult<()> {
                 *self.last.borrow_mut() = Some((copy_str(entity_id)?, data.len()));
                 Ok(())
             }
@@ -1634,7 +1634,7 @@ mod tests {
     fn callback_ctx_reply_sink_roundtrips() {
         struct NoopResolver;
         impl PublisherResolver for NoopResolver {
-            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> ComponentResult<()> {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> NodeResult<()> {
                 Ok(())
             }
         }
@@ -1660,7 +1660,7 @@ mod tests {
     fn callback_ctx_decision_sink() {
         struct NoopResolver;
         impl PublisherResolver for NoopResolver {
-            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> ComponentResult<()> {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> NodeResult<()> {
                 Ok(())
             }
         }
@@ -1698,7 +1698,7 @@ mod tests {
             published: Cell<bool>,
         }
         impl PublisherResolver for RecPub {
-            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> ComponentResult<()> {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> NodeResult<()> {
                 self.published.set(true);
                 Ok(())
             }
@@ -1715,7 +1715,7 @@ mod tests {
                 _goal_id: &GoalId,
                 _status: GoalStatus,
                 _result: &[u8],
-            ) -> ComponentResult<()> {
+            ) -> NodeResult<()> {
                 self.completed = true;
                 Ok(())
             }
@@ -1724,7 +1724,7 @@ mod tests {
                 _action_entity: &str,
                 _goal_id: &GoalId,
                 _feedback: &[u8],
-            ) -> ComponentResult<()> {
+            ) -> NodeResult<()> {
                 self.fed = true;
                 Ok(())
             }
@@ -1745,11 +1745,11 @@ mod tests {
                 _service: &str,
                 _req: &[u8],
                 _resp: &mut [u8],
-            ) -> ComponentResult<usize> {
-                Err(ComponentError::Runtime)
+            ) -> NodeResult<usize> {
+                Err(NodeDeclError::Runtime)
             }
-            fn send_goal_raw(&mut self, _action: &str, _goal: &[u8]) -> ComponentResult<GoalId> {
-                Err(ComponentError::Runtime)
+            fn send_goal_raw(&mut self, _action: &str, _goal: &[u8]) -> NodeResult<GoalId> {
+                Err(NodeDeclError::Runtime)
             }
         }
 

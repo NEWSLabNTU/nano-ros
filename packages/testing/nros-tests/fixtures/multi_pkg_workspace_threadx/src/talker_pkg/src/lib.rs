@@ -3,7 +3,7 @@
 // Phase 212.M.5.a.1 — exposes the canonical per-pkg mangled
 // `__nros_component_talker_pkg_register` entry that the codegen-emitted
 // `system_main.c` calls. Real Phase 212 components will use
-// `nros::component!()` to emit this symbol; this fixture hand-writes
+// `nros::node!()` to emit this symbol; this fixture hand-writes
 // the export to keep the build-path + corrosion-bridge audit scoped
 // (no nros workspace pull-in).
 

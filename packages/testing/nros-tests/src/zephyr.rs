@@ -635,7 +635,7 @@ fn decode_alias(
             ("rust", "action-client", "cyclonedds", "")
         }
         // `service-client-async` zephyr/rust example dropped 2026-06-02 per
-        // Phase 212.M-F.5 — pending async-`Component` trait decision.
+        // Phase 212.M-F.5 — pending async-`Node` trait decision.
         "zephyr-dds-rs-talker-a9" => ("rust", "talker", "cyclonedds", "-a9"),
         "zephyr-dds-rs-listener-a9" => ("rust", "listener", "cyclonedds", "-a9"),
         "zephyr-dds-rs-service-server-a9" => ("rust", "service-server", "cyclonedds", "-a9"),
