@@ -56,7 +56,23 @@ test verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
+    # (e.g. xrce agent not present). Nextest records those as failures.
+    # Phase 214.R.1 rewrites them to <skipped> + the real-failure tally
+    # promotes a SKIPPED-only run to a pass.
+    set +e
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    rc=$?
+    set -e
+    just _rewrite-skipped-junit || true
+    [ $rc -eq 0 ] && exit 0
+    real="$(just _count-real-failures)"
+    just _test-summary || true
+    if [ "$real" -ne 0 ]; then
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s)."
+        exit 1
+    fi
+    echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 # XRCE ↔ ROS 2 DDS interop tests (needs XRCE Agent + ROS 2 + rmw_fastrtps)
 [group("debug")]
@@ -69,7 +85,20 @@ test-ros2 verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    set +e
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    rc=$?
+    set -e
+    # Phase 214.R.1: SKIPPED → <skipped> + skip-aware tail.
+    just _rewrite-skipped-junit || true
+    [ $rc -eq 0 ] && exit 0
+    real="$(just _count-real-failures)"
+    just _test-summary || true
+    if [ "$real" -ne 0 ]; then
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s)."
+        exit 1
+    fi
+    echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 # C XRCE-DDS API integration tests (needs cmake + XRCE Agent)
 [group("debug")]
@@ -82,7 +111,20 @@ test-c verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    set +e
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    rc=$?
+    set -e
+    # Phase 214.R.1: SKIPPED → <skipped> + skip-aware tail.
+    just _rewrite-skipped-junit || true
+    [ $rc -eq 0 ] && exit 0
+    real="$(just _count-real-failures)"
+    just _test-summary || true
+    if [ "$real" -ne 0 ]; then
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s)."
+        exit 1
+    fi
+    echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 # Phase 121.7.i — `cargo check` the out-of-workspace nros-rmw-xrce Rust
 # crate so CI catches drift after platform-API or trait-surface changes.

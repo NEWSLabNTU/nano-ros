@@ -454,6 +454,8 @@ _nextest-platform test_name verbose="":
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     rc=$?
     set -e
+    # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying.
+    just _rewrite-skipped-junit || true
     [ $rc -eq 0 ] && exit 0
     real="$(just _count-real-failures)"
     just _test-summary || true
@@ -474,11 +476,25 @@ test-doc:
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     cargo test $cargo_profile_args --doc -p nros
 
+# Rewrite [SKIPPED]-marker <failure> entries in the junit.xml to <skipped>
+# so downstream consumers (CI dashboards, _count-real-failures, _test-summary,
+# scripts/test/failed-filterset.py) see them as skips, not failures.
+# Idempotent + safe on missing files. See `scripts/test/rewrite-skipped-junit.py`
+# and `docs/development/test-harness.md` (Phase 214.R).
+_rewrite-skipped-junit junit="target/nextest/default/junit.xml":
+    #!/usr/bin/env bash
+    python3 scripts/test/rewrite-skipped-junit.py "{{junit}}"
+
 # Count real (non-[SKIPPED]) test failures from the latest junit.xml.
 # Tests that panic with `[SKIPPED] ...` (via the nros_tests::skip! macro)
 # are environment-conditional skips and excluded from the real failure count.
 # Counts only `<failure ` entries whose `message=` attribute contains [SKIPPED],
 # not raw `[SKIPPED]` strings (which also appear in `<system-err>`).
+#
+# Phase 214.R.1 added `_rewrite-skipped-junit` which converts those entries
+# to native `<skipped>` BEFORE this counter runs at the recipe tail — so on a
+# post-rewrite junit this returns 0. The legacy grep path here is kept as a
+# defence in depth for callsites that haven't yet been hooked up.
 _count-real-failures junit="target/nextest/default/junit.xml":
     #!/usr/bin/env bash
     junit="{{junit}}"
@@ -556,6 +572,10 @@ test verbose="": build-zenohd
     rm -f "$junit"
     cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
+    # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying so
+    # downstream junit consumers (CI dashboards, _count-real-failures, etc.)
+    # see them as native skips rather than failures.
+    just _rewrite-skipped-junit "$junit" || true
     real_failures=$(just _count-real-failures "$junit")
     if [ "$nextest_exit" -ne 0 ] && [ ! -f "$junit" ]; then
         failed=1
@@ -770,6 +790,8 @@ test-failed verbose="":
     rm -f "$junit"
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     nextest_exit=$?
+    # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying.
+    just _rewrite-skipped-junit "$junit" || true
     echo ""
     just _test-summary "$junit"
     real_failures=$(just _count-real-failures "$junit")
@@ -902,6 +924,8 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     rm -f "$junit"
     cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
+    # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying.
+    just _rewrite-skipped-junit "$junit" || true
     real_failures=$(just _count-real-failures "$junit")
     if [ "$nextest_exit" -ne 0 ] && [ ! -f "$junit" ]; then
         failed=1
