@@ -686,7 +686,37 @@ fn main() {
     // socket-struct ABI. Compiling the alias TU on top would emit
     // duplicate symbols at link. Skip on FreeRTOS — vendor src is
     // the single source of truth there.
-    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && !use_freertos {
+    //
+    // Phase 214.G — gate alias TU emission on an *explicit* platform
+    // feature. The TU emits ~30 `_z_*` forwarders that reference
+    // canonical `nros_platform_*` symbols (`nros_platform_mutex_*`,
+    // `nros_platform_condvar_*`, `nros_platform_time_*`, …). Those
+    // symbols come from a paired provider crate that the consumer
+    // pulls when it selects a platform — `nros-platform-cffi`'s
+    // `posix-c-port` for POSIX hosts, RTOS-specific equivalents
+    // elsewhere. Without an explicit platform feature, no provider
+    // is guaranteed to be on the link line and the alias TU lands a
+    // wall of `undefined symbol: nros_platform_*` errors at every
+    // workspace test binary that pulls `zpico-sys` transitively
+    // (the `cargo test --workspace` link failure that motivated this
+    // gate). Auto-posix (the `target_os = "linux" | "macos" | …`
+    // path above) is a build-script convenience for `cargo check` /
+    // `cargo build` of `zpico-sys` itself — it does NOT imply the
+    // downstream test target enabled `nros-platform/platform-posix`,
+    // so it must NOT trigger alias-TU emission. Consumers that want
+    // the alias TU keep enabling a platform feature on
+    // `nros-rmw-zenoh` / `zpico-sys` (the existing contract); their
+    // dep tree carries `nros-platform-cffi/posix-c-port` to satisfy
+    // the forwarders. Standalone `cargo test -p zpico-sys` and
+    // workspace `--workspace` builds without an explicit feature
+    // now get a header-only `zpico-sys` rlib that links anywhere
+    // (the resulting rlib must not be loaded at runtime — that's
+    // already the same contract the no-backend-selected path emits
+    // above).
+    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some()
+        && !use_freertos
+        && any_explicit
+    {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
         let mut alias_build = cc::Build::new();

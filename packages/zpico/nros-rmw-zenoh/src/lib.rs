@@ -48,6 +48,32 @@ pub mod shim;
 // Re-export zpico types (always available)
 pub use zpico::{ZenohId, ZpicoError};
 
+// Phase 214.G — link-graph anchor for POSIX.
+//
+// `zpico-sys`'s C alias TU (`c/zpico/platform_aliases.c`) forwards
+// every `_z_*` zenoh-pico symbol to the canonical `nros_platform_*`
+// ABI. On POSIX hosts, those symbols live in the C library compiled
+// from `nros-platform-cffi`'s `posix-c-port` feature (forwarded by
+// our `platform-posix` feature → `nros-platform/platform-posix` →
+// `nros-platform-cffi/posix-c-port`).
+//
+// `nros-platform`'s `lib.rs:81` provides `__FORCE_LINK_CFFI` as a
+// `#[used] pub static` so `rust-lld` is forced to pull the
+// `nros-platform-cffi` rlib (and its `libnros_platform_posix.a`
+// native lib) into the final binary. The downstream contract is
+// that any consumer of `nros-platform/platform-posix` that needs
+// those symbols re-anchors the `#[used]` chain locally. Without
+// this re-anchor, `nros-rmw-zenoh` test binaries (which don't
+// reference any `nros_platform` Rust symbol — every callsite goes
+// through the C ABI inside `zpico-sys`) leave the cffi rlib
+// untouched and `rust-lld` errors with `undefined symbol:
+// nros_platform_mutex_*`. See Track G in
+// `docs/roadmap/phase-214-antipattern-audit-findings.md`.
+#[cfg(feature = "platform-posix")]
+#[doc(hidden)]
+#[used]
+pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_LINK_CFFI;
+
 // Re-export platform-gated zpico types
 #[cfg(any(
     feature = "platform-posix",

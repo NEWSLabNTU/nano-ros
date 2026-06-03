@@ -27,10 +27,25 @@ linkme-register = ["nros-rmw-cffi/linkme-register"]
 # the only consumer that needed `ConcretePlatform`. The two
 # `now_ms()` callsites in `shim/{publisher,subscriber}.rs` now
 # call the canonical `nros_platform_time_now_ms` C symbol
-# directly; no Rust trait dispatch, no platform pin. Each
-# `platform-<rtos>` feature here is a pure marker that enables
-# the matching `zpico-sys/<rtos>` build-script switch.
-platform-posix = ["zpico-sys/posix"]
+# directly; no Rust trait dispatch, no platform pin.
+#
+# Phase 214.G — forwards RESTORED for the canonical symbol-provider
+# crate (`nros-platform/platform-<rtos>`). The retirement above only
+# applied to `ConcretePlatform`; the alias TU compiled inside
+# `zpico-sys` (`c/zpico/platform_aliases.c`, default-on via
+# `zpico-sys/platform-aliases`) forwards every `_z_*` zenoh-pico
+# symbol to the canonical `nros_platform_*` ABI, which means
+# selecting `nros-rmw-zenoh/platform-posix` MUST also bring the C
+# provider on the link line. Without the forward, the workspace test
+# build links zpico-sys + the alias TU but no `nros_platform_*`
+# definitions, surfacing as a wall of `undefined symbol:
+# nros_platform_mutex_*` from rust-lld. See Track G in
+# `docs/roadmap/phase-214-antipattern-audit-findings.md`.
+platform-posix = ["zpico-sys/posix", "nros-platform/platform-posix"]
+# Embedded targets keep `nros-platform/platform-<rtos>` opt-in —
+# their providers live in C ports linked at the consumer's
+# board / west / ninja site (Zephyr module, NuttX build system,
+# FreeRTOS / ThreadX board build.rs), not in `nros-platform-cffi`.
 platform-zephyr = ["zpico-sys/zephyr"]
 platform-bare-metal = ["zpico-sys/bare-metal"]
 platform-freertos = ["zpico-sys/freertos"]

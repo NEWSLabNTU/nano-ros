@@ -283,8 +283,9 @@ lifetime transmute footgun. All in board crates / nros-node.
       `compile_error!` guards in place.
 - [ ] Track F: `just check-workspace-embedded` clean; no dev-dep
       forces `nros-serdes/std` on thumb targets.
-- [ ] Track G: `just test-unit` workspace cargo-test link succeeds
+- [x] Track G: `just test-unit` workspace cargo-test link succeeds
       without an unguarded `nros_platform_*` alias avalanche.
+      (`c7b8c9dc0`)
 - [ ] Track H: `just native test` from clean workspace runs without
       "Test fixture binary not prebuilt" cascade.
 - [x] Track I: `nros ws sync` available via Path B source-build env-var
@@ -536,7 +537,7 @@ symbol at lld time.
 
 **Work Items:**
 
-- [ ] **214.G.1 Gate alias emission on a `NROS_PLATFORM_PRESENT`
+- [x] **214.G.1 Gate alias emission on a `NROS_PLATFORM_PRESENT`
       define** — guard each alias group in `platform_aliases.c` with
       `#ifdef NROS_PLATFORM_FORWARDERS_PRESENT` (or per-symbol
       gates: `NROS_PLATFORM_HAS_MUTEX_REC` etc.). `zpico-sys/build.rs`
@@ -547,6 +548,39 @@ symbol at lld time.
       nros-fast-release` link succeeds. Standalone library builds
       (no provider crate) still compile, and the missing aliases
       surface as a single named link-error rather than an avalanche.
+      (`c7b8c9dc0`)
+
+      **Landed deviation**: the `DEP_*` env-var pathway requires a
+      `links =` key on `nros-platform-cffi` plus a new build-dep
+      edge from `zpico-sys` to it — wider rippling than the doc
+      sketch suggested. Implementation took the simpler symmetric
+      path that already lives at `nros-platform/lib.rs:81` for the
+      same provider-link problem:
+        - `zpico-sys/build.rs` skips the alias-TU `cc::Build` when
+          NO explicit platform feature is set (auto-posix on
+          `target_os = linux` was the trap path — it pulled the
+          alias TU into bare `cargo check` rlibs that had no
+          provider downstream).
+        - `nros-rmw-zenoh/Cargo.toml` restores the Phase 129.C.3.a
+          forward `platform-posix = ["zpico-sys/posix",
+          "nros-platform/platform-posix"]` so picking a platform
+          on the RMW activates the matching `posix-c-port` cargo
+          feature (which compiles `libnros_platform_posix.a`).
+        - `nros-rmw-zenoh/src/lib.rs` adds a `#[used] pub static
+          __FORCE_LINK_PLATFORM_CFFI` re-anchor that mirrors the
+          existing chain at `nros-platform/lib.rs:81` and
+          `nros/lib.rs:146`. `nros-rmw-zenoh` itself never
+          references any `nros_platform` Rust symbol (every
+          callsite hits the C ABI inside `zpico-sys`) so without
+          this re-anchor `rust-lld` elides the `nros-platform-cffi`
+          rlib entirely and the linked `libnros_platform_posix.a`
+          never lands on the link line.
+
+      Net acceptance matches the doc: workspace link succeeds,
+      standalone library builds (no provider crate) still compile,
+      cyclonedds path untouched (`cargo test
+      -p nros-rmw-cyclonedds --no-default-features` + `cargo test
+      -p nros-node --features rmw-cyclonedds --lib` both pass).
 
 - [ ] **214.G.2 Test recipe coverage** — add a workspace-level
       `cargo test --no-run --workspace --no-default-features` smoke
