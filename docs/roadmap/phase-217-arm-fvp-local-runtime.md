@@ -1,4 +1,4 @@
-# Phase 214 — ARM FVP local runtime
+# Phase 217 — ARM FVP local runtime
 
 **Goal.** Run the Phase 117.10–117.14 ARM `FVP_BaseR_AEMv8R` (Cortex-A
 SMP, Zephyr 3.7 floor) artifacts on a developer's machine end-to-end:
@@ -68,25 +68,25 @@ accepts the Arm EULA, installs the FVP locally, and exports
 
 ## Work Items
 
-### 214.A — Local run recipes (LANDED 2026-06-03)
+### 217.A — Local run recipes (LANDED 2026-06-03)
 
-- [x] **214.A.1** `scripts/zephyr/resolve-fvp-bin.sh` — resolve
+- [x] **217.A.1** `scripts/zephyr/resolve-fvp-bin.sh` — resolve
       `FVP_BaseR_AEMv8R` directory from `ARMFVP_BIN_PATH` (Zephyr
       canonical env, highest priority) → `ARM_FVP_DIR/models/Linux64_GCC-*/`
       (sdk-index `[gated.arm-fvp]`) → `dirname $(command -v
       FVP_BaseR_AEMv8R)` (PATH fallback). Prints absolute dir on
       stdout; exits 1 with EULA pointer on miss. ~80 LoC bash.
-- [x] **214.A.2** `just zephyr run-fvp-aemv8r` — verifies
+- [x] **217.A.2** `just zephyr run-fvp-aemv8r` — verifies
       `build-fvp-aemv8r-talker/zephyr/zephyr.elf` exists (else hints
-      `just zephyr build-fvp-aemv8r`), resolves the FVP dir via 214.A.1,
+      `just zephyr build-fvp-aemv8r`), resolves the FVP dir via 217.A.1,
       exports `ARMFVP_BIN_PATH`, runs `west build -d
       build-fvp-aemv8r-talker -t run`. Mirrors the
       `build-fvp-aemv8r` recipe's skip rules (no west / no workspace /
       no SDK / no ELF / no FVP).
-- [x] **214.A.3** `just zephyr run-fvp-aemv8r-cyclonedds` — same shape
+- [x] **217.A.3** `just zephyr run-fvp-aemv8r-cyclonedds` — same shape
       over `build-aemv8r-cyclonedds-talker` (Phase 117.14 cpp/cyclonedds
       example).
-- [x] **214.A.4** Example README pointer —
+- [x] **217.A.4** Example README pointer —
       `examples/zephyr/cpp/cyclonedds/talker-aemv8r/README.md`
       cross-references `just zephyr run-fvp-aemv8r-cyclonedds` under
       the Runtime section.
@@ -94,72 +94,72 @@ accepts the Arm EULA, installs the FVP locally, and exports
 **Files:** `scripts/zephyr/resolve-fvp-bin.sh`, `just/zephyr.just`,
 `examples/zephyr/cpp/cyclonedds/talker-aemv8r/README.md`.
 
-### 214.B — `arm-fvp-installer` skeleton (OPEN)
+### 217.B — `arm-fvp-installer` skeleton (OPEN)
 
 `nros-sdk-index.toml` declares `installer = "arm-fvp-installer"` for
 `[gated.arm-fvp]` but no script exists. Add a thin discovery script
 (gated tools never download):
 
-- [ ] **214.B.1** `scripts/installers/arm-fvp-installer.sh` — accepts
+- [ ] **217.B.1** `scripts/installers/arm-fvp-installer.sh` — accepts
       `ARM_FVP_DIR` (required), validates `FVP_BaseR_AEMv8R` lives
       under it, symlinks the discovered dir to
       `~/.nros/sdks/arm-fvp/current/` so `nros setup --tool arm-fvp`
       reports a stable path. Refuses to run without `ARM_FVP_DIR`;
       prints the Arm download URL.
-- [ ] **214.B.2** `nros doctor` check — `[gated.arm-fvp]` reports
+- [ ] **217.B.2** `nros doctor` check — `[gated.arm-fvp]` reports
       `arm-fvp-installer` as a known installer; `nros doctor` matches
       and flags missing `ARM_FVP_DIR` as a warning (not a hard fail,
       gated).
-- [ ] **214.B.3** Book/reference doc — point at
+- [ ] **217.B.3** Book/reference doc — point at
       `docs/reference/environment-variables.md` for `ARM_FVP_DIR` +
       `ARMFVP_BIN_PATH` (existing convention).
 
 **Files:** `scripts/installers/arm-fvp-installer.sh` (new),
 `docs/reference/environment-variables.md`.
 
-### 214.C — FVP runtime smoke test (OPEN)
+### 217.C — FVP runtime smoke test (OPEN)
 
-- [ ] **214.C.1** `packages/testing/nros-tests/tests/phase214_c_fvp_runtime.rs`
+- [ ] **217.C.1** `packages/testing/nros-tests/tests/phase214_c_fvp_runtime.rs`
       — discover FVP via the resolver; if missing, `nros_tests::skip!`.
       Builds the cpp/cyclonedds talker via `just zephyr build-fvp-aemv8r-cyclonedds`
       (if not already), runs the FVP with `--cycle-limit` (bounded
       headless), greps the captured stdout for `nros: ...` talker
       banner + the `Published: 0/1` line proving the talker reached the
       publish loop.
-- [ ] **214.C.2** Per-platform nextest group `zephyr-fvp` with
+- [ ] **217.C.2** Per-platform nextest group `zephyr-fvp` with
       `max-threads = 1` (FVP licence may be node-locked + UART telnet
       ports collide on parallel runs).
-- [ ] **214.C.3** Parity check vs Phase 175.A native cyclonedds Rust
+- [ ] **217.C.3** Parity check vs Phase 175.A native cyclonedds Rust
       talker/listener: same `std_msgs/Int32` payload, byte-equal wire
       format (Phase 117 stock-RMW interop contract).
 
 **Files:** `packages/testing/nros-tests/tests/phase214_c_fvp_runtime.rs`
 (new), `.config/nextest.toml` group entry.
 
-### 214.D — Rust example on FVP (OPEN)
+### 217.D — Rust example on FVP (OPEN)
 
 The existing `examples/zephyr/cpp/cyclonedds/talker-aemv8r/` is the
 carve-out preserved under CLAUDE.md "Examples = Standalone Projects."
 Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
 
-- [ ] **214.D.1** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` —
+- [ ] **217.D.1** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` —
       Entry pkg consuming the Phase 212.N `nros-board-fvp-aemv8r-smp`
       crate (already in tree). Same `std_msgs/Int32` payload as
       Phase 175.A.
-- [ ] **214.D.2** Build recipe `just zephyr build-fvp-aemv8r-cyclonedds-rust`
+- [ ] **217.D.2** Build recipe `just zephyr build-fvp-aemv8r-cyclonedds-rust`
       + run recipe `run-fvp-aemv8r-cyclonedds-rust`.
-- [ ] **214.D.3** Smoke alongside 214.C.1.
+- [ ] **217.D.3** Smoke alongside 217.C.1.
 
 **Files:** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` (new tree),
 `just/zephyr.just`.
 
-### 214.E — Book chapter (OPEN)
+### 217.E — Book chapter (OPEN)
 
-- [ ] **214.E.1** `book/src/getting-started/arm-fvp.md` — setup
+- [ ] **217.E.1** `book/src/getting-started/arm-fvp.md` — setup
       (license + `ARM_FVP_DIR`), build, run, debug (gdb stub via FVP
       `--cadi-server`), parity vs Corellium AVH cloud path (cross-ref
       out-of-tree).
-- [ ] **214.E.2** Updates `SUMMARY.md` (mdBook nav).
+- [ ] **217.E.2** Updates `SUMMARY.md` (mdBook nav).
 
 ## Acceptance
 
@@ -172,11 +172,11 @@ Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
 - [ ] Both recipes skip gracefully with a clear hint when the FVP
       binary is not installed (matches every other `[gated.*]` tool
       policy).
-- [ ] Phase 214.C smoke passes locally; gated `skip!` on CI.
+- [ ] Phase 217.C smoke passes locally; gated `skip!` on CI.
 
 ## Notes
 
-- The build recipes already work — Phase 214 is purely the
+- The build recipes already work — Phase 217 is purely the
   **invocation + capture** half. The cmake `run` target lives upstream
   in `zephyr/cmake/emu/armfvp.cmake`; nothing needs to be patched in
   Zephyr.
@@ -188,6 +188,6 @@ Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
   `.coreimg`-packaged firmware via the AVH instance-create API
   (`/v1/instances` + `fwpackage`). Local FVP loads a raw ELF via
   `-a cluster0.cpu*=<elf>`. Document the AVH path separately as the
-  Phase 190 successor (currently archived) or in 214.E cross-ref.
+  Phase 190 successor (currently archived) or in 217.E cross-ref.
 - Phase 117.13 was the historical placeholder for FVP runtime; this
   doc supersedes that line in archived `phase-117-cyclonedds-rmw.md`.
