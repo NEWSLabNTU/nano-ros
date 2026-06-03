@@ -24,7 +24,7 @@ find_package(std_msgs REQUIRED)
 #      its own bringup; `nros plan` reads system.toml in this dir).
 #   3. Build the executable + link the synthesised system + platform.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    talker
     CLASS   threadx_linux_cpp_talker::Talker
     SOURCES src/Talker.cpp

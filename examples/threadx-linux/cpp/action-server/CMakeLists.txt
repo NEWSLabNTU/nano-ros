@@ -17,7 +17,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.c
 find_package(example_interfaces REQUIRED)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    action_server
     CLASS   threadx_linux_cpp_action_server::ActionServer
     SOURCES src/ActionServer.cpp

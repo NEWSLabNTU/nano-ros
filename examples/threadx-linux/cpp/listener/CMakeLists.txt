@@ -17,7 +17,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.c
 find_package(std_msgs REQUIRED)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    listener
     CLASS   threadx_linux_cpp_listener::Listener
     SOURCES src/Listener.cpp

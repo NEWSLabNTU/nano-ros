@@ -13,7 +13,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 nros_generate_interfaces(example_interfaces "action/Fibonacci.action" LANGUAGE C SKIP_INSTALL)
 
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    action_client
     CLASS   freertos_c_action_client::FibonacciClient
     SOURCES src/FibonacciClient.c ${example_interfaces_GENERATED_SOURCES}

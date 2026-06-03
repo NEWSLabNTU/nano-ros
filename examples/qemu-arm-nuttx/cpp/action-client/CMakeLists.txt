@@ -12,7 +12,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    action_client
     CLASS   nuttx_cpp_action_client::FibonacciClient
     SOURCES src/FibonacciClient.cpp

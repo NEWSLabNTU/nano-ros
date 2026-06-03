@@ -3,11 +3,11 @@
 //!
 //! Coverage:
 //!
-//! 1. `nano_ros_component_register_emits_metadata` — configure-time
+//! 1. `nano_ros_node_register_emits_metadata` — configure-time
 //!    invocation writes `${CMAKE_BINARY_DIR}/nros-metadata.json` with
 //!    the expected component entry shape (name / class / sources /
 //!    deploy / pkg_dir / lang).
-//! 2. `nano_ros_component_register_rejects_class_pkg_mismatch` —
+//! 2. `nano_ros_node_register_rejects_class_pkg_mismatch` —
 //!    CLASS without `${PROJECT_NAME}::` prefix → cmake FATAL_ERROR
 //!    (L.4 rule).
 //! 3. `nano_ros_application_rejects_embedded_deploy` —
@@ -69,11 +69,11 @@ fn configure(root: &PathBuf, build: &PathBuf) -> std::process::Output {
 }
 
 #[test]
-fn nano_ros_component_register_emits_metadata() {
+fn nano_ros_node_register_emits_metadata() {
     if !require_prereqs() {
         nros_tests::skip!("cmake not on PATH");
     }
-    let body = "nano_ros_component_register(\n  \
+    let body = "nano_ros_node_register(\n  \
                 NAME talker\n  CLASS talker_pkg::Talker\n  \
                 SOURCES src/dummy.cpp\n  DEPLOY native zephyr)\n";
     let (_g, root, build) = stage(body, "talker_pkg");
@@ -112,11 +112,11 @@ fn nano_ros_component_register_emits_metadata() {
 }
 
 #[test]
-fn nano_ros_component_register_rejects_class_pkg_mismatch() {
+fn nano_ros_node_register_rejects_class_pkg_mismatch() {
     if !require_prereqs() {
         nros_tests::skip!("cmake not on PATH");
     }
-    let body = "nano_ros_component_register(\n  \
+    let body = "nano_ros_node_register(\n  \
                 NAME talker\n  CLASS wrong_pkg::Talker\n  \
                 SOURCES src/dummy.cpp\n  DEPLOY native)\n";
     let (_g, root, build) = stage(body, "talker_pkg");

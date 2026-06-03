@@ -12,7 +12,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    listener
     CLASS   nuttx_cpp_listener::Listener
     SOURCES src/Listener.cpp
