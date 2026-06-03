@@ -46,8 +46,6 @@ action_msgs = { path = "generated/action_msgs" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 example_interfaces = { path = "generated/example_interfaces" }
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }
-
-# nros-* runtime crates
 nros = { path = "../../../../packages/core/nros" }
 nros-core = { path = "../../../../packages/core/nros-core" }
 nros-serdes = { path = "../../../../packages/core/nros-serdes" }
@@ -59,6 +57,9 @@ nros-rmw-cffi = { path = "../../../../packages/core/nros-rmw-cffi" }
 nros-log = { path = "../../../../packages/core/nros-log" }
 nros-macros = { path = "../../../../packages/core/nros-macros" }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }
+cyclonedds-sys = { path = "../../../../packages/dds/cyclonedds-sys" }
 # === END nros-managed [patch.crates-io] ===
+
+
 
 
