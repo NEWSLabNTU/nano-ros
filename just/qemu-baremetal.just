@@ -64,6 +64,10 @@ build:
     source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
+    # Phase 214.I.2 — fail-loud prereq guard: the loops below invoke
+    # `nros ws sync`, absent from the shipped 0.3.7 release. Probe once;
+    # emit `[PREREQ]` + exit 0 if missing.
+    nros_require_ws_sync "$nros_cli"
     echo "Building QEMU ARM examples..."
     for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort); do
@@ -137,6 +141,11 @@ build-fixtures:
         packages/reference/qemu-smoltcp-bridge
     )
     export NROS_CLI="$(nros_cli_bin)"
+    # Phase 214.I.2 — fail-loud prereq guard: `build_one` below invokes
+    # `nros ws sync`, absent from the shipped 0.3.7 release. Probe once
+    # here (the function runs under GNU parallel; pre-probing in the
+    # parent avoids `[PREREQ]` spam from N workers).
+    nros_require_ws_sync "$NROS_CLI"
     # Phase 214.J.2 — guard `ws sync` against stale `generated/` after trait
     # surface drift (see scripts/build/codegen-stamp.sh).
     source scripts/build/codegen-stamp.sh

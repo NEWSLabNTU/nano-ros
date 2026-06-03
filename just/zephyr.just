@@ -173,6 +173,10 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     case "{{example}}" in
     rust/*)
         echo "Zephyr: generating Rust interface crates for {{example}}"
+        # Phase 214.I.2 — fail-loud prereq guard: `ws sync` is absent
+        # from the shipped 0.3.7 release. Probe; emit `[PREREQ]` + exit 0
+        # if missing rather than cascading into clap noise.
+        nros_require_ws_sync "$codegen_tool"
         # Phase 214.J.2 — wipe `generated/` on trait-surface drift before sync.
         source "$(pwd)/scripts/build/codegen-stamp.sh"
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_check_or_wipe "$src"
@@ -352,6 +356,10 @@ build-fixtures:
     source scripts/build/codegen-stamp.sh
     echo "  → zephyr Rust generated-dir preflight"
     nros_cli="$(nros_cli_bin)"
+    # Phase 214.I.2 — fail-loud prereq guard: the preflight loop below
+    # invokes `nros ws sync`, absent from the shipped 0.3.7 release.
+    # Probe once; emit `[PREREQ]` + exit 0 if missing.
+    nros_require_ws_sync "$nros_cli"
     while IFS= read -r pkg; do
         dir="$(dirname "$pkg")"
         stamp="$dir/build/.nros-ws-sync.stamp"

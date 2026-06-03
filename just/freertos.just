@@ -63,6 +63,11 @@ build-examples:
     source scripts/build/codegen-stamp.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
+    # Phase 214.I.2 — fail-loud prereq guard: the loop below invokes
+    # `nros ws sync`, which the shipped 0.3.7 release predates. Probe
+    # once, emit `[PREREQ]` + exit 0 if absent rather than cascading
+    # into clap "unrecognized subcommand 'ws'" stack traces per example.
+    nros_require_ws_sync "$nros_cli"
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
@@ -100,6 +105,11 @@ build-fixture-extras:
     source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
+    # Phase 214.I.2 — fail-loud prereq guard: the cyclone-fixture loop
+    # below invokes `nros ws sync`. Probe once; emit `[PREREQ]` + exit 0
+    # rather than burying the build in clap "unrecognized subcommand 'ws'"
+    # stack traces (shipped 0.3.7 release predates the verb).
+    nros_require_ws_sync "$nros_cli"
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
     cmake_frontends="$(nros_cmake_frontend_jobs)"

@@ -149,6 +149,42 @@ nros_cargo_ensure_codegen_c() {
     nros_cargo_codegen_c_bin >/dev/null
 }
 
+# Phase 214.I.2 — probe whether the installed `nros` CLI exposes the `ws sync`
+# verb (added post-0.3.7 by Phase 210.D.1 / 210.E.3.d.native). The shipped
+# 0.3.7 release predates `ws sync`; without this guard every fixture-build
+# recipe cascades into a noisy `clap` "unrecognized subcommand 'ws'" stack.
+#
+# Returns 0 if `ws sync` is available, 1 otherwise. Argument: optional path
+# to the `nros` binary (defaults to `$(nros_cli_bin)`).
+nros_cli_ws_sync_available() {
+    local bin="${1:-}"
+    if [ -z "$bin" ]; then
+        bin="$(nros_cli_bin 2>/dev/null)" || return 1
+    fi
+    [ -x "$bin" ] || return 1
+    # `nros help ws` exits non-zero on stock 0.3.7 (no such verb); the
+    # grep on the failure path returns 1 too, so the chained pipe is safe.
+    "$bin" help ws 2>/dev/null | grep -q '^[[:space:]]*sync\b'
+}
+
+# Phase 214.I.2 — fail-loud guard. Call once at the top of any recipe /
+# script section that will invoke `nros ws sync`. On success: silent.
+# On failure: emits a `[PREREQ]` one-liner naming the missing verb and
+# exits 0 (skip, not fail) so a pre-pin checkout doesn't bury the build
+# in cargo / clap stack traces. Honors the same NROS_CLI / PATH / ~/.nros
+# resolution as `nros_cli_bin`.
+nros_require_ws_sync() {
+    local bin="${1:-}"
+    if [ -z "$bin" ]; then
+        bin="$(nros_cli_bin 2>/dev/null)" || true
+    fi
+    if nros_cli_ws_sync_available "$bin"; then
+        return 0
+    fi
+    echo "[PREREQ] nros ws sync verb unavailable (installed nros lacks Phase 210.D.1 / 210.E.3.d.native; bump scripts/install-nros.sh pin past 0.3.7 or set NROS_FROM_SOURCE=/path/to/nros-cli)" >&2
+    exit 0
+}
+
 nros_cargo_fetch_standalone_manifests() {
     local manifest
     local manifest_dir

@@ -72,6 +72,11 @@ else
     # skip). --force is idempotent so recipes that also codegen (freertos) are fine.
     NROS_CLI="$(nros_cli_bin)"; export NROS_CLI
     NROS_REPO_ROOT="${NROS_REPO_ROOT:-$PWD}"; export NROS_REPO_ROOT
+    # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`
+    # below invokes `nros ws sync`, absent from the shipped 0.3.7 release.
+    # Probe once here in the parent (GNU parallel forks workers; pre-probe
+    # avoids N copies of the `[PREREQ]` line).
+    nros_require_ws_sync "$NROS_CLI"
     # shellcheck source=scripts/build/codegen-stamp.sh
     source scripts/build/codegen-stamp.sh
     export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \

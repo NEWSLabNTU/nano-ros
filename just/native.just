@@ -117,6 +117,11 @@ build-fixture-rust:
     # Phase 214.J.2 — codegen-stamp guard for trait-surface drift.
     source scripts/build/codegen-stamp.sh
     nros_cli="$(nros_cli_bin)"
+    # Phase 214.I.2 — fail-loud prereq guard: the loop below invokes
+    # `nros ws sync`, absent from the shipped 0.3.7 release. Probe once;
+    # emit `[PREREQ]` + exit 0 if missing rather than cascading into
+    # clap "unrecognized subcommand 'ws'" stack traces.
+    nros_require_ws_sync "$nros_cli"
     # Phase 210.E.3.d.native — pre-cargo codegen via `nros ws sync` writes
     # the auto-managed [patch.crates-io] block into each example's Cargo.toml
     # + materialises generated msg crates under `<ex>/generated/`.
@@ -148,6 +153,10 @@ build-fixture-extras:
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nros_cli="$(nros_cli_bin)"
+    # Phase 214.I.2 — fail-loud prereq guard: `ensure_native_rust_generated`
+    # below invokes `nros ws sync`. Probe once; emit `[PREREQ]` + exit 0
+    # if the verb is missing (shipped 0.3.7 predates it).
+    nros_require_ws_sync "$nros_cli"
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
     # Phase 181.6 — every native *Rust* fixture (the param-services talker; the

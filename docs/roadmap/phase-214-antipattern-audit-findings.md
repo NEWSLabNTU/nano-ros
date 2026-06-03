@@ -719,13 +719,31 @@ tag).
       removal hint (does NOT auto-delete files outside its own
       `${NROS_HOME}/bin`).
 
-- [ ] **214.I.2 Fall-back guard at each callsite** — wrap each
+- [x] **214.I.2 Fall-back guard at each callsite** — wrap each
       `nros ws sync` invocation with a guard that probes
       `nros help ws` and emits a `[PREREQ]` skip message naming the
       missing verb if absent, instead of letting the build cascade
       into "unrecognized subcommand 'ws'" noise.
       **Acceptance**: pre-pin run gives one clean diagnostic per
       recipe, not a 50-line cargo stack trace.
+      **Landed (2026-06-04)**: shared `nros_cli_ws_sync_available` +
+      `nros_require_ws_sync` helpers in `scripts/build/cargo.sh`
+      (probe `nros help ws | grep -q sync`; emit a one-line
+      `[PREREQ]` to stderr + `exit 0` when missing). Guard invoked
+      once per recipe before any `ws sync` loop so a pre-pin checkout
+      gets exactly one skip line instead of N clap stack traces.
+      Sibling Rust helpers `is_nros_ws_sync_available()` +
+      `require_nros_ws_sync()` added to
+      `packages/testing/nros-tests/src/process.rs` for future
+      integration-test callsites (none today shell out to `ws sync`,
+      but the surface is ready). Guarded callsites:
+      * `just/freertos.just` (build-examples line 80, build-fixture-extras line 171)
+      * `just/native.just` (build-fixture-rust line 130, build-fixture-extras line 168)
+      * `just/qemu-baremetal.just` (build lines 78/98, build-fixtures line 158)
+      * `just/zephyr.just` (build-one rust/* line 179, build-fixtures preflight line 363)
+      * `scripts/build/fixtures-build.sh` (rust branch line 104)
+      Verified both paths (working installed CLI silent; faked
+      no-`ws` binary emits `[PREREQ]` + recipe exits 0).
 
 - [ ] **214.I.3 Maintainer follow-up: cut a new nros-cli release**
       — once 210.D.1, 212.E, 212.J, K.7.1.{c,d,d.b}, and the post-

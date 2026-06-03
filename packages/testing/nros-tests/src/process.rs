@@ -719,6 +719,84 @@ pub fn require_cmake() -> bool {
     true
 }
 
+/// Resolve the `nros` CLI path: `$NROS_CLI` → `PATH` → `~/.nros/bin/nros`.
+///
+/// Mirrors the shell `nros_cli_bin` helper in `scripts/build/cargo.sh`.
+fn nros_cli_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("NROS_CLI") {
+        return std::path::PathBuf::from(p);
+    }
+    if let Ok(out) = Command::new("sh").args(["-c", "command -v nros"]).output() {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.is_empty() {
+                return std::path::PathBuf::from(s);
+            }
+        }
+    }
+    let home = std::env::var("NROS_HOME")
+        .ok()
+        .or_else(|| std::env::var("HOME").ok().map(|h| format!("{h}/.nros")))
+        .unwrap_or_else(|| "/root/.nros".to_string());
+    std::path::PathBuf::from(format!("{home}/bin/nros"))
+}
+
+/// Check whether the installed `nros` CLI exposes the `ws sync` verb.
+///
+/// Added by Phase 210.D.1 / 210.E.3.d.native; the shipped 0.3.7 release
+/// predates it. Tests that shell out to `nros ws sync …` (e.g. codegen-
+/// preflight integration tests) should gate on this and skip cleanly
+/// rather than burying the run in a clap "unrecognized subcommand 'ws'"
+/// stack trace. Phase 214.I.2.
+pub fn is_nros_ws_sync_available() -> bool {
+    let bin = nros_cli_path();
+    Command::new(bin)
+        .args(["help", "ws"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .map(|out| {
+            // `nros help ws` exits non-zero on stock 0.3.7 (verb absent).
+            // Check captured stdout for the `sync` subcommand row
+            // independently of the exit status — newer releases that
+            // succeed AND older that fail both flow through one match.
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .any(|l| {
+                    let t = l.trim_start();
+                    t.starts_with("sync ") || t == "sync"
+                })
+        })
+        .unwrap_or(false)
+}
+
+/// Skip the current test if the installed `nros` CLI lacks `ws sync`.
+///
+/// Returns `false` (test should bail / early-return) with a printed
+/// skip line when unavailable; `true` when present. Phase 214.I.2.
+///
+/// # Example
+///
+/// ```ignore
+/// #[test]
+/// fn codegen_preflight() {
+///     if !require_nros_ws_sync() {
+///         return;
+///     }
+///     // ... shell out to `nros ws sync <dir>`
+/// }
+/// ```
+pub fn require_nros_ws_sync() -> bool {
+    if !is_nros_ws_sync_available() {
+        eprintln!(
+            "Skipping test: `nros ws sync` verb unavailable (installed nros lacks Phase 210.D.1; \
+             bump scripts/install-nros.sh pin past 0.3.7 or set NROS_FROM_SOURCE)"
+        );
+        return false;
+    }
+    true
+}
+
 /// Check if `docker compose` is available and the Docker daemon is running
 pub fn is_docker_compose_available() -> bool {
     Command::new("docker")
