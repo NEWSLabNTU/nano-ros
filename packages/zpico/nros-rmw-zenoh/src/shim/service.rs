@@ -837,7 +837,7 @@ impl ServiceClientTrait for ZenohServiceClient {
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use nros_rmw::TransportError;
 
@@ -933,7 +933,10 @@ mod tests {
         let result = try_recv_service(slot, &mut small_buf);
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
-        let buffer = ServiceBufferRef::new(slot).get();
+        // Phase 212.x3 — `ServiceBufferRef::get` returns `&ServiceBuffer` tied to
+        // the lifetime of `&self`, so the temporary must outlive the borrow.
+        let buf_ref = ServiceBufferRef::new(slot);
+        let buffer = buf_ref.get();
         assert!(
             !buffer.has_request.load(Ordering::Acquire),
             "has_request must be cleared after BufferTooSmall to avoid stuck state"
@@ -983,7 +986,8 @@ mod tests {
         let result = try_recv_service(slot, &mut buf);
         assert!(matches!(result, Ok(None)));
 
-        let buffer = ServiceBufferRef::new(slot).get();
+        let buf_ref = ServiceBufferRef::new(slot);
+        let buffer = buf_ref.get();
         assert!(!buffer.has_request.load(Ordering::Acquire));
     }
 
@@ -994,7 +998,8 @@ mod tests {
 
         simulate_service_request(slot, b"request_data", b"svc/test");
 
-        let buffer = ServiceBufferRef::new(slot).get();
+        let buf_ref = ServiceBufferRef::new(slot);
+        let buffer = buf_ref.get();
         assert!(buffer.has_request.load(Ordering::Acquire));
 
         let mut recv_buf = [0u8; 1024];
@@ -1034,7 +1039,8 @@ mod tests {
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
         // has_request cleared (post-fix behavior)
-        let buffer = ServiceBufferRef::new(slot).get();
+        let buf_ref = ServiceBufferRef::new(slot);
+        let buffer = buf_ref.get();
         assert!(!buffer.has_request.load(Ordering::Acquire));
 
         // Next request accepted
@@ -1134,7 +1140,8 @@ mod tests {
         assert_eq!(&recv_buf[..9], b"req_seven");
 
         // slot_a still has request
-        let buffer_a = ServiceBufferRef::new(slot_a).get();
+        let buf_ref_a = ServiceBufferRef::new(slot_a);
+        let buffer_a = buf_ref_a.get();
         assert!(buffer_a.has_request.load(Ordering::Acquire));
 
         let result = try_recv_service(slot_a, &mut recv_buf);

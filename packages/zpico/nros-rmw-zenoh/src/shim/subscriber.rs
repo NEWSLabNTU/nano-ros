@@ -1211,7 +1211,7 @@ pub use borrowing::ZenohView;
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     extern crate alloc;
     use super::*;
     use nros_rmw::TransportError;
