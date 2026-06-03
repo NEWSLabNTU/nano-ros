@@ -236,15 +236,26 @@ Per-system `system.toml` (in bringup pkg) carries everything else.
       Strict `deny_unknown_fields`. No second TOML dialect — vocabulary
       stays a strict subset of existing `nros-sdk-index.toml` /
       `app_config.h` field names.
-- [ ] **B.2** — `NrosConfig::from_cargo_metadata(workspace_root: &Path)`
+- [x] **B.2** — `NrosConfig::from_cargo_metadata(workspace_root: &Path)`
       reader via the `cargo_metadata` crate. Replaces today's
       `nros.toml` reader. No fallback. Pre-212 fixtures get migrated to
-      the new shape (see 212.I).
-- [ ] **B.3** — Per-component `[package.metadata.nros.component]` reader.
+      the new shape (see 212.I). **Core reader shipped in nros-cli
+      `9bcb2b0` (Phase 212.B.2 + F + G) with 8 unit tests;
+      `node` / `nodes` aliases + `entry` + `domain` / `bridge` /
+      `embedded` opaque stubs added in nros-cli
+      `phase-212-b2-from-cargo-metadata` branch (`16d1c9b` +
+      `0ea7c97`, 12 additional tests) per the 2026-06-03 design
+      lock's "Component → Node" rename (N.12 in-flight). Reader
+      consumed by `nros plan` + `nros codegen system` (W.4 stub).
+- [x] **B.3** — Per-component `[package.metadata.nros.component]` reader.
       Reads via `cargo metadata --no-deps` on each workspace member,
       walks `packages[*].metadata["nros"]["component"]`. Multi-component
       packages use `[package.metadata.nros.components.<Name>]`
-      table-of-tables.
+      table-of-tables. **Shipped alongside B.2 in nros-cli
+      `9bcb2b0` (`PackageMetadataNros::components` BTreeMap, plus
+      `nodes` alias in B.2 delta branch). Schema coverage verified
+      against `multi_pkg_workspace_freertos` + `_threadx` +
+      `_zephyr` fixtures (B.2 delta tests).
 - [ ] **B.4** — `[package.metadata.ament]` reader for `nros emit
       package-xml` (see 212.G).
 - **Tests:**
