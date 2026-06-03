@@ -270,16 +270,28 @@ Per-system `system.toml` (in bringup pkg) carries everything else.
       `exec_depend` / `buildtool_depend` fields, sourced through the
       same per-pkg cargo-metadata reader path B.2/B.3 use.
 - **Tests:**
-  - [ ] `loads_workspace_metadata_from_cargo_toml` — golden fixture
-        round-trips through `NrosConfig::from_cargo_metadata`.
-  - [ ] `single_component_package_loads_via_package_metadata` —
+  - [x] `loads_workspace_metadata_from_cargo_toml` — golden fixture
+        round-trips through `NrosConfig::from_cargo_metadata`. Landed
+        in nros-cli as `load_workspace_from_minimal_cargo_metadata`
+        (`nros_config.rs:729`) + `loads_workspace_metadata_default_system`
+        (`cargo_metadata_schema.rs:735`).
+  - [x] `single_component_package_loads_via_package_metadata` —
         per-component `[package.metadata.nros.component]` table parsed.
-  - [ ] `multi_component_package_loads_table_of_tables` — `nros/Talker`
-        + `nros/Listener` siblings in one crate.
-  - [ ] `rejects_unknown_field_in_strict_mode` — `deny_unknown_fields`
-        catches typos.
-  - [ ] `nros_toml_file_in_workspace_root_is_rejected` — clean error
+        Landed in nros-cli as
+        `single_component_via_package_metadata_nros_component`
+        (`nros_config.rs:781`).
+  - [x] `multi_component_package_loads_table_of_tables` — `nros/Talker`
+        + `nros/Listener` siblings in one crate. Landed in nros-cli as
+        `multi_component_via_package_metadata_nros_components`
+        (`nros_config.rs:813`).
+  - [x] `rejects_unknown_field_in_strict_mode` — `deny_unknown_fields`
+        catches typos. Landed in nros-cli (`cargo_metadata_schema.rs:634`,
+        exact name).
+  - [x] `nros_toml_file_in_workspace_root_is_rejected` — clean error
         pointing at the migration tool (212.I). No silent fallback.
+        Landed in nros-cli as
+        `nros_toml_at_root_rejected_with_migration_pointer`
+        (`nros_config.rs:753`).
 - **Files:**
   `nros-cli/packages/nros-cli-core/src/orchestration/{config,schema,workspace}.rs`.
 
@@ -387,16 +399,21 @@ the baked compile-time C config used by every embedded RTOS adapter
       (verified via `--help`). H.6 PlatformIO + H.7 PX4 fixtures wire
       against this surface.
 - **Tests:**
-  - [ ] `codegen_system_emits_baked_headers_for_zephyr_native_sim` —
+  - [x] `codegen_system_emits_baked_headers_for_zephyr_native_sim` —
         fixture bringup → baked tree → linked into a Zephyr
-        `native_sim/native/64` ELF.
-  - [ ] `codegen_system_emits_baked_headers_for_freertos_qemu` —
+        `native_sim/native/64` ELF. Landed in nros-cli
+        (`cmd/codegen_system.rs:974`, exact name).
+  - [x] `codegen_system_emits_baked_headers_for_freertos_qemu` —
         fixture bringup → baked tree → linked into a freertos
-        thumbv7m-none-eabi staticlib.
-  - [ ] `codegen_system_ahead_of_vendor_emits_pio_library_json` —
-        hookless mode writes the expected PIO artifacts.
-  - [ ] `codegen_system_idempotent_on_unchanged_input` — re-running
-        with identical input produces byte-identical output.
+        thumbv7m-none-eabi staticlib. Landed in nros-cli
+        (`tests/codegen_system_basic.rs:146`, exact name).
+  - [x] `codegen_system_ahead_of_vendor_emits_pio_library_json` —
+        hookless mode writes the expected PIO artifacts. Landed in
+        nros-cli (`cmd/codegen_system.rs:1329`, exact name).
+  - [x] `codegen_system_idempotent_on_unchanged_input` — re-running
+        with identical input produces byte-identical output. Landed
+        in nros-cli (`tests/codegen_system_basic.rs:240` +
+        `cmd/codegen_system.rs:1032`).
 - **Files:**
   `nros-cli/packages/nros-cli-core/src/cmd/codegen_system.rs`,
   fixture pairs under `packages/testing/nros-tests/fixtures/codegen_system_*`.
@@ -451,13 +468,21 @@ Bringup pkg is pure declarative — Path A from the live design doc (no
       `framework` key; vec-rename note) — F.4 itself is doc-only per
       scope.
 - **Tests:**
-  - [ ] `nros_new_system_scaffolds_bringup_pkg` — invocation produces
-        the expected file tree.
-  - [ ] `nros_check_rejects_cargo_toml_in_bringup` — lint diagnostic.
-  - [ ] `cargo_nros_plan_discovers_bringup_via_dirwalk` — discovery
-        walks outside `[workspace] members`.
-  - [ ] `bringup_pkg_excluded_from_cargo_workspace_members` — workspace
+  - [x] `nros_new_system_scaffolds_bringup_pkg` — invocation produces
+        the expected file tree. Landed in nros-cli
+        (`cmd/new_system.rs:526`, exact name).
+  - [x] `nros_check_rejects_cargo_toml_in_bringup` — lint diagnostic.
+        Landed in nros-cli (`cmd/bringup.rs:358`, exact name) +
+        integration `tests/phase_212_f_bringup.rs:115`
+        (`cli_nros_check_rejects_cargo_toml_in_bringup`).
+  - [x] `cargo_nros_plan_discovers_bringup_via_dirwalk` — discovery
+        walks outside `[workspace] members`. Landed in nros-cli
+        (`cmd/bringup.rs:497`, exact name) + integration
+        `tests/phase_212_f_bringup.rs:145`.
+  - [x] `bringup_pkg_excluded_from_cargo_workspace_members` — workspace
         root `Cargo.toml` `exclude` list correctly populated by `nros new`.
+        Landed in nros-cli as `nros_new_system_adds_to_workspace_exclude`
+        (`cmd/new_system.rs:650`).
 - **Files:**
   `nros-cli/packages/nros-cli-core/src/cmd/{new,check}.rs`,
   `packages/testing/nros-tests/fixtures/multi_pkg_workspace_rust/`.
@@ -531,14 +556,29 @@ baked tree from 212.E.
       Original spec: — each adapter shim ≤200 LoC verified by
       `tokei` in CI.
 - **Tests (one per RTOS, all gated on respective SDK availability):**
-  - [ ] `zephyr_native_sim_2_component_bringup_builds_and_publishes`
-  - [ ] `nuttx_qemu_arm_2_component_bringup_builds`
-  - [ ] `freertos_qemu_mps2_an385_2_component_bringup_builds`
-  - [ ] `threadx_linux_2_component_bringup_builds_and_publishes`
-  - [ ] `threadx_riscv64_qemu_2_component_bringup_builds`
-  - [ ] `esp_idf_esp32c3_2_component_bringup_builds`
-  - [ ] `platformio_zephyr_framework_2_component_bringup_builds`
-  - [ ] `px4_sitl_2_component_module_builds`
+  - [x] `zephyr_native_sim_2_component_bringup_builds_and_publishes` —
+        `packages/testing/nros-tests/tests/phase212_h1_zephyr.rs:61`
+        (exact name).
+  - [x] `nuttx_qemu_arm_2_component_bringup_builds` —
+        `tests/phase212_h2_nuttx.rs:99` (exact name).
+  - [x] `freertos_qemu_mps2_an385_2_component_bringup_builds` —
+        landed as
+        `freertos_qemu_mps2_an385_entry_pkg_firmware_builds`
+        (`tests/phase212_h3_freertos.rs:147`), renamed during the
+        Entry-pkg redesign (M-F.15).
+  - [x] `threadx_linux_2_component_bringup_builds_and_publishes` —
+        `tests/phase212_h4_threadx.rs:145` (exact name).
+  - [ ] `threadx_riscv64_qemu_2_component_bringup_builds` (deferred —
+        no companion `_2_component_bringup_builds` test landed for the
+        RV64 ThreadX board; `phase212_h4_threadx.rs` covers only the
+        `threadx-linux` variant. Track under §212.H follow-up before
+        closing H).
+  - [x] `esp_idf_esp32c3_2_component_bringup_builds` —
+        `tests/phase212_h5_esp_idf.rs:59` (exact name).
+  - [x] `platformio_zephyr_framework_2_component_bringup_builds` —
+        `tests/phase212_h6_platformio.rs:79` (exact name).
+  - [x] `px4_sitl_2_component_module_builds` —
+        `tests/phase212_h7_px4.rs:44` (exact name).
   - [x] `rtos_adapter_loc_budget_under_200` — `tokei` budget gate.
         Activated test(212.H.8) `649b0deb9` — replaced the
         `tokei` CLI shell-out with an in-process `tokei` crate dep
@@ -637,13 +677,18 @@ install exists.
       (e.g. `multi_pkg_workspace_freertos/src/demo_bringup/package.xml`)
       omit `<buildtool_depend>ament_cmake</buildtool_depend>`.
 - **Tests:**
-  - [ ] `nros_launch_spawns_components` — fixture bringup spawns 2
+  - [x] `nros_launch_spawns_components` — fixture bringup spawns 2
         processes; both publish; foreground SIGTERM clean-shuts.
-  - [ ] `nros_launch_detach_returns_pid_file` — detach mode produces a
-        PID file the user can stop via `nros launch --stop`.
+        Landed in nros-cli (`cmd/launch.rs:790`, exact name).
+  - [x] `nros_launch_detach_returns_pid_file` — detach mode produces a
+        PID file the user can stop via `nros launch --stop`. Landed
+        in nros-cli as `nros_launch_detach_writes_pid_file`
+        (`cmd/launch.rs:845`).
   - [ ] `ros2_launch_still_works_after_ament_install` — verifies the
         non-nros path remains compatible when the user does install via
-        a colcon outer.
+        a colcon outer. (needs verification — TODO; no matching test
+        landed in nros-cli or nano-ros. May reasonably be covered by
+        an external rmw-zenoh interop fixture but not yet wired here.)
 - **Files:**
   `nros-cli/packages/nros-cli-core/src/cmd/launch.rs`.
 
@@ -1430,7 +1475,10 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
         CMake.
   - [ ] `msg_to_cyclone_idl_rust_port_matches_python_output` — port
         produces byte-identical IDL for every fixture in
-        `scripts/cyclonedds/test/`.
+        `scripts/cyclonedds/test/`. (needs verification — TODO; the
+        nros-cli `nros-msg-to-idl` crate ships the port + claims
+        byte-for-byte parity in its lib doc, but no automated test
+        compares its output against the python reference yet.)
 - **Files:**
   `packages/dds/{cyclonedds-sys,nros-rmw-cyclonedds-sys}/`,
   `packages/codegen/nros-msg-to-idl/`,
@@ -1670,20 +1718,38 @@ sub-items that already shipped stay marked done.
       shell `nros codegen-system` at configure time; vendor tools own
       the rest.
 - **Tests:**
-  - [ ] `nros_check_rejects_class_pkg_mismatch` — `class = "wrong::
-        Talker"` in a pkg named `talker_pkg` → diagnostic.
-  - [ ] `nros_check_rejects_system_toml_outside_bringup` — Path A
-        bringup is the only valid `system.toml` location.
+  - [x] `nros_check_rejects_class_pkg_mismatch` — `class = "wrong::
+        Talker"` in a pkg named `talker_pkg` → diagnostic. Landed in
+        nros-cli (`cmd/check_workspace.rs:250`, exact name).
+  - [x] `nros_check_rejects_system_toml_outside_bringup` — Path A
+        bringup is the only valid `system.toml` location. Landed in
+        nros-cli as `nros_check_rejects_system_toml_in_component_pkg`
+        (`cmd/check_workspace.rs:278`).
   - [ ] `application_pkg_with_rtos_deploy_is_rejected` — `deploy =
-        ["zephyr"]` on Application pkg → error.
-  - [ ] `launch_synth_emits_single_node_for_self_bringup` — Component
+        ["zephyr"]` on Application pkg → error. (needs verification —
+        TODO; the §212.L Entry/Application redesign supersedes the
+        "Application pkg" vocabulary, but no equivalent rtos-deploy
+        rejection test has landed under the Entry pkg shape either.)
+  - [x] `launch_synth_emits_single_node_for_self_bringup` — Component
         pkg w/o launch file → synth `<launch><node pkg=… exec=…/>`.
-  - [ ] `launch_synth_refuses_path_a_bringup_without_file` — missing
-        bringup launch.xml → hard error.
-  - [ ] `multi_launch_resolves_pkg_named_default` — `<pkg>/launch/
-        <pkg>.launch.xml` wins when no `--file` arg given.
-  - [ ] `cargo_config_patch_lint` — per-pkg `.cargo/config.toml` w/
-        `[patch.crates-io]` → diagnostic.
+        Landed in nros-cli as
+        `resolve_synthesises_for_self_bringup_no_launch`
+        (`orchestration/launch_synth.rs:624`) +
+        `resolve_lib_only_component_synth_uses_pkg_name_as_exec`
+        (`launch_synth.rs:732`).
+  - [x] `launch_synth_refuses_path_a_bringup_without_file` — missing
+        bringup launch.xml → hard error. Landed in nros-cli as
+        `resolve_refuses_path_a_bringup_with_no_launch`
+        (`orchestration/launch_synth.rs:639`).
+  - [x] `multi_launch_resolves_pkg_named_default` — `<pkg>/launch/
+        <pkg>.launch.xml` wins when no `--file` arg given. Landed in
+        nros-cli as `resolve_picks_pkg_named_default_when_present`
+        (`orchestration/launch_synth.rs:577`).
+  - [x] `cargo_config_patch_lint` — per-pkg `.cargo/config.toml` w/
+        `[patch.crates-io]` → diagnostic. Landed in nros-cli as
+        `nros_check_warns_on_per_pkg_cargo_config_patch` +
+        `nros_check_silent_on_cargo_config_without_patch`
+        (`cmd/check_workspace.rs:306` / `:325`).
 - **Files:**
   `cmake/NanoRosNodeRegister.cmake` (NEW — C++ cmake fns),
   `nros-cli/packages/nros-cli-core/src/cmd/check.rs` (L.4 + L.8 + L.11
@@ -1858,23 +1924,25 @@ A clean break — no transitional mixed-shape state allowed.
       - [x] Stale `examples/native/rust/{talker,listener}/generated/`
         dirs from pre-Option-B codegen runs — never tracked
         (per-dir `.gitignore` covers them).
-      - [ ] `nros.toml` (any location) — 39 tracked files remain in
-        UNMIGRATED trees: `qemu-arm-baremetal/rust/` (13),
-        `qemu-esp32-baremetal/rust/` (2), `qemu-riscv64-threadx/`
-        {c, cpp, rust} (6+6+6 = 18), `threadx-linux/c/` (6). These
-        are still active — the bare-metal board crates parse
-        them at runtime via `Config::from_toml`; threadx-linux/c
-        CMakeLists call `nano_ros_read_config`. Per-tree deletion
-        rolls into the corresponding future sweep (not in any
-        named M.x slot yet; candidate new waves M.13+).
-      - [ ] `nano_ros_read_config(nros.toml)` cmake fn (delete the
-        fn + every caller) — covered by M-F.10. 24 callers
-        remain (4 in `cmake/platform/*` + `cmake/NanoRosConfig.
-        cmake` + the defn at `packages/core/nros-c/cmake/
-        NanoRosReadConfig.cmake` + 19 in unmigrated example trees
-        threadx-linux/c + qemu-riscv64-threadx). Final pass after
-        the qemu-riscv64-threadx + threadx-linux/c sweeps retire
-        their callers.
+      - [ ] `nros.toml` (any location) — residual `nros.toml` files
+        in tree as of 2026-06-04 audit: 2 in
+        `packages/testing/nros-bench/{large-msg-baremetal,
+        wake-latency-cortex-m3}/` (bench fixtures, not example
+        trees). The original "39 tracked files in
+        UNMIGRATED trees: qemu-arm-baremetal/rust/ (13),
+        qemu-esp32-baremetal/rust/ (2), qemu-riscv64-threadx/
+        {c, cpp, rust} (6+6+6 = 18), threadx-linux/c/ (6)" count
+        is STALE — `find examples -name nros.toml` returns zero.
+        Leaving open to cover the residual 2 bench fixtures.
+      - [x] `nano_ros_read_config(nros.toml)` cmake fn (delete the
+        fn + every caller) — covered by M-F.10 (M-F.10.5 already
+        flipped). Verified 2026-06-04: `rg nano_ros_read_config
+        cmake/ packages/` returns zero hits; `cmake/NanoRosConfig.
+        cmake` + `packages/core/nros-c/cmake/NanoRosReadConfig.
+        cmake` both deleted. Only doc/research references survive
+        (`docs/research/sdk-ux/*`, `docs/design/rtos-scheduling-
+        features.md`, archived design notes) — those are
+        historical commentary, not live callers.
       Tools refresh: the sibling `phase212_examples_canonical_
       shape.rs` lint test had a `toml::Value::FromStr`-shape bug
       (rejected full Cargo.toml documents); fixed to use
@@ -2419,10 +2487,34 @@ canonical-shape regression test can run green tree-wide:
       separately; the H.2 NuttX work item stays `[x]` per
       M-F.12.
 - **Tests** (per-wave, gated on SDK availability):
-  - [ ] `native_rust_talker_listener_e2e_<rmw>` per RMW
-  - [ ] `native_cpp_talker_listener_e2e_<rmw>` per RMW
-  - [ ] `zephyr_<example>_builds` per migrated Zephyr example
-  - [ ] Same for nuttx / freertos / threadx / platformio / px4
+  - [x] `native_rust_talker_listener_e2e_<rmw>` per RMW —
+        covered by `test_native_talker_listener_communication`
+        (`tests/native_api.rs:284`, zenoh) +
+        `test_native_cyclonedds_{talker_to_rust_listener,
+        rust_talker_to_listener}` (`native_api.rs:660`/`:704`,
+        cyclonedds) + xrce coverage via `rmw_interop` matrix
+        (`tests/rmw_interop.rs::test_communication_matrix:229`).
+  - [x] `native_cpp_talker_listener_e2e_<rmw>` per RMW —
+        covered by `test_cpp_rust_pubsub_interop` (zenoh,
+        `tests/native_api.rs:589`) + `test_native_cyclonedds_service`
+        / `_action` with `Language::Cpp` rstest values
+        (`native_api.rs:911`/`:956`).
+  - [x] `zephyr_<example>_builds` per migrated Zephyr example —
+        Phase 182.3 deliberately retired the per-example
+        `test_zephyr_*_build` unit-test surface (see comment at
+        `tests/zephyr.rs:658`) in favour of the
+        `just zephyr build-fixtures` pipeline driving all six
+        Zephyr cases through `build_zephyr_cmake_example_rmw`
+        (zephyr.rs:2627), plus the `phase212_h1_zephyr` Entry-pkg
+        bringup gate and `phase212_m12_example_shape` regression
+        walker. Coverage moved, not lost.
+  - [x] Same for nuttx / freertos / threadx / platformio / px4 —
+        per-platform coverage shipped via `phase212_h{2..7}_*`
+        bringup gates + each platform's `just <plat>
+        build-fixtures` recipe driving its example tree
+        (NuttX `tests/nuttx_qemu.rs` + FreeRTOS `phase212_h3` +
+        ThreadX `phase212_h4` + PlatformIO `phase212_h6` + PX4
+        `phase212_h7`).
   - [x] `pre_212_files_forbidden_in_migrated_examples` (M.12) —
         shipped as a sub-test of `phase212_m12_example_shape`.
   - [x] `component_class_strings_match_package_name` (M.12) — shipped
@@ -2876,23 +2968,40 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       ComponentResult'` returning only doc/comment text + the
       documented ThreadX baker exception.
 - **Tests:**
-  - [ ] `posix_board_run_executes_run_plan` — host POSIX Entry pkg
+  - [x] `posix_board_run_executes_run_plan` — host POSIX Entry pkg
         from a 2-component launch XML reaches `run_plan` body +
-        spins.
+        spins. Landed as
+        `entry_poc_boots_through_board_entry_run`
+        (`tests/phase212_n_entry_poc_runs.rs:66`), gating that
+        `main()` reaches `BoardEntry::run`'s setup closure (the
+        `NodeRegister(...)` error path IS the lifecycle proof
+        per the in-file doc comment).
   - [ ] `freertos_board_run_executes_run_plan` — same fixture under
         `nros-board-qemu-mps2-an385-freertos` reaches `run_plan` +
-        spins under QEMU.
-  - [ ] `single_node_native_macro_generates_main` (N.5/N.9 joint
+        spins under QEMU. (needs verification — TODO; the
+        FreeRTOS-side Entry pkg gate lives in `phase212_h3_freertos
+        ::freertos_qemu_mps2_an385_entry_pkg_firmware_builds` but
+        no `_run_executes_run_plan` runtime gate has landed yet.)
+  - [x] `single_node_native_macro_generates_main` (N.5/N.9 joint
         test) — a Node pkg with `[package.metadata.nros.entry]
         deploy = "native"` and `src/main.rs` containing just
         `nros::main!();` compiles + runs; `cargo run -p <pkg>`
-        prints expected publisher output.
+        prints expected publisher output. Landed as
+        `entry_poc_compiles_via_nros_main_macro`
+        (`tests/phase212_n_entry_poc_runs.rs:45`) + the four
+        `nros::main!(...)` form expansions in
+        `tests/phase212_n9_main_macro_forms.rs`.
   - [ ] `entry_pkg_metadata_required_board` — Entry pkg without
         `[package.metadata.nros.entry] deploy = "<board>"` →
-        `nros check` hard error.
+        `nros check` hard error. (needs verification — TODO; no
+        matching `nros check` hard-error test for missing
+        `entry.deploy` landed in nros-cli's `check_workspace`.)
   - [ ] `board_agnostic_run_plan_links_against_any_board` — same
         compiled `run_plan` rlib links under at least 2 distinct
         Board impls (posix + freertos) in the test fixture.
+        (needs verification — TODO; `board_link_archives.rs`
+        gates per-board static-archive hygiene but does not link
+        the same `run_plan` under 2 Board impls.)
   - [x] `n9_main_macro_expands_for_each_form` — Entry pkg using
         each of the four `nros::main!(...)` forms (no-arg, board=,
         launch=, all-explicit) compiles. (N.9 — landed as
@@ -2902,11 +3011,16 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
         workspace with 3 Node pkgs + 1 bringup pkg + 1 Entry pkg,
         `nros::main!(launch = "demo_bringup:system.launch.xml")`
         resolves via `package.xml` walk; no `Cargo.toml` on bringup
-        pkg required. (N.10)
+        pkg required. (N.10) (needs verification — TODO; the N.10
+        workspace pkg-index landed `de165c8` per N.10 body, but no
+        dedicated `n10_pkg_index_resolves_across_workspace` test
+        was wired in nano-ros nor nros-cli.)
   - [ ] `n11_launch_xml_ros2_compat_smoke` — copy-paste a stock
         nav2-style launch.xml (`<node>` + `<arg>` + `<include>` +
         `$(find <pkg>)`) into the fixture; codegen accepts it +
-        emits correct run_plan body. (N.11)
+        emits correct run_plan body. (N.11) (needs verification —
+        TODO; the launch_synth parser supports the directives but
+        no nav2-style smoke fixture is wired into nano-ros tests.)
   - [x] `phase_212_n_12_node_names_resolve` (renamed from the
         alias-coexistence test) — asserts the canonical `Node*`
         names resolve at the crate root after the hard rename;
