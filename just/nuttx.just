@@ -186,146 +186,17 @@ build-fixtures:
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx c zenoh
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
-    # Also stage the native NuttX external-app make path (the `nuttx_make_e2e`
-    # kernel ELF). Must run after the cmake/Corrosion c+cpp builds above —
-    # stage-external-apps.sh persists their per-example libnros_c.a (+ libnros_cpp,
-    # nros-platform-nuttx, weak_stubs, log_fmt) into each app's
-    # generated/ffi/extra_libs.mk, so the make/Application.mk link resolves the
-    # nros C/C++ API (the tier-3 nros-c-on-NuttX gap is closed via that reuse).
-    just nuttx build-fixtures-make
 
-# Phase 157.C — stage the integration shell + every C/C++ example
-# under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,
-# then run `make` from the NuttX kernel tree. Exercises
-# apps/external/*/Make.defs + apps/external/*/Kconfig discovery
-# (the path cmake fixtures `build-fixtures` bypass).
+# Phase 212.M-F.16 — the legacy Phase 157.C `build-fixtures-make`
+# recipe (native external-app make path that produced the
+# `nuttx_make_e2e` kernel ELF) was retired here. The Phase 212.H.2
+# multi-pkg workspace path (`scripts/nuttx/stage-external-apps.sh
+# --bringup <dir>`, driven from `phase212_h2_nuttx`) is the only
+# supported NuttX make-path now; per-example staging was dropped
+# under M-F.12 and the host-codegen / per-example FFI baker scripts
+# under M-F.16's commit 1/4.
 #
-# Phase 157.C.17 — recipe owns the NuttX configure step. If
-# `.config` is missing OR lacks `CONFIG_NET=y` (stock
-# qemu-armv7a/nsh defconfig), copies in
-# `packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig`
-# which already has the full networking + TLS_NELEM + virtio-net
-# stack zenoh-pico needs. Same defconfig the cmake bring-up uses.
-[group("full-matrix")]
-build-fixtures-make:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-        echo "NuttX skip: arm-none-eabi-gcc not found"; exit 0
-    fi
-    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    nuttx_apps_dir="${NUTTX_APPS_DIR:-$(pwd)/third-party/nuttx/nuttx-apps}"
-    if [ ! -d "$nuttx_dir/arch" ]; then
-        echo "NuttX skip: NUTTX_DIR=$nuttx_dir not found"; exit 0
-    fi
-    if [ ! -d "$nuttx_apps_dir" ]; then
-        echo "NuttX skip: NUTTX_APPS_DIR=$nuttx_apps_dir not found"; exit 0
-    fi
-    if ! command -v kconfig-tweak >/dev/null 2>&1; then
-        echo "NuttX skip: kconfig-tweak not on PATH (install kconfig-frontends)"; exit 0
-    fi
-    # Phase 157.C.17 — auto-configure NuttX with the nano-ros
-    # board defconfig if `.config` is missing or lacks networking.
-    # Networking is mandatory: zenoh-pico links bind/sendto/etc.
-    nros_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig"
-    if [ ! -f "$nuttx_dir/.config" ] || ! grep -q "^CONFIG_NET=y" "$nuttx_dir/.config"; then
-        if [ ! -f "$nros_defconfig" ]; then
-            echo "NuttX skip: $nros_defconfig missing — can't auto-configure" ; exit 0
-        fi
-        echo "Configuring NuttX with nano-ros defconfig (CONFIG_NET=y + virtio-net + TLS_NELEM)..."
-        cp "$nros_defconfig" "$nuttx_dir/.config"
-        ( cd "$nuttx_dir" && make olddefconfig >/dev/null )
-    fi
-    # Phase 184.4 — build the host nros-codegen first, mirroring the cmake
-    # `build-fixtures` path above. Historical per-example staging scripts
-    # (now retired under Phase 212.M-F.16) used it to (re)generate per-package
-    # `nano_ros_cpp_ffi_<pkg>` staticlibs that the external-app link pulls in
-    # via generated/ffi/extra_libs.mk. `just clean` removes the codegen build,
-    # so this must run every time, not just on first setup. Export NROS_CODEGEN
-    # at the active profile dir so stage-external-apps.sh uses the freshly-built
-    # binary, not the stale `release/` default.
-    source scripts/build/cargo.sh
-    echo "Building host nros-codegen for staging..."
-    nros_cargo_ensure_codegen_c
-    export NROS_CODEGEN="$(nros_cargo_codegen_c_bin)"
-    echo "  → nros-codegen: $NROS_CODEGEN"
-    echo "Staging nano-ros external apps into $nuttx_apps_dir/external/..."
-    scripts/nuttx/stage-external-apps.sh "$nuttx_apps_dir"
-    # Force apps/Kconfig regeneration so mkkconfig.sh picks up the
-    # newly-staged apps/external/Kconfig.
-    rm -f "$nuttx_apps_dir/Kconfig"
-    # First pass: olddefconfig from kernel. Drives apps preconfig
-    # (regenerates apps/Kconfig with the new NROS_* symbols), then
-    # drops NROS_* from .config because they're new symbols with
-    # default n.
-    echo "Pass 1/2: regenerate apps/Kconfig + propagate new symbols"
-    ( cd "$nuttx_dir" && make olddefconfig >/dev/null )
-    # Now enable every nano-ros knob in .config.
-    # Phase 157.C — C-only for now. C++ examples need a parallel
-    # nros-cpp Cargo build in the integration shell + symbol-export
-    # work tracked as 157.C.11.
-    config="$nuttx_dir/.config"
-    kconfig-tweak --file "$config" --enable NROS
-    kconfig-tweak --file "$config" --enable NROS_C_API
-    kconfig-tweak --file "$config" --enable NROS_CPP_API
-    for lang in C CPP; do
-        for ex in TALKER LISTENER SERVICE_SERVER SERVICE_CLIENT ACTION_SERVER ACTION_CLIENT; do
-            kconfig-tweak --file "$config" --enable "NROS_EXAMPLE_${ex}_${lang}"
-        done
-    done
-    # Phase 157.C — disable ALLSYMS for first build (chicken-egg:
-    # CONFIG_ALLSYMS=y runs mkallsyms.py on $(NUTTX) which doesn't
-    # exist on first link). NuttX's stock qemu-armv7a/nsh enables
-    # it by default. Carve out as 157.C.12 — multi-pass build that
-    # bootstraps allsyms.
-    kconfig-tweak --file "$config" --disable ALLSYMS
-    # Phase 157.C.11 — Rust std references `pthread_{key_create,
-    # key_delete,getspecific,setspecific}` for thread-local
-    # storage. NuttX gates these on CONFIG_TLS_NELEM > 0 (stock
-    # qemu-armv7a/nsh sets it to 0). Set 8 — enough for std's
-    # internal TLS slots + a few user-side keys.
-    kconfig-tweak --file "$config" --set-val TLS_NELEM 8
-    # Phase 157.C.16 — nros-cpp's `result.hpp` `#include <utility>`
-    # (std::move / std::forward). Stock NuttX qemu-armv7a/nsh sets
-    # CONFIG_LIBCXXNONE=y (no C++ stdlib headers). Switch to
-    # LIBCXXTOOLCHAIN so the toolchain's `<utility>` etc. are
-    # available — no extra source build required.
-    kconfig-tweak --file "$config" --disable LIBCXXNONE
-    kconfig-tweak --file "$config" --enable LIBCXXTOOLCHAIN
-    # Pass 2: olddefconfig again so the just-enabled knobs settle
-    # any newly-visible dependencies.
-    echo "Pass 2/2: olddefconfig with NROS enabled"
-    ( cd "$nuttx_dir" && make olddefconfig >/dev/null )
-    # Clean per-example app build state so ar re-archives objects
-    # into libapps.a. Without this, stale .built timestamps from a
-    # prior run convince apps/Application.mk that nothing's stale,
-    # but apps/libapps.a (gone after distclean / re-config) lacks
-    # the example objects → kernel link fails with undefined
-    # `<PROGNAME>_main` references. Skip the integration shell —
-    # its `clean::` rule runs `cargo clean` which would wipe the
-    # 28 GiB cargo target dir (forcing a full nros-c + nros-cpp
-    # rebuild on every recipe invocation).
-    for ex in "$nuttx_apps_dir"/external/nano-ros-*; do
-        ( cd "$ex" && make clean APPDIR="$nuttx_apps_dir" TOPDIR="$nuttx_dir" >/dev/null 2>&1 || true )
-    done
-    # Phase 157.C.15 — also force the integration shell to
-    # rebuild its CSRCS (platform_wake_stubs.c). Touching the
-    # .built marker removes the staleness flag without running
-    # the heavy `cargo clean` from the shell's `clean::` rule.
-    rm -f "$nuttx_apps_dir"/external/nano-ros/.built \
-          "$nuttx_apps_dir"/external/nano-ros/c/*.o
-    # Final build. Single binary contains all 12 examples as
-    # built-in commands (nuttx_c_talker / nuttx_cpp_listener / ...).
-    echo "Building NuttX with all nano-ros examples enabled..."
-    ( cd "$nuttx_dir" && make )
-    echo "NuttX external-app build complete. Binary: $nuttx_dir/nuttx"
-
-# Build every NuttX tier — `build-fixtures` folds in the native external-app
-# make path (`build-fixtures-make`, the `nuttx_make_e2e` kernel ELF), so a
-# single `build-all` produces every fixture `test-all` needs. The tier-3
-# nros-c-on-NuttX link is resolved by reusing the per-example libnros_c.a
-# (+ aux staticlibs) from the cmake/Corrosion c+cpp builds — see the comment
-# in `build-fixtures`. `build-all-full` removed.
+# Build every NuttX tier. `build-all-full` removed.
 [group("full-matrix")]
 build-all: build build-examples build-fixtures
     @echo "NuttX build-all completed."
