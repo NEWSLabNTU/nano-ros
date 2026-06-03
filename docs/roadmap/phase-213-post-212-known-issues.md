@@ -126,7 +126,7 @@ bodies) +
 `packages/testing/nros-tests/tests/phase212_d_workspace_metadata.rs`
 (1 comment).
 
-- [ ] **213.B.1** — **HIGH PRIORITY (configure-time bug).** Add a
+- [x] **213.B.1** — **HIGH PRIORITY (configure-time bug).** Add a
       `nano_ros_component_register(...)` deprecation shim in
       `cmake/NanoRosNodeRegister.cmake` mirroring the existing
       `nano_ros_application` shim at line 138. Body:
@@ -142,6 +142,15 @@ bodies) +
       **Acceptance**: a fresh `cmake -B build` on
       `examples/qemu-arm-freertos/c/talker/` configures clean
       (currently fails on the undefined fn).
+      **Landed `228ce61d8`** — shim added adjacent to the
+      `nano_ros_application` shim with matching header-comment entry;
+      `cargo test -p nros-tests --test phase212_l9_cmake_fns` 4/4
+      pass (the test suite exercises `nano_ros_component_register`
+      end-to-end through the cmake module), `phase212_d_workspace_
+      metadata` 3/3 pass, `phase212_m12_example_shape` +
+      `phase212_pre_212_files_forbidden` 9/9 pass. 213.B.2 caller
+      sweep retires every callsite next; the shim stays as a one-
+      release safety net.
 
 - [ ] **213.B.2** — Mechanical sweep: rename callsites
       `nano_ros_component_register(...)` → `nano_ros_node_register(...)`
