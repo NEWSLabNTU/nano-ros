@@ -1448,3 +1448,131 @@ disjoint from F–R. Within the new tracks, the only multi-track
 collision risk is H/Q (both touch `just/<plat>.just` heads — H is
 the native subset of Q) and I/N (both bump the nros-cli pin) —
 serialise within each pair, parallel across.
+
+---
+
+## Track S — cyclonedds RMW selection UX parity with zenoh/xrce
+
+**Scope**: HIGH. Surfaced 2026-06-04 during native rust cyclonedds
+build verification. Per Phase 210/212 design intent (and user
+direction): the cyclonedds RMW must mirror the zenoh + xrce UX —
+one `dep:nros-rmw-<backend>` row per RMW, no extra feature
+plumbing in user Cargo.toml. Generated msg bindings stay
+RMW-agnostic (K.7 contract).
+
+**Current asymmetry**:
+
+```toml
+# zenoh + xrce — clean 1-entry rows
+rmw-zenoh      = ["dep:nros-rmw-zenoh"]
+rmw-xrce       = ["dep:nros-rmw-xrce-cffi"]
+
+# cyclonedds — 3-entry row (boilerplate)
+rmw-cyclonedds = [
+    "dep:nros-rmw-cyclonedds-sys",
+    "nros-rmw-cyclonedds-sys/vendored",     # build-source toggle
+    "nros/rmw-cyclonedds",                  # umbrella passthrough
+]
+```
+
+Two redundant entries on cyclonedds:
+
+1. **`nros-rmw-cyclonedds-sys/vendored`** — feature on the backend
+   crate that toggles vendor build vs system pkg-config. For parity
+   with zenoh (which always vendors) + xrce (likewise), this should
+   be the **default feature** of `nros-rmw-cyclonedds-sys` so the
+   user never types it.
+2. **`nros/rmw-cyclonedds`** — umbrella passthrough that activates
+   `nros-node/rmw-cyclonedds` so the typed-creator hook
+   (`register::<M>()`) fires. Zenoh + xrce don't carry an analogous
+   passthrough because their typed-creator paths are unconditional.
+   For parity, the typed-creator hook should fire whenever
+   `nros-rmw-cyclonedds-sys` is in the dep graph (probe via cargo
+   `links =` mechanism, similar to how `nros-platform-cffi` is
+   detected) — no user-facing feature flag needed.
+
+**Owns:**
+* `packages/dds/nros-rmw-cyclonedds-sys/Cargo.toml` (move `vendored`
+  to `default = ["vendored"]`)
+* `packages/core/nros-node/Cargo.toml` + `packages/core/nros-node/build.rs`
+  (auto-detect `nros-rmw-cyclonedds-sys` via `links =` env-var; emit
+  `cfg(rmw_cyclonedds_present)` so the K.7.6.b typed-creator hook
+  fires automatically — no `rmw-cyclonedds` cargo feature on
+  `nros-node`)
+* `packages/core/nros/Cargo.toml` (drop the `rmw-cyclonedds =
+  ["nros-node/rmw-cyclonedds"]` passthrough; collapse the user-
+  facing umbrella feature to `rmw-cyclonedds =
+  ["dep:nros-rmw-cyclonedds-sys"]` matching zenoh/xrce shape)
+* `examples/**/Cargo.toml` (every `rmw-cyclonedds = [...]` feature
+  row that today carries the 3-entry form — collapse to 1 entry)
+
+**Work Items:**
+
+- [ ] **214.S.1 Make `vendored` the default feature of
+      `nros-rmw-cyclonedds-sys`** — flip the manifest, drop the
+      `[features.no-default-vendor]` escape hatch if nothing in tree
+      uses it. **Acceptance**: `cargo build -p nros-rmw-cyclonedds-sys`
+      vendors cyclonedds C++ without explicit `--features vendored`.
+
+- [ ] **214.S.2 Auto-detect cyclonedds-sys in `nros-node`** — use
+      cargo's `links =` mechanism (set `links = "cyclonedds"` on
+      `nros-rmw-cyclonedds-sys`'s manifest; have `nros-node/build.rs`
+      probe `DEP_CYCLONEDDS_PRESENT` and emit a `--cfg
+      rmw_cyclonedds_present` rustc-cfg). Replace every K.7.6.b
+      `#[cfg(feature = "rmw-cyclonedds")]` gate with
+      `#[cfg(rmw_cyclonedds_present)]`. **Acceptance**: the
+      typed-creator hook fires whenever `nros-rmw-cyclonedds-sys`
+      is in the dep graph — no user-facing feature needed on
+      `nros-node`.
+
+- [ ] **214.S.3 Drop the `nros/rmw-cyclonedds` umbrella feature** —
+      delete the `rmw-cyclonedds = ["nros-node/rmw-cyclonedds"]`
+      pass-through in `packages/core/nros/Cargo.toml`. Replace with
+      the parity shape: `rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]`.
+      Acceptance: `nros`'s feature surface for `rmw-{zenoh,xrce,cyclonedds}`
+      is structurally identical (one `dep:` entry each).
+
+- [ ] **214.S.4 Sweep example Cargo.toml shapes** — for every
+      `examples/**/Cargo.toml` carrying the 3-entry cyclonedds
+      feature row, collapse to:
+      ```toml
+      rmw-cyclonedds = ["nros/rmw-cyclonedds"]
+      ```
+      (matching the zenoh `rmw-zenoh = ["nros/rmw-zenoh"]` shape).
+      Drop the `vendored` ref + the explicit `dep:nros-rmw-cyclonedds-sys`
+      ref. Includes the K.7.7.b svc/action examples + K.7.7 pub/sub
+      pair. **Acceptance**: `git grep -nE '"nros-rmw-cyclonedds-sys/vendored"'`
+      returns nothing in `examples/`.
+
+- [ ] **214.S.5 Add FreeRTOS rust `rmw-cyclonedds` row** — every
+      `examples/qemu-arm-freertos/rust/*/Cargo.toml` today lacks any
+      cyclonedds feature path entirely. Add the same parity row
+      `rmw-cyclonedds = ["nros/rmw-cyclonedds"]` per S.4. May
+      require a BSP-side gate (Phase 184.8 Zephyr mutex-pool sizing
+      analog for FreeRTOS) — file as 214.S.5.b if so. Same applies
+      to `examples/threadx-linux/rust/*/Cargo.toml` if any are
+      missing the cyclonedds row.
+
+- [ ] **214.S.6 Regen sweep against fresh CLI (Track J overlap)** —
+      with the Cargo.toml shapes corrected, regen every example's
+      `generated/` tree via the post-K.7.1.b nros CLI (Track I env-
+      var path) so `impl ::nros_serdes::Message` lands in every
+      generated msg crate. Coordinate with Track J (its scope is
+      narrower — only the `RosAction` drift; S.6 covers msg + svc +
+      action). Acceptance: `cargo build --features rmw-cyclonedds`
+      runs end-to-end on every native rust example without manifest
+      or codegen errors.
+
+**Acceptance for Track S**:
+- `git grep -nE '"nros-rmw-cyclonedds-sys/vendored"'` returns nothing.
+- `git grep -nE '"nros/rmw-cyclonedds"'` only appears in `nros/Cargo.toml` definition + per-example user-facing `rmw-cyclonedds = ["nros/rmw-cyclonedds"]` rows.
+- `cargo build --features rmw-cyclonedds` works on every native rust + freertos rust + threadx-linux rust example.
+- K.7 e2e suites remain green.
+
+**Files (umbrella owns):**
+* `packages/dds/nros-rmw-cyclonedds-sys/Cargo.toml` (S.1)
+* `packages/core/nros-node/Cargo.toml` + `build.rs` (S.2)
+* `packages/core/nros-node/src/cyclonedds_register.rs` (S.2 — cfg flip)
+* `packages/core/nros/Cargo.toml` (S.3)
+* `examples/**/Cargo.toml` (S.4 + S.5 — Cargo.toml shape sweep)
+* `examples/**/generated/` (S.6 — regen, gitignored output)
