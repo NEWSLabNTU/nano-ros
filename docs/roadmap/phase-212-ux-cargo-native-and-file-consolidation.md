@@ -887,17 +887,29 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
 
       **Two unblock paths** (pick one, document choice):
 
-      * **Path A — extend `dynamic_type_builder.cpp`**: emit a JEQ
-        chain when a sequence's element is `Nested(&NT)`. The chain
-        emits `DDS_OP_TYPE_SEQ`, `DDS_OP_JEQ4 | nested_elem_size <<
-        16`, then the nested element type's ops sub-table
-        appended after `RTS`. The JSR-patch infrastructure already
-        present in K.7.4.b for `Nested` struct fields is the right
-        shape — extend it to sequences. Also covers `Array(N,
-        &Nested(...))` for free since both go through the same JEQ
-        chain. Hardest part: matching Cyclone's nested ops calling
-        convention for sequence elements (`m_keyless` flag, offset
-        re-base, alignment).
+      * **Path A — extend `dynamic_type_builder.cpp`** (RECOMMENDED;
+        full design at `docs/design/phase-212-k74c-sequence-of-nested.md`).
+        Research correction: Cyclone 0.10.5 does NOT use `DDS_OP_JEQ`
+        for sequence-of-struct (JEQ is union-case dispatch only). It
+        uses a plain 4-word `DDS_OP_ADR | DDS_OP_TYPE_SEQ |
+        DDS_OP_SUBTYPE_STU, offset, sizeof(ElemT), (4 << 16) |
+        jsr_delta` — the existing K.7.4.b JSR-patch infrastructure
+        for nested struct fields is the right shape, just extend it
+        to sequences (and BSQ/ARR variants). Two live idlc witnesses
+        in tree confirm the shape:
+        `examples/threadx-linux/cpp/service-client/build-cyclonedds/
+        cyclonedds-ts/_genroot/action_msgs/msg/{CancelGoal_Response,
+        GoalStatusArray}.c`. Walker reference: `third-party/dds/
+        cyclonedds/src/core/ddsi/src/ddsi_cdrstream.c:639-706`.
+        Estimate: ~150 LOC bridge + ~80 LOC tests, 1 dev-day.
+        Also covers `Array(N, &Nested(...))` for free (`ARR|
+        SUBTYPE_STU` is the same shape). Bonus: fold in a pre-
+        existing EXT 4-word emission latent bug (works today only
+        because the phantom 4th word lands on a real `RTS`).
+        Bonus 2: `m_nops` is functionally unused at runtime
+        (Cyclone's `ddsi_sertype_default.c:327` recomputes via
+        `dds_stream_countops`) — explains why K.7.4.b's suspicious
+        m_nops values never caused observable breakage.
 
       * **Path B — bake `action_msgs` IDL into the vendored
         Cyclone build**: mirror the existing `rmw_dds_common_graph`
