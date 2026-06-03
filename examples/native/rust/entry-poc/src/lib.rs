@@ -15,7 +15,7 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeResult};
+use nros::{CallbackCtx, CallbackId, ExecutableNode, Node, NodeContext, NodeResult};
 
 pub struct EntryPoc;
 
@@ -29,5 +29,10 @@ impl Node for EntryPoc {
     }
 }
 
-nros::declarative_component!(EntryPoc);
+impl ExecutableNode for EntryPoc {
+    type State = ();
+    fn init() -> Self::State {}
+    fn on_callback(_state: &mut Self::State, _cb: CallbackId<'_>, _ctx: &mut CallbackCtx<'_>) {}
+}
+
 nros::node!(EntryPoc);
