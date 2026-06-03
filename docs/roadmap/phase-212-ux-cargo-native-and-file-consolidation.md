@@ -888,17 +888,53 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       `packages/core/nros-node/src/{publisher,subscription,service,
       action}.rs`.
 
-- [ ] **K.7.7** — **Migrate every affected example.** Gated on
-      K.7.1.b so the regenerated `generated/<pkg>/` trees carry
-      `impl Message`. Restore `cargo build` on:
-      * `examples/native/rust/talker` (default `rmw-zenoh` build is
-        blocked today; cyclonedds variant works via cmake path).
-      * `examples/native/rust/listener` (same shape).
-      * Any other 212.M-swept rust example carrying a
-        `<pkg>/cyclonedds` feature ref (grep audit per K.7.2).
-      Acceptance: `cargo build` succeeds with default features +
-      `cargo build --features rmw-cyclonedds` succeeds and runs an
-      end-to-end exchange with `zenohd` / Cyclone router.
+- [x] **K.7.7** — **Migrate every affected example.** **Pub/sub
+      portion landed 2026-06-03** for
+      `examples/native/rust/{talker,listener}` — both build cleanly
+      under `--no-default-features --features rmw-cyclonedds` (pure
+      `cargo build`, no cmake glue) and pass an end-to-end loopback
+      Cyclone exchange (`Published: 0..4` → `Received: 0..4`).
+      Migration steps:
+      * Re-ran `nros ws sync` (nros-cli 0.3.7 + K.7.1 + K.7.1.b built
+        from main) with `NROS_REPO_DIR=<repo>` so the auto-managed
+        `[patch.crates-io]` block carries `nros-core` + `nros-serdes`
+        path-deps the generated msg crates need. Generated
+        `generated/std_msgs/` + `generated/builtin_interfaces/` carry
+        the K.7.1.b `impl ::nros_serdes::Message for <M>` block per
+        msg type with NO `cyclonedds` Cargo feature.
+      * Each example's `rmw-cyclonedds` feature now forwards
+        `nros/rmw-cyclonedds` so the `nros-node` typed-creator hook
+        (K.7.6.b) routes through `nros_rmw_cyclonedds::register::<M>()`.
+      * Added the umbrella `nros/rmw-cyclonedds` feature pass-through
+        (the "out of scope" item explicitly called out in the K.7.6.b
+        commit body) so consumers can enable the wiring without
+        having to depend on `nros-node` directly.
+      * Wired `nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`
+        into `nros-rmw-cyclonedds-sys/build.rs` — the CMake build
+        already lists it (`CMakeLists.txt:95`) but the vendored cargo
+        build was missing the TU, leaving
+        `nros_cyclonedds_build_descriptor_from_schema` undefined at
+        link time.
+      * Patched `descriptors.cpp::nros_rmw_cyclonedds_register_descriptor`
+        to alias each entry under the descriptor's own `m_typename`
+        (the mangled `pkg::msg::dds_::Name_` form) in addition to
+        the caller-supplied name. The Rust runtime registry passes
+        the unmangled `Message::TYPE_NAME` (`pkg/msg/Name`) but
+        `publisher_create` / `subscriber_create` look up by the
+        mangled `RosMessage::TYPE_NAME`; aliasing keeps both call
+        sites happy without forcing the Rust side to choose a form.
+      Service / action portion remains gated on **K.7.1.c** (codegen
+      must emit `Message` impls for `*_Request` / `*_Response` /
+      action goal+result+feedback types). When that lands the same
+      pattern applies to:
+      * `examples/native/rust/{service-server,service-client,
+        action-server,action-client}` etc. (grep audit per K.7.2).
+      Acceptance recheck for pub/sub: `cargo build` (default,
+      `rmw-zenoh`) still succeeds + `cargo build --no-default-features
+      --features rmw-cyclonedds` succeeds and runs an end-to-end
+      exchange on Cyclone loopback. Tests: `cargo test -p nros-node
+      --features rmw-cyclonedds` → 156 pass (149+2+5 baseline),
+      `cargo test -p nros-rmw-cyclonedds` → 13 pass.
 
 - [x] **K.7.8** — **`nros-rmw-cyclonedds` registry hardening tests.**
       Landed as three new test entry points in

@@ -111,10 +111,26 @@ bool action_topic_type(const char *topic_name, const char *type_name,
 // C entry point used by IDL-derived registration TUs. Lives outside
 // the namespace so the auto-generated `_register.c` constructor
 // (compiled as C) can find it via plain symbol lookup.
+//
+// Phase 212.K.7.7 — also alias the descriptor under its own
+// `m_typename` (the mangled `pkg::msg::dds_::Name_` form) when the
+// caller-supplied `type_name` differs. The Rust runtime registry
+// (`nros_rmw_cyclonedds::register::<M>()`) passes the unmangled
+// `nros_serdes::Message::TYPE_NAME` (`pkg/msg/Name`), but
+// `publisher_create` / `subscriber_create` look up by the mangled
+// `RosMessage::TYPE_NAME` baked at codegen time. Registering both
+// keys keeps both call sites working without forcing every consumer
+// to memorise which form lands in which table.
 extern "C" void nros_rmw_cyclonedds_register_descriptor(
     const char *type_name,
     const dds_topic_descriptor_t *descriptor) {
     nros_rmw_cyclonedds::register_descriptor(type_name, descriptor);
+    if (descriptor != nullptr && descriptor->m_typename != nullptr &&
+        (type_name == nullptr ||
+         std::strcmp(descriptor->m_typename, type_name) != 0)) {
+        nros_rmw_cyclonedds::register_descriptor(descriptor->m_typename,
+                                                 descriptor);
+    }
 }
 
 extern "C" const dds_topic_descriptor_t *

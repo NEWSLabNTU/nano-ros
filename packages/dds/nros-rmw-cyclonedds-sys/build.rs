@@ -111,8 +111,18 @@ fn vendored_build() {
         "qos.cpp",
         "sertype_min.cpp",
     ];
+    // Phase 212.K.7.7 — bridge TUs that define the C++ entry points called
+    // by the Rust `nros-rmw-cyclonedds` crate (descriptor builder + type
+    // registry). The CMake target adds these too (see
+    // `packages/dds/nros-rmw-cyclonedds/CMakeLists.txt:95`); without them
+    // the vendored cargo build leaves the symbols undefined.
+    let bridge_files = ["dynamic_type_builder.cpp"];
+    let bridge_src = backend_dir.join("bridge");
     for f in cpp_files {
         println!("cargo:rerun-if-changed={}", backend_src.join(f).display());
+    }
+    for f in bridge_files {
+        println!("cargo:rerun-if-changed={}", bridge_src.join(f).display());
     }
     let mut cc_cpp = cc::Build::new();
     cc_cpp
@@ -133,6 +143,9 @@ fn vendored_build() {
         .flag_if_supported("-Wno-pedantic");
     for f in cpp_files {
         cc_cpp.file(backend_src.join(f));
+    }
+    for f in bridge_files {
+        cc_cpp.file(bridge_src.join(f));
     }
     cc_cpp.cargo_metadata(false);
     cc_cpp.compile("nros_rmw_cyclonedds");

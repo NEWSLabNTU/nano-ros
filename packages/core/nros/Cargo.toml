@@ -50,6 +50,16 @@ rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 # `target_link_libraries(... NanoRos::Rmw::<name>)`. `rmw-cffi` is
 # the only Rust feature that still gates the vtable runtime.
 
+# Phase 212.K.7.7 — pass-through for the new `nros-node/rmw-cyclonedds`
+# feature added in K.7.6.b. With it enabled, every typed
+# `create_publisher` / `create_subscription` / … routes through
+# `nros_rmw_cyclonedds::register::<M>()` before the cffi vtable
+# creates the underlying entity, populating the runtime descriptor
+# cache that the C++ bridge reads in `dds_create_topic`. Callers also
+# depend on the matching `nros-rmw-cyclonedds-sys` shim crate to drag
+# in the C++ backend register entry.
+rmw-cyclonedds = ["nros-node/rmw-cyclonedds"]
+
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix.
 rmw-lending = ["nros-node/rmw-lending"]
