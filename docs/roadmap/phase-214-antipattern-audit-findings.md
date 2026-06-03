@@ -251,11 +251,12 @@ lifetime transmute footgun. All in board crates / nros-node.
 `packages/boards/nros-board-{esp32,mps2-an385,stm32f4,esp32-qemu}/src/node.rs`
 (transport-feature guard).
 
-- [ ] **214.E.1 Orin SPE i32 cast bounds-check** — `nros-board-orin-spe/
-      src/lib.rs:285`: `bytes.len() as i32` cast without overflow
-      check. Strings are ≤256 bytes in practice so safe today; add
-      a `debug_assert!(bytes.len() <= i32::MAX as usize)` or replace
-      with `i32::try_from(bytes.len()).expect("string fits i32")`.
+- [x] **214.E.1 Orin SPE i32 cast bounds-check** — `nros-board-orin-spe/
+      src/lib.rs:286`: replaced `bytes.len() as i32` with
+      `i32::try_from(bytes.len()).unwrap_or(i32::MAX)` at the
+      `tcu_print_msg` FFI boundary. Saturating-truncate chosen over
+      `expect` so a pathological caller is clamped rather than
+      panicking inside the FSP println path. Landed in `d7c7b4444`.
 
 - [ ] **214.E.2 Dual-transport `compile_error!` guard** — per slice 8
       audit: board crates enforce ≥1 transport (`ethernet` OR `serial`)
