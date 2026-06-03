@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <nros/app_main.h>
@@ -42,7 +43,12 @@ int nros_app_main(int argc, char **argv) {
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    NROS_CHECK_RET(nros_support_init(&app.support, "tcp/10.0.2.2:7563", 0), 1);
+    const char *loc = getenv("NROS_LOCATOR");
+    if (!loc) loc = "tcp/10.0.2.2:7563"; /* fixture default — qemu-riscv64-threadx service-client port */
+    int domain = 0;
+    const char *d = getenv("ROS_DOMAIN_ID");
+    if (d) domain = atoi(d);
+    NROS_CHECK_RET(nros_support_init(&app.support, loc, domain), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_client", "/"), 1);
     NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);

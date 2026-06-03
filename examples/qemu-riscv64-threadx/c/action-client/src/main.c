@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <nros/app_main.h>
@@ -86,7 +87,12 @@ int nros_app_main(int argc, char **argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    NROS_CHECK_RET(nros_support_init(&app.support, "tcp/10.0.2.2:7573", 0), 1);
+    const char *loc = getenv("NROS_LOCATOR");
+    if (!loc) loc = "tcp/10.0.2.2:7573"; /* fixture default — qemu-riscv64-threadx action-client port */
+    int domain = 0;
+    const char *d = getenv("ROS_DOMAIN_ID");
+    if (d) domain = atoi(d);
+    NROS_CHECK_RET(nros_support_init(&app.support, loc, domain), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_client", "/"), 1);
     NROS_CHECK_RET(nros_action_client_init(&app.action_client, &app.node, "/fibonacci",
                                        &fibonacci_type), 1);
