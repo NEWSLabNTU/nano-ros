@@ -7,7 +7,7 @@ publish = false
 description = "FreeRTOS QEMU MPS2-AN385 talker — Phase 212.L Component pkg"
 
 # Phase 212.L.1 Component pkg shape — lib only, no [[bin]], no main.rs.
-# `nros::component!()` exports the register / init / dispatch / tick
+# `nros::node!()` exports the register / init / dispatch / tick
 # trampolines; the BSP's generated runtime (M.5.a.4) owns the executor
 # + spin loop.
 [lib]

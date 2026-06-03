@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # nros Zephyr Service Server Example (Rust) — Phase 212.M.3 Component pkg.
 #
-# Phase 212.L.1 shape — lib only, no `rust_main` entry. `nros::component!()`
+# Phase 212.L.1 shape — lib only, no `rust_main` entry. `nros::node!()`
 # exports the register trampoline; the generated runtime (driven by `nros
 # codegen-system` via the H.1 Zephyr adapter shim once L.7 self-pkg lands)
 # owns init, executor open, RMW registration, and the spin loop.

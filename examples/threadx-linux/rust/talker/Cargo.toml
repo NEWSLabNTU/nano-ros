@@ -7,7 +7,7 @@ publish = false
 description = "ThreadX Linux talker — Phase 212.L Component pkg"
 
 # Phase 212.L.1 Component pkg shape — lib only, no [[bin]], no main.rs.
-# `nros::component!()` exports the register trampoline; the generated
+# `nros::node!()` exports the register trampoline; the generated
 # runtime (driven by `nros codegen-system` via the H.4 ThreadX adapter
 # shim) owns `nros::init`, executor open, RMW registration, and the
 # spin loop.
