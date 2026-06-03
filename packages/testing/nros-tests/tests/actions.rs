@@ -29,18 +29,23 @@ fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: P
     let mut server = ManagedProcess::spawn_command(cmd, "native-rs-action-server")
         .expect("Failed to start action server");
 
-    // Wait for server readiness
+    // Wait for server readiness. Marker found → fall through to test
+    // success. Phase 214.A.3 — dropped the `eprintln!("[PASS]") + return`
+    // verbosity; the harness reports PASS on clean fn return.
     if server
         .wait_for_output_pattern("Waiting for action", Duration::from_secs(5))
         .is_ok()
     {
-        eprintln!("[PASS] native-rs-action-server started successfully");
         return;
     }
 
-    // Check process is still running (didn't crash)
+    // Marker not printed within 5s. Distinguish: process still alive
+    // = readiness unverified → SKIP (CLAUDE.md-banned to claim PASS on
+    // an unmet precondition). Process exited → real failure → panic.
     if server.is_running() {
-        eprintln!("[PASS] native-rs-action-server started (no marker yet)");
+        nros_tests::skip!(
+            "native-rs-action-server did not print 'Waiting for action' marker within 5s"
+        );
     } else {
         eprintln!("[FAIL] native-rs-action-server exited early");
         panic!("Action server failed to start");

@@ -85,7 +85,13 @@ int _write(int fd, const char *buf, int len) {
     return len;
 }
 
-/* ---- FFI: set config and C entry point in app_define.c ---- */
+/* ---- FFI: set config and C entry point in app_define.c ----
+ *
+ * Phase 214.A.1 — `nros_threadx_set_config` is `void` by design.
+ * The impl is a pure memcpy of the IP/MAC/netmask/gateway bytes into
+ * a static cache (see `c/board_threadx_qemu_riscv64.c`); it has no
+ * failure mode. The call below therefore returns no error value to
+ * capture. */
 extern void nros_threadx_set_app_main(void (*entry)(void));
 extern void nros_threadx_set_config(
     const uint8_t *ip,

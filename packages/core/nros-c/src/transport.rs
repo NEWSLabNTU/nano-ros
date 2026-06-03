@@ -91,9 +91,12 @@ pub struct nros_transport_ops_t {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_set_custom_transport(ops: *const nros_transport_ops_t) -> nros_ret_t {
     if ops.is_null() {
-        // Clear request.
-        let _ = unsafe { nros_rmw::set_custom_transport(None) };
-        return NROS_RET_OK;
+        // Clear request. Phase 214.A.2 — propagate teardown errors
+        // instead of discarding the Result.
+        return match unsafe { nros_rmw::set_custom_transport(None) } {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        };
     }
     // Copy by-value out of the caller's struct.
     let ops_copy = unsafe { *ops };
@@ -117,8 +120,11 @@ pub unsafe extern "C" fn nros_set_custom_transport(ops: *const nros_transport_op
 /// teardown paths.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_clear_custom_transport() -> nros_ret_t {
-    let _ = unsafe { nros_rmw::set_custom_transport(None) };
-    NROS_RET_OK
+    // Phase 214.A.2 — propagate teardown errors.
+    match unsafe { nros_rmw::set_custom_transport(None) } {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_ERROR,
+    }
 }
 
 /// Phase 115.C — query whether a custom transport is currently

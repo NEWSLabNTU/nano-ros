@@ -38,18 +38,23 @@ fn test_service_server_starts(zenohd_unique: ZenohRouter, service_server_binary:
     let mut server = ManagedProcess::spawn_command(cmd, "native-rs-service-server")
         .expect("Failed to start service server");
 
-    // Wait for server readiness
+    // Wait for server readiness. Marker found → fall through to test
+    // success. Phase 214.A.3 — dropped the `eprintln!("[PASS]") + return`
+    // verbosity; the harness reports PASS on clean fn return.
     if server
         .wait_for_output_pattern("Waiting for service", Duration::from_secs(5))
         .is_ok()
     {
-        eprintln!("[PASS] native-rs-service-server started successfully");
         return;
     }
 
-    // Check process is still running (didn't crash)
+    // Marker not printed within 5s. Distinguish: process still alive
+    // = readiness unverified → SKIP (CLAUDE.md-banned to claim PASS on
+    // an unmet precondition). Process exited → real failure → panic.
     if server.is_running() {
-        eprintln!("[PASS] native-rs-service-server started (no marker yet)");
+        nros_tests::skip!(
+            "native-rs-service-server did not print 'Waiting for service' marker within 5s"
+        );
     } else {
         // Collect any output for debugging
         let output = server
