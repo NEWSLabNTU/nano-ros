@@ -1,0 +1,42 @@
+# Phase 212.O.5 fixture — primary Component pkg (Rust, no_std).
+#
+# Mirrors the n9_workspace talker_pkg shape but renamed to make the
+# nav2-style launch.xml read more naturally: the primary launch spawns
+# this pkg's `Primary` node and `<include>`s a sibling secondary
+# launch.xml living next to `secondary_node/`.
+#
+# Standalone `[workspace]` table keeps this crate out of the outer
+# fixture / nano-ros workspace so the per-fixture cargo invocation in
+# the integration test stays self-contained.
+
+[workspace]
+
+[package]
+name = "primary_node"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+# Phase 212.M-F.17 — workspace-member metadata. The planner's α-bridge
+# synthesises a component artifact from this table, so the codegen
+# `run_plan(runtime)` body can emit `::primary_node::register(runtime)?;`
+# for each `<node pkg="primary_node">` entry the launch.xml declares.
+[package.metadata.nros.node]
+class = "primary_node::Primary"
+name = "primary"
+default_namespace = "/"
+
+[dependencies]
+# Host-target Component pkg — `platform-posix` so the integration test
+# can build it without an embedded toolchain. (The H.3 fixture uses
+# `platform-freertos`; we want a stock `x86_64-unknown-linux-gnu` build
+# so the smoke runs anywhere cargo runs.)
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }

@@ -1,0 +1,59 @@
+# Phase 212.O.5 fixture — Entry pkg consuming the nav2-style launch.xml.
+#
+# Mirrors `examples/native/rust/entry-poc/` but adds an explicit
+# `build.rs` that drives `nros_build::generate_run_plan(launch)` against
+# `launch/system.launch.xml`. The launch.xml uses the v1 tag set landed
+# in Phase 212.N.11 (`<arg>`, `<include>`, `<param value="$(arg …)"/>`,
+# `<remap>`, `$(find <pkg>)`); the codegen path under test must accept
+# every directive and emit a `run_plan(runtime)` body that registers
+# both `primary_node` and `secondary_node`.
+#
+# Empty `[workspace]` table — this crate is its own workspace root so
+# the outer fixture's `exclude = ["demo_entry"]` keeps it isolated from
+# the nano-ros root workspace too.
+
+[workspace]
+
+[package]
+name = "demo_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "demo_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+# `nros::main!()` macro lives here; we wire `BoardEntry` /
+# `RuntimeCtx` / `RuntimeError` directly via `nros-platform` instead
+# of the macro for parity with the H.3 firmware shape.
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
+# Phase 212.N.3 tier-1 per-board shim — `NativeBoard::run` provides the
+# `BoardEntry` lifecycle the Entry pkg invokes.
+nros-board-native = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-native" }
+# Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, `RuntimeError`.
+nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = [
+    "std",
+    "platform-posix",
+] }
+
+# Phase 212.M.5.a.3 — component pkg paths so the codegen-emitted
+# `run_plan(runtime)` body can call `<pkg>::register(runtime)` for each
+# `<node>` entry in the launch XML graph.
+primary_node = { path = "../src/primary_node" }
+secondary_node = { path = "../src/secondary_node" }
+
+[build-dependencies]
+# Phase 212.N.4 codegen library. The git dep matches the H.3 fixture's
+# shape — the standalone `nros-build` crate is not vendored into the
+# nano-ros tree.
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }

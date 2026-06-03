@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<!--
+  Phase 212.O.5 fixture — nav2-style launch.xml copy-paste compat smoke.
+
+  Modelled on `nav2_bringup/launch/bringup_launch.xml` +
+  `robot_state_publisher/launch/rsp.launch.xml` (the canonical sources
+  for the v1 tag set the Phase 212.N.11 parser targets). Every directive
+  below is exercised by the integration test's emitted `run_plan` /
+  `nros-plan.json` assertions:
+
+    <arg>                       — declared at top scope with a default.
+    <node pkg= exec= name=>     — both component packages spawned.
+    <param value="$(var arg)"/> — primary's `robot_namespace` param
+                                  picks up the `<arg>` default.
+    <remap from= to=/>          — primary's `chatter` remapped.
+    <include file="$(find …)"/> — pulls secondary_node's sibling
+                                  launch.xml in via the pkg-index
+                                  `$(find …)` resolver.
+
+  Keep this file READABLE — it is the nav2 copy-paste target. Stripping
+  directives defeats the purpose of the smoke.
+-->
+<launch>
+  <arg name="namespace"   default="robot1"/>
+  <arg name="frame_id"    default="map_frame"/>
+  <arg name="use_sim_time" default="false"/>
+
+  <node pkg="primary_node" exec="primary" name="primary" namespace="$(var namespace)">
+    <param name="robot_namespace" value="$(var namespace)"/>
+    <param name="use_sim_time"    value="$(var use_sim_time)"/>
+    <remap from="chatter" to="primary/chatter"/>
+  </node>
+
+  <include file="$(find secondary_node)/launch/secondary.launch.xml">
+    <arg name="frame_id" value="$(var frame_id)"/>
+  </include>
+</launch>

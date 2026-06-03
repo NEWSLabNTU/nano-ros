@@ -1,0 +1,11 @@
+# Phase 212.O.5 fixture — staged copies of this dir live under per-test
+# tempdirs; the fixture itself is read-only. Guard cargo from leaving
+# build artefacts inside the source tree on accidental in-place builds.
+/target/
+demo_entry/target/
+src/primary_node/target/
+src/secondary_node/target/
+/Cargo.lock
+demo_entry/Cargo.lock
+src/primary_node/Cargo.lock
+src/secondary_node/Cargo.lock

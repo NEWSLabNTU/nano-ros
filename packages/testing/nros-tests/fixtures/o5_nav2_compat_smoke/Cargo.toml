@@ -1,0 +1,22 @@
+# Phase 212.O.5 fixture — nav2-style launch.xml copy-paste compatibility smoke.
+#
+# Mirrors the multi_pkg_workspace_freertos shape (two component pkgs + an
+# Entry pkg), with the secondary `<include>`d launch.xml living next to
+# the component pkg it spawns (as a real ROS 2 package would ship it).
+# The Entry pkg targets the host (native_sim) instead of FreeRTOS so the
+# integration test can build it without a thumbv7m toolchain. The Entry
+# pkg drives `nros-build` codegen against a nav2-style launch.xml that
+# exercises the v1 tag set landed in Phase 212.N.11:
+#
+#   <node>, <arg>, <include file="$(find pkg)/…">, <param value="$(arg …)"/>, <remap>.
+#
+# The per-pkg `[workspace]` tables keep this fixture from being folded
+# into the outer nano-ros workspace (mirrors the H.3 / H.4 shape).
+#
+# `@NANO_ROS_ROOT@` placeholders are rewritten by the integration test's
+# `stage_fixture` helper to the absolute path of the nano-ros checkout.
+
+[workspace]
+resolver = "2"
+members = []
+exclude = ["src/primary_node", "src/secondary_node", "demo_entry"]
