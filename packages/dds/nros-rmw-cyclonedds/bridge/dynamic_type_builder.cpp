@@ -320,16 +320,9 @@ struct OpsBuilder {
     }
 };
 
-// Emit one top-level field's op sequence into `ops`. Returns false on
-// overflow or an unsupported field kind.
-//
-// `kinds` / `kind_count` describe the recursive type graph; `nested_jsr`
-// is the JSR offset (in `uint32_t` words) from the start of the
-// top-level ops to the appended nested struct's ops — used by the EXT
-// opcode to reach the child.
-bool emit_field_ops(OpsBuilder& ops, const NrosFieldDescriptor* field,
-                    const NrosFieldKindDescriptor* kinds, uint32_t kind_count, int* out_err);
-
+// Forward decl — `emit_kind_block` is the single entry point used by
+// both `emit_nested_body` (per-child) and the top-level walk in
+// `nros_cyclonedds_build_descriptor_from_schema`.
 bool emit_kind_block(OpsBuilder& ops, uint32_t kind_idx, const NrosFieldKindDescriptor* kinds,
                      uint32_t kind_count, uint32_t offset, int* out_err);
 
@@ -341,9 +334,23 @@ bool emit_kind_block(OpsBuilder& ops, uint32_t kind_idx, const NrosFieldKindDesc
 // be backfilled with the actual JSR delta once the nested body is
 // emitted. This keeps the encoder single-pass.
 
+// Phase 212.K.7.4.c — extended to support multiple Cyclone opcode shapes:
+//   * EXT          → 3-word insn, jsr-delta + next-insn at offset +2 from opcode.
+//   * SEQ|STU      → 4-word insn, jsr-delta + next-insn at offset +3 from opcode.
+//   * BSQ|STU      → 5-word insn, jsr-delta + next-insn at offset +4 from opcode.
+//   * ARR|STU      → 5-word insn, jsr-delta + next-insn at offset +3 from opcode
+//                    (elem-size after the link, per `dds_opcodes.h:253`).
+//
+// `opcode_word` carries the absolute word index of the opcode itself —
+// the backfill loop computes `delta = target_word - opcode_word` and
+// writes the packed `(next_insn << 16) | (delta & 0xffff)` into
+// `link_word`. `next_insn` is the constant insn width per shape (3 for
+// EXT, 4 for SEQ, 5 for BSQ/ARR).
 struct JsrPatch {
-    size_t ops_word;          // word index in OpsBuilder
+    size_t opcode_word;       // absolute word index of the opcode word
+    size_t link_word;         // absolute word index of the link slot to backfill
     uint32_t target_kind_idx; // kind index whose body the JSR points to
+    uint16_t next_insn;       // constant insn width to bake into the link's high16
 };
 
 constexpr size_t kMaxPatches = 256;
@@ -352,9 +359,9 @@ struct PatchTable {
     JsrPatch entries[kMaxPatches]{};
     size_t count = 0;
 
-    bool push(size_t word, uint32_t target) {
+    bool push(size_t opcode_word, size_t link_word, uint32_t target, uint16_t next_insn) {
         if (count >= kMaxPatches) return false;
-        entries[count++] = JsrPatch{word, target};
+        entries[count++] = JsrPatch{opcode_word, link_word, target, next_insn};
         return true;
     }
 };
@@ -417,6 +424,89 @@ struct BuildContext {
     }
 };
 
+// Phase 212.K.7.4.c — compute the synthetic in-memory size of a nested
+// struct kind, used by SEQ|STU / BSQ|STU / ARR|STU element-size slot
+// and by `emit_nested_body`'s own offset walk for child placement.
+//
+// Mirrors `emit_nested_body`'s per-child sizing decisions byte-for-byte
+// (any drift would corrupt the walker's `buffer + i * elem_size`
+// stride). Recursion guarded by `depth`/`MAX_DEPTH` to bound at-worst
+// pathological schemas (the front-end already enforces
+// `MAX_NESTED_DEPTH`, this is belt-and-braces).
+constexpr uint32_t kMaxNestedSizeDepth = 16;
+
+uint32_t compute_nested_size(uint32_t kind_idx, const NrosFieldKindDescriptor* kinds,
+                             uint32_t kind_count, uint32_t depth = 0) {
+    if (depth >= kMaxNestedSizeDepth) return 0;
+    if (kind_idx >= kind_count) return 0;
+    const auto& k = kinds[kind_idx];
+    if (k.kind != NROS_FIELD_KIND_NESTED) return 0;
+    uint32_t synth_offset = 0;
+    uint32_t max_align = 1;
+    uint32_t bound_count = k.bound;
+    uint32_t first_child = k.inner;
+    for (uint32_t i = 0; i < bound_count; ++i) {
+        uint32_t child_idx = first_child + i;
+        if (child_idx >= kind_count) return 0;
+        const auto& c = kinds[child_idx];
+        uint32_t size = 0, align = 1;
+        bool sized = false;
+        switch (c.kind) {
+        case NROS_FIELD_KIND_STRING:
+        case NROS_FIELD_KIND_BOUNDED_STRING:
+            size = kStringSize;
+            align = kStringAlign;
+            sized = true;
+            break;
+        case NROS_FIELD_KIND_SEQUENCE:
+        case NROS_FIELD_KIND_BOUNDED_SEQUENCE:
+            size = kSeqSize;
+            align = kSeqAlign;
+            sized = true;
+            break;
+        case NROS_FIELD_KIND_ARRAY: {
+            if (c.inner >= kind_count) break;
+            const auto& elem = kinds[c.inner];
+            uint32_t esize = 0, ealign = 1;
+            if (primitive_size_align(elem.kind, esize, ealign)) {
+                size = esize * c.bound;
+                align = ealign;
+                sized = true;
+            } else if (elem.kind == NROS_FIELD_KIND_NESTED) {
+                uint32_t nsize = compute_nested_size(c.inner, kinds, kind_count, depth + 1);
+                if (nsize == 0) return 0;
+                size = nsize * c.bound;
+                align = 8;
+                sized = true;
+            }
+            break;
+        }
+        case NROS_FIELD_KIND_NESTED: {
+            uint32_t nsize = compute_nested_size(child_idx, kinds, kind_count, depth + 1);
+            if (nsize == 0) return 0;
+            size = nsize;
+            align = 8;
+            sized = true;
+            break;
+        }
+        default:
+            if (primitive_size_align(c.kind, size, align)) {
+                sized = true;
+            }
+            break;
+        }
+        if (!sized) return 0;
+        synth_offset = (synth_offset + align - 1) & ~(align - 1);
+        synth_offset += size;
+        if (align > max_align) max_align = align;
+    }
+    // Round final size up to the max child alignment, matching
+    // `compute_struct_size`'s discipline so `sizeof(struct)` matches.
+    synth_offset = (synth_offset + max_align - 1) & ~(max_align - 1);
+    if (synth_offset == 0) synth_offset = max_align;
+    return synth_offset;
+}
+
 bool emit_nested_body(BuildContext& ctx, uint32_t kind_idx, const NrosFieldKindDescriptor* kinds,
                       uint32_t kind_count) {
     if (kind_idx >= kind_count) {
@@ -475,16 +565,31 @@ bool emit_nested_body(BuildContext& ctx, uint32_t kind_idx, const NrosFieldKindD
                 size = esize * c.bound;
                 align = ealign;
                 sized = true;
+            } else if (elem.kind == NROS_FIELD_KIND_NESTED) {
+                // Phase 212.K.7.4.c — derive nested-array stride from
+                // the actual nested struct's compute_nested_size rather
+                // than the ad-hoc 8-byte placeholder.
+                uint32_t nsize = compute_nested_size(c.inner, kinds, kind_count);
+                if (nsize > 0) {
+                    size = nsize * c.bound;
+                    align = 8;
+                    sized = true;
+                }
             }
             break;
         }
-        case NROS_FIELD_KIND_NESTED:
-            // Approximate nested-struct size as the sum of its children
-            // (rough, conservative): 8 bytes minimum.
-            size = 8;
+        case NROS_FIELD_KIND_NESTED: {
+            // Phase 212.K.7.4.c — actual nested-struct size, not the
+            // 8-byte ad-hoc placeholder the old emitter used. Falls
+            // back to 8 on failure so the walk doesn't bail (the
+            // `emit_kind_block` recursion below will surface the real
+            // error if the nested kind is malformed).
+            uint32_t nsize = compute_nested_size(child_idx, kinds, kind_count);
+            size = nsize > 0 ? nsize : 8;
             align = 8;
             sized = true;
             break;
+        }
         default:
             if (primitive_size_align(c.kind, size, align)) {
                 sized = true;
@@ -588,17 +693,52 @@ bool emit_kind_block(OpsBuilder& ops, uint32_t kind_idx, const NrosFieldKindDesc
         }
         const auto& elem = kinds[k.inner];
         uint32_t st = 0;
-        if (!primitive_subtype(elem.kind, st)) {
-            // Non-primitive array elements (string / nested / nested-array)
-            // are not supported in this initial bridge — would require
-            // emitting elem ops + JEQ chains. Surface unsupported.
-            if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
-            return false;
+        if (primitive_subtype(elem.kind, st)) {
+            if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_ARR | (st << 8))) return false;
+            if (!ops.push(offset)) return false;
+            if (!ops.push(k.bound)) return false;
+            return true;
         }
-        if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_ARR | (st << 8))) return false;
-        if (!ops.push(offset)) return false;
-        if (!ops.push(k.bound)) return false;
-        return true;
+        if (elem.kind == NROS_FIELD_KIND_NESTED) {
+            // Phase 212.K.7.4.c — 5-word ARR|SUBTYPE_STU shape from
+            // `dds_opcodes.h:253`:
+            //   [ADR, ARR, STU, f] [offset] [alen] [link] [elem-size]
+            // walker steps `jmp ? jmp : 5` per ARR|s case (cdrstream.c:696).
+            if (k.inner >= kind_count) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
+                return false;
+            }
+            uint32_t elem_size = compute_nested_size(k.inner, kinds, kind_count);
+            if (elem_size == 0) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
+                return false;
+            }
+            size_t opcode_slot = ops.len;
+            if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_ARR | (DDS_OP_VAL_STU << 8))) return false;
+            if (!ops.push(offset)) return false;
+            if (!ops.push(k.bound)) return false;
+            size_t link_slot = ops.len;
+            // (next_insn=5 << 16) | jsr-delta-placeholder.
+            if (!ops.push((5u << 16))) return false;
+            if (!ops.push(elem_size)) return false;
+            if (t_ctx == nullptr) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_NULL_POINTER;
+                return false;
+            }
+            if (!t_ctx->patches.push(opcode_slot, link_slot, k.inner, 5)) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_NESTED_DEPTH_EXCEEDED;
+                return false;
+            }
+            if (!t_ctx->enqueue(k.inner)) {
+                if (out_err) *out_err = t_ctx->err;
+                return false;
+            }
+            return true;
+        }
+        // Other element kinds (string / nested-array / nested-seq) are
+        // not yet implemented — surface unsupported.
+        if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
+        return false;
     }
     case NROS_FIELD_KIND_SEQUENCE: {
         if (k.inner >= kind_count) {
@@ -607,13 +747,46 @@ bool emit_kind_block(OpsBuilder& ops, uint32_t kind_idx, const NrosFieldKindDesc
         }
         const auto& elem = kinds[k.inner];
         uint32_t st = 0;
-        if (!primitive_subtype(elem.kind, st)) {
-            if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
-            return false;
+        if (primitive_subtype(elem.kind, st)) {
+            if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_SEQ | (st << 8))) return false;
+            if (!ops.push(offset)) return false;
+            return true;
         }
-        if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_SEQ | (st << 8))) return false;
-        if (!ops.push(offset)) return false;
-        return true;
+        if (elem.kind == NROS_FIELD_KIND_NESTED) {
+            // Phase 212.K.7.4.c — 4-word SEQ|SUBTYPE_STU shape from
+            // `dds_opcodes.h:233`:
+            //   [ADR, SEQ, STU, f] [offset] [elem-size] [link]
+            // walker steps `jmp ? jmp : 4` per SEQ|s case (cdrstream.c:662).
+            // Confirmed live by idlc witness in
+            // `examples/threadx-linux/cpp/service-client/build-cyclonedds/
+            // cyclonedds-ts/_genroot/action_msgs/msg/CancelGoal_Response.c`.
+            uint32_t elem_size = compute_nested_size(k.inner, kinds, kind_count);
+            if (elem_size == 0) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
+                return false;
+            }
+            size_t opcode_slot = ops.len;
+            if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_SEQ | (DDS_OP_VAL_STU << 8))) return false;
+            if (!ops.push(offset)) return false;
+            if (!ops.push(elem_size)) return false;
+            size_t link_slot = ops.len;
+            if (!ops.push((4u << 16))) return false;
+            if (t_ctx == nullptr) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_NULL_POINTER;
+                return false;
+            }
+            if (!t_ctx->patches.push(opcode_slot, link_slot, k.inner, 4)) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_NESTED_DEPTH_EXCEEDED;
+                return false;
+            }
+            if (!t_ctx->enqueue(k.inner)) {
+                if (out_err) *out_err = t_ctx->err;
+                return false;
+            }
+            return true;
+        }
+        if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
+        return false;
     }
     case NROS_FIELD_KIND_BOUNDED_SEQUENCE: {
         if (k.inner >= kind_count) {
@@ -622,32 +795,68 @@ bool emit_kind_block(OpsBuilder& ops, uint32_t kind_idx, const NrosFieldKindDesc
         }
         const auto& elem = kinds[k.inner];
         uint32_t st = 0;
-        if (!primitive_subtype(elem.kind, st)) {
-            if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
-            return false;
+        if (primitive_subtype(elem.kind, st)) {
+            if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_BSQ | (st << 8))) return false;
+            if (!ops.push(offset)) return false;
+            if (!ops.push(k.bound)) return false;
+            return true;
         }
-        if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_BSQ | (st << 8))) return false;
-        if (!ops.push(offset)) return false;
-        if (!ops.push(k.bound)) return false;
-        return true;
+        if (elem.kind == NROS_FIELD_KIND_NESTED) {
+            // Phase 212.K.7.4.c — 5-word BSQ|SUBTYPE_STU shape from
+            // `dds_opcodes.h:243`:
+            //   [ADR, BSQ, STU, f] [offset] [sbound] [elem-size] [link]
+            // walker steps `jmp ? jmp : 5` per BSQ|s case (bound_op=1
+            // in cdrstream.c:662).
+            uint32_t elem_size = compute_nested_size(k.inner, kinds, kind_count);
+            if (elem_size == 0) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
+                return false;
+            }
+            size_t opcode_slot = ops.len;
+            if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_BSQ | (DDS_OP_VAL_STU << 8))) return false;
+            if (!ops.push(offset)) return false;
+            if (!ops.push(k.bound)) return false;
+            if (!ops.push(elem_size)) return false;
+            size_t link_slot = ops.len;
+            if (!ops.push((5u << 16))) return false;
+            if (t_ctx == nullptr) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_NULL_POINTER;
+                return false;
+            }
+            if (!t_ctx->patches.push(opcode_slot, link_slot, k.inner, 5)) {
+                if (out_err) *out_err = NROS_BRIDGE_ERR_NESTED_DEPTH_EXCEEDED;
+                return false;
+            }
+            if (!t_ctx->enqueue(k.inner)) {
+                if (out_err) *out_err = t_ctx->err;
+                return false;
+            }
+            return true;
+        }
+        if (out_err) *out_err = NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE;
+        return false;
     }
     case NROS_FIELD_KIND_NESTED: {
-        // Emit DDS_OP_ADR | DDS_OP_TYPE_EXT followed by the byte
-        // offset and a JSR slot (placeholder 0 — backfilled once the
-        // nested body's location is known).
+        // Phase 212.K.7.4.c — fix EXT to emit 3 words (not 4) per the
+        // walker rule `ops += jmp ? jmp : 3;` in
+        // `ddsi_cdrstream.c:798` + the shape doc-comment at
+        // `dds_opcodes.h:267`. The 4th placeholder word the old
+        // emitter wrote was visible to the walker as a stray opcode
+        // whenever EXT was not the last top-level field. See
+        // `docs/design/phase-212-k74c-sequence-of-nested.md` Risk #2.
+        //
+        //   [ADR, EXT, 0, f] [offset] [link]
+        //   (elem-size only present when DDS_OP_FLAG_EXT external is set)
+        size_t opcode_slot = ops.len;
         if (!ops.push(DDS_OP_ADR | DDS_OP_TYPE_EXT)) return false;
         if (!ops.push(offset)) return false;
-        size_t jsr_slot = ops.len;
-        // Placeholder — will be replaced with `(elemSize << 16) | jsrDelta`.
-        if (!ops.push(0u)) return false;
-        // Element-size placeholder; needed for EXT element-size flag.
-        if (!ops.push(0u)) return false;
-        // Record the patch.
+        size_t link_slot = ops.len;
+        if (!ops.push((3u << 16))) return false; // (next_insn=3) | jsr-placeholder
         if (t_ctx == nullptr) {
             if (out_err) *out_err = NROS_BRIDGE_ERR_NULL_POINTER;
             return false;
         }
-        if (!t_ctx->patches.push(jsr_slot, kind_idx)) {
+        if (!t_ctx->patches.push(opcode_slot, link_slot, kind_idx, 3)) {
             if (out_err) *out_err = NROS_BRIDGE_ERR_NESTED_DEPTH_EXCEEDED;
             return false;
         }
@@ -788,7 +997,19 @@ const void* nros_cyclonedds_build_descriptor_from_schema(const char* type_name,
         }
     }
 
-    // 3. Backfill every JSR patch with the computed (elem_size, jsr_delta).
+    // 3. Backfill every JSR patch with the computed
+    //    `(next_insn << 16) | (delta & 0xffff)` link word.
+    //
+    // Phase 212.K.7.4.c — generalised over all shapes (EXT, SEQ|STU,
+    // BSQ|STU, ARR|STU). Each patch carries its opcode-word index
+    // explicitly (so backfill doesn't have to reverse-engineer the
+    // slot layout per shape) plus the constant `next_insn` width to
+    // bake into the link's high16 (3/4/5 per shape).
+    //
+    // `delta` is a signed 16-bit word offset from the **opcode** word
+    // (per `DDS_OP_ADR_JSR(o) = (int16_t)(o & 0xffff)` in
+    // `dds_opcodes.h`); the walker reads it as `ops += jsr_delta`
+    // where `ops` points at the opcode.
     for (size_t i = 0; i < ctx.patches.count; ++i) {
         const auto& pat = ctx.patches.entries[i];
         size_t target_word = ctx.nested.find(pat.target_kind_idx);
@@ -797,29 +1018,10 @@ const void* nros_cyclonedds_build_descriptor_from_schema(const char* type_name,
             t_ctx = nullptr;
             return nullptr;
         }
-        // pat.ops_word is the slot **immediately after** the offset
-        // word. The EXT layout is:
-        //   [opcode] [offset] [JSR-delta-and-elem-size-msb] [elem-size]
-        // The JSR delta is signed 16-bit from the opcode word (3 words
-        // back from `pat.ops_word + 0`).
-        size_t opcode_word = pat.ops_word - 2;
-        int32_t delta = static_cast<int32_t>(target_word) - static_cast<int32_t>(opcode_word);
-        // Pack (elem_size << 16) | (delta & 0xffff). For EXT without
-        // an element-size cell, the high word is the JSR delta.
-        // The idlc-emitted form for `DDS_OP_TYPE_EXT` is:
-        //   opcode, offset, (elemSize << 16) + jsrDelta
-        // (only 3 words — the 4th word is only present when the EXT
-        //  flag set adds an explicit element-size override; for the
-        //  common case we drop it).
-        uint32_t encoded =
-            (static_cast<uint32_t>(0) << 16) | (static_cast<uint32_t>(delta) & 0xffffu);
-        ctx.ops.buf[pat.ops_word] = encoded;
-        // The slot at pat.ops_word+1 (the elem-size word we reserved)
-        // is unused for the basic EXT form; leave it as 0 which the
-        // op stream ignores once `m_nops` is set to the encoded length
-        // minus that unused slot. Simpler: shrink m_nops to skip it.
-        // We accomplish that by *not* counting that word in m_nops
-        // below.
+        int32_t delta = static_cast<int32_t>(target_word) - static_cast<int32_t>(pat.opcode_word);
+        uint32_t encoded = (static_cast<uint32_t>(pat.next_insn) << 16) |
+                           (static_cast<uint32_t>(delta) & 0xffffu);
+        ctx.ops.buf[pat.link_word] = encoded;
     }
 
     t_ctx = nullptr;

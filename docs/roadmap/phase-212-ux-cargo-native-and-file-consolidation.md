@@ -864,86 +864,63 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       tracked as K.7.4.c. **Files:**
       `packages/dds/nros-rmw-cyclonedds/bridge/dynamic_type_builder.cpp`.
 
-- [ ] **K.7.4.c** — **Sequence-of-nested support in the dynamic
-      descriptor bridge (action e2e blocker).** Surfaced by Wave 7v2
-      (commit `022f70a49`): with K.7.1.d.b envelope codegen + K.7.7.c
-      envelope registration both in tree, native rust action e2e
-      (`action-server` / `action-client` on loopback Cyclone) still
-      panics with `ActionCreationFailed`. New failure point is
-      `cancel_goal_server`'s `action_msgs::srv::dds_::CancelGoal_`:
-      `CancelGoalResponse.goals_canceling: sequence<GoalInfo>` is a
-      sequence-of-nested field and the K.7.4.b builder rejects it
-      with `NROS_BRIDGE_ERR_UNSUPPORTED_FIELD_TYPE`. Reproducer:
-      `nros_rmw_cyclonedds::register::<action_msgs::srv::dds_::CancelGoalResponse>()`
-      → `Err(UnsupportedFieldType)`.
+- [x] **K.7.4.c** — **Sequence-of-nested support in the dynamic
+      descriptor bridge (action e2e blocker).** **Path A landed.**
+      `dynamic_type_builder.cpp` now emits 4-word `SEQ|SUBTYPE_STU`,
+      5-word `BSQ|SUBTYPE_STU` and 5-word `ARR|SUBTYPE_STU` opcodes for
+      `Sequence(&Nested(...))` / `BoundedSequence(N, &Nested(...))` /
+      `Array(N, &Nested(...))` schemas with the standard JSR-delta link
+      word backfilled via an extended `JsrPatch` ledger (`opcode_word`
+      + `link_word` + `next_insn` per shape). Bonus: pre-existing EXT
+      4-word emission bug fixed (now 3 words per `dds_opcodes.h:267` +
+      walker `ops += jmp ? jmp : 3`). New `compute_nested_size` helper
+      derives elem-size from the actual nested struct's flattened size
+      walk. Tests: `tests/dynamic_bridge_seq_nested.cpp` (op-word audit
+      for SEQ/ARR/BSQ + live `dds_create_topic` acceptance) and
+      `tests/registry_seq_nested.rs` (5 Rust round-trip + cache cases).
+      `nros_rmw_cyclonedds::register::<action_msgs::srv::CancelGoalResponse>()`
+      now returns `Ok` ✓. Bridge accepts every variant; 13/13 cyclone
+      unit tests + full ROS 2 interop suite still pass. **Native rust
+      action e2e is NOT yet end-to-end** — the bridge fix unblocks
+      descriptor build, but `publisher.cpp::publish_goal_status_array`
+      (the manual ops-walking fast path for `GoalStatusArray_`)
+      hardcodes opcode-word indices that assume the idlc-static
+      descriptor shape, not the dynamic builder's layout. With the
+      new descriptor in place, the server segfaults at
+      `publisher.cpp:223` when memcpy'ing into mis-located goal_id
+      offsets. Tracked as a separate K.7.4.c follow-up
+      (either: align dynamic ops layout byte-for-byte with idlc, OR
+      refactor the manual walker to drive Cyclone's standard
+      `dds_write` via `dds_stream_read_sample`-built typed samples).
+      Examples register `action_msgs::{srv::CancelGoalRequest,
+      srv::CancelGoalResponse, msg::GoalStatusArray}` explicitly
+      from `main()` (the `RosAction` trait does not yet surface the
+      cancel-sub-service / status-publisher types — see
+      `examples/native/rust/{action-server,action-client}/src/main.rs`).
+      Commit: `<filled after commit>`.
 
-      Why CMake/Zephyr action e2e doesn't hit this: those builds
-      static-init register `idlc`-generated action_msgs descriptors
-      via `NrosZephyrCycloneddsActionTypes.cmake`. Idlc emits **JEQ
-      chains** for sequence-of-nested (one JEQ chain per nested
-      element type, branching into a nested ops sub-table). The
-      hand-synth bridge only emits flat `DDS_OP_TYPE_SEQ |
-      <PRIM_TAG>` for sequence-of-primitive.
-
-      **Two unblock paths** (pick one, document choice):
-
-      * **Path A — extend `dynamic_type_builder.cpp`** (RECOMMENDED;
-        full design at `docs/design/phase-212-k74c-sequence-of-nested.md`).
-        Research correction: Cyclone 0.10.5 does NOT use `DDS_OP_JEQ`
-        for sequence-of-struct (JEQ is union-case dispatch only). It
-        uses a plain 4-word `DDS_OP_ADR | DDS_OP_TYPE_SEQ |
-        DDS_OP_SUBTYPE_STU, offset, sizeof(ElemT), (4 << 16) |
-        jsr_delta` — the existing K.7.4.b JSR-patch infrastructure
-        for nested struct fields is the right shape, just extend it
-        to sequences (and BSQ/ARR variants). Two live idlc witnesses
-        in tree confirm the shape:
-        `examples/threadx-linux/cpp/service-client/build-cyclonedds/
-        cyclonedds-ts/_genroot/action_msgs/msg/{CancelGoal_Response,
-        GoalStatusArray}.c`. Walker reference: `third-party/dds/
-        cyclonedds/src/core/ddsi/src/ddsi_cdrstream.c:639-706`.
-        Estimate: ~150 LOC bridge + ~80 LOC tests, 1 dev-day.
-        Also covers `Array(N, &Nested(...))` for free (`ARR|
-        SUBTYPE_STU` is the same shape). Bonus: fold in a pre-
-        existing EXT 4-word emission latent bug (works today only
-        because the phantom 4th word lands on a real `RTS`).
-        Bonus 2: `m_nops` is functionally unused at runtime
-        (Cyclone's `ddsi_sertype_default.c:327` recomputes via
-        `dds_stream_countops`) — explains why K.7.4.b's suspicious
-        m_nops values never caused observable breakage.
-
-      * **Path B — bake `action_msgs` IDL into the vendored
-        Cyclone build**: mirror the existing `rmw_dds_common_graph`
-        precedent inside `nros-rmw-cyclonedds-sys/build.rs` —
-        run host `idlc` against `action_msgs/srv/CancelGoal.idl` +
-        `action_msgs/msg/GoalStatusArray.idl` at build time, whole-
-        archive the resulting static-init descriptor TUs so they
-        register before any Rust pub/sub call. Sidesteps the
-        dynamic builder entirely for these two action-agnostic
-        types. Smaller surgery; doesn't fix the general
-        sequence-of-nested gap (a user msg with the same shape
-        would still fail).
-
-      Path A is the strictly more general fix; Path B is faster +
-      surgical. Recommend Path A; if A blocks on Cyclone ops
-      arcana, fall back to Path B as a tactical unblock and keep A
-      as a follow-up.
-
-      **Acceptance**:
-      * `nros_rmw_cyclonedds::register::<CancelGoalResponse>()`
-        returns `Ok`.
-      * `examples/native/rust/action-server` +
-        `examples/native/rust/action-client` exchange Fibonacci
-        goal → accept → feedback → result on loopback
-        (`ROS_DOMAIN_ID=80`).
-      * No regression in pub/sub + service e2e + 13/13 cyclonedds
-        unit tests.
-
-      **Files (Path A):** `packages/dds/nros-rmw-cyclonedds/bridge/
-      dynamic_type_builder.cpp` (+ tests under
-      `packages/dds/nros-rmw-cyclonedds/tests/`).
-      **Files (Path B):** `packages/dds/nros-rmw-cyclonedds-sys/
-      build.rs` + new `vendor/action_msgs_descriptors.c` (idlc
-      output) or runtime idlc invocation.
+- [ ] **K.7.4.c.followup** — **Reshape the cyclonedds publisher fast
+      paths to work against the dynamic-builder descriptor layout.**
+      Surfaced 2026-06-03 immediately after K.7.4.c landed. With the
+      dynamic descriptor registered, the native rust action server
+      survives `create_action_server` and accepts goal requests, but
+      segfaults inside
+      `packages/dds/nros-rmw-cyclonedds/src/publisher.cpp::publish_goal_status_array`
+      (line 223) when it memcpys into hardcoded
+      `goal_id_off = ops[12]` / `uuid_off = ops[19]` offsets that
+      presuppose the byte-for-byte idlc-emitted op-stream shape. The
+      dynamic builder produces a structurally identical-but-shifted
+      op-stream (different ordering of nested-body emission relative to
+      top-level fields). Two fix paths: (a) tighten the dynamic
+      builder to emit ops in the exact same word positions as idlc,
+      OR (b) replace the manual `publish_goal_status_array` /
+      `publish_fibonacci_feedback` walkers with Cyclone's standard
+      `dds_write`-on-`dds_stream_read_sample`-built typed sample (the
+      generic path already used for non-action topics). Path (b) is
+      more general but requires careful CDR header bridging similar
+      to Phase 171.0.b. **Acceptance**: native rust Fibonacci action
+      goal→accept→feedback→result e2e on `ROS_DOMAIN_ID=80` without
+      segfault.
 
 - [x] **K.7.5** — **Bounded type registry** inside
       `nros-rmw-cyclonedds`. Landed `bb2d23002` —

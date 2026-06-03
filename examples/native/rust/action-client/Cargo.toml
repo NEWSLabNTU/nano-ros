@@ -26,6 +26,8 @@ rmw-cyclonedds   = [
     # and populates the runtime descriptor cache the C++ bridge reads in
     # `dds_create_topic`.
     "nros/rmw-cyclonedds",
+    "dep:nros-rmw-cyclonedds",
+    "dep:action_msgs",
 ]
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
@@ -38,6 +40,9 @@ env_logger = "0.11"
 
 nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
 nros-rmw-cyclonedds-sys      = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
+# Phase 212.K.7.4.c — see action-server's Cargo.toml.
+nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds", optional = true }
+action_msgs = { version = "*", default-features = false, optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone

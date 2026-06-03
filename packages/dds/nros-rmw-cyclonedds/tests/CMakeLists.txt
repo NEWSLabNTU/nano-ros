@@ -227,6 +227,24 @@ add_test(
 set_tests_properties(nros_rmw_cyclonedds_dynamic_bridge_smoke
     PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
 
+# Phase 212.K.7.4.c — op-word audit for sequence/array/bsq of nested
+# structs plus the EXT 3-word emission fix. Asserts exact `m_ops`
+# values then hands the descriptor to live Cyclone for
+# `dds_stream_countops` acceptance.
+add_executable(nros_rmw_cyclonedds_dynamic_bridge_seq_nested
+    dynamic_bridge_seq_nested.cpp
+)
+target_link_libraries(nros_rmw_cyclonedds_dynamic_bridge_seq_nested
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+add_test(
+    NAME nros_rmw_cyclonedds_dynamic_bridge_seq_nested
+    COMMAND nros_rmw_cyclonedds_dynamic_bridge_seq_nested
+)
+set_tests_properties(nros_rmw_cyclonedds_dynamic_bridge_seq_nested
+    PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
+
 # Phase 117.X.2: topic-prefix helper unit test (no DDS interaction).
 add_executable(nros_rmw_cyclonedds_topic_prefix_test
     topic_prefix_test.cpp
