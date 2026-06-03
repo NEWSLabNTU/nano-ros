@@ -5,19 +5,44 @@
 #   scripts/install-nros.sh
 #   curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
 #
-# `nros` is the build tool (`nros codegen` / `nros generate-rust`) the nano-ros
-# build assumes is provided (the "tools are given" principle). It is shipped
-# from the standalone NEWSLabNTU/nros-cli repo, NOT built from this tree — the
-# former `packages/codegen` submodule was retired in Phase 195.D. This installer
-# downloads the libc-only binary for this host, verifies its sha256, and installs
-# it to $NROS_HOME/bin (default ~/.nros/bin).
+# `nros` is the build tool (`nros codegen` / `nros generate-rust` / `nros ws sync`
+# / `nros launch` / …) the nano-ros build assumes is provided (the "tools are
+# given" principle). It is shipped from the standalone NEWSLabNTU/nros-cli repo,
+# NOT built from this tree — the former `packages/codegen` submodule was retired
+# in Phase 195.D. By default this installer downloads the libc-only binary for
+# this host, verifies its sha256, and installs it to $NROS_HOME/bin (default
+# ~/.nros/bin).
 #
 # The pinned NROS_VERSION below is the release nano-ros is validated against;
 # bump it (Phase 195.D.4) when nros-cli cuts a new main-tracking release.
 #
+# === Path B: source-build override (Phase 214.I, 2026-06-04) =================
+# When the pinned release lags nros-cli `main` (e.g. `main` adds a new verb like
+# `nros ws sync`, `nros launch`, or `nros codegen system` before the maintainer
+# cuts a release), contributors with a local nros-cli checkout can bypass the
+# release-download path by exporting:
+#
+#   NROS_FROM_SOURCE=/path/to/nros-cli   scripts/install-nros.sh
+#
+# That runs `cargo build --release --bin nros` inside `<path>/packages` and
+# copies the resulting binary into `${NROS_HOME}/bin/nros`. sha256 verification
+# is skipped (it is a local build). Use this when:
+#   * a freshly-cloned nano-ros worktree's `just <plat> build-examples` fails
+#     with "unrecognized subcommand 'ws'" (or similar), AND
+#   * `~/repos/nros-cli` (or wherever you keep your nros-cli checkout) is at a
+#     commit that has the verb.
+#
+# Once the maintainer cuts a new release tag and bumps NROS_VERSION below, the
+# default release-download path resumes carrying the new verbs and the env-var
+# is no longer needed (but stays supported for development iterations).
+# =============================================================================
+#
 # Env:
 #   NROS_VERSION         version to install (default: the nano-ros-pinned release)
 #   NROS_HOME            install root (default ~/.nros); binary lands in $NROS_HOME/bin
+#   NROS_FROM_SOURCE     path to a local nros-cli checkout; build it from source
+#                        instead of fetching the pinned release tarball
+#                        (skips sha256 verification; see Path B note above)
 #   NROS_INSTALL_FORCE=1 re-install over a present `nros` even if pinned matches
 #   NROS_NO_MODIFY_PATH=1 skip the rustup-style shell-rc PATH-append (default:
 #                        prompt on a tty when ${NROS_HOME}/bin is missing from PATH).
@@ -30,6 +55,7 @@ set -eu
 
 NROS_VERSION="${NROS_VERSION:-0.3.7}"
 NROS_HOME="${NROS_HOME:-$HOME/.nros}"
+NROS_FROM_SOURCE="${NROS_FROM_SOURCE:-}"
 REPO="NEWSLabNTU/nros-cli"
 TAG="nros-v${NROS_VERSION}"
 NO_MODIFY_PATH="${NROS_NO_MODIFY_PATH:-0}"
@@ -46,6 +72,20 @@ done
 err() { echo "nros install: $*" >&2; exit 1; }
 
 bindir="${NROS_HOME}/bin"
+
+# --- stale `~/.cargo/bin/nros` shadow warning (Phase 214.I) ------------------
+# `~/.cargo/bin` typically sits ahead of `~/.nros/bin` on PATH. A leftover
+# `~/.cargo/bin/nros` from an old `cargo install` run will shadow the binary
+# this installer writes to `${bindir}/nros` — `nros --version` (and every
+# `just <plat> build-examples` call routed through `nros_cli_bin`) silently
+# resolves to the stale shadow and reports the wrong version. Warn here so the
+# contributor knows to `rm ~/.cargo/bin/nros` (we deliberately do NOT delete
+# files outside `${NROS_HOME}/bin` ourselves).
+if [ -x "$HOME/.cargo/bin/nros" ] && [ "$HOME/.cargo/bin/nros" != "${bindir}/nros" ]; then
+  echo "nros install: WARNING — ~/.cargo/bin/nros exists and will shadow ${bindir}/nros on the default PATH." >&2
+  echo "nros install: remove it with:  rm ~/.cargo/bin/nros" >&2
+  echo "nros install: (continuing; the installer cannot safely delete files outside \${NROS_HOME}/bin.)" >&2
+fi
 
 # --- RMW host-daemon forwarder shims (Phase 208.B Track A) ---
 # Always (re)write these so re-running the installer is idempotent and
@@ -87,7 +127,11 @@ write_shim MicroXRCEAgent xrce-agent xrce
 # pattern P15). Returning users used to be silently stranded on a stale CLI that
 # rejected the current SDK-index schema. Now: skip when at-or-above the pin (no
 # downgrade surprise); bump when behind; force via NROS_INSTALL_FORCE=1.
-if command -v nros >/dev/null 2>&1; then
+#
+# Source-build override (Phase 214.I): NROS_FROM_SOURCE skips the version-skew
+# check unconditionally — the user is asking for whatever HEAD has, not a pin
+# comparison. The build below always (re)writes the installed binary.
+if [ -z "$NROS_FROM_SOURCE" ] && command -v nros >/dev/null 2>&1; then
   nros_path="$(command -v nros)"
   if [ "${NROS_INSTALL_FORCE:-0}" = "1" ]; then
     echo "nros install: NROS_INSTALL_FORCE=1 — re-installing over ${nros_path}"
@@ -109,6 +153,40 @@ if command -v nros >/dev/null 2>&1; then
   fi
 fi
 
+# --- Path B: source build from local nros-cli checkout (Phase 214.I) --------
+# When NROS_FROM_SOURCE points at a nros-cli source tree, build the binary
+# locally instead of fetching the pinned release tarball. Used by contributors
+# whose nano-ros build needs verbs that landed on nros-cli `main` after the
+# last release tag (e.g. `nros ws sync` post-0.3.7). Skips the download/sha256
+# path entirely; on success, the script exits before the host-detect block.
+if [ -n "$NROS_FROM_SOURCE" ]; then
+  src="$NROS_FROM_SOURCE"
+  [ -d "$src" ] || err "NROS_FROM_SOURCE=$src is not a directory"
+  if [ -f "$src/packages/Cargo.toml" ]; then
+    cargo_manifest_dir="$src/packages"
+  elif [ -f "$src/Cargo.toml" ]; then
+    cargo_manifest_dir="$src"
+  else
+    err "NROS_FROM_SOURCE=$src does not look like a nros-cli checkout (no packages/Cargo.toml or Cargo.toml)"
+  fi
+  command -v cargo >/dev/null 2>&1 || err "cargo is required for NROS_FROM_SOURCE builds (install Rust toolchain first)"
+
+  echo "nros install: building nros from source ($cargo_manifest_dir)…"
+  (cd "$cargo_manifest_dir" && cargo build --release --bin nros) \
+    || err "source build failed (cd $cargo_manifest_dir && cargo build --release --bin nros)"
+
+  built_bin="$cargo_manifest_dir/target/release/nros"
+  [ -x "$built_bin" ] || err "expected built binary not found at $built_bin"
+
+  install -m 0755 "$built_bin" "${bindir}/nros"
+  echo "nros install: installed $(${bindir}/nros --version 2>/dev/null || echo nros) → ${bindir}/nros (source build, sha256 verification skipped)"
+  echo "nros install: source-build path is for development; switch back to the pinned release by re-running without NROS_FROM_SOURCE once a new nros-cli tag is cut."
+  echo "nros install: forwarding shims → ${bindir}/{zenohd,MicroXRCEAgent}"
+  # Skip the release-download block below; fall through to PATH integration.
+  SKIP_DOWNLOAD=1
+fi
+
+if [ "${SKIP_DOWNLOAD:-0}" != "1" ]; then
 # --- detect host (matches the CLI's SdkIndex::host_key) ---
 os="$(uname -s)"
 arch="$(uname -m)"
@@ -156,6 +234,7 @@ chmod +x "${bindir}/nros"
 
 echo "nros install: installed $(${bindir}/nros --version 2>/dev/null || echo nros) → ${bindir}/nros"
 echo "nros install: forwarding shims → ${bindir}/{zenohd,MicroXRCEAgent}"
+fi  # SKIP_DOWNLOAD (Phase 214.I)
 
 # --- PATH integration (rustup-style: tty-prompt or print-hint) ------------
 #

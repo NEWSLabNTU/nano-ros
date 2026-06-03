@@ -30,7 +30,7 @@ across 10 audit axes. Tracks group them by file-ownership disjoint-ness:
 | **F — Workspace feature unification leak** | dev-deps of `nros-node` force `nros-serdes/std` under `--workspace --target thumbv7em-none-eabihf` | `nros-node` Cargo.toml dev-deps | CRITICAL |
 | **G — zpico-sys platform_aliases.c link** | `cargo test --workspace` link fails: `_z_mutex_rec_unlock` → `nros_platform_mutex_rec_unlock` undefined on POSIX without zenoh-pico in the C side | `packages/zpico/zpico-sys/c/zpico/platform_aliases.c` + build.rs | HIGH |
 | **H — Native test fixture prebuild precondition** | 38+ native tests panic with `Test fixture binary not prebuilt — Run just build-test-fixtures first`; `just native test` does not run `build-fixtures` itself | `just native test` recipe, harness binary-resolution code | HIGH |
-| **I — `nros ws sync` subcommand unavailable** | installed `nros` 0.2.0 lacks the `ws` verb that freertos / qemu-baremetal / threadx-linux / native / zephyr build recipes invoke | `just/{freertos,qemu-baremetal,threadx-linux,native,zephyr}.just` + nros-cli release pin | HIGH |
+| **I — `nros ws sync` subcommand unavailable** | installed `nros` 0.3.7 (the script pin) lacks the `ws` verb (added on nros-cli `main` post-tag) that freertos / qemu-baremetal / threadx-linux / native / zephyr build recipes invoke — **resolved 2026-06-04** via Path B source-build env-var in `scripts/install-nros.sh` | `just/{freertos,qemu-baremetal,threadx-linux,native,zephyr}.just` + nros-cli release pin | HIGH |
 | **J — Generated `RosAction` codegen drift** | cached `examples/<plat>/rust/<rtic*>/generated/example_interfaces/src/action/fibonacci.rs` lacks 5 envelope assoc-types added to the trait | qemu-arm-baremetal rtic examples, qemu-riscv64-threadx rust examples (in `generated/`, gitignored — fix is a regen sweep) | HIGH |
 | **K — Stale Zephyr fixture cache** | every Zephyr test fails with `Zephyr fixture binary is stale: …/nano-ros-workspace/build-*` because `just zephyr test` does not run `build-fixtures` itself | `just zephyr test` recipe | HIGH |
 | **L — `integrations/<rtos>/` shells missing** | `zephyr_integration_shell_smoke`, `esp_idf_integration_shell_smoke`, `platformio_integration_shell_smoke` all fail because `integrations/{zephyr,esp-idf,platformio}/` either don't exist or lack manifest files | `integrations/` tree + integration tests | HIGH |
@@ -287,8 +287,13 @@ lifetime transmute footgun. All in board crates / nros-node.
       without an unguarded `nros_platform_*` alias avalanche.
 - [ ] Track H: `just native test` from clean workspace runs without
       "Test fixture binary not prebuilt" cascade.
-- [ ] Track I: `nros ws sync` available in the pinned CLI; the 5
-      caller recipes don't trip on "unrecognized subcommand 'ws'".
+- [x] Track I: `nros ws sync` available via Path B source-build env-var
+      (`NROS_FROM_SOURCE=/path/to/nros-cli scripts/install-nros.sh`); the
+      5 caller recipes (freertos, qemu-baremetal, native, zephyr,
+      threadx-linux via `fixtures-build.sh`) no longer trip on
+      "unrecognized subcommand 'ws'" (2026-06-04). Pin bump to a tagged
+      release deferred until nros-cli ships the post-`0.3.7` work
+      (210.D.1, 212.E, 212.J, K.7.1.{c,d,d.b}) — maintainer-only.
 - [ ] Track J: cached `RosAction` generated trees regen-clean against
       the 8-assoc-type trait.
 - [ ] Track K: `just zephyr test` from clean workspace passes the
@@ -543,10 +548,17 @@ that.
 
 ## Track I — `nros ws sync` subcommand unavailable
 
-**Scope**: HIGH. Installed `nros` 0.2.0 (the version
-`scripts/install-nros.sh` pins) does not implement the `ws`
-subcommand, but five just-modules invoke `nros ws sync …` as a
-pre-build codegen step.
+**Scope**: HIGH. Installed `nros` 0.3.7 (the version
+`scripts/install-nros.sh` pins; correction from the initial audit's
+"0.2.0") does not implement the `ws` subcommand — the `ws sync` /
+`codegen-system` / `launch` verbs all sit on nros-cli `main` past
+the `nros-v0.3.7` tag (210.D.1, 212.E, 212.J, K.7.1.{c,d,d.b}).
+Five just-modules invoke `nros ws sync …` as a pre-build codegen
+step.
+
+**Status (2026-06-04)**: Path B source-build env-var landed in
+`scripts/install-nros.sh`; see 214.I.1 below. The release-tag bump
+(Path A) is the maintainer follow-up tracked in 214.I.3.
 
 **Owns (callsites — gated `nros` invocations only):**
 * `just/freertos.just:75,162`
@@ -562,16 +574,40 @@ pre-build codegen step.
 **Architecture**: Phase 210.E.3.d.native introduced
 `nros ws sync <example-dir>` as the pre-cargo codegen call that
 writes the patch table + msg bindings into the per-example
-`generated/` tree. The shipped 0.2.0 nros release predates this.
+`generated/` tree. The shipped 0.3.7 nros release predates this
+(corrected from the "0.2.0" in the original audit — `0.3.7` is the
+pin in `scripts/install-nros.sh` and the latest published release
+at the time of fix; the unreleased `ws sync` / `codegen-system` /
+`launch` / K.7.1.{c,d,d.b} commits sit on nros-cli `main` past the
+tag).
 
 **Work Items:**
 
-- [ ] **214.I.1 Bump `scripts/install-nros.sh` to a nros-cli release
-      that ships `ws sync`** — verify against
-      `github.com/NEWSLabNTU/nros-cli` Releases, pin the new tag,
-      re-run `just freertos test` clean.
-      **Acceptance**: `nros ws sync --help` resolves on the pinned
-      binary. The five caller recipes succeed.
+- [x] **214.I.1 Source-build path landed (Path B)** — the agent did
+      not have nros-cli fork-push authority to cut a new release tag,
+      so instead `scripts/install-nros.sh` grew a `NROS_FROM_SOURCE`
+      env-var (2026-06-04, branch `phase-214-track-i-nros-cli-pin-bump`).
+      When set to a nros-cli source checkout, the script runs
+      `cargo build --release --bin nros` and installs the result into
+      `${NROS_HOME}/bin/nros`, skipping the release-tarball download +
+      sha256 verification. Pinned `NROS_VERSION` stays explicit at
+      `0.3.7` (the latest published release). Once the maintainer cuts
+      a new tag containing the post-`0.3.7` verbs (210.D.1, 212.E,
+      212.J, K.7.1.{c,d,d.b}), bump `NROS_VERSION` and contributors
+      can drop the env-var.
+      **Verification (2026-06-04)**: `NROS_FROM_SOURCE=/home/aeon/repos/nros-cli
+      scripts/install-nros.sh` installs nros 0.3.7 (source) →
+      `~/.nros/bin/nros`; `nros ws --help`, `nros codegen-system
+      --help`, `nros launch --help` all resolve; `just freertos
+      build-examples` + `just threadx_linux build-examples` no longer
+      hit `error: unrecognized subcommand 'ws'` (they fail later on
+      unrelated missing-feature cargo errors that are separate Phase
+      214 tracks).
+      **Also landed**: stale `~/.cargo/bin/nros` shadow warning — old
+      `cargo install`-era binaries on `~/.cargo/bin` outrank
+      `~/.nros/bin` on the default PATH; the installer now prints a
+      removal hint (does NOT auto-delete files outside its own
+      `${NROS_HOME}/bin`).
 
 - [ ] **214.I.2 Fall-back guard at each callsite** — wrap each
       `nros ws sync` invocation with a guard that probes
@@ -580,6 +616,13 @@ writes the patch table + msg bindings into the per-example
       into "unrecognized subcommand 'ws'" noise.
       **Acceptance**: pre-pin run gives one clean diagnostic per
       recipe, not a 50-line cargo stack trace.
+
+- [ ] **214.I.3 Maintainer follow-up: cut a new nros-cli release**
+      — once 210.D.1, 212.E, 212.J, K.7.1.{c,d,d.b}, and the post-
+      `0.3.7` commits land in a tagged release (likely `0.4.0` given
+      the verb-surface growth), bump `NROS_VERSION` in
+      `scripts/install-nros.sh` and update the Path B doc note. The
+      env-var path stays supported for development iterations.
 
 ---
 
