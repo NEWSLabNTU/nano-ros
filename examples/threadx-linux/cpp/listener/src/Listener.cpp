@@ -15,15 +15,15 @@ namespace threadx_linux_cpp_listener {
 
 class Listener {
   public:
-    static nros::Result register_component(nros::ComponentContext& context) {
-        nros::ComponentNode node;
+    static nros::Result register_node(nros::NodeContext& context) {
+        nros::DeclaredNode node;
         nros::NodeOptions options;
         options.name = "listener";
         options.namespace_ = "/";
         nros::Result rc = context.create_node(node, "node", options);
         if (!rc.ok()) return rc;
 
-        nros::ComponentEntityDescriptor sub{};
+        nros::NodeEntityDescriptor sub{};
         sub.id = "sub_chatter";
         sub.kind = nros::EntityKind::Subscription;
         sub.source_name = "/chatter";

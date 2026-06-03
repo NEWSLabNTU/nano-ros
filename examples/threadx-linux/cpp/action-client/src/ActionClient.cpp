@@ -11,15 +11,15 @@ namespace threadx_linux_cpp_action_client {
 
 class ActionClient {
   public:
-    static nros::Result register_component(nros::ComponentContext& context) {
-        nros::ComponentNode node;
+    static nros::Result register_node(nros::NodeContext& context) {
+        nros::DeclaredNode node;
         nros::NodeOptions options;
         options.name = "fibonacci_action_client";
         options.namespace_ = "/";
         nros::Result rc = context.create_node(node, "node", options);
         if (!rc.ok()) return rc;
 
-        nros::ComponentEntityDescriptor cli{};
+        nros::NodeEntityDescriptor cli{};
         cli.id = "cli_fib";
         cli.kind = nros::EntityKind::ActionClient;
         cli.source_name = "/fibonacci";

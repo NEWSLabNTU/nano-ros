@@ -40,7 +40,7 @@ extern "C" {
  * via the per-pkg mangling rule (`-` → `_`, prepend `__nros_component_`,
  * append `_register`).
  */
-#define NROS_MISSING_COMPONENT_EXPORT_ERROR "package has no exported nros component"
+#define NROS_MISSING_NODE_EXPORT_ERROR "package has no exported nros component"
 
 typedef struct nros_node_context_t nros_node_context_t;
 
@@ -149,7 +149,7 @@ nros_node_record_callback_effect(nros_node_context_t* context, const char* callb
 /* Phase 212.M.5.a.1 — per-pkg mangled register symbol.
  *
  * Caller supplies the cargo-style pkg name as a bare token (pre-sanitised
- * — `-` → `_`). Cmake glue (`nano_ros_component_register()` for C++ or
+ * — `-` → `_`). Cmake glue (`nano_ros_node_register()` for C++ or
  * the codegen-system C bake) is the canonical source of the pkg-name
  * token; hand-written C pkgs may invoke this macro directly.
  *

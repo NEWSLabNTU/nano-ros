@@ -8,16 +8,16 @@
 
 namespace nuttx_cpp_service_client {
 
-::nros::Result AddTwoIntsClient::register_component(::nros::ComponentContext& ctx) {
-    ::nros::ComponentNode node;
+::nros::Result AddTwoIntsClient::register_node(::nros::NodeContext& ctx) {
+    ::nros::DeclaredNode node;
     auto opts = ::nros::NodeOptions::make("add_two_ints_client");
     auto r = ctx.create_node(node, "node", opts);
     if (!r.ok()) return r;
 
-    ::nros::ComponentEntityDescriptor client{
+    ::nros::NodeEntityDescriptor client{
         "client_add",
         "node",
-        ::nros::ComponentEntityKind::ServiceClient,
+        ::nros::NodeEntityKind::ServiceClient,
         "/add_two_ints",
         "example_interfaces/srv/AddTwoInts",
         "",

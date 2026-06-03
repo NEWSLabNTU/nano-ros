@@ -8,16 +8,16 @@
 
 namespace nuttx_cpp_action_client {
 
-::nros::Result FibonacciClient::register_component(::nros::ComponentContext& ctx) {
-    ::nros::ComponentNode node;
+::nros::Result FibonacciClient::register_node(::nros::NodeContext& ctx) {
+    ::nros::DeclaredNode node;
     auto opts = ::nros::NodeOptions::make("fibonacci_action_client");
     auto r = ctx.create_node(node, "node", opts);
     if (!r.ok()) return r;
 
-    ::nros::ComponentEntityDescriptor client{
+    ::nros::NodeEntityDescriptor client{
         "client_fib",
         "node",
-        ::nros::ComponentEntityKind::ActionClient,
+        ::nros::NodeEntityKind::ActionClient,
         "/fibonacci",
         "example_interfaces/action/Fibonacci",
         "",

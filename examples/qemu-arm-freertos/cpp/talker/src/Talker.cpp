@@ -6,16 +6,16 @@
 
 namespace freertos_cpp_talker {
 
-::nros::Result Talker::register_component(::nros::ComponentContext& ctx) {
-    ::nros::ComponentNode node;
+::nros::Result Talker::register_node(::nros::NodeContext& ctx) {
+    ::nros::DeclaredNode node;
     auto opts = ::nros::NodeOptions::make("talker");
     auto r = ctx.create_node(node, "node", opts);
     if (!r.ok()) return r;
 
-    ::nros::ComponentEntityDescriptor pub{
+    ::nros::NodeEntityDescriptor pub{
         /*stable_id*/   "pub_chatter",
         /*node_id*/     "node",
-        /*kind*/        ::nros::ComponentEntityKind::Publisher,
+        /*kind*/        ::nros::NodeEntityKind::Publisher,
         /*source_name*/ "/chatter",
         /*type_name*/   "std_msgs/msg/Int32",
         /*type_hash*/   "",
@@ -24,8 +24,8 @@ namespace freertos_cpp_talker {
     r = node.create_entity(pub);
     if (!r.ok()) return r;
 
-    ::nros::ComponentEntityDescriptor timer{
-        "timer_tick", "node", ::nros::ComponentEntityKind::Timer,
+    ::nros::NodeEntityDescriptor timer{
+        "timer_tick", "node", ::nros::NodeEntityKind::Timer,
         "1000",       "",     "",                                "on_tick",
     };
     r = node.create_entity(timer);

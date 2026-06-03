@@ -5,16 +5,16 @@
 
 namespace nuttx_cpp_service_server {
 
-::nros::Result AddTwoIntsServer::register_component(::nros::ComponentContext& ctx) {
-    ::nros::ComponentNode node;
+::nros::Result AddTwoIntsServer::register_node(::nros::NodeContext& ctx) {
+    ::nros::DeclaredNode node;
     auto opts = ::nros::NodeOptions::make("add_two_ints_server");
     auto r = ctx.create_node(node, "node", opts);
     if (!r.ok()) return r;
 
-    ::nros::ComponentEntityDescriptor srv{
+    ::nros::NodeEntityDescriptor srv{
         "srv_add",
         "node",
-        ::nros::ComponentEntityKind::ServiceServer,
+        ::nros::NodeEntityKind::ServiceServer,
         "/add_two_ints",
         "example_interfaces/srv/AddTwoInts",
         "",

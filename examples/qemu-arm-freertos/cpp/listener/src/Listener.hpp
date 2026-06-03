@@ -8,7 +8,7 @@ namespace freertos_cpp_listener {
 
 class Listener {
   public:
-    static ::nros::Result register_component(::nros::ComponentContext& context);
+    static ::nros::Result register_node(::nros::NodeContext& context);
 };
 
 } // namespace freertos_cpp_listener

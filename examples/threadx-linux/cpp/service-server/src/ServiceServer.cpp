@@ -13,15 +13,15 @@ namespace threadx_linux_cpp_service_server {
 
 class ServiceServer {
   public:
-    static nros::Result register_component(nros::ComponentContext& context) {
-        nros::ComponentNode node;
+    static nros::Result register_node(nros::NodeContext& context) {
+        nros::DeclaredNode node;
         nros::NodeOptions options;
         options.name = "add_two_ints_server";
         options.namespace_ = "/";
         nros::Result rc = context.create_node(node, "node", options);
         if (!rc.ok()) return rc;
 
-        nros::ComponentEntityDescriptor srv{};
+        nros::NodeEntityDescriptor srv{};
         srv.id = "srv_add";
         srv.kind = nros::EntityKind::ServiceServer;
         srv.source_name = "/add_two_ints";

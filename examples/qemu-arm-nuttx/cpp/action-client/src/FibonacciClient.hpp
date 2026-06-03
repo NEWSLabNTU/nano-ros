@@ -8,7 +8,7 @@ namespace nuttx_cpp_action_client {
 
 class FibonacciClient {
   public:
-    static ::nros::Result register_component(::nros::ComponentContext& context);
+    static ::nros::Result register_node(::nros::NodeContext& context);
 };
 
 } // namespace nuttx_cpp_action_client

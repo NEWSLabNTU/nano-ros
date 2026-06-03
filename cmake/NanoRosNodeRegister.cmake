@@ -2,7 +2,7 @@
 #
 # C++ cmake fn surface for the three Phase 212.L pkg shapes:
 #
-#   * `nano_ros_component_register(NAME <name> CLASS <UserClass>
+#   * `nano_ros_node_register(NAME <name> CLASS <UserClass>
 #       SOURCES <files...> DEPLOY <target1> [<target2> ...])`
 #       — declares a Component pkg entity. Compiles SOURCES into a
 #         STATIC `<pkg>_<name>_component` lib linked to
@@ -40,7 +40,7 @@ set(_NROS_NODE_REGISTER_INCLUDED TRUE)
 
 define_property(GLOBAL PROPERTY NROS_COMPONENTS_JSON
     BRIEF_DOCS "Accumulated component JSON fragments"
-    FULL_DOCS  "Phase 212.L.9 — appended by nano_ros_component_register().")
+    FULL_DOCS  "Phase 212.L.9 — appended by nano_ros_node_register().")
 define_property(GLOBAL PROPERTY NROS_APPLICATIONS_JSON
     BRIEF_DOCS "Accumulated application JSON fragments"
     FULL_DOCS  "Phase 212.L.9 / 212.N.6 — appended by nano_ros_entry().")
@@ -80,19 +80,19 @@ function(_nros_json_strlist out_var)
     set(${out_var} "${_acc}" PARENT_SCOPE)
 endfunction()
 
-function(nano_ros_component_register)
+function(nano_ros_node_register)
     cmake_parse_arguments(_NRC "" "NAME;CLASS" "SOURCES;DEPLOY" ${ARGN})
     foreach(_req NAME CLASS SOURCES DEPLOY)
         if(NOT _NRC_${_req})
             message(FATAL_ERROR
-                "nano_ros_component_register: ${_req} required")
+                "nano_ros_node_register: ${_req} required")
         endif()
     endforeach()
     # L.4 enforcement: CLASS must start with `${PROJECT_NAME}::`.
     string(FIND "${_NRC_CLASS}" "${PROJECT_NAME}::" _idx)
     if(NOT _idx EQUAL 0)
         message(FATAL_ERROR
-            "nano_ros_component_register: CLASS '${_NRC_CLASS}' must "
+            "nano_ros_node_register: CLASS '${_NRC_CLASS}' must "
             "start with '${PROJECT_NAME}::' (Phase 212.L.4 rule — the "
             "pkg directory name IS the pkg name).")
     endif()

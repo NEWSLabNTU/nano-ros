@@ -2002,53 +2002,72 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       `packages/testing/nros-tests/tests/phase212_n11_launch_parser_*.
       rs` (NEW per-tag regression tests).
 - [x] **N.12 Component → Node rename sweep.** Mechanical rename
-      across the workspace — landed 2026-06-03 as a minimum-viable
-      alias surface (commit `90c801513` + `5c27309dd`). Affects:
-      - `nros::component!()` macro → `nros::node!()`. Done — both
-        macros emit identical token streams; `nros::component!()`
-        kept as deprecated alias.
-      - `Component` trait → `Node` trait. **Carved out** — the crate
-        root `nros::Node` is already occupied by `nros_node::Node`
-        (the concrete ROS-node struct created by `node_builder()`),
-        so aliasing `Component as Node` at `nros::` would shadow
-        every existing `nros::Node` import. The trait stays known as
-        `nros::Component`; the user-facing rename is delivered via
-        the `nros::node!()` macro + the `[package.metadata.nros.node]`
-        Cargo key + the sibling alias surface
-        (`NodeContext`/`NodeResult`/`NodeRuntime`/`ExecutableNode`/…).
-      - `ComponentRuntime` trait → `NodeRuntime` trait. Done — alias
-        landed in both `nros-platform::board` (the simpler runtime
-        sink trait) and `nros` (the metadata recorder trait).
-      - `ExecutorComponentRuntime` → `ExecutorNodeRuntime`. Done —
-        `pub use … as …` alias in `nros::`.
-      - `RuntimeError::ComponentRegister` → `RuntimeError::NodeRegister`.
-        Done — variant renamed; a deprecated
-        `RuntimeError::ComponentRegister(...)` const-fn constructor
-        forwards to the new variant so old callsites still build.
-      - `[package.metadata.nros.component]` → `[package.metadata.nros
-        .node]`. Done in 40 example/fixture `Cargo.toml`s. The
-        `nros-cli` standalone repo (out of tree) needs a follow-up
-        patch to accept both keys; until then the renamed fixtures
-        may break `nros check` against the in-tree pinned CLI.
-      - "Component pkg" doc terminology → "Node pkg". Deferred —
-        not part of this commit wave (docs sweep is non-load-bearing
-        and large; doing it in a single mechanical pass risks
-        churning archived/historical roadmap text).
-      - Internal symbol mangling `__nros_component_<pkg>_*` →
-        `__nros_node_<pkg>_*` (already retired by N.7 step-6, just
-        ident hygiene in remaining internals). Left untouched —
-        only inert comment / `cmake/NanoRosThreadxSystemCodegen.cmake`
-        references survive (the ThreadX C-side baker scope).
-      - `n12_node_macro_alias_emits_deprecation_warning` test —
-        `nros::component!()` invocation under N.12 emits a deprecation
-        warning pointing at `nros::node!()`. **Not landed** — Rust's
-        `#[deprecated]` attribute on `#[proc_macro]` fns silently
-        no-ops (the deprecation lint fires on `macro_rules!` but not
-        on proc-macros). The aliases stay, but no warning is emitted.
-        Documented for a follow-up.
-      Single mechanical wave; can land via parallel worktree agents
-      per directory. **Files:** workspace-wide; tracked via
-      `git grep -E '\\bComponent(Runtime)?\\b|nros::component!'`.
+      across the workspace — first wave landed alias-first on
+      2026-06-03 (commit `8b4565d30`); hard-rename second wave
+      completed on the same day. Final state:
+      - `Node` (executor struct) renamed to `NodeHandle` first
+        (commit `12250bb41`), freeing the `Node` ident at the crate
+        root.
+      - `Component` trait → `Node` trait. Done — the trait is now
+        `nros::Node`; user impls read `impl nros::Node for MyType`.
+      - `ExecutableComponent` → `ExecutableNode`. Done.
+      - `ComponentRuntime` (the runtime sink trait that lives in
+        both `nros-platform::board` and `nros`) → `NodeRuntime`.
+        Done.
+      - `ComponentRuntimeAdapter` / `ComponentContext` /
+        `ComponentResult` → `NodeRuntimeAdapter` / `NodeContext` /
+        `NodeResult`. Done.
+      - `ComponentError` → `NodeDeclError` (kept distinct from the
+        unrelated `nros_node::NodeError` already exported at
+        `nros::NodeError`).
+      - `ComponentNode` (declared-node struct) → `DeclaredNode`.
+        `ComponentNodeRuntime` (trait) → `DeclaredNodeRuntime`.
+        `ComponentRuntimeNode` (record struct) → `RuntimeNodeRecord`.
+      - `ComponentPublisher/Sub/Timer/Service{Server,Client}/Action{
+        Server,Client}/Parameter` entity-handle aliases → `Node*`.
+      - `ComponentRegisterFn/InitFn/DispatchFn/TickFn` → `Node*Fn`.
+      - `ComponentHandle` (per-component opaque slot witness) →
+        `RegisteredNode`.
+      - `ComponentMetadataError` → `NodeMetadataError`.
+      - `MISSING_COMPONENT_EXPORT_ERROR` → `MISSING_NODE_EXPORT_
+        ERROR`. `record_component_metadata` → `record_node_metadata`.
+        `register_component` → `register_node`.
+      - `NullComponentRuntime` → `NullNodeRuntime`.
+        `ExecutorComponentRuntime` → `ExecutorNodeRuntime`.
+        `ComponentExecutorRuntime` → `NodeExecutorRuntime`.
+      - `RuntimeError::ComponentRegister` → `NodeRegister`. The
+        deprecated const-fn constructor was deleted in the hard
+        rename.
+      - File-level renames: `packages/core/nros/src/component.rs` →
+        `node.rs`, `component_runtime.rs` → `node_runtime.rs`,
+        `component_metadata.rs` → `node_metadata.rs`.
+      - C / C++ header renames: `packages/core/nros-c/include/nros/
+        component.h` → `node_pkg.h`, `packages/core/nros-cpp/include/
+        nros/component.hpp` → `node_pkg.hpp`,
+        `packages/core/nros-cpp/include/nros/component_node.hpp` →
+        `declared_node.hpp`. Every `nros_component_*` C symbol →
+        `nros_node_*`; every C++ `Component*` class → `Node*` /
+        `DeclaredNode*`; `NROS_COMPONENTS_REGISTER_NODE` macro →
+        `NROS_NODE_PKG_REGISTER`; `cmake/NanoRosComponentRegister.
+        cmake` → `cmake/NanoRosNodeRegister.cmake`.
+      - `nros::component!()` macro forwarder — DELETED in the hard
+        rename; every caller migrated to `nros::node!()`. The
+        N.12 carve-out for "no deprecation warning on proc-macros"
+        is moot now that the forwarder is gone.
+      - `[package.metadata.nros.component]` → `[package.metadata.nros.
+        node]` already landed in the first wave (9bef3ff0c).
+      - ThreadX C-side baker (`cmake/NanoRosThreadxSystemCodegen.
+        cmake`) is the documented exception — its codegen still
+        emits the legacy mangled symbol shape, tracked under a
+        separate phase.
+      Verified: `cargo build --workspace` (minus the static /
+      cyclonedds-sys / xrce-sys exclusions) clean, `cargo test -p
+      nros --lib` 17/17 pass, `cargo test -p nros-tests --test
+      phase212_n9_main_macro_forms` 6/6 pass.
+      **Files:** workspace-wide; the audit is `git grep -nwE
+      'Component|ExecutableComponent|ComponentRuntime|ComponentContext|
+      ComponentResult'` returning only doc/comment text + the
+      documented ThreadX baker exception.
 - **Tests:**
   - [ ] `posix_board_run_executes_run_plan` — host POSIX Entry pkg
         from a 2-component launch XML reaches `run_plan` body +
@@ -2081,9 +2100,12 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
         nav2-style launch.xml (`<node>` + `<arg>` + `<include>` +
         `$(find <pkg>)`) into the fixture; codegen accepts it +
         emits correct run_plan body. (N.11)
-  - [ ] `n12_node_macro_alias_emits_deprecation_warning` —
-        `nros::component!()` invocation under N.12 emits a
-        deprecation warning pointing at `nros::node!()`. (N.12)
+  - [x] `phase_212_n_12_node_names_resolve` (renamed from the
+        alias-coexistence test) — asserts the canonical `Node*`
+        names resolve at the crate root after the hard rename;
+        the legacy `Component*` aliases are gone (the workspace
+        audit enforces their absence outside docs / ThreadX
+        baker scope). (N.12)
 - **Files:** `packages/core/nros-platform/src/board/{mod,init,
   print,exit,transport,network,entry}.rs` (NEW),
   `packages/boards/nros-board-{posix,freertos,threadx,zephyr,nuttx,

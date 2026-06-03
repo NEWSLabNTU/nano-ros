@@ -8,7 +8,7 @@ namespace freertos_cpp_action_server {
 
 class FibonacciServer {
   public:
-    static ::nros::Result register_component(::nros::ComponentContext& context);
+    static ::nros::Result register_node(::nros::NodeContext& context);
 };
 
 } // namespace freertos_cpp_action_server

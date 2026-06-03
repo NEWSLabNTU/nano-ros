@@ -16,15 +16,15 @@ namespace threadx_linux_cpp_talker {
 
 class Talker {
   public:
-    static nros::Result register_component(nros::ComponentContext& context) {
-        nros::ComponentNode node;
+    static nros::Result register_node(nros::NodeContext& context) {
+        nros::DeclaredNode node;
         nros::NodeOptions options;
         options.name = "talker";
         options.namespace_ = "/";
         nros::Result rc = context.create_node(node, "node", options);
         if (!rc.ok()) return rc;
 
-        nros::ComponentEntityDescriptor pub{};
+        nros::NodeEntityDescriptor pub{};
         pub.id = "pub_chatter";
         pub.kind = nros::EntityKind::Publisher;
         pub.source_name = "/chatter";

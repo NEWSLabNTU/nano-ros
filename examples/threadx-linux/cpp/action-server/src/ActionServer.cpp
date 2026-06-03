@@ -15,15 +15,15 @@ namespace threadx_linux_cpp_action_server {
 
 class ActionServer {
   public:
-    static nros::Result register_component(nros::ComponentContext& context) {
-        nros::ComponentNode node;
+    static nros::Result register_node(nros::NodeContext& context) {
+        nros::DeclaredNode node;
         nros::NodeOptions options;
         options.name = "fibonacci_action_server";
         options.namespace_ = "/";
         nros::Result rc = context.create_node(node, "node", options);
         if (!rc.ok()) return rc;
 
-        nros::ComponentEntityDescriptor act{};
+        nros::NodeEntityDescriptor act{};
         act.id = "act_fib";
         act.kind = nros::EntityKind::ActionServer;
         act.source_name = "/fibonacci";
