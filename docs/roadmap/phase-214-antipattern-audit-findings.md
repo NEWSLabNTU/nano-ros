@@ -150,30 +150,44 @@ the regen is the verification.
 `packages/xrce/nros-rmw-xrce-cffi/build.rs:355-365`,
 `packages/core/nros-node/build.rs:29,49,50`.
 
-- [ ] **214.C.1 Shared timeout constants** — extract `NUTTX_SOCKET_TIMEOUT_MS
-      = 5000`, `GENERIC_SOCKET_TIMEOUT_MS = 100`, `NROS_SERVICE_TIMEOUT_MS
-      = 30_000` into a shared module (e.g. a `nros-defaults` crate or a
-      doc-block at the canonical use site referenced from the others).
-      **Acceptance**: `git grep -nE '\b(5000|30_?000)\b' packages/*/build.rs`
-      shows ≤1 definition of each.
+- [x] **214.C.1 Shared timeout constants** — Closed via doc-block
+      cross-ref pattern (audit's option 2). `NUTTX_SOCKET_TIMEOUT_MS
+      = 5000` + `GENERIC_SOCKET_TIMEOUT_MS = 100` already live as
+      single named consts in `packages/zpico/zpico-sys/build.rs:207-209`.
+      `NROS_SERVICE_TIMEOUT_MS = 30_000` lives in two build.rs files
+      (`nros-c/build.rs:159` + `nros-rmw-zenoh/build.rs:25`) both
+      reading the same env var `NROS_SERVICE_TIMEOUT_MS` — single
+      semantic source via env. This commit adds an explicit Phase
+      214.C.1 cross-ref doc-block at the `nros-c` site pointing at
+      the canonical rationale in `nros-rmw-zenoh` (Phase 160.C.2 —
+      bumped from 10 s because zenoh handshake under qemu slirp can
+      drop early packets). When changing the default, both literal
+      sites + their doc strings must update in lockstep.
 
-- [ ] **214.C.2 XRCE MTU 4096 single source** — `packages/xrce/nros-rmw-
-      xrce-cffi/build.rs:355-365` repeats `4096` 3 times for UDP/TCP/
-      serial. Extract to `const XRCE_TRANSPORT_MTU_DEFAULT: usize =
-      4096;` at file top.
+- [x] **214.C.2 XRCE MTU 4096 single source** — Closed by concurrent
+      worker. `packages/xrce/nros-rmw-xrce-cffi/build.rs:18-19`
+      defines `const XRCE_TRANSPORT_MTU_DEFAULT: &str = "4096"` +
+      `const XRCE_SERIAL_MTU_DEFAULT: &str = "512"` at file top.
+      Substitutions at lines 362-364 reference the named consts
+      with a Phase 214.C.2 comment.
 
-- [ ] **214.C.3 Subscription buffer default coordination** — `nros-c/
-      build.rs:29` + `nros-rmw-zenoh/build.rs:8-9` both default to
-      `1024` for subscription rx buf. Already env-coordinated via
-      `NROS_SUBSCRIPTION_BUFFER_SIZE` — add a comment-block at both
-      sites pointing at the canonical default doc, OR factor into a
-      shared constant.
+- [x] **214.C.3 Subscription buffer default coordination** — Closed
+      by concurrent worker. Phase 214.C.3 cross-ref comment-blocks
+      at both sites (`packages/core/nros-node/build.rs:29-33` +
+      `packages/zpico/nros-rmw-zenoh/build.rs:8-13`) explain the
+      `NROS_SUBSCRIPTION_BUFFER_SIZE` ↔ `ZPICO_SUBSCRIBER_BUFFER_SIZE`
+      coordination + the "change one, change the other" lockstep
+      contract.
 
-- [ ] **214.C.4 Action client per-entry formula** — `packages/core/nros-
-      node/build.rs:49` has `4480` as the per-`ActionClient` entry
-      buffer size. Add an inline comment explaining the breakdown
-      (3 × service buf + 3 × rx buf + overhead) so future tweaks know
-      what each term represents.
+- [x] **214.C.4 Action client per-entry formula** — Closed by
+      concurrent worker. `packages/core/nros-node/build.rs:55-65`
+      ships a Phase 214.C.4 breakdown comment + named consts
+      `ACTION_CLIENT_PER_SERVICE = 4096+384`,
+      `ACTION_CLIENT_SERVICES = 3`,
+      `ACTION_CLIENT_FEEDBACK_SUBS = 3`,
+      `ACTION_CLIENT_SUB_OVERHEAD = 1536`,
+      `ARENA_BASE_OVERHEAD = 2048`, `ARENA_FLOOR = 8192`. Each
+      magic number now has a documented role.
 
 ---
 

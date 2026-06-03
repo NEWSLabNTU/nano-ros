@@ -147,6 +147,17 @@ fn generate_config(
     // Phase 192.4 — default service-client RPC timeout. Read the same env var
     // and use the same default (30000) as the zenoh backend
     // (`nros-rmw-zenoh/build.rs`) so the two paths agree.
+    //
+    // Phase 214.C.1 — the 30_000 literal lives in TWO build.rs files
+    // (here + `nros-rmw-zenoh/build.rs:25`). Single source = the
+    // `NROS_SERVICE_TIMEOUT_MS` env var contract — both sites read it
+    // with the same default. The literal is duplicated as a fallback;
+    // when changing the default, update BOTH sites (and the doc strings
+    // at line 200 here + line 42 there) in lockstep. Cross-doc
+    // pointer: `nros-rmw-zenoh/build.rs:15` carries the rationale
+    // for the 30_000 ms choice (Phase 160.C.2 — bumped from 10 s
+    // because zenoh handshake under qemu slirp can drop early
+    // packets).
     let service_timeout_ms = env_usize("NROS_SERVICE_TIMEOUT_MS", 30_000);
 
     // --- Opaque storage from probe (Phase 118.B closure of Phase 87.6) ---
