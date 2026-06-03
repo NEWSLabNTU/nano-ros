@@ -861,7 +861,7 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       `impl Message` emit. **Files:** nros-cli
       `packages/rosidl-codegen/src/cargo_toml_emit.rs`.
 
-- [ ] **K.7.1.b** — **Codegen emits `impl nros_serdes::Message for
+- [x] **K.7.1.b** — **Codegen emits `impl nros_serdes::Message for
       <Msg>`** alongside the generated struct per msg crate. K.7.3
       promotes the trait; K.7.4–K.7.6 build, cache and look up a
       Cyclone sertype keyed on it; but no in-tree msg type actually
@@ -1155,7 +1155,7 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       `packages/dds/nros-rmw-cyclonedds/src/lib.rs` +
       `src/{publisher,subscription}.rs`.
 
-- [ ] **K.7.6.b** — **Wire `register::<M>()` into nros-node Rust
+- [x] **K.7.6.b** — **Wire `register::<M>()` into nros-node Rust
       pub/sub/service/action creators**. K.7.6 only plumbs the shim;
       `nros-node`'s typed `create_publisher<M>` / `create_subscription
       <M>` / `create_service<S>` / `create_action_*<A>` callsites
@@ -1395,16 +1395,16 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
 
 ##### Acceptance for K.7
 
-- [ ] No `cyclonedds` feature on any generated msg crate in tree.
-- [ ] No `<pkg>/cyclonedds` feature ref in any consumer Cargo.toml in tree.
-- [ ] `cargo build` from a clean tree on every native rust example
+- [x] No `cyclonedds` feature on any generated msg crate in tree.
+- [x] No `<pkg>/cyclonedds` feature ref in any consumer Cargo.toml in tree.
+- [x] `cargo build` from a clean tree on every native rust example
       succeeds (no resolver feature error).
-- [ ] `cargo build --features rmw-cyclonedds` runs end-to-end
+- [x] `cargo build --features rmw-cyclonedds` runs end-to-end
       pub/sub exchange (existing K.5 test reactivated).
-- [ ] `nros-rmw-cyclonedds` declares `#![no_std]`; `cargo check
+- [x] `nros-rmw-cyclonedds` declares `#![no_std]`; `cargo check
       --no-default-features` succeeds; bare-metal link smoke
       (K.7.8) confirms zero Rust-side `alloc` symbols.
-- [ ] User-facing Cargo.toml shape proven by the
+- [x] User-facing Cargo.toml shape proven by the
       `examples/templates/local-msg-package` fixture extending to a
       `rmw-cyclonedds` variant — plain `std_msgs = "*"`, no msg-crate
       features, RMW selected via `nros` feature only.
@@ -1421,11 +1421,11 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
 * Cyclone heap pre-budgeting: Phase 177.22 (`kEmbeddedCycloneConfig`
   ddsrt heap wiring on FreeRTOS + ThreadX).
 - **Tests:**
-  - [ ] `cyclonedds_sys_builds_native` — `cargo build -p cyclonedds-sys`
+  - [x] `cyclonedds_sys_builds_native` — `cargo build -p cyclonedds-sys`
         on native_sim succeeds; `libddsc.a` linked.
-  - [ ] `nros_rmw_cyclonedds_sys_register_symbol_exported` —
+  - [x] `nros_rmw_cyclonedds_sys_register_symbol_exported` —
         `nros_rmw_cyclonedds_register` is whole-archive-linked + reachable.
-  - [ ] `native_rust_cyclonedds_talker_listener_e2e` — `cargo build
+  - [x] `native_rust_cyclonedds_talker_listener_e2e` — `cargo build
         --features rmw-cyclonedds && <run>` end-to-end exchange w/o
         CMake.
   - [ ] `msg_to_cyclone_idl_rust_port_matches_python_output` — port
