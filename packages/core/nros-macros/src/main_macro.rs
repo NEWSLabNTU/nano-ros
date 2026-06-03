@@ -526,7 +526,7 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
         "threadx-qemu-riscv64" | "qemu-riscv64-threadx" => {
             "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
         }
-        "nuttx" | "qemu-arm-nuttx" => "::nros_board_qemu_arm_nuttx::QemuArmNuttx",
+        "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
         "esp32" => "::nros_board_esp32::Esp32",
         "zephyr" => "::nros_board_zephyr::Zephyr",
         _ => return None,

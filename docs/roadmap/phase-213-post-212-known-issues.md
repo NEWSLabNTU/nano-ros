@@ -218,7 +218,7 @@ different subsets. Suggested partition (3 machines, 6 pkgs each):
       `thumbv7m-none-eabi` toolchain (skip if SDK absent); `main.rs`
       is one line.
 
-- [ ] **213.C.2** — Migrate NuttX Entry pkgs.
+- [x] **213.C.2** — Migrate NuttX Entry pkgs.
       **Files**: `examples/qemu-arm-nuttx/rust/*_entry/` (6).
       **Acceptance**: same as 213.C.1.
 
