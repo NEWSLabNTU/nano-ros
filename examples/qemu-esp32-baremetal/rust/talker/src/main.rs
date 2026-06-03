@@ -26,18 +26,39 @@ use std_msgs::msg::Int32;
 
 nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
+// Phase 213.E.2 — locator + domain_id are compile-time overridable via
+// `NROS_LOCATOR` / `NROS_DOMAIN_ID` env vars (`option_env!` is
+// `#![no_std]`-clean and folds to a constant). Matches the E.1 shape.
+const LOCATOR: &str = match option_env!("NROS_LOCATOR") {
+    Some(s) => s,
+    None => "tcp/10.0.2.2:7454",
+};
+const DOMAIN_ID: u32 = match option_env!("NROS_DOMAIN_ID") {
+    // `u32::from_str_radix` is not yet `const`-stable on our MSRV; we
+    // accept only single-digit decimals which covers the common
+    // ROS_DOMAIN_ID range used in CI (0..=9). Multi-digit values
+    // should bake via the platform-side compile-time path until
+    // `const_from_str` lands.
+    Some(s) if s.len() == 1 => (s.as_bytes()[0] - b'0') as u32,
+    _ => 0,
+};
+
 #[entry]
 fn main() -> ! {
     // Phase 212.M.10 — build-time Config literal supersedes the
     // pre-212 `Config::from_toml(include_str!(...))` sidecar.
     // Transcribed verbatim from the retired `nros.toml`.
+    // TODO(213.E.2) — `mac_addr` / `ip` / `gateway` remain hardcoded:
+    // they're board-internal smoltcp config and the env-var → byte-
+    // array macro plumbing is pending. Override via `NROS_LOCATOR`
+    // / `NROS_DOMAIN_ID` for the network-facing knobs.
     let config = Config {
         mac_addr: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
         ip: [10, 0, 2, 50],
         prefix: 24,
         gateway: [10, 0, 2, 2],
-        zenoh_locator: "tcp/10.0.2.2:7454",
-        domain_id: 0,
+        zenoh_locator: LOCATOR,
+        domain_id: DOMAIN_ID,
     };
     run(config, |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
