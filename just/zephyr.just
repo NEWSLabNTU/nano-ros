@@ -1099,8 +1099,12 @@ build-all: build build-examples build-fixtures
     @echo "Zephyr build-all completed."
 
 # Run Zephyr E2E tests (requires pre-built Zephyr examples; native_sim uses NSOS on host loopback)
+#
+# Phase 214.Q: `build-fixtures` is sequenced as a prereq so the nextest
+# harness never explodes with "Zephyr fixture binary is stale" — recipes
+# own the build-then-test sequencing.
 [group("main")]
-test verbose="":
+test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh

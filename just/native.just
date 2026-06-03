@@ -398,8 +398,14 @@ clean-cpp:
 # Run integration tests only (requires zenohd). Focused ROS 2, large-msg,
 # native C/C++, and XRCE C API lanes live below; this default native tier
 # keeps those slower slices out of the broad local loop.
+#
+# Phase 214.Q: `build-fixtures` is sequenced as a prereq so the nextest
+# harness never explodes with `nros_tests::fixtures::binaries::*` "Test
+# fixture binary not prebuilt" errors. The harness fails loud on missing
+# fixtures by design (Phase 181) — recipes own the build-then-test
+# sequencing.
 [group("main")]
-test verbose="":
+test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh

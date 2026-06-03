@@ -185,8 +185,13 @@ test-basic: build-qemu
     fi
 
 # Run ESP32-C3 QEMU integration tests (build, boot, E2E via nextest)
+#
+# Phase 214.Q: `build-fixtures` is sequenced as a prereq so the nextest
+# harness never explodes with "fixture not built" errors. The harness
+# fails loud on missing fixtures by design (Phase 181) — recipes own the
+# build-then-test sequencing.
 [group("main")]
-test verbose="":
+test verbose="": build-fixtures
     # Delegate to the shared skip-tolerant runner: the esp32_emulator tests
     # `skip!` when the Espressif QEMU fork / espflash / riscv32 target are absent
     # (best-effort emulator), and _nextest-platform treats an all-[SKIPPED] run
