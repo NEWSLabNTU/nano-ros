@@ -689,22 +689,81 @@ CMake on hosted targets (native, qemu native_sim).
 
 #### 212.K.7 — RMW-agnostic msg crates via runtime introspection (DESIGN REVISION)
 
-**Status (2026-06-03).** Bulk of K.7 has landed: K.7.1 (codegen template
-drops `cyclonedds` feature, nros-cli `e9226b6`), K.7.2 (consumer
-Cargo.toml grep sweep, `1fb985560`), K.7.3 (`nros-serdes` public field
-schema + `Message` trait, `a9fff3306`), and K.7.4 + K.7.5 + K.7.6
-(runtime descriptor builder + bounded heapless type registry + Rust
-shim register hook in `nros-rmw-cyclonedds`, `bb2d23002`) are all in
-tree. Remaining: **K.7.1.b** (codegen also emits an `impl
-nros_serdes::Message for <Msg>` per generated msg crate — without it
-the registry has nothing to walk on real generated types), **K.7.4.b**
-(replace the K.7.4 `UnsupportedFieldType` stub with a real Cyclone
-dynamic-type C++ bridge), **K.7.6.b** (call `register::<M>()` from the
-nros-node Rust pub/sub/service/action creators, not just the shim
-plumbing), **K.7.7** (migrate examples — gated on K.7.1.b shipping so
-the regenerated `generated/<pkg>/` trees carry `impl Message`),
-**K.7.8** (registry race + bare-metal link smoke + alloc-free audit —
-gated on K.7.6.b so a real call path exists). K.7.9 is this commit.
+**Status (2026-06-03, FINAL — K.7 CLOSED).** Native rust e2e on Cyclone
+ships across all three shapes:
+
+* **Pub/sub** (`examples/native/rust/{talker,listener}`,
+  `ROS_DOMAIN_ID=79`) — 7/7 messages exchanged on loopback.
+* **Service** (`examples/native/rust/{service-server,service-client}`,
+  `ROS_DOMAIN_ID=78`) — 4/4 AddTwoInts RPCs succeed.
+* **Action** (`examples/native/rust/{action-server,action-client}`,
+  `ROS_DOMAIN_ID=80`) — full Fibonacci goal → accept → 11 feedback
+  msgs → result returned (client logs
+  `Final sequence: [0,1,1,2,3,5,8,13,21,34,55]`, exit 0).
+
+Test-suite gates green: 15/15 cyclonedds C++ + 149/149 nros-node lib
++ 24 nros-rmw-cyclonedds Rust + K.7.8 hardening (registry race +
+bare-metal link smoke + alloc-free audit) + ROS 2 interop pub/sub +
+service.
+
+**Landed work items** (chronological):
+
+| Item   | Commit         | Scope                                                                                       |
+| ------ | -------------- | ------------------------------------------------------------------------------------------- |
+| K.7.1  | nros-cli `e9226b6` | Codegen template drops `cyclonedds` Cargo feature                                       |
+| K.7.2  | `1fb985560`    | Consumer Cargo.toml `<pkg>/cyclonedds` feature-refs stripped                                |
+| K.7.3  | `a9fff3306`    | `nros-serdes` public `Field`/`FieldType`/`NestedType`/`Message` API (`#![no_std]`, alloc-free) |
+| K.7.4+5+6 | `bb2d23002` | Cyclone descriptor builder + bounded heapless registry + Rust shim register hook            |
+| K.7.4.b | `851808313`   | Hand-synthesise `dds_topic_descriptor_t*` over Cyclone 0.10.5 public ops (no internal API)  |
+| K.7.4.c | `705e1b245`   | Sequence/array/bounded-sequence of NESTED in dynamic builder + EXT 4-word emission fix      |
+| K.7.4.d | `e243f761f`   | Retire manual `publish_goal_status_array` / `publish_fibonacci_feedback` ops-walking fast paths; route through generic `dds_stream_read_sample` → `dds_write` → `dds_stream_free_sample` |
+| K.7.4.e | `d49452288`   | Synthesise CDR-walk-order offsets for service Req/Reply descriptors (Rust `repr(Rust)` field reorder vs CDR wire order) |
+| K.7.6.b | `52bc30800`   | `nros-node` typed creators call `register::<M>()` under `rmw-cyclonedds`                    |
+| K.7.7   | `fcbc498cc`   | Migrate pub/sub examples; surface + fix bridge-cpp-missing + registry-key-mismatch latents  |
+| K.7.7.b | `162e4ed2f`   | Migrate svc/action examples + extend register coverage to spin-arena creator variants       |
+| K.7.7.c | `022f70a49`   | Extend `RosAction` trait with envelope assoc types + envelope register wiring               |
+| K.7 service path fix | `7d7d04e16` | Auto-inject 16-byte `cdds_request_header_t` for descriptors of types whose TYPE_NAME suffix matches `_Request`/`_Response`/`_Reply` |
+| K.7.8   | `b88b8547c`   | Multi-thread registry race + bare-metal link smoke + alloc-free audit                       |
+| K.7.9   | `7855799bd`   | Docs: roadmap + book pages + reference                                                      |
+| K.7.1.b | nros-cli `9a2c0f0` | Codegen emits `impl ::nros_serdes::Message` per generated msg crate                     |
+| K.7.1.c | nros-cli `440c2f4` | Codegen emits `impl ::nros_serdes::Message` for srv Req/Resp + action Goal/Result/Feedback |
+| K.7.1.d | nros-cli `63e2287` | Codegen emits per-action envelope structs (SendGoal_Req/Resp, GetResult_Req/Resp, FeedbackMessage) + Serialize/Deserialize/RosMessage/Message impls |
+| K.7.1.d.b | nros-cli `1c92310` | Codegen wires envelope structs as assoc types on `impl RosAction for <A>`             |
+
+**Outstanding (low-priority, none breaking e2e)** — moved to non-K.7
+follow-up backlog:
+
+1. **Codegen envelope structs missing `#[repr(C)]`** — K.7.4.e routes
+   around it via synthetic CDR-walk-order offsets, but a nros-cli
+   patch emitting `#[repr(C)]` on every generated msg/srv/action
+   struct would let us delete the synthetic-offset codepath and
+   unify pub/sub + service offset handling. Discovered during
+   K.7.4.e (commit `d49452288` body).
+2. **`register_descriptor` reads past `&'static str` bounds in
+   `descriptors.cpp`** — Rust `M::TYPE_NAME` isn't NUL-terminated;
+   C++ does `strcmp` past the slice. Recovered via the K.7.7-added
+   mangled-name alias path, but latent UB. Tighten to `string_view`
+   or length-aware lookup.
+3. **`_GetResult_Response_` hand-coded helper in `service.cpp`** —
+   predates K.7.4.d; could be consolidated through the generic
+   typed-sample path now that K.7.4.d proved the pattern works.
+4. **K.7.4.d.subscriber-side rewrite** (if still pending) — the
+   K.7.4.d agent reported the subscriber path already uses the
+   generic typed-sample shape, but worth confirming on a sweep.
+
+**Closing note.** K.7's design revision (replace per-msg-crate
+cyclonedds Cargo feature with runtime introspection) was driven by
+upstream alignment with rclcpp/rclrs + user direction ("`std_msgs =
+"*"` plain, no surprise"). The contract held across all three
+RMW-comm shapes: msg crates stay RMW-agnostic and `#![no_std]` +
+alloc-free; per-RMW backends own wire-shape adaptation (header
+injection for services, CDR-walk-order offsets for envelopes,
+typed-sample API for descriptor-coupled publishers). Total LOC
+delta across nano-ros + nros-cli is ~3500 lines of additive
+infrastructure + ~600 lines of latent-bug fixes surfaced along
+the way (bridge-cpp build-script omission, descriptor key
+mismatch, EXT 4-word phantom RTS, hardcoded opcode-offset
+publishers).
 
 **Filed 2026-06-03.** K.1-K.5 wired `cyclonedds = ["dep:cyclonedds-sys"]`
 as a Cargo FEATURE on every generated msg crate (the path the
