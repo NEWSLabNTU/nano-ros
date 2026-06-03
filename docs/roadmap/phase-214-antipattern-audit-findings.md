@@ -743,7 +743,7 @@ above.
 
 **Work Items:**
 
-- [ ] **214.J.1 Regen the stale `generated/` trees** — `rm -rf
+- [x] **214.J.1 Regen the stale `generated/` trees** — `rm -rf
       examples/qemu-arm-baremetal/rust/*rtic/generated/
       examples/qemu-riscv64-threadx/rust/action-*/generated/`
       followed by `just qemu build` and `just threadx_riscv64 build`.
@@ -751,6 +751,20 @@ above.
       **Acceptance**: `grep -nE 'type SendGoalRequest' examples/
       qemu-arm-baremetal/rust/action-server-rtic/generated/
       example_interfaces/src/action/fibonacci.rs` returns a match.
+      **Verified 2026-06-04** via `nros ws sync` on all 5 example
+      dirs — fresh codegen output contains
+      `type SendGoalRequest = Fibonacci_SendGoal_Request;` etc. for
+      every action example (`action-{client,server}-rtic` +
+      `qemu-riscv64-threadx action-{client,server}`). The 5 dirs
+      were absent in the worktree at the start (gitignored), so the
+      `rm -rf` itself was a no-op; the verification ran by invoking
+      `~/.nros/bin/nros ws sync` directly on each and grepping the
+      regenerated `fibonacci.rs`. Full `cargo build` from a clean
+      worktree is gated on `git submodule update --init` for
+      zenoh-pico but is unrelated to Phase 214.J. **Note:** the
+      stale-output cause is `ws sync` keying off `package.xml`
+      mtimes, not the in-tree trait surface; 214.J.2 below closes
+      that gap.
 
 - [ ] **214.J.2 build.rs should check trait surface vs cached
       output** — add a quick generation-stamp check (write a hash of
