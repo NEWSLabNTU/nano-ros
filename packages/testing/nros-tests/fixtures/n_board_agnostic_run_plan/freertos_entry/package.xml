@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>freertos_entry</name>
+  <version>0.1.0</version>
+  <description>Phase 212.O.3 fixture — FreeRTOS Entry pkg consuming shared_node_pkg + nros-board-mps2-an385-freertos.</description>
+  <maintainer email="dev@example.org">nano-ros tests</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

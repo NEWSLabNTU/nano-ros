@@ -1,0 +1,42 @@
+# Phase 212.O.3 fixture — shared Component pkg.
+#
+# Board-agnostic by construction: depends on `nros` with NO platform
+# feature in this manifest. The two sibling Entry pkgs each enable
+# the right platform feature for their target via this pkg's
+# `posix` / `freertos` features (which forward through to `nros`).
+# Same source, two compile contexts — that's the whole proof.
+#
+# Standalone `[workspace]` table keeps this crate out of the outer
+# fixture's enumeration AND out of the host nano-ros workspace if a
+# user wanders in with `cargo build --workspace`.
+[workspace]
+
+[package]
+name = "shared_node_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.component]
+# Phase 212.M-F.1 schema — surfaces the component class to `nros plan`
+# / pkg-index walkers. The same metadata IS what the launch.xml's
+# `<node pkg="shared_node_pkg" exec="shared_node" />` resolves
+# against once M-F.17 wires the α-bridge.
+name = "shared_node"
+class = "shared_node_pkg::SharedNode"
+
+[dependencies]
+# `nros` carries the trait surface + macros. Platform feature is NOT
+# baked here — the Entry pkg picks it via the per-Entry feature
+# below.
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+
+[features]
+# Default-empty — pkg cannot build by itself. Each Entry pkg picks
+# exactly ONE of these via its own path-dep.
+default = []
+posix = ["nros/std", "nros/platform-posix"]
+freertos = ["nros/platform-freertos"]

@@ -1,0 +1,36 @@
+# Phase 212.O.3 — POSIX Entry pkg #1.
+#
+# Sibling to `freertos_entry/`. Builds the SAME `shared_node_pkg`
+# rlib against the POSIX Board impl (`nros-board-posix::PosixBoard`).
+# The build.rs body is IDENTICAL to `freertos_entry/build.rs` — the
+# whole proof of board-agnostic codegen lives in that identity.
+[workspace]
+
+[package]
+name = "posix_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "posix_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "posix"
+
+[dependencies]
+# Board impl for the POSIX family.
+nros-board-posix = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-posix" }
+# Trait surface — BoardEntry / RuntimeCtx / RuntimeError.
+nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = ["std", "platform-posix"] }
+# Component pkg under test — enable the `posix` feature gate so its
+# `nros` dep links the POSIX platform backend.
+shared_node_pkg = { path = "../shared_node_pkg", features = ["posix"] }
+
+[build-dependencies]
+# Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from
+# `launch/system.launch.xml`. Shared by BOTH Entry pkgs at the SAME
+# git rev — the byte-identical OUT_DIR/run_plan.rs assertion depends
+# on that.
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }

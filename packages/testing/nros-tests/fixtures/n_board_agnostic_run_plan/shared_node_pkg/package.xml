@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>shared_node_pkg</name>
+  <version>0.1.0</version>
+  <description>Phase 212.O.3 fixture — board-agnostic shared Component pkg consumed by both posix_entry and freertos_entry.</description>
+  <maintainer email="dev@example.org">nano-ros tests</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

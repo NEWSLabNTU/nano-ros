@@ -1,0 +1,11 @@
+# Phase 212.O.3 fixture — tempdir stage outputs would normally land
+# in a tempfile root, but if a developer runs `cargo build` in-tree
+# while debugging the fixture, this keeps the per-Entry target dirs
+# out of git. Mirrors the CLAUDE.md `.gitignore` discipline (leading
+# `/` so the rule only matches at this dir's root).
+/posix_entry/target/
+/freertos_entry/target/
+/shared_node_pkg/target/
+/posix_entry/Cargo.lock
+/freertos_entry/Cargo.lock
+/shared_node_pkg/Cargo.lock

@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- Phase 212.O.3 — board-agnostic run_plan launch file.
+
+     Single-node launch consumed IDENTICALLY by both
+     `posix_entry/build.rs` and `freertos_entry/build.rs`. The
+     `nros-build::generate_run_plan` emit must be byte-identical
+     across the two Entry pkgs since codegen depends only on the
+     launch XML + the nros-build version — never the Board impl. -->
+<launch>
+  <node pkg="shared_node_pkg" exec="shared_node" name="shared_node" />
+</launch>
