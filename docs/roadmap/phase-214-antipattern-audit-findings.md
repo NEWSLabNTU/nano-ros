@@ -1956,14 +1956,19 @@ Slices 4 + 6 came back clean. Findings grouped file-disjoint:
 
 **Files**: `packages/zpico/zpico-sys/src/platform_smoltcp.rs:55-205`.
 
-- [ ] **214.F.1** — replace `smoltcp_random_u32` xorshift body with
+- [x] **214.F.1** — replace `smoltcp_random_u32` xorshift body with
       `<ConcretePlatform as PlatformRandom>::random_u32()`. Delete
-      `RNG_STATE` global.
-- [ ] **214.F.2** — replace `BumpAllocator::{alloc,realloc,free}`
+      `RNG_STATE` global. (Landed `nano-ros@1cb0c625` 2026-06-04;
+      forwards to canonical `nros_platform_random_u32` C ABI.)
+- [x] **214.F.2** — replace `BumpAllocator::{alloc,realloc,free}`
       with `PlatformAlloc` (pvPortMalloc on FreeRTOS, tx_byte_allocate
       on ThreadX, kmm_malloc on NuttX, libc malloc on hosted).
       **Acceptance**: smoltcp build links on FreeRTOS+ThreadX+NuttX+
       ESP32; `random_u32` + `BumpAllocator` gone from zpico-sys.
+      (Landed `nano-ros@1cb0c625` 2026-06-04; `smoltcp_{alloc,realloc,
+      free}` now forward to `nros_platform_{alloc,realloc,dealloc}`.
+      `BumpAllocator` struct + `HEAP_MEM` + `HEAP_INITIALIZED` +
+      `init_heap` deleted.)
 
 ### Track G — nros-c blocking-API data race
 
@@ -2025,11 +2030,21 @@ Slices 4 + 6 came back clean. Findings grouped file-disjoint:
 
 **Files**: `packages/drivers/nros-smoltcp/src/lib.rs:74-79`.
 
-- [ ] **214.L.1** — add `AtomicBool::INITIALIZED` guard. `init()`
+- [x] **214.L.1** — add `AtomicBool::INITIALIZED` guard. `init()`
       checks-and-sets; double-call returns `Err(InitTwice)`. Same
       shape for `get_socket_storage` / `get_tcp_buffers` /
       `get_udp_buffers` if they share single-init contract.
       **Acceptance**: unit test `init_twice_errors_cleanly` passes.
+      (Landed `nano-ros@efbdbca6` 2026-06-04. `SmoltcpBridge::init`
+      returns `Result<(), SmoltcpInitError>`; `get_socket_storage`
+      panics on second call — aliasing UB on the `&'static mut` was
+      a worse failure mode than a Result here. `get_tcp_buffers` /
+      `get_udp_buffers` skipped: their doc-comments document a
+      per-index contract, not a single-init contract. C ABI wrapper
+      `nros_smoltcp_init` keeps `void` return. Six board / reference
+      callers updated to `.expect(...)`. Test passes; embedded
+      checks clean on thumbv7m-none-eabi + riscv32imc-unknown-none-
+      elf.)
 
 ### Tracks F–L acceptance
 
