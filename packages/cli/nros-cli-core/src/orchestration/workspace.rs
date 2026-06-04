@@ -5,14 +5,17 @@ use eyre::{Context, Result};
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
     sync::{LazyLock, Mutex},
 };
 
 use super::cargo_metadata_schema::{ComponentMetadata, PackageMetadataNros};
-use super::config::ComponentConfig;
+use super::config::{
+    ComponentConfig, ComponentLinkage, ComponentMetadataConfig, ComponentOverrides,
+};
+use super::source_metadata::ComponentLanguage;
 
 /// Permissive envelope for extracting a `[component]` table out of a package's
 /// `nros.toml` (Phase 172 W.1 fold) while ignoring sibling tables
@@ -90,6 +93,14 @@ pub struct Package {
     /// declared component. Empty when the package has no `Cargo.toml`
     /// or no nros component metadata table.
     pub cargo_component_metadata: Vec<CargoComponentSummary>,
+    /// Phase 219.L — summaries derived from `nano_ros_node_register(...)`
+    /// calls in the package's `CMakeLists.txt`. Populated at discovery
+    /// time; one entry per static call. Empty when the package has no
+    /// `CMakeLists.txt` or no `nano_ros_node_register` call. Lets
+    /// `nros metadata` / `nros plan` discover pure-C/C++ Node pkgs that
+    /// carry only `package.xml` + `CMakeLists.txt` (no `nros.toml`, no
+    /// `Cargo.toml`) — closes Phase 219 workflow-review Gap 6.
+    pub cmake_component_metadata: Vec<CmakeNodeSummary>,
 }
 
 /// Phase 212.M-F.17 — α-bridge between the in-tree
@@ -105,6 +116,36 @@ pub struct Package {
 /// executable)` match — full entity / param / remap synthesis is
 /// intentionally out of scope (runtime `Component::register(ctx)`
 /// carries those in the redesign).
+/// Phase 219.L — summary derived from a single `nano_ros_node_register(...)`
+/// call statically parsed from a package's `CMakeLists.txt`. Carries the
+/// minimum information needed for `nros metadata --build` and `nros plan`
+/// to dedup + identify C/C++ Node pkgs that don't ship `nros.toml` or
+/// `Cargo.toml` component metadata.
+///
+/// Mirrors [`CargoComponentSummary`] field-for-field where the semantics
+/// match (`package` / `component` / `executable` / `class`), so downstream
+/// consumers can treat both summary kinds uniformly when the cmake-first
+/// path is sufficient.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CmakeNodeSummary {
+    /// `package.xml` `<name>` — matches the planner's `(package, executable)`
+    /// key shape.
+    pub package: String,
+    /// `nano_ros_node_register(NAME …)` value. Same as ROS 2 composable
+    /// node's "instance name".
+    pub component: String,
+    /// Defaults to the value of `NAME`. Phase 212.L's `<pkg>_<NAME>_component`
+    /// static lib target is what the linked Entry pkg references; the
+    /// executable shape here keeps parity with [`CargoComponentSummary`].
+    pub executable: String,
+    /// `nano_ros_node_register(CLASS <pkg_sym>::<UserClass>)` value.
+    pub class: Option<String>,
+    /// `nano_ros_node_register(DEPLOY <target>[ <target>...])` values.
+    pub deploy_targets: Vec<String>,
+    /// Absolute path to the `CMakeLists.txt` the summary was derived from.
+    pub manifest_path: PathBuf,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CargoComponentSummary {
     /// Cargo `[package].name` the component belongs to. Used by the
@@ -221,6 +262,10 @@ impl Workspace {
             // folded `nros.toml` sorts ahead of a legacy `component_nros.toml`,
             // so when both declare the same component the folded form wins and
             // the legacy file is ignored (it still warns once on read).
+            // Phase 219.L appends cmake-derived declarations LAST in the same
+            // dedup pass, so any `nano_ros_node_register(NAME …)` whose
+            // `(package, NAME)` matches an explicit `[component]` table is
+            // silently superseded — the explicit metadata wins.
             let mut seen = BTreeSet::new();
             for manifest_path in &pkg.component_config_files {
                 // A package `nros.toml` is a candidate only if it actually
@@ -237,8 +282,58 @@ impl Workspace {
                     config,
                 });
             }
+            // Phase 219.L — synthesise declarations for `nano_ros_node_register`
+            // calls statically parsed from `CMakeLists.txt` (pure-C/C++ Node
+            // pkgs that ship no `nros.toml` / `Cargo.toml` component
+            // metadata). Closes Phase 219 workflow-review Gap 6.
+            for summary in &pkg.cmake_component_metadata {
+                if !seen.insert((summary.package.clone(), summary.component.clone())) {
+                    continue;
+                }
+                out.push(ComponentDeclaration {
+                    package_root: pkg.root.clone(),
+                    manifest_path: summary.manifest_path.clone(),
+                    config: cmake_summary_to_component_config(summary),
+                });
+            }
         }
         Ok(out)
+    }
+}
+
+/// Phase 219.L — synthesise a [`ComponentConfig`] from a CMake-derived
+/// [`CmakeNodeSummary`]. Mirrors the shape `discover_cargo_component_metadata`
+/// produces for the Cargo path: minimum keys to identify the component
+/// `(package, component, language)` plus an optional class threaded through
+/// for downstream consumers.
+fn cmake_summary_to_component_config(summary: &CmakeNodeSummary) -> ComponentConfig {
+    let language = infer_language_from_class(summary.class.as_deref())
+        .unwrap_or(ComponentLanguage::Cpp);
+    ComponentConfig {
+        version: 1,
+        package: summary.package.clone(),
+        component: summary.component.clone(),
+        language,
+        linkage: ComponentLinkage::default(),
+        metadata: ComponentMetadataConfig {
+            source_metadata: format!("metadata/{}.json", summary.component),
+            generated_by: Some("nano_ros_node_register".to_string()),
+        },
+        overrides: ComponentOverrides::default(),
+    }
+}
+
+/// Phase 219.L — Best-effort language inference from a CMake-supplied
+/// class qualname. The cmake fn surface accepts both C and C++ Node pkgs,
+/// but the class shape (`pkg::Class` for C++; bare `pkg_register_fn` for
+/// the C `NROS_COMPONENT` macro) is the only signal at static-parse time.
+/// Today every shipping example uses the C++ shape, so default to Cpp.
+fn infer_language_from_class(class: Option<&str>) -> Option<ComponentLanguage> {
+    let class = class?;
+    if class.contains("::") {
+        Some(ComponentLanguage::Cpp)
+    } else {
+        Some(ComponentLanguage::C)
     }
 }
 
@@ -280,6 +375,7 @@ fn discover_package(root: &Path) -> Result<Package> {
     // `talker_pkg` vs `talker_pkg_component`). Drive synthesis from the
     // package.xml name so `find_source_metadata` matches.
     let cargo_component_metadata = discover_cargo_component_metadata(root, &parsed.name)?;
+    let cmake_component_metadata = discover_cmake_node_metadata(root, &parsed.name)?;
     Ok(Package {
         name: parsed.name,
         root: root.to_path_buf(),
@@ -301,7 +397,212 @@ fn discover_package(root: &Path) -> Result<Package> {
         metadata_files: collect_files(root, &["metadata", "nros", "target/nros"], &["json"])?,
         component_config_files: discover_component_configs(root)?,
         cargo_component_metadata,
+        cmake_component_metadata,
     })
+}
+
+/// Phase 219.L — statically parse the package's `CMakeLists.txt` for
+/// `nano_ros_node_register(NAME … CLASS … SOURCES … DEPLOY …)` calls and
+/// synthesise one [`CmakeNodeSummary`] per call. Returns an empty vec
+/// when the package has no `CMakeLists.txt` or no
+/// `nano_ros_node_register` calls (e.g. an Entry pkg using
+/// `nano_ros_entry(...)`, an interface-only pkg, a Bringup pkg, …).
+///
+/// **Why static parse, not cmake-configure-first.** Phase 219 review
+/// Gap 6 noted two options: (a) extend the walker, (b) require a prior
+/// `cmake configure` whose `${CMAKE_BINARY_DIR}/nros-metadata.json` the
+/// CLI then reads. (a) wins because:
+/// - the user's first `nros metadata` / `nros plan` call needs to work
+///   without an explicit configure step ("solo planner mode");
+/// - the cmake fn args are single-line + keyword form, so the regex
+///   walker is small + bounded.
+///
+/// Parse policy is conservative: parser failures (malformed argument
+/// list, missing required keyword) skip the offending call rather than
+/// failing the whole discovery — partial information beats none for
+/// `nros metadata --build`. A future hardening pass can promote
+/// skipped-call diagnostics to warnings.
+fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<CmakeNodeSummary>> {
+    let cmakelists = root.join("CMakeLists.txt");
+    if !cmakelists.is_file() {
+        return Ok(Vec::new());
+    }
+    let text = fs::read_to_string(&cmakelists)
+        .wrap_err_with(|| format!("read {}", cmakelists.display()))?;
+    let stripped = strip_cmake_comments(&text);
+    let mut out = Vec::new();
+    for call in extract_cmake_calls(&stripped, "nano_ros_node_register") {
+        let Some(args) = parse_cmake_kwargs(&call) else {
+            continue;
+        };
+        let Some(name) = args.single("NAME") else {
+            continue;
+        };
+        out.push(CmakeNodeSummary {
+            package: package_name.to_string(),
+            component: name.clone(),
+            executable: name,
+            class: args.single("CLASS"),
+            deploy_targets: args.multi("DEPLOY"),
+            manifest_path: cmakelists.clone(),
+        });
+    }
+    Ok(out)
+}
+
+/// Strip `#` line comments from a CMake source while preserving line
+/// offsets (each comment span replaced by spaces) — keeps any byte-offset
+/// based downstream parser stable.
+fn strip_cmake_comments(src: &str) -> String {
+    let mut out = String::with_capacity(src.len());
+    let mut in_comment = false;
+    for ch in src.chars() {
+        if in_comment {
+            if ch == '\n' {
+                in_comment = false;
+                out.push(ch);
+            } else {
+                out.push(' ');
+            }
+        } else if ch == '#' {
+            in_comment = true;
+            out.push(' ');
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Return every `<fn_name>(...)` call body found in `src`. Handles
+/// balanced parentheses inside the body (none of the cmake fns 219.L
+/// cares about use nested parens, but the walker stays generic).
+fn extract_cmake_calls(src: &str, fn_name: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let needle = format!("{fn_name}(");
+    let bytes = src.as_bytes();
+    let mut i = 0;
+    while i + needle.len() <= bytes.len() {
+        if !src.is_char_boundary(i) || !src[i..].starts_with(&needle) {
+            i += 1;
+            continue;
+        }
+        // Confirm boundary before the call (start of file OR non-identifier).
+        // CMake identifiers include `_`, so `my_nano_ros_node_register(`
+        // must NOT match the `nano_ros_node_register` needle.
+        let prev_is_ident = i > 0
+            && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
+        if prev_is_ident {
+            i += 1;
+            continue;
+        }
+        let body_start = i + needle.len();
+        let mut depth = 1usize;
+        let mut j = body_start;
+        while j < bytes.len() && depth > 0 {
+            match bytes[j] {
+                b'(' => depth += 1,
+                b')' => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 {
+                break;
+            }
+            j += 1;
+        }
+        if depth == 0 {
+            out.push(src[body_start..j].to_string());
+            i = j + 1;
+        } else {
+            // Unterminated call — give up on this match.
+            break;
+        }
+    }
+    out
+}
+
+/// Minimal CMake keyword-argument parser. Tokenises on whitespace,
+/// strips `"`-delimited strings, then collects each known keyword's
+/// values until the next keyword. Returns `None` only when the input
+/// is empty.
+fn parse_cmake_kwargs(body: &str) -> Option<CmakeKwargs> {
+    // The valid keyword set for the cmake fns 219.L parses. Conservatively
+    // wide to avoid eating later keywords as values.
+    const KEYWORDS: &[&str] = &[
+        "NAME", "CLASS", "SOURCES", "DEPLOY", "BOARD", "LAUNCH", "ARGS", "LANG", "RMW",
+        "DOMAIN_ID", "LOCATOR", "TARGET",
+    ];
+    let tokens = tokenize_cmake_body(body);
+    if tokens.is_empty() {
+        return None;
+    }
+    let mut map: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut current: Option<String> = None;
+    for tok in tokens {
+        if KEYWORDS.contains(&tok.as_str()) {
+            current = Some(tok.clone());
+            map.entry(tok).or_default();
+        } else if let Some(key) = current.as_ref() {
+            map.entry(key.clone()).or_default().push(tok);
+        }
+        // Tokens before the first keyword are dropped (CMake fns 219.L
+        // cares about don't use positional args).
+    }
+    Some(CmakeKwargs { map })
+}
+
+fn tokenize_cmake_body(body: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut chars = body.chars().peekable();
+    while let Some(&ch) = chars.peek() {
+        if ch.is_whitespace() {
+            chars.next();
+            continue;
+        }
+        if ch == '"' {
+            chars.next();
+            let mut buf = String::new();
+            while let Some(c) = chars.next() {
+                if c == '\\' {
+                    if let Some(esc) = chars.next() {
+                        buf.push(esc);
+                    }
+                } else if c == '"' {
+                    break;
+                } else {
+                    buf.push(c);
+                }
+            }
+            out.push(buf);
+            continue;
+        }
+        let mut buf = String::new();
+        while let Some(&c) = chars.peek() {
+            if c.is_whitespace() {
+                break;
+            }
+            buf.push(c);
+            chars.next();
+        }
+        if !buf.is_empty() {
+            out.push(buf);
+        }
+    }
+    out
+}
+
+#[derive(Debug, Default)]
+struct CmakeKwargs {
+    map: BTreeMap<String, Vec<String>>,
+}
+
+impl CmakeKwargs {
+    fn single(&self, key: &str) -> Option<String> {
+        self.map.get(key).and_then(|v| v.first().cloned())
+    }
+    fn multi(&self, key: &str) -> Vec<String> {
+        self.map.get(key).cloned().unwrap_or_default()
+    }
 }
 
 /// Phase 212.M-F.17 — read `<root>/Cargo.toml` and synthesise one
@@ -963,5 +1264,187 @@ class = "node_pkg::Node"
             .component_declarations()
             .unwrap();
         assert!(decls.is_empty(), "no [component] table → not a component");
+    }
+
+    // -----------------------------------------------------------------
+    // Phase 219.L — `nano_ros_node_register` discovery from CMakeLists.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn strip_cmake_comments_preserves_lines() {
+        let src = "foo # bar\nbaz\n";
+        let out = strip_cmake_comments(src);
+        assert_eq!(out, "foo      \nbaz\n");
+    }
+
+    #[test]
+    fn extract_call_finds_register_body() {
+        let src = "project(p)\nnano_ros_node_register(\n    NAME talker\n    CLASS p::T)\n";
+        let calls = extract_cmake_calls(src, "nano_ros_node_register");
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].contains("NAME talker"));
+        assert!(calls[0].contains("CLASS p::T"));
+    }
+
+    #[test]
+    fn extract_call_skips_identifier_prefix() {
+        // `my_nano_ros_node_register` must NOT match.
+        let src = "my_nano_ros_node_register(...)\nnano_ros_node_register(NAME real)\n";
+        let calls = extract_cmake_calls(src, "nano_ros_node_register");
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].contains("NAME real"));
+    }
+
+    #[test]
+    fn parse_kwargs_extracts_name_class_deploy() {
+        let body = r#"
+    NAME    talker
+    CLASS   talker_pkg::Talker
+    SOURCES src/Talker.cpp src/Helper.cpp
+    DEPLOY  native freertos
+"#;
+        let kw = parse_cmake_kwargs(body).unwrap();
+        assert_eq!(kw.single("NAME").as_deref(), Some("talker"));
+        assert_eq!(kw.single("CLASS").as_deref(), Some("talker_pkg::Talker"));
+        assert_eq!(kw.multi("DEPLOY"), vec!["native", "freertos"]);
+        assert_eq!(kw.multi("SOURCES"),
+            vec!["src/Talker.cpp", "src/Helper.cpp"]);
+    }
+
+    #[test]
+    fn parse_kwargs_strips_quoted_strings() {
+        let body = r#" NAME "my talker" CLASS "ns::Class" "#;
+        let kw = parse_cmake_kwargs(body).unwrap();
+        assert_eq!(kw.single("NAME").as_deref(), Some("my talker"));
+        assert_eq!(kw.single("CLASS").as_deref(), Some("ns::Class"));
+    }
+
+    #[test]
+    fn cmake_only_node_pkg_yields_component_declaration() {
+        let s = Scratch::new("219l");
+        s.write(
+            "src/talker_pkg/package.xml",
+            "<package format=\"3\"><name>talker_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        );
+        s.write(
+            "src/talker_pkg/CMakeLists.txt",
+            r#"project(talker_pkg)
+nano_ros_node_register(
+    NAME    talker
+    CLASS   talker_pkg::Talker
+    SOURCES src/Talker.cpp
+    DEPLOY  native)
+"#,
+        );
+
+        let ws = Workspace::discover(&s.0).unwrap();
+        assert_eq!(ws.packages.len(), 1);
+        assert_eq!(ws.packages[0].cmake_component_metadata.len(), 1);
+        let summary = &ws.packages[0].cmake_component_metadata[0];
+        assert_eq!(summary.package, "talker_pkg");
+        assert_eq!(summary.component, "talker");
+        assert_eq!(summary.class.as_deref(), Some("talker_pkg::Talker"));
+        assert_eq!(summary.deploy_targets, vec!["native"]);
+
+        let decls = ws.component_declarations().unwrap();
+        assert_eq!(decls.len(), 1);
+        let cfg = &decls[0].config;
+        assert_eq!(cfg.package, "talker_pkg");
+        assert_eq!(cfg.component, "talker");
+        assert_eq!(cfg.language, ComponentLanguage::Cpp);
+    }
+
+    #[test]
+    fn cmake_decls_skipped_when_nros_toml_already_declares_same_pair() {
+        // Explicit `nros.toml` `[component]` table wins over cmake parse.
+        let s = Scratch::new("219l");
+        s.write(
+            "src/talker_pkg/package.xml",
+            "<package format=\"3\"><name>talker_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        );
+        s.write(
+            "src/talker_pkg/nros.toml",
+            r#"[component]
+version = 1
+package = "talker_pkg"
+component = "talker"
+language = "cpp"
+[component.metadata]
+source_metadata = "metadata/talker.json"
+"#,
+        );
+        s.write(
+            "src/talker_pkg/CMakeLists.txt",
+            r#"nano_ros_node_register(NAME talker CLASS talker_pkg::Talker DEPLOY native)
+"#,
+        );
+        let ws = Workspace::discover(&s.0).unwrap();
+        let decls = ws.component_declarations().unwrap();
+        assert_eq!(decls.len(), 1, "explicit nros.toml wins");
+        assert_eq!(
+            decls[0].manifest_path.file_name().unwrap(),
+            "nros.toml"
+        );
+    }
+
+    #[test]
+    fn cmake_decl_language_default_is_cpp_for_pkg_class_qualname() {
+        let s = Scratch::new("219l");
+        s.write(
+            "src/talker_pkg/package.xml",
+            "<package format=\"3\"><name>talker_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        );
+        s.write(
+            "src/talker_pkg/CMakeLists.txt",
+            "nano_ros_node_register(NAME t CLASS p::C DEPLOY native)\n",
+        );
+        let decls = Workspace::discover(&s.0)
+            .unwrap()
+            .component_declarations()
+            .unwrap();
+        assert_eq!(decls[0].config.language, ComponentLanguage::Cpp);
+    }
+
+    #[test]
+    fn cmake_decl_language_c_when_class_has_no_qualname() {
+        let s = Scratch::new("219l");
+        s.write(
+            "src/talker_pkg/package.xml",
+            "<package format=\"3\"><name>talker_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        );
+        s.write(
+            "src/talker_pkg/CMakeLists.txt",
+            "nano_ros_node_register(NAME t CLASS register_t DEPLOY native)\n",
+        );
+        let decls = Workspace::discover(&s.0)
+            .unwrap()
+            .component_declarations()
+            .unwrap();
+        assert_eq!(decls[0].config.language, ComponentLanguage::C);
+    }
+
+    #[test]
+    fn cmake_decl_skipped_when_name_missing() {
+        let s = Scratch::new("219l");
+        s.write(
+            "src/talker_pkg/package.xml",
+            "<package format=\"3\"><name>talker_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        );
+        s.write(
+            "src/talker_pkg/CMakeLists.txt",
+            "nano_ros_node_register(CLASS p::T DEPLOY native)\n",
+        );
+        let ws = Workspace::discover(&s.0).unwrap();
+        assert!(ws.packages[0].cmake_component_metadata.is_empty());
     }
 }

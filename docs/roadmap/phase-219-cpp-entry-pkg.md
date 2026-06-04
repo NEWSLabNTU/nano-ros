@@ -461,7 +461,7 @@ but is required for the end-to-end acceptance bar (§6).
       in-process parser the Rust proc-macro uses; no shell-out, no
       Python dep, no cargo-feature toggle. Closes review Gap 5
       without code.
-- [ ] **219.L — `nros metadata` walks cmake-only Node pkgs.**
+- [x] **219.L — `nros metadata` walks cmake-only Node pkgs.**
       (medium, ✱) `nros metadata --workspace <ws> <bringup>`
       returns `preserved 0 metadata artifact(s)` against a
       pure-C++ workspace because
