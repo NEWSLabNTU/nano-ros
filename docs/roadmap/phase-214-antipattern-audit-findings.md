@@ -2015,16 +2015,34 @@ Slices 4 + 6 came back clean. Findings grouped file-disjoint:
 
 **Files**: `packages/core/nros-c/src/service.rs:23-50`.
 
-- [x] **214.J.1 — DEFERRED with rationale**. Audit slice 2
-      misclassified the substitution: `atomic_bool_waker(flag: &AtomicBool)
-      -> Waker` returns a `Waker` whose `wake()` toggles a borrowed
-      `AtomicBool` — used as the value passed into a
-      `register_waker(Waker)` API. `atomic_waker::AtomicWaker` is a
-      STORAGE primitive (`register(&Waker)` stores a Waker, `wake()`
-      retrieves + invokes it) — it isn't itself a `Waker`. The two
-      have different shapes; no drop-in swap exists. The hand-rolled
-      `RawWaker`+`RawWakerVTable` adapter is the right primitive for
-      this bridge. No action.
+- [~] **214.J.1 — DEFERRED, vendor path identified.** The audit's
+      "swap to `atomic_waker`" was wrong-shape:
+      `atomic_waker::AtomicWaker` is a Waker STORAGE primitive
+      (`register(&Waker)` / `wake()`), not itself a `Waker`. The
+      hand-rolled `atomic_bool_waker(flag: &'static AtomicBool) -> Waker`
+      returns a Waker borrowing the flag — different shape.
+
+      Online search (2026-06-04) found two viable replacements that
+      drop the `RawWaker`+`RawWakerVTable` hand-roll:
+        * **`alloc::task::Wake`** (std/alloc since Rust 1.51) —
+          `impl Wake for BoolWaker { fn wake(self: Arc<Self>) { … } }`
+          + `Waker::from(arc)`. Stable stdlib, no new dep.
+        * **`waker-fn` crate** (smol-rs) — `waker_fn(move ||
+          signal.store(true, Release))` with `signal: Arc<AtomicBool>`.
+
+      Both require rewriting `entry.reply_ready: AtomicBool` →
+      `Arc<AtomicBool>` so the Waker owns the flag. Cost: one
+      `Arc<AtomicBool>` allocation per registered entity (~16 bytes
+      + heap alloc) and one `Arc::clone` per blocking call. Hosted
+      targets: invisible. RAM-tight embedded (FreeRTOS, ThreadX,
+      bare-metal): consumes scarce heap that the hand-rolled
+      `&'static AtomicBool` borrow avoids entirely.
+
+      **Decision**: keep the adapter for now — the maintenance win
+      (~15 LoC `unsafe` block deleted) doesn't justify a per-entity
+      heap allocation on embedded. Future option: gate the swap on
+      `feature = "std"` (hosted only) so embedded keeps the
+      borrow-only path. Filed as path-forward, not action this phase.
 
 ### Track K — NodeRuntime trait name disambiguation
 
