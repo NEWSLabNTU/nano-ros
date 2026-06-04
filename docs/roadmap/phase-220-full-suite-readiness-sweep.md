@@ -366,12 +366,37 @@ Almost every breakage traces to one of three root causes:
   missing (not just warn) since the codegen-system path is now
   on the critical path.
 
-- [ ] **220.J.1** Sweep agent driver dispatch templates for
-      `source ./activate.sh` (cross-ref 220.A.3).
-- [ ] **220.J.2** `just doctor` FAIL on missing
-      `play_launch_parser` (currently warns).
-- [ ] **220.J.3** Document the contract in CLAUDE.md so future
-      agents pick up the source-activate.sh requirement.
+- [x] **220.J.1** Sweep agent driver dispatch templates for
+      `source ./activate.sh` (cross-ref 220.A.3). Landed in this
+      Track J commit. Audit of `scripts/`, `.github/workflows/`,
+      and the in-doc driver-loop template found a single non-
+      compliant template: the `Discovery method` driver-loop in
+      this very phase doc was using `export
+      PATH="$HOME/.nros/bin:$PATH"` (pre-218 install-nros.sh path)
+      which misses `play_launch_parser`. Replaced with `source
+      ./activate.sh` + an inline comment explaining why. CI
+      workflows (`zephyr-dual-line.yml`, `nros-acceptance.yml`)
+      were already activate-sh-aware (per Phase 218.C) and pass
+      through the env via their existing `source` calls; no edit
+      needed.
+- [x] **220.J.2** `just doctor` FAIL on missing
+      `play_launch_parser` (currently warns). Landed in this
+      Track J commit (`just/workspace.just::doctor`): the check
+      now (a) requires both the stamp file AND the `bin/play_
+      launch_parser` binary to exist, AND (b) verifies `command
+      -v play_launch_parser` resolves — i.e. the install dir is
+      actually on PATH. Three states emitted: `[OK]` (installed
+      + on PATH), `[PATH]` (installed but PATH not wired — hint:
+      `source ./activate.sh`), `[MISSING]` (not installed at all
+      — hint: `just workspace install-play-launch-parser`). Both
+      `[PATH]` and `[MISSING]` set `fail=1` (doctor exits 1).
+- [x] **220.J.3** Document the contract in CLAUDE.md so future
+      agents pick up the source-activate.sh requirement. Landed
+      in this Track J commit (CLAUDE.md `## Practices`): added
+      a "Sweep contract for agents" bullet stating every `just
+      <plat>` invocation needs `source ./activate.sh` first
+      (PATH wires `nros`, `play_launch_parser`, `zenohd`, etc.),
+      with cross-refs to Phase 220.A.3 / 220.J.
 
 ---
 
@@ -408,7 +433,12 @@ Driver loop pattern (`driver1` through `driver20`):
 
 ```bash
 nohup bash -c '
-export PATH="$HOME/.nros/bin:$PATH"
+# Phase 220.J — MUST source activate.sh before any `just <plat>`
+# invocation: it PATH-wires the in-tree `nros`, `play_launch_parser`
+# (`nros plan` shells out to it), `zenohd`, etc. The pre-220 pattern
+# `export PATH="$HOME/.nros/bin:$PATH"` misses `play_launch_parser`
+# and silently hits "binary not found" inside `nros plan`.
+source ./activate.sh
 just build-test-fixtures > /tmp/bf<N>.log 2>&1
 bf_rc=$?
 echo "BF-EXIT $bf_rc"

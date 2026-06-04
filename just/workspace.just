@@ -262,9 +262,26 @@ doctor:
     fi
 
     # --- play_launch_parser (Phase 212.L.6 launch-graph resolver) ---
+    # Phase 220.J.2 — FAIL (not warn) on either missing install OR
+    # binary-not-on-PATH. `nros plan` shells out to `play_launch_parser`
+    # via PATH lookup; install-stamp alone is insufficient — agents
+    # routinely hit the gap when a fresh worktree forgets `source
+    # ./activate.sh` (the script that PATH-prepends
+    # `~/.nros/sdk/play_launch_parser/bin/`). Tailored hints distinguish
+    # the two failure modes.
     plp_stamp="$HOME/.nros/sdk/play_launch_parser/.installed-version"
-    if [ -f "$plp_stamp" ] && [ "$(cat "$plp_stamp" 2>/dev/null)" = "{{PLAY_LAUNCH_PARSER_VERSION}}" ]; then
+    plp_bin="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin/play_launch_parser"
+    plp_install_ok=0
+    if [ -f "$plp_stamp" ] && [ "$(cat "$plp_stamp" 2>/dev/null)" = "{{PLAY_LAUNCH_PARSER_VERSION}}" ] && [ -x "$plp_bin" ]; then
+        plp_install_ok=1
+    fi
+    if [ $plp_install_ok -eq 1 ] && command -v play_launch_parser >/dev/null 2>&1; then
         echo "  [OK] play_launch_parser {{PLAY_LAUNCH_PARSER_VERSION}} (~/.nros/sdk/play_launch_parser)"
+    elif [ $plp_install_ok -eq 1 ]; then
+        echo "  [PATH] play_launch_parser installed at ~/.nros/sdk/play_launch_parser/bin/ but not on PATH —"
+        echo "         run: source ./activate.sh  (or direnv allow / source ./activate.fish)"
+        echo "         (Phase 220.J — agent driver scripts MUST source activate.sh before any just <plat> build)"
+        fail=1
     else
         echo "  [MISSING] play_launch_parser {{PLAY_LAUNCH_PARSER_VERSION}} (run: just workspace install-play-launch-parser)"
         fail=1
