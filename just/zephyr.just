@@ -1135,11 +1135,32 @@ build-logging-smoke:
         cargo_profile_args="$(nros_cargo_profile_arg_string)"
         nros_cargo_ensure_codegen_c
     fi
-    NROS="$(basename "$(pwd)")"
-    cd "$WORKSPACE"
-    echo "  Building logging-smoke-zephyr-native-sim -> build-logging-smoke/"
-    west build -b native_sim/native/64 -d build-logging-smoke -p auto \
-        $NROS/packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim \
+    # Phase 220.D — resolve absolute paths up front. The default workspace
+    # path is relative (`zephyr-workspace` or `../nano-ros-workspace`),
+    # which both `west build -d` and the fixture source-dir argument resolve
+    # against cwd; mixing that with the in-workspace `cd` made the recipe
+    # fragile. Pin both to absolute paths and pass the fixture source as an
+    # absolute path so west's pristine cache + SOURCE_DIR stay in sync.
+    NROS_ROOT="$(pwd)"
+    WORKSPACE_ABS="$(cd "$WORKSPACE" && pwd)"
+    FIXTURE_SRC="$NROS_ROOT/packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim"
+    BUILD_DIR="$WORKSPACE_ABS/build-logging-smoke"
+    # Phase 220.D — guard against a stale CMakeCache from a previous
+    # workspace layout (e.g. legacy in-tree `nano-ros/zephyr-workspace/`).
+    # `-p auto` defers to the cache's `pristine.cmake`; if that path no
+    # longer exists, the build fails before any cmake re-configure.
+    CACHE_FILE="$BUILD_DIR/CMakeCache.txt"
+    if [ -f "$CACHE_FILE" ]; then
+        cached_zephyr_base="$(sed -n 's/^ZEPHYR_BASE:PATH=//p' "$CACHE_FILE" | head -1)"
+        if [ -n "$cached_zephyr_base" ] && [ ! -d "$cached_zephyr_base" ]; then
+            echo "  Stale CMakeCache (ZEPHYR_BASE=$cached_zephyr_base no longer exists) — wiping $BUILD_DIR"
+            rm -rf "$BUILD_DIR"
+        fi
+    fi
+    echo "  Building logging-smoke-zephyr-native-sim -> $BUILD_DIR"
+    cd "$WORKSPACE_ABS"
+    west build -b native_sim/native/64 -d "$BUILD_DIR" -p auto \
+        "$FIXTURE_SRC" \
         -- -D_NANO_ROS_CODEGEN_TOOL="$CODEGEN" -DMAKE="$MAKE_BIN"
 
 # Build Zephyr C++ examples
@@ -1232,8 +1253,14 @@ test-all verbose="":
 build-c-port:
     #!/usr/bin/env bash
     set -e
-    if [ ! -f zephyr-workspace/env.sh ]; then
-        echo "zephyr-workspace/env.sh missing — run: just zephyr setup" >&2
+    # Phase 220.D — derive workspace from the same {{ZEPHYR_WORKSPACE}}
+    # used by every other zephyr recipe; the old hardcoded
+    # `zephyr-workspace/env.sh` only worked under the legacy in-tree
+    # layout and silently broke under the canonical
+    # `../nano-ros-workspace` sibling layout produced by Phase 218 setup.
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    if [ ! -f "$WORKSPACE/env.sh" ]; then
+        echo "$WORKSPACE/env.sh missing — run: just zephyr setup" >&2
         exit 2
     fi
     make_bin="$(pwd)/third-party/make/make"
@@ -1241,7 +1268,7 @@ build-c-port:
         make_bin="$(command -v make)"
     fi
     export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
-    source zephyr-workspace/env.sh
+    source "$WORKSPACE/env.sh"
     west build -b native_sim/native/64 \
         -d tests/zephyr-c-smoke/build tests/zephyr-c-smoke \
         -- -DMAKE="$make_bin"

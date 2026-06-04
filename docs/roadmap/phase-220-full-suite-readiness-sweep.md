@@ -176,11 +176,41 @@ Almost every breakage traces to one of three root causes:
   path from the same env / config that `just zephyr setup` uses, OR
   symlink one path → the other.
 
-- [ ] **220.D.1** Audit `packages/testing/nros-tests/bins/logging-
+- [x] **220.D.1** Audit `packages/testing/nros-tests/bins/logging-
       smoke-zephyr-native-sim/` build recipe for the hardcoded path
-      + parameterise.
-- [ ] **220.D.2** Sweep `find . -name '*.cmake' -exec grep -l
-      'zephyr-workspace' {} +` for other instances of the stale path.
+      + parameterise. (Landed on `phase-220-d-zephyr-workspace-path-
+      fix`.) Root cause was twofold: (a) the `build-logging-smoke`
+      recipe in `just/zephyr.just` used `cd "$WORKSPACE" && west
+      build -d build-logging-smoke $NROS/...` with `$NROS=basename
+      $(pwd)` (`nano-ros`), so both the build dir and SOURCE_DIR
+      were resolved relative to whichever workspace `cd` landed in,
+      and (b) a leftover `nano-ros-workspace/build-logging-smoke/`
+      from a previous run had `ZEPHYR_BASE:PATH=/home/aeon/repos/
+      nano-ros/zephyr-workspace/zephyr` baked into its `CMakeCache.
+      txt`. `west build -p auto` then re-invoked the (now-missing)
+      `pristine.cmake` under that legacy `nano-ros/zephyr-workspace/
+      zephyr/` path — a cache that's been stale ever since the
+      Phase 218 migration to the sibling `nano-ros-workspace/`
+      layout. Fix: (1) resolve `WORKSPACE_ABS` + `FIXTURE_SRC` +
+      `BUILD_DIR` to absolute paths up front (no more relying on
+      cwd or `cd` ordering); (2) detect a stale `CMakeCache.txt`
+      whose recorded `ZEPHYR_BASE` no longer exists and `rm -rf`
+      the build dir before re-running west. Verified: a fresh
+      `just zephyr build-logging-smoke` boots through codegen +
+      `west build` + `ninja` to `[1242/1242] Running utility
+      command for native_runner_executable`.
+- [x] **220.D.2** Sweep for other stale `zephyr-workspace`
+      references in recipes. Found one sibling — `build-c-port`
+      (Phase 121.6) at `just/zephyr.just:1253` similarly
+      hardcoded `zephyr-workspace/env.sh` instead of
+      `{{ZEPHYR_WORKSPACE}}/env.sh`; same fix pattern applied.
+      The patch scripts under `scripts/zephyr/*.sh` already carry
+      `IN_TREE_WORKSPACE` fallback logic that picks the sibling
+      `../nano-ros-workspace/` when the in-tree dir is absent, so
+      no edits needed there. Docs under `book/src/getting-started/
+      zephyr.md` + `docs/guides/zephyr-setup.md` describe the
+      in-tree path as default w/ legacy sibling fallback — left
+      as-is.
 
 ### E — Codegen-stamp churn from `nros ws sync` regen
 
