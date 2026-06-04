@@ -433,6 +433,48 @@ impl ExecutorNodeRuntime {
         Ok(())
     }
 
+    /// Phase 216.B.3 / C.3 follow-up — route a signaled callback to
+    /// every registered component slot.
+    ///
+    /// The RTIC (`nros-board-rtic-stm32f4`) and Embassy
+    /// (`nros-board-embassy-stm32f4`) dispatch tasks dequeue a
+    /// [`nros_platform::SignaledCallback`] envelope from their SPSC
+    /// queue / Embassy channel and need a routing entry point that
+    /// hands the callback off to the right Node's `on_callback`
+    /// trampoline. This method is that entry point.
+    ///
+    /// # Strategy — linear scan
+    ///
+    /// Each registered slot's `dispatch_fn` is the codegen-emitted
+    /// `d()` trampoline from `nros::node!()` (see
+    /// `packages/core/nros-macros/src/lib.rs`). That trampoline calls
+    /// `<NodeTy as ExecutableNode>::on_callback`, whose body
+    /// `match`es on the callback's own tag set
+    /// (`Subscription` / `Timer` / `Service` / `Action` ids) and is a
+    /// no-op for non-matching `cb_id`s. So a linear scan across every
+    /// slot is correct — each slot self-filters and at most one
+    /// component actually acts on a given `cb_id`. A focused
+    /// `cb_id → slot` index is a separate follow-up; the trampoline's
+    /// tag dispatch already gates the real work cheaply (string
+    /// compare on statically known literals), so the linear scan is
+    /// the minimum-viable wiring that closes the conceptual gap left
+    /// by the B.3 / C.3 skeleton emits.
+    ///
+    /// # Borrow semantics
+    ///
+    /// Each `ComponentCell`'s slot lives behind a [`RefCell`]; the
+    /// per-slot dispatch takes `try_borrow_mut` and is a no-op on
+    /// re-entrancy. The runtime is single-threaded by construction
+    /// (the dispatch task owns it via `&mut self`), so the borrow
+    /// always succeeds in normal flow.
+    pub fn dispatch_callback(&mut self, cb_id: &str, ctx: &mut CallbackCtx<'_>) {
+        for cell in &self.components {
+            if let Ok(mut slot) = cell.slot.try_borrow_mut() {
+                slot.dispatch(cb_id, ctx);
+            }
+        }
+    }
+
     /// Spin until the executor's halt flag is raised. Hosted-only; on
     /// bare-metal the BSP wraps `spin_once` in its own loop.
     #[cfg(feature = "std")]

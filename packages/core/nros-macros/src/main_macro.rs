@@ -673,55 +673,78 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // todo: run_plan(&mut runtime) — register each
                         // Node pkg's dispatch slot via
                         // `register_dispatch_slot_dyn` before the
-                        // software tasks start consuming envelopes.
-                        __nros_spin::spawn().unwrap();
-                        __nros_dispatch::spawn().unwrap();
+                        // collapsed `__nros_run` task starts consuming
+                        // envelopes. Tracked alongside the per-Node
+                        // trampoline registry story (linkme / Phase 216
+                        // follow-up).
+                        __nros_run::spawn().unwrap();
                         (Shared {}, Local { executor, runtime })
                     }
 
-                    /// RTIC spin task — owns the `Executor` half of
-                    /// the `(Executor, Runtime)` pair returned by
-                    /// `RticBoardEntry::init_hardware`. Placeholder
-                    /// `core::future::pending` park today; the real
-                    /// body dequeues from the board crate's SPSC
-                    /// (`nros_board_rtic_stm32f4::take_dispatch_consumer()`
-                    /// returns the `Consumer` half stashed during
-                    /// `init_hardware`) and invokes per-Node
-                    /// trampolines registered via
-                    /// `register_dispatch_slot_dyn` (deferred to the
-                    /// same follow-up as the `run_plan` call above).
-                    /// Mirrors the sibling `__nros_spin_task` Embassy
-                    /// task — RTIC has no `embassy_time` equivalent
-                    /// at this layer, so `core::future::pending` is
-                    /// used as the "block forever without polling"
-                    /// stand-in.
-                    #[task(local = [executor], priority = 1)]
-                    async fn __nros_spin(_cx: __nros_spin::Context) {
-                        // todo: dequeue from
-                        // `take_dispatch_consumer()` + dispatch
-                        // per-Node trampolines.
+                    /// RTIC run task — collapsed `__nros_spin` +
+                    /// `__nros_dispatch` (Phase 216.B.3 follow-up).
+                    ///
+                    /// The earlier split-task shape had `__nros_spin`
+                    /// own the `Executor` half and `__nros_dispatch`
+                    /// own the `Runtime` half. RTIC `#[local]` fields
+                    /// are claimed by a single task (the
+                    /// `local = [<field>]` attribute is exclusive),
+                    /// and the dispatch task needs the executor to
+                    /// drive the per-Node trampolines that run inside
+                    /// the executor's spin loop. Collapsing into one
+                    /// task that owns both fields side-steps the
+                    /// exclusivity rule and gives the spin / dequeue
+                    /// loop a single coherent borrow.
+                    ///
+                    /// Body:
+                    ///   1. Claim the board's SPSC consumer half via
+                    ///      `take_dispatch_consumer()` (stashed by
+                    ///      `RticBoardEntry::init_hardware`).
+                    ///   2. Drive `executor.spin_once(small_dur)`
+                    ///      — small budget so the dequeue loop runs
+                    ///      between executor iterations.
+                    ///   3. Drain whatever the SPSC has for this
+                    ///      cycle. Today each dequeued envelope is
+                    ///      dropped with a TODO: per-Node trampoline
+                    ///      routing needs an `ExecutorNodeRuntime`-
+                    ///      wrapped sink that the macro emit hasn't
+                    ///      plumbed yet (the `dispatch_callback`
+                    ///      entry on `ExecutorNodeRuntime` is wired
+                    ///      separately; the trampoline registry that
+                    ///      pairs `cb_id` → Node pkg is the next 216
+                    ///      follow-up — likely via `linkme`).
+                    ///
+                    /// Splitting the tasks back apart once the
+                    /// `ExecutorNodeRuntime` sink is plumbed (so the
+                    /// spin task can run at lower priority than the
+                    /// dispatch task) is a separate follow-up.
+                    #[task(local = [executor, runtime], priority = 1)]
+                    async fn __nros_run(cx: __nros_run::Context) {
+                        let executor = cx.local.executor;
+                        // The board-side runtime owns the SPSC
+                        // producer half. Today's collapse keeps it in
+                        // `Local` for symmetry with the planned split
+                        // — once `ExecutorNodeRuntime`-wrapped routing
+                        // lands the runtime's `signal_callback` will
+                        // be the producer-side bridge between executor
+                        // callbacks and the SPSC consumer drained
+                        // below.
+                        let _runtime = cx.local.runtime;
+                        let mut consumer =
+                            ::nros_board_rtic_stm32f4::take_dispatch_consumer()
+                                .expect("RTIC dispatch consumer take");
                         loop {
-                            ::core::future::pending::<()>().await;
-                        }
-                    }
-
-                    /// RTIC dispatch task — owns the `Runtime` half
-                    /// of the `(Executor, Runtime)` pair. Placeholder
-                    /// `core::future::pending` park today; the real
-                    /// body calls `runtime.spin_once(timeout_ms)` in
-                    /// a loop with a `cortex_m::asm::wfi()` / `wfe()`
-                    /// yield between iterations (deferred — same
-                    /// follow-up as the spin task). Priority 2 keeps
-                    /// the dispatch path strictly higher than the
-                    /// spin task; the matching Embassy sibling
-                    /// (`__nros_dispatch_task`) has no priority knob
-                    /// because Embassy is cooperative-only.
-                    #[task(local = [runtime], priority = 2)]
-                    async fn __nros_dispatch(_cx: __nros_dispatch::Context) {
-                        // todo: runtime.spin_once(timeout_ms) loop +
-                        // cortex-m yield.
-                        loop {
-                            ::core::future::pending::<()>().await;
+                            let _ = executor.spin_once(
+                                ::core::time::Duration::from_millis(1),
+                            );
+                            while let Some(envelope) = consumer.dequeue() {
+                                let _cb = envelope.into_inner();
+                                // todo: route `_cb.cb_id` + `_cb.ctx_ptr`
+                                // to the right Node via
+                                // `ExecutorNodeRuntime::dispatch_callback`
+                                // once the per-Node trampoline registry
+                                // (linkme / Phase 216 follow-up) lands.
+                            }
                         }
                     }
 
@@ -773,42 +796,54 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             quote! {
                 use #board_path as __NrosBoard;
 
-                /// Embassy spin task — drives the executor side of the
-                /// `(Executor, Runtime)` pair returned by
-                /// `EmbassyBoardEntry::init_hardware`. Placeholder
-                /// `Timer::after_secs` yield today; the real body
-                /// dequeues from the board's `CALLBACK_CHANNEL` and
-                /// invokes per-Node trampolines (deferred — see the
-                /// emit-site comment in `main_macro.rs`).
+                /// Embassy run task — collapsed `__nros_spin_task` +
+                /// `__nros_dispatch_task` (Phase 216.C.3 follow-up).
+                ///
+                /// `#[embassy_executor::task]` doesn't accept multiple
+                /// generic params and the spin + dispatch loops need
+                /// to share the `(Executor, Runtime)` pair so the
+                /// per-callback routing (once plumbed via the
+                /// `ExecutorNodeRuntime::dispatch_callback` sink in
+                /// `packages/core/nros/src/node_runtime.rs`) can drain
+                /// the board's static `CALLBACK_CHANNEL` between
+                /// executor iterations. Collapsing the two tasks into
+                /// one gives the spin + drain loops a single coherent
+                /// borrow over both halves.
+                ///
+                /// Body:
+                ///   1. Drive `executor.spin_once(small_dur)` — a
+                ///      small budget so the loop can yield between
+                ///      iterations.
+                ///   2. Yield to the Embassy scheduler via
+                ///      `Timer::after_millis(1)` so other tasks
+                ///      (Ethernet driver, user-spawned tasks) run.
+                ///
+                /// What's still placeholder: a dequeue + dispatch
+                /// step. `EmbassyRuntime` owns a `&'static` borrow
+                /// of the board's private `CALLBACK_CHANNEL`, but
+                /// no public accessor exposes the receiver half today
+                /// — adding one is the next 216.C follow-up, paired
+                /// with the per-Node trampoline registry (linkme) and
+                /// the `ExecutorNodeRuntime`-wrapped sink the macro
+                /// emit needs to plumb in order to call
+                /// `dispatch_callback`. Splitting the tasks back
+                /// apart once that lands is a separate follow-up.
                 #[::embassy_executor::task]
-                async fn __nros_spin_task(
-                    _executor: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Executor,
-                ) {
-                    // todo: dequeue from CALLBACK_CHANNEL + invoke
-                    // per-Node trampolines (B.3-followup-equivalent
-                    // integration work).
-                    loop {
-                        ::embassy_time::Timer::after_secs(60).await;
-                    }
-                }
-
-                /// Embassy dispatch task — drives the
-                /// `NodeDispatchRuntime` sink returned by
-                /// `EmbassyBoardEntry::init_hardware`. Placeholder
-                /// `Timer::after_secs` yield today; the real body
-                /// calls `runtime.spin_once(timeout_ms)` in a loop
-                /// with an `embassy_time::Timer::after_millis` yield
-                /// between iterations (deferred — see the emit-site
-                /// comment in `main_macro.rs`).
-                #[::embassy_executor::task]
-                async fn __nros_dispatch_task(
+                async fn __nros_run_task(
+                    mut executor: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Executor,
                     _runtime: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Runtime,
                 ) {
-                    // todo: register_dispatch_slot_dyn(...) per Node
-                    // pkg + spin_once loop (deferred to the
-                    // run_plan-integration follow-up).
                     loop {
-                        ::embassy_time::Timer::after_secs(60).await;
+                        let _ = executor.spin_once(
+                            ::core::time::Duration::from_millis(1),
+                        );
+                        // todo: drain CALLBACK_CHANNEL + route each
+                        // envelope to `ExecutorNodeRuntime::dispatch_callback`
+                        // once the per-Node trampoline registry
+                        // (linkme / Phase 216 follow-up) lands and
+                        // `EmbassyRuntime` grows a public channel
+                        // accessor.
+                        ::embassy_time::Timer::after_millis(1).await;
                     }
                 }
 
@@ -826,8 +861,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     // trampoline-registration story spans the macro
                     // + `nros::node!()` emit + the runtime trait
                     // and lands in a separate follow-up.
-                    spawner.spawn(__nros_spin_task(executor)).unwrap();
-                    spawner.spawn(__nros_dispatch_task(runtime)).unwrap();
+                    spawner.spawn(__nros_run_task(executor, runtime)).unwrap();
                 }
             }
         }
