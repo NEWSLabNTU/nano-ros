@@ -1,0 +1,91 @@
+# nano-ros workspace activation — fish shell.
+#
+# Phase 218.C — fish-shell mirror of `activate.sh`. Source after clone:
+#
+#     source ./activate.fish
+#
+# Hand-maintained sibling of `activate.sh`. When you change one, sync
+# the other. The two files share no autogen pipeline by design — a
+# generator would be a sharper edge than parallel hand-edits across
+# two ~50 LoC files.
+
+set -l _nros_root (cd (dirname (status -f)); pwd)
+set -gx NROS_REPO_DIR $_nros_root
+
+# ROS 2 Humble — fish needs `bass` or a hand-port of setup.bash. The
+# user `source setup.fish` if their ROS install ships one; otherwise
+# we leave AMENT/CMAKE prefix paths unset. The recipes that need ROS
+# either source it themselves (just/zephyr.just) or document the
+# requirement in their README.
+if test -f /opt/ros/humble/setup.fish
+    source /opt/ros/humble/setup.fish
+else if test -f /opt/ros/humble/setup.bash
+    echo "activate.fish: fish shell — /opt/ros/humble/setup.bash exists but no setup.fish." >&2
+    echo "Install the 'bass' fish plugin (https://github.com/edc/bass) and run:" >&2
+    echo "    bass source /opt/ros/humble/setup.bash" >&2
+    echo "or use a bash subshell for ROS-dependent commands." >&2
+end
+
+# `nros` CLI resolution (Phase 218 monorepo merge). Order matches
+# `activate.sh`: ~/.nros/bin FIRST, per-checkout LAST so the
+# per-checkout binary wins on PATH searches.
+set -l _nros_home_bin (set -q NROS_HOME; and echo $NROS_HOME/bin; or echo $HOME/.nros/bin)
+if test -x $_nros_home_bin/nros
+    set -gx PATH $_nros_home_bin $PATH
+end
+if test -x $_nros_root/packages/cli/target/release/nros
+    set -gx PATH $_nros_root/packages/cli/target/release $PATH
+end
+
+# play_launch_parser
+set -l _nros_home_play (set -q NROS_HOME; and echo $NROS_HOME/sdk/play_launch_parser/bin; or echo $HOME/.nros/sdk/play_launch_parser/bin)
+if test -x $_nros_home_play/play_launch_parser
+    set -gx PATH $_nros_home_play $PATH
+end
+
+# Pinned ninja + make (Phase 176 jobserver tooling)
+if test -x $_nros_root/third-party/ninja/ninja
+    set -gx PATH $_nros_root/third-party/ninja $PATH
+end
+if test -x $_nros_root/third-party/make/make
+    set -gx PATH $_nros_root/third-party/make $PATH
+end
+
+# Project `.env` — fish doesn't natively `source` POSIX dotenv files;
+# parse KEY=value pairs manually. Lines with comments or empty are
+# skipped. Quotes are stripped if the value is fully wrapped in them.
+if test -f $_nros_root/.env
+    while read -l line
+        # strip leading whitespace
+        set line (string trim $line)
+        # skip comments + empties
+        if test -z "$line"; or string match -q '#*' -- $line
+            continue
+        end
+        set -l kv (string split -m 1 = $line)
+        if test (count $kv) -ne 2
+            continue
+        end
+        set -l key (string trim $kv[1])
+        set -l val (string trim $kv[2])
+        # unwrap matched quotes
+        set val (string replace -r '^"(.*)"$' '$1' -- $val)
+        set val (string replace -r "^'(.*)'\$" '$1' -- $val)
+        set -gx $key $val
+    end <$_nros_root/.env
+end
+
+# sdk-env.sh is POSIX — fish can't `source` it directly. Spawn a bash
+# subshell to evaluate the exports + capture them. Same approach as
+# the `bass` plugin uses for setup.bash.
+if test -f $_nros_root/scripts/sdk-env.sh
+    set -l _nros_env_dump (bash -c "set -a; source $_nros_root/scripts/sdk-env.sh; env" 2>/dev/null)
+    for line in $_nros_env_dump
+        set -l kv (string split -m 1 = $line)
+        if test (count $kv) -eq 2; and string match -q 'NROS_*' -- $kv[1]
+            set -gx $kv[1] $kv[2]
+        end
+    end
+end
+
+set -e _nros_root
