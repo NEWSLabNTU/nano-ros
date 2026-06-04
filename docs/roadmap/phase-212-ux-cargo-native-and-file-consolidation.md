@@ -2727,6 +2727,67 @@ canonical-shape regression test can run green tree-wide:
       (the parser is shelled out via subprocess per
       `planner.rs::load_or_parse_record`).
 
+- [ ] **M-F.21 `nros ws sync` patch-table transitivity** (nros-cli)
+      — discovered while integration-testing O.1 against the
+      post-M-F.17+M-F.19 CLI. `nros ws sync` writes a
+      `[patch.crates-io]` block in the patch authority pkg's
+      Cargo.toml that lists ONLY the direct nros-* runtime crates
+      it pulls + any msg pkgs IT directly references. It does
+      NOT transitively walk path-deps to discover their msg deps.
+
+      Concretely: `freertos_rs_talker_entry` (Entry pkg) has a
+      path-dep on `freertos_rs_talker` (Component pkg). The
+      Component pkg's `Cargo.toml` carries `std_msgs = "*"` +
+      `builtin_interfaces = "*"` and its OWN `[patch.crates-io]`
+      block points those at `generated/std_msgs` etc. Cargo
+      respects `[patch]` only from the workspace root or the
+      pkg cargo invokes directly — Entry pkg in this case. So
+      when cargo builds the Entry pkg, talker's msg deps fail to
+      resolve.
+
+      **Fix:** `nros ws sync` must walk path-deps transitively +
+      add msg patches to the patch authority's block too. Re-use
+      the same `find generated/<pkg>` walk + dedup.
+
+      **Acceptance:** O.1 fixture builds clean against the
+      installed CLI without manual patch injection.
+
+      **Files:** `nros-cli/packages/nros-cli-core/src/cmd/ws.rs`
+      (or wherever `ws sync` lives — probably
+      `orchestration/ws_sync.rs`).
+
+      **Blocks:** §212.O.1 (`freertos_board_run_executes_run_
+      plan`).
+
+- [ ] **M-F.22 nros-serdes std-features audit** (nros) — surfaced
+      while debugging O.1's secondary failure mode. After
+      manually injecting the msg patches around M-F.21, the
+      Entry pkg's cross-compile fails with:
+      ```
+      error[E0463]: can't find crate for `std`
+        --> nros-serdes (lib)
+      ```
+      on the `thumbv7m-none-eabi` target. nros-serdes is being
+      pulled with std features active when it shouldn't be.
+
+      **Fix:** audit the feature-graph that reaches nros-serdes
+      from `nros` umbrella + `nros-rmw-cffi` + the rest of the
+      no_std runtime. Identify which intermediate crate
+      unconditionally enables `nros-serdes/std` + gate it
+      correctly behind the consumer's `std` feature.
+
+      **Acceptance:** `cargo check -p <freertos-entry-pkg>
+      --target thumbv7m-none-eabi` succeeds (independent of
+      M-F.21's patch-table fix; both are required for O.1).
+
+      **Files:** workspace-wide `Cargo.toml` feature graph —
+      probably `nros-rmw`, `nros-rmw-cffi`, `nros-node`, the
+      `nros` umbrella, or wherever `std`-implication leaks down
+      to `nros-serdes`.
+
+      **Blocks:** §212.O.1 (`freertos_board_run_executes_run_
+      plan`).
+
 ### §212.O — Acceptance test fill-ins (parallel-dispatchable)
 
 The 7 remaining `[ ]` tests in §212.M / §212.N test acceptance
@@ -2734,15 +2795,30 @@ lists. Each item is a self-contained agent task, file-scope
 disjoint from siblings so they can run in parallel without
 rebase conflict.
 
-- [~] **O.1 `freertos_board_run_executes_run_plan`** (N tests)
-      — runtime gate for the FreeRTOS-side Entry pkg's
-      `BoardEntry::run` lifecycle under QEMU. Sibling of the
-      already-landed posix-side `entry_poc_boots_through_board_
-      entry_run`. Fixture: the existing M-F.15-shipped FreeRTOS
-      Entry pkg firmware build target. Test file
-      `tests/phase212_n_freertos_run_plan_runtime.rs`. Skip on
-      missing `THREADX_DIR`-equivalent gates (QEMU + cross
-      toolchain). Scope: nano-ros only.
+- [~] **O.1 `freertos_board_run_executes_run_plan`** (N tests) —
+      retest 2026-06-04 against the post-M-F.17/M-F.19 CLI: the
+      `cargo build` of the `talker_entry` Entry pkg fails BEFORE
+      QEMU spawns. Two concrete blockers surfaced:
+      1. **`nros ws sync` patch-table transitivity gap** —
+         filed as M-F.21 below. Entry pkg's `[patch.crates-io]`
+         block only carries `nros-*` runtime crate patches; the
+         path-dep `freertos_rs_talker` Component pkg pulls
+         `std_msgs = "*"` + `builtin_interfaces = "*"` from
+         crates.io and the patches for those msg crates are
+         NOT propagated up to the Entry pkg's patch authority.
+         Manifest resolution errors with "failed to select a
+         version for the requirement `std_msgs = \"*\"`."
+      2. **`nros-serdes` std-features gating** — workaround for
+         (1) by manually injecting msg patches triggers a
+         deeper compile error: `error[E0463]: can't find crate
+         for std` inside `nros-serdes`'s build under
+         `thumbv7m-none-eabi`. nros-serdes is being pulled with
+         std features active when it shouldn't be — needs a
+         feature-graph audit.
+      Both are real Entry pkg integration gaps that O.1's runtime
+      gate exposes. Filed as M-F.21 (transitivity) + tracked under
+      a sibling M-F.22 (the std-features audit) — `[~]` until both
+      land + the test boots end-to-end under QEMU.
 
       **Status 2026-06-04 (post-M-F.17 integration audit):**
       `#[ignore]` re-evaluated after M-F.17 landings
