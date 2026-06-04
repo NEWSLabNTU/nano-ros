@@ -413,5 +413,13 @@ path = "tests/phase212_pre_212_files_forbidden.rs"
 name = "phase210_f4_shadowing"
 path = "tests/phase210_f4_shadowing.rs"
 
+# Phase 215.E.2 — verifies `nano_ros_use_board()` layers a board crate's
+# artifacts (BOARD, EXTRA_CONF_FILE/overlay, RMW default, runner) into a
+# downstream Zephyr app build via the `board_import_fvp` fixture. Skips
+# cleanly when ZEPHYR_BASE / west aren't provisioned.
+[[test]]
+name = "phase215_e_board_import"
+path = "tests/phase215_e_board_import.rs"
+
 [lints]
 workspace = true
