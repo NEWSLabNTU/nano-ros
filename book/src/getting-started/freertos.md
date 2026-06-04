@@ -14,11 +14,11 @@ bridge / sudo. Rust, C, and C++ talkers all live in-tree.
 
 ## Setup
 
-Install the `nros` CLI once per machine:
+Build the in-tree `nros` CLI (Phase 218):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 Then provision the board (`--rmw` defaults to `zenoh`; pick `xrce`
@@ -30,7 +30,7 @@ nros setup qemu-arm-freertos --rmw zenoh
 
 This fetches the cross-compiler, the patched `qemu-system-arm`, the
 FreeRTOS + lwIP sources, and the RMW host daemon (`zenohd` for
-zenoh, the Micro-XRCE-DDS agent for xrce) into `~/.nros/sdk`.
+zenoh, the Micro-XRCE-DDS agent for xrce) into `${NROS_HOME:-~/.nros}/sdk`.
 
 ## Project layout
 

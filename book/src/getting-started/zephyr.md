@@ -52,17 +52,17 @@ to consolidate run:
 
 ## Prerequisites
 
-Install the `nros` CLI once per machine, then let it provision the toolchain:
+Build the in-tree `nros` CLI (Phase 218), then let it provision the toolchain:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 `nros setup` ships prebuilt toolchains per platform per RMW — the
 cross-compiler, emulator, RMW host daemon, and SDK sources (including the Zephyr
 west workspace + Zephyr SDK bits) are fetched from a pinned index into a shared
-store at `~/.nros/sdk`. You do not hand-install a cross-toolchain, and you do not
+store at `${NROS_HOME:-~/.nros}/sdk`. You do not hand-install a cross-toolchain, and you do not
 need ROS 2 installed.
 
 ## Step 1: Initialize Workspace (One-Time)

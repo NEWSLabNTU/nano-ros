@@ -37,27 +37,29 @@ the SDK / source-package payload (zenoh-pico, mbedtls, cyclonedds,
 ### A2. nros codegen tool not found
 
 ```
-nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros
-assumes `nros` is provided (Phase 195.D retired the in-tree codegen
-submodule). Install it with:
-  scripts/install-nros.sh        # or: just setup
+nros (codegen tool) not found on PATH or in packages/cli/target/release/
+or ${NROS_HOME:-~/.nros}/bin. nano-ros assumes `nros` is provided
+(Phase 218 carries the CLI in-tree at packages/cli/). Build it with:
+  just setup-cli                 # or: just setup
 ```
 
-The `nros` binary missing on PATH **and** in `~/.nros/bin/`. Install
-it (the install script lands it under `~/.nros/bin/` and will
-prompt to add to your shell rc):
+Missing the `nros` binary on PATH **and** in the per-checkout location.
+Phase 218 builds it from the in-tree sub-workspace; first activate the
+workspace, then build:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 ```
 
-If `~/.nros/bin/nros` exists but PATH doesn't see it — that's the
-`[PATH]` doctor status (D2 below), not this branch.
+If `packages/cli/target/release/nros` exists but PATH doesn't see it —
+that's the `[PATH]` doctor status (D2 below), not this branch (the
+activate file is what puts it on PATH).
 
 The `nros` binary ships the codegen — there is no separate
 `nros-codegen` build step. CMake examples auto-resolve `nros` from
-PATH / `~/.nros/bin/`; `-D_NANO_ROS_CODEGEN_TOOL=<path>` is an
-override, not a requirement.
+PATH / `packages/cli/target/release/` / `${NROS_HOME:-~/.nros}/bin/`;
+`-D_NANO_ROS_CODEGEN_TOOL=<path>` is an override, not a requirement.
 
 ### A3. Rust target not installed
 
@@ -166,8 +168,9 @@ Failed to open session: Transport(ConnectionFailed)
 ```
 
 `zenohd` isn't running, or isn't reachable on the locator the
-talker is pointed at. Start it in another terminal (the
-`scripts/install-nros.sh` shim lands `zenohd` at `~/.nros/bin/`):
+talker is pointed at. Start it in another terminal (`nros setup native
+--rmw zenoh` lands `zenohd` under `${NROS_HOME:-~/.nros}/sdk/zenohd/`;
+the activate file puts it on PATH):
 
 ```bash
 zenohd --listen tcp/127.0.0.1:7447
@@ -266,20 +269,23 @@ just threadx_linux doctor  # ThreadX-Linux
 Each scoped doctor is fast and prints the same fixit hints for
 the toolchain you actually need.
 
-### D2. `[PATH] nros at ~/.nros/bin/nros but not on PATH`
+### D2. `[PATH] nros built but not on PATH`
 
 The doctor now reports this distinct from `[MISSING]` when the
-binary is installed but PATH doesn't see it. Fix one of:
+binary is built at `packages/cli/target/release/nros` (or the
+transitional `${NROS_HOME:-~/.nros}/bin/nros`) but PATH doesn't see
+it. Activate the workspace — it wires PATH:
 
 ```bash
-# auto-add (rustup-style append to your shell rc):
-sh scripts/install-nros.sh --yes
-# or manually:
-export PATH="$HOME/.nros/bin:$PATH"           # add to ~/.bashrc / ~/.zshenv
+source ./activate.sh        # bash / zsh
+# OR
+source ./activate.fish      # fish
+# OR
+direnv allow                # auto-activates on `cd nano-ros`
 ```
 
 Don't loop on `just workspace cargo-tools` — that re-runs the
-installer which short-circuits on the same PATH miss.
+build which short-circuits on the same PATH miss.
 
 ### D3. Full sweep (slow)
 

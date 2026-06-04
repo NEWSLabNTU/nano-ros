@@ -1,0 +1,7 @@
+{
+  "rust-analyzer.linkedProjects": [
+    "./Cargo.toml",
+    "./packages/cli/Cargo.toml",
+    "./packages/testing/nros-tests/Cargo.toml"
+  ]
+}

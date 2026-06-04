@@ -20,9 +20,9 @@ for the policy.
 > cross-compiler install, no ROS 2 needed.
 
 ```bash
-# Install the nros CLI once per machine:
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+# Build the in-tree nros CLI (Phase 218):
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 
 # Provision the bare-metal Cortex-M3 board (zenoh RMW is the default):
 nros setup qemu-arm-baremetal --rmw zenoh

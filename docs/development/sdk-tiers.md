@@ -27,9 +27,22 @@ tier. Valid tiers are `base` and `all`. Legacy aliases `minimal` and
 
 | Tier | Modules | Use case |
 |------|---------|----------|
-| `base` | `workspace` (incl. **Corrosion** → `~/.nros/sdk/corrosion/`, **play_launch_parser** → `~/.nros/sdk/play_launch_parser/`, ninja, make, rust pinned toolchains), `zenohd` | First-time users who want native nano-ros examples and standard ROS/zenoh workflows without every RTOS SDK |
+| `base` | **`cli`** (in-tree CLI build → `packages/cli/target/release/nros`, Phase 218), `workspace` (incl. **Corrosion** → `~/.nros/sdk/corrosion/`, **play_launch_parser** → `~/.nros/sdk/play_launch_parser/`, ninja, make, rust pinned toolchains), `zenohd` | First-time users who want native nano-ros examples and standard ROS/zenoh workflows without every RTOS SDK |
 | platform-specific | one module, e.g. `zephyr`, `nuttx`, `esp_idf`, `px4` | Developers focused on one target platform |
 | `all` | `workspace`, `verification`, `zenohd`, `qemu`, `freertos`, `nuttx`, `threadx_{linux,riscv64}`, `esp32`, `zephyr`, `xrce`, `rmw_zenoh`, `orin_spe`, `cyclonedds`, `platformio`, `esp_idf`, `px4` | Contributors preparing for `just build-test-fixtures` and `just test-all` |
+
+**`cli`** (Phase 218 monorepo merge) is the **first step** of the `base`
+tier — `just setup-cli` runs `cargo build --release --manifest-path
+packages/cli/Cargo.toml --bin nros`, producing the per-checkout
+`packages/cli/target/release/nros`. Every downstream `just <module>
+setup` recipe assumes this binary is present (it is the canonical
+provisioner). `packages/cli/` is a sub-workspace (own `Cargo.toml`,
+own `Cargo.lock`) so its host-only deps (clap, askama, syn, ureq)
+stay outside the runtime `no_std` feature-unification view
+(Phase 214.F.3). Per-checkout, not `~/.nros/bin` — contributors with
+multiple worktrees get tree-isolated CLIs with no global PATH skew.
+A `source ./activate.sh` / `direnv allow` puts the resulting binary on
+PATH.
 
 **Corrosion** (the CMake ↔ Rust/Cargo bridge `corrosion_import_crate()`
 uses) is installed by `just workspace install-corrosion` to

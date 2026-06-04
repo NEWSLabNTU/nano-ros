@@ -46,12 +46,12 @@ the NuttX cross-compiler, `qemu-system-arm`, the NuttX source tree,
 and the RMW host daemon — into the shared store at `~/.nros/sdk`. No
 hand-installed cross-toolchain and no ROS 2 install required.
 
-Install the `nros` CLI once per machine, then provision the board
+Build the in-tree `nros` CLI (Phase 218), then provision the board
 (`--rmw` defaults to `zenoh`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 nros setup qemu-arm-nuttx --rmw zenoh
 ```
 

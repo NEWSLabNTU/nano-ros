@@ -236,23 +236,23 @@ nano-ros docs sweep (Work Item 218.I covers the in-tree side).
 
 ### 218.I — Docs sweep
 
-- [ ] `CLAUDE.md` "Build" section: "`nros setup` is the canonical
+- [x] `CLAUDE.md` "Build" section: "`nros setup` is the canonical
   provisioner" paragraph updates to reference `packages/cli/` instead
   of the external repo. The `scripts/install-nros.sh` mention
-  retires; replaced with the activate-file flow.
-- [ ] `docs/development/sdk-tiers.md`: Tier 0 `minimal` step list
-  gains a "build nros CLI from `packages/cli/`" bullet.
-- [ ] `docs/reference/environment-variables.md`: `NROS_CLI` becomes
+  retires; replaced with the activate-file flow. (2026-06-04)
+- [x] `docs/development/sdk-tiers.md`: Tier 0 `minimal` step list
+  gains a "build nros CLI from `packages/cli/`" bullet. (2026-06-04)
+- [x] `docs/reference/environment-variables.md`: `NROS_CLI` becomes
   the documented override; `~/.nros/bin` removed from the fallback
-  chain.
-- [ ] `book/src/getting-started/`: rewrite the "Install the CLI"
-  section around the activate-file flow.
-- [ ] `book/src/internals/`: add a "CLI lives in the monorepo" note
-  pointing at this phase doc and the design spec.
-- [ ] `.vscode/settings.json`: `rust-analyzer.linkedProjects` lists
+  chain. (2026-06-04)
+- [x] `book/src/getting-started/`: rewrite the "Install the CLI"
+  section around the activate-file flow. (2026-06-04)
+- [x] `book/src/internals/`: add a "CLI lives in the monorepo" note
+  pointing at this phase doc and the design spec. (2026-06-04)
+- [x] `.vscode/settings.json`: `rust-analyzer.linkedProjects` lists
   both the root `Cargo.toml` and `packages/cli/Cargo.toml` (same
   pattern as the existing testing sub-workspaces, if not already
-  present).
+  present). (2026-06-04)
 
 **Files:** `CLAUDE.md`, `docs/development/sdk-tiers.md`,
 `docs/reference/environment-variables.md`,

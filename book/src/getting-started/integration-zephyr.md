@@ -120,13 +120,13 @@ int main(void) {
 `nros setup` provisions the parts nano-ros owns — the **RMW host daemon**
 (`zenohd` / Micro-XRCE-DDS agent) and the **RMW transport submodules**
 (zenoh-pico + mbedtls for zenoh, the cyclonedds fork) — from a pinned index into
-`~/.nros/sdk` / the nano-ros checkout. It does **not** replace Zephyr's own SDK,
+`${NROS_HOME:-~/.nros}/sdk` / the nano-ros checkout. It does **not** replace Zephyr's own SDK,
 and interface codegen still needs the ROS message definitions.
 
-1. **Install the `nros` CLI** (once per machine):
+1. **Build the in-tree `nros` CLI** (Phase 218, from the nano-ros checkout):
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-   export PATH="$HOME/.nros/bin:$PATH"
+   source ./activate.sh        # OR: direnv allow / source ./activate.fish
+   just setup-cli              # builds packages/cli/target/release/nros
    ```
 2. **Provision the RMW (daemon + transports)** from the nano-ros checkout:
    ```bash
