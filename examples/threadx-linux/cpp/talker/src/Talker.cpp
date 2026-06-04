@@ -25,16 +25,16 @@ class Talker {
         if (!rc.ok()) return rc;
 
         nros::NodeEntityDescriptor pub{};
-        pub.id = "pub_chatter";
-        pub.kind = nros::EntityKind::Publisher;
+        pub.stable_id = "pub_chatter";
+        pub.node_id = "node";
+        pub.kind = nros::NodeEntityKind::Publisher;
         pub.source_name = "/chatter";
-        pub.type_name = std_msgs::msg::Int32::TYPE_NAME;
-        pub.type_hash = std_msgs::msg::Int32::TYPE_HASH;
+        pub.type_name = "std_msgs/msg/Int32";
+        pub.type_hash = "";
         return node.create_entity(pub);
     }
 };
 
 } // namespace threadx_linux_cpp_talker
 
-NROS_NODE_REGISTER(threadx_linux_cpp_talker::Talker,
-                        "threadx_linux_cpp_talker::Talker");
+NROS_NODE_REGISTER(threadx_linux_cpp_talker::Talker, "threadx_linux_cpp_talker::Talker");

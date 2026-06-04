@@ -20,11 +20,12 @@ class ActionClient {
         if (!rc.ok()) return rc;
 
         nros::NodeEntityDescriptor cli{};
-        cli.id = "cli_fib";
-        cli.kind = nros::EntityKind::ActionClient;
+        cli.stable_id = "cli_fib";
+        cli.node_id = "node";
+        cli.kind = nros::NodeEntityKind::ActionClient;
         cli.source_name = "/fibonacci";
-        cli.type_name = example_interfaces::action::Fibonacci::ACTION_NAME;
-        cli.type_hash = example_interfaces::action::Fibonacci::ACTION_HASH;
+        cli.type_name = "example_interfaces/action/Fibonacci";
+        cli.type_hash = "";
         return node.create_entity(cli);
     }
 };
@@ -32,4 +33,4 @@ class ActionClient {
 } // namespace threadx_linux_cpp_action_client
 
 NROS_NODE_REGISTER(threadx_linux_cpp_action_client::ActionClient,
-                        "threadx_linux_cpp_action_client::ActionClient");
+                   "threadx_linux_cpp_action_client::ActionClient");

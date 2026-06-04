@@ -24,11 +24,12 @@ class Listener {
         if (!rc.ok()) return rc;
 
         nros::NodeEntityDescriptor sub{};
-        sub.id = "sub_chatter";
-        sub.kind = nros::EntityKind::Subscription;
+        sub.stable_id = "sub_chatter";
+        sub.node_id = "node";
+        sub.kind = nros::NodeEntityKind::Subscription;
         sub.source_name = "/chatter";
-        sub.type_name = std_msgs::msg::Int32::TYPE_NAME;
-        sub.type_hash = std_msgs::msg::Int32::TYPE_HASH;
+        sub.type_name = "std_msgs/msg/Int32";
+        sub.type_hash = "";
         sub.callback_id = "on_chatter";
         return node.create_entity(sub);
     }
@@ -36,5 +37,4 @@ class Listener {
 
 } // namespace threadx_linux_cpp_listener
 
-NROS_NODE_REGISTER(threadx_linux_cpp_listener::Listener,
-                        "threadx_linux_cpp_listener::Listener");
+NROS_NODE_REGISTER(threadx_linux_cpp_listener::Listener, "threadx_linux_cpp_listener::Listener");

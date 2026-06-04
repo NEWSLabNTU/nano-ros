@@ -22,11 +22,12 @@ class ServiceServer {
         if (!rc.ok()) return rc;
 
         nros::NodeEntityDescriptor srv{};
-        srv.id = "srv_add";
-        srv.kind = nros::EntityKind::ServiceServer;
+        srv.stable_id = "srv_add";
+        srv.node_id = "node";
+        srv.kind = nros::NodeEntityKind::ServiceServer;
         srv.source_name = "/add_two_ints";
-        srv.type_name = example_interfaces::srv::AddTwoInts::SERVICE_NAME;
-        srv.type_hash = example_interfaces::srv::AddTwoInts::SERVICE_HASH;
+        srv.type_name = "example_interfaces/srv/AddTwoInts";
+        srv.type_hash = "";
         srv.callback_id = "on_add";
         return node.create_entity(srv);
     }
@@ -35,4 +36,4 @@ class ServiceServer {
 } // namespace threadx_linux_cpp_service_server
 
 NROS_NODE_REGISTER(threadx_linux_cpp_service_server::ServiceServer,
-                        "threadx_linux_cpp_service_server::ServiceServer");
+                   "threadx_linux_cpp_service_server::ServiceServer");

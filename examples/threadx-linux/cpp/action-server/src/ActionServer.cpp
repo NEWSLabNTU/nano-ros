@@ -24,11 +24,12 @@ class ActionServer {
         if (!rc.ok()) return rc;
 
         nros::NodeEntityDescriptor act{};
-        act.id = "act_fib";
-        act.kind = nros::EntityKind::ActionServer;
+        act.stable_id = "act_fib";
+        act.node_id = "node";
+        act.kind = nros::NodeEntityKind::ActionServer;
         act.source_name = "/fibonacci";
-        act.type_name = example_interfaces::action::Fibonacci::ACTION_NAME;
-        act.type_hash = example_interfaces::action::Fibonacci::ACTION_HASH;
+        act.type_name = "example_interfaces/action/Fibonacci";
+        act.type_hash = "";
         act.callback_id = "on_goal";
         return node.create_entity(act);
     }
@@ -37,4 +38,4 @@ class ActionServer {
 } // namespace threadx_linux_cpp_action_server
 
 NROS_NODE_REGISTER(threadx_linux_cpp_action_server::ActionServer,
-                        "threadx_linux_cpp_action_server::ActionServer");
+                   "threadx_linux_cpp_action_server::ActionServer");

@@ -111,15 +111,34 @@ Almost every breakage traces to one of three root causes:
   `NodeEntityKind::PUBLISHER` or similar — confirm against the
   C++ header).
 
-- [ ] **220.B.1** Inventory the post-N.12 C++ entity-descriptor +
+- [x] **220.B.1** Inventory the post-N.12 C++ entity-descriptor +
       kind-enum names by grep'ing
-      `packages/core/nros-cpp/include/`.
-- [ ] **220.B.2** Sweep `examples/threadx-linux/cpp/*/src/*.cpp` (6
-      files) to the post-N.12 API.
-- [ ] **220.B.3** Add a `phase212_n12_cpp_api_drift` lint to
+      `packages/core/nros-cpp/include/`. Confirmed in
+      `declared_node.hpp`: `nros::NodeEntityKind` (variants
+      `Publisher`/`Subscription`/`Timer`/`ServiceServer`/
+      `ServiceClient`/`ActionServer`/`ActionClient`/`Parameter`);
+      `NodeEntityDescriptor { stable_id, node_id, kind,
+      source_name, type_name, type_hash, callback_id }`.
+- [x] **220.B.2** Sweep `examples/threadx-linux/cpp/*/src/*.cpp` (6
+      files) to the post-N.12 API. Mechanical replacements:
+      `pub.id` → `pub.stable_id` (+ add `pub.node_id = "node"`),
+      `nros::EntityKind::*` → `nros::NodeEntityKind::*`,
+      `AddTwoInts::SERVICE_NAME`/`SERVICE_HASH` →
+      `"example_interfaces/srv/AddTwoInts"` / `""`,
+      `Fibonacci::ACTION_NAME`/`ACTION_HASH` →
+      `"example_interfaces/action/Fibonacci"` / `""`, talker/listener
+      `std_msgs::msg::Int32::TYPE_NAME`/`TYPE_HASH` →
+      `"std_msgs/msg/Int32"` / `""` (matches
+      `examples/qemu-arm-freertos/cpp/*` pattern). All 6 examples
+      build clean under `cmake --build build-zenoh`. Landed in this
+      Track B commit.
+- [x] **220.B.3** Add a `phase212_n12_cpp_api_drift` lint to
       `nros-tests` that scans `examples/**/cpp/**/*.cpp` for the
       retired symbol names (`EntityKind`, `pub.id`, etc.) so future
-      sweep gaps are caught at test time.
+      sweep gaps are caught at test time. Landed at
+      `packages/testing/nros-tests/tests/phase212_n12_cpp_api_drift.rs`;
+      scans every `examples/**/*.cpp`, ignores comments, fails the
+      test with a per-line violation list. Passes today.
 
 ### C — Restore native + freertos rust cyclonedds CMake fixtures
 

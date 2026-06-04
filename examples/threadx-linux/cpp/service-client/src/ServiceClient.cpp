@@ -20,11 +20,12 @@ class ServiceClient {
         if (!rc.ok()) return rc;
 
         nros::NodeEntityDescriptor cli{};
-        cli.id = "cli_add";
-        cli.kind = nros::EntityKind::ServiceClient;
+        cli.stable_id = "cli_add";
+        cli.node_id = "node";
+        cli.kind = nros::NodeEntityKind::ServiceClient;
         cli.source_name = "/add_two_ints";
-        cli.type_name = example_interfaces::srv::AddTwoInts::SERVICE_NAME;
-        cli.type_hash = example_interfaces::srv::AddTwoInts::SERVICE_HASH;
+        cli.type_name = "example_interfaces/srv/AddTwoInts";
+        cli.type_hash = "";
         return node.create_entity(cli);
     }
 };
@@ -32,4 +33,4 @@ class ServiceClient {
 } // namespace threadx_linux_cpp_service_client
 
 NROS_NODE_REGISTER(threadx_linux_cpp_service_client::ServiceClient,
-                        "threadx_linux_cpp_service_client::ServiceClient");
+                   "threadx_linux_cpp_service_client::ServiceClient");
