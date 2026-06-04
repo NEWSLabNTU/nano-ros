@@ -476,6 +476,13 @@ pub use nros_node::{
 // transport-layer `TransportConfig` already re-exported above.
 pub use nros_platform::{BoardConfig, BoardTransportConfig};
 
+// Phase 216.A.1 — `DispatchStrategy` enum. User-visible at
+// `nros::DispatchStrategy`; the canonical home is `nros_platform::
+// board::dispatch` so the C ABI symbol the `nros::node!()` macro emits
+// (`__nros_node_<pkg>_dispatch_strategy() -> u8`) lives next to the
+// other board-side trampolines.
+pub use nros_platform::DispatchStrategy;
+
 /// Implementation detail — used by `nros::node!()` macro expansion.
 ///
 /// Re-exports `nros_platform` so the macro's emitted trampoline can

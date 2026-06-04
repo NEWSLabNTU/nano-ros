@@ -1,7 +1,9 @@
 // Phase 212.N.1 — trait surface only; consumers land in 212.N.2+.
 // Suppress `dead_code` workspace-wide until a family driver crate
-// pulls these in.
-#![allow(dead_code)]
+// pulls these in. Phase 216.A.1 — `DispatchStrategy` ships ahead of
+// its first consumer (Phase 216.A.2 trait extension), so
+// `unused_imports` joins the allowance.
+#![allow(dead_code, unused_imports)]
 
 //! Board trait family — Phase 212.N.1.
 //!
@@ -46,6 +48,7 @@
 //! module (or get retired entirely if no consumer remains).
 
 pub mod config;
+pub mod dispatch;
 pub mod entry;
 pub mod exit;
 pub mod init;
@@ -55,6 +58,7 @@ pub mod runtime;
 pub mod transport;
 
 pub use config::{BoardConfig, BoardTransportConfig};
+pub use dispatch::DispatchStrategy;
 pub use entry::BoardEntry;
 pub use exit::BoardExit;
 pub use init::BoardInit;
