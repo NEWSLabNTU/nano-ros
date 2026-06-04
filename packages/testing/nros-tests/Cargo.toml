@@ -126,6 +126,15 @@ component-runtime-test = [
     "nros/platform-posix",
     "dep:nros-platform",
 ]
+# Phase 216.A.6 — dispatch substrate integration test. Pulls in
+# `nros-platform` so `phase216_a_dispatch_strategy` can reach
+# `NodeDispatchRuntime` / `NullNodeRuntime` / `SignaledCallback`
+# without dragging in the heavier `component-runtime-test` chain
+# (which would pull `nros-rmw-zenoh` + zenohd just to assert a
+# `panic!` message).
+phase216-substrate = [
+    "dep:nros-platform",
+]
 
 # Phase 124.A.8.b — zero-copy loan E2E via real zenoh-pico backend.
 # Pulls nros-node + nros-rmw-zenoh with the `lending` feature so the
@@ -420,6 +429,31 @@ path = "tests/phase210_f4_shadowing.rs"
 [[test]]
 name = "phase215_e_board_import"
 path = "tests/phase215_e_board_import.rs"
+
+# Phase 216.A — dispatch substrate integration test. Exercises
+# `DispatchStrategy` / `Node::DISPATCH` / `NodeDispatchRuntime`
+# defaults from outside the originating crates so re-export drift
+# is caught. Requires `phase216-substrate` for the `nros-platform`
+# dep — host-only, no embedded toolchain needed.
+[[test]]
+name = "phase216_a_dispatch_strategy"
+path = "tests/phase216_a_dispatch_strategy.rs"
+required-features = ["phase216-substrate"]
+
+# Phase 216.B.5 — `nros::main!()` RTIC macro expansion compile
+# smoke. Shells out to `cargo check --target thumbv7em-none-eabihf`
+# against `examples/stm32f4/rust/talker-rtic/`, skipping cleanly if
+# the cross-target isn't installed.
+[[test]]
+name = "phase216_b_rtic_main_macro_expansion"
+path = "tests/phase216_b_rtic_main_macro_expansion.rs"
+
+# Phase 216.C.4 — `nros::main!()` Embassy macro expansion compile
+# smoke. Sibling of `phase216_b_*` against
+# `examples/stm32f4/rust/talker-embassy/`.
+[[test]]
+name = "phase216_c_embassy_main_macro_expansion"
+path = "tests/phase216_c_embassy_main_macro_expansion.rs"
 
 [lints]
 workspace = true
