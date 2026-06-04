@@ -2430,6 +2430,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-zpico-build"
+version = "0.4.0"
+dependencies = [
+ "cbindgen",
+ "cc",
+ "nros-board-common",
+ "nros-build-paths",
+ "pkg-config",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4360,12 +4371,8 @@ dependencies = [
 name = "zpico-sys"
 version = "0.4.0"
 dependencies = [
- "cbindgen",
- "cc",
- "nros-board-common",
- "nros-build-paths",
  "nros-smoltcp",
- "pkg-config",
+ "nros-zpico-build",
  "zpico-link-ivc",
  "zpico-platform-custom",
 ]

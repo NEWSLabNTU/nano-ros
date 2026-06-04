@@ -1068,6 +1068,7 @@ build-workspace:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-zpico-build \
         --exclude nros-build-paths \
         --exclude xrce-sys
     # Mirror the build excludes: under `--no-default-features` nros-c /
@@ -1081,6 +1082,7 @@ build-workspace:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-zpico-build \
         --exclude nros-build-paths \
         --exclude xrce-sys
 
@@ -1102,10 +1104,17 @@ build-workspace-embedded:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
+        --exclude nros-zpico-build \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
         --exclude nros-build-paths \
-        --exclude xrce-sys
+        --exclude xrce-sys \
+        --exclude nros-msg-to-idl \
+        --exclude nros-board-native \
+        --exclude nros-board-posix \
+        --exclude cyclonedds-sys \
+        --exclude nros-rmw-cyclonedds-sys \
+        --exclude nros-rmw-cyclonedds
 
 # Format workspace code
 [private]
@@ -1131,6 +1140,7 @@ check-workspace:
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-zpico-build \
         --exclude nros-build-paths \
         --exclude xrce-sys
 
@@ -1153,6 +1163,7 @@ check-workspace-embedded:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
+        --exclude nros-zpico-build \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
         --exclude nros-build-paths \

@@ -191,6 +191,12 @@ checksum = "46afbd2983a5d5a7bd740ccb198caf5b82f45c40c09c0eed36052d91cb92e719"
 
 [[package]]
 name = "bitflags"
+version = "1.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+
+[[package]]
+name = "bitflags"
 version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84d7ced0ae9557296835c32bf1b1e02b44c746701f898460fb000d7eaa84f00a"
@@ -202,6 +208,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "builtin_interfaces"
+version = "1.2.2"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -228,7 +243,7 @@ dependencies = [
 [[package]]
 name = "cargo-nano-ros"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#7ed14ca9cc5c1cd2993b11c4e2808474765e6d30"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "cargo_metadata",
  "clap",
@@ -408,6 +423,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "critical-section"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
+
+[[package]]
 name = "crossbeam-deque"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -534,9 +555,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
+name = "freertos_rs_talker"
+version = "0.1.0"
+dependencies = [
+ "nros",
+ "std_msgs",
+]
+
+[[package]]
 name = "freertos_rs_talker_entry"
 version = "0.1.0"
 dependencies = [
+ "freertos_rs_talker",
  "nros",
  "nros-board-mps2-an385-freertos",
  "nros-platform",
@@ -771,9 +801,9 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "log"
-version = "0.4.31"
+version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "113b30b4cd05f7c06868fdb2854f66a7b9fece9a48425351cd532e810d74024f"
+checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 
 [[package]]
 name = "logos"
@@ -807,6 +837,12 @@ checksum = "24fb722b06a9dc12adb0963ed585f19fc61dc5413e6a9be9422ef92c091e731d"
 dependencies = [
  "logos-codegen",
 ]
+
+[[package]]
+name = "managed"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
 name = "memchr"
@@ -863,7 +899,7 @@ dependencies = [
 
 [[package]]
 name = "nros"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "nros-core",
  "nros-macros",
@@ -879,7 +915,7 @@ dependencies = [
 
 [[package]]
 name = "nros-board-common"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "cc",
  "nros-build-paths",
@@ -889,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "nros-board-freertos"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "cc",
  "nros",
@@ -899,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "nros-board-mps2-an385-freertos"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "cc",
  "cortex-m-semihosting",
@@ -914,7 +950,7 @@ dependencies = [
 [[package]]
 name = "nros-build"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#7ed14ca9cc5c1cd2993b11c4e2808474765e6d30"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "eyre",
  "nros-cli-core",
@@ -926,12 +962,12 @@ dependencies = [
 
 [[package]]
 name = "nros-build-paths"
-version = "0.1.0"
+version = "0.4.0"
 
 [[package]]
 name = "nros-cli-core"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#7ed14ca9cc5c1cd2993b11c4e2808474765e6d30"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "cargo-nano-ros",
  "cargo_metadata",
@@ -952,7 +988,7 @@ dependencies = [
 
 [[package]]
 name = "nros-core"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "heapless",
  "log",
@@ -961,7 +997,7 @@ dependencies = [
 
 [[package]]
 name = "nros-log"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "heapless",
  "portable-atomic",
@@ -969,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "nros-macros"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "nros-build",
  "proc-macro2",
@@ -981,35 +1017,36 @@ dependencies = [
 [[package]]
 name = "nros-msg-to-idl"
 version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#7ed14ca9cc5c1cd2993b11c4e2808474765e6d30"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 
 [[package]]
 name = "nros-node"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "atomic-waker",
  "heapless",
- "log",
  "nros-core",
  "nros-log",
  "nros-params",
  "nros-platform-api",
  "nros-rmw",
  "nros-rmw-cffi",
+ "nros-rmw-cyclonedds",
+ "nros-serdes",
  "portable-atomic",
  "portable-atomic-util",
 ]
 
 [[package]]
 name = "nros-params"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "heapless",
 ]
 
 [[package]]
 name = "nros-platform"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
@@ -1017,27 +1054,26 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-api"
-version = "0.1.0"
+version = "0.4.0"
 
 [[package]]
 name = "nros-platform-cffi"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "nros-platform-api",
 ]
 
 [[package]]
 name = "nros-rmw"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "heapless",
- "log",
  "nros-core",
 ]
 
 [[package]]
 name = "nros-rmw-cffi"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "cc",
  "linkme",
@@ -1046,10 +1082,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-rmw-cyclonedds"
+version = "0.4.0"
+dependencies = [
+ "critical-section",
+ "heapless",
+ "nros-serdes",
+ "spin",
+]
+
+[[package]]
 name = "nros-serdes"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "heapless",
+]
+
+[[package]]
+name = "nros-smoltcp"
+version = "0.4.0"
+dependencies = [
+ "nros-platform-api",
+ "portable-atomic",
+ "smoltcp",
+]
+
+[[package]]
+name = "nros-zpico-build"
+version = "0.4.0"
+dependencies = [
+ "cbindgen",
+ "cc",
+ "nros-board-common",
+ "nros-build-paths",
+ "pkg-config",
 ]
 
 [[package]]
@@ -1242,7 +1308,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#7ed14ca9cc5c1cd2993b11c4e2808474765e6d30"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "serde",
  "serde_json",
@@ -1253,7 +1319,7 @@ dependencies = [
 [[package]]
 name = "rosidl-bindgen"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#7ed14ca9cc5c1cd2993b11c4e2808474765e6d30"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "askama",
  "clap",
@@ -1267,7 +1333,7 @@ dependencies = [
 [[package]]
 name = "rosidl-codegen"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#7ed14ca9cc5c1cd2993b11c4e2808474765e6d30"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "askama",
  "rosidl-parser",
@@ -1278,7 +1344,7 @@ dependencies = [
 [[package]]
 name = "rosidl-parser"
 version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#7ed14ca9cc5c1cd2993b11c4e2808474765e6d30"
+source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "chumsky",
  "logos",
@@ -1301,7 +1367,7 @@ version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
 dependencies = [
- "bitflags",
+ "bitflags 2.12.1",
  "errno",
  "libc",
  "linux-raw-sys",
@@ -1433,6 +1499,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
+name = "smoltcp"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dad095989c1533c1c266d9b1e8d70a1329dd3723c3edac6d03bbd67e7bf6f4bb"
+dependencies = [
+ "bitflags 1.3.2",
+ "byteorder",
+ "cfg-if",
+ "heapless",
+ "managed",
+]
+
+[[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1449,6 +1534,16 @@ dependencies = [
  "libc",
  "psm",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "std_msgs"
+version = "4.9.1"
+dependencies = [
+ "builtin_interfaces",
+ "heapless",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -1771,7 +1866,7 @@ version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe"
 dependencies = [
- "bitflags",
+ "bitflags 2.12.1",
  "hashbrown 0.15.5",
  "indexmap",
  "semver 1.0.28",
@@ -1963,7 +2058,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2"
 dependencies = [
  "anyhow",
- "bitflags",
+ "bitflags 2.12.1",
  "indexmap",
  "log",
  "serde",
@@ -2032,19 +2127,8 @@ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
 name = "zpico-sys"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
- "cbindgen",
- "cc",
- "nros-board-common",
- "nros-build-paths",
- "pkg-config",
+ "nros-smoltcp",
+ "nros-zpico-build",
 ]
-
-[[patch.unused]]
-name = "cyclonedds-sys"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "nros-rmw-zenoh"
-version = "0.1.0"
