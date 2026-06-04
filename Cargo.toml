@@ -261,10 +261,16 @@ exclude = [
     # because it cross-builds for `thumbv7em-none-eabihf` only.
     "examples/stm32f4/rust/talker_pkg",
     # Phase 216.C.5 — board-agnostic listener Node pkg (Deferred
-    # dispatch + tag-based subscription) shared by the Embassy +
-    # RTIC (parallel B.5 wave) Entry pkgs above. Excluded because
-    # it cross-builds for `thumbv7em-none-eabihf` only.
+    # dispatch + tag-based subscription) consumed by the Embassy
+    # Entry pkg above. Excluded because it cross-builds for
+    # `thumbv7em-none-eabihf` only. RTIC sibling lives at
+    # `listener_pkg_rtic` (Phase 216.B.5) — split because the
+    # Embassy flavor's `ListenerState` carries an
+    # `Option<embassy_executor::Spawner>` (spawn-from-sync escape
+    # demo), whereas RTIC's task spawn is a static
+    # `task_name::spawn()` symbol with no runtime handle.
     "examples/stm32f4/rust/listener_pkg",
+    "examples/stm32f4/rust/listener_pkg_rtic",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples
     # Phase 168.1 collapsed-shape Rust examples (one dir, N RMW

@@ -1,25 +1,35 @@
-//! RTIC Listener Example for nros on STM32F4
+//! RTIC listener on STM32F4 — Phase 216.B.5 `nros::main!()` shape.
 //!
-//! Subscribes to `std_msgs/Int32` on `/chatter` using RTIC v2's
-//! hardware-scheduled async tasks. Demonstrates the nano-ros + RTIC
-//! integration pattern:
+//! The body collapses to the one-line macro invocation. `nros::main!()`
+//! reads `[package.metadata.nros.entry] deploy = "rtic-stm32f4"`
+//! from `Cargo.toml`, routes through the RTIC framework branch
+//! (Phase 216.B.3), and emits the `#[rtic::app] mod app` body +
+//! dispatch / spin RTIC task sidekicks. The board crate
+//! (`nros-board-rtic-stm32f4`, Phase 216.B.2) supplies the
+//! `RticStm32F4` ZST whose `RticBoardEntry::init_hardware` brings up
+//! the hardware and returns the `(Executor, RticRuntime)` pair.
 //!
-//! - `#[init]` calls `board::init_hardware()` and creates nano-ros handles
-//! - `net_poll` task drives transport I/O via `spin_once(0)`
-//! - `listen` task polls for messages via `try_recv()`
-//! - All nano-ros handles are `#[local]` — no locks required
+//! ## Deferred dispatch — RTIC sibling Node pkg
 //!
-//! # Hardware
+//! Unlike the sibling `talker-rtic` (which links `talker_pkg`,
+//! `DispatchStrategy::Inline`), this Entry pkg links
+//! `stm32f4_listener_pkg_rtic` whose Node declares
+//! `DispatchStrategy::Deferred`. The RTIC board's
+//! `NodeDispatchRuntime` enqueues signaled callbacks onto a
+//! framework-owned task; the listener's `on_callback` body decodes
+//! the placeholder `Int32` payload and `defmt::info!`-logs it. See
+//! `examples/stm32f4/rust/listener_pkg_rtic/src/lib.rs` for the body
+//! and the doc comment that compares the RTIC + Embassy escape
+//! shapes.
 //!
-//! - Board: NUCLEO-F429ZI (or similar STM32F4 with Ethernet)
-//! - Connect Ethernet cable to the board's RJ45 port
+//! ## Skeleton status
 //!
-//! # Building
-//!
-//! ```bash
-//! cargo build --release
-//! cargo run --release  # Uses probe-rs to flash
-//! ```
+//! `init_hardware`'s body is still `todo!()` (216.B.2 follow-up
+//! mirrors the legacy Pattern A bringup), and the trampoline-
+//! registration story that hands the sibling
+//! `stm32f4_listener_pkg_rtic` Node onto the dispatch runtime is the
+//! next 216.B wave. The macro emit + dep graph compile clean today;
+//! a real flash will hit the `todo!()` panic in `init_hardware`.
 
 #![no_std]
 #![no_main]
@@ -27,87 +37,4 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-defmt::timestamp!("{=u64:us}", { 0 });
-
-use nros::prelude::*;
-use nros_board_stm32f4::Config;
-use std_msgs::msg::Int32;
-
-use rtic_monotonics::systick::prelude::*;
-
-systick_monotonic!(Mono, 1000);
-
-// Type aliases for RTIC Local struct annotations
-type NrosExecutor = Executor;
-type NrosSubscription = Subscription<Int32>;
-
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1, USART2])]
-mod app {
-    use super::*;
-
-    #[shared]
-    struct Shared {}
-
-    #[local]
-    struct Local {
-        executor: NrosExecutor,
-        subscription: NrosSubscription,
-    }
-
-    #[init]
-    fn init(cx: init::Context) -> (Shared, Local) {
-        let config = Config::nucleo_f429zi();
-        let syst = nros_board_stm32f4::init_hardware(&config, cx.device, cx.core);
-
-        Mono::start(syst, 168_000_000);
-
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("listener");
-        // Phase 104.A — bare-metal callers explicitly register the RMW
-        // backend before `Executor::open`. POSIX hosts auto-register via
-        // `.init_array`; this target doesn't walk that section.
-        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config).unwrap();
-        let mut node = executor.create_node("listener").unwrap();
-        let subscription = node.create_subscription::<Int32>("/chatter").unwrap();
-
-        net_poll::spawn().unwrap();
-        listen::spawn().unwrap();
-
-        (
-            Shared {},
-            Local {
-                executor,
-                subscription,
-            },
-        )
-    }
-
-    /// Drive transport I/O — equivalent to rclcpp spin_some().
-    #[task(local = [executor], priority = 1)]
-    async fn net_poll(cx: net_poll::Context) {
-        loop {
-            cx.local
-                .executor
-                .spin_once(core::time::Duration::from_millis(0));
-            Mono::delay(10.millis()).await;
-        }
-    }
-
-    /// Poll for incoming messages. Does not require the executor.
-    #[task(local = [subscription], priority = 1)]
-    async fn listen(cx: listen::Context) {
-        defmt::info!("Waiting for messages on /chatter...");
-
-        loop {
-            // Skip transient transport errors (e.g. a non-CDR sample from
-            // the zenoh discovery channel arriving on this subscription's
-            // buffer before the first publisher sample lands).
-            if let Ok(Some(msg)) = cx.local.subscription.try_recv() {
-                defmt::info!("Received: {}", msg.data);
-            }
-            Mono::delay(10.millis()).await;
-        }
-    }
-}
+nros::main!();
