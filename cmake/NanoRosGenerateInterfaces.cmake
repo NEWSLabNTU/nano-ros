@@ -186,6 +186,32 @@ function(nros_generate_interfaces target)
   endif()
   string(TOUPPER "${_ARG_LANGUAGE}" _ARG_LANGUAGE)
 
+  # Phase 219.H — idempotency guard.
+  #
+  # Two sibling Node pkgs that both `<depend>` on the same interface pkg
+  # (e.g. each calls `nros_find_interfaces(LANGUAGE CPP)` with
+  # `std_msgs` in `package.xml`) reach this fn twice for the same
+  # `(target, language)` pair. Without a guard the second call dies on
+  # the `add_library(${target}__nano_ros_${_lang_flag})` collision
+  # (line ~462 / ~665 / ~673) or the `add_custom_target` companion
+  # (line ~471 / ~607).
+  #
+  # The existing per-builtin guards (lines ~282-290) only cover the
+  # `builtin_interfaces` / `unique_identifier_msgs` / `action_msgs`
+  # auto-deps; every other interface pkg collides. Generalise the
+  # `if(NOT TARGET …)` discipline by short-circuiting the whole body
+  # once the target has been generated.
+  #
+  # Closes Phase 219 workflow-review Gap 3.
+  if(_ARG_LANGUAGE STREQUAL "CPP")
+    set(_idempotency_check_target "${target}__nano_ros_cpp")
+  else()
+    set(_idempotency_check_target "${target}__nano_ros_c")
+  endif()
+  if(TARGET ${_idempotency_check_target})
+    return()
+  endif()
+
   # Resolve or auto-discover interface files
   set(_interface_files "")
 

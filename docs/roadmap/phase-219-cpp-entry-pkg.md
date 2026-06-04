@@ -373,7 +373,7 @@ These items unblock every multi-pkg C/C++ workspace and pay back
 across the rest of Phase 219. Without them, 219.D's generated
 `main()` fails to link.
 
-- [ ] **219.H — Idempotency guards in interface codegen.** (cheap, ✱)
+- [x] **219.H — Idempotency guards in interface codegen.** (cheap, ✱)
       `cmake/NanoRosGenerateInterfaces.cmake` today guards only
       `builtin_interfaces`, `unique_identifier_msgs`, `action_msgs`
       against double-creation (lines 282-290). Every other
@@ -384,7 +384,7 @@ across the rest of Phase 219. Without them, 219.D's generated
       every interface pkg becomes idempotent. Collision sites at
       lines 462 / 471 / 607 per the review's anchor pointers.
       Closes review Gap 3.
-- [ ] **219.I — `nano_ros_workspace()` + `nano_ros_workspace_pkg_guard()`.**
+- [x] **219.I — `nano_ros_workspace()` + `nano_ros_workspace_pkg_guard()`.**
       (cheap, ✱) Land `cmake/NanoRosWorkspace.cmake` per §3.6.
       Workspace-root single-call form pulls nano-ros once, includes
       `NanoRosNodeRegister.cmake` once, calls
