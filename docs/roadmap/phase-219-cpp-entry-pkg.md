@@ -247,6 +247,16 @@ form; C users use the C form. Both ride the same cmake fn.
 
 ## 4. Phased work plan
 
+**Update 2026-06-04 (post-workflow-review).** Phase 219 originally
+listed 219.A through 219.G. A pure-C/C++ workspace walkthrough
+(`docs/roadmap/phase-219-workflow-review.md`) surfaced **six more
+gaps** the original plan papered over — four cmake-fn-level + two
+CLI-level. They sit BELOW the Entry-codegen surface; without them
+219.D produces a generated `main()` that fails to link, and 219.F
+has nothing reproducible to test against. New items 219.H–N below;
+recommended ordering 219.H+I → 219.A-E → 219.J → 219.F → 219.G,
+with 219.K/L/M in parallel.
+
 - [ ] **219.A — CLI: `nros codegen entry` skeleton (lang=rust passthrough).**
       Lift the proc-macro's pkg-index walk + launch parser out of
       `packages/core/nros-macros/src/main_macro.rs` into
@@ -280,6 +290,105 @@ form; C users use the C form. Both ride the same cmake fn.
       `book/src/concepts/cpp-entry-pkg.md` (or fold into
       `concepts/multi-node-workspace.md`) showing the cmake fn +
       macro shape side-by-side with the Rust `nros::main!()` form.
+
+### 4.1 Workflow-review prereqs (added 2026-06-04)
+
+These items come from the gap walkthrough in
+`docs/roadmap/phase-219-workflow-review.md`. They block 219.D
+delivering a linkable binary, and they each pay back across every
+future multi-pkg C/C++ workspace, not just the Entry-codegen flow.
+
+- [ ] **219.H — Idempotency guards in interface codegen** (cheap).
+      `cmake/NanoRosGenerateInterfaces.cmake` today guards only
+      `builtin_interfaces`, `unique_identifier_msgs`, `action_msgs`
+      against double-creation (lines 282-290). Every other interface
+      pkg collides when two sibling Node pkgs both `<depend>` on it
+      (e.g. two pkgs each calling `nros_find_interfaces(LANGUAGE
+      CPP)` with `std_msgs` in their `package.xml`). Generalise the
+      `if(NOT TARGET …)` guard so every interface pkg becomes
+      idempotent; collision sites at lines 462 / 471 / 607 per the
+      review's anchor pointers.
+- [ ] **219.I — `nano_ros_workspace()` cmake fn + canonical root**
+      (cheap). §11.2 shows the layout but doesn't spell out the
+      workspace-root cmake body. Land:
+      - `cmake/NanoRosWorkspace.cmake` exposing
+        `nano_ros_workspace(SYSTEM <bringup> [BRINGUP <pkg>]
+        [SUBDIRS <dir>…])`.
+      - Body: sets `NANO_ROS_PLATFORM` / `NANO_ROS_RMW`, does the
+        single `add_subdirectory(<nano-ros>)` call, includes
+        `NanoRosNodeRegister.cmake` once at root scope, then
+        `add_subdirectory(<each member>)`.
+      - Subdir CMakeLists for Node + Entry pkgs guard their
+        `add_subdirectory(<nano-ros>)` + `include(...)` calls
+        with `if(NOT TARGET NanoRos::NanoRos)`. Today's in-tree
+        examples don't have the guards (workspace-root re-include
+        dies on `nros_rmw_cffi_headers` duplicate target + Corrosion
+        crate conflict). This also gives the multi-pkg path the
+        same single-import discipline cargo workspaces enforce.
+- [ ] **219.J — Entry auto-links Node-pkg static libs from launch
+      metadata** (cheap). `nano_ros_entry()` today produces the exe
+      but does NOT `target_link_libraries(<exe> PRIVATE
+      <pkg>_<name>_component)` for the Node pkgs the launch XML
+      pulls in. User writes the link by hand. The same loop in
+      219.B/C that emits the `extern "C"` register decls owns the
+      Node-pkg name list — emit a sibling `target_link_libraries`
+      call from inside the cmake fn so the generated TU actually
+      resolves at link time. Land alongside 219.D (the LAUNCH
+      arg).
+- [ ] **219.K — `nros codegen entry` runs without external
+      `play-launch-parser`** (medium). `nros plan` shells the
+      external `play_launch_parser` Python tool / binary today
+      (`nros-cli-core/src/orchestration/planner.rs::437-462`,
+      gated by the `play-launch-parser` cargo feature). The Rust
+      proc-macro path doesn't (in-process via the `nros-build`
+      dep). For C/C++ symmetry the shipped CLI must run on a
+      stock dev box without `pip install play-launch-parser` /
+      manual `NROS_PLAY_LAUNCH_PARSER=<path>`. Pick one of:
+      (1) flip the `play-launch-parser` feature on in the
+      prebuilt CLI release pipeline; (2) vendor + static-link
+      the parser into the CLI binary; (3) write a thin
+      in-process replacement on the subset of launch.xml the
+      v1 spec covers (§11.5). Document the choice; whatever
+      lands, `nros codegen entry --lang cpp` must succeed on a
+      box where only `~/.nros/bin/nros` is installed.
+- [ ] **219.L — `nros metadata` walks cmake-only Node pkgs**
+      (medium). `nros metadata --workspace <ws> <bringup>` returns
+      `preserved 0 metadata artifact(s)` against a pure-C++
+      workspace because `Workspace::component_declarations()` only
+      reads `nros.toml [component]` tables; pure-C++ Node pkgs
+      carry only `package.xml` + `CMakeLists.txt`. Today's flow
+      relies on cmake configure writing
+      `${CMAKE_BINARY_DIR}/nros-metadata.json` first, then `nros
+      plan` reading it — that contract works but is undocumented.
+      Land either:
+      (a) extend the workspace walker to read
+          `nano_ros_node_register(...)` calls statically from
+          CMakeLists (parser is small — every call is single-line
+          + keyword args); or
+      (b) formalise the cmake-first contract with a
+          `nros metadata --scan-cmake <build-dir>` flag and book
+          chapter documenting "cmake configure must precede
+          `nros plan`" for pure-C/C++ workspaces.
+- [ ] **219.M — `nros new --component --lang cpp` accepted +
+      `--lang cpp` scaffold updated** (cheap-to-medium). Today
+      `nros new <name> --lang cpp --component` errors out
+      ("scaffolds a Rust component; --lang cpp is not yet
+      supported", `nros-cli-core/src/cmd/new.rs:116`). Plain
+      `nros new <name> --lang cpp` emits a stub that still calls
+      `find_package(NanoRos REQUIRED CONFIG)` (Phase 140 deleted
+      that path) + `install(TARGETS ...)` (no install layout) +
+      a hello-world `main.cpp` with zero nros surface. Land four
+      scaffold templates aligned with §11.2: pure-C++ Node pkg,
+      pure-C Node pkg, pure-C++ Entry pkg, Bringup pkg
+      (language-agnostic).
+- [ ] **219.N — In-tree multi-pkg pure-C++ fixture + nextest**
+      (cheap). Land
+      `examples/native/cpp/multi-node-entry/` (canonical name
+      tracks 219.F) as the regression guard for 219.A through M.
+      Two Node pkgs + one Bringup pkg + one Entry pkg, all C++.
+      Nextest configures + builds + runs + asserts both register
+      fns fire + the talker actually publishes. Doubles as the
+      book-chapter live example for 219.G.
 
 ## 5. Open questions
 
@@ -322,6 +431,18 @@ form; C users use the C form. Both ride the same cmake fn.
       that diff-compares the two boot logs modulo language tag.
 - [ ] 219.G — book chapter merged + cross-links the Rust and C++
       surfaces side-by-side.
+- [ ] **219.acc.workflow** — workflow-review prereqs landed: a
+      stock dev box, with only `~/.nros/bin/nros` installed, can
+      `nros new --component --lang cpp talker_pkg` ×2 +
+      `nros new --bringup demo_bringup` + `nros new --entry
+      --lang cpp cpp_entry`, write the canonical workspace-root
+      CMakeLists per 219.I, run `cmake -S . -B build && cmake
+      --build build`, and execute the resulting binary. Talker
+      pkg publishes 0, 1, 2, …; listener pkg receives. No
+      hand-written `main()`, no hand-written `target_link_libraries`,
+      no `pip install …`. Same workspace, swap `cpp_entry` →
+      `rust_entry` calling `nros::main!(launch = …)` → identical
+      behaviour modulo language tag.
 
 ## 7. Notes
 
