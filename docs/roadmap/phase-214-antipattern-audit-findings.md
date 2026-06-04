@@ -1931,3 +1931,107 @@ invocation no longer resolves.
 **Out-of-scope candidate**: a defensive nros-cli lint that warns
 when `[package.metadata.nros.deploy.<rtos>].rmw` doesn't have a
 matching `[features] rmw-<x>` row.
+
+---
+
+## Architectural audit wave (2026-06-04) — Tracks F–L
+
+6-slice `Explore`-mode wave (per-RMW → platform / self-impl vs vendor
+/ non-SSoT sizes / layer violations / static state / build-vs-runtime).
+Slices 4 + 6 came back clean. Findings grouped file-disjoint:
+
+| track | what | scope | severity |
+|---|---|---|---|
+| **F** zpico-sys self-impl → platform-api | xorshift32 RNG + BumpAllocator duplicate `PlatformRandom`/`PlatformAlloc` | `zpico-sys/src/platform_smoltcp.rs` | **HIGH** |
+| **G** nros-c blocking-API static-mut race | `BLOCKING_ACCEPTED` + `BLK_RESULT_*` shared by callback + loop, no sync | `nros-c/src/action/client.rs`, `nros-c/src/service.rs` | **HIGH** |
+| **H** ThreadX const duplication + smoltcp 2048 pin | duplicate `CTX_STORAGE_SIZE`/`IFACE_BUF_SIZE` across files; 2048 buffer literal in 3 places | `nros-board-threadx/src/{node,entry}.rs` + smoltcp consumers | **HIGH** + **MED** |
+| **I** UDP transport shim consolidation | `transport_posix_udp.c` + `transport_nros_udp.c` 70% identical | `nros-rmw-xrce/src/transport_*.c` | MED |
+| **J** nros-c `atomic_bool_waker` → `atomic_waker` crate | hand-rolled `RawWaker`+`VTable` | `nros-c/src/service.rs:23-50` | MED |
+| **K** `NodeRuntime` trait name collision | board-dispatch vs metadata-sink; footgun on wildcard import | `nros-platform::board::runtime` + `nros::node` | MED |
+| **L** `SmoltcpBridge::init()` runtime guard | "must call once" unchecked → UB on double-call | `drivers/nros-smoltcp/src/lib.rs:74-79` | MED |
+
+7 parallel slots, file-disjoint.
+
+### Track F — zpico-sys: drop hand-rolled RNG + allocator
+
+**Files**: `packages/zpico/zpico-sys/src/platform_smoltcp.rs:55-205`.
+
+- [ ] **214.F.1** — replace `smoltcp_random_u32` xorshift body with
+      `<ConcretePlatform as PlatformRandom>::random_u32()`. Delete
+      `RNG_STATE` global.
+- [ ] **214.F.2** — replace `BumpAllocator::{alloc,realloc,free}`
+      with `PlatformAlloc` (pvPortMalloc on FreeRTOS, tx_byte_allocate
+      on ThreadX, kmm_malloc on NuttX, libc malloc on hosted).
+      **Acceptance**: smoltcp build links on FreeRTOS+ThreadX+NuttX+
+      ESP32; `random_u32` + `BumpAllocator` gone from zpico-sys.
+
+### Track G — nros-c blocking-API data race
+
+**Files**: `packages/core/nros-c/src/action/client.rs:475-587`,
+`packages/core/nros-c/src/service.rs` (analogous sites).
+
+- [ ] **214.G.1** — replace `static mut BLOCKING_ACCEPTED` +
+      `BLK_RESULT_*` with `AtomicBool` + `OnceLock<Mutex<...>>` for
+      the result payload. Same shape on both files.
+      **Acceptance**: `git grep -nE 'static mut BLOCKING_ACCEPTED|static mut BLK_RESULT_' packages/core/nros-c/`
+      returns no matches.
+
+### Track H — ThreadX const consolidation + smoltcp 2048 pin
+
+**Files (H.1)**: `nros-board-threadx/src/{node,entry}.rs`.
+**Files (H.2)**: `drivers/nros-smoltcp/src/lib.rs` (SSoT),
+`reference/qemu-smoltcp-bridge/src/bridge.rs:5`,
+`zpico/zpico-sys/src/platform_smoltcp.rs:60`.
+
+- [ ] **214.H.1** — extract `CTX_STORAGE_SIZE` (8192) +
+      `IFACE_BUF_SIZE` (64) from `node.rs` + `entry.rs` into a
+      shared `mod sizes` (or `lib.rs`-level `pub(crate) const`).
+- [ ] **214.H.2** — export `pub const SOCKET_BUFFER_SIZE` from
+      `nros-smoltcp`; `qemu-smoltcp-bridge` + `zpico-sys` import it.
+      `NROS_SMOLTCP_BUFFER_SIZE` env override stays.
+      **Acceptance**: `git grep -nE '\b2048\b' packages/{drivers/nros-smoltcp,reference/qemu-smoltcp-bridge,zpico/zpico-sys}/`
+      shows one canonical definition.
+
+### Track I — UDP transport shim consolidation (optional)
+
+**Files**: `packages/xrce/nros-rmw-xrce/src/transport_posix_udp.c` +
+`transport_nros_udp.c`.
+
+- [ ] **214.I.1** — extract `xrce_udp_transport_generic.h` with
+      shared trampoline declarations + buffer state; per-platform
+      `.c` shrinks to socket primitive + endpoint binding.
+      **Acceptance**: `wc -l transport_*udp.c` shrinks ≥30 lines.
+
+### Track J — nros-c hand-rolled waker → atomic_waker
+
+**Files**: `packages/core/nros-c/src/service.rs:23-50`.
+
+- [ ] **214.J.1** — add `atomic_waker` as direct dep on nros-c;
+      replace `atomic_bool_waker()` with `AtomicWaker::register`.
+      **Acceptance**: `atomic_bool_waker` fn deleted.
+
+### Track K — NodeRuntime trait name disambiguation
+
+**Files**: `packages/core/nros-platform/src/board/runtime.rs:77`,
+`packages/core/nros/src/node.rs:112`.
+
+- [ ] **214.K.1** — rename `nros-platform::NodeRuntime` →
+      `NodeDispatchRuntime` (board-side dispatch sink). Keep
+      `nros::NodeRuntime` (user-facing post-N.12 terminology).
+      Mechanical sweep + deprecated alias for one release.
+      **Acceptance**: both traits resolvable via distinct paths.
+
+### Track L — SmoltcpBridge::init runtime guard
+
+**Files**: `packages/drivers/nros-smoltcp/src/lib.rs:74-79`.
+
+- [ ] **214.L.1** — add `AtomicBool::INITIALIZED` guard. `init()`
+      checks-and-sets; double-call returns `Err(InitTwice)`. Same
+      shape for `get_socket_storage` / `get_tcp_buffers` /
+      `get_udp_buffers` if they share single-init contract.
+      **Acceptance**: unit test `init_twice_errors_cleanly` passes.
+
+### Tracks F–L acceptance
+
+- [ ] HIGH items (F, G, H.1) landed; CI passes.
+- [ ] MED items (H.2, I, J, K, L) landed or explicitly deferred.
