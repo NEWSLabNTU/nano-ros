@@ -154,3 +154,48 @@ Preserve existing user changes in the worktree. Do not revert unrelated changes.
 When pulling or rebasing the superproject, inspect submodule changes. If a pull advances a submodule pointer and local work exists in that submodule, enter the submodule, fetch its remote, rebase local work onto the updated upstream commit, check out the commit expected by the superproject, and record the resulting submodule commit in the parent commit.
 
 After rebasing over a remote submodule-pointer change, run `git submodule status --recursive <path>` and update the checkout to the commit recorded by `HEAD` before pushing. Recent pulls advanced `third-party/dds/cyclonedds`; leaving the worktree at the old detached commit made the superproject appear dirty even though the parent commit was correct.
+
+## Work in Progress — Handover
+
+### Phase 221.A — `zpico-sys/build.rs` refactor (NOT started, mapping only)
+
+Branch `phase-221-a-zpico-build-refactor` exists with **no commits** (empty,
+forked from `main`). No source changed. The goal is Track A.1 of
+`docs/roadmap/phase-221-antipattern-audit-findings.md`: extract logic from
+`packages/zpico/zpico-sys/build.rs` (1978 LOC) into a new sibling helper crate
+`packages/zpico/nros-zpico-build`, shrinking `build.rs` to a thin wrapper
+< 200 LOC, with helpers covered by unit tests. Mirror the existing
+`packages/core/nros-build-paths` / `nros-sizes-build` helper-crate pattern;
+register the new crate in the root `Cargo.toml` `[workspace] members` list.
+
+Critical correctness constraint discovered during mapping:
+
+- **Any fn that emits `println!("cargo:...")` MUST stay executed from
+  `build.rs`** — `cargo:` directives are inert when emitted from a
+  non-build-script crate. So `env_usize`, the `*::from_env` constructors,
+  `build_c_shim`, `build_zenoh_pico_unified`, `probe_net_type_sizes`, and
+  `use_system_zenoh_pico` stay in `build.rs` (or keep their directive emission
+  there). Only pure data/parse/generate fns move.
+- Make the `generate_*` fns pure (`-> String` returning the file body) so they
+  are unit-testable; `build.rs` keeps the `fs::write` to `OUT_DIR`.
+- Movable (pure): `is_embedded_target`, `extract_function_name`,
+  `extract_typedef_name`, `is_plausible_generated_header`, `post_process_header`,
+  `arch_matches`, `apply_arch`, `add_c_sources_recursive`,
+  `add_zenoh_pico_core_sources`, `detect_riscv_compiler`, `get_picolibc_sysroot`,
+  `has_picolibc_specs`, `read_symbol_size`, the `ShimConfig` / `ZenohBufferConfig`
+  struct data + their pure methods (`generate_rust_consts` → return String,
+  `apply_to_cc`, `generate_config_header`), and the header/`.pc`/version
+  generators.
+
+Verification gate (env must be active — `source ./activate.sh`, sets
+`FREERTOS_PORT` etc.): `cargo check -p zpico-sys` is **green at baseline**
+(~21 s, default features) — run it after every extraction step. Default features
+exercise only one platform path; broad platform coverage relies on `just ci`.
+
+Next step was writing the implementation plan
+(`docs/superpowers/plans/`), then executing the extraction as sequential,
+`cargo check`-gated steps (the moves share the new crate, so they are not
+parallelizable). A full structural map of `build.rs` (every fn, line range, the
+MOVE/STAY split, env vars, and OUT_DIR outputs) was produced but not yet
+written to a file — regenerate it with a read-only `Explore` pass over
+`build.rs` if resuming in a fresh session.
