@@ -5,6 +5,13 @@ project tree (git submodule, `west` manifest, ESP-IDF component, etc.)
 and built in-tree via `add_subdirectory(nano-ros)`. There is no binary
 tarball, no system-wide install step, no `find_package(NanoRos)`.
 
+> **`activate.sh` is the after-install step, NOT a prereq.** Sourcing
+> `activate.sh` (or `activate.fish`, or `direnv allow`) only wires the
+> workspace env into a new shell — it presumes the `nros` binary
+> already exists at `packages/cli/target/release/nros`. The three
+> bootstrap paths below (A/B/C) are what produce that binary; the
+> activate file is what makes it findable in every subsequent shell.
+
 > See [build-as-subdirectory.md](build-as-subdirectory.md) for the
 > canonical user incantation (4-line `CMakeLists.txt`). This page
 > walks the surrounding workspace + per-target setup choices.
@@ -81,27 +88,44 @@ sources a board needs are fetched from a pinned index and placed in a
 shared store (`~/.nros/sdk`). You do **not** install cross-toolchains by
 hand, and you do not need ROS 2 on the machine.
 
-### 1. Build the `nros` CLI from the in-tree sub-workspace (Phase 218)
+### 1. Get the `nros` CLI onto PATH
 
-```bash
+Pick one path from a fresh checkout — `just` is NOT a prereq.
+
+**A. Bare machine** (no Rust, no `just`, no cargo):
+```sh
 git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-source ./activate.sh          # OR: direnv allow / source ./activate.fish
-just setup-cli                # builds packages/cli/target/release/nros
+./scripts/bootstrap.sh base
+```
+Installs rustup, just, builds the in-tree `nros` CLI at
+`packages/cli/target/release/nros`, leaves the binary on PATH for
+this shell.
+
+**B. Already have cargo** (most contributors):
+```sh
+cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+export PATH="$PWD/packages/cli/target/release:$PATH"
 ```
 
-`just setup-cli` runs `cargo build --release --manifest-path
-packages/cli/Cargo.toml --bin nros`, producing the per-checkout binary
-at `packages/cli/target/release/nros`. Activating the workspace
-(`activate.sh` / `activate.fish` / `direnv allow`) puts that directory
-on `PATH`, so `nros --version` resolves to the in-tree build. **One
-checkout = one CLI version = one runtime ABI** — no global install,
-no `~/.nros/bin` PATH skew across worktrees.
+**C. Tagged release, no Rust at all**:
+```sh
+./scripts/install-nros-prebuilt.sh
+```
+Downloads the matching `nros-<triple>.tar.gz` from the GitHub release,
+sha256-verifies, installs to `packages/cli/target/release/nros`.
 
-### 2. Activate the workspace (every shell)
+All three paths produce the per-checkout binary at
+`packages/cli/target/release/nros`. **One checkout = one CLI version =
+one runtime ABI** — no global install, no `~/.nros/bin` PATH skew
+across worktrees.
 
-Pick whichever fits your shell — all three wire the same env exports +
-PATH entries from the Phase 218.C SSoT `activate.sh`:
+### 2. Activate the workspace (every subsequent shell)
+
+The bootstrap path you ran in §1 left `nros` on PATH for *that* shell
+only. Every new shell needs the workspace env wired in. Pick whichever
+fits your shell — all three wire the same env exports + PATH entries
+from the Phase 218.C SSoT `activate.sh`:
 
 ```bash
 direnv allow                  # auto-activates on `cd nano-ros` (recommended)
@@ -211,8 +235,8 @@ toolchains a contributor gets are identical to a user's.
 ```bash
 git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
+./scripts/bootstrap.sh base   # path A from §1 above; gets rustup + just + nros
 source ./activate.sh          # OR: direnv allow / source ./activate.fish
-just setup-cli                # build the in-tree nros CLI (Phase 218)
 just setup all                # provision every supported board's SDK/toolchain
 ```
 

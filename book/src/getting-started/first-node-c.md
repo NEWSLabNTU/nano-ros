@@ -4,21 +4,46 @@ Build, run, and verify a single nano-ros publisher node on Linux from
 C. Uses CMake, the Zenoh backend, and `add_subdirectory` consumption.
 
 > **Stuck?** See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md) for the common first-build errors.
->
-> **Prereqs.** Install the `nros` CLI and provision the native host.
-> `nros setup native` installs the zenoh router (`zenohd`) into a
-> shared store — no ROS 2 needed.
->
-> ```bash
-> # Build the in-tree nros CLI (Phase 218):
-> source ./activate.sh        # OR: direnv allow / source ./activate.fish
-> just setup-cli
->
-> # Provision the native host for the zenoh RMW:
-> nros setup native --rmw zenoh
-> ```
->
-> See [Install + first build (Linux)](./installation.md) for more.
+
+## Prereqs
+
+Pick one path from a fresh checkout — `just` is NOT a prereq.
+
+**A. Bare machine** (no Rust, no `just`, no cargo):
+```sh
+./scripts/bootstrap.sh base
+```
+Installs rustup, just, builds the in-tree `nros` CLI at
+`packages/cli/target/release/nros`, leaves the binary on PATH for
+this shell.
+
+**B. Already have cargo** (most contributors):
+```sh
+cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+export PATH="$PWD/packages/cli/target/release:$PATH"
+```
+
+**C. Tagged release, no Rust at all**:
+```sh
+./scripts/install-nros-prebuilt.sh
+```
+Downloads the matching `nros-<triple>.tar.gz` from the GitHub release,
+sha256-verifies, installs to `packages/cli/target/release/nros`.
+
+Every subsequent shell sources the workspace env via one of:
+```sh
+direnv allow                  # if you use direnv
+source ./activate.sh          # bash / zsh
+source ./activate.fish        # fish
+```
+
+Then provision the native host (installs the zenoh router `zenohd`
+into a shared store — no ROS 2 needed):
+```sh
+nros setup native --rmw zenoh
+```
+
+See [Install + first build (Linux)](./installation.md) for more.
 
 ## Project layout
 

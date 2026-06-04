@@ -28,6 +28,43 @@ Three common triggers:
 
 That's when you split your project into the three-role model.
 
+## Prereqs
+
+Pick one path from a fresh checkout — `just` is NOT a prereq.
+
+**A. Bare machine** (no Rust, no `just`, no cargo):
+```sh
+./scripts/bootstrap.sh base
+```
+Installs rustup, just, builds the in-tree `nros` CLI at
+`packages/cli/target/release/nros`, leaves the binary on PATH for
+this shell.
+
+**B. Already have cargo** (most contributors):
+```sh
+cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+export PATH="$PWD/packages/cli/target/release:$PATH"
+```
+
+**C. Tagged release, no Rust at all**:
+```sh
+./scripts/install-nros-prebuilt.sh
+```
+Downloads the matching `nros-<triple>.tar.gz` from the GitHub release,
+sha256-verifies, installs to `packages/cli/target/release/nros`.
+
+Every subsequent shell sources the workspace env via one of:
+```sh
+direnv allow                  # if you use direnv
+source ./activate.sh          # bash / zsh
+source ./activate.fish        # fish
+```
+
+Then provision the native host:
+```sh
+nros setup native --rmw zenoh
+```
+
 ## The three roles
 
 **Node pkg** — a `lib` crate that contains one node's logic. It
@@ -67,15 +104,18 @@ already know:
 | ROS 2 | nano-ros | Notes |
 |---|---|---|
 | `ros2 pkg create` | `nros new <name> --platform <plat> [--lang <lang>]` | scaffolds a Node pkg |
-| `colcon build` | `cargo build` (Rust) / `cmake --build build` (C++) | `nros build` delegates to these |
-| `ros2 launch <pkg> <file>` | `nros launch <bringup> [--launch <file>]` | host-side; no ament install |
+| `colcon build` | `cargo build` (Rust) / `cmake --build build` (C++) | use the underlying tool directly |
+| `ros2 launch <pkg> <file>` | `cargo run -p <entry_pkg>` (single-deploy) | `nros launch` is deferred per Phase 222.D; composed Entry pkg IS the launch product |
 | (plan/validate) | `nros plan` → `nros check` | resolve + statically check the topology |
 | `ros2 run <pkg> <exe>` | run the Entry pkg binary (`cargo run`) | one Entry pkg per board |
 
-`nros build` and `nros deploy` exist in the CLI but **delegate** to
-the underlying build system — `cargo` for Rust, `cmake` for C/C++,
-`west` for Zephyr. Use those tools directly when you need fine-grained
-control; `nros build` is the convenience wrapper.
+Build verbs (`cargo` for Rust, `cmake` for C/C++, `west` for Zephyr,
+`idf.py` for ESP-IDF) are used directly — there is no `nros build`
+indirection. The composed Entry pkg binary IS the launch product:
+one Entry pkg = one binary = one process. Multi-process orchestration
+(equivalent to multiple `ros2 launch` nodes in separate processes) is
+a separate Entry pkg per deploy + a shell script / tmux session, not
+a CLI verb.
 
 ## The app-node shape stays valid
 
