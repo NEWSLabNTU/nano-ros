@@ -16,6 +16,7 @@
 - [Prepare node packages](./getting-started/workspace-node-pkgs.md)
 - [Bringup: launch + system.toml](./getting-started/workspace-bringup.md)
 - [Entry package: boot on a board](./getting-started/workspace-entry-pkg.md)
+- [C / C++ workspace track](./getting-started/workspace-cpp.md)
 - [Troubleshooting — First 10 Minutes](./getting-started/troubleshooting-first-10-min.md)
 
 # Embedded Starters

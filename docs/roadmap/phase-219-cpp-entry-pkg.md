@@ -502,7 +502,7 @@ but is required for the end-to-end acceptance bar (§6).
       both register fns fire + the talker actually publishes.
       Regression guard for every other 219 item; doubles as the
       live example for 219.G. (The two original sub-items merged.)
-- [ ] **219.G — Book chapter.** Add
+- [x] **219.G — Book chapter.** Add
       `book/src/concepts/cpp-entry-pkg.md` (or fold into
       `concepts/multi-node-workspace.md`) showing the §3.6
       workspace-root + the per-pkg shapes + the §3.4 macro form,
