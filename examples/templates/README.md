@@ -7,6 +7,13 @@ standalone project you can copy into your own tree and customize.
 
 ## Contents
 
+- `pure-c-workspace/` — Phase 223 pure-C 3-role workspace: C Node
+  pkgs, C Bringup pkg, and a C Entry pkg generated through
+  `nano_ros_entry(LANG c LAUNCH ...)`.
+
+- `c-and-cpp-mixed-workspace/` — Phase 223 mixed-language 3-role
+  workspace: C Node pkg, C++ Node pkg, Bringup pkg, and C++ Entry pkg.
+
 - `multi-package-workspace/` — mixed C + C++ + Rust packages
   sharing one nano-ros install via `CMAKE_PREFIX_PATH` and
   Cargo `[patch.crates-io]`. Demonstrates the Phase 123 Pattern A

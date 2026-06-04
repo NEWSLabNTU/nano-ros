@@ -26,6 +26,11 @@ Three common triggers:
    production. The node logic is identical; only the boot and board
    differ.
 
+4. **Mixed implementation languages.** You want to keep a C driver or
+   legacy C node, but host the composed system in a C++ or Rust Entry
+   pkg. The Node-pkg register ABI is language-neutral, so a C Node pkg
+   can link into the same Entry binary as C++ or Rust Node pkgs.
+
 That's when you split your project into the three-role model.
 
 ## Prereqs
@@ -135,6 +140,9 @@ Walk through the three-role model step by step:
    your topology in a Bringup pkg.
 3. [Entry package: boot on a board](./workspace-entry-pkg.md) — write
    the Entry pkg that boots everything together.
+
+For C Node pkgs hosted by a C++ Entry pkg, see
+[Mixed-language workspace](./workspace-mixed-language.md).
 
 For the full API reference covering all three roles, see
 [Node, Bringup & Entry Packages](../user-guide/component-and-entry-pkg.md).

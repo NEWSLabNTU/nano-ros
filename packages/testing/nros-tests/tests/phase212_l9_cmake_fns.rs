@@ -45,6 +45,13 @@ fn stage(cmake_body: &str, project_name: &str) -> (tempfile::TempDir, PathBuf, P
         "int phase212_l9_stub() { return 0; }\n",
     )
     .unwrap();
+    fs::write(
+        root.join("src/dummy.c"),
+        "#include <nros/node_pkg.h>\n\
+         static nros_ret_t register_talker(nros_node_context_t* ctx) { (void)ctx; return NROS_RET_OK; }\n\
+         NROS_NODE_REGISTER(register_talker);\n",
+    )
+    .unwrap();
     let cml = format!(
         "cmake_minimum_required(VERSION 3.22)\n\
          project({project_name} C CXX)\n\
@@ -108,6 +115,38 @@ fn nano_ros_node_register_emits_metadata() {
     assert!(
         body_lc.contains("\"pkg_dir\""),
         "metadata missing pkg_dir field:\n{body}"
+    );
+}
+
+#[test]
+fn nano_ros_node_register_accepts_c_language() {
+    if !require_prereqs() {
+        nros_tests::skip!("cmake not on PATH");
+    }
+    let body = "nano_ros_node_register(\n  \
+                NAME talker\n  CLASS c_talker_pkg::Talker\n  \
+                LANGUAGE C\n  SOURCES src/dummy.c\n  DEPLOY native)\n";
+    let (_g, root, build) = stage(body, "c_talker_pkg");
+    let out = configure(&root, &build);
+    assert!(
+        out.status.success(),
+        "cmake configure failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let meta = build.join("nros-metadata.json");
+    let body = fs::read_to_string(&meta).expect("read metadata");
+    assert!(
+        body.contains("\"class\": \"c_talker_pkg::Talker\""),
+        "metadata class mismatch:\n{body}"
+    );
+    assert!(
+        body.contains("\"sources\": [\"src/dummy.c\"]"),
+        "metadata sources mismatch:\n{body}"
+    );
+    assert!(
+        body.contains("\"lang\": \"c\""),
+        "metadata lang mismatch:\n{body}"
     );
 }
 

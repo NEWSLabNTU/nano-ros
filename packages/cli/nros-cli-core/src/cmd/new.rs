@@ -215,20 +215,15 @@ pub fn run(args: Args) -> Result<()> {
         .to_string();
 
     // Component mode (Phase 172 W.3): a reusable planned-mode library node.
-    // Platform-agnostic. Phase 172 W.3 landed Rust; Phase 219.M landed C++
-    // (declarative §212.L.9 Node pkg shape). C is deferred — the
-    // `NROS_COMPONENT(pkg, register_fn)` macro semantics need a 1-arg shim
-    // before a hand-rolled C scaffold matches the freertos fixture shape.
+    // Platform-agnostic. Phase 172 W.3 landed Rust; Phase 219.M landed C++;
+    // Phase 223 adds the C Node pkg scaffold using the same declarative
+    // §212.L.9 shape.
     if args.component {
         match args.lang.as_str() {
-            "rust" | "cpp" => {}
-            "c" => bail!(
-                "`nros new --component --lang c` is not yet supported (Phase \
-                 219.M follow-up). Use `--lang cpp` or `--lang rust`."
-            ),
+            "rust" | "cpp" | "c" => {}
             other => bail!(
                 "`nros new --component --lang {other}` is not supported. Use \
-                 `rust` or `cpp` (Phase 219.M)."
+                 `rust`, `c`, or `cpp`."
             ),
         }
         return scaffold_component(&ComponentScaffoldConfig {
