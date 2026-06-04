@@ -34,6 +34,11 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    super::emit_deprecation_warning(
+        "run",
+        "cargo run / west <runner> run / probe-rs run / idf.py monitor",
+    );
+
     let root = match args.project {
         Some(p) => p,
         None => std::env::current_dir()?,

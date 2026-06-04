@@ -61,6 +61,11 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    super::emit_deprecation_warning(
+        "build",
+        "cargo build / cmake --build / west build / idf.py build",
+    );
+
     let root = match args.project.clone() {
         Some(p) => p,
         None => std::env::current_dir()?,

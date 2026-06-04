@@ -20,6 +20,8 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    super::emit_deprecation_warning("monitor", "probe-rs attach / idf.py monitor / picocom");
+
     // v1: assume ESP32 monitor is the desired path. Other platforms
     // print their own panic decoders directly via the QEMU stdout
     // stream (semihosting) — for those, `just <plat> run` already
