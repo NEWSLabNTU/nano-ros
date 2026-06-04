@@ -10,6 +10,10 @@ description = "Common code for QEMU bare-metal examples with smoltcp + zenoh-pic
 name = "qemu_rs_common"
 
 [dependencies]
+# Phase 214.H.2 — consume the SSoT `SOCKET_BUFFER_SIZE` from
+# `nros-smoltcp` so the reference bridge stays in lock-step with the
+# canonical smoltcp socket-buffer footprint.
+nros-smoltcp = { path = "../../drivers/nros-smoltcp", default-features = false }
 lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp" }
 smoltcp = { version = "0.12", default-features = false, features = [
     "medium-ethernet",

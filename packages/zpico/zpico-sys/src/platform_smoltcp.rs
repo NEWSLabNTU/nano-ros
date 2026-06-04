@@ -139,8 +139,13 @@ struct SocketEntry {
     tx_len: usize,
 }
 
-/// Socket RX/TX buffer size
-const SOCKET_BUFFER_SIZE: usize = 2048;
+// Phase 214.H.2 — `SOCKET_BUFFER_SIZE = 2048` is the SSoT in
+// `nros-smoltcp` (build.rs-emitted, env-tunable via
+// `NROS_SMOLTCP_BUFFER_SIZE`). This shim consumes it directly so the
+// two smoltcp-backed transport surfaces (`nros-smoltcp` driver +
+// `zpico-sys` platform shim) stay in lock-step on the rx/tx buffer
+// footprint.
+use nros_smoltcp::SOCKET_BUFFER_SIZE;
 
 /// Socket buffers
 static mut SOCKET_RX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_SOCKETS] =

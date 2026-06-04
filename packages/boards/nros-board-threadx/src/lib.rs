@@ -81,6 +81,28 @@
 
 #![no_std]
 
+// Phase 214.H.1 — single source of truth for the storage sizes both
+// `entry.rs` and `node.rs` (the two ThreadX dispatch surfaces) share.
+// Previously each file carried its own
+//   const CTX_STORAGE_SIZE: usize = 8192;
+//   const IFACE_BUF_SIZE: usize = 64;
+// pair, with `assert!`-style call sites referring to the literal
+// names. Bump them here once; both consumers pick up the change.
+mod sizes {
+    /// Storage for the per-board `AppContext` blob (board init writes
+    /// transport state into this; the run-loop reads it). 8 KB covers
+    /// the canonical zenoh-pico session + lwIP iface footprint with
+    /// headroom; bump if `AppContext` outgrows it (the run loops
+    /// `assert!(size <= CTX_STORAGE_SIZE)` will trip first).
+    pub(crate) const CTX_STORAGE_SIZE: usize = 8192;
+
+    /// Storage for the canonical network-interface name buffer the
+    /// ThreadX glue passes through to the bsd / nsos shim. 64 bytes
+    /// matches `IFNAMSIZ`-style limits on every supported host
+    /// (Linux `IFNAMSIZ = 16`, BSD = 16; we round up for slack).
+    pub(crate) const IFACE_BUF_SIZE: usize = 64;
+}
+
 mod entry;
 mod node;
 

@@ -108,6 +108,11 @@ zpico-link-ivc = { workspace = true, optional = true }
 # C custom-link factory calls. Optional; only pulled in when
 # `link-custom` is enabled.
 zpico-platform-custom = { workspace = true, optional = true }
+# Phase 214.H.2 — consume the SSoT `SOCKET_BUFFER_SIZE` from
+# `nros-smoltcp` so the zpico smoltcp platform shim stays in
+# lock-step with the canonical socket-buffer footprint. Default-
+# features off because `nros-smoltcp` is an embedded driver crate.
+nros-smoltcp = { path = "../../drivers/nros-smoltcp", default-features = false }
 
 [build-dependencies]
 cbindgen = "0.29"

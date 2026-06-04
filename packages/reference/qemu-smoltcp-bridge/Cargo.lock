@@ -105,11 +105,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nros-platform-api"
+version = "0.1.0"
+
+[[package]]
+name = "nros-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "nros-platform-api",
+ "portable-atomic",
+ "smoltcp",
+]
+
+[[package]]
+name = "portable-atomic"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
+
+[[package]]
 name = "qemu-rs-common"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
  "lan9118-smoltcp",
+ "nros-smoltcp",
  "smoltcp",
 ]
 

@@ -83,13 +83,15 @@ struct AppContext<C, F> {
 /// a handful of node handles); asserted at runtime in `run_entry()`
 /// so overflow is caught loudly instead of corrupting adjacent
 /// memory.
-const CTX_STORAGE_SIZE: usize = 8192;
+// Phase 214.H.1 — both constants live in the crate-level `sizes` module
+// (`lib.rs`); see there for the rationale + bump procedure.
+use crate::sizes::{CTX_STORAGE_SIZE, IFACE_BUF_SIZE};
+
 static mut CTX_STORAGE: [u8; CTX_STORAGE_SIZE] = [0u8; CTX_STORAGE_SIZE];
 
 /// Static interface-name buffer for the C FFI's `interface_name`
 /// argument. Linux overlay copies its `Config::interface` here +
 /// appends NUL; bare-metal overlays leave it empty and pass `NULL`.
-const IFACE_BUF_SIZE: usize = 64;
 static mut IFACE_BUF: [u8; IFACE_BUF_SIZE] = [0u8; IFACE_BUF_SIZE];
 
 /// ThreadX task entry for the application closure (212.N flavour —

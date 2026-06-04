@@ -4362,6 +4362,7 @@ dependencies = [
  "cc",
  "nros-board-common",
  "nros-build-paths",
+ "nros-smoltcp",
  "pkg-config",
  "zpico-link-ivc",
  "zpico-platform-custom",

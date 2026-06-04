@@ -30,8 +30,12 @@ use crate::clock;
 /// Maximum number of sockets
 pub const MAX_SOCKETS: usize = 4;
 
-/// Socket buffer size
-const SOCKET_BUFFER_SIZE: usize = 2048;
+// Phase 214.H.2 — `SOCKET_BUFFER_SIZE = 2048` is the SSoT in
+// `nros-smoltcp` (build.rs-emitted, env-tunable via
+// `NROS_SMOLTCP_BUFFER_SIZE`). The reference bridge consumes the
+// same SSoT so the two smoltcp-backed transport surfaces stay in
+// lock-step on the rx/tx buffer footprint.
+use nros_smoltcp::SOCKET_BUFFER_SIZE;
 
 /// Next ephemeral port
 static mut NEXT_EPHEMERAL_PORT: u16 = 49152;
