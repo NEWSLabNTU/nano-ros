@@ -65,6 +65,18 @@ rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 # and `packages/core/nros-node/build.rs` for the auto-detect path.
 rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys", "nros-node/__cyclonedds-link"]
 
+# Phase 214.S.5.c.4 — parity rows for `rmw-zenoh` + `rmw-xrce`,
+# mirroring the cyclonedds shape above. Each pulls the matching
+# backend crate as an optional dep. `cargo build --features
+# rmw-zenoh` on a Component pkg's `nros` dep transitively pulls
+# `nros-rmw-zenoh` into the link graph; the cffi-vtable walker
+# (`RMW_INIT_ENTRIES`) discovers it at `Executor::open`. Used by
+# `just freertos build-examples` / `just threadx_linux build-examples`
+# which invoke `cargo build --features rmw-zenoh` (or `rmw-xrce`)
+# to exercise the alternative-backend build path.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
+
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix.
 rmw-lending = ["nros-node/rmw-lending"]
@@ -176,6 +188,15 @@ nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features
 # from CMake / Zephyr opt out via `default-features = false` at the
 # umbrella's `[dependencies]` entry on their side.
 nros-rmw-cyclonedds-sys = { workspace = true, optional = true }
+# Phase 214.S.5.c.4 — pulled in by the `rmw-zenoh` / `rmw-xrce`
+# umbrella features. Both are header-only at link-time (vtable
+# registration happens via the `RMW_INIT_ENTRIES` walker); the
+# concrete crate just needs to be in the link graph for the
+# walker to discover its constructor section. `default-features`
+# kept off so the umbrella user picks transport links via the
+# concrete crate's own feature surface.
+nros-rmw-zenoh = { version = "0.1.0", path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
+nros-rmw-xrce-cffi = { version = "0.1.0", path = "../../xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
 # Phase 128.G — bridge surface (manifest-driven multi-RMW). Optional;
 # only pulled in when the umbrella's `bridge` or `config` feature is
 # enabled.

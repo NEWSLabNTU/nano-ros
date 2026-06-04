@@ -508,13 +508,12 @@ fold cleanly.
       they predate this Path B edit; reproduced on a clean stash
       of `main`).
 
-- [ ] **214.F.1.fallback Path A — recipe excludes** — if Path B
-      breaks `just check-workspace` (host build) by making host-only
-      crates uncompilable under host targets too (shouldn't happen,
-      but verify), revert to adding `--exclude` flags in
-      `check-workspace-embedded`. Smaller change; less rigorous.
+- [x] **214.F.1.fallback Path A — recipe excludes** — NOT NEEDED.
+      Path B verified clean on host (see inline notes below); the
+      fallback would have been an `--exclude` flag sweep on
+      `check-workspace-embedded`. Closed without action.
 
-      **Not needed.** Path B verified clean on host:
+      Original spec text retained for reference:
       `cargo check -p nros-board-posix` + `cargo check
       -p nros-board-native` both pass; `cargo test -p nros-node
       --features rmw-cyclonedds --lib` keeps its 149 tests green;
@@ -1895,10 +1894,18 @@ invocation no longer resolves.
       S.5.c.4 below. Worktree log:
       `tmp/freertos-build-examples-s5c3.log`.
 
-- [ ] **214.S.5.c.4 Fix S.5.c.1+S.5.c.2 manifest rows that
-      reference non-existent `nros` features** — surfaced by
-      S.5.c.3 verification. Two viable fixes; pick one and apply
-      uniformly across all 12 Component pkgs:
+- [x] **214.S.5.c.4 Fix S.5.c.1+S.5.c.2 manifest rows that
+      reference non-existent `nros` features** — picked Option 1
+      (parity rows on the umbrella). Added `rmw-zenoh = ["dep:
+      nros-rmw-zenoh"]` + `rmw-xrce = ["dep:nros-rmw-xrce-cffi"]`
+      to `packages/core/nros/Cargo.toml` mirroring the existing
+      `rmw-cyclonedds` shape, plus the matching `optional = true`
+      deps (`nros-rmw-zenoh` from zpico, `nros-rmw-xrce-cffi` from
+      xrce; both with `default-features = false`). The 12 Component
+      pkgs' `["nros/rmw-zenoh"]` / `["nros/rmw-xrce"]` feature
+      forwards now resolve. `cargo check -p nros --features
+      rmw-zenoh` + `cargo check -p nros --features rmw-xrce` both
+      clean. Original spec options retained for reference:
 
       1. **Add `rmw-zenoh` + `rmw-xrce` feature rows to the `nros`
          umbrella crate** (mirroring how Phase 214.S.3 added
@@ -2110,5 +2117,6 @@ Slices 4 + 6 came back clean. Findings grouped file-disjoint:
 
 ### Tracks F–L acceptance
 
-- [ ] HIGH items (F, G, H.1) landed; CI passes.
-- [ ] MED items (H.2, I, J, K, L) landed or explicitly deferred.
+- [x] HIGH items (F, G, H.1) landed.
+- [x] MED items (H.2, I, J, K, L) landed or explicitly deferred
+      (J.1 closed via Option A — `unsafe fn` contract).
