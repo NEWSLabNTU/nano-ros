@@ -199,8 +199,9 @@ fn plan_system_succeeds_with_cargo_metadata_alpha_bridge() {
     }
 }
 
+/// Verifies system planning still reports missing metadata for a pure empty package.
 #[test]
-fn plan_system_still_reports_missing_metadata_for_pure_empty_pkg() {
+fn plan_system_reports_missing_metadata() {
     // Inverse case: a workspace member that has NEITHER a sidecar
     // metadata JSON NOR a cargo metadata table still trips the
     // `missing-source-metadata` diagnostic. The α-bridge is additive —

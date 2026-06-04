@@ -319,8 +319,9 @@ mod tests {
         );
     }
 
+    /// Verifies generated Cargo args allow CLI target and passthrough overrides.
     #[test]
-    fn generated_cargo_args_allow_cli_target_and_passthrough_overrides() {
+    fn generated_cargo_args_allow_overrides() {
         let plan = fixture_plan("plan_pub_sub.json");
 
         assert_eq!(
@@ -430,8 +431,9 @@ mod tests {
         dir
     }
 
+    /// Verifies freshness requires a present crate, matching stamp, and no force flag.
     #[test]
-    fn freshness_requires_crate_present_matching_stamp_and_not_forced() {
+    fn freshness_requires_crate_match_stamp() {
         let dir = temp_dir("nros-staleness");
         let fp = "deadbeefdeadbeef";
 

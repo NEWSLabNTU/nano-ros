@@ -427,8 +427,9 @@ EOF
         path
     }
 
+    /// Verifies CycloneDDS descriptor codegen emits C for `std_msgs/Int32`.
     #[test]
-    fn nros_codegen_cyclonedds_descriptors_emits_c_for_std_msgs_int32() {
+    fn codegen_cyclonedds_emits_std_msgs() {
         let dir = scratch_dir("emits_c_for_std_msgs_int32");
         let stub = write_stub_idlc(&dir);
         let include = dir.join("include");
@@ -561,8 +562,9 @@ EOF
         );
     }
 
+    /// Verifies CycloneDDS descriptor codegen rejects duplicate message stems.
     #[test]
-    fn nros_codegen_cyclonedds_descriptors_rejects_duplicate_msg_stem() {
+    fn codegen_cyclonedds_rejects_duplicate_stem() {
         let dir = scratch_dir("rejects_duplicate_msg_stem");
         let stub = write_stub_idlc(&dir);
         let include = dir.join("include");

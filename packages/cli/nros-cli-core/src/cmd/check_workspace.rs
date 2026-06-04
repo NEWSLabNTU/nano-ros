@@ -885,8 +885,9 @@ mod tests {
     // Phase 212.O.6 — `application-rtos-deploy-forbidden`
     // ------------------------------------------------------------------
 
+    /// Verifies workspace checks reject application packages with an RTOS entry in deploy.
     #[test]
-    fn nros_check_workspace_rejects_application_pkg_with_rtos_in_deploy() {
+    fn check_workspace_rejects_rtos_in_deploy() {
         let root = temp_root("o6_app_rtos");
         let pkg = root.join("demo_app");
         fs::create_dir_all(pkg.join("src")).unwrap();
@@ -925,8 +926,9 @@ mod tests {
         assert_eq!(report.pkgs_visited, 1);
     }
 
+    /// Verifies workspace checks accept application packages without a deploy list.
     #[test]
-    fn nros_check_workspace_accepts_application_pkg_without_deploy_list() {
+    fn check_workspace_accepts_no_deploy_list() {
         // Empty / absent deploy list is allowed by the O.6 lint (the schema
         // tolerates it; the lint only flags RTOS names when present).
         let root = temp_root("o6_app_no_deploy");

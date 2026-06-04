@@ -1356,8 +1356,9 @@ nano_ros_node_register(
         assert_eq!(cfg.language, ComponentLanguage::Cpp);
     }
 
+    /// Verifies CMake declarations are skipped when nros.toml declares the same pair.
     #[test]
-    fn cmake_decls_skipped_when_nros_toml_already_declares_same_pair() {
+    fn cmake_decls_skip_duplicate_pair() {
         // Explicit `nros.toml` `[component]` table wins over cmake parse.
         let s = Scratch::new("219l");
         s.write(

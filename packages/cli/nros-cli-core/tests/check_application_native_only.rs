@@ -45,8 +45,9 @@ fn copy_dir(src: &Path, dst: &Path) {
     }
 }
 
+/// Verifies workspace checks reject an application package with RTOS deploy entries.
 #[test]
-fn nros_check_workspace_rejects_application_pkg_with_rtos_deploy() {
+fn check_workspace_rejects_rtos_deploy() {
     let root = temp_root("application_with_rtos_deploy");
     copy_dir(&fixture_root(), &root);
     let cargo_toml = root.join("demo_app/Cargo.toml");

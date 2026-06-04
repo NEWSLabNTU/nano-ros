@@ -562,8 +562,9 @@ mod tests {
         std::fs::remove_dir_all(path.parent().unwrap()).ok();
     }
 
+    /// Verifies SDK planning prefers present tools, then prebuilt, then source, then unavailable.
     #[test]
-    fn plan_picks_present_then_prebuilt_then_source_then_unavailable() {
+    fn plan_picks_present_prebuilt_source() {
         let idx = SdkIndex::parse(
             "[tool.qemu]\nversion=\"11.0\"\ndist.linux-x86_64={url=\"u\",sha256=\"h\"}\n\
              [tool.qemu.source]\ngit=\"g\"\nref=\"r\"\n\

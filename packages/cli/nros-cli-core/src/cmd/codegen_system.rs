@@ -1365,8 +1365,9 @@ locator = "tcp/127.0.0.1:7447"
     /// Phase 212.L.7 — `[workspace.metadata.nros].default_system` may point
     /// at a self-bringup component pkg; `nros codegen-system` (no
     /// `--bringup` hint) resolves through the workspace pointer.
+    /// Verifies system codegen resolves a workspace default system to the self bringup package.
     #[test]
-    fn codegen_system_resolves_workspace_default_system_to_self_bringup_pkg() {
+    fn codegen_system_resolve_self_bringup_default() {
         let dir = scratch_dir("workspace_default_self_bringup");
         fs::write(
             dir.join("Cargo.toml"),
@@ -1477,7 +1478,7 @@ domain_id = 3
     /// `nros_<plat>_<snake>` alias OR dir-identity fallback. Reproduces the
     /// `just zephyr build-fixtures` cyclonedds variant failure.
     #[test]
-    fn codegen_system_resolves_alias_for_collapsed_zephyr_example_shape() {
+    fn codegen_system_resolves_zephyr_alias() {
         let dir = scratch_dir("alias_collapsed_zephyr_shape");
         // Lay out a fake `examples/zephyr/rust/action-client/` self-bringup
         // pkg under a workspace root.

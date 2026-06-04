@@ -42,6 +42,8 @@ fn fixture_workspace_plans_checks_and_builds_generated_package() {
         system_pkg: "e2e_system".to_string(),
         launch_file: demo_pkg.join("launch/system.launch.xml"),
         record: None,
+        file: None,
+        exec: None,
         workspace: Some(fixture.clone()),
         out_dir: Some(out_dir.clone()),
         metadata: Vec::new(),
@@ -56,6 +58,7 @@ fn fixture_workspace_plans_checks_and_builds_generated_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated plan");
 
@@ -177,6 +180,7 @@ fn fixture_workspace_plans_checks_and_builds_generated_package() {
         plan: multi_plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated multi-instance plan");
     let multi_generated_dir = out_dir.join("generated-multi");
@@ -219,6 +223,7 @@ fn fixture_workspace_plans_checks_and_builds_generated_package() {
         plan: persist_plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates persistence plan");
     let persist_generated_dir = out_dir.join("generated-persist");
@@ -245,8 +250,9 @@ fn fixture_workspace_plans_checks_and_builds_generated_package() {
     );
 }
 
+/// Verifies the fixture workspace builds and boots a generated FreeRTOS package.
 #[test]
-fn fixture_workspace_builds_and_boots_generated_freertos_package() {
+fn fixture_builds_boots_freertos() {
     let fixture = fixture_workspace();
     let output = temp_output("orchestration_e2e_freertos");
     let out_dir = output.join("build/e2e_system/nros");
@@ -267,6 +273,7 @@ fn fixture_workspace_builds_and_boots_generated_freertos_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated FreeRTOS plan");
     build_generated_package(&BuildOptions {
@@ -338,6 +345,7 @@ fn fixture_workspace_builds_generated_nuttx_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated NuttX plan");
     build_generated_package(&BuildOptions {
@@ -400,6 +408,7 @@ fn fixture_workspace_builds_generated_esp32_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated ESP32 plan");
     build_generated_package(&BuildOptions {
@@ -531,6 +540,7 @@ fn fixture_workspace_generates_zephyr_package_shape() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated Zephyr plan");
 
@@ -627,6 +637,7 @@ fn fixture_workspace_builds_generated_threadx_riscv64_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated ThreadX-RISCV64 plan");
     build_generated_package(&BuildOptions {
@@ -681,6 +692,7 @@ fn fixture_workspace_builds_generated_stm32f4_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated STM32F4 plan");
     build_generated_package(&BuildOptions {
@@ -735,6 +747,7 @@ fn fixture_workspace_builds_generated_bare_metal_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated bare-metal plan");
     build_generated_package(&BuildOptions {
@@ -767,8 +780,9 @@ fn fixture_workspace_builds_generated_bare_metal_package() {
 /// context (no `Box::leak`/alloc). Compile-verifies the static-ctx codegen: the
 /// generated package must build to a `thumbv7m-none-eabi` ELF and its build.rs
 /// must carry the static context (not the std Box::leak ctx / tick loop).
+/// Verifies the fixture workspace builds a generated bare-metal service/action package.
 #[test]
-fn fixture_workspace_builds_generated_bare_metal_service_action_package() {
+fn fixture_builds_service_action_baremetal() {
     let fixture = fixture_workspace();
     let output = temp_output("orchestration_e2e_bare_metal_svc_act");
     let out_dir = output.join("build/e2e_system/nros");
@@ -789,6 +803,7 @@ fn fixture_workspace_builds_generated_bare_metal_service_action_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated bare-metal svc/act plan");
     build_generated_package(&BuildOptions {
@@ -829,8 +844,9 @@ fn fixture_workspace_builds_generated_bare_metal_service_action_package() {
 /// through the module-level static action ctx + `tick_{idx}` + the infinite
 /// `run_tick_loop_nostd` (no `thread_local`/alloc/`is_halted`); the no_std self
 /// shim spins via it. Compile-only (no embedded action client to exchange with).
+/// Verifies the fixture workspace builds a generated bare-metal Fibonacci action package.
 #[test]
-fn fixture_workspace_builds_generated_bare_metal_fibonacci_action_package() {
+fn fixture_builds_fibonacci_action_baremetal() {
     let fixture = fixture_workspace();
     let output = temp_output("orchestration_e2e_bare_metal_fib");
     let out_dir = output.join("build/e2e_system/nros");
@@ -851,6 +867,7 @@ fn fixture_workspace_builds_generated_bare_metal_fibonacci_action_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated bare-metal fib plan");
     build_generated_package(&BuildOptions {
@@ -914,6 +931,7 @@ fn fixture_workspace_builds_generated_threadx_linux_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated ThreadX-Linux plan");
     build_generated_package(&BuildOptions {
@@ -1028,6 +1046,7 @@ fn fixture_workspace_links_mixed_c_component_archive() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated mixed C plan");
     build_generated_package(&BuildOptions {
@@ -1083,6 +1102,7 @@ fn fixture_workspace_builds_generated_service_action_package() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated service/action plan");
     build_generated_package(&BuildOptions {
@@ -1148,6 +1168,7 @@ fn fibonacci_action_tick_drives_example_client_exchange() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated fibonacci plan");
     build_generated_package(&BuildOptions {
@@ -1348,6 +1369,7 @@ fn bridge_forwards_chatter_across_two_zenoh_routers() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated bridge plan");
     build_generated_package(&BuildOptions {
@@ -1451,8 +1473,9 @@ fn metadata_mode_build_emits_source_metadata_for_component() {
 /// Phase 172.E CLI wiring — `nros metadata --build` discovers the declared
 /// `probe_pkg` component (via its `component_nros.toml`), compiles + runs it in
 /// metadata mode to produce the missing `source-metadata`, then collects it.
+/// Verifies metadata build discovers sources and produces missing source metadata.
 #[test]
-fn metadata_build_discovers_and_produces_missing_source_metadata() {
+fn metadata_build_discovers_missing_sources() {
     let ws = codegen_root().join("testing_workspaces/metadata_build_ws");
     let produced = ws.join("src/probe_pkg/node.metadata.json");
     let _ = fs::remove_file(&produced); // start clean (gitignored)
@@ -2169,8 +2192,9 @@ fn deploy_vendor_lib_real_build_with_stub_lib() {
 /// `--dry-run` (parse → resolve → substitute; no `west` invocation). The real
 /// `west` cross-build + native_sim boot is the toolchain-gated follow-up (W.4
 /// step 2/3). Exercises emit = source (vendor-module default), no vendor pin.
+/// Verifies Zephyr vendor-module dry-run deploy resolves and substitutes inputs.
 #[test]
-fn deploy_zephyr_vendor_module_dry_run_resolves_and_substitutes() {
+fn deploy_zephyr_vendor_resolves_subst() {
     deploy::run(deploy::Args {
         name: Some("zephyr-mod".to_string()),
         config: fixture_workspace().join("nros.toml"),

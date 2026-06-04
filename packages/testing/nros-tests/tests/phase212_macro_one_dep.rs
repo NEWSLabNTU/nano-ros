@@ -98,8 +98,9 @@ fn walk(root: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(out)
 }
 
+/// Verifies a one-dependency component package compiles without an explicit platform dependency.
 #[test]
-fn one_dep_component_pkg_compiles_without_explicit_nros_platform_dep() {
+fn one_dep_pkg_compiles_implicit_platform() {
     // Pre-flight: the fixture's manifest must NOT list `nros-platform`
     // as a dep. If it does, the test's signal is meaningless — the
     // macro resolves through the direct dep instead of the

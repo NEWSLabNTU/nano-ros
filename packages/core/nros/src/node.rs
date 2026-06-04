@@ -1478,8 +1478,9 @@ mod tests {
         assert_eq!(runtime.callback_effects().len(), 2);
     }
 
+    /// Verifies the runtime adapter rejects duplicate nodes and unknown effect entities.
     #[test]
-    fn runtime_adapter_rejects_duplicate_nodes_and_unknown_effect_entities() {
+    fn runtime_adapter_rejects_unknown_entities() {
         let mut node_runtime = FakeNodeRuntime::default();
         let mut runtime = NodeRuntimeAdapter::<_, 1, 1, 1>::new(&mut node_runtime);
         runtime
@@ -1575,8 +1576,9 @@ mod tests {
         }
     }
 
+    /// Verifies the component API records multi-node services, actions, and defaults.
     #[test]
-    fn component_api_records_multi_node_services_actions_and_defaults() {
+    fn component_api_records_multi_node_services() {
         let mut recorder = MetadataRecorder::<4, 12, 4>::new();
         record_node_metadata::<RobotComponent>(&mut recorder).unwrap();
 

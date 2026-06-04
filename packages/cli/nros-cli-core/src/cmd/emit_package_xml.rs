@@ -424,8 +424,9 @@ mod tests {
         tempfile_lite::TempDir::new().expect("mkdir tempdir")
     }
 
+    /// Verifies package.xml emission for a component package from Cargo ament metadata.
     #[test]
-    fn emit_package_xml_for_component_pkg_from_cargo_ament_metadata() {
+    fn emit_package_xml_from_cargo_metadata() {
         let td = tempdir();
         write_file(
             td.path(),

@@ -387,7 +387,7 @@ fn test_tt_window_gate_suppresses_outside_window() {
 /// the entry bound to window-0 and suppresses the one bound to
 /// window-1.
 #[test]
-fn test_apply_time_triggered_schedule_dispatches_only_active_window() {
+fn test_time_triggered_dispatch_active_window() {
     use crate::executor::sched_context::{TimeTriggeredSchedule, TimeTriggeredWindow};
 
     let session = MockSession::new();
@@ -638,7 +638,7 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
 /// diagnostic signal end-callers consume to tune budgets.
 #[test]
 #[cfg(feature = "alloc")]
-fn test_atomic_sporadic_overrun_recorded_when_callback_exceeds_budget() {
+fn test_atomic_overrun_exceeds_budget() {
     use crate::executor::{
         sched_context::{OptUs, SchedClass, SchedContext},
         spin::OpaqueTimerHandle,

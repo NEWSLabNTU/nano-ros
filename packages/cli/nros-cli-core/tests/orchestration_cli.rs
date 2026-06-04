@@ -32,6 +32,8 @@ fn orchestration_metadata_plan_check_commands_share_artifacts() {
         system_pkg: "system_pkg".to_string(),
         launch_file: root.join("system.launch.xml"),
         record: Some(root.join("record.json")),
+        file: None,
+        exec: None,
         workspace: Some(root.clone()),
         out_dir: Some(out_dir.clone()),
         metadata: Vec::new(),
@@ -46,6 +48,7 @@ fn orchestration_metadata_plan_check_commands_share_artifacts() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check command validates generated plan");
 
@@ -85,8 +88,9 @@ fn orchestration_metadata_plan_check_commands_share_artifacts() {
 /// plan carries the declared real-time tier instead of the single
 /// `default_executor`, and the binding gains the tier's priority + an
 /// `nros.toml` source. End-to-end through the `plan` + `check` commands.
+/// Verifies orchestration planning binds a callback group to its declared scheduling tier.
 #[test]
-fn orchestration_plan_binds_callback_group_to_declared_scheduling_tier() {
+fn orchestration_plan_binds_tier() {
     use nros_cli_core::orchestration::schema::SchedClass;
 
     let root = temp_workspace("plan_multi_tier_scheduling");
@@ -180,6 +184,8 @@ deadline_policy = "warn"
         system_pkg: "system_pkg".to_string(),
         launch_file: root.join("system.launch.xml"),
         record: Some(root.join("record.json")),
+        file: None,
+        exec: None,
         workspace: Some(root.clone()),
         out_dir: Some(out_dir.clone()),
         metadata: Vec::new(),
@@ -194,6 +200,7 @@ deadline_policy = "warn"
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check validates the multi-tier plan");
 
@@ -248,6 +255,8 @@ fn orchestration_plan_models_managed_lifecycle_from_nros_toml() {
         system_pkg: "system_pkg".to_string(),
         launch_file: root.join("system.launch.xml"),
         record: Some(root.join("record.json")),
+        file: None,
+        exec: None,
         workspace: Some(root.clone()),
         out_dir: Some(out_dir.clone()),
         metadata: Vec::new(),
@@ -262,6 +271,7 @@ fn orchestration_plan_models_managed_lifecycle_from_nros_toml() {
         plan: plan_path.clone(),
         package_xml_drift: Vec::new(),
         bringup: false,
+        workspace: None,
     })
     .expect("check validates the lifecycle plan");
 
@@ -349,8 +359,9 @@ topics:
 /// `ComponentError::MissingExport`. The `metadata` command must
 /// surface that case with the canonical diagnostic string instead of
 /// silently producing an empty `metadata/` directory.
+/// Verifies the orchestration metadata command flags a missing component export.
 #[test]
-fn orchestration_metadata_command_flags_missing_component_export() {
+fn orchestration_metadata_flags_missing_export() {
     let root = temp_workspace("metadata_missing_component_export");
     fs::create_dir_all(root.join("src/demo_pkg")).expect("create workspace");
     fs::write(

@@ -419,8 +419,9 @@ fn bridge_two_transports_emit_open_multi_and_session_specs() {
     );
 }
 
+/// Verifies multi-domain nodes emit one session per domain and route by session index.
 #[test]
-fn multi_domain_nodes_emit_session_per_domain_and_route_by_session_idx() {
+fn multi_domain_emit_session_routes() {
     // Phase 172.K.5 — two nodes on distinct ROS domains put the (non-bridge)
     // build in multi-domain mode: a SESSION_SPECS array with one spec per
     // distinct domain (same rmw), open_multi via build_executor_bridge, NODES
@@ -599,8 +600,9 @@ fn generated_no_std_service_action_uses_static_context() {
     assert!(!build_rs.contains("unsupported generated callback"));
 }
 
+/// Verifies a generated service/action package is readable by Cargo metadata.
 #[test]
-fn generated_service_action_package_is_readable_by_cargo_metadata() {
+fn generated_service_action_readable_by_cargo() {
     let output_dir = generate_workspace_backed_fixture(
         "generated_service_action_package_is_readable_by_cargo_metadata",
         "plan_service_action.json",

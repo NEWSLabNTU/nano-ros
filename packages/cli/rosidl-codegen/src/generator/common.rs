@@ -1253,8 +1253,9 @@ mod schema_tests {
         );
     }
 
+    /// Verifies action goal, result, and feedback type names follow ROSIDL convention.
     #[test]
-    fn action_goal_result_feedback_type_names_follow_rosidl_convention() {
+    fn action_types_follow_rosidl_convention() {
         let goal = build_nros_schema_for_struct(
             "example_interfaces",
             "FibonacciGoal",

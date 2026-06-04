@@ -3189,8 +3189,9 @@ topics:
         assert!(err.contains("missing-interface-entity"), "{err}");
     }
 
+    /// Verifies planning preserves instance callbacks, remaps, and parameter overrides.
     #[test]
-    fn plan_system_keeps_instance_callbacks_remaps_and_parameter_overrides() {
+    fn plan_system_keep_callback_remaps() {
         let root = temp_workspace("nros-plan-callbacks-params");
         fs::create_dir_all(&root).unwrap();
         fs::write(
@@ -4109,8 +4110,9 @@ topics:
 
     // ---- Phase 172.B — callback-chain inference ----
 
+    /// Verifies callback-chain inference links publisher instances to subscriber callbacks.
     #[test]
-    fn infer_callback_chains_links_publisher_instance_to_subscriber_callback() {
+    fn infer_publisher_to_subscriber_chains() {
         // Instance `a`: a timer callback `a/tick` and a publisher on /chatter.
         // Instance `b`: a subscriber on /chatter bound to `b/on_msg`.
         // The timer (a producing callback of the publishing instance) should
@@ -4368,8 +4370,9 @@ topics:
         assert_eq!(lc["autostart"], json!("active"));
     }
 
+    /// Verifies parameter-persistence collection reads block defaults with last-wins semantics.
     #[test]
-    fn collect_param_persistence_reads_block_defaults_and_last_wins() {
+    fn collect_param_persistence_with_defaults() {
         // No [param_persistence] → no persistence.
         assert!(collect_param_persistence(&[json!({})]).is_none());
         // Empty / missing path → dropped (nothing to persist to).

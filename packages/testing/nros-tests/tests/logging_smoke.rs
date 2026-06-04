@@ -159,8 +159,9 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
 /// unified host-process harness must drain stderr as well as stdout:
 /// `nros-log` records are written to stderr, and this test fails if
 /// `ManagedProcess::wait_for_all_output` misses the success pattern.
+/// Verifies the ThreadX Linux logging harness captures nano-ros log stderr.
 #[test]
-fn logging_smoke_threadx_linux_harness_captures_nros_log_stderr() {
+fn logging_smoke_harness_captures_stderr() {
     if !threadx_linux::is_threadx_available() {
         panic!("[SKIPPED] THREADX_DIR not set or invalid");
     }

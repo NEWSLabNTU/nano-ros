@@ -86,6 +86,19 @@ extraction). LOW for Tracks D + E.
 
 ## Track B — Test FN names: rename to describe-behavior
 
+**Status**: DONE 2026-06-04. The listed 29 test functions were renamed and
+each renamed test carries a `///` behavior summary. Closure scan also renamed
+four additional >60-char production test functions in the same scope:
+`codegen_cyclonedds_emits_std_msgs`,
+`codegen_cyclonedds_rejects_duplicate_stem`,
+`codegen_system_resolves_zephyr_alias`, and
+`cmake_decls_skip_duplicate_pair`.
+Focused verification passed: no remaining >60-char test function names in the
+Track B scan scope; `cargo test -p nros -p nros-node --lib`;
+`cargo test -p nros-cli-core -p rosidl-codegen --lib` from `packages/cli`;
+no-run builds for touched CLI integration tests and touched `nros-tests`
+integration tests.
+
 **HIGH priority. 28 production test fns > 60 chars. Filename convention `phase212_*.rs` stays as roadmap cross-ref; FN names lose phase markers + verbose chains.**
 
 ### B.1 — nros-cli test renames (16 files)
@@ -228,7 +241,7 @@ Renames inside `packages/cli/nros-cli-core/{src,tests}/`. Each entry: `current (
 ## Acceptance
 
 - [ ] **Track A complete**: 6 build-script files refactored per A.1–A.6. `cargo check -p zpico-sys -p nros-c -p nros-cpp` clean; build orchestration tests green.
-- [ ] **Track B complete**: 29 test fns renamed per B.1–B.3. `cargo test -p nros-cli-core -p nros -p nros-node -p nros-tests` passes.
+- [x] **Track B complete**: 29 listed test fns plus 4 closure-scan test fns renamed; focused verification passed.
 - [ ] **Track C complete**: 3 `format!()` walls extracted to `packages/core/nros-c/templates/*.template`. `build.rs` < 500 LOC.
 - [ ] **Track D complete**: 4 phase-name leakages renamed. `grep -nE 'fn [a-z_]*phase\d|mod phase_?\d' packages/` returns 0 production hits.
 - [ ] **Track E complete**: 3 board `.gitignore`s added.

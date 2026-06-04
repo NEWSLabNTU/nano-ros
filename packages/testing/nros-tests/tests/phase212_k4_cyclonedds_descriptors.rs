@@ -10,7 +10,7 @@
 //!
 //! Two coverage points map 1:1 to the verb's observable contract:
 //!
-//! * `nros_codegen_cyclonedds_descriptors_emits_c_for_std_msgs_int32`
+//! * `codegen_cyclonedds_emits_std_msgs`
 //! * `nros_codegen_cyclonedds_descriptors_emits_register_tu`
 //!
 //! Both skip cleanly via `nros_tests::skip!` when the prerequisites
@@ -54,8 +54,9 @@ fn stage_std_msgs_int32(root: &std::path::Path) -> PathBuf {
     msg_path
 }
 
+/// Verifies CycloneDDS descriptor codegen emits C for `std_msgs/Int32`.
 #[test]
-fn nros_codegen_cyclonedds_descriptors_emits_c_for_std_msgs_int32() {
+fn codegen_cyclonedds_emits_std_msgs() {
     let Some((nros, idlc)) = require_preconditions() else {
         nros_tests::skip!("nros CLI or idlc not available");
     };
