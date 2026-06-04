@@ -116,22 +116,9 @@ zpico-platform-custom = { workspace = true, optional = true }
 nros-smoltcp = { path = "../../drivers/nros-smoltcp", default-features = false }
 
 [build-dependencies]
-cbindgen = "0.29"
-cc = "1.0"
-# Phase 136.5 — mbedTLS discovery moved off cmake's
-# `pkg_check_modules` onto the `pkg-config` build crate. The
-# `.pc`-file synthesizer fallback (Ubuntu's `libmbedtls-dev` ships
-# no `.pc`) stays in build.rs.
-pkg-config = "0.3"
-# Phase 152.5 — manifest parser + link-feature policy lifted out of
-# `zpico-sys/build/{manifest,policy}.rs` into the
-# `nros-board-common` library so per-kernel generic board crates
-# can share it. `nros-board-common` pulls in `serde` + `toml`
-# transitively; no need to declare them here separately.
-nros-board-common = { path = "../../boards/nros-board-common" }
-# Phase 208.B Track A — repo-relative path resolver. Removes the
-# `NROS_PLATFORM_CFFI_INCLUDE` panic in fresh-shell `cargo build`.
-nros-build-paths = { path = "../../core/nros-build-paths" }
+# Phase 221.A — build-script implementation lives in a sibling
+# helper crate so its parsing/generation helpers can be unit-tested.
+nros-zpico-build = { path = "../nros-zpico-build" }
 
 [lints]
 workspace = true

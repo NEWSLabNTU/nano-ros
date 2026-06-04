@@ -27,6 +27,8 @@ members = [
     "packages/boards/nros-board-cffi",
     # Zenoh-pico FFI bindings
     "packages/zpico/zpico-sys",
+    # Phase 221.A — pure build-script helper logic for zpico-sys.
+    "packages/zpico/nros-zpico-build",
     # Free-list allocator for z_malloc/z_free on bare-metal
     "packages/zpico/zpico-alloc",
     # XRCE-DDS FFI bindings
