@@ -1,17 +1,47 @@
-//! RTIC Action Client Example for nros on STM32F4
+//! RTIC action client on STM32F4 — Phase 216.B.5 `nros::main!()` shape.
 //!
-//! Sends a Fibonacci goal and receives feedback/result using RTIC v2's
-//! hardware-scheduled async tasks. Demonstrates the RTIC action client pattern:
+//! The body collapses to the one-line macro invocation. `nros::main!()`
+//! reads `[package.metadata.nros.entry] deploy = "rtic-stm32f4"`
+//! from `Cargo.toml`, routes through the RTIC framework branch
+//! (Phase 216.B.3), and emits the `#[rtic::app] mod app` body +
+//! `__nros_spin` / `__nros_dispatch` RTIC task sidekicks. The board
+//! crate (`nros-board-rtic-stm32f4`, Phase 216.B.2) supplies the
+//! `RticStm32F4` ZST whose `RticBoardEntry::init_hardware` brings up
+//! the hardware and returns the `(Executor, RticRuntime)` pair.
 //!
-//! - `#[init]` calls `board::init_hardware()` and creates nano-ros handles
-//! - `net_poll` task drives transport I/O via `spin_once(0)`
-//! - `action_call` task uses `try_recv()` loops for goal acceptance, feedback,
-//!   and result (RTIC cannot use `Promise::wait()` or `FeedbackStream::wait_next()`)
-//! - All nano-ros handles are `#[local]` — no locks required
+//! ## Inline dispatch — client-side rationale
 //!
-//! # Hardware
+//! Unlike the sibling `action-server-rtic` (Deferred), this Entry pkg
+//! links `stm32f4_action_client_pkg` whose Node declares
+//! `DispatchStrategy::Inline`. The client side has no callbacks on
+//! the spin path — the legacy Pattern A `main.rs` (pre-migration)
+//! polled `try_recv()` / `try_recv_feedback()` from an `async fn`
+//! task to drive goal-accept / feedback / result. Inline matches
+//! the `talker-rtic` matrix cell `nros check` (Phase 216.D.1)
+//! already accepts. The integration story (where the send_goal +
+//! poll bodies live now that the legacy `#[task]` is gone) is the
+//! follow-up B wave documented in the sibling Node pkg's
+//! `src/lib.rs`.
 //!
-//! - Board: NUCLEO-F429ZI (or similar STM32F4 with Ethernet)
+//! ## PlaceholderAct reuse
+//!
+//! `stm32f4_action_client_pkg` reuses `PlaceholderAct` from
+//! `stm32f4_action_server_pkg` (transitive dep) so client + server
+//! wire shapes stay aligned by construction. When the real
+//! `example_interfaces::action::Fibonacci` lands, both pkgs flip
+//! together.
+//!
+//! ## Skeleton status
+//!
+//! `init_hardware`'s body is still `todo!()` (216.B.2 follow-up
+//! mirrors the legacy Pattern A bringup), and the trampoline-
+//! registration story that hands the sibling
+//! `stm32f4_action_client_pkg` Node onto the dispatch runtime —
+//! including the framework-owned `#[task]` that drives the
+//! `try_recv*` loops in place of the legacy hand-rolled task — is
+//! the next 216.B wave. The macro emit + dep graph compile clean
+//! today; a real flash will hit the `todo!()` panic in
+//! `init_hardware`.
 
 #![no_std]
 #![no_main]
@@ -19,119 +49,4 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-defmt::timestamp!("{=u64:us}", { 0 });
-
-use example_interfaces::action::{Fibonacci, FibonacciGoal};
-use nros::prelude::*;
-use nros_board_stm32f4::Config;
-
-use rtic_monotonics::systick::prelude::*;
-
-systick_monotonic!(Mono, 1000);
-
-// Type aliases for RTIC Local struct annotations
-type NrosExecutor = Executor;
-type NrosActionClient = nros::ActionClient<Fibonacci>;
-
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1, USART2])]
-mod app {
-    use super::*;
-
-    #[shared]
-    struct Shared {}
-
-    #[local]
-    struct Local {
-        executor: NrosExecutor,
-        client: NrosActionClient,
-    }
-
-    #[init]
-    fn init(cx: init::Context) -> (Shared, Local) {
-        let config = Config::nucleo_f429zi();
-        let syst = nros_board_stm32f4::init_hardware(&config, cx.device, cx.core);
-
-        Mono::start(syst, 168_000_000);
-
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("fibonacci_client");
-        // Phase 104.A — bare-metal callers explicitly register the RMW
-        // backend before `Executor::open`. POSIX hosts auto-register via
-        // `.init_array`; this target doesn't walk that section.
-        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config).unwrap();
-        let mut node = executor.create_node("fibonacci_client").unwrap();
-        let client = node
-            .create_action_client::<Fibonacci>("/fibonacci")
-            .unwrap();
-
-        net_poll::spawn().unwrap();
-        action_call::spawn().unwrap();
-
-        (Shared {}, Local { executor, client })
-    }
-
-    /// Drive transport I/O — equivalent to rclcpp spin_some().
-    #[task(local = [executor], priority = 1)]
-    async fn net_poll(cx: net_poll::Context) {
-        loop {
-            cx.local
-                .executor
-                .spin_once(core::time::Duration::from_millis(0));
-            Mono::delay(10.millis()).await;
-        }
-    }
-
-    /// Send a goal, receive feedback, and get the result.
-    ///
-    /// Uses try_recv() loops throughout — Promise::wait() and
-    /// FeedbackStream::wait_next() are NOT usable since the executor
-    /// is #[local] to the net_poll task.
-    #[task(local = [client], priority = 1)]
-    async fn action_call(cx: action_call::Context) {
-        // Wait for zenoh session and server
-        Mono::delay(3000.millis()).await;
-
-        let goal = FibonacciGoal { order: 5 };
-        defmt::info!("Sending goal: order={}", goal.order);
-
-        let (goal_id, mut promise) = cx.local.client.send_goal(&goal).unwrap();
-
-        // Poll for goal acceptance
-        let accepted = loop {
-            if let Ok(Some(accepted)) = promise.try_recv() {
-                break accepted;
-            }
-            Mono::delay(10.millis()).await;
-        };
-
-        if !accepted {
-            defmt::warn!("Goal rejected");
-            return;
-        }
-        defmt::info!("Goal accepted");
-
-        // Receive feedback via try_recv_feedback() loop
-        let mut feedback_count = 0u32;
-        for _ in 0..300 {
-            if let Ok(Some((id, feedback))) = cx.local.client.try_recv_feedback()
-                && id.uuid == goal_id.uuid
-            {
-                feedback_count += 1;
-                defmt::info!(
-                    "Feedback #{}: len={}",
-                    feedback_count,
-                    feedback.sequence.len()
-                );
-                if feedback.sequence.len() as i32 > goal.order {
-                    break;
-                }
-            }
-            Mono::delay(10.millis()).await;
-        }
-
-        defmt::info!("Got {} feedback messages", feedback_count);
-        defmt::info!("Action client finished");
-    }
-}
+nros::main!();
