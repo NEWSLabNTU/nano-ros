@@ -12,6 +12,10 @@
 - [First Node — C++](./getting-started/first-node-cpp.md)
 - [Porting a ROS 2 C++ node](./getting-started/porting-a-cpp-node.md)
 - [Your own message package](./getting-started/your-own-msg-package.md)
+- [From an app node to a workspace](./getting-started/workspace-from-app-node.md)
+- [Prepare node packages](./getting-started/workspace-node-pkgs.md)
+- [Bringup: launch + system.toml](./getting-started/workspace-bringup.md)
+- [Entry package: boot on a board](./getting-started/workspace-entry-pkg.md)
 - [Troubleshooting — First 10 Minutes](./getting-started/troubleshooting-first-10-min.md)
 
 # Embedded Starters
