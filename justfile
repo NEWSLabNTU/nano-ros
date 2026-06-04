@@ -1601,13 +1601,42 @@ setup-cli:
     root="{{justfile_directory()}}"
     bin="$root/packages/cli/target/release/nros"
     lock="$root/packages/cli/Cargo.lock"
+    # Phase 220.A.2 — emit a stale-shadow warning whenever we hand the user
+    # a freshly built `nros` binary. If `which nros` resolves to a path
+    # that ISN'T the one we just built / are about to build, the user is
+    # still picking up a pre-218 install (`~/.cargo/bin/nros` from a long-
+    # ago `cargo install`, or `~/.nros/bin/nros` from the retired
+    # `scripts/install-nros.sh`). Warn now; the next `just doctor` will
+    # FAIL hard. We intentionally do NOT exit non-zero — setup-cli's job
+    # is to produce the binary, not enforce shell hygiene.
+    warn_stale_shadow() {
+        if ! command -v nros >/dev/null 2>&1; then
+            return
+        fi
+        local resolved
+        resolved="$(command -v nros)"
+        local resolved_real
+        resolved_real="$(readlink -f "$resolved" 2>/dev/null || echo "$resolved")"
+        local bin_real
+        bin_real="$(readlink -f "$bin" 2>/dev/null || echo "$bin")"
+        if [ "$resolved_real" != "$bin_real" ]; then
+            echo "[setup-cli] WARNING: \`which nros\` -> $resolved" >&2
+            echo "[setup-cli]   This shadows the in-tree CLI we just built ($bin)." >&2
+            echo "[setup-cli]   Clean up the stale shadow so post-218 builds use this checkout:" >&2
+            echo "[setup-cli]       rm -f \"\$HOME/.cargo/bin/nros\" \"\$HOME/.nros/bin/nros\"" >&2
+            echo "[setup-cli]       source ./activate.sh" >&2
+            echo "[setup-cli]   (\`just doctor\` will FAIL until this is resolved.)" >&2
+        fi
+    }
     if [ -x "$bin" ] && [ "$bin" -nt "$lock" ]; then
         # Quiet on no-op — `just setup` invokes us unconditionally.
+        warn_stale_shadow
         exit 0
     fi
     echo "[setup-cli] building nros CLI (packages/cli)…"
     cargo build --release --manifest-path "$root/packages/cli/Cargo.toml" --bin nros
     echo "[setup-cli] built: $bin"
+    warn_stale_shadow
 
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required

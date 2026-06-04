@@ -379,9 +379,39 @@ doctor:
         check command -v "$t" || tool_missing+=("$t")
     done
     nros_path_status="ok"
+    nros_resolved=""
+    nros_intree="{{justfile_directory()}}/packages/cli/target/release/nros"
+    # Canonicalise the in-tree path so we can compare against `which nros`
+    # after symlink resolution (e.g. the user might have a symlink in
+    # ~/.local/bin → packages/cli/target/release/nros).
+    if [ -x "$nros_intree" ]; then
+        nros_intree_real="$(readlink -f "$nros_intree" 2>/dev/null || echo "$nros_intree")"
+    else
+        nros_intree_real=""
+    fi
     if command -v nros >/dev/null 2>&1; then
-        :
-    elif [ -x "{{justfile_directory()}}/packages/cli/target/release/nros" ]; then
+        nros_resolved="$(command -v nros)"
+        nros_resolved_real="$(readlink -f "$nros_resolved" 2>/dev/null || echo "$nros_resolved")"
+        # Phase 220.A.1 — FAIL on stale shadow. If the resolved `nros` on
+        # PATH is anything OTHER than the in-tree CLI binary, the user
+        # almost certainly has a pre-218 `~/.cargo/bin/nros` (cargo
+        # install) or `~/.nros/bin/nros` (deleted install-nros.sh)
+        # outranking the post-218 in-tree binary. Stale CLIs emit
+        # pre-K.7.1.b `[patch.crates-io]` blocks that break native rust
+        # cyclonedds examples — a silent-but-broken state we want to
+        # surface loudly at `just doctor` time.
+        if [ -n "$nros_intree_real" ] && [ "$nros_resolved_real" = "$nros_intree_real" ]; then
+            :  # resolved to the in-tree CLI — OK
+        elif [ -n "$nros_intree_real" ]; then
+            nros_path_status="stale-shadow"
+        else
+            # in-tree CLI not built yet; whatever's on PATH is the only
+            # `nros` the user has. We can't classify it as a shadow
+            # because we have nothing to shadow. Leave as "ok" — the
+            # user is on the transitional / external-install path.
+            :
+        fi
+    elif [ -x "$nros_intree" ]; then
         nros_path_status="needs-activate"
     elif [ -x "${NROS_HOME:-$HOME/.nros}/bin/nros" ]; then
         nros_path_status="needs-path"
@@ -392,7 +422,19 @@ doctor:
     if [ ${#tool_missing[@]} -eq 0 ] && [ "$nros_path_status" = "ok" ]; then
         echo "  [OK] cargo-tools"
     else
-        if [ "$nros_path_status" = "needs-activate" ]; then
+        if [ "$nros_path_status" = "stale-shadow" ]; then
+            echo "  [FAIL] nros on PATH ($nros_resolved) shadows the in-tree CLI" \
+                 "($nros_intree)."
+            echo "         A stale pre-218 \`nros\` emits outdated"
+            echo "         \`[patch.crates-io]\` blocks (from \`nros ws sync\`) that"
+            echo "         break native rust cyclonedds examples and other downstream"
+            echo "         consumers. Clean it up:"
+            echo "             rm -f \"\$HOME/.cargo/bin/nros\" \"\$HOME/.nros/bin/nros\""
+            echo "             source ./activate.sh"
+            echo "         (Or whatever path \`which nros\` reports above, if"
+            echo "         neither cargo-bin nor ~/.nros/bin is the source.)"
+            fail=1
+        elif [ "$nros_path_status" = "needs-activate" ]; then
             echo "  [PATH] nros built at packages/cli/target/release/nros but not on PATH —"
             echo "         run: source ./activate.sh  (or direnv allow / source ./activate.fish)"
             fail=1

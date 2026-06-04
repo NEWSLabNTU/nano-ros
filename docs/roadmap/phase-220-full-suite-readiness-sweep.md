@@ -89,10 +89,26 @@ Almost every breakage traces to one of three root causes:
   that isn't the in-tree `packages/cli/target/release/nros`; emit
   `rm ~/.cargo/bin/nros` / `rm -rf ~/.nros/bin` cleanup hints.
 
-- [ ] **220.A.1** `just doctor` shadow-detection FAIL on any stale
-      path (`~/.cargo/bin/nros`, `~/.nros/bin/nros`).
-- [ ] **220.A.2** `just setup-cli` emits cleanup hint when stale
-      shadows present.
+- [x] **220.A.1** `just doctor` shadow-detection FAIL on any stale
+      path (`~/.cargo/bin/nros`, `~/.nros/bin/nros`). Landed in
+      `just/workspace.just` cargo-tools check: compare
+      `readlink -f $(command -v nros)` against
+      `readlink -f packages/cli/target/release/nros`; on mismatch emit
+      `[FAIL] nros on PATH (<resolved>) shadows the in-tree CLI` +
+      `rm -f ~/.cargo/bin/nros ~/.nros/bin/nros && source ./activate.sh`
+      cleanup hint, set `fail=1`. The pre-existing
+      `needs-activate` / `needs-path` / `missing` states are kept for
+      the no-shadow / partially-installed cases. **Note**: when the
+      in-tree CLI doesn't exist yet (fresh checkout pre-`setup-cli`),
+      any `nros` on PATH stays classified as OK — we can't shadow what
+      we haven't built.
+- [x] **220.A.2** `just setup-cli` emits cleanup hint when stale
+      shadows present. Landed in `justfile::setup-cli`: a
+      `warn_stale_shadow` helper runs after the build (both on
+      no-op-short-circuit and on actual cargo build), compares
+      `command -v nros` against the in-tree binary we just produced,
+      and warns to stderr without failing. The next `just doctor` is
+      where the FAIL lives.
 - [ ] **220.A.3** Sweep agent driver scripts to source
       `./activate.sh` instead of prepending `~/.nros/bin`.
 
