@@ -31,177 +31,60 @@
 #![cfg(not(cbindgen))]
 
 use core::ffi::c_void;
-use core::mem::MaybeUninit;
-use core::ptr;
 
 // ============================================================================
 // Memory Allocator
 // ============================================================================
+//
+// Phase 214.F.2 — `smoltcp_{alloc,realloc,free}` previously routed
+// through a hand-rolled bump allocator over a 16 KB static heap. That
+// duplicated `nros-platform-api::PlatformAlloc` (FreeRTOS pvPortMalloc,
+// ThreadX tx_byte_allocate, NuttX kmm_malloc, libc malloc on hosted),
+// and crucially the bump allocator could never free memory. The
+// canonical `nros_platform_*` ABI is exported by every nros-platform-*
+// crate via cffi, so the smoltcp shim now forwards to it directly.
 
-/// Heap size for embedded-alloc (16 KB)
-const HEAP_SIZE: usize = 16 * 1024;
-
-/// Static heap memory
-static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-
-/// Heap initialized flag
-static mut HEAP_INITIALIZED: bool = false;
-
-/// Simple bump allocator for embedded use
-///
-/// This is a minimal allocator that satisfies zenoh-pico's needs.
-/// It does not support deallocation (memory is "leaked" but this is
-/// acceptable for embedded systems with static lifetimes).
-mod bump_alloc {
-    use core::cell::UnsafeCell;
-    use core::ptr;
-
-    /// Simple bump allocator for single-threaded embedded use
-    ///
-    /// Uses `UnsafeCell` instead of atomics for compatibility with targets
-    /// that lack atomic CAS (e.g., riscv32imc without the A extension).
-    /// This is safe because the platform is documented as single-threaded only.
-    pub struct BumpAllocator {
-        heap_start: UnsafeCell<*mut u8>,
-        heap_end: UnsafeCell<*mut u8>,
-        next: UnsafeCell<usize>,
-    }
-
-    // Safety: single-threaded platform only (documented in module docs)
-    unsafe impl Sync for BumpAllocator {}
-
-    impl BumpAllocator {
-        pub const fn new() -> Self {
-            Self {
-                heap_start: UnsafeCell::new(ptr::null_mut()),
-                heap_end: UnsafeCell::new(ptr::null_mut()),
-                next: UnsafeCell::new(0),
-            }
-        }
-
-        /// Initialize the allocator with a memory region
-        pub unsafe fn init(&self, heap_start: *mut u8, heap_size: usize) {
-            unsafe {
-                *self.heap_start.get() = heap_start;
-                *self.heap_end.get() = heap_start.add(heap_size);
-                *self.next.get() = heap_start as usize;
-            }
-        }
-
-        /// Allocate memory with alignment
-        pub fn alloc(&self, size: usize, align: usize) -> *mut u8 {
-            unsafe {
-                let current = *self.next.get();
-
-                // Calculate aligned address
-                let aligned = (current + align - 1) & !(align - 1);
-                let new_next = aligned + size;
-
-                // Check bounds
-                let heap_end = *self.heap_end.get() as usize;
-                if new_next > heap_end {
-                    return ptr::null_mut();
-                }
-
-                *self.next.get() = new_next;
-                aligned as *mut u8
-            }
-        }
-
-        /// Deallocation is a no-op for bump allocator
-        #[allow(dead_code)]
-        pub fn dealloc(&self, _ptr: *mut u8, _size: usize, _align: usize) {
-            // No-op: bump allocator doesn't support deallocation
-        }
-    }
-}
-
-static ALLOCATOR: bump_alloc::BumpAllocator = bump_alloc::BumpAllocator::new();
-
-/// Initialize the heap allocator
-#[allow(static_mut_refs)]
-unsafe fn init_heap() {
-    unsafe {
-        if !HEAP_INITIALIZED {
-            ALLOCATOR.init(HEAP_MEM.as_mut_ptr() as *mut u8, HEAP_SIZE);
-            HEAP_INITIALIZED = true;
-        }
-    }
+unsafe extern "C" {
+    fn nros_platform_alloc(size: usize) -> *mut c_void;
+    fn nros_platform_realloc(ptr: *mut c_void, size: usize) -> *mut c_void;
+    fn nros_platform_dealloc(ptr: *mut c_void);
+    fn nros_platform_random_u32() -> u32;
 }
 
 /// Allocate memory
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_alloc(size: usize) -> *mut c_void {
-    unsafe {
-        init_heap();
-    }
-    ALLOCATOR.alloc(size, 8) as *mut c_void
+    unsafe { nros_platform_alloc(size) }
 }
 
-/// Reallocate memory
-///
-/// # Safety
-///
-/// The bump allocator does NOT track allocation sizes. This has implications:
-/// - realloc(null, size) -> allocates new memory (same as alloc)
-/// - realloc(ptr, 0) -> returns null (free semantics, but memory is not reclaimed)
-/// - realloc(ptr, size) -> allocates new memory, does NOT copy data
-///
-/// The caller MUST copy data from the old pointer to the new pointer if needed.
-/// This differs from standard realloc behavior but is necessary for a bump
-/// allocator without size tracking.
-///
-/// For zenoh-pico, this should be acceptable because:
-/// - zenoh-pico manages its own data copying when needed
-/// - The bump allocator is designed for short-lived embedded systems
+/// Reallocate memory. Forwards to the canonical libc-style
+/// `nros_platform_realloc`: `NULL` ptr → fresh alloc; `0` size →
+/// dealloc + return `NULL`; contents preserved up to `min(old, new)`.
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
-    if ptr.is_null() {
-        return smoltcp_alloc(size);
-    }
-
-    if size == 0 {
-        // Deallocation - no-op for bump allocator
-        return ptr::null_mut();
-    }
-
-    // Allocate new block - do NOT copy data since we don't know the old size
-    // The caller is responsible for copying data if needed
-    smoltcp_alloc(size)
+    unsafe { nros_platform_realloc(ptr, size) }
 }
 
-/// Free memory (no-op for bump allocator)
+/// Free memory
 #[unsafe(no_mangle)]
-pub extern "C" fn smoltcp_free(_ptr: *mut c_void) {
-    // No-op: bump allocator doesn't support deallocation
+pub extern "C" fn smoltcp_free(ptr: *mut c_void) {
+    unsafe { nros_platform_dealloc(ptr) }
 }
 
 // ============================================================================
 // Random Number Generator
 // ============================================================================
+//
+// Phase 214.F.1 — `smoltcp_random_u32` previously ran a deterministic
+// xorshift32 PRNG over a static seed. Replaced with a thin forwarder
+// to the canonical `nros_platform_random_u32` ABI (delegates to
+// `<ConcretePlatform as PlatformRandom>::random_u32()` per backend).
 
-/// Simple xorshift32 PRNG state
-static mut RNG_STATE: u32 = 0x12345678;
-
-/// Seed the RNG with a value
-unsafe fn seed_rng(seed: u32) {
-    unsafe {
-        RNG_STATE = if seed == 0 { 0x12345678 } else { seed };
-    }
-}
-
-/// Generate a random u32 using xorshift32
+/// Generate a random `u32`. Delegates to the active platform's
+/// `PlatformRandom` impl.
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_random_u32() -> u32 {
-    unsafe {
-        // xorshift32 algorithm
-        let mut x = RNG_STATE;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        RNG_STATE = x;
-        x
-    }
+    unsafe { nros_platform_random_u32() }
 }
 
 // ============================================================================
@@ -318,18 +201,13 @@ pub extern "C" fn smoltcp_poll() -> i32 {
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
 pub extern "C" fn smoltcp_init() -> i32 {
+    // Phase 214.F.1 + F.2 — heap init and RNG seeding moved into the
+    // host platform's `PlatformAlloc` / `PlatformRandom` impls. This
+    // entry point now only resets the socket state table.
     unsafe {
-        // Initialize heap
-        init_heap();
-
-        // Seed RNG with clock value
-        seed_rng(CLOCK_MS as u32);
-
-        // Reset socket table
         for entry in SOCKET_TABLE.iter_mut() {
             *entry = SocketEntry::default();
         }
-
         0
     }
 }
