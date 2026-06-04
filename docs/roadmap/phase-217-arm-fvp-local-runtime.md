@@ -100,17 +100,22 @@ accepts the Arm EULA, installs the FVP locally, and exports
 `[gated.arm-fvp]` but no script exists. Add a thin discovery script
 (gated tools never download):
 
-- [ ] **217.B.1** `scripts/installers/arm-fvp-installer.sh` — accepts
+- [x] **217.B.1** `scripts/installers/arm-fvp-installer.sh` — accepts
       `ARM_FVP_DIR` (required), validates `FVP_BaseR_AEMv8R` lives
-      under it, symlinks the discovered dir to
-      `~/.nros/sdks/arm-fvp/current/` so `nros setup --tool arm-fvp`
-      reports a stable path. Refuses to run without `ARM_FVP_DIR`;
-      prints the Arm download URL.
+      under it via `find -name FVP_BaseR_AEMv8R -type f -executable`,
+      symlinks the discovered dir to `~/.nros/sdks/arm-fvp/current/`
+      (atomic `ln -sfn`) so `nros setup --tool arm-fvp` reports a
+      stable path. Refuses to run without `ARM_FVP_DIR`; prints the
+      Arm download URL + EULA pointer. `--print-env` re-emits the
+      `export ARMFVP_BIN_PATH=…` line; `--help` shows usage. Landed
+      2026-06-04.
 - [ ] **217.B.2** `nros doctor` check — `[gated.arm-fvp]` reports
       `arm-fvp-installer` as a known installer; `nros doctor` matches
       and flags missing `ARM_FVP_DIR` as a warning (not a hard fail,
-      gated).
-- [~] **217.B.3** Book/reference doc — point at
+      gated). Lives in the standalone `nros-cli` repo
+      (`github.com/NEWSLabNTU/nros-cli`, feature branch
+      `feature/phase-217-fvp-doctor`).
+- [x] **217.B.3** Book/reference doc — point at
       `docs/reference/environment-variables.md` for `ARM_FVP_DIR` +
       `ARMFVP_BIN_PATH` (existing convention). **Doc-side LANDED
       2026-06-04 via 217.E.1 + 217.E.2 (`387321817`,
@@ -124,16 +129,15 @@ accepts the Arm EULA, installs the FVP locally, and exports
       chapter (217.E.1 `[x]`); `SUMMARY.md` carries the
       "ARM FVP (Cortex-A SMP)" nav entry (217.E.2 `[x]`).
 
-      **Why this remains `[~]` and not `[x]`:** B.3's body also
-      promises the cross-references the *CLI* surfaces will need —
-      `nros setup --tool arm-fvp` discoverability + `nros doctor`
-      hints. Those CLI surfaces don't exist yet because 217.B.1
-      (installer script) + 217.B.2 (`nros doctor` check) are both
-      `[ ]` — license-walled on ARM FVP, blocked on a contributor
-      with an accepted Arm EULA installing the FVP. Once B.1 + B.2
-      land, B.3 closes with a trivial wording bump (no new doc
-      pages, just pointers to the now-existing installer + doctor
-      slots).
+      **Closed 2026-06-04 alongside B.1.** With the installer
+      script landed (B.1) and the `nros doctor` board-check landing
+      out-of-tree on the nros-cli feature branch (B.2), the
+      wording-bump promised by B.3 is now reflected:
+      `book/src/reference/environment-variables.md` cross-references
+      `scripts/installers/arm-fvp-installer.sh` + `nros doctor
+      --board fvp-aemv8r-smp`, and the getting-started chapter
+      replaces the "planned — Phase 217.B" headings with concrete
+      usage. Tick will land in the same commit as the wording.
 
 **Files:** `scripts/installers/arm-fvp-installer.sh` (new),
 `docs/reference/environment-variables.md`.

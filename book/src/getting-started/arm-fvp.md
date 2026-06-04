@@ -57,24 +57,33 @@ export ARM_FVP_DIR=/opt/Arm/FastModels/Base_RevC_AEMv8R
 If neither is set, `FVP_BaseR_AEMv8R` is discovered via `PATH` as
 a last-ditch fallback.
 
-### Installer surface (planned — Phase 217.B)
+### Installer surface (Phase 217.B.1)
 
-The skeleton installer at `scripts/installers/arm-fvp-installer.sh`
-(Phase 217.B.1, not yet shipped) will accept `ARM_FVP_DIR`,
-validate the layout, and symlink the discovered directory into
-`~/.nros/sdks/arm-fvp/current/` so `nros setup --tool arm-fvp`
-reports a stable path. Until then, point the env vars above at
-your install directly.
+After extracting the Arm FVP tarball, run the discovery script:
 
-### Doctor check (planned — Phase 217.B.2)
+```bash
+ARM_FVP_DIR=/path/to/extracted/fvp \
+    scripts/installers/arm-fvp-installer.sh
+```
 
-`nros doctor` will pick up the `[gated.arm-fvp]` entry and surface
-a soft warning when `ARM_FVP_DIR` / `ARMFVP_BIN_PATH` are unset
-(matching the existing gated-tool reporting policy — never a hard
-fail). Today, the `just zephyr run-fvp-aemv8r{,-cyclonedds}`
-recipes do the equivalent inline via
-`scripts/zephyr/resolve-fvp-bin.sh` and skip with a clear hint
-when the binary can't be found.
+The installer locates `FVP_BaseR_AEMv8R` under `$ARM_FVP_DIR`,
+symlinks the containing directory to
+`~/.nros/sdks/arm-fvp/current/` (atomic via `ln -sfn`), and
+prints the `export ARMFVP_BIN_PATH=…` line for your shell rc.
+Run `scripts/installers/arm-fvp-installer.sh --print-env` later
+to re-emit the export. It never downloads anything — gated-tool
+policy.
+
+### Doctor check (Phase 217.B.2)
+
+`nros doctor --board fvp-aemv8r-smp` cross-checks the
+`[gated.arm-fvp]` entry in `nros-sdk-index.toml` and warns (never
+hard-fails — gated) when the FVP can't be resolved via
+`ARMFVP_BIN_PATH`, `ARM_FVP_DIR`, `PATH`, or the canonical
+`~/.nros/sdks/arm-fvp/current/FVP_BaseR_AEMv8R` landing path. The
+`just zephyr run-fvp-aemv8r{,-cyclonedds}` recipes do the
+equivalent inline via `scripts/zephyr/resolve-fvp-bin.sh` and
+skip with a clear hint when the binary can't be found.
 
 ## Build
 
