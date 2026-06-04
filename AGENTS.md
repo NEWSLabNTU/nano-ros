@@ -154,3 +154,62 @@ Preserve existing user changes in the worktree. Do not revert unrelated changes.
 When pulling or rebasing the superproject, inspect submodule changes. If a pull advances a submodule pointer and local work exists in that submodule, enter the submodule, fetch its remote, rebase local work onto the updated upstream commit, check out the commit expected by the superproject, and record the resulting submodule commit in the parent commit.
 
 After rebasing over a remote submodule-pointer change, run `git submodule status --recursive <path>` and update the checkout to the commit recorded by `HEAD` before pushing. Recent pulls advanced `third-party/dds/cyclonedds`; leaving the worktree at the old detached commit made the superproject appear dirty even though the parent commit was correct.
+
+## Handover — 2026-06-04 (Phase 222.C WIP)
+
+**In-flight branch:** `feature/phase-222-C-delete-verbs` (pushed). Phase 222.C deletes the five deprecated CLI verbs (`build` / `run` / `deploy` / `monitor` / `launch`) and bumps the bundle to `0.5.0`. Soak finished in 0.4.x; SemVer break visible via the bundle bump.
+
+### Done on the branch
+
+- Five verb impl files deleted: `packages/cli/nros-cli-core/src/cmd/{build,run_target,deploy,monitor,launch}.rs`.
+- Integration test deleted: `packages/cli/nros-cli/tests/deprecated_verbs.rs`.
+- `Cmd` enum variants + dispatch arms stripped (`packages/cli/nros-cli-core/src/cmd/mod.rs`, `packages/cli/nros-cli-core/src/lib.rs`).
+- `emit_deprecation_warning` helper retained — `doctor::match_deprecated_verb` still flags users' stale `nros build` / `nros launch` shell references after deletion.
+- Bundle 0.4.0 → 0.5.0 via `just release-bump 0.5.0`. Root `Cargo.toml` `[workspace.package].version`, `packages/cli/Cargo.toml` `[workspace.package].version`, every `version = "0.4.0"` path-dep pin in member crates, and the Cargo.lock all swept.
+- `scripts/check-version-lockstep.sh` reports `0.5.0 (root + cli in lockstep)`.
+- CLI rebuilds clean: `cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros` ⇒ `nros 0.5.0`. All five deleted verbs return `error: unrecognized subcommand`.
+- `book/src/reference/cli.md` — `### nros deploy` + `### nros launch` sections deleted.
+
+### Not done — pick up here next session
+
+1. **`book/src/reference/cli.md`** — three remaining sections to strike: `### nros build`, `### nros run`, `### nros monitor`. Same delete-the-whole-section pattern as the `deploy` / `launch` cuts already landed.
+2. **Doc sweep** of remaining call-sites — grep `book/src/` + `docs/development/` for the five verb strings, replace with the platform-tool equivalent the Phase 222 doc enumerates. Active hits:
+   - `book/src/concepts/comparison-vs-microros.md`
+   - `book/src/getting-started/workspace-bringup.md`
+   - `book/src/getting-started/workspace-entry-pkg.md`
+   - `book/src/getting-started/workspace-from-app-node.md`
+   - `book/src/user-guide/workflow.md`
+   - `book/src/user-guide/deployment.md`
+3. **Phase doc** — `docs/roadmap/phase-222-cli-surface-and-ux.md`: tick `222.C.1`, `222.C.2`, `222.C.3`, `222.C.4` with `_(2026-06-04)_`. Status line bump to `**Complete 2026-06-04.**` then archive candidate per the standard sweep.
+4. **`just ci` smoke** — workspace builds + every lane CI exercised by `host-unit-tests` / `host-integration-tests` runs green on the bumped 0.5.0. Catch any caller still referencing the deleted verbs (likely zero, but the grep above is the canary).
+5. **ff to main** — rebase the feature branch onto current main (it advanced while 222.C was in flight), then `git checkout main && git merge --ff-only feature/phase-222-C-delete-verbs && git push origin main`.
+
+### Active phase docs (counts taken 2026-06-04)
+
+```
+phase-215-board-crate-as-importable-unit   open=33   OPEN (ASI-driven)
+phase-162-rt-scheduling-harness            open=25   Not Started
+phase-206-multi-homing-transport-interfaces open=21  Proposed
+phase-223-c-language-completion            open=17   PROPOSED 2026-06-04 — C Node/Entry parity
+phase-211-multi-node-launch-completeness   open=16   gap survey landed
+phase-41-iron-type-hash-support            open=15   Not Started
+phase-216-baremetal-framework-integration  open=15   RTIC + Embassy half landed
+phase-196-ci-bring-up                      open=14   in progress
+phase-209-cpp-port-friction-reduction      open=10   MVP done, polish remaining
+phase-222-cli-surface-and-ux               open=9    222.C WIP on the open branch above
+phase-201-custom-board-provisioning        open=7    deferred
+phase-217-arm-fvp-local-runtime            open=6    D.3 partial; C.3 parity Phase 212.L.7-blocked
+phase-185-rmw-availability-follows-config  open=5    tail items
+phase-221-antipattern-audit-findings       open=5    LIVE audit doc
+phase-194-nuttx-provisioning-parameterization open=4 mid-progress
+phase-214-antipattern-audit-findings       open=3    tail items
+phase-212-ux-cargo-native-and-file-consolidation open=2 ~98% done
+phase-188-front-door-presentation          open=2    tail items
+```
+
+### Standing constraints (do not relitigate)
+
+- **Linear history.** Never merge commits unless the user explicitly asks. Rebase + ff-merge is the only integration pattern.
+- **Never push fork remotes** (e.g. `nros-cli` after Phase 218 archive — that repo is read-only now anyway). The agent commits + fetch/prune + rebase locally; the maintainer runs the fork push.
+- **Bundle version is JetPack-style** (Phase 218.J) — single label across the runtime + the CLI sub-workspace. Bump via `just release-bump <X.Y.Z>`; the lockstep guard at `scripts/check-version-lockstep.sh` is wired into the lint workflow.
+- **Active branch reminders:** `feature/phase-222-C-delete-verbs` (this handover) — WIP; do NOT delete the branch until ff to main lands. Earlier phase-222 work (A / B / D / E+F) already ff'd to main.
