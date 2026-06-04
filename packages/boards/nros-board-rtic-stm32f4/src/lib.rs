@@ -17,10 +17,7 @@
 //!   signaled callbacks through the [`RticRuntime`] SPSC queue into
 //!   an RTIC software task.
 //!
-//! ## Scope of this skeleton
-//!
-//! Only the **trait surface** that 216.B.3's proc-macro routing
-//! depends on. Specifically:
+//! ## Phase 216.B.2 follow-up — what landed
 //!
 //! 1. [`RticStm32F4`] unit struct + the four
 //!    [`BoardInit`] / [`BoardPrint`] / [`BoardExit`] /
@@ -30,20 +27,39 @@
 //! 3. The [`RticStm32F4::DISPATCHERS`] const declaring which RTIC
 //!    interrupt slots the proc-macro splices into the generated
 //!    `#[rtic::app(dispatchers = …)]` attribute.
+//! 4. A working [`RticRuntime`] SPSC machinery — a crate-level
+//!    `static mut` [`heapless::spsc::Queue`] holding
+//!    `SignaledCallback<'static>` envelopes, a one-shot
+//!    [`take_dispatch_queue`] splitter exposing the
+//!    `(Producer, Consumer)` halves, and an [`RticRuntime::signal_callback`]
+//!    body that calls `Producer::enqueue` and surfaces drops via
+//!    `defmt::warn!`. Mirrors the sibling `EmbassyRuntime` shape
+//!    (Phase 216.C.2 follow-up) with `heapless::spsc` instead of
+//!    `embassy_sync::Channel`.
+//! 5. An [`RticRuntime::dispatch_strategy`] returning
+//!    [`DispatchStrategy::Deferred`] so 216.D.1's `nros check`
+//!    cross-validates each Node pkg's `Node::DISPATCH` against the
+//!    deferred surface.
 //!
-//! Everything else is `todo!()`:
+//! ## Still `todo!()`
 //!
 //! - [`RticBoardEntry::init_hardware`] body — the actual clock /
-//!   pin / Ethernet bringup is lifted from `nros-board-stm32f4`'s
-//!   `init_hardware` free fn in Phase 216.B.3 once the proc-macro
-//!   integration shape is settled. See the doc-comment on
+//!   pin / Ethernet bringup of the `device: Self::Pac` + `core:
+//!   Self::Core` peripherals it receives. The SPSC producer
+//!   plumbing IS wired (the body splits the static queue + builds
+//!   the `RticRuntime`), but the peripheral bringup itself stays
+//!   `todo!()` until the 216.B.3 proc-macro emit settles the
+//!   concrete `Self::Executor` type. See the doc-comment on
 //!   [`RticBoardEntry::init_hardware`] for the migration checklist
 //!   (mirrors the Pattern A escape-hatch in
 //!   `examples/stm32f4/rust/talker-rtic/src/main.rs`).
-//! - [`RticRuntime::signal_callback`] body — the SPSC producer
-//!   wiring lands with the proc-macro emit since both halves of
-//!   the queue (board crate produces, generated task consumes) must
-//!   agree on the underlying `heapless::spsc::Queue` shape.
+//! - [`NodeDispatchRuntime::register_dispatch_slot_dyn`] +
+//!   [`NodeDispatchRuntime::spin_once`] — they return `Err(())`
+//!   today. The proc-macro emit (216.B.3) wraps an
+//!   `ExecutorNodeRuntime`-style sink and forwards through; spin is
+//!   driven by a framework-spawned RTIC software task pulling from
+//!   the [`take_dispatch_queue`] consumer half, not from this
+//!   trait method.
 //!
 //! ## Layering note
 //!
@@ -58,8 +74,12 @@
 
 #![no_std]
 
-use core::fmt::Arguments;
+use core::{
+    fmt::Arguments,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
+use heapless::spsc::{Consumer, Producer, Queue};
 use nros_platform::{
     BoardExit, BoardInit, BoardPrint, DispatchStrategy, NodeDispatchFn, NodeDispatchRuntime,
     NodeInitFn, NodeRegisterFn, NodeTickFn, RticBoardEntry, SignaledCallback,
@@ -72,6 +92,136 @@ use nros_platform::{
 pub use cortex_m_rt::entry;
 pub use defmt;
 pub use nros_platform_stm32f4;
+
+/// Queue depth used by [`RticRuntime`]. Sized to match the sibling
+/// `EmbassyRuntime` channel (Phase 216.C.2 follow-up,
+/// `CHANNEL_CAPACITY = 32`). STM32F4 callback density fits
+/// comfortably in 32; oversized = wasted SRAM, undersized = drops
+/// when bursts arrive faster than the dispatch task drains.
+///
+/// Kept as a free `const` so the static [`CALLBACK_QUEUE`] declaration
+/// below — which can't refer to trait-assoc consts in a
+/// generic-expression position without `feature(generic_const_exprs)`
+/// — has a concrete value to bind. The 216.B.3 proc-macro emit may
+/// expose a board-override knob later.
+pub const QUEUE_CAPACITY: usize = 32;
+
+/// Queue payload — owned wrapper around [`SignaledCallback<'static>`].
+///
+/// The wrapper exists for the same two reasons the sibling
+/// `EmbassyRuntime` envelope does (see
+/// `packages/boards/nros-board-embassy-stm32f4/src/lib.rs`):
+///
+/// 1. [`SignaledCallback`] carries a `*mut core::ffi::c_void` which is
+///    `!Send`. `heapless::spsc::Queue` is `Sync` when its element type
+///    is `Send`; for the crate-level `static mut` storage below to be
+///    soundly shared between an interrupt-context producer and a
+///    task-context consumer the payload must be `Send`. The
+///    `unsafe impl Send` below concentrates the assumption that the
+///    Phase 216.A.2 producer
+///    (`nros::ExecutorNodeRuntime::signal_callback`) hands over a
+///    `ctx_ptr` whose target stays valid for the dispatch lifetime.
+/// 2. The trait surface is `signal_callback(&mut self, cb:
+///    SignaledCallback<'_>)`, but the static queue stores
+///    `SignaledCallback<'static>`. The `'_` is a lifetime erasure in
+///    the trait signature; today's only producer
+///    (`ExecutorNodeRuntime`) sources `cb_id` from a `&'static str`
+///    on `nros::CallbackId` and `ctx_ptr` is a raw pointer with no
+///    lifetime of its own. The lifetime extension is a no-op at
+///    runtime; see the comment at the call site in
+///    [`RticRuntime::signal_callback`].
+#[repr(transparent)]
+pub struct SignaledCallbackEnvelope(SignaledCallback<'static>);
+
+// SAFETY: see the doc comment on `SignaledCallbackEnvelope`. The
+// `*mut c_void` `ctx_ptr` field is the sole reason `SignaledCallback`
+// is `!Send`; the Phase 216.A.2 dispatch contract guarantees the
+// target lives for the dispatcher's lifetime, so handing the envelope
+// across the RTIC task boundary is sound.
+unsafe impl Send for SignaledCallbackEnvelope {}
+
+impl SignaledCallbackEnvelope {
+    /// Borrow the contained callback. The dispatch task pulls this
+    /// to look up the per-Node trampoline via `cb_id` and invoke it
+    /// with the `ctx_ptr`.
+    pub fn callback(&self) -> &SignaledCallback<'static> {
+        &self.0
+    }
+
+    /// Unwrap the envelope. The 216.B.3 follow-up dispatch task
+    /// consumes the envelope this way before routing to the
+    /// per-Node trampoline.
+    pub fn into_inner(self) -> SignaledCallback<'static> {
+        self.0
+    }
+}
+
+/// Static callback queue backing [`RticRuntime`]. Single queue per
+/// binary — the macro-generated `#[rtic::app]` `#[init]` body
+/// (216.B.3 follow-up) calls [`take_dispatch_queue`] exactly once to
+/// extract the `(Producer, Consumer)` halves; the producer is stashed
+/// inside the [`RticRuntime`] returned by [`RticBoardEntry::init_hardware`]
+/// and the consumer is handed to the framework-spawned `__nros_dispatch`
+/// software task.
+///
+/// `Queue::new()` is `const fn`, so the storage lives in `.bss` (or
+/// `.data` zero-init) with no `StaticCell` / `MaybeUninit` dance.
+/// `static mut` is mandatory because `Queue::split` consumes a
+/// `&'static mut Self` — `&'static` alone would block the split. The
+/// [`DISPATCH_QUEUE_CLAIMED`] flag below makes the one-shot extraction
+/// safe across re-entry.
+static mut CALLBACK_QUEUE: Queue<SignaledCallbackEnvelope, QUEUE_CAPACITY> = Queue::new();
+
+/// One-shot extraction guard for [`CALLBACK_QUEUE`]. Flips from `false`
+/// → `true` on the first [`take_dispatch_queue`] call; subsequent
+/// calls return `None`.
+static DISPATCH_QUEUE_CLAIMED: AtomicBool = AtomicBool::new(false);
+
+/// Extract the `(Producer, Consumer)` halves of the crate-level
+/// [`CALLBACK_QUEUE`]. The macro-generated `#[rtic::app]` `#[init]`
+/// body (216.B.3 follow-up) calls this exactly once at boot:
+///
+/// - The `Producer` half feeds [`RticRuntime`] (returned by
+///   [`RticBoardEntry::init_hardware`] and stashed in RTIC `#[local]`
+///   storage).
+/// - The `Consumer` half feeds the framework-spawned `__nros_dispatch`
+///   software task, which dequeues envelopes and invokes per-Node
+///   trampolines.
+///
+/// Returns `Some((Producer, Consumer))` on the first call,
+/// `None` thereafter. The second-call return is what makes calling
+/// this from a non-`#[init]` context an obvious bug; the user-facing
+/// 216.B.3 macro emit asserts on `expect("dispatch queue already
+/// claimed")` to surface the mis-wire loudly.
+///
+/// # Safety contract
+///
+/// The first call takes a `&'static mut` reference to
+/// [`CALLBACK_QUEUE`] via raw pointer; the [`DISPATCH_QUEUE_CLAIMED`]
+/// flag ensures the `&'static mut` is unique. Concurrent calls
+/// race on the `compare_exchange` — only one wins, the others
+/// observe `Err(true)` and return `None`. Soundness rests on no
+/// other code path taking `&CALLBACK_QUEUE` / `&mut CALLBACK_QUEUE`
+/// outside this fn; the `static mut` is private to this module.
+pub fn take_dispatch_queue() -> Option<(
+    Producer<'static, SignaledCallbackEnvelope, QUEUE_CAPACITY>,
+    Consumer<'static, SignaledCallbackEnvelope, QUEUE_CAPACITY>,
+)> {
+    if DISPATCH_QUEUE_CLAIMED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return None;
+    }
+
+    // SAFETY: the `compare_exchange` above guarantees we are the
+    // unique caller granted the `&'static mut`. No other code path
+    // in this crate touches `CALLBACK_QUEUE`; the `static mut` is
+    // private to this module.
+    let queue: &'static mut Queue<SignaledCallbackEnvelope, QUEUE_CAPACITY> =
+        unsafe { &mut *core::ptr::addr_of_mut!(CALLBACK_QUEUE) };
+    Some(queue.split())
+}
 
 /// Phase 216.B.2 — RTIC board ZST.
 ///
@@ -146,13 +296,16 @@ impl RticBoardEntry for RticStm32F4 {
     /// opaque for exactly that reason). The 216.B.3 migration
     /// swaps this for the concrete `nros::Executor` once the
     /// proc-macro emit knows what RTIC `#[local]` storage needs.
+    /// Mirrors the sibling `EmbassyBoardEntry::Executor = ()`
+    /// pick (Phase 216.C.2 skeleton).
     type Executor = ();
 
-    /// Phase 216.B.2 — minimal `NodeDispatchRuntime` impl that
-    /// advertises [`DispatchStrategy::Deferred`]. The SPSC queue
-    /// + RTIC software task plumbing lands with the proc-macro
-    /// emit (216.B.3) since both halves of the queue must agree
-    /// on the underlying `heapless::spsc::Queue` shape.
+    /// Phase 216.B.2 follow-up — wired `NodeDispatchRuntime` impl
+    /// that owns the SPSC producer half of [`CALLBACK_QUEUE`] and
+    /// advertises [`DispatchStrategy::Deferred`]. The 216.B.3
+    /// proc-macro emit completes the wiring by spawning a
+    /// `__nros_dispatch` software task that drains the consumer
+    /// half via [`take_dispatch_consumer`].
     type Runtime = RticRuntime;
 
     /// RTIC interrupt slots reserved for software tasks. The
@@ -165,11 +318,14 @@ impl RticBoardEntry for RticStm32F4 {
     const DISPATCHERS: &'static [&'static str] = &["USART1", "USART2"];
 
     fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Executor, Self::Runtime) {
-        // Phase 216.B.2 SKELETON. The real body is filled in
-        // by 216.B.3 once the proc-macro routing settles on the
-        // concrete `Self::Executor` type. The migration brings in
-        // the work the direct-exec sibling does inside its
-        // `init_hardware` free fn (lives at
+        // Phase 216.B.2 follow-up — SPSC plumbing is wired here so
+        // the 216.B.3 proc-macro emit can pull the producer half
+        // out of a returned `RticRuntime` without a second extra
+        // hook. The peripheral bringup (clock / pin / Ethernet)
+        // stays `todo!()` until 216.B.3 settles the concrete
+        // `Self::Executor` type — the migration brings in the work
+        // the direct-exec sibling does inside its `init_hardware`
+        // free fn (lives at
         // `packages/boards/nros-board-stm32f4/src/node.rs`):
         //
         //   1. `rcc.constrain()` → HSE-driven 168 MHz sysclk.
@@ -182,8 +338,6 @@ impl RticBoardEntry for RticStm32F4 {
         //      SocketSet + `SmoltcpBridge::init()` + the network
         //      poll-callback wiring.
         //   7. Build the `nros::Executor` via `Executor::open(...)`.
-        //   8. Build the `RticRuntime` (SPSC `Producer` half).
-        //   9. Return `(executor, runtime)`.
         //
         // The escape-hatch reference (Pattern A) lives at
         // `examples/stm32f4/rust/talker-rtic/src/main.rs`; once
@@ -191,40 +345,113 @@ impl RticBoardEntry for RticStm32F4 {
         // target — its `#[init]` body becomes the generated
         // `#[rtic::app]` emit and the per-Node setup moves into
         // the macro's input.
-        todo!(
-            "Phase 216.B.2 skeleton — `init_hardware` body lands with the \
-             216.B.3 proc-macro emit. See doc-comment above for the migration checklist."
-        )
+        let (producer, consumer) = take_dispatch_queue()
+            .expect("RticStm32F4::init_hardware: dispatch queue already claimed");
+
+        // Stash the consumer half on a one-shot slot so the
+        // 216.B.3 macro-emitted `__nros_dispatch` task can fish it
+        // out with `take_dispatch_consumer()`. The two halves can't
+        // be returned together because RTIC `#[local]` storage is
+        // populated from the `#[init]` body's return tuple and the
+        // consumer lives in a different task's local resources.
+        stash_dispatch_consumer(consumer);
+
+        ((), RticRuntime::with_producer(producer))
+    }
+}
+
+/// One-shot slot for the dispatch [`Consumer`] half. Populated by
+/// [`RticBoardEntry::init_hardware`] via [`stash_dispatch_consumer`]
+/// and drained by the 216.B.3 proc-macro-emitted `__nros_dispatch`
+/// software task via [`take_dispatch_consumer`].
+///
+/// The slot lives behind a `static mut Option<…>` because RTIC's
+/// `#[local]` storage in the generated app module is populated from
+/// the `#[init]` return tuple, and the consumer can't ride along
+/// with the `(Executor, Runtime)` pair that already lives in
+/// `init::LocalResources` (different task, different `#[local]`
+/// fields). The Acquire/Release ordering on [`DISPATCH_CONSUMER_STASHED`]
+/// publishes the slot mutation.
+static mut DISPATCH_CONSUMER_SLOT: Option<
+    Consumer<'static, SignaledCallbackEnvelope, QUEUE_CAPACITY>,
+> = None;
+
+/// Tracks whether [`DISPATCH_CONSUMER_SLOT`] is populated. Set on
+/// [`stash_dispatch_consumer`]; cleared on [`take_dispatch_consumer`].
+static DISPATCH_CONSUMER_STASHED: AtomicBool = AtomicBool::new(false);
+
+fn stash_dispatch_consumer(consumer: Consumer<'static, SignaledCallbackEnvelope, QUEUE_CAPACITY>) {
+    // SAFETY: called exactly once from `RticBoardEntry::init_hardware`
+    // before any task spawn; no concurrent reader exists yet. The
+    // store-Release publishes the slot mutation to subsequent
+    // `take_dispatch_consumer` Acquire loads.
+    unsafe {
+        let slot = core::ptr::addr_of_mut!(DISPATCH_CONSUMER_SLOT);
+        (*slot) = Some(consumer);
+    }
+    DISPATCH_CONSUMER_STASHED.store(true, Ordering::Release);
+}
+
+/// Take the stashed dispatch [`Consumer`] half. The 216.B.3
+/// proc-macro-emitted `__nros_dispatch` task calls this once to
+/// move the consumer into its `#[local]` storage. Returns `None`
+/// when called before [`RticBoardEntry::init_hardware`] runs, or
+/// when already taken.
+pub fn take_dispatch_consumer()
+-> Option<Consumer<'static, SignaledCallbackEnvelope, QUEUE_CAPACITY>> {
+    if !DISPATCH_CONSUMER_STASHED.swap(false, Ordering::AcqRel) {
+        return None;
+    }
+    // SAFETY: the swap above grants unique access to the slot —
+    // the prior `Release` store in `stash_dispatch_consumer` is
+    // synchronized by the Acquire side of the swap.
+    unsafe {
+        let slot = core::ptr::addr_of_mut!(DISPATCH_CONSUMER_SLOT);
+        (*slot).take()
     }
 }
 
 // ---------------------------------------------------------------
-// RticRuntime — `NodeDispatchRuntime` impl skeleton.
+// RticRuntime — `NodeDispatchRuntime` impl.
 // ---------------------------------------------------------------
 
-/// Phase 216.B.2 — board-side dispatch sink for RTIC. The
-/// `nros::main!()` proc-macro (216.B.3) stashes this in
-/// `#[local]` storage and routes `NodeDispatchRuntime::signal_callback`
-/// calls into a `heapless::spsc::Producer`; the consumer half
-/// dequeues from inside a framework-spawned `__nros_dispatch`
-/// software task.
+/// Phase 216.B.2 follow-up — board-side dispatch sink for RTIC. The
+/// `nros::main!()` proc-macro (216.B.3) stashes this in RTIC
+/// `#[local]` storage and the executor-side
+/// `nros::ExecutorNodeRuntime` forwards each
+/// `NodeDispatchRuntime::signal_callback` call into the contained
+/// [`heapless::spsc::Producer`]. The consumer half (extracted via
+/// [`take_dispatch_consumer`]) lives in a framework-spawned
+/// `__nros_dispatch` software task that drains envelopes and
+/// invokes per-Node trampolines via `cb_id` lookup.
 ///
-/// Skeleton today: every method `todo!()`s. The SPSC queue +
-/// software-task wiring lands with the proc-macro emit since both
-/// halves must agree on the queue shape.
+/// Constructed exclusively by [`RticBoardEntry::init_hardware`];
+/// user code never names [`RticRuntime::with_producer`].
 pub struct RticRuntime {
-    // Phase 216.B.3 fills this with a `heapless::spsc::Producer<…>`
-    // half. Empty today so the trait surface compiles without
-    // pulling `heapless` (already a workspace dep, but no point
-    // before the consumer half exists).
-    _private: (),
+    /// Producer half of [`CALLBACK_QUEUE`]. `None` only during the
+    /// transient [`RticRuntime::new`] state used by 216.B.3 macro
+    /// emit code paths that build the runtime before the queue
+    /// split; live runtime always has `Some`.
+    producer: Option<Producer<'static, SignaledCallbackEnvelope, QUEUE_CAPACITY>>,
 }
 
 impl RticRuntime {
-    /// Construct an empty runtime. The proc-macro emit (216.B.3)
-    /// is the only caller; user code never names this fn.
+    /// Construct an empty runtime (no producer wired). Useful only
+    /// for test fixtures + the 216.B.3 macro emit's interim state;
+    /// production callers go through [`RticBoardEntry::init_hardware`]
+    /// which calls [`RticRuntime::with_producer`].
     pub const fn new() -> Self {
-        Self { _private: () }
+        Self { producer: None }
+    }
+
+    /// Wrap a producer half into a runtime. Called from
+    /// [`RticBoardEntry::init_hardware`]; user code does not.
+    pub const fn with_producer(
+        producer: Producer<'static, SignaledCallbackEnvelope, QUEUE_CAPACITY>,
+    ) -> Self {
+        Self {
+            producer: Some(producer),
+        }
     }
 }
 
@@ -243,27 +470,75 @@ impl NodeDispatchRuntime for RticRuntime {
         _tick: NodeTickFn,
         _name: &'static str,
     ) -> Result<(), ()> {
-        // Phase 216.B.2 skeleton — register lands with the
-        // proc-macro emit (216.B.3).
-        todo!("Phase 216.B.2 — register_dispatch_slot_dyn body lands with 216.B.3")
+        // Phase 216.B.2 follow-up — wrap an `ExecutorNodeRuntime`-style
+        // sink (lives in `nros::component_runtime`) and forward
+        // through. Skeleton: surface unwired by returning `Err(())`
+        // so callers fail loudly rather than silently succeed.
+        // Mirrors `EmbassyRuntime::register_dispatch_slot_dyn`'s
+        // skeleton behavior (Phase 216.C.2 follow-up).
+        Err(())
     }
 
     fn spin_once(&mut self, _timeout_ms: u32) -> Result<(), ()> {
         // RTIC owns the spin loop via a framework-generated
         // software task (`__nros_spin`); the board-side runtime
-        // does not drive the executor directly. The proc-macro
-        // emit (216.B.3) decides whether this hook stays a
-        // no-op `Ok(())` or routes through the executor handle
-        // stashed in `#[local]` storage.
-        todo!("Phase 216.B.2 — spin_once body lands with 216.B.3 proc-macro emit")
+        // does not drive the executor directly. Returning `Err(())`
+        // mirrors the Embassy sibling — the macro-generated
+        // dispatch task does the work, and a caller invoking
+        // `spin_once` on the runtime is a wiring bug. The 216.B.3
+        // proc-macro emit may swap this for an `Ok(())` no-op if
+        // any callsite turns out to invoke it harmlessly.
+        Err(())
     }
 
-    fn signal_callback(&mut self, _cb: SignaledCallback<'_>) {
-        // Phase 216.B.2 skeleton — the SPSC `Producer::enqueue(…)`
-        // call lands with the proc-macro emit (216.B.3) since
-        // both halves of the queue must agree on the underlying
-        // `heapless::spsc::Queue` shape.
-        todo!("Phase 216.B.2 — signal_callback SPSC enqueue lands with 216.B.3")
+    fn signal_callback(&mut self, cb: SignaledCallback<'_>) {
+        // Phase 216.B.2 follow-up — non-blocking SPSC enqueue. Drops
+        // on full so the producer (executor / RMW callback path)
+        // never blocks; the dispatch task drains and acts on what
+        // survives. Mirrors `EmbassyRuntime::signal_callback`
+        // (216.C.2 follow-up) with `heapless::spsc::Producer` in
+        // place of `embassy_sync::Channel`.
+        //
+        // SAFETY: lifetime extension `SignaledCallback<'_>` →
+        // `SignaledCallback<'static>` is sound here because the only
+        // producer in tree (`nros::ExecutorNodeRuntime::signal_callback`,
+        // Phase 216.A.2) builds the envelope from a `&'static str`
+        // `cb_id` (carried by `nros::CallbackId(&'static str)`) and a
+        // `*mut c_void` `ctx_ptr` which has no lifetime of its own. The
+        // `'_` on the trait surface is a lifetime erasure for callers
+        // that don't have an obvious `'static` annotation; no caller
+        // hands us a non-`'static` `cb_id` today.
+        let envelope = SignaledCallbackEnvelope(unsafe {
+            core::mem::transmute::<SignaledCallback<'_>, SignaledCallback<'static>>(cb)
+        });
+
+        let Some(producer) = self.producer.as_mut() else {
+            // No producer wired — the runtime was built via
+            // `RticRuntime::new()` (the transient skeleton path)
+            // rather than `RticBoardEntry::init_hardware`. Surface
+            // via defmt so a probe-attached run sees the
+            // mis-wire. `defmt::warn!` expands to a no-op when no
+            // defmt sink is linked, so host-side `cargo check`
+            // stays clean.
+            defmt::warn!(
+                "RticRuntime: signal_callback called on producer-less runtime — dropped {}",
+                envelope.0.cb_id
+            );
+            return;
+        };
+
+        match producer.enqueue(envelope) {
+            Ok(()) => {}
+            Err(dropped) => {
+                // Queue full. Drop the envelope + surface via
+                // defmt. The dispatch task (216.B.3 follow-up)
+                // can log a counter once it lands.
+                defmt::warn!(
+                    "RticRuntime: callback queue full — dropped {}",
+                    dropped.0.cb_id
+                );
+            }
+        }
     }
 
     fn dispatch_strategy(&self) -> DispatchStrategy {
@@ -277,6 +552,9 @@ impl NodeDispatchRuntime for RticRuntime {
 
 /// Convenient prelude module mirroring the direct-exec sibling.
 pub mod prelude {
-    pub use crate::{RticRuntime, RticStm32F4, entry};
+    pub use crate::{
+        RticRuntime, RticStm32F4, SignaledCallbackEnvelope, entry, take_dispatch_consumer,
+        take_dispatch_queue,
+    };
     pub use defmt::{debug, error, info, trace, warn};
 }

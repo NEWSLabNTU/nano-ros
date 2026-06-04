@@ -61,6 +61,10 @@ nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
 # Logging — matches the sibling direct-exec crate.
 defmt = "0.3"
 
+# Phase 216.B.2 follow-up — SPSC queue backing `RticRuntime`'s
+# deferred dispatch path. Matches the workspace pin.
+heapless = "0.8"
+
 [features]
 default = ["stm32f429", "ethernet", "rmw-zenoh"]
 # `rmw-zenoh` is a pure marker (cargo selects the backend at link time).
