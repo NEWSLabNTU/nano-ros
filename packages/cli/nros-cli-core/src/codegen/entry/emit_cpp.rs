@@ -75,10 +75,16 @@ pub fn emit(plan: &Plan) -> String {
         out,
         "    return {board_type}::run([](::nros::NodeContext* context) -> int32_t {{"
     );
+    // Emit C++14-compatible two-statement check (init-statement in
+    // `if` is a C++17 feature). The Node-pkg side compiles with
+    // `set(CMAKE_CXX_STANDARD 14)` per Phase 212.L.9 (see
+    // `examples/templates/multi-node-workspace-cpp/src/*_pkg/CMakeLists.txt`)
+    // so the generated TU must stay portable to the same floor.
     for n in &plan.nodes {
         let sym = format!("__nros_component_{}_register", sanitize_pkg(&n.pkg));
-        let _ = writeln!(out, "        if (int32_t rc = {sym}(context); rc != 0) {{");
-        let _ = writeln!(out, "            return rc;");
+        let _ = writeln!(out, "        {{");
+        let _ = writeln!(out, "            int32_t rc = {sym}(context);");
+        out.push_str("            if (rc != 0) return rc;\n");
         out.push_str("        }\n");
     }
     out.push_str("        return 0;\n");

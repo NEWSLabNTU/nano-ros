@@ -20,9 +20,10 @@ nano_ros_workspace(
     NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     SUBDIRS  src/talker_pkg
              src/listener_pkg
-    # Entry pkg (`src/robot_entry`) deferred until Phase 219.D lands the
-    # `nano_ros_entry(LAUNCH ...)` cmake arg + the generated TU codegen
-    # from 219.A-E. Until then, this template demonstrates Node + Bringup
-    # only; the Bringup pkg's `system.toml` + `launch/system.launch.xml`
-    # are consumed by `nros plan demo_bringup` from outside the tree.
+             src/robot_entry
+    # Phase 219.D — `src/robot_entry/CMakeLists.txt` calls
+    # `nano_ros_entry(LAUNCH "demo_bringup:system.launch.xml")`. The
+    # cmake fn shells `nros codegen entry --lang cpp` at configure
+    # time, emits the canonical `int main()` body into the build dir,
+    # and auto-links the matching `<pkg>_<exec>_component` static libs.
 )
