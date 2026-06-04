@@ -271,15 +271,34 @@ Almost every breakage traces to one of three root causes:
   path-dep for each in the patch block — not just the
   `nros-core` + `nros-serdes` minimal set today.
 
-- [ ] **220.E.1** Audit `nros-cli/packages/nros-cli-core/src/cmd/
-      ws.rs::run_sync` patch-block writer.
-- [ ] **220.E.2** Extend the writer to scan the example's
-      `[dependencies]` for every `nros-*` crate that has `version =
-      "*"` and emit a path-dep for it.
+- [x] **220.E.1** Audit `packages/cli/nros-cli-core/src/cmd/
+      ws.rs::run_sync` patch-block writer. Pre-220.E writer emitted a
+      fixed `nros-core` + `nros-serdes` pair (+ codegen msg pkgs).
+      Consumer-side registry deps on `nros`, `nros-rmw-zenoh`, etc.
+      were not patched — manual edits survived only until the next
+      `ws sync`.
+- [x] **220.E.2** Extend the writer to scan the example's
+      `[dependencies]` (+ `[dev-dependencies]`, `[build-dependencies]`,
+      `[target.<cfg>.dependencies]`) for every `nros-*` / `nros` /
+      `cyclonedds-sys` crate that uses a registry-style version
+      (`version = "*"` or bare `"*"`) and emit a path-dep for each.
+      Unknown `nros-*` extensions log a skip warning. Output is
+      alphabetical + deduplicated → diff-stable. Verified against
+      `examples/zephyr/rust/talker/` (now patches `nros` +
+      `nros-rmw-zenoh` automatically) and via 7 new unit tests
+      (`extract_consumer_registry_deps_*`,
+      `lookup_table_covers_phase_220_e_minimum_set`).
 - [ ] **220.E.3** Add a fixture in `examples/templates/local-msg-
       package/` covering an example with `nros-rmw-zenoh = "*"`
       (registry-style) — currently every fixture uses path-deps so
-      this regression class isn't exercised by CI.
+      this regression class isn't exercised by CI. **Deferred** —
+      the in-tree zephyr-rust examples (e.g. `examples/zephyr/rust/
+      talker/Cargo.toml`) already carry `nros = { version = "*" }` +
+      `nros-rmw-zenoh = { version = "*", optional = true }` and now
+      exercise the new path through every `nros ws sync` invocation
+      in `just zephyr build*`. A dedicated `templates/` fixture is
+      still worth adding for the copy-out coverage matrix; tracked
+      as a 220.E follow-up rather than a blocker.
 
 ### F — `nros_node_options_t` typedef collision (CLOSED)
 

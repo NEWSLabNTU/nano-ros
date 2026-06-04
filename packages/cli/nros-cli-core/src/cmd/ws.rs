@@ -29,8 +29,10 @@ use clap::{Args as ClapArgs, Subcommand, ValueEnum};
 use eyre::{Result, WrapErr, bail, eyre};
 use rosidl_bindgen::ament::Package;
 use rosidl_codegen::RosEdition;
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, ClapArgs)]
 pub struct Args {
@@ -405,11 +407,41 @@ fn run_sync(args: SyncArgs) -> Result<()> {
         .nano_ros_path
         .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
         .or_else(|| autodetect_nano_ros_path(&ws_root));
+
+    // Phase 220.E — collect the union of `nros-*` (+ `nros` + `cyclonedds-sys`)
+    // registry-style deps across every Rust consumer pointing at this
+    // authority. Each authority gets a single patch block; if any
+    // consumer references `nros-rmw-zenoh = "*"`, the authority's
+    // block must carry the matching path entry — otherwise cargo
+    // can't resolve the dep at all (it'll search crates.io and fail).
+    let mut authority_to_extra: HashMap<PathBuf, Vec<String>> = HashMap::new();
+    for c in &rust_consumers {
+        let authority = find_patch_authority(&c.dir, &ws_root)?;
+        let cargo_toml = c.dir.join("Cargo.toml");
+        let extras = match std::fs::read_to_string(&cargo_toml) {
+            Ok(body) => extract_consumer_registry_nros_deps(&body),
+            Err(_) => Vec::new(),
+        };
+        authority_to_extra
+            .entry(authority)
+            .or_default()
+            .extend(extras);
+    }
+
     for (authority, pkgs) in authority_to_pkgs {
         let mut unique = pkgs;
         unique.sort();
         unique.dedup();
-        write_patch_block(&authority, &build_root, &unique, nano_ros_path.as_deref())?;
+        let mut extras = authority_to_extra.remove(&authority).unwrap_or_default();
+        extras.sort();
+        extras.dedup();
+        write_patch_block(
+            &authority,
+            &build_root,
+            &unique,
+            nano_ros_path.as_deref(),
+            &extras,
+        )?;
     }
 
     println!("ws sync: done.");
@@ -851,10 +883,17 @@ fn write_patch_block(
     build_root: &Path,
     pkgs: &[String],
     nano_ros_path: Option<&Path>,
+    extra_runtime_crates: &[String],
 ) -> Result<()> {
     let body = std::fs::read_to_string(authority)
         .wrap_err_with(|| format!("ws sync: read {}", authority.display()))?;
-    let rendered = render_patch_block(authority, build_root, pkgs, nano_ros_path);
+    let rendered = render_patch_block(
+        authority,
+        build_root,
+        pkgs,
+        nano_ros_path,
+        extra_runtime_crates,
+    );
     let new_body = splice_patch_block(&body, &rendered);
     std::fs::write(authority, new_body)
         .wrap_err_with(|| format!("ws sync: write {}", authority.display()))?;
@@ -878,11 +917,152 @@ struct RenderedBlock {
     block: String,
 }
 
+/// Phase 220.E — static lookup of every nano-ros runtime crate the
+/// `ws sync` writer knows how to emit a `[patch.crates-io]` path entry
+/// for. Mirrors the workspace layout under `<NROS_REPO_DIR>/packages/`.
+///
+/// If a consumer references an `nros-*` crate not in this table, the
+/// writer logs a warning + skips (so a third-party `nros-foo` extension
+/// doesn't break sync — the user can hand-patch outside the managed
+/// region).
+///
+/// Order here doesn't matter; the emission pass dedupes + sorts
+/// alphabetically for diff-stable output.
+const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
+    &[
+        // Core runtime
+        ("nros", "packages/core/nros"),
+        ("nros-core", "packages/core/nros-core"),
+        ("nros-serdes", "packages/core/nros-serdes"),
+        ("nros-platform", "packages/core/nros-platform"),
+        ("nros-platform-api", "packages/core/nros-platform-api"),
+        ("nros-platform-cffi", "packages/core/nros-platform-cffi"),
+        ("nros-node", "packages/core/nros-node"),
+        ("nros-rmw", "packages/core/nros-rmw"),
+        ("nros-rmw-cffi", "packages/core/nros-rmw-cffi"),
+        ("nros-log", "packages/core/nros-log"),
+        ("nros-macros", "packages/core/nros-macros"),
+        ("nros-params", "packages/core/nros-params"),
+        // RMW backends
+        ("nros-rmw-zenoh", "packages/zpico/nros-rmw-zenoh"),
+        (
+            "nros-rmw-zenoh-staticlib",
+            "packages/zpico/nros-rmw-zenoh-staticlib",
+        ),
+        (
+            "nros-rmw-cyclonedds-sys",
+            "packages/dds/nros-rmw-cyclonedds-sys",
+        ),
+        ("nros-rmw-xrce-cffi", "packages/xrce/nros-rmw-xrce-cffi"),
+        (
+            "nros-rmw-xrce-cffi-staticlib",
+            "packages/xrce/nros-rmw-xrce-cffi-staticlib",
+        ),
+        // Transport / SDKs that consumers regularly reference as `version = "*"`
+        ("cyclonedds-sys", "packages/dds/cyclonedds-sys"),
+    ]
+}
+
+/// Phase 220.E — scan a consumer `Cargo.toml` body for `nros-*`,
+/// `nros`, or `cyclonedds-sys` deps declared registry-style (`version =
+/// "*"` or bare `"*"`). Returns crate names sorted + deduped.
+///
+/// Walks `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`,
+/// and any `[target.<cfg>.dependencies]`-shaped table. Loose TOML scanner
+/// matching the existing `extract_cargo_path_deps` style — handles the
+/// single-line `name = { version = "*", ... }` form which is the only
+/// shape current nano-ros examples use.
+///
+/// Path-style deps (`path = "..."`) are intentionally skipped — the
+/// user already pinned a concrete location, no patch needed.
+fn extract_consumer_registry_nros_deps(body: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut in_deps = false;
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_deps = is_dependencies_table(trimmed);
+            continue;
+        }
+        if !in_deps {
+            continue;
+        }
+        let Some(eq) = trimmed.find('=') else {
+            continue;
+        };
+        // Skip lines like `[foo` (table heads) or commented entries.
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        let lhs = trimmed[..eq].trim();
+        // Strip optional TOML key quotes.
+        let key = strip_toml_key_quotes(lhs);
+        if !is_managed_runtime_crate_name(key) {
+            continue;
+        }
+        let rhs = trimmed[eq + 1..].trim_start();
+        // Two registry-style shapes accepted:
+        //   1. bare version string: `name = "*"` (or any "x.y.z")
+        //   2. inline table: `name = { version = "*", ... }`
+        //
+        // Path-style (`name = { path = "..." }` with NO `version` key)
+        // is skipped — user already pinned a path-dep, no patch needed.
+        //
+        // For (2) we require an explicit `version` key. A table that
+        // ONLY carries `path = ...` (the canonical 212-shape path-dep)
+        // is excluded. A table that carries BOTH `version` + `path`
+        // (the cargo-workspace shape used in some fixtures) is treated
+        // as registry-style because the version makes cargo register
+        // the dep in the resolver's registry namespace, which is the
+        // axis `[patch.crates-io]` operates on.
+        let is_registry = if rhs.starts_with('"') {
+            true
+        } else if rhs.starts_with('{') {
+            rhs.contains("version")
+        } else {
+            false
+        };
+        if !is_registry {
+            continue;
+        }
+        out.push(key.to_string());
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Match a line like `[dependencies]`, `[dev-dependencies]`,
+/// `[build-dependencies]`, or any `[target.<cfg>.dependencies]` /
+/// `[target.<cfg>.dev-dependencies]` /
+/// `[target.<cfg>.build-dependencies]` head.
+fn is_dependencies_table(trimmed: &str) -> bool {
+    let inner = trimmed
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(trimmed);
+    let inner = inner.trim();
+    matches!(
+        inner,
+        "dependencies" | "dev-dependencies" | "build-dependencies"
+    ) || (inner.starts_with("target.")
+        && (inner.ends_with(".dependencies")
+            || inner.ends_with(".dev-dependencies")
+            || inner.ends_with(".build-dependencies")))
+}
+
+/// True iff `name` is a crate the patch-block writer knows a workspace
+/// path for. Restricts the 220.E extension surface to vetted names.
+fn is_managed_runtime_crate_name(name: &str) -> bool {
+    nros_crate_path_lookup().iter().any(|(n, _)| *n == name)
+}
+
 fn render_patch_block(
     authority: &Path,
     build_root: &Path,
     pkgs: &[String],
     nano_ros_path: Option<&Path>,
+    extra_runtime_crates: &[String],
 ) -> RenderedBlock {
     let authority_dir = authority.parent().unwrap();
     let mut managed_names: Vec<String> = Vec::new();
@@ -902,13 +1082,58 @@ fn render_patch_block(
     //    own Cargo.toml has direct path-deps for the larger nros-*
     //    runtime (canonical 212 shape), the generated crates need
     //    `[patch.crates-io]` entries for these two specific crates to
-    //    resolve. Larger nros-* runtime patches were dropped post-212
-    //    merge — they triggered cargo's "patch unused" warnings.
+    //    resolve.
+    //
+    // 3) Phase 220.E — additionally, every `nros-*` (or `nros` /
+    //    `cyclonedds-sys`) runtime crate the CONSUMER's own
+    //    `[dependencies]` references in registry-style (`version = "*"`)
+    //    needs a path-dep here too — otherwise cargo can't resolve them
+    //    (they aren't on crates.io). Without this, examples like
+    //    `examples/zephyr/rust/talker/` which declare
+    //    `nros = { version = "*", ... }` + `nros-rmw-zenoh = { version =
+    //    "*", ... }` would fail post-`ws sync` with `no matching package`.
+    //
+    //    The union of (220.E extras) + (the minimal `nros-core` +
+    //    `nros-serdes` for generated msg crates) is emitted in a single
+    //    deduped, alphabetical pass for deterministic diffs.
     if let Some(nrp) = nano_ros_path {
-        for (cname, sub) in &[
-            ("nros-core", "packages/core/nros-core"),
-            ("nros-serdes", "packages/core/nros-serdes"),
-        ] {
+        let lookup = nros_crate_path_lookup();
+        // Always include the minimum runtime patches the generated msg
+        // crates depend on, then union in the consumer-referenced extras.
+        let mut wanted: Vec<&'static str> = vec!["nros-core", "nros-serdes"];
+        for extra in extra_runtime_crates {
+            if lookup.iter().any(|(name, _)| *name == extra.as_str())
+                && !wanted.iter().any(|w| *w == extra.as_str())
+            {
+                // Anchor to the static str in the lookup table — the
+                // dedup pass relies on string equality.
+                let anchored = lookup
+                    .iter()
+                    .find(|(n, _)| *n == extra.as_str())
+                    .map(|(n, _)| *n)
+                    .unwrap();
+                wanted.push(anchored);
+            } else if !lookup.iter().any(|(name, _)| *name == extra.as_str()) {
+                // Unknown nros-* / cyclonedds-sys variant — likely a
+                // third-party extension. Log + skip rather than fail;
+                // user can still hand-patch outside the managed block.
+                eprintln!(
+                    "ws sync: unknown runtime crate `{extra}` referenced as registry dep; \
+                     no path mapping in the nros lookup table — skipping patch entry. \
+                     Add a manual `[patch.crates-io]` row above the BEGIN marker."
+                );
+            }
+        }
+        // Deterministic order — alphabetical keeps the diff stable across
+        // re-syncs and across consumers with different dep sets.
+        wanted.sort();
+        wanted.dedup();
+        for cname in &wanted {
+            let sub = lookup
+                .iter()
+                .find(|(n, _)| n == cname)
+                .map(|(_, p)| *p)
+                .expect("cname comes from lookup; entry must exist");
             let crate_root = nrp.join(sub);
             if !crate_root.join("Cargo.toml").is_file() {
                 continue;
@@ -1685,6 +1910,130 @@ cyclonedds-sys = { path = \"../../../../packages/dds/cyclonedds-sys\" }
     fn strip_managed_block_noop_without_markers() {
         let body = "[package]\nname = \"x\"\n";
         assert_eq!(strip_managed_block(body), body);
+    }
+
+    /// Phase 220.E — consumer Cargo.toml scanner finds every
+    /// `nros-*` / `nros` / `cyclonedds-sys` dep with a registry-style
+    /// version (`"*"` or `{ version = "*", ... }`), even when other
+    /// shapes appear in the same `[dependencies]` table. Path-style
+    /// deps (no `version` key) are excluded.
+    #[test]
+    fn extract_consumer_registry_deps_basic() {
+        let body = r#"
+[package]
+name = "demo"
+
+[dependencies]
+zephyr = "0.1"
+log = "0.4"
+nros = { version = "*", default-features = false }
+nros-rmw-zenoh = { version = "*", optional = true }
+nros-rmw-cyclonedds-sys = { path = "../foo/nros-rmw-cyclonedds-sys" }
+std_msgs = { version = "*", default-features = false }
+"#;
+        let got = extract_consumer_registry_nros_deps(body);
+        // nros + nros-rmw-zenoh recognized (registry).
+        // nros-rmw-cyclonedds-sys EXCLUDED (path-only, no version key).
+        // zephyr/log/std_msgs ignored (not in lookup table).
+        assert_eq!(got, vec!["nros".to_string(), "nros-rmw-zenoh".to_string()]);
+    }
+
+    /// Bare-string version form `name = "*"` recognized.
+    #[test]
+    fn extract_consumer_registry_deps_bare_version() {
+        let body = r#"
+[dependencies]
+nros-core = "*"
+nros-serdes = "0.4"
+"#;
+        let got = extract_consumer_registry_nros_deps(body);
+        assert_eq!(
+            got,
+            vec!["nros-core".to_string(), "nros-serdes".to_string()]
+        );
+    }
+
+    /// Both `version` AND `path` is treated as registry-style (cargo
+    /// workspace shape — version key wins for `[patch.crates-io]`
+    /// matching purposes).
+    #[test]
+    fn extract_consumer_registry_deps_version_plus_path() {
+        let body = r#"
+[dependencies]
+nros = { version = "0.4", path = "../core/nros" }
+"#;
+        let got = extract_consumer_registry_nros_deps(body);
+        assert_eq!(got, vec!["nros".to_string()]);
+    }
+
+    /// Target-cfg-scoped `[target.<cfg>.dependencies]` tables are
+    /// walked too — common shape for platform-specific deps.
+    #[test]
+    fn extract_consumer_registry_deps_target_cfg() {
+        let body = r#"
+[dependencies]
+log = "0.4"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nros-rmw-zenoh = { version = "*" }
+"#;
+        let got = extract_consumer_registry_nros_deps(body);
+        assert_eq!(got, vec!["nros-rmw-zenoh".to_string()]);
+    }
+
+    /// `cyclonedds-sys` lives under `packages/dds/` and is intentionally
+    /// in the lookup table — it's the most common non-`nros-*`-prefixed
+    /// runtime crate consumers reference registry-style.
+    #[test]
+    fn extract_consumer_registry_deps_cyclonedds_sys() {
+        let body = r#"
+[dependencies]
+cyclonedds-sys = { version = "*" }
+nros-foo-extension = { version = "*" }
+"#;
+        let got = extract_consumer_registry_nros_deps(body);
+        // `cyclonedds-sys` in lookup, `nros-foo-extension` is not.
+        assert_eq!(got, vec!["cyclonedds-sys".to_string()]);
+    }
+
+    /// Path-only deps (the canonical Phase 212 shape) produce an empty
+    /// scan — no patch entries needed since cargo resolves them directly.
+    #[test]
+    fn extract_consumer_registry_deps_path_only_empty() {
+        let body = r#"
+[dependencies]
+nros = { path = "../../../packages/core/nros" }
+nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh" }
+"#;
+        let got = extract_consumer_registry_nros_deps(body);
+        assert!(got.is_empty(), "expected no registry deps, got: {got:?}");
+    }
+
+    /// The lookup table covers every name the Phase 220 brief enumerates.
+    #[test]
+    fn lookup_table_covers_phase_220_e_minimum_set() {
+        let must_have = [
+            "nros",
+            "nros-core",
+            "nros-serdes",
+            "nros-platform",
+            "nros-platform-cffi",
+            "nros-node",
+            "nros-rmw",
+            "nros-rmw-cffi",
+            "nros-log",
+            "nros-macros",
+            "nros-rmw-zenoh",
+            "nros-rmw-cyclonedds-sys",
+            "nros-rmw-xrce-cffi",
+            "cyclonedds-sys",
+        ];
+        for name in &must_have {
+            assert!(
+                is_managed_runtime_crate_name(name),
+                "lookup table missing `{name}`"
+            );
+        }
     }
 
     /// TOML quoted keys (`"name" = ...`) are recognised as managed.
