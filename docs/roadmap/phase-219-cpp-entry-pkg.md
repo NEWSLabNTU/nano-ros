@@ -15,7 +15,7 @@ Three docs are in scope; read in order:
    canonical three-role shape (Bringup + Node + Entry). Background.
 2. **This file** — §1 + §2 + §3 sketch the surface; §4 lists every
    work item in landing order; §6 carries the acceptance bar.
-3. **`docs/roadmap/phase-219-workflow-review.md`** — concrete
+3. **`docs/roadmap/phase-224-cpp-workspace-workflow-review.md`** — concrete
    2-Node pure-C++ workspace walkthrough that surfaced six
    integration gaps beyond the headline Entry-codegen gap. Each
    gap is anchored to a specific 219.X item; that doc is the
@@ -365,7 +365,7 @@ review.
 Single ordered list. Items grouped into three tracks; tracks land in
 order but inside a track the items are independent. Cost tags
 (`cheap` / `medium`) come from the workflow-review estimates;
-`(✱)` marks items the workflow review (`phase-219-workflow-review.md`)
+`(✱)` marks items the workflow review (`phase-224-cpp-workspace-workflow-review.md`)
 added on top of the original 219.A–G design.
 
 ### Track 1 — workspace plumbing (lands first)

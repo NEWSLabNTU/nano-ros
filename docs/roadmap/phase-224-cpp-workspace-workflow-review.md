@@ -1,4 +1,9 @@
-# Phase 219 — pure C/C++ multi-pkg workspace workflow review
+# Phase 224 — pure C/C++ multi-pkg workspace workflow review
+
+**Renumbered 2026-06-04** from `phase-219-workflow-review.md` to its own
+slot now that Phase 219 (C/C++ Entry pkg) has landed. Originally written
+as the verification artifact for Phase 219's plan; preserved here as the
+canonical record of the 7-gap walkthrough that drove 219.H/I/J/K/L/M.
 
 **Goal.** Verify Phase 219's claim ("only Entry is Rust-biased; Node + Bringup
 are language-symmetric") by walking the end-to-end pure-C/C++ workflow against
