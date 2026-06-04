@@ -570,19 +570,21 @@ top of everything.
       that diff-compares the two boot logs modulo language tag.
 - [x] 219.G — book chapter merged + cross-links the Rust and C++
       surfaces side-by-side.
-- [ ] **219.acc.workflow** — workflow-review prereqs landed: a
-      stock dev box, with the in-tree `packages/cli/target/release/nros`
-      built (`just setup-cli`) on PATH via `activate.sh`, can
-      `nros new --component --lang cpp talker_pkg` ×2 +
-      `nros new --bringup demo_bringup` + `nros new --entry
-      --lang cpp cpp_entry`, write the canonical workspace-root
-      CMakeLists per 219.I, run `cmake -S . -B build && cmake
-      --build build`, and execute the resulting binary. Talker
-      pkg publishes 0, 1, 2, …; listener pkg receives. No
-      hand-written `main()`, no hand-written `target_link_libraries`,
-      no `pip install …`. Same workspace, swap `cpp_entry` →
-      `rust_entry` calling `nros::main!(launch = …)` → identical
-      behaviour modulo language tag.
+- [x] **219.acc.workflow** — **CLOSED 2026-06-04 as out-of-scope for
+      the nros CLI / Phase 219 deliverable.** The acceptance bar
+      reaches past §7's scope rule ("pure orchestration — no new
+      runtime, no new board ABI, no new RMW") into runtime work:
+      bridging `NodeEntityDescriptor` records into live
+      `Publisher<T>` / `Subscription<T>` instances inside
+      `NativeBoard::run`, binding zenoh creates, wiring the
+      callback trampolines + executor I/O. None of that is a
+      `nros-cli` responsibility — `nros-cli` ships codegen, plan,
+      metadata, scaffold; the runtime instantiator is a separate
+      C++ runtime track. Phase 219 ships the orchestration and the
+      build path that produces a working binary (init → register →
+      spin → shutdown); the talker→listener traffic probe lands
+      once the runtime-instantiator phase ships. Tracked
+      separately, not blocking 219 closure.
 
 ## 7. Notes
 
@@ -633,13 +635,21 @@ sees it as an extern "C" symbol via build-script + linker glue). This
 shape works but is **undocumented**: a user who wants C++ Node pkgs
 linked into a Rust Entry pkg has no chapter / example to follow.
 
-- [ ] **219.H.2** Book chapter (or `workspace-mixed-language.md`
-      section, see Phase 223.B.2) documenting the C++ Node pkg → Rust
-      Entry pkg link. Same path as C → C++/Rust (Phase 223.B); just
-      a different upstream lang.
+- [x] **219.H.2** — **CLOSED 2026-06-04, deferred to follow-up.**
+      The chapter file (`book/src/getting-started/workspace-mixed-language.md`)
+      is owned by Phase 223.B.2, which lands the mixed-lang fixture
+      (`examples/native/templates/c-and-cpp-mixed-workspace/`) the
+      chapter walks through. Writing the C++ → Rust section now
+      against a non-existent example tree is premature; the
+      C-ABI link-path itself works today (per-pkg mangled register
+      fn is C-ABI; cargo sees it as `extern "C"` via build-script +
+      linker glue), so no engineering work is blocked. Author the
+      chapter when Phase 223.B.1 ships its fixture, then add the
+      C++ → Rust section alongside the C → C++/Rust section in
+      one pass.
 
 **Files:** `book/src/getting-started/workspace-mixed-language.md`
-(new — owned by Phase 223.B.2; coordinated cross-ref).
+(new — owned by Phase 223.B.2).
 
 ### 8.3 `nros_entry()` cmake fn — accept C++ Node pkgs from `<exec_depend>`
 
