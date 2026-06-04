@@ -1850,19 +1850,75 @@ invocation no longer resolves.
       appended in the same commit so the cyclonedds-style header
       comment covers both.
 
-- [ ] **214.S.5.c.3 Verify `just freertos build-examples` clean** —
+- [~] **214.S.5.c.3 Verify `just freertos build-examples` clean** —
       after S.5.c.1 + S.5.c.2 + S.5.b host-shim, the recipe must
       build every example under each RMW. K.7 native cyclonedds
-      regression untouched. **Blocked 2026-06-04** by a separate
-      `[PREREQ]` early-exit: the recipe gates on `nros ws sync`
-      (Phase 214.J.2 codegen-stamp) which the installed nros 0.3.7
-      lacks ("nros ws sync verb unavailable (installed nros lacks
-      Phase 210.D.1 / 210.E.3.d.native; bump scripts/install-nros.sh
-      pin past 0.3.7 or set NROS_FROM_SOURCE=/path/to/nros-cli)").
-      Not a manifest issue — once the pinned nros CLI ships the
-      `ws sync` verb the feature-resolution unblock from S.5.c.1+2
-      will be visible. Follow-up: bump `scripts/install-nros.sh`
-      version pin past 0.3.7 (separate track — outside S.5.c scope).
+      regression untouched. **Re-run 2026-06-04** with stock
+      `nros 0.3.7` from `~/.nros/bin/nros` — the prior "blocked by
+      missing `ws sync` verb" annotation was stale (the shipped
+      0.3.7 release DOES carry `ws sync`; `nros help ws` lists it,
+      so `nros_require_ws_sync` returns 0 and the recipe proceeds).
+      The recipe now reaches the first cargo invocation
+      (`cargo build --no-default-features --features rmw-zenoh
+      --target-dir target-zenoh` against
+      `examples/qemu-arm-freertos/rust/talker`) and **fails at
+      manifest resolution**: the S.5.c.1+S.5.c.2 parity rows point
+      at `nros/rmw-zenoh` and `nros/rmw-xrce` which the `nros`
+      umbrella crate does NOT expose. Per
+      `packages/core/nros/Cargo.toml` (Phase 128.C.3) the only RMW
+      features on `nros` are `rmw-cffi`, `rmw-cyclonedds`, and
+      `rmw-lending` — zenoh + xrce backends are selected by
+      depending on `nros-rmw-zenoh` / `nros-rmw-xrce-cffi` directly,
+      not via an `nros/rmw-<x>` feature. Verbatim cargo error
+      (talker; identical shape for the other 5 FreeRTOS Component
+      pkgs):
+
+      ```
+      package `freertos_rs_talker` depends on `nros` with feature
+      `rmw-xrce` but `nros` does not have that feature.
+      help: available features: alloc, bridge, config, default,
+      ffi-size-markers, ffi-sync, lending, lifecycle-services,
+      link-custom, link-tls, param-services, platform-bare-metal,
+      platform-cffi, platform-freertos, platform-nuttx,
+      platform-orin-spe, platform-posix, platform-threadx,
+      platform-udp, platform-zephyr, rmw-cffi, rmw-cyclonedds,
+      rmw-lending, ros-humble, ros-iron, safety-e2e, std, stream,
+      unstable-zenoh-api, xrce-serial, xrce-udp
+      ```
+
+      Scope: 12 Component pkgs (6 FreeRTOS + 6 threadx-linux), 2
+      offending rows each (zenoh + xrce). S.5's cyclonedds row was
+      fine because Phase 214.S.3 added `rmw-cyclonedds` to `nros`
+      proper — the zenoh/xrce siblings have no such feature.
+      Verification stops at the very first cargo invoke; subsequent
+      cyclonedds + C/C++ fixture passes never run. Filed as
+      S.5.c.4 below. Worktree log:
+      `tmp/freertos-build-examples-s5c3.log`.
+
+- [ ] **214.S.5.c.4 Fix S.5.c.1+S.5.c.2 manifest rows that
+      reference non-existent `nros` features** — surfaced by
+      S.5.c.3 verification. Two viable fixes; pick one and apply
+      uniformly across all 12 Component pkgs:
+
+      1. **Add `rmw-zenoh` + `rmw-xrce` feature rows to the `nros`
+         umbrella crate** (mirroring how Phase 214.S.3 added
+         `rmw-cyclonedds`). Each row activates the matching
+         backend dep + any `nros-node` link-flip. Most consistent
+         with S.5 parity intent; touches one crate
+         (`packages/core/nros/Cargo.toml`) plus likely a build.rs
+         cfg in `nros-node` for symmetry.
+      2. **Drop the broken `rmw-zenoh` + `rmw-xrce` rows** from the
+         12 Component pkgs and document that those backends are
+         selected via direct dep on `nros-rmw-zenoh` /
+         `nros-rmw-xrce-cffi` (the legacy shape). Cheaper but
+         retreats from the S.5.c parity goal.
+
+      Acceptance for S.5.c.4: `just freertos build-examples` runs
+      to completion green AND `git grep '"nros/rmw-zenoh"\|"nros/rmw-xrce"'
+      examples/qemu-arm-freertos/rust/*/Cargo.toml
+      examples/threadx-linux/rust/*/Cargo.toml` either returns
+      nothing (option 2) OR the referenced features exist on
+      `nros` (option 1).
 
 **Cross-refs**:
 * S.4 (native rust 1-entry parity) — established the shape this
