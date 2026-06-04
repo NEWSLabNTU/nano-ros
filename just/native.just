@@ -186,6 +186,14 @@ build-fixture-extras:
     # source over any system /opt/ros Cyclone (build-flag/ABI mismatch). idlc comes
     # from the source build's idlc target / host PATH (186.3).
     for collapsed_case in talker listener; do
+        # Phase 214 followup — Phase 212.M.1 sweep deleted per-example
+        # CMakeLists.txt (pure-cargo shape). Skip the cmake cyclonedds path;
+        # the pure-cargo `cargo build --features rmw-cyclonedds` path
+        # (Phase 214.S.4 / K.7.7) is canonical now and runs via cargo.
+        if [ ! -f "examples/native/rust/${collapsed_case}/CMakeLists.txt" ]; then
+            echo "  → native/rust/${collapsed_case} cyclonedds cmake-path skipped (pure-cargo shape post-212.M.1)"
+            continue
+        fi
         echo "  → native/rust/${collapsed_case} (-DNROS_RMW=cyclonedds, self-provision, build-cyclonedds/)"
         ensure_native_rust_generated "native/rust/${collapsed_case}"
         ( cd "examples/native/rust/${collapsed_case}" && \

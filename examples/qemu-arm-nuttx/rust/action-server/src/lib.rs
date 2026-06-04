@@ -79,7 +79,7 @@ impl ExecutableNode for FibonacciServer {
 
         for (goal_id, _order) in goals {
             // Publish one canonical Fibonacci-shaped feedback frame.
-            let mut sequence: nros::heapless::Vec<i32, 16> = nros::heapless::Vec::new();
+            let mut sequence: nros::heapless::Vec<i32, 64> = nros::heapless::Vec::new();
             let _ = sequence.push(0);
             let _ = sequence.push(1);
             let _ = sequence.push(1);

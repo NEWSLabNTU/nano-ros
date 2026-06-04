@@ -6,12 +6,13 @@
 /// dispatch (codegen-system emits `system_main.c` shelled by the
 /// integrations/nuttx H.2 adapter).
 
+#include <stddef.h>
 #include <nros/node_pkg.h>
 
 #include "std_msgs.h"
 
 static nros_ret_t register_talker(nros_node_context_t *ctx) {
-    nros_node_pkg_options_t opts = nros_node_pkg_options("talker");
+    nros_decl_node_options_t opts = nros_node_options("talker");
     nros_declared_node_t node;
     nros_ret_t r = nros_declared_node_create(ctx, "node", &opts, &node);
     if (r != NROS_RET_OK) return r;
@@ -44,4 +45,4 @@ static nros_ret_t register_talker(nros_node_context_t *ctx) {
         ctx, "on_tick", NROS_NODE_CALLBACK_PUBLISHES, "pub_chatter");
 }
 
-NROS_COMPONENT(register_talker);
+NROS_NODE_REGISTER(register_talker);

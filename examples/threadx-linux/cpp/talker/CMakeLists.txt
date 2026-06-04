@@ -41,3 +41,7 @@ target_link_libraries(threadx_cpp_talker PRIVATE
     std_msgs::std_msgs)
 nros_threadx_link_app(threadx_cpp_talker)
 nano_ros_link_rmw(threadx_cpp_talker RMW "${NROS_RMW}")
+
+# Phase 214 followup — link interface lib so generated headers
+# (e.g. std_msgs.hpp) are on include path for src/*.cpp sources.
+target_link_libraries(threadx_linux_cpp_talker_talker_component PUBLIC std_msgs::std_msgs)

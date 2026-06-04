@@ -31,3 +31,6 @@ nano_ros_deploy(
     RMW        ${NROS_RMW}
     DOMAIN_ID  0
     LOCATOR    "tcp/10.0.2.2:7447")
+
+# Phase 214 followup — link interface lib for generated headers.
+target_link_libraries(freertos_c_talker_talker_component PUBLIC std_msgs__nano_ros_c)

@@ -39,7 +39,7 @@ locator = \"tcp/10.0.2.2:7451\"\n\
 ";
 
 #[unsafe(no_mangle)]
-extern "C" fn _start() -> ! {
+extern "C" fn main() -> ! {
     run(Config::from_toml(CONFIG), |_config| {
         register_logger(&LOGGER);
         init(sinks::default());

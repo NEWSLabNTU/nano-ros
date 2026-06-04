@@ -7,11 +7,12 @@
 /// the same dependency applies to action-client send_goal /
 /// feedback-stream wiring.
 
+#include <stddef.h>
 #include <nros/node_pkg.h>
 
 static nros_ret_t register_action_client(nros_node_context_t *ctx) {
-    nros_node_pkg_options_t opts =
-        nros_node_pkg_options("fibonacci_action_client");
+    nros_decl_node_options_t opts =
+        nros_node_options("fibonacci_action_client");
     nros_declared_node_t node;
     nros_ret_t r = nros_declared_node_create(ctx, "node", &opts, &node);
     if (r != NROS_RET_OK) return r;
@@ -28,4 +29,4 @@ static nros_ret_t register_action_client(nros_node_context_t *ctx) {
     return nros_node_create_entity(ctx, &client);
 }
 
-NROS_COMPONENT(register_action_client);
+NROS_NODE_REGISTER(register_action_client);

@@ -176,6 +176,15 @@ build-fixture-extras:
         if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
             continue
         fi
+        # Phase 214 followup — Phase 212.M.5.b sweep deleted per-example
+        # CMakeLists.txt (pure-cargo Component pkg shape). Skip the cyclonedds
+        # cmake/corrosion path until a sibling _cyclonedds example is restored
+        # OR the cargo build.rs path picks up cyclonedds vendoring on
+        # FreeRTOS (Phase 214.S.5.b BSP gate work / 214.P followup).
+        if [ ! -f examples/qemu-arm-freertos/rust/${case}/CMakeLists.txt ]; then
+            echo "  → freertos/rust/${case} cyclonedds skipped (no CMakeLists.txt — pure-cargo shape post-212.M.5.b)"
+            continue
+        fi
         echo "  → freertos/rust/${case} (-DNROS_RMW=cyclonedds, self-provision, build-cyclonedds/)"
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe examples/qemu-arm-freertos/rust/${case}
         NROS_REPO_DIR="$PWD" "$nros_cli" ws sync examples/qemu-arm-freertos/rust/${case} >/dev/null
