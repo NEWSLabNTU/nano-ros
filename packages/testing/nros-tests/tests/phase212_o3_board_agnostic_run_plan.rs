@@ -335,13 +335,23 @@ fn board_agnostic_run_plan_links_against_any_board() {
     }
 
     // THE KEY ASSERTION — both emitted run_plan.rs are byte-
-    // identical. Anything else means nros-build's emit depended on
-    // the host Board / target triple at codegen time, which would
-    // break the Phase 212.N.4 board-agnostic contract.
+    // identical AFTER stripping the per-Entry-pkg diagnostic header
+    // comment that legitimately differs (the emit template
+    // includes `// plan.system : <pkg>` so each Entry pkg's emit
+    // names its own system; that's useful diagnostic + does NOT
+    // leak Board context). Filter `plan.system` comment lines from
+    // both sides; everything else must match byte-for-byte.
+    let strip_system_comment = |text: &str| -> String {
+        text.lines()
+            .filter(|l| !l.starts_with("// plan.system"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let posix_filtered = strip_system_comment(&posix_run_plan_text);
+    let freertos_filtered = strip_system_comment(&freertos_run_plan_text);
     assert_eq!(
-        posix_run_plan,
-        freertos_run_plan,
-        "OUT_DIR/run_plan.rs DIFFERS across Board impls — codegen leaked Board context.\n--- posix ({}) ---\n{posix_run_plan_text}\n--- freertos ({}) ---\n{freertos_run_plan_text}",
+        posix_filtered, freertos_filtered,
+        "OUT_DIR/run_plan.rs DIFFERS across Board impls (after stripping diagnostic system-header) — codegen leaked Board context.\n--- posix ({}) ---\n{posix_run_plan_text}\n--- freertos ({}) ---\n{freertos_run_plan_text}",
         posix_run_plan_path.display(),
         freertos_run_plan_path.display(),
     );

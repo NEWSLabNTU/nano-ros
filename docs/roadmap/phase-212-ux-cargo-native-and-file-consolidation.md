@@ -2653,7 +2653,7 @@ canonical-shape regression test can run green tree-wide:
       `[package.metadata.nros.component]` in `Cargo.toml`) OR
       formally exempt as benchmark special-cases with a doc note
       explaining the carve-out. Smallest scope; agent-friendly.
-- [ ] **M-F.19 nros-build emit-template post-N.12/N.7 sync**
+- [x] **M-F.19 nros-build emit-template post-N.12/N.7 sync**
       (nros-cli) — discovered while integration-testing O.3 + O.5
       against the local nros-cli checkout post-M-F.17. Once the
       planner side accepts the cargo-metadata-synthesised artifacts
@@ -2693,7 +2693,38 @@ canonical-shape regression test can run green tree-wide:
 
       **Blocks:** §212.O.3 (`board_agnostic_run_plan_links_
       against_any_board`) + §212.O.5 (`n11_launch_xml_ros2_
-      compat_smoke`) flipping to `[x]`.
+      compat_smoke`) flipping to `[x]`. (O.3 cleared 2026-06-04
+      via this commit's emit-template sync + the test-side
+      diagnostic-header strip; O.5 still gated on M-F.20 below.)
+
+- [ ] **M-F.20 `play_launch_parser` `$(find <pkg>)` substitution**
+      (nros-cli) — discovered while integration-testing O.5
+      against the post-M-F.19 CLI. The launch parser used by
+      `nros_build::generate_run_plan` rejects:
+      ```
+      Error: Invalid substitution syntax: Unknown substitution
+      type: find
+      ```
+      on a nav2-style `<include file="$(find <pkg>)/<file>"/>`
+      directive. The §212.N.11 work-item body claimed
+      `launch_synth` supports the directives but the upstream
+      `play_launch_parser` does not.
+
+      **Pick one of:**
+      - **α — extend `play_launch_parser`** (`nros-cli/third-party/
+        play_launch_parser`) to recognise `$(find <pkg>)` +
+        resolve via `pkg_index::build_pkg_index` (the same
+        surface M-F.17 + N.10 already drive). Cleanest matches
+        the N.11 contract verbatim.
+      - **β — drop `$(find ...)` from the N.11 contract.** Users
+        author `<include>` with absolute paths or paths relative
+        to the bringup pkg `launch/` dir. Smaller scope; weakens
+        ROS-2 compatibility.
+
+      Recommend α — keeps the N.11 promise honest.
+
+      **Blocks:** §212.O.5 (`n11_launch_xml_ros2_compat_smoke`)
+      flipping to `[x]`.
 
 ### §212.O — Acceptance test fill-ins (parallel-dispatchable)
 
@@ -2749,12 +2780,15 @@ rebase conflict.
       diagnostic identifying the missing field. Scope: nros-cli
       `check_workspace` lints + integration test.
 
-- [~] **O.3 `board_agnostic_run_plan_links_against_any_board`**
-      (N tests) — same compiled `run_plan` rlib links under at
-      least 2 distinct Board impls (`nros-board-posix` +
-      `nros-board-qemu-mps2-an385-freertos`) in a single fixture.
-      Proves the §212.N.4 emit is genuinely board-agnostic.
-      Scope: nano-ros only. New fixture + test.
+- [x] **O.3 `board_agnostic_run_plan_links_against_any_board`** —
+      verified PASS 2026-06-04 against the freshly-installed nros-cli
+      (post-M-F.17 fix-ups + M-F.19 emit-template sync + the path-
+      override + fixture-layout fix in `ab09ccf28`). The byte-
+      identical assertion strips the per-Entry-pkg `// plan.system:
+      <pkg>` diagnostic header (legitimately differs between posix +
+      freertos Entry pkgs; the rest of the emit IS board-agnostic).
+      `cargo nextest run --run-ignored only --test phase212_o3_
+      board_agnostic_run_plan` reaches PASS in ~50s.
 
 - [x] **O.4 `n10_pkg_index_resolves_across_workspace`** (N.10
       test) — fixture: workspace with 3 Node pkgs + 1 bringup pkg
@@ -2765,13 +2799,21 @@ rebase conflict.
       no acceptance test was wired. Scope: nano-ros only (or
       nros-cli if the pkg-index resolution is CLI-side).
 
-- [~] **O.5 `n11_launch_xml_ros2_compat_smoke`** (N.11 test) —
-      copy-paste a stock nav2-style launch.xml (`<node>` +
-      `<arg>` + `<include>` + `$(find <pkg>)`) into a fixture;
-      codegen accepts it + emits correct `run_plan` body. The
-      `launch_synth` parser supports the directives (per N.11
-      body); no smoke gate. Scope: nano-ros fixture + test, or
-      nros-cli integration test under `tests/launch_xml/`.
+- [~] **O.5 `n11_launch_xml_ros2_compat_smoke`** — fixture + test
+      landed; build.rs fixed in `<see this commit>` (workspace_root
+      override matching the O.3 fix). Test still skips: NEW BLOCKER
+      surfaced 2026-06-04 — the bundled `play_launch_parser` (in
+      `nros-cli/third-party/play_launch_parser`) REJECTS the
+      `$(find <pkg>)` substitution with `Error: Invalid
+      substitution syntax: Unknown substitution type: find`. The
+      N.11 body claimed launch_synth supports `$(find ...)` but
+      the upstream parser does not. Pick one of:
+      α — extend the bundled parser to recognise `$(find <pkg>)` +
+          resolve via `pkg_index::build_pkg_index` (same surface
+          M-F.17 + N.10 already drive).
+      β — drop the `$(find ...)` requirement from the N.11 contract;
+          users use `<include>` with absolute paths instead.
+      Filed as the M-F.20 follow-up.
 
 - [x] **O.6 `application_pkg_with_rtos_deploy_is_rejected`**
       (nros-cli `check`) — `nros check` rejects an Application
