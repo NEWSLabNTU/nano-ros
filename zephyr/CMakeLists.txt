@@ -15,6 +15,14 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 # tree under ${CMAKE_BINARY_DIR}/nros-system/ wired into `app`. See
 # cmake/nros_system_generate.cmake (≤200 LoC adapter shim).
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_system_generate.cmake)
+# Phase 215.B.2 — nano_ros_use_board(<name>). Layers a board crate's
+# board.cmake sidecar manifest (EXTRA_CONF_FILE / DTC_OVERLAY_FILE /
+# BOARD / NANO_ROS_RMW / NROS_BOARD_RUNNER) into the downstream app
+# build. The canonical call site is the consumer app's CMakeLists.txt
+# BEFORE find_package(Zephyr); this include just makes the fn
+# available wherever nano-ros is on ZEPHYR_EXTRA_MODULES (re-include
+# is benign — cmake allows fn redefinition).
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/nano_ros_use_board.cmake)
 
 # The nros repo root (parent of this zephyr/ directory).
 # Phase 210.E.3.c — promoted to CACHE so consumer application's
