@@ -64,6 +64,7 @@
 - [The `Board` Trait Family](./porting/board-trait.md)
 - [Custom Board Package](./porting/custom-board.md)
 - [Vendor Overlay Board Crate](./porting/vendor-overlay.md)
+- [Importing a Board Crate](./porting/board-crate-import.md)
 - [Custom Platform](./porting/custom-platform.md)
 - [Adding a Platform (CMake)](./porting/add-a-platform.md)
 - [Custom Transport](./porting/custom-transport.md)
