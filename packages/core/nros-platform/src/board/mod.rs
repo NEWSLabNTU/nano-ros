@@ -61,9 +61,20 @@ pub use init::BoardInit;
 pub use network::NetworkWait;
 pub use print::BoardPrint;
 pub use runtime::{
-    NodeDispatchFn, NodeInitFn, NodeRegisterFn, NodeRuntime, NodeTickFn, NullNodeRuntime,
-    RuntimeCtx, RuntimeError,
+    NodeDispatchFn, NodeDispatchRuntime, NodeInitFn, NodeRegisterFn, NodeTickFn,
+    NullNodeRuntime, RuntimeCtx, RuntimeError,
 };
+
+/// Phase 214.K.1 — backward-compat alias. The board-side dispatch
+/// sink was renamed `NodeRuntime` → `NodeDispatchRuntime` to
+/// disambiguate from the user-facing `nros::NodeRuntime` metadata
+/// trait. This alias stays for one release cycle so external impl
+/// callers (per-board crates outside the tree) get a clear
+/// deprecation arrow rather than a hard break.
+#[deprecated(
+    note = "renamed to NodeDispatchRuntime — Phase 214.K.1. Update imports + impls within one release cycle."
+)]
+pub use runtime::NodeDispatchRuntime as NodeRuntime;
 pub use transport::TransportBringup;
 
 /// Super-trait every board impl carries (mirrors

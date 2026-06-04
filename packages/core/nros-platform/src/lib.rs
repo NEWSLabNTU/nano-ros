@@ -37,9 +37,13 @@ mod resolve;
 // `nros_platform::board::*`.
 pub use board::{
     Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, BoardTransportConfig,
-    NetworkWait, NodeDispatchFn, NodeInitFn, NodeRegisterFn, NodeRuntime, NodeTickFn,
-    NullNodeRuntime, RuntimeCtx, RuntimeError, TransportBringup,
+    NetworkWait, NodeDispatchFn, NodeDispatchRuntime, NodeInitFn, NodeRegisterFn,
+    NodeTickFn, NullNodeRuntime, RuntimeCtx, RuntimeError, TransportBringup,
 };
+// Phase 214.K.1 — backward-compat alias at the crate root. See
+// `board::NodeRuntime` for the deprecation note.
+#[allow(deprecated)]
+pub use board::NodeRuntime;
 // Phase 212.N.2 — `NetworkError` is the return type any external
 // `NetworkWait` impl carries, so it needs to be reachable at the
 // crate root. The `board` module stays private; this re-export keeps

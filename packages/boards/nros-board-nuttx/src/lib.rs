@@ -264,7 +264,7 @@ where
     // dispatching component callbacks. Spin forever like the FreeRTOS
     // / ThreadX siblings; the user terminates via signal or shell.
     loop {
-        if let Err(err) = nros_platform::NodeRuntime::spin_once(&mut crt, 10) {
+        if let Err(err) = nros_platform::NodeDispatchRuntime::spin_once(&mut crt, 10) {
             eprintln!("spin_once error: {:?}", err);
             let _ = std::io::stderr().flush();
             std::process::exit(1);

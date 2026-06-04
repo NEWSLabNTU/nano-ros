@@ -10,7 +10,7 @@
 //! - **env** — environment-style key/value pairs (POSIX `getenv`
 //!   shape) accessible from no_std boards via this struct rather
 //!   than a `libc::getenv` call.
-//! - **runtime** — `&mut dyn NodeRuntime` sink the
+//! - **runtime** — `&mut dyn NodeDispatchRuntime` sink the
 //!   codegen-emitted `run_plan(runtime)` body forwards each Node
 //!   pkg's `register(runtime)` call into (Phase 212.N.7 step-3.2).
 //!   Populated by each `BoardEntry::run` impl after opening its
@@ -72,9 +72,20 @@ pub type NodeTickFn = extern "Rust" fn();
 /// [`NodeDispatchFn`] / [`NodeTickFn`] aliases — the
 /// real-typed counterparts live in `nros`. The implementor
 /// `mem::transmute`s back at the call site (see
-/// `impl nros_platform::NodeRuntime for ExecutorNodeRuntime`
+/// `impl nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime`
 /// in `packages/core/nros/src/component_runtime.rs`).
-pub trait NodeRuntime {
+///
+///
+/// Phase 214.K.1 — renamed from `NodeRuntime` to disambiguate from
+/// the user-facing `nros::NodeRuntime` metadata-sink trait in
+/// `packages/core/nros/src/node.rs:112`. The two traits live at
+/// different layers (board-side dispatch sink vs user-side metadata
+/// declaration sink) and the previous shared name forced explicit
+/// `nros_platform::` / `nros::` qualification at every use site +
+/// produced confusing `impl NodeRuntime for X` ambiguity. A
+/// `#[deprecated]` `pub use NodeDispatchRuntime as NodeRuntime;`
+/// re-export sits at the crate module level for one release cycle.
+pub trait NodeDispatchRuntime {
     /// Register a single Node pkg by its four `extern "Rust"` fn
     /// pointers + a static name for diagnostics. Returns `Err(())`
     /// when the executor rejects the registration (no detail surfaces
@@ -106,13 +117,13 @@ pub trait NodeRuntime {
     /// `{:?}`-print the error and `B::exit_failure()` — a typed enum
     /// would carry no extra info across the trait boundary, since the
     /// underlying `ExecutorError` from `nros::node_runtime` is mapped
-    /// to `()` at the impl site (`impl NodeRuntime for
+    /// to `()` at the impl site (`impl NodeDispatchRuntime for
     /// ExecutorNodeRuntime`). `#[allow]` keeps the surface narrow.
     #[allow(clippy::result_unit_err)]
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()>;
 }
 
-/// No-op [`NodeRuntime`] for tests / placeholders. Every call
+/// No-op [`NodeDispatchRuntime`] for tests / placeholders. Every call
 /// returns `Err(())` so callers that depend on a populated runtime
 /// fail loud rather than silently no-op.
 ///
@@ -122,7 +133,7 @@ pub trait NodeRuntime {
 #[derive(Debug, Default)]
 pub struct NullNodeRuntime;
 
-impl NodeRuntime for NullNodeRuntime {
+impl NodeDispatchRuntime for NullNodeRuntime {
     fn register_dispatch_slot_dyn(
         &mut self,
         _register: NodeRegisterFn,
@@ -167,7 +178,7 @@ pub struct RuntimeCtx<'a> {
     /// built via [`RuntimeCtx::with_runtime`]. That sink errors
     /// every call so test fixtures that forget to wire a real runtime
     /// fail loud.
-    pub runtime: &'a mut dyn NodeRuntime,
+    pub runtime: &'a mut dyn NodeDispatchRuntime,
 }
 
 impl core::fmt::Debug for RuntimeCtx<'_> {
@@ -176,7 +187,7 @@ impl core::fmt::Debug for RuntimeCtx<'_> {
             .field("params", &self.params)
             .field("remaps", &self.remaps)
             .field("env", &self.env)
-            .field("runtime", &"<dyn NodeRuntime>")
+            .field("runtime", &"<dyn NodeDispatchRuntime>")
             .finish()
     }
 }
@@ -189,7 +200,7 @@ impl<'a> RuntimeCtx<'a> {
     /// For test fixtures that don't need a populated runtime, pass a
     /// `&mut NullNodeRuntime` — every call against the sink
     /// returns `Err(())`, surfacing the missing wiring.
-    pub fn with_runtime(runtime: &'a mut dyn NodeRuntime) -> Self {
+    pub fn with_runtime(runtime: &'a mut dyn NodeDispatchRuntime) -> Self {
         Self {
             params: &[],
             remaps: &[],
@@ -201,7 +212,7 @@ impl<'a> RuntimeCtx<'a> {
     /// Build a [`RuntimeCtx`] with explicit overlay slices + runtime
     /// sink (Phase 212.N.7 step-3.2).
     pub fn new(
-        runtime: &'a mut dyn NodeRuntime,
+        runtime: &'a mut dyn NodeDispatchRuntime,
         params: &'a [(&'a str, &'a str)],
         remaps: &'a [(&'a str, &'a str)],
         env: &'a [(&'a str, &'a str)],

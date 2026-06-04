@@ -235,7 +235,7 @@ where
             // the trace dump + exit_failure (a working bring-up never
             // gets here).
             loop {
-                if let Err(err) = ::nros_platform::NodeRuntime::spin_once(&mut crt, 10) {
+                if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, 10) {
                     unsafe {
                         nros_trace_trigger_and_dump();
                     }

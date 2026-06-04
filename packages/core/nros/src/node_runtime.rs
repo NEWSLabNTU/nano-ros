@@ -477,7 +477,7 @@ impl ExecutorNodeRuntime {
 // Phase 212.N.7 step-3.3 — bridge to platform-side `NodeRuntime`.
 // =============================================================================
 //
-// `nros_platform::NodeRuntime` is the codegen-emitted
+// `nros_platform::NodeDispatchRuntime` is the codegen-emitted
 // `run_plan(runtime)` body's sink: object-safe + `no_std`. The
 // platform layer holds the four per-pkg fn pointers as opaque
 // `extern "Rust" fn()` aliases (see
@@ -495,7 +495,7 @@ impl ExecutorNodeRuntime {
 // step-3.4) can `mem::transmute` typed fn pointers into the
 // opaque alias at the Node-pkg call site.
 
-impl ::nros_platform::NodeRuntime for ExecutorNodeRuntime {
+impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     fn register_dispatch_slot_dyn(
         &mut self,
         register: ::nros_platform::NodeRegisterFn,

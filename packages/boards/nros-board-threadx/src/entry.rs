@@ -153,7 +153,7 @@ where
             // this thread, so we loop forever. `spin_once` errors trip
             // exit_failure (a working bring-up never gets here).
             loop {
-                if let Err(err) = ::nros_platform::NodeRuntime::spin_once(&mut crt, 10) {
+                if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, 10) {
                     B::println(format_args!(""));
                     B::println(format_args!("spin_once error: {:?}", err));
                     B::exit_failure();
