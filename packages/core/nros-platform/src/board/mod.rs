@@ -65,8 +65,8 @@ pub use init::BoardInit;
 pub use network::NetworkWait;
 pub use print::BoardPrint;
 pub use runtime::{
-    NodeDispatchFn, NodeDispatchRuntime, NodeInitFn, NodeRegisterFn, NodeTickFn,
-    NullNodeRuntime, RuntimeCtx, RuntimeError,
+    NodeDispatchFn, NodeDispatchRuntime, NodeInitFn, NodeRegisterFn, NodeTickFn, NullNodeRuntime,
+    RuntimeCtx, RuntimeError, SignaledCallback,
 };
 
 /// Phase 214.K.1 — backward-compat alias. The board-side dispatch

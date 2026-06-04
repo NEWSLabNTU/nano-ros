@@ -27,6 +27,32 @@
 //! variant on the heap; the trait surface is slice-based so
 //! both shapes work.
 
+use super::dispatch::DispatchStrategy;
+
+/// Layer-clean substitute for `nros::node_metadata::CallbackId` +
+/// `nros::node::CallbackCtx` at the [`NodeDispatchRuntime`] boundary
+/// (Phase 216.A.2). `nros-platform` sits below `nros` in the dep
+/// graph, so the trait surface cannot reference those types
+/// directly. The `nros`-side runtime impl wraps a real
+/// `(CallbackId, &mut CallbackCtx)` pair into this opaque shape
+/// before invoking [`NodeDispatchRuntime::signal_callback`]; the
+/// concrete dispatcher casts `ctx_ptr` back to
+/// `&mut nros::CallbackCtx<'_>` at the call site.
+///
+/// `#[repr(C)]` keeps the layout stable across the (same-language
+/// today, FFI-shaped tomorrow) `nros-platform` ↔ `nros` boundary.
+#[repr(C)]
+pub struct SignaledCallback<'a> {
+    /// Stable identifier string carried by `nros::CallbackId(&'a str)`.
+    pub cb_id: &'a str,
+
+    /// Erased pointer to the `nros::CallbackCtx<'_>` the dispatcher
+    /// will drive. The `nros`-side `NodeDispatchRuntime` impl casts
+    /// back to `&mut nros::CallbackCtx<'_>` before invoking the
+    /// component body.
+    pub ctx_ptr: *mut core::ffi::c_void,
+}
+
 /// Per-Node pkg `register` fn pointer (Phase 212.N.7 step-3.1).
 ///
 /// Real signature lives in `nros::NodeRegisterFn` (see
@@ -121,6 +147,24 @@ pub trait NodeDispatchRuntime {
     /// ExecutorNodeRuntime`). `#[allow]` keeps the surface narrow.
     #[allow(clippy::result_unit_err)]
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()>;
+
+    /// Hand a signaled callback to the framework-side dispatcher
+    /// (Phase 216.A.2). Only meaningful for `DispatchStrategy::Deferred`
+    /// (RTIC / Embassy) runtimes — `Inline` runtimes drive callbacks
+    /// directly from `spin_once` and never call this. The default panic
+    /// surfaces the mis-wire loudly rather than silently dropping the
+    /// callback signal.
+    fn signal_callback(&mut self, _cb: SignaledCallback<'_>) {
+        panic!("signal_callback not implemented for Inline runtime");
+    }
+
+    /// Declare how this runtime delivers callbacks (Phase 216.A.2).
+    /// `nros check` (Phase 216.D.1) cross-validates each Node pkg's
+    /// `Node::DISPATCH` against this value. Defaults to `Inline` so
+    /// every existing impl reports the historical behavior unchanged.
+    fn dispatch_strategy(&self) -> DispatchStrategy {
+        DispatchStrategy::Inline
+    }
 }
 
 /// No-op [`NodeDispatchRuntime`] for tests / placeholders. Every call
