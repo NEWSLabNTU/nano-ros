@@ -320,6 +320,59 @@ Almost every breakage traces to one of three root causes:
       Track A's pin-bump cadence + Phase 204's `install-nros.sh` pin
       bumps are likewise moot; callouts added to those docs.
 
+### I — Zephyr rust cyclonedds bringup-pkg naming drift
+
+* **Symptom** (surfaced 2026-06-04 by 220.D agent verification):
+  `just zephyr build-fixtures` zephyr/rust/cyclonedds variants hit
+  `nros codegen-system failed (rc=1)`:
+  ```
+  directory ".../examples/zephyr/rust/action-client" does not match
+  any bringup package in workspace; known bringup pkgs:
+  ["nros_zephyr_action_client"]
+  ```
+  Codegen-system maps the example dir → bringup pkg name but the
+  drift is: example dir is `action-client`, expected bringup pkg
+  is `nros_zephyr_action_client`. The naming convention bridge is
+  missing on zephyr rust path.
+* **Detection**: `just zephyr build-fixtures` filter
+  `NROS_ZEPHYR_FIXTURE_FILTER=rust-action-client-cyclonedds`.
+* **Remedy**: either
+  * (1) rename example dirs to match bringup pkg names
+    (`action-client` → `nros_zephyr_action_client/` etc.), OR
+  * (2) extend `nros codegen-system` dir → pkg resolver to accept
+    multiple aliases per workspace pkg, OR
+  * (3) emit per-platform `pkg-name → src-dir` map in workspace
+    metadata so codegen doesn't depend on dir-name convention.
+  Path (3) is cleanest — keeps example dirs readable.
+
+- [ ] **220.I.1** Audit `packages/cli/nros-cli-core/src/cmd/
+      codegen_system.rs` (or equivalent) for the dir → bringup-pkg
+      resolver.
+- [ ] **220.I.2** Pick path 1/2/3; implement.
+- [ ] **220.I.3** Verify all zephyr rust cyclonedds variants
+      configure clean.
+
+### J — play_launch_parser not on PATH in fresh worktrees
+
+* **Symptom** (surfaced 2026-06-04 by 220.G agent):
+  `threadx-linux/cpp` build hit `nros plan` failure: `nros plan`
+  shells out to `play_launch_parser` but the binary isn't on PATH
+  in fresh worktrees. Activate.sh wires `~/.nros/sdk/play_launch_
+  parser/bin/play_launch_parser` symlink path; worktrees that don't
+  source activate.sh hit the gap.
+* **Remedy**: agent driver scripts MUST `source ./activate.sh`
+  before any `nros` invocation (overlaps with 220.A.3). Plus:
+  workspace doctor should FAIL when `play_launch_parser` is
+  missing (not just warn) since the codegen-system path is now
+  on the critical path.
+
+- [ ] **220.J.1** Sweep agent driver dispatch templates for
+      `source ./activate.sh` (cross-ref 220.A.3).
+- [ ] **220.J.2** `just doctor` FAIL on missing
+      `play_launch_parser` (currently warns).
+- [ ] **220.J.3** Document the contract in CLAUDE.md so future
+      agents pick up the source-activate.sh requirement.
+
 ---
 
 ## Acceptance
