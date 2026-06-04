@@ -481,7 +481,7 @@ but is required for the end-to-end acceptance bar (§6).
           chapter documenting "cmake configure must precede
           `nros plan`" for pure-C/C++ workspaces.
       Closes review Gap 6.
-- [ ] **219.M — `nros new` C/C++ scaffolds.** (cheap-to-medium, ✱)
+- [x] **219.M — `nros new` C/C++ scaffolds.** (cheap-to-medium, ✱)
       Today `nros new <name> --lang cpp --component` errors out
       ("scaffolds a Rust component; --lang cpp is not yet
       supported", `packages/cli/nros-cli-core/src/cmd/new.rs:116`). Plain

@@ -92,6 +92,14 @@ pub struct ComponentScaffoldConfig {
     /// diversification is TODO — today every flavor emits the publisher+timer
     /// shape, named after the flavor.
     pub use_case: String,
+    /// Source language. `rust` (default) lands the historical Phase 172 W.3
+    /// shape; `cpp` (Phase 219.M) lands the Phase 212.L.9 C++ Node pkg shape
+    /// with `nano_ros_workspace_pkg_guard()` + `nano_ros_node_register()` +
+    /// `NROS_NODE_REGISTER()`. C is deferred — the underlying
+    /// `NROS_COMPONENT(pkg, register_fn)` macro semantics need a 1-arg
+    /// shim before a hand-rolled scaffold can match the freertos fixture
+    /// shape; tracked as a 219.M follow-up.
+    pub lang: String,
     pub force: bool,
 }
 
@@ -106,6 +114,23 @@ pub struct ComponentScaffoldConfig {
 /// executable ← component short name, `exported_symbol` ← `nros_component_<n>`,
 /// `crate_name` ← package) and `[overrides]` defaults to empty (Phase 172 W.3).
 pub fn scaffold_component(cfg: &ComponentScaffoldConfig) -> Result<()> {
+    match cfg.lang.as_str() {
+        "rust" => scaffold_component_rust(cfg),
+        "cpp" => scaffold_component_cpp(cfg),
+        "c" => bail!(
+            "`nros new --component --lang c` is not yet implemented (Phase \
+             219.M follow-up — NROS_COMPONENT macro semantics need a 1-arg \
+             shim before a hand-rolled C scaffold can match the freertos \
+             fixture shape). Use `--lang cpp` or `--lang rust` for now."
+        ),
+        other => bail!(
+            "`nros new --component --lang {other}` is not supported. Use \
+             `rust` or `cpp` (Phase 219.M)."
+        ),
+    }
+}
+
+fn scaffold_component_rust(cfg: &ComponentScaffoldConfig) -> Result<()> {
     let dir = PathBuf::from(&cfg.name);
     if dir.exists() {
         if !cfg.force {
@@ -246,6 +271,184 @@ source_metadata = "metadata/{module}.json"
     println!("  nros metadata --build   # record its source metadata");
 
     Ok(())
+}
+
+/// Scaffold a **C++ Node pkg** — Phase 219.M. Mirrors the Rust path but
+/// emits the §212.L.9 cmake-fn surface (`nano_ros_node_register`) and a
+/// `<UserClass>::register_node()` declarative body in the
+/// `<pkg>::` namespace per §212.L.4 (class prefix must equal
+/// `PROJECT_NAME`). The cmake glue injects `NROS_PKG_NAME` per Phase
+/// 212.M.5.a.1 so the `NROS_NODE_REGISTER` macro lands the per-pkg
+/// mangled register symbol.
+fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
+    let dir = PathBuf::from(&cfg.name);
+    if dir.exists() {
+        if !cfg.force {
+            bail!(
+                "Directory '{}' already exists (use --force to overwrite)",
+                cfg.name
+            );
+        }
+        fs::remove_dir_all(&dir)?;
+    }
+    fs::create_dir_all(dir.join("src"))?;
+
+    // Pkg name → namespace + class. `my-talker` → ns `my_talker`, class
+    // `Talker` (PascalCase of use_case). §212.L.4 class prefix must equal
+    // PROJECT_NAME (sanitised), so the namespace = the sanitised pkg name.
+    let pkg_sym = cfg.name.replace('-', "_");
+    let class_name = use_case_to_pascal(&cfg.use_case);
+    let node_name = &cfg.use_case;
+
+    let package_xml = format!(
+        r#"<?xml version="1.0"?>
+<package format="3">
+  <name>{name}</name>
+  <version>0.1.0</version>
+  <description>{name} — nano-ros C++ Node pkg.</description>
+  <maintainer email="TODO@todo.com">TODO</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
+"#,
+        name = cfg.name,
+    );
+    fs::write(dir.join("package.xml"), package_xml)?;
+
+    let cmake = format!(
+        r#"cmake_minimum_required(VERSION 3.22)
+# §212.L.4 — class prefix must equal PROJECT_NAME.
+project({pkg_sym} VERSION 0.1.0 LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+{bootstrap}
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+
+# Phase 212.L.9 — declarative Node pkg shape. No add_executable, no
+# `main()`; the linked Entry pkg's BSP-generated runtime owns the entry
+# point, executor init, and the spin loop.
+nano_ros_node_register(
+    NAME    {node_name}
+    CLASS   {pkg_sym}::{class_name}
+    SOURCES src/{class_name}.cpp
+    DEPLOY  native)
+
+# `nros_find_interfaces` declares an INTERFACE lib per dep
+# (`std_msgs__nano_ros_cpp` etc.) that carries the generated headers'
+# include dirs + the FFI-glue link. The Entry pkg's `nano_ros_entry`
+# auto-links them; the Node pkg's `nano_ros_node_register` does not
+# (Phase 219 review Gap 4 — pending 219.J auto-link from metadata).
+# Until 219.J lands, link the deps your `#include`s pull in:
+target_link_libraries({pkg_sym}_{node_name}_component
+    PUBLIC std_msgs__nano_ros_cpp)
+"#,
+        bootstrap = NROS_BOOTSTRAP_BLOCK,
+    );
+    fs::write(dir.join("CMakeLists.txt"), cmake)?;
+
+    let class_hpp = format!(
+        r#"#pragma once
+
+#include <nros/node_pkg.hpp>
+
+namespace {pkg_sym} {{
+
+/// Declarative Node — `register_node()` describes the entities the host
+/// runtime will instantiate. No `main()`, no executor, no spin loop;
+/// those live in the linked Entry pkg.
+class {class_name} {{
+  public:
+    static ::nros::Result register_node(::nros::NodeContext& ctx);
+}};
+
+}} // namespace {pkg_sym}
+"#,
+    );
+    fs::write(dir.join(format!("src/{class_name}.hpp")), class_hpp)?;
+
+    let class_cpp = format!(
+        r#"// Generated by `nros new {name} --component --lang cpp`.
+//
+// Describe one Node + one Publisher + one 1 Hz Timer. The host Entry pkg
+// instantiates each entity via the planner's wiring; the timer fires
+// `on_tick`, which publishes to `/chatter`.
+
+#include "{class_name}.hpp"
+#include "std_msgs.hpp"
+
+namespace {pkg_sym} {{
+
+::nros::Result {class_name}::register_node(::nros::NodeContext& ctx) {{
+    ::nros::DeclaredNode node;
+    auto opts = ::nros::NodeOptions::make("{node_name}");
+    auto r = ctx.create_node(node, "node", opts);
+    if (!r.ok()) return r;
+
+    ::nros::NodeEntityDescriptor pub{{
+        /*stable_id*/   "pub_chatter",
+        /*node_id*/     "node",
+        /*kind*/        ::nros::NodeEntityKind::Publisher,
+        /*source_name*/ "/chatter",
+        /*type_name*/   "std_msgs/msg/Int32",
+        /*type_hash*/   "",
+        /*callback_id*/ nullptr,
+    }};
+    r = node.create_entity(pub);
+    if (!r.ok()) return r;
+
+    ::nros::NodeEntityDescriptor timer{{
+        "timer_tick", "node", ::nros::NodeEntityKind::Timer,
+        "1000",       "",     "",                                "on_tick",
+    }};
+    r = node.create_entity(timer);
+    if (!r.ok()) return r;
+
+    return ctx.record_callback_effect(
+        "on_tick", ::nros::CallbackEffectKind::Publishes, "pub_chatter");
+}}
+
+}} // namespace {pkg_sym}
+
+NROS_NODE_REGISTER({pkg_sym}::{class_name}, "{pkg_sym}::{class_name}");
+"#,
+        name = cfg.name,
+    );
+    fs::write(dir.join(format!("src/{class_name}.cpp")), class_cpp)?;
+
+    println!("✓ Created nano-ros C++ Node pkg '{}'", cfg.name);
+    println!("  Class     : {pkg_sym}::{class_name}");
+    println!("  Node      : {node_name}");
+    println!("  Kind      : declarative Node pkg (Phase 212.L.9)");
+    println!();
+    println!("Next steps:");
+    println!("  cd {}", cfg.name);
+    println!("  # Solo build:");
+    println!("  cmake -S . -B build -DNANO_ROS_ROOT=<path-to-nano-ros>");
+    println!("  cmake --build build");
+    println!();
+    println!("  # Or add it as a SUBDIR in a workspace root that calls");
+    println!("  # nano_ros_workspace(...), then build the workspace.");
+
+    Ok(())
+}
+
+/// Map `talker` → `Talker`, `service-server` → `ServiceServer`.
+fn use_case_to_pascal(s: &str) -> String {
+    s.split(|c: char| c == '_' || c == '-')
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let mut chars = p.chars();
+            match chars.next() {
+                Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 fn scaffold_rust(name: &str, platform: &str, dir: &Path) -> Result<()> {
@@ -400,31 +603,107 @@ rustflags = [
     Ok(())
 }
 
+/// Standard preamble that bootstraps the nano-ros workspace cmake fns
+/// (`nano_ros_workspace_pkg_guard`, `nano_ros_node_register`,
+/// `nano_ros_entry`, `nros_find_interfaces`, …) regardless of whether the
+/// pkg is built solo or as a workspace member. Lands in every scaffolded
+/// C / C++ CMakeLists at the top, right after `project()`.
+///
+/// Phase 219.I shape — see `cmake/NanoRosWorkspace.cmake`.
+const NROS_BOOTSTRAP_BLOCK: &str = r#"# Phase 219.I — bootstrap nano-ros workspace helpers. Workspace builds
+# inherit the helpers from the parent root; standalone solo builds
+# require `-DNANO_ROS_ROOT=<path-to-nano-ros>` and locate them via the
+# include() below.
+if(NOT COMMAND nano_ros_workspace_pkg_guard)
+    if(NOT NANO_ROS_ROOT)
+        message(FATAL_ERROR
+            "nano-ros: set -DNANO_ROS_ROOT=<path-to-nano-ros> for "
+            "standalone builds, or build via the workspace root.")
+    endif()
+    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
+endif()
+nano_ros_workspace_pkg_guard()
+"#;
+
 fn scaffold_c(name: &str, platform: &str, dir: &Path) -> Result<()> {
     let cmake = format!(
-        r#"cmake_minimum_required(VERSION 3.16)
-project({name} VERSION 0.1.0 LANGUAGES C)
+        r#"cmake_minimum_required(VERSION 3.22)
+project({name} VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
-find_package(NanoRos REQUIRED CONFIG)
+{bootstrap}
+# Phase 210.E.4 — `nros_find_interfaces` reads `package.xml` and
+# generates msg/srv/action bindings (+ FFI glue) for every transitive
+# interface dep declared via `<depend>` tags.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
-add_executable({name} src/main.c)
-target_link_libraries({name} PRIVATE NanoRos::NanoRos)
+# Phase 212.N.6 — Entry pkg shape (single-Node self-bringup; Phase 219
+# adds the `LAUNCH "<bringup>:<file>.launch.xml"` form for multi-Node).
+nano_ros_entry(
+    NAME {name}
+    SOURCES src/main.c
+    DEPLOY native)
 
-install(TARGETS {name} RUNTIME DESTINATION lib/{name})
-"#
+target_link_libraries({name} PRIVATE std_msgs__nano_ros_c)
+nros_platform_link_app({name})
+"#,
+        bootstrap = NROS_BOOTSTRAP_BLOCK,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
 
     let main_c = format!(
-        r#"#include <stdio.h>
+        r#"// Generated by `nros new {name} --lang c`.
+//
+// Minimal nano-ros C talker — publishes one `std_msgs/Int32` message on
+// `/chatter`, then returns. Swap the body for your own logic; see
+// `examples/native/c/talker/src/main.c` for a fuller shape (timer,
+// executor, signal handler).
 
-int main(void) {{
-    printf("Hello from {name}!\n");
+#include <stdio.h>
+
+#include <nros/init.h>
+#include <nros/node.h>
+#include <nros/publisher.h>
+#include "std_msgs.h"
+
+int main(int argc, char** argv) {{
+    (void)argc;
+    (void)argv;
+
+    nros_support_t support = nros_support_get_zero_initialized();
+    if (nros_support_init(&support, NULL, 0) != NROS_RET_OK) {{
+        fprintf(stderr, "nros_support_init failed\n");
+        return 1;
+    }}
+
+    nros_node_t node = nros_node_get_zero_initialized();
+    if (nros_node_init(&node, &support, "{name}", "/") != NROS_RET_OK) {{
+        fprintf(stderr, "nros_node_init failed\n");
+        return 1;
+    }}
+
+    nros_publisher_t pub = nros_publisher_get_zero_initialized();
+    if (nros_publisher_init(&pub, &node,
+                            std_msgs_msg_int32_get_type_support(),
+                            "/chatter") != NROS_RET_OK) {{
+        fprintf(stderr, "nros_publisher_init failed\n");
+        return 1;
+    }}
+
+    std_msgs_msg_int32 msg;
+    std_msgs_msg_int32_init(&msg);
+    msg.data = 0;
+    (void)std_msgs_msg_int32_publish(&pub, &msg);
+    printf("{name}: published 0 on /chatter\n");
+
+    nros_publisher_fini(&pub);
+    nros_node_fini(&node);
+    nros_support_fini(&support);
     return 0;
 }}
-"#
+"#,
     );
     fs::write(dir.join("src/main.c"), main_c)?;
 
@@ -436,29 +715,75 @@ int main(void) {{
 
 fn scaffold_cpp(name: &str, platform: &str, dir: &Path) -> Result<()> {
     let cmake = format!(
-        r#"cmake_minimum_required(VERSION 3.16)
-project({name} VERSION 0.1.0 LANGUAGES CXX)
+        r#"cmake_minimum_required(VERSION 3.22)
+project({name} VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(NanoRos REQUIRED CONFIG)
+{bootstrap}
+# Phase 210.E.4 — `nros_find_interfaces` reads `package.xml` and
+# generates msg/srv/action bindings (+ FFI glue) for every transitive
+# interface dep declared via `<depend>` tags.
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
-add_executable({name} src/main.cpp)
-target_link_libraries({name} PRIVATE NanoRos::NanoRosCpp)
+# Phase 212.N.6 — Entry pkg shape (single-Node self-bringup; Phase 219
+# adds the `LAUNCH "<bringup>:<file>.launch.xml"` form for multi-Node).
+nano_ros_entry(
+    NAME {name}
+    SOURCES src/main.cpp
+    DEPLOY native)
 
-install(TARGETS {name} RUNTIME DESTINATION lib/{name})
-"#
+target_link_libraries({name} PRIVATE std_msgs__nano_ros_cpp)
+nros_platform_link_app({name})
+"#,
+        bootstrap = NROS_BOOTSTRAP_BLOCK,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
 
     let main_cpp = format!(
-        r#"#include <cstdio>
+        r#"// Generated by `nros new {name} --lang cpp`.
+//
+// Minimal nano-ros C++ talker — publishes one `std_msgs/Int32` message on
+// `/chatter`, then returns. Swap the body for your own logic; see
+// `examples/native/cpp/talker/src/main.cpp` for a fuller shape (timer,
+// executor, signal handler).
 
-int main() {{
-    printf("Hello from {name}!\n");
+#include <cstdio>
+
+#include <nros/nros.hpp>
+#include "std_msgs.hpp"
+
+int main(int argc, char** argv) {{
+    (void)argc;
+    (void)argv;
+
+    if (auto r = nros::init(); !r.ok()) {{
+        std::fprintf(stderr, "nros::init failed: %d\n", r.raw());
+        return 1;
+    }}
+
+    nros::Node node;
+    if (auto r = nros::create_node(node, "{name}"); !r.ok()) {{
+        std::fprintf(stderr, "create_node failed: %d\n", r.raw());
+        return 1;
+    }}
+
+    nros::Publisher<std_msgs::msg::Int32> pub;
+    if (auto r = node.create_publisher(pub, "/chatter"); !r.ok()) {{
+        std::fprintf(stderr, "create_publisher failed: %d\n", r.raw());
+        return 1;
+    }}
+
+    std_msgs::msg::Int32 msg;
+    msg.data = 0;
+    (void)pub.publish(msg);
+    std::printf("{name}: published 0 on /chatter\n");
+
+    nros::shutdown();
     return 0;
 }}
-"#
+"#,
     );
     fs::write(dir.join("src/main.cpp"), main_cpp)?;
 
