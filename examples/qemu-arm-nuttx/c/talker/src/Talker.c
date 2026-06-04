@@ -12,7 +12,7 @@
 #include "std_msgs.h"
 
 static nros_ret_t register_talker(nros_node_context_t *ctx) {
-    nros_decl_node_options_t opts = nros_node_options("talker");
+    nros_node_pkg_options_t opts = nros_node_pkg_options("talker");
     nros_declared_node_t node;
     nros_ret_t r = nros_declared_node_create(ctx, "node", &opts, &node);
     if (r != NROS_RET_OK) return r;

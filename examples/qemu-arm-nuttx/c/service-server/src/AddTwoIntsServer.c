@@ -5,8 +5,8 @@
 #include <nros/node_pkg.h>
 
 static nros_ret_t register_service_server(nros_node_context_t *ctx) {
-    nros_decl_node_options_t opts =
-        nros_node_options("add_two_ints_server");
+    nros_node_pkg_options_t opts =
+        nros_node_pkg_options("add_two_ints_server");
     nros_declared_node_t node;
     nros_ret_t r = nros_declared_node_create(ctx, "node", &opts, &node);
     if (r != NROS_RET_OK) return r;
