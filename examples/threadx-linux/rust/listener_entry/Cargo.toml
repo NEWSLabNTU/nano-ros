@@ -24,7 +24,7 @@ domain_id = 0
 locator = "tcp/127.0.0.1:7455"
 [dependencies]
 # Phase 213.C.3 — `nros::main!()` proc-macro lives here.
-nros = { path = "../../../../packages/core/nros" }
+nros = { path = "../../../../packages/core/nros", default-features = false }
 # Phase 212.N.3 tier-1 per-board shim. `<ThreadxLinux as BoardEntry>::run`
 # owns the legacy `node::run` lifecycle (init → tx_kernel_enter → app
 # thread → executor → spin). Selected at the `main.rs` Board::run call;

@@ -24,7 +24,7 @@ domain_id = 0
 locator = "tcp/127.0.0.1:7455"
 [dependencies]
 # Phase 213.C.3 — `nros::main!()` proc-macro lives here.
-nros = { path = "../../../../packages/core/nros" }
+nros = { path = "../../../../packages/core/nros", default-features = false }
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
 threadx_linux_rs_service_client = { path = "../service-client" }
@@ -35,7 +35,7 @@ threadx_linux_rs_service_client = { path = "../service-client" }
 [patch.crates-io]
 builtin_interfaces = { path = "../service-client/generated/builtin_interfaces" }
 example_interfaces = { path = "../service-client/generated/example_interfaces" }
-nros = { path = "../../../../packages/core/nros" }
+nros = { path = "../../../../packages/core/nros", default-features = false }
 nros-platform = { path = "../../../../packages/core/nros-platform" }
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi" }
 nros-node = { path = "../../../../packages/core/nros-node" }
