@@ -114,4 +114,33 @@ using NodeRegisterFn = int32_t (*)(NodeContext& context);
     extern "C" const unsigned char _NROS_CPP_PRESENT_SYM(NROS_PKG_NAME) = 1;                       \
     extern "C" const char _NROS_CPP_CLASS_SYM(NROS_PKG_NAME)[] = QualifiedClassName
 
+// Phase 219.H.1 — 1-arg shorthand mirroring Rust's `nros::node!(Talker);`
+// ergonomics. Derives the qualified-class-name string at preprocess time
+// from `NROS_PKG_NAME` (cmake-injected per 212.M.5.a.1) + the supplied
+// `UserClass`, joining them with `::`. Equivalent to writing
+// `NROS_NODE_REGISTER(UserClass, "<pkg>::<UserClass>")` by hand.
+//
+//   namespace talker_pkg {
+//       class Talker {
+//         public:
+//           static ::nros::Result register_node(::nros::NodeContext&);
+//       };
+//
+//       NROS_NODE(Talker);    // inside the namespace; class is unqualified
+//   }                          // — same scoping as Rust's `nros::node!()`.
+//
+// The 2-arg `NROS_NODE_REGISTER` form stays for cases that want an
+// explicit override (the class lives in a nested namespace whose path
+// does not match `NROS_PKG_NAME::`, the user calls the macro from
+// outside the pkg namespace, or for back-compat).
+//
+// Implementation note — two layers of `#`-stringification are needed
+// to expand the cmake-injected `NROS_PKG_NAME` macro before stringifying
+// it. `_NROS_STR_INNER` swallows the literal token; `_NROS_STR` forces
+// macro expansion first.
+#define _NROS_STR_INNER(x) #x
+#define _NROS_STR(x) _NROS_STR_INNER(x)
+#define NROS_NODE(UserClass)                                                                       \
+    NROS_NODE_REGISTER(UserClass, _NROS_STR(NROS_PKG_NAME) "::" _NROS_STR(UserClass))
+
 #endif // NROS_CPP_COMPONENT_HPP

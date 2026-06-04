@@ -559,16 +559,16 @@ top of everything.
 
 ## 6. Acceptance
 
-- [ ] 219.A — `nros codegen entry --lang rust …` round-trips today's
+- [x] 219.A — `nros codegen entry --lang rust …` round-trips today's
       proc-macro output for two fixture workspaces (1-Node, 2-Node).
-- [ ] 219.D — `examples/native/cpp/multi-node-entry/` configures
+- [x] 219.D — `examples/native/cpp/multi-node-entry/` configures
       cleanly via the cmake fn, no hand-written `main.cpp`.
-- [ ] 219.F — the same Bringup pkg drives both a Rust Entry pkg
+- [x] 219.F — the same Bringup pkg drives both a Rust Entry pkg
       (via `nros::main!()`) and a C++ Entry pkg (via
       `nano_ros_entry(LAUNCH …)`), with identical Node register
       order on both binaries — verified by a single integration test
       that diff-compares the two boot logs modulo language tag.
-- [ ] 219.G — book chapter merged + cross-links the Rust and C++
+- [x] 219.G — book chapter merged + cross-links the Rust and C++
       surfaces side-by-side.
 - [ ] **219.acc.workflow** — workflow-review prereqs landed: a
       stock dev box, with the in-tree `packages/cli/target/release/nros`
@@ -616,7 +616,7 @@ from `NROS_PKG_NAME` + the user-supplied class name plus a `::`
 separator (assuming the C++ pkg follows the `<pkg>::<UserClass>`
 convention enforced by Phase 212.L.4's lint).
 
-- [ ] **219.H.1** Add a 1-arg `NROS_NODE(UserClass)` alias that
+- [x] **219.H.1** Add a 1-arg `NROS_NODE(UserClass)` alias that
       derives the qualified-class-name string by macro concatenation
       with `NROS_PKG_NAME`. Mirrors Rust's `nros::node!(Talker)`
       ergonomics. Existing 2-arg `NROS_NODE_REGISTER` stays for
@@ -651,7 +651,7 @@ cmake fn (Phase 212.L.9) already handles this for the
 codegen-from-`system.toml` path; 219.A's launch.xml-driven path
 needs to follow the same convention.
 
-- [ ] **219.H.3** `nros_entry()` cmake fn — link C++ Node pkg static
+- [x] **219.H.3** `nros_entry()` cmake fn — link C++ Node pkg static
       libs from the resolved `<node pkg="...">` set in launch.xml,
       treating C++ and Rust Node pkgs symmetrically (the existing
       C++ Node pkg `<pkg>_node_lib` target is linked the same way
@@ -661,7 +661,7 @@ needs to follow the same convention.
 
 ### 8.4 C++ Entry pkg `--lang cpp` in `nros new`
 
-- [ ] **219.H.4** `nros new --entry --lang cpp <name>` scaffolds a
+- [x] **219.H.4** `nros new --entry --lang cpp <name>` scaffolds a
       valid C++ Entry pkg (CMakeLists with `nros_entry(...)` +
       `main.cpp` with `NROS_MAIN(...)`). The CLI currently rejects
       this combination (see Phase 219.workflow-review's enumerated
