@@ -1,0 +1,170 @@
+# Entry package: boot on a board
+
+An **Entry pkg** is the binary that boots a topology on a specific board.
+Where a Node pkg is a library (no `fn main`) and a Bringup pkg is purely
+declarative, the Entry pkg is the one thing that actually runs: it names a
+board, wires the runtime, and — for multi-node setups — points at a Bringup
+pkg that describes which nodes should be launched.
+
+You have one Entry pkg per deploy target. A workspace targeting both a native
+workstation and an STM32F4 board has two Entry pkgs that reference the same
+Node pkgs; only the board and (optionally) the launch target differ.
+
+## Package layout
+
+```
+src/robot_entry/
+├── package.xml
+├── Cargo.toml           # [[bin]] + deps on node pkgs + board crate
+│                        # + [package.metadata.nros.entry]
+└── src/main.rs          # nros::main!(launch = "demo_bringup");
+```
+
+No library code lives here. The Entry pkg links the Node pkg rlibs and hands
+them to the runtime that `nros::main!()` generates.
+
+## `Cargo.toml` metadata
+
+The `[package.metadata.nros.entry]` table tells the CLI which deploy target
+this binary is built for. The embedded example
+`examples/stm32f4/rust/talker-embassy/` uses:
+
+```toml
+[package.metadata.nros.entry]
+deploy = "embassy-stm32f4"
+```
+
+A native Entry pkg that references a Bringup pkg looks like:
+
+```toml
+[package.metadata.nros.entry]
+deploy = "native"
+
+[package.metadata.nros.deploy.native]
+board     = "posix"
+rmw       = "zenoh"
+domain_id = 0
+```
+
+`deploy` is the key that `nros check` / `nros deploy` / `nros build` use to
+find the board crate and verify the topology. Keep it short and descriptive —
+it becomes the identifier in `nros plan` output and in `system.toml`'s
+`[deploy.<name>]` table when you later add a Bringup pkg.
+
+## `nros::main!()` — four forms
+
+```rust
+// 1. Single-node self-bringup: reads [package.metadata.nros.entry] deploy
+//    from Cargo.toml and boots the Node pkg that is the only member of
+//    this workspace (or the one marked default).
+nros::main!();
+
+// 2. Single-node, explicit board type.
+nros::main!(board = NativeBoard);
+
+// 3. Multi-node: reference a Bringup pkg; boot its default launch file
+//    (the one listed under [system] in system.toml).
+nros::main!(launch = "demo_bringup");
+
+// 4. Multi-node, explicit launch file.
+nros::main!(launch = "demo_bringup:sim.launch.xml");
+
+// 5. Full form: board + launch file + runtime arg overrides.
+nros::main!(board = NativeBoard, launch = "demo_bringup:sim.launch.xml", args = [("use_sim","true")]);
+```
+
+The macro reads `[package.metadata.nros.entry]` at compile time to select the
+right board and executor backend. On Embassy / RTIC targets it emits the
+framework-specific `#[embassy_executor::main]` or `#[rtic::app]` body so your
+`src/main.rs` stays a single line.
+
+The real `examples/stm32f4/rust/talker-embassy/src/main.rs` collapses to
+exactly this:
+
+```rust
+#![no_std]
+#![no_main]
+
+use defmt_rtt as _;
+use panic_probe as _;
+
+nros::main!();
+```
+
+## Escape hatch
+
+If you need more control than the macro provides — custom startup ordering,
+hardware init before the runtime, or a fully manual executor loop — you can
+bypass `nros::main!()`:
+
+```rust
+// Option A: delegate init to the board crate, supply your own closure.
+<NativeBoard as BoardEntry>::run(|runtime| {
+    let node = runtime.create_node("talker", "/", &Default::default())?;
+    // ...
+    Ok(())
+});
+
+// Option B: fully manual — no board crate.
+let executor = nros::Executor::open(&ExecutorConfig::default())?;
+// wire nodes, spin manually ...
+```
+
+Option A is the right choice when you need to run something before the first
+spin (e.g. DMA setup, flash unlock). Option B is there for board-bringup
+authors adding a new platform.
+
+## Running a native Entry pkg
+
+From your workspace root:
+
+```bash
+cargo run -p robot_entry
+```
+
+Alternatively, use `nros launch` to spawn the Bringup pkg on the host without
+installing anything:
+
+```bash
+nros launch demo_bringup
+# or with an explicit file:
+nros launch demo_bringup --launch sim.launch.xml
+```
+
+`nros launch` is the host-side, no-ament-install alternative to `ros2 launch`.
+
+> **Note:** `nros run` for Zephyr / QEMU targets is not yet wired in the
+> shipped CLI (0.3.7). Use `just <plat> run` for those targets in the
+> meantime.
+
+## One Entry pkg per board
+
+Each deploy target gets its own Entry pkg. A workspace that runs on both
+`native` and `embassy-stm32f4` would have two Entry pkgs that share the same
+Node pkg library:
+
+| Entry pkg | `deploy` key | Board crate |
+|---|---|---|
+| `robot_entry` | `"native"` | `nros-board-posix` |
+| `stm32f4_entry` | `"embassy-stm32f4"` | `nros-board-embassy-stm32f4` |
+
+Both reference the same `talker_pkg` and `listener_pkg` Node pkg rlibs. The
+board crate provides the `BoardEntry` impl and any hardware-specific
+initialisation; the Node pkgs are board-agnostic.
+
+The `examples/stm32f4/rust/talker-embassy/` example demonstrates the
+embedded shape: `deploy = "embassy-stm32f4"` + `nros::main!();` on a
+`no_std / no_main` binary that delegates everything to the `EmbassyStm32F4`
+board crate.
+
+## What's coming
+
+> **C++ Entry pkg** (`NROS_MAIN` macro + `nros_entry()` CMake function) is
+> **future work (Phase 219)**. The Rust path above is the shipped API today.
+
+## Where to go next
+
+- [Node, Bringup & Entry Packages](../user-guide/component-and-entry-pkg.md) — full reference for all three roles.
+- [Bringup: launch + system.toml](./workspace-bringup.md) — the `system.toml` + launch XML that an Entry pkg points at.
+- [Prepare node packages](./workspace-node-pkgs.md) — the Node pkgs your Entry pkg links.
+- [From an app node to a workspace](./workspace-from-app-node.md) — the full 3-role picture and when to use it.
