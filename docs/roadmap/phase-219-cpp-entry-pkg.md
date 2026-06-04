@@ -400,7 +400,7 @@ Once Track 1 is in, these items deliver the cmake `LAUNCH` arg + the
 C / C++ TU emission. This is the original 219.A–F plan, unchanged in
 shape.
 
-- [ ] **219.A — CLI: `nros codegen entry` skeleton.** Lift the
+- [x] **219.A — CLI: `nros codegen entry` skeleton.** Lift the
       proc-macro's pkg-index walk + launch parser out of
       `packages/core/nros-macros/src/main_macro.rs` into
       `packages/cli/nros-cli-core/src/codegen/entry/{mod.rs,emit_rust.rs}`. Add the
@@ -408,22 +408,22 @@ shape.
       output vs today's proc-macro `TokenStream` after
       `prettyplease` formatting. Proc-macro keeps in-process
       emission but defers semantic logic to the shared module.
-- [ ] **219.B — `emit_cpp()`.** Read `Plan` → emit the generated TU
+- [x] **219.B — `emit_cpp()`.** Read `Plan` → emit the generated TU
       per §3.3. Include the `extern "C"` block, Board boot stub,
       register-call sequence. Unit-test against 1-Node + 2-Node
       fixtures.
-- [ ] **219.C — `emit_c()`.** Same shape, C language. C ABI for
+- [x] **219.C — `emit_c()`.** Same shape, C language. C ABI for
       board entry (`nros_board_native_run` fn-ptr signature). Unit
       tests.
-- [ ] **219.D — cmake fn: `nano_ros_entry()` LAUNCH arg.** Extend
+- [x] **219.D — cmake fn: `nano_ros_entry()` LAUNCH arg.** Extend
       `cmake/NanoRosEntry.cmake` with the `LAUNCH` + `ARGS` handling
       per §3.1. Shell `nros codegen entry --lang cpp` at configure
       time, append the generated TU to `add_executable(...)`
       sources, wire `CMAKE_CONFIGURE_DEPENDS` from the CLI's
       depfile. LAUNCH-absent fast path unchanged.
-- [ ] **219.E — Headers: `nros/main.hpp` + `nros/main.h`.** Empty
+- [x] **219.E — Headers: `nros/main.hpp` + `nros/main.h`.** Empty
       macro definitions per §3.4-§3.5. No runtime symbols.
-- [ ] **219.J — Entry auto-links Node-pkg static libs.** (cheap, ✱)
+- [x] **219.J — Entry auto-links Node-pkg static libs.** (cheap, ✱)
       `nano_ros_entry()` today produces the exe but does NOT
       `target_link_libraries(<exe> PRIVATE
       <pkg>_<name>_component)` for the Node pkgs the launch XML
