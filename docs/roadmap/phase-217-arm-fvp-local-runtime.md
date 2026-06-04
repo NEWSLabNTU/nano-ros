@@ -138,24 +138,30 @@ accepts the Arm EULA, installs the FVP locally, and exports
 **Files:** `scripts/installers/arm-fvp-installer.sh` (new),
 `docs/reference/environment-variables.md`.
 
-### 217.C — FVP runtime smoke test (OPEN)
+### 217.C — FVP runtime smoke test (PARTIAL)
 
-- [ ] **217.C.1** `packages/testing/nros-tests/tests/phase214_c_fvp_runtime.rs`
+- [x] **217.C.1** `packages/testing/nros-tests/tests/phase217_c_fvp_runtime.rs`
       — discover FVP via the resolver; if missing, `nros_tests::skip!`.
-      Builds the cpp/cyclonedds talker via `just zephyr build-fvp-aemv8r-cyclonedds`
-      (if not already), runs the FVP with `--cycle-limit` (bounded
-      headless), greps the captured stdout for `nros: ...` talker
-      banner + the `Published: 0/1` line proving the talker reached the
-      publish loop.
-- [ ] **217.C.2** Per-platform nextest group `zephyr-fvp` with
+      Asserts the cpp/cyclonedds talker prebuilt at
+      `build-aemv8r-cyclonedds-talker/zephyr/zephyr.elf` (hint at `just
+      zephyr build-fvp-aemv8r-cyclonedds` on miss), then drives the
+      existing 217.A recipe (`just zephyr run-fvp-aemv8r-cyclonedds` →
+      `west fvp run`). Greps the captured UART for the Zephyr boot
+      banner + the talker's `Published:` line proving the publish loop
+      ran. Wall-clock-bounded at 120 s with `ManagedProcess::Drop`
+      killing the FVP process group on timeout/panic. Landed 2026-06-04.
+- [x] **217.C.2** Per-platform nextest group `zephyr-fvp` with
       `max-threads = 1` (FVP licence may be node-locked + UART telnet
-      ports collide on parallel runs).
+      ports collide on parallel runs). Routed via `binary(phase217_c_fvp_runtime)`
+      override; added to `justfile`'s fast-path exclusion. Landed 2026-06-04.
 - [ ] **217.C.3** Parity check vs Phase 175.A native cyclonedds Rust
       talker/listener: same `std_msgs/Int32` payload, byte-equal wire
-      format (Phase 117 stock-RMW interop contract).
+      format (Phase 117 stock-RMW interop contract). **Blocks on:** 217.D
+      (the matching Rust example on FVP hasn't shipped yet).
 
-**Files:** `packages/testing/nros-tests/tests/phase214_c_fvp_runtime.rs`
-(new), `.config/nextest.toml` group entry.
+**Files:** `packages/testing/nros-tests/tests/phase217_c_fvp_runtime.rs`
+(new), `.config/nextest.toml` group entry + `binary(phase217_c_fvp_runtime)`
+override, `justfile` fast-path exclusion.
 
 ### 217.D — Rust example on FVP (OPEN)
 
