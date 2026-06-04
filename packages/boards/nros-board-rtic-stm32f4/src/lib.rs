@@ -77,10 +77,16 @@
 //!   dep graph + macro emit compile against the real
 //!   `Self::Executor` type, even though the spin task hasn't
 //!   driven it yet.
-//! - The bringup hardcodes `Config::nucleo_f429zi()` defaults
-//!   (NUCLEO-F429ZI IP / MAC / locator). A follow-up threads
-//!   `nros.toml` `[[transport]]` / `[node]` knobs in via
-//!   [`nros_platform::BoardTransportConfig`].
+//! - The bringup starts from `Config::nucleo_f429zi()` (NUCLEO-F429ZI
+//!   IP / MAC defaults) and overlays the locator / domain id / node
+//!   name from build-time env vars `NROS_LOCATOR` / `NROS_DOMAIN_ID`
+//!   / `NROS_NODE_NAME` (resolved via [`option_env!`]) — values flow
+//!   through [`nros_platform::BoardConfig::zenoh_locator`] /
+//!   [`nros_platform::BoardConfig::domain_id`] so a future
+//!   `nros.toml` reader can swap in without touching the call shape.
+//!   A follow-up threads the full `nros.toml` `[[transport]]` /
+//!   `[node]` plumbing via [`nros_platform::BoardTransportConfig`]
+//!   (needs a codegen-driven Entry pkg landing first).
 //!
 //! ## Layering note
 //!
@@ -245,6 +251,28 @@ pub fn take_dispatch_queue() -> Option<(
     Some(queue.split())
 }
 
+/// Parse a decimal `u32` from a string. Returns `None` on empty input or
+/// any non-digit byte.
+///
+/// Used by the `init_hardware` env-var fallback to decode
+/// `option_env!("NROS_DOMAIN_ID")`. Local to this crate so we don't pull
+/// `core::str::FromStr`'s `parse()` (which monomorphises through a
+/// formatter path that adds a few KB on `cargo size`).
+fn parse_decimal_u32(s: &str) -> Option<u32> {
+    let mut result: u32 = 0;
+    let mut has_digit = false;
+    for b in s.as_bytes() {
+        match b {
+            b'0'..=b'9' => {
+                result = result.checked_mul(10)?.checked_add((*b - b'0') as u32)?;
+                has_digit = true;
+            }
+            _ => return None,
+        }
+    }
+    if has_digit { Some(result) } else { None }
+}
+
 /// Phase 216.B.2 — RTIC board ZST.
 ///
 /// Carries the [`BoardInit`] / [`BoardPrint`] / [`BoardExit`]
@@ -402,7 +430,41 @@ impl RticBoardEntry for RticStm32F4 {
         //   driven it yet.
 
         // Step 1–2: hardware bringup via the direct-exec sibling.
-        let config = nros_board_stm32f4::Config::nucleo_f429zi();
+        //
+        // Phase 216 follow-up — transport config (locator / domain_id /
+        // node name) comes from build-time env vars via [`option_env!`]
+        // with a fallback to the board's `Config::nucleo_f429zi()`
+        // defaults (which already impl `nros_platform::BoardConfig` +
+        // `BoardTransportConfig`). The env-var seam is the pragmatic
+        // interim between the previous hardcoded
+        // `tcp/127.0.0.1:7447` (now removed — the fallback comes from
+        // the board `Config`) and a full `nros.toml` →
+        // [`nros_platform::BoardTransportConfig`] reader (which needs
+        // a codegen-driven Entry pkg landing first).
+        //
+        // The override knobs:
+        //
+        //   - `NROS_LOCATOR` — overrides `config.zenoh_locator` (the
+        //     `BoardConfig::zenoh_locator()` accessor)
+        //   - `NROS_DOMAIN_ID` — overrides `config.domain_id` (parsed
+        //     decimal, matching `Config::from_toml`)
+        //   - `NROS_NODE_NAME` — overrides the previously hardcoded
+        //     `"nros"` node name on `ExecutorConfig`
+        //
+        // Default behaviour (no env override): the locator + domain
+        // come from `nros_board_stm32f4::Config::nucleo_f429zi()`
+        // (today `tcp/192.168.1.1:7447`, domain 0); the node name
+        // stays `"nros"`. That matches the pre-followup behaviour for
+        // a fresh `cargo check`.
+        let mut config = nros_board_stm32f4::Config::nucleo_f429zi();
+        if let Some(loc) = option_env!("NROS_LOCATOR") {
+            config = config.zenoh_locator(loc);
+        }
+        if let Some(d) = option_env!("NROS_DOMAIN_ID").and_then(parse_decimal_u32) {
+            config = config.domain_id(d);
+        }
+        let node_name: &'static str = option_env!("NROS_NODE_NAME").unwrap_or("nros");
+
         let _syst = nros_board_stm32f4::init_hardware(&config, device, core);
 
         // Step 3: explicit RMW backend registration (bare-metal
@@ -424,10 +486,14 @@ impl RticBoardEntry for RticStm32F4 {
         // Step 4: open the Executor against the configured
         // locator + domain. The proc-macro emit stashes the
         // returned value in RTIC `#[local]` storage owned by
-        // `__nros_spin`.
-        let exec_config = ::nros::ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("nros");
+        // `__nros_spin`. The values flow through the
+        // `BoardConfig` accessors so a future `nros.toml` reader
+        // can swap in without touching the call shape.
+        let exec_config = ::nros::ExecutorConfig::new(
+            <nros_board_stm32f4::Config as ::nros_platform::BoardConfig>::zenoh_locator(&config),
+        )
+        .domain_id(<nros_board_stm32f4::Config as ::nros_platform::BoardConfig>::domain_id(&config))
+        .node_name(node_name);
         let executor = match ::nros::Executor::open(&exec_config) {
             Ok(e) => e,
             Err(err) => {

@@ -32,8 +32,10 @@
 //!   `defmt::error!` then a `wfi` idle loop.
 //! - [`EmbassyBoardEntry::init_hardware`] —
 //!   `embassy_stm32::init(Default::default())` + `nros_rmw_zenoh::register()`
-//!   + `Executor::open(&ExecutorConfig::new("tcp/127.0.0.1:7447")
-//!   .domain_id(0).node_name("nros"))` + return
+//!   + `Executor::open(&ExecutorConfig::new(locator).domain_id(d).node_name(name))`
+//!   where `locator` / `d` / `name` come from `option_env!("NROS_LOCATOR")` /
+//!   `option_env!("NROS_DOMAIN_ID")` / `option_env!("NROS_NODE_NAME")` with
+//!   fallback to `tcp/127.0.0.1:7447` / `0` / `"nros"`. Returns
 //!   `(executor, EmbassyRuntime::new())`. The Spawner is accepted
 //!   but unused today (no framework-task spawn yet); the
 //!   proc-macro emit owns the spin + dispatch sidekicks.
@@ -186,6 +188,41 @@ static CALLBACK_CHANNEL: Channel<
 // dep.
 pub use cortex_m_rt::entry;
 pub use defmt;
+
+/// Default zenoh locator the Embassy board boots with when no
+/// `NROS_LOCATOR` env override is set at build time. Matches the
+/// pre-followup hardcoded value so an un-customised `cargo check`
+/// produces byte-identical output.
+const DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
+
+/// Default ROS 2 domain id. Mirrors the platform-wide default
+/// (`ROS_DOMAIN_ID=0`) and the pre-followup hardcoded value.
+const DEFAULT_DOMAIN_ID: u32 = 0;
+
+/// Default node name on the boot-time `ExecutorConfig`. Mirrors the
+/// sibling RTIC board crate's default.
+const DEFAULT_NODE_NAME: &str = "nros";
+
+/// Parse a decimal `u32` from a string. Returns `None` on empty input
+/// or any non-digit byte. Local helper used by the `init_hardware`
+/// env-var fallback to decode `option_env!("NROS_DOMAIN_ID")`. Kept
+/// in-crate so we don't pull `core::str::FromStr::parse()`
+/// (which monomorphises through a formatter path that adds a few KB
+/// on `cargo size`).
+fn parse_decimal_u32(s: &str) -> Option<u32> {
+    let mut result: u32 = 0;
+    let mut has_digit = false;
+    for b in s.as_bytes() {
+        match b {
+            b'0'..=b'9' => {
+                result = result.checked_mul(10)?.checked_add((*b - b'0') as u32)?;
+                has_digit = true;
+            }
+            _ => return None,
+        }
+    }
+    if has_digit { Some(result) } else { None }
+}
 
 /// Embassy-flavored STM32F4 board. Phase 216.C.2 skeleton — every
 /// Board / EmbassyBoardEntry method is `todo!()`. The trait surface is
@@ -487,16 +524,41 @@ impl EmbassyBoardEntry for EmbassyStm32F4 {
             }
         }
 
-        // Step 3: open the Executor against the same defaults the
-        // sibling RTIC board crate uses (zenoh TCP locator on the
-        // local loopback, domain 0, node name "nros"). A future
-        // follow-up threads `nros.toml` knobs in via
-        // `BoardTransportConfig`. The proc-macro emit (Phase
-        // 216.C.3) stashes the returned value in a `StaticCell` /
-        // task-`#[init]` slot owned by `__nros_spin_task`.
-        let exec_config = ::nros::ExecutorConfig::new("tcp/127.0.0.1:7447")
-            .domain_id(0)
-            .node_name("nros");
+        // Step 3: open the Executor against the configured locator
+        // + domain. Phase 216 follow-up — values come from
+        // build-time env vars via [`option_env!`] with a fallback to
+        // the previously hardcoded defaults
+        // (`tcp/127.0.0.1:7447`, domain 0, node name "nros"). The
+        // env-var seam is the pragmatic interim between the
+        // previous hardcoded constants and a full `nros.toml` →
+        // [`nros_platform::BoardTransportConfig`] reader (which
+        // needs a codegen-driven Entry pkg landing first).
+        //
+        // Override knobs:
+        //
+        //   - `NROS_LOCATOR` — overrides the zenoh locator
+        //   - `NROS_DOMAIN_ID` — overrides the ROS domain id
+        //     (parsed decimal)
+        //   - `NROS_NODE_NAME` — overrides the node name
+        //
+        // Default behaviour (no env override) matches the previous
+        // hardcoded shape so a fresh `cargo check` is byte-identical.
+        // Why no `nros_board_stm32f4::Config` here: the direct-exec
+        // sibling board crate depends on `stm32f4xx-hal` which would
+        // collide with `embassy-stm32`'s peripheral split at link
+        // time, so the Embassy crate carries its own minimal
+        // fallback constants rather than reusing the sibling
+        // builder. A future `BoardTransportConfig` reader will land
+        // a board-local `Config` struct here.
+        let locator: &'static str = option_env!("NROS_LOCATOR").unwrap_or(DEFAULT_LOCATOR);
+        let domain_id: u32 = option_env!("NROS_DOMAIN_ID")
+            .and_then(parse_decimal_u32)
+            .unwrap_or(DEFAULT_DOMAIN_ID);
+        let node_name: &'static str = option_env!("NROS_NODE_NAME").unwrap_or(DEFAULT_NODE_NAME);
+
+        let exec_config = ::nros::ExecutorConfig::new(locator)
+            .domain_id(domain_id)
+            .node_name(node_name);
         let executor = match ::nros::Executor::open(&exec_config) {
             Ok(e) => e,
             Err(err) => {
