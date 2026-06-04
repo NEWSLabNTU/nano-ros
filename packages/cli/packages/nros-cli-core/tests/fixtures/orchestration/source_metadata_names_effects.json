@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "package": "edge_nodes_rs",
+  "component": "controller",
+  "language": "rust",
+  "executable": "controller",
+  "exported_symbol": "nros_component_controller",
+  "nodes": [
+    {
+      "id": "node_controller",
+      "unresolved_name": {
+        "value": "/robot/controller",
+        "kind": "absolute"
+      },
+      "namespace": null,
+      "publishers": [
+        {
+          "id": "pub_status",
+          "unresolved_topic": {
+            "value": "/diagnostics",
+            "kind": "absolute"
+          },
+          "interface": {
+            "package": "std_msgs",
+            "name": "msg/String",
+            "kind": "message"
+          },
+          "qos": {
+            "reliability": "best_effort",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 1,
+            "deadline_ms": 1000,
+            "lifespan_ms": 5000,
+            "liveliness": "automatic",
+            "liveliness_lease_duration_ms": 2000,
+            "extensions": {
+              "rmw_zenoh.priority": "low"
+            }
+          }
+        }
+      ],
+      "subscribers": [
+        {
+          "id": "sub_cmd",
+          "unresolved_topic": {
+            "value": "~/cmd",
+            "kind": "private"
+          },
+          "interface": {
+            "package": "std_msgs",
+            "name": "msg/String",
+            "kind": "message"
+          },
+          "qos": {
+            "reliability": "reliable",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 4,
+            "deadline_ms": null,
+            "lifespan_ms": null,
+            "liveliness": "manual_by_topic",
+            "liveliness_lease_duration_ms": 1000,
+            "extensions": {}
+          },
+          "callback": "cb_cmd"
+        }
+      ],
+      "timers": [],
+      "services": [
+        {
+          "id": "srv_reset",
+          "unresolved_name": {
+            "value": "reset",
+            "kind": "relative"
+          },
+          "interface": {
+            "package": "std_srvs",
+            "name": "srv/Trigger",
+            "kind": "service"
+          },
+          "callback": "cb_reset"
+        }
+      ],
+      "actions": [
+        {
+          "id": "act_dock",
+          "unresolved_name": {
+            "value": "~/dock",
+            "kind": "private"
+          },
+          "interface": {
+            "package": "example_interfaces",
+            "name": "action/Fibonacci",
+            "kind": "action"
+          },
+          "goal_callback": "cb_dock_goal",
+          "cancel_callback": "cb_dock_cancel",
+          "accepted_callback": "cb_dock_accepted"
+        }
+      ]
+    }
+  ],
+  "callbacks": [
+    {
+      "id": "cb_cmd",
+      "kind": "subscription",
+      "group": "io",
+      "effects": [
+        {
+          "kind": "sends_service_request",
+          "entity": "srv_reset"
+        },
+        {
+          "kind": "sends_action_goal",
+          "entity": "act_dock"
+        }
+      ],
+      "source": {
+        "artifact": "src/controller.rs",
+        "line": 33,
+        "column": 9
+      }
+    },
+    {
+      "id": "cb_reset",
+      "kind": "service",
+      "group": "io",
+      "effects": [
+        {
+          "kind": "sends_service_reply",
+          "entity": "srv_reset"
+        }
+      ],
+      "source": {
+        "artifact": "src/controller.rs",
+        "line": 61,
+        "column": 9
+      }
+    },
+    {
+      "id": "cb_dock_goal",
+      "kind": "action_goal",
+      "group": "io",
+      "effects": [
+        {
+          "kind": "sends_action_feedback",
+          "entity": "act_dock"
+        },
+        {
+          "kind": "sends_action_result",
+          "entity": "act_dock"
+        }
+      ],
+      "source": {
+        "artifact": "src/controller.rs",
+        "line": 80,
+        "column": 9
+      }
+    }
+  ],
+  "parameters": [],
+  "trace": {
+    "generator": "nros-metadata-rust",
+    "package_manifest": "package.xml",
+    "source_artifacts": [
+      "src/controller.rs"
+    ]
+  }
+}

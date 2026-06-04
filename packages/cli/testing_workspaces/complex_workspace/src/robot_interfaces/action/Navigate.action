@@ -1,0 +1,10 @@
+# Goal
+geometry_msgs/Pose target_pose
+---
+# Result
+bool success
+float64 distance_traveled
+---
+# Feedback
+geometry_msgs/Pose current_pose
+float64 distance_remaining

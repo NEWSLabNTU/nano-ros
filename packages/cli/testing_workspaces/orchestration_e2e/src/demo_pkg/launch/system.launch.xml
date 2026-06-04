@@ -1,0 +1,8 @@
+<launch>
+  <arg name="talker_name" default="talker" />
+
+  <node pkg="demo_pkg" exec="talker" name="$(var talker_name)" output="screen">
+    <param name="rate_hz" value="25" />
+    <remap from="chatter" to="/chatter" />
+  </node>
+</launch>

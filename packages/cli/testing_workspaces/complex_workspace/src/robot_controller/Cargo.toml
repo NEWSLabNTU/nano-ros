@@ -1,0 +1,32 @@
+[package]
+name = "robot_controller"
+version = "0.1.0"
+edition = "2024"
+
+# Standalone package (not part of parent workspace)
+[workspace]
+
+[[bin]]
+name = "robot_controller"
+path = "src/main.rs"
+
+[dependencies]
+# Standard ROS message packages - cargo-ros2 will generate bindings
+builtin_interfaces = "*"
+std_msgs = "*"
+geometry_msgs = "*"
+sensor_msgs = "*"
+nav_msgs = "*"
+trajectory_msgs = "*"
+action_msgs = "*"
+diagnostic_msgs = "*"
+
+# Navigation and control packages
+nav2_msgs = "*"
+control_msgs = "*"
+
+# Motion planning
+moveit_msgs = "*"
+
+# Custom interface package
+robot_interfaces = "*"

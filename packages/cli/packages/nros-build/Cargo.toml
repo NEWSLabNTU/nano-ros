@@ -1,0 +1,34 @@
+[package]
+name = "nros-build"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Phase 212.N.4 — `build.rs`-friendly codegen library: launch XML + cargo-metadata → $OUT_DIR/run_plan.rs for nano-ros Entry pkgs."
+homepage.workspace = true
+documentation.workspace = true
+keywords = ["ros2", "codegen", "build-script", "embedded"]
+categories = ["development-tools::build-utils"]
+
+[lib]
+name = "nros_build"
+path = "src/lib.rs"
+
+[dependencies]
+# nros-cli-core hosts the planner (orchestration::plan_system + the NrosPlan
+# schema). `nros-build` re-uses it via library API rather than shelling out to
+# `nros codegen-system` so the Entry pkg's `build.rs` does not need the
+# binary on PATH at build time.
+nros-cli-core = { path = "../nros-cli-core" }
+
+eyre = "0.6"
+serde.workspace = true
+serde_json.workspace = true
+# N.10 — workspace pkg-index walks `package.xml` files and parses each.
+# `walkdir` already used by `rosidl-codegen`; `quick-xml` by `cargo-nano-ros`.
+walkdir = "2.0"
+quick-xml = "0.37"
+
+[dev-dependencies]
+tempfile = "3.10"

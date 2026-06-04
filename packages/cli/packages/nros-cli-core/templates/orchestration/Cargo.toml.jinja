@@ -1,0 +1,31 @@
+[package]
+name = "{{ package_name }}"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Standalone: detach from any parent Cargo workspace, so the generated package
+# builds wherever it is emitted (e.g. a deploy `build/<name>/nros/generated`
+# dir nested under a workspace), not only in an isolated temp dir.
+[workspace]
+{{ lib_section }}
+[features]
+default = {{ default_features }}
+std = ["nros/std", "nros-orchestration/std"]
+platform-freertos = ["nros/platform-freertos"]
+platform-nuttx = ["nros/platform-nuttx"]
+platform-zephyr = ["nros/platform-zephyr"]
+platform-threadx = ["nros/platform-threadx"]
+platform-threadx-riscv64 = ["nros/platform-threadx"]
+platform-esp32-qemu = ["nros/platform-bare-metal"]
+platform-bare-metal = ["nros/platform-bare-metal"]
+platform-stm32 = ["nros/platform-bare-metal"]
+
+[dependencies]
+nros = { path = "{{ nros_path }}", default-features = false }
+nros-orchestration = { path = "{{ nros_orchestration_path }}", default-features = false }
+{{ component_dependencies }}
+
+[build-dependencies]
+{{ build_dependencies }}
+{{ profile_section }}

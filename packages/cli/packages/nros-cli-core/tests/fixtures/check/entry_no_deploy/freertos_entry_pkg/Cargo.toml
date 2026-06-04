@@ -1,0 +1,11 @@
+# Phase 212.O.2 fixture — Entry pkg declaring [package.metadata.nros.entry]
+# but missing the required `deploy = "<board>"` field. `nros check
+# --workspace` MUST reject this with the `entry-deploy-missing` diagnostic.
+
+[package]
+name = "freertos_entry_pkg"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata.nros.entry]
+# (no `deploy =` key on purpose — this is the offending shape)

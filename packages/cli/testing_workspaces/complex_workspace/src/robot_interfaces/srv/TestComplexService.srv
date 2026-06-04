@@ -1,0 +1,35 @@
+# Test service for complex request/response patterns
+# Tests: multi-package dependencies, complex nested types in services
+
+# Request with multiple complex dependencies
+geometry_msgs/PoseStamped target_pose
+moveit_msgs/Constraints motion_constraints
+nav2_msgs/Costmap environment_costmap
+# TODO: Re-enable after fixing test_msgs code generation
+# test_msgs/BoundedSequences bounded_data
+trajectory_msgs/JointTrajectory initial_trajectory
+diagnostic_msgs/KeyValue[] parameters
+string planning_group
+bool use_collision_detection
+float64 timeout_seconds
+
+---
+
+# Response with success status and results
+bool success
+string message
+
+# Planned trajectory result
+moveit_msgs/RobotTrajectory result_trajectory
+
+# Execution metrics
+float64 planning_time
+float64 execution_time
+int32 waypoint_count
+
+# Diagnostic information
+diagnostic_msgs/DiagnosticStatus planning_diagnostics
+control_msgs/JointTrajectoryControllerState controller_state
+
+# Updated costmap after planning
+nav2_msgs/Costmap updated_costmap

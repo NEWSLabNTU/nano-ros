@@ -1,0 +1,25 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from example_msgs/srv/AddTwoInts.srv
+// generated code does not contain a copyright notice
+
+
+module example_msgs {
+  module srv {
+    module dds_ {
+      struct AddTwoInts_Request_ {
+        unsigned long long rmw_writer_guid;
+        long long rmw_sequence_number;
+        int64 a;
+  
+        int64 b;
+      };
+    };
+    module dds_ {
+      struct AddTwoInts_Response_ {
+        unsigned long long rmw_writer_guid;
+        long long rmw_sequence_number;
+        int64 sum;
+      };
+    };
+  };
+};

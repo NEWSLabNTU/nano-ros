@@ -1,0 +1,7 @@
+<package format="3">
+  <name>demo_pkg</name>
+  <version>0.1.0</version>
+  <description>nano-ros orchestration E2E fixture component package.</description>
+  <maintainer email="noreply@example.com">nano-ros</maintainer>
+  <license>MIT</license>
+</package>

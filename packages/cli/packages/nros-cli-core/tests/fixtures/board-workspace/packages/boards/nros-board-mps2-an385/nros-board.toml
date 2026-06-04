@@ -1,0 +1,25 @@
+# Phase 195.C — board profile descriptor. Pure Cortex-M3 (MPS2-AN385).
+
+[[board]]
+names = ["baremetal", "bare-metal"]
+platform = "bare-metal"
+toolchain = "stable"
+platform_feature = "platform-bare-metal"
+local_aliases = ["platform-bare-metal"]
+link_kind = "none"
+entry_kind = "board-run"
+net_stack = "nanoros-owned"
+board_crate = "nros-board-mps2-an385"
+cargo_config = '''
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = [
+    "-C", "link-arg=-Tlink.x",
+]
+'''
+
+[board.entry]
+crate_name = "nros_board_mps2_an385"
+comment = "// Phase 126.M5.bare-metal — pure Cortex-M3 (MPS2-AN385). Entry comes\n// from cortex-m-rt's `#[entry]` (re-exported by the board crate).\n// The board crate's `run()` does hardware + smoltcp/lwIP init then\n// invokes the closure; referencing it pins the board rlib + its\n// linker-script / vector-table contributions into the image."
+signature = "#[nros_board_mps2_an385::entry]\nfn main() -> !"
+crate_root_extra = "use panic_semihosting as _;"

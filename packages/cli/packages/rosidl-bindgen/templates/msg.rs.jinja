@@ -1,0 +1,42 @@
+// Auto-generated ROS 2 message module
+// Package: {{ package_name }}
+
+use super::rosidl_runtime_rs;
+
+// RMW (Raw Middleware) layer - FFI types
+pub mod rmw {
+    use super::rosidl_runtime_rs;
+
+    #[cfg(feature = "serde")]
+    use serde::{Deserialize, Serialize};
+
+    {% for message in messages %}
+    // {{ message.type_name }} message and constants
+    pub mod {{ message.module_name }} {
+        use super::*;
+        include!("{{ message.module_name }}_rmw.rs");
+    }
+    // Re-export the message type at rmw level for API compatibility
+    pub use {{ message.module_name }}::{{ message.type_name }};
+    {% endfor %}
+}
+
+// Idiomatic layer - user-friendly types
+{% for message in messages %}
+#[path = "{{ message.module_name }}_idiomatic.rs"]
+mod {{ message.module_name }};
+pub use {{ message.module_name }}::{{ message.type_name }};
+{% endfor %}
+
+// Constant modules from IDL files (in parent src/ directory)
+{% for const_mod in constant_modules %}
+#[path = "../{{ const_mod.module_name }}_constants.rs"]
+pub mod {{ const_mod.module_name }};
+{% endfor %}
+
+// Enums from IDL files (in parent src/ directory)
+{% for enum_def in enums %}
+#[path = "../{{ enum_def.module_name }}_enum.rs"]
+pub mod {{ enum_def.module_name }};
+pub use {{ enum_def.module_name }}::{{ enum_def.type_name }};
+{% endfor %}

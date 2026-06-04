@@ -1,0 +1,46 @@
+// Auto-synthesized by msg_to_cyclone_idl.py from example_msgs/action/Fibonacci.action.
+// Uses ROS 2 UUID-compatible fixed goal_id storage; the Cyclone
+// backend adapts the nano-ros raw length prefix at runtime.
+module example_msgs {
+  module action {
+    module dds_ {
+      struct Fibonacci_Goal_ {
+        int32 order;
+      };
+      struct Fibonacci_Result_ {
+        sequence<int32> _sequence;
+      };
+      struct Fibonacci_Feedback_ {
+        sequence<int32> partial_sequence;
+      };
+      struct Fibonacci_SendGoal_Request_ {
+        unsigned long long rmw_writer_guid;
+        long long rmw_sequence_number;
+        octet goal_id[16];
+        example_msgs::action::dds_::Fibonacci_Goal_ goal;
+      };
+      struct Fibonacci_SendGoal_Response_ {
+        unsigned long long rmw_writer_guid;
+        long long rmw_sequence_number;
+        boolean accepted;
+        int32 stamp_sec;
+        uint32 stamp_nanosec;
+      };
+      struct Fibonacci_GetResult_Request_ {
+        unsigned long long rmw_writer_guid;
+        long long rmw_sequence_number;
+        octet goal_id[16];
+      };
+      struct Fibonacci_GetResult_Response_ {
+        unsigned long long rmw_writer_guid;
+        long long rmw_sequence_number;
+        int8 status;
+        example_msgs::action::dds_::Fibonacci_Result_ result;
+      };
+      struct Fibonacci_FeedbackMessage_ {
+        octet goal_id[16];
+        example_msgs::action::dds_::Fibonacci_Feedback_ feedback;
+      };
+    };
+  };
+};

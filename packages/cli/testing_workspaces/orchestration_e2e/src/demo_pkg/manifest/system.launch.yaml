@@ -1,0 +1,6 @@
+version: 1
+topics:
+  /chatter:
+    type: std_msgs/msg/String
+    pub: [/talker]
+    sub: [/talker]

@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "package": "demo_nodes_rs",
+  "component": "talker",
+  "language": "rust",
+  "executable": "talker",
+  "exported_symbol": "nros_component_talker",
+  "nodes": [
+    {
+      "id": "node_talker",
+      "unresolved_name": {
+        "value": "talker",
+        "kind": "relative"
+      },
+      "namespace": null,
+      "publishers": [
+        {
+          "id": "pub_chatter",
+          "unresolved_topic": {
+            "value": "chatter",
+            "kind": "relative"
+          },
+          "interface": {
+            "package": "std_msgs",
+            "name": "msg/String",
+            "kind": "message"
+          },
+          "qos": {
+            "reliability": "reliable",
+            "durability": "volatile",
+            "history": "keep_last",
+            "depth": 10,
+            "deadline_ms": null,
+            "lifespan_ms": null,
+            "liveliness": "automatic",
+            "liveliness_lease_duration_ms": null,
+            "extensions": {}
+          }
+        }
+      ],
+      "subscribers": [],
+      "timers": [
+        {
+          "id": "timer_publish",
+          "period_ms": 100,
+          "callback": "cb_timer"
+        }
+      ],
+      "services": [
+        {
+          "id": "srv_reset",
+          "unresolved_name": {
+            "value": "~/reset",
+            "kind": "private"
+          },
+          "interface": {
+            "package": "std_srvs",
+            "name": "srv/Trigger",
+            "kind": "service"
+          },
+          "callback": "cb_reset"
+        }
+      ],
+      "actions": [
+        {
+          "id": "act_count",
+          "unresolved_name": {
+            "value": "~/count",
+            "kind": "private"
+          },
+          "interface": {
+            "package": "example_interfaces",
+            "name": "action/Fibonacci",
+            "kind": "action"
+          },
+          "goal_callback": "cb_count_goal",
+          "cancel_callback": "cb_count_cancel",
+          "accepted_callback": "cb_count_accepted"
+        }
+      ]
+    }
+  ],
+  "callbacks": [
+    {
+      "id": "cb_timer",
+      "kind": "timer",
+      "group": "main",
+      "effects": [
+        {
+          "kind": "publishes",
+          "entity": "pub_chatter"
+        }
+      ],
+      "source": {
+        "artifact": "src/talker.rs",
+        "line": 42,
+        "column": 5
+      }
+    },
+    {
+      "id": "cb_reset",
+      "kind": "service",
+      "group": "main",
+      "effects": [],
+      "source": {
+        "artifact": "src/talker.rs",
+        "line": 68,
+        "column": 5
+      }
+    },
+    {
+      "id": "cb_count_goal",
+      "kind": "action_goal",
+      "group": "main",
+      "effects": [],
+      "source": {
+        "artifact": "src/talker.rs",
+        "line": 90,
+        "column": 5
+      }
+    },
+    {
+      "id": "cb_count_cancel",
+      "kind": "action_cancel",
+      "group": "main",
+      "effects": [],
+      "source": {
+        "artifact": "src/talker.rs",
+        "line": 96,
+        "column": 5
+      }
+    },
+    {
+      "id": "cb_count_accepted",
+      "kind": "action_accepted",
+      "group": "main",
+      "effects": [],
+      "source": {
+        "artifact": "src/talker.rs",
+        "line": 104,
+        "column": 5
+      }
+    }
+  ],
+  "parameters": [
+    {
+      "node": "node_talker",
+      "name": "rate_hz",
+      "default": 10,
+      "read_only": false,
+      "source": {
+        "artifact": "src/talker.rs",
+        "line": 25,
+        "column": 9
+      }
+    }
+  ],
+  "trace": {
+    "generator": "nros-metadata-rust",
+    "package_manifest": "package.xml",
+    "source_artifacts": [
+      "src/talker.rs"
+    ]
+  }
+}

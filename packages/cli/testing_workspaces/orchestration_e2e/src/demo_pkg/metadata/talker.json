@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "package": "demo_pkg",
+  "component": "talker",
+  "language": "rust",
+  "executable": "talker",
+  "exported_symbol": "nros_component_talker",
+  "nodes": [
+    {
+      "id": "node_talker",
+      "unresolved_name": {
+        "value": "talker",
+        "kind": "relative"
+      },
+      "namespace": null,
+      "publishers": [
+        {
+          "id": "pub_chatter",
+          "unresolved_topic": {
+            "value": "chatter",
+            "kind": "relative"
+          },
+          "interface": {
+            "package": "std_msgs",
+            "name": "msg/String",
+            "kind": "message"
+          },
+          "qos": null
+        }
+      ],
+      "subscribers": [
+        {
+          "id": "sub_chatter",
+          "unresolved_topic": {
+            "value": "chatter",
+            "kind": "relative"
+          },
+          "interface": {
+            "package": "std_msgs",
+            "name": "msg/String",
+            "kind": "message"
+          },
+          "qos": null,
+          "callback": "cb_chatter"
+        }
+      ],
+      "timers": [],
+      "services": [],
+      "actions": []
+    }
+  ],
+  "callbacks": [
+    {
+      "id": "cb_chatter",
+      "kind": "subscription",
+      "group": null,
+      "effects": [
+        {
+          "kind": "publishes",
+          "entity": "pub_chatter"
+        }
+      ],
+      "source": {
+        "artifact": "src/lib.rs",
+        "line": 42,
+        "column": 5
+      }
+    }
+  ],
+  "parameters": [
+    {
+      "node": "node_talker",
+      "name": "rate_hz",
+      "default": 10,
+      "read_only": false,
+      "source": {
+        "artifact": "src/lib.rs",
+        "line": 10,
+        "column": 1
+      }
+    }
+  ],
+  "trace": {
+    "generator": "nros-metadata-rust",
+    "package_manifest": "package.xml",
+    "source_artifacts": ["src/lib.rs"]
+  }
+}

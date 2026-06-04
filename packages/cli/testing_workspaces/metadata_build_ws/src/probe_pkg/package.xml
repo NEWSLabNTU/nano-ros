@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>probe_pkg</name>
+  <version>0.1.0</version>
+  <description>Phase 172.E metadata-mode discovery probe (nros metadata --build).</description>
+  <maintainer email="dev@example.com">nano-ros</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cargo</buildtool_depend>
+</package>

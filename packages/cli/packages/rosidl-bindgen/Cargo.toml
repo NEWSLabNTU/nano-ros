@@ -1,0 +1,29 @@
+[package]
+name = "rosidl-bindgen"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust binding generator for ROS 2 interface packages"
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "rosidl", "bindgen", "codegen", "robotics"]
+categories = ["development-tools::build-utils", "development-tools::ffi"]
+
+[lib]
+name = "rosidl_bindgen"
+path = "src/lib.rs"
+
+[dependencies]
+askama.workspace = true
+clap.workspace = true
+eyre = "0.6"
+serde.workspace = true
+serde_json.workspace = true
+rosidl-codegen.workspace = true
+rosidl-parser.workspace = true
+
+[dev-dependencies]
+tempfile = "3.8"

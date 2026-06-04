@@ -1,0 +1,36 @@
+[package]
+name = "cargo-nano-ros"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared nano-ros codegen library used by the nros CLI"
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "codegen", "embedded"]
+categories = ["development-tools::build-utils"]
+
+[lib]
+name = "cargo_nano_ros"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+eyre = "0.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+cargo_metadata = "0.18"
+toml = "0.8"
+sha2 = "0.10"
+rosidl-bindgen = { path = "../rosidl-bindgen" }
+rosidl-codegen = { path = "../rosidl-codegen" }
+rosidl-parser = { path = "../rosidl-parser" }
+nros-msg-to-idl = { workspace = true }
+rayon = "1.10"
+indicatif = "0.17"
+quick-xml = "0.37"
+
+[dev-dependencies]
+tempfile = "3.8"

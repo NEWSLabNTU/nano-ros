@@ -1,0 +1,42 @@
+// Auto-generated ROS 2 action module
+// Package: {{ package_name }}
+
+use super::rosidl_runtime_rs;
+
+// RMW (Raw Middleware) layer - FFI types
+pub mod rmw {
+    use super::rosidl_runtime_rs;
+
+    #[cfg(feature = "serde")]
+    use serde::{Deserialize, Serialize};
+
+    {% for action in actions %}
+    // {{ action.type_name }} action and constants
+    pub mod {{ action.module_name }} {
+        use super::*;
+        include!("{{ action.module_name }}_rmw.rs");
+    }
+    // Re-export the action types at rmw level for API compatibility
+    pub use {{ action.module_name }}::{{ action.type_name }};
+    pub use {{ action.module_name }}::{{ action.type_name }}Goal;
+    pub use {{ action.module_name }}::{{ action.type_name }}Result;
+    pub use {{ action.module_name }}::{{ action.type_name }}Feedback;
+    pub use {{ action.module_name }}::{{ action.type_name }}FeedbackMessage;
+    pub use {{ action.module_name }}::{{ action.type_name }}_SendGoal;
+    pub use {{ action.module_name }}::{{ action.type_name }}_SendGoal_Request;
+    pub use {{ action.module_name }}::{{ action.type_name }}_SendGoal_Response;
+    pub use {{ action.module_name }}::{{ action.type_name }}_GetResult;
+    pub use {{ action.module_name }}::{{ action.type_name }}_GetResult_Request;
+    pub use {{ action.module_name }}::{{ action.type_name }}_GetResult_Response;
+    {% endfor %}
+}
+
+// Idiomatic layer - user-friendly types
+{% for action in actions %}
+#[path = "{{ action.module_name }}_idiomatic.rs"]
+pub mod {{ action.module_name }};
+pub use {{ action.module_name }}::{{ action.type_name }};
+pub use {{ action.module_name }}::{{ action.type_name }}Goal;
+pub use {{ action.module_name }}::{{ action.type_name }}Result;
+pub use {{ action.module_name }}::{{ action.type_name }}Feedback;
+{% endfor %}

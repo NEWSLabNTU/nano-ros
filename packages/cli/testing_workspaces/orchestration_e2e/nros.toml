@@ -1,0 +1,72 @@
+# Phase 172.U — root nros.toml (SSOT) for the orchestration_e2e fixture.
+#
+# The whole system + its deployments live in this one file; `nros deploy
+# <name>` reads it (no per-package system nros.toml, no flag-driven build).
+# Used by the `deploy_native_self_from_root_nros_toml` cutover test.
+
+[workspace]
+default = "native"
+
+[system]
+launch = "src/demo_pkg/launch/system.launch.xml"
+components = ["demo_pkg"]
+rmw = "zenoh"
+domain_id = 0
+
+# self ownership model: nano-ros owns the toolchain, the generated entry lib's
+# self-shim is the binary (no deploy/ code dir).
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+
+# Phase 172 W.4 — vendor-module ownership model: the vendor (Zephyr/`west`)
+# owns the build. nano-ros emits the *source* form — for Zephyr the generated
+# entry crate IS a west-buildable app (a `rustapp` staticlib + Zephyr
+# CMakeLists calling `rust_cargo_application()` + prj.conf), so the build[]
+# step just points `west` at `{entry_src}`.
+#
+# `board` here is the nano-ros *platform* ("zephyr") that drives codegen
+# (profile → ZephyrStaticlib); the Zephyr *board* (native_sim/native/64, the
+# net-capable sim matching examples/zephyr/rust/talker) is a west `-b` arg,
+# literal in build[]. (The single `board` field can't carry both — a separate
+# platform/vendor-board split is a schema follow-up.)
+[deploy.zephyr-mod]
+kind = "vendor-module"
+board = "zephyr"
+target = "x86_64-unknown-linux-gnu"
+self = "deploy/zephyr-mod"   # vendor glue: west manifest import + overlays
+# Embedded: bake the zenohd locator (Zephyr port 7456) — no runtime env on the
+# target. Surfaced as TRANSPORT_LOCATOR; the generated rust_main connects to it.
+locator = "tcp/127.0.0.1:7456"
+# emit defaults to "source" for vendor-module.
+# The NSOS overlay (from {self}) makes native_sim use the host's BSD sockets
+# (no TAP/`zeth` bridge needed) — board-specific, so it rides EXTRA_CONF_FILE
+# rather than the board-agnostic generated prj.conf.
+build = [
+  "west build -b native_sim/native/64 -d build/zephyr-mod {entry_src} -- -DEXTRA_CONF_FILE={self}/native-sim-nsos.conf",
+]
+package = [
+  "echo zephyr-mod image: build/zephyr-mod/zephyr/zephyr.exe",
+]
+
+# Phase 172.V — vendor-lib ownership model: nano-ros owns the toolchain and
+# emits the *compiled* entry lib (`lib<sys>.a`), which a vendor link step pulls
+# alongside a vendor static lib (the Orin SPE `libtegra_aon_fsp.a` precedent).
+# This fixture stands in for that license-gated path with a host x86_64 build +
+# a stub `libfakevendor.a` (built by the e2e test), exercising the real
+# emit-compiled-lib → link → package pipeline (vs. the dry-run template test).
+[deploy.orin-stub]
+kind = "vendor-lib"
+target = "x86_64-unknown-linux-gnu"
+emit = "compiled"
+self = "deploy/orin-stub"            # vendor glue: startup.c + linker bits
+vendor.pin = "fakevendor 1.0"
+vendor.dir.default = "deploy/orin-stub/vendor"   # test builds the stub .a here
+# Link the vendor startup + the emitted entry lib against the (stub) vendor
+# static lib. `{entry_lib}` / `{self}` / `{vendor.dir}` are runner-substituted.
+build = [
+  "gcc {self}/startup.c {entry_lib} -L{vendor.dir}/lib -lfakevendor -o build/orin-stub/app.elf",
+]
+package = [
+  "echo orin-stub image: build/orin-stub/app.elf",
+]

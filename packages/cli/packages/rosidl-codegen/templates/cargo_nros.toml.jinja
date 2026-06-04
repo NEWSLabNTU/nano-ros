@@ -1,0 +1,18 @@
+[package]
+name = "{{ package_name }}"
+version = "{{ package_version }}"
+edition = "2021"
+license = "Apache-2.0"
+
+[features]
+default = ["std"]
+std = ["nros-core/std", "nros-serdes/std"]
+alloc = ["nros-core/alloc", "nros-serdes/alloc"]
+
+[dependencies]
+nros-core = { version = "0.1", default-features = false }
+nros-serdes = { version = "0.1", default-features = false }
+heapless = "0.8"
+{%- for dep in dependencies %}
+{{ dep }} = { version = "*", default-features = false }
+{%- endfor %}

@@ -1,0 +1,12 @@
+# Phase 212.O.6 fixture — Application pkg whose deploy allow-list names an
+# RTOS target (`freertos`). Application pkgs are native-only by definition
+# (Phase 212.L.2 / M-F.1), so `nros check --workspace` MUST reject this with
+# the `application-rtos-deploy-forbidden` diagnostic.
+
+[package]
+name = "demo_app"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata.nros.application]
+deploy = ["native", "freertos"]

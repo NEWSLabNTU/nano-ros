@@ -1,0 +1,22 @@
+[package]
+name = "rosidl-parser"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Parser for ROS IDL files (.msg, .srv, .action)"
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "rosidl", "parser", "idl", "robotics"]
+categories = ["parser-implementations", "development-tools::build-utils"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+logos = "0.14"
+chumsky = "1.0.0-alpha.7"
+thiserror = "2.0"
+
+[dev-dependencies]
+proptest = "1.5"

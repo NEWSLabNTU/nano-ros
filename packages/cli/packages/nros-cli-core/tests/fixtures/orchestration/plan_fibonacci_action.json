@@ -1,0 +1,124 @@
+{
+  "version": 2,
+  "system": "fibonacci_action_system",
+  "trace": {
+    "system_config": "nros.toml",
+    "launch_record": "build/service_action_system/nros/record.json",
+    "generated_by": "nros plan"
+  },
+  "components": [
+    {
+      "id": "demo_pkg::fib_server",
+      "package": "demo_pkg",
+      "component": "fib_server",
+      "language": "rust",
+      "source_metadata": "target/nros/metadata/fib_server.json",
+      "component_config": "components/fib_server/nros.toml"
+    }
+  ],
+  "instances": [
+    {
+      "id": "fib_instance",
+      "component": "demo_pkg::fib_server",
+      "package": "demo_pkg",
+      "executable": "fib_server",
+      "launch_name": "fib_server",
+      "namespace": "/",
+      "remaps": [],
+      "nodes": [
+        {
+          "id": "fib_instance/node_fib",
+          "source_node": "node_fib",
+          "resolved_name": "/fib_server",
+          "namespace": "/",
+          "entities": [
+            {
+              "role": "action_server",
+              "id": "fib_instance/act_fib",
+              "source_entity": "fib",
+              "resolved_name": "/fibonacci",
+              "interface": {
+                "package": "example_interfaces",
+                "name": "action/Fibonacci",
+                "kind": "action"
+              },
+              "qos": null,
+              "trace": {
+                "source_artifact": {
+                  "artifact": "src/talker.rs",
+                  "line": 90,
+                  "column": 5
+                },
+                "manifest_endpoint": "manifest://demo_nodes_rs/talker/fib"
+              }
+            }
+          ]
+        }
+      ],
+      "callbacks": [
+        {
+          "id": "fib_instance/cb_fib_goal",
+          "source_callback": "cb_fib_goal",
+          "group": "main",
+          "sched_context": "default_executor",
+          "source": {
+            "artifact": "src/talker.rs",
+            "line": 90,
+            "column": 5
+          }
+        }
+      ],
+      "parameters": [],
+      "sched_bindings": [
+        {
+          "callback": "fib_instance/cb_fib_goal",
+          "context": "default_executor",
+          "priority": 5,
+          "source": "nros.toml"
+        }
+      ],
+      "trace": {
+        "launch_record_entity": "record://nodes/0",
+        "source_metadata": "target/nros/metadata/talker.json"
+      }
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "example_interfaces/action/Fibonacci",
+      "interface": {
+        "package": "example_interfaces",
+        "name": "action/Fibonacci",
+        "kind": "action"
+      },
+      "used_by": [
+        "fib_instance/act_fib"
+      ]
+    }
+  ],
+  "sched_contexts": [
+    {
+      "id": "default_executor",
+      "executor": "single_threaded",
+      "class": "real_time",
+      "priority": 5,
+      "period_ms": 100,
+      "budget_ms": 20,
+      "deadline_ms": 100,
+      "deadline_policy": "warn",
+      "stack_size": 16384,
+      "core": 0,
+      "task": "nros-default"
+    }
+  ],
+  "build": {
+    "target": "x86_64-unknown-linux-gnu",
+    "board": "native",
+    "rmw": "zenoh",
+    "profile": "release",
+    "features": [
+      "rmw-zenoh"
+    ],
+    "cfg": {}
+  }
+}

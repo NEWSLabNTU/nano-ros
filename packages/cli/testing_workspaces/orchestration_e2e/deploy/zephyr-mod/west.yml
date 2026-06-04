@@ -1,0 +1,16 @@
+# West manifest for the `zephyr-mod` vendor-module deploy (Phase 172 W.4).
+#
+# Pulls in the nano-ros Zephyr module so `west build {entry_src}` discovers
+# `NanoRos::NanoRos` (the module wires the root CMake under west — see
+# integrations/zephyr/{module.yml,west.yml}). Downstream/out-of-tree workspaces
+# import this; an in-tree build already has nano-ros present.
+manifest:
+  remotes:
+    - name: nano-ros
+      url-base: https://github.com/NEWSLabNTU
+  projects:
+    - name: nano-ros
+      remote: nano-ros
+      path: modules/nano-ros
+      import:
+        file: integrations/zephyr/west.yml

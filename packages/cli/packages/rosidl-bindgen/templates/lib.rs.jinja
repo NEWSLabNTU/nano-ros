@@ -1,0 +1,18 @@
+// Auto-generated Rust bindings for ROS 2 interface package
+// Package: {{ package_name }}
+
+#![allow(unused_imports)]
+
+// Import shared runtime library for ROS 2 types and traits (from crates.io)
+use rosidl_runtime_rs;
+
+// Interface modules (each contains both rmw and idiomatic layers)
+{% if has_messages %}
+pub mod msg;
+{% endif %}
+{% if has_services %}
+pub mod srv;
+{% endif %}
+{% if has_actions %}
+pub mod action;
+{% endif %}
