@@ -205,6 +205,13 @@ max-threads = 4
 [test-groups.zephyr-native-cyclonedds]
 max-threads = 4
 
+# Phase 217.C.2 — FVP runtime smoke. The ARM `FVP_BaseR_AEMv8R` license is
+# commonly node-locked + the UART telnet ports the FVP opens collide on
+# parallel runs (Zephyr `cmake/emu/armfvp.cmake` passes fixed `-C
+# bp.pl011_uart*.out_file=-` redirects). Keep serial.
+[test-groups.zephyr-fvp]
+max-threads = 1
+
 # XRCE-DDS tests (Phase 183.7): each test starts its OWN Agent (ephemeral UDP
 # port via XrceAgent::start_unique, or a per-test tempdir PTY pair via
 # XrceSerialAgent) AND now assigns a per-test ROS_DOMAIN_ID so the Agent's DDS
@@ -452,6 +459,17 @@ test-group = "qemu-zephyr"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
+# Phase 217.C.2 — FVP runtime smoke. The test drives `just zephyr
+# run-fvp-aemv8r-cyclonedds` end-to-end (cold FVP boot ~30 s + Cyclone DDS
+# discovery + Published: line) under a 120 s wall-clock budget. Allow up to
+# 180 s × 2 terminate-after for the cold-cache first run; skip cleanly when
+# ARM FVP isn't installed.
+[[profile.default.overrides]]
+filter = "binary(phase217_c_fvp_runtime)"
+test-group = "zephyr-fvp"
+slow-timeout = { period = "180s", terminate-after = 2 }
+retries = 1
+
 # Phase 11W.12 — serialize the native_sim Cyclone DDS boot + pub/sub
 # E2E tests (in phase_118_collapse). They spawn host native_sim
 # processes that bind the fixed SPDP multicast port; concurrent runs
@@ -597,6 +615,7 @@ fail-fast = true
 #   * threadx-linux        — ThreadX Linux sim + veth bridge
 #   * qemu-zephyr          — Zephyr native_sim (NSOS), zenoh variants
 #   * qemu-zephyr-xrce     — Zephyr native_sim, XRCE variant (shared Agent port)
+#   * zephyr-fvp           — ARM FVP runtime smoke (license-gated install)
 #   * ros2-interop         — needs ROS 2 CLI on PATH
 #   * xrce_ros2_interop    — needs XRCE Agent + ROS 2
 #

@@ -425,7 +425,7 @@ test-integration verbose="": build-zenohd
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=ros2-interop) or binary(xrce_ros2_interop))'
+    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop))'
     args=(-p nros-tests --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -561,7 +561,7 @@ test verbose="": build-zenohd
     junit="$(nros_nextest_junit_path)"
     set +e
     failed=0
-    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=ros2-interop) or binary(xrce_ros2_interop))'
+    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop))'
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}" -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
