@@ -675,3 +675,106 @@ needs to follow the same convention.
       after 219.A–F. None blocks 219.G (book chapter) — that chapter
       cross-references the 219.H mixed-lang link path + 1-arg
       `NROS_NODE` alias once they ship.
+
+## 9. Reconsideration vs Phase 222 + Phase 223 (post-rebase 2026-06-04)
+
+Phase 222 (`docs/roadmap/phase-222-cli-surface-and-ux.md`, was 220
+before the `9774bb4b9` renumber) and Phase 223
+(`docs/roadmap/phase-223-c-language-completion.md`, was 221) landed
+on main while Track 2 + Track 3 were in flight here. Re-reading both
+against the 219.A–N work landed on this branch:
+
+### 9.1 Phase 222 — orthogonal, no conflict
+
+Phase 222 proposes dropping `nros build` / `run` / `deploy` /
+`monitor` and a "Decide / Defer" call on `nros launch`. Phase 219's
+`nros codegen entry` subcommand falls under §222.2.1's **keep
+(real work)** classification (codegen), so the shrink does not
+touch this phase. The 222.A.1 book sweep targets the broken
+`source ./activate.sh && just setup-cli` chicken-egg block in five
+chapters; the `workspace-cpp.md` page landed by 219.G uses platform
+tools directly (`cmake -S . -B build && cmake --build build`) and
+the `nros new` scaffolds, NOT the `nros build` wrapper, so it is
+already 222-clean.
+
+### 9.2 Phase 223 — Path B narrows three 219 surfaces
+
+Phase 223 §2 chose **Path B** for the C language: no pure-C Entry
+pkg; C Node pkgs link into C++ or Rust Entry pkgs via the per-pkg
+mangled register fn (`__nros_component_<pkg>_register`, C-ABI).
+Three 219 surfaces emitted before 223 chose Path B now have an
+explicit narrower target:
+
+1. **`nros codegen entry --lang c`** (Phase 219.C `emit_c.rs`).
+   Emits a C Entry-pkg TU with extern-C forward-decls + a Native
+   board boot stub via `nros_board_native_run` fn-ptr ABI. Under
+   Path B this code is **dormant**: there is no pure-C Entry pkg
+   use case. Keep the module — it is cheap insurance against a
+   future Path A revival, costs no runtime, and the unit tests
+   guard regressions. Phase 223 implementer should NOT delete it;
+   instead, add a one-line note in the module header acknowledging
+   the Path B decision.
+
+2. **`nros new <name> --lang c --platform native`** (Phase 219.M).
+   Scaffolds a real C Entry pkg today (configures + builds + links
+   on the smoke fixture). Phase 223.C.2 wants this to **reject**
+   with a mixed-lang pointer. The scaffold body is fine as
+   reference shape; the CLI dispatch should grow a Path-B-aware
+   rejection (or warning) once 223 lands. **Open question** for
+   the 223 implementer: do we delete the C Entry scaffold body, or
+   keep it gated behind a `--allow-pure-c-entry` opt-in for Path A
+   experiments?
+
+3. **`nano_ros_entry(LANG c)`** (Phase 219.D cmake fn). The cmake
+   fn accepts `LANG c` and shells `nros codegen entry --lang c`.
+   Same fate as item 1: dormant under Path B; preserves the
+   surface for Path A revival.
+
+### 9.3 Phase 223.C.1 lifts 219.M's C Component deferral
+
+Phase 219.M deferred the `nros new --component --lang c` scaffold
+with a typed error ("Phase 219.M follow-up — NROS_COMPONENT macro
+semantics need a 1-arg shim before a hand-rolled C scaffold matches
+the freertos fixture shape"). Phase 223.A.1 schedules that exact
+audit + macro hygiene pass; 223.C.1 then lifts the rejection. Order:
+**land Phase 223.A.1 + 223.C.1 → then drop my deferral typed-error
+in `packages/cli/cargo-nano-ros/src/scaffold.rs`**. The scaffold
+body itself (a `Talker.{h,c}` declarative `register_node()` shape
+mirroring the C++ side) is the deliverable.
+
+### 9.4 What this branch does NOT need to change
+
+No retrofit needed before this branch merges. Every 219 commit
+ships green; the Phase 222 / 223 follow-ups land on top of 219
+without touching 219.A–N internals. The Phase 219 doc's §6
+acceptance bar (`219.acc.workflow` — end-to-end talker→listener
+runtime probe) remains out-of-scope per §7 (pure orchestration);
+that runtime work + 223.B.1's mixed-lang fixture share the same
+runtime follow-up phase.
+
+### 9.5 Summary table
+
+| 219 surface | Phase 222 / 223 effect | Action |
+|---|---|---|
+| `nros codegen entry --lang rust` | none (codegen kept) | none |
+| `nros codegen entry --lang cpp` | none | none |
+| `nros codegen entry --lang c` (`emit_c`) | dormant under 223 Path B | keep; note Path B status |
+| `nros new` Entry pkg `--lang cpp` | none | none |
+| `nros new` Entry pkg `--lang c` | 223.C.2 wants reject | 223 dispatch update |
+| `nros new --component --lang cpp` | none | none |
+| `nros new --component --lang c` (deferred today) | 223.C.1 lifts | 223 follow-up |
+| `nano_ros_entry(LANG c)` | dormant under 223 Path B | keep; surface preserved |
+| `nano_ros_entry(LANG cpp)` | none | none |
+| `nano_ros_workspace()` | none | none |
+| `nano_ros_workspace_pkg_guard()` | none | none |
+| `NROS_MAIN_C(...)` macro + C-stubs `main_board.c` | dormant under 223 Path B | keep |
+| `NROS_MAIN(...)` C++ macro | none | none |
+| 219.H/I cmake idempotency + workspace fns | none | none |
+| 219.L `nros metadata` cmake walk | none (orthogonal) | none |
+| 219.F/N multi-node-workspace-cpp template | none | none |
+| 219.G book chapter | 222.A.1 broken-prereq sweep already-clean | none |
+
+Bottom line: ship 219 as-is. Phase 223 implementer picks up the
+two Path B follow-ups (CLI dispatch update for `nros new --entry
+--lang c` rejection, lift the `--component --lang c` deferral)
+once their 223.A.1 audit ships the C-side macro hygiene pass.
