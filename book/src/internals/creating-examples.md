@@ -11,11 +11,11 @@ Every example is a **self-contained, copy-out project** under one of:
 
 | Path | Used for |
 |---|---|
-| `examples/<plat>/<lang>/<rmw>/<example>/` | The standard cell. |
+| `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNANO_ROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [the workspace track](../getting-started/workspace-from-app-node.md). |
 | `examples/bridges/<name>/` | Cross-RMW gateway examples (one binary, multiple backends). |
 | `examples/templates/<name>/` | Multi-platform copy-out recipes (e.g. `multi-package-workspace`). |
 
-The `<plat>` × `<lang>` × `<rmw>` coverage matrix is authoritative in
+The `<plat>` × `<lang>` coverage matrix (RMW chosen at build time) is authoritative in
 [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).
 Intentionally empty cells (bare-metal C/C++, PX4 Rust, …) are listed
 in the same file; do not fill them without lifting the underlying
@@ -101,7 +101,7 @@ with `just install-local`, every `install(...)` rule, and every
 ## Per-example contents
 
 ```
-examples/<plat>/<lang>/<rmw>/<example>/
+examples/<plat>/<lang>/<example>/
 ├── package.xml                    # ROS-style manifest for the example
 ├── Cargo.toml | CMakeLists.txt    # Rust or C/C++ build entry
 ├── .cargo/config.toml             # Rust only — target + .cargo patches
@@ -150,7 +150,7 @@ full reference + `package.xml` schema.
 
 ## Adding a new example — checklist
 
-1. **Pick the canonical cell.** Confirm `<plat>/<lang>/<rmw>/<name>`
+1. **Pick the canonical cell.** Confirm `<plat>/<lang>/<name>`
    isn't in the "intentionally empty" list in `examples/README.md`.
 2. **Copy the nearest peer.** Identical-RMW + adjacent-platform is
    the lowest-risk template (e.g. copy `examples/qemu-arm-freertos/c/talker`
