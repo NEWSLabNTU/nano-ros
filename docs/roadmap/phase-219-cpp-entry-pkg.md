@@ -9,17 +9,14 @@ workspace pkg-index semantics the Rust proc-macro already uses.
 
 ## 0. Reading guide
 
-Three docs are in scope; read in order:
+Two docs are in scope; read in order:
 
 1. **`docs/design/multi-node-workspace-layout.md` §11** — LOCKED
    canonical three-role shape (Bringup + Node + Entry). Background.
 2. **This file** — §1 + §2 + §3 sketch the surface; §4 lists every
-   work item in landing order; §6 carries the acceptance bar.
-3. **`docs/roadmap/phase-224-cpp-workspace-workflow-review.md`** — concrete
-   2-Node pure-C++ workspace walkthrough that surfaced six
-   integration gaps beyond the headline Entry-codegen gap. Each
-   gap is anchored to a specific 219.X item; that doc is the
-   verification artifact, this file is the plan.
+   work item in landing order; §6 carries the acceptance bar. The
+   pure-C++ workspace walkthrough findings that originally lived in
+   a separate review artifact are folded into the `(✱)` items below.
 
 **Status.** **DESIGN**, no code yet. Builds on Phase 212.N.6
 (`nano_ros_entry(...)` cmake fn) + 212.N.10/11 (workspace pkg-index +
@@ -364,9 +361,9 @@ review.
 
 Single ordered list. Items grouped into three tracks; tracks land in
 order but inside a track the items are independent. Cost tags
-(`cheap` / `medium`) come from the workflow-review estimates;
-`(✱)` marks items the workflow review (`phase-224-cpp-workspace-workflow-review.md`)
-added on top of the original 219.A–G design.
+(`cheap` / `medium`) come from the pure-C++ workspace walkthrough
+estimates; `(✱)` marks items added on top of the original 219.A–G
+design.
 
 ### Track 1 — workspace plumbing (lands first)
 
@@ -441,8 +438,9 @@ but is required for the end-to-end acceptance bar (§6).
 
 - [x] **219.K — `nros codegen entry` runs without external
       `play-launch-parser`.** (cheap, ✱) **Resolved by design
-      clarification (2026-06-04).** The workflow review's Gap 5 ("`nros
-      plan` shells the external `play_launch_parser` Python tool")
+      clarification (2026-06-04).** The pure-C++ workflow walkthrough
+      found that `nros plan` shells the external `play_launch_parser`
+      Python tool; that concern
       applies only to the `nros plan` path — that path supports both
       `.launch.xml` and `.launch.py`, and the Python form requires
       embedded CPython, which lives in the separate
