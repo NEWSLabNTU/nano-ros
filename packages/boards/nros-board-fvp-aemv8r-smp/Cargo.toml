@@ -36,3 +36,19 @@ nros = { path = "../../core/nros", default-features = false, features = ["platfo
 # linked via Zephyr's CMake glue). The board crate pulls `nros-platform`
 # (re-exported via `nros`) to reach `ConcretePlatform = CffiPlatform`.
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+
+# Phase 215.C.1 — Cargo-side mirror of the `board.cmake` sidecar.
+# Same field set as `packages/boards/nros-board-fvp-aemv8r-smp/board.cmake`;
+# Phase 215.F drift audit (CI gate) asserts byte-equal field-by-field
+# against the cmake face. Paths are relative to this `Cargo.toml`.
+# Schema: docs/reference/board-cmake-schema.md
+[package.metadata.nros.board]
+zephyr_board      = "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp"
+toolchain         = "aarch64-zephyr-elf"
+gated             = ["arm-fvp"]
+default_rmw       = "cyclonedds"
+default_transport = "ethernet"
+runner            = "armfvp"
+prj_conf          = "prj.conf"
+board_conf        = "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf"
+board_overlay     = "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.overlay"
