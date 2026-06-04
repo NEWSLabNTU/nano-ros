@@ -681,7 +681,7 @@ needs to follow the same convention.
 
 ### 8.5 Status
 
-- [ ] **219.H** — all sub-items above. Land alongside or immediately
+- [x] **219.H** — all sub-items above. Land alongside or immediately
       after 219.A–F. None blocks 219.G (book chapter) — that chapter
       cross-references the 219.H mixed-lang link path + 1-arg
       `NROS_NODE` alias once they ship.
