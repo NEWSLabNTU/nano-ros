@@ -63,6 +63,15 @@ to `dirname $(command -v FVP_BaseR_AEMv8R)`. Phase 217.A —
 `just zephyr run-fvp-aemv8r{,-cyclonedds}` skips gracefully when
 the binary can't be resolved.
 
+After extracting the Arm-provided tarball, run
+`scripts/installers/arm-fvp-installer.sh` with `ARM_FVP_DIR` set
+to the extraction root — it locates `FVP_BaseR_AEMv8R`, symlinks
+the directory to `~/.nros/sdks/arm-fvp/current/`, and prints the
+`export ARMFVP_BIN_PATH=…` line for your shell rc. Verify with
+`nros doctor --board fvp-aemv8r-smp`, which cross-checks the
+`[gated.arm-fvp]` entry in `nros-sdk-index.toml` and warns (never
+hard-fails — license-gated) when the binary is missing.
+
 ### FreeRTOS / NuttX / ThreadX SDK Paths
 
 These are auto-resolved by justfile recipes (defaulting to `external/` paths from `just freertos setup` / `just nuttx setup` / `just threadx_linux setup`). Override via env vars if sources are elsewhere.
