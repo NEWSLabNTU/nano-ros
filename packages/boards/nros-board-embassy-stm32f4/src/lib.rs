@@ -53,12 +53,83 @@
 #![allow(unused_imports, dead_code)]
 
 use embassy_executor::Spawner;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex,
+    channel::{Channel, TrySendError},
+};
 
 use nros_platform::{
     BoardExit, BoardInit, BoardPrint, DispatchStrategy, EmbassyBoardEntry, NodeDispatchFn,
     NodeDispatchRuntime, NodeInitFn, NodeRegisterFn, NodeTickFn, SignaledCallback,
 };
+
+/// Channel depth used by [`EmbassyRuntime`]. Mirrors
+/// `<EmbassyStm32F4 as EmbassyBoardEntry>::CHANNEL_CAPACITY` (the
+/// trait-default 32). Kept as a free `const` so the static
+/// [`CALLBACK_CHANNEL`] declaration below — which can't refer to
+/// trait-assoc consts in a generic-expression position without
+/// `feature(generic_const_exprs)` — has a concrete value to bind. A
+/// compile-time assert keeps them locked together.
+pub const CHANNEL_CAPACITY: usize = 32;
+
+const _: () = assert!(
+    CHANNEL_CAPACITY == <EmbassyStm32F4 as EmbassyBoardEntry>::CHANNEL_CAPACITY,
+    "module-level CHANNEL_CAPACITY drifted from EmbassyBoardEntry::CHANNEL_CAPACITY",
+);
+
+/// Channel payload — owned wrapper around [`SignaledCallback<'static>`].
+///
+/// The wrapper exists for two reasons:
+///
+/// 1. [`SignaledCallback`] carries a `*mut core::ffi::c_void` which is
+///    `!Send`. Embassy's [`Channel`] holds its queue inside an
+///    `embassy_sync::blocking_mutex::Mutex<R, RefCell<...>>`, and that
+///    mutex requires its protected payload to be `Send` for the
+///    [`Channel`] to be `Sync` (the unsafe-impl bound in
+///    `embassy_sync::blocking_mutex::Mutex` is `R: RawMutex + Sync, T:
+///    ?Sized + Send`). Putting the channel in a `static` therefore
+///    requires `Send` on the payload. The Phase 216.A.2 dispatch
+///    contract is that the producer
+///    (`nros::ExecutorNodeRuntime::signal_callback`) hands over a
+///    `ctx_ptr` whose target is owned by the executor and stays valid
+///    for the duration of the dispatch. Under that contract,
+///    transferring the envelope across the Embassy task boundary is
+///    sound; the `unsafe impl Send` below concentrates the assumption.
+/// 2. The trait surface is `signal_callback(&mut self, cb:
+///    SignaledCallback<'_>)`, but static-channel storage requires
+///    `SignaledCallback<'static>`. The `'_` is a lifetime erasure in
+///    the trait signature; today's only producer
+///    (`ExecutorNodeRuntime`) sources `cb_id` from a `&'static str`
+///    on `nros::CallbackId` and `ctx_ptr` is a raw pointer with no
+///    lifetime of its own. The lifetime extension is a no-op at
+///    runtime; see the comment at the call site in
+///    [`EmbassyRuntime::signal_callback`].
+#[repr(transparent)]
+struct SignaledCallbackEnvelope(SignaledCallback<'static>);
+
+// SAFETY: see the doc comment on `SignaledCallbackEnvelope`. The
+// `*mut c_void` `ctx_ptr` field is the sole reason `SignaledCallback`
+// is `!Send`; the Phase 216.A.2 dispatch contract guarantees the
+// target lives for the dispatcher's lifetime, so handing the envelope
+// to the Embassy dispatch task is sound.
+unsafe impl Send for SignaledCallbackEnvelope {}
+
+/// Static callback queue backing [`EmbassyRuntime`]. Single channel
+/// per binary — the macro-generated `#[embassy_executor::main]` body
+/// hands `&CALLBACK_CHANNEL` to both the [`EmbassyRuntime`] and the
+/// long-lived dispatch task (Phase 216.C.2 follow-up wiring in
+/// `init_hardware`; 216.C.3 follow-up for the task side).
+///
+/// `CriticalSectionRawMutex` matches the existing `EmbassyRuntime`
+/// channel-shape comment (and is the safe default for single-core
+/// Cortex-M where producers may run from ISR context). Boards that
+/// know their producers are task-only could swap to
+/// `NoopRawMutex` in a follow-up.
+static CALLBACK_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    SignaledCallbackEnvelope,
+    CHANNEL_CAPACITY,
+> = Channel::new();
 
 // Re-export cortex_m_rt + defmt so user Entry pkgs that copy the
 // existing `nros-board-stm32f4` surface keep working without an extra
@@ -116,28 +187,29 @@ impl BoardExit for EmbassyStm32F4 {
 /// so the macro routes signaled callbacks through an
 /// `embassy_sync::channel::Channel` (Phase 216.C.2 follow-up).
 ///
-/// Skeleton: the channel slot isn't wired yet. The struct sits empty
-/// so the trait surface is callable; `signal_callback` panics with a
-/// `todo!()` until the follow-up lands.
+/// The channel handle is a `&'static` borrow of the crate-level
+/// [`CALLBACK_CHANNEL`]. [`EmbassyRuntime::new`] returns a runtime
+/// already wired to that static; the macro-generated
+/// `#[embassy_executor::main]` body (Phase 216.C.3) hands the same
+/// `&CALLBACK_CHANNEL` to the long-lived dispatch task so it can
+/// `receive` whatever [`signal_callback`] enqueues.
 pub struct EmbassyRuntime {
-    // Phase 216.C.2 follow-up — wire the per-board callback channel:
-    //
-    //   pub(crate) channel: &'static Channel<
-    //       CriticalSectionRawMutex,
-    //       SignaledCallback<'static>,
-    //       { <EmbassyStm32F4 as EmbassyBoardEntry>::CHANNEL_CAPACITY },
-    //   >,
-    //
-    // Built from a `static_cell::StaticCell` in `init_hardware` so the
-    // dispatch task can receive on it from a long-lived Embassy task.
-    _private: (),
+    /// Producer end of the per-board callback channel. The receiver
+    /// side is the dispatch task spawned by `init_hardware`
+    /// (216.C.2 follow-up) and driven by `nros::main!()`-emitted glue
+    /// (216.C.3 follow-up).
+    channel: &'static Channel<CriticalSectionRawMutex, SignaledCallbackEnvelope, CHANNEL_CAPACITY>,
 }
 
 impl EmbassyRuntime {
-    /// Skeleton constructor. Phase 216.C.2 follow-up: take the
-    /// `&'static Channel<…>` handle the proc-macro / init code wires up.
+    /// Build an [`EmbassyRuntime`] bound to the crate-level static
+    /// [`CALLBACK_CHANNEL`]. Phase 216.C.2 follow-up — `init_hardware`
+    /// pairs this with a dispatch task that calls
+    /// `CALLBACK_CHANNEL.receive()`.
     pub const fn new() -> Self {
-        Self { _private: () }
+        Self {
+            channel: &CALLBACK_CHANNEL,
+        }
     }
 }
 
@@ -172,10 +244,37 @@ impl NodeDispatchRuntime for EmbassyRuntime {
         Err(())
     }
 
-    fn signal_callback(&mut self, _cb: SignaledCallback<'_>) {
-        // Phase 216.C.2 follow-up — `self.channel.try_send(cb).ok();`
-        // (drop-on-full surfaces via a counter the dispatch task logs).
-        todo!("Phase 216.C.2 follow-up — wire embassy_sync::channel try_send");
+    fn signal_callback(&mut self, cb: SignaledCallback<'_>) {
+        // Phase 216.C.2 follow-up — non-blocking enqueue. Drops on
+        // full so the producer (executor / RMW callback path) never
+        // blocks; the dispatch task drains and acts on what survives.
+        //
+        // SAFETY: lifetime extension `SignaledCallback<'_>` →
+        // `SignaledCallback<'static>` is sound here because the only
+        // producer in tree (`nros::ExecutorNodeRuntime::signal_callback`,
+        // Phase 216.A.2) builds the envelope from a `&'static str`
+        // `cb_id` (carried by `nros::CallbackId(&'static str)`) and a
+        // `*mut c_void` `ctx_ptr` which has no lifetime of its own. The
+        // `'_` on the trait surface is a lifetime erasure for callers
+        // that don't have an obvious `'static` annotation; no caller
+        // hands us a non-`'static` `cb_id` today.
+        let envelope = SignaledCallbackEnvelope(unsafe {
+            core::mem::transmute::<SignaledCallback<'_>, SignaledCallback<'static>>(cb)
+        });
+        match self.channel.try_send(envelope) {
+            Ok(()) => {}
+            Err(TrySendError::Full(dropped)) => {
+                // Drop on full. The dispatch task (216.C.3 follow-up)
+                // can log a counter; for now surface via defmt so a
+                // probe-attached run sees the drop. `defmt::warn!`
+                // expands to a no-op when no defmt sink is linked, so
+                // host-side `cargo check` stays clean.
+                defmt::warn!(
+                    "EmbassyRuntime: callback queue full — dropped {}",
+                    dropped.0.cb_id
+                );
+            }
+        }
     }
 
     fn dispatch_strategy(&self) -> DispatchStrategy {

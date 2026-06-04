@@ -48,3 +48,11 @@ defmt = "0.3"
 # family.
 default = ["rmw-zenoh"]
 rmw-zenoh = []
+
+# Phase 216.C.2 follow-up — empty `[workspace]` table makes this crate a
+# standalone workspace root, mirroring `nros-board-rtic-stm32f4` (216.B.2).
+# Without it, a fresh `cargo check --target thumbv7em-none-eabihf` from
+# inside the crate dir walks up into the nano-ros superproject workspace
+# and trips the "current package believes it's in a workspace" guard
+# (because the superproject lists this crate under `workspace.exclude`).
+[workspace]
