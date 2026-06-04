@@ -21,7 +21,7 @@ members = [
 # bumps both atomically. Previous CLI versions (last standalone tag:
 # `nros-v0.3.7`) are preserved in the archived
 # `github.com/NEWSLabNTU/nros-cli` repo's tag history.
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>"]
 edition = "2024"
 license = "MIT OR Apache-2.0"

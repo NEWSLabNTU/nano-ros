@@ -37,12 +37,13 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Check(args) => cmd::check::run(args),
         cmd::Cmd::Explain(args) => cmd::explain::run(args),
         cmd::Cmd::Config(args) => cmd::config::run(args),
-        cmd::Cmd::Build(args) => cmd::build::run(args),
-        cmd::Cmd::Deploy(args) => cmd::deploy::run(args),
-        cmd::Cmd::Launch(args) => cmd::launch::run(args),
+        // Phase 222.C — build / run / deploy / monitor / launch verbs
+        // deleted (deprecation soak complete in nros 0.4.x; SemVer
+        // break visible via the 0.5.0 bump). Users invoke the platform
+        // tool directly per `docs/development/versioning.md` + the
+        // `ros2 ↔ nros` command map in
+        // `book/src/getting-started/workspace-from-app-node.md`.
         cmd::Cmd::Setup(args) => cmd::setup::run(args),
-        cmd::Cmd::Run(args) => cmd::run_target::run(args),
-        cmd::Cmd::Monitor(args) => cmd::monitor::run(args),
         cmd::Cmd::Doctor(args) => cmd::doctor::run(args),
         cmd::Cmd::Board(args) => cmd::board::run(args),
         cmd::Cmd::Ws(args) => cmd::ws::run(args),

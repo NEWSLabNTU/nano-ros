@@ -1,6 +1,6 @@
 [package]
 name = "nros-smoltcp"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "smoltcp TCP/UDP network provider for nros (bare-metal systems)"
@@ -23,7 +23,7 @@ rtps = []
 embedded-nal = ["dep:embedded-nal", "dep:nb"]
 
 [dependencies]
-nros-platform-api = { version = "0.4.0", path = "../../core/nros-platform-api" }
+nros-platform-api = { version = "0.5.0", path = "../../core/nros-platform-api" }
 # Phase 173.6 — optional `embedded-nal` adapter. `core::net`-based
 # network-stack traits; `nb` for the non-blocking result type.
 embedded-nal = { version = "0.9", optional = true }

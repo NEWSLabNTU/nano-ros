@@ -133,58 +133,6 @@ Run after `nros plan` to inspect the resolved component graph, topic
 wiring, parameter bindings, and SchedContext assignments before
 committing to a `nros build`.
 
-### `nros deploy [name] [--config <root.toml>] [--nano-ros-workspace <path>] [--dry-run]`
-
-Run a `[deploy.<name>]` target from the root `nros.toml`. Omit
-`name` to use `[workspace].default`. The runner asserts the vendor pin →
-generates + builds the **entry lib** (the system wiring as a library) →
-runs the target's `build[]` then `package[]` shell steps, substituting
-`{self}` / `{entry_lib}` / `{entry_src}` / `{entry_header}` / `{board}` /
-`{target}` / `{vendor.dir}`. Three build-ownership kinds: `self` (nano-ros
-builds the binary), `vendor-lib` (links a vendor static lib), `vendor-module`
-(the vendor's `make`/`west`/`idf.py` compiles the entry source). `--dry-run`
-prints the resolved steps without generating/building. No per-vendor code
-lives in nano-ros — vendor knowledge is the user's `build[]`/`package[]` lines.
-
-> **Config files:** The root `nros.toml` carries deploy *targets*
-> (`[deploy.<name>]`) — it is the SSOT for *where* to build/flash.
-> Multi-node *topology* (which nodes, their wiring, per-target overrides)
-> lives in a Bringup pkg's `system.toml` — see
-> [Bringup: launch + system.toml](../getting-started/workspace-bringup.md).
-> The two files are **complementary, not either/or**.
-
-### `nros launch [<bringup>] [--target <target>] [--file <file>] [--foreground|--detach] [--stop <pidfile>]`
-
-Spawn a Bringup pkg's components on the host — the `native` /
-`native_sim` alternative to `ros2 launch`. Reads
-`<bringup>/launch/<file>.launch.xml` and `<bringup>/system.toml`
-straight from source; **no `colcon build` + `source install/setup.bash`
-required**. `ros2 launch` stays available for ament-installed consumers;
-the two paths don't overlap.
-
-```sh
-nros launch demo_bringup                          # use default_system from workspace Cargo.toml
-nros launch demo_bringup --target native          # explicit deploy target
-nros launch demo_bringup --file sim.launch.xml    # explicit launch file
-nros launch demo_bringup --detach                 # background; writes .nros/launch/<bringup>.pids
-nros launch --stop .nros/launch/demo_bringup.pids # stop a detached launch
-```
-
-| Argument / Flag | Description |
-|---|---|
-| `[<bringup>]` | Bringup pkg directory or name. Omit to use `[workspace.metadata.nros].default_system` |
-| `--target <target>` | `[deploy.<target>]` block to use; defaults to `default_target`, then `"native"`, then first entry |
-| `--file <file>` | Override the launch file (resolver picks `<bringup>/launch/<file>`); keeps verb surface uniform with `nros plan` / `nros codegen-system` |
-| `--exec <exec>` | `<node exec="…">` override for synthesised launches |
-| `--profile <profile>` | Cargo profile dir (default `debug`) |
-| `--foreground` | Block until first child exits or signal; propagate SIGTERM to all. Default when neither flag is given |
-| `--detach` | Return immediately; write PID file |
-| `--stop <pidfile>` | Send SIGTERM to every PID in the given pidfile |
-
-> **Note:** `nros launch` spawns components from `system.toml`'s
-> `[[component]]` list, not by driving XML. The `--file` / `--exec` flags
-> use the shared resolver so bad input fails fast.
-
 ### `nros config show [--config <path>]` / `nros config check [--config <path>]`
 
 `show` parses the project's `nros.toml` (and any Kconfig overlay

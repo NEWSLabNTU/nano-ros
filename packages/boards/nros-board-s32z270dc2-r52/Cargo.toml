@@ -1,6 +1,6 @@
 [package]
 name = "nros-board-s32z270dc2-r52"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "NXP S32Z270 X-S32Z270-DC (DC2) Cortex-R52 RTU0 (Zephyr) board crate for nano-ros"

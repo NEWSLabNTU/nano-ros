@@ -65,12 +65,12 @@ std = []
 vendored = ["dep:cyclonedds-sys", "dep:cc"]
 
 [dependencies]
-nros-rmw-cffi = { version = "0.4.0", path = "../../core/nros-rmw-cffi", default-features = false }
+nros-rmw-cffi = { version = "0.5.0", path = "../../core/nros-rmw-cffi", default-features = false }
 linkme = { version = "0.3", default-features = false }
 # Phase 212.K.2 — `cyclonedds-sys` is a build-only path provider; we
 # never `use` anything from its lib.rs. Declared as a regular dep so
 # that Cargo passes `DEP_DDSC_*` env vars into our `build.rs`.
-cyclonedds-sys = { version = "0.4.0", path = "../cyclonedds-sys", optional = true }
+cyclonedds-sys = { version = "0.5.0", path = "../cyclonedds-sys", optional = true }
 
 [build-dependencies]
 cc = { version = "1.0", optional = true }

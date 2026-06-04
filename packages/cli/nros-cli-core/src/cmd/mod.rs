@@ -39,7 +39,6 @@ pub fn emit_deprecation_warning(verb: &str, replacement: &str) {
 
 pub mod board;
 pub mod bringup;
-pub mod build;
 pub mod check;
 pub mod check_workspace;
 pub mod codegen;
@@ -47,23 +46,26 @@ pub mod codegen_cyclonedds_descriptors;
 pub mod codegen_system;
 pub mod completions;
 pub mod config;
-pub mod deploy;
 pub mod doctor;
 pub mod emit_package_xml;
 pub mod explain;
 pub mod generate;
-pub mod launch;
 pub mod metadata;
 pub mod migrate;
-pub mod monitor;
 pub mod new;
 pub mod new_system;
 pub mod plan;
-pub mod run_target;
 pub mod scaffold_deploy;
 pub mod setup;
 pub mod version;
 pub mod ws;
+// Phase 222.C — build / run_target / deploy / monitor / launch
+// modules deleted along with their `Cmd` variants. The historical
+// `emit_deprecation_warning` helper above is retained because
+// `cmd::doctor::match_deprecated_verb` still flags users' stale
+// `nros build` / `nros launch` / … shell references after the
+// deletion (those references error at clap-parse now; the doctor
+// surface explains the migration).
 
 #[cfg(feature = "release")]
 pub mod release;
@@ -118,43 +120,20 @@ pub enum Cmd {
     #[command(subcommand)]
     Config(config::Args),
 
-    /// Build the current project (auto-detects cargo / cmake / west)
-    /// (deprecated — see cargo build / cmake --build / west build / idf.py build; will be removed in nros 0.5.0)
-    Build(build::Args),
-
-    /// Run a [deploy.<name>] target from the root nros.toml (Phase 172 WP-A)
-    /// (deprecated — see the platform's native flash+run combo (west flash, idf.py flash, probe-rs run, …); will be removed in nros 0.5.0)
-    Deploy(deploy::Args),
-
-    /// Spawn a bringup pkg's components on the host (deprecated —
-    /// composed Entry pkg IS the launch product; use `cargo run -p
-    /// <entry_pkg>`; will be removed in nros 0.5.0)
-    ///
-    /// Phase 212.N locked the Entry pkg shape: Node pkg libs are
-    /// FUSED into one Entry binary at link time, the same way ROS 2's
-    /// modern composable-node pattern fuses them into one container.
-    /// The single Entry binary IS the launch product. `nros launch`'s
-    /// one-process-per-`[[component]]` model fights that — it tries
-    /// to split the fused binary back apart, and breaks against any
-    /// Bringup pkg whose Entry pkg actually composes the Node pkgs.
-    /// The Phase 222.D decision is to delete the verb in 0.5.0 and
-    /// direct users at `cargo run -p <entry_pkg>` instead.
-    ///
-    /// Multi-Entry / mixed-host orchestration (codegen a per-Bringup
-    /// `launch.sh`) waits for real demand in a follow-on phase.
-    Launch(launch::Args),
-
+    // Phase 222.C — `Build` / `Deploy` / `Launch` / `Run` / `Monitor`
+    // variants deleted (deprecation soak complete in nros 0.4.x;
+    // SemVer break visible via the 0.5.0 bundle bump). Users invoke
+    // the platform tool directly:
+    //   build  → cargo build / cmake --build / west build / idf.py build
+    //   run    → cargo run -p <entry_pkg> / west <runner> run /
+    //            probe-rs run / idf.py monitor
+    //   deploy → the platform's native flash+run combo (west flash,
+    //            idf.py flash, probe-rs run)
+    //   monitor → probe-rs attach / idf.py monitor / picocom
+    //   launch → `cargo run -p <entry_pkg>` (composed Entry pkg IS
+    //            the launch product per Phase 212.N + 222.D)
     /// Resolve + fetch a board's toolchain/SDK packages (Phase 187)
     Setup(setup::Args),
-
-    /// Build, flash, and monitor the current project on the selected target
-    /// (deprecated — see cargo run / west <runner> run / probe-rs run / idf.py monitor; will be removed in nros 0.5.0)
-    #[command(name = "run")]
-    Run(run_target::Args),
-
-    /// Attach to a running target's serial / RTT / semihosting output
-    /// (deprecated — see probe-rs attach / idf.py monitor / picocom; will be removed in nros 0.5.0)
-    Monitor(monitor::Args),
 
     /// Health-check the workspace (SDK paths, toolchains, env)
     Doctor(doctor::Args),

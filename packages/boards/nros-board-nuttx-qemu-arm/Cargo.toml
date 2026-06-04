@@ -9,7 +9,7 @@
 
 [package]
 name = "nros-board-nuttx-qemu-arm"
-version = "0.4.0"
+version = "0.5.0"
 publish = false
 edition = "2024"
 license = "MIT OR Apache-2.0"

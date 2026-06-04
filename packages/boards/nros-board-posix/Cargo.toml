@@ -23,7 +23,7 @@ publish = false
 # so its feature flags drop out of the unified set.
 [target.'cfg(not(target_os = "none"))'.dependencies]
 # Trait surface (BoardEntry, BoardInit, BoardPrint, BoardExit, RuntimeCtx).
-nros-platform = { version = "0.4.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
+nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `BoardEntry::run` installs a live component runtime sink on the
 # `RuntimeCtx` before invoking the user `setup` closure. `rmw-cffi`
@@ -31,4 +31,4 @@ nros-platform = { version = "0.4.0", path = "../../core/nros-platform", default-
 # (`nros-rmw-zenoh`, `nros-rmw-cyclonedds`, ...) must be linked by
 # the Entry pkg or a per-board shim crate so `Executor::open`
 # resolves a backend at boot.
-nros = { version = "0.4.0", path = "../../core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { version = "0.5.0", path = "../../core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
