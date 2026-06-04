@@ -2625,10 +2625,39 @@ rebase conflict.
       `BoardEntry::run` lifecycle under QEMU. Sibling of the
       already-landed posix-side `entry_poc_boots_through_board_
       entry_run`. Fixture: the existing M-F.15-shipped FreeRTOS
-      Entry pkg firmware build target. New test file
+      Entry pkg firmware build target. Test file
       `tests/phase212_n_freertos_run_plan_runtime.rs`. Skip on
       missing `THREADX_DIR`-equivalent gates (QEMU + cross
       toolchain). Scope: nano-ros only.
+
+      **Status 2026-06-04 (post-M-F.17 integration audit):**
+      `#[ignore]` re-evaluated after M-F.17 landings
+      (`dcf7813ca` flips + `ea21f952d` final wave). Direct
+      `cargo nextest run --run-ignored only` from main on
+      2026-06-04 still fails at the BUILD step (before reaching
+      the lifecycle assertion):
+      ```
+      error: failed to select a version for the requirement
+             `std_msgs = "*"`
+      version 4.2.3 is yanked
+      required by package
+      `freertos_rs_talker v0.1.0 (.../qemu-arm-freertos/rust/talker)`
+      ```
+      Root cause: `examples/qemu-arm-freertos/rust/talker_entry/
+      Cargo.toml` lacks a `[patch.crates-io]` block pointing
+      `std_msgs` at the generated msg crate under
+      `<talker>/generated/`. Cargo resolves `std_msgs = "*"`
+      against crates.io, which yanked 4.2.3 → resolution fails
+      → build fails → test never reaches the QEMU runtime
+      path. This is the same `nros ws sync` patch-block writer
+      story 210.D.1 + 214.M.2 address for sibling fixtures;
+      `talker_entry/Cargo.toml` needs the same `[target.'cfg
+      (not(target_os = "none"))'.…]` (or equivalent) treatment.
+      Re-evaluation deferred to the concurrent Wave A agent
+      that owns `examples/qemu-arm-freertos/rust/talker_entry/
+      Cargo.toml`. Stays [~] until Wave A's talker_entry patch
+      lands; un-`#[ignore]` flip + `[~] → [x]` follow on once
+      the build path resolves to a real QEMU lifecycle outcome.
 
 - [x] **O.2 `entry_pkg_metadata_required_board`** (nros-cli
       `check`) — `nros check` hard-error test for missing
