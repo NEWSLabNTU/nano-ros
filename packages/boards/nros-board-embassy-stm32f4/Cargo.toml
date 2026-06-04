@@ -1,0 +1,50 @@
+[package]
+name = "nros-board-embassy-stm32f4"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Embassy STM32F4 board crate for nros (Phase 216.C.2 — skeleton)"
+
+[lib]
+name = "nros_board_embassy_stm32f4"
+
+# Read by the `nros::main!()` proc-macro (Phase 216.C.3) + `nros check`
+# (Phase 216.D.1) to route this board onto the Embassy entry generator.
+[package.metadata.nros.board]
+framework = "embassy"
+
+[dependencies]
+# Phase 216.C.1 — `EmbassyBoardEntry` trait surface + Board super-trait family.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-stm32f4", "global-allocator"] }
+# Phase 173.1 — Board super-trait family (BoardInit / BoardPrint / BoardExit
+# blanket-impl Board). Carried for symmetry with `nros-board-stm32f4` so the
+# generic direct-exec helpers are reachable when 216.C.2 follow-ups wire real
+# init.
+nros-board-common = { path = "../nros-board-common", default-features = false }
+# Unified platform primitives (clock, memory, random, sleep, threading, libc
+# stubs). Mirrors the dep `nros-board-stm32f4` carries.
+nros-platform-stm32f4 = { path = "../../platforms/nros-platform-stm32f4" }
+
+# Cortex-M runtime
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+# Embassy runtime — versions / chip feature mirror
+# `examples/stm32f4/rust/talker-embassy/Cargo.toml` (NUCLEO-F429ZI =
+# `stm32f429zi`). Real boards override `embassy-stm32`'s chip feature; this
+# crate picks `stm32f429zi` as the default so the skeleton compiles.
+embassy-executor = { version = "0.7", features = ["arch-cortex-m", "executor-thread"] }
+embassy-stm32 = { version = "0.2", features = ["stm32f429zi", "time-driver-any", "memory-x"] }
+embassy-sync = "0.6"
+embassy-time = { version = "0.4", features = ["tick-hz-1_000"] }
+
+# Logging
+defmt = "0.3"
+
+[features]
+# Phase 216.C.2 — skeleton. No transport features yet; follow-ups wire
+# ethernet / serial mirroring `nros-board-stm32f4`. `rmw-zenoh` kept as a
+# marker so downstream feature selection stays uniform across the board
+# family.
+default = ["rmw-zenoh"]
+rmw-zenoh = []
