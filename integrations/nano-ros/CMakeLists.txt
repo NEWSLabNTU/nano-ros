@@ -76,6 +76,9 @@ endif()
 set(_nros_bringup_dir "${NROS_WORKSPACE_DIR}/${_nros_bringup_name}")
 set(_nros_system_out  "${CMAKE_BINARY_DIR}/nros-system")
 
+# Post-Phase-218 the `nros` CLI is built in-tree by `just setup-cli`;
+# `source ./activate.sh` puts it on PATH. `~/.nros/bin` stays as a
+# transitional fallback hint.
 find_program(NROS_EXECUTABLE nros HINTS "$ENV{HOME}/.nros/bin")
 
 if(NROS_EXECUTABLE AND EXISTS "${_nros_bringup_dir}/system.toml")
@@ -103,7 +106,7 @@ if(NROS_EXECUTABLE AND EXISTS "${_nros_bringup_dir}/system.toml")
 elseif(NOT NROS_EXECUTABLE)
     message(STATUS
         "nano-ros: nros CLI not on PATH; skipping codegen-system. "
-        "Install via scripts/install-nros.sh.")
+        "Install via `just setup-cli` + `source ./activate.sh` (Phase 218).")
 endif()
 
 # --- Component registration ---------------------------------------------

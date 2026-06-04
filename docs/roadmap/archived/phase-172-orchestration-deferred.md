@@ -1,5 +1,10 @@
 # Phase 172 — Orchestration follow-ups (deferred from Phase 126)
 
+> **Post-Phase-218 (archived-doc callout)**: References below to
+> `scripts/install-nros.sh` reflect the pre-218 install state.
+> Canonical install is now `git submodule update --init packages/cli &&
+> just setup-cli && source ./activate.sh`. Preserved as historical record.
+
 **Goal.** Land the capabilities that Phase 126 (ROS 2 workflow
 orchestration MVP) explicitly deferred, **plus the configuration
 consolidation absorbed from Phase 116** (archived 2026-05-27). Phase

@@ -56,12 +56,12 @@ appends to a `.px4board` of their choice.
 ### TODO — future CLI-side automation
 
 Step 3 (overlay render) lives outside `nros` today because the
-codegen verb for the PX4 target landed in the standalone
-[`nros-cli`](https://github.com/NEWSLabNTU/nros-cli) repo as the
-single-purpose module-dir emit. A `--board-overlay <path>` flag on
-`nros codegen-system --target px4` would fold the overlay-render step
-into the same invocation (one tool, one walk). Tracked in Phase
-212.M-F.8; sibling-repo change.
+codegen verb for the PX4 target originally landed in the standalone
+`nros-cli` repo (archived; the CLI merged in-tree under
+`packages/cli/` in Phase 218) as the single-purpose module-dir emit.
+A `--board-overlay <path>` flag on `nros codegen-system --target px4`
+would fold the overlay-render step into the same invocation (one
+tool, one walk). Tracked in Phase 212.M-F.8.
 
 ## Legacy template (Phase 139.5) — `EXTERNAL_MODULES_LOCATION`
 

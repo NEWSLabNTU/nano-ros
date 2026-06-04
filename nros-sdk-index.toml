@@ -14,13 +14,15 @@
 
 # --- prebuilt host tools (target-agnostic) ---
 
-# The `nros` CLI itself (Phase 195.A). Unlike the other tools, its prebuilt
-# `dist` is hosted on the CLI's own repo — NEWSLabNTU/nros-cli Releases
-# (`release-binary.yml`, tag `nros-v<version>`, asset `nros-<host>.tar.zst`) —
-# not nano-ros-sdk, keeping the front-end tool decoupled from the toolchain repo.
-# The binary is libc-only (launch parsing shells out to play_launch_parser).
-# dist.<host> is added after the first `nros-v*` release is cut + gate-verified;
-# until then `nros setup` / install.sh fall back to the source recipe below.
+# The `nros` CLI itself (Phase 195.A). Post-Phase-218 the CLI lives in-tree
+# at `packages/cli/` and is built by `just setup-cli`; the no-Rust prebuilt
+# path is `scripts/install-nros-prebuilt.sh` which fetches a release asset of
+# THIS repo. The dist URLs + source recipe below point at the standalone
+# `github.com/NEWSLabNTU/nros-cli` repo (ARCHIVED / read-only) — preserved as
+# a transitional fallback for callers that still hit `[tool.nros]` via
+# `nros setup --tool nros` or `tools/setup.sh`; new install paths route
+# through `just setup-cli` instead. The binary is libc-only (launch parsing
+# shells out to play_launch_parser).
 [tool.nros]
 version = "0.3.6"
 upstream = "0.3.6" # nros-cli crate version = source.ref tag (nros-v0.3.6)

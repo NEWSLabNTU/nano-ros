@@ -236,13 +236,24 @@ Almost every breakage traces to one of three root causes:
   `~/.nros/bin/`.
 * **Remedy**: sweep + update.
 
-- [ ] **220.H.1** `rg -ln 'scripts/install-nros\.sh'` → replace
-      with `just setup-cli` / `source ./activate.sh`.
-- [ ] **220.H.2** `rg -ln '~/.nros/bin'` → replace with
-      `packages/cli/target/release/` or rely on `activate.sh`.
-- [ ] **220.H.3** Close Phase 214.I (NROS_FROM_SOURCE env-var) —
-      in-tree build IS the install now. Cross-ref 218.D
-      (`just setup-cli` + `nros_cli_bin` resolver).
+- [x] **220.H.1** `rg -ln 'scripts/install-nros\.sh'` → replaced
+      with `just setup-cli` / `source ./activate.sh` across active
+      docs, scripts, cmake, integration shells, Rust tests, and
+      example READMEs. Archived phase docs got a Post-Phase-218
+      callout block at the top, preserving original references as
+      historical record.
+- [x] **220.H.2** `rg -ln '~/.nros/bin/nros'` → resolved:
+      install-flow references (cmake, scripts, integration adapters,
+      Rust test resolver) now prefer the in-tree
+      `packages/cli/target/release/nros` path with `~/.nros/bin/nros`
+      kept as a transitional fallback. `~/.nros/sdk/` paths for
+      non-nros tools (zenohd, play_launch_parser, MicroXRCEAgent)
+      were preserved per task scope.
+- [x] **220.H.3** Phase 214.I superseded by Phase 218 — the in-tree
+      build IS the install now; `NROS_FROM_SOURCE` is moot.
+      Cross-ref 218.D (`just setup-cli` + `nros_cli_bin` resolver).
+      Track A's pin-bump cadence + Phase 204's `install-nros.sh` pin
+      bumps are likewise moot; callouts added to those docs.
 
 ---
 

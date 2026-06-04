@@ -11,6 +11,11 @@ C, platform C/C++) — several size/perf levers are not pulled today.
 **Status.** Proposed (2026-05-29). Investigation done (figures below); work items
 ranked by impact, not yet started.
 
+> **Post-Phase-218**: References below to `scripts/install-nros.sh`
+> pin bumps (a pre-218 CLI release-pin mechanism) are superseded by the
+> in-tree `packages/cli/` sub-workspace — one checkout = one CLI
+> version, no pin to bump. Build via `just setup-cli`.
+
 **Priority.** P2 — footprint matters for the smallest MCUs + for the micro-ROS
 comparison, but no capability is blocked.
 

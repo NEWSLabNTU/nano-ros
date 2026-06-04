@@ -1,3 +1,8 @@
+> **Post-Phase-218 (audit-report callout)**: References below to
+> `~/.nros/bin/nros` reflect the pre-218 install. Canonical install
+> is now `just setup-cli` + `source ./activate.sh`. Preserved as
+> historical record.
+
 BLOCKERS
 - `nros setup threadx-linux --rmw zenoh` fails immediately: `Error: invalid SDK index nros-sdk-index.toml ... unknown field 'shallow'` (TOML line 286). Same failure for `nros setup qemu-riscv64-threadx --rmw zenoh`. Installed `nros` at `~/.nros/bin/nros` rejects the in-tree index's `shallow`/`recursive` keys at the end of the `[source.px4]` block. Setup is step 1; every later prerequisite (zenohd, ThreadX/NetX sources, `tap-tx0` veth) is unprovisioned — `~/.nros/sdk/threadx/{kernel,netxduo}` is empty, `build/zenohd/zenohd` absent, `zenohd` not on PATH, `tap-tx0` does not exist.
 

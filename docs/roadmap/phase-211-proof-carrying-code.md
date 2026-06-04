@@ -10,6 +10,13 @@ safety-island demonstrator with an end-to-end GSN safety case.
 
 **Status:** Proposed (2026-05-31).
 
+> **Post-Phase-218**: References to `scripts/install-nros.sh` + the
+> external `github.com/NEWSLabNTU/nros-cli` repo below predate the
+> Phase 218 monorepo merge. The CLI now lives in-tree at `packages/cli/`
+> (build via `just setup-cli`); proof-tool installer shims should
+> extend the in-tree CLI rather than the retired curl script. The
+> `nros-cli` GitHub repo is archived / read-only.
+
 **Priority:** High (defines the verification posture nano-ros pitches to
 Eclipse SDV, Autoware safety-island integrators, and downstream OEMs).
 

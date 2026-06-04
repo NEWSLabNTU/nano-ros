@@ -25,8 +25,9 @@
 # `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
 # section 212.H.1.
 
-# Resolve the `nros` CLI binary. Priority: NROS_CLI env, NROS_HOME/bin,
-# ~/.nros/bin, PATH. Matches scripts/build/cargo.sh::nros_cli_bin.
+# Resolve the `nros` CLI binary. Priority: NROS_CLI env, PATH (incl
+# `packages/cli/target/release/` via `activate.sh`), NROS_HOME/bin,
+# ~/.nros/bin (transitional). Matches scripts/build/cargo.sh::nros_cli_bin.
 function(_nros_system_resolve_cli outvar)
     if(DEFINED ENV{NROS_CLI} AND EXISTS "$ENV{NROS_CLI}")
         set(${outvar} "$ENV{NROS_CLI}" PARENT_SCOPE)
@@ -133,7 +134,7 @@ function(nros_system_generate bringup_pkg)
         message(FATAL_ERROR
             "nros_system_generate: `nros` CLI not on PATH and "
             "NROS_CLI/$NROS_HOME/bin/~/.nros/bin all unset/missing. "
-            "Run scripts/install-nros.sh.")
+            "Run `just setup-cli` + `source ./activate.sh` (Phase 218).")
     endif()
 
     # Map Kconfig RMW to a --target string the CLI understands. Zephyr

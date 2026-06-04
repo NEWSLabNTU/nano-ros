@@ -13,6 +13,11 @@ Phase 209.E bulk-codegen item.
 cmake + Rust path proved end-to-end. Remaining work: book refresh +
 in-tree migration + ws doctor siblings + shadowing fixture.
 
+> **Post-Phase-218**: References below to nros-cli branches /
+> `github.com/NEWSLabNTU/nros-cli` predate the Phase 218 monorepo
+> merge — the CLI now lives in-tree at `packages/cli/` (the standalone
+> repo is archived / read-only). Build via `just setup-cli`.
+
 In-tree (landed on main):
 * 210.A.1/.2/.3/.4 — rosidl wrapper + smart Find-stub + per-pkg delegators
   + local-msg-package fixture.

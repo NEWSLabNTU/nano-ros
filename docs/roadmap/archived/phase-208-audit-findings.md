@@ -1,5 +1,11 @@
 # Phase 208 Stage 2 — Book Starter Tutorial Audit Summary
 
+> **Post-Phase-218 (archived-doc callout)**: References below to
+> `scripts/install-nros.sh` + `~/.nros/bin/nros` reflect the pre-218
+> install state. Canonical install is now `git submodule update --init
+> packages/cli && just setup-cli && source ./activate.sh` (binary at
+> `packages/cli/target/release/nros`). Preserved as historical record.
+
 Synthesis of 14 strict-follow execution-agent reports under
 `tmp/book-audit/reports/`. Worktrees preserved at
 `.claude/worktrees/agent-<id>/` for forensic inspection.

@@ -248,15 +248,17 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Capture real help for the verbs the page may be missing**
 
-Run each and read output (binary is at `~/.nros/bin/nros`):
+Run each and read output (binary is at `packages/cli/target/release/nros`,
+built by `just setup-cli`; `source ./activate.sh` puts it on PATH so the
+bare `nros` invocation below resolves):
 ```bash
-~/.nros/bin/nros --help
-~/.nros/bin/nros launch --help
-~/.nros/bin/nros ws --help
-~/.nros/bin/nros explain --help
-~/.nros/bin/nros codegen-system --help
-~/.nros/bin/nros run --help
-~/.nros/bin/nros monitor --help
+nros --help
+nros launch --help
+nros ws --help
+nros explain --help
+nros codegen-system --help
+nros run --help
+nros monitor --help
 ```
 Expected: usage text per verb. (If a verb errors/absent, omit it and note so.)
 
@@ -278,7 +280,7 @@ Where root `nros.toml` is introduced, add one sentence: "Multi-node *topology* (
 
 - [ ] **Step 6: Verify every documented verb exists in the shipped binary**
 
-Run: `~/.nros/bin/nros --help | sed -n '/Commands:/,/Options:/p'` and confirm each `### nros <verb>` heading in `cli.md` is in that list.
+Run: `nros --help | sed -n '/Commands:/,/Options:/p'` and confirm each `### nros <verb>` heading in `cli.md` is in that list.
 Expected: every heading matched; no documented verb missing from the binary.
 
 - [ ] **Step 7: Commit**

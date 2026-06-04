@@ -1,5 +1,11 @@
 # Phase 208 — Book Starter Tutorial Audit + Fixes
 
+> **Post-Phase-218 (archived-doc callout)**: References below to
+> `scripts/install-nros.sh` + `~/.nros/bin/nros` reflect the pre-218
+> install state. Canonical install is now `git submodule update --init
+> packages/cli && just setup-cli && source ./activate.sh`. Preserved
+> as historical record.
+
 - **Goal:** Audit every "first-touch" tutorial under `book/src/getting-started/`
   and `book/src/start-here/` by strict-follow execution from a clean worktree,
   then land the tree-level + doc-level fixes the audit surfaces. The first

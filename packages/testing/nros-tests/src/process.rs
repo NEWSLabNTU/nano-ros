@@ -719,7 +719,9 @@ pub fn require_cmake() -> bool {
     true
 }
 
-/// Resolve the `nros` CLI path: `$NROS_CLI` → `PATH` → `~/.nros/bin/nros`.
+/// Resolve the `nros` CLI path: `$NROS_CLI` → `PATH` (incl in-tree
+/// `packages/cli/target/release/` via `activate.sh`) → `~/.nros/bin/nros`
+/// (transitional fallback).
 ///
 /// Mirrors the shell `nros_cli_bin` helper in `scripts/build/cargo.sh`.
 fn nros_cli_path() -> std::path::PathBuf {
@@ -788,7 +790,7 @@ pub fn require_nros_ws_sync() -> bool {
     if !is_nros_ws_sync_available() {
         eprintln!(
             "Skipping test: `nros ws sync` verb unavailable (installed nros lacks Phase 210.D.1; \
-             bump scripts/install-nros.sh pin past 0.3.7 or set NROS_FROM_SOURCE)"
+             rebuild via `just setup-cli` to pick up the in-tree CLI — Phase 218)"
         );
         return false;
     }

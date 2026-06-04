@@ -1,3 +1,8 @@
+> **Post-Phase-218 (audit-report callout)**: References below to
+> `scripts/install-nros.sh` + `~/.nros/bin/` reflect the pre-218
+> install. Canonical install is now `just setup-cli` + `source
+> ./activate.sh`. Preserved as historical record.
+
 BLOCKERS
 - config.toml does not exist — Configure step instructs editing `config.toml`; the in-tree file is `nros.toml` with a different schema. Anything a user copies from the doc into `config.toml` is silently ignored (board crate reads `nros.toml` via `Config::from_toml`).
 - Doc TOML schema is wrong — doc shows `[network] ip/mac/gateway/prefix` + `[zenoh] locator/domain_id`. Real schema is `[node] domain_id` + `[[transport]] kind="ethernet" ip="10.0.2.10/24" mac gateway rmw locator` — CIDR is in `ip`, no separate `prefix`. User edits per doc produce an un-parseable file.

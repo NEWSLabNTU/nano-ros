@@ -5,9 +5,10 @@
 #
 # `nros` (`nros codegen` / `nros generate-rust`) is a host-side binary the build
 # assumes is provided. Phase 195.D retired the in-tree `packages/codegen`
-# submodule that used to be cargo-built here; `nros` now ships as a prebuilt
-# release, installed by `just setup` / `scripts/install-nros.sh` into ~/.nros/bin
-# (or anywhere on PATH).
+# submodule; Phase 218 brought the CLI back in-tree as a sub-workspace at
+# `packages/cli/`, built by `just setup-cli`. `source ./activate.sh` puts
+# `packages/cli/target/release/` on PATH. `~/.nros/bin` remains as a
+# transitional fallback for users mid-migration.
 #
 # This module exposes `nros_bootstrap_codegen()` — call once from each
 # cross-compile platform module BEFORE the `NanoRosGenerateInterfaces.cmake`
@@ -17,7 +18,8 @@
 # Resolution order:
 #   1. `_NANO_ROS_CODEGEN_TOOL` already in cache (caller pre-set via
 #      `-D_NANO_ROS_CODEGEN_TOOL=<path>`) — honored as-is.
-#   2. PATH, then `$NROS_HOME/bin` / `~/.nros/bin` (install-nros.sh's default).
+#   2. PATH (incl in-tree `packages/cli/target/release/` via `activate.sh`),
+#      then `$NROS_HOME/bin` / `~/.nros/bin` (transitional).
 
 include_guard(GLOBAL)
 
@@ -51,8 +53,8 @@ function(nros_bootstrap_codegen)
 
     message(FATAL_ERROR
         "nano-ros: host `nros` build tool not found on PATH or in ~/.nros/bin. "
-        "nano-ros assumes `nros` is provided (Phase 195.D retired the in-tree "
-        "codegen submodule). Install it with:\n"
-        "  scripts/install-nros.sh        # or: just setup\n"
+        "nano-ros builds the `nros` CLI in-tree from `packages/cli/` "
+        "(Phase 218 merge). Install it with:\n"
+        "  just setup-cli && source ./activate.sh\n"
         "or pass -D_NANO_ROS_CODEGEN_TOOL=<path-to-nros> to the cmake invocation.")
 endfunction()

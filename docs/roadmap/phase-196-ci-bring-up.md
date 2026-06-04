@@ -13,6 +13,13 @@ stages fixed and validated by repeated `workflow_dispatch` runs; one product
 skew (codegen CLI) remains, owned by Phase 195. The broader audit/codification
 items are proposed.
 
+> **Post-Phase-218**: The CLI-skew install path discussed below
+> (`scripts/install-nros.sh` → `~/.nros/bin/nros`) was retired by
+> Phase 218 (`19d1d29ba`). The canonical install is now in-tree:
+> `git submodule update --init packages/cli && just setup-cli &&
+> source ./activate.sh` (binary at `packages/cli/target/release/nros`).
+> References below are historical record.
+
 **Handoff note (2026-05-29).** Findings from another line, relevant to the open
 items — not worked here (196 is owned elsewhere):
 - **`nros codegen` CLI skew (the "one product skew" above) — resolved at the

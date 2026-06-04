@@ -24,10 +24,14 @@ proc-macro2 = { workspace = true }
 #   * `toml` to parse the Entry pkg's `Cargo.toml`
 #     (`[package.metadata.nros.entry] deploy = "<board>"`) and the
 #     bringup pkg's `system.toml` (`[system] default_launch = "..."`).
-#   * `nros-build` (from the standalone nros-cli repo) for the shared
-#     workspace pkg-index walk + ROS 2 launch.xml parser landed in
-#     N.10 + N.11. Proc-macro crates can carry arbitrary deps because
-#     they run at the consumer's compile time on the host.
+#   * `nros-build` for the shared workspace pkg-index walk + ROS 2
+#     launch.xml parser landed in N.10 + N.11. Originally a git dep on
+#     the standalone nros-cli repo; post-Phase-218 that repo is archived
+#     (CLI merged in-tree at `packages/cli/`). The git dep below still
+#     resolves (archived repos remain readable) but should migrate to a
+#     `path = "../../cli/..."` once the workspace shape is sorted.
+#     Proc-macro crates can carry arbitrary deps because they run at
+#     the consumer's compile time on the host.
 toml = "0.8"
 nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
 

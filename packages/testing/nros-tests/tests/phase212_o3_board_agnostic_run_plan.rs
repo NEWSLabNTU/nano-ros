@@ -119,13 +119,18 @@ fn walk(root: &Path) -> std::io::Result<Vec<PathBuf>> {
 fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
     // Phase 212.O.3 / O.5 — also resolve `@NROS_CLI_ROOT@` so fixtures
     // can `[patch]` the `nros-build` git dep against a local nros-cli
-    // checkout. Falls back to `<nano-ros>/../nros-cli` if the env var
-    // isn't set (CLAUDE.md convention for the sibling repo location).
-    // When the local path doesn't exist, the placeholder is left intact
-    // and the `[patch]` block fails open — git dep wins as before.
+    // checkout. Post-Phase-218 the CLI lives in-tree at `packages/cli/`;
+    // prefer that, then fall back to a sibling `<nano-ros>/../nros-cli`
+    // checkout for users still on the pre-218 layout. When neither
+    // resolves the placeholder is left intact and the `[patch]` block
+    // fails open — the git dep wins as before.
     let nros_cli_root = std::env::var("NROS_CLI_ROOT")
         .ok()
         .filter(|p| std::path::Path::new(p).is_dir())
+        .or_else(|| {
+            let in_tree = std::path::Path::new(replacement).join("packages/cli");
+            in_tree.is_dir().then(|| in_tree.display().to_string())
+        })
         .or_else(|| {
             let guess = std::path::Path::new(replacement)
                 .parent()

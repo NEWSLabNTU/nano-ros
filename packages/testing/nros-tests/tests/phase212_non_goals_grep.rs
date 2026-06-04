@@ -34,6 +34,13 @@
 use std::{path::PathBuf, process::Command};
 
 fn nros_bin() -> Option<PathBuf> {
+    // Phase 218: prefer the in-tree CLI built by `just setup-cli`. Fall
+    // back to `~/.nros/bin/nros` for users still on the transitional path.
+    let in_tree = nros_tests::project_root()
+        .join("packages/cli/target/release/nros");
+    if in_tree.is_file() {
+        return Some(in_tree);
+    }
     let home = std::env::var_os("HOME")?;
     let bin = PathBuf::from(home).join(".nros/bin/nros");
     if bin.is_file() { Some(bin) } else { None }
@@ -106,7 +113,7 @@ fn assert_verb_absent(verb: &str) {
 #[test]
 fn nros_help_lacks_emit_verb() {
     if nros_bin().is_none() {
-        nros_tests::skip!("~/.nros/bin/nros missing — install via scripts/install-nros.sh");
+        nros_tests::skip!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
     }
     assert_verb_absent("emit");
 }
@@ -114,7 +121,7 @@ fn nros_help_lacks_emit_verb() {
 #[test]
 fn nros_help_lacks_sign_verb() {
     if nros_bin().is_none() {
-        nros_tests::skip!("~/.nros/bin/nros missing — install via scripts/install-nros.sh");
+        nros_tests::skip!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
     }
     assert_verb_absent("sign");
 }
@@ -122,7 +129,7 @@ fn nros_help_lacks_sign_verb() {
 #[test]
 fn nros_help_lacks_flash_verb() {
     if nros_bin().is_none() {
-        nros_tests::skip!("~/.nros/bin/nros missing — install via scripts/install-nros.sh");
+        nros_tests::skip!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
     }
     assert_verb_absent("flash");
 }

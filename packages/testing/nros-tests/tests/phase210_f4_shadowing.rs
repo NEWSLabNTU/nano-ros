@@ -118,9 +118,9 @@ fn assert_ament_lacks_marker(ament_prefix: &Path) {
 fn workspace_std_msgs_shadows_ament_in_consumer_binary() {
     if !nros_tool_available() {
         nros_tests::skip!(
-            "nros build tool not installed — scripts/install-nros.sh \
-             puts it at ~/.nros/bin; cmake codegen step can't run \
-             without it"
+            "nros build tool not installed — run `just setup-cli` + \
+             `source ./activate.sh` (Phase 218); cmake codegen step \
+             can't run without it"
         );
     }
     if !nros_tests::process::require_cmake() {

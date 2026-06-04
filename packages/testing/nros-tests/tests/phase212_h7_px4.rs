@@ -47,7 +47,7 @@ fn px4_sitl_2_component_module_builds() {
     // yet exist while the nros-cli side of 212.H.7 lands), surfaced via
     // `skip!` so the test doesn't fail the run.
     if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found — run `scripts/install-nros.sh`");
+        nros_tests::skip!("nros CLI not found — run `just setup-cli` + `source ./activate.sh`");
     }
     if !nros_tests::require_px4() {
         nros_tests::skip!(

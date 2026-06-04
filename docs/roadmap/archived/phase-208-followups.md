@@ -1,5 +1,11 @@
 # Phase 208 — follow-ups (issues not fixed in the closing commits)
 
+> **Post-Phase-218 (archived-doc callout)**: References below to
+> `scripts/install-nros.sh` + `~/.nros/bin/nros` reflect the pre-218
+> install state. Canonical install is now `git submodule update --init
+> packages/cli && just setup-cli && source ./activate.sh` (binary at
+> `packages/cli/target/release/nros`). Preserved as historical record.
+
 Phase 208 closed all original A/B/C/D/E items + acc.4 + acc.5 at
 `89f69d911`. A handful of issues the agents surfaced are real but didn't
 land in that pile — listed here for the next pass instead of leaving them

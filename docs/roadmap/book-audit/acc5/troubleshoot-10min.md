@@ -1,3 +1,8 @@
+> **Post-Phase-218 (audit-report callout)**: References below to
+> `~/.nros/bin/nros` reflect the pre-218 install. Canonical install
+> is now `just setup-cli` + `source ./activate.sh`. Preserved as
+> historical record.
+
 BLOCKERS
 None. Every `nros setup`, `just <plat> doctor` and PATH/store path the page recommends resolves and runs; the page meets the post-D+E bar.
 

@@ -42,8 +42,10 @@ fn workspace_root() -> PathBuf {
 }
 
 /// Phase 195.D — skip the matrix when the host `nros` build tool isn't
-/// installed (it ships as a prebuilt release via `scripts/install-nros.sh`;
-/// the root CMakeLists resolves it from `$NROS_CLI` / PATH / `~/.nros/bin`).
+/// installed. Phase 218 brought the CLI in-tree (`packages/cli/`, built
+/// by `just setup-cli`); the root CMakeLists resolves it from `$NROS_CLI`
+/// / PATH (incl `packages/cli/target/release/` via `activate.sh`) /
+/// `~/.nros/bin` (transitional).
 fn require_codegen_or_skip() {
     if let Some(p) = std::env::var_os("NROS_CLI") {
         if Path::new(&p).is_file() {
@@ -64,7 +66,7 @@ fn require_codegen_or_skip() {
         return;
     }
     nros_tests::skip!(
-        "nros build tool not installed — run scripts/install-nros.sh (or `just setup`) first"
+        "nros build tool not installed — run `just setup-cli` + `source ./activate.sh` first"
     );
 }
 

@@ -38,7 +38,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Resolve the `nros` CLI binary (env / PATH / `~/.nros/bin/nros`).
+/// Resolve the `nros` CLI binary. Post-Phase-218: env (`$NROS_CLI`) /
+/// PATH (incl in-tree `packages/cli/target/release/` via `activate.sh`) /
+/// `~/.nros/bin/nros` (transitional fallback).
 fn nros_bin() -> Option<PathBuf> {
     nros_tests::nros_cli_bin_path()
 }

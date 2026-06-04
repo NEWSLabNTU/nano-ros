@@ -18,7 +18,8 @@ function(nano_ros_workspace_metadata)
         set(_NRW_WORKSPACE_ROOT "${CMAKE_SOURCE_DIR}")
     endif()
 
-    # Locate nros binary: NROS_BIN cache → NROS_CLI env → PATH → ~/.nros/bin.
+    # Locate nros binary: NROS_BIN cache → NROS_CLI env → PATH (incl in-tree
+    # `packages/cli/target/release/` via activate.sh) → ~/.nros/bin (transitional).
     if(NOT NROS_BIN)
         find_program(NROS_BIN nros
             HINTS ENV NROS_CLI ENV NROS_HOME
@@ -28,7 +29,7 @@ function(nano_ros_workspace_metadata)
     if(NOT NROS_BIN)
         message(FATAL_ERROR
             "nano_ros_workspace_metadata: `nros` binary not found. "
-            "Install via scripts/install-nros.sh (writes to ~/.nros/bin).")
+            "Build it in-tree via `just setup-cli` + `source ./activate.sh` (Phase 218).")
     endif()
 
     # Locate the bringup pkg dir: prefer colcon-style `src/<system>/`

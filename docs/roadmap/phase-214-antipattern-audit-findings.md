@@ -13,6 +13,15 @@ audit agents.
 
 **Depends on**: Phase 212 closure (DONE), Phase 213 closure (DONE).
 
+> **Post-Phase-218**: This doc was written when `scripts/install-nros.sh`
+> + `~/.nros/bin/nros` were the canonical install path. Phase 218 merged
+> the CLI in-tree at `packages/cli/` and retired `scripts/install-nros.sh`
+> (commit `19d1d29ba`); the new install is `git submodule update --init
+> packages/cli && just setup-cli && source ./activate.sh`. Track I
+> (`nros ws sync` / `NROS_FROM_SOURCE`) is superseded by 218 — the
+> in-tree build IS the install now. Other references to `install-nros.sh`
+> / `nros-cli` repo / `~/.nros/bin` below are historical record.
+
 ---
 
 ## Overview

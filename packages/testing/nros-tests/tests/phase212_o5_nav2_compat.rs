@@ -87,9 +87,16 @@ fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
 fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
     // Phase 212.O.5 — resolve `@NROS_CLI_ROOT@` for the offline-friendly
     // nros-build patch-override (see fixture demo_entry/Cargo.toml).
+    // Post-Phase-218 the CLI lives in-tree at `packages/cli/`; default
+    // there. Fall back to a sibling `nros-cli/` checkout for users still
+    // on the pre-218 layout.
     let nros_cli_root = std::env::var("NROS_CLI_ROOT")
         .ok()
         .filter(|p| std::path::Path::new(p).is_dir())
+        .or_else(|| {
+            let in_tree = std::path::Path::new(replacement).join("packages/cli");
+            in_tree.is_dir().then(|| in_tree.display().to_string())
+        })
         .or_else(|| {
             let guess = std::path::Path::new(replacement)
                 .parent()
@@ -193,8 +200,10 @@ fn n11_launch_xml_ros2_compat_smoke() {
     if run_plan.contains("Placeholder") {
         nros_tests::skip!(
             "nros-build codegen path returned the offline-fallback Placeholder stub at {}; \
-             no codegen evidence to assert against. Likely causes: no network for the \
-             github.com/NEWSLabNTU/nros-cli git dep, or the planner rejected the launch.xml.",
+             no codegen evidence to assert against. Likely causes: the `nros-build` git \
+             dep (archived github.com/NEWSLabNTU/nros-cli — post-Phase-218 migrate to \
+             the in-tree `packages/cli/` path-patch) failed to resolve, or the planner \
+             rejected the launch.xml.",
             run_plan_path.display()
         );
     }

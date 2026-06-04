@@ -87,10 +87,10 @@ if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
   endif()
 
   # 3. PATH search. Phase 208.D.7 — match the canonical resolver from
-  # `cmake/NanoRosGenerateInterfaces.cmake`: the prebuilt `nros` CLI binary
-  # (Phase 195.D retired the in-tree `nros-codegen` submodule + its target).
-  # Search PATH first, then the conventional install locations
-  # (`NROS_HOME/bin`, `~/.nros/bin`) `scripts/install-nros.sh` lands it in.
+  # `cmake/NanoRosGenerateInterfaces.cmake`. Post-Phase-218 the `nros`
+  # CLI lives in-tree at `packages/cli/` and is built by `just setup-cli`;
+  # `source ./activate.sh` puts `packages/cli/target/release/` on PATH.
+  # `NROS_HOME/bin` + `~/.nros/bin` remain as transitional fallbacks.
   if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
     find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros
       PATHS
@@ -101,10 +101,10 @@ if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
 
   if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
     message(FATAL_ERROR
-      "nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros assumes "
-      "`nros` is provided (Phase 195.D retired the in-tree codegen submodule). "
+      "nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros builds "
+      "the `nros` CLI in-tree from `packages/cli/` (Phase 218 merge). "
       "Install it with:\n"
-      "  scripts/install-nros.sh        # or: just setup\n"
+      "  just setup-cli && source ./activate.sh\n"
       "Or point the Zephyr build at an out-of-tree copy via:\n"
       "  prj.conf:   CONFIG_NROS_CODEGEN_TOOL=\"/path/to/nros\"\n"
       "  west build: west build -b <board> -- -D_NANO_ROS_CODEGEN_TOOL=/path/to/nros")

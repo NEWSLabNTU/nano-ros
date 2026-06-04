@@ -1,5 +1,12 @@
 # Phase 195 — `nros` bootstrap + data-driven source provisioning (cycle-free setup)
 
+> **Post-Phase-218 (archived-doc callout)**: The "prebuilt-binary
+> install" model below (`scripts/install-nros.sh` → `~/.nros/bin/nros`)
+> was superseded by Phase 218's monorepo merge — the CLI now lives
+> in-tree at `packages/cli/`, built by `just setup-cli`. The
+> standalone `github.com/NEWSLabNTU/nros-cli` repo is archived /
+> read-only. Preserved as historical record.
+
 **Goal.** Make `nros setup` a genuinely `just`-free, source-checkout-free user
 path by closing the two ordering gaps that remain after Phase 187/191: (A) ship
 a **prebuilt `nros` binary** + a dep-free installer so a user gets `nros` without

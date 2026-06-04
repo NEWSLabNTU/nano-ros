@@ -1,3 +1,8 @@
+> **Post-Phase-218 (audit-report callout)**: References below to
+> `scripts/install-nros.sh` reflect the pre-218 install. Canonical
+> install is now `just setup-cli` + `source ./activate.sh`. Preserved
+> as historical record.
+
 BLOCKERS
 None.
 

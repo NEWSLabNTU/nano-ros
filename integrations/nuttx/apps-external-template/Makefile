@@ -32,7 +32,12 @@ NROS_BRINGUP_BUILD     ?= $(CURDIR)/build
 NROS_BRINGUP_OUT       ?= $(NROS_BRINGUP_BUILD)/nros-system
 
 # Where the host `nros` CLI lives. Mirrors scripts/build/cargo.sh::nros_cli_bin.
-NROS_BIN ?= $(or $(wildcard $(HOME)/.nros/bin/nros),nros)
+# Post-Phase-218 canonical path is `packages/cli/target/release/nros` (built
+# by `just setup-cli`); fall back to `~/.nros/bin/nros` (transitional) then PATH.
+NROS_BIN ?= $(or \
+    $(wildcard $(NANO_ROS_ROOT)/packages/cli/target/release/nros), \
+    $(wildcard $(HOME)/.nros/bin/nros), \
+    nros)
 
 # Build target triple — inherits the shared shell's resolution when present.
 NROS_BRINGUP_TARGET_TRIPLE ?= $(NROS_TARGET_TRIPLE)

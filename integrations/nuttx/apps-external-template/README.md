@@ -64,8 +64,8 @@ monolithic NuttX kernel ELF.
 
 - `nros` CLI on `PATH` (or `$NROS_BIN` set), with Phase 212.E
   `codegen-system` support (otherwise the `context::` rule errors with
-  the verb-not-found message — install via
-  `scripts/install-nros.sh`).
+  the verb-not-found message — build via `just setup-cli` +
+  `source ./activate.sh` from the nano-ros root, Phase 218).
 - The shared `integrations/nuttx/` shell symlinked at
   `$NUTTX_APPS_DIR/external/nano-ros/` (the staging script does this
   unconditionally).

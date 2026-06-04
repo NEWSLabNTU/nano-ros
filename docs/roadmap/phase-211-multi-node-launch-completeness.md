@@ -13,6 +13,11 @@ the **runtime-interop story** are where the gaps sit.
 priorities are concrete (each item maps to a missing fixture or a missing
 planner field).
 
+> **Post-Phase-218**: References to `scripts/install-nros.sh` pin
+> bumps below predate the Phase 218 monorepo merge. The CLI now lives
+> in-tree at `packages/cli/` (build via `just setup-cli`); pin bumps
+> are no longer relevant.
+
 **Priority.** P2 — orchestration is the user-facing entry point to "this
 nano-ros workspace behaves like a ROS 2 workspace"; the gaps below are
 what would surface the first time a real Autoware-shape user `nros

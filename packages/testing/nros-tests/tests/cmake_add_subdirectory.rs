@@ -49,9 +49,10 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Phase 195.D — the host `nros` build tool ships as a prebuilt release
-/// (`scripts/install-nros.sh` → `~/.nros/bin`), resolved by cmake from
-/// `$NROS_CLI` / PATH / `~/.nros/bin`. True iff one of those resolves.
+/// Phase 195.D + 218 — the host `nros` build tool is built in-tree at
+/// `packages/cli/target/release/nros` (`just setup-cli`); cmake resolves
+/// it from `$NROS_CLI` / PATH (incl `packages/cli/target/release/` via
+/// `activate.sh`) / `~/.nros/bin` (transitional). True iff one resolves.
 fn nros_tool_available() -> bool {
     if let Some(p) = std::env::var_os("NROS_CLI") {
         if Path::new(&p).is_file() {
@@ -97,13 +98,14 @@ int main(void) {
 #[test]
 fn cmake_add_subdirectory_smoke() {
     let root = workspace_root();
-    // Phase 195.D — the cmake build resolves the host `nros` tool (the codegen
-    // submodule was retired; `nros` ships as a prebuilt release). Skip cleanly
-    // if it isn't installed so a fresh checkout without `nros` surfaces the
-    // right signal rather than a confusing cmake `find_program` failure.
+    // Phase 195.D + 218 — the cmake build resolves the host `nros` tool
+    // (the codegen submodule was retired; the CLI lives in-tree at
+    // `packages/cli/`). Skip cleanly if it isn't installed so a fresh
+    // checkout without `nros` surfaces the right signal rather than a
+    // confusing cmake `find_program` failure.
     if !nros_tool_available() {
         nros_tests::skip!(
-            "nros build tool not installed — run scripts/install-nros.sh (or `just setup`) first"
+            "nros build tool not installed — run `just setup-cli` + `source ./activate.sh` first"
         );
     }
 

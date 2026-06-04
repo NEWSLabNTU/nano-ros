@@ -1,3 +1,8 @@
+> **Post-Phase-218 (audit-report callout)**: References below to
+> `scripts/install-nros.sh` reflect the pre-218 install. Canonical
+> install is now `just setup-cli` + `source ./activate.sh`. Preserved
+> as historical record.
+
 BLOCKERS
 - Setup: `nros setup qemu-arm-freertos --rmw zenoh` fails with `invalid SDK index nros-sdk-index.toml ... unknown field 'shallow'`. Installed CLI is 0.3.1; `nros-sdk-index.toml:286` requires `nros ≥ 0.3.7` (matching `scripts/install-nros.sh` pin). Tutorial silently relies on a fresh install of the installer pin; user has no way past this without out-of-band knowledge.
 - Build (Rust): `cd examples/qemu-arm-freertos/rust/talker && cargo build --release` fails — example's `Cargo.toml` has no empty `[workspace]`, so any nested checkout (here, the audit worktree under nano-ros) breaks "standalone copy-out" claim.

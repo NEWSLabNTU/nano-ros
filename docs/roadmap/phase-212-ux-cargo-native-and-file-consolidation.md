@@ -8,6 +8,13 @@
 `nros generate-rust` user surface, every Phase 211 fixture's workspace shape.
 **No backward compatibility.** Clean break.
 
+> **Post-Phase-218**: References below to `scripts/install-nros.sh`
+> pin bumps + the external `github.com/NEWSLabNTU/nros-cli` repo
+> predate the Phase 218 monorepo merge. The CLI now lives in-tree at
+> `packages/cli/` (build via `just setup-cli`); pin-bump cadence is
+> replaced by "one checkout = one CLI version". The standalone repo
+> is archived / read-only.
+
 ## Goal
 
 **`nros` CLI scope:** codegen + env setup + orchestration. Never a build

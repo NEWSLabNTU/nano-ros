@@ -28,12 +28,13 @@
 # Stays out of the vendored PX4 tree by design — the operator drives
 # the concatenation step. See `integrations/px4/README.md`.
 #
-# Future improvement (TODO Phase 212.M-F.8 → nros-cli sibling):
+# Future improvement (TODO Phase 212.M-F.8 → in-tree CLI):
 # move this rendering into `nros codegen-system --target px4
 # --board-overlay <path>`. That would let one `nros` invocation do
 # both the module-dir emit AND the overlay write, without the
-# operator needing to chain a second tool. Sibling repo:
-# https://github.com/NEWSLabNTU/nros-cli.
+# operator needing to chain a second tool. The CLI lives in-tree at
+# `packages/cli/` since Phase 218 (the standalone
+# https://github.com/NEWSLabNTU/nros-cli is archived / read-only).
 
 set -euo pipefail
 

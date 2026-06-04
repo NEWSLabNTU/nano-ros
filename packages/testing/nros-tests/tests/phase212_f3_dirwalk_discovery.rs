@@ -13,8 +13,9 @@
 //! cargo prefix added no functional value over the bare `nros` verb —
 //! see phase doc §212.A); the dirwalk discovery surface IS `nros plan`.
 //!
-//! Skips cleanly via `nros_tests::skip!` when the `nros` CLI (installed
-//! at `~/.nros/bin/nros` by `scripts/install-nros.sh`) cannot be resolved.
+//! Skips cleanly via `nros_tests::skip!` when the `nros` CLI (built
+//! in-tree at `packages/cli/target/release/nros` by `just setup-cli`;
+//! Phase 218) cannot be resolved.
 
 use std::{
     fs,
@@ -161,7 +162,7 @@ fn run_plan_and_assert(root: &Path) {
 #[test]
 fn nros_plan_discovers_sibling_bringup_via_dirwalk() {
     if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found (run scripts/install-nros.sh)");
+        nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
     }
     // Phase 214.N.3 — `nros plan` shells out to `play_launch_parser` to
     // resolve `system.launch.xml`. When that parser is missing the verb
@@ -193,7 +194,7 @@ default_system = "demo_bringup"
 #[test]
 fn nros_plan_finds_bringup_when_in_workspace_exclude() {
     if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found (run scripts/install-nros.sh)");
+        nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
     }
     // Phase 214.N.3 — same precondition as the sibling test above.
     if !play_launch_parser_available() {

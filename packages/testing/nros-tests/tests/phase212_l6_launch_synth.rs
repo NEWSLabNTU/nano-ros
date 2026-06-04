@@ -48,7 +48,7 @@ fn play_launch_parser_available() -> bool {
 /// Skip the test with a unified message when either tool is missing.
 fn require_tools() {
     if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found (run scripts/install-nros.sh)");
+        nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
     }
     if !play_launch_parser_available() {
         nros_tests::skip!(

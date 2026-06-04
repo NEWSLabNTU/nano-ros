@@ -453,8 +453,9 @@ but is required for the end-to-end acceptance bar (§6).
       (3) write a thin in-process replacement on the subset of
           launch.xml the v1 spec covers (§11.5).
       Document the choice; whatever lands, `nros codegen entry
-      --lang cpp` must succeed on a box where only
-      `~/.nros/bin/nros` is installed. Closes review Gap 5.
+      --lang cpp` must succeed on a box where only the in-tree
+      `packages/cli/target/release/nros` is built (or the
+      transitional `~/.nros/bin/nros`). Closes review Gap 5.
 - [ ] **219.L — `nros metadata` walks cmake-only Node pkgs.**
       (medium, ✱) `nros metadata --workspace <ws> <bringup>`
       returns `preserved 0 metadata artifact(s)` against a
@@ -563,7 +564,8 @@ top of everything.
 - [ ] 219.G — book chapter merged + cross-links the Rust and C++
       surfaces side-by-side.
 - [ ] **219.acc.workflow** — workflow-review prereqs landed: a
-      stock dev box, with only `~/.nros/bin/nros` installed, can
+      stock dev box, with the in-tree `packages/cli/target/release/nros`
+      built (`just setup-cli`) on PATH via `activate.sh`, can
       `nros new --component --lang cpp talker_pkg` ×2 +
       `nros new --bringup demo_bringup` + `nros new --entry
       --lang cpp cpp_entry`, write the canonical workspace-root

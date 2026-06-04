@@ -1,5 +1,10 @@
 # Phase 203 — clean-rebuild `test-all` status
 
+> **Post-Phase-218 (archived-doc callout)**: References below to
+> `scripts/install-nros.sh` reflect the pre-218 install state.
+> Canonical install is now `git submodule update --init packages/cli &&
+> just setup-cli && source ./activate.sh`. Preserved as historical record.
+
 **Goal.** Record the result of a full from-scratch validation — nuke the
 build cache + deinit all submodules, then `just setup all` → `just check`
 → `just build-all` → `just test-all` — fix the setup/build gaps that only

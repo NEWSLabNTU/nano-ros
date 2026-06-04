@@ -42,7 +42,8 @@ injects them into the environment's `CPPPATH` + `SRC_FILTER`.
 
 - `NROS_BRINGUP_NAME` (via `build_flags = -D…` or env) — bringup pkg name.
 - Optional `NROS_BIN` — explicit `nros` path (default: PATH lookup, then
-  `~/.nros/bin/nros`).
+  the in-tree `packages/cli/target/release/nros`, then `~/.nros/bin/nros`
+  as a transitional fallback).
 - Optional `NROS_WORKSPACE` — explicit workspace root (default: PROJECT_DIR).
 
 ## LoC budget

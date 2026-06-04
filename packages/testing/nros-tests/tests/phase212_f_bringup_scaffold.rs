@@ -36,7 +36,7 @@ fn fresh_workspace() -> (tempfile::TempDir, PathBuf) {
 #[test]
 fn nros_new_system_scaffolds_bringup_pkg() {
     let Some(nros) = nros_bin() else {
-        nros_tests::skip!("nros CLI not found (run scripts/install-nros.sh)");
+        nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
     };
     let (_guard, root) = fresh_workspace();
 
@@ -94,7 +94,7 @@ fn nros_new_system_scaffolds_bringup_pkg() {
 #[test]
 fn nros_check_rejects_cargo_toml_in_bringup() {
     let Some(nros) = nros_bin() else {
-        nros_tests::skip!("nros CLI not found (run scripts/install-nros.sh)");
+        nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
     };
     let (_guard, root) = fresh_workspace();
 

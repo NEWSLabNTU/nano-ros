@@ -153,8 +153,16 @@ resolve_nros_bin() {
         command -v nros
         return 0
     fi
-    # Phase 195.D — the codegen submodule was retired; `nros` ships as a
-    # prebuilt release installed by scripts/install-nros.sh into ~/.nros/bin.
+    # Phase 195.D retired the codegen submodule. Phase 218 brought the CLI
+    # back in-tree at `packages/cli/`; `just setup-cli` builds it. Prefer
+    # the in-tree binary, fall back to ~/.nros/bin (transitional).
+    local root
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    local in_tree="$root/packages/cli/target/release/nros"
+    if [[ -x "$in_tree" ]]; then
+        echo "$in_tree"
+        return 0
+    fi
     local cand="${NROS_CLI:-${NROS_HOME:-$HOME/.nros}/bin/nros}"
     if [[ -x "$cand" ]]; then
         echo "$cand"

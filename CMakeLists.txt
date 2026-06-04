@@ -326,11 +326,12 @@ endif()
 # consumers reaching this root via `add_subdirectory` get them without an
 # install step (Phase 140 — no install layout exists any more).
 #
-# Phase 195.D retired the `packages/codegen` submodule: `nros` is the prebuilt
-# build tool the build assumes is provided (installed by `just setup` /
-# `scripts/install-nros.sh`). The module's `find_program(nros)` resolves it from
-# PATH; a consumer may override with `-D_NANO_ROS_CODEGEN_TOOL=<path>`. The tool
-# is only invoked at build time (custom commands), not at configure time.
+# Phase 195.D retired the `packages/codegen` submodule; Phase 218 brought the
+# CLI back in-tree as a sub-workspace at `packages/cli/`, built by
+# `just setup-cli` (`source ./activate.sh` puts it on PATH). The module's
+# `find_program(nros)` resolves it from PATH; a consumer may override with
+# `-D_NANO_ROS_CODEGEN_TOOL=<path>`. The tool is only invoked at build time
+# (custom commands), not at configure time.
 # ---------------------------------------------------------------------------
 set(_nros_codegen_module
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosGenerateInterfaces.cmake")

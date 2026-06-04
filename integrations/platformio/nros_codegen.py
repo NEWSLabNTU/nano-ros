@@ -23,8 +23,14 @@ def _bringup_name():
     return os.environ.get("NROS_BRINGUP_NAME", "")
 
 def _nros_bin():
+    # Phase 218: in-tree CLI at `packages/cli/target/release/nros` is the
+    # canonical path. `~/.nros/bin/nros` remains as a transitional fallback.
+    nano_ros_root = os.environ.get("NANO_ROS_ROOT")
+    in_tree = (os.path.join(nano_ros_root, "packages", "cli", "target",
+                            "release", "nros") if nano_ros_root else None)
     return (os.environ.get("NROS_BIN")
             or shutil.which("nros")
+            or (in_tree if in_tree and os.path.isfile(in_tree) else None)
             or os.path.expanduser("~/.nros/bin/nros"))
 
 def _framework():
@@ -38,7 +44,7 @@ def _run_codegen():
         return None
     nros = _nros_bin()
     if not nros or not os.path.isfile(nros):
-        sys.stderr.write("[nros] nros CLI not found; run scripts/install-nros.sh\n")
+        sys.stderr.write("[nros] nros CLI not found; run `just setup-cli` + `source ./activate.sh` (Phase 218)\n")
         sys.exit(1)
     workspace = os.environ.get("NROS_WORKSPACE", env["PROJECT_DIR"])
     out_dir = os.path.join(env["PROJECT_BUILD_DIR"], env["PIOENV"], "nros-system")

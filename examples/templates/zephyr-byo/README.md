@@ -30,8 +30,9 @@ west init -m https://github.com/NEWSLabNTU/nano-ros-zephyr-example my-ws
 cd my-ws && west update              # clones Zephyr + nano-ros (NOT submodules)
 
 # 2. nano-ros CLI + provisioning (RMW host daemon + transport submodules)
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+#    The `nros` CLI ships in-tree at `packages/cli/` (Phase 218); build it once.
+( cd modules/nano-ros && git submodule update --init packages/cli && just setup-cli )
+. modules/nano-ros/activate.sh                              # puts nros on PATH
 ( cd modules/nano-ros && nros setup zephyr --rmw zenoh )   # zenohd + zenoh-pico + mbedtls
 ( cd modules/nano-ros && nros setup --source px4-rs )      # workspace cargo-load dep
 

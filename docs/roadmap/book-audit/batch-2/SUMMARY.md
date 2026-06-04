@@ -1,5 +1,14 @@
 # Phase 208 Stage 1 — Batch 2 (QEMU light) — Summary
 
+> **Post-Phase-218 (audit-report callout)**: The install-state findings
+> below (`scripts/install-nros.sh` pin skew, `~/.nros/bin/nros` version
+> mismatch) reflect the pre-218 prebuilt-curl install model. Phase 218
+> retired that path — the CLI now lives in-tree at `packages/cli/`
+> (`just setup-cli`), and "one checkout = one CLI version" eliminates
+> the pin-skew class. Preserved as historical record. See also the
+> sibling reports under this directory (`freertos.md`, `threadx.md`,
+> `bare-metal.md`) and `../acc5/`.
+
 **Batch 2 = `freertos.md`, `threadx.md`, `bare-metal.md`.** Three parallel
 read-only audit agents, each in its own git worktree, strict-following the
 tutorial. Wall-clock cap 30 min. Per-agent reports in this directory.
