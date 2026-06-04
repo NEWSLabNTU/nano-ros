@@ -637,24 +637,92 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     #[shared]
                     struct Shared {}
 
+                    /// Phase 216.B.3 follow-up — stashes the
+                    /// `(Executor, Runtime)` pair returned by
+                    /// `RticBoardEntry::init_hardware` so the
+                    /// `__nros_spin` / `__nros_dispatch` software
+                    /// tasks can take ownership through the RTIC
+                    /// `local = [<field>]` attribute. The assoc-type
+                    /// projection keeps the macro emit board-agnostic
+                    /// — every `RticBoardEntry` impl picks its own
+                    /// concrete `Executor` / `Runtime` types.
                     #[local]
-                    struct Local {}
+                    struct Local {
+                        executor: <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::Executor,
+                        runtime: <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::Runtime,
+                    }
 
                     #[init]
                     fn init(cx: init::Context) -> (Shared, Local) {
-                        // Phase 216.B.3 SKELETON — full bring-up + per-Node
-                        // register + `__nros_spin` / `__nros_dispatch`
-                        // software-task spawn lands in a 216.B.3 follow-up.
-                        // The board crate's `init_hardware` body is
-                        // `todo!()` today (Phase 216.B.2), which surfaces
-                        // at runtime if someone flashes this — the macro
-                        // emit just needs to compile.
-                        let (_executor, _runtime) =
+                        // Phase 216.B.3 follow-up — board bring-up
+                        // hands back the `(Executor, Runtime)` pair;
+                        // we stash both into `Local` and spawn the two
+                        // software tasks that will drive them. The
+                        // `run_plan(&mut runtime)` per-Node
+                        // register-dispatch-slot call still belongs to
+                        // a separate follow-up (the trampoline
+                        // registration story spans the macro +
+                        // `nros::node!()` emit + the runtime trait
+                        // surface; same deferred story as the Embassy
+                        // sibling in the C.3 follow-up).
+                        let (executor, runtime) =
                             <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::init_hardware(
                                 cx.device,
                                 cx.core,
                             );
-                        (Shared {}, Local {})
+                        // todo: run_plan(&mut runtime) — register each
+                        // Node pkg's dispatch slot via
+                        // `register_dispatch_slot_dyn` before the
+                        // software tasks start consuming envelopes.
+                        __nros_spin::spawn().unwrap();
+                        __nros_dispatch::spawn().unwrap();
+                        (Shared {}, Local { executor, runtime })
+                    }
+
+                    /// RTIC spin task — owns the `Executor` half of
+                    /// the `(Executor, Runtime)` pair returned by
+                    /// `RticBoardEntry::init_hardware`. Placeholder
+                    /// `core::future::pending` park today; the real
+                    /// body dequeues from the board crate's SPSC
+                    /// (`nros_board_rtic_stm32f4::take_dispatch_consumer()`
+                    /// returns the `Consumer` half stashed during
+                    /// `init_hardware`) and invokes per-Node
+                    /// trampolines registered via
+                    /// `register_dispatch_slot_dyn` (deferred to the
+                    /// same follow-up as the `run_plan` call above).
+                    /// Mirrors the sibling `__nros_spin_task` Embassy
+                    /// task — RTIC has no `embassy_time` equivalent
+                    /// at this layer, so `core::future::pending` is
+                    /// used as the "block forever without polling"
+                    /// stand-in.
+                    #[task(local = [executor], priority = 1)]
+                    async fn __nros_spin(_cx: __nros_spin::Context) {
+                        // todo: dequeue from
+                        // `take_dispatch_consumer()` + dispatch
+                        // per-Node trampolines.
+                        loop {
+                            ::core::future::pending::<()>().await;
+                        }
+                    }
+
+                    /// RTIC dispatch task — owns the `Runtime` half
+                    /// of the `(Executor, Runtime)` pair. Placeholder
+                    /// `core::future::pending` park today; the real
+                    /// body calls `runtime.spin_once(timeout_ms)` in
+                    /// a loop with a `cortex_m::asm::wfi()` / `wfe()`
+                    /// yield between iterations (deferred — same
+                    /// follow-up as the spin task). Priority 2 keeps
+                    /// the dispatch path strictly higher than the
+                    /// spin task; the matching Embassy sibling
+                    /// (`__nros_dispatch_task`) has no priority knob
+                    /// because Embassy is cooperative-only.
+                    #[task(local = [runtime], priority = 2)]
+                    async fn __nros_dispatch(_cx: __nros_dispatch::Context) {
+                        // todo: runtime.spin_once(timeout_ms) loop +
+                        // cortex-m yield.
+                        loop {
+                            ::core::future::pending::<()>().await;
+                        }
                     }
 
                     // Phase 216.B.4 — user-supplied `#[task]` trampolines.
