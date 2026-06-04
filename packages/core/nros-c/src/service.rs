@@ -1890,8 +1890,10 @@ pub unsafe extern "C" fn nros_client_call(
     // Release store on `BLK_DONE` publishes the buffer write, and
     // the loop's Acquire load fences the buffer read.
     const BLK_BUF_LEN: usize = 4096; // max captured service-response CDR
-    use core::cell::UnsafeCell;
-    use core::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
+    use core::{
+        cell::UnsafeCell,
+        sync::atomic::{AtomicI32, AtomicUsize, Ordering},
+    };
     struct BlkBuf(UnsafeCell<[u8; BLK_BUF_LEN]>);
     // SAFETY: cross-thread access gated by BLK_DONE's Release/Acquire
     // pair; non-reentrancy guarantees a single in-flight caller.

@@ -60,8 +60,7 @@ class NativeBoard {
     ///
     /// Returns the first non-zero code from `register_fn` or
     /// `nros::spin()`. `0` on graceful shutdown.
-    template <typename Lambda>
-    static int32_t run(Lambda&& register_fn) {
+    template <typename Lambda> static int32_t run(Lambda&& register_fn) {
         nros::Result r = nros::init();
         if (!r.ok()) {
             return static_cast<int32_t>(r.raw());

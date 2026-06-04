@@ -35,51 +35,54 @@ const LOCATOR: &str = match option_env!("NROS_LOCATOR") {
 
 #[nros_board_mps2_an385::entry]
 fn main() -> ! {
-    run(Config {
-        mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
-        ip: [10, 0, 2, 10],
-        prefix: 24,
-        gateway: [10, 0, 2, 2],
-        zenoh_locator: LOCATOR,
-        domain_id: 0,
-    }, |config| {
-        nros_log::register_logger(&LOGGER);
-        nros_log::init(nros_log::sinks::default());
+    run(
+        Config {
+            mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
+            ip: [10, 0, 2, 10],
+            prefix: 24,
+            gateway: [10, 0, 2, 2],
+            zenoh_locator: LOCATOR,
+            domain_id: 0,
+        },
+        |config| {
+            nros_log::register_logger(&LOGGER);
+            nros_log::init(nros_log::sinks::default());
 
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("talker");
-        // Phase 104.A / 204.1 — bare-metal callers must explicitly register
-        // the RMW backend: on `target_os = "none"` the `linkme`
-        // `RMW_INIT_ENTRIES` slice is an empty stub (Phase 142), so this is
-        // the only reference keeping the backend linked. Without it
-        // `--gc-sections` strips the zenoh backend and `Executor::open`
-        // resolves `NoBackend`. (This example was missing the call —
-        // latent bug found in Phase 204.1; the sibling `listener` has it.)
-        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config)?;
-        let publisher = {
-            let mut node = executor.create_node("talker")?;
-            nros_info!(&LOGGER, "Declaring publisher on /chatter (std_msgs/Int32)");
-            node.create_publisher::<Int32>("/chatter")?
-        };
-        nros_info!(&LOGGER, "Publisher declared");
+            let exec_config = ExecutorConfig::new(config.zenoh_locator)
+                .domain_id(config.domain_id)
+                .node_name("talker");
+            // Phase 104.A / 204.1 — bare-metal callers must explicitly register
+            // the RMW backend: on `target_os = "none"` the `linkme`
+            // `RMW_INIT_ENTRIES` slice is an empty stub (Phase 142), so this is
+            // the only reference keeping the backend linked. Without it
+            // `--gc-sections` strips the zenoh backend and `Executor::open`
+            // resolves `NoBackend`. (This example was missing the call —
+            // latent bug found in Phase 204.1; the sibling `listener` has it.)
+            nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+            let mut executor = Executor::open(&exec_config)?;
+            let publisher = {
+                let mut node = executor.create_node("talker")?;
+                nros_info!(&LOGGER, "Declaring publisher on /chatter (std_msgs/Int32)");
+                node.create_publisher::<Int32>("/chatter")?
+            };
+            nros_info!(&LOGGER, "Publisher declared");
 
-        let mut count: i32 = 0;
-        executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
-            match publisher.publish(&Int32 { data: count }) {
-                Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
-                Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
+            let mut count: i32 = 0;
+            executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
+                match publisher.publish(&Int32 { data: count }) {
+                    Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
+                    Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
+                }
+                count = count.wrapping_add(1);
+            })?;
+
+            nros_info!(&LOGGER, "Publishing messages...");
+            loop {
+                executor.spin_once(core::time::Duration::from_millis(10));
             }
-            count = count.wrapping_add(1);
-        })?;
 
-        nros_info!(&LOGGER, "Publishing messages...");
-        loop {
-            executor.spin_once(core::time::Duration::from_millis(10));
-        }
-
-        #[allow(unreachable_code)]
-        Ok::<(), NodeError>(())
-    })
+            #[allow(unreachable_code)]
+            Ok::<(), NodeError>(())
+        },
+    )
 }

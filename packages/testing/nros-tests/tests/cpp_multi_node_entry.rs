@@ -69,7 +69,11 @@ fn resolve_nros_bin() -> Option<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".nros")));
     let candidate = home?.join("bin/nros");
-    if candidate.is_file() { Some(candidate) } else { None }
+    if candidate.is_file() {
+        Some(candidate)
+    } else {
+        None
+    }
 }
 
 #[test]
@@ -140,9 +144,21 @@ fn multi_node_workspace_cpp_configures_and_builds() {
     let gen_tu = build.join("src/robot_entry/robot_entry_nros_main_generated.cpp");
     let link_libs = build.join("src/robot_entry/robot_entry_link_libs.cmake");
     let depfile = build.join("src/robot_entry/robot_entry_nros_main_generated.d");
-    assert!(gen_tu.is_file(), "missing generated TU at `{}`", gen_tu.display());
-    assert!(link_libs.is_file(), "missing link-libs sidecar at `{}`", link_libs.display());
-    assert!(depfile.is_file(), "missing depfile at `{}`", depfile.display());
+    assert!(
+        gen_tu.is_file(),
+        "missing generated TU at `{}`",
+        gen_tu.display()
+    );
+    assert!(
+        link_libs.is_file(),
+        "missing link-libs sidecar at `{}`",
+        link_libs.display()
+    );
+    assert!(
+        depfile.is_file(),
+        "missing depfile at `{}`",
+        depfile.display()
+    );
 
     let gen_body = std::fs::read_to_string(&gen_tu).expect("read generated TU");
     assert!(
@@ -160,7 +176,10 @@ fn multi_node_workspace_cpp_configures_and_builds() {
     let pos_l = gen_body
         .find("__nros_component_listener_pkg_register(context)")
         .expect("listener call");
-    assert!(pos_t < pos_l, "register call order doesn't match launch XML");
+    assert!(
+        pos_t < pos_l,
+        "register call order doesn't match launch XML"
+    );
 
     let link_body = std::fs::read_to_string(&link_libs).expect("read link sidecar");
     assert!(link_body.contains("talker_pkg_talker_component"));

@@ -88,15 +88,15 @@ typedef enum nros_node_callback_effect_kind_t {
 } nros_node_callback_effect_kind_t;
 
 typedef nros_ret_t (*nros_node_create_node_fn)(void* user_data, const char* stable_id,
-                                                    const nros_node_pkg_options_t* options,
-                                                    nros_declared_node_t* out_node);
+                                               const nros_node_pkg_options_t* options,
+                                               nros_declared_node_t* out_node);
 
-typedef nros_ret_t (*nros_node_create_entity_fn)(
-    void* user_data, const nros_node_entity_descriptor_t* descriptor);
+typedef nros_ret_t (*nros_node_create_entity_fn)(void* user_data,
+                                                 const nros_node_entity_descriptor_t* descriptor);
 
-typedef nros_ret_t (*nros_node_record_callback_effect_fn)(
-    void* user_data, const char* callback_id, nros_node_callback_effect_kind_t kind,
-    const char* entity_id);
+typedef nros_ret_t (*nros_node_record_callback_effect_fn)(void* user_data, const char* callback_id,
+                                                          nros_node_callback_effect_kind_t kind,
+                                                          const char* entity_id);
 
 typedef struct nros_node_context_ops_t {
     nros_node_create_node_fn create_node;
@@ -120,9 +120,9 @@ static inline nros_node_pkg_options_t nros_node_pkg_options(const char* name) {
 }
 
 static inline nros_ret_t nros_declared_node_create(nros_node_context_t* context,
-                                                    const char* stable_id,
-                                                    const nros_node_pkg_options_t* options,
-                                                    nros_declared_node_t* out_node) {
+                                                   const char* stable_id,
+                                                   const nros_node_pkg_options_t* options,
+                                                   nros_declared_node_t* out_node) {
     if (!context || !context->ops || !context->ops->create_node || !stable_id || !options ||
         !out_node) {
         return NROS_RET_INVALID_ARGUMENT;
@@ -130,19 +130,18 @@ static inline nros_ret_t nros_declared_node_create(nros_node_context_t* context,
     return context->ops->create_node(context->user_data, stable_id, options, out_node);
 }
 
-static inline nros_ret_t
-nros_node_create_entity(nros_node_context_t* context,
-                             const nros_node_entity_descriptor_t* descriptor) {
+static inline nros_ret_t nros_node_create_entity(nros_node_context_t* context,
+                                                 const nros_node_entity_descriptor_t* descriptor) {
     if (!context || !context->ops || !context->ops->create_entity || !descriptor) {
         return NROS_RET_INVALID_ARGUMENT;
     }
     return context->ops->create_entity(context->user_data, descriptor);
 }
 
-static inline nros_ret_t
-nros_node_record_callback_effect(nros_node_context_t* context, const char* callback_id,
-                                      nros_node_callback_effect_kind_t kind,
-                                      const char* entity_id) {
+static inline nros_ret_t nros_node_record_callback_effect(nros_node_context_t* context,
+                                                          const char* callback_id,
+                                                          nros_node_callback_effect_kind_t kind,
+                                                          const char* entity_id) {
     if (!context || !context->ops || !context->ops->record_callback_effect || !callback_id ||
         !entity_id) {
         return NROS_RET_INVALID_ARGUMENT;
@@ -166,11 +165,13 @@ nros_node_record_callback_effect(nros_node_context_t* context, const char* callb
  */
 #define _NROS_NODE_PKG_CONCAT(a, b) a##b
 #define _NROS_NODE_PKG_CONCAT_X(a, b) _NROS_NODE_PKG_CONCAT(a, b)
-#define _NROS_NODE_PKG_REG_SYM(pkg) _NROS_NODE_PKG_CONCAT_X(__nros_component_, _NROS_NODE_PKG_CONCAT_X(pkg, _register))
-#define _NROS_NODE_PKG_PRESENT_SYM(pkg) _NROS_NODE_PKG_CONCAT_X(__NROS_NODE_PKG_, _NROS_NODE_PKG_CONCAT_X(pkg, _EXPORT_PRESENT))
+#define _NROS_NODE_PKG_REG_SYM(pkg)                                                                \
+    _NROS_NODE_PKG_CONCAT_X(__nros_component_, _NROS_NODE_PKG_CONCAT_X(pkg, _register))
+#define _NROS_NODE_PKG_PRESENT_SYM(pkg)                                                            \
+    _NROS_NODE_PKG_CONCAT_X(__NROS_NODE_PKG_, _NROS_NODE_PKG_CONCAT_X(pkg, _EXPORT_PRESENT))
 
 #define NROS_COMPONENT(pkg, register_fn)                                                           \
-    NROS_PUBLIC nros_ret_t _NROS_NODE_PKG_REG_SYM(pkg)(nros_node_context_t* context) {       \
+    NROS_PUBLIC nros_ret_t _NROS_NODE_PKG_REG_SYM(pkg)(nros_node_context_t * context) {            \
         return (register_fn)(context);                                                             \
     }                                                                                              \
     NROS_PUBLIC const unsigned char _NROS_NODE_PKG_PRESENT_SYM(pkg) = 1

@@ -64,7 +64,6 @@ NROS_PUBLIC int nros_board_native_run(nros_node_register_fn entry);
  */
 #define NROS_MAIN_C(BoardId, LaunchSpec)                                                           \
     NROS_PUBLIC const unsigned char __nros_entry_macro_present = 1;                                \
-    _Static_assert(sizeof(LaunchSpec) > 1,                                                         \
-                   "NROS_MAIN_C: launch spec must be a non-empty literal")
+    _Static_assert(sizeof(LaunchSpec) > 1, "NROS_MAIN_C: launch spec must be a non-empty literal")
 
 #endif /* NROS_MAIN_H */

@@ -36,8 +36,7 @@ use std::{path::PathBuf, process::Command};
 fn nros_bin() -> Option<PathBuf> {
     // Phase 218: prefer the in-tree CLI built by `just setup-cli`. Fall
     // back to `~/.nros/bin/nros` for users still on the transitional path.
-    let in_tree = nros_tests::project_root()
-        .join("packages/cli/target/release/nros");
+    let in_tree = nros_tests::project_root().join("packages/cli/target/release/nros");
     if in_tree.is_file() {
         return Some(in_tree);
     }

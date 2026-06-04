@@ -411,7 +411,9 @@ pub fn nros_cli_bin_path() -> Option<std::path::PathBuf> {
 /// `false` when missing (caller `nros_tests::skip!`), `true` otherwise.
 pub fn require_nros_cli() -> bool {
     if nros_cli_bin_path().is_none() {
-        eprintln!("Skipping test: nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
+        eprintln!(
+            "Skipping test: nros CLI not found (run `just setup-cli` + `source ./activate.sh`)"
+        );
         return false;
     }
     true

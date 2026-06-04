@@ -595,8 +595,10 @@ pub unsafe extern "C" fn nros_action_get_result(
     // Single-call contract preserved.
     let client_ref = &mut *client;
     const BLK_RESULT_BUF_LEN: usize = 1024; // max captured action-result CDR
-    use core::cell::UnsafeCell;
-    use core::sync::atomic::{AtomicI32, AtomicU8, Ordering};
+    use core::{
+        cell::UnsafeCell,
+        sync::atomic::{AtomicI32, AtomicU8, Ordering},
+    };
     struct BlkResultBuf(UnsafeCell<[u8; BLK_RESULT_BUF_LEN]>);
     // SAFETY: cross-thread access is gated by BLK_RESULT_LEN's
     // Release/Acquire pair — the callback's store(Release) happens-

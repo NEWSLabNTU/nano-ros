@@ -41,9 +41,7 @@ fn main() {
         .node_name("rust_consumer")
         .domain_id(0);
     let mut executor: Executor = Executor::open(&config).expect("open executor");
-    let mut node = executor
-        .create_node("rust_consumer")
-        .expect("create node");
+    let mut node = executor.create_node("rust_consumer").expect("create node");
 
     let greet_pub = node
         .create_publisher::<Greeting>("/greetings")
