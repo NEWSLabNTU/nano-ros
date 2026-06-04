@@ -15,6 +15,13 @@ crate-type = ["rlib", "staticlib"]
 # row gives users `cargo build --features rmw-cyclonedds` as an
 # alternative build target without changing the default. 1-entry shape
 # mirrors S.4 (umbrella pulls the backend transitively).
+# Phase 214.S.5.c — `rmw-zenoh` + `rmw-xrce` parity rows. Same shape
+# as the cyclonedds row above; gives users `cargo build --features
+# rmw-zenoh` / `--features rmw-xrce` alternative build targets without
+# changing the default deploy rmw. Required by `just freertos
+# build-examples` which invokes `cargo build --features rmw-zenoh`.
+rmw-zenoh = ["nros/rmw-zenoh"]
+rmw-xrce  = ["nros/rmw-xrce"]
 rmw-cyclonedds = ["nros/rmw-cyclonedds"]
 
 [dependencies]

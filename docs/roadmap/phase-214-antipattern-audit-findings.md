@@ -1785,21 +1785,38 @@ invocation no longer resolves.
 
 **Work Items:**
 
-- [ ] **214.S.5.c.1 Add `rmw-zenoh` parity row** — add the 1-line
+- [x] **214.S.5.c.1 Add `rmw-zenoh` parity row** — add the 1-line
       `rmw-zenoh = ["nros/rmw-zenoh"]` to every FreeRTOS rust +
       threadx-linux rust Component pkg `[features]` block. Acceptance:
       `git grep -L '"nros/rmw-zenoh"' examples/qemu-arm-freertos/rust/*/Cargo.toml
       examples/threadx-linux/rust/*/Cargo.toml` returns nothing.
+      Landed 2026-06-04 — 12 Component pkg manifests touched (6
+      FreeRTOS + 6 threadx-linux). Each `[features]` block now
+      carries the cyclonedds row plus the new zenoh + xrce siblings
+      (S.5.c.2). `_entry` packages are deliberately untouched — they
+      are Entry pkgs, not Component pkgs, and per spec scope are
+      out-of-track.
 
-- [ ] **214.S.5.c.2 Same parity for `rmw-xrce`** — XRCE-only build
+- [x] **214.S.5.c.2 Same parity for `rmw-xrce`** — XRCE-only build
       targets work on FreeRTOS (existing K.5 talker variant). Same
       `rmw-xrce = ["nros/rmw-xrce"]` row across all 6 + 6 pkgs if
-      they can XRCE.
+      they can XRCE. Landed 2026-06-04 alongside S.5.c.1; both rows
+      appended in the same commit so the cyclonedds-style header
+      comment covers both.
 
 - [ ] **214.S.5.c.3 Verify `just freertos build-examples` clean** —
       after S.5.c.1 + S.5.c.2 + S.5.b host-shim, the recipe must
       build every example under each RMW. K.7 native cyclonedds
-      regression untouched.
+      regression untouched. **Blocked 2026-06-04** by a separate
+      `[PREREQ]` early-exit: the recipe gates on `nros ws sync`
+      (Phase 214.J.2 codegen-stamp) which the installed nros 0.3.7
+      lacks ("nros ws sync verb unavailable (installed nros lacks
+      Phase 210.D.1 / 210.E.3.d.native; bump scripts/install-nros.sh
+      pin past 0.3.7 or set NROS_FROM_SOURCE=/path/to/nros-cli)").
+      Not a manifest issue — once the pinned nros CLI ships the
+      `ws sync` verb the feature-resolution unblock from S.5.c.1+2
+      will be visible. Follow-up: bump `scripts/install-nros.sh`
+      version pin past 0.3.7 (separate track — outside S.5.c scope).
 
 **Cross-refs**:
 * S.4 (native rust 1-entry parity) — established the shape this
