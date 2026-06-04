@@ -9,16 +9,21 @@ directly.
 
 ## Install
 
-The `nros` CLI ships as a prebuilt host binary. Install it once per
-machine:
+The `nros` CLI ships from the in-tree sub-workspace at `packages/cli/`
+(Phase 218). Build it per checkout, then activate the workspace to put
+it on PATH:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"      # add to your shell profile
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 ```
 
-The installer downloads the binary for your OS/arch into `~/.nros/bin`.
-Once installed, `nros --help` lists every verb.
+The resulting binary lives at `packages/cli/target/release/nros`. One
+checkout = one CLI version = one runtime ABI; contributors with
+multiple nano-ros worktrees get per-tree CLIs with no global PATH
+skew. Once on PATH, `nros --help` lists every verb. The transitional
+`${NROS_HOME:-~/.nros}/bin/nros` install location remains supported
+for users mid-migration from the pre-218 release-fetch shape.
 
 ## Verbs
 
@@ -27,7 +32,7 @@ Once installed, `nros --help` lists every verb.
 Provision the toolchain/SDK for a board. `nros setup` is the single
 canonical provisioning command — it ships **prebuilt toolchains per
 platform per RMW** (cross-compiler, emulator, RMW host daemon, SDK
-sources) from a pinned index into a shared store (`~/.nros/sdk`). No
+sources) from a pinned index into a shared store (`${NROS_HOME:-~/.nros}/sdk`). No
 hand-installed cross-toolchains; no ROS distro required.
 
 ```sh

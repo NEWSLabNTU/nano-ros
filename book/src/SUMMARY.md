@@ -93,6 +93,7 @@
 - [Dispatch Strategy](./internals/dispatch-strategy.md)
 - [Real-Time Analysis](./internals/realtime-analysis.md)
 - [Build System & Caching](./internals/build-system.md)
+- [CLI Lives in the Monorepo (Phase 218)](./internals/cli-in-monorepo.md)
 - [zpico-sys Build Architecture](./internals/zpico-build.md)
 - [Formal Verification](./internals/verification.md)
 - [Safety Protocol](./internals/safety.md)

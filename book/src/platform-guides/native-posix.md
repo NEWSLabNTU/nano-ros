@@ -15,16 +15,16 @@ embedded targets.
 
 ## Setup
 
-Install the `nros` CLI once per machine, then provision the native
+Build the in-tree `nros` CLI (Phase 218), then provision the native
 host. For a host build there is no cross-toolchain to fetch — `nros
 setup native` installs only the RMW host daemon (`zenohd` for zenoh,
 the Micro-XRCE-DDS agent for xrce) into a shared store. ROS 2 is not
 required.
 
 ```bash
-# Install the nros CLI once per machine:
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+# Build the in-tree nros CLI:
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 
 # Provision the native host (zenoh RMW is the default):
 nros setup native --rmw zenoh        # or: --rmw xrce / --rmw cyclonedds

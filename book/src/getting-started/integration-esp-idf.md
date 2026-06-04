@@ -14,12 +14,12 @@ bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
 >    host tools you use for testing) come from the `nros` CLI:
 >
 >    ```bash
->    curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
->    export PATH="$HOME/.nros/bin:$PATH"
+>    source ./activate.sh        # OR: direnv allow / source ./activate.fish
+>    just setup-cli              # builds packages/cli/target/release/nros (Phase 218)
 >    nros setup esp32 --rmw zenoh     # lands the RMW host daemon
 >                                     # (zenohd for zenoh, the
 >                                     # Micro-XRCE-DDS agent for xrce)
->                                     # in ~/.nros/sdk, AND clones the
+>                                     # in ${NROS_HOME:-~/.nros}/sdk, AND clones the
 >                                     # transport submodules
 >                                     # (zenoh-pico + mbedtls for zenoh)
 >                                     # into the nano-ros checkout

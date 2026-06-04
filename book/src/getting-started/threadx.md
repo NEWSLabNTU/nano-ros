@@ -26,13 +26,13 @@ for the per-RMW cell status.
 nano-ros for a board. It ships prebuilt toolchains per platform per RMW — the
 cross-compiler, emulator, RMW host daemon, and SDK sources (the ThreadX/NetX
 sources, and for threadx-linux the POSIX-sim sources) are fetched from a pinned
-index into a shared store at `~/.nros/sdk`. You do not need ROS 2 installed.
+index into a shared store at `${NROS_HOME:-~/.nros}/sdk`. You do not need ROS 2 installed.
 
-Install the `nros` CLI once per machine:
+Build the in-tree `nros` CLI (Phase 218):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 Provision the ThreadX flavour you need (+ the RMW):

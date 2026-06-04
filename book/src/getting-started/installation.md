@@ -81,17 +81,39 @@ sources a board needs are fetched from a pinned index and placed in a
 shared store (`~/.nros/sdk`). You do **not** install cross-toolchains by
 hand, and you do not need ROS 2 on the machine.
 
-### 1. Install the `nros` CLI (once per machine)
+### 1. Build the `nros` CLI from the in-tree sub-workspace (Phase 218)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"      # add to your shell profile
+git clone https://github.com/NEWSLabNTU/nano-ros.git
+cd nano-ros
+source ./activate.sh          # OR: direnv allow / source ./activate.fish
+just setup-cli                # builds packages/cli/target/release/nros
 ```
 
-This downloads the prebuilt `nros` host binary for your OS/arch into
-`~/.nros/bin`. Verify with `nros --version`.
+`just setup-cli` runs `cargo build --release --manifest-path
+packages/cli/Cargo.toml --bin nros`, producing the per-checkout binary
+at `packages/cli/target/release/nros`. Activating the workspace
+(`activate.sh` / `activate.fish` / `direnv allow`) puts that directory
+on `PATH`, so `nros --version` resolves to the in-tree build. **One
+checkout = one CLI version = one runtime ABI** — no global install,
+no `~/.nros/bin` PATH skew across worktrees.
 
-### 2. Provision a board (+ RMW)
+### 2. Activate the workspace (every shell)
+
+Pick whichever fits your shell — all three wire the same env exports +
+PATH entries from the Phase 218.C SSoT `activate.sh`:
+
+```bash
+direnv allow                  # auto-activates on `cd nano-ros` (recommended)
+source ./activate.sh          # bash / zsh, one-shot per shell
+source ./activate.fish        # fish, one-shot per shell
+```
+
+The activate file also sources `/opt/ros/humble/setup.bash` if
+present (required by `nros generate-rust` + cyclonedds codegen +
+rmw_zenoh interop tests) and exports `NROS_REPO_DIR`.
+
+### 3. Provision a board (+ RMW)
 
 ```bash
 nros setup <board> --rmw <zenoh|xrce|cyclonedds>
@@ -189,6 +211,8 @@ toolchains a contributor gets are identical to a user's.
 ```bash
 git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
+source ./activate.sh          # OR: direnv allow / source ./activate.fish
+just setup-cli                # build the in-tree nros CLI (Phase 218)
 just setup all                # provision every supported board's SDK/toolchain
 ```
 

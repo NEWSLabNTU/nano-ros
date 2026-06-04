@@ -37,13 +37,13 @@ Where standard ROS 2 installs a distro and resolves system packages with
 `nros setup` replaces the distro install + `rosdep`: it ships **prebuilt
 toolchains per platform per RMW** — the cross-compiler, emulator, RMW host
 daemon, and SDK sources for a board are fetched from a pinned index into a
-shared store (`~/.nros/sdk`). You do not install cross-toolchains by hand,
+shared store (`${NROS_HOME:-~/.nros}/sdk`). You do not install cross-toolchains by hand,
 and you do not need a ROS distro on the machine.
 
 ```bash
-# 1. Install the nros CLI once (analogous to installing a ROS distro):
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+# 1. Build the in-tree nros CLI (analogous to installing a ROS distro, Phase 218):
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 
 # 2. Provision a board + RMW (analogous to `rosdep install`):
 nros setup native --rmw zenoh

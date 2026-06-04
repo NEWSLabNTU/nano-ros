@@ -13,11 +13,11 @@ component)](./integration-esp-idf.md).
 
 ## Setup
 
-Install the `nros` CLI once per machine:
+Build the in-tree `nros` CLI (Phase 218):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 Provision the board (and RMW):
@@ -29,8 +29,9 @@ nros setup esp32 --rmw zenoh     # --rmw defaults to zenoh; xrce | cyclonedds al
 This pulls the SDK sources nano-ros owns (zenoh-pico + mbedtls
 submodules for zenoh; analogous for xrce / cyclonedds) and lands the
 RMW host daemon (`zenohd` for zenoh, the Micro-XRCE-DDS agent for
-xrce) under `~/.nros/sdk` (forwarded onto `PATH` via the
-`~/.nros/bin/` shims). `esp-hal` itself is a Cargo dependency the
+xrce) under `${NROS_HOME:-~/.nros}/sdk` (the activate file puts the
+in-tree CLI on PATH; legacy `${NROS_HOME:-~/.nros}/bin/` install
+remains supported transitionally). `esp-hal` itself is a Cargo dependency the
 example pulls in at build time, not a separately-installed toolchain;
 the only cross-toolchain you may need to add by hand is the rustup
 target — once per host:

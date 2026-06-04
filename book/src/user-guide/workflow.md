@@ -10,9 +10,9 @@ nano-ros is shipped source-only — vendor it next to (or inside) your
 workspace, then provision the board's toolchain with `nros setup`:
 
 ```bash
-# Install the nros CLI once, then provision your board (+ RMW):
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"
+# Build the in-tree nros CLI (Phase 218), then provision your board (+ RMW):
+source ./activate.sh        # OR: direnv allow / source ./activate.fish
+just setup-cli              # builds packages/cli/target/release/nros
 nros setup native --rmw zenoh        # or qemu-arm-freertos, zephyr, …
 ```
 

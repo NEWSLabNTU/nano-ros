@@ -11,9 +11,9 @@ consumption.
 > shared store — no ROS 2 needed.
 >
 > ```bash
-> # Install the nros CLI once per machine:
-> curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
-> export PATH="$HOME/.nros/bin:$PATH"
+> # Build the in-tree nros CLI (Phase 218):
+> source ./activate.sh        # OR: direnv allow / source ./activate.fish
+> just setup-cli
 >
 > # Provision the native host for the zenoh RMW:
 > nros setup native --rmw zenoh
