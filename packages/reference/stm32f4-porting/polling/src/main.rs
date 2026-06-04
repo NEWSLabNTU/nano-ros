@@ -308,7 +308,7 @@ fn main() -> ! {
 
     info!("Initializing smoltcp bridge...");
 
-    SmoltcpBridge::init();
+    SmoltcpBridge::init().expect("SmoltcpBridge::init double-call");
 
     // Create TCP sockets and register with the bridge
     unsafe { nros_smoltcp::create_and_register_sockets(&mut sockets) };

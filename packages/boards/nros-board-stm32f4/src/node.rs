@@ -498,7 +498,7 @@ unsafe fn setup_network(
     }
 
     // Initialize the transport crate's bridge
-    SmoltcpBridge::init();
+    SmoltcpBridge::init().expect("SmoltcpBridge::init double-call");
 
     // Seed RNG with IP to avoid zenoh ID collisions
     let ip_seed = u32::from_be_bytes(config.ip);

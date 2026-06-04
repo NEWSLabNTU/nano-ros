@@ -258,7 +258,7 @@ pub fn init_hardware(config: &NodeConfig) {
         configure_ip(config, iface, sockets);
 
         // Step 10: Initialize transport bridge
-        SmoltcpBridge::init();
+        SmoltcpBridge::init().expect("SmoltcpBridge::init double-call");
 
         // Create and register TCP + UDP sockets via transport crate
         unsafe {
