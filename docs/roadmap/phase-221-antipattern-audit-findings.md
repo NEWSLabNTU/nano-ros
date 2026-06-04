@@ -5,8 +5,9 @@ nano-ros build system + test scripts. Pre-group findings into **tracks**
 with non-overlapping file ownership so future remediation waves can run
 in parallel without rebase conflict.
 
-**Status**: LIVE. Created 2026-06-04 from 5 parallel `Explore`-mode audit
-agents on `main` @ `60a8ac052`.
+**Status**: CLOSED 2026-06-04. Created 2026-06-04 from 5 parallel
+`Explore`-mode audit agents on `main` @ `60a8ac052`; Tracks A+B+C+D+E
+landed on `main` @ `09dcd2620`.
 
 **Priority**: HIGH for Track A (large build-script refactor) + Track B
 (test name behavior-description rename). MED for Track C (template
@@ -39,6 +40,11 @@ extraction). LOW for Tracks D + E.
 ---
 
 ## Track A — Large build-script refactor
+
+**Status**: DONE 2026-06-04. Large build scripts were moved behind helper
+crates/modules/scripts, preserving the public recipe/build surfaces. Final
+verification passed with `cargo check -p zpico-sys -p nros-c -p nros-cpp` and
+`source ./activate.sh && XDG_RUNTIME_DIR=/tmp just build`.
 
 **HIGH priority. Files exceed clean-decomposition thresholds.**
 
@@ -158,6 +164,10 @@ Renames inside `packages/cli/nros-cli-core/{src,tests}/`. Each entry: `current (
 
 ## Track C — Extract embedded source to templates
 
+**Status**: DONE 2026-06-04. The `nros-c` generated Rust/C header bodies now
+live in `packages/core/nros-c/templates/*.template`; generation runs from
+`nros-build-helpers`, and `packages/core/nros-c/build.rs` is a thin wrapper.
+
 **MED priority. Concentrated in 1 build.rs (nros-c).**
 
 ### C.1 — `packages/core/nros-c/build.rs` C/Rust header walls (3 large `format!()` blocks)
@@ -188,6 +198,9 @@ Renames inside `packages/cli/nros-cli-core/{src,tests}/`. Each entry: `current (
 
 ## Track D — Phase-name leakage cleanup
 
+**Status**: DONE 2026-06-04. The four listed phase-name leakages were renamed;
+the acceptance grep returns no matches.
+
 **LOW priority. Only 4 sites — convention holds overall.**
 
 ### D.1 — Production FFI export (CRITICAL within the track)
@@ -216,6 +229,9 @@ Renames inside `packages/cli/nros-cli-core/{src,tests}/`. Each entry: `current (
 
 ## Track E — Misc hygiene
 
+**Status**: DONE 2026-06-04. The three listed board crates now carry local
+`.gitignore` files for `/target/`.
+
 **LOW priority. Small drift.**
 
 ### E.1 — Board crates missing `.gitignore`
@@ -240,11 +256,16 @@ Renames inside `packages/cli/nros-cli-core/{src,tests}/`. Each entry: `current (
 
 ## Acceptance
 
-- [ ] **Track A complete**: 6 build-script files refactored per A.1–A.6. `cargo check -p zpico-sys -p nros-c -p nros-cpp` clean; build orchestration tests green.
+- [x] **Track A complete**: 6 build-script files refactored per A.1–A.6. `cargo check -p zpico-sys -p nros-c -p nros-cpp` clean; build orchestration tests green.
 - [x] **Track B complete**: 29 listed test fns plus 4 closure-scan test fns renamed; focused verification passed.
-- [ ] **Track C complete**: 3 `format!()` walls extracted to `packages/core/nros-c/templates/*.template`. `build.rs` < 500 LOC.
-- [ ] **Track D complete**: 4 phase-name leakages renamed. `grep -nE 'fn [a-z_]*phase\d|mod phase_?\d' packages/` returns 0 production hits.
-- [ ] **Track E complete**: 3 board `.gitignore`s added.
+- [x] **Track C complete**: 3 `format!()` walls extracted to `packages/core/nros-c/templates/*.template`. `build.rs` < 500 LOC.
+- [x] **Track D complete**: 4 phase-name leakages renamed. `grep -nE 'fn [a-z_]*phase\d|mod phase_?\d' packages/` returns 0 production hits.
+- [x] **Track E complete**: 3 board `.gitignore`s added.
+
+Closure verification on 2026-06-04:
+
+- `cargo check -p zpico-sys -p nros-c -p nros-cpp`
+- `source ./activate.sh && XDG_RUNTIME_DIR=/tmp just build`
 
 ## Notes / cross-refs
 
