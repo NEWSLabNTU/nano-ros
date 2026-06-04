@@ -1928,7 +1928,7 @@ mod tests {
     // both features so the macro invocation only attempts to expand
     // when every referenced symbol is present.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    mod phase_216_a5_macro_emit {
+    mod dispatch_probe_macro_test {
         // `extern crate self as nros;` at the crate root (in `lib.rs`,
         // `cfg(test)`-gated) lets the `::nros::*` paths the macro emits
         // resolve in-crate.
@@ -1937,7 +1937,7 @@ mod tests {
         pub struct DispatchProbe;
 
         impl Node for DispatchProbe {
-            const NAME: &'static str = "dispatch_probe_216_a5";
+            const NAME: &'static str = "dispatch_probe";
             // Default `DISPATCH = Inline` ⇒ discriminant 0.
             fn register(_: &mut NodeContext<'_>) -> NodeResult<()> {
                 Ok(())
@@ -1977,14 +1977,14 @@ mod tests {
         assert_eq!(strategy, 0);
     }
 
-    // Phase 216.A.5 follow-up — the `nros::node!()` macro also emits
+    // The `nros::node!()` macro also emits
     // `__nros_node_<pkg>_on_callback`, the extern "C" trampoline the
-    // B.3 RTIC / C.3 Embassy dispatch tasks call after dequeuing a
-    // `SignaledCallback<'static>` (see `nros-platform::SignaledCallback`,
-    // Phase 216.A.2). The expansion lives in the same
-    // `phase_216_a5_macro_emit` sub-module as the dispatch-strategy
-    // probe, so a single `nros_macros::node!(DispatchProbe);`
-    // invocation covers both symbols. Symbol name resolves to
+    // RTIC / Embassy dispatch tasks call after dequeuing a
+    // `SignaledCallback<'static>` (see `nros-platform::SignaledCallback`).
+    // The expansion lives in the same `dispatch_probe_macro_test`
+    // sub-module as the dispatch-strategy probe, so a single
+    // `nros_macros::node!(DispatchProbe);` invocation covers both
+    // symbols. Symbol name resolves to
     // `__nros_node_nros_on_callback` (CARGO_PKG_NAME = "nros").
     //
     // The test only confirms the symbol is linkable — actually

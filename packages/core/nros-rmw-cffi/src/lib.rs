@@ -91,8 +91,8 @@ pub const NROS_RMW_RET_BUFFER_TOO_SMALL: NrosRmwRet = -12;
 /// Incoming message exceeded the backend's static capacity.
 pub const NROS_RMW_RET_MESSAGE_TOO_LARGE: NrosRmwRet = -13;
 
-// Phase 115.G.4 — anchor every C-stub-transport symbol so they
-// survive `--gc-sections` when integration tests link against
+// Anchor every C-stub-transport symbol so they survive
+// `--gc-sections` when integration tests link against
 // `libnros_rmw_cffi`. Only compiled when the c-stub-test feature
 // is on; otherwise no C anchor + no toolchain dep.
 #[cfg(feature = "c-stub-test")]
@@ -106,7 +106,7 @@ unsafe extern "C" {
 }
 #[cfg(feature = "c-stub-test")]
 #[doc(hidden)]
-pub fn _phase_115_g4_anchor() -> [*const core::ffi::c_void; 6] {
+pub fn _c_stub_transport_vtable_anchor() -> [*const core::ffi::c_void; 6] {
     [
         nros_c_stub_make_ops as *const _,
         nros_c_stub_reset_counters as *const _,

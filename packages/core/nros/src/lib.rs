@@ -662,12 +662,13 @@ mod tests {
         let _ = QosSettings::BEST_EFFORT;
     }
 
-    /// Phase 212.N.12 — verify the Node* canonical names resolve after
-    /// the hard rename. The Component* aliases were dropped in the same
-    /// phase; their absence is enforced by the workspace audit (no live
-    /// `Component*` ident remains in core / examples / tests).
+    /// Verify the Node* canonical trait + context + result types
+    /// resolve after the Component→Node hard rename. The Component*
+    /// aliases were dropped in the same phase; their absence is
+    /// enforced by the workspace audit (no live `Component*` ident
+    /// remains in core / examples / tests).
     #[test]
-    fn phase_212_n_12_node_names_resolve() {
+    fn node_context_types_resolve() {
         // Canonical "Node*" trait + context names (post-rename).
         fn _take_node_ctx<N: crate::Node>(_: &mut crate::NodeContext<'_, dyn crate::NodeRuntime>) {}
         // Result type resolves.

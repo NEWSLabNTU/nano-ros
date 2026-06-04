@@ -65,7 +65,7 @@ unsafe extern "C" {
 // `force_link()` first; without it the C symbols fail to resolve.
 #[inline(never)]
 fn force_link() {
-    let _ = nros_rmw_cffi::_phase_115_g4_anchor();
+    let _ = nros_rmw_cffi::_c_stub_transport_vtable_anchor();
 }
 
 /// Static-assert the layout the C side and the Rust side agreed on
