@@ -11,6 +11,31 @@ for v1; tag-based registration API for Deferred Components). Spec
 refreshed 2026-06-04 to match post-212.N.12 + post-214.K.1 trait
 naming (see "Trait surface after 212.N.12 + 214.K.1" below).
 
+**Status update 2026-06-04.** Substrate (216.A.1–A.5) + RTIC track
+(216.B.1–B.5, all six examples migrated) + Embassy track
+(216.C.1–C.5) + book chapters (216.D.2) all landed on
+`feature/phase-216-frameworks`. Notable carve-outs:
+
+* **B.3 / C.3 task bodies are placeholders.** The proc-macro emits
+  the `__nros_spin{,_task}` + `__nros_dispatch{,_task}` task shells
+  and the init/spawn wiring, but the dispatch-loop bodies still need
+  the per-Node trampoline-registration story (linkme section walk +
+  `__nros_node_<pkg>_on_callback` routing). Spin loop body is a stub
+  awaiting the wiring.
+* **B.5 example migrations** flip example shape to `nros::main!()` +
+  carved `*_pkg/` Node packages but inherit the placeholder dispatch
+  — they compile + boot but Deferred examples won't actually fire
+  `on_callback` from the dispatch task until the routing body lands.
+* **216.A.6 (closure-in-Deferred lint) deferred** — speculative; no
+  concrete misuse pattern surfaced yet. Revisit when the first user
+  hits the trap.
+* **216.D.1 (`nros check` matrix lint) deferred** — lives in the
+  standalone `nros-cli` repo (Phase 195.D retired in-tree codegen);
+  landing it requires a coordinated bump there. Substrate ships the
+  `__nros_node_<pkg>_dispatch_strategy` ABI so the lint has a hook to
+  read from when it lands.
+* **216.E.1 / E.2 / E.3** remain explicitly deferred per spec.
+
 **Priority.** P1 — bare-metal framework support is in tree (RTIC + Embassy
 + stm32f4 examples) but uses Pattern A escape-hatch (`Executor::open` +
 hand-written `spin_once` loops) instead of the Phase 212.N.9 `nros::main!()`
@@ -212,7 +237,7 @@ forbids Deferred Nodes from using closure-based registration.
 
 ### 216.A — Substrate (foundation; backward-compat-preserving)
 
-- [ ] **216.A.1** — `DispatchStrategy` enum in
+- [x] **216.A.1** — `DispatchStrategy` enum in
       `packages/core/nros-platform/src/runtime.rs`:
       ```rust
       #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -226,8 +251,9 @@ forbids Deferred Nodes from using closure-based registration.
       `nros::DispatchStrategy`.
       **Files**: `packages/core/nros-platform/src/runtime.rs`,
       `packages/core/nros/src/lib.rs` (re-export).
+      **Landed:** `09220cef7`
 
-- [ ] **216.A.2** — `NodeDispatchRuntime` trait extensions (post-214.K.1
+- [x] **216.A.2** — `NodeDispatchRuntime` trait extensions (post-214.K.1
       name; lives at `packages/core/nros-platform/src/board/runtime.rs`,
       NOT `src/runtime.rs`):
       ```rust
@@ -246,8 +272,10 @@ forbids Deferred Nodes from using closure-based registration.
       (`ExecutorNodeRuntime` in `nros`, `NullNodeRuntime` in
       `nros-platform`); `Inline` runtime keeps working unchanged.
       **Files**: `packages/core/nros-platform/src/board/runtime.rs`.
+      **Landed:** `8994163df` (adds `signal_callback` +
+      `dispatch_strategy` + `SignaledCallback` newtype).
 
-- [ ] **216.A.3** — `Node` trait extension (declarative side):
+- [x] **216.A.3** — `Node` trait extension (declarative side):
       ```rust
       pub trait Node {
           const NAME: &'static str;
@@ -268,8 +296,9 @@ forbids Deferred Nodes from using closure-based registration.
       runtime calls `on_callback` from its dispatch task instead of the
       spin task. Defaulted associated `const` is stable on edition 2024.
       **Files**: `packages/core/nros/src/node.rs` (the `Node` trait).
+      **Landed:** `429583987`
 
-- [ ] **216.A.4** — Tag-based callback API. New `_static` registration
+- [x] **216.A.4** — Tag-based callback API. New `_static` registration
       variants:
       ```rust
       impl<'a> NodeContext<'a> {
@@ -296,8 +325,12 @@ forbids Deferred Nodes from using closure-based registration.
       stub.
       **Files**: `packages/core/nros-node/src/node_context.rs`,
       `packages/core/nros/src/callback.rs` (Tag types).
+      **Landed:** `6bb7975c6` (SubscriptionTag / ServiceTag /
+      ActionTag types) + `1fbf0f5d9` (followup:
+      `DeclaredNode::create_{subscription,service,action}_static`
+      ctors).
 
-- [ ] **216.A.5** — `nros::node!()` macro extensions:
+- [x] **216.A.5** — `nros::node!()` macro extensions:
       ```rust
       // EXPANDS TO (additions to current emit):
       #[unsafe(no_mangle)]
@@ -319,6 +352,7 @@ forbids Deferred Nodes from using closure-based registration.
       per M-F.13 contract.
       **Files**: `packages/core/nros-macros/src/lib.rs` (the
       `nros::node!()` macro body).
+      **Landed:** `33d46aca7`
 
 - [ ] **216.A.6** — Lint: macro rejects Deferred Components using closure
       registration. Detection during macro expansion: if `<T>::DISPATCH ==
@@ -326,6 +360,10 @@ forbids Deferred Nodes from using closure-based registration.
       (closure-arg variant), compile error. Similar for service/action.
       Spans + diagnostics point at the offending registration.
       **Files**: `packages/core/nros-macros/src/lib.rs` (lint emission).
+      **Deferred:** speculative — no concrete misuse pattern has
+      surfaced. Substrate ABI is in place to add this lint later
+      without breaking changes; revisit if a real user trips on the
+      missing rejection.
 
 - **Tests** (file: `packages/testing/nros-tests/tests/phase216_a_dispatch_strategy.rs`):
   - [ ] `dispatch_strategy_default_is_inline` — `Node` trait default
@@ -341,7 +379,7 @@ forbids Deferred Nodes from using closure-based registration.
 
 ### 216.B — RTIC integration
 
-- [ ] **216.B.1** — `RticBoardEntry` trait sibling to `BoardEntry`
+- [x] **216.B.1** — `RticBoardEntry` trait sibling to `BoardEntry`
       (framework-owned-spin shape):
       ```rust
       pub trait RticBoardEntry: Board {
@@ -362,8 +400,9 @@ forbids Deferred Nodes from using closure-based registration.
       Distinct from `BoardEntry` (which keeps the board-owns-spin
       contract for POSIX + RTOS boards).
       **Files**: `packages/core/nros-platform/src/board.rs`.
+      **Landed:** `2a4df2c93`
 
-- [ ] **216.B.2** — `nros-board-rtic-stm32f4` crate:
+- [~] **216.B.2** — `nros-board-rtic-stm32f4` crate:
       `packages/boards/nros-board-rtic-stm32f4/`. Provides:
       * `Pac = stm32f4xx_hal::pac` (chip-specific PAC),
       * `RticStm32F4: Board + BoardInit + RticBoardEntry`,
@@ -377,8 +416,13 @@ forbids Deferred Nodes from using closure-based registration.
       **Files**: `packages/boards/nros-board-rtic-stm32f4/`,
       `packages/boards/nros-board-rtic-common/` (shared queue +
       dispatch macros).
+      **Landed (skeleton):** `ab5fd5e9d` (crate skeleton +
+      `RticBoardEntry` impl) + `b5b371d09` (followup: `RticRuntime`
+      SPSC + `signal_callback` impl).
+      **Remaining:** `init_hardware` body is `todo!()` — needs the
+      stm32f4xx_hal clock/USART/SPI bringup wiring.
 
-- [ ] **216.B.3** — `nros::main!()` proc-macro RTIC routing branch:
+- [~] **216.B.3** — `nros::main!()` proc-macro RTIC routing branch:
       ```rust
       // For deploy = "rtic-stm32f4":
       #[rtic::app(device = ::nros_board_rtic_stm32f4::pac,
@@ -423,14 +467,22 @@ forbids Deferred Nodes from using closure-based registration.
       enumerates registered Nodes from `run_plan`'s symbol table to
       emit per-Node `#[local]` entries + dispatch routing.
       **Files**: `packages/core/nros-macros/src/main_macro.rs`.
+      **Landed (skeleton):** `d8ce91226` (RTIC routing branch in
+      `nros::main!()`) + `b8e5f76f8` (followup: spawn `__nros_spin`
+      + `__nros_dispatch` tasks).
+      **Remaining:** task bodies are placeholders. Spin task is a
+      stub; dispatch task needs the per-Node trampoline-registration
+      story (linkme section walk over the
+      `__nros_node_<pkg>_on_callback` ABI emitted by 216.A.5).
 
-- [ ] **216.B.4** — `nros::main!(custom_tasks = [my_adc, my_ui])`
+- [x] **216.B.4** — `nros::main!(custom_tasks = [my_adc, my_ui])`
       syntax. Proc-macro folds extra `#[rtic_task]`-annotated fns into
       the generated `mod __nros_app` body. Token-tree extraction;
       preserve user fn signatures verbatim.
       **Files**: `packages/core/nros-macros/src/main_macro.rs`.
+      **Landed:** `a2046487d`
 
-- [ ] **216.B.5** — Migrate the six existing stm32f4 RTIC examples to
+- [~] **216.B.5** — Migrate the six existing stm32f4 RTIC examples to
       `nros::main!()` shape. Current pattern is Pattern A escape-hatch
       (`Executor::open` + hand-written `net_poll` task w/ `spin_once(0)`
       — verified at `examples/stm32f4/rust/talker-rtic/src/main.rs:71,93`).
@@ -460,6 +512,17 @@ forbids Deferred Nodes from using closure-based registration.
       Cargo.toml}` + 6 new sibling Node pkgs `examples/stm32f4/rust/
       {talker,listener,service_server,service_client,action_server,
       action_client}_pkg/`.
+      **Landed (skeleton):** all six examples migrated to
+      `nros::main!()` shape with carved `*_pkg/` Node packages —
+      `a7620ab43` (talker-rtic), `0e42ebaf0` (listener-rtic),
+      `9bd703dfe` (service-server-rtic), `5c9dc0dba`
+      (service-client-rtic), `4c97f6efe` (action-server-rtic),
+      `76a4791c4` (action-client-rtic).
+      **Remaining:** examples compile + boot but inherit the
+      placeholder dispatch from 216.B.3 — Deferred variants
+      (listener, service-server, action-server) won't actually fire
+      `on_callback` from the dispatch task until the routing body
+      lands.
 
 - [ ] **216.B.6** — Coverage gate: at least one Node pkg per dispatch
       strategy variant (Inline + Deferred) shipping under
@@ -481,7 +544,7 @@ forbids Deferred Nodes from using closure-based registration.
 
 ### 216.C — Embassy integration
 
-- [ ] **216.C.1** — `EmbassyBoardEntry` trait sibling to `RticBoardEntry`:
+- [x] **216.C.1** — `EmbassyBoardEntry` trait sibling to `RticBoardEntry`:
       ```rust
       pub trait EmbassyBoardEntry: Board {
           type Spawner: 'static;
@@ -492,8 +555,9 @@ forbids Deferred Nodes from using closure-based registration.
       }
       ```
       **Files**: `packages/core/nros-platform/src/board.rs`.
+      **Landed:** `9de4b227e`
 
-- [ ] **216.C.2** — `nros-board-embassy-stm32f4` crate:
+- [~] **216.C.2** — `nros-board-embassy-stm32f4` crate:
       `packages/boards/nros-board-embassy-stm32f4/`. `EmbassyRuntime`
       uses `embassy_sync::channel::Channel<NoopRawMutex, (CallbackId,
       CallbackCtx), CHANNEL_CAPACITY>` instead of SPSC queue. Channel
@@ -502,8 +566,14 @@ forbids Deferred Nodes from using closure-based registration.
       `[package.metadata.nros.board] framework = "embassy"`.
       **Files**: `packages/boards/nros-board-embassy-stm32f4/`,
       `packages/boards/nros-board-embassy-common/`.
+      **Landed (skeleton):** `fc4213c4e` (crate skeleton +
+      `EmbassyBoardEntry` impl) + `d7cbd8148` (followup:
+      `EmbassyRuntime` channel + `signal_callback` impl).
+      **Remaining:** `init_hardware` clock + peripheral bringup body
+      is still a placeholder pending the real stm32f4 Embassy HAL
+      wiring.
 
-- [ ] **216.C.3** — `nros::main!()` proc-macro Embassy routing branch:
+- [~] **216.C.3** — `nros::main!()` proc-macro Embassy routing branch:
       ```rust
       // For deploy = "embassy-stm32f4":
       use ::nros_board_embassy_stm32f4::*;
@@ -524,8 +594,13 @@ forbids Deferred Nodes from using closure-based registration.
       async fn __nros_dispatch_task(runtime: EmbassyRuntime) { /* loop */ }
       ```
       **Files**: `packages/core/nros-macros/src/main_macro.rs`.
+      **Landed (skeleton):** `6adb2d202` (Embassy routing branch in
+      `nros::main!()`) + `1671f5095` (followup: spawn
+      `__nros_spin_task` + `__nros_dispatch_task`).
+      **Remaining:** task bodies are placeholders — same
+      trampoline-registration story blocker as 216.B.3.
 
-- [ ] **216.C.4** — Migrate `examples/stm32f4/rust/talker-embassy/` to
+- [x] **216.C.4** — Migrate `examples/stm32f4/rust/talker-embassy/` to
       `nros::main!()` shape (sibling to 216.B.5; the example already
       exists in tree and currently runs Pattern A escape-hatch — verified
       at `examples/stm32f4/rust/talker-embassy/src/main.rs:120` w/
@@ -534,8 +609,9 @@ forbids Deferred Nodes from using closure-based registration.
       **Files**: `examples/stm32f4/rust/talker-embassy/{src/main.rs,
       Cargo.toml}` + carved Node pkg `examples/stm32f4/rust/
       talker_pkg/` (shared with B.5 — the Node pkg is board-agnostic).
+      **Landed:** `6794279ba`
 
-- [ ] **216.C.5** — Add `examples/stm32f4/rust/listener-embassy/` —
+- [x] **216.C.5** — Add `examples/stm32f4/rust/listener-embassy/` —
       callback-driven Deferred Node (sibling to 216.B.5's listener-rtic
       migration; no Embassy listener example exists yet, only the RTIC
       variant). Demonstrates the spawn-from-sync escape:
@@ -554,6 +630,8 @@ forbids Deferred Nodes from using closure-based registration.
       **Files**: `examples/stm32f4/rust/listener-embassy/` (new),
       `examples/stm32f4/rust/listener_pkg/` (shared with the RTIC
       listener — the Node pkg stays board-agnostic).
+      **Landed:** `a3de8b4f8` (also ships the Deferred-dispatch
+      `listener_pkg/` carve).
 
 - **Tests:**
   - [ ] `phase216_c_embassy_main_macro_expansion` — UI test.
@@ -587,8 +665,14 @@ forbids Deferred Nodes from using closure-based registration.
       to your `impl Node for Talker`").
       **Files**: `nros-cli/packages/nros-cli-core/src/cmd/check.rs` (in
       the standalone nros-cli repo).
+      **Deferred:** lives outside this superproject — the in-tree
+      codegen submodule was retired (Phase 195.D) and the `nros` CLI
+      now ships prebuilt from `github.com/NEWSLabNTU/nros-cli`.
+      Substrate ABI (`__nros_node_<pkg>_dispatch_strategy` from
+      216.A.5) is in place so the lint has a hook to read from when
+      it lands in nros-cli.
 
-- [ ] **216.D.2** — Book chapters:
+- [x] **216.D.2** — Book chapters:
       * `book/src/user-guide/rtic-integration.md` — RTIC tutorial,
         walking from `nros::main!()` to custom-task escape, with
         the Node pkg + Entry pkg shape (3-pkg-role taxonomy per
@@ -600,6 +684,7 @@ forbids Deferred Nodes from using closure-based registration.
         callback API.
       **Files**: `book/src/{user-guide,internals}/*.md` (3 new pages) +
       `book/src/SUMMARY.md`.
+      **Landed:** `3b5435e1e`
 
 ### 216.E — Future work (deferred, design slots only)
 
@@ -637,27 +722,40 @@ forbids Deferred Nodes from using closure-based registration.
 
 ## Acceptance
 
-- [ ] **Substrate**: `nros::DispatchStrategy` enum exists + `Node`
+- [x] **Substrate**: `nros::DispatchStrategy` enum exists + `Node`
       trait carries `DISPATCH` const with `Inline` default + every
       existing Node pkg compiles + tests stay green (substrate is
-      additive, not breaking).
-- [ ] **RTIC**: all six existing `examples/stm32f4/rust/*-rtic/` mains
+      additive, not breaking). Met by 216.A.1–A.5.
+- [~] **RTIC**: all six existing `examples/stm32f4/rust/*-rtic/` mains
       collapse to `nros::main!();`. talker-rtic + listener-rtic build
       + run end-to-end on real or QEMU hardware; listener exercises
       Deferred dispatch with a real subscription; callback fires from
       the `__nros_dispatch` task (not spin task).
-- [ ] **Embassy**: `talker-embassy` migrated + new `listener-embassy`
+      **Met (shape):** all six mains migrated (216.B.5).
+      **Gated:** real-or-QEMU end-to-end run — depends on the
+      placeholder dispatch-task bodies (216.B.3 Remaining) being
+      replaced with the per-Node trampoline routing, plus stm32f4
+      bringup (216.B.2 Remaining).
+- [~] **Embassy**: `talker-embassy` migrated + new `listener-embassy`
       lands w/ spawn-from-sync escape.
+      **Met (shape):** 216.C.4 + 216.C.5.
+      **Gated:** same trampoline-routing blocker as RTIC.
 - [ ] **Lint**: `nros check` rejects a Node pkg with `DISPATCH = Inline`
       deployed to a `framework = "rtic"` board with a clear error +
       suggested fix.
-- [ ] **Books**: three new chapters (RTIC, Embassy, dispatch strategy).
+      **Deferred:** lives in standalone `nros-cli` repo (216.D.1).
+- [x] **Books**: three new chapters (RTIC, Embassy, dispatch strategy).
+      Met by 216.D.2 (`3b5435e1e`).
 - [ ] **Test infra**: `phase216_a_dispatch_strategy.rs` +
       `phase216_b_rtic_*.rs` (×2) + `phase216_c_embassy_*.rs` (×3) all
       pass on a CI lane with QEMU + thumbv7m + Embassy/RTIC toolchains.
-- [ ] **Backward compat**: every Phase 212 Node pkg keeps working
+      Test files not yet authored; gated on the dispatch-task wiring
+      landing.
+- [x] **Backward compat**: every Phase 212 Node pkg keeps working
       without code changes (Inline default + closure API stay
-      operational).
+      operational). Met by the defaulted `DISPATCH = Inline` const
+      (216.A.3) + the additive `NodeDispatchRuntime` extensions
+      (216.A.2 defaulted methods).
 
 ## Notes / cross-refs
 
