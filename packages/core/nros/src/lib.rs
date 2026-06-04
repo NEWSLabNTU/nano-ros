@@ -145,6 +145,7 @@ extern crate alloc;
 #[used]
 pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_LINK_CFFI;
 
+pub mod dispatch_tag;
 pub mod guide;
 pub mod node;
 pub mod node_metadata;
@@ -225,6 +226,12 @@ pub use node_metadata::{
     MetadataRecorder, MetadataString, NodeId, NodeMetadata, NodeMetadataError, ParameterDefault,
     SourceLocationMetadata, SourceNameKind,
 };
+// Phase 216.A.4 — opaque tag types Node authors hold on `Self::State`
+// and match against the `&CallbackId<'_>` delivered to
+// `ExecutableNode::on_callback`. The companion
+// `NodeContext::create_*_static` ctors land in a follow-up after
+// 216.A.5 reshapes `NodeRuntime`/`ExecutableNode` plumbing.
+pub use dispatch_tag::{ActionTag, ServiceTag, SubscriptionTag};
 #[cfg(all(feature = "rmw-cffi", feature = "std"))]
 pub use node_runtime::nros_run_components;
 #[cfg(feature = "rmw-cffi")]
@@ -574,12 +581,13 @@ pub mod prelude {
     #[cfg(feature = "std")]
     pub use crate::SourceMetadataExport;
     pub use crate::{
-        CallbackEffectKind, CallbackEffects, CallbackId, DeclaredNode, DeclaredNodeRuntime,
-        EntityId, EntityKind, MetadataRecorder, Node, NodeActionClient, NodeActionServer,
-        NodeContext, NodeDeclError, NodeId, NodeOptions, NodeParameter, NodePublisher, NodeResult,
-        NodeRuntime, NodeRuntimeAdapter, NodeServiceClient, NodeServiceServer, NodeSubscription,
-        NodeTimer, ParameterDefault, RuntimeNodeRecord, SourceLocationMetadata, SourceNameKind,
-        node, record_node_metadata, register_node,
+        ActionTag, CallbackEffectKind, CallbackEffects, CallbackId, DeclaredNode,
+        DeclaredNodeRuntime, EntityId, EntityKind, MetadataRecorder, Node, NodeActionClient,
+        NodeActionServer, NodeContext, NodeDeclError, NodeId, NodeOptions, NodeParameter,
+        NodePublisher, NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient,
+        NodeServiceServer, NodeSubscription, NodeTimer, ParameterDefault, RuntimeNodeRecord,
+        ServiceTag, SourceLocationMetadata, SourceNameKind, SubscriptionTag, node,
+        record_node_metadata, register_node,
     };
 
     // Re-export lifecycle types
