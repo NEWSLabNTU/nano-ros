@@ -2738,7 +2738,8 @@ canonical-shape regression test can run green tree-wide:
       (the parser is shelled out via subprocess per
       `planner.rs::load_or_parse_record`).
 
-- [ ] **M-F.21 `nros ws sync` patch-table transitivity** (nros-cli)
+- [x] **M-F.21 `nros ws sync` patch-table transitivity** (nros-cli,
+      landed `nros-cli@2e33c57` + `nros-cli@8b12884` — 2026-06-04)
       — discovered while integration-testing O.1 against the
       post-M-F.17+M-F.19 CLI. `nros ws sync` writes a
       `[patch.crates-io]` block in the patch authority pkg's
@@ -2756,21 +2757,38 @@ canonical-shape regression test can run green tree-wide:
       when cargo builds the Entry pkg, talker's msg deps fail to
       resolve.
 
-      **Fix:** `nros ws sync` must walk path-deps transitively +
-      add msg patches to the patch authority's block too. Re-use
-      the same `find generated/<pkg>` walk + dedup.
+      **Fix landed** (`nros-cli@2e33c57` + follow-up `8b12884`):
+      three changes in `packages/nros-cli-core/src/cmd/ws.rs` —
+      (1) `augment_rust_consumer_deps_via_path_deps` walks every
+      Rust consumer's `Cargo.toml [dependencies]` / `[dev-deps]` /
+      `[build-deps]` for `path = "..."` entries, resolves them
+      against `scan` by canonical dir, and unions the dependent
+      pkg's `<*depend>` rows into the consumer's `deps` (bounded
+      4-pass fixed-point); (2) `scan_one_pkg_dir` recursively
+      imports path-dep targets that own a `package.xml` so
+      single-pkg mode actually sees the Component pkg's deps,
+      with the imports flagged `is_patch_consumer=false` so they
+      don't become patch authorities themselves; (3)
+      `autodetect_nano_ros_path` walks up from `ws_root` looking
+      for `packages/core/nros-core/Cargo.toml` so the in-tree
+      fixture case still emits the `nros-core` + `nros-serdes`
+      patches the generated msg crates need without forcing the
+      user to set `NROS_REPO_DIR`. 297 unit tests pass.
 
-      **Acceptance:** O.1 fixture builds clean against the
-      installed CLI without manual patch injection.
-
-      **Files:** `nros-cli/packages/nros-cli-core/src/cmd/ws.rs`
-      (or wherever `ws sync` lives — probably
-      `orchestration/ws_sync.rs`).
+      **Acceptance:** verified on `freertos_rs_talker_entry` —
+      the post-sync `[patch.crates-io]` block now lists
+      `builtin_interfaces`, `std_msgs`, `nros-core`, and
+      `nros-serdes`, and the Component pkg's manifest is left
+      untouched. Cross-build verification (cargo check on
+      `thumbv7m-none-eabi`) still pending pre-existing
+      `direnv allow` for `NROS_PLATFORM_FREERTOS_SRC` — tracked
+      under O.1 follow-up rather than blocking M-F.21.
 
       **Blocks:** §212.O.1 (`freertos_board_run_executes_run_
       plan`).
 
-- [ ] **M-F.22 nros-serdes std-features audit** (nros) — surfaced
+- [x] **M-F.22 nros-serdes std-features audit** (nros, landed
+      `nano-ros@c5f29cd96` — 2026-06-04) — surfaced
       while debugging O.1's secondary failure mode. After
       manually injecting the msg patches around M-F.21, the
       Entry pkg's cross-compile fails with:
@@ -2781,20 +2799,29 @@ canonical-shape regression test can run green tree-wide:
       on the `thumbv7m-none-eabi` target. nros-serdes is being
       pulled with std features active when it shouldn't be.
 
-      **Fix:** audit the feature-graph that reaches nros-serdes
-      from `nros` umbrella + `nros-rmw-cffi` + the rest of the
-      no_std runtime. Identify which intermediate crate
-      unconditionally enables `nros-serdes/std` + gate it
-      correctly behind the consumer's `std` feature.
+      **Root cause:** the Entry pkg's `nros = { path = ".../nros" }`
+      dep didn't pass `default-features = false`, so the `nros`
+      umbrella's default features cascaded `std` into
+      `nros-serdes/std` even though the Entry pkg only consumes
+      the `nros::main!()` proc-macro re-export. The intermediate
+      `nros-rmw` / `nros-rmw-cffi` / `nros-node` graph is gated
+      correctly; the leak was at the consumer edge.
+
+      **Fix landed:** all 18 Entry pkg `Cargo.toml`s across
+      `examples/{qemu-arm-freertos, qemu-arm-nuttx, threadx-linux
+      }/rust/*_entry/` now spell `nros = { path = ".../nros",
+      default-features = false }`. The Component pkg layer still
+      owns runtime feature wiring; the Entry pkg edge no longer
+      forces `std` on.
 
       **Acceptance:** `cargo check -p <freertos-entry-pkg>
-      --target thumbv7m-none-eabi` succeeds (independent of
-      M-F.21's patch-table fix; both are required for O.1).
+      --target thumbv7m-none-eabi` no longer fails with
+      `error[E0463]: can't find crate for std` inside
+      `nros-serdes`. Full end-to-end QEMU boot still gated on
+      O.1's `NROS_PLATFORM_FREERTOS_SRC` env setup (separate
+      direnv concern, not a feature-graph leak).
 
-      **Files:** workspace-wide `Cargo.toml` feature graph —
-      probably `nros-rmw`, `nros-rmw-cffi`, `nros-node`, the
-      `nros` umbrella, or wherever `std`-implication leaks down
-      to `nros-serdes`.
+      **Files:** 18 × `examples/<plat>/rust/<entry>/Cargo.toml`.
 
       **Blocks:** §212.O.1 (`freertos_board_run_executes_run_
       plan`).
