@@ -594,7 +594,7 @@ top of everything.
 ## 8. C++ items surfaced 2026-06-04 (post-Phase-218 workflow audit)
 
 Audit of the three-role per-language support matrix (alongside the
-Phase 220 CLI shrink + Phase 221 C completion) surfaced four
+Phase 222 CLI shrink + Phase 223 C completion) surfaced four
 C++-specific items that fall under this phase's scope. None block
 the core 219.A–G plan; track as follow-ups on the same branch when
 that lands.
@@ -627,12 +627,12 @@ shape works but is **undocumented**: a user who wants C++ Node pkgs
 linked into a Rust Entry pkg has no chapter / example to follow.
 
 - [ ] **219.H.2** Book chapter (or `workspace-mixed-language.md`
-      section, see Phase 221.B.2) documenting the C++ Node pkg → Rust
-      Entry pkg link. Same path as C → C++/Rust (Phase 221.B); just
+      section, see Phase 223.B.2) documenting the C++ Node pkg → Rust
+      Entry pkg link. Same path as C → C++/Rust (Phase 223.B); just
       a different upstream lang.
 
 **Files:** `book/src/getting-started/workspace-mixed-language.md`
-(new — owned by Phase 221.B.2; coordinated cross-ref).
+(new — owned by Phase 223.B.2; coordinated cross-ref).
 
 ### 8.3 `nros_entry()` cmake fn — accept C++ Node pkgs from `<exec_depend>`
 

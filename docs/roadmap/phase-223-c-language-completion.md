@@ -1,4 +1,4 @@
-# Phase 221 — C language Node + Entry pkg completion
+# Phase 223 — C language Node + Entry pkg completion
 
 **Goal.** Bring the C language to parity with Rust (and the parallel
 Phase 219 C++ work) for the three-role workspace shape: Node pkg, Entry
@@ -72,9 +72,9 @@ to a C++ migration walkthrough, not a C one.
 
 ## 3. Work items
 
-### 221.A — C Node pkg adoption proof
+### 223.A — C Node pkg adoption proof
 
-- [ ] **221.A.1** Audit the existing `NROS_NODE_REGISTER(register_fn)`
+- [ ] **223.A.1** Audit the existing `NROS_NODE_REGISTER(register_fn)`
       surface in `packages/core/nros-c/include/nros/node_pkg.h` against
       the Phase 212.L.9 + 212.M.5.a.1 invariants:
         - per-pkg mangled symbol `__nros_component_<pkg>_register`
@@ -84,38 +84,38 @@ to a C++ migration walkthrough, not a C one.
         - present-marker symbol (`__NROS_NODE_PKG_<pkg>_EXPORT_PRESENT`).
       Match Rust + C++ exactly. Bump the macro if the C surface
       drifted during 214.J's rename.
-- [ ] **221.A.2** Update `nano_ros_node_register()` (cmake fn) to
+- [ ] **223.A.2** Update `nano_ros_node_register()` (cmake fn) to
       accept `LANGUAGE C` explicitly. Today the fn assumes C++ for
       the `target_sources` / `add_library` shape; the C case needs a
       `set_target_properties(... LINKER_LANGUAGE C)` if no C++ TU is
       linked.
-- [ ] **221.A.3** New example: `examples/native/c/talker_pkg/` — a
+- [ ] **223.A.3** New example: `examples/native/c/talker_pkg/` — a
       pure-C Node pkg that exports the register trampoline via
       `NROS_NODE_REGISTER`. Pairs with a sibling
       `examples/native/c/listener_pkg/`. Both build into static libs.
-- [ ] **221.A.4** Integration test: `phase221_c_node_pkg_links.rs` in
+- [ ] **223.A.4** Integration test: `phase223_c_node_pkg_links.rs` in
       `nros-tests/tests/` — builds the two C Node pkgs as static libs,
       asserts the mangled symbols are present in the nm output.
 
 **Files:** `packages/core/nros-c/include/nros/node_pkg.h`,
 `cmake/NanoRosNodeRegister.cmake`, `examples/native/c/{talker,listener}_pkg/`
-(new), `packages/testing/nros-tests/tests/phase221_c_node_pkg_links.rs`
+(new), `packages/testing/nros-tests/tests/phase223_c_node_pkg_links.rs`
 (new).
 
-### 221.B — Mixed-language Entry pkg example
+### 223.B — Mixed-language Entry pkg example
 
-- [ ] **221.B.1** New example: `examples/native/templates/c-and-cpp-
+- [ ] **223.B.1** New example: `examples/native/templates/c-and-cpp-
       mixed-workspace/` — Bringup pkg + 1 C Node pkg + 1 C++ Node pkg
       + 1 C++ Entry pkg (`NROS_MAIN(...)` from Phase 219) that links
       both. Shows the canonical mixed-language shape.
-- [ ] **221.B.2** Book chapter:
+- [ ] **223.B.2** Book chapter:
       `book/src/getting-started/workspace-mixed-language.md` —
       walks through the template above. Cross-links to
       `workspace-node-pkgs.md` and `workspace-entry-pkg.md`.
-- [ ] **221.B.3** Integration test: `phase221_c_in_cpp_entry.rs` —
+- [ ] **223.B.3** Integration test: `phase223_c_in_cpp_entry.rs` —
       builds the mixed-lang template, runs the binary, asserts both
       C and C++ nodes publish/subscribe (`/from_c` → `/to_cpp`).
-- [ ] **221.B.4** Update `book/src/getting-started/workspace-from-app-
+- [ ] **223.B.4** Update `book/src/getting-started/workspace-from-app-
       node.md` to mention the mixed-language pattern in the "When you
       outgrow one app" section — calling out that pure-C Entry pkgs
       are NOT supported (defer to Path A in a future phase) but C
@@ -123,30 +123,30 @@ to a C++ migration walkthrough, not a C one.
 
 **Files:** `examples/native/templates/c-and-cpp-mixed-workspace/`
 (new tree), `book/src/getting-started/workspace-mixed-language.md`
-(new), `packages/testing/nros-tests/tests/phase221_c_in_cpp_entry.rs`
+(new), `packages/testing/nros-tests/tests/phase223_c_in_cpp_entry.rs`
 (new), `book/src/getting-started/workspace-from-app-node.md`.
 
-### 221.C — `nros new` scaffolding for C
+### 223.C — `nros new` scaffolding for C
 
-- [ ] **221.C.1** `nros new --component --lang c talker_pkg` —
-      scaffolds a C Node pkg per the §221.A shape. Today the CLI
+- [ ] **223.C.1** `nros new --component --lang c talker_pkg` —
+      scaffolds a C Node pkg per the §223.A shape. Today the CLI
       rejects `--lang c` for `--component`; either lift the
-      restriction (per §221.A.2's cmake-fn update) or surface a
+      restriction (per §223.A.2's cmake-fn update) or surface a
       clear error pointing at the mixed-language pattern.
-- [ ] **221.C.2** `nros new --entry --lang c` — explicitly REJECTS
+- [ ] **223.C.2** `nros new --entry --lang c` — explicitly REJECTS
       with a message naming the mixed-language path. (Per Path B
       decision in §2.)
 
 **Files:** `packages/cli/nros-cli-core/src/cmd/new.rs` (or wherever
 the `new` verb dispatches).
 
-### 221.D — `nros check` lint for C-side antipatterns
+### 223.D — `nros check` lint for C-side antipatterns
 
-- [ ] **221.D.1** `nros check` rejects a C Node pkg whose
+- [ ] **223.D.1** `nros check` rejects a C Node pkg whose
       `Cargo.toml`-equivalent (`package.xml` + `CMakeLists.txt`)
       doesn't carry `nano_ros_node_register()`. Mirror the existing
       Rust-side lint (Phase 212.G).
-- [ ] **221.D.2** Lint: if any pkg in the workspace lists `<exec_depend>`
+- [ ] **223.D.2** Lint: if any pkg in the workspace lists `<exec_depend>`
       on a C Node pkg, the consuming Entry pkg must be C++ or Rust —
       `nros check` rejects pure-C Entry-pkg drafts with a pointer to
       the mixed-language doc.
@@ -159,10 +159,10 @@ check rules live).
 ## 4. Acceptance
 
 - [ ] `cargo nextest run -p nros-tests --test
-      phase221_c_node_pkg_links` passes — proves the C Node pkg
+      phase223_c_node_pkg_links` passes — proves the C Node pkg
       surface emits the right symbols.
 - [ ] `cargo nextest run -p nros-tests --test
-      phase221_c_in_cpp_entry` passes — proves the mixed-lang Entry
+      phase223_c_in_cpp_entry` passes — proves the mixed-lang Entry
       runs end-to-end.
 - [ ] The mixed-language template at
       `examples/native/templates/c-and-cpp-mixed-workspace/` is the
@@ -185,6 +185,6 @@ check rules live).
   lint**. The big-ticket items (per-pkg mangled symbols, generic
   codegen) already shipped via Phase 212.M.5 / L.9 / 219.
 - Once Phase 219 ships the C++ Entry pkg (`NROS_MAIN` +
-  `nano_ros_entry(LANGUAGE CXX LAUNCH …)`), the §221.B mixed-lang
+  `nano_ros_entry(LANGUAGE CXX LAUNCH …)`), the §223.B mixed-lang
   example becomes the natural anchor for the C → C++ → Rust language
   ladder the book documents.

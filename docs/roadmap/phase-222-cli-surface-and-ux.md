@@ -1,4 +1,4 @@
-# Phase 220 — CLI surface shrink + bootstrap UX + book reconcile
+# Phase 222 — CLI surface shrink + bootstrap UX + book reconcile
 
 **Goal.** Reduce the `nros` CLI surface to the verbs that do *real
 work* (provision + codegen + topology resolve + introspection), drop
@@ -124,80 +124,80 @@ requirement. Until then, drop the in-tree implementation and document
 
 ## 3. Work items
 
-### 220.A — Book prereq sweep
+### 222.A — Book prereq sweep
 
-- [ ] **220.A.1** Replace the `source ./activate.sh && just
+- [ ] **222.A.1** Replace the `source ./activate.sh && just
       setup-cli` prereq block across the five affected chapters with a
       three-path block (A = bootstrap, B = cargo one-liner, C =
       prebuilt fetch on tagged checkouts). Lead with Path A.
-- [ ] **220.A.2** Add a top-of-`installation.md` callout that
+- [ ] **222.A.2** Add a top-of-`installation.md` callout that
       `activate.sh` is the *after-install* step (every subsequent
       shell), not a prereq.
-- [ ] **220.A.3** `workspace-from-app-node.md` command-map row for
+- [ ] **222.A.3** `workspace-from-app-node.md` command-map row for
       `ros2 launch` — strike the `nros launch` cell or mark
-      `(deferred)` per 220.D; lead with `cargo run -p <entry_pkg>`.
+      `(deferred)` per 222.D; lead with `cargo run -p <entry_pkg>`.
 
 **Files.** `book/src/getting-started/{installation,first-node-rust,
 first-node-c,first-node-cpp,workspace-from-app-node,workspace-bringup,
 workspace-entry-pkg,workspace-node-pkgs}.md`.
 
-### 220.B — Deprecate `nros build` / `run` / `deploy` / `monitor`
+### 222.B — Deprecate `nros build` / `run` / `deploy` / `monitor`
 
-- [ ] **220.B.1** Mark each verb's `--help` line with `(deprecated —
+- [ ] **222.B.1** Mark each verb's `--help` line with `(deprecated —
       see <platform-tool>; will be removed in nros 0.5.0)`.
-- [ ] **220.B.2** Bump the verb impls to emit a one-line stderr
+- [ ] **222.B.2** Bump the verb impls to emit a one-line stderr
       warning on every invocation, then delegate to the underlying
       tool as today.
-- [ ] **220.B.3** `nros doctor` flags use of any deprecated verb in
+- [ ] **222.B.3** `nros doctor` flags use of any deprecated verb in
       `Cargo.toml` `[package.metadata.nros.deploy.*]` build / run /
       flash override fields, suggesting the platform tool.
 
 **Files.** `packages/cli/nros-cli/src/cmd/{build,run,deploy,monitor}.rs`
 (or wherever the verbs are dispatched), `packages/cli/nros-cli-core/`.
 
-### 220.C — Delete deprecated verbs in 0.5.0
+### 222.C — Delete deprecated verbs in 0.5.0
 
-- [ ] **220.C.1** Remove the four verb subcommands (`build`, `run`,
+- [ ] **222.C.1** Remove the four verb subcommands (`build`, `run`,
       `deploy`, `monitor`) from the CLI's `clap` derive tree.
-- [ ] **220.C.2** Drop the corresponding test fixtures.
-- [ ] **220.C.3** Doc sweep — every reference in book / phase docs /
+- [ ] **222.C.2** Drop the corresponding test fixtures.
+- [ ] **222.C.3** Doc sweep — every reference in book / phase docs /
       examples bumps to the platform tool. Match the Phase 218 doc
       sweep style: retain historical mentions in archived phase docs.
-- [ ] **220.C.4** Bundle bump to `0.5.0` via `just release-bump`.
+- [ ] **222.C.4** Bundle bump to `0.5.0` via `just release-bump`.
       Coincides with the deletion to make the SemVer break visible.
 
 **Files.** CLI clap tree, `packages/cli/nros-cli/tests/`, book, root
 `Cargo.toml` + `packages/cli/Cargo.toml`.
 
-### 220.D — `nros launch` decision
+### 222.D — `nros launch` decision
 
-- [ ] **220.D.1** Land the launch decision (delete vs. redefine —
-      see §2.3). Drives whether 220.C deletes a fifth verb.
+- [ ] **222.D.1** Land the launch decision (delete vs. redefine —
+      see §2.3). Drives whether 222.C deletes a fifth verb.
 
-### 220.E — Bootstrap script polish
+### 222.E — Bootstrap script polish
 
-- [ ] **220.E.1** `scripts/bootstrap.sh base` — confirm the cold-cache
+- [ ] **222.E.1** `scripts/bootstrap.sh base` — confirm the cold-cache
       path (`bash` only, no `cargo`, no `just`) installs rustup, just,
       builds the CLI, exports the right PATH onto the user's shell rc
       (with prompt + dry-run flag).
-- [ ] **220.E.2** `scripts/bootstrap.sh nros` — verify Path C tag-fetch
+- [ ] **222.E.2** `scripts/bootstrap.sh nros` — verify Path C tag-fetch
       path against an actual `nros-v*` release once Phase 218.G ships
       its first artifact.
-- [ ] **220.E.3** `scripts/bootstrap.sh doctor` — pre-Phase-220
+- [ ] **222.E.3** `scripts/bootstrap.sh doctor` — pre-Phase-220
       verb-deprecation, the lane that surfaces stale verb invocations
       in user `.bashrc` / `.zshrc` rc files (`alias nros-build=...`
       etc.).
 
 **Files.** `scripts/bootstrap.sh`.
 
-### 220.F — `activate.sh` UX polish
+### 222.F — `activate.sh` UX polish
 
-- [ ] **220.F.1** `activate.sh` first-run greeting — when sourced
+- [ ] **222.F.1** `activate.sh` first-run greeting — when sourced
       against a checkout that has NO `packages/cli/target/release/nros`
       yet, print one-line `[hint] CLI not built yet — run
       ./scripts/bootstrap.sh base or cargo build --release …` instead
       of silently leaving `nros` off PATH.
-- [ ] **220.F.2** Same for `activate.fish`.
+- [ ] **222.F.2** Same for `activate.fish`.
 
 **Files.** `activate.sh`, `activate.fish`.
 
@@ -209,13 +209,13 @@ workspace-entry-pkg,workspace-node-pkgs}.md`.
       no cargo, no Rust at all) reaches a working `nros new` in **one
       command** (`./scripts/bootstrap.sh base`), no chicken-egg, no
       "install just first" detour.
-- [ ] `nros --help` lists only verbs from §2.1 by Phase 220 close;
+- [ ] `nros --help` lists only verbs from §2.1 by Phase 222 close;
       the §2.2 verbs are gone.
 - [ ] `grep -rE '\b(nros build|nros run|nros deploy|nros monitor)\b'
       book/ examples/ docs/development/` returns zero matches (modulo
       historical phase doc references).
 - [ ] Bundle version bumped to `0.5.0` (per `just release-bump`) at
-      the 220.C close commit — the SemVer break is visible.
+      the 222.C close commit — the SemVer break is visible.
 
 ---
 
