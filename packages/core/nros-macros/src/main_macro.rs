@@ -569,16 +569,45 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         }
         Framework::Embassy => {
-            // Phase 216.C.3 sibling lands the Embassy emit body; this
-            // commit only wires the `Framework::Embassy` slot so the
-            // dispatch table is complete.
-            return Err(syn::Error::new(
-                Span::call_site(),
-                "nros::main!: `deploy = \"embassy-stm32f4\"` routing is not yet \
-                 implemented — Phase 216.C.3 lands the Embassy emit body. \
-                 Until then, pass `board = ...` explicitly to get the \
-                 OwnedSpin path, or wait for the 216.C.3 sibling.",
-            ));
+            // Phase 216.C.3 SKELETON — sibling of the Rtic emit above.
+            // Mirrors B.3's scope: emit `#[embassy_executor::main] async
+            // fn main(spawner)` that delegates to
+            // `EmbassyBoardEntry::init_hardware`. The full body
+            // (`__nros_spin_task` + `__nros_dispatch_task` spawns, per-
+            // Node register wiring, spawn-from-sync escape glue) lands
+            // in a 216.C.3 follow-up. Today's emit only needs to
+            // compile so the route through `framework_for(deploy)` is
+            // observable — runtime use surfaces the board crate's
+            // `todo!()` in `init_hardware` (intentional handoff).
+            //
+            // The `#![no_std]`/`#![no_main]` inner attrs are NOT
+            // emitted here — the Entry pkg's `main.rs` already
+            // declares those at file scope (mirrors the Rtic branch).
+            quote! {
+                use #board_path as __NrosBoard;
+
+                #[::embassy_executor::main]
+                async fn main(spawner: ::embassy_executor::Spawner) {
+                    // Phase 216.C.3 SKELETON — full bring-up + per-Node
+                    // register + `__nros_spin_task` / `__nros_dispatch_task`
+                    // spawn lands in a 216.C.3 follow-up. The board
+                    // crate's `init_hardware` body is `todo!()` today
+                    // (Phase 216.C.2), which surfaces at runtime if
+                    // someone flashes this — the macro emit just needs
+                    // to compile.
+                    let (_executor, _runtime) =
+                        <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::init_hardware(
+                            spawner,
+                        );
+                    // Park the cooperative scheduler. Real spin/dispatch
+                    // tasks land in the follow-up; for the skeleton we
+                    // just yield forever so the framework's runtime
+                    // stays alive.
+                    loop {
+                        ::embassy_time::Timer::after_secs(60).await;
+                    }
+                }
+            }
         }
     };
 
@@ -651,13 +680,20 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
         // pick the `#[rtic::app(...)]` emit shape instead of the
         // direct-exec `BoardEntry::run` shape.
         "rtic-stm32f4" => "::nros_board_rtic_stm32f4::RticStm32F4",
+        // Phase 216.C.3 — Embassy + STM32F4 framework-owned-spin board.
+        // Same dispatch story as `rtic-stm32f4`: the board ZST impls
+        // `EmbassyBoardEntry` (not `BoardEntry`); the macro routes
+        // through `framework_for(deploy)` to pick the
+        // `#[embassy_executor::main]` emit shape.
+        "embassy-stm32f4" => "::nros_board_embassy_stm32f4::EmbassyStm32F4",
         _ => return None,
     };
     syn::parse_str::<SynPath>(path_str).ok()
 }
 
 fn known_boards_csv() -> &'static str {
-    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, zephyr, rtic-stm32f4"
+    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, zephyr, \
+     rtic-stm32f4, embassy-stm32f4"
 }
 
 /// Phase 216.B.3 — boot-framework dispatch for `nros::main!()`.
@@ -680,9 +716,9 @@ enum Framework {
     /// `#[rtic::app(...)]` module + `#[init]` body that delegates to
     /// `RticBoardEntry::init_hardware`.
     Rtic,
-    /// Embassy framework owns the spin loop. Phase 216.C.3 lands the
-    /// emit body; this commit returns a `syn::Error` directing the
-    /// user to wait for that sibling.
+    /// Embassy framework owns the spin loop. The macro emits a
+    /// `#[embassy_executor::main] async fn main(spawner: Spawner)` body
+    /// that delegates to `EmbassyBoardEntry::init_hardware`.
     Embassy,
 }
 
