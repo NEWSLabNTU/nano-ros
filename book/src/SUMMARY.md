@@ -30,7 +30,7 @@
 # User Guide
 
 - [Application Workflow](./user-guide/workflow.md)
-- [Component + Entry Pkg Cookbook](./user-guide/component-and-entry-pkg.md)
+- [Node, Bringup & Entry Packages](./user-guide/component-and-entry-pkg.md)
 - [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
 - [Message Generation](./user-guide/message-generation.md)
 - [Configuration](./user-guide/configuration.md)
