@@ -1,4 +1,4 @@
-# From an App Node to a Workspace
+# Multi-Node Project Layout
 
 You built the single-file talker in
 [`examples/native/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/talker):
@@ -26,7 +26,45 @@ Three common triggers:
    production. The node logic is identical; only the boot and board
    differ.
 
-That's when you split your project into the three-role model.
+That's when you split your project into a multi-node workspace.
+
+## Canonical layout
+
+Start with the whole project before diving into the parts:
+
+```text
+my_robot_ws/
+├── Cargo.toml                  # Rust workspace root, or CMakeLists.txt for C/C++
+└── src/
+    ├── talker_pkg/             # Node pkg: reusable node logic, no main()
+    ├── listener_pkg/           # Node pkg: another reusable node
+    ├── robot_bringup/          # Bringup pkg: launch XML + system.toml
+    └── native_entry/           # Entry pkg: one runnable binary for one board
+```
+
+The roles are deliberately separated:
+
+| Role | Owns | Does not own |
+|---|---|---|
+| **Node pkg** | Publishers, subscriptions, timers, services, actions, callback bodies | Board choice, launch topology, `main()` |
+| **Bringup pkg** | Which nodes run, names, remaps, parameters, per-target topology | Compiled code |
+| **Entry pkg** | Board/runtime selection and the runnable binary | Node behavior |
+
+A typical product has many Node pkgs, one Bringup pkg per logical system,
+and one Entry pkg per board or deploy target. The same `talker_pkg` and
+`listener_pkg` can be linked into a native host Entry pkg for integration
+testing and a Cortex-M Entry pkg for hardware.
+
+## Reading order
+
+This group starts broad and then drills into each part:
+
+1. **Project layout** — this page: when to split and how the roles fit.
+2. **Node packages** — reusable node libraries with `nros::node!`.
+3. **Bringup packages** — launch XML, `system.toml`, remaps, parameters.
+4. **Entry packages** — the board-specific binary that boots the topology.
+5. **C / C++ multi-node workspaces** — the same structure through CMake.
+6. **Role reference** — metadata fields and macro forms in reference style.
 
 ## Prereqs
 
@@ -65,7 +103,7 @@ Then provision the native host:
 nros setup native --rmw zenoh
 ```
 
-## The three roles
+## The three roles in practice
 
 **Node pkg** — a `lib` crate that contains one node's logic. It
 declares `nros::node!(T)` and carries
@@ -127,14 +165,16 @@ requirement.
 
 ## Where to go next
 
-Walk through the three-role model step by step:
+Walk through the multi-node project model step by step:
 
-1. [Prepare node packages](./workspace-node-pkgs.md) — scaffold and
+1. [Node packages](./workspace-node-pkgs.md) — scaffold and
    implement Node pkgs with `nros::node!`.
-2. [Bringup: launch + system.toml](./workspace-bringup.md) — declare
+2. [Bringup packages](./workspace-bringup.md) — declare
    your topology in a Bringup pkg.
-3. [Entry package: boot on a board](./workspace-entry-pkg.md) — write
+3. [Entry packages](./workspace-entry-pkg.md) — write
    the Entry pkg that boots everything together.
+4. [C / C++ multi-node workspaces](./workspace-cpp.md) — use the same
+   project shape with CMake.
 
 For the full API reference covering all three roles, see
-[Node, Bringup & Entry Packages](../user-guide/component-and-entry-pkg.md).
+[Role reference](../user-guide/component-and-entry-pkg.md).

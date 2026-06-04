@@ -1,11 +1,11 @@
-# Bringup: launch + system.toml
+# Bringup packages
 
 A **Bringup pkg** is the declarative glue that ties your Node packages together
 into a runnable topology. It owns the launch file, the wiring between nodes, and
 the per-target deploy config — all without any compiled code of its own.
 
 > **Pre-requisite:** You've scaffolded your Node packages following the
-> [Prepare node packages](./workspace-node-pkgs.md) guide. This page adds the
+> [Node packages](./workspace-node-pkgs.md) guide. This page adds the
 > `demo_bringup` layer between them and the Entry package that boots everything.
 
 ---
@@ -281,6 +281,6 @@ Entry package page covers this in full.
 
 ## Where to go next
 
-- [Entry package: boot on a board](./workspace-entry-pkg.md) — the `nros::main!` macro and `robot_entry`
-- [Node, Bringup & Entry Packages](../user-guide/component-and-entry-pkg.md) — full reference for all three roles
-- [From an app node to a workspace](./workspace-from-app-node.md) — start here if you haven't read it yet
+- [Entry packages](./workspace-entry-pkg.md) — the `nros::main!` macro and `robot_entry`
+- [Role reference](../user-guide/component-and-entry-pkg.md) — full reference for all three roles
+- [Project layout](./workspace-from-app-node.md) — start here if you haven't read it yet

@@ -50,6 +50,8 @@ The same program in C and C++ is in the First Node guides:
 [Rust](./getting-started/first-node-rust.md) ·
 [C](./getting-started/first-node-c.md) ·
 [C++](./getting-started/first-node-cpp.md).
+When a project grows beyond one node, continue with
+[Multi-Node Project Layout](./getting-started/workspace-from-app-node.md).
 
 ## Key Features
 

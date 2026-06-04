@@ -41,9 +41,11 @@ first, then maybe move to an MCU.
    [Rust](../getting-started/first-node-rust.md) ·
    [C](../getting-started/first-node-c.md) ·
    [C++](../getting-started/first-node-cpp.md).
-3. **[Troubleshooting — First 10 Minutes](../getting-started/troubleshooting-first-10-min.md)**
+3. Building two or more nodes? Move next to
+   **[Multi-Node Project Layout](../getting-started/workspace-from-app-node.md)**.
+4. **[Troubleshooting — First 10 Minutes](../getting-started/troubleshooting-first-10-min.md)**
    if anything goes sideways.
-4. Cross-compile for an RTOS via the
+5. Cross-compile for an RTOS via the
    [Embedded Starters](../getting-started/freertos.md) section.
 
 ## 🔬 I'm evaluating capabilities

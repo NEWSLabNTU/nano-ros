@@ -422,7 +422,7 @@ Until that work lands, `nros check` (Phase 216.D.1) rejects
   the trichotomy and the per-Node-vs-per-callback rationale.
 - [Embassy Integration](./embassy-integration.md) — the async sibling
   of this chapter.
-- [Component + Entry Pkg Cookbook](./component-and-entry-pkg.md) —
+- [Role reference](./component-and-entry-pkg.md) —
   the 3-pkg-role taxonomy in full.
 - [Scheduling Models](../internals/scheduling-models.md#rtic-arm-cortex-m) —
   the RTIC scheduling model in real-time-systems terms.

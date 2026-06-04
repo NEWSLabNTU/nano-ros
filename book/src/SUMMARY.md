@@ -12,12 +12,16 @@
 - [First Node — C++](./getting-started/first-node-cpp.md)
 - [Porting a ROS 2 C++ node](./getting-started/porting-a-cpp-node.md)
 - [Your own message package](./getting-started/your-own-msg-package.md)
-- [From an app node to a workspace](./getting-started/workspace-from-app-node.md)
-- [Prepare node packages](./getting-started/workspace-node-pkgs.md)
-- [Bringup: launch + system.toml](./getting-started/workspace-bringup.md)
-- [Entry package: boot on a board](./getting-started/workspace-entry-pkg.md)
-- [C / C++ workspace track](./getting-started/workspace-cpp.md)
 - [Troubleshooting — First 10 Minutes](./getting-started/troubleshooting-first-10-min.md)
+
+# Multi-Node Projects
+
+- [Project layout](./getting-started/workspace-from-app-node.md)
+- [Node packages](./getting-started/workspace-node-pkgs.md)
+- [Bringup packages](./getting-started/workspace-bringup.md)
+- [Entry packages](./getting-started/workspace-entry-pkg.md)
+- [C / C++ multi-node workspaces](./getting-started/workspace-cpp.md)
+- [Role reference](./user-guide/component-and-entry-pkg.md)
 
 # Embedded Starters
 
@@ -35,7 +39,6 @@
 # User Guide
 
 - [Application Workflow](./user-guide/workflow.md)
-- [Node, Bringup & Entry Packages](./user-guide/component-and-entry-pkg.md)
 - [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
 - [Message Generation](./user-guide/message-generation.md)
 - [Configuration](./user-guide/configuration.md)

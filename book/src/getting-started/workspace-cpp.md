@@ -1,9 +1,9 @@
-# C / C++ workspace track
+# C / C++ multi-node workspaces
 
 The four previous chapters
-([from-app-node](./workspace-from-app-node.md),
-[node-pkgs](./workspace-node-pkgs.md), [bringup](./workspace-bringup.md),
-[entry-pkg](./workspace-entry-pkg.md)) describe the canonical three-role
+([project layout](./workspace-from-app-node.md),
+[node packages](./workspace-node-pkgs.md), [bringup packages](./workspace-bringup.md),
+[entry packages](./workspace-entry-pkg.md)) describe the canonical three-role
 node + bringup + entry shape against the Rust path
 (`nros::node!(…)` + `nros::main!(launch = …)`). This chapter shows the
 **C and C++ path** through the same shape, role-for-role.

@@ -1,4 +1,4 @@
-# Entry package: boot on a board
+# Entry packages
 
 An **Entry pkg** is the binary that boots a topology on a specific board.
 Where a Node pkg is a library (no `fn main`) and a Bringup pkg is purely
@@ -211,7 +211,7 @@ board crate.
 
 ## Where to go next
 
-- [Node, Bringup & Entry Packages](../user-guide/component-and-entry-pkg.md) — full reference for all three roles.
-- [Bringup: launch + system.toml](./workspace-bringup.md) — the `system.toml` + launch XML that an Entry pkg points at.
-- [Prepare node packages](./workspace-node-pkgs.md) — the Node pkgs your Entry pkg links.
-- [From an app node to a workspace](./workspace-from-app-node.md) — the full 3-role picture and when to use it.
+- [Role reference](../user-guide/component-and-entry-pkg.md) — full reference for all three roles.
+- [Bringup packages](./workspace-bringup.md) — the `system.toml` + launch XML that an Entry pkg points at.
+- [Node packages](./workspace-node-pkgs.md) — the Node pkgs your Entry pkg links.
+- [Project layout](./workspace-from-app-node.md) — the full 3-role picture and when to use it.

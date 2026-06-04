@@ -324,7 +324,7 @@ fully no-alloc.
   the trichotomy and the per-Node-vs-per-callback rationale.
 - [RTIC Integration](./rtic-integration.md) — the interrupt-driven
   sibling of this chapter.
-- [Component + Entry Pkg Cookbook](./component-and-entry-pkg.md) —
+- [Role reference](./component-and-entry-pkg.md) —
   the 3-pkg-role taxonomy in full.
 - [Scheduling Models](../internals/scheduling-models.md) — the Embassy
   cooperative model alongside RTIC, RTOS, and POSIX.

@@ -1,4 +1,4 @@
-# Node, Bringup & Entry Packages
+# Role Reference: Node, Bringup, and Entry Packages
 
 nano-ros multi-node workspaces split into **three kinds of package**:
 

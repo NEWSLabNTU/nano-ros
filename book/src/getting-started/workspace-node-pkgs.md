@@ -1,8 +1,8 @@
-# Prepare node packages
+# Node packages
 
-> **This page is part of the workspace track.**
-> Previous: [From an app node to a workspace](./workspace-from-app-node.md) —
-> Next: [Bringup: launch + system.toml](./workspace-bringup.md)
+> **This page is part of the Multi-Node Projects group.**
+> Previous: [Project layout](./workspace-from-app-node.md) —
+> Next: [Bringup packages](./workspace-bringup.md)
 
 A **Node pkg** is the unit of reusable behaviour in a multi-node workspace.
 It is a Rust library — a `[lib]` crate — that implements one node and
@@ -234,10 +234,10 @@ cargo build --target thumbv7em-none-eabihf
 
 ## Next steps
 
-- **[Bringup: launch + system.toml](./workspace-bringup.md)** — wire the Node
+- **[Bringup packages](./workspace-bringup.md)** — wire the Node
   pkgs together into a topology.
-- **[Entry package: boot on a board](./workspace-entry-pkg.md)** — build the
+- **[Entry packages](./workspace-entry-pkg.md)** — build the
   binary that boots the topology on real hardware or a host process.
-- **[Node, Bringup & Entry Packages](../user-guide/component-and-entry-pkg.md)** —
+- **[Role reference](../user-guide/component-and-entry-pkg.md)** —
   the full reference for all three roles, metadata fields, and the
   `nros::main!()` four forms.

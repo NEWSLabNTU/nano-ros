@@ -150,7 +150,7 @@ lives in nano-ros — vendor knowledge is the user's `build[]`/`package[]` lines
 > (`[deploy.<name>]`) — it is the SSOT for *where* to build/flash.
 > Multi-node *topology* (which nodes, their wiring, per-target overrides)
 > lives in a Bringup pkg's `system.toml` — see
-> [Bringup: launch + system.toml](../getting-started/workspace-bringup.md).
+> [Bringup packages](../getting-started/workspace-bringup.md).
 > The two files are **complementary, not either/or**.
 
 ### `nros launch [<bringup>] [--target <target>] [--file <file>] [--foreground|--detach] [--stop <pidfile>]`

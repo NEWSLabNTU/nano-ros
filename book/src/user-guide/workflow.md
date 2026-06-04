@@ -46,6 +46,10 @@ package shape in their "Project layout" sections:
 [Rust](../getting-started/first-node-rust.md),
 [C](../getting-started/first-node-c.md),
 [C++](../getting-started/first-node-cpp.md).
+For two or more nodes, use the
+[Multi-Node Projects](../getting-started/workspace-from-app-node.md)
+group: start from the full project layout, then drill into Node,
+Bringup, and Entry packages.
 
 ## 2. Write Node Code
 
