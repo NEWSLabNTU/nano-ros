@@ -6,11 +6,15 @@ codegen format and the runtime ABI by construction. Retire the
 ten-spot `NROS_VERSION=0.3.7` pin, retire `~/.nros/bin`, retire the
 `scripts/install-nros.sh` curl path.
 
-**Status:** Design approved 2026-06-04. **Implementation deferred** —
-ongoing work (Phase 214/215/216/217 sweeps, downstream ASI bumps)
-actively uses the standalone CLI through the existing
-`install-nros.sh` + `~/.nros/bin` shape; flipping that mid-stream would
-strand in-flight branches. Schedule after the active phases close.
+**Status:** **Complete 2026-06-04.** All work items A–J + H landed
+on main; ff-merge tip `e2a3c432e`; post-merge scrub at `19d1d29ba`.
+The standalone `github.com/NEWSLabNTU/nros-cli` repository was
+archived by the maintainer on the same day (read-only). Bundle
+versioning now JetPack-style at `0.4.0`; ABI guard strict-equality
+between CLI binary and consumer `nros-core`; no crate publishes to
+crates.io. The pre-218 `scripts/install-nros.sh` curl shim is
+deleted; `scripts/install-nros-prebuilt.sh` is the no-Rust install
+path for tagged checkouts.
 
 **Priority:** P2 (developer-experience consolidation; not blocking any
 runtime functionality).

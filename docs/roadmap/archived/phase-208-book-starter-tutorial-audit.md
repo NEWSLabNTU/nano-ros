@@ -4,7 +4,9 @@
   and `book/src/start-here/` by strict-follow execution from a clean worktree,
   then land the tree-level + doc-level fixes the audit surfaces. The first
   install + first node should "just work" for a new user on a fresh shell.
-- **Status:** active (audit done; tree-fix landings in progress)
+- **Status:** **Complete.** All 42 audit + fix items landed; F1–F11
+  followups closed in `phase-208-followups.md`. Archived 2026-06-04
+  alongside `phase-208-audit-findings.md` + `phase-208-followups.md`.
 - **Priority:** high — first-touch UX is the project's funnel; doc rot here
   costs every new contributor.
 - **Depends on:** Phase 195 (`nros setup` canonical), Phase 203 (clean-rebuild
