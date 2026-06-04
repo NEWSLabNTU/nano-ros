@@ -1585,6 +1585,27 @@ install-nros-cli:
     @echo "Installing nros CLI (prebuilt release)..."
     "{{justfile_directory()}}/scripts/install-nros.sh"
 
+# Phase 218.D.1 — build the in-tree `nros` CLI sub-workspace into
+# `packages/cli/target/release/nros`. Idempotent: a no-op when the binary
+# is newer than `packages/cli/Cargo.lock`. Required by every recipe that
+# shells out to `nros setup …` / `nros codegen …`; `just setup` runs
+# this first so downstream provisioning has the binary on hand.
+# Build the in-tree nros CLI (packages/cli/target/release/nros).
+[group("setup")]
+setup-cli:
+    #!/usr/bin/env bash
+    set -e
+    root="{{justfile_directory()}}"
+    bin="$root/packages/cli/target/release/nros"
+    lock="$root/packages/cli/Cargo.lock"
+    if [ -x "$bin" ] && [ "$bin" -nt "$lock" ]; then
+        # Quiet on no-op — `just setup` invokes us unconditionally.
+        exit 0
+    fi
+    echo "[setup-cli] building nros CLI (packages/cli)…"
+    cargo build --release --manifest-path "$root/packages/cli/Cargo.toml" --bin nros
+    echo "[setup-cli] built: $bin"
+
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
 [group("maintenance")]
@@ -1748,6 +1769,9 @@ setup target="" tier="":
                 chosen_tier="$target"
                 ;;
             workspace|verification|zenohd|qemu|freertos|nuttx|threadx_linux|threadx_riscv64|esp32|zephyr|xrce|rmw_zenoh|orin_spe|cyclonedds|platformio|esp_idf|px4)
+                # Focused platform setup may still shell `nros setup …`;
+                # build the CLI first so the binary is on disk.
+                just setup-cli
                 exec just "$target" setup
                 ;;
             *)
@@ -1755,6 +1779,10 @@ setup target="" tier="":
                 ;;
         esac
     fi
+    # Phase 218.D.2 — Tier 0: build the in-tree nros CLI before any
+    # provisioning step. Downstream module recipes shell `nros setup
+    # --source …`; that command requires the binary to exist.
+    just setup-cli
     just _orchestrate setup "$chosen_tier"
     echo ""
     echo "✅ nano-ros setup complete."
@@ -1780,6 +1808,17 @@ doctor tier="":
     fi
     if [[ -z "$chosen_tier" ]]; then
         chosen_tier="${NROS_SETUP_TIER:-base}"
+    fi
+    # Phase 218.D.4 — CLI binary + version on a single line. Read-only;
+    # uses the same resolver as every recipe that shells `nros …`, so a
+    # skew between resolver and what doctor reports is impossible.
+    # shellcheck disable=SC1091
+    if . "{{justfile_directory()}}/scripts/build/cargo.sh" 2>/dev/null && \
+       cli_bin="$(nros_cli_bin 2>/dev/null)"; then
+        cli_ver="$("$cli_bin" --version 2>/dev/null | head -1)"
+        echo "  [OK] nros CLI: ${cli_ver:-unknown} ($cli_bin)"
+    else
+        echo "  [MISSING] nros CLI — run: just setup-cli"
     fi
     just _orchestrate doctor "$chosen_tier"
 

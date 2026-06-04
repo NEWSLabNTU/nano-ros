@@ -110,6 +110,13 @@ nros_cargo_fetch_root() {
 }
 
 nros_cli_bin() {
+    # Phase 218.D.3 — resolution order:
+    #   1. $NROS_CLI                                — explicit override
+    #   2. nros on PATH                             — activate.sh / shell env
+    #   3. packages/cli/target/release/nros         — per-checkout binary (preferred)
+    #   4. ${NROS_HOME:-~/.nros}/bin/nros           — transitional, pre-218 install
+    # Per-checkout wins over ~/.nros/bin so each worktree carries its own
+    # CLI, no global PATH skew across trees.
     if [ -n "${NROS_CLI:-}" ]; then
         if [ -x "$NROS_CLI" ]; then
             printf '%s\n' "$NROS_CLI"
@@ -122,13 +129,30 @@ nros_cli_bin() {
         command -v nros
         return 0
     fi
+    # Per-checkout binary at packages/cli/target/release/nros. Use
+    # $NROS_REPO_DIR (exported by activate.sh, Phase 218.C) when set;
+    # otherwise walk up from this script to find the repo root so callers
+    # without activate.sh sourced still resolve correctly.
+    local repo_root="${NROS_REPO_DIR:-}"
+    if [ -z "$repo_root" ]; then
+        # This file lives at <repo>/scripts/build/cargo.sh.
+        local _self
+        _self="${BASH_SOURCE[0]:-$0}"
+        if [ -n "$_self" ]; then
+            repo_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || repo_root=""
+        fi
+    fi
+    if [ -n "$repo_root" ] && [ -x "$repo_root/packages/cli/target/release/nros" ]; then
+        printf '%s\n' "$repo_root/packages/cli/target/release/nros"
+        return 0
+    fi
     local home_nros="${NROS_HOME:-$HOME/.nros}/bin/nros"
     if [ -x "$home_nros" ]; then
         printf '%s\n' "$home_nros"
         return 0
     fi
-    echo "nros CLI not found on PATH or in \${NROS_HOME:-~/.nros}/bin." >&2
-    echo "Run: just setup base   (installs nros), or" >&2
+    echo "nros CLI not found." >&2
+    echo "Run: just setup-cli   (builds packages/cli/target/release/nros), or" >&2
     echo "Set NROS_CLI=/path/to/nros." >&2
     return 2
 }

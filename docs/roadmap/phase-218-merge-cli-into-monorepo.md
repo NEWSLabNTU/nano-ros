@@ -149,18 +149,18 @@ ten sub-crates).
 
 ### 218.D — Just recipe wiring
 
-- [ ] `justfile` `setup` recipe (Tier 0 path) prepended with a step
+- [x] `justfile` `setup` recipe (Tier 0 path) prepended with a step
   that builds the sub-workspace CLI when the binary is absent or stale
-  relative to `packages/cli/Cargo.lock`.
-- [ ] New `just setup-cli` private recipe: standalone CLI build,
+  relative to `packages/cli/Cargo.lock`. _(2026-06-04)_
+- [x] New `just setup-cli` private recipe: standalone CLI build,
   callable from the orchestrator and from a user who hit "cargo clean
-  evicted my nros".
-- [ ] `scripts/build/cargo.sh::nros_cli_bin` resolution order changed
+  evicted my nros". _(2026-06-04)_
+- [x] `scripts/build/cargo.sh::nros_cli_bin` resolution order changed
   to the new sequence; clear error message that names `just setup-cli`
-  when the binary is missing.
-- [ ] `just doctor` reports the CLI binary path + version on the same
+  when the binary is missing. _(2026-06-04)_
+- [x] `just doctor` reports the CLI binary path + version on the same
   line as the runtime version, so a skew (impossible by construction
-  but checked anyway) surfaces in the readiness output.
+  but checked anyway) surfaces in the readiness output. _(2026-06-04)_
 
 **Files:** `justfile`, `just/*.just` (whichever module owns `setup`),
 `scripts/build/cargo.sh`.
