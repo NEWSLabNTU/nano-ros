@@ -2612,6 +2612,47 @@ canonical-shape regression test can run green tree-wide:
       `[package.metadata.nros.component]` in `Cargo.toml`) OR
       formally exempt as benchmark special-cases with a doc note
       explaining the carve-out. Smallest scope; agent-friendly.
+- [ ] **M-F.19 nros-build emit-template post-N.12/N.7 sync**
+      (nros-cli) — discovered while integration-testing O.3 + O.5
+      against the local nros-cli checkout post-M-F.17. Once the
+      planner side accepts the cargo-metadata-synthesised artifacts
+      (M-F.17), the emit template in `packages/nros-build/src/
+      emit.rs` still references two pre-rename symbols:
+      1. **`<pkg>::<exec>::register` shape** — emit assumes the
+         Component pkg exposes a nested module named after the
+         component executable (`shared_node_pkg::shared_node::
+         register`). Tree convention per §212.N.7 + §212.N.12 is
+         `<pkg>::register` directly at the crate root. Either
+         (a) fix the template to emit `<pkg>::register(runtime)?`
+         dropping the exec segment; or (b) require Component pkgs
+         to expose a `pub mod <exec>` shim re-exporting `register`.
+         (a) is cleaner — matches the wave-4 register-wrapper shape
+         shipped in `f9ae826a4`.
+      2. **`RuntimeError::ComponentRegister` variant** — §212.N.12
+         landed the `Component` → `Node` rename in
+         `nros-platform::RuntimeError`; the variant is now
+         `NodeRegister(...)`. Template at
+         `packages/nros-build/src/emit.rs` still emits the old
+         name. Update the template + a unit-test pin.
+
+      **Acceptance:** O.3 + O.5 nano-ros tests (which today
+      succeed at the planner stage post-M-F.17 + the path-override
+      shipped in `ab09ccf28`) flip from "compile fails on the
+      emitted `run_plan.rs`" to "compile + link succeed; byte-
+      identical assertion (O.3) + emitted run_plan greps (O.5)
+      pass." Verified by re-running `cargo nextest run -p
+      nros-tests --run-ignored only --test phase212_o3_board_
+      agnostic_run_plan --test phase212_o5_nav2_compat` against
+      the freshly-installed CLI.
+
+      **Files (nros-cli):** `packages/nros-build/src/emit.rs` —
+      template body + the surrounding unit-test fixture (the
+      golden-file under `packages/nros-build/tests/fixtures/`
+      may also need regen).
+
+      **Blocks:** §212.O.3 (`board_agnostic_run_plan_links_
+      against_any_board`) + §212.O.5 (`n11_launch_xml_ros2_
+      compat_smoke`) flipping to `[x]`.
 
 ### §212.O — Acceptance test fill-ins (parallel-dispatchable)
 

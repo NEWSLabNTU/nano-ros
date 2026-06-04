@@ -1206,6 +1206,19 @@ check-workspace-features:
     cargo clippy --quiet -p nros-rmw --no-default-features --features "sync-critical-section" --target thumbv7em-none-eabihf
     @echo "  - nros-rmw (std)"
     cargo clippy --quiet -p nros-rmw --features "std"
+    # Phase 214.G.2 — workspace-wide no-default-features smoke. Catches
+    # the feature-unification regression class (Track F) at `just check`
+    # time rather than waiting for `just test-unit`. `--no-run` compiles
+    # all tests without executing — keeps the gate fast (no test runs)
+    # while still exercising the trans-feature dep graph.
+    #
+    # `--exclude nros-c`: pre-existing latent test-compile bug in
+    # `packages/core/nros-c/src/cdr.rs:565` references `std::ffi::CStr`
+    # but the lib is no_std-by-default. Filed for separate fix; gate
+    # remains valid for every other crate. Remove the exclude once the
+    # nros-c lib-test gating lands.
+    @echo "  - workspace: test-compile --no-default-features"
+    cargo test --no-run --workspace --exclude nros-c --no-default-features --quiet
     @echo "All feature checks passed!"
 
 # Format C code (nros-c headers, zpico C, C examples) with clang-format
