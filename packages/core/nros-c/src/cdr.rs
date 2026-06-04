@@ -485,7 +485,12 @@ pub unsafe extern "C" fn nros_cdr_read_string(
 // Tests
 // ===========================================================================
 
-#[cfg(test)]
+// Phase 214.G.2 follow-up — gate the unit-test module behind `feature
+// = "std"`. The tests use `std::ffi::CStr` (line ~565) which doesn't
+// resolve in a `--no-default-features` build, breaking the workspace-
+// wide `cargo test --no-run` smoke gate. Wrap the whole `mod tests`
+// in the std-feature cfg so it's silently dropped when std is off.
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
 
