@@ -1,5 +1,7 @@
 # Multi-Package Workspace Demo
 
+> For the canonical 3-role (Node + Bringup + Entry) workspace pattern, see [`multi-node-workspace/`](../multi-node-workspace/). This template demonstrates a polyglot (Rust/C/C++) app-node workspace.
+
 **Phase 123.A.10** — concrete Pattern A workspace with mixed C / C++ / Rust
 packages sharing one nano-ros source tree.
 

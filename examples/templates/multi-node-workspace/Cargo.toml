@@ -1,0 +1,18 @@
+# Canonical 3-role nano-ros workspace template.
+#
+#   src/talker_pkg/    — Node pkg (lib, `nros::node!`), publishes /chatter.
+#   src/listener_pkg/  — Node pkg (lib, `nros::node!`), subscribes /chatter.
+#   src/demo_bringup/  — Bringup pkg (declarative: package.xml + system.toml
+#                        + launch/*.launch.xml). No Cargo.toml — NOT a member.
+#   src/robot_entry/   — Entry pkg (bin, `nros::main!(launch = "demo_bringup:...")`).
+#
+# See README.md for the copy-out / build / plan / check / launch flow.
+
+[workspace]
+resolver = "2"
+members = ["src/talker_pkg", "src/listener_pkg", "src/robot_entry"]
+# `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
+# The pkg-index walks `package.xml` anywhere under the workspace root.
+
+[workspace.metadata.nros]
+default_system = "demo_bringup"
