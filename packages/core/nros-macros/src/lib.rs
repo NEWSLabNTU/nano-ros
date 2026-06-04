@@ -285,6 +285,26 @@ fn node_impl(input: TokenStream) -> TokenStream {
     // can resolve the symbol from `CARGO_PKG_NAME` directly.
     let dispatch_fn_name = quote::format_ident!("__nros_node_{}_dispatch_strategy", pkg_sym);
 
+    // Phase 216.A.5 follow-up — the on_callback trampoline the B.3 RTIC /
+    // C.3 Embassy dispatch tasks invoke after dequeuing a
+    // `SignaledCallback<'static>` from the SPSC ring. The chosen signature
+    // is `extern "C"` with `(state, cb_id_ptr, cb_id_len, ctx)` because:
+    //
+    //   1. `SignaledCallback.cb_id` is `&'a str` (Phase 216.A.2 layout,
+    //      `nros-platform/src/board/runtime.rs:47`) — a Rust fat pointer.
+    //      The dispatch task already has `(ptr, len)` in hand from the
+    //      `&str` it pulls off the ring, so passing them as separate
+    //      `*const u8 + usize` args costs zero packing/unpacking.
+    //   2. Sibling export `__nros_node_<pkg>_dispatch_strategy` uses
+    //      `extern "C"` — keeping the same ABI across the two
+    //      macro-emitted symbols means out-of-tree tools (`nros check`,
+    //      the RTIC/Embassy dispatch tasks themselves) resolve both via
+    //      the same `dlsym` / objdump path with no cfg-driven ABI
+    //      branching.
+    //   3. `extern "C"` with raw pointers is `no_std`-clean and matches
+    //      the spec block in Phase 216.A.5 verbatim.
+    let on_callback_fn_name = quote::format_ident!("__nros_node_{}_on_callback", pkg_sym);
+
     // Phase 212.N.7 step-6 — the legacy `#[unsafe(no_mangle)] extern
     // "Rust" fn __nros_component_<pkg>_{register,init,dispatch,tick}`
     // symbols and the `__NROS_COMPONENT_<PKG>_EXPORT_PRESENT` `#[used]`
@@ -331,6 +351,61 @@ fn node_impl(input: TokenStream) -> TokenStream {
         #[unsafe(no_mangle)]
         pub extern "C" fn #dispatch_fn_name() -> u8 {
             <#node_ty as ::nros::Node>::DISPATCH as u8
+        }
+
+        // Phase 216.A.5 follow-up — extern "C" trampoline the B.3 RTIC
+        // and C.3 Embassy dispatch tasks call after dequeuing a
+        // `SignaledCallback<'static>` from the SPSC ring + resolving the
+        // owning Node-pkg by `CallbackId` (the registry is a separate
+        // follow-up). The call sequence on the dispatch-task side is:
+        //
+        //   let cb = ring.pop()?;                       // SignaledCallback<'static>
+        //   let pkg = lookup(cb.cb_id)?;                // Node-by-cb_id registry (TBD)
+        //   let f = dlsym(pkg, "__nros_node_<pkg>_on_callback")?;
+        //   let state = node_state_table[pkg];          // *mut State, from i()
+        //   f(state, cb.cb_id.as_ptr(), cb.cb_id.len(),
+        //     cb.ctx_ptr);
+        //
+        // The trampoline reconstitutes the `&'static str` from
+        // `(cb_id_ptr, cb_id_len)` — both ends agree on UTF-8 (every
+        // `CallbackId` is built from a Rust `&str`), so the
+        // `from_utf8_unchecked` is sound by construction. The `state`
+        // and `ctx` re-cast mirrors the existing `unsafe fn d()` inside
+        // `register()` below — the only delta is the extern "C" surface
+        // + the (ptr, len) split for `cb_id`.
+        //
+        // SAFETY at the call site (documented for future
+        // dispatch-task authors — the trampoline does NOT recheck):
+        //   * `state` must point to a live `<NodeTy as ExecutableNode>::State`
+        //     produced by this pkg's `i()` (= same as the existing
+        //     `unsafe fn d()` contract).
+        //   * `cb_id_ptr` must point to `cb_id_len` valid UTF-8 bytes
+        //     with `'static` lifetime — produced by the codegen-emitted
+        //     `CallbackId(&'static str)` literals.
+        //   * `ctx` must point to a live `CallbackCtx<'static>` the
+        //     dispatch task owns for the duration of the call.
+        //   * Concurrent calls against the same `state` are forbidden
+        //     (same dispatch-slot non-reentrancy as `unsafe fn d()`).
+        #[unsafe(no_mangle)]
+        pub extern "C" fn #on_callback_fn_name(
+            state: *mut ::core::ffi::c_void,
+            cb_id_ptr: *const u8,
+            cb_id_len: usize,
+            ctx: *mut ::core::ffi::c_void,
+        ) {
+            // SAFETY: caller upholds the four bullets above.
+            let cb_id = unsafe {
+                let bytes = ::core::slice::from_raw_parts(cb_id_ptr, cb_id_len);
+                let s: &'static str = ::core::str::from_utf8_unchecked(bytes);
+                ::nros::CallbackId(s)
+            };
+            let state_mut = unsafe {
+                &mut *(state as *mut <#node_ty as ::nros::ExecutableNode>::State)
+            };
+            let ctx_mut = unsafe {
+                &mut *(ctx as *mut ::nros::CallbackCtx<'static>)
+            };
+            <#node_ty as ::nros::ExecutableNode>::on_callback(state_mut, cb_id, ctx_mut);
         }
 
         pub fn register(

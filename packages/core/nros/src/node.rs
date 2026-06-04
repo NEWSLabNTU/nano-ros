@@ -1972,6 +1972,51 @@ mod tests {
         assert_eq!(strategy, 0);
     }
 
+    // Phase 216.A.5 follow-up — the `nros::node!()` macro also emits
+    // `__nros_node_<pkg>_on_callback`, the extern "C" trampoline the
+    // B.3 RTIC / C.3 Embassy dispatch tasks call after dequeuing a
+    // `SignaledCallback<'static>` (see `nros-platform::SignaledCallback`,
+    // Phase 216.A.2). The expansion lives in the same
+    // `phase_216_a5_macro_emit` sub-module as the dispatch-strategy
+    // probe, so a single `nros_macros::node!(DispatchProbe);`
+    // invocation covers both symbols. Symbol name resolves to
+    // `__nros_node_nros_on_callback` (CARGO_PKG_NAME = "nros").
+    //
+    // The test only confirms the symbol is linkable — actually
+    // invoking the trampoline would need a live State + CallbackCtx
+    // pointer pair, which is the dispatch-task author's contract
+    // (documented in the macro emit). A link-only probe is enough to
+    // catch the macro silently eliding the export — the exact
+    // regression class this test is for.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn node_macro_emits_on_callback_symbol() {
+        unsafe extern "C" {
+            fn __nros_node_nros_on_callback(
+                state: *mut core::ffi::c_void,
+                cb_id_ptr: *const u8,
+                cb_id_len: usize,
+                ctx: *mut core::ffi::c_void,
+            );
+        }
+        // Take the address of the symbol and feed it through
+        // `core::hint::black_box` — forces the linker to resolve the
+        // symbol and prevents the optimiser from folding the unused
+        // reference away. If the macro stopped emitting the export
+        // this line fails at link time, which is the exact regression
+        // class this test catches. (`fn`-pointer values are never
+        // null per Rust's type system, so a direct null check would
+        // be a tautology — `-D useless-ptr-null-checks` would reject
+        // it.)
+        let fn_ptr: unsafe extern "C" fn(
+            *mut core::ffi::c_void,
+            *const u8,
+            usize,
+            *mut core::ffi::c_void,
+        ) = __nros_node_nros_on_callback;
+        core::hint::black_box(fn_ptr);
+    }
+
     #[test]
     fn create_subscription_static_returns_tag_matching_topic() {
         let mut recorder = MetadataRecorder::<1, 1, 1>::new();
