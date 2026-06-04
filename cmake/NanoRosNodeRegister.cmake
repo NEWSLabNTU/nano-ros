@@ -3,10 +3,10 @@
 # C++ cmake fn surface for the three Phase 212.L pkg shapes:
 #
 #   * `nano_ros_node_register(NAME <name> CLASS <UserClass>
-#       SOURCES <files...> DEPLOY <target1> [<target2> ...])`
+#       [LANGUAGE C|CPP] SOURCES <files...> DEPLOY <target1> [<target2> ...])`
 #       — declares a Component pkg entity. Compiles SOURCES into a
-#         STATIC `<pkg>_<name>_component` lib linked to
-#         `NanoRos::NanoRosCpp`. Enforces L.4: CLASS must start with
+#         STATIC `<pkg>_<name>_component` lib linked to the C or C++
+#         nano-ros target. Enforces L.4: CLASS must start with
 #         `${PROJECT_NAME}::`.
 #
 #   * `nano_ros_entry(NAME <name> SOURCES <files...> [BOARD <board>]
@@ -37,9 +37,8 @@
 # `${CMAKE_BINARY_DIR}/nros-metadata.json` so `nros codegen-system`
 # can consume it at configure time. No sidecar TOML for C++ pkgs.
 #
-# Hard cap: ≤200 LoC (tokei gate per Phase 212.L.9 acceptance) — the
-# N.6 body for the renamed fn lives in `NanoRosEntry.cmake` so this
-# file stays under the cap.
+# The function is deliberately declarative/glue-only; entry generation
+# lives in `NanoRosEntry.cmake`.
 
 if(DEFINED _NROS_NODE_REGISTER_INCLUDED)
     return()
@@ -89,13 +88,36 @@ function(_nros_json_strlist out_var)
 endfunction()
 
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "" "NAME;CLASS" "SOURCES;DEPLOY" ${ARGN})
+    cmake_parse_arguments(_NRC "" "NAME;CLASS;LANGUAGE" "SOURCES;DEPLOY" ${ARGN})
     foreach(_req NAME CLASS SOURCES DEPLOY)
         if(NOT _NRC_${_req})
             message(FATAL_ERROR
                 "nano_ros_node_register: ${_req} required")
         endif()
     endforeach()
+    if(_NRC_LANGUAGE)
+        string(TOUPPER "${_NRC_LANGUAGE}" _nrc_lang)
+    else()
+        # Back-compat: old C examples omitted LANGUAGE. If every source is a C
+        # TU, record/link it as C; otherwise preserve the historical C++ default.
+        set(_nrc_lang C)
+        foreach(_src IN LISTS _NRC_SOURCES)
+            get_filename_component(_ext "${_src}" EXT)
+            string(TOLOWER "${_ext}" _ext_lc)
+            if(NOT _ext_lc STREQUAL ".c")
+                set(_nrc_lang CPP)
+            endif()
+        endforeach()
+    endif()
+    if(_nrc_lang STREQUAL "CXX")
+        set(_nrc_lang CPP)
+    endif()
+    if(NOT (_nrc_lang STREQUAL "C" OR _nrc_lang STREQUAL "CPP"))
+        message(FATAL_ERROR
+            "nano_ros_node_register: LANGUAGE '${_NRC_LANGUAGE}' rejected — "
+            "expected C or CPP")
+    endif()
+    string(TOLOWER "${_nrc_lang}" _nrc_lang_lc)
     # L.4 enforcement: CLASS must start with `${PROJECT_NAME}::`.
     string(FIND "${_NRC_CLASS}" "${PROJECT_NAME}::" _idx)
     if(NOT _idx EQUAL 0)
@@ -108,7 +130,12 @@ function(nano_ros_node_register)
     set(_lib "${PROJECT_NAME}_${_NRC_NAME}_component")
     if(NOT TARGET ${_lib})
         add_library(${_lib} STATIC ${_NRC_SOURCES})
-        if(TARGET NanoRos::NanoRosCpp)
+        if(_nrc_lang STREQUAL "C")
+            set_target_properties(${_lib} PROPERTIES LINKER_LANGUAGE C)
+        endif()
+        if(_nrc_lang STREQUAL "C" AND TARGET NanoRos::NanoRos)
+            target_link_libraries(${_lib} PUBLIC NanoRos::NanoRos)
+        elseif(TARGET NanoRos::NanoRosCpp)
             target_link_libraries(${_lib} PUBLIC NanoRos::NanoRosCpp)
         endif()
         target_include_directories(${_lib} PUBLIC
@@ -119,7 +146,9 @@ function(nano_ros_node_register)
         # `__nros_component_<pkg>_register`. Sanitise `-` → `_` so
         # cargo-style names with hyphens are still valid C identifiers.
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
-        target_compile_definitions(${_lib} PRIVATE NROS_PKG_NAME=${_pkg_sym})
+        target_compile_definitions(${_lib} PRIVATE
+            NROS_PKG_NAME=${_pkg_sym}
+            "NROS_NODE_CLASS_NAME=\"${_NRC_CLASS}\"")
 
         # Phase 220.G.2 — auto-link every `<pkg>__nano_ros_{c,cpp}`
         # interface lib that `nros_generate_interfaces` registered in
@@ -150,7 +179,7 @@ function(nano_ros_node_register)
     set(_entry
 "${_sep}\n    {\"name\": \"${_NRC_NAME}\", \"class\": \"${_NRC_CLASS}\", \
 \"sources\": [${_sources_json}], \"deploy\": [${_deploy_json}], \
-\"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"cpp\"}")
+\"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"${_nrc_lang_lc}\"}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_COMPONENTS_JSON "${_entry}")
     _nros_metadata_emit()
 endfunction()

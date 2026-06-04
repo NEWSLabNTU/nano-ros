@@ -690,6 +690,7 @@ mod component_scaffold {
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "my-comp".to_string(),
             use_case: "talker".to_string(),
+            lang: "rust".to_string(),
             force: false,
         });
         std::env::set_current_dir(&prev).unwrap();
@@ -735,6 +736,7 @@ mod component_scaffold {
         let result = scaffold_component(&ComponentScaffoldConfig {
             name: "svc".to_string(),
             use_case: "service".to_string(),
+            lang: "rust".to_string(),
             force: false,
         });
         std::env::set_current_dir(&prev).unwrap();
@@ -744,5 +746,34 @@ mod component_scaffold {
         assert!(nros_toml.contains(r#"component = "svc::service""#));
         let lib = fs::read_to_string(tmp.path().join("svc/src/lib.rs")).unwrap();
         assert!(lib.contains("pub mod service"));
+    }
+
+    #[test]
+    fn scaffold_component_c_emits_node_pkg_shape() {
+        let _g = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+        let result = scaffold_component(&ComponentScaffoldConfig {
+            name: "c-talker".to_string(),
+            use_case: "talker".to_string(),
+            lang: "c".to_string(),
+            force: false,
+        });
+        std::env::set_current_dir(&prev).unwrap();
+        result.expect("scaffold_component c");
+
+        let dir = tmp.path().join("c-talker");
+        let cmake = fs::read_to_string(dir.join("CMakeLists.txt")).unwrap();
+        assert!(cmake.contains("project(c_talker VERSION 0.1.0 LANGUAGES C CXX)"));
+        assert!(cmake.contains("nros_find_interfaces(LANGUAGE C SKIP_INSTALL)"));
+        assert!(cmake.contains("LANGUAGE C"));
+        assert!(cmake.contains("CLASS    c_talker::Talker"));
+
+        let source = fs::read_to_string(dir.join("src/Talker.c")).unwrap();
+        assert!(source.contains("static nros_ret_t register_talker"));
+        assert!(source.contains("NROS_NODE_REGISTER(register_talker);"));
+        assert!(source.contains("NROS_NODE_ENTITY_PUBLISHER"));
+        assert!(dir.join("package.xml").is_file());
     }
 }

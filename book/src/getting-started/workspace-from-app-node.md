@@ -26,6 +26,11 @@ Three common triggers:
    production. The node logic is identical; only the boot and board
    differ.
 
+4. **Mixed implementation languages.** You want to keep a C driver or
+   legacy C node, but host the composed system in a C++ or Rust Entry
+   pkg. The Node-pkg register ABI is language-neutral, so a C Node pkg
+   can link into the same Entry binary as C++ or Rust Node pkgs.
+
 That's when you split your project into a multi-node workspace.
 
 ## Canonical layout
@@ -64,7 +69,8 @@ This group starts broad and then drills into each part:
 3. **Bringup packages** — launch XML, `system.toml`, remaps, parameters.
 4. **Entry packages** — the board-specific binary that boots the topology.
 5. **C / C++ multi-node workspaces** — the same structure through CMake.
-6. **Role reference** — metadata fields and macro forms in reference style.
+6. **Mixed-language workspaces** — C Node pkgs hosted by C/C++ Entry pkgs.
+7. **Role reference** — metadata fields and macro forms in reference style.
 
 ## Prereqs
 
@@ -175,6 +181,9 @@ Walk through the multi-node project model step by step:
    the Entry pkg that boots everything together.
 4. [C / C++ multi-node workspaces](./workspace-cpp.md) — use the same
    project shape with CMake.
+
+For C Node pkgs hosted by a C++ Entry pkg, see
+[Mixed-language workspace](./workspace-mixed-language.md).
 
 For the full API reference covering all three roles, see
 [Role reference](../user-guide/component-and-entry-pkg.md).

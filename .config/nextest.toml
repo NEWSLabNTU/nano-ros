@@ -591,6 +591,10 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 filter = "binary(zpico_drift_gate)"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
+[[profile.default.overrides]]
+filter = "binary(phase223_c_mixed_workspace)"
+slow-timeout = { period = "60s", terminate-after = 3 }
+
 # Phase 169.4 — `binary(dds_ros2_interop)` removed (test deleted).
 
 # Safety E2E tests: 3s stabilization + 30s collection = ~33s expected runtime

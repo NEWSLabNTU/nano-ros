@@ -162,19 +162,31 @@ static inline nros_ret_t nros_node_record_callback_effect(nros_node_context_t* c
  *
  *   nros_ret_t __nros_component_my_pkg_register(nros_node_context_t*);
  *   const unsigned char __NROS_NODE_PKG_MY_PKG_EXPORT_PRESENT = 1;
+ *   const char __nros_component_my_pkg_class_name[] = "...";
  */
+#ifndef NROS_PKG_NAME
+#define NROS_PKG_NAME unknown
+#endif
+
+#ifndef NROS_NODE_CLASS_NAME
+#define NROS_NODE_CLASS_NAME "unknown"
+#endif
+
 #define _NROS_NODE_PKG_CONCAT(a, b) a##b
 #define _NROS_NODE_PKG_CONCAT_X(a, b) _NROS_NODE_PKG_CONCAT(a, b)
 #define _NROS_NODE_PKG_REG_SYM(pkg)                                                                \
     _NROS_NODE_PKG_CONCAT_X(__nros_component_, _NROS_NODE_PKG_CONCAT_X(pkg, _register))
 #define _NROS_NODE_PKG_PRESENT_SYM(pkg)                                                            \
     _NROS_NODE_PKG_CONCAT_X(__NROS_NODE_PKG_, _NROS_NODE_PKG_CONCAT_X(pkg, _EXPORT_PRESENT))
+#define _NROS_NODE_PKG_CLASS_SYM(pkg)                                                              \
+    _NROS_NODE_PKG_CONCAT_X(__nros_component_, _NROS_NODE_PKG_CONCAT_X(pkg, _class_name))
 
 #define NROS_COMPONENT(pkg, register_fn)                                                           \
-    NROS_PUBLIC nros_ret_t _NROS_NODE_PKG_REG_SYM(pkg)(nros_node_context_t * context) {            \
+    NROS_PUBLIC nros_ret_t _NROS_NODE_PKG_REG_SYM(pkg)(nros_node_context_t* context) {             \
         return (register_fn)(context);                                                             \
     }                                                                                              \
-    NROS_PUBLIC const unsigned char _NROS_NODE_PKG_PRESENT_SYM(pkg) = 1
+    NROS_PUBLIC const unsigned char _NROS_NODE_PKG_PRESENT_SYM(pkg) = 1;                           \
+    NROS_PUBLIC const char _NROS_NODE_PKG_CLASS_SYM(pkg)[] = NROS_NODE_CLASS_NAME
 
 /* Phase 214 followup — Phase 212.N.12 rename intended an `NROS_NODE_REGISTER`
  * 1-arg macro that uses the implicit `NROS_PKG_NAME` define injected by

@@ -21,6 +21,7 @@
 - [Bringup packages](./getting-started/workspace-bringup.md)
 - [Entry packages](./getting-started/workspace-entry-pkg.md)
 - [C / C++ multi-node workspaces](./getting-started/workspace-cpp.md)
+- [Mixed-language workspaces](./getting-started/workspace-mixed-language.md)
 - [Role reference](./user-guide/component-and-entry-pkg.md)
 
 # Embedded Starters

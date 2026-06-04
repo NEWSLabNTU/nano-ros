@@ -11,11 +11,11 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use super::cargo_metadata_schema::{ComponentMetadata, PackageMetadataNros};
-use super::config::{
-    ComponentConfig, ComponentLinkage, ComponentMetadataConfig, ComponentOverrides,
+use super::{
+    cargo_metadata_schema::{ComponentMetadata, PackageMetadataNros},
+    config::{ComponentConfig, ComponentLinkage, ComponentMetadataConfig, ComponentOverrides},
+    source_metadata::ComponentLanguage,
 };
-use super::source_metadata::ComponentLanguage;
 
 /// Permissive envelope for extracting a `[component]` table out of a package's
 /// `nros.toml` (Phase 172 W.1 fold) while ignoring sibling tables
@@ -140,6 +140,9 @@ pub struct CmakeNodeSummary {
     pub executable: String,
     /// `nano_ros_node_register(CLASS <pkg_sym>::<UserClass>)` value.
     pub class: Option<String>,
+    /// `nano_ros_node_register(LANGUAGE C|CPP)` value, or a conservative
+    /// inference from the class shape for pre-223 callers.
+    pub language: ComponentLanguage,
     /// `nano_ros_node_register(DEPLOY <target>[ <target>...])` values.
     pub deploy_targets: Vec<String>,
     /// Absolute path to the `CMakeLists.txt` the summary was derived from.
@@ -216,6 +219,12 @@ impl Workspace {
                 out.push((
                     summary.manifest_path.clone(),
                     summary_to_synthetic_json(summary),
+                ));
+            }
+            for summary in &pkg.cmake_component_metadata {
+                out.push((
+                    summary.manifest_path.clone(),
+                    cmake_summary_to_synthetic_json(summary),
                 ));
             }
         }
@@ -307,13 +316,11 @@ impl Workspace {
 /// `(package, component, language)` plus an optional class threaded through
 /// for downstream consumers.
 fn cmake_summary_to_component_config(summary: &CmakeNodeSummary) -> ComponentConfig {
-    let language = infer_language_from_class(summary.class.as_deref())
-        .unwrap_or(ComponentLanguage::Cpp);
     ComponentConfig {
         version: 1,
         package: summary.package.clone(),
         component: summary.component.clone(),
-        language,
+        language: summary.language.clone(),
         linkage: ComponentLinkage::default(),
         metadata: ComponentMetadataConfig {
             source_metadata: format!("metadata/{}.json", summary.component),
@@ -323,11 +330,17 @@ fn cmake_summary_to_component_config(summary: &CmakeNodeSummary) -> ComponentCon
     }
 }
 
-/// Phase 219.L — Best-effort language inference from a CMake-supplied
-/// class qualname. The cmake fn surface accepts both C and C++ Node pkgs,
-/// but the class shape (`pkg::Class` for C++; bare `pkg_register_fn` for
-/// the C `NROS_COMPONENT` macro) is the only signal at static-parse time.
-/// Today every shipping example uses the C++ shape, so default to Cpp.
+/// Phase 219.L / 223 — Best-effort language inference for CMake Node pkgs.
+/// `LANGUAGE` is authoritative when present. Older CMakeLists omitted it, so
+/// fall back to the historical class-shape heuristic.
+fn infer_cmake_language(language: Option<&str>, class: Option<&str>) -> ComponentLanguage {
+    match language.map(|s| s.to_ascii_lowercase()) {
+        Some(lang) if lang == "c" => ComponentLanguage::C,
+        Some(lang) if lang == "cpp" || lang == "cxx" => ComponentLanguage::Cpp,
+        _ => infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp),
+    }
+}
+
 fn infer_language_from_class(class: Option<&str>) -> Option<ComponentLanguage> {
     let class = class?;
     if class.contains("::") {
@@ -438,11 +451,15 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
         let Some(name) = args.single("NAME") else {
             continue;
         };
+        let class = args.single("CLASS");
+        let language_kw = args.single("LANGUAGE").or_else(|| args.single("LANG"));
+        let language = infer_cmake_language(language_kw.as_deref(), class.as_deref());
         out.push(CmakeNodeSummary {
             package: package_name.to_string(),
             component: name.clone(),
             executable: name,
-            class: args.single("CLASS"),
+            class,
+            language,
             deploy_targets: args.multi("DEPLOY"),
             manifest_path: cmakelists.clone(),
         });
@@ -490,8 +507,7 @@ fn extract_cmake_calls(src: &str, fn_name: &str) -> Vec<String> {
         // Confirm boundary before the call (start of file OR non-identifier).
         // CMake identifiers include `_`, so `my_nano_ros_node_register(`
         // must NOT match the `nano_ros_node_register` needle.
-        let prev_is_ident = i > 0
-            && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
+        let prev_is_ident = i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
         if prev_is_ident {
             i += 1;
             continue;
@@ -529,8 +545,19 @@ fn parse_cmake_kwargs(body: &str) -> Option<CmakeKwargs> {
     // The valid keyword set for the cmake fns 219.L parses. Conservatively
     // wide to avoid eating later keywords as values.
     const KEYWORDS: &[&str] = &[
-        "NAME", "CLASS", "SOURCES", "DEPLOY", "BOARD", "LAUNCH", "ARGS", "LANG", "RMW",
-        "DOMAIN_ID", "LOCATOR", "TARGET",
+        "NAME",
+        "CLASS",
+        "LANGUAGE",
+        "SOURCES",
+        "DEPLOY",
+        "BOARD",
+        "LAUNCH",
+        "ARGS",
+        "LANG",
+        "RMW",
+        "DOMAIN_ID",
+        "LOCATOR",
+        "TARGET",
     ];
     let tokens = tokenize_cmake_body(body);
     if tokens.is_empty() {
@@ -818,6 +845,29 @@ fn summary_to_synthetic_json(summary: &CargoComponentSummary) -> JsonValue {
             "default_namespace".to_string(),
             JsonValue::String(namespace.clone()),
         );
+    }
+    obj
+}
+
+fn cmake_summary_to_synthetic_json(summary: &CmakeNodeSummary) -> JsonValue {
+    let language = match &summary.language {
+        ComponentLanguage::C => "c",
+        ComponentLanguage::Cpp => "cpp",
+        ComponentLanguage::Rust => "rust",
+    };
+    let mut obj = json!({
+        "version": 1,
+        "package": summary.package,
+        "component": summary.component,
+        "executable": summary.executable,
+        "language": language,
+        "synthetic": true,
+        "synthetic_source": "cmake_node_register",
+    });
+    if let Some(class) = &summary.class {
+        obj.as_object_mut()
+            .expect("synthetic JSON is an object")
+            .insert("class".to_string(), JsonValue::String(class.clone()));
     }
     obj
 }
@@ -1307,8 +1357,10 @@ class = "node_pkg::Node"
         assert_eq!(kw.single("NAME").as_deref(), Some("talker"));
         assert_eq!(kw.single("CLASS").as_deref(), Some("talker_pkg::Talker"));
         assert_eq!(kw.multi("DEPLOY"), vec!["native", "freertos"]);
-        assert_eq!(kw.multi("SOURCES"),
-            vec!["src/Talker.cpp", "src/Helper.cpp"]);
+        assert_eq!(
+            kw.multi("SOURCES"),
+            vec!["src/Talker.cpp", "src/Helper.cpp"]
+        );
     }
 
     #[test]
@@ -1346,7 +1398,16 @@ nano_ros_node_register(
         assert_eq!(summary.package, "talker_pkg");
         assert_eq!(summary.component, "talker");
         assert_eq!(summary.class.as_deref(), Some("talker_pkg::Talker"));
+        assert_eq!(summary.language, ComponentLanguage::Cpp);
         assert_eq!(summary.deploy_targets, vec!["native"]);
+
+        let synth = ws.synthetic_metadata_artifacts();
+        assert_eq!(synth.len(), 1);
+        assert_eq!(synth[0].1["package"], "talker_pkg");
+        assert_eq!(synth[0].1["component"], "talker");
+        assert_eq!(synth[0].1["executable"], "talker");
+        assert_eq!(synth[0].1["language"], "cpp");
+        assert_eq!(synth[0].1["synthetic_source"], "cmake_node_register");
 
         let decls = ws.component_declarations().unwrap();
         assert_eq!(decls.len(), 1);
@@ -1386,10 +1447,7 @@ source_metadata = "metadata/talker.json"
         let ws = Workspace::discover(&s.0).unwrap();
         let decls = ws.component_declarations().unwrap();
         assert_eq!(decls.len(), 1, "explicit nros.toml wins");
-        assert_eq!(
-            decls[0].manifest_path.file_name().unwrap(),
-            "nros.toml"
-        );
+        assert_eq!(decls[0].manifest_path.file_name().unwrap(), "nros.toml");
     }
 
     #[test]
@@ -1430,6 +1488,38 @@ source_metadata = "metadata/talker.json"
             .component_declarations()
             .unwrap();
         assert_eq!(decls[0].config.language, ComponentLanguage::C);
+    }
+
+    #[test]
+    fn cmake_decl_language_c_when_language_keyword_is_c() {
+        let s = Scratch::new("223c");
+        s.write(
+            "src/c_talker_pkg/package.xml",
+            "<package format=\"3\"><name>c_talker_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        );
+        s.write(
+            "src/c_talker_pkg/CMakeLists.txt",
+            r#"nano_ros_node_register(
+    NAME talker
+    CLASS c_talker_pkg::Talker
+    LANGUAGE C
+    SOURCES src/Talker.c
+    DEPLOY native)
+"#,
+        );
+        let ws = Workspace::discover(&s.0).unwrap();
+        let summary = &ws.packages[0].cmake_component_metadata[0];
+        assert_eq!(summary.language, ComponentLanguage::C);
+
+        let synth = ws.synthetic_metadata_artifacts();
+        assert_eq!(synth.len(), 1);
+        assert_eq!(synth[0].1["package"], "c_talker_pkg");
+        assert_eq!(synth[0].1["component"], "talker");
+        assert_eq!(synth[0].1["executable"], "talker");
+        assert_eq!(synth[0].1["language"], "c");
+        assert_eq!(synth[0].1["class"], "c_talker_pkg::Talker");
     }
 
     #[test]
