@@ -37,7 +37,7 @@ cargo_metadata = "0.18"
 # binary's libpython (pyo3 docs). Keeping it out of the link makes the shipped
 # `nros` a portable libc-only binary; the python-bearing parser is distributed
 # separately (`pip install play-launch-parser` / its own binary).
-ros-launch-manifest-types = { path = "../../third-party/ros-launch-manifest/types" }
+ros-launch-manifest-types = { path = "../third-party/ros-launch-manifest/types" }
 
 # Reuse the codegen implementation that still lives in the
 # cargo-nano-ros library crate. The canonical CLI surface is

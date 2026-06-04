@@ -1,9 +1,0 @@
-[submodule "testing_workspaces/ros2_rust_examples"]
-	path = testing_workspaces/ros2_rust_examples
-	url = https://github.com/jerry73204/ros2_rust_examples.git
-[submodule "third-party/play_launch_parser"]
-	path = third-party/play_launch_parser
-	url = https://github.com/jerry73204/play_launch_parser.git
-[submodule "third-party/ros-launch-manifest"]
-	path = third-party/ros-launch-manifest
-	url = https://github.com/jerry73204/ros-launch-manifest.git

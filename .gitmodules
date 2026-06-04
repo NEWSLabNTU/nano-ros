@@ -64,3 +64,12 @@
 	# upstream QEMU release tags. Bump the submodule pointer to the
 	# fork's latest patched commit; the legacy patches/ dir was
 	# removed since the patches live in the fork's git history now.
+[submodule "packages/cli/testing_workspaces/ros2_rust_examples"]
+	path = packages/cli/testing_workspaces/ros2_rust_examples
+	url = https://github.com/jerry73204/ros2_rust_examples.git
+[submodule "packages/cli/third-party/play_launch_parser"]
+	path = packages/cli/third-party/play_launch_parser
+	url = https://github.com/jerry73204/play_launch_parser.git
+[submodule "packages/cli/third-party/ros-launch-manifest"]
+	path = packages/cli/third-party/ros-launch-manifest
+	url = https://github.com/jerry73204/ros-launch-manifest.git
