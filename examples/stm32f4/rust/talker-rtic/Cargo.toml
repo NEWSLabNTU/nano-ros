@@ -16,6 +16,12 @@ path = "src/main.rs"
 # `nros check` (Phase 216.D.1).
 [package.metadata.nros.entry]
 deploy = "rtic-stm32f4"
+# Phase 216 final wave — Node pkgs the `nros::main!()` macro splices
+# `<pkg>::register_dispatch(&mut executor)?;` calls for into the
+# generated RTIC `#[init]` body. Each name resolves to the
+# `path = "..."` dep below via cargo's automatic `extern crate`
+# rule (snake_case crate ident).
+node_pkgs = ["stm32f4_talker_pkg"]
 
 [dependencies]
 # Phase 216.B.5 — `nros::main!()` proc-macro family. The macro emits

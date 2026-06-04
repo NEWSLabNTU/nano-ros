@@ -528,6 +528,69 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         })
         .collect();
 
+    // Phase 216 final wave — Node-pkg registration for framework
+    // targets (RTIC + Embassy). The OwnedSpin branch keeps its
+    // existing `<pkg>::register(runtime)?;` flow inside the
+    // `BoardEntry::run` closure; the framework branches instead emit
+    // `<pkg>::register_dispatch(&mut executor)?;` calls into the
+    // generated `#[init]` body, which push the per-Node
+    // `(state, on_callback)` pair into the `Executor`'s dispatch-slot
+    // registry that the framework dispatch task walks.
+    //
+    // Source of truth: `[package.metadata.nros.entry] node_pkgs =
+    // ["pkg_a", "pkg_b"]` in the Entry pkg's `Cargo.toml`. When the
+    // key is absent we fall back to the Entry pkg's own name with a
+    // conventional `_entry` suffix stripped — covers the common
+    // self-bringup shape where a single Node pkg `foo_pkg` has a
+    // sibling Entry pkg `foo_pkg_entry` (though the framework
+    // examples today don't follow this — they always declare
+    // `node_pkgs = [...]` explicitly).
+    let framework_node_pkg_idents: Vec<Ident> = match framework {
+        Framework::OwnedSpin => Vec::new(),
+        Framework::Rtic | Framework::Embassy => {
+            let cargo_toml = manifest_dir.join("Cargo.toml");
+            let from_metadata = read_entry_node_pkgs(&cargo_toml).map_err(|e| {
+                syn::Error::new(
+                    Span::call_site(),
+                    format!(
+                        "nros::main!: failed to read `[package.metadata.nros.entry] node_pkgs` \
+                         from `{}`: {e}",
+                        cargo_toml.display()
+                    ),
+                )
+            })?;
+            let names: Vec<String> = match from_metadata {
+                Some(v) => v,
+                None => {
+                    // Self-bringup fallback: strip `_entry` suffix
+                    // from the Entry pkg's own name.
+                    let pkg_name = std::env::var("CARGO_PKG_NAME").map_err(|_| {
+                        syn::Error::new(Span::call_site(), "nros::main!: CARGO_PKG_NAME not set")
+                    })?;
+                    let stripped = pkg_name
+                        .strip_suffix("_entry")
+                        .or_else(|| pkg_name.strip_suffix("-entry"))
+                        .unwrap_or(&pkg_name);
+                    vec![stripped.to_string()]
+                }
+            };
+            names
+                .into_iter()
+                .map(|n| Ident::new(&pkg_to_crate_ident(&n), Span::call_site()))
+                .collect()
+        }
+    };
+    let framework_register_dispatch_calls: Vec<proc_macro2::TokenStream> =
+        framework_node_pkg_idents
+            .iter()
+            .map(|ident| {
+                quote! {
+                    ::#ident::register_dispatch(&mut executor)
+                        .expect("nros::main!: register_dispatch — executor dispatch-slot table full");
+                }
+            })
+            .collect();
+
     // Phase 216.B.3 — framework-dispatched emit body. `OwnedSpin`
     // keeps the long-standing `fn __nros_entry_run + fn main` shape
     // (BoardEntry::run owns the spin loop). `Rtic` emits a
@@ -665,18 +728,23 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // `nros::node!()` emit + the runtime trait
                         // surface; same deferred story as the Embassy
                         // sibling in the C.3 follow-up).
-                        let (executor, runtime) =
+                        let (mut executor, runtime) =
                             <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::init_hardware(
                                 cx.device,
                                 cx.core,
                             );
-                        // todo: run_plan(&mut runtime) — register each
-                        // Node pkg's dispatch slot via
-                        // `register_dispatch_slot_dyn` before the
-                        // collapsed `__nros_run` task starts consuming
-                        // envelopes. Tracked alongside the per-Node
-                        // trampoline registry story (linkme / Phase 216
-                        // follow-up).
+                        // Phase 216 final wave — per-Node dispatch
+                        // registration. Each Node pkg's
+                        // `<pkg>::register_dispatch(&mut executor)`
+                        // (emitted by `nros::node!()`) builds the
+                        // Node's `State` blob and pushes
+                        // `(state, __nros_node_<pkg>_on_callback)`
+                        // into the executor's dispatch-slot table.
+                        // The `__nros_run` task's
+                        // `executor.dispatch_callback(cb_id, ctx)`
+                        // call (above) walks this table once per
+                        // dequeued envelope.
+                        #( #framework_register_dispatch_calls )*
                         __nros_run::spawn().unwrap();
                         (Shared {}, Local { executor, runtime })
                     }
@@ -886,15 +954,18 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     // Sync `init_hardware` — see the
                     // `EmbassyBoardEntry` trait "Sync
                     // `init_hardware`" note; matches `RticBoardEntry`.
-                    let (executor, runtime) =
+                    let (mut executor, runtime) =
                         <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::init_hardware(
                             spawner,
                         );
-                    // todo: register_dispatch_slot_dyn(...) per Node
-                    // pkg via `run_plan(&mut runtime)` — the
-                    // trampoline-registration story spans the macro
-                    // + `nros::node!()` emit + the runtime trait
-                    // and lands in a separate follow-up.
+                    // Phase 216 final wave — per-Node dispatch
+                    // registration. Sibling of the RTIC `#[init]`
+                    // splice above; same `register_dispatch(&mut
+                    // executor)` shape, populating the executor's
+                    // dispatch-slot table before the
+                    // `__nros_run_task` is spawned to drain the
+                    // board's `CALLBACK_CHANNEL`.
+                    #( #framework_register_dispatch_calls )*
                     spawner.spawn(__nros_run_task(executor, runtime)).unwrap();
                 }
             }
@@ -913,6 +984,41 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     };
 
     Ok(expanded)
+}
+
+/// Phase 216 final wave — read `[package.metadata.nros.entry]
+/// node_pkgs = ["pkg_a", "pkg_b"]` from `Cargo.toml`. Each entry names
+/// a Node-pkg crate the Entry pkg depends on; the framework emit
+/// (RTIC / Embassy) splices `<pkg>::register_dispatch(&mut executor)?;`
+/// calls for each into the generated `#[init]` body.
+///
+/// Returns `Ok(None)` when the key is absent — callers fall back to
+/// self-bringup (Entry pkg's own crate name minus the conventional
+/// `_entry` suffix, when present).
+fn read_entry_node_pkgs(cargo_toml: &Path) -> Result<Option<Vec<String>>, String> {
+    let raw = std::fs::read_to_string(cargo_toml).map_err(|e| format!("read: {e}"))?;
+    let v: toml::Value = toml::from_str(&raw).map_err(|e| format!("parse toml: {e}"))?;
+    let arr = match v
+        .get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("nros"))
+        .and_then(|n| n.get("entry"))
+        .and_then(|e| e.get("node_pkgs"))
+    {
+        Some(a) => a,
+        None => return Ok(None),
+    };
+    let list = arr
+        .as_array()
+        .ok_or_else(|| "`node_pkgs` must be an array of strings".to_string())?;
+    let mut out = Vec::with_capacity(list.len());
+    for item in list {
+        let s = item
+            .as_str()
+            .ok_or_else(|| "`node_pkgs` entries must be strings".to_string())?;
+        out.push(s.to_string());
+    }
+    Ok(Some(out))
 }
 
 /// Read `[package.metadata.nros.entry] deploy = "<board>"` from

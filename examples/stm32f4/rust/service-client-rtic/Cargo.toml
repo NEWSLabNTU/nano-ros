@@ -17,6 +17,10 @@ path = "src/main.rs"
 # `DISPATCH = Inline` against the RTIC framework's matrix entry.
 [package.metadata.nros.entry]
 deploy = "rtic-stm32f4"
+# Phase 216 final wave — Node pkgs the `nros::main!()` macro splices
+# `<pkg>::register_dispatch(&mut executor)?;` calls for into the
+# generated RTIC `#[init]` body.
+node_pkgs = ["stm32f4_service_client_pkg"]
 
 [dependencies]
 # Phase 216.B.5 — `nros::main!()` proc-macro family. The macro emits

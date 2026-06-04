@@ -408,6 +408,43 @@ fn node_impl(input: TokenStream) -> TokenStream {
             <#node_ty as ::nros::ExecutableNode>::on_callback(state_mut, cb_id, ctx_mut);
         }
 
+        /// Phase 216 final wave — framework-side per-Node registration.
+        ///
+        /// The `nros::main!()` proc-macro emits one
+        /// `<pkg>::register_dispatch(&mut executor)?;` call per
+        /// declared Node pkg in the RTIC / Embassy `#[init]` body
+        /// (see `packages/core/nros-macros/src/main_macro.rs`
+        /// `Framework::Rtic` / `Framework::Embassy` emit branches).
+        /// The call:
+        ///
+        ///   1. Constructs the Node's per-pkg `State` blob via
+        ///      `<NodeTy as ExecutableNode>::init()`.
+        ///   2. Leaks the state into a raw `*mut c_void` pointer via
+        ///      `__private_node_state_into_raw` (the same shape the
+        ///      `register(runtime)` wrapper's local `i()` fn uses).
+        ///   3. Pushes `(state_ptr, __nros_node_<pkg>_on_callback)`
+        ///      onto the `Executor`'s dispatch-slot registry, where
+        ///      the framework dispatch task's
+        ///      `executor.dispatch_callback(cb_id, ctx)` calls scan
+        ///      and invoke it.
+        ///
+        /// Returns `Err(())` if the Executor's slot table is full
+        /// (`MAX_NODES` entries — raise via
+        /// `NROS_EXECUTOR_MAX_NODES` at build time). The Entry pkg
+        /// surfaces the failure with `expect("register dispatch")`
+        /// so a too-many-Nodes misconfig fails loud at boot rather
+        /// than dropping dispatch silently.
+        pub fn register_dispatch(
+            executor: &mut ::nros::Executor,
+        ) -> ::core::result::Result<(), ()> {
+            let state: <#node_ty as ::nros::ExecutableNode>::State =
+                <#node_ty as ::nros::ExecutableNode>::init();
+            let state_ptr =
+                ::nros::__private_node_state_into_raw::<#node_ty>(state)
+                    as *mut ::core::ffi::c_void;
+            executor.register_dispatch_slot(state_ptr, #on_callback_fn_name)
+        }
+
         pub fn register(
             runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
         ) -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError> {

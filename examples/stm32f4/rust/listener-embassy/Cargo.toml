@@ -18,6 +18,10 @@ path = "src/main.rs"
 # `dispatch_strategy() = Deferred`.
 [package.metadata.nros.entry]
 deploy = "embassy-stm32f4"
+# Phase 216 final wave — Node pkgs the `nros::main!()` macro splices
+# `<pkg>::register_dispatch(&mut executor)?;` calls for into the
+# generated Embassy `#[embassy_executor::main]` body.
+node_pkgs = ["stm32f4_listener_pkg"]
 
 [dependencies]
 # Phase 216.C.5 — `nros::main!()` proc-macro family. The macro emits
