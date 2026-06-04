@@ -1579,11 +1579,11 @@ build-zenoh-pico:
 # =============================================================================
 
 # Phase 218 — alias kept for callers still typing the pre-218 name.
-# The canonical recipe is `setup-cli` (builds the in-tree
-# `packages/cli/` sub-workspace). The historical external-release
-# install (Phase 195.D — NEWSLabNTU/nros-cli Releases via
-# scripts/install-nros.sh) is retired by the Phase 218 monorepo
-# merge.
+# Delegates to `setup-cli` (builds the in-tree `packages/cli/`
+# sub-workspace). The historical external-release install path
+# (Phase 195.D — NEWSLabNTU/nros-cli Releases) is retired by the
+# Phase 218 monorepo merge; for the no-Rust install path against a
+# tagged release, see `scripts/install-nros-prebuilt.sh`.
 [group("maintenance")]
 install-nros-cli: setup-cli
     @echo "nros CLI built in-tree at packages/cli/target/release/nros (Phase 218)."
