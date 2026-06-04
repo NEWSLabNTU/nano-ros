@@ -1,6 +1,6 @@
 [package]
 name = "nros-rmw-zenoh"
-version.workspace = true
+version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -91,12 +91,12 @@ ros-humble = []
 ros-iron = []
 
 [dependencies]
-nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
+nros-rmw = { version = "0.4.0", path = "../../core/nros-rmw", default-features = false }
 # Phase 115.M.3 — vtable register entry (previously shipped from
 # the retired `nros-rmw-zenoh-cffi` shim) now lives in this crate.
 # `RustBackendAdapter` requires `nros-rmw-cffi`'s `alloc` feature
 # unconditionally (it boxes every entity handle).
-nros-rmw-cffi = { version = "0.1.0", path = "../../core/nros-rmw-cffi", default-features = false, features = ["alloc"] }
+nros-rmw-cffi = { version = "0.4.0", path = "../../core/nros-rmw-cffi", default-features = false, features = ["alloc"] }
 # Phase 128.B.1 — `#[distributed_slice]` for the RMW init section.
 linkme = { version = "0.3", default-features = false }
 nros-core = { workspace = true, default-features = false }
@@ -104,8 +104,8 @@ nros-core = { workspace = true, default-features = false }
 # for deadline / lifespan emulation. The façade crate gates the
 # ConcretePlatform pick on the same feature flags as the rest of
 # nros, so adding it here doesn't constrain platform selection.
-nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false }
-zpico-sys = { version = "0.1.0", path = "../zpico-sys" }
+nros-platform = { version = "0.4.0", path = "../../core/nros-platform", default-features = false }
+zpico-sys = { version = "0.4.0", path = "../zpico-sys" }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }
@@ -113,11 +113,11 @@ log = { workspace = true, optional = true }
 critical-section = { version = "1.2", optional = true }
 
 [dev-dependencies]
-nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }
+nros-ghost-types = { version = "0.4.0", path = "../../verification/nros-ghost-types" }
 # Force `ConcretePlatform` resolution for tests under `platform-posix`.
 # Workspace-context builds get this via feature unification from a board
 # crate; standalone `cargo test` here doesn't.
-nros-platform = { version = "0.1.0", path = "../../core/nros-platform", features = ["platform-posix"] }
+nros-platform = { version = "0.4.0", path = "../../core/nros-platform", features = ["platform-posix"] }
 
 [lints]
 workspace = true

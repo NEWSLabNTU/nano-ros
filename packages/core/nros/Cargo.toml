@@ -1,6 +1,6 @@
 [package]
 name = "nros"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2024"
 description = "Unified ROS 2 client library for embedded systems"
 license = "MIT OR Apache-2.0"
@@ -176,11 +176,11 @@ ros-iron = ["nros-node/ros-iron"]
 
 [dependencies]
 # Core functionality (default-features = false for no_std support).
-nros-core = { version = "0.1.0", path = "../nros-core", default-features = false }
-nros-macros = { version = "0.1.0", path = "../nros-macros" }
-nros-node = { version = "0.1.0", path = "../nros-node", default-features = false }
-nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
-nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
+nros-core = { version = "0.4.0", path = "../nros-core", default-features = false }
+nros-macros = { version = "0.4.0", path = "../nros-macros" }
+nros-node = { version = "0.4.0", path = "../nros-node", default-features = false }
+nros-rmw = { version = "0.4.0", path = "../nros-rmw", default-features = false }
+nros-rmw-cffi = { version = "0.4.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
 # Phase 214.S.3 — pulled in by the `rmw-cyclonedds` umbrella feature.
 # Defaults left ON so the `vendored` feature (214.S.1, now part of the
 # default set) compiles the C++ backend end-to-end with no boilerplate
@@ -195,12 +195,12 @@ nros-rmw-cyclonedds-sys = { workspace = true, optional = true }
 # walker to discover its constructor section. `default-features`
 # kept off so the umbrella user picks transport links via the
 # concrete crate's own feature surface.
-nros-rmw-zenoh = { version = "0.1.0", path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
-nros-rmw-xrce-cffi = { version = "0.1.0", path = "../../xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
+nros-rmw-zenoh = { version = "0.4.0", path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
+nros-rmw-xrce-cffi = { version = "0.4.0", path = "../../xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
 # Phase 128.G — bridge surface (manifest-driven multi-RMW). Optional;
 # only pulled in when the umbrella's `bridge` or `config` feature is
 # enabled.
-nros-bridge = { version = "0.1.0", path = "../../bridge/nros-bridge", default-features = false, optional = true }
+nros-bridge = { version = "0.4.0", path = "../../bridge/nros-bridge", default-features = false, optional = true }
 # Phase 104.A — concrete RMW deps (`nros-rmw-xrce-cffi`,
 # `nros-rmw-zenoh`) removed. The umbrella consumes
 # only the generic vtable shim (`nros-rmw-cffi`); callers depend on
@@ -208,9 +208,9 @@ nros-bridge = { version = "0.1.0", path = "../../bridge/nros-bridge", default-fe
 # the backend's `#[ctor]` (POSIX) or an explicit `register()` call
 # (bare-metal). See
 # `docs/roadmap/phase-104-multi-backend-bridges.md` Thread A.
-nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
-nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }
-nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false }
+nros-params = { version = "0.4.0", path = "../nros-params", default-features = false }
+nros-platform = { version = "0.4.0", path = "../nros-platform", default-features = false }
+nros-serdes = { version = "0.4.0", path = "../nros-serdes", default-features = false }
 # Phase 212.M.7 — Arc that works on targets lacking ptr atomics
 # (riscv32imc / esp32c3 under ESP-IDF). `alloc::sync::Arc` is gated
 # behind `target_has_atomic = "ptr"`; `portable_atomic_util::Arc`

@@ -1,6 +1,6 @@
 [package]
 name = "nros-board-orin-spe"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "AGX Orin SPE (Cortex-R5F + NVIDIA FreeRTOS FSP) board crate for nros, with IVC transport to CCPLEX"

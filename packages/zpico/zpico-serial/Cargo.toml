@@ -1,6 +1,6 @@
 [package]
 name = "zpico-serial"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Serial (UART) link layer for nros (bare-metal systems)"
@@ -24,4 +24,4 @@ name = "zpico_serial"
 [dependencies]
 # Phase 128.E.1 — `link-serial` feature on zpico-sys was deleted
 # (always-on now). Bare-metal platform feature alone is sufficient.
-zpico-sys = { version = "0.1.0", path = "../zpico-sys", features = ["bare-metal"] }
+zpico-sys = { version = "0.4.0", path = "../zpico-sys", features = ["bare-metal"] }

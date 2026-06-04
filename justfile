@@ -2164,6 +2164,44 @@ clean-setup: clean-zenohd
     # clean); remove it with: rm -rf "${NROS_HOME:-$HOME/.nros}".
     @echo "SDK/tool installs removed. Re-run 'just setup tier=all' (and scripts/install-nros.sh for nros)."
 
+# Phase 218.J — JetPack-style bundle version bump.
+#
+# Updates `[workspace.package].version` in BOTH the runtime workspace
+# at `Cargo.toml` AND the CLI sub-workspace at `packages/cli/Cargo.toml`
+# atomically, then runs `scripts/check-version-lockstep.sh` to confirm.
+# Distribution model is git tag + release-page artifacts (no
+# crates.io); after `just release-bump 0.4.1`, the maintainer:
+#   1. `git commit -am 'release: nros-v0.4.1'`
+#   2. `git tag nros-v0.4.1`
+#   3. `git push origin main nros-v0.4.1`
+# The Phase 218.G release workflow builds the four-triple CLI binaries
+# off the tag + attaches them to the GitHub release.
+[group("release")]
+release-bump version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{version}}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+        echo "release-bump: version must look like X.Y.Z (optionally -prerelease); got '{{version}}'" >&2
+        exit 1
+    fi
+    bump_workspace_version() {
+        local toml="$1" newver="$2"
+        awk -v newver="$newver" '
+            /^\[workspace\.package\]/ { in_section = 1; print; next }
+            /^\[/                     { in_section = 0 }
+            in_section && /^version[ \t]*=[ \t]*"/ {
+                sub(/"[^"]*"/, "\"" newver "\"")
+                in_section = 0
+            }
+            { print }
+        ' "$toml" > "$toml.tmp"
+        mv "$toml.tmp" "$toml"
+    }
+    bump_workspace_version Cargo.toml "{{version}}"
+    bump_workspace_version packages/cli/Cargo.toml "{{version}}"
+    ./scripts/check-version-lockstep.sh
+    echo "release-bump: bundle bumped to {{version}}. Review with: git diff Cargo.toml packages/cli/Cargo.toml"
+
 # =============================================================================
 # Docker: use `just docker build`, `just docker shell`, `just docker test`, etc.
 # =============================================================================

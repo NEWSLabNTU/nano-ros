@@ -447,7 +447,21 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+# Phase 218.J — JetPack-style bundle versioning. SINGLE version across
+# the runtime workspace (this file) + the CLI sub-workspace at
+# `packages/cli/Cargo.toml`. Bumps in lockstep on every release,
+# regardless of which subsystem changed. Distribution model: git tag
+# + release-page artifacts (CLI binaries via Phase 218.G); no crate
+# is published to crates.io. The Phase 218.E ABI guard relies on this
+# equality for its strict version check between the CLI binary and a
+# consumer's Cargo.lock-resolved `nros-core`.
+#
+# `0.4.0` is the monorepo-merge baseline: nros-cli's last standalone
+# tag was `nros-v0.3.7`; bumping to `0.4.0` signals the merge.
+# `scripts/check-version-lockstep.sh` (wired into `lint.yml`) errors
+# if this and `packages/cli/Cargo.toml`'s `[workspace.package].version`
+# diverge. Use `just release-bump <X.Y.Z>` to bump both atomically.
+version = "0.4.0"
 edition = "2024"
 authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>", "NEWSLabNTU"]
 license = "MIT OR Apache-2.0"
@@ -461,16 +475,16 @@ keywords = ["ros2", "robotics", "embedded", "no-std", "rtos"]
 
 [workspace.dependencies]
 # Internal crates — version required for crates.io; path used locally.
-nros-core = { version = "0.1.0", path = "packages/core/nros-core", default-features = false }
-nros-serdes = { version = "0.1.0", path = "packages/core/nros-serdes", default-features = false }
-nros-macros = { version = "0.1.0", path = "packages/core/nros-macros" }
-nros-params = { version = "0.1.0", path = "packages/core/nros-params", default-features = false }
-nros-rmw = { version = "0.1.0", path = "packages/core/nros-rmw", default-features = false }
-nros-rmw-zenoh = { version = "0.1.0", path = "packages/zpico/nros-rmw-zenoh", default-features = false }
+nros-core = { version = "0.4.0", path = "packages/core/nros-core", default-features = false }
+nros-serdes = { version = "0.4.0", path = "packages/core/nros-serdes", default-features = false }
+nros-macros = { version = "0.4.0", path = "packages/core/nros-macros" }
+nros-params = { version = "0.4.0", path = "packages/core/nros-params", default-features = false }
+nros-rmw = { version = "0.4.0", path = "packages/core/nros-rmw", default-features = false }
+nros-rmw-zenoh = { version = "0.4.0", path = "packages/zpico/nros-rmw-zenoh", default-features = false }
 # Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend.
 # Used by nros / nros-node when `rmw-xrce-cffi` feature is on, and
 # by example crates that opt into the cffi-via-C-backend path.
-nros-rmw-xrce-cffi = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce-cffi", default-features = false }
+nros-rmw-xrce-cffi = { version = "0.4.0", path = "packages/xrce/nros-rmw-xrce-cffi", default-features = false }
 # Phase 214.S.2 — `nros-rmw-cyclonedds-sys` is referenced as a
 # workspace dep from `nros-node` (private optional, `__cyclonedds-link`
 # feature) and the `nros` umbrella (`rmw-cyclonedds` feature). Carries
@@ -480,14 +494,14 @@ nros-rmw-xrce-cffi = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce-cf
 # `cargo build` that pulls this crate gets the in-tree C++ backend
 # compiled. External CMake / Zephyr consumers that supply the symbols
 # elsewhere opt out via `default-features = false` at the dep-site.
-nros-rmw-cyclonedds-sys = { version = "0.1.0", path = "packages/dds/nros-rmw-cyclonedds-sys" }
-nros-rmw-cffi = { version = "0.1.0", path = "packages/core/nros-rmw-cffi", default-features = false }
-nros-node = { version = "0.1.0", path = "packages/core/nros-node", default-features = false }
-nros-log = { version = "0.1.0", path = "packages/core/nros-log" }
-nros-orchestration = { version = "0.1.0", path = "packages/core/nros-orchestration", default-features = false }
-nros-sizes-build = { version = "0.1.0", path = "packages/core/nros-sizes-build" }
-nros-platform = { version = "0.1.0", path = "packages/core/nros-platform", default-features = false }
-nros-platform-cffi = { version = "0.1.0", path = "packages/core/nros-platform-cffi", default-features = false }
+nros-rmw-cyclonedds-sys = { version = "0.4.0", path = "packages/dds/nros-rmw-cyclonedds-sys" }
+nros-rmw-cffi = { version = "0.4.0", path = "packages/core/nros-rmw-cffi", default-features = false }
+nros-node = { version = "0.4.0", path = "packages/core/nros-node", default-features = false }
+nros-log = { version = "0.4.0", path = "packages/core/nros-log" }
+nros-orchestration = { version = "0.4.0", path = "packages/core/nros-orchestration", default-features = false }
+nros-sizes-build = { version = "0.4.0", path = "packages/core/nros-sizes-build" }
+nros-platform = { version = "0.4.0", path = "packages/core/nros-platform", default-features = false }
+nros-platform-cffi = { version = "0.4.0", path = "packages/core/nros-platform-cffi", default-features = false }
 # Phase 121.3.deprecate-rust-remove + 123.A.1.x.2 — the Rust kernel
 # platform crates (nros-platform-{freertos,nuttx,threadx,zephyr,posix})
 # were deleted. The `packages/core/nros-platform-{rtos,posix}/`
@@ -495,11 +509,11 @@ nros-platform-cffi = { version = "0.1.0", path = "packages/core/nros-platform-cf
 # link the C port via the board crate's build.rs (FreeRTOS, ThreadX)
 # or via the parent build
 # system (Zephyr west, NuttX make).
-zpico-link-ivc = { version = "0.1.0", path = "packages/zpico/zpico-link-ivc", default-features = false }
-zpico-platform-custom = { version = "0.1.0", path = "packages/zpico/zpico-platform-custom", default-features = false }
-zpico-sys = { version = "0.1.0", path = "packages/zpico/zpico-sys", default-features = false }
-zpico-alloc = { version = "0.1.0", path = "packages/zpico/zpico-alloc" }
-xrce-sys = { version = "0.1.0", path = "packages/xrce/xrce-sys", default-features = false }
+zpico-link-ivc = { version = "0.4.0", path = "packages/zpico/zpico-link-ivc", default-features = false }
+zpico-platform-custom = { version = "0.4.0", path = "packages/zpico/zpico-platform-custom", default-features = false }
+zpico-sys = { version = "0.4.0", path = "packages/zpico/zpico-sys", default-features = false }
+zpico-alloc = { version = "0.4.0", path = "packages/zpico/zpico-alloc" }
+xrce-sys = { version = "0.4.0", path = "packages/xrce/xrce-sys", default-features = false }
 
 # no_std compatible
 heapless = "0.8"

@@ -1,6 +1,6 @@
 [package]
 name = "rcl-interfaces"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 description = "Generated rcl_interfaces bindings for nros parameter services"
 license = "Apache-2.0"

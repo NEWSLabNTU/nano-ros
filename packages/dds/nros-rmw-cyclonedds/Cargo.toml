@@ -1,6 +1,6 @@
 [package]
 name = "nros-rmw-cyclonedds"
-version.workspace = true
+version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -32,7 +32,7 @@ bridge-stub = []
 
 [dependencies]
 # K.7.3 schema introspection trait + types.
-nros-serdes = { version = "0.1.0", path = "../../core/nros-serdes", default-features = false }
+nros-serdes = { version = "0.4.0", path = "../../core/nros-serdes", default-features = false }
 # Fixed-capacity index map for the registry.
 heapless = { workspace = true }
 # Multi-thread guard: spin lock on hosted, critical-section on bare-metal.

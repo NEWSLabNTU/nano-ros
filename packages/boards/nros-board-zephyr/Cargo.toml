@@ -7,7 +7,7 @@
 
 [package]
 name = "nros-board-zephyr"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Zephyr family driver crate for nros — NetworkWait-only impl (Zephyr owns main / BSP)."

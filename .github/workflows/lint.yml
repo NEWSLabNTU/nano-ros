@@ -116,6 +116,13 @@ jobs:
       - name: just check-decoupling
         run: just check-decoupling
 
+      # Phase 218.J — JetPack-style bundle versioning lockstep guard.
+      # Errors if the runtime workspace's `[workspace.package].version`
+      # diverges from the CLI sub-workspace's. See
+      # `docs/development/versioning.md`.
+      - name: check-version-lockstep (Phase 218.J)
+        run: ./scripts/check-version-lockstep.sh
+
       - name: just check-platform-abi-mirror
         run: just check-platform-abi-mirror
 

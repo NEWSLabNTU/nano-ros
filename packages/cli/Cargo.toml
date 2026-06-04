@@ -14,13 +14,20 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.7"
+# Phase 218.J — JetPack-style bundle versioning. MUST match the root
+# workspace's `[workspace.package].version` at `../../Cargo.toml`.
+# `scripts/check-version-lockstep.sh` (wired into `.github/workflows/
+# lint.yml`) errors if the two diverge; `just release-bump <X.Y.Z>`
+# bumps both atomically. Previous CLI versions (last standalone tag:
+# `nros-v0.3.7`) are preserved in the archived
+# `github.com/NEWSLabNTU/nros-cli` repo's tag history.
+version = "0.4.0"
 authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>"]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/NEWSLabNTU/colcon-nano-ros"
+repository = "https://github.com/NEWSLabNTU/nano-ros"
 homepage = "https://github.com/NEWSLabNTU/nano-ros"
-documentation = "https://docs.rs/nros-cli"
+documentation = "https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/cli"
 rust-version = "1.75"
 
 [workspace.dependencies]

@@ -1,6 +1,6 @@
 [package]
 name = "nros-platform"
-version.workspace = true
+version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -167,15 +167,15 @@ cortex-r = []
 [dependencies]
 # Trait definitions live in this standalone crate so platform crates can
 # impl them without creating a cycle back through nros-platform.
-nros-platform-api = { version = "0.1.0", path = "../nros-platform-api" }
+nros-platform-api = { version = "0.4.0", path = "../nros-platform-api" }
 # Phase 123.A.1.x.2 — POSIX Rust crate deleted; the directory at
 # `../nros-platform-posix/` now holds the C port only.
-nros-platform-cffi = { version = "0.1.0", path = "../nros-platform-cffi", optional = true }
-nros-platform-mps2-an385 = { version = "0.1.0", path = "../../platforms/nros-platform-mps2-an385", optional = true }
-nros-platform-stm32f4 = { version = "0.1.0", path = "../../platforms/nros-platform-stm32f4", optional = true }
-nros-platform-esp32 = { version = "0.1.0", path = "../../platforms/nros-platform-esp32", optional = true }
-nros-platform-esp32-qemu = { version = "0.1.0", path = "../../platforms/nros-platform-esp32-qemu", optional = true }
-nros-platform-esp32s3 = { version = "0.1.0", path = "../../platforms/nros-platform-esp32s3", optional = true }
+nros-platform-cffi = { version = "0.4.0", path = "../nros-platform-cffi", optional = true }
+nros-platform-mps2-an385 = { version = "0.4.0", path = "../../platforms/nros-platform-mps2-an385", optional = true }
+nros-platform-stm32f4 = { version = "0.4.0", path = "../../platforms/nros-platform-stm32f4", optional = true }
+nros-platform-esp32 = { version = "0.4.0", path = "../../platforms/nros-platform-esp32", optional = true }
+nros-platform-esp32-qemu = { version = "0.4.0", path = "../../platforms/nros-platform-esp32-qemu", optional = true }
+nros-platform-esp32s3 = { version = "0.4.0", path = "../../platforms/nros-platform-esp32s3", optional = true }
 # Phase 121.3.deprecate-rust-remove — nros-platform-{freertos,nuttx,
 # threadx,zephyr} Rust crates were deleted. `packages/core/nros-platform-{rtos}/`
 # now hosts the C port only. `platform-{rtos}` features just toggle

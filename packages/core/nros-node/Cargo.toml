@@ -1,6 +1,6 @@
 [package]
 name = "nros-node"
-version.workspace = true
+version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -137,7 +137,7 @@ nros-core = { workspace = true, default-features = false }
 nros-rmw = { workspace = true, default-features = false }
 # Phase 110.D — `Executor::open_threaded` consumes the `SchedPolicy`
 # enum from the platform-api types layer.
-nros-platform-api = { version = "0.1.0", path = "../nros-platform-api", default-features = false }
+nros-platform-api = { version = "0.4.0", path = "../nros-platform-api", default-features = false }
 nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
 # Phase 104.A — concrete RMW deps (`nros-rmw-xrce-cffi`,
 # `nros-rmw-zenoh`) removed. The umbrella consumes
@@ -149,15 +149,15 @@ nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
 nros-params = { workspace = true, default-features = false }
 # Phase 88.12 — `Node::logger()` returns a `&'static Logger` from the
 # nros-log intern table.
-nros-log = { version = "0.1.0", path = "../nros-log" }
+nros-log = { version = "0.4.0", path = "../nros-log" }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"], optional = true }
 atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }
 log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
-nros-rcl-interfaces = { version = "0.1.0", path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
-nros-lifecycle-msgs = { version = "0.1.0", path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs", default-features = false, optional = true }
+nros-rcl-interfaces = { version = "0.4.0", path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
+nros-lifecycle-msgs = { version = "0.4.0", path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs", default-features = false, optional = true }
 # Phase 214.S.2 — runtime cyclonedds descriptor registry. Always linked
 # because the `MessageForRmw` helper trait + `cyclonedds_register`
 # module both reference it unconditionally; the no_std crate carries
@@ -167,12 +167,12 @@ nros-lifecycle-msgs = { version = "0.1.0", path = "../../interfaces/lifecycle-ms
 # `cfg(rmw_cyclonedds_present)` — emitted by `build.rs` when the
 # sibling `-sys` shim is in the dep graph). Pure zenoh / xrce builds
 # pay zero link-time cost for the bridge symbols.
-nros-rmw-cyclonedds = { version = "0.1.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false }
+nros-rmw-cyclonedds = { version = "0.4.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false }
 # Used by the cyclonedds register bridge for the `schema::Message`
 # super trait + by every typed creator's `MessageForRmw` bound. Always
 # linked — `no_std` schema-only crate, ~negligible footprint without
 # downstream serializer glue.
-nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false }
+nros-serdes = { version = "0.4.0", path = "../nros-serdes", default-features = false }
 # Phase 214.S.2 — direct optional dep on the C++ backend shim. Pulled
 # in by the private `__cyclonedds-link` feature (activated by
 # `nros/rmw-cyclonedds`). Its `links = "cyclonedds"` metadata bridge
@@ -200,7 +200,7 @@ libc = { version = "0.2", optional = true }
 # Embedded targets (`target_os = "none"`) see an empty dev-dep set,
 # so the unification path collapses.
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
-nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }
+nros-ghost-types = { version = "0.4.0", path = "../../verification/nros-ghost-types" }
 # Phase 214.S.5.c follow-up — dev-dep no longer unconditionally
 # activates `bridge-stub`. Smoke tests opt-in via the
 # `__cyclonedds-detect` feature, which forwards `bridge-stub` here.
@@ -210,7 +210,7 @@ nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-ty
 # C++ archive; the dev-dep stub used to clash with it. With the
 # activation now feature-gated, `__cyclonedds-link` and the stub are
 # structurally mutually exclusive.
-nros-rmw-cyclonedds = { version = "0.1.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false }
+nros-rmw-cyclonedds = { version = "0.4.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false }
 
 [lints]
 workspace = true

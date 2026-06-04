@@ -67,24 +67,45 @@ ensure_just() {
     fi
 }
 
-# Phase 195.A — the just-free prebuilt path: install the `nros` binary from the
-# nros-cli Releases (no rustup/just/source build). Prefers the in-tree installer
-# (when the codegen submodule is checked out), else fetches it over the network.
+# Phase 218 — the just-free `nros` path: previously fetched a prebuilt
+# binary from `nros-cli` Releases. After the Phase 218 monorepo merge,
+# `nros` ships from the in-tree sub-workspace at `packages/cli/`. Three
+# acquisition paths, in priority order:
+#   1. Already on PATH (a previous `just setup-cli` or activate.sh) — no-op.
+#   2. Tagged checkout — `scripts/install-nros-prebuilt.sh` fetches the
+#      matching `nros-<triple>.tar.gz` from the GitHub release and
+#      installs to `packages/cli/target/release/nros`.
+#   3. Branch / development checkout — build from source via
+#      `cargo build --release --manifest-path packages/cli/Cargo.toml
+#      --bin nros`. Needs rustup; install via this script's `base`
+#      subcommand first if not present.
 install_nros_prebuilt() {
     ensure_path
     if command -v nros >/dev/null 2>&1; then
         echo "bootstrap: nros already on PATH ($(command -v nros))."
-    elif [[ -x "${REPO_ROOT}/scripts/install-nros.sh" ]]; then
-        echo "bootstrap: installing prebuilt nros (vendored installer)..."
-        "${REPO_ROOT}/scripts/install-nros.sh"
-    else
-        if ! command -v curl >/dev/null 2>&1; then
-            echo "bootstrap: curl required to fetch the nros installer." >&2
-            exit 1
-        fi
-        echo "bootstrap: fetching the nros installer..."
-        curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+        return 0
     fi
+
+    # Path 2: tagged checkout → prebuilt fetch.
+    if [[ -x "${REPO_ROOT}/scripts/install-nros-prebuilt.sh" ]]; then
+        if git -C "${REPO_ROOT}" describe --tags --abbrev=0 --match 'nros-v*' >/dev/null 2>&1; then
+            echo "bootstrap: tagged checkout — fetching prebuilt nros..."
+            "${REPO_ROOT}/scripts/install-nros-prebuilt.sh"
+            export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
+            echo "bootstrap: next →  nros setup <board>   then   nros deploy <name>"
+            return 0
+        fi
+    fi
+
+    # Path 3: build from source. The CLI sub-workspace builds in ~30s on
+    # a fresh checkout. Requires cargo on PATH.
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo "bootstrap: cargo not on PATH; run 'scripts/bootstrap.sh base' first." >&2
+        exit 1
+    fi
+    echo "bootstrap: building nros from packages/cli/ (Phase 218)..."
+    (cd "${REPO_ROOT}" && cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros)
+    export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
     echo "bootstrap: next →  nros setup <board>   then   nros deploy <name>"
 }
 

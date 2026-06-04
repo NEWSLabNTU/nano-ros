@@ -346,3 +346,57 @@ non-trivial history (the original carve-out from Phase 195.D, the
 - If the merged tree's `just setup` cold time grows past the
   ≤5 min `default` SDK-tier policy, the CLI build step gets a tier
   carve-out so it can run on-demand instead of unconditionally.
+
+### 218.J — JetPack-style bundle versioning — landed 2026-06-04
+
+Added after 218.A–I landed: the implementation lift produced a CLI
+binary at `nros-cli 0.3.7` (inherited from the standalone repo's
+tags) acting on runtime crates at `nros-core 0.1.0` — the
+Phase 218.E ABI guard fired on the merged tree itself. Versioning
+discussion settled on a single bundle version (the JetPack model):
+no crate publishes to crates.io; the project ships as a tagged release
+with CLI binaries + a runtime checkout; one version label rides the
+whole thing.
+
+- [x] **218.J.1** — Adopt `0.4.0` as monorepo-merge baseline (signals
+      discontinuity from `nros-v0.3.7` standalone tag without
+      claiming post-1.0 stability). Bumped
+      `[workspace.package].version` in both `Cargo.toml` and
+      `packages/cli/Cargo.toml`; mass sed-bumped every
+      `version = "0.1.0"` path-dep pin in member crates → `"0.4.0"`
+      so `cargo update --workspace` resolves cleanly across the
+      runtime + CLI sub-workspace.
+- [x] **218.J.2** — `scripts/check-version-lockstep.sh` extracts
+      `[workspace.package].version` from both manifests; errors with
+      both versions printed when they diverge. Wired into
+      `.github/workflows/lint.yml` after `check-decoupling`.
+- [x] **218.J.3** — `just release-bump <X.Y.Z>` recipe sed-bumps both
+      files atomically + runs the lockstep guard. Validates SemVer
+      shape (`^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$`).
+- [x] **218.J.4** — `docs/development/versioning.md` documents the
+      bundle model: no crates.io publish, git-tag-driven releases,
+      single label moves runtime + CLI together. Cross-refs the
+      ABI guard (218.E), release workflow (218.G), and lockstep
+      check.
+- [x] **218.J.5** — `scripts/bootstrap.sh::install_nros_prebuilt` (the
+      `bootstrap nros` subcommand) updated to the Phase 218 acquisition
+      chain: PATH check → `install-nros-prebuilt.sh` on tagged
+      checkouts → `cargo build --release --manifest-path
+      packages/cli/Cargo.toml --bin nros` on branch / development
+      checkouts. Removes the dependency on the now-deprecated
+      `install-nros.sh` curl path that 218.F flagged as a regression
+      on non-tagged checkouts.
+
+**Deferred to follow-up:**
+- Sweep every workspace member's `Cargo.toml` to switch hardcoded
+  `version = "0.4.0"` to `version.workspace = true`. ~50 crates;
+  cargo workspace inheritance breaks for standalone (own-`[workspace]`)
+  crates so they need to keep the hardcoded form. Not blocking.
+- Defensive `publish = false` on every member that doesn't already
+  carry it. ~80 crates touched. Belt-and-suspenders only.
+
+**Files:** `Cargo.toml`, `packages/cli/Cargo.toml`,
+`scripts/check-version-lockstep.sh` (new),
+`docs/development/versioning.md` (new), `justfile`,
+`.github/workflows/lint.yml`, `scripts/bootstrap.sh`, ~50
+`packages/*/*/Cargo.toml` (mass version bump).

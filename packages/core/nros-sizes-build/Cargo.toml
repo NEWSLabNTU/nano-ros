@@ -1,6 +1,6 @@
 [package]
 name = "nros-sizes-build"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2024"
 description = "Build-script helper that extracts Rust-side type sizes from a compiled rlib for C/C++ FFI header generation"
 license = "MIT OR Apache-2.0"
