@@ -439,24 +439,28 @@ shape.
 These are CLI-side polish that doesn't block the cmake-side work
 but is required for the end-to-end acceptance bar (§6).
 
-- [ ] **219.K — `nros codegen entry` runs without external
-      `play-launch-parser`.** (medium, ✱) `nros plan` shells the
-      external `play_launch_parser` Python tool today
-      (`packages/cli/nros-cli-core/src/orchestration/planner.rs::437-462`,
-      gated by the `play-launch-parser` cargo feature). The Rust
-      proc-macro path doesn't (in-process via the `nros-build`
-      dep). For C/C++ symmetry the shipped CLI must work on a
-      stock dev box without `pip install play-launch-parser`.
-      Pick one:
-      (1) flip the `play-launch-parser` cargo feature on in the
-          prebuilt CLI release pipeline;
-      (2) vendor + static-link the parser into the CLI binary;
-      (3) write a thin in-process replacement on the subset of
-          launch.xml the v1 spec covers (§11.5).
-      Document the choice; whatever lands, `nros codegen entry
-      --lang cpp` must succeed on a box where only the in-tree
-      `packages/cli/target/release/nros` is built (or the
-      transitional `~/.nros/bin/nros`). Closes review Gap 5.
+- [x] **219.K — `nros codegen entry` runs without external
+      `play-launch-parser`.** (cheap, ✱) **Resolved by design
+      clarification (2026-06-04).** The workflow review's Gap 5 ("`nros
+      plan` shells the external `play_launch_parser` Python tool")
+      applies only to the `nros plan` path — that path supports both
+      `.launch.xml` and `.launch.py`, and the Python form requires
+      embedded CPython, which lives in the separate
+      `play_launch_parser` tool to keep the `nros` binary free of
+      pyo3/`libpython` (Phase 195.A rationale, preserved by 218).
+      Phase 219's C/C++ codegen path is **XML-only** at v1
+      (design-doc §11.5 explicitly defers `.launch.py`), so it does
+      NOT route through `nros plan`. The Rust proc-macro already
+      uses the in-process `packages/cli/nros-build/src/launch_parser.rs`
+      (Phase 212.N.11) which covers every v1 tag (`arg` / `node` /
+      `param` / `remap` / `group` / `include` / `launch`), every v1
+      substitution (`$(find <pkg>)` / `$(var <arg>)` / `$(env <name>)`),
+      and recursive `<include>` resolution. **Resolution:** when 219.A
+      lands, the codegen entry verb consumes
+      `nros_build::launch_parser::parse_launch_file()` directly — same
+      in-process parser the Rust proc-macro uses; no shell-out, no
+      Python dep, no cargo-feature toggle. Closes review Gap 5
+      without code.
 - [ ] **219.L — `nros metadata` walks cmake-only Node pkgs.**
       (medium, ✱) `nros metadata --workspace <ws> <bringup>`
       returns `preserved 0 metadata artifact(s)` against a
