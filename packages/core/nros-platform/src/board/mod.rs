@@ -54,6 +54,7 @@ pub mod exit;
 pub mod init;
 pub mod network;
 pub mod print;
+pub mod rtic_entry;
 pub mod runtime;
 pub mod transport;
 
@@ -64,6 +65,7 @@ pub use exit::BoardExit;
 pub use init::BoardInit;
 pub use network::NetworkWait;
 pub use print::BoardPrint;
+pub use rtic_entry::RticBoardEntry;
 pub use runtime::{
     NodeDispatchFn, NodeDispatchRuntime, NodeInitFn, NodeRegisterFn, NodeTickFn, NullNodeRuntime,
     RuntimeCtx, RuntimeError, SignaledCallback,
