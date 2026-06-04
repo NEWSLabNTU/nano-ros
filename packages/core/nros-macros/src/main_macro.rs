@@ -61,6 +61,17 @@ struct MainArgs {
     /// `args = [("k", "v"), ...]`. Forwarded to the launch parser as
     /// argument overrides.
     args: Vec<(String, String)>,
+    /// Phase 216.B.4 — `custom_tasks = [adc_sample, ui_redraw]`. Each
+    /// ident becomes an extra `#[task]` trampoline inside the
+    /// generated `mod __nros_app` body when the dispatched framework
+    /// is RTIC. `None` = not supplied (the default — no extra tasks).
+    /// `Some(vec![])` = supplied as an empty list (still no extra
+    /// tasks, but the key was present — distinguished so the
+    /// OwnedSpin/Embassy misuse error fires even on `[]`).
+    custom_tasks: Option<Vec<Ident>>,
+    /// Span of the `custom_tasks` key, retained for diagnostics when
+    /// rejecting the key under a non-RTIC framework.
+    custom_tasks_span: Option<Span>,
 }
 
 impl Parse for MainArgs {
@@ -83,7 +94,7 @@ impl Parse for MainArgs {
                                 "expected board ident (e.g. `NativeBoard`), got string literal",
                             ));
                         }
-                        KvValue::Args(_) => {
+                        KvValue::Args(_) | KvValue::IdentList(_) => {
                             return Err(syn::Error::new(
                                 key.span(),
                                 "`board = ` takes a type path, not a list",
@@ -116,12 +127,29 @@ impl Parse for MainArgs {
                     };
                     out.args = list;
                 }
+                "custom_tasks" => {
+                    // Phase 216.B.4 — `custom_tasks = [ident, ident,
+                    // ...]`. Stored even when empty so the framework-
+                    // dispatch error fires regardless of list length.
+                    let idents = match value {
+                        KvValue::IdentList(v) => v,
+                        _ => {
+                            return Err(syn::Error::new(
+                                key.span(),
+                                "`custom_tasks = ` takes a list of fn idents, \
+                                 e.g. `custom_tasks = [adc_sample, ui_redraw]`",
+                            ));
+                        }
+                    };
+                    out.custom_tasks = Some(idents);
+                    out.custom_tasks_span = Some(key.span());
+                }
                 other => {
                     return Err(syn::Error::new(
                         key.span(),
                         format!(
                             "unknown `nros::main!` argument `{other}` \
-                             (expected one of: board, launch, args)"
+                             (expected one of: board, launch, args, custom_tasks)"
                         ),
                     ));
                 }
@@ -143,18 +171,32 @@ enum KvValue {
     Str(LitStr),
     /// `args = [("use_sim", "true"), ...]`
     Args(Vec<(String, String)>),
+    /// Phase 216.B.4 — `custom_tasks = [adc_sample, ui_redraw, ...]`.
+    /// Empty list is valid (parses to `vec![]`).
+    IdentList(Vec<Ident>),
 }
 
 impl Parse for KeyValue {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let key: Ident = input.parse()?;
         input.parse::<Token![=]>()?;
-        // Try the array form first (args = [...]) — `Expr::parse`
-        // would also handle it, but extracting the tuple values is
-        // cleaner via a dedicated branch.
+        // Try the array form first — two shapes share the bracket:
+        // `args = [("k","v"), ...]` (tuple-string pairs) and
+        // `custom_tasks = [foo, bar]` (bare idents, Phase 216.B.4).
+        // Dispatch on the key name so each form's parser sees only
+        // its expected token shape (cleaner diagnostics).
         if input.peek(syn::token::Bracket) {
             let content;
             syn::bracketed!(content in input);
+            if key == "custom_tasks" {
+                // Bare-ident list; empty `[]` parses to `vec![]`.
+                let idents: Punctuated<Ident, Token![,]> = Punctuated::parse_terminated(&content)?;
+                let collected: Vec<Ident> = idents.into_iter().collect();
+                return Ok(KeyValue {
+                    key,
+                    value: KvValue::IdentList(collected),
+                });
+            }
             let pairs: Punctuated<TupleStrPair, Token![,]> =
                 Punctuated::parse_terminated(&content)?;
             let collected = pairs
@@ -274,6 +316,28 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Some(d) => framework_for(d),
         None => Framework::OwnedSpin,
     };
+
+    // Phase 216.B.4 — `custom_tasks = [...]` only applies to the
+    // RTIC emit. OwnedSpin / Embassy have no `mod __nros_app { ... }`
+    // body for the macro to splice into, so flag misuse early with a
+    // span pointing at the key.
+    if args.custom_tasks.is_some() && framework != Framework::Rtic {
+        let span = args.custom_tasks_span.unwrap_or_else(Span::call_site);
+        let framework_label = match framework {
+            Framework::OwnedSpin => "OwnedSpin",
+            Framework::Embassy => "Embassy",
+            Framework::Rtic => unreachable!(),
+        };
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "nros::main!: `custom_tasks = [...]` is only valid for the RTIC framework \
+                 (current framework: {framework_label}). \
+                 RTIC splices each ident as a `#[task]` inside the generated `mod __nros_app` \
+                 body; other frameworks have no equivalent splice point."
+            ),
+        ));
+    }
 
     // --- Launch resolution → list of <pkg_ident> register calls ---
     let pkg_idents: Vec<Ident> = match &args.launch {
@@ -517,12 +581,18 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // Phase 216.B.3 SKELETON — `#[rtic::app(...)]` module that
             // delegates boot to `RticBoardEntry::init_hardware`. The
             // full body (the `__nros_spin` + `__nros_dispatch` software
-            // tasks, the per-Node register/spawn wiring, the
-            // `custom_tasks = [...]` macro-arg surface) lands in a
+            // tasks + per-Node register/spawn wiring) lands in a
             // 216.B.3 follow-up. Today's emit only needs to compile so
             // the route through `framework_for(deploy)` is observable
             // — runtime use surfaces the board crate's `todo!()` in
             // `init_hardware` (intentional).
+            //
+            // Phase 216.B.4 adds the `custom_tasks = [...]` splice:
+            // each user-listed ident `f` becomes a thin `#[task]`
+            // trampoline that awaits `super::<f>_impl(cx).await`. The
+            // user supplies the impl fn (and its `Context` type-alias
+            // arg — RTIC generates `<f>::Context` from the task ident)
+            // outside the macro; the macro just declares the task.
             //
             // Hardcoded `dispatchers = [USART1, USART2]` matches
             // `RticStm32F4::DISPATCHERS`. A follow-up reads the const
@@ -533,6 +603,27 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // here — the Entry pkg's `main.rs` already declares those
             // at file scope (see the talker-rtic example). Emitting
             // them inside the macro would double-declare.
+            let custom_task_items: Vec<proc_macro2::TokenStream> = args
+                .custom_tasks
+                .as_ref()
+                .map(|v| v.as_slice())
+                .unwrap_or(&[])
+                .iter()
+                .map(|f| {
+                    // Sibling impl fn name: `<f>_impl`. Defined at
+                    // module scope outside the `mod __nros_app` body
+                    // by the user — the trampoline reaches it via
+                    // `super::<f>_impl`.
+                    let impl_ident = Ident::new(&format!("{}_impl", f), f.span());
+                    quote! {
+                        #[task(priority = 1)]
+                        async fn #f(cx: #f::Context) {
+                            super::#impl_ident(cx).await;
+                        }
+                    }
+                })
+                .collect();
+
             quote! {
                 use #board_path as __NrosBoard;
 
@@ -565,6 +656,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             );
                         (Shared {}, Local {})
                     }
+
+                    // Phase 216.B.4 — user-supplied `#[task]` trampolines.
+                    // Each calls a sibling `<name>_impl` fn the user
+                    // defines at module scope; signatures are kept
+                    // simple to dodge cross-pkg type-alias plumbing.
+                    #( #custom_task_items )*
                 }
             }
         }
@@ -752,4 +849,100 @@ fn pkg_to_crate_ident(pkg: &str) -> String {
 #[allow(dead_code)]
 fn _unused() {
     let _ = std::marker::PhantomData::<(Expr, ExprLit, Lit)>;
+}
+
+/// Phase 216.B.4 — parser-only unit tests for `custom_tasks = [...]`.
+///
+/// The full `cargo check`-driven round-trip (showing the RTIC splice
+/// actually compiles against the stm32f4 board crate) needs a
+/// thumbv7em-eabihf cross build; that lives in the 216.B.5 follow-up.
+/// These tests pin the host-side syntax acceptance: the parser takes
+/// `custom_tasks = [ident, ident, ...]` (and the empty `[]` form),
+/// rejects malformed shapes, and round-trips ident order.
+#[cfg(test)]
+mod custom_tasks_parser_tests {
+    use super::MainArgs;
+
+    fn parse(src: &str) -> syn::Result<MainArgs> {
+        syn::parse_str::<MainArgs>(src)
+    }
+
+    #[test]
+    fn empty_list_is_accepted() {
+        // `Some(vec![])` distinguishes "key supplied, list empty" from
+        // "key not supplied" so the OwnedSpin / Embassy misuse error
+        // can still fire on `[]`.
+        let parsed = parse("custom_tasks = []").expect("parse empty list");
+        let tasks = parsed.custom_tasks.expect("custom_tasks set");
+        assert!(tasks.is_empty(), "expected empty Vec, got {tasks:?}");
+        assert!(parsed.custom_tasks_span.is_some(), "span captured");
+    }
+
+    #[test]
+    fn single_ident_is_accepted() {
+        let parsed = parse("custom_tasks = [adc_sample]").expect("parse single");
+        let tasks = parsed.custom_tasks.expect("custom_tasks set");
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].to_string(), "adc_sample");
+    }
+
+    #[test]
+    fn multi_ident_round_trips_in_order() {
+        let parsed =
+            parse("custom_tasks = [adc_sample, ui_redraw, watchdog]").expect("parse multi");
+        let names: Vec<String> = parsed
+            .custom_tasks
+            .expect("custom_tasks set")
+            .into_iter()
+            .map(|i| i.to_string())
+            .collect();
+        assert_eq!(names, vec!["adc_sample", "ui_redraw", "watchdog"]);
+    }
+
+    #[test]
+    fn trailing_comma_is_accepted() {
+        let parsed =
+            parse("custom_tasks = [adc_sample, ui_redraw,]").expect("parse trailing comma");
+        assert_eq!(parsed.custom_tasks.expect("set").len(), 2);
+    }
+
+    #[test]
+    fn combines_with_other_args() {
+        let parsed = parse("board = ::nros_board_native::NativeBoard, custom_tasks = [foo, bar]")
+            .expect("parse combined");
+        assert!(parsed.board.is_some(), "board parsed");
+        assert_eq!(parsed.custom_tasks.expect("custom_tasks set").len(), 2);
+    }
+
+    #[test]
+    fn string_literal_in_list_is_rejected() {
+        let err = match parse("custom_tasks = [\"adc_sample\"]") {
+            Ok(_) => panic!("string literals must not parse as idents"),
+            Err(e) => e,
+        };
+        let msg = err.to_string();
+        // syn's default ident-parse error contains "expected identifier"
+        // — pin on that rather than the syn version-specific wording so
+        // a syn bump doesn't tip the test.
+        assert!(
+            msg.contains("expected") && msg.contains("identifier"),
+            "diagnostic should mention identifier, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn missing_brackets_falls_back_to_path_branch() {
+        // Without brackets the parser drops into the Path branch and
+        // stores a `KvValue::Path`, which the `custom_tasks` arm
+        // rejects with its diagnostic. Pin on the message contents.
+        let err = match parse("custom_tasks = adc_sample") {
+            Ok(_) => panic!("bare ident must not parse as a list"),
+            Err(e) => e,
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("custom_tasks") && msg.contains("list of fn idents"),
+            "diagnostic should mention custom_tasks list, got: {msg}"
+        );
+    }
 }

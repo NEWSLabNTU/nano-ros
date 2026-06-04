@@ -175,6 +175,67 @@ fn n9_main_macro_form4_all_explicit_compiles() {
 }
 
 #[test]
+fn n9_main_macro_custom_tasks_on_owned_spin_emits_error() {
+    // Phase 216.B.4 — `custom_tasks = [...]` is RTIC-only. The
+    // `demo_entry` fixture deploys `native` (OwnedSpin), so a
+    // `nros::main!(custom_tasks = [foo, bar])` invocation must fail
+    // with the documented diagnostic.
+    let (_g, root) = stage_fixture();
+    fs::write(
+        root.join("src/demo_entry/src/main.rs"),
+        "nros::main!(custom_tasks = [adc_sample, ui_redraw]);\n",
+    )
+    .expect("write main.rs");
+    let out = Command::new("cargo")
+        .args(["check", "-p", "demo_entry", "--manifest-path"])
+        .arg(root.join("Cargo.toml"))
+        .output()
+        .expect("spawn cargo check");
+    assert!(
+        !out.status.success(),
+        "expected `cargo check` to fail when `custom_tasks` is used outside RTIC, \
+         but it succeeded.\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("custom_tasks") && stderr.contains("only valid for the RTIC framework"),
+        "expected diagnostic to flag RTIC-only restriction, stderr:\n{stderr}",
+    );
+}
+
+#[test]
+fn n9_main_macro_custom_tasks_empty_on_owned_spin_still_errors() {
+    // Phase 216.B.4 — empty list `custom_tasks = []` is also a misuse
+    // outside RTIC. The parser distinguishes "key absent" from "key
+    // supplied as empty list" so the diagnostic fires either way.
+    let (_g, root) = stage_fixture();
+    fs::write(
+        root.join("src/demo_entry/src/main.rs"),
+        "nros::main!(custom_tasks = []);\n",
+    )
+    .expect("write main.rs");
+    let out = Command::new("cargo")
+        .args(["check", "-p", "demo_entry", "--manifest-path"])
+        .arg(root.join("Cargo.toml"))
+        .output()
+        .expect("spawn cargo check");
+    assert!(
+        !out.status.success(),
+        "expected `cargo check` to fail for `custom_tasks = []` on OwnedSpin, \
+         but it succeeded.\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("custom_tasks") && stderr.contains("only valid for the RTIC framework"),
+        "expected diagnostic to flag RTIC-only restriction, stderr:\n{stderr}",
+    );
+}
+
+#[test]
 fn n9_main_macro_unknown_board_emits_compile_error() {
     let (_g, root) = stage_fixture();
     // Override Cargo.toml's `deploy = "native"` to something the
