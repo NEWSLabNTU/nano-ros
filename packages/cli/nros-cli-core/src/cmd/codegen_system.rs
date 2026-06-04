@@ -187,26 +187,51 @@ enum ComponentLang {
 
 /// Resolve `--bringup` (name or path) → a `BringupPackageEntry`. Falls back
 /// to the workspace's `default_system` pointer when no explicit hint given.
+///
+/// Path-style hints accept directory basenames that don't exactly match a
+/// registered bringup-pkg cargo name — common when an example dir is named
+/// `action-client` but its host pkg is `nros_zephyr_action_client`. The
+/// resolver tries (in order):
+///
+/// 1. `<basename>` as-is.
+/// 2. `<basename>` with hyphens → underscores (cargo-pkg-name style).
+/// 3. `nros_<platform>_<basename-snake>` when the dir lives under
+///    `examples/<platform>/<lang>/<basename>` (Phase 118 collapsed shape).
+/// 4. Match by directory identity: any registered bringup pkg whose
+///    `manifest_path.parent()` resolves to the same absolute dir as the
+///    hint. This handles arbitrary naming without convention assumptions
+///    (self-bringup pkgs especially — their `manifest_path` is the pkg's
+///    Cargo.toml, so the parent IS the example dir).
+///
+/// Phase 220.I — landed to unblock `just zephyr build-fixtures` cyclonedds
+/// variants under the Phase 118 collapsed `examples/<plat>/<lang>/<ex>/`
+/// shape.
 fn resolve_bringup<'a>(cfg: &'a NrosConfig, hint: Option<&str>) -> Result<&'a BringupPackageEntry> {
     let name = match hint {
         Some(h) => {
-            // Treat as path first: if it points at an existing dir whose
-            // basename matches a registered bringup, prefer that.
+            // Treat as path first: if it points at an existing dir, try a
+            // set of alias candidates derived from the path before giving up.
             let as_path = PathBuf::from(h);
             if as_path.is_dir() {
-                let base = as_path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or(h)
-                    .to_string();
-                if cfg.bringup_packages.contains_key(&base) {
-                    base
-                } else {
-                    bail!(
-                        "directory {h:?} does not match any bringup package \
-                         in workspace; known bringup pkgs: {:?}",
-                        cfg.bringup_packages.keys().collect::<Vec<_>>()
-                    );
+                match resolve_bringup_by_path(cfg, &as_path) {
+                    Some((matched, kind)) => {
+                        if std::env::var_os("NROS_DEBUG_BRINGUP_RESOLVER").is_some() {
+                            eprintln!(
+                                "nros codegen-system: bringup path {h:?} → \
+                                 matched `{matched}` via {kind}"
+                            );
+                        }
+                        matched
+                    }
+                    None => {
+                        let tried = bringup_alias_candidates(&as_path);
+                        bail!(
+                            "directory {h:?} does not match any bringup package \
+                             in workspace; tried aliases {tried:?}; \
+                             known bringup pkgs: {:?}",
+                            cfg.bringup_packages.keys().collect::<Vec<_>>()
+                        );
+                    }
                 }
             } else {
                 h.to_string()
@@ -230,6 +255,80 @@ fn resolve_bringup<'a>(cfg: &'a NrosConfig, hint: Option<&str>) -> Result<&'a Br
             cfg.bringup_packages.keys().collect::<Vec<_>>()
         )
     })
+}
+
+/// Phase 220.I — derive bringup-pkg alias candidates from a directory path
+/// (in lookup-priority order). Pure naming-convention helpers; the dir-
+/// identity match (step 4 of `resolve_bringup`) lives in the caller because
+/// it needs to compare against actual entries.
+fn bringup_alias_candidates(path: &Path) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let Some(base) = path.file_name().and_then(|s| s.to_str()) else {
+        return out;
+    };
+    // 1. Exact basename.
+    out.push(base.to_string());
+    // 2. Hyphens → underscores.
+    let snake = base.replace('-', "_");
+    if snake != base {
+        out.push(snake.clone());
+    }
+    // 3. `nros_<plat>_<basename-snake>` when path is under
+    //    `examples/<plat>/<lang>/<basename>`. We walk ancestors looking
+    //    for the `examples` segment + the two segments immediately after.
+    if let Some(plat) = extract_examples_platform(path) {
+        let candidate = format!("nros_{plat}_{snake}");
+        if !out.contains(&candidate) {
+            out.push(candidate);
+        }
+    }
+    out
+}
+
+/// Walk path ancestors; when an ancestor's last component is `examples`,
+/// the NEXT child component (working back toward `path`) is the platform.
+/// Returns e.g. `"zephyr"` for `examples/zephyr/rust/action-client`.
+fn extract_examples_platform(path: &Path) -> Option<String> {
+    let comps: Vec<&str> = path
+        .components()
+        .filter_map(|c| c.as_os_str().to_str())
+        .collect();
+    for (i, c) in comps.iter().enumerate() {
+        if *c == "examples" && i + 1 < comps.len() {
+            return Some(comps[i + 1].to_string());
+        }
+    }
+    None
+}
+
+/// Phase 220.I — resolve a directory path to a bringup-pkg name using all
+/// four strategies (alias candidates + dir-identity). Returns the matched
+/// pkg name + a short tag describing which strategy matched (for the
+/// debug log line).
+fn resolve_bringup_by_path(cfg: &NrosConfig, dir: &Path) -> Option<(String, &'static str)> {
+    // Steps 1–3: alias-name lookup.
+    let aliases = bringup_alias_candidates(dir);
+    for alias in &aliases {
+        if cfg.bringup_packages.contains_key(alias) {
+            return Some((alias.clone(), "alias"));
+        }
+    }
+    // Step 4: dir-identity match. Canonicalize when possible (handles
+    // symlinks + `..` segments); fall back to a logical compare.
+    let want = std::fs::canonicalize(dir).ok();
+    for (name, entry) in &cfg.bringup_packages {
+        let Some(pkg_dir) = entry.manifest_path.parent() else {
+            continue;
+        };
+        if let (Some(a), Ok(b)) = (want.as_ref(), std::fs::canonicalize(pkg_dir)) {
+            if a == &b {
+                return Some((name.clone(), "dir-identity"));
+            }
+        } else if pkg_dir == dir {
+            return Some((name.clone(), "dir-identity"));
+        }
+    }
+    None
 }
 
 /// For each component, decide whether its host package is a Rust workspace
@@ -1349,5 +1448,191 @@ domain_id = 3
         assert!(body.contains("\"srcDir\": \"nros-system\""), "body: {body}");
         // Standard bake still produced.
         assert!(out.join("nros-system/system_config.h").exists());
+    }
+
+    // ---- Phase 220.I — bringup-pkg dir → name alias resolver ---------------
+
+    #[test]
+    fn bringup_alias_candidates_hyphen_to_underscore() {
+        let p = Path::new("/tmp/examples/zephyr/rust/action-client");
+        let aliases = bringup_alias_candidates(p);
+        assert!(aliases.contains(&"action-client".to_string()));
+        assert!(aliases.contains(&"action_client".to_string()));
+        assert!(aliases.contains(&"nros_zephyr_action_client".to_string()));
+    }
+
+    #[test]
+    fn bringup_alias_candidates_no_examples_segment() {
+        let p = Path::new("/tmp/scratch/action-client");
+        let aliases = bringup_alias_candidates(p);
+        assert!(aliases.contains(&"action-client".to_string()));
+        assert!(aliases.contains(&"action_client".to_string()));
+        // No `examples/<plat>/…` segment → no platform prefix candidate.
+        assert!(!aliases.iter().any(|a| a.starts_with("nros_")));
+    }
+
+    /// Phase 220.I — invoking `nros codegen-system` with a path whose
+    /// basename (`action-client`) does NOT match the bringup-pkg cargo
+    /// name (`nros_zephyr_action_client`) still resolves, via either the
+    /// `nros_<plat>_<snake>` alias OR dir-identity fallback. Reproduces the
+    /// `just zephyr build-fixtures` cyclonedds variant failure.
+    #[test]
+    fn codegen_system_resolves_alias_for_collapsed_zephyr_example_shape() {
+        let dir = scratch_dir("alias_collapsed_zephyr_shape");
+        // Lay out a fake `examples/zephyr/rust/action-client/` self-bringup
+        // pkg under a workspace root.
+        let plat_dir = dir.join("examples/zephyr/rust");
+        let ex_dir = plat_dir.join("action-client");
+        fs::create_dir_all(ex_dir.join("src")).unwrap();
+        fs::write(
+            dir.join("Cargo.toml"),
+            r#"
+[workspace]
+resolver = "2"
+members = ["examples/zephyr/rust/action-client"]
+"#,
+        )
+        .unwrap();
+        fs::write(
+            ex_dir.join("Cargo.toml"),
+            r#"
+[package]
+name = "nros_zephyr_action_client"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.component]
+class = "nros_zephyr_action_client::Node"
+name = "action_client"
+
+[package.metadata.nros.deploy.zephyr]
+board = "native_sim/native/64"
+rmw = "cyclonedds"
+domain_id = 5
+"#,
+        )
+        .unwrap();
+        fs::write(ex_dir.join("src/lib.rs"), "").unwrap();
+
+        let out = dir.join("build/action-client");
+        run(Args {
+            workspace: Some(dir.clone()),
+            // Reproduce the shim's call: --bringup <abs-path-to-dir>.
+            bringup: Some(ex_dir.to_string_lossy().into_owned()),
+            target: Some("zephyr-cyclonedds".into()),
+            out: Some(out.clone()),
+            ahead_of_vendor: None,
+            file: None,
+            exec: None,
+        })
+        .expect("codegen-system resolves dir basename → cargo pkg name via alias");
+
+        let header = fs::read_to_string(out.join("nros-system/system_config.h")).unwrap();
+        assert!(
+            header.contains("#define NROS_SYSTEM_DOMAIN_ID 5u"),
+            "{header}"
+        );
+        assert!(
+            header.contains("#define NROS_SYSTEM_RMW \"cyclonedds\""),
+            "{header}"
+        );
+    }
+
+    /// Phase 220.I — dir-identity fallback: when an example uses an
+    /// arbitrary cargo name (e.g. native examples `native-rs-talker`) that
+    /// matches none of the alias candidates, the resolver still picks the
+    /// right bringup pkg by comparing `manifest_path.parent()` to the
+    /// requested dir.
+    #[test]
+    fn codegen_system_resolves_dir_identity_for_arbitrary_pkg_name() {
+        let dir = scratch_dir("alias_dir_identity_arbitrary_name");
+        let ex_dir = dir.join("examples/native/rust/talker");
+        fs::create_dir_all(ex_dir.join("src")).unwrap();
+        fs::write(
+            dir.join("Cargo.toml"),
+            r#"
+[workspace]
+resolver = "2"
+members = ["examples/native/rust/talker"]
+"#,
+        )
+        .unwrap();
+        fs::write(
+            ex_dir.join("Cargo.toml"),
+            r#"
+[package]
+name = "native-rs-talker"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.component]
+class = "native_rs_talker::Node"
+name = "talker"
+
+[package.metadata.nros.deploy.native]
+rmw = "zenoh"
+domain_id = 11
+"#,
+        )
+        .unwrap();
+        fs::write(ex_dir.join("src/lib.rs"), "").unwrap();
+
+        let out = dir.join("build/talker");
+        run(Args {
+            workspace: Some(dir.clone()),
+            bringup: Some(ex_dir.to_string_lossy().into_owned()),
+            target: Some("native".into()),
+            out: Some(out.clone()),
+            ahead_of_vendor: None,
+            file: None,
+            exec: None,
+        })
+        .expect("dir-identity fallback resolves arbitrary cargo name");
+        let header = fs::read_to_string(out.join("nros-system/system_config.h")).unwrap();
+        assert!(
+            header.contains("#define NROS_SYSTEM_DOMAIN_ID 11u"),
+            "{header}"
+        );
+    }
+
+    /// Phase 220.I — when the path doesn't match any alias AND no bringup
+    /// pkg lives in that dir, the error message lists the alias candidates
+    /// tried (not just the canonical name) so users know how to rename.
+    #[test]
+    fn codegen_system_path_mismatch_error_lists_aliases_tried() {
+        let dir = scratch_dir("alias_error_lists_candidates");
+        // Workspace with one bringup pkg that DOES NOT match the dir we'll
+        // probe — so the resolver exhausts all aliases + dir-identity.
+        write_rust_two_component_workspace(&dir);
+        let bogus = dir.join("examples/zephyr/rust/something-else");
+        fs::create_dir_all(&bogus).unwrap();
+
+        let err = run(Args {
+            workspace: Some(dir.clone()),
+            bringup: Some(bogus.to_string_lossy().into_owned()),
+            target: None,
+            out: Some(dir.join("build/out")),
+            ahead_of_vendor: None,
+            file: None,
+            exec: None,
+        })
+        .expect_err("expected resolver to fail");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("tried aliases"),
+            "error should list aliases tried, got: {msg}"
+        );
+        assert!(msg.contains("something-else"), "msg: {msg}");
+        assert!(msg.contains("something_else"), "msg: {msg}");
+        assert!(
+            msg.contains("nros_zephyr_something_else"),
+            "msg should include platform-prefixed alias: {msg}"
+        );
     }
 }

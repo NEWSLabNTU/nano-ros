@@ -405,12 +405,51 @@ Almost every breakage traces to one of three root causes:
     metadata so codegen doesn't depend on dir-name convention.
   Path (3) is cleanest — keeps example dirs readable.
 
-- [ ] **220.I.1** Audit `packages/cli/nros-cli-core/src/cmd/
-      codegen_system.rs` (or equivalent) for the dir → bringup-pkg
-      resolver.
-- [ ] **220.I.2** Pick path 1/2/3; implement.
-- [ ] **220.I.3** Verify all zephyr rust cyclonedds variants
-      configure clean.
+- [x] **220.I.1** Audited `packages/cli/nros-cli-core/src/cmd/
+      codegen_system.rs::resolve_bringup` — single-shot lookup
+      `cfg.bringup_packages.contains_key(<dir-basename>)` with no
+      hyphen / platform-prefix / dir-identity fallbacks. The path
+      arg from `nros_system_generate` shim (cmake) hits this
+      directly with the abs example dir; basename mismatches the
+      cargo pkg name.
+- [x] **220.I.2** Path B (extend resolver with multi-alias +
+      dir-identity fallback). `resolve_bringup` now consults a
+      candidate list in order: (1) `<basename>`, (2) `<basename>`
+      hyphens→underscores, (3) `nros_<plat>_<snake>` when path is
+      under `examples/<plat>/<lang>/`, (4) dir-identity — compare
+      canonicalized `manifest_path.parent()` of every registered
+      bringup pkg against the requested dir. Match strategy is
+      logged when `NROS_DEBUG_BRINGUP_RESOLVER` is set. Failure
+      error now lists the alias candidates tried (not just the
+      canonical name), guiding users to either rename or accept
+      the dir-identity match. Helper `bringup_alias_candidates` +
+      `resolve_bringup_by_path` are unit-tested. 5 new tests added
+      (`bringup_alias_candidates_*` × 2,
+      `codegen_system_resolves_alias_for_collapsed_zephyr_example_shape`,
+      `codegen_system_resolves_dir_identity_for_arbitrary_pkg_name`,
+      `codegen_system_path_mismatch_error_lists_aliases_tried`).
+- [x] **220.I.3** Verified failing `just zephyr build-fixtures`
+      cyclonedds invocation: `nros codegen-system --workspace
+      <examples/zephyr/rust/action-client> --bringup <same>
+      --target zephyr-cyclonedds --out <tmp>` now emits the bake
+      tree (`system_config.h`, `system_main.c`, `Cargo.toml`,
+      `nros-plan.json`) with `NROS_SYSTEM_NAME =
+      "nros_zephyr_action_client"`. All zephyr rust variants
+      follow `nros_zephyr_<snake>` convention (verified via tree
+      sweep) — the platform-prefix alias covers all six examples
+      (`action-client`, `action-server`, `listener`,
+      `service-client`, `service-server`, `talker`). The
+      dir-identity fallback safety-nets arbitrary names (e.g.
+      native `native-rs-talker` shape).
+
+  **Caveat — RMW override scope:** the cmake shim passes
+  `--target zephyr-<rmw>` but the bake reads the deploy block's
+  rmw (`[package.metadata.nros.deploy.zephyr].rmw = "zenoh"` in
+  every example). Track I unblocks the resolver only; switching
+  on RMW per-target is a separate concern (likely Track E
+  patch-block writer territory — leave as a Phase 220 follow-up
+  if `zephyr-cyclonedds` and `zephyr-xrce` variants still need
+  baked overrides).
 
 ### J — play_launch_parser not on PATH in fresh worktrees
 
