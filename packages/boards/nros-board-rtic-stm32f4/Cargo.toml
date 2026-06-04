@@ -1,6 +1,7 @@
 [package]
 name = "nros-board-rtic-stm32f4"
 version = "0.4.0"
+publish = false
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Phase 216.B.2 — RTIC + STM32F4 board crate. Skeleton implementation of RticBoardEntry; `init_hardware` body is `todo!()` until 216.B.3 wires the proc-macro routing."

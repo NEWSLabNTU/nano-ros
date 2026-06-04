@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "nros-msg-to-idl"
-version = "0.1.0"
+version = "0.4.0"
 
 [[package]]
 name = "num-traits"

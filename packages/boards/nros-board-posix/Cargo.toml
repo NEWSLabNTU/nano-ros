@@ -1,6 +1,6 @@
 [package]
 name = "nros-board-posix"
-version = "0.4.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Phase 212.N.2 — POSIX family driver implementing the `Board` trait surface from `nros-platform`."

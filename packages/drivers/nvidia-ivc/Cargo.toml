@@ -1,6 +1,6 @@
 [package]
 name = "nvidia-ivc"
-version = "0.4.0"
+version.workspace = true
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "NVIDIA Tegra IVC (Inter-VM Communication) driver — FSP on hardware, Unix-socket pair for host dev"

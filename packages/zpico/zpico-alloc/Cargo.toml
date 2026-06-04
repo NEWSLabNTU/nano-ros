@@ -1,6 +1,7 @@
 [package]
 name = "zpico-alloc"
-version = "0.4.0"
+version.workspace = true
+publish = false
 edition = "2024"
 description = "Free-list allocator for zenoh-pico z_malloc/z_free on bare-metal"
 license = "MIT OR Apache-2.0"

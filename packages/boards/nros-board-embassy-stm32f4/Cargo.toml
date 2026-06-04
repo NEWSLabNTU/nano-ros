@@ -1,6 +1,7 @@
 [package]
 name = "nros-board-embassy-stm32f4"
 version = "0.4.0"
+publish = false
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Embassy STM32F4 board crate for nros (Phase 216.C.2 — skeleton)"

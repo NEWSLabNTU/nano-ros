@@ -1,6 +1,6 @@
 [package]
 name = "zpico-link-ivc"
-version = "0.4.0"
+version.workspace = true
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Phase 129.D — zenoh-pico IVC link-layer forwarders (split out of zpico-platform-shim)"

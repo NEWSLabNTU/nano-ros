@@ -1,6 +1,6 @@
 [package]
 name = "nros-ghost-types"
-version = "0.4.0"
+version.workspace = true
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Ghost model types for nros verification — shared between production crate tests and Verus proofs"

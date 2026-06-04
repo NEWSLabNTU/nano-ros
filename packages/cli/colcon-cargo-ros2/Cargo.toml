@@ -1,6 +1,7 @@
 [package]
 name = "colcon-nano-ros"
-version = "0.4.0"
+version.workspace = true
+publish = false
 edition = "2024"
 license = "Apache-2.0"
 authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>"]

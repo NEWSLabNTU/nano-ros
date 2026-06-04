@@ -1,6 +1,7 @@
 [package]
 name = "nros-board-cffi"
-version = "0.4.0"
+version.workspace = true
+publish = false
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Canonical C ABI for the nano-ros board-entry layer (Phase 173.4)"

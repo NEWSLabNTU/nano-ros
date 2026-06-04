@@ -1,6 +1,7 @@
 [package]
 name = "nros-msg-to-idl"
-version = "0.1.0"
+version.workspace = true
+publish = false
 edition.workspace = true
 authors.workspace = true
 license.workspace = true

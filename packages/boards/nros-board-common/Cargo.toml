@@ -1,6 +1,7 @@
 [package]
 name = "nros-board-common"
-version = "0.4.0"
+version.workspace = true
+publish = false
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Shared helpers for nano-ros board crates (BoardInit trait + manifest parser + link-feature policy)"
