@@ -52,6 +52,17 @@ if [ -x "${NROS_HOME:-$HOME/.nros}/bin/nros" ]; then
 fi
 if [ -x "$_nros_root/packages/cli/target/release/nros" ]; then
     export PATH="$_nros_root/packages/cli/target/release:$PATH"
+elif [ -z "${NROS_QUIET_ACTIVATE:-}" ] && ! command -v nros >/dev/null 2>&1; then
+    # Phase 222.F.1 — first-run hint. The checkout has no built CLI AND
+    # `nros` is not resolvable from any other PATH entry (e.g. ~/.nros/bin).
+    # Tell the user how to fix it explicitly instead of letting a silent
+    # "command not found" surprise them minutes later. Suppress with
+    # NROS_QUIET_ACTIVATE=1 (CI lanes that build the CLI as a separate step).
+    echo "[nano-ros] CLI not built yet. Run one of:" >&2
+    echo "  ./scripts/bootstrap.sh base      (bare machine)" >&2
+    echo "  cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros   (if you have cargo)" >&2
+    echo "  ./scripts/install-nros-prebuilt.sh   (tagged checkout; downloads prebuilt)" >&2
+    echo "  (set NROS_QUIET_ACTIVATE=1 to suppress this hint.)" >&2
 fi
 
 # `play_launch_parser` — installed by `just workspace install-play-
