@@ -219,12 +219,19 @@ tests/abi_guard.rs` (new).
   caches the CLI's `target/` so PR builds that don't touch the CLI
   tree pay sub-30-second restore. The wider key (lock + manifests +
   sources) makes sure an artifact-only change still invalidates.
-- [ ] Tagged-release runs fetch the prebuilt artifact (Work Item
+- [x] Tagged-release runs fetch the prebuilt artifact (Work Item
   218.G) instead of building from source, exercising the prebuilt
-  path on the same lanes downstream users will rely on. (Deferred —
-  the prebuilt path is wired via `scripts/install-nros-prebuilt.sh`
-  but no workflow currently invokes it; will be folded into
-  `nros-acceptance.yml` once 218.G ships its first tagged release.)
+  path on the same lanes downstream users will rely on.
+  `nros-acceptance.yml` rewritten 2026-06-04: queries the GitHub
+  API for the latest `nros-v*` release, downloads
+  `nros-x86_64-unknown-linux-gnu.tar.gz`, sha256-verifies via the
+  release's sidecar, installs to `$HOME/.nros/bin/nros` (the
+  transitional fallback location post-Phase-218.C activate.sh
+  chain). Pre-first-tag the lane gracefully reports
+  `[SKIPPED] no nros-v* release reachable yet` via a step-level
+  `if: steps.rel.outputs.has_release == 'true'` gate. Trigger
+  extended to fire on `nros-v*` tag pushes so a release flip
+  immediately exercises the bare-runner contract.
 
 **Files:** `.github/workflows/{host-unit-tests,host-integration-tests,
 ci,dep-chain,nros-acceptance,platform-ci,zephyr-dual-line,lint}.yml`.
@@ -257,29 +264,27 @@ ci,dep-chain,nros-acceptance,platform-ci,zephyr-dual-line,lint}.yml`.
 `scripts/install-nros-prebuilt.sh` (new), `scripts/install-nros.sh`
 (DEPRECATED block + delegation gate).
 
-### 218.H — Existing repo decommission
+### 218.H — Existing repo decommission — landed 2026-06-04
 
-- [~] In `github.com/NEWSLabNTU/nros-cli`: README rewritten as a
+- [x] In `github.com/NEWSLabNTU/nros-cli`: README rewritten as a
   redirect notice pointing at
   `github.com/NEWSLabNTU/nano-ros/tree/main/packages/cli` + the Phase
-  218 docs. Local commit on `chore/218-h-redirect-notice` branch
-  (commit `6ae5b01` in `~/repos/nros-cli/`). **Maintainer push**:
-  `git -C ~/repos/nros-cli push origin chore/218-h-redirect-notice`
-  → review → merge to main. Agent does not push fork remotes per
-  CLAUDE.md.
-- [ ] Open issues / PRs: migrated to nano-ros with a `cli` label, or
-  closed with a redirect comment. **Maintainer**.
-- [ ] GitHub repo settings → "Archive this repository" (preserves
-  issue/PR history read-only). **Maintainer**.
+  218 docs. Local commit `6ae5b01` on `chore/218-h-redirect-notice`
+  → maintainer pushed + merged to nros-cli main on 2026-06-04.
+- [x] Open issues / PRs: **N/A** — no open issues on `nros-cli` at
+  archive time. No migration work needed.
+- [x] GitHub repo settings → "Archive this repository". Done by
+  maintainer on 2026-06-04. The repo is now read-only; issue / PR
+  history preserved.
 - [x] In nano-ros: doc / script / workflow references to the old repo
   URL swept by Slot I (docs) + Slot F+G (workflows + bootstrap) +
   Slot D (justfile + cargo.sh). Remaining `github.com/NEWSLabNTU/
   nros-cli` URL references are intentional: historical phase docs
   (`docs/roadmap/archived/phase-195-*`, `phase-217-arm-fvp-*`,
   `phase-218-*` itself), the Phase 218 design spec, the new
-  `packages/cli/README.md` redirect (its sibling — preserved
-  verbatim from the lift), and the `nros-cli/README.md` redirect
-  (final commit prior to archive).
+  `packages/cli/README.md` (its sibling — preserved verbatim from
+  the lift), and the `nros-cli/README.md` redirect (final commit
+  prior to archive).
 
 **Files:** `nros-cli/README.md` (in the OTHER repo — final commit),
 nano-ros docs sweep (Work Item 218.I covers the in-tree side).
