@@ -281,6 +281,7 @@ exclude = [
     # naming. Excluded because it cross-builds for
     # `thumbv7em-none-eabihf` only.
     "examples/stm32f4/rust/service_server_pkg",
+    "examples/stm32f4/rust/service_client_pkg",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples
     # Phase 168.1 collapsed-shape Rust examples (one dir, N RMW
