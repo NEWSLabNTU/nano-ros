@@ -495,7 +495,7 @@ but is required for the end-to-end acceptance bar (§6).
 
 ### Track 4 — Fixture + docs (lands last)
 
-- [ ] **219.F / 219.N — In-tree multi-pkg pure-C++ fixture + nextest.**
+- [x] **219.F / 219.N — In-tree multi-pkg pure-C++ fixture + nextest.**
       (cheap, ✱) Land `examples/native/cpp/multi-node-entry/`
       (canonical name). Two Node pkgs + one Bringup pkg + one Entry
       pkg, all C++. Nextest configures + builds + runs + asserts
