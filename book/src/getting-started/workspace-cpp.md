@@ -258,7 +258,5 @@ that call the 2-arg form work today.
   Bringup pkg + Entry pkg, all C++).
 - [Phase 219 roadmap](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-219-cpp-entry-pkg.md)
   — full landing order + acceptance bar.
-- [Phase 219 workflow review](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-224-cpp-workspace-workflow-review.md)
-  — the 7-gap walkthrough that shaped the work plan.
 - [Multi-node workspace layout design](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/multi-node-workspace-layout.md)
   §11 — LOCKED canonical shape (`Bringup + Node + Entry`).
