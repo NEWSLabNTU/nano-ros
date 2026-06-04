@@ -1,0 +1,12 @@
+# Phase 215.D.2 — west command registration for the nano-ros module.
+#
+# Referenced from `zephyr/module.yml` (`west-commands:` key). Any west
+# workspace that lists nano-ros as a project automatically picks up
+# `west fvp` as a built-in subcommand — no manual `west config` step
+# required.
+west-commands:
+  - file: scripts/west_commands/fvp.py
+    commands:
+      - name: fvp
+        class: FvpRun
+        help: run a nano-ros FVP board in the Arm Fast Models simulator

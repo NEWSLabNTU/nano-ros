@@ -3,6 +3,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 name: nros
+
+# Phase 215.D.3 — register `west fvp` as a built-in subcommand for any
+# west workspace that has nano-ros as a project. The path is relative to
+# the MODULE ROOT (the repo root). See `scripts/west_commands/fvp.py`.
+west-commands: scripts/west-commands.yml
+
 build:
   cmake: zephyr
   kconfig: zephyr/Kconfig
