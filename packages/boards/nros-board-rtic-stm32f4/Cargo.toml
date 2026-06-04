@@ -38,6 +38,35 @@ nros-board-common = { path = "../nros-board-common", default-features = false }
 # threading, libc stubs). Same dep as the direct-exec sibling.
 nros-platform-stm32f4 = { path = "../../platforms/nros-platform-stm32f4" }
 
+# Phase 216.B.2 follow-up — reuse the direct-exec sibling's
+# `init_hardware(&Config, pac, core)` free fn (defined in
+# `nros-board-stm32f4::node`). That fn brings up clocks + DWT +
+# Ethernet (RMII pin mux + stm32-eth) + smoltcp Interface + IP +
+# SmoltcpBridge + the network poll-callback wiring — exactly the
+# steps the Pattern A escape-hatch
+# (`examples/stm32f4/rust/talker-rtic/src/main.rs` pre-migration)
+# called into. Re-using the sibling keeps the bringup logic
+# single-sourced; the RTIC board crate adds the `Executor::open`
+# + SPSC plumbing on top. Default features (`stm32f429`, `ethernet`,
+# `rmw-zenoh`) line up with this crate's own defaults so feature
+# unification stays consistent.
+nros-board-stm32f4 = { path = "../nros-board-stm32f4" }
+
+# Phase 216.B.2 follow-up — the executor + Node API surface. Pulled
+# with `rmw-cffi` so `nros::Executor` resolves; `platform-bare-metal`
+# matches the talker-rtic Entry pkg feature set so the dep graph
+# converges on a single feature unification. `alloc` is required
+# because `rmw-cffi` pulls in code paths that need a global
+# allocator (provided by `nros-platform` here).
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+
+# Phase 216.B.2 follow-up — bare-metal RMW backend registration. The
+# pre-migration talker-rtic example called `nros_rmw_zenoh::register()`
+# explicitly before `Executor::open` (bare-metal targets don't walk
+# `.init_array`); the board crate now wraps that call inside
+# `init_hardware`.
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
+
 # Cortex-M runtime — Pac/Core associated types live in user space
 # but the board crate provides them concretely.
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }

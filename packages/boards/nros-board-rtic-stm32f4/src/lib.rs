@@ -41,18 +41,29 @@
 //!    cross-validates each Node pkg's `Node::DISPATCH` against the
 //!    deferred surface.
 //!
+//! ## What's now wired (216.B.2 follow-up bringup)
+//!
+//! - [`RticBoardEntry::init_hardware`] body — clocks / DWT / sleep
+//!   / RMII pin mux / `stm32_eth` / smoltcp Interface + IP +
+//!   SmoltcpBridge + network poll-callback wiring all happen
+//!   inline. The body delegates to the direct-exec sibling
+//!   `nros_board_stm32f4::init_hardware(&Config, device, core)` —
+//!   the bringup logic is single-sourced across both board
+//!   variants. After hardware is up the body calls
+//!   `nros_rmw_zenoh::register()` (bare-metal `.init_array`
+//!   doesn't walk auto-register sites) and constructs the
+//!   `Executor` via `Executor::open(&ExecutorConfig::new(locator)
+//!   .domain_id(domain).node_name("nros"))`. The returned
+//!   `(Executor, RticRuntime)` pair lands in RTIC `#[local]`
+//!   storage where the macro-emitted `__nros_spin` /
+//!   `__nros_dispatch` software tasks own them.
+//! - [`RticBoardEntry::Executor`] is the concrete
+//!   [`::nros::Executor`] — the assoc-type opacity at the
+//!   trait surface (`nros-platform` sits below `nros`) is
+//!   resolved at this board layer.
+//!
 //! ## Still `todo!()`
 //!
-//! - [`RticBoardEntry::init_hardware`] body — the actual clock /
-//!   pin / Ethernet bringup of the `device: Self::Pac` + `core:
-//!   Self::Core` peripherals it receives. The SPSC producer
-//!   plumbing IS wired (the body splits the static queue + builds
-//!   the `RticRuntime`), but the peripheral bringup itself stays
-//!   `todo!()` until the 216.B.3 proc-macro emit settles the
-//!   concrete `Self::Executor` type. See the doc-comment on
-//!   [`RticBoardEntry::init_hardware`] for the migration checklist
-//!   (mirrors the Pattern A escape-hatch in
-//!   `examples/stm32f4/rust/talker-rtic/src/main.rs`).
 //! - [`NodeDispatchRuntime::register_dispatch_slot_dyn`] +
 //!   [`NodeDispatchRuntime::spin_once`] — they return `Err(())`
 //!   today. The proc-macro emit (216.B.3) wraps an
@@ -60,17 +71,28 @@
 //!   driven by a framework-spawned RTIC software task pulling from
 //!   the [`take_dispatch_queue`] consumer half, not from this
 //!   trait method.
+//! - The macro-emitted `__nros_spin` task body is still
+//!   `core::future::pending` (`packages/core/nros-macros/src/main_macro.rs`,
+//!   216.B.3 follow-up). The `Executor` is built here so the
+//!   dep graph + macro emit compile against the real
+//!   `Self::Executor` type, even though the spin task hasn't
+//!   driven it yet.
+//! - The bringup hardcodes `Config::nucleo_f429zi()` defaults
+//!   (NUCLEO-F429ZI IP / MAC / locator). A follow-up threads
+//!   `nros.toml` `[[transport]]` / `[node]` knobs in via
+//!   [`nros_platform::BoardTransportConfig`].
 //!
 //! ## Layering note
 //!
 //! `nros-platform` sits below `nros` in the dep graph, which means
-//! the [`RticBoardEntry::Executor`] associated type cannot be
-//! `nros::Executor` at the trait surface (Phase 216.B.1 docs that
-//! constraint). The trait surface is opaque; this skeleton picks
-//! `()` for the assoc type so the crate `cargo check`s without
-//! pulling `nros` itself. The 216.B.3 migration revisits this once
-//! the proc-macro emit knows what concrete type the
-//! framework-generated `#[local]` storage needs.
+//! the [`RticBoardEntry::Executor`] associated type **at the trait
+//! surface** cannot be `nros::Executor` (Phase 216.B.1 docs that
+//! constraint). Concrete board impls — including this crate —
+//! resolve the assoc type at the board layer where pulling `nros`
+//! is OK (only the platform / cffi crates have to stay below
+//! `nros` in the graph). The pre-followup `Self::Executor = ()`
+//! placeholder was a stand-in until the bringup body was ready;
+//! the follow-up flips to `Self::Executor = ::nros::Executor`.
 
 #![no_std]
 
@@ -290,15 +312,20 @@ impl RticBoardEntry for RticStm32F4 {
     /// Cortex-M core peripherals.
     type Core = cortex_m::Peripherals;
 
-    /// Phase 216.B.2 — opaque placeholder. `nros::Executor`
-    /// concrete type isn't pulled here because `nros-platform`
-    /// sits below `nros` in the dep graph (the trait surface is
-    /// opaque for exactly that reason). The 216.B.3 migration
-    /// swaps this for the concrete `nros::Executor` once the
-    /// proc-macro emit knows what RTIC `#[local]` storage needs.
-    /// Mirrors the sibling `EmbassyBoardEntry::Executor = ()`
-    /// pick (Phase 216.C.2 skeleton).
-    type Executor = ();
+    /// Phase 216.B.2 follow-up — wired to the concrete
+    /// [`nros::Executor`] now that [`Self::init_hardware`] returns a
+    /// real instance. The `Self::Executor` projection feeds the
+    /// proc-macro-emitted `#[local] struct Local { executor: …,
+    /// runtime: … }` field
+    /// (`packages/core/nros-macros/src/main_macro.rs`), so the
+    /// macro emit stores the executor in RTIC `#[local]` storage
+    /// owned by the `__nros_spin` task. The sibling
+    /// [`RticBoardEntry`] trait surface keeps this opaque (it sits
+    /// below `nros` in the dep graph); the concrete pick lives
+    /// here at the board layer. Sibling `EmbassyBoardEntry`
+    /// (Phase 216.C.2) still has `type Executor = ()` until its
+    /// parallel `init_hardware` body lands.
+    type Executor = ::nros::Executor;
 
     /// Phase 216.B.2 follow-up — wired `NodeDispatchRuntime` impl
     /// that owns the SPSC producer half of [`CALLBACK_QUEUE`] and
@@ -317,46 +344,111 @@ impl RticBoardEntry for RticStm32F4 {
     /// `examples/stm32f4/rust/talker-rtic/src/main.rs`.
     const DISPATCHERS: &'static [&'static str] = &["USART1", "USART2"];
 
-    fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Executor, Self::Runtime) {
-        // Phase 216.B.2 follow-up — SPSC plumbing is wired here so
-        // the 216.B.3 proc-macro emit can pull the producer half
-        // out of a returned `RticRuntime` without a second extra
-        // hook. The peripheral bringup (clock / pin / Ethernet)
-        // stays `todo!()` until 216.B.3 settles the concrete
-        // `Self::Executor` type — the migration brings in the work
-        // the direct-exec sibling does inside its `init_hardware`
-        // free fn (lives at
-        // `packages/boards/nros-board-stm32f4/src/node.rs`):
+    fn init_hardware(device: Self::Pac, core: Self::Core) -> (Self::Executor, Self::Runtime) {
+        // Phase 216.B.2 follow-up — real bringup body. Steps
+        // mirror the pre-migration Pattern A escape-hatch
+        // (`examples/stm32f4/rust/talker-rtic/src/main.rs` before
+        // commit `a7620ab43`):
         //
-        //   1. `rcc.constrain()` → HSE-driven 168 MHz sysclk.
-        //   2. Enable DWT cycle counter via DCB + DWT.
-        //   3. `clock::init(sysclk_hz)` (DWT-backed monotonic).
-        //   4. `nros_platform_stm32f4::sleep::init_clock()`.
-        //   5. `#[cfg(feature = "ethernet")]` — RMII pin mux,
-        //      `stm32_eth::new_with_mii(...)`, PHY probe.
-        //   6. `setup_network(...)` — smoltcp Interface + IP +
-        //      SocketSet + `SmoltcpBridge::init()` + the network
-        //      poll-callback wiring.
-        //   7. Build the `nros::Executor` via `Executor::open(...)`.
+        //   1. Build a board `Config` (NUCLEO-F429ZI defaults today;
+        //      a future follow-up threads `[[transport]]`/`[node]`
+        //      knobs from `nros.toml` via `BoardTransportConfig`).
+        //   2. Delegate to the direct-exec sibling's
+        //      `nros_board_stm32f4::init_hardware(&config, device, core)`
+        //      — that fn brings up clocks (HSE → 168 MHz), DWT
+        //      cycle counter, `nros_platform_stm32f4::sleep`, then
+        //      (under `ethernet`) RMII pin mux + `stm32_eth` +
+        //      smoltcp Interface + IP + SmoltcpBridge + the network
+        //      poll-callback wiring. Single-source the bringup so
+        //      a fix in the direct-exec board propagates here too.
+        //      Drops the returned `SYST` peripheral — RTIC's
+        //      dispatchers run on USART1/USART2 (per
+        //      [`Self::DISPATCHERS`]), and the proc-macro emit's
+        //      `__nros_spin` task doesn't need a monotonic. A
+        //      future follow-up may surface the `SYST` for users
+        //      who want `rtic-monotonics::systick`; today it's
+        //      unused.
+        //   3. Register the RMW backend before `Executor::open` —
+        //      bare-metal targets don't walk `.init_array`, so the
+        //      backend has to be wired explicitly (same call the
+        //      legacy Pattern A example made directly).
+        //   4. `Executor::open` with a config derived from the
+        //      board `Config`. The proc-macro emit (Phase 216.B.3)
+        //      stashes the returned `Executor` in RTIC `#[local]`
+        //      storage owned by `__nros_spin`.
+        //   5. Split the dispatch SPSC queue and stash the
+        //      consumer half on `DISPATCH_CONSUMER_SLOT` so the
+        //      macro-emitted `__nros_dispatch` task can claim it
+        //      (the two halves can't ride together in the
+        //      `(Executor, Runtime)` tuple — see the doc-comment
+        //      on `DISPATCH_CONSUMER_SLOT`).
         //
-        // The escape-hatch reference (Pattern A) lives at
-        // `examples/stm32f4/rust/talker-rtic/src/main.rs`; once
-        // 216.B.3 lands, that example is the canonical migration
-        // target — its `#[init]` body becomes the generated
-        // `#[rtic::app]` emit and the per-Node setup moves into
-        // the macro's input.
+        // ### What's still placeholder
+        //
+        // - `RticRuntime::register_dispatch_slot_dyn` /
+        //   `RticRuntime::spin_once` still return `Err(())` — the
+        //   proc-macro emit (216.B.3) wraps an
+        //   `ExecutorNodeRuntime`-style sink and forwards through.
+        // - `Config` is hardcoded to `nucleo_f429zi()`. The
+        //   `nros.toml` → `BoardTransportConfig` plumbing is a
+        //   separate follow-up; today the locator + IP / MAC come
+        //   from the board's default preset.
+        // - The macro-emitted `__nros_spin` task body is still
+        //   `core::future::pending` (not real `executor.spin_once`);
+        //   that lands alongside the per-Node trampoline registration
+        //   in the next 216.B wave. The executor is built here so
+        //   the macro emit + dep graph compile against the real
+        //   `Self::Executor` type, even though the spin task hasn't
+        //   driven it yet.
+
+        // Step 1–2: hardware bringup via the direct-exec sibling.
+        let config = nros_board_stm32f4::Config::nucleo_f429zi();
+        let _syst = nros_board_stm32f4::init_hardware(&config, device, core);
+
+        // Step 3: explicit RMW backend registration (bare-metal
+        // has no `.init_array` walk). `nros_rmw_zenoh::register`
+        // is idempotent w.r.t. double-register (returns
+        // `Err(AlreadyRegistered)`); we panic on any other error
+        // so a probe-attached run surfaces the failure loudly.
+        match nros_rmw_zenoh::register() {
+            Ok(()) => {}
+            Err(e) => {
+                defmt::error!(
+                    "RticStm32F4::init_hardware: nros_rmw_zenoh::register failed: {:?}",
+                    defmt::Debug2Format(&e)
+                );
+                panic!("nros_rmw_zenoh::register failed");
+            }
+        }
+
+        // Step 4: open the Executor against the configured
+        // locator + domain. The proc-macro emit stashes the
+        // returned value in RTIC `#[local]` storage owned by
+        // `__nros_spin`.
+        let exec_config = ::nros::ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("nros");
+        let executor = match ::nros::Executor::open(&exec_config) {
+            Ok(e) => e,
+            Err(err) => {
+                defmt::error!(
+                    "RticStm32F4::init_hardware: Executor::open failed: {:?}",
+                    defmt::Debug2Format(&err)
+                );
+                panic!("Executor::open failed");
+            }
+        };
+
+        // Step 5: split the dispatch SPSC + stash the consumer
+        // half. Unchanged from the 216.B.2 skeleton — the proc-
+        // macro emit fishes the consumer out via
+        // `take_dispatch_consumer()` from the `__nros_dispatch`
+        // task's `#[init]` setup.
         let (producer, consumer) = take_dispatch_queue()
             .expect("RticStm32F4::init_hardware: dispatch queue already claimed");
-
-        // Stash the consumer half on a one-shot slot so the
-        // 216.B.3 macro-emitted `__nros_dispatch` task can fish it
-        // out with `take_dispatch_consumer()`. The two halves can't
-        // be returned together because RTIC `#[local]` storage is
-        // populated from the `#[init]` body's return tuple and the
-        // consumer lives in a different task's local resources.
         stash_dispatch_consumer(consumer);
 
-        ((), RticRuntime::with_producer(producer))
+        (executor, RticRuntime::with_producer(producer))
     }
 }
 
