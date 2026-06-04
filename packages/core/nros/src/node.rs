@@ -70,6 +70,14 @@ pub trait Node {
     /// Source component name used in metadata and diagnostics.
     const NAME: &'static str;
 
+    /// Phase 216.A.3 — declares which dispatch strategy this Node
+    /// requires from the runtime. Defaults to
+    /// [`DispatchStrategy::Inline`] so every existing component
+    /// keeps compiling without source change; the substrate (Phase
+    /// 216.A.2) and `nros check` (Phase 216.D.1) consume it to
+    /// pick / validate the board-side dispatch path.
+    const DISPATCH: crate::DispatchStrategy = crate::DispatchStrategy::Inline;
+
     /// Declare nodes, entities, callbacks, params, and optional effects.
     fn register(context: &mut NodeContext<'_>) -> NodeResult<()>;
 }
@@ -1774,5 +1782,20 @@ mod tests {
         assert!(acts.completed);
         assert!(acts.fed);
         assert_eq!(acts.visited, 1);
+    }
+
+    /// Phase 216.A.3 — `Node::DISPATCH` defaults to
+    /// `DispatchStrategy::Inline` so every pre-216 `impl Node`
+    /// keeps compiling unchanged.
+    #[test]
+    fn node_dispatch_default_is_inline() {
+        struct Dummy;
+        impl Node for Dummy {
+            const NAME: &'static str = "dummy";
+            fn register(_: &mut NodeContext<'_>) -> NodeResult<()> {
+                Ok(())
+            }
+        }
+        assert_eq!(Dummy::DISPATCH, crate::DispatchStrategy::Inline);
     }
 }
