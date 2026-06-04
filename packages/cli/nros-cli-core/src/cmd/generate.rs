@@ -11,6 +11,8 @@ use clap::{Args as ClapArgs, ValueEnum};
 use eyre::{Result, eyre};
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::abi_guard::{self, Verb};
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Lang {
     Rust,
@@ -127,6 +129,16 @@ pub struct RustArgs {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    // Phase 218.E — ABI version guard. The manifest path roots the
+    // consumer workspace; the guard walks up looking for Cargo.lock.
+    let verb = match args.lang {
+        Lang::Rust => Verb::GenerateRust,
+        Lang::C => Verb::GenerateC,
+        Lang::Cpp => Verb::GenerateCpp,
+        Lang::All => Verb::GenerateRust,
+    };
+    abi_guard::check_workspace(&args.manifest, verb)?;
+
     match args.lang {
         Lang::Rust => generate_rust(&args),
         Lang::C => generate_c(&args),
@@ -145,6 +157,8 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 pub fn run_rust(args: RustArgs) -> Result<()> {
+    // Phase 218.E — ABI version guard.
+    abi_guard::check_workspace(&args.manifest, Verb::GenerateRust)?;
     // Phase 212.K.7.1 — `--no-cyclonedds` / `--cyclonedds-idlc` are
     // accepted-but-no-op flags; the per-msg-crate cyclonedds emit has
     // been removed. Drain the values so unused-warning silence isn't

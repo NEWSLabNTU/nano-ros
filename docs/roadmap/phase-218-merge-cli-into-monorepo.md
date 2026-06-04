@@ -167,18 +167,18 @@ ten sub-crates).
 
 ### 218.E — ABI guard for downstream consumers
 
-- [ ] `nros codegen` + `nros generate-rust`: read the target
+- [x] `nros codegen` + `nros generate-rust`: read the target
   workspace's `Cargo.lock`, find resolved `nros-core` version, compare
-  to the binary's embedded `env!("CARGO_PKG_VERSION")`.
-- [ ] On mismatch, exit non-zero with the actionable error message in
-  the design doc (names both versions + the fix command).
-- [ ] `NROS_SKIP_VERSION_CHECK=1` env opt-out for intentional cross-
-  version workflows.
-- [ ] Test: in `packages/cli/nros-cli/tests/`, a fixture with a
+  to the binary's embedded `env!("CARGO_PKG_VERSION")`. (2026-06-04)
+- [x] On mismatch, exit non-zero with the actionable error message in
+  the design doc (names both versions + the fix command). (2026-06-04)
+- [x] `NROS_SKIP_VERSION_CHECK=1` env opt-out for intentional cross-
+  version workflows. (2026-06-04)
+- [x] Test: in `packages/cli/nros-cli/tests/`, a fixture with a
   hand-edited `Cargo.lock` pinning an old `nros-core` version asserts
-  the guard fires.
-- [ ] Test: with `NROS_SKIP_VERSION_CHECK=1`, the same fixture
-  succeeds.
+  the guard fires. (2026-06-04)
+- [x] Test: with `NROS_SKIP_VERSION_CHECK=1`, the same fixture
+  succeeds. (2026-06-04)
 
 **Files:** `packages/cli/nros-cli/src/commands/codegen.rs` (or
 wherever the version-resolve happens), `packages/cli/nros-cli/

@@ -4,6 +4,7 @@
 //! implementation details still live in the `cargo_nano_ros` library until
 //! that library is renamed or split.
 
+pub mod abi_guard;
 pub mod cmd;
 pub mod orchestration;
 

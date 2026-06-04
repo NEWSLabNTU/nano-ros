@@ -15,6 +15,8 @@ use clap::{Args as ClapArgs, Subcommand};
 use eyre::{Result, bail, eyre};
 use std::path::PathBuf;
 
+use crate::abi_guard::{self, Verb};
+
 #[derive(Debug, ClapArgs)]
 pub struct Args {
     #[command(subcommand)]
@@ -66,12 +68,17 @@ pub fn run(args: Args) -> Result<()> {
             package_xml,
             output_cmake,
             verbose,
-        }) => cargo_nano_ros::resolve_deps_from_package_xml(cargo_nano_ros::ResolveDepsConfig {
-            package_xml,
-            output_cmake,
-            verbose,
-        })
-        .map_err(|e| eyre!("{e:#}")),
+        }) => {
+            // Phase 218.E — ABI version guard. package.xml anchors the
+            // consumer workspace; guard walks up to find Cargo.lock.
+            abi_guard::check_workspace(&package_xml, Verb::Codegen)?;
+            cargo_nano_ros::resolve_deps_from_package_xml(cargo_nano_ros::ResolveDepsConfig {
+                package_xml,
+                output_cmake,
+                verbose,
+            })
+            .map_err(|e| eyre!("{e:#}"))
+        }
         Some(Sub::CycloneddsDescriptors(sub_args)) => {
             super::codegen_cyclonedds_descriptors::run(sub_args)
         }
@@ -79,6 +86,10 @@ pub fn run(args: Args) -> Result<()> {
             let Some(args_file) = args.args_file else {
                 bail!("nros codegen: --args-file is required (or use a subcommand)");
             };
+            // Phase 218.E — ABI version guard. args_file lives inside the
+            // consumer's CMake build dir; walking up finds the workspace
+            // Cargo.lock.
+            abi_guard::check_workspace(&args_file, Verb::Codegen)?;
             match args.language.as_str() {
                 "c" => cargo_nano_ros::generate_c_from_args_file(cargo_nano_ros::GenerateCConfig {
                     args_file,
