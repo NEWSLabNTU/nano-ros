@@ -265,6 +265,10 @@ exclude = [
     "examples/zephyr/rust/service-client",
     "examples/zephyr/rust/action-server",
     "examples/zephyr/rust/action-client",
+    # Phase 217.D.1 — Rust talker on the FVP AEMv8-R Cortex-A SMP
+    # carve-out (one-board-one-RMW reference, mirroring the cpp side's
+    # `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`).
+    "examples/zephyr/rust/cyclonedds/talker-aemv8r",
     # `examples/zephyr/rust/service-client-async` dropped 2026-06-02 per
     # Phase 212.M-F.5 — pending async-`Component` trait decision.
     # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)

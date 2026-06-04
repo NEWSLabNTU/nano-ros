@@ -1,0 +1,22 @@
+# Phase 217.D.1 — Twister-discoverable sample for the FVP AEMv8-R
+# Rust talker. The runtime gate (FVP license) keeps this build-only.
+sample:
+  name: nano-ros Rust Talker (FVP AEMv8-R, Cyclone DDS)
+  description: nano-ros ROS 2 publisher (Rust API) on ARM FVP Base_RevC AEMv8-R Cortex-A SMP, Cyclone DDS RMW
+common:
+  tags:
+    - nano-ros
+    - nros
+    - fvp
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "Phase 217.D"
+tests:
+  sample.nano-ros.rust.talker-aemv8r.cyclonedds:
+    build_only: true
+    platform_allow:
+      - fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp
+    integration_platforms:
+      - fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp
