@@ -163,13 +163,30 @@ The existing `examples/zephyr/cpp/cyclonedds/talker-aemv8r/` is the
 carve-out preserved under CLAUDE.md "Examples = Standalone Projects."
 Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
 
-- [ ] **217.D.1** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` —
-      Entry pkg consuming the Phase 212.N `nros-board-fvp-aemv8r-smp`
-      crate (already in tree). Same `std_msgs/Int32` payload as
-      Phase 175.A.
-- [ ] **217.D.2** Build recipe `just zephyr build-fvp-aemv8r-cyclonedds-rust`
-      + run recipe `run-fvp-aemv8r-cyclonedds-rust`.
-- [ ] **217.D.3** Smoke alongside 217.C.1.
+- [x] **217.D.1** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` —
+      LANDED 2026-06-04. Component-pkg shape (`src/lib.rs` only, no
+      `rust_main`) mirroring `examples/zephyr/rust/talker/` — `nros::node!(Talker)`
+      exports `register(runtime)`; the generated runtime drives init /
+      executor / spin. Same `std_msgs/Int32` payload as the cpp
+      sibling (`examples/zephyr/cpp/cyclonedds/talker-aemv8r/`) +
+      Phase 175.A native parity. Board glue flows from
+      `nano_ros_use_board(fvp-aemv8r-smp)` (Phase 215.B contract) in
+      `CMakeLists.txt`. Cargo features pinned to the single-RMW
+      carve-out (`rmw-cyclonedds` only); `prj.conf` + `prj-cyclonedds.conf`
+      shape-parity with the board-agnostic Rust talker.
+      `nros::main!(board = …)` deferred: the FVP board crate
+      (`nros-board-fvp-aemv8r-smp`) does NOT yet impl `BoardEntry` —
+      adding that is its own work item beyond a copy-out example.
+- [x] **217.D.2** Build recipe `just zephyr build-fvp-aemv8r-cyclonedds-rust`
+      + run recipe `run-fvp-aemv8r-cyclonedds-rust` — LANDED 2026-06-04.
+      Both skip identically to the cpp variants (no west / no
+      workspace / no aarch64-zephyr-elf SDK / no ELF / no FVP). Build
+      recipe runs the `nros ws sync` step + Cyclone descriptor
+      codegen prereq + exports `NROS_REPO_DIR` so the example's
+      `nano_ros_use_board()` include resolves; run recipe shells
+      `west fvp run` over `build-fvp-aemv8r-cyclonedds-rust-talker/`.
+- [ ] **217.D.3** Smoke alongside 217.C.1. **Blocks on:** 217.C.1
+      (parallel slot owns `packages/testing/nros-tests/tests/phase217_c_*.rs`).
 
 **Files:** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` (new tree),
 `just/zephyr.just`.

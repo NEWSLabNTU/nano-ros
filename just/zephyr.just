@@ -868,6 +868,70 @@ build-fvp-aemv8r-cyclonedds:
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
 
+# Phase 217.D.2 — Zephyr build smoke for the FVP AEMv8-R Cortex-A SMP
+# nros **Rust** pub/sub example. Rust-side sibling of
+# `build-fvp-aemv8r-cyclonedds` (cpp). Cyclone DDS RMW pinned via the
+# example's `prj-cyclonedds.conf` + `default_rmw` from
+# `packages/boards/nros-board-fvp-aemv8r-smp/board.cmake` (Phase
+# 215.B — picked up by `nano_ros_use_board(fvp-aemv8r-smp)` inside the
+# example's CMakeLists.txt). Skips identically to the cpp variant.
+[group("examples")]
+build-fvp-aemv8r-cyclonedds-rust:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr/FVP-Cyclone-Rust skip: west not found"; exit 0
+    fi
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr/FVP-Cyclone-Rust skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+    fi
+    sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
+        echo "Zephyr/FVP-Cyclone-Rust skip: aarch64-zephyr-elf toolchain missing"
+        exit 0
+    fi
+    bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
+    bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
+    nros_root="$(pwd)"
+    echo "  → host nros-codegen (cargo)"
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    nros_cargo_ensure_codegen_c
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
+    # Phase 214.I.2 fail-loud prereq guard before `ws sync` (the codegen
+    # Rust interface generation the example's `[patch.crates-io]` needs).
+    nros_require_ws_sync "$codegen_tool"
+    src="$nros_root/examples/zephyr/rust/cyclonedds/talker-aemv8r"
+    source "$nros_root/scripts/build/codegen-stamp.sh"
+    echo "  → ws sync: $src"
+    NROS_REPO_DIR="$nros_root" nros_codegen_stamp_check_or_wipe "$src"
+    NROS_REPO_DIR="$nros_root" "$codegen_tool" ws sync "$src"
+    NROS_REPO_DIR="$nros_root" nros_codegen_stamp_write "$src"
+    # The build path uses /opt/ros/humble/share/std_msgs for the Cyclone
+    # descriptor codegen (`nros_rmw_cyclonedds_generate_from_msg`); same
+    # contract as `build-one rust/talker cyclonedds`.
+    export NROS_STD_MSGS_DIR="${NROS_STD_MSGS_DIR:-/opt/ros/humble/share/std_msgs}"
+    export NROS_BUILTIN_INTERFACES_DIR="${NROS_BUILTIN_INTERFACES_DIR:-/opt/ros/humble/share/builtin_interfaces}"
+    make_bin="$nros_root/third-party/make/make"
+    if [ ! -x "$make_bin" ]; then
+        make_bin="$(command -v make)"
+    fi
+    cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export ZEPHYR_SDK_INSTALL_DIR="$sdk"
+    # Phase 215.B — the example's CMakeLists includes
+    # `$ENV{NROS_REPO_DIR}/zephyr/cmake/nano_ros_use_board.cmake` BEFORE
+    # `find_package(Zephyr)`; export the repo root so the include
+    # resolves.
+    export NROS_REPO_DIR="$nros_root"
+    echo "Building examples/zephyr/rust/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
+    west build \
+        -d build-fvp-aemv8r-cyclonedds-rust-talker -p auto \
+        "$src" \
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
+    echo "Phase 217.D.2 FVP AEMv8-R nros-rust + Cyclone DDS build smoke OK"
+
 # Phase 214.A — run the Phase 117.13 talker build on the ARM Fast Models
 # `FVP_BaseR_AEMv8R` (license-gated; see `nros-sdk-index.toml`
 # `[gated.arm-fvp]`). Phase 215.D.4 retargeted onto `west fvp run`
@@ -923,6 +987,32 @@ run-fvp-aemv8r-cyclonedds:
     export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     west fvp run -d build-aemv8r-cyclonedds-talker
+
+# Phase 217.D.2 — run the Phase 217.D.1 Rust talker on the FVP. Same
+# shape as `run-fvp-aemv8r-cyclonedds` over the Rust build dir produced
+# by `build-fvp-aemv8r-cyclonedds-rust`. `west fvp run` reuses
+# `scripts/zephyr/resolve-fvp-bin.sh` (ARMFVP_BIN_PATH / ARM_FVP_DIR /
+# PATH) + `cmake/emu/armfvp.cmake`'s canonical `-C` flags.
+[group("examples")]
+run-fvp-aemv8r-cyclonedds-rust:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr/FVP-Cyclone-Rust run skip: west not found"; exit 0
+    fi
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr/FVP-Cyclone-Rust run skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+    fi
+    if [ ! -f "$workspace/build-fvp-aemv8r-cyclonedds-rust-talker/zephyr/zephyr.elf" ]; then
+        echo "Zephyr/FVP-Cyclone-Rust run skip: build-fvp-aemv8r-cyclonedds-rust-talker/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-aemv8r-cyclonedds-rust\` first"
+        exit 0
+    fi
+    nros_root="$(pwd)"
+    cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    west fvp run -d build-fvp-aemv8r-cyclonedds-rust-talker
 
 # Phase 117.13 — Zephyr build smoke for the NXP X-S32Z270-DC (DC2)
 # RTU0 Cortex-R52 target (Phase 117.11's reference platform). Reuses

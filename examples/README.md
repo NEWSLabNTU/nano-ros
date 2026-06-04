@@ -48,7 +48,7 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `threadx-linux`           | rust     | 6     | –    | (pending 171.C.3) | – |
 | `zephyr`                  | c        | 6     | 6    | 2 (pub/sub; service 171.0.a) | – |
 | `zephyr`                  | cpp      | 6     | 6    | 4+aemv8r (pub/sub+service) | – |
-| `zephyr`                  | rust     | 6     | 6    | 4 (pub/sub+service) | – |
+| `zephyr`                  | rust     | 6     | 6    | 4+aemv8r (pub/sub+service) | – |
 
 Gap themes — see `docs/roadmap/phase-118-example-matrix-coverage.md` for the
 plan that fills these:
