@@ -12,10 +12,11 @@
 //! this is the JSON-`--args-file` contract the build system already speaks.
 
 use clap::{Args as ClapArgs, Subcommand};
-use eyre::{Result, bail, eyre};
+use eyre::{Context, Result, bail, eyre};
 use std::path::PathBuf;
 
 use crate::abi_guard::{self, Verb};
+use crate::codegen::entry as entry_codegen;
 
 #[derive(Debug, ClapArgs)]
 pub struct Args {
@@ -60,6 +61,74 @@ pub enum Sub {
     /// script feeds into `cc::Build`.
     #[command(name = "cyclonedds-descriptors")]
     CycloneddsDescriptors(super::codegen_cyclonedds_descriptors::Args),
+
+    /// Phase 219.A/B/C — Entry-pkg TU codegen.
+    ///
+    /// Walks the workspace pkg-index, parses a bringup pkg's
+    /// launch.xml, and emits a `main` TU (Rust, C++ or C) that
+    /// invokes each `<node pkg=…>`'s mangled register fn in launch
+    /// order. The cmake fn `nano_ros_entry(LAUNCH "…")` shells this
+    /// subcommand at configure time; the Rust `nros::main!()` proc-
+    /// macro is the in-process equivalent for cargo workspaces.
+    Entry(EntryArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct EntryArgs {
+    /// Target language for the emitted TU.
+    #[arg(long, value_name = "LANG")]
+    pub lang: String,
+
+    /// Workspace root — the directory holding `src/<pkg>/package.xml`.
+    /// Typically the dir containing the workspace-root `CMakeLists.txt`
+    /// or `Cargo.toml`.
+    #[arg(long)]
+    pub workspace: PathBuf,
+
+    /// `"<bringup_pkg>"` or `"<bringup_pkg>:<file>.launch.xml"`.
+    #[arg(long)]
+    pub launch: String,
+
+    /// Board key (`native`, `freertos`, …). Defaults to `native` — the
+    /// only Entry-pkg target the C/C++ surface supports today
+    /// (Phase 212.L.2).
+    #[arg(long)]
+    pub board: Option<String>,
+
+    /// Launch-arg overrides — `k=v[,k=v]…`. Forwarded to the parser.
+    #[arg(long, value_name = "K=V[,K=V]…")]
+    pub args: Option<String>,
+
+    /// Output path for the emitted TU.
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Optional `.d`-style depfile path. Populated with every file the
+    /// CLI read; consumed by cmake `CMAKE_CONFIGURE_DEPENDS` /
+    /// build.rs `cargo:rerun-if-changed=` plumbing.
+    #[arg(long)]
+    pub depfile: Option<PathBuf>,
+
+    /// Phase 219.J — emit a sidecar `.cmake` file declaring the
+    /// `target_link_libraries(<exe> PRIVATE <pkg>_<exec>_component)`
+    /// calls the cmake fn `include()`s after codegen. When supplied,
+    /// the named `<exe>` target receives a PRIVATE link to every
+    /// Node-pkg static lib the launch XML pulls in. Path = sidecar
+    /// `.cmake` output.
+    #[arg(long, value_name = "EXE_TARGET=PATH", value_parser = parse_link_libs)]
+    pub emit_link_libs: Option<(String, PathBuf)>,
+}
+
+fn parse_link_libs(s: &str) -> std::result::Result<(String, PathBuf), String> {
+    let (lhs, rhs) = s
+        .split_once('=')
+        .ok_or_else(|| format!("expected `<exe_target>=<sidecar_path>`, got `{s}`"))?;
+    if lhs.is_empty() || rhs.is_empty() {
+        return Err(format!(
+            "expected non-empty `<exe_target>=<sidecar_path>`, got `{s}`"
+        ));
+    }
+    Ok((lhs.to_string(), PathBuf::from(rhs)))
 }
 
 pub fn run(args: Args) -> Result<()> {
@@ -82,6 +151,7 @@ pub fn run(args: Args) -> Result<()> {
         Some(Sub::CycloneddsDescriptors(sub_args)) => {
             super::codegen_cyclonedds_descriptors::run(sub_args)
         }
+        Some(Sub::Entry(sub_args)) => run_entry(sub_args),
         None => {
             let Some(args_file) = args.args_file else {
                 bail!("nros codegen: --args-file is required (or use a subcommand)");
@@ -109,4 +179,110 @@ pub fn run(args: Args) -> Result<()> {
             }
         }
     }
+}
+
+/// `nros codegen entry --lang {rust|c|cpp}` — Phase 219.A/B/C.
+fn run_entry(args: EntryArgs) -> Result<()> {
+    use std::fs;
+
+    let lang = entry_codegen::Lang::parse(&args.lang)?;
+
+    let arg_overrides = parse_arg_overrides(args.args.as_deref())?;
+
+    let workspace = if args.workspace.is_absolute() {
+        args.workspace.clone()
+    } else {
+        std::env::current_dir()
+            .context("get cwd")?
+            .join(&args.workspace)
+    };
+
+    let input = entry_codegen::PlanInput {
+        workspace: workspace.as_path(),
+        launch_spec: args.launch.as_str(),
+        board: args.board.clone(),
+        arg_overrides,
+    };
+    let plan = entry_codegen::plan_from_launch(input)?;
+
+    let src = match lang {
+        entry_codegen::Lang::Rust => entry_codegen::emit_rust::emit(&plan),
+        entry_codegen::Lang::Cpp => entry_codegen::emit_cpp::emit(&plan),
+        entry_codegen::Lang::C => entry_codegen::emit_c::emit(&plan),
+    };
+
+    // Atomic-ish write: only touch `out` when the contents actually
+    // change, so cmake's mtime-based dependency tracking doesn't
+    // spuriously rebuild downstream targets.
+    let existing = fs::read_to_string(&args.out).ok();
+    if existing.as_deref() != Some(src.as_str()) {
+        if let Some(parent) = args.out.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("create parent `{}`", parent.display()))?;
+        }
+        fs::write(&args.out, &src)
+            .with_context(|| format!("write generated TU `{}`", args.out.display()))?;
+    }
+
+    if let Some(depfile) = args.depfile.as_ref() {
+        entry_codegen::write_depfile(&args.out, &plan.depfile_paths, depfile)?;
+    }
+
+    if let Some((exe_target, sidecar)) = args.emit_link_libs.as_ref() {
+        write_link_libs_sidecar(exe_target, &plan, sidecar)?;
+    }
+
+    Ok(())
+}
+
+/// Parse the comma-separated `k=v[,k=v]…` form.
+fn parse_arg_overrides(raw: Option<&str>) -> Result<Vec<(String, String)>> {
+    let Some(raw) = raw else { return Ok(Vec::new()) };
+    let mut out = Vec::new();
+    for part in raw.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let (k, v) = part
+            .split_once('=')
+            .ok_or_else(|| eyre!("invalid --args entry `{part}` (expected `k=v`)"))?;
+        out.push((k.trim().to_string(), v.trim().to_string()));
+    }
+    Ok(out)
+}
+
+/// Phase 219.J — emit the `target_link_libraries` sidecar the cmake
+/// fn `include()`s after running codegen. Filters to one
+/// `<pkg>_<exec>_component` per unique entry; the cmake target name
+/// matches what `nano_ros_node_register()` produces.
+fn write_link_libs_sidecar(exe_target: &str, plan: &entry_codegen::Plan, sidecar: &PathBuf) -> Result<()> {
+    use std::fmt::Write;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "# Generated by `nros codegen entry --emit-link-libs`\n\
+         # Source plan: bringup={bringup}, launch={launch}.\n\
+         # Phase 219.J: closes workflow-review Gap 4 (Entry pkg auto-links\n\
+         # the Node-pkg static libs the launch XML pulled in).",
+        bringup = plan.bringup,
+        launch = plan.launch_file.display(),
+    );
+    out.push_str(&format!("target_link_libraries({exe_target} PRIVATE"));
+    let mut seen: Vec<String> = Vec::new();
+    for n in &plan.nodes {
+        let target = n.cmake_link_target();
+        if !seen.contains(&target) {
+            out.push_str(&format!("\n    {target}"));
+            seen.push(target);
+        }
+    }
+    out.push_str(")\n");
+    if let Some(parent) = sidecar.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create sidecar parent `{}`", parent.display()))?;
+    }
+    std::fs::write(sidecar, out)
+        .with_context(|| format!("write link-libs sidecar `{}`", sidecar.display()))?;
+    Ok(())
 }

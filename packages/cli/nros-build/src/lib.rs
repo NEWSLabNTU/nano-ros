@@ -52,15 +52,14 @@ use std::{
 use eyre::{Context, Result};
 
 pub mod emit;
-// Phase 212.N.10 — language-agnostic workspace pkg-index + `$(find <pkg>)`
-// substitution resolver. Surfaced through this crate so both `nros-build`
-// proc-macro consumers (N.9) and the future cmake fn `nros_entry(...)`
-// share a single implementation.
-pub mod pkg_index;
-// Phase 212.N.11 — ROS 2 launch.xml parser (v1 tag set). Copy-paste
-// compatibility with nav2 / Autoware / turtlebot3 launch.xml files;
-// consumes [`pkg_index::PkgIndex`] for the `$(find <pkg>)` substitution.
-pub mod launch_parser;
+// Phase 219.A — `pkg_index` and `launch_parser` moved into
+// `nros-cli-core` (their canonical home — the new
+// `nros_cli_core::codegen::entry` module consumes them directly and the
+// cycle `nros-build → nros-cli-core` already exists). Re-export under
+// the original module paths so every existing caller (the upstream
+// `nros-macros` git dep included) compiles unchanged.
+pub use nros_cli_core::launch_parser;
+pub use nros_cli_core::pkg_index;
 
 // Phase 212.N.7 step-3 — `RuntimeError` moved to `nros-platform` (no_std)
 // so embedded Entry pkgs don't need `nros-build` as a runtime dep

@@ -59,9 +59,20 @@ pathdiff = "0.2"
 rosidl-bindgen = { path = "../rosidl-bindgen" }
 rosidl-codegen = { path = "../rosidl-codegen" }
 
+# Phase 219.A — workspace pkg-index walk + launch.xml parser (moved
+# in from `nros-build`; see `src/pkg_index.rs` + `src/launch_parser.rs`).
+walkdir = "2.0"
+quick-xml = "0.37"
+
 # Phase 212.J `nros launch` — raw POSIX `kill(2)` for SIGTERM propagation.
 # Unix-only: the launcher is a desktop / native_sim host runner; Windows is not
 # in scope for nano-ros host bringup (every supported workflow targets Linux /
 # macOS today).
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+# Phase 219.A — codegen-entry tests use tempdirs for fixture
+# workspaces; tempfile is workspace-pinned already through
+# nros-build's dev-deps.
+tempfile = "3.10"

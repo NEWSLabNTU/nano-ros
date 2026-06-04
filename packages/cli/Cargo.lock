@@ -819,11 +819,9 @@ version = "0.4.0"
 dependencies = [
  "eyre",
  "nros-cli-core",
- "quick-xml",
  "serde",
  "serde_json",
  "tempfile",
- "walkdir",
 ]
 
 [[package]]
@@ -847,14 +845,17 @@ dependencies = [
  "libc",
  "nros-msg-to-idl",
  "pathdiff",
+ "quick-xml",
  "ros-launch-manifest-types",
  "rosidl-bindgen",
  "rosidl-codegen",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
  "toml",
  "toml_edit",
+ "walkdir",
 ]
 
 [[package]]

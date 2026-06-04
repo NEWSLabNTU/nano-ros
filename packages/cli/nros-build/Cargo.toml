@@ -26,10 +26,10 @@ nros-cli-core = { path = "../nros-cli-core" }
 eyre = "0.6"
 serde.workspace = true
 serde_json.workspace = true
-# N.10 — workspace pkg-index walks `package.xml` files and parses each.
-# `walkdir` already used by `rosidl-codegen`; `quick-xml` by `cargo-nano-ros`.
-walkdir = "2.0"
-quick-xml = "0.37"
+# Phase 219.A — the `pkg_index` + `launch_parser` modules moved into
+# `nros-cli-core`; this crate re-exports them (`lib.rs::pub use
+# nros_cli_core::{pkg_index, launch_parser}`). The `walkdir`/`quick-xml`
+# direct deps the modules used follow them to `nros-cli-core`.
 
 [dev-dependencies]
 tempfile = "3.10"

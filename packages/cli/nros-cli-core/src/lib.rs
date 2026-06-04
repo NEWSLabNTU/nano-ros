@@ -6,7 +6,15 @@
 
 pub mod abi_guard;
 pub mod cmd;
+// Phase 219.A — Entry-pkg codegen (`nros codegen entry`). The shared
+// pkg-index walk + launch.xml parser also live here so the cmake-fn
+// path (`nano_ros_entry(LAUNCH …)`), the Rust proc-macro
+// (via `nros-build`'s re-export), and any future C/C++ tooling all
+// dispatch through one implementation.
+pub mod codegen;
+pub mod launch_parser;
 pub mod orchestration;
+pub mod pkg_index;
 
 use eyre::Result;
 
