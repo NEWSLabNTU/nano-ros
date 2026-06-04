@@ -57,18 +57,24 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      # Get the `nros` CLI the way a user does — the released prebuilt binary
-      # (no checkout, no cargo). Everything a board needs (incl. source
-      # submodules like nuttx-libc) is then provisioned by `nros setup <board>`
-      # in the check, exactly as a user would — CI must NOT hand-checkout
-      # submodules a user wouldn't.
-      - name: Install the nros CLI (released binary)
+      # Phase 218 — build the nros CLI from packages/cli/ in-tree. The
+      # dep-chain check resolves the `NROS` env-var binary (set below) for the
+      # `nros setup --dry-run` step; everything a board needs is provisioned
+      # by `nros setup <board>` exactly as a user would.
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
-            | NROS_VERSION=0.3.7 sh
-          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       - name: Per-platform dep-chain check
         run: |
           source /opt/ros/humble/setup.bash
-          NROS="$HOME/.nros/bin/nros" scripts/ci/dep-chain-check.sh
+          NROS="$GITHUB_WORKSPACE/packages/cli/target/release/nros" scripts/ci/dep-chain-check.sh

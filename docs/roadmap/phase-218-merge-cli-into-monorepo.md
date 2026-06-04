@@ -184,40 +184,59 @@ ten sub-crates).
 wherever the version-resolve happens), `packages/cli/nros-cli/
 tests/abi_guard.rs` (new).
 
-### 218.F — Workflow pin removal
+### 218.F — Workflow pin removal — landed 2026-06-04
 
-- [ ] All ten workflows lose their `NROS_VERSION=0.3.7` line and the
-  `curl install.sh` step.
-- [ ] Replaced by a "Build nros CLI" step that runs `cargo build
+- [x] All ten workflows lose their `NROS_VERSION=0.3.7` line and the
+  `curl install.sh` step. (`nros-acceptance.yml` is the deliberate
+  carve-out — that lane's whole point is exercising the prebuilt-binary
+  path; it carries a TODO pointing at 218.G's
+  `scripts/install-nros-prebuilt.sh` re-target.)
+- [x] Replaced by a "Build nros CLI" step that runs `cargo build
   --release --manifest-path packages/cli/Cargo.toml --bin nros` AND
   exports `${{ github.workspace }}/packages/cli/target/release` onto
   the job's PATH.
-- [ ] `actions/cache@v4` keyed on `hashFiles('packages/cli/
-  Cargo.lock')` caches the CLI's `target/` so PR builds that don't
-  touch the CLI tree pay sub-30-second restore.
+- [x] `actions/cache@v4` keyed on `hashFiles('packages/cli/
+  Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs')`
+  caches the CLI's `target/` so PR builds that don't touch the CLI
+  tree pay sub-30-second restore. The wider key (lock + manifests +
+  sources) makes sure an artifact-only change still invalidates.
 - [ ] Tagged-release runs fetch the prebuilt artifact (Work Item
   218.G) instead of building from source, exercising the prebuilt
-  path on the same lanes downstream users will rely on.
+  path on the same lanes downstream users will rely on. (Deferred —
+  the prebuilt path is wired via `scripts/install-nros-prebuilt.sh`
+  but no workflow currently invokes it; will be folded into
+  `nros-acceptance.yml` once 218.G ships its first tagged release.)
 
-**Files:** `.github/workflows/{host-unit-tests,ci,dep-chain,
-nros-acceptance,platform-ci,zephyr-dual-line,lint,build-ci-base-image,
-codegen-convention,colcon-parity}.yml`.
+**Files:** `.github/workflows/{host-unit-tests,host-integration-tests,
+ci,dep-chain,nros-acceptance,platform-ci,zephyr-dual-line,lint}.yml`.
 
-### 218.G — Release artifact job
+### 218.G — Release artifact job — landed 2026-06-04
 
-- [ ] New job (or extension to the existing release workflow) builds
+- [x] New job (or extension to the existing release workflow) builds
   the CLI for `{x86_64,aarch64}-{unknown-linux-gnu,apple-darwin}` —
-  four target triples.
-- [ ] Each artifact is `nros-<triple>.tar.gz` (binary + LICENSE +
-  README) plus a `.sha256` sidecar.
-- [ ] Attached to the GitHub release as assets.
-- [ ] `scripts/install-nros-prebuilt.sh` fetches the artifact matching
+  four target triples. Linux x86_64 + macOS native; Linux aarch64 via
+  `cross` (docker-backed cross-compile from ubuntu-22.04). Triggers on
+  `nros-v*` tag pushes + `workflow_dispatch`.
+- [x] Each artifact is `nros-<triple>.tar.gz` (binary + LICENSE-APACHE
+  + LICENSE-MIT + README) plus a `.sha256` sidecar.
+- [x] Attached to the GitHub release as assets (via
+  `softprops/action-gh-release@v2`).
+- [x] `scripts/install-nros-prebuilt.sh` fetches the artifact matching
   `git describe --tags --abbrev=0`, verifies the sha256, installs into
   `packages/cli/target/release/nros`. Fall-through if no tag is
-  reachable: print the closest ancestor tag + suggest `just setup-cli`.
+  reachable: prints a clear message + suggests the source build
+  (`cargo build --release --manifest-path packages/cli/Cargo.toml
+  --bin nros` — equivalent to the `just setup-cli` shorthand).
+- [x] `scripts/install-nros.sh` (the legacy nros-cli installer) gains
+  a `DEPRECATED — Phase 218.A` block + delegates to
+  `install-nros-prebuilt.sh` when on a `nros-v*` tag, else errors with
+  a 218.A pointer (legacy path preserved behind
+  `NROS_LEGACY_INSTALL=1` for downstream pins yet to migrate; full
+  removal in Phase 218.H).
 
-**Files:** `.github/workflows/release.yml` (or whatever the current
-release workflow is named), `scripts/install-nros-prebuilt.sh` (new).
+**Files:** `.github/workflows/release-nros-cli.yml` (new),
+`scripts/install-nros-prebuilt.sh` (new), `scripts/install-nros.sh`
+(DEPRECATED block + delegation gate).
 
 ### 218.H — Existing repo decommission
 

@@ -26,7 +26,15 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       # 1. Bootstrap: install the prebuilt `nros` — no Rust, no just, no checkout,
-      #    no source build of nros. This is the whole point of Gap A.
+      #    no source build of nros. This is the whole point of Gap A — and the
+      #    one workflow that deliberately KEEPS the released-binary path after
+      #    Phase 218.F (every other lane builds from packages/cli/ in-tree).
+      #
+      #    TODO(Phase 218.G): re-target this from the legacy nros-cli releases
+      #    URL to nano-ros's own release artifacts via
+      #    `scripts/install-nros-prebuilt.sh` once 218.G ships its first tagged
+      #    release. The point of the lane is unchanged: prove a bare runner can
+      #    install + scaffold + build + run with a prebuilt nros only.
       - name: Install nros (prebuilt release)
         run: |
           curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
