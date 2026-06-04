@@ -1,0 +1,149 @@
+# Host integration-test lane — covers `just test-integration` (the
+# `nros-tests` crate, with the heavy QEMU/Zephyr/ROS-2-interop groups
+# excluded). This is the host-side regression net for everything that
+# scaffolds + consumes workspaces, but doesn't itself need a Zephyr SDK
+# or a QEMU runtime:
+#
+#   - Phase 212.N — Node + Entry pkg workspaces. `nros::main!()` proc-macro
+#     forms (n9_workspace), single-Entry-pkg run-plan (n_entry_poc_runs),
+#     board-agnostic run-plan (o3), pkg-index workspace walk (o4),
+#     nav2-shape compat smoke (o5).
+#   - Phase 212.M-F — `nros codegen-system` adapter shim self-pkg shape,
+#     bringup scaffolding, check-lints.
+#   - Phase 212 orchestration suite — composable, conditionals, e2e,
+#     includes, set/remap/env. The `nros launch` parser surface
+#     (Phase 212.N.11) lives here.
+#   - Phase 215.E — minimal ASI-shaped board-import fixture (skips
+#     cleanly without a Zephyr SDK on PATH).
+#   - Phase 217 — FVP runtime smokes (skip without Arm FVP installed).
+#   - Loan / orin-spe-mock-ivc / etc. — host fixture suites.
+#
+# What's intentionally NOT here:
+#   - per-platform builds + emulator runs (platform-ci.yml, scheduled).
+#   - Zephyr dual-line example builds (zephyr-dual-line.yml).
+#   - workspace unit tests (host-unit-tests.yml — `just test-unit`,
+#     EXCLUDES `nros-tests`).
+#   - heavy QEMU/Zephyr E2E (test-all tier; needs SDK + emulator).
+#
+# Why this lane exists: every Phase 212.N/O fixture lives under
+# `nros-tests`, which `test-unit` explicitly excludes. Before this
+# lane, the entire Node+Entry workspace shape was untested on CI
+# — a regression to the `nros::main!()` macro, the H.1 adapter
+# shim's self-pkg case, the workspace pkg-index walker (Phase
+# 212.N.10), or the launch parser would all land green.
+name: host integration-tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "justfile"
+      - "just/**"
+      - "cmake/**"
+      - "zephyr/cmake/**"
+      - "nros-sdk-index.toml"
+      - ".github/workflows/host-integration-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "justfile"
+      - "just/**"
+      - "cmake/**"
+      - "zephyr/cmake/**"
+      - "nros-sdk-index.toml"
+      - ".github/workflows/host-integration-tests.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: host-integration-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-integration:
+    name: nros-tests integration (host)
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    # nano-ros-ci bakes ROS 2 Humble + pinned rustup + just + cargo-nextest
+    # + host build deps + the build tooling cargo / cmake need. Same image
+    # as `host-unit-tests` so an integration regression surfaces under the
+    # same fresh-runner contract.
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Released-binary nros — same path users hit. Required by every
+      # Phase 212 self-pkg / launch / pkg-index test (they shell out to
+      # `nros plan`, `nros codegen-system`, `nros check`, `nros launch`).
+      - name: Install the nros CLI (released binary)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
+            | NROS_VERSION=0.3.7 sh
+          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+
+      # Same source set as host-unit-tests: the root workspace path-deps
+      # px4-sitl-tests (load gate) + the *-sys crates compile zenoh-pico /
+      # mbedtls / micro-{cdr,xrce-dds-client} / cyclonedds-src into the
+      # workspace. Without these the `cargo metadata` step the
+      # `test-integration` recipe drives panics out.
+      - name: Provision workspace sources via nros
+        run: |
+          nros setup --source px4-rs --source zenoh-pico --source mbedtls \
+                     --source micro-cdr --source micro-xrce-dds-client \
+                     --source cyclonedds-src
+
+      # `test-integration` has `build-zenohd` as a prereq — it spawns
+      # zenohd to back the Phase 211 / Phase 212 host integration tests.
+      # `just test-integration` chains the build itself; keeping the
+      # explicit step makes the failure surface obvious if zenohd build
+      # ever breaks (vs. a confusing "test-integration" red).
+      - name: Build zenohd
+        run: just build-zenohd
+
+      - name: just test-integration
+        # Source the AMENT prefix so `nros generate-rust` (used by some
+        # Phase 212 fixtures' build.rs steps) finds the ROS 2 Humble
+        # rosidl pipeline. Same as platform-ci's e2e step.
+        run: source /opt/ros/humble/setup.bash && just test-integration
+
+      # Phase 214.R.1 — surface the per-fixture skip/fail tally even on
+      # success runs so the CI log shows which gated fixtures (Zephyr
+      # SDK / Arm FVP / vendor SDKs) were skipped this turn. Cheap; no
+      # impact on green runs.
+      - name: Report skipped fixtures (post-run)
+        if: always()
+        run: |
+          if [ -f target/nextest/default/junit.xml ]; then
+            echo "::group::skipped fixtures"
+            grep -E '<skipped|\[SKIPPED\]' target/nextest/default/junit.xml \
+              | head -100 || echo "(no skips recorded)"
+            echo "::endgroup::"
+          else
+            echo "(no junit.xml — `test-integration` may have failed before any test ran)"
+          fi
+
+      - name: Upload nextest JUnit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-integration-tests-junit
+          path: target/nextest/default/junit.xml
+          if-no-files-found: ignore
+          retention-days: 7

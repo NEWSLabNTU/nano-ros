@@ -71,6 +71,13 @@ jobs:
       fail-fast: false
       matrix:
         line: ["3.7", "4.4"]
+        # Phase 217 follow-up: every Zephyr Rust example now invokes
+        # `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})` so its
+        # CMakeLists shells `nros codegen-system` at configure time
+        # (H.1 adapter shim, self-pkg case). The matrix covers all 6
+        # board-agnostic Rust examples + the c/cpp pubsub pair —
+        # gates regressions of the shim's per-pkg invocation across
+        # node / publisher / subscriber / service / action surfaces.
         example:
           - c/talker
           - c/listener
@@ -78,6 +85,10 @@ jobs:
           - cpp/listener
           - rust/talker
           - rust/listener
+          - rust/service-client
+          - rust/service-server
+          - rust/action-client
+          - rust/action-server
     env:
       NROS_ZEPHYR_VERSION: ${{ matrix.line }}
     steps:
