@@ -200,7 +200,17 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         })?;
 
     let run_plan_path = opts.out_dir.join("run_plan.rs");
-    let body = emit::emit_run_plan(&plan);
+    // Phase 216 — emit two fns into the same `run_plan.rs`:
+    //   1. `run_plan(runtime)`               — board-runtime register path
+    //   2. `run_plan_register_dispatch(exec)` — framework Entry-pkg
+    //      (RTIC/Embassy) dispatch-slot registry path
+    // The second fn is additive — the existing `nros::main!()`
+    // `node_pkgs = [...]` path is unchanged. Consumers opt in by
+    // calling `run_plan_register_dispatch(&mut executor)` from
+    // `#[init]` instead of having to declare each Node up front.
+    let mut body = emit::emit_run_plan(&plan);
+    body.push('\n');
+    body.push_str(&emit::emit_run_plan_register_dispatch(&plan));
     fs::write(&run_plan_path, &body).with_context(|| {
         format!(
             "nros-build: write {} ({} bytes)",
