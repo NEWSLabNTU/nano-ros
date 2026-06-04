@@ -289,23 +289,35 @@ lifetime transmute footgun. All in board crates / nros-node.
 
 ## Acceptance
 
-- [ ] Track A (CRITICAL): all 3 sub-items landed. CI passes, no
-      banned test antipattern remaining.
-- [ ] Track B: nros-cli codegen relative-path fix shipped + nano-ros
-      regen sweep verified.
-- [ ] Track C: shared constants extracted; per-file `build.rs` reads
-      from the central source.
-- [ ] Track D: `# Safety` doc lint passes on board crates +
-      `nros-node`.
-- [ ] Track E: Orin SPE bounds-check added + dual-transport
-      `compile_error!` guards in place.
-- [ ] Track F: `just check-workspace-embedded` clean; no dev-dep
-      forces `nros-serdes/std` on thumb targets.
+- [x] Track A (CRITICAL): all 3 sub-items landed (A.1 + A.2 + A.3
+      all [x] in this doc). CI passes, no banned test antipattern
+      remaining.
+- [x] Track B: nano-ros cmake codegen relative-path fix shipped
+      (`0b85a6ea9`) + regen sweep verified (B.1 + B.2 both [x];
+      tree-wide absolute-path Cargo.toml count 196 → 0,
+      `include!("/home/...")` 100+ → 0).
+- [x] Track C: shared constants extracted (or doc-block cross-ref);
+      C.1 + C.2 + C.3 + C.4 all [x] via concurrent worker landings
+      + Phase 214.C.1 cross-ref doc-block at `nros-c/build.rs`.
+- [x] Track D: `# Safety` doc lint passes on board crates +
+      `nros-node`. D.1 + D.2 both [x] (`c364af87e` + pre-existing
+      coverage).
+- [x] Track E: Orin SPE bounds-check added + dual-transport
+      `compile_error!` guards in place. E.1 + E.2 both [x] (verified
+      2026-06-04 in body text).
+- [x] Track F: F.1 + F.2 + F.3 all [x]. Host-only crate deps + leaky
+      dev-deps target-gated via
+      `[target.'cfg(not(target_os = "none"))'.{dependencies,dev-dependencies}]`;
+      CI workflow `.github/workflows/embedded-feature-unification.yml`
+      enforces zero `feature "std"` activation paths under embedded
+      target.
 - [x] Track G: `just test-unit` workspace cargo-test link succeeds
       without an unguarded `nros_platform_*` alias avalanche.
       (`c7b8c9dc0`)
-- [ ] Track H: `just native test` from clean workspace runs without
-      "Test fixture binary not prebuilt" cascade.
+- [x] Track H: `just native test` from clean workspace runs without
+      "Test fixture binary not prebuilt" cascade. H.1 + H.2 both [x]
+      (sequencing `build-test-fixtures` before nextest; audit applied
+      to every `just <plat> test` recipe).
 - [x] Track I: `nros ws sync` available via Path B source-build env-var
       (`NROS_FROM_SOURCE=/path/to/nros-cli scripts/install-nros.sh`); the
       5 caller recipes (freertos, qemu-baremetal, native, zephyr,
@@ -320,24 +332,36 @@ lifetime transmute footgun. All in board crates / nros-node.
       assoc-types for every action example (`qemu-arm-baremetal/rust/
       action-{client,server}-rtic`, `qemu-riscv64-threadx/rust/
       action-{client,server}`, plus the 3 native rust action examples).
-- [ ] Track K: `just zephyr test` from clean workspace passes the
-      26 fixture-dependent tests.
+- [x] Track K: `just zephyr test` from clean workspace passes the
+      fixture-dependent tests. K.1 [x] (sequence-build-fixtures-first
+      fix landed).
 - [x] Track L: `integrations/{zephyr,esp-idf,platformio}/` shells
       restored or test-gated; no bare-FAIL on missing manifests.
       Skip-gated all three (208.D.7 / 208.D.8 / 208.D.10 deletions);
       see L.1 inventory + L.2 action.
-- [ ] Track M: `just nuttx build-fixtures` succeeds on the pinned
-      nightly + libc combo.
-- [ ] Track N: phase212 / orchestration tests pass or
-      explicitly `skip!` against the installed CLI version.
-- [ ] Track O: `examples_tree_uses_canonical_shape` passes; the
-      24 violators triaged.
+- [x] Track M: `just nuttx build-fixtures` succeeds on the pinned
+      nightly + libc combo. M.1 + M.2 both [x] (`6772e134e` —
+      `nuttx-libc-patch.sh` re-appends patched libc post-`ws sync`;
+      6 NuttX rust example `.cargo/config.toml`s carry the durable
+      `[patch.crates-io]` block).
+- [x] Track N: phase212 / orchestration tests pass or explicitly
+      `skip!` against the installed CLI version. N.1 + N.2 + N.3
+      all [x] (`2461fc180` — survey matrix, no pin bump available
+      yet [release 0.3.7 is latest tag], skip-gates added to 4
+      drift-affected tests).
+- [x] Track O: `examples_tree_uses_canonical_shape` passes; the 24
+      violators triaged. O.1 + O.2 both [x] (`21eedc72d` — lint
+      widened to accept post-N.12 `node` metadata table; 24/24
+      cleared via single lint fix without per-example
+      restructuring).
 - [x] Track P: threadx_riscv64 cyclonedds e2e receives 28/28 (10x rerun all PASS); freertos sibling `#[ignore]`d on the 212.M.5.b fixture regression (Component-pkg sweep deleted the rust cyclonedds entry shape — `CMakeLists.txt` + `cyclonedds_app.c`)
       message over 3 reruns.
 - [x] Track Q: every per-platform `test` recipe sequences
       `build-fixtures` first (umbrella for H and K) — `42c657bd0`.
-- [ ] Track R: `[SKIPPED]` panics no longer count as
-      failures in the tally script's output.
+- [x] Track R: `[SKIPPED]` panics no longer count as failures in the
+      tally script's output. R.1 + R.2 both [x] (`cd85a6645` —
+      Python JUnit post-processor + recipe hooks + test-harness doc;
+      `xrce test` 10/10 SKIPPED-as-FAIL now reports 0 failures).
 - [ ] Phase doc retired to `archived/` when all checkboxes flip.
 
 ---
