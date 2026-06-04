@@ -1,0 +1,188 @@
+// RMW (ROS Middleware) layer - C-compatible FFI types
+// Package: {{ package_name }}
+// Service: {{ service_name }}
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+// Request constants
+{% for constant in request_constants %}
+pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{% endfor %}
+
+// Response constants
+{% for constant in response_constants %}
+pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{% endfor %}
+
+// FFI bindings to C libraries for Request
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__srv__{{ service_name }}_Request() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__srv__{{ service_name }}_Request__init(msg: *mut {{ service_name }}Request) -> bool;
+    fn {{ package_name }}__srv__{{ service_name }}_Request__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ service_name }}Request>, size: usize) -> bool;
+    fn {{ package_name }}__srv__{{ service_name }}_Request__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ service_name }}Request>);
+    fn {{ package_name }}__srv__{{ service_name }}_Request__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ service_name }}Request>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ service_name }}Request>) -> bool;
+}
+
+// Request message type
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ service_name }}Request {
+    {% for field in request_fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+    {% endfor %}
+}
+
+impl {{ service_name }}Request {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ service_name }}Request {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__srv__{{ service_name }}_Request__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__srv__{{ service_name }}_Request__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ service_name }}Request {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__srv__{{ service_name }}_Request__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__srv__{{ service_name }}_Request__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__srv__{{ service_name }}_Request__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ service_name }}Request {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ service_name }}Request where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/srv/{{ service_name }}_Request";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__srv__{{ service_name }}_Request() }
+    }
+}
+
+// FFI bindings to C libraries for Response
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__srv__{{ service_name }}_Response() -> *const std::ffi::c_void;
+}
+
+#[link(name = "{{ package_name }}__rosidl_generator_c")]
+#[allow(improper_ctypes)]
+extern "C" {
+    fn {{ package_name }}__srv__{{ service_name }}_Response__init(msg: *mut {{ service_name }}Response) -> bool;
+    fn {{ package_name }}__srv__{{ service_name }}_Response__Sequence__init(seq: *mut rosidl_runtime_rs::Sequence<{{ service_name }}Response>, size: usize) -> bool;
+    fn {{ package_name }}__srv__{{ service_name }}_Response__Sequence__fini(seq: *mut rosidl_runtime_rs::Sequence<{{ service_name }}Response>);
+    fn {{ package_name }}__srv__{{ service_name }}_Response__Sequence__copy(in_seq: &rosidl_runtime_rs::Sequence<{{ service_name }}Response>, out_seq: *mut rosidl_runtime_rs::Sequence<{{ service_name }}Response>) -> bool;
+}
+
+// Response message type
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ service_name }}Response {
+    {% for field in response_fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+    {% endfor %}
+}
+
+impl {{ service_name }}Response {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for {{ service_name }}Response {
+    fn default() -> Self {
+        unsafe {
+            let mut msg = std::mem::zeroed();
+            if !{{ package_name }}__srv__{{ service_name }}_Response__init(&mut msg as *mut _) {
+                panic!("Call to {{ package_name }}__srv__{{ service_name }}_Response__init() failed");
+            }
+            msg
+        }
+    }
+}
+
+impl rosidl_runtime_rs::SequenceAlloc for {{ service_name }}Response {
+    fn sequence_init(seq: &mut rosidl_runtime_rs::Sequence<Self>, size: usize) -> bool {
+        unsafe { {{ package_name }}__srv__{{ service_name }}_Response__Sequence__init(seq as *mut _, size) }
+    }
+
+    fn sequence_fini(seq: &mut rosidl_runtime_rs::Sequence<Self>) {
+        unsafe { {{ package_name }}__srv__{{ service_name }}_Response__Sequence__fini(seq as *mut _) }
+    }
+
+    fn sequence_copy(in_seq: &rosidl_runtime_rs::Sequence<Self>, out_seq: &mut rosidl_runtime_rs::Sequence<Self>) -> bool {
+        unsafe { {{ package_name }}__srv__{{ service_name }}_Response__Sequence__copy(in_seq, out_seq as *mut _) }
+    }
+}
+
+impl rosidl_runtime_rs::Message for {{ service_name }}Response {
+    type RmwMsg = Self;
+
+    fn into_rmw_message(msg_cow: std::borrow::Cow<'_, Self>) -> std::borrow::Cow<'_, Self::RmwMsg> {
+        msg_cow
+    }
+
+    fn from_rmw_message(msg: Self::RmwMsg) -> Self {
+        msg
+    }
+}
+
+impl rosidl_runtime_rs::RmwMessage for {{ service_name }}Response where Self: Sized {
+    const TYPE_NAME: &'static str = "{{ package_name }}/srv/{{ service_name }}_Response";
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_message_type_support_handle__{{ package_name }}__srv__{{ service_name }}_Response() }
+    }
+}
+
+// Service type support
+#[link(name = "{{ package_name }}__rosidl_typesupport_c")]
+extern "C" {
+    fn rosidl_typesupport_c__get_service_type_support_handle__{{ package_name }}__srv__{{ service_name }}() -> *const std::ffi::c_void;
+}
+
+// Service struct (zero-sized type)
+pub struct {{ service_name }};
+
+impl rosidl_runtime_rs::Service for {{ service_name }} {
+    type Request = {{ service_name }}Request;
+    type Response = {{ service_name }}Response;
+
+    fn get_type_support() -> *const std::ffi::c_void {
+        unsafe { rosidl_typesupport_c__get_service_type_support_handle__{{ package_name }}__srv__{{ service_name }}() }
+    }
+}

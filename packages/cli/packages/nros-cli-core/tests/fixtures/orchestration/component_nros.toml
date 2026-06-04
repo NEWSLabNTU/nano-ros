@@ -1,0 +1,23 @@
+version = 1
+package = "demo_nodes_rs"
+component = "talker"
+language = "rust"
+
+[linkage]
+crate_name = "demo_nodes_rs"
+executable = "talker"
+exported_symbol = "nros_component_talker"
+
+[metadata]
+source_metadata = "target/nros/metadata/talker.json"
+generated_by = "cargo nros metadata"
+
+[overrides]
+default_namespace = "/demo"
+
+[overrides.parameters]
+rate_hz = 10
+
+[[overrides.remaps]]
+from = "chatter"
+to = "/demo/chatter"

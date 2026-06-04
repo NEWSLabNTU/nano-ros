@@ -1,0 +1,182 @@
+// nros message type - pure Rust, no_std compatible
+// Package: {{ package_name }}
+// Message: {{ message_name }}
+{%- if inline_mode %}
+
+use nros_core::{RosMessage, Serialize, Deserialize};
+use nros_core::{CdrReader, CdrWriter, SerError, DeserError};
+{%- else %}
+
+use nros_core::{RosMessage, Serialize, Deserialize};
+use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+{%- endif %}
+
+{%- for constant in constants %}
+pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+
+/// {{ message_name }} message type
+{%- if has_large_array %}
+#[derive(Debug, Clone, PartialEq)]
+{%- else %}
+#[derive(Debug, Clone, Default, PartialEq)]
+{%- endif %}
+pub struct {{ message_name }} {
+{%- for field in fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+{%- endfor %}
+}
+{%- if has_large_array %}
+
+impl Default for {{ message_name }} {
+    fn default() -> Self {
+        Self {
+{%- for field in fields %}
+{%- if field.is_large_array %}
+            {{ field.name }}: [Default::default(); {{ field.array_size }}],
+{%- else %}
+            {{ field.name }}: Default::default(),
+{%- endif %}
+{%- endfor %}
+        }
+    }
+}
+{%- endif %}
+
+impl Serialize for {{ message_name }} {
+{%- if has_fields %}
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+{%- for field in fields %}
+{%- if field.is_primitive %}
+        writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
+{%- else if field.is_string %}
+        writer.write_string(self.{{ field.name }}.as_str())?;
+{%- else if field.is_array %}
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- else if field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- else if field.is_sequence %}
+        writer.write_u32(self.{{ field.name }}.len() as u32)?;
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- else if field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- else %}
+        self.{{ field.name }}.serialize(writer)?;
+{%- endif %}
+{%- endfor %}
+        Ok(())
+    }
+{%- else %}
+    // Empty message - no fields to serialize
+    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+        Ok(())
+    }
+{%- endif %}
+}
+
+impl Deserialize for {{ message_name }} {
+{%- if has_fields %}
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+{%- for field in fields %}
+{%- if field.is_primitive %}
+            {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
+{%- else if field.is_string %}
+            {{ field.name }}: {
+                let s = reader.read_string()?;
+{%- if inline_mode %}
+                nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- else %}
+                heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- endif %}
+            },
+{%- else if field.is_array %}
+            {{ field.name }}: {
+{%- if field.is_large_array %}
+                let mut arr: {{ field.rust_type }} = [Default::default(); {{ field.array_size }}];
+{%- else %}
+                let mut arr: {{ field.rust_type }} = Default::default();
+{%- endif %}
+                for i in 0..{{ field.array_size }} {
+{%- if field.is_primitive_element %}
+                    arr[i] = reader.read_{{ field.element_primitive_method }}()?;
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    arr[i] = nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    arr[i] = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+                    arr[i] = Deserialize::deserialize(reader)?;
+{%- endif %}
+                }
+                arr
+            },
+{%- else if field.is_sequence %}
+            {{ field.name }}: {
+                let len = reader.read_u32()? as usize;
+{%- if inline_mode %}
+                let mut vec = nros_core::heapless::Vec::new();
+{%- else %}
+                let mut vec = heapless::Vec::new();
+{%- endif %}
+                for _ in 0..len {
+{%- if field.is_primitive_element %}
+                    vec.push(reader.read_{{ field.element_primitive_method }}()?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    vec.push(nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    vec.push(heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+                }
+                vec
+            },
+{%- else %}
+            {{ field.name }}: Deserialize::deserialize(reader)?,
+{%- endif %}
+{%- endfor %}
+        })
+    }
+{%- else %}
+    // Empty message - no fields to deserialize
+    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {})
+    }
+{%- endif %}
+}
+
+impl RosMessage for {{ message_name }} {
+    const TYPE_NAME: &'static str = "{{ package_name }}::msg::dds_::{{ message_name }}_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+{{ schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ message_name }} {
+    const TYPE_NAME: &'static str = "{{ schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ schema_fields_block -}}
+    ];
+}

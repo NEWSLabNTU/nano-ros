@@ -1,0 +1,5 @@
+# Ignore Cargo.lock files in test fixtures
+**/Cargo.lock
+
+# Ignore target directories if accidentally created
+**/target/

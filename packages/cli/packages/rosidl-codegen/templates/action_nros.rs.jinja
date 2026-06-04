@@ -1,0 +1,801 @@
+// nros action type - pure Rust, no_std compatible
+// Package: {{ package_name }}
+// Action: {{ action_name }}
+{%- if inline_mode %}
+
+use nros_core::{RosMessage, RosAction, Serialize, Deserialize};
+use nros_core::{CdrReader, CdrWriter, SerError, DeserError};
+{%- else %}
+
+use nros_core::{RosMessage, RosAction, Serialize, Deserialize};
+use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
+{%- endif %}
+
+// ============================================================================
+// Goal Message
+// ============================================================================
+
+{%- for constant in goal_constants %}
+pub const {{ action_name|snake_case|upper }}_GOAL_{{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+
+/// {{ action_name }} goal message
+{%- if has_goal_large_array %}
+#[derive(Debug, Clone, PartialEq)]
+{%- else %}
+#[derive(Debug, Clone, Default, PartialEq)]
+{%- endif %}
+pub struct {{ action_name }}Goal {
+{%- for field in goal_fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+{%- endfor %}
+}
+{%- if has_goal_large_array %}
+
+impl Default for {{ action_name }}Goal {
+    fn default() -> Self {
+        Self {
+{%- for field in goal_fields %}
+{%- if field.is_large_array %}
+            {{ field.name }}: [Default::default(); {{ field.array_size }}],
+{%- else %}
+            {{ field.name }}: Default::default(),
+{%- endif %}
+{%- endfor %}
+        }
+    }
+}
+{%- endif %}
+
+impl Serialize for {{ action_name }}Goal {
+{%- if has_goal_fields %}
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+{%- for field in goal_fields %}
+{%- if field.is_primitive %}
+        writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
+{%- else if field.is_string %}
+        writer.write_string(self.{{ field.name }}.as_str())?;
+{%- else if field.is_array %}
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- else if field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- else if field.is_sequence %}
+        writer.write_u32(self.{{ field.name }}.len() as u32)?;
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- else if field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- else %}
+        self.{{ field.name }}.serialize(writer)?;
+{%- endif %}
+{%- endfor %}
+        Ok(())
+    }
+{%- else %}
+    // Empty goal - no fields to serialize
+    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+        Ok(())
+    }
+{%- endif %}
+}
+
+impl Deserialize for {{ action_name }}Goal {
+{%- if has_goal_fields %}
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+{%- for field in goal_fields %}
+{%- if field.is_primitive %}
+            {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
+{%- else if field.is_string %}
+            {{ field.name }}: {
+                let s = reader.read_string()?;
+{%- if inline_mode %}
+                nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- else %}
+                heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- endif %}
+            },
+{%- else if field.is_array %}
+            {{ field.name }}: {
+{%- if field.is_large_array %}
+                let mut arr: {{ field.rust_type }} = [Default::default(); {{ field.array_size }}];
+{%- else %}
+                let mut arr: {{ field.rust_type }} = Default::default();
+{%- endif %}
+                for i in 0..{{ field.array_size }} {
+{%- if field.is_primitive_element %}
+                    arr[i] = reader.read_{{ field.element_primitive_method }}()?;
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    arr[i] = nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    arr[i] = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+                    arr[i] = Deserialize::deserialize(reader)?;
+{%- endif %}
+                }
+                arr
+            },
+{%- else if field.is_sequence %}
+            {{ field.name }}: {
+                let len = reader.read_u32()? as usize;
+{%- if inline_mode %}
+                let mut vec = nros_core::heapless::Vec::new();
+{%- else %}
+                let mut vec = heapless::Vec::new();
+{%- endif %}
+                for _ in 0..len {
+{%- if field.is_primitive_element %}
+                    vec.push(reader.read_{{ field.element_primitive_method }}()?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    vec.push(nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    vec.push(heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+                }
+                vec
+            },
+{%- else %}
+            {{ field.name }}: Deserialize::deserialize(reader)?,
+{%- endif %}
+{%- endfor %}
+        })
+    }
+{%- else %}
+    // Empty goal - no fields to deserialize
+    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {})
+    }
+{%- endif %}
+}
+
+impl RosMessage for {{ action_name }}Goal {
+    const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_Goal_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+
+// ── nros_serdes::Message — runtime field schema (Goal) ──────────────────────
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
+
+{{ goal_schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ action_name }}Goal {
+    const TYPE_NAME: &'static str = "{{ goal_schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ goal_schema_fields_block -}}
+    ];
+}
+
+// ============================================================================
+// Result Message
+// ============================================================================
+
+{%- for constant in result_constants %}
+pub const {{ action_name|snake_case|upper }}_RESULT_{{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+
+/// {{ action_name }} result message
+{%- if has_result_large_array %}
+#[derive(Debug, Clone, PartialEq)]
+{%- else %}
+#[derive(Debug, Clone, Default, PartialEq)]
+{%- endif %}
+pub struct {{ action_name }}Result {
+{%- for field in result_fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+{%- endfor %}
+}
+{%- if has_result_large_array %}
+
+impl Default for {{ action_name }}Result {
+    fn default() -> Self {
+        Self {
+{%- for field in result_fields %}
+{%- if field.is_large_array %}
+            {{ field.name }}: [Default::default(); {{ field.array_size }}],
+{%- else %}
+            {{ field.name }}: Default::default(),
+{%- endif %}
+{%- endfor %}
+        }
+    }
+}
+{%- endif %}
+
+impl Serialize for {{ action_name }}Result {
+{%- if has_result_fields %}
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+{%- for field in result_fields %}
+{%- if field.is_primitive %}
+        writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
+{%- else if field.is_string %}
+        writer.write_string(self.{{ field.name }}.as_str())?;
+{%- else if field.is_array %}
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- else if field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- else if field.is_sequence %}
+        writer.write_u32(self.{{ field.name }}.len() as u32)?;
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- else if field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- else %}
+        self.{{ field.name }}.serialize(writer)?;
+{%- endif %}
+{%- endfor %}
+        Ok(())
+    }
+{%- else %}
+    // Empty result - no fields to serialize
+    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+        Ok(())
+    }
+{%- endif %}
+}
+
+impl Deserialize for {{ action_name }}Result {
+{%- if has_result_fields %}
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+{%- for field in result_fields %}
+{%- if field.is_primitive %}
+            {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
+{%- else if field.is_string %}
+            {{ field.name }}: {
+                let s = reader.read_string()?;
+{%- if inline_mode %}
+                nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- else %}
+                heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- endif %}
+            },
+{%- else if field.is_array %}
+            {{ field.name }}: {
+{%- if field.is_large_array %}
+                let mut arr: {{ field.rust_type }} = [Default::default(); {{ field.array_size }}];
+{%- else %}
+                let mut arr: {{ field.rust_type }} = Default::default();
+{%- endif %}
+                for i in 0..{{ field.array_size }} {
+{%- if field.is_primitive_element %}
+                    arr[i] = reader.read_{{ field.element_primitive_method }}()?;
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    arr[i] = nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    arr[i] = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+                    arr[i] = Deserialize::deserialize(reader)?;
+{%- endif %}
+                }
+                arr
+            },
+{%- else if field.is_sequence %}
+            {{ field.name }}: {
+                let len = reader.read_u32()? as usize;
+{%- if inline_mode %}
+                let mut vec = nros_core::heapless::Vec::new();
+{%- else %}
+                let mut vec = heapless::Vec::new();
+{%- endif %}
+                for _ in 0..len {
+{%- if field.is_primitive_element %}
+                    vec.push(reader.read_{{ field.element_primitive_method }}()?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    vec.push(nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    vec.push(heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+                }
+                vec
+            },
+{%- else %}
+            {{ field.name }}: Deserialize::deserialize(reader)?,
+{%- endif %}
+{%- endfor %}
+        })
+    }
+{%- else %}
+    // Empty result - no fields to deserialize
+    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {})
+    }
+{%- endif %}
+}
+
+impl RosMessage for {{ action_name }}Result {
+    const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_Result_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+
+// ── nros_serdes::Message — runtime field schema (Result) ────────────────────
+
+{{ result_schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ action_name }}Result {
+    const TYPE_NAME: &'static str = "{{ result_schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ result_schema_fields_block -}}
+    ];
+}
+
+// ============================================================================
+// Feedback Message
+// ============================================================================
+
+{%- for constant in feedback_constants %}
+pub const {{ action_name|snake_case|upper }}_FEEDBACK_{{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+
+/// {{ action_name }} feedback message
+{%- if has_feedback_large_array %}
+#[derive(Debug, Clone, PartialEq)]
+{%- else %}
+#[derive(Debug, Clone, Default, PartialEq)]
+{%- endif %}
+pub struct {{ action_name }}Feedback {
+{%- for field in feedback_fields %}
+    pub {{ field.name }}: {{ field.rust_type }},
+{%- endfor %}
+}
+{%- if has_feedback_large_array %}
+
+impl Default for {{ action_name }}Feedback {
+    fn default() -> Self {
+        Self {
+{%- for field in feedback_fields %}
+{%- if field.is_large_array %}
+            {{ field.name }}: [Default::default(); {{ field.array_size }}],
+{%- else %}
+            {{ field.name }}: Default::default(),
+{%- endif %}
+{%- endfor %}
+        }
+    }
+}
+{%- endif %}
+
+impl Serialize for {{ action_name }}Feedback {
+{%- if has_feedback_fields %}
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+{%- for field in feedback_fields %}
+{%- if field.is_primitive %}
+        writer.write_{{ field.primitive_method }}(self.{{ field.name }})?;
+{%- else if field.is_string %}
+        writer.write_string(self.{{ field.name }}.as_str())?;
+{%- else if field.is_array %}
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- else if field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- else if field.is_sequence %}
+        writer.write_u32(self.{{ field.name }}.len() as u32)?;
+        for item in &self.{{ field.name }} {
+{%- if field.is_primitive_element %}
+            writer.write_{{ field.element_primitive_method }}(*item)?;
+{%- else if field.is_string_element %}
+            writer.write_string(item.as_str())?;
+{%- else %}
+            item.serialize(writer)?;
+{%- endif %}
+        }
+{%- else %}
+        self.{{ field.name }}.serialize(writer)?;
+{%- endif %}
+{%- endfor %}
+        Ok(())
+    }
+{%- else %}
+    // Empty feedback - no fields to serialize
+    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+        Ok(())
+    }
+{%- endif %}
+}
+
+impl Deserialize for {{ action_name }}Feedback {
+{%- if has_feedback_fields %}
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+{%- for field in feedback_fields %}
+{%- if field.is_primitive %}
+            {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
+{%- else if field.is_string %}
+            {{ field.name }}: {
+                let s = reader.read_string()?;
+{%- if inline_mode %}
+                nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- else %}
+                heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- endif %}
+            },
+{%- else if field.is_array %}
+            {{ field.name }}: {
+{%- if field.is_large_array %}
+                let mut arr: {{ field.rust_type }} = [Default::default(); {{ field.array_size }}];
+{%- else %}
+                let mut arr: {{ field.rust_type }} = Default::default();
+{%- endif %}
+                for i in 0..{{ field.array_size }} {
+{%- if field.is_primitive_element %}
+                    arr[i] = reader.read_{{ field.element_primitive_method }}()?;
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    arr[i] = nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    arr[i] = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+                    arr[i] = Deserialize::deserialize(reader)?;
+{%- endif %}
+                }
+                arr
+            },
+{%- else if field.is_sequence %}
+            {{ field.name }}: {
+                let len = reader.read_u32()? as usize;
+{%- if inline_mode %}
+                let mut vec = nros_core::heapless::Vec::new();
+{%- else %}
+                let mut vec = heapless::Vec::new();
+{%- endif %}
+                for _ in 0..len {
+{%- if field.is_primitive_element %}
+                    vec.push(reader.read_{{ field.element_primitive_method }}()?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    vec.push(nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    vec.push(heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+                }
+                vec
+            },
+{%- else %}
+            {{ field.name }}: Deserialize::deserialize(reader)?,
+{%- endif %}
+{%- endfor %}
+        })
+    }
+{%- else %}
+    // Empty feedback - no fields to deserialize
+    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {})
+    }
+{%- endif %}
+}
+
+impl RosMessage for {{ action_name }}Feedback {
+    const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_Feedback_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+
+// ── nros_serdes::Message — runtime field schema (Feedback) ──────────────────
+
+{{ feedback_schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ action_name }}Feedback {
+    const TYPE_NAME: &'static str = "{{ feedback_schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ feedback_schema_fields_block -}}
+    ];
+}
+
+// ============================================================================
+// Action Envelope Structs (rosidl wire convention — Phase 212.K.7.1.d)
+// ============================================================================
+//
+// These five structs wrap the user-facing Goal / Result / Feedback for the
+// action service-shape protocol. They mirror upstream `rosidl_generator_cpp`
+// — `<A>__struct.hpp` exposes the same five names with the same field
+// layout. Users normally interact with `<A>Goal/Result/Feedback`; the
+// envelopes are used by the action plumbing layer (server-side
+// `SendGoal_Request` decode, client-side `GetResult_Response` decode,
+// feedback topic deliveries, …).
+//
+// `goal_id` is `unique_identifier_msgs::msg::UUID`, NOT a flat `[u8;16]`
+// — `rosidl` always wraps the 16-byte UUID in a one-field struct so the
+// CDR layout (sequence-of-uint8 fixed length 16) matches upstream's
+// `unique_identifier_msgs/UUID.msg`.
+
+// ── <A>_SendGoal_Request { goal_id: UUID, goal: <A>Goal } ───────────────────
+
+/// Wire envelope for the `send_goal` request half of the action service.
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct {{ action_name }}_SendGoal_Request {
+    pub goal_id: unique_identifier_msgs::msg::UUID,
+    pub goal: {{ action_name }}Goal,
+}
+
+impl Serialize for {{ action_name }}_SendGoal_Request {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        self.goal_id.serialize(writer)?;
+        self.goal.serialize(writer)?;
+        Ok(())
+    }
+}
+
+impl Deserialize for {{ action_name }}_SendGoal_Request {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+            goal_id: Deserialize::deserialize(reader)?,
+            goal: Deserialize::deserialize(reader)?,
+        })
+    }
+}
+
+impl RosMessage for {{ action_name }}_SendGoal_Request {
+    const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_SendGoal_Request_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+
+{{ send_goal_request_schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ action_name }}_SendGoal_Request {
+    const TYPE_NAME: &'static str = "{{ send_goal_request_schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ send_goal_request_schema_fields_block -}}
+    ];
+}
+
+// ── <A>_SendGoal_Response { accepted: bool, stamp: Time } ───────────────────
+
+/// Wire envelope for the `send_goal` response half of the action service.
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct {{ action_name }}_SendGoal_Response {
+    pub accepted: bool,
+    pub stamp: builtin_interfaces::msg::Time,
+}
+
+impl Serialize for {{ action_name }}_SendGoal_Response {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        writer.write_bool(self.accepted)?;
+        self.stamp.serialize(writer)?;
+        Ok(())
+    }
+}
+
+impl Deserialize for {{ action_name }}_SendGoal_Response {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+            accepted: reader.read_bool()?,
+            stamp: Deserialize::deserialize(reader)?,
+        })
+    }
+}
+
+impl RosMessage for {{ action_name }}_SendGoal_Response {
+    const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_SendGoal_Response_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+
+{{ send_goal_response_schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ action_name }}_SendGoal_Response {
+    const TYPE_NAME: &'static str = "{{ send_goal_response_schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ send_goal_response_schema_fields_block -}}
+    ];
+}
+
+// ── <A>_GetResult_Request { goal_id: UUID } ─────────────────────────────────
+
+/// Wire envelope for the `get_result` request half of the action service.
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct {{ action_name }}_GetResult_Request {
+    pub goal_id: unique_identifier_msgs::msg::UUID,
+}
+
+impl Serialize for {{ action_name }}_GetResult_Request {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        self.goal_id.serialize(writer)?;
+        Ok(())
+    }
+}
+
+impl Deserialize for {{ action_name }}_GetResult_Request {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+            goal_id: Deserialize::deserialize(reader)?,
+        })
+    }
+}
+
+impl RosMessage for {{ action_name }}_GetResult_Request {
+    const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_GetResult_Request_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+
+{{ get_result_request_schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ action_name }}_GetResult_Request {
+    const TYPE_NAME: &'static str = "{{ get_result_request_schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ get_result_request_schema_fields_block -}}
+    ];
+}
+
+// ── <A>_GetResult_Response { status: i8, result: <A>Result } ────────────────
+
+/// Wire envelope for the `get_result` response half of the action service.
+#[allow(non_camel_case_types)]
+{%- if has_result_large_array %}
+#[derive(Debug, Clone, PartialEq)]
+{%- else %}
+#[derive(Debug, Clone, Default, PartialEq)]
+{%- endif %}
+pub struct {{ action_name }}_GetResult_Response {
+    pub status: i8,
+    pub result: {{ action_name }}Result,
+}
+{%- if has_result_large_array %}
+
+impl Default for {{ action_name }}_GetResult_Response {
+    fn default() -> Self {
+        Self {
+            status: 0,
+            result: Default::default(),
+        }
+    }
+}
+{%- endif %}
+
+impl Serialize for {{ action_name }}_GetResult_Response {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        writer.write_i8(self.status)?;
+        self.result.serialize(writer)?;
+        Ok(())
+    }
+}
+
+impl Deserialize for {{ action_name }}_GetResult_Response {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+            status: reader.read_i8()?,
+            result: Deserialize::deserialize(reader)?,
+        })
+    }
+}
+
+impl RosMessage for {{ action_name }}_GetResult_Response {
+    const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_GetResult_Response_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+
+{{ get_result_response_schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ action_name }}_GetResult_Response {
+    const TYPE_NAME: &'static str = "{{ get_result_response_schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ get_result_response_schema_fields_block -}}
+    ];
+}
+
+// ── <A>_FeedbackMessage { goal_id: UUID, feedback: <A>Feedback } ────────────
+
+/// Wire envelope for the action feedback topic.
+#[allow(non_camel_case_types)]
+{%- if has_feedback_large_array %}
+#[derive(Debug, Clone, PartialEq)]
+{%- else %}
+#[derive(Debug, Clone, Default, PartialEq)]
+{%- endif %}
+pub struct {{ action_name }}_FeedbackMessage {
+    pub goal_id: unique_identifier_msgs::msg::UUID,
+    pub feedback: {{ action_name }}Feedback,
+}
+{%- if has_feedback_large_array %}
+
+impl Default for {{ action_name }}_FeedbackMessage {
+    fn default() -> Self {
+        Self {
+            goal_id: Default::default(),
+            feedback: Default::default(),
+        }
+    }
+}
+{%- endif %}
+
+impl Serialize for {{ action_name }}_FeedbackMessage {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        self.goal_id.serialize(writer)?;
+        self.feedback.serialize(writer)?;
+        Ok(())
+    }
+}
+
+impl Deserialize for {{ action_name }}_FeedbackMessage {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+            goal_id: Deserialize::deserialize(reader)?,
+            feedback: Deserialize::deserialize(reader)?,
+        })
+    }
+}
+
+impl RosMessage for {{ action_name }}_FeedbackMessage {
+    const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_FeedbackMessage_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+
+{{ feedback_message_schema_helper_consts -}}
+
+impl ::nros_serdes::Message for {{ action_name }}_FeedbackMessage {
+    const TYPE_NAME: &'static str = "{{ feedback_message_schema_type_name }}";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+{{ feedback_message_schema_fields_block -}}
+    ];
+}
+
+// ============================================================================
+// Action Definition
+// ============================================================================
+
+/// {{ action_name }} action definition
+pub struct {{ action_name }};
+
+impl RosAction for {{ action_name }} {
+    type Goal = {{ action_name }}Goal;
+    type Result = {{ action_name }}Result;
+    type Feedback = {{ action_name }}Feedback;
+
+    type SendGoalRequest = {{ action_name }}_SendGoal_Request;
+    type SendGoalResponse = {{ action_name }}_SendGoal_Response;
+    type GetResultRequest = {{ action_name }}_GetResult_Request;
+    type GetResultResponse = {{ action_name }}_GetResult_Response;
+    type FeedbackMessage = {{ action_name }}_FeedbackMessage;
+
+    const ACTION_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_";
+    const ACTION_HASH: &'static str = "{{ type_hash }}";
+}

@@ -1,0 +1,36 @@
+# Phase 195.C — board profile descriptor. Bare-metal ThreadX on QEMU RISC-V virt.
+# Shares the `threadx` name with threadx-linux; `target_contains` picks this one
+# when the requested target is riscv64.
+
+[[board]]
+names = ["threadx", "threadx-riscv64"]
+target_contains = "riscv64"
+platform = "threadx-riscv64"
+toolchain = "stable"
+platform_feature = "platform-threadx"
+local_aliases = ["platform-threadx-riscv64"]
+link_kind = "none"
+entry_kind = "board-run"
+net_stack = "nanoros-owned"
+board_crate = "nros-board-threadx-qemu-riscv64"
+cargo_config = '''
+[build]
+target = "riscv64gc-unknown-none-elf"
+
+[target.riscv64gc-unknown-none-elf]
+rustflags = [
+    "-C", "link-arg=-Tlink.lds",
+    "-C", "link-arg=--nmagic",
+]
+
+[env]
+NETX_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-threadx-qemu-riscv64/config", force = true }
+THREADX_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-threadx-qemu-riscv64/config", force = true }
+THREADX_PORT = { value = "risc-v64/gnu", force = true }
+THREADX_EXTRA_INCLUDES = { value = "${workspace}/third-party/threadx/kernel/ports/risc-v64/gnu/example_build/qemu_virt", force = true }
+'''
+
+[board.entry]
+crate_name = "nros_board_threadx_qemu_riscv64"
+comment = "// Phase 126.M5.threadx-riscv64 — bare-metal ThreadX on QEMU RISC-V\n// virt. Entry is `#[no_mangle] extern \"C\" fn main` (the board's\n// `link.lds` jumps `_start -> main`). `run()` boots the ThreadX\n// kernel + NetX Duo over virtio-net then invokes the closure;\n// referencing it pins the board rlib + its kernel/NetX archives +\n// the linker script into the image."
+signature = "#[unsafe(no_mangle)]\nextern \"C\" fn main() -> !"

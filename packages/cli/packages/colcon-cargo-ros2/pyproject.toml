@@ -1,0 +1,99 @@
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "colcon-nano-ros"
+version = "0.4.0"
+description = "Extension for colcon to build nros packages with automatic message type generation"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Lin Hsiang-Jui", email = "jerry73204@gmail.com" }
+]
+keywords = [
+    "ROS",
+    "ROS2",
+    "Rust",
+    "colcon",
+    "build-tool",
+    "robotics",
+    "message-generation",
+    "bindings"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Plugins",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "colcon-core",
+    "colcon-library-path",
+    "colcon-ros",
+]
+
+[project.urls]
+Homepage = "https://github.com/azewiusz/colcon-nano-ros"
+Repository = "https://github.com/azewiusz/colcon-nano-ros"
+Documentation = "https://github.com/azewiusz/colcon-nano-ros#readme"
+Issues = "https://github.com/azewiusz/colcon-nano-ros/issues"
+Changelog = "https://github.com/azewiusz/colcon-nano-ros/releases"
+
+[project.entry-points."colcon_core.package_augmentation"]
+"nros" = "colcon_nano_ros.nros_augmentation:NrosBindingAugmentation"
+
+[project.entry-points."colcon_core.task.build"]
+# nano-ros embedded/native build types (nros.<lang>.<platform>)
+"ros.nros.rust.native" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.rust.freertos" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.rust.baremetal" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.rust.nuttx" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.rust.threadx" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.rust.zephyr" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.c.native" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.c.freertos" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.c.zephyr" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.c.nuttx" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.cpp.native" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.cpp.freertos" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.cpp.zephyr" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros.cpp.nuttx" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+
+[project.entry-points."colcon_core.task.test"]
+# nano-ros test tasks
+"ros.nros.rust.native" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.rust.freertos" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.rust.baremetal" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.rust.nuttx" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.rust.threadx" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.rust.zephyr" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.c.native" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.c.freertos" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.c.zephyr" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.c.nuttx" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.cpp.native" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.cpp.freertos" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.cpp.zephyr" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros.cpp.nuttx" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+
+[tool.maturin]
+bindings = "pyo3"
+manifest-path = "Cargo.toml"
+module-name = "colcon_nano_ros.cargo_ros2_py"
+python-source = "."
+strip = true

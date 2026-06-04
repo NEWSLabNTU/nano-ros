@@ -1,0 +1,35 @@
+# List all available recipes (default)
+default:
+    @just --list
+
+# Install ROS dependencies
+install-deps:
+    rosdep update
+    rosdep install --from-paths src --ignore-src -r -y
+
+# Build the workspace
+build:
+    #!/usr/bin/env bash
+    set -e
+    source /opt/ros/humble/setup.bash
+    # Source workspace if it exists (for incremental builds with dependencies)
+    if [ -f install/setup.bash ]; then
+        source install/setup.bash
+    fi
+    colcon build --symlink-install
+
+# Clean build artifacts
+clean:
+    rm -rf build install log
+    find src -type d -name target -exec rm -rf {} + 2>/dev/null || true
+
+# Run the robot controller
+run:
+    #!/usr/bin/env bash
+    set -e
+    source install/setup.bash
+    ros2 run robot_controller robot_controller
+
+# Show info
+info:
+    @colcon list --base-paths src

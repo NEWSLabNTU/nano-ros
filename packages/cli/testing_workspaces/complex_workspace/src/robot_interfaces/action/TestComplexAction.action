@@ -1,0 +1,57 @@
+# Goal: Execute a complex robot motion with multi-package dependencies
+# Tests: action goal/result/feedback with trajectory types and constraints
+
+geometry_msgs/PoseStamped target_pose
+moveit_msgs/Constraints path_constraints
+trajectory_msgs/MultiDOFJointTrajectory desired_trajectory
+nav2_msgs/SpeedLimit speed_limit
+# TODO: Re-enable after fixing test_msgs code generation
+# test_msgs/BoundedSequences validation_data
+control_msgs/JointTrajectoryControllerState initial_state
+float64 max_execution_time
+bool check_collisions
+string[] allowed_collision_links
+
+---
+
+# Result: Final status and execution metrics
+bool success
+string result_message
+
+# Executed trajectory
+trajectory_msgs/JointTrajectory executed_trajectory
+moveit_msgs/RobotState final_robot_state
+
+# Execution metrics
+float64 actual_execution_time
+float64 trajectory_error
+int32 waypoints_executed
+
+# Diagnostic data
+diagnostic_msgs/DiagnosticStatus[] execution_diagnostics
+control_msgs/JointTrajectoryControllerState final_controller_state
+
+---
+
+# Feedback: Progress updates during execution
+# Current execution state
+float64 percent_complete
+int32 current_waypoint
+int32 total_waypoints
+
+# Current robot state
+moveit_msgs/RobotState current_state
+geometry_msgs/PoseStamped current_pose
+
+# Real-time metrics
+float64 elapsed_time
+float64 estimated_time_remaining
+trajectory_msgs/JointTrajectoryPoint current_setpoint
+
+# Controller feedback
+control_msgs/JointTrajectoryControllerState controller_state
+control_msgs/PidState[] joint_pid_states
+
+# Safety monitoring
+nav2_msgs/CollisionMonitorState collision_state
+diagnostic_msgs/DiagnosticStatus system_health

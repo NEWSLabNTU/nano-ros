@@ -1,0 +1,11 @@
+[package]
+name = "demo_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[features]
+default = []
+
+[dependencies]
+nros = { path = "../../../../../core/nros", default-features = false }

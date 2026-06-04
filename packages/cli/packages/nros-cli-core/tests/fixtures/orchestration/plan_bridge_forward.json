@@ -1,0 +1,183 @@
+{
+  "version": 2,
+  "system": "bridge_forward_system",
+  "trace": {
+    "system_config": "nros.toml",
+    "launch_record": "r",
+    "generated_by": "t"
+  },
+  "components": [
+    {
+      "id": "demo_pkg::chatter_talker",
+      "package": "demo_pkg",
+      "component": "chatter_talker",
+      "language": "rust",
+      "source_metadata": "m",
+      "component_config": "c"
+    }
+  ],
+  "instances": [
+    {
+      "id": "talker_i",
+      "component": "demo_pkg::chatter_talker",
+      "package": "demo_pkg",
+      "executable": "chatter_talker",
+      "launch_name": "chatter_talker",
+      "namespace": "/",
+      "remaps": [],
+      "nodes": [
+        {
+          "id": "talker_i/node_chatter",
+          "source_node": "node_chatter",
+          "resolved_name": "/chatter_talker",
+          "namespace": "/",
+          "entities": [
+            {
+              "role": "publisher",
+              "id": "talker_i/pub_chatter",
+              "source_entity": "pub_chatter",
+              "resolved_name": "/chatter",
+              "interface": {
+                "package": "std_msgs",
+                "name": "msg/Int32",
+                "kind": "message"
+              },
+              "qos": {
+                "reliability": "reliable",
+                "durability": "volatile",
+                "history": "keep_last",
+                "depth": 10,
+                "deadline_ms": null,
+                "lifespan_ms": null,
+                "liveliness": "automatic",
+                "liveliness_lease_duration_ms": null,
+                "extensions": {}
+              },
+              "trace": {
+                "source_artifact": {
+                  "artifact": "x",
+                  "line": null,
+                  "column": null
+                },
+                "manifest_endpoint": null
+              }
+            },
+            {
+              "role": "timer",
+              "id": "talker_i/timer_publish",
+              "source_entity": "timer_publish",
+              "callback": "cb_pub",
+              "period_ms": 100,
+              "trace": {
+                "source_artifact": {
+                  "artifact": "x",
+                  "line": null,
+                  "column": null
+                },
+                "manifest_endpoint": null
+              }
+            }
+          ]
+        }
+      ],
+      "callbacks": [
+        {
+          "id": "talker_i/cb_pub",
+          "source_callback": "cb_pub",
+          "group": "main",
+          "sched_context": "default_executor",
+          "source": {
+            "artifact": "x",
+            "line": null,
+            "column": null
+          }
+        }
+      ],
+      "parameters": [],
+      "sched_bindings": [
+        {
+          "callback": "talker_i/cb_pub",
+          "context": "default_executor",
+          "priority": 5,
+          "source": "nros.toml"
+        }
+      ],
+      "trace": {
+        "launch_record_entity": "x",
+        "source_metadata": "y"
+      }
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "std_msgs/msg/Int32",
+      "interface": {
+        "package": "std_msgs",
+        "name": "msg/Int32",
+        "kind": "message"
+      },
+      "used_by": [
+        "talker_i/pub_chatter"
+      ]
+    }
+  ],
+  "sched_contexts": [
+    {
+      "id": "default_executor",
+      "executor": "single_threaded",
+      "class": "real_time",
+      "priority": 5,
+      "period_ms": 100,
+      "budget_ms": 20,
+      "deadline_ms": 100,
+      "deadline_policy": "warn",
+      "stack_size": 16384,
+      "core": 0,
+      "task": "nros-default"
+    }
+  ],
+  "bridges": [
+    {
+      "name": "gw",
+      "connect": [
+        {
+          "rmw": "zenoh",
+          "domain": 0,
+          "locator": "tcp/127.0.0.1:7401"
+        },
+        {
+          "rmw": "zenoh",
+          "domain": 0,
+          "locator": "tcp/127.0.0.1:7402"
+        }
+      ],
+      "topics": [
+        "/chatter"
+      ]
+    }
+  ],
+  "build": {
+    "target": "x86_64-unknown-linux-gnu",
+    "board": "native",
+    "rmw": "zenoh",
+    "profile": "release",
+    "features": [
+      "rmw-zenoh"
+    ],
+    "cfg": {},
+    "transports": [
+      {
+        "kind": "ethernet",
+        "rmw": "zenoh",
+        "locator": "tcp/127.0.0.1:7401",
+        "domain": 0
+      },
+      {
+        "kind": "ethernet",
+        "rmw": "zenoh",
+        "locator": "tcp/127.0.0.1:7402",
+        "domain": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+version = 1
+package = "probe_pkg"
+component = "probe_pkg::node"
+language = "rust"
+
+[linkage]
+crate_name = "probe_pkg"
+executable = "probe_pkg"
+exported_symbol = "nros_component_node"
+
+[metadata]
+source_metadata = "node.metadata.json"
+
+[overrides]
+parameters = {}
+remaps = []

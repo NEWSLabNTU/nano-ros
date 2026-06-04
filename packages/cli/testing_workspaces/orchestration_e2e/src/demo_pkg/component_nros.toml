@@ -1,0 +1,22 @@
+# Phase 172.U — demo_pkg declares its `talker` component so `nros deploy`
+# (and `nros metadata`) can resolve + collect its source metadata from the
+# root nros.toml's [system].components = ["demo_pkg"]. source_metadata points
+# at the workspace's pre-collected artifact (present ⇒ no rebuild needed).
+version = 1
+package = "demo_pkg"
+component = "talker"
+language = "rust"
+
+[linkage]
+crate_name = "demo_pkg"
+executable = "talker"
+exported_symbol = "nros_component_talker"
+
+[metadata]
+source_metadata = "metadata/talker.json"
+generated_by = "cargo nros metadata"
+
+[overrides]
+default_namespace = "/"
+parameters = {}
+remaps = []

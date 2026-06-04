@@ -1,0 +1,28 @@
+[package]
+name = "nros-cli"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The `nros` user-facing CLI for nano-ros: scaffolding, codegen, build, run, doctor."
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "cli", "scaffold", "codegen", "embedded"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
+
+[[bin]]
+name = "nros"
+path = "src/main.rs"
+
+[features]
+default = []
+# Surface maintainer-only release subcommands.
+release = ["nros-cli-core/release"]
+
+[dependencies]
+clap = { workspace = true }
+clap_complete = "4.5"
+eyre = "0.6"
+nros-cli-core = { path = "../nros-cli-core" }

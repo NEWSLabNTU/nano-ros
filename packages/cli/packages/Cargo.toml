@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = [
+    "rosidl-parser",
+    "rosidl-codegen",
+    "rosidl-bindgen",
+    "cargo-nano-ros",
+    "nros-cli-core",
+    "nros-cli",
+    "nros-msg-to-idl",
+    # Phase 212.N.4 — build-script codegen library for Entry pkgs.
+    "nros-build",
+    "colcon-cargo-ros2",  # Package dir name (contains colcon-nano-ros crate)
+]
+
+[workspace.package]
+version = "0.3.7"
+authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>"]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/NEWSLabNTU/colcon-nano-ros"
+homepage = "https://github.com/NEWSLabNTU/nano-ros"
+documentation = "https://docs.rs/nros-cli"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Shared dependencies across workspace members
+anyhow = "1.0"
+askama = "0.12"
+thiserror = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# PyO3 for Python bindings
+pyo3 = { version = "0.24", features = ["extension-module"] }
+
+# Workspace member dependencies
+cargo-nano-ros = { path = "cargo-nano-ros" }
+nros-cli-core = { path = "nros-cli-core" }
+rosidl-bindgen = { path = "rosidl-bindgen" }
+rosidl-parser = { path = "rosidl-parser" }
+rosidl-codegen = { path = "rosidl-codegen" }
+nros-msg-to-idl = { path = "nros-msg-to-idl" }
+
+[profile.dev-release]
+inherits = "release"
+debug = true
+strip = false

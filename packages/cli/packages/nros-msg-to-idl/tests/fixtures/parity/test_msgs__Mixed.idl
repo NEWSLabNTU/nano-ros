@@ -1,0 +1,31 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from test_msgs/msg/Mixed.msg
+// generated code does not contain a copyright notice
+
+#include "geometry_msgs/msg/Vector3.idl"
+
+module test_msgs {
+  module msg {
+    typedef uint8 uint8__4[4];
+    @verbatim (language="comment", text=
+      "Edge fixture -- union of the field-shape kinds covered by the parity" "\n"
+      "corpus: primitive scalars, fixed-size array, unbounded sequence," "\n"
+      "bounded sequence, bounded string, nested-msg reference." "\n"
+      "(ASCII-only on purpose; see parity.rs `KNOWN_DIVERGENCE_NON_ASCII`.)")
+    module dds_ {
+      struct Mixed_ {
+        int32 scalar;
+  
+        uint8__4 fixed_quad;
+  
+        sequence<int8> unbounded;
+  
+        sequence<int16, 8> bounded;
+  
+        string<32> label;
+  
+        geometry_msgs::msg::dds_::Vector3_ origin;
+      };
+    };
+  };
+};

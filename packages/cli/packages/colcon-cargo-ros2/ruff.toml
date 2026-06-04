@@ -1,0 +1,32 @@
+# Ruff configuration for colcon-cargo-ros2
+# See https://docs.astral.sh/ruff/
+
+line-length = 100
+
+[lint]
+# Enable pycodestyle (E), pyflakes (F), pydocstyle (D), and isort (I)
+select = ["E", "F", "D", "I"]
+
+# Ignore rules matching previous flake8 configuration
+ignore = [
+    "D100",  # Missing docstring in public module
+    "D104",  # Missing docstring in public package
+]
+
+[lint.per-file-ignores]
+# Additional ignores for test files
+"test/*.py" = [
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D105",  # Missing docstring in magic method
+    "D107",  # Missing docstring in __init__
+]
+
+[lint.pydocstyle]
+# Use Google-style docstrings
+convention = "google"
+
+[lint.isort]
+# Group imports
+known-first-party = ["colcon_cargo_ros2"]

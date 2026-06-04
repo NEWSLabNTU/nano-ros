@@ -1,0 +1,7 @@
+[package]
+name = "minimal_path_test"
+version = "0.1.0"
+edition = "2024"
+
+# Standalone package
+[workspace]

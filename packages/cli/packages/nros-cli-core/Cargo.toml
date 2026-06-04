@@ -1,0 +1,66 @@
+[package]
+name = "nros-cli-core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Library backing the canonical `nros` CLI: subcommand dispatch, project scaffolding, config inspection, build, run, doctor, and codegen."
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "cli", "scaffold", "codegen", "embedded"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
+
+[lib]
+name = "nros_cli_core"
+path = "src/lib.rs"
+
+[features]
+default = []
+# Maintainer-only release subcommands (`nros release detect|publish|tag`).
+# Hidden from `nros --help` unless this feature is on at build time.
+release = []
+
+[dependencies]
+clap = { workspace = true }
+eyre = "0.6"
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+toml_edit = "0.22"
+cargo_metadata = "0.18"
+# Phase 195.A: launch-file resolution shells out to the external
+# `play_launch_parser` binary (planner.rs) rather than linking it — that crate
+# embeds CPython via pyo3 `auto-initialize`, and abi3 cannot unpin an embedding
+# binary's libpython (pyo3 docs). Keeping it out of the link makes the shipped
+# `nros` a portable libc-only binary; the python-bearing parser is distributed
+# separately (`pip install play-launch-parser` / its own binary).
+ros-launch-manifest-types = { path = "../../third-party/ros-launch-manifest/types" }
+
+# Reuse the codegen implementation that still lives in the
+# cargo-nano-ros library crate. The canonical CLI surface is
+# `nros generate-rust`; the Cargo subcommand is compatibility-only.
+cargo-nano-ros = { workspace = true }
+
+# Phase 212.K.4 — `nros codegen cyclonedds-descriptors` shells `idlc`
+# over IDL synthesised from `.msg` sources via this lib.
+nros-msg-to-idl = { workspace = true }
+
+# Phase 210.D.1 — `nros ws sync` writes the auto-managed
+# [patch.crates-io] block into each Rust consumer's patch authority
+# Cargo.toml. `pathdiff` makes the crate path relative to the authority
+# dir (portable across moved workspace roots); rosidl-bindgen +
+# rosidl-codegen drive per-pkg Rust codegen directly (workspace-pkg
+# path; bypasses the AMENT-only `generate_from_package_xml` resolver).
+pathdiff = "0.2"
+rosidl-bindgen = { path = "../rosidl-bindgen" }
+rosidl-codegen = { path = "../rosidl-codegen" }
+
+# Phase 212.J `nros launch` — raw POSIX `kill(2)` for SIGTERM propagation.
+# Unix-only: the launcher is a desktop / native_sim host runner; Windows is not
+# in scope for nano-ros host bringup (every supported workflow targets Linux /
+# macOS today).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

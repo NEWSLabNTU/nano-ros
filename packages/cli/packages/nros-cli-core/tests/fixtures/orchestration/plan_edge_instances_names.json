@@ -1,0 +1,300 @@
+{
+  "version": 2,
+  "system": "edge_name_system",
+  "trace": {
+    "system_config": "nros.toml",
+    "launch_record": "build/edge_name_system/nros/record.json",
+    "generated_by": "nros plan"
+  },
+  "components": [
+    {
+      "id": "edge_nodes_rs::controller",
+      "package": "edge_nodes_rs",
+      "component": "controller",
+      "language": "rust",
+      "source_metadata": "target/nros/metadata/controller.json",
+      "component_config": "components/controller/nros.toml"
+    }
+  ],
+  "instances": [
+    {
+      "id": "left_controller",
+      "component": "edge_nodes_rs::controller",
+      "package": "edge_nodes_rs",
+      "executable": "controller",
+      "launch_name": "controller",
+      "namespace": "/left",
+      "remaps": [
+        {
+          "from": "~/cmd",
+          "to": "drive_cmd"
+        },
+        {
+          "from": "/diagnostics",
+          "to": "/left/diagnostics"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "left_controller/node_controller",
+          "source_node": "node_controller",
+          "resolved_name": "/robot/controller",
+          "namespace": "/left",
+          "entities": [
+            {
+              "role": "publisher",
+              "id": "left_controller/pub_status",
+              "source_entity": "pub_status",
+              "resolved_name": "/left/diagnostics",
+              "interface": {
+                "package": "std_msgs",
+                "name": "msg/String",
+                "kind": "message"
+              },
+              "qos": {
+                "reliability": "best_effort",
+                "durability": "volatile",
+                "history": "keep_last",
+                "depth": 1,
+                "deadline_ms": 1000,
+                "lifespan_ms": 5000,
+                "liveliness": "automatic",
+                "liveliness_lease_duration_ms": 2000,
+                "extensions": {
+                  "rmw_zenoh.priority": "low"
+                }
+              },
+              "trace": {
+                "source_artifact": {
+                  "artifact": "src/controller.rs",
+                  "line": 20,
+                  "column": 9
+                },
+                "manifest_endpoint": "manifest://edge_nodes_rs/controller/pub_status"
+              }
+            },
+            {
+              "role": "subscriber",
+              "id": "left_controller/sub_cmd",
+              "source_entity": "sub_cmd",
+              "resolved_name": "/robot/controller/drive_cmd",
+              "interface": {
+                "package": "std_msgs",
+                "name": "msg/String",
+                "kind": "message"
+              },
+              "qos": {
+                "reliability": "reliable",
+                "durability": "volatile",
+                "history": "keep_last",
+                "depth": 4,
+                "deadline_ms": null,
+                "lifespan_ms": null,
+                "liveliness": "manual_by_topic",
+                "liveliness_lease_duration_ms": 1000,
+                "extensions": {}
+              },
+              "trace": {
+                "source_artifact": {
+                  "artifact": "src/controller.rs",
+                  "line": 33,
+                  "column": 9
+                },
+                "manifest_endpoint": "manifest://edge_nodes_rs/controller/sub_cmd"
+              }
+            }
+          ]
+        }
+      ],
+      "callbacks": [
+        {
+          "id": "left_controller/cb_cmd",
+          "source_callback": "cb_cmd",
+          "group": "io",
+          "sched_context": "fifo_io",
+          "source": {
+            "artifact": "src/controller.rs",
+            "line": 33,
+            "column": 9
+          }
+        }
+      ],
+      "parameters": [],
+      "sched_bindings": [
+        {
+          "callback": "left_controller/cb_cmd",
+          "context": "fifo_io",
+          "priority": 10,
+          "source": "nros.toml"
+        }
+      ],
+      "trace": {
+        "launch_record_entity": "record://nodes/0",
+        "source_metadata": "target/nros/metadata/controller.json"
+      }
+    },
+    {
+      "id": "right_controller",
+      "component": "edge_nodes_rs::controller",
+      "package": "edge_nodes_rs",
+      "executable": "controller",
+      "launch_name": "controller",
+      "namespace": "/right",
+      "remaps": [
+        {
+          "from": "~/cmd",
+          "to": "/right/cmd"
+        },
+        {
+          "from": "/diagnostics",
+          "to": "/diagnostics"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "right_controller/node_controller",
+          "source_node": "node_controller",
+          "resolved_name": "/robot/controller",
+          "namespace": "/right",
+          "entities": [
+            {
+              "role": "subscriber",
+              "id": "right_controller/sub_cmd",
+              "source_entity": "sub_cmd",
+              "resolved_name": "/right/cmd",
+              "interface": {
+                "package": "std_msgs",
+                "name": "msg/String",
+                "kind": "message"
+              },
+              "qos": {
+                "reliability": "reliable",
+                "durability": "volatile",
+                "history": "keep_last",
+                "depth": 4,
+                "deadline_ms": null,
+                "lifespan_ms": null,
+                "liveliness": "manual_by_topic",
+                "liveliness_lease_duration_ms": 1000,
+                "extensions": {}
+              },
+              "trace": {
+                "source_artifact": {
+                  "artifact": "src/controller.rs",
+                  "line": 33,
+                  "column": 9
+                },
+                "manifest_endpoint": "manifest://edge_nodes_rs/controller/sub_cmd"
+              }
+            }
+          ]
+        }
+      ],
+      "callbacks": [
+        {
+          "id": "right_controller/cb_cmd",
+          "source_callback": "cb_cmd",
+          "group": "io",
+          "sched_context": "sporadic_io",
+          "source": {
+            "artifact": "src/controller.rs",
+            "line": 33,
+            "column": 9
+          }
+        }
+      ],
+      "parameters": [],
+      "sched_bindings": [
+        {
+          "callback": "right_controller/cb_cmd",
+          "context": "sporadic_io",
+          "priority": 7,
+          "source": "nros.toml"
+        }
+      ],
+      "trace": {
+        "launch_record_entity": "record://nodes/1",
+        "source_metadata": "target/nros/metadata/controller.json"
+      }
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "std_msgs/msg/String",
+      "interface": {
+        "package": "std_msgs",
+        "name": "msg/String",
+        "kind": "message"
+      },
+      "used_by": [
+        "left_controller/pub_status",
+        "left_controller/sub_cmd",
+        "right_controller/sub_cmd"
+      ]
+    }
+  ],
+  "sched_contexts": [
+    {
+      "id": "best_effort_bg",
+      "executor": "single_threaded",
+      "class": "best_effort",
+      "priority": null,
+      "period_ms": null,
+      "budget_ms": null,
+      "deadline_ms": null,
+      "deadline_policy": "ignore",
+      "stack_size": 8192,
+      "core": null,
+      "task": "nros-bg"
+    },
+    {
+      "id": "fifo_io",
+      "executor": "single_threaded",
+      "class": "real_time",
+      "priority": 10,
+      "period_ms": 20,
+      "budget_ms": null,
+      "deadline_ms": 20,
+      "deadline_policy": "warn",
+      "stack_size": 16384,
+      "core": 0,
+      "task": "nros-fifo"
+    },
+    {
+      "id": "sporadic_io",
+      "executor": "single_threaded",
+      "class": "time_triggered",
+      "priority": 7,
+      "period_ms": 50,
+      "budget_ms": 10,
+      "deadline_ms": 50,
+      "deadline_policy": "skip",
+      "stack_size": 16384,
+      "core": 1,
+      "task": "nros-sporadic"
+    },
+    {
+      "id": "irq_bridge",
+      "executor": "interrupt_bridge",
+      "class": "interrupt",
+      "priority": 12,
+      "period_ms": null,
+      "budget_ms": 1,
+      "deadline_ms": 5,
+      "deadline_policy": "fault",
+      "stack_size": 4096,
+      "core": 0,
+      "task": "nros-irq"
+    }
+  ],
+  "build": {
+    "target": "x86_64-unknown-linux-gnu",
+    "board": "native",
+    "rmw": "zenoh",
+    "profile": "release",
+    "features": [
+      "rmw-zenoh"
+    ],
+    "cfg": {}
+  }
+}

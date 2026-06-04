@@ -1,0 +1,33 @@
+// Auto-generated ROS 2 service module
+// Package: {{ package_name }}
+
+use super::rosidl_runtime_rs;
+
+// RMW (Raw Middleware) layer - FFI types
+pub mod rmw {
+    use super::rosidl_runtime_rs;
+
+    #[cfg(feature = "serde")]
+    use serde::{Deserialize, Serialize};
+
+    {% for service in services %}
+    // {{ service.type_name }} service and constants
+    pub mod {{ service.module_name }} {
+        use super::*;
+        include!("{{ service.module_name }}_rmw.rs");
+    }
+    // Re-export the service types at rmw level for API compatibility
+    pub use {{ service.module_name }}::{{ service.type_name }};
+    pub use {{ service.module_name }}::{{ service.type_name }}Request;
+    pub use {{ service.module_name }}::{{ service.type_name }}Response;
+    {% endfor %}
+}
+
+// Idiomatic layer - user-friendly types
+{% for service in services %}
+#[path = "{{ service.module_name }}_idiomatic.rs"]
+pub mod {{ service.module_name }};
+pub use {{ service.module_name }}::{{ service.type_name }};
+pub use {{ service.module_name }}::{{ service.type_name }}_Request;
+pub use {{ service.module_name }}::{{ service.type_name }}_Response;
+{% endfor %}

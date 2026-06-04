@@ -1,0 +1,19 @@
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+#[allow(unused_imports)]
+use std::process::Command;
+
+const PLAN_PATH: &str = "{{ plan_path }}";
+const GENERATED_TABLES: &str = {{ generated_tables_literal }};
+
+fn main() {
+    println!("cargo:rerun-if-changed={PLAN_PATH}");
+{{ native_link_directives }}
+{{ platform_link_directives }}
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set"));
+    let _plan_text = fs::read_to_string(PLAN_PATH).expect("read nros-plan.json");
+    let generated = format!("// Generated from: {PLAN_PATH}\n{GENERATED_TABLES}");
+    fs::write(out_dir.join("nros_generated.rs"), generated)
+        .expect("write generated Rust tables");
+}

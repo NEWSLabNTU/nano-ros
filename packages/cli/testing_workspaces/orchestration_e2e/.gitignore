@@ -1,0 +1,6 @@
+# Phase 172.U — `nros deploy` writes the generated entry lib + build artifacts
+# under the workspace; keep them out of git.
+/build/
+**/target/
+# Phase 172.V — the vendor-lib e2e test builds a stub `libfakevendor.a` here.
+/deploy/orin-stub/vendor/
