@@ -1992,24 +1992,41 @@ Slices 4 + 6 came back clean. Findings grouped file-disjoint:
 `reference/qemu-smoltcp-bridge/src/bridge.rs:5`,
 `zpico/zpico-sys/src/platform_smoltcp.rs:60`.
 
-- [ ] **214.H.1** — extract `CTX_STORAGE_SIZE` (8192) +
+- [x] **214.H.1** — extract `CTX_STORAGE_SIZE` (8192) +
       `IFACE_BUF_SIZE` (64) from `node.rs` + `entry.rs` into a
-      shared `mod sizes` (or `lib.rs`-level `pub(crate) const`).
-- [ ] **214.H.2** — export `pub const SOCKET_BUFFER_SIZE` from
-      `nros-smoltcp`; `qemu-smoltcp-bridge` + `zpico-sys` import it.
-      `NROS_SMOLTCP_BUFFER_SIZE` env override stays.
-      **Acceptance**: `git grep -nE '\b2048\b' packages/{drivers/nros-smoltcp,reference/qemu-smoltcp-bridge,zpico/zpico-sys}/`
-      shows one canonical definition.
+      `mod sizes` declared at `lib.rs` level. Both consumers now
+      `use crate::sizes::{CTX_STORAGE_SIZE, IFACE_BUF_SIZE};`.
+      Verified `cargo check -p nros-board-threadx-linux` clean.
+- [x] **214.H.2** — `pub const SOCKET_BUFFER_SIZE` was already
+      re-exported from `nros-smoltcp::bridge::SOCKET_BUFFER_SIZE`
+      (env-tunable via `NROS_SMOLTCP_BUFFER_SIZE`). Replaced the
+      local `const SOCKET_BUFFER_SIZE: usize = 2048;` in
+      `packages/reference/qemu-smoltcp-bridge/src/bridge.rs:34` +
+      `packages/zpico/zpico-sys/src/platform_smoltcp.rs:260` with
+      `use nros_smoltcp::SOCKET_BUFFER_SIZE;`. Added `nros-smoltcp
+      = { path = "../../drivers/nros-smoltcp", default-features =
+      false }` dep to both consumers' `Cargo.toml`. Verified
+      `git grep -nE '\\b2048\\b' packages/drivers/nros-smoltcp/
+      packages/reference/qemu-smoltcp-bridge/ packages/zpico/zpico-sys/`
+      shows the canonical def in `nros-smoltcp/build.rs:34` +
+      cross-ref markers in the two consumers + unrelated 2048
+      constants (Z_FRAG_MAX_SIZE, STREAM_BUFFER_SIZE tuple).
 
 ### Track I — UDP transport shim consolidation (optional)
 
 **Files**: `packages/xrce/nros-rmw-xrce/src/transport_posix_udp.c` +
 `transport_nros_udp.c`.
 
-- [ ] **214.I.1** — extract `xrce_udp_transport_generic.h` with
-      shared trampoline declarations + buffer state; per-platform
-      `.c` shrinks to socket primitive + endpoint binding.
-      **Acceptance**: `wc -l transport_*udp.c` shrinks ≥30 lines.
+- [x] **214.I.1** — extract `transport_udp_generic.h` (under
+      `packages/xrce/nros-rmw-xrce/src/`) carrying the shared
+      `xrce_udp_open_noop` trampoline + `XRCE_UDP_BIND_AND_INIT`
+      bracketing macro. Per-platform .c files retain platform-
+      specific socket primitive + endpoint resolution + cleanup
+      logic. Applied to all three existing UDP shims (posix +
+      nros + zephyr) for tree-wide consistency. LoC shrink:
+      424 → 388 = 36 lines (target was ≥30). Compile-verified
+      `cargo build -p nros-rmw-xrce-cffi` clean (.c TUs compiled
+      via build.rs).
 
 ### Track J — nros-c hand-rolled waker → atomic_waker
 
@@ -2049,11 +2066,22 @@ Slices 4 + 6 came back clean. Findings grouped file-disjoint:
 **Files**: `packages/core/nros-platform/src/board/runtime.rs:77`,
 `packages/core/nros/src/node.rs:112`.
 
-- [ ] **214.K.1** — rename `nros-platform::NodeRuntime` →
-      `NodeDispatchRuntime` (board-side dispatch sink). Keep
+- [x] **214.K.1** — rename `nros-platform::NodeRuntime` →
+      `NodeDispatchRuntime` (board-side dispatch sink). Kept
       `nros::NodeRuntime` (user-facing post-N.12 terminology).
-      Mechanical sweep + deprecated alias for one release.
-      **Acceptance**: both traits resolvable via distinct paths.
+      Mechanical sweep: trait def + `NullNodeRuntime` impl + every
+      `&'a mut dyn NodeRuntime` field/arg in `runtime.rs` renamed
+      via sed-mass; `board/mod.rs` + `lib.rs` re-export blocks
+      updated; per-board callers `nros_platform::NodeRuntime::spin_once`
+      → `NodeDispatchRuntime::spin_once` in
+      `nros-board-{freertos,nuttx,threadx}`; `impl ::nros_platform::
+      NodeRuntime for ExecutorNodeRuntime` → `impl ::nros_platform::
+      NodeDispatchRuntime for ExecutorNodeRuntime` in
+      `nros/src/node_runtime.rs`. Backward-compat
+      `#[deprecated] pub use NodeDispatchRuntime as NodeRuntime;`
+      lives at both `board/mod.rs` + `lib.rs` for one release
+      cycle. Compile-verified `cargo check -p nros-platform -p nros`
+      + `cd nros-board-threadx-linux && cargo check` clean.
 
 ### Track L — SmoltcpBridge::init runtime guard
 
