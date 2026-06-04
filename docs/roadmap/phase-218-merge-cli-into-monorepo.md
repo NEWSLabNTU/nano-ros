@@ -94,54 +94,73 @@ steps assume `nros` is already on PATH via the activate file.
 
 ## Work Items
 
-### 218.A — History-preserving lift
+### 218.A — History-preserving lift — landed 2026-06-04
 
-- [ ] Run `git filter-repo --to-subdirectory-filter packages/cli/` on
-  a fresh clone of `github.com/NEWSLabNTU/nros-cli`.
-- [ ] Merge the rewritten history into nano-ros as a single commit
-  (`-s ours -X subtree=packages/cli` or `git merge --allow-unrelated-
-  histories` + linear rebase, depending on what keeps the bisect tree
-  clean — pick at implementation time).
-- [ ] Commit message references both ancestor SHAs (the last nros-cli
-  commit pre-archive + the nano-ros pre-merge HEAD).
+- [x] Ran `git filter-repo --to-subdirectory-filter packages/cli/` on
+  a `--no-local` clone of `github.com/NEWSLabNTU/nros-cli` @
+  `f092a8c5e` (post-217.B.2). 502 commits rewritten in 0.26s.
+- [x] Merged the rewritten tree into nano-ros with `git merge --squash
+  --allow-unrelated-histories` (preserves linear history per
+  CLAUDE.md), then a single squash commit. nros-cli's prior commit
+  history stays preserved on the archived
+  `github.com/NEWSLabNTU/nros-cli` repository (218.H follow-up).
+- [x] Squash commit `bb123f7e1` names both ancestor SHAs in the body:
+  nano-ros pre-merge `6d29e8652` + nros-cli pre-merge `f092a8c5e`.
 
 **Files:** `packages/cli/**` (created), repo history (rewritten under
 the new subtree).
 
-### 218.B — Sub-workspace bootstrap
+### 218.B — Sub-workspace bootstrap — landed 2026-06-04
 
-- [ ] Author `packages/cli/Cargo.toml` with `[workspace]` listing the
-  ten sub-crates (members + workspace-level deps lifted from the
-  nros-cli root manifest). NOT a root workspace member.
-- [ ] Per-sub-crate `Cargo.toml` adjustments: any path-deps that
-  referenced the old nros-cli layout root re-resolve via the new
-  `packages/cli/` root.
-- [ ] First-time `cargo build --release --manifest-path packages/cli/
-  Cargo.toml --bin nros` from a clean checkout produces a working
-  binary.
-- [ ] Root workspace's `cargo build` / `cargo check` does NOT pull in
-  the CLI sub-workspace (verify by inspecting `cargo metadata` —
-  the CLI's crate names must not appear in root metadata).
+- [x] `packages/cli/Cargo.toml` carries `[workspace]` listing 9
+  sub-crates (the design doc's "ten" was an off-by-one — actual count
+  is 9: nros-cli, nros-cli-core, nros-build, cargo-nano-ros,
+  rosidl-{parser,codegen,bindgen}, colcon-cargo-ros2, nros-msg-to-idl).
+  NOT a root workspace member; root `[workspace].exclude` lists
+  `packages/cli` belt-and-suspenders.
+- [x] Per-sub-crate `Cargo.toml` adjustments: flattened
+  `packages/cli/packages/<crate>/` (filter-repo artifact) up to
+  `packages/cli/<crate>/`; patched the one stale `../../third-party/...`
+  path-dep in `nros-cli-core` to `../third-party/...`; lifted the
+  3 nested `.gitmodules` entries into the root.
+- [x] First-time `cargo build --release --manifest-path packages/cli/
+  Cargo.toml --bin nros` produces a working `nros 0.4.0` (post-218.J
+  baseline) in ~30s on a clean checkout.
+- [x] Root workspace's `cargo metadata --no-deps --manifest-path
+  Cargo.toml` returns zero `packages/cli/` references; sub-workspace's
+  `cargo metadata --no-deps --manifest-path packages/cli/Cargo.toml`
+  returns the 10 CLI crates (9 sub-crates + the
+  `ros-launch-manifest-types` submodule member).
 
 **Files:** `packages/cli/Cargo.toml`, `packages/cli/*/Cargo.toml` (all
 ten sub-crates).
 
-### 218.C — Activation surface
+### 218.C — Activation surface — landed 2026-06-04
 
-- [ ] `activate.sh` POSIX exports: `PATH`, `NROS_CLI`, plus the SDK
-  paths the existing `.env` currently carries. Single source of truth.
-- [ ] `activate.fish` mirror exports for fish users. Hand-written, not
-  generated — twenty lines max.
-- [ ] `.envrc` becomes one effective line: `source_env ./activate.sh`
-  (plus any direnv-specific comments preserved from the existing
-  file).
-- [ ] CLAUDE.md "Environment" paragraph updates: direnv is one of three
-  supported activators, not the only one.
-- [ ] `book/src/getting-started/` gains a "Activate the workspace"
-  section listing all three paths (direnv, bash/zsh, fish).
-- [ ] Verify `zpico-sys/build.rs` no longer panics with `FREERTOS_PORT
-  not set` when the user `source`d `activate.sh` instead of using
-  direnv (the panic is the canary for missing activation).
+- [x] `activate.sh` POSIX exports: `NROS_REPO_DIR`, ROS source
+  (`/opt/ros/humble/setup.bash`), the nros CLI lookup
+  (per-checkout preferred over `~/.nros/bin`), play_launch_parser,
+  pinned Phase 176 ninja + make, `.env` overrides, `sdk-env.sh`.
+  Single source of truth; bash/zsh detection via `${BASH_SOURCE[0]}`
+  / `${(%):-%N}`.
+- [x] `activate.fish` mirror — same export set, hand-mirrored (not
+  generated). fish-specific .env parser (KEY=value with
+  quote-stripping) + bash subshell for `sdk-env.sh` extraction.
+- [x] `.envrc` shrunk from ~50 lines to a single `source
+  "$PWD/activate.sh"` (plus comment explaining why not the direnv-
+  native `source_env`). direnv re-evaluation tracks `activate.sh`
+  mtime automatically.
+- [x] CLAUDE.md "Environment" paragraph updated by Slot I docs sweep
+  (commit `3d5aca6d9`): "Run one of: `direnv allow`,
+  `source ./activate.sh`, `source ./activate.fish`".
+- [x] `book/src/getting-started/` rewritten by Slot I docs sweep —
+  the activate-file flow is the canonical install path; all three
+  shells listed.
+- [x] Verified `bash -c 'source ./activate.sh; which nros'` resolves
+  to the per-checkout binary path (`packages/cli/target/release/nros`)
+  ahead of `~/.nros/bin`. The `zpico-sys/build.rs` panic-on-missing-
+  `FREERTOS_PORT` canary fires correctly when activation is skipped,
+  passes when activated.
 
 **Files:** `activate.sh` (new), `activate.fish` (new), `.envrc`
 (rewritten), `CLAUDE.md`, `book/src/getting-started/*.md`,
@@ -240,15 +259,27 @@ ci,dep-chain,nros-acceptance,platform-ci,zephyr-dual-line,lint}.yml`.
 
 ### 218.H — Existing repo decommission
 
-- [ ] In `github.com/NEWSLabNTU/nros-cli`: final commit replaces
-  README with a redirect notice pointing at
-  `github.com/NEWSLabNTU/nano-ros/tree/main/packages/cli`.
+- [~] In `github.com/NEWSLabNTU/nros-cli`: README rewritten as a
+  redirect notice pointing at
+  `github.com/NEWSLabNTU/nano-ros/tree/main/packages/cli` + the Phase
+  218 docs. Local commit on `chore/218-h-redirect-notice` branch
+  (commit `6ae5b01` in `~/repos/nros-cli/`). **Maintainer push**:
+  `git -C ~/repos/nros-cli push origin chore/218-h-redirect-notice`
+  → review → merge to main. Agent does not push fork remotes per
+  CLAUDE.md.
 - [ ] Open issues / PRs: migrated to nano-ros with a `cli` label, or
-  closed with a redirect comment.
+  closed with a redirect comment. **Maintainer**.
 - [ ] GitHub repo settings → "Archive this repository" (preserves
-  issue/PR history read-only).
-- [ ] In nano-ros: every doc, script, and workflow reference to the
-  old repo URL bumps to the new `packages/cli/` path.
+  issue/PR history read-only). **Maintainer**.
+- [x] In nano-ros: doc / script / workflow references to the old repo
+  URL swept by Slot I (docs) + Slot F+G (workflows + bootstrap) +
+  Slot D (justfile + cargo.sh). Remaining `github.com/NEWSLabNTU/
+  nros-cli` URL references are intentional: historical phase docs
+  (`docs/roadmap/archived/phase-195-*`, `phase-217-arm-fvp-*`,
+  `phase-218-*` itself), the Phase 218 design spec, the new
+  `packages/cli/README.md` redirect (its sibling — preserved
+  verbatim from the lift), and the `nros-cli/README.md` redirect
+  (final commit prior to archive).
 
 **Files:** `nros-cli/README.md` (in the OTHER repo — final commit),
 nano-ros docs sweep (Work Item 218.I covers the in-tree side).
