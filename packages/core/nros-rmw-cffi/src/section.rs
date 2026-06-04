@@ -3,7 +3,7 @@
 //! At static link time every `nros-rmw-<name>` crate or static lib
 //! contributes exactly one [`RmwInitEntry`] function pointer to the
 //! [`RMW_INIT_ENTRIES`] distributed slice. The runtime calls
-//! [`walk_init_section`] / [`nros_rmw_cffi_walk_init_section`] on
+//! `walk_init_section` / [`nros_rmw_cffi_walk_init_section`] on
 //! first `Executor::open` / `nros::init` to invoke every entry; each
 //! entry in turn calls [`crate::nros_rmw_cffi_register_named`] with
 //! its canonical name and vtable pointer.

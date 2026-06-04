@@ -669,13 +669,13 @@ fn dispatch_into_cell(cell: &Arc<ComponentCell>, cb_id: &str, payload: &[u8]) {
 // =============================================================================
 
 /// Type of the `extern "Rust"` register fn emitted by
-/// [`nros::node!`](crate::component). The Phase 212.M.5.a.1 macro
+/// [`nros::node!`](crate::node!). The Phase 212.M.5.a.1 macro
 /// ABI is frozen; the BSP baker hands an array of these to
 /// [`nros_run_components`].
 pub type NodeRegisterFn = fn(&mut NodeContext<'_>) -> NodeResult<()>;
 
 /// Phase 212.M.5.a.4 — type of the `extern "Rust"` `_init` fn emitted
-/// alongside `_register` by [`nros::node!`](crate::component).
+/// alongside `_register` by [`nros::node!`](crate::node!).
 /// Returns a leaked `Box` pointer to the component's `State`; the
 /// BSP slot holds the pointer for the firmware lifetime.
 pub type NodeInitFn = fn() -> *mut ();

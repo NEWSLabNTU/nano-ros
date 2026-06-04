@@ -2,20 +2,20 @@
 //!
 //! Three patterns are supported (per the Phase 212.L canonical pkg shape):
 //!
-//! 1. **Node pkg** — register via the [`nros::node!`](crate::component)
+//! 1. **Node pkg** — register via the [`nros::node!`](crate::node!)
 //!    macro (Phase 172 W.3); the generated runtime owns the spin loop.
 //! 2. **Application pkg + launch-aware** — call [`init_with_launch_auto`] (or
 //!    [`init_with_launch`] for an explicit path). The returned [`Context`]
 //!    carries launch-resolved fields (domain id, locator, RMW choice). User
-//!    code drives its own spin via [`crate::Executor::open`] +
-//!    [`crate::Executor::spin_blocking`].
-//! 3. **Application pkg + custom spin** — call [`init`] (or [`init_with_args`]
+//!    code drives its own spin via `Executor::open` +
+//!    `Executor::spin_blocking`.
+//! 3. **Application pkg + custom spin** — call [`init()`] (or [`init_with_args`]
 //!    for argv-style overrides). Launch file is ignored; env vars +
 //!    `ExecutorConfig::from_env()` semantics still apply.
 //!
 //! The [`Context`] struct is a thin holder of the resolved init knobs. To
 //! actually open a session, materialise an [`crate::ExecutorConfig`] via
-//! [`Context::config`] and pass it to [`crate::Executor::open`].
+//! [`Context::config`] and pass it to `Executor::open`.
 //!
 //! ## Launch overlay (current limitation)
 //!
@@ -83,7 +83,7 @@ pub struct Context {
     ///
     /// Empty when neither var is set. The runtime uses this to pick a
     /// primary backend when multiple are linked; see
-    /// [`crate::internals::open_session`].
+    /// `crate::internals::open_session`.
     pub rmw: std::string::String,
     /// Source of this context — useful for diagnostics + tests.
     pub source: ContextSource,

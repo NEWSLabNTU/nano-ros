@@ -73,7 +73,7 @@ pub trait Node {
 
     /// Phase 216.A.3 — declares which dispatch strategy this Node
     /// requires from the runtime. Defaults to
-    /// [`DispatchStrategy::Inline`] so every existing component
+    /// [`crate::DispatchStrategy::Inline`] so every existing component
     /// keeps compiling without source change; the substrate (Phase
     /// 216.A.2) and `nros check` (Phase 216.D.1) consume it to
     /// pick / validate the board-side dispatch path.
@@ -467,7 +467,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// both synthesized from the topic literal, returning a
     /// [`SubscriptionTag`] the Node author stores on `Self::State` and
     /// matches against the `&CallbackId<'_>` delivered to
-    /// [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
+    /// [`ExecutableNode::on_callback`].
     ///
     /// Use this on the Phase 216.A Deferred Node path where the Node
     /// author does not need to invent a separate stable entity ID — the
@@ -550,7 +550,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// both synthesized from the service-name literal, returning a
     /// [`ServiceTag`] the Node author stores on `Self::State` and matches
     /// against the `&CallbackId<'_>` delivered to
-    /// [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
+    /// [`ExecutableNode::on_callback`].
     ///
     /// Tag-only registration is restricted to the SERVER side: clients
     /// need a USABLE handle (`NodeServiceClient`) to issue requests, so
@@ -652,7 +652,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// both synthesized from the action-name literal, returning an
     /// [`ActionTag`] the Node author stores on `Self::State` and matches
     /// against the `&CallbackId<'_>` delivered to
-    /// [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
+    /// [`ExecutableNode::on_callback`].
     ///
     /// The synthesized callback ID is shared by the goal / cancel /
     /// accepted callbacks (matching the default behavior of
@@ -870,9 +870,9 @@ enum DecisionSink<'a> {
 ///
 /// Carries the triggering payload (raw CDR — empty for timers) plus the
 /// publisher resolver, so a body can read its message and publish immediately.
-/// Service / action-result callbacks additionally carry a [`ReplySink`] the body
+/// Service / action-result callbacks additionally carry a `ReplySink` the body
 /// fills via [`reply`](Self::reply); action goal / cancel callbacks carry a
-/// [`DecisionSink`] the body fills via
+/// `DecisionSink` the body fills via
 /// [`set_goal_response`](Self::set_goal_response) /
 /// [`set_cancel_response`](Self::set_cancel_response) (W.5.3).
 pub struct CallbackCtx<'a> {
@@ -1033,9 +1033,9 @@ impl<'a> CallbackCtx<'a> {
 /// The executable counterpart of [`Node`] (W.5.1).
 ///
 /// `register` (declarative) stays the planning SSOT; this binds runnable
-/// bodies. The generated runtime builds [`State`](Self::State) once via
-/// [`init`](Self::init), then routes every fired callback to
-/// [`on_callback`](Self::on_callback). Trait-dispatch (no boxed `dyn`, no
+/// bodies. The generated runtime builds [`State`](ExecutableNode::State) once via
+/// [`init`](ExecutableNode::init), then routes every fired callback to
+/// [`on_callback`](ExecutableNode::on_callback). Trait-dispatch (no boxed `dyn`, no
 /// `alloc`) keeps it `no_std`.
 /// Executor-backed action operations a [`TickCtx`] drives (W.5.6).
 ///

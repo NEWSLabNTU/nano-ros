@@ -4,7 +4,7 @@
 //!
 //! Each tag is an opaque newtype around a `&'static str` (the stable
 //! callback identifier shape — see
-//! [`CallbackId`](crate::node_metadata::CallbackId)). The three flavors
+//! [`CallbackId`]). The three flavors
 //! ([`SubscriptionTag`], [`ServiceTag`], [`ActionTag`]) keep the kind
 //! distinct at the type level so a Node author can't accidentally match
 //! a subscription tag against a service callback.
