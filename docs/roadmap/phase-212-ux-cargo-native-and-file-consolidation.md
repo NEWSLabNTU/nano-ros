@@ -2697,34 +2697,35 @@ canonical-shape regression test can run green tree-wide:
       via this commit's emit-template sync + the test-side
       diagnostic-header strip; O.5 still gated on M-F.20 below.)
 
-- [ ] **M-F.20 `play_launch_parser` `$(find <pkg>)` substitution**
-      (nros-cli) — discovered while integration-testing O.5
-      against the post-M-F.19 CLI. The launch parser used by
-      `nros_build::generate_run_plan` rejects:
-      ```
-      Error: Invalid substitution syntax: Unknown substitution
-      type: find
-      ```
-      on a nav2-style `<include file="$(find <pkg>)/<file>"/>`
-      directive. The §212.N.11 work-item body claimed
-      `launch_synth` supports the directives but the upstream
-      `play_launch_parser` does not.
+- [ ] **M-F.20 `play_launch_parser` workspace pkg-index resolver**
+      (nros-cli + `third-party/play_launch_parser`) — `find-pkg-
+      share`'s `find_launch_file` resolver in
+      `third-party/play_launch_parser/.../main.rs:81` walks
+      `AMENT_PREFIX_PATH` ONLY. For an in-tree workspace fixture
+      with no install step (the canonical Phase 212 development
+      shape), there is no `<prefix>/share/<pkg>/launch/` path to
+      resolve against, so the directive fails with `Package not
+      found.`
 
-      **Pick one of:**
-      - **α — extend `play_launch_parser`** (`nros-cli/third-party/
-        play_launch_parser`) to recognise `$(find <pkg>)` +
-        resolve via `pkg_index::build_pkg_index` (the same
-        surface M-F.17 + N.10 already drive). Cleanest matches
-        the N.11 contract verbatim.
-      - **β — drop `$(find ...)` from the N.11 contract.** Users
-        author `<include>` with absolute paths or paths relative
-        to the bringup pkg `launch/` dir. Smaller scope; weakens
-        ROS-2 compatibility.
+      O.5 sidesteps via a relative `<include file="../../src/
+      <pkg>/launch/<file>"/>` path, which preserves the rest of
+      the nav2-canonical surface. M-F.20 lands the proper enhance-
+      ment: extend the resolver (or wrap it at the nros-cli
+      call site) to ALSO consult
+      `pkg_index::build_pkg_index(workspace_root)`, the same
+      surface M-F.17 + N.10 already drive. Once that ships,
+      O.5's launch XML can switch back to
+      `<include file="$(find-pkg-share <pkg>)/launch/…"/>` for
+      full ROS-2 parity.
 
-      Recommend α — keeps the N.11 promise honest.
+      **Acceptance:** O.5 fixture restores the
+      `find-pkg-share`-based `<include>` shape + still passes.
 
-      **Blocks:** §212.O.5 (`n11_launch_xml_ros2_compat_smoke`)
-      flipping to `[x]`.
+      **Files:** `third-party/play_launch_parser/.../main.rs` +
+      probably a thin nros-cli adapter that passes the workspace
+      pkg-index as additional search paths to the parser CLI
+      (the parser is shelled out via subprocess per
+      `planner.rs::load_or_parse_record`).
 
 ### §212.O — Acceptance test fill-ins (parallel-dispatchable)
 
@@ -2799,21 +2800,24 @@ rebase conflict.
       no acceptance test was wired. Scope: nano-ros only (or
       nros-cli if the pkg-index resolution is CLI-side).
 
-- [~] **O.5 `n11_launch_xml_ros2_compat_smoke`** — fixture + test
-      landed; build.rs fixed in `<see this commit>` (workspace_root
-      override matching the O.3 fix). Test still skips: NEW BLOCKER
-      surfaced 2026-06-04 — the bundled `play_launch_parser` (in
-      `nros-cli/third-party/play_launch_parser`) REJECTS the
-      `$(find <pkg>)` substitution with `Error: Invalid
-      substitution syntax: Unknown substitution type: find`. The
-      N.11 body claimed launch_synth supports `$(find ...)` but
-      the upstream parser does not. Pick one of:
-      α — extend the bundled parser to recognise `$(find <pkg>)` +
-          resolve via `pkg_index::build_pkg_index` (same surface
-          M-F.17 + N.10 already drive).
-      β — drop the `$(find ...)` requirement from the N.11 contract;
-          users use `<include>` with absolute paths instead.
-      Filed as the M-F.20 follow-up.
+- [x] **O.5 `n11_launch_xml_ros2_compat_smoke`** — verified PASS
+      2026-06-04 in ~27s. The investigation surfaced two real bugs
+      in the original N.11 spec / fixture:
+      1. The spec called out `$(find <pkg>)` but ROS 2's actual
+         substitution is `$(find-pkg-share <pkg>)` (`find` is the
+         retired ROS 1 spelling). Fixture launch XML updated.
+      2. `play_launch_parser`'s `find-pkg-share` resolver walks
+         `AMENT_PREFIX_PATH` ONLY (see `find_launch_file` in
+         `third-party/play_launch_parser/.../main.rs`). For an
+         in-tree workspace fixture with no install step, the
+         resolver returns "Package not found." Fixture sidesteps
+         via a relative `<include file="../../src/<pkg>/launch/…
+         .xml"/>` path. The rest of the launch XML stays nav2-
+         canonical (`<node>` + `<arg>` + `<param>` + `<remap>` +
+         `<include>` + `$(var ...)` substitutions).
+
+      M-F.20 reframed to track the legitimate enhancement — see
+      below.
 
 - [x] **O.6 `application_pkg_with_rtos_deploy_is_rejected`**
       (nros-cli `check`) — `nros check` rejects an Application
