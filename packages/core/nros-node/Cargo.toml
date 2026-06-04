@@ -48,14 +48,20 @@ rmw-cffi = ["dep:nros-rmw-cffi"]
 # user-feature contract while making the build-time presence detection
 # work. See `build.rs` and `docs/roadmap/phase-214-antipattern-audit-findings.md`
 # Track S.
-__cyclonedds-link = ["dep:nros-rmw-cyclonedds-sys", "__cyclonedds-detect"]
+__cyclonedds-link = ["dep:nros-rmw-cyclonedds-sys"]
 # Phase 214.S.4.b — bare detect path. Emits the
 # `rmw_cyclonedds_present` cfg WITHOUT bringing the production
 # `nros-rmw-cyclonedds-sys` archive into the dep graph. Used by the
 # K.7.6.b `cyclonedds_register_smoke` test, which relies on the
 # dev-dep on `nros-rmw-cyclonedds[bridge-stub]` for the bridge
 # symbols. Production callers stay on `__cyclonedds-link`.
-__cyclonedds-detect = []
+# Phase 214.S.5.c follow-up — `bridge-stub` activation moved from the
+# unconditional dev-dep onto this feature. Smoke tests
+# (`cyclonedds_register_smoke`) opt-in via `--features __cyclonedds-detect`;
+# the stub then provides the bridge C ABI symbols. `__cyclonedds-link`
+# does NOT activate this — it pulls the real `nros-rmw-cyclonedds-sys`
+# C++ archive, structurally exclusive of the stub.
+__cyclonedds-detect = ["nros-rmw-cyclonedds/bridge-stub"]
 # Phase 124.B.7.c — POSIX signal-handler-safe wake via eventfd + a
 # runtime-owned worker thread that forwards eventfd writes to the
 # Executor's wake condvar. Linux-only (eventfd). Off by default;
@@ -195,12 +201,16 @@ libc = { version = "0.2", optional = true }
 # so the unification path collapses.
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }
-# Phase 212.K.7.6.b — pull the cyclonedds bridge stubs into nros-node's
-# unit-test link line so `cargo test --features rmw-cyclonedds` resolves
-# `nros_cyclonedds_build_descriptor_from_schema` /
-# `nros_rmw_cyclonedds_register_descriptor` without dragging in the
-# real C++ TU. Production builds (no `bridge-stub`) link the C++ bridge.
-nros-rmw-cyclonedds = { version = "0.1.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false, features = ["bridge-stub"] }
+# Phase 214.S.5.c follow-up — dev-dep no longer unconditionally
+# activates `bridge-stub`. Smoke tests opt-in via the
+# `__cyclonedds-detect` feature, which forwards `bridge-stub` here.
+# This avoids the multi-def collision that fires when a user
+# (or recipe) types `--features __cyclonedds-link` for a `cargo test`
+# invocation — `__cyclonedds-link` brings in the real cyclonedds-sys
+# C++ archive; the dev-dep stub used to clash with it. With the
+# activation now feature-gated, `__cyclonedds-link` and the stub are
+# structurally mutually exclusive.
+nros-rmw-cyclonedds = { version = "0.1.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false }
 
 [lints]
 workspace = true

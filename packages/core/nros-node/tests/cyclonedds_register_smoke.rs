@@ -13,7 +13,13 @@
 //! Cyclone build. The stub hands back unique non-NULL pointers per
 //! call, which is exactly what the registry expects to cache.
 
-#![cfg(rmw_cyclonedds_present)]
+// Phase 214.S.5.c follow-up — also gate on the test-stub presence.
+// `__cyclonedds-link` activates `rmw_cyclonedds_present` but supplies
+// the bridge symbols from the production C++ archive; the stub items
+// (`bridge::test_stub::LAST_FIELDS`, `FORCED_ERROR`, `BUILD_COUNTER`,
+// `clear_for_test`, …) this smoke pokes at are absent under that
+// path. Smoke tests opt-in to the stub via `--features __cyclonedds-detect`.
+#![cfg(all(rmw_cyclonedds_present, feature = "__cyclonedds-detect"))]
 
 use core::sync::atomic::Ordering;
 

@@ -56,6 +56,13 @@
 
 #![no_std]
 
+// Phase 214.S.5.c follow-up — the `bridge-stub` activation that
+// supplied test C-ABI symbols is now feature-gated under
+// `__cyclonedds-detect`, no longer unconditional on the dev-dep.
+// `__cyclonedds-link` only pulls the production `nros-rmw-cyclonedds-sys`
+// archive; the two paths are structurally mutually exclusive at the
+// cargo-feature layer.
+
 #[cfg(feature = "std")]
 extern crate std;
 
