@@ -1068,6 +1068,7 @@ build-workspace:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-build-paths \
         --exclude xrce-sys
@@ -1082,6 +1083,7 @@ build-workspace:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-build-paths \
         --exclude xrce-sys
@@ -1104,6 +1106,7 @@ build-workspace-embedded:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
+        --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
@@ -1140,6 +1143,7 @@ check-workspace:
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-build-paths \
         --exclude xrce-sys
@@ -1163,6 +1167,7 @@ check-workspace-embedded:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
+        --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \

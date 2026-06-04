@@ -1,0 +1,16 @@
+[package]
+name = "nros-build-helpers"
+version.workspace = true
+edition = "2024"
+description = "Shared build-script helpers for nano-ros C and C++ API crates"
+license = "MIT OR Apache-2.0"
+repository.workspace = true
+publish = false
+
+[dependencies]
+cbindgen = "0.29"
+cc = "1"
+nros-sizes-build = { workspace = true }
+
+[lints]
+workspace = true
