@@ -97,7 +97,7 @@ static const nros_app_config_t NROS_APP_CONFIG = {
     .scheduling = {0, 0, 0, 0, 0, 0, 0, 0},
 };
 
-#else /* !__ZEPHYR__ */
+#else  /* !__ZEPHYR__ */
 /* Phase 212.M-F.10 Path C — non-Zephyr branch.
  *
  * The universal `NROS_APP_CONFIG` read promise is preserved across

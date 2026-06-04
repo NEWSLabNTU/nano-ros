@@ -70,12 +70,16 @@ jobs:
       #     mbedtls) C sources.
       #   - micro-cdr + micro-xrce-dds-client: xrce-sys/build.rs compiles those
       #     vendored C sources. (Just the sources — NOT the heavy xrce-agent tool.)
+      #   - cyclonedds-src: cyclonedds-sys/build.rs CMake-builds the Cyclone DDS
+      #     vendor tree (panics with "source dir … has no CMakeLists.txt —
+      #     submodule not initialised?" otherwise).
       # All are compiled by `test-unit`'s workspace build (the `-cffi` shims that
       # need the same sources are excluded, but `*-sys` are not).
       - name: Provision workspace sources via nros
         run: |
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \
-                     --source micro-cdr --source micro-xrce-dds-client
+                     --source micro-cdr --source micro-xrce-dds-client \
+                     --source cyclonedds-src
 
       - name: just test-unit
         run: just test-unit

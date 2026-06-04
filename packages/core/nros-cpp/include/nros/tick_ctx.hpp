@@ -150,7 +150,7 @@ class TickCtx {
         size_t entity_len = ::strlen(action_entity);
         return Result(nros_cpp_tick_ctx_send_goal_raw(
             handle_, reinterpret_cast<const uint8_t*>(action_entity), entity_len, goal_cdr,
-            goal_len, reinterpret_cast<uint8_t (*)[16]>(goal_id_out)));
+            goal_len, reinterpret_cast<uint8_t(*)[16]>(goal_id_out)));
     }
 
     /// Kick a typed action-client goal. Mirrors

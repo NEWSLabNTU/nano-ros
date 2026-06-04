@@ -610,8 +610,7 @@ inline Result init_with_launch_auto(int argc, char** argv, const char* session_n
     return init(nullptr, 0, name);
 }
 
-inline Result init_with_launch(const char* path, int argc, char** argv,
-                               const char* session_name) {
+inline Result init_with_launch(const char* path, int argc, char** argv, const char* session_name) {
     (void)argc;
     (void)argv;
     // NROS_CPP_RET_INVALID_ARGUMENT = -3 (mirrors the 3-arg init guard).

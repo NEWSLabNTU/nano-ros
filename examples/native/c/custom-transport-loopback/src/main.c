@@ -292,4 +292,3 @@ int nros_app_main(int argc, char** argv) {
 // the canonical shape uses the macro so the entry point is uniform
 // across the example matrix.
 NROS_APP_MAIN_REGISTER_POSIX()
-

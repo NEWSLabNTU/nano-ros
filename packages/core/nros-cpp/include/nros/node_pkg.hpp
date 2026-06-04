@@ -23,8 +23,7 @@ constexpr const char* MISSING_NODE_EXPORT_ERROR = "package has no exported nros 
 struct NodeContextOps {
     using CreateNodeFn = int32_t (*)(void* user_data, const char* stable_id,
                                      const NodeOptions* options, DeclaredNode* out_node);
-    using CreateEntityFn = int32_t (*)(void* user_data,
-                                       const NodeEntityDescriptor* descriptor);
+    using CreateEntityFn = int32_t (*)(void* user_data, const NodeEntityDescriptor* descriptor);
     using RecordCallbackEffectFn = int32_t (*)(void* user_data, const char* callback_id,
                                                CallbackEffectKind kind, const char* entity_id);
 
@@ -35,8 +34,7 @@ struct NodeContextOps {
 
 class NodeContext {
   public:
-    NodeContext(void* user_data, const NodeContextOps* ops)
-        : user_data_(user_data), ops_(ops) {}
+    NodeContext(void* user_data, const NodeContextOps* ops) : user_data_(user_data), ops_(ops) {}
 
     Result create_node(DeclaredNode& out, const char* stable_id, const NodeOptions& options) {
         if (!ops_ || !ops_->create_node || !stable_id) return Result(ErrorCode::InvalidArgument);
@@ -83,13 +81,16 @@ using NodeRegisterFn = int32_t (*)(NodeContext& context);
 
 #define _NROS_CPP_CONCAT(a, b) a##b
 #define _NROS_CPP_CONCAT_X(a, b) _NROS_CPP_CONCAT(a, b)
-#define _NROS_CPP_REG_SYM(pkg) _NROS_CPP_CONCAT_X(__nros_component_, _NROS_CPP_CONCAT_X(pkg, _register))
-#define _NROS_CPP_PRESENT_SYM(pkg) _NROS_CPP_CONCAT_X(__NROS_NODE_PKG_, _NROS_CPP_CONCAT_X(pkg, _EXPORT_PRESENT))
-#define _NROS_CPP_CLASS_SYM(pkg) _NROS_CPP_CONCAT_X(__nros_component_, _NROS_CPP_CONCAT_X(pkg, _class_name))
+#define _NROS_CPP_REG_SYM(pkg)                                                                     \
+    _NROS_CPP_CONCAT_X(__nros_component_, _NROS_CPP_CONCAT_X(pkg, _register))
+#define _NROS_CPP_PRESENT_SYM(pkg)                                                                 \
+    _NROS_CPP_CONCAT_X(__NROS_NODE_PKG_, _NROS_CPP_CONCAT_X(pkg, _EXPORT_PRESENT))
+#define _NROS_CPP_CLASS_SYM(pkg)                                                                   \
+    _NROS_CPP_CONCAT_X(__nros_component_, _NROS_CPP_CONCAT_X(pkg, _class_name))
 
-#define NROS_NODE_PKG_REGISTER(ComponentType)                                               \
-    extern "C" int32_t _NROS_CPP_REG_SYM(NROS_PKG_NAME)(::nros::NodeContext& context) {       \
-        return (ComponentType::register_node(context)).raw();                                 \
+#define NROS_NODE_PKG_REGISTER(ComponentType)                                                      \
+    extern "C" int32_t _NROS_CPP_REG_SYM(NROS_PKG_NAME)(::nros::NodeContext & context) {           \
+        return (ComponentType::register_node(context)).raw();                                      \
     }                                                                                              \
     extern "C" const unsigned char _NROS_CPP_PRESENT_SYM(NROS_PKG_NAME) = 1
 
@@ -106,9 +107,9 @@ using NodeRegisterFn = int32_t (*)(NodeContext& context);
 // `NROS_NODE_PKG_REGISTER(UserClass)` but adds a fixed-storage
 // symbol carrying the qualified class string so the codegen + lint side
 // can sanity-check the binding.
-#define NROS_NODE_REGISTER(UserClass, QualifiedClassName)                                     \
-    extern "C" int32_t _NROS_CPP_REG_SYM(NROS_PKG_NAME)(::nros::NodeContext& context) {       \
-        return (UserClass::register_node(context)).raw();                                     \
+#define NROS_NODE_REGISTER(UserClass, QualifiedClassName)                                          \
+    extern "C" int32_t _NROS_CPP_REG_SYM(NROS_PKG_NAME)(::nros::NodeContext & context) {           \
+        return (UserClass::register_node(context)).raw();                                          \
     }                                                                                              \
     extern "C" const unsigned char _NROS_CPP_PRESENT_SYM(NROS_PKG_NAME) = 1;                       \
     extern "C" const char _NROS_CPP_CLASS_SYM(NROS_PKG_NAME)[] = QualifiedClassName

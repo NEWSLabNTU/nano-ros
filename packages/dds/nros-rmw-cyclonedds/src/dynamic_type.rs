@@ -1,7 +1,7 @@
 //! Runtime descriptor builder.
 //!
 //! [`DescriptorBuilder::build`] turns a [`nros_serdes::Message`]'s
-//! static [`Field`](nros_serdes::Field) schema into a Cyclone DDS
+//! static [`nros_serdes::Field`] schema into a Cyclone DDS
 //! `dds_topic_descriptor_t *` by:
 //!
 //! 1. Walking the schema recursively, flattening every

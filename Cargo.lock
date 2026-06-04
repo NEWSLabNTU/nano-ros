@@ -1942,6 +1942,8 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-rmw-cyclonedds-sys",
+ "nros-rmw-xrce-cffi",
+ "nros-rmw-zenoh",
  "nros-serdes",
  "paste",
  "portable-atomic-util",
