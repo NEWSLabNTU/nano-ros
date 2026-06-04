@@ -49,6 +49,7 @@
 
 pub mod config;
 pub mod dispatch;
+pub mod embassy_entry;
 pub mod entry;
 pub mod exit;
 pub mod init;
@@ -60,6 +61,7 @@ pub mod transport;
 
 pub use config::{BoardConfig, BoardTransportConfig};
 pub use dispatch::DispatchStrategy;
+pub use embassy_entry::EmbassyBoardEntry;
 pub use entry::BoardEntry;
 pub use exit::BoardExit;
 pub use init::BoardInit;

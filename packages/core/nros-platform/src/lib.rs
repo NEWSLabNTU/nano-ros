@@ -37,9 +37,9 @@ mod resolve;
 // `nros_platform::board::*`.
 pub use board::{
     Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, BoardTransportConfig,
-    DispatchStrategy, NetworkWait, NodeDispatchFn, NodeDispatchRuntime, NodeInitFn, NodeRegisterFn,
-    NodeTickFn, NullNodeRuntime, RticBoardEntry, RuntimeCtx, RuntimeError, SignaledCallback,
-    TransportBringup,
+    DispatchStrategy, EmbassyBoardEntry, NetworkWait, NodeDispatchFn, NodeDispatchRuntime,
+    NodeInitFn, NodeRegisterFn, NodeTickFn, NullNodeRuntime, RticBoardEntry, RuntimeCtx,
+    RuntimeError, SignaledCallback, TransportBringup,
 };
 // Phase 214.K.1 — backward-compat alias at the crate root. See
 // `board::NodeRuntime` for the deprecation note.
