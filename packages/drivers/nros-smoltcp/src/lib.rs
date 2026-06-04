@@ -39,9 +39,9 @@ pub use network_state::NetworkState;
 
 pub use bridge::{
     CONNECT_TIMEOUT_MS, MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE, SOCKET_TIMEOUT_MS,
-    SmoltcpBridge, clear_idle_callback, do_poll, has_poll_callback, poll_callback_diagnostics,
-    poll_count, poll_diagnostics, rx_diagnostics, seed_ephemeral_port, set_idle_callback,
-    set_poll_callback,
+    SmoltcpBridge, SmoltcpInitError, clear_idle_callback, do_poll, has_poll_callback,
+    poll_callback_diagnostics, poll_count, poll_diagnostics, rx_diagnostics, seed_ephemeral_port,
+    set_idle_callback, set_poll_callback,
 };
 
 // Re-export smoltcp types needed by board crates
@@ -70,9 +70,25 @@ pub const TOTAL_SOCKETS: usize = MAX_SOCKETS + MAX_UDP_SOCKETS;
 /// # Safety
 ///
 /// Must only be called once. The returned reference has `'static` lifetime
-/// and must not be used concurrently.
+/// and must not be used concurrently. Phase 214.L.1 hard-enforces the
+/// single-call contract — a second invocation panics rather than handing
+/// out a second `&'static mut` to the same storage and triggering
+/// aliasing UB. The siblings `get_tcp_buffers` / `get_udp_buffers` use a
+/// per-index contract (each `index` may be claimed at most once) so
+/// they remain unguarded at the function level.
 #[allow(static_mut_refs)]
 pub unsafe fn get_socket_storage() -> &'static mut [SocketStorage<'static>; TOTAL_SOCKETS] {
+    use portable_atomic::{AtomicBool, Ordering};
+    static CLAIMED: AtomicBool = AtomicBool::new(false);
+    if CLAIMED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        panic!(
+            "nros_smoltcp::get_socket_storage called twice — the returned \
+             &'static mut would alias the prior reference (UB)."
+        );
+    }
     static mut SOCKET_STORAGE: [SocketStorage<'static>; TOTAL_SOCKETS] =
         [SocketStorage::EMPTY; TOTAL_SOCKETS];
     unsafe { &mut SOCKET_STORAGE }
@@ -259,7 +275,11 @@ pub extern "C" fn nros_smoltcp_is_initialized() -> bool {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_smoltcp_init() {
-    SmoltcpBridge::init();
+    // Phase 214.L.1 — C ABI keeps `void` return so existing C callers
+    // are untouched. Double-init is now a recoverable Err on the Rust
+    // side; swallow it here because callers that hit the path twice
+    // already observe the same outcome (initialized = true) regardless.
+    let _ = SmoltcpBridge::init();
 }
 
 #[unsafe(no_mangle)]

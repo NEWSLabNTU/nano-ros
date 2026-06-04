@@ -150,7 +150,7 @@ fn init_ethernet(config: &Config) {
     );
 
     // Initialize transport bridge
-    SmoltcpBridge::init();
+    SmoltcpBridge::init().expect("SmoltcpBridge::init double-call");
 
     // Create and register TCP + UDP sockets via transport crate
     let sockets = unsafe { NET_SOCKETS.assume_init_mut() };

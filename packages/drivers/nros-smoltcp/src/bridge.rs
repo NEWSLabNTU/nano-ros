@@ -8,6 +8,14 @@
 //! This crate is RMW-agnostic — it can be used by zenoh-pico, XRCE-DDS,
 //! or any other middleware that needs TCP/UDP networking on bare-metal.
 
+// Phase 214.L.1 — `portable_atomic::AtomicBool` (not `core::sync::
+// atomic`) because `riscv32imc` (ESP32-C3) ships without native CAS;
+// `core::sync::atomic::AtomicBool::compare_exchange` is absent on that
+// target. portable-atomic is already on this crate's dep list for the
+// same reason — diagnostic counters needed `fetch_add` polyfill via
+// interrupt disable. Reuse it for the init guard.
+use portable_atomic::{AtomicBool, Ordering};
+
 use smoltcp::{
     iface::{Interface, PollResult, SocketHandle, SocketSet},
     phy::Device,
@@ -17,6 +25,21 @@ use smoltcp::{
     },
     wire::{IpAddress, IpEndpoint, Ipv4Address},
 };
+
+/// Phase 214.L.1 — single-init contract for [`SmoltcpBridge::init`].
+///
+/// `init` is documented as a one-shot startup hook; nothing in the
+/// bridge clears the socket / staging state once it has been seeded.
+/// A second call would silently re-zero connected sockets out from
+/// under any in-flight task. The guard converts that hazard into an
+/// explicit [`SmoltcpInitError::InitTwice`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SmoltcpInitError {
+    /// `SmoltcpBridge::init` was called more than once.
+    InitTwice,
+}
+
+static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 // ============================================================================
 // Configuration
@@ -584,7 +607,14 @@ pub struct SmoltcpBridge;
 
 impl SmoltcpBridge {
     /// Initialize the bridge. Must be called before any socket operations.
-    pub fn init() {
+    ///
+    /// Phase 214.L.1 — returns [`SmoltcpInitError::InitTwice`] when
+    /// invoked a second time so callers can surface the misuse instead
+    /// of silently resetting connected sockets.
+    pub fn init() -> Result<(), SmoltcpInitError> {
+        INITIALIZED
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| SmoltcpInitError::InitTwice)?;
         unsafe {
             let table = &raw mut SOCKET_TABLE;
             for i in 0..MAX_SOCKETS {
@@ -596,11 +626,24 @@ impl SmoltcpBridge {
             }
             BRIDGE_STATE.initialized = true;
         }
+        Ok(())
     }
 
     /// Check if the bridge has been initialized.
     pub fn is_initialized() -> bool {
         unsafe { BRIDGE_STATE.initialized }
+    }
+
+    /// Reset the single-init guard. Test-only — exercised by
+    /// `init_twice_errors_cleanly` so subsequent test runs in the
+    /// same process can re-arm the bridge. Never call from production
+    /// code; the bridge has no real teardown path.
+    #[cfg(test)]
+    pub(crate) fn reset_init_for_test() {
+        INITIALIZED.store(false, Ordering::Release);
+        unsafe {
+            BRIDGE_STATE.initialized = false;
+        }
     }
 
     /// Register a pre-created smoltcp TCP socket handle with the bridge.
@@ -1141,5 +1184,32 @@ impl SmoltcpBridge {
     /// Trigger a poll via the registered callback.
     pub fn poll_network() {
         do_poll();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Phase 214.L.1 — `SmoltcpBridge::init` is documented as a
+    /// one-shot startup hook; a second call previously silently
+    /// re-zeroed the socket table. The guard converts that hazard
+    /// into a recoverable `SmoltcpInitError::InitTwice`.
+    #[test]
+    fn init_twice_errors_cleanly() {
+        SmoltcpBridge::reset_init_for_test();
+
+        assert_eq!(SmoltcpBridge::init(), Ok(()));
+        assert!(SmoltcpBridge::is_initialized());
+
+        // Second call must surface InitTwice and leave the bridge
+        // initialized — no half-state.
+        assert_eq!(SmoltcpBridge::init(), Err(SmoltcpInitError::InitTwice));
+        assert!(SmoltcpBridge::is_initialized());
+
+        // A third call still returns InitTwice (the guard latches).
+        assert_eq!(SmoltcpBridge::init(), Err(SmoltcpInitError::InitTwice));
+
+        SmoltcpBridge::reset_init_for_test();
     }
 }

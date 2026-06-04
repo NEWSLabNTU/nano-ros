@@ -246,7 +246,7 @@ fn init_network<D: EthernetDevice + 'static>(
     }
 
     // Initialize the transport crate's bridge
-    SmoltcpBridge::init();
+    SmoltcpBridge::init().expect("SmoltcpBridge::init double-call");
 
     // Seed ephemeral port counter to avoid TCP 4-tuple collisions.
     // Without this, smoltcp always starts at port 49152, and a stale

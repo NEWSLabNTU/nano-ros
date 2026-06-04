@@ -37,4 +37,16 @@ smoltcp = { version = "0.12", default-features = false, features = [
 # which `riscv32imc` (ESP32-C3) doesn't have natively. portable-atomic
 # provides a polyfill via interrupt disable. Cortex-M targets get the
 # native atomic instructions; both are safe.
+#
+# Phase 214.L.1 — `unsafe-assume-single-core` is only valid on
+# single-core targets without native CAS (riscv32imc, single-core
+# Cortex-M). The host x86_64 target rejects it at compile time, which
+# previously made `cargo test --lib` impossible. The split below keeps
+# the feature on the embedded targets the crate actually ships to and
+# drops it on hosts so unit tests (e.g. `init_twice_errors_cleanly`)
+# can run.
+[target.'cfg(any(target_arch = "arm", target_arch = "riscv32"))'.dependencies]
 portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
+
+[target.'cfg(not(any(target_arch = "arm", target_arch = "riscv32")))'.dependencies]
+portable-atomic = { version = "1", default-features = false }
