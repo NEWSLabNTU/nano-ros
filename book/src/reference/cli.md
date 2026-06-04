@@ -120,6 +120,19 @@ runs. A `.toml` argument is instead validated as a **root `nros.toml`**
 (the workspace deployment SSOT) — `[system]`/`[deploy.<name>]` shape,
 default-deploy + system references, bridge endpoints, etc.
 
+### `nros explain [<plan>]`
+
+Render a generated `nros-plan.json` in human-readable form.
+
+```sh
+nros explain                            # reads build/nros/nros-plan.json
+nros explain path/to/nros-plan.json     # explicit path
+```
+
+Run after `nros plan` to inspect the resolved component graph, topic
+wiring, parameter bindings, and SchedContext assignments before
+committing to a `nros build`.
+
 ### `nros deploy [name] [--config <root.toml>] [--nano-ros-workspace <path>] [--dry-run]`
 
 Run a `[deploy.<name>]` target from the root `nros.toml`. Omit
@@ -133,6 +146,45 @@ builds the binary), `vendor-lib` (links a vendor static lib), `vendor-module`
 prints the resolved steps without generating/building. No per-vendor code
 lives in nano-ros — vendor knowledge is the user's `build[]`/`package[]` lines.
 
+> **Config files:** The root `nros.toml` carries deploy *targets*
+> (`[deploy.<name>]`) — it is the SSOT for *where* to build/flash.
+> Multi-node *topology* (which nodes, their wiring, per-target overrides)
+> lives in a Bringup pkg's `system.toml` — see
+> [Bringup: launch + system.toml](../getting-started/workspace-bringup.md).
+> The two files are **complementary, not either/or**.
+
+### `nros launch [<bringup>] [--target <target>] [--file <file>] [--foreground|--detach] [--stop <pidfile>]`
+
+Spawn a Bringup pkg's components on the host — the `native` /
+`native_sim` alternative to `ros2 launch`. Reads
+`<bringup>/launch/<file>.launch.xml` and `<bringup>/system.toml`
+straight from source; **no `colcon build` + `source install/setup.bash`
+required**. `ros2 launch` stays available for ament-installed consumers;
+the two paths don't overlap.
+
+```sh
+nros launch demo_bringup                          # use default_system from workspace Cargo.toml
+nros launch demo_bringup --target native          # explicit deploy target
+nros launch demo_bringup --file sim.launch.xml    # explicit launch file
+nros launch demo_bringup --detach                 # background; writes .nros/launch/<bringup>.pids
+nros launch --stop .nros/launch/demo_bringup.pids # stop a detached launch
+```
+
+| Argument / Flag | Description |
+|---|---|
+| `[<bringup>]` | Bringup pkg directory or name. Omit to use `[workspace.metadata.nros].default_system` |
+| `--target <target>` | `[deploy.<target>]` block to use; defaults to `default_target`, then `"native"`, then first entry |
+| `--file <file>` | Override the launch file (resolver picks `<bringup>/launch/<file>`); keeps verb surface uniform with `nros plan` / `nros codegen-system` |
+| `--exec <exec>` | `<node exec="…">` override for synthesised launches |
+| `--profile <profile>` | Cargo profile dir (default `debug`) |
+| `--foreground` | Block until first child exits or signal; propagate SIGTERM to all. Default when neither flag is given |
+| `--detach` | Return immediately; write PID file |
+| `--stop <pidfile>` | Send SIGTERM to every PID in the given pidfile |
+
+> **Note:** `nros launch` spawns components from `system.toml`'s
+> `[[component]]` list, not by driving XML. The `--file` / `--exec` flags
+> use the shared resolver so bad input fails fast.
+
 ### `nros config show [--config <path>]` / `nros config check [--config <path>]`
 
 `show` parses the project's `nros.toml` (and any Kconfig overlay
@@ -142,9 +194,12 @@ env override.
 `check` validates `nros.toml` syntactically and warns when the
 locator or domain are missing. Exits non-zero on warnings.
 
-### `nros build [--project <path>] [-- ...]`
+### `nros build [<name>] [--project <path>] [--nano-ros-workspace <path>] [-- ...]`
 
-Auto-detect the project flavor and delegate. Detection precedence:
+`nros build` **delegates** to the per-platform build framework — it
+auto-detects the project flavor and hands off to `cargo` / `cmake` /
+`west` / `idf.py`; it does not build anything itself. Detection
+precedence:
 
 1. `prj.conf` present → Zephyr → `west build`
 2. `CMakeLists.txt` + Cargo `staticlib` → cmake configure + build
@@ -160,6 +215,54 @@ for `nros deploy <name>`; bare `nros build` there builds
 `[workspace].default`. A component `nros.toml` (direct-mode `[node]`) is
 not a workspace root, so it falls through to the project-flavor autodetect
 above.
+
+### `nros ws <subcommand>`
+
+Workspace-level message-package utilities. Manages codegen for
+`*.msg` packages in a colcon-style `src/` tree and keeps
+`[patch.crates-io]` blocks in sync across Rust consumers.
+
+```sh
+eval "$(nros ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
+nros ws sync            # run codegen for all msg pkgs + write [patch.crates-io]
+nros ws status          # freshness check (non-fatal): n up-to-date / n stale / n missing
+nros ws list            # list discovered msg + Rust-consumer pkgs
+nros ws clean           # remove generated/ + auto-managed patch blocks
+nros ws doctor          # lint workspace pkgs (package.xml markers, stale patches, …)
+```
+
+| Subcommand | Description |
+|---|---|
+| `env` | Print shell export adding `<dir>` (default `./src`) to `NROS_INTERFACE_SEARCH_PATH` |
+| `sync` | Codegen workspace msg pkgs + write `[patch.crates-io]` into each Rust consumer's patch authority `Cargo.toml`. Pre-cargo step; run once after editing `*.msg` files |
+| `status` | Non-fatal freshness check — sibling of `sync --check` |
+| `list` | List discovered msg + Rust-consumer pkgs (kind, name, dir per row) |
+| `clean` | Remove `generated/` + auto-managed `[patch.crates-io]` blocks; leaves user-written sections alone |
+| `doctor` | Lint: warn on missing `<member_of_group> rosidl_interface_packages</member_of_group>`, malformed `package.xml`, stale patch blocks |
+
+### `nros codegen-system [--bringup <pkg>] [--target <triple>] [--out <dir>] [--launch <file>] [--ahead-of-vendor <pio|px4>]`
+
+Host-time system bake: reads `<bringup>/system.toml` +
+`<bringup>/launch/system.launch.xml` and emits the baked compile-time C
+config + component registration glue consumed by every embedded RTOS
+adapter.
+
+```sh
+nros codegen-system --bringup demo_bringup
+nros codegen-system --bringup demo_bringup --target thumbv7em-none-eabihf
+nros codegen-system --bringup demo_bringup --ahead-of-vendor pio   # + PlatformIO library.json
+nros codegen-system --bringup demo_bringup --ahead-of-vendor px4   # + PX4 module dirs
+```
+
+| Flag | Description |
+|---|---|
+| `--workspace <path>` | Workspace root (default: cwd) |
+| `--bringup <pkg>` | Bringup pkg name or path. Defaults to `[workspace.metadata.nros].default_system` |
+| `--target <triple>` | Target triple for cross-compile bake context |
+| `--out <dir>` | Output directory; `nros-system/` subdir created inside. Default: `<workspace>/build/<bringup>/` |
+| `--launch <file>` | Multi-launch disambiguation: pick `<bringup>/launch/<file>` (`--file` is an alias) |
+| `--exec <exec>` | `<node exec="…">` override for synthesised launches |
+| `--ahead-of-vendor` | `pio`: emit PlatformIO `library.json`; `px4`: emit one PX4-native `nros_<component>/` module dir per component |
 
 ### `nros run [--project <path>] [--env <name>] [-- ...]`
 
