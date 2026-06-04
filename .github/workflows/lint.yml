@@ -80,11 +80,19 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      - name: Install the nros CLI (released binary)
+      # Phase 218 — build the nros CLI from packages/cli/ in-tree.
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
-            | NROS_VERSION=0.3.7 sh
-          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       # Same source set as host-unit-tests: the root workspace path-deps need
       # `px4-rs` readable (cargo load gate); `zpico-sys/build.rs` compiles
@@ -138,11 +146,19 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      - name: Install the nros CLI (released binary)
+      # Phase 218 — build the nros CLI from packages/cli/ in-tree.
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
-            | NROS_VERSION=0.3.7 sh
-          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       # Per-example `cargo fmt --check` traverses every standalone example dir.
       # fmt only parses each crate's source files (AST-level); it does NOT

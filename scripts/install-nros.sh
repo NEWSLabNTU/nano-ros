@@ -1,4 +1,32 @@
 #!/bin/sh
+# === DEPRECATED — Phase 218.A ===========================================
+#
+# The `nros` CLI is now in-tree at `packages/cli/` (Phase 218.A/B/C
+# merge). The preferred install paths are:
+#
+#   1. Source build (every CI lane + most contributors):
+#        cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+#      → produces `packages/cli/target/release/nros`.
+#
+#   2. Prebuilt release artifact (Phase 218.G, this repo's release lane):
+#        scripts/install-nros-prebuilt.sh
+#      → fetches `nros-<triple>.tar.gz` from a `nros-v*` tag of THIS
+#        repo (NEWSLabNTU/nano-ros), verifies sha256, drops the binary at
+#        the same `packages/cli/target/release/nros` path as a source
+#        build.
+#
+# This script — which fetches from the legacy NEWSLabNTU/nros-cli
+# releases — is kept temporarily for downstream pin migration (Phase
+# 218.H). When invoked from inside a nano-ros checkout that's sitting on
+# a `nros-v*` tag, it delegates to `install-nros-prebuilt.sh` (the new
+# path). Outside a tagged checkout it errors out with a pointer to 218.A,
+# rather than silently fetching from the soon-to-be-archived nros-cli
+# repo.
+#
+# Removal of this script is tracked under Phase 218.H ("Existing repo
+# decommission") — keep it in-tree until every downstream pin has bumped.
+# ========================================================================
+#
 # nano-ros's `nros` installer (Phase 195.D) — fetch the prebuilt `nros` host
 # binary from the nros-cli GitHub Releases.
 #
@@ -52,6 +80,33 @@
 #   --no-modify-path     skip the shell-rc PATH-append step.
 #   --yes / -y           auto-confirm prompts.
 set -eu
+
+# --- Phase 218.A delegation gate ----------------------------------------
+# Detect whether we're sitting on (or near) a `nros-v*` tag in a nano-ros
+# checkout. If so, delegate to scripts/install-nros-prebuilt.sh — the new
+# path that fetches from THIS repo's release artifacts (Phase 218.G).
+# Outside a tagged checkout, error out with a pointer rather than fetching
+# from the soon-to-be-archived nros-cli repo. `NROS_LEGACY_INSTALL=1`
+# escape hatch preserves the legacy path for the (shrinking) downstream
+# pins yet to migrate.
+if [ "${NROS_LEGACY_INSTALL:-0}" != "1" ]; then
+  _self_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+  _prebuilt="${_self_dir}/install-nros-prebuilt.sh"
+  if [ -x "$_prebuilt" ]; then
+    if command -v git >/dev/null 2>&1 && \
+       _tag="$(git -C "$_self_dir" describe --tags --abbrev=0 2>/dev/null)" && \
+       case "$_tag" in nros-v*) true ;; *) false ;; esac
+    then
+      echo "install-nros.sh: DEPRECATED — delegating to install-nros-prebuilt.sh (Phase 218.G, tag $_tag)" >&2
+      exec "$_prebuilt" "$@"
+    fi
+    echo "install-nros.sh: DEPRECATED — Phase 218.A merged the CLI in-tree at packages/cli/." >&2
+    echo "install-nros.sh:   * source build:   cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros" >&2
+    echo "install-nros.sh:   * prebuilt:       scripts/install-nros-prebuilt.sh  (requires a nros-v* tag in this checkout)" >&2
+    echo "install-nros.sh: legacy nros-cli releases path retained behind NROS_LEGACY_INSTALL=1 (Phase 218.H decommission)." >&2
+    exit 1
+  fi
+fi
 
 NROS_VERSION="${NROS_VERSION:-0.3.7}"
 NROS_HOME="${NROS_HOME:-$HOME/.nros}"
