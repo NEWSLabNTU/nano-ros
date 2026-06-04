@@ -159,6 +159,7 @@ build-fixture-extras:
     nros_require_ws_sync "$nros_cli"
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     # Phase 181.6 — every native *Rust* fixture (the param-services talker; the
     # link-tls / safety-e2e / unstable-zenoh-api variants; the per-RMW
     # target-<rmw>/ collapsed roles; the custom-transport pair; the nros-bench
@@ -178,32 +179,20 @@ build-fixture-extras:
                 NROS_REPO_DIR="$repo_root" nros_codegen_stamp_write "examples/$1" ;;
         esac
     }
-    # Phase 169/175/186 — native talker/listener Cyclone cells. Pure-cargo can't
-    # link `nros_rmw_cyclonedds_register`, so they build via CMake/Corrosion. Phase
-    # 186: self-provision Cyclone from source (nros_provide_cyclonedds(), static
-    # ddsc via nano-ros-posix.cmake) — no `just cyclonedds setup` / build/install
-    # prefix needed. `-DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON` forces the pinned
-    # source over any system /opt/ros Cyclone (build-flag/ABI mismatch). idlc comes
-    # from the source build's idlc target / host PATH (186.3).
+    # Phase 220.C (Path B) — native talker/listener Cyclone cells now build via
+    # pure-cargo, matching K.7.7 (`fcbc498cc`). The Phase 175.A cmake/corrosion
+    # bridge was retired by Phase 212.M.1 (deleted the per-example
+    # CMakeLists.txt) once `cargo build --features rmw-cyclonedds` could link
+    # `nros_rmw_cyclonedds_register` through `nros-rmw-cyclonedds-sys`. Each
+    # example carries an `rmw-cyclonedds = ["nros/rmw-cyclonedds"]` feature
+    # that routes the typed-creator hook (K.7.6.b) into the C++ backend.
     for collapsed_case in talker listener; do
-        # Phase 214 followup — Phase 212.M.1 sweep deleted per-example
-        # CMakeLists.txt (pure-cargo shape). Skip the cmake cyclonedds path;
-        # the pure-cargo `cargo build --features rmw-cyclonedds` path
-        # (Phase 214.S.4 / K.7.7) is canonical now and runs via cargo.
-        if [ ! -f "examples/native/rust/${collapsed_case}/CMakeLists.txt" ]; then
-            echo "  → native/rust/${collapsed_case} cyclonedds cmake-path skipped (pure-cargo shape post-212.M.1)"
-            continue
-        fi
-        echo "  → native/rust/${collapsed_case} (-DNROS_RMW=cyclonedds, self-provision, build-cyclonedds/)"
+        echo "  → native/rust/${collapsed_case} (cargo --features rmw-cyclonedds, target-cyclonedds/)"
         ensure_native_rust_generated "native/rust/${collapsed_case}"
         ( cd "examples/native/rust/${collapsed_case}" && \
-          rm -rf build-cyclonedds && \
-          nros_cmake_configure_if_needed . build-cyclonedds -DNROS_RMW=cyclonedds \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DNANO_ROS_BUILD_CODEGEN=OFF \
-              -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
-              -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON > /dev/null && \
-          cmake --build build-cyclonedds > /dev/null ) &
+          cargo build $cargo_profile_args --no-default-features \
+              --features rmw-cyclonedds \
+              --target-dir target-cyclonedds > /dev/null ) &
     done
     wait
     # Phase 181.5 — collapsed-shape native C / C++ examples from the SSOT

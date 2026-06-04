@@ -175,11 +175,36 @@ Almost every breakage traces to one of three root causes:
     proved it works) + retire the cmake/corrosion cyclone wiring +
     its build-fixture invocation entirely.
 
-- [ ] **220.C.1** Decide (1) vs (2). Path (2) is cleaner — K.7.7
-      shipped pure-cargo native rust cyclonedds e2e; the cmake path
-      was a Phase 175.A bridge that's now redundant.
-- [ ] **220.C.2** Document the decision in book/internals/cyclonedds-
-      backend.md + update the `just <plat> build-fixtures` recipes.
+- [x] **220.C.1** Decide (1) vs (2). **Path (2) chosen** — K.7.7
+      (`fcbc498cc`) shipped pure-cargo native rust cyclonedds e2e via
+      `cargo build --no-default-features --features rmw-cyclonedds`
+      against `nros-rmw-cyclonedds-sys` (the typed-creator hook K.7.6.b
+      routes through `nros_rmw_cyclonedds::register::<M>()` from a
+      cargo-only build). The Phase 175.A cmake/corrosion bridge is
+      redundant for native rust; on FreeRTOS the pure-cargo path is
+      still blocked behind Phase 214.S.5.b's BSP gate (cyclonedds-sys
+      vendored build against the ARM cross toolchain + FreeRTOS POSIX
+      shim), so the freertos rust cyclonedds tests stay `#[ignore]`
+      until that lands. Verified `cargo build --no-default-features
+      --features rmw-cyclonedds` in `examples/native/rust/talker/`
+      after `nros ws sync` still finishes clean.
+- [x] **220.C.2** Update the `just <plat> build-fixtures` recipes.
+      `just/native.just::build-fixture-extras` swaps the cmake-bridge
+      `cmake -B build-cyclonedds` loop for a parallel `cargo build
+      $cargo_profile_args --no-default-features --features
+      rmw-cyclonedds --target-dir target-cyclonedds` over
+      `talker`/`listener`. `just/freertos.just::build-fixtures` drops
+      the cyclonedds `cmake -S … -B build-cyclonedds` loop (now a
+      `Phase 220.C path B retired` informational echo). Fixture-resolver
+      mirror: `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`
+      switches `build_native_{talker,listener}_rmw(Rmw::Cyclonedds)`
+      from `build_example_cmake_rmw` to `build_example_rmw` (cargo
+      target-dir path) and `build_freertos_rust_example_rmw` short-
+      circuits the Cyclone branch with a `BuildFailed(... 214.S.5.b
+      BSP gate)` so `freertos_qemu.rs::test_freertos_rust_talker_
+      cyclonedds_boot` properly `#[ignore]`s alongside its sibling
+      e2e test. Landed on branch
+      `phase-220-c-cmake-cyclonedds-decide`.
 
 ### D — Zephyr logging-smoke workspace-path mismatch
 

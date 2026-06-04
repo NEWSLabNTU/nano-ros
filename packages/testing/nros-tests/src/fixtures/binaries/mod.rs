@@ -466,11 +466,11 @@ pub fn build_native_talker() -> TestResult<&'static Path> {
 
 /// Phase 118 — collapsed-shape native talker, RMW-parametrized.
 ///
-/// Returns the prebuilt binary for the named RMW. The fixture build
-/// chain (`just native build-fixtures`) compiles zenoh/xrce with cargo
-/// into `target-<rmw>/` dirs and Cyclone DDS with CMake/Corrosion into
-/// `build-cyclonedds/`. Cached per RMW so repeated lookups in a nextest
-/// run avoid filesystem-stat overhead.
+/// Returns the prebuilt binary for the named RMW. Phase 220.C path B
+/// retired the cmake/corrosion cyclonedds bridge; every RMW (incl.
+/// Cyclone) now resolves to a pure-cargo `target-<rmw>/<profile>/talker`
+/// binary produced by `just native build-fixtures`. Cached per RMW so
+/// repeated lookups in a nextest run avoid filesystem-stat overhead.
 pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
@@ -480,17 +480,13 @@ pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
-    cell.get_or_try_init(|| {
-        if rmw == Rmw::Cyclonedds {
-            build_example_cmake_rmw("native/rust/talker", "talker_cyclonedds", rmw)
-        } else {
-            build_example_rmw("native/rust/talker", "talker", rmw)
-        }
-    })
-    .map(|p| p.as_path())
+    cell.get_or_try_init(|| build_example_rmw("native/rust/talker", "talker", rmw))
+        .map(|p| p.as_path())
 }
 
 /// Phase 118 — collapsed-shape native listener, RMW-parametrized.
+///
+/// See `build_native_talker_rmw` — same pure-cargo path post-220.C.
 pub fn build_native_listener_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
@@ -500,14 +496,8 @@ pub fn build_native_listener_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
-    cell.get_or_try_init(|| {
-        if rmw == Rmw::Cyclonedds {
-            build_example_cmake_rmw("native/rust/listener", "listener_cyclonedds", rmw)
-        } else {
-            build_example_rmw("native/rust/listener", "listener", rmw)
-        }
-    })
-    .map(|p| p.as_path())
+    cell.get_or_try_init(|| build_example_rmw("native/rust/listener", "listener", rmw))
+        .map(|p| p.as_path())
 }
 
 /// Phase 118 — generic native Rust example resolver. Cuts repetition
@@ -711,9 +701,17 @@ pub fn build_freertos_cmake_example_rmw(
 }
 
 /// Phase 118.D — collapsed-shape FreeRTOS Rust example resolver.
+///
 /// FreeRTOS zenoh/xrce Rust examples are cross-compiled to
-/// `target-<rmw>/thumbv7m-none-eabi/<profile>/<binary>`. The CycloneDDS
-/// Rust fixture is linked through CMake and lands in `build-cyclonedds/`.
+/// `target-<rmw>/thumbv7m-none-eabi/<profile>/<binary>`.
+///
+/// Phase 220.C path B — the CycloneDDS Rust fixture is retired from the
+/// cmake/corrosion bridge (`build-cyclonedds/`); a pure-cargo FreeRTOS
+/// cyclonedds path is deferred behind Phase 214.S.5.b's BSP gate
+/// (cyclonedds-sys vendored build against the ARM cross toolchain +
+/// FreeRTOS POSIX shim). Until that lands the cyclonedds branch returns
+/// a `BuildFailed` error so callers (`freertos_qemu.rs`) emit the
+/// proper `nros_tests::skip!` rather than silently passing.
 pub fn build_freertos_rust_example_rmw(
     case: &str,
     binary_name: &str,
@@ -727,16 +725,20 @@ pub fn build_freertos_rust_example_rmw(
             example_dir.display()
         )));
     }
-    let binary_path = if rmw == Rmw::Cyclonedds {
-        example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name))
-    } else {
-        example_dir.join(format!(
-            "{}/thumbv7m-none-eabi/{}/{}",
-            rmw.target_dir(),
-            cargo_target_profile_dir(),
-            binary_name
-        ))
-    };
+    if rmw == Rmw::Cyclonedds {
+        return Err(TestError::BuildFailed(format!(
+            "Phase 220.C path B: FreeRTOS rust cyclonedds fixture retired \
+             (cmake-bridge removed; pure-cargo path blocked on Phase \
+             214.S.5.b BSP gate). Requested: {}/{}",
+            case, binary_name
+        )));
+    }
+    let binary_path = example_dir.join(format!(
+        "{}/thumbv7m-none-eabi/{}/{}",
+        rmw.target_dir(),
+        cargo_target_profile_dir(),
+        binary_name
+    ));
     require_prebuilt_binary(&binary_path)
 }
 

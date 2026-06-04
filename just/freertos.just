@@ -163,43 +163,17 @@ build-fixture-extras:
     # the whole fixture build — mirrors threadx-linux. The zenoh c/cpp/rust
     # fixtures (the primary coverage) are unaffected. Install a ROS 2 / CycloneDDS
     # idlc (or set IDLC_EXECUTABLE) to exercise the Cyclone variants.
+    # Phase 220.C (Path B) — FreeRTOS rust cyclonedds fixtures are retired
+    # from the cmake/corrosion path. Phase 212.M.5.b deleted the per-example
+    # CMakeLists.txt; Phase 214.S.5.b (BSP gate — cyclonedds-sys vendored
+    # build against the ARM cross toolchain + FreeRTOS POSIX shim) is the
+    # remaining blocker for a pure-cargo cyclonedds path here. Until that
+    # lands, the freertos rust cyclonedds e2e tests stay `#[ignore]`d
+    # (see packages/testing/nros-tests/tests/freertos_qemu.rs) and the
+    # build step is a no-op. The c/cpp cyclonedds cells on freertos are
+    # also out of scope (none exist today — see examples/fixtures.toml).
     if command -v idlc >/dev/null 2>&1 || [ -x build/cyclonedds/bin/idlc ]; then
-      # Phase 204.6 follow-up — cyclone FreeRTOS heap right-size. Measured
-      # (qemu MPS2-AN385): the cyclone rust talker + listener boot + exchange at
-      # 1 MiB heap (vs the 3 MiB FreeRTOSConfig.h default sized for the heavy
-      # boot path). No heavier cyclone FreeRTOS example exists (no rust
-      # service/action, no C++ cyclone). The cmake/corrosion build honors this
-      # env (the cargo `just` path does not); scoped here so the C++ *zenoh*
-      # examples keep the safe 3 MiB default. bss 3.3 MB → ~1.1 MB.
-      export NROS_FREERTOS_HEAP_KB=1024
-      for case in talker listener; do
-        if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
-            continue
-        fi
-        # Phase 214 followup — Phase 212.M.5.b sweep deleted per-example
-        # CMakeLists.txt (pure-cargo Component pkg shape). Skip the cyclonedds
-        # cmake/corrosion path until a sibling _cyclonedds example is restored
-        # OR the cargo build.rs path picks up cyclonedds vendoring on
-        # FreeRTOS (Phase 214.S.5.b BSP gate work / 214.P followup).
-        if [ ! -f examples/qemu-arm-freertos/rust/${case}/CMakeLists.txt ]; then
-            echo "  → freertos/rust/${case} cyclonedds skipped (no CMakeLists.txt — pure-cargo shape post-212.M.5.b)"
-            continue
-        fi
-        echo "  → freertos/rust/${case} (-DNROS_RMW=cyclonedds, self-provision, build-cyclonedds/)"
-        NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe examples/qemu-arm-freertos/rust/${case}
-        NROS_REPO_DIR="$PWD" "$nros_cli" ws sync examples/qemu-arm-freertos/rust/${case} >/dev/null
-        NROS_REPO_DIR="$PWD" nros_codegen_stamp_write examples/qemu-arm-freertos/rust/${case}
-        rm -rf examples/qemu-arm-freertos/rust/${case}/build-cyclonedds
-        cmake -S examples/qemu-arm-freertos/rust/${case} \
-              -B examples/qemu-arm-freertos/rust/${case}/build-cyclonedds \
-              -DNROS_RMW=cyclonedds \
-              -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-              -DCMAKE_BUILD_TYPE=Release \
-              -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
-              -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$(pwd)/scripts/cyclonedds/msg_to_cyclone_idl.py" \
-              > /dev/null
-        cmake --build examples/qemu-arm-freertos/rust/${case}/build-cyclonedds > /dev/null
-      done
+      echo "  → freertos rust cyclonedds fixtures retired (Phase 220.C path B — pure-cargo only; BSP gate 214.S.5.b)"
     else
       echo "  → freertos cyclonedds fixtures skipped (no idlc on PATH — install a ROS 2 / CycloneDDS idlc, or set IDLC_EXECUTABLE)"
     fi
@@ -291,6 +265,8 @@ clean:
     rm -rf build/cmake-freertos-armcm3-zenoh
     for example in talker listener service-server service-client action-server action-client; do
         rm -rf "examples/qemu-arm-freertos/rust/$example/target-zenoh"
+        # Phase 220.C path B — `build-cyclonedds` retired from rust freertos
+        # (no cmake-bridge build path); leave the rm for legacy artifacts.
         rm -rf "examples/qemu-arm-freertos/rust/$example/build-cyclonedds"
         rm -rf "examples/qemu-arm-freertos/c/$example/build-zenoh"
         rm -rf "examples/qemu-arm-freertos/cpp/$example/build-zenoh"

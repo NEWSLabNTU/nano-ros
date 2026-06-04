@@ -74,6 +74,7 @@ fn test_freertos_detection() {
 // =============================================================================
 
 #[test]
+#[ignore = "Phase 220.C path B: FreeRTOS rust cyclonedds fixture retired (cmake-bridge removed; pure-cargo path blocked on Phase 214.S.5.b BSP gate). Sibling `test_freertos_rust_cyclonedds_local_pubsub_e2e` carries the same gate."]
 fn test_freertos_rust_talker_cyclonedds_boot() {
     if !require_freertos() {
         nros_tests::skip!("require_freertos check failed");
