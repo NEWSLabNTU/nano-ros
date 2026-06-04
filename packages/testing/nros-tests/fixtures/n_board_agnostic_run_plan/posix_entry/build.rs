@@ -12,12 +12,21 @@
 //! shared fixture-level `launch/` dir.
 
 fn main() {
-    let launch =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../launch/system.launch.xml");
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture_root = manifest.parent().expect("manifest parent").to_path_buf();
+    let launch = fixture_root.join("launch/system.launch.xml");
     println!("cargo:rerun-if-changed={}", launch.display());
     println!("cargo:rerun-if-changed=build.rs");
 
-    match nros_build::generate_run_plan(&launch) {
+    // Override `Options::workspace_root`: nros-build's `from_env`
+    // default (`manifest.parent().parent()`) assumes the canonical
+    // `<workspace>/src/<entry>/Cargo.toml` layout. The Entry pkgs in
+    // this fixture sit one level shallower (sibling of `src/`), so
+    // we point the planner at the actual fixture root directly.
+    let mut opts = nros_build::Options::from_env(&launch);
+    opts.workspace_root = fixture_root;
+
+    match nros_build::generate_run_plan_with(&opts) {
         Ok(path) => eprintln!("nros-build: emitted {}", path.display()),
         Err(err) => {
             // Offline / network-blocked fallback. Stub keeps the bin

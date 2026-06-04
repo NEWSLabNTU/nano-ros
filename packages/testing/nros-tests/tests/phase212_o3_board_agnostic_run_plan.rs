@@ -117,6 +117,21 @@ fn walk(root: &Path) -> std::io::Result<Vec<PathBuf>> {
 }
 
 fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
+    // Phase 212.O.3 / O.5 — also resolve `@NROS_CLI_ROOT@` so fixtures
+    // can `[patch]` the `nros-build` git dep against a local nros-cli
+    // checkout. Falls back to `<nano-ros>/../nros-cli` if the env var
+    // isn't set (CLAUDE.md convention for the sibling repo location).
+    // When the local path doesn't exist, the placeholder is left intact
+    // and the `[patch]` block fails open — git dep wins as before.
+    let nros_cli_root = std::env::var("NROS_CLI_ROOT")
+        .ok()
+        .filter(|p| std::path::Path::new(p).is_dir())
+        .or_else(|| {
+            let guess = std::path::Path::new(replacement)
+                .parent()
+                .map(|p| p.join("nros-cli"))?;
+            guess.is_dir().then(|| guess.display().to_string())
+        });
     for entry in walk(root)? {
         if !entry.is_file() {
             continue;
@@ -124,10 +139,13 @@ fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
         let Ok(text) = fs::read_to_string(&entry) else {
             continue;
         };
-        if !text.contains("@NANO_ROS_ROOT@") {
-            continue;
+        let mut new_text = text.replace("@NANO_ROS_ROOT@", replacement);
+        if let Some(cli_root) = nros_cli_root.as_deref() {
+            new_text = new_text.replace("@NROS_CLI_ROOT@", cli_root);
         }
-        fs::write(&entry, text.replace("@NANO_ROS_ROOT@", replacement))?;
+        if new_text != text {
+            fs::write(&entry, new_text)?;
+        }
     }
     Ok(())
 }

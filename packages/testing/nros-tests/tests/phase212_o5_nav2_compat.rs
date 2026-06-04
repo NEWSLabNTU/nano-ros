@@ -85,6 +85,17 @@ fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
+    // Phase 212.O.5 — resolve `@NROS_CLI_ROOT@` for the offline-friendly
+    // nros-build patch-override (see fixture demo_entry/Cargo.toml).
+    let nros_cli_root = std::env::var("NROS_CLI_ROOT")
+        .ok()
+        .filter(|p| std::path::Path::new(p).is_dir())
+        .or_else(|| {
+            let guess = std::path::Path::new(replacement)
+                .parent()
+                .map(|p| p.join("nros-cli"))?;
+            guess.is_dir().then(|| guess.display().to_string())
+        });
     for entry in walk(root)? {
         if !entry.is_file() {
             continue;
@@ -92,10 +103,13 @@ fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
         let Ok(text) = fs::read_to_string(&entry) else {
             continue;
         };
-        if !text.contains("@NANO_ROS_ROOT@") {
-            continue;
+        let mut new_text = text.replace("@NANO_ROS_ROOT@", replacement);
+        if let Some(cli_root) = nros_cli_root.as_deref() {
+            new_text = new_text.replace("@NROS_CLI_ROOT@", cli_root);
         }
-        fs::write(&entry, text.replace("@NANO_ROS_ROOT@", replacement))?;
+        if new_text != text {
+            fs::write(&entry, new_text)?;
+        }
     }
     Ok(())
 }
