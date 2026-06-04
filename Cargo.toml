@@ -18,6 +18,8 @@ members = [
     # repo-relative paths without `just`/`.envrc`. Lets bare `cargo
     # build` succeed in a fresh shell (the audit blocker P1).
     "packages/core/nros-build-paths",
+    # Phase 221.A.2 — shared build-script helpers for nros-c/nros-cpp.
+    "packages/core/nros-build-helpers",
     # Phase 149.5 — shared build-script helpers (manifest parser +
     # link-feature policy) consumed by zpico-sys + the per-kernel
     # generic board crates as `[build-dependencies]`.
@@ -504,6 +506,7 @@ nros-rmw-cffi = { version = "0.4.0", path = "packages/core/nros-rmw-cffi", defau
 nros-node = { version = "0.4.0", path = "packages/core/nros-node", default-features = false }
 nros-log = { version = "0.4.0", path = "packages/core/nros-log" }
 nros-orchestration = { version = "0.4.0", path = "packages/core/nros-orchestration", default-features = false }
+nros-build-helpers = { version = "0.4.0", path = "packages/core/nros-build-helpers" }
 nros-sizes-build = { version = "0.4.0", path = "packages/core/nros-sizes-build" }
 nros-platform = { version = "0.4.0", path = "packages/core/nros-platform", default-features = false }
 nros-platform-cffi = { version = "0.4.0", path = "packages/core/nros-platform-cffi", default-features = false }

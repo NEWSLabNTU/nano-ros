@@ -2018,6 +2018,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-build-helpers"
+version = "0.4.0"
+dependencies = [
+ "cbindgen",
+ "cc",
+ "nros-sizes-build",
+]
+
+[[package]]
 name = "nros-build-paths"
 version = "0.4.0"
 
@@ -2034,17 +2043,15 @@ dependencies = [
 name = "nros-c"
 version = "0.4.0"
 dependencies = [
- "cbindgen",
- "cc",
  "critical-section",
  "nros",
+ "nros-build-helpers",
  "nros-core",
  "nros-log",
  "nros-node",
  "nros-rmw",
  "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",
- "nros-sizes-build",
  "panic-halt",
  "paste",
  "portable-atomic",
@@ -2082,17 +2089,15 @@ dependencies = [
 name = "nros-cpp"
 version = "0.4.0"
 dependencies = [
- "cbindgen",
- "cc",
  "critical-section",
  "nros",
+ "nros-build-helpers",
  "nros-log",
  "nros-node",
  "nros-platform",
  "nros-rmw",
  "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",
- "nros-sizes-build",
  "panic-halt",
 ]
 
