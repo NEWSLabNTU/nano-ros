@@ -109,12 +109,14 @@ accepts the Arm EULA, installs the FVP locally, and exports
       Arm download URL + EULA pointer. `--print-env` re-emits the
       `export ARMFVP_BIN_PATH=…` line; `--help` shows usage. Landed
       2026-06-04.
-- [ ] **217.B.2** `nros doctor` check — `[gated.arm-fvp]` reports
+- [x] **217.B.2** `nros doctor` check — `[gated.arm-fvp]` reports
       `arm-fvp-installer` as a known installer; `nros doctor` matches
       and flags missing `ARM_FVP_DIR` as a warning (not a hard fail,
-      gated). Lives in the standalone `nros-cli` repo
-      (`github.com/NEWSLabNTU/nros-cli`, feature branch
-      `feature/phase-217-fvp-doctor`).
+      gated). LANDED 2026-06-04 on `nros-cli` main at `f092a8c`
+      (`feat(217.B.2): nros doctor --board fvp-aemv8r-smp + arm-fvp
+      gated check`). `--board <name>` filter scopes the gated check
+      to the board's `NROS_BOARD_GATED_PKGS` set (Phase 215.A.2
+      contract). 3 doctor unit tests pass.
 - [x] **217.B.3** Book/reference doc — point at
       `docs/reference/environment-variables.md` for `ARM_FVP_DIR` +
       `ARMFVP_BIN_PATH` (existing convention). **Doc-side LANDED
@@ -160,12 +162,18 @@ accepts the Arm EULA, installs the FVP locally, and exports
       override; added to `justfile`'s fast-path exclusion. Landed 2026-06-04.
 - [ ] **217.C.3** Parity check vs Phase 175.A native cyclonedds Rust
       talker/listener: same `std_msgs/Int32` payload, byte-equal wire
-      format (Phase 117 stock-RMW interop contract). **Blocks on:** 217.D
-      (the matching Rust example on FVP hasn't shipped yet).
+      format (Phase 117 stock-RMW interop contract). **Blocks on:**
+      Phase 212.L.7 self-pkg codegen (`rust_main` emission) — until
+      the FVP Rust talker actually publishes, there is no wire stream
+      to byte-compare against the native peer. 217.D.1 + 217.D.2
+      shipped the example + build path; 217.D.3 shipped the boot
+      smoke; the publish-loop driver is the missing link.
 
 **Files:** `packages/testing/nros-tests/tests/phase217_c_fvp_runtime.rs`
-(new), `.config/nextest.toml` group entry + `binary(phase217_c_fvp_runtime)`
-override, `justfile` fast-path exclusion.
+(new), `packages/testing/nros-tests/tests/phase217_d_fvp_runtime_rust.rs`
+(new — D.3 sibling), `.config/nextest.toml` group entry +
+`binary(phase217_c_fvp_runtime)` and `binary(phase217_d_fvp_runtime_rust)`
+overrides, `justfile` fast-path exclusion.
 
 ### 217.D — Rust example on FVP (OPEN)
 
@@ -195,8 +203,18 @@ Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
       codegen prereq + exports `NROS_REPO_DIR` so the example's
       `nano_ros_use_board()` include resolves; run recipe shells
       `west fvp run` over `build-fvp-aemv8r-cyclonedds-rust-talker/`.
-- [ ] **217.D.3** Smoke alongside 217.C.1. **Blocks on:** 217.C.1
-      (parallel slot owns `packages/testing/nros-tests/tests/phase217_c_*.rs`).
+- [~] **217.D.3** Smoke alongside 217.C.1 — sibling test
+      `packages/testing/nros-tests/tests/phase217_d_fvp_runtime_rust.rs`
+      LANDED 2026-06-04. Same skip-precondition pattern as C.1
+      (FVP resolver / west / workspace / Rust ELF prebuilt). Asserts
+      the Zephyr 3.7 boot banner reaches UART after the Rust ELF is
+      loaded by the FVP — proves Rust artifact links + executes on
+      Cortex-A SMP. Routed into the `zephyr-fvp` nextest group via
+      `binary(phase217_d_fvp_runtime_rust)` override.
+      **Remaining:** `Published:` assertion deferred until Phase
+      212.L.7 self-pkg codegen emits `rust_main` for Component pkgs;
+      the test carries an inline `TODO(Phase 212.L.7)` marking the
+      bump site. Closing this to `[x]` waits on 212.L.7.
 
 **Files:** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` (new tree),
 `just/zephyr.just`.

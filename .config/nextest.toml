@@ -470,6 +470,16 @@ test-group = "zephyr-fvp"
 slow-timeout = { period = "180s", terminate-after = 2 }
 retries = 1
 
+# Phase 217.D.3 — Rust sibling smoke on the same FVP. Boots the Rust
+# Component-pkg ELF (no `Published:` assertion yet — pending Phase
+# 212.L.7 self-pkg `rust_main` codegen). Same group / timeout as C.1
+# so the two tests don't race the single FVP license seat.
+[[profile.default.overrides]]
+filter = "binary(phase217_d_fvp_runtime_rust)"
+test-group = "zephyr-fvp"
+slow-timeout = { period = "180s", terminate-after = 2 }
+retries = 1
+
 # Phase 11W.12 — serialize the native_sim Cyclone DDS boot + pub/sub
 # E2E tests (in phase_118_collapse). They spawn host native_sim
 # processes that bind the fixed SPDP multicast port; concurrent runs
