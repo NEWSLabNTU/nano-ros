@@ -255,10 +255,16 @@ exclude = [
     "examples/stm32f4/rust/action-server-rtic",
     "examples/stm32f4/rust/action-client-rtic",
     "examples/stm32f4/rust/talker-embassy",
+    "examples/stm32f4/rust/listener-embassy",
     # Phase 216.C.4 — board-agnostic talker Node pkg shared by the
     # Embassy + RTIC (parallel B.5 wave) Entry pkgs above. Excluded
     # because it cross-builds for `thumbv7em-none-eabihf` only.
     "examples/stm32f4/rust/talker_pkg",
+    # Phase 216.C.5 — board-agnostic listener Node pkg (Deferred
+    # dispatch + tag-based subscription) shared by the Embassy +
+    # RTIC (parallel B.5 wave) Entry pkgs above. Excluded because
+    # it cross-builds for `thumbv7em-none-eabihf` only.
+    "examples/stm32f4/rust/listener_pkg",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples
     # Phase 168.1 collapsed-shape Rust examples (one dir, N RMW

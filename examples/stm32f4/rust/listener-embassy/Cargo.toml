@@ -1,0 +1,92 @@
+[package]
+name = "stm32f4-rs-embassy-listener-example"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Embassy listener example for nros on STM32F4 — Phase 216.C.5 Deferred-dispatch shape"
+
+[[bin]]
+name = "stm32f4-rs-embassy-listener-example"
+path = "src/main.rs"
+
+# Phase 216.C.5 — Entry pkg `[package.metadata.nros.entry] deploy =
+# "embassy-stm32f4"` routes the `nros::main!()` proc-macro onto the
+# C.3 Embassy emit branch (`#[embassy_executor::main] async fn main`
+# that delegates to `EmbassyBoardEntry::init_hardware`). The deploy
+# key also feeds `nros check` (Phase 216.D.1) — which validates the
+# Node pkg's `DISPATCH = Deferred` against the Embassy framework's
+# `dispatch_strategy() = Deferred`.
+[package.metadata.nros.entry]
+deploy = "embassy-stm32f4"
+
+[dependencies]
+# Phase 216.C.5 — `nros::main!()` proc-macro family. The macro emits
+# the `#[embassy_executor::main]` body + `__nros_spin_task` /
+# `__nros_dispatch_task` `#[embassy_executor::task]` sidekicks via the
+# C.3 routing branch, so this Entry pkg only needs `nros` + the
+# board crate + the listener Node pkg.
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+# Phase 216.C.2 board crate — supplies the `EmbassyStm32F4` ZST the
+# macro-generated body delegates init to via
+# `EmbassyBoardEntry::init_hardware`. Today the bringup body is
+# `todo!()` so a flash surfaces the unimplemented panic; the macro
+# emit only needs to compile here.
+nros-board-embassy-stm32f4 = { path = "../../../../packages/boards/nros-board-embassy-stm32f4" }
+# Phase 216.C.5 Node pkg — board-agnostic listener (Deferred
+# dispatch + tag-based subscription + spawn-from-sync escape) that
+# the macro wires into the dispatch runtime once the trampoline-
+# registration story lands (216.C follow-up). Listed as a dep so
+# the bin target links the rlib that exports `register` /
+# `nros::node!()`-emitted trampolines, mirroring the
+# `stm32f4_talker_pkg` link from `talker-embassy`.
+stm32f4_listener_pkg = { path = "../listener_pkg" }
+
+# Embassy runtime — re-listed because the macro-emitted body
+# references `::embassy_executor::main`, `::embassy_executor::task`,
+# `::embassy_time::Timer`, etc. by absolute path. The Entry pkg owns
+# the embassy version pin (`0.7` / `0.4` matches
+# `nros-board-embassy-stm32f4`'s pin).
+embassy-executor = { version = "0.7", features = ["arch-cortex-m", "executor-thread"] }
+embassy-time = { version = "0.4", features = ["tick-hz-1_000"] }
+
+# Cortex-M runtime
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+panic-halt = "0.2"
+
+# Logging
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = 3
+overflow-checks = false
+
+[profile.dev]
+codegen-units = 1
+debug = 2
+incremental = false
+opt-level = 1
+
+# Phase 204.3 — size-optimized profile: opt-level "z" + strip, inheriting
+# release's lto/codegen-units. Build with `cargo build --profile size`
+# (or fleet-wide via `NROS_CARGO_PROFILE=size just <plat> build`).
+[profile.size]
+inherits = "release"
+opt-level = "s"
+debug = false
+strip = true
+
+# Phase 208.F1 — empty `[workspace]` table makes this example a standalone
+# workspace root. Without it, cargo walks up + adopts the example into the
+# outer nano-ros workspace (in nested checkouts) or gets adopted by a user's
+# workspace `members` glob when they copy this example out, breaking the
+# README's "standalone copy-out template" promise. Canonical in-tree builds
+# also pass via the root `exclude = [...]` list (belt-and-braces).
+[workspace]
