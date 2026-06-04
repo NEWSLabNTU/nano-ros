@@ -588,3 +588,83 @@ top of everything.
   v1. Phase 212.L.2 ruled Entry pkgs `native`-only at the cmake
   surface; an embedded C/C++ Entry path is a follow-on once a C/C++
   embedded board impl exists (cf. Phase 216.D).
+
+---
+
+## 8. C++ items surfaced 2026-06-04 (post-Phase-218 workflow audit)
+
+Audit of the three-role per-language support matrix (alongside the
+Phase 220 CLI shrink + Phase 221 C completion) surfaced four
+C++-specific items that fall under this phase's scope. None block
+the core 219.A–G plan; track as follow-ups on the same branch when
+that lands.
+
+### 8.1 `NROS_NODE` shorter alias
+
+The Rust surface is `nros::node!(Talker);` (one arg). The C++ surface
+is `NROS_NODE_REGISTER(Talker, "talker_pkg::Talker");` (two args). The
+quoted qualified name is **derivable** at compile time from
+`__PRETTY_FUNCTION__` / a constexpr stringification of the type, OR
+from `NROS_PKG_NAME` + the user-supplied class name plus a `::`
+separator (assuming the C++ pkg follows the `<pkg>::<UserClass>`
+convention enforced by Phase 212.L.4's lint).
+
+- [ ] **219.H.1** Add a 1-arg `NROS_NODE(UserClass)` alias that
+      derives the qualified-class-name string by macro concatenation
+      with `NROS_PKG_NAME`. Mirrors Rust's `nros::node!(Talker)`
+      ergonomics. Existing 2-arg `NROS_NODE_REGISTER` stays for
+      back-compat / explicit override cases.
+
+**Files:** `packages/core/nros-cpp/include/nros/node_pkg.hpp`.
+
+### 8.2 Document the C++ Node pkg → Rust Entry pkg link path
+
+The C-FFI register trampoline (`__nros_component_<pkg>_register`) is
+language-agnostic — a C++ Node pkg already links cleanly into a Rust
+Entry pkg today (the per-pkg mangled register fn is C-ABI; cargo
+sees it as an extern "C" symbol via build-script + linker glue). This
+shape works but is **undocumented**: a user who wants C++ Node pkgs
+linked into a Rust Entry pkg has no chapter / example to follow.
+
+- [ ] **219.H.2** Book chapter (or `workspace-mixed-language.md`
+      section, see Phase 221.B.2) documenting the C++ Node pkg → Rust
+      Entry pkg link. Same path as C → C++/Rust (Phase 221.B); just
+      a different upstream lang.
+
+**Files:** `book/src/getting-started/workspace-mixed-language.md`
+(new — owned by Phase 221.B.2; coordinated cross-ref).
+
+### 8.3 `nros_entry()` cmake fn — accept C++ Node pkgs from `<exec_depend>`
+
+When the Phase 219.A `nros_entry(LAUNCH "demo_bringup")` cmake fn
+resolves the Bringup pkg's `<exec_depend>` list, it must accept
+C++ Node pkg dependencies cleanly without forcing them into a
+`<build_depend>` re-emission shape. Today's `nano_ros_node_register()`
+cmake fn (Phase 212.L.9) already handles this for the
+codegen-from-`system.toml` path; 219.A's launch.xml-driven path
+needs to follow the same convention.
+
+- [ ] **219.H.3** `nros_entry()` cmake fn — link C++ Node pkg static
+      libs from the resolved `<node pkg="...">` set in launch.xml,
+      treating C++ and Rust Node pkgs symmetrically (the existing
+      C++ Node pkg `<pkg>_node_lib` target is linked the same way
+      the Rust rlib import would be).
+
+**Files:** `cmake/NanoRosEntry.cmake`.
+
+### 8.4 C++ Entry pkg `--lang cpp` in `nros new`
+
+- [ ] **219.H.4** `nros new --entry --lang cpp <name>` scaffolds a
+      valid C++ Entry pkg (CMakeLists with `nros_entry(...)` +
+      `main.cpp` with `NROS_MAIN(...)`). The CLI currently rejects
+      this combination (see Phase 219.workflow-review's enumerated
+      gaps). Lift the rejection once 219.A's codegen surface lands.
+
+**Files:** `packages/cli/nros-cli-core/src/cmd/new.rs`.
+
+### 8.5 Status
+
+- [ ] **219.H** — all sub-items above. Land alongside or immediately
+      after 219.A–F. None blocks 219.G (book chapter) — that chapter
+      cross-references the 219.H mixed-lang link path + 1-arg
+      `NROS_NODE` alias once they ship.
