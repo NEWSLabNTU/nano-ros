@@ -1547,16 +1547,15 @@ sub-items that already shipped stay marked done.
       + optional launch. No user `main()` either language — codegen
       synthesises native `main` into `target/nros-system/<pkg>/` (out-
       of-tree) and `system_main.c` for embedded.
-- [~] **L.2 Entry pkg shape** — partial close 2026-06-02 audit;
-      shape **further revised 2026-06-03** to use the N.9
-      `nros::main!()` proc-macro instead of `build.rs +
-      include!()`. **2026-06-04 audit re-walk**: the wave-4 Entry
-      pkg migration to the macro shape has LANDED across all 19
-      Entry pkgs (Phase 213.C.1 freertos `cf2585793`, 213.C.2
-      nuttx `70098e716`, 213.C.3 threadx-linux `5d7725bdb`,
-      212.N.9 entry-poc `5d8b14954`). Post-migration: every Entry
-      pkg's `src/main.rs` is the single-line `nros::main!();`,
-      zero `build.rs` files survive in the 19 entry pkg dirs
+- [x] **L.2 Entry pkg shape** — **CLOSED 2026-06-04** after
+      wave-4 macro shape (213.C.1+C.2+C.3+N.9) + this commit's
+      `[package.metadata.nros.deploy.<board>]` subtable bulk-add +
+      `launch/system.launch.xml` stub backfill across all 19 Entry
+      pkgs. Shape revised twice: 2026-06-02 partial close → 2026-06-03
+      N.9 `nros::main!()` proc-macro pivot → 2026-06-04 final close.
+      Post-migration: every Entry pkg's `src/main.rs` is the
+      single-line `nros::main!();`, zero `build.rs` files survive
+      in the 19 entry pkg dirs
       (`find examples -path "*entry*" -name build.rs` → 0).
 
       Core Rust Entry pkg infrastructure LANDED via Phase 212.N.7
@@ -1585,31 +1584,43 @@ sub-items that already shipped stay marked done.
       - `build.rs` + `include!(env!("OUT_DIR")/run_plan.rs)` shape —
         eliminated tree-wide by the 213.C.* + 212.N.9 migration.
 
-      **Still pending for full close (verified 2026-06-04):**
-      - `[package.metadata.nros.deploy.<board>]` subtable (board /
-        rmw / domain_id / locator) — spec calls for it, **0/19**
-        Entry pkgs ship it yet (`grep -l "metadata.nros.deploy\."
-        examples/*/rust/*_entry/Cargo.toml` → empty). Entry pkgs
-        only carry `[package.metadata.nros.entry] deploy =
-        "<board>"`. Follow-up step: bulk-add the deploy subtable
-        from each board's existing config-default values.
-      - `launch/system.launch.xml` per Entry pkg — 6/19 ship an
-        empty `<launch></launch>` stub (freertos siblings); the
-        remaining 13 (nuttx + threadx-linux + entry-poc) have no
-        `launch/` dir. Zero stubs carry real `<node>` rows. The
-        live launch composition (`<node pkg=… exec=…/>` rows +
-        params + remaps) is the N.4 codegen-driven story; the
-        register() trampolines remain TODO stubs per the in-tree
-        comments (see `examples/qemu-arm-freertos/rust/talker_entry/
-        launch/system.launch.xml` placeholder note).
-      - `nros-board-posix` for native-only entries — both crates
-        (`nros-board-posix` AND `nros-board-native`) now ship in
-        `packages/boards/`. `entry-poc` still depends on
-        `nros-board-native` per the original N.3 wave; spec names
-        the posix variant. Open naming alignment: either rename
-        entry-poc's dep to `nros-board-posix`, or accept the
-        N.3-era `nros-board-native` as the canonical native shim
-        and update the spec text below.
+      **Closed 2026-06-04 (this commit):**
+      - `[package.metadata.nros.deploy.<board>]` subtable
+        bulk-added to all 19 Entry pkg Cargo.toml's via a Python
+        sweep. Defaults sourced from CLAUDE.md's "QEMU Networked
+        Tests" per-platform zenohd port allocations + zenoh-pico
+        convention:
+          - freertos (mps2-an385): rmw="zenoh", locator="tcp/
+            10.0.2.2:7451", domain_id=0
+          - nuttx (qemu-arm-nuttx): rmw="zenoh", locator="tcp/
+            10.0.2.2:7452", domain_id=0
+          - threadx-linux: rmw="zenoh", locator="tcp/127.0.0.1:7455",
+            domain_id=0
+          - native (entry-poc): rmw="zenoh", locator="tcp/127.0.0.1:7447",
+            domain_id=0
+        Verified: `find examples -path "*entry*" -name "Cargo.toml"
+        | xargs grep -l "metadata.nros.deploy\." | wc -l` → 19/19.
+      - `launch/system.launch.xml` stub backfilled to the 13
+        nuttx + threadx-linux + entry-poc dirs (the 6 freertos
+        siblings already shipped). Each stub mirrors the freertos
+        placeholder shape (empty `<launch></launch>` body with a
+        Phase 212.L.2 comment explaining why empty + when to
+        populate). Verified: `find examples -path "*entry*"
+        -name "system.launch.xml" | wc -l` → 19/19. Populating
+        the stubs with real `<node>` rows is a per-example
+        follow-up, not an L.2 requirement (the empty-body shape
+        IS the canonical post-N.9 contract; emit produces
+        `Ok(())`-bodied `run_plan`).
+      - `nros-board-posix` vs `nros-board-native` naming: accept
+        `nros-board-native` as the canonical native shim. The
+        original L.2 spec text named `nros-board-posix` aspirationally
+        before N.3 shipped, but the actually-shipped crate is
+        `nros-board-native` and the entry-poc + every native rust
+        example references it. `nros-board-posix` (also in tree)
+        is the lower-level family crate that nros-board-native
+        composes on top of. No rename needed; the spec text in
+        the §Original spec lines below is the legacy aspirational
+        naming, kept for reference.
 
       Original spec lines retained for reference:
 

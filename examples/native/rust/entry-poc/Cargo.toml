@@ -15,6 +15,15 @@ path = "src/main.rs"
 [package.metadata.nros.entry]
 deploy = "native"
 
+
+# Phase 212.L.2 — deploy-target overlay. Per the L.2 spec
+# (`Cargo.toml` carries `[package.metadata.nros.deploy.<board>]`
+# with board / rmw / domain_id / locator), populated from the
+# `nros-board-*` shim's config-default values.
+[package.metadata.nros.deploy.native]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/127.0.0.1:7447"
 [dependencies]
 # Phase 212.N.9 — `nros::main!()` proc-macro lives here.
 nros = { path = "../../../../packages/core/nros" }

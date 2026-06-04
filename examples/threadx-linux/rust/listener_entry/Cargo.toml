@@ -13,6 +13,15 @@ path = "src/main.rs"
 [package.metadata.nros.entry]
 deploy = "threadx-linux"
 
+
+# Phase 212.L.2 — deploy-target overlay. Per the L.2 spec
+# (`Cargo.toml` carries `[package.metadata.nros.deploy.<board>]`
+# with board / rmw / domain_id / locator), populated from the
+# `nros-board-*` shim's config-default values.
+[package.metadata.nros.deploy.threadx-linux]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/127.0.0.1:7455"
 [dependencies]
 # Phase 213.C.3 — `nros::main!()` proc-macro lives here.
 nros = { path = "../../../../packages/core/nros" }
