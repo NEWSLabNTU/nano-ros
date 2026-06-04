@@ -232,8 +232,14 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let mut tracked: Vec<PathBuf> = Vec::new();
 
     // --- Board resolution ---
-    let board_path = match &args.board {
-        Some(p) => p.clone(),
+    // `deploy` is `Some(...)` only when the macro had to read the
+    // Entry pkg's `[package.metadata.nros.entry] deploy = "..."` key
+    // (form 1). When the user passes `board = X` directly we have no
+    // deploy string and default to the `OwnedSpin` framework — RTIC
+    // / Embassy require the `deploy = "rtic-stm32f4"` / `deploy =
+    // "embassy-stm32f4"` opt-in for now.
+    let (board_path, deploy_for_framework): (SynPath, Option<String>) = match &args.board {
+        Some(p) => (p.clone(), None),
         None => {
             let cargo_toml = manifest_dir.join("Cargo.toml");
             tracked.push(cargo_toml.clone());
@@ -249,7 +255,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     ),
                 )
             })?;
-            board_path_for(&deploy).ok_or_else(|| {
+            let resolved = board_path_for(&deploy).ok_or_else(|| {
                 syn::Error::new(
                     Span::call_site(),
                     format!(
@@ -260,8 +266,13 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         known_boards_csv()
                     ),
                 )
-            })?
+            })?;
+            (resolved, Some(deploy))
         }
+    };
+    let framework = match deploy_for_framework.as_deref() {
+        Some(d) => framework_for(d),
+        None => Framework::OwnedSpin,
     };
 
     // --- Launch resolution → list of <pkg_ident> register calls ---
@@ -444,11 +455,132 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         })
     });
 
-    let register_calls = pkg_idents.iter().map(|ident| {
-        quote! {
-            ::#ident::register(runtime)?;
+    let register_calls: Vec<proc_macro2::TokenStream> = pkg_idents
+        .iter()
+        .map(|ident| {
+            quote! {
+                ::#ident::register(runtime)?;
+            }
+        })
+        .collect();
+
+    // Phase 216.B.3 — framework-dispatched emit body. `OwnedSpin`
+    // keeps the long-standing `fn __nros_entry_run + fn main` shape
+    // (BoardEntry::run owns the spin loop). `Rtic` emits a
+    // `#[rtic::app(...)]` skeleton that delegates to
+    // `RticBoardEntry::init_hardware` from the framework-generated
+    // `#[init]` body. `Embassy` is a hard error pointing at the
+    // 216.C.3 sibling that lands the emit body.
+    let body_ts: proc_macro2::TokenStream = match framework {
+        Framework::OwnedSpin => quote! {
+            // Phase 213.C follow-up — emit two cfg-gated entry shapes so
+            // both hosted (POSIX / NuttX / threadx-linux) and embedded
+            // (FreeRTOS / bare-metal `target_os = "none"`) targets resolve
+            // a working `main`. The shared body is factored into a private
+            // `__nros_entry_run` returning `Result` so neither arm
+            // duplicates the closure logic.
+            fn __nros_entry_run() -> ::core::result::Result<
+                (),
+                ::nros::__macro_support::nros_platform::RuntimeError,
+            > {
+                <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run(
+                    |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
+                        -> ::core::result::Result<
+                            (),
+                            ::nros::__macro_support::nros_platform::RuntimeError,
+                        >
+                    {
+                        #( #register_calls )*
+                        ::core::result::Result::Ok(())
+                    },
+                )
+            }
+
+            #[cfg(not(target_os = "none"))]
+            fn main() {
+                if let ::core::result::Result::Err(e) = __nros_entry_run() {
+                    ::std::eprintln!("{}: {}", ::core::env!("CARGO_PKG_NAME"), e);
+                    ::std::process::exit(1);
+                }
+            }
+
+            #[cfg(target_os = "none")]
+            #[unsafe(no_mangle)]
+            pub extern "C" fn main() -> i32 {
+                match __nros_entry_run() {
+                    ::core::result::Result::Ok(()) => 0,
+                    ::core::result::Result::Err(_) => 1,
+                }
+            }
+        },
+        Framework::Rtic => {
+            // Phase 216.B.3 SKELETON — `#[rtic::app(...)]` module that
+            // delegates boot to `RticBoardEntry::init_hardware`. The
+            // full body (the `__nros_spin` + `__nros_dispatch` software
+            // tasks, the per-Node register/spawn wiring, the
+            // `custom_tasks = [...]` macro-arg surface) lands in a
+            // 216.B.3 follow-up. Today's emit only needs to compile so
+            // the route through `framework_for(deploy)` is observable
+            // — runtime use surfaces the board crate's `todo!()` in
+            // `init_hardware` (intentional).
+            //
+            // Hardcoded `dispatchers = [USART1, USART2]` matches
+            // `RticStm32F4::DISPATCHERS`. A follow-up reads the const
+            // from the board crate at macro-expansion time (requires a
+            // build-graph fs round-trip we want to defer).
+            //
+            // The `#![no_std]`/`#![no_main]` inner attrs are NOT emitted
+            // here — the Entry pkg's `main.rs` already declares those
+            // at file scope (see the talker-rtic example). Emitting
+            // them inside the macro would double-declare.
+            quote! {
+                use #board_path as __NrosBoard;
+
+                #[::rtic::app(
+                    device = stm32f4xx_hal::pac,
+                    dispatchers = [USART1, USART2]
+                )]
+                mod __nros_app {
+                    use super::*;
+
+                    #[shared]
+                    struct Shared {}
+
+                    #[local]
+                    struct Local {}
+
+                    #[init]
+                    fn init(cx: init::Context) -> (Shared, Local) {
+                        // Phase 216.B.3 SKELETON — full bring-up + per-Node
+                        // register + `__nros_spin` / `__nros_dispatch`
+                        // software-task spawn lands in a 216.B.3 follow-up.
+                        // The board crate's `init_hardware` body is
+                        // `todo!()` today (Phase 216.B.2), which surfaces
+                        // at runtime if someone flashes this — the macro
+                        // emit just needs to compile.
+                        let (_executor, _runtime) =
+                            <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::init_hardware(
+                                cx.device,
+                                cx.core,
+                            );
+                        (Shared {}, Local {})
+                    }
+                }
+            }
         }
-    });
+        Framework::Embassy => {
+            // Phase 216.C.3 sibling lands the Embassy emit body; this
+            // commit only wires the `Framework::Embassy` slot so the
+            // dispatch table is complete.
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "nros::main!: `deploy = \"embassy-stm32f4\"` routing is not yet \
+                 implemented — Phase 216.C.3 lands the Embassy emit body. \
+                 Until then, pass `board = ...` explicitly to get the \
+                 OwnedSpin path, or wait for the 216.C.3 sibling.",
+            ));
+        }
+    };
 
     let expanded = quote! {
         // Phase 212.N.9 — rebuild-tracking workaround. Stable Rust
@@ -458,45 +590,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // when any tracked file changes.
         #( #tracked_consts )*
 
-        // Phase 213.C follow-up — emit two cfg-gated entry shapes so
-        // both hosted (POSIX / NuttX / threadx-linux) and embedded
-        // (FreeRTOS / bare-metal `target_os = "none"`) targets resolve
-        // a working `main`. The shared body is factored into a private
-        // `__nros_entry_run` returning `Result` so neither arm
-        // duplicates the closure logic.
-        fn __nros_entry_run() -> ::core::result::Result<
-            (),
-            ::nros::__macro_support::nros_platform::RuntimeError,
-        > {
-            <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run(
-                |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
-                    -> ::core::result::Result<
-                        (),
-                        ::nros::__macro_support::nros_platform::RuntimeError,
-                    >
-                {
-                    #( #register_calls )*
-                    ::core::result::Result::Ok(())
-                },
-            )
-        }
-
-        #[cfg(not(target_os = "none"))]
-        fn main() {
-            if let ::core::result::Result::Err(e) = __nros_entry_run() {
-                ::std::eprintln!("{}: {}", ::core::env!("CARGO_PKG_NAME"), e);
-                ::std::process::exit(1);
-            }
-        }
-
-        #[cfg(target_os = "none")]
-        #[unsafe(no_mangle)]
-        pub extern "C" fn main() -> i32 {
-            match __nros_entry_run() {
-                ::core::result::Result::Ok(()) => 0,
-                ::core::result::Result::Err(_) => 1,
-            }
-        }
+        #body_ts
     };
 
     Ok(expanded)
@@ -551,13 +645,53 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
         "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
         "esp32" => "::nros_board_esp32::Esp32",
         "zephyr" => "::nros_board_zephyr::Zephyr",
+        // Phase 216.B.3 — RTIC + STM32F4 framework-owned-spin board.
+        // The board ZST impls `RticBoardEntry` (not `BoardEntry`);
+        // the macro routes through `framework_for(deploy)` below to
+        // pick the `#[rtic::app(...)]` emit shape instead of the
+        // direct-exec `BoardEntry::run` shape.
+        "rtic-stm32f4" => "::nros_board_rtic_stm32f4::RticStm32F4",
         _ => return None,
     };
     syn::parse_str::<SynPath>(path_str).ok()
 }
 
 fn known_boards_csv() -> &'static str {
-    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, zephyr"
+    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, zephyr, rtic-stm32f4"
+}
+
+/// Phase 216.B.3 — boot-framework dispatch for `nros::main!()`.
+///
+/// Distinct from [`board_path_for`] (which only resolves the board
+/// crate ZST). Frameworks are orthogonal to RMW + platform: each
+/// board crate carries its own
+/// `[package.metadata.nros.board] framework = "<f>"` knob (consumed
+/// by 216.D.1 `nros check`). The macro keys off the Entry pkg's
+/// `deploy = "..."` value directly to avoid a fs round-trip into the
+/// board crate's manifest at proc-macro expansion time; the long-term
+/// spec reads the board's manifest, but the skeleton hardcodes the
+/// table to match the `board_path_for` row above.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Framework {
+    /// Board owns the spin loop (`BoardEntry::run`). Default for
+    /// every board key not explicitly routed below.
+    OwnedSpin,
+    /// RTIC framework owns the spin loop. The macro emits a
+    /// `#[rtic::app(...)]` module + `#[init]` body that delegates to
+    /// `RticBoardEntry::init_hardware`.
+    Rtic,
+    /// Embassy framework owns the spin loop. Phase 216.C.3 lands the
+    /// emit body; this commit returns a `syn::Error` directing the
+    /// user to wait for that sibling.
+    Embassy,
+}
+
+fn framework_for(deploy: &str) -> Framework {
+    match deploy {
+        "rtic-stm32f4" => Framework::Rtic,
+        "embassy-stm32f4" => Framework::Embassy,
+        _ => Framework::OwnedSpin,
+    }
 }
 
 /// Sanitise a pkg name into a valid Rust crate ident. Cargo allows
