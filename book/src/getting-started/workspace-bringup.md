@@ -10,6 +10,45 @@ the per-target deploy config — all without any compiled code of its own.
 
 ---
 
+## Prereqs
+
+Pick one path from a fresh checkout — `just` is NOT a prereq.
+
+**A. Bare machine** (no Rust, no `just`, no cargo):
+```sh
+./scripts/bootstrap.sh base
+```
+Installs rustup, just, builds the in-tree `nros` CLI at
+`packages/cli/target/release/nros`, leaves the binary on PATH for
+this shell.
+
+**B. Already have cargo** (most contributors):
+```sh
+cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+export PATH="$PWD/packages/cli/target/release:$PATH"
+```
+
+**C. Tagged release, no Rust at all**:
+```sh
+./scripts/install-nros-prebuilt.sh
+```
+Downloads the matching `nros-<triple>.tar.gz` from the GitHub release,
+sha256-verifies, installs to `packages/cli/target/release/nros`.
+
+Every subsequent shell sources the workspace env via one of:
+```sh
+direnv allow                  # if you use direnv
+source ./activate.sh          # bash / zsh
+source ./activate.fish        # fish
+```
+
+Then provision the native host:
+```sh
+nros setup native --rmw zenoh
+```
+
+---
+
 ## What a Bringup pkg is
 
 A Bringup pkg is **pure declarative** — no `Cargo.toml`, no `CMakeLists.txt`,

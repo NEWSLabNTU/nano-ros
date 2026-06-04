@@ -126,16 +126,16 @@ requirement. Until then, drop the in-tree implementation and document
 
 ### 222.A — Book prereq sweep
 
-- [ ] **222.A.1** Replace the `source ./activate.sh && just
+- [x] **222.A.1** Replace the `source ./activate.sh && just
       setup-cli` prereq block across the five affected chapters with a
       three-path block (A = bootstrap, B = cargo one-liner, C =
-      prebuilt fetch on tagged checkouts). Lead with Path A.
-- [ ] **222.A.2** Add a top-of-`installation.md` callout that
+      prebuilt fetch on tagged checkouts). Lead with Path A. _(2026-06-04)_
+- [x] **222.A.2** Add a top-of-`installation.md` callout that
       `activate.sh` is the *after-install* step (every subsequent
-      shell), not a prereq.
-- [ ] **222.A.3** `workspace-from-app-node.md` command-map row for
+      shell), not a prereq. _(2026-06-04)_
+- [x] **222.A.3** `workspace-from-app-node.md` command-map row for
       `ros2 launch` — strike the `nros launch` cell or mark
-      `(deferred)` per 222.D; lead with `cargo run -p <entry_pkg>`.
+      `(deferred)` per 222.D; lead with `cargo run -p <entry_pkg>`. _(2026-06-04)_
 
 **Files.** `book/src/getting-started/{installation,first-node-rust,
 first-node-c,first-node-cpp,workspace-from-app-node,workspace-bringup,
