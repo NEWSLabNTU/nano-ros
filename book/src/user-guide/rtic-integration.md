@@ -182,7 +182,7 @@ crate-type = ["rlib", "staticlib"]
 nros      = { workspace = true, default-features = false }
 std_msgs  = { workspace = true }
 
-[package.metadata.nros.component]
+[package.metadata.nros.node]
 class = "talker_pkg::Talker"
 ```
 

@@ -256,7 +256,8 @@ spanning) or under their canonical
 is platform-specific. The
 [examples README coverage
 matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md#coverage-matrix)
-lists which `<plat>/<lang>/<rmw>` triples ship a bridge today.
+lists which `<plat> × <lang>` combinations ship a bridge today
+(a bridge spans RMW backends by nature, so RMW is not a directory axis).
 
 ## Troubleshooting
 
