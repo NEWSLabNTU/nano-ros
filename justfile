@@ -1578,12 +1578,15 @@ build-zenoh-pico:
 # Message Bindings
 # =============================================================================
 
-# Install the canonical nros CLI (prebuilt release; Phase 195.D — the in-tree
-# codegen submodule was retired, so install from NEWSLabNTU/nros-cli Releases).
+# Phase 218 — alias kept for callers still typing the pre-218 name.
+# The canonical recipe is `setup-cli` (builds the in-tree
+# `packages/cli/` sub-workspace). The historical external-release
+# install (Phase 195.D — NEWSLabNTU/nros-cli Releases via
+# scripts/install-nros.sh) is retired by the Phase 218 monorepo
+# merge.
 [group("maintenance")]
-install-nros-cli:
-    @echo "Installing nros CLI (prebuilt release)..."
-    "{{justfile_directory()}}/scripts/install-nros.sh"
+install-nros-cli: setup-cli
+    @echo "nros CLI built in-tree at packages/cli/target/release/nros (Phase 218)."
 
 # Phase 218.D.1 — build the in-tree `nros` CLI sub-workspace into
 # `packages/cli/target/release/nros`. Idempotent: a no-op when the binary
@@ -2160,9 +2163,12 @@ clean: clean-examples clean-fixtures
 [group("maintenance")]
 clean-setup: clean-zenohd
     rm -rf build/install build/cyclonedds build/qemu build/xrce-agent build/zephyr-cache
-    # Phase 195.D — `nros` is an installed prebuilt (no in-tree codegen build to
-    # clean); remove it with: rm -rf "${NROS_HOME:-$HOME/.nros}".
-    @echo "SDK/tool installs removed. Re-run 'just setup tier=all' (and scripts/install-nros.sh for nros)."
+    # Phase 218 — `nros` builds in-tree at `packages/cli/target/`; that
+    # tree is gitignored and a regular `cargo clean` (run from the
+    # CLI sub-workspace) removes it. The transitional `~/.nros/`
+    # install location for pre-218 users can be cleaned with:
+    #   rm -rf "${NROS_HOME:-$HOME/.nros}".
+    @echo "SDK/tool installs removed. Re-run 'just setup tier=all'; the nros CLI rebuilds via 'just setup-cli'."
 
 # Phase 218.J — JetPack-style bundle version bump.
 #

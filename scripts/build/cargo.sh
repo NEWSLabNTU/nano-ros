@@ -205,7 +205,7 @@ nros_require_ws_sync() {
     if nros_cli_ws_sync_available "$bin"; then
         return 0
     fi
-    echo "[PREREQ] nros ws sync verb unavailable (installed nros lacks Phase 210.D.1 / 210.E.3.d.native; bump scripts/install-nros.sh pin past 0.3.7 or set NROS_FROM_SOURCE=/path/to/nros-cli)" >&2
+    echo "[PREREQ] nros ws sync verb unavailable (in-tree CLI at packages/cli/ lacks Phase 210.D.1 / 210.E.3.d.native; rebuild via 'just setup-cli', or set \$NROS_CLI to a binary that carries the verb)" >&2
     exit 0
 }
 

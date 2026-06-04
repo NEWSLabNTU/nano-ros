@@ -17,17 +17,28 @@
 # Preconditions (fail loud — never silently pass, per CLAUDE.md):
 #   - ROS 2 sourced: `nros generate-rust` resolves std_msgs's .msg via
 #     AMENT_PREFIX_PATH. `source /opt/ros/<distro>/setup.bash` first.
-#   - $NROS points at the `nros` CLI. Defaults to the released binary the user
-#     installs via install.sh (~/.nros/bin/nros), then a `nros` on PATH.
+#   - $NROS points at the `nros` CLI. Phase 218 resolution order:
+#     $NROS env → packages/cli/target/release/nros (in-tree build via
+#     `just setup-cli`) → `nros` on PATH → ~/.nros/bin/nros
+#     (transitional fallback). The packages/codegen submodule that
+#     pre-218 carried the in-tree codegen is retired — the CLI now
+#     lives at packages/cli/ as a sub-workspace.
 #
 # Usage: source /opt/ros/humble/setup.bash && scripts/ci/dep-chain-check.sh
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 
-NROS="${NROS:-${NROS_HOME:-$HOME/.nros}/bin/nros}"
-if [ ! -x "$NROS" ] && command -v nros >/dev/null 2>&1; then
+# Phase 218 lookup: prefer the per-checkout sub-workspace binary, fall
+# back to PATH, then to the transitional ~/.nros/bin location.
+if [ -n "${NROS:-}" ]; then
+    : # already set; respect the override
+elif [ -x "packages/cli/target/release/nros" ]; then
+    NROS="$(pwd)/packages/cli/target/release/nros"
+elif command -v nros >/dev/null 2>&1; then
     NROS="$(command -v nros)"
+else
+    NROS="${NROS_HOME:-$HOME/.nros}/bin/nros"
 fi
 INDEX="${NROS_SDK_INDEX:-nros-sdk-index.toml}"
 
@@ -38,7 +49,8 @@ if [ -z "${AMENT_PREFIX_PATH:-}" ]; then
     exit 1
 fi
 if [ ! -x "$NROS" ]; then
-    echo "ERROR: nros CLI not found at '$NROS' (set \$NROS or build packages/codegen)." >&2
+    echo "ERROR: nros CLI not found at '$NROS'. Run 'just setup-cli' (Phase 218)" >&2
+    echo "       or set \$NROS to a built binary." >&2
     exit 1
 fi
 # Absolute — used inside `cd "$ex"` subshells below.

@@ -108,6 +108,10 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
+          # Phase 218 CLI sub-workspace path-deps `ros-launch-manifest-types`
+          # from the nested submodule. actions/checkout default-skips
+          # submodules; init only the CLI-side one (cheap; ~50KB).
+          git submodule update --init --recursive packages/cli/third-party/ros-launch-manifest
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
@@ -195,6 +199,10 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
+          # Phase 218 CLI sub-workspace path-deps `ros-launch-manifest-types`
+          # from the nested submodule. actions/checkout default-skips
+          # submodules; init only the CLI-side one (cheap; ~50KB).
+          git submodule update --init --recursive packages/cli/third-party/ros-launch-manifest
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
@@ -250,6 +258,10 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
+          # Phase 218 CLI sub-workspace path-deps `ros-launch-manifest-types`
+          # from the nested submodule. actions/checkout default-skips
+          # submodules; init only the CLI-side one (cheap; ~50KB).
+          git submodule update --init --recursive packages/cli/third-party/ros-launch-manifest
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 

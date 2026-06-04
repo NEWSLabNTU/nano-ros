@@ -66,9 +66,10 @@ setup:
 
 # Verify the host `nros` build tool resolves (the message/IDL codegen used by
 # `nros generate-*`, the cmake `nano_ros_generate_interfaces()` path, and the
-# NuttX external-app FFI staging). Phase 195.D — `nros` is an installed prebuilt
-# (cargo-tools ran scripts/install-nros.sh just above); this is the setup-stage
-# presence check. Build recipes keep `nros_cargo_ensure_codegen_c` as a net.
+# NuttX external-app FFI staging). Phase 218 — `nros` is built in-tree at
+# `packages/cli/target/release/nros` (the `cargo-tools` step above runs
+# `just setup-cli`); this is the setup-stage presence check. Build recipes
+# keep `nros_cargo_ensure_codegen_c` as a net.
 [group("setup")]
 build-codegen:
     #!/usr/bin/env bash
@@ -349,12 +350,13 @@ doctor:
 
     # --- cargo-tools ---
     # cargo-installed tools (nextest / llvm-cov / espflash) land in ~/.cargo/bin,
-    # which rustup adds to PATH on install. `nros` is different: install-nros.sh
-    # lands it under $NROS_HOME/bin (default ~/.nros/bin), and the user may not
-    # have added that to PATH yet. Phase 208 F3 — recognise the store-installed
-    # state separately so the user gets a PATH-export hint instead of looping
-    # on `just workspace cargo-tools` → install-nros.sh → already-installed
-    # short-circuit. Mirrors `cmake/NanoRosGenerateInterfaces.cmake`'s resolver.
+    # which rustup adds to PATH on install. `nros` is different: Phase 218
+    # moved the CLI in-tree at `packages/cli/target/release/nros` (preferred)
+    # with `~/.nros/bin/nros` as the transitional fallback. The user may not
+    # yet have either path on PATH. Recognise each state separately so we can
+    # offer a tailored hint (`source ./activate.sh` for the in-tree case,
+    # `export PATH=…` for the transitional case) instead of looping on
+    # `just workspace cargo-tools` → install → already-installed short-circuit.
     tool_missing=()
     for t in cargo-nextest cargo-llvm-cov espflash; do
         check command -v "$t" || tool_missing+=("$t")
@@ -362,6 +364,8 @@ doctor:
     nros_path_status="ok"
     if command -v nros >/dev/null 2>&1; then
         :
+    elif [ -x "{{justfile_directory()}}/packages/cli/target/release/nros" ]; then
+        nros_path_status="needs-activate"
     elif [ -x "${NROS_HOME:-$HOME/.nros}/bin/nros" ]; then
         nros_path_status="needs-path"
     else
@@ -371,9 +375,13 @@ doctor:
     if [ ${#tool_missing[@]} -eq 0 ] && [ "$nros_path_status" = "ok" ]; then
         echo "  [OK] cargo-tools"
     else
-        if [ "$nros_path_status" = "needs-path" ]; then
-            echo "  [PATH] nros at ~/.nros/bin/nros but not on PATH —"
-            echo "         add: export PATH=\"\$HOME/.nros/bin:\$PATH\"  (or re-run scripts/install-nros.sh --yes)"
+        if [ "$nros_path_status" = "needs-activate" ]; then
+            echo "  [PATH] nros built at packages/cli/target/release/nros but not on PATH —"
+            echo "         run: source ./activate.sh  (or direnv allow / source ./activate.fish)"
+            fail=1
+        elif [ "$nros_path_status" = "needs-path" ]; then
+            echo "  [PATH] nros at ~/.nros/bin/nros (transitional) but not on PATH —"
+            echo "         add: export PATH=\"\$HOME/.nros/bin:\$PATH\"  (or migrate to 'just setup-cli')"
             fail=1
         elif [ "$nros_path_status" = "missing" ]; then
             tool_missing+=("nros")
@@ -564,9 +572,9 @@ cargo-tools:
     cargo install espflash --locked      || echo "WARNING: espflash install failed (non-fatal)"
     cargo install rustfilt --locked      || echo "WARNING: rustfilt install failed (non-fatal)"
     cargo install cargo-show-asm --locked || echo "WARNING: cargo-show-asm install failed (non-fatal)"
-    # Phase 195.D — `nros` is the prebuilt build tool the build assumes is
-    # provided; it ships from the standalone NEWSLabNTU/nros-cli repo (the
-    # in-tree codegen submodule was retired in 195.D.5). Install the pinned
-    # release. Contributors hacking on nros itself put their own build on PATH /
-    # set $NROS_CLI; install-nros.sh skips when `nros` is already resolvable.
-    "{{justfile_directory()}}/scripts/install-nros.sh"
+    # Phase 218 — `nros` lives in-tree at `packages/cli/` (the merge
+    # back into nano-ros). Build from source via `just setup-cli`
+    # (idempotent: skips if the binary is fresh relative to
+    # packages/cli/Cargo.lock). Contributors hacking on nros itself
+    # still have `$NROS_CLI` as the override knob.
+    just setup-cli
