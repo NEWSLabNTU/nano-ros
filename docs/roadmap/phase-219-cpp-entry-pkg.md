@@ -77,12 +77,13 @@ Rust-biased.** This phase closes that gap.
 **One codegen library; two front-ends.**
 
 - The pkg-index walker + launch.xml parser + plan→register-call
-  resolver already live in the `nros-cli` codebase (consumed by the
-  Rust proc-macro through a shared lib). Phase 219 reuses **the
-  same logic** from the C / C++ side via a new
-  `nros codegen entry --lang {c,cpp} --launch <pkg>:<file>.launch.xml
-  [--board <board>] --workspace <ws> --out <generated>.cpp`
-  subcommand.
+  resolver already live in `packages/cli/nros-cli-core/`
+  (consumed today by the Rust proc-macro through a shared lib;
+  Phase 218 brought the CLI into this monorepo so 219 work lands
+  in the same tree). Phase 219 reuses **the same logic** from the
+  C / C++ side via a new `nros codegen entry --lang {c,cpp}
+  --launch <pkg>:<file>.launch.xml [--board <board>] --workspace
+  <ws> --out <generated>.cpp` subcommand.
 - The proc-macro becomes thin: it shells the same `nros codegen
   entry --lang rust` form (or stays as in-process proc-macro — both
   are valid). Whatever it does, the **canonical implementation lives
@@ -198,7 +199,7 @@ nros codegen entry
                                          # `cargo:rerun-if-changed=` parity
 ```
 
-Internally: `nros-cli/src/codegen/entry.rs` shared module reads pkg
+Internally: `packages/cli/nros-cli-core/src/codegen/entry.rs` shared module reads pkg
 index, parses launch.xml, resolves per-node `(pkg, exec)` to the
 matching `__nros_component_<pkg>_register` symbol, builds a `Plan
 { board, nodes: [(pkg, args), …] }`, hands it to one of three
@@ -402,7 +403,7 @@ shape.
 - [ ] **219.A — CLI: `nros codegen entry` skeleton.** Lift the
       proc-macro's pkg-index walk + launch parser out of
       `packages/core/nros-macros/src/main_macro.rs` into
-      `nros-cli/src/codegen/entry/{mod.rs,emit_rust.rs}`. Add the
+      `packages/cli/nros-cli-core/src/codegen/entry/{mod.rs,emit_rust.rs}`. Add the
       `nros codegen entry --lang rust …` form; verify byte-identical
       output vs today's proc-macro `TokenStream` after
       `prettyplease` formatting. Proc-macro keeps in-process
@@ -441,7 +442,7 @@ but is required for the end-to-end acceptance bar (§6).
 - [ ] **219.K — `nros codegen entry` runs without external
       `play-launch-parser`.** (medium, ✱) `nros plan` shells the
       external `play_launch_parser` Python tool today
-      (`nros-cli-core/src/orchestration/planner.rs::437-462`,
+      (`packages/cli/nros-cli-core/src/orchestration/planner.rs::437-462`,
       gated by the `play-launch-parser` cargo feature). The Rust
       proc-macro path doesn't (in-process via the `nros-build`
       dep). For C/C++ symmetry the shipped CLI must work on a
@@ -479,7 +480,7 @@ but is required for the end-to-end acceptance bar (§6).
 - [ ] **219.M — `nros new` C/C++ scaffolds.** (cheap-to-medium, ✱)
       Today `nros new <name> --lang cpp --component` errors out
       ("scaffolds a Rust component; --lang cpp is not yet
-      supported", `nros-cli-core/src/cmd/new.rs:116`). Plain
+      supported", `packages/cli/nros-cli-core/src/cmd/new.rs:116`). Plain
       `nros new <name> --lang cpp` emits a stub that still calls
       `find_package(NanoRos REQUIRED CONFIG)` (Phase 140 deleted
       that path) + `install(TARGETS ...)` (no install layout) +
@@ -544,11 +545,13 @@ top of everything.
    table per node — confirm the C++ Node ABI exposes the symmetric
    knob (`NodeOptions` already accepts a flat param list per
    212.M.5; sanity-check before 219.B/C land).
-5. **Where the CLI lives.** Phase 218 (`merge-cli-into-monorepo`) is
-   open. If 218 lands before 219.A starts, codegen module sits in
-   `packages/nros-cli/src/codegen/entry/`. If not, it sits in the
-   standalone `nros-cli` repo and crosses the boundary the same way
-   `nros plan` does today.
+5. **Where the CLI lives.** **RESOLVED 2026-06-04.** Phase 218 landed
+   (`549f413e3` through `e2a3c432e`) — `nros-cli` merged into this
+   monorepo at `packages/cli/`. Every 219.X CLI item lives at
+   `packages/cli/nros-cli-core/`, built + released alongside nano-ros
+   via the JetPack-style bundle versioning + `just setup-cli` /
+   `nros_cli_bin` resolver chain from 218.D. No cross-repo PRs for
+   219 work.
 
 ## 6. Acceptance
 
