@@ -137,7 +137,7 @@ const _: () = assert!(
 ///    runtime; see the comment at the call site in
 ///    [`EmbassyRuntime::signal_callback`].
 #[repr(transparent)]
-struct SignaledCallbackEnvelope(SignaledCallback<'static>);
+pub struct SignaledCallbackEnvelope(SignaledCallback<'static>);
 
 // SAFETY: see the doc comment on `SignaledCallbackEnvelope`. The
 // `*mut c_void` `ctx_ptr` field is the sole reason `SignaledCallback`
@@ -145,6 +145,24 @@ struct SignaledCallbackEnvelope(SignaledCallback<'static>);
 // target lives for the dispatcher's lifetime, so handing the envelope
 // to the Embassy dispatch task is sound.
 unsafe impl Send for SignaledCallbackEnvelope {}
+
+impl SignaledCallbackEnvelope {
+    /// Borrow the contained callback. Mirrors the RTIC sibling's
+    /// `SignaledCallbackEnvelope::callback` accessor (Phase 216.B.2
+    /// follow-up) so a dispatch task pulling envelopes off the
+    /// `CALLBACK_CHANNEL` can inspect `cb_id` without consuming.
+    pub fn callback(&self) -> &SignaledCallback<'static> {
+        &self.0
+    }
+
+    /// Unwrap the envelope. The Phase 216 final dispatch task
+    /// (`nros::main!()`-emitted `__nros_run_task`) consumes the
+    /// envelope this way before routing `(cb_id, ctx_ptr)` into
+    /// `Executor::dispatch_callback`. Mirrors the RTIC sibling.
+    pub fn into_inner(self) -> SignaledCallback<'static> {
+        self.0
+    }
+}
 
 /// Static callback queue backing [`EmbassyRuntime`]. Single channel
 /// per binary — the macro-generated `#[embassy_executor::main]` body
@@ -256,6 +274,26 @@ impl EmbassyRuntime {
         Self {
             channel: &CALLBACK_CHANNEL,
         }
+    }
+
+    /// Phase 216 final dispatch hook — non-blocking poll for the
+    /// next [`SignaledCallbackEnvelope`] sitting on the per-board
+    /// callback channel. The `nros::main!()`-emitted
+    /// `__nros_run_task` (`packages/core/nros-macros/src/main_macro.rs`,
+    /// `Framework::Embassy` branch) drains this in a tight loop
+    /// after each `executor.spin_once(_)` pass so a callback burst
+    /// can't starve the executor / Embassy scheduler.
+    ///
+    /// Returns `None` when the channel is empty (no callback has
+    /// been signaled this cycle). The async `recv` sibling could
+    /// land later — today's dispatch task pairs `try_recv` with a
+    /// short `Timer::after_millis(1)` await for pacing, mirroring
+    /// the RTIC sibling's SPSC `Consumer::dequeue` loop. `embassy_sync`
+    /// `Channel::try_receive` returns `Err(TryReceiveError::Empty)`
+    /// when nothing is queued; we flatten that into the more idiomatic
+    /// `Option` shape.
+    pub fn try_recv(&self) -> Option<SignaledCallbackEnvelope> {
+        self.channel.try_receive().ok()
     }
 }
 

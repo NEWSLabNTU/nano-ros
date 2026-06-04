@@ -737,13 +737,30 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                             let _ = executor.spin_once(
                                 ::core::time::Duration::from_millis(1),
                             );
+                            // Phase 216 final dispatch wiring — drain
+                            // every envelope the board's SPSC has
+                            // queued this cycle and forward each one
+                            // through `Executor::dispatch_callback`.
+                            // The layer-clean `(cb_id: &str,
+                            // ctx_ptr: *mut c_void)` shape matches both
+                            // the dequeued `SignaledCallback<'static>`
+                            // payload and the executor's stable entry
+                            // point — no type-translation gymnastics.
+                            // The executor-side body is a no-op stub
+                            // today; the per-Node trampoline registry
+                            // (linkme / Phase 216 follow-up) fills it
+                            // in by resolving `cb_id` →
+                            // `__nros_node_<pkg>_on_callback` and
+                            // invoking with the per-pkg state blob.
+                            // What this commit closes is the gap
+                            // where the dequeued envelope was being
+                            // silently dropped with a TODO — values
+                            // now flow into the executor's stable
+                            // surface and the registry lands as a
+                            // body fill, not a macro rewrite.
                             while let Some(envelope) = consumer.dequeue() {
-                                let _cb = envelope.into_inner();
-                                // todo: route `_cb.cb_id` + `_cb.ctx_ptr`
-                                // to the right Node via
-                                // `ExecutorNodeRuntime::dispatch_callback`
-                                // once the per-Node trampoline registry
-                                // (linkme / Phase 216 follow-up) lands.
+                                let cb = envelope.into_inner();
+                                executor.dispatch_callback(cb.cb_id, cb.ctx_ptr);
                             }
                         }
                     }
@@ -831,18 +848,35 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 #[::embassy_executor::task]
                 async fn __nros_run_task(
                     mut executor: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Executor,
-                    _runtime: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Runtime,
+                    runtime: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Runtime,
                 ) {
                     loop {
                         let _ = executor.spin_once(
                             ::core::time::Duration::from_millis(1),
                         );
-                        // todo: drain CALLBACK_CHANNEL + route each
-                        // envelope to `ExecutorNodeRuntime::dispatch_callback`
-                        // once the per-Node trampoline registry
-                        // (linkme / Phase 216 follow-up) lands and
-                        // `EmbassyRuntime` grows a public channel
-                        // accessor.
+                        // Phase 216 final dispatch wiring — drain
+                        // every envelope the board's
+                        // `CALLBACK_CHANNEL` has queued this cycle
+                        // and forward each one through
+                        // `Executor::dispatch_callback`.
+                        // `EmbassyRuntime::try_recv()` (Phase 216
+                        // final, sibling of the RTIC SPSC `dequeue`
+                        // path) is non-blocking so the spin loop
+                        // keeps yielding even when no callback is
+                        // signaled — the `Timer::after_millis(1)`
+                        // below paces the executor poll without
+                        // needing `embassy_futures::select` (not a
+                        // current dep). The same layer-clean
+                        // `(cb_id: &str, ctx_ptr: *mut c_void)` shape
+                        // applies — see the RTIC sibling for the
+                        // matching commentary. The executor-side
+                        // dispatch body is a no-op stub today; the
+                        // per-Node trampoline registry (linkme /
+                        // Phase 216 follow-up) fills it in.
+                        while let Some(envelope) = runtime.try_recv() {
+                            let cb = envelope.into_inner();
+                            executor.dispatch_callback(cb.cb_id, cb.ctx_ptr);
+                        }
                         ::embassy_time::Timer::after_millis(1).await;
                     }
                 }

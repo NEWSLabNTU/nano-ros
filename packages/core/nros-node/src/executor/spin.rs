@@ -1914,6 +1914,56 @@ impl Executor {
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))
     }
 
+    /// Phase 216 final dispatch hook — stable entry point the
+    /// framework's dispatch task (RTIC `__nros_run` /
+    /// Embassy `__nros_run_task`) calls for each `SignaledCallback`
+    /// envelope it dequeues from the board-side SPSC / Embassy
+    /// channel.
+    ///
+    /// ## Signature shape
+    ///
+    /// `nros-node` sits below `nros` in the dep graph, so the typed
+    /// `nros::CallbackId<'_>` / `nros::CallbackCtx<'_>` types
+    /// referenced in the Phase 216 design notes cannot appear in the
+    /// signature here. The macro emit translates the dequeued
+    /// envelope to the layer-clean `(cb_id: &str, ctx: *mut c_void)`
+    /// pair before calling this method; the per-Node `on_callback`
+    /// trampoline ABI (Phase 216.A.5,
+    /// `__nros_node_<pkg>_on_callback(state, cb_id_ptr, cb_id_len,
+    /// ctx)`) uses the same untyped shape on the other side of the
+    /// fence, so the round-trip stays type-consistent.
+    ///
+    /// ## Current body (no-op stub)
+    ///
+    /// The fully-wired dispatch path is a sibling
+    /// `ExecutorNodeRuntime::dispatch_callback`
+    /// (`packages/core/nros/src/node_runtime.rs`) which linear-scans
+    /// every registered component slot. That slot table is owned by
+    /// `ExecutorNodeRuntime`, not `Executor` — the RTIC / Embassy
+    /// board crates stash a bare `Executor` in framework `#[local]`
+    /// storage today, with `register_dispatch_slot_dyn` still
+    /// returning `Err(())` (the per-Node trampoline registry — likely
+    /// `linkme`-based — is a separate Phase 216 follow-up). Until
+    /// that registry lands the per-pkg
+    /// `__nros_node_<pkg>_on_callback` symbol cannot be resolved
+    /// generically from this layer, so this method is a no-op stub.
+    ///
+    /// Hooking the dequeued envelope through this stable surface
+    /// (instead of dropping it with a TODO inside the macro emit)
+    /// closes the conceptual gap: the dispatch task's value flow now
+    /// terminates at an executor-owned entry point rather than at an
+    /// inline silent drop, and the eventual registry wiring lands as
+    /// a body fill of this method rather than as a macro emit
+    /// rewrite.
+    #[allow(unused_variables, clippy::needless_pass_by_ref_mut)]
+    pub fn dispatch_callback(&mut self, cb_id: &str, ctx: *mut core::ffi::c_void) {
+        // No-op stub — see method doc. The per-Node trampoline
+        // registry (linkme / Phase 216 follow-up) will fill this in
+        // by resolving `cb_id` → `__nros_node_<pkg>_on_callback` and
+        // invoking with the per-pkg `state` blob.
+        let _ = (cb_id, ctx);
+    }
+
     /// Get a reference to the underlying session.
     pub fn session(&self) -> &session::ConcreteSession {
         &self.session
