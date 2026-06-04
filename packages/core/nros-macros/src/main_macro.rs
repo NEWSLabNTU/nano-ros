@@ -666,16 +666,38 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         }
         Framework::Embassy => {
-            // Phase 216.C.3 SKELETON — sibling of the Rtic emit above.
-            // Mirrors B.3's scope: emit `#[embassy_executor::main] async
-            // fn main(spawner)` that delegates to
-            // `EmbassyBoardEntry::init_hardware`. The full body
-            // (`__nros_spin_task` + `__nros_dispatch_task` spawns, per-
-            // Node register wiring, spawn-from-sync escape glue) lands
-            // in a 216.C.3 follow-up. Today's emit only needs to
-            // compile so the route through `framework_for(deploy)` is
-            // observable — runtime use surfaces the board crate's
-            // `todo!()` in `init_hardware` (intentional handoff).
+            // Phase 216.C.3 follow-up — sibling of the Rtic emit above.
+            // Emits `#[embassy_executor::main] async fn main(spawner)`
+            // that delegates to `EmbassyBoardEntry::init_hardware`
+            // (which is **sync** — see `embassy_entry.rs`'s "Sync
+            // `init_hardware`" note; matches `RticBoardEntry`) and
+            // then spawns two `#[embassy_executor::task]` fns:
+            //
+            // - `__nros_spin_task(executor)` — long-lived task that
+            //   drives the executor. The real body will dequeue from
+            //   the board's `CALLBACK_CHANNEL` and invoke per-Node
+            //   trampolines; today it parks on `Timer::after_secs` so
+            //   the macro emit compiles standalone. The dequeue +
+            //   trampoline-lookup integration lands alongside the
+            //   B.3-equivalent RTIC `__nros_spin` body fill — the
+            //   trampoline registration story spans the macro, the
+            //   `nros::node!()` emit, and
+            //   `register_dispatch_slot_dyn`, which is substantial
+            //   integration work for a separate follow-up.
+            //
+            // - `__nros_dispatch_task(runtime)` — long-lived task that
+            //   calls `runtime.spin_once(timeout_ms)` in a loop with an
+            //   `embassy_time` yield between iterations. Same
+            //   placeholder shape as the spin task — the
+            //   `register_dispatch_slot_dyn(...)` registration call
+            //   (the `run_plan(&mut runtime)` story) is the
+            //   integration work deferred to the same follow-up.
+            //
+            // Task argument types resolve via the board's
+            // `EmbassyBoardEntry::{Executor, Runtime}` associated
+            // types; `#[embassy_executor::task]` doesn't accept
+            // generic params, so we name them concretely through the
+            // assoc-type projection.
             //
             // The `#![no_std]`/`#![no_main]` inner attrs are NOT
             // emitted here — the Entry pkg's `main.rs` already
@@ -683,26 +705,61 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             quote! {
                 use #board_path as __NrosBoard;
 
-                #[::embassy_executor::main]
-                async fn main(spawner: ::embassy_executor::Spawner) {
-                    // Phase 216.C.3 SKELETON — full bring-up + per-Node
-                    // register + `__nros_spin_task` / `__nros_dispatch_task`
-                    // spawn lands in a 216.C.3 follow-up. The board
-                    // crate's `init_hardware` body is `todo!()` today
-                    // (Phase 216.C.2), which surfaces at runtime if
-                    // someone flashes this — the macro emit just needs
-                    // to compile.
-                    let (_executor, _runtime) =
-                        <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::init_hardware(
-                            spawner,
-                        );
-                    // Park the cooperative scheduler. Real spin/dispatch
-                    // tasks land in the follow-up; for the skeleton we
-                    // just yield forever so the framework's runtime
-                    // stays alive.
+                /// Embassy spin task — drives the executor side of the
+                /// `(Executor, Runtime)` pair returned by
+                /// `EmbassyBoardEntry::init_hardware`. Placeholder
+                /// `Timer::after_secs` yield today; the real body
+                /// dequeues from the board's `CALLBACK_CHANNEL` and
+                /// invokes per-Node trampolines (deferred — see the
+                /// emit-site comment in `main_macro.rs`).
+                #[::embassy_executor::task]
+                async fn __nros_spin_task(
+                    _executor: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Executor,
+                ) {
+                    // todo: dequeue from CALLBACK_CHANNEL + invoke
+                    // per-Node trampolines (B.3-followup-equivalent
+                    // integration work).
                     loop {
                         ::embassy_time::Timer::after_secs(60).await;
                     }
+                }
+
+                /// Embassy dispatch task — drives the
+                /// `NodeDispatchRuntime` sink returned by
+                /// `EmbassyBoardEntry::init_hardware`. Placeholder
+                /// `Timer::after_secs` yield today; the real body
+                /// calls `runtime.spin_once(timeout_ms)` in a loop
+                /// with an `embassy_time::Timer::after_millis` yield
+                /// between iterations (deferred — see the emit-site
+                /// comment in `main_macro.rs`).
+                #[::embassy_executor::task]
+                async fn __nros_dispatch_task(
+                    _runtime: <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::Runtime,
+                ) {
+                    // todo: register_dispatch_slot_dyn(...) per Node
+                    // pkg + spin_once loop (deferred to the
+                    // run_plan-integration follow-up).
+                    loop {
+                        ::embassy_time::Timer::after_secs(60).await;
+                    }
+                }
+
+                #[::embassy_executor::main]
+                async fn main(spawner: ::embassy_executor::Spawner) {
+                    // Sync `init_hardware` — see the
+                    // `EmbassyBoardEntry` trait "Sync
+                    // `init_hardware`" note; matches `RticBoardEntry`.
+                    let (executor, runtime) =
+                        <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::init_hardware(
+                            spawner,
+                        );
+                    // todo: register_dispatch_slot_dyn(...) per Node
+                    // pkg via `run_plan(&mut runtime)` — the
+                    // trampoline-registration story spans the macro
+                    // + `nros::node!()` emit + the runtime trait
+                    // and lands in a separate follow-up.
+                    spawner.spawn(__nros_spin_task(executor)).unwrap();
+                    spawner.spawn(__nros_dispatch_task(runtime)).unwrap();
                 }
             }
         }
