@@ -1,13 +1,11 @@
 #include "internal.h"
 
 #include "nros/platform_net.h"
+#include "transport_udp_generic.h"
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
-
-#include <uxr/client/profile/transport/custom/custom_transport.h>
 
 #if defined(UCLIENT_PLATFORM_ZEPHYR)
 
@@ -16,10 +14,7 @@ typedef struct {
     void *endpoint;
 } xrce_zephyr_udp_bridge;
 
-static bool zephyr_udp_open(struct uxrCustomTransport *t) {
-    (void)t;
-    return true;
-}
+/* `_open` is shared via `xrce_udp_open_noop` in transport_udp_generic.h. */
 
 static bool zephyr_udp_close(struct uxrCustomTransport *t) {
     if (t == NULL) return true;
@@ -100,17 +95,10 @@ nros_rmw_ret_t xrce_zephyr_udp_init(xrce_session_state_t *st,
         return NROS_RMW_RET_ERROR;
     }
 
-    uxr_set_custom_transport_callbacks(
-        &st->custom, /*framing=*/false,
-        zephyr_udp_open,
-        zephyr_udp_close,
-        zephyr_udp_write,
-        zephyr_udp_read);
-
-    if (!uxr_init_custom_transport(&st->custom, bridge)) {
-        zephyr_udp_bridge_cleanup(bridge);
-        return NROS_RMW_RET_ERROR;
-    }
+    /* Phase 214.I.1 shared bracketing macro. */
+    XRCE_UDP_BIND_AND_INIT(
+        st, zephyr_udp_close, zephyr_udp_write, zephyr_udp_read,
+        bridge, { zephyr_udp_bridge_cleanup(bridge); });
     return NROS_RMW_RET_OK;
 }
 

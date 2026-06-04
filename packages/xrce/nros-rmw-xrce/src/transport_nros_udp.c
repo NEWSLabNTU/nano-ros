@@ -21,13 +21,11 @@
 
 #include "nros/platform_net.h"
 #include "nros/rmw_ret.h"
+#include "transport_udp_generic.h"
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
-
-#include <uxr/client/profile/transport/custom/custom_transport.h>
 
 typedef struct xrce_nros_udp_bridge {
     int    fd_unused;  /* keeps layout 1:1 with `udp_bridge` struct */
@@ -35,10 +33,7 @@ typedef struct xrce_nros_udp_bridge {
     void  *endpoint;
 } xrce_nros_udp_bridge;
 
-static bool nros_udp_open(struct uxrCustomTransport *t) {
-    (void)t;
-    return true;
-}
+/* `_open` is shared via `xrce_udp_open_noop` in transport_udp_generic.h. */
 
 static bool nros_udp_close(struct uxrCustomTransport *t) {
     if (t == NULL) return true;
@@ -124,21 +119,18 @@ nros_rmw_ret_t xrce_nros_udp_init(xrce_session_state_t *st,
         return NROS_RMW_RET_ERROR;
     }
 
-    uxr_set_custom_transport_callbacks(
-        &st->custom, /*framing=*/false,
-        nros_udp_open,
-        nros_udp_close,
-        nros_udp_write,
-        nros_udp_read);
-
-    if (!uxr_init_custom_transport(&st->custom, bridge)) {
-        nros_platform_udp_close(bridge->sock);
-        nros_platform_udp_free_endpoint(bridge->endpoint);
-        free(bridge->sock);
-        free(bridge->endpoint);
-        bridge->sock = NULL;
-        bridge->endpoint = NULL;
-        return NROS_RMW_RET_ERROR;
-    }
+    /* Register trampoline quartet + init custom transport via the
+     * Phase 214.I.1 shared bracketing macro. UDP is packet-
+     * preserving; framing stays off. */
+    XRCE_UDP_BIND_AND_INIT(
+        st, nros_udp_close, nros_udp_write, nros_udp_read,
+        bridge, {
+            nros_platform_udp_close(bridge->sock);
+            nros_platform_udp_free_endpoint(bridge->endpoint);
+            free(bridge->sock);
+            free(bridge->endpoint);
+            bridge->sock = NULL;
+            bridge->endpoint = NULL;
+        });
     return NROS_RMW_RET_OK;
 }

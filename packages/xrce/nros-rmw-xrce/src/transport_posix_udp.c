@@ -25,8 +25,8 @@
 #include "internal.h"
 
 #include "nros/rmw_ret.h"
+#include "transport_udp_generic.h"
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -42,8 +42,6 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#include <uxr/client/profile/transport/custom/custom_transport.h>
-
 /* Bridge struct hung off `uxrCustomTransport.args`. Carries the
  * connected UDP fd. */
 typedef struct xrce_posix_udp_bridge {
@@ -51,14 +49,7 @@ typedef struct xrce_posix_udp_bridge {
 } xrce_posix_udp_bridge;
 
 /* ---- Trampolines (registered with uxr) -------------------------- */
-
-static bool posix_udp_open(struct uxrCustomTransport *t) {
-    /* Open is a no-op — the fd was created in
-     * `xrce_posix_udp_init` before
-     * `uxr_set_custom_transport_callbacks`. */
-    (void)t;
-    return true;
-}
+/* `_open` is shared via `xrce_udp_open_noop` in transport_udp_generic.h. */
 
 static bool posix_udp_close(struct uxrCustomTransport *t) {
     if (t == NULL) return true;
@@ -143,21 +134,14 @@ nros_rmw_ret_t xrce_posix_udp_init(xrce_session_state_t *st,
      * trampolines use via `uxrCustomTransport.args`. */
     st->udp_bridge.fd = fd;
 
-    /* Wire the custom transport with framing=false (UDP is packet-
-     * preserving; no HDLC framing needed). `uxr_init_custom_transport`
-     * stores its `args` into `transport->args`, so the bridge
-     * pointer rides along through every trampoline call. */
-    uxr_set_custom_transport_callbacks(
-        &st->custom, /*framing=*/false,
-        posix_udp_open,
-        posix_udp_close,
-        posix_udp_write,
-        posix_udp_read);
-
-    if (!uxr_init_custom_transport(&st->custom, &st->udp_bridge)) {
-        close(fd);
-        st->udp_bridge.fd = -1;
-        return NROS_RMW_RET_ERROR;
-    }
+    /* Register trampoline quartet + init custom transport via the
+     * Phase 214.I.1 shared bracketing macro. UDP is packet-
+     * preserving; framing stays off. */
+    XRCE_UDP_BIND_AND_INIT(
+        st, posix_udp_close, posix_udp_write, posix_udp_read,
+        &st->udp_bridge, {
+            close(fd);
+            st->udp_bridge.fd = -1;
+        });
     return NROS_RMW_RET_OK;
 }
