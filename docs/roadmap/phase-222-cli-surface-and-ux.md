@@ -176,28 +176,43 @@ workspace-entry-pkg,workspace-node-pkgs}.md`.
 
 ### 222.E — Bootstrap script polish
 
-- [ ] **222.E.1** `scripts/bootstrap.sh base` — confirm the cold-cache
+- [x] **222.E.1** `scripts/bootstrap.sh base` — confirm the cold-cache
       path (`bash` only, no `cargo`, no `just`) installs rustup, just,
       builds the CLI, exports the right PATH onto the user's shell rc
-      (with prompt + dry-run flag).
+      (with prompt + dry-run flag). _(2026-06-04)_
 - [ ] **222.E.2** `scripts/bootstrap.sh nros` — verify Path C tag-fetch
       path against an actual `nros-v*` release once Phase 218.G ships
       its first artifact.
-- [ ] **222.E.3** `scripts/bootstrap.sh doctor` — pre-Phase-220
-      verb-deprecation, the lane that surfaces stale verb invocations
-      in user `.bashrc` / `.zshrc` rc files (`alias nros-build=...`
-      etc.).
+- [x] **222.E.3** `scripts/bootstrap.sh shell-doctor` — pre-Phase-222.C
+      verb-deprecation lane that surfaces stale verb invocations in
+      user `.bashrc` / `.zshrc` / `config.fish` rc files
+      (`alias nros-build=...`, `alias x='nros run …'` etc.) +
+      checks PATH, version lockstep, and the activate-source line.
+      Distinct surface from `just doctor` (build-env). _(2026-06-04)_
+
+      Note: the rc-edit helper for §222.E.1 lives inside
+      `install_base()` (`offer_shell_rc_update`); it is idempotent
+      (skips if the activate path already appears in rc), prints the
+      snippet to stderr regardless, and honours `--no-prompt` (CI
+      mode) / `--dry-run`. This was 222.E.2-as-originally-scoped
+      (shell-rc append); the 222.E.2 line above is the unrelated
+      tagged-release tag-fetch verification, still blocked on the
+      first 218.G artifact.
 
 **Files.** `scripts/bootstrap.sh`.
 
 ### 222.F — `activate.sh` UX polish
 
-- [ ] **222.F.1** `activate.sh` first-run greeting — when sourced
+- [x] **222.F.1** `activate.sh` first-run greeting — when sourced
       against a checkout that has NO `packages/cli/target/release/nros`
-      yet, print one-line `[hint] CLI not built yet — run
-      ./scripts/bootstrap.sh base or cargo build --release …` instead
-      of silently leaving `nros` off PATH.
-- [ ] **222.F.2** Same for `activate.fish`.
+      yet AND no `nros` reachable on any other PATH entry, print a
+      four-line hint pointing at `./scripts/bootstrap.sh base`,
+      the cargo one-liner, or `./scripts/install-nros-prebuilt.sh`
+      (instead of silently leaving `nros` off PATH). Suppress with
+      `NROS_QUIET_ACTIVATE=1` for CI lanes that build the CLI as a
+      separate step. _(2026-06-04)_
+- [x] **222.F.2** Same for `activate.fish` (mirror; same env opt-out).
+      _(2026-06-04)_
 
 **Files.** `activate.sh`, `activate.fish`.
 
