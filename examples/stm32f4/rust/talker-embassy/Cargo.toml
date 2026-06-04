@@ -3,42 +3,58 @@ name = "stm32f4-rs-embassy-example"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Embassy example for nros on STM32F4"
+description = "Embassy example for nros on STM32F4 — Phase 216.C.4 nros::main!() shape"
 
 [[bin]]
 name = "stm32f4-rs-embassy-example"
 path = "src/main.rs"
 
+# Phase 216.C.4 — Entry pkg `[package.metadata.nros.entry] deploy =
+# "embassy-stm32f4"` routes the `nros::main!()` proc-macro onto the
+# C.3 Embassy emit branch (`#[embassy_executor::main] async fn main`
+# that delegates to `EmbassyBoardEntry::init_hardware`). The deploy
+# key also feeds `nros check` (Phase 216.D.1).
+[package.metadata.nros.entry]
+deploy = "embassy-stm32f4"
+
 [dependencies]
-# Embassy runtime
+# Phase 216.C.4 — `nros::main!()` proc-macro family. The macro emits
+# the `#[embassy_executor::main]` body + `__nros_spin_task` /
+# `__nros_dispatch_task` `#[embassy_executor::task]` sidekicks via the
+# C.3 routing branch, so this Entry pkg only needs `nros` + the
+# board crate + the talker Node pkg.
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+# Phase 216.C.2 board crate — supplies the `EmbassyStm32F4` ZST the
+# macro-generated body delegates init to via
+# `EmbassyBoardEntry::init_hardware`. Today the bringup body is
+# `todo!()` so a flash surfaces the unimplemented panic; the macro
+# emit only needs to compile here.
+nros-board-embassy-stm32f4 = { path = "../../../../packages/boards/nros-board-embassy-stm32f4" }
+# Phase 216.C.4 Node pkg — board-agnostic talker that the macro
+# wires into the dispatch runtime once the trampoline-registration
+# story lands (216.C follow-up). Listed as a dep so the bin target
+# links the rlib that exports `register` / `nros::node!()`-emitted
+# trampolines, mirroring the n9_workspace fixture's Entry → Node
+# pkg link.
+stm32f4_talker_pkg = { path = "../talker_pkg" }
+
+# Embassy runtime — re-listed because the macro-emitted body
+# references `::embassy_executor::main`, `::embassy_executor::task`,
+# `::embassy_time::Timer`, etc. by absolute path. The Entry pkg owns
+# the embassy version pin (`0.7` / `0.4` matches
+# `nros-board-embassy-stm32f4`'s pin).
 embassy-executor = { version = "0.7", features = ["arch-cortex-m", "executor-thread"] }
 embassy-time = { version = "0.4", features = ["tick-hz-1_000"] }
-embassy-stm32 = { version = "0.2", features = ["stm32f429zi", "time-driver-any", "memory-x"] }
-embassy-sync = "0.6"
 
 # Cortex-M runtime
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
 
-# nros (no zenoh - this is a demo of the Embassy pattern)
-# For actual nros usage, you would add zenoh-pico via C shim (see zephyr examples)
-nros = { path = "../../../../packages/core/nros", default-features = false }
-
-# Logging (optional, for debugging)
+# Logging
 defmt = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-
-# Heapless collections
-heapless = "0.8"
-
-# Static cell for shared state
-static_cell = "2"
-
-[features]
-default = ["defmt"]
-defmt = []
 
 [profile.release]
 codegen-units = 1
