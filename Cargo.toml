@@ -404,6 +404,15 @@ exclude = [
     "packages/testing/nros-tests/fixtures/n9_workspace",
     "packages/testing/nros-tests/fixtures/n9_workspace/src/talker_pkg",
     "packages/testing/nros-tests/fixtures/n9_workspace/src/demo_entry",
+    # Phase 218 — `packages/cli/` is the merged-in nros-cli tree, a
+    # SUB-WORKSPACE with its own `[workspace]` table + `Cargo.lock`.
+    # Cargo's auto-discovery stops at sub-workspace boundaries, so the
+    # explicit exclude is belt-and-suspenders, but it also keeps tools
+    # that walk the source tree (codegen-system scanners, IDE
+    # rust-analyzer) from accidentally treating the CLI deps as part of
+    # the runtime workspace's no_std feature-unification view
+    # (Phase 214.F.3 guard).
+    "packages/cli",
 ]
 
 [workspace.package]
