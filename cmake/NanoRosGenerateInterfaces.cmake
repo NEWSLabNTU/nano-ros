@@ -880,6 +880,16 @@ function(nros_generate_interfaces target)
     )
   endif()
 
+  # Phase 220.G.2 — register the interface lib in a DIRECTORY-scoped
+  # property so `nano_ros_node_register` can auto-link it without each
+  # example having to do a manual `target_link_libraries(<component>
+  # PUBLIC <pkg>__nano_ros_{c,cpp})` (the Phase 220.G.1 boilerplate).
+  # DIRECTORY scope (not GLOBAL) so a workspace with multiple example
+  # pkgs (or a colcon workspace) doesn't cross-pollinate one pkg's libs
+  # into another pkg's component. Duplicates are de-duped at link time.
+  set_property(DIRECTORY APPEND PROPERTY
+    NROS_GENERATED_INTERFACE_LIBS "${_lib_target}")
+
   # Export variables for downstream
   set(${target}_INCLUDE_DIRS "${_output_dir}" PARENT_SCOPE)
   set(${target}_LIBRARIES "${_lib_target}" PARENT_SCOPE)

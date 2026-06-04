@@ -20,8 +20,3 @@ nano_ros_node_register(
     DEPLOY  nuttx)
 
 nano_ros_deploy(TARGET nuttx RMW ${NROS_RMW} DOMAIN_ID 0)
-
-# Phase 214 followup — link interface lib so generated headers
-# (e.g. ${pkg}__nano_ros_c-provided example_interfaces/example_interfaces.h) are on the include
-# path for src/*.c sources that #include "example_interfaces.h".
-target_link_libraries(nuttx_c_service_server_service_server_component PUBLIC example_interfaces__nano_ros_c)

@@ -34,7 +34,3 @@ target_link_libraries(threadx_cpp_service_client PRIVATE
     example_interfaces::example_interfaces)
 nros_threadx_link_app(threadx_cpp_service_client)
 nano_ros_link_rmw(threadx_cpp_service_client RMW "${NROS_RMW}")
-
-# Phase 214 followup — link interface lib so generated headers
-# (e.g. example_interfaces.hpp) are on include path for src/*.cpp sources.
-target_link_libraries(threadx_linux_cpp_service_client_service_client_component PUBLIC example_interfaces::example_interfaces)

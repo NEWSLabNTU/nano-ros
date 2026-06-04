@@ -270,9 +270,25 @@ Almost every breakage traces to one of three root causes:
   in SOURCES. Eliminates the per-example boilerplate.
 
 - [x] **220.G.1** Per-example link appended (`4be1a4a41`).
-- [ ] **220.G.2** Make `nano_ros_node_register` auto-link the
-      interface lib so future examples don't need the manual
-      `target_link_libraries`.
+- [x] **220.G.2** `nano_ros_node_register` now auto-links via a
+      DIRECTORY-scoped registry: `nros_generate_interfaces` (in
+      `cmake/NanoRosGenerateInterfaces.cmake`) appends each created
+      `<pkg>__nano_ros_{c,cpp}` to the directory property
+      `NROS_GENERATED_INTERFACE_LIBS`; `nano_ros_node_register` (in
+      `cmake/NanoRosNodeRegister.cmake`) reads that property after
+      creating the component STATIC lib and runs
+      `target_link_libraries(<component> PUBLIC ${libs})` (de-duped).
+      DIRECTORY (not GLOBAL) scope so multi-pkg workspaces don't
+      cross-pollinate one pkg's libs into another pkg's component.
+      The 220.G.1 per-example appendix lines were reverted from all
+      18 CMakeLists. Smoke-verified by configure + first-compile pass
+      on `examples/qemu-arm-nuttx/c/talker`,
+      `examples/qemu-arm-freertos/c/talker`, and a standalone fixture
+      exercising the property → `LINK_LIBRARIES` propagation; the
+      threadx-linux cpp configure now hits an unrelated
+      `nros_threadx_codegen_system` orchestration error
+      (`play_launch_parser` missing) AFTER `nano_ros_node_register`
+      ran cleanly with the auto-linked interface lib.
 
 ### H — Post-218 install-nros.sh + ~/.nros/bin sweep
 

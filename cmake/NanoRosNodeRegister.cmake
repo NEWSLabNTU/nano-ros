@@ -120,6 +120,23 @@ function(nano_ros_node_register)
         # cargo-style names with hyphens are still valid C identifiers.
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
         target_compile_definitions(${_lib} PRIVATE NROS_PKG_NAME=${_pkg_sym})
+
+        # Phase 220.G.2 — auto-link every `<pkg>__nano_ros_{c,cpp}`
+        # interface lib that `nros_generate_interfaces` registered in
+        # this directory's scope. Without this, an example whose src
+        # `#include "std_msgs.h"` (or `.hpp`) fails with
+        # `No such file or directory` because the include dirs live on
+        # the interface lib's INTERFACE_INCLUDE_DIRECTORIES. Pre-220.G
+        # every example had to append a per-pkg manual
+        # `target_link_libraries(<component> PUBLIC <pkg>__nano_ros_X)`
+        # (the 220.G.1 boilerplate, now revertible).
+        # DIRECTORY scope — see the property write in
+        # NanoRosGenerateInterfaces.cmake.
+        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
+        if(_nros_iface_libs)
+            list(REMOVE_DUPLICATES _nros_iface_libs)
+            target_link_libraries(${_lib} PUBLIC ${_nros_iface_libs})
+        endif()
     endif()
 
     _nros_json_strlist(_sources_json ${_NRC_SOURCES})
