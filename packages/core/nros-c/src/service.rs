@@ -1834,21 +1834,37 @@ pub unsafe extern "C" fn nros_client_call(
     // One-shot blocking response capture. Static is fine because
     // nros_client_call is non-reentrant by design (callable only from
     // outside spin_some; the reentrancy guard in 82.8 will enforce it).
+    //
+    // Phase 214.G.1 — replaced `static mut BLK_DONE/BLK_LEN/BLK_BUF`
+    // with atomics + `Sync`-asserting `UnsafeCell` so the callback +
+    // spin loop have an explicit happens-before: the callback's
+    // Release store on `BLK_DONE` publishes the buffer write, and
+    // the loop's Acquire load fences the buffer read.
     const BLK_BUF_LEN: usize = 4096; // max captured service-response CDR
-    static mut BLK_DONE: i32 = -1;
-    static mut BLK_LEN: usize = 0;
-    static mut BLK_BUF: [u8; BLK_BUF_LEN] = [0u8; BLK_BUF_LEN];
-    BLK_DONE = -1;
-    BLK_LEN = 0;
+    use core::cell::UnsafeCell;
+    use core::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
+    struct BlkBuf(UnsafeCell<[u8; BLK_BUF_LEN]>);
+    // SAFETY: cross-thread access gated by BLK_DONE's Release/Acquire
+    // pair; non-reentrancy guarantees a single in-flight caller.
+    unsafe impl Sync for BlkBuf {}
+    static BLK_DONE: AtomicI32 = AtomicI32::new(-1);
+    static BLK_LEN: AtomicUsize = AtomicUsize::new(0);
+    static BLK_BUF: BlkBuf = BlkBuf(UnsafeCell::new([0u8; BLK_BUF_LEN]));
+    BLK_DONE.store(-1, Ordering::Relaxed);
+    BLK_LEN.store(0, Ordering::Relaxed);
 
     let orig_cb = client_ref.response_callback;
     let orig_ctx = client_ref.context;
 
     unsafe extern "C" fn blocking_response_cb(data: *const u8, len: usize, _ctx: *mut c_void) {
-        let copy = len.min(BLK_BUF.len());
-        core::ptr::copy_nonoverlapping(data, BLK_BUF.as_mut_ptr(), copy);
-        BLK_LEN = copy;
-        BLK_DONE = 1;
+        let copy = len.min(BLK_BUF_LEN);
+        // SAFETY: see BlkBuf Sync assertion above.
+        unsafe {
+            core::ptr::copy_nonoverlapping(data, (*BLK_BUF.0.get()).as_mut_ptr(), copy);
+        }
+        BLK_LEN.store(copy, Ordering::Relaxed);
+        // Release: publish buffer + LEN to any loop observing DONE ≥ 0.
+        BLK_DONE.store(1, Ordering::Release);
     }
     client_ref.response_callback = Some(blocking_response_cb);
 
@@ -1884,14 +1900,18 @@ pub unsafe extern "C" fn nros_client_call(
     let mut last_send_ns = start_ns;
     loop {
         crate::executor::nros_executor_spin_some(executor, 10_000_000);
-        if BLK_DONE >= 0 {
+        if BLK_DONE.load(Ordering::Acquire) >= 0 {
             client_ref.response_callback = orig_cb;
             client_ref.context = orig_ctx;
-            if BLK_LEN > response_capacity {
+            let blk_len = BLK_LEN.load(Ordering::Relaxed);
+            if blk_len > response_capacity {
                 return NROS_RET_ERROR;
             }
-            core::ptr::copy_nonoverlapping(BLK_BUF.as_ptr(), response_data, BLK_LEN);
-            *response_len = BLK_LEN;
+            // SAFETY: BLK_DONE's Acquire load above fences the buffer
+            // write in `blocking_response_cb`.
+            let buf_ptr = unsafe { (*BLK_BUF.0.get()).as_ptr() };
+            core::ptr::copy_nonoverlapping(buf_ptr, response_data, blk_len);
+            *response_len = blk_len;
             return NROS_RET_OK;
         }
         let now_ns = crate::platform::get_time_ns();

@@ -1970,11 +1970,15 @@ Slices 4 + 6 came back clean. Findings grouped file-disjoint:
 **Files**: `packages/core/nros-c/src/action/client.rs:475-587`,
 `packages/core/nros-c/src/service.rs` (analogous sites).
 
-- [ ] **214.G.1** — replace `static mut BLOCKING_ACCEPTED` +
-      `BLK_RESULT_*` with `AtomicBool` + `OnceLock<Mutex<...>>` for
-      the result payload. Same shape on both files.
-      **Acceptance**: `git grep -nE 'static mut BLOCKING_ACCEPTED|static mut BLK_RESULT_' packages/core/nros-c/`
-      returns no matches.
+- [x] **214.G.1** — replaced `static mut BLOCKING_ACCEPTED` +
+      `BLK_RESULT_{LEN,STATUS,BUF}` (action/client.rs) +
+      `BLK_DONE/BLK_LEN/BLK_BUF` (service.rs) with `AtomicI32` /
+      `AtomicU8` / `AtomicUsize` scalars + `Sync`-asserting
+      `UnsafeCell<[u8; N]>` for the byte buffer. Callback publishes
+      via Release store on the LEN/DONE atomic; loop reads with
+      Acquire which fences the buffer access. Single-call contract
+      preserved; the atomics give an explicit happens-before that
+      the `static mut` shape lacked. `cargo check -p nros-c` clean.
 
 ### Track H — ThreadX const consolidation + smoltcp 2048 pin
 
@@ -2006,9 +2010,16 @@ Slices 4 + 6 came back clean. Findings grouped file-disjoint:
 
 **Files**: `packages/core/nros-c/src/service.rs:23-50`.
 
-- [ ] **214.J.1** — add `atomic_waker` as direct dep on nros-c;
-      replace `atomic_bool_waker()` with `AtomicWaker::register`.
-      **Acceptance**: `atomic_bool_waker` fn deleted.
+- [x] **214.J.1 — DEFERRED with rationale**. Audit slice 2
+      misclassified the substitution: `atomic_bool_waker(flag: &AtomicBool)
+      -> Waker` returns a `Waker` whose `wake()` toggles a borrowed
+      `AtomicBool` — used as the value passed into a
+      `register_waker(Waker)` API. `atomic_waker::AtomicWaker` is a
+      STORAGE primitive (`register(&Waker)` stores a Waker, `wake()`
+      retrieves + invokes it) — it isn't itself a `Waker`. The two
+      have different shapes; no drop-in swap exists. The hand-rolled
+      `RawWaker`+`RawWakerVTable` adapter is the right primitive for
+      this bridge. No action.
 
 ### Track K — NodeRuntime trait name disambiguation
 

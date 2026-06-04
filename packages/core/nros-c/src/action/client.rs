@@ -471,9 +471,17 @@ pub unsafe extern "C" fn nros_action_send_goal(
     // Install a temporary goal_response callback that sets a flag.
     // The arena's action_client_raw_try_process fires the trampoline
     // during spin_once, which reads client.goal_response_callback.
+    //
+    // Phase 214.G.1 — replaced `static mut BLOCKING_ACCEPTED: i32` with
+    // an `AtomicI32` so the callback + spin loop have an explicit
+    // happens-before via Release/Acquire ordering. Same single-call
+    // contract (this blocking API expects one concurrent invocation)
+    // but no longer relies on the absent fence between the callback's
+    // store and the loop's load.
     let client_ref = &mut *client;
-    static mut BLOCKING_ACCEPTED: i32 = -1; // -1=pending, 0=rejected, 1=accepted
-    BLOCKING_ACCEPTED = -1;
+    use core::sync::atomic::{AtomicI32, Ordering};
+    static BLOCKING_ACCEPTED: AtomicI32 = AtomicI32::new(-1); // -1=pending, 0=rejected, 1=accepted
+    BLOCKING_ACCEPTED.store(-1, Ordering::Relaxed);
 
     let orig_cb = client_ref.goal_response_callback;
     let orig_ctx = client_ref.context;
@@ -482,9 +490,7 @@ pub unsafe extern "C" fn nros_action_send_goal(
         accepted: bool,
         _ctx: *mut core::ffi::c_void,
     ) {
-        unsafe {
-            BLOCKING_ACCEPTED = if accepted { 1 } else { 0 };
-        }
+        BLOCKING_ACCEPTED.store(if accepted { 1 } else { 0 }, Ordering::Release);
     }
     client_ref.goal_response_callback = Some(blocking_goal_cb);
 
@@ -500,7 +506,7 @@ pub unsafe extern "C" fn nros_action_send_goal(
     let timeout_ns: u64 = ACTION_BLOCKING_TIMEOUT_MS.saturating_mul(1_000_000);
     loop {
         crate::executor::nros_executor_spin_some(executor, 10_000_000);
-        let flag = BLOCKING_ACCEPTED;
+        let flag = BLOCKING_ACCEPTED.load(Ordering::Acquire);
         if flag >= 0 {
             client_ref.goal_response_callback = orig_cb;
             client_ref.context = orig_ctx;
@@ -580,12 +586,27 @@ pub unsafe extern "C" fn nros_action_get_result(
     }
 
     // Install temporary result callback that captures the result into static buffers.
+    //
+    // Phase 214.G.1 — replaced `static mut BLK_RESULT_{LEN,STATUS}: i32`/`u8`
+    // with `AtomicI32`/`AtomicU8`, and wrapped the byte buffer in a
+    // `Sync`-asserting `UnsafeCell`. The callback writes the buffer +
+    // STATUS then publishes via a `Release` store to LEN; the loop
+    // observes LEN with `Acquire` and that fences the buffer read.
+    // Single-call contract preserved.
     let client_ref = &mut *client;
     const BLK_RESULT_BUF_LEN: usize = 1024; // max captured action-result CDR
-    static mut BLK_RESULT_LEN: i32 = -1;
-    static mut BLK_RESULT_STATUS: u8 = 0;
-    static mut BLK_RESULT_BUF: [u8; BLK_RESULT_BUF_LEN] = [0u8; BLK_RESULT_BUF_LEN];
-    BLK_RESULT_LEN = -1;
+    use core::cell::UnsafeCell;
+    use core::sync::atomic::{AtomicI32, AtomicU8, Ordering};
+    struct BlkResultBuf(UnsafeCell<[u8; BLK_RESULT_BUF_LEN]>);
+    // SAFETY: cross-thread access is gated by BLK_RESULT_LEN's
+    // Release/Acquire pair — the callback's store(Release) happens-
+    // before the loop's load(Acquire) ≥ 0, which fences the buffer
+    // write.
+    unsafe impl Sync for BlkResultBuf {}
+    static BLK_RESULT_LEN: AtomicI32 = AtomicI32::new(-1);
+    static BLK_RESULT_STATUS: AtomicU8 = AtomicU8::new(0);
+    static BLK_RESULT_BUF: BlkResultBuf = BlkResultBuf(UnsafeCell::new([0u8; BLK_RESULT_BUF_LEN]));
+    BLK_RESULT_LEN.store(-1, Ordering::Relaxed);
 
     let orig_cb = client_ref.result_callback;
     let orig_ctx = client_ref.context;
@@ -596,12 +617,17 @@ pub unsafe extern "C" fn nros_action_get_result(
         len: usize,
         _ctx: *mut core::ffi::c_void,
     ) {
+        BLK_RESULT_STATUS.store(st as u8, Ordering::Relaxed);
+        let copy_len = len.min(1024);
+        // SAFETY: BLK_RESULT_BUF lives forever; this fn runs in the
+        // executor spin context that called the blocking API and only
+        // one such call is in flight by contract.
         unsafe {
-            BLK_RESULT_STATUS = st as u8;
-            let copy_len = len.min(1024);
-            core::ptr::copy_nonoverlapping(data, BLK_RESULT_BUF.as_mut_ptr(), copy_len);
-            BLK_RESULT_LEN = copy_len as i32;
+            core::ptr::copy_nonoverlapping(data, (*BLK_RESULT_BUF.0.get()).as_mut_ptr(), copy_len);
         }
+        // Publish: any loop observing LEN ≥ 0 with Acquire sees the
+        // buffer write above.
+        BLK_RESULT_LEN.store(copy_len as i32, Ordering::Release);
     }
     client_ref.result_callback = Some(blk_result_cb);
 
@@ -613,13 +639,13 @@ pub unsafe extern "C" fn nros_action_get_result(
     let timeout_ns: u64 = ACTION_RESULT_TIMEOUT_MS.saturating_mul(1_000_000);
     loop {
         crate::executor::nros_executor_spin_some(executor, 10_000_000);
-        let rlen = BLK_RESULT_LEN;
+        let rlen = BLK_RESULT_LEN.load(Ordering::Acquire);
         if rlen >= 0 {
             client_ref.result_callback = orig_cb;
             client_ref.context = orig_ctx;
             let data_len = rlen as usize;
 
-            *status = match BLK_RESULT_STATUS {
+            *status = match BLK_RESULT_STATUS.load(Ordering::Relaxed) {
                 1 => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
                 2 => nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
                 3 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
@@ -636,7 +662,10 @@ pub unsafe extern "C" fn nros_action_get_result(
             }
             let out = core::slice::from_raw_parts_mut(result, result_capacity);
             let payload = write_cdr_le_header(out).expect("out_capacity >= CDR_HEADER_LEN");
-            payload[..data_len].copy_from_slice(&BLK_RESULT_BUF[..data_len]);
+            // SAFETY: BLK_RESULT_LEN's Acquire load above fences the
+            // buffer write in `blk_result_cb`.
+            let buf = unsafe { &*BLK_RESULT_BUF.0.get() };
+            payload[..data_len].copy_from_slice(&buf[..data_len]);
             *result_len = output_len;
             return NROS_RET_OK;
         }
