@@ -9,6 +9,34 @@
 
 use clap::Subcommand;
 
+/// Phase 222.B.2 — env opt-out for the deprecated-verb stderr warning.
+///
+/// CI lanes that still drive `nros build` / `run` / `deploy` / `monitor`
+/// (e.g. transitional smoke tests that haven't migrated to the native
+/// platform tool yet) can set `NROS_SUPPRESS_DEPRECATION=1` to silence
+/// the one-line warning. The verb still runs; the deprecation signal
+/// just stops appearing in build logs. The env name MUST match across
+/// all four verbs — same opt-out, same noise gate.
+pub const SUPPRESS_DEPRECATION_ENV: &str = "NROS_SUPPRESS_DEPRECATION";
+
+/// Phase 222.B.2 — emit the per-verb deprecation warning to stderr unless
+/// `NROS_SUPPRESS_DEPRECATION=1` is set. Each of the four deprecated
+/// verbs (`build` / `run` / `deploy` / `monitor`) calls this at the top of
+/// its `run()` body, then continues with the existing wrapper logic so
+/// user scripts don't break mid-stream. Deletion is Phase 222.C
+/// (nros 0.5.0).
+pub fn emit_deprecation_warning(verb: &str, replacement: &str) {
+    if std::env::var_os(SUPPRESS_DEPRECATION_ENV).is_some_and(|v| v == "1") {
+        return;
+    }
+    eprintln!(
+        "warning: `nros {verb}` is deprecated and will be removed in nros 0.5.0. \
+         Use {replacement} instead. Set {SUPPRESS_DEPRECATION_ENV}=1 to silence this warning. \
+         See Phase 222 for rationale: \
+         https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-222-cli-surface-and-ux.md"
+    );
+}
+
 pub mod board;
 pub mod bringup;
 pub mod build;
@@ -91,9 +119,11 @@ pub enum Cmd {
     Config(config::Args),
 
     /// Build the current project (auto-detects cargo / cmake / west)
+    /// (deprecated — see cargo build / cmake --build / west build / idf.py build; will be removed in nros 0.5.0)
     Build(build::Args),
 
     /// Run a [deploy.<name>] target from the root nros.toml (Phase 172 WP-A)
+    /// (deprecated — see the platform's native flash+run combo (west flash, idf.py flash, probe-rs run, …); will be removed in nros 0.5.0)
     Deploy(deploy::Args),
 
     /// Spawn a bringup pkg's components on the host (Phase 212.J — no ament
@@ -114,10 +144,12 @@ pub enum Cmd {
     Setup(setup::Args),
 
     /// Build, flash, and monitor the current project on the selected target
+    /// (deprecated — see cargo run / west <runner> run / probe-rs run / idf.py monitor; will be removed in nros 0.5.0)
     #[command(name = "run")]
     Run(run_target::Args),
 
     /// Attach to a running target's serial / RTT / semihosting output
+    /// (deprecated — see probe-rs attach / idf.py monitor / picocom; will be removed in nros 0.5.0)
     Monitor(monitor::Args),
 
     /// Health-check the workspace (SDK paths, toolchains, env)

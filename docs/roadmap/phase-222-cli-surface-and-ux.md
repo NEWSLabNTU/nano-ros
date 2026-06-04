@@ -143,14 +143,21 @@ workspace-entry-pkg,workspace-node-pkgs}.md`.
 
 ### 222.B — Deprecate `nros build` / `run` / `deploy` / `monitor`
 
-- [ ] **222.B.1** Mark each verb's `--help` line with `(deprecated —
-      see <platform-tool>; will be removed in nros 0.5.0)`.
-- [ ] **222.B.2** Bump the verb impls to emit a one-line stderr
+- [x] **222.B.1** Mark each verb's `--help` line with `(deprecated —
+      see <platform-tool>; will be removed in nros 0.5.0)`. _(2026-06-04)_
+- [x] **222.B.2** Bump the verb impls to emit a one-line stderr
       warning on every invocation, then delegate to the underlying
-      tool as today.
-- [ ] **222.B.3** `nros doctor` flags use of any deprecated verb in
-      `Cargo.toml` `[package.metadata.nros.deploy.*]` build / run /
-      flash override fields, suggesting the platform tool.
+      tool as today. `NROS_SUPPRESS_DEPRECATION=1` opt-out for CI lanes
+      that still need to drive the wrapper. _(2026-06-04)_
+- [x] **222.B.3** `nros doctor` flags use of any deprecated verb in
+      workspace-root `nros.toml` `[deploy.<name>].build` / `.package`
+      shell-step arrays (WARN, gated migration; will fail in 0.5.0).
+      _(2026-06-04)_
+- [x] **222.B.4** Integration tests cover the `--help` deprecation
+      suffix, the stderr warning on invocation, and the
+      `NROS_SUPPRESS_DEPRECATION=1` opt-out across all four verbs
+      (`packages/cli/nros-cli/tests/deprecated_verbs.rs`).
+      _(2026-06-04)_
 
 **Files.** `packages/cli/nros-cli/src/cmd/{build,run,deploy,monitor}.rs`
 (or wherever the verbs are dispatched), `packages/cli/nros-cli-core/`.

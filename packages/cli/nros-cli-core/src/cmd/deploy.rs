@@ -61,6 +61,11 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    super::emit_deprecation_warning(
+        "deploy",
+        "the platform's native flash+run combo (west flash, idf.py flash, probe-rs run, …)",
+    );
+
     let config_path = resolve_deploy_config(&args.config)?;
     // Absolutize so the workspace root (and the component path-deps the
     // generator renders against it) is independent of the cwd a relative
