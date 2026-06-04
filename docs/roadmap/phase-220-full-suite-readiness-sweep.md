@@ -69,25 +69,32 @@ Almost every breakage traces to one of three root causes:
 
 ## Work Items
 
-### A — Prune stale `~/.cargo/bin/nros` shadow
+### A — Prune stale `nros` shadows on PATH (post-218)
 
-* **Symptom**: `which nros` → `~/.cargo/bin/nros` (version 0.2.0,
-  installed long ago via `cargo install`). The pinned
-  `~/.nros/bin/nros` (newer 0.3.x via install-nros.sh) is shadowed.
-  Result: `nros ws sync` emits stale `[patch.crates-io]` blocks that
-  lack `impl ::nros_serdes::Message` (pre-K.7.1.b emit), breaking
-  every native rust cyclonedds example build.
-* **Detection**: `just doctor` flags it as `[PATH] nros at
-  ~/.nros/bin/nros but not on PATH —` (with the actual shadowing
-  path) but doesn't fail.
-* **Remedy**: extend `just doctor` to FAIL (not warn) when a
-  `nros` binary on PATH points anywhere other than `~/.nros/bin/nros`;
-  emit a clear `rm ~/.cargo/bin/nros` hint. Document in CLAUDE.md +
-  the bootstrap docs.
+* **Phase 218 install method (2026-06-04)**: `scripts/install-
+  nros.sh` is RETIRED. Canonical install: `just setup-cli` builds
+  the in-tree `packages/cli/` → `packages/cli/target/release/nros`,
+  wired via `source ./activate.sh` (or direnv). The standalone
+  `nros-cli` GitHub repo is ARCHIVED / read-only.
+* **Symptom**: `which nros` → `~/.cargo/bin/nros 0.2.0` OR
+  `~/.nros/bin/nros 0.3.x` (pre-218 install-nros.sh path). Both
+  outrank the post-218 in-tree CLI in fresh shells without
+  `activate.sh` sourced. Stale CLI emits stale `[patch.crates-io]`
+  blocks (pre-K.7.1.b emit lacks `impl ::nros_serdes::Message`),
+  breaking native rust cyclonedds builds.
+* **Detection**: `just doctor` warns `[PATH] nros built at
+  packages/cli/target/release/nros but not on PATH —` but doesn't
+  FAIL on a stale shadow elsewhere.
+* **Remedy**: extend `just doctor` to FAIL on any `nros` on PATH
+  that isn't the in-tree `packages/cli/target/release/nros`; emit
+  `rm ~/.cargo/bin/nros` / `rm -rf ~/.nros/bin` cleanup hints.
 
-- [ ] **220.A.1** `just doctor` shadow-detection upgrade to FAIL.
-- [ ] **220.A.2** scripts/install-nros.sh (or post-218 successor)
-      auto-prunes the cargo-bin shadow with confirmation prompt.
+- [ ] **220.A.1** `just doctor` shadow-detection FAIL on any stale
+      path (`~/.cargo/bin/nros`, `~/.nros/bin/nros`).
+- [ ] **220.A.2** `just setup-cli` emits cleanup hint when stale
+      shadows present.
+- [ ] **220.A.3** Sweep agent driver scripts to source
+      `./activate.sh` instead of prepending `~/.nros/bin`.
 
 ### B — Migrate threadx-linux cpp example src to post-N.12 API
 
@@ -218,15 +225,24 @@ Almost every breakage traces to one of three root causes:
       interface lib so future examples don't need the manual
       `target_link_libraries`.
 
-### H — Post-218 install-nros.sh references
+### H — Post-218 install-nros.sh + ~/.nros/bin sweep
 
-* **Symptom**: Phase 218 deleted `scripts/install-nros.sh`. Anyone
-  using docs / driver scripts / CLAUDE.md / Phase 214.I-style
-  workflows still references it.
+* **Phase 218 install recap**: `scripts/install-nros.sh` deleted
+  (`19d1d29ba`); new flow = `git submodule update --init
+  packages/cli` + `just setup-cli` (builds in-tree) + `source
+  ./activate.sh` (PATH wiring).
+* **Symptom**: pre-218 docs / agent scripts / CLAUDE.md / Phase
+  214.I-style workflows still reference `install-nros.sh` and/or
+  `~/.nros/bin/`.
 * **Remedy**: sweep + update.
 
-- [ ] **220.H.1** `rg -ln 'scripts/install-nros\.sh'` — sweep docs +
-      scripts to reference `just setup-cli`.
+- [ ] **220.H.1** `rg -ln 'scripts/install-nros\.sh'` → replace
+      with `just setup-cli` / `source ./activate.sh`.
+- [ ] **220.H.2** `rg -ln '~/.nros/bin'` → replace with
+      `packages/cli/target/release/` or rely on `activate.sh`.
+- [ ] **220.H.3** Close Phase 214.I (NROS_FROM_SOURCE env-var) —
+      in-tree build IS the install now. Cross-ref 218.D
+      (`just setup-cli` + `nros_cli_bin` resolver).
 
 ---
 
