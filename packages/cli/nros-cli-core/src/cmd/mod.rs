@@ -11,7 +11,7 @@ use clap::Subcommand;
 
 /// Phase 222.B.2 — env opt-out for the deprecated-verb stderr warning.
 ///
-/// CI lanes that still drive `nros build` / `run` / `deploy` / `monitor`
+/// CI lanes that still drive `nros build` / `run` / `deploy` / `monitor` / `launch`
 /// (e.g. transitional smoke tests that haven't migrated to the native
 /// platform tool yet) can set `NROS_SUPPRESS_DEPRECATION=1` to silence
 /// the one-line warning. The verb still runs; the deprecation signal
@@ -21,7 +21,7 @@ pub const SUPPRESS_DEPRECATION_ENV: &str = "NROS_SUPPRESS_DEPRECATION";
 
 /// Phase 222.B.2 — emit the per-verb deprecation warning to stderr unless
 /// `NROS_SUPPRESS_DEPRECATION=1` is set. Each of the four deprecated
-/// verbs (`build` / `run` / `deploy` / `monitor`) calls this at the top of
+/// verbs (`build` / `run` / `deploy` / `monitor` / `launch`) calls this at the top of
 /// its `run()` body, then continues with the existing wrapper logic so
 /// user scripts don't break mid-stream. Deletion is Phase 222.C
 /// (nros 0.5.0).
@@ -126,18 +126,22 @@ pub enum Cmd {
     /// (deprecated — see the platform's native flash+run combo (west flash, idf.py flash, probe-rs run, …); will be removed in nros 0.5.0)
     Deploy(deploy::Args),
 
-    /// Spawn a bringup pkg's components on the host (Phase 212.J — no ament
-    /// install required; the desktop / native_sim alternative to
-    /// `ros2 launch`).
+    /// Spawn a bringup pkg's components on the host (deprecated —
+    /// composed Entry pkg IS the launch product; use `cargo run -p
+    /// <entry_pkg>`; will be removed in nros 0.5.0)
     ///
-    /// Canonical desktop launcher for development: reads
-    /// `<bringup>/launch/<file>.launch.xml` straight from source (no
-    /// `colcon build && source install/setup.bash`) and spawns one host
-    /// process per `[[component]]` with the env the runtime expects.
-    /// `ros2 launch` stays available for ament-installed consumers — the
-    /// two paths don't overlap. See the multi-node-workspace-layout
-    /// design doc §11 (`docs/design/multi-node-workspace-layout.md` in
-    /// the nano-ros tree) for the role of bringup pkgs.
+    /// Phase 212.N locked the Entry pkg shape: Node pkg libs are
+    /// FUSED into one Entry binary at link time, the same way ROS 2's
+    /// modern composable-node pattern fuses them into one container.
+    /// The single Entry binary IS the launch product. `nros launch`'s
+    /// one-process-per-`[[component]]` model fights that — it tries
+    /// to split the fused binary back apart, and breaks against any
+    /// Bringup pkg whose Entry pkg actually composes the Node pkgs.
+    /// The Phase 222.D decision is to delete the verb in 0.5.0 and
+    /// direct users at `cargo run -p <entry_pkg>` instead.
+    ///
+    /// Multi-Entry / mixed-host orchestration (codegen a per-Bringup
+    /// `launch.sh`) waits for real demand in a follow-on phase.
     Launch(launch::Args),
 
     /// Resolve + fetch a board's toolchain/SDK packages (Phase 187)

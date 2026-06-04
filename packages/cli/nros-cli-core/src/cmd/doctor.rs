@@ -327,7 +327,7 @@ fn resolve_vendor_dir(root: &Path, dir: &VendorDir) -> Option<PathBuf> {
         .map(|d| if d.is_absolute() { d } else { root.join(d) })
 }
 
-/// Phase 222.B.3 — surface `nros build` / `run` / `deploy` / `monitor` usage
+/// Phase 222.B.3 — surface `nros build` / `run` / `deploy` / `monitor` / `launch` usage
 /// inside workspace-root `nros.toml` `[deploy.<name>]` `build` / `package`
 /// shell-step arrays as WARN (not FAIL — gated migration). The wrapper verbs
 /// still work today; deletion lands in Phase 222.C with the 0.5.0 bump.
@@ -385,9 +385,10 @@ fn check_deprecated_verbs(config: &Path) {
     }
 }
 
-/// Return `Some((verb, replacement))` if `cmd` starts with one of the four
-/// deprecated `nros` verbs (after an optional leading `nros` token). Matches
-/// `nros build …`, `nros run …`, `nros deploy …`, `nros monitor …`.
+/// Return `Some((verb, replacement))` if `cmd` starts with one of the
+/// deprecated `nros` verbs (after an optional leading `nros` token).
+/// Matches `nros build …`, `nros run …`, `nros deploy …`,
+/// `nros monitor …`, `nros launch …` (Phase 222.D).
 fn match_deprecated_verb(cmd: &str) -> Option<(&'static str, &'static str)> {
     let rest = cmd.strip_prefix("nros ")?.trim_start();
     // Peel off the first token. `split_whitespace` collapses runs of WS;
@@ -407,6 +408,10 @@ fn match_deprecated_verb(cmd: &str) -> Option<(&'static str, &'static str)> {
             "the platform's native flash+run combo (west flash, idf.py flash, probe-rs run)",
         )),
         "monitor" => Some(("monitor", "probe-rs attach / idf.py monitor / picocom")),
+        "launch" => Some((
+            "launch",
+            "cargo run -p <entry_pkg> (composed Entry pkg IS the launch product per Phase 212.N + 222.D)",
+        )),
         _ => None,
     }
 }
@@ -571,6 +576,8 @@ mod tests {
         assert!(match_deprecated_verb("nros run").is_some());
         assert!(match_deprecated_verb("nros deploy native").is_some());
         assert!(match_deprecated_verb("nros monitor --env foo").is_some());
+        // Phase 222.D — launch joins the set.
+        assert!(match_deprecated_verb("nros launch demo_bringup").is_some());
         // Non-deprecated verbs / non-nros commands should not match.
         assert!(match_deprecated_verb("nros setup native").is_none());
         assert!(match_deprecated_verb("cargo build").is_none());

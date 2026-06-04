@@ -164,8 +164,9 @@ workspace-entry-pkg,workspace-node-pkgs}.md`.
 
 ### 222.C — Delete deprecated verbs in 0.5.0
 
-- [ ] **222.C.1** Remove the four verb subcommands (`build`, `run`,
-      `deploy`, `monitor`) from the CLI's `clap` derive tree.
+- [ ] **222.C.1** Remove the five verb subcommands (`build`, `run`,
+      `deploy`, `monitor`, `launch`) from the CLI's `clap` derive
+      tree. Phase 222.D added `launch` to the deprecation set.
 - [ ] **222.C.2** Drop the corresponding test fixtures.
 - [ ] **222.C.3** Doc sweep — every reference in book / phase docs /
       examples bumps to the platform tool. Match the Phase 218 doc
@@ -176,10 +177,33 @@ workspace-entry-pkg,workspace-node-pkgs}.md`.
 **Files.** CLI clap tree, `packages/cli/nros-cli/tests/`, book, root
 `Cargo.toml` + `packages/cli/Cargo.toml`.
 
-### 222.D — `nros launch` decision
+### 222.D — `nros launch` decision — landed 2026-06-04
 
-- [ ] **222.D.1** Land the launch decision (delete vs. redefine —
-      see §2.3). Drives whether 222.C deletes a fifth verb.
+**Decision: Option A — delete.** Phase 212.N locked the Entry pkg
+shape as a *fused* binary (Node pkg libs linked into one Entry; the
+ROS 2 composable-node parallel). The single Entry binary IS the
+launch product. `nros launch`'s one-process-per-`[[component]]`
+model fights that shape. ROS 2 migration users get pointed at
+`cargo run -p <entry_pkg>` instead — same composability, same
+process model. Multi-Entry / mixed-host orchestration (Option D —
+codegen a per-Bringup `launch.sh`) waits for real demand in a
+follow-on phase; the launch.xml parser stays as a compile-time
+input to `nros::main!()` regardless.
+
+- [x] **222.D.1** Decision recorded (Option A, defer Option D).
+      _(2026-06-04)_
+- [x] **222.D.2** `nros launch` joins the 222.B deprecation set:
+      `--help` carries the `(deprecated)` suffix; the verb body emits
+      the `NROS_SUPPRESS_DEPRECATION` warning on stderr; the doctor
+      `match_deprecated_verb` map recognises it; the integration test
+      matrix covers it. _(2026-06-04)_
+- [x] **222.D.3** `book/src/getting-started/workspace-from-app-node.md`
+      command-map row swept: `ros2 launch ↔ cargo run -p <entry_pkg>`,
+      with a note that the old `nros launch` verb is deprecated and
+      removed in nros 0.5.0. _(2026-06-04)_
+- [x] **222.D.4** 222.C scope updated — deletion in nros 0.5.0 covers
+      five verbs (build / run / deploy / monitor / launch), not four.
+      _(2026-06-04)_
 
 ### 222.E — Bootstrap script polish
 

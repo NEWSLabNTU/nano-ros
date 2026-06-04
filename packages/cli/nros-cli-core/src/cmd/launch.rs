@@ -94,6 +94,10 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    super::emit_deprecation_warning(
+        "launch",
+        "cargo run -p <entry_pkg> (composed Entry pkg IS the launch product per Phase 212.N + 222.D)",
+    );
     if let Some(pidfile) = args.stop.as_ref() {
         return stop_pidfile(pidfile);
     }

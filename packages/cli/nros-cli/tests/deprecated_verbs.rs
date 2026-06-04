@@ -46,7 +46,7 @@ fn temp_root(tag: &str) -> PathBuf {
 /// suffix announced in the about/doc line.
 #[test]
 fn help_shows_deprecation_suffix() {
-    for verb in ["build", "run", "deploy", "monitor"] {
+    for verb in ["build", "run", "deploy", "monitor", "launch"] {
         let output = Command::new(nros_bin())
             .arg(verb)
             .arg("--help")
@@ -107,6 +107,9 @@ fn warning_fires_on_invocation() {
             ],
         ),
         ("monitor", vec![]),
+        // 222.D — `nros launch` joins the deprecation set. No-arg form
+        // hits an arg-validation error fast; warning fires first.
+        ("launch", vec![]),
     ] {
         let output = Command::new(nros_bin())
             .arg(verb)
@@ -160,6 +163,7 @@ fn warning_silenced_with_env_opt_out() {
             ],
         ),
         ("monitor", vec![]),
+        ("launch", vec![]),
     ] {
         let output = Command::new(nros_bin())
             .arg(verb)

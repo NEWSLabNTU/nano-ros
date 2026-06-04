@@ -105,7 +105,7 @@ already know:
 |---|---|---|
 | `ros2 pkg create` | `nros new <name> --platform <plat> [--lang <lang>]` | scaffolds a Node pkg |
 | `colcon build` | `cargo build` (Rust) / `cmake --build build` (C++) | use the underlying tool directly |
-| `ros2 launch <pkg> <file>` | `cargo run -p <entry_pkg>` (single-deploy) | `nros launch` is deferred per Phase 222.D; composed Entry pkg IS the launch product |
+| `ros2 launch <pkg> <file>` | `cargo run -p <entry_pkg>` | composed Entry pkg IS the launch product (Phase 212.N + 222.D); the old `nros launch` verb is deprecated and removed in nros 0.5.0 |
 | (plan/validate) | `nros plan` → `nros check` | resolve + statically check the topology |
 | `ros2 run <pkg> <exe>` | run the Entry pkg binary (`cargo run`) | one Entry pkg per board |
 
