@@ -350,7 +350,8 @@ fn board_agnostic_run_plan_links_against_any_board() {
     let posix_filtered = strip_system_comment(&posix_run_plan_text);
     let freertos_filtered = strip_system_comment(&freertos_run_plan_text);
     assert_eq!(
-        posix_filtered, freertos_filtered,
+        posix_filtered,
+        freertos_filtered,
         "OUT_DIR/run_plan.rs DIFFERS across Board impls (after stripping diagnostic system-header) — codegen leaked Board context.\n--- posix ({}) ---\n{posix_run_plan_text}\n--- freertos ({}) ---\n{freertos_run_plan_text}",
         posix_run_plan_path.display(),
         freertos_run_plan_path.display(),

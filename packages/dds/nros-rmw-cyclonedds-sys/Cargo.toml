@@ -28,6 +28,16 @@ links = "cyclonedds"
 [lib]
 path = "src/lib.rs"
 crate-type = ["rlib"]
+# Phase 214 followup — under `vendored` (default after S.1) the test
+# link drags `libnros_rmw_cyclonedds.a` which transitively needs
+# `nros_rmw_cffi_register_named` (declared by `nros-rmw-cffi`, NOT in
+# this crate's dep graph by design — the shim isn't a runtime, only
+# a re-exporter). The lone test (`register_succeeds_with_stub`)
+# exercised the cfg(not(vendored)) stub branch; with vendored
+# default-on, that branch is inert. Skip the lib-test target; the
+# real register path is exercised end-to-end by `nros-rmw-cyclonedds`
+# unit tests + the K.7.7 native rust example e2e.
+test = false
 
 [features]
 # Phase 214.S.1 — `vendored` is now part of the default feature set so

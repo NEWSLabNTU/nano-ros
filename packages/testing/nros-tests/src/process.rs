@@ -760,12 +760,10 @@ pub fn is_nros_ws_sync_available() -> bool {
             // Check captured stdout for the `sync` subcommand row
             // independently of the exit status — newer releases that
             // succeed AND older that fail both flow through one match.
-            String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .any(|l| {
-                    let t = l.trim_start();
-                    t.starts_with("sync ") || t == "sync"
-                })
+            String::from_utf8_lossy(&out.stdout).lines().any(|l| {
+                let t = l.trim_start();
+                t.starts_with("sync ") || t == "sync"
+            })
         })
         .unwrap_or(false)
 }

@@ -1156,7 +1156,13 @@ check-workspace-embedded:
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
         --exclude nros-build-paths \
-        --exclude xrce-sys
+        --exclude xrce-sys \
+        --exclude nros-msg-to-idl \
+        --exclude nros-board-native \
+        --exclude nros-board-posix \
+        --exclude cyclonedds-sys \
+        --exclude nros-rmw-cyclonedds-sys \
+        --exclude nros-rmw-cyclonedds
 
 # Run the host + embedded workspace clippy CONCURRENTLY. They share no
 # target-dir (host = `target/`, embedded = `target-embedded/`), so cargo's

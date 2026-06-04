@@ -1337,15 +1337,19 @@ mod ghost_checks {
         reset_subscriber_buffer(slot);
         reset_service_buffer(slot);
 
-        // Subscription overflow
+        // Subscription overflow — payload (2000 B) exceeds
+        // SUBSCRIBER_BUFFER_SIZE (1024 B); `simulate_subscription_callback`
+        // silently drops it (matches the C producer's behavior — overflow
+        // is observable via `overflow_drops_total` per Phase 160.L.2, not
+        // via the `try_recv` path).
         simulate_subscription_callback(slot, &[0u8; 2000]);
         // Service normal request
         simulate_service_request(slot, b"svc_ok", b"svc/x");
 
-        // Subscription has overflow error
+        // Subscription ring stays empty (oversized payload was dropped).
         let mut recv_buf = [0u8; 1024];
         let sub_result = try_recv_subscription(slot, &mut recv_buf);
-        assert!(matches!(sub_result, Err(TransportError::MessageTooLarge)));
+        assert!(matches!(sub_result, Ok(None)));
 
         // Service buffer unaffected
         let svc_result = try_recv_service(slot, &mut recv_buf);

@@ -88,8 +88,15 @@ nros_rmw_cffi::nros_rmw_register_backend! {
 mod tests {
     use super::*;
 
-    // Stub out the C symbol so `cargo test` links cleanly on hosted
-    // targets without dragging in the full Cyclone DDS C++ closure.
+    // Phase 214 followup — when `vendored` is active (the default
+    // post-214.S.1), the build script compiles + links the real
+    // `libnros_rmw_cyclonedds.a` which provides
+    // `nros_rmw_cyclonedds_register`. The legacy `cfg(test)` Rust
+    // stub clashed with it at link time (rust-lld duplicate-symbol).
+    // Only emit the stub when `vendored` is OFF — that's the only
+    // configuration where the C++ archive is absent and the link
+    // would otherwise fail with `undefined reference`.
+    #[cfg(not(feature = "vendored"))]
     #[unsafe(no_mangle)]
     extern "C" fn nros_rmw_cyclonedds_register() -> c_int {
         0
@@ -97,6 +104,9 @@ mod tests {
 
     #[test]
     fn register_succeeds_with_stub() {
+        // Under vendored (default), this exercises the real C++ register
+        // path against a freshly-built `libnros_rmw_cyclonedds.a`.
+        // Under non-vendored, exercises the stub above.
         assert!(register().is_ok());
     }
 }
