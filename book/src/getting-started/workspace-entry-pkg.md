@@ -116,22 +116,32 @@ authors adding a new platform.
 
 ## Running a native Entry pkg
 
-From your workspace root:
+The verified path for the canonical template is `cargo run -p robot_entry`.
+Start a Zenoh router first, then boot the Entry binary from the workspace root:
 
 ```bash
+# in another shell:
+zenohd --listen tcp/127.0.0.1:7447 &
+
 cargo run -p robot_entry
 ```
 
-Alternatively, use `nros launch` to spawn the Bringup pkg on the host without
-installing anything:
+`robot_entry` opens the executor against the router, registers `talker` +
+`listener` (composed into a single process), and runs the topology.
 
-```bash
-nros launch demo_bringup
-# or with an explicit file:
-nros launch demo_bringup --launch sim.launch.xml
-```
+The canonical template is at `examples/templates/multi-node-workspace/` —
+its `README.md` is the source of truth for CLI commands that are green today.
 
-`nros launch` is the host-side, no-ament-install alternative to `ros2 launch`.
+> **nros 0.3.7 caveat — `nros launch`**
+>
+> `nros launch demo_bringup` is conceptually the host-side, no-ament-install
+> alternative to `ros2 launch`. In 0.3.7 it uses a
+> *one-process-per-`[[component]]`* model: it tries to spawn each `[[component]]`
+> as a separate binary (`target/debug/talker_pkg`, etc.). This template composes
+> both nodes into the **single** `robot_entry` binary (they are Node pkg
+> **libraries**, not standalone binaries), so `nros launch` does not drive it.
+> Use `cargo run -p robot_entry` above. To use `nros launch`, each Node pkg
+> would instead need its own `[[bin]]` — the separate-process deployment shape.
 
 > **Note:** `nros run` for Zephyr / QEMU targets is not yet wired in the
 > shipped CLI (0.3.7). Use `just <plat> run` for those targets in the

@@ -163,41 +163,60 @@ No `<build_depend>` entries — there is nothing to compile.
 
 ---
 
-## Workflow: plan → check → launch
+## Workflow: check → run
 
-Once your Bringup pkg is written, use the `nros` CLI to validate and run the
-topology:
+Once your Bringup pkg is written, use `nros check` to validate and
+`cargo run` to execute the topology:
 
 ```bash
-# 1. Resolve the topology — emits plan.json
-nros plan demo_bringup
+# 1. Lint the bringup pkg (pure-declarative check — no Cargo.toml, stray files, etc.)
+nros check --bringup src/demo_bringup
 
-# 2. Static-check the resolved plan (type wiring, QoS mismatches, missing deps)
-nros check
+# 2. Lint the whole workspace (pkg/class rows, duplicate system.toml, etc.)
+nros check --workspace .
 
-# 3. Spawn all nodes on the host (native / native_sim)
-nros launch demo_bringup
-
-# — or pass an explicit launch file —
-nros launch demo_bringup --launch system.launch.xml
+# 3. Run the composed Entry binary (boots all nodes in a single process)
+zenohd --listen tcp/127.0.0.1:7447 &   # router — in another shell
+cargo run -p robot_entry
 ```
 
-> **Caveat — host `nros launch` e2e path:** The `nros plan` + `nros check`
-> commands validate your topology regardless of platform. The host-side
-> `nros launch` spawner (native/`native_sim` equivalent of `ros2 launch`) may
-> not be fully wired in your `nros` build. If `nros launch` does not yet start
-> the nodes, run the Entry package binary directly (see the next page) — the
-> topology has already been validated by `plan` + `check`.
+Both `nros check` forms pass for the canonical template at
+`examples/templates/multi-node-workspace/`.
+
+> **nros 0.3.7 caveats — `nros plan` and `nros launch`**
+>
+> - **`nros plan demo_bringup`** resolves a topology into `plan.json` for
+>   static type/QoS checks, but in 0.3.7 it requires pre-collected
+>   source-metadata sidecars (`record.json` + per-pkg `_metadata/*.json`).
+>   The automatic metadata-build path (`nros metadata --build`) is not yet
+>   wired for lib-only Node pkgs, so `nros plan` does not produce a plan
+>   straight from this template. See
+>   `packages/testing/nros-tests/fixtures/orchestration_e2e/` for the
+>   pre-collected-sidecar pipeline.
+> - **`nros launch demo_bringup`** is conceptually the host-side
+>   `ros2 launch` equivalent (no ament install). In 0.3.7 it uses a
+>   *one-process-per-`[[component]]`* model — it tries to spawn
+>   `target/debug/talker_pkg` + `target/debug/listener_pkg` as separate
+>   processes, but in this template those are **libraries** composed into
+>   the single `robot_entry` binary. `nros launch` therefore does not drive
+>   this template. Use `cargo run -p robot_entry` (above) instead.
+>
+> The canonical template README at
+> `examples/templates/multi-node-workspace/README.md` is the source of
+> truth for the current CLI state.
 
 ---
 
 ## Runnable copy-out
 
-`examples/templates/multi-node-workspace/src/demo_bringup/` is the canonical
-3-role template that pairs with this guide. It is being built concurrently with
-this page — once landed, `cargo build` from the workspace root builds all Node
-pkgs and the Entry pkg; `nros plan demo_bringup && nros check` validates the
-topology.
+`examples/templates/multi-node-workspace/` is the canonical 3-role template
+that pairs with this guide. Copy the whole directory out and rename the packages.
+`cargo build` from the workspace root builds all Node pkgs and the Entry pkg;
+`nros check --workspace .` validates the topology (see the workflow above for
+the nros 0.3.7 caveat on `nros plan` / `nros launch`).
+
+The template README at `examples/templates/multi-node-workspace/README.md`
+documents the exact CLI commands that are verified green today.
 
 ---
 
