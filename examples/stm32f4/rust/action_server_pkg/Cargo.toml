@@ -51,6 +51,11 @@ defmt = "0.3"
 class = "stm32f4_action_server_pkg::ActionServer"
 name = "fibonacci_server"
 default_namespace = "/"
+# Phase 216.D.1 — explicit dispatch hint mirrors `Node::DISPATCH` in
+# `src/lib.rs` (Deferred). Action goal/cancel/accepted callbacks are
+# Deferred-dispatch territory. Read by `nros check`'s framework ×
+# DispatchStrategy matrix.
+dispatch = "deferred"
 
 [profile.dev]
 panic = "abort"

@@ -39,6 +39,11 @@ defmt = "0.3"
 class = "stm32f4_service_server_pkg::ServiceServer"
 name = "service_server"
 default_namespace = "/"
+# Phase 216.D.1 — explicit dispatch hint mirrors `Node::DISPATCH` in
+# `src/lib.rs` (Deferred). Read by `nros check`'s framework ×
+# DispatchStrategy matrix; service request callbacks are exactly the
+# Deferred-dispatch use case on RTIC / Embassy.
+dispatch = "deferred"
 
 [profile.dev]
 panic = "abort"

@@ -27,6 +27,28 @@
 //!   pkgs are native-only by definition (Phase 212.L.2 / M-F.1); naming an
 //!   RTOS rejects with the `application-rtos-deploy-forbidden` diagnostic.
 //!
+//! * **Phase 216.D.1 `dispatch-mismatch-<framework>-<strategy>` (hard
+//!   error).** Cross-validates the `(framework, DispatchStrategy)` matrix
+//!   per the locked 216.D.1 spec. For every Entry pkg in the workspace, the
+//!   walk resolves its board (path-dep carrying
+//!   `[package.metadata.nros.board] framework = …`) and every Node pkg in
+//!   its path-dep closure (carrying `[package.metadata.nros.node]
+//!   dispatch = …`). Rejected cells:
+//!
+//!   | framework | Inline | Deferred | FromIsr |
+//!   |-----------|--------|----------|---------|
+//!   | OwnedSpin | ok     | ok       | reject  |
+//!   | Rtic      | reject | ok       | ok      |
+//!   | Embassy   | reject | ok       | reject  |
+//!
+//!   Missing `[package.metadata.nros.node] dispatch = …` defaults to
+//!   Inline (matches the `Node::DISPATCH` trait const default). Missing
+//!   board metadata defaults to OwnedSpin (POSIX/RTOS, the
+//!   `BoardEntry::run` direct-exec path). Static-only check — does NOT
+//!   read the runtime ABI symbol `__nros_node_<pkg>_dispatch_strategy`
+//!   the `nros::node!()` macro emits, because that would require linking
+//!   the Node crate.
+//!
 //! The walk is `nros check --workspace [<dir>]`. Each immediate child of the
 //! workspace root is classified as a bringup pkg (has `system.toml`, no
 //! `Cargo.toml` / `CMakeLists.txt` / `src/`) or a component pkg (has
@@ -135,6 +157,12 @@ pub fn check_workspace(workspace_root: &Path) -> Result<WorkspaceLintReport> {
             // for the Entry-pkg / Application-pkg shape lints.
             if has_cargo {
                 lint_cargo_metadata_nros(&pkg_dir.join("Cargo.toml"), &name)?;
+                // Phase 216.D.1 — framework × DispatchStrategy matrix.
+                // Runs only on Entry pkgs (presence of
+                // `[package.metadata.nros.entry]`); resolves the board's
+                // framework via path-dep walk and every Node pkg's
+                // dispatch.
+                lint_dispatch_matrix(&pkg_dir, &name)?;
             }
         }
 
@@ -292,14 +320,327 @@ fn has_patch_crates_io(body: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 216.D.1 — framework × DispatchStrategy matrix
+// ---------------------------------------------------------------------------
+
+/// Locked 216.D.1 framework axis. Boards without
+/// `[package.metadata.nros.board] framework = …` default to `OwnedSpin`
+/// (the POSIX / RTOS `BoardEntry::run` direct-exec path — no framework
+/// runtime owns the spin loop).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Framework {
+    OwnedSpin,
+    Rtic,
+    Embassy,
+}
+
+impl Framework {
+    fn label(self) -> &'static str {
+        match self {
+            Framework::OwnedSpin => "owned-spin",
+            Framework::Rtic => "rtic",
+            Framework::Embassy => "embassy",
+        }
+    }
+}
+
+/// Locked 216.D.1 dispatch axis. Mirrors `nros_platform::DispatchStrategy`
+/// but lives here so `nros check` stays a static tool (no link against the
+/// runtime crate). Node pkgs missing the metadata key default to `Inline`
+/// to match the `Node::DISPATCH` trait const default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DispatchStrategy {
+    Inline,
+    Deferred,
+    FromIsr,
+}
+
+impl DispatchStrategy {
+    fn label(self) -> &'static str {
+        match self {
+            DispatchStrategy::Inline => "inline",
+            DispatchStrategy::Deferred => "deferred",
+            DispatchStrategy::FromIsr => "from-isr",
+        }
+    }
+}
+
+/// Apply the locked 216.D.1 matrix. Returns `Some(suggested_fix)` when the
+/// pair is rejected; `None` when the pair is allowed.
+fn matrix_reject_reason(fw: Framework, ds: DispatchStrategy) -> Option<&'static str> {
+    match (fw, ds) {
+        // OwnedSpin (POSIX / RTOS): Inline + Deferred ok; FromIsr rejected
+        // (no ISR fast-path on a hosted RTOS / POSIX runtime).
+        (Framework::OwnedSpin, DispatchStrategy::FromIsr) => Some(
+            "FromIsr is not supported on POSIX / RTOS (owned-spin) boards; \
+             change DISPATCH to Inline or Deferred, or deploy on a bare-metal \
+             framework board (rtic) that wires the ISR fast-path",
+        ),
+        // RTIC: Inline rejected (RTIC requires a Deferred hand-off to an
+        // `rtic::Mutex`-guarded task — running a callback inline on the
+        // spin task breaks the framework's priority model); Deferred ok;
+        // FromIsr ok (future — ISR-driven cell).
+        (Framework::Rtic, DispatchStrategy::Inline) => Some(
+            "RTIC requires Deferred dispatch (callbacks hand off to a \
+             framework-owned `#[task]` via an `rtic::Mutex`-guarded SPSC \
+             ring); set [package.metadata.nros.node] dispatch = \"deferred\" \
+             on the Node pkg",
+        ),
+        // Embassy: Inline rejected (same reason — Embassy needs a Spawner
+        // hand-off); Deferred ok; FromIsr rejected (Embassy's executor
+        // runs in thread mode — no ISR fast-path).
+        (Framework::Embassy, DispatchStrategy::Inline) => Some(
+            "Embassy requires Deferred dispatch (callbacks hand off to a \
+             framework-owned `async` task via the `embassy_executor::Spawner` \
+             escape); set [package.metadata.nros.node] dispatch = \"deferred\" \
+             on the Node pkg",
+        ),
+        (Framework::Embassy, DispatchStrategy::FromIsr) => Some(
+            "FromIsr is not supported on Embassy (the executor runs in \
+             thread mode — no ISR fast-path); change DISPATCH to Deferred, \
+             or deploy on an RTIC board",
+        ),
+        // All other (fw, ds) cells are allowed.
+        _ => None,
+    }
+}
+
+/// Parse `[package.metadata.nros.board] framework = "<rtic|embassy>"`.
+/// Missing table or unknown framework string → `Framework::OwnedSpin`
+/// (the matrix's default cell for POSIX / RTOS boards w/o framework
+/// metadata).
+fn read_board_framework(board_cargo_toml: &Path) -> Framework {
+    let Ok(raw) = fs::read_to_string(board_cargo_toml) else {
+        return Framework::OwnedSpin;
+    };
+    let Ok(value) = toml::from_str::<toml::Value>(&raw) else {
+        return Framework::OwnedSpin;
+    };
+    let fw = value
+        .get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("nros"))
+        .and_then(|n| n.get("board"))
+        .and_then(|b| b.get("framework"))
+        .and_then(|v| v.as_str());
+    match fw {
+        Some("rtic") => Framework::Rtic,
+        Some("embassy") => Framework::Embassy,
+        _ => Framework::OwnedSpin,
+    }
+}
+
+/// Parse `[package.metadata.nros.node] dispatch = "<inline|deferred|from_isr>"`.
+/// Missing key → `Inline` (matches `Node::DISPATCH` default). Returns
+/// `Err` on an unknown string so the lint surfaces a typo instead of
+/// silently defaulting.
+fn read_node_dispatch_strategy(node_cargo_toml: &Path) -> Result<Option<DispatchStrategy>> {
+    let Ok(raw) = fs::read_to_string(node_cargo_toml) else {
+        return Ok(None);
+    };
+    let Ok(value) = toml::from_str::<toml::Value>(&raw) else {
+        return Ok(None);
+    };
+    // Only treat this pkg as a Node pkg if it carries
+    // `[package.metadata.nros.node]`.
+    let node_tbl = value
+        .get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("nros"))
+        .and_then(|n| n.get("node"));
+    let Some(node_tbl) = node_tbl else {
+        return Ok(None);
+    };
+    let Some(ds_str) = node_tbl.get("dispatch").and_then(|v| v.as_str()) else {
+        // Node pkg w/o explicit dispatch → mirror the trait const default.
+        return Ok(Some(DispatchStrategy::Inline));
+    };
+    match ds_str {
+        "inline" => Ok(Some(DispatchStrategy::Inline)),
+        "deferred" => Ok(Some(DispatchStrategy::Deferred)),
+        // Accept both kebab + snake for the ISR variant; mirror the
+        // platform enum's Rust name (`FromIsr`).
+        "from_isr" | "from-isr" => Ok(Some(DispatchStrategy::FromIsr)),
+        other => bail!(
+            "{}: [package.metadata.nros.node] dispatch = \"{}\" — unknown \
+             dispatch strategy (expected one of: \"inline\", \"deferred\", \
+             \"from_isr\")",
+            node_cargo_toml.display(),
+            other
+        ),
+    }
+}
+
+/// Walk an Entry pkg's `[dependencies]` + `[dev-dependencies]` tables
+/// and collect every `path = "<rel>"` dep target. Returned paths are
+/// resolved against the Entry pkg's dir + canonicalised. Only path-deps
+/// are considered (registry / git deps have no in-tree manifest to read).
+fn collect_path_deps(entry_cargo_toml: &Path, entry_dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    let Ok(raw) = fs::read_to_string(entry_cargo_toml) else {
+        return out;
+    };
+    let Ok(value) = toml::from_str::<toml::Value>(&raw) else {
+        return out;
+    };
+    for tbl_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        let Some(tbl) = value.get(tbl_name).and_then(|v| v.as_table()) else {
+            continue;
+        };
+        for (_dep_name, dep_spec) in tbl {
+            let Some(dep_tbl) = dep_spec.as_table() else {
+                continue;
+            };
+            let Some(rel) = dep_tbl.get("path").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let abs = entry_dir.join(rel);
+            // `canonicalize` resolves `..` segments and follows symlinks.
+            // Fall back to the joined path if canonicalisation fails (e.g.
+            // dep dir doesn't exist — a separate lint will catch that).
+            let resolved = fs::canonicalize(&abs).unwrap_or(abs);
+            out.push(resolved);
+        }
+    }
+    out
+}
+
+/// Phase 216.D.1 — framework × DispatchStrategy matrix entry point.
+///
+/// Triggered for every component pkg whose `Cargo.toml` carries
+/// `[package.metadata.nros.entry]` (= an Entry pkg). Walks the Entry pkg's
+/// path-deps, classifies each as `board` (carries `[package.metadata.
+/// nros.board]`) or `node` (carries `[package.metadata.nros.node]`), then
+/// runs the cross-validation matrix.
+///
+/// Bail conditions:
+/// * Two boards in the path-dep set carry conflicting `framework` values
+///   (operator error; the Entry pkg is multi-targeted in a way the matrix
+///   can't reason about).
+/// * A `(framework, dispatch)` pair lands in a rejected cell — diagnostic
+///   ID `dispatch-mismatch-<framework>-<strategy>`.
+///
+/// Silent on non-Entry pkgs and on Entry pkgs with no Node-pkg path-deps
+/// (e.g. a board-bringup Entry that defers all callbacks to the framework
+/// runtime without a user Node pkg).
+fn lint_dispatch_matrix(entry_dir: &Path, entry_pkg_name: &str) -> Result<()> {
+    let cargo_toml = entry_dir.join("Cargo.toml");
+    let Ok(raw) = fs::read_to_string(&cargo_toml) else {
+        return Ok(());
+    };
+    let Ok(value) = toml::from_str::<toml::Value>(&raw) else {
+        return Ok(());
+    };
+    // Only run on Entry pkgs.
+    let is_entry = value
+        .get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("nros"))
+        .and_then(|n| n.get("entry"))
+        .is_some();
+    if !is_entry {
+        return Ok(());
+    }
+
+    // Walk path-deps and bucket into boards / nodes.
+    let mut framework: Option<Framework> = None;
+    let mut framework_source: Option<std::path::PathBuf> = None;
+    // (node_pkg_dir, dispatch_strategy).
+    let mut nodes: Vec<(std::path::PathBuf, DispatchStrategy)> = Vec::new();
+
+    for dep_dir in collect_path_deps(&cargo_toml, entry_dir) {
+        let dep_cargo = dep_dir.join("Cargo.toml");
+        if !dep_cargo.is_file() {
+            continue;
+        }
+        let dep_raw = match fs::read_to_string(&dep_cargo) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let dep_value: toml::Value = match toml::from_str(&dep_raw) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let nros_meta = dep_value
+            .get("package")
+            .and_then(|p| p.get("metadata"))
+            .and_then(|m| m.get("nros"));
+        let Some(nros_meta) = nros_meta else {
+            continue;
+        };
+
+        // Board classification.
+        if nros_meta.get("board").is_some() {
+            let fw = read_board_framework(&dep_cargo);
+            if let Some(prev) = framework {
+                if prev != fw {
+                    bail!(
+                        "{entry_pkg_name}: conflicting board frameworks in \
+                         path-dep set — {} declared framework='{}', {} declared \
+                         framework='{}'. An Entry pkg may depend on at most one \
+                         board crate carrying `[package.metadata.nros.board]`. \
+                         [diagnostic: dispatch-mismatch-conflicting-boards]",
+                        framework_source
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| "<unknown>".into()),
+                        prev.label(),
+                        dep_cargo.display(),
+                        fw.label(),
+                    );
+                }
+            } else {
+                framework = Some(fw);
+                framework_source = Some(dep_cargo.clone());
+            }
+        }
+
+        // Node classification (a pkg MAY be both a board + a node, but in
+        // practice no in-tree crate is — the two tables are mutually
+        // exclusive by convention).
+        if let Some(ds) = read_node_dispatch_strategy(&dep_cargo)? {
+            nodes.push((dep_dir, ds));
+        }
+    }
+
+    // No board metadata → default to OwnedSpin (POSIX / RTOS / native).
+    let framework = framework.unwrap_or(Framework::OwnedSpin);
+
+    // Apply the matrix per (framework, node).
+    for (node_dir, ds) in nodes {
+        if let Some(fix) = matrix_reject_reason(framework, ds) {
+            let node_label = node_dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("<unknown>");
+            bail!(
+                "{entry_pkg_name}: framework × dispatch matrix rejects \
+                 ({fw} × {ds}) — Node pkg '{node_label}' declares \
+                 dispatch=\"{ds}\" but Entry pkg's board carries \
+                 framework=\"{fw}\". Fix: {fix} \
+                 [diagnostic: dispatch-mismatch-{fw}-{ds}]",
+                fw = framework.label(),
+                ds = ds.label(),
+                node_label = node_label,
+                fix = fix,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     fn temp_root(tag: &str) -> PathBuf {
         let stamp = SystemTime::now()
@@ -614,5 +955,219 @@ mod tests {
 
         let report = check_workspace(&root).expect("dotted + build dirs skipped");
         assert_eq!(report.pkgs_visited, 0);
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 216.D.1 — framework × DispatchStrategy matrix
+    // ------------------------------------------------------------------
+
+    /// Stamp a board crate at `<root>/<dir>/Cargo.toml` carrying
+    /// `[package.metadata.nros.board] framework = "<fw>"`.
+    fn write_board_crate(root: &Path, dir: &str, fw: &str) {
+        let p = root.join(dir);
+        fs::create_dir_all(p.join("src")).unwrap();
+        fs::write(p.join("src/lib.rs"), "// stub\n").unwrap();
+        fs::write(
+            p.join("Cargo.toml"),
+            format!(
+                "[package]\nname=\"{dir}\"\nversion=\"0.1.0\"\n\
+                 [package.metadata.nros.board]\nframework = \"{fw}\"\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    /// Stamp a Node pkg at `<root>/<dir>/Cargo.toml` carrying
+    /// `[package.metadata.nros.node]` + optional `dispatch = "<ds>"`.
+    /// Pass `None` for `dispatch` to omit the key (exercises the default).
+    fn write_node_pkg(root: &Path, dir: &str, dispatch: Option<&str>) {
+        let p = root.join(dir);
+        fs::create_dir_all(p.join("src")).unwrap();
+        fs::write(p.join("src/lib.rs"), "// stub\n").unwrap();
+        let dispatch_line = dispatch
+            .map(|d| format!("dispatch = \"{d}\"\n"))
+            .unwrap_or_default();
+        fs::write(
+            p.join("Cargo.toml"),
+            format!(
+                "[package]\nname=\"{dir}\"\nversion=\"0.1.0\"\n\
+                 [package.metadata.nros.node]\nclass = \"{dir}::Stub\"\n\
+                 name = \"stub\"\ndefault_namespace = \"/\"\n{dispatch_line}"
+            ),
+        )
+        .unwrap();
+    }
+
+    /// Stamp an Entry pkg at `<root>/<entry_dir>/Cargo.toml` with `deploy
+    /// = "<deploy>"` and the listed path-deps (each entry = (dep_name,
+    /// rel_path)).
+    fn write_entry_pkg(root: &Path, entry_dir: &str, deploy: &str, path_deps: &[(&str, &str)]) {
+        let p = root.join(entry_dir);
+        fs::create_dir_all(p.join("src")).unwrap();
+        fs::write(p.join("src/main.rs"), "fn main() {}").unwrap();
+        let mut deps = String::from("[dependencies]\n");
+        for (n, rel) in path_deps {
+            deps.push_str(&format!("{n} = {{ path = \"{rel}\" }}\n"));
+        }
+        fs::write(
+            p.join("Cargo.toml"),
+            format!(
+                "[package]\nname=\"{entry_dir}\"\nversion=\"0.1.0\"\n\
+                 [package.metadata.nros.entry]\ndeploy = \"{deploy}\"\n\
+                 {deps}"
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn inline_node_on_rtic_framework_rejects() {
+        let root = temp_root("d1_inline_on_rtic");
+        write_board_crate(&root, "board-rtic-stub", "rtic");
+        write_node_pkg(&root, "talker-node", Some("inline"));
+        write_entry_pkg(
+            &root,
+            "talker-rtic-entry",
+            "rtic-stm32f4",
+            &[
+                ("board_rtic_stub", "../board-rtic-stub"),
+                ("talker_node", "../talker-node"),
+            ],
+        );
+        let err = check_workspace(&root).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("dispatch-mismatch-rtic-inline"), "diag: {msg}");
+        assert!(msg.contains("talker-node"), "diag: {msg}");
+        assert!(
+            msg.contains("RTIC requires Deferred dispatch"),
+            "diag: {msg}"
+        );
+    }
+
+    #[test]
+    fn deferred_node_on_rtic_framework_accepts() {
+        let root = temp_root("d1_deferred_on_rtic");
+        write_board_crate(&root, "board-rtic-stub", "rtic");
+        write_node_pkg(&root, "listener-node", Some("deferred"));
+        write_entry_pkg(
+            &root,
+            "listener-rtic-entry",
+            "rtic-stm32f4",
+            &[
+                ("board_rtic_stub", "../board-rtic-stub"),
+                ("listener_node", "../listener-node"),
+            ],
+        );
+        let report = check_workspace(&root).expect("(rtic, deferred) is an allowed matrix cell");
+        // 3 pkg dirs visited: board, node, entry — none are bringup.
+        assert_eq!(report.pkgs_visited, 3);
+    }
+
+    #[test]
+    fn node_default_dispatch_is_inline() {
+        // A Node pkg w/o `dispatch = …` mirrors `Node::DISPATCH`'s trait
+        // const default (Inline). Pairing it with an RTIC board MUST
+        // therefore land the same `dispatch-mismatch-rtic-inline`
+        // diagnostic as an explicit `dispatch = "inline"` Node pkg.
+        let root = temp_root("d1_node_default_inline");
+        write_board_crate(&root, "board-rtic-stub", "rtic");
+        // No `dispatch` key — exercises the default branch in
+        // `read_node_dispatch_strategy`.
+        write_node_pkg(&root, "default-node", None);
+        write_entry_pkg(
+            &root,
+            "default-rtic-entry",
+            "rtic-stm32f4",
+            &[
+                ("board_rtic_stub", "../board-rtic-stub"),
+                ("default_node", "../default-node"),
+            ],
+        );
+        let err = check_workspace(&root).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("dispatch-mismatch-rtic-inline"),
+            "default dispatch must be Inline — diag: {msg}"
+        );
+    }
+
+    #[test]
+    fn inline_node_on_embassy_framework_rejects() {
+        let root = temp_root("d1_inline_on_embassy");
+        write_board_crate(&root, "board-embassy-stub", "embassy");
+        write_node_pkg(&root, "talker-node", Some("inline"));
+        write_entry_pkg(
+            &root,
+            "talker-embassy-entry",
+            "embassy-stm32f4",
+            &[
+                ("board_embassy_stub", "../board-embassy-stub"),
+                ("talker_node", "../talker-node"),
+            ],
+        );
+        let err = check_workspace(&root).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("dispatch-mismatch-embassy-inline"),
+            "diag: {msg}"
+        );
+        assert!(
+            msg.contains("Embassy requires Deferred dispatch"),
+            "diag: {msg}"
+        );
+    }
+
+    #[test]
+    fn from_isr_on_posix_rejects() {
+        // Owned-spin (no board metadata) + FromIsr → rejected.
+        let root = temp_root("d1_isr_on_posix");
+        write_node_pkg(&root, "isr-node", Some("from_isr"));
+        write_entry_pkg(
+            &root,
+            "native-entry",
+            "native",
+            &[("isr_node", "../isr-node")],
+        );
+        let err = check_workspace(&root).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("dispatch-mismatch-owned-spin-from-isr"),
+            "diag: {msg}"
+        );
+        assert!(msg.contains("FromIsr"), "diag: {msg}");
+    }
+
+    #[test]
+    fn deferred_on_owned_spin_accepts() {
+        // (OwnedSpin, Deferred) is an allowed cell — a POSIX / native
+        // Entry pkg may pair with a Deferred Node pkg (the runtime serves
+        // the signal even though the framework axis is "no framework").
+        let root = temp_root("d1_deferred_on_owned_spin");
+        write_node_pkg(&root, "deferred-node", Some("deferred"));
+        write_entry_pkg(
+            &root,
+            "native-entry",
+            "native",
+            &[("deferred_node", "../deferred-node")],
+        );
+        let report = check_workspace(&root).expect("(owned-spin, deferred) ok");
+        assert_eq!(report.pkgs_visited, 2);
+    }
+
+    #[test]
+    fn unknown_dispatch_string_rejects() {
+        // Typo in the dispatch key surfaces a clear error instead of
+        // silently defaulting to Inline.
+        let root = temp_root("d1_unknown_dispatch");
+        write_node_pkg(&root, "typo-node", Some("Inline" /* wrong case */));
+        write_entry_pkg(
+            &root,
+            "native-entry",
+            "native",
+            &[("typo_node", "../typo-node")],
+        );
+        let err = check_workspace(&root).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown dispatch strategy"), "diag: {msg}");
     }
 }

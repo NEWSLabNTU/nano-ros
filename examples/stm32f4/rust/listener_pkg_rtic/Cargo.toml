@@ -43,6 +43,11 @@ defmt = "0.3"
 class = "stm32f4_listener_pkg_rtic::Listener"
 name = "listener"
 default_namespace = "/"
+# Phase 216.D.1 — explicit dispatch hint mirrors `Node::DISPATCH` in
+# `src/lib.rs` (Deferred). Read by `nros check`'s framework ×
+# DispatchStrategy matrix; the RTIC sibling pairs with the
+# `rtic-stm32f4` board, the matrix's `(rtic, deferred)` cell.
+dispatch = "deferred"
 
 [profile.dev]
 panic = "abort"

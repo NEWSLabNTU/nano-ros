@@ -28,6 +28,13 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 class = "stm32f4_talker_pkg::Talker"
 name = "talker"
 default_namespace = "/"
+# Phase 216.D.1 — explicit dispatch hint for `nros check`'s framework ×
+# DispatchStrategy matrix. Mirrors `Node::DISPATCH` in `src/lib.rs`.
+# Inline matches the publisher path (no callbacks fire on the spin
+# path). The matrix lint flags the (board, node) pair at Entry pkg
+# resolution time, not on the Node pkg in isolation — so Inline here
+# is legal as long as the deploying Entry pkg's board is OwnedSpin.
+dispatch = "inline"
 
 [profile.dev]
 panic = "abort"
