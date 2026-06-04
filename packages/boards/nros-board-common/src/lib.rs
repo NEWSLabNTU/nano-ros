@@ -39,6 +39,10 @@ pub use threadx_config::ThreadxConfig;
 #[cfg(feature = "build-helpers")]
 pub mod manifest;
 #[cfg(feature = "build-helpers")]
+pub mod nuttx_ffi_build;
+#[cfg(feature = "build-helpers")]
 pub mod policy;
+#[cfg(feature = "build-helpers")]
+pub mod threadx_qemu_riscv64_build;
 #[cfg(feature = "build-helpers")]
 pub mod threadx_sources;

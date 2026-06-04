@@ -24,9 +24,9 @@ nros-cpp = { path = "../../../core/nros-cpp", features = [
 nros-rmw-zenoh = { path = "../../../zpico/nros-rmw-zenoh", features = ["platform-nuttx", "ros-humble"] }
 
 [build-dependencies]
-cc = "1"
-# Phase 208.B Track A — repo-relative path resolver.
-nros-build-paths = { path = "../../../core/nros-build-paths" }
+# Phase 221.A.3 — NuttX FFI build helper; pulls repo path
+# resolution through nros-board-common's build-helper feature.
+nros-board-common = { path = "../../nros-board-common" }
 
 [profile.release]
 opt-level = "s"

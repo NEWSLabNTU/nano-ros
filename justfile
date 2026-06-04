@@ -218,57 +218,7 @@ build-all:
 # own explicit -j so the tools draw from the shared pool.
 [group("full-matrix")]
 build-all-jobserver:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    source scripts/build/cargo.sh
-    make_bin="third-party/make/make"
-    ninja_bin="third-party/ninja/ninja"
-    if [ ! -x "$make_bin" ] || ! "$make_bin" --version | head -1 | grep -q "4.4"; then
-        echo "jobserver build needs make >=4.4 — run: just workspace install-make" >&2
-        exit 1
-    fi
-    if [ ! -x "$ninja_bin" ]; then
-        echo "jobserver build needs ninja >=1.13 — run: just workspace install-ninja" >&2
-        exit 1
-    fi
-    n="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
-    # Sub-tools (cmake's make generator, west's ninja) must resolve to the
-    # fifo-capable pinned versions, not the apt make 4.3 / ninja 1.10 —
-    # .envrc does this interactively but the recipe must guarantee it.
-    export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
-    echo "build-all (jobserver): $make_bin -j$n --jobserver-style=fifo -f build-all.mk"
-    echo "  make=$(make --version | head -1), ninja=$(ninja --version)"
-    echo "  cargo-profile=$(nros_cargo_profile_name), cargo-frontends=${NROS_CARGO_FRONTENDS:-auto}"
-    log_dir="${NROS_BUILD_LOG_DIR:-$(pwd)/tmp/build-all-$(date +%Y%m%d-%H%M%S)-$$}"
-    mkdir -p "$log_dir" tmp
-    log_dir="$(cd "$log_dir" && pwd)"
-    ln -sfn "$log_dir" tmp/build-all-latest
-    echo "  log-dir=$log_dir"
-    echo "build-all: prefetching Cargo registries before broad fanout"
-    nros_cargo_fetch_root
-    # Rust example/fixture codegen MUST precede the standalone-manifest
-    # prefetch: those manifests carry `[patch.crates-io]` paths into their
-    # gitignored `generated/<pkg>/` crates, and a clean tree has no
-    # generated/ yet, so `cargo fetch` there hard-fails "unable to update
-    # generated/<pkg>". C/C++ examples don't hit this — their codegen runs
-    # inside cmake. The mk re-runs generate-bindings as a prereq (covers the
-    # direct `make -f build-all.mk` path); the incremental helper makes this
-    # first pass cheap on a warm tree and authoritative on a clean one.
-    echo "build-all: generating Rust example bindings before standalone prefetch"
-    just generate-bindings
-    echo "build-all: prefetching standalone Cargo manifests"
-    nros_cargo_fetch_standalone_manifests
-    echo "build-all: resolving host nros codegen tool"
-    nros_cargo_ensure_codegen_c
-    # NROS_JOBSERVER=1 tells the recipes to drop their explicit -j /
-    # --parallel so cargo / ninja / cmake inherit the fifo pool. Clear any
-    # stale inherited jobserver env first; the top-level make below is the
-    # only provider for this run. Cargo registries were prefetched above, so
-    # fanout runs offline to avoid registry/package-cache lock contention.
-    exec env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
-        NROS_JOBSERVER=1 NROS_BUILD_JOBS="$n" NROS_BUILD_LOG_DIR="$log_dir" \
-        NROS_CODEGEN_C_PREBUILT=1 CARGO_NET_OFFLINE=true \
-        "$make_bin" -j"$n" --jobserver-style=fifo -f build-all.mk
+    ./scripts/build-all-jobserver.sh
 
 # Internal: invalidate stale nros-* cargo fingerprints in a cmake build
 # dir's per-build cargo cache when shared-core source content has
@@ -829,56 +779,7 @@ _require-fixtures:
 # recompute. Skipped under NROS_SKIP_FIXTURE_CHECK=1. (Rust cells: follow-up.)
 [private]
 _check-fixtures-stale:
-    #!/usr/bin/env bash
-    if [ "${NROS_SKIP_FIXTURE_CHECK:-0}" != "0" ]; then
-        exit 0
-    fi
-    # C/C++ cells — reuse cmake/ninja's incremental build (self-heal) over the
-    # SSOT manifest's per-RMW build dirs. `ninja -n` can't be a clean
-    # detect-only signal here: Corrosion's cargo step (nros-c/nros-cpp) is an
-    # always-run custom command, so ninja -n always reports it pending. Instead
-    # run the incremental `cmake --build` (near-no-op when fresh) and report the
-    # cells that actually rebuilt. Phase 181.7c.
-    cmake_records() {
-        python3 scripts/build/fixtures-manifest.py list --for-probe --lang c
-        python3 scripts/build/fixtures-manifest.py list --for-probe --lang cpp
-    }
-    cmake_stale=()
-    if command -v parallel >/dev/null 2>&1; then
-        mapfile -t cmake_stale < <(cmake_records | parallel --jobs "$(nproc)" bash scripts/test/cmake-fixture-stale.sh {} 2>/dev/null)
-    else
-        while IFS= read -r line; do
-            out="$(bash scripts/test/cmake-fixture-stale.sh "$line")"
-            [ -n "$out" ] && cmake_stale+=("$out")
-        done < <(cmake_records)
-    fi
-    if [ ${#cmake_stale[@]} -gt 0 ]; then
-        echo "WARNING: ${#cmake_stale[@]} C/C++ fixture cell(s) were STALE and have now been rebuilt (cmake):" >&2
-        printf '  %s\n' "${cmake_stale[@]}" >&2
-        echo "  (cmake/ninja incremental self-heal; bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
-    fi
-    # Rust cells — reuse cargo's own fingerprint instead of a custom hash.
-    # Build options come from the SSOT manifest (examples/fixtures.toml) so the
-    # probe rebuilds each fixture with its EXACT features/target-dir/env — not
-    # default features, which would feature-thrash. `cargo build` is a no-op
-    # when fresh and rebuilds stale units incrementally, so this both detects
-    # AND self-heals stale rust fixtures (C/C++ above self-heals via
-    # `cmake --build` the same way). Phase 177.9 / 181.
-    rust_stale=()
-    if command -v parallel >/dev/null 2>&1; then
-        mapfile -t rust_stale < <(python3 scripts/build/fixtures-manifest.py list --for-probe --lang rust \
-            | parallel --jobs "$(nproc)" bash scripts/test/rust-fixture-stale.sh {} 2>/dev/null)
-    else
-        while IFS= read -r line; do
-            out="$(bash scripts/test/rust-fixture-stale.sh "$line")"
-            [ -n "$out" ] && rust_stale+=("$out")
-        done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --lang rust)
-    fi
-    if [ ${#rust_stale[@]} -gt 0 ]; then
-        echo "WARNING: ${#rust_stale[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2
-        printf '  %s\n' "${rust_stale[@]}" >&2
-        echo "  (cargo incremental self-heal; bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
-    fi
+    ./scripts/check-fixtures-stale.sh
 
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen
@@ -1658,34 +1559,7 @@ setup-cli:
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
 [group("maintenance")]
 generate-bindings:
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    source scripts/build/generate-rust-incremental.sh
-    NROS="$(nros_cli_bin)"
-    echo "Refreshing Rust bindings..."
-
-    # Internal crate (workspace member — manually maintained, do not auto-regenerate)
-    # To update: run `nros generate-rust` in packages/interfaces/rcl-interfaces/
-    # then apply nros- prefix rename to generated Cargo.toml and source files
-
-    # Auto-discover all examples with package.xml (Rust only, not zephyr).
-    # The helper hashes package.xml, local interfaces, the nros binary, and
-    # ROS interface files. It still calls `nros generate-rust --force` when
-    # those inputs change so apt/setup ROS message updates refresh output.
-    for pkg in $(find examples -name package.xml -not -path '*/target/*' -not -path '*/generated/*' | sort); do
-        dir="$(dirname "$pkg")"
-        nros_generate_rust_if_needed "$dir" "$NROS"
-    done
-    # Phase 131.B — bench/test-fixture crates relocated under packages/testing/
-    # also ship a package.xml + generated/ tree.
-    for pkg in $(find packages/testing/nros-bench packages/testing/nros-tests/bins packages/testing/nros-smoke \
-                     -name package.xml -not -path '*/target/*' -not -path '*/generated/*' 2>/dev/null | sort); do
-        dir="$(dirname "$pkg")"
-        nros_generate_rust_if_needed "$dir" "$NROS"
-    done
-
-    echo "All bindings refreshed!"
+    ./scripts/regenerate-bindings.sh
 
 # Remove generated/ directories in examples (not rcl-interfaces — it's a workspace member)
 [group("maintenance")]

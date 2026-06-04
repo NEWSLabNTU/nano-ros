@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -e
+
+if [ "${NROS_SKIP_FIXTURE_CHECK:-0}" != "0" ]; then
+    exit 0
+fi
+
+cmake_records() {
+    python3 scripts/build/fixtures-manifest.py list --for-probe --lang c
+    python3 scripts/build/fixtures-manifest.py list --for-probe --lang cpp
+}
+
+cmake_stale=()
+if command -v parallel >/dev/null 2>&1; then
+    mapfile -t cmake_stale < <(cmake_records | parallel --jobs "$(nproc)" bash scripts/test/cmake-fixture-stale.sh {} 2>/dev/null)
+else
+    while IFS= read -r line; do
+        out="$(bash scripts/test/cmake-fixture-stale.sh "$line")"
+        [ -n "$out" ] && cmake_stale+=("$out")
+    done < <(cmake_records)
+fi
+if [ ${#cmake_stale[@]} -gt 0 ]; then
+    echo "WARNING: ${#cmake_stale[@]} C/C++ fixture cell(s) were STALE and have now been rebuilt (cmake):" >&2
+    printf '  %s\n' "${cmake_stale[@]}" >&2
+    echo "  (cmake/ninja incremental self-heal; bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+fi
+
+rust_stale=()
+if command -v parallel >/dev/null 2>&1; then
+    mapfile -t rust_stale < <(python3 scripts/build/fixtures-manifest.py list --for-probe --lang rust \
+        | parallel --jobs "$(nproc)" bash scripts/test/rust-fixture-stale.sh {} 2>/dev/null)
+else
+    while IFS= read -r line; do
+        out="$(bash scripts/test/rust-fixture-stale.sh "$line")"
+        [ -n "$out" ] && rust_stale+=("$out")
+    done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --lang rust)
+fi
+if [ ${#rust_stale[@]} -gt 0 ]; then
+    echo "WARNING: ${#rust_stale[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2
+    printf '  %s\n' "${rust_stale[@]}" >&2
+    echo "  (cargo incremental self-heal; bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+fi
