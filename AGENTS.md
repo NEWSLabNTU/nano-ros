@@ -154,3 +154,35 @@ Preserve existing user changes in the worktree. Do not revert unrelated changes.
 When pulling or rebasing the superproject, inspect submodule changes. If a pull advances a submodule pointer and local work exists in that submodule, enter the submodule, fetch its remote, rebase local work onto the updated upstream commit, check out the commit expected by the superproject, and record the resulting submodule commit in the parent commit.
 
 After rebasing over a remote submodule-pointer change, run `git submodule status --recursive <path>` and update the checkout to the commit recorded by `HEAD` before pushing. Recent pulls advanced `third-party/dds/cyclonedds`; leaving the worktree at the old detached commit made the superproject appear dirty even though the parent commit was correct.
+
+## Handover Notes (2026-06-04)
+
+Session ended out-of-tokens mid-stream. Active in-flight work:
+
+### In-flight: Phase 221 Track B (test fn renames)
+
+* **Agent ID**: `a831cb9a1b721ba8a` — KILLED locally at session end (deep submodule init hung). Branch state: `phase-221-b-test-fn-renames` may exist in `.claude/worktrees/agent-a831cb9a1b721ba8a/` with partial work.
+* **Scope**: rename 28 production test fns > 60 chars per the table in `docs/roadmap/phase-221-antipattern-audit-findings.md` Track B (B.1 21 nros-cli, B.2 5 nros + nros-node + cli-codegen, B.3 3 nros-tests integration). Preserve old behavior info as `///` doc-comments above the renamed fn.
+* **Resume path**: re-dispatch from scratch via the Track B table; the killed agent didn't push.
+* **Caveat**: previous agents hit deep submodule clones (`packages/cli/third-party/play_launch_parser` + transitive QEMU/OpenSSL/pyca). Dispatch template must explicitly forbid `git submodule update --init --recursive`.
+
+### Closed this session
+
+* **Phase 220 — Full-Suite Readiness Sweep** — ARCHIVED at `docs/roadmap/archived/phase-220-full-suite-readiness-sweep.md`. All 10 tracks (A–J) closed. Final commit chain ends at `c05830b2c`. Followups identified for Phase 222 (CLI surface) territory; one for codegen `--target <rmw>` honor.
+
+### CLI install reality post-218
+
+* `~/.cargo/bin/nros` + `~/.nros/bin/nros` are STALE shadows from pre-Phase-218 install paths. Remove if present.
+* Canonical install: `git submodule update --init packages/cli/third-party/<one-by-one as needed>` (NOT `--recursive`), then `just setup-cli`, then `source ./activate.sh`. PATH wires `nros`, `play_launch_parser`, `zenohd` from `~/.nros/sdk/*/bin/`.
+* `just doctor` now FAILs (not warns) on stale shadows + missing `play_launch_parser` (Phase 220.A + 220.J).
+
+### Agent-dispatch contract (Phase 220.J)
+
+* Every `just <plat>` invocation needs `source ./activate.sh` first. Dispatch templates MUST source it.
+* Pre-218 pattern `export PATH="$HOME/.nros/bin:$PATH"` is INSUFFICIENT — misses `play_launch_parser` under `~/.nros/sdk/play_launch_parser/bin/`.
+* CLAUDE.md "Practices" section carries the contract.
+
+### Submodule init landmines
+
+Never run `git submodule update --init --recursive` from a worktree. The transitive closure pulls QEMU → OpenSSL → pyca-cryptography (~30 min wasted in 220.G first attempt). Only init what the immediate task needs.
+
