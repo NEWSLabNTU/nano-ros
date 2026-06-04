@@ -1,0 +1,90 @@
+[package]
+name = "nros-board-rtic-stm32f4"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Phase 216.B.2 — RTIC + STM32F4 board crate. Skeleton implementation of RticBoardEntry; `init_hardware` body is `todo!()` until 216.B.3 wires the proc-macro routing."
+authors = ["nano-ros contributors"]
+repository = "https://github.com/NEWSLabNTU/nano-ros"
+keywords = ["nano-ros", "ros2", "rtic", "stm32f4", "embedded"]
+categories = ["embedded", "no-std", "hardware-support"]
+
+[lib]
+name = "nros_board_rtic_stm32f4"
+
+# Phase 216.B.3 + 216.D.1 read this to route the `nros::main!()`
+# proc-macro at a board carrying this metadata onto the RTIC emit
+# path (vs the direct-exec `BoardEntry::run` path).
+[package.metadata.nros.board]
+framework = "rtic"
+
+[dependencies]
+# Phase 216.A — Board trait family + RticBoardEntry trait surface.
+# Pulled with `platform-stm32f4` + `global-allocator` to match the
+# direct-exec sibling crate (`nros-board-stm32f4`) so a future
+# 216.B.3 migration can swap framework via Cargo feature without
+# disturbing the platform feature set.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-stm32f4", "global-allocator", "critical-section"] }
+
+# Phase 152.4.B / 173.1 — legacy Board* super-trait family. Kept as
+# a dep so we can mirror the direct-exec `nros-board-stm32f4` shape
+# when 216.B.3 lands; today only `nros-platform`'s newer Board*
+# surface is impl'd. The legacy crate is feature-gated minimal so
+# pulling it doesn't drag serde / toml into the embedded link.
+nros-board-common = { path = "../nros-board-common", default-features = false }
+
+# Unified platform primitives (clock, memory, random, sleep,
+# threading, libc stubs). Same dep as the direct-exec sibling.
+nros-platform-stm32f4 = { path = "../../platforms/nros-platform-stm32f4" }
+
+# Cortex-M runtime — Pac/Core associated types live in user space
+# but the board crate provides them concretely.
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+# STM32F4 HAL — used for the `Pac` associated type.
+stm32f4xx-hal = { version = "0.21" }
+
+# Phase 216.B.2 — RTIC v2 (matches the version pinned by
+# `examples/stm32f4/rust/talker-rtic/Cargo.toml`). Today the
+# trait surface only refers to RTIC by name in docs; 216.B.3's
+# proc-macro emit will splice this dep into the generated
+# `#[rtic::app]` module, so it lives at the board layer (the
+# Cargo.toml the Entry pkg copies from).
+rtic = { version = "2.1", features = ["thumbv7-backend"] }
+
+# Optional smoltcp bridge — mirrors `nros-board-stm32f4`'s
+# `ethernet` feature so user Entry pkgs flip transports the same
+# way on both direct-exec and RTIC variants.
+nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
+
+# Logging — matches the sibling direct-exec crate.
+defmt = "0.3"
+
+[features]
+default = ["stm32f429", "ethernet", "rmw-zenoh"]
+# `rmw-zenoh` is a pure marker (cargo selects the backend at link time).
+rmw-zenoh = []
+# Ethernet transport flag. The actual MAC / smoltcp bringup body
+# lives in 216.B.3's `init_hardware` body — today the feature gates
+# only the optional dep so cross-compile resolves cleanly.
+ethernet = ["dep:nros-smoltcp"]
+
+# STM32F4 chip variants forwarded to the HAL. Mirrors
+# `nros-board-stm32f4`.
+stm32f407 = ["stm32f4xx-hal/stm32f407"]
+stm32f417 = ["stm32f4xx-hal/stm32f417"]
+stm32f427 = ["stm32f4xx-hal/stm32f427"]
+stm32f429 = ["stm32f4xx-hal/stm32f429"]
+stm32f437 = ["stm32f4xx-hal/stm32f437"]
+stm32f439 = ["stm32f4xx-hal/stm32f439"]
+stm32f469 = ["stm32f4xx-hal/stm32f469"]
+stm32f479 = ["stm32f4xx-hal/stm32f479"]
+
+# Phase 208.F1 — empty `[workspace]` table makes this crate a standalone
+# workspace root, mirroring how the example crates that depend on it
+# (and the sibling `nros-board-stm32f4` consumers) handle the cross-
+# compile-only build. Without this, a fresh `cargo check` from inside
+# the crate dir walks up into the nano-ros superproject workspace and
+# trips the "current package believes it's in a workspace" guard.
+[workspace]

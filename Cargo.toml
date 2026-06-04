@@ -307,6 +307,10 @@ exclude = [
     "packages/boards/nros-board-esp32-qemu",
     "packages/boards/nros-board-esp32s3",
     "packages/boards/nros-board-stm32f4",
+    # Phase 216.B.2 — RTIC + STM32F4 sibling crate. Cross-compile
+    # only (thumbv7em-none-eabihf); excluded from the host workspace
+    # walk for the same reason as `nros-board-stm32f4` above.
+    "packages/boards/nros-board-rtic-stm32f4",
     "packages/boards/nros-board-nuttx-qemu-arm",
     "packages/boards/nros-board-mps2-an385-freertos",
     # Phase 212.N.7 step-4 — the `freertos-qemu-mps2-an385-bsp` baker
