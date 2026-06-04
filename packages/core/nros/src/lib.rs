@@ -131,6 +131,14 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// Phase 216.A.5 — the `nros::node!()` proc-macro emits absolute paths
+// under `::nros::*` (so downstream Node pkgs only need a single `nros`
+// dep). For the in-crate macro-expansion test in `node.rs`, alias the
+// `nros` crate name to itself so those absolute paths resolve. Gated on
+// `cfg(test)` to keep the alias out of normal builds.
+#[cfg(test)]
+extern crate self as nros;
+
 // Link-graph anchor — relays an in-rlib `#[used]` static down to the
 // `_nros_force_link_cffi` symbol that lives in `nros-platform-cffi`,
 // keeping the cffi rlib (and its build.rs-emitted

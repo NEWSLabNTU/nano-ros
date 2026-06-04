@@ -1798,4 +1798,66 @@ mod tests {
         }
         assert_eq!(Dummy::DISPATCH, crate::DispatchStrategy::Inline);
     }
+
+    // Phase 216.A.5 — `nros::node!()` emits the
+    // `__nros_node_<pkg>_dispatch_strategy()` ABI export. We invoke the
+    // macro on a dummy Node + ExecutableNode pair in a private sub-module
+    // here so the macro expansion lives inside the `nros` crate itself;
+    // the emitted `#[unsafe(no_mangle)] extern "C"` symbol is global, so
+    // the test below re-declares + calls it. If the macro stopped
+    // emitting the symbol (or renamed it) this would link-fail.
+    //
+    // `<pkg>` resolves to `CARGO_PKG_NAME` after
+    // `sanitize_pkg_name_for_symbol`. The `nros` crate's pkg name is
+    // literal `nros`, so the expected symbol is
+    // `__nros_node_nros_dispatch_strategy`.
+    #[cfg(feature = "alloc")]
+    mod phase_216_a5_macro_emit {
+        // `extern crate self as nros;` at the crate root (in `lib.rs`,
+        // `cfg(test)`-gated) lets the `::nros::*` paths the macro emits
+        // resolve in-crate.
+        use super::*;
+
+        pub struct DispatchProbe;
+
+        impl Node for DispatchProbe {
+            const NAME: &'static str = "dispatch_probe_216_a5";
+            // Default `DISPATCH = Inline` ⇒ discriminant 0.
+            fn register(_: &mut NodeContext<'_>) -> NodeResult<()> {
+                Ok(())
+            }
+        }
+
+        impl ExecutableNode for DispatchProbe {
+            type State = ();
+            fn init() -> Self::State {}
+            fn on_callback(
+                _state: &mut Self::State,
+                _callback: CallbackId<'_>,
+                _ctx: &mut CallbackCtx<'_>,
+            ) {
+            }
+        }
+
+        // Emits both the per-pkg `register` wrapper AND the new
+        // `__nros_node_nros_dispatch_strategy` ABI symbol.
+        nros_macros::node!(DispatchProbe);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn node_macro_emits_dispatch_strategy_symbol() {
+        // Re-declare the ABI export the macro just emitted. If the macro
+        // elides the symbol (or renames it) this fails to link — exactly
+        // the regression the test is meant to catch.
+        unsafe extern "C" {
+            fn __nros_node_nros_dispatch_strategy() -> u8;
+        }
+        let strategy = unsafe { __nros_node_nros_dispatch_strategy() };
+        // The probe Node uses the default `DISPATCH = Inline`
+        // (discriminant 0) — confirms the macro is splicing
+        // `<Type as Node>::DISPATCH as u8`, not a hard-coded zero.
+        assert_eq!(strategy, crate::DispatchStrategy::Inline as u8);
+        assert_eq!(strategy, 0);
+    }
 }

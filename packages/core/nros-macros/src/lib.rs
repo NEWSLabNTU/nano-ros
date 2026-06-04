@@ -213,6 +213,25 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 /// legacy `nros::node!()` macro and `Component*` trait family were
 /// retired in the same phase.
 ///
+/// # Emitted items
+///
+/// Per invocation the macro currently emits:
+///
+/// 1. `pub fn register(runtime: &mut RuntimeCtx<'_>) -> Result<(), RuntimeError>`
+///    — the Entry-pkg-callable wrapper that registers the four typed
+///    `register` / `init` / `dispatch` / `tick` trampolines with the
+///    runtime by stable pkg name (Phase 212.N.7 step-3.4).
+/// 2. `#[unsafe(no_mangle)] pub extern "C" fn
+///    __nros_node_<pkg>_dispatch_strategy() -> u8` — Phase 216.A.5
+///    ABI export of the Node's [`DispatchStrategy`] discriminant
+///    (`<Type as Node>::DISPATCH as u8`). Read out-of-tree by
+///    `nros check` (216.D.1) and consumed from a separate compilation
+///    unit by the RTIC (216.B.3) / Embassy (216.C.3) dispatch tasks.
+///    `<pkg>` is the value of `CARGO_PKG_NAME` after
+///    `sanitize_pkg_name_for_symbol` (hyphens → underscores).
+///
+/// [`DispatchStrategy`]: ../nros/enum.DispatchStrategy.html
+///
 /// # Example
 ///
 /// ```ignore
@@ -259,6 +278,13 @@ fn node_impl(input: TokenStream) -> TokenStream {
     let pkg_sym = sanitize_pkg_name_for_symbol(&pkg_raw);
     let pkg_name_lit = pkg_sym.clone();
 
+    // Phase 216.A.5 — per-Node-pkg `DispatchStrategy` ABI export. The
+    // identifier is `__nros_node_<pkg>_dispatch_strategy`, sharing the
+    // same sanitised `<pkg>` substring as the diagnostics string above
+    // so out-of-tree tools (`nros check`, RTIC/Embassy dispatch tasks)
+    // can resolve the symbol from `CARGO_PKG_NAME` directly.
+    let dispatch_fn_name = quote::format_ident!("__nros_node_{}_dispatch_strategy", pkg_sym);
+
     // Phase 212.N.7 step-6 — the legacy `#[unsafe(no_mangle)] extern
     // "Rust" fn __nros_component_<pkg>_{register,init,dispatch,tick}`
     // symbols and the `__NROS_COMPONENT_<PKG>_EXPORT_PRESENT` `#[used]`
@@ -293,6 +319,20 @@ fn node_impl(input: TokenStream) -> TokenStream {
         // a single `nros` dep in their `Cargo.toml`. The
         // `__macro_support` module is a `#[doc(hidden)]` re-export
         // alias maintained by `packages/core/nros/src/lib.rs`.
+
+        // Phase 216.A.5 — ABI export of the Node's `DispatchStrategy`
+        // discriminant (`#[repr(u8)]`, so `as u8` is a no-op cast).
+        // `nros check` reads this out-of-tree (objdump / `dlsym`) to
+        // validate the board-side dispatch path matches what the Node
+        // declared via `Node::DISPATCH`; the RTIC (Phase 216.B.3) /
+        // Embassy (Phase 216.C.3) dispatch tasks consume it from a
+        // separate compilation unit. Kept above `register()` so the
+        // file-order reads "ABI export → register".
+        #[unsafe(no_mangle)]
+        pub extern "C" fn #dispatch_fn_name() -> u8 {
+            <#node_ty as ::nros::Node>::DISPATCH as u8
+        }
+
         pub fn register(
             runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
         ) -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError> {
