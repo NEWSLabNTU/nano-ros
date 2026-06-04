@@ -1,17 +1,38 @@
-//! RTIC Action Server Example for nros on STM32F4
+//! RTIC action server on STM32F4 — Phase 216.B.5 `nros::main!()` shape.
 //!
-//! Handles Fibonacci action goals using RTIC v2's hardware-scheduled async tasks.
-//! Demonstrates the RTIC action server pattern:
+//! The body collapses to the one-line macro invocation. `nros::main!()`
+//! reads `[package.metadata.nros.entry] deploy = "rtic-stm32f4"`
+//! from `Cargo.toml`, routes through the RTIC framework branch
+//! (Phase 216.B.3), and emits the `#[rtic::app] mod app` body +
+//! `__nros_spin` / `__nros_dispatch` RTIC task sidekicks. The board
+//! crate (`nros-board-rtic-stm32f4`, Phase 216.B.2) supplies the
+//! `RticStm32F4` ZST whose `RticBoardEntry::init_hardware` brings up
+//! the hardware and returns the `(Executor, RticRuntime)` pair.
 //!
-//! - `#[init]` calls `board::init_hardware()` and creates nano-ros handles
-//! - `net_poll` task drives transport I/O via `spin_once(0)`
-//! - `action_serve` task polls for goals, publishes feedback, completes goals,
-//!   and handles get_result requests — all via manual polling
-//! - All nano-ros handles are `#[local]` — no locks required
+//! ## Deferred dispatch + tag-based action server
 //!
-//! # Hardware
+//! Unlike the sibling `talker-rtic` (which links `talker_pkg`,
+//! `DispatchStrategy::Inline`), this Entry pkg links
+//! `stm32f4_action_server_pkg` whose Node declares
+//! `DispatchStrategy::Deferred`. The RTIC board's
+//! `NodeDispatchRuntime` enqueues signaled goal / cancel / accepted
+//! callbacks onto a framework-owned `#[task]`; the action server's
+//! `on_callback` body matches against the
+//! [`ActionTag`](nros::ActionTag) returned from
+//! `create_action_static::<PlaceholderAct>("/fibonacci")`. See
+//! `examples/stm32f4/rust/action_server_pkg/src/lib.rs` for the body
+//! + the RTIC-side dispatch-handle plumbing TODO.
 //!
-//! - Board: NUCLEO-F429ZI (or similar STM32F4 with Ethernet)
+//! ## Skeleton status
+//!
+//! `init_hardware`'s body is still `todo!()` (216.B.2 follow-up
+//! mirrors the legacy Pattern A bringup), and the trampoline-
+//! registration story that hands the sibling
+//! `stm32f4_action_server_pkg` Node onto the dispatch runtime —
+//! including threading an RTIC `spawn()`-style handle through to
+//! `ActionServerState` — is the next 216.B wave. The macro emit +
+//! dep graph compile clean today; a real flash will hit the
+//! `todo!()` panic in `init_hardware`.
 
 #![no_std]
 #![no_main]
@@ -19,142 +40,4 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-defmt::timestamp!("{=u64:us}", { 0 });
-
-use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
-use nros::prelude::*;
-use nros_board_stm32f4::Config;
-
-use rtic_monotonics::systick::prelude::*;
-
-systick_monotonic!(Mono, 1000);
-
-// Type aliases for RTIC Local struct annotations
-type NrosExecutor = Executor;
-type NrosActionServer = nros::ActionServer<Fibonacci>;
-
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1, USART2])]
-mod app {
-    use super::*;
-
-    #[shared]
-    struct Shared {}
-
-    #[local]
-    struct Local {
-        executor: NrosExecutor,
-        server: NrosActionServer,
-    }
-
-    #[init]
-    fn init(cx: init::Context) -> (Shared, Local) {
-        let config = Config::nucleo_f429zi();
-        let syst = nros_board_stm32f4::init_hardware(&config, cx.device, cx.core);
-
-        Mono::start(syst, 168_000_000);
-
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("fibonacci_server");
-        // Phase 104.A — bare-metal callers explicitly register the RMW
-        // backend before `Executor::open`. POSIX hosts auto-register via
-        // `.init_array`; this target doesn't walk that section.
-        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config).unwrap();
-        let mut node = executor.create_node("fibonacci_server").unwrap();
-        let server = node
-            .create_action_server::<Fibonacci>("/fibonacci")
-            .unwrap();
-
-        net_poll::spawn().unwrap();
-        action_serve::spawn().unwrap();
-
-        (Shared {}, Local { executor, server })
-    }
-
-    /// Drive transport I/O — equivalent to rclcpp spin_some().
-    #[task(local = [executor], priority = 1)]
-    async fn net_poll(cx: net_poll::Context) {
-        loop {
-            cx.local
-                .executor
-                .spin_once(core::time::Duration::from_millis(0));
-            Mono::delay(10.millis()).await;
-        }
-    }
-
-    /// Handle action goals, feedback, and results.
-    #[task(local = [server], priority = 1)]
-    async fn action_serve(cx: action_serve::Context) {
-        // Wait for zenoh session establishment
-        Mono::delay(2000.millis()).await;
-
-        defmt::info!("Action server ready: /fibonacci");
-
-        loop {
-            // Try to accept new goals
-            match cx
-                .local
-                .server
-                .try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
-                    defmt::info!("Goal request: order={}", goal.order);
-                    GoalResponse::AcceptAndExecute
-                }) {
-                Ok(Some(goal_id)) => {
-                    defmt::info!("Goal accepted");
-
-                    if let Some(active_goal) = cx.local.server.get_goal(&goal_id) {
-                        let order = active_goal.goal.order;
-
-                        cx.local
-                            .server
-                            .set_goal_status(&goal_id, GoalStatus::Executing);
-
-                        // Compute Fibonacci with feedback
-                        let mut sequence: heapless::Vec<i32, 64> = heapless::Vec::new();
-
-                        for i in 0..=order {
-                            let next_val = if i == 0 {
-                                0
-                            } else if i == 1 {
-                                1
-                            } else {
-                                let len = sequence.len();
-                                sequence[len - 1] + sequence[len - 2]
-                            };
-                            let _ = sequence.push(next_val);
-
-                            let feedback = FibonacciFeedback {
-                                sequence: sequence.clone(),
-                            };
-                            let _ = cx.local.server.publish_feedback(&goal_id, &feedback);
-
-                            Mono::delay(100.millis()).await;
-                        }
-
-                        let result = FibonacciResult { sequence };
-                        cx.local
-                            .server
-                            .complete_goal(&goal_id, GoalStatus::Succeeded, result);
-                    }
-
-                    // Handle get_result requests after completing the goal
-                    for _ in 0..200 {
-                        let _ = cx.local.server.try_handle_get_result();
-                        Mono::delay(10.millis()).await;
-                    }
-                }
-                Ok(None) => {}
-                Err(e) => defmt::warn!("Accept error: {:?}", e),
-            }
-
-            // Handle cancel requests
-            let _ = cx
-                .local
-                .server
-                .try_handle_cancel(|_id, _status| nros::CancelResponse::Ok);
-
-            Mono::delay(10.millis()).await;
-        }
-    }
-}
+nros::main!();
