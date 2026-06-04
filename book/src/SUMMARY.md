@@ -41,6 +41,8 @@
 - [Cross-backend Bridges](./user-guide/cross-backend-bridges.md)
 - [QoS, Status Events, and Discovery](./concepts/status-events.md)
 - [Serial Transport](./user-guide/serial-transport.md)
+- [RTIC Integration](./user-guide/rtic-integration.md)
+- [Embassy Integration](./user-guide/embassy-integration.md)
 - [Troubleshooting](./user-guide/troubleshooting.md)
 
 # ROS 2 Orientation
@@ -88,6 +90,7 @@
 - [Patched qemu-system-arm](./internals/qemu-patched-binary.md)
 - [Opaque Storage Sizing](./internals/opaque-storage-sizing.md)
 - [Scheduling Models](./internals/scheduling-models.md)
+- [Dispatch Strategy](./internals/dispatch-strategy.md)
 - [Real-Time Analysis](./internals/realtime-analysis.md)
 - [Build System & Caching](./internals/build-system.md)
 - [zpico-sys Build Architecture](./internals/zpico-build.md)
