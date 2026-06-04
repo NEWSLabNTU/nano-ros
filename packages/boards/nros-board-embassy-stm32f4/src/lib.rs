@@ -15,41 +15,73 @@
 //! the generated entry point onto an `#[embassy_executor::main]`
 //! shape that calls `<EmbassyStm32F4 as EmbassyBoardEntry>::init_hardware`.
 //!
-//! ## Skeleton status
+//! ## Phase 216.C.2 follow-up — what landed
 //!
-//! Phase 216.C.2 lands the **trait surface only**. Every method body
-//! is `todo!()` so reviewers don't expect a working runtime:
+//! Mirrors the sibling `nros-board-rtic-stm32f4` (Phase 216.B.2
+//! follow-up, `0891ed336`) — the Embassy variant flips its `todo!()`
+//! skeleton over to a real bringup body so the proc-macro emit
+//! (216.C.3) compiles against the real `Self::Executor` type:
 //!
-//! - [`BoardInit::init_hardware`] — `todo!()`. Real impl mirrors
-//!   `examples/stm32f4/rust/talker-embassy/src/main.rs`:
-//!   1. `embassy_stm32::init(Default::default())` → `Peripherals`.
-//!   2. Configure clock tree (HSE + PLL) via `embassy_stm32::Config`.
-//!   3. Wire GPIO / LED (PB7 on NUCLEO-F429ZI).
-//!   4. Bring up the network stack (Ethernet via `embassy-net` +
-//!      `embassy-stm32`'s `eth` peri) or UART transport.
-//! - [`BoardPrint::println`] — `todo!()`. Wire to `defmt::info!`
-//!   over RTT, matching the example crate.
-//! - [`BoardExit::{exit_success, exit_failure}`] — `todo!()`. On
-//!   real hardware, halt in `wfi`; on probe-attached runs, fall back
-//!   to `cortex_m::peripheral::SCB::sys_reset()`.
-//! - [`EmbassyBoardEntry::init_hardware`] — `todo!()`. Drives the
-//!   above through the Embassy `Spawner` and hands back the
-//!   `(Executor, EmbassyRuntime)` pair the proc-macro then spawns
-//!   dispatch tasks against.
+//! - [`BoardInit::init_hardware`] — no-op. Embassy never invokes the
+//!   parameterless slot (entry runs through `#[embassy_executor::main]`
+//!   → `EmbassyBoardEntry::init_hardware(spawner)`); kept here for
+//!   trait-impl completeness.
+//! - [`BoardPrint::println`] — `defmt::info!("{}", args)` via
+//!   `defmt::Display2Format`, matching the sibling RTIC board crate.
+//! - [`BoardExit::{exit_success, exit_failure}`] — `defmt::info!`/
+//!   `defmt::error!` then a `wfi` idle loop.
+//! - [`EmbassyBoardEntry::init_hardware`] —
+//!   `embassy_stm32::init(Default::default())` + `nros_rmw_zenoh::register()`
+//!   + `Executor::open(&ExecutorConfig::new("tcp/127.0.0.1:7447")
+//!   .domain_id(0).node_name("nros"))` + return
+//!   `(executor, EmbassyRuntime::new())`. The Spawner is accepted
+//!   but unused today (no framework-task spawn yet); the
+//!   proc-macro emit owns the spin + dispatch sidekicks.
+//! - [`EmbassyBoardEntry::Executor`] flips from `()` to
+//!   [`::nros::Executor`] — the assoc-type opacity at the trait
+//!   surface (`nros-platform` sits below `nros`) is resolved at
+//!   this board layer, same as the RTIC sibling.
 //!
-//! ## Layering decision: `type Executor = ()`
+//! ## Still placeholder
 //!
-//! Pulling `nros` as a dep here would force every consumer of
-//! `nros-board-embassy-stm32f4` to also resolve the full `nros`
-//! tree — overkill for a skeleton whose `init_hardware` is `todo!()`.
-//! The trait permits any `'static` type for [`EmbassyBoardEntry::Executor`],
-//! so the skeleton picks `()`. Phase 216.C.2 follow-ups switch this to
-//! `nros::Executor` once the real bringup body lands.
+//! - **No transport bringup.** The pre-migration talker-embassy
+//!   example never wired ethernet / serial either — it blinked an
+//!   LED + spawned placeholder tasks. `Executor::open` without a
+//!   reachable zenoh-pico transport will fail when the
+//!   `__nros_spin_task` first ticks; a probe-attached run surfaces
+//!   the failure via the `panic!` inside `init_hardware`. Wiring
+//!   `embassy_net::Ethernet` + a zenoh-pico bridge is the next
+//!   216.C wave (parallel to the 216.B.3 spin task body wiring on
+//!   the RTIC side).
+//! - `embassy_stm32::Config::default()` picks HSI / no PLL; a
+//!   future follow-up bumps to HSE → PLL 180 MHz to match the
+//!   sibling direct-exec `nros-board-stm32f4` (168 MHz).
+//! - [`EmbassyRuntime::register_dispatch_slot_dyn`] +
+//!   [`EmbassyRuntime::spin_once`] still return `Err(())`. The
+//!   proc-macro emit (216.C.3) wraps an `ExecutorNodeRuntime`-style
+//!   sink and forwards through.
+//!
+//! ## Layering note
+//!
+//! `nros-platform` sits below `nros` in the dep graph, which means
+//! the [`EmbassyBoardEntry::Executor`] associated type **at the
+//! trait surface** cannot be `nros::Executor` (Phase 216.C.1 docs
+//! that constraint). Concrete board impls — including this crate —
+//! resolve the assoc type at the board layer where pulling `nros`
+//! is OK (only the platform / cffi crates have to stay below `nros`
+//! in the graph). The pre-followup `Self::Executor = ()`
+//! placeholder was a stand-in until the bringup body was ready;
+//! the follow-up flips to `Self::Executor = ::nros::Executor`,
+//! mirroring the RTIC sibling.
 
 #![no_std]
-// Phase 216.C.2 — skeleton; every fn body is `todo!()` so the
-// `nros-platform-stm32f4` / `nros-board-common` deps look unused to
-// the lint pass until the follow-up wires real init.
+// Phase 216.C.2 follow-up — `nros-platform-stm32f4` /
+// `nros-board-common` are carried for symmetry with `nros-board-stm32f4`
+// (allocator + libc stubs the link pulls in transitively); the file
+// itself doesn't name them. Keep the allow so a fresh build doesn't
+// surface as a noisy unused-dep diagnostic. The next 216.C wave —
+// transport bringup + Spawner-spawned Ethernet driver — will start
+// naming them and the allow can shrink to `unused_imports` then.
 #![allow(unused_imports, dead_code)]
 
 use embassy_executor::Spawner;
@@ -146,38 +178,52 @@ pub struct EmbassyStm32F4;
 
 impl BoardInit for EmbassyStm32F4 {
     fn init_hardware() {
-        // Phase 216.C.2 follow-up — mirror
-        // `examples/stm32f4/rust/talker-embassy/src/main.rs`:
-        //   let p = embassy_stm32::init(Default::default());
-        //   // clock tree + pin mux + transport bringup.
-        // The Embassy entry point calls `EmbassyBoardEntry::init_hardware`
-        // (below) with the Spawner handle; the standalone
-        // `BoardInit::init_hardware` slot here covers the
-        // BoardEntry::run path used by sibling non-Embassy boards.
-        todo!("Phase 216.C.2 follow-up — embassy_stm32::init + clock/pin/transport bringup");
+        // The `BoardInit::init_hardware()` slot is parameterless and
+        // runs from the legacy `nros_board_common::run` direct-exec
+        // driver — a code path Embassy boards do NOT take (Embassy
+        // owns the entry point via `#[embassy_executor::main]`). The
+        // real bringup happens inside
+        // `EmbassyBoardEntry::init_hardware(spawner)` because Embassy
+        // owns the Spawner handle plus the peripheral split via
+        // `embassy_stm32::init`.
+        //
+        // No-op here to keep parity with the sibling
+        // `RticBoardEntry`'s skeleton hook (216.B.2 follow-up): the
+        // proc-macro emit (216.C.3) routes through the Embassy
+        // generator and never invokes this slot. Future phases may
+        // promote pre-Spawner SoC bringup (e.g. clock floor) into
+        // this hook; today the body is empty.
     }
 }
 
 impl BoardPrint for EmbassyStm32F4 {
-    fn println(_args: core::fmt::Arguments<'_>) {
-        // Phase 216.C.2 follow-up — wire `defmt::info!("{}", args)`
-        // over RTT (the example uses `defmt_rtt`).
-        todo!("Phase 216.C.2 follow-up — wire defmt-rtt println bridge");
+    fn println(args: core::fmt::Arguments<'_>) {
+        // Mirrors the sibling RTIC board crate (216.B.2 follow-up)
+        // and the direct-exec `nros-board-stm32f4::Stm32F4` impl:
+        // route through `defmt::info!`, which the Entry pkg's
+        // `defmt-rtt` global logger surfaces over RTT to a
+        // probe-attached host.
+        defmt::info!("{}", defmt::Display2Format(&args));
     }
 }
 
 impl BoardExit for EmbassyStm32F4 {
     fn exit_success() -> ! {
-        // Phase 216.C.2 follow-up — halt in `wfi` or
-        // `cortex_m::peripheral::SCB::sys_reset()` depending on
-        // whether a debugger is attached.
-        todo!("Phase 216.C.2 follow-up — exit_success (halt/reset)");
+        // Mirrors the sibling RTIC board crate (216.B.2 follow-up)
+        // and the direct-exec `nros-board-stm32f4::Stm32F4` impl: log
+        // the completion + enter `wfi` idle. Probe-attached runs
+        // observe the defmt line; a flashed board parks until reset.
+        defmt::info!("nros: application complete; entering idle loop");
+        loop {
+            cortex_m::asm::wfi();
+        }
     }
 
     fn exit_failure() -> ! {
-        // Phase 216.C.2 follow-up — same as exit_success with a
-        // failure indicator (e.g. LED pattern + panic-probe surface).
-        todo!("Phase 216.C.2 follow-up — exit_failure (halt/reset)");
+        defmt::error!("nros: application error; entering idle loop");
+        loop {
+            cortex_m::asm::wfi();
+        }
     }
 }
 
@@ -287,12 +333,19 @@ impl NodeDispatchRuntime for EmbassyRuntime {
 impl EmbassyBoardEntry for EmbassyStm32F4 {
     type Spawner = Spawner;
 
-    // Phase 216.C.2 skeleton — `()` keeps `nros` out of the dep tree
-    // for the trait surface. Follow-up swaps to `nros::Executor` once
-    // the real bringup body lands. The trait permits any `'static`
-    // type so the skeleton round-trips through the proc-macro
-    // (Phase 216.C.3) unchanged.
-    type Executor = ();
+    /// Phase 216.C.2 follow-up — wired to the concrete
+    /// [`nros::Executor`] now that [`Self::init_hardware`] returns a
+    /// real instance. The `Self::Executor` projection feeds the
+    /// proc-macro-emitted `#[embassy_executor::main]` body (Phase
+    /// 216.C.3,
+    /// `packages/core/nros-macros/src/main_macro.rs`), so the macro
+    /// stores the executor in a `StaticCell` / task-`#[init]` storage
+    /// owned by the `__nros_spin_task` sidekick. The sibling
+    /// [`EmbassyBoardEntry`] trait surface keeps this opaque (it
+    /// sits below `nros` in the dep graph); the concrete pick lives
+    /// here at the board layer, mirroring the RTIC sibling
+    /// `nros-board-rtic-stm32f4` (216.B.2 follow-up).
+    type Executor = ::nros::Executor;
 
     type Runtime = EmbassyRuntime;
 
@@ -300,16 +353,128 @@ impl EmbassyBoardEntry for EmbassyStm32F4 {
     // override — STM32F4 callback density fits comfortably in 32.
 
     fn init_hardware(_spawner: Self::Spawner) -> (Self::Executor, Self::Runtime) {
-        // Phase 216.C.2 follow-up — drive the Embassy bringup:
-        //   1. `let p = embassy_stm32::init(Default::default());`
-        //   2. Clock tree (HSE 8 MHz → PLL 168 MHz for F429).
-        //   3. GPIO / LED on PB7 (NUCLEO-F429ZI).
-        //   4. Transport bringup (Ethernet via embassy-net or UART).
-        //   5. Build `nros::Executor` from the wired transport.
-        //   6. Build `EmbassyRuntime { channel: STATIC_CELL.init(...) }`.
-        //   7. Spawn a dispatch task that pulls from the channel and
-        //      forwards into the executor.
-        //   8. Return `(executor, runtime)`.
-        todo!("Phase 216.C.2 follow-up — embassy bringup + executor + runtime wiring");
+        // Phase 216.C.2 follow-up — real bringup body. Steps mirror
+        // the pre-migration Pattern A escape-hatch
+        // (`examples/stm32f4/rust/talker-embassy/src/main.rs` before
+        // commit `3598b3a2d`) and the sibling RTIC board crate's
+        // 216.B.2 follow-up. The Embassy variant differs from RTIC
+        // in two places:
+        //
+        // 1. Peripheral bringup goes through `embassy_stm32::init(…)`
+        //    instead of `stm32f4xx_hal::pac::Peripherals::take` +
+        //    `cortex_m::Peripherals::take`. Embassy owns its own
+        //    RCC / PLL configuration story, so the direct-exec
+        //    sibling's `nros_board_stm32f4::init_hardware(&Config,
+        //    pac, core)` free fn is NOT reused here — its
+        //    `pac::Peripherals` argument conflicts with Embassy's
+        //    peripheral split. A future follow-up may introduce a
+        //    shared `nros_board_embassy_stm32f4::init_embassy_hardware(spawner)`
+        //    free fn (mirroring the RTIC reuse pattern) if the
+        //    bringup body grows enough to warrant single-sourcing.
+        //
+        // 2. The Embassy `Spawner` is passed in (used by follow-up
+        //    waves to spawn Ethernet driver + the executor spin
+        //    sidekick). Today's body doesn't spawn any framework
+        //    tasks yet — the proc-macro emit (216.C.3) owns the
+        //    `__nros_spin_task` + `__nros_dispatch_task` sidekicks.
+        //
+        // Steps:
+        //
+        //   1. `embassy_stm32::init(Default::default())` — clock
+        //      tree + peripheral split. Defaults pick HSI / no PLL;
+        //      a future follow-up threads `[[transport]]` knobs from
+        //      `nros.toml` via `BoardTransportConfig` so the same
+        //      board crate covers NUCLEO-F429ZI (HSE → 180 MHz) and
+        //      other STM32F4 variants. The returned `Peripherals`
+        //      handle is dropped today — no transport bringup is
+        //      wired yet (placeholder, see below).
+        //   2. Register the RMW backend before `Executor::open` —
+        //      bare-metal has no `.init_array` walk (same as the
+        //      sibling RTIC board crate; same as the pre-migration
+        //      Pattern A escape-hatch).
+        //   3. `Executor::open` with a config matching the RTIC
+        //      sibling's defaults (zenoh `tcp/127.0.0.1:7447`
+        //      locator, domain 0, node name "nros"). A future
+        //      follow-up threads `nros.toml` knobs in.
+        //   4. Return `(executor, EmbassyRuntime::new())` — the
+        //      runtime wraps a `&'static` borrow of
+        //      `CALLBACK_CHANNEL`; the proc-macro emit's dispatch
+        //      task drains the receiver side.
+        //
+        // ### What's still placeholder
+        //
+        // - **No transport bringup.** The pre-migration
+        //   talker-embassy example only blinked an LED + spawned
+        //   placeholder tasks — it never wired ethernet / serial
+        //   nor opened a real zenoh session. The Pattern A code
+        //   the task brief points us to therefore had no real
+        //   transport either. `Executor::open` without a
+        //   reachable zenoh-pico transport will fail when the
+        //   `__nros_spin_task` first ticks; a probe-attached run
+        //   surfaces the failure via the `panic!` below. Wiring
+        //   `embassy_net::Ethernet` + a `embassy-net`/zenoh-pico
+        //   bridge is the next 216.C wave (parallel to the
+        //   216.B.3 spin task body wiring on the RTIC side).
+        // - `embassy_stm32::Config::default()` picks HSI; a future
+        //   follow-up bumps to HSE → PLL 180 MHz to match the
+        //   sibling RTIC board crate (which clocks at 168 MHz via
+        //   `nros_board_stm32f4`).
+        // - `EmbassyRuntime::register_dispatch_slot_dyn` /
+        //   `spin_once` still return `Err(())` — same skeleton as
+        //   the RTIC sibling; the proc-macro emit wraps an
+        //   `ExecutorNodeRuntime` sink and forwards through.
+        // - The Spawner is accepted but unused today. Embassy
+        //   Ethernet driver task spawn lives in the next wave.
+
+        // Step 1: Embassy HAL bringup. Defaults pick HSI / no PLL;
+        // the chip-init returns a `Peripherals` handle the future
+        // transport wave needs. Today the handle is dropped — no
+        // GPIO / Ethernet wiring yet.
+        let _p = embassy_stm32::init(Default::default());
+
+        // Step 2: explicit RMW backend registration (bare-metal
+        // targets don't walk `.init_array`). Mirrors the sibling
+        // RTIC board crate. `nros_rmw_zenoh::register` is
+        // idempotent w.r.t. double-register (returns
+        // `Err(AlreadyRegistered)`); we panic on any other error so
+        // a probe-attached run surfaces the failure loudly.
+        match nros_rmw_zenoh::register() {
+            Ok(()) => {}
+            Err(e) => {
+                defmt::error!(
+                    "EmbassyStm32F4::init_hardware: nros_rmw_zenoh::register failed: {:?}",
+                    defmt::Debug2Format(&e)
+                );
+                panic!("nros_rmw_zenoh::register failed");
+            }
+        }
+
+        // Step 3: open the Executor against the same defaults the
+        // sibling RTIC board crate uses (zenoh TCP locator on the
+        // local loopback, domain 0, node name "nros"). A future
+        // follow-up threads `nros.toml` knobs in via
+        // `BoardTransportConfig`. The proc-macro emit (Phase
+        // 216.C.3) stashes the returned value in a `StaticCell` /
+        // task-`#[init]` slot owned by `__nros_spin_task`.
+        let exec_config = ::nros::ExecutorConfig::new("tcp/127.0.0.1:7447")
+            .domain_id(0)
+            .node_name("nros");
+        let executor = match ::nros::Executor::open(&exec_config) {
+            Ok(e) => e,
+            Err(err) => {
+                defmt::error!(
+                    "EmbassyStm32F4::init_hardware: Executor::open failed: {:?}",
+                    defmt::Debug2Format(&err)
+                );
+                panic!("Executor::open failed");
+            }
+        };
+
+        // Step 4: hand back the executor + runtime pair. The
+        // proc-macro emit (216.C.3) consumes both, stashing the
+        // executor in a `StaticCell` and handing the runtime's
+        // backing `&CALLBACK_CHANNEL` to the long-lived
+        // `__nros_dispatch_task` sidekick.
+        (executor, EmbassyRuntime::new())
     }
 }

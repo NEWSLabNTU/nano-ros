@@ -39,6 +39,23 @@ embassy-stm32 = { version = "0.2", features = ["stm32f429zi", "time-driver-any",
 embassy-sync = "0.6"
 embassy-time = { version = "0.4", features = ["tick-hz-1_000"] }
 
+# Phase 216.C.2 follow-up — the executor + Node API surface. Pulled
+# with `rmw-cffi` so `nros::Executor` resolves; `platform-bare-metal`
+# matches the talker-embassy Entry pkg feature set so the dep graph
+# converges on a single feature unification. `alloc` is required
+# because `rmw-cffi` pulls in code paths that need a global allocator
+# (provided by `nros-platform` here). Mirrors the sibling RTIC board
+# crate's `nros` dep shape (Phase 216.B.2 follow-up).
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+
+# Phase 216.C.2 follow-up — bare-metal RMW backend registration. The
+# pre-migration talker-embassy example targeted Pattern A which would
+# call `nros_rmw_zenoh::register()` explicitly before `Executor::open`
+# (bare-metal targets don't walk `.init_array`); the board crate now
+# wraps that call inside `init_hardware`. Mirrors the sibling RTIC
+# board crate (Phase 216.B.2 follow-up).
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
+
 # Logging
 defmt = "0.3"
 
