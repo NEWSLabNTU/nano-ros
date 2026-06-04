@@ -3,8 +3,9 @@
 use core::marker::PhantomData;
 
 use crate::{
-    CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus, ParameterType,
-    QosSettings, RosAction, RosMessage, RosService, TimerDuration,
+    ActionTag, CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus,
+    ParameterType, QosSettings, RosAction, RosMessage, RosService, ServiceTag, SubscriptionTag,
+    TimerDuration,
     heapless::Vec,
     node_metadata::{
         CallbackEffectKind, CallbackEffectMetadata, EntityKind, EntityMetadata, EntityMetadataSpec,
@@ -462,6 +463,40 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         Ok(NodeSubscription::new(id))
     }
 
+    /// Declare a subscription whose stable entity and callback IDs are
+    /// both synthesized from the topic literal, returning a
+    /// [`SubscriptionTag`] the Node author stores on `Self::State` and
+    /// matches against the `&CallbackId<'_>` delivered to
+    /// [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
+    ///
+    /// Use this on the Phase 216.A Deferred Node path where the Node
+    /// author does not need to invent a separate stable entity ID — the
+    /// topic literal becomes both the entity ID and the callback ID,
+    /// and the returned tag preserves that identifier for compile-time
+    /// `state.sub_chatter == cb` matches in `on_callback`.
+    #[track_caller]
+    pub fn create_subscription_static<M: RosMessage>(
+        &mut self,
+        topic: &'static str,
+    ) -> NodeResult<SubscriptionTag> {
+        let id = EntityId::new(topic);
+        let callback_id = CallbackId::new(topic);
+        let mut metadata = entity_metadata(EntityMetadataSpec {
+            id,
+            node_id: self.id,
+            kind: EntityKind::Subscription,
+            source_name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: M::TYPE_HASH,
+            qos: QosSettings::default(),
+        })?;
+        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
+        self.runtime.create_entity(metadata)?;
+        Ok(SubscriptionTag::new(topic))
+    }
+
     /// Declare a timer. Stable timer and callback IDs are required.
     #[track_caller]
     pub fn create_timer<'entity, 'callback>(
@@ -509,6 +544,40 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.source = metadata.callback_source.clone();
         self.runtime.create_entity(metadata)?;
         Ok(NodeServiceServer::new(id))
+    }
+
+    /// Declare a service server whose stable entity and callback IDs are
+    /// both synthesized from the service-name literal, returning a
+    /// [`ServiceTag`] the Node author stores on `Self::State` and matches
+    /// against the `&CallbackId<'_>` delivered to
+    /// [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
+    ///
+    /// Tag-only registration is restricted to the SERVER side: clients
+    /// need a USABLE handle (`NodeServiceClient`) to issue requests, so
+    /// use the existing
+    /// [`create_service_client`](Self::create_service_client) builder
+    /// for the client side.
+    #[track_caller]
+    pub fn create_service_static<S: RosService>(
+        &mut self,
+        name: &'static str,
+    ) -> NodeResult<ServiceTag> {
+        let id = EntityId::new(name);
+        let callback_id = CallbackId::new(name);
+        let mut metadata = entity_metadata(EntityMetadataSpec {
+            id,
+            node_id: self.id,
+            kind: EntityKind::ServiceServer,
+            source_name: name,
+            type_name: S::SERVICE_NAME,
+            type_hash: S::SERVICE_HASH,
+            qos: QosSettings::default(),
+        })?;
+        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
+        self.runtime.create_entity(metadata)?;
+        Ok(ServiceTag::new(name))
     }
 
     /// Declare a service client. Stable service client ID is required.
@@ -577,6 +646,48 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.source = metadata.callback_source.clone();
         self.runtime.create_entity(metadata)?;
         Ok(NodeActionServer::new(id))
+    }
+
+    /// Declare an action server whose stable entity and callback IDs are
+    /// both synthesized from the action-name literal, returning an
+    /// [`ActionTag`] the Node author stores on `Self::State` and matches
+    /// against the `&CallbackId<'_>` delivered to
+    /// [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
+    ///
+    /// The synthesized callback ID is shared by the goal / cancel /
+    /// accepted callbacks (matching the default behavior of
+    /// [`create_action_server`](Self::create_action_server)).
+    ///
+    /// Tag-only registration is restricted to the SERVER side: clients
+    /// need a USABLE handle (`NodeActionClient`) to dispatch goals, so
+    /// use the existing
+    /// [`create_action_client`](Self::create_action_client) builder for
+    /// the client side.
+    #[track_caller]
+    pub fn create_action_static<A: RosAction>(
+        &mut self,
+        name: &'static str,
+    ) -> NodeResult<ActionTag> {
+        let id = EntityId::new(name);
+        let callback_id = CallbackId::new(name);
+        let mut metadata = entity_metadata(EntityMetadataSpec {
+            id,
+            node_id: self.id,
+            kind: EntityKind::ActionServer,
+            source_name: name,
+            type_name: A::ACTION_NAME,
+            type_hash: A::ACTION_HASH,
+            qos: QosSettings::default(),
+        })?;
+        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.action_cancel_callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.action_cancel_source = metadata.callback_source.clone();
+        metadata.action_accepted_callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.action_accepted_source = metadata.callback_source.clone();
+        metadata.source = metadata.callback_source.clone();
+        self.runtime.create_entity(metadata)?;
+        Ok(ActionTag::new(name))
     }
 
     /// Declare an action client. Stable action client ID is required.
@@ -1859,5 +1970,88 @@ mod tests {
         // `<Type as Node>::DISPATCH as u8`, not a hard-coded zero.
         assert_eq!(strategy, crate::DispatchStrategy::Inline as u8);
         assert_eq!(strategy, 0);
+    }
+
+    #[test]
+    fn create_subscription_static_returns_tag_matching_topic() {
+        let mut recorder = MetadataRecorder::<1, 1, 1>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let mut node = context
+            .create_node(NodeId::new("node"), NodeOptions::new("listener"))
+            .unwrap();
+        let tag = node
+            .create_subscription_static::<TestMsg>("/chatter")
+            .unwrap();
+
+        assert_eq!(tag.as_str(), "/chatter");
+        assert!(tag == CallbackId::new("/chatter"));
+        assert_eq!(recorder.entities().len(), 1);
+        let entity = &recorder.entities()[0];
+        assert_eq!(entity.kind, EntityKind::Subscription);
+        assert_eq!(entity.source_name.as_str(), "/chatter");
+        assert_eq!(
+            entity.callback_id.as_ref().map(|id| id.as_str()),
+            Some("/chatter")
+        );
+    }
+
+    #[test]
+    fn create_service_static_returns_tag() {
+        let mut recorder = MetadataRecorder::<1, 1, 1>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let mut node = context
+            .create_node(NodeId::new("node"), NodeOptions::new("server"))
+            .unwrap();
+        let tag = node
+            .create_service_static::<TestService>("/add_two_ints")
+            .unwrap();
+
+        assert_eq!(tag.as_str(), "/add_two_ints");
+        assert!(tag == CallbackId::new("/add_two_ints"));
+        assert_eq!(recorder.entities().len(), 1);
+        let entity = &recorder.entities()[0];
+        assert_eq!(entity.kind, EntityKind::ServiceServer);
+        assert_eq!(entity.source_name.as_str(), "/add_two_ints");
+        assert_eq!(
+            entity.callback_id.as_ref().map(|id| id.as_str()),
+            Some("/add_two_ints")
+        );
+    }
+
+    #[test]
+    fn create_action_static_returns_tag() {
+        let mut recorder = MetadataRecorder::<1, 1, 1>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let mut node = context
+            .create_node(NodeId::new("node"), NodeOptions::new("server"))
+            .unwrap();
+        let tag = node
+            .create_action_static::<TestAction>("/fibonacci")
+            .unwrap();
+
+        assert_eq!(tag.as_str(), "/fibonacci");
+        assert!(tag == CallbackId::new("/fibonacci"));
+        assert_eq!(recorder.entities().len(), 1);
+        let entity = &recorder.entities()[0];
+        assert_eq!(entity.kind, EntityKind::ActionServer);
+        assert_eq!(entity.source_name.as_str(), "/fibonacci");
+        assert_eq!(
+            entity.callback_id.as_ref().map(|id| id.as_str()),
+            Some("/fibonacci")
+        );
+        assert_eq!(
+            entity
+                .action_cancel_callback_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("/fibonacci")
+        );
+        assert_eq!(
+            entity
+                .action_accepted_callback_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("/fibonacci")
+        );
     }
 }
