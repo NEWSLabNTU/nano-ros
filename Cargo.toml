@@ -271,6 +271,12 @@ exclude = [
     # `task_name::spawn()` symbol with no runtime handle.
     "examples/stm32f4/rust/listener_pkg",
     "examples/stm32f4/rust/listener_pkg_rtic",
+    # Phase 216.B.5 — board-agnostic service-server Node pkg (Deferred
+    # dispatch + tag-based service via `create_service_static`). Shared
+    # with a potential future Embassy Entry pkg, hence sibling-pkg
+    # naming. Excluded because it cross-builds for
+    # `thumbv7em-none-eabihf` only.
+    "examples/stm32f4/rust/service_server_pkg",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples
     # Phase 168.1 collapsed-shape Rust examples (one dir, N RMW

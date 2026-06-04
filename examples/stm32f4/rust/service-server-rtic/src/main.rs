@@ -1,16 +1,36 @@
-//! RTIC Service Server Example for nros on STM32F4
+//! RTIC service server on STM32F4 — Phase 216.B.5 `nros::main!()` shape.
 //!
-//! Handles `AddTwoInts` service requests using RTIC v2's hardware-scheduled
-//! async tasks. Demonstrates the RTIC service pattern:
+//! The body collapses to the one-line macro invocation. `nros::main!()`
+//! reads `[package.metadata.nros.entry] deploy = "rtic-stm32f4"`
+//! from `Cargo.toml`, routes through the RTIC framework branch
+//! (Phase 216.B.3), and emits the `#[rtic::app] mod app` body +
+//! dispatch / spin RTIC task sidekicks. The board crate
+//! (`nros-board-rtic-stm32f4`, Phase 216.B.2) supplies the
+//! `RticStm32F4` ZST whose `RticBoardEntry::init_hardware` brings up
+//! the hardware and returns the `(Executor, RticRuntime)` pair.
 //!
-//! - `#[init]` calls `board::init_hardware()` and creates nano-ros handles
-//! - `net_poll` task drives transport I/O via `spin_once(0)`
-//! - `serve` task polls for requests via `handle_request()`
-//! - All nano-ros handles are `#[local]` — no locks required
+//! ## Deferred dispatch + service tag
 //!
-//! # Hardware
+//! Unlike the sibling `talker-rtic` (which links `talker_pkg`,
+//! `DispatchStrategy::Inline`), this Entry pkg links
+//! `stm32f4_service_server_pkg` whose Node declares
+//! `DispatchStrategy::Deferred`. Service callbacks are the canonical
+//! Deferred-dispatch use case: a request hits the wire, the RTIC
+//! board's `NodeDispatchRuntime` (SPSC ring drained by a `#[task]`)
+//! enqueues the signaled callback onto a framework-owned task, and
+//! the handler body runs there instead of the spin task. See
+//! `examples/stm32f4/rust/service_server_pkg/src/lib.rs` for the
+//! body + the trampoline-registration TODO.
 //!
-//! - Board: NUCLEO-F429ZI (or similar STM32F4 with Ethernet)
+//! ## Skeleton status
+//!
+//! `init_hardware`'s body is still `todo!()` (216.B.2 follow-up
+//! mirrors the legacy Pattern A bringup), and the trampoline-
+//! registration story that hands the sibling
+//! `stm32f4_service_server_pkg` Node onto the dispatch runtime is
+//! the next 216.B wave. The macro emit + dep graph compile clean
+//! today; a real flash will hit the `todo!()` panic in
+//! `init_hardware`.
 
 #![no_std]
 #![no_main]
@@ -18,88 +38,4 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-defmt::timestamp!("{=u64:us}", { 0 });
-
-use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
-use nros::prelude::*;
-use nros_board_stm32f4::Config;
-
-use rtic_monotonics::systick::prelude::*;
-
-systick_monotonic!(Mono, 1000);
-
-// Type aliases for RTIC Local struct annotations
-type NrosExecutor = Executor;
-type NrosServiceServer = nros::EmbeddedServiceServer<AddTwoInts>;
-
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1, USART2])]
-mod app {
-    use super::*;
-
-    #[shared]
-    struct Shared {}
-
-    #[local]
-    struct Local {
-        executor: NrosExecutor,
-        service: NrosServiceServer,
-    }
-
-    #[init]
-    fn init(cx: init::Context) -> (Shared, Local) {
-        let config = Config::nucleo_f429zi();
-        let syst = nros_board_stm32f4::init_hardware(&config, cx.device, cx.core);
-
-        Mono::start(syst, 168_000_000);
-
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("add_server");
-        // Phase 104.A — bare-metal callers explicitly register the RMW
-        // backend before `Executor::open`. POSIX hosts auto-register via
-        // `.init_array`; this target doesn't walk that section.
-        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config).unwrap();
-        let mut node = executor.create_node("add_server").unwrap();
-        let service = node.create_service::<AddTwoInts>("/add_two_ints").unwrap();
-
-        net_poll::spawn().unwrap();
-        serve::spawn().unwrap();
-
-        (Shared {}, Local { executor, service })
-    }
-
-    /// Drive transport I/O — equivalent to rclcpp spin_some().
-    #[task(local = [executor], priority = 1)]
-    async fn net_poll(cx: net_poll::Context) {
-        loop {
-            cx.local
-                .executor
-                .spin_once(core::time::Duration::from_millis(0));
-            Mono::delay(10.millis()).await;
-        }
-    }
-
-    /// Poll for and handle service requests.
-    #[task(local = [service], priority = 1)]
-    async fn serve(cx: serve::Context) {
-        // Wait for zenoh session establishment
-        Mono::delay(2000.millis()).await;
-
-        defmt::info!("Service server ready: /add_two_ints");
-
-        loop {
-            match cx.local.service.handle_request(|req| {
-                let sum = req.a + req.b;
-                defmt::info!("Request: {} + {} = {}", req.a, req.b, sum);
-                AddTwoIntsResponse { sum }
-            }) {
-                Ok(true) => {}  // handled a request
-                Ok(false) => {} // no request available
-                Err(e) => defmt::warn!("Service error: {:?}", e),
-            }
-
-            Mono::delay(10.millis()).await;
-        }
-    }
-}
+nros::main!();
