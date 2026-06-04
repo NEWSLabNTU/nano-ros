@@ -2032,30 +2032,35 @@ Slices 4 + 6 came back clean. Findings grouped file-disjoint:
 
 **Files**: `packages/core/nros-c/src/service.rs:23-50`.
 
-- [~] **214.J.1 — DEFERRED, vendor path identified.** The audit's
-      "swap to `atomic_waker`" was wrong-shape:
-      `atomic_waker::AtomicWaker` is a Waker STORAGE primitive
-      (`register(&Waker)` / `wake()`), not itself a `Waker`. The
-      hand-rolled `atomic_bool_waker(flag: &'static AtomicBool) -> Waker`
-      returns a Waker borrowing the flag — different shape.
+- [x] **214.J.1 — soundness contract made explicit (Option A).**
+      Audit's swap to `atomic_waker` was wrong-shape; `alloc::task::Wake`
+      + `waker-fn` are valid but both require `Arc<AtomicBool>`
+      restructure with heap alloc per registered entity — unacceptable
+      on RAM-tight embedded.
 
-      Online search (2026-06-04) found two viable replacements that
-      drop the `RawWaker`+`RawWakerVTable` hand-roll:
-        * **`alloc::task::Wake`** (std/alloc since Rust 1.51) —
-          `impl Wake for BoolWaker { fn wake(self: Arc<Self>) { … } }`
-          + `Waker::from(arc)`. Stable stdlib, no new dep.
-        * **`waker-fn` crate** (smol-rs) — `waker_fn(move ||
-          signal.store(true, Release))` with `signal: Arc<AtomicBool>`.
+      **Instead**: marked `atomic_bool_waker` `unsafe fn` with a
+      `# Safety` paragraph naming the three invariants the borrow
+      checker can't enforce (lifetime, unregister-before-free,
+      cross-thread wake races). Wrapped the single callsite at
+      `nros_client_send_request_async` in `unsafe { ... }` with a
+      SAFETY: comment documenting why each invariant holds (arena
+      heap-allocated at session-open + freed only at executor
+      destruction; transport's single-Waker slot is overwritten on
+      each `register_waker(...)`, bounding clone lifetime).
 
-      Both require rewriting `entry.reply_ready: AtomicBool` →
-      `Arc<AtomicBool>` so the Waker owns the flag. Cost: one
-      `Arc<AtomicBool>` allocation per registered entity (~16 bytes
-      + heap alloc) and one `Arc::clone` per blocking call. Hosted
-      targets: invisible. RAM-tight embedded (FreeRTOS, ThreadX,
-      bare-metal): consumes scarce heap that the hand-rolled
-      `&'static AtomicBool` borrow avoids entirely.
+      Result: zero alloc, zero perf cost, soundness contract now
+      enforced via `unsafe fn` discipline (every future caller
+      writes the SAFETY justification or fails review). Tests:
+      `cargo test -p nros-c --lib` 24/24, `cargo test -p nros-tests
+      --lib` 35/35.
 
-      **Decision**: keep the adapter for now — the maintenance win
+      Future option B (deferred until a real bug surfaces): RAII
+      `WakerGuard<'a>` wrapper calling `transport.clear_waker()` on
+      Drop, tying the Waker's lifetime to the borrow via the borrow
+      checker. Requires adding `clear_waker()` to every transport
+      vtable.
+
+      **Decision**: keep the adapter — the maintenance win
       (~15 LoC `unsafe` block deleted) doesn't justify a per-entity
       heap allocation on embedded. Future option: gate the swap on
       `feature = "std"` (hosted only) so embedded keeps the

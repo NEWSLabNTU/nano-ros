@@ -23,14 +23,51 @@ use crate::{
 // Waker helper — creates a Waker that sets an AtomicBool
 // ============================================================================
 
-/// Create a [`Waker`] that sets the given [`AtomicBool`] to `true` when woken.
+/// Create a [`Waker`] whose `wake()` stores `true` into `flag`.
 ///
-/// The `AtomicBool` must outlive the waker. Used to bridge the transport's
-/// reply notification (`register_waker`) to the arena entry's `reply_ready`
-/// flag, avoiding blind polling of `get_check` on every spin tick.
-fn atomic_bool_waker(flag: &AtomicBool) -> Waker {
+/// Used to bridge `transport.register_waker(&Waker)` to the arena
+/// entry's `reply_ready` `AtomicBool`. Alloc-free — the returned
+/// `Waker` holds the raw `*const AtomicBool` derived from `flag`,
+/// not an owned Arc.
+///
+/// # Safety
+///
+/// The caller must uphold all three invariants below; the function
+/// signature returns an effectively `'static` `Waker` that cannot
+/// carry the lifetime, so the borrow checker CANNOT enforce them.
+/// Phase 214 audit (G/J review) made the contract explicit.
+///
+/// 1. **Lifetime**: `flag` and every byte of the pointed-to
+///    `AtomicBool` must remain valid for the entire reachable
+///    lifetime of the returned `Waker` AND of every `Waker` cloned
+///    from it. The vtable does not refcount; the underlying
+///    `AtomicBool` must outlive the longest-living clone.
+///
+/// 2. **Unregister-before-free**: if `flag` lives in a recyclable
+///    arena slot, the caller MUST unregister the `Waker` from any
+///    holder (e.g. `transport.register_waker(&noop)`) before
+///    dropping / repositioning / freeing the slot. The `Waker`'s
+///    own `Drop` impl is a no-op and does NOT detach the borrow.
+///
+/// 3. **Concurrent wake races**: `Waker: Send + Sync`. A transport
+///    that delivers wakes from a background thread MAY race with
+///    the spin loop. The caller MUST ensure that
+///    `transport.register_waker(&noop)` (or equivalent unregister)
+///    completes — including draining in-flight clones — before the
+///    `AtomicBool`'s storage is invalidated.
+///
+/// Callsites: today's only callsite at `service.rs::nros_client_send_request_async`
+/// borrows `&entry.reply_ready` where `entry` lives in the executor's
+/// service-client arena. The arena is heap-allocated via `core::ptr::write`
+/// at session-open and is never resized or recycled until the executor is
+/// destroyed; the transport's `register_waker` slot is single-Waker and
+/// gets overwritten on each subsequent call. Both contracts above hold by
+/// construction.
+unsafe fn atomic_bool_waker(flag: &AtomicBool) -> Waker {
     static VTABLE: RawWakerVTable = RawWakerVTable::new(
-        // clone: return a new RawWaker pointing to the same flag
+        // clone: return a new RawWaker pointing to the same flag.
+        // NB: no refcount — clones share the borrow per the # Safety
+        // invariant 1.
         |data| RawWaker::new(data, &VTABLE),
         // wake: set the flag (by value — consumes the waker)
         |data| unsafe {
@@ -40,12 +77,14 @@ fn atomic_bool_waker(flag: &AtomicBool) -> Waker {
         |data| unsafe {
             (*(data as *const AtomicBool)).store(true, core::sync::atomic::Ordering::Release);
         },
-        // drop: no-op (flag is borrowed, not owned)
+        // drop: no-op — the flag is borrowed, not owned. Unregister
+        // happens via the transport-side `register_waker` overwrite
+        // contract (# Safety invariant 2).
         |_data| {},
     );
     let raw = RawWaker::new(flag as *const AtomicBool as *const (), &VTABLE);
-    // SAFETY: the vtable is valid and the flag outlives the waker (it lives
-    // in the arena entry which outlives any single spin iteration).
+    // SAFETY: the vtable is valid; per the function's # Safety contract,
+    // the caller asserts `flag` outlives the returned Waker + clones.
     unsafe { Waker::from_raw(raw) }
 }
 
@@ -1702,7 +1741,17 @@ pub unsafe extern "C" fn nros_client_send_request_async(
                 // Register a waker that sets reply_ready when the
                 // transport delivers the reply. This replaces blind
                 // polling of get_check on every spin tick.
-                let waker = atomic_bool_waker(&entry.reply_ready);
+                //
+                // SAFETY (Phase 214.J.1 audit): `atomic_bool_waker`
+                // requires that `&entry.reply_ready` outlives every
+                // reachable clone of the returned Waker. `entry`
+                // lives in the executor's service-client arena, which
+                // is heap-allocated at session-open and only freed
+                // when the executor is destroyed; the transport's
+                // single-Waker slot is overwritten on each subsequent
+                // `register_waker(...)`, bounding the clone lifetime
+                // to the next call. Both # Safety invariants hold.
+                let waker = unsafe { atomic_bool_waker(&entry.reply_ready) };
                 entry.handle.register_waker(&waker);
                 NROS_RET_OK
             }
