@@ -1747,3 +1747,68 @@ Two redundant entries on cyclonedds:
 * `packages/core/nros/Cargo.toml` (S.3)
 * `examples/**/Cargo.toml` (S.4 + S.5 — Cargo.toml shape sweep)
 * `examples/**/generated/` (S.6 — regen, gitignored output)
+
+---
+
+## Track S.5.c — FreeRTOS + threadx-linux Component pkg `rmw-zenoh` parity row
+
+**Scope**: HIGH. Surfaced 2026-06-04 during S.5.b verification.
+`just freertos build-examples` invokes `cargo build --features
+rmw-zenoh` on FreeRTOS Component pkgs that today lack a
+`rmw-zenoh = ["nros/rmw-zenoh"]` feature row — S.5 added the
+parity row for cyclonedds but NOT for zenoh. The recipe fails on
+`error: failed to select a version for the requirement … the
+package contains no `rmw-zenoh` feature`.
+
+**Owns:**
+* `examples/qemu-arm-freertos/rust/{talker,listener,
+  service-{client,server},action-{client,server}}/Cargo.toml`
+  (6 files — add `rmw-zenoh = ["nros/rmw-zenoh"]`)
+* `examples/threadx-linux/rust/<same six>/Cargo.toml` (6 files —
+  same parity row if missing)
+* No code changes; manifest-only.
+
+**Architecture**: per the Phase 212.L Component pkg + S.4 (native
+rust) + S.5 (FreeRTOS/threadx-linux cyclonedds) shape, every
+RMW build target needs a 1-entry feature row `rmw-<backend> =
+["nros/rmw-<backend>"]`. The default deploy RMW lives in
+`[package.metadata.nros.deploy.<rtos>].rmw`; the feature row is the
+user-facing knob for `cargo build --features rmw-<x>` alternative
+builds.
+
+S.5 added cyclonedds rows but the existing examples never carried
+explicit zenoh rows — the direct `nros = { features = [..., "rmw-cffi", ...] }`
+dep, combined with whatever the BSP pulls in, built zenoh without a
+feature flag. After S.4 normalised the rmw-* knob across all native
+rust examples, the FreeRTOS recipe's `--features rmw-zenoh`
+invocation no longer resolves.
+
+**Work Items:**
+
+- [ ] **214.S.5.c.1 Add `rmw-zenoh` parity row** — add the 1-line
+      `rmw-zenoh = ["nros/rmw-zenoh"]` to every FreeRTOS rust +
+      threadx-linux rust Component pkg `[features]` block. Acceptance:
+      `git grep -L '"nros/rmw-zenoh"' examples/qemu-arm-freertos/rust/*/Cargo.toml
+      examples/threadx-linux/rust/*/Cargo.toml` returns nothing.
+
+- [ ] **214.S.5.c.2 Same parity for `rmw-xrce`** — XRCE-only build
+      targets work on FreeRTOS (existing K.5 talker variant). Same
+      `rmw-xrce = ["nros/rmw-xrce"]` row across all 6 + 6 pkgs if
+      they can XRCE.
+
+- [ ] **214.S.5.c.3 Verify `just freertos build-examples` clean** —
+      after S.5.c.1 + S.5.c.2 + S.5.b host-shim, the recipe must
+      build every example under each RMW. K.7 native cyclonedds
+      regression untouched.
+
+**Cross-refs**:
+* S.4 (native rust 1-entry parity) — established the shape this
+  track applies to FreeRTOS/threadx-linux.
+* S.5 (cyclonedds parity row) — analogous work for the other RMW;
+  S.5.c is the missing sibling.
+* Phase 212.L.1 Component pkg shape — single-RMW default deploy +
+  multi-RMW feature alternatives.
+
+**Out-of-scope candidate**: a defensive nros-cli lint that warns
+when `[package.metadata.nros.deploy.<rtos>].rmw` doesn't have a
+matching `[features] rmw-<x>` row.
