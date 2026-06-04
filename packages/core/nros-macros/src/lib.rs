@@ -434,6 +434,14 @@ fn node_impl(input: TokenStream) -> TokenStream {
         /// surfaces the failure with `expect("register dispatch")`
         /// so a too-many-Nodes misconfig fails loud at boot rather
         /// than dropping dispatch silently.
+        ///
+        /// References `::nros::Executor` which is gated on `rmw-cffi`
+        /// inside the `nros` crate. The Node pkg must depend on `nros`
+        /// with the `rmw-cffi` feature enabled (every shipped 216
+        /// example pkg does). A consumer w/o `rmw-cffi` enabled gets a
+        /// hard `cannot find type Executor` error at expansion site —
+        /// surfaces the misconfig loud rather than silently producing
+        /// a Node pkg that can't be deployed to a framework target.
         pub fn register_dispatch(
             executor: &mut ::nros::Executor,
         ) -> ::core::result::Result<(), ()> {

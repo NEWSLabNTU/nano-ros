@@ -1922,7 +1922,12 @@ mod tests {
     // `sanitize_pkg_name_for_symbol`. The `nros` crate's pkg name is
     // literal `nros`, so the expected symbol is
     // `__nros_node_nros_dispatch_strategy`.
-    #[cfg(feature = "alloc")]
+    // Phase 216 final wave — the macro emit now references
+    // `::nros::Executor` (rmw-cffi-gated) in addition to the existing
+    // alloc-gated `__private_node_state_into_raw`. Gate the test on
+    // both features so the macro invocation only attempts to expand
+    // when every referenced symbol is present.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     mod phase_216_a5_macro_emit {
         // `extern crate self as nros;` at the crate root (in `lib.rs`,
         // `cfg(test)`-gated) lets the `::nros::*` paths the macro emits
@@ -1955,7 +1960,7 @@ mod tests {
         nros_macros::node!(DispatchProbe);
     }
 
-    #[cfg(feature = "alloc")]
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     #[test]
     fn node_macro_emits_dispatch_strategy_symbol() {
         // Re-declare the ABI export the macro just emitted. If the macro
@@ -1988,7 +1993,7 @@ mod tests {
     // (documented in the macro emit). A link-only probe is enough to
     // catch the macro silently eliding the export — the exact
     // regression class this test is for.
-    #[cfg(feature = "alloc")]
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     #[test]
     fn node_macro_emits_on_callback_symbol() {
         unsafe extern "C" {
