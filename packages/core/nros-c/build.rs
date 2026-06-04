@@ -54,6 +54,27 @@ fn main() {
     apply_baremetal_libc(&mut log_fmt);
     log_fmt.compile("nros_c_log_fmt");
 
+    // Phase 219.C — `nros_board_native_run` C-FFI Board adapter for
+    // Entry-pkg generated `main.c` TUs (the C counterpart of the C++
+    // `nros::board::NativeBoard::run` adapter in `<nros/main.hpp>`).
+    // Host-only — the body uses POSIX `signal`/`nanosleep`. Bare-metal
+    // and Zephyr cross builds skip this TU so they aren't forced to
+    // resolve those symbols against a libc they don't carry.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let host_os = matches!(target_os.as_str(), "linux" | "macos" | "freebsd" | "openbsd" | "netbsd");
+    if host_os {
+        let main_board_path = manifest_dir.join("c-stubs/main_board.c");
+        println!("cargo:rerun-if-changed={}", main_board_path.display());
+        let mut main_board = cc::Build::new();
+        main_board
+            .file(&main_board_path)
+            .include(manifest_dir.join("include"))
+            .warnings(true)
+            .extra_warnings(true)
+            .flag_if_supported("-Wpedantic");
+        main_board.compile("nros_c_main_board");
+    }
+
     // Re-run if source files change (for library rebuild + header regen)
     println!("cargo:rerun-if-changed=src/");
     println!("cargo:rerun-if-changed=cbindgen.toml");

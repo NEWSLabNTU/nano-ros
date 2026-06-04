@@ -1,0 +1,70 @@
+/**
+ * @file main.h
+ * @ingroup grp_node
+ * @brief Phase 219.E — `<nros/main.h>` Entry-pkg header (C variant).
+ *
+ * Symmetric to `<nros/main.hpp>`: the cmake fn `nano_ros_entry(LAUNCH
+ * "<bringup>:<file>.launch.xml")` drives per-Entry-pkg codegen via
+ * `nros codegen entry --lang c`, then appends the generated TU to the
+ * executable target's sources.
+ *
+ * This header provides:
+ *
+ *   1. `NROS_MAIN_C(<board_id>, "<bringup>:<file>.launch.xml")` —
+ *      empty-expansion macro the user's TU may carry as a doc / IDE
+ *      hint. Declarative only; cmake fn drives codegen.
+ *
+ *   2. `nros_board_native_run(nros_node_register_fn entry)` — the
+ *      C-FFI Board adapter the generated TU calls. Owns the
+ *      `nros::init() → entry(context) → nros::spin() →
+ *      nros::shutdown()` lifecycle.
+ *
+ * Phase 212.L.2 keeps Entry pkgs `native`-only at the cmake surface
+ * for v1.
+ */
+
+#ifndef NROS_MAIN_H
+#define NROS_MAIN_H
+
+#include "nros/node_pkg.h"
+#include "nros/visibility.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Phase 219.C — Native (POSIX) board adapter for C-language Entry pkgs.
+ *
+ * Wraps the same init/spin/shutdown lifecycle the C++ `NativeBoard::run`
+ * adapter owns. `entry` is invoked once with a recording NodeContext
+ * before the spin loop starts; the function returns the first non-zero
+ * code from `entry` or from the spin loop, or 0 on graceful shutdown.
+ *
+ * The Native NodeContext runtime that turns recorded entities into
+ * running publishers/subscriptions is **NOT** supplied today
+ * (see `<nros/main.hpp>` for the parity caveat).
+ */
+NROS_PUBLIC int nros_board_native_run(nros_node_register_fn entry);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+/* Phase 219.E — `NROS_MAIN_C(<board_id>, "<launch_spec>")` declarative
+ * marker. Expands to a sentinel TU-local symbol; the cmake fn detects
+ * presence via `target_compile_definitions` to avoid double-emit when
+ * the user wrote it. The generated TU (emitted by
+ * `nano_ros_entry(LAUNCH …)`) carries the canonical `int main()` body
+ * either way.
+ *
+ * Usage:
+ *
+ *   #include <nros/main.h>
+ *   NROS_MAIN_C(nros_board_native, "demo_bringup:system.launch.xml")
+ */
+#define NROS_MAIN_C(BoardId, LaunchSpec)                                                           \
+    NROS_PUBLIC const unsigned char __nros_entry_macro_present = 1;                                \
+    _Static_assert(sizeof(LaunchSpec) > 1,                                                         \
+                   "NROS_MAIN_C: launch spec must be a non-empty literal")
+
+#endif /* NROS_MAIN_H */
