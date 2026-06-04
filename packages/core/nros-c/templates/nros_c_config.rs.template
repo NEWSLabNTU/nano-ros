@@ -1,0 +1,17 @@
+/// Maximum number of handles in an executor (derived from NROS_EXECUTOR_MAX_CBS via nros-node).
+pub const NROS_EXECUTOR_MAX_HANDLES: usize = @NROS_EXECUTOR_MAX_HANDLES@;
+
+/// Buffer size for LET semantics per handle (set via NROS_LET_BUFFER_SIZE, default 512).
+pub const LET_BUFFER_SIZE: usize = @LET_BUFFER_SIZE@;
+
+/// Default service-client RPC timeout in ms (set via NROS_SERVICE_TIMEOUT_MS, default 30000 — matches the zenoh backend).
+pub const SERVICE_DEFAULT_TIMEOUT_MS: u32 = @SERVICE_DEFAULT_TIMEOUT_MS@;
+
+/// Maximum buffer size for subscription/service data (derived from NROS_SUBSCRIPTION_BUFFER_SIZE via nros-node).
+pub const MESSAGE_BUFFER_SIZE: usize = @MESSAGE_BUFFER_SIZE@;
+
+/// Inline opaque storage for `Executor` inside `nros_executor_t` (in u64 units).
+/// Upper bound derived from nros-node's MAX_CBS and ARENA_SIZE.
+/// Validated at compile time by `size_of::<Executor>()` assertion.
+pub const EXECUTOR_OPAQUE_U64S: usize = @EXECUTOR_OPAQUE_U64S@;
+
