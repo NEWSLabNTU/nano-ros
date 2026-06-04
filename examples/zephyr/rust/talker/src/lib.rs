@@ -5,14 +5,18 @@
 //! Node pkg shape: `register()` declares node + publisher + timer;
 //! `ExecutableNode::on_callback("on_tick")` runs the timer body
 //! (bump counter, publish). The generated runtime — emitted by
-//! `nros codegen-system` via the H.1 Zephyr adapter shim once the
-//! L.7 self-pkg case lands — owns `nros::init`, executor open, RMW
-//! registration, and the spin loop. The user authors *only* the
-//! declarative + body bits.
+//! `nros codegen-system` via the H.1 Zephyr adapter shim
+//! (both L.7 self-bringup planner + M-F.3 Zephyr self-pkg case
+//! LANDED; the example `CMakeLists.txt` invokes
+//! `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})`) — owns
+//! `nros::init`, executor open, RMW registration, and the spin loop.
+//! The user authors *only* the declarative + body bits.
 //!
 //! RMW selection still flows through the Kconfig `prj-<rmw>.conf`
-//! overlay (vendor-native per L.12). After L.7 self-pkg lands,
-//! `[package.metadata.nros.deploy.zephyr].rmw` becomes authoritative.
+//! overlay (vendor-native per L.12). The H.1 shim threads the
+//! Kconfig `CONFIG_NROS_RMW_*` choice into the codegen
+//! `--target zephyr-<rmw>` arg; `[package.metadata.nros.deploy.zephyr].rmw`
+//! is the planner-side default when the Kconfig is unset.
 
 #![no_std]
 

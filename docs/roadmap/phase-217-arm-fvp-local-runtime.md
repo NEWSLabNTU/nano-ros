@@ -162,12 +162,15 @@ accepts the Arm EULA, installs the FVP locally, and exports
       override; added to `justfile`'s fast-path exclusion. Landed 2026-06-04.
 - [ ] **217.C.3** Parity check vs Phase 175.A native cyclonedds Rust
       talker/listener: same `std_msgs/Int32` payload, byte-equal wire
-      format (Phase 117 stock-RMW interop contract). **Blocks on:**
-      Phase 212.L.7 self-pkg codegen (`rust_main` emission) — until
-      the FVP Rust talker actually publishes, there is no wire stream
-      to byte-compare against the native peer. 217.D.1 + 217.D.2
-      shipped the example + build path; 217.D.3 shipped the boot
-      smoke; the publish-loop driver is the missing link.
+      format (Phase 117 stock-RMW interop contract). **Blocks on:** a
+      real FVP run actually emitting `Published:` (i.e. D.3 closing
+      to `[x]`). The upstream Phase 212.L.7 + M-F.3 prereqs landed,
+      and the `nros_system_generate()` wire-up was added to the FVP
+      Rust example `CMakeLists.txt` on 2026-06-04 — but until a
+      machine with an installed Arm FVP + `aarch64-zephyr-elf`
+      toolchain actually runs the shim end-to-end, the assumption
+      that the emitted `system_main.c` links + boots on Cortex-A SMP
+      is unverified.
 
 **Files:** `packages/testing/nros-tests/tests/phase217_c_fvp_runtime.rs`
 (new), `packages/testing/nros-tests/tests/phase217_d_fvp_runtime_rust.rs`
@@ -211,10 +214,20 @@ Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
       loaded by the FVP — proves Rust artifact links + executes on
       Cortex-A SMP. Routed into the `zephyr-fvp` nextest group via
       `binary(phase217_d_fvp_runtime_rust)` override.
-      **Remaining:** `Published:` assertion deferred until Phase
-      212.L.7 self-pkg codegen emits `rust_main` for Component pkgs;
-      the test carries an inline `TODO(Phase 212.L.7)` marking the
-      bump site. Closing this to `[x]` waits on 212.L.7.
+      **Remaining:** `Published:` assertion is gated on the H.1
+      Zephyr adapter shim being invoked from the example
+      `CMakeLists.txt`. Both upstream prereqs (Phase 212.L.7
+      self-bringup planner + Phase 212.M-F.3 Zephyr self-pkg shim
+      case) are LANDED; the missing wire-up — a single
+      `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})` call after
+      `find_package(Zephyr)` — was added 2026-06-04 to all 7
+      Zephyr Rust examples (`talker`, `listener`,
+      `service-{client,server}`, `action-{client,server}`, and the
+      FVP carve-out `cyclonedds/talker-aemv8r/`). Closing this to
+      `[x]` waits on a real FVP run that emits `Published:` —
+      gated on Arm FVP being installed locally + the shim's
+      `nros codegen-system` step succeeding under the
+      `aarch64-zephyr-elf` toolchain.
 
 **Files:** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` (new tree),
 `just/zephyr.just`.

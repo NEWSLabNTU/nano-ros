@@ -16,10 +16,16 @@
 //!   - Does NOT yet assert the talker's `Published:` line. The example
 //!     is Component-pkg shape (`src/lib.rs` exports `nros::node!(Talker)`
 //!     → `register(runtime)`); the generated `rust_main` driver that
-//!     opens the executor + runs the spin loop ships with Phase 212.L.7
-//!     self-pkg codegen. Once that lands, raise this assertion to match
-//!     `phase217_c_fvp_runtime.rs` (Phase 217.C.3 parity check then
-//!     becomes ready).
+//!     opens the executor + runs the spin loop is emitted by
+//!     `nros codegen-system` via the H.1 Zephyr adapter shim. Both
+//!     prereqs (Phase 212.L.7 self-bringup planner + Phase 212.M-F.3
+//!     Zephyr self-pkg shim case) are LANDED; the example's
+//!     `CMakeLists.txt` was wired to call
+//!     `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})` on
+//!     2026-06-04. The remaining gap is a real FVP run on a host with
+//!     the Arm FVP installed + the `aarch64-zephyr-elf` toolchain — at
+//!     which point the assertion below bumps from boot-banner-only to
+//!     `Published:`, unblocking Phase 217.C.3 parity.
 //!
 //! Skip preconditions (`nros_tests::skip!`):
 //!   1. ARM FVP not resolvable via `scripts/zephyr/resolve-fvp-bin.sh`
@@ -145,10 +151,15 @@ fn fvp_rust_cyclonedds_talker_boots() {
         "missing Zephyr boot banner in FVP UART output:\n{output}"
     );
 
-    // TODO(Phase 212.L.7): once the self-pkg codegen emits `rust_main`
-    // for Component pkgs, raise this assertion to also require the
+    // TODO: once a real FVP run on a host with the Arm FVP installed
+    // confirms the H.1 shim's `system_main.c` boots cleanly on
+    // Cortex-A SMP, raise this assertion to also require the
     // `Published:` line (parity with `phase217_c_fvp_runtime.rs`). At
     // that point Phase 217.C.3 (Rust↔C wire-parity check) is unblocked.
+    // The upstream prereqs (Phase 212.L.7 + 212.M-F.3) and the
+    // `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})` wire-up in
+    // `examples/zephyr/rust/cyclonedds/talker-aemv8r/CMakeLists.txt`
+    // are LANDED (2026-06-04).
 
     drop(proc);
 }

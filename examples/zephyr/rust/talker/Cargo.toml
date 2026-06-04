@@ -2,13 +2,18 @@
 # nros Zephyr Talker Example (Rust) — Phase 212.M.3 Component pkg.
 #
 # Phase 212.L.1 shape — lib only, no `rust_main` entry. `nros::node!()`
-# exports the register trampoline; the generated runtime (driven by `nros
-# codegen-system` via the H.1 Zephyr adapter shim once L.7 self-pkg lands)
-# owns init, executor open, RMW registration, and the spin loop.
+# exports the register trampoline; the generated runtime (`system_main.c`,
+# emitted by `nros codegen-system` via the H.1 Zephyr adapter shim — both
+# L.7 self-bringup planner + M-F.3 Zephyr self-pkg case LANDED — invoked
+# from this pkg's CMakeLists.txt via
+# `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})`) owns init, executor
+# open, RMW registration, and the spin loop.
 #
 # RMW selection still flows through the Kconfig overlay (`prj-<rmw>.conf`)
-# → CMakeLists.txt EXTRA_CARGO_ARGS for now. After L.7 self-pkg lands,
-# `[package.metadata.nros.deploy.zephyr].rmw` becomes authoritative.
+# → CMakeLists.txt EXTRA_CARGO_ARGS for now. The H.1 shim reads the
+# Kconfig `CONFIG_NROS_RMW_*` choice and threads it into the codegen
+# `--target zephyr-<rmw>` arg; `[package.metadata.nros.deploy.zephyr].rmw`
+# is the planner-side default when the Kconfig is unset.
 
 [package]
 name = "nros_zephyr_talker"

@@ -2,7 +2,9 @@
 //!
 //! Subscribes to `std_msgs/Int32` on `/chatter` and tracks the last seen
 //! value. The generated runtime — emitted by `nros codegen-system` via
-//! the H.1 Zephyr adapter shim once L.7 self-pkg lands — owns init,
+//! the H.1 Zephyr adapter shim (both L.7 self-bringup planner + M-F.3
+//! Zephyr self-pkg case LANDED; this example's `CMakeLists.txt` invokes
+//! `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})`) — owns init,
 //! executor open, RMW registration, and the spin loop.
 
 #![no_std]
