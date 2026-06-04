@@ -498,38 +498,56 @@ fold cleanly.
       `cargo test -p nros-rmw-cyclonedds --no-default-features`
       keeps the K.7 smoke green.
 
-- [ ] **214.F.2 Address residual dev-dep unification** — once Path B
-      removes the dominant leak source, the residual dev-dep leak
-      (the doc's original framing) may still trip under different
-      feature combos. Re-run the cargo-tree audit AFTER F.1 lands;
-      if any std path still shows up, apply the sibling-test-crate
-      carve-out the original spec described.
-      **Acceptance**: `cargo tree -i nros-serdes …` is std-free.
+- [x] **214.F.2 Address residual dev-dep unification** — Closed
+      2026-06-04. Applied `[target.'cfg(not(target_os = "none"))'.
+      dev-dependencies]` target-gating to:
+      - `packages/core/nros-log/Cargo.toml` — `nros-platform-cffi
+        = { features = ["posix-c-port"] }` (the dominant dev-dep
+        leak path visible in the `--edges=features` tree post-F.1).
+      - `packages/core/nros-node/Cargo.toml` — `nros-ghost-types` +
+        `nros-rmw-cyclonedds = { features = ["bridge-stub"] }`.
+      Same Cargo idiom F.1 used for `[dependencies]`; works for
+      `[dev-dependencies]` identically. Host targets still see the
+      dev-deps (`cargo test -p nros-log`, `cargo test -p nros-node`
+      work unchanged); embedded targets (`target_os = "none"`) see
+      an empty dev-dep set so the unification path collapses.
+      **Acceptance**: `cargo tree -p nros-serdes --edges=normal,build
+      --target thumbv7em-none-eabihf --no-default-features --workspace`
+      returns ZERO `feature "std"` paths (verified 2026-06-04).
+      Host build still clean: `cargo check -p nros-log`,
+      `cargo check -p nros-node`, `cargo test -p nros-log --no-run`
+      all pass.
 
-      **Status after F.1.** Residual `feature "std"` activations
-      remain in the `--edges=features` view, all sourced from
-      `[dev-dependencies]` on `nros-node` (pulling
-      `nros-platform-cffi` with `posix-c-port`) and on
-      `nros-rmw-cyclonedds` (the `bridge-stub` feature pulls
-      `nros-node`). These are the dev-dep leaks the original
-      Track F framing described; they survive Path B because Path B
-      only target-gates `[dependencies]`, not `[dev-dependencies]`.
-      The sibling-test-crate carve-out the original spec described
-      still applies — F.2 remains open.
-
-- [ ] **214.F.3 CI guard against future feature unification regressions**
-      — add a smoke test that runs `cargo tree -i nros-serdes
-      --target thumbv7em-none-eabihf --no-default-features
-      --workspace` and asserts the output is missing the substring
-      `feature "std"`. Wire into `just check-workspace-embedded`.
-
-      **Status after F.1.** Still open. The assertion can't go
-      green until F.2 closes the dev-dep half of the leak — the
-      `cargo tree --edges=features` output above still contains
-      `feature "std"` strings sourced from dev-deps. Sequence:
-      land F.2 → land F.3 (the guard) → relax to
-      `--edges=normal,build` if dev-dep filtering needs a
-      different threshold.
+- [x] **214.F.3 CI guard against future feature unification regressions**
+      — Closed 2026-06-04. Landed
+      `.github/workflows/embedded-feature-unification.yml` with two
+      gates:
+      1. **Gate 1 — feature-unification assertion**: `cargo tree -p
+         nros-serdes --edges=normal,build --target
+         thumbv7em-none-eabihf --no-default-features --workspace`
+         must contain zero `feature "std"` paths. Failure mode prints
+         the offending paths first (with `grep -B 2`) before failing
+         so the regression source surfaces in the failure log.
+      2. **Gate 2 — embedded compile-check**: `cargo check --workspace
+         --no-default-features --target thumbv7em-none-eabihf` on the
+         no_std-clean subset (mirrors `just check-workspace-embedded`'s
+         exclude list for `nros-rmw-zenoh-staticlib`,
+         `nros-rmw-xrce-cffi-staticlib`, `nros-platform-bare-metal`).
+      Triggers on PR/push touching `packages/**/Cargo.toml`,
+      `Cargo.toml`, `Cargo.lock`, or the workflow file itself.
+      Fresh-runner-safe: only the workspace's pinned toolchain +
+      `rustup target add thumbv7em-none-eabihf` — no QEMU/SDKs/nros
+      install. Fast lane (~few minutes); designed as a required check
+      on PR. Future contributor adding a `[dependencies]
+      nros-platform-cffi = { features = ["posix-c-port"] }` row
+      without target-gating → this lane goes red at PR time, points
+      at the regression source line in its failure log.
+      Doc-tweak relative to original spec: used `--edges=normal,build`
+      (per F.3's "relax to" suggestion) instead of `--edges=features`
+      — the latter shows every feature edge regardless of dep type
+      including dev-deps, which is too noisy for the assertion;
+      `normal,build` is the production-link view that matters for
+      "what code reaches the embedded binary".
 
 ---
 

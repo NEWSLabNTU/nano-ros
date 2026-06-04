@@ -1,0 +1,119 @@
+# Phase 214.F.3 — embedded feature-unification guard (Phase 214 Track F).
+#
+# Catches regressions where a workspace member's `[dependencies]` or
+# `[dev-dependencies]` reintroduces a `std` / `platform-posix` activation
+# path under an embedded target's feature-unification view. F.1 target-
+# gated host-only crate deps via
+# `[target.'cfg(not(target_os = "none"))'.dependencies]`; F.2 applied
+# the same gate to leaky dev-deps in `nros-log` + `nros-node`. F.3 is
+# the CI guard that holds the line: a future contributor adds a new
+# `[dependencies] nros-platform-cffi = { features = ["posix-c-port"] }`
+# row to a leaf crate without target-gating → this lane goes red at
+# PR time.
+#
+# Two gates per run:
+#   1. `cargo tree -p nros-serdes --edges=normal,build --target
+#      thumbv7em-none-eabihf --no-default-features --workspace` must
+#      contain ZERO `feature "std"` paths. The `--edges=normal,build`
+#      filter ignores dev-deps (cargo tree's `features` edge mode shows
+#      every edge including dev-deps which is too noisy for this
+#      assertion; `normal,build` is the production-link view).
+#   2. `cargo check --workspace --no-default-features --target
+#      thumbv7em-none-eabihf` must succeed on the no_std-clean subset.
+#      (Crates that legitimately can't compile on thumb — nros-rmw-
+#      zenoh-staticlib, nros-rmw-xrce-cffi-staticlib, nros-platform-
+#      bare-metal — are excluded via the same `--exclude` list that
+#      `just check-workspace-embedded` uses; the workflow mirrors that
+#      list as a one-source-of-truth.)
+#
+# Fresh-runner-safe: only the workspace's pinned toolchain + a thumb
+# `rustup target add`. No QEMU, no SDKs, no nros CLI install. Fast lane
+# (a few minutes); designed as a required check on PR.
+name: embedded feature-unification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**/Cargo.toml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/embedded-feature-unification.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/**/Cargo.toml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/embedded-feature-unification.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: embedded-feature-unification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  feature-unification-guard:
+    name: embedded feature-unification guard
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Add thumbv7em-none-eabihf rustup target
+        run: |
+          rustup target add thumbv7em-none-eabihf
+
+      # Gate 1 — feature-unification audit. The grep returns 0 (a
+      # match) on regression; `! grep -q` flips that to a failure
+      # exit. We print the offending paths first so the failure log
+      # shows the regression source line(s) before the failure exit.
+      - name: Assert no `feature "std"` paths under embedded target
+        run: |
+          set -euo pipefail
+          tree=$(cargo tree -p nros-serdes --edges=normal,build \
+            --target thumbv7em-none-eabihf --no-default-features \
+            --workspace 2>&1)
+          if echo "$tree" | grep -q 'feature "std"'; then
+            echo "❌ Phase 214.F.3 — `feature \"std\"` activation paths under embedded:"
+            echo "$tree" | grep -B 2 'feature "std"' | head -50
+            echo ""
+            echo "A workspace member added a [dependencies] or [dev-dependencies]"
+            echo "row that pulls a std-activating crate without target-gating."
+            echo "Move it under [target.'cfg(not(target_os = \"none\"))'.dependencies]"
+            echo "(or .dev-dependencies). See Phase 214.F.1 + F.2 for examples:"
+            echo "  packages/boards/nros-board-{posix,native,nuttx}/Cargo.toml"
+            echo "  packages/core/nros-{log,node}/Cargo.toml"
+            exit 1
+          fi
+          echo "✓ Phase 214.F.3 — no `feature \"std\"` paths under embedded target."
+
+      # Gate 2 — embedded check compile gate. Mirrors
+      # `just check-workspace-embedded`'s exclude list (the canonical
+      # set of crates that legitimately can't link without host alloc /
+      # ROS panic-handlers etc.). A new leaky crate that doesn't
+      # appear in this list will trip Gate 2 first; Gate 1 catches
+      # cases where the leak is via feature unification rather than
+      # outright compile failure.
+      - name: Embedded `cargo check --no-default-features` on no_std-clean subset
+        run: |
+          set -euo pipefail
+          cargo check --workspace --no-default-features \
+            --target thumbv7em-none-eabihf \
+            --exclude nros-rmw-zenoh-staticlib \
+            --exclude nros-rmw-xrce-cffi-staticlib \
+            --exclude nros-platform-bare-metal \
+            --exclude nros-rmw-xrce \
+            --exclude nros-rmw-xrce-cffi \
+            --exclude nros-rmw-xrce-cffi-staticlib

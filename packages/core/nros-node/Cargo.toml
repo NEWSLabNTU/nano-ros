@@ -180,7 +180,20 @@ nros-rmw-cyclonedds-sys = { workspace = true, optional = true }
 [target.'cfg(all(target_os = "linux"))'.dependencies]
 libc = { version = "0.2", optional = true }
 
-[dev-dependencies]
+# Phase 214.F.2 — target-gate every dev-dep that pulls a `std` /
+# `platform-posix` feature path. The `--edges=features` audit at
+# F.1-landing time showed `nros-node` was the dominant residual
+# leak source: its dev-deps unify `nros-platform-cffi`'s
+# `posix-c-port` (via `nros-rmw-cyclonedds[bridge-stub]`'s transitive
+# closure) into the workspace feature graph even when checking
+# `--target thumbv7em-none-eabihf --no-default-features`. Cargo's
+# feature unification doesn't honour `[dev-dependencies]` boundaries
+# during target-aware resolution; the only knob that does is
+# `[target.<cfg>.dev-dependencies]`. Host targets (`target_os !=
+# "none"`) still see the dev-deps — `cargo test` works unchanged.
+# Embedded targets (`target_os = "none"`) see an empty dev-dep set,
+# so the unification path collapses.
+[target.'cfg(not(target_os = "none"))'.dev-dependencies]
 nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }
 # Phase 212.K.7.6.b — pull the cyclonedds bridge stubs into nros-node's
 # unit-test link line so `cargo test --features rmw-cyclonedds` resolves

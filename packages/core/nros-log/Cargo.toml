@@ -71,7 +71,14 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 # nros_platform_log_write` actually resolves at link time without
 # needing a separate `nros-platform-posix` cargo dep on the host
 # (cffi already wraps the C build via its `cc` build dep).
-[dev-dependencies]
+#
+# Phase 214.F.2 — target-gate the dev-dep. Cargo feature unification
+# doesn't honour [dev-dependencies] boundaries during target-aware
+# resolution unless they live under [target.<cfg>.dev-dependencies].
+# Host targets still see the cffi dev-dep (cargo test works
+# unchanged); embedded (`target_os = "none"`) sees an empty set so
+# the `posix-c-port → feature "std"` activation path collapses.
+[target.'cfg(not(target_os = "none"))'.dev-dependencies]
 nros-platform-cffi = { path = "../nros-platform-cffi", default-features = false, features = ["posix-c-port"] }
 
 [lints]
