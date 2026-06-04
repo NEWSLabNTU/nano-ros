@@ -7,6 +7,20 @@
 multi-Node bringup against a Board with the same launch.xml +
 workspace pkg-index semantics the Rust proc-macro already uses.
 
+## 0. Reading guide
+
+Three docs are in scope; read in order:
+
+1. **`docs/design/multi-node-workspace-layout.md` §11** — LOCKED
+   canonical three-role shape (Bringup + Node + Entry). Background.
+2. **This file** — §1 + §2 + §3 sketch the surface; §4 lists every
+   work item in landing order; §6 carries the acceptance bar.
+3. **`docs/roadmap/phase-219-workflow-review.md`** — concrete
+   2-Node pure-C++ workspace walkthrough that surfaced six
+   integration gaps beyond the headline Entry-codegen gap. Each
+   gap is anchored to a specific 219.X item; that doc is the
+   verification artifact, this file is the plan.
+
 **Status.** **DESIGN**, no code yet. Builds on Phase 212.N.6
 (`nano_ros_entry(...)` cmake fn) + 212.N.10/11 (workspace pkg-index +
 launch parser) + 212.M.5 (`__nros_component_<pkg>_register` mangled
@@ -82,6 +96,36 @@ recursion.
 ---
 
 ## 3. Surface
+
+### 3.0 What the user writes — canonical pure-C++ workspace
+
+The §11.2 layout, expressed with the surface this phase delivers:
+
+```text
+my_ws/
+├── CMakeLists.txt                # 4 lines (see §3.6)
+└── src/
+    ├── talker_pkg/               # Node pkg (C++)
+    │   ├── package.xml
+    │   ├── CMakeLists.txt        # nano_ros_node_register(...)
+    │   └── src/Talker.cpp        # NROS_NODE_REGISTER(...)
+    ├── listener_pkg/             # Node pkg (C++)
+    │   ├── package.xml
+    │   ├── CMakeLists.txt        # nano_ros_node_register(...)
+    │   └── src/Listener.cpp      # NROS_NODE_REGISTER(...)
+    ├── demo_bringup/             # Bringup pkg (language-agnostic)
+    │   ├── package.xml
+    │   ├── system.toml
+    │   └── launch/
+    │       └── system.launch.xml
+    └── cpp_entry/                # Entry pkg (C++)
+        ├── package.xml
+        ├── CMakeLists.txt        # nano_ros_entry(LAUNCH ...)
+        └── src/main.cpp          # NROS_MAIN(...) one-liner
+```
+
+Total user-authored cmake: **one workspace-root line per pkg + one
+`nano_ros_*` call per pkg**. Same line-count budget as the Rust path.
 
 ### 3.1 cmake fn — `nano_ros_entry()` extended
 
@@ -243,121 +287,182 @@ NROS_MAIN_C(nros_board_native, "demo_bringup:sim.launch.xml")
 Same `nros codegen entry --lang c` path. C++ users use the C++
 form; C users use the C form. Both ride the same cmake fn.
 
+### 3.6 Workspace-root cmake — `nano_ros_workspace()`
+
+The §11.2 tree wants a four-line workspace-root CMakeLists:
+
+```cmake
+cmake_minimum_required(VERSION 3.22)
+project(my_ws LANGUAGES C CXX)
+
+nano_ros_workspace(
+    SYSTEM   demo_bringup
+    BACKEND  zenoh                 # or xrce / cyclonedds
+    SUBDIRS  src/talker_pkg
+             src/listener_pkg
+             src/cpp_entry
+)
+```
+
+`nano_ros_workspace()` (landed by 219.I) does the heavy lifting:
+
+1. Sets `NANO_ROS_PLATFORM=posix` + `NANO_ROS_RMW=${BACKEND}`.
+2. `add_subdirectory(<nano-ros-root>)` **once** at root scope (so
+   per-pkg subdirs don't collide on re-include — Gap 2 in the
+   review).
+3. `include(NanoRosNodeRegister.cmake)` once.
+4. `include(NanoRosWorkspace.cmake)` so per-subdir
+   `nano_ros_workspace_pkg_guard()` becomes available.
+5. `nano_ros_workspace_metadata(SYSTEM ${SYSTEM})` so `nros plan`
+   sees the Bringup pkg.
+6. `add_subdirectory(<each member>)` for each `SUBDIRS` entry.
+
+Each subdir CMakeLists (Node + Entry pkg) begins with:
+
+```cmake
+cmake_minimum_required(VERSION 3.22)
+project(talker_pkg LANGUAGES C CXX)
+nano_ros_workspace_pkg_guard()         # idempotent — no-op when
+                                       # called inside a parent
+                                       # workspace; full
+                                       # standalone bootstrap when
+                                       # called solo (preserves the
+                                       # single-pkg copy-out path).
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+nano_ros_node_register(NAME talker
+                       CLASS talker_pkg::Talker
+                       SOURCES src/Talker.cpp
+                       DEPLOY native)
+```
+
+`nano_ros_workspace_pkg_guard()` is the dual to `nano_ros_workspace()`
+— call it at the top of every Node + Entry pkg CMakeLists. Body:
+
+```cmake
+function(nano_ros_workspace_pkg_guard)
+    if(TARGET NanoRos::NanoRosCpp)
+        return()      # parent workspace already imported nano-ros.
+    endif()
+    # Standalone path — replicate the §3.0 root's body for solo build.
+    set(NANO_ROS_PLATFORM posix)
+    set(NANO_ROS_RMW zenoh CACHE STRING "")
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.."
+                     nano_ros)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
+endfunction()
+```
+
+This is the cmake equivalent of `[workspace]` discipline in cargo:
+every member compiles standalone OR as part of the workspace; both
+shapes use the same surface. Closes Gap 1 + Gap 2 from the workflow
+review.
+
 ---
 
 ## 4. Phased work plan
 
-**Update 2026-06-04 (post-workflow-review).** Phase 219 originally
-listed 219.A through 219.G. A pure-C/C++ workspace walkthrough
-(`docs/roadmap/phase-219-workflow-review.md`) surfaced **six more
-gaps** the original plan papered over — four cmake-fn-level + two
-CLI-level. They sit BELOW the Entry-codegen surface; without them
-219.D produces a generated `main()` that fails to link, and 219.F
-has nothing reproducible to test against. New items 219.H–N below;
-recommended ordering 219.H+I → 219.A-E → 219.J → 219.F → 219.G,
-with 219.K/L/M in parallel.
+Single ordered list. Items grouped into three tracks; tracks land in
+order but inside a track the items are independent. Cost tags
+(`cheap` / `medium`) come from the workflow-review estimates;
+`(✱)` marks items the workflow review (`phase-219-workflow-review.md`)
+added on top of the original 219.A–G design.
 
-- [ ] **219.A — CLI: `nros codegen entry` skeleton (lang=rust passthrough).**
-      Lift the proc-macro's pkg-index walk + launch parser out of
-      `packages/core/nros-macros/src/main_macro.rs` into
-      `nros-cli/src/codegen/entry/{mod.rs,emit_rust.rs}`. Add the
-      `nros codegen entry --lang rust …` form, verify it produces a
-      file byte-identical to today's proc-macro `TokenStream` after
-      `prettyplease` formatting. Tag for follow-up: the proc-macro
-      keeps in-process emission for incrementality but defers
-      semantic logic to the shared module.
-- [ ] **219.B — `emit_cpp()`.** Read `Plan` → emit the generated TU
-      per §3.3. Include the `<extern "C">` block, Board boot stub,
-      register-call sequence. Unit-test against a 1-Node + 2-Node
-      fixture.
-- [ ] **219.C — `emit_c()`.** Same shape, C language. C ABI for
-      board entry (`nros_board_native_run` fn ptr signature). Unit
-      tests.
-- [ ] **219.D — cmake fn: `nano_ros_entry()` LAUNCH arg.** Extend
-      the existing `cmake/NanoRosEntry.cmake` with the LAUNCH +
-      ARGS handling per §3.1. Shell `nros codegen entry --lang
-      cpp` at configure time, append the generated TU to
-      `add_executable(...)` sources, wire `CMAKE_CONFIGURE_DEPENDS`
-      from the CLI's depfile. Keep the LAUNCH-absent fast path
-      unchanged.
-- [ ] **219.E — Headers: `nros/main.hpp` + `nros/main.h`.** Empty
-      macro definitions per §3.4-§3.5. No runtime symbols.
-- [ ] **219.F — Test fixture.** New
-      `examples/native/cpp/multi-node-entry/` with one Bringup pkg
-      pulling two Node pkgs. Nextest: configure + build + run +
-      assert both Node pkgs' register fns fire.
-- [ ] **219.G — Book chapter.** Add
-      `book/src/concepts/cpp-entry-pkg.md` (or fold into
-      `concepts/multi-node-workspace.md`) showing the cmake fn +
-      macro shape side-by-side with the Rust `nros::main!()` form.
+### Track 1 — workspace plumbing (lands first)
 
-### 4.1 Workflow-review prereqs (added 2026-06-04)
+These items unblock every multi-pkg C/C++ workspace and pay back
+across the rest of Phase 219. Without them, 219.D's generated
+`main()` fails to link.
 
-These items come from the gap walkthrough in
-`docs/roadmap/phase-219-workflow-review.md`. They block 219.D
-delivering a linkable binary, and they each pay back across every
-future multi-pkg C/C++ workspace, not just the Entry-codegen flow.
-
-- [ ] **219.H — Idempotency guards in interface codegen** (cheap).
+- [ ] **219.H — Idempotency guards in interface codegen.** (cheap, ✱)
       `cmake/NanoRosGenerateInterfaces.cmake` today guards only
       `builtin_interfaces`, `unique_identifier_msgs`, `action_msgs`
-      against double-creation (lines 282-290). Every other interface
-      pkg collides when two sibling Node pkgs both `<depend>` on it
-      (e.g. two pkgs each calling `nros_find_interfaces(LANGUAGE
-      CPP)` with `std_msgs` in their `package.xml`). Generalise the
-      `if(NOT TARGET …)` guard so every interface pkg becomes
-      idempotent; collision sites at lines 462 / 471 / 607 per the
-      review's anchor pointers.
-- [ ] **219.I — `nano_ros_workspace()` cmake fn + canonical root**
-      (cheap). §11.2 shows the layout but doesn't spell out the
-      workspace-root cmake body. Land:
-      - `cmake/NanoRosWorkspace.cmake` exposing
-        `nano_ros_workspace(SYSTEM <bringup> [BRINGUP <pkg>]
-        [SUBDIRS <dir>…])`.
-      - Body: sets `NANO_ROS_PLATFORM` / `NANO_ROS_RMW`, does the
-        single `add_subdirectory(<nano-ros>)` call, includes
-        `NanoRosNodeRegister.cmake` once at root scope, then
-        `add_subdirectory(<each member>)`.
-      - Subdir CMakeLists for Node + Entry pkgs guard their
-        `add_subdirectory(<nano-ros>)` + `include(...)` calls
-        with `if(NOT TARGET NanoRos::NanoRos)`. Today's in-tree
-        examples don't have the guards (workspace-root re-include
-        dies on `nros_rmw_cffi_headers` duplicate target + Corrosion
-        crate conflict). This also gives the multi-pkg path the
-        same single-import discipline cargo workspaces enforce.
-- [ ] **219.J — Entry auto-links Node-pkg static libs from launch
-      metadata** (cheap). `nano_ros_entry()` today produces the exe
-      but does NOT `target_link_libraries(<exe> PRIVATE
+      against double-creation (lines 282-290). Every other
+      interface pkg collides when two sibling Node pkgs both
+      `<depend>` on it (e.g. both calling
+      `nros_find_interfaces(LANGUAGE CPP)` with `std_msgs` in
+      `package.xml`). Generalise the `if(NOT TARGET …)` guard so
+      every interface pkg becomes idempotent. Collision sites at
+      lines 462 / 471 / 607 per the review's anchor pointers.
+      Closes review Gap 3.
+- [ ] **219.I — `nano_ros_workspace()` + `nano_ros_workspace_pkg_guard()`.**
+      (cheap, ✱) Land `cmake/NanoRosWorkspace.cmake` per §3.6.
+      Workspace-root single-call form pulls nano-ros once, includes
+      `NanoRosNodeRegister.cmake` once, calls
+      `nano_ros_workspace_metadata()`, then `add_subdirectory()` on
+      every member. Per-pkg guard is the cmake equivalent of cargo
+      `[workspace]` discipline — same subdir CMakeLists builds
+      standalone OR inside the workspace. Closes review Gaps 1+2.
+
+### Track 2 — Entry codegen (the headline work)
+
+Once Track 1 is in, these items deliver the cmake `LAUNCH` arg + the
+C / C++ TU emission. This is the original 219.A–F plan, unchanged in
+shape.
+
+- [ ] **219.A — CLI: `nros codegen entry` skeleton.** Lift the
+      proc-macro's pkg-index walk + launch parser out of
+      `packages/core/nros-macros/src/main_macro.rs` into
+      `nros-cli/src/codegen/entry/{mod.rs,emit_rust.rs}`. Add the
+      `nros codegen entry --lang rust …` form; verify byte-identical
+      output vs today's proc-macro `TokenStream` after
+      `prettyplease` formatting. Proc-macro keeps in-process
+      emission but defers semantic logic to the shared module.
+- [ ] **219.B — `emit_cpp()`.** Read `Plan` → emit the generated TU
+      per §3.3. Include the `extern "C"` block, Board boot stub,
+      register-call sequence. Unit-test against 1-Node + 2-Node
+      fixtures.
+- [ ] **219.C — `emit_c()`.** Same shape, C language. C ABI for
+      board entry (`nros_board_native_run` fn-ptr signature). Unit
+      tests.
+- [ ] **219.D — cmake fn: `nano_ros_entry()` LAUNCH arg.** Extend
+      `cmake/NanoRosEntry.cmake` with the `LAUNCH` + `ARGS` handling
+      per §3.1. Shell `nros codegen entry --lang cpp` at configure
+      time, append the generated TU to `add_executable(...)`
+      sources, wire `CMAKE_CONFIGURE_DEPENDS` from the CLI's
+      depfile. LAUNCH-absent fast path unchanged.
+- [ ] **219.E — Headers: `nros/main.hpp` + `nros/main.h`.** Empty
+      macro definitions per §3.4-§3.5. No runtime symbols.
+- [ ] **219.J — Entry auto-links Node-pkg static libs.** (cheap, ✱)
+      `nano_ros_entry()` today produces the exe but does NOT
+      `target_link_libraries(<exe> PRIVATE
       <pkg>_<name>_component)` for the Node pkgs the launch XML
-      pulls in. User writes the link by hand. The same loop in
+      pulls in — user writes the link by hand. The same loop in
       219.B/C that emits the `extern "C"` register decls owns the
-      Node-pkg name list — emit a sibling `target_link_libraries`
-      call from inside the cmake fn so the generated TU actually
-      resolves at link time. Land alongside 219.D (the LAUNCH
-      arg).
+      Node-pkg name list; emit a sibling `target_link_libraries`
+      call from inside the cmake fn. Lands alongside 219.D — the
+      generated `main()` is unlinkable without it. Closes review
+      Gap 4.
+
+### Track 3 — CLI cleanup (lands in parallel with Track 2)
+
+These are CLI-side polish that doesn't block the cmake-side work
+but is required for the end-to-end acceptance bar (§6).
+
 - [ ] **219.K — `nros codegen entry` runs without external
-      `play-launch-parser`** (medium). `nros plan` shells the
-      external `play_launch_parser` Python tool / binary today
+      `play-launch-parser`.** (medium, ✱) `nros plan` shells the
+      external `play_launch_parser` Python tool today
       (`nros-cli-core/src/orchestration/planner.rs::437-462`,
       gated by the `play-launch-parser` cargo feature). The Rust
       proc-macro path doesn't (in-process via the `nros-build`
-      dep). For C/C++ symmetry the shipped CLI must run on a
-      stock dev box without `pip install play-launch-parser` /
-      manual `NROS_PLAY_LAUNCH_PARSER=<path>`. Pick one of:
-      (1) flip the `play-launch-parser` feature on in the
-      prebuilt CLI release pipeline; (2) vendor + static-link
-      the parser into the CLI binary; (3) write a thin
-      in-process replacement on the subset of launch.xml the
-      v1 spec covers (§11.5). Document the choice; whatever
-      lands, `nros codegen entry --lang cpp` must succeed on a
-      box where only `~/.nros/bin/nros` is installed.
-- [ ] **219.L — `nros metadata` walks cmake-only Node pkgs**
-      (medium). `nros metadata --workspace <ws> <bringup>` returns
-      `preserved 0 metadata artifact(s)` against a pure-C++
-      workspace because `Workspace::component_declarations()` only
-      reads `nros.toml [component]` tables; pure-C++ Node pkgs
-      carry only `package.xml` + `CMakeLists.txt`. Today's flow
-      relies on cmake configure writing
+      dep). For C/C++ symmetry the shipped CLI must work on a
+      stock dev box without `pip install play-launch-parser`.
+      Pick one:
+      (1) flip the `play-launch-parser` cargo feature on in the
+          prebuilt CLI release pipeline;
+      (2) vendor + static-link the parser into the CLI binary;
+      (3) write a thin in-process replacement on the subset of
+          launch.xml the v1 spec covers (§11.5).
+      Document the choice; whatever lands, `nros codegen entry
+      --lang cpp` must succeed on a box where only
+      `~/.nros/bin/nros` is installed. Closes review Gap 5.
+- [ ] **219.L — `nros metadata` walks cmake-only Node pkgs.**
+      (medium, ✱) `nros metadata --workspace <ws> <bringup>`
+      returns `preserved 0 metadata artifact(s)` against a
+      pure-C++ workspace because
+      `Workspace::component_declarations()` only reads `nros.toml
+      [component]` tables; pure-C++ Node pkgs carry only
+      `package.xml` + `CMakeLists.txt`. Today's flow relies on
+      cmake configure writing
       `${CMAKE_BINARY_DIR}/nros-metadata.json` first, then `nros
       plan` reading it — that contract works but is undocumented.
       Land either:
@@ -365,13 +470,13 @@ future multi-pkg C/C++ workspace, not just the Entry-codegen flow.
           `nano_ros_node_register(...)` calls statically from
           CMakeLists (parser is small — every call is single-line
           + keyword args); or
-      (b) formalise the cmake-first contract with a
-          `nros metadata --scan-cmake <build-dir>` flag and book
+      (b) formalise the cmake-first contract with a `nros
+          metadata --scan-cmake <build-dir>` flag and book
           chapter documenting "cmake configure must precede
           `nros plan`" for pure-C/C++ workspaces.
-- [ ] **219.M — `nros new --component --lang cpp` accepted +
-      `--lang cpp` scaffold updated** (cheap-to-medium). Today
-      `nros new <name> --lang cpp --component` errors out
+      Closes review Gap 6.
+- [ ] **219.M — `nros new` C/C++ scaffolds.** (cheap-to-medium, ✱)
+      Today `nros new <name> --lang cpp --component` errors out
       ("scaffolds a Rust component; --lang cpp is not yet
       supported", `nros-cli-core/src/cmd/new.rs:116`). Plain
       `nros new <name> --lang cpp` emits a stub that still calls
@@ -380,15 +485,41 @@ future multi-pkg C/C++ workspace, not just the Entry-codegen flow.
       a hello-world `main.cpp` with zero nros surface. Land four
       scaffold templates aligned with §11.2: pure-C++ Node pkg,
       pure-C Node pkg, pure-C++ Entry pkg, Bringup pkg
-      (language-agnostic).
-- [ ] **219.N — In-tree multi-pkg pure-C++ fixture + nextest**
-      (cheap). Land
-      `examples/native/cpp/multi-node-entry/` (canonical name
-      tracks 219.F) as the regression guard for 219.A through M.
-      Two Node pkgs + one Bringup pkg + one Entry pkg, all C++.
-      Nextest configures + builds + runs + asserts both register
-      fns fire + the talker actually publishes. Doubles as the
-      book-chapter live example for 219.G.
+      (language-agnostic). Closes review Gap 7.
+
+### Track 4 — Fixture + docs (lands last)
+
+- [ ] **219.F / 219.N — In-tree multi-pkg pure-C++ fixture + nextest.**
+      (cheap, ✱) Land `examples/native/cpp/multi-node-entry/`
+      (canonical name). Two Node pkgs + one Bringup pkg + one Entry
+      pkg, all C++. Nextest configures + builds + runs + asserts
+      both register fns fire + the talker actually publishes.
+      Regression guard for every other 219 item; doubles as the
+      live example for 219.G. (The two original sub-items merged.)
+- [ ] **219.G — Book chapter.** Add
+      `book/src/concepts/cpp-entry-pkg.md` (or fold into
+      `concepts/multi-node-workspace.md`) showing the §3.6
+      workspace-root + the per-pkg shapes + the §3.4 macro form,
+      side-by-side with the Rust `nros::main!()` form.
+
+### Recommended landing order
+
+```
+Track 1                Track 2                Track 3      Track 4
+─────────              ─────────────          ──────────   ──────────
+219.H ─┐
+       ├─→  219.A → B → C → D → E → J  ─┐
+219.I ─┘    (Entry codegen + cmake fn)  │
+                                         ├─→  219.F/N → 219.G
+            219.K  (in parallel)        │
+            219.L  (in parallel)  ──────┘
+            219.M  (in parallel)
+```
+
+Track 1 first because every Track-2 demo / test workspace assumes
+the §3.6 surface. Track 2 + Track 3 land in parallel (different
+crates / fns). Track 4 is the regression-guard + book chapter on
+top of everything.
 
 ## 5. Open questions
 
