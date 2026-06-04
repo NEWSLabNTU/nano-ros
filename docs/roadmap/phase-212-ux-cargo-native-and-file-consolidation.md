@@ -1550,10 +1550,14 @@ sub-items that already shipped stay marked done.
 - [~] **L.2 Entry pkg shape** — partial close 2026-06-02 audit;
       shape **further revised 2026-06-03** to use the N.9
       `nros::main!()` proc-macro instead of `build.rs +
-      include!()`. Today's wave-4 Entry pkgs use the old shape;
-      migration to the macro shape lands with N.9. Post-N.9 the
-      Entry pkg drops `nros-build` build-dep, drops `build.rs`,
-      collapses `main.rs` to one line.
+      include!()`. **2026-06-04 audit re-walk**: the wave-4 Entry
+      pkg migration to the macro shape has LANDED across all 19
+      Entry pkgs (Phase 213.C.1 freertos `cf2585793`, 213.C.2
+      nuttx `70098e716`, 213.C.3 threadx-linux `5d7725bdb`,
+      212.N.9 entry-poc `5d8b14954`). Post-migration: every Entry
+      pkg's `src/main.rs` is the single-line `nros::main!();`,
+      zero `build.rs` files survive in the 19 entry pkg dirs
+      (`find examples -path "*entry*" -name build.rs` → 0).
 
       Core Rust Entry pkg infrastructure LANDED via Phase 212.N.7
       step-1 → step-3 (`276663897` N.3 tier-1 per-board shims +
@@ -1564,35 +1568,48 @@ sub-items that already shipped stay marked done.
       rust/<example>_entry/`. Each carries: `[[bin]]` + path-deps on
       Component pkg + `nros-board-<board>` shim + `nros-platform` +
       `[package.metadata.nros.entry] deploy = "<board>"` +
-      `build.rs` calling `nros_build::generate_run_plan(...)` +
-      `src/main.rs` (`Board::run(|runtime| { run_plan(runtime) })`)
-      + `package.xml` (added in this audit, `01d6662cc`).
+      `src/main.rs` (`nros::main!();`, N.9 macro shape) +
+      `package.xml` (added in audit `01d6662cc`).
 
-      Still pending for full close:
-      - `[package.metadata.nros.deploy.<board>]` subtable (board /
-        rmw / domain_id / locator) — spec calls for it, zero entry
-        pkgs ship it yet (step-2 entry pkgs only have
-        `[package.metadata.nros.entry] deploy = "<board>"`).
-        Follow-up step: bulk-add the deploy subtable to all 19
-        entry pkgs from each board's existing config-default
-        values.
-      - `launch/system.launch.xml` per Entry pkg — step-2 ships an
-        empty stub; build.rs codegen falls through to a stub
-        `Ok(())` body. The real launch composition (`<node pkg=…
-        exec=…/>` rows + params + remaps) is the N.4 codegen-driven
-        story.
+      **Closed since 2026-06-02 partial (2026-06-04 audit):**
       - C++ analog cmake fn `nano_ros_entry(NAME … SOURCES … DEPLOY
         … BOARD …)` — LANDED at `cmake/NanoRosEntry.cmake`
         (post-N.6 rename of `application` → `entry`); back-compat
         shim `nano_ros_application` still emits a deprecation
         warning + forwards.
-      - `nros-board-posix` for native-only entries — spec calls for
-        this name; current native entry-poc uses `nros-board-native`
-        (per N.3). Naming may align in N.7 follow-up or spec name
-        bumps to match.
       - `nros_build::generate_single_node_main(Board::Native)`
-        single-Component-pkg convenience — tracked as N.5
-        (separate work item, still `[ ]`).
+        single-Component-pkg convenience — **subsumed by N.9** (see
+        N.5, now `[x]`). The proc-macro shape dissolved the
+        separate `[[bin]]` / `OUT_DIR` codegen trade-off; user
+        keeps a normal `src/main.rs` carrying only `nros::main!();`.
+      - `build.rs` + `include!(env!("OUT_DIR")/run_plan.rs)` shape —
+        eliminated tree-wide by the 213.C.* + 212.N.9 migration.
+
+      **Still pending for full close (verified 2026-06-04):**
+      - `[package.metadata.nros.deploy.<board>]` subtable (board /
+        rmw / domain_id / locator) — spec calls for it, **0/19**
+        Entry pkgs ship it yet (`grep -l "metadata.nros.deploy\."
+        examples/*/rust/*_entry/Cargo.toml` → empty). Entry pkgs
+        only carry `[package.metadata.nros.entry] deploy =
+        "<board>"`. Follow-up step: bulk-add the deploy subtable
+        from each board's existing config-default values.
+      - `launch/system.launch.xml` per Entry pkg — 6/19 ship an
+        empty `<launch></launch>` stub (freertos siblings); the
+        remaining 13 (nuttx + threadx-linux + entry-poc) have no
+        `launch/` dir. Zero stubs carry real `<node>` rows. The
+        live launch composition (`<node pkg=… exec=…/>` rows +
+        params + remaps) is the N.4 codegen-driven story; the
+        register() trampolines remain TODO stubs per the in-tree
+        comments (see `examples/qemu-arm-freertos/rust/talker_entry/
+        launch/system.launch.xml` placeholder note).
+      - `nros-board-posix` for native-only entries — both crates
+        (`nros-board-posix` AND `nros-board-native`) now ship in
+        `packages/boards/`. `entry-poc` still depends on
+        `nros-board-native` per the original N.3 wave; spec names
+        the posix variant. Open naming alignment: either rename
+        entry-poc's dep to `nros-board-posix`, or accept the
+        N.3-era `nros-board-native` as the canonical native shim
+        and update the spec text below.
 
       Original spec lines retained for reference:
 
@@ -1626,13 +1643,35 @@ sub-items that already shipped stay marked done.
       pkg dir. Embedded single-Component case still requires a
       hand-written `main.rs` (board init non-trivial).
 
-- [~] **L.3 Bringup pkg shape — REINSTATED as optional (2026-06-03)**.
-      Supersedes the 2026-06-02 retirement. Per
-      `docs/design/multi-node-workspace-layout.md` §11 lock, Bringup
-      pkg returns as one of three pkg roles (Bringup + Node + Entry)
-      and is **optional**: required only when ≥2 Entry pkgs share a
-      topology (multi-target deployment). Single-Entry workspaces
-      fold `launch/` + `system.toml` into the Entry pkg.
+- [x] **L.3 Bringup pkg shape — REINSTATED as optional (2026-06-03;
+      closed 2026-06-04 audit)**. Supersedes the 2026-06-02
+      retirement. Per `docs/design/multi-node-workspace-layout.md`
+      §11 lock, Bringup pkg returns as one of three pkg roles
+      (Bringup + Node + Entry) and is **optional**: required only
+      when ≥2 Entry pkgs share a topology (multi-target deployment).
+      Single-Entry workspaces fold `launch/` + `system.toml` into
+      the Entry pkg.
+
+      **Closure rationale (2026-06-04 audit re-walk):** the L.3
+      design lock is fully realized in tree — every locked-shape
+      surface has a downstream landed item:
+      - Discovery via `package.xml` workspace walk: **N.10 `[x]`**
+        (`docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md:3148`).
+      - `system.toml` schema: **F.4 `[x]`** (design doc §4).
+      - `nros check` allows `system.toml` inside bringup pkgs only,
+        rejects outside: **F.2 `[x]`** + L.8 `[x]`.
+      - `nros new system <name>_bringup`: **F.1 `[x]`**.
+      - `nros plan <dir>` bringup discovery: **F.3 `[x]`**.
+      - Locked shape (no Cargo.toml / no CMakeLists.txt) exercised
+        by 12 in-tree fixtures: `packages/testing/nros-tests/
+        fixtures/{n9_workspace,multi_pkg_workspace_*,
+        orchestration_*}/...*_bringup/` — each carries `package.xml`
+        + `system.toml` + `launch/`, no `Cargo.toml`, no `src/`.
+      No L.3 sub-bullets remain open. Adopting bringup pkgs across
+      every example tree is **deliberately not** an L.3 task —
+      L.3's body lock says single-Entry workspaces don't need a
+      bringup pkg, so the 19 single-Entry siblings are spec-compliant
+      without one.
 
       Locked shape — pure declarative, language-agnostic, **no
       Cargo.toml, no CMakeLists.txt**:
@@ -1928,10 +1967,10 @@ A clean break — no transitional mixed-shape state allowed.
       (`34db111ad`) which operates on bringup pkgs writing into
       `$PX4_AUTOPILOT_DIR/src/modules/` — no example-tree sweep
       required.
-- [~] **M.10 Pre-212 file cleanup** — partial close 2026-06-02 audit.
-      Per-file disposition (verified by `git ls-files` + the
-      `phase212_m12_example_shape` + `phase212_examples_canonical_
-      shape` lints):
+- [x] **M.10 Pre-212 file cleanup** — closed 2026-06-04 audit
+      (was `[~]` 2026-06-02 partial). Per-file disposition (verified
+      by `git ls-files` + the `phase212_m12_example_shape` +
+      `phase212_examples_canonical_shape` lints):
       - [x] `component_nros.toml` per-pkg — zero tracked instances.
       - [x] `gen-app-config.py` per-example baker — zero tracked.
       - [x] `app_config.h.in` / per-example `<nros/app_config.h>`
@@ -1950,16 +1989,18 @@ A clean break — no transitional mixed-shape state allowed.
       - [x] Stale `examples/native/rust/{talker,listener}/generated/`
         dirs from pre-Option-B codegen runs — never tracked
         (per-dir `.gitignore` covers them).
-      - [ ] `nros.toml` (any location) — residual `nros.toml` files
-        in tree as of 2026-06-04 audit: 2 in
-        `packages/testing/nros-bench/{large-msg-baremetal,
-        wake-latency-cortex-m3}/` (bench fixtures, not example
-        trees). The original "39 tracked files in
-        UNMIGRATED trees: qemu-arm-baremetal/rust/ (13),
-        qemu-esp32-baremetal/rust/ (2), qemu-riscv64-threadx/
-        {c, cpp, rust} (6+6+6 = 18), threadx-linux/c/ (6)" count
-        is STALE — `find examples -name nros.toml` returns zero.
-        Leaving open to cover the residual 2 bench fixtures.
+      - [x] `nros.toml` (any location) — **zero in tree** verified
+        2026-06-04 (`find . -name nros.toml -not -path
+        "./third-party/*" -not -path "./target*" -not -path
+        "./build/*"` returns no rows). The 2026-06-02 audit body
+        listed 2 residual bench-fixture entries
+        (`packages/testing/nros-bench/{large-msg-baremetal,
+        wake-latency-cortex-m3}/`); the 2026-06-04 re-walk confirms
+        both dirs ship `Cargo.toml` + `package.xml` + `src/` (+
+        `build.rs` / `generated/` / `memory.x` for
+        `wake-latency-cortex-m3`) with no `nros.toml`. The earlier
+        "39 tracked files in UNMIGRATED trees" count was also stale
+        and remains so.
       - [x] `nano_ros_read_config(nros.toml)` cmake fn (delete the
         fn + every caller) — covered by M-F.10 (M-F.10.5 already
         flipped). Verified 2026-06-04: `rg nano_ros_read_config

@@ -112,14 +112,28 @@ accepts the Arm EULA, installs the FVP locally, and exports
       gated).
 - [~] **217.B.3** Book/reference doc — point at
       `docs/reference/environment-variables.md` for `ARM_FVP_DIR` +
-      `ARMFVP_BIN_PATH` (existing convention). **Partial
-      2026-06-04** — book surfaces landed:
+      `ARMFVP_BIN_PATH` (existing convention). **Doc-side LANDED
+      2026-06-04 via 217.E.1 + 217.E.2 (`387321817`,
+      `docs(217.E.1+E.2+B.3): ARM FVP book chapter + SUMMARY nav +
+      reference cross-ref`).** Concretely shipped:
       `book/src/reference/environment-variables.md` carries a new
       "ARM FVP (`FVP_BaseR_AEMv8R`)" section pointing at the
       getting-started chapter; `book/src/reference/supported-boards.md`
-      adds an Arm FVP row pointing at the same chapter. CLI
-      installer + `nros doctor` cross-references will land with
-      217.B.1 / 217.B.2.
+      adds an Arm FVP row pointing at the same chapter;
+      `book/src/getting-started/arm-fvp.md` is the canonical setup
+      chapter (217.E.1 `[x]`); `SUMMARY.md` carries the
+      "ARM FVP (Cortex-A SMP)" nav entry (217.E.2 `[x]`).
+
+      **Why this remains `[~]` and not `[x]`:** B.3's body also
+      promises the cross-references the *CLI* surfaces will need —
+      `nros setup --tool arm-fvp` discoverability + `nros doctor`
+      hints. Those CLI surfaces don't exist yet because 217.B.1
+      (installer script) + 217.B.2 (`nros doctor` check) are both
+      `[ ]` — license-walled on ARM FVP, blocked on a contributor
+      with an accepted Arm EULA installing the FVP. Once B.1 + B.2
+      land, B.3 closes with a trivial wording bump (no new doc
+      pages, just pointers to the now-existing installer + doctor
+      slots).
 
 **Files:** `scripts/installers/arm-fvp-installer.sh` (new),
 `docs/reference/environment-variables.md`.
