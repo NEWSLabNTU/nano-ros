@@ -4,19 +4,16 @@ project(cpp_action_client LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Phase 212.M.2 — Application pkg shape. See talker/CMakeLists.txt for
+# Phase 219.I — bootstrap nano-ros workspace helpers. Solo build
+# walks up four levels for the nano-ros root; workspace builds inherit
+# the helpers from the parent root.
+# RMW override: `-DNROS_RMW=<zenoh|xrce|cyclonedds>` (default zenoh).
+if(NOT COMMAND nano_ros_workspace_pkg_guard)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosWorkspace.cmake")
+endif()
+nano_ros_workspace_pkg_guard()
 # the rationale on platform/RMW cache var ordering vs. the §212.L.9
 # cmake fn surface.
-set(NANO_ROS_PLATFORM posix)
-set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|dds|xrce|cyclonedds).")
-set(NANO_ROS_RMW "${NROS_RMW}")
-
-set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
-add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
-
-include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
-
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 nano_ros_entry(

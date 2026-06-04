@@ -4,21 +4,21 @@ project(c_custom_transport_loopback VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Phase 212.M (native/c sweep) — Application pkg shape, C variant.
+# Phase 219.I — bootstrap nano-ros workspace helpers. Solo build
+# walks up four levels for the nano-ros root; workspace builds inherit
+# the helpers from the parent root.
+# RMW override: `-DNROS_RMW=<zenoh|xrce|cyclonedds>` (default zenoh).
+if(NOT COMMAND nano_ros_workspace_pkg_guard)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosWorkspace.cmake")
+endif()
+nano_ros_workspace_pkg_guard()
 # Runtime-pluggable custom transport demonstration in pure C (Phase
 # 115.F). The example installs a ring-buffer-backed
 # `nros_transport_ops_t` via `nros_set_custom_transport`, then opens
 # an nros session over the custom byte pipe and publishes a few
 # std_msgs/String frames.
-set(NANO_ROS_PLATFORM posix)
 # Hard-codes zenoh here — the custom transport is exercised over the
 # zenoh runtime; flipping RMWs is out of scope for this demo.
-set(NANO_ROS_RMW zenoh)
-
-set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
-add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
-include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
-
 nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 nano_ros_entry(
