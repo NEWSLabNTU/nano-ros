@@ -40,13 +40,26 @@ set(_NROS_ENTRY_INCLUDED TRUE)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 
 function(nano_ros_entry)
-    cmake_parse_arguments(_NRA "" "NAME;BOARD" "SOURCES;DEPLOY" ${ARGN})
-    foreach(_req NAME SOURCES DEPLOY)
+    # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
+    cmake_parse_arguments(_NRA
+        ""
+        "NAME;BOARD;LAUNCH;LANG"
+        "SOURCES;DEPLOY;ARGS"
+        ${ARGN})
+    foreach(_req NAME DEPLOY)
         if(NOT _NRA_${_req})
             message(FATAL_ERROR
                 "nano_ros_entry: ${_req} required")
         endif()
     endforeach()
+    # SOURCES becomes optional when LAUNCH present — the generated TU
+    # carries `int main()`. Standalone single-Node entry still needs
+    # SOURCES (the caller provides their own `main`).
+    if(NOT _NRA_LAUNCH AND NOT _NRA_SOURCES)
+        message(FATAL_ERROR
+            "nano_ros_entry: SOURCES required when LAUNCH is absent "
+            "(single-Node self-bringup mode).")
+    endif()
     # L.2: Entry pkgs are NATIVE-ONLY at the cmake surface.
     foreach(_t IN LISTS _NRA_DEPLOY)
         if(NOT _t STREQUAL "native")
@@ -56,11 +69,50 @@ function(nano_ros_entry)
         endif()
     endforeach()
 
+    # Phase 219.D — LAUNCH-aware fast path: shell `nros codegen entry`
+    # at configure time, append the generated TU + auto-link sidecar.
+    set(_sources_for_exe ${_NRA_SOURCES})
+    if(_NRA_LAUNCH)
+        if(NOT _NRA_LANG)
+            set(_NRA_LANG cpp)
+        endif()
+        if(NOT (_NRA_LANG STREQUAL "cpp" OR _NRA_LANG STREQUAL "c"))
+            message(FATAL_ERROR
+                "nano_ros_entry: LANG '${_NRA_LANG}' rejected — "
+                "expected 'cpp' (default) or 'c'.")
+        endif()
+        _nros_entry_invoke_codegen(
+            NAME      "${_NRA_NAME}"
+            LANG      "${_NRA_LANG}"
+            LAUNCH    "${_NRA_LAUNCH}"
+            BOARD     "${_NRA_BOARD}"
+            ARGS_LIST "${_NRA_ARGS}"
+            OUT_VAR_GEN     _gen_tu
+            OUT_VAR_LINKLIB _link_libs_cmake)
+        list(APPEND _sources_for_exe "${_gen_tu}")
+    endif()
+
     if(NOT TARGET ${_NRA_NAME})
-        add_executable(${_NRA_NAME} ${_NRA_SOURCES})
+        add_executable(${_NRA_NAME} ${_sources_for_exe})
         if(TARGET NanoRos::NanoRosCpp)
             target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRosCpp)
         endif()
+    else()
+        # Target may have been declared by a sibling call (e.g. the
+        # user supplied an empty SOURCES + LAUNCH). Ensure the
+        # generated TU still ends up on the target.
+        if(_NRA_LAUNCH)
+            target_sources(${_NRA_NAME} PRIVATE "${_gen_tu}")
+        endif()
+    endif()
+
+    # Phase 219.J — auto-link every Node-pkg static lib the launch XML
+    # named. The sidecar `<bin>/<exe>_link_libs.cmake` is emitted by
+    # the same CLI invocation as the generated TU; it carries one
+    # `target_link_libraries(<exe> PRIVATE <pkg>_<exec>_component)`
+    # call per unique `(pkg, exec)` pair.
+    if(_NRA_LAUNCH AND _link_libs_cmake)
+        include("${_link_libs_cmake}")
     endif()
 
     # Phase 212.N.6 — stash the BOARD selection on the target so the
@@ -71,7 +123,7 @@ function(nano_ros_entry)
             NANO_ROS_BOARD "${_NRA_BOARD}")
     endif()
 
-    _nros_json_strlist(_sources_json ${_NRA_SOURCES})
+    _nros_json_strlist(_sources_json ${_sources_for_exe})
     _nros_json_strlist(_deploy_json  ${_NRA_DEPLOY})
     get_property(_acc GLOBAL PROPERTY NROS_APPLICATIONS_JSON)
     if(_acc)
@@ -79,10 +131,152 @@ function(nano_ros_entry)
     else()
         set(_sep "")
     endif()
+    if(_NRA_LANG STREQUAL "c")
+        set(_lang_tag "c")
+    else()
+        set(_lang_tag "cpp")
+    endif()
     set(_entry
 "${_sep}\n    {\"name\": \"${_NRA_NAME}\", \"sources\": [${_sources_json}], \
 \"deploy\": [${_deploy_json}], \"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \
-\"lang\": \"cpp\"}")
+\"lang\": \"${_lang_tag}\"}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_APPLICATIONS_JSON "${_entry}")
     _nros_metadata_emit()
+endfunction()
+
+# ---------------------------------------------------------------------------
+# Helper — resolve a `nros` CLI binary, shell `nros codegen entry`, and
+# slurp the depfile into `CMAKE_CONFIGURE_DEPENDS`.
+#
+# Inputs (single-value kw):
+#   NAME      — Entry exe target name (used to build the sidecar path).
+#   LANG      — "cpp" (default) or "c".
+#   LAUNCH    — `<bringup>:<file>.launch.xml` spec.
+#   BOARD     — optional board key (empty => CLI defaults to native).
+#   ARGS_LIST — semicolon-separated `k=v` pairs; relayed to the CLI.
+#
+# Outputs (PARENT_SCOPE):
+#   <OUT_VAR_GEN>     — path of the generated TU (to add to SOURCES).
+#   <OUT_VAR_LINKLIB> — path of the sidecar `.cmake` carrying the
+#                       `target_link_libraries(<NAME> PRIVATE …)` call.
+# ---------------------------------------------------------------------------
+function(_nros_entry_invoke_codegen)
+    cmake_parse_arguments(_NRX
+        ""
+        "NAME;LANG;LAUNCH;BOARD;OUT_VAR_GEN;OUT_VAR_LINKLIB"
+        "ARGS_LIST"
+        ${ARGN})
+
+    # Resolve the nros CLI binary.  Allow override via NROS_CLI_BIN
+    # cache var / env var, then fall back to ~/.nros/bin/nros (the
+    # `scripts/install-nros.sh` install path), then PATH.
+    set(_nros_bin "")
+    if(NROS_CLI_BIN)
+        set(_nros_bin "${NROS_CLI_BIN}")
+    elseif(DEFINED ENV{NROS_CLI})
+        set(_nros_bin "$ENV{NROS_CLI}")
+    elseif(EXISTS "$ENV{HOME}/.nros/bin/nros")
+        set(_nros_bin "$ENV{HOME}/.nros/bin/nros")
+    else()
+        find_program(_nros_path nros)
+        if(_nros_path)
+            set(_nros_bin "${_nros_path}")
+        endif()
+    endif()
+    if(NOT _nros_bin)
+        message(FATAL_ERROR
+            "nano_ros_entry(LAUNCH …): could not find a `nros` CLI binary.\n"
+            "  Tried: `-DNROS_CLI_BIN=…`, `$NROS_CLI`, `~/.nros/bin/nros`,\n"
+            "  and `PATH`. Run `scripts/install-nros.sh` or set the var.")
+    endif()
+
+    # Workspace root: walk up from the Entry-pkg dir until we hit a
+    # `package.xml`-bearing sibling that's NOT the Entry pkg itself.
+    # Practically: the caller workspace-root is two levels up
+    # (`src/<entry_pkg>/CMakeLists.txt` → `..` → `..`). Falls back to
+    # CMAKE_SOURCE_DIR if the assumed layout doesn't hold.
+    get_filename_component(_pkg_parent "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
+    get_filename_component(_pkg_grandparent "${_pkg_parent}" DIRECTORY)
+    if(EXISTS "${_pkg_grandparent}/CMakeLists.txt" OR EXISTS "${_pkg_grandparent}/Cargo.toml")
+        set(_ws_root "${_pkg_grandparent}")
+    else()
+        set(_ws_root "${CMAKE_SOURCE_DIR}")
+    endif()
+
+    if(_NRX_LANG STREQUAL "c")
+        set(_ext "c")
+    else()
+        set(_ext "cpp")
+    endif()
+
+    # Per-target output paths under the build dir. Sidecars share the
+    # current dir to keep the relative location simple for the
+    # `include()` call back in `nano_ros_entry`.
+    set(_gen_path
+        "${CMAKE_CURRENT_BINARY_DIR}/${_NRX_NAME}_nros_main_generated.${_ext}")
+    set(_depfile_path
+        "${CMAKE_CURRENT_BINARY_DIR}/${_NRX_NAME}_nros_main_generated.d")
+    set(_link_libs_path
+        "${CMAKE_CURRENT_BINARY_DIR}/${_NRX_NAME}_link_libs.cmake")
+
+    set(_cli_args
+        codegen entry
+        --lang "${_NRX_LANG}"
+        --workspace "${_ws_root}"
+        --launch "${_NRX_LAUNCH}"
+        --out "${_gen_path}"
+        --depfile "${_depfile_path}"
+        --emit-link-libs "${_NRX_NAME}=${_link_libs_path}")
+    if(_NRX_BOARD)
+        list(APPEND _cli_args --board "${_NRX_BOARD}")
+    endif()
+    if(_NRX_ARGS_LIST)
+        # The cmake list uses `;` separators; the CLI expects `,`.
+        string(REPLACE ";" "," _cli_args_csv "${_NRX_ARGS_LIST}")
+        list(APPEND _cli_args --args "${_cli_args_csv}")
+    endif()
+
+    execute_process(
+        COMMAND "${_nros_bin}" ${_cli_args}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        RESULT_VARIABLE _rc
+        OUTPUT_VARIABLE _stdout
+        ERROR_VARIABLE  _stderr)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR
+            "nano_ros_entry(LAUNCH \"${_NRX_LAUNCH}\"): "
+            "`nros codegen entry` failed (rc=${_rc}).\n"
+            "  CLI: ${_nros_bin} ${_cli_args}\n"
+            "  stdout: ${_stdout}\n"
+            "  stderr: ${_stderr}")
+    endif()
+
+    # CONFIGURE_DEPENDS from the depfile so any change to the launch
+    # XML, any package.xml the pkg-index walked, or the bringup's
+    # `system.toml` re-runs cmake configure.
+    if(EXISTS "${_depfile_path}")
+        file(READ "${_depfile_path}" _dep_text)
+        # Strip the `<target>: \` prefix.
+        string(REGEX REPLACE "^[^:]*:" "" _dep_text "${_dep_text}")
+        # Split on backslash-newline and whitespace; cmake list semantics
+        # tokenise on `;`, so we first normalise whitespace runs to a
+        # single space, then turn each space + path into a list entry
+        # by replacing space with `;` after backslash removal.
+        string(REPLACE "\\\n" " " _dep_text "${_dep_text}")
+        string(REPLACE "\n" " " _dep_text "${_dep_text}")
+        # Collapse runs of whitespace.
+        string(REGEX REPLACE "[ \t]+" " " _dep_text "${_dep_text}")
+        string(STRIP "${_dep_text}" _dep_text)
+        # Convert space-separated paths to a cmake list.
+        string(REPLACE " " ";" _dep_list "${_dep_text}")
+        foreach(_dep IN LISTS _dep_list)
+            if(_dep AND EXISTS "${_dep}")
+                set_property(DIRECTORY APPEND PROPERTY
+                    CMAKE_CONFIGURE_DEPENDS "${_dep}")
+            endif()
+        endforeach()
+    endif()
+
+    set(${_NRX_OUT_VAR_GEN}     "${_gen_path}"       PARENT_SCOPE)
+    set(${_NRX_OUT_VAR_LINKLIB} "${_link_libs_path}" PARENT_SCOPE)
 endfunction()
