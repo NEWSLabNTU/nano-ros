@@ -726,12 +726,12 @@ fn nros_cli_path() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("NROS_CLI") {
         return std::path::PathBuf::from(p);
     }
-    if let Ok(out) = Command::new("sh").args(["-c", "command -v nros"]).output() {
-        if out.status.success() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !s.is_empty() {
-                return std::path::PathBuf::from(s);
-            }
+    if let Ok(out) = Command::new("sh").args(["-c", "command -v nros"]).output()
+        && out.status.success()
+    {
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !s.is_empty() {
+            return std::path::PathBuf::from(s);
         }
     }
     let home = std::env::var("NROS_HOME")
