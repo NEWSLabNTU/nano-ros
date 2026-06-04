@@ -84,7 +84,7 @@ cargo run -p robot_entry
 `robot_entry` opens the executor against the router, registers `talker`
 + `listener`, and runs the topology.
 
-### Caveats on the orchestration CLI (nros 0.3.7)
+### Caveats on the orchestration CLI
 
 - **`nros launch <bringup>` is not yet aligned with this composed-binary
   shape.** It implements a *one-process-per-`[[component]]`* model — it

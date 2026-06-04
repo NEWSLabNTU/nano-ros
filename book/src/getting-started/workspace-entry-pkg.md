@@ -132,10 +132,10 @@ cargo run -p robot_entry
 The canonical template is at `examples/templates/multi-node-workspace/` —
 its `README.md` is the source of truth for CLI commands that are green today.
 
-> **nros 0.3.7 caveat — `nros launch`**
+> **Caveat — `nros launch` and the composed-binary shape**
 >
 > `nros launch demo_bringup` is conceptually the host-side, no-ament-install
-> alternative to `ros2 launch`. In 0.3.7 it uses a
+> alternative to `ros2 launch`. The current in-tree CLI uses a
 > *one-process-per-`[[component]]`* model: it tries to spawn each `[[component]]`
 > as a separate binary (`target/debug/talker_pkg`, etc.). This template composes
 > both nodes into the **single** `robot_entry` binary (they are Node pkg
@@ -144,8 +144,7 @@ its `README.md` is the source of truth for CLI commands that are green today.
 > would instead need its own `[[bin]]` — the separate-process deployment shape.
 
 > **Note:** `nros run` for Zephyr / QEMU targets is not yet wired in the
-> shipped CLI (0.3.7). Use `just <plat> run` for those targets in the
-> meantime.
+> in-tree CLI. Use `just <plat> run` for those targets in the meantime.
 
 ## One Entry pkg per board
 

@@ -4,7 +4,7 @@ nros uses generated Rust bindings for ROS 2 message types. The `nros generate-ru
 
 ## Overview
 
-The binding generator lives in `packages/codegen/packages/nros-cli/` and provides:
+The binding generator lives in the in-tree CLI sub-workspace at `packages/cli/` and provides:
 - `nros` standalone binary
 - Pure Rust, `no_std` compatible output using `heapless` types
 - Automatic dependency resolution via ament index or bundled interfaces
@@ -29,17 +29,17 @@ The binding generator lives in `packages/codegen/packages/nros-cli/` and provide
    </package>
    ```
 
-2. **nros tool installed**
+2. **nros tool built + on PATH**
+
+   The `nros` CLI is built from the in-tree sub-workspace at
+   `packages/cli/` (Phase 218) and put on PATH by the activate file:
    ```bash
-   # From the nros repository root
-   just install-nros-cli
-
-   # Or manually:
-   cargo install --path packages/codegen/packages/nros-cli --locked
-
-   # Or from git (external users):
-   cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/nros-cli
+   # From the nano-ros repository root
+   source ./activate.sh        # OR: direnv allow / source ./activate.fish
+   just setup-cli              # builds packages/cli/target/release/nros
    ```
+   See [Installation](../getting-started/installation.md) for the full
+   walkthrough.
 
 3. **ROS 2 environment** (optional for standard types)
 

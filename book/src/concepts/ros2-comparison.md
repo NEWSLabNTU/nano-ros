@@ -150,9 +150,8 @@ overlay, no colcon workspace required.
 **Why.** Embedded cross-builds without a hosted ROS 2 install need to
 generate message types from `package.xml` + `.msg` files alone. The
 codegen tool ships its own bundled rosidl-flavoured `.msg` set inside
-the prebuilt `nros` CLI binary (Phase 195.D retired the in-tree
-`packages/codegen/interfaces/` submodule), so you don't even need the
-upstream message packages on disk.
+the `nros` CLI (built in-tree from `packages/cli/`, Phase 218), so you
+don't even need the upstream message packages on disk.
 
 ### 7. QoS profile is the full DDS field set; backends advertise per-policy support
 

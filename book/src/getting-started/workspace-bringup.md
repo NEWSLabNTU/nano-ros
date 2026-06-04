@@ -183,10 +183,10 @@ cargo run -p robot_entry
 Both `nros check` forms pass for the canonical template at
 `examples/templates/multi-node-workspace/`.
 
-> **nros 0.3.7 caveats — `nros plan` and `nros launch`**
+> **Caveats — `nros plan` and `nros launch` with this template**
 >
 > - **`nros plan demo_bringup`** resolves a topology into `plan.json` for
->   static type/QoS checks, but in 0.3.7 it requires pre-collected
+>   static type/QoS checks, but it currently requires pre-collected
 >   source-metadata sidecars (`record.json` + per-pkg `_metadata/*.json`).
 >   The automatic metadata-build path (`nros metadata --build`) is not yet
 >   wired for lib-only Node pkgs, so `nros plan` does not produce a plan
@@ -194,7 +194,7 @@ Both `nros check` forms pass for the canonical template at
 >   `packages/testing/nros-tests/fixtures/orchestration_e2e/` for the
 >   pre-collected-sidecar pipeline.
 > - **`nros launch demo_bringup`** is conceptually the host-side
->   `ros2 launch` equivalent (no ament install). In 0.3.7 it uses a
+>   `ros2 launch` equivalent (no ament install). The current CLI uses a
 >   *one-process-per-`[[component]]`* model — it tries to spawn
 >   `target/debug/talker_pkg` + `target/debug/listener_pkg` as separate
 >   processes, but in this template those are **libraries** composed into
@@ -213,7 +213,7 @@ Both `nros check` forms pass for the canonical template at
 that pairs with this guide. Copy the whole directory out and rename the packages.
 `cargo build` from the workspace root builds all Node pkgs and the Entry pkg;
 `nros check --workspace .` validates the topology (see the workflow above for
-the nros 0.3.7 caveat on `nros plan` / `nros launch`).
+the caveat on `nros plan` / `nros launch`).
 
 The template README at `examples/templates/multi-node-workspace/README.md`
 documents the exact CLI commands that are verified green today.
