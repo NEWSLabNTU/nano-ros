@@ -157,17 +157,11 @@ After rebasing over a remote submodule-pointer change, run `git submodule status
 
 ## Handover Notes (2026-06-04)
 
-Session ended out-of-tokens mid-stream. Active in-flight work:
-
-### In-flight: Phase 221 Track B (test fn renames)
-
-* **Agent ID**: `a831cb9a1b721ba8a` — KILLED locally at session end (deep submodule init hung). Branch state: `phase-221-b-test-fn-renames` may exist in `.claude/worktrees/agent-a831cb9a1b721ba8a/` with partial work.
-* **Scope**: rename 28 production test fns > 60 chars per the table in `docs/roadmap/phase-221-antipattern-audit-findings.md` Track B (B.1 21 nros-cli, B.2 5 nros + nros-node + cli-codegen, B.3 3 nros-tests integration). Preserve old behavior info as `///` doc-comments above the renamed fn.
-* **Resume path**: re-dispatch from scratch via the Track B table; the killed agent didn't push.
-* **Caveat**: previous agents hit deep submodule clones (`packages/cli/third-party/play_launch_parser` + transitive QEMU/OpenSSL/pyca). Dispatch template must explicitly forbid `git submodule update --init --recursive`.
+Session ended out-of-tokens mid-stream. Active in-flight work: none recorded.
 
 ### Closed this session
 
+* **Phase 221 — Build System + Test Antipattern Audit Findings** — ARCHIVED at `docs/roadmap/archived/phase-221-antipattern-audit-findings.md`. Tracks A–E closed; A.7 remains explicitly deferred to later top-level CMake work outside Phase 221. Closure verification passed with `cargo check -p zpico-sys -p nros-c -p nros-cpp` and `source ./activate.sh && XDG_RUNTIME_DIR=/tmp just build`.
 * **Phase 220 — Full-Suite Readiness Sweep** — ARCHIVED at `docs/roadmap/archived/phase-220-full-suite-readiness-sweep.md`. All 10 tracks (A–J) closed. Final commit chain ends at `c05830b2c`. Followups identified for Phase 222 (CLI surface) territory; one for codegen `--target <rmw>` honor.
 
 ### CLI install reality post-218
@@ -185,4 +179,3 @@ Session ended out-of-tokens mid-stream. Active in-flight work:
 ### Submodule init landmines
 
 Never run `git submodule update --init --recursive` from a worktree. The transitive closure pulls QEMU → OpenSSL → pyca-cryptography (~30 min wasted in 220.G first attempt). Only init what the immediate task needs.
-
