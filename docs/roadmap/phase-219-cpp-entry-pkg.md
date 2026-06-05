@@ -688,7 +688,7 @@ needs to follow the same convention.
 
 Phase 222 (`docs/roadmap/phase-222-cli-surface-and-ux.md`, was 220
 before the `9774bb4b9` renumber) and Phase 223
-(`docs/roadmap/phase-223-c-language-completion.md`, was 221) landed
+(`docs/roadmap/archived/phase-223-c-language-completion.md`, was 221) landed
 on main while Track 2 + Track 3 were in flight here. Re-reading both
 against the 219.A–N work landed on this branch:
 
