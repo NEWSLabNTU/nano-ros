@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- ROS 2 launch schema, verbatim. nav2 / Autoware / turtlebot3 XML
+     pastes in and Just Works (Python .launch.py is not supported yet). -->
+<launch>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+  <node pkg="listener_pkg" exec="listener" name="listener"/>
+</launch>

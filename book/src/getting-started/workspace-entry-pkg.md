@@ -51,7 +51,7 @@ nros setup native --rmw zenoh
 ## Package layout
 
 ```
-src/robot_entry/
+src/native_entry/
 ├── package.xml
 ├── Cargo.toml           # [[bin]] + deps on node pkgs + board crate
 │                        # + [package.metadata.nros.entry]
@@ -154,20 +154,20 @@ authors adding a new platform.
 
 ## Running a native Entry pkg
 
-The verified path for the canonical template is `cargo run -p robot_entry`.
+The verified path for the canonical Rust workspace is `cargo run -p native_entry`.
 Start a Zenoh router first, then boot the Entry binary from the workspace root:
 
 ```bash
 # in another shell:
 zenohd --listen tcp/127.0.0.1:7447 &
 
-cargo run -p robot_entry
+cargo run -p native_entry
 ```
 
-`robot_entry` opens the executor against the router, registers `talker` +
+`native_entry` opens the executor against the router, registers `talker` +
 `listener` (composed into a single process), and runs the topology.
 
-The canonical template is at `examples/templates/multi-node-workspace/`.
+The canonical Rust workspace is at `examples/workspaces/rust/`.
 For Zephyr, QEMU, ESP-IDF, and other non-native targets, use the platform's
 native build/run tool or the focused `just <plat> run` recipe.
 
@@ -179,7 +179,7 @@ Node pkg library:
 
 | Entry pkg | `deploy` key | Board crate |
 |---|---|---|
-| `robot_entry` | `"native"` | `nros-board-posix` |
+| `native_entry` | `"native"` | `nros-board-posix` |
 | `stm32f4_entry` | `"embassy-stm32f4"` | `nros-board-embassy-stm32f4` |
 
 Both reference the same `talker_pkg` and `listener_pkg` Node pkg rlibs. The

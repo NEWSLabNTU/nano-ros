@@ -216,11 +216,11 @@ nros check --workspace .
 
 # 3. Run the composed Entry binary (boots all nodes in a single process)
 zenohd --listen tcp/127.0.0.1:7447 &   # router — in another shell
-cargo run -p robot_entry
+cargo run -p native_entry
 ```
 
 Both `nros check` forms pass for the canonical template at
-`examples/templates/multi-node-workspace/`.
+`examples/workspaces/rust/`.
 
 > **Caveat — `nros plan` with this template**
 >
@@ -234,20 +234,20 @@ Both `nros check` forms pass for the canonical template at
 >   pre-collected-sidecar pipeline.
 >
 > The canonical template README at
-> `examples/templates/multi-node-workspace/README.md` is the source of
+> `examples/workspaces/rust/README.md` is the source of
 > truth for the current CLI state.
 
 ---
 
 ## Runnable copy-out
 
-`examples/templates/multi-node-workspace/` is the canonical 3-role template
-that pairs with this guide. Copy the whole directory out and rename the packages.
-`cargo build` from the workspace root builds all Node pkgs and the Entry pkg;
-`nros check --workspace .` validates the topology (see the workflow above for
-the caveat on `nros plan`).
+`examples/workspaces/rust/` is the canonical Rust 3-role workspace that pairs
+with this guide. Copy the whole directory out and rename the packages.
+`nros ws sync` materializes generated message crates, `nros codegen-system`
+bakes the Bringup package, and `cargo build -p native_entry` builds the Entry
+pkg.
 
-The template README at `examples/templates/multi-node-workspace/README.md`
+The workspace README at `examples/workspaces/rust/README.md`
 documents the exact CLI commands that are verified green today.
 
 ---
@@ -274,6 +274,6 @@ Entry package page covers this in full.
 
 ## Where to go next
 
-- [Entry packages](./workspace-entry-pkg.md) — the `nros::main!` macro and `robot_entry`
+- [Entry packages](./workspace-entry-pkg.md) — the `nros::main!` macro and `native_entry`
 - [Role reference](../user-guide/component-and-entry-pkg.md) — full reference for all three roles
 - [Project layout](./workspace-from-app-node.md) — start here if you haven't read it yet

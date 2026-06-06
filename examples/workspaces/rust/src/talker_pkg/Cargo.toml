@@ -1,0 +1,30 @@
+[package]
+name = "talker_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — publishes std_msgs/Int32 on /chatter."
+
+# Node pkg shape — lib only, no [[bin]], no main.rs. `nros::node!()`
+# exports the register / init / dispatch trampolines; the sibling
+# Entry pkg (`native_entry`) brings up the executor + spin loop via
+# `nros::main!()`.
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "talker_pkg::Talker"
+name = "talker"
+default_namespace = "/"
+
+[dependencies]
+# Single `nros` dep — matches the `nros::main!()` design. The RMW is
+# selected by the framework at runtime (`rmw-cffi` backend registry);
+# host targets use `platform-posix`.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
+std_msgs = { version = "*", default-features = false }

@@ -9,10 +9,10 @@ native reference shape is:
 - Optional C++ Node pkgs in the same workspace.
 - One Bringup pkg with the normal ROS 2 launch XML.
 
-The template is in
-[`examples/templates/c-and-cpp-mixed-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/c-and-cpp-mixed-workspace).
+The mixed workspace is in
+[`examples/workspaces/mixed/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/mixed).
 For a pure-C Entry host, use
-[`examples/templates/pure-c-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/pure-c-workspace).
+[`examples/workspaces/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/c).
 
 ## Layout
 
@@ -23,7 +23,7 @@ my_ws/
     ├── c_talker_pkg/             # C Node pkg
     ├── cpp_listener_pkg/         # C++ Node pkg
     ├── demo_bringup/             # launch XML + system.toml
-    └── robot_entry/              # C++ Entry pkg
+    └── native_entry/             # C++ Entry pkg
 ```
 
 The root uses the same CMake workspace helper as the C++ track:
@@ -36,7 +36,7 @@ nano_ros_workspace(
     PLATFORM posix
     SUBDIRS  src/c_talker_pkg
              src/cpp_listener_pkg
-             src/robot_entry)
+             src/native_entry)
 ```
 
 ## C Node pkg
@@ -77,7 +77,7 @@ C++ template:
 
 ```cmake
 nano_ros_entry(
-    NAME    robot_entry
+    NAME    native_entry
     SOURCES src/main.cpp
     BOARD   native
     LAUNCH  "demo_bringup:system.launch.xml"
@@ -102,7 +102,7 @@ with `LANG c`:
 
 ```cmake
 nano_ros_entry(
-    NAME    robot_entry
+    NAME    native_entry
     SOURCES src/main.c
     BOARD   native
     LAUNCH  "demo_bringup:system.launch.xml"

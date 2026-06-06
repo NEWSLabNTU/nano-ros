@@ -10,6 +10,7 @@ Copy-out templates for users porting nano-ros to a new platform and language.
 examples/
 ├── <platform>/<language>/<example>/           # canonical
 ├── bridges/<name>/                            # cross-RMW gateways
+├── workspaces/<language-or-mix>/              # Node + Bringup + Entry workspaces
 └── templates/<name>/                          # multi-platform recipes (Pattern A workspace, etc.)
 ```
 
@@ -92,6 +93,18 @@ Phase 118.I blocks untriaged retired RMW roots.
 Examples that bridge two RMW backends; span the transport slot so they don't fit one platform cell. See [`book/src/user-guide/cross-backend-bridges.md`](../book/src/user-guide/cross-backend-bridges.md) for the model + build-knob walkthrough.
 
 - `bridges/tt-zenoh-to-xrce/` — Rust bridge, zenoh ↔ XRCE-DDS
+
+### `workspaces/` — product-shaped multi-package workspaces
+
+Workspaces that follow the book's Node package + Bringup package + Entry
+package workflow. These are built with `nros setup`, `nros ws sync`,
+`nros codegen-system`, then the platform build tool (`cargo`, `cmake`, `west`,
+`idf.py`, etc.).
+
+- `workspaces/rust/` — Rust Node packages and a Rust native Entry package
+- `workspaces/c/` — C Node packages and a C native Entry package
+- `workspaces/cpp/` — C++ Node packages and a C++ native Entry package
+- `workspaces/mixed/` — mixed C / C++ Node packages and a C++ native Entry package
 
 ### `templates/` — multi-platform copy-out recipes
 

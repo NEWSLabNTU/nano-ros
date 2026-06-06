@@ -19,12 +19,12 @@ changes language-side is the cmake-fn / macro surface.
 | **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` declaring `register_node(NodeContext&)` + `NROS_NODE_REGISTER(<pkg>::<Class>, "…")`; `CMakeLists.txt` calling `nano_ros_node_register(NAME … CLASS … SOURCES … DEPLOY native)` |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
 | **Entry pkg** | `src/main.rs` with `nros::main!(launch = "demo_bringup:system.launch.xml")` | `src/main.cpp` with `NROS_MAIN(nros::board::NativeBoard, "demo_bringup:system.launch.xml")`; `CMakeLists.txt` calling `nano_ros_entry(NAME … LAUNCH "demo_bringup:system.launch.xml" DEPLOY native)` |
-| **Workspace root** | `Cargo.toml [workspace] members = […]` | `CMakeLists.txt` calling `nano_ros_workspace(BACKEND zenoh PLATFORM posix SUBDIRS src/talker_pkg src/listener_pkg src/robot_entry)` |
-| **Build** | `cargo build` | `cmake -S . -B build -DNANO_ROS_ROOT=<path>` + `cmake --build build` |
-| **Boot** | `cargo run -p robot_entry` | `./build/.../robot_entry` |
+| **Workspace root** | `Cargo.toml [workspace] members = […]` | `CMakeLists.txt` calling `nano_ros_workspace(BACKEND zenoh PLATFORM posix SUBDIRS src/talker_pkg src/listener_pkg src/native_entry)` |
+| **Build** | `nros ws sync` + `cargo build -p native_entry` | `nros ws sync` + `cmake -S . -B build` + `cmake --build build` |
+| **Boot** | `cargo run -p native_entry` | `./build/.../native_entry` |
 
 The reference C++ workspace ships in-tree at
-[`examples/templates/multi-node-workspace-cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-node-workspace-cpp).
+[`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp).
 Copy the whole directory, rename the packages.
 
 ## Workspace layout
@@ -48,7 +48,7 @@ my_ws/
     │   ├── package.xml           #          works between Rust and C++ workspaces)
     │   ├── system.toml
     │   └── launch/system.launch.xml
-    └── robot_entry/              # Entry pkg (C++)
+    └── native_entry/             # Entry pkg (C++)
         ├── package.xml
         ├── CMakeLists.txt        # nano_ros_entry(LAUNCH …)
         └── src/main.cpp          # NROS_MAIN(…) one-liner
@@ -70,7 +70,7 @@ nano_ros_workspace(
                                         # or auto-walk for nros-sdk-index.toml
     SUBDIRS        src/talker_pkg
                    src/listener_pkg
-                   src/robot_entry
+                   src/native_entry
 )
 ```
 
@@ -171,13 +171,13 @@ The C++ Entry pkg's `CMakeLists.txt` calls
 `nano_ros_entry(LAUNCH …)` — Phase 219.D added the `LAUNCH` keyword:
 
 ```cmake
-# src/robot_entry/CMakeLists.txt
+# src/native_entry/CMakeLists.txt
 cmake_minimum_required(VERSION 3.22)
-project(robot_entry LANGUAGES C CXX)
+project(native_entry LANGUAGES C CXX)
 nano_ros_workspace_pkg_guard()
 
 nano_ros_entry(
-    NAME    robot_entry
+    NAME    native_entry
     SOURCES src/main.cpp                              # user-authored
     LAUNCH  "demo_bringup:system.launch.xml"          # Phase 219.D
     DEPLOY  native)
@@ -191,7 +191,7 @@ every `<pkg>_<exec>_component` static lib the launch XML named
 (Phase 219.J). The user's `main.cpp` is a single declarative line:
 
 ```cpp
-// src/robot_entry/src/main.cpp
+// src/native_entry/src/main.cpp
 #include <nros/main.hpp>
 NROS_MAIN(nros::board::NativeBoard, "demo_bringup:system.launch.xml")
 ```
@@ -208,16 +208,18 @@ $ nros new my-entry --lang cpp --platform native
 ## Build + boot
 
 ```bash
+nros ws sync
+nros codegen-system --bringup demo_bringup
 cmake -S . -B build -DNANO_ROS_ROOT=<path-to-nano-ros>
 cmake --build build
-./build/src/robot_entry/robot_entry
+./build/src/native_entry/native_entry
 ```
 
 The build produces:
 
 - `src/talker_pkg/libtalker_pkg_talker_component.a` — the Node pkg static lib.
 - `src/listener_pkg/liblistener_pkg_listener_component.a` — ditto.
-- `src/robot_entry/robot_entry` — the Entry exe, with the generated
+- `src/native_entry/native_entry` — the Entry exe, with the generated
   `int main()` + register-call sequence + Board boot stub linked in.
 
 `cmake configure` is incremental — pinned `CMAKE_CONFIGURE_DEPENDS` on
@@ -246,13 +248,13 @@ syntax the user types into the three pkgs.
 | `nros new system <name>_bringup --components a,b` | Bringup pkg (language-agnostic — works for both Rust and C++ workspaces) |
 
 The C-side Component scaffold (`nros new --component … --lang c`) is
-available for pure-C Node pkgs. Pure-C and mixed C/C++ workspace templates
-live under `examples/templates/`.
+available for pure-C Node pkgs. Pure-C and mixed C/C++ workspace examples
+live under `examples/workspaces/`.
 
 ## See also
 
-- [`examples/templates/multi-node-workspace-cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-node-workspace-cpp)
-  — the canonical reference template (talker + listener Node pkgs +
+- [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp)
+  — the canonical reference workspace (talker + listener Node pkgs +
   Bringup pkg + Entry pkg, all C++).
 - [Phase 219 roadmap](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-219-cpp-entry-pkg.md)
   — full landing order + acceptance bar.

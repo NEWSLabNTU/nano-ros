@@ -1,0 +1,26 @@
+[package]
+name = "listener_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — subscribes to std_msgs/Int32 on /chatter."
+
+# Node pkg shape — lib only. `nros::node!()` exports the register /
+# init / dispatch trampolines; the sibling Entry pkg (`native_entry`)
+# owns the executor + spin loop via `nros::main!()`.
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "listener_pkg::Listener"
+name = "listener"
+default_namespace = "/"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
+std_msgs = { version = "*", default-features = false }

@@ -1,0 +1,19 @@
+[system]
+name = "pure_c_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "c_talker_pkg"
+class = "c_talker_pkg::Talker"
+name = "talker"
+
+[[component]]
+pkg = "c_listener_pkg"
+class = "c_listener_pkg::Listener"
+name = "listener"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

@@ -1,0 +1,38 @@
+[package]
+name = "native_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the demo topology against the native board."
+
+[[bin]]
+name = "native_entry"
+path = "src/main.rs"
+
+# Entry pkg — `[package.metadata.nros.entry] deploy = "native"` routes
+# the `nros::main!()` proc-macro onto the native board emit branch
+# (`<NativeBoard as BoardEntry>::run`). The deploy key also feeds
+# `nros check`. The `launch = "demo_bringup:system.launch.xml"` form
+# in `src/main.rs` makes the macro walk the workspace pkg-index, parse
+# the launch XML, and emit one `<node_pkg>::register(runtime)?;` call
+# per `<node>` entry — so the bin must link both Node pkg rlibs below.
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
+# Board crate — supplies the `NativeBoard` ZST the macro-emitted
+# `<NativeBoard as BoardEntry>::run(...)` call resolves. `deploy =
+# "native"` maps to `nros_board_native::NativeBoard` in the macro's
+# board lookup table.
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+# Node pkg rlibs — the launch XML names `talker` + `listener`, so the
+# macro emits `talker_pkg::register` + `listener_pkg::register`; the
+# bin target must link both.
+talker_pkg = { path = "../talker_pkg" }
+listener_pkg = { path = "../listener_pkg" }

@@ -5,6 +5,9 @@ and similar scaffolds that don't belong to a single
 `<plat>/<lang>/<rmw>/<example>` cell. Each subdirectory is a
 standalone project you can copy into your own tree and customize.
 
+For the promoted Node + Bringup + Entry workflow examples, use
+`examples/workspaces/`.
+
 ## Contents
 
 - `pure-c-workspace/` — Phase 223 pure-C 3-role workspace: C Node

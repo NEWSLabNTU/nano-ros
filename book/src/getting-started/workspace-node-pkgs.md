@@ -66,7 +66,7 @@ workspace root's `Cargo.toml` can include it as a member:
 # workspace Cargo.toml
 [workspace]
 resolver = "2"
-members = ["src/talker_pkg", "src/listener_pkg", "src/robot_entry"]
+members = ["src/talker_pkg", "src/listener_pkg", "src/native_entry"]
 ```
 
 ---
@@ -206,18 +206,21 @@ entries. Minimal example:
 </package>
 ```
 
-If your node uses no external message packages (e.g. it uses a placeholder
-or inline type), the `<depend>` line can be omitted.
+If your node uses no external message packages, the `<depend>` line can be
+omitted.
 
 ---
 
 ## Building
 
-From the workspace root, `cargo build` compiles all Node pkgs:
+From the workspace root, sync generated interfaces first, then let Cargo
+compile the Node pkgs and Entry pkg:
 
 ```bash
-# From examples/templates/multi-node-workspace/ (or your workspace root):
-cargo build
+# From examples/workspaces/rust/ (or your workspace root):
+nros ws sync
+nros codegen-system --bringup demo_bringup
+cargo build -p native_entry
 ```
 
 No per-Node-pkg invocation is needed — the workspace resolver handles
