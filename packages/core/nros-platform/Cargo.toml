@@ -173,10 +173,10 @@ nros-platform-api = { version = "0.5.0", path = "../nros-platform-api" }
 # `../nros-platform-posix/` now holds the C port only.
 nros-platform-cffi = { version = "0.5.0", path = "../nros-platform-cffi", optional = true }
 nros-platform-mps2-an385 = { version = "0.5.0", path = "../../platforms/nros-platform-mps2-an385", optional = true }
-nros-platform-stm32f4 = { version = "0.5.0", path = "../../platforms/nros-platform-stm32f4", optional = true }
-nros-platform-esp32 = { version = "0.5.0", path = "../../platforms/nros-platform-esp32", optional = true }
-nros-platform-esp32-qemu = { version = "0.5.0", path = "../../platforms/nros-platform-esp32-qemu", optional = true }
-nros-platform-esp32s3 = { version = "0.5.0", path = "../../platforms/nros-platform-esp32s3", optional = true }
+nros-platform-stm32f4 = { version = "0.4.0", path = "../../platforms/nros-platform-stm32f4", optional = true }
+nros-platform-esp32 = { version = "0.4.0", path = "../../platforms/nros-platform-esp32", optional = true }
+nros-platform-esp32-qemu = { version = "0.4.0", path = "../../platforms/nros-platform-esp32-qemu", optional = true }
+nros-platform-esp32s3 = { version = "0.4.0", path = "../../platforms/nros-platform-esp32s3", optional = true }
 # Phase 121.3.deprecate-rust-remove — nros-platform-{freertos,nuttx,
 # threadx,zephyr} Rust crates were deleted. `packages/core/nros-platform-{rtos}/`
 # now hosts the C port only. `platform-{rtos}` features just toggle

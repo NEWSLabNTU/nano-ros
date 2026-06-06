@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "cyclonedds-sys"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cmake",
  "nros-build-paths",
@@ -1737,7 +1737,7 @@ dependencies = [
 
 [[package]]
 name = "lan9118-smoltcp"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "log",
  "smoltcp",
@@ -1931,7 +1931,7 @@ checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
 
 [[package]]
 name = "nros"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-bridge",
  "nros-core",
@@ -1955,21 +1955,21 @@ version = "0.4.0"
 
 [[package]]
 name = "nros-board-bare-metal"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-platform",
 ]
 
 [[package]]
 name = "nros-board-cffi"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-board-common",
 ]
 
 [[package]]
 name = "nros-board-common"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "nros-build-paths",
@@ -1979,7 +1979,7 @@ dependencies = [
 
 [[package]]
 name = "nros-board-native"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-board-posix",
  "nros-platform",
@@ -1988,7 +1988,7 @@ dependencies = [
 
 [[package]]
 name = "nros-board-posix"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros",
  "nros-platform",
@@ -1996,7 +1996,7 @@ dependencies = [
 
 [[package]]
 name = "nros-bridge"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-node",
  "nros-rmw-cffi",
@@ -2019,7 +2019,7 @@ dependencies = [
 
 [[package]]
 name = "nros-build-helpers"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cbindgen",
  "cc",
@@ -2028,11 +2028,11 @@ dependencies = [
 
 [[package]]
 name = "nros-build-paths"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "nros-builtin-interfaces"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-core",
@@ -2041,7 +2041,7 @@ dependencies = [
 
 [[package]]
 name = "nros-c"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "critical-section",
  "nros",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "nros-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "heapless 0.8.0",
  "log",
@@ -2087,7 +2087,7 @@ dependencies = [
 
 [[package]]
 name = "nros-cpp"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "critical-section",
  "nros",
@@ -2103,11 +2103,11 @@ dependencies = [
 
 [[package]]
 name = "nros-ghost-types"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "nros-lifecycle-msgs"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-core",
@@ -2116,7 +2116,7 @@ dependencies = [
 
 [[package]]
 name = "nros-log"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "heapless 0.8.0",
  "log",
@@ -2126,7 +2126,7 @@ dependencies = [
 
 [[package]]
 name = "nros-macros"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-build",
  "proc-macro2",
@@ -2142,14 +2142,14 @@ source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#8bc51bc7cfd
 
 [[package]]
 name = "nros-msg-to-idl"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "nros-node"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "atomic-waker",
  "futures-core",
@@ -2174,14 +2174,14 @@ dependencies = [
 
 [[package]]
 name = "nros-orchestration"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-node",
 ]
 
 [[package]]
 name = "nros-params"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-ghost-types",
@@ -2189,7 +2189,7 @@ dependencies = [
 
 [[package]]
 name = "nros-platform"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
@@ -2202,11 +2202,11 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-api"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "nros-platform-cffi"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "libc",
@@ -2216,7 +2216,7 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-critical-section"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "critical-section",
 ]
@@ -2259,7 +2259,7 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-mps2-an385"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cortex-m",
  "cortex-m-semihosting",
@@ -2286,7 +2286,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rcl-interfaces"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-builtin-interfaces",
@@ -2296,7 +2296,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "critical-section",
  "heapless 0.8.0",
@@ -2308,7 +2308,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-cffi"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "linkme",
@@ -2318,7 +2318,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-cyclonedds"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "critical-section",
  "heapless 0.8.0",
@@ -2328,7 +2328,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-cyclonedds-sys"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "cyclonedds-sys",
@@ -2339,7 +2339,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-xrce-cffi"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "linkme",
@@ -2348,7 +2348,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-xrce-cffi-staticlib"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-rmw-xrce-cffi",
  "panic-halt",
@@ -2356,7 +2356,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-zenoh"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "atomic-waker",
  "critical-section",
@@ -2374,7 +2374,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-zenoh-staticlib"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-platform",
  "nros-rmw-zenoh",
@@ -2383,7 +2383,7 @@ dependencies = [
 
 [[package]]
 name = "nros-serdes"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-ghost-types",
@@ -2391,7 +2391,7 @@ dependencies = [
 
 [[package]]
 name = "nros-sizes-build"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "object 0.39.1",
  "serde_json",
@@ -2399,7 +2399,7 @@ dependencies = [
 
 [[package]]
 name = "nros-smoltcp"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-platform-api",
  "portable-atomic",
@@ -2408,7 +2408,7 @@ dependencies = [
 
 [[package]]
 name = "nros-tests"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "assert_cmd",
  "duct",
@@ -2436,7 +2436,7 @@ dependencies = [
 
 [[package]]
 name = "nros-zpico-build"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cbindgen",
  "cc",
@@ -2462,7 +2462,7 @@ checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
 name = "nvidia-ivc"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "object"
@@ -4281,7 +4281,7 @@ dependencies = [
 
 [[package]]
 name = "xrce-sys"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cc",
 ]
@@ -4356,25 +4356,25 @@ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
 name = "zpico-alloc"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "zpico-link-ivc"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nvidia-ivc",
 ]
 
 [[package]]
 name = "zpico-platform-custom"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-rmw",
 ]
 
 [[package]]
 name = "zpico-sys"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "nros-smoltcp",
  "nros-zpico-build",

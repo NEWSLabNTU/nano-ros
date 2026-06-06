@@ -41,7 +41,7 @@ nros-board-common = { path = "../nros-board-common" }
 # `default-features = false` + explicit `["std"]` keeps the family
 # driver from inheriting a `platform-*` selection — the Entry pkg
 # pins the concrete platform.
-nros-platform = { version = "0.4.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
+nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `run_entry` installs a live component runtime sink on `RuntimeCtx`
 # before invoking the user `setup` closure + spins forever

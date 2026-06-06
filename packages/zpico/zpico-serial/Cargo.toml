@@ -24,4 +24,4 @@ name = "zpico_serial"
 [dependencies]
 # Phase 128.E.1 — `link-serial` feature on zpico-sys was deleted
 # (always-on now). Bare-metal platform feature alone is sufficient.
-zpico-sys = { version = "0.4.0", path = "../zpico-sys", features = ["bare-metal"] }
+zpico-sys = { version = "0.5.0", path = "../zpico-sys", features = ["bare-metal"] }

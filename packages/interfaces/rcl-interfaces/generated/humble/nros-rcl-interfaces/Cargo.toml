@@ -20,4 +20,4 @@ std = ["nros-core/std", "nros-serdes/std", "nros-builtin-interfaces/std"]
 nros-core.workspace = true
 nros-serdes.workspace = true
 heapless = "0.8"
-nros-builtin-interfaces = { version = "0.4.0", path = "../nros-builtin-interfaces", default-features = false }
+nros-builtin-interfaces = { version = "0.5.0", path = "../nros-builtin-interfaces", default-features = false }

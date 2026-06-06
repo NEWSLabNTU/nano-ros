@@ -22,9 +22,9 @@ publish = false
 # of the unified set.
 [target.'cfg(not(target_os = "none"))'.dependencies]
 # Trait surface (BoardEntry, BoardInit, BoardPrint, BoardExit, RuntimeCtx).
-nros-platform = { version = "0.4.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
+nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
 # Family driver this shim plugs.
-nros-board-posix = { version = "0.4.0", path = "../nros-board-posix" }
+nros-board-posix = { version = "0.5.0", path = "../nros-board-posix" }
 # Phase 212.N.7 step-3.5 — link an RMW backend so the family-driver
 # `Executor::open` call inside `PosixBoard::run` resolves a backend.
 # Zenoh is the default native RMW; Entry pkgs that want a different

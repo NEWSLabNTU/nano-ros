@@ -120,7 +120,7 @@ param-services = ["alloc", "nros/param-services", "nros-node/param-services"]
 lifecycle-services = ["alloc", "nros/lifecycle-services", "nros-node/lifecycle-services"]
 
 [dependencies]
-nros = { version = "0.4.0", path = "../nros", default-features = false }
+nros = { version = "0.5.0", path = "../nros", default-features = false }
 nros-node.workspace = true
 nros-rmw.workspace = true
 nros-core.workspace = true
@@ -160,7 +160,7 @@ critical-section = { version = "1.1", optional = true, features = ["restore-stat
 nros-build-helpers = { workspace = true }
 # Phase 77.25: same reason as nros-cpp — force nros to compile before
 # this build.rs runs so the size probe has a rlib to read.
-nros = { version = "0.4.0", path = "../nros", default-features = false }
+nros = { version = "0.5.0", path = "../nros", default-features = false }
 
 [package.metadata.docs.rs]
 all-features = true
