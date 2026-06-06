@@ -12,7 +12,7 @@
 # cache vars, SDK dirs) stays in the recipes — it is platform-level, not
 # per-fixture.
 #
-# Entry schema ([[fixture]]):
+# Single-node entry schema ([[fixture]]):
 #   platform   required  "native" | "qemu-arm-baremetal" | "freertos" | ...
 #   lang       required  "rust" | "c" | "cpp"
 #   dir        required  build cwd (cargo: the crate dir; cmake: the example dir)
@@ -29,6 +29,72 @@
 #
 # Migration status: native rust = authored + consumed by the probe. Build-recipe
 # consumption (B) + C/C++ cmake cells + cross platforms = rollout in progress.
+#
+# Workspace fixture schema ([[workspace_fixture]]):
+#   id          required  stable id used by build/test helper names
+#   platform    required  platform family, initially "native"
+#   lang        required  "rust" | "c" | "cpp" | "mixed"
+#   dir         required  workspace root
+#   rmw         required  "zenoh" | "xrce" | "cyclonedds"
+#   bringup     required  Bringup pkg path relative to `dir`
+#   entry       required  Entry pkg / CMake target name
+#   codegen_out optional  `nros codegen-system --out` path relative to `dir`
+#   build_subdir optional CMake build dir relative to `dir`
+#   target_dir  optional  Cargo target dir relative to `dir`
+#   cmake_defs  optional  extra -D<K>=<V> defs; `rmw` still expands to NROS_RMW
+#
+# Workspace fixtures are intentionally listed here but built by a dedicated
+# workspace lane, not by the legacy single-node `fixtures-build.sh` loop. The
+# build recipe must execute the documented user workflow: `nros ws sync`,
+# `nros codegen-system --bringup ...`, then cargo/cmake/platform build.
+
+# ===========================================================================
+# native — Workspace fixtures (Node pkgs + Bringup pkg + Entry pkg).
+# ===========================================================================
+
+[[workspace_fixture]]
+id = "workspace-rust-native"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-c-native"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-mixed-native"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/mixed"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
 
 # ===========================================================================
 # native — Rust (host, profile nros-fast-release)

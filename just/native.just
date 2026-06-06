@@ -98,10 +98,15 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
         bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust
     echo "All examples built!"
 
-# Build all example binaries used as test fixtures (Rust + C + C++).
+# Build all example binaries used as test fixtures (Rust + C + C++ + workspaces).
 [group("full-matrix")]
-build-fixtures: build-fixture-rust build-fixture-extras
+build-fixtures: build-fixture-rust build-fixture-extras build-workspace-fixtures
     @echo "Native test fixtures built."
+
+# Build native workspace fixtures from examples/fixtures.toml.
+[group("examples")]
+build-workspace-fixtures:
+    bash scripts/build/workspace-fixtures-build.sh native
 
 # Build every native Rust test fixture from the SSOT manifest
 # (examples/fixtures.toml). Per-fixture build options — features, target-dir,

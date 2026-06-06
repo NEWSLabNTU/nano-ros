@@ -163,6 +163,18 @@ static C_XRCE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the c-xrce-listener binary
 static C_XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the native Rust workspace Entry pkg binary.
+static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native C workspace Entry pkg binary.
+static NATIVE_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native C++ workspace Entry pkg binary.
+static NATIVE_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native mixed C/C++ workspace Entry pkg binary.
+static NATIVE_WORKSPACE_MIXED_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Build the qemu-test example and return its path
 ///
 /// Uses OnceLock to cache the build, so subsequent calls are fast.
@@ -399,6 +411,74 @@ pub fn build_example_cmake_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestR
 
     let binary_path = example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name));
     require_prebuilt_binary(&binary_path)
+}
+
+fn workspace_example_dir(name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/workspaces/{name}"));
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Workspace example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+    Ok(example_dir)
+}
+
+/// Resolve a prebuilt Rust workspace Entry pkg binary.
+///
+/// The workspace fixture build step owns `nros ws sync`,
+/// `nros codegen-system`, and the Cargo build. Tests only require the
+/// resulting binary from the deterministic fixture target dir.
+pub fn build_workspace_rust_entry(workspace: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let example_dir = workspace_example_dir(workspace)?;
+    let binary_path = example_dir.join(format!(
+        "target-fixtures/{}/{}",
+        cargo_target_profile_dir(),
+        binary_name
+    ));
+    require_prebuilt_binary(&binary_path)
+}
+
+/// Resolve a prebuilt CMake workspace Entry pkg binary.
+///
+/// The workspace fixture build step owns `nros ws sync`,
+/// `nros codegen-system`, and the CMake configure/build. Tests only
+/// require the resulting binary from the deterministic fixture build dir.
+pub fn build_workspace_cmake_entry(workspace: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let example_dir = workspace_example_dir(workspace)?;
+    let binary_path = example_dir.join(format!(
+        "build-workspace-fixtures/src/{binary_name}/{binary_name}"
+    ));
+    require_prebuilt_binary(&binary_path)
+}
+
+/// Native Rust workspace Entry pkg fixture.
+pub fn build_native_workspace_rust_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_ENTRY_BINARY
+        .get_or_try_init(|| build_workspace_rust_entry("rust", "native_entry"))
+        .map(|p| p.as_path())
+}
+
+/// Native C workspace Entry pkg fixture.
+pub fn build_native_workspace_c_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_C_ENTRY_BINARY
+        .get_or_try_init(|| build_workspace_cmake_entry("c", "native_entry"))
+        .map(|p| p.as_path())
+}
+
+/// Native C++ workspace Entry pkg fixture.
+pub fn build_native_workspace_cpp_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_ENTRY_BINARY
+        .get_or_try_init(|| build_workspace_cmake_entry("cpp", "native_entry"))
+        .map(|p| p.as_path())
+}
+
+/// Native mixed C/C++ workspace Entry pkg fixture.
+pub fn build_native_workspace_mixed_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_ENTRY_BINARY
+        .get_or_try_init(|| build_workspace_cmake_entry("mixed", "native_entry"))
+        .map(|p| p.as_path())
 }
 
 /// Phase 118 — collapsed-shape native C talker, RMW-parametrized.
