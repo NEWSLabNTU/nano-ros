@@ -19,7 +19,7 @@
 #
 # Fall-through:
 #   * No tag reachable → print the closest-ancestor info + suggest building
-#     from source (`just setup-cli` shorthand, or the cargo invocation).
+#     from source (`scripts/bootstrap.sh base`, or the cargo invocation).
 #   * No asset matching the host triple → same.
 #
 # Env:
@@ -46,7 +46,7 @@ else
   if ! tag="$(git describe --tags --abbrev=0 2>/dev/null)"; then
     warn "no reachable tag in this checkout — cannot resolve a prebuilt artifact"
     warn "fall through to source build:  cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros"
-    warn "(or, when wired:  just setup-cli)"
+    warn "(or:  scripts/bootstrap.sh base)"
     exit 1
   fi
   echo "install-nros-prebuilt: resolved tag via git describe: $tag"

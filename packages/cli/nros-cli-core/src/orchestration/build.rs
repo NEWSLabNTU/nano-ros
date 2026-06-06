@@ -53,7 +53,7 @@ pub fn build_generated_package(options: &BuildOptions) -> Result<GeneratedPackag
     let fingerprint = generation_fingerprint(&plan_bytes, options);
     let generated = if generation_is_fresh(&options.output_dir, &fingerprint, options.force) {
         eprintln!(
-            "nros build: generated package up to date (plan + generator unchanged) \
+            "generated package up to date (plan + generator unchanged) \
              — skipping regeneration"
         );
         GeneratedPackage {

@@ -115,7 +115,7 @@ Key fields:
 | `[[component]] pkg` | The ROS package name (matches `<name>` in `package.xml`) |
 | `[[component]] class` | Fully-qualified Rust type (`crate::TypeName`) |
 | `[[component]] name` | Node name at runtime |
-| `[deploy.<target>]` | Deploy target block; read by `nros deploy`/`nros launch` |
+| `[deploy.<target>]` | Deploy target block; read by `nros check` and Entry codegen |
 | `[deploy.<t>] kind` | `"self"` = host native binary; `"flash"` = embedded target |
 | `[deploy.<t>] target` | Rust target triple |
 
@@ -222,7 +222,7 @@ cargo run -p robot_entry
 Both `nros check` forms pass for the canonical template at
 `examples/templates/multi-node-workspace/`.
 
-> **Caveats — `nros plan` and `nros launch` with this template**
+> **Caveat — `nros plan` with this template**
 >
 > - **`nros plan demo_bringup`** resolves a topology into `plan.json` for
 >   static type/QoS checks, but it currently requires pre-collected
@@ -232,13 +232,6 @@ Both `nros check` forms pass for the canonical template at
 >   straight from this template. See
 >   `packages/testing/nros-tests/fixtures/orchestration_e2e/` for the
 >   pre-collected-sidecar pipeline.
-> - **`nros launch demo_bringup`** is conceptually the host-side
->   `ros2 launch` equivalent (no ament install). The current CLI uses a
->   *one-process-per-`[[component]]`* model — it tries to spawn
->   `target/debug/talker_pkg` + `target/debug/listener_pkg` as separate
->   processes, but in this template those are **libraries** composed into
->   the single `robot_entry` binary. `nros launch` therefore does not drive
->   this template. Use `cargo run -p robot_entry` (above) instead.
 >
 > The canonical template README at
 > `examples/templates/multi-node-workspace/README.md` is the source of
@@ -252,7 +245,7 @@ Both `nros check` forms pass for the canonical template at
 that pairs with this guide. Copy the whole directory out and rename the packages.
 `cargo build` from the workspace root builds all Node pkgs and the Entry pkg;
 `nros check --workspace .` validates the topology (see the workflow above for
-the caveat on `nros plan` / `nros launch`).
+the caveat on `nros plan`).
 
 The template README at `examples/templates/multi-node-workspace/README.md`
 documents the exact CLI commands that are verified green today.

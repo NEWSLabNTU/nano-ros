@@ -246,17 +246,15 @@ syntax the user types into the three pkgs.
 | `nros new system <name>_bringup --components a,b` | Bringup pkg (language-agnostic — works for both Rust and C++ workspaces) |
 
 The C-side Component scaffold (`nros new --component … --lang c`) is
-**deferred** to a Phase 219 follow-up — the `NROS_COMPONENT(pkg,
-register_fn)` macro semantics need a 1-arg shim before a hand-rolled C
-scaffold matches the freertos fixture shape. Hand-written C Node pkgs
-that call the 2-arg form work today.
+available for pure-C Node pkgs. Pure-C and mixed C/C++ workspace templates
+live under `examples/templates/`.
 
 ## See also
 
 - [`examples/templates/multi-node-workspace-cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-node-workspace-cpp)
   — the canonical reference template (talker + listener Node pkgs +
   Bringup pkg + Entry pkg, all C++).
-- [Phase 219 roadmap](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-219-cpp-entry-pkg.md)
+- [Phase 219 roadmap](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-219-cpp-entry-pkg.md)
   — full landing order + acceptance bar.
 - [Multi-node workspace layout design](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/multi-node-workspace-layout.md)
   §11 — LOCKED canonical shape (`Bringup + Node + Entry`).

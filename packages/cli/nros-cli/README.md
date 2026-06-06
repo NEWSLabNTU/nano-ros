@@ -7,8 +7,7 @@ cargo install nros-cli
 
 nros new my-project --platform freertos --rmw zenoh --lang c talker
 nros generate rust
-nros build
-nros run
+nros setup freertos
 nros doctor
 nros board list
 ```

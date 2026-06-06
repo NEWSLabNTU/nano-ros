@@ -5,7 +5,7 @@
 //! `system.toml.[[component]]` block. The `nros emit package-xml`
 //! user-facing verb was retired (users hand-write `package.xml` when
 //! they need ament/colcon interop, or skip it entirely when they use
-//! `nros launch`). The render path stays as an internal helper:
+//! launch planning). The render path stays as an internal helper:
 //!
 //!   * `migrate::run` regenerates `package.xml` for every component
 //!     during the pre-212 → post-212 sweep.
@@ -34,15 +34,20 @@
 //! 3. Alphabetised dependency entries so list ordering doesn't drift between
 //!    `Cargo.toml` edits and emitted output.
 
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+};
 
 use eyre::{Context, Result, bail};
 use serde::Deserialize;
 
-use crate::orchestration::ament::parse_ament_metadata;
-use crate::orchestration::cargo_metadata_schema::{
-    AmentMaintainer, PackageMetadataAment, PackageMetadataNros, SystemComponentEntry, SystemToml,
+use crate::orchestration::{
+    ament::parse_ament_metadata,
+    cargo_metadata_schema::{
+        AmentMaintainer, PackageMetadataAment, PackageMetadataNros, SystemComponentEntry,
+        SystemToml,
+    },
 };
 
 /// Sentinel header injected at the top of every emitted `package.xml`.
@@ -199,7 +204,7 @@ pub fn parse_pkg_ament_metadata(pkg_dir: &Path) -> Result<PackageMetadataAment> 
 
 // Phase 212.J.5 policy — the generated bringup `package.xml` deliberately
 // does NOT emit `<buildtool_depend>ament_cmake</buildtool_depend>`. The
-// canonical desktop launcher (`nros launch`) reads `launch/*.launch.xml`
+// nano-ros planning reads `launch/*.launch.xml`
 // straight from the bringup pkg's source tree, not from an ament install
 // `share/<pkg>/launch/` path, so a colcon outer build is never required
 // to exercise a workspace. Users who want stock `ros2 launch <bringup>`
@@ -682,8 +687,10 @@ name = "p"
     // add a workspace-level dev-dep.
     // -----------------------------------------------------------------------
     mod tempfile_lite {
-        use std::path::{Path, PathBuf};
-        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::{
+            path::{Path, PathBuf},
+            sync::atomic::{AtomicU64, Ordering},
+        };
 
         static SEQ: AtomicU64 = AtomicU64::new(0);
 

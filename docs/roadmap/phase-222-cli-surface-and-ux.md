@@ -6,7 +6,8 @@ the verbs that thinly wrap platform toolchains, and fix the
 chicken-egg + stale prereq blocks across the book that the Phase 218
 monorepo merge surfaced.
 
-**Status.** PROPOSED 2026-06-04.
+**Status.** IMPLEMENTED 2026-06-06, except Path C prebuilt verification is
+blocked until a `nros-v*` release tag/artifact exists.
 
 **Priority.** P2 — no capability is blocked, but every new user hits
 the broken prereq blocks on their first 10 minutes; CLI verbs that
@@ -164,15 +165,18 @@ workspace-entry-pkg,workspace-node-pkgs}.md`.
 
 ### 222.C — Delete deprecated verbs in 0.5.0
 
-- [ ] **222.C.1** Remove the five verb subcommands (`build`, `run`,
+- [x] **222.C.1** Remove the five verb subcommands (`build`, `run`,
       `deploy`, `monitor`, `launch`) from the CLI's `clap` derive
       tree. Phase 222.D added `launch` to the deprecation set.
-- [ ] **222.C.2** Drop the corresponding test fixtures.
-- [ ] **222.C.3** Doc sweep — every reference in book / phase docs /
+      _(2026-06-06)_
+- [x] **222.C.2** Drop the corresponding test fixtures. _(2026-06-06)_
+- [x] **222.C.3** Doc sweep — every reference in book / phase docs /
       examples bumps to the platform tool. Match the Phase 218 doc
       sweep style: retain historical mentions in archived phase docs.
-- [ ] **222.C.4** Bundle bump to `0.5.0` via `just release-bump`.
+      _(2026-06-06)_
+- [x] **222.C.4** Bundle bump to `0.5.0` via `just release-bump`.
       Coincides with the deletion to make the SemVer break visible.
+      _(2026-06-06)_
 
 **Files.** CLI clap tree, `packages/cli/nros-cli/tests/`, book, root
 `Cargo.toml` + `packages/cli/Cargo.toml`.
@@ -214,6 +218,9 @@ input to `nros::main!()` regardless.
 - [ ] **222.E.2** `scripts/bootstrap.sh nros` — verify Path C tag-fetch
       path against an actual `nros-v*` release once Phase 218.G ships
       its first artifact.
+      **Blocked 2026-06-06:** `git tag --list 'nros-v*'` and
+      `git ls-remote --tags origin 'refs/tags/nros-v*'` both returned
+      no tags, so there is no actual release artifact to verify yet.
 - [x] **222.E.3** `scripts/bootstrap.sh shell-doctor` — pre-Phase-222.C
       verb-deprecation lane that surfaces stale verb invocations in
       user `.bashrc` / `.zshrc` / `config.fish` rc files
@@ -255,12 +262,12 @@ input to `nros::main!()` regardless.
       no cargo, no Rust at all) reaches a working `nros new` in **one
       command** (`./scripts/bootstrap.sh base`), no chicken-egg, no
       "install just first" detour.
-- [ ] `nros --help` lists only verbs from §2.1 by Phase 222 close;
+- [x] `nros --help` lists only verbs from §2.1 by Phase 222 close;
       the §2.2 verbs are gone.
-- [ ] `grep -rE '\b(nros build|nros run|nros deploy|nros monitor)\b'
+- [x] `grep -rE '\b(nros build|nros run|nros deploy|nros monitor)\b'
       book/ examples/ docs/development/` returns zero matches (modulo
       historical phase doc references).
-- [ ] Bundle version bumped to `0.5.0` (per `just release-bump`) at
+- [x] Bundle version bumped to `0.5.0` (per `just release-bump`) at
       the 222.C close commit — the SemVer break is visible.
 
 ---

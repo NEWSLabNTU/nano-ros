@@ -2,8 +2,8 @@
 //!
 //! Publishes `std_msgs/Int32` on `/chatter` every 1 s using nros on
 //! native x86. Single-file `[[bin]]`: explicit
-//! [`nros::init_with_launch_auto`] (Pattern 2 — picks up the launch
-//! overlay env vars exported by `nros launch`) then a user-owned spin
+//! [`nros::init_with_launch_auto`] (Pattern 2 — picks up launch
+//! overlay env vars from the environment) then a user-owned spin
 //! loop.
 //!
 //! # Usage
@@ -83,7 +83,7 @@ fn main() {
 
     // Phase 212.L.5 Pattern 2 — launch-aware init. Picks up
     // `ROS_DOMAIN_ID` / `NROS_LOCATOR` / `NROS_SESSION_MODE` /
-    // `RMW_IMPLEMENTATION` exported by `nros launch`, otherwise falls
+    // `RMW_IMPLEMENTATION` from the environment, otherwise falls
     // back to the standard env-var defaults.
     let ctx = nros::init_with_launch_auto().expect("nros init failed");
     let cfg = ctx.config("talker");

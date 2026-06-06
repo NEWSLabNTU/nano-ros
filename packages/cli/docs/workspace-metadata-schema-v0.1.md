@@ -30,7 +30,7 @@ domain_id_override = 7                # optional
 
 | Key                  | Type   | Required | Default | Notes                                                                                                                                                |
 |----------------------|--------|----------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `default_system`     | string | no       | —       | Bringup pkg name (`<system>_bringup`) OR Entry/Node pkg name (Phase 212.L.7 self-entry shape). `nros plan` / `nros launch` / `nros codegen-system` resolve via this pointer when no `--bringup` hint is supplied. |
+| `default_system`     | string | no       | —       | Bringup pkg name (`<system>_bringup`) OR Entry/Node pkg name (Phase 212.L.7 self-entry shape). `nros plan`, Entry codegen, and `nros codegen-system` resolve via this pointer when no `--bringup` hint is supplied. |
 | `rmw_override`       | string | no       | —       | Workspace-wide RMW override — rare, intended for `nros plan --override` workflows. Values: `"zenoh"` / `"xrce"` / `"cyclonedds"`.                    |
 | `domain_id_override` | u32    | no       | —       | Workspace-wide `ROS_DOMAIN_ID` override. When present, propagates into generated `system_config.h` instead of the per-deploy / `[system].domain_id` value. |
 

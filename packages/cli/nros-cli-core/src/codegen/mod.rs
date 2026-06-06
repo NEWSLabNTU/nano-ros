@@ -3,7 +3,7 @@
 //! Houses the in-process implementations behind the `nros codegen <…>`
 //! verb family. Today this is just the Entry-pkg codegen path
 //! (`nros codegen entry --lang {rust|c|cpp}` — see
-//! `docs/roadmap/phase-219-cpp-entry-pkg.md` §3.2).
+//! `docs/roadmap/archived/phase-219-cpp-entry-pkg.md` §3.2).
 //!
 //! Codegen verbs that pre-date Phase 219 (`nros codegen` /
 //! `nros codegen cyclonedds-descriptors` / `nros codegen-system`) still

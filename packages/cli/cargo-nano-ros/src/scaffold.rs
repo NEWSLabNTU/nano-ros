@@ -77,10 +77,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     println!();
     println!("Next steps:");
     println!("  cd {}", cfg.name);
-    println!(
-        "  nros build           # or: colcon build --packages-select {}",
-        cfg.name
-    );
+    println!("  cargo build           # or: cmake --build build / west build / idf.py build");
 
     Ok(())
 }
@@ -101,11 +98,11 @@ pub struct ComponentScaffoldConfig {
 }
 
 /// Scaffold a **planned-mode component** — a reusable nano-ros node compiled as
-/// a *library* and linked into a system by `nros plan` / `nros deploy`. Unlike
+/// a *library* and linked into a system plan. Unlike
 /// the direct-mode hello-world binary `scaffold_package` emits (a `[node]`
 /// manifest), this produces an `nros::Component` impl plus a *folded*
 /// `[component]` table in `nros.toml`. The platform + RMW are chosen later, at
-/// deploy time — not baked here.
+/// Entry-package build time — not baked here.
 ///
 /// The manifest is intentionally minimal: `[linkage]` is omitted (derived —
 /// executable ← component short name, `exported_symbol` ← `nros_component_<n>`,
@@ -175,10 +172,10 @@ nros = {{ version = "0.1", default-features = false }}
 
 //! `{name}` — a reusable nano-ros component (planned mode).
 //!
-//! `nros plan` / `nros deploy` link this crate into a system and call
+//! `nros plan` and Entry codegen link this crate into a system and call
 //! `{module}::Component::register`. `nros metadata --build` records its
 //! declarations into `metadata/{module}.json`. Platform + RMW are chosen at
-//! deploy time, not here.
+//! Entry-package build time, not here.
 
 pub mod {module} {{
     use nros::{{
@@ -237,7 +234,7 @@ pub mod {module} {{
     // component id is required by `nros metadata --build`.
     let nros_toml = format!(
         r#"# nano-ros component manifest (planned mode). A reusable node linked into a
-# system by `nros plan` / `nros deploy`. See
+# system by `nros plan` and Entry codegen. See
 # docs/design/configuration-and-transports.md.
 
 [component]
@@ -255,7 +252,7 @@ source_metadata = "metadata/{module}.json"
 
     println!("✓ Created nano-ros component '{}'", cfg.name);
     println!("  Component : {crate_name}::{module}");
-    println!("  Kind      : planned-mode (library, linked by `nros deploy`)");
+    println!("  Kind      : planned-mode (library, linked by an Entry pkg)");
     println!();
     println!("Next steps:");
     println!("  cd {}", cfg.name);
@@ -615,7 +612,7 @@ path = "src/main.rs"
 {deps}
 
 # Phase 204.15 inc 3 — named size/speed profiles so the plain-cargo path honours
-# the same intent as `nros build`'s `[build].optimize` (`cargo build --profile
+# the same intent as `[build].optimize` (`cargo build --profile
 # size|speed`), no hand-editing. (panic is left to the target/profile — embedded
 # triples are already abort; host keeps its default.)
 #

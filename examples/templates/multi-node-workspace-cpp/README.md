@@ -17,10 +17,11 @@ multi-node-workspace-cpp/
     │   ├── package.xml
     │   ├── CMakeLists.txt        # nano_ros_node_register(NAME listener CLASS listener_pkg::Listener ...)
     │   └── src/{Listener.hpp,Listener.cpp}
-    └── demo_bringup/             # Bringup pkg (language-agnostic)
-        ├── package.xml
-        ├── system.toml
-        └── launch/system.launch.xml
+    ├── demo_bringup/             # Bringup pkg (language-agnostic)
+    │   ├── package.xml
+    │   ├── system.toml
+    │   └── launch/system.launch.xml
+    └── robot_entry/              # Entry pkg (C++) — NROS_MAIN + nano_ros_entry(LAUNCH ...)
 ```
 
 ## Coverage vs the Rust template
@@ -29,11 +30,10 @@ multi-node-workspace-cpp/
 |---|---|---|
 | Node pkg | `nros::node!(Talker)` rlib | `nano_ros_node_register()` + `NROS_NODE_REGISTER(...)` static lib |
 | Bringup pkg | identical (language-agnostic) | identical (language-agnostic) |
-| Entry pkg | `nros::main!(launch = "demo_bringup:system.launch.xml")` | **deferred** — pending Phase 219.D (`nano_ros_entry(LAUNCH ...)` cmake arg) + 219.A-E (codegen verb + generated TU) |
+| Entry pkg | `nros::main!(launch = "demo_bringup:system.launch.xml")` | `NROS_MAIN(...)` + `nano_ros_entry(LAUNCH ...)` |
 
-The Entry pkg lands once 219.D + 219.A/B/E ship. Until then, this
-template validates the **Node + Bringup** side of the C++ pure-workspace
-path; the Bringup's `system.toml` + `launch/system.launch.xml` are still
+The Entry pkg composes the C++ Node pkg static libraries into one native
+binary. The Bringup's `system.toml` + `launch/system.launch.xml` are also
 consumable by `nros plan demo_bringup` from outside the tree.
 
 ## Build
@@ -52,16 +52,5 @@ cmake --build build/talker_pkg
 In-tree builds (this checkout's nano-ros) auto-walk for
 `nros-sdk-index.toml`, so `-DNANO_ROS_ROOT=` is optional.
 
-## What lands when
-
-| 219.X item | Status | Surface added |
-|---|---|---|
-| 219.H | ✅ landed | sibling Node pkgs sharing `<depend>std_msgs</depend>` co-exist (interface codegen idempotency) |
-| 219.I | ✅ landed | workspace root + `nano_ros_workspace_pkg_guard()` |
-| 219.M | ✅ landed | `nros new --component --lang cpp` scaffolds match this shape verbatim |
-| 219.J | pending | drops `target_link_libraries(<pkg>_<node>_component PUBLIC std_msgs__nano_ros_cpp)` (auto-link from launch metadata) |
-| 219.D | pending | adds Entry pkg `nano_ros_entry(LAUNCH "demo_bringup:system.launch.xml")` |
-| 219.A/B/C/E | pending | emits the generated `main()` TU + `NROS_MAIN(...)` macro |
-
-See [`docs/roadmap/phase-219-cpp-entry-pkg.md`](../../../docs/roadmap/phase-219-cpp-entry-pkg.md)
-§4 for full landing order.
+See [`docs/roadmap/archived/phase-219-cpp-entry-pkg.md`](../../../docs/roadmap/archived/phase-219-cpp-entry-pkg.md)
+for the landing history.

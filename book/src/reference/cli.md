@@ -1,8 +1,8 @@
 # `nros` CLI reference
 
 The `nros` binary is the user entry point for nano-ros: scaffolding,
-message codegen, configuration, build, run, diagnostics, and
-workflow orchestration on top of ROS 2 launch files.
+message codegen, SDK provisioning, topology planning, static checks,
+diagnostics, and board introspection.
 
 The old `cargo nano-ros …` cargo subcommand has been removed. Use `nros`
 directly.
@@ -14,8 +14,8 @@ The `nros` CLI ships from the in-tree sub-workspace at `packages/cli/`
 it on PATH:
 
 ```sh
+./scripts/bootstrap.sh base
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 The resulting binary lives at `packages/cli/target/release/nros`. One
@@ -115,8 +115,8 @@ generated-package layout.
 
 Validate an `nros-plan.json` (default `build/nros/nros-plan.json`):
 static checker — catches unconnected required topics, conflicting QoS,
-missing parameters, and SchedContext binding errors before `nros build`
-runs. A `.toml` argument is instead validated as a **root `nros.toml`**
+missing parameters, and SchedContext binding errors before the platform
+build runs. A `.toml` argument is instead validated as a **root `nros.toml`**
 (the workspace deployment SSOT) — `[system]`/`[deploy.<name>]` shape,
 default-deploy + system references, bridge endpoints, etc.
 
@@ -131,59 +131,7 @@ nros explain path/to/nros-plan.json     # explicit path
 
 Run after `nros plan` to inspect the resolved component graph, topic
 wiring, parameter bindings, and SchedContext assignments before
-committing to a `nros build`.
-
-### `nros deploy [name] [--config <root.toml>] [--nano-ros-workspace <path>] [--dry-run]`
-
-Run a `[deploy.<name>]` target from the root `nros.toml`. Omit
-`name` to use `[workspace].default`. The runner asserts the vendor pin →
-generates + builds the **entry lib** (the system wiring as a library) →
-runs the target's `build[]` then `package[]` shell steps, substituting
-`{self}` / `{entry_lib}` / `{entry_src}` / `{entry_header}` / `{board}` /
-`{target}` / `{vendor.dir}`. Three build-ownership kinds: `self` (nano-ros
-builds the binary), `vendor-lib` (links a vendor static lib), `vendor-module`
-(the vendor's `make`/`west`/`idf.py` compiles the entry source). `--dry-run`
-prints the resolved steps without generating/building. No per-vendor code
-lives in nano-ros — vendor knowledge is the user's `build[]`/`package[]` lines.
-
-> **Config files:** The root `nros.toml` carries deploy *targets*
-> (`[deploy.<name>]`) — it is the SSOT for *where* to build/flash.
-> Multi-node *topology* (which nodes, their wiring, per-target overrides)
-> lives in a Bringup pkg's `system.toml` — see
-> [Bringup packages](../getting-started/workspace-bringup.md).
-> The two files are **complementary, not either/or**.
-
-### `nros launch [<bringup>] [--target <target>] [--file <file>] [--foreground|--detach] [--stop <pidfile>]`
-
-Spawn a Bringup pkg's components on the host — the `native` /
-`native_sim` alternative to `ros2 launch`. Reads
-`<bringup>/launch/<file>.launch.xml` and `<bringup>/system.toml`
-straight from source; **no `colcon build` + `source install/setup.bash`
-required**. `ros2 launch` stays available for ament-installed consumers;
-the two paths don't overlap.
-
-```sh
-nros launch demo_bringup                          # use default_system from workspace Cargo.toml
-nros launch demo_bringup --target native          # explicit deploy target
-nros launch demo_bringup --file sim.launch.xml    # explicit launch file
-nros launch demo_bringup --detach                 # background; writes .nros/launch/<bringup>.pids
-nros launch --stop .nros/launch/demo_bringup.pids # stop a detached launch
-```
-
-| Argument / Flag | Description |
-|---|---|
-| `[<bringup>]` | Bringup pkg directory or name. Omit to use `[workspace.metadata.nros].default_system` |
-| `--target <target>` | `[deploy.<target>]` block to use; defaults to `default_target`, then `"native"`, then first entry |
-| `--file <file>` | Override the launch file (resolver picks `<bringup>/launch/<file>`); keeps verb surface uniform with `nros plan` / `nros codegen-system` |
-| `--exec <exec>` | `<node exec="…">` override for synthesised launches |
-| `--profile <profile>` | Cargo profile dir (default `debug`) |
-| `--foreground` | Block until first child exits or signal; propagate SIGTERM to all. Default when neither flag is given |
-| `--detach` | Return immediately; write PID file |
-| `--stop <pidfile>` | Send SIGTERM to every PID in the given pidfile |
-
-> **Note:** `nros launch` spawns components from `system.toml`'s
-> `[[component]]` list, not by driving XML. The `--file` / `--exec` flags
-> use the shared resolver so bad input fails fast.
+committing to a platform build.
 
 ### `nros config show [--config <path>]` / `nros config check [--config <path>]`
 
@@ -193,28 +141,6 @@ env override.
 
 `check` validates `nros.toml` syntactically and warns when the
 locator or domain are missing. Exits non-zero on warnings.
-
-### `nros build [<name>] [--project <path>] [--nano-ros-workspace <path>] [-- ...]`
-
-`nros build` **delegates** to the per-platform build framework — it
-auto-detects the project flavor and hands off to `cargo` / `cmake` /
-`west` / `idf.py`; it does not build anything itself. Detection
-precedence:
-
-1. `prj.conf` present → Zephyr → `west build`
-2. `CMakeLists.txt` + Cargo `staticlib` → cmake configure + build
-3. `Cargo.toml` present → `cargo build`
-4. plain `CMakeLists.txt` → `cmake -B build && cmake --build build`
-
-Trailing arguments after `--` forward verbatim to the underlying tool.
-Builds consume nano-ros via `add_subdirectory(<repo-root>)`
-— there is no install layout to find first.
-
-`nros build <name>` (in a workspace with a root `nros.toml`) is an alias
-for `nros deploy <name>`; bare `nros build` there builds
-`[workspace].default`. A component `nros.toml` (direct-mode `[node]`) is
-not a workspace root, so it falls through to the project-flavor autodetect
-above.
 
 ### `nros ws <subcommand>`
 
@@ -264,21 +190,6 @@ nros codegen-system --bringup demo_bringup --ahead-of-vendor px4   # + PX4 modul
 | `--exec <exec>` | `<node exec="…">` override for synthesised launches |
 | `--ahead-of-vendor` | `pio`: emit PlatformIO `library.json`; `px4`: emit one PX4-native `nros_<component>/` module dir per component |
 
-### `nros run [--project <path>] [--env <name>] [-- ...]`
-
-Build → flash → monitor in one verb.
-
-| Detected target | Action |
-|---|---|
-| Cargo + native | `cargo run` (default bin) |
-| Cargo + `xtensa-esp32*` / `riscv32imc*` (from `.cargo/config.toml`) | `espflash flash --monitor` |
-| Zephyr / cmake / QEMU multi-target | not yet wired — see `just <plat> run` recipes |
-
-### `nros monitor [--env <name>] [-- ...]`
-
-v1 surfaces `espflash monitor`. ARM RTT (`defmt-print`) and QEMU
-semihosting decoders land (`nros-log`).
-
 ### `nros doctor [--platform <name>] [--workspace <path>]`
 
 Shells out to `just doctor` from the auto-detected workspace root.
@@ -311,9 +222,10 @@ Emit shell completion scripts to stdout.
 
 | Want to … | Use |
 |---|---|
-| Scaffold / build / run a single project | `nros …` |
+| Scaffold a project | `nros new …` |
 | Generate Rust bindings | `nros generate-rust` |
-| Plan + check a multi-component system from a ROS 2 launch file | `nros metadata` → `nros plan` → `nros check` → `nros build` |
+| Plan + check a multi-component system from a ROS 2 launch file | `nros metadata` → `nros plan` → `nros check` |
+| Build / flash / run | Platform tools: `cargo`, `cmake --build`, `west`, `idf.py`, `probe-rs`, or focused `just <platform> …` recipes |
 | Orchestrate the workspace (setup, doctor, CI, multi-platform sweeps) | `just …` |
 
 `nros` routes through the `nros-cli-core` library. `just` recipes that

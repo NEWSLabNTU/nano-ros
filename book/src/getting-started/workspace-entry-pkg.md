@@ -84,7 +84,7 @@ rmw       = "zenoh"
 domain_id = 0
 ```
 
-`deploy` is the key that `nros check` / `nros deploy` / `nros build` use to
+`deploy` is the key that `nros check` and the Entry macro use to
 find the board crate and verify the topology. Keep it short and descriptive —
 it becomes the identifier in `nros plan` output and in `system.toml`'s
 `[deploy.<name>]` table when you later add a Bringup pkg.
@@ -167,22 +167,9 @@ cargo run -p robot_entry
 `robot_entry` opens the executor against the router, registers `talker` +
 `listener` (composed into a single process), and runs the topology.
 
-The canonical template is at `examples/templates/multi-node-workspace/` —
-its `README.md` is the source of truth for CLI commands that are green today.
-
-> **Caveat — `nros launch` and the composed-binary shape**
->
-> `nros launch demo_bringup` is conceptually the host-side, no-ament-install
-> alternative to `ros2 launch`. The current in-tree CLI uses a
-> *one-process-per-`[[component]]`* model: it tries to spawn each `[[component]]`
-> as a separate binary (`target/debug/talker_pkg`, etc.). This template composes
-> both nodes into the **single** `robot_entry` binary (they are Node pkg
-> **libraries**, not standalone binaries), so `nros launch` does not drive it.
-> Use `cargo run -p robot_entry` above. To use `nros launch`, each Node pkg
-> would instead need its own `[[bin]]` — the separate-process deployment shape.
-
-> **Note:** `nros run` for Zephyr / QEMU targets is not yet wired in the
-> in-tree CLI. Use `just <plat> run` for those targets in the meantime.
+The canonical template is at `examples/templates/multi-node-workspace/`.
+For Zephyr, QEMU, ESP-IDF, and other non-native targets, use the platform's
+native build/run tool or the focused `just <plat> run` recipe.
 
 ## One Entry pkg per board
 
@@ -204,10 +191,10 @@ embedded shape: `deploy = "embassy-stm32f4"` + `nros::main!();` on a
 `no_std / no_main` binary that delegates everything to the `EmbassyStm32F4`
 board crate.
 
-## What's coming
+## C / C++ Entry packages
 
-> **C++ Entry pkg** (`NROS_MAIN` macro + `nros_entry()` CMake function) is
-> **future work (Phase 219)**. The Rust path above is the shipped API today.
+C and C++ Entry packages use the same role split through CMake. See
+[C / C++ multi-node workspaces](./workspace-cpp.md).
 
 ## Where to go next
 

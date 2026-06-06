@@ -4,7 +4,7 @@
 //! deployment model: `[workspace]` defaults, the `[system]` /
 //! `[systems.<name>]` composition (launch + components + the RMW/domain SSOT +
 //! overlays + scheduling + in-binary `[[domain]]`/`[[bridge]]`), and the
-//! `[deploy.<name>]` targets the `nros deploy` command-runner drives. This
+//! `[deploy.<name>]` targets that Entry codegen and platform tools consume. This
 //! *replaces* the per-package "system `nros.toml` with `target.{triple,board}`"
 //! — triple/board move into `[deploy.<name>]`. Component `nros.toml` stays a
 //! different scope (reusable intrinsics) and must not carry `rmw`/`domain`.
@@ -43,7 +43,7 @@ pub struct WorkspaceConfig {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceSection {
-    /// Deploy target used by a bare `nros build` / `nros deploy`.
+    /// Default deploy target used when the caller does not pick one explicitly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
 }
@@ -289,7 +289,7 @@ impl WorkspaceConfig {
         None
     }
 
-    /// The deploy target a bare `nros build`/`nros deploy` resolves to.
+    /// The default deploy target for generated Entry packages.
     pub fn default_deploy(&self) -> Option<(&String, &DeployTarget)> {
         let name = self.workspace.default.as_ref()?;
         self.deploy.get_key_value(name)

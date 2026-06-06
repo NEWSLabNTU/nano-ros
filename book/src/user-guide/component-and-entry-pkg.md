@@ -37,7 +37,7 @@ Key rules:
 
 - **No `fn main()`.** A Node pkg builds as `rlib + staticlib` and is *linked into* an Entry pkg's binary. Codegen synthesises the spin driver; you never hand-write one.
 - **`class` field must start with the pkg dir name.** `nros check` rejects `class = "foo::Talker"` inside `src/talker_pkg/` — the pkg name and the class prefix are the same identity. (Phase 212.L.4.)
-- **C++ analogue:** `nano_ros_component_register(NAME … CLASS … SOURCES … DEPLOY …)` cmake fn + `NROS_NODE_REGISTER(UserClass, "<pkg>::UserClass")` in the source. Same conceptual shape, no Cargo.toml. (`NROS_NODE`/`NROS_MAIN` macros are **future** — Phase 216/219.)
+- **C++ analogue:** `nano_ros_node_register(NAME … CLASS … SOURCES …)` cmake fn + `NROS_NODE(UserClass)` or `NROS_NODE_REGISTER(UserClass, "<pkg>::UserClass")` in the source. Same conceptual shape, no Cargo.toml.
 - **`package.xml` is mandatory.** Even pure-Rust Node pkgs ship one — `<exec_depend>` lines drive ROS 2 launch discovery when the system runs through `ros2 launch` outside the nano-ros toolchain.
 
 ## Bringup pkg (optional)
@@ -130,7 +130,7 @@ Key rules:
 - **One Entry pkg per board target.** Want to run the same nodes on native POSIX, on a QEMU-MPS2-AN385 FreeRTOS target, and on a real ThreadX board? Three Entry pkgs (`robot_entry_native`, `robot_entry_qemu_freertos`, `robot_entry_acme_threadx`) sharing the same Node pkgs and (usually) the same `launch/system.launch.xml` via symlink or `<include>`.
 - **`launch/system.launch.xml` is the canonical name.** `nros plan` resolution order: `--file <path>` → `<dir>/launch/<pkg>.launch.xml` → `<dir>/launch/system.launch.xml` → the single `<dir>/launch/*.launch.xml` → synth (only for non-Entry, single-Node pkgs).
 - **Deploy config lives in `Cargo.toml`.** `[package.metadata.nros.deploy.<target>]` holds board / RMW / domain / locator per target; `[[package.metadata.nros.domain]]` and `[[package.metadata.nros.bridge]]` carry multi-domain topology.
-- **C++ analogue:** cmake fn `nano_ros_entry(NAME <name> SOURCES … BOARD <board> DEPLOY …)` plus `nano_ros_deploy(TARGET … RMW … DOMAIN_ID … LOCATOR …)`. (`nano_ros_entry` is renamed from the older `nano_ros_application` per Phase 212.N.6.) Metadata flows through `${BUILD}/nros-metadata.json` rather than a sidecar TOML. **C++ Entry macro (`NROS_MAIN`) is future** (Phase 219).
+- **C++ analogue:** cmake fn `nano_ros_entry(NAME <name> LANGUAGE CXX LAUNCH …)` plus `NROS_MAIN(...)`. Metadata flows through `${BUILD}/nros-metadata.json` rather than a sidecar TOML.
 
 ## Workspace shape
 

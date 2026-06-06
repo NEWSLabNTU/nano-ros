@@ -1,7 +1,7 @@
 //! Phase 219.C — C Entry-pkg TU emitter.
 //!
 //! Maps a [`Plan`] (see `super::mod`) onto a generated `main.c` body
-//! per `docs/roadmap/phase-219-cpp-entry-pkg.md` §3.3 + §3.5. Symmetric
+//! per `docs/roadmap/archived/phase-219-cpp-entry-pkg.md` §3.3 + §3.5. Symmetric
 //! to [`super::emit_cpp`] modulo C ABI: register fns return
 //! `nros_ret_t` (not `int32_t`) and take `nros_node_context_t*`
 //! (not `::nros::NodeContext*`), and the Board adapter is the C
@@ -36,7 +36,10 @@ pub fn emit(plan: &Plan) -> String {
     for n in &plan.nodes {
         let sym = format!("__nros_component_{}_register", sanitize_pkg(&n.pkg));
         if !seen_pkgs.contains(&sym) {
-            let _ = writeln!(out, "extern nros_ret_t {sym}(nros_node_context_t* context);");
+            let _ = writeln!(
+                out,
+                "extern nros_ret_t {sym}(nros_node_context_t* context);"
+            );
             seen_pkgs.push(sym);
         }
     }
@@ -135,7 +138,9 @@ mod tests {
     fn two_node_plan_preserves_launch_order() {
         let plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
         let src = emit(&plan);
-        let pos_talker = src.find("__nros_component_talker_pkg_register(context);").unwrap();
+        let pos_talker = src
+            .find("__nros_component_talker_pkg_register(context);")
+            .unwrap();
         let pos_listener = src
             .find("__nros_component_listener_pkg_register(context);")
             .unwrap();

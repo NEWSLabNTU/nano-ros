@@ -35,7 +35,8 @@ Flags:
   -h, --help                 this message
 
 The `nros` path is the just-free user route: it fetches the prebuilt `nros`
-binary (Phase 195.A) and you then run `nros setup <board>` / `nros deploy`.
+binary (Phase 195.A) and you then run `nros setup <board>` followed by the
+platform build/run tool.
 The others are the contributor/source route (rustup + just + `just setup`).
 
 After a successful `base` run the script offers to append a
@@ -222,14 +223,14 @@ install_nros_prebuilt() {
                 "${REPO_ROOT}/scripts/install-nros-prebuilt.sh" \
                 || return 0
             export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
-            echo "bootstrap: next →  nros setup <board>   then   nros deploy <name>"
+            echo "bootstrap: next →  nros setup <board>   then use cargo / cmake / west / idf.py"
             return 0
         fi
     fi
 
     # Path 3: build from source.
     build_in_tree_cli || return 1
-    echo "bootstrap: next →  nros setup <board>   then   nros deploy <name>"
+    echo "bootstrap: next →  nros setup <board>   then use cargo / cmake / west / idf.py"
 }
 
 # Phase 222.E.1 — the bare-machine path. Runs the cold-cache route:

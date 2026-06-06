@@ -468,7 +468,7 @@ exclude = [
 # `scripts/check-version-lockstep.sh` (wired into `lint.yml`) errors
 # if this and `packages/cli/Cargo.toml`'s `[workspace.package].version`
 # diverge. Use `just release-bump <X.Y.Z>` to bump both atomically.
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 authors = ["Lin Hsiang-Jui <jerry73204@gmail.com>", "NEWSLabNTU"]
 license = "MIT OR Apache-2.0"

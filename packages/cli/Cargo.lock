@@ -212,7 +212,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-nano-ros"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cargo_metadata",
  "clap",
@@ -368,7 +368,7 @@ checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
 
 [[package]]
 name = "colcon-nano-ros"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cargo-nano-ros",
  "pyo3",
@@ -815,7 +815,7 @@ dependencies = [
 
 [[package]]
 name = "nros-build"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "eyre",
  "nros-cli-core",
@@ -826,7 +826,7 @@ dependencies = [
 
 [[package]]
 name = "nros-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "nros-cli-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cargo-nano-ros",
  "cargo_metadata",
@@ -860,7 +860,7 @@ dependencies = [
 
 [[package]]
 name = "nros-msg-to-idl"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "num-traits"
@@ -1206,7 +1206,7 @@ dependencies = [
 
 [[package]]
 name = "rosidl-bindgen"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "askama",
  "clap",
@@ -1220,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "rosidl-codegen"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "askama",
  "criterion",
@@ -1234,7 +1234,7 @@ dependencies = [
 
 [[package]]
 name = "rosidl-parser"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chumsky",
  "logos",

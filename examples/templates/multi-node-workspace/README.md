@@ -31,7 +31,7 @@ multi-node-workspace/
 | Composable node (`rclcpp_components`)       | **Node pkg** (`nros::node!`)                         |
 | `<pkg>_bringup` with `launch/*.launch.xml`  | **Bringup pkg** (declarative — same launch XML)     |
 | Per-target launch + deploy config           | `system.toml` (`[system]`, `[[component]]`, `[deploy.*]`) |
-| `ros2 launch <pkg> <file>` (ament install)  | `nros launch <bringup>` (no ament install) — see caveat below |
+| `ros2 launch <pkg> <file>` (ament install)  | `cargo run -p <entry_pkg>`; the Entry binary is the launch product |
 | Composition container / main               | **Entry pkg** (`nros::main!(launch = "...")`)        |
 
 The launch file (`src/demo_bringup/launch/system.launch.xml`) is the
@@ -84,15 +84,8 @@ cargo run -p robot_entry
 `robot_entry` opens the executor against the router, registers `talker`
 + `listener`, and runs the topology.
 
-### Caveats on the orchestration CLI
+### Caveat on plan generation
 
-- **`nros launch <bringup>` is not yet aligned with this composed-binary
-  shape.** It implements a *one-process-per-`[[component]]`* model — it
-  tries to spawn `target/debug/talker_pkg` + `target/debug/listener_pkg`,
-  but here the Node pkgs are **libraries** composed into the single
-  `robot_entry` binary. Use `cargo run -p robot_entry` instead. (To use
-  `nros launch`, you would instead give each Node pkg its own `[[bin]]` —
-  the separate-process deployment shape.)
 - **`nros plan demo_bringup` / `nros check <plan.json>`** need
   pre-collected source-metadata sidecars (`record.json` +
   per-pkg `_metadata/*.json`) for lib-only Node pkgs in this release —
@@ -105,7 +98,7 @@ cargo run -p robot_entry
 
 ## Note on C / C++
 
-`NROS_NODE` / `NROS_MAIN` C / C++ entry macros are **future work**
-(Phase 216 / 219). Today the Node + Entry pkg roles are Rust-only; a
-polyglot app-node workspace (Rust / C / C++) is demonstrated by the
-sibling [`multi-package-workspace/`](../multi-package-workspace/).
+C and C++ workspaces use the same Node / Bringup / Entry roles through
+CMake. See the sibling
+[`multi-node-workspace-cpp/`](../multi-node-workspace-cpp/) and
+[`c-and-cpp-mixed-workspace/`](../c-and-cpp-mixed-workspace/) templates.

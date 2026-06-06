@@ -17,7 +17,7 @@ cargo run
 nros metadata my_system
 nros plan my_system launch/my_system.launch.py
 nros check
-nros build && ./build/my_system/...
+cargo run -p robot_entry
 
 # Colcon consumer workspace (Pattern A):
 colcon build && source install/setup.bash

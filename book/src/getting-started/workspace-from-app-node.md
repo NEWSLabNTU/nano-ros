@@ -149,12 +149,12 @@ already know:
 |---|---|---|
 | `ros2 pkg create` | `nros new <name> --platform <plat> [--lang <lang>]` | scaffolds a Node pkg |
 | `colcon build` | `cargo build` (Rust) / `cmake --build build` (C++) | use the underlying tool directly |
-| `ros2 launch <pkg> <file>` | `cargo run -p <entry_pkg>` | composed Entry pkg IS the launch product (Phase 212.N + 222.D); the old `nros launch` verb is deprecated and removed in nros 0.5.0 |
+| `ros2 launch <pkg> <file>` | `cargo run -p <entry_pkg>` | composed Entry pkg IS the launch product (Phase 212.N + 222.D); the old launch wrapper was removed in nros 0.5.0 |
 | (plan/validate) | `nros plan` → `nros check` | resolve + statically check the topology |
 | `ros2 run <pkg> <exe>` | run the Entry pkg binary (`cargo run`) | one Entry pkg per board |
 
 Build verbs (`cargo` for Rust, `cmake` for C/C++, `west` for Zephyr,
-`idf.py` for ESP-IDF) are used directly — there is no `nros build`
+`idf.py` for ESP-IDF) are used directly — there is no CLI build
 indirection. The composed Entry pkg binary IS the launch product:
 one Entry pkg = one binary = one process. Multi-process orchestration
 (equivalent to multiple `ros2 launch` nodes in separate processes) is

@@ -11,14 +11,14 @@ use std::io;
 #[derive(Parser, Debug)]
 #[command(
     name = "nros",
-    about = "The nano-ros CLI: scaffold, generate, set up toolchains, build, deploy.",
+    about = "The nano-ros CLI: scaffold, generate, provision SDKs, plan, check, and inspect.",
     long_about = "nros — command-line tool for nano-ros (a lightweight ROS 2 client for \
                   embedded RTOS).\n\n\
                   Quick start:\n  \
                   nros setup <board>   provision a board's toolchains + sources (board-scoped)\n  \
                   nros new <name>      scaffold a project\n  \
-                  nros build           build the current project\n  \
-                  nros deploy <target> build + flash + monitor\n  \
+                  nros plan            resolve a launch topology\n  \
+                  nros check           validate a plan or workspace\n  \
                   nros doctor          check SDK paths / toolchains / env\n\n\
                   Run `nros setup --list` to see available packages.",
     version,

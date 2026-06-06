@@ -105,8 +105,7 @@ caller does not specify one.
 **Resolution order** (first match wins):
 
 1. `[deploy.<target>].launch` (per-target explicit launch — strongest)
-2. CLI flag: `nros launch <bringup> --launch <file>` or `nros plan
-   <bringup> --launch <file>`
+2. CLI flag: `nros plan <bringup> --launch <file>`
 3. Macro arg: `nros::main!(launch = "<bringup>:<file>")` /
    `NROS_MAIN(<board>, "<bringup>:<file>")` (the `:<file>` suffix
    selects a specific launch)
@@ -297,7 +296,7 @@ Matching `package.xml` `<exec_depend>` block (cross-validated by
 <exec_depend>listener_pkg</exec_depend>
 ```
 
-Matching `launch/` contents (selectable via `nros launch demo_bringup
+Matching `launch/` contents (selectable via `nros plan demo_bringup
 --launch <file>` or via the deploy override above):
 
 ```

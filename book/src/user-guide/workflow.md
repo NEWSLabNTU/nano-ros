@@ -11,8 +11,8 @@ workspace, then provision the board's toolchain with `nros setup`:
 
 ```bash
 # Build the in-tree nros CLI (Phase 218), then provision your board (+ RMW):
+./scripts/bootstrap.sh base
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 nros setup native --rmw zenoh        # or qemu-arm-freertos, zephyr, …
 ```
 
@@ -117,7 +117,7 @@ just --group full-matrix --list zephyr
 nros metadata my_system
 nros plan my_system launch/my_system.launch.py
 nros check
-nros build
+cargo build                 # or: cmake --build / west build / idf.py build
 
 # POSIX-only colcon consumer-workspace build:
 colcon build && source install/setup.bash

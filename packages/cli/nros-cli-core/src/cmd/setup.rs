@@ -277,13 +277,13 @@ fn provision_named_sources(
     Ok(())
 }
 
-/// Phase 187.6 — lazy install for `nros build` / `nros deploy`: resolve the
+/// Phase 187.6 — lazy install support: resolve the
 /// board's index tools and install any not already in the store, so a first
-/// build/deploy needs no separate `nros setup` (the PlatformIO auto-install
+/// platform build needs no separate `nros setup` (the PlatformIO auto-install
 /// ergonomic). Only `[tool.*]` packages are installed; `[source.*]` build with
 /// the app and `[gated.*]` are user-provided. Opt out with `NROS_NO_AUTO_SETUP`.
 /// No-op (empty) when no index is found; an unavailable tool warns rather than
-/// fails so the downstream build surfaces the real miss (e.g. a system-installed
+/// fails so the downstream platform build surfaces the real miss (e.g. a system-installed
 /// toolchain the index doesn't host).
 ///
 /// Returns the `bin/` dirs of the resolved tools present in the store — Method A
@@ -307,8 +307,7 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
 
     // Unknown board ⇒ no known package set — warn + skip (lazy auto-setup is
     // best-effort; the user provides tools). `nros setup` errors instead.
-    // Auto-setup defaults to the zenoh RMW host set (rmw=None). `nros build` /
-    // `deploy` can later pass the app's configured RMW; until then the default
+    // Auto-setup defaults to the zenoh RMW host set (rmw=None). The default
     // keeps the historical behaviour (e.g. native pulls `zenohd`).
     let packages = match resolve_packages_with_rmw(&index, board, None) {
         Ok(p) => p,
@@ -378,8 +377,8 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
 }
 
 /// Method A — prepend the store `bin/` dirs (from [`ensure_tools`]) to this
-/// process's `PATH` so every child `nros build`/`deploy` spawns (cargo, cmake,
-/// west, the `build[]`/`package[]` steps) finds the toolchain on `PATH`. `nros`
+/// process's `PATH` so child platform-tool invocations (cargo, cmake,
+/// west, the `build[]`/`package[]` steps) find the toolchain on `PATH`. `nros`
 /// is the single resolver; non-`nros` scripts/code never hunt for SDK paths.
 /// A no-op when `dirs` is empty (no store tools / auto-setup skipped).
 pub fn activate_store_path(dirs: &[PathBuf]) {

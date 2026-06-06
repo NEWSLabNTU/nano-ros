@@ -3,8 +3,10 @@
 **`nros` — the command-line tool for [nano-ros](https://github.com/NEWSLabNTU/nano-ros), a lightweight ROS 2 client for embedded RTOS.**
 
 `nros` scaffolds projects, generates message bindings, provisions SDK toolchains,
-and builds/deploys/monitors nano-ros applications on embedded targets (Zephyr,
-FreeRTOS, NuttX, ThreadX, bare-metal, …). This repo builds the `nros` binary;
+resolves launch topologies, checks workspace metadata, and inspects supported
+boards. Platform-native tools build, flash, run, and monitor applications
+(`cargo`, `cmake --build`, `west`, `idf.py`, `probe-rs`, and focused `just`
+recipes). This repo builds the `nros` binary;
 nano-ros itself lives at [NEWSLabNTU/nano-ros](https://github.com/NEWSLabNTU/nano-ros).
 
 > `nros` is a **generic tool**: it knows no nano-ros directory layout. All
@@ -51,14 +53,13 @@ Prebuilt where available, source-built fallback otherwise — same install layou
 either way. This unifies what used to be scattered across `just <module> setup`
 recipes.
 
-## Build / deploy
+## Build / run
 
-**As a user** — import nano-ros into your project and build/flash:
+**As a user** — import nano-ros into your project and use the platform tool:
 
 ```bash
 nros new talker --platform zephyr   # scaffold from a template
-nros build                          # auto-detects cargo / cmake / west
-nros deploy <target>                # build + flash + (optionally) monitor
+west build                          # or: cargo build / cmake --build / idf.py build
 nros doctor                         # check SDK paths / toolchains / env
 ```
 
@@ -73,7 +74,6 @@ nros doctor                         # check SDK paths / toolchains / env
 | `nros generate` / `generate-rust` | message bindings from `package.xml` |
 | `nros codegen` | build-tool C/C++ binding generation (cmake/build.rs interface) |
 | `nros setup` | provision a board's toolchains + sources (above) |
-| `nros build` / `deploy` / `run` / `monitor` | build, flash, run, attach |
 | `nros doctor` / `board` | health-check; inspect supported boards |
 | `nros plan` / `check` / `explain` | launch-file → plan resolution¹ |
 

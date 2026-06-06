@@ -2,8 +2,8 @@
 //!
 //! Subscribes to `std_msgs/Int32` on `/chatter` and logs each message.
 //! Single-file `[[bin]]`: explicit [`nros::init_with_launch_auto`]
-//! (Pattern 2 — picks up the launch overlay env vars exported by
-//! `nros launch`) then a user-owned spin loop.
+//! (Pattern 2 — picks up launch overlay env vars from the environment)
+//! then a user-owned spin loop.
 //!
 //! # Usage
 //!

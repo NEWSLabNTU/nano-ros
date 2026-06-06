@@ -24,7 +24,7 @@
 //! scaffolded — that's `nros new --component <name>` (Phase 172 W.3).
 //!
 //! **J.5 policy.** Generated `package.xml` does NOT include
-//! `<buildtool_depend>ament_cmake</buildtool_depend>` — `nros launch` reads
+//! `<buildtool_depend>ament_cmake</buildtool_depend>` — nano-ros planning reads
 //! `launch/` directly from the source tree, no install step needed (see
 //! `docs/design/multi-node-workspace-layout.md` §11.1).
 
@@ -293,7 +293,7 @@ fn render_package_xml(pkg_name: &str, components: &[String]) -> String {
     s.push_str("  <maintainer email=\"nobody@example.invalid\">TODO maintainer</maintainer>\n");
     s.push_str("  <license>Apache-2.0</license>\n");
     // J.5 policy: NO <buildtool_depend>ament_cmake</buildtool_depend>.
-    // `nros launch` reads launch/ directly from source; users wanting ROS 2
+    // nano-ros planning reads launch/ directly from source; users wanting ROS 2
     // `ros2 launch <bringup>` add the buildtool_depend manually.
     for c in components {
         s.push_str(&format!("  <exec_depend>{c}</exec_depend>\n"));
@@ -402,7 +402,7 @@ fn render_readme(pkg_name: &str, components: &[String]) -> String {
          - `system.toml` — components, RMW, deploy targets, bridges. See\n\
            `docs/design/multi-node-workspace-layout.md` §4 and §11.3 for the\n\
            full schema.\n\
-         - `launch/*.launch.xml` — ROS 2 launch XML, picked by `nros launch`\n\
+         - `launch/*.launch.xml` — ROS 2 launch XML, consumed by `nros plan`\n\
            (or `ros2 launch` after a colcon install). The default is\n\
            `system.launch.xml`; add more launch files for alternate\n\
            topologies (nav2 convention; see design doc §11.3).\n\
@@ -422,9 +422,7 @@ fn render_readme(pkg_name: &str, components: &[String]) -> String {
          2. Open `launch/system.launch.xml` and adjust `<node exec=\"…\">` to\n\
             match each Entry pkg binary name.\n\
          3. Run `nros check` to validate the bringup is well-formed.\n\
-         4. Run `nros launch {pkg_name}` to start the system (or\n\
-            `nros launch {pkg_name} --launch <other>.launch.xml` to pick a\n\
-            different topology).\n",
+         4. Run the Entry package binary, for example `cargo run -p <entry_pkg>`.\n",
     )
 }
 

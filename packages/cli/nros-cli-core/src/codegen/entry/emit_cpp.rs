@@ -1,7 +1,7 @@
 //! Phase 219.B — C++ Entry-pkg TU emitter.
 //!
 //! Maps a [`Plan`] (see `super::mod`) onto the canonical generated
-//! `main.cpp` shape from `docs/roadmap/phase-219-cpp-entry-pkg.md` §3.3.
+//! `main.cpp` shape from `docs/roadmap/archived/phase-219-cpp-entry-pkg.md` §3.3.
 //!
 //! The TU pulls in `<nros/main.hpp>` (the Phase 219.E header that
 //! defines the `NROS_MAIN` declarative marker), declares one

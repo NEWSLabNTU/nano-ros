@@ -101,11 +101,11 @@ pub fn scaffold_deploy(s: &DeployScaffold) -> Result<()> {
     );
     if effective_kind != DeployKind::Self_ {
         eprintln!(
-            "  scaffolded {}/ — fill the TODO vendor steps, then `nros deploy {}`",
-            self_rel, s.name
+            "  scaffolded {}/ — fill the TODO vendor steps, then run the platform build",
+            self_rel
         );
     } else {
-        eprintln!("  `nros deploy {}` (or `nros build {}`)", s.name, s.name);
+        eprintln!("  build with the Entry package's platform tool");
     }
     Ok(())
 }

@@ -306,7 +306,7 @@ Steps 4–5 unchanged. Step 4's `nros plan` becomes either bare `nros plan robot
 
 Supersedes §4-§5 + §7's bringup-pkg shape. Driven by two user constraints:
 **(a) ROS 2 launch.xml from nav2/Autoware must copy-paste and Just Work;
-(b) C++ Entry pkg is on the future roadmap, so resolution must be
+(b) C++ Entry pkg support is available through CMake, so resolution must be
 language-agnostic.**
 
 ### 11.1 Three pkg roles

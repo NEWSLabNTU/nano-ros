@@ -4,7 +4,7 @@
 //! These are the *user-authored* TOML surfaces introduced by Phase 212. They
 //! live in standard cargo manifest tables (`[workspace.metadata.…]` /
 //! `[package.metadata.…]`) so that cargo treats them as opaque user data and
-//! pure-cargo workflows (no `nros build` verb) keep working. The
+//! pure-cargo workflows (no CLI build wrapper) keep working. The
 //! `<bringup>/system.toml` is the per-system declarative file owned by the
 //! `<system>_bringup` package.
 //!
@@ -43,7 +43,7 @@ use super::schema::RemapRule;
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceMetadataNros {
     /// Bringup package name (`<system>_bringup`) OR Entry pkg name
-    /// (Phase 212.L.7 self-entry shape). `nros plan` / `nros launch` /
+    /// (Phase 212.L.7 self-entry shape). `nros plan` /
     /// `nros codegen-system` with no `--bringup` hint resolves the
     /// system via this pointer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -433,7 +433,7 @@ pub struct SystemHeader {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_launch: Option<String>,
     /// Optional default `[deploy.<target>]` block key — picked by
-    /// `nros launch` when the user does not pass `--target`. When absent,
+    /// Entry codegen when the user does not pass `--target`. When absent,
     /// the launcher falls back to `"native"` if that block exists, else
     /// the first deploy entry in declaration / sorted order. Phase 212.J.2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
