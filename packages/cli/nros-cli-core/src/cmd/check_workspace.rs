@@ -49,12 +49,12 @@
 //!   the `nros::node!()` macro emits, because that would require linking
 //!   the Node crate.
 //!
-//! The walk is `nros check --workspace [<dir>]`. Each immediate child of the
-//! workspace root is classified as a bringup pkg (has `system.toml`, no
-//! `Cargo.toml` / `CMakeLists.txt` / `src/`) or a component pkg (has
+//! The walk is `nros check --workspace [<dir>]`. Each recursively indexed
+//! `package.xml` directory is classified as a bringup pkg (has `system.toml`,
+//! no `Cargo.toml` / `CMakeLists.txt` / `src/`) or a component pkg (has
 //! `Cargo.toml` or `CMakeLists.txt`). Other dirs are skipped.
 
-use std::{fs, path::Path};
+use std::{collections::BTreeSet, fs, path::Path};
 
 use eyre::{Result, WrapErr, bail};
 
@@ -79,21 +79,30 @@ pub struct WorkspaceLintReport {
 pub fn check_workspace(workspace_root: &Path) -> Result<WorkspaceLintReport> {
     let mut report = WorkspaceLintReport::default();
 
+    let index = crate::pkg_index::build_pkg_index(workspace_root)
+        .wrap_err_with(|| format!("build package index under {}", workspace_root.display()))?;
+    let mut dirs: Vec<(String, std::path::PathBuf)> = index
+        .pkgs()
+        .map(|(name, path)| (name.to_string(), path.to_path_buf()))
+        .collect();
+    let mut seen: BTreeSet<std::path::PathBuf> =
+        dirs.iter().map(|(_, path)| path.clone()).collect();
     let entries = fs::read_dir(workspace_root)
         .wrap_err_with(|| format!("read {}", workspace_root.display()))?;
-    let mut dirs: Vec<std::path::PathBuf> = entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
-    // Deterministic order so diagnostics + warnings are reproducible.
-    dirs.sort();
-
-    for pkg_dir in dirs {
-        let name = match pkg_dir.file_name().and_then(|n| n.to_str()) {
-            Some(n) => n.to_string(),
-            None => continue,
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() || !seen.insert(path.clone()) {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
         };
+        dirs.push((name.to_string(), path));
+    }
+    // Deterministic order so diagnostics + warnings are reproducible.
+    dirs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (name, pkg_dir) in dirs {
         // Skip dotted dirs (.git, .cargo, .claude, …) and build output dirs.
         if name.starts_with('.') || name == "target" || name == "build" {
             continue;

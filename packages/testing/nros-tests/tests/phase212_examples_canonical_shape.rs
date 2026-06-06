@@ -45,6 +45,9 @@ fn is_carve_out(rel: &Path) -> bool {
 
 /// Directories never descended into.
 fn skip_dir(name: &str) -> bool {
+    if name.starts_with("build-") {
+        return true;
+    }
     matches!(
         name,
         "target"

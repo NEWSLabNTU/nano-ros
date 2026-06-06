@@ -171,6 +171,9 @@ pub fn build_pkg_index(workspace_root: &Path) -> Result<PkgIndex> {
             if SKIP_DIRS.iter().any(|name| file_name == *name) {
                 return false;
             }
+            if file_name.starts_with("build-") {
+                return false;
+            }
             // Ament convention: a dir carrying `COLCON_IGNORE` or
             // `.nros-ignore` is opaque to discovery.
             let path = entry.path();

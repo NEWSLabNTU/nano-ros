@@ -98,7 +98,7 @@ pub fn run(args: Args) -> Result<()> {
         None => std::env::current_dir().context("resolve cwd")?,
     };
 
-    let cfg = NrosConfig::from_cargo_metadata(&workspace)
+    let cfg = NrosConfig::from_workspace(&workspace)
         .with_context(|| format!("load workspace at {}", workspace.display()))?;
 
     let bringup = resolve_bringup(&cfg, args.bringup.as_deref())?;

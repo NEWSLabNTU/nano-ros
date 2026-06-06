@@ -160,6 +160,28 @@ pub struct BringupPackageEntry {
 }
 
 impl NrosConfig {
+    /// Load `NrosConfig` from either a Cargo workspace or a C/C++ style
+    /// workspace rooted at `workspace_root`.
+    ///
+    /// Cargo workspaces keep using `cargo metadata`. Non-Cargo workspaces
+    /// still support Path-A Bringup packages (`package.xml` + `system.toml`
+    /// and no build file) through the recursive package index.
+    pub fn from_workspace(workspace_root: &Path) -> Result<Self, NrosConfigError> {
+        if workspace_root.join("Cargo.toml").is_file() {
+            return Self::from_cargo_metadata(workspace_root);
+        }
+
+        let mut bringup_packages = BTreeMap::new();
+        discover_path_a_bringups(workspace_root, &mut bringup_packages)?;
+
+        Ok(NrosConfig {
+            workspace_root: workspace_root.to_path_buf(),
+            workspace_metadata: WorkspaceMetadataNros::default(),
+            component_packages: BTreeMap::new(),
+            bringup_packages,
+        })
+    }
+
     /// Load `NrosConfig` from a cargo workspace rooted at `workspace_root`.
     ///
     /// Steps:
@@ -297,56 +319,11 @@ impl NrosConfig {
         // `Cargo.toml`; cargo's workspace `exclude` list keeps them out of
         // `metadata.packages`, so the member-loop above never sees them.
         // Walk the workspace root for sibling dirs that match the bringup
-        // shape and load each as a `BringupPackageEntry` keyed on the dir
-        // name.
-        if let Ok(entries) = std::fs::read_dir(workspace_root) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_dir() {
-                    continue;
-                }
-                let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
-                    continue;
-                };
-                if bringup_packages.contains_key(name) {
-                    continue;
-                }
-                let system_toml_path = path.join("system.toml");
-                let cargo_toml_path = path.join("Cargo.toml");
-                let package_xml_path = path.join("package.xml");
-                if cargo_toml_path.exists() {
-                    continue; // Has Cargo.toml → not Path A.
-                }
-                if !system_toml_path.exists() || !package_xml_path.exists() {
-                    continue;
-                }
-                let raw = std::fs::read_to_string(&system_toml_path).map_err(|source| {
-                    NrosConfigError::BringupSystemTomlIo {
-                        package: name.to_string(),
-                        path: system_toml_path.clone(),
-                        source,
-                    }
-                })?;
-                let system: SystemToml = toml::from_str(&raw).map_err(|source| {
-                    NrosConfigError::BringupSystemTomlParse {
-                        package: name.to_string(),
-                        path: system_toml_path.clone(),
-                        source,
-                    }
-                })?;
-                bringup_packages.insert(
-                    name.to_string(),
-                    BringupPackageEntry {
-                        name: name.to_string(),
-                        manifest_path: package_xml_path.clone(),
-                        system_toml_path,
-                        system,
-                        ament: Default::default(),
-                        source: BringupSource::SystemToml,
-                    },
-                );
-            }
-        }
+        // shape and load each as a `BringupPackageEntry` keyed on its
+        // `package.xml` name. Use the recursive package index so colcon-style
+        // `src/<pkg>/package.xml` workspaces behave the same as immediate
+        // child layouts.
+        discover_path_a_bringups(workspace_root, &mut bringup_packages)?;
 
         // Phase 212.L.7 — self-bringup synthesis.
         //
@@ -399,6 +376,56 @@ fn parse_workspace_metadata(value: &serde_json::Value) -> Result<WorkspaceMetada
         return Ok(WorkspaceMetadataNros::default());
     };
     WorkspaceMetadataNros::deserialize(nros.clone()).map_err(|e| e.to_string())
+}
+
+fn discover_path_a_bringups(
+    workspace_root: &Path,
+    bringup_packages: &mut BTreeMap<String, BringupPackageEntry>,
+) -> Result<(), NrosConfigError> {
+    let Ok(index) = crate::pkg_index::build_pkg_index(workspace_root) else {
+        return Ok(());
+    };
+
+    for (name, path) in index.pkgs() {
+        if bringup_packages.contains_key(name) {
+            continue;
+        }
+        let system_toml_path = path.join("system.toml");
+        let cargo_toml_path = path.join("Cargo.toml");
+        let package_xml_path = path.join("package.xml");
+        if cargo_toml_path.exists() {
+            continue; // Has Cargo.toml → not Path A.
+        }
+        if !system_toml_path.exists() || !package_xml_path.exists() {
+            continue;
+        }
+        let raw = std::fs::read_to_string(&system_toml_path).map_err(|source| {
+            NrosConfigError::BringupSystemTomlIo {
+                package: name.to_string(),
+                path: system_toml_path.clone(),
+                source,
+            }
+        })?;
+        let system: SystemToml =
+            toml::from_str(&raw).map_err(|source| NrosConfigError::BringupSystemTomlParse {
+                package: name.to_string(),
+                path: system_toml_path.clone(),
+                source,
+            })?;
+        bringup_packages.insert(
+            name.to_string(),
+            BringupPackageEntry {
+                name: name.to_string(),
+                manifest_path: package_xml_path.clone(),
+                system_toml_path,
+                system,
+                ament: Default::default(),
+                source: BringupSource::SystemToml,
+            },
+        );
+    }
+
+    Ok(())
 }
 
 /// `package.metadata` likewise. Returns `Ok(None)` when the `nros` key is

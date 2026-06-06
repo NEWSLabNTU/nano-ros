@@ -169,18 +169,24 @@ function(_nros_entry_invoke_codegen)
         "ARGS_LIST"
         ${ARGN})
 
-    # Resolve the nros CLI binary.  Allow override via NROS_CLI_BIN
-    # cache var / env var, then fall back to ~/.nros/bin/nros (the
-    # `scripts/install-nros.sh` install path), then PATH.
+    # Resolve the nros CLI binary. Allow override via NROS_CLI_BIN
+    # cache var / env var, honor the shared codegen-tool cache, then
+    # prefer PATH (activate.sh puts the in-tree CLI first) before the
+    # transitional ~/.nros/bin fallback.
     set(_nros_bin "")
     if(NROS_CLI_BIN)
         set(_nros_bin "${NROS_CLI_BIN}")
     elseif(DEFINED ENV{NROS_CLI})
         set(_nros_bin "$ENV{NROS_CLI}")
-    elseif(EXISTS "$ENV{HOME}/.nros/bin/nros")
-        set(_nros_bin "$ENV{HOME}/.nros/bin/nros")
+    elseif(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}
+           AND _NANO_ROS_CODEGEN_TOOL
+           AND EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
+        set(_nros_bin "${_NANO_ROS_CODEGEN_TOOL}")
     else()
-        find_program(_nros_path nros)
+        find_program(_nros_path nros
+            PATHS
+              "$ENV{NROS_HOME}/bin"
+              "$ENV{HOME}/.nros/bin")
         if(_nros_path)
             set(_nros_bin "${_nros_path}")
         endif()
