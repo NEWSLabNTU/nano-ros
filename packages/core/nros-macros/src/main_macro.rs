@@ -641,6 +641,22 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         },
         Framework::Rtic => {
+            let deploy = deploy_for_framework.as_deref().ok_or_else(|| {
+                syn::Error::new(
+                    Span::call_site(),
+                    "nros::main!: RTIC framework requires `[package.metadata.nros.entry] deploy`",
+                )
+            })?;
+            let rtic_spec = rtic_board_spec_for(deploy).ok_or_else(|| {
+                syn::Error::new(
+                    Span::call_site(),
+                    format!("nros::main!: missing RTIC board spec for deploy `{deploy}`"),
+                )
+            })?;
+            let rtic_device = rtic_spec.device_path;
+            let rtic_dispatchers = rtic_spec.dispatchers;
+            let rtic_consumer = rtic_spec.dispatch_consumer_path;
+
             // Phase 216.B.3 SKELETON — `#[rtic::app(...)]` module that
             // delegates boot to `RticBoardEntry::init_hardware`. The
             // full body (the `__nros_spin` + `__nros_dispatch` software
@@ -691,8 +707,8 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 use #board_path as __NrosBoard;
 
                 #[::rtic::app(
-                    device = stm32f4xx_hal::pac,
-                    dispatchers = [USART1, USART2]
+                    device = #rtic_device,
+                    dispatchers = [#( #rtic_dispatchers ),*]
                 )]
                 mod __nros_app {
                     use super::*;
@@ -799,7 +815,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // below.
                         let _runtime = cx.local.runtime;
                         let mut consumer =
-                            ::nros_board_rtic_stm32f4::take_dispatch_consumer()
+                            #rtic_consumer()
                                 .expect("RTIC dispatch consumer take");
                         loop {
                             let _ = executor.spin_once(
@@ -1076,6 +1092,7 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
         // pick the `#[rtic::app(...)]` emit shape instead of the
         // direct-exec `BoardEntry::run` shape.
         "rtic-stm32f4" => "::nros_board_rtic_stm32f4::RticStm32F4",
+        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "::nros_board_rtic_mps2_an385::RticMps2An385",
         // Phase 216.C.3 — Embassy + STM32F4 framework-owned-spin board.
         // Same dispatch story as `rtic-stm32f4`: the board ZST impls
         // `EmbassyBoardEntry` (not `BoardEntry`); the macro routes
@@ -1089,7 +1106,37 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
 
 fn known_boards_csv() -> &'static str {
     "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, zephyr, \
-     rtic-stm32f4, embassy-stm32f4"
+     rtic-stm32f4, rtic-mps2-an385, embassy-stm32f4"
+}
+
+struct RticBoardSpec {
+    device_path: SynPath,
+    dispatchers: Vec<Ident>,
+    dispatch_consumer_path: SynPath,
+}
+
+fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
+    let (device, dispatchers, consumer) = match deploy {
+        "rtic-stm32f4" => (
+            "stm32f4xx_hal::pac",
+            &["USART1", "USART2"][..],
+            "::nros_board_rtic_stm32f4::take_dispatch_consumer",
+        ),
+        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => (
+            "mps2_an385_pac",
+            &["UARTRX0", "UARTTX0"][..],
+            "::nros_board_rtic_mps2_an385::take_dispatch_consumer",
+        ),
+        _ => return None,
+    };
+    Some(RticBoardSpec {
+        device_path: syn::parse_str::<SynPath>(device).ok()?,
+        dispatchers: dispatchers
+            .iter()
+            .map(|name| Ident::new(name, Span::call_site()))
+            .collect(),
+        dispatch_consumer_path: syn::parse_str::<SynPath>(consumer).ok()?,
+    })
 }
 
 /// Phase 216.B.3 — boot-framework dispatch for `nros::main!()`.
@@ -1120,7 +1167,7 @@ enum Framework {
 
 fn framework_for(deploy: &str) -> Framework {
     match deploy {
-        "rtic-stm32f4" => Framework::Rtic,
+        "rtic-stm32f4" | "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => Framework::Rtic,
         "embassy-stm32f4" => Framework::Embassy,
         _ => Framework::OwnedSpin,
     }

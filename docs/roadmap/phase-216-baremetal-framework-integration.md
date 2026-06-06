@@ -36,6 +36,26 @@ naming (see "Trait surface after 212.N.12 + 214.K.1" below).
   read from when it lands.
 * **216.E.1 / E.2 / E.3** remain explicitly deferred per spec.
 
+**Status update 2026-06-06.** 216.B validation is emulator-first. The
+STM32F4 RTIC examples remain useful cross-compile portability coverage, but
+they cannot be the end-to-end gate because this project only has emulator
+hardware in CI/local validation. The E2E proof now targets QEMU MPS2-AN385:
+
+* Add an RTIC board-entry crate for MPS2 (`nros-board-rtic-mps2-an385`) that
+  reuses the existing `nros-board-mps2-an385` LAN9118/semihosting bringup,
+  implements `RticBoardEntry`, and exposes the same deferred SPSC runtime
+  shape as the STM32F4 RTIC board.
+* Make the `nros::main!()` RTIC branch board-descriptor driven instead of
+  STM32F4-literal driven. The macro must vary the RTIC `device = ...`,
+  `dispatchers = [...]`, and dispatch-consumer accessor per deploy key.
+* Add a bounded QEMU RTIC Entry fixture that uses `nros::main!()` and
+  `node_pkgs = [...]`, then exits through semihosting after proving a
+  generated Node callback fired through `Executor::dispatch_callback`.
+* Keep the explicit `node_pkgs` -> `<pkg>::register_dispatch(&mut executor)`
+  path as the v1 registration mechanism. The older linkme/section-walk idea
+  is retired for 216.B because embedded linker-section behavior is harder to
+  validate and unnecessary once Entry metadata names the Node packages.
+
 **Priority.** P1 — bare-metal framework support is in tree (RTIC + Embassy
 + stm32f4 examples) but uses Pattern A escape-hatch (`Executor::open` +
 hand-written `spin_once` loops) instead of the Phase 212.N.9 `nros::main!()`
@@ -142,12 +162,23 @@ Existing closure-based API stays for Inline. Macro lint rejects mixed use.
   is the new trait).
 
 `nros::main!()` proc-macro inspects the Entry pkg's deploy target,
-discovers the board crate's framework metadata
-(`[package.metadata.nros.board] framework = "rtic"`), and emits a
-`#[rtic::app(...)]` module with two auto-generated tasks: `__nros_spin`
-(low priority; calls `executor.spin_once(0)` + monotonic yield) and
-`__nros_dispatch` (drains the SPSC queue + routes signaled callbacks to
-the right Component's `on_callback` via the per-pkg FFI trampoline).
+looks up a small RTIC board descriptor (board ZST path, PAC module path,
+dispatcher interrupts, dispatch-consumer accessor), and emits a
+`#[rtic::app(...)]` module. The first landed body collapsed the earlier
+two-task sketch into one `__nros_run` software task because RTIC local
+resources are claimed exclusively and both `spin_once` and deferred
+callback dispatch need mutable access to the same executor. The task:
+
+1. calls `executor.spin_once(Duration::from_millis(1))`,
+2. drains the board runtime's SPSC consumer, and
+3. forwards every `(cb_id, ctx_ptr)` into `Executor::dispatch_callback`.
+
+Node packages are registered explicitly from Entry metadata:
+`[package.metadata.nros.entry] node_pkgs = ["pkg_a", ...]`. For each entry,
+the macro emits `<pkg>::register_dispatch(&mut executor)`, and the
+`nros::node!()` expansion pushes `(state_ptr,
+__nros_node_<pkg>_on_callback)` into the executor's dispatch-slot table.
+This replaces the pre-refresh linkme/section-walk idea for 216.B.
 
 User custom RTIC tasks via `nros::main!(custom_tasks = [my_adc, my_ui])`
 syntax — proc-macro folds extra task fns into the generated module.
@@ -419,8 +450,24 @@ forbids Deferred Nodes from using closure-based registration.
       **Landed (skeleton):** `ab5fd5e9d` (crate skeleton +
       `RticBoardEntry` impl) + `b5b371d09` (followup: `RticRuntime`
       SPSC + `signal_callback` impl).
-      **Remaining:** `init_hardware` body is `todo!()` — needs the
-      stm32f4xx_hal clock/USART/SPI bringup wiring.
+      **Landed (follow-up):** `init_hardware` now delegates to the
+      direct-exec `nros-board-stm32f4` bringup, registers the zenoh RMW
+      explicitly, opens `nros::Executor`, and splits the deferred SPSC
+      queue. Remaining STM32F4 work is portability validation only; it is
+      no longer the E2E gate.
+
+- [ ] **216.B.2.qemu** — `nros-board-rtic-mps2-an385` emulator board:
+      `packages/boards/nros-board-rtic-mps2-an385/`. Provides:
+      * `Pac = mps2_an385_pac::Peripherals`,
+      * `RticMps2An385: Board + RticBoardEntry`,
+      * `RticRuntime: NodeDispatchRuntime` with `DispatchStrategy::Deferred`
+        and SPSC-backed `signal_callback`,
+      * QEMU/slirp-friendly hardware init that delegates to
+        `nros_board_mps2_an385::init_hardware(&Config)`, registers zenoh
+        RMW, opens `nros::Executor`, and stashes the SPSC consumer for
+        `__nros_run`.
+      `[package.metadata.nros.board] framework = "rtic"` so `nros check`
+      can validate `(rtic, deferred)` workspaces.
 
 - [~] **216.B.3** — `nros::main!()` proc-macro RTIC routing branch:
       ```rust
@@ -470,10 +517,13 @@ forbids Deferred Nodes from using closure-based registration.
       **Landed (skeleton):** `d8ce91226` (RTIC routing branch in
       `nros::main!()`) + `b8e5f76f8` (followup: spawn `__nros_spin`
       + `__nros_dispatch` tasks).
-      **Remaining:** task bodies are placeholders. Spin task is a
-      stub; dispatch task needs the per-Node trampoline-registration
-      story (linkme section walk over the
-      `__nros_node_<pkg>_on_callback` ABI emitted by 216.A.5).
+      **Landed (follow-up):** the branch now registers explicit
+      `node_pkgs`, spawns a collapsed `__nros_run` task, drives
+      `executor.spin_once`, drains the board SPSC consumer, and forwards
+      callbacks to `Executor::dispatch_callback`.
+      **Remaining:** make RTIC board emit descriptor-driven so the same
+      branch supports both `rtic-stm32f4` and the emulator deploy key
+      `rtic-mps2-an385`.
 
 - [x] **216.B.4** — `nros::main!(custom_tasks = [my_adc, my_ui])`
       syntax. Proc-macro folds extra `#[rtic_task]`-annotated fns into
@@ -532,15 +582,30 @@ forbids Deferred Nodes from using closure-based registration.
       end-to-end on real or QEMU hardware".)
       **Files**: same set as 216.B.5.
 
+- [ ] **216.B.7** — Emulator E2E gate. Add a QEMU MPS2-AN385 RTIC Entry
+      fixture using the real 216.B UX:
+      ```rust
+      #![no_std]
+      #![no_main]
+      use panic_semihosting as _;
+      nros::main!();
+      ```
+      with `[package.metadata.nros.entry] deploy = "rtic-mps2-an385"` and
+      `node_pkgs = [...]`. The fixture must be bounded and semihosting-exit
+      with success after a generated Deferred Node's `on_callback` fires
+      through the RTIC SPSC queue and `Executor::dispatch_callback`.
+      STM32F4 remains compile-only coverage; QEMU is the required E2E
+      validation path.
+
 - **Tests:**
   - [ ] `phase216_b_rtic_main_macro_expansion` — UI test asserts
         `nros::main!()` for an `rtic-stm32f4` deploy target expands to
         the expected `#[rtic::app]` skeleton.
-  - [ ] `phase216_b_rtic_callback_dispatch_e2e` — talker (pub) +
-        listener (sub, Deferred) over zenoh-pico loopback on QEMU
-        thumbv7m. Listener's `on_callback` fires from
-        `__nros_dispatch` task; spin task doesn't reach the callback
-        body.
+  - [ ] `phase216_b_rtic_callback_dispatch_e2e` — QEMU MPS2-AN385
+        generated Entry fixture. A Deferred Node callback is signaled,
+        queued by the RTIC runtime, drained by `__nros_run`, dispatched
+        via `Executor::dispatch_callback`, and the firmware exits
+        success through semihosting.
 
 ### 216.C — Embassy integration
 

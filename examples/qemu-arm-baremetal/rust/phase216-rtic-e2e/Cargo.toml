@@ -1,0 +1,36 @@
+[package]
+name = "qemu-rtic-main-e2e"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 216.B generated nros::main RTIC E2E fixture for QEMU MPS2-AN385"
+
+[[bin]]
+name = "qemu-rtic-main-e2e"
+test = false
+bench = false
+
+[package.metadata.nros.entry]
+deploy = "rtic-mps2-an385"
+node_pkgs = ["phase216_rtic_e2e_pkg"]
+
+[dependencies]
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385", features = ["e2e-synthetic-callback"] }
+phase216_rtic_e2e_pkg = { path = "../phase216_rtic_e2e_pkg" }
+mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }
+rtic = { version = "2.1", features = ["thumbv7-backend"] }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = "s"
+overflow-checks = false
+
+[workspace]

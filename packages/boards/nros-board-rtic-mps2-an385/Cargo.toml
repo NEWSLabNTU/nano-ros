@@ -1,0 +1,37 @@
+[package]
+name = "nros-board-rtic-mps2-an385"
+version = "0.5.0"
+publish = false
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "RTIC board-entry crate for QEMU MPS2-AN385 validation"
+authors = ["nano-ros contributors"]
+repository = "https://github.com/NEWSLabNTU/nano-ros"
+keywords = ["nano-ros", "ros2", "rtic", "qemu", "embedded"]
+categories = ["embedded", "no-std", "hardware-support"]
+
+[lib]
+name = "nros_board_rtic_mps2_an385"
+
+[package.metadata.nros.board]
+framework = "rtic"
+
+[dependencies]
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385", "global-allocator", "critical-section"] }
+nros-board-mps2-an385 = { path = "../nros-board-mps2-an385" }
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5"
+mps2-an385-pac = { path = "../mps2-an385-pac" }
+rtic = { version = "2.1", features = ["thumbv7-backend"] }
+heapless = "0.8"
+
+[features]
+default = ["ethernet", "rmw-zenoh"]
+rmw-zenoh = []
+ethernet = ["nros-board-mps2-an385/ethernet"]
+e2e-synthetic-callback = []
+
+[workspace]

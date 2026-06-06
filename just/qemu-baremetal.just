@@ -220,6 +220,39 @@ test-lan9118 verbose="": build
             -semihosting-config enable=on,target=native \
             -kernel packages/testing/nros-tests/bins/lan9118-qemu/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rs-lan9118
 
+# Build the Phase 216.B generated-entry RTIC E2E fixture.
+[group("debug")]
+build-rtic-main-e2e:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    cd examples/qemu-arm-baremetal/rust/phase216-rtic-e2e
+    cargo build $cargo_profile_args --quiet
+
+# Run the Phase 216.B generated-entry RTIC E2E fixture on QEMU MPS2-AN385.
+[group("debug")]
+test-rtic-main-e2e verbose="": build-rtic-main-e2e
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{LOG_DIR}}/latest
+    if ! command -v zenohd >/dev/null 2>&1; then
+        echo "QEMU RTIC E2E skip: zenohd not found"
+        exit 0
+    fi
+    zenoh_log={{LOG_DIR}}/latest/qemu-rtic-main-e2e-zenohd.log
+    zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting > "$zenoh_log" 2>&1 &
+    zenoh_pid=$!
+    trap 'kill "$zenoh_pid" 2>/dev/null || true; wait "$zenoh_pid" 2>/dev/null || true' EXIT
+    sleep 0.5
+    ./tests/run-test.sh --name qemu-rtic-main-e2e --log {{LOG_DIR}}/latest/qemu-rtic-main-e2e.log \
+        --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
+        {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
+            -icount shift=auto \
+            -semihosting-config enable=on,target=native \
+            -kernel examples/qemu-arm-baremetal/rust/phase216-rtic-e2e/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rtic-main-e2e \
+            -nic user,model=lan9118
+
 # Run all QEMU tests including networked E2E and RTIC
 [group("full-matrix")]
 test-all verbose="":
