@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # Generate and run a temporary make graph for manifest-driven fixture leaves.
 #
-# Phase 226 skeleton only: this is deliberately not wired into just recipes yet.
-# For now it emits native fixture groups and calls the existing grouped builder
-# (scripts/build/fixtures-build.sh <platform> <lang> [rmw]) as each make leaf.
+# Phase 226: this emits selected fixture groups and calls the existing grouped
+# builder (scripts/build/fixtures-build.sh <platform> <lang> [rmw]) as each
+# make leaf.
 set -euo pipefail
 
 usage() {
     cat >&2 <<'EOF'
-usage: scripts/build/fixture-make-driver.sh [--dry-run] [--keep] <platform|all|native-cyclonedds-rust>
+usage: scripts/build/fixture-make-driver.sh [--dry-run] [--keep] <platform|all|native-cyclonedds-rust|native-cyclonedds-cmake>
 
 Generates a temporary makefile, joblog, and leaf logs under build/fixture-make-driver/.
 Current scope:
   native                  native manifest-driven fixture groups
   native-cyclonedds-rust  native Rust talker/listener Cyclone pure-Cargo leaves
+  native-cyclonedds-cmake native C/C++ Cyclone CMake fixture groups
 
 Options:
   --dry-run, -n   generate and print the make command without executing it
@@ -57,11 +58,11 @@ if [ -z "$scope" ]; then
 fi
 
 case "$scope" in
-    native|all|native-cyclonedds-rust)
+    native|all|native-cyclonedds-rust|native-cyclonedds-cmake)
         ;;
     *)
         echo "fixture-make-driver: unsupported platform for skeleton: $scope" >&2
-        echo "fixture-make-driver: current scope is native manifest groups and native Cyclone Rust leaves only" >&2
+        echo "fixture-make-driver: current scope is native manifest groups and native Cyclone Rust/CMake leaves only" >&2
         exit 2
         ;;
 esac
@@ -128,6 +129,17 @@ PY
                 label="native rust cyclonedds $role"
                 command="cd examples/native/rust/$role && cargo build \$\${NROS_CARGO_PROFILE_ARGS:-} --no-default-features --features rmw-cyclonedds --target-dir target-cyclonedds"
                 printf '%s\tnative\trust\tcyclonedds\t%s\t%s\t%s\n' "$target" "$label" "$name" "$command"
+            done
+        } >"$leaf_file"
+        ;;
+    native-cyclonedds-cmake)
+        {
+            for lang in c cpp; do
+                name="native-$lang-cyclonedds"
+                target="fixture-$name"
+                label="native $lang cyclonedds"
+                command="NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native $lang cyclonedds"
+                printf '%s\tnative\t%s\tcyclonedds\t%s\t%s\t%s\n' "$target" "$lang" "$label" "$name" "$command"
             done
         } >"$leaf_file"
         ;;

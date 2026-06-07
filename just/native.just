@@ -218,8 +218,7 @@ build-fixture-extras:
     # fixtures build cleanly here. These cells are manifest rows and run through
     # fixtures-build.sh, preserving the incremental build-cyclonedds directories.
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py"
-    bash scripts/build/fixtures-build.sh native c cyclonedds
-    bash scripts/build/fixtures-build.sh native cpp cyclonedds
+    bash scripts/build/fixture-make-driver.sh native-cyclonedds-cmake
     unset NROS_CMAKE_EXTRA_DEFS
 
 # Build every native tier: core artifacts, Rust/C/C++ examples, and test fixtures.

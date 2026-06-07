@@ -905,6 +905,113 @@ Validation performed in Wave 4:
 
 No full NuttX or ESP32 fixture build was run in this wave.
 
+### Parallel Wave 5 — Native Rust Cyclone Make Driver
+
+Started 2026-06-07. Scope was the low-risk native make-driver wiring
+identified by the Wave 4 investigation.
+
+- [x] FreeRTOS and ThreadX smoke rows: add stable manifest IDs for
+      FreeRTOS MPS2, ThreadX Linux, and ThreadX RISC-V logging-smoke
+      fixtures, then build those smoke rows through `fixtures-build.sh
+      --id`.
+- [x] Native pure-Cargo Cyclone Rust leaves: add a
+      `native-cyclonedds-rust` make-driver scope for the Rust talker and
+      listener, keeping the recipe-owned `nros ws sync` preflight and
+      `target-cyclonedds/` target dirs.
+- [x] Wire `just native build-fixture-extras` to run the native Cyclone
+      Rust leaves through `scripts/build/fixture-make-driver.sh` before
+      the existing native C/C++ fixture passes.
+
+Validation performed in Wave 5:
+
+- `bash -n scripts/build/fixture-make-driver.sh scripts/build/fixtures-build.sh`
+- `scripts/build/fixture-make-driver.sh --dry-run native-cyclonedds-rust`
+- `scripts/build/fixture-make-driver.sh --dry-run native`
+- `scripts/build/fixture-make-driver.sh native-cyclonedds-rust`
+  intentionally failed when run directly against stale generated message
+  code, validating failure tails, status files, and joblog emission.
+- `XDG_RUNTIME_DIR=/tmp NROS_CLI=/home/aeon/repos/nano-ros/packages/cli/target/release/nros just native build-fixture-extras`
+  passed. The recipe preflight regenerated stale native Rust message
+  code first, then the make-driver built both native Cyclone Rust leaves
+  successfully:
+  - `fixture-native-rust-cyclonedds-talker`: ok, 39 s
+  - `fixture-native-rust-cyclonedds-listener`: ok, 39 s
+
+Observed follow-up during validation:
+
+- The remaining slow path is the existing native C/C++ fixture tail.
+  It still launches separate CMake/Corrosion build trees for Zenoh,
+  XRCE, and CycloneDDS examples. The run repeatedly compiled shared
+  Rust crates, `nros-c`, `nros-cpp`, C++ FFI glue, and CycloneDDS/type
+  support in per-example build dirs.
+- Follow-up inspection found no active unconditional native
+  `rm -rf build-cyclonedds` in normal fixture builds. Build dirs are
+  removed by native clean recipes and by helper generator-switch cleanup
+  only. The real warm-build issue is isolated per-example CMake and
+  Corrosion state plus C/C++ manifest cells still using GNU parallel.
+- The next implementation slice should focus on native C/C++ Cyclone
+  make-driver routing and measurement before any shared Corrosion target
+  directory change.
+
+Wave 6 candidate from this point:
+
+1. Add a `native-cyclonedds-cmake` make-driver scope for the native
+   Cyclone C/C++ manifest rows, implemented first as grouped C and C++
+   leaves. Keep per-example CMake build dirs isolated.
+2. Route only `just native build-fixture-extras` Cyclone C/C++ passes
+   through that scope. Keep Zenoh/XRCE unchanged initially.
+3. Capture focused before/after metrics with
+   `scripts/build/phase226-cxx-eff.sh` for one C cell, one C++ cell, and
+   the full native Cyclone C/C++ matrix. Count real `Compiling nros-c`,
+   `Compiling nros-cpp`, object builds, link steps, and sccache stats.
+4. Leave Zephyr scheduling out of this slice. It still needs a
+   Zephyr-specific leaf runner that preserves the parent preflight,
+   signature/cache decision, `west build` versus `ninja -C` selection,
+   nested job budgeting, and logging-smoke handling.
+
+### Parallel Wave 6 — Native Cyclone C/C++ Make Driver
+
+Started 2026-06-07. Scope was the next low-risk native C/C++ slice
+identified by Wave 5.
+
+- [x] Add a `native-cyclonedds-cmake` make-driver scope.
+- [x] Generate two grouped make leaves:
+      `fixture-native-c-cyclonedds` and
+      `fixture-native-cpp-cyclonedds`.
+- [x] Run each grouped leaf with `NROS_JOBSERVER=1
+      scripts/build/fixtures-build.sh native <c|cpp> cyclonedds`, so the
+      inner manifest builder serializes its rows instead of invoking GNU
+      parallel.
+- [x] Route only the Cyclone C/C++ tail of
+      `just native build-fixture-extras` through the new make-driver
+      scope. Zenoh and XRCE C/C++ passes remain unchanged.
+
+Validation performed in Wave 6:
+
+- `bash -n scripts/build/fixture-make-driver.sh scripts/build/fixtures-build.sh`
+- `scripts/build/fixture-make-driver.sh --dry-run native-cyclonedds-cmake`
+- `just --list --justfile just/native.just`
+- Direct focused run with the same Cyclone CMake definitions used by
+  `just native build-fixture-extras`:
+  - `fixture-native-c-cyclonedds`: ok, 14 s
+  - `fixture-native-cpp-cyclonedds`: ok, 2 s
+- `XDG_RUNTIME_DIR=/tmp NROS_CLI=/home/aeon/repos/nano-ros/packages/cli/target/release/nros NROS_BUILD_JOBS=8 just native build-fixture-extras`
+  passed. The native Cyclone C/C++ make-driver joblog recorded both
+  grouped leaves as successful:
+  - `fixture-native-c-cyclonedds`: ok, 7 s
+  - `fixture-native-cpp-cyclonedds`: ok, 7 s
+
+Remaining native C/C++ work:
+
+- Measure the per-example CMake/Corrosion warm-build behavior before any
+  shared target-dir change. The current wave deliberately kept isolated
+  `build-${rmw}` directories.
+- Decide whether Zenoh and XRCE C/C++ fixture passes should also route
+  through the make-driver after the Cyclone path remains stable.
+- Keep Zephyr scheduling out of the native cleanup. Zephyr still needs a
+  dedicated leaf runner that preserves its preflight and `west build`
+  versus `ninja -C` boundary.
+
 ### Wave 2 Findings — Manifest Coverage Cleanup Plan
 
 Recommended follow-up order:
@@ -987,11 +1094,11 @@ Acceptance:
 
 ### 226.B — Introduce a Fixture Make Driver
 
-- [ ] Add a script that emits or invokes a makefile for one platform or
+- [x] Add a script that emits or invokes a makefile for one platform or
       for the full fixture matrix.
-- [ ] Use pinned GNU make 4.4 fifo mode when available.
-- [ ] Use ordinary make `-j` fallback when pinned make/ninja are absent.
-- [ ] Keep logging/joblog behavior equivalent or better than today's
+- [x] Use pinned GNU make 4.4 fifo mode when available.
+- [x] Use ordinary make `-j` fallback when pinned make/ninja are absent.
+- [x] Keep logging/joblog behavior equivalent or better than today's
       `tmp/build-test-fixtures-latest`.
 
 Acceptance:
@@ -1003,7 +1110,10 @@ Acceptance:
 
 ### 226.C — Remove Hidden Fan-Out
 
-- [ ] Replace native Cyclone raw `&` / `wait` loops with make leaves.
+- [x] Replace native pure-Cargo Cyclone Rust raw `&` / `wait` loops with
+      make leaves.
+- [x] Replace native Cyclone C/C++ fixture fan-out with grouped make
+      leaves for the Cyclone C and C++ manifest passes.
 - [ ] Replace Zephyr shell-array background scheduling with make leaves.
 - [ ] Remove fixture-path GNU parallel calls.
 - [ ] Remove explicit Ninja/CMake/Cargo job flags from jobserver leaves.
