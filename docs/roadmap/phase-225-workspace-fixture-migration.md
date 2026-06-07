@@ -536,90 +536,157 @@ Reference conclusions:
 
 Design decision:
 
-- Stable node/entity/callback IDs stay in nano-ros metadata and
-  generated runtime wiring. They are needed for duplicate detection,
-  entity-to-node association, callback-effect planning, and advanced
-  multi-node packages.
-- Stable IDs must not be mandatory in the normal one-node authoring API.
-  Product examples should create nodes by name/options and create
-  entities by topic/service/action/timer/callback data. The API should
-  synthesize stable IDs and expose explicit IDs only through advanced
-  functions.
-- Default node ID synthesis: `sanitize(options.name)`.
-- Default entity ID synthesis: `<kind>_<sanitized_source>`, for example
-  `pub_chatter`, `sub_chatter`, `timer_on_tick`, `srv_add_two_ints`.
-- If synthesis collides inside one Node pkg, registration fails with a
-  diagnostic telling the author to use the explicit-ID advanced API.
+- User-authored Node APIs describe ROS graph semantics only: source
+  default node name, namespace/options, topic/service/action names,
+  message/service/action types, QoS, callbacks, and callback effects.
+- Users must not author nano-ros internal IDs in normal source code.
+  `NodeId`, `EntityId`, `CallbackId`, raw `.stable_id`, `.node_id`, and
+  `.callback_id` are generated/build internals, not product API.
+- Metadata extraction records declarations as structural slots local to
+  the Node pkg, for example `NodeSlot(0)`, `EntitySlot(2)`, and
+  `CallbackSlot(1)`. These slots are assigned by declaration order and
+  are referenced through returned handles.
+- `nros codegen-system` expands launch instances and assigns
+  workspace-scoped generated IDs. Generated IDs are deterministic for a
+  fixed launch/metadata input, but they are not user-facing names.
+- ROS graph names stay separate from generated IDs. Source code may
+  provide a default node name, matching ROS 2 `rclcpp::Node("talker")`;
+  launch `name=` overrides it. If launch omits `name=`, codegen uses the
+  source default. If neither is statically known, workspace codegen
+  fails and asks the user to set `name=`.
+- Build-time audit validates the effective graph names after launch
+  expansion. `(domain_id, namespace, effective_node_name)` must be
+  unique in one generated system. Duplicate fallback names are build
+  errors with launch/source locations, not runtime surprises.
+- Single-node apps may rely on the source default name. Workspaces may
+  omit `name=` for ROS 2 compatibility, but generated systems must pass
+  the same uniqueness audit.
 
-API tiering:
+Implications:
 
-- **Tier 1: ROS-shaped authoring API** - used by examples and docs.
-  Node creation takes name/options only; entity creation takes
-  topic/service/action name, type, QoS/options, and callback data; IDs
-  are synthesized.
-- **Tier 2: explicit metadata API** - kept for generated code,
-  diagnostic tests, and advanced multi-node packages. Existing
-  `NodeId`, `EntityId`, raw descriptors, and ABI symbols remain
-  compatible but should not be the product-example default.
+- The source default name is not an ID. Renaming a node in launch must not
+  affect codegen-internal identity or callback dispatch wiring.
+- Returned handles are the only way product code relates callbacks to
+  entities. Example: `timer.publishes(&publisher)`, not
+  `publishes(EntityId::new("pub_chatter"))`.
+- Dynamic source names are allowed only where no build-time system audit
+  needs them. In workspace mode, a dynamic source default requires
+  launch `name=`.
+- Old explicit-ID paths remain temporarily for generated code,
+  compatibility tests, and migration, then move behind internal/generated
+  namespaces or feature gates.
 
 Acceptance:
 
-- Phase 225 records that Node IDs are internally necessary but should be
-  hidden/defaulted in the user-facing common path.
-- API work items below distinguish non-breaking ergonomic additions from
-  explicit metadata compatibility.
+- Phase 225 records that internal IDs are generated codegen artifacts,
+  not user-authored stable strings.
+- The implementation work below is organized around metadata extraction,
+  codegen identity assignment, public API migration, and removal of old
+  manual-ID paths.
 
-### 225.N - Rust/C/C++ Node-Pkg API Work Items
+### 225.N - Generated-ID Node API Redesign
 
-Rust:
+Metadata extraction and planning:
 
-- [x] Add a name/options-only `NodeContext::create_node(...)` or
-  equivalent Tier 1 API.
-- [x] Keep `create_node_with_id(id, options)` or equivalent explicit
-  Tier 2 API.
-- [x] Add publisher/subscription/timer declaration helpers that
-  synthesize `EntityId`.
-- [ ] Add service/action declaration helpers that synthesize `EntityId`.
-- [x] Add callback-effect helpers that accept returned handles or
-  callback names without repeating unrelated entity ID strings.
-- [x] Migrate promoted Rust workspace and template Node pkgs to Tier 1.
-- [x] Keep explicit-ID tests and add synthesis-collision diagnostics.
+- [ ] Change metadata records from user-authored stable strings to
+  structural slots: node slot, entity slot, callback slot, and source
+  location.
+- [ ] Record source default node name as metadata, separate from the
+  generated node slot.
+- [ ] Represent callback effects as slot/handle relations, not string ID
+  relations.
+- [ ] Teach metadata JSON/plan schemas to preserve source defaults,
+  declaration slots, source locations, and launch instance provenance.
+- [ ] Update planner/codegen to assign workspace-scoped generated IDs
+  after launch expansion.
+- [ ] Add build-time effective-node-name resolution:
+  `launch.name` > static source default > error.
+- [ ] Add build-time uniqueness audit for `(domain_id, namespace,
+  effective_node_name)`, with diagnostics that point at launch rows and
+  source declarations.
+- [ ] Reject dynamic/unknown source default names in workspace mode when
+  launch omits `name=`.
 
-C:
+Rust public API:
 
-- [x] Add rclc-shaped declared-node helpers:
-  `nros_declared_node_init_default` and
-  `nros_declared_node_init_with_options`.
-- [x] Add declared publisher/subscription/timer helpers that take
-  handles, type metadata, topic/period, and optional QoS/options.
-- [x] Keep raw `nros_node_entity_descriptor_t` as the explicit metadata
-  tier, with naming/docs that make advanced use intentional.
-- [x] Migrate promoted C workspace Node pkgs away from raw descriptor
-  literals.
+- [ ] Replace `create_node_with_options` with the normal spelling
+  `create_node(options)` once the old explicit-ID overload is retired or
+  moved.
+- [x] Add publisher/subscription/timer helpers that avoid public
+  `EntityId`.
+- [ ] Add service/action helpers that avoid public `EntityId` and
+  callback IDs.
+- [x] Add callback-effect helpers that accept returned handles.
+- [ ] Replace callback dispatch APIs that expose `CallbackId` to product
+  code with generated callback registration/typed callback hooks.
+- [ ] Keep `NodeId`, `EntityId`, and `CallbackId` only in internal or
+  generated modules.
+- [ ] Migrate promoted Rust workspace and templates to zero manual IDs.
+- [ ] Migrate hidden Rust fixtures and orchestration E2E workspaces away
+  from manual IDs where they are not explicitly testing legacy behavior.
 
-C++:
+C public API:
 
-- [x] Add `NodeContext::create_node(out, const NodeOptions&)` with
-  synthesized stable ID.
-- [x] Keep `NodeContext::create_node(out, stable_id, options)` as the
-  explicit metadata API.
+- [x] Add rclc-shaped declared-node init helpers.
+- [ ] Replace C entity helpers that take `stable_id` strings with
+  handle-returning helpers, for example
+  `nros_declared_node_create_publisher(&node, &publisher, topic, type,
+  qos)`.
+- [ ] Add callback/effect helpers that accept C handles, not string IDs.
+- [ ] Move raw `nros_node_entity_descriptor_t` and string-ID helpers to
+  generated/internal headers.
+- [ ] Migrate promoted C workspace and templates to zero manual IDs.
+
+C++ public API:
+
+- [x] Add `NodeContext::create_node(out, const NodeOptions&)`.
 - [x] Add typed `DeclaredNode::create_publisher<T>(topic, qos)` and
-  related helpers where message type metadata is available.
+  `create_subscription<T>(topic, callback, qos)` helpers.
 - [x] Add `rclcpp::NodeOptions` support to `rclcpp_compat.hpp`.
 - [x] Update `rclcpp_components_register_node()` generated entry to
   instantiate `T(rclcpp::NodeOptions{})` when that constructor exists.
-- [x] Migrate promoted C++ workspace Node pkgs to the best available
-  Tier 1 API.
+- [ ] Replace declared-node helpers that take `stable_id` strings with
+  handle-returning helpers for publisher/subscription/timer/service/action.
+- [ ] Add declared callback/effect helpers that accept handles or
+  callables, not string IDs.
+- [ ] Move `NodeEntityDescriptor` raw string-ID APIs to generated/internal
+  headers.
+- [ ] Migrate promoted C++ workspace and templates to zero manual IDs.
+
+Old path removal:
+
+- [ ] Mark public manual-ID constructors/APIs deprecated once the
+  generated-ID path is available for all promoted examples.
+- [ ] Move Rust `NodeId`, `EntityId`, and `CallbackId` imports out of
+  the public prelude/docs for product authoring.
+- [ ] Move C/C++ raw descriptor headers or members behind generated-only
+  include paths, keeping ABI shims only where codegen still needs them.
+- [ ] Delete migration-only tests that assert user-authored duplicate ID
+  behavior; replace them with generated-slot and duplicate graph-name
+  audit tests.
+- [ ] Update book and README examples so no product path teaches manual
+  IDs.
+
+Implementation order:
+
+1. Add generated slot metadata beside the current string IDs.
+2. Teach codegen/planner to consume slots and emit generated IDs.
+3. Migrate public APIs and examples to handles only.
+4. Flip diagnostics/tests to graph-name and slot-based validation.
+5. Deprecate, hide, then remove old manual-ID paths.
 
 Acceptance:
 
-- Product Rust examples contain no `NodeId::new("node")`.
-- Product C examples do not set `.stable_id` or `.node_id` directly for
-  simple topic/timer entities.
-- Product C++ examples no longer require `"node"` stable-ID boilerplate.
-- Real upstream `composition::Talker`-style constructors are accepted by
-  the hosted compatibility path.
-- Static-link composition remains explicit and deterministic.
+- Product examples contain no `NodeId::new`, `EntityId::new`,
+  `CallbackId::new`, `.stable_id`, `.node_id`, or `.callback_id`.
+- Launch `name=` is optional, but omitting it requires a statically known
+  source default node name.
+- Duplicate effective node names are diagnosed during build/codegen with
+  launch and source locations.
+- Real upstream `composition::Talker(const rclcpp::NodeOptions&)`-style
+  constructors are accepted by the hosted compatibility path.
+- Static-link composition remains explicit and deterministic, with
+  generated IDs hidden inside generated code.
 
 ### 225.O - Workspace Topology and Mixed-Language Fixes
 
