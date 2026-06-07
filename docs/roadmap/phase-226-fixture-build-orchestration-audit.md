@@ -1007,10 +1007,63 @@ Remaining native C/C++ work:
   shared target-dir change. The current wave deliberately kept isolated
   `build-${rmw}` directories.
 - Decide whether Zenoh and XRCE C/C++ fixture passes should also route
-  through the make-driver after the Cyclone path remains stable.
+  through the make-driver after the Cyclone path remains stable. Done in
+  Wave 7.
 - Keep Zephyr scheduling out of the native cleanup. Zephyr still needs a
   dedicated leaf runner that preserves its preflight and `west build`
   versus `ninja -C` boundary.
+
+### Parallel Wave 7 — Native CMake RMW Groups and No GNU Parallel
+
+Started 2026-06-07. Scope was the remaining native C/C++ fixture
+orchestration and the shared manifest builder's GNU parallel fallback.
+
+- [x] Add a `native-cmake-rmw` make-driver scope for the native Zenoh
+      and XRCE C/C++ manifest groups.
+- [x] Route the native Zenoh/XRCE C/C++ tail of
+      `just native build-fixture-extras` through the new make-driver
+      scope. Cyclone C/C++ remains in its own scope because it needs the
+      Cyclone IDL/codegen CMake definitions.
+- [x] Replace `scripts/build/fixtures-build.sh` GNU parallel fallback
+      with a temporary makefile fallback. When `NROS_JOBSERVER=1` is
+      set, it still runs serially so nested tools inherit the outer fifo
+      jobserver.
+- [x] Add random suffixes to generated make-driver and manifest-builder
+      makefile names so simultaneous dry-runs/builds cannot collide on
+      the same timestamp.
+
+Validation performed in Wave 7:
+
+- `bash -n scripts/build/fixtures-build.sh`
+- `bash -n scripts/build/fixture-make-driver.sh`
+- `scripts/build/fixture-make-driver.sh --dry-run native-cmake-rmw`
+- `scripts/build/fixture-make-driver.sh --dry-run native-cyclonedds-cmake`
+- `rg -n "parallel --jobs|command -v parallel|\bparallel\b" scripts/build/fixtures-build.sh scripts/build/fixture-make-driver.sh just/native.just`
+  now finds no executable GNU parallel call in fixture scheduling paths.
+  Remaining `just/native.just` matches are non-fixture example/check
+  recipes.
+- Direct manifest-builder fallback:
+  `NROS_BUILD_JOBS=4 scripts/build/fixtures-build.sh native c zenoh`
+  passed after fixing generated makefile quoting for unit-separator
+  fixture records. Ninja reported fifo jobserver mode.
+- `XDG_RUNTIME_DIR=/tmp NROS_CLI=/home/aeon/repos/nano-ros/packages/cli/target/release/nros NROS_BUILD_JOBS=8 just native build-fixture-extras`
+  passed. Warm joblog timings:
+  - `fixture-native-c-zenoh`: ok, 2 s
+  - `fixture-native-c-xrce`: ok, 2 s
+  - `fixture-native-cpp-zenoh`: ok, 3 s
+  - `fixture-native-cpp-xrce`: ok, 2 s
+  - `fixture-native-c-cyclonedds`: ok, 1 s
+  - `fixture-native-cpp-cyclonedds`: ok, 1 s
+
+Remaining implementation work:
+
+- Zephyr still owns shell-array background scheduling. The safe migration
+  needs a Zephyr one-leaf runner that preserves the existing preflight,
+  signature/cache decision, `west build` versus `ninja -C` selection,
+  nested job budgeting, logging-smoke handling, and logs under
+  `build/zephyr-fixtures`.
+- Explicit nested job flags remain in platform recipes for non-jobserver
+  fallback and in Zephyr's current scheduler.
 
 ### Wave 2 Findings — Manifest Coverage Cleanup Plan
 
@@ -1115,7 +1168,7 @@ Acceptance:
 - [x] Replace native Cyclone C/C++ fixture fan-out with grouped make
       leaves for the Cyclone C and C++ manifest passes.
 - [ ] Replace Zephyr shell-array background scheduling with make leaves.
-- [ ] Remove fixture-path GNU parallel calls.
+- [x] Remove fixture-path GNU parallel calls.
 - [ ] Remove explicit Ninja/CMake/Cargo job flags from jobserver leaves.
 
 Acceptance:

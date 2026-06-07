@@ -205,10 +205,7 @@ build-fixture-extras:
     # NROS_CMAKE_EXTRA_DEFS contract. The cpp/parameters cell (target
     # cpp_parameters) is a manifest row too, so it builds in the same pass.
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON"
-    bash scripts/build/fixtures-build.sh native c zenoh
-    bash scripts/build/fixtures-build.sh native c xrce
-    bash scripts/build/fixtures-build.sh native cpp zenoh
-    bash scripts/build/fixtures-build.sh native cpp xrce
+    bash scripts/build/fixture-make-driver.sh native-cmake-rmw
     unset NROS_CMAKE_EXTRA_DEFS
     # Phase 186 — native c/cpp Cyclone cells self-provision from source (static
     # ddsc via nano-ros-posix.cmake; DISABLE_FIND_PACKAGE forces the pinned source

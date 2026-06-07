@@ -8,12 +8,13 @@ set -euo pipefail
 
 usage() {
     cat >&2 <<'EOF'
-usage: scripts/build/fixture-make-driver.sh [--dry-run] [--keep] <platform|all|native-cyclonedds-rust|native-cyclonedds-cmake>
+usage: scripts/build/fixture-make-driver.sh [--dry-run] [--keep] <platform|all|native-cyclonedds-rust|native-cmake-rmw|native-cyclonedds-cmake>
 
 Generates a temporary makefile, joblog, and leaf logs under build/fixture-make-driver/.
 Current scope:
   native                  native manifest-driven fixture groups
   native-cyclonedds-rust  native Rust talker/listener Cyclone pure-Cargo leaves
+  native-cmake-rmw        native C/C++ Zenoh and XRCE CMake fixture groups
   native-cyclonedds-cmake native C/C++ Cyclone CMake fixture groups
 
 Options:
@@ -58,11 +59,11 @@ if [ -z "$scope" ]; then
 fi
 
 case "$scope" in
-    native|all|native-cyclonedds-rust|native-cyclonedds-cmake)
+    native|all|native-cyclonedds-rust|native-cmake-rmw|native-cyclonedds-cmake)
         ;;
     *)
         echo "fixture-make-driver: unsupported platform for skeleton: $scope" >&2
-        echo "fixture-make-driver: current scope is native manifest groups and native Cyclone Rust/CMake leaves only" >&2
+        echo "fixture-make-driver: current scope is native manifest groups and native CMake/Cyclone Rust leaves only" >&2
         exit 2
         ;;
 esac
@@ -73,7 +74,7 @@ if [ ! -f "$repo_root/examples/fixtures.toml" ] || [ ! -x "$repo_root/scripts/bu
     exit 2
 fi
 
-stamp="$(date +%Y%m%d-%H%M%S)-$$"
+stamp="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
 work_root="$repo_root/build/fixture-make-driver"
 log_dir="$work_root/logs/$stamp"
 status_dir="$work_root/status/$stamp"
@@ -129,6 +130,19 @@ PY
                 label="native rust cyclonedds $role"
                 command="cd examples/native/rust/$role && cargo build \$\${NROS_CARGO_PROFILE_ARGS:-} --no-default-features --features rmw-cyclonedds --target-dir target-cyclonedds"
                 printf '%s\tnative\trust\tcyclonedds\t%s\t%s\t%s\n' "$target" "$label" "$name" "$command"
+            done
+        } >"$leaf_file"
+        ;;
+    native-cmake-rmw)
+        {
+            for lang in c cpp; do
+                for rmw_name in zenoh xrce; do
+                    name="native-$lang-$rmw_name"
+                    target="fixture-$name"
+                    label="native $lang $rmw_name"
+                    command="NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native $lang $rmw_name"
+                    printf '%s\tnative\t%s\t%s\t%s\t%s\t%s\n' "$target" "$lang" "$rmw_name" "$label" "$name" "$command"
+                done
             done
         } >"$leaf_file"
         ;;
