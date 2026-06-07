@@ -387,6 +387,11 @@ dir = "examples/qemu-arm-baremetal/rust/talker"
 [[fixture]]
 platform = "qemu-arm-baremetal"
 lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/talker-xrce"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/listener"
 
 [[fixture]]
@@ -439,6 +444,36 @@ platform = "qemu-arm-baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/serial-listener"
 
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/phase216-rtic-e2e"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/cdr-roundtrip-qemu"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/lan9118-qemu"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "packages/testing/nros-bench/wcet-cycles-qemu"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "packages/testing/nros-bench/large-msg-baremetal"
+
 # ===========================================================================
 # stm32f4 — Rust (cortex-m4 thumbv7em; cross target via .cargo/config).
 # Plain cargo; no feature variants.
@@ -448,41 +483,49 @@ dir = "examples/qemu-arm-baremetal/rust/serial-listener"
 platform = "stm32f4"
 lang = "rust"
 dir = "examples/stm32f4/rust/talker"
+target = "thumbv7em-none-eabihf"
 
 [[fixture]]
 platform = "stm32f4"
 lang = "rust"
 dir = "examples/stm32f4/rust/talker-rtic"
+target = "thumbv7em-none-eabihf"
 
 [[fixture]]
 platform = "stm32f4"
 lang = "rust"
 dir = "examples/stm32f4/rust/talker-embassy"
+target = "thumbv7em-none-eabihf"
 
 [[fixture]]
 platform = "stm32f4"
 lang = "rust"
 dir = "examples/stm32f4/rust/listener-rtic"
+target = "thumbv7em-none-eabihf"
 
 [[fixture]]
 platform = "stm32f4"
 lang = "rust"
 dir = "examples/stm32f4/rust/service-server-rtic"
+target = "thumbv7em-none-eabihf"
 
 [[fixture]]
 platform = "stm32f4"
 lang = "rust"
 dir = "examples/stm32f4/rust/service-client-rtic"
+target = "thumbv7em-none-eabihf"
 
 [[fixture]]
 platform = "stm32f4"
 lang = "rust"
 dir = "examples/stm32f4/rust/action-server-rtic"
+target = "thumbv7em-none-eabihf"
 
 [[fixture]]
 platform = "stm32f4"
 lang = "rust"
 dir = "examples/stm32f4/rust/action-client-rtic"
+target = "thumbv7em-none-eabihf"
 
 # ===========================================================================
 # freertos (qemu MPS2-AN385) — Rust. Role examples, zenoh RMW into

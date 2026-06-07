@@ -115,66 +115,14 @@ build-fixtures:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    export cargo_profile_args
-    cargo_frontends="$(nros_cargo_frontend_jobs)"
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "QEMU bare-metal skip: arm-none-eabi-gcc not found"; exit 0
     fi
     echo "Building QEMU bare-metal test fixtures..."
-    # Phase 160 follow-up — parallel cargo builds. Each example has its
-    # own isolated `target/`; no cross-fixture lock contention. Cap
-    # concurrent cargos at 8 so the per-cargo job server (default nproc)
-    # × 8 stays in the same ballpark as nproc on a 32-core host without
-    # over-saturating smaller hosts.
-    dirs=()
-    while IFS= read -r toml; do
-        dirs+=("$(dirname "$toml")")
-    done < <(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
-                  -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort)
-    # Phase 131.B — relocated bench/test-fixture crates.
-    dirs+=(
-        packages/testing/nros-tests/bins/cdr-roundtrip-qemu
-        packages/testing/nros-tests/bins/lan9118-qemu
-        packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal
-        packages/testing/nros-bench/wcet-cycles-qemu
-        packages/testing/nros-bench/large-msg-baremetal
-        packages/reference/qemu-smoltcp-bridge
-    )
-    export NROS_CLI="$(nros_cli_bin)"
-    # Phase 214.I.2 — fail-loud prereq guard: `build_one` below invokes
-    # `nros ws sync`, absent from the shipped 0.3.7 release. Probe once
-    # here (the function runs under GNU parallel; pre-probing in the
-    # parent avoids `[PREREQ]` spam from N workers).
-    nros_require_ws_sync "$NROS_CLI"
-    # Phase 214.J.2 — guard `ws sync` against stale `generated/` after trait
-    # surface drift (see scripts/build/codegen-stamp.sh).
-    source scripts/build/codegen-stamp.sh
-    export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \
-              nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources
-    export NROS_REPO_DIR="$PWD"
-    build_one() {
-        local dir="$1"
-        echo "  → $dir"
-        # Phase 177.9.D — examples that depend on generated message crates
-        # (std_msgs / builtin_interfaces, wired via `[patch.crates-io]` ->
-        # generated/ in .cargo/config.toml) need codegen before cargo can
-        # resolve the patch path. The gitignored generated/ dirs are
-        # produced by `nros generate-rust` from package.xml. Bench/bin
-        # crates have no package.xml and skip this. Mirrors the native
-        # build-fixture recipe's `ensure_native_rust_generated`.
-        if [ -f "$dir/package.xml" ]; then
-            nros_codegen_stamp_check_or_wipe "$dir"
-            "$NROS_CLI" ws sync "$dir" >/dev/null
-            nros_codegen_stamp_write "$dir"
-        fi
-        ( cd "$dir" && cargo build $cargo_profile_args --quiet )
-    }
-    export -f build_one
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-        for dir in "${dirs[@]}"; do build_one "$dir"; done
-    else
-        printf '%s\n' "${dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer build_one
-    fi
+    scripts/build/fixtures-build.sh qemu-arm-baremetal rust
+    # packages/reference/qemu-smoltcp-bridge remains ad-hoc until reference
+    # package coverage moves into the fixture manifest.
+    (cd packages/reference/qemu-smoltcp-bridge && cargo build $cargo_profile_args --quiet)
 
 # Run all QEMU tests (non-networked)
 [group("main")]
