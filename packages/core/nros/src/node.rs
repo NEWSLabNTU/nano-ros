@@ -361,8 +361,22 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
         self.component_name
     }
 
-    /// Declare a node. Stable node ID is required in component mode.
+    /// Declare a node with an explicit stable node ID.
     pub fn create_node<'id>(
+        &mut self,
+        id: NodeId<'id>,
+        options: NodeOptions<'_>,
+    ) -> NodeResult<DeclaredNode<'_, 'id, R>> {
+        self.create_node_with_id(id, options)
+    }
+
+    /// Declare a node with an explicit stable node ID.
+    ///
+    /// This is the advanced form for packages that declare multiple nodes or
+    /// need stable metadata IDs that differ from their ROS node names. Prefer
+    /// [`create_node_with_options`](Self::create_node_with_options) for common
+    /// one-node packages.
+    pub fn create_node_with_id<'id>(
         &mut self,
         id: NodeId<'id>,
         options: NodeOptions<'_>,
@@ -372,6 +386,20 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
             runtime: self.runtime,
             id,
         })
+    }
+
+    /// Declare a node using `options.name` as the stable node ID.
+    ///
+    /// This mirrors the common rclcpp/rclrs shape where a node package supplies
+    /// node options and the node name, while nano-ros keeps the stable ID as
+    /// internal metadata. Packages with more than one node should use
+    /// [`create_node_with_id`](Self::create_node_with_id) when names are not
+    /// sufficient stable IDs.
+    pub fn create_node_with_options<'id>(
+        &mut self,
+        options: NodeOptions<'id>,
+    ) -> NodeResult<DeclaredNode<'_, 'id, R>> {
+        self.create_node_with_id(NodeId::new(options.name), options)
     }
 
     /// Record optional effects for a callback not tied to a node wrapper.
@@ -1476,6 +1504,43 @@ mod tests {
         assert_eq!(runtime.node_handle(NodeId::new("node")), Some(0));
         assert_eq!(runtime.entities().len(), 4);
         assert_eq!(runtime.callback_effects().len(), 2);
+    }
+
+    #[test]
+    fn context_can_synthesize_stable_node_id_from_options_name() {
+        let mut recorder = MetadataRecorder::<1, 0, 0>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let node = context
+            .create_node_with_options(NodeOptions::new("talker").namespace("/demo").domain_id(42))
+            .unwrap();
+
+        assert_eq!(node.id(), NodeId::new("talker"));
+        drop(node);
+        drop(context);
+        assert_eq!(recorder.nodes().len(), 1);
+        assert_eq!(recorder.nodes()[0].id.as_str(), "talker");
+        assert_eq!(recorder.nodes()[0].name.as_str(), "talker");
+        assert_eq!(recorder.nodes()[0].namespace.as_str(), "/demo");
+        assert_eq!(recorder.nodes()[0].domain_id, 42);
+    }
+
+    #[test]
+    fn synthesized_node_ids_reject_duplicate_names() {
+        let mut node_runtime = FakeNodeRuntime::default();
+        let mut runtime = NodeRuntimeAdapter::<_, 2, 0, 0>::new(&mut node_runtime);
+        {
+            let mut context = NodeContext::new("test", &mut runtime);
+            context
+                .create_node_with_options(NodeOptions::new("talker"))
+                .unwrap();
+        }
+        let mut context = NodeContext::new("test", &mut runtime);
+        let result = context.create_node_with_options(NodeOptions::new("talker"));
+
+        assert!(matches!(
+            result,
+            Err(NodeDeclError::Metadata(NodeMetadataError::DuplicateId))
+        ));
     }
 
     /// Verifies the runtime adapter rejects duplicate nodes and unknown effect entities.

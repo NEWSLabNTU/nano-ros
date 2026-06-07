@@ -67,6 +67,15 @@ class DeclaredNode {
     void* runtime_handle() const { return runtime_handle_; }
 
     Result create_entity(const NodeEntityDescriptor& descriptor);
+    Result create_entity(const char* stable_id, NodeEntityKind kind, const char* source_name,
+                         const char* type_name = "", const char* type_hash = "",
+                         const char* callback_id = nullptr);
+    Result create_publisher(const char* stable_id, const char* topic_name, const char* type_name,
+                            const char* type_hash = "");
+    Result create_subscription(const char* stable_id, const char* topic_name,
+                               const char* type_name, const char* callback_id,
+                               const char* type_hash = "");
+    Result create_timer(const char* stable_id, const char* period_ms, const char* callback_id);
 
   private:
     NodeContext* context_;

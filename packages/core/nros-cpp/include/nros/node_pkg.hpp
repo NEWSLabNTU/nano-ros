@@ -38,7 +38,19 @@ class NodeContext {
 
     Result create_node(DeclaredNode& out, const char* stable_id, const NodeOptions& options) {
         if (!ops_ || !ops_->create_node || !stable_id) return Result(ErrorCode::InvalidArgument);
-        return Result(ops_->create_node(user_data_, stable_id, &options, &out));
+        out = DeclaredNode(this, stable_id, nullptr);
+        Result result(ops_->create_node(user_data_, stable_id, &options, &out));
+        if (result.ok()) {
+            out = DeclaredNode(this, stable_id, out.runtime_handle());
+        } else {
+            out = DeclaredNode();
+        }
+        return result;
+    }
+
+    Result create_node(DeclaredNode& out, const NodeOptions& options) {
+        if (!options.name) return Result(ErrorCode::InvalidArgument);
+        return create_node(out, options.name, options);
     }
 
     Result create_entity(const NodeEntityDescriptor& descriptor) {
@@ -62,6 +74,40 @@ class NodeContext {
 inline Result DeclaredNode::create_entity(const NodeEntityDescriptor& descriptor) {
     if (!context_) return Result(ErrorCode::NotInitialized);
     return context_->create_entity(descriptor);
+}
+
+inline Result DeclaredNode::create_entity(const char* stable_id, NodeEntityKind kind,
+                                          const char* source_name, const char* type_name,
+                                          const char* type_hash, const char* callback_id) {
+    if (!is_valid() || !stable_id || !source_name) return Result(ErrorCode::InvalidArgument);
+    NodeEntityDescriptor descriptor{
+        /*stable_id*/   stable_id,
+        /*node_id*/     stable_id_,
+        /*kind*/        kind,
+        /*source_name*/ source_name,
+        /*type_name*/   type_name ? type_name : "",
+        /*type_hash*/   type_hash ? type_hash : "",
+        /*callback_id*/ callback_id,
+    };
+    return create_entity(descriptor);
+}
+
+inline Result DeclaredNode::create_publisher(const char* stable_id, const char* topic_name,
+                                             const char* type_name, const char* type_hash) {
+    return create_entity(stable_id, NodeEntityKind::Publisher, topic_name, type_name, type_hash,
+                         nullptr);
+}
+
+inline Result DeclaredNode::create_subscription(const char* stable_id, const char* topic_name,
+                                                const char* type_name, const char* callback_id,
+                                                const char* type_hash) {
+    return create_entity(stable_id, NodeEntityKind::Subscription, topic_name, type_name, type_hash,
+                         callback_id);
+}
+
+inline Result DeclaredNode::create_timer(const char* stable_id, const char* period_ms,
+                                         const char* callback_id) {
+    return create_entity(stable_id, NodeEntityKind::Timer, period_ms, "", "", callback_id);
 }
 
 using NodeRegisterFn = int32_t (*)(NodeContext& context);

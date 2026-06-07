@@ -14,6 +14,7 @@
 #ifndef NROS_NODE_PKG_H
 #define NROS_NODE_PKG_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "nros/visibility.h"
@@ -127,7 +128,39 @@ static inline nros_ret_t nros_declared_node_create(nros_node_context_t* context,
         !out_node) {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    return context->ops->create_node(context->user_data, stable_id, options, out_node);
+    out_node->stable_id = stable_id;
+    out_node->runtime_handle = NULL;
+    out_node->context = context;
+    nros_ret_t ret = context->ops->create_node(context->user_data, stable_id, options, out_node);
+    if (ret == NROS_RET_OK) {
+        out_node->stable_id = stable_id;
+        out_node->context = context;
+    } else {
+        out_node->stable_id = NULL;
+        out_node->runtime_handle = NULL;
+        out_node->context = NULL;
+    }
+    return ret;
+}
+
+static inline nros_ret_t
+nros_declared_node_init_with_options(nros_node_context_t* context,
+                                     const nros_node_pkg_options_t* options,
+                                     nros_declared_node_t* out_node) {
+    if (!options || !options->name) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    return nros_declared_node_create(context, options->name, options, out_node);
+}
+
+static inline nros_ret_t nros_declared_node_init_default(nros_node_context_t* context,
+                                                         const char* node_name,
+                                                         nros_declared_node_t* out_node) {
+    if (!node_name) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    nros_node_pkg_options_t options = nros_node_pkg_options(node_name);
+    return nros_declared_node_init_with_options(context, &options, out_node);
 }
 
 static inline nros_ret_t nros_node_create_entity(nros_node_context_t* context,
@@ -136,6 +169,52 @@ static inline nros_ret_t nros_node_create_entity(nros_node_context_t* context,
         return NROS_RET_INVALID_ARGUMENT;
     }
     return context->ops->create_entity(context->user_data, descriptor);
+}
+
+static inline nros_ret_t
+nros_declared_node_create_entity(nros_declared_node_t* node, const char* stable_id,
+                                 nros_node_entity_kind_t kind, const char* source_name,
+                                 const char* type_name, const char* type_hash,
+                                 const char* callback_id) {
+    if (!node || !node->context || !node->stable_id || !stable_id || !source_name) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    nros_node_entity_descriptor_t descriptor;
+    descriptor.stable_id = stable_id;
+    descriptor.node_id = node->stable_id;
+    descriptor.kind = kind;
+    descriptor.source_name = source_name;
+    descriptor.type_name = type_name ? type_name : "";
+    descriptor.type_hash = type_hash ? type_hash : "";
+    descriptor.callback_id = callback_id;
+    return nros_node_create_entity(node->context, &descriptor);
+}
+
+static inline nros_ret_t nros_declared_node_create_publisher(nros_declared_node_t* node,
+                                                             const char* stable_id,
+                                                             const char* topic_name,
+                                                             const char* type_name,
+                                                             const char* type_hash) {
+    return nros_declared_node_create_entity(node, stable_id, NROS_NODE_ENTITY_PUBLISHER,
+                                            topic_name, type_name, type_hash, NULL);
+}
+
+static inline nros_ret_t nros_declared_node_create_subscription(nros_declared_node_t* node,
+                                                                const char* stable_id,
+                                                                const char* topic_name,
+                                                                const char* type_name,
+                                                                const char* type_hash,
+                                                                const char* callback_id) {
+    return nros_declared_node_create_entity(node, stable_id, NROS_NODE_ENTITY_SUBSCRIPTION,
+                                            topic_name, type_name, type_hash, callback_id);
+}
+
+static inline nros_ret_t nros_declared_node_create_timer(nros_declared_node_t* node,
+                                                         const char* stable_id,
+                                                         const char* period_ms,
+                                                         const char* callback_id) {
+    return nros_declared_node_create_entity(node, stable_id, NROS_NODE_ENTITY_TIMER, period_ms, "",
+                                            "", callback_id);
 }
 
 static inline nros_ret_t nros_node_record_callback_effect(nros_node_context_t* context,
