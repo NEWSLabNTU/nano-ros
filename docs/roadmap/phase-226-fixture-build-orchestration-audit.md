@@ -1318,6 +1318,57 @@ Acceptance:
   has no Zephyr fixture-scheduler matches except documented fallback
   code.
 
+### Parallel Wave 8 — Zephyr Scheduler Surface
+
+Started 2026-06-08. Scope was the first Zephyr scheduler wave, stopping
+short of `just/zephyr-ci.just` recipe wiring.
+
+- [x] Z1 structured record generator: `scripts/build/zephyr-fixture-leaves.sh`
+      now emits the 22-field structured record contract only. It no
+      longer emits executable `argv_ninja` / `argv_west` display
+      strings.
+- [x] Z2 one-leaf runner: added
+      `scripts/build/zephyr-fixture-run-one.sh`. It reads one structured
+      record, reconstructs Bash argv arrays, recomputes `west build`
+      versus `ninja -C`, preserves the Cyclone stale-source guard, and
+      writes the signature only after successful `west build`.
+- [x] Z3 make scheduler: added
+      `scripts/build/zephyr-fixture-make-driver.sh`. It generates one
+      make target per Zephyr fixture record, uses
+      `NROS_ZEPHYR_BUILD_JOBS` as the outer make width, prefers pinned
+      GNU make 4.4 fifo jobserver mode, and keeps ordinary make fallback
+      with `NROS_ZEPHYR_NINJA_JOBS`.
+
+Validation performed in Wave 8:
+
+- `bash -n scripts/build/zephyr-fixture-leaves.sh scripts/build/zephyr-fixture-run-one.sh scripts/build/zephyr-fixture-make-driver.sh`
+- `scripts/build/zephyr-fixture-leaves.sh --emit records --filter 'build-rs-talker-zenoh' | awk -F '\t' '{print NF}'`
+  returned `22`.
+- `scripts/build/zephyr-fixture-make-driver.sh --dry-run --filter build-rs-talker-zenoh`
+  produced one make leaf for `build-rs-talker-zenoh`.
+- Synthetic runner validation with a fake Zephyr workspace and fake
+  `ninja`:
+  - fifo jobserver mode invoked `ninja -C <build-dir>` with no `-j`;
+  - fallback mode invoked `ninja -C <build-dir> -j 3`;
+  - signature was not rewritten on the warm `ninja -C` path.
+- Synthetic scheduler validation with fake `west`:
+  - make ran one filtered leaf;
+  - the runner chose `west build`;
+  - scheduler joblog/status were written;
+  - per-fixture output stayed at
+    `build/zephyr-fixtures/build-rs-talker-zenoh.log`.
+
+Remaining Zephyr work:
+
+- Z4 recipe wiring: keep Zephyr preflight in `just/zephyr-ci.just` and
+  replace only the shell-array background scheduler with the new make
+  scheduler.
+- Z5 logging-smoke boundary: keep delegated initially or migrate as a
+  separate path-preserving leaf.
+- Z6 real Zephyr validation: run cold/warm filtered Rust, C, C++ Zenoh
+  fixtures, one XRCE fixture on 3.7, and one Cyclone fixture when idlc
+  is available.
+
 ### 226.A — Inventory the Fixture Graph
 
 - [ ] Generate a complete fixture leaf list from `examples/fixtures.toml`
@@ -1373,11 +1424,11 @@ This is the nontrivial remaining scheduler work. It should be executed
 as the Z1-Z6 parallel wave plan above, while preserving the Zephyr build
 workflow design.
 
-- [ ] Z1: Harden `scripts/build/zephyr-fixture-leaves.sh` as a
+- [x] Z1: Harden `scripts/build/zephyr-fixture-leaves.sh` as a
       structured record generator with no executable argv strings.
-- [ ] Z2: Add `scripts/build/zephyr-fixture-run-one.sh` to execute one
+- [x] Z2: Add `scripts/build/zephyr-fixture-run-one.sh` to execute one
       Zephyr fixture record through `west build` or `ninja -C`.
-- [ ] Z3: Add a Zephyr make scheduler that uses
+- [x] Z3: Add a Zephyr make scheduler that uses
       `NROS_ZEPHYR_BUILD_JOBS` as the make jobserver width.
 - [ ] Z4: Wire `just/zephyr-ci.just` to keep preflight serial and
       replace only the shell-array background scheduler.

@@ -36,7 +36,7 @@ Options:
 Record fields:
   kind id target board lang lang_tag role rmw src src_dir build_name build_dir
   log xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs
-  sig sig_file best_effort command_mode needs_west eff_pristine argv_ninja argv_west
+  sig sig_file best_effort eff_pristine
 EOF
 }
 
@@ -239,18 +239,13 @@ emit_record() {
     local sig="${19}"
     local sig_file="${20}"
     local best_effort="${21}"
-    local command_mode="${22}"
-    local needs_west="${23}"
-    local eff_pristine="${24}"
-    local argv_ninja="${25}"
-    local argv_west="${26}"
+    local eff_pristine="${22}"
 
     local fields=(
         "$kind" "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw"
         "$src" "$src_dir" "$build_name" "$build_dir" "$log" "$xrce_agent_port"
         "$zenoh_locator" "$cyclone_domain" "$conf_files" "$extra_cmake_defs"
-        "$sig" "$sig_file" "$best_effort" "$command_mode" "$needs_west"
-        "$eff_pristine" "$argv_ninja" "$argv_west"
+        "$sig" "$sig_file" "$best_effort" "$eff_pristine"
     )
     local i
     for i in "${!fields[@]}"; do
@@ -359,13 +354,10 @@ for lang in $(nros_fixture_langs); do
                 "toolchain_cache_dir=$toolchain_cache_dir" \
                 "make=$make_bin" \
                 "sccache_launcher=$sccache_launcher")"
-            argv_ninja="ninja -C $build_dir"
-            argv_west="west build -b $board -d $build_dir -p $pristine $src_dir -- $extra_cmake_defs"
             emit_record fixture "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw" \
                 "$src" "$src_dir" "$build_name" "$build_dir" "$log" "$xrce_agent_port" \
                 "$zenoh_locator" "$cyclone_domain" "$conf_files" "$extra_cmake_defs" \
-                "$sig" "$sig_file" "$best_effort" zephyr-build unknown "$pristine" \
-                "$argv_ninja" "$argv_west"
+                "$sig" "$sig_file" "$best_effort" "$pristine"
         done
     done
 done
@@ -382,8 +374,7 @@ if [ "$include_logging_smoke" = "1" ]; then
             "packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim" \
             "$nros_root/packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim" \
             "$build_name" "$build_dir" "$log_dir/${build_name}.log" "" "" "" "" "" "" \
-            "$build_dir/.nros-zephyr-fixture.sig" 0 zephyr-logging-smoke unknown "$pristine" "" \
-            "just zephyr build-logging-smoke"
+            "$build_dir/.nros-zephyr-fixture.sig" 0 "$pristine"
     fi
 fi
 
