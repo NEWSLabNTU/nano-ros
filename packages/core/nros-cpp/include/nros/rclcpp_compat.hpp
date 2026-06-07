@@ -19,14 +19,16 @@
 //   - `rclcpp::spin(node)` / `rclcpp::spin_some(node)` (`spin_some` ≈ a single
 //     `nros::Executor::spin_once`; `spin` loops until `rclcpp::shutdown()`).
 //   - `rclcpp::QoS(depth)`, `rclcpp::SystemDefaultsQoS{}`.
+//   - `rclcpp::NodeOptions{}` and `Node(name, options)` constructor shapes
+//     used by `rclcpp_components` classes.
 //   - Log macros `RCLCPP_INFO/WARN/ERROR/DEBUG/FATAL` (`_THROTTLE` variants
 //     degrade to plain log — no real throttle yet).
 //   - `rclcpp_action::Server<A>`/`Client<A>` aliases over nros action shapes.
 //
 // Out of scope (will need source adapt or follow-up shims):
-//   - `rclcpp::Node` constructor's `NodeOptions` — only the `name` form is
-//     mirrored. Parameter declarations on the Node go through 209.F
-//     (`nros bake-params`) for now.
+//   - Full `rclcpp::NodeOptions` parameter/remap/allocator semantics. The
+//     compatibility type stores common scalar toggles so source compiles, but
+//     nano-ros launch/codegen owns runtime projection for now.
 //   - `rclcpp_lifecycle::LifecycleNode` — Phase 209.H (deferred).
 //   - `rclcpp_components::register_node` macro — see `rclcpp_components_compat.hpp`
 //     (Phase 209.C, separate header).
@@ -117,6 +119,92 @@ inline QoS KeepLast(::size_t depth) {
     return QoS(depth);
 }
 
+// --- NodeOptions -------------------------------------------------------------
+//
+// Minimal source-compat holder for upstream composable nodes. The fields are
+// intentionally inert today: nano-ros projects launch parameters/remaps during
+// codegen/runtime setup, while this type keeps common `Node("name", options)`
+// and builder-style option chains compile-compatible.
+
+class NodeOptions {
+  public:
+    NodeOptions() = default;
+
+    NodeOptions& arguments(const std::vector<std::string>& args) {
+        arguments_ = args;
+        return *this;
+    }
+    const std::vector<std::string>& arguments() const { return arguments_; }
+
+    NodeOptions& use_global_arguments(bool value) {
+        use_global_arguments_ = value;
+        return *this;
+    }
+    bool use_global_arguments() const { return use_global_arguments_; }
+
+    NodeOptions& enable_rosout(bool value) {
+        enable_rosout_ = value;
+        return *this;
+    }
+    bool enable_rosout() const { return enable_rosout_; }
+
+    NodeOptions& start_parameter_services(bool value) {
+        start_parameter_services_ = value;
+        return *this;
+    }
+    bool start_parameter_services() const { return start_parameter_services_; }
+
+    NodeOptions& start_parameter_event_publisher(bool value) {
+        start_parameter_event_publisher_ = value;
+        return *this;
+    }
+    bool start_parameter_event_publisher() const { return start_parameter_event_publisher_; }
+
+    NodeOptions& allow_undeclared_parameters(bool value) {
+        allow_undeclared_parameters_ = value;
+        return *this;
+    }
+    bool allow_undeclared_parameters() const { return allow_undeclared_parameters_; }
+
+    NodeOptions& automatically_declare_parameters_from_overrides(bool value) {
+        automatically_declare_parameters_from_overrides_ = value;
+        return *this;
+    }
+    bool automatically_declare_parameters_from_overrides() const {
+        return automatically_declare_parameters_from_overrides_;
+    }
+
+    NodeOptions& use_intra_process_comms(bool value) {
+        use_intra_process_comms_ = value;
+        return *this;
+    }
+    bool use_intra_process_comms() const { return use_intra_process_comms_; }
+
+    NodeOptions& enable_topic_statistics(bool value) {
+        enable_topic_statistics_ = value;
+        return *this;
+    }
+    bool enable_topic_statistics() const { return enable_topic_statistics_; }
+
+    NodeOptions& enable_logger_service(bool value) {
+        enable_logger_service_ = value;
+        return *this;
+    }
+    bool enable_logger_service() const { return enable_logger_service_; }
+
+  private:
+    std::vector<std::string> arguments_;
+    bool use_global_arguments_ = true;
+    bool enable_rosout_ = false;
+    bool start_parameter_services_ = false;
+    bool start_parameter_event_publisher_ = false;
+    bool allow_undeclared_parameters_ = false;
+    bool automatically_declare_parameters_from_overrides_ = false;
+    bool use_intra_process_comms_ = false;
+    bool enable_topic_statistics_ = false;
+    bool enable_logger_service_ = false;
+};
+
 // --- Logger surface ----------------------------------------------------------
 //
 // `rclcpp::Logger` in upstream is a pull-through to the rcl logger. Here it is
@@ -202,20 +290,16 @@ class Node : public std::enable_shared_from_this<Node> {
   public:
     using SharedPtr = std::shared_ptr<Node>;
 
-    explicit Node(const std::string& name) {
-        // Bring up the executor + the underlying nros::Node. Initialization
-        // failures throw at construction time (the rclcpp idiom), so a caller
-        // that uses `std::make_shared<rclcpp::Node>("n")` mirrors rclcpp's
-        // "constructor never returns an error code" contract.
-        ::nros::Result r = ::nros::Executor::create(executor_);
-        if (r.ok() == false) {
-            // nros-cpp is freestanding by default — no `<stdexcept>`. Mark the
-            // node as uninitialized; subsequent `create_*` will fail visibly.
-            initialized_ = false;
-            return;
-        }
-        r = executor_.create_node(node_, name.c_str());
-        initialized_ = r.ok();
+    explicit Node(const std::string& name) { initialize(name, nullptr); }
+
+    explicit Node(const std::string& name, const NodeOptions& options) : node_options_(options) {
+        initialize(name, nullptr);
+    }
+
+    Node(const std::string& name, const std::string& namespace_,
+         const NodeOptions& options = NodeOptions())
+        : node_options_(options) {
+        initialize(name, namespace_.c_str());
     }
 
     ~Node() {
@@ -227,6 +311,8 @@ class Node : public std::enable_shared_from_this<Node> {
     Node(const Node&) = delete;
     Node& operator=(const Node&) = delete;
 
+    const NodeOptions& get_node_options() const { return node_options_; }
+
     const ::nros::Node& nros_node() const { return node_; }
     ::nros::Node& nros_node() { return node_; }
     ::nros::Executor& nros_executor() { return executor_; }
@@ -234,6 +320,25 @@ class Node : public std::enable_shared_from_this<Node> {
     bool initialized() const { return initialized_; }
 
     Logger get_logger() const { return Logger("nros.compat"); }
+
+  private:
+    void initialize(const std::string& name, const char* namespace_) {
+        // Bring up the executor + the underlying nros::Node. Initialization
+        // failures throw at construction time (the rclcpp idiom), so a caller
+        // that uses `std::make_shared<rclcpp::Node>("n")` mirrors rclcpp's
+        // "constructor never returns an error code" contract.
+        ::nros::Result r = ::nros::Executor::create(executor_);
+        if (r.ok() == false) {
+            // nros-cpp is freestanding by default — no `<stdexcept>`. Mark the
+            // node as uninitialized; subsequent `create_*` will fail visibly.
+            initialized_ = false;
+            return;
+        }
+        r = executor_.create_node(node_, name.c_str(), namespace_);
+        initialized_ = r.ok();
+    }
+
+  public:
 
     // create_publisher<M>(topic, qos)
     //
@@ -323,6 +428,7 @@ class Node : public std::enable_shared_from_this<Node> {
   private:
     ::nros::Executor executor_;
     ::nros::Node node_;
+    NodeOptions node_options_;
     bool initialized_ = false;
     // Heap-stored polling pumps for create_subscription callbacks (one per
     // sub). Captured by std::function so any callable shape (capturing lambda,

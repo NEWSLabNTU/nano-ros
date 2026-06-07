@@ -14,6 +14,54 @@
 
 namespace nros {
 
+static constexpr size_t DECLARED_NODE_SYNTHETIC_ID_MAX = 96;
+
+namespace detail {
+
+inline bool is_declared_id_alnum(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+}
+
+inline char declared_id_lower(char c) {
+    return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
+template <size_t N>
+inline Result synthesize_declared_entity_id(char (&out)[N], const char* prefix,
+                                            const char* source_name) {
+    if (!prefix || !source_name || N == 0) return Result(ErrorCode::InvalidArgument);
+
+    size_t pos = 0;
+    while (*prefix) {
+        if (pos + 1 >= N) return Result(ErrorCode::Full);
+        out[pos++] = *prefix++;
+    }
+    if (pos + 1 >= N) return Result(ErrorCode::Full);
+    out[pos++] = '_';
+
+    bool emitted_source = false;
+    bool last_was_sep = true;
+    for (const char* p = source_name; *p; ++p) {
+        const char c = *p;
+        if (is_declared_id_alnum(c)) {
+            if (pos + 1 >= N) return Result(ErrorCode::Full);
+            out[pos++] = declared_id_lower(c);
+            emitted_source = true;
+            last_was_sep = false;
+        } else if (emitted_source && !last_was_sep) {
+            if (pos + 1 >= N) return Result(ErrorCode::Full);
+            out[pos++] = '_';
+            last_was_sep = true;
+        }
+    }
+    if (!emitted_source) return Result(ErrorCode::InvalidArgument);
+    if (last_was_sep && pos > 0) --pos;
+    out[pos] = '\0';
+    return Result::success();
+}
+
+} // namespace detail
+
 // Phase 212.M.5.a.1 — the hardcoded `__nros_component_register` constant
 // is retired. Each Component pkg now exports a per-pkg mangled
 // `__nros_component_<sanitised_pkg>_register` symbol; codegen derives
@@ -108,6 +156,25 @@ inline Result DeclaredNode::create_subscription(const char* stable_id, const cha
 inline Result DeclaredNode::create_timer(const char* stable_id, const char* period_ms,
                                          const char* callback_id) {
     return create_entity(stable_id, NodeEntityKind::Timer, period_ms, "", "", callback_id);
+}
+
+template <typename M>
+inline Result DeclaredNode::create_publisher(const char* topic_name, const QoS& qos) {
+    (void)qos;
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "pub", topic_name);
+    if (!result.ok()) return result;
+    return create_publisher(stable_id, topic_name, M::TYPE_NAME, M::TYPE_HASH);
+}
+
+template <typename M>
+inline Result DeclaredNode::create_subscription(const char* topic_name, const char* callback_id,
+                                                const QoS& qos) {
+    (void)qos;
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "sub", topic_name);
+    if (!result.ok()) return result;
+    return create_subscription(stable_id, topic_name, M::TYPE_NAME, callback_id, M::TYPE_HASH);
 }
 
 using NodeRegisterFn = int32_t (*)(NodeContext& context);

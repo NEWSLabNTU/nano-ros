@@ -11,7 +11,9 @@
 #define NROS_CPP_COMPONENT_NODE_HPP
 
 #include <cstdint>
+#include <cstddef>
 
+#include "nros/qos.hpp"
 #include "nros/result.hpp"
 
 namespace nros {
@@ -76,6 +78,13 @@ class DeclaredNode {
                                const char* type_name, const char* callback_id,
                                const char* type_hash = "");
     Result create_timer(const char* stable_id, const char* period_ms, const char* callback_id);
+
+    template <typename M>
+    Result create_publisher(const char* topic_name,
+                            const QoS& qos = QoS::default_profile());
+    template <typename M>
+    Result create_subscription(const char* topic_name, const char* callback_id,
+                               const QoS& qos = QoS::default_profile());
 
   private:
     NodeContext* context_;
