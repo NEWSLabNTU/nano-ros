@@ -621,6 +621,12 @@ platform = "nuttx"
 lang = "rust"
 dir = "examples/qemu-arm-nuttx/rust/action-client"
 
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm"
+env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc" }
+
 # ===========================================================================
 # threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples,
 # zenoh RMW into target-zenoh/.
@@ -1426,13 +1432,22 @@ dir = "examples/esp32/rust/listener"
 skip_probe = true
 
 [[fixture]]
+id = "qemu-esp32-baremetal-talker"
 platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "examples/qemu-esp32-baremetal/rust/talker"
 skip_probe = true
 
 [[fixture]]
+id = "qemu-esp32-baremetal-listener"
 platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "examples/qemu-esp32-baremetal/rust/listener"
+skip_probe = true
+
+[[fixture]]
+id = "qemu-esp32-baremetal-logging-smoke"
+platform = "qemu-esp32-baremetal"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/logging-smoke-esp32-qemu"
 skip_probe = true

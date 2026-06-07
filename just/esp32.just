@@ -99,12 +99,11 @@ build-qemu:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     target_profile_dir="$(nros_cargo_target_profile_dir)"
-    echo "Building ESP32 QEMU examples..."
-    for ex in talker listener; do
-        echo "  Building qemu-esp32/rust/$ex..."
-        (cd examples/qemu-esp32-baremetal/rust/$ex && cargo +{{NIGHTLY}} build $cargo_profile_args)
+    echo "Building ESP32 QEMU fixtures (from examples/fixtures.toml)..."
+    for id in qemu-esp32-baremetal-talker qemu-esp32-baremetal-listener; do
+        RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
+            bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust --id "$id"
     done
     echo ""
     echo "Creating flash images..."
@@ -131,11 +130,12 @@ build-logging-smoke:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     target_profile_dir="$(nros_cargo_target_profile_dir)"
     echo "Building logging-smoke-esp32-qemu..."
+    RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
+        bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust --id qemu-esp32-baremetal-logging-smoke
+    echo "Creating logging-smoke-esp32-qemu flash image..."
     fixture=packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
-    (cd "$fixture" && cargo +{{NIGHTLY}} build $cargo_profile_args)
     elf="$fixture/target/riscv32imc-unknown-none-elf/$target_profile_dir/logging-smoke-esp32-qemu"
     bin="$elf.bin"
     if command -v espflash &>/dev/null; then

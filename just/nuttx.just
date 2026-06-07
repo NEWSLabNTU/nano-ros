@@ -77,7 +77,7 @@ build-examples:
     # ~NULL → reboot loop before `main` (silent). Fat LTO merges the codegen
     # units, eliminating the cross-CGU miscompile, while keeping optimization
     # (opt-level="s"). Verified: talker boots reliably under `release`.
-    NROS_CARGO_PROFILE=release bash scripts/build/fixtures-build.sh nuttx rust
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/fixtures-build.sh nuttx rust
     echo "NuttX QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
@@ -95,8 +95,6 @@ build-fixtures:
     # main. Build the Rust fixtures at `release` (lto=true) instead — fat LTO
     # merges CGUs and eliminates the bug while keeping optimization. C/C++
     # fixtures keep cargo_profile_args (unaffected by the bug).
-    nuttx_rust_profile_args="$(NROS_CARGO_PROFILE=release nros_cargo_profile_arg_string)"
-    export nuttx_rust_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
     cmake_frontends="$(nros_cmake_frontend_jobs)"
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
@@ -125,28 +123,11 @@ build-fixtures:
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    # Phase 160 follow-up — parallel cargo builds (per-example isolated
-    # target/ dirs, no cross-fixture lock contention).
-    rust_dirs=()
-    for ex in $(nros_fixture_roles); do
-        rust_dirs+=("examples/qemu-arm-nuttx/rust/$ex")
-    done
-    # Phase 169 retired dust-dds; the NuttX `rust/dds/<ex>` examples had
-    # no Cyclone replacement (Cyclone needs a ddsrt NuttX port — see
-    # phase-175) and are no longer built.
-    # Phase 88.15.c — nros-log severity-coverage smoke fixture.
-    rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm")
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-        for dir in "${rust_dirs[@]}"; do
-            echo "  → $dir"
-            ( cd "$dir" && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-              cargo build $nuttx_rust_profile_args --quiet )
-        done
-    else
-        printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
-            'echo "  → {}" && cd {} && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-             cargo build $nuttx_rust_profile_args --quiet'
-    fi
+    # Phase 226 — Rust fixture cells come from the SSOT manifest, including the
+    # logging-smoke fixture and any per-cell env. Keep the NuttX-only release
+    # profile override here so `fixtures-build.sh` computes the same profile args
+    # as the former manual loop.
+    CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE=release bash scripts/build/fixtures-build.sh nuttx rust
     # Phase 160.D — NuttX C/C++ examples now build via cmake. The
     # tier-3 nros-c cross-Corrosion problem (no `-Z build-std`) is
     # sidestepped by:
