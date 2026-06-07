@@ -586,6 +586,12 @@ no_default_features = true
 features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
+[[fixture]]
+id = "freertos-logging-smoke-mps2"
+platform = "freertos"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/logging-smoke-freertos-mps2"
+
 # ===========================================================================
 # nuttx (qemu ARM virt) — Rust role examples. Plain cargo (nightly pinned by
 # the example's rust-toolchain.toml). Codegen runs in the recipe.
@@ -686,6 +692,12 @@ no_default_features = true
 features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
+[[fixture]]
+id = "threadx-linux-logging-smoke"
+platform = "threadx-linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/logging-smoke-threadx-linux"
+
 # ===========================================================================
 # threadx-riscv64 (qemu RISC-V64 ThreadX/NetX) — Rust role examples, zenoh RMW
 # into target-zenoh/. The board config dirs (THREADX_CONFIG_DIR/NETX_CONFIG_DIR)
@@ -745,6 +757,12 @@ dir = "examples/qemu-riscv64-threadx/rust/action-client"
 no_default_features = true
 features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
+
+[[fixture]]
+id = "threadx-riscv64-logging-smoke"
+platform = "threadx-riscv64"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64"
 
 # ===========================================================================
 # C/C++ cells (cmake) + esp32 (+nightly) + zephyr (west) + threadx-linux

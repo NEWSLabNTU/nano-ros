@@ -85,7 +85,7 @@ build-examples:
         NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
-    bash scripts/build/fixtures-build.sh freertos rust
+    bash scripts/build/fixtures-build.sh freertos rust zenoh
     echo "FreeRTOS QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
@@ -102,7 +102,6 @@ build-fixture-extras:
     source scripts/build/cargo.sh
     # Phase 214.J.2 — codegen-stamp helpers for `ws sync` invocations below.
     source scripts/build/codegen-stamp.sh
-    source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: the cyclone-fixture loop
@@ -111,33 +110,16 @@ build-fixture-extras:
     # stack traces (shipped 0.3.7 release predates the verb).
     nros_require_ws_sync "$nros_cli"
     export cargo_profile_args
-    cargo_frontends="$(nros_cargo_frontend_jobs)"
-    cmake_frontends="$(nros_cmake_frontend_jobs)"
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0
     fi
     echo "Building FreeRTOS test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
-    # Phase 160 follow-up — parallel cargo / cmake builds. Each example
-    # has its own isolated `target/`; cmake builds use per-example
-    # `build/` dirs. No cross-fixture lock contention. Cap concurrency
-    # at 8 so on a 32-core host the per-cargo job server × 8 stays in
-    # the same ballpark as nproc.
     # The normal Rust role examples are produced by `build-examples`.
-    # Only the standalone smoke fixture builds from a fixed path here.
-    rust_dirs=()
-    # Phase 88.15.b — nros-log severity-coverage smoke fixture.
-    rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-freertos-mps2")
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-        for dir in "${rust_dirs[@]}"; do
-            echo "  → $dir"
-            ( cd "$dir" && cargo build $cargo_profile_args --quiet )
-        done
-    else
-        printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
-            'echo "  → {}" && cd {} && cargo build $cargo_profile_args --quiet'
-    fi
+    # Phase 88.15.b — nros-log severity-coverage smoke fixture, selected by
+    # stable manifest id so `build-examples` stays limited to role examples.
+    bash scripts/build/fixtures-build.sh freertos rust --id freertos-logging-smoke-mps2
 
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     # Phase 140 removed the `build/install/bin/nros-codegen` install

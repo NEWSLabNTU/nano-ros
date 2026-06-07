@@ -123,27 +123,11 @@ build-fixture-extras:
     config_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/config"
     board_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/c"
     virtio_dir="$root/packages/drivers/virtio-net-netx"
-    # The normal Rust role examples are produced by `build-examples`.
-    # Only the standalone smoke fixture builds from a fixed path here.
-    rust_dirs=()
-    # Phase 88.15.d — nros-log severity-coverage smoke fixture.
-    rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64")
-    # threadx-netx-sys/build.rs needs the rv64-specific NetX port
-    # headers, not the threadx-linux defaults exported by the top-level
-    # justfile. Pass via env to each parallel cargo.
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-        for dir in "${rust_dirs[@]}"; do
-            echo "  → $dir"
-            ( cd "$dir" && \
-              THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-              cargo build $cargo_profile_args --quiet )
-        done
-    else
-        printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
-            "echo '  → {}' && cd {} && \
-             THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-             cargo build \$cargo_profile_args --quiet"
-    fi
+    # Phase 88.15.d — nros-log severity-coverage smoke fixture. The RV64
+    # threadx-netx-sys build needs this board's NetX port headers rather than
+    # the threadx-linux defaults exported by the top-level justfile.
+    THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+        bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-logging-smoke
     # Phase 160.J — ThreadX RV64 C/C++ examples now build via cmake.
     # Corrosion handles the riscv64gc-unknown-none-elf cross under
     # the bundled toolchain file; the ThreadX + NetX Duo include
