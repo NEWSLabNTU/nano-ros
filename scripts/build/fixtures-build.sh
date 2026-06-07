@@ -12,35 +12,86 @@
 #           <dir>\x1f<build-subdir>\x1f<cmake -D defs>\x1f<target>.
 #
 # Usage (from repo root):
-#   scripts/build/fixtures-build.sh <platform> [<lang>] [<rmw>]
+#   scripts/build/fixtures-build.sh <platform> [<lang>] [<rmw>] [--id <id>]
 #     lang default: rust. rmw (optional) restricts to one RMW — recipes use it
-#     to gate optional backends (e.g. cyclonedds only when set up).
+#     to gate optional backends (e.g. cyclonedds only when set up). --id
+#     restricts to one manifest row with a stable id.
 #
 # Honors NROS_JOBSERVER=1 (serial; tools inherit fifo tokens) and falls back to
 # serial when GNU parallel is absent.
 set -euo pipefail
 
-platform="${1:?usage: fixtures-build.sh <platform> [lang] [rmw]}"
-lang="${2:-rust}"
-rmw="${3:-}"
+usage="usage: fixtures-build.sh <platform> [lang] [rmw] [--id <id>]"
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    echo "$usage"
+    exit 0
+fi
+platform="${1:?$usage}"
+shift
+
+lang="rust"
+rmw=""
+fixture_id=""
+
+if [ $# -gt 0 ] && [ "$1" != "--id" ] && [[ "$1" != --id=* ]]; then
+    lang="$1"
+    shift
+fi
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --id)
+            [ $# -ge 2 ] || {
+                echo "$usage" >&2
+                exit 2
+            }
+            fixture_id="$2"
+            shift 2
+            ;;
+        --id=*)
+            fixture_id="${1#--id=}"
+            shift
+            ;;
+        --*)
+            echo "fixtures-build.sh: unknown option: $1" >&2
+            echo "$usage" >&2
+            exit 2
+            ;;
+        *)
+            if [ -z "$rmw" ]; then
+                rmw="$1"
+                shift
+            else
+                echo "fixtures-build.sh: unexpected argument: $1" >&2
+                echo "$usage" >&2
+                exit 2
+            fi
+            ;;
+    esac
+done
 
 # shellcheck source=/dev/null
 source scripts/build/cargo.sh
 
 manifest() {
     python3 scripts/build/fixtures-manifest.py list \
-        --platform "$platform" --lang "$lang" ${rmw:+--rmw "$rmw"}
+        --platform "$platform" --lang "$lang" ${rmw:+--rmw "$rmw"} \
+        ${fixture_id:+--id "$fixture_id"}
 }
 
 run() {
     local fn="$1"
     if [ "${NROS_JOBSERVER:-}" = "1" ] || ! command -v parallel >/dev/null 2>&1; then
         local line
-        while IFS= read -r line; do "$fn" "$line"; done < <(manifest)
+        for line in "${fixture_records[@]}"; do "$fn" "$line"; done
     else
-        manifest | parallel --halt now,fail=1 --line-buffer -j "$(nros_cargo_frontend_jobs)" "$fn" {}
+        printf '%s\n' "${fixture_records[@]}" |
+            parallel --halt now,fail=1 --line-buffer -j "$(nros_cargo_frontend_jobs)" "$fn" {}
     fi
 }
+
+mapfile -t fixture_records < <(manifest)
+[ "${#fixture_records[@]}" -gt 0 ] || exit 0
 
 if [ "$lang" = "c" ] || [ "$lang" = "cpp" ]; then
     # cmake cells — configure once (Ninja via the helper) + cmake --build.

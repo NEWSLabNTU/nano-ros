@@ -4,8 +4,8 @@
 Consumed by both the fixture build recipes and the test-all staleness probe so
 they build each fixture with identical features/target-dir/env.
 
-  fixtures-manifest.py list --platform native --lang rust [--rmw zenoh]
-  fixtures-manifest.py list-workspaces --platform native [--lang rust]
+  fixtures-manifest.py list --platform native --lang rust [--rmw zenoh] [--id ID]
+  fixtures-manifest.py list-workspaces --platform native [--lang rust] [--id ID]
   fixtures-manifest.py validate-workspaces --platform native
 
 emits one record per matching entry, fields separated by the unit-separator
@@ -88,6 +88,20 @@ def workspace_record(entry):
             cmake_defs(entry),
         ]
     )
+
+
+def matches_filters(entry, args, *, for_probe=False):
+    if args.platform and entry.get("platform") != args.platform:
+        return False
+    if args.lang and entry.get("lang") != args.lang:
+        return False
+    if args.rmw and entry.get("rmw") != args.rmw:
+        return False
+    if args.id and entry.get("id") != args.id:
+        return False
+    if for_probe and entry.get("skip_probe"):
+        return False
+    return True
 
 
 def _fail(entry, message):
@@ -234,6 +248,7 @@ def main():
     p.add_argument("--platform")
     p.add_argument("--lang")
     p.add_argument("--rmw")
+    p.add_argument("--id")
     # The test-all staleness probe builds with the default (stable) toolchain
     # and can't replicate a recipe-injected platform toolchain (e.g. the ESP32
     # nightly + build-std). Such cells set `skip_probe = true` so --for-probe
@@ -245,11 +260,7 @@ def main():
     if a.command in ("list-workspaces", "validate-workspaces"):
         entries = []
         for e in load_workspace_fixtures(a.manifest):
-            if a.platform and e.get("platform") != a.platform:
-                continue
-            if a.lang and e.get("lang") != a.lang:
-                continue
-            if a.rmw and e.get("rmw") != a.rmw:
+            if not matches_filters(e, a):
                 continue
             entries.append(e)
 
@@ -267,13 +278,7 @@ def main():
         return
 
     for e in load(a.manifest):
-        if a.platform and e.get("platform") != a.platform:
-            continue
-        if a.lang and e.get("lang") != a.lang:
-            continue
-        if a.rmw and e.get("rmw") != a.rmw:
-            continue
-        if a.for_probe and e.get("skip_probe"):
+        if not matches_filters(e, a, for_probe=a.for_probe):
             continue
         if e.get("lang") in ("c", "cpp"):
             # cmake record: <dir>\x1f<build-subdir>\x1f<cmake -D defs>\x1f<target>
