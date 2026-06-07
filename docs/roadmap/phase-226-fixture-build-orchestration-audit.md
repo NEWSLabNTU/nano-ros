@@ -728,6 +728,81 @@ Validation performed in Wave 2:
 
 No full fixture build was run in this wave.
 
+### Parallel Wave 3 — Manifest Coverage and Leaf Records
+
+Started 2026-06-07. Scope was the next low-conflict implementation
+slice from the Wave 2 plan plus focused measurement. NuttX was held for
+the next wave because it also edits `examples/fixtures.toml`.
+
+- [x] STM32F4 manifest routing: replace the hard-coded Rust fixture
+      loop in `just/stm32f4.just` with `fixtures-build.sh stm32f4
+      rust`, preserving the `arm-none-eabi-gcc` guard and the previous
+      explicit `thumbv7em-none-eabihf` target.
+- [x] QEMU bare-metal manifest coverage: add the direct Rust fixture
+      leaves to `examples/fixtures.toml` and route
+      `just/qemu-baremetal.just` through `fixtures-build.sh
+      qemu-arm-baremetal rust`.
+- [x] Fixture make-driver hardening: add joblog/status files, failed log
+      tailing, and richer dry-run leaf output to
+      `scripts/build/fixture-make-driver.sh`.
+- [x] Zephyr leaf record prototype: add
+      `scripts/build/zephyr-fixture-leaves.sh` to emit tab-separated
+      Zephyr fixture records without changing the current Zephyr build
+      path.
+- [x] Focused native Cyclone C/C++ measurement: run the diagnostic
+      script for one C and one C++ Cyclone talker cell.
+
+Wave 3 result: STM32F4 and QEMU bare-metal now use the fixture manifest
+for the selected direct fixture lists. QEMU keeps
+`packages/reference/qemu-smoltcp-bridge` as an ad-hoc build until
+reference package coverage moves into the manifest. The make-driver
+remains unwired, but now has the accounting needed to compare leaf
+runtime and diagnose failures. The Zephyr helper is intentionally
+record-only; it does not run `west`, `ninja`, Cargo, or CMake.
+
+Focused C/C++ measurement:
+
+- C Cyclone talker cell:
+  `scripts/build/phase226-cxx-eff.sh --lang c --rmw cyclonedds --role talker --limit 1`
+  wrote logs under `tmp/phase226-cxx-eff/20260607-113200` and reported
+  `Compiling nros-c: 1`, `Compiling nros-cpp: 1`, `C object builds:
+  119`, `CXX object builds: 5`, `link steps: 3`, and `cargo fingerprint
+  lines: 538`.
+- C++ Cyclone talker cell:
+  `scripts/build/phase226-cxx-eff.sh --lang cpp --rmw cyclonedds --role talker --limit 1`
+  wrote logs under `tmp/phase226-cxx-eff/20260607-113504` and reported
+  `Compiling nros-c: 1`, `Compiling nros-cpp: 1`, `C object builds:
+  150`, `CXX object builds: 6`, `link steps: 2`, and `cargo fingerprint
+  lines: 570`.
+
+Validation performed in Wave 3:
+
+- `bash -n scripts/build/fixture-make-driver.sh scripts/build/zephyr-fixture-leaves.sh scripts/build/phase226-cxx-eff.sh`
+- `scripts/build/fixture-make-driver.sh --dry-run native`
+- `scripts/build/zephyr-fixture-leaves.sh --emit records --filter 'build-rs-talker-zenoh|build-c-talker-xrce'`
+- `python3 scripts/build/fixtures-manifest.py list --platform stm32f4 --lang rust`
+- `python3 scripts/build/fixtures-manifest.py list --platform qemu-arm-baremetal --lang rust`
+- `scripts/build/phase226-cxx-eff.sh --lang c --rmw cyclonedds --role talker --dry-run`
+- `scripts/build/phase226-cxx-eff.sh --lang c --rmw cyclonedds --role talker --limit 1`
+- `scripts/build/phase226-cxx-eff.sh --lang cpp --rmw cyclonedds --role talker --limit 1`
+
+Post-wave validation:
+
+- `XDG_RUNTIME_DIR=/tmp just setup-cli` built the in-tree CLI at
+  `packages/cli/target/release/nros`. The user environment still has a
+  stale `/home/aeon/.nros/bin/nros` earlier in `PATH`, so platform
+  validation pinned `NROS_CLI` to the in-tree binary.
+- `XDG_RUNTIME_DIR=/tmp NROS_CLI=$PWD/packages/cli/target/release/nros just qemu build-fixtures`
+  passed. It exercised the manifest-routed QEMU rows, including
+  `talker-xrce`, `phase216-rtic-e2e`, the test bins, the bench bins,
+  and the ad-hoc `packages/reference/qemu-smoltcp-bridge` build.
+- `XDG_RUNTIME_DIR=/tmp NROS_CLI=$PWD/packages/cli/target/release/nros just stm32f4 build-fixtures`
+  reached real compilation and failed at link time on existing RTIC rows
+  with unresolved `_defmt_timestamp`. An initial run also showed that
+  the STM32F4 manifest rows lacked the old recipe's explicit
+  `--target thumbv7em-none-eabihf`; the manifest rows were updated to
+  carry that target, and the rerun confirmed the target is now passed.
+
 ### Wave 2 Findings — Manifest Coverage Cleanup Plan
 
 Recommended follow-up order:
