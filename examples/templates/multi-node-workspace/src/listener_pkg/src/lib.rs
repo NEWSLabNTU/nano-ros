@@ -10,9 +10,7 @@
 
 #![no_std]
 
-use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
-};
+use nros::{CallbackCtx, CallbackId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
 use std_msgs::msg::Int32;
 
 /// Listener — counts the int32 messages seen on `/chatter`.
@@ -23,13 +21,10 @@ impl Node for Listener {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node_with_options(NodeOptions::new("listener"))?;
-        let _sub = node.create_subscription::<Int32>(
-            EntityId::new("sub_chatter"),
-            CallbackId::new("on_message"),
-            "/chatter",
-        )?;
+        let sub_chatter = node
+            .create_subscription_for_callback::<Int32>(CallbackId::new("on_message"), "/chatter")?;
         node.callback(CallbackId::new("on_message"))
-            .reads(EntityId::new("sub_chatter"))?;
+            .reads_entity(&sub_chatter)?;
         Ok(())
     }
 }

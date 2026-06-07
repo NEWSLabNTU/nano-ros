@@ -433,6 +433,29 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         self.create_publisher_with_qos::<M>(id, topic, QosSettings::default())
     }
 
+    /// Declare a publisher using `topic` as the stable entity ID.
+    ///
+    /// Use the explicit [`create_publisher`](Self::create_publisher) form when
+    /// a node declares more than one publisher on the same topic or needs a
+    /// stable metadata ID that differs from the ROS topic name.
+    #[track_caller]
+    pub fn create_publisher_for_topic<'entity, M: RosMessage>(
+        &mut self,
+        topic: &'entity str,
+    ) -> NodeResult<NodePublisher<'entity, M>> {
+        self.create_publisher_for_topic_with_qos::<M>(topic, QosSettings::default())
+    }
+
+    /// Declare a publisher with explicit QoS, using `topic` as the stable entity ID.
+    #[track_caller]
+    pub fn create_publisher_for_topic_with_qos<'entity, M: RosMessage>(
+        &mut self,
+        topic: &'entity str,
+        qos: QosSettings,
+    ) -> NodeResult<NodePublisher<'entity, M>> {
+        self.create_publisher_with_qos::<M>(EntityId::new(topic), topic, qos)
+    }
+
     /// Declare a publisher with explicit QoS.
     #[track_caller]
     pub fn create_publisher_with_qos<'entity, M: RosMessage>(
@@ -464,6 +487,63 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         topic: &str,
     ) -> NodeResult<NodeSubscription<'entity, M>> {
         self.create_subscription_with_qos::<M>(id, callback_id, topic, QosSettings::default())
+    }
+
+    /// Declare a subscription using `callback_id` as the stable entity ID.
+    ///
+    /// This mirrors the common single-callback case: the callback name is the
+    /// source-level stable ID, while `topic` remains the ROS topic name.
+    #[track_caller]
+    pub fn create_subscription_for_callback<'callback, M: RosMessage>(
+        &mut self,
+        callback_id: CallbackId<'callback>,
+        topic: &str,
+    ) -> NodeResult<NodeSubscription<'callback, M>> {
+        self.create_subscription_for_callback_with_qos::<M>(
+            callback_id,
+            topic,
+            QosSettings::default(),
+        )
+    }
+
+    /// Declare a subscription with explicit QoS, using `callback_id` as the stable entity ID.
+    #[track_caller]
+    pub fn create_subscription_for_callback_with_qos<'callback, M: RosMessage>(
+        &mut self,
+        callback_id: CallbackId<'callback>,
+        topic: &str,
+        qos: QosSettings,
+    ) -> NodeResult<NodeSubscription<'callback, M>> {
+        self.create_subscription_with_qos::<M>(
+            EntityId::new(callback_id.as_str()),
+            callback_id,
+            topic,
+            qos,
+        )
+    }
+
+    /// Declare a subscription using `topic` as both the stable entity ID and callback ID.
+    #[track_caller]
+    pub fn create_subscription_for_topic<'entity, M: RosMessage>(
+        &mut self,
+        topic: &'entity str,
+    ) -> NodeResult<NodeSubscription<'entity, M>> {
+        self.create_subscription_for_topic_with_qos::<M>(topic, QosSettings::default())
+    }
+
+    /// Declare a subscription with explicit QoS, using `topic` as both IDs.
+    #[track_caller]
+    pub fn create_subscription_for_topic_with_qos<'entity, M: RosMessage>(
+        &mut self,
+        topic: &'entity str,
+        qos: QosSettings,
+    ) -> NodeResult<NodeSubscription<'entity, M>> {
+        self.create_subscription_with_qos::<M>(
+            EntityId::new(topic),
+            CallbackId::new(topic),
+            topic,
+            qos,
+        )
     }
 
     /// Declare a subscription with explicit QoS.
@@ -548,6 +628,16 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.period_ms = Some(period.as_millis());
         self.runtime.create_entity(metadata)?;
         Ok(NodeTimer::new(id))
+    }
+
+    /// Declare a timer using `callback_id` as the stable timer entity ID.
+    #[track_caller]
+    pub fn create_timer_for_callback<'callback>(
+        &mut self,
+        callback_id: CallbackId<'callback>,
+        period: TimerDuration,
+    ) -> NodeResult<NodeTimer<'callback>> {
+        self.create_timer(EntityId::new(callback_id.as_str()), callback_id, period)
     }
 
     /// Declare a service server. Stable service and callback IDs are required.
@@ -800,11 +890,21 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> CallbackEffects<'ctx, 'id, R> {
         Ok(self)
     }
 
+    /// Record that callback reads from a declared entity handle.
+    pub fn reads_entity(self, entity: &impl DeclaredEntity) -> NodeResult<Self> {
+        self.reads(entity.entity_id())
+    }
+
     /// Record that callback publishes via an entity.
     pub fn publishes(self, entity_id: EntityId<'_>) -> NodeResult<Self> {
         self.runtime
             .record_callback_effect(self.id, CallbackEffectKind::Publishes, entity_id)?;
         Ok(self)
+    }
+
+    /// Record that callback publishes via a declared entity handle.
+    pub fn publishes_entity(self, entity: &impl DeclaredEntity) -> NodeResult<Self> {
+        self.publishes(entity.entity_id())
     }
 
     /// Record that callback writes to an entity or parameter.
@@ -813,6 +913,17 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> CallbackEffects<'ctx, 'id, R> {
             .record_callback_effect(self.id, CallbackEffectKind::Writes, entity_id)?;
         Ok(self)
     }
+
+    /// Record that callback writes to a declared entity handle.
+    pub fn writes_entity(self, entity: &impl DeclaredEntity) -> NodeResult<Self> {
+        self.writes(entity.entity_id())
+    }
+}
+
+/// A declared source-level entity handle that can be referenced by callback effects.
+pub trait DeclaredEntity {
+    /// Stable entity ID for metadata and generated runtime lookup.
+    fn entity_id(&self) -> EntityId<'_>;
 }
 
 macro_rules! component_handle {
@@ -834,6 +945,12 @@ macro_rules! component_handle {
 
             /// Stable entity ID.
             pub const fn id(&self) -> EntityId<'id> {
+                self.id
+            }
+        }
+
+        impl<'id $(, $type_param)?> DeclaredEntity for $name<'id $(, $type_param)?> {
+            fn entity_id(&self) -> EntityId<'_> {
                 self.id
             }
         }
@@ -1056,6 +1173,20 @@ impl<'a> CallbackCtx<'a> {
         let len = writer.position();
         self.publish_raw(publisher, &buf[..len])
     }
+
+    /// Serialize `msg` and publish through the entity synthesized from `topic`.
+    ///
+    /// This pairs with
+    /// [`DeclaredNode::create_publisher_for_topic`], allowing simple callback
+    /// bodies to use the ROS topic literal instead of restating an unrelated
+    /// stable entity ID.
+    pub fn publish_to_topic<M: RosMessage, const N: usize>(
+        &self,
+        topic: &str,
+        msg: &M,
+    ) -> NodeResult<()> {
+        self.publish::<M, N>(EntityId::new(topic), msg)
+    }
 }
 
 /// The executable counterpart of [`Node`] (W.5.1).
@@ -1181,6 +1312,18 @@ impl<'a> TickCtx<'a> {
             .map_err(|_| NodeDeclError::Runtime)?;
         let len = writer.position();
         self.publish_raw(publisher, &buf[..len])
+    }
+
+    /// Serialize `msg` and publish through the entity synthesized from `topic`.
+    ///
+    /// This pairs with [`DeclaredNode::create_publisher_for_topic`] for
+    /// executable tick hooks.
+    pub fn publish_to_topic<M: RosMessage, const N: usize>(
+        &self,
+        topic: &str,
+        msg: &M,
+    ) -> NodeResult<()> {
+        self.publish::<M, N>(EntityId::new(topic), msg)
     }
 
     /// Complete an action goal with a typed result (W.5.6 — needs the executor,
@@ -1536,6 +1679,86 @@ mod tests {
         }
         let mut context = NodeContext::new("test", &mut runtime);
         let result = context.create_node_with_options(NodeOptions::new("talker"));
+
+        assert!(matches!(
+            result,
+            Err(NodeDeclError::Metadata(NodeMetadataError::DuplicateId))
+        ));
+    }
+
+    #[test]
+    fn synthesized_entity_helpers_record_topic_and_callback_ids() {
+        let mut recorder = MetadataRecorder::<1, 3, 2>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let mut node = context
+            .create_node_with_options(NodeOptions::new("talker"))
+            .unwrap();
+
+        let publisher = node
+            .create_publisher_for_topic::<TestMsg>("/chatter")
+            .unwrap();
+        let subscription = node
+            .create_subscription_for_callback::<TestMsg>(CallbackId::new("on_message"), "/cmd")
+            .unwrap();
+        let _timer = node
+            .create_timer_for_callback(CallbackId::new("on_tick"), TimerDuration::from_millis(10))
+            .unwrap();
+
+        node.callback(CallbackId::new("on_tick"))
+            .publishes_entity(&publisher)
+            .unwrap();
+        node.callback(CallbackId::new("on_message"))
+            .reads_entity(&subscription)
+            .unwrap();
+
+        assert_eq!(publisher.id(), EntityId::new("/chatter"));
+        assert_eq!(subscription.id(), EntityId::new("on_message"));
+        assert_eq!(recorder.entities().len(), 3);
+
+        let publisher = &recorder.entities()[0];
+        assert_eq!(publisher.id.as_str(), "/chatter");
+        assert_eq!(publisher.kind, EntityKind::Publisher);
+        assert_eq!(publisher.source_name.as_str(), "/chatter");
+
+        let subscription = &recorder.entities()[1];
+        assert_eq!(subscription.id.as_str(), "on_message");
+        assert_eq!(subscription.kind, EntityKind::Subscription);
+        assert_eq!(subscription.source_name.as_str(), "/cmd");
+        assert_eq!(
+            subscription.callback_id.as_ref().map(|id| id.as_str()),
+            Some("on_message")
+        );
+
+        let timer = &recorder.entities()[2];
+        assert_eq!(timer.id.as_str(), "on_tick");
+        assert_eq!(timer.kind, EntityKind::Timer);
+        assert_eq!(
+            timer.callback_id.as_ref().map(|id| id.as_str()),
+            Some("on_tick")
+        );
+
+        assert_eq!(recorder.callback_effects().len(), 2);
+        assert_eq!(
+            recorder.callback_effects()[0].entity_id.as_str(),
+            "/chatter"
+        );
+        assert_eq!(
+            recorder.callback_effects()[1].entity_id.as_str(),
+            "on_message"
+        );
+    }
+
+    #[test]
+    fn synthesized_entity_ids_reject_collisions() {
+        let mut recorder = MetadataRecorder::<1, 2, 0>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let mut node = context
+            .create_node_with_options(NodeOptions::new("talker"))
+            .unwrap();
+
+        node.create_publisher_for_topic::<TestMsg>("/chatter")
+            .unwrap();
+        let result = node.create_publisher_for_topic::<TestMsg>("/chatter");
 
         assert!(matches!(
             result,
