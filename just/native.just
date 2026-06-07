@@ -194,12 +194,9 @@ build-fixture-extras:
     for collapsed_case in talker listener; do
         echo "  → native/rust/${collapsed_case} (cargo --features rmw-cyclonedds, target-cyclonedds/)"
         ensure_native_rust_generated "native/rust/${collapsed_case}"
-        ( cd "examples/native/rust/${collapsed_case}" && \
-          cargo build $cargo_profile_args --no-default-features \
-              --features rmw-cyclonedds \
-              --target-dir target-cyclonedds > /dev/null ) &
     done
-    wait
+    export NROS_CARGO_PROFILE_ARGS="$cargo_profile_args"
+    bash scripts/build/fixture-make-driver.sh native-cyclonedds-rust
     # Phase 181.5 — collapsed-shape native C / C++ examples from the SSOT
     # manifest (examples/fixtures.toml). Per-cell RMW (`-DNROS_RMW`),
     # per-RMW build-subdir (`build-<rmw>/`) and any cmake target come from

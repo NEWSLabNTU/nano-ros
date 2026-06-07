@@ -8,10 +8,12 @@ set -euo pipefail
 
 usage() {
     cat >&2 <<'EOF'
-usage: scripts/build/fixture-make-driver.sh [--dry-run] [--keep] <platform|all>
+usage: scripts/build/fixture-make-driver.sh [--dry-run] [--keep] <platform|all|native-cyclonedds-rust>
 
 Generates a temporary makefile, joblog, and leaf logs under build/fixture-make-driver/.
-Current skeleton scope: native manifest-driven fixture groups only.
+Current scope:
+  native                  native manifest-driven fixture groups
+  native-cyclonedds-rust  native Rust talker/listener Cyclone pure-Cargo leaves
 
 Options:
   --dry-run, -n   generate and print the make command without executing it
@@ -55,11 +57,11 @@ if [ -z "$scope" ]; then
 fi
 
 case "$scope" in
-    native|all)
+    native|all|native-cyclonedds-rust)
         ;;
     *)
         echo "fixture-make-driver: unsupported platform for skeleton: $scope" >&2
-        echo "fixture-make-driver: current scope is native manifest-driven leaves only" >&2
+        echo "fixture-make-driver: current scope is native manifest groups and native Cyclone Rust leaves only" >&2
         exit 2
         ;;
 esac
@@ -79,9 +81,11 @@ makefile="$work_root/fixture-$stamp.mk"
 mkdir -p "$log_dir" "$status_dir"
 printf 'target\tplatform\tlang\trmw\tstatus\tstart_epoch\tend_epoch\tduration_s\tlog\n' >"$joblog"
 
-group_file="$work_root/groups-$stamp.tsv"
+leaf_file="$work_root/leaves-$stamp.tsv"
 mkdir -p "$work_root"
-python3 - "$repo_root/examples/fixtures.toml" >"$group_file" <<'PY'
+case "$scope" in
+    native|all)
+        python3 - "$repo_root/examples/fixtures.toml" >"$leaf_file" <<'PY'
 import sys
 from pathlib import Path
 
@@ -104,11 +108,33 @@ for row in rows:
     if key in seen:
         continue
     seen.add(key)
-    print(f"{lang}\t{rmw}")
+    name = f"native-{lang}{('-' + rmw) if rmw else ''}".replace("_", "-")
+    target = f"fixture-{name}"
+    label = f"native {lang}{(' ' + rmw) if rmw else ''}"
+    command = (
+        f"NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native {lang} {rmw}"
+        if rmw
+        else f"NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native {lang}"
+    )
+    rmw_field = rmw if rmw else "-"
+    print(f"{target}\tnative\t{lang}\t{rmw_field}\t{label}\t{name}\t{command}")
 PY
+        ;;
+    native-cyclonedds-rust)
+        {
+            for role in talker listener; do
+                name="native-rust-cyclonedds-$role"
+                target="fixture-$name"
+                label="native rust cyclonedds $role"
+                command="cd examples/native/rust/$role && cargo build \$\${NROS_CARGO_PROFILE_ARGS:-} --no-default-features --features rmw-cyclonedds --target-dir target-cyclonedds"
+                printf '%s\tnative\trust\tcyclonedds\t%s\t%s\t%s\n' "$target" "$label" "$name" "$command"
+            done
+        } >"$leaf_file"
+        ;;
+esac
 
-if [ ! -s "$group_file" ]; then
-    echo "fixture-make-driver: no native fixture groups found in examples/fixtures.toml" >&2
+if [ ! -s "$leaf_file" ]; then
+    echo "fixture-make-driver: no fixture leaves found for scope $scope" >&2
     exit 1
 fi
 
@@ -120,19 +146,17 @@ leaf_details=()
     printf '.SHELLFLAGS := -eu -o pipefail -c\n'
     printf '.DELETE_ON_ERROR:\n'
     printf '.PHONY: all'
-    while IFS=$'\t' read -r lang rmw; do
-        [ -n "$lang" ] || continue
-        name="native-${lang}${rmw:+-${rmw}}"
-        name="${name//_/-}"
-        target="fixture-${name}"
-        targets+=("$target")
-        if [ -n "$rmw" ]; then
-            leaf_details+=("  target=$target platform=native lang=$lang rmw=$rmw log=$log_dir/$name.log status=$status_dir/$name.status command=scripts/build/fixtures-build.sh native $lang $rmw")
+    while IFS=$'\t' read -r target platform lang rmw label name command; do
+        [ -n "$target" ] || continue
+        if [ "$rmw" = "-" ]; then
+            rmw_value=""
         else
-            leaf_details+=("  target=$target platform=native lang=$lang rmw=<none> log=$log_dir/$name.log status=$status_dir/$name.status command=scripts/build/fixtures-build.sh native $lang")
+            rmw_value="$rmw"
         fi
+        targets+=("$target")
+        leaf_details+=("  target=$target platform=$platform lang=$lang rmw=${rmw_value:-<none>} log=$log_dir/$name.log status=$status_dir/$name.status command=$command")
         printf ' %s' "$target"
-    done <"$group_file"
+    done <"$leaf_file"
     printf '\n\n'
     printf 'all:'
     for target in "${targets[@]}"; do
@@ -140,24 +164,22 @@ leaf_details=()
     done
     printf '\n\n'
 
-    while IFS=$'\t' read -r lang rmw; do
-        [ -n "$lang" ] || continue
-        name="native-${lang}${rmw:+-${rmw}}"
-        name="${name//_/-}"
-        target="fixture-${name}"
+    while IFS=$'\t' read -r target platform lang rmw label name command; do
+        [ -n "$target" ] || continue
+        if [ "$rmw" = "-" ]; then
+            rmw_value=""
+        else
+            rmw_value="$rmw"
+        fi
         log="$log_dir/$name.log"
         status_file="$status_dir/$name.status"
         printf '%s:\n' "$target"
-        printf '\t+@echo "fixture: native %s%s"\n' "$lang" "${rmw:+ $rmw}"
-        if [ -n "$rmw" ]; then
-            printf '\t+@start=$$(date +%%s); status=0; echo "running" >%s; NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native %s %s >%s 2>&1 || status=$$?; end=$$(date +%%s); duration=$$((end - start)); if [ "$$status" -eq 0 ]; then state=ok; else state=fail; fi; printf "target=%%s\\nplatform=native\\nlang=%%s\\nrmw=%%s\\nstatus=%%s\\nstart_epoch=%%s\\nend_epoch=%%s\\nduration_s=%%s\\nlog=%%s\\n" "%s" "%s" "%s" "$$state" "$$start" "$$end" "$$duration" "%s" >%s; printf "%%s\\tnative\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" "%s" "%s" "%s" "$$state" "$$start" "$$end" "$$duration" "%s" >>%s; if [ "$$status" -ne 0 ]; then echo "fixture-make-driver: %s failed; tail of %s:" >&2; tail -n "$${NROS_FIXTURE_FAIL_TAIL:-80}" %s >&2 || true; exit "$$status"; fi\n' "$status_file" "$lang" "$rmw" "$log" "$target" "$lang" "$rmw" "$log" "$status_file" "$target" "$lang" "$rmw" "$log" "$joblog" "$target" "$log" "$log"
-        else
-            printf '\t+@start=$$(date +%%s); status=0; echo "running" >%s; NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native %s >%s 2>&1 || status=$$?; end=$$(date +%%s); duration=$$((end - start)); if [ "$$status" -eq 0 ]; then state=ok; else state=fail; fi; printf "target=%%s\\nplatform=native\\nlang=%%s\\nrmw=%%s\\nstatus=%%s\\nstart_epoch=%%s\\nend_epoch=%%s\\nduration_s=%%s\\nlog=%%s\\n" "%s" "%s" "" "$$state" "$$start" "$$end" "$$duration" "%s" >%s; printf "%%s\\tnative\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" "%s" "%s" "" "$$state" "$$start" "$$end" "$$duration" "%s" >>%s; if [ "$$status" -ne 0 ]; then echo "fixture-make-driver: %s failed; tail of %s:" >&2; tail -n "$${NROS_FIXTURE_FAIL_TAIL:-80}" %s >&2 || true; exit "$$status"; fi\n' "$status_file" "$lang" "$log" "$target" "$lang" "$log" "$status_file" "$target" "$lang" "$log" "$joblog" "$target" "$log" "$log"
-        fi
-    done <"$group_file"
+        printf '\t+@echo "fixture: %s"\n' "$label"
+        printf '\t+@start=$$(date +%%s); status=0; echo "running" >%s; ( %s ) >%s 2>&1 || status=$$?; end=$$(date +%%s); duration=$$((end - start)); if [ "$$status" -eq 0 ]; then state=ok; else state=fail; fi; printf "target=%%s\\nplatform=%%s\\nlang=%%s\\nrmw=%%s\\nstatus=%%s\\nstart_epoch=%%s\\nend_epoch=%%s\\nduration_s=%%s\\nlog=%%s\\n" "%s" "%s" "%s" "%s" "$$state" "$$start" "$$end" "$$duration" "%s" >%s; printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" "%s" "%s" "%s" "%s" "$$state" "$$start" "$$end" "$$duration" "%s" >>%s; if [ "$$status" -ne 0 ]; then echo "fixture-make-driver: %s failed; tail of %s:" >&2; tail -n "$${NROS_FIXTURE_FAIL_TAIL:-80}" %s >&2 || true; exit "$$status"; fi\n' "$status_file" "$command" "$log" "$target" "$platform" "$lang" "$rmw_value" "$log" "$status_file" "$target" "$platform" "$lang" "$rmw_value" "$log" "$joblog" "$target" "$log" "$log"
+    done <"$leaf_file"
 } >"$makefile"
 
-rm -f "$group_file"
+rm -f "$leaf_file"
 
 make_bin="make"
 make_args=()
