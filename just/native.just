@@ -205,37 +205,25 @@ build-fixture-extras:
     # per-RMW build-subdir (`build-<rmw>/`) and any cmake target come from
     # the manifest; the platform-wide defs (build type, the C codegen tool,
     # codegen-off, cyclone prefix) are injected here via the shared builder's
-    # NROS_CMAKE_EXTRA_DEFS contract. The canonical typed std_msgs /
-    # example_interfaces bindings build cleanly under zenoh + xrce; the
-    # cyclone cells stay in the gated block below (need `just cyclonedds
-    # setup`). The cpp/parameters cell (target cpp_parameters) is a manifest
-    # row too, so it builds in the same pass.
+    # NROS_CMAKE_EXTRA_DEFS contract. The cpp/parameters cell (target
+    # cpp_parameters) is a manifest row too, so it builds in the same pass.
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON"
-    bash scripts/build/fixtures-build.sh native c
-    bash scripts/build/fixtures-build.sh native cpp
+    bash scripts/build/fixtures-build.sh native c zenoh
+    bash scripts/build/fixtures-build.sh native c xrce
+    bash scripts/build/fixtures-build.sh native cpp zenoh
+    bash scripts/build/fixtures-build.sh native cpp xrce
     unset NROS_CMAKE_EXTRA_DEFS
     # Phase 186 — native c/cpp Cyclone cells self-provision from source (static
     # ddsc via nano-ros-posix.cmake; DISABLE_FIND_PACKAGE forces the pinned source
     # over any system Cyclone). No build/install / `just cyclonedds setup` needed.
     # Phase 177.31 fixed the example link gap; the Cyclone *action* e2e is still
     # blocked on a runtime bug (177.32) so its tests skip at runtime, but the
-    # fixtures build cleanly here.
-    for lang in c cpp; do
-        for case in talker listener service-server service-client action-server action-client; do
-            binary="${lang}_${case//-/_}"
-            echo "  → native/${lang}/${case} (-DNROS_RMW=cyclonedds, self-provision, build-cyclonedds/)"
-            ( cd examples/native/${lang}/${case} && \
-              rm -rf build-cyclonedds && \
-              nros_cmake_configure_if_needed . build-cyclonedds -DNROS_RMW=cyclonedds \
-                  -DCMAKE_BUILD_TYPE=Release \
-                  -DNANO_ROS_BUILD_CODEGEN=OFF \
-                  -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
-                  -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON \
-                  -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py" > /dev/null && \
-              cmake --build build-cyclonedds --target "$binary" > /dev/null ) &
-        done
-    done
-    wait
+    # fixtures build cleanly here. These cells are manifest rows and run through
+    # fixtures-build.sh, preserving the incremental build-cyclonedds directories.
+    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    bash scripts/build/fixtures-build.sh native c cyclonedds
+    bash scripts/build/fixtures-build.sh native cpp cyclonedds
+    unset NROS_CMAKE_EXTRA_DEFS
 
 # Build every native tier: core artifacts, Rust/C/C++ examples, and test fixtures.
 [group("full-matrix")]

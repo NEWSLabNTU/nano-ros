@@ -709,9 +709,9 @@ target_dir = "target-zenoh"
 # ===========================================================================
 
 # ===========================================================================
-# native — C / C++ (cmake). Role examples x {zenoh,xrce} into build-<rmw>/.
-# Codegen tool + idlc paths are platform/recipe-level (not per-cell).
-# Cyclone C/C++ cells are gated on `just cyclonedds setup` — added later.
+# native — C / C++ (cmake). Role examples x {zenoh,xrce,cyclonedds} into
+# build-<rmw>/. Codegen tool + idlc paths are platform/recipe-level (not
+# per-cell).
 # ===========================================================================
 
 [[fixture]]
@@ -729,6 +729,12 @@ dir = "examples/native/c/talker"
 [[fixture]]
 platform = "native"
 lang = "c"
+rmw = "cyclonedds"
+dir = "examples/native/c/talker"
+
+[[fixture]]
+platform = "native"
+lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/listener"
 
@@ -736,6 +742,12 @@ dir = "examples/native/c/listener"
 platform = "native"
 lang = "c"
 rmw = "xrce"
+dir = "examples/native/c/listener"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "cyclonedds"
 dir = "examples/native/c/listener"
 
 [[fixture]]
@@ -748,6 +760,12 @@ dir = "examples/native/c/service-server"
 platform = "native"
 lang = "c"
 rmw = "xrce"
+dir = "examples/native/c/service-server"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "cyclonedds"
 dir = "examples/native/c/service-server"
 
 [[fixture]]
@@ -760,6 +778,12 @@ dir = "examples/native/c/service-client"
 platform = "native"
 lang = "c"
 rmw = "xrce"
+dir = "examples/native/c/service-client"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "cyclonedds"
 dir = "examples/native/c/service-client"
 
 [[fixture]]
@@ -772,6 +796,12 @@ dir = "examples/native/c/action-server"
 platform = "native"
 lang = "c"
 rmw = "xrce"
+dir = "examples/native/c/action-server"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "cyclonedds"
 dir = "examples/native/c/action-server"
 
 [[fixture]]
@@ -784,6 +814,12 @@ dir = "examples/native/c/action-client"
 platform = "native"
 lang = "c"
 rmw = "xrce"
+dir = "examples/native/c/action-client"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "cyclonedds"
 dir = "examples/native/c/action-client"
 
 [[fixture]]
@@ -796,6 +832,12 @@ dir = "examples/native/cpp/talker"
 platform = "native"
 lang = "cpp"
 rmw = "xrce"
+dir = "examples/native/cpp/talker"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "cyclonedds"
 dir = "examples/native/cpp/talker"
 
 [[fixture]]
@@ -808,6 +850,12 @@ dir = "examples/native/cpp/listener"
 platform = "native"
 lang = "cpp"
 rmw = "xrce"
+dir = "examples/native/cpp/listener"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "cyclonedds"
 dir = "examples/native/cpp/listener"
 
 [[fixture]]
@@ -820,6 +868,12 @@ dir = "examples/native/cpp/service-server"
 platform = "native"
 lang = "cpp"
 rmw = "xrce"
+dir = "examples/native/cpp/service-server"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "cyclonedds"
 dir = "examples/native/cpp/service-server"
 
 [[fixture]]
@@ -832,6 +886,12 @@ dir = "examples/native/cpp/service-client"
 platform = "native"
 lang = "cpp"
 rmw = "xrce"
+dir = "examples/native/cpp/service-client"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "cyclonedds"
 dir = "examples/native/cpp/service-client"
 
 [[fixture]]
@@ -844,6 +904,12 @@ dir = "examples/native/cpp/action-server"
 platform = "native"
 lang = "cpp"
 rmw = "xrce"
+dir = "examples/native/cpp/action-server"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "cyclonedds"
 dir = "examples/native/cpp/action-server"
 
 [[fixture]]
@@ -856,6 +922,12 @@ dir = "examples/native/cpp/action-client"
 platform = "native"
 lang = "cpp"
 rmw = "xrce"
+dir = "examples/native/cpp/action-client"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "cyclonedds"
 dir = "examples/native/cpp/action-client"
 
 [[fixture]]
