@@ -171,9 +171,6 @@ static C_XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native Rust workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached path to the native Rust workspace Entry pkg using default launch.
-static NATIVE_WORKSPACE_RUST_DEFAULT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
 /// Cached path to the native C workspace Entry pkg binary.
 static NATIVE_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -572,19 +569,6 @@ pub fn build_native_workspace_rust_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry("workspace-rust-native", "rust", "native_entry")
-        })
-        .map(|p| p.as_path())
-}
-
-/// Native Rust workspace Entry pkg fixture using the Bringup default launch.
-pub fn build_native_workspace_rust_default_entry() -> TestResult<&'static Path> {
-    NATIVE_WORKSPACE_RUST_DEFAULT_ENTRY_BINARY
-        .get_or_try_init(|| {
-            build_workspace_rust_entry(
-                "workspace-rust-native-default-entry",
-                "rust",
-                "native_default_entry",
-            )
         })
         .map(|p| p.as_path())
 }

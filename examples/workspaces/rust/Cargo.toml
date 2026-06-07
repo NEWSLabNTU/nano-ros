@@ -5,8 +5,6 @@
 #   src/demo_bringup/  — Bringup pkg (declarative: package.xml + system.toml
 #                        + launch/*.launch.xml). No Cargo.toml — NOT a member.
 #   src/native_entry/  — Entry pkg (bin, `nros::main!(launch = "demo_bringup:...")`).
-#   src/native_default_entry/
-#                     — Entry pkg using the Bringup default launch.
 #
 # See README.md for the copy-out / build / plan / check / launch flow.
 
@@ -16,7 +14,6 @@ members = [
     "src/talker_pkg",
     "src/listener_pkg",
     "src/native_entry",
-    "src/native_default_entry",
 ]
 # `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
 # The pkg-index walks `package.xml` anywhere under the workspace root.

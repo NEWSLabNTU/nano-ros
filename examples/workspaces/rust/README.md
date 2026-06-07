@@ -10,8 +10,7 @@ rust/
     ├── talker_pkg/      # Node pkg: publishes std_msgs/Int32 on /chatter
     ├── listener_pkg/    # Node pkg: subscribes std_msgs/Int32 on /chatter
     ├── demo_bringup/           # Bringup pkg: package.xml + system.toml + launch/
-    ├── native_entry/           # Entry pkg: native main() with explicit launch
-    └── native_default_entry/   # Entry pkg: native main() using default launch
+    └── native_entry/           # Entry pkg: native main()
 ```
 
 The Node packages use generated `std_msgs::msg::Int32` directly.
@@ -27,7 +26,6 @@ nros codegen-system --bringup demo_bringup
 nros check --bringup src/demo_bringup
 nros check --workspace .
 cargo build -p native_entry
-cargo build -p native_default_entry
 ```
 
 Run the native entry with a Zenoh router available:
@@ -35,5 +33,4 @@ Run the native entry with a Zenoh router available:
 ```bash
 zenohd --listen tcp/127.0.0.1:7447
 cargo run -p native_entry
-cargo run -p native_default_entry
 ```

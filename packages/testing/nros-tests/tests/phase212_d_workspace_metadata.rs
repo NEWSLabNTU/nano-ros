@@ -105,17 +105,6 @@ fn rust_workspace_entry_fixture_is_prebuilt() {
 }
 
 #[test]
-fn rust_workspace_default_entry_fixture_is_prebuilt() {
-    let entry = nros_tests::fixtures::build_native_workspace_rust_default_entry()
-        .expect("native Rust workspace default Entry fixture");
-    assert!(
-        entry.is_file(),
-        "missing Rust workspace default Entry pkg binary at {}",
-        entry.display()
-    );
-}
-
-#[test]
 fn cmake_pure_cpp_workspace_entry_fixture_is_prebuilt() {
     let entry = nros_tests::fixtures::build_native_workspace_cpp_entry()
         .expect("native C++ workspace Entry fixture");

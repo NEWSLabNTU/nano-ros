@@ -14,19 +14,11 @@ namespace listener_pkg {
 ::nros::Result Listener::register_node(::nros::NodeContext& ctx) {
     ::nros::DeclaredNode node;
     auto opts = ::nros::NodeOptions::make("listener");
-    auto r = ctx.create_node(node, "node", opts);
+    auto r = ctx.create_node(node, opts);
     if (!r.ok()) return r;
 
-    ::nros::NodeEntityDescriptor sub{
-        /*stable_id*/   "sub_chatter",
-        /*node_id*/     "node",
-        /*kind*/        ::nros::NodeEntityKind::Subscription,
-        /*source_name*/ "/chatter",
-        /*type_name*/   "std_msgs/msg/Int32",
-        /*type_hash*/   "",
-        /*callback_id*/ "on_message",
-    };
-    r = node.create_entity(sub);
+    r = node.create_subscription(
+        "sub_chatter", "/chatter", "std_msgs/msg/Int32", "on_message");
     if (!r.ok()) return r;
 
     return ctx.record_callback_effect(
