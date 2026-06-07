@@ -5,8 +5,11 @@
 make-scheduled fixture graph, then reduce repeated compilation by giving
 fixture builds shared caches where the build configuration is compatible.
 
-**Status.** INVESTIGATED. Created 2026-06-07 after a focused audit of
-the fixture build scripts. No implementation in this phase document yet.
+**Status.** IN PROGRESS. Created 2026-06-07 after a focused audit of
+the fixture build scripts. Native fixture orchestration now uses make
+for the high-cost C/C++ RMW groups and `scripts/build/fixtures-build.sh`
+no longer depends on GNU parallel. Remaining implementation is centered
+on Zephyr's shell-array scheduler and fixture cache measurement.
 
 **Priority.** P1. Fixture prebuilds are now a normal part of the full
 verification workflow. The current path is slow, recompiles shared
@@ -1100,23 +1103,12 @@ Recommended follow-up order:
 
 ### Wave 2 Findings — Zephyr Leaf Generator Plan
 
-Add a shell generator such as `scripts/build/zephyr-fixture-leaves.sh`
-beside `scripts/build/fixture-matrix.sh`. First slice should be
-record-only: keep current Zephyr scheduling unchanged, but have
-`just/zephyr-ci.just` consume generated records into its existing
-`entries` array. Later, the make driver consumes the same records.
-
-Proposed record fields:
-
-- identity: `kind`, `id`, `target`, `board`, `lang`, `lang_tag`,
-  `role`, `rmw`;
-- paths: `src`, `src_dir`, `build_dir`, `build_name`, `log`;
-- transport config: `xrce_agent_port`, `zenoh_locator`,
-  `cyclone_domain`, `conf_files`;
-- build config: `extra_cmake_defs`, `sig`, `sig_file`,
-  `best_effort`;
-- optional future make fields: `command_mode`, `needs_west`,
-  `eff_pristine`, `argv_ninja`, `argv_west`, and env fields.
+`scripts/build/zephyr-fixture-leaves.sh` exists as a record-only
+prototype. The next Zephyr implementation should keep that direction
+but tighten the boundary: it should emit structured fields only, not
+shell command strings. The executable `west build` / `ninja -C` argv
+must be reconstructed by a one-leaf runner so quoting and build-state
+decisions happen at execution time.
 
 Generation must preserve current formulas exactly:
 
@@ -1124,11 +1116,207 @@ Generation must preserve current formulas exactly:
   Cyclone (`just/zephyr-ci.just:222`).
 - Roles/langs come from `scripts/build/fixture-matrix.sh`.
 - XRCE ports, Zenoh locators, Cyclone domains, `CONF_FILE`, and the
-  signature input must remain byte-for-byte equivalent to current logic.
+  signature input must remain equivalent to current logic.
 
 Preflights remain serial: workspace validation, ROS interface defaults,
 Zephyr venv/toolchain env, patching, build/log/cache dirs, Rust
 `nros ws sync`, host codegen tool, and job/pristine/sccache validation.
+
+### Zephyr Build Workflow Design
+
+The Zephyr migration must preserve the Zephyr consumption model by
+design. nano-ros is an external Zephyr module/library, not the owner of
+the application build graph. Each fixture remains a normal Zephyr
+application:
+
+- examples call `find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})`;
+- Zephyr discovers nano-ros through `zephyr/module.yml`;
+- the module contributes Kconfig/CMake glue under `zephyr/`;
+- fixture builds run either `west build` or `ninja -C` an existing
+  Zephyr build directory.
+
+Make replaces only the outer shell scheduler. It must not introduce a
+nano-ros-owned CMake configure path, a CMake superbuild, or a merged
+runtime fixture binary.
+
+Revised workflow:
+
+1. `just zephyr build-fixtures` runs serial preflight:
+   - verify `west`;
+   - resolve `ZEPHYR_WORKSPACE`;
+   - export ROS interface package dirs;
+   - set Zephyr venv/toolchain environment;
+   - apply line-specific Zephyr patches;
+   - prepare build, log, and cache dirs;
+   - run Zephyr Rust `nros ws sync` preflight;
+   - build host `nros-codegen`.
+2. The recipe computes scheduling config:
+   - `outer_jobs = NROS_ZEPHYR_BUILD_JOBS`;
+   - `fallback_ninja_jobs = NROS_ZEPHYR_NINJA_JOBS`;
+   - `pristine = NROS_ZEPHYR_PRISTINE`;
+   - `sccache_disable = NROS_ZEPHYR_SCCACHE_DISABLE`;
+   - `filter = NROS_ZEPHYR_FIXTURE_FILTER`.
+3. The recipe generates structured Zephyr fixture records. Records
+   include identity, board, source app, build dir, RMW, overlays,
+   XRCE/Zenoh/Cyclone transport settings, codegen tool, make path,
+   cache dirs, and signature inputs. Records do not carry executable
+   shell argv strings.
+4. A Zephyr-specific make scheduler runs:
+
+   ```sh
+   make -j "$outer_jobs" --jobserver-style=fifo -f zephyr-fixtures.mk
+   ```
+
+   when pinned GNU make 4.4 is available, or ordinary
+   `make -j "$outer_jobs"` as a fallback.
+5. Each make leaf calls a Zephyr one-leaf runner with one structured
+   record. The runner reconstructs Bash argv arrays and recomputes the
+   build decision at execution time.
+6. The runner uses `ninja -C "$build_dir"` only when:
+   - `build.ninja` exists;
+   - `.nros-zephyr-fixture.sig` matches;
+   - `CMakeCache.txt` records the expected `MAKE`;
+   - `NROS_ZEPHYR_PRISTINE != always`;
+   - the Cyclone stale-source guard does not require a clean west build.
+7. Otherwise the runner uses the normal Zephyr configure/build path:
+
+   ```sh
+   west build -b "$board" -d "$build_dir" -p "$pristine" "$app_dir" -- "${extra_args[@]}"
+   ```
+
+8. On success, the runner writes `.nros-zephyr-fixture.sig` only after a
+   successful `west build`. It does not rewrite the signature after a
+   plain `ninja -C`.
+9. Logs remain under `build/zephyr-fixtures/<build-name>.log`. The make
+   scheduler adds a joblog/status layer and tails the Zephyr log on
+   failure.
+
+Jobserver rules:
+
+- `NROS_ZEPHYR_BUILD_JOBS` becomes the outer make width.
+- Under fifo make, leaves do not pass `-j` to Ninja and do not set
+  `CMAKE_BUILD_PARALLEL_LEVEL`; nested Ninja/make processes inherit the
+  fifo jobserver.
+- `NROS_ZEPHYR_NINJA_JOBS` is fallback-only for ordinary make or
+  non-jobserver direct execution.
+- The default outer width remains conservative. Multiple `west build`
+  configures against one Zephyr workspace have historical race risk, so
+  raising `NROS_ZEPHYR_BUILD_JOBS` remains opt-in.
+
+Logging-smoke stays delegated to `just zephyr build-logging-smoke` for
+the first Zephyr scheduler wave. Its binary path is test-facing and
+should migrate as a separate small slice after normal fixture leaves are
+stable.
+
+### Zephyr Parallel Wave Plan
+
+Use these groups for the next parallel agent waves. They are ordered by
+dependency; groups at the same level can run in parallel if their write
+sets stay disjoint.
+
+**Z1 — Structured Record Generator**
+
+- Update `scripts/build/zephyr-fixture-leaves.sh` to emit only
+  structured fields required by the runner.
+- Remove or deprecate display-only `argv_ninja` / `argv_west` fields
+  from the executable contract.
+- Preserve the current filter semantics and line/RMW matrix.
+- Add a dry-run validation that compares emitted records for a narrow
+  filter such as `build-rs-talker-zenoh`.
+
+Acceptance:
+
+- `bash -n scripts/build/zephyr-fixture-leaves.sh` passes.
+- `scripts/build/zephyr-fixture-leaves.sh --emit records --filter 'build-rs-talker-zenoh'`
+  emits one normal fixture record with expected board, app, build dir,
+  conf files, and transport settings.
+- No emitted field needs `eval` to become executable.
+
+**Z2 — One-Leaf Zephyr Runner**
+
+- Add `scripts/build/zephyr-fixture-run-one.sh`.
+- Input is one structured record plus environment prepared by
+  `just zephyr build-fixtures`.
+- Reconstruct `west build` and `ninja -C` argv arrays in Bash.
+- Recompute `needs_west` inside the runner.
+- Preserve signature write semantics: write only after successful
+  `west build`.
+- Preserve Zephyr logs under `build/zephyr-fixtures`.
+
+Acceptance:
+
+- `bash -n scripts/build/zephyr-fixture-run-one.sh` passes.
+- A narrow fixture filter can run one leaf twice; first run may use
+  `west build`, second warm run should use `ninja -C` when the signature
+  is current.
+- No direct nano-ros CMake configure path is introduced.
+
+**Z3 — Zephyr Make Scheduler**
+
+- Add `scripts/build/zephyr-fixture-make-driver.sh` or an explicitly
+  Zephyr-scoped branch in the existing make driver.
+- Generate one make target per Zephyr fixture record.
+- Use `NROS_ZEPHYR_BUILD_JOBS` as the make `-j` width.
+- Use pinned GNU make 4.4 fifo mode when available.
+- In fifo mode, clear nested `-j` / `CMAKE_BUILD_PARALLEL_LEVEL`
+  behavior so Ninja inherits jobserver tokens.
+- Keep ordinary make fallback with `NROS_ZEPHYR_NINJA_JOBS`.
+
+Acceptance:
+
+- `bash -n` passes for the scheduler script.
+- Dry-run shows the target list and per-target log paths.
+- The generated makefile can run one filtered leaf successfully.
+
+**Z4 — Recipe Wiring**
+
+- Keep serial preflight in `just/zephyr-ci.just`.
+- Replace only the current shell-array `&` / `wait` scheduler with the
+  Zephyr make scheduler.
+- Preserve skip behavior for missing `west` or missing workspace.
+- Preserve 4.4 line restrictions, idlc-gated Cyclone inclusion, fixture
+  filters, and logging-smoke delegation.
+
+Acceptance:
+
+- `NROS_ZEPHYR_FIXTURE_FILTER='build-rs-talker-zenoh' just zephyr build-fixtures`
+  builds the same fixture path as before.
+- The warm filtered rerun uses the same `ninja -C` fast path as the
+  current recipe.
+- Failure output names the fixture and points to
+  `build/zephyr-fixtures/<build-name>.log`.
+
+**Z5 — Logging-Smoke Migration**
+
+- Decide whether `logging-smoke-zephyr-native-sim` should become a
+  make leaf or remain delegated.
+- If migrated, preserve the exact binary path expected by
+  `logging_smoke.rs`.
+- Keep this separate from the normal fixture scheduler migration.
+
+Acceptance:
+
+- `NROS_ZEPHYR_FIXTURE_FILTER='logging-smoke' just zephyr build-fixtures`
+  still builds the runtime fixture consumed by tests.
+- `just zephyr build-logging-smoke` remains valid or becomes a thin
+  wrapper around the new leaf.
+
+**Z6 — Zephyr Validation**
+
+- Run narrow filtered builds for Rust, C, and C++ Zenoh fixtures.
+- Run one XRCE fixture on the 3.7 line.
+- Run one Cyclone fixture only when `idlc` is available.
+- Validate ordinary make fallback or document why it could not be
+  forced locally.
+
+Acceptance:
+
+- Cold and warm logs show the expected `west build` then `ninja -C`
+  behavior.
+- No Zephyr fixture path changes from the test harness point of view.
+- `rg '\\) &|wait_one|ninja -C .* -j|CMAKE_BUILD_PARALLEL_LEVEL' just/zephyr-ci.just scripts/build`
+  has no Zephyr fixture-scheduler matches except documented fallback
+  code.
 
 ### 226.A — Inventory the Fixture Graph
 
@@ -1167,15 +1355,48 @@ Acceptance:
       make leaves.
 - [x] Replace native Cyclone C/C++ fixture fan-out with grouped make
       leaves for the Cyclone C and C++ manifest passes.
-- [ ] Replace Zephyr shell-array background scheduling with make leaves.
+- [ ] Replace Zephyr shell-array background scheduling with make leaves
+      through the 226.G Zephyr scheduler migration groups.
 - [x] Remove fixture-path GNU parallel calls.
-- [ ] Remove explicit Ninja/CMake/Cargo job flags from jobserver leaves.
+- [ ] Remove explicit Ninja/CMake/Cargo job flags from jobserver leaves,
+      leaving only documented fallback paths.
 
 Acceptance:
 
 - `rg 'parallel --jobs|\\) &|CMAKE_BUILD_PARALLEL_LEVEL|ninja -C .* -j'`
   has no matches in fixture scheduling paths, except documented
   non-fixture commands or deliberate pure-make fallback code.
+
+### 226.G — Zephyr Scheduler Migration
+
+This is the nontrivial remaining scheduler work. It should be executed
+as the Z1-Z6 parallel wave plan above, while preserving the Zephyr build
+workflow design.
+
+- [ ] Z1: Harden `scripts/build/zephyr-fixture-leaves.sh` as a
+      structured record generator with no executable argv strings.
+- [ ] Z2: Add `scripts/build/zephyr-fixture-run-one.sh` to execute one
+      Zephyr fixture record through `west build` or `ninja -C`.
+- [ ] Z3: Add a Zephyr make scheduler that uses
+      `NROS_ZEPHYR_BUILD_JOBS` as the make jobserver width.
+- [ ] Z4: Wire `just/zephyr-ci.just` to keep preflight serial and
+      replace only the shell-array background scheduler.
+- [ ] Z5: Decide and implement the logging-smoke migration or
+      delegation boundary.
+- [ ] Z6: Validate cold/warm filtered Zephyr fixtures and fallback
+      behavior.
+
+Acceptance:
+
+- Zephyr examples still build as Zephyr applications through
+  `west build` or `ninja -C`; nano-ros remains an external Zephyr
+  module/library.
+- `NROS_ZEPHYR_BUILD_JOBS` controls outer make concurrency.
+- Under fifo jobserver, Zephyr leaves do not pass explicit `ninja -j`
+  and do not set `CMAKE_BUILD_PARALLEL_LEVEL`.
+- `NROS_ZEPHYR_NINJA_JOBS` is used only by documented fallback paths.
+- Fixture logs remain under `build/zephyr-fixtures`.
+- Test-facing fixture paths, including logging-smoke, remain unchanged.
 
 ### 226.D — Shared Rust Fixture Target Dirs
 
