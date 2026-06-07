@@ -23,7 +23,6 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    source scripts/build/fixture-matrix.sh
     trap 'for pid in $(jobs -pr); do kill "$pid" 2>/dev/null || true; done; wait; exit 130' INT TERM
     if ! command -v west >/dev/null 2>&1; then
         echo "Zephyr skip: west not found"; exit 0
@@ -181,15 +180,9 @@ build-fixtures:
         echo "Invalid NROS_ZEPHYR_NINJA_JOBS=$ninja_jobs; expected positive integer" >&2
         exit 2
     fi
-    # Phase 177.18 — Zephyr native_sim's final runner link invokes
-    # Zephyr's scripts/native_simulator/Makefile through CMake's MAKE
-    # cache variable. Point it at the pinned GNU make 4.4 build from
-    # `just setup` so the fifo jobserver survives every build stage.
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-        cmake_build_env=()
-    else
-        cmake_build_env=(CMAKE_BUILD_PARALLEL_LEVEL="$ninja_jobs")
-    fi
+    # Phase 226.G — the Zephyr one-leaf runner owns nested job behavior:
+    # fifo jobserver leaves omit `ninja -j` / CMAKE_BUILD_PARALLEL_LEVEL,
+    # while ordinary make fallback uses NROS_ZEPHYR_NINJA_JOBS.
     sccache_disable="${NROS_ZEPHYR_SCCACHE_DISABLE:-0}"
     case "$sccache_disable" in
         0|1) ;;
@@ -204,329 +197,54 @@ build-fixtures:
         echo "  fixture-filter: $fixture_filter"
     fi
 
-    # entries: "<board>|<build_dir>|<src_path_under_examples>|<best_effort?>"
-    entries=()
-    # Phase 180.A — version-aware NSOS overlay. 4.4 renamed the native eth
-    # driver disable (ETH_NATIVE_POSIX -> ETH_NATIVE_TAP), so the 4.4 line
-    # uses the per-line overlay; 3.7 keeps the legacy conf.
-    if [ "{{NROS_ZEPHYR_VERSION}}" = "4.4" ]; then
-        native_sim_nsos_conf="$nros_root/cmake/zephyr/native-sim-line-4.4.conf"
-    else
-        native_sim_nsos_conf="$nros_root/zephyr/native-sim-nsos.conf"
+    zephyr_leaf_args=(
+        --zephyr-version "{{NROS_ZEPHYR_VERSION}}"
+        --nros-root "$nros_root"
+        --build-root "$build_root"
+        --codegen-tool "$codegen_tool"
+        --make-bin "$make_bin"
+        --toolchain-cache-dir "$toolchain_cache_dir"
+        --sccache-disable "$sccache_disable"
+        --pristine "$pristine"
+    )
+    if [ -n "$fixture_filter" ]; then
+        zephyr_leaf_args+=(--filter "$fixture_filter")
     fi
-    # Phase 178.E guardrail: keep Zephyr E2E coverage on the real
-    # user-copyable examples. Do not collapse roles into one runtime
-    # dispatch image here; each role remains its own Zephyr app/image so
-    # tests prove `examples/zephyr/<lang>/<role>` builds standalone.
-    # RMW still varies by overlay, matching the user build shape.
-    if [ "{{NROS_ZEPHYR_VERSION}}" = "4.4" ]; then
-        # Phase 180.A — only the zenoh native_sim line is proven on 4.4.
-        # xrce + cyclonedds on 4.4 await Tasks 5-6 / the cyclonedds-on-4.4
-        # bring-up; restrict the 4.4 matrix to zenoh until they land.
-        fixture_rmws=(zenoh)
-        echo "  → 4.4 line: zenoh fixtures only (xrce/cyclonedds pending)"
-    else
-    fixture_rmws=(zenoh xrce)
-    # Phase 186.6.2 — gate on idlc being *available* (host PATH or the legacy
-    # build/install), not specifically build/install. The Zephyr Cyclone build
-    # self-provisions Cyclone in-tree and resolves idlc host-side via find_program
-    # (186.3 — NO_CMAKE_FIND_ROOT_PATH, e.g. a ROS 2 install on PATH), so no
-    # `just cyclonedds setup` is needed.
-    nros_store_root="${NROS_HOME:-$HOME/.nros}/sdk"
-    if command -v idlc >/dev/null 2>&1 \
-        || [ -n "$(ls "$nros_store_root"/cyclonedds/*/bin/idlc 2>/dev/null)" ] \
-        || [ -x "$nros_root/build/cyclonedds/bin/idlc" ] \
-        || [ -x "$nros_root/build/install/bin/idlc" ]; then
-        fixture_rmws+=(cyclonedds)
-    else
-        echo "  → zephyr cyclonedds fixtures skipped (idlc not found on PATH or nros store — run \`nros setup <board> --rmw cyclonedds\`, install a ROS 2 idlc, or set IDLC_EXECUTABLE)"
+    normal_records=0
+    probe_records="$(mktemp)"
+    if scripts/build/zephyr-fixture-leaves.sh --emit records "${zephyr_leaf_args[@]}" >"$probe_records" 2>/dev/null; then
+        if [ -s "$probe_records" ]; then
+            normal_records=1
+        fi
     fi
-    fi
-    for lang in $(nros_fixture_langs); do
-        lang_tag="$(nros_zephyr_lang_tag "$lang")"
-        for rmw in "${fixture_rmws[@]}"; do
-            for case in $(nros_fixture_roles); do
-                xrce_port=""
-                if [ "$rmw" = "xrce" ]; then
-                    case "$lang" in
-                        rust) lang_offset=0 ;;
-                        c) lang_offset=100 ;;
-                        cpp) lang_offset=200 ;;
-                        *)
-                            echo "Unknown Zephyr fixture language: $lang" >&2
-                            exit 2
-                            ;;
-                    esac
-                    case "$case" in
-                        talker|listener) variant_offset=0 ;;
-                        service-server|service-client) variant_offset=10 ;;
-                        action-server|action-client) variant_offset=20 ;;
-                        *)
-                            echo "Unknown Zephyr fixture role: $case" >&2
-                            exit 2
-                            ;;
-                    esac
-                    xrce_port=$((2018 + lang_offset + variant_offset))
-                fi
-                entries+=(
-                  "native_sim/native/64|build-${lang_tag}-${case}-${rmw}|zephyr/${lang}/${case}|0|$xrce_port|prj.conf;prj-${rmw}.conf;$native_sim_nsos_conf"
-                )
-            done
-        done
-    done
-    # `service-client-async` zephyr/rust fixture dropped 2026-06-02
-    # per Phase 212.M-F.5 — pending async-`Component` trait decision.
+    rm -f "$probe_records"
 
     failures=()
-    running=()
-
-    wait_one() {
-        local entry pid src log best_effort
-        entry="${running[0]}"
-        running=("${running[@]:1}")
-        pid="${entry%%|*}"
-        entry="${entry#*|}"
-        src="${entry%%|*}"
-        entry="${entry#*|}"
-        log="${entry%%|*}"
-        best_effort="${entry#*|}"
-        if wait "$pid"; then
-            :
-        elif [ "$best_effort" = "1" ]; then
-            echo "  ! best-effort failed: $src (log: $log)"
-        else
-            echo "  ✗ failed: $src (log: $log)"
-            tail -80 "$log" || true
-            failures+=("$src")
-        fi
-    }
-
-    selected=0
-    for entry in "${entries[@]}"; do
-        # Columns:
-        #   5  xrce_agent_port (optional) — forwarded as
-        #      `-DCONFIG_NROS_XRCE_AGENT_PORT=<port>` so each
-        #      (variant, lang) pair builds against its own Kconfig
-        #      port slot.
-        #   6  conf_files (optional) — `;`-separated overlay list
-        #      forwarded as `-DCONF_FILE="..."` for Phase 168.x
-        #      collapsed cases that select RMW via prj overlay.
-        IFS='|' read -r board build_dir src best_effort xrce_port conf_files <<< "$entry"
-        if [ -n "$fixture_filter" ] && ! [[ "$board $build_dir $src $conf_files" =~ $fixture_filter ]]; then
-            continue
-        fi
-        selected=$((selected + 1))
-        if [[ "$build_dir" = /* ]]; then
-            actual_build_dir="$build_dir"
-        else
-            actual_build_dir="$build_root/$build_dir"
-        fi
-        echo "  → zephyr/$src (-d $actual_build_dir, $board${xrce_port:+, xrce-port=$xrce_port}${conf_files:+, conf=$conf_files})"
-        extra_args=(-D_NANO_ROS_CODEGEN_TOOL="$codegen_tool"
-                    -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR="$toolchain_cache_dir"
-                    -DMAKE="$make_bin"
-                    -DUSE_CCACHE=0)
-        if [ -n "$xrce_port" ]; then
-            extra_args+=(-DCONFIG_NROS_XRCE_AGENT_PORT="$xrce_port")
-        fi
-        zenoh_locator=""
-        if [[ "$build_dir" == *-zenoh ]]; then
-            src_tail="${src#zephyr/}"
-            fixture_lang="${src_tail%%/*}"
-            fixture_role="${src_tail#*/}"
-            case "$fixture_lang" in
-                rust) lang_offset=0 ;;
-                c) lang_offset=100 ;;
-                cpp) lang_offset=200 ;;
-                *)
-                    echo "Unknown Zephyr fixture language in $src" >&2
-                    exit 2
-                    ;;
-            esac
-            case "$fixture_role" in
-                talker|listener) variant_offset=0 ;;
-                service-server|service-client) variant_offset=10 ;;
-                action-server|action-client) variant_offset=20 ;;
-                *)
-                    echo "Unknown Zephyr fixture role in $src" >&2
-                    exit 2
-                    ;;
-            esac
-            zenoh_port=$((7456 + lang_offset + variant_offset))
-            zenoh_locator="tcp/127.0.0.1:$zenoh_port"
-            extra_args+=(-DCONFIG_NROS_ZENOH_LOCATOR="\"$zenoh_locator\"")
-        fi
-        # Cyclone (native_sim): bake a distinct ROS_DOMAIN_ID per communicating
-        # role-set so the native_sim Cyclone test groups run in PARALLEL. Cyclone
-        # derives its RTPS ports from the domain (7400 + 250*domain); a talker+
-        # listener / server+client pair shares one domain (same lang+variant),
-        # unrelated sets differ → no cross-test port collision. Compile-time
-        # (Kconfig), matching the embedded model — no runtime arg or env.
-        if [[ "$build_dir" == *-cyclonedds ]]; then
-            src_tail="${src#zephyr/}"
-            fixture_lang="${src_tail%%/*}"
-            fixture_role="${src_tail#*/}"
-            case "$fixture_lang" in
-                rust) lang_idx=0 ;;
-                c) lang_idx=1 ;;
-                cpp) lang_idx=2 ;;
-                *) echo "Unknown Zephyr fixture language in $src" >&2; exit 2 ;;
-            esac
-            case "$fixture_role" in
-                talker|listener) variant_idx=0 ;;
-                service-server|service-client) variant_idx=1 ;;
-                action-server|action-client) variant_idx=2 ;;
-                *) echo "Unknown Zephyr fixture role in $src" >&2; exit 2 ;;
-            esac
-            # 50..58: 3 langs x 3 variants, all <= 232 (DDS-valid).
-            cyclone_domain=$((50 + lang_idx * 3 + variant_idx))
-            extra_args+=(-DCONFIG_NROS_DOMAIN_ID="$cyclone_domain")
-        fi
-        if [ -n "$conf_files" ]; then
-            extra_args+=(-DCONF_FILE="$conf_files")
-        fi
-        # Phase 165.perf — route Zephyr's C/C++ compiles through sccache
-        # so the picolibc / kernel / Cyclone objects (identical across
-        # same-RMW examples → same autoconf.h) become cache hits instead
-        # of full per-example recompiles. sccache degrades to a direct
-        # compile on any uncacheable invocation, so this is safe; the
-        # only historical caution was parallel west fan-out (still
-        # gated behind NROS_ZEPHYR_BUILD_JOBS), not sccache itself.
-        sccache_launcher=0
-        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
-            sccache_launcher=1
-            extra_args+=(-DCMAKE_C_COMPILER_LAUNCHER=sccache
-                         -DCMAKE_CXX_COMPILER_LAUNCHER=sccache)
-        fi
-        log="$log_dir/${build_dir}.log"
-        # Phase 140 — pass extra_args only when populated; the example's
-        # CMakeLists consumes nano-ros via add_subdirectory (no PREFIX_PATH).
-        west_extra=()
-        if [ "${#extra_args[@]}" -gt 0 ]; then
-            west_extra=(-- "${extra_args[@]}")
-        fi
-        # Phase 174.A residual — if the build dir is already configured,
-        # build with ninja directly instead of `west build`, which
-        # ALWAYS re-runs the full cmake configure (devicetree regen,
-        # Rust-target detect, codegen) — ~4 s/example even on a no-op.
-        # ninja regenerates build.ninja itself only when a cmake input
-        # (CMakeLists / prj.conf) actually changed, so this is correct;
-        # `pristine=always` still forces a clean west reconfigure. If an
-        # older build dir cached different cmake inputs, re-run west
-        # once so the cache matches this fixture variant. Under the
-        # fifo jobserver (NROS_JOBSERVER=1) ninja inherits the pool;
-        # otherwise it gets the per-build ninja-jobs budget.
-        sig_file="$actual_build_dir/.nros-zephyr-fixture.sig"
-        desired_sig="$(printf '%s\n' \
-            "board=$board" \
-            "src=$src" \
-            "xrce_port=$xrce_port" \
-            "conf_files=$conf_files" \
-            "zenoh_locator=$zenoh_locator" \
-            "codegen_tool=$codegen_tool" \
-            "toolchain_cache_dir=$toolchain_cache_dir" \
-            "make=$make_bin" \
-            "sccache_launcher=$sccache_launcher")"
-        needs_west=0
-        cache_file="$actual_build_dir/CMakeCache.txt"
-        if [ -f "$cache_file" ] && ! grep -qxF "MAKE:FILEPATH=$make_bin" "$cache_file"; then
-            needs_west=1
-        fi
-        if [ ! -f "$sig_file" ] || [ "$(cat "$sig_file")" != "$desired_sig" ]; then
-            needs_west=1
-        fi
-        # 184.9 — guard against stale incremental builds. Bare `ninja -C` has
-        # intermittently failed to pick up a cyclone-backend edit (a churned/
-        # half-failed build dir reuses a stale object → stale binary), which
-        # silently broke 184.8 backend diagnosis (a probe ran against an old
-        # binary, even hiding a compile error). For cyclonedds fixtures, if any
-        # `nros-rmw-cyclonedds/src` source is newer than this fixture's linked
-        # binary, force a clean west reconfigure so backend edits always land.
-        # Fires only right after a backend edit; no effect on normal builds or
-        # on non-cyclone fixtures.
-        eff_pristine="$pristine"
-        case "$actual_build_dir" in
-            *cyclonedds*)
-                if [ -f "$actual_build_dir/zephyr/zephyr.exe" ] && [ -n "$(find \
-                        "$nros_root/packages/dds/nros-rmw-cyclonedds/src" \
-                        \( -name '*.cpp' -o -name '*.hpp' \) \
-                        -newer "$actual_build_dir/zephyr/zephyr.exe" -print -quit 2>/dev/null)" ]; then
-                    needs_west=1
-                    eff_pristine=always
-                fi
-                ;;
-        esac
-        if [ "$eff_pristine" != "always" ] && [ -f "$actual_build_dir/build.ninja" ] && [ "$needs_west" = "0" ]; then
-            use_west=0
-            if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-                build_argv=(ninja -C "$actual_build_dir")
-            else
-                build_argv=(ninja -C "$actual_build_dir" -j "$ninja_jobs")
-            fi
-        else
-            use_west=1
-            build_argv=(west build -b "$board" -d "$actual_build_dir" -p "$eff_pristine"
-                        "$nros_root/examples/$src" "${west_extra[@]}")
-        fi
-        if [ "$jobs" -eq 1 ]; then
-            set +e
-            (
-              cd "$workspace"
-              env PATH="$tool_path" SCCACHE_DISABLE="$sccache_disable" \
-                CCACHE_DIR="$ccache_dir" CCACHE_TEMPDIR="$ccache_tmpdir" \
-                "${cmake_build_env[@]}" \
-                "${build_argv[@]}"
-              rc=$?
-              if [ "$rc" -eq 0 ] && [ "$use_west" = "1" ]; then
-                printf '%s\n' "$desired_sig" > "$sig_file"
-              fi
-              exit "$rc"
-            ) 2>&1 | tee "$log"
-            rc="${PIPESTATUS[0]}"
-            set -e
-            if [ "$rc" -eq 0 ]; then
-                :
-            elif [ "$best_effort" = "1" ]; then
-                echo "  ! best-effort failed: $src (log: $log)"
-            else
-                echo "  ✗ failed: $src (log: $log)"
-                failures+=("$src")
-            fi
-        else
-            (
-              cd "$workspace"
-              env PATH="$tool_path" SCCACHE_DISABLE="$sccache_disable" \
-                CCACHE_DIR="$ccache_dir" CCACHE_TEMPDIR="$ccache_tmpdir" \
-                "${cmake_build_env[@]}" \
-                "${build_argv[@]}"
-              rc=$?
-              if [ "$rc" -eq 0 ] && [ "$use_west" = "1" ]; then
-                printf '%s\n' "$desired_sig" > "$sig_file"
-              fi
-              exit "$rc"
-            ) > "$log" 2>&1 &
-            running+=("$!|$src|$log|$best_effort")
-            while [ "${#running[@]}" -ge "$jobs" ]; do
-                wait_one
-            done
-        fi
-    done
-    while [ "${#running[@]}" -gt 0 ]; do
-        wait_one
-    done
+    if [ "$normal_records" = "1" ]; then
+        echo "  → Zephyr fixture make scheduler"
+        NROS_ZEPHYR_WORKSPACE="$workspace" \
+        NROS_ZEPHYR_TOOL_PATH="$tool_path" \
+        NROS_ZEPHYR_MAKE_BIN="$make_bin" \
+        NROS_ZEPHYR_BUILD_JOBS="$jobs" \
+        NROS_ZEPHYR_NINJA_JOBS="$ninja_jobs" \
+        NROS_ZEPHYR_SCCACHE_DISABLE="$sccache_disable" \
+        NROS_ZEPHYR_CCACHE_DIR="$ccache_dir" \
+        NROS_ZEPHYR_CCACHE_TEMPDIR="$ccache_tmpdir" \
+            scripts/build/zephyr-fixture-make-driver.sh "${zephyr_leaf_args[@]}"
+    fi
     # Phase 177.9 — the logging-smoke native_sim fixture is consumed by
     # logging_smoke.rs but lives under packages/testing/.../bins (not
     # examples/), so it's outside the entries loop above. build-all puts
     # zephyr in its fixture fanout, so build it here too — otherwise
     # build-all is not a superset of test-all's fixture needs and
     # logging_smoke_zephyr_native_sim hard-fails "fixture not built".
-    # Honor the same filter; count it toward `selected` so a
-    # logging-only filter doesn't trip the "no fixtures matched" guard.
+    # Honor the same filter; a logging-only filter is valid even when
+    # the normal Zephyr fixture generator emits no records.
     want_logging=0
     if [ -z "$fixture_filter" ] || [[ "logging-smoke-zephyr-native-sim" =~ $fixture_filter ]]; then
         want_logging=1
     fi
-    if [ "$selected" -eq 0 ] && [ "$want_logging" -eq 0 ]; then
+    if [ "$normal_records" = "0" ] && [ "$want_logging" -eq 0 ]; then
         echo "  ✗ no Zephyr fixtures matched NROS_ZEPHYR_FIXTURE_FILTER=$fixture_filter"
         exit 1
     fi

@@ -1358,16 +1358,70 @@ Validation performed in Wave 8:
   - per-fixture output stayed at
     `build/zephyr-fixtures/build-rs-talker-zenoh.log`.
 
-Remaining Zephyr work:
+### Parallel Wave 9 — Zephyr Recipe Wiring
 
-- Z4 recipe wiring: keep Zephyr preflight in `just/zephyr-ci.just` and
-  replace only the shell-array background scheduler with the new make
-  scheduler.
-- Z5 logging-smoke boundary: keep delegated initially or migrate as a
-  separate path-preserving leaf.
-- Z6 real Zephyr validation: run cold/warm filtered Rust, C, C++ Zenoh
-  fixtures, one XRCE fixture on 3.7, and one Cyclone fixture when idlc
-  is available.
+Started 2026-06-08. Scope was wiring the Zephyr make scheduler into
+`just/zephyr-ci.just` while preserving the existing Zephyr setup and
+test-facing fixture paths.
+
+- [x] Z4 recipe wiring: `just/zephyr-ci.just` now keeps the west
+      workspace checks, Zephyr patching, Rust `ws sync` preflight, host
+      `nros-codegen` build, and job/pristine/sccache validation serial,
+      then delegates normal Zephyr fixture leaves to
+      `scripts/build/zephyr-fixture-make-driver.sh`.
+- [x] Z5 boundary decision: keep
+      `logging-smoke-zephyr-native-sim` delegated to
+      `just zephyr build-logging-smoke` for this wave. That preserves the
+      exact binary path expected by `logging_smoke.rs`; migrating it into
+      a make leaf can happen later only if the path contract stays
+      unchanged.
+- [x] Z6 scheduler validation: filtered Zephyr leaves exercised fifo
+      make scheduling, warm `ninja -C`, ordinary make fallback, and the
+      delegated logging-smoke boundary. The Rust Zephyr fixture failure
+      observed during validation is tracked as a fixture compile issue,
+      not scheduler work.
+
+Validation performed in Wave 9:
+
+- `just --list`
+- `XDG_RUNTIME_DIR=/tmp NROS_ZEPHYR_FIXTURE_FILTER=build-rs-talker-zenoh just -n zephyr build-fixtures`
+- `bash -n scripts/build/zephyr-fixture-leaves.sh scripts/build/zephyr-fixture-run-one.sh scripts/build/zephyr-fixture-make-driver.sh`
+- `git diff --check`
+- `NROS_ZEPHYR_FIXTURE_FILTER=build-c-talker-zenoh NROS_ZEPHYR_BUILD_JOBS=1 just zephyr build-fixtures`
+  cold run passed through the make scheduler in 69 seconds.
+- The same filtered C Zenoh run passed warm in 0 seconds according to
+  the scheduler joblog, and the per-fixture log showed the expected
+  `ninja -C` path.
+- `NROS_ZEPHYR_FIXTURE_FILTER=build-cpp-talker-zenoh NROS_ZEPHYR_BUILD_JOBS=1 just zephyr build-fixtures`
+  passed through the fifo make scheduler in 80 seconds.
+- `NROS_ZEPHYR_FIXTURE_FILTER=build-c-talker-xrce NROS_ZEPHYR_BUILD_JOBS=1 just zephyr build-fixtures`
+  passed through the fifo make scheduler in 38 seconds.
+- `NROS_ZEPHYR_FIXTURE_FILTER=build-c-talker-cyclonedds NROS_ZEPHYR_BUILD_JOBS=1 just zephyr build-fixtures`
+  passed through the fifo make scheduler in 75 seconds with
+  `/opt/ros/humble/bin/idlc` available.
+- `NROS_ZEPHYR_FIXTURE_FILTER=logging-smoke NROS_ZEPHYR_BUILD_JOBS=1 just zephyr build-fixtures`
+  correctly selected the delegated `just zephyr build-logging-smoke`
+  path and passed when `CCACHE_DIR` / `CCACHE_TEMPDIR` were set to
+  writable repo-local paths. The first sandbox run without those env
+  overrides failed in ccache while trying to create temporary files
+  under read-only `/run/user/.../ccache-tmp`.
+- A temporary `/tmp` script-only copy without `third-party/make` dry-ran
+  the ordinary make fallback path with `NROS_ZEPHYR_BUILD_JOBS=2` and
+  `NROS_ZEPHYR_NINJA_JOBS=3`; the scheduler reported
+  `leaf-mode=fallback fallback-ninja-jobs=3`.
+- `NROS_ZEPHYR_FIXTURE_FILTER=build-rs-talker-zenoh NROS_ZEPHYR_BUILD_JOBS=1 just zephyr build-fixtures`
+  reached the make scheduler and failed inside the Zephyr Rust app
+  build with existing Rust fixture issues:
+  `__private_node_state_into_raw` is gated behind `alloc`, and the
+  Zephyr Rust app lacks a panic handler. The failure is not a scheduler
+  regression.
+
+Remaining Zephyr work after Wave 9:
+
+- Track the Rust Zephyr fixture compile failure separately from the
+  scheduler migration.
+- Decide later whether logging-smoke should remain delegated or move
+  into a make leaf without changing the binary path expected by tests.
 
 ### 226.A — Inventory the Fixture Graph
 
@@ -1406,7 +1460,7 @@ Acceptance:
       make leaves.
 - [x] Replace native Cyclone C/C++ fixture fan-out with grouped make
       leaves for the Cyclone C and C++ manifest passes.
-- [ ] Replace Zephyr shell-array background scheduling with make leaves
+- [x] Replace Zephyr shell-array background scheduling with make leaves
       through the 226.G Zephyr scheduler migration groups.
 - [x] Remove fixture-path GNU parallel calls.
 - [ ] Remove explicit Ninja/CMake/Cargo job flags from jobserver leaves,
@@ -1430,11 +1484,11 @@ workflow design.
       Zephyr fixture record through `west build` or `ninja -C`.
 - [x] Z3: Add a Zephyr make scheduler that uses
       `NROS_ZEPHYR_BUILD_JOBS` as the make jobserver width.
-- [ ] Z4: Wire `just/zephyr-ci.just` to keep preflight serial and
+- [x] Z4: Wire `just/zephyr-ci.just` to keep preflight serial and
       replace only the shell-array background scheduler.
-- [ ] Z5: Decide and implement the logging-smoke migration or
+- [x] Z5: Decide and implement the logging-smoke migration or
       delegation boundary.
-- [ ] Z6: Validate cold/warm filtered Zephyr fixtures and fallback
+- [x] Z6: Validate cold/warm filtered Zephyr fixtures and fallback
       behavior.
 
 Acceptance:
