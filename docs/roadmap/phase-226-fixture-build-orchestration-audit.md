@@ -803,16 +803,118 @@ Post-wave validation:
   `--target thumbv7em-none-eabihf`; the manifest rows were updated to
   carry that target, and the rerun confirmed the target is now passed.
 
+### Wave 4 Investigation — Make-Driver Wiring
+
+Started 2026-06-07. Scope was investigation only: identify the next safe
+step for wiring `scripts/build/fixture-make-driver.sh` beyond native
+dry-run, especially native make leaves and Zephyr leaf records.
+
+Observed driver state:
+
+- `scripts/build/fixture-make-driver.sh` is still hard-gated to
+  `native|all` and emits native manifest groups only. A dry-run currently
+  emits nine grouped leaves: native Rust default, native Rust zenoh/xrce,
+  native C zenoh/xrce/cyclonedds, and native C++ zenoh/xrce/cyclonedds.
+- Native leaves call `scripts/build/fixtures-build.sh native <lang>
+  [rmw]`. That makes the driver safe as a replacement for the existing
+  sequential C/C++ manifest passes, but it is not yet a per-fixture-row
+  scheduler and therefore will not solve Rust target-dir sharing by
+  itself.
+- The current native `just` path still has two raw background Cargo leaves
+  for pure-Cargo Cyclone Rust talker/listener before the manifest C/C++
+  passes. Those should become explicit make leaves before the driver
+  replaces `just native build-fixture-extras`.
+
+Observed Zephyr state:
+
+- `scripts/build/zephyr-fixture-leaves.sh` now emits stable identity and
+  config records for the Zephyr matrix plus optional logging-smoke, but
+  the executable decision is still incomplete.
+- The record's `needs_west` field is `unknown`. Current
+  `just/zephyr-ci.just` still owns the signature comparison,
+  cached-`MAKE` validation, Cyclone stale-source clean-reconfigure
+  guard, and `ninja` versus `west build` choice.
+- The record's `argv_ninja` and `argv_west` fields are diagnostic strings,
+  not shell-escaped argv arrays. A make-driver implementation should not
+  `eval` those strings; it should either compute the command from parsed
+  fields or move the current Zephyr build-one logic into a dedicated leaf
+  runner script.
+
+Recommended next implementation step:
+
+1. Add a small native leaf-runner mode to
+   `scripts/build/fixture-make-driver.sh` for the two pure-Cargo Cyclone
+   Rust leaves, preserving the existing `nros ws sync` preflight and
+   `target-cyclonedds/` target dir from `just/native.just`.
+2. Run the make-driver for native only, without wiring `just/native.just`.
+   Validate that the joblog/status output and failure tailing work on a
+   real build.
+3. After that, wire only `just native build-fixture-extras` to the
+   driver. Leave Zephyr scheduling unchanged until a Zephyr leaf-runner
+   script can own the `needs_west` decision without duplicating or
+   weakening the current checks.
+
+Risks to manage:
+
+- Native C/C++ grouped leaves may run concurrently across RMWs and langs;
+  confirm their build dirs and `NROS_CMAKE_EXTRA_DEFS` are isolated before
+  enabling default parallel execution.
+- The native pure-Cargo Cyclone leaves share example directories with
+  other native Rust rows. Keep `target-cyclonedds/` isolated and keep
+  codegen preflight serial.
+- Zephyr direct make leaves are higher risk than native leaves because the
+  current recipe has workspace patching, generated-dir sync, venv/PATH
+  setup, ccache dirs, signature checks, and stale Cyclone handling in one
+  shell body. Move this into a leaf runner before changing scheduling.
+
+### Parallel Wave 4 — Manifest Selectors and RTOS Extras
+
+Started 2026-06-07. Scope was medium-risk manifest coverage plus the
+selector support needed to move smoke-only rows without broadening normal
+platform builds.
+
+- [x] NuttX Rust manifest routing: add
+      `packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm` to
+      `examples/fixtures.toml` and replace the manual Rust fixture loop
+      in `just/nuttx.just` with `fixtures-build.sh nuttx rust`. The
+      existing kernel provisioning, rustup warm-up, and release-profile
+      workaround remain in the recipe.
+- [x] QEMU ESP32 manifest coverage: add
+      `packages/testing/nros-tests/bins/logging-smoke-esp32-qemu` to the
+      `qemu-esp32-baremetal` fixture rows with `skip_probe = true`.
+- [x] Fixture `--id` selection: add optional `--id` filtering to
+      `fixtures-manifest.py list`, `fixtures-manifest.py
+      list-workspaces`, and `fixtures-build.sh`.
+- [x] ESP32 targeted builds: add stable IDs for the QEMU ESP32 talker,
+      listener, and logging-smoke rows. `just/esp32.just` now builds the
+      talker/listener rows by ID for QEMU image packaging and builds the
+      logging-smoke row by ID before smoke image packaging.
+
+Validation performed in Wave 4:
+
+- `bash -n scripts/build/fixtures-build.sh`
+- `python3 -m py_compile scripts/build/fixtures-manifest.py`
+- `python3 scripts/build/fixtures-manifest.py list --platform qemu-esp32-baremetal --lang rust`
+- `python3 scripts/build/fixtures-manifest.py list --platform qemu-esp32-baremetal --lang rust --id qemu-esp32-baremetal-logging-smoke`
+- `python3 scripts/build/fixtures-manifest.py list --platform qemu-esp32-baremetal --lang rust --for-probe | wc -l`
+- `python3 scripts/build/fixtures-manifest.py list --platform nuttx --lang rust`
+- `scripts/build/fixtures-build.sh native rust --id no-such-fixture`
+- `scripts/build/fixtures-build.sh native c zenoh --id no-such-fixture`
+- `just --list --justfile just/esp32.just`
+- `just --list --justfile just/nuttx.just`
+
+No full NuttX or ESP32 fixture build was run in this wave.
+
 ### Wave 2 Findings — Manifest Coverage Cleanup Plan
 
 Recommended follow-up order:
 
-1. **STM32F4, low risk.** Replace the hard-coded list in
+1. **STM32F4, low risk — done in Wave 3.** Replace the hard-coded list in
    `just/stm32f4.just:42` with
    `bash scripts/build/fixtures-build.sh stm32f4 rust`. The manifest
    already has the direct-list gap, `talker-embassy`
    (`examples/fixtures.toml:457`). Keep the `arm-none-eabi-gcc` guard.
-2. **QEMU bare-metal, low/medium risk.** Add direct leaves to the QEMU
+2. **QEMU bare-metal, low/medium risk — done in Wave 3.** Add direct leaves to the QEMU
    manifest section: `talker-xrce`, `phase216-rtic-e2e`,
    `cdr-roundtrip-qemu`, `lan9118-qemu`,
    `logging-smoke-mps2-baremetal`, `wcet-cycles-qemu`, and
@@ -820,21 +922,21 @@ Recommended follow-up order:
    `just/qemu-baremetal.just:129` with
    `fixtures-build.sh qemu-arm-baremetal rust`. Do not manifest
    `phase216_rtic_e2e_pkg`; it is a dependency package.
-3. **NuttX Rust, medium risk.** Add
+3. **NuttX Rust, medium risk — done in Wave 4.** Add
    `packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm`
    with `env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc" }`, then
    replace the manual Rust loop in `just/nuttx.just:130` with
    `NROS_CARGO_PROFILE=release fixtures-build.sh nuttx rust`. Preserve
    the kernel build and rustup warm-up preflights.
-4. **ESP32 Cargo leaves, medium risk.** The qemu ESP32 talker/listener
+4. **ESP32 Cargo leaves, medium risk — done in Wave 4.** The qemu ESP32 talker/listener
    rows already exist. Add `logging-smoke-esp32-qemu` as a
    `qemu-esp32-baremetal` Rust row with `skip_probe = true`; keep
    `espflash save-image` as ad-hoc image packaging.
-5. **Smoke-only extras, higher-risk prerequisite.** Add `--id` support
-   to `fixtures-manifest.py` / `fixtures-build.sh` before moving
-   FreeRTOS, ThreadX Linux, and ThreadX RV64 logging-smoke extras into
-   the manifest. Zephyr logging-smoke should wait for Zephyr leaf
-   generation because it is a west/CMake image build, not a Cargo leaf.
+5. **Smoke-only extras, higher-risk prerequisite — selector done in
+   Wave 4.** Use `--id` support to move FreeRTOS, ThreadX Linux, and
+   ThreadX RV64 logging-smoke extras into the manifest. Zephyr
+   logging-smoke should wait for Zephyr leaf generation because it is a
+   west/CMake image build, not a Cargo leaf.
 
 ### Wave 2 Findings — Zephyr Leaf Generator Plan
 
