@@ -22,7 +22,7 @@
 //! with the standard prebuilt-fixture hint when the build-fixtures stage
 //! has not run.
 
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf, process::Command, time::Duration};
 
 fn workspace_root() -> PathBuf {
     nros_tests::project_root()
@@ -105,6 +105,17 @@ fn rust_workspace_entry_fixture_is_prebuilt() {
 }
 
 #[test]
+fn rust_workspace_default_entry_fixture_is_prebuilt() {
+    let entry = nros_tests::fixtures::build_native_workspace_rust_default_entry()
+        .expect("native Rust workspace default Entry fixture");
+    assert!(
+        entry.is_file(),
+        "missing Rust workspace default Entry pkg binary at {}",
+        entry.display()
+    );
+}
+
+#[test]
 fn cmake_pure_cpp_workspace_entry_fixture_is_prebuilt() {
     let entry = nros_tests::fixtures::build_native_workspace_cpp_entry()
         .expect("native C++ workspace Entry fixture");
@@ -138,13 +149,79 @@ fn cmake_pure_c_workspace_entry_fixture_is_prebuilt() {
 }
 
 #[test]
-#[ignore = "workspace entries do not yet expose bounded success output for E2E assertions"]
-fn native_workspace_runtime_e2e_observability_gap() {
+fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
+    if !nros_tests::fixtures::require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
     let entry = nros_tests::fixtures::build_native_workspace_rust_entry()
         .expect("native Rust workspace Entry fixture");
-    panic!(
-        "TODO: run {} once workspace entries expose a deterministic \
-         publish/receive success signal and bounded exit mode",
-        entry.display()
+    let talker = nros_tests::fixtures::build_native_talker()
+        .expect("native Rust talker fixture for workspace E2E publisher");
+    let router = nros_tests::fixtures::ZenohRouter::start_unique().expect("start zenohd");
+
+    let mut cmd = Command::new(entry);
+    cmd.env("NROS_LOCATOR", router.locator())
+        .env("NROS_SESSION_MODE", "client")
+        .env("NROS_ENTRY_SPIN_MS", "8000")
+        .env("NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS", "1");
+    let mut proc =
+        nros_tests::process::ManagedProcess::spawn_command(cmd, "rust workspace native_entry")
+            .expect("spawn Rust workspace Entry fixture");
+
+    std::thread::sleep(Duration::from_millis(700));
+    let mut talker_cmd = Command::new(talker);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", router.locator())
+        .env("NROS_SESSION_MODE", "client");
+    let mut talker_proc =
+        nros_tests::process::ManagedProcess::spawn_command(talker_cmd, "native talker publisher")
+            .expect("spawn native talker publisher");
+
+    let mut output = proc
+        .wait_for_output_pattern("nros: hosted spin complete", Duration::from_secs(12))
+        .expect("Rust workspace Entry did not report hosted spin completion");
+    talker_proc.kill();
+    output.push_str(
+        &proc
+            .wait_for_all_output(Duration::from_secs(2))
+            .unwrap_or_default(),
     );
+
+    let message_callbacks = parse_counter(&output, "message_callbacks=")
+        .expect("hosted spin output should include message_callbacks counter");
+    assert!(
+        message_callbacks >= 1,
+        "Rust workspace should observe at least one std_msgs/Int32 subscription callback; output:\n{output}"
+    );
+    assert!(
+        output.contains("nros: application complete"),
+        "Rust workspace should exit cleanly after bounded spin; output:\n{output}"
+    );
+}
+
+#[test]
+fn cmake_cpp_workspace_entry_starts_prebuilt_runtime() {
+    let entry = nros_tests::fixtures::build_native_workspace_cpp_entry()
+        .expect("native C++ workspace Entry fixture");
+    let mut proc =
+        nros_tests::process::ManagedProcess::spawn(entry, &[], "C++ workspace native_entry")
+            .expect("spawn C++ workspace Entry fixture");
+
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        proc.is_running(),
+        "C++ workspace Entry should enter its native spin loop when started from the prebuilt binary"
+    );
+    proc.kill();
+}
+
+fn parse_counter(output: &str, key: &str) -> Option<usize> {
+    let start = output.rfind(key)? + key.len();
+    let value = output[start..]
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    value.parse().ok()
 }

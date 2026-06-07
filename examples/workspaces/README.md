@@ -6,7 +6,8 @@ documented in the book:
 - `src/*_pkg/`: Node packages with component code only.
 - `src/demo_bringup/`: Bringup package with `package.xml`, `system.toml`,
   `launch/`, and optional config files. It has no build file.
-- `src/native_entry/`: Entry package with the `main()` for the native target.
+- `src/*_entry/`: Entry packages with the `main()` for each target or launch
+  selection. Multiple entries may share the same Node and Bringup packages.
 
 Build them with the user workflow:
 
@@ -22,10 +23,12 @@ Then use the platform build tool:
 
 ```bash
 cargo build -p native_entry
+cargo build -p native_default_entry
 # or
 cmake -S . -B build && cmake --build build
 ```
 
-The workspaces currently ship native entries. Additional entry packages should
-be added as sibling packages, for example `src/freertos_entry/` or
-`src/zephyr_entry/`, while reusing the same Node and Bringup packages.
+The Rust workspace ships two native entries to demonstrate the shared
+Node/Bringup pattern. Additional platform entries should be added as sibling
+packages, for example `src/freertos_entry/` or `src/zephyr_entry/`, while
+reusing the same Node and Bringup packages.

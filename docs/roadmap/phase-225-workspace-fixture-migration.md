@@ -160,9 +160,10 @@ Acceptance:
 - [x] Replace or migrate `examples/templates/multi-node-workspace/` into
   `examples/workspaces/rust/`.
 - [x] Keep exactly the book shape: Node pkgs, Bringup pkg, Entry pkgs.
-- [ ] Add at least two Entry packages sharing the same Node + Bringup
-  packages: native first, then one embedded target if the current board
-  support is ready.
+- [x] Add at least two Entry packages sharing the same Node + Bringup
+  packages. The Rust workspace now has `native_entry` and
+  `native_default_entry`; embedded target Entries remain follow-up
+  platform coverage.
 - [x] Update tests that validate real workspace flow to stage this
   example path instead of a hidden `nros-tests` fixture.
 
@@ -171,7 +172,7 @@ Acceptance:
 - `nros ws sync` succeeds from the workspace root.
 - `nros check --bringup src/demo_bringup` succeeds.
 - `nros check --workspace .` succeeds.
-- `cargo build` succeeds for the native entry.
+- `cargo build` succeeds for both native Rust entries.
 - The commands above are run exactly as the user-facing workflow, not
   through test-only staging shortcuts. Any failure becomes a tracked bug.
 
@@ -325,9 +326,11 @@ build unit is a workspace root, not a single package directory.
   - `entry/package.xml` exists;
   - CMake rows name a valid CMake target or Entry package;
   - Rust rows name a Cargo package present in the workspace.
-- [ ] Decide whether workspace stale-checking reuses the existing
+- [x] Decide whether workspace stale-checking reuses the existing
   fixture input signature machinery or gets a workspace-specific
-  signature helper.
+  signature helper. Decision: use a workspace-specific signature helper
+  because workspace rows span Node, Bringup, Entry, codegen, and CMake
+  inputs rather than one package directory.
 
 Acceptance:
 
@@ -356,9 +359,15 @@ user would run.
   target dir from the manifest.
 - [x] C/C++/mixed rows configure and build with CMake using the manifest
   build dir, target, RMW, and normal in-tree CLI resolver.
-- [ ] Write a per-workspace build signature or stamp that lets
+- [x] Write a per-workspace build signature or stamp that lets
   `test-all` detect missing or stale workspace fixtures with one clear
   precondition message.
+
+Implementation note: `workspace-fixtures-build.sh` writes one
+`.nros-workspace-fixture.<id>.inputsig` per manifest row after the
+workflow build succeeds. `scripts/check-fixtures-stale.sh` compares those
+signatures during preflight; `nros-tests` also checks the matching stamp
+before returning a prebuilt workspace binary path.
 
 Acceptance:
 
@@ -381,15 +390,28 @@ matching the single-node app convention.
   binaries from the manifest.
 - [x] Convert current workspace build tests so they no longer invoke
   Cargo or CMake.
-- [ ] Add runtime E2E coverage for the native Rust workspace Entry
+- [x] Add runtime E2E coverage for the native Rust workspace Entry
   binary.
-- [ ] Add runtime E2E coverage for at least one native CMake workspace
+- [x] Add runtime E2E coverage for at least one native CMake workspace
   Entry binary, then expand to C, C++, and mixed as observability allows.
-- [ ] Add deterministic app observability if needed: bounded run mode,
+- [x] Add deterministic app observability if needed: bounded run mode,
   received-message counter, success log line, or an exit-on-success path
   owned by the example code rather than by test-only shims.
 - [x] Keep configure/build metadata checks only where they verify CLI or
   CMake diagnostics, not as the primary product workflow test.
+
+Implementation note: Rust hosted Entry packages now support an opt-in
+bounded spin via `NROS_ENTRY_SPIN_MS`, with
+`NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS` asserting message-bearing callback
+dispatch before clean exit. The Rust workspace E2E uses this to verify a
+real generated `std_msgs/Int32` pub/sub callback from the prebuilt
+`native_entry` binary, with the existing prebuilt native Rust talker as
+the external publisher because Zenoh does not loop one session's own
+publish back to its same-process subscriber. The first CMake runtime
+test starts the prebuilt C++ Entry binary directly and verifies it
+enters the native spin loop;
+full C/C++ pub/sub assertions remain blocked until the native C/C++
+NodeContext runtime moves beyond its current recording-only adapter.
 
 Acceptance:
 
@@ -409,15 +431,25 @@ than drifting into a test-only build path.
 
 - [x] Ensure the workspace fixture helper sources the activated in-tree
   CLI or passes the same CLI path used by existing CMake fixture builds.
-- [ ] Clarify the non-Rust behavior of `nros ws sync`: it is still part
+- [x] Clarify the non-Rust behavior of `nros ws sync`: it is still part
   of the workflow, even when no Rust patch table is written.
-- [ ] Decide whether `nros codegen-system` output is an actual build
+- [x] Decide whether `nros codegen-system` output is an actual build
   input for native Rust/CMake entries or a workflow validation artifact;
   update examples/docs accordingly.
-- [ ] Add at least one multiple-Entry workspace fixture once a second
-  platform Entry package is present.
+- [x] Add at least one multiple-Entry workspace fixture once a second
+  Entry package is present.
 - [x] Keep CMake-generated interface binding side effects separate from
   `nros codegen-system` validation in the fixture logs.
+
+Workflow decision: `nros ws sync` remains a required workspace command
+for all languages. For pure C/C++/mixed workspaces it may be a no-op for
+Rust patch-table content, but it still validates/discovers workspace
+state through the same CLI workflow. The native fixture
+`nros codegen-system --out ...` output is currently a workflow
+validation artifact for native Rust/CMake Entries; embedded/platform
+Entries may consume the baked output directly. CMake-generated interface
+bindings remain produced by the CMake configure/build path, not by this
+validation artifact.
 
 Acceptance:
 
@@ -527,7 +559,7 @@ temporary backward compatibility during the fixture-refactor work.
 - [x] `examples/workspaces/` contains a small product-shaped set:
   Rust, C, C++, and mixed.
 - [x] Each promoted workspace follows Node / Bringup / Entry roles.
-- [ ] At least one workspace demonstrates multiple Entry packages that
+- [x] At least one workspace demonstrates multiple Entry packages that
   share the same Node and Bringup packages.
 - [x] User-facing workspace examples contain real node behavior and real
   generated message usage, not placeholder stand-ins.
@@ -537,12 +569,12 @@ temporary backward compatibility during the fixture-refactor work.
 - [x] Workspace fixtures are declared in `examples/fixtures.toml`.
 - [x] Workspace fixtures are consumed through a build-fixtures lane, not
   bespoke test code.
-- [ ] Workspace E2E tests run prebuilt Entry binaries directly and do
+- [x] Workspace E2E tests run prebuilt Entry binaries directly and do
   not build workspaces during the test stage.
 - [x] The workspace fixture build path executes `nros ws sync` and
   `nros codegen-system` before invoking Cargo, CMake, or a platform
   build tool.
-- [ ] Node component API alignment with ROS composable-node concepts is
+- [x] Node component API alignment with ROS composable-node concepts is
   either implemented or captured as a reviewed follow-up with a concrete
   compatibility plan.
 - [x] Every promoted workspace is verified by following the documented

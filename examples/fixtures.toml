@@ -64,6 +64,17 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures"
 
 [[workspace_fixture]]
+id = "workspace-rust-native-default-entry"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "native_default_entry"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
 id = "workspace-c-native"
 platform = "native"
 lang = "c"
