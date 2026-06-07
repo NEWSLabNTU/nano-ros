@@ -160,10 +160,10 @@ Acceptance:
 - [x] Replace or migrate `examples/templates/multi-node-workspace/` into
   `examples/workspaces/rust/`.
 - [x] Keep exactly the book shape: Node pkgs, Bringup pkg, Entry pkgs.
-- [x] Add at least two Entry packages sharing the same Node + Bringup
-  packages. The Rust workspace now has `native_entry` and
-  `native_default_entry`; embedded target Entries remain follow-up
-  platform coverage.
+- [ ] Add at least two platform Entry packages sharing the same Node +
+  Bringup packages. The prior `native_default_entry` package was removed
+  because default launch selection is not a target platform; embedded
+  target Entries remain follow-up platform coverage.
 - [x] Update tests that validate real workspace flow to stage this
   example path instead of a hidden `nros-tests` fixture.
 
@@ -501,6 +501,154 @@ Acceptance:
 - No page implies `nros build`, `nros run`, `nros deploy`, or
   `nros launch` is the build/run path.
 
+### 225.M - Node Component API Alignment Design
+
+Follow-up review compared the promoted workspace Node-pkg APIs against
+real upstream client-library shapes:
+
+- `external/ros2-demos/composition/` - real `rclcpp_components`
+  talker/listener/client/server examples.
+- `external/rclcpp/` - `rclcpp::Node`, `rclcpp::NodeOptions`,
+  publisher, subscription, timer, and component registration surfaces.
+- `external/rclc/` - C node/publisher/subscription/executor handle
+  APIs.
+- `external/ros2_rust/` - `rclrs` `Executor::create_node`,
+  `NodeOptions`, `Node::create_publisher`, and
+  `Node::create_subscription` surfaces.
+
+Reference conclusions:
+
+- **rclcpp / rclcpp_components**: the reusable unit is a class with
+  `explicit T(const rclcpp::NodeOptions& options)`, usually deriving
+  from `rclcpp::Node`. The node name is passed to the base `Node`
+  constructor, entities are created by topic/QoS/callback, and
+  `RCLCPP_COMPONENTS_REGISTER_NODE(T)` registers the class, not an
+  internal node ID.
+- **rclc**: the API is explicit and embedded-friendly, but identity is
+  still handle-based: `rclc_node_init_default(&node, name, ns,
+  &support)`, `rclc_publisher_init_default(&pub, &node, ts, topic)`,
+  `rclc_subscription_init_default(&sub, &node, ts, topic)`, and
+  executor registration with concrete handles and callback/context
+  pointers.
+- **rclrs**: the Rust API takes a bare node name or `NodeOptions`,
+  supports builder-style options such as `.namespace(...)`, and creates
+  publishers/subscriptions from topic/options plus callbacks.
+
+Design decision:
+
+- Stable node/entity/callback IDs stay in nano-ros metadata and
+  generated runtime wiring. They are needed for duplicate detection,
+  entity-to-node association, callback-effect planning, and advanced
+  multi-node packages.
+- Stable IDs must not be mandatory in the normal one-node authoring API.
+  Product examples should create nodes by name/options and create
+  entities by topic/service/action/timer/callback data. The API should
+  synthesize stable IDs and expose explicit IDs only through advanced
+  functions.
+- Default node ID synthesis: `sanitize(options.name)`.
+- Default entity ID synthesis: `<kind>_<sanitized_source>`, for example
+  `pub_chatter`, `sub_chatter`, `timer_on_tick`, `srv_add_two_ints`.
+- If synthesis collides inside one Node pkg, registration fails with a
+  diagnostic telling the author to use the explicit-ID advanced API.
+
+API tiering:
+
+- **Tier 1: ROS-shaped authoring API** - used by examples and docs.
+  Node creation takes name/options only; entity creation takes
+  topic/service/action name, type, QoS/options, and callback data; IDs
+  are synthesized.
+- **Tier 2: explicit metadata API** - kept for generated code,
+  diagnostic tests, and advanced multi-node packages. Existing
+  `NodeId`, `EntityId`, raw descriptors, and ABI symbols remain
+  compatible but should not be the product-example default.
+
+Acceptance:
+
+- Phase 225 records that Node IDs are internally necessary but should be
+  hidden/defaulted in the user-facing common path.
+- API work items below distinguish non-breaking ergonomic additions from
+  explicit metadata compatibility.
+
+### 225.N - Rust/C/C++ Node-Pkg API Work Items
+
+Rust:
+
+- [x] Add a name/options-only `NodeContext::create_node(...)` or
+  equivalent Tier 1 API.
+- [x] Keep `create_node_with_id(id, options)` or equivalent explicit
+  Tier 2 API.
+- [ ] Add publisher/subscription/timer/service/action declaration helpers
+  that synthesize `EntityId`.
+- [ ] Add callback-effect helpers that accept returned handles or
+  callback names without repeating unrelated entity ID strings.
+- [x] Migrate promoted Rust workspace and template Node pkgs to Tier 1.
+- [x] Keep explicit-ID tests and add synthesis-collision diagnostics.
+
+C:
+
+- [x] Add rclc-shaped declared-node helpers:
+  `nros_declared_node_init_default` and
+  `nros_declared_node_init_with_options`.
+- [x] Add declared publisher/subscription/timer helpers that take
+  handles, type metadata, topic/period, and optional QoS/options.
+- [x] Keep raw `nros_node_entity_descriptor_t` as the explicit metadata
+  tier, with naming/docs that make advanced use intentional.
+- [x] Migrate promoted C workspace Node pkgs away from raw descriptor
+  literals.
+
+C++:
+
+- [x] Add `NodeContext::create_node(out, const NodeOptions&)` with
+  synthesized stable ID.
+- [x] Keep `NodeContext::create_node(out, stable_id, options)` as the
+  explicit metadata API.
+- [ ] Add typed `DeclaredNode::create_publisher<T>(topic, qos)` and
+  related helpers where message type metadata is available.
+- [ ] Add `rclcpp::NodeOptions` support to `rclcpp_compat.hpp`.
+- [ ] Update `rclcpp_components_register_node()` generated entry to
+  instantiate `T(rclcpp::NodeOptions{})` when that constructor exists.
+- [x] Migrate promoted C++ workspace Node pkgs to the best available
+  Tier 1 API.
+
+Acceptance:
+
+- Product Rust examples contain no `NodeId::new("node")`.
+- Product C examples do not set `.stable_id` or `.node_id` directly for
+  simple topic/timer entities.
+- Product C++ examples no longer require `"node"` stable-ID boilerplate.
+- Real upstream `composition::Talker`-style constructors are accepted by
+  the hosted compatibility path.
+- Static-link composition remains explicit and deterministic.
+
+### 225.O - Workspace Topology and Mixed-Language Fixes
+
+The review found example topology issues separate from the API surface.
+
+- [x] Remove `native_default_entry` from
+  `examples/workspaces/rust/`; default launch selection belongs in the
+  one native Entry package.
+- [ ] Replace the second native Entry with real platform Entry packages.
+  Initial target set: `native_entry`, `qemu_freertos_entry`,
+  `threadx_linux_entry`, and `qemu_nuttx_entry`.
+- [ ] Add Zephyr and ESP32 Entry packages once their documented
+  `nros setup` + codegen + platform-tool build workflows are green.
+- [x] Update `examples/fixtures.toml`, fixture builders, and E2E lookup
+  helpers after Entry topology changes.
+- [ ] Add generic native CMake/Corrosion support for Rust Node pkgs in
+  mixed workspaces, or document the exact product-path blocker.
+- [ ] Add one Rust Node pkg to `examples/workspaces/mixed/`.
+- [ ] Update mixed Bringup launch to include C, C++, and Rust Node pkgs.
+- [ ] Build the mixed workspace through `nros ws sync`,
+  `nros codegen-system`, and the normal CMake build.
+
+Acceptance:
+
+- Multiple Entry packages mean multiple target platforms, not multiple
+  native launch spellings.
+- The mixed workspace is actually mixed C/C++/Rust, not only C/C++.
+- Missing Corrosion/codegen support is fixed in the product path, not
+  hidden with fixture-only glue.
+
 ---
 
 ## 4. Non-Goals
@@ -565,8 +713,9 @@ temporary backward compatibility during the fixture-refactor work.
 - [x] `examples/workspaces/` contains a small product-shaped set:
   Rust, C, C++, and mixed.
 - [x] Each promoted workspace follows Node / Bringup / Entry roles.
-- [x] At least one workspace demonstrates multiple Entry packages that
-  share the same Node and Bringup packages.
+- [ ] At least one workspace demonstrates multiple platform Entry packages
+  that share the same Node and Bringup packages. `native_default_entry`
+  does not satisfy this criterion; see 225.O.
 - [x] User-facing workspace examples contain real node behavior and real
   generated message usage, not placeholder stand-ins.
 - [x] Tests use promoted examples as the source of truth for product
@@ -581,8 +730,7 @@ temporary backward compatibility during the fixture-refactor work.
   `nros codegen-system` before invoking Cargo, CMake, or a platform
   build tool.
 - [x] Node component API alignment with ROS composable-node concepts is
-  either implemented or captured as a reviewed follow-up with a concrete
-  compatibility plan.
+  implemented or captured through the 225.M/225.N compatibility plan.
 - [x] Every promoted workspace is verified by following the documented
   user workflow. Failures discovered this way are fixed or recorded as
   product bugs with owners; they are not waived as "just examples."
