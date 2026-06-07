@@ -128,6 +128,16 @@ build_workspace() {
                 echo "     built target: $entry under $dir/$build_subdir"
             fi
         fi
+
+        local stamp_dir
+        if [ "$lang" = "rust" ]; then
+            stamp_dir="${target_dir:-target}"
+        else
+            stamp_dir="$build_subdir"
+        fi
+        mkdir -p "$stamp_dir"
+        bash "$repo_root/scripts/build/workspace-fixture-signature.sh" "$record" \
+            > "$stamp_dir/.nros-workspace-fixture.$id.inputsig"
     )
 }
 

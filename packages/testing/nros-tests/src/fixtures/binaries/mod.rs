@@ -11,9 +11,14 @@ use crate::{TestError, TestResult, pinned_nightly, project_root};
 use duct::cmd;
 use once_cell::sync::OnceCell;
 use std::{
-    env,
+    env, fs,
     path::{Path, PathBuf},
+    process::Command,
 };
+
+fn workspace_fixture_stamp_name(fixture_id: &str) -> String {
+    format!(".nros-workspace-fixture.{fixture_id}.inputsig")
+}
 
 /// Cached path to the qemu-test binary
 static QEMU_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -165,6 +170,9 @@ static C_XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native Rust workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native Rust workspace Entry pkg using default launch.
+static NATIVE_WORKSPACE_RUST_DEFAULT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native C workspace Entry pkg binary.
 static NATIVE_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -425,19 +433,116 @@ fn workspace_example_dir(name: &str) -> TestResult<PathBuf> {
     Ok(example_dir)
 }
 
+fn current_workspace_fixture_record(fixture_id: &str) -> TestResult<String> {
+    let root = project_root();
+    let output = Command::new("python3")
+        .arg(root.join("scripts/build/fixtures-manifest.py"))
+        .arg("list-workspaces")
+        .arg("--platform")
+        .arg("native")
+        .current_dir(&root)
+        .output()
+        .map_err(|e| {
+            TestError::BuildFailed(format!("Failed to run workspace fixture manifest: {e}"))
+        })?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "Failed to read workspace fixture manifest:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    let prefix = format!("{fixture_id}\x1f");
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find(|line| line.starts_with(&prefix))
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            TestError::BuildFailed(format!(
+                "Workspace fixture {fixture_id:?} is not declared in examples/fixtures.toml"
+            ))
+        })
+}
+
+fn current_workspace_fixture_signature(fixture_id: &str) -> TestResult<String> {
+    let root = project_root();
+    let record = current_workspace_fixture_record(fixture_id)?;
+    let output = Command::new("bash")
+        .arg(root.join("scripts/build/workspace-fixture-signature.sh"))
+        .arg(&record)
+        .current_dir(&root)
+        .output()
+        .map_err(|e| {
+            TestError::BuildFailed(format!("Failed to run workspace fixture signature: {e}"))
+        })?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "Failed to compute workspace fixture signature:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .trim_end()
+        .to_owned())
+}
+
+fn require_prebuilt_workspace_binary(
+    fixture_id: &str,
+    binary_path: &Path,
+    stamp_path: &Path,
+) -> TestResult<PathBuf> {
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Workspace fixture binary not prebuilt: {}\n\
+             Run `just native build-workspace-fixtures` first.",
+            binary_path.display()
+        )));
+    }
+
+    let expected = current_workspace_fixture_signature(fixture_id)?;
+    let actual = fs::read_to_string(stamp_path).map_err(|e| {
+        TestError::BuildFailed(format!(
+            "Workspace fixture stamp missing for {fixture_id}: {} ({e})\n\
+             Run `just native build-workspace-fixtures` first.",
+            stamp_path.display()
+        ))
+    })?;
+    if actual.trim_end() != expected {
+        return Err(TestError::BuildFailed(format!(
+            "Workspace fixture {fixture_id} is stale: {}\n\
+             Run `just native build-workspace-fixtures` first.",
+            stamp_path.display()
+        )));
+    }
+
+    Ok(binary_path.to_path_buf())
+}
+
 /// Resolve a prebuilt Rust workspace Entry pkg binary.
 ///
 /// The workspace fixture build step owns `nros ws sync`,
 /// `nros codegen-system`, and the Cargo build. Tests only require the
 /// resulting binary from the deterministic fixture target dir.
-pub fn build_workspace_rust_entry(workspace: &str, binary_name: &str) -> TestResult<PathBuf> {
+pub fn build_workspace_rust_entry(
+    fixture_id: &str,
+    workspace: &str,
+    binary_name: &str,
+) -> TestResult<PathBuf> {
     let example_dir = workspace_example_dir(workspace)?;
+    let target_dir = example_dir.join("target-fixtures");
     let binary_path = example_dir.join(format!(
         "target-fixtures/{}/{}",
         cargo_target_profile_dir(),
         binary_name
     ));
-    require_prebuilt_binary(&binary_path)
+    require_prebuilt_workspace_binary(
+        fixture_id,
+        &binary_path,
+        &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
+    )
 }
 
 /// Resolve a prebuilt CMake workspace Entry pkg binary.
@@ -445,39 +550,67 @@ pub fn build_workspace_rust_entry(workspace: &str, binary_name: &str) -> TestRes
 /// The workspace fixture build step owns `nros ws sync`,
 /// `nros codegen-system`, and the CMake configure/build. Tests only
 /// require the resulting binary from the deterministic fixture build dir.
-pub fn build_workspace_cmake_entry(workspace: &str, binary_name: &str) -> TestResult<PathBuf> {
+pub fn build_workspace_cmake_entry(
+    fixture_id: &str,
+    workspace: &str,
+    binary_name: &str,
+) -> TestResult<PathBuf> {
     let example_dir = workspace_example_dir(workspace)?;
+    let build_dir = example_dir.join("build-workspace-fixtures");
     let binary_path = example_dir.join(format!(
         "build-workspace-fixtures/src/{binary_name}/{binary_name}"
     ));
-    require_prebuilt_binary(&binary_path)
+    require_prebuilt_workspace_binary(
+        fixture_id,
+        &binary_path,
+        &build_dir.join(workspace_fixture_stamp_name(fixture_id)),
+    )
 }
 
 /// Native Rust workspace Entry pkg fixture.
 pub fn build_native_workspace_rust_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_ENTRY_BINARY
-        .get_or_try_init(|| build_workspace_rust_entry("rust", "native_entry"))
+        .get_or_try_init(|| {
+            build_workspace_rust_entry("workspace-rust-native", "rust", "native_entry")
+        })
+        .map(|p| p.as_path())
+}
+
+/// Native Rust workspace Entry pkg fixture using the Bringup default launch.
+pub fn build_native_workspace_rust_default_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_DEFAULT_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-default-entry",
+                "rust",
+                "native_default_entry",
+            )
+        })
         .map(|p| p.as_path())
 }
 
 /// Native C workspace Entry pkg fixture.
 pub fn build_native_workspace_c_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_ENTRY_BINARY
-        .get_or_try_init(|| build_workspace_cmake_entry("c", "native_entry"))
+        .get_or_try_init(|| build_workspace_cmake_entry("workspace-c-native", "c", "native_entry"))
         .map(|p| p.as_path())
 }
 
 /// Native C++ workspace Entry pkg fixture.
 pub fn build_native_workspace_cpp_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_ENTRY_BINARY
-        .get_or_try_init(|| build_workspace_cmake_entry("cpp", "native_entry"))
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry("workspace-cpp-native", "cpp", "native_entry")
+        })
         .map(|p| p.as_path())
 }
 
 /// Native mixed C/C++ workspace Entry pkg fixture.
 pub fn build_native_workspace_mixed_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_MIXED_ENTRY_BINARY
-        .get_or_try_init(|| build_workspace_cmake_entry("mixed", "native_entry"))
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry("workspace-mixed-native", "mixed", "native_entry")
+        })
         .map(|p| p.as_path())
 }
 

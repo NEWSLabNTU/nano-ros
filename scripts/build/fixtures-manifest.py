@@ -262,6 +262,8 @@ def main():
         for e in load_workspace_fixtures(a.manifest):
             if not matches_filters(e, a):
                 continue
+            if a.for_probe and e.get("skip_probe"):
+                continue
             entries.append(e)
 
         if a.command == "validate-workspaces":
