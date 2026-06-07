@@ -577,9 +577,10 @@ Rust:
   equivalent Tier 1 API.
 - [x] Keep `create_node_with_id(id, options)` or equivalent explicit
   Tier 2 API.
-- [ ] Add publisher/subscription/timer/service/action declaration helpers
-  that synthesize `EntityId`.
-- [ ] Add callback-effect helpers that accept returned handles or
+- [x] Add publisher/subscription/timer declaration helpers that
+  synthesize `EntityId`.
+- [ ] Add service/action declaration helpers that synthesize `EntityId`.
+- [x] Add callback-effect helpers that accept returned handles or
   callback names without repeating unrelated entity ID strings.
 - [x] Migrate promoted Rust workspace and template Node pkgs to Tier 1.
 - [x] Keep explicit-ID tests and add synthesis-collision diagnostics.
@@ -602,10 +603,10 @@ C++:
   synthesized stable ID.
 - [x] Keep `NodeContext::create_node(out, stable_id, options)` as the
   explicit metadata API.
-- [ ] Add typed `DeclaredNode::create_publisher<T>(topic, qos)` and
+- [x] Add typed `DeclaredNode::create_publisher<T>(topic, qos)` and
   related helpers where message type metadata is available.
-- [ ] Add `rclcpp::NodeOptions` support to `rclcpp_compat.hpp`.
-- [ ] Update `rclcpp_components_register_node()` generated entry to
+- [x] Add `rclcpp::NodeOptions` support to `rclcpp_compat.hpp`.
+- [x] Update `rclcpp_components_register_node()` generated entry to
   instantiate `T(rclcpp::NodeOptions{})` when that constructor exists.
 - [x] Migrate promoted C++ workspace Node pkgs to the best available
   Tier 1 API.
@@ -634,12 +635,25 @@ The review found example topology issues separate from the API surface.
   `nros setup` + codegen + platform-tool build workflows are green.
 - [x] Update `examples/fixtures.toml`, fixture builders, and E2E lookup
   helpers after Entry topology changes.
-- [ ] Add generic native CMake/Corrosion support for Rust Node pkgs in
+- [x] Add generic native CMake/Corrosion support for Rust Node pkgs in
   mixed workspaces, or document the exact product-path blocker.
 - [ ] Add one Rust Node pkg to `examples/workspaces/mixed/`.
 - [ ] Update mixed Bringup launch to include C, C++, and Rust Node pkgs.
 - [ ] Build the mixed workspace through `nros ws sync`,
   `nros codegen-system`, and the normal CMake build.
+
+Blockers found in the implementation wave:
+
+- Real platform Entry packages cannot be added as product-shaped
+  workspace Entries yet. Generic `nano_ros_entry(...)` and the workspace
+  fixture driver are native-oriented; non-native platform fixture recipes
+  do not route through `scripts/build/workspace-fixtures-build.sh`.
+- Mixed C/C++/Rust workspaces cannot be made correct by adding only an
+  example Rust pkg. C/C++ generated entries still resolve
+  `__nros_component_<pkg>_register`, while Rust `nros::node!()` does not
+  export that C/C++ component registration ABI. This requires core/CLI ABI
+  support before `examples/workspaces/mixed/` can include a real Rust Node
+  pkg through the documented CMake product path.
 
 Acceptance:
 
