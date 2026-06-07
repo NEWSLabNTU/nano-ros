@@ -43,6 +43,8 @@ Just Works. (Python `.launch.py` is not supported yet.)
 ## Build
 
 ```bash
+nros ws sync
+nros codegen-system --bringup demo_bringup
 cargo build
 ```
 
@@ -51,13 +53,9 @@ Builds the two Node pkg rlibs + the `robot_entry` binary. The
 `robot_entry/src/main.rs` walks the workspace package index, parses the
 launch XML, and emits one `<node_pkg>::register(runtime)?;` call per
 `<node>` entry — so `robot_entry` links and boots both nodes in a single
-process.
-
-> The Node pkgs ship a `PlaceholderInt32` message (a 4-byte LE `i32`,
-> the wire shape of `std_msgs/Int32`) so the template compiles with a
-> plain `cargo build`, no codegen step. To use the real typed `Int32`,
-> run `nros generate-rust` for each Node pkg and swap the placeholder for
-> `std_msgs::msg::Int32` (see `examples/native/rust/talker/`).
+process. The Node pkgs use generated `std_msgs::msg::Int32`, so run
+`nros ws sync` before the first build and after changing message
+dependencies.
 
 ## Validate the workspace
 

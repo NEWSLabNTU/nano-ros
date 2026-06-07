@@ -41,7 +41,7 @@ internal test matrix.
 
 Every promoted workspace uses the same roles:
 
-- **Node pkg**: reusable node component code only. No `main()`, no board
+- **Node pkg**: reusable node code only. No `main()`, no board
   selection, no deploy config. Contains real publishers, subscriptions,
   timers, services, or actions.
 - **Bringup pkg**: config only. Contains `package.xml`, `system.toml`,
@@ -211,9 +211,10 @@ Acceptance:
 
 ### 225.E — Replace Placeholder Node Content
 
-Current visible Rust template nodes use `PlaceholderInt32` instead of
-generated `std_msgs/Int32`. That is acceptable for an internal compile
-fixture, but not for the primary workspace example.
+Visible Rust workspace and template nodes use generated
+`std_msgs/Int32`. Placeholder-only nodes are allowed only in internal
+parser, planner, diagnostic, or platform-smoke fixtures whose comments
+make clear that runtime pub/sub behavior is not under test.
 
 - [x] Remove placeholder message types from promoted product examples.
 - [x] Add real message dependencies to `package.xml` and generated
@@ -222,23 +223,21 @@ fixture, but not for the primary workspace example.
   - talker publishes a real typed message;
   - listener deserializes/observes it;
   - optional service/action examples use real request/response paths.
-- [ ] Leave placeholder-only code only in explicitly internal test
+- [x] Leave placeholder-only code only in explicitly internal test
   fixtures, with comments saying why runtime behavior is not under test.
 
 Audit note: promoted product examples no longer contain
-`PlaceholderInt32` or equivalent stand-ins. Remaining placeholder/stub
-content is limited to non-promoted surfaces:
-`examples/templates/multi-node-workspace/` still carries
-`PlaceholderInt32` as a copy-out skeleton that is superseded by
-`examples/workspaces/rust/`, and several platform smoke fixtures under
-`packages/testing/nros-tests/fixtures/` use stub nodes to test
-build/link/planning behavior rather than runtime pub/sub. The checklist
-item stays open until the old template is either archived/marked
-internal or converted to generated `std_msgs/Int32`.
+`PlaceholderInt32` or equivalent stand-ins. The old Rust template was
+converted to generated `std_msgs::msg::Int32` and now follows the same
+`nros ws sync` workflow as the promoted Rust workspace. Remaining
+placeholder/stub content is limited to internal platform smoke,
+parser/planner, and diagnostic fixtures under
+`packages/testing/nros-tests/fixtures/`, where those fixtures test
+build/link/planning behavior rather than runtime pub/sub.
 
 Acceptance:
 
-- `rg -n "PlaceholderInt32|placeholder message|stand-in" examples/workspaces`
+- `rg -n "PlaceholderInt32|placeholder message|stand-in" examples/workspaces examples/templates/multi-node-workspace`
   returns zero matches.
 - The primary Rust workspace builds after a clean `nros ws sync`.
 
@@ -268,7 +267,7 @@ Work items:
   `rclcpp_components` concept -> nano-ros Rust/C/C++ equivalent.
 - [x] Identify naming mismatches that can be fixed without breaking ABI.
 - [x] Identify breaking API changes that must wait for a minor release.
-- [ ] Update the promoted examples to use the best current API names and
+- [x] Update the promoted examples to use the best current API names and
   avoid legacy "component" wording except where compatibility requires it.
 
 API comparison:
@@ -297,6 +296,13 @@ Compatibility plan:
   compatibility aliases for at least one release cycle.
 - Deferred: dynamic plugin loading, component-manager services, and
   runtime load/unload. nano-ros composition remains static-link-first.
+
+Wording cleanup note: promoted workspace README/CMake comments now use
+"Node pkg" in prose. Remaining `component` spellings in promoted C/C++
+workspaces are compatibility target names or generated ABI symbols such
+as `<pkg>_<exec>_component` and `__nros_component_<pkg>_register`; book
+pages label `nros new --component` as the current compatibility
+scaffold flag for Node pkgs.
 
 Acceptance:
 

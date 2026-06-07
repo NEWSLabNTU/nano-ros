@@ -139,7 +139,7 @@ symbol (Phase 212.M.5.a.1) — the same ABI the Rust `nros::node!(Talker)`
 macro emits, so a C++ Node pkg drops into a Rust Entry pkg's launch
 graph and vice-versa.
 
-`nros new --component --lang cpp` scaffolds this exact shape:
+The current compatibility scaffold for a C++ Node pkg is:
 
 ```bash
 $ nros new --component my-talker --lang cpp --use-case talker
@@ -217,7 +217,8 @@ cmake --build build
 
 The build produces:
 
-- `src/talker_pkg/libtalker_pkg_talker_component.a` — the Node pkg static lib.
+- `src/talker_pkg/libtalker_pkg_talker_component.a` — the Node pkg static lib
+  (`_component` is the compatibility target suffix).
 - `src/listener_pkg/liblistener_pkg_listener_component.a` — ditto.
 - `src/native_entry/native_entry` — the Entry exe, with the generated
   `int main()` + register-call sequence + Board boot stub linked in.
@@ -244,10 +245,10 @@ syntax the user types into the three pkgs.
 |---|---|
 | `nros new <name> --lang cpp --platform native` | C++ Entry pkg (single-Node self-bringup; swap in a multi-Node `LAUNCH` arg post-219.D) |
 | `nros new <name> --lang c --platform native` | C Entry pkg (same shape) |
-| `nros new --component <name> --lang cpp --use-case talker` | C++ Node pkg (declarative `register_node()` + `NROS_NODE_REGISTER`) |
+| `nros new --component <name> --lang cpp --use-case talker` | C++ Node pkg; `--component` is the compatibility scaffold flag |
 | `nros new system <name>_bringup --components a,b` | Bringup pkg (language-agnostic — works for both Rust and C++ workspaces) |
 
-The C-side Component scaffold (`nros new --component … --lang c`) is
+The C-side compatibility scaffold (`nros new --component … --lang c`) is
 available for pure-C Node pkgs. Pure-C and mixed C/C++ workspace examples
 live under `examples/workspaces/`.
 

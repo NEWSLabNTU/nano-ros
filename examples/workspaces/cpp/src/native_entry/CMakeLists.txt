@@ -3,8 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 # `nros codegen entry --lang cpp` at configure time, appends the
 # generated `<NAME>_nros_main_generated.cpp` to the executable's
 # sources, and `include()`s the sidecar `<NAME>_link_libs.cmake` so
-# the Entry exe auto-links every Node-pkg component the launch XML
-# pulls in (Phase 219.J — closes review Gap 4).
+# the Entry exe auto-links every Node pkg the launch XML pulls in.
 project(native_entry VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 14)

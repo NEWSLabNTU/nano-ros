@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Phase 219.I — workspace builds inherit the helpers via the parent
 # root; standalone solo builds (this dir) bootstrap via the include
-# below. Same shape `nros new --component --lang cpp` emits.
+# below. Same Node-pkg shape emitted by the current C++ scaffold.
 if(NOT COMMAND nano_ros_workspace_pkg_guard)
     if(NOT NANO_ROS_ROOT)
         message(FATAL_ERROR
@@ -31,7 +31,6 @@ nano_ros_node_register(
 
 # `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
 # carrying generated headers' include dirs. Entry pkg auto-links; Node
-# pkg does not (Phase 219 review Gap 4 — pending 219.J auto-link from
-# launch metadata).
+# pkg target uses the legacy `_component` suffix for compatibility.
 target_link_libraries(listener_pkg_listener_component
     PUBLIC std_msgs__nano_ros_cpp)

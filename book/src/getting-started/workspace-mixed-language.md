@@ -95,7 +95,9 @@ The launch file names both Node pkgs:
 
 The generated Entry translation unit calls each package's
 `__nros_component_<pkg>_register` symbol and the CMake sidecar links
-the matching static libraries.
+the matching static libraries. The symbol keeps the legacy
+`component` spelling for ABI compatibility; the user-facing package
+role is still Node pkg.
 
 For a pure-C workspace, the Entry pkg uses the same launch-driven shape
 with `LANG c`:
@@ -113,6 +115,7 @@ nano_ros_entry(
 ## Scaffolding
 
 ```sh
+# Current compatibility scaffold for Node pkgs:
 nros new --component c_talker_pkg --lang c --use-case talker
 nros new --component cpp_listener_pkg --lang cpp --use-case listener
 nros new system demo_bringup --components c_talker_pkg,cpp_listener_pkg

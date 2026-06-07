@@ -25,5 +25,6 @@ nano_ros_workspace(
     # `nano_ros_entry(LAUNCH "demo_bringup:system.launch.xml")`. The
     # cmake fn shells `nros codegen entry --lang cpp` at configure
     # time, emits the canonical `int main()` body into the build dir,
-    # and auto-links the matching `<pkg>_<exec>_component` static libs.
+    # and auto-links the matching Node-pkg static libs. Their CMake
+    # target names still end in `_component` for ABI compatibility.
 )
