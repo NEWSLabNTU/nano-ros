@@ -77,12 +77,8 @@ fn compile_cpp_snippet(name: &str, source: &str) {
     fs::write(&src, source).expect("write C++ compat snippet");
 
     let root = repo_root();
-    let generated_cpp_include = root.join(
-        "examples/workspaces/mixed/build-workspace-fixtures/nano_ros/packages/core/nros-cpp/include",
-    );
-    let generated_c_include = root.join(
-        "examples/workspaces/mixed/build-workspace-fixtures/nano_ros/packages/core/nros-c/include",
-    );
+    let generated_cpp_include = root.join("target/nros-cpp-generated");
+    let generated_c_include = root.join("target/nros-c-generated");
     let cxx = std::env::var("CXX").unwrap_or_else(|_| "c++".to_string());
     let mut command = Command::new(&cxx);
     command.arg("-std=c++14").arg("-fsyntax-only");
