@@ -9,15 +9,17 @@
 //! Node-pkg shape mirrors `examples/zephyr/rust/talker/src/lib.rs`
 //! (Phase 212.M.3 / 212.L Component pkg). `register` declares the node
 //! + publisher + 1 Hz timer; `ExecutableNode::on_callback` runs the
-//! timer body (bump counter, publish). The generated runtime — emitted
-//! by `nros codegen-system` via the H.1 Zephyr adapter shim — owns
-//! `nros::init`, executor open, RMW registration, and the spin loop.
+//! timer body (bump counter, publish). `nros::zephyr_component_main!(Talker)`
+//! owns executor open, node registration, and the spin loop for this
+//! self-package Rust application.
 //!
 //! Board glue (BOARD / per-board prj.conf / DTS overlay / default RMW)
 //! comes from `nano_ros_use_board(fvp-aemv8r-smp)` in `CMakeLists.txt`
 //! (Phase 215.B contract).
 
 #![no_std]
+
+extern crate zephyr;
 
 use nros::{
     CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeId, NodeOptions,
@@ -63,3 +65,4 @@ impl ExecutableNode for Talker {
 }
 
 nros::node!(Talker);
+nros::zephyr_component_main!(Talker);

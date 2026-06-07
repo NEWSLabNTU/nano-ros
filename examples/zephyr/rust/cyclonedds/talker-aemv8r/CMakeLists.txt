@@ -31,15 +31,6 @@ list(APPEND EXTRA_CONF_FILE
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_aemv8r_cyclonedds_talker_rs)
 
-# Phase 212.H.1 + L.7 + M-F.3 — emit the runtime driver (system_main.c)
-# that calls the Rust `register()` trampoline + opens the executor.
-# Self-pkg shape: this Cargo.toml carries `[package.metadata.nros.node]`
-# + `[package.metadata.nros.deploy.zephyr]`, so the shim treats the
-# example as its own bringup pkg. Wiring this is the missing link that
-# turns the FVP build into a runtime smoke (Phase 217.D.3 `Published:`
-# assertion + Phase 217.C.3 parity check).
-nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})
-
 # Cyclone DDS Cargo-feature pin (single-RMW carve-out).
 set(EXTRA_CARGO_ARGS --no-default-features --features rmw-cyclonedds)
 

@@ -4,8 +4,8 @@
 # `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`.
 #
 # Shape mirrors `examples/zephyr/rust/talker/Cargo.toml` (Phase 212.M.3
-# Component pkg, lib-only — no `rust_main` entry; `nros::node!()`
-# exports `register(runtime)` for the generated runtime to drive).
+# component pkg; `nros::node!()` exports node hooks and
+# `nros::zephyr_component_main!()` provides the Zephyr `rust_main`).
 #
 # This example is the FVP-specific carve-out: pinned to the single
 # board id `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp` + the Cyclone DDS
@@ -26,13 +26,13 @@ crate-type = ["rlib", "staticlib"]
 
 [features]
 default = ["rmw-cyclonedds"]
-rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys"]
 
 [dependencies]
 zephyr = "0.1.0"
 log = "0.4"
 
-nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-zephyr"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "platform-zephyr"] }
 
 # Cyclone DDS register-shim — pulls in the C++ backend's
 # `nros_rmw_cyclonedds_register` entry via the zephyr/CMakeLists.txt

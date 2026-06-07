@@ -1378,7 +1378,7 @@ test-facing fixture paths.
 - [x] Z6 scheduler validation: filtered Zephyr leaves exercised fifo
       make scheduling, warm `ninja -C`, ordinary make fallback, and the
       delegated logging-smoke boundary. The Rust Zephyr fixture failure
-      observed during validation is tracked as a fixture compile issue,
+      observed during validation was resolved as a Rust fixture follow-up,
       not scheduler work.
 
 Validation performed in Wave 9:
@@ -1409,17 +1409,21 @@ Validation performed in Wave 9:
   the ordinary make fallback path with `NROS_ZEPHYR_BUILD_JOBS=2` and
   `NROS_ZEPHYR_NINJA_JOBS=3`; the scheduler reported
   `leaf-mode=fallback fallback-ninja-jobs=3`.
+- Initial `NROS_ZEPHYR_FIXTURE_FILTER=build-rs-talker-zenoh NROS_ZEPHYR_BUILD_JOBS=1 just zephyr build-fixtures`
+  reached the make scheduler and exposed Rust fixture issues rather than
+  scheduler regressions: the Zephyr Rust examples lacked the `nros/alloc`
+  feature, did not link the Zephyr Rust panic/runtime support, and still
+  expected the old generated C `system_main.c` ABI.
+
+Follow-up validation after the Rust fixture fix:
+
 - `NROS_ZEPHYR_FIXTURE_FILTER=build-rs-talker-zenoh NROS_ZEPHYR_BUILD_JOBS=1 just zephyr build-fixtures`
-  reached the make scheduler and failed inside the Zephyr Rust app
-  build with existing Rust fixture issues:
-  `__private_node_state_into_raw` is gated behind `alloc`, and the
-  Zephyr Rust app lacks a panic handler. The failure is not a scheduler
-  regression.
+  passed through the fifo make scheduler after the self-package Rust
+  examples switched to `nros::zephyr_component_main!()`, enabled
+  `nros/alloc`, and imported the Zephyr Rust runtime crate.
 
 Remaining Zephyr work after Wave 9:
 
-- Track the Rust Zephyr fixture compile failure separately from the
-  scheduler migration.
 - Decide later whether logging-smoke should remain delegated or move
   into a make leaf without changing the binary path expected by tests.
 

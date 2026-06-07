@@ -387,7 +387,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
         //   * Concurrent calls against the same `state` are forbidden
         //     (same dispatch-slot non-reentrancy as `unsafe fn d()`).
         #[unsafe(no_mangle)]
-        pub extern "C" fn #on_callback_fn_name(
+        pub unsafe extern "C" fn #on_callback_fn_name(
             state: *mut ::core::ffi::c_void,
             cb_id_ptr: *const u8,
             cb_id_len: usize,

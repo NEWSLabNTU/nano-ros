@@ -12,10 +12,12 @@
 
 #![no_std]
 
+extern crate zephyr;
+
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions, TickCtx,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeId, NodeOptions,
+    NodeResult, TickCtx,
 };
 
 pub struct FibonacciClient;
@@ -72,3 +74,4 @@ impl ExecutableNode for FibonacciClient {
 }
 
 nros::node!(FibonacciClient);
+nros::zephyr_component_main!(FibonacciClient);

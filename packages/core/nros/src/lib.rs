@@ -256,6 +256,38 @@ pub use nros_macros::node;
 // `docs/design/multi-node-workspace-layout.md` §11.6.
 pub use nros_macros::main;
 
+/// Define Zephyr's `rust_main` for a self-bringup Rust component package.
+///
+/// The macro is intended for `rust_cargo_application()` apps whose crate
+/// already invokes `nros::node!()`. It opens a Zephyr executor, registers
+/// the supplied component through [`ExecutorNodeRuntime`], and spins forever.
+#[cfg(all(feature = "rmw-cffi", feature = "platform-zephyr"))]
+#[macro_export]
+macro_rules! zephyr_component_main {
+    ($node:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn rust_main() {
+            unsafe {
+                zephyr::set_logger().ok();
+            }
+            let _ = $crate::platform::zephyr::wait_for_network(2000);
+            let config =
+                $crate::ExecutorConfig::default_const().node_name(<$node as $crate::Node>::NAME);
+            let executor = match $crate::Executor::open(&config) {
+                Ok(executor) => executor,
+                Err(_) => return,
+            };
+            let mut runtime = $crate::ExecutorNodeRuntime::from_executor(executor);
+            if runtime.register_node::<$node>().is_err() {
+                return;
+            }
+            loop {
+                let _ = runtime.spin_once(::core::time::Duration::from_millis(10));
+            }
+        }
+    };
+}
+
 // Re-export node types
 pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriberHandle};
 

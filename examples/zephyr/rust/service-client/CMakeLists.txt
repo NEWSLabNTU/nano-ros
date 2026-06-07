@@ -6,11 +6,6 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_service_client_rs)
 
-# Phase 212.H.1 + L.7 + M-F.3 — emit the runtime driver (system_main.c)
-# via the H.1 shim self-pkg path. See `examples/zephyr/rust/talker/
-# CMakeLists.txt` for the rationale.
-nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})
-
 if(CONFIG_NROS_RMW_ZENOH)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-zenoh)
 elseif(CONFIG_NROS_RMW_XRCE)

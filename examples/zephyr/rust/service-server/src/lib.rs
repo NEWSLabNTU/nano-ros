@@ -6,10 +6,12 @@
 
 #![no_std]
 
+extern crate zephyr;
+
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeId, NodeOptions,
+    NodeResult,
 };
 
 pub struct AddTwoIntsServer;
@@ -45,3 +47,4 @@ impl ExecutableNode for AddTwoIntsServer {
 }
 
 nros::node!(AddTwoIntsServer);
+nros::zephyr_component_main!(AddTwoIntsServer);

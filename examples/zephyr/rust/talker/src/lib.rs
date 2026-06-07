@@ -4,25 +4,24 @@
 //!
 //! Node pkg shape: `register()` declares node + publisher + timer;
 //! `ExecutableNode::on_callback("on_tick")` runs the timer body
-//! (bump counter, publish). The generated runtime — emitted by
-//! `nros codegen-system` via the H.1 Zephyr adapter shim
-//! (both L.7 self-bringup planner + M-F.3 Zephyr self-pkg case
-//! LANDED; the example `CMakeLists.txt` invokes
-//! `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})`) — owns
-//! `nros::init`, executor open, RMW registration, and the spin loop.
+//! (bump counter, publish). `nros::zephyr_component_main!(Talker)`
+//! owns executor open, node registration, and the spin loop for this
+//! self-package Rust application.
 //! The user authors *only* the declarative + body bits.
 //!
 //! RMW selection still flows through the Kconfig `prj-<rmw>.conf`
-//! overlay (vendor-native per L.12). The H.1 shim threads the
-//! Kconfig `CONFIG_NROS_RMW_*` choice into the codegen
-//! `--target zephyr-<rmw>` arg; `[package.metadata.nros.deploy.zephyr].rmw`
-//! is the planner-side default when the Kconfig is unset.
+//! overlay (vendor-native per L.12). The example `CMakeLists.txt`
+//! threads the Kconfig `CONFIG_NROS_RMW_*` choice into Cargo feature
+//! selection; `[package.metadata.nros.deploy.zephyr].rmw` is the
+//! planner-side default when the Kconfig is unset.
 
 #![no_std]
 
+extern crate zephyr;
+
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions, TimerDuration,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeId, NodeOptions,
+    NodeResult, TimerDuration,
 };
 use std_msgs::msg::Int32;
 
@@ -64,3 +63,4 @@ impl ExecutableNode for Talker {
 }
 
 nros::node!(Talker);
+nros::zephyr_component_main!(Talker);

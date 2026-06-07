@@ -9,10 +9,12 @@
 
 #![no_std]
 
+extern crate zephyr;
+
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    CallbackCtx, CallbackId, CancelResponse, Node, NodeContext, NodeResult,
-    EntityId, ExecutableNode, GoalResponse, GoalStatus, NodeId, NodeOptions, TickCtx,
+    CallbackCtx, CallbackId, CancelResponse, EntityId, ExecutableNode, GoalResponse, GoalStatus,
+    Node, NodeContext, NodeId, NodeOptions, NodeResult, TickCtx,
 };
 
 pub struct FibonacciServer;
@@ -58,9 +60,8 @@ impl ExecutableNode for FibonacciServer {
                 let _ = ctx.set_cancel_response(CancelResponse::Ok);
             }
             "on_accepted" => {
-                // No imperative work here — the generated runtime drives
-                // feedback/result through `tick()` (the only place the
-                // executor is free for action ops).
+                // No imperative work here; the executor drives feedback
+                // and result through `tick()` when it is free for action ops.
             }
             _ => {}
         }
@@ -104,3 +105,4 @@ impl ExecutableNode for FibonacciServer {
 }
 
 nros::node!(FibonacciServer);
+nros::zephyr_component_main!(FibonacciServer);

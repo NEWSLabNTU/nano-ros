@@ -1,19 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # nros Zephyr Service Server Example (Rust) — Phase 212.M.3 Component pkg.
 #
-# Phase 212.L.1 shape — lib only, no `rust_main` entry. `nros::node!()`
-# exports the register trampoline; the generated runtime (`system_main.c`,
-# emitted by `nros codegen-system` via the H.1 Zephyr adapter shim — both
-# L.7 self-bringup planner + M-F.3 Zephyr self-pkg case LANDED — invoked
-# from this pkg's CMakeLists.txt via
-# `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})`) owns init, executor
-# open, RMW registration, and the spin loop.
+# Phase 226 follow-up shape — the component crate owns Zephyr's
+# `rust_main` via `nros::zephyr_component_main!()`, while
+# `nros::node!()` exports the node registration and dispatch hooks.
 #
 # RMW selection still flows through the Kconfig overlay (`prj-<rmw>.conf`)
-# → CMakeLists.txt EXTRA_CARGO_ARGS for now. The H.1 shim reads the
-# Kconfig `CONFIG_NROS_RMW_*` choice and threads it into the codegen
-# `--target zephyr-<rmw>` arg; `[package.metadata.nros.deploy.zephyr].rmw`
-# is the planner-side default when the Kconfig is unset.
+# → CMakeLists.txt EXTRA_CARGO_ARGS for now.
 
 [package]
 name = "nros_zephyr_service_server"
@@ -28,15 +21,15 @@ crate-type = ["rlib", "staticlib"]
 
 [features]
 default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
-rmw-xrce  = ["dep:nros-rmw-xrce-cffi", "dep:heapless"]
+rmw-zenoh = ["nros/rmw-zenoh", "dep:nros-rmw-zenoh"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys"]
+rmw-xrce  = ["nros/rmw-xrce", "dep:nros-rmw-xrce-cffi", "dep:heapless"]
 
 [dependencies]
 zephyr = "0.1.0"
 log = "0.4"
 
-nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-zephyr"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "platform-zephyr"] }
 
 nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-zephyr", "ros-humble"], optional = true }
 nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }

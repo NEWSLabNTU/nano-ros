@@ -12,10 +12,12 @@
 
 #![no_std]
 
+extern crate zephyr;
+
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions, TickCtx, TimerDuration,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeId, NodeOptions,
+    NodeResult, TickCtx, TimerDuration,
 };
 
 pub struct AddTwoIntsClient;
@@ -55,11 +57,7 @@ impl ExecutableNode for AddTwoIntsClient {
         }
     }
 
-    fn on_callback(
-        state: &mut Self::State,
-        callback: CallbackId<'_>,
-        _ctx: &mut CallbackCtx<'_>,
-    ) {
+    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, _ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "issue_call" {
             state.pending = true;
             state.counter = state.counter.wrapping_add(1);
@@ -75,8 +73,8 @@ impl ExecutableNode for AddTwoIntsClient {
             a: state.counter,
             b: state.counter.wrapping_add(1),
         };
-        let _: nros::NodeResult<AddTwoIntsResponse> =
-            ctx.call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
+        let _: nros::NodeResult<AddTwoIntsResponse> = ctx
+            .call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
                 EntityId::new("client_add"),
                 &req,
             );
@@ -84,3 +82,4 @@ impl ExecutableNode for AddTwoIntsClient {
 }
 
 nros::node!(AddTwoIntsClient);
+nros::zephyr_component_main!(AddTwoIntsClient);

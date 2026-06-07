@@ -1,17 +1,17 @@
 //! Zephyr Listener — Phase 212.M.3 / Phase 212.L Node pkg.
 //!
 //! Subscribes to `std_msgs/Int32` on `/chatter` and tracks the last seen
-//! value. The generated runtime — emitted by `nros codegen-system` via
-//! the H.1 Zephyr adapter shim (both L.7 self-bringup planner + M-F.3
-//! Zephyr self-pkg case LANDED; this example's `CMakeLists.txt` invokes
-//! `nros_system_generate(${CMAKE_CURRENT_SOURCE_DIR})`) — owns init,
-//! executor open, RMW registration, and the spin loop.
+//! value. `nros::zephyr_component_main!(Listener)` owns executor open,
+//! node registration, and the spin loop for this self-package Rust
+//! application.
 
 #![no_std]
 
+extern crate zephyr;
+
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeId, NodeOptions,
+    NodeResult,
 };
 use std_msgs::msg::Int32;
 
@@ -49,3 +49,4 @@ impl ExecutableNode for Listener {
 }
 
 nros::node!(Listener);
+nros::zephyr_component_main!(Listener);
