@@ -1946,6 +1946,7 @@ dependencies = [
  "nros-rmw-zenoh",
  "nros-serdes",
  "paste",
+ "portable-atomic",
  "portable-atomic-util",
 ]
 

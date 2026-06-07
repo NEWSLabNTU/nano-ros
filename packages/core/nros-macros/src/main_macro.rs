@@ -618,9 +618,65 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         >
                     {
                         #( #register_calls )*
+                        #[cfg(not(target_os = "none"))]
+                        __nros_hosted_spin_if_requested(runtime)?;
                         ::core::result::Result::Ok(())
                     },
                 )
+            }
+
+            #[cfg(not(target_os = "none"))]
+            fn __nros_env_usize(name: &str, default: usize) -> usize {
+                ::std::env::var(name)
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(default)
+            }
+
+            #[cfg(not(target_os = "none"))]
+            fn __nros_hosted_spin_if_requested(
+                runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
+            ) -> ::core::result::Result<
+                (),
+                ::nros::__macro_support::nros_platform::RuntimeError,
+            > {
+                let total_ms = __nros_env_usize("NROS_ENTRY_SPIN_MS", 0);
+                if total_ms == 0 {
+                    return ::core::result::Result::Ok(());
+                }
+
+                let step_ms = __nros_env_usize("NROS_ENTRY_SPIN_STEP_MS", 10)
+                    .clamp(1, total_ms.max(1));
+                let expect_messages = __nros_env_usize("NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS", 0);
+                let deadline = ::std::time::Instant::now()
+                    + ::std::time::Duration::from_millis(total_ms as u64);
+
+                loop {
+                    runtime
+                        .runtime
+                        .spin_once(step_ms as u32)
+                        .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
+
+                    let (callbacks, messages) = runtime.runtime.observed_callback_counts();
+                    if expect_messages > 0 && messages >= expect_messages {
+                        ::std::println!(
+                            "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
+                        );
+                        return ::core::result::Result::Ok(());
+                    }
+
+                    if ::std::time::Instant::now() >= deadline {
+                        ::std::println!(
+                            "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
+                        );
+                        if expect_messages > 0 {
+                            return ::core::result::Result::Err(
+                                ::nros::__macro_support::nros_platform::RuntimeError::Spin,
+                            );
+                        }
+                        return ::core::result::Result::Ok(());
+                    }
+                }
             }
 
             #[cfg(not(target_os = "none"))]

@@ -148,6 +148,14 @@ pub trait NodeDispatchRuntime {
     #[allow(clippy::result_unit_err)]
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()>;
 
+    /// Observability counters from hosted/runtime tests.
+    ///
+    /// Returns `(all_callbacks, message_callbacks)`. Implementations
+    /// that cannot observe callback dispatch keep the default zeros.
+    fn observed_callback_counts(&self) -> (usize, usize) {
+        (0, 0)
+    }
+
     /// Hand a signaled callback to the framework-side dispatcher
     /// (Phase 216.A.2). Only meaningful for `DispatchStrategy::Deferred`
     /// (RTIC / Embassy) runtimes — `Inline` runtimes drive callbacks
@@ -314,12 +322,17 @@ pub enum RuntimeError {
     /// to `NodeRegister` to match the rclcpp_components / ROS 2 launch.xml
     /// `<node pkg=…>` convention.
     NodeRegister(&'static str),
+
+    /// The hosted Entry spin loop failed or did not observe the
+    /// requested runtime condition before its bounded test deadline.
+    Spin,
 }
 
 impl core::fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::NodeRegister(msg) => write!(f, "node register failed: {msg}"),
+            Self::Spin => write!(f, "entry spin failed"),
         }
     }
 }

@@ -76,6 +76,7 @@ extern crate alloc;
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{cell::RefCell, marker::PhantomData, time::Duration};
 
+use portable_atomic::{AtomicUsize, Ordering};
 use portable_atomic_util::Arc;
 
 use crate::{
@@ -209,6 +210,8 @@ impl ComponentSlot for BspDispatchSlot {
 struct ComponentCell {
     slot: RefCell<Box<dyn ComponentSlot>>,
     publishers: RefCell<Vec<(String, EmbeddedRawPublisher)>>,
+    callback_dispatches: AtomicUsize,
+    message_dispatches: AtomicUsize,
 }
 
 impl ComponentCell {
@@ -363,6 +366,8 @@ impl ExecutorNodeRuntime {
                 _phantom: PhantomData,
             })),
             publishers: RefCell::new(Vec::new()),
+            callback_dispatches: AtomicUsize::new(0),
+            message_dispatches: AtomicUsize::new(0),
         });
         let component_idx = self.components.len();
         self.components.push(cell.clone());
@@ -409,6 +414,8 @@ impl ExecutorNodeRuntime {
                 tick: tick_fn,
             })),
             publishers: RefCell::new(Vec::new()),
+            callback_dispatches: AtomicUsize::new(0),
+            message_dispatches: AtomicUsize::new(0),
         });
         self.components.push(cell.clone());
         let mut sink = ExecutorSink {
@@ -570,6 +577,17 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()> {
         Self::spin_once(self, Duration::from_millis(timeout_ms.into())).map_err(|_| ())
     }
+
+    fn observed_callback_counts(&self) -> (usize, usize) {
+        self.components
+            .iter()
+            .fold((0, 0), |(callbacks, messages), cell| {
+                (
+                    callbacks + cell.callback_dispatches.load(Ordering::Relaxed),
+                    messages + cell.message_dispatches.load(Ordering::Relaxed),
+                )
+            })
+    }
 }
 
 // =============================================================================
@@ -693,6 +711,10 @@ impl NodeRuntime for ExecutorSink<'_> {
 }
 
 fn dispatch_into_cell(cell: &Arc<ComponentCell>, cb_id: &str, payload: &[u8]) {
+    cell.callback_dispatches.fetch_add(1, Ordering::Relaxed);
+    if !payload.is_empty() {
+        cell.message_dispatches.fetch_add(1, Ordering::Relaxed);
+    }
     let resolver = CellResolver {
         cell: cell.as_ref(),
     };
