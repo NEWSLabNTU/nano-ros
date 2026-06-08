@@ -102,7 +102,7 @@ C/C++ its descriptor through `nano_ros_entry(NAME … DEPLOY native …)`
 
 ### 227.6 — Multi-node RT/scheduling exposure (schema)  ⏳ DEFERRED to Phase 228
 The *shape* is decided (RFC-0015 reconciliation): node declares callback groups;
-`system.toml` owns `[tiers.<name>.<rtos>]` + a per-`[[component]]` group→tier map +
+`system.toml` owns `[tiers.<name>.<rtos>]` + `[[node_overrides]]` reassignment +
 `[[shared_state]]`. But the exact field set isn't pinned in any RFC, and the
 schema is consumed only by the Phase 228 per-tier codegen — designing it in
 isolation here risks rework. **Co-designed with the codegen in Phase 228** (228.A

@@ -180,7 +180,7 @@ In planned mode this maps to the `SchedContextConfig` the planner carries
 (RFC-0015/0016). **Multi-node RT home (decided 2026-06):** the *node* declares its
 callback groups (`[package.metadata.nros.node]` / `nano_ros_node_register`);
 `system.toml` owns tier definitions + group→tier assignment
-(`[tiers.<name>.<rtos>]` priority/stack + a per-`[[component]]` group→tier map) and
+(`[tiers.<name>.<rtos>]` priority/stack + `[[node_overrides]]` deploy-time tier reassignment) and
 `[[shared_state]]`. See RFC-0015 (Phase 212 reconciliation). Schema/loader is
 tracked by phase-227; the per-tier codegen by phase-228.
 

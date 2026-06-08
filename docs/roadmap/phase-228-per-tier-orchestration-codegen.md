@@ -52,11 +52,17 @@ no lock).
 
 ## Work Items
 
-### 228.A — Tier resolver
-Resolve `system.toml` `[tiers.<name>.<rtos>]` + per-component group→tier map +
-node callback-group metadata into an ordered tier table (tier → priority, stack,
-{component.group}). Degenerate (all default) → one tier.
-**Files:** `packages/cli/nros-cli-core/src/orchestration/{planner,tier}.rs`.
+### 228.A — Tier resolver  ✅ DONE (Wave 1)
+`orchestration/tier_resolver.rs::resolve_tiers(system, callback_groups,
+target_rtos) -> ResolvedTierTable`: applies `[[node_overrides]]`, picks the
+per-RTOS spec from `[tiers.<name>.<rtos>]`, orders highest-priority-first, and
+synthesizes a single `default` tier for the all-default degenerate case.
+Validates unknown-tier / missing-RTOS-spec / override-on-unknown-node. The
+**227.6 schema** co-landed here: `[tiers.*]`, `[[shared_state]]`,
+`[[node_overrides]]`, and `[package.metadata.nros.node].callback_groups` (all
+`deny_unknown_fields`, default-empty → backward compatible). 7 resolver tests +
+schema round-trip.
+**Files:** `packages/cli/nros-cli-core/src/orchestration/{tier_resolver,cargo_metadata_schema}.rs`.
 
 ### 228.B — Per-tier task + executor emission
 Emit one task entry fn per tier (`Executor::open_with_session(shared)` + pre-register

@@ -20,9 +20,9 @@ superseded-by: null
 > **superseded** by the Phase 212 surfaces; read the manifest sections as:
 > - **Callback groups** are declared by the *node* (it owns its callbacks):
 >   `[package.metadata.nros.node]` (Rust) / `nano_ros_node_register(...)` (C/C++).
-> - **Tier definitions + group→tier assignment** are *deployment*-owned, in
->   `system.toml`: `[tiers.<name>.<rtos>]` (priority/stack) + a per-`[[component]]`
->   group→tier map.
+> - **Tier definitions + group→tier reassignment** are *deployment*-owned, in
+>   `system.toml`: `[tiers.<name>.<rtos>]` (priority/stack) + `[[node_overrides]]`
+>   (the node declares each group's default tier; the system overrides per deploy).
 > - **Shared state** → `system.toml [[shared_state]]`, codegen-emitted accessors.
 >
 > The **execution model is unchanged and current**: one binary, one RTOS task per
