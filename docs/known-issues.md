@@ -328,10 +328,29 @@ FreeRTOS C) still use manual `nros_generate_interfaces()` calls.
 **To migrate**: Add `package.xml` to each example declaring `<depend>` on message
 packages, replace manual codegen calls with `nros_find_interfaces()`.
 
-## 12. Stale standalone lockfiles trip the codegen ABI guard (218.J debt)
+## ~~12. Stale standalone lockfiles trip the codegen ABI guard (218.J debt)~~ (Fixed)
+
+**Status: Fixed** — the `abi_guard` now resolves the **monorepo root**
+`Cargo.lock` for any consumer inside the nano-ros tree (detected via the
+`packages/core/nros-core/Cargo.toml` marker) instead of a standalone
+crate's nearest — possibly stale — lock. In-tree examples link the
+in-tree `nros-core` via `[patch.crates-io]`, so the root lock (`0.5.0`) is
+the authoritative ABI; external consumers keep the nearest-lock rule.
+`just generate-bindings` and the broad-build preflight now pass without
+`NROS_SKIP_VERSION_CHECK`. (`packages/cli/nros-cli-core/src/abi_guard.rs`,
+`find_monorepo_root` + `monorepo_root_lock`.)
+
+The ~56 standalone lockfiles are still pinned at `0.1.0`, but that no
+longer blocks codegen or broad builds; regenerating them is now optional
+cosmetic cleanup (the `stm32f4-porting` missing-`[workspace]` snag and the
+`tests/simple-workspace` patch config remain if that cleanup is pursued).
+
+---
+
+Original report:
 
 Surfaced by the Phase 226.F broad-build validation. `nros generate-rust`
-aborts via the `nros-cli-core` `abi_guard` with
+aborted via the `nros-cli-core` `abi_guard` with
 `ABI version mismatch: CLI nros-core 0.5.0 vs workspace nros-core 0.1.0`,
 which fails the `generate-bindings` preflight of `build-all-jobserver.sh` /
 `just build-test-fixtures` — so no fixture stamp is written and

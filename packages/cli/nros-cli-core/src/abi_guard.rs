@@ -9,11 +9,14 @@
 //!
 //! ## Surface
 //!
-//! - [`check_workspace`] — walks up from `start` looking for `Cargo.lock`,
-//!   parses it, finds the resolved `nros-core` version, compares to the CLI
+//! - [`check_workspace`] — resolves the authoritative `Cargo.lock`, parses
+//!   it, finds the resolved `nros-core` version, compares to the CLI
 //!   binary's embedded version ([`CLI_VERSION`]), and either continues or
 //!   exits with an actionable error message naming both versions plus the
-//!   fix command.
+//!   fix command. For consumers inside the nano-ros monorepo the lock is the
+//!   monorepo root lock (in-tree examples link the patched in-tree
+//!   `nros-core`, so a standalone crate's own — possibly stale — lock is not
+//!   authoritative); external consumers use the nearest `Cargo.lock`.
 //! - [`check_workspaces`] — the multi-workspace variant for verbs that resolve
 //!   inputs from more than one workspace (e.g. `nros codegen-system`).
 //!
@@ -96,6 +99,40 @@ pub fn find_cargo_lock(start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Walk up from `start` to find the nano-ros monorepo root — the directory
+/// containing `packages/core/nros-core/Cargo.toml`. Returns `None` when
+/// `start` is not inside the monorepo (a genuine external consumer), in
+/// which case the nearest-`Cargo.lock` rule applies.
+pub fn find_monorepo_root(start: &Path) -> Option<PathBuf> {
+    const MARKER: &str = "packages/core/nros-core/Cargo.toml";
+    let mut cur: Option<&Path> = if start.is_file() {
+        start.parent()
+    } else {
+        Some(start)
+    };
+    while let Some(dir) = cur {
+        if dir.join(MARKER).is_file() {
+            return Some(dir.to_path_buf());
+        }
+        cur = dir.parent();
+    }
+    None
+}
+
+/// The monorepo root's `Cargo.lock`, if `start` is inside the monorepo and
+/// that lock exists.
+///
+/// In-tree examples / test crates are standalone projects that link the
+/// in-tree `nros-core` via `[patch.crates-io]`, so a standalone crate's own
+/// `Cargo.lock` can be stale (e.g. pinned to a pre-bump `0.1.0` long after
+/// the workspace moved to `0.5.0`) while the crate still builds against the
+/// current in-tree ABI. The monorepo root lock is the authoritative source
+/// for those consumers; external consumers fall back to the nearest lock.
+fn monorepo_root_lock(start: &Path) -> Option<PathBuf> {
+    let lock = find_monorepo_root(start)?.join("Cargo.lock");
+    lock.is_file().then_some(lock)
+}
+
 /// Parse a `Cargo.lock` (TOML) and pull out the resolved version of the named
 /// package, if present.
 ///
@@ -154,7 +191,14 @@ pub fn check_workspaces(starts: &[&Path], verb: Verb) -> Result<()> {
 
     let mut checked_locks: Vec<PathBuf> = Vec::new();
     for start in starts {
-        let Some(lock) = find_cargo_lock(start) else {
+        // Prefer the nano-ros monorepo root lock for in-tree consumers: a
+        // standalone example/test under the nano-ros tree links the in-tree
+        // `nros-core` via `[patch.crates-io]`, so its own (possibly stale)
+        // `Cargo.lock` does not reflect the ABI it actually builds against.
+        // External consumers (no monorepo marker above `start`) keep the
+        // nearest-lock rule.
+        let lock = monorepo_root_lock(start).or_else(|| find_cargo_lock(start));
+        let Some(lock) = lock else {
             // No lock — codegen verb will likely create one. Warn so the
             // skip is visible.
             warn_no_lock(start, verb);
@@ -278,6 +322,52 @@ version = "4.5.6"
         let v = nros_core_version_in_lock(&lock).unwrap();
         assert_eq!(v.as_deref(), Some("0.0.999"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn monorepo_root_lock_wins_over_nested_stale_lock() {
+        let tmp = tempdir_path("abi_guard_monorepo");
+        // Monorepo root: the nros-core marker + a fresh root lock (0.5.0).
+        std::fs::create_dir_all(tmp.join("packages/core/nros-core")).unwrap();
+        std::fs::write(tmp.join("packages/core/nros-core/Cargo.toml"), "# stub\n").unwrap();
+        std::fs::write(
+            tmp.join("Cargo.lock"),
+            "[[package]]\nname = \"nros-core\"\nversion = \"0.5.0\"\n",
+        )
+        .unwrap();
+        // Nested standalone example with a STALE own-lock (0.1.0).
+        let ex = tmp.join("examples/x/rust/talker");
+        std::fs::create_dir_all(&ex).unwrap();
+        std::fs::write(
+            ex.join("Cargo.lock"),
+            "[[package]]\nname = \"nros-core\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        // The monorepo root is discovered from the nested dir...
+        let root = find_monorepo_root(&ex).expect("monorepo root found");
+        assert_eq!(root, tmp);
+        // ...and its lock (0.5.0) is the authoritative source, not the
+        // nested stale 0.1.0 lock that find_cargo_lock would return.
+        let nearest = find_cargo_lock(&ex).unwrap();
+        assert_eq!(
+            nros_core_version_in_lock(&nearest).unwrap().as_deref(),
+            Some("0.1.0")
+        );
+        assert_eq!(
+            nros_core_version_in_lock(&root.join("Cargo.lock"))
+                .unwrap()
+                .as_deref(),
+            Some("0.5.0")
+        );
+
+        // A dir outside any monorepo marker has no monorepo root.
+        let outside = tempdir_path("abi_guard_outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        assert!(find_monorepo_root(&outside).is_none());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     #[test]
