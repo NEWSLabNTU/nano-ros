@@ -141,10 +141,20 @@ Some native feature/RMW variants use it:
 - `target-xrce`
 - `target-cyclonedds`
 
-But several large plain fixture groups, including qemu bare-metal and
-stm32f4 rows, do not set a shared fixture target dir. They therefore
-pay repeated dependency compilation even when target triple, profile,
-features, env, RMW, and generated inputs are identical.
+But several large plain fixture groups, including qemu bare-metal,
+stm32f4, ESP32/QEMU-ESP32, FreeRTOS, and NuttX rows, do not set a
+fixture-level shared target dir. They therefore pay repeated dependency
+compilation even when target triple, profile, features, env, RMW, and
+toolchain inputs are identical.
+
+The low-risk implementation point is the fixture builder, not the
+manifest rows themselves. `scripts/build/fixtures-manifest.py` emits
+`target_dir` values exactly as authored, and
+`scripts/build/fixtures-build.sh` runs Cargo from inside each fixture
+directory. A shared repo-root fixture cache therefore needs builder
+support that appends `--target-dir "$NROS_REPO_ROOT/build/fixtures-cargo/<group>"`
+only for eligible fixture builds whose manifest row did not already set
+`target_dir`. Manual `cargo build` inside an example remains untouched.
 
 ### 3.3 CMake/Corrosion fixtures need measurement before cache changes
 
@@ -159,13 +169,14 @@ directory and often its own Corrosion cargo cache.
 
 However, broad target-dir sharing for `nros-c` / `nros-cpp` is not
 obviously correct. The CMake definitions map to different Cargo
-features and target triples:
+features, generated inputs, and target triples:
 
 - POSIX / ThreadX Linux host builds use `std`.
 - FreeRTOS, ThreadX RV64, and ESP-IDF use `alloc` / `panic-halt` and
   different target triples.
-- NuttX has special handling and avoids the normal CMake/Corrosion
-  `nros-c` path.
+- NuttX CMake fixture caches still contain Corrosion state, but the
+  final app build goes through the NuttX FFI crate with a per-example
+  `CARGO_TARGET_DIR=${CMAKE_CURRENT_BINARY_DIR}/cargo-target`.
 - Zephyr builds through west/CMake and board-specific target triples.
 
 The `packages/core/nros-c/CMakeLists.txt` comment is explicit:
@@ -173,6 +184,33 @@ The `packages/core/nros-c/CMakeLists.txt` comment is explicit:
 `libnros_c.a` per target triple. `nros-cpp` has the same platform
 feature split. Sharing across target triples would at best create Cargo
 lock contention and at worst mix incompatible artifacts.
+
+Wave 11 inspected representative existing CMake caches/build roots:
+
+- Native Cyclone C/C++ examples use per-example Corrosion target roots
+  under `examples/native/{c,cpp}/<role>/build-cyclonedds/cargo/` for
+  `x86_64-unknown-linux-gnu`.
+- FreeRTOS C/C++ examples use per-example roots under
+  `examples/qemu-arm-freertos/{c,cpp}/<role>/build-<rmw>/cargo/` for
+  `thumbv7m-none-eabi`.
+- ThreadX RV64 C/C++ examples use per-example roots under
+  `examples/qemu-riscv64-threadx/{c,cpp}/<role>/build-cyclonedds/cargo/`
+  for `riscv64gc-unknown-none-elf`.
+- NuttX C/C++ examples use per-example CMake build dirs and a separate
+  NuttX FFI cargo target root under each build dir's `cargo-target/`
+  for `armv7a-nuttx-eabihf`.
+- Zephyr west leaves build under `zephyr-workspace/build-*`; the leaf
+  emitter confirms C/C++ compiler launchers are routed through sccache
+  when available, but Zephyr Rust/Cargo target roots remain west/CMake
+  controlled and need a real Zephyr measurement before any cache-layout
+  change.
+
+C++ examples add another split: generated message FFI crates create
+per-build target roots such as
+`build-*/nano_ros_cpp_ffi_std_msgs/target` and
+`build-*/nano_ros_cpp_ffi_builtin_interfaces/target`. Any future
+sharing proposal must account for those generated inputs separately
+from the shared `nros-c` / `nros-cpp` staticlib roots.
 
 The current intended accelerator for repeated C/C++ compilation is
 sccache:
@@ -222,13 +260,29 @@ shared-target-dir candidate. Do not generalize that to embedded C/C++
 fixtures without checking target triple, platform feature, generated
 inputs, and linker/toolchain settings.
 
-The sccache measurement is currently inconclusive for Corrosion Cargo:
-the direct diagnostic recorded zero sccache compile requests even when
-`RUSTC_WRAPPER` was set, while CMake did report CycloneDDS C/C++
-compiler launchers routed through sccache. Before changing target-dir
-sharing, add a small diagnostic patch that prints the effective wrapper
-environment for each Corrosion Cargo invocation and verifies that
-`sccache --show-stats` increments under a `just`-launched run.
+Wave 11 added that diagnostic patch to
+`scripts/build/phase226-cxx-eff.sh`: each cell log now starts with the
+effective Cargo/Corrosion wrapper environment, and each cell writes a
+small CMake cache snapshot containing the target triple, toolchain file,
+platform/RMW cache entries, and compiler launcher settings.
+
+Focused native verification showed:
+
+- Direct diagnostic run without `RUSTC_WRAPPER`: warm build, zero real
+  `nros-c` / `nros-cpp` recompiles; the Corrosion command line still
+  uses `--target-dir examples/native/c/talker/build-cyclonedds/cargo/nano-ros_1147c`.
+- Direct diagnostic run with
+  `RUSTC_WRAPPER=/home/aeon/.cargo/bin/sccache`: warm build, zero real
+  recompiles; sccache compile requests incremented by 4, but all were
+  non-cacheable. That means wrapper propagation now has an observable
+  signal, but cache usefulness still needs a cold or `just`-launched
+  measurement.
+
+The current read is therefore: native same-triple sharing may be worth a
+later experiment if sccache cannot recover the duplicated cold work, but
+embedded CMake/Corrosion rows should remain isolated until each platform
+has measured target triple, feature set, generated inputs, and wrapper
+behavior.
 
 ---
 
@@ -252,10 +306,12 @@ paths:
 
 Current fixture orchestration no longer depends on GNU parallel for
 `scripts/build/fixtures-build.sh`, native build examples, native C/C++
-fixture groups, or Zephyr fixture leaves. Remaining `parallel` matches
-are either historical notes, non-fixture utility recipes such as native
-`format` / `check`, or root-level fallback/build-example paths that
-still need review before the 226.C acceptance check closes.
+fixture groups, Zephyr fixture leaves, or the root direct
+`build-test-fixtures-leaves` fallback. Remaining `parallel` matches are
+either historical notes, non-fixture utility recipes such as native
+`format` / `check`, or `build-example-extras`, which is a broad
+non-fixture example tier and still needs a separate review if the full
+`build-all` extras path is pulled into the same scheduler policy.
 
 ### 4.2 Direct mode uses static split heuristics
 
@@ -265,14 +321,17 @@ still need review before the 226.C acceptance check closes.
 - Cargo frontends to `4` in jobserver mode.
 - CMake frontends to `NROS_BUILD_JOBS` or `4`, depending on mode.
 
-The root `build-test-fixtures-leaves` path further splits:
+The root `build-test-fixtures-leaves` fallback still uses the historical
+budget split, but the platform fan-out is now an ordinary make graph:
 
 - Zephyr gets a solo full-budget track.
-- The other platforms run through GNU parallel with `outer=4`.
+- The other platforms run through make targets capped at `outer=4`.
 - Each child receives `NROS_BUILD_JOBS=budget/outer`.
 
 That model can oversubscribe during overlap and underutilize during the
-tail. It also duplicates scheduler policy across recipes.
+tail. It also duplicates scheduler policy across recipes. The pinned
+fifo jobserver path through `build-all` remains the preferred broad
+scheduler.
 
 ### 4.3 Explicit `-j` and `CMAKE_BUILD_PARALLEL_LEVEL` remain outside jobserver
 
@@ -563,6 +622,75 @@ Implementation caveat: `target_dir` is currently emitted raw by
 `cd "$dir"` in `scripts/build/fixtures-build.sh:116`. Repo-root-relative
 fixture target dirs need builder support, or awkward per-row relative
 paths such as `../../../../target/fixtures/<group>`.
+
+### 226.D Follow-up Design — Shared Rust Fixture Target Dirs
+
+Design status: design-only. The candidate groups are clear, but this
+wave did not move build outputs because runtime fixture lookup and a
+few platform recipes still hard-code per-example target roots.
+
+Use an explicit grouping key:
+
+```text
+platform | lang=rust | target triple | profile | no-default flag |
+sorted features | sorted env | build-std/nightly mode | generated sync mode
+```
+
+Only rows built by `scripts/build/fixtures-build.sh` are eligible, and
+only when the manifest record does not already include `--target-dir`.
+Rows with authored `target_dir` keep that value. C/C++ Corrosion build
+dirs are out of scope.
+
+Candidate first groups from `examples/fixtures.toml` and
+`scripts/build/fixture-inventory.py`:
+
+- `qemu-arm-baremetal`: 19 manifest Rust rows, target
+  `thumbv7m-none-eabi`, default features/env, currently under
+  per-fixture `target/`.
+- `stm32f4`: 8 manifest Rust rows, target
+  `thumbv7em-none-eabihf`, default features/env, currently under
+  per-fixture `target/`.
+- `esp32`: 2 manifest Rust rows, ESP32-C3 build-std/nightly mode,
+  default features/env, currently under per-fixture `target/`.
+- `qemu-esp32-baremetal`: talker/listener plus logging-smoke in the
+  same `riscv32imc-unknown-none-elf` build-std mode, but flash-image
+  postprocessing currently reads fixed per-fixture target paths.
+- `nuttx`: 6 example rows can share one default group. The
+  logging-smoke row has `CC_armv7a_nuttx_eabi=arm-none-eabi-gcc` and
+  should be a separate group.
+- `freertos`: 6 example rows already share the same feature set
+  (`--no-default-features --features rmw-zenoh`) but use per-example
+  `target-zenoh`; they can become one fixture-only `freertos/zenoh`
+  group once runtime paths are updated. The logging-smoke row stays
+  separate.
+
+Blockers before patching target dirs:
+
+- `packages/testing/nros-tests/src/fixtures/binaries/mod.rs` resolves
+  many qemu/stm32f4/ESP32 binaries under `examples/.../target` or
+  `target-<rmw>`. It needs a centralized fixture-target-dir resolver
+  that mirrors the grouping key.
+- `just/qemu-baremetal.just`, `just/esp32.just`, `just/freertos.just`,
+  and `just/stm32f4.just` contain direct run, flash-image, or clean
+  paths that assume per-example target dirs.
+- `scripts/test/rust-fixture-stale.sh` consumes the manifest's exact
+  cargo args. If the builder appends a fixture-only target dir, the
+  stale probe must use the same resolver or it will inspect the wrong
+  artifact tree.
+- Some rows write per-example `.cargo/config.toml` and `generated/`
+  through `nros ws sync`. That remains acceptable because the shared
+  target dir is only for Cargo artifacts, but the grouping logic must
+  not merge rows with different generated sync or env state.
+
+Recommended next patch:
+
+1. Add a small shell helper used by both `fixtures-build.sh` and the
+   stale probe to append the fixture-only target dir for eligible rows.
+2. Add a Rust-side fixture target resolver in `nros-tests` and update
+   qemu/stm32f4/ESP32/FreeRTOS callers to use it.
+3. Start with `qemu-arm-baremetal` and `stm32f4`; leave ESP32 flash
+   packaging and RTOS rows for the second patch because they have extra
+   postprocessing paths.
 
 ### Wave 1 Findings — C/C++ Measurement
 
@@ -1086,13 +1214,13 @@ Validation performed in Wave 7:
 
 Remaining implementation work:
 
-- Zephyr still owns shell-array background scheduling. The safe migration
-  needs a Zephyr one-leaf runner that preserves the existing preflight,
-  signature/cache decision, `west build` versus `ninja -C` selection,
-  nested job budgeting, logging-smoke handling, and logs under
-  `build/zephyr-fixtures`.
-- Explicit nested job flags remain in platform recipes for non-jobserver
-  fallback and in Zephyr's current scheduler.
+- Explicit nested job flags remain in platform recipes for
+  non-jobserver fallback. Zephyr's one-leaf runner now omits
+  `CMAKE_BUILD_PARALLEL_LEVEL` and `ninja -j` in fifo jobserver mode,
+  but keeps them for ordinary make fallback.
+- Root `build-example-extras` still uses GNU parallel outside
+  `NROS_JOBSERVER=1`; it is a non-fixture example tier and should be
+  handled separately from 226.C fixture acceptance.
 
 ### Wave 2 Findings — Manifest Coverage Cleanup Plan
 
@@ -1459,7 +1587,7 @@ Remaining Zephyr work after Wave 9:
       plus hand-authored platform leaves.
 - [x] Classify each inventoried leaf as Cargo, CMake, Zephyr, workspace,
       smoke image packaging, or recipe-only postprocess work.
-- [ ] Model platform preflights and external SDK provisioning as
+- [x] Model platform preflights and external SDK provisioning as
       explicit inventory entries or prerequisites.
 - [x] Identify leaves that currently mutate shared directories and must
       run as serialized prerequisites.
@@ -1473,12 +1601,22 @@ Implementation:
 - The script combines `examples/fixtures.toml` single-package rows,
   `[[workspace_fixture]]` rows, Zephyr records from
   `scripts/build/zephyr-fixture-leaves.sh --emit records
-  --include-logging-smoke`, and the current recipe-only leaves:
+  --include-logging-smoke`, prerequisite rows, and the current
+  recipe-only leaves:
   QEMU smoltcp bridge, native pure-Cargo Cyclone Rust talker/listener,
   ThreadX RV64 Rust Cyclone helper, ESP32 flash-image packaging, and
   ESP-IDF smoke.
+- Prerequisite rows use `kind=preflight` for recipe-owned serial work
+  that runs as part of fixture builds, and `kind=sdk-prereq` for
+  setup/doctor provisioning that fixture recipes require or skip on.
+  Current rows cover root `generate-bindings`, POSIX Zenoh staticlib
+  staging, native/FreeRTOS/Zephyr Rust `nros ws sync`, host
+  `nros-codegen` warmups for C/C++ fixture cells, NuttX kernel export,
+  NuttX rustup build-std warmup, Zephyr workspace/env/patch setup, and
+  the external SDK/tool requirements for QEMU, STM32F4, FreeRTOS,
+  NuttX, ThreadX, ESP32, ESP-IDF, and Zephyr.
 - `python3 scripts/build/fixture-inventory.py --summary` currently
-  reports 263 rows on the maintainer host: 208 non-Zephyr rows and 55
+  reports 288 rows on the maintainer host: 233 non-Zephyr rows and 55
   Zephyr rows.
 
 Known gaps:
@@ -1487,11 +1625,13 @@ Known gaps:
   Zephyr leaf emitter only includes CycloneDDS rows when `idlc` or a
   known CycloneDDS install is discoverable. A future pure inventory mode
   can expose disabled/gated rows separately.
-- Platform-level preflights such as root `generate-bindings`, POSIX
-  zenoh staticlib staging, NuttX kernel export, rustup component
-  warm-up, and SDK provisioning are not modeled as fixture leaves yet.
-  They should become explicit prerequisites when 226.B/226.C expands
-  the full make graph.
+- Recipe-only and prerequisite coverage is still hand-maintained in the
+  diagnostic script rather than discovered from `just/*.just`; add a row
+  when a future recipe grows a fixture-affecting preflight outside
+  `examples/fixtures.toml`.
+- The new prerequisite rows are inventory only. Fixture execution still
+  follows the existing just recipes until 226.B/226.C expands the full
+  make graph.
 
 Acceptance:
 
@@ -1525,7 +1665,7 @@ Acceptance:
 - [x] Replace Zephyr shell-array background scheduling with make leaves
       through the 226.G Zephyr scheduler migration groups.
 - [x] Remove fixture-path GNU parallel calls.
-- [ ] Remove explicit Ninja/CMake/Cargo job flags from jobserver leaves,
+- [x] Remove explicit Ninja/CMake/Cargo job flags from jobserver leaves,
       leaving only documented fallback paths.
 
 Acceptance:
@@ -1582,11 +1722,11 @@ Acceptance:
 
 ### 226.E — CMake/Corrosion Efficiency Audit
 
-- [ ] Audit per-example CMake build dirs that create separate Corrosion
+- [x] Audit per-example CMake build dirs that create separate Corrosion
       Cargo target trees.
 - [ ] Capture sccache stats around native, Zephyr, FreeRTOS, ThreadX,
       and representative Cyclone C/C++ fixture builds.
-- [ ] Count real `nros-c` / `nros-cpp` recompiles from build output,
+- [x] Count real `nros-c` / `nros-cpp` recompiles from build output,
       distinguishing Cargo fingerprint checks from actual `Compiling`
       lines.
 - [ ] Identify whether misses are caused by target triple, platform
@@ -1611,6 +1751,15 @@ Follow-up result:
   reached zero C/C++ object builds and zero link steps on the second run;
   Corrosion still invokes its Cargo utility targets, but they reported
   `Finished` and did not emit `Compiling nros-c` / `Compiling nros-cpp`.
+- Wave 11 extended the diagnostic helper to log the effective
+  Cargo/Corrosion wrapper environment and a CMake cache snapshot per
+  cell. The native warm run confirmed the per-example Corrosion
+  `--target-dir` and showed that setting `RUSTC_WRAPPER=sccache`
+  increments sccache requests, but the warm requests were non-cacheable;
+  cold and `just`-launched measurements are still needed.
+- Existing build trees confirm distinct platform target triples across
+  native, FreeRTOS, ThreadX RV64, and NuttX, and confirm separate
+  per-message FFI target roots for C++ rows.
 
 Acceptance:
 
@@ -1623,12 +1772,144 @@ Acceptance:
 
 ### 226.F — Validation
 
-- [ ] Capture before/after timings for representative direct platform
-      fixture builds: native, qemu, zephyr, freertos, nuttx.
-- [ ] Capture before/after `just build-test-fixtures` timing.
+- [ ] Capture representative timings for direct platform fixture builds:
+      native, qemu, zephyr, freertos, nuttx.
+- [ ] Capture representative `just build-test-fixtures` timing through
+      both the jobserver path and the direct fallback path.
 - [ ] Check CPU utilization under `NROS_BUILD_JOBS=8` and a high-core
       default run.
-- [ ] Verify full runtime suite still consumes the same fixture paths.
+- [ ] Verify runtime suites still consume the same fixture paths after
+      scheduler and build-cache changes.
+
+Validation scope:
+
+- Do not start an unfiltered clean `just build-test-fixtures` until the
+  short platform checks below pass; it is intentionally broad and can
+  rebuild most of the fixture matrix.
+- Treat `scripts/build/fixture-inventory.py --summary` as the first
+  sanity gate. On this host it currently reports 288 rows: 233
+  non-Zephyr rows plus 55 Zephyr rows.
+- Use `/usr/bin/time -v` for elapsed time, peak RSS, and CPU percentage.
+  When `pidstat` is available, add per-process CPU sampling around the
+  same command to catch idle gaps and oversubscription:
+
+```sh
+pidstat -urdh -p ALL 5 > tmp/phase226-<case>.pidstat &
+pidstat_pid=$!
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp NROS_BUILD_JOBS=8 <command>
+kill "$pidstat_pid" 2>/dev/null || true
+```
+
+Short direct-platform timing checks:
+
+```sh
+python3 scripts/build/fixture-inventory.py --summary
+python3 scripts/build/fixture-inventory.py --no-zephyr --summary
+python3 scripts/build/fixture-inventory.py --platform native --summary
+python3 scripts/build/fixture-inventory.py --platform zephyr --summary
+
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp NROS_BUILD_JOBS=8 just native build-fixtures
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp NROS_BUILD_JOBS=8 just qemu build-fixtures
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp NROS_BUILD_JOBS=8 just freertos build-fixtures
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp NROS_BUILD_JOBS=8 just nuttx build-fixtures
+
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp \
+  NROS_ZEPHYR_FIXTURE_FILTER=build-rs-talker-zenoh \
+  NROS_ZEPHYR_BUILD_JOBS=1 \
+  just zephyr build-fixtures
+
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp \
+  NROS_ZEPHYR_FIXTURE_FILTER='build-c-talker-zenoh|build-cpp-talker-zenoh|logging-smoke' \
+  NROS_ZEPHYR_BUILD_JOBS=2 \
+  just zephyr build-fixtures
+```
+
+Root timing checks:
+
+```sh
+# Jobserver route. This is the path `just build-all` uses once the pinned
+# make/ninja tools are installed.
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp NROS_BUILD_JOBS=8 \
+  scripts/build-all-jobserver.sh
+
+# Direct fallback route. This intentionally exercises the non-jobserver
+# `build-test-fixtures-leaves` scheduler, including the ordinary make
+# platform graph added in Wave 12.
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp NROS_BUILD_JOBS=8 \
+  just build-test-fixtures
+```
+
+High-core CPU utilization check:
+
+```sh
+jobs="$(nproc)"
+pidstat -urdh -p ALL 5 > tmp/phase226-build-test-fixtures-${jobs}.pidstat &
+pidstat_pid=$!
+/usr/bin/time -v env XDG_RUNTIME_DIR=/tmp NROS_BUILD_JOBS="$jobs" \
+  just build-test-fixtures
+kill "$pidstat_pid" 2>/dev/null || true
+```
+
+Runtime fixture path verification:
+
+```sh
+# Stamp and stale-path preflight. This catches missing fixture binaries
+# before the runtime suite turns them into many per-test failures.
+just _require-fixtures
+just _check-fixtures-stale
+
+# Focused runtime consumers for the paths touched by Phase 226.
+just native test-c-xrce verbose
+just native test-c verbose
+just qemu test verbose
+just freertos test verbose
+just nuttx test verbose
+just zephyr test verbose
+
+# Final full runtime/path check after a successful broad fixture build.
+just test-all verbose
+```
+
+Validation performed in Wave 11:
+
+- `python3 scripts/build/fixture-inventory.py --summary`
+- `python3 scripts/build/fixture-inventory.py --no-zephyr --summary`
+- `python3 scripts/build/fixture-inventory.py --platform native --summary`
+- `python3 scripts/build/fixture-inventory.py --platform zephyr --summary`
+- `XDG_RUNTIME_DIR=/tmp just --dry-run native build-fixtures`
+- `XDG_RUNTIME_DIR=/tmp just --dry-run qemu build-fixtures`
+- `XDG_RUNTIME_DIR=/tmp just --dry-run freertos build-fixtures`
+- `XDG_RUNTIME_DIR=/tmp just --dry-run nuttx build-fixtures`
+- `XDG_RUNTIME_DIR=/tmp NROS_ZEPHYR_FIXTURE_FILTER=build-rs-talker-zenoh just --dry-run zephyr build-fixtures`
+- `XDG_RUNTIME_DIR=/tmp NROS_BUILD_JOBS=8 just --dry-run build-test-fixtures-leaves`
+
+Wave 11 findings:
+
+- Native direct fixtures enter the make-driver paths for high-cost
+  C/C++/Cyclone leaves and the workspace fixture builder.
+- QEMU, FreeRTOS, and NuttX direct fixture builds enter the shared
+  manifest builder after platform-specific preflights and SDK checks.
+- Zephyr direct fixtures enter the make scheduler for filtered leaves;
+  the logging-smoke path remains a delegated runtime-path fixture.
+- At the time of Wave 11, the root direct fallback still used a GNU
+  parallel platform pool outside `NROS_JOBSERVER=1`; Wave 12 replaced
+  that fallback with an ordinary make graph. Final validation still must
+  cover both the jobserver route and the direct fallback route.
+- No broad unfiltered fixture build was run in Wave 11.
+
+Wave 12 follow-up:
+
+- Replaced the root direct `build-test-fixtures-leaves` GNU parallel
+  platform pool and raw Zephyr background lane with a generated ordinary
+  make graph for non-jobserver fallback. The fallback preserves the
+  historical split: Zephyr receives the full `NROS_BUILD_JOBS` budget,
+  while the other platform targets receive `budget / outer`.
+- Kept the `NROS_JOBSERVER=1` serial launcher in the root direct path so
+  child tools keep inheriting the parent fifo jobserver without an
+  intermediate fallback make process.
+- Hardened `just native build-examples` generated make targets to invoke
+  the exported Bash function through `bash -c`, and documented that the
+  `JOBS` recipe parameter is positional.
 
 Acceptance:
 
