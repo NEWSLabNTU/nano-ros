@@ -392,6 +392,44 @@ impl core::ops::DerefMut for SessionStore {
     }
 }
 
+/// Phase 228.C — pure callback-group filter decision. `None` = wildcard (accept
+/// every group); `Some` = accept only listed groups. Backs
+/// [`Executor::group_active`]; split out so the logic is unit-testable without a
+/// live session.
+pub(crate) fn group_filter_accepts<const N: usize, const M: usize>(
+    active: &Option<heapless::Vec<heapless::String<N>, M>>,
+    group: &str,
+) -> bool {
+    match active {
+        None => true,
+        Some(v) => v.iter().any(|g| g.as_str() == group),
+    }
+}
+
+#[cfg(test)]
+mod group_filter_tests {
+    use super::group_filter_accepts;
+
+    type Groups = heapless::Vec<heapless::String<32>, { crate::config::MAX_NODES }>;
+
+    #[test]
+    fn wildcard_accepts_all() {
+        let none: Option<Groups> = None;
+        assert!(group_filter_accepts(&none, "anything"));
+    }
+
+    #[test]
+    fn set_accepts_only_listed_groups() {
+        let mut v: Groups = heapless::Vec::new();
+        let mut s = heapless::String::new();
+        s.push_str("ctrl").unwrap();
+        v.push(s).unwrap();
+        let active = Some(v);
+        assert!(group_filter_accepts(&active, "ctrl"));
+        assert!(!group_filter_accepts(&active, "telem"));
+    }
+}
+
 // ============================================================================
 // Executor
 // ============================================================================
@@ -746,6 +784,12 @@ pub struct Executor {
     /// Node name for entities created via `register_subscription`/`register_service`.
     /// Empty means unset — no liveliness tokens will be declared.
     pub(crate) node_name: heapless::String<64>,
+    /// Phase 228.C — per-tier callback-group filter. `None` = wildcard (register
+    /// every callback — the single-tier degenerate case + today's behaviour).
+    /// `Some(groups)` = this tier's executor accepts only callbacks whose
+    /// `.callback_group()` is in the set; others are skipped at registration.
+    pub(crate) active_groups:
+        Option<heapless::Vec<heapless::String<32>, { crate::config::MAX_NODES }>>,
     /// Node namespace (default: "/").
     pub(crate) namespace: heapless::String<64>,
     /// Phase 104.C.2 — rclcpp-style `add_node` table. Holds the
@@ -983,6 +1027,7 @@ impl Executor {
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
+            active_groups: None,
             nodes: heapless::Vec::new(),
             dispatch_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
@@ -1127,6 +1172,7 @@ impl Executor {
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
+            active_groups: None,
             nodes: heapless::Vec::new(),
             dispatch_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
@@ -1254,6 +1300,32 @@ impl Executor {
     /// be mutated except through these executors' spin calls.
     pub unsafe fn open_with_session(session: *mut session::ConcreteSession) -> Self {
         unsafe { Self::from_session_ptr(session) }
+    }
+
+    /// Phase 228.C — set this tier executor's active callback-group filter. The
+    /// generated per-tier task calls this before registering nodes; afterwards
+    /// only callbacks whose `.callback_group()` is in `groups` register here.
+    /// An empty slice (or never calling it) leaves the wildcard — register all
+    /// callbacks (the single-tier degenerate case + today's behaviour).
+    pub fn set_active_groups(&mut self, groups: &[&str]) {
+        if groups.is_empty() {
+            self.active_groups = None;
+            return;
+        }
+        let mut v = heapless::Vec::new();
+        for g in groups {
+            let mut s = heapless::String::new();
+            if s.push_str(g).is_ok() {
+                let _ = v.push(s);
+            }
+        }
+        self.active_groups = Some(v);
+    }
+
+    /// Phase 228.C — whether a callback in `group` should register in this
+    /// executor under the current filter. Wildcard (`None`) accepts everything.
+    pub fn group_active(&self, group: &str) -> bool {
+        group_filter_accepts(&self.active_groups, group)
     }
 
     /// Set the node name and namespace used for liveliness tokens.
