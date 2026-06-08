@@ -341,7 +341,11 @@ impl nros_board_common::BoardExit for Esp32Qemu {
 /// `nros-platform-esp32-qemu`'s log fn-ptr slot. Called once from
 /// [`run()`] right after `init_hardware`. Mirrors the wifi board's
 /// shape from Phase 88.16.E.
-fn register_log_writer() {
+///
+/// `pub(crate)` so the Phase 225.O `BoardEntry::run` shim in
+/// `board_entry.rs` can route nros log records to the esp-println
+/// console (node-registration / executor diagnostics).
+pub(crate) fn register_log_writer() {
     fn writer(severity: u8, name: &[u8], message: &[u8]) {
         let label = match severity {
             0 => "TRACE",

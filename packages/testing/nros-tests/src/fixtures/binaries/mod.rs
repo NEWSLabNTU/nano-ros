@@ -2189,6 +2189,39 @@ pub fn build_esp32_qemu_listener() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Resolve the PREBUILT ESP32-C3 QEMU workspace Entry ELF (Phase 225.O).
+///
+/// The workspace Entry (`examples/workspaces/rust/src/esp32_entry`) is
+/// the ESP32 sibling of the native / FreeRTOS / ThreadX / Zephyr
+/// workspace Entries: a SINGLE bare-metal binary that hosts the whole
+/// launch-defined node set (talker + listener) in one image via
+/// `nros::main!(launch = "demo_bringup:system.launch.xml")`. It is built
+/// by the workspace-fixture lane
+/// (`scripts/build/workspace-fixtures-build.sh esp32 rust`, run by
+/// `just esp32 build-examples` / `build-fixtures`) into
+/// `target-fixtures/esp32/riscv32imc-unknown-none-elf/<profile>/esp32_entry`,
+/// NOT in-body — tests only run prebuilt workspace fixtures, mirroring
+/// the Zephyr workspace Entry convention.
+///
+/// Fails fast with a `just esp32 build-fixtures` hint when the binary is
+/// absent.
+pub fn get_prebuilt_esp32_qemu_workspace_entry() -> TestResult<PathBuf> {
+    let root = project_root();
+    let elf = root.join(format!(
+        "examples/workspaces/rust/target-fixtures/esp32/riscv32imc-unknown-none-elf/{}/esp32_entry",
+        cargo_target_profile_dir()
+    ));
+    if !elf.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "ESP32 workspace Entry binary not found: {}\n\
+             Build the workspace fixtures first: `just esp32 build-fixtures` \
+             (or `bash scripts/build/workspace-fixtures-build.sh esp32 rust`).",
+            elf.display()
+        )));
+    }
+    Ok(elf)
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 169.4b — ESP32-C3 QEMU Rust DDS fixture builders deleted
 // alongside the Rust DDS retirement (Phase 169.2 deleted the example

@@ -91,6 +91,13 @@ build-examples:
     echo "Building ESP32 examples (from examples/fixtures.toml)..."
     RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
         bash scripts/build/fixtures-build.sh esp32 rust
+    # Phase 225.O — ESP32-C3 QEMU workspace Entry (Node + Bringup + Entry
+    # pkgs) through the documented workspace workflow (`nros ws sync`,
+    # `nros codegen-system`, then cargo). Mirrors the freertos /
+    # threadx_linux build-examples workspace-lane tail. The per-row `env`
+    # in examples/fixtures.toml carries RUSTUP_TOOLCHAIN +
+    # CARGO_UNSTABLE_BUILD_STD, so this call needs no extra toolchain env.
+    bash scripts/build/workspace-fixtures-build.sh esp32 rust
     echo "ESP32 examples built!"
 
 # Build ESP32 QEMU examples (requires nightly)

@@ -18,6 +18,8 @@ freertos = ["nros/alloc", "nros/rmw-cffi", "nros/platform-freertos", "nros/ros-h
 threadx-linux = ["nros/std", "nros/rmw-cffi", "nros/platform-threadx", "nros/ros-humble"]
 nuttx = ["nros/std", "nros/rmw-cffi", "nros/platform-nuttx", "nros/ros-humble"]
 zephyr = ["nros/alloc", "nros/rmw-cffi", "nros/platform-zephyr", "nros/ros-humble"]
+# ESP32-C3 / riscv32imc bare-metal — see talker_pkg for the rationale.
+esp32 = ["nros/alloc", "nros/rmw-cffi", "nros/platform-bare-metal", "nros/ros-humble"]
 
 [package.metadata.nros.node]
 class = "listener_pkg::Listener"

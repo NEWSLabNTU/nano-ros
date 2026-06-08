@@ -29,6 +29,13 @@ mod config;
 pub mod network;
 mod node;
 
+// Phase 225.O — real-runtime `BoardEntry` shim for the workspace Entry
+// macro (`nros::main!(launch = …)`). Needs an RMW backend to register +
+// open a session, so it is gated on the default `rmw-zenoh` feature
+// (which pulls the `nros` + `nros-rmw-zenoh` deps it uses).
+#[cfg(feature = "rmw-zenoh")]
+mod board_entry;
+
 // Re-export entry macro from esp-hal
 pub use esp_hal::main as entry;
 
@@ -44,6 +51,9 @@ pub use nros_platform_esp32_qemu;
 // Re-export main types
 pub use config::Config;
 pub use node::{init_hardware, run};
+// Phase 225.O — workspace Entry board ZST (real-runtime `BoardEntry`).
+#[cfg(feature = "rmw-zenoh")]
+pub use board_entry::Esp32QemuEntry;
 pub use nros_platform::BoardConfig;
 pub use nros_platform_esp32_qemu::timing::MonotonicClock;
 

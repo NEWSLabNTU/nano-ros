@@ -22,7 +22,8 @@ use nros_tests::{
     esp32::*,
     fixtures::{
         ManagedProcess, ZenohRouter, build_esp32_qemu_listener, build_esp32_qemu_talker,
-        build_native_listener, build_native_talker, require_zenohd,
+        build_native_listener, build_native_talker, get_prebuilt_esp32_qemu_workspace_entry,
+        require_zenohd,
     },
     platform, wait_for_port,
 };
@@ -390,6 +391,101 @@ fn test_native_to_esp32() {
     );
 
     eprintln!("SUCCESS: native talker → ESP32 listener interop works");
+}
+
+// =============================================================================
+// Workspace Entry E2E (Phase 225.O)
+// =============================================================================
+//
+// The workspace Entry (`examples/workspaces/rust/src/esp32_entry`) is the
+// ESP32-C3 QEMU sibling of the native / FreeRTOS / ThreadX / Zephyr
+// workspace Entries: a SINGLE bare-metal image hosting the whole
+// launch-defined node set — talker AND listener — in one process via
+// `nros::main!(launch = "demo_bringup:system.launch.xml")`. Built by the
+// 225.O workspace lane and resolved here through
+// `get_prebuilt_esp32_qemu_workspace_entry()` (tests run prebuilt
+// workspace fixtures, never build them in-body).
+//
+// Single-session caveat: zenoh does NOT loop a session's own publications
+// back to a subscriber in that same session, so the Entry's in-process
+// listener cannot observe the in-process talker. We therefore assert
+// delivery to a SECOND, EXTERNAL native listener — the same shape as the
+// Zephyr workspace Entry E2E — which is a real cross-process pub/sub
+// observation of `std_msgs/Int32` on `/chatter`. The Entry's baked
+// locator, the external listener's `NROS_LOCATOR`, and the zenohd router
+// all use the ESP32 slirp port (7454).
+
+/// ESP32-C3 QEMU workspace Entry boots, brings up its launch node set
+/// (talker + listener in one image), and its `/chatter` publications are
+/// delivered cross-process to an external native listener.
+#[test]
+fn test_esp32_workspace_entry_e2e() {
+    if !require_esp32_networked() {
+        nros_tests::skip!("require_esp32_networked check failed");
+    }
+
+    // Resolve the prebuilt workspace-Entry ELF + pack a flash image.
+    let entry_elf = get_prebuilt_esp32_qemu_workspace_entry().expect(
+        "Failed to resolve prebuilt ESP32 workspace Entry — run `just esp32 build-fixtures` first",
+    );
+    let root = nros_tests::project_root();
+    let entry_bin = root.join("build/esp32-qemu/esp32-ws-entry.bin");
+    create_esp32_flash_image(&entry_elf, &entry_bin)
+        .expect("Failed to create workspace Entry flash image");
+
+    // zenohd on the ESP32 port; the Entry's baked locator points here.
+    let _router =
+        ZenohRouter::start_slirp(platform::ESP32.zenohd_port).expect("Failed to start zenohd");
+    assert!(
+        wait_for_port(platform::ESP32.zenohd_port, Duration::from_secs(10)),
+        "zenohd not reachable on localhost:{}",
+        platform::ESP32.zenohd_port
+    );
+
+    // External native listener — the observable delivery endpoint (the
+    // Entry's own in-process listener sees nothing; no same-session
+    // zenoh loopback).
+    let native_listener = build_native_listener().expect("Failed to build native listener");
+    let mut listener_cmd = Command::new(native_listener);
+    listener_cmd
+        .env(
+            "NROS_LOCATOR",
+            format!("tcp/127.0.0.1:{}", platform::ESP32.zenohd_port),
+        )
+        .env("RUST_LOG", "info");
+    let mut native_proc = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+        .expect("Failed to start native listener");
+    let _ = native_proc.wait_for_output_pattern("Waiting for", Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(5));
+
+    // Boot the single-process Entry (talker + listener).
+    let mut entry =
+        start_esp32_qemu(&entry_bin, true).expect("Failed to start ESP32 workspace Entry");
+
+    // "Application setup complete" is the board's post-`register()` banner
+    // — reaching it proves the launch node set registered against a live
+    // executor (talker + listener `register()` returned Ok).
+    let entry_output = entry
+        .wait_for_output_pattern("Application setup complete", Duration::from_secs(60))
+        .expect("ESP32 workspace Entry did not finish node registration");
+    eprintln!("Workspace Entry registered its launch node set");
+
+    // The external listener must log at least one real `Received:` line.
+    let listener_output = native_proc
+        .wait_for_output_pattern("Received:", Duration::from_secs(30))
+        .unwrap_or_default();
+    let received = count_pattern(&listener_output, "Received:");
+    eprintln!("Native listener received {received} message(s) from the workspace Entry");
+
+    assert!(
+        received >= 1,
+        "Workspace Entry talker delivered no messages to the external native listener \
+         (0 `Received:` lines).\nEntry output:\n{entry_output}\nListener output:\n{listener_output}",
+    );
+
+    eprintln!(
+        "SUCCESS: ESP32 workspace Entry delivered {received} message(s) to the external listener"
+    );
 }
 
 // =============================================================================

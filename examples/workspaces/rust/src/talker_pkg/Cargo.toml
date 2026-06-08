@@ -18,6 +18,11 @@ freertos = ["nros/alloc", "nros/rmw-cffi", "nros/platform-freertos", "nros/ros-h
 threadx-linux = ["nros/std", "nros/rmw-cffi", "nros/platform-threadx", "nros/ros-humble"]
 nuttx = ["nros/std", "nros/rmw-cffi", "nros/platform-nuttx", "nros/ros-humble"]
 zephyr = ["nros/alloc", "nros/rmw-cffi", "nros/platform-zephyr", "nros/ros-humble"]
+# ESP32-C3 / riscv32imc bare-metal. The `nros` umbrella has no
+# `platform-esp32`; bare-metal targets select `platform-bare-metal`
+# (the esp32-qemu board crate supplies the concrete platform via
+# `nros-platform-esp32-qemu`). Matches the single-node esp32 example.
+esp32 = ["nros/alloc", "nros/rmw-cffi", "nros/platform-bare-metal", "nros/ros-humble"]
 
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"

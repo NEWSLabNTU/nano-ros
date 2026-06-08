@@ -106,6 +106,27 @@ codegen_out = "build-fixtures/demo_bringup"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 
+# Phase 225.O — ESP32-C3 QEMU (OpenETH) workspace Entry. Built by the
+# cargo lane (`scripts/build/workspace-fixtures-build.sh esp32 rust`):
+# nightly + `-Z build-std` via the per-row `env` (a global `[unstable]
+# build-std` in the shared `.cargo/config.toml` would break the
+# native/freertos/threadx rows). The riscv link flags come from the
+# workspace `.cargo/config.toml` `[target.riscv32imc-unknown-none-elf]`
+# block. ESP_LOG / arena / UDP-socket knobs match the single-node esp32
+# example so the booted image fits + the executor arena is sized.
+[[workspace_fixture]]
+id = "workspace-rust-esp32"
+platform = "esp32"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "esp32_entry"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures/esp32"
+target = "riscv32imc-unknown-none-elf"
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc", ESP_LOG = "info", NROS_EXECUTOR_ARENA_SIZE = "16384", NROS_SMOLTCP_MAX_UDP_SOCKETS = "2" }
+
 [[workspace_fixture]]
 id = "workspace-c-native"
 platform = "native"

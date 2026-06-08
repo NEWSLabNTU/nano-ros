@@ -7,5 +7,22 @@ rustflags = [
     "link-arg=--nmagic",
 ]
 
+# Phase 225.O — ESP32-C3 (riscv32imc) Entry link flags, copied from the
+# single-node esp32 example's `.cargo/config.toml`. Only applies when
+# `--target riscv32imc-unknown-none-elf` is selected (the `esp32_entry`
+# fixture row), so it is inert for the native / freertos / threadx rows.
+# `-Z build-std` is NOT declared here — it arrives per-row via the
+# `CARGO_UNSTABLE_BUILD_STD` env in fixtures.toml so the shared workspace
+# config stays buildable on stable for the other members.
+[target.riscv32imc-unknown-none-elf]
+rustflags = [
+    "-C",
+    "link-arg=--gc-sections",
+    "-C",
+    "link-arg=-Tlinkall.x",
+    "-C",
+    "force-frame-pointers",
+]
+
 [env]
 CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"

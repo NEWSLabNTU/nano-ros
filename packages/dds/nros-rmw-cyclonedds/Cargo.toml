@@ -37,8 +37,20 @@ nros-serdes = { version = "0.5.0", path = "../../core/nros-serdes", default-feat
 heapless = { workspace = true }
 # Multi-thread guard: spin lock on hosted, critical-section on bare-metal.
 # Picked at compile time via `#[cfg]` in src/sync.rs.
-spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
 critical-section = { version = "1.2", default-features = false }
+
+# Phase 225.O — `spin` is **hosted-only**. `src/sync.rs` uses
+# `spin::Mutex` exclusively under `#[cfg(not(target_os = "none"))]`
+# (bare-metal uses `critical-section`), but the dependency was declared
+# unconditionally, dragging `spin` 0.9.8 into every bare-metal build.
+# `spin` 0.9.8 calls `core::sync::atomic` CAS, which targets WITHOUT
+# atomic CAS — riscv32imc (ESP32-C3), thumbv6m — cannot compile,
+# breaking the esp32 workspace Entry (and any fresh-locked single-node
+# esp32 build). thumbv7m / threadx / native masked it because their
+# targets DO have CAS. Gate `spin` to non-`target_os = "none"` so it
+# exactly mirrors `sync.rs` and disappears from bare-metal builds.
+[target.'cfg(not(target_os = "none"))'.dependencies]
+spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
 
 [lints]
 workspace = true

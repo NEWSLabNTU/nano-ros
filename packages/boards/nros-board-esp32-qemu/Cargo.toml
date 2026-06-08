@@ -21,6 +21,24 @@ nros-platform-api = { path = "../../core/nros-platform-api" }
 # symbols come from `zpico-sys`'s default-on `platform-aliases`
 # alias TU when `rmw-zenoh` is active.
 
+# Phase 225.O — real-runtime `BoardEntry` shim (`board_entry.rs`) opens an
+# `Executor` + `ExecutorNodeRuntime` so `nros::main!(launch = …)` can
+# register the launch node set against a live RMW session. Mirrors the
+# single-node esp32 example's `nros` + `nros-rmw-zenoh` deps; both are
+# gated behind the default `rmw-zenoh` feature so a serial-only / no-RMW
+# build of this board crate stays lean.
+nros = { path = "../../core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-bare-metal",
+    "ros-humble",
+], optional = true }
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "linkme-register",
+    "platform-bare-metal",
+    "ros-humble",
+], optional = true }
+
 # smoltcp network provider (ethernet only)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
 # OpenCores Ethernet MAC driver (for QEMU open_eth NIC, ethernet only)
@@ -51,7 +69,10 @@ default = ["ethernet", "rmw-zenoh"]
 # Phase 129.D — `rmw-zenoh` is now a pure marker. Symbols come
 # from `zpico-sys`'s default-on `platform-aliases` C TU, which
 # the consumer pulls in transitively via `nros-rmw-zenoh`.
-rmw-zenoh = []
+# Phase 225.O — additionally pulls the real-runtime `BoardEntry`
+# shim deps (`nros` + `nros-rmw-zenoh`) so the workspace Entry macro
+# can open an executor and register the launch node set.
+rmw-zenoh = ["dep:nros", "dep:nros-rmw-zenoh"]
 # Ethernet transport via OpenETH + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp"]
 # Serial transport via zenoh-pico built-in serial (no additional deps)

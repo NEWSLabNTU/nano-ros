@@ -771,9 +771,34 @@ The review found example topology issues separate from the API surface.
   connectivity issue that also fails the pre-existing single-node reference
   (`test_zephyr_to_native_e2e`) — tracked in the 225.P Status note, not an
   Entry defect.
-- [ ] Add the ESP32 Entry package once its bare-metal runtime
-  (`NullNodeRuntime` → real `ExecutorNodeRuntime`, shared 212.N track) and a
-  CI-runnable OpenETH board land.
+- [x] Add the ESP32 Entry package — DONE (Phase 225.O ESP32 push,
+  2026-06-09). `src/esp32_entry` builds for `riscv32imc-unknown-none-elf`
+  via the workspace fixture cargo lane (`scripts/build/workspace-fixtures-build.sh
+  esp32 rust`, wired into `just esp32 build-examples`), boots on the
+  Espressif qemu fork, registers the talker+listener launch nodes against
+  a real `ExecutorNodeRuntime`, and the talker publishes `/chatter`
+  (`std_msgs/Int32`). **Build + boot + register + publish + cross-process
+  delivery all GREEN** — an external native listener received 123
+  messages over a fresh run. The CI-runnable OpenETH board
+  `nros-board-esp32-qemu` gained a real-runtime `Esp32QemuEntry`
+  (`board_entry.rs`, the freertos `run_entry` analogue: opens an
+  `Executor` + `ExecutorNodeRuntime`, hands the macro closure a live
+  `RuntimeCtx`, spins) instead of the WiFi board's `NullNodeRuntime`
+  path. The macro gained a `Framework::Esp32` branch emitting
+  `#[esp_hal::main] fn main() -> !` (esp-riscv-rt's `_start` needs the
+  esp-hal entry registration; a bare `extern "C" fn main` does not boot)
+  routed by `deploy = "esp32-qemu"`. **Real product bug fixed in
+  passing:** `nros-rmw-cyclonedds` declared `spin` (0.9.8, needs atomic
+  CAS) as an unconditional dep, but `src/sync.rs` only uses it on
+  `cfg(not(target_os = "none"))` (bare-metal uses `critical-section`).
+  That dragged `spin` into every bare-metal build and broke **all** no-CAS
+  targets (riscv32imc / thumbv6m) on a fresh resolve — masked only
+  because thumbv7m / threadx / native have CAS, and the single-node esp32
+  example's committed `Cargo.lock` predates the dep. Gated `spin` to
+  `[target.'cfg(not(target_os = "none"))'.dependencies]`, mirroring
+  `sync.rs`. E2E: `test_esp32_workspace_entry_e2e` (esp32_emulator
+  group) resolves the prebuilt Entry, packs a flash image, and asserts
+  cross-process `/chatter` delivery to an external native listener.
 - [x] Update `examples/fixtures.toml`, fixture builders, and E2E lookup
   helpers after Entry topology changes.
 - [x] Add generic native CMake/Corrosion support for Rust Node pkgs in
@@ -874,9 +899,20 @@ Remaining blockers:
   schema fields (`board`, `conf_files`), and a `fixtures-manifest.py`
   Zephyr validation branch (`_cmake_has_entry_target` rejects the
   `project()` + `rust_cargo_application()` shape).
-- ESP32 has no workspace fixture row/build lane yet; add it only after
-  the platform recipe has a workspace-aware `nros setup` + codegen +
-  platform build path. Scoped 2026-06-08: not tractable in one pass.
+- ESP32 — **RESOLVED** (Phase 225.O ESP32 push, 2026-06-09; the four
+  sub-bullets below are the original 2026-06-08 scoping, kept for
+  history). The `workspace-rust-esp32` row + cargo build lane now exist
+  and produce a green Entry that boots + registers + publishes; see the
+  checklist entry above. The three "unresolved" notes below were all
+  cleared: the WiFi-board `NullNodeRuntime` was sidestepped by giving the
+  CI OpenETH board a real-runtime `Esp32QemuEntry`; the build-lane
+  build-std/nightly plumbing rides the per-row `env` +
+  `[target.riscv32imc-unknown-none-elf]` block (no global `[unstable]
+  build-std` poisoning); and the latent macro `Esp32` type-path bug was
+  superseded by the new `esp32-qemu` deploy key + `Framework::Esp32`
+  branch. (The OpenETH smoltcp ACK stall the single-node esp32 e2e TODO
+  warned about did NOT reproduce — the workspace Entry delivered 123
+  messages cross-process.)
   - **Latent macro bug — fixed.** `nros-macros` `main_macro.rs` mapped
     `"esp32" => "::nros_board_esp32::Esp32"`, but the crate exports
     `Esp32C3` (no `Esp32` type exists). Form-3 `nros::main!(launch=…)`

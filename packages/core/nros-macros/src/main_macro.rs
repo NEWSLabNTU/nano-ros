@@ -327,6 +327,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             Framework::OwnedSpin => "OwnedSpin",
             Framework::Embassy => "Embassy",
             Framework::Zephyr => "Zephyr",
+            Framework::Esp32 => "Esp32",
             Framework::Rtic => unreachable!(),
         };
         return Err(syn::Error::new(
@@ -550,10 +551,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // examples today don't follow this — they always declare
     // `node_pkgs = [...]` explicitly).
     let framework_node_pkg_idents: Vec<Ident> = match framework {
-        // OwnedSpin + Zephyr both register via the launch-resolved
+        // OwnedSpin + Zephyr + Esp32 all register via the launch-resolved
         // `register_calls` (the `RuntimeCtx`-based `<pkg>::register`
         // flow), NOT the RTIC/Embassy `register_dispatch` splice.
-        Framework::OwnedSpin | Framework::Zephyr => Vec::new(),
+        Framework::OwnedSpin | Framework::Zephyr | Framework::Esp32 => Vec::new(),
         Framework::Rtic | Framework::Embassy => {
             let cargo_toml = manifest_dir.join("Cargo.toml");
             let from_metadata = read_entry_node_pkgs(&cargo_toml).map_err(|e| {
@@ -775,6 +776,46 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 loop {
                     let _ = runtime.runtime.spin_once(10);
                 }
+            }
+        },
+        // Phase 225.O — ESP32-C3 (esp-hal) framework. esp-riscv-rt's
+        // `_start` registers + jumps to the esp-hal entry, so the boot
+        // symbol must be a `#[::esp_hal::main] fn main() -> !` — the
+        // `OwnedSpin` bare `extern "C" fn main` does not boot. The board
+        // ZST's real-runtime `BoardEntry::run` builds the `Config`,
+        // brings up hardware + transport, opens the executor, registers
+        // each launch-named Node pkg through the `RuntimeCtx` closure
+        // (identical `<pkg>::register(runtime)?` flow to native/freertos
+        // — the launch file stays the single source of truth), and spins
+        // forever (`run` never returns on ESP32). The trailing `loop` is
+        // defensive (satisfies `-> !`; unreachable in a working build).
+        // The Entry crate provides the panic handler (`esp-backtrace`)
+        // and app descriptor (`esp_app_desc!`).
+        Framework::Esp32 => quote! {
+            #[::esp_hal::main]
+            fn main() -> ! {
+                let _ = __nros_esp32_entry_run();
+                #[allow(clippy::empty_loop)]
+                loop {
+                    ::core::hint::spin_loop();
+                }
+            }
+
+            fn __nros_esp32_entry_run() -> ::core::result::Result<
+                (),
+                ::nros::__macro_support::nros_platform::RuntimeError,
+            > {
+                <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run(
+                    |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
+                        -> ::core::result::Result<
+                            (),
+                            ::nros::__macro_support::nros_platform::RuntimeError,
+                        >
+                    {
+                        #( #register_calls )*
+                        ::core::result::Result::Ok(())
+                    },
+                )
             }
         },
         Framework::Rtic => {
@@ -1222,6 +1263,13 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
         }
         "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
         "esp32" => "::nros_board_esp32::Esp32C3",
+        // Phase 225.O — CI-runnable ESP32-C3 QEMU (OpenETH) board. esp32
+        // is its own framework (esp-riscv-rt's `_start` requires the
+        // esp-hal entry registration), routed via `framework_for` to the
+        // `Framework::Esp32` emit shape (`#[esp_hal::main]`). The board
+        // ZST impls the real-runtime `BoardEntry`. Distinct from the
+        // WiFi `"esp32"` board above, which is `NullNodeRuntime`-only.
+        "esp32-qemu" | "qemu-esp32-baremetal" => "::nros_board_esp32_qemu::Esp32QemuEntry",
         // Phase 225.P — Zephyr is its own framework (RTOS owns `main`).
         // `ZephyrBoard` impls `NetworkWait` only (NOT `BoardEntry`); the
         // macro routes `deploy = "zephyr"` through `framework_for` to the
@@ -1247,7 +1295,7 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
 }
 
 fn known_boards_csv() -> &'static str {
-    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, zephyr, \
+    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, esp32-qemu, zephyr, \
      rtic-stm32f4, rtic-mps2-an385, embassy-stm32f4"
 }
 
@@ -1314,6 +1362,14 @@ enum Framework {
     /// otherwise. There is NO `BoardEntry::run` (Zephyr forbids a Rust
     /// `fn main`).
     Zephyr,
+    /// Phase 225.O — ESP32-C3 (esp-hal). esp-riscv-rt's `_start` calls
+    /// the esp-hal entry registration, so a bare `extern "C" fn main`
+    /// (the `OwnedSpin` `target_os = "none"` shape) does not boot. The
+    /// macro emits `#[::esp_hal::main] fn main() -> !` that delegates to
+    /// the real-runtime `BoardEntry::run` (which never returns), then
+    /// spins defensively. The Entry crate provides the panic handler
+    /// (`esp-backtrace`) + app descriptor (`esp_app_desc!`).
+    Esp32,
 }
 
 fn framework_for(deploy: &str) -> Framework {
@@ -1321,6 +1377,7 @@ fn framework_for(deploy: &str) -> Framework {
         "rtic-stm32f4" | "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => Framework::Rtic,
         "embassy-stm32f4" => Framework::Embassy,
         "zephyr" => Framework::Zephyr,
+        "esp32-qemu" | "qemu-esp32-baremetal" => Framework::Esp32,
         _ => Framework::OwnedSpin,
     }
 }

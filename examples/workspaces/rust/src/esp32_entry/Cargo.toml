@@ -1,0 +1,76 @@
+# Entry pkg — boots the `demo_bringup` demo topology on the CI-runnable
+# ESP32-C3 QEMU (OpenETH) board.
+#
+# Phase 225.O — the Entry source is the same one-line
+# `nros::main!(launch = ...)` the native / freertos / threadx / zephyr
+# entries use. The macro routes `deploy = "esp32-qemu"` to the
+# `Framework::Esp32` emit shape, which emits a `#[esp_hal::main] fn
+# main() -> !` (esp-riscv-rt's `_start` requires the esp-hal entry
+# registration — a bare `extern "C" fn main` does not boot) that
+# delegates to the board crate's real-runtime `BoardEntry::run`.
+#
+# Built via plain `cargo build -p esp32_entry --target
+# riscv32imc-unknown-none-elf` with nightly + `-Z build-std` (supplied
+# per-row by the fixtures.toml `env` + the workspace `.cargo/config.toml`
+# `[target.riscv32imc-unknown-none-elf]` block), so it is a normal cargo
+# workspace member (unlike the west-built `zephyr_entry`).
+
+[package]
+name = "esp32_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the demo topology on ESP32-C3 QEMU (OpenETH)."
+
+[[bin]]
+name = "esp32_entry"
+path = "src/main.rs"
+test = false
+bench = false
+
+# Entry pkg metadata — `deploy = "esp32-qemu"` routes the `nros::main!()`
+# proc-macro onto the `Framework::Esp32` emit branch and feeds
+# `nros check`.
+[package.metadata.nros.entry]
+deploy = "esp32-qemu"
+
+[package.metadata.nros.deploy.esp32-qemu]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:7454"
+
+[dependencies]
+# Single `nros` dep for the macro-emitted `::nros::…` paths. Features
+# unify with the Node pkgs' `esp32` feature (`platform-bare-metal`).
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-bare-metal",
+    "ros-humble",
+] }
+
+# CI-runnable ESP32-C3 QEMU board crate — supplies `Esp32QemuEntry`
+# (real-runtime `BoardEntry`) + hardware/transport bringup + the
+# `esp_bootloader_esp_idf` re-export used for the app descriptor.
+nros-board-esp32-qemu = { path = "../../../../../packages/boards/nros-board-esp32-qemu" }
+
+# Required for the `#[esp_hal::main]` proc-macro path the macro emits.
+esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
+
+# Panic handler (required for no_std).
+esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
+
+# Node pkg rlibs — the launch XML names `talker` + `listener`, so the
+# macro emits `talker_pkg::register` + `listener_pkg::register`; the bin
+# must link both. Each selects the `esp32` platform feature.
+talker_pkg = { path = "../talker_pkg", default-features = false, features = ["esp32"] }
+listener_pkg = { path = "../listener_pkg", default-features = false, features = ["esp32"] }
+
+# Phase 204.11 — release profile matches the single-node esp32 example:
+# drop debug-assertions out of release, no debuginfo in the flashed
+# image, lto=fat + codegen-units=1 for size.
+[profile.release]
+debug = false
+debug-assertions = false
+lto = "fat"
+codegen-units = 1
