@@ -1084,12 +1084,28 @@ environmental reason, not an Entry bug.** The Entry's session open returns
 `Transport(ConnectionFailed)` reaching the host zenohd over native_sim
 NSOS, and the **pre-existing single-node reference `test_zephyr_to_native_e2e`
 fails identically** here (same `ConnectionFailed`, same "Listener timed
-out"). So native_sim↔zenoh connectivity is broken for every zephyr-zenoh
-E2E in this environment, independent of Phase 225.P. The 225.O Zephyr
-Entry checkbox stays unchecked until that environmental connectivity (or
-the reference test) is green; at that point the workspace Entry E2E is
-expected to pass with it, since the Entry already builds and runs
-identically to the reference.
+out").
+
+Root-caused 2026-06-09: the native_sim NSOS host-socket offload is
+non-functional in this environment. Evidence: zenohd v1.7.2 listens on
+`tcp/127.0.0.1:7456` and the host shell connects fine, but when the
+native_sim Entry runs, (a) zenohd logs **no** incoming TCP, (b) `ss -tnp`
+shows **no** connection to 7456 during the connect window, and (c) `strace
+-f -e connect` on the Entry shows **no** `connect()` syscall to 7456 at
+all. So NSOS fails the connect *inside* the offload layer before issuing
+any host syscall — a Zephyr/native_simulator NSOS-layer problem (kernel /
+libc / host-trampoline), not a nano-ros defect. The Entry config is
+correct (`CONFIG_NET_SOCKETS_OFFLOAD=y` + `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y`
+present in the built `.config`; locator baked; RMW=zenoh). Because the
+same failure breaks the pre-existing single-node reference, it affects
+*every* zephyr-zenoh E2E in this environment, independent of Phase 225.P.
+
+The 225.O Zephyr Entry checkbox stays unchecked until that NSOS
+connectivity (or the reference test) is green in a capable environment
+(e.g. CI); at that point the workspace Entry E2E is expected to pass with
+it, since the Entry already builds and runs identically to the reference.
+Fixing NSOS host-socket offload is a separate, environment/Zephyr-layer
+task tracked outside this phase.
 
 ---
 
