@@ -13,8 +13,7 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
-    TickCtx,
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 pub struct ActionClient;
@@ -24,8 +23,7 @@ impl Node for ActionClient {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_client"))?;
-        let _client =
-            node.create_action_client::<Fibonacci>(EntityId::new("cli_fib"), "/fibonacci")?;
+        let _client = node.create_action_client_for_name::<Fibonacci>("/fibonacci")?;
         Ok(())
     }
 }
@@ -42,12 +40,7 @@ impl ExecutableNode for ActionClient {
         State { sent: false }
     }
 
-    fn on_callback(
-        _state: &mut Self::State,
-        _callback: CallbackId<'_>,
-        _ctx: &mut CallbackCtx<'_>,
-    ) {
-    }
+    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {}
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
         if state.sent {
@@ -55,7 +48,7 @@ impl ExecutableNode for ActionClient {
         }
         let goal = FibonacciGoal { order: 10 };
         if ctx
-            .send_goal::<FibonacciGoal, 32>(EntityId::new("cli_fib"), &goal)
+            .send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal)
             .is_ok()
         {
             state.sent = true;

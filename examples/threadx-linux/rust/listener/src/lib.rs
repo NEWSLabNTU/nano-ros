@@ -5,9 +5,7 @@
 
 #![no_std]
 
-use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
-};
+use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
 use std_msgs::msg::Int32;
 
 pub struct Listener;
@@ -17,11 +15,7 @@ impl Node for Listener {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
-        let _sub = node.create_subscription::<Int32>(
-            EntityId::new("sub_chatter"),
-            CallbackId::new("on_chatter"),
-            "/chatter",
-        )?;
+        let _sub = node.create_subscription_for_callback_name::<Int32>("on_chatter", "/chatter")?;
         Ok(())
     }
 }
@@ -34,7 +28,7 @@ impl ExecutableNode for Listener {
         0
     }
 
-    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_chatter" {
             if let Ok(msg) = ctx.message::<Int32>() {
                 *state = msg.data;

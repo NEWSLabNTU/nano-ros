@@ -17,13 +17,13 @@
 //! ```
 //!
 //! so the board-side dispatch runtime (Embassy: a
-//! `Channel<CallbackId>`; RTIC: an SPSC ring) enqueues signaled
+//! framework-owned queue; RTIC: an SPSC ring) enqueues signaled
 //! subscription deliveries onto a framework-owned task instead of
 //! the spin task. The subscription is registered via the tag-shaped
 //! [`NodeContext::create_subscription_static`](nros::NodeContext::create_subscription_static)
 //! helper landed in 216.A.4-followup, which returns a
 //! [`SubscriptionTag`] the Node author stores on `Self::State` and
-//! matches against the `&CallbackId<'_>` delivered to
+//! matches against the `Callback<'_>` delivered to
 //! [`ExecutableNode::on_callback`].
 //!
 //! ## Spawn-from-sync escape
@@ -66,7 +66,7 @@
 
 use embassy_executor::Spawner;
 use nros::{
-    CallbackCtx, CallbackId, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
+    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
     NodeResult, SubscriptionTag,
 };
 
@@ -106,7 +106,7 @@ impl Node for Listener {
         // Phase 216.C.5 — tag-based subscription. The topic literal
         // becomes both the stable entity ID and the callback ID; the
         // returned `SubscriptionTag` is what `on_callback` matches
-        // against the delivered `&CallbackId<'_>`. See the module
+        // against the delivered `Callback<'_>`. See the module
         // doc for the Deferred dispatch rationale.
         let _sub_chatter = node.create_subscription_static::<PlaceholderInt32>("/chatter")?;
         Ok(())
@@ -137,7 +137,7 @@ impl ExecutableNode for Listener {
         }
     }
 
-    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if state.sub_chatter == callback {
             // 4-byte LE decode == wire shape of `std_msgs/Int32`
             // (CDR-PL, header omitted — placeholder; the Embassy

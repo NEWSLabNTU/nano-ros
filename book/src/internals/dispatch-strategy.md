@@ -178,7 +178,7 @@ pub struct ServiceTag(&'static str);
 pub struct ActionTag(&'static str);
 
 impl From<SubscriptionTag> for CallbackId<'static> { /* ... */ }
-impl PartialEq<CallbackId<'_>> for SubscriptionTag { /* ... */ }
+impl PartialEq<Callback<'_>> for SubscriptionTag { /* ... */ }
 ```
 
 The tag carries only the `&'static str` callback identifier — zero
@@ -189,10 +189,10 @@ tag fields by calling the `_static` registration variants
 `create_action_static`) and storing the returned tag onto
 `Self::State`.
 
-Dispatch then matches the tag against the `CallbackId<'_>` argument:
+Dispatch then matches the tag against the `Callback<'_>` event:
 
 ```rust
-fn on_callback(state: &mut Self::State, cb: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+fn on_callback(state: &mut Self::State, cb: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
     if state.sub_chatter == cb {
         let msg: Int32 = ctx.downcast().unwrap();
         // ...
@@ -203,7 +203,7 @@ fn on_callback(state: &mut Self::State, cb: CallbackId<'_>, ctx: &mut CallbackCt
 }
 ```
 
-The `PartialEq<CallbackId<'_>>` impl on each tag type does the
+The `PartialEq<Callback<'_>>` impl on each tag type does the
 comparison in `&'static str` terms — `O(ptr_eq)` in the common case
 when the runtime hands back the same `&'static` the user registered.
 
@@ -350,7 +350,7 @@ impl ExecutableNode for Listener {
     fn init() -> Self::State {
         ListenerState { sub_chatter: SubscriptionTag::placeholder() }
     }
-    fn on_callback(state: &mut Self::State, cb: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut Self::State, cb: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if state.sub_chatter == cb {
             let msg: Int32 = ctx.downcast().unwrap();
             defmt::info!("Received: {}", msg.data);

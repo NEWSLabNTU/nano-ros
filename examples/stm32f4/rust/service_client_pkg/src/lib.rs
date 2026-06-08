@@ -50,8 +50,8 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, DispatchStrategy, EntityId, ExecutableNode, Node, NodeContext,
-    NodeOptions, NodeResult,
+    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
+    NodeResult,
 };
 use stm32f4_service_server_pkg::PlaceholderSrv;
 
@@ -80,8 +80,7 @@ impl Node for ServiceClient {
         // end of `register` and the real call body (request →
         // `Promise::try_recv()` loop → reply log) is a `// todo`
         // below.
-        let _client =
-            node.create_service_client::<PlaceholderSrv>(EntityId::new("cli_echo"), "/echo")?;
+        let _client = node.create_service_client_for_name::<PlaceholderSrv>("/echo")?;
         // todo(216.B.5-followup): thread `_client` onto `Self::State`
         // once the client-handle trampoline lands, then wire a
         // periodic call body — e.g. a tick callback that builds a
@@ -106,11 +105,7 @@ impl ExecutableNode for ServiceClient {
         0
     }
 
-    fn on_callback(
-        _state: &mut Self::State,
-        _callback: CallbackId<'_>,
-        _ctx: &mut CallbackCtx<'_>,
-    ) {
+    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         // Phase 216.B.5 — Inline dispatch + no Node-registered
         // callbacks (no timer, no subscription) ⇒ this trampoline is
         // never invoked today. Kept as a stub so the `ExecutableNode`

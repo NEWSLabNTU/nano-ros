@@ -52,7 +52,7 @@
 #![no_std]
 
 use nros::{
-    DispatchStrategy, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
 };
 use stm32f4_action_server_pkg::PlaceholderAct;
 
@@ -73,20 +73,17 @@ impl Node for ActionClient {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_client"))?;
-        // Phase 216.B.5 — action client uses the `EntityId`-shaped
-        // builder (no `create_action_client_static` exists: clients
-        // need a USABLE handle, not just a tag, to dispatch goals —
-        // see `DeclaredNode::create_action_static`'s doc comment).
+        // Phase 216.B.5 — action client uses the name-shaped builder
+        // (no `create_action_client_static` exists: clients need a
+        // USABLE handle, not just a tag, to dispatch goals — see
+        // `DeclaredNode::create_action_static`'s doc comment).
         // The returned `NodeActionClient` is dropped because the
         // skeleton's send_goal / try_recv* bodies haven't been
         // threaded through yet; a follow-up B wave moves those
         // loops onto a framework-owned RTIC task, at which point the
         // handle is stashed on `Self::State` (Inline state grows
         // from `()` to `Option<NodeActionClient<'static, …>>`).
-        let _client = node.create_action_client::<PlaceholderAct>(
-            EntityId::new("client_fibonacci"),
-            "/fibonacci",
-        )?;
+        let _client = node.create_action_client_for_name::<PlaceholderAct>("/fibonacci")?;
         Ok(())
     }
 }
@@ -105,7 +102,7 @@ impl ExecutableNode for ActionClient {
 
     fn on_callback(
         _state: &mut Self::State,
-        _callback: nros::CallbackId<'_>,
+        _callback: Callback<'_>,
         _ctx: &mut nros::CallbackCtx<'_>,
     ) {
         // Phase 216.B.5 — Inline client has no callbacks: goal-accept,

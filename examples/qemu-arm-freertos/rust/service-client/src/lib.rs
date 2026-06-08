@@ -47,7 +47,7 @@ mod host_shim {
 
 use example_interfaces::srv::AddTwoInts;
 use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 
@@ -58,13 +58,9 @@ impl Node for AddTwoIntsClient {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("add_two_ints_client"))?;
-        let _client =
-            node.create_service_client::<AddTwoInts>(EntityId::new("client_add"), "/add_two_ints")?;
-        let _timer = node.create_timer(
-            EntityId::new("timer_call"),
-            CallbackId::new("issue_call"),
-            TimerDuration::from_secs(1),
-        )?;
+        let _client = node.create_service_client_for_name::<AddTwoInts>("/add_two_ints")?;
+        let _timer =
+            node.create_timer_for_callback_name("issue_call", TimerDuration::from_secs(1))?;
         Ok(())
     }
 }
@@ -77,11 +73,7 @@ impl ExecutableNode for AddTwoIntsClient {
         0
     }
 
-    fn on_callback(
-        _state: &mut Self::State,
-        _callback: CallbackId<'_>,
-        _ctx: &mut CallbackCtx<'_>,
-    ) {
+    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         // Phase 212.M.5.b — declarative-metadata-only.
         // Service-client runtime body deferred to M-F.4
         // (TickCtx call() seam). Codegen-system will wire the imperative

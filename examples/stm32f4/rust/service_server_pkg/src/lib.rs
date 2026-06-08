@@ -17,14 +17,14 @@
 //!
 //! Service callbacks are exactly the Deferred-dispatch use case: a
 //! request arrives, the board-side dispatch runtime (RTIC: an SPSC
-//! ring drained by a `#[task]`; Embassy: a `Channel<CallbackId>`)
+//! ring drained by a `#[task]`; Embassy: a framework-owned queue)
 //! enqueues the signaled callback onto a framework-owned task
 //! instead of the spin task, and the handler body runs there. The
 //! server is registered via the tag-shaped
 //! [`NodeContext::create_service_static`](nros::NodeContext::create_service_static)
 //! helper landed in the 216.A.4-followup, which returns a
 //! [`ServiceTag`] the Node author stores on `Self::State` and matches
-//! against the `&CallbackId<'_>` delivered to
+//! against the `Callback<'_>` delivered to
 //! [`ExecutableNode::on_callback`].
 //!
 //! ## Placeholder service type
@@ -48,7 +48,7 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
+    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
     NodeResult, ServiceTag,
 };
 
@@ -83,7 +83,7 @@ impl Node for ServiceServer {
         // Phase 216.B.5 — tag-based service server. The service-name
         // literal becomes both the stable entity ID and the callback
         // ID; the returned `ServiceTag` is what `on_callback` matches
-        // against the delivered `&CallbackId<'_>`. See the module doc
+        // against the delivered `Callback<'_>`. See the module doc
         // for the Deferred dispatch rationale.
         let _srv_echo = node.create_service_static::<PlaceholderSrv>("/echo")?;
         Ok(())
@@ -104,7 +104,7 @@ impl ExecutableNode for ServiceServer {
         }
     }
 
-    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if state.srv_echo == callback {
             // 4-byte LE decode == wire shape of `PlaceholderSrv`'s
             // Request (mirrors `std_msgs/Int32`; CDR-PL, header

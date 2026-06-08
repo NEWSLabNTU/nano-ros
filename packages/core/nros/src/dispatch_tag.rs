@@ -1,5 +1,5 @@
 //! Phase 216.A.4 — tag types Node authors hold on `Self::State` to
-//! match against incoming [`CallbackId`] in
+//! match against incoming [`Callback`](crate::Callback) in
 //! [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
 //!
 //! Each tag is an opaque newtype around a `&'static str` (the stable
@@ -13,8 +13,8 @@
 //!
 //! - [`Into<CallbackId<'static>>`] — convert a tag into a borrowable
 //!   `CallbackId` when handing off to the runtime.
-//! - [`PartialEq<CallbackId<'_>>`] — match directly against the
-//!   `&CallbackId<'_>` delivered to
+//! - [`PartialEq<Callback<'_>>`](crate::Callback) — match directly against the
+//!   [`Callback`](crate::Callback) delivered to
 //!   [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback):
 //!
 //!   ```ignore
@@ -30,12 +30,12 @@
 //! at register time land in a follow-up commit; this commit ships only
 //! the types so the 216.B.5 + 216.C.5 example carving can declare them.
 
-use crate::node_metadata::CallbackId;
+use crate::{node::Callback, node_metadata::CallbackId};
 
 /// Tag identifying a subscription callback registered on a Node.
 ///
 /// Stored on `Self::State` by macro-emitted `init()` bodies (or hand-
-/// written equivalents) and matched against the `&CallbackId<'_>`
+/// written equivalents) and matched against the [`Callback`] delivered to
 /// delivered to
 /// [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -68,6 +68,12 @@ impl From<SubscriptionTag> for CallbackId<'static> {
 impl PartialEq<CallbackId<'_>> for SubscriptionTag {
     fn eq(&self, other: &CallbackId<'_>) -> bool {
         self.0 == other.0
+    }
+}
+
+impl PartialEq<Callback<'_>> for SubscriptionTag {
+    fn eq(&self, other: &Callback<'_>) -> bool {
+        self.0 == other.as_str()
     }
 }
 
@@ -107,6 +113,12 @@ impl PartialEq<CallbackId<'_>> for ServiceTag {
     }
 }
 
+impl PartialEq<Callback<'_>> for ServiceTag {
+    fn eq(&self, other: &Callback<'_>) -> bool {
+        self.0 == other.as_str()
+    }
+}
+
 /// Tag identifying an action-server callback registered on a Node.
 ///
 /// See [`SubscriptionTag`] for the usage pattern.
@@ -140,6 +152,12 @@ impl From<ActionTag> for CallbackId<'static> {
 impl PartialEq<CallbackId<'_>> for ActionTag {
     fn eq(&self, other: &CallbackId<'_>) -> bool {
         self.0 == other.0
+    }
+}
+
+impl PartialEq<Callback<'_>> for ActionTag {
+    fn eq(&self, other: &Callback<'_>) -> bool {
+        self.0 == other.as_str()
     }
 }
 
@@ -188,5 +206,17 @@ mod tests {
 
         // Placeholder shouldn't match a real callback id.
         assert!(!(SubscriptionTag::placeholder() == CallbackId::new("sub_chatter")));
+    }
+
+    #[test]
+    fn tag_eq_callback_event_matches() {
+        let sub = SubscriptionTag::new("sub_chatter");
+        let event = Callback::__from_id(CallbackId::new("sub_chatter"));
+        let mismatch = Callback::__from_id(CallbackId::new("sub_other"));
+
+        assert!(sub == event);
+        assert!(!(sub == mismatch));
+        assert!(ServiceTag::new("svc") == Callback::__from_id(CallbackId::new("svc")));
+        assert!(ActionTag::new("act") == Callback::__from_id(CallbackId::new("act")));
     }
 }

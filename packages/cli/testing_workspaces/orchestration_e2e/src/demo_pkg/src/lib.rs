@@ -2,53 +2,43 @@
 
 pub mod talker {
     use nros::{
-        CallbackCtx, CallbackId, CancelResponse, CdrReader, CdrWriter, ComponentContext,
-        ComponentResult, DeserError, Deserialize, EntityId, ExecutableComponent, GoalResponse,
-        NodeId, NodeOptions, RosAction, RosMessage, RosService, SerError, Serialize, TimerDuration,
+        Callback, CallbackCtx, CancelResponse, CdrReader, CdrWriter, DeserError, Deserialize,
+        ExecutableNode, GoalResponse, Node, NodeContext, NodeOptions, NodeResult, RosAction,
+        RosMessage, RosService, SerError, Serialize, TimerDuration,
     };
 
     pub struct Component;
 
-    impl nros::Component for Component {
+    impl Node for Component {
         const NAME: &'static str = "talker";
 
-        fn register(context: &mut ComponentContext<'_>) -> ComponentResult<()> {
-            let mut node =
-                context.create_node(NodeId::new("node_talker"), NodeOptions::new("talker"))?;
-            let _publisher =
-                node.create_publisher::<StringMsg>(EntityId::new("pub_chatter"), "chatter")?;
-            let _timer = node.create_timer(
-                EntityId::new("timer_publish"),
-                CallbackId::new("cb_timer"),
-                TimerDuration::from_millis(100),
-            )?;
+        fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
+            let mut node = context.create_node(NodeOptions::new("talker"))?;
+            let _publisher = node.create_publisher_for_topic::<StringMsg>("chatter")?;
+            let _timer =
+                node.create_timer_for_callback_name("cb_timer", TimerDuration::from_millis(100))?;
             // W.5.3 — a subscription whose body reads the message (exercises the
             // generated subscription dispatch + CallbackCtx payload).
-            let _sub = node.create_subscription::<StringMsg>(
-                EntityId::new("sub_echo"),
-                CallbackId::new("cb_echo"),
-                "chatter",
-            )?;
+            let _sub =
+                node.create_subscription_for_callback_name::<StringMsg>("cb_echo", "chatter")?;
             // W.5.3 — a service whose body reads the request + writes a reply
             // (exercises the generated service trampoline + CallbackCtx reply).
-            let _srv = node.create_service_server::<EchoSrv>(
-                EntityId::new("srv_echo"),
-                CallbackId::new("cb_srv"),
-                "echo",
-            )?;
+            let _srv =
+                node.create_service_server_for_name_with_callback::<EchoSrv>("echo", "cb_srv")?;
             // W.5.5 — an action whose goal/cancel decision bodies run (exercises
             // the generated action goal/cancel decision trampolines).
-            let _act = node.create_action_server::<EchoAction>(
-                EntityId::new("act_echo"),
-                CallbackId::new("cb_act"),
+            let _act = node.create_action_server_for_name_with_callbacks::<EchoAction>(
                 "echo_action",
+                "cb_act",
+                "cb_act",
+                "cb_act",
             )?;
             Ok(())
         }
     }
 
     // W.5 — executable body: the timer callback publishes a counter each tick.
-    impl ExecutableComponent for Component {
+    impl ExecutableNode for Component {
         /// Tick counter (this component's per-instance state).
         type State = u32;
 
@@ -56,14 +46,10 @@ pub mod talker {
             0
         }
 
-        fn on_callback(
-            state: &mut Self::State,
-            callback: CallbackId<'_>,
-            ctx: &mut CallbackCtx<'_>,
-        ) {
+        fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
             if callback.as_str() == "cb_timer" {
                 *state = state.wrapping_add(1);
-                let _ = ctx.publish::<StringMsg, 64>(EntityId::new("pub_chatter"), &StringMsg);
+                let _ = ctx.publish_to_topic::<StringMsg, 64>("chatter", &StringMsg);
             } else if callback.as_str() == "cb_echo" {
                 // Read the incoming message (CDR payload) from the ctx.
                 if ctx.message::<StringMsg>().is_ok() {
@@ -103,7 +89,6 @@ pub mod talker {
         const ACTION_HASH: &'static str = "nros_test/Echo";
     }
 
-
     #[derive(Default)]
     pub struct StringMsg;
 
@@ -134,29 +119,29 @@ pub mod talker {
 /// the prebuilt `action-client` example interoperates with this generated server.
 pub mod fib_server {
     use nros::{
-        CallbackCtx, CallbackId, CdrReader, CdrWriter, ComponentContext, ComponentResult,
-        DeserError, Deserialize, EntityId, ExecutableComponent, GoalResponse, GoalStatus, NodeId,
-        NodeOptions, RosAction, RosMessage, SerError, Serialize, TickCtx,
+        Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode,
+        GoalResponse, GoalStatus, Node, NodeContext, NodeOptions, NodeResult, RosAction,
+        RosMessage, SerError, Serialize, TickCtx,
     };
 
     pub struct Component;
 
-    impl nros::Component for Component {
+    impl Node for Component {
         const NAME: &'static str = "fib_server";
 
-        fn register(context: &mut ComponentContext<'_>) -> ComponentResult<()> {
-            let mut node =
-                context.create_node(NodeId::new("node_fib"), NodeOptions::new("fib_server"))?;
-            let _act = node.create_action_server::<FibonacciAction>(
-                EntityId::new("fib"),
-                CallbackId::new("cb_fib_goal"),
+        fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
+            let mut node = context.create_node(NodeOptions::new("fib_server"))?;
+            let _act = node.create_action_server_for_name_with_callbacks::<FibonacciAction>(
                 "fibonacci",
+                "cb_fib_goal",
+                "cb_fib_cancel",
+                "cb_fib_accepted",
             )?;
             Ok(())
         }
     }
 
-    impl ExecutableComponent for Component {
+    impl ExecutableNode for Component {
         /// Ticks since the active goal appeared (drives the sequence length).
         type State = u32;
 
@@ -164,7 +149,11 @@ pub mod fib_server {
             0
         }
 
-        fn on_callback(_state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+        fn on_callback(
+            _state: &mut Self::State,
+            callback: Callback<'_>,
+            ctx: &mut CallbackCtx<'_>,
+        ) {
             if callback.as_str() == "cb_fib_goal" {
                 // Accept + execute; `tick` drives feedback + result.
                 let _ = ctx.set_goal_response(GoalResponse::AcceptAndExecute);
@@ -173,7 +162,7 @@ pub mod fib_server {
 
         fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
             let mut goal: Option<nros::GoalId> = None;
-            ctx.for_each_active_goal(EntityId::new("fib"), &mut |g, _status| {
+            ctx.for_each_active_goal_for_name("fibonacci", &mut |g, _status| {
                 if goal.is_none() {
                     goal = Some(*g);
                 }
@@ -194,15 +183,15 @@ pub mod fib_server {
             let feedback = FibonacciFeedback {
                 sequence: sequence.clone(),
             };
-            let _ = ctx.publish_feedback::<FibonacciFeedback, 512>(
-                EntityId::new("fib"),
+            let _ = ctx.publish_feedback_for_name::<FibonacciFeedback, 512>(
+                "fibonacci",
                 &goal_id,
                 &feedback,
             );
             if n >= 11 {
                 let result = FibonacciResult { sequence };
-                let _ = ctx.complete_goal::<FibonacciResult, 512>(
-                    EntityId::new("fib"),
+                let _ = ctx.complete_goal_for_name::<FibonacciResult, 512>(
+                    "fibonacci",
                     &goal_id,
                     GoalStatus::Succeeded,
                     &result,
@@ -327,31 +316,25 @@ pub mod fib_server {
 /// example receives it. CDR matches `std_msgs::msg::Int32` byte-for-byte.
 pub mod chatter_talker {
     use nros::{
-        CallbackCtx, CallbackId, CdrReader, CdrWriter, ComponentContext, ComponentResult,
-        DeserError, Deserialize, EntityId, ExecutableComponent, NodeId, NodeOptions, RosMessage,
-        SerError, Serialize, TimerDuration,
+        Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode, Node,
+        NodeContext, NodeOptions, NodeResult, RosMessage, SerError, Serialize, TimerDuration,
     };
 
     pub struct Component;
 
-    impl nros::Component for Component {
+    impl Node for Component {
         const NAME: &'static str = "chatter_talker";
 
-        fn register(context: &mut ComponentContext<'_>) -> ComponentResult<()> {
-            let mut node =
-                context.create_node(NodeId::new("node_chatter"), NodeOptions::new("chatter_talker"))?;
-            let _publisher =
-                node.create_publisher::<Int32Msg>(EntityId::new("pub_chatter"), "chatter")?;
-            let _timer = node.create_timer(
-                EntityId::new("timer_publish"),
-                CallbackId::new("cb_pub"),
-                TimerDuration::from_millis(100),
-            )?;
+        fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
+            let mut node = context.create_node(NodeOptions::new("chatter_talker"))?;
+            let _publisher = node.create_publisher_for_topic::<Int32Msg>("chatter")?;
+            let _timer =
+                node.create_timer_for_callback_name("cb_pub", TimerDuration::from_millis(100))?;
             Ok(())
         }
     }
 
-    impl ExecutableComponent for Component {
+    impl ExecutableNode for Component {
         /// Monotonic counter published as the Int32 payload.
         type State = i32;
 
@@ -359,10 +342,10 @@ pub mod chatter_talker {
             0
         }
 
-        fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+        fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
             if callback.as_str() == "cb_pub" {
                 *state = state.wrapping_add(1);
-                let _ = ctx.publish::<Int32Msg, 16>(EntityId::new("pub_chatter"), &Int32Msg(*state));
+                let _ = ctx.publish_to_topic::<Int32Msg, 16>("chatter", &Int32Msg(*state));
             }
         }
     }

@@ -28,7 +28,7 @@
 //! task instead of the spin task. The subscription is registered via
 //! [`NodeContext::create_subscription_static`](nros::NodeContext::create_subscription_static),
 //! which returns a [`SubscriptionTag`] the Node author stores on
-//! `Self::State` and matches against the `&CallbackId<'_>` delivered
+//! `Self::State` and matches against the `Callback<'_>` delivered
 //! to [`ExecutableNode::on_callback`].
 //!
 //! ## Placeholder message
@@ -44,7 +44,7 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
+    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
     NodeResult, SubscriptionTag,
 };
 
@@ -78,7 +78,7 @@ impl Node for Listener {
         // Phase 216.B.5 — tag-based subscription. The topic literal
         // becomes both the stable entity ID and the callback ID; the
         // returned `SubscriptionTag` is what `on_callback` matches
-        // against the delivered `&CallbackId<'_>`.
+        // against the delivered `Callback<'_>`.
         let _sub_chatter = node.create_subscription_static::<PlaceholderInt32>("/chatter")?;
         Ok(())
     }
@@ -97,7 +97,7 @@ impl ExecutableNode for Listener {
         }
     }
 
-    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if state.sub_chatter == callback {
             // 4-byte LE decode == wire shape of `std_msgs/Int32`
             // (CDR-PL, header omitted — placeholder; the RTIC

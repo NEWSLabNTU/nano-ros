@@ -16,8 +16,7 @@ extern crate zephyr;
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
-    TickCtx,
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 pub struct FibonacciClient;
@@ -27,8 +26,7 @@ impl Node for FibonacciClient {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_client"))?;
-        let _client =
-            node.create_action_client::<Fibonacci>(EntityId::new("client_fib"), "/fibonacci")?;
+        let _client = node.create_action_client_for_name::<Fibonacci>("/fibonacci")?;
         Ok(())
     }
 }
@@ -45,11 +43,7 @@ impl ExecutableNode for FibonacciClient {
         State { sent: false }
     }
 
-    fn on_callback(
-        _state: &mut Self::State,
-        _callback: CallbackId<'_>,
-        _ctx: &mut CallbackCtx<'_>,
-    ) {
+    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         // Feedback / result callbacks land here once codegen wires the
         // `GoalStatusArray` + feedback-stream + result-future
         // subscribers. The id-driven dispatch is the M-F.4.a + N
@@ -62,7 +56,7 @@ impl ExecutableNode for FibonacciClient {
         }
         let goal = FibonacciGoal { order: 10 };
         if ctx
-            .send_goal::<FibonacciGoal, 32>(EntityId::new("client_fib"), &goal)
+            .send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal)
             .is_ok()
         {
             state.sent = true;

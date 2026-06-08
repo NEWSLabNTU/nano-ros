@@ -10,7 +10,7 @@
 
 #![no_std]
 
-use nros::{CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
 use std_msgs::msg::Int32;
 
 /// Listener — counts the int32 messages seen on `/chatter`.
@@ -37,11 +37,7 @@ impl ExecutableNode for Listener {
         0
     }
 
-    fn on_callback(
-        state: &mut Self::State,
-        callback: nros::CallbackId<'_>,
-        ctx: &mut CallbackCtx<'_>,
-    ) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_message" {
             if ctx.message::<Int32>().is_ok() {
                 *state = state.wrapping_add(1);

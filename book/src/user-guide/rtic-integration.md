@@ -331,7 +331,7 @@ impl ExecutableNode for Listener {
 
     fn on_callback(
         state: &mut Self::State,
-        cb: CallbackId<'_>,
+        cb: Callback<'_>,
         ctx: &mut CallbackCtx<'_>,
     ) {
         if state.sub_chatter == cb {

@@ -16,8 +16,8 @@ extern crate zephyr;
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
-    TickCtx, TimerDuration,
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
+    TimerDuration,
 };
 
 pub struct AddTwoIntsClient;
@@ -27,13 +27,9 @@ impl Node for AddTwoIntsClient {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("add_two_ints_client"))?;
-        let _client =
-            node.create_service_client::<AddTwoInts>(EntityId::new("client_add"), "/add_two_ints")?;
-        let _timer = node.create_timer(
-            EntityId::new("timer_call"),
-            CallbackId::new("issue_call"),
-            TimerDuration::from_secs(1),
-        )?;
+        let _client = node.create_service_client_for_name::<AddTwoInts>("/add_two_ints")?;
+        let _timer =
+            node.create_timer_for_callback_name("issue_call", TimerDuration::from_secs(1))?;
         Ok(())
     }
 }
@@ -56,7 +52,7 @@ impl ExecutableNode for AddTwoIntsClient {
         }
     }
 
-    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, _ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "issue_call" {
             state.pending = true;
             state.counter = state.counter.wrapping_add(1);
@@ -73,10 +69,7 @@ impl ExecutableNode for AddTwoIntsClient {
             b: state.counter.wrapping_add(1),
         };
         let _: nros::NodeResult<AddTwoIntsResponse> = ctx
-            .call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
-                EntityId::new("client_add"),
-                &req,
-            );
+            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req);
     }
 }
 

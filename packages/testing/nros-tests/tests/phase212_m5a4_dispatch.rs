@@ -24,10 +24,9 @@ use std::{
 };
 
 use nros::{
-    CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, Executor, ExecutorConfig,
-    ExecutorNodeRuntime, NodeContext, NodeResult, SerError, Serialize, TickCtx,
-    component::{ExecutableNode, Node, NodeOptions},
-    component_metadata::{CallbackId, EntityId, NodeId as MetaNodeId},
+    Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode, Executor,
+    ExecutorConfig, ExecutorNodeRuntime, Node, NodeContext, NodeOptions, NodeResult, SerError,
+    Serialize, TickCtx,
 };
 use nros_platform::RuntimeCtx;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
@@ -73,16 +72,10 @@ struct Talker;
 impl Node for Talker {
     const NAME: &'static str = "m5a4_talker";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(
-            MetaNodeId::new("node"),
-            NodeOptions::new("m5a4_talker_node"),
-        )?;
-        let _p = node.create_publisher::<TestMsg>(EntityId::new("pub_chatter"), "/m5a4_chatter")?;
-        let _t = node.create_timer(
-            EntityId::new("tick"),
-            CallbackId::new("on_tick"),
-            nros::TimerDuration::from_millis(50),
-        )?;
+        let mut node = ctx.create_node(NodeOptions::new("m5a4_talker_node"))?;
+        let _p = node.create_publisher_for_topic::<TestMsg>("/m5a4_chatter")?;
+        let _t =
+            node.create_timer_for_callback_name("on_tick", nros::TimerDuration::from_millis(50))?;
         Ok(())
     }
 }
@@ -91,10 +84,10 @@ impl ExecutableNode for Talker {
     fn init() -> Self::State {
         0
     }
-    fn on_callback(state: &mut i32, cb: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut i32, cb: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if cb.as_str() == "on_tick" {
             let msg = TestMsg { data: *state };
-            let r = ctx.publish::<TestMsg, 64>(EntityId::new("pub_chatter"), &msg);
+            let r = ctx.publish_to_topic::<TestMsg, 64>("/m5a4_chatter", &msg);
             TALKER_FIRES.fetch_add(1, Ordering::SeqCst);
             if r.is_err() {
                 TALKER_PUB_ERRORS.fetch_add(1, Ordering::SeqCst);

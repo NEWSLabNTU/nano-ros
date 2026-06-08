@@ -214,11 +214,11 @@ pub use node::NodeExecutorRuntime;
 // sweep — the helper had no live callers after the BSP baker + macro
 // extern emit were deleted.)
 pub use node::{
-    ActionExecutor, CallbackCtx, CallbackEffects, ClientDispatch, DeclaredNode,
-    DeclaredNodeRuntime, ExecutableNode, MISSING_NODE_EXPORT_ERROR, Node, NodeActionClient,
-    NodeActionServer, NodeContext, NodeDeclError, NodeOptions, NodeParameter, NodePublisher,
-    NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient, NodeServiceServer,
-    NodeSubscription, NodeTimer, PublisherResolver, RuntimeNodeRecord, TickCtx,
+    __register_node_cxx_abi, ActionExecutor, Callback, CallbackCtx, CallbackEffects,
+    ClientDispatch, DeclaredNode, DeclaredNodeRuntime, ExecutableNode, MISSING_NODE_EXPORT_ERROR,
+    Node, NodeActionClient, NodeActionServer, NodeContext, NodeDeclError, NodeOptions,
+    NodeParameter, NodePublisher, NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient,
+    NodeServiceServer, NodeSubscription, NodeTimer, PublisherResolver, RuntimeNodeRecord, TickCtx,
     record_node_metadata, register_node,
 };
 // Phase 212.M.5.a.4 — internal helper consumed by `nros::node!()`
@@ -230,15 +230,15 @@ pub use node::__private_node_state_into_raw;
 #[cfg(feature = "std")]
 pub use node_metadata::SourceMetadataExport;
 pub use node_metadata::{
-    CallbackEffectKind, CallbackEffectMetadata, CallbackId, EntityId, EntityKind, EntityMetadata,
-    MetadataRecorder, MetadataString, NodeId, NodeMetadata, NodeMetadataError, ParameterDefault,
-    SourceLocationMetadata, SourceNameKind,
+    CallbackEffectKind, CallbackEffectMetadata, EntityKind, EntityMetadata, MetadataRecorder,
+    MetadataString, NodeMetadata, NodeMetadataError, ParameterDefault, SourceLocationMetadata,
+    SourceNameKind,
 };
+#[doc(hidden)]
+pub use node_metadata::{CallbackId, EntityId, NodeId};
 // Phase 216.A.4 — opaque tag types Node authors hold on `Self::State`
-// and match against the `&CallbackId<'_>` delivered to
-// `ExecutableNode::on_callback`. The companion
-// `NodeContext::create_*_static` ctors land in a follow-up after
-// 216.A.5 reshapes `NodeRuntime`/`ExecutableNode` plumbing.
+// and match against the `Callback<'_>` delivered to
+// `ExecutableNode::on_callback`.
 pub use dispatch_tag::{ActionTag, ServiceTag, SubscriptionTag};
 #[cfg(all(feature = "rmw-cffi", feature = "std"))]
 pub use node_runtime::nros_run_components;
@@ -621,12 +621,13 @@ pub mod prelude {
     #[cfg(feature = "std")]
     pub use crate::SourceMetadataExport;
     pub use crate::{
-        ActionTag, CallbackEffectKind, CallbackEffects, DeclaredNode, DeclaredNodeRuntime,
-        EntityKind, MetadataRecorder, Node, NodeActionClient, NodeActionServer, NodeContext,
-        NodeDeclError, NodeOptions, NodeParameter, NodePublisher, NodeResult, NodeRuntime,
-        NodeRuntimeAdapter, NodeServiceClient, NodeServiceServer, NodeSubscription, NodeTimer,
-        ParameterDefault, RuntimeNodeRecord, ServiceTag, SourceLocationMetadata, SourceNameKind,
-        SubscriptionTag, node, record_node_metadata, register_node,
+        ActionTag, Callback, CallbackEffectKind, CallbackEffects, DeclaredNode,
+        DeclaredNodeRuntime, EntityKind, MetadataRecorder, Node, NodeActionClient,
+        NodeActionServer, NodeContext, NodeDeclError, NodeOptions, NodeParameter, NodePublisher,
+        NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient, NodeServiceServer,
+        NodeSubscription, NodeTimer, ParameterDefault, RuntimeNodeRecord, ServiceTag,
+        SourceLocationMetadata, SourceNameKind, SubscriptionTag, node, record_node_metadata,
+        register_node,
     };
 
     // Re-export lifecycle types

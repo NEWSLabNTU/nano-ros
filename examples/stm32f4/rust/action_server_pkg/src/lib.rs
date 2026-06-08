@@ -23,7 +23,7 @@
 //! [`NodeContext::create_action_static`](nros::NodeContext::create_action_static)
 //! helper landed in 216.A.4-followup, which returns an
 //! [`ActionTag`] the Node author stores on `Self::State` and matches
-//! against the `&CallbackId<'_>` delivered to
+//! against the `Callback<'_>` delivered to
 //! [`ExecutableNode::on_callback`]. Note: the action variant fans the
 //! synthesized callback ID across the goal, cancel, and accepted
 //! slots — `state.act_fibonacci == cb` matches all three.
@@ -54,7 +54,7 @@
 #![no_std]
 
 use nros::{
-    ActionTag, CallbackCtx, CallbackId, CdrReader, CdrWriter, DeserError, Deserialize,
+    ActionTag, Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize,
     DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, RosAction,
     RosMessage, SerError, Serialize,
 };
@@ -94,7 +94,7 @@ impl Node for ActionServer {
         // literal becomes both the stable entity ID and the
         // (single, fanned-out) callback ID; the returned
         // `ActionTag` is what `on_callback` matches against the
-        // delivered `&CallbackId<'_>` for goal, cancel, and
+        // delivered `Callback<'_>` for goal, cancel, and
         // accepted deliveries. See the module doc for the
         // Deferred dispatch rationale.
         let _act_fibonacci = node.create_action_static::<PlaceholderAct>("/fibonacci")?;
@@ -120,7 +120,7 @@ impl ExecutableNode for ActionServer {
         }
     }
 
-    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, _ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         if state.act_fibonacci == callback {
             // Goal / cancel / accepted all share the synthesized
             // callback ID (per `create_action_static`'s fan-out).

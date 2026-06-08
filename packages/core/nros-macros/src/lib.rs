@@ -4,7 +4,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Fields, LitStr, Path, parse_macro_input};
+use syn::{DeriveInput, Fields, LitByteStr, LitStr, Path, parse_macro_input};
 
 // Phase 212.N.9 — `nros::main!()` proc-macro family. Replaces today's
 // Entry-pkg `build.rs + include!(concat!(env!("OUT_DIR"), "/run_plan.rs"))`
@@ -284,6 +284,18 @@ fn node_impl(input: TokenStream) -> TokenStream {
     // so out-of-tree tools (`nros check`, RTIC/Embassy dispatch tasks)
     // can resolve the symbol from `CARGO_PKG_NAME` directly.
     let dispatch_fn_name = quote::format_ident!("__nros_node_{}_dispatch_strategy", pkg_sym);
+    let component_register_fn_name = quote::format_ident!("__nros_component_{}_register", pkg_sym);
+    let component_present_name = quote::format_ident!("__NROS_NODE_PKG_{}_EXPORT_PRESENT", pkg_sym);
+    let component_class_name = quote::format_ident!("__nros_component_{}_class_name", pkg_sym);
+    let node_class_leaf = node_ty
+        .segments
+        .last()
+        .map(|segment| segment.ident.to_string())
+        .unwrap_or_else(|| "Node".to_string());
+    let component_class = format!("{}::{}\0", pkg_sym, node_class_leaf);
+    let component_class_len = component_class.len();
+    let component_class_bytes =
+        LitByteStr::new(component_class.as_bytes(), proc_macro2::Span::call_site());
 
     // Phase 216.A.5 follow-up — the on_callback trampoline the B.3 RTIC /
     // C.3 Embassy dispatch tasks invoke after dequeuing a
@@ -349,6 +361,19 @@ fn node_impl(input: TokenStream) -> TokenStream {
         // separate compilation unit. Kept above `register()` so the
         // file-order reads "ABI export → register".
         #[unsafe(no_mangle)]
+        pub extern "C" fn #component_register_fn_name(
+            context: *mut ::core::ffi::c_void,
+        ) -> i32 {
+            ::nros::__register_node_cxx_abi::<#node_ty>(context)
+        }
+
+        #[unsafe(no_mangle)]
+        pub static #component_present_name: u8 = 1;
+
+        #[unsafe(no_mangle)]
+        pub static #component_class_name: [u8; #component_class_len] = *#component_class_bytes;
+
+        #[unsafe(no_mangle)]
         pub extern "C" fn #dispatch_fn_name() -> u8 {
             <#node_ty as ::nros::Node>::DISPATCH as u8
         }
@@ -405,7 +430,11 @@ fn node_impl(input: TokenStream) -> TokenStream {
             let ctx_mut = unsafe {
                 &mut *(ctx as *mut ::nros::CallbackCtx<'static>)
             };
-            <#node_ty as ::nros::ExecutableNode>::on_callback(state_mut, cb_id, ctx_mut);
+            <#node_ty as ::nros::ExecutableNode>::on_callback(
+                state_mut,
+                ::nros::Callback::__from_id(cb_id),
+                ctx_mut,
+            );
         }
 
         /// Phase 216 final wave — framework-side per-Node registration.
@@ -480,7 +509,11 @@ fn node_impl(input: TokenStream) -> TokenStream {
                 let s = unsafe {
                     &mut *(state as *mut <#node_ty as ::nros::ExecutableNode>::State)
                 };
-                <#node_ty as ::nros::ExecutableNode>::on_callback(s, callback, ctx);
+                <#node_ty as ::nros::ExecutableNode>::on_callback(
+                    s,
+                    ::nros::Callback::__from_id(callback),
+                    ctx,
+                );
             }
             unsafe fn t(state: *mut (), ctx: &mut ::nros::TickCtx<'_>) {
                 // SAFETY: same provenance as `d()`.

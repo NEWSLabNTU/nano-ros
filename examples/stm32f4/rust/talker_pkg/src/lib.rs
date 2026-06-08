@@ -29,7 +29,7 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 
@@ -47,15 +47,11 @@ impl Node for Talker {
         // 216.C follow-up swaps this for the real typed
         // `create_publisher::<Int32>(...)` call once the
         // trampoline-registration story lands.
-        let _pub =
-            node.create_publisher::<PlaceholderInt32>(EntityId::new("pub_chatter"), "/chatter")?;
-        let _timer = node.create_timer(
-            EntityId::new("timer_tick"),
-            CallbackId::new("on_tick"),
-            TimerDuration::from_millis(1000),
-        )?;
-        node.callback(CallbackId::new("on_tick"))
-            .publishes(EntityId::new("pub_chatter"))?;
+        let pub_chatter = node.create_publisher_for_topic::<PlaceholderInt32>("/chatter")?;
+        let _timer =
+            node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
+        node.callback_for_name("on_tick")
+            .publishes_entity(&pub_chatter)?;
         Ok(())
     }
 }
@@ -68,14 +64,10 @@ impl ExecutableNode for Talker {
         0
     }
 
-    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_tick" {
-            // 4-byte LE encoding == wire shape of `std_msgs/Int32`
-            // (CDR-PL, header omitted — placeholder; the Embassy
-            // dispatch path is not yet hooked up, so this never
-            // reaches the wire on a real flash).
-            let bytes = state.to_le_bytes();
-            let _ = ctx.publish_raw(EntityId::new("pub_chatter"), &bytes);
+            let msg = PlaceholderInt32 { data: *state };
+            let _ = ctx.publish_to_topic::<PlaceholderInt32, 8>("/chatter", &msg);
             *state = state.wrapping_add(1);
         }
     }
@@ -89,17 +81,22 @@ nros::node!(Talker);
 // `generated/std_msgs/`) into this skeleton. The wire shape matches
 // `std_msgs/Int32`. Follow-ups switch to the real type once
 // `generated/` ships for this example.
-struct PlaceholderInt32;
+struct PlaceholderInt32 {
+    data: i32,
+}
 
 impl nros::Serialize for PlaceholderInt32 {
-    fn serialize(&self, _writer: &mut nros::CdrWriter) -> Result<(), nros::SerError> {
+    fn serialize(&self, writer: &mut nros::CdrWriter) -> Result<(), nros::SerError> {
+        writer.write_i32(self.data)?;
         Ok(())
     }
 }
 
 impl nros::Deserialize for PlaceholderInt32 {
-    fn deserialize(_reader: &mut nros::CdrReader) -> Result<Self, nros::DeserError> {
-        Ok(Self)
+    fn deserialize(reader: &mut nros::CdrReader) -> Result<Self, nros::DeserError> {
+        Ok(Self {
+            data: reader.read_i32()?,
+        })
     }
 }
 

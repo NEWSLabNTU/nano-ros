@@ -55,7 +55,7 @@ fn fixture_workspace() -> PathBuf {
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(4)
+        .nth(3)
         .expect("repo root ancestor")
         .to_path_buf()
 }
@@ -183,7 +183,7 @@ fn generated_package_writes_manifest_build_script_and_main() {
 /// target the instance shares one `State` across its callbacks via the
 /// per-instance `Rc<RefCell>` shared prelude (`Resolveri0`/`state_i0`); the
 /// resolver is keyed on the *source* entity id and dispatch uses the *source*
-/// callback id.
+/// callback name wrapped as a product-facing `Callback`.
 #[test]
 fn executable_timer_emits_on_callback_dispatch() {
     let output_dir = generate_fixture(
@@ -219,10 +219,16 @@ fn executable_timer_emits_on_callback_dispatch() {
         !build_rs.contains("\\\"talker_1/pub_chatter\\\" =>"),
         "must not key on the plan-prefixed entity id"
     );
-    // Publisher created via the builder; dispatch uses the SOURCE callback id.
+    // Publisher created via the builder; dispatch uses the SOURCE callback name.
     assert!(build_rs.contains(".publisher(\\\"/chatter\\\").generic("));
-    assert!(build_rs.contains("nros::CallbackId::new(\\\"cb_timer\\\")"));
-    assert!(!build_rs.contains("nros::CallbackId::new(\\\"talker_1/cb_timer\\\")"));
+    assert!(
+        build_rs.contains("nros::Callback::__from_id(nros::CallbackId::new(\\\"cb_timer\\\"))")
+    );
+    assert!(
+        !build_rs.contains(
+            "nros::Callback::__from_id(nros::CallbackId::new(\\\"talker_1/cb_timer\\\"))"
+        )
+    );
 }
 
 #[test]

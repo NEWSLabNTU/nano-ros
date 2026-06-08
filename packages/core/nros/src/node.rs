@@ -1,6 +1,9 @@
 //! Rust component API shared by metadata discovery and generated runtimes.
 
-use core::marker::PhantomData;
+use core::{
+    ffi::{c_char, c_void},
+    marker::PhantomData,
+};
 
 use crate::{
     ActionTag, CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus,
@@ -93,6 +96,33 @@ pub struct NodeOptions<'a> {
     pub namespace: &'a str,
     /// ROS domain ID hint. Defaults to `0`.
     pub domain_id: u32,
+}
+
+/// Runtime callback event delivered to an executable Node.
+///
+/// The value carries the source callback name declared by the component, but
+/// does not expose the generated/internal callback ID type to product code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Callback<'a> {
+    id: CallbackId<'a>,
+}
+
+impl<'a> Callback<'a> {
+    /// Borrow the source callback name.
+    pub const fn as_str(self) -> &'a str {
+        self.id.as_str()
+    }
+
+    /// Return true when this callback matches `name`.
+    pub fn is_named(self, name: &str) -> bool {
+        self.as_str() == name
+    }
+
+    /// Build a callback event from the internal/generated callback ID.
+    #[doc(hidden)]
+    pub const fn __from_id(id: CallbackId<'a>) -> Self {
+        Self { id }
+    }
 }
 
 impl<'a> NodeOptions<'a> {
@@ -465,6 +495,292 @@ pub type NodeExecutorRuntime<
     const MAX_CALLBACKS: usize = { crate::node_metadata::DEFAULT_MAX_METADATA_CALLBACKS },
 > = NodeRuntimeAdapter<'a, crate::Executor, MAX_NODES, MAX_ENTITIES, MAX_CALLBACKS>;
 
+const NROS_CXX_RET_OK: i32 = 0;
+const NROS_CXX_RET_ERROR: i32 = -1;
+const NROS_CXX_RET_INVALID_ARGUMENT: i32 = -3;
+const NROS_CXX_RET_FULL: i32 = -5;
+
+#[repr(C)]
+struct CxxNodeOptions {
+    name: *const c_char,
+    namespace_: *const c_char,
+    domain_id: u32,
+}
+
+#[repr(C)]
+struct CxxDeclaredNode {
+    stable_id: *const c_char,
+    runtime_handle: *mut c_void,
+    context: *mut CxxNodeContext,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy)]
+enum CxxEntityKind {
+    Publisher = 0,
+    Subscription = 1,
+    Timer = 2,
+    ServiceServer = 3,
+    ServiceClient = 4,
+    ActionServer = 5,
+    ActionClient = 6,
+    Parameter = 7,
+}
+
+impl From<EntityKind> for CxxEntityKind {
+    fn from(value: EntityKind) -> Self {
+        match value {
+            EntityKind::Publisher => Self::Publisher,
+            EntityKind::Subscription => Self::Subscription,
+            EntityKind::Timer => Self::Timer,
+            EntityKind::ServiceServer => Self::ServiceServer,
+            EntityKind::ServiceClient => Self::ServiceClient,
+            EntityKind::ActionServer => Self::ActionServer,
+            EntityKind::ActionClient => Self::ActionClient,
+            EntityKind::Parameter => Self::Parameter,
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy)]
+enum CxxCallbackEffectKind {
+    Reads = 0,
+    Publishes = 1,
+    Writes = 2,
+}
+
+impl From<CallbackEffectKind> for CxxCallbackEffectKind {
+    fn from(value: CallbackEffectKind) -> Self {
+        match value {
+            CallbackEffectKind::Reads => Self::Reads,
+            CallbackEffectKind::Publishes => Self::Publishes,
+            CallbackEffectKind::Writes => Self::Writes,
+        }
+    }
+}
+
+#[repr(C)]
+struct CxxEntityDescriptor {
+    stable_id: *const c_char,
+    node_id: *const c_char,
+    kind: CxxEntityKind,
+    source_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    callback_id: *const c_char,
+}
+
+#[repr(C)]
+struct CxxNodeContextOps {
+    create_node: Option<
+        unsafe extern "C" fn(
+            *mut c_void,
+            *const c_char,
+            *const CxxNodeOptions,
+            *mut CxxDeclaredNode,
+        ) -> i32,
+    >,
+    create_entity: Option<unsafe extern "C" fn(*mut c_void, *const CxxEntityDescriptor) -> i32>,
+    record_callback_effect: Option<
+        unsafe extern "C" fn(
+            *mut c_void,
+            *const c_char,
+            CxxCallbackEffectKind,
+            *const c_char,
+        ) -> i32,
+    >,
+}
+
+#[repr(C)]
+struct CxxNodeContext {
+    user_data: *mut c_void,
+    ops: *const CxxNodeContextOps,
+}
+
+struct CStrBuf<const N: usize> {
+    bytes: [c_char; N],
+}
+
+impl<const N: usize> CStrBuf<N> {
+    fn new(value: &str) -> NodeResult<Self> {
+        if N == 0 || value.as_bytes().len() + 1 > N || value.as_bytes().contains(&0) {
+            return Err(NodeDeclError::Metadata(NodeMetadataError::NameTooLong));
+        }
+        let mut bytes = [0 as c_char; N];
+        for (slot, byte) in bytes.iter_mut().zip(value.as_bytes()) {
+            *slot = *byte as c_char;
+        }
+        Ok(Self { bytes })
+    }
+
+    fn from_u64(mut value: u64) -> NodeResult<Self> {
+        let mut digits = [0u8; 20];
+        let mut len = 0;
+        if value == 0 {
+            digits[0] = b'0';
+            len = 1;
+        } else {
+            while value > 0 {
+                digits[len] = b'0' + (value % 10) as u8;
+                value /= 10;
+                len += 1;
+            }
+            digits[..len].reverse();
+        }
+        let s = core::str::from_utf8(&digits[..len]).map_err(|_| NodeDeclError::Runtime)?;
+        Self::new(s)
+    }
+
+    fn as_ptr(&self) -> *const c_char {
+        self.bytes.as_ptr()
+    }
+}
+
+struct CxxNodeContextRuntime {
+    context: *mut CxxNodeContext,
+}
+
+impl CxxNodeContextRuntime {
+    fn new(context: *mut c_void) -> NodeResult<Self> {
+        if context.is_null() {
+            return Err(NodeDeclError::Runtime);
+        }
+        Ok(Self {
+            context: context.cast(),
+        })
+    }
+
+    fn ops(&self) -> NodeResult<&CxxNodeContextOps> {
+        // SAFETY: the C++ Entry glue passes a live `nros::NodeContext*`
+        // during registration. Null checks keep malformed callers from
+        // reaching the function pointer calls below.
+        let context = unsafe { self.context.as_ref() }.ok_or(NodeDeclError::Runtime)?;
+        unsafe { context.ops.as_ref() }.ok_or(NodeDeclError::Runtime)
+    }
+
+    fn user_data(&self) -> NodeResult<*mut c_void> {
+        // SAFETY: same provenance as `ops()`.
+        let context = unsafe { self.context.as_ref() }.ok_or(NodeDeclError::Runtime)?;
+        Ok(context.user_data)
+    }
+}
+
+impl NodeRuntime for CxxNodeContextRuntime {
+    fn create_node(&mut self, id: NodeId<'_>, options: NodeOptions<'_>) -> NodeResult<()> {
+        let ops = self.ops()?;
+        let create_node = ops.create_node.ok_or(NodeDeclError::Runtime)?;
+        let stable_id = CStrBuf::<128>::new(id.as_str())?;
+        let name = CStrBuf::<128>::new(options.name)?;
+        let namespace = CStrBuf::<128>::new(options.namespace)?;
+        let c_options = CxxNodeOptions {
+            name: name.as_ptr(),
+            namespace_: namespace.as_ptr(),
+            domain_id: options.domain_id,
+        };
+        let mut out_node = CxxDeclaredNode {
+            stable_id: stable_id.as_ptr(),
+            runtime_handle: core::ptr::null_mut(),
+            context: self.context,
+        };
+        // SAFETY: all pointers refer to stack data that outlives the call.
+        let rc = unsafe {
+            create_node(
+                self.user_data()?,
+                stable_id.as_ptr(),
+                &c_options,
+                &mut out_node,
+            )
+        };
+        map_cxx_ret(rc)
+    }
+
+    fn create_entity(&mut self, metadata: EntityMetadata) -> NodeResult<()> {
+        let ops = self.ops()?;
+        let create_entity = ops.create_entity.ok_or(NodeDeclError::Runtime)?;
+        let stable_id = CStrBuf::<128>::new(metadata.id.as_str())?;
+        let node_id = CStrBuf::<128>::new(metadata.node_id.as_str())?;
+        let source_name = CStrBuf::<128>::new(metadata.source_name.as_str())?;
+        let timer_period =
+            if metadata.kind == EntityKind::Timer && metadata.source_name.as_str().is_empty() {
+                Some(CStrBuf::<32>::from_u64(metadata.period_ms.unwrap_or(0))?)
+            } else {
+                None
+            };
+        let type_name = CStrBuf::<128>::new(metadata.type_name)?;
+        let type_hash = CStrBuf::<128>::new(metadata.type_hash)?;
+        let callback_id = match metadata.callback_id.as_ref() {
+            Some(id) => Some(CStrBuf::<128>::new(id.as_str())?),
+            None => None,
+        };
+        let descriptor = CxxEntityDescriptor {
+            stable_id: stable_id.as_ptr(),
+            node_id: node_id.as_ptr(),
+            kind: metadata.kind.into(),
+            source_name: timer_period
+                .as_ref()
+                .map_or(source_name.as_ptr(), CStrBuf::as_ptr),
+            type_name: type_name.as_ptr(),
+            type_hash: type_hash.as_ptr(),
+            callback_id: callback_id
+                .as_ref()
+                .map_or(core::ptr::null(), CStrBuf::as_ptr),
+        };
+        // SAFETY: descriptor and all pointed-to strings live for this call.
+        let rc = unsafe { create_entity(self.user_data()?, &descriptor) };
+        map_cxx_ret(rc)
+    }
+
+    fn record_callback_effect(
+        &mut self,
+        callback_id: CallbackId<'_>,
+        kind: CallbackEffectKind,
+        entity_id: EntityId<'_>,
+    ) -> NodeResult<()> {
+        let ops = self.ops()?;
+        let record = ops.record_callback_effect.ok_or(NodeDeclError::Runtime)?;
+        let callback_id = CStrBuf::<128>::new(callback_id.as_str())?;
+        let entity_id = CStrBuf::<128>::new(entity_id.as_str())?;
+        // SAFETY: both strings live for the duration of the call.
+        let rc = unsafe {
+            record(
+                self.user_data()?,
+                callback_id.as_ptr(),
+                kind.into(),
+                entity_id.as_ptr(),
+            )
+        };
+        map_cxx_ret(rc)
+    }
+}
+
+fn map_cxx_ret(rc: i32) -> NodeResult<()> {
+    match rc {
+        NROS_CXX_RET_OK => Ok(()),
+        NROS_CXX_RET_INVALID_ARGUMENT => Err(NodeDeclError::Runtime),
+        NROS_CXX_RET_FULL => Err(NodeDeclError::Metadata(NodeMetadataError::Capacity)),
+        _ => Err(NodeDeclError::Runtime),
+    }
+}
+
+/// Register a Rust Node package through the C/C++ component ABI.
+///
+/// This is emitted by `nros::node!()` for mixed CMake workspaces whose
+/// generated C/C++ Entry glue calls `__nros_component_<pkg>_register`.
+#[doc(hidden)]
+pub fn __register_node_cxx_abi<C: Node>(context: *mut c_void) -> i32 {
+    let mut runtime = match CxxNodeContextRuntime::new(context) {
+        Ok(runtime) => runtime,
+        Err(_) => return NROS_CXX_RET_INVALID_ARGUMENT,
+    };
+    match register_node::<C>(&mut runtime) {
+        Ok(()) => NROS_CXX_RET_OK,
+        Err(NodeDeclError::Metadata(NodeMetadataError::Capacity)) => NROS_CXX_RET_FULL,
+        Err(NodeDeclError::Runtime | NodeDeclError::MissingExport) => NROS_CXX_RET_ERROR,
+        Err(NodeDeclError::Metadata(_)) => NROS_CXX_RET_INVALID_ARGUMENT,
+    }
+}
+
 /// Node declaration context. Does not own middleware transport.
 pub struct NodeContext<'a, R: NodeRuntime + ?Sized = dyn NodeRuntime + 'a> {
     component_name: &'static str,
@@ -487,9 +803,9 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
 
     /// Declare a node with an explicit stable node ID.
     ///
-    /// This is the advanced form for packages that declare multiple nodes or
-    /// need stable metadata IDs that differ from their ROS node names. Prefer
-    /// [`create_node`](Self::create_node) for common one-node packages.
+    /// Generated/internal form; product code should use
+    /// [`create_node`](Self::create_node).
+    #[doc(hidden)]
     pub fn create_node_with_id<'id>(
         &mut self,
         id: NodeId<'id>,
@@ -505,10 +821,8 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
     /// Declare a node using `options.name` as the stable node ID.
     ///
     /// This mirrors the common rclcpp/rclrs shape where a node package supplies
-    /// node options and the node name, while nano-ros keeps the stable ID as
-    /// internal metadata. Packages with more than one source-level node should use
-    /// [`create_node_with_id`](Self::create_node_with_id) when names are not
-    /// sufficient stable IDs.
+    /// node options and the node name, while nano-ros keeps the generated stable
+    /// ID as internal metadata.
     pub fn create_node<'id>(
         &mut self,
         options: NodeOptions<'id>,
@@ -526,6 +840,7 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
     }
 
     /// Record optional effects for a callback not tied to a node wrapper.
+    #[doc(hidden)]
     pub fn callback<'id>(&mut self, id: CallbackId<'id>) -> CallbackEffects<'_, 'id, R> {
         CallbackEffects {
             runtime: self.runtime,
@@ -542,12 +857,14 @@ pub struct DeclaredNode<'ctx, 'id, R: NodeRuntime + ?Sized = dyn NodeRuntime + '
 
 impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Stable node ID.
+    #[doc(hidden)]
     pub const fn id(&self) -> NodeId<'id> {
         self.id
     }
 
     /// Declare a publisher with default QoS. Stable publisher ID is required.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_publisher<'entity, M: RosMessage>(
         &mut self,
         id: EntityId<'entity>,
@@ -581,6 +898,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a publisher with explicit QoS.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_publisher_with_qos<'entity, M: RosMessage>(
         &mut self,
         id: EntityId<'entity>,
@@ -603,6 +921,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a subscription. Stable subscription and callback IDs are required.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_subscription<'entity, 'callback, M: RosMessage>(
         &mut self,
         id: EntityId<'entity>,
@@ -614,9 +933,10 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a subscription using `callback_id` as the stable entity ID.
     ///
-    /// This mirrors the common single-callback case: the callback name is the
-    /// source-level stable ID, while `topic` remains the ROS topic name.
+    /// Generated/internal form; product code should use
+    /// [`create_subscription_for_callback_name`](Self::create_subscription_for_callback_name).
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_subscription_for_callback<'callback, M: RosMessage>(
         &mut self,
         callback_id: CallbackId<'callback>,
@@ -642,6 +962,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a subscription with explicit QoS, using `callback_id` as the stable entity ID.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_subscription_for_callback_with_qos<'callback, M: RosMessage>(
         &mut self,
         callback_id: CallbackId<'callback>,
@@ -682,6 +1003,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a subscription with explicit QoS.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_subscription_with_qos<'entity, 'callback, M: RosMessage>(
         &mut self,
         id: EntityId<'entity>,
@@ -708,7 +1030,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a subscription whose stable entity and callback IDs are
     /// both synthesized from the topic literal, returning a
     /// [`SubscriptionTag`] the Node author stores on `Self::State` and
-    /// matches against the `&CallbackId<'_>` delivered to
+    /// matches against the `Callback<'_>` delivered to
     /// [`ExecutableNode::on_callback`].
     ///
     /// Use this on the Phase 216.A Deferred Node path where the Node
@@ -741,6 +1063,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a timer. Stable timer and callback IDs are required.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_timer<'entity, 'callback>(
         &mut self,
         id: EntityId<'entity>,
@@ -766,6 +1089,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a timer using `callback_id` as the stable timer entity ID.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_timer_for_callback<'callback>(
         &mut self,
         callback_id: CallbackId<'callback>,
@@ -787,6 +1111,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a service server. Stable service and callback IDs are required.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_service_server<'entity, 'callback, S: RosService>(
         &mut self,
         id: EntityId<'entity>,
@@ -819,16 +1144,27 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         self.create_service_server::<S>(EntityId::new(name), CallbackId::new(name), name)
     }
 
+    /// Declare a service server using `name` as the stable entity ID and
+    /// `callback_name` as the source callback name.
+    #[track_caller]
+    pub fn create_service_server_for_name_with_callback<'entity, 'callback, S: RosService>(
+        &mut self,
+        name: &'entity str,
+        callback_name: &'callback str,
+    ) -> NodeResult<NodeServiceServer<'entity, S>> {
+        self.create_service_server::<S>(EntityId::new(name), CallbackId::new(callback_name), name)
+    }
+
     /// Declare a service server whose stable entity and callback IDs are
     /// both synthesized from the service-name literal, returning a
     /// [`ServiceTag`] the Node author stores on `Self::State` and matches
-    /// against the `&CallbackId<'_>` delivered to
+    /// against the `Callback<'_>` delivered to
     /// [`ExecutableNode::on_callback`].
     ///
     /// Tag-only registration is restricted to the SERVER side: clients
     /// need a USABLE handle (`NodeServiceClient`) to issue requests, so
     /// use the existing
-    /// [`create_service_client`](Self::create_service_client) builder
+    /// [`create_service_client_for_name`](Self::create_service_client_for_name) builder
     /// for the client side.
     #[track_caller]
     pub fn create_service_static<S: RosService>(
@@ -841,6 +1177,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a service client. Stable service client ID is required.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_service_client<'entity, S: RosService>(
         &mut self,
         id: EntityId<'entity>,
@@ -871,6 +1208,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare an action server. Stable action and callback IDs are required.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_action_server<'entity, 'callback, A: RosAction>(
         &mut self,
         id: EntityId<'entity>,
@@ -888,6 +1226,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare an action server with distinct goal/cancel/accepted callbacks.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_action_server_with_callbacks<'entity, 'goal, 'cancel, 'accepted, A: RosAction>(
         &mut self,
         id: EntityId<'entity>,
@@ -926,10 +1265,35 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         self.create_action_server::<A>(EntityId::new(name), CallbackId::new(name), name)
     }
 
+    /// Declare an action server using `name` as the stable entity ID and
+    /// explicit source callback names for goal, cancel, and accepted events.
+    #[track_caller]
+    pub fn create_action_server_for_name_with_callbacks<
+        'entity,
+        'goal,
+        'cancel,
+        'accepted,
+        A: RosAction,
+    >(
+        &mut self,
+        name: &'entity str,
+        goal_callback_name: &'goal str,
+        cancel_callback_name: &'cancel str,
+        accepted_callback_name: &'accepted str,
+    ) -> NodeResult<NodeActionServer<'entity, A>> {
+        self.create_action_server_with_callbacks::<A>(
+            EntityId::new(name),
+            CallbackId::new(goal_callback_name),
+            CallbackId::new(cancel_callback_name),
+            CallbackId::new(accepted_callback_name),
+            name,
+        )
+    }
+
     /// Declare an action server whose stable entity and callback IDs are
     /// both synthesized from the action-name literal, returning an
     /// [`ActionTag`] the Node author stores on `Self::State` and matches
-    /// against the `&CallbackId<'_>` delivered to
+    /// against the `Callback<'_>` delivered to
     /// [`ExecutableNode::on_callback`].
     ///
     /// The synthesized callback ID is shared by the goal / cancel /
@@ -939,8 +1303,8 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Tag-only registration is restricted to the SERVER side: clients
     /// need a USABLE handle (`NodeActionClient`) to dispatch goals, so
     /// use the existing
-    /// [`create_action_client`](Self::create_action_client) builder for
-    /// the client side.
+    /// [`create_action_client_for_name`](Self::create_action_client_for_name) builder
+    /// for the client side.
     #[track_caller]
     pub fn create_action_static<A: RosAction>(
         &mut self,
@@ -952,6 +1316,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare an action client. Stable action client ID is required.
     #[track_caller]
+    #[doc(hidden)]
     pub fn create_action_client<'entity, A: RosAction>(
         &mut self,
         id: EntityId<'entity>,
@@ -982,6 +1347,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a parameter. Stable parameter ID is required.
     #[track_caller]
+    #[doc(hidden)]
     pub fn declare_parameter<'entity>(
         &mut self,
         id: EntityId<'entity>,
@@ -993,6 +1359,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
 
     /// Declare a parameter with a concrete source default.
     #[track_caller]
+    #[doc(hidden)]
     pub fn declare_parameter_with_default<'entity>(
         &mut self,
         id: EntityId<'entity>,
@@ -1015,7 +1382,29 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         Ok(NodeParameter::new(id))
     }
 
+    /// Declare a parameter using `name` as the generated stable entity ID.
+    #[track_caller]
+    pub fn declare_parameter_for_name<'entity>(
+        &mut self,
+        name: &'entity str,
+        parameter_type: ParameterType,
+    ) -> NodeResult<NodeParameter<'entity>> {
+        self.declare_parameter(EntityId::new(name), name, parameter_type)
+    }
+
+    /// Declare a parameter with a concrete source default, using `name` as
+    /// the generated stable entity ID.
+    #[track_caller]
+    pub fn declare_parameter_for_name_with_default<'entity>(
+        &mut self,
+        name: &'entity str,
+        default: ParameterDefault,
+    ) -> NodeResult<NodeParameter<'entity>> {
+        self.declare_parameter_with_default(EntityId::new(name), name, default)
+    }
+
     /// Record optional effects for a callback.
+    #[doc(hidden)]
     pub fn callback<'callback>(
         &mut self,
         id: CallbackId<'callback>,
@@ -1044,6 +1433,7 @@ pub struct CallbackEffects<'ctx, 'id, R: NodeRuntime + ?Sized = dyn NodeRuntime 
 
 impl<'ctx, 'id, R: NodeRuntime + ?Sized> CallbackEffects<'ctx, 'id, R> {
     /// Record that callback reads from an entity.
+    #[doc(hidden)]
     pub fn reads(self, entity_id: EntityId<'_>) -> NodeResult<Self> {
         self.runtime
             .record_callback_effect(self.id, CallbackEffectKind::Reads, entity_id)?;
@@ -1056,6 +1446,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> CallbackEffects<'ctx, 'id, R> {
     }
 
     /// Record that callback publishes via an entity.
+    #[doc(hidden)]
     pub fn publishes(self, entity_id: EntityId<'_>) -> NodeResult<Self> {
         self.runtime
             .record_callback_effect(self.id, CallbackEffectKind::Publishes, entity_id)?;
@@ -1068,6 +1459,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> CallbackEffects<'ctx, 'id, R> {
     }
 
     /// Record that callback writes to an entity or parameter.
+    #[doc(hidden)]
     pub fn writes(self, entity_id: EntityId<'_>) -> NodeResult<Self> {
         self.runtime
             .record_callback_effect(self.id, CallbackEffectKind::Writes, entity_id)?;
@@ -1081,6 +1473,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> CallbackEffects<'ctx, 'id, R> {
 }
 
 /// A declared source-level entity handle that can be referenced by callback effects.
+#[doc(hidden)]
 pub trait DeclaredEntity {
     /// Stable entity ID for metadata and generated runtime lookup.
     fn entity_id(&self) -> EntityId<'_>;
@@ -1104,6 +1497,7 @@ macro_rules! component_handle {
             }
 
             /// Stable entity ID.
+            #[doc(hidden)]
             pub const fn id(&self) -> EntityId<'id> {
                 self.id
             }
@@ -1313,6 +1707,7 @@ impl<'a> CallbackCtx<'a> {
     }
 
     /// Publish raw CDR bytes through the named publisher entity (immediate).
+    #[doc(hidden)]
     pub fn publish_raw(&self, publisher: EntityId<'_>, data: &[u8]) -> NodeResult<()> {
         self.publishers.publish_raw(publisher.as_str(), data)
     }
@@ -1320,6 +1715,7 @@ impl<'a> CallbackCtx<'a> {
     /// Serialize `msg` into an `N`-byte stack buffer and publish it (immediate).
     /// `N` must be ≥ the CDR-encoded size of `msg`; the generated runtime picks
     /// it from the message type.
+    #[doc(hidden)]
     pub fn publish<M: RosMessage, const N: usize>(
         &self,
         publisher: EntityId<'_>,
@@ -1455,11 +1851,13 @@ impl<'a> TickCtx<'a> {
     }
 
     /// Publish raw CDR bytes through the named publisher entity (immediate).
+    #[doc(hidden)]
     pub fn publish_raw(&self, publisher: EntityId<'_>, data: &[u8]) -> NodeResult<()> {
         self.publishers.publish_raw(publisher.as_str(), data)
     }
 
     /// Serialize `msg` into an `N`-byte stack buffer and publish it (immediate).
+    #[doc(hidden)]
     pub fn publish<M: RosMessage, const N: usize>(
         &self,
         publisher: EntityId<'_>,
@@ -1488,6 +1886,7 @@ impl<'a> TickCtx<'a> {
 
     /// Complete an action goal with a typed result (W.5.6 — needs the executor,
     /// hence tick-only).
+    #[doc(hidden)]
     pub fn complete_goal<R: RosMessage, const N: usize>(
         &mut self,
         action: EntityId<'_>,
@@ -1507,11 +1906,27 @@ impl<'a> TickCtx<'a> {
             .complete_goal_raw(action.as_str(), goal_id, status, &buf[..len])
     }
 
+    /// Complete an action goal on the action entity synthesized from `name`.
+    ///
+    /// This pairs with
+    /// [`DeclaredNode::create_action_server_for_name`] and
+    /// [`DeclaredNode::create_action_server_for_name_with_callbacks`].
+    pub fn complete_goal_for_name<R: RosMessage, const N: usize>(
+        &mut self,
+        name: &str,
+        goal_id: &GoalId,
+        status: GoalStatus,
+        result: &R,
+    ) -> NodeResult<()> {
+        self.complete_goal::<R, N>(EntityId::new(name), goal_id, status, result)
+    }
+
     /// Visit each active (accepted, not yet completed) goal on `action` with its
     /// id + status — how a `tick` body discovers goals to feed / complete. Collect
     /// the ids you want to act on, then call [`Self::publish_feedback`] /
     /// [`Self::complete_goal`] after the visit returns (those borrow `self`
     /// mutably, so they can't run inside `visit`).
+    #[doc(hidden)]
     pub fn for_each_active_goal(
         &self,
         action: EntityId<'_>,
@@ -1520,7 +1935,17 @@ impl<'a> TickCtx<'a> {
         self.actions.for_each_active_goal(action.as_str(), visit);
     }
 
+    /// Visit active goals on the action entity synthesized from `name`.
+    pub fn for_each_active_goal_for_name(
+        &self,
+        name: &str,
+        visit: &mut dyn FnMut(&GoalId, GoalStatus),
+    ) {
+        self.for_each_active_goal(EntityId::new(name), visit);
+    }
+
     /// Publish typed feedback for an active action goal (W.5.6 — tick-only).
+    #[doc(hidden)]
     pub fn publish_feedback<F: RosMessage, const N: usize>(
         &mut self,
         action: EntityId<'_>,
@@ -1539,9 +1964,20 @@ impl<'a> TickCtx<'a> {
             .publish_feedback_raw(action.as_str(), goal_id, &buf[..len])
     }
 
+    /// Publish feedback on the action entity synthesized from `name`.
+    pub fn publish_feedback_for_name<F: RosMessage, const N: usize>(
+        &mut self,
+        name: &str,
+        goal_id: &GoalId,
+        feedback: &F,
+    ) -> NodeResult<()> {
+        self.publish_feedback::<F, N>(EntityId::new(name), goal_id, feedback)
+    }
+
     /// Issue a service-client raw-CDR request and block on the reply
     /// (M-F.4 — tick-only). Writes the response CDR into `response_buf`
     /// and returns the response length in bytes.
+    #[doc(hidden)]
     pub fn call_raw(
         &mut self,
         service: EntityId<'_>,
@@ -1552,10 +1988,22 @@ impl<'a> TickCtx<'a> {
             .call_raw(service.as_str(), request_cdr, response_buf)
     }
 
+    /// Issue a raw service-client request through the entity synthesized
+    /// from `name`.
+    pub fn call_raw_for_name(
+        &mut self,
+        name: &str,
+        request_cdr: &[u8],
+        response_buf: &mut [u8],
+    ) -> NodeResult<usize> {
+        self.call_raw(EntityId::new(name), request_cdr, response_buf)
+    }
+
     /// Issue a typed service-client request and decode the reply
     /// (M-F.4 — tick-only). `REQ_N` / `RESP_N` stack-size the request /
     /// response CDR buffers; size them via
     /// `<<Req as RosMessage>::SerializedSize as nros::SerializedSize>::SIZE`.
+    #[doc(hidden)]
     pub fn call<Req: RosMessage, Resp: RosMessage, const REQ_N: usize, const RESP_N: usize>(
         &mut self,
         service: EntityId<'_>,
@@ -1579,16 +2027,39 @@ impl<'a> TickCtx<'a> {
         Resp::deserialize(&mut reader).map_err(|_| NodeDeclError::Runtime)
     }
 
+    /// Issue a typed service-client request through the entity synthesized
+    /// from `name`.
+    pub fn call_for_name<
+        Req: RosMessage,
+        Resp: RosMessage,
+        const REQ_N: usize,
+        const RESP_N: usize,
+    >(
+        &mut self,
+        name: &str,
+        request: &Req,
+    ) -> NodeResult<Resp> {
+        self.call::<Req, Resp, REQ_N, RESP_N>(EntityId::new(name), request)
+    }
+
     /// Send a raw-CDR action-client goal and return the assigned
     /// [`GoalId`] (M-F.4 — tick-only). Result + feedback streams arrive
     /// via callback dispatch; this method only kicks off the request.
+    #[doc(hidden)]
     pub fn send_goal_raw(&mut self, action: EntityId<'_>, goal_cdr: &[u8]) -> NodeResult<GoalId> {
         self.clients.send_goal_raw(action.as_str(), goal_cdr)
+    }
+
+    /// Send a raw-CDR action-client goal through the entity synthesized
+    /// from `name`.
+    pub fn send_goal_raw_for_name(&mut self, name: &str, goal_cdr: &[u8]) -> NodeResult<GoalId> {
+        self.send_goal_raw(EntityId::new(name), goal_cdr)
     }
 
     /// Send a typed action-client goal and return the assigned
     /// [`GoalId`] (M-F.4 — tick-only). `N` stack-sizes the goal CDR
     /// buffer.
+    #[doc(hidden)]
     pub fn send_goal<G: RosMessage, const N: usize>(
         &mut self,
         action: EntityId<'_>,
@@ -1602,6 +2073,16 @@ impl<'a> TickCtx<'a> {
         let len = writer.position();
         self.clients.send_goal_raw(action.as_str(), &buf[..len])
     }
+
+    /// Send a typed action-client goal through the entity synthesized
+    /// from `name`.
+    pub fn send_goal_for_name<G: RosMessage, const N: usize>(
+        &mut self,
+        name: &str,
+        goal: &G,
+    ) -> NodeResult<GoalId> {
+        self.send_goal::<G, N>(EntityId::new(name), goal)
+    }
 }
 
 pub trait ExecutableNode: Node {
@@ -1612,9 +2093,9 @@ pub trait ExecutableNode: Node {
     fn init() -> Self::State;
 
     /// Run the body for `callback`. `ctx` exposes the triggering payload + the
-    /// immediate publish path. Bodies match on `callback` (the stable id from
-    /// the declarative `create_*` calls).
-    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>);
+    /// immediate publish path. Bodies match on the source callback name declared
+    /// by `create_*_for_callback_name` and related helpers.
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>);
 
     /// Per-spin execution hook (W.5.6), run *between* callback dispatch by the
     /// generated runtime — where the executor is free, so this is the only place
@@ -1641,7 +2122,7 @@ macro_rules! declarative_component {
             fn init() -> Self::State {}
             fn on_callback(
                 _state: &mut Self::State,
-                _callback: $crate::CallbackId<'_>,
+                _callback: $crate::Callback<'_>,
                 _ctx: &mut $crate::CallbackCtx<'_>,
             ) {
             }
@@ -2220,7 +2701,7 @@ mod tests {
             0
         }
 
-        fn on_callback(state: &mut u32, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+        fn on_callback(state: &mut u32, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
             if callback.as_str() == "on_tick" {
                 *state += 1;
                 // Publish through the declared publisher entity.
@@ -2250,12 +2731,20 @@ mod tests {
         let mut ctx = CallbackCtx::new(&[], &resolver);
 
         // An unrelated callback id does nothing.
-        TalkerComponent::on_callback(&mut state, CallbackId::new("other"), &mut ctx);
+        TalkerComponent::on_callback(
+            &mut state,
+            Callback::__from_id(CallbackId::new("other")),
+            &mut ctx,
+        );
         assert_eq!(state, 0);
         assert!(resolver.last.borrow().is_none());
 
         // The bound callback bumps state + publishes through "pub_chatter".
-        TalkerComponent::on_callback(&mut state, CallbackId::new("on_tick"), &mut ctx);
+        TalkerComponent::on_callback(
+            &mut state,
+            Callback::__from_id(CallbackId::new("on_tick")),
+            &mut ctx,
+        );
         assert_eq!(state, 1);
         let last = resolver.last.borrow();
         let (entity, len) = last.as_ref().expect("a publish was recorded");
@@ -2478,7 +2967,7 @@ mod tests {
             fn init() -> Self::State {}
             fn on_callback(
                 _state: &mut Self::State,
-                _callback: CallbackId<'_>,
+                _callback: Callback<'_>,
                 _ctx: &mut CallbackCtx<'_>,
             ) {
             }

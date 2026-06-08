@@ -5,24 +5,17 @@
 //! recorder to emit `node.metadata.json`.
 
 pub mod node {
-    use nros::{
-        CallbackId, ComponentContext, ComponentResult, EntityId, NodeId, NodeOptions,
-        TimerDuration,
-    };
+    use nros::{Node, NodeContext, NodeOptions, NodeResult, TimerDuration};
 
     pub struct Component;
 
-    impl nros::Component for Component {
+    impl Node for Component {
         const NAME: &'static str = "node";
 
-        fn register(context: &mut ComponentContext<'_>) -> ComponentResult<()> {
-            let mut node =
-                context.create_node(NodeId::new("probe_node"), NodeOptions::new("probe"))?;
-            let _timer = node.create_timer(
-                EntityId::new("tick"),
-                CallbackId::new("cb_tick"),
-                TimerDuration::from_millis(100),
-            )?;
+        fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
+            let mut node = context.create_node(NodeOptions::new("probe"))?;
+            let _timer =
+                node.create_timer_for_callback_name("cb_tick", TimerDuration::from_millis(100))?;
             Ok(())
         }
     }

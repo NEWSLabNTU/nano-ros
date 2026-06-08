@@ -13,8 +13,8 @@ extern crate zephyr;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    CallbackCtx, CallbackId, CancelResponse, EntityId, ExecutableNode, GoalResponse, GoalStatus,
-    Node, NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, CancelResponse, ExecutableNode, GoalResponse, GoalStatus, Node,
+    NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 pub struct FibonacciServer;
@@ -24,12 +24,11 @@ impl Node for FibonacciServer {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_server"))?;
-        let _action = node.create_action_server_with_callbacks::<Fibonacci>(
-            EntityId::new("act_fib"),
-            CallbackId::new("on_goal"),
-            CallbackId::new("on_cancel"),
-            CallbackId::new("on_accepted"),
+        let _action = node.create_action_server_for_name_with_callbacks::<Fibonacci>(
             "/fibonacci",
+            "on_goal",
+            "on_cancel",
+            "on_accepted",
         )?;
         Ok(())
     }
@@ -40,7 +39,7 @@ impl ExecutableNode for FibonacciServer {
 
     fn init() -> Self::State {}
 
-    fn on_callback(_state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         match callback.as_str() {
             "on_goal" => {
                 let accept = ctx
@@ -68,12 +67,9 @@ impl ExecutableNode for FibonacciServer {
         // Collect goal ids to act on first; the typed feedback / result
         // calls borrow `ctx` mutably, so they can't run inside `visit`.
         let mut goals: nros::heapless::Vec<(nros::GoalId, i32), 4> = nros::heapless::Vec::new();
-        ctx.for_each_active_goal(
-            EntityId::new("act_fib"),
-            &mut |goal_id, _status: GoalStatus| {
-                let _ = goals.push((*goal_id, 0));
-            },
-        );
+        ctx.for_each_active_goal_for_name("/fibonacci", &mut |goal_id, _status: GoalStatus| {
+            let _ = goals.push((*goal_id, 0));
+        });
 
         for (goal_id, _order) in goals {
             // Publish one canonical Fibonacci-shaped feedback frame.
@@ -84,15 +80,15 @@ impl ExecutableNode for FibonacciServer {
             let feedback = FibonacciFeedback {
                 sequence: sequence.clone(),
             };
-            let _ = ctx.publish_feedback::<FibonacciFeedback, 128>(
-                EntityId::new("act_fib"),
+            let _ = ctx.publish_feedback_for_name::<FibonacciFeedback, 128>(
+                "/fibonacci",
                 &goal_id,
                 &feedback,
             );
 
             let result = FibonacciResult { sequence };
-            let _ = ctx.complete_goal::<FibonacciResult, 128>(
-                EntityId::new("act_fib"),
+            let _ = ctx.complete_goal_for_name::<FibonacciResult, 128>(
+                "/fibonacci",
                 &goal_id,
                 GoalStatus::Succeeded,
                 &result,

@@ -82,8 +82,8 @@ use portable_atomic_util::Arc;
 use crate::{
     EmbeddedRawPublisher, Executor, GoalId, GoalStatus,
     node::{
-        ActionExecutor, CallbackCtx, ClientDispatch, ExecutableNode, NodeContext, NodeDeclError,
-        NodeOptions, NodeResult, NodeRuntime, PublisherResolver, TickCtx,
+        ActionExecutor, Callback, CallbackCtx, ClientDispatch, ExecutableNode, NodeContext,
+        NodeDeclError, NodeOptions, NodeResult, NodeRuntime, PublisherResolver, TickCtx,
     },
     node_metadata::{
         CallbackEffectKind, CallbackId, EntityId, EntityKind, EntityMetadata, NodeId as MetaNodeId,
@@ -149,7 +149,11 @@ struct TypedSlot<C: ExecutableNode> {
 
 impl<C: ExecutableNode> ComponentSlot for TypedSlot<C> {
     fn dispatch(&mut self, cb_id: &str, ctx: &mut CallbackCtx<'_>) {
-        C::on_callback(&mut self.state, CallbackId::new(cb_id), ctx);
+        C::on_callback(
+            &mut self.state,
+            Callback::__from_id(CallbackId::new(cb_id)),
+            ctx,
+        );
     }
     fn tick(&mut self, ctx: &mut TickCtx<'_>) {
         C::tick(&mut self.state, ctx);
@@ -189,9 +193,9 @@ impl ComponentSlot for BspDispatchSlot {
     fn dispatch(&mut self, cb_id: &str, ctx: &mut CallbackCtx<'_>) {
         // SAFETY: `self.dispatch` was emitted by `nros::node!()`
         // alongside `self.state` (set at `init` time); the dispatch
-        // ABI takes `*mut ()` + `CallbackId<'_>` + `&mut CallbackCtx`,
-        // and the runtime holds the slot under a `&mut` borrow that
-        // serialises calls.
+        // ABI takes `*mut ()` + internal `CallbackId<'_>` +
+        // `&mut CallbackCtx`, and the runtime holds the slot under a
+        // `&mut` borrow that serialises calls.
         unsafe {
             (self.dispatch)(self.state, CallbackId::new(cb_id), ctx);
         }
@@ -745,8 +749,9 @@ pub type NodeRegisterFn = fn(&mut NodeContext<'_>) -> NodeResult<()>;
 pub type NodeInitFn = fn() -> *mut ();
 
 /// Phase 212.M.5.a.4 — type of the `extern "Rust"` `_dispatch` fn the
-/// macro emits per component. Wraps `ExecutableNode::on_callback`
-/// with the type-erased `*mut ()` state argument.
+/// macro emits per component. Carries the internal callback ID to the
+/// generated wrapper, which converts it to product-facing
+/// [`Callback`](crate::Callback) before calling `ExecutableNode::on_callback`.
 ///
 /// `unsafe`: the `*mut ()` MUST be a value previously returned by the
 /// matching [`NodeInitFn`] and not freed; the BSP holds both in a
@@ -843,6 +848,6 @@ mod tests {
     impl ExecutableNode for DummyComp {
         type State = ();
         fn init() -> Self::State {}
-        fn on_callback(_s: &mut (), _cb: CallbackId<'_>, _ctx: &mut CallbackCtx<'_>) {}
+        fn on_callback(_s: &mut (), _cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {}
     }
 }

@@ -11,8 +11,7 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
-    TickCtx,
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 pub struct ServiceClient;
@@ -22,8 +21,7 @@ impl Node for ServiceClient {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("add_two_ints_client"))?;
-        let _client =
-            node.create_service_client::<AddTwoInts>(EntityId::new("cli_add"), "/add_two_ints")?;
+        let _client = node.create_service_client_for_name::<AddTwoInts>("/add_two_ints")?;
         Ok(())
     }
 }
@@ -40,12 +38,7 @@ impl ExecutableNode for ServiceClient {
         State { sent: false }
     }
 
-    fn on_callback(
-        _state: &mut Self::State,
-        _callback: CallbackId<'_>,
-        _ctx: &mut CallbackCtx<'_>,
-    ) {
-    }
+    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {}
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
         if state.sent {
@@ -53,7 +46,7 @@ impl ExecutableNode for ServiceClient {
         }
         let req = AddTwoIntsRequest { a: 7, b: 35 };
         let result: nros::NodeResult<AddTwoIntsResponse> = ctx
-            .call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(EntityId::new("cli_add"), &req);
+            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req);
         if result.is_ok() {
             state.sent = true;
         }

@@ -459,6 +459,9 @@ fn emits_entry_lib(plan: &NrosPlan) -> bool {
         // `main`) get the cfg-gated hosted shim (std/no_std picked at compile
         // time by the `std` feature, matching the legacy `HOSTED_MAIN`).
         Some(p) if p.entry_kind == EntryKind::BoardRun => true,
+        // Native/posix remain valid hosted targets even in hermetic fixture
+        // workspaces that do not carry an explicit board descriptor.
+        None if matches!(plan.build.board.as_str(), "native" | "posix") => uses_std(&plan.build),
         _ => false,
     }
 }
@@ -3336,7 +3339,7 @@ fn emit_executable_timer(
         "        let mut cb_ctx = nros::CallbackCtx::new(&[], &resolver{idx});\n"
     ));
     out.push(format!(
-        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut state{idx}, nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n"
+        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut state{idx}, nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n"
     ));
     out.push("    })?;\n".to_string());
     out.push(format!(
@@ -3373,7 +3376,7 @@ fn emit_executable_subscription(
         "        let mut cb_ctx = nros::CallbackCtx::new(data, &resolver{idx});\n"
     ));
     out.push(format!(
-        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut state{idx}, nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n"
+        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut state{idx}, nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n"
     ));
     out.push("    })?;\n".to_string());
     out.push(format!(
@@ -3406,7 +3409,7 @@ fn emit_shared_timer(
         "        let mut cb_ctx = nros::CallbackCtx::new(&[], resolver_cb{idx}.as_ref());\n"
     ));
     out.push(format!(
-        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *state_cb{idx}.borrow_mut(), nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n"
+        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *state_cb{idx}.borrow_mut(), nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n"
     ));
     out.push("    })?;\n".to_string());
     out.push(format!(
@@ -3447,7 +3450,7 @@ fn emit_shared_subscription(
         "        let mut cb_ctx = nros::CallbackCtx::new(data, resolver_cb{idx}.as_ref());\n"
     ));
     out.push(format!(
-        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *state_cb{idx}.borrow_mut(), nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n"
+        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *state_cb{idx}.borrow_mut(), nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n"
     ));
     out.push("    })?;\n".to_string());
     out.push(format!(
@@ -3495,7 +3498,7 @@ fn emit_shared_service(
             .to_string(),
     );
     out.push(format!(
-        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *sctx.state.borrow_mut(), nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n"
+        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *sctx.state.borrow_mut(), nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n"
     ));
     out.push("        unsafe { *resp_len = written; }\n".to_string());
     out.push("        true\n    }\n".to_string());
@@ -3555,7 +3558,7 @@ fn emit_shared_action(
             .to_string(),
     );
     out.push(format!(
-        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *actx.state.borrow_mut(), nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n"
+        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *actx.state.borrow_mut(), nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n"
     ));
     out.push("        resp\n    }\n".to_string());
     // cancel-decision trampoline
@@ -3571,7 +3574,7 @@ fn emit_shared_action(
             .to_string(),
     );
     out.push(format!(
-        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *actx.state.borrow_mut(), nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n"
+        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut *actx.state.borrow_mut(), nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n"
     ));
     out.push("        resp\n    }\n".to_string());
     out.push(format!(
@@ -3636,7 +3639,7 @@ fn emit_static_service(
             .to_string(),
     );
     out.push(format!(
-        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut sctx.state, nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n"
+        "        <{comp_path} as nros::ExecutableComponent>::on_callback(&mut sctx.state, nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n"
     ));
     out.push("        unsafe { *resp_len = written; }\n".to_string());
     out.push("        true\n    }\n".to_string());
@@ -3699,7 +3702,7 @@ fn emit_static_action(
          let goal_slice = unsafe {{ core::slice::from_raw_parts(goal_data, goal_len) }};\n    \
          let mut resp = nros::GoalResponse::Reject;\n    \
          let mut cb_ctx = nros::CallbackCtx::with_goal_decision(goal_slice, &actx.resolver, &mut resp);\n    \
-         <{comp_path} as nros::ExecutableComponent>::on_callback(&mut actx.state, nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n    \
+         <{comp_path} as nros::ExecutableComponent>::on_callback(&mut actx.state, nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n    \
          resp\n}}\n"
     ));
     // cancel-decision trampoline
@@ -3708,7 +3711,7 @@ fn emit_static_action(
          let actx = match unsafe {{ (*core::ptr::addr_of_mut!(ACT_CTX_{idx})).as_mut() }} {{ Some(s) => s, None => return nros::CancelResponse::Rejected }};\n    \
          let mut resp = nros::CancelResponse::Rejected;\n    \
          let mut cb_ctx = nros::CallbackCtx::with_cancel_decision(&[], &actx.resolver, &mut resp);\n    \
-         <{comp_path} as nros::ExecutableComponent>::on_callback(&mut actx.state, nros::CallbackId::new({callback_id:?}), &mut cb_ctx);\n    \
+         <{comp_path} as nros::ExecutableComponent>::on_callback(&mut actx.state, nros::Callback::__from_id(nros::CallbackId::new({callback_id:?})), &mut cb_ctx);\n    \
          resp\n}}\n"
     ));
     // per-spin execution tick (W.5.11). M-F.4.a — no_std path has no client

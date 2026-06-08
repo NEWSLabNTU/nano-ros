@@ -11,8 +11,8 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    CallbackCtx, CallbackId, CancelResponse, EntityId, ExecutableNode, GoalId, GoalResponse,
-    GoalStatus, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, CancelResponse, ExecutableNode, GoalId, GoalResponse, GoalStatus, Node,
+    NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 pub struct ActionServer;
@@ -22,12 +22,11 @@ impl Node for ActionServer {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_server"))?;
-        let _action = node.create_action_server_with_callbacks::<Fibonacci>(
-            EntityId::new("act_fib"),
-            CallbackId::new("on_goal"),
-            CallbackId::new("on_cancel"),
-            CallbackId::new("on_accepted"),
+        let _action = node.create_action_server_for_name_with_callbacks::<Fibonacci>(
             "/fibonacci",
+            "on_goal",
+            "on_cancel",
+            "on_accepted",
         )?;
         Ok(())
     }
@@ -41,7 +40,7 @@ impl ExecutableNode for ActionServer {
         0
     }
 
-    fn on_callback(_state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         match callback.as_str() {
             "on_goal" => {
                 let response = match ctx.message::<FibonacciGoal>() {
@@ -62,7 +61,7 @@ impl ExecutableNode for ActionServer {
         // borrow-checker lets us issue mutable executor ops after the
         // visit returns.
         let mut pending: heapless::Vec<GoalId, 4> = heapless::Vec::new();
-        ctx.for_each_active_goal(EntityId::new("act_fib"), &mut |goal_id, status| {
+        ctx.for_each_active_goal_for_name("/fibonacci", &mut |goal_id, status| {
             if matches!(status, GoalStatus::Accepted | GoalStatus::Executing) {
                 let _ = pending.push(*goal_id);
             }
@@ -88,16 +87,16 @@ impl ExecutableNode for ActionServer {
                 let feedback = FibonacciFeedback {
                     sequence: seq.clone(),
                 };
-                let _ = ctx.publish_feedback::<FibonacciFeedback, 256>(
-                    EntityId::new("act_fib"),
+                let _ = ctx.publish_feedback_for_name::<FibonacciFeedback, 256>(
+                    "/fibonacci",
                     &goal_id,
                     &feedback,
                 );
             }
 
             let result = FibonacciResult { sequence: seq };
-            let _ = ctx.complete_goal::<FibonacciResult, 256>(
-                EntityId::new("act_fib"),
+            let _ = ctx.complete_goal_for_name::<FibonacciResult, 256>(
+                "/fibonacci",
                 &goal_id,
                 GoalStatus::Succeeded,
                 &result,

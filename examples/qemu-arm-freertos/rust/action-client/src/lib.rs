@@ -45,9 +45,7 @@ mod host_shim {
 }
 
 use example_interfaces::action::Fibonacci;
-use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
-};
+use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
 
 pub struct FibonacciClient;
 
@@ -56,8 +54,7 @@ impl Node for FibonacciClient {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_client"))?;
-        let _client =
-            node.create_action_client::<Fibonacci>(EntityId::new("client_fib"), "/fibonacci")?;
+        let _client = node.create_action_client_for_name::<Fibonacci>("/fibonacci")?;
         Ok(())
     }
 }
@@ -67,11 +64,7 @@ impl ExecutableNode for FibonacciClient {
 
     fn init() -> Self::State {}
 
-    fn on_callback(
-        _state: &mut Self::State,
-        _callback: CallbackId<'_>,
-        _ctx: &mut CallbackCtx<'_>,
-    ) {
+    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         // Phase 212.M.5.b — declarative-metadata-only.
         // Service-client runtime body deferred to M-F.4
         // (TickCtx call() seam). Codegen-system will own the imperative

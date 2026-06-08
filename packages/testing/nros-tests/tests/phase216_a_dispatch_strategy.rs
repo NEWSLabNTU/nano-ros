@@ -22,7 +22,9 @@
 
 use std::panic;
 
-use nros::{CallbackId, DispatchStrategy, Node, NodeContext, NodeResult, SubscriptionTag};
+use nros::{
+    Callback, CallbackId, DispatchStrategy, Node, NodeContext, NodeResult, SubscriptionTag,
+};
 use nros_platform::{NodeDispatchRuntime, NullNodeRuntime, SignaledCallback};
 
 // ---------------------------------------------------------------------------
@@ -150,7 +152,7 @@ fn signal_callback_on_inline_runtime_panics() {
 fn tag_eq_callback_id_matches() {
     let tag = SubscriptionTag::new("/chatter");
     let id = CallbackId::new("/chatter");
-    // SubscriptionTag implements `PartialEq<CallbackId<'_>>` — the
+    // SubscriptionTag implements `PartialEq<Callback<'_>>` — the
     // dispatch path relies on this comparison to route a signaled
     // CallbackId back to the originating tag.
     assert!(tag == id);

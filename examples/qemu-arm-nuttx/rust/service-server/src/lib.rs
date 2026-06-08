@@ -7,9 +7,7 @@
 #![no_std]
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
-use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
-};
+use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
 
 pub struct AddTwoIntsServer;
 
@@ -18,10 +16,9 @@ impl Node for AddTwoIntsServer {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("add_two_ints_server"))?;
-        let _srv = node.create_service_server::<AddTwoInts>(
-            EntityId::new("srv_add"),
-            CallbackId::new("handle_add"),
+        let _srv = node.create_service_server_for_name_with_callback::<AddTwoInts>(
             "/add_two_ints",
+            "handle_add",
         )?;
         Ok(())
     }
@@ -32,7 +29,7 @@ impl ExecutableNode for AddTwoIntsServer {
 
     fn init() -> Self::State {}
 
-    fn on_callback(_state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "handle_add" {
             if let Ok(req) = ctx.message::<AddTwoIntsRequest>() {
                 let reply = AddTwoIntsResponse { sum: req.a + req.b };

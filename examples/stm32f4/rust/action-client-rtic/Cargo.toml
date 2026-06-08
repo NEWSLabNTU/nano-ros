@@ -41,7 +41,7 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # emit only needs to compile here.
 nros-board-rtic-stm32f4 = { path = "../../../../packages/boards/nros-board-rtic-stm32f4" }
 # Phase 216.B.5 Node pkg — board-agnostic action client (Inline
-# dispatch + EntityId-based action client registration). A parallel
+# dispatch + action-client registration). A parallel
 # `action-client-embassy` Entry pkg will share this Node pkg once the
 # C-wave catches up. Listed as a dep so the bin target links the
 # rlib that exports `register` / `nros::node!()`-emitted
