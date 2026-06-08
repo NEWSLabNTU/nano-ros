@@ -62,6 +62,16 @@ pub enum TierResolveError {
     MissingRtosSpec { tier: String, rtos: String },
     #[error("`[[node_overrides]]` targets node `{node}` which is not a component in the system")]
     UnknownOverrideNode { node: String },
+    #[error(
+        "node `{node}` has callback groups in different tiers (`{tier_a}` and `{tier_b}`); v1 \
+         pins a whole node to one tier — put its groups in the same tier or move shared data to \
+         `[[shared_state]]`"
+    )]
+    NodeSpansTiers {
+        node: String,
+        tier_a: String,
+        tier_b: String,
+    },
 }
 
 /// Pick a tier's per-RTOS spec by target name.
@@ -115,6 +125,25 @@ pub fn resolve_tiers(
                 .entry(tier.to_string())
                 .or_default()
                 .push((node.clone(), g.id.clone()));
+        }
+    }
+
+    // v1 node-pinned-to-tier rule (RFC-0015): every callback group of a node
+    // must resolve to the SAME tier, so one node = one task = one (unlocked)
+    // State. Cross-tier sharing is the `[[shared_state]]` mechanism, not a
+    // node's own state. (v2 with the multi-task state-sync machinery relaxes.)
+    let mut node_tier: BTreeMap<&str, &str> = BTreeMap::new();
+    for (tier, members) in &members_by_tier {
+        for (node, _group) in members {
+            if let Some(prev) = node_tier.insert(node.as_str(), tier.as_str()) {
+                if prev != tier.as_str() {
+                    return Err(TierResolveError::NodeSpansTiers {
+                        node: node.clone(),
+                        tier_a: prev.to_string(),
+                        tier_b: tier.clone(),
+                    });
+                }
+            }
         }
     }
 
@@ -190,11 +219,18 @@ mod tests {
                 default_launch: None,
                 default_target: None,
             },
-            components: vec![SystemComponentEntry {
-                pkg: "ctrl_pkg".to_string(),
-                class: "ctrl_pkg::Control".to_string(),
-                name: "control_node".to_string(),
-            }],
+            components: vec![
+                SystemComponentEntry {
+                    pkg: "ctrl_pkg".to_string(),
+                    class: "ctrl_pkg::Control".to_string(),
+                    name: "control_node".to_string(),
+                },
+                SystemComponentEntry {
+                    pkg: "telem_pkg".to_string(),
+                    class: "telem_pkg::Telem".to_string(),
+                    name: "telem_node".to_string(),
+                },
+            ],
             deploy: BTreeMap::new(),
             domains: Vec::new(),
             bridges: Vec::new(),
@@ -259,17 +295,43 @@ mod tests {
                 ..Default::default()
             },
         );
+        // Node-pinned: control_node → high, telem_node → low (each one tier).
         let mut cbgs = BTreeMap::new();
-        cbgs.insert(
-            "control_node".to_string(),
-            vec![cbg("ctrl", "high"), cbg("telem", "low")],
-        );
+        cbgs.insert("control_node".to_string(), vec![cbg("ctrl", "high")]);
+        cbgs.insert("telem_node".to_string(), vec![cbg("telem", "low")]);
         let table = resolve_tiers(&s, &cbgs, "posix").unwrap();
         assert_eq!(table.tiers.len(), 2);
         assert_eq!(table.tiers[0].name, "high"); // highest priority first
         assert_eq!(table.tiers[0].priority, 80);
         assert_eq!(table.tiers[0].spin_period_us, Some(1000));
         assert_eq!(table.tiers[1].name, "low");
+    }
+
+    #[test]
+    fn node_spanning_tiers_errors() {
+        // v1: a node whose groups name different tiers is rejected.
+        let mut s = sys("d");
+        for t in ["high", "low"] {
+            s.tiers.insert(
+                t.to_string(),
+                TierDef {
+                    posix: Some(TierRtosSpec {
+                        priority: if t == "high" { 80 } else { 10 },
+                        stack_bytes: None,
+                        preempt_threshold: None,
+                        sched_class: None,
+                    }),
+                    ..Default::default()
+                },
+            );
+        }
+        let mut cbgs = BTreeMap::new();
+        cbgs.insert(
+            "control_node".to_string(),
+            vec![cbg("ctrl", "high"), cbg("telem", "low")],
+        );
+        let err = resolve_tiers(&s, &cbgs, "posix").unwrap_err();
+        assert!(matches!(err, TierResolveError::NodeSpansTiers { .. }));
     }
 
     #[test]
@@ -291,23 +353,22 @@ mod tests {
         }
         s.node_overrides
             .push(super::super::cargo_metadata_schema::NodeOverride {
-                name: "control_node".to_string(),
+                name: "telem_node".to_string(),
                 callback_groups: vec![super::super::cargo_metadata_schema::CallbackGroupOverride {
                     id: "telem".to_string(),
                     tier: "low".to_string(),
                 }],
             });
+        // telem_node declares telem in "high"; the override moves it to "low"
+        // (each node stays pinned to one tier).
         let mut cbgs = BTreeMap::new();
-        // node declares telem in "high"; override moves it to "low".
-        cbgs.insert(
-            "control_node".to_string(),
-            vec![cbg("ctrl", "high"), cbg("telem", "high")],
-        );
+        cbgs.insert("control_node".to_string(), vec![cbg("ctrl", "high")]);
+        cbgs.insert("telem_node".to_string(), vec![cbg("telem", "high")]);
         let table = resolve_tiers(&s, &cbgs, "posix").unwrap();
         let low = table.tiers.iter().find(|t| t.name == "low").unwrap();
         assert_eq!(
             low.members,
-            vec![("control_node".to_string(), "telem".to_string())]
+            vec![("telem_node".to_string(), "telem".to_string())]
         );
     }
 

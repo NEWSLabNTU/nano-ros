@@ -29,8 +29,13 @@ superseded-by: null
 > priority tier (each owning one `Executor`), one shared session per binary;
 > all-default-tier degenerates to a single task/Executor (today's shipped case).
 > Per-tier codegen is tracked by **Phase 228** (Phase 94/126 shipped only the
-> single-tier degenerate case). Config authority: RFC-0004; workspace layout:
-> RFC-0024; codegen timing: RFC-0003 §7 (ahead-of-vendor contract).
+> single-tier degenerate case). **Per-group registration decided 2026-06:**
+> Model 1 (one RTOS task/`Executor` per tier — true preemption, no_std-capable);
+> a `.callback_group("id")` builder labels callbacks, the executor's
+> `active_groups` filter gates registration per tier, and v1 is **node-pinned-to-
+> tier** (a node's groups must all be one tier — enforced by the resolver). See
+> phase-228 §228.C. Config authority: RFC-0004; workspace layout: RFC-0024;
+> codegen timing: RFC-0003 §7.
 
 ---
 

@@ -80,10 +80,30 @@ the Rust entry codegen (`codegen/entry/emit_rust.rs`) + per-RTOS spawn (228.E).
 `packages/core/nros-node/src/executor/`.
 
 ### 228.C — Callback-group → tier registration
-Generated per-tier task pre-registers exactly the callbacks whose group maps to
-that tier (v1: all groups effectively MutuallyExclusive within their tier-task,
-per RFC-0015 §5.3).
-**Files:** codegen + `nros-node` registration.
+**Design decided 2026-06** (per-group registration). Execution model = **Model 1**:
+one RTOS task + `Executor` per tier (true preemption; works on no_std MCU — the
+single-executor/SchedContext alternative is cooperative-only, the OS-worker
+alternative is std-only). Registration rides existing machinery:
+- **Label:** a `.callback_group("id")` builder on entity creation (reuses the
+  Phase-216 tag string); unlabeled → `"default"`.
+- **Filter:** the `Executor` carries `active_groups` (set by codegen per tier); a
+  registration whose group isn't active is a no-op (no RMW handle, no slot).
+- **Once-per-tier:** codegen calls each node's `register()` once per tier-executor;
+  the filter selects which callbacks take. Degenerate single tier → `active_groups`
+  wildcard → byte-identical to today.
+- **tier ≠ SchedContext:** tier = the RTOS *task priority* (coarse, preemptive,
+  the spawn arg); the existing per-callback `SchedContext` stays as intra-tier
+  fine ordering (orthogonal).
+- **Node state (v1):** **node-pinned-to-tier** — a node's callback groups must all
+  resolve to one tier (one node = one task = one unlocked `State`). Cross-tier
+  data is `[[shared_state]]` (228.D). The resolver now **enforces** this
+  (`TierResolveError::NodeSpansTiers`, ✅ done + tested). v2 with multi-task
+  state-sync relaxes it.
+
+**Remaining (the codegen):** emit `exec.set_active_groups(&[…])` + the
+group-filtered register calls per tier task. Couples with 228.B-emit.
+**Files:** codegen (`codegen/entry/emit_rust.rs`) + `nros-node` (`set_active_groups`
++ the `.callback_group()` builder + group-gated registration).
 
 ### 228.D — Shared-state accessor codegen
 Emit the `nros_shared_context` C-ABI struct + accessors from `system.toml

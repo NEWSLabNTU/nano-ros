@@ -1142,12 +1142,12 @@ launch = "launch/system.launch.xml"
         .unwrap();
     }
 
-    /// Phase 228.B — a 1-component workspace where the node declares callback
-    /// groups and the system maps them to `[tiers.*]`.
+    /// Phase 228.B — two pinned nodes (control_node → high, telem_node → low)
+    /// the system maps to `[tiers.*]` (v1 node-pinned-to-tier).
     fn write_tiered_workspace(dir: &Path) {
         fs::write(
             dir.join("Cargo.toml"),
-            "[workspace]\nresolver = \"2\"\nmembers = [\"ctrl_pkg\"]\nexclude = [\"demo_bringup\"]\n\n[workspace.metadata.nros]\ndefault_system = \"demo_bringup\"\n",
+            "[workspace]\nresolver = \"2\"\nmembers = [\"ctrl_pkg\", \"telem_pkg\"]\nexclude = [\"demo_bringup\"]\n\n[workspace.metadata.nros]\ndefault_system = \"demo_bringup\"\n",
         )
         .unwrap();
         fs::create_dir_all(dir.join("ctrl_pkg/src")).unwrap();
@@ -1164,14 +1164,30 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "ctrl_pkg::Control"
 name = "control_node"
-callback_groups = [
-  { id = "ctrl", tier = "high" },
-  { id = "telem", tier = "low" },
-]
+callback_groups = [ { id = "ctrl", tier = "high" } ]
 "#,
         )
         .unwrap();
         fs::write(dir.join("ctrl_pkg/src/lib.rs"), "").unwrap();
+        fs::create_dir_all(dir.join("telem_pkg/src")).unwrap();
+        fs::write(
+            dir.join("telem_pkg/Cargo.toml"),
+            r#"
+[package]
+name = "telem_pkg"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "telem_pkg::Telem"
+name = "telem_node"
+callback_groups = [ { id = "telem", tier = "low" } ]
+"#,
+        )
+        .unwrap();
+        fs::write(dir.join("telem_pkg/src/lib.rs"), "").unwrap();
 
         fs::create_dir_all(dir.join("demo_bringup/launch")).unwrap();
         fs::write(
@@ -1196,6 +1212,11 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
 
 [tiers.high]
 spin_period_us = 1000
