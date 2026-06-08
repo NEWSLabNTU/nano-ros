@@ -67,15 +67,21 @@ force-link is cycle-free (`nros-rmw-zenoh`/`-xrce` don't depend on `nros`).
 - `examples/native/rust/talker` converged (zenoh + xrce via umbrella, build+run
   verified; no regression vs the explicit-register build). RFC-0031 updated.
 
-**Remaining (propagation, mechanical):**
-- Converge the other native rust examples (listener, action-*, service-*, …) to
-  the umbrella + drop `register()`. Keep explicit `register()` on bare-metal/RTIC
-  (linkme-unsupported) examples.
-- Wire `resolve_rmw` → the single-node/example build + real `nros new --rmw`
-  templating; collapse the two parallel rmw mapping tables
-  (`cargo-nano-ros::rmw_resolver` vs `nros-cli-core::orchestration::generate`).
-**Files:** `packages/core/nros/{Cargo.toml,src/lib.rs}`, `examples/native/rust/**`,
-`packages/cli/nros-cli-core/src/orchestration/generate.rs`.
+**Propagation — DONE (all 18 native-rust examples converged):** talker, listener,
+action-{client,client-async,client-rtic,server,server-rtic},
+service-{client,client-async,client-rtic,server,server-rtic}, talker-rtic,
+listener-rtic, custom-msg, lifecycle-node, serial-{talker,listener},
+custom-transport-{talker,listener}. All route RMW through the `nros` umbrella +
+force-link; no `register()`. `link-custom` forwarding added for custom-transport.
+Build-verified (zenoh + xrce where applicable). cyclonedds keeps its CMake path;
+bare-metal keeps explicit `register()`.
+
+**Remaining (1 item — code-quality):**
+- Collapse the two parallel rmw mapping tables onto one (`cargo-nano-ros::
+  rmw_resolver` vs `nros-cli-core::orchestration::generate::rmw_backend_feature`)
+  and wire `nros new --rmw` real templating (227.4 covers the scaffold; the
+  orchestrated `generate.rs` still has its own table). Removes a drift risk.
+**Files:** `packages/cli/nros-cli-core/src/orchestration/generate.rs`.
 
 ### 227.4 — `nros new --rmw` templating  ✅ DONE
 `scaffold_package` validates `--rmw` via the resolver (clear error on a typo, no
