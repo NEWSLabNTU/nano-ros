@@ -28,6 +28,8 @@ Examples:
 
 Notes:
   This script is diagnostic only. It is not used by normal builds.
+  Each cell log starts with the effective Cargo/Corrosion wrapper env, and
+  each cell also writes a small CMake cache snapshot next to the build log.
   For native cells, if NROS_CMAKE_EXTRA_DEFS is unset, the script prepares the
   C codegen tool and uses the same Release/codegen-off defaults as the native
   fixture recipe for zenoh/xrce manifest cells.
@@ -210,21 +212,54 @@ printf 'log_dir=%s\nplatform=%s\nlang=%s\nrmw=%s\nrole=%s\n' \
     "$log_dir" "$platform" "$lang" "${rmw:-<all>}" "${role:-<all>}" >> "$summary_file"
 printf 'CARGO_LOG=%s\n\n' "$CARGO_LOG" >> "$summary_file"
 
+print_env_snapshot() {
+    printf 'effective_env:\n'
+    printf '  RUSTC_WRAPPER=%s\n' "${RUSTC_WRAPPER:-<unset>}"
+    printf '  CARGO_TARGET_DIR=%s\n' "${CARGO_TARGET_DIR:-<unset>}"
+    printf '  CARGO_BUILD_TARGET=%s\n' "${CARGO_BUILD_TARGET:-<unset>}"
+    printf '  CARGO_HOME=%s\n' "${CARGO_HOME:-<unset>}"
+    printf '  RUSTUP_TOOLCHAIN=%s\n' "${RUSTUP_TOOLCHAIN:-<unset>}"
+    printf '  RUSTFLAGS=%s\n' "${RUSTFLAGS:-<unset>}"
+    printf '  NROS_JOBSERVER=%s\n' "${NROS_JOBSERVER:-<unset>}"
+    printf '  MAKEFLAGS=%s\n' "${MAKEFLAGS:-<unset>}"
+    printf '  CMAKE_BUILD_PARALLEL_LEVEL=%s\n' "${CMAKE_BUILD_PARALLEL_LEVEL:-<unset>}"
+    printf '  CMAKE_C_COMPILER_LAUNCHER=%s\n' "${CMAKE_C_COMPILER_LAUNCHER:-<unset>}"
+    printf '  CMAKE_CXX_COMPILER_LAUNCHER=%s\n' "${CMAKE_CXX_COMPILER_LAUNCHER:-<unset>}"
+    printf '  NROS_CMAKE_EXTRA_DEFS=%s\n' "${NROS_CMAKE_EXTRA_DEFS:-<unset>}"
+}
+
+write_cmake_cache_snapshot() {
+    local cache="$1"
+    local out="$2"
+
+    if [ ! -f "$cache" ]; then
+        printf 'CMakeCache.txt not found: %s\n' "$cache" > "$out"
+        return
+    fi
+
+    grep -E \
+        '^(Rust_CARGO_TARGET|CARGO_TARGET_DIR|CARGO_BUILD_TARGET|CMAKE_TOOLCHAIN_FILE|CMAKE_BUILD_TYPE|CMAKE_C_COMPILER_LAUNCHER|CMAKE_CXX_COMPILER_LAUNCHER|NANO_ROS_PLATFORM|NANO_ROS_RMW|NROS_RMW|NANO_ROS_BUILD_CODEGEN)' \
+        "$cache" > "$out" || printf 'No matching cache variables found in %s\n' "$cache" > "$out"
+}
+
 run_cell() {
     local index="$1"
     local one_lang="$2"
     local line="$3"
-    local dir sub defs target build_dir safe log status
+    local dir sub defs target build_dir safe log cache_snapshot status
 
     IFS=$'\x1f' read -r dir sub defs target <<< "$line"
     build_dir="$dir/$sub"
     safe="$(printf '%03d-%s-%s-%s' "$index" "$one_lang" "$dir" "$sub" | tr '/ ' '__')"
     log="$log_dir/cells/$safe.log"
+    cache_snapshot="$log_dir/cells/$safe.cmake-cache.txt"
 
     set +e
     {
         printf 'cell_lang=%s\ncell_dir=%s\ncell_build_dir=%s\ncell_defs=%s\ncell_target=%s\n\n' \
             "$one_lang" "$dir" "$build_dir" "$defs" "${target:-<default>}"
+        print_env_snapshot
+        printf '\n'
         # shellcheck disable=SC2086
         nros_cmake_configure_if_needed "$dir" "$build_dir" $defs ${NROS_CMAKE_EXTRA_DEFS:-}
         args=(--build "$build_dir")
@@ -234,7 +269,8 @@ run_cell() {
     status=$?
     set -e
 
-    summarize_cell "$one_lang" "$dir" "$sub" "$target" "$status" "$log" >> "$summary_file"
+    write_cmake_cache_snapshot "$build_dir/CMakeCache.txt" "$cache_snapshot"
+    summarize_cell "$one_lang" "$dir" "$sub" "$target" "$status" "$log" "$cache_snapshot" >> "$summary_file"
     return "$status"
 }
 
@@ -251,10 +287,12 @@ summarize_cell() {
     local target="$4"
     local status="$5"
     local log="$6"
+    local cache_snapshot="$7"
 
     printf 'cell %s %s/%s%s\n' "$one_lang" "$dir" "$sub" "${target:+ target=$target}"
     printf '  status: %s\n' "$status"
     printf '  log: %s\n' "$log"
+    printf '  cmake cache snapshot: %s\n' "$cache_snapshot"
     printf '  Compiling nros-c: %s\n' "$(count_pattern '^[[:space:]]*Compiling nros-c v|[[:space:]]Compiling nros-c v' "$log")"
     printf '  Compiling nros-cpp: %s\n' "$(count_pattern '^[[:space:]]*Compiling nros-cpp v|[[:space:]]Compiling nros-cpp v' "$log")"
     printf '  C object builds: %s\n' "$(count_pattern 'Building C object' "$log")"
