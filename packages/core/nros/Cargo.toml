@@ -150,7 +150,8 @@ platform-orin-spe = [
 # stay — both have real build-host gates.
 # Phase 227.3 (unified RMW) — TLS link is zenoh-pico-specific; forward when linked.
 link-tls = ["nros-rmw-zenoh?/link-tls"]
-link-custom = []
+# Phase 227.3 (unified RMW) — custom link is zenoh-pico-specific; forward when linked.
+link-custom = ["nros-rmw-zenoh?/link-custom"]
 
 # XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features).
 platform-udp = ["nros-node/platform-udp"]

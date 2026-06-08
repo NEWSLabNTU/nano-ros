@@ -173,10 +173,9 @@ fn main() {
     // Open zenoh session via the custom-link locator. Address is
     // opaque to v1; just needs to be non-empty.
     let config = ExecutorConfig::new("custom/loopback").node_name("talker");
-    // Phase 104.A — explicit RMW backend registration. The auto-ctor
-    // in `.init_array` doesn't survive Rust's archive-walk linkage
-    // when no symbol from the rlib is otherwise referenced.
-    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+    // Phase 227.3 (unified RMW) — no explicit register(). `nros`'s
+    // `__FORCE_LINK_ZENOH` keeps the backend's self-register section in the
+    // link graph; the cffi walker fires it inside `Executor::open`.
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor

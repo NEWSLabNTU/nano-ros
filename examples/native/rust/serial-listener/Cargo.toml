@@ -19,8 +19,9 @@ path = "src/main.rs"
 # (nros-rmw-xrce) through the cffi-shim Rust crate. The `serial://`
 # / `/dev/...` locator routes to `xrce_posix_serial_init` inside
 # `session.c`; no separate `xrce-serial` Cargo feature needed.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi" }
+# Phase 227.3 (unified RMW) — xrce via the umbrella (no project dep, no
+# register()). Serial routes by the `serial://` locator, not a feature.
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble", "rmw-xrce"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's
