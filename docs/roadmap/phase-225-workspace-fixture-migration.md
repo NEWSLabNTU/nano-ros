@@ -758,9 +758,16 @@ The review found example topology issues separate from the API surface.
   `demo_bringup`.
 - [ ] Add `qemu_nuttx_entry` once the NuttX workspace build blockers
   below are resolved.
-- [ ] Add Zephyr and ESP32 Entry packages once their documented
-  `nros setup` + codegen + platform-tool build workflows are available
-  for workspace fixture rows.
+- [x] Add the Zephyr Entry package — DONE (Phase 225.P). `src/zephyr_entry`
+  builds via `west build` on native_sim through the workspace fixture lane;
+  the `nros setup` + `nros ws sync`/codegen + west workflow is wired. Its
+  runtime E2E is gated only by an environmental native_sim↔zenoh
+  connectivity issue that also fails the pre-existing single-node reference
+  (`test_zephyr_to_native_e2e`) — tracked in the 225.P Status note, not an
+  Entry defect.
+- [ ] Add the ESP32 Entry package once its bare-metal runtime
+  (`NullNodeRuntime` → real `ExecutorNodeRuntime`, shared 212.N track) and a
+  CI-runnable OpenETH board land.
 - [x] Update `examples/fixtures.toml`, fixture builders, and E2E lookup
   helpers after Entry topology changes.
 - [x] Add generic native CMake/Corrosion support for Rust Node pkgs in
