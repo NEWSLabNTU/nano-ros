@@ -24,9 +24,9 @@ Canonical layout reference for nano-ros user workspaces. Matches design decision
 |------------|----------------------------------|-----------------------------------------|------------------------|
 | single rust| cargo                            | `cargo build` / `cargo run`             | no                     |
 | single cpp | cmake                            | `cmake --build`                         | no                     |
-| multi rust | cargo (workspace)                | `cargo build` + `nros plan/deploy`| yes (`demo_bringup`)   |
-| multi cpp  | cmake (superbuild)               | `cmake --build` + `nros plan/deploy`    | yes (`demo_bringup`)   |
-| mixed      | cmake (corrosion bridges cargo)  | `cmake --build` + `nros plan/deploy`    | yes (`demo_bringup`)   |
+| multi rust | cargo (workspace)                | `cargo build` + `nros plan/codegen-system`| yes (`demo_bringup`)   |
+| multi cpp  | cmake (superbuild)               | `cmake --build` + `nros plan/codegen-system`    | yes (`demo_bringup`)   |
+| mixed      | cmake (corrosion bridges cargo)  | `cmake --build` + `nros plan/codegen-system`    | yes (`demo_bringup`)   |
 
 Caveman rule: pure-Rust speak cargo. Pure-C++ speak cmake. Mix → cmake boss, cargo slave via Corrosion. Many node → add bringup pkg. One node → no bringup.
 
@@ -248,7 +248,7 @@ nros plan
 # wrote build/demo_bringup/plan.json
 
 # 5. nros — launch native
-nros deploy native
+cargo run -p native_entry            # native run (no nros deploy — Phase 222)
 # [listener] hi 0
 # [listener] hi 1
 ```
@@ -326,12 +326,12 @@ nros plan demo_bringup
 # resolved 2 nodes across 1 domain (default/cyclonedds/0)
 
 # 5. nros — launch native
-nros deploy native
+cargo run -p native_entry            # native run (no nros deploy — Phase 222)
 # [listener] got: hello 0
 # [listener] got: hello 1
 ```
 
-Asymmetry: there is **no** `cmake nros …` subcommand. `cargo` dispatches to `cargo-<x>` binaries on PATH; cmake has no equivalent. Phase 212 accepts this — C++ users always call `nros plan` / `nros deploy` directly, bridged via `nano_ros_workspace_metadata(…)`.
+Asymmetry: there is **no** `cmake nros …` subcommand. `cargo` dispatches to `cargo-<x>` binaries on PATH; cmake has no equivalent. Phase 212 accepts this — C++ users always call `nros plan` / `nros codegen-system` directly, bridged via `nano_ros_workspace_metadata(…)`.
 
 ---
 
@@ -410,7 +410,7 @@ nros plan demo_bringup
 # plan: 2 nodes, 1 topic (chatter: std_msgs/Int32)
 
 # 5. nros — launch native
-nros deploy native
+cargo run -p native_entry            # native run (no nros deploy — Phase 222)
 # [listener] heard: 0
 # [listener] heard: 1
 ```
@@ -421,8 +421,8 @@ Cross-language pub/sub works because both components link `NanoRos::NanoRos` wit
 
 ## Decision rules
 
-- **Pure Rust → cargo top-level.** Workspace root `Cargo.toml`, components as `staticlib+rlib`. Build with `cargo build`; orchestrate with `nros plan/deploy`.
-- **Pure C++ → cmake top-level.** Superbuild root `CMakeLists.txt` with `nano_ros_workspace_metadata(SYSTEM …)`; components are executables. Build with `cmake --build`; orchestrate with `nros plan/deploy` (no `cmake nros`).
+- **Pure Rust → cargo top-level.** Workspace root `Cargo.toml`, components as `staticlib+rlib`. Build with `cargo build`; orchestrate with `nros plan/codegen-system`.
+- **Pure C++ → cmake top-level.** Superbuild root `CMakeLists.txt` with `nano_ros_workspace_metadata(SYSTEM …)`; components are executables. Build with `cmake --build`; orchestrate with `nros plan/codegen-system` (no `cmake nros`).
 - **Mixed Rust + C++ → cmake top-level via Corrosion.** Root `Cargo.toml` ships **only** for rust-analyzer; loud-fail if someone runs `cargo build` at root.
 - **Multi-node → add `<system>_bringup` pkg.** Carries `package.xml` + `system.toml` + `launch/`. No source, no `Cargo.toml`, no `CMakeLists.txt`. Workspace pointer (`workspace.metadata.nros.default_system` in Rust, `nano_ros_workspace_metadata(SYSTEM …)` in CMake) names it.
 - **Single-node → no bringup pkg.** One crate / one cmake project, that is the whole repo.

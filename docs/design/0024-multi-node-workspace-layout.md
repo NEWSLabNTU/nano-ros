@@ -73,7 +73,7 @@ superseded-by: null
 1. **ROS standard layout.** Launch files live in dedicated orchestration package (`<system>_bringup` convention). Component packages stay code-only.
 2. **No colcon as primary orchestrator.** Error attribution (rustc/gcc diagnostics swallowed by `Failed <<<`), embedded targets ignored, install/ tree dead weight for MCUs, cross-language codegen invisible to colcon DAG. Colcon stays *available* for Autoware-style outer integration via `colcon-cargo-ros2` seam; never the inner workflow.
 3. **cargo / cmake stay user-facing.** `cargo build` works at workspace root for Rust-majority. `cmake --build build` works for C++-majority. Rustc errors stay rustc errors.
-4. **nros never a build verb.** No `nros build` / `nros test` / `nros flash`. nros = provisioner + codegen + metadata + deploy. Idf.py-shaped, not colcon-shaped.
+4. **nros never a build verb.** No `nros build` / `nros test` / `nros flash`. nros = provisioner + codegen + metadata. Idf.py-shaped, not colcon-shaped.
 5. **One-package workflow stays canonical for tiny fixtures.** Multi-package shape kicks in at ≥2 components. (Phase 212 already decided single-package workflow user-facing.)
 
 ---
@@ -127,7 +127,7 @@ demo_bringup/
 
 Leaning A. Need to prototype `nros plan <dir>` discovery first.
 
-**OPEN: `buildtool_depend` in `package.xml`?** ament_cmake assumes empty CMakeLists installs `share/<pkg>/launch/`. Without colcon in inner loop, who installs? `nros deploy` reads `launch/` directly from the source tree — no install step. Maybe omit `<buildtool_depend>` entirely. Need to check if `ros2 launch` (when user *does* run colcon outside) still resolves.
+**OPEN: `buildtool_depend` in `package.xml`?** ament_cmake assumes empty CMakeLists installs `share/<pkg>/launch/`. Without colcon in inner loop, who installs? the codegen step reads `launch/` directly from the source tree — no install step. Maybe omit `<buildtool_depend>` entirely. Need to check if `ros2 launch` (when user *does* run colcon outside) still resolves.
 
 ---
 
@@ -278,7 +278,7 @@ nros plan                                               # NROS (default_system =
 ### Step 5 — Deploy + launch
 
 ```bash
-nros deploy native                                            # NROS
+cargo run -p native_entry            # native run (no nros deploy — Phase 222)
 ros2 launch robot_bringup system.launch.xml                  # ROS 2 (when wanted)
 # or
 nros launch robot_bringup                                     # NROS (host-side, no ament install needed)
@@ -303,10 +303,10 @@ Steps 4–5 unchanged. Step 4's `nros plan` becomes either bare `nros plan robot
 1. **Orchestration pkg `Cargo.toml`?** (Path A no-toml vs Path B stub-toml.) Decision blocked on prototype: can `nros plan <dir>` cleanly walk outside `[workspace] members`? §4.
 2. **Multi-system shared config.** Duplicate vs `include =` vs workspace-root `[defaults]`. Wait for real pain. §5.
 3. **`nros launch` vs `ros2 launch`.** Host-side launcher independent of ament, or always shell to `ros2 launch` after a one-off install? Affects whether orchestration pkg needs `<buildtool_depend>ament_cmake</buildtool_depend>`. §7.
-4. **C++ workspaces — `cmake nros` subcommand?** No cmake plugin idiom. C++ users invoke `nros plan` / `nros deploy` directly. Asymmetric vs cargo's `nros plan`. Phase 212 line 670 already accepts this asymmetry as honest. Confirm. §6.
+4. **RESOLVED:** **C++ workspaces — `cmake nros` subcommand?** No cmake plugin idiom. C++ users invoke `nros plan` / `nros codegen-system` directly, then build with native `cmake --build` (no `nros deploy`). Asymmetric vs cargo's `nros plan`. Phase 212 line 670 already accepts this asymmetry as honest. §6.
 5. **Does `system.toml` belong to the orchestration pkg or stay workspace-root?** This doc says move to bringup pkg. Argument for staying root: a workspace w/ exactly one bringup pkg has indirection-for-nothing. Argument for moving: multi-system workspaces, ROS muscle memory, decouples build graph from system graph. Leaning move. §5.
 6. **`[system].components` schema.** List of crate names, or list of `{name, role, qos_overrides}` tables? Today's `nros.toml` already has per-component override blocks. Where do they live in the split? Leaning: simple list in `[system].components`; per-component QoS lives in component crate's `[package.metadata.nros.component]`. Cross-cutting overrides go in `[[deploy.*]]`. §4.
-7. **Mixed-language workspace bootstrap.** First-time user runs `cargo build` against a workspace containing a C++ component pkg — what happens? Cargo ignores non-Cargo dirs. User must know to `cmake -S . -B build` instead. Onboarding friction. Options: (a) document, (b) generate a top-level `Makefile` shim, (c) `nros build` (rejected by constraint 4). Leaning (a) — honest. §6.3.
+7. **RESOLVED:** **Mixed-language workspace bootstrap.** First-time user runs `cargo build` against a workspace containing a C++ component pkg — what happens? Cargo ignores non-Cargo dirs. User must know to `cmake -S . -B build` instead. Mixed-language uses the CMake-boss + Corrosion flow (RFC-0025 Case 5): CMake drives the cross-language graph, Corrosion imports the Rust crates. Options once were: (a) document, (b) generate a top-level `Makefile` shim, (c) `nros build` (rejected by constraint 4). Resolved to CMake-boss + Corrosion. §6.3.
 8. **Codegen interface package shape.** Where does `my_interfaces/` (a `.msg`-only package) sit? Today: `packages/interfaces/<pkg>/` w/ codegen via `nros generate-rust`. In multi-pkg workspace: sibling `my_interfaces/` pkg w/ `package.xml` declaring `<member_of_group>rosidl_interface_packages</member_of_group>`? Component crates `cargo:rerun-if-changed=` against it. Not yet sketched.
 9. **Embedded MCU + multi-pkg workspace.** Multi-component on Zephyr: does each component get its own `west` app, or one app composing multiple components via Kconfig? Phase 172.K.5 (per-node multi-domain routing) suggests one-app-N-components. Need pattern check w/ §7's launch step.
 
@@ -325,7 +325,7 @@ Steps 4–5 unchanged. Step 4's `nros plan` becomes either bare `nros plan robot
 
 ## 10. Next concrete steps
 
-1. **Prototype 3-package fixture** at `packages/testing/nros-tests/fixtures/multi_pkg_workspace/`: `demo_bringup` + `talker_pkg` + `listener_pkg`. Path A (no Cargo.toml in bringup). Run `cargo build` + `nros plan demo_bringup` + `nros deploy native`. Confirm cargo workspace happy w/ excluded pkg.
+1. **Prototype 3-package fixture** at `packages/testing/nros-tests/fixtures/multi_pkg_workspace/`: `demo_bringup` + `talker_pkg` + `listener_pkg`. Path A (no Cargo.toml in bringup). Run `cargo build` + `nros plan demo_bringup` + `cargo run -p native_entry`. Confirm cargo workspace happy w/ excluded pkg.
 2. **Spike `nros emit package-xml`** from `system.toml`. Validate against colcon-outer workflow (run `colcon build` on the fixture inside a host ROS 2 install). Confirms Autoware-style outer integration unbroken.
 3. **Spike mixed-language fixture**: `talker_pkg` (Rust) + `listener_pkg` (C++) + `demo_bringup`. Top-level `CMakeLists.txt` + `corrosion_import_crate`. Confirm rustc errors still reach terminal verbatim through cmake.
 4. **Resolve OPEN 3** (`nros launch`). Prototype host-side launcher reading `system.launch.xml` w/o ament index. If clean, retire `<buildtool_depend>` from bringup pkg.

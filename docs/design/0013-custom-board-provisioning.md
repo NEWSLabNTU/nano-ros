@@ -157,8 +157,8 @@ nros setup: wrote .cargo/config.toml (${workspace} → external/my-vendor-hal)  
 
 # 3. host-env (rustup target) + build + run — same as any nano-ros board:
 $ source ./setup.bash      # PATH the nros-store tools (probe-rs) — Phase 197.4
-$ nros build               # cargo cross-build, my-vendor-hal patched in
-$ nros deploy my-rover     # probe-rs run --chip … (the cargo_config runner)
+$ cargo build              # cross-build, my-vendor-hal patched in
+$ cargo run -p my_rover    # probe-rs run via the cargo_config runner (no nros deploy — Phase 222)
 ```
 
 **Current state of the simulation (what works vs needs the nros-cli change):**

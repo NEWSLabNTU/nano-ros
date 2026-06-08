@@ -17,7 +17,7 @@ relays declared topics between them — one process, multiple sessions, raw CDR
 forwarding. The public API stays in the **rclcpp / rclrs / rclc shape** (the
 `domain_bridge` pattern expressed in our mirrored client API), with nano-ros
 add-ons layered on. **Status: DONE** — the config→plan layer (`PlanBridge` +
-`nros deploy` `apply_bridges`, codegen `64effd0`) and the generator runtime half
+the codegen step `apply_bridges`, codegen `64effd0`) and the generator runtime half
 (`register_bridges` + the node-centric relay on Phase 189.M1, the `[[bridge]]`
 check warning dropped) have landed. Runtime e2e against two live RMW agents
 stays gated. This doc records the design.

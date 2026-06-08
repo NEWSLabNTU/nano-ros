@@ -99,8 +99,10 @@ setup --list/--install/--licenses` ≈ the sdkmanager verbs; `$NROS_HOME/sdk/`
 
 → nano-ros borrows: the **board→package-set resolution** (reuse `profile()` /
 the board crates as the "board manifest"), the **shared cache**, and the
-**auto-install-on-build** ergonomic — `nros build`/`nros deploy` triggering a
-missing `nros setup <board>` the way `pio run` triggers the platform install.
+**auto-install-on-build** ergonomic — a native build (`cargo build` / `cmake
+--build` / `west build`), via `nros codegen` resolving a missing package,
+triggering a missing `nros setup <board>` the way `pio run` triggers the
+platform install.
 
 **Split of roles:** Android gives the *index + CLI + license + shared-store*
 shape; PlatformIO gives the *board-scoped resolution + auto-install-on-build*
@@ -246,9 +248,10 @@ nros setup --licenses         # accept license gates
 nros doctor                   # already reports SDK/pin presence
 ```
 
-`nros build`/`nros deploy` gain a friendly error when a needed package is
-missing: *"run `nros setup <board>`"* (mirrors today's *"run `nros metadata
---build`"* hints).
+A native build (`cargo build` / `cmake --build` / `west build`), via `nros
+codegen` resolving a missing package, gains a friendly error when a needed
+package is missing: *"run `nros setup <board>`"* (mirrors today's *"run `nros
+metadata --build`"* hints).
 
 ## Release workflow — a bumped version is always available
 

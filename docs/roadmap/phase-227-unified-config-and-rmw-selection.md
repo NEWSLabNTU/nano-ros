@@ -95,6 +95,16 @@ byte-identical so raw `west build` / `idf.py build` stay valid in dev.
   RMW as declared config, with the cargo feature noted as the lowering detail.
 **Files:** the listed book pages.
 
+### 227.9 — Deploy-model doc (no `nros deploy` verb)
+Phase 222 removed `nros build`/`run`/`deploy`/`monitor`/`launch`; deployment is
+`nros codegen-system` + the native tool. Document the per-RTOS native deploy
+command-map (the `-D` args derived from `[deploy.<board>]` for west / idf.py /
+cmake / cargo) so embedded deploy is a clear documented multi-step (RFC-0003 §4).
+Scrub any lingering `nros deploy`/`build`/`run` from the book the way the RFCs
+were scrubbed.
+**Files:** `book/src/getting-started/workspace-*.md`, embedded chapters, the
+per-`just <plat>` recipe docs.
+
 ## Acceptance
 
 - A single-node project with no `system.toml` builds via the synthesized system;

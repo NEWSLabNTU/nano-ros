@@ -33,7 +33,8 @@ Universal rule: **Vendor own build + link. nano-ros own (a) per-vendor adapter s
 |   nros plan        — resolve [[components]] x [[deploy]]     |
 |   nros codegen sys — system.toml -> system_config.h +        |
 |                      system_main.c + Cargo workspace stub    |
-|   nros deploy <b>  — shells vendor tool with baked tree      |
+|   (no deploy verb)  — native vendor tool builds/flashes      |
+|                       the baked tree (Phase 222)             |
 +--------------------------------------------------------------+
                           |  emits baked C + Cargo stub
                           v
@@ -76,7 +77,19 @@ Arrows: user → 212 (host inputs); 212 → adapter (baked sources + Cargo stub)
 
 ## 4. The deploy contract
 
-`nros deploy <board>` mean three things universally: **(a)** read `system.toml` + `[deploy.<board>]` + `launch/*.xml`, emit baked tree under `build/<board>/`; **(b)** shell vendor tool with right args (board, target, sdkconfig); **(c)** optionally flash + monitor (gated by `--flash`).
+> **Deploy model (Phase 222, decided 2026-06).** There is **no `nros deploy`
+> verb** — Phase 222 deprecated `nros build`/`run`/`deploy`/`monitor`/`launch`
+> (thin wrappers). `nros` is provisioner + codegen + metadata only. Embedded
+> deploy is a **documented native multi-step**: `nros codegen system` bakes the
+> `[deploy.<board>]` config, then the vendor's own tool builds + flashes with the
+> `-D` args derived from `[deploy.<board>]` (per-RTOS args live in the book
+> command-map + `just <plat>` recipes). Read the "`nros deploy <board>`" wording
+> below as that three-step native sequence, not a single command.
+
+Embedded deploy means three things universally: **(a)** `nros codegen system`
+reads `system.toml` + `[deploy.<board>]` + `launch/*.xml` and emits the baked tree
+under `build/<board>/`; **(b)** the **vendor tool** builds with the right args
+(board, target, sdkconfig); **(c)** the **vendor tool** flashes + monitors.
 
 ```
 Zephyr    1) nros codegen system --out build/<b>/nros-system
@@ -116,10 +129,10 @@ Embedded iteration loop:
 1. Edit Rust/C++ component code
 2. (Optional) `cargo check -p <component>` — fast feedback, no vendor tool
 3. `nros plan` — emit baked configs + Cargo workspace stub under `build/<board>/`
-4. `nros deploy <board>` — shell vendor tool; produces ELF; flashes if `--flash`
+4. native vendor tool builds the baked tree → ELF, flashes (no `nros deploy` — §4)
 5. Monitor: `west monitor` / `idf.py monitor` / `probe-rs attach` / `pio device monitor` / vendor-specific
 
-**Differ from desktop multi-node.** Desktop `nros deploy native` spawn N processes (one per `[[components]]`), each its own ROS node, comms via DDS/zenoh on loopback. Embedded `nros deploy <mcu>` produce **one ELF** containing all N components linked together — single-binary-multi-thread, one DDS/zenoh participant per component but sharing the address space. The bringup pkg surface is identical; the codegen lowers to wildly different targets. Domain ID + locator are **runtime env** on native (`unique_ros_domain_id()` from `NEXTEST_TEST_GLOBAL_SLOT`), **compile-time baked** on MCU (CLAUDE.md exception). Phase 212's job: hide that split behind one `system.toml`.
+**Differ from desktop multi-node.** Desktop deploy spawns N processes (one per `[[components]]`), each its own ROS node, comms via DDS/zenoh on loopback. Embedded deploy produces **one ELF** containing all N components linked together — single-binary-multi-thread, one DDS/zenoh participant per component but sharing the address space. The bringup pkg surface is identical; the codegen lowers to wildly different targets. Domain ID + locator are **runtime env** on native (`unique_ros_domain_id()` from `NEXTEST_TEST_GLOBAL_SLOT`), **compile-time baked** on MCU (CLAUDE.md exception). Phase 212's job: hide that split behind one `system.toml`.
 
 ## 6. Per-RTOS adapter ≤200 LoC budget
 
@@ -139,12 +152,13 @@ Fallback when exceeded: **split shell into shared core + per-board overlays** (T
 ## 7. Open questions
 
 - **RESOLVED (2026-06):** Codegen timing — **ahead-of-vendor is the contract.**
-  `nros deploy` always runs `nros codegen system` first, producing the baked tree
-  the vendor tool then consumes. For hook-capable vendors (Zephyr/ESP-IDF/ThreadX/
-  NuttX/FreeRTOS) the configure-time hook is kept as an **idempotent convenience**
-  so a raw `west build` / `idf.py build` still works in dev — it runs the *same*
-  codegen and yields the *same* tree. There is one contract (ahead-of-vendor) with
-  an optional second trigger (configure-time), not two divergent codepaths.
+  `nros codegen system` runs **before the native build tool**, producing the baked
+  tree the vendor tool then consumes (there is no `nros deploy` orchestrator — §4
+  deploy model). For hook-capable vendors (Zephyr/ESP-IDF/ThreadX/NuttX/FreeRTOS)
+  the configure-time hook is kept as an **idempotent convenience** so a raw
+  `west build` / `idf.py build` still works in dev — it runs the *same* codegen and
+  yields the *same* tree. One contract (ahead-of-vendor), optional second trigger
+  (configure-time), not two divergent codepaths.
 - **OPEN:** Multi-component on FreeRTOS — one DDS/zenoh participant per component or one shared per ELF? Memory budget on Cortex-M3 likely forces shared; breaks domain-isolation semantics.
 - **OPEN:** Bridge mode (`Executor::open_multi`, Phase 128) interaction with embedded — does `[[bridge]]` in `system.toml` even make sense on MCU (multi-RMW = double the link cost)?
 - **OPEN:** Zephyr **snippet** vs `[deploy.<board>]` for RMW choice — pick one. Snippet is Zephyr-native + composable (`west build -S nros-cyclonedds`); `[deploy]` is portable across vendors. Today's `prj-<rmw>.conf` overlay is third option already shipped.
@@ -157,7 +171,7 @@ Fallback when exceeded: **split shell into shared core + per-board overlays** (T
 
 2. **`zephyr/cmake/nros_system_generate.cmake` + `nros_component_link.cmake`** — scope: ~150 LoC inside existing Zephyr module wrapping `nros codegen system` + multi-component `rust_cargo_application()` shape (§5 of Zephyr investigation). Justification: Zephyr is the highest-volume embedded target; the single-node path already works, multi-node is the new surface.
 
-3. **Per-RTOS `[deploy.<board>]` schema in `nros-sdk-index.toml`** — scope: add `kind` (zephyr/nuttx/freertos/threadx/esp-idf/pio), `board`, `target` (Rust triple), `rmw`, optional `flash_cmd` + `monitor_cmd`. Justification: `nros deploy <board>` needs one place to read the vendor-tool invocation pattern; today this is scattered across 8 `just/*.just` recipes.
+3. **Per-RTOS `[deploy.<board>]` schema in `nros-sdk-index.toml`** — scope: add `kind` (zephyr/nuttx/freertos/threadx/esp-idf/pio), `board`, `target` (Rust triple), `rmw`, optional `flash_cmd` + `monitor_cmd`. Justification: the native deploy step (codegen + vendor build/flash) needs one place to read the vendor-tool invocation pattern; today this is scattered across 8 `just/*.just` recipes.
 
 4. **NuttX adapter split** — scope: refactor `integrations/nuttx/` into `core/` (shared templates) + per-bringup-pkg overlays, document `≤200 LoC per crate` budget explicitly. Justification: §6 shows the budget definition is ambiguous; codifying per-crate vs per-shell prevents future drift.
 

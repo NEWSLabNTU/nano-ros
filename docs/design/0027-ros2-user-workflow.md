@@ -23,6 +23,8 @@ superseded-by: null
 > **current** multi-node layout is RFC-0024 / RFC-0025; configuration is RFC-0004;
 > RMW selection is RFC-0031. This RFC remains the capstone rationale for *why* the
 > workflow has its shape.
+>
+> **CLI-verb note (Phase 222).** This doc's `nros build` / `nros run` references predate Phase 222, which **removed** those verbs — `nros` is now provisioner + codegen + metadata only. Read `nros build` as the native build (`cargo build` / `cmake --build` / `west build` / `idf.py build`) and `nros run` as the native run (`cargo run -p <entry>` / `west run` / `probe-rs run`).
 
 ## Goal
 
@@ -55,8 +57,8 @@ cd ..
 nros setup --target freertos-zenoh
 nros plan robot_bringup launch/system.launch.py -- robot_ns:=/car01
 nros check
-nros build --target freertos-zenoh --board mps2-an385
-nros run --qemu
+# build: west build -b mps2_an385 -- -DNANO_ROS_RMW=zenoh   (after: nros codegen-system)
+# run:   west build -t run
 nros monitor
 ```
 
