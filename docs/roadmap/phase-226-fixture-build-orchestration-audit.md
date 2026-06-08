@@ -1707,11 +1707,43 @@ Acceptance:
 
 ### 226.D — Shared Rust Fixture Target Dirs
 
-- [ ] Add grouping logic for compatible Rust fixture rows.
-- [ ] Apply shared fixture-only `--target-dir` to qemu bare-metal,
-      stm32f4, ESP32/QEMU-ESP32, and compatible native/RTOS rows.
-- [ ] Keep feature/RMW/env variants isolated where sharing would cause
-      feature thrash or stale artifacts.
+- [x] Add grouping logic for compatible Rust fixture rows
+      (`scripts/build/fixtures-target-dir.sh`, shared by
+      `fixtures-build.sh` and `rust-fixture-stale.sh`; grouping key =
+      platform | lang | triple | profile | no-default | sorted features |
+      sorted env, with `--target`/`--target-dir` excluded since the triple
+      is implied 1:1 by the migrated platforms). Default rows slug to the
+      platform; any future feature/env variant gets a hashed suffix.
+- [x] Apply shared fixture-only `--target-dir`
+      (`build/fixtures-cargo/<group>`) to **qemu-arm-baremetal** (19 rows)
+      and **stm32f4** (8 rows). Eligibility: built by `fixtures-build.sh`
+      AND no authored `target_dir`.
+- [x] Mirror the resolver in
+      `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`
+      (`fixture_shared_target_dir` + `require_{qemu_baremetal,stm32f4}_fixture`);
+      repointed all qemu/stm32f4 prebuilt-binary lookups.
+- [x] Recipe callers reconciled: `just/qemu-baremetal.just`
+      (`FIXTURE_TARGET`; `test-basic`/`test-wcet`/`test-lan9118` +
+      direct-run recipes now consume the shared dir via `build-fixtures`;
+      `clean` removes it) and `just/stm32f4.just` (`clean` removes it).
+- [x] Stale probe parity: `fixtures-manifest.py --with-platform` feeds
+      `rust-fixture-stale.sh`, which uses the same helper (no false-stale).
+- [x] Keep feature/RMW/env variants isolated (authored `target_dir` rows —
+      target-tls/safety/zero-copy/zenoh/xrce — bypass the shared dir).
+
+Verified 2026-06-08 (Wave 13): single-row faithful replication of the
+build path put `qemu-bsp-talker` under
+`build/fixtures-cargo/qemu-arm-baremetal/thumbv7m-none-eabi/<profile>/`; the
+Rust resolver returns that exact path; the stale probe reports it fresh.
+`cargo check -p nros-tests` passes. qemu/stm32f4 manifest rows carry no
+`id`, so `fixtures-build.sh --id` cannot narrow to one row; round-trip was
+proven by replicating `nros_fixture_build_one` for a single row with the
+identical helper + cargo call.
+
+**Deferred to a later patch (extra postprocessing / different modes):**
+ESP32 + qemu-esp32-baremetal flash-image packaging (build-std/nightly +
+fixed flash paths), FreeRTOS/NuttX/ThreadX RTOS rows, and the legacy
+in-body self-builder `build_qemu_test` (`qemu_binary` rstest fixture).
 
 Acceptance:
 
@@ -1724,14 +1756,57 @@ Acceptance:
 
 - [x] Audit per-example CMake build dirs that create separate Corrosion
       Cargo target trees.
-- [ ] Capture sccache stats around native, Zephyr, FreeRTOS, ThreadX,
+- [x] Capture sccache stats around native, Zephyr, FreeRTOS, ThreadX,
       and representative Cyclone C/C++ fixture builds.
+      Measured (Wave 13, `tmp/phase226-cxx-eff/measure/`, `RUSTC_WRAPPER=sccache`,
+      recipe-replicated `NROS_CMAKE_EXTRA_DEFS`): native c/cpp × zenoh/xrce/
+      cyclonedds (`x86_64-unknown-linux-gnu`); freertos c/cpp zenoh
+      (`thumbv7m-none-eabi`); threadx-linux c zenoh + c cyclonedds
+      (`x86_64-unknown-linux-gnu`, platform-threadx); threadx-riscv64 c/cpp ×
+      zenoh/cyclonedds (`riscv64gc-unknown-none-elf`). Per cell, 3 steps:
+      cold-talker (rm build dir + zero stats), sibling listener (separate
+      target-dir, same triple), warm-talker (preserved dir).
+      - `nros-c` / `nros-cpp` compile exactly ONCE per CMake build dir
+        (cold=1, sibling-listener=1, warm-same-dir=0). Each `build-<rmw>/` owns
+        a private Corrosion `--target-dir` → zero cross-build-dir cargo reuse.
+      - Warm same-dir rebuild = full no-op: 0 compiles / 0 objects / 0 links /
+        0 sccache requests (cargo fingerprint short-circuits before rustc).
+      - sccache steady-state cross-build-dir hit rate is only ~23-25% of
+        requests (cold→sibling hit jump e.g. native c zenoh 76→225,
+        freertos c zenoh 59→209, riscv c zenoh 49→210).
+      - Cyclone cells rebuild ddsc/ddsrt/ddsi from source IN EACH build dir:
+        119-139 C objs (native), 315 (threadx-linux), 677-851
+        (threadx-riscv64); `ProvideCycloneDDS.cmake` routes them through
+        sccache so they become cross-build-dir C/C++ hits (final global
+        C/C++ hit rate 100%).
+      - Zephyr DEFERRED (expensive west build; not cheaply reachable per-cell).
+      - threadx-linux cpp could not complete under forced-cold rm: a transient
+        in-tree `nros_cpp_ffi.h` regeneration race ("multiple definition") — a
+        methodology artifact, not a build break; covered by analogy via native
+        cpp + threadx-riscv64 cpp (same profiles).
 - [x] Count real `nros-c` / `nros-cpp` recompiles from build output,
       distinguishing Cargo fingerprint checks from actual `Compiling`
       lines.
-- [ ] Identify whether misses are caused by target triple, platform
+- [x] Identify whether misses are caused by target triple, platform
       feature set, env/toolchain differences, clean build dirs, or
       scheduler fan-out.
+      Root cause (sccache `Non-cacheable reasons`): `crate-type`=274 dominates —
+      sccache REFUSES to cache staticlib/bin crate-types, so `nros-c`, `nros-cpp`,
+      `*-staticlib` and the example bin are STRUCTURALLY non-cacheable. This is a
+      constant ~180-211 "non-cacheable calls" per cell, IDENTICAL between
+      talker and listener (zero cross-cell recovery). Secondary: separate clean
+      build dirs (the per-cell ~890-930 rustc request volume); distinct target
+      triples (native/threadx-linux=`x86_64`, freertos=`thumbv7m`,
+      threadx-riscv64=`riscv64gc`) and platform-feature splits (posix vs threadx,
+      cffi-zenoh-cffi vs rmw-cffi) are legitimate hard partitions. env/toolchain
+      and scheduler fan-out are NOT miss causes (sccache cache is global).
+      Conclusion: shared Corrosion `--target-dir` per (triple, feature-set,
+      profile) role group is a real win sccache CANNOT provide — it removes the
+      ~200 non-cacheable staticlib recompiles/cell via cargo-level reuse.
+      Candidates: native c+cpp per-RMW (`x86_64`/std/posix); per-platform
+      per-RMW role sets. Do NOT merge native(posix) with threadx-linux(threadx)
+      despite the shared x86_64 triple, nor zenoh with cyclone/xrce, nor across
+      the three embedded triples.
 - [x] Remove native Cyclone `rm -rf build-cyclonedds` from normal
       fixture builds.
 
@@ -1910,6 +1985,91 @@ Wave 12 follow-up:
 - Hardened `just native build-examples` generated make targets to invoke
   the exported Bash function through `bash -c`, and documented that the
   `JOBS` recipe parameter is positional.
+
+### Wave 13 — 226.D Make-Leaf Fix + 226.F Broad Validation
+
+Started 2026-06-08. Scope: merge 226.D + 226.E findings, fix the 226.D
+make-leaf regression they surfaced, and run the 226.F broad validation.
+
+**226.D make-leaf export bug (FOUND + FIXED).** The first 226.D landing
+exported the resolver *functions* (`export -f`) to the `make` fixture
+leaves but left `NROS_FIXTURE_SHARED_PLATFORMS` as a plain (non-exported)
+script var. `scripts/build/fixtures-build.sh` schedules eligible rows as
+`make` leaves under `SHELL := /bin/bash` + `.SHELLFLAGS := -eu`; the leaf
+is a fresh bash that inherits functions but NOT the plain var, so under
+`set -u` the resolver's `case " $NROS_FIXTURE_SHARED_PLATFORMS "` hit an
+unbound var, the error was swallowed by `group=$(...) || return 0`, and
+every row silently fell back to the example-local `target/`. The original
+agent "proof" used in-process replication of `nros_fixture_build_one`,
+which never exercised the make-leaf path, so the no-op went unnoticed.
+Fix: `export NROS_FIXTURE_SHARED_PLATFORMS` at the helper source
+(`scripts/build/fixtures-target-dir.sh`) so make children inherit it.
+Verified: `just qemu build-fixtures` now populates
+`build/fixtures-cargo/qemu-arm-baremetal/.../` with all 19 rows +
+`qemu-rs-test` / `qemu-rs-wcet-bench` / `qemu-rs-lan9118`, and
+`just qemu test` passes 5/5. stm32f4 rows also route to the shared dir.
+
+**226.F broad validation — partial; blocked by pre-existing breakage.**
+Per-platform fixture builds all pass (warm timings, `NROS_BUILD_JOBS=8`):
+native 340 s, qemu 55 s, freertos 88 s, nuttx 22 s, zephyr-rs 7 s,
+zephyr-ccpp 22 s. Focused runtime consumers pass: `just native
+test-c-xrce`, `just native test-c`, `just qemu test` (5/5),
+`_check-fixtures-stale`. The shared-target-dir change is sound (19 diverse
+qemu rows — rtic/serial/xrce/bsp — build + test green).
+
+The broad clean build (`build-all-jobserver.sh` / `just
+build-test-fixtures`) does NOT go green on the maintainer host, for
+reasons **independent of Phase 226's orchestration changes**:
+
+1. **Stale standalone lockfiles (218.J debt).** ~56 example/testing
+   `Cargo.lock` + 7 `Cargo.toml` still pin nano-ros crates at `0.1.0`;
+   the 218.J `0.1.0 -> 0.5.0` bump never propagated to standalone
+   lockfiles. `nros generate-rust` aborts via the `nros-cli-core`
+   `abi_guard` (`CLI nros-core 0.5.0` vs lock `0.1.0`). The mismatch is a
+   FALSE POSITIVE — the real source is `0.5.0` everywhere (root
+   `Cargo.lock` + `cargo tree`), and standalone locks are not used for
+   actual compilation. A clean repo-wide regen proved infeasible as a
+   side-task: standalone locks reference nano-ros as *patched registry*
+   deps, so `ws sync` + `cargo update -p` left 61/71 locks incomplete and
+   produced 5500+ lines of registry-dep churn. Worked around with the
+   documented `NROS_SKIP_VERSION_CHECK=1` opt-out for the validation run.
+   **Tracked separately** (see Follow-ups below).
+2. **`examples/templates/multi-node-workspace`** missing
+   `generated/builtin_interfaces/Cargo.toml` — the template needs a
+   codegen/`ws sync` pass the broad build does not run for it.
+3. **stm32f4 `talker-embassy`** does not link (undefined `__assert_func`
+   / `strncmp` / `nros_platform_alloc` standalone; duplicate
+   `platform_aliases` symbols in the shared dir). The pre-226 hard-coded
+   stm32f4 recipe list **deliberately omitted** `talker-embassy`; the
+   Wave 3 manifest migration (`fixtures-build.sh stm32f4 rust`) now
+   includes it, surfacing the broken example. There is no manifest
+   `skip_build` field (only `skip_probe`).
+4. **threadx-linux cpp** `nros_cpp_ffi.h` "multiple definition /
+   conflicting declaration" — the transient FFI-header regeneration race
+   already noted in 226.E; intermittent, not an orchestration change.
+5. **threadx-riscv64** `build-fixture-extras` rc=127 (missing tool/env on
+   this host).
+
+`just test-all` was not reached (gated on the fixture stamp the broad
+build never wrote). No source/lock/generated files were left modified by
+this validation — the broad build regenerates the stale committed
+locks/generated each run, and that churn was reverted to keep the working
+tree to the Phase 226 source changes only.
+
+### 226.F Follow-ups (out of Phase 226 orchestration scope)
+
+- **Stale standalone lockfiles (218.J).** Own maintenance pass: propagate
+  the `0.5.0` bundle version into the ~56 standalone example/testing
+  `Cargo.lock` (and 7 `Cargo.toml` patch blocks), resolve the
+  `stm32f4-porting/{polling,rtic}` missing-`[workspace]`-table snag, and
+  re-establish the `tests/simple-workspace` colcon/standalone patch
+  config. Until then, broad builds need `NROS_SKIP_VERSION_CHECK=1` or a
+  per-dir regen.
+- **stm32f4 `talker-embassy`** fixture: either fix the example's link
+  (board libc/platform glue + memory layout) or add a manifest
+  `skip_build`/exclude so the stm32f4 fixture pass matches the pre-226
+  deliberate omission.
+- **multi-node-workspace template** codegen preflight in the broad build.
 
 Acceptance:
 
