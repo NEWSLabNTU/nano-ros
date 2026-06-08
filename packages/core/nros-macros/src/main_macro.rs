@@ -714,39 +714,31 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // differs. Generalises the single-node
         // `nros::zephyr_component_main!` body to N launch-named nodes.
         Framework::Zephyr => quote! {
-            // `rust_main` is the only entry symbol Zephyr links. Errors
-            // can't propagate through the C ABI; the bounded-spin path
-            // reports via `::std::println!` on hosted native_sim, and we
-            // drop the `Result` here.
+            // `rust_main` is the only entry symbol Zephyr links (the RTOS
+            // owns boot + the C `main`). native_sim builds for
+            // `x86_64-unknown-none` — a `no_std` target — so `std` is
+            // unavailable; observability goes through the `log` facade,
+            // routed to Zephyr's logger. Errors can't cross the C ABI, so
+            // they are logged and the `Result` is dropped here.
             #[unsafe(no_mangle)]
             pub extern "C" fn rust_main() {
+                // SAFETY: `set_logger` is callable once post-kernel-init.
+                unsafe { let _ = ::zephyr::set_logger(); }
                 let _ = __nros_zephyr_entry_run();
-            }
-
-            // native_sim builds for the hosted host triple (x86_64), so
-            // `::std` is linkable there; real embedded boards are
-            // `target_os = "none"` and stay `core`-only. The Entry lib
-            // is `#![no_std]`, so opt std back in explicitly under the
-            // hosted cfg.
-            #[cfg(not(target_os = "none"))]
-            extern crate std;
-
-            #[cfg(not(target_os = "none"))]
-            fn __nros_env_usize(name: &str, default: usize) -> usize {
-                ::std::env::var(name)
-                    .ok()
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(default)
             }
 
             fn __nros_zephyr_entry_run() -> ::core::result::Result<
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
-                // Carrier / link-up gate — `ZephyrBoard` impls
-                // `NetworkWait` only (Zephyr's BSP owns init/print/exit).
-                let _ = <#board_path as
-                    ::nros::__macro_support::nros_platform::NetworkWait>::wait_link_up();
+                // Carrier / link-up gate. Use the same
+                // `platform::zephyr::wait_for_network` wrapper the
+                // single-node `nros::zephyr_component_main!` uses — it
+                // exposes a real linkable symbol. (`ZephyrBoard::wait_link_up`
+                // calls Zephyr's `net_if_is_up` / `k_msleep`, which are
+                // `static inline` header functions with no link symbol, so
+                // the native_sim final link fails with undefined references.)
+                let _ = ::nros::platform::zephyr::wait_for_network(2000);
 
                 // Open the executor + wrap it in the dispatch runtime, then
                 // register each launch-named Node pkg through a `RuntimeCtx`
@@ -755,65 +747,31 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // truth.
                 let config = ::nros::ExecutorConfig::default_const()
                     .node_name(::core::env!("CARGO_PKG_NAME"));
-                let executor = ::nros::Executor::open(&config)
-                    .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
+                let executor = match ::nros::Executor::open(&config) {
+                    ::core::result::Result::Ok(executor) => executor,
+                    ::core::result::Result::Err(e) => {
+                        ::log::error!("nros: zephyr entry — executor open failed: {:?}", e);
+                        return ::core::result::Result::Err(
+                            ::nros::__macro_support::nros_platform::RuntimeError::Spin,
+                        );
+                    }
+                };
                 let mut node_runtime = ::nros::ExecutorNodeRuntime::from_executor(executor);
                 let mut ctx = ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(
                     &mut node_runtime,
                 );
                 let runtime = &mut ctx;
                 #( #register_calls )*
+                ::log::info!(
+                    "nros: zephyr workspace entry up ({} nodes)",
+                    #num_register_calls
+                );
 
-                // Bounded spin on hosted native_sim (reuses the OwnedSpin
-                // `NROS_ENTRY_*` observability env + `observed_callback_counts`);
-                // unbounded forever-spin on embedded, or hosted when
-                // `NROS_ENTRY_SPIN_MS` is unset/0.
-                #[cfg(not(target_os = "none"))]
-                {
-                    ::std::println!(
-                        "nros: zephyr workspace entry up ({} nodes)",
-                        #num_register_calls
-                    );
-                    let total_ms = __nros_env_usize("NROS_ENTRY_SPIN_MS", 0);
-                    if total_ms != 0 {
-                        let step_ms = __nros_env_usize("NROS_ENTRY_SPIN_STEP_MS", 10)
-                            .clamp(1, total_ms.max(1));
-                        let expect_messages =
-                            __nros_env_usize("NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS", 0);
-                        let deadline = ::std::time::Instant::now()
-                            + ::std::time::Duration::from_millis(total_ms as u64);
-                        loop {
-                            runtime
-                                .runtime
-                                .spin_once(step_ms as u32)
-                                .map_err(|_| {
-                                    ::nros::__macro_support::nros_platform::RuntimeError::Spin
-                                })?;
-                            let (callbacks, messages) =
-                                runtime.runtime.observed_callback_counts();
-                            if expect_messages > 0 && messages >= expect_messages {
-                                ::std::println!(
-                                    "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
-                                );
-                                return ::core::result::Result::Ok(());
-                            }
-                            if ::std::time::Instant::now() >= deadline {
-                                ::std::println!(
-                                    "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
-                                );
-                                if expect_messages > 0 {
-                                    return ::core::result::Result::Err(
-                                        ::nros::__macro_support::nros_platform::RuntimeError::Spin,
-                                    );
-                                }
-                                return ::core::result::Result::Ok(());
-                            }
-                        }
-                    }
-                }
-
-                // Unbounded fallback — embedded always; hosted when the
-                // bounded-spin env is unset.
+                // Forever-spin: native_sim is `no_std`, so the OwnedSpin
+                // `NROS_ENTRY_*` bounded path (which needs `std::time`) does
+                // not apply. The runtime drives the launch node set (the
+                // talker's timer publishes); the workspace E2E observes
+                // delivery from an external listener and stops the process.
                 loop {
                     let _ = runtime.runtime.spin_once(10);
                 }

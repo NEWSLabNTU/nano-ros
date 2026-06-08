@@ -1036,28 +1036,53 @@ Acceptance:
 - RMW is selected by Kconfig overlay, board by `west build -b`, and the
   user types no nano-ros-specific build verb.
 
-Status (2026-06-08): P.1–P.8 implemented via a four-agent wave and
-**statically verified** in a toolchain-free checkout — `cargo check
--p nros-macros` (the `zephyr` framework branch in `main_macro.rs`),
-`cargo check -p talker_pkg --features zephyr`, `cargo check -p nros-tests
---tests` (helper + reshaped E2E), root `cargo metadata` (the
-`zephyr_entry` exclude), `fixtures-manifest.py validate-workspaces
---platform zephyr` → "validated 1", `list-workspaces --platform native`
-unchanged, and `bash -n` over the build scripts all pass. A cross-agent
-locator-port inconsistency was reconciled to the Zephyr rust-pubsub port
-7456 (leaf bake + E2E router + external-listener `NROS_LOCATOR`), and the
-E2E was reshaped from a single-process self-check to the canonical
-external native-listener pattern (asserts real cross-process `/chatter`
-`std_msgs/Int32` delivery, matching the single-node pubsub E2E), with the
-test routed into the serial `qemu-zephyr-pubsub-rust` nextest group.
-**Pending Zephyr toolchain** (not provisioned in this checkout — needs
-`just zephyr setup`): the actual `west build` of `zephyr_entry` on
-native_sim and the E2E run, plus one untested link seam — whether the
-bounded-spin block's `extern crate std` (emitted under `cfg(not(target_os
-= "none"))` for the hosted native_sim target) links cleanly alongside
-zephyr-lang-rust without a duplicate panic handler / global allocator.
-Until that build+E2E passes the 225.O Zephyr Entry checkbox stays
-unchecked.
+Status (2026-06-08): P.1–P.8 implemented via a four-agent wave, then
+**build-verified end-to-end with a provisioned Zephyr toolchain** (`just
+zephyr setup`). `west build -b native_sim/native/64 src/zephyr_entry --
+-DCONF_FILE="prj.conf;prj-zenoh.conf"` produces the two-node Entry
+`zephyr.exe` (`just zephyr build-fixtures` with
+`NROS_ZEPHYR_FIXTURE_FILTER=workspace-entry`, EXIT 0), and the Entry boots
+on native_sim, brings up the network, registers the launch node set, and
+attempts the zenoh session — identical runtime behavior to the proven
+single-node reference.
+
+The real `west build` surfaced **three product bugs the static checks
+could not** (all fixed):
+1. `build.rs` called `zephyr_build::export_kconfig_bool_options()`, renamed
+   to `export_bool_kconfig()` in the pinned zephyr-lang-rust — this was
+   stale in **all 8 existing zephyr rust examples** too (the whole zephyr
+   rust matrix was broken against this pin); fixed repo-wide.
+2. The Entry `[lib] name` must be `rustapp` (zephyr-lang-rust's
+   `rust_cargo_application()` links `librustapp.a` by fixed name).
+3. The `Framework::Zephyr` macro branch wrongly assumed native_sim is a
+   hosted (`x86_64-unknown-linux-gnu`) target and used `ZephyrBoard::wait_link_up`
+   (calls `static inline` `net_if_is_up`/`k_msleep` — no link symbol →
+   undefined-reference at the native_sim final link) plus `std`-based
+   bounded spin. native_sim is `x86_64-unknown-none` (`no_std`). Rewrote
+   the branch to use `platform::zephyr::wait_for_network`, the `log`
+   facade routed to the Zephyr logger (works `no_std`), and a forever-spin
+   (the OwnedSpin `NROS_ENTRY_*` bounded path needs `std::time` and does
+   not apply to Zephyr; the workspace E2E observes delivery from an
+   external listener + stops the process, so bounded spin is unnecessary).
+
+Cross-agent reconciliation: the locator was unified to the Zephyr
+rust-pubsub port 7456 (leaf bake + E2E router + external-listener
+`NROS_LOCATOR`), and the E2E was reshaped from a single-process self-check
+to the canonical external native-listener pattern (asserts real
+cross-process `/chatter` delivery), routed into the serial
+`qemu-zephyr-pubsub-rust` nextest group.
+
+**E2E data-delivery is NOT green in this checkout — but for an
+environmental reason, not an Entry bug.** The Entry's session open returns
+`Transport(ConnectionFailed)` reaching the host zenohd over native_sim
+NSOS, and the **pre-existing single-node reference `test_zephyr_to_native_e2e`
+fails identically** here (same `ConnectionFailed`, same "Listener timed
+out"). So native_sim↔zenoh connectivity is broken for every zephyr-zenoh
+E2E in this environment, independent of Phase 225.P. The 225.O Zephyr
+Entry checkbox stays unchecked until that environmental connectivity (or
+the reference test) is green; at that point the workspace Entry E2E is
+expected to pass with it, since the Entry already builds and runs
+identically to the reference.
 
 ---
 
