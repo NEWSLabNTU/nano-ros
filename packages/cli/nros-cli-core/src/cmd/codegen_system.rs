@@ -578,6 +578,10 @@ struct PlanDoc<'a> {
     /// degenerate case so the bake output stays byte-identical to pre-228.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tiers: Vec<PlanTierDoc<'a>>,
+    /// Phase 228.D — resolved `[[shared_state]]` regions. Omitted when the
+    /// system declares none, so the bake output stays byte-identical.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    shared_state: Vec<PlanSharedStateDoc<'a>>,
 }
 
 #[derive(Serialize)]
@@ -595,6 +599,63 @@ struct PlanTierDoc<'a> {
 struct PlanTierMember<'a> {
     node: &'a str,
     group: &'a str,
+}
+
+#[derive(Serialize)]
+struct PlanSharedStateDoc<'a> {
+    name: &'a str,
+    /// Generated struct type name — `schema` override or PascalCase of `name`.
+    schema: String,
+    storage: &'a str,
+    /// Concrete sync policy. `tier_aware` resolves to `mutex` when the system
+    /// is multi-tier (cross-task contention) and `none` when single-tier.
+    sync: &'a str,
+    fields: Vec<PlanSharedField<'a>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    read: Vec<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    write: Vec<&'a str>,
+}
+
+#[derive(Serialize)]
+struct PlanSharedField<'a> {
+    name: &'a str,
+    r#type: &'a str,
+}
+
+/// Resolve the `tier_aware` sentinel to a concrete sync policy: cross-tier
+/// access contends across RTOS tasks → `mutex`; single-tier runs on one task
+/// → `none`. Any explicit policy (`mutex` / `critical_section` / `none`) is
+/// passed through unchanged.
+fn resolve_shared_sync(decl_sync: &str, multi_tier: bool) -> &str {
+    match decl_sync {
+        "tier_aware" => {
+            if multi_tier {
+                "mutex"
+            } else {
+                "none"
+            }
+        }
+        other => other,
+    }
+}
+
+/// PascalCase a `[[shared_state]].name` into a default generated struct name
+/// (`vehicle_state` → `VehicleState`). Used when no `schema` override is given.
+fn default_shared_schema(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut upper = true;
+    for c in name.chars() {
+        if c == '_' || c == '-' {
+            upper = true;
+        } else if upper {
+            out.extend(c.to_uppercase());
+            upper = false;
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn render_plan_json(
@@ -659,6 +720,34 @@ fn render_plan_json(
             .collect()
     };
 
+    // Phase 228.D — resolve `[[shared_state]]` regions. `tier_aware` sync
+    // lowers to `mutex`/`none` by tier multiplicity. Empty → omitted.
+    let multi_tier = !tier_table.is_single_tier();
+    let shared_state: Vec<PlanSharedStateDoc> = bringup
+        .system
+        .shared_state
+        .iter()
+        .map(|s| PlanSharedStateDoc {
+            name: &s.name,
+            schema: s
+                .schema
+                .clone()
+                .unwrap_or_else(|| default_shared_schema(&s.name)),
+            storage: &s.storage,
+            sync: resolve_shared_sync(&s.sync, multi_tier),
+            fields: s
+                .fields
+                .iter()
+                .map(|f| PlanSharedField {
+                    name: &f.name,
+                    r#type: &f.r#type,
+                })
+                .collect(),
+            read: s.read.iter().map(String::as_str).collect(),
+            write: s.write.iter().map(String::as_str).collect(),
+        })
+        .collect();
+
     let doc = PlanDoc {
         bringup: &bringup.name,
         system: &bringup.system.system.name,
@@ -669,6 +758,7 @@ fn render_plan_json(
         launch_file: launch_file.as_deref(),
         components,
         tiers,
+        shared_state,
     };
     let mut s = serde_json::to_string_pretty(&doc).context("serialize plan json")?;
     s.push('\n');
@@ -1226,6 +1316,12 @@ stack_bytes = 8192
 [tiers.low.posix]
 priority = 10
 
+[[shared_state]]
+name = "vehicle_state"
+read = ["telem"]
+write = ["ctrl"]
+fields = [ { name = "speed", type = "f32" }, { name = "heading", type = "f32" } ]
+
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
@@ -1261,6 +1357,39 @@ launch = "system.launch.xml"
         let hi = plan.find("\"high\"").unwrap();
         let lo = plan.find("\"low\"").unwrap();
         assert!(hi < lo, "high tier must precede low (priority order)");
+
+        // Phase 228.D — shared-state region resolved + baked. Multi-tier →
+        // `tier_aware` lowers to `mutex`; schema derived to PascalCase.
+        assert!(plan.contains("\"shared_state\""), "plan: {plan}");
+        assert!(plan.contains("\"name\": \"vehicle_state\""), "plan: {plan}");
+        assert!(
+            plan.contains("\"schema\": \"VehicleState\""),
+            "plan: {plan}"
+        );
+        assert!(plan.contains("\"sync\": \"mutex\""), "plan: {plan}");
+        assert!(plan.contains("\"storage\": \"static\""), "plan: {plan}");
+        assert!(plan.contains("\"speed\""), "plan: {plan}");
+    }
+
+    #[test]
+    fn resolve_shared_sync_lowers_tier_aware() {
+        // tier_aware contends across tasks only when multi-tier.
+        assert_eq!(resolve_shared_sync("tier_aware", true), "mutex");
+        assert_eq!(resolve_shared_sync("tier_aware", false), "none");
+        // Explicit policies pass through unchanged.
+        assert_eq!(resolve_shared_sync("mutex", false), "mutex");
+        assert_eq!(
+            resolve_shared_sync("critical_section", true),
+            "critical_section"
+        );
+        assert_eq!(resolve_shared_sync("none", true), "none");
+    }
+
+    #[test]
+    fn default_shared_schema_pascal_cases() {
+        assert_eq!(default_shared_schema("vehicle_state"), "VehicleState");
+        assert_eq!(default_shared_schema("imu"), "Imu");
+        assert_eq!(default_shared_schema("two-word-name"), "TwoWordName");
     }
 
     /// Workspace whose components live in non-Rust (C/C++) packages — i.e.

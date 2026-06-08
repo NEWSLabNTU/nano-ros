@@ -105,11 +105,22 @@ group-filtered register calls per tier task. Couples with 228.B-emit.
 **Files:** codegen (`codegen/entry/emit_rust.rs`) + `nros-node` (`set_active_groups`
 + the `.callback_group()` builder + group-gated registration).
 
-### 228.D — Shared-state accessor codegen
-Emit the `nros_shared_context` C-ABI struct + accessors from `system.toml
-[[shared_state]]`, plus Rust/C++/C wrappers; single-tier → no lock, cross-tier →
-platform mutex.
-**Files:** codegen, `nros-cpp`/`nros-c` shared-context wrappers.
+### 228.D — Shared-state accessor codegen  🔄 IN PROGRESS (Wave B)
+**Done (resolve + bake):** `codegen-system` now resolves every `system.toml
+[[shared_state]]` region and bakes it into `nros-plan.json` (`shared_state: [...]`),
+symmetric with the tier table. The `tier_aware` sync sentinel lowers to `mutex`
+when the system is multi-tier (cross-task contention) and `none` when single-tier;
+explicit `mutex`/`critical_section`/`none` pass through. A missing `schema` derives
+the generated struct name by PascalCasing `name`. Empty `[[shared_state]]` →
+section omitted (bake byte-identical to pre-228). Tests:
+`codegen_system_emits_resolved_tiers` (now also asserts the baked region),
+`resolve_shared_sync_lowers_tier_aware`, `default_shared_schema_pascal_cases`.
+**Remaining:** emit the actual `nros_shared_context` C-ABI struct + accessors from
+the resolved region, plus Rust/C++/C wrappers (single-tier → no lock, cross-tier →
+platform mutex). Couples with the per-tier task emission (228.B/E) since the
+accessors only have a second consumer once multi-tier tasks exist.
+**Files:** `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (done),
+codegen + `nros-cpp`/`nros-c` shared-context wrappers (remaining).
 
 ### 228.E — Per-RTOS spawn + priority lowering
 Map the normalized 0–31 tier priority to each RTOS (RFC-0016) and emit the native
