@@ -155,6 +155,81 @@ When pulling or rebasing the superproject, inspect submodule changes. If a pull 
 
 After rebasing over a remote submodule-pointer change, run `git submodule status --recursive <path>` and update the checkout to the commit recorded by `HEAD` before pushing. Recent pulls advanced `third-party/dds/cyclonedds`; leaving the worktree at the old detached commit made the superproject appear dirty even though the parent commit was correct.
 
+## Handover Notes (2026-06-08, session 2)
+
+Active branch: `main`. The seven local commits from session 1 were pushed to
+`origin/main` (`50248367a..35b28a091`, clean fast-forward, no divergence).
+Session 2 then landed Phase 225.O groundwork; `bf308a0b1` is committed locally
+on `main` and **not yet pushed**. Worktree dirty only on `AGENTS.md` (this
+handover update).
+
+### Phase 225 current state
+
+Phase 225 still not fully closed. The three 225.O checkboxes remain unchecked —
+all are infra-blocked, now narrowed by a parallel investigation (see the
+refreshed "Remaining blockers" in
+`docs/roadmap/phase-225-workspace-fixture-migration.md`):
+
+- `qemu_nuttx_entry` — libc-patch gap **wired** in
+  `workspace-fixtures-build.sh` (necessary, no-op until a NuttX row exists).
+  Still blocked by: ws-sync renders one merged `.cargo/config.toml` and the
+  NuttX board template's global `[build] target`/`[unstable] build-std` would
+  poison `native_entry` + force build-std everywhere (CLI/board-template fix);
+  and the standalone `nros::main!` NuttX deploy shape is unverified (all
+  existing NuttX Rust examples are `libapps.a` staticlib Components).
+- Zephyr Entry — tractable but multi-day. Recommended Approach A: emit a
+  workspace-Entry leaf from `zephyr-fixture-leaves.sh` so the existing
+  `zephyr-fixture-run-one.sh` west path builds it (the workspace lane has no
+  west branch and a different codegen contract).
+- ESP32 Entry — not tractable in one pass. A latent macro bug was **fixed**
+  (`main_macro.rs` esp32 -> `Esp32C3`, was nonexistent `Esp32`). Still blocked
+  by `NullNodeRuntime` in the bare-metal driver (awaiting 212.N.4), WiFi-only
+  board with no CI-runnable OpenETH `BoardEntry`, and nightly + scoped
+  `-Z build-std` plumbing.
+
+Everything else in the phase doc is checked. Product examples and CLI workflow
+fixtures no longer use product-facing `NodeId`, `EntityId`, `CallbackId`,
+`ComponentContext`, `ComponentResult`, `ExecutableComponent`, or
+`nros::Component`. Remaining `CallbackId` references are intentional dispatch
+internals in `book/src/internals/dispatch-strategy.md` and
+`packages/testing/nros-tests/tests/phase216_a_dispatch_strategy.rs`.
+
+### Verification run this session
+
+- `cargo check -p nros-macros` (clean, after the esp32 -> `Esp32C3` fix)
+- `bash -n scripts/build/workspace-fixtures-build.sh` (syntax OK)
+- `scripts/build/workspace-fixtures-build.sh native rust` (green; confirms the
+  new NuttX libc-patch call is a no-op for non-NuttX rows)
+
+### Push handoff
+
+`origin/main` is at `35b28a091` (session-1 commits pushed). One unpushed local
+commit remains: `bf308a0b1 fix(workspaces): wire nuttx libc patch + fix esp32
+board mapping`, plus this `AGENTS.md` update. If resuming with intent to
+publish, `git fetch origin`, rebase if needed, then push.
+
+### Verification already run in session 1 after the final rebase
+
+- `cargo test -p nros --quiet`
+- `cargo test --manifest-path packages/cli/nros-cli-core/Cargo.toml --test orchestration_generate --quiet`
+- `python3 scripts/build/fixtures-manifest.py validate-workspaces --platform native`
+- `python3 scripts/build/fixtures-manifest.py validate-workspaces --platform freertos`
+- `python3 scripts/build/fixtures-manifest.py validate-workspaces --platform threadx-linux`
+- `scripts/build/workspace-fixtures-build.sh native rust`
+- `scripts/build/workspace-fixtures-build.sh native mixed`
+
+Earlier, before rebasing over `50248367a`, these also passed:
+
+- `scripts/build/workspace-fixtures-build.sh native c`
+- `scripts/build/workspace-fixtures-build.sh native cpp`
+- Rust formatting over dirty Rust files
+- `clang-format --dry-run --Werror` over changed C/C++ API and example files
+- `python3 -m py_compile scripts/build/fixtures-manifest.py`
+- `bash -n scripts/build/workspace-fixtures-build.sh`
+- `git diff --check`
+- `cargo check --manifest-path packages/cli/cargo-nano-ros/Cargo.toml --quiet`
+- `cargo check -p nros-macros --quiet`
+
 ## Handover Notes (2026-06-04)
 
 Session ended out-of-tokens mid-stream. Active in-flight work: none recorded.
