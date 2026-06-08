@@ -647,6 +647,64 @@ pub fn build_test_fixture(
     require_prebuilt_binary(&binary_path)
 }
 
+/// Phase 226.D — migrated platforms whose default-config standalone Rust
+/// fixtures share one fixture-only Cargo target dir
+/// (`build/fixtures-cargo/<platform>`). This mirrors the shell resolver in
+/// `scripts/build/fixtures-target-dir.sh`: `scripts/build/fixtures-build.sh`
+/// builds eligible rows into the shared dir, so the test harness must
+/// resolve the prebuilt binary there instead of the example-local
+/// `target/`. ESP32 flash packaging and RTOS rows are deferred to a later
+/// patch (they carry extra postprocessing).
+///
+/// Returns `None` for platforms not yet migrated, so unrelated callers
+/// keep their example-local resolution. Only the *default* group (no
+/// extra features/env) is mirrored here, matching the only rows these two
+/// platforms carry today; a future feature/env variant would get a
+/// hashed group slug on the shell side and would need an explicit mirror.
+fn fixture_shared_target_dir(platform: &str) -> Option<PathBuf> {
+    match platform {
+        "qemu-arm-baremetal" | "stm32f4" => {
+            Some(project_root().join("build/fixtures-cargo").join(platform))
+        }
+        _ => None,
+    }
+}
+
+/// Phase 226.D — resolve a prebuilt standalone Rust fixture that builds
+/// into the shared fixture target dir. `platform` selects the group,
+/// `triple` is the cross target, `binary_name` is the Cargo `[[bin]]`
+/// name. The binary lands at
+/// `build/fixtures-cargo/<platform>/<triple>/<profile>/<binary_name>`.
+fn require_shared_fixture_binary(
+    platform: &str,
+    triple: &str,
+    binary_name: &str,
+) -> TestResult<PathBuf> {
+    let target_dir = fixture_shared_target_dir(platform).ok_or_else(|| {
+        TestError::BuildFailed(format!(
+            "Phase 226.D: platform {platform:?} is not migrated to a shared fixture target dir"
+        ))
+    })?;
+    let binary_path = target_dir.join(format!(
+        "{triple}/{}/{}",
+        cargo_target_profile_dir(),
+        binary_name
+    ));
+    require_prebuilt_binary(&binary_path)
+}
+
+/// Phase 226.D — qemu-arm-baremetal (`thumbv7m-none-eabi`) shared-fixture
+/// binary resolver.
+fn require_qemu_baremetal_fixture(binary_name: &str) -> TestResult<PathBuf> {
+    require_shared_fixture_binary("qemu-arm-baremetal", "thumbv7m-none-eabi", binary_name)
+}
+
+/// Phase 226.D — stm32f4 (`thumbv7em-none-eabihf`) shared-fixture binary
+/// resolver.
+fn require_stm32f4_fixture(binary_name: &str) -> TestResult<PathBuf> {
+    require_shared_fixture_binary("stm32f4", "thumbv7em-none-eabihf", binary_name)
+}
+
 /// Build native-rs-talker with param-services feature (cached)
 pub fn build_native_talker() -> TestResult<&'static Path> {
     NATIVE_TALKER_BINARY
@@ -1026,13 +1084,8 @@ static LOGGING_SMOKE_MPS2_BAREMETAL_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// fixture must already be built (`just qemu build-fixtures`).
 pub fn build_logging_smoke_mps2_baremetal() -> TestResult<&'static Path> {
     LOGGING_SMOKE_MPS2_BAREMETAL_BINARY
-        .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-tests/bins/logging-smoke-mps2-baremetal",
-                "logging-smoke-mps2-baremetal",
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("logging-smoke-mps2-baremetal"))
         .map(|p| p.as_path())
 }
 
@@ -1148,26 +1201,16 @@ pub fn build_logging_smoke_zephyr_native_sim() -> TestResult<&'static Path> {
 /// Build the qemu-wcet-bench example and return its path (cached)
 pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
     QEMU_WCET_BENCH_BINARY
-        .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-bench/wcet-cycles-qemu",
-                "qemu-rs-wcet-bench",
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rs-wcet-bench"))
         .map(|p| p.as_path())
 }
 
 /// Build the qemu-lan9118 example and return its path (cached)
 pub fn build_qemu_lan9118() -> TestResult<&'static Path> {
     QEMU_LAN9118_BINARY
-        .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-tests/bins/lan9118-qemu",
-                "qemu-rs-lan9118",
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rs-lan9118"))
         .map(|p| p.as_path())
 }
 
@@ -1398,28 +1441,16 @@ pub fn custom_msg_binary() -> PathBuf {
 /// Build qemu-bsp-talker (cached)
 pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
     QEMU_BSP_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/talker",
-                "qemu-bsp-talker",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-bsp-talker"))
         .map(|p| p.as_path())
 }
 
 /// Build qemu-bsp-listener (cached)
 pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
     QEMU_BSP_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/listener",
-                "qemu-bsp-listener",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-bsp-listener"))
         .map(|p| p.as_path())
 }
 
@@ -1448,14 +1479,8 @@ pub fn qemu_bsp_listener_binary() -> PathBuf {
 /// Build qemu-serial-talker (cached)
 pub fn build_qemu_serial_talker() -> TestResult<&'static Path> {
     QEMU_SERIAL_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/serial-talker",
-                "qemu-serial-talker",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-serial-talker"))
         .map(|p| p.as_path())
 }
 
@@ -1470,14 +1495,8 @@ pub fn qemu_serial_talker_binary() -> PathBuf {
 /// Build qemu-serial-listener (cached)
 pub fn build_qemu_serial_listener() -> TestResult<&'static Path> {
     QEMU_SERIAL_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/serial-listener",
-                "qemu-serial-listener",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-serial-listener"))
         .map(|p| p.as_path())
 }
 
@@ -1496,14 +1515,8 @@ pub fn qemu_serial_listener_binary() -> PathBuf {
 /// step, this is the resolve step).
 pub fn build_qemu_talker_xrce() -> TestResult<&'static Path> {
     QEMU_TALKER_XRCE_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/talker-xrce",
-                "qemu-talker-xrce",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-talker-xrce"))
         .map(|p| p.as_path())
 }
 
@@ -1558,28 +1571,16 @@ static RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build stm32f4-rtic-talker (cached)
 pub fn build_rtic_talker() -> TestResult<&'static Path> {
     RTIC_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "stm32f4/rust/talker-rtic",
-                "stm32f4-rtic-talker",
-                None,
-                Some("thumbv7em-none-eabihf"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
+        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-talker"))
         .map(|p| p.as_path())
 }
 
 /// Build stm32f4-rtic-listener (cached)
 pub fn build_rtic_listener() -> TestResult<&'static Path> {
     RTIC_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "stm32f4/rust/listener-rtic",
-                "stm32f4-rtic-listener",
-                None,
-                Some("thumbv7em-none-eabihf"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
+        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-listener"))
         .map(|p| p.as_path())
 }
 
@@ -1628,28 +1629,16 @@ pub fn build_native_rtic_service_client() -> TestResult<&'static Path> {
 /// Build stm32f4-rtic-service-server (cached)
 pub fn build_rtic_service_server() -> TestResult<&'static Path> {
     RTIC_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "stm32f4/rust/service-server-rtic",
-                "stm32f4-rtic-service-server",
-                None,
-                Some("thumbv7em-none-eabihf"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
+        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-service-server"))
         .map(|p| p.as_path())
 }
 
 /// Build stm32f4-rtic-service-client (cached)
 pub fn build_rtic_service_client() -> TestResult<&'static Path> {
     RTIC_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "stm32f4/rust/service-client-rtic",
-                "stm32f4-rtic-service-client",
-                None,
-                Some("thumbv7em-none-eabihf"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
+        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-service-client"))
         .map(|p| p.as_path())
 }
 
@@ -1684,28 +1673,16 @@ pub fn build_native_rtic_action_client() -> TestResult<&'static Path> {
 /// Build stm32f4-rtic-action-server (cached)
 pub fn build_rtic_action_server() -> TestResult<&'static Path> {
     RTIC_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "stm32f4/rust/action-server-rtic",
-                "stm32f4-rtic-action-server",
-                None,
-                Some("thumbv7em-none-eabihf"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
+        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-action-server"))
         .map(|p| p.as_path())
 }
 
 /// Build stm32f4-rtic-action-client (cached)
 pub fn build_rtic_action_client() -> TestResult<&'static Path> {
     RTIC_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "stm32f4/rust/action-client-rtic",
-                "stm32f4-rtic-action-client",
-                None,
-                Some("thumbv7em-none-eabihf"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/stm32f4.
+        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-action-client"))
         .map(|p| p.as_path())
 }
 
@@ -1967,13 +1944,8 @@ pub fn xrce_stress_test_binary() -> PathBuf {
 /// Build qemu-bsp-large-msg-test (cached).
 pub fn build_qemu_large_msg_test() -> TestResult<&'static Path> {
     QEMU_LARGE_MSG_TEST_BINARY
-        .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-bench/large-msg-baremetal",
-                "qemu-bsp-large-msg-test",
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-bsp-large-msg-test"))
         .map(|p| p.as_path())
 }
 
@@ -2241,28 +2213,16 @@ static QEMU_RTIC_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-talker (cached)
 pub fn build_qemu_rtic_talker() -> TestResult<&'static Path> {
     QEMU_RTIC_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/talker-rtic",
-                "qemu-rtic-talker",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-talker"))
         .map(|p| p.as_path())
 }
 
 /// Build qemu-rtic-listener (cached)
 pub fn build_qemu_rtic_listener() -> TestResult<&'static Path> {
     QEMU_RTIC_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/listener-rtic",
-                "qemu-rtic-listener",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-listener"))
         .map(|p| p.as_path())
 }
 
@@ -2275,28 +2235,16 @@ static QEMU_RTIC_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-service-server (cached)
 pub fn build_qemu_rtic_service_server() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/service-server-rtic",
-                "qemu-rtic-service-server",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-service-server"))
         .map(|p| p.as_path())
 }
 
 /// Build qemu-rtic-service-client (cached)
 pub fn build_qemu_rtic_service_client() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/service-client-rtic",
-                "qemu-rtic-service-client",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-service-client"))
         .map(|p| p.as_path())
 }
 
@@ -2459,28 +2407,16 @@ static QEMU_RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-action-server (cached)
 pub fn build_qemu_rtic_action_server() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/action-server-rtic",
-                "qemu-rtic-action-server",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-action-server"))
         .map(|p| p.as_path())
 }
 
 /// Build qemu-rtic-action-client (cached)
 pub fn build_qemu_rtic_action_client() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/action-client-rtic",
-                "qemu-rtic-action-client",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-action-client"))
         .map(|p| p.as_path())
 }
 
@@ -2497,28 +2433,16 @@ static QEMU_RTIC_MIXED_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-mixed-talker (cached)
 pub fn build_qemu_rtic_mixed_talker() -> TestResult<&'static Path> {
     QEMU_RTIC_MIXED_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/talker-rtic-mixed",
-                "qemu-rtic-mixed-talker",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-mixed-talker"))
         .map(|p| p.as_path())
 }
 
 /// Build qemu-rtic-mixed-listener (cached)
 pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
     QEMU_RTIC_MIXED_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/listener-rtic-mixed",
-                "qemu-rtic-mixed-listener",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
+        // Phase 226.D — built into build/fixtures-cargo/qemu-arm-baremetal.
+        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-mixed-listener"))
         .map(|p| p.as_path())
 }
 

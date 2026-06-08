@@ -170,6 +170,15 @@ else
     # skip). --force is idempotent so recipes that also codegen (freertos) are fine.
     NROS_CLI="$(nros_cli_bin)"; export NROS_CLI
     NROS_REPO_ROOT="${NROS_REPO_ROOT:-$PWD}"; export NROS_REPO_ROOT
+    # Phase 226.D — shared fixture-only --target-dir resolver. Eligible
+    # default-config rows for a migrated platform (qemu-arm-baremetal,
+    # stm32f4) share one `build/fixtures-cargo/<group>` so nano-ros
+    # crates compile once for the group, not once per example dir. The
+    # stale probe sources the SAME helper (rust-fixture-stale.sh).
+    # shellcheck source=scripts/build/fixtures-target-dir.sh
+    source scripts/build/fixtures-target-dir.sh
+    export platform
+    export -f nros_fixture_target_dir_flag nros_fixture_group _nros_fixture_variant_sig
     # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`
     # below invokes `nros ws sync`, absent from the shipped 0.3.7 release.
     # Probe once here in the parent before make fans out workers; pre-probe
@@ -210,8 +219,13 @@ else
             # for NuttX fixtures (no-op for other platforms).
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_nuttx_libc_patch "$dir"
         fi
+        # Phase 226.D — append the shared fixture-only --target-dir for
+        # eligible rows (no-op for rows that authored their own
+        # target_dir or whose platform isn't migrated yet).
+        local tdir_flag
+        tdir_flag="$(nros_fixture_target_dir_flag "$platform" "$args" "$envstr")"
         # shellcheck disable=SC2086
-        ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args --quiet )
+        ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args $tdir_flag --quiet )
     }
     export -f nros_fixture_build_one
     run nros_fixture_build_one

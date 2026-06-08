@@ -27,13 +27,13 @@ fi
 
 rust_stale=()
 if command -v parallel >/dev/null 2>&1; then
-    mapfile -t rust_stale < <(python3 scripts/build/fixtures-manifest.py list --for-probe --lang rust \
+    mapfile -t rust_stale < <(python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust \
         | parallel --jobs "$(nproc)" bash scripts/test/rust-fixture-stale.sh {} 2>/dev/null)
 else
     while IFS= read -r line; do
         out="$(bash scripts/test/rust-fixture-stale.sh "$line")"
         [ -n "$out" ] && rust_stale+=("$out")
-    done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --lang rust)
+    done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust)
 fi
 if [ ${#rust_stale[@]} -gt 0 ]; then
     echo "WARNING: ${#rust_stale[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2

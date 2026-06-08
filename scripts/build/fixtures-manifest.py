@@ -295,6 +295,12 @@ def main():
     # omits them — otherwise the probe rebuilds them under the wrong toolchain
     # every preflight (toolchain-fingerprint thrash → permanent false-stale).
     p.add_argument("--for-probe", action="store_true")
+    # Phase 226.D — prepend `<platform>\x1f` to each rust cargo record so
+    # the stale probe (scripts/test/rust-fixture-stale.sh) can feed the
+    # shared fixture-target-dir resolver, which keys on platform. The
+    # build path (fixtures-build.sh) already knows the platform from its
+    # CLI arg, so it does NOT pass this flag and keeps the 3-field record.
+    p.add_argument("--with-platform", action="store_true")
     a = p.parse_args()
 
     if a.command in ("list-workspaces", "validate-workspaces"):
@@ -330,7 +336,9 @@ def main():
             )
         else:
             # cargo record: <dir>\x1f<env>\x1f<cargo-args>
-            sys.stdout.write(f"{e['dir']}{SEP}{env_str(e)}{SEP}{cargo_args(e)}\n")
+            # With --with-platform: <platform>\x1f<dir>\x1f<env>\x1f<cargo-args>
+            prefix = f"{e.get('platform', '')}{SEP}" if a.with_platform else ""
+            sys.stdout.write(f"{prefix}{e['dir']}{SEP}{env_str(e)}{SEP}{cargo_args(e)}\n")
 
 
 if __name__ == "__main__":

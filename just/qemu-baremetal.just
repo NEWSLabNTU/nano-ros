@@ -141,32 +141,39 @@ test verbose="": build-fixtures
         echo "All QEMU tests passed!"
     fi
 
+# Phase 226.D — shared fixture-only Cargo target dir for qemu-arm-baremetal
+# Rust rows. `build-fixtures` (scripts/build/fixtures-build.sh) builds every
+# eligible row into this tree instead of each example's local target/, so the
+# kernel paths below resolve here. Mirrors fixture_shared_target_dir() in
+# packages/testing/nros-tests/src/fixtures/binaries/mod.rs.
+FIXTURE_TARGET := absolute_path("build/fixtures-cargo/qemu-arm-baremetal") / "thumbv7m-none-eabi" / PROFILE_DIR
+
 # Run basic QEMU test (nros serialization on Cortex-M3)
 [group("debug")]
-test-basic verbose="": build
+test-basic verbose="": build-fixtures
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel packages/testing/nros-tests/bins/cdr-roundtrip-qemu/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rs-test
+            -kernel {{FIXTURE_TARGET}}/qemu-rs-test
 
 # Run WCET benchmark on QEMU (DWT cycle counter)
 [group("debug")]
-test-wcet verbose="": build
+test-wcet verbose="": build-fixtures
     ./tests/run-test.sh --name qemu-wcet-bench --log {{LOG_DIR}}/latest/qemu-wcet-bench.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel packages/testing/nros-bench/wcet-cycles-qemu/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rs-wcet-bench
+            -kernel {{FIXTURE_TARGET}}/qemu-rs-wcet-bench
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
 [group("debug")]
-test-lan9118 verbose="": build
+test-lan9118 verbose="": build-fixtures
     ./tests/run-test.sh --name qemu-lan9118 --log {{LOG_DIR}}/latest/qemu-lan9118.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel packages/testing/nros-tests/bins/lan9118-qemu/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rs-lan9118
+            -kernel {{FIXTURE_TARGET}}/qemu-rs-lan9118
 
 # Build the Phase 216.B generated-entry RTIC E2E fixture.
 [group("debug")]
@@ -259,12 +266,12 @@ test-zenoh: build
     echo ""
     echo "To run manually:"
     echo "  Terminal 1: zenohd --listen tcp/0.0.0.0:7447"
-    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu-arm-baremetal/rust/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
-    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu-arm-baremetal/rust/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
+    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary {{FIXTURE_TARGET}}/qemu-bsp-talker"
+    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary {{FIXTURE_TARGET}}/qemu-bsp-listener"
     echo ""
-    echo "Binaries built at:"
-    echo "  examples/qemu-arm-baremetal/rust/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
-    echo "  examples/qemu-arm-baremetal/rust/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
+    echo "Binaries built at (Phase 226.D shared fixture target dir):"
+    echo "  {{FIXTURE_TARGET}}/qemu-bsp-talker"
+    echo "  {{FIXTURE_TARGET}}/qemu-bsp-listener"
     echo ""
     echo "Note: Automated test not yet implemented (requires QEMU 7.0+)"
     echo "============================================"
@@ -443,6 +450,8 @@ clean: clean-zenoh-pico
         rm -rf "$dir/target"
     done
     rm -rf packages/reference/qemu-smoltcp-bridge/target
+    # Phase 226.D — shared fixture-only Cargo target dir.
+    rm -rf build/fixtures-cargo/qemu-arm-baremetal
     echo "QEMU bare-metal build artifacts cleaned"
 
 # =============================================================================
@@ -450,8 +459,10 @@ clean: clean-zenoh-pico
 # =============================================================================
 
 # QEMU ignores SIGINT — run in background with trap for Ctrl-C
+# Phase 226.D — depends on build-fixtures so the binary resolves under the
+# shared fixture target dir ({{FIXTURE_TARGET}}); callers pass paths there.
 [no-exit-message]
-_run-qemu-mps2 binary: build
+_run-qemu-mps2 binary: build-fixtures
     #!/usr/bin/env bash
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
@@ -463,22 +474,22 @@ _run-qemu-mps2 binary: build
     wait $PID
 
 # Run bare-metal talker on QEMU
-talker: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker")
+talker: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-bsp-talker"))
 
 # Run bare-metal listener on QEMU
-listener: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener")
+listener: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-bsp-listener"))
 
 # Run RTIC service server on QEMU
-rtic-service-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/service-server-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-server")
+rtic-service-server: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-service-server"))
 
 # Run RTIC service client on QEMU
-rtic-service-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/service-client-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-client")
+rtic-service-client: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-service-client"))
 
 # Run RTIC action server on QEMU
-rtic-action-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/action-server-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-server")
+rtic-action-server: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-action-server"))
 
 # Run RTIC action client on QEMU
-rtic-action-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/action-client-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-client")
+rtic-action-client: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-action-client"))
 
 # Start zenohd router for bare-metal QEMU examples (port 7450)
 zenohd:

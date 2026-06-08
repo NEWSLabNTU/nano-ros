@@ -48,8 +48,10 @@ build-all: build build-examples build-fixtures
 [group("main")]
 clean:
     #!/usr/bin/env bash
-    for ex in talker talker-rtic listener-rtic service-server-rtic \
+    for ex in talker talker-rtic talker-embassy listener-rtic service-server-rtic \
               service-client-rtic action-server-rtic action-client-rtic; do
         rm -rf "examples/stm32f4/rust/$ex/target"
     done
+    # Phase 226.D — shared fixture-only Cargo target dir.
+    rm -rf build/fixtures-cargo/stm32f4
     echo "STM32F4 build artifacts cleaned"
