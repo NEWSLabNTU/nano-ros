@@ -895,6 +895,147 @@ Acceptance:
 - Missing Corrosion/codegen support is fixed in the product path, not
   hidden with fixture-only glue.
 
+### 225.P — Zephyr Workspace Entry (design + implementation)
+
+Resolves the 225.O Zephyr Entry blocker. Designed 2026-06-08 after a
+three-agent gap-check against the real Zephyr module + macro + fixture
+code. Supersedes the earlier rough framing.
+
+**Held principle.** On Zephyr the RTOS framework *is* the workflow:
+`west build` is the build verb, Kconfig selects the RMW, the Entry is a
+Zephyr application, and nano-ros integrates as a Zephyr module
+(`zephyr/module.yml`) + CMake extensions. No `nros build` / `just`
+wrapper as the user-facing build verb; no `cargo build -p entry`; no
+RMW-via-`--features` typed by the user; no board baked into a package.
+
+**Refinement to the Phase 212 "one Entry per platform" rule.** On an
+RTOS with its own board abstraction (Zephyr), it is *one Entry per
+RTOS*, board chosen at build time via `west build -b <board>`. A single
+`zephyr_entry` covers native_sim, nrf52, stm32, aemv8r, … Contrast
+freertos/threadx, whose board crates are board-specific so the Entry
+bakes the board.
+
+**User-facing UX (decision A — explicit `nros ws sync`):**
+
+```sh
+source ./activate.sh
+nros ws sync                          # provision message bindings (once, platform-agnostic)
+west build -b native_sim/native/64 src/zephyr_entry \
+    -- -DCONF_FILE="prj.conf;prj-zenoh.conf"
+west build -t run                     # native_sim; flash for hardware
+```
+
+`nros ws sync` is the workspace-provisioning step (sibling to `west
+update` / `rosdep`), not a compile step — it is platform-agnostic
+message codegen (verified: no per-board/per-RMW output) and needs no
+Zephyr-specific change. `west build` is the only build verb.
+
+**Corrected mechanism (the gap-check overturned the first design).**
+
+- `nros_system_generate()` is the **C/C++ component-ABI** glue path
+  (emits C `system_main.c` referencing `nros_component_*_register` +
+  undefined `nros_system_init`/`nros_system_spin`). It does **not**
+  compile or link Rust node crates and must **not** be used by the Rust
+  Entry — linking its C glue into a Rust app risks undefined symbols.
+- The real Rust-on-Zephyr path is `zephyr-lang-rust`'s
+  `rust_cargo_application()` (the Entry crate is a `staticlib` exporting
+  `rust_main`), with RMW flowing Kconfig overlay → `EXTRA_CARGO_ARGS`
+  exactly as `examples/zephyr/rust/talker/CMakeLists.txt` does.
+- `nros::main!(launch=…)` is currently broken for Zephyr
+  (`board_path_for("zephyr")` → nonexistent `Zephyr` type; emits a `fn
+  main` Zephyr forbids). But `main_macro.rs` already has framework
+  dispatch (`framework_for(deploy)`) emitting non-`BoardEntry` shapes for
+  `rtic-stm32f4`/`embassy-stm32f4`. Adding a **`zephyr` framework
+  branch** that emits `rust_main` is architecturally consistent — not a
+  hack — and keeps the Entry source identical to native/freertos
+  (`nros::main!(launch = "demo_bringup:system.launch.xml");`), preserving
+  the launch file as the single source of truth for the node set and
+  uniform cross-platform Entry UX.
+- The existing `multi_pkg_workspace_zephyr` fixture is a stub (nodes
+  never compile/link/register); it is not the green path and stays a
+  recording test.
+
+**Test lane = the user command.** The fixture must run the same `west
+build`. Approach A: emit one workspace-Entry leaf from
+`zephyr-fixture-leaves.sh` (after the matrix loop, like the
+logging-smoke block — `role="entry"` bypasses the role/port helpers);
+the proven `zephyr-fixture-run-one.sh` west path builds it unchanged.
+
+Work items:
+
+- [ ] **P.1 Node-pkg feature.** Add `zephyr = ["nros/alloc",
+  "nros/rmw-cffi", "nros/platform-zephyr", "nros/ros-humble"]` to
+  `examples/workspaces/rust/src/{talker_pkg,listener_pkg}/Cargo.toml`
+  (node bodies already board-agnostic — no body changes).
+- [ ] **P.2 Macro `zephyr` framework branch.** In
+  `packages/core/nros-macros/src/main_macro.rs`: add `zephyr` to
+  `framework_for(deploy)`; emit `#[unsafe(no_mangle)] pub extern "C" fn
+  rust_main()` that waits for network, opens an `Executor`, wraps it in
+  `ExecutorNodeRuntime`, `register_node::<T>()` for each launch-named
+  node, then spins — bounded via the existing `NROS_ENTRY_SPIN_MS` /
+  `NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS` + `observed_callback_counts()`
+  when hosted (native_sim is `x86_64`-hosted), forever otherwise. Route
+  `deploy="zephyr"` to the real `ZephyrBoard` (NetworkWait/config only,
+  not `BoardEntry`). Reuse the single-node
+  `nros::zephyr_component_main!` body (`packages/core/nros/src/lib.rs`)
+  as the reference.
+- [ ] **P.3 Entry crate.** Create
+  `examples/workspaces/rust/src/zephyr_entry/`: `Cargo.toml` (`[lib]
+  crate-type=["staticlib","rlib"]`, `[package.metadata.nros.deploy.zephyr]`,
+  deps `nros`+`platform-zephyr`, `nros-board-zephyr`,
+  `talker_pkg`/`listener_pkg` feature `zephyr`, `zephyr`/`zephyr-build`);
+  `src/lib.rs` = `nros::main!(launch = "demo_bringup:system.launch.xml");`;
+  `CMakeLists.txt` (`find_package(Zephyr)` + `project()` + Kconfig
+  RMW→`EXTRA_CARGO_ARGS` + `rust_cargo_application()`, mirror the talker
+  example); `prj.conf` (`CONFIG_RUST`, `CONFIG_NROS_RUST_API`, executor/
+  heap) + `prj-{zenoh,xrce,cyclonedds}.conf` + `boards/native_sim_native_64.conf`
+  + `build.rs` + `sample.yaml` + `package.xml` + `.gitignore`. Add
+  `exclude = ["src/zephyr_entry"]` to the root `Cargo.toml` (keep it out
+  of `members` — built by west, not plain cargo).
+- [ ] **P.4 Bringup.** Add a `[deploy.zephyr]` block to
+  `src/demo_bringup/system.toml` if deploy resolution needs it.
+- [ ] **P.5 Manifest.** `examples/fixtures.toml`: add `board` +
+  `conf_files` to the schema comment and a `[[workspace_fixture]]
+  id="workspace-rust-zephyr" platform="zephyr" board="native_sim/native/64"
+  conf_files=["prj.conf","prj-zenoh.conf"]` row.
+  `scripts/build/fixtures-manifest.py`: require `board` for zephyr; add
+  `_validate_zephyr_workspace` (entry CMakeLists has `project(` +
+  `rust_cargo_application()`/`target_sources(app`; `prj.conf` + each
+  `conf_files` entry exist) routed by a `platform=="zephyr"` branch in
+  `validate_workspace_fixture` (the existing rust/cmake branches reject a
+  west app); extend `workspace_record` with `board` + `conf_files`
+  columns (11→13) and the `list-workspaces` consumer reads.
+- [ ] **P.6 Build lane (Approach A).**
+  `scripts/build/zephyr-fixture-leaves.sh`: emit a workspace-Entry leaf
+  after the matrix loop (unique `build_dir`, e.g. `build-ws-rs-entry-zenoh`;
+  direct record construction, not via `variant_offset_for_role`).
+  `just/zephyr-ci.just` `build-fixtures`: add a workspace-root `nros ws
+  sync` + `nros codegen-system --bringup src/demo_bringup` prep before
+  scheduling. `zephyr-fixture-run-one.sh` + `zephyr-fixture-make-driver.sh`:
+  no change (record-driven).
+- [ ] **P.7 E2E.** Add `get_prebuilt_zephyr_workspace_entry()` to
+  `packages/testing/nros-tests/src/zephyr.rs` (resolve
+  `build-ws-rs-entry-zenoh/zephyr/zephyr.exe`); add a test in
+  `tests/zephyr.rs` that starts it and asserts boot banner + both nodes
+  register + the talker's `Published:` line (in-process listener will not
+  receive its own session's publish over zenoh — assert publish +
+  registration, or run an external listener). Fail-fast with a "build
+  workspace fixtures first" hint when the binary is absent.
+- [ ] **P.8 Docs.** Update `book/src/getting-started/workspace-entry-pkg.md`
+  + `examples/workspaces/README.md` with the Zephyr `west build` flow +
+  the `nros ws sync` provisioning step.
+
+Acceptance:
+
+- `west build -b native_sim/native/64 src/zephyr_entry --
+  -DCONF_FILE="prj.conf;prj-zenoh.conf"` builds the two-node Entry ELF.
+- The Entry source is `nros::main!(launch=…)`, identical to the
+  native/freertos/threadx entries.
+- `just zephyr build-fixtures` builds the workspace leaf through the
+  same west path; the E2E test runs the prebuilt `zephyr.exe` directly.
+- RMW is selected by Kconfig overlay, board by `west build -b`, and the
+  user types no nano-ros-specific build verb.
+
 ---
 
 ## 4. Non-Goals
