@@ -22,6 +22,54 @@ pub const METADATA_STRING_CAPACITY: usize = 128;
 /// Fixed-capacity string used by component metadata records.
 pub type MetadataString = String<METADATA_STRING_CAPACITY>;
 
+/// Declaration-order node slot within one extracted component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NodeSlot(pub usize);
+
+impl NodeSlot {
+    /// Create a node slot from its declaration-order index.
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    /// Declaration-order index.
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+/// Declaration-order entity slot within one extracted component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EntitySlot(pub usize);
+
+impl EntitySlot {
+    /// Create an entity slot from its declaration-order index.
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    /// Declaration-order index.
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+/// Declaration-order callback slot within one extracted component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CallbackSlot(pub usize);
+
+impl CallbackSlot {
+    /// Create a callback slot from its declaration-order index.
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    /// Declaration-order index.
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
 /// Source location attached to callbacks and parameters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceLocationMetadata {
@@ -210,7 +258,9 @@ pub enum NodeMetadataError {
 /// Recorded node declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeMetadata {
+    pub slot: NodeSlot,
     pub id: MetadataString,
+    pub source_default_name: MetadataString,
     pub name: MetadataString,
     pub namespace: MetadataString,
     pub domain_id: u32,
@@ -219,7 +269,9 @@ pub struct NodeMetadata {
 /// Recorded entity declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityMetadata {
+    pub slot: Option<EntitySlot>,
     pub id: MetadataString,
+    pub node_slot: Option<NodeSlot>,
     pub node_id: MetadataString,
     pub kind: EntityKind,
     pub source_name: MetadataString,
@@ -227,11 +279,14 @@ pub struct EntityMetadata {
     pub type_name: &'static str,
     pub type_hash: &'static str,
     pub qos: QosSettings,
+    pub callback_slot: Option<CallbackSlot>,
     pub callback_id: Option<MetadataString>,
     pub callback_source: SourceLocationMetadata,
     pub callback_group: Option<MetadataString>,
+    pub action_cancel_callback_slot: Option<CallbackSlot>,
     pub action_cancel_callback_id: Option<MetadataString>,
     pub action_cancel_source: SourceLocationMetadata,
+    pub action_accepted_callback_slot: Option<CallbackSlot>,
     pub action_accepted_callback_id: Option<MetadataString>,
     pub action_accepted_source: SourceLocationMetadata,
     pub period_ms: Option<u64>,
@@ -245,8 +300,10 @@ pub struct EntityMetadata {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallbackEffectMetadata {
     pub callback_id: MetadataString,
+    pub callback_slot: Option<CallbackSlot>,
     pub kind: CallbackEffectKind,
     pub entity_id: MetadataString,
+    pub entity_slot: Option<EntitySlot>,
 }
 
 /// Source metadata document settings used by the std JSON emitter.
@@ -406,7 +463,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
 
         self.nodes
             .push(NodeMetadata {
+                slot: NodeSlot::new(self.nodes.len()),
                 id: copy_str(id.as_str())?,
+                source_default_name: copy_str(name)?,
                 name: copy_str(name)?,
                 namespace: copy_str(namespace)?,
                 domain_id,
@@ -414,13 +473,50 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             .map_err(|_| NodeMetadataError::Capacity)
     }
 
-    pub(crate) fn push_entity(&mut self, entity: EntityMetadata) -> Result<(), NodeMetadataError> {
+    pub(crate) fn push_entity(
+        &mut self,
+        mut entity: EntityMetadata,
+    ) -> Result<(), NodeMetadataError> {
         if !self.has_node(&entity.node_id) {
             return Err(NodeMetadataError::UnknownNode);
         }
         if self.has_entity(&entity.id) {
             return Err(NodeMetadataError::DuplicateId);
         }
+
+        entity.slot = Some(EntitySlot::new(self.entities.len()));
+        entity.node_slot = self.node_slot_for_id(&entity.node_id);
+        let mut current_callbacks = Vec::<MetadataString, 3>::new();
+        let mut next_callback_slot = self.callback_slot_count();
+        entity.callback_slot = entity.callback_id.as_ref().map(|callback_id| {
+            self.callback_slot_for_current_entity(
+                callback_id.as_str(),
+                &mut current_callbacks,
+                &mut next_callback_slot,
+            )
+        });
+        entity.action_cancel_callback_slot =
+            entity
+                .action_cancel_callback_id
+                .as_ref()
+                .map(|callback_id| {
+                    self.callback_slot_for_current_entity(
+                        callback_id.as_str(),
+                        &mut current_callbacks,
+                        &mut next_callback_slot,
+                    )
+                });
+        entity.action_accepted_callback_slot =
+            entity
+                .action_accepted_callback_id
+                .as_ref()
+                .map(|callback_id| {
+                    self.callback_slot_for_current_entity(
+                        callback_id.as_str(),
+                        &mut current_callbacks,
+                        &mut next_callback_slot,
+                    )
+                });
 
         self.entities
             .push(entity)
@@ -440,8 +536,10 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         self.callback_effects
             .push(CallbackEffectMetadata {
                 callback_id: copy_str(callback_id.as_str())?,
+                callback_slot: self.callback_slot_for_id(callback_id.as_str()),
                 kind,
                 entity_id: copy_str(entity_id.as_str())?,
+                entity_slot: self.entity_slot_for_id(entity_id.as_str()),
             })
             .map_err(|_| NodeMetadataError::Capacity)
     }
@@ -454,6 +552,79 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         self.entities.iter().any(|entity| entity.id.as_str() == id)
     }
 
+    fn node_slot_for_id(&self, id: &str) -> Option<NodeSlot> {
+        self.nodes
+            .iter()
+            .find(|node| node.id.as_str() == id)
+            .map(|node| node.slot)
+    }
+
+    fn entity_slot_for_id(&self, id: &str) -> Option<EntitySlot> {
+        self.entities
+            .iter()
+            .find(|entity| entity.id.as_str() == id)
+            .and_then(|entity| entity.slot)
+    }
+
+    fn callback_slot_for_current_entity(
+        &self,
+        id: &str,
+        current_callbacks: &mut Vec<MetadataString, 3>,
+        next_callback_slot: &mut usize,
+    ) -> CallbackSlot {
+        if let Some(slot) = self.callback_slot_for_id(id) {
+            return slot;
+        }
+        if let Some((index, _)) = current_callbacks
+            .iter()
+            .enumerate()
+            .find(|(_, callback_id)| callback_id.as_str() == id)
+        {
+            return CallbackSlot::new(self.callback_slot_count() + index);
+        }
+        let slot = CallbackSlot::new(*next_callback_slot);
+        let _ = current_callbacks
+            .push(copy_str(id).expect("callback ID already fits metadata string capacity"));
+        *next_callback_slot += 1;
+        slot
+    }
+
+    fn callback_slot_for_id(&self, id: &str) -> Option<CallbackSlot> {
+        let mut seen = Vec::<&str, MAX_CALLBACKS>::new();
+        for entity in &self.entities {
+            for callback_id in entity_callback_ids(entity) {
+                let Some(callback_id) = callback_id else {
+                    continue;
+                };
+                let callback_id = callback_id.as_str();
+                if seen.iter().any(|seen_id| *seen_id == callback_id) {
+                    continue;
+                }
+                if callback_id == id {
+                    return Some(CallbackSlot::new(seen.len()));
+                }
+                let _ = seen.push(callback_id);
+            }
+        }
+        None
+    }
+
+    fn callback_slot_count(&self) -> usize {
+        let mut seen = Vec::<&str, MAX_CALLBACKS>::new();
+        for entity in &self.entities {
+            for callback_id in entity_callback_ids(entity) {
+                let Some(callback_id) = callback_id else {
+                    continue;
+                };
+                let callback_id = callback_id.as_str();
+                if !seen.iter().any(|seen_id| *seen_id == callback_id) {
+                    let _ = seen.push(callback_id);
+                }
+            }
+        }
+        seen.len()
+    }
+
     #[cfg(feature = "std")]
     fn write_nodes_json(&self, out: &mut impl core::fmt::Write) -> core::fmt::Result {
         write!(out, "\"nodes\":[")?;
@@ -463,6 +634,13 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             }
             write!(out, "{{")?;
             write_json_field(out, "id", node.id.as_str())?;
+            out.write_char(',')?;
+            write!(out, "\"declaration_slot\":{},", node.slot.index())?;
+            write_json_field(
+                out,
+                "source_default_name",
+                node.source_default_name.as_str(),
+            )?;
             out.write_char(',')?;
             write!(out, "\"unresolved_name\":")?;
             write_source_name(
@@ -541,6 +719,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             write!(out, "{{")?;
             write_json_field(out, "id", callback.id.as_str())?;
             out.write_char(',')?;
+            if let Some(slot) = callback.slot {
+                write!(out, "\"declaration_slot\":{},", slot.index())?;
+            }
             write_json_field(out, "kind", callback.kind)?;
             out.write_char(',')?;
             if let Some(group) = callback.group.as_ref() {
@@ -563,6 +744,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 write_json_field(out, "kind", effect_json_kind(effect.kind))?;
                 out.write_char(',')?;
                 write_json_field(out, "entity", effect.entity_id.as_str())?;
+                if let Some(entity_slot) = effect.entity_slot {
+                    write!(out, ",\"entity_slot\":{}", entity_slot.index())?;
+                }
                 write!(out, "}}")?;
             }
             write!(out, "],")?;
@@ -587,6 +771,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             write!(out, "{{")?;
             write_json_field(out, "node", entity.node_id.as_str())?;
             out.write_char(',')?;
+            if let Some(slot) = entity.slot {
+                write!(out, "\"declaration_slot\":{},", slot.index())?;
+            }
             write_json_field(out, "name", entity.source_name.as_str())?;
             out.write_char(',')?;
             write!(out, "\"default\":")?;
@@ -640,6 +827,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             {
                 callbacks.push(SourceCallbackRef {
                     id: callback_id.as_str().into(),
+                    slot: entity.callback_slot,
                     kind,
                     source: entity.callback_source.clone(),
                     group: entity
@@ -656,6 +844,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 {
                     callbacks.push(SourceCallbackRef {
                         id: cancel_id.as_str().into(),
+                        slot: entity.action_cancel_callback_slot,
                         kind: "action_cancel",
                         source: entity.action_cancel_source.clone(),
                         group: entity
@@ -671,6 +860,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 {
                     callbacks.push(SourceCallbackRef {
                         id: accepted_id.as_str().into(),
+                        slot: entity.action_accepted_callback_slot,
                         kind: "action_accepted",
                         source: entity.action_accepted_source.clone(),
                         group: entity
@@ -688,9 +878,18 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
 #[cfg(feature = "std")]
 struct SourceCallbackRef {
     id: StdString,
+    slot: Option<CallbackSlot>,
     kind: &'static str,
     source: SourceLocationMetadata,
     group: Option<StdString>,
+}
+
+pub(crate) fn entity_callback_ids(entity: &EntityMetadata) -> [Option<&MetadataString>; 3] {
+    [
+        entity.callback_id.as_ref(),
+        entity.action_cancel_callback_id.as_ref(),
+        entity.action_accepted_callback_id.as_ref(),
+    ]
 }
 
 /// Inputs for [`entity_metadata`]. Collapses the seven positional
@@ -720,7 +919,9 @@ pub(crate) fn entity_metadata(
         qos,
     } = spec;
     Ok(EntityMetadata {
+        slot: None,
         id: copy_str(id.as_str())?,
+        node_slot: None,
         node_id: copy_str(node_id.as_str())?,
         kind,
         source_name: copy_str(source_name)?,
@@ -728,11 +929,14 @@ pub(crate) fn entity_metadata(
         type_name,
         type_hash,
         qos,
+        callback_slot: None,
         callback_id: None,
         callback_source: SourceLocationMetadata::empty(),
         callback_group: None,
+        action_cancel_callback_slot: None,
         action_cancel_callback_id: None,
         action_cancel_source: SourceLocationMetadata::empty(),
+        action_accepted_callback_slot: None,
         action_accepted_callback_id: None,
         action_accepted_source: SourceLocationMetadata::empty(),
         period_ms: None,
@@ -751,6 +955,9 @@ fn write_publisher_json(
     write!(out, "{{")?;
     write_json_field(out, "id", entity.id.as_str())?;
     out.write_char(',')?;
+    if let Some(slot) = entity.slot {
+        write!(out, "\"declaration_slot\":{},", slot.index())?;
+    }
     write!(out, "\"unresolved_topic\":")?;
     write_source_name(out, entity.source_name.as_str(), entity.source_name_kind)?;
     out.write_char(',')?;
@@ -768,6 +975,9 @@ fn write_subscriber_json(
     write!(out, "{{")?;
     write_json_field(out, "id", entity.id.as_str())?;
     out.write_char(',')?;
+    if let Some(slot) = entity.slot {
+        write!(out, "\"declaration_slot\":{},", slot.index())?;
+    }
     write!(out, "\"unresolved_topic\":")?;
     write_source_name(out, entity.source_name.as_str(), entity.source_name_kind)?;
     out.write_char(',')?;
@@ -784,6 +994,9 @@ fn write_subscriber_json(
             .map(|id| id.as_str())
             .unwrap_or(""),
     )?;
+    if let Some(callback_slot) = entity.callback_slot {
+        write!(out, ",\"callback_slot\":{}", callback_slot.index())?;
+    }
     write!(out, "}}")
 }
 
@@ -792,6 +1005,9 @@ fn write_timer_json(out: &mut impl core::fmt::Write, entity: &EntityMetadata) ->
     write!(out, "{{")?;
     write_json_field(out, "id", entity.id.as_str())?;
     out.write_char(',')?;
+    if let Some(slot) = entity.slot {
+        write!(out, "\"declaration_slot\":{},", slot.index())?;
+    }
     write!(out, "\"period_ms\":{},", entity.period_ms.unwrap_or(0))?;
     write_json_field(
         out,
@@ -802,6 +1018,9 @@ fn write_timer_json(out: &mut impl core::fmt::Write, entity: &EntityMetadata) ->
             .map(|id| id.as_str())
             .unwrap_or(""),
     )?;
+    if let Some(callback_slot) = entity.callback_slot {
+        write!(out, ",\"callback_slot\":{}", callback_slot.index())?;
+    }
     write!(out, "}}")
 }
 
@@ -813,6 +1032,9 @@ fn write_service_json(
     write!(out, "{{")?;
     write_json_field(out, "id", entity.id.as_str())?;
     out.write_char(',')?;
+    if let Some(slot) = entity.slot {
+        write!(out, "\"declaration_slot\":{},", slot.index())?;
+    }
     write!(out, "\"unresolved_name\":")?;
     write_source_name(out, entity.source_name.as_str(), entity.source_name_kind)?;
     out.write_char(',')?;
@@ -827,6 +1049,9 @@ fn write_service_json(
             .map(|id| id.as_str())
             .unwrap_or(""),
     )?;
+    if let Some(callback_slot) = entity.callback_slot {
+        write!(out, ",\"callback_slot\":{}", callback_slot.index())?;
+    }
     write!(out, "}}")
 }
 
@@ -853,16 +1078,28 @@ fn write_action_json(
     write!(out, "{{")?;
     write_json_field(out, "id", entity.id.as_str())?;
     out.write_char(',')?;
+    if let Some(slot) = entity.slot {
+        write!(out, "\"declaration_slot\":{},", slot.index())?;
+    }
     write!(out, "\"unresolved_name\":")?;
     write_source_name(out, entity.source_name.as_str(), entity.source_name_kind)?;
     out.write_char(',')?;
     write_interface(out, entity.type_name, "action")?;
     out.write_char(',')?;
     write_json_field(out, "goal_callback", goal_callback)?;
+    if let Some(callback_slot) = entity.callback_slot {
+        write!(out, ",\"goal_callback_slot\":{}", callback_slot.index())?;
+    }
     out.write_char(',')?;
     write_json_field(out, "cancel_callback", cancel_callback)?;
+    if let Some(callback_slot) = entity.action_cancel_callback_slot {
+        write!(out, ",\"cancel_callback_slot\":{}", callback_slot.index())?;
+    }
     out.write_char(',')?;
     write_json_field(out, "accepted_callback", accepted_callback)?;
+    if let Some(callback_slot) = entity.action_accepted_callback_slot {
+        write!(out, ",\"accepted_callback_slot\":{}", callback_slot.index())?;
+    }
     write!(out, "}}")
 }
 
@@ -1168,6 +1405,127 @@ mod tests {
         assert_eq!(
             recorder.push_entity(entity),
             Err(NodeMetadataError::UnknownNode)
+        );
+    }
+
+    #[test]
+    fn recorder_assigns_slots_and_source_default_names_by_declaration_order() {
+        let mut recorder = MetadataRecorder::<2, 4, 3>::new();
+        recorder
+            .push_node(NodeId::new("node_alpha"), "talker", "/", 0)
+            .unwrap();
+        recorder
+            .push_node(NodeId::new("node_beta"), "listener", "/demo", 42)
+            .unwrap();
+
+        assert_eq!(recorder.nodes()[0].slot, NodeSlot::new(0));
+        assert_eq!(recorder.nodes()[0].source_default_name.as_str(), "talker");
+        assert_eq!(recorder.nodes()[1].slot, NodeSlot::new(1));
+        assert_eq!(recorder.nodes()[1].source_default_name.as_str(), "listener");
+
+        recorder
+            .push_entity(
+                entity_metadata(EntityMetadataSpec {
+                    id: EntityId::new("pub_chatter"),
+                    node_id: NodeId::new("node_alpha"),
+                    kind: EntityKind::Publisher,
+                    source_name: "/chatter",
+                    type_name: "std_msgs::msg::dds_::String_",
+                    type_hash: "hash",
+                    qos: qos::DEFAULT,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        let mut subscription = entity_metadata(EntityMetadataSpec {
+            id: EntityId::new("sub_chatter"),
+            node_id: NodeId::new("node_beta"),
+            kind: EntityKind::Subscription,
+            source_name: "/chatter",
+            type_name: "std_msgs::msg::dds_::String_",
+            type_hash: "hash",
+            qos: qos::DEFAULT,
+        })
+        .unwrap();
+        subscription.callback_id = Some(copy_str("on_message").unwrap());
+        recorder.push_entity(subscription).unwrap();
+        let mut timer = entity_metadata(EntityMetadataSpec {
+            id: EntityId::new("timer_tick"),
+            node_id: NodeId::new("node_alpha"),
+            kind: EntityKind::Timer,
+            source_name: "",
+            type_name: "",
+            type_hash: "",
+            qos: qos::DEFAULT,
+        })
+        .unwrap();
+        timer.callback_id = Some(copy_str("on_tick").unwrap());
+        recorder.push_entity(timer).unwrap();
+
+        assert_eq!(recorder.entities()[0].slot, Some(EntitySlot::new(0)));
+        assert_eq!(recorder.entities()[0].node_slot, Some(NodeSlot::new(0)));
+        assert_eq!(recorder.entities()[0].callback_slot, None);
+        assert_eq!(recorder.entities()[1].slot, Some(EntitySlot::new(1)));
+        assert_eq!(recorder.entities()[1].node_slot, Some(NodeSlot::new(1)));
+        assert_eq!(
+            recorder.entities()[1].callback_slot,
+            Some(CallbackSlot::new(0))
+        );
+        assert_eq!(
+            recorder.entities()[2].callback_slot,
+            Some(CallbackSlot::new(1))
+        );
+
+        recorder
+            .push_callback_effect(
+                CallbackId::new("on_tick"),
+                CallbackEffectKind::Publishes,
+                EntityId::new("pub_chatter"),
+            )
+            .unwrap();
+        assert_eq!(
+            recorder.callback_effects()[0].callback_slot,
+            Some(CallbackSlot::new(1))
+        );
+        assert_eq!(
+            recorder.callback_effects()[0].entity_slot,
+            Some(EntitySlot::new(0))
+        );
+    }
+
+    #[test]
+    fn recorder_assigns_distinct_callback_slots_within_one_action_entity() {
+        let mut recorder = MetadataRecorder::<1, 1, 3>::new();
+        recorder
+            .push_node(NodeId::new("node"), "action_node", "/", 0)
+            .unwrap();
+        let mut action = entity_metadata(EntityMetadataSpec {
+            id: EntityId::new("act_count"),
+            node_id: NodeId::new("node"),
+            kind: EntityKind::ActionServer,
+            source_name: "/count",
+            type_name: "example_interfaces::action::dds_::Fibonacci_",
+            type_hash: "hash",
+            qos: qos::DEFAULT,
+        })
+        .unwrap();
+        action.callback_id = Some(copy_str("on_goal").unwrap());
+        action.action_cancel_callback_id = Some(copy_str("on_cancel").unwrap());
+        action.action_accepted_callback_id = Some(copy_str("on_accepted").unwrap());
+
+        recorder.push_entity(action).unwrap();
+
+        assert_eq!(
+            recorder.entities()[0].callback_slot,
+            Some(CallbackSlot::new(0))
+        );
+        assert_eq!(
+            recorder.entities()[0].action_cancel_callback_slot,
+            Some(CallbackSlot::new(1))
+        );
+        assert_eq!(
+            recorder.entities()[0].action_accepted_callback_slot,
+            Some(CallbackSlot::new(2))
         );
     }
 

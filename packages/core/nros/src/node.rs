@@ -8,9 +8,10 @@ use crate::{
     TimerDuration,
     heapless::Vec,
     node_metadata::{
-        CallbackEffectKind, CallbackEffectMetadata, EntityKind, EntityMetadata, EntityMetadataSpec,
-        MetadataRecorder, MetadataString, NodeId, NodeMetadataError, ParameterDefault,
-        SourceLocationMetadata, copy_str, entity_metadata,
+        CallbackEffectKind, CallbackEffectMetadata, CallbackSlot, EntityKind, EntityMetadata,
+        EntityMetadataSpec, EntitySlot, MetadataRecorder, MetadataString, NodeId,
+        NodeMetadataError, NodeSlot, ParameterDefault, SourceLocationMetadata, copy_str,
+        entity_callback_ids, entity_metadata,
     },
 };
 
@@ -179,14 +180,26 @@ pub trait DeclaredNodeRuntime {
 /// Recorded runtime node mapping.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeNodeRecord<H: Copy + Eq> {
+    slot: NodeSlot,
     stable_id: MetadataString,
+    source_default_name: MetadataString,
     handle: H,
 }
 
 impl<H: Copy + Eq> RuntimeNodeRecord<H> {
+    /// Declaration-order node slot.
+    pub const fn slot(&self) -> NodeSlot {
+        self.slot
+    }
+
     /// Stable component node ID.
     pub fn stable_id(&self) -> &str {
         &self.stable_id
+    }
+
+    /// Source-authored default ROS node name.
+    pub fn source_default_name(&self) -> &str {
+        &self.source_default_name
     }
 
     /// Runtime executor node handle.
@@ -259,6 +272,79 @@ impl<
             .iter()
             .any(|entity| entity.id.as_str() == stable_id)
     }
+
+    fn node_slot_for_id(&self, stable_id: &str) -> Option<NodeSlot> {
+        self.nodes
+            .iter()
+            .find(|node| node.stable_id() == stable_id)
+            .map(RuntimeNodeRecord::slot)
+    }
+
+    fn entity_slot_for_id(&self, stable_id: &str) -> Option<EntitySlot> {
+        self.entities
+            .iter()
+            .find(|entity| entity.id.as_str() == stable_id)
+            .and_then(|entity| entity.slot)
+    }
+
+    fn callback_slot_for_current_entity(
+        &self,
+        id: &str,
+        current_callbacks: &mut Vec<MetadataString, 3>,
+        next_callback_slot: &mut usize,
+    ) -> CallbackSlot {
+        if let Some(slot) = self.callback_slot_for_id(id) {
+            return slot;
+        }
+        if let Some((index, _)) = current_callbacks
+            .iter()
+            .enumerate()
+            .find(|(_, callback_id)| callback_id.as_str() == id)
+        {
+            return CallbackSlot::new(self.callback_slot_count() + index);
+        }
+        let slot = CallbackSlot::new(*next_callback_slot);
+        let _ = current_callbacks
+            .push(copy_str(id).expect("callback ID already fits metadata string capacity"));
+        *next_callback_slot += 1;
+        slot
+    }
+
+    fn callback_slot_for_id(&self, id: &str) -> Option<CallbackSlot> {
+        let mut seen = Vec::<&str, MAX_CALLBACKS>::new();
+        for entity in &self.entities {
+            for callback_id in entity_callback_ids(entity) {
+                let Some(callback_id) = callback_id else {
+                    continue;
+                };
+                let callback_id = callback_id.as_str();
+                if seen.iter().any(|seen_id| *seen_id == callback_id) {
+                    continue;
+                }
+                if callback_id == id {
+                    return Some(CallbackSlot::new(seen.len()));
+                }
+                let _ = seen.push(callback_id);
+            }
+        }
+        None
+    }
+
+    fn callback_slot_count(&self) -> usize {
+        let mut seen = Vec::<&str, MAX_CALLBACKS>::new();
+        for entity in &self.entities {
+            for callback_id in entity_callback_ids(entity) {
+                let Some(callback_id) = callback_id else {
+                    continue;
+                };
+                let callback_id = callback_id.as_str();
+                if !seen.iter().any(|seen_id| *seen_id == callback_id) {
+                    let _ = seen.push(callback_id);
+                }
+            }
+        }
+        seen.len()
+    }
 }
 
 impl<
@@ -273,22 +359,58 @@ impl<
             return Err(NodeMetadataError::DuplicateId.into());
         }
         let handle = self.node_runtime.build_component_node(id, options)?;
+        let slot = NodeSlot::new(self.nodes.len());
         self.nodes
             .push(RuntimeNodeRecord {
+                slot,
                 stable_id: copy_str(id.as_str())?,
+                source_default_name: copy_str(options.name)?,
                 handle,
             })
             .map_err(|_| NodeDeclError::Metadata(NodeMetadataError::Capacity))?;
         Ok(())
     }
 
-    fn create_entity(&mut self, metadata: EntityMetadata) -> NodeResult<()> {
+    fn create_entity(&mut self, mut metadata: EntityMetadata) -> NodeResult<()> {
         if !self.contains_node(metadata.node_id.as_str()) {
             return Err(NodeMetadataError::UnknownNode.into());
         }
         if self.contains_entity(metadata.id.as_str()) {
             return Err(NodeMetadataError::DuplicateId.into());
         }
+        metadata.slot = Some(EntitySlot::new(self.entities.len()));
+        metadata.node_slot = self.node_slot_for_id(&metadata.node_id);
+        let mut current_callbacks = Vec::<MetadataString, 3>::new();
+        let mut next_callback_slot = self.callback_slot_count();
+        metadata.callback_slot = metadata.callback_id.as_ref().map(|callback_id| {
+            self.callback_slot_for_current_entity(
+                callback_id.as_str(),
+                &mut current_callbacks,
+                &mut next_callback_slot,
+            )
+        });
+        metadata.action_cancel_callback_slot =
+            metadata
+                .action_cancel_callback_id
+                .as_ref()
+                .map(|callback_id| {
+                    self.callback_slot_for_current_entity(
+                        callback_id.as_str(),
+                        &mut current_callbacks,
+                        &mut next_callback_slot,
+                    )
+                });
+        metadata.action_accepted_callback_slot =
+            metadata
+                .action_accepted_callback_id
+                .as_ref()
+                .map(|callback_id| {
+                    self.callback_slot_for_current_entity(
+                        callback_id.as_str(),
+                        &mut current_callbacks,
+                        &mut next_callback_slot,
+                    )
+                });
         self.entities
             .push(metadata)
             .map_err(|_| NodeDeclError::Metadata(NodeMetadataError::Capacity))?;
@@ -307,8 +429,10 @@ impl<
         self.callback_effects
             .push(CallbackEffectMetadata {
                 callback_id: copy_str(callback_id.as_str())?,
+                callback_slot: self.callback_slot_for_id(callback_id.as_str()),
                 kind,
                 entity_id: copy_str(entity_id.as_str())?,
+                entity_slot: self.entity_slot_for_id(entity_id.as_str()),
             })
             .map_err(|_| NodeDeclError::Metadata(NodeMetadataError::Capacity))?;
         Ok(())
@@ -362,20 +486,10 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
     }
 
     /// Declare a node with an explicit stable node ID.
-    pub fn create_node<'id>(
-        &mut self,
-        id: NodeId<'id>,
-        options: NodeOptions<'_>,
-    ) -> NodeResult<DeclaredNode<'_, 'id, R>> {
-        self.create_node_with_id(id, options)
-    }
-
-    /// Declare a node with an explicit stable node ID.
     ///
     /// This is the advanced form for packages that declare multiple nodes or
     /// need stable metadata IDs that differ from their ROS node names. Prefer
-    /// [`create_node_with_options`](Self::create_node_with_options) for common
-    /// one-node packages.
+    /// [`create_node`](Self::create_node) for common one-node packages.
     pub fn create_node_with_id<'id>(
         &mut self,
         id: NodeId<'id>,
@@ -392,14 +506,23 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
     ///
     /// This mirrors the common rclcpp/rclrs shape where a node package supplies
     /// node options and the node name, while nano-ros keeps the stable ID as
-    /// internal metadata. Packages with more than one node should use
+    /// internal metadata. Packages with more than one source-level node should use
     /// [`create_node_with_id`](Self::create_node_with_id) when names are not
     /// sufficient stable IDs.
-    pub fn create_node_with_options<'id>(
+    pub fn create_node<'id>(
         &mut self,
         options: NodeOptions<'id>,
     ) -> NodeResult<DeclaredNode<'_, 'id, R>> {
         self.create_node_with_id(NodeId::new(options.name), options)
+    }
+
+    /// Deprecated alias for [`create_node`](Self::create_node).
+    #[deprecated(note = "use create_node(NodeOptions)")]
+    pub fn create_node_with_options<'id>(
+        &mut self,
+        options: NodeOptions<'id>,
+    ) -> NodeResult<DeclaredNode<'_, 'id, R>> {
+        self.create_node(options)
     }
 
     /// Record optional effects for a callback not tied to a node wrapper.
@@ -504,6 +627,17 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             topic,
             QosSettings::default(),
         )
+    }
+
+    /// Declare a subscription using `callback_name` as the source callback
+    /// name and synthesized entity ID.
+    #[track_caller]
+    pub fn create_subscription_for_callback_name<'callback, M: RosMessage>(
+        &mut self,
+        callback_name: &'callback str,
+        topic: &str,
+    ) -> NodeResult<NodeSubscription<'callback, M>> {
+        self.create_subscription_for_callback::<M>(CallbackId::new(callback_name), topic)
     }
 
     /// Declare a subscription with explicit QoS, using `callback_id` as the stable entity ID.
@@ -640,6 +774,17 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         self.create_timer(EntityId::new(callback_id.as_str()), callback_id, period)
     }
 
+    /// Declare a timer using `callback_name` as the source callback name and
+    /// synthesized entity ID.
+    #[track_caller]
+    pub fn create_timer_for_callback_name<'callback>(
+        &mut self,
+        callback_name: &'callback str,
+        period: TimerDuration,
+    ) -> NodeResult<NodeTimer<'callback>> {
+        self.create_timer_for_callback(CallbackId::new(callback_name), period)
+    }
+
     /// Declare a service server. Stable service and callback IDs are required.
     #[track_caller]
     pub fn create_service_server<'entity, 'callback, S: RosService>(
@@ -664,6 +809,16 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         Ok(NodeServiceServer::new(id))
     }
 
+    /// Declare a service server using `name` as both the stable entity ID
+    /// and callback ID.
+    #[track_caller]
+    pub fn create_service_server_for_name<'entity, S: RosService>(
+        &mut self,
+        name: &'entity str,
+    ) -> NodeResult<NodeServiceServer<'entity, S>> {
+        self.create_service_server::<S>(EntityId::new(name), CallbackId::new(name), name)
+    }
+
     /// Declare a service server whose stable entity and callback IDs are
     /// both synthesized from the service-name literal, returning a
     /// [`ServiceTag`] the Node author stores on `Self::State` and matches
@@ -680,21 +835,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         &mut self,
         name: &'static str,
     ) -> NodeResult<ServiceTag> {
-        let id = EntityId::new(name);
-        let callback_id = CallbackId::new(name);
-        let mut metadata = entity_metadata(EntityMetadataSpec {
-            id,
-            node_id: self.id,
-            kind: EntityKind::ServiceServer,
-            source_name: name,
-            type_name: S::SERVICE_NAME,
-            type_hash: S::SERVICE_HASH,
-            qos: QosSettings::default(),
-        })?;
-        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
-        metadata.callback_source = SourceLocationMetadata::caller()?;
-        metadata.source = metadata.callback_source.clone();
-        self.runtime.create_entity(metadata)?;
+        self.create_service_server_for_name::<S>(name)?;
         Ok(ServiceTag::new(name))
     }
 
@@ -717,6 +858,15 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
         Ok(NodeServiceClient::new(id))
+    }
+
+    /// Declare a service client using `name` as the stable entity ID.
+    #[track_caller]
+    pub fn create_service_client_for_name<'entity, S: RosService>(
+        &mut self,
+        name: &'entity str,
+    ) -> NodeResult<NodeServiceClient<'entity, S>> {
+        self.create_service_client::<S>(EntityId::new(name), name)
     }
 
     /// Declare an action server. Stable action and callback IDs are required.
@@ -766,6 +916,16 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         Ok(NodeActionServer::new(id))
     }
 
+    /// Declare an action server using `name` as the stable entity ID and
+    /// default goal/cancel/accepted callback ID.
+    #[track_caller]
+    pub fn create_action_server_for_name<'entity, A: RosAction>(
+        &mut self,
+        name: &'entity str,
+    ) -> NodeResult<NodeActionServer<'entity, A>> {
+        self.create_action_server::<A>(EntityId::new(name), CallbackId::new(name), name)
+    }
+
     /// Declare an action server whose stable entity and callback IDs are
     /// both synthesized from the action-name literal, returning an
     /// [`ActionTag`] the Node author stores on `Self::State` and matches
@@ -786,25 +946,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         &mut self,
         name: &'static str,
     ) -> NodeResult<ActionTag> {
-        let id = EntityId::new(name);
-        let callback_id = CallbackId::new(name);
-        let mut metadata = entity_metadata(EntityMetadataSpec {
-            id,
-            node_id: self.id,
-            kind: EntityKind::ActionServer,
-            source_name: name,
-            type_name: A::ACTION_NAME,
-            type_hash: A::ACTION_HASH,
-            qos: QosSettings::default(),
-        })?;
-        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
-        metadata.callback_source = SourceLocationMetadata::caller()?;
-        metadata.action_cancel_callback_id = Some(copy_str(callback_id.as_str())?);
-        metadata.action_cancel_source = metadata.callback_source.clone();
-        metadata.action_accepted_callback_id = Some(copy_str(callback_id.as_str())?);
-        metadata.action_accepted_source = metadata.callback_source.clone();
-        metadata.source = metadata.callback_source.clone();
-        self.runtime.create_entity(metadata)?;
+        self.create_action_server_for_name::<A>(name)?;
         Ok(ActionTag::new(name))
     }
 
@@ -827,6 +969,15 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
         Ok(NodeActionClient::new(id))
+    }
+
+    /// Declare an action client using `name` as the stable entity ID.
+    #[track_caller]
+    pub fn create_action_client_for_name<'entity, A: RosAction>(
+        &mut self,
+        name: &'entity str,
+    ) -> NodeResult<NodeActionClient<'entity, A>> {
+        self.create_action_client::<A>(EntityId::new(name), name)
     }
 
     /// Declare a parameter. Stable parameter ID is required.
@@ -873,6 +1024,15 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             runtime: self.runtime,
             id,
         }
+    }
+
+    /// Record optional effects for a named callback without exposing
+    /// `CallbackId` at the declaration site.
+    pub fn callback_for_name<'callback>(
+        &mut self,
+        name: &'callback str,
+    ) -> CallbackEffects<'_, 'callback, R> {
+        self.callback(CallbackId::new(name))
     }
 }
 
@@ -1593,7 +1753,8 @@ mod tests {
         const NAME: &'static str = "talker_component";
 
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
-            let mut node = context.create_node(NodeId::new("node"), NodeOptions::new("talker"))?;
+            let mut node =
+                context.create_node_with_id(NodeId::new("node"), NodeOptions::new("talker"))?;
             let _publisher =
                 node.create_publisher::<TestMsg>(EntityId::new("pub_chatter"), "chatter")?;
             let _subscription = node.create_subscription::<TestMsg>(
@@ -1643,10 +1804,30 @@ mod tests {
         register_node::<TalkerComponent>(&mut runtime).unwrap();
 
         assert_eq!(runtime.nodes().len(), 1);
+        assert_eq!(runtime.nodes()[0].slot(), NodeSlot::new(0));
         assert_eq!(runtime.nodes()[0].stable_id(), "node");
+        assert_eq!(runtime.nodes()[0].source_default_name(), "talker");
         assert_eq!(runtime.node_handle(NodeId::new("node")), Some(0));
         assert_eq!(runtime.entities().len(), 4);
+        assert_eq!(runtime.entities()[0].slot, Some(EntitySlot::new(0)));
+        assert_eq!(runtime.entities()[0].node_slot, Some(NodeSlot::new(0)));
+        assert_eq!(
+            runtime.entities()[1].callback_slot,
+            Some(CallbackSlot::new(0))
+        );
+        assert_eq!(
+            runtime.entities()[2].callback_slot,
+            Some(CallbackSlot::new(1))
+        );
         assert_eq!(runtime.callback_effects().len(), 2);
+        assert_eq!(
+            runtime.callback_effects()[0].callback_slot,
+            Some(CallbackSlot::new(1))
+        );
+        assert_eq!(
+            runtime.callback_effects()[0].entity_slot,
+            Some(EntitySlot::new(0))
+        );
     }
 
     #[test]
@@ -1654,7 +1835,7 @@ mod tests {
         let mut recorder = MetadataRecorder::<1, 0, 0>::new();
         let mut context = NodeContext::new("test", &mut recorder);
         let node = context
-            .create_node_with_options(NodeOptions::new("talker").namespace("/demo").domain_id(42))
+            .create_node(NodeOptions::new("talker").namespace("/demo").domain_id(42))
             .unwrap();
 
         assert_eq!(node.id(), NodeId::new("talker"));
@@ -1673,12 +1854,10 @@ mod tests {
         let mut runtime = NodeRuntimeAdapter::<_, 2, 0, 0>::new(&mut node_runtime);
         {
             let mut context = NodeContext::new("test", &mut runtime);
-            context
-                .create_node_with_options(NodeOptions::new("talker"))
-                .unwrap();
+            context.create_node(NodeOptions::new("talker")).unwrap();
         }
         let mut context = NodeContext::new("test", &mut runtime);
-        let result = context.create_node_with_options(NodeOptions::new("talker"));
+        let result = context.create_node(NodeOptions::new("talker"));
 
         assert!(matches!(
             result,
@@ -1690,9 +1869,7 @@ mod tests {
     fn synthesized_entity_helpers_record_topic_and_callback_ids() {
         let mut recorder = MetadataRecorder::<1, 3, 2>::new();
         let mut context = NodeContext::new("test", &mut recorder);
-        let mut node = context
-            .create_node_with_options(NodeOptions::new("talker"))
-            .unwrap();
+        let mut node = context.create_node(NodeOptions::new("talker")).unwrap();
 
         let publisher = node
             .create_publisher_for_topic::<TestMsg>("/chatter")
@@ -1749,12 +1926,67 @@ mod tests {
     }
 
     #[test]
+    fn named_callback_helpers_avoid_manual_callback_ids() {
+        let mut recorder = MetadataRecorder::<1, 3, 2>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let mut node = context.create_node(NodeOptions::new("listener")).unwrap();
+
+        let publisher = node
+            .create_publisher_for_topic::<TestMsg>("/chatter")
+            .unwrap();
+        let subscription = node
+            .create_subscription_for_callback_name::<TestMsg>("on_message", "/chatter")
+            .unwrap();
+        let timer = node
+            .create_timer_for_callback_name("on_tick", TimerDuration::from_millis(10))
+            .unwrap();
+
+        node.callback_for_name("on_message")
+            .reads_entity(&subscription)
+            .unwrap();
+        node.callback_for_name("on_tick")
+            .publishes_entity(&publisher)
+            .unwrap();
+
+        assert_eq!(subscription.id().as_str(), "on_message");
+        assert_eq!(timer.id().as_str(), "on_tick");
+        assert_eq!(
+            recorder.entities()[1]
+                .callback_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("on_message")
+        );
+        assert_eq!(
+            recorder.entities()[2]
+                .callback_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("on_tick")
+        );
+        assert_eq!(
+            recorder.callback_effects()[0].callback_id.as_str(),
+            "on_message"
+        );
+        assert_eq!(
+            recorder.callback_effects()[0].entity_id.as_str(),
+            "on_message"
+        );
+        assert_eq!(
+            recorder.callback_effects()[1].callback_id.as_str(),
+            "on_tick"
+        );
+        assert_eq!(
+            recorder.callback_effects()[1].entity_id.as_str(),
+            "/chatter"
+        );
+    }
+
+    #[test]
     fn synthesized_entity_ids_reject_collisions() {
         let mut recorder = MetadataRecorder::<1, 2, 0>::new();
         let mut context = NodeContext::new("test", &mut recorder);
-        let mut node = context
-            .create_node_with_options(NodeOptions::new("talker"))
-            .unwrap();
+        let mut node = context.create_node(NodeOptions::new("talker")).unwrap();
 
         node.create_publisher_for_topic::<TestMsg>("/chatter")
             .unwrap();
@@ -1821,14 +2053,16 @@ mod tests {
 
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
             {
-                let mut sensors = context
-                    .create_node(NodeId::new("node_sensors"), NodeOptions::new("sensors"))?;
+                let mut sensors = context.create_node_with_id(
+                    NodeId::new("node_sensors"),
+                    NodeOptions::new("sensors"),
+                )?;
                 let _status =
                     sensors.create_publisher::<TestMsg>(EntityId::new("pub_status"), "~/status")?;
             }
 
-            let mut control =
-                context.create_node(NodeId::new("node_control"), NodeOptions::new("control"))?;
+            let mut control = context
+                .create_node_with_id(NodeId::new("node_control"), NodeOptions::new("control"))?;
             let _cmd = control.create_subscription::<TestMsg>(
                 EntityId::new("sub_cmd"),
                 CallbackId::new("cb_cmd"),
@@ -1957,11 +2191,16 @@ mod tests {
             .unwrap();
 
         assert!(json.contains("\"callbacks\":["));
-        assert!(json.contains("\"id\":\"cb_cmd\",\"kind\":\"subscription\""));
-        assert!(json.contains("\"id\":\"cb_reset\",\"kind\":\"service\""));
-        assert!(json.contains("\"id\":\"cb_nav_goal\",\"kind\":\"action_goal\""));
-        assert!(json.contains("\"id\":\"cb_nav_cancel\",\"kind\":\"action_cancel\""));
-        assert!(json.contains("\"id\":\"cb_nav_accepted\",\"kind\":\"action_accepted\""));
+        assert!(json.contains("\"id\":\"cb_cmd\",\"declaration_slot\":0"));
+        assert!(json.contains("\"kind\":\"subscription\""));
+        assert!(json.contains("\"id\":\"cb_reset\",\"declaration_slot\":1"));
+        assert!(json.contains("\"kind\":\"service\""));
+        assert!(json.contains("\"id\":\"cb_nav_goal\",\"declaration_slot\":2"));
+        assert!(json.contains("\"kind\":\"action_goal\""));
+        assert!(json.contains("\"id\":\"cb_nav_cancel\",\"declaration_slot\":3"));
+        assert!(json.contains("\"kind\":\"action_cancel\""));
+        assert!(json.contains("\"id\":\"cb_nav_accepted\",\"declaration_slot\":4"));
+        assert!(json.contains("\"kind\":\"action_accepted\""));
         assert!(json.contains("\"kind\":\"publishes\",\"entity\":\"pub_status\""));
         assert!(json.contains("\"kind\":\"reads_parameter\",\"entity\":\"param_gain\""));
         assert!(json.contains("\"kind\":\"writes_parameter\",\"entity\":\"param_gain\""));
@@ -2316,9 +2555,7 @@ mod tests {
     fn create_subscription_static_returns_tag_matching_topic() {
         let mut recorder = MetadataRecorder::<1, 1, 1>::new();
         let mut context = NodeContext::new("test", &mut recorder);
-        let mut node = context
-            .create_node(NodeId::new("node"), NodeOptions::new("listener"))
-            .unwrap();
+        let mut node = context.create_node(NodeOptions::new("listener")).unwrap();
         let tag = node
             .create_subscription_static::<TestMsg>("/chatter")
             .unwrap();
@@ -2339,9 +2576,7 @@ mod tests {
     fn create_service_static_returns_tag() {
         let mut recorder = MetadataRecorder::<1, 1, 1>::new();
         let mut context = NodeContext::new("test", &mut recorder);
-        let mut node = context
-            .create_node(NodeId::new("node"), NodeOptions::new("server"))
-            .unwrap();
+        let mut node = context.create_node(NodeOptions::new("server")).unwrap();
         let tag = node
             .create_service_static::<TestService>("/add_two_ints")
             .unwrap();
@@ -2359,12 +2594,42 @@ mod tests {
     }
 
     #[test]
+    fn create_service_helpers_use_name_as_entity_and_callback_id() {
+        let mut recorder = MetadataRecorder::<1, 2, 1>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let mut node = context.create_node(NodeOptions::new("services")).unwrap();
+        let server = node
+            .create_service_server_for_name::<TestService>("/add_two_ints")
+            .unwrap();
+        let client = node
+            .create_service_client_for_name::<TestService>("/reset")
+            .unwrap();
+
+        assert_eq!(server.id(), EntityId::new("/add_two_ints"));
+        assert_eq!(client.id(), EntityId::new("/reset"));
+        assert_eq!(recorder.entities().len(), 2);
+
+        let server = &recorder.entities()[0];
+        assert_eq!(server.kind, EntityKind::ServiceServer);
+        assert_eq!(server.id.as_str(), "/add_two_ints");
+        assert_eq!(server.source_name.as_str(), "/add_two_ints");
+        assert_eq!(
+            server.callback_id.as_ref().map(|id| id.as_str()),
+            Some("/add_two_ints")
+        );
+
+        let client = &recorder.entities()[1];
+        assert_eq!(client.kind, EntityKind::ServiceClient);
+        assert_eq!(client.id.as_str(), "/reset");
+        assert_eq!(client.source_name.as_str(), "/reset");
+        assert!(client.callback_id.is_none());
+    }
+
+    #[test]
     fn create_action_static_returns_tag() {
         let mut recorder = MetadataRecorder::<1, 1, 1>::new();
         let mut context = NodeContext::new("test", &mut recorder);
-        let mut node = context
-            .create_node(NodeId::new("node"), NodeOptions::new("server"))
-            .unwrap();
+        let mut node = context.create_node(NodeOptions::new("server")).unwrap();
         let tag = node
             .create_action_static::<TestAction>("/fibonacci")
             .unwrap();
@@ -2393,5 +2658,51 @@ mod tests {
                 .map(|id| id.as_str()),
             Some("/fibonacci")
         );
+    }
+
+    #[test]
+    fn create_action_helpers_use_name_as_entity_and_default_callback_id() {
+        let mut recorder = MetadataRecorder::<1, 2, 3>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let mut node = context.create_node(NodeOptions::new("actions")).unwrap();
+        let server = node
+            .create_action_server_for_name::<TestAction>("/fibonacci")
+            .unwrap();
+        let client = node
+            .create_action_client_for_name::<TestAction>("/navigate")
+            .unwrap();
+
+        assert_eq!(server.id(), EntityId::new("/fibonacci"));
+        assert_eq!(client.id(), EntityId::new("/navigate"));
+        assert_eq!(recorder.entities().len(), 2);
+
+        let server = &recorder.entities()[0];
+        assert_eq!(server.kind, EntityKind::ActionServer);
+        assert_eq!(server.id.as_str(), "/fibonacci");
+        assert_eq!(server.source_name.as_str(), "/fibonacci");
+        assert_eq!(
+            server.callback_id.as_ref().map(|id| id.as_str()),
+            Some("/fibonacci")
+        );
+        assert_eq!(
+            server
+                .action_cancel_callback_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("/fibonacci")
+        );
+        assert_eq!(
+            server
+                .action_accepted_callback_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("/fibonacci")
+        );
+
+        let client = &recorder.entities()[1];
+        assert_eq!(client.kind, EntityKind::ActionClient);
+        assert_eq!(client.id.as_str(), "/navigate");
+        assert_eq!(client.source_name.as_str(), "/navigate");
+        assert!(client.callback_id.is_none());
     }
 }
