@@ -48,8 +48,8 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeId,
-    NodeOptions, NodeResult, ServiceTag,
+    CallbackCtx, CallbackId, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
+    NodeResult, ServiceTag,
 };
 
 /// Service server component — answers `/echo` requests. Phase 216.B.5
@@ -79,7 +79,7 @@ impl Node for ServiceServer {
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("service_server"))?;
+        let mut node = ctx.create_node(NodeOptions::new("service_server"))?;
         // Phase 216.B.5 — tag-based service server. The service-name
         // literal becomes both the stable entity ID and the callback
         // ID; the returned `ServiceTag` is what `on_callback` matches

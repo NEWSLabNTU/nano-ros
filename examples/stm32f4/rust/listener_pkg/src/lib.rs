@@ -66,8 +66,8 @@
 
 use embassy_executor::Spawner;
 use nros::{
-    CallbackCtx, CallbackId, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeId,
-    NodeOptions, NodeResult, SubscriptionTag,
+    CallbackCtx, CallbackId, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
+    NodeResult, SubscriptionTag,
 };
 
 /// Listener component — subscribes to `/chatter` and (eventually)
@@ -102,7 +102,7 @@ impl Node for Listener {
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("listener"))?;
+        let mut node = ctx.create_node(NodeOptions::new("listener"))?;
         // Phase 216.C.5 — tag-based subscription. The topic literal
         // becomes both the stable entity ID and the callback ID; the
         // returned `SubscriptionTag` is what `on_callback` matches

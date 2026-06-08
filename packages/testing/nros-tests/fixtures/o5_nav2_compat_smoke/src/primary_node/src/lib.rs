@@ -6,7 +6,7 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeId, NodeOptions, NodeResult};
+use nros::{Node, NodeContext, NodeOptions, NodeResult};
 
 pub struct Primary;
 
@@ -14,7 +14,7 @@ impl Node for Primary {
     const NAME: &'static str = "primary";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let _node = ctx.create_node(NodeId::new("node"), NodeOptions::new("primary"))?;
+        let _node = ctx.create_node(NodeOptions::new("primary"))?;
         Ok(())
     }
 }

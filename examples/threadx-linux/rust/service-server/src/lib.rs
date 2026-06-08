@@ -9,8 +9,7 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
 };
 
 pub struct ServiceServer;
@@ -19,8 +18,7 @@ impl Node for ServiceServer {
     const NAME: &'static str = "service_server";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node =
-            ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_server"))?;
+        let mut node = ctx.create_node(NodeOptions::new("add_two_ints_server"))?;
         let _srv = node.create_service_server::<AddTwoInts>(
             EntityId::new("srv_add"),
             CallbackId::new("on_add"),

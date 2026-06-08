@@ -8,12 +8,12 @@ static nros_ret_t register_listener(nros_node_context_t* ctx) {
     nros_ret_t r = nros_declared_node_init_default(ctx, "listener", &node);
     if (r != NROS_RET_OK) return r;
 
-    r = nros_declared_node_create_subscription(
-        &node, "sub_chatter", "/chatter", "std_msgs/msg/Int32", "", "on_message");
+    nros_declared_entity_t sub;
+    r = nros_declared_node_create_subscription_for_name(&node, &sub, "/chatter",
+                                                        "std_msgs/msg/Int32", "");
     if (r != NROS_RET_OK) return r;
 
-    return nros_node_record_callback_effect(ctx, "on_message", NROS_NODE_CALLBACK_READS,
-                                            "sub_chatter");
+    return nros_declared_entity_record_callback_effect(ctx, &sub, NROS_NODE_CALLBACK_READS, &sub);
 }
 
 NROS_NODE_REGISTER(register_listener);

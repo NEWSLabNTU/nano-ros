@@ -10,8 +10,7 @@ extern crate zephyr;
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeId, NodeOptions,
-    NodeResult,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
 };
 
 pub struct AddTwoIntsServer;
@@ -20,8 +19,7 @@ impl Node for AddTwoIntsServer {
     const NAME: &'static str = "add_two_ints_server";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node =
-            ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_server"))?;
+        let mut node = ctx.create_node(NodeOptions::new("add_two_ints_server"))?;
         let _srv = node.create_service_server::<AddTwoInts>(
             EntityId::new("srv_add"),
             CallbackId::new("handle_add"),

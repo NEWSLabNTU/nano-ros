@@ -11,8 +11,8 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    CallbackCtx, CallbackId, CancelResponse, Node, NodeContext, NodeResult,
-    EntityId, ExecutableNode, GoalId, GoalResponse, GoalStatus, NodeId, NodeOptions, TickCtx,
+    CallbackCtx, CallbackId, CancelResponse, EntityId, ExecutableNode, GoalId, GoalResponse,
+    GoalStatus, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 pub struct ActionServer;
@@ -21,10 +21,7 @@ impl Node for ActionServer {
     const NAME: &'static str = "action_server";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(
-            NodeId::new("node"),
-            NodeOptions::new("fibonacci_action_server"),
-        )?;
+        let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_server"))?;
         let _action = node.create_action_server_with_callbacks::<Fibonacci>(
             EntityId::new("act_fib"),
             CallbackId::new("on_goal"),

@@ -55,8 +55,8 @@
 
 use nros::{
     ActionTag, CallbackCtx, CallbackId, CdrReader, CdrWriter, DeserError, Deserialize,
-    DispatchStrategy, ExecutableNode, Node, NodeContext, NodeId, NodeOptions, NodeResult,
-    RosAction, RosMessage, SerError, Serialize,
+    DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, RosAction,
+    RosMessage, SerError, Serialize,
 };
 
 /// Action server component — accepts Fibonacci-shaped goals and
@@ -89,8 +89,7 @@ impl Node for ActionServer {
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node =
-            ctx.create_node(NodeId::new("node"), NodeOptions::new("fibonacci_server"))?;
+        let mut node = ctx.create_node(NodeOptions::new("fibonacci_server"))?;
         // Phase 216.B.5 — tag-based action server. The action-name
         // literal becomes both the stable entity ID and the
         // (single, fanned-out) callback ID; the returned

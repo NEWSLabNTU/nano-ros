@@ -15,8 +15,8 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions, TickCtx, TimerDuration,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    TickCtx, TimerDuration,
 };
 
 pub struct AddTwoIntsClient;
@@ -25,8 +25,7 @@ impl Node for AddTwoIntsClient {
     const NAME: &'static str = "add_two_ints_client";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node =
-            ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_client"))?;
+        let mut node = ctx.create_node(NodeOptions::new("add_two_ints_client"))?;
         let _client =
             node.create_service_client::<AddTwoInts>(EntityId::new("client_add"), "/add_two_ints")?;
         let _timer = node.create_timer(
@@ -56,11 +55,7 @@ impl ExecutableNode for AddTwoIntsClient {
         }
     }
 
-    fn on_callback(
-        state: &mut Self::State,
-        callback: CallbackId<'_>,
-        _ctx: &mut CallbackCtx<'_>,
-    ) {
+    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, _ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "issue_call" {
             state.pending = true;
             state.counter = state.counter.wrapping_add(1);
@@ -78,8 +73,8 @@ impl ExecutableNode for AddTwoIntsClient {
         };
         // Stack-buf sizes: AddTwoInts request = 2 × i64 + CDR header = 24 B;
         // response = 1 × i64 + header = 16 B. 64 each is generous.
-        let _: nros::NodeResult<AddTwoIntsResponse> =
-            ctx.call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
+        let _: nros::NodeResult<AddTwoIntsResponse> = ctx
+            .call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
                 EntityId::new("client_add"),
                 &req,
             );

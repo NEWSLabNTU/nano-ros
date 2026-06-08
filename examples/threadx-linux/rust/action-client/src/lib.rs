@@ -13,8 +13,8 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions, TickCtx,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    TickCtx,
 };
 
 pub struct ActionClient;
@@ -23,10 +23,7 @@ impl Node for ActionClient {
     const NAME: &'static str = "action_client";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(
-            NodeId::new("node"),
-            NodeOptions::new("fibonacci_action_client"),
-        )?;
+        let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_client"))?;
         let _client =
             node.create_action_client::<Fibonacci>(EntityId::new("cli_fib"), "/fibonacci")?;
         Ok(())

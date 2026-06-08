@@ -11,8 +11,8 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions, TimerDuration,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    TimerDuration,
 };
 use std_msgs::msg::Int32;
 
@@ -23,7 +23,7 @@ impl Node for Talker {
     const NAME: &'static str = "talker";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("talker"))?;
+        let mut node = ctx.create_node(NodeOptions::new("talker"))?;
         let _pub = node.create_publisher::<Int32>(EntityId::new("pub_chatter"), "/chatter")?;
         let _timer = node.create_timer(
             EntityId::new("timer_tick"),

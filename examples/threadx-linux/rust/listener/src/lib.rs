@@ -6,8 +6,7 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
 };
 use std_msgs::msg::Int32;
 
@@ -17,7 +16,7 @@ impl Node for Listener {
     const NAME: &'static str = "listener";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("listener"))?;
+        let mut node = ctx.create_node(NodeOptions::new("listener"))?;
         let _sub = node.create_subscription::<Int32>(
             EntityId::new("sub_chatter"),
             CallbackId::new("on_chatter"),

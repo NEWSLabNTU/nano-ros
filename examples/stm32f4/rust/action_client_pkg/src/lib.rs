@@ -52,7 +52,7 @@
 #![no_std]
 
 use nros::{
-    DispatchStrategy, EntityId, ExecutableNode, Node, NodeContext, NodeId, NodeOptions, NodeResult,
+    DispatchStrategy, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
 };
 use stm32f4_action_server_pkg::PlaceholderAct;
 
@@ -72,8 +72,7 @@ impl Node for ActionClient {
     const DISPATCH: DispatchStrategy = DispatchStrategy::Inline;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node =
-            ctx.create_node(NodeId::new("node"), NodeOptions::new("fibonacci_client"))?;
+        let mut node = ctx.create_node(NodeOptions::new("fibonacci_client"))?;
         // Phase 216.B.5 — action client uses the `EntityId`-shaped
         // builder (no `create_action_client_static` exists: clients
         // need a USABLE handle, not just a tag, to dispatch goals —

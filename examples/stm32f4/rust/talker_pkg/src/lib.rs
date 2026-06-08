@@ -29,8 +29,8 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeId, NodeOptions,
-    NodeResult, TimerDuration,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    TimerDuration,
 };
 
 /// Talker component — counter state + chatter publish on every tick.
@@ -40,7 +40,7 @@ impl Node for Talker {
     const NAME: &'static str = "talker";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("talker"))?;
+        let mut node = ctx.create_node(NodeOptions::new("talker"))?;
         // Phase 216.C.4 placeholder — declare the publisher with a
         // type_name string that matches `std_msgs/Int32`'s wire shape
         // without pulling the codegen-only `std_msgs` rlib in. A

@@ -71,10 +71,9 @@ an `async fn`. We don't — for two reasons:
    their own async task from inside the sync `on_callback`; that
    task runs under the same executor with no extra plumbing.
 
-So `on_callback` keeps the signature
-`fn on_callback(state: &mut Self::State, cb: CallbackId<'_>, ctx: &mut CallbackCtx<'_>)` —
-identical to RTIC, POSIX, and every other backend. The escape for
-"I need to await something" is the spawn-from-sync pattern below.
+So `on_callback` keeps the same callback-token signature as RTIC, POSIX,
+and every other backend. The escape for "I need to await something" is the
+spawn-from-sync pattern below.
 
 `AsyncNode` (an async-on-callback trait via RPITIT) is reserved as a
 design slot — see [When to wait for
@@ -300,7 +299,7 @@ pub trait AsyncNode: 'static {
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()>;
     async fn on_callback(
         &mut self,
-        cb_id: CallbackId,
+        callback: AsyncCallbackToken,
         ctx: CallbackCtx,
     );
 }

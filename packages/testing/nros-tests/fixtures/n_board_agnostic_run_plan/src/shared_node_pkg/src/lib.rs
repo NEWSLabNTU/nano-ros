@@ -8,7 +8,7 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeId, NodeOptions, NodeResult};
+use nros::{Node, NodeContext, NodeOptions, NodeResult};
 
 pub struct SharedNode;
 
@@ -16,7 +16,7 @@ impl Node for SharedNode {
     const NAME: &'static str = "shared_node";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let _node = ctx.create_node(NodeId::new("node"), NodeOptions::new("shared_node"))?;
+        let _node = ctx.create_node(NodeOptions::new("shared_node"))?;
         Ok(())
     }
 }

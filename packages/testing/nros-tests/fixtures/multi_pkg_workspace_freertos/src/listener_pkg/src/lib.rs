@@ -4,7 +4,7 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeResult, NodeId, NodeOptions};
+use nros::{Node, NodeContext, NodeOptions, NodeResult};
 
 pub struct Listener;
 
@@ -12,7 +12,7 @@ impl Node for Listener {
     const NAME: &'static str = "listener";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let _node = ctx.create_node(NodeId::new("node"), NodeOptions::new("listener"))?;
+        let _node = ctx.create_node(NodeOptions::new("listener"))?;
         Ok(())
     }
 }

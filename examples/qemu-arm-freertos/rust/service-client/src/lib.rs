@@ -47,8 +47,8 @@ mod host_shim {
 
 use example_interfaces::srv::AddTwoInts;
 use nros::{
-    CallbackCtx, CallbackId, Node, NodeContext, NodeResult, EntityId,
-    ExecutableNode, NodeId, NodeOptions, TimerDuration,
+    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    TimerDuration,
 };
 
 pub struct AddTwoIntsClient;
@@ -57,8 +57,7 @@ impl Node for AddTwoIntsClient {
     const NAME: &'static str = "add_two_ints_client";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node =
-            ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_client"))?;
+        let mut node = ctx.create_node(NodeOptions::new("add_two_ints_client"))?;
         let _client =
             node.create_service_client::<AddTwoInts>(EntityId::new("client_add"), "/add_two_ints")?;
         let _timer = node.create_timer(

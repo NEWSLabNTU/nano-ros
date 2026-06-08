@@ -132,8 +132,8 @@ Here is the essential shape, drawn from
 
 ```rust
 use nros::{
-    CallbackCtx, CallbackId, EntityId, ExecutableNode, Node,
-    NodeContext, NodeId, NodeOptions, NodeResult, TimerDuration,
+    CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    TimerDuration,
 };
 
 pub struct Talker;
@@ -142,15 +142,12 @@ impl Node for Talker {
     const NAME: &'static str = "talker";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("talker"))?;
-        let _pub = node.create_publisher::<MyMsg>(EntityId::new("pub_chatter"), "/chatter")?;
-        let _timer = node.create_timer(
-            EntityId::new("timer_tick"),
-            CallbackId::new("on_tick"),
-            TimerDuration::from_millis(1000),
-        )?;
-        node.callback(CallbackId::new("on_tick"))
-            .publishes(EntityId::new("pub_chatter"))?;
+        let mut node = ctx.create_node(NodeOptions::new("talker"))?;
+        let chatter = node.create_publisher_for_topic::<MyMsg>("/chatter")?;
+        let _timer =
+            node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
+        node.callback_for_name("on_tick")
+            .publishes_entity(&chatter)?;
         Ok(())
     }
 }
@@ -160,12 +157,7 @@ impl ExecutableNode for Talker {
 
     fn init() -> Self::State { 0 }
 
-    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "on_tick" {
-            // publish ...
-            *state = state.wrapping_add(1);
-        }
-    }
+    // See the full example for the callback body.
 }
 
 nros::node!(Talker);   // <-- exports the trampolines; this is the last line

@@ -273,11 +273,11 @@ impl Node for Listener {
 }
 ```
 
-Deferred means: when a callback arrives, the spin loop enqueues a
-`(CallbackId, CallbackCtx)` pair into a `heapless::spsc::Queue` and
-returns immediately. A separate `__nros_dispatch` RTIC task (typically
-`priority = 2`, one above spin) drains the queue and calls
-`ExecutableNode::on_callback` from its own task context.
+Deferred means: when a callback arrives, the spin loop enqueues a callback
+token plus context into a `heapless::spsc::Queue` and returns immediately.
+A separate `__nros_dispatch` RTIC task (typically `priority = 2`, one
+above spin) drains the queue and calls `ExecutableNode::on_callback` from
+its own task context.
 
 Pick Deferred when:
 

@@ -50,7 +50,7 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, CallbackId, DispatchStrategy, EntityId, ExecutableNode, Node, NodeContext, NodeId,
+    CallbackCtx, CallbackId, DispatchStrategy, EntityId, ExecutableNode, Node, NodeContext,
     NodeOptions, NodeResult,
 };
 use stm32f4_service_server_pkg::PlaceholderSrv;
@@ -71,7 +71,7 @@ impl Node for ServiceClient {
     const DISPATCH: DispatchStrategy = DispatchStrategy::Inline;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("service_client"))?;
+        let mut node = ctx.create_node(NodeOptions::new("service_client"))?;
         // Phase 216.B.5 — register the client handle. The metadata-only
         // tag pattern doesn't fit clients (a `ServiceTag` can't issue
         // requests; you need the handle), but Phase 216.B's

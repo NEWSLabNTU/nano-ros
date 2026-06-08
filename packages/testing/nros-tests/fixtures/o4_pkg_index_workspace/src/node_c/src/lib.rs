@@ -2,7 +2,7 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeId, NodeOptions, NodeResult};
+use nros::{Node, NodeContext, NodeOptions, NodeResult};
 
 pub struct NodeC;
 
@@ -10,7 +10,7 @@ impl Node for NodeC {
     const NAME: &'static str = "node_c";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let _node = ctx.create_node(NodeId::new("node"), NodeOptions::new("node_c"))?;
+        let _node = ctx.create_node(NodeOptions::new("node_c"))?;
         Ok(())
     }
 }

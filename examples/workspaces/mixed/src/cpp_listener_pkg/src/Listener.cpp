@@ -10,12 +10,15 @@ namespace cpp_listener_pkg {
     auto r = ctx.create_node(node, opts);
     if (!r.ok()) return r;
 
-    r = node.create_subscription(
-        "sub_chatter", "/chatter", "std_msgs/msg/Int32", "on_message");
+    ::nros::DeclaredCallback on_message;
+    r = node.declare_callback(on_message, "on_message");
     if (!r.ok()) return r;
 
-    return ctx.record_callback_effect(
-        "on_message", ::nros::CallbackEffectKind::Reads, "sub_chatter");
+    ::nros::DeclaredEntity subscription;
+    r = node.create_subscription<std_msgs::msg::Int32>(subscription, "/chatter", on_message);
+    if (!r.ok()) return r;
+
+    return ctx.record_callback_effect(on_message, ::nros::CallbackEffectKind::Reads, subscription);
 }
 
 } // namespace cpp_listener_pkg

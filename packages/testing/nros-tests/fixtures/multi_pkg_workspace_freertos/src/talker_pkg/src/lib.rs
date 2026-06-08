@@ -11,7 +11,7 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeResult, NodeId, NodeOptions};
+use nros::{Node, NodeContext, NodeOptions, NodeResult};
 
 pub struct Talker;
 
@@ -19,7 +19,7 @@ impl Node for Talker {
     const NAME: &'static str = "talker";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let _node = ctx.create_node(NodeId::new("node"), NodeOptions::new("talker"))?;
+        let _node = ctx.create_node(NodeOptions::new("talker"))?;
         Ok(())
     }
 }

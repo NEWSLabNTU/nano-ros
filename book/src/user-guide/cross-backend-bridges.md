@@ -48,9 +48,8 @@ extra `node_builder(...).rmw(name)` call:
 
 `spin_once()` drains every session in turn. Handles created
 through a multi-Session Node route through
-`Executor::node_session_mut(node_id)` (Rust) or
-`node->executor` (C / C++) instead of the legacy support /
-session pointer kept for single-backend callers.
+the node's resolved session record instead of the legacy support/session
+pointer kept for single-backend callers.
 
 `NodeRecord.session_idx` is the dispatch key. Print it to
 verify which session each Node landed on:

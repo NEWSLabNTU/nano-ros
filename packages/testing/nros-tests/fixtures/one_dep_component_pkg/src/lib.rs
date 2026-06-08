@@ -17,7 +17,7 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeResult, NodeId, NodeOptions};
+use nros::{Node, NodeContext, NodeOptions, NodeResult};
 
 pub struct OneDep;
 
@@ -25,7 +25,7 @@ impl Node for OneDep {
     const NAME: &'static str = "one_dep";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        let _node = ctx.create_node(NodeId::new("node"), NodeOptions::new("one_dep"))?;
+        let _node = ctx.create_node(NodeOptions::new("one_dep"))?;
         Ok(())
     }
 }

@@ -17,14 +17,19 @@ namespace talker_pkg {
     auto r = ctx.create_node(node, opts);
     if (!r.ok()) return r;
 
-    r = node.create_publisher("pub_chatter", "/chatter", "std_msgs/msg/Int32");
+    ::nros::DeclaredEntity publisher;
+    r = node.create_publisher<std_msgs::msg::Int32>(publisher, "/chatter");
     if (!r.ok()) return r;
 
-    r = node.create_timer("timer_tick", "1000", "on_tick");
+    ::nros::DeclaredCallback on_tick;
+    r = node.declare_callback(on_tick, "on_tick");
     if (!r.ok()) return r;
 
-    return ctx.record_callback_effect(
-        "on_tick", ::nros::CallbackEffectKind::Publishes, "pub_chatter");
+    ::nros::DeclaredEntity timer;
+    r = node.create_timer(timer, "1000", on_tick);
+    if (!r.ok()) return r;
+
+    return ctx.record_callback_effect(on_tick, ::nros::CallbackEffectKind::Publishes, publisher);
 }
 
 } // namespace talker_pkg

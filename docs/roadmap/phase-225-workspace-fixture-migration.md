@@ -540,8 +540,8 @@ Design decision:
   default node name, namespace/options, topic/service/action names,
   message/service/action types, QoS, callbacks, and callback effects.
 - Users must not author nano-ros internal IDs in normal source code.
-  `NodeId`, `EntityId`, `CallbackId`, raw `.stable_id`, `.node_id`, and
-  `.callback_id` are generated/build internals, not product API.
+  Legacy explicit ID constructors and raw descriptor fields are
+  generated/build internals, not product API.
 - Metadata extraction records declarations as structural slots local to
   the Node pkg, for example `NodeSlot(0)`, `EntitySlot(2)`, and
   `CallbackSlot(1)`. These slots are assigned by declaration order and
@@ -567,8 +567,8 @@ Implications:
 - The source default name is not an ID. Renaming a node in launch must not
   affect codegen-internal identity or callback dispatch wiring.
 - Returned handles are the only way product code relates callbacks to
-  entities. Example: `timer.publishes(&publisher)`, not
-  `publishes(EntityId::new("pub_chatter"))`.
+  entities. Product examples should call helpers such as
+  `timer.publishes(&publisher)`.
 - Dynamic source names are allowed only where no build-time system audit
   needs them. In workspace mode, a dynamic source default requires
   launch `name=`.
@@ -588,54 +588,62 @@ Acceptance:
 
 Metadata extraction and planning:
 
-- [ ] Change metadata records from user-authored stable strings to
-  structural slots: node slot, entity slot, callback slot, and source
-  location.
-- [ ] Record source default node name as metadata, separate from the
+- [x] Add structural slots to metadata records beside the compatibility
+  string IDs: node slot, entity slot, callback slot, and source
+  location/provenance fields.
+- [x] Record source default node name as metadata, separate from the
   generated node slot.
-- [ ] Represent callback effects as slot/handle relations, not string ID
-  relations.
-- [ ] Teach metadata JSON/plan schemas to preserve source defaults,
-  declaration slots, source locations, and launch instance provenance.
-- [ ] Update planner/codegen to assign workspace-scoped generated IDs
+- [x] Represent callback effects with slot references while preserving
+  compatibility string ID relations.
+- [x] Teach source metadata JSON and plan schemas to preserve source
+  defaults, declaration slots, source locations, and launch instance
+  provenance.
+- [x] Update planner/codegen to assign workspace-scoped generated IDs
   after launch expansion.
-- [ ] Add build-time effective-node-name resolution:
+- [x] Add build-time effective-node-name resolution:
   `launch.name` > static source default > error.
-- [ ] Add build-time uniqueness audit for `(domain_id, namespace,
-  effective_node_name)`, with diagnostics that point at launch rows and
-  source declarations.
-- [ ] Reject dynamic/unknown source default names in workspace mode when
+- [x] Add build-time uniqueness audit for `(domain_id, namespace,
+  effective_node_name)`; follow-up diagnostic polish should attach
+  precise source declarations once source locations are populated.
+- [x] Reject dynamic/unknown source default names in workspace mode when
   launch omits `name=`.
 
 Rust public API:
 
-- [ ] Replace `create_node_with_options` with the normal spelling
+- [x] Replace `create_node_with_options` with the normal spelling
   `create_node(options)` once the old explicit-ID overload is retired or
   moved.
-- [x] Add publisher/subscription/timer helpers that avoid public
-  `EntityId`.
-- [ ] Add service/action helpers that avoid public `EntityId` and
+- [x] Add publisher/subscription/timer helpers that avoid public manual
+  entity IDs.
+- [x] Add service/action helpers that avoid public manual entity and
   callback IDs.
 - [x] Add callback-effect helpers that accept returned handles.
-- [ ] Replace callback dispatch APIs that expose `CallbackId` to product
-  code with generated callback registration/typed callback hooks.
-- [ ] Keep `NodeId`, `EntityId`, and `CallbackId` only in internal or
-  generated modules.
-- [ ] Migrate promoted Rust workspace and templates to zero manual IDs.
-- [ ] Migrate hidden Rust fixtures and orchestration E2E workspaces away
+- [ ] Replace callback dispatch APIs that expose manual callback IDs to
+  product code with generated callback registration/typed callback hooks.
+- [ ] Keep legacy explicit ID types only in internal or generated modules.
+- [x] Migrate promoted Rust workspace and templates to zero manual IDs.
+- [x] Migrate hidden Rust fixtures and orchestration E2E workspaces away
   from manual IDs where they are not explicitly testing legacy behavior.
+  Wave 5A audited `packages/testing/nros-tests/fixtures/**` and migrated
+  the product/workflow Rust fixtures (`n9_workspace`,
+  `o4_pkg_index_workspace`, `o5_nav2_compat_smoke`,
+  `one_dep_component_pkg`, `multi_pkg_workspace_freertos`, and
+  `n_board_agnostic_run_plan`) from explicit node-ID declarations to
+  source-name node creation. No fixture under that tree currently retains
+  legacy explicit ID constructors or raw descriptor fields outside
+  compatibility paths.
 
 C public API:
 
 - [x] Add rclc-shaped declared-node init helpers.
-- [ ] Replace C entity helpers that take `stable_id` strings with
-  handle-returning helpers, for example
-  `nros_declared_node_create_publisher(&node, &publisher, topic, type,
-  qos)`.
-- [ ] Add callback/effect helpers that accept C handles, not string IDs.
-- [ ] Move raw `nros_node_entity_descriptor_t` and string-ID helpers to
+- [x] Add C entity helpers that return declaration handles and avoid
+  product-authored stable-ID strings, for example
+  `nros_declared_node_create_publisher_for_name(&node, &publisher,
+  topic, type, hash)`.
+- [x] Add callback/effect helpers that accept C handles, not string IDs.
+- [ ] Move raw C entity descriptor types and string-ID helpers to
   generated/internal headers.
-- [ ] Migrate promoted C workspace and templates to zero manual IDs.
+- [x] Migrate promoted C workspace and templates to zero manual IDs.
 
 C++ public API:
 
@@ -645,27 +653,44 @@ C++ public API:
 - [x] Add `rclcpp::NodeOptions` support to `rclcpp_compat.hpp`.
 - [x] Update `rclcpp_components_register_node()` generated entry to
   instantiate `T(rclcpp::NodeOptions{})` when that constructor exists.
-- [ ] Replace declared-node helpers that take `stable_id` strings with
+- [x] Replace declared-node helpers that take stable-ID strings with
   handle-returning helpers for publisher/subscription/timer/service/action.
-- [ ] Add declared callback/effect helpers that accept handles or
+- [x] Add declared callback/effect helpers that accept handles or
   callables, not string IDs.
-- [ ] Move `NodeEntityDescriptor` raw string-ID APIs to generated/internal
+- [ ] Move raw C++ entity descriptor string-ID APIs to generated/internal
   headers.
-- [ ] Migrate promoted C++ workspace and templates to zero manual IDs.
+- [x] Migrate promoted C++ workspace and mixed C++ Node pkg to zero
+  manual IDs.
+- [x] Migrate C++ templates to zero manual IDs.
+
+C++ implementation note: `DeclaredEntity` and `DeclaredCallback` now
+cover the promoted C++ workspace path, including handle-based callback
+effects. The raw C++ descriptor remains public temporarily because
+generated/internal entry glue and compatibility overloads still consume
+that ABI.
 
 Old path removal:
 
-- [ ] Mark public manual-ID constructors/APIs deprecated once the
+- [x] Mark public manual-ID constructors/APIs deprecated once the
   generated-ID path is available for all promoted examples.
-- [ ] Move Rust `NodeId`, `EntityId`, and `CallbackId` imports out of
-  the public prelude/docs for product authoring.
+  Wave 6A marks the legacy C public wrappers that accept product-authored
+  stable IDs or raw entity descriptors deprecated while keeping the
+  handle-returning `*_for_name` product path warning-free. The matching
+  C++ compatibility overloads for explicit stable node/entity IDs, raw
+  entity descriptors, string callback effects, and string callback
+  subscriptions are also deprecated while handle-returning helpers route
+  through internal raw implementations without warning.
+- [x] Move legacy Rust ID imports out of the public prelude/docs for
+  product authoring.
 - [ ] Move C/C++ raw descriptor headers or members behind generated-only
   include paths, keeping ABI shims only where codegen still needs them.
 - [ ] Delete migration-only tests that assert user-authored duplicate ID
   behavior; replace them with generated-slot and duplicate graph-name
   audit tests.
-- [ ] Update book and README examples so no product path teaches manual
+- [x] Update book and README examples so no product path teaches manual
   IDs.
+  Wave 5B audited `book/src/**` and `examples/**/README.md`; no product
+  workflow doc teaches legacy explicit IDs or raw descriptors.
 
 Implementation order:
 
@@ -677,8 +702,8 @@ Implementation order:
 
 Acceptance:
 
-- Product examples contain no `NodeId::new`, `EntityId::new`,
-  `CallbackId::new`, `.stable_id`, `.node_id`, or `.callback_id`.
+- Product examples contain no legacy explicit ID constructors or raw
+  descriptor fields.
 - Launch `name=` is optional, but omitting it requires a statically known
   source default node name.
 - Duplicate effective node names are diagnosed during build/codegen with
