@@ -45,30 +45,35 @@ covered by `discovers_self_bringup_{component,application}_pkg` tests. No furthe
 work — Wave 1 only adds RMW validation on this path (227.2).
 **Files:** `packages/cli/nros-cli-core/src/orchestration/nros_config.rs`.
 
-### 227.2 — RMW resolver + per-language lowering
-Add the RFC-0031 precedence resolver; read declared `rmw` for single-node
-(`system.toml` / flag) and lower it to the `nros` cargo feature (Rust) or
-`-DNANO_ROS_RMW` (C/C++). Remove the per-language asymmetry where the user must
-set the feature directly.
-**Files:** `packages/cli/nros-cli-core/src/cmd/setup.rs`, orchestration RMW
-resolution, `cmake/*`.
+### 227.2 — RMW resolver + per-language lowering  ✅ DONE
+`cargo-nano-ros::rmw_resolver::resolve_rmw` (the shared lower crate, re-exported
+from `nros-cli-core::orchestration`) lowers a declared rmw → `{cargo_feature,
+cmake_value, c_define_token}` + rejects unknowns. **(a)** load-time validation in
+`nros_config.rs` (`InvalidSystemRmw`); **(b)** consumed by `codegen_system.rs`
+(`NROS_SYSTEM_RMW_<token>` from the one mapping) and the scaffolder (227.4). 9
+unit tests (5 resolver + 1 loader + 4 scaffold... see 227.4).
+**Files:** `cargo-nano-ros/src/rmw_resolver.rs`, `nros-cli-core/src/orchestration/{mod,nros_config}.rs`, `cmd/codegen_system.rs`.
 
-### 227.3 — Converge examples onto uniform RMW lowering
+### 227.3 — Converge examples onto uniform RMW lowering  ⏳ DEFERRED
+Build-risk (changing link wiring per example) — needs per-`just <plat>` build
+verification, so it lands as its own verified pass, not folded into a CLI wave.
 Make every example (zenoh / xrce / cyclonedds) lower RMW the same way from the
-declared value; remove the inconsistent mix of project-level backend deps vs
-`nros/rmw-*` features. cyclonedds keeps its CMake/Corrosion link path.
+declared value. cyclonedds keeps its CMake/Corrosion link path.
 **Files:** `examples/**/Cargo.toml`, `examples/**/CMakeLists.txt`.
 
-### 227.4 — `nros new --rmw` templating
-Make `--rmw <x>` actually template the scaffold (today it only prints a
-"next steps" banner).
-**Files:** `packages/cli/nros-cli-core/src/cmd/new.rs`,
-`packages/cli/cargo-nano-ros/src/scaffold.rs`.
+### 227.4 — `nros new --rmw` templating  ✅ DONE
+`scaffold_package` validates `--rmw` via the resolver (clear error on a typo, no
+package dir created) and templates it: Rust Cargo.toml gets the `rmw-<x>` feature
+(was hardcoded `rmw-zenoh`); C/C++ CMakeLists bakes `set(NANO_ROS_RMW <x> CACHE …)`.
+The "template diversification: TODO" banner is gone. 4 scaffold tests.
+**Files:** `packages/cli/cargo-nano-ros/src/scaffold.rs`.
 
-### 227.5 — `nano_ros_application()` CMake function
-Add a C/C++ single-node descriptor function so single-node C/C++ has parity with
-Rust's `[package.metadata.nros.application]`.
-**Files:** `cmake/*.cmake`.
+### 227.5 — C/C++ single-node descriptor  ✅ DONE (via `nano_ros_entry`)
+No new `nano_ros_application()` fn needed — the scaffolder already gives single-node
+C/C++ its descriptor through `nano_ros_entry(NAME … DEPLOY native …)`
+(`cmake/NanoRosEntry.cmake`, Phase 212.N.6); combined with the baked
+`NANO_ROS_RMW` from 227.4 this is full parity with Rust's
+`[package.metadata.nros.application]`.
 
 ### 227.6 — Multi-node RT/scheduling exposure (schema + impl)
 The *shape* is decided (2026-06, RFC-0015 Phase 212 reconciliation): node declares

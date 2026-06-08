@@ -7,6 +7,7 @@
 //! both fields are accepted for forward-compat but only surfaced in the
 //! "Next steps" output.
 
+use crate::rmw_resolver;
 use eyre::{Result, bail};
 use std::{
     fs,
@@ -35,6 +36,10 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
         fs::remove_dir_all(&dir)?;
     }
 
+    // Phase 227.4 — validate + lower the declared RMW (RFC-0031). A bad
+    // `--rmw` fails here with the known-list, not as a broken downstream build.
+    let rmw = rmw_resolver::resolve_rmw(&cfg.rmw).map_err(|e| eyre::eyre!("nros new: {e}"))?;
+
     let build_type = format!("nros.{}.{}", cfg.lang, cfg.platform);
 
     fs::create_dir_all(dir.join("src"))?;
@@ -59,16 +64,16 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     fs::write(dir.join("package.xml"), package_xml)?;
 
     match cfg.lang.as_str() {
-        "rust" => scaffold_rust(&cfg.name, &cfg.platform, &dir)?,
-        "c" => scaffold_c(&cfg.name, &cfg.platform, &dir)?,
-        "cpp" => scaffold_cpp(&cfg.name, &cfg.platform, &dir)?,
+        "rust" => scaffold_rust(&cfg.name, &cfg.platform, rmw.cargo_feature, &dir)?,
+        "c" => scaffold_c(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
+        "cpp" => scaffold_cpp(&cfg.name, &cfg.platform, rmw.cmake_value, &dir)?,
         other => bail!("Unknown language: {other}. Use rust, c, or cpp."),
     }
 
     println!("✓ Created nano-ros package '{}'", cfg.name);
     println!("  Language : {}", cfg.lang);
     println!("  Platform : {}", cfg.platform);
-    println!("  RMW      : {} (template diversification: TODO)", cfg.rmw);
+    println!("  RMW      : {}", cfg.rmw);
     println!(
         "  Use case : {} (template diversification: TODO)",
         cfg.use_case
@@ -551,13 +556,13 @@ fn use_case_to_pascal(s: &str) -> String {
         .collect()
 }
 
-fn scaffold_rust(name: &str, platform: &str, dir: &Path) -> Result<()> {
+fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> Result<()> {
     let mut deps = String::new();
     let is_embedded = platform != "native";
 
     if is_embedded {
         deps.push_str(&format!(
-            "nros = {{ version = \"0.1\", default-features = false, features = [\"rmw-zenoh\", \"platform-{platform}\", \"ros-humble\"] }}\n"
+            "nros = {{ version = \"0.1\", default-features = false, features = [\"{rmw_feature}\", \"platform-{platform}\", \"ros-humble\"] }}\n"
         ));
         let board_crate = match platform {
             "freertos" => "nros-board-mps2-an385-freertos",
@@ -568,9 +573,9 @@ fn scaffold_rust(name: &str, platform: &str, dir: &Path) -> Result<()> {
         deps.push_str(&format!("{board_crate} = {{ version = \"0.1\" }}\n"));
         deps.push_str("panic-semihosting = \"0.6\"\n");
     } else {
-        deps.push_str(
-            "# nros = { version = \"0.1\", features = [\"std\", \"rmw-zenoh\", \"platform-posix\", \"ros-humble\"] }\n",
-        );
+        deps.push_str(&format!(
+            "# nros = {{ version = \"0.1\", features = [\"std\", \"{rmw_feature}\", \"platform-posix\", \"ros-humble\"] }}\n"
+        ));
     }
 
     let cargo_toml = format!(
@@ -725,13 +730,17 @@ endif()
 nano_ros_workspace_pkg_guard()
 "#;
 
-fn scaffold_c(name: &str, platform: &str, dir: &Path) -> Result<()> {
+fn scaffold_c(name: &str, platform: &str, rmw_value: &str, dir: &Path) -> Result<()> {
+    let _ = platform;
     let cmake = format!(
         r#"cmake_minimum_required(VERSION 3.22)
 project({name} VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# Phase 227.4 — declared RMW baked in (override at configure with -DNANO_ROS_RMW=…).
+set(NANO_ROS_RMW {rmw_value} CACHE STRING "nano-ros RMW backend")
 
 {bootstrap}
 # Phase 210.E.4 — `nros_find_interfaces` reads `package.xml` and
@@ -813,13 +822,17 @@ int main(int argc, char** argv) {{
     Ok(())
 }
 
-fn scaffold_cpp(name: &str, platform: &str, dir: &Path) -> Result<()> {
+fn scaffold_cpp(name: &str, platform: &str, rmw_value: &str, dir: &Path) -> Result<()> {
+    let _ = platform;
     let cmake = format!(
         r#"cmake_minimum_required(VERSION 3.22)
 project({name} VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Phase 227.4 — declared RMW baked in (override at configure with -DNANO_ROS_RMW=…).
+set(NANO_ROS_RMW {rmw_value} CACHE STRING "nano-ros RMW backend")
 
 {bootstrap}
 # Phase 210.E.4 — `nros_find_interfaces` reads `package.xml` and
@@ -913,4 +926,69 @@ locator = "tcp/10.0.2.2:7447"
 "#;
     fs::write(dir.join("nros.toml"), nros_toml)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp() -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        fs::create_dir_all(d.path().join("src")).unwrap();
+        d
+    }
+
+    #[test]
+    fn rust_scaffold_uses_declared_rmw_feature() {
+        // Phase 227.4 — `--rmw xrce` must produce an xrce-wired Cargo.toml, not zenoh.
+        let d = tmp();
+        scaffold_rust("foo", "freertos", "rmw-xrce", d.path()).unwrap();
+        let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
+        assert!(toml.contains("rmw-xrce"), "expected rmw-xrce in:\n{toml}");
+        assert!(!toml.contains("rmw-zenoh"), "stray rmw-zenoh in:\n{toml}");
+    }
+
+    #[test]
+    fn rust_scaffold_native_comments_declared_rmw() {
+        let d = tmp();
+        scaffold_rust("foo", "native", "rmw-cyclonedds", d.path()).unwrap();
+        let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
+        assert!(toml.contains("rmw-cyclonedds"), "{toml}");
+    }
+
+    #[test]
+    fn c_and_cpp_scaffold_bake_declared_rmw() {
+        let dc = tmp();
+        scaffold_c("bar", "native", "cyclonedds", dc.path()).unwrap();
+        let cm = fs::read_to_string(dc.path().join("CMakeLists.txt")).unwrap();
+        assert!(
+            cm.contains("set(NANO_ROS_RMW cyclonedds"),
+            "expected baked rmw in:\n{cm}"
+        );
+
+        let dpp = tmp();
+        scaffold_cpp("baz", "native", "xrce", dpp.path()).unwrap();
+        let cm = fs::read_to_string(dpp.path().join("CMakeLists.txt")).unwrap();
+        assert!(cm.contains("set(NANO_ROS_RMW xrce"), "{cm}");
+    }
+
+    #[test]
+    fn scaffold_package_rejects_unknown_rmw() {
+        // `resolve_rmw` fails before any filesystem write, so no package dir is
+        // created — the unique name keeps this safe without touching cwd.
+        let cfg = ScaffoldConfig {
+            name: "pkg_unknown_rmw_227_4_fixture".to_string(),
+            lang: "rust".to_string(),
+            platform: "native".to_string(),
+            rmw: "dust-dds".to_string(),
+            use_case: "talker".to_string(),
+            force: false,
+        };
+        let err = scaffold_package(&cfg).expect_err("unknown rmw must fail");
+        assert!(err.to_string().contains("dust-dds"), "{err}");
+        assert!(
+            !PathBuf::from(&cfg.name).exists(),
+            "no package dir on rejected rmw"
+        );
+    }
 }

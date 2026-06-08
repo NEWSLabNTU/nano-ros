@@ -439,13 +439,15 @@ fn render_system_config_h(sys: &SystemToml) -> String {
         "#define NROS_SYSTEM_RMW \"{}\"\n",
         c_escape(&sys.system.rmw)
     ));
-    // Token form (`NROS_SYSTEM_RMW_<UPPER>`) is the form vendor adapters key
+    // Token form (`NROS_SYSTEM_RMW_<TOKEN>`) is the form vendor adapters key
     // off (#ifdef tests against a known set, matching the per-RMW Kconfig
-    // overlays).
-    out.push_str(&format!(
-        "#define NROS_SYSTEM_RMW_{}\n",
-        sys.system.rmw.to_ascii_uppercase().replace('-', "_")
-    ));
+    // overlays). The token comes from the one RMW mapping (RFC-0031, Phase
+    // 227.2); the value is already validated at load, so the fallback only
+    // guards against a future bypass.
+    let rmw_token = crate::orchestration::resolve_rmw(&sys.system.rmw)
+        .map(|r| r.c_define_token.to_string())
+        .unwrap_or_else(|_| sys.system.rmw.to_ascii_uppercase().replace('-', "_"));
+    out.push_str(&format!("#define NROS_SYSTEM_RMW_{rmw_token}\n"));
     if let Some(loc) = &sys.system.locator {
         out.push_str(&format!(
             "#define NROS_SYSTEM_LOCATOR \"{}\"\n",

@@ -4,10 +4,13 @@
 //! `[deploy.<t>].rmw` / CLI flag). This module is the single place that
 //! validates a declared RMW string and **lowers** it to each language's build
 //! mechanism — a Rust cargo feature and a CMake `-DNANO_ROS_RMW` value — plus the
-//! C `#define` token the bake already emits. The cargo feature / CMake var are
-//! lowering targets, not the user-facing knob.
+//! C `#define` token the bake emits. The cargo feature / CMake var are lowering
+//! targets, not the user-facing knob.
+//!
+//! It lives in `cargo-nano-ros` (the lower crate) so both the scaffolder here
+//! and the orchestration loader in `nros-cli-core` share one mapping.
 
-use thiserror::Error;
+use std::fmt;
 
 /// The RMW backends nano-ros supports today. `dust-dds` was retired (Phase 169).
 pub const KNOWN_RMW: &[&str] = &["zenoh", "xrce", "cyclonedds"];
@@ -26,11 +29,23 @@ pub struct ResolvedRmw {
 }
 
 /// A declared RMW value that is not one of [`KNOWN_RMW`].
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("unknown rmw `{declared}` (known: {})", KNOWN_RMW.join(", "))]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownRmw {
     pub declared: String,
 }
+
+impl fmt::Display for UnknownRmw {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "unknown rmw `{}` (known: {})",
+            self.declared,
+            KNOWN_RMW.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for UnknownRmw {}
 
 /// Lower a declared RMW string to its per-language build forms.
 ///
