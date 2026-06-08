@@ -11,9 +11,18 @@ superseded-by: null
 
 # ROS 2 User Workflow for nano-ros
 
-**Status:** Living design note
-**Related:** [Phase 123](../roadmap/phase-123-build-and-api-revision.md), [RTOS orchestration](0015-rtos-orchestration.md), [Colcon build type](colcon-nano-ros-build-type.md)
+**Status:** Stable (origin/rationale doc — current layout authority is RFC-0024/0025)
+**Related:** [Phase 123](../roadmap/archived/phase-123-build-and-api-revision.md), [RTOS orchestration](0015-rtos-orchestration.md), [Colcon build type](archived/colcon-nano-ros-build-type.md)
 **Related repo:** `~/repos/play_launch`
+
+> **Terminology note (Phase 212.L.9 rename).** This doc predates the rename and
+> the unified config model. Read its older vocabulary as the current names:
+> *component package* → **Node pkg**; `nros::component!` → **`nros::node!`**;
+> `ExecutableComponent` → **`ExecutableNode`**; the registration/`ComponentContext`
+> surface → **`NodeContext`** (+ `CallbackCtx` in callbacks). The authoritative
+> **current** multi-node layout is RFC-0024 / RFC-0025; configuration is RFC-0004;
+> RMW selection is RFC-0031. This RFC remains the capstone rationale for *why* the
+> workflow has its shape.
 
 ## Goal
 
@@ -288,7 +297,7 @@ impl Component for ControlNode {
     }
 }
 
-nros::component!(ControlNode);
+nros::node!(ControlNode);   // Phase 212.L.9: was nros::component!
 ```
 
 The same Rust API can expose effect metadata without changing the basic

@@ -23,9 +23,9 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | RFC | Doc | Status | One-liner |
 | --- | --- | --- | --- |
 | 0001 | [architecture-overview](0001-architecture-overview.md) | Stable | layered crate stack + RMW + executor + board composition |
-| 0002 | [rt-execution-model](0002-rt-execution-model.md) | Stable | real-time executor model |
+| 0002 | [rt-execution-model](0002-rt-execution-model.md) | Draft | real-time executor model (RTOS subsections pending) |
 | 0003 | [rtos-integration-pattern](0003-rtos-integration-pattern.md) | Draft | universal embedded RTOS adapter pattern |
-| 0004 | [configuration-and-transports](0004-configuration-and-transports.md) | Stable | `nros.toml` manifest + transports + node binding |
+| 0004 | [configuration-and-transports](0004-configuration-and-transports.md) | Stable | unified config across single-node/workspace; `system.toml` + metadata; transports |
 
 ### RMW & data plane
 
@@ -38,6 +38,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0009 | [bridge-topic-forwarding](0009-bridge-topic-forwarding.md) | Stable | in-binary `[[bridge]]` raw-CDR topic relay |
 | 0010 | [zero-copy-raw-api](0010-zero-copy-raw-api.md) | Stable | zero-copy raw publish/subscribe API |
 | 0011 | [px4-rmw-uorb](0011-px4-rmw-uorb.md) | Stable | PX4 uORB RMW backend |
+| 0031 | [rmw-selection-and-lowering](0031-rmw-selection-and-lowering.md) | Stable | RMW declared (system.toml/flag) + lowered per language; per-deploy |
 
 ### Platform, board & toolchain
 

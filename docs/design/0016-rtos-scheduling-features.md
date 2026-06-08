@@ -3,13 +3,20 @@ rfc: 0016
 title: "RTOS Scheduling Features for nano-ros"
 status: Stable
 since: 2026-03
-last-reviewed: 2026-04
-implements-tracked-by: []
+last-reviewed: 2026-06
+implements-tracked-by: [phase-227]
 supersedes: []
 superseded-by: null
 ---
 
 # RTOS Scheduling Features for nano-ros
+
+> **Config-home note (2026-06).** This RFC's design sections still reference
+> `config.toml [scheduling]`. That file is **retired** (Phase 172.K.6): scheduling
+> config now lives in `nros.toml` `[node.rt]` for direct-mode embedded apps
+> (RFC-0004 §7). Exposing per-component RT/scheduling in multi-node `system.toml`
+> is **open** (tracked by phase-227). The per-RTOS priority-mapping survey below
+> is unaffected and current.
 
 ## Overview
 
@@ -534,4 +541,4 @@ just freertos trace talker     # Capture + convert
 - [FreeRTOS LAN9118 debugging](../guides/freertos-lan9118-debugging.md)
 - [Schedulability analysis (archived)](archived/schedulability-analysis.md)
 - [WCET analysis (archived)](archived/wcet-analysis.md)
-- [Real-time analysis (book)](../../book/src/advanced/realtime-analysis.md)
+- [Real-time analysis (book)](../../book/src/internals/realtime-analysis.md)

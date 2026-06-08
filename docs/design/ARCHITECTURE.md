@@ -33,10 +33,14 @@ never cross-implied:
 - **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}`.
 - **ROS edition**: `ros-{humble,iron}`.
 
-`nros` default features are `["std"]` only; the user picks each axis explicitly. RMW selection
-is driven by Cargo manifest + CMake `target_link_libraries`, not code-level branching.
+`nros` default features are `["std"]` only; the user picks each axis explicitly. **RMW is a
+declared, language-agnostic selection** (`system.toml` / deploy override / CLI flag), *lowered* by
+the toolchain to a Rust cargo feature or a CMake `-DNANO_ROS_RMW`. Scope is per-deploy-binary
+(nodes inherit; in-process multi-RMW only via `[[bridge]]`); the cargo feature is the lowering
+target, not the user-facing knob.
 
-→ RFC-0005 (rmw-layer-design), RFC-0006 (portable-rmw-platform-interface).
+→ RFC-0005 (rmw-layer-design), RFC-0006 (portable-rmw-platform-interface), RFC-0031 (RMW
+selection & lowering).
 
 ## 3. RMW & data plane
 
@@ -80,7 +84,11 @@ active design front:
 - User-facing workflow + `nros new` scaffolding → RFC-0027. Nested-sequence message handling
   spike → RFC-0030 (Draft).
 
-Configuration is an `nros.toml` manifest selecting transports + node binding → RFC-0004.
+Configuration is **language-agnostic and scale-uniform**: `system.toml` (universal system
+descriptor, optional for single-node) + per-language manifests (Cargo `[package.metadata.nros.*]`
+/ CMake `nano_ros_*`) as native-idiom projections the toolchain lowers; `nros.toml` is narrowed to
+the embedded direct-mode runtime file (`config.toml` retired; root `nros.toml` rejected). → RFC-0004
+(config) + RFC-0031 (RMW selection).
 
 ## 6. Language API surfaces
 

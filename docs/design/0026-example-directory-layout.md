@@ -1,248 +1,70 @@
 ---
 rfc: 0026
-title: "Example Directory Layout"
+title: "Example directory layout"
 status: Stable
 since: 2026-02
-last-reviewed: 2026-05
+last-reviewed: 2026-06
 implements-tracked-by: []
 supersedes: []
 superseded-by: null
 ---
 
-# Example Directory Layout
+# Example directory layout
 
-**Status:** Proposed
+> **Revised 2026-06.** This RFC originally proposed a depth-4
+> `platform/language/rmw/use-case` hierarchy. That layout was **superseded**:
+> Phase 118 + 168 **collapsed the RMW dimension out of the path** (RMW is now a
+> build-time choice, not a directory). The current canonical shape is below; the
+> depth-4 history is in the Changelog.
 
-## Overview
-
-Reorganize the `examples/` directory from a flat `platform/example-name` layout to a structured `platform/language/rmw/use-case` hierarchy. This accommodates multiple RMW backends (zenoh-pico, XRCE-DDS), multiple languages (Rust, C), and cleanly separates transport-dependent examples from standalone validation code.
-
-## Motivation
-
-The current layout has several issues:
-
-1. **No RMW dimension** — with XRCE-DDS arriving (phase 34), examples need to distinguish zenoh vs xrce variants
-2. **Inconsistent naming** — `rs-talker`, `bsp-talker`, `c-talker` use ad-hoc prefixes to encode language/API level
-3. **Duplicate examples** — `qemu/rs-talker` and `qemu/bsp-talker` are identical (same deps, same source)
-4. **Platform mixing** — `esp32/qemu-talker` puts QEMU ESP32 examples under the real ESP32 directory
-5. **Scattered locations** — 7 examples live in `packages/reference/` instead of `examples/`
-6. **Dead code** — `embedded-cpp-talker` and `embedded-cpp-listener` depend on non-existent `nros-cpp`
-
-## Directory Structure
-
-Layout follows: `examples/{platform}/{language}/{rmw}/{use-case}/`
+## Canonical shape
 
 ```
-examples/
-├── native/
-│   ├── rust/
-│   │   └── zenoh/
-│   │       ├── talker/
-│   │       ├── listener/
-│   │       ├── service-server/
-│   │       ├── service-client/
-│   │       ├── action-server/
-│   │       ├── action-client/
-│   │       └── custom-msg/
-│   └── c/
-│       └── zenoh/
-│           ├── talker/
-│           ├── listener/
-│           ├── custom-msg/
-│           └── baremetal-demo/
-│
-├── qemu-arm-baremetal/
-│   └── rust/
-│       ├── zenoh/
-│       │   ├── talker/
-│       │   └── listener/
-│       ├── xrce/
-│       │   └── (phase 34 examples)
-│       ├── core/
-│       │   ├── cdr-test/
-│       │   └── wcet-bench/
-│       └── standalone/
-│           └── lan9118/
-│
-├── qemu-esp32-baremetal/
-│   └── rust/
-│       └── zenoh/
-│           ├── talker/
-│           └── listener/
-│
-├── esp32/
-│   └── rust/
-│       ├── zenoh/
-│       │   ├── talker/
-│       │   └── listener/
-│       └── standalone/
-│           └── hello-world/
-│
-├── stm32f4/
-│   └── rust/
-│       ├── zenoh/
-│       │   ├── talker/
-│       │   ├── polling/
-│       │   └── rtic/
-│       ├── core/
-│       │   └── embassy/
-│       └── standalone/
-│           └── smoltcp/
-│
-└── zephyr/
-    ├── rust/
-    │   └── zenoh/
-    │       ├── talker/
-    │       ├── listener/
-    │       ├── service-server/
-    │       ├── service-client/
-    │       ├── action-server/
-    │       └── action-client/
-    └── c/
-        └── zenoh/
-            ├── talker/
-            └── listener/
+examples/<platform>/<language>/<example>/
 ```
 
-## Dimensions
+RMW is selected **at build time**, not encoded in the path:
 
-### Platform (level 1)
+- Rust → a cargo feature lowered from the declared RMW (RFC-0031), `default = ["rmw-zenoh"]`.
+- C / C++ → `-DNANO_ROS_RMW=<rmw>`.
+- Zephyr → a `prj-<rmw>.conf` Kconfig overlay.
 
-The hardware target and toolchain. Determines `.cargo/config.toml`, linker scripts, and build target.
+So one `examples/zephyr/rust/talker/` builds against zenoh, xrce, or cyclonedds —
+there are no `<rmw>/` siblings. Phase 168.6.C deleted the legacy
+`<plat>/<lang>/<rmw>/<case>/` triples on Zephyr.
 
-| Platform | Target | Machine |
-|----------|--------|---------|
-| `native` | `x86_64-unknown-linux-gnu` | Desktop Linux |
-| `qemu-arm-baremetal` | `thumbv7m-none-eabi` | QEMU MPS2-AN385 / lm3s6965evb |
-| `qemu-esp32-baremetal` | `riscv32imc-unknown-none-elf` | QEMU ESP32-C3 |
-| `esp32` | `riscv32imc-unknown-none-elf` | Real ESP32-C3 hardware |
-| `stm32f4` | `thumbv7em-none-eabihf` | Real STM32F4 (Nucleo-F429ZI) |
-| `zephyr` | `native_sim/native/64` | Zephyr RTOS (built via west) |
+Each example directory is a **standalone copy-out template** (RFC, per its own
+"Examples = Standalone Projects" rules): its own `Cargo.toml` + `.cargo/config.toml`
++ `CMakeLists.txt`, no workspace walk-up.
 
-### Language (level 2)
+## Sibling categories
 
-The programming language. Only present as a directory level when the platform has multiple languages.
+- `examples/<plat>/<lang>/<example>/` — the canonical per-platform examples.
+- `examples/bridges/<name>/` — cross-RMW gateways (link ≥2 backends).
+- `examples/templates/<name>/` — multi-platform copy-out recipes (Pattern A workspaces, etc.).
+- `examples/workspaces/<lang>/` — multi-node workspace examples (Node pkg + Bringup
+  pkg + Entry pkg; see RFC-0024/0025).
 
-| Language | Description |
-|----------|-------------|
-| `rust` | Rust examples (majority) |
-| `c` | C examples using nros-c API + CMake |
+Variant naming uses a **suffix** form so variants sort with their peers:
+`talker-rtic`, `service-client-async`, `talker-rtic-mixed`.
 
-### RMW (level 3)
+## Carve-outs
 
-The middleware transport backend. This is the key new dimension.
+- `examples/zephyr/cpp/cyclonedds/talker-aemv8r/` — one-board-one-RMW reference,
+  intentionally **not** collapsed.
+- Deliberately empty cells (no harness exists): bare-metal `{c,cpp}` (no hosted
+  RTOS startup/heap/libc), and `px4/{c,rust}` (PX4 is uORB-only, C++-only port).
 
-| RMW tier | Description | nros dependency | Transport dependency |
-|----------|-------------|-----------------|----------------------|
-| `zenoh` | Uses zenoh-pico transport | Yes | nros-rmw-zenoh or board crate |
-| `xrce` | Uses XRCE-DDS transport | Yes | nros-rmw-xrce or board crate |
-| `core` | Uses nros core only (CDR, Node API, safety benchmarks) | Yes | None |
-| `standalone` | No nros dependency (driver validation, platform bring-up) | No | None |
+## Authority
 
-### Use case (level 4)
+The authoritative matrix of which `<plat>/<lang>/<rmw>` triples exist lives in
+`examples/README.md` ("Coverage matrix" + "Intentionally empty cells"). Phase 118
+lint blocks untriaged cells. Non-example binaries (tests/benches/smokes) live
+under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples/`.
 
-The leaf directory. Describes what the example demonstrates.
+## Changelog
 
-| Use case | Description |
-|----------|-------------|
-| `talker` | Publisher (Int32 on `/chatter`) |
-| `listener` | Subscriber |
-| `service-server` | ROS 2 service server |
-| `service-client` | ROS 2 service client |
-| `action-server` | ROS 2 action server |
-| `action-client` | ROS 2 action client |
-| `custom-msg` | Custom message type generation |
-| `cdr-test` | CDR serialization validation |
-| `wcet-bench` | WCET cycle-count benchmarks |
-| `lan9118` | LAN9118 Ethernet driver test |
-| `smoltcp` | smoltcp TCP/IP stack validation |
-| `embassy` | Embassy async framework integration |
-| `rtic` | RTIC real-time framework integration |
-| `polling` | Bare-metal polling loop |
-| `hello-world` | Minimal platform bring-up |
-| `baremetal-demo` | C bare-metal API demonstration |
-
-## Migration Map
-
-### Moves
-
-| Current path | New path |
-|---|---|
-| `examples/native/rs-talker` | `examples/native/rust/talker` |
-| `examples/native/rs-listener` | `examples/native/rust/listener` |
-| `examples/native/rs-service-server` | `examples/native/rust/service-server` |
-| `examples/native/rs-service-client` | `examples/native/rust/service-client` |
-| `examples/native/rs-action-server` | `examples/native/rust/action-server` |
-| `examples/native/rs-action-client` | `examples/native/rust/action-client` |
-| `examples/native/rs-custom-msg` | `examples/native/rust/custom-msg` |
-| `examples/native/c-talker` | `examples/native/c/talker` |
-| `examples/native/c-listener` | `examples/native/c/listener` |
-| `examples/native/c-custom-msg` | `examples/native/c/custom-msg` |
-| `examples/native/c-baremetal-demo` | `examples/native/c/custom-platform` |
-| `examples/qemu/bsp-talker` | `examples/qemu-arm-baremetal/rust/talker` |
-| `examples/qemu/bsp-listener` | `examples/qemu-arm-baremetal/rust/listener` |
-| `examples/qemu/rs-test` | `examples/qemu-arm-baremetal/rust/core/cdr-test` |
-| `examples/qemu/rs-wcet-bench` | `examples/qemu-arm-baremetal/rust/core/wcet-bench` |
-| `examples/esp32/bsp-talker` | `examples/esp32/rust/talker` |
-| `examples/esp32/bsp-listener` | `examples/esp32/rust/listener` |
-| `examples/esp32/hello-world` | `examples/esp32/rust/standalone/hello-world` |
-| `examples/esp32/qemu-talker` | `examples/qemu-esp32-baremetal/rust/talker` |
-| `examples/esp32/qemu-listener` | `examples/qemu-esp32-baremetal/rust/listener` |
-| `examples/stm32f4/bsp-talker` | `examples/stm32f4/rust/talker` |
-| `examples/zephyr/rs-talker` | `examples/zephyr/rust/talker` |
-| `examples/zephyr/rs-listener` | `examples/zephyr/rust/listener` |
-| `examples/zephyr/rs-service-server` | `examples/zephyr/rust/service-server` |
-| `examples/zephyr/rs-service-client` | `examples/zephyr/rust/service-client` |
-| `examples/zephyr/rs-action-server` | `examples/zephyr/rust/action-server` |
-| `examples/zephyr/rs-action-client` | `examples/zephyr/rust/action-client` |
-| `examples/zephyr/c-talker` | `examples/zephyr/c/talker` |
-| `examples/zephyr/c-listener` | `examples/zephyr/c/listener` |
-| `packages/reference/qemu-lan9118` | `examples/qemu-arm-baremetal/rust/standalone/lan9118` |
-| `packages/reference/stm32f4-polling` | `examples/stm32f4/rust/polling` |
-| `packages/reference/stm32f4-rtic` | `examples/stm32f4/rust/rtic` |
-| `packages/reference/stm32f4-embassy` | `examples/stm32f4/rust/core/embassy` |
-| `packages/reference/stm32f4-smoltcp` | `examples/stm32f4/rust/standalone/smoltcp` |
-
-### Deletions
-
-| Path | Reason |
-|---|---|
-| `examples/qemu/rs-talker` | Duplicate of `bsp-talker` (identical deps and source) |
-| `examples/qemu/rs-listener` | Duplicate of `bsp-listener` (identical deps and source) |
-| `packages/reference/embedded-cpp-talker` | Depends on non-existent `nros-cpp` crate |
-| `packages/reference/embedded-cpp-listener` | Depends on non-existent `nros-cpp` crate |
-
-### Unchanged
-
-| Path | Reason |
-|---|---|
-| `packages/reference/qemu-smoltcp-bridge` | Library (`src/lib.rs`), not an example |
-
-## Glob Patterns
-
-After the reorganization, examples are at depth 4 (`platform/language/rmw/use-case`):
-
-```bash
-# Find all Rust example crates
-find examples -name Cargo.toml -mindepth 4
-
-# Platform-specific discovery
-find examples/qemu-arm-baremetal -name Cargo.toml -mindepth 3
-find examples/native -name Cargo.toml -mindepth 3
-```
-
-The `justfile` auto-discovery recipes should use `find` with `-mindepth 4` rather than hardcoded lists. See `docs/roadmap/phase-33-crate-rename.md` section "Justfile Recipe Revision" for the full plan.
-
-## Per-Example Update Checklist
-
-For each moved example:
-
-1. `git mv` the directory to its new path
-2. Update `Cargo.toml` path dependencies (e.g., `path = "../../../packages/core/nros"` → adjust depth)
-3. Update `.cargo/config.toml` `[patch.crates-io]` paths
-4. Update `CMakeLists.txt` paths (for C examples)
-5. Update `justfile` recipes referencing the old path
-6. Update `CLAUDE.md` workspace structure tree
-7. Update integration test fixtures referencing example binary paths
-8. Update `docs/` references to example paths
-9. Run `just ci` after each platform group
+- 2026-06 — Revised to the collapsed `<plat>/<lang>/<example>/` shape (RMW is a
+  build-time choice). Added bridges/templates/workspaces siblings + carve-outs.
+- 2026-02 — Original proposal: depth-4 `platform/language/rmw/use-case` hierarchy
+  with per-RMW directories. Superseded by the Phase 118 + 168 collapse.

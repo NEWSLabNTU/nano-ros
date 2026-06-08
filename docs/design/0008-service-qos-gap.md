@@ -4,16 +4,17 @@ title: "Service / action QoS gap (the `create_service_*` no-QoS path)"
 status: Stable
 since: 2026-05
 last-reviewed: 2026-05
-implements-tracked-by: []
+implements-tracked-by: [phase-189]
 supersedes: []
 superseded-by: null
 ---
 
 # Service / action QoS gap (the `create_service_*` no-QoS path)
 
-**Status:** known gap, documented 2026-05-28 (surfaced by Phase 189.M3). Blocks
-Phase 189.M3.3 (C/C++ service/action QoS + options parity). The fix is designed
-in [`0007-service-qos.md`](0007-service-qos.md) (upstream-referenced, slice breakdown).
+**Status:** gap-analysis doc. The fix is designed in
+[RFC-0007](0007-service-qos.md); flip this RFC to `Superseded` (`superseded-by:
+0007`) once the C/C++ service/action QoS parity (Phase 189.M3.3) fully lands.
+Surfaced by Phase 189.M3; blocks Phase 189.M3.3.
 
 ## The gap
 

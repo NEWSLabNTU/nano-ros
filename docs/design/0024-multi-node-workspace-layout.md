@@ -4,7 +4,7 @@ title: "Phase 212 — Multi-Node Workspace Layout (LIVE DESIGN)"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: []
+implements-tracked-by: [phase-212, phase-227]
 supersedes: []
 superseded-by: null
 ---
@@ -13,7 +13,24 @@ superseded-by: null
 
 ## 1. Status & Audience
 
-**LIVE doc, WIP.** Audience = phase-212 implementers + reviewers. Expect open questions throughout, expect pushback. Decisions marked **LOCKED** are settled; **OPEN:** marks live debate.
+**LIVE doc, WIP.** Audience = phase-212 implementers + reviewers. Decisions marked **LOCKED** are settled; **OPEN:** marks live debate.
+
+> **Resolution update (2026-06).** Several §8 open questions are now settled in
+> code/book and the unified config model — read them as resolved:
+> - **`system.toml` location** → in the bringup pkg; a workspace-root `nros.toml`
+>   is *rejected* by the CLI. (RFC-0004.)
+> - **`nros launch` vs `ros2 launch`** → the Entry-pkg binary *is* the launch
+>   product; the standalone `launch_plan` wrapper was removed in 0.5.0.
+> - **Orchestration pkg `Cargo.toml`** → Path A (no `Cargo.toml`); the workspace
+>   root `exclude`s it.
+> - **`[system].components` schema** → `[[component]]` tables (`pkg`/`class`/`name`),
+>   not a flat list.
+> - **`system.toml` scope** → it is the *universal* system descriptor; single-node
+>   may omit it (implicit 1-component system synthesized). (RFC-0004 §2.)
+>
+> Configuration authority is RFC-0004; RMW selection is RFC-0031. Genuinely-open
+> items (multi-node RT exposure, mixed-language bootstrap friction, embedded-MCU
+> multi-pkg) remain below and are tracked by phase-227.
 
 > **Revision 2026-06-03 — Three roles: Bringup pkg + Node pkg + Entry pkg.**
 > Supersedes the 2026-06-02 "Entry pkg subsumes Bringup pkg" revision.

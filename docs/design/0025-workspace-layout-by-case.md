@@ -4,14 +4,19 @@ title: "nano-ros Phase 212 — Multi-Node Workspace Layout Reference"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: []
+implements-tracked-by: [phase-212, phase-227]
 supersedes: []
 superseded-by: null
 ---
 
 # nano-ros Phase 212 — Multi-Node Workspace Layout Reference
 
-Canonical layout reference for nano-ros user workspaces. Matches design decisions in `docs/design/0024-multi-node-workspace-layout.md`. Five cases: single rust, single cpp, multi rust, multi cpp, mixed.
+Canonical layout reference for nano-ros user workspaces. Matches design decisions in [RFC-0024](0024-multi-node-workspace-layout.md). Five cases: single rust, single cpp, multi rust, multi cpp, mixed.
+
+> **2026-06.** Path A (bringup pkg has no `Cargo.toml`) is settled; the workspace
+> root `exclude`s it. `system.toml` lives in the bringup pkg and is the universal
+> descriptor — single-node may omit it (implicit 1-component system). Config
+> authority is RFC-0004; RMW selection (declared + lowered, per-deploy) is RFC-0031.
 
 ## Quick matrix
 
