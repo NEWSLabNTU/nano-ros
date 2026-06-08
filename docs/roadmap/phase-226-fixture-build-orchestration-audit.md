@@ -9,7 +9,8 @@ fixture builds shared caches where the build configuration is compatible.
 the fixture build scripts. Native fixture orchestration now uses make
 for the high-cost C/C++ RMW groups and `scripts/build/fixtures-build.sh`
 no longer depends on GNU parallel. Remaining implementation is centered
-on Zephyr's shell-array scheduler and fixture cache measurement.
+on fixture cache measurement, shared-target-dir candidates, and broad
+validation.
 
 **Priority.** P1. Fixture prebuilds are now a normal part of the full
 verification workflow. The current path is slow, recompiles shared
@@ -62,11 +63,11 @@ make -j"$NROS_BUILD_JOBS" --jobserver-style=fifo -f build-all.mk
 outer scheduler today. Its targets call `just <platform> build-fixtures`
 under a shared fifo jobserver.
 
-### 2.2 Direct platform fixture builds do not use make
+### 2.2 Direct platform fixture builds are partly make scheduled
 
 Direct commands such as `just qemu build-fixtures`, `just native
 build-fixtures`, `just freertos build-fixtures`, and the non-jobserver
-`just build-test-fixtures-leaves` path still schedule work with:
+`just build-test-fixtures-leaves` path originally scheduled work with:
 
 - GNU parallel in `scripts/build/fixtures-build.sh`.
 - GNU parallel in several platform recipes.
@@ -75,10 +76,10 @@ build-fixtures`, `just freertos build-fixtures`, and the non-jobserver
   `NROS_CMAKE_FRONTENDS`, `NROS_ZEPHYR_BUILD_JOBS`, and
   `NROS_ZEPHYR_NINJA_JOBS` splits.
 
-This is the main mismatch with Phase 176. The design says make should
-replace GNU parallel as the scheduler, but that replacement currently
-applies only to the `build-all` wrapper, not to platform-scoped fixture
-builds.
+The manifest builder, native high-cost C/C++ groups, and Zephyr fixture
+leaves now use temporary make graphs. Remaining direct-mode work is to
+keep moving platform-specific extras and preflights into explicit make
+targets, then remove static frontend job knobs from jobserver leaves.
 
 ### 2.3 Jobserver mode serializes too much inside platform recipes
 
@@ -190,30 +191,53 @@ we get, and which build dirs cause misses. Cache sharing should be a
 follow-up only for same-target, same-feature groups that sccache does
 not already handle well.
 
-### 3.4 Native Cyclone C/C++ fixtures force clean rebuilds
+### 3.4 Native Cyclone C/C++ measurement
 
-`just/native.just::build-fixture-extras` is the worst current offender.
-For native C/C++ Cyclone cells it runs 12 background CMake builds and
-deletes each build dir first:
+Current `just/native.just::build-fixture-extras` no longer deletes each
+native Cyclone C/C++ `build-cyclonedds` directory. The normal path now
+runs the manifest rows through `scripts/build/fixture-make-driver.sh
+native-cyclonedds-cmake`, so warm repeats preserve the CMake and
+Corrosion build trees.
 
-```sh
-rm -rf build-cyclonedds
-cmake -S . -B build-cyclonedds ...
-cmake --build build-cyclonedds --target ...
-```
+Wave 10 measured the native Cyclone talker/listener C and C++ cells
+with `scripts/build/phase226-cxx-eff.sh`:
 
-That defeats incrementality and guarantees repeated configure/build
-work. It also schedules the builds with raw shell background jobs
-outside both GNU parallel and make.
+- Cold-ish `talker` pair, direct diagnostic invocation:
+  `Compiling nros-c: 2`, `Compiling nros-cpp: 2`, link steps: 2.
+- Cold-ish `listener` pair with `RUSTC_WRAPPER=/home/aeon/.cargo/bin/sccache`:
+  `Compiling nros-c: 2`, `Compiling nros-cpp: 2`, link steps: 2.
+- Warm `listener` repeat with the same wrapper and preserved build dirs:
+  `Compiling nros-c: 0`, `Compiling nros-cpp: 0`, link steps: 0.
+
+The duplicated cold work is caused by separate CMake/Corrosion target
+roots, not by normal-path clean rebuilds:
+
+- `examples/native/c/<role>/build-cyclonedds/cargo/nano-ros_1147c`
+- `examples/native/cpp/<role>/build-cyclonedds/cargo/nano-ros_1147c`
+
+Both measured native cells use the same Rust target triple and features:
+`x86_64-unknown-linux-gnu` with
+`ros-humble,rmw-cffi,std,platform-posix`. That makes them a plausible
+shared-target-dir candidate. Do not generalize that to embedded C/C++
+fixtures without checking target triple, platform feature, generated
+inputs, and linker/toolchain settings.
+
+The sccache measurement is currently inconclusive for Corrosion Cargo:
+the direct diagnostic recorded zero sccache compile requests even when
+`RUSTC_WRAPPER` was set, while CMake did report CycloneDDS C/C++
+compiler launchers routed through sccache. Before changing target-dir
+sharing, add a small diagnostic patch that prints the effective wrapper
+environment for each Corrosion Cargo invocation and verifies that
+`sccache --show-stats` increments under a `just`-launched run.
 
 ---
 
 ## 4. Parallelism Findings
 
-### 4.1 GNU parallel is still on the fixture path
+### 4.1 GNU parallel fixture-path status
 
-The following paths still call GNU parallel for fixture or fixture-like
-work:
+The original audit found GNU parallel in these fixture or fixture-like
+paths:
 
 - `justfile::build-test-fixtures-leaves`
 - `justfile::build-example-extras`
@@ -226,10 +250,12 @@ work:
 - `just/threadx-linux.just::build-fixture-extras`
 - `just/threadx-riscv64.just::build-fixture-extras`
 
-GNU parallel is now an avoidable dependency. `just setup` installs the
-new make, and even without the pinned fifo jobserver make can still
-schedule targets with normal make parallelism. The remaining GNU
-parallel use should be removed from fixture orchestration.
+Current fixture orchestration no longer depends on GNU parallel for
+`scripts/build/fixtures-build.sh`, native build examples, native C/C++
+fixture groups, or Zephyr fixture leaves. Remaining `parallel` matches
+are either historical notes, non-fixture utility recipes such as native
+`format` / `check`, or root-level fallback/build-example paths that
+still need review before the 226.C acceptance check closes.
 
 ### 4.2 Direct mode uses static split heuristics
 
@@ -264,19 +290,19 @@ from make-scheduled fixture leaves. A make-provided jobserver should be
 the only parallelism budget; pure make fallback should still own the
 outer target graph.
 
-### 4.4 Raw background jobs bypass all scheduler accounting
+### 4.4 Raw background jobs bypass scheduler accounting
 
-Native Cyclone and Zephyr use shell background jobs:
+The original audit found shell background jobs in native Cyclone and
+Zephyr:
 
 - Native: two pure-Cargo Cyclone Rust builds, then 12 C/C++ Cyclone
   CMake builds.
 - Zephyr: when `NROS_ZEPHYR_BUILD_JOBS > 1`, entries are launched with
   `&` and tracked in a shell array.
 
-These jobs are invisible to make's target scheduler. They also consume
-an implicit token incorrectly when run under a recipe that is already a
-make jobserver client. Future fixture graph generation should express
-each of these as make targets instead.
+Those paths have since moved to make-driver leaves. The remaining raw
+background-job review should focus on any platform extras not yet
+represented in the fixture inventory.
 
 ---
 
@@ -1429,18 +1455,50 @@ Remaining Zephyr work after Wave 9:
 
 ### 226.A — Inventory the Fixture Graph
 
-- [ ] Generate a complete fixture leaf list from `examples/fixtures.toml`
+- [x] Generate a complete fixture leaf list from `examples/fixtures.toml`
       plus hand-authored platform leaves.
-- [ ] Classify each leaf as Cargo, CMake, Zephyr, workspace, preflight,
-      smoke image packaging, or external SDK provisioning.
-- [ ] Identify leaves that currently mutate shared directories and must
+- [x] Classify each inventoried leaf as Cargo, CMake, Zephyr, workspace,
+      smoke image packaging, or recipe-only postprocess work.
+- [ ] Model platform preflights and external SDK provisioning as
+      explicit inventory entries or prerequisites.
+- [x] Identify leaves that currently mutate shared directories and must
       run as serialized prerequisites.
+
+Implementation:
+
+- `scripts/build/fixture-inventory.py` emits a read-only TSV inventory
+  with normalized `source`, `id`, `platform`, `kind`, `lang`, `rmw`,
+  `role`, `dir`, `build_root`, `scheduler`, `shared_mutation`, and
+  `notes` fields.
+- The script combines `examples/fixtures.toml` single-package rows,
+  `[[workspace_fixture]]` rows, Zephyr records from
+  `scripts/build/zephyr-fixture-leaves.sh --emit records
+  --include-logging-smoke`, and the current recipe-only leaves:
+  QEMU smoltcp bridge, native pure-Cargo Cyclone Rust talker/listener,
+  ThreadX RV64 Rust Cyclone helper, ESP32 flash-image packaging, and
+  ESP-IDF smoke.
+- `python3 scripts/build/fixture-inventory.py --summary` currently
+  reports 263 rows on the maintainer host: 208 non-Zephyr rows and 55
+  Zephyr rows.
+
+Known gaps:
+
+- Zephyr inventory is intentionally host-sensitive because the existing
+  Zephyr leaf emitter only includes CycloneDDS rows when `idlc` or a
+  known CycloneDDS install is discoverable. A future pure inventory mode
+  can expose disabled/gated rows separately.
+- Platform-level preflights such as root `generate-bindings`, POSIX
+  zenoh staticlib staging, NuttX kernel export, rustup component
+  warm-up, and SDK provisioning are not modeled as fixture leaves yet.
+  They should become explicit prerequisites when 226.B/226.C expands
+  the full make graph.
 
 Acceptance:
 
 - The generated inventory covers everything `just build-test-fixtures`
   and `just <platform> build-fixtures` currently builds.
-- No fixture leaf is still discovered only by ad-hoc `find` in a recipe.
+- No fixture leaf is still discovered only by ad-hoc `find` in a recipe;
+  any remaining recipe-only leaf appears as `source=just/*.just`.
 
 ### 226.B — Introduce a Fixture Make Driver
 

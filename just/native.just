@@ -19,12 +19,12 @@ build:
 
 # Build all Rust examples (auto-discovered, excludes zephyr + cross-compiled RTOS).
 #
-# Parallelised via GNU parallel — examples are independent standalone
-# crates (per the copy-out invariant in CLAUDE.md), so each cargo
-# invocation can run concurrently. JOBS defaults to the global
-# NROS_BUILD_JOBS budget (itself nproc unless overridden), falling back
-# to 75 % of cores. Override per-invocation with
-# `just native build-examples JOBS=4` for tighter machines.
+# Parallelised via a temporary Make graph — examples are independent standalone
+# crates (per the copy-out invariant in CLAUDE.md), so each cargo invocation can
+# run concurrently without requiring GNU parallel. JOBS defaults to the global
+# NROS_BUILD_JOBS budget (itself nproc unless overridden), falling back to 75 %
+# of cores. Override per-invocation with `just native build-examples 4` or
+# `NROS_BUILD_JOBS=4 just native build-examples` for tighter machines.
 [group("main")]
 build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     #!/usr/bin/env bash
@@ -32,24 +32,39 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
+    nros_make_jobs() {
+        local jobs="$1"
+        case "$jobs" in
+            *%)
+                local pct="${jobs%\%}"
+                if ! [[ "$pct" =~ ^[0-9]+$ ]] || [ "$pct" -lt 1 ]; then
+                    echo "invalid JOBS=$jobs; expected positive integer or percent" >&2
+                    return 2
+                fi
+                local cores
+                cores="$(nproc 2>/dev/null || echo 1)"
+                local computed=$(( cores * pct / 100 ))
+                [ "$computed" -ge 1 ] || computed=1
+                printf '%s\n' "$computed"
+                ;;
+            *)
+                if ! [[ "$jobs" =~ ^[0-9]+$ ]] || [ "$jobs" -lt 1 ]; then
+                    echo "invalid JOBS=$jobs; expected positive integer or percent" >&2
+                    return 2
+                fi
+                printf '%s\n' "$jobs"
+                ;;
+        esac
+    }
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         cargo_frontends="$(nros_cargo_frontend_jobs)"
     else
-        cargo_frontends="{{JOBS}}"
+        cargo_frontends="$(nros_make_jobs "{{JOBS}}")"
     fi
     echo "Building examples (parallel, cargo-frontends=$cargo_frontends, profile=$(nros_cargo_profile_name))..."
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-        echo "NROS_JOBSERVER=1 — serial launcher; cargo inherits fifo tokens."
-        SERIAL=1
-    elif ! command -v parallel >/dev/null 2>&1; then
-        echo "GNU parallel not found — falling back to serial build."
-        SERIAL=1
-    else
-        SERIAL=0
-    fi
-
     toml_list="$(mktemp "${TMPDIR:-/tmp}/nros_example_toml.XXXXXX")"
-    trap 'rm -f "$toml_list"' EXIT
+    makefile="$(mktemp "${TMPDIR:-/tmp}/nros_example_build.XXXXXX.mk")"
+    trap 'rm -f "$toml_list" "$makefile"' EXIT
 
     # Phase 181.6 / 181.4.h — qemu-arm-baremetal, stm32f4, esp32 and
     # qemu-esp32-baremetal are excluded here and built from the SSOT manifest
@@ -79,10 +94,35 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     }
     export -f build_one
 
-    if [ "$SERIAL" = "1" ]; then
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        echo "NROS_JOBSERVER=1 — serial launcher; cargo inherits fifo tokens."
         while read -r toml; do build_one "$toml"; done < "$toml_list"
     else
-        parallel --halt now,fail=1 --line-buffer -j "$cargo_frontends" build_one :::: "$toml_list"
+        {
+            printf 'SHELL := /bin/bash\n'
+            printf '.SHELLFLAGS := -eu -o pipefail -c\n'
+            printf '.DELETE_ON_ERROR:\n'
+            printf '.PHONY: all'
+            idx=0
+            while read -r toml; do
+                printf ' native-example-%04d' "$idx"
+                idx=$((idx + 1))
+            done < "$toml_list"
+            printf '\n\nall:'
+            idx=0
+            while read -r toml; do
+                printf ' native-example-%04d' "$idx"
+                idx=$((idx + 1))
+            done < "$toml_list"
+            printf '\n\n'
+            idx=0
+            while read -r toml; do
+                printf 'native-example-%04d:\n' "$idx"
+                printf '\t+@build_one %q\n\n' "$toml"
+                idx=$((idx + 1))
+            done < "$toml_list"
+        } > "$makefile"
+        make -j "$cargo_frontends" -f "$makefile"
     fi
     # Phase 181.6 — qemu-arm-baremetal + stm32f4 rust examples from the SSOT
     # manifest (plain default builds; each example's .cargo/config.toml selects
