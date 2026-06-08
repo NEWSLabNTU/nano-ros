@@ -216,12 +216,20 @@ nros_cargo_fetch_standalone_manifests() {
     list="$(mktemp "${TMPDIR:-/tmp}/nros_cargo_fetch.XXXXXX")"
     trap 'rm -f "$list"' RETURN
 
+    # `examples/templates/**` are copy-out recipes, not built by any fixture
+    # row or broad-build recipe (absent from examples/fixtures.toml and
+    # build-all.mk). Some (e.g. multi-node-workspace) carry a gitignored
+    # `[patch.crates-io]` path-dep on `generated/<msg-crate>` that only
+    # `nros ws sync` materialises, so `cargo fetch` here would hard-fail on a
+    # missing manifest. Skip them — same rationale as the `examples/zephyr/**`
+    # exclusion (known-issues #14).
     rg --files \
         examples \
         packages/testing/nros-tests/bins \
         packages/testing/nros-bench \
         -g Cargo.toml \
         -g '!examples/zephyr/**' \
+        -g '!examples/templates/**' \
         -g '!**/target/**' \
         -g '!**/generated/**' \
         -g '!**/build/**' \

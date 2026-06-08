@@ -415,9 +415,25 @@ There is no manifest `skip_build` field (only `skip_probe`).
 manifest `skip_build`/exclude flag and mark it, restoring the pre-226
 omission. (Separate from the pre-existing RTIC `_defmt_timestamp` link gap.)
 
-## 14. `examples/templates/multi-node-workspace` missing generated dir in broad build
+## ~~14. `examples/templates/multi-node-workspace` missing generated dir in broad build~~ (Fixed)
 
-Surfaced by Phase 226.F. `build-all-jobserver.sh` fails: `failed to load
+**Status: Fixed** — the broad build's standalone-manifest prefetch
+(`nros_cargo_fetch_standalone_manifests()` in `scripts/build/cargo.sh`,
+called from `scripts/build-all-jobserver.sh`) ripgreps every
+`examples/**/Cargo.toml` with a sibling `Cargo.lock` and runs `cargo
+fetch`. The `multi-node-workspace` template path-deps gitignored
+`generated/<msg-crate>` via its auto-managed `[patch.crates-io]` block
+(only `nros ws sync` materialises it), so `cargo fetch` hard-failed on the
+missing manifest. Templates are copy-out recipes — built by no fixture row
+or broad-build recipe — so they should not be cache-warmed. Added
+`-g '!examples/templates/**'` to the prefetch glob (mirrors the existing
+`examples/zephyr/**` exclusion).
+
+---
+
+Original report:
+
+Surfaced by Phase 226.F. `build-all-jobserver.sh` failed: `failed to load
 source for dependency builtin_interfaces` —
 `examples/templates/multi-node-workspace/generated/builtin_interfaces/Cargo.toml`
 no such file. The template path-deps generated message crates under
