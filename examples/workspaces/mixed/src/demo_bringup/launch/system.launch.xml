@@ -2,4 +2,5 @@
 <launch>
   <node pkg="c_talker_pkg" exec="talker" name="talker"/>
   <node pkg="cpp_listener_pkg" exec="listener" name="listener"/>
+  <node pkg="rust_heartbeat_pkg" exec="heartbeat" name="heartbeat"/>
 </launch>

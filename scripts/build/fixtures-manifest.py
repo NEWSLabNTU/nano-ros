@@ -44,14 +44,14 @@ def load_workspace_fixtures(path):
         return tomllib.load(f).get("workspace_fixture", [])
 
 
-def cargo_args(entry):
+def cargo_args(entry, *, include_target_dir=True):
     args = []
     if entry.get("no_default_features"):
         args.append("--no-default-features")
     feats = entry.get("features")
     if feats:
         args += ["--features", ",".join(feats)]
-    if entry.get("target_dir"):
+    if include_target_dir and entry.get("target_dir"):
         args += ["--target-dir", entry["target_dir"]]
     if entry.get("target"):
         args += ["--target", entry["target"]]
@@ -74,7 +74,7 @@ def cmake_defs(entry):
 def workspace_record(entry):
     # workspace record:
     # <id>\x1f<lang>\x1f<dir>\x1f<bringup>\x1f<entry>\x1f<build-subdir>
-    # \x1f<target-dir>\x1f<codegen-out>\x1f<cmake -D defs>
+    # \x1f<target-dir>\x1f<codegen-out>\x1f<cmake -D defs>\x1f<env>\x1f<cargo-args>
     return SEP.join(
         [
             entry["id"],
@@ -86,6 +86,8 @@ def workspace_record(entry):
             entry.get("target_dir", ""),
             entry.get("codegen_out", ""),
             cmake_defs(entry),
+            env_str(entry),
+            cargo_args(entry, include_target_dir=False),
         ]
     )
 

@@ -120,7 +120,7 @@ function(nano_ros_workspace_metadata)
 
     if(_have_rust)
         find_package(Corrosion QUIET)
-        if(NOT Corrosion_FOUND)
+        if(NOT Corrosion_FOUND AND NOT COMMAND corrosion_import_crate)
             message(STATUS
                 "nano_ros_workspace_metadata: plan contains Rust component(s); "
                 "Corrosion not found — user must FetchContent/find_package "

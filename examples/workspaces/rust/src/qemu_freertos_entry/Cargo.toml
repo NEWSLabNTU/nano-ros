@@ -1,0 +1,26 @@
+[package]
+name = "qemu_freertos_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the demo topology on FreeRTOS QEMU MPS2-AN385."
+
+[[bin]]
+name = "qemu_freertos_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "freertos"
+
+[package.metadata.nros.deploy.freertos]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:7451"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false }
+nros-board-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-board-mps2-an385-freertos" }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
+panic-semihosting = "0.6"
+talker_pkg = { path = "../talker_pkg", default-features = false, features = ["freertos"] }
+listener_pkg = { path = "../listener_pkg", default-features = false, features = ["freertos"] }

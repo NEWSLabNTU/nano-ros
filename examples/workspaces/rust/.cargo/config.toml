@@ -1,0 +1,11 @@
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = [
+    "-C",
+    "link-arg=-Tmps2_an385.ld",
+    "-C",
+    "link-arg=--nmagic",
+]
+
+[env]
+CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"

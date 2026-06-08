@@ -1,16 +1,17 @@
-# Mixed C / C++ Workspace
+# Mixed C / C++ / Rust Workspace
 
-This workspace demonstrates mixed-language Node packages with a C++ native Entry
-package.
+This workspace demonstrates mixed-language Node packages with a C++ native
+Entry package.
 
 ```text
 mixed/
 ├── CMakeLists.txt
 └── src/
-    ├── c_talker_pkg/      # C Node pkg: publishes std_msgs/Int32 on /chatter
-    ├── cpp_listener_pkg/  # C++ Node pkg: subscribes std_msgs/Int32 on /chatter
-    ├── demo_bringup/      # Bringup pkg: package.xml + system.toml + launch/
-    └── native_entry/      # Entry pkg: native main()
+    ├── c_talker_pkg/          # C Node pkg: publishes std_msgs/Int32 on /chatter
+    ├── cpp_listener_pkg/      # C++ Node pkg: subscribes std_msgs/Int32 on /chatter
+    ├── rust_heartbeat_pkg/    # Rust Node pkg: declares a timer callback
+    ├── demo_bringup/          # Bringup pkg: package.xml + system.toml + launch/
+    └── native_entry/          # Entry pkg: native main()
 ```
 
 From the repository root:

@@ -3,11 +3,12 @@
 # C++ cmake fn surface for the three Phase 212.L pkg shapes:
 #
 #   * `nano_ros_node_register(NAME <name> CLASS <UserClass>
-#       [LANGUAGE C|CPP] SOURCES <files...> DEPLOY <target1> [<target2> ...])`
+#       [LANGUAGE C|CPP|RUST] SOURCES <files...> DEPLOY <target1> [<target2> ...])`
 #       — declares a Component pkg entity. Compiles SOURCES into a
 #         STATIC `<pkg>_<name>_component` lib linked to the C or C++
-#         nano-ros target. Enforces L.4: CLASS must start with
-#         `${PROJECT_NAME}::`.
+#         nano-ros target. Rust packages import `Cargo.toml` through
+#         Corrosion and expose the same component target name for entry
+#         link glue. Enforces L.4: CLASS must start with `${PROJECT_NAME}::`.
 #
 #   * `nano_ros_entry(NAME <name> SOURCES <files...> [BOARD <board>]
 #       DEPLOY <target1> [<target2> ...])`
@@ -112,10 +113,13 @@ function(nano_ros_node_register)
     if(_nrc_lang STREQUAL "CXX")
         set(_nrc_lang CPP)
     endif()
-    if(NOT (_nrc_lang STREQUAL "C" OR _nrc_lang STREQUAL "CPP"))
+    if(_nrc_lang STREQUAL "RUST" OR _nrc_lang STREQUAL "RS")
+        set(_nrc_lang RUST)
+    endif()
+    if(NOT (_nrc_lang STREQUAL "C" OR _nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "RUST"))
         message(FATAL_ERROR
             "nano_ros_node_register: LANGUAGE '${_NRC_LANGUAGE}' rejected — "
-            "expected C or CPP")
+            "expected C, CPP, or RUST")
     endif()
     string(TOLOWER "${_nrc_lang}" _nrc_lang_lc)
     # L.4 enforcement: CLASS must start with `${PROJECT_NAME}::`.
@@ -129,26 +133,55 @@ function(nano_ros_node_register)
 
     set(_lib "${PROJECT_NAME}_${_NRC_NAME}_component")
     if(NOT TARGET ${_lib})
-        add_library(${_lib} STATIC ${_NRC_SOURCES})
-        if(_nrc_lang STREQUAL "C")
-            set_target_properties(${_lib} PROPERTIES LINKER_LANGUAGE C)
-        endif()
-        if(_nrc_lang STREQUAL "C" AND TARGET NanoRos::NanoRos)
-            target_link_libraries(${_lib} PUBLIC NanoRos::NanoRos)
-        elseif(TARGET NanoRos::NanoRosCpp)
-            target_link_libraries(${_lib} PUBLIC NanoRos::NanoRosCpp)
-        endif()
-        target_include_directories(${_lib} PUBLIC
-            "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src")
-        # Phase 212.M.5.a.1 — inject the per-pkg mangle token so
-        # `NROS_NODE_REGISTER(...)` expands to
-        # `__nros_component_<pkg>_register`. Sanitise `-` → `_` so
-        # cargo-style names with hyphens are still valid C identifiers.
+        # Phase 212.M.5.a.1 — package symbol used by C/C++ macros and
+        # mirrored by Rust `nros::node!()`.
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
-        target_compile_definitions(${_lib} PRIVATE
-            NROS_PKG_NAME=${_pkg_sym}
-            "NROS_NODE_CLASS_NAME=\"${_NRC_CLASS}\"")
+
+        if(_nrc_lang STREQUAL "RUST")
+            if(NOT COMMAND corrosion_import_crate)
+                message(FATAL_ERROR
+                    "nano_ros_node_register(LANGUAGE RUST): Corrosion is required. "
+                    "Build via nano_ros_workspace()/add_subdirectory(nano-ros) so "
+                    "the in-tree Corrosion dependency is available.")
+            endif()
+            if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml")
+                message(FATAL_ERROR
+                    "nano_ros_node_register(LANGUAGE RUST): expected Cargo.toml "
+                    "in ${CMAKE_CURRENT_SOURCE_DIR}")
+            endif()
+            corrosion_import_crate(
+                MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
+                CRATES        "${PROJECT_NAME}"
+                CRATE_TYPES   staticlib
+            )
+            string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _crate_target "${PROJECT_NAME}")
+            set(_rust_static_target "${_crate_target}-static")
+            if(NOT TARGET ${_rust_static_target})
+                message(FATAL_ERROR
+                    "nano_ros_node_register(LANGUAGE RUST): Corrosion did not "
+                    "create target '${_rust_static_target}'. Ensure the package "
+                    "name matches project(${PROJECT_NAME}) and [lib] includes "
+                    "crate-type = [\"staticlib\", ...].")
+            endif()
+            add_library(${_lib} INTERFACE)
+            target_link_libraries(${_lib} INTERFACE ${_rust_static_target})
+        else()
+            add_library(${_lib} STATIC ${_NRC_SOURCES})
+            if(_nrc_lang STREQUAL "C")
+                set_target_properties(${_lib} PROPERTIES LINKER_LANGUAGE C)
+            endif()
+            if(_nrc_lang STREQUAL "C" AND TARGET NanoRos::NanoRos)
+                target_link_libraries(${_lib} PUBLIC NanoRos::NanoRos)
+            elseif(TARGET NanoRos::NanoRosCpp)
+                target_link_libraries(${_lib} PUBLIC NanoRos::NanoRosCpp)
+            endif()
+            target_include_directories(${_lib} PUBLIC
+                "${CMAKE_CURRENT_SOURCE_DIR}/include"
+                "${CMAKE_CURRENT_SOURCE_DIR}/src")
+            target_compile_definitions(${_lib} PRIVATE
+                NROS_PKG_NAME=${_pkg_sym}
+                "NROS_NODE_CLASS_NAME=\"${_NRC_CLASS}\"")
+        endif()
 
         # Phase 220.G.2 — auto-link every `<pkg>__nano_ros_{c,cpp}`
         # interface lib that `nros_generate_interfaces` registered in
@@ -161,10 +194,12 @@ function(nano_ros_node_register)
         # (the 220.G.1 boilerplate, now revertible).
         # DIRECTORY scope — see the property write in
         # NanoRosGenerateInterfaces.cmake.
-        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
-        if(_nros_iface_libs)
-            list(REMOVE_DUPLICATES _nros_iface_libs)
-            target_link_libraries(${_lib} PUBLIC ${_nros_iface_libs})
+        if(NOT _nrc_lang STREQUAL "RUST")
+            get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
+            if(_nros_iface_libs)
+                list(REMOVE_DUPLICATES _nros_iface_libs)
+                target_link_libraries(${_lib} PUBLIC ${_nros_iface_libs})
+            endif()
         endif()
     endif()
 

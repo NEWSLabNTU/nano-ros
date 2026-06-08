@@ -41,6 +41,11 @@
 #   codegen_out optional  `nros codegen-system --out` path relative to `dir`
 #   build_subdir optional CMake build dir relative to `dir`
 #   target_dir  optional  Cargo target dir relative to `dir`
+#   # --- rust (cargo) ---
+#   features            optional  string[] passed as --features a,b
+#   no_default_features optional  bool      adds --no-default-features
+#   target              optional  --target <triple> (cross)
+#   env                 optional  { KEY = "VAL" } exported for the build
 #   cmake_defs  optional  extra -D<K>=<V> defs; `rmw` still expands to NROS_RMW
 #
 # Workspace fixtures are intentionally listed here but built by a dedicated
@@ -62,6 +67,30 @@ bringup = "src/demo_bringup"
 entry = "native_entry"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-rust-qemu-freertos"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "qemu_freertos_entry"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures/freertos"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-threadx-linux"
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "threadx_linux_entry"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures/threadx-linux"
+target = "x86_64-unknown-linux-gnu"
 
 [[workspace_fixture]]
 id = "workspace-c-native"

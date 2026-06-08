@@ -34,5 +34,5 @@ nros-board-native = { path = "../../../../../packages/boards/nros-board-native" 
 # Node pkg rlibs — the launch XML names `talker` + `listener`, so the
 # macro emits `talker_pkg::register` + `listener_pkg::register`; the
 # bin target must link both.
-talker_pkg = { path = "../talker_pkg" }
-listener_pkg = { path = "../listener_pkg" }
+talker_pkg = { path = "../talker_pkg", default-features = false, features = ["native"] }
+listener_pkg = { path = "../listener_pkg", default-features = false, features = ["native"] }

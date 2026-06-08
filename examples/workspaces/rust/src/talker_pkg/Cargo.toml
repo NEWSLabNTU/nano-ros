@@ -7,10 +7,16 @@ description = "Node pkg — publishes std_msgs/Int32 on /chatter."
 
 # Node pkg shape — lib only, no [[bin]], no main.rs. `nros::node!()`
 # exports the register / init / dispatch trampolines; the sibling
-# Entry pkg (`native_entry`) brings up the executor + spin loop via
-# `nros::main!()`.
+# Entry pkgs bring up the executor + spin loop via `nros::main!()`.
 [lib]
 path = "src/lib.rs"
+
+[features]
+default = ["native"]
+native = ["nros/alloc", "nros/rmw-cffi", "nros/platform-posix", "nros/ros-humble"]
+freertos = ["nros/alloc", "nros/rmw-cffi", "nros/platform-freertos", "nros/ros-humble"]
+threadx-linux = ["nros/std", "nros/rmw-cffi", "nros/platform-threadx", "nros/ros-humble"]
+nuttx = ["nros/std", "nros/rmw-cffi", "nros/platform-nuttx", "nros/ros-humble"]
 
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"
@@ -18,13 +24,7 @@ name = "talker"
 default_namespace = "/"
 
 [dependencies]
-# Single `nros` dep — matches the `nros::main!()` design. The RMW is
-# selected by the framework at runtime (`rmw-cffi` backend registry);
-# host targets use `platform-posix`.
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
-    "alloc",
-    "rmw-cffi",
-    "platform-posix",
-    "ros-humble",
-] }
+# Single `nros` dep — Entry packages select the platform feature through this
+# package so the same Node pkg source can be linked into multiple targets.
+nros = { path = "../../../../../packages/core/nros", default-features = false }
 std_msgs = { version = "*", default-features = false }

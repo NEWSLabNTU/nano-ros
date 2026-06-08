@@ -15,7 +15,8 @@
 #![no_std]
 
 use nros::{
-    CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TimerDuration,
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    TimerDuration,
 };
 use std_msgs::msg::Int32;
 
@@ -44,11 +45,7 @@ impl ExecutableNode for Talker {
         0
     }
 
-    fn on_callback(
-        state: &mut Self::State,
-        callback: nros::CallbackId<'_>,
-        ctx: &mut CallbackCtx<'_>,
-    ) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_tick" {
             let msg = Int32 { data: *state };
             let _ = ctx.publish_to_topic::<Int32, 8>("/chatter", &msg);

@@ -55,6 +55,7 @@ build-examples:
     echo "Building ThreadX Linux examples..."
     # Build options from the SSOT manifest (examples/fixtures.toml). Phase 181.4.f.
     bash scripts/build/fixtures-build.sh threadx-linux rust
+    bash scripts/build/workspace-fixtures-build.sh threadx-linux rust
     echo "ThreadX Linux examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

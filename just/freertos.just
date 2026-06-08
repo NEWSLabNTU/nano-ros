@@ -86,6 +86,7 @@ build-examples:
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh freertos rust zenoh
+    bash scripts/build/workspace-fixtures-build.sh freertos rust
     echo "FreeRTOS QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

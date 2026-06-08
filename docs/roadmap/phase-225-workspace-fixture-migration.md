@@ -117,7 +117,7 @@ examples/workspaces/
     └── src/
         ├── c_talker_pkg/
         ├── cpp_listener_pkg/
-        ├── rust_filter_pkg/            # if Corrosion path is ready
+        ├── rust_heartbeat_pkg/
         ├── demo_bringup/
         └── native_entry/
 ```
@@ -160,10 +160,12 @@ Acceptance:
 - [x] Replace or migrate `examples/templates/multi-node-workspace/` into
   `examples/workspaces/rust/`.
 - [x] Keep exactly the book shape: Node pkgs, Bringup pkg, Entry pkgs.
-- [ ] Add at least two platform Entry packages sharing the same Node +
+- [x] Add at least two platform Entry packages sharing the same Node +
   Bringup packages. The prior `native_default_entry` package was removed
   because default launch selection is not a target platform; embedded
-  target Entries remain follow-up platform coverage.
+  target Entries remain follow-up platform coverage. The Rust workspace now
+  has native, QEMU FreeRTOS, and ThreadX Linux Entry packages sharing the
+  same Talker/Listener Node pkgs and `demo_bringup`.
 - [x] Update tests that validate real workspace flow to stage this
   example path instead of a hidden `nros-tests` fixture.
 
@@ -618,9 +620,18 @@ Rust public API:
 - [x] Add service/action helpers that avoid public manual entity and
   callback IDs.
 - [x] Add callback-effect helpers that accept returned handles.
-- [ ] Replace callback dispatch APIs that expose manual callback IDs to
+- [x] Replace callback dispatch APIs that expose manual callback IDs to
   product code with generated callback registration/typed callback hooks.
-- [ ] Keep legacy explicit ID types only in internal or generated modules.
+  Wave D adds product-facing `nros::Callback`, changes
+  `ExecutableNode::on_callback` to receive that opaque event, and keeps
+  `CallbackId` construction at runtime/codegen boundaries.
+- [x] Keep legacy explicit ID types only in internal or generated modules.
+  Wave D moved the root `NodeId`/`EntityId`/`CallbackId` re-export behind
+  `doc(hidden)` and removed `CallbackId` from callback bodies. Wave 7 added
+  name/topic/handle wrappers for the remaining parameter, service-client, and
+  action-client paths, migrated product examples and CLI fixtures, and hid the
+  ID-taking Rust declaration/runtime helpers from product docs so generated and
+  internal compatibility code remain the only expected callers.
 - [x] Migrate promoted Rust workspace and templates to zero manual IDs.
 - [x] Migrate hidden Rust fixtures and orchestration E2E workspaces away
   from manual IDs where they are not explicitly testing legacy behavior.
@@ -641,8 +652,15 @@ C public API:
   `nros_declared_node_create_publisher_for_name(&node, &publisher,
   topic, type, hash)`.
 - [x] Add callback/effect helpers that accept C handles, not string IDs.
-- [ ] Move raw C entity descriptor types and string-ID helpers to
+- [x] Move raw C entity descriptor types and string-ID helpers to
   generated/internal headers.
+  Wave C keeps the descriptor ABI layout in `<nros/node_pkg.h>` only as
+  `_nros_node_entity_descriptor_t` for inline handle helpers and generated
+  runtime callbacks. The old product spellings
+  `nros_node_entity_descriptor_t`, `nros_declared_node_create(...)`,
+  `nros_node_create_entity(...)`, string-ID entity helpers, and
+  `nros_node_record_callback_effect(...)` are hidden unless
+  `NROS_NODE_PKG_ENABLE_LEGACY_RAW_DESCRIPTOR_API` is defined.
 - [x] Migrate promoted C workspace and templates to zero manual IDs.
 
 C++ public API:
@@ -657,17 +675,22 @@ C++ public API:
   handle-returning helpers for publisher/subscription/timer/service/action.
 - [x] Add declared callback/effect helpers that accept handles or
   callables, not string IDs.
-- [ ] Move raw C++ entity descriptor string-ID APIs to generated/internal
+- [x] Move raw C++ entity descriptor string-ID APIs to generated/internal
   headers.
+  Wave C moves the raw descriptor layout to `nros::detail`, changes the
+  component ABI callback to an opaque descriptor pointer, and hides the
+  public `NodeEntityDescriptor`, explicit stable-ID overloads, string
+  callback-effect overloads, and string callback subscription overload
+  behind `NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API`.
 - [x] Migrate promoted C++ workspace and mixed C++ Node pkg to zero
   manual IDs.
 - [x] Migrate C++ templates to zero manual IDs.
 
 C++ implementation note: `DeclaredEntity` and `DeclaredCallback` now
 cover the promoted C++ workspace path, including handle-based callback
-effects. The raw C++ descriptor remains public temporarily because
-generated/internal entry glue and compatibility overloads still consume
-that ABI.
+effects. The raw C++ descriptor remains a header-internal ABI detail
+because the inline handle helpers still construct it before handing an
+opaque pointer to generated/internal runtime callbacks.
 
 Old path removal:
 
@@ -682,11 +705,19 @@ Old path removal:
   through internal raw implementations without warning.
 - [x] Move legacy Rust ID imports out of the public prelude/docs for
   product authoring.
-- [ ] Move C/C++ raw descriptor headers or members behind generated-only
+- [x] Move C/C++ raw descriptor headers or members behind generated-only
   include paths, keeping ABI shims only where codegen still needs them.
-- [ ] Delete migration-only tests that assert user-authored duplicate ID
+  Wave C default-hides the C/C++ public raw descriptor spellings and
+  string-ID helpers while retaining opt-in legacy macros for
+  compatibility. A separate generated-only physical header is no longer
+  required for product API hygiene; the remaining internal structs are
+  ABI payloads for generated/runtime callbacks.
+- [x] Delete migration-only tests that assert user-authored duplicate ID
   behavior; replace them with generated-slot and duplicate graph-name
-  audit tests.
+  audit tests. Wave 7 scan found no remaining product/workflow tests that
+  depend on user-authored duplicate IDs; the remaining `DuplicateId`
+  assertions are internal recorder/runtime invariants or generated dispatch
+  compatibility tests.
 - [x] Update book and README examples so no product path teaches manual
   IDs.
   Wave 5B audited `book/src/**` and `examples/**/README.md`; no product
@@ -720,32 +751,76 @@ The review found example topology issues separate from the API surface.
 - [x] Remove `native_default_entry` from
   `examples/workspaces/rust/`; default launch selection belongs in the
   one native Entry package.
-- [ ] Replace the second native Entry with real platform Entry packages.
-  Initial target set: `native_entry`, `qemu_freertos_entry`,
-  `threadx_linux_entry`, and `qemu_nuttx_entry`.
+- [x] Replace the second native Entry with real platform Entry packages
+  for the first green platform targets. `examples/workspaces/rust/`
+  now has `native_entry`, `qemu_freertos_entry`, and
+  `threadx_linux_entry` sharing the same Talker/Listener Node pkgs and
+  `demo_bringup`.
+- [ ] Add `qemu_nuttx_entry` once the NuttX workspace build blockers
+  below are resolved.
 - [ ] Add Zephyr and ESP32 Entry packages once their documented
-  `nros setup` + codegen + platform-tool build workflows are green.
+  `nros setup` + codegen + platform-tool build workflows are available
+  for workspace fixture rows.
 - [x] Update `examples/fixtures.toml`, fixture builders, and E2E lookup
   helpers after Entry topology changes.
 - [x] Add generic native CMake/Corrosion support for Rust Node pkgs in
   mixed workspaces, or document the exact product-path blocker.
-- [ ] Add one Rust Node pkg to `examples/workspaces/mixed/`.
-- [ ] Update mixed Bringup launch to include C, C++, and Rust Node pkgs.
-- [ ] Build the mixed workspace through `nros ws sync`,
+- [x] Add one Rust Node pkg to `examples/workspaces/mixed/`.
+- [x] Update mixed Bringup launch to include C, C++, and Rust Node pkgs.
+- [x] Build the mixed workspace through `nros ws sync`,
   `nros codegen-system`, and the normal CMake build.
 
-Blockers found in the implementation wave:
+Wave B implementation note:
 
-- Real platform Entry packages cannot be added as product-shaped
-  workspace Entries yet. Generic `nano_ros_entry(...)` and the workspace
-  fixture driver are native-oriented; non-native platform fixture recipes
-  do not route through `scripts/build/workspace-fixtures-build.sh`.
-- Mixed C/C++/Rust workspaces cannot be made correct by adding only an
-  example Rust pkg. C/C++ generated entries still resolve
-  `__nros_component_<pkg>_register`, while Rust `nros::node!()` does not
-  export that C/C++ component registration ABI. This requires core/CLI ABI
-  support before `examples/workspaces/mixed/` can include a real Rust Node
-  pkg through the documented CMake product path.
+- Rust `nros::node!()` now emits the C/C++ entry-compatible
+  `extern "C" __nros_component_<pkg>_register` symbol by adapting the
+  C++ `NodeContext` ABI to the Rust `NodeRuntime` trait.
+- `nano_ros_node_register(LANGUAGE RUST ...)` imports the Rust Node pkg
+  through Corrosion as a staticlib and exposes the normal
+  `<pkg>_<exec>_component` target consumed by generated C/C++ entry
+  link sidecars.
+- `examples/workspaces/mixed/` includes `rust_heartbeat_pkg`, a Rust
+  timer Node pkg, and the Bringup launch now instantiates C, C++, and
+  Rust Node pkgs in one native Entry binary.
+
+Wave A platform Entry update:
+
+- `examples/fixtures.toml` has `workspace-rust-qemu-freertos` and
+  `workspace-rust-threadx-linux` rows. `just freertos build-examples`
+  and `just threadx_linux build-examples` both invoke
+  `scripts/build/workspace-fixtures-build.sh <platform> rust`, so these
+  entries build through the same workspace workflow as the native Entry:
+  `nros ws sync`, `nros codegen-system`, then Cargo.
+- The shared Rust Node pkgs now select their platform through package
+  features. Entry pkgs depend on the same `talker_pkg` and
+  `listener_pkg` sources with `native`, `freertos`, or `threadx-linux`
+  features instead of copying Node code per platform.
+
+Remaining blockers:
+
+- NuttX cannot be added as a green workspace Entry row yet. The
+  supported `just nuttx build-examples` path currently fails before
+  reaching a workspace row because the NuttX `libapps.a` link includes
+  stale/unrelated C/C++ app objects with unresolved `nros_*` and
+  `nros_cpp_*` symbols. A direct workspace-row probe reaches the
+  `qemu_nuttx_entry` shape but then fails while building `std` for
+  `armv7a-nuttx-eabihf` because the workspace path does not receive the
+  NuttX-only patched `libc` override that
+  `scripts/build/nuttx-libc-patch.sh` applies to single-node fixtures.
+- Zephyr's Phase 226 scheduler is still a single-node fixture scheduler:
+  `just zephyr build-fixtures` emits leaves from
+  `scripts/build/zephyr-fixture-leaves.sh` and runs them through
+  `scripts/build/zephyr-fixture-run-one.sh`; it does not consume
+  `[[workspace_fixture]]` rows or route Zephyr workspace examples
+  through `scripts/build/workspace-fixtures-build.sh`.
+- ESP32 has no workspace fixture row/build lane yet; add it only after
+  the platform recipe has a workspace-aware `nros setup` + codegen +
+  platform build path.
+- Mixed C/C++/Rust registration now builds through the static CMake
+  entry path, but the C/C++ native board adapter still records node
+  declarations with no-op operations. Full mixed-language runtime
+  pub/sub assertions remain blocked on the native C/C++ `NodeContext`
+  runtime moving beyond its recording-only adapter.
 
 Acceptance:
 
@@ -819,9 +894,11 @@ temporary backward compatibility during the fixture-refactor work.
 - [x] `examples/workspaces/` contains a small product-shaped set:
   Rust, C, C++, and mixed.
 - [x] Each promoted workspace follows Node / Bringup / Entry roles.
-- [ ] At least one workspace demonstrates multiple platform Entry packages
+- [x] At least one workspace demonstrates multiple platform Entry packages
   that share the same Node and Bringup packages. `native_default_entry`
-  does not satisfy this criterion; see 225.O.
+  does not satisfy this criterion; `examples/workspaces/rust/` now carries
+  native, QEMU FreeRTOS, and ThreadX Linux Entry packages over the same Node
+  and Bringup packages.
 - [x] User-facing workspace examples contain real node behavior and real
   generated message usage, not placeholder stand-ins.
 - [x] Tests use promoted examples as the source of truth for product

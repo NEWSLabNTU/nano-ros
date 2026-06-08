@@ -1,0 +1,25 @@
+[package]
+name = "threadx_linux_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the demo topology on ThreadX Linux."
+
+[[bin]]
+name = "threadx_linux_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "threadx-linux"
+
+[package.metadata.nros.deploy.threadx-linux]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/127.0.0.1:7455"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false }
+nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-threadx-linux" }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
+talker_pkg = { path = "../talker_pkg", default-features = false, features = ["threadx-linux"] }
+listener_pkg = { path = "../listener_pkg", default-features = false, features = ["threadx-linux"] }

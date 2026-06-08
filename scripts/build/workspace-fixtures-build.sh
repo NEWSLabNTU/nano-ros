@@ -50,8 +50,8 @@ mapfile -t cargo_profile_args < <(nros_cargo_profile_args)
 
 build_workspace() {
     local record="$1"
-    local id lang dir bringup entry build_subdir target_dir codegen_out defs
-    IFS=$'\x1f' read -r id lang dir bringup entry build_subdir target_dir codegen_out defs <<< "$record"
+    local id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra
+    IFS=$'\x1f' read -r id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra <<< "$record"
 
     [ -n "$id" ] || return 0
     [ -n "$dir" ] && [ -n "$bringup" ] && [ -n "$entry" ] || {
@@ -96,7 +96,15 @@ build_workspace() {
             if [ -n "$target_dir" ]; then
                 cargo_args+=(--target-dir "$target_dir")
             fi
+            if [ -n "$cargo_extra" ]; then
+                local extra_args=()
+                read -r -a extra_args <<< "$cargo_extra"
+                cargo_args+=("${extra_args[@]}")
+            fi
             echo "     cargo ${cargo_args[*]}"
+            if [ -n "$envstr" ]; then
+                export $envstr
+            fi
             cargo "${cargo_args[@]}"
 
             local out_root="${target_dir:-target}"

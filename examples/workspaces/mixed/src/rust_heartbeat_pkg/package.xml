@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rust_heartbeat_pkg</name>
+  <version>0.1.0</version>
+  <description>Rust Node pkg for the mixed C/C++/Rust workspace.</description>
+  <maintainer email="dev@example.com">nano-ros</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>cargo</buildtool_depend>
+  <depend>nros</depend>
+</package>

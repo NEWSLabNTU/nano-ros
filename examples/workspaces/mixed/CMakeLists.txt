@@ -10,4 +10,5 @@ nano_ros_workspace(
     SYSTEM   demo_bringup
     SUBDIRS  src/c_talker_pkg
              src/cpp_listener_pkg
+             src/rust_heartbeat_pkg
              src/native_entry)
