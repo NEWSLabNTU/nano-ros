@@ -6,6 +6,20 @@ nano-ros is a Rust workspace for a `no_std` ROS 2 client stack with C/C++ integr
 
 Reference and contributor docs live in `docs/`; user-facing mdBook docs live in `book/src/`; build orchestration lives in `justfile` and `just/*.just`.
 
+## Design Documents (RFCs)
+
+`docs/design/` is the design source of truth: numbered, living RFCs (`NNNN-slug.md`) with a
+`status` of `Draft` / `Stable` / `Superseded`. [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md)
+is the finalized whole-system view; [docs/design/README.md](docs/design/README.md) is the index.
+New RFC: copy `docs/design/0000-template.md`.
+
+Two rules:
+
+- **Design rationale goes in an RFC, never only in a phase doc.** Phase docs in `docs/roadmap/`
+  are work breakdowns; they name the RFC they implement in an `Implements: RFC-NNNN` header.
+- **Drift rule:** flipping an RFC to `status: Stable` requires updating the matching section of
+  `ARCHITECTURE.md` in the same commit.
+
 ## Build, Test, and Development Commands
 
 - `just --list`: show public recipes.
@@ -72,50 +86,30 @@ Do not duplicate those defaults in package code, tests, examples, CMake, or scri
 
 Shells that need the same defaults should source `scripts/sdk-env.sh`, which evaluates `just/sdk-env.just` and exports only missing variables. `.envrc`, `setup.bash`, and `setup.fish` all use that adapter. When a direct `cargo test` or `cargo nextest` run needs these defaults, either source `scripts/sdk-env.sh` first or run it through a `just` recipe so `just/sdk-env.just` is imported and exported to the child process. Prefer adding a focused `just` test helper over adding repo-path fallbacks inside `packages/`.
 
-## Toolchain & SDK Provisioning (Phase 187 — landed)
+## Toolchain & SDK Provisioning
 
-Host toolchains/tools (`qemu`, cross-GCC, `zenohd`, `openocd`) are provisioned by
-`nros setup`, not built ad-hoc. `nros-sdk-index.toml` (repo root) is the SSOT:
-each `[tool.*]` has per-host prebuilt `dist` (sha256-pinned) **and** a
-`[tool.*.source]` recipe; `[source.*]` build with the app; `[gated.*]` (NVIDIA
-SPE, ARM FVP) are never fetched, only instructed. Prebuilt assets live on the
-**separate** `NEWSLabNTU/nano-ros-sdk` repo's Releases (not a submodule —
-referenced by URL); `ci/nano-ros-sdk/` is the drop-in seed for that repo.
+Design rationale → RFC-0014 (`docs/design/0014-nros-setup-toolchain-management.md`). Operational
+contract:
+
+Host toolchains/tools (`qemu`, cross-GCC, `zenohd`, `openocd`) are provisioned by `nros setup`,
+not built ad-hoc. `nros-sdk-index.toml` (repo root) is the SSOT: each `[tool.*]` has a per-host
+sha256-pinned prebuilt `dist` **and** a `[tool.*.source]` recipe; `[source.*]` build with the app;
+`[gated.*]` (NVIDIA SPE, ARM FVP) are never fetched, only instructed. Prebuilt assets live on the
+separate `NEWSLabNTU/nano-ros-sdk` repo's Releases (referenced by URL, not a submodule).
 
 - `nros setup <board>` / `nros setup --tool <name> [--prefix <dir>]` installs to
-  `$NROS_HOME/sdk/<tool>/<version>/` (identical layout whether prebuilt-fetched
-  or source-built; `.nros-provenance` + `nros-sdk.lock` record it).
-- **Method A:** `nros build`/`deploy` lazy-install the board's tools, then
-  prepend the locked store `bin/` dirs to the child PATH — `nros` is the single
-  SDK resolver. **Non-`nros` scripts, the test harness, CMake do NOT resolve SDK
-  paths — assume the SDK is given and only check + warn** (`nros doctor` /
-  `just <plat> doctor`). Do not re-add store-path probing to test code.
-- `just qemu setup-qemu` and `just zenohd setup` are **thin `nros setup --tool`
-  callers** (install into `build/<tool>` where the harness already looks; zenohd
-  symlinks the flat path). Do not reintroduce the in-tree configure/make or the
-  2.7 GB `third-party/qemu` submodule build. Tool versions live only in the
-  index. `just <tool> build` still source-builds for devs who want it.
-- CI: `.github/workflows/sdk-index-gate.yml` (read-only sha256 verify of any
-  index dist change); `nano-ros-sdk`'s `build-tool.yml` seeds assets via
-  `workflow_dispatch` (Ubuntu 22.04 baseline). Bump a tool's `-nros<N>` suffix
-  when rebuilding the same upstream version with different config.
-- Validated with the prebuilt `nros2` qemu (the flipped `just qemu setup-qemu`
-  fetches it): `just qemu test-lan9118` 5/5, and the full networked pub/sub e2e
-  `nros-tests::emulator::test_qemu_rtic_pubsub_e2e` (two ARM baremetal instances
-  over LAN9118 + slirp + zenohd, published=1/received=1). The qemu-recipe flip
-  is safe end-to-end.
-- ESP32 in nano-ros is **ESP32-C3 (RISC-V)**: `riscv32imc-unknown-none-elf` via
-  the rustup target + build-std (rust-lld, no external gcc), espflash runner,
-  Espressif `qemu-system-riscv32` fork. It needs **no index host-tool** —
-  `resolve_packages` no longer maps esp32 to a (nonexistent) xtensa toolchain.
-  An `esp-qemu` index tool (the Espressif qemu fork) is the only future SDK
-  candidate here.
-- **Open follow-up:** maintainer adds branch-protection requiring the
-  `sdk-index-gate` check (Settings → Branches, or `gh api -X PUT
-  repos/NEWSLabNTU/nano-ros/branches/<branch>/protection/...`). cross-gcc (apt
-  system prereq) and openocd (`nros setup --tool openocd`) have no per-module
-  `just setup` recipe to flip — no action needed. See
-  `docs/roadmap/archived/phase-187-*`.
+  `$NROS_HOME/sdk/<tool>/<version>/` (`.nros-provenance` + `nros-sdk.lock` record it).
+- **`nros` is the single SDK resolver:** `nros build`/`deploy` lazy-install a board's tools and
+  prepend the locked store `bin/` to the child PATH. **Non-`nros` scripts, the test harness, and
+  CMake do NOT resolve SDK paths — they assume the SDK is given and only check + warn**
+  (`nros doctor` / `just <plat> doctor`). Do not re-add store-path probing to test code.
+- `just qemu setup-qemu` / `just zenohd setup` are **thin `nros setup --tool` callers** (install
+  into `build/<tool>` where the harness looks). Do not reintroduce the in-tree configure/make or
+  the `third-party/qemu` submodule build. `just <tool> build` still source-builds for devs.
+- ESP32 = **ESP32-C3 (RISC-V)** (`riscv32imc-unknown-none-elf` via rustup + build-std, espflash,
+  Espressif `qemu-system-riscv32` fork). Needs no index host-tool.
+- CI gate: `.github/workflows/sdk-index-gate.yml` sha256-verifies any index `dist` change. Bump a
+  tool's `-nros<N>` suffix when rebuilding the same upstream version with different config.
 
 ## C/C++ Integration Shape
 
@@ -230,27 +224,18 @@ Earlier, before rebasing over `50248367a`, these also passed:
 - `cargo check --manifest-path packages/cli/cargo-nano-ros/Cargo.toml --quiet`
 - `cargo check -p nros-macros --quiet`
 
-## Handover Notes (2026-06-04)
+## CLI Install & Submodule Operations
 
-Session ended out-of-tokens mid-stream. Active in-flight work: none recorded.
+CLI install:
 
-### Closed this session
-
-* **Phase 221 — Build System + Test Antipattern Audit Findings** — ARCHIVED at `docs/roadmap/archived/phase-221-antipattern-audit-findings.md`. Tracks A–E closed; A.7 remains explicitly deferred to later top-level CMake work outside Phase 221. Closure verification passed with `cargo check -p zpico-sys -p nros-c -p nros-cpp` and `source ./activate.sh && XDG_RUNTIME_DIR=/tmp just build`.
-* **Phase 220 — Full-Suite Readiness Sweep** — ARCHIVED at `docs/roadmap/archived/phase-220-full-suite-readiness-sweep.md`. All 10 tracks (A–J) closed. Final commit chain ends at `c05830b2c`. Followups identified for Phase 222 (CLI surface) territory; one for codegen `--target <rmw>` honor.
-
-### CLI install reality post-218
-
-* `~/.cargo/bin/nros` + `~/.nros/bin/nros` are STALE shadows from pre-Phase-218 install paths. Remove if present.
+* `~/.cargo/bin/nros` + `~/.nros/bin/nros` are STALE shadows from pre-Phase-218 install paths — remove if present.
 * Canonical install: `git submodule update --init packages/cli/third-party/<one-by-one as needed>` (NOT `--recursive`), then `just setup-cli`, then `source ./activate.sh`. PATH wires `nros`, `play_launch_parser`, `zenohd` from `~/.nros/sdk/*/bin/`.
-* `just doctor` now FAILs (not warns) on stale shadows + missing `play_launch_parser` (Phase 220.A + 220.J).
+* `just doctor` FAILs (not warns) on stale shadows + missing `play_launch_parser`.
 
-### Agent-dispatch contract (Phase 220.J)
+Agent-dispatch contract:
 
-* Every `just <plat>` invocation needs `source ./activate.sh` first. Dispatch templates MUST source it.
-* Pre-218 pattern `export PATH="$HOME/.nros/bin:$PATH"` is INSUFFICIENT — misses `play_launch_parser` under `~/.nros/sdk/play_launch_parser/bin/`.
-* CLAUDE.md "Practices" section carries the contract.
+* Every `just <plat>` invocation needs `source ./activate.sh` first; dispatch templates MUST source it. The pre-218 `export PATH="$HOME/.nros/bin:$PATH"` is INSUFFICIENT (misses `play_launch_parser`). CLAUDE.md “Practices” carries this.
 
-### Submodule init landmines
+Submodule init landmine:
 
-Never run `git submodule update --init --recursive` from a worktree. The transitive closure pulls QEMU → OpenSSL → pyca-cryptography (~30 min wasted in 220.G first attempt). Only init what the immediate task needs.
+* Never `git submodule update --init --recursive` from a worktree — the transitive closure pulls QEMU → OpenSSL → pyca-cryptography (~30 min). Init only what the task needs.
