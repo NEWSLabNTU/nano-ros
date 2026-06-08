@@ -20,11 +20,12 @@ build:
 # Build all Rust examples (auto-discovered, excludes zephyr + cross-compiled RTOS).
 #
 # Parallelised via a temporary Make graph — examples are independent standalone
-# crates (per the copy-out invariant in CLAUDE.md), so each cargo invocation can
+# crates (per the copy-out invariant in AGENTS.md), so each cargo invocation can
 # run concurrently without requiring GNU parallel. JOBS defaults to the global
 # NROS_BUILD_JOBS budget (itself nproc unless overridden), falling back to 75 %
 # of cores. Override per-invocation with `just native build-examples 4` or
-# `NROS_BUILD_JOBS=4 just native build-examples` for tighter machines.
+# `NROS_BUILD_JOBS=4 just native build-examples` for tighter machines. Just
+# recipe parameters are positional; `JOBS=4` is parsed as a literal argument.
 [group("main")]
 build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     #!/usr/bin/env bash
@@ -118,7 +119,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
             idx=0
             while read -r toml; do
                 printf 'native-example-%04d:\n' "$idx"
-                printf '\t+@build_one %q\n\n' "$toml"
+                printf '\t+@bash -c '"'"'build_one "$$1"'"'"' _ %q\n\n' "$toml"
                 idx=$((idx + 1))
             done < "$toml_list"
         } > "$makefile"

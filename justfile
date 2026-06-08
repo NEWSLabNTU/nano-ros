@@ -21,8 +21,8 @@ export SCCACHE_CACHE_SIZE := "30G"
 
 # Phase 165.perf — single global parallelism budget (total cores to
 # use across a build). Defaults to nproc. Every parallel recipe reads
-# `${NROS_BUILD_JOBS:-…}` for its inner `parallel --jobs` / cargo /
-# ninja fan-out, so one knob scales the whole build:
+# `${NROS_BUILD_JOBS:-…}` for its inner make/cargo/ninja fan-out, so one
+# knob scales the whole build:
 #   just build-all                       # uses nproc
 #   NROS_BUILD_JOBS=8 just build-all     # cap at 8 cores total
 # `build-test-fixtures` runs N platforms concurrently and re-exports
@@ -210,7 +210,7 @@ build-all:
 
 # Phase 176 — `build-all` under one GNU-make fifo jobserver shared across
 # every stage (cargo + build-script cc + ninja-via-west + cmake), instead
-# of the static per-platform `parallel --jobs` split. When the fast
+# of the static per-platform scheduler split. When the fast
 # platforms finish, their tokens flow to the long pole automatically.
 # Needs the pinned make >=4.4 + ninja >=1.13 (just workspace install-make
 # / install-ninja). NROS_BUILD_JOBS (default nproc) = the token budget.
@@ -580,35 +580,20 @@ build-test-fixtures-leaves:
     #!/usr/bin/env bash
     set -e
     # Phase 177.9 — compute the shared fixture-input hash once and export it
-    # so the per-platform/per-cell builds (and their `parallel` children)
+    # so the per-platform/per-cell builds (and their child build steps)
     # reuse it instead of re-hashing the workspace for every cell.
     source scripts/build/fixture-matrix.sh
     export NROS_FIXTURE_SHARED_SIG="$(nros_fixture_shared_sig)"
-    # Phase 160 follow-up — parallelize per-platform fixture builds.
-    # Each platform writes into its own per-example `target/` dirs (no
-    # workspace `target/` sharing across `examples/<plat>/...`), so the
-    # builds are independent. Bottleneck on a 32-core host was the
-    # outer sequential `just <plat>` loop spending ~1 hour total
-    # walking 150-ish standalone Cargo crates serially.
-    #
-    # Phase 165.perf — single global budget. Run up to `outer`
-    # platforms concurrently and hand each child `NROS_BUILD_JOBS =
-    # budget / outer` inner jobs, so platform-count × inner-jobs stays
-    # at the budget instead of multiplying into oversubscription. The
-    # platform fan-out itself is capped at 4 (the historical safe value
-    # — more concurrent QEMU/west workspaces gets racy) but never more
-    # than the budget.
-    #
-    # Use `parallel --halt-on-error` so a single broken toolchain
-    # surfaces fast instead of waiting for the remaining 7 platforms.
-    # Per-run joblogs land under `tmp/build-test-fixtures-*/`; the
-    # `tmp/build-test-fixtures-latest` symlink points at the newest run.
+    # Phase 226.C — direct fallback fixture fan-out uses a temporary make graph
+    # instead of GNU parallel or a raw Zephyr background lane. The pinned fifo
+    # jobserver path enters through build-all; this fallback still centralizes
+    # platform scheduling under ordinary make when invoked directly.
     log_dir="${NROS_BUILD_LOG_DIR:-$(pwd)/tmp/build-test-fixtures-$(date +%Y%m%d-%H%M%S)-$$}"
     mkdir -p "$log_dir" tmp
     log_dir="$(cd "$log_dir" && pwd)"
     ln -sfn "$log_dir" tmp/build-test-fixtures-latest
     joblog="$log_dir/build-test-fixtures.joblog"
-    zephyr_log="$log_dir/zephyr.log"
+    makefile="$log_dir/build-test-fixtures.mk"
     printf 'stage\tstart_epoch\tend_epoch\tduration_seconds\tstatus\n' > "$joblog"
     echo "build-test-fixtures: log-dir=$log_dir"
     run_stage() {
@@ -632,46 +617,39 @@ build-test-fixtures-leaves:
         done
         exit 0
     fi
+    case "$budget" in
+        ''|*[!0-9]*)
+            echo "Invalid NROS_BUILD_JOBS=$budget; expected positive integer" >&2
+            exit 2
+            ;;
+    esac
+    [ "$budget" -ge 1 ] || {
+        echo "Invalid NROS_BUILD_JOBS=$budget; expected positive integer" >&2
+        exit 2
+    }
     outer=4
     [ "$outer" -gt "$budget" ] && outer="$budget"
     inner=$(( budget / outer )); [ "$inner" -lt 1 ] && inner=1
-    # Phase 165.perf — zephyr is the long pole (per-example west builds,
-    # picolibc compile) and outlasts every other platform. Run it on its
-    # own track with the FULL budget so it keeps saturating cores after
-    # the fast platforms finish, instead of idling on a 1/Nth share
-    # (zephyr internally splits its budget into BUILD_JOBS × ninja). The
-    # other 7 platforms share the divided budget in the parallel pool.
-    # Brief overlap oversubscription while the fast platforms drain is
-    # fine; the dominant cost is zephyr's solo tail at full budget.
-    echo "build-test-fixtures: budget=$budget, pool=$outer×$inner + zephyr=$budget (solo)"
-    (
-        start="$(date +%s)"
-        status=0
-        NROS_BUILD_JOBS="$budget" just zephyr build-fixtures || status=$?
-        end="$(date +%s)"
-        printf '%s\t%s\t%s\t%s\t%s\n' zephyr "$start" "$end" "$((end - start))" "$status" >> "$joblog"
-        exit "$status"
-    ) > "$zephyr_log" 2>&1 &
-    zephyr_pid=$!
-    pool_rc=0
-    export joblog
-    NROS_BUILD_JOBS="$inner" parallel --jobs "$outer" --halt now,fail=1 \
-             --joblog "$log_dir/parallel.joblog" \
-             --line-buffer \
-             'start=$(date +%s); status=0; echo "== {} =="; just {} build-fixtures || status=$?; end=$(date +%s); printf "%s\t%s\t%s\t%s\t%s\n" "{}" "$start" "$end" "$((end - start))" "$status" >> "$joblog"; exit "$status"' ::: \
-        native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 || pool_rc=$?
-    zephyr_rc=0
-    wait "$zephyr_pid" || zephyr_rc=$?
-    if [ "$zephyr_rc" -ne 0 ]; then
-        echo "== zephyr == (solo track) FAILED (rc=$zephyr_rc); log tail:"
-        tail -40 "$zephyr_log" || true
-    else
-        echo "== zephyr == (solo track) OK"
-    fi
-    if [ "$pool_rc" -ne 0 ] || [ "$zephyr_rc" -ne 0 ]; then
-        echo "build-test-fixtures FAILED (pool rc=$pool_rc, zephyr rc=$zephyr_rc)"
-        exit 1
-    fi
+    make_jobs=$((outer + 1))
+    echo "build-test-fixtures: budget=$budget, make-jobs=$make_jobs, pool=$outer×$inner + zephyr=$budget (solo)"
+    {
+        printf 'SHELL := /bin/bash\n'
+        printf '.SHELLFLAGS := -eu -o pipefail -c\n'
+        printf '.DELETE_ON_ERROR:\n'
+        printf '.PHONY: all zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4\n'
+        printf 'all: zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4\n\n'
+        for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4; do
+            child_jobs="$inner"
+            if [ "$platform" = "zephyr" ]; then
+                child_jobs="$budget"
+            fi
+            log="$log_dir/$platform.log"
+            printf '%s:\n' "$platform"
+            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"\n\n' \
+                "$platform" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform"
+        done
+    } > "$makefile"
+    make -j "$make_jobs" -f "$makefile"
     echo "All test fixtures built."
 
 # Phase 150.E rev3 — single deterministic fixture serving both
