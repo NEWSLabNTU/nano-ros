@@ -58,6 +58,20 @@ doctor:
         echo "  [MISSING] qemu-system-riscv64 (run: just workspace apt-packages)"
         fail=1
     fi
+    # Host `idlc` (Cyclone DDS IDL compiler) — needed only for the Cyclone
+    # fixtures (`build-fixture-extras`), which self-provision Cyclone with
+    # BUILD_IDLC=OFF and so cannot produce idlc themselves. Advisory (not
+    # fail=1): the Cyclone fixtures are opt-out via
+    # NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0, and the zenoh path needs no idlc.
+    if command -v idlc &>/dev/null; then
+        echo "  [OK] idlc (Cyclone DDS IDL compiler): $(command -v idlc)"
+    elif [ -x "$PWD/build/cyclonedds/bin/idlc" ]; then
+        echo "  [OK] idlc (project): $PWD/build/cyclonedds/bin/idlc (folded onto PATH by build-fixture-extras)"
+    else
+        echo "  [INFO] idlc not found — ThreadX-RV64 Cyclone fixtures will skip."
+        echo "         Provision with: just cyclonedds setup (builds build/cyclonedds/bin/idlc),"
+        echo "         or put idlc on PATH, or opt out: NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0."
+    fi
     exit $fail
 
 # Phase 140 — `install` recipe deleted. ThreadX RISC-V 64 examples
@@ -206,22 +220,45 @@ build-fixture-extras:
     # Opt out with NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 (e.g. a fast local loop).
     if [ "${NROS_THREADX_RV64_CYCLONEDDS_FIXTURES:-1}" = "0" ]; then
         echo "  → skipping ThreadX-RV64 Cyclone fixtures (NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 opt-out)"
-    elif command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
+    elif ! command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
+        echo "  → skipping ThreadX-RV64 Cyclone fixtures (riscv64-unknown-elf-gcc absent — cannot self-provision Cyclone)"
+    else
         # Phase 186 — self-provision Cyclone from source via CMake
         # (nros_provide_cyclonedds() + the ThreadX flags staged in
         # cmake/platform/nano-ros-threadx.cmake); no prebuilt install, no
         # `just cyclonedds threadx-cross-probe`. idlc resolves host-side (186.3).
-        # Phase 177.38 — ThreadX-RV64 Cyclone role-set on domain 62 (talker+listener
-        # share). C/C++ get it via cmake -DNROS_DOMAIN_ID; the rust/talker cell via
-        # the helper's env + -D.
-        export NROS_CMAKE_EXTRA_DEFS="$base_defs -DNROS_DOMAIN_ID=62"
-        bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds
-        bash scripts/build/fixtures-build.sh threadx-riscv64 cpp cyclonedds
-        if [ -d examples/qemu-riscv64-threadx/rust/talker ]; then
-            build_threadx_cmake_rmw examples/qemu-riscv64-threadx/rust/talker cyclonedds build-cyclonedds
+        #
+        # The self-provisioned Cyclone build keeps BUILD_IDLC=OFF, so the host
+        # `idlc` (Cyclone DDS IDL compiler) it needs for descriptor codegen is
+        # NOT produced here — it must already be on the host, either on PATH
+        # (a ROS 2 / CycloneDDS install) or as the project's own
+        # build/cyclonedds/bin/idlc (`just cyclonedds setup`). Without it the
+        # Cyclone type-support cmake aborts — a fresh configure errors loudly
+        # (NrosRmwCycloneddsTypeSupport.cmake), but an incremental build dir with
+        # a stale cached idlc path dies as an opaque rc 127 when the missing
+        # binary is invoked as a build-time custom command (known-issues #16).
+        # Guard here so the absence is an actionable skip, not a 127. Fold the
+        # project-local idlc onto PATH when present so the existing cmake
+        # find_program(idlc) resolves it for every Cyclone cell unchanged.
+        if ! command -v idlc >/dev/null 2>&1 && [ -x "$root/build/cyclonedds/bin/idlc" ]; then
+            export PATH="$root/build/cyclonedds/bin:$PATH"
         fi
-    else
-        echo "  → skipping ThreadX-RV64 Cyclone fixtures (riscv64-unknown-elf-gcc absent — cannot self-provision Cyclone)"
+        if ! command -v idlc >/dev/null 2>&1; then
+            echo "  → skipping ThreadX-RV64 Cyclone fixtures: host 'idlc' (Cyclone DDS IDL compiler) not found."
+            echo "     Provision it with: just cyclonedds setup   (builds build/cyclonedds/bin/idlc),"
+            echo "     or put an idlc on PATH (e.g. a ROS 2 / CycloneDDS install),"
+            echo "     or set NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 to skip Cyclone fixtures entirely."
+        else
+            # Phase 177.38 — ThreadX-RV64 Cyclone role-set on domain 62
+            # (talker+listener share). C/C++ get it via cmake -DNROS_DOMAIN_ID;
+            # the rust/talker cell via the helper's env + -D.
+            export NROS_CMAKE_EXTRA_DEFS="$base_defs -DNROS_DOMAIN_ID=62"
+            bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds
+            bash scripts/build/fixtures-build.sh threadx-riscv64 cpp cyclonedds
+            if [ -d examples/qemu-riscv64-threadx/rust/talker ]; then
+                build_threadx_cmake_rmw examples/qemu-riscv64-threadx/rust/talker cyclonedds build-cyclonedds
+            fi
+        fi
     fi
     unset NROS_CMAKE_EXTRA_DEFS
 

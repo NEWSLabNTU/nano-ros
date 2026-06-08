@@ -454,13 +454,26 @@ regenerates the header mid-build.
 **To fix**: serialize/guard the `nros_cpp_ffi.h` (re)generation so concurrent
 cold C++ builds cannot observe a half-written/duplicated header.
 
-## 16. threadx-riscv64 `build-fixture-extras` exits 127 on the maintainer host
+## ~~16. threadx-riscv64 `build-fixture-extras` exits 127 on the maintainer host~~ (Fixed)
 
-Surfaced by Phase 226.F. `just threadx_riscv64` fixture extras exit 127
-(command not found) during the broad build — a missing tool/env on the host.
+**Status: Fixed** — the rc=127 came from the ThreadX-RV64 **Cyclone**
+fixtures. They self-provision CycloneDDS from source with `BUILD_IDLC=OFF`
+(`cmake/platform/nano-ros-threadx.cmake`), so they need a host `idlc`
+(Cyclone DDS IDL compiler) the recipe never provisions — it must come from
+PATH (a ROS 2 / CycloneDDS install) or the project's own
+`build/cyclonedds/bin/idlc` (`just cyclonedds setup`). A clean
+`source ./activate.sh` shell has none on PATH. A fresh build dir errors
+loudly at configure (`NrosRmwCycloneddsTypeSupport.cmake`, rc 1); an
+incremental build dir with a stale cached idlc path invokes the missing
+binary as a build-time custom command → opaque **rc 127**.
 
-**To fix**: identify the missing tool (`just threadx_riscv64 doctor`) and
-provision it via `nros setup`, or skip-with-hint when absent.
+Fix: `just/threadx-riscv64.just::build-fixture-extras` now guards the
+Cyclone block — folds `build/cyclonedds/bin/idlc` onto PATH when present,
+and if no `idlc` is resolvable skips the Cyclone fixtures with an
+actionable hint (`just cyclonedds setup` / put idlc on PATH /
+`NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0`) instead of dying with 127.
+`just threadx_riscv64 doctor` reports `idlc` readiness (advisory).
+Behavior is unchanged when `idlc` is already on PATH.
 
 ## 17. Zephyr native_sim ↔ zenoh E2E does not connect on some hosts (NSOS offload)
 
