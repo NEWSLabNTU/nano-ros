@@ -14,8 +14,6 @@
 
 namespace nros {
 
-static constexpr size_t DECLARED_NODE_SYNTHETIC_ID_MAX = 96;
-
 namespace detail {
 
 inline bool is_declared_id_alnum(char c) {
@@ -24,6 +22,18 @@ inline bool is_declared_id_alnum(char c) {
 
 inline char declared_id_lower(char c) {
     return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
+template <size_t N> inline Result copy_declared_id(char (&out)[N], const char* value) {
+    if (!value || !*value || N == 0) return Result(ErrorCode::InvalidArgument);
+    size_t pos = 0;
+    while (value[pos]) {
+        if (pos + 1 >= N) return Result(ErrorCode::Full);
+        out[pos] = value[pos];
+        ++pos;
+    }
+    out[pos] = '\0';
+    return Result::success();
 }
 
 template <size_t N>
@@ -84,7 +94,36 @@ class NodeContext {
   public:
     NodeContext(void* user_data, const NodeContextOps* ops) : user_data_(user_data), ops_(ops) {}
 
-    Result create_node(DeclaredNode& out, const char* stable_id, const NodeOptions& options) {
+    NROS_CPP_DEPRECATED Result create_node(DeclaredNode& out, const char* stable_id,
+                                           const NodeOptions& options) {
+        return create_node_raw(out, stable_id, options);
+    }
+
+    Result create_node(DeclaredNode& out, const NodeOptions& options) {
+        if (!options.name) return Result(ErrorCode::InvalidArgument);
+        return create_node_raw(out, options.name, options);
+    }
+
+    NROS_CPP_DEPRECATED Result create_entity(const NodeEntityDescriptor& descriptor) {
+        return create_entity_raw(descriptor);
+    }
+
+    NROS_CPP_DEPRECATED Result record_callback_effect(const char* callback_id,
+                                                      CallbackEffectKind kind,
+                                                      const char* entity_id) {
+        return record_callback_effect_raw(callback_id, kind, entity_id);
+    }
+
+    Result record_callback_effect(const DeclaredCallback& callback, CallbackEffectKind kind,
+                                  const DeclaredEntity& entity) {
+        if (!callback.is_valid() || !entity.is_valid()) return Result(ErrorCode::InvalidArgument);
+        return record_callback_effect_raw(callback.callback_id(), kind, entity.stable_id());
+    }
+
+  private:
+    friend class DeclaredNode;
+
+    Result create_node_raw(DeclaredNode& out, const char* stable_id, const NodeOptions& options) {
         if (!ops_ || !ops_->create_node || !stable_id) return Result(ErrorCode::InvalidArgument);
         out = DeclaredNode(this, stable_id, nullptr);
         Result result(ops_->create_node(user_data_, stable_id, &options, &out));
@@ -96,66 +135,251 @@ class NodeContext {
         return result;
     }
 
-    Result create_node(DeclaredNode& out, const NodeOptions& options) {
-        if (!options.name) return Result(ErrorCode::InvalidArgument);
-        return create_node(out, options.name, options);
-    }
-
-    Result create_entity(const NodeEntityDescriptor& descriptor) {
+    Result create_entity_raw(const NodeEntityDescriptor& descriptor) {
         if (!ops_ || !ops_->create_entity) return Result(ErrorCode::InvalidArgument);
         return Result(ops_->create_entity(user_data_, &descriptor));
     }
 
-    Result record_callback_effect(const char* callback_id, CallbackEffectKind kind,
-                                  const char* entity_id) {
+    Result record_callback_effect_raw(const char* callback_id, CallbackEffectKind kind,
+                                      const char* entity_id) {
         if (!ops_ || !ops_->record_callback_effect || !callback_id || !entity_id) {
             return Result(ErrorCode::InvalidArgument);
         }
         return Result(ops_->record_callback_effect(user_data_, callback_id, kind, entity_id));
     }
 
-  private:
     void* user_data_;
     const NodeContextOps* ops_;
 };
 
+inline Result DeclaredEntity::assign(const char* stable_id, NodeEntityKind kind) {
+    Result result = detail::copy_declared_id(stable_id_, stable_id);
+    if (!result.ok()) {
+        valid_ = false;
+        stable_id_[0] = '\0';
+        return result;
+    }
+    kind_ = kind;
+    valid_ = true;
+    return Result::success();
+}
+
+inline Result DeclaredCallback::assign(const char* callback_id) {
+    Result result = detail::copy_declared_id(callback_id_, callback_id);
+    if (!result.ok()) {
+        valid_ = false;
+        callback_id_[0] = '\0';
+        return result;
+    }
+    valid_ = true;
+    return Result::success();
+}
+
 inline Result DeclaredNode::create_entity(const NodeEntityDescriptor& descriptor) {
+    return create_entity_raw(descriptor);
+}
+
+inline Result DeclaredNode::create_entity_raw(const NodeEntityDescriptor& descriptor) {
     if (!context_) return Result(ErrorCode::NotInitialized);
-    return context_->create_entity(descriptor);
+    return context_->create_entity_raw(descriptor);
 }
 
 inline Result DeclaredNode::create_entity(const char* stable_id, NodeEntityKind kind,
                                           const char* source_name, const char* type_name,
                                           const char* type_hash, const char* callback_id) {
+    return create_entity_raw(stable_id, kind, source_name, type_name, type_hash, callback_id);
+}
+
+inline Result DeclaredNode::create_entity_raw(const char* stable_id, NodeEntityKind kind,
+                                              const char* source_name, const char* type_name,
+                                              const char* type_hash, const char* callback_id) {
     if (!is_valid() || !stable_id || !source_name) return Result(ErrorCode::InvalidArgument);
     NodeEntityDescriptor descriptor{
-        /*stable_id*/   stable_id,
-        /*node_id*/     stable_id_,
-        /*kind*/        kind,
+        /*stable_id*/ stable_id,
+        /*node_id*/ stable_id_,
+        /*kind*/ kind,
         /*source_name*/ source_name,
-        /*type_name*/   type_name ? type_name : "",
-        /*type_hash*/   type_hash ? type_hash : "",
+        /*type_name*/ type_name ? type_name : "",
+        /*type_hash*/ type_hash ? type_hash : "",
         /*callback_id*/ callback_id,
     };
-    return create_entity(descriptor);
+    return create_entity_raw(descriptor);
 }
 
 inline Result DeclaredNode::create_publisher(const char* stable_id, const char* topic_name,
                                              const char* type_name, const char* type_hash) {
-    return create_entity(stable_id, NodeEntityKind::Publisher, topic_name, type_name, type_hash,
-                         nullptr);
+    return create_entity_raw(stable_id, NodeEntityKind::Publisher, topic_name, type_name, type_hash,
+                             nullptr);
 }
 
 inline Result DeclaredNode::create_subscription(const char* stable_id, const char* topic_name,
                                                 const char* type_name, const char* callback_id,
                                                 const char* type_hash) {
-    return create_entity(stable_id, NodeEntityKind::Subscription, topic_name, type_name, type_hash,
-                         callback_id);
+    return create_entity_raw(stable_id, NodeEntityKind::Subscription, topic_name, type_name,
+                             type_hash, callback_id);
 }
 
 inline Result DeclaredNode::create_timer(const char* stable_id, const char* period_ms,
                                          const char* callback_id) {
-    return create_entity(stable_id, NodeEntityKind::Timer, period_ms, "", "", callback_id);
+    return create_entity_raw(stable_id, NodeEntityKind::Timer, period_ms, "", "", callback_id);
+}
+
+inline Result DeclaredNode::create_service_server(const char* stable_id, const char* service_name,
+                                                  const char* type_name, const char* callback_id,
+                                                  const char* type_hash) {
+    return create_entity_raw(stable_id, NodeEntityKind::ServiceServer, service_name, type_name,
+                             type_hash, callback_id);
+}
+
+inline Result DeclaredNode::create_service_client(const char* stable_id, const char* service_name,
+                                                  const char* type_name, const char* callback_id,
+                                                  const char* type_hash) {
+    return create_entity_raw(stable_id, NodeEntityKind::ServiceClient, service_name, type_name,
+                             type_hash, callback_id);
+}
+
+inline Result DeclaredNode::create_action_server(const char* stable_id, const char* action_name,
+                                                 const char* type_name, const char* callback_id,
+                                                 const char* type_hash) {
+    return create_entity_raw(stable_id, NodeEntityKind::ActionServer, action_name, type_name,
+                             type_hash, callback_id);
+}
+
+inline Result DeclaredNode::create_action_client(const char* stable_id, const char* action_name,
+                                                 const char* type_name, const char* callback_id,
+                                                 const char* type_hash) {
+    return create_entity_raw(stable_id, NodeEntityKind::ActionClient, action_name, type_name,
+                             type_hash, callback_id);
+}
+
+inline Result DeclaredNode::declare_callback(DeclaredCallback& out, const char* callback_id) {
+    out = DeclaredCallback();
+    return out.assign(callback_id);
+}
+
+inline Result DeclaredNode::create_publisher(DeclaredEntity& out, const char* topic_name,
+                                             const char* type_name, const char* type_hash) {
+    out = DeclaredEntity();
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "pub", topic_name);
+    if (!result.ok()) return result;
+    result = create_entity_raw(stable_id, NodeEntityKind::Publisher, topic_name, type_name,
+                               type_hash, nullptr);
+    if (!result.ok()) return result;
+    return out.assign(stable_id, NodeEntityKind::Publisher);
+}
+
+inline Result DeclaredNode::create_subscription(DeclaredEntity& out, const char* topic_name,
+                                                const char* type_name,
+                                                const DeclaredCallback& callback,
+                                                const char* type_hash) {
+    out = DeclaredEntity();
+    if (!callback.is_valid()) return Result(ErrorCode::InvalidArgument);
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "sub", topic_name);
+    if (!result.ok()) return result;
+    result = create_entity_raw(stable_id, NodeEntityKind::Subscription, topic_name, type_name,
+                               type_hash, callback.callback_id());
+    if (!result.ok()) return result;
+    return out.assign(stable_id, NodeEntityKind::Subscription);
+}
+
+inline Result DeclaredNode::create_timer(DeclaredEntity& out, const char* period_ms,
+                                         const DeclaredCallback& callback) {
+    out = DeclaredEntity();
+    if (!callback.is_valid()) return Result(ErrorCode::InvalidArgument);
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result =
+        detail::synthesize_declared_entity_id(stable_id, "timer", callback.callback_id());
+    if (!result.ok()) return result;
+    result = create_entity_raw(stable_id, NodeEntityKind::Timer, period_ms, "", "",
+                               callback.callback_id());
+    if (!result.ok()) return result;
+    return out.assign(stable_id, NodeEntityKind::Timer);
+}
+
+inline Result DeclaredNode::create_service_server(DeclaredEntity& out, const char* service_name,
+                                                  const char* type_name,
+                                                  const DeclaredCallback& callback,
+                                                  const char* type_hash) {
+    out = DeclaredEntity();
+    if (!callback.is_valid()) return Result(ErrorCode::InvalidArgument);
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "srv", service_name);
+    if (!result.ok()) return result;
+    result = create_entity_raw(stable_id, NodeEntityKind::ServiceServer, service_name, type_name,
+                               type_hash, callback.callback_id());
+    if (!result.ok()) return result;
+    return out.assign(stable_id, NodeEntityKind::ServiceServer);
+}
+
+inline Result DeclaredNode::create_service_client(DeclaredEntity& out, const char* service_name,
+                                                  const char* type_name, const char* type_hash) {
+    out = DeclaredEntity();
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "client", service_name);
+    if (!result.ok()) return result;
+    result = create_entity_raw(stable_id, NodeEntityKind::ServiceClient, service_name, type_name,
+                               type_hash, nullptr);
+    if (!result.ok()) return result;
+    return out.assign(stable_id, NodeEntityKind::ServiceClient);
+}
+
+inline Result DeclaredNode::create_service_client(DeclaredEntity& out, const char* service_name,
+                                                  const char* type_name,
+                                                  const DeclaredCallback& callback,
+                                                  const char* type_hash) {
+    out = DeclaredEntity();
+    if (!callback.is_valid()) return Result(ErrorCode::InvalidArgument);
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "client", service_name);
+    if (!result.ok()) return result;
+    result = create_entity_raw(stable_id, NodeEntityKind::ServiceClient, service_name, type_name,
+                               type_hash, callback.callback_id());
+    if (!result.ok()) return result;
+    return out.assign(stable_id, NodeEntityKind::ServiceClient);
+}
+
+inline Result DeclaredNode::create_action_server(DeclaredEntity& out, const char* action_name,
+                                                 const char* type_name,
+                                                 const DeclaredCallback& callback,
+                                                 const char* type_hash) {
+    out = DeclaredEntity();
+    if (!callback.is_valid()) return Result(ErrorCode::InvalidArgument);
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "action_server", action_name);
+    if (!result.ok()) return result;
+    result = create_entity_raw(stable_id, NodeEntityKind::ActionServer, action_name, type_name,
+                               type_hash, callback.callback_id());
+    if (!result.ok()) return result;
+    return out.assign(stable_id, NodeEntityKind::ActionServer);
+}
+
+inline Result DeclaredNode::create_action_client(DeclaredEntity& out, const char* action_name,
+                                                 const char* type_name, const char* type_hash) {
+    out = DeclaredEntity();
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "action_client", action_name);
+    if (!result.ok()) return result;
+    result = create_entity_raw(stable_id, NodeEntityKind::ActionClient, action_name, type_name,
+                               type_hash, nullptr);
+    if (!result.ok()) return result;
+    return out.assign(stable_id, NodeEntityKind::ActionClient);
+}
+
+inline Result DeclaredNode::create_action_client(DeclaredEntity& out, const char* action_name,
+                                                 const char* type_name,
+                                                 const DeclaredCallback& callback,
+                                                 const char* type_hash) {
+    out = DeclaredEntity();
+    if (!callback.is_valid()) return Result(ErrorCode::InvalidArgument);
+    char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
+    Result result = detail::synthesize_declared_entity_id(stable_id, "action_client", action_name);
+    if (!result.ok()) return result;
+    result = create_entity_raw(stable_id, NodeEntityKind::ActionClient, action_name, type_name,
+                               type_hash, callback.callback_id());
+    if (!result.ok()) return result;
+    return out.assign(stable_id, NodeEntityKind::ActionClient);
 }
 
 template <typename M>
@@ -164,7 +388,8 @@ inline Result DeclaredNode::create_publisher(const char* topic_name, const QoS& 
     char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
     Result result = detail::synthesize_declared_entity_id(stable_id, "pub", topic_name);
     if (!result.ok()) return result;
-    return create_publisher(stable_id, topic_name, M::TYPE_NAME, M::TYPE_HASH);
+    return create_entity_raw(stable_id, NodeEntityKind::Publisher, topic_name, M::TYPE_NAME,
+                             M::TYPE_HASH, nullptr);
 }
 
 template <typename M>
@@ -174,7 +399,66 @@ inline Result DeclaredNode::create_subscription(const char* topic_name, const ch
     char stable_id[DECLARED_NODE_SYNTHETIC_ID_MAX];
     Result result = detail::synthesize_declared_entity_id(stable_id, "sub", topic_name);
     if (!result.ok()) return result;
-    return create_subscription(stable_id, topic_name, M::TYPE_NAME, callback_id, M::TYPE_HASH);
+    return create_entity_raw(stable_id, NodeEntityKind::Subscription, topic_name, M::TYPE_NAME,
+                             M::TYPE_HASH, callback_id);
+}
+
+template <typename M>
+inline Result DeclaredNode::create_publisher(DeclaredEntity& out, const char* topic_name,
+                                             const QoS& qos) {
+    (void)qos;
+    return create_publisher(out, topic_name, M::TYPE_NAME, M::TYPE_HASH);
+}
+
+template <typename M>
+inline Result DeclaredNode::create_subscription(DeclaredEntity& out, const char* topic_name,
+                                                const DeclaredCallback& callback, const QoS& qos) {
+    (void)qos;
+    return create_subscription(out, topic_name, M::TYPE_NAME, callback, M::TYPE_HASH);
+}
+
+template <typename S>
+inline Result DeclaredNode::create_service_server(DeclaredEntity& out, const char* service_name,
+                                                  const DeclaredCallback& callback,
+                                                  const QoS& qos) {
+    (void)qos;
+    return create_service_server(out, service_name, S::TYPE_NAME, callback, S::TYPE_HASH);
+}
+
+template <typename S>
+inline Result DeclaredNode::create_service_client(DeclaredEntity& out, const char* service_name,
+                                                  const QoS& qos) {
+    (void)qos;
+    return create_service_client(out, service_name, S::TYPE_NAME, S::TYPE_HASH);
+}
+
+template <typename S>
+inline Result DeclaredNode::create_service_client(DeclaredEntity& out, const char* service_name,
+                                                  const DeclaredCallback& callback,
+                                                  const QoS& qos) {
+    (void)qos;
+    return create_service_client(out, service_name, S::TYPE_NAME, callback, S::TYPE_HASH);
+}
+
+template <typename A>
+inline Result DeclaredNode::create_action_server(DeclaredEntity& out, const char* action_name,
+                                                 const DeclaredCallback& callback, const QoS& qos) {
+    (void)qos;
+    return create_action_server(out, action_name, A::TYPE_NAME, callback, A::TYPE_HASH);
+}
+
+template <typename A>
+inline Result DeclaredNode::create_action_client(DeclaredEntity& out, const char* action_name,
+                                                 const QoS& qos) {
+    (void)qos;
+    return create_action_client(out, action_name, A::TYPE_NAME, A::TYPE_HASH);
+}
+
+template <typename A>
+inline Result DeclaredNode::create_action_client(DeclaredEntity& out, const char* action_name,
+                                                 const DeclaredCallback& callback, const QoS& qos) {
+    (void)qos;
+    return create_action_client(out, action_name, A::TYPE_NAME, callback, A::TYPE_HASH);
 }
 
 using NodeRegisterFn = int32_t (*)(NodeContext& context);
