@@ -30,10 +30,12 @@ use eyre::{Context, Result, bail};
 use serde::Deserialize;
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
-use crate::cmd::emit_package_xml;
-use crate::orchestration::cargo_metadata_schema::{
-    PackageMetadataAment, SystemBridgeEntry, SystemComponentEntry, SystemDomainEntry, SystemHeader,
-    SystemToml,
+use crate::{
+    cmd::emit_package_xml,
+    orchestration::cargo_metadata_schema::{
+        PackageMetadataAment, SystemBridgeEntry, SystemComponentEntry, SystemDomainEntry,
+        SystemHeader, SystemToml,
+    },
 };
 
 #[derive(Debug, ClapArgs)]
@@ -503,6 +505,9 @@ fn build_system_toml(plan: &MigrationPlan) -> SystemToml {
         deploy: plan.deploy.clone(),
         domains: plan.domains.clone(),
         bridges: plan.bridges.clone(),
+        tiers: std::collections::BTreeMap::new(),
+        shared_state: Vec::new(),
+        node_overrides: Vec::new(),
     }
 }
 

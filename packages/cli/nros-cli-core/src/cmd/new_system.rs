@@ -354,6 +354,9 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         deploy,
         domains: Vec::new(),
         bridges: Vec::new(),
+        tiers: std::collections::BTreeMap::new(),
+        shared_state: Vec::new(),
+        node_overrides: Vec::new(),
     };
 
     let body = toml::to_string_pretty(&model).wrap_err("serialize generated system.toml")?;

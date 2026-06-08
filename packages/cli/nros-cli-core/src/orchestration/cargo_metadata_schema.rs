@@ -258,6 +258,35 @@ pub struct ComponentMetadata {
     /// `super::schema`) to avoid creating a duplicate type.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remaps: Vec<RemapRule>,
+    /// Phase 228.A (RFC-0015) — callback groups the node declares (it owns its
+    /// callbacks). Each names a symbolic `tier` the system's `[tiers.*]` maps to
+    /// an RTOS task/priority. Empty → all callbacks default to the `"default"`
+    /// tier (the single-task degenerate case).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub callback_groups: Vec<CallbackGroupDecl>,
+}
+
+/// `[[node.callback_groups]]` row (Phase 228.A, RFC-0015 §4.1).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CallbackGroupDecl {
+    /// Logical id within the node (e.g. `"ctrl_loop"`, `"telemetry"`).
+    pub id: String,
+    /// `"MutuallyExclusive"` (default) or `"Reentrant"`. v1 treats every group
+    /// as mutually-exclusive within its tier task; the field is recorded for
+    /// the future multi-worker executor.
+    #[serde(default = "default_cbg_type")]
+    pub r#type: String,
+    /// Symbolic tier name resolved against the system's `[tiers.*]`.
+    #[serde(default = "default_tier_name")]
+    pub tier: String,
+}
+
+fn default_cbg_type() -> String {
+    "MutuallyExclusive".to_string()
+}
+fn default_tier_name() -> String {
+    "default".to_string()
 }
 
 /// `[package.metadata.nros.application]` — Phase 212.L.2.
@@ -413,6 +442,117 @@ pub struct SystemToml {
     pub domains: Vec<SystemDomainEntry>,
     #[serde(default, rename = "bridge", skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<SystemBridgeEntry>,
+    /// Phase 228.A (RFC-0015 §4.2) — `[tiers.<name>]` priority/scheduling tiers.
+    /// The system owner maps the symbolic tier names a node's callback groups
+    /// reference to per-RTOS task knobs. Empty → the single-tier degenerate case.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tiers: BTreeMap<String, TierDef>,
+    /// Phase 228.A — `[[shared_state]]` cross-node shared regions.
+    #[serde(
+        default,
+        rename = "shared_state",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub shared_state: Vec<SharedStateDecl>,
+    /// Phase 228.A — `[[node_overrides]]` deployment-time tier reassignment of a
+    /// node's callback groups (RFC-0015 §4.2), without touching the node package.
+    #[serde(
+        default,
+        rename = "node_overrides",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub node_overrides: Vec<NodeOverride>,
+}
+
+/// `[tiers.<name>]` — a symbolic priority tier (RFC-0015 §4.2). Carries the
+/// RTOS-agnostic `spin_period_us` plus a per-RTOS sub-table
+/// (`[tiers.<name>.<rtos>]`) giving the concrete priority/stack for each target.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TierDef {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spin_period_us: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freertos: Option<TierRtosSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zephyr: Option<TierRtosSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threadx: Option<TierRtosSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nuttx: Option<TierRtosSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub posix: Option<TierRtosSpec>,
+}
+
+/// `[tiers.<name>.<rtos>]` — concrete per-RTOS task knobs. One shape for all
+/// RTOSes; `priority` is `i64` to admit Zephyr's negative coop priorities.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TierRtosSpec {
+    pub priority: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack_bytes: Option<u32>,
+    /// ThreadX preemption threshold (ignored on other RTOSes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preempt_threshold: Option<i64>,
+    /// POSIX scheduler class (e.g. `"SCHED_FIFO"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sched_class: Option<String>,
+}
+
+/// `[[shared_state]]` — a named cross-node shared region (RFC-0015 §8).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SharedStateDecl {
+    pub name: String,
+    /// Generated struct type name; absent → derived from `name`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    /// `"static"` (default) or `"heap"`.
+    #[serde(default = "default_storage")]
+    pub storage: String,
+    /// `"tier_aware"` (default), `"mutex"`, `"critical_section"`, or `"none"`.
+    #[serde(default = "default_sync")]
+    pub sync: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<SharedStateField>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub read: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub write: Vec<String>,
+}
+
+/// One typed field of a `[[shared_state]]` region.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SharedStateField {
+    pub name: String,
+    pub r#type: String,
+}
+
+/// `[[node_overrides]]` row — reassigns a node's callback groups to tiers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeOverride {
+    /// Node instance name (matches a `[[component]].name`).
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub callback_groups: Vec<CallbackGroupOverride>,
+}
+
+/// A single `id → tier` reassignment inside a `[[node_overrides]]`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CallbackGroupOverride {
+    pub id: String,
+    pub tier: String,
+}
+
+fn default_storage() -> String {
+    "static".to_string()
+}
+fn default_sync() -> String {
+    "tier_aware".to_string()
 }
 
 /// `[system]` table inside `<bringup>/system.toml`.
@@ -866,6 +1006,91 @@ name = "talker"
         assert!(v.deploy.is_empty());
         assert!(v.domains.is_empty());
         assert!(v.bridges.is_empty());
+        // Phase 228.A — tier surface defaults empty (backward compat).
+        assert!(v.tiers.is_empty());
+        assert!(v.shared_state.is_empty());
+        assert!(v.node_overrides.is_empty());
+    }
+
+    #[test]
+    fn system_toml_parses_tiers_shared_state_overrides() {
+        // Phase 228.A (RFC-0015 §4.2) — tier + shared-state + override schema.
+        let raw = r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+
+[tiers.high]
+spin_period_us = 1000
+[tiers.high.freertos]
+priority = 5
+stack_bytes = 8192
+[tiers.high.zephyr]
+priority = -1
+[tiers.high.posix]
+priority = 80
+sched_class = "SCHED_FIFO"
+
+[tiers.low.freertos]
+priority = 1
+
+[[shared_state]]
+name = "safety_island"
+schema = "SafetyIsland"
+read = ["control_node"]
+write = ["sensing_node"]
+fields = [
+  { name = "velocity", type = "f32" },
+  { name = "mrm_state", type = "u8" },
+]
+
+[[node_overrides]]
+name = "control_node"
+callback_groups = [{ id = "telemetry", tier = "low" }]
+"#;
+        let v: SystemToml = toml::from_str(raw).expect("parse tier schema");
+
+        let high = v.tiers.get("high").expect("high tier");
+        assert_eq!(high.spin_period_us, Some(1000));
+        assert_eq!(high.freertos.as_ref().unwrap().priority, 5);
+        assert_eq!(high.freertos.as_ref().unwrap().stack_bytes, Some(8192));
+        assert_eq!(high.zephyr.as_ref().unwrap().priority, -1);
+        assert_eq!(
+            high.posix.as_ref().unwrap().sched_class.as_deref(),
+            Some("SCHED_FIFO")
+        );
+        assert_eq!(
+            v.tiers
+                .get("low")
+                .unwrap()
+                .freertos
+                .as_ref()
+                .unwrap()
+                .priority,
+            1
+        );
+
+        let ss = &v.shared_state[0];
+        assert_eq!(ss.name, "safety_island");
+        assert_eq!(ss.storage, "static"); // default
+        assert_eq!(ss.sync, "tier_aware"); // default
+        assert_eq!(ss.fields.len(), 2);
+        assert_eq!(ss.fields[0].r#type, "f32");
+
+        let ov = &v.node_overrides[0];
+        assert_eq!(ov.name, "control_node");
+        assert_eq!(ov.callback_groups[0].tier, "low");
+
+        // Round-trips through serde.
+        let s = toml::to_string(&v).expect("serialize");
+        let v2: SystemToml = toml::from_str(&s).expect("reparse");
+        assert_eq!(v, v2);
     }
 
     // -----------------------------------------------------------------

@@ -24,6 +24,7 @@ pub mod schema;
 pub mod sdk_index;
 pub mod sdk_store;
 pub mod source_metadata;
+pub mod tier_resolver;
 pub mod workspace;
 
 pub use cargo_nano_ros::{
