@@ -150,10 +150,114 @@ pub fn generate_cbindgen_header(manifest_dir: &Path, config_name: &str, output_r
         .generate();
 
     match result {
-        Ok(bindings) => write_cbindgen_header_atomically(&output_path, bindings),
+        Ok(bindings) => write_cbindgen_header_serialized(&output_path, bindings),
         Err(e) => {
             println!("cargo:warning=cbindgen header generation skipped: {e}");
         }
+    }
+}
+
+/// Serialize concurrent regenerators of this shared source-tree header.
+///
+/// The cbindgen headers (`nros_generated.h` / `nros_cpp_ffi.h`) are committed
+/// to the source tree and regenerated **in place** by every parallel `build.rs`
+/// invocation. On a cold workspace build, N independent Corrosion / Cargo build
+/// trees (e.g. the threadx-linux C++ fixtures, which — unlike nuttx — are not
+/// serialized with `NROS_CARGO_FRONTENDS=1`) run this code concurrently against
+/// the *same* output path. The inner `write_cbindgen_header_atomically` makes a
+/// single writer's replacement atomic, but nothing serializes N writers racing
+/// on the write/compare/rename sequence, so a concurrent reader (a C++ compile
+/// `#include`-ing the header) could observe an intermediate state across the
+/// burst (known-issues #15: transient "multiple definition / conflicting
+/// declaration of `nros_cpp_qos_t`").
+///
+/// A cross-process advisory lock keyed on the *absolute output path* (so it is
+/// shared across distinct target dirs that all write the one source-tree file)
+/// makes the whole "generate fresh contents → atomically replace" critical
+/// section mutually exclusive. The lockfile lives in the host temp dir, so it
+/// adds no source-tree / git noise. On non-unix hosts the lock is a no-op and we
+/// fall back to the atomic rename alone.
+fn write_cbindgen_header_serialized(output_path: &Path, bindings: cbindgen::Bindings) {
+    let _guard = HeaderLock::acquire(output_path);
+    write_cbindgen_header_atomically(output_path, bindings);
+}
+
+/// Cross-process advisory lock guarding regeneration of one shared header.
+///
+/// Holds the open lockfile for the guard's lifetime; the kernel releases the
+/// `flock` when the descriptor is closed on drop.
+struct HeaderLock {
+    #[cfg(unix)]
+    _file: Option<std::fs::File>,
+}
+
+impl HeaderLock {
+    fn acquire(output_path: &Path) -> Self {
+        #[cfg(unix)]
+        {
+            use std::{
+                collections::hash_map::DefaultHasher,
+                hash::{Hash, Hasher},
+                os::unix::io::AsRawFd,
+            };
+
+            // Key the lock on the absolute output path so all concurrent
+            // regenerators of the same header agree on one lockfile,
+            // regardless of their (differing) cargo target dirs.
+            let abs =
+                std::fs::canonicalize(output_path).unwrap_or_else(|_| output_path.to_path_buf());
+            let mut hasher = DefaultHasher::new();
+            abs.hash(&mut hasher);
+            let lock_path = env::temp_dir().join(format!(
+                "nros-cbindgen-header-{:016x}.lock",
+                hasher.finish()
+            ));
+
+            let file = match std::fs::OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .truncate(false)
+                .open(&lock_path)
+            {
+                Ok(f) => f,
+                // If the lockfile can't be opened, fall back to the bare
+                // atomic rename (still safe against partial reads).
+                Err(_) => return HeaderLock { _file: None },
+            };
+
+            // Blocking exclusive advisory lock, retrying on EINTR. Released
+            // automatically when `file` is dropped (descriptor close).
+            unsafe extern "C" {
+                fn flock(fd: i32, op: i32) -> i32;
+            }
+            const LOCK_EX: i32 = 2;
+            const EINTR: i32 = 4;
+            loop {
+                let rc = unsafe { flock(file.as_raw_fd(), LOCK_EX) };
+                if rc == 0 {
+                    break;
+                }
+                if std::io::Error::last_os_error().raw_os_error() != Some(EINTR) {
+                    // Lock failed for a non-recoverable reason; proceed with
+                    // the atomic rename alone rather than blocking the build.
+                    return HeaderLock { _file: None };
+                }
+            }
+            HeaderLock { _file: Some(file) }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = output_path;
+            HeaderLock {}
+        }
+    }
+
+    /// Whether a real exclusive advisory lock is held (false when the lock
+    /// degraded to a no-op). Used only by the serialization unit test.
+    #[cfg(all(test, unix))]
+    fn is_real(&self) -> bool {
+        self._file.is_some()
     }
 }
 
@@ -253,5 +357,73 @@ mod tests {
     fn non_zero_or_prefers_probe() {
         assert_eq!(non_zero_or(24, 48), 24);
         assert_eq!(non_zero_or(0, 48), 48);
+    }
+
+    // Proves the cross-process advisory lock guarding cbindgen header
+    // regeneration (known-issues #15) actually serializes the critical
+    // section: many concurrent holders of `HeaderLock` keyed on the same
+    // output path must never overlap. flock locks are associated with the
+    // open file description, so independent `open()`s — even within one
+    // process — mutually exclude, which is exactly what concurrent `build.rs`
+    // invocations do.
+    #[cfg(unix)]
+    #[test]
+    fn header_lock_serializes_concurrent_holders() {
+        use std::{
+            sync::{
+                Arc,
+                atomic::{AtomicUsize, Ordering},
+            },
+            thread,
+        };
+
+        // A unique-per-run synthetic output path; canonicalize() will fail and
+        // fall back to the raw path, so all threads hash the same key.
+        let key = env::temp_dir().join(format!(
+            "nros-header-lock-test-{}-{}.h",
+            std::process::id(),
+            "qos"
+        ));
+
+        let in_section = Arc::new(AtomicUsize::new(0));
+        let max_overlap = Arc::new(AtomicUsize::new(0));
+
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let key = key.clone();
+                let in_section = Arc::clone(&in_section);
+                let max_overlap = Arc::clone(&max_overlap);
+                thread::spawn(move || {
+                    for _ in 0..200 {
+                        let _guard = HeaderLock::acquire(&key);
+                        // Skip the assertion entirely if the lock degraded to a
+                        // no-op (e.g. temp dir unwritable) — we only assert the
+                        // mutual-exclusion property when a real lock was taken.
+                        if !_guard.is_real() {
+                            continue;
+                        }
+                        let now = in_section.fetch_add(1, Ordering::SeqCst) + 1;
+                        max_overlap.fetch_max(now, Ordering::SeqCst);
+                        // Encourage interleaving if the lock failed to exclude.
+                        thread::yield_now();
+                        in_section.fetch_sub(1, Ordering::SeqCst);
+                    }
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        // If any real lock was taken, the section must never have had >1
+        // concurrent holder.
+        assert!(
+            max_overlap.load(Ordering::SeqCst) <= 1,
+            "HeaderLock allowed {} concurrent holders — serialization broken",
+            max_overlap.load(Ordering::SeqCst)
+        );
+
+        let _ = std::fs::remove_file(&key);
     }
 }

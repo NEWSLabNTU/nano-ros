@@ -443,16 +443,37 @@ sync` pass for `examples/templates/*` before resolving it.
 **To fix**: add a codegen/`ws sync` preflight for `examples/templates/*` in
 the broad build, or exclude templates from the broad cargo resolve.
 
-## 15. threadx-linux C++ `nros_cpp_ffi.h` regeneration race
+## ~~15. threadx-linux C++ `nros_cpp_ffi.h` regeneration race~~ (Fixed)
+
+**Status: Fixed** — the cbindgen headers (`nros_cpp_ffi.h` / `nros-c`'s
+`nros_generated.h`) are committed to the source tree and regenerated **in
+place** by every parallel `build.rs`. On a cold build, N independent
+Corrosion/Cargo trees (the threadx-linux C++ fixtures run unserialized,
+unlike nuttx which forces `NROS_CARGO_FRONTENDS=1`) raced on the
+write/compare/rename sequence with no cross-process mutual exclusion, so a
+concurrent C++ compile `#include`-ing the header could observe an
+inconsistent state → transient "multiple definition / conflicting
+declaration of `nros_cpp_qos_t`". The pre-existing atomic tmp+rename
+(`9aaa4e435`) only guards a *single* writer.
+
+Fixed in `packages/core/nros-build-helpers/src/shared.rs`: header
+regeneration now acquires a cross-process advisory `flock` keyed on the
+absolute output path (temp-dir lockfile — no source-tree noise; non-unix
+falls back to atomic-rename-only) around the atomic write, making the
+"generate → atomically replace" critical section mutually exclusive across
+all concurrent regenerators. Covered by
+`header_lock_serializes_concurrent_holders` (8×200 concurrent acquisitions,
+zero overlap). Also protects `nros-c`'s `nros_generated.h` (same helper).
+
+---
+
+Original report:
 
 Surfaced by Phase 226.E/226.F. Intermittent `nros_cpp_ffi.h` "multiple
 definition / conflicting declaration of `nros_cpp_qos_t`" during a cold
 threadx-linux C++ fixture build. The on-disk header is clean (1 definition);
 the duplication is transient when a cold workspace Corrosion target
 regenerates the header mid-build.
-
-**To fix**: serialize/guard the `nros_cpp_ffi.h` (re)generation so concurrent
-cold C++ builds cannot observe a half-written/duplicated header.
 
 ## ~~16. threadx-riscv64 `build-fixture-extras` exits 127 on the maintainer host~~ (Fixed)
 
