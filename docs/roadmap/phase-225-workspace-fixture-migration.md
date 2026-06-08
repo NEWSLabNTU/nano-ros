@@ -756,8 +756,14 @@ The review found example topology issues separate from the API surface.
   now has `native_entry`, `qemu_freertos_entry`, and
   `threadx_linux_entry` sharing the same Talker/Listener Node pkgs and
   `demo_bringup`.
-- [ ] Add `qemu_nuttx_entry` once the NuttX workspace build blockers
-  below are resolved.
+- [ ] Add `qemu_nuttx_entry` — **walled** (not a cargo-lane row). Empirically
+  confirmed 2026-06-09: a standalone `cargo build -p qemu_nuttx_entry
+  --target armv7a-nuttx-eabihf` compiles but cannot link (build-std `std`
+  needs NuttX kernel libc/pthread symbols the thin `nros-board-nuttx`
+  crate does not bundle). NuttX deploys via the kernel-image link
+  (`integrations/nuttx/` + `libapps.a`), not a standalone cargo ELF — a
+  different build contract. See the NuttX "Remaining blockers" entry. A
+  real `nros-board-nuttx` no_std-predicate bug was fixed in passing.
 - [x] Add the Zephyr Entry package — DONE (Phase 225.P). `src/zephyr_entry`
   builds via `west build` on native_sim through the workspace fixture lane;
   the `nros setup` + `nros ws sync`/codegen + west workflow is wired. Its
@@ -805,42 +811,47 @@ Wave A platform Entry update:
 
 Remaining blockers:
 
-- NuttX cannot be added as a green workspace Entry row yet. Three
-  compounding problems, narrowed 2026-06-08:
-  - **Named libc gap — now wired.** The workspace path did not receive
-    the NuttX-only patched `libc` override that
-    `scripts/build/nuttx-libc-patch.sh` applies to single-node fixtures
-    (sourced + called in `fixtures-build.sh`, absent in
-    `workspace-fixtures-build.sh`). `workspace-fixtures-build.sh` now
-    sources the helper and calls `nros_nuttx_libc_patch` right after
-    `nros ws sync`, mirroring the single-node lane. Idempotent and a
-    no-op for non-NuttX rows (verified: native rust workspace build
-    unaffected). This is necessary but only fires once the rendered
-    config carries the global `armv7a-nuttx-eabi` target line — i.e.
-    once the row below exists.
-  - **ws-sync merged-config poisoning (deeper blocker, unresolved).**
-    `nros ws sync` renders one merged root `.cargo/config.toml` for the
-    whole workspace. The NuttX board template
-    (`nros-board-nuttx-qemu-arm/nros-board.toml`) declares
-    workspace-global `[build] target = "armv7a-nuttx-eabihf"` +
-    `[unstable] build-std`, which would poison `native_entry` (no
-    `--target`) and force build-std on every row. freertos/threadx work
-    because their templates contribute only a target-scoped
-    `[target.<triple>]` block + per-row `--target`. A green NuttX row
-    needs either ws-sync per-target config emission or a
-    workspace-friendly NuttX board `cargo_config` variant (omit global
-    `[build] target`/`[unstable]`, rely on per-row `--target` +
-    `CARGO_UNSTABLE_BUILD_STD` env). This sits in the CLI/board-template
-    layer.
-  - **Unverified deploy shape (unresolved).** All existing NuttX Rust
-    examples are staticlib Components linked into the kernel image via
-    `libapps.a`; none use `nros::main!`. A `[[bin]]` + `nros::main!`
-    `qemu_nuttx_entry` would be the first standalone NuttX Rust binary,
-    and `nros-board-nuttx-qemu-arm`'s `BoardEntry::run` path is
-    unverified. The separate `libapps.a` stale-object link failure
-    (unresolved `nros_*`/`nros_cpp_*`) is orthogonal to the cargo
-    workspace build but still blocks `just nuttx build-examples` as a
-    whole.
+- NuttX cannot be added as a green workspace Entry row — **walled by the
+  NuttX deploy model**, confirmed empirically 2026-06-09 by building a
+  `qemu_nuttx_entry` (`nros::main!`, `--target armv7a-nuttx-eabihf`,
+  build-std) through the workspace lane. Findings:
+  - **Two earlier "blockers" were stale.** (1) `nros ws sync` does NOT
+    render/touch `.cargo/config.toml` (only the `[patch.crates-io]` block
+    in the root `Cargo.toml`); the workspace `.cargo/config.toml` is
+    hand-maintained, which is exactly how freertos's `[target.thumbv7m]`
+    block persists. A NuttX `[target.armv7a-nuttx-eabihf]` block + per-row
+    `--target` + `CARGO_UNSTABLE_BUILD_STD` env coexists cleanly (no
+    "merged-config poisoning"). (2) The macro path is fully wired:
+    `board_path_for("nuttx")` → `QemuArmVirt`, which impls `BoardEntry`
+    (cfg nuttx) + opens a real `ExecutorNodeRuntime` (Phase 212.N.7) — no
+    NuttX macro branch needed.
+  - **Real bug fixed.** `nros-board-nuttx` was `#![cfg_attr(not(feature =
+    "reference-qemu-arm"), no_std)]`, but its `run_entry`/`run_generic`
+    `std::`-using bodies are gated on `cfg(any(feature, target_os =
+    "nuttx"))`. So a NuttX-target build WITHOUT that feature (the entry's
+    path, via `nros-board-nuttx-qemu-arm`) compiled the crate as no_std
+    while the `std::` bodies were active → 24 errors. Fixed the no_std
+    predicate to `not(any(feature = "reference-qemu-arm", target_os =
+    "nuttx"))`. The crate now compiles for NuttX targets; useful for the
+    integrations/NuttX kernel-link path regardless.
+  - **The wall (unresolved, architectural).** After the no_std fix the
+    Rust compiles, but the **final standalone link fails**: build-std
+    `std` references NuttX libc/pthread symbols (`pthread_cond_*`,
+    `pthread_key_*`, `clock_gettime`, `getcwd`, `__errno`, `strerror_r`,
+    `exit`, …) that `arm-none-eabi-gcc` against newlib does not provide.
+    Those come from the **NuttX kernel build's exported libs**. Unlike
+    freertos/threadx — whose board crates bundle the RTOS into the cargo
+    binary via `build.rs`, so `nros::main!` links + runs standalone —
+    `nros-board-nuttx` is **thin by design ("NuttX owns the kernel
+    build")** and bundles nothing. A NuttX app is not a standalone cargo
+    ELF; it links into the NuttX kernel image via
+    `apps/external/nano-ros/` + `libapps.a` (the `integrations/nuttx/` +
+    CMake lane). That deploy model does not fit the `cargo build -p
+    <entry>` workspace-fixture contract. Making NuttX a green workspace
+    Entry needs the kernel-integration build lane (multi-day, a different
+    contract), not a cargo row. The `qemu_nuttx_entry` crate/row was
+    therefore reverted (it cannot build green via the cargo lane); only
+    the `nros-board-nuttx` no_std fix is kept.
 - Zephyr's Phase 226 scheduler is still a single-node fixture scheduler:
   `just zephyr build-fixtures` emits leaves from
   `scripts/build/zephyr-fixture-leaves.sh` and runs them through

@@ -78,7 +78,16 @@
 //! port-dir / config-dir env vars are read here. NuttX's own
 //! `make menuconfig` + `defconfig` flow drives all of that.
 
-#![cfg_attr(not(feature = "reference-qemu-arm"), no_std)]
+// `std` is reachable (and required by `run_entry` / `run_generic`) when the
+// reference feature is on OR the target is NuttX (hosted, ships std). The
+// no_std predicate must match the std-using bodies' `cfg(any(feature =
+// "reference-qemu-arm", target_os = "nuttx"))` gate — else a NuttX entry
+// built WITHOUT the feature (e.g. via `nros-board-nuttx-qemu-arm`) compiles
+// this crate as no_std while its `std::` bodies are active → build errors.
+#![cfg_attr(
+    not(any(feature = "reference-qemu-arm", target_os = "nuttx")),
+    no_std
+)]
 
 // Phase 152.4.B — re-export the kernel-agnostic BoardInit trait so
 // overlays can `use nros_board_nuttx::BoardInit` without naming
