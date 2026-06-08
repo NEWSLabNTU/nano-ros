@@ -20,18 +20,16 @@ class ActionServer {
         nros::NodeOptions options;
         options.name = "fibonacci_action_server";
         options.namespace_ = "/";
-        nros::Result rc = context.create_node(node, "node", options);
+        nros::Result rc = context.create_node(node, options);
         if (!rc.ok()) return rc;
 
-        nros::NodeEntityDescriptor act{};
-        act.stable_id = "act_fib";
-        act.node_id = "node";
-        act.kind = nros::NodeEntityKind::ActionServer;
-        act.source_name = "/fibonacci";
-        act.type_name = "example_interfaces/action/Fibonacci";
-        act.type_hash = "";
-        act.callback_id = "on_goal";
-        return node.create_entity(act);
+        nros::DeclaredCallback on_goal;
+        rc = node.declare_callback(on_goal, "on_goal");
+        if (!rc.ok()) return rc;
+
+        nros::DeclaredEntity act;
+        return node.create_action_server(act, "/fibonacci", "example_interfaces/action/Fibonacci",
+                                         on_goal);
     }
 };
 

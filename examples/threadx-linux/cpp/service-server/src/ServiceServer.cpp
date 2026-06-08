@@ -18,18 +18,16 @@ class ServiceServer {
         nros::NodeOptions options;
         options.name = "add_two_ints_server";
         options.namespace_ = "/";
-        nros::Result rc = context.create_node(node, "node", options);
+        nros::Result rc = context.create_node(node, options);
         if (!rc.ok()) return rc;
 
-        nros::NodeEntityDescriptor srv{};
-        srv.stable_id = "srv_add";
-        srv.node_id = "node";
-        srv.kind = nros::NodeEntityKind::ServiceServer;
-        srv.source_name = "/add_two_ints";
-        srv.type_name = "example_interfaces/srv/AddTwoInts";
-        srv.type_hash = "";
-        srv.callback_id = "on_add";
-        return node.create_entity(srv);
+        nros::DeclaredCallback on_add;
+        rc = node.declare_callback(on_add, "on_add");
+        if (!rc.ok()) return rc;
+
+        nros::DeclaredEntity srv;
+        return node.create_service_server(srv, "/add_two_ints", "example_interfaces/srv/AddTwoInts",
+                                          on_add);
     }
 };
 

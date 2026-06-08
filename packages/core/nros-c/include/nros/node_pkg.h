@@ -82,7 +82,7 @@ typedef struct nros_declared_entity_t {
     nros_node_entity_kind_t kind;
 } nros_declared_entity_t;
 
-typedef struct nros_node_entity_descriptor_t {
+typedef struct _nros_node_entity_descriptor_t {
     const char* stable_id;
     const char* node_id;
     nros_node_entity_kind_t kind;
@@ -90,7 +90,11 @@ typedef struct nros_node_entity_descriptor_t {
     const char* type_name;
     const char* type_hash;
     const char* callback_id;
-} nros_node_entity_descriptor_t;
+} _nros_node_entity_descriptor_t;
+
+#ifdef NROS_NODE_PKG_ENABLE_LEGACY_RAW_DESCRIPTOR_API
+typedef _nros_node_entity_descriptor_t nros_node_entity_descriptor_t;
+#endif
 
 typedef enum nros_node_callback_effect_kind_t {
     // Phase 214 followup — second variant was a `NROS_NODE_CALLBACK_OTHER`
@@ -106,8 +110,7 @@ typedef nros_ret_t (*nros_node_create_node_fn)(void* user_data, const char* stab
                                                const nros_node_pkg_options_t* options,
                                                nros_declared_node_t* out_node);
 
-typedef nros_ret_t (*nros_node_create_entity_fn)(void* user_data,
-                                                 const nros_node_entity_descriptor_t* descriptor);
+typedef nros_ret_t (*nros_node_create_entity_fn)(void* user_data, const void* descriptor);
 
 typedef nros_ret_t (*nros_node_record_callback_effect_fn)(void* user_data, const char* callback_id,
                                                           nros_node_callback_effect_kind_t kind,
@@ -157,12 +160,6 @@ static inline nros_ret_t _nros_declared_node_create_impl(nros_node_context_t* co
     return ret;
 }
 
-NROS_DEPRECATED static inline nros_ret_t
-nros_declared_node_create(nros_node_context_t* context, const char* stable_id,
-                          const nros_node_pkg_options_t* options, nros_declared_node_t* out_node) {
-    return _nros_declared_node_create_impl(context, stable_id, options, out_node);
-}
-
 static inline nros_ret_t
 nros_declared_node_init_with_options(nros_node_context_t* context,
                                      const nros_node_pkg_options_t* options,
@@ -183,15 +180,6 @@ static inline nros_ret_t nros_declared_node_init_default(nros_node_context_t* co
     return nros_declared_node_init_with_options(context, &options, out_node);
 }
 
-NROS_DEPRECATED static inline nros_ret_t
-nros_node_create_entity(nros_node_context_t* context,
-                        const nros_node_entity_descriptor_t* descriptor) {
-    if (!context || !context->ops || !context->ops->create_entity || !descriptor) {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-    return context->ops->create_entity(context->user_data, descriptor);
-}
-
 static inline nros_ret_t
 _nros_declared_node_create_entity_impl(nros_declared_node_t* node, const char* stable_id,
                                        nros_node_entity_kind_t kind, const char* source_name,
@@ -200,7 +188,7 @@ _nros_declared_node_create_entity_impl(nros_declared_node_t* node, const char* s
     if (!node || !node->context || !node->stable_id || !stable_id || !source_name) {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    nros_node_entity_descriptor_t descriptor;
+    _nros_node_entity_descriptor_t descriptor;
     descriptor.stable_id = stable_id;
     descriptor.node_id = node->stable_id;
     descriptor.kind = kind;
@@ -212,6 +200,22 @@ _nros_declared_node_create_entity_impl(nros_declared_node_t* node, const char* s
         return NROS_RET_INVALID_ARGUMENT;
     }
     return node->context->ops->create_entity(node->context->user_data, &descriptor);
+}
+
+#ifdef NROS_NODE_PKG_ENABLE_LEGACY_RAW_DESCRIPTOR_API
+NROS_DEPRECATED static inline nros_ret_t
+nros_declared_node_create(nros_node_context_t* context, const char* stable_id,
+                          const nros_node_pkg_options_t* options, nros_declared_node_t* out_node) {
+    return _nros_declared_node_create_impl(context, stable_id, options, out_node);
+}
+
+NROS_DEPRECATED static inline nros_ret_t
+nros_node_create_entity(nros_node_context_t* context,
+                        const nros_node_entity_descriptor_t* descriptor) {
+    if (!context || !context->ops || !context->ops->create_entity || !descriptor) {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    return context->ops->create_entity(context->user_data, descriptor);
 }
 
 NROS_DEPRECATED static inline nros_ret_t
@@ -246,6 +250,7 @@ NROS_DEPRECATED static inline nros_ret_t nros_declared_node_create_timer(nros_de
     return _nros_declared_node_create_entity_impl(node, stable_id, NROS_NODE_ENTITY_TIMER,
                                                   period_ms, "", "", callback_id);
 }
+#endif
 
 static inline nros_ret_t _nros_declared_node_create_entity_with_handle_impl(
     nros_declared_node_t* node, const char* stable_id, nros_node_entity_kind_t kind,
@@ -267,6 +272,7 @@ static inline nros_ret_t _nros_declared_node_create_entity_with_handle_impl(
     return ret;
 }
 
+#ifdef NROS_NODE_PKG_ENABLE_LEGACY_RAW_DESCRIPTOR_API
 NROS_DEPRECATED static inline nros_ret_t nros_declared_node_create_entity_with_handle(
     nros_declared_node_t* node, const char* stable_id, nros_node_entity_kind_t kind,
     const char* source_name, const char* type_name, const char* type_hash, const char* callback_id,
@@ -298,6 +304,7 @@ nros_declared_node_create_timer_with_id(nros_declared_node_t* node,
     return _nros_declared_node_create_entity_with_handle_impl(
         node, stable_id, NROS_NODE_ENTITY_TIMER, period_ms, "", "", callback_id, out_entity);
 }
+#endif
 
 static inline nros_ret_t
 _nros_node_record_callback_effect_impl(nros_node_context_t* context, const char* callback_id,
@@ -308,12 +315,6 @@ _nros_node_record_callback_effect_impl(nros_node_context_t* context, const char*
         return NROS_RET_INVALID_ARGUMENT;
     }
     return context->ops->record_callback_effect(context->user_data, callback_id, kind, entity_id);
-}
-
-NROS_DEPRECATED static inline nros_ret_t
-nros_node_record_callback_effect(nros_node_context_t* context, const char* callback_id,
-                                 nros_node_callback_effect_kind_t kind, const char* entity_id) {
-    return _nros_node_record_callback_effect_impl(context, callback_id, kind, entity_id);
 }
 
 static inline nros_ret_t nros_declared_entity_callback(const nros_declared_entity_t* entity,
@@ -345,6 +346,14 @@ static inline nros_ret_t nros_declared_entity_record_callback_effect(
                                                   entity->stable_id);
 }
 
+#ifdef NROS_NODE_PKG_ENABLE_LEGACY_RAW_DESCRIPTOR_API
+NROS_DEPRECATED static inline nros_ret_t
+nros_node_record_callback_effect(nros_node_context_t* context, const char* callback_id,
+                                 nros_node_callback_effect_kind_t kind, const char* entity_id) {
+    return _nros_node_record_callback_effect_impl(context, callback_id, kind, entity_id);
+}
+#endif
+
 #define nros_declared_node_create_publisher_for_name(node, out_entity, topic_name, type_name,      \
                                                      type_hash)                                    \
     _nros_declared_node_create_entity_with_handle_impl(                                            \
@@ -361,6 +370,31 @@ static inline nros_ret_t nros_declared_entity_record_callback_effect(
     _nros_declared_node_create_entity_with_handle_impl(                                            \
         (node), _NROS_NODE_PKG_DECL_ID("timer"), NROS_NODE_ENTITY_TIMER, (period_ms), "", "",      \
         _NROS_NODE_PKG_DECL_ID("timer"), (out_entity))
+
+#define nros_declared_node_create_service_server_for_name(node, out_entity, service_name,          \
+                                                          type_name, type_hash)                    \
+    _nros_declared_node_create_entity_with_handle_impl(                                            \
+        (node), _NROS_NODE_PKG_DECL_ID("srv"), NROS_NODE_ENTITY_SERVICE_SERVER, (service_name),    \
+        (type_name), (type_hash), _NROS_NODE_PKG_DECL_ID("srv"), (out_entity))
+
+#define nros_declared_node_create_service_client_for_name(node, out_entity, service_name,          \
+                                                          type_name, type_hash)                    \
+    _nros_declared_node_create_entity_with_handle_impl(                                            \
+        (node), _NROS_NODE_PKG_DECL_ID("client"), NROS_NODE_ENTITY_SERVICE_CLIENT, (service_name), \
+        (type_name), (type_hash), NULL, (out_entity))
+
+#define nros_declared_node_create_action_server_for_name(node, out_entity, action_name, type_name, \
+                                                         type_hash)                                \
+    _nros_declared_node_create_entity_with_handle_impl(                                            \
+        (node), _NROS_NODE_PKG_DECL_ID("action_server"), NROS_NODE_ENTITY_ACTION_SERVER,           \
+        (action_name), (type_name), (type_hash), _NROS_NODE_PKG_DECL_ID("action_server"),          \
+        (out_entity))
+
+#define nros_declared_node_create_action_client_for_name(node, out_entity, action_name, type_name, \
+                                                         type_hash)                                \
+    _nros_declared_node_create_entity_with_handle_impl(                                            \
+        (node), _NROS_NODE_PKG_DECL_ID("action_client"), NROS_NODE_ENTITY_ACTION_CLIENT,           \
+        (action_name), (type_name), (type_hash), NULL, (out_entity))
 
 /* Phase 212.M.5.a.1 — per-pkg mangled register symbol.
  *

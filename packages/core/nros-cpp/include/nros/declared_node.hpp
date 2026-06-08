@@ -59,6 +59,8 @@ struct NodeOptions {
     }
 };
 
+namespace detail {
+
 struct NodeEntityDescriptor {
     const char* stable_id;
     const char* node_id;
@@ -68,6 +70,12 @@ struct NodeEntityDescriptor {
     const char* type_hash;
     const char* callback_id;
 };
+
+} // namespace detail
+
+#ifdef NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API
+using NodeEntityDescriptor = detail::NodeEntityDescriptor;
+#endif
 
 class DeclaredEntity {
   public:
@@ -116,6 +124,7 @@ class DeclaredNode {
     const char* stable_id() const { return stable_id_ ? stable_id_ : ""; }
     void* runtime_handle() const { return runtime_handle_; }
 
+#ifdef NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API
     NROS_CPP_DEPRECATED Result create_entity(const NodeEntityDescriptor& descriptor);
     NROS_CPP_DEPRECATED Result create_entity(const char* stable_id, NodeEntityKind kind,
                                              const char* source_name, const char* type_name = "",
@@ -146,6 +155,7 @@ class DeclaredNode {
                                                     const char* type_name,
                                                     const char* callback_id = nullptr,
                                                     const char* type_hash = "");
+#endif
 
     Result declare_callback(DeclaredCallback& out, const char* callback_id);
     Result create_publisher(DeclaredEntity& out, const char* topic_name, const char* type_name,
@@ -171,9 +181,11 @@ class DeclaredNode {
 
     template <typename M>
     Result create_publisher(const char* topic_name, const QoS& qos = QoS::default_profile());
+#ifdef NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API
     template <typename M>
     NROS_CPP_DEPRECATED Result create_subscription(const char* topic_name, const char* callback_id,
                                                    const QoS& qos = QoS::default_profile());
+#endif
     template <typename M>
     Result create_publisher(DeclaredEntity& out, const char* topic_name,
                             const QoS& qos = QoS::default_profile());
@@ -205,7 +217,7 @@ class DeclaredNode {
                                 const QoS& qos = QoS::default_profile());
 
   private:
-    Result create_entity_raw(const NodeEntityDescriptor& descriptor);
+    Result create_entity_raw(const detail::NodeEntityDescriptor& descriptor);
     Result create_entity_raw(const char* stable_id, NodeEntityKind kind, const char* source_name,
                              const char* type_name = "", const char* type_hash = "",
                              const char* callback_id = nullptr);

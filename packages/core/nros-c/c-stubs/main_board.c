@@ -53,9 +53,9 @@ static void __nros_board_signal_handler(int signum) {
 /* No-op NodeContext ops — placeholders until the Native NodeContext
  * runtime lands. Each fn returns NROS_RET_OK so the user's per-Node
  * register fn finishes without errors. */
-static nros_ret_t __nros_board_noop_create_node(void *user_data, const char *stable_id,
-                                                const nros_node_pkg_options_t *options,
-                                                nros_declared_node_t *out_node) {
+static nros_ret_t __nros_board_noop_create_node(void* user_data, const char* stable_id,
+                                                const nros_node_pkg_options_t* options,
+                                                nros_declared_node_t* out_node) {
     (void)user_data;
     (void)stable_id;
     (void)options;
@@ -67,16 +67,15 @@ static nros_ret_t __nros_board_noop_create_node(void *user_data, const char *sta
     return NROS_RET_OK;
 }
 
-static nros_ret_t __nros_board_noop_create_entity(void *user_data,
-                                                   const nros_node_entity_descriptor_t *desc) {
+static nros_ret_t __nros_board_noop_create_entity(void* user_data, const void* desc) {
     (void)user_data;
     (void)desc;
     return NROS_RET_OK;
 }
 
-static nros_ret_t __nros_board_noop_record_callback_effect(void *user_data, const char *cb_id,
-                                                            nros_node_callback_effect_kind_t kind,
-                                                            const char *entity_id) {
+static nros_ret_t __nros_board_noop_record_callback_effect(void* user_data, const char* cb_id,
+                                                           nros_node_callback_effect_kind_t kind,
+                                                           const char* entity_id) {
     (void)user_data;
     (void)cb_id;
     (void)kind;

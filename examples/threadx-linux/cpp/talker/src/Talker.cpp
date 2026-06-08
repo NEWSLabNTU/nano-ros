@@ -21,17 +21,11 @@ class Talker {
         nros::NodeOptions options;
         options.name = "talker";
         options.namespace_ = "/";
-        nros::Result rc = context.create_node(node, "node", options);
+        nros::Result rc = context.create_node(node, options);
         if (!rc.ok()) return rc;
 
-        nros::NodeEntityDescriptor pub{};
-        pub.stable_id = "pub_chatter";
-        pub.node_id = "node";
-        pub.kind = nros::NodeEntityKind::Publisher;
-        pub.source_name = "/chatter";
-        pub.type_name = "std_msgs/msg/Int32";
-        pub.type_hash = "";
-        return node.create_entity(pub);
+        nros::DeclaredEntity pub;
+        return node.create_publisher(pub, "/chatter", "std_msgs/msg/Int32");
     }
 };
 

@@ -98,10 +98,7 @@ class NativeBoard {
                                     ::nros::DeclaredNode* /*out*/) {
         return 0;
     }
-    static int32_t noop_create_entity(void* /*user*/,
-                                      const ::nros::NodeEntityDescriptor* /*desc*/) {
-        return 0;
-    }
+    static int32_t noop_create_entity(void* /*user*/, const void* /*desc*/) { return 0; }
     static int32_t noop_record_callback_effect(void* /*user*/, const char* /*cb_id*/,
                                                ::nros::CallbackEffectKind /*kind*/,
                                                const char* /*entity_id*/) {

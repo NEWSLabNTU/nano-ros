@@ -14,22 +14,14 @@ namespace freertos_cpp_action_client {
 ::nros::Result FibonacciClient::register_node(::nros::NodeContext& ctx) {
     ::nros::DeclaredNode node;
     auto opts = ::nros::NodeOptions::make("fibonacci_action_client");
-    auto r = ctx.create_node(node, "node", opts);
+    auto r = ctx.create_node(node, opts);
     if (!r.ok()) return r;
 
-    ::nros::NodeEntityDescriptor client{
-        "client_fib",
-        "node",
-        ::nros::NodeEntityKind::ActionClient,
-        "/fibonacci",
-        "example_interfaces/action/Fibonacci",
-        "",
-        nullptr,
-    };
-    return node.create_entity(client);
+    ::nros::DeclaredEntity client;
+    return node.create_action_client(client, "/fibonacci", "example_interfaces/action/Fibonacci");
 }
 
 } // namespace freertos_cpp_action_client
 
 NROS_NODE_REGISTER(freertos_cpp_action_client::FibonacciClient,
-                        "freertos_cpp_action_client::FibonacciClient");
+                   "freertos_cpp_action_client::FibonacciClient");

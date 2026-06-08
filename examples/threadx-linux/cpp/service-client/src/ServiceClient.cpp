@@ -16,17 +16,12 @@ class ServiceClient {
         nros::NodeOptions options;
         options.name = "add_two_ints_client";
         options.namespace_ = "/";
-        nros::Result rc = context.create_node(node, "node", options);
+        nros::Result rc = context.create_node(node, options);
         if (!rc.ok()) return rc;
 
-        nros::NodeEntityDescriptor cli{};
-        cli.stable_id = "cli_add";
-        cli.node_id = "node";
-        cli.kind = nros::NodeEntityKind::ServiceClient;
-        cli.source_name = "/add_two_ints";
-        cli.type_name = "example_interfaces/srv/AddTwoInts";
-        cli.type_hash = "";
-        return node.create_entity(cli);
+        nros::DeclaredEntity cli;
+        return node.create_service_client(cli, "/add_two_ints",
+                                          "example_interfaces/srv/AddTwoInts");
     }
 };
 

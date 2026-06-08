@@ -81,7 +81,7 @@ constexpr const char* MISSING_NODE_EXPORT_ERROR = "package has no exported nros 
 struct NodeContextOps {
     using CreateNodeFn = int32_t (*)(void* user_data, const char* stable_id,
                                      const NodeOptions* options, DeclaredNode* out_node);
-    using CreateEntityFn = int32_t (*)(void* user_data, const NodeEntityDescriptor* descriptor);
+    using CreateEntityFn = int32_t (*)(void* user_data, const void* descriptor);
     using RecordCallbackEffectFn = int32_t (*)(void* user_data, const char* callback_id,
                                                CallbackEffectKind kind, const char* entity_id);
 
@@ -94,16 +94,19 @@ class NodeContext {
   public:
     NodeContext(void* user_data, const NodeContextOps* ops) : user_data_(user_data), ops_(ops) {}
 
+#ifdef NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API
     NROS_CPP_DEPRECATED Result create_node(DeclaredNode& out, const char* stable_id,
                                            const NodeOptions& options) {
         return create_node_raw(out, stable_id, options);
     }
+#endif
 
     Result create_node(DeclaredNode& out, const NodeOptions& options) {
         if (!options.name) return Result(ErrorCode::InvalidArgument);
         return create_node_raw(out, options.name, options);
     }
 
+#ifdef NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API
     NROS_CPP_DEPRECATED Result create_entity(const NodeEntityDescriptor& descriptor) {
         return create_entity_raw(descriptor);
     }
@@ -113,6 +116,7 @@ class NodeContext {
                                                       const char* entity_id) {
         return record_callback_effect_raw(callback_id, kind, entity_id);
     }
+#endif
 
     Result record_callback_effect(const DeclaredCallback& callback, CallbackEffectKind kind,
                                   const DeclaredEntity& entity) {
@@ -135,7 +139,7 @@ class NodeContext {
         return result;
     }
 
-    Result create_entity_raw(const NodeEntityDescriptor& descriptor) {
+    Result create_entity_raw(const detail::NodeEntityDescriptor& descriptor) {
         if (!ops_ || !ops_->create_entity) return Result(ErrorCode::InvalidArgument);
         return Result(ops_->create_entity(user_data_, &descriptor));
     }
@@ -175,26 +179,30 @@ inline Result DeclaredCallback::assign(const char* callback_id) {
     return Result::success();
 }
 
+#ifdef NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API
 inline Result DeclaredNode::create_entity(const NodeEntityDescriptor& descriptor) {
     return create_entity_raw(descriptor);
 }
+#endif
 
-inline Result DeclaredNode::create_entity_raw(const NodeEntityDescriptor& descriptor) {
+inline Result DeclaredNode::create_entity_raw(const detail::NodeEntityDescriptor& descriptor) {
     if (!context_) return Result(ErrorCode::NotInitialized);
     return context_->create_entity_raw(descriptor);
 }
 
+#ifdef NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API
 inline Result DeclaredNode::create_entity(const char* stable_id, NodeEntityKind kind,
                                           const char* source_name, const char* type_name,
                                           const char* type_hash, const char* callback_id) {
     return create_entity_raw(stable_id, kind, source_name, type_name, type_hash, callback_id);
 }
+#endif
 
 inline Result DeclaredNode::create_entity_raw(const char* stable_id, NodeEntityKind kind,
                                               const char* source_name, const char* type_name,
                                               const char* type_hash, const char* callback_id) {
     if (!is_valid() || !stable_id || !source_name) return Result(ErrorCode::InvalidArgument);
-    NodeEntityDescriptor descriptor{
+    detail::NodeEntityDescriptor descriptor{
         /*stable_id*/ stable_id,
         /*node_id*/ stable_id_,
         /*kind*/ kind,
@@ -206,6 +214,7 @@ inline Result DeclaredNode::create_entity_raw(const char* stable_id, NodeEntityK
     return create_entity_raw(descriptor);
 }
 
+#ifdef NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API
 inline Result DeclaredNode::create_publisher(const char* stable_id, const char* topic_name,
                                              const char* type_name, const char* type_hash) {
     return create_entity_raw(stable_id, NodeEntityKind::Publisher, topic_name, type_name, type_hash,
@@ -251,6 +260,7 @@ inline Result DeclaredNode::create_action_client(const char* stable_id, const ch
     return create_entity_raw(stable_id, NodeEntityKind::ActionClient, action_name, type_name,
                              type_hash, callback_id);
 }
+#endif
 
 inline Result DeclaredNode::declare_callback(DeclaredCallback& out, const char* callback_id) {
     out = DeclaredCallback();
@@ -392,6 +402,7 @@ inline Result DeclaredNode::create_publisher(const char* topic_name, const QoS& 
                              M::TYPE_HASH, nullptr);
 }
 
+#ifdef NROS_CPP_ENABLE_LEGACY_RAW_DESCRIPTOR_API
 template <typename M>
 inline Result DeclaredNode::create_subscription(const char* topic_name, const char* callback_id,
                                                 const QoS& qos) {
@@ -402,6 +413,7 @@ inline Result DeclaredNode::create_subscription(const char* topic_name, const ch
     return create_entity_raw(stable_id, NodeEntityKind::Subscription, topic_name, M::TYPE_NAME,
                              M::TYPE_HASH, callback_id);
 }
+#endif
 
 template <typename M>
 inline Result DeclaredNode::create_publisher(DeclaredEntity& out, const char* topic_name,

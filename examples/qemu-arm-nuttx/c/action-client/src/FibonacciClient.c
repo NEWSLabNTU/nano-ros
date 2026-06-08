@@ -7,23 +7,15 @@
 #include <stddef.h>
 #include <nros/node_pkg.h>
 
-static nros_ret_t register_action_client(nros_node_context_t *ctx) {
-    nros_node_pkg_options_t opts =
-        nros_node_pkg_options("fibonacci_action_client");
+static nros_ret_t register_action_client(nros_node_context_t* ctx) {
+    nros_node_pkg_options_t opts = nros_node_pkg_options("fibonacci_action_client");
     nros_declared_node_t node;
-    nros_ret_t r = nros_declared_node_create(ctx, "node", &opts, &node);
+    nros_ret_t r = nros_declared_node_init_with_options(ctx, &opts, &node);
     if (r != NROS_RET_OK) return r;
 
-    nros_node_entity_descriptor_t client = {
-        .stable_id = "client_fib",
-        .node_id = "node",
-        .kind = NROS_NODE_ENTITY_ACTION_CLIENT,
-        .source_name = "/fibonacci",
-        .type_name = "example_interfaces/action/Fibonacci",
-        .type_hash = "",
-        .callback_id = NULL,
-    };
-    return nros_node_create_entity(ctx, &client);
+    nros_declared_entity_t client;
+    return nros_declared_node_create_action_client_for_name(
+        &node, &client, "/fibonacci", "example_interfaces/action/Fibonacci", "");
 }
 
 NROS_NODE_REGISTER(register_action_client);

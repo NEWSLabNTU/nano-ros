@@ -16,17 +16,11 @@ class ActionClient {
         nros::NodeOptions options;
         options.name = "fibonacci_action_client";
         options.namespace_ = "/";
-        nros::Result rc = context.create_node(node, "node", options);
+        nros::Result rc = context.create_node(node, options);
         if (!rc.ok()) return rc;
 
-        nros::NodeEntityDescriptor cli{};
-        cli.stable_id = "cli_fib";
-        cli.node_id = "node";
-        cli.kind = nros::NodeEntityKind::ActionClient;
-        cli.source_name = "/fibonacci";
-        cli.type_name = "example_interfaces/action/Fibonacci";
-        cli.type_hash = "";
-        return node.create_entity(cli);
+        nros::DeclaredEntity cli;
+        return node.create_action_client(cli, "/fibonacci", "example_interfaces/action/Fibonacci");
     }
 };
 

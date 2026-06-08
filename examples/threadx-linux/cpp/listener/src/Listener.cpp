@@ -20,18 +20,15 @@ class Listener {
         nros::NodeOptions options;
         options.name = "listener";
         options.namespace_ = "/";
-        nros::Result rc = context.create_node(node, "node", options);
+        nros::Result rc = context.create_node(node, options);
         if (!rc.ok()) return rc;
 
-        nros::NodeEntityDescriptor sub{};
-        sub.stable_id = "sub_chatter";
-        sub.node_id = "node";
-        sub.kind = nros::NodeEntityKind::Subscription;
-        sub.source_name = "/chatter";
-        sub.type_name = "std_msgs/msg/Int32";
-        sub.type_hash = "";
-        sub.callback_id = "on_chatter";
-        return node.create_entity(sub);
+        nros::DeclaredCallback on_chatter;
+        rc = node.declare_callback(on_chatter, "on_chatter");
+        if (!rc.ok()) return rc;
+
+        nros::DeclaredEntity sub;
+        return node.create_subscription(sub, "/chatter", "std_msgs/msg/Int32", on_chatter);
     }
 };
 
