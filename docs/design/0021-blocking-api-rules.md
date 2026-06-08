@@ -1,3 +1,14 @@
+---
+rfc: 0021
+title: "Blocking API Rules"
+status: Stable
+since: 2026-04
+last-reviewed: 2026-04
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Blocking API Rules
 
 ## The rule

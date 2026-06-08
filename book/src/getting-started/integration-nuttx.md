@@ -103,7 +103,7 @@ Runtime config (locator / domain id) is read from the companion
 
 ```toml
 # nano-ros config (direct mode). See
-# docs/design/configuration-and-transports.md.
+# docs/design/0004-configuration-and-transports.md.
 
 [node]
 domain_id = 0

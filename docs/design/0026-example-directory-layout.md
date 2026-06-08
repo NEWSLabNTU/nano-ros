@@ -1,3 +1,14 @@
+---
+rfc: 0026
+title: "Example Directory Layout"
+status: Stable
+since: 2026-02
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Example Directory Layout
 
 **Status:** Proposed

@@ -115,7 +115,7 @@ pub struct TimerGhost {
 
 Ghost models have weaker guarantees than `assume_specification`. Correctness
 relies on manual comparison with the production source code. See
-[Ghost Model Validation Strategy](../design/ghost-model-validation.md) for the
+[Ghost Model Validation Strategy](../design/archived/ghost-model-validation.md) for the
 three-layer approach to detecting drift between ghost models and production code.
 
 ## Trust Levels

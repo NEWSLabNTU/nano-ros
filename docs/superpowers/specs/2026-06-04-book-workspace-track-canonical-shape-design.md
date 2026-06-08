@@ -20,7 +20,7 @@ Two outcomes in the nano-ros book:
 
 ## Canonical model (anchor)
 
-Authoritative source: `docs/design/multi-node-workspace-layout.md` §11
+Authoritative source: `docs/design/0024-multi-node-workspace-layout.md` §11
 ("LOCKED 2026-06-03"), cross-checked against the **shipped `nros` 0.3.7
 CLI** and on-disk examples. The three package roles:
 

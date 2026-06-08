@@ -1,3 +1,14 @@
+---
+rfc: 0022
+title: "Entity API tiers — convenient (`fork`) + customizable (`clone`)"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Entity API tiers — convenient (`fork`) + customizable (`clone`)
 
 **Problem.** The executor grew a combinatorial zoo of entity constructors —
@@ -159,12 +170,12 @@ and carries the **non-QoS** axes, not qos itself. Axis realities (M3 survey):
   rclcpp symmetry + future intra-process / loaned-message knobs.
 
 C services/actions take no QoS today — M3 adds `_with_qos` / `_with_options`
-parity there. See [Phase 189 M3](../roadmap/phase-189-entity-api-tiers.md) for
+parity there. See [Phase 189 M3](../roadmap/phase-189-0022-entity-api-tiers.md) for
 the slice breakdown.
 
 ## Phasing
 
-Tracked as **[Phase 189](../roadmap/phase-189-entity-api-tiers.md)** (split from
+Tracked as **[Phase 189](../roadmap/phase-189-0022-entity-api-tiers.md)** (split from
 Phase 172 — this is a runtime client-API refactor, not orchestration). M1 (the
 Rust builder + convenient surface, incl. `.message_info()` + `.session()`)
 unblocks the Phase 172 `[[bridge]]` topic-forwarding runtime half; M2 retires the
@@ -185,7 +196,7 @@ named-options parity; M4 sweeps call sites + deletes the shims.
    as `pub(crate)` builder-lowering targets, plus one clean-named C-FFI fn-ptr
    core for `nros-c`; everything else goes. Per the naming policy, no
    `_raw_with_qos_sized_on`-style public identifier remains. See
-   [Phase 189 M2](../roadmap/phase-189-entity-api-tiers.md).
+   [Phase 189 M2](../roadmap/phase-189-0022-entity-api-tiers.md).
 4. **The generator emits builder calls**, so generated code reads like
    hand-written application code (the orchestration ⇄ application symmetry the
    bridge design relies on).
@@ -193,7 +204,7 @@ named-options parity; M4 sweeps call sites + deletes the shims.
 ## How the bridge uses this
 
 No new flat function. The bridge relay (see
-[`bridge-topic-forwarding.md`](bridge-topic-forwarding.md)) is just the
+[`0009-bridge-topic-forwarding.md`](0009-bridge-topic-forwarding.md)) is just the
 convenient generic subscription with two knobs set:
 
 ```rust

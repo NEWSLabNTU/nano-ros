@@ -3,7 +3,7 @@
 //! **Generic NuttX board scaffolding for nano-ros.**
 //!
 //! Layer-2 entry-point in the board / BSP abstraction described in
-//! `docs/design/board-bsp-integration-architecture.md`. Unlike the
+//! `docs/design/0012-board-bsp-integration-architecture.md`. Unlike the
 //! `nros-board-{freertos, threadx}` siblings, this crate is THIN
 //! by design — NuttX owns the kernel build through its own
 //! `apps/external/nano-ros/` + `Make.defs` + `Kconfig` integration

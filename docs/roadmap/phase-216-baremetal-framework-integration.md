@@ -65,7 +65,7 @@ shape. Closes the UX gap.
 proc-macro + Component → Node rename) + Phase 212.M-F.13 (macro re-export
 via `nros::__macro_support`). Standing on the substrate Phase 212 froze.
 
-**Design doc cross-refs.** `docs/design/multi-node-workspace-layout.md` §11
+**Design doc cross-refs.** `docs/design/0024-multi-node-workspace-layout.md` §11
 (3-pkg-role lock; §11.8 escape hatch); `book/src/internals/rmw-backends.md`
 (executor + `NodeDispatchRuntime` contract — pre-214.K.1 this was named
 `ComponentRuntime`; rename verified in `packages/core/nros-platform/src/
@@ -741,7 +741,7 @@ forbids Deferred Nodes from using closure-based registration.
       * `book/src/user-guide/rtic-integration.md` — RTIC tutorial,
         walking from `nros::main!()` to custom-task escape, with
         the Node pkg + Entry pkg shape (3-pkg-role taxonomy per
-        `multi-node-workspace-layout.md` §11).
+        `0024-multi-node-workspace-layout.md` §11).
       * `book/src/user-guide/embassy-integration.md` — mirror for
         Embassy, covering the spawn-from-sync escape.
       * `book/src/internals/dispatch-strategy.md` — design rationale
@@ -847,7 +847,7 @@ forbids Deferred Nodes from using closure-based registration.
   metadata loader should converge so both phases agree on the parsed
   shape. Otherwise independent; either can ship first.
 * Cross-references:
-  * `docs/design/multi-node-workspace-layout.md` §11.8 (escape hatch)
+  * `docs/design/0024-multi-node-workspace-layout.md` §11.8 (escape hatch)
   * `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
     §N (Board trait family + N.9 proc-macro)
   * `docs/roadmap/phase-213-post-212-known-issues.md` §B (cmake fn

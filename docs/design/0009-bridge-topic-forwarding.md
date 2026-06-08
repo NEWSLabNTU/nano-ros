@@ -1,3 +1,14 @@
+---
+rfc: 0009
+title: "Bridge topic-forwarding (Phase 172)"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Bridge topic-forwarding (Phase 172)
 
 Design for in-binary **topic-forwarding bridges**: a `[[bridge]]` in the root
@@ -126,7 +137,7 @@ register_bridges(executor):
     for topic in bridge.topics:
       (type_name, type_hash, qos) = resolve from plan.interfaces   // err if undeclared
       for (src, dst) in ordered session pairs of bridge.connect:
-        // node-centric builders (entity-api-tiers.md), node-ctx used one at a
+        // node-centric builders (0022-entity-api-tiers.md), node-ctx used one at a
         // time; the dest publisher is owned and outlives its node-ctx:
         let dst_pub = exec.node_on(dst).publisher(topic)        // NodeCtx dropped here
                           .generic(type_name, type_hash).qos(qos).build()?;

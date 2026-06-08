@@ -25,7 +25,7 @@ pub struct Args {
     /// Phase 212.F — lint the `plan` argument as a `<bringup>` package
     /// directory: reject `Cargo.toml`, `CMakeLists.txt`, `src/`, or any
     /// nested `add_executable(`. The bringup package must be pure
-    /// declarative (see docs/design/multi-node-workspace-layout.md §4).
+    /// declarative (see docs/design/0024-multi-node-workspace-layout.md §4).
     #[arg(long)]
     pub bringup: bool,
 

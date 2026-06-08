@@ -1,3 +1,14 @@
+---
+rfc: 0014
+title: "`nros setup` — toolchain & dependency management (W.5 design)"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # `nros setup` — toolchain & dependency management (W.5 design)
 
 Status: design study · Date: 2026-05-28 · Tracks Phase 172 **W.5**

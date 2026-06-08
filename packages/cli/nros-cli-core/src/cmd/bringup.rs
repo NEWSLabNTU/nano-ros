@@ -8,9 +8,9 @@
 //!   bringup pkgs not in `[workspace] members`).
 //!
 //! Design references:
-//! * `docs/design/multi-node-workspace-layout.md` §4 ("The orchestration
+//! * `docs/design/0024-multi-node-workspace-layout.md` §4 ("The orchestration
 //!   package").
-//! * `docs/design/workspace-layout-by-case.md` Case 3 + Case 4.
+//! * `docs/design/0025-workspace-layout-by-case.md` Case 3 + Case 4.
 
 use std::{
     fs,
@@ -52,7 +52,7 @@ pub fn lint_bringup(bringup_dir: &Path) -> Result<()> {
     if !missing.is_empty() {
         bail!(
             "bringup pkg {pkg_name} is incomplete — missing {} (see \
-             docs/design/multi-node-workspace-layout.md §4)",
+             docs/design/0024-multi-node-workspace-layout.md §4)",
             missing.join(", ")
         );
     }
@@ -128,7 +128,7 @@ fn forbidden_surface_error(pkg_name: &str, found: &[String]) -> eyre::Report {
     eyre::eyre!(
         "bringup pkg {pkg_name} must be pure declarative — found {}; code \
          belongs in a sibling component pkg (see \
-         docs/design/multi-node-workspace-layout.md §4)",
+         docs/design/0024-multi-node-workspace-layout.md §4)",
         found.join(", ")
     )
 }

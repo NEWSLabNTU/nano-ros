@@ -9,7 +9,7 @@
 //!
 //! This module is the format + loader (the rest of `nros setup` — board
 //! resolution, fetch/cache, the CI release gate — is Phase 187.2–187.5). See
-//! `docs/design/nros-setup-toolchain-management.md`.
+//! `docs/design/0014-nros-setup-toolchain-management.md`.
 
 use std::{collections::BTreeMap, path::Path};
 

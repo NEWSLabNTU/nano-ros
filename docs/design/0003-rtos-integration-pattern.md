@@ -1,3 +1,14 @@
+---
+rfc: 0003
+title: "rtos-integration-pattern"
+status: Draft
+since: 2026-06
+last-reviewed: 2026-06
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 ## 1. The universal pattern
 
 Hypothesis mostly right, one refinement. Vendor SDK keep native build tool — west, make+Kconfig, cmake, idf.py, pio. Always. nano-ros never replace. nano-ros instead **plug into vendor's "external library / external module / component" hook** — Zephyr module, NuttX `apps/external/`, ESP-IDF component, PX4 `EXTERNAL_MODULES`, ThreadX `add_subdirectory`, PIO `library.json`. Adapter shim expose nano-ros runtime + user components as vendor-native artifact.

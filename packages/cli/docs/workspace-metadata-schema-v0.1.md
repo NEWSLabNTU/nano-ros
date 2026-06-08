@@ -3,7 +3,7 @@
 **Status:** v0.1 frozen 2026-06-03 (Phase 212.B.1).
 **Owner:** `nros-cli` — parser at `packages/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`.
 **Cross-refs:**
-- nano-ros design doc `docs/design/multi-node-workspace-layout.md` §5 (workspace root metadata) + §11 (3-pkg-role lock, 2026-06-03).
+- nano-ros design doc `docs/design/0024-multi-node-workspace-layout.md` §5 (workspace root metadata) + §11 (3-pkg-role lock, 2026-06-03).
 - nano-ros roadmap `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md` §212.B (cargo-native metadata) + §212.G (`package.xml` emit) + §212.L.7 (self-entry planner).
 - Companion doc `docs/system-toml-schema-v0.1.md` for `<bringup>/system.toml`.
 

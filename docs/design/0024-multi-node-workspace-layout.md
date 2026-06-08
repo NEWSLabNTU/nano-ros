@@ -1,3 +1,14 @@
+---
+rfc: 0024
+title: "Phase 212 — Multi-Node Workspace Layout (LIVE DESIGN)"
+status: Draft
+since: 2026-06
+last-reviewed: 2026-06
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Phase 212 — Multi-Node Workspace Layout (LIVE DESIGN)
 
 ## 1. Status & Audience
@@ -53,7 +64,7 @@
 - **Zephyr west + ESP-IDF idf.py + PlatformIO** — all share shape: SSoT manifest at root (`west.yml` / `platformio.ini` / `idf` component scan) + per-component manifest (`module.yml` / `library.json` / `idf_component_register`). Tool synthesizes one CMake/SCons graph at invocation. **Takeaway:** root manifest + per-package manifest is the dominant pattern; nros.toml follows it.
 - **Corrosion** — already used Phase 175.A. `corrosion_import_crate` makes Rust staticlib a normal CMake target. **Takeaway:** when graph crosses languages, CMake should be the top-level driver because cargo cannot consume CMake targets in reverse.
 
-Citations: `docs/design/ros2-user-workflow.md`, `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md` (lines 473–731), `nros-cli/packages/colcon-cargo-ros2/`, `CLAUDE.md` Examples + CMake Path Convention sections.
+Citations: `docs/design/0027-ros2-user-workflow.md`, `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md` (lines 473–731), `nros-cli/packages/colcon-cargo-ros2/`, `CLAUDE.md` Examples + CMake Path Convention sections.
 
 ---
 
@@ -298,7 +309,7 @@ Steps 4–5 unchanged. Step 4's `nros plan` becomes either bare `nros plan robot
 4. **Resolve OPEN 3** (`nros launch`). Prototype host-side launcher reading `system.launch.xml` w/o ament index. If clean, retire `<buildtool_depend>` from bringup pkg.
 5. **Document `nros plan <dir>` discovery semantics** once Path A vs B settled. Update Phase 212.B writeup.
 6. **Validate OPEN 9 (embedded multi-component)** on Zephyr w/ a 2-component bringup → one west app linking both. Phase 172.K.5 generator output should already cover this; confirm.
-7. **Update `docs/design/ros2-user-workflow.md` §"nros new system"** scaffolding to match §4 LOCKED shape (Path A, no Cargo.toml in bringup). Today's writeup pre-dates this design doc.
+7. **Update `docs/design/0027-ros2-user-workflow.md` §"nros new system"** scaffolding to match §4 LOCKED shape (Path A, no Cargo.toml in bringup). Today's writeup pre-dates this design doc.
 
 ---
 

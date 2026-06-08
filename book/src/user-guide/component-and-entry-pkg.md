@@ -149,7 +149,7 @@ my_ws/
 
 `cargo build` at the workspace root builds everything via cargo's native scheduler. `nros plan` reads `[workspace.metadata.nros] default_system` to pick the Entry pkg (or you pass `nros plan robot_entry` explicitly).
 
-For C++-majority or mixed workspaces, CMake is the top-level driver instead — see [the multi-node workspace design doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/multi-node-workspace-layout.md).
+For C++-majority or mixed workspaces, CMake is the top-level driver instead — see [the multi-node workspace design doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0024-multi-node-workspace-layout.md).
 
 ## Single-Node-pkg convenience (`cargo run` Just Works)
 

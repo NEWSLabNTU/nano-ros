@@ -1,64 +1,92 @@
-# nano-ros design documents
+# nano-ros design RFCs
 
-`docs/design/` holds LIVE design documents that iterate alongside roadmap phase docs in `docs/roadmap/`. Treat phase docs as work breakdowns; treat design docs as source of truth on shape decisions.
+This directory is the **design source of truth**. Each file is a numbered, living RFC:
+a design decision record that is edited in place as the shape settles. Phase docs in
+`docs/roadmap/` are *work breakdowns* — they implement RFCs, they do not own design
+rationale. **New design rationale goes in an RFC, never only in a phase doc.**
+
+- **Finalized whole-system view:** [ARCHITECTURE.md](ARCHITECTURE.md) — narrates the system
+  end-to-end and links into the RFCs below.
+- **New RFC:** copy [0000-template.md](0000-template.md) to `NNNN-slug.md`, next free number.
+- **Status field** tells you stable vs evolving: `Draft` (moving) · `Stable` (settled) ·
+  `Superseded` (retired by a hard reversal; see `archived/`).
+- **Drift rule:** flipping an RFC to `Stable` requires updating the matching
+  [ARCHITECTURE.md](ARCHITECTURE.md) section in the same commit.
+
+Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`,
+`implements-tracked-by` (phase slugs), `supersedes`, `superseded-by`.
 
 ## Index
 
-### LIVE (iterating)
+### Foundations & architecture
 
-- [multi-node-workspace-layout.md](multi-node-workspace-layout.md) — overall workspace shape + open questions for Phase 212
-- [workspace-layout-by-case.md](workspace-layout-by-case.md) — concrete file trees per case (single/multi × rust/cpp + mixed)
-- [rtos-integration-pattern.md](rtos-integration-pattern.md) — universal embedded RTOS adapter pattern
+| RFC | Doc | Status | One-liner |
+| --- | --- | --- | --- |
+| 0001 | [architecture-overview](0001-architecture-overview.md) | Stable | layered crate stack + RMW + executor + board composition |
+| 0002 | [rt-execution-model](0002-rt-execution-model.md) | Stable | real-time executor model |
+| 0003 | [rtos-integration-pattern](0003-rtos-integration-pattern.md) | Draft | universal embedded RTOS adapter pattern |
+| 0004 | [configuration-and-transports](0004-configuration-and-transports.md) | Stable | `nros.toml` manifest + transports + node binding |
 
-### Companion roadmap phase
+### RMW & data plane
 
-- [phase-212-ux-cargo-native-and-file-consolidation.md](../roadmap/phase-212-ux-cargo-native-and-file-consolidation.md) — work breakdown
+| RFC | Doc | Status | One-liner |
+| --- | --- | --- | --- |
+| 0005 | [rmw-layer-design](0005-rmw-layer-design.md) | Stable | middleware abstraction (delink zenoh-only) |
+| 0006 | [portable-rmw-platform-interface](0006-portable-rmw-platform-interface.md) | Stable | Rust trait + C vtable dual API |
+| 0007 | [service-qos](0007-service-qos.md) | Stable | service/action QoS design |
+| 0008 | [service-qos-gap](0008-service-qos-gap.md) | Stable | gap analysis: `create_service_*` no-QoS path |
+| 0009 | [bridge-topic-forwarding](0009-bridge-topic-forwarding.md) | Stable | in-binary `[[bridge]]` raw-CDR topic relay |
+| 0010 | [zero-copy-raw-api](0010-zero-copy-raw-api.md) | Stable | zero-copy raw publish/subscribe API |
+| 0011 | [px4-rmw-uorb](0011-px4-rmw-uorb.md) | Stable | PX4 uORB RMW backend |
 
-### Stable architecture (not Phase 212 specific)
+### Platform, board & toolchain
 
-| File | One-liner |
-| --- | --- |
-| [architecture-overview.md](architecture-overview.md) | layered crate stack + RMW + executor + board composition |
-| [blocking-api-rules.md](blocking-api-rules.md) | every blocking helper takes executor handle |
-| [board-bsp-integration-architecture.md](board-bsp-integration-architecture.md) | vendor BSP × board × SDK-variant integration shape |
-| [bridge-topic-forwarding.md](bridge-topic-forwarding.md) | in-binary `[[bridge]]` raw-CDR topic relay across sessions |
-| [codegen-workspace-discovery.md](codegen-workspace-discovery.md) | unmodified ROS 2 msg pkg builds against nano-ros |
-| [configuration-and-transports.md](configuration-and-transports.md) | `nros.toml` manifest + transports + node binding |
-| [cpp-api-design.md](cpp-api-design.md) | C++ surface mirroring rclcpp over typed FFI |
-| [custom-board-provisioning.md](custom-board-provisioning.md) | out-of-tree boards self-describe deps to `nros setup` |
-| [e2e-safety-protocol-integration.md](e2e-safety-protocol-integration.md) | safety-critical platform integration analysis |
-| [entity-api-tiers.md](entity-api-tiers.md) | convenient `fork` + customizable `clone` entity ctors |
-| [example-directory-layout.md](example-directory-layout.md) | canonical `examples/<plat>/<lang>/<example>/` shape |
-| [nros-c-thin-wrapper-discipline.md](nros-c-thin-wrapper-discipline.md) | nros-c delegates, never re-impls |
-| [nros-setup-toolchain-management.md](nros-setup-toolchain-management.md) | `nros setup` as single toolchain entrypoint |
-| [phase-110-e-platform-timer.md](phase-110-e-platform-timer.md) | `PlatformTimer` + `AtomicSporadicState` |
-| [portable-rmw-platform-interface.md](portable-rmw-platform-interface.md) | Rust trait + C vtable dual API review |
-| [px4-rmw-uorb.md](px4-rmw-uorb.md) | PX4 uORB RMW backend |
-| [rmw-layer-design.md](rmw-layer-design.md) | middleware abstraction (delink zenoh-only) |
-| [ros2-user-workflow.md](ros2-user-workflow.md) | user-facing workflow + `nros new` scaffolding |
-| [rt-execution-model.md](rt-execution-model.md) | RT executor model live doc |
-| [rtos-orchestration.md](rtos-orchestration.md) | launch tree + manifest codegen across RTOSes |
-| [rtos-scheduling-features.md](rtos-scheduling-features.md) | per-RTOS scheduling feature survey |
-| [service-qos-gap.md](service-qos-gap.md) | gap: `create_service_*` no-QoS path |
-| [service-qos.md](service-qos.md) | service/action QoS design closing the gap |
-| [thin-wrapper-audit.md](thin-wrapper-audit.md) | Phase 83 nros-c / nros-cpp compliance audit |
-| [zero-copy-raw-api.md](zero-copy-raw-api.md) | zero-copy raw publish/subscribe API |
-| [zonal-vehicle-architecture.md](zonal-vehicle-architecture.md) | zonal E/E architecture + nano-ros fit |
+| RFC | Doc | Status | One-liner |
+| --- | --- | --- | --- |
+| 0012 | [board-bsp-integration-architecture](0012-board-bsp-integration-architecture.md) | Stable | vendor BSP × board × SDK-variant integration shape |
+| 0013 | [custom-board-provisioning](0013-custom-board-provisioning.md) | Stable | out-of-tree boards self-describe deps to `nros setup` |
+| 0014 | [nros-setup-toolchain-management](0014-nros-setup-toolchain-management.md) | Stable | `nros setup` as single toolchain entrypoint |
+| 0015 | [rtos-orchestration](0015-rtos-orchestration.md) | Stable | launch tree + manifest codegen across RTOSes |
+| 0016 | [rtos-scheduling-features](0016-rtos-scheduling-features.md) | Stable | per-RTOS scheduling feature survey |
+| 0017 | [platform-timer](0017-platform-timer.md) | Stable | `PlatformTimer` + `AtomicSporadicState` |
 
-## How decisions move from design → roadmap
+### Language APIs
 
-LIVE design doc captures option space + open question → discussion in PR/issue or Phase doc → LOCKED in phase doc work item + acceptance test → implementation lands and updates the design doc to mark settled.
+| RFC | Doc | Status | One-liner |
+| --- | --- | --- | --- |
+| 0018 | [cpp-api-design](0018-cpp-api-design.md) | Stable | C++ surface mirroring rclcpp over typed FFI |
+| 0019 | [nros-c-thin-wrapper-discipline](0019-nros-c-thin-wrapper-discipline.md) | Stable | nros-c delegates, never re-impls |
+| 0020 | [thin-wrapper-audit](0020-thin-wrapper-audit.md) | Stable | nros-c / nros-cpp thin-wrapper compliance audit |
+| 0021 | [blocking-api-rules](0021-blocking-api-rules.md) | Stable | every blocking helper takes an executor handle |
+| 0022 | [entity-api-tiers](0022-entity-api-tiers.md) | Stable | convenient `fork` + customizable `clone` entity ctors |
 
-## Open questions today (Phase 212)
+### Codegen, workspace & user workflow
 
-From [multi-node-workspace-layout.md §8](multi-node-workspace-layout.md#8-open-questions):
+| RFC | Doc | Status | One-liner |
+| --- | --- | --- | --- |
+| 0023 | [codegen-workspace-discovery](0023-codegen-workspace-discovery.md) | Stable | unmodified ROS 2 msg pkg builds against nano-ros |
+| 0024 | [multi-node-workspace-layout](0024-multi-node-workspace-layout.md) | Draft | overall multi-node workspace shape + open questions |
+| 0025 | [workspace-layout-by-case](0025-workspace-layout-by-case.md) | Draft | concrete file trees per case (single/multi × rust/cpp) |
+| 0026 | [example-directory-layout](0026-example-directory-layout.md) | Stable | canonical `examples/<plat>/<lang>/<example>/` shape |
+| 0027 | [ros2-user-workflow](0027-ros2-user-workflow.md) | Stable | user-facing workflow + `nros new` scaffolding |
+| 0030 | [sequence-of-nested](0030-sequence-of-nested.md) | Draft | nested-sequence message handling (Phase 212 spike) |
 
-1. [Orchestration pkg `Cargo.toml`?](multi-node-workspace-layout.md#8-open-questions) — Path A no-toml vs Path B stub-toml; blocked on `nros plan <dir>` walk-outside-members spike.
-2. [Multi-system shared config](multi-node-workspace-layout.md#8-open-questions) — duplicate vs `include =` vs workspace-root `[defaults]`; wait for real pain.
-3. [`nros launch` vs `ros2 launch`](multi-node-workspace-layout.md#8-open-questions) — host-side launcher independent of ament, or shell to `ros2 launch`?
-4. [C++ workspaces — `cmake nros` subcommand?](multi-node-workspace-layout.md#8-open-questions) — no cmake plugin idiom; C++ invokes `nros plan`/`deploy` directly; confirm asymmetry.
-5. [`system.toml` location](multi-node-workspace-layout.md#8-open-questions) — orchestration pkg vs workspace root; leaning bringup pkg.
-6. [`[system].components` schema](multi-node-workspace-layout.md#8-open-questions) — flat list vs `{name, role, qos_overrides}` tables; leaning simple list.
-7. [Mixed-language workspace bootstrap](multi-node-workspace-layout.md#8-open-questions) — first-time `cargo build` against C++-containing workspace; leaning document.
-8. [Codegen interface package shape](multi-node-workspace-layout.md#8-open-questions) — where `my_interfaces/` `.msg`-only pkg sits in multi-pkg workspace.
-9. [Embedded MCU + multi-pkg workspace](multi-node-workspace-layout.md#8-open-questions) — one west app composing N components vs per-component apps.
+### Domain & safety
+
+| RFC | Doc | Status | One-liner |
+| --- | --- | --- | --- |
+| 0028 | [e2e-safety-protocol-integration](0028-e2e-safety-protocol-integration.md) | Stable | safety-critical platform integration analysis |
+| 0029 | [zonal-vehicle-architecture](0029-zonal-vehicle-architecture.md) | Stable | zonal E/E architecture + nano-ros fit |
+
+## Superseded
+
+Retired RFCs live in [archived/](archived/) with `status: Superseded` and a forward pointer.
+
+## How a decision moves: RFC → roadmap → code
+
+1. **Draft RFC** captures the option space + open questions.
+2. Discussion (PR/issue/phase doc) resolves the open questions.
+3. A **phase doc** in `docs/roadmap/` carries the work items + acceptance tests and names the
+   RFC in its `Implements:` header.
+4. Implementation lands; the RFC flips to **Stable** and ARCHITECTURE.md is updated in the
+   same commit.

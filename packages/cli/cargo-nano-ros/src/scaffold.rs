@@ -235,7 +235,7 @@ pub mod {module} {{
     let nros_toml = format!(
         r#"# nano-ros component manifest (planned mode). A reusable node linked into a
 # system by `nros plan` and Entry codegen. See
-# docs/design/configuration-and-transports.md.
+# docs/design/0004-configuration-and-transports.md.
 
 [component]
 version = 1
@@ -897,7 +897,7 @@ fn write_default_config_toml(dir: &Path) -> Result<()> {
     // Phase 172.K — scaffold the direct-mode nros.toml shape (one node + one
     // ethernet transport), not the retired config.toml.
     let nros_toml = r#"# nano-ros config (direct mode). See
-# docs/design/configuration-and-transports.md.
+# docs/design/0004-configuration-and-transports.md.
 
 [node]
 domain_id = 0

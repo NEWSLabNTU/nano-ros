@@ -1,6 +1,17 @@
+---
+rfc: 0025
+title: "nano-ros Phase 212 — Multi-Node Workspace Layout Reference"
+status: Draft
+since: 2026-06
+last-reviewed: 2026-06
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # nano-ros Phase 212 — Multi-Node Workspace Layout Reference
 
-Canonical layout reference for nano-ros user workspaces. Matches design decisions in `docs/design/multi-node-workspace-layout.md`. Five cases: single rust, single cpp, multi rust, multi cpp, mixed.
+Canonical layout reference for nano-ros user workspaces. Matches design decisions in `docs/design/0024-multi-node-workspace-layout.md`. Five cases: single rust, single cpp, multi rust, multi cpp, mixed.
 
 ## Quick matrix
 

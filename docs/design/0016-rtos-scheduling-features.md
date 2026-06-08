@@ -1,3 +1,14 @@
+---
+rfc: 0016
+title: "RTOS Scheduling Features for nano-ros"
+status: Stable
+since: 2026-03
+last-reviewed: 2026-04
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # RTOS Scheduling Features for nano-ros
 
 ## Overview

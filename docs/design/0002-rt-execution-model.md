@@ -1,3 +1,14 @@
+---
+rfc: 0002
+title: "RT Execution Model — Live Design Doc"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # RT Execution Model — Live Design Doc
 
 **Status:** Draft (in progress) · **Owner:** TBD · **Last updated:** 2026-05-04
@@ -14,12 +25,12 @@
 - **C / C++ / Rust API parity** — same execution model expressible in all three surfaces. C uses cbindgen-generated vtable + opaque storage; C++ uses thin polymorphic or template wrapper; Rust uses traits.
 - **Rust no_std + heapless** — all built-in `ReadySet` impls must work without an allocator.
 - **Stable user API across scheduler swaps** — user code (`add_subscription`, `add_timer`, `spin_once`) does not change when scheduler changes (OSEK / ERIKA precedent).
-- **Single-executor binary on RTOS** — multiple ROS nodes share one executor in a combined binary; user manually orchestrates today (launch-file orchestration tracked in [`rtos-orchestration.md`](rtos-orchestration.md), out-of-scope here).
+- **Single-executor binary on RTOS** — multiple ROS nodes share one executor in a combined binary; user manually orchestrates today (launch-file orchestration tracked in [`0015-rtos-orchestration.md`](0015-rtos-orchestration.md), out-of-scope here).
 
 ### Non-Goals
 
 - **Chain abstraction** — chains are causal relationships discovered _externally_ (e.g. `~/repos/play_launch` from launch files + callback source). nano-ros does NOT model chains; it consumes per-callback hints (`period`, `deadline`, `budget`) that an external tool can derive.
-- **Launch-file orchestration** — covered by [`rtos-orchestration.md`](rtos-orchestration.md).
+- **Launch-file orchestration** — covered by [`0015-rtos-orchestration.md`](0015-rtos-orchestration.md).
 - **Per-callback OS thread priority assignment (PiCAS-style native)** — supported as one optional `Scheduler::OsPriority` mode but not the foundation. Default model uses user-space scheduling with 1 OS pri slot per thread.
 - **Hard formal WCRT bounds** — analysis tooling can be built on top, but the core doesn't bake in any specific RTA.
 
@@ -27,20 +38,20 @@
 
 | Doc                                                          | Layer                                                                                | Status                     |
 |--------------------------------------------------------------|--------------------------------------------------------------------------------------|----------------------------|
-| [`rtos-scheduling-features.md`](rtos-scheduling-features.md) | OS-thread-level config (zpico / network / app-task priorities via `config.toml`)     | Phase 76 (FreeRTOS landed) |
-| [`rtos-orchestration.md`](rtos-orchestration.md)             | Tier-task spawn from launch manifests; cross-tier mutex; multi-tier executor binding | Future phase               |
+| [`0016-rtos-scheduling-features.md`](0016-rtos-scheduling-features.md) | OS-thread-level config (zpico / network / app-task priorities via `config.toml`)     | Phase 76 (FreeRTOS landed) |
+| [`0015-rtos-orchestration.md`](0015-rtos-orchestration.md)             | Tier-task spawn from launch manifests; cross-tier mutex; multi-tier executor binding | Future phase               |
 | **This doc**                                                 | **Intra-executor scheduling** — how `spin_once` selects + dispatches ready callbacks | **Phase 110 (proposed)**   |
 
 The three layers stack:
 
 ```
-launch manifest                      ← rtos-orchestration.md (future)
+launch manifest                      ← 0015-rtos-orchestration.md (future)
    │
    ▼
-tier task (OS thread)                ← rtos-scheduling-features.md
+tier task (OS thread)                ← 0016-rtos-scheduling-features.md
    │ pri=N, sched_policy=FIFO, stack=4K
    ▼
-Executor (this doc)                  ← rt-execution-model.md
+Executor (this doc)                  ← 0002-rt-execution-model.md
    │ ReadySet<EDF>, SchedContext{...}
    ▼
 Callbacks (subscriptions, timers, …)
@@ -573,7 +584,7 @@ On single-thread MCU: `Executor::open()` (current API) returns one in-tree execu
 | Budget refill timer                 | `tx_timer_create`. ✅.                                                                                                                                                                        |
 | Deadline timer source               | `tx_time_get()` (tick-granular). For sub-tick: combine w/ DWT cycle counter on Cortex-M targets.                                                                                              |
 
-**Verdict.** Excellent fit, w/ a bonus knob: **preemption threshold** lets us implement HSE-style "Critical bucket non-preemptive among themselves but preempts Normal" without re-shuffling priorities. Direction-flipped priority needs careful handling in `PlatformScheduler` (already documented in `rtos-orchestration.md` § 10.3).
+**Verdict.** Excellent fit, w/ a bonus knob: **preemption threshold** lets us implement HSE-style "Critical bucket non-preemptive among themselves but preempts Normal" without re-shuffling priorities. Direction-flipped priority needs careful handling in `PlatformScheduler` (already documented in `0015-rtos-orchestration.md` § 10.3).
 
 ### 5.6 Bare-metal (Cortex-M, RISC-V)
 
@@ -658,7 +669,7 @@ Cross-platform consolidation. ✅ = fits natively / cleanly. ⚠️ = fits w/ ca
 5. **Zephyr `k_work_q`** is the cleanest `BestEffort` tier sink. Recommend it as the default `BestEffort` mapping on Zephyr.
 6. **ThreadX preemption threshold** lets us implement HSE-style "Critical bucket non-preemptive among themselves but preempts Normal" without re-shuffling priorities.
 7. **Bare-metal (Cortex-M, RISC-V)** has the *fewest* OS pri slots but the *best* timing precision (cycle counter sub-µs). Default cooperative single-thread + `wfi` idle fits naturally — current `nros-board-mps2-an385` and `nros-board-stm32f4` patterns generalize.
-8. **All platforms support PI mutex** in some form — `nros-platform`'s mutex abstraction (already planned in `rtos-orchestration.md` § 10.6) covers cross-executor sync.
+8. **All platforms support PI mutex** in some form — `nros-platform`'s mutex abstraction (already planned in `0015-rtos-orchestration.md` § 10.6) covers cross-executor sync.
 9. **Direction-flipped priority** (ThreadX, Zephyr-preempt, Cortex-M NVIC: low = high) needs careful handling in the `PlatformScheduler` API. Lift this to a `Priority::abstract` enum (`Critical | Normal | BestEffort`) at the user surface; platform crate translates.
 
 ### Gaps requiring resolution

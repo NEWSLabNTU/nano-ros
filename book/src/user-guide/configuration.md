@@ -18,7 +18,7 @@ format that carries all nano-ros runtime/deployment config.
 > build file (`Cargo.toml` feature / `CMakeLists.txt` option). If it changes
 > *what nano-ros does at run time*, it lives in `nros.toml`.
 
-Full design rationale: [`docs/design/configuration-and-transports.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/configuration-and-transports.md).
+Full design rationale: [`docs/design/0004-configuration-and-transports.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0004-configuration-and-transports.md).
 For the multi-RMW runtime topic-forwarding bridge (a separate file/feature), see
 [`nros-bridge.toml`](../reference/nros-bridge-toml.md) — do not confuse it with
 this build/deploy `nros.toml`.

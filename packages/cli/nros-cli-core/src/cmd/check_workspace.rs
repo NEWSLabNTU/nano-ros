@@ -139,7 +139,7 @@ pub fn check_workspace(workspace_root: &Path) -> Result<WorkspaceLintReport> {
                      lives ONLY in a Path A bringup pkg (no Cargo.toml / \
                      CMakeLists.txt / src/); move it into a sibling \
                      <system>_bringup/ dir (see \
-                     docs/design/multi-node-workspace-layout.md §4)",
+                     docs/design/0024-multi-node-workspace-layout.md §4)",
                     if has_cargo {
                         "Cargo.toml"
                     } else {

@@ -76,7 +76,7 @@ board crate at boot). Verbatim from the in-tree
 
 ```toml
 # nano-ros config (direct mode). See
-# docs/design/configuration-and-transports.md.
+# docs/design/0004-configuration-and-transports.md.
 
 [node]
 domain_id = 0

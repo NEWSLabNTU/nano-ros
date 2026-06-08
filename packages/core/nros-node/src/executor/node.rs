@@ -239,7 +239,7 @@ impl<'a> NodeHandle<'a> {
     }
 
     /// Phase 189.M1 — the customizable publisher **builder** (the `clone` tier;
-    /// see `docs/design/entity-api-tiers.md`). Pick a mode with `.typed::<M>()`
+    /// see `docs/design/0022-entity-api-tiers.md`). Pick a mode with `.typed::<M>()`
     /// or `.generic(type, hash)`, set knobs (`.qos`), then `.build()`. The
     /// convenient `create_publisher` / `create_publisher_raw` are the `fork`
     /// tier — sugar over this with defaults.
@@ -1160,7 +1160,7 @@ impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
 /// executor's dispatch arena). It is a **short-lived `&mut Executor` borrow**:
 /// create entities, then drop it before acquiring the next node handle; entity
 /// handles (`HandleId`, publishers) are owned and outlive it (no `Arc` — see
-/// `docs/design/entity-api-tiers.md` §Borrow model).
+/// `docs/design/0022-entity-api-tiers.md` §Borrow model).
 pub struct NodeCtx<'e> {
     executor: &'e mut super::spin::Executor,
     node_id: super::node_record::NodeId,
@@ -1189,7 +1189,7 @@ impl<'e> NodeCtx<'e> {
     /// `.generic(type, hash)`, set `.qos()`, then `.build()`. The returned
     /// publisher handle is owned and outlives this `NodeCtx` — the bridge
     /// builds the dest publisher on one ctx, drops it, then registers the
-    /// source subscription on another (see `entity-api-tiers.md`).
+    /// source subscription on another (see `0022-entity-api-tiers.md`).
     pub fn publisher<'t>(&mut self, topic: &'t str) -> CtxPublisherBuilder<'_, 'e, 't> {
         CtxPublisherBuilder {
             ctx: self,

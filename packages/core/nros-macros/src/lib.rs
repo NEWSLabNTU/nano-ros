@@ -33,7 +33,7 @@ mod main_macro;
 /// Emits `fn main()` that delegates to
 /// `<Board as ::nros::__macro_support::nros_platform::BoardEntry>::run(...)`,
 /// dispatching one `<pkg>::register(runtime)?;` call per
-/// launch-XML `<node>` entry. See `docs/design/multi-node-workspace-layout.md`
+/// launch-XML `<node>` entry. See `docs/design/0024-multi-node-workspace-layout.md`
 /// §11.6 for the design lock.
 #[proc_macro]
 pub fn main(input: TokenStream) -> TokenStream {

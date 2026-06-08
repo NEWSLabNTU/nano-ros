@@ -58,7 +58,7 @@ use crate::sync::Mutex;
 /// (or `NROS_RMW_RET_INCOMPATIBLE_ABI` at the C boundary).
 ///
 /// The version bumps under two rules (per the portable-ABI design
-/// note R5 in `docs/design/portable-rmw-platform-interface.md`):
+/// note R5 in `docs/design/0006-portable-rmw-platform-interface.md`):
 ///
 /// - **Major** (e.g. `V1` → `V2`): existing fields removed or
 ///   reordered. Old consumers fail cleanly via the version check.

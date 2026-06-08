@@ -843,7 +843,7 @@ bool emit_kind_block(OpsBuilder& ops, uint32_t kind_idx, const NrosFieldKindDesc
         // `dds_opcodes.h:267`. The 4th placeholder word the old
         // emitter wrote was visible to the walker as a stray opcode
         // whenever EXT was not the last top-level field. See
-        // `docs/design/phase-212-k74c-sequence-of-nested.md` Risk #2.
+        // `docs/design/0030-sequence-of-nested.md` Risk #2.
         //
         //   [ADR, EXT, 0, f] [offset] [link]
         //   (elem-size only present when DDS_OP_FLAG_EXT external is set)

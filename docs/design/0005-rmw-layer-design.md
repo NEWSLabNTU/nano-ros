@@ -1,3 +1,14 @@
+---
+rfc: 0005
+title: "RMW Layer Design: Middleware Abstraction for nros"
+status: Stable
+since: 2026-02
+last-reviewed: 2026-04
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # RMW Layer Design: Middleware Abstraction for nros
 
 ## Problem Statement

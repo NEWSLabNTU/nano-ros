@@ -1,3 +1,14 @@
+---
+rfc: 0012
+title: "Board / BSP Integration Architecture"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Board / BSP Integration Architecture
 
 **Date.** 2026-05-18

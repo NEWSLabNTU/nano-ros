@@ -1,7 +1,7 @@
 # PX4 integration (Phase 139.5 + 212.H.7)
 
 PX4 is a **HOOKLESS vendor** in the Phase 212 RTOS-integration taxonomy
-(see `docs/design/rtos-integration-pattern.md` §1 + §3): its CMake +
+(see `docs/design/0003-rtos-integration-pattern.md` §1 + §3): its CMake +
 Kconfig configure step doesn't have a hook rich enough to read
 `system.toml` from inside the vendor tool. Instead the codegen runs
 **ahead of vendor**: `nros codegen-system --ahead-of-vendor --target px4`

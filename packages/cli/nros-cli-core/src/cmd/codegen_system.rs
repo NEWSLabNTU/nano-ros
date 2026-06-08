@@ -3,7 +3,7 @@
 //! Reads `<bringup>/system.toml` + `<bringup>/launch/system.launch.xml` and
 //! emits the baked compile-time C config + component-registration glue that
 //! every embedded RTOS adapter consumes (see
-//! `docs/design/rtos-integration-pattern.md`).
+//! `docs/design/0003-rtos-integration-pattern.md`).
 //!
 //! Outputs land under `<out>/nros-system/`:
 //!

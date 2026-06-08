@@ -735,6 +735,6 @@ For a production vehicle ECU with ASIL-D communication requirements:
 ### nano-ros Safety Documentation
 - `docs/research/safety-critical-platform-study.md` — cross-domain safety platforms
 - `docs/research/autosar-iso26262-gap-analysis.md` — ASIL gap analysis
-- `docs/design/e2e-safety-protocol-integration.md` — E2E CRC-32 design
+- `docs/design/0028-e2e-safety-protocol-integration.md` — E2E CRC-32 design
 - `docs/research/autoware-safety-island-architecture.md` — safety island architecture
 - `docs/roadmap/archived/phase-35-safety-hardening.md` — E2E implementation

@@ -253,7 +253,7 @@ pub use node_runtime::{
 pub use nros_macros::node;
 // Phase 212.N.9 — `nros::main!()` proc-macro family. One-line Entry-pkg
 // `main.rs` (replaces the legacy `build.rs + include!()` shape). See
-// `docs/design/multi-node-workspace-layout.md` §11.6.
+// `docs/design/0024-multi-node-workspace-layout.md` §11.6.
 pub use nros_macros::main;
 
 /// Define Zephyr's `rust_main` for a self-bringup Rust component package.

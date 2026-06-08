@@ -1,3 +1,14 @@
+---
+rfc: 0006
+title: "Portable RMW / Platform Interface — Design Review"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Portable RMW / Platform Interface — Design Review
 
 **Status:** Design note (no code yet)

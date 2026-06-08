@@ -1,3 +1,14 @@
+---
+rfc: 0019
+title: "nros-c Thin-Wrapper Discipline (Phase 122.3.a)"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # nros-c Thin-Wrapper Discipline (Phase 122.3.a)
 
 **Status:** Audit complete. Refactor plan TBD as 122.3.b/c/d.

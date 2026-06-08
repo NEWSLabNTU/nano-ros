@@ -27,7 +27,7 @@ use super::schema::RemapRule;
 
 /// `[workspace.metadata.nros]` in a workspace-root `Cargo.toml`.
 ///
-/// Thin pointer (see `docs/design/multi-node-workspace-layout.md` §5). The
+/// Thin pointer (see `docs/design/0024-multi-node-workspace-layout.md` §5). The
 /// authoritative system spec lives in `<bringup>/system.toml`; this table
 /// only disambiguates which bringup the workspace defaults to plus a small
 /// set of rarely-used workspace-wide overrides.
@@ -390,8 +390,8 @@ pub struct AmentMaintainer {
 
 /// `<bringup>/system.toml` — the authoritative system spec.
 ///
-/// Sections (see `docs/design/workspace-layout-by-case.md` Case 3/4 and
-/// `multi-node-workspace-layout.md` §4):
+/// Sections (see `docs/design/0025-workspace-layout-by-case.md` Case 3/4 and
+/// `0024-multi-node-workspace-layout.md` §4):
 ///
 /// * `[system]` — name, RMW, domain, optional locator.
 /// * `[[component]]` — one entry per node/component.

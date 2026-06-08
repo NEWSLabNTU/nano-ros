@@ -2,7 +2,7 @@
 
 ## Overview
 
-DDS-XRCE (DDS for eXtremely Resource Constrained Environments) is the middleware used by micro-ROS. The client library (Micro-XRCE-DDS-Client) runs on MCUs and communicates with an Agent process on a gateway host. This document analyzes XRCE-DDS as a potential second RMW backend for nros, following the architecture in `docs/design/rmw-layer-design.md`.
+DDS-XRCE (DDS for eXtremely Resource Constrained Environments) is the middleware used by micro-ROS. The client library (Micro-XRCE-DDS-Client) runs on MCUs and communicates with an Agent process on a gateway host. This document analyzes XRCE-DDS as a potential second RMW backend for nros, following the architecture in `docs/design/0005-rmw-layer-design.md`.
 
 Source code studied: [Micro-XRCE-DDS-Client](https://github.com/eProsima/Micro-XRCE-DDS-Client) (cloned to `external/Micro-XRCE-DDS-Client/`) and [Micro-CDR](https://github.com/eProsima/Micro-CDR) (cloned to `external/Micro-CDR/`).
 

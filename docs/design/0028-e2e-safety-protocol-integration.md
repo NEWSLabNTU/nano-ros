@@ -1,3 +1,14 @@
+---
+rfc: 0028
+title: "E2E Safety Protocol Integration Analysis"
+status: Stable
+since: 2026-02
+last-reviewed: 2026-02
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # E2E Safety Protocol Integration Analysis
 
 > Date: 2026-02-14

@@ -1,3 +1,14 @@
+---
+rfc: 0017
+title: "Phase 110.E.b — `PlatformTimer` + `AtomicSporadicState` design"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Phase 110.E.b — `PlatformTimer` + `AtomicSporadicState` design
 
 **Status:** Design locked, impl deferred.

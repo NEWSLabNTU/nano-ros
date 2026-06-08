@@ -87,7 +87,7 @@ control" path; `nros::main!()` is the ergonomic path on top.
 
 A nano-ros RTIC workspace is three packages (the [3-pkg-role
 taxonomy](../user-guide/component-and-entry-pkg.md), per
-`docs/design/multi-node-workspace-layout.md` §11):
+`docs/design/0024-multi-node-workspace-layout.md` §11):
 
 ```text
 my_rtic_robot/

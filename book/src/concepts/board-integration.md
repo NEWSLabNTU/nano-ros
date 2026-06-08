@@ -6,7 +6,7 @@ system looks like, not on what RTOS you're targeting. This page maps
 linked guide.
 
 The architecture behind the matrix lives in
-[`docs/design/board-bsp-integration-architecture.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/board-bsp-integration-architecture.md)
+[`docs/design/0012-board-bsp-integration-architecture.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0012-board-bsp-integration-architecture.md)
 (layered model, vendor-BSP scaling, plan).
 
 ## Consumption matrix
@@ -90,7 +90,7 @@ The full cookbook + working precedents
 ## Why so many paths
 
 Per the
-[architecture doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/board-bsp-integration-architecture.md),
+[architecture doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0012-board-bsp-integration-architecture.md),
 each RTOS already has its own package manager (Zephyr's
 `west` + DTS, ESP-IDF's component registry, NuttX's
 `apps/external/`, PX4's `EXTERNAL_MODULES_LOCATION`). nano-ros

@@ -1,3 +1,14 @@
+---
+rfc: 0004
+title: "Configuration model: `nros.toml`, transports, and node binding"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Configuration model: `nros.toml`, transports, and node binding
 
 **Status:** Approved design (Phase 172.K, 2026-05-27; manifest model approved

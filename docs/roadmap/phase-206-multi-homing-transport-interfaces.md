@@ -28,7 +28,7 @@ Cyclone `<Interfaces>` emission), and a multi-NIC target to verify against
 (206.4). Distinct from Phase 172.K.5 (multi-domain = *segregate* sessions); this
 is *merge* — one session, many NICs.
 
-Design: [`docs/design/configuration-and-transports.md`](../design/configuration-and-transports.md)
+Design: [`docs/design/0004-configuration-and-transports.md`](../design/0004-configuration-and-transports.md)
 ("Two axes" taxonomy, cases B/C).
 
 ## Landed (Phase 172.K.7 schema + plumbing, 2026-05-29)
@@ -76,7 +76,7 @@ largely the router's concern and needs a semantics decision before emission.
       interface hint. Capture the decision in the design doc.
 - [ ] Emit accordingly (or explicit, documented no-op) from the generator's
       `set_interfaces` seam for zenoh boards.
-- [ ] **Files:** `docs/design/configuration-and-transports.md`,
+- [ ] **Files:** `docs/design/0004-configuration-and-transports.md`,
       generator `set_interfaces` emission, `nros-rmw-zenoh`.
 - [ ] **Acceptance:** the decision is documented and the generator's zenoh output
       matches it (a generate-test asserting the emitted call/no-op).

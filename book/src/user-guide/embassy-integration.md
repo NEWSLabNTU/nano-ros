@@ -83,7 +83,7 @@ design slot — see [When to wait for
 
 The workspace shape is identical to RTIC (the [3-pkg-role
 taxonomy](./component-and-entry-pkg.md), per
-`docs/design/multi-node-workspace-layout.md` §11):
+`docs/design/0024-multi-node-workspace-layout.md` §11):
 
 ```text
 my_embassy_robot/

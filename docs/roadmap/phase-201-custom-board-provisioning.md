@@ -16,8 +16,8 @@ index kinds; builds consume nros-store tools), Phase 197.5 (nros-0.3.1 index sch
 + the deny-unknown-fields lesson — schema additions must be released).
 
 **Design.** Full exploration + real-board survey + simulated walkthrough in
-[`docs/design/custom-board-provisioning.md`](../design/custom-board-provisioning.md).
-Builds on [`docs/design/board-bsp-integration-architecture.md`](../design/board-bsp-integration-architecture.md)
+[`docs/design/0013-custom-board-provisioning.md`](../design/0013-custom-board-provisioning.md).
+Builds on [`docs/design/0012-board-bsp-integration-architecture.md`](../design/0012-board-bsp-integration-architecture.md)
 (the build-side / overlay-crate model).
 
 ---

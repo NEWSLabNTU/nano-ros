@@ -2,7 +2,7 @@
 
 This is the **canonical nano-ros workspace shape**: a colcon-style
 `src/`-rooted workspace with the three package roles from
-[`docs/design/multi-node-workspace-layout.md` §11](../../../docs/design/multi-node-workspace-layout.md).
+[`docs/design/0024-multi-node-workspace-layout.md` §11](../../../docs/design/0024-multi-node-workspace-layout.md).
 Copy the whole directory out and rename the packages.
 
 ```

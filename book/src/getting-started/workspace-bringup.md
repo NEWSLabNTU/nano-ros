@@ -120,7 +120,7 @@ Key fields:
 | `[deploy.<t>] target` | Rust target triple |
 
 For multi-domain setups or cross-domain bridges add `[[domain]]` and
-`[[bridge]]` sections — see `docs/design/multi-node-workspace-layout.md` §11
+`[[bridge]]` sections — see `docs/design/0024-multi-node-workspace-layout.md` §11
 for the full schema.
 
 ---

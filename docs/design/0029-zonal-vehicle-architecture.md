@@ -1,3 +1,14 @@
+---
+rfc: 0029
+title: "Zonal Vehicle Architecture and nano-ros"
+status: Stable
+since: 2026-02
+last-reviewed: 2026-02
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Zonal Vehicle Architecture and nano-ros
 
 ## Overview

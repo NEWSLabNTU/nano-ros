@@ -1,7 +1,18 @@
+---
+rfc: 0027
+title: "ROS 2 User Workflow for nano-ros"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # ROS 2 User Workflow for nano-ros
 
 **Status:** Living design note
-**Related:** [Phase 123](../roadmap/phase-123-build-and-api-revision.md), [RTOS orchestration](rtos-orchestration.md), [Colcon build type](colcon-nano-ros-build-type.md)
+**Related:** [Phase 123](../roadmap/phase-123-build-and-api-revision.md), [RTOS orchestration](0015-rtos-orchestration.md), [Colcon build type](colcon-nano-ros-build-type.md)
 **Related repo:** `~/repos/play_launch`
 
 ## Goal

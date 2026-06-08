@@ -6,7 +6,7 @@
 //! source-built — downstream resolves the prefix, provenance-agnostic
 //! (`.nros-provenance` records which). The store is shared across workspaces;
 //! `nros-sdk.lock` pins what's installed. See
-//! `docs/design/nros-setup-toolchain-management.md`.
+//! `docs/design/0014-nros-setup-toolchain-management.md`.
 
 use std::{
     collections::BTreeMap,

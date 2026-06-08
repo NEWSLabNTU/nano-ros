@@ -1,7 +1,18 @@
+---
+rfc: 0015
+title: "RTOS Orchestration via Launch Tree + Manifest Codegen"
+status: Stable
+since: 2026-04
+last-reviewed: 2026-04
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # RTOS Orchestration via Launch Tree + Manifest Codegen
 
 **Status:** Draft
-**Companion roadmap:** [Phase 94](../roadmap/phase-94-rtos-orchestration.md)
+**Companion roadmap:** [Phase 94](../roadmap/phase-94-0015-rtos-orchestration.md)
 **Related repos:** `~/repos/nano-ros`, `~/repos/play_launch`, `~/repos/play_launch/src/ros-launch-manifest`, `~/repos/autoware-nano-ros`
 
 ---

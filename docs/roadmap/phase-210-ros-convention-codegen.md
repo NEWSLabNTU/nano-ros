@@ -111,7 +111,7 @@ into `src/`, source the env".
 **Depends on.** Phase 209.A–D (compat surface). Orthogonal to embedded-size
 (204), Zephyr starter (205).
 
-**Design.** [`docs/design/codegen-workspace-discovery.md`](../design/codegen-workspace-discovery.md).
+**Design.** [`docs/design/0023-codegen-workspace-discovery.md`](../design/0023-codegen-workspace-discovery.md).
 
 ## Overview — the two convention shifts
 

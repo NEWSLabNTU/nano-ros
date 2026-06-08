@@ -1,3 +1,14 @@
+---
+rfc: 0001
+title: "nano-ros Architecture Overview"
+status: Stable
+since: 2026-03
+last-reviewed: 2026-04
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # nano-ros Architecture Overview
 
 nano-ros is a lightweight ROS 2 client library for embedded real-time systems. It runs on bare-metal, FreeRTOS, NuttX, ThreadX, and Zephyr — as well as Linux/POSIX — with full `no_std` support throughout the core stack.
@@ -645,7 +656,7 @@ graph TD
     style PTP fill:#1864ab,color:#fff
 ```
 
-For detailed TSN analysis, see [docs/research/tsn-safety-island-assessment.md](../research/tsn-safety-island-assessment.md) and [docs/design/zonal-vehicle-architecture.md](zonal-vehicle-architecture.md).
+For detailed TSN analysis, see [docs/research/tsn-safety-island-assessment.md](../research/tsn-safety-island-assessment.md) and [docs/design/0029-zonal-vehicle-architecture.md](0029-zonal-vehicle-architecture.md).
 
 ## Summary
 

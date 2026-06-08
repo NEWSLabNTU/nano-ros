@@ -16,7 +16,7 @@
 
 These are verified against the shipped CLI + source + on-disk examples. Use them verbatim; do **not** copy from the WIP design doc §2 (it says "nros never a build verb" — that is **superseded**).
 
-**Three package roles** (`docs/design/multi-node-workspace-layout.md` §11, LOCKED 2026-06-03):
+**Three package roles** (`docs/design/0024-multi-node-workspace-layout.md` §11, LOCKED 2026-06-03):
 - **Node pkg** — lib with `nros::node!(T)`; `package.xml` + `Cargo.toml` with `[package.metadata.nros.node]`. One per node. (Old name "Component pkg" is **retired**.)
 - **Bringup pkg** — pure declarative: `package.xml` + `system.toml` + `launch/*.launch.xml` + `config/`. **No** `Cargo.toml`/`CMakeLists.txt`. Naming `<system>_bringup`. **Optional** — only when ≥2 Entry pkgs share one topology; a single-Entry workspace folds `launch/` + `system.toml` into the Entry pkg.
 - **Entry pkg** — binary booting a topology against a `Board`; `package.xml` + `Cargo.toml` with `[package.metadata.nros.entry] deploy = "<board>"` + `src/main.rs` with `nros::main!(...)`. One per deploy target.

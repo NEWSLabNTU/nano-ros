@@ -3,7 +3,7 @@
 //! **Generic ThreadX + NetX-Duo scaffolding crate for nano-ros.**
 //!
 //! Layer-2 entry-point in the board / BSP abstraction described in
-//! `docs/design/board-bsp-integration-architecture.md`. Overlay
+//! `docs/design/0012-board-bsp-integration-architecture.md`. Overlay
 //! crates (`nros-board-<vendor>-<chip>-threadx`, e.g. Renesas
 //! Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX) depend
 //! on this crate + patch vendor HAL deltas via `#[no_mangle]`

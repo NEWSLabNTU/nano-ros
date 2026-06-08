@@ -38,7 +38,7 @@ deployment specifically requires it.
 `PublishLoan` is implemented via `z_bytes_from_static_buf` so the
 publisher can hand the user a slot in zenoh-pico's outbound buffer
 without an extra copy. See the
-[Zero-copy raw API design](../../../docs/roadmap/phase-99-zero-copy-raw-api.md).
+[Zero-copy raw API design](../../../docs/roadmap/phase-99-0010-zero-copy-raw-api.md).
 
 ## See also
 

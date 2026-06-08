@@ -2,7 +2,7 @@
 
 PlatformIO has no configure-time hook rich enough to read `system.toml`
 from inside its tool, so this adapter follows the **ahead-of-vendor**
-path documented in `docs/design/rtos-integration-pattern.md` §1: a PIO
+path documented in `docs/design/0003-rtos-integration-pattern.md` §1: a PIO
 pre-build `extra_script` invokes `nros codegen-system
 --ahead-of-vendor` BEFORE PIO's library resolver sees the tree.
 

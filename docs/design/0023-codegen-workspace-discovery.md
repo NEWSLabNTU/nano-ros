@@ -1,3 +1,14 @@
+---
+rfc: 0023
+title: "Codegen — workspace / AMENT discovery — design + revision plan"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Codegen — workspace / AMENT discovery — design + revision plan
 
 **Goal.** A msg package authored against the ROS 2 convention (verbatim

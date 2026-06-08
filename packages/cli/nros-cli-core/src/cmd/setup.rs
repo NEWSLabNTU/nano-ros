@@ -3,7 +3,7 @@
 //! cache is Phase 187.3; this verb does the CLI + board→package resolution +
 //! `--list` / `--licenses` / the per-host disposition plan.
 //!
-//! See `docs/design/nros-setup-toolchain-management.md`.
+//! See `docs/design/0014-nros-setup-toolchain-management.md`.
 
 use std::path::{Path, PathBuf};
 

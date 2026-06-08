@@ -46,7 +46,7 @@ leads users to it instead of pointing at `just setup-cli`.
 
 ### 1.2 CLI surface shrink
 
-The Phase 212 design (`docs/design/multi-node-workspace-layout.md`
+The Phase 212 design (`docs/design/0024-multi-node-workspace-layout.md`
 §2) constrained `nros` to provisioner + codegen + metadata + deploy,
 explicitly rejecting `nros build` / `nros test` / `nros flash`. Today
 the CLI still ships `nros build`, `nros run`, `nros launch`,

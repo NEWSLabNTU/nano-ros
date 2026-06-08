@@ -1,3 +1,14 @@
+---
+rfc: 0010
+title: "Zero-copy raw publish/subscribe API"
+status: Stable
+since: 2026-04
+last-reviewed: 2026-04
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Zero-copy raw publish/subscribe API
 
 **Owners:** core; **Status:** v1 (Phase 99.A–99.G + 99.D' wire-through landed; 99.H minimal; 99.I–99.K open).
@@ -288,7 +299,7 @@ Consequence: typed pub/sub never sees the lending path. `Publisher<M>::publish(&
 |---|---|
 | **99.I (v1 gate)** | `examples/px4/rust/uorb/{talker,listener}` — first real-world consumer; passes the SITL E2E (90.7) unchanged. PX4 already operates on raw bytes, so this is a direct migration. |
 | 99.J (post-v1) | **New** raw-bytes example tree under `examples/native/rust/<backend>/zero-copy/{talker,listener}` for zenoh / xrce / dds. Not a migration of the existing typed examples — those publish ROS messages (`String`, `Twist`, …) through `Publisher<M>::publish(&M)` and always CDR-serialize, so loan/borrow does not apply to them and they stay unchanged. The new tree publishes byte payloads directly to demonstrate backend lending end-to-end. |
-| 99.K (post-v1) | `cargo bench` harness measuring `publish_raw`/`try_recv_raw` vs `loan`/`try_borrow` per backend; user-guide chapter `book/src/user-guide/zero-copy-raw-api.md` with a decision matrix. |
+| 99.K (post-v1) | `cargo bench` harness measuring `publish_raw`/`try_recv_raw` vs `loan`/`try_borrow` per backend; user-guide chapter `book/src/user-guide/0010-zero-copy-raw-api.md` with a decision matrix. |
 
 Existing user code that calls `publish_raw` / `try_recv_raw` keeps working unchanged. The two APIs coexist. **Typed** flows (`Publisher<M>::publish` / `Subscription<M>::recv`) are entirely separate from the loan/borrow path and are not affected by this phase.
 
@@ -312,4 +323,4 @@ For 30 Hz × 1 KB messages on the autoware_sentinel control loop (the original m
 - `nros-node/src/executor/handles.rs::EmbeddedRawPublisher` / `RawSubscription` / `PublishLoan` / `RecvView`
 - `nros-rmw-zenoh/src/shim/{publisher,subscriber}.rs` — Phase 99.F impls
 - `nros-rmw-xrce/src/lib.rs` (XrceSlot, XrceView) — Phase 99.G impls
-- Phase 99 roadmap: `docs/roadmap/phase-99-zero-copy-raw-api.md`
+- Phase 99 roadmap: `docs/roadmap/phase-99-0010-zero-copy-raw-api.md`

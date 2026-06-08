@@ -211,7 +211,7 @@ pub fn parse_pkg_ament_metadata(pkg_dir: &Path) -> Result<PackageMetadataAment> 
 // compatibility add `<buildtool_depend>ament_cmake</buildtool_depend>`
 // themselves (the emit is generator-owned; the drift checker only
 // rejects edits to the marker-bearing region). See
-// `docs/design/multi-node-workspace-layout.md` §11.1 in the nano-ros
+// `docs/design/0024-multi-node-workspace-layout.md` §11.1 in the nano-ros
 // tree for the policy + rationale.
 fn render_bringup(system_toml: &Path) -> Result<String> {
     let raw = std::fs::read_to_string(system_toml)

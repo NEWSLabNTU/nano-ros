@@ -1,7 +1,18 @@
+---
+rfc: 0011
+title: "PX4 RMW (`nros-rmw-uorb`) — design notes"
+status: Stable
+since: 2026-04
+last-reviewed: 2026-04
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # PX4 RMW (`nros-rmw-uorb`) — design notes
 
 **Status:** v1 landed (Phase 90.1–90.5; 90.6/90.7 remaining). See
-[Phase 90 roadmap](../roadmap/phase-90-px4-rmw-uorb.md).
+[Phase 90 roadmap](../roadmap/phase-90-0011-px4-rmw-uorb.md).
 
 This document focuses on the nano-ros-specific design choices. For the
 underlying async / WorkQueue / uORB story, see

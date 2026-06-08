@@ -1,8 +1,19 @@
+---
+rfc: 0013
+title: "Custom-board provisioning — out-of-tree boards self-describe their deps"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Custom-board provisioning — out-of-tree boards self-describe their deps
 
 **Status.** Design exploration (2026-05-29). Follow-up to Phase 197 (nros setup
 as the single provisioning entrypoint) + the build-side design in
-[`board-bsp-integration-architecture.md`](board-bsp-integration-architecture.md).
+[`0012-board-bsp-integration-architecture.md`](0012-board-bsp-integration-architecture.md).
 
 **Problem.** Today the SDK index (`nros-sdk-index.toml`) `[board.*]` table is the
 **maintainer-owned** registry: `nros setup <board>` looks a board up there to learn

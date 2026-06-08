@@ -62,11 +62,11 @@ split) with smaller maintainer surface and user-side board porting.
 ## Architecture
 
 See companion design documents (live, expected to iterate):
-- `docs/design/multi-node-workspace-layout.md` — overall workspace shape +
+- `docs/design/0024-multi-node-workspace-layout.md` — overall workspace shape +
   open questions
-- `docs/design/workspace-layout-by-case.md` — concrete file trees for
+- `docs/design/0025-workspace-layout-by-case.md` — concrete file trees for
   single/multi × rust/cpp + mixed
-- `docs/design/rtos-integration-pattern.md` — universal embedded pattern
+- `docs/design/0003-rtos-integration-pattern.md` — universal embedded pattern
 
 **Decision summary** (locked, see design docs for rationale):
 
@@ -528,7 +528,7 @@ utilities for `nros migrate workspace` only. No CLI surface.
 ### 212.H — RTOS adapter audit + alignment
 
 Each `integrations/<rtos>/` shell stays ≤200 LoC, matches the universal
-pattern from `docs/design/rtos-integration-pattern.md`, and consumes the
+pattern from `docs/design/0003-rtos-integration-pattern.md`, and consumes the
 baked tree from 212.E.
 
 - [x] **H.1 Zephyr** — Landed: feat(212.H) `8278955b9` (sweep) + fix(212.H.1+H.5) `9abb85b28` + fix(212.H) `330450e82`.
@@ -1663,7 +1663,7 @@ sub-items that already shipped stay marked done.
 
 - [x] **L.3 Bringup pkg shape — REINSTATED as optional (2026-06-03;
       closed 2026-06-04 audit)**. Supersedes the 2026-06-02
-      retirement. Per `docs/design/multi-node-workspace-layout.md`
+      retirement. Per `docs/design/0024-multi-node-workspace-layout.md`
       §11 lock, Bringup pkg returns as one of three pkg roles
       (Bringup + Node + Entry) and is **optional**: required only
       when ≥2 Entry pkgs share a topology (multi-target deployment).
@@ -3068,7 +3068,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       branch = "main" }`. Board-agnostic emit (board choice lives
       in user `main.rs`'s `Board::run` closure).
 - [x] **N.5 Single-node codegen** (scope-revised 2026-06-03 per
-      `docs/design/multi-node-workspace-layout.md` §11) — Node pkg
+      `docs/design/0024-multi-node-workspace-layout.md` §11) — Node pkg
       with `[package.metadata.nros.entry] deploy = "<board>"` becomes
       self-runnable. User writes one-line `src/main.rs`:
       `nros::main!();` (no args; the macro reads the pkg's own
@@ -3303,7 +3303,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       transport-mixin selection, worked example for a new board
       (clock + UART + smoltcp). Add the Component + Entry pkg
       cookbook to `book/src/user-guide/`. Update
-      `docs/design/multi-node-workspace-layout.md` to reflect the
+      `docs/design/0024-multi-node-workspace-layout.md` to reflect the
       Entry pkg as composition root (replacing Bringup pkg).
 - [x] **N.9 `nros::main!()` proc-macro family** (landed 2026-06-03,
       this commit). Four forms expand to a `fn main()` that delegates
@@ -3521,7 +3521,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
   rs` (NEW codegen library; lives in standalone nros-cli repo per
   CLAUDE.md `nros setup` provisioner), `cmake/NanoRosEntry.cmake`
   (RENAMED), `book/src/porting/board-trait.md` (NEW),
-  `docs/design/multi-node-workspace-layout.md` (UPDATED for
+  `docs/design/0024-multi-node-workspace-layout.md` (UPDATED for
   Component + Entry pkg taxonomy).
 
 ## Acceptance
@@ -3959,9 +3959,9 @@ S = small (≤1d), M = medium (1–3d), L = large (≥1w).
 9. **212.I migration tooling (INTERNAL, hidden CLI)** (M) — shipped + I.3 fixture sweep done
 10. **212.J `nros launch`** (M) — shipped
 11. **212.K cyclonedds-sys + wrapper** (L) — shipped + K.4 Option B (codegen-driven descriptors) shipped
-12. **212.L Pkg shape + unified launch model** (L) — IN PROGRESS; lock canonical shapes + lints + launch synth. L.3 Bringup pkg REINSTATED 2026-06-03 as optional (supersedes 2026-06-02 retirement) per `docs/design/multi-node-workspace-layout.md` §11.
+12. **212.L Pkg shape + unified launch model** (L) — IN PROGRESS; lock canonical shapes + lints + launch synth. L.3 Bringup pkg REINSTATED 2026-06-03 as optional (supersedes 2026-06-02 retirement) per `docs/design/0024-multi-node-workspace-layout.md` §11.
 13. **212.M Example migration sweep + pre-212 cleanup** (L) — IN PROGRESS; tree-wide sweep + lint enforcement
-14. **212.N Component + Entry pkg taxonomy (Board family)** (L) — NEW 2026-06-02; platform-agnostic Board trait + family + codegen lib split; N.7 retires M.5.a baker; N.9–N.12 added 2026-06-03 (proc-macro `nros::main!()` + workspace-walk pkg index + ROS 2 launch.xml verbatim + Component→Node rename) per `docs/design/multi-node-workspace-layout.md` §11 lock
+14. **212.N Component + Entry pkg taxonomy (Board family)** (L) — NEW 2026-06-02; platform-agnostic Board trait + family + codegen lib split; N.7 retires M.5.a baker; N.9–N.12 added 2026-06-03 (proc-macro `nros::main!()` + workspace-walk pkg index + ROS 2 launch.xml verbatim + Component→Node rename) per `docs/design/0024-multi-node-workspace-layout.md` §11 lock
 15. **Acceptance verification + CI gates** (M)
 
 ## Non-Goals
@@ -4054,6 +4054,6 @@ surface area (CLI help text, fixture trees, book docs).
   Once it lands, the §212.L canonical shape is the only shape in
   the tree; §212.M.11 lints prevent re-introduction.
 - Companion design docs (kept up-to-date as work proceeds):
-  - `docs/design/multi-node-workspace-layout.md` (LIVE)
-  - `docs/design/workspace-layout-by-case.md` (LIVE)
-  - `docs/design/rtos-integration-pattern.md` (LIVE)
+  - `docs/design/0024-multi-node-workspace-layout.md` (LIVE)
+  - `docs/design/0025-workspace-layout-by-case.md` (LIVE)
+  - `docs/design/0003-rtos-integration-pattern.md` (LIVE)

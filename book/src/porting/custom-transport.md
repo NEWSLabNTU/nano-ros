@@ -26,7 +26,7 @@ flexibility.
 
 The custom transport surface is the project's first **canonical-C-ABI**
 interface, designed per
-[`docs/design/portable-rmw-platform-interface.md`](../../../docs/design/portable-rmw-platform-interface.md):
+[`docs/design/0006-portable-rmw-platform-interface.md`](../../../docs/design/0006-portable-rmw-platform-interface.md):
 
 | Layer | Owns | Crates / files |
 |-------|------|----------------|

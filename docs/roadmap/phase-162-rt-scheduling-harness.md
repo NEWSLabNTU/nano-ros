@@ -11,7 +11,7 @@ gates.
 
 **Priority.** P2 — the runtime is shipping today on every
 CI-tested target with the documented "soft-RT only" caveat
-(`docs/design/rt-execution-model.md` § 4.6, single-thread
+(`docs/design/0002-rt-execution-model.md` § 4.6, single-thread
 non-preemption note). Closing 162 promotes the existing
 deadline / sporadic / multi-executor surfaces from "compiles +
 unit tested" to "verified against real-time guarantees" — gate
@@ -105,7 +105,7 @@ acceptance item from Phase 110 v1 (line 516) lives here so
 it tracks against the verification runs rather than the runtime
 landing.
 
-Target chapter: `book/src/internals/rt-execution-model.md`.
+Target chapter: `book/src/internals/0002-rt-execution-model.md`.
 Contents:
 - Non-preemptive single-thread bound
 - SchedClass selection guide (when Fifo / Edf / Sporadic /
@@ -190,12 +190,12 @@ acceptance items (Phase 110 line 521-522) land here.
 
 ### 162.E — Documentation
 
-- [ ] **162.E.1** `book/src/internals/rt-execution-model.md`:
+- [ ] **162.E.1** `book/src/internals/0002-rt-execution-model.md`:
       non-preemption bound, SchedClass selection guide,
       scenario catalogue S1–S12 with measured status,
       pointer to harness recipes.
 - [ ] **162.E.2** Cross-link archive note in
-      `docs/roadmap/archived/phase-110-rt-execution-model.md`
+      `docs/roadmap/archived/phase-110-0002-rt-execution-model.md`
       to the chapter once it lands.
 
 ---
@@ -208,7 +208,7 @@ acceptance items (Phase 110 line 521-522) land here.
   Linux privileged-scheduling harness binary.
 - `packages/testing/nros-bench/nuttx-sched-sporadic/`:
   NuttX SCHED_SPORADIC bench.
-- `book/src/internals/rt-execution-model.md`: chapter.
+- `book/src/internals/0002-rt-execution-model.md`: chapter.
 - `docs/reference/hardware-procurement.md`: dev-board
   procurement + flashing checklist.
 - `just/rt.just`: `just rt-test` recipe + capability detection.
@@ -234,7 +234,7 @@ acceptance items (Phase 110 line 521-522) land here.
       hardware) closed against at least one of MPS2-AN385 /
       STM32F4-Discovery.
 - [ ] Phase 141 10× baseline captured as static reference.
-- [ ] `book/src/internals/rt-execution-model.md` published in
+- [ ] `book/src/internals/0002-rt-execution-model.md` published in
       the rendered book; archive note in Phase 110 points to it.
 - [ ] 162.D PiCAS items stay deferred until orchestration
       phase ships — explicit `[ ] (deferred)` marker, not a

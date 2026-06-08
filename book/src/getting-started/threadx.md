@@ -87,7 +87,7 @@ threadx-linux —
 
 ```toml
 # nano-ros config (direct mode). See
-# docs/design/configuration-and-transports.md.
+# docs/design/0004-configuration-and-transports.md.
 
 [node]
 domain_id = 0
@@ -106,7 +106,7 @@ threadx-riscv64 —
 
 ```toml
 # nano-ros config (direct mode). See
-# docs/design/configuration-and-transports.md.
+# docs/design/0004-configuration-and-transports.md.
 
 [node]
 domain_id = 0

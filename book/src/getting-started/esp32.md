@@ -75,7 +75,7 @@ The `Cargo.toml` pulls `nros-board-esp32` (real hardware) or
 
 ```toml
 # nano-ros config (direct mode). See
-# docs/design/configuration-and-transports.md.
+# docs/design/0004-configuration-and-transports.md.
 
 [node]
 domain_id = 0
@@ -98,7 +98,7 @@ For QEMU ESP32 (no real wifi) the example tree at
 
 ```toml
 # nano-ros config (direct mode). See
-# docs/design/configuration-and-transports.md.
+# docs/design/0004-configuration-and-transports.md.
 
 [node]
 domain_id = 0

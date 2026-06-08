@@ -98,7 +98,7 @@ const GOAL_UUID_SIZE: usize = 16;
 /// [`EmbeddedRawPublisher`] / [`RawSubscription`]. `try_loan(len)`
 /// requires the byte length up front, which CDR ser/de can only
 /// discover after encoding — the two APIs are incompatible by
-/// construction. See `docs/design/zero-copy-raw-api.md` decision D7.
+/// construction. See `docs/design/0010-zero-copy-raw-api.md` decision D7.
 pub struct EmbeddedPublisher<M> {
     pub(crate) handle: session::RmwPublisher,
     /// Phase 108 — registered event closures kept alive for the
@@ -1055,7 +1055,7 @@ impl<'a, const TX_BUF: usize> Drop for PublishLoan<'a, TX_BUF> {
 /// [`RawSubscription`]. `RecvView` is `&[u8]` semantics; CDR decoding
 /// into a typed `M` requires owning the bytes (or running the decoder
 /// in place), which the borrow contract doesn't fit. See
-/// `docs/design/zero-copy-raw-api.md` decision D7.
+/// `docs/design/0010-zero-copy-raw-api.md` decision D7.
 pub struct Subscription<M, const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE }> {
     pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: [u8; RX_BUF],

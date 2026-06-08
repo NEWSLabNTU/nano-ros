@@ -1,3 +1,14 @@
+---
+rfc: 0030
+title: "Phase 212.K.7.4.c — sequence-of-nested design proposal"
+status: Draft
+since: 2026-06
+last-reviewed: 2026-06
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Phase 212.K.7.4.c — sequence-of-nested design proposal
 
 ## Summary

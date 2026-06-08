@@ -1,7 +1,18 @@
+---
+rfc: 0007
+title: "Service / action QoS — design"
+status: Stable
+since: 2026-05
+last-reviewed: 2026-05
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
 # Service / action QoS — design
 
 **Status:** design (2026-05-28). Closes the gap in
-[`service-qos-gap.md`](service-qos-gap.md) (the `create_service_*` no-QoS path),
+[`0008-service-qos-gap.md`](0008-service-qos-gap.md) (the `create_service_*` no-QoS path),
 which blocks Phase 189.M3.3 (C/C++ service/action QoS + options parity). Seeds a
 dedicated phase — this is a breaking RMW-trait change rippling to every backend
 plus a C↔C++ vtable ABI bump.

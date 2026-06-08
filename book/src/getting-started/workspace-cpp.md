@@ -259,5 +259,5 @@ live under `examples/workspaces/`.
   Bringup pkg + Entry pkg, all C++).
 - [Phase 219 roadmap](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-219-cpp-entry-pkg.md)
   — full landing order + acceptance bar.
-- [Multi-node workspace layout design](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/multi-node-workspace-layout.md)
+- [Multi-node workspace layout design](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0024-multi-node-workspace-layout.md)
   §11 — LOCKED canonical shape (`Bringup + Node + Entry`).

@@ -231,7 +231,7 @@ pub enum TimerError {
 /// (Phase 110.E.b). The trait factors out the per-platform timer
 /// surface so the executor (`nros-node`) can register an atomic
 /// refill callback without becoming generic over the platform —
-/// see `docs/design/phase-110-e-platform-timer.md`.
+/// see `docs/design/0017-platform-timer.md`.
 ///
 /// Default `create_periodic` returns [`TimerError::Unsupported`] so
 /// platforms without a timer surface inherit safe behavior; `destroy`

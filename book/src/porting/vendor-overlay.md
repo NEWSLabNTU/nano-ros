@@ -250,7 +250,7 @@ Same flow as any Rust crate. Recommend:
 
 ## Related
 
-- `docs/design/board-bsp-integration-architecture.md` — the layered
+- `docs/design/0012-board-bsp-integration-architecture.md` — the layered
   model + the consumption matrix.
 - `docs/roadmap/phase-152-board-bsp-abstraction-layer.md` — the
   phase doc.

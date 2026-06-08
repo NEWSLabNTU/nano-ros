@@ -13,7 +13,7 @@ This page is the contract: what the surface looks like, how to add a
 port, and why the shape is what it is. It is the implementation
 companion to [Platform Model](../concepts/platform-model.md) (user-
 facing axis description) and
-[`docs/design/portable-rmw-platform-interface.md`](../../docs/design/portable-rmw-platform-interface.md)
+[`docs/design/0006-portable-rmw-platform-interface.md`](../../docs/design/0006-portable-rmw-platform-interface.md)
 (L0/L1/L2 design rationale across RMW + platform).
 
 ## Surface
@@ -47,7 +47,7 @@ across the boundary, and let static analysis treat them like any other
 extern.
 
 The full rationale is in
-[`docs/design/portable-rmw-platform-interface.md`](../../docs/design/portable-rmw-platform-interface.md)
+[`docs/design/0006-portable-rmw-platform-interface.md`](../../docs/design/0006-portable-rmw-platform-interface.md)
 under "Platform ABI: free symbols (no vtable)".
 
 ## How a port is built
