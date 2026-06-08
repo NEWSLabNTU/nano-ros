@@ -4,7 +4,7 @@ title: "RTOS Orchestration via Launch Tree + Manifest Codegen"
 status: Stable
 since: 2026-04
 last-reviewed: 2026-06
-implements-tracked-by: [phase-94, phase-227]
+implements-tracked-by: [phase-227, phase-228]
 supersedes: []
 superseded-by: null
 ---
@@ -28,8 +28,9 @@ superseded-by: null
 > The **execution model is unchanged and current**: one binary, one RTOS task per
 > priority tier (each owning one `Executor`), one shared session per binary;
 > all-default-tier degenerates to a single task/Executor (today's shipped case).
-> Per-tier codegen is tracked by Phase 94. Config authority: RFC-0004; workspace
-> layout: RFC-0024; codegen timing: RFC-0003 §7 (ahead-of-vendor contract).
+> Per-tier codegen is tracked by **Phase 228** (Phase 94/126 shipped only the
+> single-tier degenerate case). Config authority: RFC-0004; workspace layout:
+> RFC-0024; codegen timing: RFC-0003 §7 (ahead-of-vendor contract).
 
 ---
 

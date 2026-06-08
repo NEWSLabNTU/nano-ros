@@ -34,7 +34,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0005 | [rmw-layer-design](0005-rmw-layer-design.md) | Stable | middleware abstraction (delink zenoh-only) |
 | 0006 | [portable-rmw-platform-interface](0006-portable-rmw-platform-interface.md) | Stable | Rust trait + C vtable dual API |
 | 0007 | [service-qos](0007-service-qos.md) | Stable | service/action QoS design |
-| 0008 | [service-qos-gap](0008-service-qos-gap.md) | Stable | gap analysis: `create_service_*` no-QoS path |
+| 0008 | [service-qos-gap](0008-service-qos-gap.md) | Superseded | gap analysis → resolved by RFC-0007 (Phase 189.M3.3) |
 | 0009 | [bridge-topic-forwarding](0009-bridge-topic-forwarding.md) | Stable | in-binary `[[bridge]]` raw-CDR topic relay |
 | 0010 | [zero-copy-raw-api](0010-zero-copy-raw-api.md) | Stable | zero-copy raw publish/subscribe API |
 | 0011 | [px4-rmw-uorb](0011-px4-rmw-uorb.md) | Stable | PX4 uORB RMW backend |

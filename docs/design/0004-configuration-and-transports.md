@@ -181,8 +181,8 @@ In planned mode this maps to the `SchedContextConfig` the planner carries
 callback groups (`[package.metadata.nros.node]` / `nano_ros_node_register`);
 `system.toml` owns tier definitions + group→tier assignment
 (`[tiers.<name>.<rtos>]` priority/stack + a per-`[[component]]` group→tier map) and
-`[[shared_state]]`. See RFC-0015 (Phase 212 reconciliation). Schema + codegen are
-tracked by phase-227 / Phase 94.
+`[[shared_state]]`. See RFC-0015 (Phase 212 reconciliation). Schema/loader is
+tracked by phase-227; the per-tier codegen by phase-228.
 
 ## 8. RMW selection & retired files
 

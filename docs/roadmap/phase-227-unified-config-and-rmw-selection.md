@@ -73,10 +73,10 @@ The *shape* is decided (2026-06, RFC-0015 Phase 212 reconciliation): node declar
 callback groups (`[package.metadata.nros.node]` / `nano_ros_node_register`);
 `system.toml` owns `[tiers.<name>.<rtos>]` (priority/stack) + a per-`[[component]]`
 group→tier map + `[[shared_state]]`. Implement the `system.toml` schema + loader;
-the per-tier task/Executor codegen is **Phase 94**. (Today only board defaults
+the per-tier task/Executor codegen is **Phase 228**. (Today only board defaults
 apply.)
 **Files:** `system.toml` schema, `packages/cli/nros-cli-core/src/orchestration/`,
-cross-ref Phase 94.
+cross-ref Phase 228.
 
 ### 227.8 — Codegen-timing contract (ahead-of-vendor + hook convenience)
 Make `nros deploy` always run `nros codegen system` ahead of the vendor tool

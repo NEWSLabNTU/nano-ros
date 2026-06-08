@@ -1,20 +1,25 @@
 ---
 rfc: 0008
 title: "Service / action QoS gap (the `create_service_*` no-QoS path)"
-status: Stable
+status: Superseded
 since: 2026-05
-last-reviewed: 2026-05
+last-reviewed: 2026-06
 implements-tracked-by: [phase-189]
 supersedes: []
-superseded-by: null
+superseded-by: 0007
 ---
 
 # Service / action QoS gap (the `create_service_*` no-QoS path)
 
-**Status:** gap-analysis doc. The fix is designed in
-[RFC-0007](0007-service-qos.md); flip this RFC to `Superseded` (`superseded-by:
-0007`) once the C/C++ service/action QoS parity (Phase 189.M3.3) fully lands.
-Surfaced by Phase 189.M3; blocks Phase 189.M3.3.
+> **Superseded by [RFC-0007](0007-service-qos.md) (2026-06).** Phase 189.M3.3
+> (service/action QoS + options parity) landed (COMPLETE 2026-05-29). The gap is
+> resolved: pub/sub-style QoS is threaded where it applies, and the service/result
+> plane QoS is **fixed at the RMW layer by design** (e.g. Cyclone RELIABLE+VOLATILE),
+> with feedback/status planes honoring QoS. This doc is retained as historical
+> gap-analysis; the live design is RFC-0007.
+
+**Status:** Superseded by RFC-0007. Surfaced by Phase 189.M3; resolved by
+Phase 189.M3.3 (done 2026-05-29).
 
 ## The gap
 
