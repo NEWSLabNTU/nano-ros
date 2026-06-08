@@ -176,3 +176,46 @@ Fallback when exceeded: **split shell into shared core + per-board overlays** (T
 4. **NuttX adapter split** — scope: refactor `integrations/nuttx/` into `core/` (shared templates) + per-bringup-pkg overlays, document `≤200 LoC per crate` budget explicitly. Justification: §6 shows the budget definition is ambiguous; codifying per-crate vs per-shell prevents future drift.
 
 5. **PlatformIO + PX4 pre-codegen path** — scope: add `nros codegen --emit-vendor-tree <pio|px4>` that runs ahead of vendor tool and produces a complete vendor-native directory (library.json or PX4 module dirs). Justification: these two vendors lack a configure-time hook; without pre-codegen, Phase 212 silently doesn't cover them.
+
+## 9. `std` vs `alloc` per platform — core stays `no_std`
+
+**Decision.** Every core crate is `#![no_std]`
+(`nros-core`, `nros-rmw`, `nros-serdes`, `nros-platform`, `nros-platform-cffi`,
+`nros-rmw-zenoh`, `zpico-sys`, …). `nros` and `nros-node` are `#![no_std]`
+too and only `extern crate std` under `#[cfg(feature = "std")]`. The `std`
+Cargo feature is **opt-in** and merely *forwards* down
+(`nros/std → nros-core/std + nros-node/std + …`), adding std-only conveniences
+(`Clock::now()` via `SystemTime`, `spin_blocking`, `ExecutorConfig::from_env`,
+`std::error::Error` impls). Per-crate surface: `docs/reference/std-alloc-requirements.md`.
+
+**The std-vs-alloc choice is per-platform, made at the board / Entry layer —
+never in core.** A platform picks it via the node-pkg feature
+(`nros/std` vs `nros/alloc`) plus its board crate:
+
+| Platform | Feature | Why |
+|---|---|---|
+| native (posix) | `std` | hosted |
+| threadx-linux | `std` | hosted Linux simulation |
+| **NuttX** | **`std`** | `*-nuttx-*` is a **std-capable POSIX Rust target** — NuttX ships a std port mapping std's unix-pal onto NuttX libc |
+| freertos | `alloc` | bare embedded; RTOS heap via `pvPortMalloc`, no std port |
+| esp32 (bare-metal) | `alloc` | `riscv32imc-unknown-none-elf`, no std |
+| bare-metal / threadx (embedded) | `alloc` / pure `no_std` | no std port |
+
+**Keep `std` on NuttX (rationale).** NuttX is POSIX and the Rust target is
+std-capable, so std is the idiomatic, lowest-friction choice: the board layer
+(`nros-board-nuttx`) uses `std::thread::sleep` / `std::io` / `std::process::exit`
+rather than re-deriving thread/io/time/exit over raw libc FFI. Crucially, **the
+std surface is not a deploy blocker.** The "missing" std symbols
+(`pthread_cond_*`, `clock_gettime`, `getcwd`, `__errno`, `strerror_r`, `exit`, …)
+are all defined in NuttX's own `libc.a`; they resolve when the NuttX deploy
+links the kernel/export libs (the `apps/external/` + `libapps.a` link of §4, or a
+`build.rs` that links the prebuilt `nuttx-export/libs/*.a` + `dramboot.ld`). A
+standalone `cargo build` against arm-none-eabi **newlib** is the only context
+where they go unresolved — a missing-link issue, not a reason to drop std. See
+known-issue #18 (`docs/known-issues.md`).
+
+**Consequence.** Do not "fix" a NuttX link failure by forcing the path to
+`no_std` — going no_std only shrinks the symbol surface, it does not remove the
+need to link NuttX's kernel/libc export libs (which back even `alloc`'s
+`malloc`/`free` and the platform's `sem_*`/clock primitives). The platform's
+std/alloc choice and the deploy's link inputs are independent axes.
