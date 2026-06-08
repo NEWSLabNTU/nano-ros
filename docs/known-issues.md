@@ -479,39 +479,58 @@ host-socket offload on this host. Build-only verification (`just zephyr
 build-fixtures` with `NROS_ZEPHYR_FIXTURE_FILTER=workspace-entry`) is
 green and is the local gate until NSOS connectivity is restored.
 
-## 18. NuttX workspace Entry cannot be a standalone cargo-lane fixture
+## 18. NuttX workspace Entry as a standalone cargo-lane fixture (link path identified)
 
 Surfaced by Phase 225.O (NuttX workspace Entry attempt). A
 `qemu_nuttx_entry` built through the workspace cargo lane (`cargo build -p
 qemu_nuttx_entry --target armv7a-nuttx-eabihf`, build-std) **compiles but
-cannot link**: build-std `std` references NuttX libc/pthread symbols
+fails to link**: build-std `std` references NuttX libc/pthread symbols
 (`pthread_cond_*`, `pthread_key_*`, `clock_gettime`, `getcwd`, `__errno`,
-`strerror_r`, `exit`, …) that `arm-none-eabi-gcc` against newlib does not
-provide.
+`strerror_r`, `exit`, …) that the standalone `arm-none-eabi-gcc` link does
+not resolve.
 
-**Root cause (architectural)**: unlike `nros-board-{freertos,threadx}` —
-whose board crates bundle the RTOS into the cargo binary via `build.rs`,
-so an `nros::main!` Entry links + runs standalone — `nros-board-nuttx` is
-**thin by design ("NuttX owns the kernel build")** and bundles no kernel.
-A NuttX app is not a standalone cargo ELF; it links into the NuttX kernel
-image via `apps/external/nano-ros/` + `libapps.a` (the `integrations/nuttx/`
-+ CMake lane). That deploy model does not fit the `cargo build -p <entry>`
-workspace-fixture contract that native/freertos/threadx/esp32 use. Contrast
-ESP32 (Phase 225.O), which *does* link standalone (esp-hal + esp-riscv-rt
-provide the runtime) and is fully green.
+**`std` is NOT the cause** (verified 2026-06-09). `armv7a-nuttx-eabihf` is
+a std-capable Rust target — the NuttX std port maps std's unix-pal calls
+onto NuttX libc — and **every one of those symbols is defined (`T`) in the
+prebuilt `third-party/nuttx/nuttx/nuttx-export-0.0.0/libs/libc.a`**
+(`arm-none-eabi-nm` confirms `pthread_cond_broadcast`, `clock_gettime`,
+`getcwd`, `__errno`, `strerror_r`, `exit`, `pthread_cond_wait`, …). The
+standalone link failed only because it pulled arm-none-eabi **newlib**, not
+the NuttX export libs. So going no_std would not be required — std resolves
+fine once the export libs are linked.
+
+**Real unblock — the freertos pattern.** The NuttX export
+(`nuttx-export-0.0.0/`) is a complete app-link kit: `scripts/dramboot.ld`
+(linker script), `arch/.../crt0.o` (startup), and prebuilt kernel libs in
+`libs/` (`libsched libdrivers libboards libc libmm libarch libxx libapps
+libnet libcrypto libfs libbinfmt libopenamp libboard`, + toolchain
+`libgcc`/`libm`). Mirroring `nros-board-mps2-an385-freertos/build.rs`, a
+build.rs on the NuttX board/entry can `cargo:rustc-link-search` the export
+`libs/` and `cargo:rustc-link-lib` the kernel libs + stage `dramboot.ld`,
+linking a standalone bootable NuttX image via cargo — the same contract as
+native/freertos/threadx/esp32. The kernel libs are prebuilt, so this is a
+**link-orchestration** task, not a compile-the-kernel task.
+
+**Remaining sub-problem — the init entrypoint.** The export was built
+`NUTTX_BUILD="flat"` with `CONFIG_INIT_ENTRYPOINT="nsh_main"`: the kernel's
+init task calls `nsh_main`, not the `nros::main!`-emitted `main`. So the
+Entry must either export a `nsh_main` symbol that routes to the nros
+runtime (linked before `libapps` so it wins), or the export must be
+rebuilt with `CONFIG_INIT_ENTRYPOINT` pointing at the nros entry (the
+kernel-reconfig path). This entry-point wiring — not std, not the link
+itself — is the real work left.
 
 **Fixed in passing**: `nros-board-nuttx` had `#![cfg_attr(not(feature =
 "reference-qemu-arm"), no_std)]` while its `run_entry`/`run_generic`
 `std::`-using bodies are gated on `cfg(any(feature, target_os = "nuttx"))`
 — so a NuttX-target build without that feature compiled the crate as
-no_std with active `std::` bodies (24 errors). The no_std predicate was
-corrected to `not(any(feature = "reference-qemu-arm", target_os =
-"nuttx"))`; the crate now compiles for NuttX targets (useful for the
-kernel-integration path).
+no_std with active `std::` bodies (24 errors). Corrected to `not(any(feature
+= "reference-qemu-arm", target_os = "nuttx"))`; the crate now compiles for
+NuttX targets.
 
-**To fix**: add a NuttX workspace-Entry build lane that drives the
-kernel-image link (`integrations/nuttx/` + `libapps.a`) instead of a
-standalone `cargo build` — a different build contract from the other
-platforms, scoped as future work. The `qemu_nuttx_entry` crate/row was not
-landed (it cannot build green via the cargo lane).
+**To fix**: (1) build.rs linking the prebuilt `nuttx-export` libs +
+`dramboot.ld` + `crt0` (mechanical, freertos-pattern); (2) wire the
+`nsh_main` init entrypoint to the nros runtime (or rebuild the export with
+a nros entrypoint). The `qemu_nuttx_entry` crate/row was not landed pending
+(2).
 
