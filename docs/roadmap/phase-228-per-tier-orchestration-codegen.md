@@ -64,12 +64,19 @@ Validates unknown-tier / missing-RTOS-spec / override-on-unknown-node. The
 schema round-trip.
 **Files:** `packages/cli/nros-cli-core/src/orchestration/{tier_resolver,cargo_metadata_schema}.rs`.
 
-### 228.B — Per-tier task + executor emission
-Emit one task entry fn per tier (`Executor::open_with_session(shared)` + pre-register
-the tier's callback groups + spin loop) and a platform-specific `main()` that opens
-the shared session and spawns the tasks. Wire `Executor::open_with_session` if not
-already present (RFC-0015 §11.3).
-**Files:** `packages/cli/nros-cli-core/src/cmd/codegen_system.rs`,
+### 228.B — Per-tier task + executor emission  🔄 IN PROGRESS (Wave 2)
+**Done:** `Executor::open_with_session(session)` landed (the documented shared-session
+constructor; a contract wrapper over the existing `from_session_ptr` Borrowed
+primitive — the "API doesn't exist" blocker was really just naming). The resolver
+is wired into `codegen-system`: `collect_callback_groups` + `derive_target_rtos` +
+`resolve_tiers` produce the `ResolvedTierTable`, baked into `nros-plan.json`
+(`tiers: [...]`), omitted in the single-tier degenerate case (idempotence
+preserved). Test `codegen_system_emits_resolved_tiers`.
+**Remaining (the heavy slice):** emit the actual per-tier task entry fns
+(`Executor::open_with_session(shared)` + register the tier's groups + spin loop)
+and a platform `main()` that opens the shared session and spawns the tasks. Targets
+the Rust entry codegen (`codegen/entry/emit_rust.rs`) + per-RTOS spawn (228.E).
+**Files:** `packages/cli/nros-cli-core/src/{cmd/codegen_system,codegen/entry/emit_rust}.rs`,
 `packages/core/nros-node/src/executor/`.
 
 ### 228.C — Callback-group → tier registration
