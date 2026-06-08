@@ -36,22 +36,10 @@ compile_error!(
      `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce` to be enabled.",
 );
 
-fn register_rmw() -> Result<(), &'static str> {
-    #[cfg(feature = "rmw-zenoh")]
-    {
-        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
-    }
-    // Phase 214.S.4.b — no explicit cyclonedds register call. See
-    // talker for the link-keep-alive rationale (the
-    // __FORCE_LINK_CYCLONEDDS_SYS static inside nros-node::
-    // cyclonedds_register pins the -sys rlib so its linkme
-    // self-register section fires inside nros::init).
-    #[cfg(feature = "rmw-xrce")]
-    {
-        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
-    }
-    Ok(())
-}
+// Phase 227.3 (unified RMW) — no explicit `register()` calls. The selected
+// backend (build feature → `nros` umbrella) self-registers through the cffi
+// vtable, kept in the link graph by `nros`'s `#[used] __FORCE_LINK_*` statics
+// and fired inside `nros::init` by the walker. (Bare-metal keeps `register()`.)
 
 const ACTIVE_RMW_NAME: &str = if cfg!(feature = "rmw-zenoh") {
     "Zenoh"
@@ -68,7 +56,6 @@ const ACTIVE_RMW_NAME: &str = if cfg!(feature = "rmw-zenoh") {
 fn main() {
     env_logger::init();
     info!("nros Native Listener (Safety E2E)");
-    register_rmw().expect("Failed to register RMW backend");
 
     let ctx = nros::init_with_launch_auto().expect("nros init failed");
     let cfg = ctx.config("listener");
@@ -110,8 +97,6 @@ fn main() {
     env_logger::init();
     info!("nros Native Listener ({} Transport)", ACTIVE_RMW_NAME);
     info!("==========================================");
-
-    register_rmw().expect("Failed to register RMW backend");
 
     // Phase 212.L.5 Pattern 2 — launch-aware init.
     let ctx = nros::init_with_launch_auto().expect("nros init failed");

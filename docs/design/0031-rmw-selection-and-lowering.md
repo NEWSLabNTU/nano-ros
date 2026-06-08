@@ -76,32 +76,36 @@ C++/CMake backend. Cyclone selection always routes through the CMake/Corrosion
 build path (RFC-0005 / Phase 175), even for an otherwise-Rust binary. The
 *declaration* is identical (`rmw = "cyclonedds"`); only the lowering differs.
 
-### Consumer wiring patterns (examples) — why they differ by backend
+### Consumer wiring (examples) — unified via the umbrella + facade force-link
 
-The user-facing model above (declare → lower) is delivered by the `nros new`
-scaffolder (Phase 227.4) and the docs. The **internal Cargo wiring** of in-tree
-examples is deliberately *not* uniform across backends, and that is correct — it
-follows two architecturally-forced patterns:
+**All three backends route through the `nros` umbrella feature**
+(`rmw-<x> = ["nros/rmw-<x>"]`), with **no `register()` call in user `main.rs`**.
+The mechanism (Phase 227.3, reopened 2026-06-09):
 
-- **zenoh / xrce → project-dep pattern.** The example depends on
-  `nros-rmw-<x>` directly (as an optional dep behind its `rmw-<x>` feature) and
-  sets that backend's `platform-*` / `ros-*` features. This is the Phase 104.A
-  decision: `nros` stopped forwarding `platform-*` to the backend, so **callers
-  wire their own backend dep**. The one-line `nros_rmw_<x>::register()` in
-  `main.rs` also force-links the backend rlib's CGU (an unreferenced rlib is
-  dropped on stable Rust, taking its `RMW_INIT_ENTRIES` self-register section
-  with it).
-- **cyclonedds → umbrella pattern** (`["nros/rmw-cyclonedds"]`, no `main.rs`
-  `register()`). It *cannot* use project-dep: its register lives in a C++ backend
-  force-linked by `nros-node`'s `#[used] __FORCE_LINK_CYCLONEDDS_SYS` static —
-  which works only because `nros-rmw-cyclonedds-sys` is a leaf crate.
+- `nros`'s `platform-*` / `ros-*` / `std` / `safety-e2e` / `link-tls` features
+  **forward** to the optional backend via `?/` (re-adding the Phase-104.A
+  forwarding — `?` keeps it inert for non-selected backends, so the bridge model
+  is unaffected). This was safe to restore because 104.A only dropped forwarding
+  as collateral of bridge decoupling, and Phase 214.S brought the optional
+  backend deps back.
+- `nros` carries `#[used] __FORCE_LINK_{ZENOH,XRCE}` statics (gated on the rmw
+  feature + a non-bare-metal platform) that reference the backend's `register`,
+  keeping its `RMW_INIT_ENTRIES` self-register section in the link graph. This is
+  **cycle-free in the facade** because `nros-rmw-zenoh`/`-xrce` do not depend on
+  `nros` — an earlier draft wrongly placed it in `nros-node` (where a cycle was
+  possible) and concluded "won't-do"; the facade avoids that entirely.
+- cyclonedds keeps its `nros-node` `__FORCE_LINK_CYCLONEDDS_SYS` keep-alive (its
+  register is a C++ symbol in a leaf `-sys` crate) — same *user-facing* shape.
 
-**Full umbrella convergence for all three is a won't-do.** It would require
-re-adding the Phase-104.A per-platform forwarding in `nros` *and* new
-`__FORCE_LINK_ZENOH`/`__FORCE_LINK_XRCE` statics in `nros-node` — but
-`nros-rmw-zenoh` is not a leaf crate, so that risks a dependency cycle. The split
-is the local optimum; the user never sees it (they declare `rmw` and the lowering
-+ scaffold hide the wiring).
+**Exceptions that stay explicit:** bare-metal / RTOS targets where `linkme` is
+unsupported keep an explicit `register()` (supplied from config via the C
+`nros_app_register_backends()` stub or a Kconfig overlay); and bridge nodes link
+multiple backends and select per-session (`open_multi`).
+
+*Verified 2026-06-09:* the native talker builds + runs on zenoh and xrce through
+the umbrella with no `register()` (both reach the transport layer = the backend
+self-registered); the old explicit-register build fails identically → no
+regression.
 
 ## Alternatives considered
 

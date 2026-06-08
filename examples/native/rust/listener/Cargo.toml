@@ -17,28 +17,24 @@ deploy = ["native"]
 # Phase 118 — RMW selected at build time. Default is `rmw-zenoh`
 # so `cargo run -p native-rs-listener` Just Works.
 default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
-# Phase 214.S.4 — collapsed from the 3-entry form. `dep:` activator
-# stays for `nros_rmw_cyclonedds_sys::register` symbol-drag in
-# `src/main.rs` (see talker for the 214.S.4.b follow-up rationale).
-rmw-cyclonedds = ["nros/rmw-cyclonedds"]  # Phase 214.S.4.b — strict 1-entry parity
-rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
+# Phase 227.3 (unified RMW) — all backends route through the `nros` umbrella;
+# `nros` forwards the backend features + force-links it, so no project dep and
+# no `register()` in `main.rs`. cyclonedds keeps its CMake/Corrosion link path.
+rmw-zenoh = ["nros/rmw-zenoh"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds"]
+rmw-xrce = ["nros/rmw-xrce"]
 
-# Zenoh-specific feature carry-overs (silently no-op under
-# rmw-cyclonedds / rmw-xrce — the matrix lint only exposes `rmw-*`).
-safety-e2e         = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+# Zenoh-specific feature carry-overs (forwarded to the backend by `nros`).
+safety-e2e         = ["nros/safety-e2e"]
 unstable-zenoh-api = ["nros/unstable-zenoh-api"]
-link-tls           = ["nros/link-tls", "nros-rmw-zenoh?/link-tls"]
+link-tls           = ["nros/link-tls"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
-
-nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

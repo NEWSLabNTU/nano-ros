@@ -54,20 +54,28 @@ cmake_value, c_define_token}` + rejects unknowns. **(a)** load-time validation i
 unit tests (5 resolver + 1 loader + 4 scaffold... see 227.4).
 **Files:** `cargo-nano-ros/src/rmw_resolver.rs`, `nros-cli-core/src/orchestration/{mod,nros_config}.rs`, `cmd/codegen_system.rs`.
 
-### 227.3 — Converge examples onto uniform RMW lowering  ✅ RESOLVED (won't-do, documented)
-Investigated (2026-06-09). The example wiring split is **architecturally
-determined, not an accident**: zenoh/xrce use the project-dep pattern (Phase 104.A
-made callers wire their own backend dep + the `main.rs` `register()` force-links
-the rlib CGU); cyclonedds uses the umbrella (`nros/rmw-cyclonedds`) because its
-register lives in a C++ backend force-linked by `nros-node`'s
-`__FORCE_LINK_CYCLONEDDS_SYS` — which works only because `-sys` is a leaf crate.
-Full umbrella convergence is a **won't-do**: it would require re-adding the 104.A
-per-platform forwarding in `nros` *and* new `__FORCE_LINK_{ZENOH,XRCE}` statics in
-`nros-node` (cycle risk — those backends aren't leaf crates), reverting a
-deliberate decision. The **user-facing** declare→lower model is already delivered
-by the scaffolder (227.4) + docs; the user never sees the internal wiring.
-Rationale documented in RFC-0031 (“Consumer wiring patterns”). No code change.
-**Files:** `docs/design/0031-rmw-selection-and-lowering.md`.
+### 227.3 — Converge examples onto uniform RMW lowering  🔄 REOPENED (mechanism done)
+First closed as won't-do (cycle risk), then **reopened 2026-06-09** — the
+"cycle" only applied to placing the force-link in `nros-node`; a **facade**
+force-link is cycle-free (`nros-rmw-zenoh`/`-xrce` don't depend on `nros`).
+
+**Done (mechanism + canonical proof):**
+- `nros` re-adds the Phase-104.A `?/` forwarding (std/platform/ros/safety/tls →
+  backend, inert via `?`).
+- `nros` carries `#[used] __FORCE_LINK_{ZENOH,XRCE}` statics → backend
+  self-registers; no `main.rs` `register()`.
+- `examples/native/rust/talker` converged (zenoh + xrce via umbrella, build+run
+  verified; no regression vs the explicit-register build). RFC-0031 updated.
+
+**Remaining (propagation, mechanical):**
+- Converge the other native rust examples (listener, action-*, service-*, …) to
+  the umbrella + drop `register()`. Keep explicit `register()` on bare-metal/RTIC
+  (linkme-unsupported) examples.
+- Wire `resolve_rmw` → the single-node/example build + real `nros new --rmw`
+  templating; collapse the two parallel rmw mapping tables
+  (`cargo-nano-ros::rmw_resolver` vs `nros-cli-core::orchestration::generate`).
+**Files:** `packages/core/nros/{Cargo.toml,src/lib.rs}`, `examples/native/rust/**`,
+`packages/cli/nros-cli-core/src/orchestration/generate.rs`.
 
 ### 227.4 — `nros new --rmw` templating  ✅ DONE
 `scaffold_package` validates `--rmw` via the resolver (clear error on a typo, no
