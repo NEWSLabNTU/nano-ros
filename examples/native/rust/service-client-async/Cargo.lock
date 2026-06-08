@@ -176,6 +176,12 @@ checksum = "3a8241f3ebb85c056b509d4327ad0358fbbba6ffb340bf388f26350aeda225b1"
 
 [[package]]
 name = "bitflags"
+version = "1.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+
+[[package]]
+name = "bitflags"
 version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
@@ -432,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "cyclonedds-sys"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "cmake",
  "nros-build-paths",
@@ -797,6 +803,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "managed"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
+
+[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -832,9 +844,6 @@ dependencies = [
  "nros",
  "nros-log",
  "nros-platform-cffi",
- "nros-rmw-cyclonedds-sys",
- "nros-rmw-xrce-cffi",
- "nros-rmw-zenoh",
  "tokio",
 ]
 
@@ -850,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "nros"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "nros-core",
  "nros-macros",
@@ -860,14 +869,17 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-rmw-cyclonedds-sys",
+ "nros-rmw-xrce-cffi",
+ "nros-rmw-zenoh",
  "nros-serdes",
  "paste",
+ "portable-atomic",
  "portable-atomic-util",
 ]
 
 [[package]]
 name = "nros-board-common"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "nros-build-paths",
@@ -890,7 +902,7 @@ dependencies = [
 
 [[package]]
 name = "nros-build-paths"
-version = "0.1.0"
+version = "0.5.0"
 
 [[package]]
 name = "nros-cli-core"
@@ -916,7 +928,7 @@ dependencies = [
 
 [[package]]
 name = "nros-core"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "heapless",
  "log",
@@ -925,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "nros-log"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "heapless",
  "portable-atomic",
@@ -933,7 +945,7 @@ dependencies = [
 
 [[package]]
 name = "nros-macros"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "nros-build",
  "proc-macro2",
@@ -949,7 +961,7 @@ source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#440c2f49e8f
 
 [[package]]
 name = "nros-node"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "atomic-waker",
  "heapless",
@@ -969,14 +981,14 @@ dependencies = [
 
 [[package]]
 name = "nros-params"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "heapless",
 ]
 
 [[package]]
 name = "nros-platform"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
@@ -984,11 +996,11 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-api"
-version = "0.1.0"
+version = "0.5.0"
 
 [[package]]
 name = "nros-platform-cffi"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "nros-platform-api",
@@ -996,7 +1008,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "heapless",
  "log",
@@ -1005,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-cffi"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "linkme",
@@ -1015,7 +1027,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-cyclonedds"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "critical-section",
  "heapless",
@@ -1025,7 +1037,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-cyclonedds-sys"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "cyclonedds-sys",
@@ -1036,7 +1048,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-xrce-cffi"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "linkme",
@@ -1045,11 +1057,12 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-zenoh"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "atomic-waker",
  "heapless",
  "linkme",
+ "log",
  "nros-core",
  "nros-platform",
  "nros-rmw",
@@ -1060,9 +1073,29 @@ dependencies = [
 
 [[package]]
 name = "nros-serdes"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "heapless",
+]
+
+[[package]]
+name = "nros-smoltcp"
+version = "0.5.0"
+dependencies = [
+ "nros-platform-api",
+ "portable-atomic",
+ "smoltcp",
+]
+
+[[package]]
+name = "nros-zpico-build"
+version = "0.5.0"
+dependencies = [
+ "cbindgen",
+ "cc",
+ "nros-board-common",
+ "nros-build-paths",
+ "pkg-config",
 ]
 
 [[package]]
@@ -1295,7 +1328,7 @@ version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
 dependencies = [
- "bitflags",
+ "bitflags 2.11.1",
  "errno",
  "libc",
  "linux-raw-sys",
@@ -1410,6 +1443,19 @@ name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+
+[[package]]
+name = "smoltcp"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dad095989c1533c1c266d9b1e8d70a1329dd3723c3edac6d03bbd67e7bf6f4bb"
+dependencies = [
+ "bitflags 1.3.2",
+ "byteorder",
+ "cfg-if",
+ "heapless",
+ "managed",
+]
 
 [[package]]
 name = "spin"
@@ -1765,7 +1811,7 @@ version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe"
 dependencies = [
- "bitflags",
+ "bitflags 2.11.1",
  "hashbrown 0.15.5",
  "indexmap",
  "semver",
@@ -1957,7 +2003,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2"
 dependencies = [
  "anyhow",
- "bitflags",
+ "bitflags 2.11.1",
  "indexmap",
  "log",
  "serde",
@@ -2026,13 +2072,10 @@ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
 name = "zpico-sys"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
- "cbindgen",
- "cc",
- "nros-board-common",
- "nros-build-paths",
- "pkg-config",
+ "nros-smoltcp",
+ "nros-zpico-build",
 ]
 
 [[patch.unused]]
