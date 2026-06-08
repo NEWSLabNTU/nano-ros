@@ -1239,6 +1239,23 @@ impl Executor {
         }
     }
 
+    /// Phase 228.B (RFC-0015) — construct a tier task's executor that **shares**
+    /// a session opened once by the orchestration `main()`.
+    ///
+    /// In the per-tier execution model `main()` opens one RMW session, then
+    /// spawns one RTOS task per priority tier; each task calls this to get an
+    /// [`Executor`] over the *same* session (the `Borrowed` session store — this
+    /// executor neither owns nor closes it), registers its tier's callback
+    /// groups, and spins. Thin alias over [`Executor::from_session_ptr`].
+    ///
+    /// # Safety
+    /// `session` must outlive every executor/task built from it (the
+    /// orchestration `main()` holds it and never returns / WFIs), and must not
+    /// be mutated except through these executors' spin calls.
+    pub unsafe fn open_with_session(session: *mut session::ConcreteSession) -> Self {
+        unsafe { Self::from_session_ptr(session) }
+    }
+
     /// Set the node name and namespace used for liveliness tokens.
     ///
     /// Called by `open()` to propagate config values. When `register_subscription`

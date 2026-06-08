@@ -37,10 +37,13 @@ use clap::{Args as ClapArgs, ValueEnum};
 use eyre::{Context, Result, bail};
 use serde::Serialize;
 
+use std::collections::BTreeMap;
+
 use crate::orchestration::{
-    cargo_metadata_schema::{SystemComponentEntry, SystemToml},
+    cargo_metadata_schema::{CallbackGroupDecl, SystemComponentEntry, SystemToml},
     launch_synth::{LaunchInput, resolve_launch},
     nros_config::{BringupPackageEntry, NrosConfig},
+    tier_resolver::{ResolvedTierTable, resolve_tiers},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -110,6 +113,15 @@ pub fn run(args: Args) -> Result<()> {
 
     let component_kinds = classify_components(&cfg, &bringup.system.components);
 
+    // Phase 228.B (RFC-0015) — resolve the per-tier table. Node packages declare
+    // their callback groups in metadata; the system's `[tiers.*]` +
+    // `[[node_overrides]]` map them to RTOS tasks. No tiers/groups declared →
+    // the single `default` tier (today's single-task output, unchanged).
+    let callback_groups = collect_callback_groups(&cfg, &bringup.system.components);
+    let target_rtos = derive_target_rtos(&bringup.system, args.target.as_deref());
+    let tier_table = resolve_tiers(&bringup.system, &callback_groups, &target_rtos)
+        .map_err(|e| eyre::eyre!("tier resolution: {e}"))?;
+
     // Phase 212.L.6 — resolve the launch input. For a Path A bringup
     // pkg (no Cargo.toml, no CMakeLists.txt) we surface the resolver's
     // hard error unchanged; for synthesisable pkgs the synth XML is
@@ -153,6 +165,7 @@ pub fn run(args: Args) -> Result<()> {
         &component_kinds,
         args.target.as_deref(),
         resolved_launch.as_deref(),
+        &tier_table,
     )?;
 
     if let Some(mode) = args.ahead_of_vendor {
@@ -357,6 +370,7 @@ fn emit_bake_tree(
     component_kinds: &[(String, ComponentLang)],
     target: Option<&str>,
     resolved_launch: Option<&str>,
+    tier_table: &ResolvedTierTable,
 ) -> Result<()> {
     fs::create_dir_all(bake_dir)
         .with_context(|| format!("create bake dir {}", bake_dir.display()))?;
@@ -392,7 +406,13 @@ fn emit_bake_tree(
 
     write_if_changed(
         &bake_dir.join("nros-plan.json"),
-        &render_plan_json(bringup, component_kinds, target, resolved_launch)?,
+        &render_plan_json(
+            bringup,
+            component_kinds,
+            target,
+            resolved_launch,
+            tier_table,
+        )?,
     )?;
 
     Ok(())
@@ -554,6 +574,27 @@ struct PlanDoc<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     launch_file: Option<&'a str>,
     components: Vec<PlanComponent<'a>>,
+    /// Phase 228.B — resolved per-tier table. Omitted in the single-tier
+    /// degenerate case so the bake output stays byte-identical to pre-228.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tiers: Vec<PlanTierDoc<'a>>,
+}
+
+#[derive(Serialize)]
+struct PlanTierDoc<'a> {
+    name: &'a str,
+    priority: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stack_bytes: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    spin_period_us: Option<u64>,
+    members: Vec<PlanTierMember<'a>>,
+}
+
+#[derive(Serialize)]
+struct PlanTierMember<'a> {
+    node: &'a str,
+    group: &'a str,
 }
 
 fn render_plan_json(
@@ -561,6 +602,7 @@ fn render_plan_json(
     component_kinds: &[(String, ComponentLang)],
     target: Option<&str>,
     resolved_launch: Option<&str>,
+    tier_table: &ResolvedTierTable,
 ) -> Result<String> {
     let launch_file: Option<String> = resolved_launch
         .map(|s| s.to_string())
@@ -596,6 +638,27 @@ fn render_plan_json(
         })
         .collect();
 
+    // Degenerate single-tier → omit (keeps pre-228 bake output byte-identical).
+    let tiers: Vec<PlanTierDoc> = if tier_table.is_single_tier() {
+        Vec::new()
+    } else {
+        tier_table
+            .tiers
+            .iter()
+            .map(|t| PlanTierDoc {
+                name: &t.name,
+                priority: t.priority,
+                stack_bytes: t.stack_bytes,
+                spin_period_us: t.spin_period_us,
+                members: t
+                    .members
+                    .iter()
+                    .map(|(node, group)| PlanTierMember { node, group })
+                    .collect(),
+            })
+            .collect()
+    };
+
     let doc = PlanDoc {
         bringup: &bringup.name,
         system: &bringup.system.system.name,
@@ -605,10 +668,64 @@ fn render_plan_json(
         target,
         launch_file: launch_file.as_deref(),
         components,
+        tiers,
     };
     let mut s = serde_json::to_string_pretty(&doc).context("serialize plan json")?;
     s.push('\n');
     Ok(s)
+}
+
+/// Build the `node instance name → declared callback groups` map for the
+/// system from the loaded component-package metadata (Phase 228.B).
+fn collect_callback_groups(
+    cfg: &NrosConfig,
+    components: &[SystemComponentEntry],
+) -> BTreeMap<String, Vec<CallbackGroupDecl>> {
+    let mut map = BTreeMap::new();
+    for c in components {
+        let Some(pkg) = cfg.component_packages.get(&c.pkg) else {
+            continue;
+        };
+        // Single-node pkg → node_or_component; multi-node pkg → match by name/class.
+        let groups = pkg
+            .nros
+            .node_or_component()
+            .filter(|m| !m.callback_groups.is_empty())
+            .map(|m| m.callback_groups.clone())
+            .or_else(|| {
+                pkg.nros
+                    .nodes_or_components()
+                    .values()
+                    .find(|m| {
+                        m.name.as_deref() == Some(c.name.as_str())
+                            || m.class.as_deref() == Some(c.class.as_str())
+                    })
+                    .map(|m| m.callback_groups.clone())
+            })
+            .unwrap_or_default();
+        if !groups.is_empty() {
+            map.insert(c.name.clone(), groups);
+        }
+    }
+    map
+}
+
+/// Best-effort RTOS name for tier resolution from the deploy target. Defaults to
+/// `posix` (native); embedded targets refine this when the per-tier emission
+/// lands (Phase 228 Wave 2/3). The degenerate tier table does not depend on it.
+fn derive_target_rtos(system: &SystemToml, target: Option<&str>) -> String {
+    target
+        .and_then(|t| system.deploy.get(t))
+        .and_then(|d| d.board.as_deref().or(d.kind.as_deref()))
+        .map(|hint| {
+            for rtos in ["freertos", "zephyr", "threadx", "nuttx"] {
+                if hint.contains(rtos) {
+                    return rtos.to_string();
+                }
+            }
+            "posix".to_string()
+        })
+        .unwrap_or_else(|| "posix".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -750,9 +867,13 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
         &NrosConfig::default(),
         &bringup.system.components,
     );
+    // PX4 side-car plan: no NrosConfig here (callback groups unavailable), so
+    // the tier table is the degenerate single tier (omitted from the json).
+    let px4_tiers = resolve_tiers(&bringup.system, &BTreeMap::new(), "posix")
+        .unwrap_or(ResolvedTierTable { tiers: Vec::new() });
     write_if_changed(
         &out_dir.join("nros-plan.json"),
-        &render_plan_json(bringup, &kinds, Some("px4"), None)?,
+        &render_plan_json(bringup, &kinds, Some("px4"), None, &px4_tiers)?,
     )?;
 
     Ok(())
@@ -1019,6 +1140,106 @@ launch = "launch/system.launch.xml"
             "<launch></launch>\n",
         )
         .unwrap();
+    }
+
+    /// Phase 228.B — a 1-component workspace where the node declares callback
+    /// groups and the system maps them to `[tiers.*]`.
+    fn write_tiered_workspace(dir: &Path) {
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\nmembers = [\"ctrl_pkg\"]\nexclude = [\"demo_bringup\"]\n\n[workspace.metadata.nros]\ndefault_system = \"demo_bringup\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(dir.join("ctrl_pkg/src")).unwrap();
+        fs::write(
+            dir.join("ctrl_pkg/Cargo.toml"),
+            r#"
+[package]
+name = "ctrl_pkg"
+version = "0.1.0"
+edition = "2021"
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "ctrl_pkg::Control"
+name = "control_node"
+callback_groups = [
+  { id = "ctrl", tier = "high" },
+  { id = "telem", tier = "low" },
+]
+"#,
+        )
+        .unwrap();
+        fs::write(dir.join("ctrl_pkg/src/lib.rs"), "").unwrap();
+
+        fs::create_dir_all(dir.join("demo_bringup/launch")).unwrap();
+        fs::write(
+            dir.join("demo_bringup/launch/system.launch.xml"),
+            "<launch></launch>\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("demo_bringup/package.xml"),
+            "<package format=\"3\"><name>demo_bringup</name><version>0.1.0</version><description>d</description><maintainer email=\"a@b.c\">a</maintainer><license>Apache-2.0</license></package>\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("demo_bringup/system.toml"),
+            r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+
+[tiers.high]
+spin_period_us = 1000
+[tiers.high.posix]
+priority = 80
+stack_bytes = 8192
+[tiers.low.posix]
+priority = 10
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+launch = "system.launch.xml"
+"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn codegen_system_emits_resolved_tiers() {
+        let dir = scratch_dir("emits_resolved_tiers");
+        write_tiered_workspace(&dir);
+        let out = dir.join("build/demo_bringup");
+        run(Args {
+            workspace: Some(dir.clone()),
+            bringup: None,
+            target: Some("native".into()),
+            out: Some(out.clone()),
+            ahead_of_vendor: None,
+            file: None,
+            exec: None,
+        })
+        .expect("codegen runs");
+
+        let plan = fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap();
+        // High tier (priority 80) ordered before low (10); members carried.
+        assert!(plan.contains("\"tiers\""), "plan: {plan}");
+        assert!(plan.contains("\"name\": \"high\""), "plan: {plan}");
+        assert!(plan.contains("\"priority\": 80"));
+        assert!(plan.contains("\"spin_period_us\": 1000"));
+        assert!(plan.contains("\"group\": \"ctrl\""));
+        let hi = plan.find("\"high\"").unwrap();
+        let lo = plan.find("\"low\"").unwrap();
+        assert!(hi < lo, "high tier must precede low (priority order)");
     }
 
     /// Workspace whose components live in non-Rust (C/C++) packages — i.e.
