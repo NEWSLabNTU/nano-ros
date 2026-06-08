@@ -815,6 +815,7 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
         Ok(DeclaredNode {
             runtime: self.runtime,
             id,
+            current_group: None,
         })
     }
 
@@ -853,6 +854,13 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
 pub struct DeclaredNode<'ctx, 'id, R: NodeRuntime + ?Sized = dyn NodeRuntime + 'ctx> {
     runtime: &'ctx mut R,
     id: NodeId<'id>,
+    /// Phase 228.C sticky callback-group label. When set (via
+    /// [`callback_group`](Self::callback_group)), every subsequently
+    /// declared entity that does not carry its own group inherits it,
+    /// so the tier filter in the executor can include/exclude the
+    /// callback per the `system.toml` group→tier map. `None` →
+    /// unlabeled (wildcard-eligible).
+    current_group: Option<MetadataString>,
 }
 
 impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
@@ -860,6 +868,29 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     #[doc(hidden)]
     pub const fn id(&self) -> NodeId<'id> {
         self.id
+    }
+
+    /// Set the sticky callback-group label applied to every entity
+    /// declared after this call (until changed again). The group is the
+    /// symbolic name the node author exposes; `system.toml` maps it to a
+    /// scheduling tier (RFC-0015). Entities declared while no group is set
+    /// remain unlabeled (wildcard-eligible). Reusing the Phase-216 tag
+    /// string as the group id keeps one identifier per logical callback.
+    #[track_caller]
+    pub fn callback_group(&mut self, group: &str) -> NodeResult<&mut Self> {
+        self.current_group = Some(copy_str(group)?);
+        Ok(self)
+    }
+
+    /// Phase 228.C chokepoint: stamp the sticky group onto the entity
+    /// (when the entity carries no group of its own) before forwarding to
+    /// the runtime. Every `create_*` helper routes its declaration here so
+    /// the label is applied uniformly in one place.
+    fn declare_entity(&mut self, mut metadata: EntityMetadata) -> NodeResult<()> {
+        if metadata.callback_group.is_none() {
+            metadata.callback_group = self.current_group.clone();
+        }
+        self.runtime.create_entity(metadata)
     }
 
     /// Declare a publisher with default QoS. Stable publisher ID is required.
@@ -915,7 +946,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             qos,
         })?;
         metadata.source = SourceLocationMetadata::caller()?;
-        self.runtime.create_entity(metadata)?;
+        self.declare_entity(metadata)?;
         Ok(NodePublisher::new(id))
     }
 
@@ -1023,7 +1054,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
-        self.runtime.create_entity(metadata)?;
+        self.declare_entity(metadata)?;
         Ok(NodeSubscription::new(id))
     }
 
@@ -1057,7 +1088,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
-        self.runtime.create_entity(metadata)?;
+        self.declare_entity(metadata)?;
         Ok(SubscriptionTag::new(topic))
     }
 
@@ -1083,7 +1114,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
         metadata.period_ms = Some(period.as_millis());
-        self.runtime.create_entity(metadata)?;
+        self.declare_entity(metadata)?;
         Ok(NodeTimer::new(id))
     }
 
@@ -1130,7 +1161,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
-        self.runtime.create_entity(metadata)?;
+        self.declare_entity(metadata)?;
         Ok(NodeServiceServer::new(id))
     }
 
@@ -1193,7 +1224,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             qos: QosSettings::default(),
         })?;
         metadata.source = SourceLocationMetadata::caller()?;
-        self.runtime.create_entity(metadata)?;
+        self.declare_entity(metadata)?;
         Ok(NodeServiceClient::new(id))
     }
 
@@ -1251,7 +1282,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.action_accepted_callback_id = Some(copy_str(accepted_callback_id.as_str())?);
         metadata.action_accepted_source = metadata.callback_source.clone();
         metadata.source = metadata.callback_source.clone();
-        self.runtime.create_entity(metadata)?;
+        self.declare_entity(metadata)?;
         Ok(NodeActionServer::new(id))
     }
 
@@ -1332,7 +1363,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             qos: QosSettings::default(),
         })?;
         metadata.source = SourceLocationMetadata::caller()?;
-        self.runtime.create_entity(metadata)?;
+        self.declare_entity(metadata)?;
         Ok(NodeActionClient::new(id))
     }
 
@@ -1378,7 +1409,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         metadata.parameter_type = Some(default.parameter_type());
         metadata.parameter_default = Some(default);
         metadata.source = SourceLocationMetadata::caller()?;
-        self.runtime.create_entity(metadata)?;
+        self.declare_entity(metadata)?;
         Ok(NodeParameter::new(id))
     }
 
@@ -2275,6 +2306,59 @@ mod tests {
             Some("on_cmd")
         );
         assert_eq!(recorder.callback_effects().len(), 2);
+    }
+
+    struct GroupedComponent;
+
+    impl Node for GroupedComponent {
+        const NAME: &'static str = "grouped_component";
+
+        fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
+            let mut node =
+                context.create_node_with_id(NodeId::new("node"), NodeOptions::new("grouped"))?;
+            // Unlabeled entity declared before any group is set.
+            let _pub = node.create_publisher::<TestMsg>(EntityId::new("pub_plain"), "plain")?;
+            // Sticky "control" group covers the next two entities.
+            node.callback_group("control")?;
+            let _sub = node.create_subscription::<TestMsg>(
+                EntityId::new("sub_cmd"),
+                CallbackId::new("on_cmd"),
+                "~/cmd",
+            )?;
+            let _timer = node.create_timer(
+                EntityId::new("timer_tick"),
+                CallbackId::new("on_tick"),
+                TimerDuration::from_millis(10),
+            )?;
+            // Switch to "telemetry" for the last entity.
+            node.callback_group("telemetry")?;
+            let _sub2 = node.create_subscription::<TestMsg>(
+                EntityId::new("sub_diag"),
+                CallbackId::new("on_diag"),
+                "~/diag",
+            )?;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn sticky_callback_group_stamps_subsequent_entities() {
+        let mut recorder = MetadataRecorder::<2, 8, 4>::new();
+        record_node_metadata::<GroupedComponent>(&mut recorder).unwrap();
+
+        let group_of = |idx: usize| {
+            recorder.entities()[idx]
+                .callback_group
+                .as_ref()
+                .map(|g| g.as_str())
+        };
+        // pub_plain — declared before any group → unlabeled.
+        assert_eq!(group_of(0), None);
+        // sub_cmd + timer_tick — under "control".
+        assert_eq!(group_of(1), Some("control"));
+        assert_eq!(group_of(2), Some("control"));
+        // sub_diag — under "telemetry".
+        assert_eq!(group_of(3), Some("telemetry"));
     }
 
     #[test]

@@ -632,6 +632,18 @@ impl NodeRuntime for ExecutorSink<'_> {
     }
 
     fn create_entity(&mut self, metadata: EntityMetadata) -> NodeResult<()> {
+        // Phase 228.C tier gate: when this executor runs a specific tier
+        // (`active_groups` set by codegen), an entity whose callback group
+        // is not active on this tier is a no-op — no RMW handle, no slot.
+        // An unlabeled entity (`callback_group == None`) is wildcard-eligible
+        // and always registers; the degenerate single-tier executor leaves
+        // `active_groups == None`, so every entity registers (byte-identical
+        // to pre-228 output).
+        if let Some(group) = metadata.callback_group.as_ref() {
+            if !self.executor.group_active(group.as_str()) {
+                return Ok(());
+            }
+        }
         let node = self
             .lookup_node(metadata.node_id.as_str())
             .ok_or(NodeDeclError::Runtime)?;
