@@ -17,6 +17,7 @@ native = ["nros/alloc", "nros/rmw-cffi", "nros/platform-posix", "nros/ros-humble
 freertos = ["nros/alloc", "nros/rmw-cffi", "nros/platform-freertos", "nros/ros-humble"]
 threadx-linux = ["nros/std", "nros/rmw-cffi", "nros/platform-threadx", "nros/ros-humble"]
 nuttx = ["nros/std", "nros/rmw-cffi", "nros/platform-nuttx", "nros/ros-humble"]
+zephyr = ["nros/alloc", "nros/rmw-cffi", "nros/platform-zephyr", "nros/ros-humble"]
 
 [package.metadata.nros.node]
 class = "listener_pkg::Listener"

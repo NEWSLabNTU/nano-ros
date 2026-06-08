@@ -438,7 +438,7 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
 [[profile.default.overrides]]
-filter = "binary(zephyr) and (test(zephyr_talker_to_listener_e2e) or test(zephyr_to_native_e2e) or test(native_to_zephyr_e2e) or test(bidirectional_native_zephyr_e2e))"
+filter = "binary(zephyr) and (test(zephyr_talker_to_listener_e2e) or test(zephyr_to_native_e2e) or test(native_to_zephyr_e2e) or test(bidirectional_native_zephyr_e2e) or test(workspace_entry_native_sim_e2e))"
 test-group = "qemu-zephyr-pubsub-rust"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2

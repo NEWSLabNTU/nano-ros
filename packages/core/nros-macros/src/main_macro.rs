@@ -326,6 +326,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         let framework_label = match framework {
             Framework::OwnedSpin => "OwnedSpin",
             Framework::Embassy => "Embassy",
+            Framework::Zephyr => "Zephyr",
             Framework::Rtic => unreachable!(),
         };
         return Err(syn::Error::new(
@@ -527,6 +528,9 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         })
         .collect();
+    // Node count for the Zephyr framework boot banner (literal baked at
+    // expansion time so the runtime body needs no extra import).
+    let num_register_calls = register_calls.len();
 
     // Phase 216 final wave — Node-pkg registration for framework
     // targets (RTIC + Embassy). The OwnedSpin branch keeps its
@@ -546,7 +550,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // examples today don't follow this — they always declare
     // `node_pkgs = [...]` explicitly).
     let framework_node_pkg_idents: Vec<Ident> = match framework {
-        Framework::OwnedSpin => Vec::new(),
+        // OwnedSpin + Zephyr both register via the launch-resolved
+        // `register_calls` (the `RuntimeCtx`-based `<pkg>::register`
+        // flow), NOT the RTIC/Embassy `register_dispatch` splice.
+        Framework::OwnedSpin | Framework::Zephyr => Vec::new(),
         Framework::Rtic | Framework::Embassy => {
             let cargo_toml = manifest_dir.join("Cargo.toml");
             let from_metadata = read_entry_node_pkgs(&cargo_toml).map_err(|e| {
@@ -693,6 +700,122 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 match __nros_entry_run() {
                     ::core::result::Result::Ok(()) => 0,
                     ::core::result::Result::Err(_) => 1,
+                }
+            }
+        },
+        // Phase 225.P — Zephyr framework. The RTOS owns boot + the C
+        // `main`; the Rust staticlib exports `rust_main`, which
+        // `zephyr-lang-rust`'s `rust_cargo_application()` invokes after
+        // kernel + net init. There is NO `BoardEntry::run` and NO Rust
+        // `fn main` (Zephyr forbids it). The launch file remains the
+        // single source of truth for the node set: `register_calls`
+        // registers each launch-named Node pkg, identical to the
+        // native/freertos OwnedSpin shape — only the boot/spin scaffold
+        // differs. Generalises the single-node
+        // `nros::zephyr_component_main!` body to N launch-named nodes.
+        Framework::Zephyr => quote! {
+            // `rust_main` is the only entry symbol Zephyr links. Errors
+            // can't propagate through the C ABI; the bounded-spin path
+            // reports via `::std::println!` on hosted native_sim, and we
+            // drop the `Result` here.
+            #[unsafe(no_mangle)]
+            pub extern "C" fn rust_main() {
+                let _ = __nros_zephyr_entry_run();
+            }
+
+            // native_sim builds for the hosted host triple (x86_64), so
+            // `::std` is linkable there; real embedded boards are
+            // `target_os = "none"` and stay `core`-only. The Entry lib
+            // is `#![no_std]`, so opt std back in explicitly under the
+            // hosted cfg.
+            #[cfg(not(target_os = "none"))]
+            extern crate std;
+
+            #[cfg(not(target_os = "none"))]
+            fn __nros_env_usize(name: &str, default: usize) -> usize {
+                ::std::env::var(name)
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(default)
+            }
+
+            fn __nros_zephyr_entry_run() -> ::core::result::Result<
+                (),
+                ::nros::__macro_support::nros_platform::RuntimeError,
+            > {
+                // Carrier / link-up gate — `ZephyrBoard` impls
+                // `NetworkWait` only (Zephyr's BSP owns init/print/exit).
+                let _ = <#board_path as
+                    ::nros::__macro_support::nros_platform::NetworkWait>::wait_link_up();
+
+                // Open the executor + wrap it in the dispatch runtime, then
+                // register each launch-named Node pkg through a `RuntimeCtx`
+                // — exactly the `<pkg>::register(runtime)?` flow the native
+                // entry uses, so the launch file stays the single source of
+                // truth.
+                let config = ::nros::ExecutorConfig::default_const()
+                    .node_name(::core::env!("CARGO_PKG_NAME"));
+                let executor = ::nros::Executor::open(&config)
+                    .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::Spin)?;
+                let mut node_runtime = ::nros::ExecutorNodeRuntime::from_executor(executor);
+                let mut ctx = ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(
+                    &mut node_runtime,
+                );
+                let runtime = &mut ctx;
+                #( #register_calls )*
+
+                // Bounded spin on hosted native_sim (reuses the OwnedSpin
+                // `NROS_ENTRY_*` observability env + `observed_callback_counts`);
+                // unbounded forever-spin on embedded, or hosted when
+                // `NROS_ENTRY_SPIN_MS` is unset/0.
+                #[cfg(not(target_os = "none"))]
+                {
+                    ::std::println!(
+                        "nros: zephyr workspace entry up ({} nodes)",
+                        #num_register_calls
+                    );
+                    let total_ms = __nros_env_usize("NROS_ENTRY_SPIN_MS", 0);
+                    if total_ms != 0 {
+                        let step_ms = __nros_env_usize("NROS_ENTRY_SPIN_STEP_MS", 10)
+                            .clamp(1, total_ms.max(1));
+                        let expect_messages =
+                            __nros_env_usize("NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS", 0);
+                        let deadline = ::std::time::Instant::now()
+                            + ::std::time::Duration::from_millis(total_ms as u64);
+                        loop {
+                            runtime
+                                .runtime
+                                .spin_once(step_ms as u32)
+                                .map_err(|_| {
+                                    ::nros::__macro_support::nros_platform::RuntimeError::Spin
+                                })?;
+                            let (callbacks, messages) =
+                                runtime.runtime.observed_callback_counts();
+                            if expect_messages > 0 && messages >= expect_messages {
+                                ::std::println!(
+                                    "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
+                                );
+                                return ::core::result::Result::Ok(());
+                            }
+                            if ::std::time::Instant::now() >= deadline {
+                                ::std::println!(
+                                    "nros: hosted spin complete callbacks={callbacks} message_callbacks={messages}"
+                                );
+                                if expect_messages > 0 {
+                                    return ::core::result::Result::Err(
+                                        ::nros::__macro_support::nros_platform::RuntimeError::Spin,
+                                    );
+                                }
+                                return ::core::result::Result::Ok(());
+                            }
+                        }
+                    }
+                }
+
+                // Unbounded fallback — embedded always; hosted when the
+                // bounded-spin env is unset.
+                loop {
+                    let _ = runtime.runtime.spin_once(10);
                 }
             }
         },
@@ -1141,7 +1264,12 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
         }
         "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
         "esp32" => "::nros_board_esp32::Esp32C3",
-        "zephyr" => "::nros_board_zephyr::Zephyr",
+        // Phase 225.P — Zephyr is its own framework (RTOS owns `main`).
+        // `ZephyrBoard` impls `NetworkWait` only (NOT `BoardEntry`); the
+        // macro routes `deploy = "zephyr"` through `framework_for` to the
+        // `Framework::Zephyr` emit shape (`rust_main` staticlib export),
+        // and uses this board path solely for the link-up gate.
+        "zephyr" => "::nros_board_zephyr::ZephyrBoard",
         // Phase 216.B.3 — RTIC + STM32F4 framework-owned-spin board.
         // The board ZST impls `RticBoardEntry` (not `BoardEntry`);
         // the macro routes through `framework_for(deploy)` below to
@@ -1219,12 +1347,22 @@ enum Framework {
     /// `#[embassy_executor::main] async fn main(spawner: Spawner)` body
     /// that delegates to `EmbassyBoardEntry::init_hardware`.
     Embassy,
+    /// Phase 225.P — Zephyr RTOS owns boot + `main`. The macro emits a
+    /// `#[unsafe(no_mangle)] pub extern "C" fn rust_main()` staticlib
+    /// export (consumed by `zephyr-lang-rust`'s `rust_cargo_application`)
+    /// that gates on `ZephyrBoard::wait_link_up`, opens an `Executor`,
+    /// wraps it in `ExecutorNodeRuntime`, registers each launch-named
+    /// Node pkg, then spins — bounded on hosted `native_sim`, forever
+    /// otherwise. There is NO `BoardEntry::run` (Zephyr forbids a Rust
+    /// `fn main`).
+    Zephyr,
 }
 
 fn framework_for(deploy: &str) -> Framework {
     match deploy {
         "rtic-stm32f4" | "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => Framework::Rtic,
         "embassy-stm32f4" => Framework::Embassy,
+        "zephyr" => Framework::Zephyr,
         _ => Framework::OwnedSpin,
     }
 }

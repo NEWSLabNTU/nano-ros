@@ -722,6 +722,69 @@ pub fn get_prebuilt_zephyr_example(
     Ok(binary)
 }
 
+/// Build directory the 225.P workspace-Entry leaf is emitted into by
+/// `scripts/build/zephyr-fixture-leaves.sh` (Approach A — a single
+/// post-matrix leaf, not a role/RMW-decoded alias). The Zephyr Entry
+/// (`examples/workspaces/rust/src/zephyr_entry`) defaults to the zenoh
+/// RMW (`prj.conf;prj-zenoh.conf`), so the native_sim ELF lands at
+/// `<build_root>/build-ws-rs-entry-zenoh/zephyr/zephyr.exe`.
+const ZEPHYR_WORKSPACE_ENTRY_BUILD_DIR: &str = "build-ws-rs-entry-zenoh";
+
+/// Source-tree key handed to [`is_binary_stale`] for the workspace Entry.
+/// It is not a `decode_alias` name (the Entry has no role/RMW alias), so
+/// the decoder falls through to `None` — which makes staleness watch the
+/// whole `examples/workspaces/rust` tree plus every shared core/rmw crate
+/// (never under-watches).
+const ZEPHYR_WORKSPACE_ENTRY_SRC_KEY: &str = "workspaces/rust";
+
+/// Get path to the prebuilt Zephyr **workspace Entry** binary (Phase 225.P).
+///
+/// The workspace Entry is a single Zephyr application that hosts the whole
+/// launch-defined node set — talker *and* listener — in one process
+/// (`nros::main!(launch = "demo_bringup:system.launch.xml")`). It is the
+/// Zephyr sibling of the native / FreeRTOS / ThreadX workspace Entries.
+///
+/// Mirrors [`get_prebuilt_zephyr_example`] but resolves the fixed
+/// workspace-Entry build directory directly — there is no role/RMW alias to
+/// decode. Tests must not build fixtures in their bodies; a missing or stale
+/// binary surfaces a setup error pointing at `just zephyr build-fixtures`.
+///
+/// Only `native_sim` is resolved (the E2E lane runs the host build); other
+/// boards flash the same Entry source but are out of scope for the host test
+/// harness.
+///
+/// # Returns
+/// Path to `build-ws-rs-entry-zenoh/zephyr/zephyr.exe`.
+pub fn get_prebuilt_zephyr_workspace_entry() -> TestResult<PathBuf> {
+    let workspace = zephyr_workspace_path()
+        .ok_or_else(|| TestError::BuildFailed("Zephyr workspace not found".to_string()))?;
+
+    let build_root = zephyr_build_root(&workspace);
+    let binary_path = build_root.join(format!(
+        "{ZEPHYR_WORKSPACE_ENTRY_BUILD_DIR}/zephyr/zephyr.exe"
+    ));
+
+    let binary = crate::fixtures::require_prebuilt_binary(&binary_path).map_err(|_| {
+        TestError::BuildFailed(format!(
+            "Zephyr workspace Entry binary not found: {}\n\
+             Build the workspace fixtures first: `just zephyr build-fixtures`.",
+            binary_path.display()
+        ))
+    })?;
+    if is_binary_stale(&binary, ZEPHYR_WORKSPACE_ENTRY_SRC_KEY) {
+        return Err(TestError::BuildFailed(format!(
+            "Zephyr workspace Entry binary is stale: {}\n\
+             Run `just zephyr build-fixtures` before running Zephyr tests.",
+            binary.display()
+        )));
+    }
+    eprintln!(
+        "Using prebuilt Zephyr workspace Entry binary: {}",
+        binary.display()
+    );
+    Ok(binary)
+}
+
 /// Return true if the built binary is older than the example or shared nros
 /// sources that are linked into Zephyr fixtures.
 /// Whether a `packages/core/<crate>` subdir should be watched for staleness

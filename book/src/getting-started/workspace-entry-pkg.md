@@ -171,6 +171,47 @@ The canonical Rust workspace is at `examples/workspaces/rust/`.
 For Zephyr, QEMU, ESP-IDF, and other non-native targets, use the platform's
 native build/run tool or the focused `just <plat> run` recipe.
 
+## Running on Zephyr
+
+On Zephyr the RTOS framework *is* the workflow: `west build` is the build
+verb, Kconfig selects the RMW, and the Entry is an ordinary Zephyr
+application. There is no `nros build` / `nros launch` build path here, and you
+do not type the RMW as a Cargo `--features` flag or bake the board into the
+package.
+
+```sh
+source ./activate.sh
+
+# Provision message bindings once. This is platform-agnostic workspace
+# provisioning (sibling to `west update` / `rosdep`), NOT a compile step —
+# the same `nros ws sync` output feeds every board and every RMW.
+nros ws sync
+
+# west is the build verb. Choose the board with `-b`, and select the RMW with
+# the matching Kconfig overlay via -DCONF_FILE. The Entry source never changes.
+west build -b native_sim/native/64 src/zephyr_entry \
+    -- -DCONF_FILE="prj.conf;prj-zenoh.conf"
+
+west build -t run            # native_sim; `west flash` for hardware
+```
+
+Swap `-b native_sim/native/64` for any other Zephyr board (`-b nrf52840dk/nrf52840`,
+`-b stm32f4_disco`, …) and `prj-zenoh.conf` for `prj-xrce.conf` /
+`prj-cyclonedds.conf` to pick a different RMW — nothing else changes. **One
+Zephyr Entry pkg (`src/zephyr_entry/`) covers every Zephyr board**: unlike the
+board-specific FreeRTOS / ThreadX Entries, Zephyr owns its board abstraction,
+so the board is chosen at `west build -b` time rather than baked into the
+package (see [One Entry pkg per board](#one-entry-pkg-per-board)).
+
+The Entry source is identical to the native, FreeRTOS, and ThreadX Entries —
+the same one-line launch macro, with the launch file as the single source of
+truth for the node set:
+
+```rust
+// examples/workspaces/rust/src/zephyr_entry/src/lib.rs
+nros::main!(launch = "demo_bringup:system.launch.xml");
+```
+
 ## One Entry pkg per board
 
 Each deploy target gets its own Entry pkg. A workspace that runs on both
@@ -185,6 +226,13 @@ Node pkg library:
 Both reference the same `talker_pkg` and `listener_pkg` Node pkg rlibs. The
 board crate provides the `BoardEntry` impl and any hardware-specific
 initialisation; the Node pkgs are board-agnostic.
+
+**Zephyr is the exception — one Entry per *RTOS*, not per board.** Zephyr
+already owns its board abstraction, so a single `zephyr_entry` covers
+`native_sim`, `nrf52`, `stm32`, `aemv8r`, … with the board chosen at
+`west build -b <board>` time. Contrast FreeRTOS / ThreadX, whose board crates
+are board-specific, so each of those Entries bakes one board. See
+[Running on Zephyr](#running-on-zephyr).
 
 The `examples/stm32f4/rust/talker-embassy/` example demonstrates the
 embedded shape: `deploy = "embassy-stm32f4"` + `nros::main!();` on a

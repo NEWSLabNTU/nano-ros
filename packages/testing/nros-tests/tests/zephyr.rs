@@ -27,8 +27,9 @@ use nros_tests::{
     },
     output, platform,
     zephyr::{
-        ZephyrPlatform, ZephyrProcess, get_prebuilt_zephyr_example, is_zephyr_available,
-        require_zephyr, zephyr_workspace_path,
+        ZephyrPlatform, ZephyrProcess, get_prebuilt_zephyr_example,
+        get_prebuilt_zephyr_workspace_entry, is_zephyr_available, require_zephyr,
+        zephyr_workspace_path,
     },
 };
 use std::{path::PathBuf, time::Duration};
@@ -2825,5 +2826,108 @@ fn test_zephyr_rust_service_e2e() {
     assert!(
         client_out.contains("Response: sum=") || client_out.contains("sum="),
         "zephyr rust zenoh service client got no reply:\n{client_out}"
+    );
+}
+
+// =============================================================================
+// Zephyr workspace Entry E2E (Phase 225.P)
+//
+// The workspace Entry (`examples/workspaces/rust/src/zephyr_entry`) is the
+// Zephyr sibling of the native / FreeRTOS / ThreadX workspace Entries: a
+// SINGLE Zephyr application that hosts the whole launch-defined node set —
+// talker AND listener — in one process via
+// `nros::main!(launch = "demo_bringup:system.launch.xml")`. Built by the
+// 225.P west lane into `build-ws-rs-entry-zenoh` and resolved here through
+// `get_prebuilt_zephyr_workspace_entry()`.
+//
+// Single-session caveat: zenoh does NOT loop a session's own publications
+// back to a subscriber in that same session, so the Entry's in-process
+// listener cannot observe the in-process talker. We therefore assert
+// delivery to a SECOND, EXTERNAL native listener — the same shape as the
+// single-node Zephyr rust pubsub E2E — which is a real cross-process
+// pub/sub observation through generated `std_msgs/Int32` on `/chatter`.
+//
+// The Entry's baked locator + the external listener's `NROS_LOCATOR` + the
+// zenohd router all use the Zephyr rust-pubsub port (7456). The Entry
+// therefore shares that port with the single-node rust pubsub talker and
+// must serialize with it — this test is routed into the
+// `qemu-zephyr-pubsub-rust` nextest group.
+// =============================================================================
+
+/// Zephyr workspace Entry boots on native_sim, brings up its launch node set
+/// (talker + listener in one process), and its `/chatter` publications are
+/// delivered cross-process to an external native listener.
+#[test]
+fn test_zephyr_workspace_entry_native_sim_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+
+    // Resolve the prebuilt workspace-Entry binary. Tests never build
+    // fixtures in-body; a missing/stale image fails fast with a
+    // `just zephyr build-fixtures` hint.
+    let entry_binary = get_prebuilt_zephyr_workspace_entry().expect(
+        "Failed to resolve prebuilt Zephyr workspace Entry — \
+         run `just zephyr build-fixtures` first",
+    );
+    eprintln!("Workspace Entry binary: {}", entry_binary.display());
+
+    // Start zenohd on the Zephyr rust-pubsub port — the Entry's baked
+    // locator points here, and so does the external listener below.
+    let port =
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust);
+    eprintln!("Starting zenohd router on port {port}...");
+    let router = ZenohRouter::start(port).expect("Failed to start zenohd");
+    eprintln!("zenohd locator: {}", router.locator());
+
+    // Build + start an EXTERNAL native listener on the same locator. The
+    // Entry's talker publishes `/chatter`; this listener is the observable
+    // delivery endpoint (the Entry's own in-process listener sees nothing —
+    // no same-session zenoh loopback).
+    let listener_path = build_native_listener().expect("Failed to build native-rs-listener");
+    use nros_tests::process::ManagedProcess;
+    use std::process::Command;
+    let mut listener_cmd = Command::new(listener_path);
+    listener_cmd
+        .env("NROS_LOCATOR", format!("tcp/127.0.0.1:{port}"))
+        .env("RUST_LOG", "info");
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+        .expect("Failed to start listener");
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("native listener did not become ready");
+
+    // Boot the single-process Entry (talker + listener). `ZephyrProcess::Drop`
+    // kills it, so no manual teardown is required on an early panic.
+    eprintln!("Starting Zephyr workspace Entry...");
+    let mut entry = ZephyrProcess::start(&entry_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr workspace Entry");
+
+    // The external listener must log at least one real `Received:` line.
+    let listener_output = listener
+        .wait_for_all_output(Duration::from_secs(15))
+        .expect("Listener timed out");
+    let entry_output = entry
+        .wait_for_output(Duration::from_secs(1))
+        .unwrap_or_default();
+
+    entry.kill();
+    drop(listener);
+    drop(router);
+
+    eprintln!("\n=== Workspace Entry output ===\n{entry_output}");
+    eprintln!("\n=== Native listener output ===\n{listener_output}");
+
+    let received = count_pattern(&listener_output, "Received:");
+    assert!(
+        received >= 1,
+        "Workspace Entry talker delivered no messages to the external native \
+         listener (0 `Received:` lines). The Entry boots talker+listener in one \
+         process; cross-process delivery on `/chatter` is the asserted signal.\n\
+         Entry output:\n{entry_output}\nListener output:\n{listener_output}",
+    );
+
+    eprintln!(
+        "SUCCESS: workspace Entry talker delivered {received} message(s) to the external listener"
     );
 }

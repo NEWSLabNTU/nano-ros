@@ -1,0 +1,108 @@
+# Entry pkg — boots the `demo_bringup` demo topology on Zephyr.
+#
+# Phase 225.P — Zephyr is its own framework: the RTOS owns boot + the C
+# `main`, so this is a `staticlib` exporting `rust_main` (consumed by
+# `zephyr-lang-rust`'s `rust_cargo_application()`), NOT a `[[bin]]`. The
+# Entry source is the same one-line `nros::main!(launch = ...)` the
+# native / freertos / threadx entries use — the macro routes
+# `deploy = "zephyr"` to the `Framework::Zephyr` emit shape that exports
+# `rust_main` instead of a (Zephyr-forbidden) Rust `fn main`.
+#
+# RMW selection flows Kconfig overlay (`prj-<rmw>.conf`) →
+# `CONFIG_NROS_RMW_<X>` → CMakeLists `EXTRA_CARGO_ARGS`
+# (`--no-default-features --features rmw-<x>`); board comes from
+# `west build -b <board>`. The user types no nano-ros build verb.
+#
+# Built by `west build`, NOT plain cargo, so the parent workspace
+# `exclude`s `src/zephyr_entry`. Deliberately has NO `[workspace]` table:
+# the `nros::main!` macro's `detect_workspace_root` must walk UP to the
+# real `examples/workspaces/rust` workspace so its pkg-index can resolve
+# the sibling `talker_pkg` / `listener_pkg` / `demo_bringup`.
+
+[package]
+name = "zephyr_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the demo topology on Zephyr (west app, multi-RMW)."
+
+[lib]
+name = "zephyr_entry"
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["nros/rmw-zenoh", "dep:nros-rmw-zenoh"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys"]
+rmw-xrce = ["nros/rmw-xrce", "dep:nros-rmw-xrce-cffi", "dep:heapless"]
+
+# Entry pkg metadata — `deploy = "zephyr"` routes the `nros::main!()`
+# proc-macro onto the `Framework::Zephyr` emit branch and feeds
+# `nros check`.
+[package.metadata.nros.entry]
+deploy = "zephyr"
+
+[package.metadata.nros.deploy.zephyr]
+board = "native_sim/native/64"
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:7456"
+
+[package.metadata.ament]
+exec_depend = ["talker_pkg", "listener_pkg", "demo_bringup"]
+
+[dependencies]
+zephyr = "0.1.0"
+log = "0.4"
+
+# Single `nros` dep — `platform-zephyr` + `alloc` (no `std`; Zephyr is
+# a `no_std` target). RMW backend wired per build via the features above.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-zephyr",
+    "ros-humble",
+] }
+
+# Zephyr family board — supplies `ZephyrBoard` (NetworkWait link-up gate;
+# the macro uses it for the carrier gate only, NOT BoardEntry).
+nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr" }
+
+# Optional RMW backends — exactly one enabled per build (Kconfig overlay
+# drives the feature selection).
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-zephyr",
+    "ros-humble",
+], optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
+nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
+
+# XRCE locator built from Kconfig at runtime via heapless::String.
+heapless = { version = "0.8", optional = true }
+
+# Node pkg rlibs — the launch XML names `talker` + `listener`, so the
+# macro emits `talker_pkg::register` + `listener_pkg::register`; the
+# staticlib must link both. Each selects the `zephyr` platform feature.
+talker_pkg = { path = "../talker_pkg", default-features = false, features = ["zephyr"] }
+listener_pkg = { path = "../listener_pkg", default-features = false, features = ["zephyr"] }
+
+[build-dependencies]
+zephyr-build = "0.1.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false
+
+# Message-binding + intra-repo crate resolution. Because this Entry is
+# `exclude`d from the parent workspace, it builds standalone and does NOT
+# inherit the parent's `[patch.crates-io]`. The generated message crates
+# live at the workspace-root `generated/` dir (provisioned once by
+# `nros ws sync` at `examples/workspaces/rust/`); reference them from one
+# level up (`../../generated`). nros-core / nros-serdes are patched to the
+# in-repo crates the generated message crates depend on via `version = "*"`.
+[patch.crates-io]
+builtin_interfaces = { path = "../../generated/builtin_interfaces" }
+std_msgs = { path = "../../generated/std_msgs" }
+nros-core = { path = "../../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }

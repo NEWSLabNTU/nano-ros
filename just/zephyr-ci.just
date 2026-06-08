@@ -197,6 +197,20 @@ build-fixtures:
         echo "  fixture-filter: $fixture_filter"
     fi
 
+    # Phase 225.P.6 — workspace-Entry (Approach A) prep. Provision the
+    # workspace message bindings + system bringup glue from the workspace
+    # ROOT (not the per-package `examples/zephyr/rust/*` loop above),
+    # mirroring the native lane in scripts/build/workspace-fixtures-build.sh.
+    # `nros ws sync` is the platform-agnostic codegen step; `codegen-system`
+    # materializes the demo_bringup glue. The west build of the Entry leaf
+    # (emitted below via --include-workspace-entry) consumes these.
+    if [ -d examples/workspaces/rust/src/zephyr_entry ]; then
+        echo "  → workspace-entry prep (nros ws sync + codegen-system)"
+        ( cd examples/workspaces/rust
+          NROS_REPO_DIR="$nros_root" "$nros_cli" ws sync >/dev/null
+          NROS_REPO_DIR="$nros_root" "$nros_cli" codegen-system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
+    fi
+
     zephyr_leaf_args=(
         --zephyr-version "{{NROS_ZEPHYR_VERSION}}"
         --nros-root "$nros_root"
@@ -207,6 +221,9 @@ build-fixtures:
         --sccache-disable "$sccache_disable"
         --pristine "$pristine"
     )
+    if [ -d examples/workspaces/rust/src/zephyr_entry ]; then
+        zephyr_leaf_args+=(--include-workspace-entry)
+    fi
     if [ -n "$fixture_filter" ]; then
         zephyr_leaf_args+=(--filter "$fixture_filter")
     fi

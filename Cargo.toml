@@ -307,6 +307,14 @@ exclude = [
     # carve-out (one-board-one-RMW reference, mirroring the cpp side's
     # `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`).
     "examples/zephyr/rust/cyclonedds/talker-aemv8r",
+    # Phase 225.P — Zephyr workspace Entry (a `west build` staticlib app).
+    # It lives INSIDE the nested `examples/workspaces/rust` workspace but
+    # is `exclude`d from it (built by west, not plain cargo) and carries
+    # NO own `[workspace]` table (so the `nros::main!` macro's pkg-index
+    # still resolves the sibling node pkgs against that nested workspace
+    # root). Without this repo-root exclude, cargo's workspace walker
+    # would otherwise leak it up to the repo-root workspace and error.
+    "examples/workspaces/rust/src/zephyr_entry",
     # `examples/zephyr/rust/service-client-async` dropped 2026-06-02 per
     # Phase 212.M-F.5 — pending async-`Component` trait decision.
     # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)

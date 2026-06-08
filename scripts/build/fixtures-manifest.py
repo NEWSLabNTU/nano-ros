@@ -75,6 +75,9 @@ def workspace_record(entry):
     # workspace record:
     # <id>\x1f<lang>\x1f<dir>\x1f<bringup>\x1f<entry>\x1f<build-subdir>
     # \x1f<target-dir>\x1f<codegen-out>\x1f<cmake -D defs>\x1f<env>\x1f<cargo-args>
+    # \x1f<board>\x1f<conf-files>
+    # board/conf_files are zephyr-only; non-zephyr rows emit empty strings so the
+    # field count stays uniform (13 columns).
     return SEP.join(
         [
             entry["id"],
@@ -88,6 +91,8 @@ def workspace_record(entry):
             cmake_defs(entry),
             env_str(entry),
             cargo_args(entry, include_target_dir=False),
+            entry.get("board", ""),
+            ";".join(entry.get("conf_files", [])),
         ]
     )
 
@@ -179,6 +184,33 @@ def _validate_rust_workspace(entry, root, entry_dir):
     _require_file(entry, entry_dir / "Cargo.toml", "entry Cargo.toml")
 
 
+def _validate_zephyr_workspace(entry, root, entry_dir):
+    # A Zephyr west app is neither a cargo member nor a plain
+    # add_executable/add_library target — it is driven by
+    # find_package(Zephyr) + project() and links the entry via
+    # rust_cargo_application() (Rust) or target_sources(app ...) (C/C++).
+    entry_cmake = entry_dir / "CMakeLists.txt"
+    _require_file(entry, entry_cmake, "entry CMakeLists.txt")
+
+    text = entry_cmake.read_text(encoding="utf-8")
+    if "project(" not in text:
+        _fail(entry, "entry CMakeLists.txt does not call project(...)")
+    has_rust_app = "rust_cargo_application" in text
+    has_app_sources = bool(
+        re.search(r"\btarget_sources\s*\(\s*app\b", text, re.DOTALL)
+    )
+    if not (has_rust_app or has_app_sources):
+        _fail(
+            entry,
+            "entry CMakeLists.txt does not link a Zephyr app "
+            "(expected rust_cargo_application() or target_sources(app ...))",
+        )
+
+    _require_file(entry, entry_dir / "prj.conf", "entry prj.conf")
+    for name in entry.get("conf_files", []):
+        _require_file(entry, entry_dir / name, f"conf file {name}")
+
+
 def _validate_cmake_workspace(entry, root, entry_dir):
     root_cmake = root / "CMakeLists.txt"
     entry_cmake = entry_dir / "CMakeLists.txt"
@@ -204,6 +236,10 @@ def validate_workspace_fixture(entry):
     if lang not in ("rust", "c", "cpp", "mixed"):
         _fail(entry, f"unsupported workspace fixture lang {lang!r}")
 
+    platform = entry["platform"]
+    if platform == "zephyr" and not entry.get("board"):
+        _fail(entry, "missing required key 'board' for zephyr workspace fixture")
+
     root = Path(entry["dir"])
     _require_dir(entry, root, "workspace dir")
 
@@ -226,7 +262,9 @@ def validate_workspace_fixture(entry):
     _require_dir(entry, entry_dir, "entry dir")
     _require_file(entry, entry_dir / "package.xml", "entry package.xml")
 
-    if lang == "rust":
+    if platform == "zephyr":
+        _validate_zephyr_workspace(entry, root, entry_dir)
+    elif lang == "rust":
         _validate_rust_workspace(entry, root, entry_dir)
     else:
         _validate_cmake_workspace(entry, root, entry_dir)

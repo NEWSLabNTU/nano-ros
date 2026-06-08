@@ -1,0 +1,24 @@
+# Phase 225.P — nano-ros Rust workspace Entry as a Zephyr sample
+# (Twister-discoverable). Boots the two-node demo_bringup topology
+# (talker + listener) from a single launch file.
+sample:
+  name: nano-ros Rust Workspace Entry
+  description: nano-ros two-node (talker + listener) workspace Entry on Zephyr, zenoh RMW
+common:
+  tags:
+    - nano-ros
+    - nros
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "nros: zephyr workspace entry up"
+tests:
+  sample.nano-ros.rust.workspace-entry.zenoh:
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    extra_args:
+      - SNIPPET=nros-zenoh

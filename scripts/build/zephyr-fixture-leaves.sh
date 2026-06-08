@@ -31,6 +31,7 @@ Options:
   --filter REGEX            filter against "board build_dir src conf_files id"
                             (default: $NROS_ZEPHYR_FIXTURE_FILTER)
   --include-logging-smoke   also emit the Zephyr logging-smoke image leaf
+  --include-workspace-entry also emit the Zephyr workspace-Entry leaf
   -h, --help                show this help
 
 Record fields:
@@ -54,6 +55,7 @@ sccache_disable="${NROS_ZEPHYR_SCCACHE_DISABLE:-0}"
 pristine="${NROS_ZEPHYR_PRISTINE:-auto}"
 fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
 include_logging_smoke=0
+include_workspace_entry=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -109,6 +111,9 @@ while [ "$#" -gt 0 ]; do
             ;;
         --include-logging-smoke)
             include_logging_smoke=1
+            ;;
+        --include-workspace-entry)
+            include_workspace_entry=1
             ;;
         -h|--help)
             usage
@@ -375,6 +380,58 @@ if [ "$include_logging_smoke" = "1" ]; then
             "$nros_root/packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim" \
             "$build_name" "$build_dir" "$log_dir/${build_name}.log" "" "" "" "" "" "" \
             "$build_dir/.nros-zephyr-fixture.sig" 0 "$pristine"
+    fi
+fi
+
+# Phase 225.P.6 — workspace-Entry leaf (Approach A). Constructed directly,
+# bypassing variant_offset_for_role (role="entry" is unknown to it). The
+# proven zephyr-fixture-run-one.sh west path builds it unchanged from the
+# Zephyr application dir at examples/workspaces/rust/src/zephyr_entry. The
+# Entry is a rust+pubsub workload, so it bakes the same Zephyr rust-pubsub
+# locator (port 7456 = 7456 + lang_offset 0 + variant_offset 0) the E2E
+# test's zenohd router listens on. It therefore shares that port with the
+# single-node rust pubsub talker and MUST serialize with it — the E2E test
+# is routed into the `qemu-zephyr-pubsub-rust` nextest group.
+if [ "$include_workspace_entry" = "1" ]; then
+    ws_board="native_sim/native/64"
+    ws_lang="rust"
+    ws_lang_tag="rs"
+    ws_role="entry"
+    ws_rmw="zenoh"
+    ws_build_name="build-ws-rs-entry-zenoh"
+    ws_build_dir="$build_root/$ws_build_name"
+    ws_src="workspaces/rust/src/zephyr_entry"
+    ws_src_dir="$nros_root/examples/$ws_src"
+    ws_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
+    ws_zenoh_locator="tcp/127.0.0.1:7456"
+    ws_id="zephyr/native_sim/native/64/workspace-entry"
+    ws_target="fixture/zephyr/native_sim/native/64/workspace-entry"
+    ws_filter_haystack="$ws_board $ws_build_name $ws_src $ws_conf_files $ws_id"
+    if [ -z "$fixture_filter" ] || [[ "$ws_filter_haystack" =~ $fixture_filter ]]; then
+        selected=$((selected + 1))
+        ws_extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+        ws_extra_cmake_defs="$ws_extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$ws_zenoh_locator\""
+        ws_extra_cmake_defs="$ws_extra_cmake_defs -DCONF_FILE=$ws_conf_files"
+        ws_sccache_launcher=0
+        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            ws_sccache_launcher=1
+            ws_extra_cmake_defs="$ws_extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        fi
+        ws_sig_file="$ws_build_dir/.nros-zephyr-fixture.sig"
+        ws_sig="$(printf '%s\n' \
+            "board=$ws_board" \
+            "src=$ws_src" \
+            "xrce_port=" \
+            "conf_files=$ws_conf_files" \
+            "zenoh_locator=$ws_zenoh_locator" \
+            "codegen_tool=$codegen_tool" \
+            "toolchain_cache_dir=$toolchain_cache_dir" \
+            "make=$make_bin" \
+            "sccache_launcher=$ws_sccache_launcher")"
+        emit_record fixture "$ws_id" "$ws_target" "$ws_board" "$ws_lang" "$ws_lang_tag" "$ws_role" "$ws_rmw" \
+            "$ws_src" "$ws_src_dir" "$ws_build_name" "$ws_build_dir" "$log_dir/${ws_build_name}.log" "" \
+            "$ws_zenoh_locator" "" "$ws_conf_files" "$ws_extra_cmake_defs" \
+            "$ws_sig" "$ws_sig_file" 0 "$pristine"
     fi
 fi
 

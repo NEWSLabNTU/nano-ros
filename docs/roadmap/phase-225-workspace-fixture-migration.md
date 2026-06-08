@@ -963,11 +963,11 @@ the proven `zephyr-fixture-run-one.sh` west path builds it unchanged.
 
 Work items:
 
-- [ ] **P.1 Node-pkg feature.** Add `zephyr = ["nros/alloc",
+- [x] **P.1 Node-pkg feature.** Add `zephyr = ["nros/alloc",
   "nros/rmw-cffi", "nros/platform-zephyr", "nros/ros-humble"]` to
   `examples/workspaces/rust/src/{talker_pkg,listener_pkg}/Cargo.toml`
   (node bodies already board-agnostic — no body changes).
-- [ ] **P.2 Macro `zephyr` framework branch.** In
+- [x] **P.2 Macro `zephyr` framework branch.** In
   `packages/core/nros-macros/src/main_macro.rs`: add `zephyr` to
   `framework_for(deploy)`; emit `#[unsafe(no_mangle)] pub extern "C" fn
   rust_main()` that waits for network, opens an `Executor`, wraps it in
@@ -979,7 +979,7 @@ Work items:
   not `BoardEntry`). Reuse the single-node
   `nros::zephyr_component_main!` body (`packages/core/nros/src/lib.rs`)
   as the reference.
-- [ ] **P.3 Entry crate.** Create
+- [x] **P.3 Entry crate.** Create
   `examples/workspaces/rust/src/zephyr_entry/`: `Cargo.toml` (`[lib]
   crate-type=["staticlib","rlib"]`, `[package.metadata.nros.deploy.zephyr]`,
   deps `nros`+`platform-zephyr`, `nros-board-zephyr`,
@@ -992,9 +992,9 @@ Work items:
   + `build.rs` + `sample.yaml` + `package.xml` + `.gitignore`. Add
   `exclude = ["src/zephyr_entry"]` to the root `Cargo.toml` (keep it out
   of `members` — built by west, not plain cargo).
-- [ ] **P.4 Bringup.** Add a `[deploy.zephyr]` block to
+- [x] **P.4 Bringup.** Add a `[deploy.zephyr]` block to
   `src/demo_bringup/system.toml` if deploy resolution needs it.
-- [ ] **P.5 Manifest.** `examples/fixtures.toml`: add `board` +
+- [x] **P.5 Manifest.** `examples/fixtures.toml`: add `board` +
   `conf_files` to the schema comment and a `[[workspace_fixture]]
   id="workspace-rust-zephyr" platform="zephyr" board="native_sim/native/64"
   conf_files=["prj.conf","prj-zenoh.conf"]` row.
@@ -1005,7 +1005,7 @@ Work items:
   `validate_workspace_fixture` (the existing rust/cmake branches reject a
   west app); extend `workspace_record` with `board` + `conf_files`
   columns (11→13) and the `list-workspaces` consumer reads.
-- [ ] **P.6 Build lane (Approach A).**
+- [x] **P.6 Build lane (Approach A).**
   `scripts/build/zephyr-fixture-leaves.sh`: emit a workspace-Entry leaf
   after the matrix loop (unique `build_dir`, e.g. `build-ws-rs-entry-zenoh`;
   direct record construction, not via `variant_offset_for_role`).
@@ -1013,7 +1013,7 @@ Work items:
   sync` + `nros codegen-system --bringup src/demo_bringup` prep before
   scheduling. `zephyr-fixture-run-one.sh` + `zephyr-fixture-make-driver.sh`:
   no change (record-driven).
-- [ ] **P.7 E2E.** Add `get_prebuilt_zephyr_workspace_entry()` to
+- [x] **P.7 E2E.** Add `get_prebuilt_zephyr_workspace_entry()` to
   `packages/testing/nros-tests/src/zephyr.rs` (resolve
   `build-ws-rs-entry-zenoh/zephyr/zephyr.exe`); add a test in
   `tests/zephyr.rs` that starts it and asserts boot banner + both nodes
@@ -1021,7 +1021,7 @@ Work items:
   receive its own session's publish over zenoh — assert publish +
   registration, or run an external listener). Fail-fast with a "build
   workspace fixtures first" hint when the binary is absent.
-- [ ] **P.8 Docs.** Update `book/src/getting-started/workspace-entry-pkg.md`
+- [x] **P.8 Docs.** Update `book/src/getting-started/workspace-entry-pkg.md`
   + `examples/workspaces/README.md` with the Zephyr `west build` flow +
   the `nros ws sync` provisioning step.
 
@@ -1035,6 +1035,29 @@ Acceptance:
   same west path; the E2E test runs the prebuilt `zephyr.exe` directly.
 - RMW is selected by Kconfig overlay, board by `west build -b`, and the
   user types no nano-ros-specific build verb.
+
+Status (2026-06-08): P.1–P.8 implemented via a four-agent wave and
+**statically verified** in a toolchain-free checkout — `cargo check
+-p nros-macros` (the `zephyr` framework branch in `main_macro.rs`),
+`cargo check -p talker_pkg --features zephyr`, `cargo check -p nros-tests
+--tests` (helper + reshaped E2E), root `cargo metadata` (the
+`zephyr_entry` exclude), `fixtures-manifest.py validate-workspaces
+--platform zephyr` → "validated 1", `list-workspaces --platform native`
+unchanged, and `bash -n` over the build scripts all pass. A cross-agent
+locator-port inconsistency was reconciled to the Zephyr rust-pubsub port
+7456 (leaf bake + E2E router + external-listener `NROS_LOCATOR`), and the
+E2E was reshaped from a single-process self-check to the canonical
+external native-listener pattern (asserts real cross-process `/chatter`
+`std_msgs/Int32` delivery, matching the single-node pubsub E2E), with the
+test routed into the serial `qemu-zephyr-pubsub-rust` nextest group.
+**Pending Zephyr toolchain** (not provisioned in this checkout — needs
+`just zephyr setup`): the actual `west build` of `zephyr_entry` on
+native_sim and the E2E run, plus one untested link seam — whether the
+bounded-spin block's `extern crate std` (emitted under `cfg(not(target_os
+= "none"))` for the hosted native_sim target) links cleanly alongside
+zephyr-lang-rust without a duplicate panic handler / global allocator.
+Until that build+E2E passes the 225.O Zephyr Entry checkbox stays
+unchecked.
 
 ---
 
