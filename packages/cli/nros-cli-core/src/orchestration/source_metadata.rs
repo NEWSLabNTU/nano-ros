@@ -29,6 +29,12 @@ pub enum ComponentLanguage {
 #[serde(deny_unknown_fields)]
 pub struct SourceNode {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_default_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SourceLocation>,
     pub unresolved_name: SourceName,
     pub namespace: Option<String>,
     pub publishers: Vec<SourcePublisher>,
@@ -42,6 +48,8 @@ pub struct SourceNode {
 #[serde(deny_unknown_fields)]
 pub struct SourcePublisher {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
     pub unresolved_topic: SourceName,
     pub interface: InterfaceRef,
     pub qos: QosProfile,
@@ -51,44 +59,66 @@ pub struct SourcePublisher {
 #[serde(deny_unknown_fields)]
 pub struct SourceSubscriber {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
     pub unresolved_topic: SourceName,
     pub interface: InterfaceRef,
     pub qos: QosProfile,
     pub callback: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub callback_slot: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceTimer {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
     pub period_ms: u64,
     pub callback: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub callback_slot: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceService {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
     pub unresolved_name: SourceName,
     pub interface: InterfaceRef,
     pub callback: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub callback_slot: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceAction {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
     pub unresolved_name: SourceName,
     pub interface: InterfaceRef,
     pub goal_callback: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal_callback_slot: Option<u32>,
     pub cancel_callback: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel_callback_slot: Option<u32>,
     pub accepted_callback: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_callback_slot: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceCallback {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
     pub kind: CallbackKind,
     pub group: Option<String>,
     pub effects: Vec<CallbackEffect>,
@@ -112,6 +142,8 @@ pub struct CallbackEffect {
     pub kind: CallbackEffectKind,
     /// Source entity ID affected by the callback.
     pub entity: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_slot: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,6 +163,8 @@ pub enum CallbackEffectKind {
 #[serde(deny_unknown_fields)]
 pub struct SourceParameter {
     pub node: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
     pub name: String,
     pub default: ParameterValue,
     pub read_only: bool,

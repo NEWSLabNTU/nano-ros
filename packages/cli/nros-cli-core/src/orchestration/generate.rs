@@ -3804,44 +3804,36 @@ fn find_callback_entity<'a>(
 fn entity_matches_callback_text(entity: &PlanEntity, source_callback: &str) -> bool {
     let text = match entity {
         PlanEntity::Publisher {
-            id,
             source_entity,
             resolved_name,
             ..
         }
         | PlanEntity::Subscriber {
-            id,
             source_entity,
             resolved_name,
             ..
         }
         | PlanEntity::ServiceServer {
-            id,
             source_entity,
             resolved_name,
             ..
         }
         | PlanEntity::ServiceClient {
-            id,
             source_entity,
             resolved_name,
             ..
         }
         | PlanEntity::ActionServer {
-            id,
             source_entity,
             resolved_name,
             ..
         }
         | PlanEntity::ActionClient {
-            id,
             source_entity,
             resolved_name,
             ..
-        } => format!("{id} {source_entity} {resolved_name}"),
-        PlanEntity::Timer {
-            id, source_entity, ..
-        } => format!("{id} {source_entity}"),
+        } => format!("{source_entity} {resolved_name}"),
+        PlanEntity::Timer { source_entity, .. } => source_entity.clone(),
     };
     source_callback
         .trim_start_matches("cb_")
@@ -3852,10 +3844,26 @@ fn entity_matches_callback_text(entity: &PlanEntity, source_callback: &str) -> b
 
 fn entity_callback_id(entity: &PlanEntity) -> Option<&str> {
     match entity {
-        PlanEntity::Subscriber { id, callback, .. } => callback.as_deref().or(Some(id.as_str())),
-        PlanEntity::Timer { id, callback, .. } => callback.as_deref().or(Some(id.as_str())),
-        PlanEntity::ServiceServer { id, callback, .. } => callback.as_deref().or(Some(id.as_str())),
-        PlanEntity::ActionServer { id, callback, .. } => callback.as_deref().or(Some(id.as_str())),
+        PlanEntity::Subscriber {
+            source_entity,
+            callback,
+            ..
+        }
+        | PlanEntity::Timer {
+            source_entity,
+            callback,
+            ..
+        }
+        | PlanEntity::ServiceServer {
+            source_entity,
+            callback,
+            ..
+        }
+        | PlanEntity::ActionServer {
+            source_entity,
+            callback,
+            ..
+        } => callback.as_deref().or(Some(source_entity.as_str())),
         _ => None,
     }
 }
@@ -4345,6 +4353,88 @@ mod net_fragment_tests {
         let mut plan: NrosPlan = serde_json::from_value(plan).expect("plan parses");
         plan.build.workspace_root = Some(test_workspace_root());
         plan
+    }
+
+    fn timer_entity(id: &str, source_entity: &str, callback: Option<&str>) -> PlanEntity {
+        let mut value = serde_json::json!({
+            "role": "timer",
+            "id": id,
+            "source_entity": source_entity,
+            "period_ms": 100,
+            "trace": {
+                "source_artifact": { "artifact": "source.rs", "line": null, "column": null },
+                "manifest_endpoint": null
+            }
+        });
+        if let Some(callback) = callback {
+            value
+                .as_object_mut()
+                .expect("timer entity is an object")
+                .insert("callback".to_string(), serde_json::json!(callback));
+        }
+        serde_json::from_value(value).expect("timer entity parses")
+    }
+
+    #[test]
+    fn generated_plan_entity_id_is_not_callback_fallback() {
+        let entity = timer_entity("launch.0/entity.7", "heartbeat_timer", None);
+        assert_eq!(entity_callback_id(&entity), Some("heartbeat_timer"));
+        assert_ne!(entity_callback_id(&entity), Some("launch.0/entity.7"));
+        assert!(
+            !entity_matches_callback_text(&entity, "cb_entity"),
+            "generated plan id text must not drive callback matching"
+        );
+    }
+
+    #[test]
+    fn explicit_generated_callback_id_can_still_bind_entity() {
+        let instance: PlanInstance = serde_json::from_value(serde_json::json!({
+            "id": "launch.0",
+            "component": "demo::talker",
+            "package": "demo",
+            "executable": "talker",
+            "launch_name": "talker",
+            "namespace": "/",
+            "remaps": [],
+            "nodes": [{
+                "id": "launch.0/node.0",
+                "source_node": "talker_node",
+                "resolved_name": "/talker",
+                "namespace": "/",
+                "entities": [{
+                    "role": "timer",
+                    "id": "launch.0/entity.0",
+                    "source_entity": "tick_timer",
+                    "callback": "launch.0/callback.0",
+                    "period_ms": 100,
+                    "trace": {
+                        "source_artifact": { "artifact": "source.rs", "line": null, "column": null },
+                        "manifest_endpoint": null
+                    }
+                }]
+            }],
+            "callbacks": [{
+                "id": "launch.0/callback.0",
+                "source_callback": "cb_tick",
+                "group": "default",
+                "sched_context": "default_executor",
+                "source": { "artifact": "source.rs", "line": null, "column": null }
+            }],
+            "parameters": [],
+            "sched_bindings": [],
+            "trace": { "launch_record_entity": "launch.json#0", "source_metadata": "source-metadata.json" }
+        }))
+        .expect("instance parses");
+
+        let callback = &instance.callbacks[0];
+        let (node_id, entity) = find_callback_entity(
+            &instance,
+            callback.id.as_str(),
+            callback.source_callback.as_str(),
+        )
+        .expect("generated callback id binds entity");
+        assert_eq!(node_id, "launch.0/node.0");
+        assert!(matches!(entity, PlanEntity::Timer { .. }));
     }
 
     #[test]

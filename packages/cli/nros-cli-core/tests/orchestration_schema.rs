@@ -6,6 +6,7 @@ use nros_cli_core::orchestration::{
     schema::{COMPONENT_CONFIG_VERSION, PLAN_VERSION, SOURCE_METADATA_VERSION},
 };
 use serde::{Serialize, de::DeserializeOwned};
+use serde_json::json;
 
 fn assert_json_fixture<T>(raw: &str) -> T
 where
@@ -59,6 +60,58 @@ fn source_metadata_json_round_trips() {
         "chatter"
     );
     assert_eq!(metadata.nodes[0].timers[0].callback, "cb_timer");
+}
+
+#[test]
+fn source_metadata_generated_id_fields_round_trip() {
+    let mut value: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/orchestration/source_metadata_talker.json"
+    ))
+    .expect("fixture parses as JSON value");
+
+    let node = &mut value["nodes"][0];
+    node["declaration_slot"] = json!(0);
+    node["source_default_name"] = json!("talker");
+    node["source"] = json!({
+        "artifact": "src/talker.rs",
+        "line": 12,
+        "column": 3
+    });
+    node["publishers"][0]["declaration_slot"] = json!(0);
+    node["timers"][0]["declaration_slot"] = json!(1);
+    node["timers"][0]["callback_slot"] = json!(0);
+    node["services"][0]["declaration_slot"] = json!(2);
+    node["services"][0]["callback_slot"] = json!(1);
+    node["actions"][0]["declaration_slot"] = json!(3);
+    node["actions"][0]["goal_callback_slot"] = json!(2);
+    node["actions"][0]["cancel_callback_slot"] = json!(3);
+    node["actions"][0]["accepted_callback_slot"] = json!(4);
+    value["callbacks"][0]["declaration_slot"] = json!(0);
+    value["callbacks"][0]["effects"][0]["entity_slot"] = json!(0);
+    value["parameters"][0]["declaration_slot"] = json!(4);
+
+    let raw = serde_json::to_string_pretty(&value).expect("formats modified source metadata");
+    let metadata: SourceMetadata =
+        serde_json::from_str(&raw).expect("new generated-ID fields parse");
+
+    let node = &metadata.nodes[0];
+    assert_eq!(node.declaration_slot, Some(0));
+    assert_eq!(node.source_default_name.as_deref(), Some("talker"));
+    assert_eq!(
+        node.source.as_ref().map(|source| source.artifact.as_str()),
+        Some("src/talker.rs")
+    );
+    assert_eq!(node.timers[0].callback_slot, Some(0));
+    assert_eq!(node.actions[0].accepted_callback_slot, Some(4));
+    assert_eq!(metadata.callbacks[0].declaration_slot, Some(0));
+    assert_eq!(metadata.callbacks[0].effects[0].entity_slot, Some(0));
+    assert_eq!(metadata.parameters[0].declaration_slot, Some(4));
+
+    let reparsed: SourceMetadata = serde_json::from_str(
+        &serde_json::to_string_pretty(&metadata).expect("source metadata formats"),
+    )
+    .expect("formatted source metadata parses");
+    assert_eq!(reparsed, metadata);
 }
 
 #[test]
@@ -226,6 +279,68 @@ fn plan_fixtures_keep_traceability_context() {
             assert!(!binding.source.is_empty());
         }
     }
+}
+
+#[test]
+fn plan_generated_id_provenance_fields_round_trip() {
+    let mut value: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/orchestration/plan_pub_sub.json"))
+            .expect("fixture parses as JSON value");
+
+    let instance = &mut value["instances"][0];
+    instance["launch_instance"] = json!({
+        "index": 0,
+        "record_entity": "record://nodes/0",
+        "package": "demo_nodes_rs",
+        "executable": "talker",
+        "launch_name": "talker"
+    });
+
+    let node = &mut instance["nodes"][0];
+    node["source_default_name"] = json!("talker");
+    node["declaration_slot"] = json!(0);
+    node["source"] = json!({
+        "artifact": "src/talker.rs",
+        "line": 12,
+        "column": 3
+    });
+
+    node["entities"][0]["trace"]["declaration_slot"] = json!(0);
+    instance["callbacks"][0]["declaration_slot"] = json!(0);
+
+    let raw = serde_json::to_string_pretty(&value).expect("formats modified plan");
+    let plan: NrosPlan = serde_json::from_str(&raw).expect("new provenance fields parse");
+
+    let launch = plan.instances[0]
+        .launch_instance
+        .as_ref()
+        .expect("launch provenance present");
+    assert_eq!(launch.index, Some(0));
+    assert_eq!(launch.package.as_deref(), Some("demo_nodes_rs"));
+    assert_eq!(launch.executable.as_deref(), Some("talker"));
+
+    let planned_node = &plan.instances[0].nodes[0];
+    assert_eq!(planned_node.source_default_name.as_deref(), Some("talker"));
+    assert_eq!(planned_node.declaration_slot, Some(0));
+    assert_eq!(
+        planned_node
+            .source
+            .as_ref()
+            .map(|source| source.artifact.as_str()),
+        Some("src/talker.rs")
+    );
+
+    let PlanEntity::Publisher { trace, .. } = &planned_node.entities[0] else {
+        panic!("first entity should be publisher");
+    };
+    assert_eq!(trace.declaration_slot, Some(0));
+    assert_eq!(plan.instances[0].callbacks[0].declaration_slot, Some(0));
+
+    let reparsed: NrosPlan = serde_json::from_str(
+        &serde_json::to_string_pretty(&plan).expect("provenance plan formats"),
+    )
+    .expect("formatted provenance plan parses");
+    assert_eq!(reparsed, plan);
 }
 
 #[test]

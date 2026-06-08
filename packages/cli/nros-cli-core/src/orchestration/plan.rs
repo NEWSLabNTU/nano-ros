@@ -140,7 +140,10 @@ pub struct PlanInstance {
     /// for a `<composable_node>` / `<load_composable_node>` child.
     /// Additive on the schema: defaults to `"node"` so pre-211.B plans
     /// round-trip unchanged.
-    #[serde(default = "PlanInstance::default_kind")]
+    #[serde(
+        default = "PlanInstance::default_kind",
+        skip_serializing_if = "PlanInstance::is_default_kind"
+    )]
     pub kind: String,
     /// Phase 211.B — when `kind == "composable_node"`, the id of the
     /// parent container instance (the `<node_container>` that hosts
@@ -150,12 +153,19 @@ pub struct PlanInstance {
     /// unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub container_id: Option<String>,
+    /// Phase 225.N — optional launch-instance provenance used by generated-ID
+    /// planning. The legacy `trace.launch_record_entity` string remains the
+    /// compact required breadcrumb; this richer shape lets later planners carry
+    /// a launch declaration index and the resolved package/exec/name tuple
+    /// without changing existing plan fixtures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_instance: Option<PlanLaunchInstance>,
     pub remaps: Vec<RemapRule>,
     /// Phase 211.E — `<set_env>` / `<env>` declarations the launch attached
     /// to this instance. Empty when nothing is declared. Additive on the
     /// schema: `#[serde(default)]` so existing nros-plan.json files written
     /// before the field was emitted round-trip unchanged.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env: Vec<EnvDecl>,
     pub nodes: Vec<PlanNode>,
     pub callbacks: Vec<PlanCallback>,
@@ -168,6 +178,10 @@ impl PlanInstance {
     fn default_kind() -> String {
         "node".to_string()
     }
+
+    fn is_default_kind(kind: &str) -> bool {
+        kind == "node"
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -175,6 +189,25 @@ impl PlanInstance {
 pub struct InstanceTrace {
     pub launch_record_entity: String,
     pub source_metadata: String,
+}
+
+/// Phase 225.N — source launch row that produced a planned instance. All
+/// fields are optional because older parser records only expose
+/// `InstanceTrace::launch_record_entity`; newer launch parsers can fill a
+/// declaration index and raw ROS launch selectors.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanLaunchInstance {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_entity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_name: Option<String>,
 }
 
 /// Phase 211.E — a non-rmw command the deploy stage spawns alongside the
@@ -216,6 +249,19 @@ pub struct ExecutableTrace {
 pub struct PlanNode {
     pub id: String,
     pub source_node: String,
+    /// Phase 225.N — source-authored fallback ROS graph name. Launch `name=`
+    /// still overrides it; this field lets the planner/auditor explain when a
+    /// launch instance omitted `name=` and fell back to source metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_default_name: Option<String>,
+    /// Phase 225.N — declaration-order slot local to the source metadata
+    /// artifact. Future generated IDs are assigned from launch instance +
+    /// declaration slot, not user-authored stable strings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
+    /// Phase 225.N — source declaration location for generated-ID diagnostics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SourceLocation>,
     pub resolved_name: String,
     pub namespace: String,
     pub entities: Vec<PlanEntity>,
@@ -300,6 +346,11 @@ pub enum PlanEntity {
 pub struct EntityTrace {
     pub source_artifact: SourceLocation,
     pub manifest_endpoint: Option<String>,
+    /// Phase 225.N — declaration-order slot local to the source node/component.
+    /// Kept in trace so every entity variant gets the generated-ID provenance
+    /// without expanding each enum arm.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -307,6 +358,11 @@ pub struct EntityTrace {
 pub struct PlanCallback {
     pub id: String,
     pub source_callback: String,
+    /// Phase 225.N — declaration-order slot local to the source metadata
+    /// artifact. Future codegen can use this as the stable callback reference
+    /// while old plans continue to use `source_callback`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
     pub group: String,
     pub sched_context: String,
     pub source: SourceLocation,

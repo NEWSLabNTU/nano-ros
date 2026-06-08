@@ -98,6 +98,7 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
 
     let (instances, executables, mut diagnostics) =
         build_instances(&record, &metadata, &workspace, &overlays, &record_path);
+    diagnostics.extend(check_effective_graph_node_names(&instances, &record_path));
     diagnostics.extend(check_manifest_endpoints(
         &instances,
         &manifests,
@@ -767,14 +768,14 @@ fn schema_instance(instance: &Value, declared: &BTreeMap<String, Value>) -> Valu
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let nodes = schema_nodes(id, &source_nodes, &raw_entities);
     let callbacks = schema_callbacks(id, instance.get("callbacks"), declared);
+    let callback_lookup = CallbackIdLookup::from_callbacks(&callbacks);
+    let nodes = schema_nodes(id, &source_nodes, &raw_entities, &callback_lookup);
     let sched_bindings = schema_sched_bindings(&callbacks, declared);
-    let default_source_node = source_nodes
+    let default_node_id = source_nodes
         .first()
-        .and_then(|node| node.get("id"))
-        .and_then(Value::as_str)
-        .unwrap_or("node");
+        .map(|node| schema_node_id(id, node))
+        .unwrap_or_else(|| format!("{id}/node"));
     // Phase 211.B — map the intermediate `launch_kind` onto the public
     // schema's `kind`: "node" / "container" / "composable_node".
     let kind = match instance.get("launch_kind").and_then(Value::as_str) {
@@ -804,7 +805,7 @@ fn schema_instance(instance: &Value, declared: &BTreeMap<String, Value>) -> Valu
         "env": schema_env(instance.get("env")),
         "nodes": nodes,
         "callbacks": callbacks,
-        "parameters": schema_parameters(id, default_source_node, instance.get("parameters")),
+        "parameters": schema_parameters(&default_node_id, instance.get("parameters")),
         "sched_bindings": sched_bindings,
         "trace": {
             "launch_record_entity": format!("record://{id}"),
@@ -822,7 +823,12 @@ fn schema_instance(instance: &Value, declared: &BTreeMap<String, Value>) -> Valu
     out
 }
 
-fn schema_nodes(instance_id: &str, source_nodes: &[Value], entities: &[Value]) -> Vec<Value> {
+fn schema_nodes(
+    instance_id: &str,
+    source_nodes: &[Value],
+    entities: &[Value],
+    callback_lookup: &CallbackIdLookup,
+) -> Vec<Value> {
     source_nodes
         .iter()
         .map(|node| {
@@ -836,15 +842,24 @@ fn schema_nodes(instance_id: &str, source_nodes: &[Value], entities: &[Value]) -
                         .unwrap_or("node")
                         == source_node
                 })
-                .filter_map(|entity| schema_entity(instance_id, entity))
+                .filter_map(|entity| schema_entity(instance_id, entity, callback_lookup))
                 .collect::<Vec<_>>();
-            json!({
-                "id": format!("{instance_id}/{source_node}"),
+            let mut out = json!({
+                "id": schema_node_id(instance_id, node),
                 "source_node": source_node,
                 "resolved_name": node.get("resolved_name").and_then(Value::as_str).unwrap_or(""),
                 "namespace": node.get("namespace").and_then(Value::as_str).unwrap_or("/"),
                 "entities": node_entities,
-            })
+            });
+            if let Some(domain_id) = node.get("domain_id").and_then(Value::as_u64) {
+                out.as_object_mut()
+                    .expect("schema node is an object")
+                    .insert("domain_id".to_string(), json!(domain_id));
+            }
+            copy_json_field(&mut out, node, "source_default_name");
+            copy_json_field(&mut out, node, "declaration_slot");
+            copy_json_field(&mut out, node, "source");
+            out
         })
         .collect()
 }
@@ -1027,15 +1042,53 @@ fn schema_callbacks(
             } else {
                 "default_executor"
             };
-            Some(json!({
-                "id": format!("{instance_id}/{source_callback}"),
+            let mut out = json!({
+                "id": schema_callback_id(instance_id, callback, source_callback),
                 "source_callback": source_callback,
                 "group": group,
                 "sched_context": sched_context,
                 "source": source,
-            }))
+            });
+            copy_json_field(&mut out, callback, "declaration_slot");
+            Some(out)
         })
         .collect()
+}
+
+#[derive(Debug, Default)]
+struct CallbackIdLookup {
+    by_source: HashMap<String, String>,
+    by_slot: HashMap<u64, String>,
+}
+
+impl CallbackIdLookup {
+    fn from_callbacks(callbacks: &[Value]) -> Self {
+        let mut lookup = Self::default();
+        for callback in callbacks {
+            let Some(id) = callback.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            if let Some(slot) = declaration_slot(callback) {
+                if let Some(source_callback) =
+                    callback.get("source_callback").and_then(Value::as_str)
+                {
+                    lookup
+                        .by_source
+                        .insert(source_callback.to_string(), id.to_string());
+                }
+                lookup.by_slot.insert(slot, id.to_string());
+            }
+        }
+        lookup
+    }
+
+    fn resolve(&self, source_callback: &str, callback_slot: Option<u64>) -> String {
+        callback_slot
+            .and_then(|slot| self.by_slot.get(&slot))
+            .or_else(|| self.by_source.get(source_callback))
+            .cloned()
+            .unwrap_or_else(|| source_callback.to_string())
+    }
 }
 
 /// Phase 172.G — one `sched_binding` per callback, binding it to the tier its
@@ -1153,14 +1206,19 @@ fn schema_env(value: Option<&Value>) -> Vec<Value> {
         .collect()
 }
 
-fn schema_entity(instance_id: &str, entity: &Value) -> Option<Value> {
+fn schema_entity(
+    instance_id: &str,
+    entity: &Value,
+    callback_lookup: &CallbackIdLookup,
+) -> Option<Value> {
     let role = entity.get("role").and_then(Value::as_str)?;
     let source_entity = entity
         .get("source_id")
         .and_then(Value::as_str)
         .unwrap_or("entity");
-    let id = format!("{instance_id}/{source_entity}");
-    let trace = json!({
+    let id = schema_entity_id(instance_id, entity, source_entity);
+    let callback = schema_entity_callback(entity, callback_lookup);
+    let mut trace = json!({
         "source_artifact": {
             "artifact": entity.get("source_artifact").and_then(Value::as_str).unwrap_or("source-metadata.json"),
             "line": null,
@@ -1168,6 +1226,7 @@ fn schema_entity(instance_id: &str, entity: &Value) -> Option<Value> {
         },
         "manifest_endpoint": null,
     });
+    copy_json_field(&mut trace, entity, "declaration_slot");
     match role {
         "publisher" => Some(json!({
             "role": role,
@@ -1182,7 +1241,7 @@ fn schema_entity(instance_id: &str, entity: &Value) -> Option<Value> {
             "role": role,
             "id": id,
             "source_entity": source_entity,
-            "callback": entity.get("callback"),
+            "callback": callback,
             "resolved_name": entity.get("resolved_name").and_then(Value::as_str).unwrap_or(""),
             "interface": schema_interface(entity.get("type"))?,
             "qos": schema_qos(entity.get("qos")),
@@ -1192,7 +1251,7 @@ fn schema_entity(instance_id: &str, entity: &Value) -> Option<Value> {
             "role": "timer",
             "id": id,
             "source_entity": source_entity,
-            "callback": entity.get("callback"),
+            "callback": callback,
             "period_ms": entity.get("period_ms").and_then(Value::as_u64).unwrap_or(0),
             "trace": trace,
         })),
@@ -1200,7 +1259,7 @@ fn schema_entity(instance_id: &str, entity: &Value) -> Option<Value> {
             "role": role,
             "id": id,
             "source_entity": source_entity,
-            "callback": entity.get("callback"),
+            "callback": callback,
             "resolved_name": entity.get("resolved_name").and_then(Value::as_str).unwrap_or(""),
             "interface": schema_interface(entity.get("type"))?,
             "qos": null,
@@ -1217,6 +1276,53 @@ fn schema_entity(instance_id: &str, entity: &Value) -> Option<Value> {
         })),
         _ => None,
     }
+}
+
+fn schema_node_id(instance_id: &str, node: &Value) -> String {
+    let source_node = node.get("id").and_then(Value::as_str).unwrap_or("node");
+    generated_plan_id(instance_id, "node", declaration_slot(node), source_node)
+}
+
+fn schema_entity_id(instance_id: &str, entity: &Value, source_entity: &str) -> String {
+    generated_plan_id(
+        instance_id,
+        "entity",
+        declaration_slot(entity),
+        source_entity,
+    )
+}
+
+fn schema_callback_id(instance_id: &str, callback: &Value, source_callback: &str) -> String {
+    generated_plan_id(
+        instance_id,
+        "callback",
+        declaration_slot(callback),
+        source_callback,
+    )
+}
+
+fn generated_plan_id(
+    instance_id: &str,
+    generated_prefix: &str,
+    declaration_slot: Option<u64>,
+    source_id: &str,
+) -> String {
+    match declaration_slot {
+        Some(slot) => format!("{instance_id}/{generated_prefix}_{slot}"),
+        None => format!("{instance_id}/{source_id}"),
+    }
+}
+
+fn declaration_slot(value: &Value) -> Option<u64> {
+    value.get("declaration_slot").and_then(Value::as_u64)
+}
+
+fn schema_entity_callback(entity: &Value, callback_lookup: &CallbackIdLookup) -> Option<String> {
+    let source_callback = entity.get("callback").and_then(Value::as_str)?;
+    Some(callback_lookup.resolve(
+        source_callback,
+        entity.get("callback_slot").and_then(Value::as_u64),
+    ))
 }
 
 fn schema_interface(value: Option<&Value>) -> Option<Value> {
@@ -1261,11 +1367,7 @@ fn schema_qos(value: Option<&Value>) -> Value {
     })
 }
 
-fn schema_parameters(
-    instance_id: &str,
-    default_source_node: &str,
-    value: Option<&Value>,
-) -> Vec<Value> {
+fn schema_parameters(default_node_id: &str, value: Option<&Value>) -> Vec<Value> {
     let Some(Value::Object(map)) = value else {
         return Vec::new();
     };
@@ -1273,7 +1375,7 @@ fn schema_parameters(
         .filter(|(name, _)| name.as_str() != "parameter_files")
         .map(|(name, value)| {
             json!({
-                "node": format!("{instance_id}/{default_source_node}"),
+                "node": default_node_id,
                 "name": name,
                 "value": schema_parameter_value(value),
                 "source": {
@@ -1633,6 +1735,7 @@ fn build_instances(
                 param_files: &param_files,
                 remaps: &remaps,
                 env: &env,
+                domain_id: u32_field(container, &["domain_id", "domain"]),
                 launch_kind: "container",
                 container_id: None,
             },
@@ -1686,6 +1789,7 @@ fn build_instances(
                 param_files: &param_files,
                 remaps: &remaps,
                 env: &env,
+                domain_id: u32_field(node, &["domain_id", "domain"]),
                 launch_kind: "node",
                 container_id: None,
             },
@@ -1732,6 +1836,7 @@ fn build_instances(
                 param_files: &[],
                 remaps: &remaps,
                 env: &env,
+                domain_id: u32_field(load_node, &["domain_id", "domain"]),
                 launch_kind: "load_node",
                 container_id: container_id.as_deref(),
             },
@@ -1795,6 +1900,7 @@ struct NodeInstanceSpec<'a> {
     /// the deploy stage can hand them to the spawn / systemd / runtime
     /// equivalent. Phase 211.E.
     env: &'a [(String, String)],
+    domain_id: Option<u32>,
     launch_kind: &'a str,
     /// Phase 211.B — when this instance is a `<composable_node>` child, the
     /// instance id of the parent `<node_container>` (resolved from the
@@ -1825,6 +1931,7 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
         param_files,
         remaps,
         env,
+        domain_id,
         launch_kind,
         container_id,
     } = spec;
@@ -1840,9 +1947,27 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
         sanitize_id(executable),
         index
     );
-    let node_name = names::node_fqn(namespace, name, executable);
     let namespace = names::normalize_namespace(namespace);
     let source_metadata = find_source_metadata(metadata, package, executable);
+    let effective_name =
+        match effective_node_name(name, source_metadata.map(|artifact| &artifact.value)) {
+            Ok(name) => name,
+            Err(err) => {
+                ctx.diagnostics.push(diagnostic(
+                    "error",
+                    "missing-effective-node-name",
+                    err.message(package, executable),
+                    Some(package),
+                    Some(&instance_id),
+                    None,
+                    record_path,
+                ));
+                // Keep building enough structure to report all diagnostics from
+                // this planning pass. The error above prevents plan emission.
+                executable.to_string()
+            }
+        };
+    let node_name = names::node_fqn(Some(&namespace), Some(&effective_name), &effective_name);
     // Phase 211.B — `<node_container>` typically spawns a stock binary
     // (e.g. rclcpp_components::component_container) that isn't a nros
     // component and so has no source_metadata. The composable children
@@ -1877,25 +2002,25 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
                 &artifact.value,
                 &artifact.path,
                 &namespace,
-                node_name.trim_start_matches('/'),
+                &effective_name,
                 remaps,
             )
         })
         .unwrap_or_default();
     let nodes = source_metadata
-        .map(|artifact| {
-            source_nodes(
-                &artifact.value,
-                &namespace,
-                node_name.trim_start_matches('/'),
-            )
-        })
+        .map(|artifact| source_nodes(&artifact.value, &namespace, &effective_name, domain_id))
         .unwrap_or_else(|| {
-            vec![json!({
+            let mut node = json!({
                 "id": "node",
                 "resolved_name": node_name,
                 "namespace": namespace,
-            })]
+            });
+            if let Some(domain_id) = domain_id {
+                node.as_object_mut()
+                    .expect("fallback source node is an object")
+                    .insert("domain_id".to_string(), json!(domain_id));
+            }
+            vec![node]
         });
     let callbacks = source_metadata
         .map(|artifact| source_callbacks(&artifact.value))
@@ -1922,6 +2047,7 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
         "container_id": container_id,
         "node_name": node_name,
         "namespace": namespace,
+        "domain_id": domain_id,
         "remaps": remaps,
         "parameters": parameters,
         // Forward raw pairs (matches `remaps` shape); `schema_env` reshapes
@@ -1932,6 +2058,108 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
         "entities": entities,
         "callbacks": callbacks,
     })
+}
+
+enum EffectiveNodeNameError {
+    MissingLaunchAndSourceDefault,
+}
+
+impl EffectiveNodeNameError {
+    fn message(&self, package: &str, executable: &str) -> String {
+        match self {
+            Self::MissingLaunchAndSourceDefault => format!(
+                "launch node {package}/{executable} omits name= and source metadata does not declare a static default node name"
+            ),
+        }
+    }
+}
+
+fn effective_node_name(
+    launch_name: Option<&str>,
+    source_metadata: Option<&Value>,
+) -> Result<String, EffectiveNodeNameError> {
+    if let Some(name) = launch_name.filter(|name| !name.trim().is_empty()) {
+        return Ok(name.to_string());
+    }
+    if let Some(default_name) = source_metadata.and_then(source_default_node_name) {
+        return Ok(default_name.to_string());
+    }
+    // Dynamic source names still require launch `name=` so the workspace
+    // graph can be audited at build time.
+    Err(EffectiveNodeNameError::MissingLaunchAndSourceDefault)
+}
+
+fn source_default_node_name(metadata: &Value) -> Option<&str> {
+    let nodes = metadata.get("nodes").and_then(Value::as_array)?;
+    if nodes.len() != 1 {
+        return None;
+    }
+    if let Some(name) = nodes[0]
+        .get("source_default_name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+    {
+        return Some(name);
+    }
+    let name = source_name_value(nodes[0].get("unresolved_name")).trim();
+    if name.is_empty() { None } else { Some(name) }
+}
+
+fn check_effective_graph_node_names(instances: &[Value], record_path: &Path) -> Vec<Value> {
+    let mut diagnostics = Vec::new();
+    let mut seen = HashMap::<(u32, String, String), (String, String)>::new();
+    for instance in instances {
+        let instance_id = instance.get("id").and_then(Value::as_str).unwrap_or("");
+        let package = instance.get("package").and_then(Value::as_str);
+        let Some(nodes) = instance.get("nodes").and_then(Value::as_array) else {
+            continue;
+        };
+        for node in nodes {
+            let resolved = node
+                .get("resolved_name")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let Some((namespace, name)) = graph_name_parts(resolved) else {
+                continue;
+            };
+            let domain_id = node
+                .get("domain_id")
+                .and_then(Value::as_u64)
+                .or_else(|| instance.get("domain_id").and_then(Value::as_u64))
+                .unwrap_or(0) as u32;
+            let key = (domain_id, namespace.to_string(), name.to_string());
+            if let Some((first_instance, first_resolved)) = seen.get(&key) {
+                diagnostics.push(diagnostic(
+                    "error",
+                    "duplicate-effective-node-name",
+                    format!(
+                        "duplicate ROS node name {resolved} in domain {domain_id}: {first_instance} already planned {first_resolved}; {instance_id} plans {resolved}"
+                    ),
+                    package,
+                    Some(instance_id),
+                    Some(resolved),
+                    record_path,
+                ));
+            } else {
+                seen.insert(key, (instance_id.to_string(), resolved.to_string()));
+            }
+        }
+    }
+    diagnostics
+}
+
+fn graph_name_parts(resolved: &str) -> Option<(&str, &str)> {
+    let resolved = resolved.trim();
+    if resolved.is_empty() || resolved == "/" {
+        return None;
+    }
+    let (namespace, name) = resolved.rsplit_once('/').unwrap_or(("/", resolved));
+    if name.is_empty() {
+        return None;
+    }
+    let namespace = if namespace.is_empty() { "/" } else { namespace };
+    Some((namespace, name))
 }
 
 fn check_source_metadata_links(
@@ -2084,13 +2312,24 @@ fn source_callbacks(metadata: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-fn source_nodes(metadata: &Value, launch_namespace: &str, launch_node_name: &str) -> Vec<Value> {
+fn source_nodes(
+    metadata: &Value,
+    launch_namespace: &str,
+    launch_node_name: &str,
+    domain_id: Option<u32>,
+) -> Vec<Value> {
     let Some(nodes) = metadata.get("nodes").and_then(Value::as_array) else {
-        return vec![json!({
+        let mut node = json!({
             "id": "node",
             "resolved_name": names::node_fqn(Some(launch_namespace), Some(launch_node_name), launch_node_name),
             "namespace": launch_namespace,
-        })];
+        });
+        if let Some(domain_id) = domain_id {
+            node.as_object_mut()
+                .expect("default source node is an object")
+                .insert("domain_id".to_string(), json!(domain_id));
+        }
+        return vec![node];
     };
     let single_node = nodes.len() == 1;
     nodes
@@ -2112,11 +2351,20 @@ fn source_nodes(metadata: &Value, launch_namespace: &str, launch_node_name: &str
                 names::node_fqn(Some(metadata_namespace), Some(source_name), source_node)
             };
             let namespace = node_namespace(&resolved_name);
-            json!({
+            let mut out = json!({
                 "id": source_node,
                 "resolved_name": resolved_name,
                 "namespace": namespace,
-            })
+            });
+            if let Some(domain_id) = domain_id {
+                out.as_object_mut()
+                    .expect("source node is an object")
+                    .insert("domain_id".to_string(), json!(domain_id));
+            }
+            copy_json_field(&mut out, node, "source_default_name");
+            copy_json_field(&mut out, node, "declaration_slot");
+            copy_json_field(&mut out, node, "source");
+            out
         })
         .collect()
 }
@@ -2307,6 +2555,7 @@ fn collect_schema_endpoint_array(
             "source_artifact": path,
             "source_node": source_node,
             "source_id": item.get("id"),
+            "declaration_slot": item.get("declaration_slot"),
             "role": role,
             "source_name": resolved.source,
             "source_name_kind": source_name_kind(item.get(name_key)),
@@ -2316,6 +2565,8 @@ fn collect_schema_endpoint_array(
             "qos": item.get("qos"),
             "callback": item.get("callback")
                 .or_else(|| item.get("goal_callback")),
+            "callback_slot": item.get("callback_slot")
+                .or_else(|| item.get("goal_callback_slot")),
         }));
     }
 }
@@ -2334,9 +2585,11 @@ fn collect_schema_timer_array(
             "source_artifact": path,
             "source_node": source_node,
             "source_id": item.get("id"),
+            "declaration_slot": item.get("declaration_slot"),
             "role": "timer",
             "period_ms": item.get("period_ms"),
             "callback": item.get("callback"),
+            "callback_slot": item.get("callback_slot"),
         }));
     }
 }
@@ -2371,6 +2624,7 @@ fn collect_entity_array(
             "source_artifact": path,
             "source_node": "node",
             "source_id": item.get("id"),
+            "declaration_slot": item.get("declaration_slot"),
             "role": normalize_role(role),
             "source_name": resolved.source,
             "source_name_kind": infer_source_name_kind(source_name),
@@ -2640,6 +2894,23 @@ fn string_field<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
         .find_map(|key| value.get(*key).and_then(Value::as_str))
 }
 
+fn u32_field(value: &Value, keys: &[&str]) -> Option<u32> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_u64))
+        .and_then(|value| u32::try_from(value).ok())
+}
+
+fn copy_json_field(out: &mut Value, source: &Value, key: &str) {
+    if let Some(value) = source.get(key) {
+        if value.is_null() {
+            return;
+        }
+        out.as_object_mut()
+            .expect("target JSON value is an object")
+            .insert(key.to_string(), value.clone());
+    }
+}
+
 fn pairs_field(value: &Value, key: &str) -> Vec<(String, String)> {
     match value.get(key) {
         Some(Value::Array(items)) => items
@@ -2808,6 +3079,126 @@ mod tests {
         let mut counts = HashMap::new();
         assert_eq!(next_instance_index(&mut counts, "pkg", "talker"), 0);
         assert_eq!(next_instance_index(&mut counts, "pkg", "talker"), 1);
+    }
+
+    #[test]
+    fn plan_system_rejects_duplicate_effective_node_names() {
+        let root = temp_workspace("nros-plan-duplicate-effective-node-name");
+        let err = plan_with_record_and_metadata(
+            &root,
+            r#"{
+  "node": [
+    {"package": "demo_pkg", "executable": "talker", "name": "worker", "namespace": "/robot"},
+    {"package": "demo_pkg", "executable": "talker", "name": "worker", "namespace": "/robot"}
+  ]
+}"#,
+            &basic_talker_metadata("talker"),
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("duplicate-effective-node-name"), "{err}");
+        assert!(err.contains("/robot/worker"), "{err}");
+    }
+
+    #[test]
+    fn plan_system_allows_same_effective_node_name_in_different_namespaces() {
+        let root = temp_workspace("nros-plan-same-node-name-different-ns");
+        let output = plan_with_record_and_metadata(
+            &root,
+            r#"{
+  "node": [
+    {"package": "demo_pkg", "executable": "talker", "name": "worker", "namespace": "/robot_a"},
+    {"package": "demo_pkg", "executable": "talker", "name": "worker", "namespace": "/robot_b"}
+  ]
+}"#,
+            &basic_talker_metadata("talker"),
+        )
+        .unwrap();
+        let plan: Value =
+            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
+        serde_json::from_value::<NrosPlan>(plan).unwrap();
+    }
+
+    #[test]
+    fn plan_system_allows_same_effective_node_name_in_different_domains() {
+        let root = temp_workspace("nros-plan-same-node-name-different-domain");
+        let output = plan_with_record_and_metadata(
+            &root,
+            r#"{
+  "node": [
+    {"package": "demo_pkg", "executable": "talker", "name": "worker", "namespace": "/robot", "domain_id": 0},
+    {"package": "demo_pkg", "executable": "talker", "name": "worker", "namespace": "/robot", "domain_id": 7}
+  ]
+}"#,
+            &basic_talker_metadata("talker"),
+        )
+        .unwrap();
+        let plan: Value =
+            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
+        serde_json::from_value::<NrosPlan>(plan.clone()).unwrap();
+        assert_eq!(plan["instances"][0]["nodes"][0]["domain_id"], 0);
+        assert_eq!(plan["instances"][1]["nodes"][0]["domain_id"], 7);
+    }
+
+    #[test]
+    fn plan_system_allows_explicit_distinct_launch_node_names() {
+        let root = temp_workspace("nros-plan-explicit-distinct-node-names");
+        let output = plan_with_record_and_metadata(
+            &root,
+            r#"{
+  "node": [
+    {"package": "demo_pkg", "executable": "talker", "name": "talker_a", "namespace": "/"},
+    {"package": "demo_pkg", "executable": "talker", "name": "talker_b", "namespace": "/"}
+  ]
+}"#,
+            &basic_talker_metadata("talker"),
+        )
+        .unwrap();
+        let plan: Value =
+            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
+        serde_json::from_value::<NrosPlan>(plan).unwrap();
+    }
+
+    #[test]
+    fn plan_system_uses_static_source_default_when_launch_name_is_missing() {
+        let root = temp_workspace("nros-plan-source-default-node-name");
+        let output = plan_with_record_and_metadata(
+            &root,
+            r#"{"node": [{"package": "demo_pkg", "executable": "talker", "namespace": "/"}]}"#,
+            &basic_talker_metadata("source_talker"),
+        )
+        .unwrap();
+        let plan: Value =
+            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
+        assert_eq!(
+            plan["instances"][0]["nodes"][0]["resolved_name"],
+            "/source_talker"
+        );
+    }
+
+    #[test]
+    fn plan_system_rejects_missing_launch_name_without_source_default() {
+        let root = temp_workspace("nros-plan-missing-effective-node-name");
+        let err = plan_with_record_and_metadata(
+            &root,
+            r#"{"node": [{"package": "demo_pkg", "executable": "talker", "namespace": "/"}]}"#,
+            r#"{
+  "version": 1,
+  "package": "demo_pkg",
+  "component": "talker",
+  "language": "rust",
+  "executable": "talker",
+  "nodes": [],
+  "callbacks": [],
+  "parameters": []
+}"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("missing-effective-node-name"), "{err}");
+        assert!(err.contains("omits name="), "{err}");
     }
 
     #[test]
@@ -3303,6 +3694,10 @@ topics:
             "demo_pkg.talker.0/cb_cmd"
         );
         assert_eq!(
+            instances[0]["nodes"][0]["entities"][1]["callback"],
+            "cb_cmd"
+        );
+        assert_eq!(
             instances[1]["callbacks"][0]["id"],
             "demo_pkg.talker.1/cb_cmd"
         );
@@ -3313,6 +3708,120 @@ topics:
         assert_plan_parameter(&instances[0], "rate_hz", json!(20));
         assert_plan_parameter(&instances[1], "rate_hz", json!(30));
         assert_plan_parameter(&instances[0], "frame", json!("map"));
+    }
+
+    #[test]
+    fn plan_system_generates_ids_from_declaration_slots() {
+        let root = temp_workspace("nros-plan-generated-slot-ids");
+        let output = plan_with_record_and_metadata(
+            &root,
+            r#"{
+  "node": [{
+    "package": "demo_pkg",
+    "executable": "talker",
+    "name": "talker",
+    "params": [{"name": "rate_hz", "value": "20"}]
+  }]
+}"#,
+            r#"{
+  "version": 1,
+  "package": "demo_pkg",
+  "component": "talker",
+  "language": "rust",
+  "executable": "talker",
+  "exported_symbol": null,
+  "nodes": [{
+    "id": "node_talker",
+    "declaration_slot": 3,
+    "source_default_name": "talker",
+    "unresolved_name": {"value": "talker", "kind": "relative"},
+    "namespace": null,
+    "publishers": [{
+      "id": "pub_chatter",
+      "declaration_slot": 4,
+      "unresolved_topic": {"value": "chatter", "kind": "relative"},
+      "interface": {"package": "std_msgs", "name": "msg/String", "kind": "message"},
+      "qos": null
+    }],
+    "subscribers": [{
+      "id": "sub_cmd",
+      "declaration_slot": 5,
+      "unresolved_topic": {"value": "cmd", "kind": "relative"},
+      "interface": {"package": "std_msgs", "name": "msg/String", "kind": "message"},
+      "qos": null,
+      "callback": "cb_cmd",
+      "callback_slot": 8
+    }],
+    "timers": [{
+      "id": "timer_poll",
+      "declaration_slot": 6,
+      "period_ms": 100,
+      "callback": "cb_tick",
+      "callback_slot": 9
+    }],
+    "services": [],
+    "actions": []
+  }],
+  "callbacks": [{
+    "id": "cb_cmd",
+    "declaration_slot": 8,
+    "kind": "subscription",
+    "group": null,
+    "effects": [],
+    "source": {"artifact": "src/talker.rs", "line": 42, "column": 5}
+  }, {
+    "id": "cb_tick",
+    "declaration_slot": 9,
+    "kind": "timer",
+    "group": null,
+    "effects": [],
+    "source": {"artifact": "src/talker.rs", "line": 50, "column": 5}
+  }],
+  "parameters": [
+    {"node": "node_talker", "name": "rate_hz", "default": 10, "read_only": false, "source": {"artifact": "src/talker.rs", "line": 10, "column": 1}}
+  ],
+  "trace": {"generator": "nros-metadata-rust", "package_manifest": "package.xml", "source_artifacts": ["src/talker.rs"]}
+}"#,
+        )
+        .unwrap();
+        let plan: Value =
+            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
+        serde_json::from_value::<NrosPlan>(plan.clone()).unwrap();
+
+        let instance = &plan["instances"][0];
+        let node = &instance["nodes"][0];
+        assert_eq!(node["id"], "demo_pkg.talker.0/node_3");
+        assert_eq!(node["source_node"], "node_talker");
+        assert_eq!(node["declaration_slot"], 3);
+        assert_eq!(node["source_default_name"], "talker");
+
+        let entities = node["entities"].as_array().unwrap();
+        assert_eq!(entities[0]["id"], "demo_pkg.talker.0/entity_4");
+        assert_eq!(entities[0]["source_entity"], "pub_chatter");
+        assert_eq!(entities[1]["id"], "demo_pkg.talker.0/entity_5");
+        assert_eq!(entities[1]["source_entity"], "sub_cmd");
+        assert_eq!(entities[1]["callback"], "demo_pkg.talker.0/callback_8");
+        assert_eq!(entities[2]["id"], "demo_pkg.talker.0/entity_6");
+        assert_eq!(entities[2]["source_entity"], "timer_poll");
+        assert_eq!(entities[2]["callback"], "demo_pkg.talker.0/callback_9");
+
+        let callbacks = instance["callbacks"].as_array().unwrap();
+        assert_eq!(callbacks[0]["id"], "demo_pkg.talker.0/callback_8");
+        assert_eq!(callbacks[0]["source_callback"], "cb_cmd");
+        assert_eq!(callbacks[1]["id"], "demo_pkg.talker.0/callback_9");
+        assert_eq!(callbacks[1]["source_callback"], "cb_tick");
+        assert_eq!(
+            instance["sched_bindings"][0]["callback"],
+            "demo_pkg.talker.0/callback_8"
+        );
+        assert_eq!(
+            instance["sched_bindings"][1]["callback"],
+            "demo_pkg.talker.0/callback_9"
+        );
+
+        let parameter = instance["parameters"].as_array().unwrap().first().unwrap();
+        assert_eq!(parameter["node"], "demo_pkg.talker.0/node_3");
+        assert_eq!(parameter["name"], "rate_hz");
     }
 
     fn assert_plan_parameter(instance: &Value, name: &str, expected: Value) {
@@ -4040,6 +4549,63 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
         })
+    }
+
+    fn plan_with_record_and_metadata(
+        root: &Path,
+        record_json: &str,
+        metadata_json: &str,
+    ) -> Result<PlanningOutput> {
+        fs::create_dir_all(root).unwrap();
+        fs::write(
+            root.join("package.xml"),
+            r#"<package format="3"><name>system_pkg</name><version>0.1.0</version></package>"#,
+        )
+        .unwrap();
+        let launch = root.join("system.launch.xml");
+        fs::write(&launch, "<launch />").unwrap();
+        let record = root.join("record.json");
+        fs::write(&record, record_json).unwrap();
+        let metadata = root.join("talker.metadata.json");
+        fs::write(&metadata, metadata_json).unwrap();
+
+        plan_system(PlanOptions {
+            system_pkg: "system_pkg".to_string(),
+            workspace_root: root.to_path_buf(),
+            launch_file: launch,
+            record_file: Some(record),
+            out_root: root.join("build/system_pkg/nros"),
+            metadata_files: vec![metadata],
+            manifest_files: vec![],
+            nros_toml_files: vec![],
+            launch_args: vec![],
+        })
+    }
+
+    fn basic_talker_metadata(source_node_name: &str) -> String {
+        format!(
+            r#"{{
+  "version": 1,
+  "package": "demo_pkg",
+  "component": "talker",
+  "language": "rust",
+  "executable": "talker",
+  "exported_symbol": null,
+  "nodes": [{{
+    "id": "node_talker",
+    "unresolved_name": {{"value": "{source_node_name}", "kind": "relative"}},
+    "namespace": null,
+    "publishers": [],
+    "subscribers": [],
+    "timers": [],
+    "services": [],
+    "actions": []
+  }}],
+  "callbacks": [],
+  "parameters": [],
+  "trace": {{"generator": "test", "package_manifest": "package.xml", "source_artifacts": []}}
+}}"#
+        )
     }
 
     #[cfg(feature = "play-launch-parser")]
