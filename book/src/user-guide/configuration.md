@@ -1,40 +1,61 @@
 # Configuration Guide
 
-A nano-ros project keeps configuration in **one file per lane** — no setting
-lives in two places. This guide covers what each file owns and the `nros.toml`
-format that carries all nano-ros runtime/deployment config.
+nano-ros config is **language-agnostic** and has **one home per concern** — no
+setting lives in two places. Workspace/system config lives in `Cargo.toml`
+metadata (Rust) or CMake (C/C++) plus a universal `system.toml`; `nros.toml` is
+**narrowed** to the embedded *direct-mode runtime file* a single-node app's board
+parses at boot. This guide covers what each file owns and the `nros.toml` format.
 
-## One lane per file
+## One home per concern
 
 | File | Owns | Per |
 |------|------|-----|
-| `Cargo.toml` | Rust build: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`) | Rust project |
-| `CMakeLists.txt` | C/C++ build: targets, language deps, `add_subdirectory(<repo>)`, the `NROS_RMW` option | C/C++ project |
+| `Cargo.toml` | Rust build: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`); **workspace/system config** via `[workspace.metadata.nros]` + `[package.metadata.nros.{node,entry,application}]` | Rust project |
+| `CMakeLists.txt` | C/C++ build: targets, language deps, `add_subdirectory(<repo>)`, the `NROS_RMW` option; node/entry registration via `nano_ros_node_register` / `nano_ros_entry` | C/C++ project |
 | `.cargo/config.toml` | **`[patch.crates-io]` dependency injection only** (local crate + generated-msg paths), plus the cargo `[build]`/`[target]`/`[env]` knobs (target triple, runner, rustflags). **No nano-ros runtime config.** | Rust project |
 | `package.xml` | ROS package identity + msg `<depend>`s (codegen input for `nros generate`) | all |
-| **`nros.toml`** | **All nano-ros runtime/deployment config** — node, transport(s), scheduling | universal (Rust/C/C++) |
+| **`system.toml`** | **System topology** — components, deploy targets, domain, RMW. The language-agnostic universal descriptor (same schema for Rust/C/C++). **Optional for single-node** (the toolchain synthesises an implicit 1-component system when absent). | bringup pkg |
+| **`nros.toml`** | **Embedded direct-mode runtime only** — `[node]` / `[[transport]]` / `[node.rt]`, parsed by the board at boot. **NOT a workspace manifest** (a workspace-root `nros.toml` is rejected by the CLI). | embedded single-node app |
 
 > **Boundary rule.** If a knob changes *what is compiled/linked*, it lives in the
-> build file (`Cargo.toml` feature / `CMakeLists.txt` option). If it changes
-> *what nano-ros does at run time*, it lives in `nros.toml`.
+> build file (`Cargo.toml` feature / `CMakeLists.txt` option). If it changes the
+> *system topology* (components, deploy, domain, RMW), it lives in `system.toml`.
+> If it is *what an embedded single-node board does at boot* (node identity,
+> transports, RT), it lives in `nros.toml`.
 
-Full design rationale: [`docs/design/0004-configuration-and-transports.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0004-configuration-and-transports.md).
+### Config home by language × scale
+
+Mirrors [RFC-0004 §3](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0004-configuration-and-transports.md):
+
+| | Single-node | Workspace |
+|---|---|---|
+| **Rust** | `Cargo.toml [package.metadata.nros.application]` (+ `nros::main!`); optional `system.toml` to pin rmw/domain | root `[workspace.metadata.nros]` + node `[package.metadata.nros.node]` + entry `[package.metadata.nros.entry]` + bringup `system.toml` |
+| **C / C++** | `CMakeLists.txt` (`NANO_ROS_PLATFORM/RMW`) + `package.xml`; optional `system.toml` | `nano_ros_node_register` / `nano_ros_entry` per pkg + **same `system.toml`** + `package.xml` |
+
+The **embedded** single-node app that hand-writes `main()` (no codegen) is the
+case that keeps `nros.toml` — see below.
+
+Full design rationale: [RFC-0004 (configuration & transports)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0004-configuration-and-transports.md);
+RMW backend selection & lowering is [RFC-0031](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0031-rmw-selection-and-lowering.md).
 For the multi-RMW runtime topic-forwarding bridge (a separate file/feature), see
 [`nros-bridge.toml`](../reference/nros-bridge-toml.md) — do not confuse it with
-this build/deploy `nros.toml`.
+the embedded-runtime `nros.toml`.
 
-## `nros.toml`
+## `nros.toml` — embedded direct-mode runtime
 
-The single, language-agnostic nano-ros config. Read two ways from the same
-schema:
+`nros.toml` is the **embedded direct-mode runtime file** for a hand-written
+single-node app. The board reads it via `Config::from_toml` (compile-baked with
+`include_str!` on embedded; filesystem/env on hosted) — no launch file, no
+planner, no generated `main()`. This is what the `examples/**` copy-out
+templates use ("boilerplate IS lesson"). It carries `[node]`, `[[transport]]`,
+and `[node.rt]` only.
 
-- **Direct mode** — a hand-written single-node app reads `nros.toml` via the
-  board `Config::from_toml` (compile-baked with `include_str!` on embedded;
-  filesystem/env on hosted). No launch file, no planner. This is what the
-  `examples/**` copy-out templates use.
-- **Planned mode** — the orchestration pipeline (launch files + `nros plan` →
-  `nros-plan.json` → generated `main()`) consumes the same schema for multi-node
-  systems.
+It is **not** a workspace manifest and **not** read by `nros
+plan`/`check`/`codegen-system` — a workspace-root `nros.toml` is rejected by the
+CLI (`nros migrate workspace`). Workspace/system config lives in `Cargo.toml`
+metadata + `system.toml` (see the matrix above). The retired `config.toml`
+(`[network]`/`[zenoh]`/`[scheduling]`) was folded into the `[node]` /
+`[[transport]]` / `[node.rt]` sections here.
 
 ### Shape
 
@@ -48,7 +69,8 @@ domain_id = 0              # ROS 2 domain ID (0–232)
                            # (the build file picks what is linked)
 
 # One transport per session. A single ethernet/wifi/serial entry is the
-# common case; multiple entries = a multi-RMW bridge (planned mode).
+# common case; multiple entries open via Executor::open_multi (multi-homed
+# or cross-RMW). In-process topic forwarding is the separate [[bridge]] path.
 [[transport]]
 kind    = "ethernet"       # ethernet | wifi | serial | can
 ip      = "10.0.2.10/24"   # CIDR — the prefix rides the address

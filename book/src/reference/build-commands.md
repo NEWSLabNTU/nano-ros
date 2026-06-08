@@ -119,6 +119,12 @@ On bare-metal, enable the `link-udp-unicast` feature to use UDP over smoltcp:
 nros = { features = ["rmw-zenoh", "platform-bare-metal", "link-tcp", "link-udp-unicast"] }
 ```
 
+> The `rmw-zenoh` feature here is the *lowering* of the declared RMW —
+> you declare the backend once in `system.toml` (`[system].rmw` /
+> `[deploy.<t>].rmw`) and the toolchain sets the cargo feature; the
+> feature is what the build uses, not the user-facing selector. See
+> [RFC-0031](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0031-rmw-selection-and-lowering.md).
+
 ## TLS Transport
 
 TLS layers on top of TCP using mbedTLS. Requires a self-signed certificate (or real CA cert) and the `link-tls` Cargo feature.

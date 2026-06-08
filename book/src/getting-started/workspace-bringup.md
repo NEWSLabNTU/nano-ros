@@ -109,7 +109,7 @@ Key fields:
 
 | Field | Meaning |
 |---|---|
-| `[system] name` | Logical system name; used by `nros plan`/`check`/`launch` |
+| `[system] name` | Logical system name; used by `nros plan`/`check` |
 | `[system] rmw` | Default RMW for all components (`zenoh`, `xrce`, `cyclonedds`) |
 | `[system] domain_id` | ROS 2 domain (compile-time on embedded, runtime env on host) |
 | `[[component]] pkg` | The ROS package name (matches `<name>` in `package.xml`) |

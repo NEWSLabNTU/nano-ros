@@ -46,6 +46,21 @@ just freertos test
 For real hardware, deployment step becomes flash/load/monitor. For QEMU,
 deployment is launching simulator with correct network setup.
 
+There is no `nros deploy` / `nros build` / `nros run` verb — Phase 222
+removed those wrappers. `nros` is provisioner + codegen + metadata only;
+deployment runs on the **vendor's native tools**. The embedded deploy
+contract is a documented three-step sequence (per
+[RFC-0003 §4](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0003-rtos-integration-pattern.md)):
+
+1. **Bake** — `nros codegen-system --bringup <pkg>` reads
+   `system.toml` + `[deploy.<board>]` + `launch/*.xml` and emits the
+   baked tree under `build/<board>/`.
+2. **Build** — the vendor tool builds it: `cargo build` / `cmake --build`
+   / `west build` / `idf.py build` (the `just <plat> build*` recipes wrap
+   these with the right `-D` args derived from `[deploy.<board>]`).
+3. **Flash + monitor** — the vendor tool again: `probe-rs run` /
+   `west flash` / `idf.py flash monitor`, or the platform's QEMU runner.
+
 Platform guides should show:
 
 - package layout,

@@ -75,42 +75,40 @@ C/C++ its descriptor through `nano_ros_entry(NAME … DEPLOY native …)`
 `NANO_ROS_RMW` from 227.4 this is full parity with Rust's
 `[package.metadata.nros.application]`.
 
-### 227.6 — Multi-node RT/scheduling exposure (schema + impl)
-The *shape* is decided (2026-06, RFC-0015 Phase 212 reconciliation): node declares
-callback groups (`[package.metadata.nros.node]` / `nano_ros_node_register`);
-`system.toml` owns `[tiers.<name>.<rtos>]` (priority/stack) + a per-`[[component]]`
-group→tier map + `[[shared_state]]`. Implement the `system.toml` schema + loader;
-the per-tier task/Executor codegen is **Phase 228**. (Today only board defaults
-apply.)
-**Files:** `system.toml` schema, `packages/cli/nros-cli-core/src/orchestration/`,
-cross-ref Phase 228.
+### 227.6 — Multi-node RT/scheduling exposure (schema)  ⏳ DEFERRED to Phase 228
+The *shape* is decided (RFC-0015 reconciliation): node declares callback groups;
+`system.toml` owns `[tiers.<name>.<rtos>]` + a per-`[[component]]` group→tier map +
+`[[shared_state]]`. But the exact field set isn't pinned in any RFC, and the
+schema is consumed only by the Phase 228 per-tier codegen — designing it in
+isolation here risks rework. **Co-designed with the codegen in Phase 228** (228.A
+tier resolver / 228.D shared-state). Existing `system.toml` (no tiers) is
+unaffected; today only board defaults apply.
 
-### 227.8 — Codegen-timing contract (ahead-of-vendor + hook convenience)
-Make `nros deploy` always run `nros codegen system` ahead of the vendor tool
-(the contract, RFC-0003 §7), keeping the configure-time hook as an idempotent
-convenience that yields the same baked tree. Ensure both triggers are
-byte-identical so raw `west build` / `idf.py build` stay valid in dev.
-**Files:** `packages/cli/nros-cli-core/src/cmd/{deploy,codegen_system}.rs`,
-`cmake/NanoRosEntry.cmake`, `integrations/<rtos>/`.
+### 227.8 — Codegen-timing contract (ahead-of-vendor + hook convenience)  ✅ DONE
+Already satisfied: `nros codegen-system` runs **ahead of the native build** (the
+contract; there is no `nros deploy` orchestrator — RFC-0003 §4), the bake is
+deterministic + **byte-identical on re-run** (test
+`codegen_system_idempotent_on_unchanged_input`, 212.E.T2), and the configure-time
+hook exists (`cmake/NanoRosEntry.cmake`). Contract documented in RFC-0003 §4/§7
+and the book deploy page (227.9). No new code needed.
 
-### 227.7 — Book sync
-- `book/src/user-guide/configuration.md` — replace the Phase-172.K
-  single-`nros.toml`-owns-all model with the RFC-0004 matrix.
-- `book/src/user-guide/rmw-backends.md` + `internals/rmw-backends.md` — replace
+### 227.7 — Book sync  ✅ DONE
+- `book/src/user-guide/configuration.md` — replaced the Phase-172.K
+  single-`nros.toml`-owns-all model with the RFC-0004 config-home matrix
+  (`nros.toml` narrowed to embedded direct-mode; `system.toml` universal/optional).
+- `book/src/user-guide/rmw-backends.md` + `internals/rmw-backends.md` — replaced
   "not by features on `nros`" with the RFC-0031 declared-and-lowered model.
-- `book/src/reference/build-commands.md` + `porting/custom-platform.md` — present
-  RMW as declared config, with the cargo feature noted as the lowering detail.
-**Files:** the listed book pages.
+- `book/src/reference/build-commands.md` + `porting/custom-platform.md` — bare
+  feature example annotated as the *lowering* of the declared RMW.
 
-### 227.9 — Deploy-model doc (no `nros deploy` verb)
-Phase 222 removed `nros build`/`run`/`deploy`/`monitor`/`launch`; deployment is
-`nros codegen-system` + the native tool. Document the per-RTOS native deploy
-command-map (the `-D` args derived from `[deploy.<board>]` for west / idf.py /
-cmake / cargo) so embedded deploy is a clear documented multi-step (RFC-0003 §4).
-Scrub any lingering `nros deploy`/`build`/`run` from the book the way the RFCs
-were scrubbed.
-**Files:** `book/src/getting-started/workspace-*.md`, embedded chapters, the
-per-`just <plat>` recipe docs.
+### 227.9 — Deploy-model doc (no `nros deploy` verb)  ✅ DONE
+- `book/src/user-guide/deployment.md` — documents the native multi-step embedded
+  deploy (`nros codegen-system` → native build → native flash, RFC-0003 §4) and
+  that Phase 222 removed `nros deploy`/`build`/`run`.
+- `book/src/getting-started/workspace-bringup.md` — dropped the removed `nros launch`.
+- Book grep clean of stray `nros deploy`/`build`/`run` command usages.
+- Remaining: the per-`just <plat>` recipe `-D`-arg command-map is a small doc
+  follow-up (low urgency; the native sequence is documented).
 
 ## Acceptance
 

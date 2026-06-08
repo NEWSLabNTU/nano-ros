@@ -172,12 +172,20 @@ bridge nodes with 4+ backends. Hitting the cap = subsequent
 `.rmw(name)` selector use the **first-registered backend** — the
 nano-ros equivalent of ROS 2's `RMW_IMPLEMENTATION`. Single-
 backend binaries with one auto-registering backend Just Work
-without user code mentioning the backend's name. Build-time
-selection happens at:
+without user code mentioning the backend's name.
 
-- **Cargo manifest dep**: add `nros-rmw-zenoh = { … }`
-  to the consumer's `[dependencies]`. The RMW shim crate name is
-  the selector; no per-RMW feature flag on `nros` itself.
+The user-facing knob is a **declared, language-agnostic, per-deploy
+value** (`system.toml` `[system].rmw` / `[deploy.<t>].rmw`, or a
+CLI/build flag) that the toolchain **lowers** to each language's
+native link mechanism. The Cargo feature / shim dep and the CMake
+cache var below are those *lowering targets* — what the build uses,
+not how a user picks a backend (see
+[RFC-0031](../../../docs/design/0031-rmw-selection-and-lowering.md)):
+
+- **Cargo (Rust)**: the declared RMW lowers to the `nros` `rmw-<x>`
+  feature plus the matching `nros-rmw-<x>` shim dep in the consumer's
+  `[dependencies]`. Linking the shim crate is what registers the
+  backend.
 - **CMake**: `cmake -DNANO_ROS_RMW=zenoh ...` (C/C++ users). The
   `nano_ros_link_rmw(... RMW zenoh)` helper auto-generates the
   per-target `nros_app_register_backends()` strong stub.
@@ -286,7 +294,7 @@ the ones above.
 
 ## See also
 
-- [roadmap doc](../../../docs/roadmap/phase-115-runtime-transport-vtable.md)
+- [roadmap doc](../../../docs/roadmap/archived/phase-115-runtime-transport-vtable.md)
   — Appendix D carries LOC sizing, port shapes, and risk notes.
 - [Custom Transport porting guide](../porting/custom-transport.md) —
   how the transport vtable composes with the RMW vtable.

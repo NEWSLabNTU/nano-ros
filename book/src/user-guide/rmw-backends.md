@@ -149,11 +149,26 @@ shows the same pattern under an ARINC-653-style cyclic schedule.
 
 Full walkthrough: [Cross-backend Bridges](./cross-backend-bridges.md).
 
-## Feature Selection
+## RMW Selection
 
-### Cargo.toml (Rust)/129 reshape — RMW selection is driven by **manifest deps**,
-not by features on `nros`. Add `nros` with the platform feature plus
-exactly one `nros-rmw-<x>` shim dep:
+RMW selection is a **declared, language-agnostic, per-deploy value** —
+you set it once in `system.toml` (`[system].rmw`, optionally overridden
+per target by `[deploy.<t>].rmw`) or via a CLI/build flag, and the
+toolchain **lowers** that declaration to each language's native build
+mechanism: a Rust cargo `rmw-<x>` feature, or a CMake `-DNANO_ROS_RMW`
+cache var. The cargo feature and the CMake var below are the *lowering
+targets* the build uses — not the user-facing knob. A binary links the
+common `rmw-cffi` runtime plus exactly one backend; the linked backend
+self-registers through the `nros_rmw_vtable_t` C ABI, and the registry
+walker resolves it at `Executor::open`. See
+[RFC-0031](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0031-rmw-selection-and-lowering.md)
+for the full selection-and-lowering model and precedence rules.
+
+### Cargo.toml (Rust)
+
+Lowered form of the declared RMW: add `nros` with the platform feature
+plus exactly one `nros-rmw-<x>` shim dep (cyclonedds is the exception —
+see below):
 
 ```toml
 # Zenoh backend
@@ -189,7 +204,7 @@ linkme distributed-slice walker finds the backend. C/C++ builds rely
 on the CMake-emitted strong stub from `nano_ros_link_rmw(... RMW <x>)`
 instead.
 
-For C++ consumers, the CMake option is the canonical way:
+For C++ consumers, the declared RMW lowers to the CMake cache var:
 
 ```bash
 cmake -S . -B build -DNANO_ROS_RMW=cyclonedds  # zenoh / xrce / cyclonedds
