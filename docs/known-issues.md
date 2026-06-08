@@ -413,3 +413,72 @@ Surfaced by Phase 226.F. `just threadx_riscv64` fixture extras exit 127
 **To fix**: identify the missing tool (`just threadx_riscv64 doctor`) and
 provision it via `nros setup`, or skip-with-hint when absent.
 
+## 17. Zephyr native_sim ↔ zenoh E2E does not connect on some hosts (NSOS offload)
+
+Surfaced by Phase 225.P (Zephyr workspace Entry). On the maintainer host,
+every zephyr-zenoh native_sim E2E fails: the zephyr `zephyr.exe` reports
+`Transport(ConnectionFailed)` reaching the host `zenohd`, and the listener
+times out with zero messages. This affects the new
+`test_zephyr_workspace_entry_native_sim_e2e` **and** the pre-existing
+single-node reference `test_zephyr_to_native_e2e` identically.
+
+**Root cause (environmental, not a nano-ros defect)**: the native_sim NSOS
+(`CONFIG_NET_SOCKETS_OFFLOAD` + `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS`,
+both confirmed `=y` in the built `.config`) host-socket offload is
+non-functional in this environment. Evidence: `zenohd` v1.7.2 listens on
+`tcp/127.0.0.1:7456` and the host shell connects fine, but when the
+native_sim binary runs, (a) `zenohd` logs **no** incoming TCP, (b)
+`ss -tnp` shows **no** connection to 7456 during the connect window, and
+(c) `strace -f -e connect` on the binary shows **no** `connect()` syscall
+to 7456 at all. So NSOS fails the connect *inside* the offload layer
+before issuing any host syscall — a Zephyr/native_simulator NSOS-layer
+problem (kernel / libc / host-trampoline), independent of nano-ros.
+
+**Impact**: no zephyr-zenoh E2E can pass in this environment. The Phase
+225.P workspace Entry itself is correct — it builds via `west build`,
+boots, brings up the network, registers its launch node set, and attempts
+the session exactly like the proven reference; only the host's NSOS
+connectivity blocks delivery.
+
+**To fix / workaround**: run the zephyr E2E in a capable environment (CI,
+where the reference test passes), or repair the native_sim NSOS
+host-socket offload on this host. Build-only verification (`just zephyr
+build-fixtures` with `NROS_ZEPHYR_FIXTURE_FILTER=workspace-entry`) is
+green and is the local gate until NSOS connectivity is restored.
+
+## 18. NuttX workspace Entry cannot be a standalone cargo-lane fixture
+
+Surfaced by Phase 225.O (NuttX workspace Entry attempt). A
+`qemu_nuttx_entry` built through the workspace cargo lane (`cargo build -p
+qemu_nuttx_entry --target armv7a-nuttx-eabihf`, build-std) **compiles but
+cannot link**: build-std `std` references NuttX libc/pthread symbols
+(`pthread_cond_*`, `pthread_key_*`, `clock_gettime`, `getcwd`, `__errno`,
+`strerror_r`, `exit`, …) that `arm-none-eabi-gcc` against newlib does not
+provide.
+
+**Root cause (architectural)**: unlike `nros-board-{freertos,threadx}` —
+whose board crates bundle the RTOS into the cargo binary via `build.rs`,
+so an `nros::main!` Entry links + runs standalone — `nros-board-nuttx` is
+**thin by design ("NuttX owns the kernel build")** and bundles no kernel.
+A NuttX app is not a standalone cargo ELF; it links into the NuttX kernel
+image via `apps/external/nano-ros/` + `libapps.a` (the `integrations/nuttx/`
++ CMake lane). That deploy model does not fit the `cargo build -p <entry>`
+workspace-fixture contract that native/freertos/threadx/esp32 use. Contrast
+ESP32 (Phase 225.O), which *does* link standalone (esp-hal + esp-riscv-rt
+provide the runtime) and is fully green.
+
+**Fixed in passing**: `nros-board-nuttx` had `#![cfg_attr(not(feature =
+"reference-qemu-arm"), no_std)]` while its `run_entry`/`run_generic`
+`std::`-using bodies are gated on `cfg(any(feature, target_os = "nuttx"))`
+— so a NuttX-target build without that feature compiled the crate as
+no_std with active `std::` bodies (24 errors). The no_std predicate was
+corrected to `not(any(feature = "reference-qemu-arm", target_os =
+"nuttx"))`; the crate now compiles for NuttX targets (useful for the
+kernel-integration path).
+
+**To fix**: add a NuttX workspace-Entry build lane that drives the
+kernel-image link (`integrations/nuttx/` + `libapps.a`) instead of a
+standalone `cargo build` — a different build contract from the other
+platforms, scoped as future work. The `qemu_nuttx_entry` crate/row was not
+landed (it cannot build green via the cargo lane).
+
