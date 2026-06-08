@@ -31,10 +31,9 @@ nros_zephyr_lang_tag() {
 nros_cmake_fixture_build() {
     local src_dir="$1"
     local build_dir="$2"
-    # $3 (the old identity signature) is accepted for caller compatibility but
-    # unused: per-RMW build dirs have fixed args, so there is no arg-change
-    # reconfigure to track; `cmake --build` auto-reconfigures on CMakeLists /
-    # dependency-graph changes (Phase 181.7b).
+    # $3 (the old identity signature) is accepted for caller compatibility. The
+    # active build identity is the actual configure-argument stamp below:
+    # changed recipe args trigger a CMake reconfigure, not a build-dir wipe.
     shift 3
 
     # Prefer Ninja when available; fall back to CMake's default generator.
@@ -55,13 +54,36 @@ nros_cmake_fixture_build() {
         fi
     fi
 
-    # Configure once: missing cache, or a cache with no generated build system
-    # (a previously-failed configure). `cmake --build` then handles reconfigure.
+    mkdir -p "$build_dir"
+
+    local stamp_file="$build_dir/.nros-cmake-configure.args"
+    local stamp_tmp="$build_dir/.nros-cmake-configure.args.tmp"
+    {
+        printf 'src=%q\n' "$src_dir"
+        printf 'generator=%q\n' "$want_gen"
+        local arg
+        for arg in "$@"; do
+            printf 'arg=%q\n' "$arg"
+        done
+    } > "$stamp_tmp"
+
+    # Configure on missing cache, on a cache with no generated build system
+    # (a previously-failed configure), or when recipe-level configure args
+    # changed. `cmake --build` then handles dependency reconfigure.
+    local needs_configure=0
     if [ ! -f "$build_dir/CMakeCache.txt" ] || \
-       { [ ! -f "$build_dir/build.ninja" ] && [ ! -f "$build_dir/Makefile" ]; }; then
+       { [ ! -f "$build_dir/build.ninja" ] && [ ! -f "$build_dir/Makefile" ]; } || \
+       ! cmp -s "$stamp_tmp" "$stamp_file"; then
+        needs_configure=1
+    fi
+
+    if [ "$needs_configure" -eq 1 ]; then
         if ! cmake -S "$src_dir" -B "$build_dir" "${gen[@]}" "$@"; then
             return 1
         fi
+        mv "$stamp_tmp" "$stamp_file"
+    else
+        rm -f "$stamp_tmp"
     fi
     cmake --build "$build_dir"
 }

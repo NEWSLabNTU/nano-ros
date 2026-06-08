@@ -1534,8 +1534,25 @@ Acceptance:
 - [ ] Identify whether misses are caused by target triple, platform
       feature set, env/toolchain differences, clean build dirs, or
       scheduler fan-out.
-- [ ] Remove native Cyclone `rm -rf build-cyclonedds` from normal
+- [x] Remove native Cyclone `rm -rf build-cyclonedds` from normal
       fixture builds.
+
+Follow-up result:
+
+- The current native Cyclone C/C++ manifest path no longer contains a
+  normal-path `rm -rf build-cyclonedds`; the only remaining build-dir
+  delete in the shared CMake helper is the intentional generator switch
+  recovery path.
+- The real incremental gap was configure-argument drift: CMake build dirs
+  were configured once and could silently keep stale recipe `-D` values
+  unless a developer cleaned the tree. `scripts/build/cmake-incremental.sh`
+  and the duplicated `nros_cmake_fixture_build` helper now stamp actual
+  configure arguments and rerun `cmake -S/-B` when those arguments change,
+  without deleting the build directory.
+- Focused validation on native C Cyclone talker showed the warm path
+  reached zero C/C++ object builds and zero link steps on the second run;
+  Corrosion still invokes its Cargo utility targets, but they reported
+  `Finished` and did not emit `Compiling nros-c` / `Compiling nros-cpp`.
 
 Acceptance:
 
