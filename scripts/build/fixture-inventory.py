@@ -6,6 +6,7 @@ This is a Phase 226.A diagnostic. It combines:
 * examples/fixtures.toml single-package fixture rows;
 * examples/fixtures.toml workspace fixture rows;
 * Zephyr's expanded leaf emitter; and
+* platform preflight / SDK prerequisite rows; and
 * the small set of hand-authored recipe leaves that are not yet in the
   fixture manifest.
 
@@ -239,6 +240,300 @@ def zephyr_rows(repo_root, include_zephyr):
     return rows
 
 
+def prerequisite_rows():
+    """Return read-only prerequisite rows for fixture build recipes.
+
+    These rows intentionally model recipe-owned setup and serial preflight
+    steps without changing build execution. They make dependencies visible to
+    Phase 226's future make-graph work.
+    """
+
+    rows = [
+        {
+            "id": "root-generate-bindings",
+            "platform": "all",
+            "kind": "preflight",
+            "role": "generate-bindings",
+            "dir": "examples",
+            "build_root": "examples/**/generated",
+            "scheduler": "just build-test-fixtures -> just generate-bindings",
+            "shared_mutation": "examples/**/generated; packages/testing/**/generated",
+            "notes": "root build-test-fixtures prerequisite; scripts/regenerate-bindings.sh",
+        },
+        {
+            "id": "root-zenoh-posix-staticlib-fixture",
+            "platform": "native",
+            "kind": "preflight",
+            "lang": "rust",
+            "rmw": "zenoh",
+            "role": "zenoh-staticlib",
+            "dir": "packages/zpico/nros-rmw-zenoh-staticlib",
+            "build_root": "target-zenoh-fixture-posix",
+            "scheduler": "just build-test-fixtures -> just build-zenoh-posix-fixture",
+            "shared_mutation": "target-zenoh-fixture-posix",
+            "notes": "root fixture prerequisite for zenoh archive/header parity tests",
+        },
+        {
+            "id": "native-rust-ws-sync-preflight",
+            "platform": "native",
+            "kind": "preflight",
+            "lang": "rust",
+            "role": "ws-sync",
+            "dir": "examples/native/rust",
+            "build_root": "examples/native/rust/*/generated",
+            "scheduler": "just native build-fixture-rust",
+            "shared_mutation": "examples/native/rust/{talker,listener,service-*,action-*,custom-transport-*}/generated; examples/native/rust/*/.cargo/config.toml",
+            "notes": "serial nros ws sync plus codegen-stamp before native Rust fixture leaves",
+        },
+        {
+            "id": "native-cmake-codegen-tool",
+            "platform": "native",
+            "kind": "preflight",
+            "lang": "c/cpp",
+            "role": "host-codegen",
+            "dir": "packages/cli",
+            "build_root": "packages/cli/target",
+            "scheduler": "just native build-fixture-extras",
+            "shared_mutation": "packages/cli/target",
+            "notes": "nros CLI ws-sync probe and host nros-codegen for native C/C++ fixtures",
+        },
+        {
+            "id": "qemu-arm-toolchain-prereq",
+            "platform": "qemu-arm-baremetal",
+            "kind": "sdk-prereq",
+            "role": "arm-none-eabi-gcc",
+            "dir": "nros-sdk-index.toml",
+            "build_root": "build/qemu",
+            "scheduler": "just qemu setup-qemu / just workspace apt-packages",
+            "shared_mutation": "build/qemu",
+            "notes": "build-fixtures skips without arm-none-eabi-gcc; patched qemu provisioned by setup-qemu for tests",
+        },
+        {
+            "id": "stm32f4-toolchain-prereq",
+            "platform": "stm32f4",
+            "kind": "sdk-prereq",
+            "role": "arm-none-eabi-gcc",
+            "dir": "nros-sdk-index.toml",
+            "build_root": "",
+            "scheduler": "just stm32f4 setup",
+            "shared_mutation": "$NROS_HOME/sdk/openocd; host arm-none-eabi-gcc",
+            "notes": "build-fixtures skips without arm-none-eabi-gcc; setup provisions openocd for hardware flow",
+        },
+        {
+            "id": "freertos-sdk-prereq",
+            "platform": "freertos",
+            "kind": "sdk-prereq",
+            "role": "freertos-lwip-toolchain",
+            "dir": "nros-sdk-index.toml",
+            "build_root": "$FREERTOS_DIR; $LWIP_DIR",
+            "scheduler": "just freertos setup",
+            "shared_mutation": "$FREERTOS_DIR; $LWIP_DIR; build/qemu",
+            "notes": "requires FreeRTOS kernel, lwIP, arm-none-eabi-gcc, and qemu-arm-freertos setup",
+        },
+        {
+            "id": "freertos-rust-ws-sync-preflight",
+            "platform": "freertos",
+            "kind": "preflight",
+            "lang": "rust",
+            "role": "ws-sync",
+            "dir": "examples/qemu-arm-freertos/rust",
+            "build_root": "examples/qemu-arm-freertos/rust/*/generated",
+            "scheduler": "just freertos build-examples",
+            "shared_mutation": "examples/qemu-arm-freertos/rust/*/generated; examples/qemu-arm-freertos/rust/*/.cargo/config.toml",
+            "notes": "serial nros ws sync before FreeRTOS Rust role fixtures",
+        },
+        {
+            "id": "freertos-cmake-codegen-tool",
+            "platform": "freertos",
+            "kind": "preflight",
+            "lang": "c/cpp",
+            "role": "host-codegen",
+            "dir": "packages/cli",
+            "build_root": "packages/cli/target",
+            "scheduler": "just freertos build-fixture-extras",
+            "shared_mutation": "packages/cli/target",
+            "notes": "host nros-codegen and toolchain CMake defs before FreeRTOS C/C++ leaves",
+        },
+        {
+            "id": "nuttx-sdk-prereq",
+            "platform": "nuttx",
+            "kind": "sdk-prereq",
+            "role": "nuttx-toolchain",
+            "dir": "nros-sdk-index.toml",
+            "build_root": "$NUTTX_DIR; $NUTTX_APPS_DIR",
+            "scheduler": "just nuttx setup",
+            "shared_mutation": "$NUTTX_DIR; $NUTTX_APPS_DIR",
+            "notes": "requires NuttX sources and arm-none-eabi-gcc; build-fixtures skips when absent",
+        },
+        {
+            "id": "nuttx-kernel-export-preflight",
+            "platform": "nuttx",
+            "kind": "preflight",
+            "role": "kernel-export",
+            "dir": "scripts/nuttx/build-nuttx.sh",
+            "build_root": "$NUTTX_DIR/staging",
+            "scheduler": "just nuttx build-fixtures -> just nuttx build",
+            "shared_mutation": "$NUTTX_DIR/staging/libc.a; $NUTTX_DIR/include/nuttx/config.h",
+            "notes": "idempotent kernel export required before Rust/C/C++ NuttX fixture builds",
+        },
+        {
+            "id": "nuttx-rustup-warmup-preflight",
+            "platform": "nuttx",
+            "kind": "preflight",
+            "lang": "rust",
+            "role": "rustup-build-std-warmup",
+            "dir": "examples/qemu-arm-nuttx/rust-toolchain.toml",
+            "build_root": "$RUSTUP_HOME/toolchains",
+            "scheduler": "just nuttx build-fixtures",
+            "shared_mutation": "$RUSTUP_HOME/downloads; $RUSTUP_HOME/toolchains",
+            "notes": "serial rust-src/cargo/rust-std install before parallel -Z build-std fixture leaves",
+        },
+        {
+            "id": "nuttx-cmake-codegen-tool",
+            "platform": "nuttx",
+            "kind": "preflight",
+            "lang": "c/cpp",
+            "role": "host-codegen",
+            "dir": "packages/cli",
+            "build_root": "packages/cli/target",
+            "scheduler": "just nuttx build-fixtures",
+            "shared_mutation": "packages/cli/target",
+            "notes": "host nros-codegen and NuttX CMake defs before C/C++ leaves",
+        },
+        {
+            "id": "threadx-linux-sdk-prereq",
+            "platform": "threadx-linux",
+            "kind": "sdk-prereq",
+            "role": "threadx-netx",
+            "dir": "nros-sdk-index.toml",
+            "build_root": "$THREADX_DIR; $NETX_DIR",
+            "scheduler": "just threadx_linux setup",
+            "shared_mutation": "$THREADX_DIR; $NETX_DIR",
+            "notes": "requires ThreadX and NetX Duo sources; build recipes skip when absent",
+        },
+        {
+            "id": "threadx-linux-cmake-codegen-tool",
+            "platform": "threadx-linux",
+            "kind": "preflight",
+            "lang": "c/cpp",
+            "role": "host-codegen",
+            "dir": "packages/cli",
+            "build_root": "packages/cli/target",
+            "scheduler": "just threadx_linux build-fixture-extras",
+            "shared_mutation": "packages/cli/target",
+            "notes": "host nros-codegen and ThreadX/NetX CMake defs before C/C++ leaves",
+        },
+        {
+            "id": "threadx-riscv64-sdk-prereq",
+            "platform": "threadx-riscv64",
+            "kind": "sdk-prereq",
+            "role": "threadx-netx-riscv64-toolchain",
+            "dir": "nros-sdk-index.toml",
+            "build_root": "$THREADX_DIR; $NETX_DIR",
+            "scheduler": "just threadx_riscv64 setup",
+            "shared_mutation": "$THREADX_DIR; $NETX_DIR; host riscv64 toolchain",
+            "notes": "requires ThreadX/NetX, riscv64-unknown-elf-gcc, picolibc, and qemu-system-riscv64",
+        },
+        {
+            "id": "threadx-riscv64-cmake-codegen-tool",
+            "platform": "threadx-riscv64",
+            "kind": "preflight",
+            "lang": "c/cpp",
+            "role": "host-codegen",
+            "dir": "packages/cli",
+            "build_root": "packages/cli/target",
+            "scheduler": "just threadx_riscv64 build-fixture-extras",
+            "shared_mutation": "packages/cli/target",
+            "notes": "host nros-codegen and board CMake defs before C/C++ leaves",
+        },
+        {
+            "id": "esp32-sdk-prereq",
+            "platform": "qemu-esp32-baremetal",
+            "kind": "sdk-prereq",
+            "role": "esp32-qemu-tooling",
+            "dir": "nros-sdk-index.toml",
+            "build_root": "build/esp32-qemu",
+            "scheduler": "just esp32 setup",
+            "shared_mutation": "build/esp32-qemu; rustup riscv32imc-unknown-none-elf target",
+            "notes": "ESP32-C3 qemu/image packaging prerequisites for qemu-esp32 fixture tests",
+        },
+        {
+            "id": "esp32-manifest-env-preflight",
+            "platform": "esp32",
+            "kind": "preflight",
+            "lang": "rust",
+            "role": "nightly-build-std-env",
+            "dir": "examples/esp32/rust",
+            "build_root": "$RUSTUP_HOME/toolchains",
+            "scheduler": "just esp32 build-examples / just native build-examples",
+            "shared_mutation": "$RUSTUP_HOME/toolchains",
+            "notes": "manifest leaves require nightly RUSTUP_TOOLCHAIN plus SSID/PASSWORD env defaults",
+        },
+        {
+            "id": "zephyr-sdk-prereq",
+            "platform": "zephyr",
+            "kind": "sdk-prereq",
+            "role": "zephyr-workspace",
+            "dir": "just/zephyr-setup.just",
+            "build_root": "$ZEPHYR_WORKSPACE",
+            "scheduler": "just zephyr setup",
+            "shared_mutation": "$ZEPHYR_WORKSPACE; $ZEPHYR_VENV_BIN",
+            "notes": "west, Zephyr workspace, venv/toolchain env, and optional line-specific setup",
+        },
+        {
+            "id": "zephyr-workspace-preflight",
+            "platform": "zephyr",
+            "kind": "preflight",
+            "role": "workspace-env-patches",
+            "dir": "scripts/zephyr",
+            "build_root": "$ZEPHYR_WORKSPACE",
+            "scheduler": "just zephyr build-fixtures",
+            "shared_mutation": "$ZEPHYR_WORKSPACE/zephyr; build/zephyr-cache",
+            "notes": "workspace validation, ROS interface env, venv PATH, Zephyr patches, log/cache dirs",
+        },
+        {
+            "id": "zephyr-rust-ws-sync-preflight",
+            "platform": "zephyr",
+            "kind": "preflight",
+            "lang": "rust",
+            "role": "ws-sync",
+            "dir": "examples/zephyr/rust",
+            "build_root": "examples/zephyr/rust/*/generated",
+            "scheduler": "just zephyr build-fixtures",
+            "shared_mutation": "examples/zephyr/rust/*/generated; examples/zephyr/rust/*/.cargo/config.toml; examples/zephyr/rust/*/build/.nros-ws-sync.stamp",
+            "notes": "serial nros ws sync before Zephyr west fixture leaves",
+        },
+        {
+            "id": "zephyr-cmake-codegen-tool",
+            "platform": "zephyr",
+            "kind": "preflight",
+            "lang": "c/cpp",
+            "role": "host-codegen",
+            "dir": "packages/cli",
+            "build_root": "packages/cli/target",
+            "scheduler": "just zephyr build-fixtures",
+            "shared_mutation": "packages/cli/target",
+            "notes": "host nros-codegen passed to Zephyr C/C++ nros_generate_interfaces",
+        },
+        {
+            "id": "esp-idf-sdk-prereq",
+            "platform": "esp_idf",
+            "kind": "sdk-prereq",
+            "role": "esp-idf",
+            "dir": "just/esp_idf.just",
+            "build_root": "$NROS_ESP_IDF_WORKSPACE",
+            "scheduler": "just esp_idf doctor/setup",
+            "shared_mutation": "$NROS_ESP_IDF_WORKSPACE; tests/esp-idf-smoke/build",
+            "notes": "idf.py and ESP-IDF environment required before esp-idf smoke fixture",
+        },
+    ]
+    for row in rows:
+        normalized = {field: "" for field in FIELDS}
+        normalized.update(row)
+        normalized["source"] = "just/*.just"
+        yield normalized
+
+
 def hand_authored_rows():
     rows = [
         {
@@ -343,16 +638,26 @@ def collect(repo_root, args):
     rows = []
     rows.extend(manifest_fixture_rows(manifest))
     rows.extend(workspace_rows(manifest))
+    rows.extend(prerequisite_rows())
     rows.extend(zephyr_rows(repo_root, args.include_zephyr))
     rows.extend(hand_authored_rows())
 
     if args.platform:
-        rows = [row for row in rows if row["platform"] == args.platform]
+        rows = [row for row in rows if row.get("platform") == args.platform]
     if args.lang:
-        rows = [row for row in rows if row["lang"] == args.lang]
+        rows = [row for row in rows if row.get("lang") == args.lang]
     if args.source:
-        rows = [row for row in rows if row["source"] == args.source]
-    return sorted(rows, key=lambda r: (r["platform"], r["kind"], r["lang"], r["rmw"], r["id"]))
+        rows = [row for row in rows if row.get("source") == args.source]
+    return sorted(
+        rows,
+        key=lambda r: (
+            r.get("platform", ""),
+            r.get("kind", ""),
+            r.get("lang", ""),
+            r.get("rmw", ""),
+            r.get("id", ""),
+        ),
+    )
 
 
 def write_tsv(rows, out):
