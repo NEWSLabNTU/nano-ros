@@ -54,12 +54,20 @@ cmake_value, c_define_token}` + rejects unknowns. **(a)** load-time validation i
 unit tests (5 resolver + 1 loader + 4 scaffold... see 227.4).
 **Files:** `cargo-nano-ros/src/rmw_resolver.rs`, `nros-cli-core/src/orchestration/{mod,nros_config}.rs`, `cmd/codegen_system.rs`.
 
-### 227.3 — Converge examples onto uniform RMW lowering  ⏳ DEFERRED
-Build-risk (changing link wiring per example) — needs per-`just <plat>` build
-verification, so it lands as its own verified pass, not folded into a CLI wave.
-Make every example (zenoh / xrce / cyclonedds) lower RMW the same way from the
-declared value. cyclonedds keeps its CMake/Corrosion link path.
-**Files:** `examples/**/Cargo.toml`, `examples/**/CMakeLists.txt`.
+### 227.3 — Converge examples onto uniform RMW lowering  ✅ RESOLVED (won't-do, documented)
+Investigated (2026-06-09). The example wiring split is **architecturally
+determined, not an accident**: zenoh/xrce use the project-dep pattern (Phase 104.A
+made callers wire their own backend dep + the `main.rs` `register()` force-links
+the rlib CGU); cyclonedds uses the umbrella (`nros/rmw-cyclonedds`) because its
+register lives in a C++ backend force-linked by `nros-node`'s
+`__FORCE_LINK_CYCLONEDDS_SYS` — which works only because `-sys` is a leaf crate.
+Full umbrella convergence is a **won't-do**: it would require re-adding the 104.A
+per-platform forwarding in `nros` *and* new `__FORCE_LINK_{ZENOH,XRCE}` statics in
+`nros-node` (cycle risk — those backends aren't leaf crates), reverting a
+deliberate decision. The **user-facing** declare→lower model is already delivered
+by the scaffolder (227.4) + docs; the user never sees the internal wiring.
+Rationale documented in RFC-0031 (“Consumer wiring patterns”). No code change.
+**Files:** `docs/design/0031-rmw-selection-and-lowering.md`.
 
 ### 227.4 — `nros new --rmw` templating  ✅ DONE
 `scaffold_package` validates `--rmw` via the resolver (clear error on a typo, no
@@ -115,8 +123,10 @@ and the book deploy page (227.9). No new code needed.
 - A single-node project with no `system.toml` builds via the synthesized system;
   adding a `system.toml` with `rmw = "<x>"` selects the backend without touching
   any cargo feature.
-- All three backends select uniformly from the declared value across Rust and
-  C/C++ examples.
+- ~~All three backends select uniformly from the declared value across Rust and
+  C/C++ examples.~~ Reframed (227.3): the *user-facing* declare→lower model is
+  uniform; example-internal Cargo wiring is architecturally split (zenoh/xrce
+  project-dep, cyclone umbrella) and stays so — see RFC-0031.
 - `nros new foo --rmw xrce` scaffolds an xrce-wired project.
 - The four book pages describe one consistent config + RMW story.
 - `just ci` green.
