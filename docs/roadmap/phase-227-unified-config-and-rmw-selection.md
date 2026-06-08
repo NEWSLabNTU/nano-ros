@@ -76,12 +76,15 @@ force-link; no `register()`. `link-custom` forwarding added for custom-transport
 Build-verified (zenoh + xrce where applicable). cyclonedds keeps its CMake path;
 bare-metal keeps explicit `register()`.
 
-**Remaining (1 item — code-quality):**
-- Collapse the two parallel rmw mapping tables onto one (`cargo-nano-ros::
-  rmw_resolver` vs `nros-cli-core::orchestration::generate::rmw_backend_feature`)
-  and wire `nros new --rmw` real templating (227.4 covers the scaffold; the
-  orchestrated `generate.rs` still has its own table). Removes a drift risk.
-**Files:** `packages/cli/nros-cli-core/src/orchestration/generate.rs`.
+**Drift-collapse — DONE.** The RMW alias/name table is now single-sourced:
+`cargo-nano-ros::rmw_resolver::canonical_rmw` is the one alias table (`zenoh` /
+`rmw-zenoh` / `rmw-zenoh-cffi` → `zenoh`, …); `resolve_rmw` uses it, and the
+orchestrated `generate.rs::normalize_rmw` delegates to it. Adding a backend now
+touches one place. (`nros new --rmw` templating landed in 227.4.) The
+orchestrated codegen still emits a `register()` in its *generated* entry — that
+is a machine-emitted lowering of the declared config, not a user hardcode (like
+the C/C++ auto-synthesized stub), so it is consistent with the model and left
+as-is. 227.3 complete.
 
 ### 227.4 — `nros new --rmw` templating  ✅ DONE
 `scaffold_package` validates `--rmw` via the resolver (clear error on a typo, no

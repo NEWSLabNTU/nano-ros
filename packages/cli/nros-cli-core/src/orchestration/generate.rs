@@ -1467,15 +1467,11 @@ fn render_platform_dependencies(options: &GenerateOptions, plan: &NrosPlan) -> S
     format!("{board_line}{extra}")
 }
 
-/// Canonical RMW name (`zenoh` / `xrce` / `cyclonedds`) from any of the
-/// accepted token spellings. `None` for empty / unknown.
+/// Canonical RMW name (`zenoh` / `xrce` / `cyclonedds`) from any accepted
+/// spelling. Delegates to the single alias table in `rmw_resolver` (Phase
+/// 227.3 — one source of truth, no drift).
 fn normalize_rmw(rmw: &str) -> Option<&'static str> {
-    match rmw {
-        "zenoh" | "rmw-zenoh" | "rmw-zenoh-cffi" => Some("zenoh"),
-        "xrce" | "rmw-xrce" | "rmw-xrce-cffi" => Some("xrce"),
-        "cyclonedds" | "rmw-cyclonedds" | "rmw-cyclonedds-cffi" => Some("cyclonedds"),
-        _ => None,
-    }
+    crate::orchestration::rmw_resolver::canonical_rmw(rmw)
 }
 
 /// Phase 173.5 — the set of canonical RMW backends the build links: the

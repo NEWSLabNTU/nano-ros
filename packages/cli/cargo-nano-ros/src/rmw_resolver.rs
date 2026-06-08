@@ -47,33 +47,48 @@ impl fmt::Display for UnknownRmw {
 
 impl std::error::Error for UnknownRmw {}
 
+/// The canonical backend name (`"zenoh"` / `"xrce"` / `"cyclonedds"`) from any
+/// accepted spelling — the bare name, the `rmw-<x>` feature spelling, or the
+/// legacy `rmw-<x>-cffi`. `None` for empty / unknown.
+///
+/// This is the single alias table; the orchestration layer's `normalize_rmw`
+/// delegates here so there is one source of truth for RMW name recognition.
+pub fn canonical_rmw(input: &str) -> Option<&'static str> {
+    match input {
+        "zenoh" | "rmw-zenoh" | "rmw-zenoh-cffi" => Some("zenoh"),
+        "xrce" | "rmw-xrce" | "rmw-xrce-cffi" => Some("xrce"),
+        "cyclonedds" | "rmw-cyclonedds" | "rmw-cyclonedds-cffi" => Some("cyclonedds"),
+        _ => None,
+    }
+}
+
 /// Lower a declared RMW string to its per-language build forms.
 ///
-/// Matching is exact and case-sensitive (the schema field is authored, not
-/// free-text). An unknown value is an error — caught early in the loader so a
-/// typo fails with a clear message rather than producing a broken build.
+/// Accepts the canonical name or any alias ([`canonical_rmw`]). An unknown
+/// value is an error — caught early in the loader so a typo fails with a clear
+/// message rather than producing a broken build.
 pub fn resolve_rmw(declared: &str) -> Result<ResolvedRmw, UnknownRmw> {
-    match declared {
-        "zenoh" => Ok(ResolvedRmw {
+    match canonical_rmw(declared) {
+        Some("zenoh") => Ok(ResolvedRmw {
             declared: "zenoh",
             cargo_feature: "rmw-zenoh",
             cmake_value: "zenoh",
             c_define_token: "ZENOH",
         }),
-        "xrce" => Ok(ResolvedRmw {
+        Some("xrce") => Ok(ResolvedRmw {
             declared: "xrce",
             cargo_feature: "rmw-xrce",
             cmake_value: "xrce",
             c_define_token: "XRCE",
         }),
-        "cyclonedds" => Ok(ResolvedRmw {
+        Some("cyclonedds") => Ok(ResolvedRmw {
             declared: "cyclonedds",
             cargo_feature: "rmw-cyclonedds",
             cmake_value: "cyclonedds",
             c_define_token: "CYCLONEDDS",
         }),
-        other => Err(UnknownRmw {
-            declared: other.to_string(),
+        _ => Err(UnknownRmw {
+            declared: declared.to_string(),
         }),
     }
 }
@@ -118,6 +133,17 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("dust-dds"));
         assert!(msg.contains("zenoh") && msg.contains("xrce") && msg.contains("cyclonedds"));
+    }
+
+    #[test]
+    fn canonical_rmw_accepts_aliases() {
+        assert_eq!(canonical_rmw("zenoh"), Some("zenoh"));
+        assert_eq!(canonical_rmw("rmw-zenoh"), Some("zenoh"));
+        assert_eq!(canonical_rmw("rmw-zenoh-cffi"), Some("zenoh"));
+        assert_eq!(canonical_rmw("rmw-cyclonedds"), Some("cyclonedds"));
+        assert_eq!(canonical_rmw("nope"), None);
+        // resolve_rmw accepts aliases via canonical_rmw.
+        assert_eq!(resolve_rmw("rmw-xrce").unwrap().cargo_feature, "rmw-xrce");
     }
 
     #[test]
