@@ -328,3 +328,88 @@ FreeRTOS C) still use manual `nros_generate_interfaces()` calls.
 **To migrate**: Add `package.xml` to each example declaring `<depend>` on message
 packages, replace manual codegen calls with `nros_find_interfaces()`.
 
+## 12. Stale standalone lockfiles trip the codegen ABI guard (218.J debt)
+
+Surfaced by the Phase 226.F broad-build validation. `nros generate-rust`
+aborts via the `nros-cli-core` `abi_guard` with
+`ABI version mismatch: CLI nros-core 0.5.0 vs workspace nros-core 0.1.0`,
+which fails the `generate-bindings` preflight of `build-all-jobserver.sh` /
+`just build-test-fixtures` — so no fixture stamp is written and
+`just test-all` mass-fails on `_require-fixtures`.
+
+**Root cause**: the Phase 218.J `0.1.0 → 0.5.0` bundle-version bump never
+propagated to the standalone example/testing lockfiles — ~56 `Cargo.lock`
++ 7 `Cargo.toml` still pin nano-ros crates at `0.1.0`. The guard reads the
+lock in the dir `generate-rust` runs in; a stale own-lock trips it.
+
+**This is a FALSE POSITIVE for actual builds**: the real `nros-core` source
+is `0.5.0` everywhere (root `Cargo.lock` + `cargo tree`); standalone locks
+are not used for the actual workspace compilation.
+
+**Workaround**: `NROS_SKIP_VERSION_CHECK=1` (the documented `abi_guard`
+opt-out) for broad-build / generate-bindings runs.
+
+**Why a clean regen is non-trivial**: standalone locks reference nano-ros as
+*patched registry* deps, so a repo-wide `ws sync` + `cargo update -p` sweep
+leaves most locks incomplete (61/71 in one run) and produces 5500+ lines of
+registry-dep churn. `packages/reference/stm32f4-porting/{polling,rtic}` also
+lack an empty `[workspace]` table (they fold into the root workspace), and
+`tests/simple-workspace` needs its colcon/standalone patch config
+re-established first. Also note: any broad build / `just generate-bindings`
+regenerates these stale committed locks + `generated/*.rs`, dirtying ~60+
+tracked files per run.
+
+**To fix**: pick a canonical strategy — regenerate + commit all standalone
+locks at `0.5.0`, OR drop committed locks for copy-out examples that don't
+need a pinned lock, OR retarget the `abi_guard` to read the root lock for
+in-tree dirs. Add the missing `[workspace]` tables. (Phase 226.F context.)
+
+## 13. stm32f4 `talker-embassy` fixture does not link
+
+Surfaced by Phase 226.F. `build-test-fixtures` fails at the stm32f4 leaf:
+`stm32f4-rs-embassy-example` — undefined symbols (`__assert_func`,
+`strncmp`, `nros_platform_alloc`, …) on a standalone `cargo build`, and
+duplicate `platform_aliases` symbols (`z_random_fill`, `z_clock_now`, …)
+in the shared fixture target dir.
+
+`talker-embassy` is an incomplete example (missing board libc/platform glue
++ memory layout). The pre-226 hard-coded stm32f4 recipe list **deliberately
+omitted** it; the Phase 226 manifest migration (`fixtures-build.sh stm32f4
+rust`) builds every manifest row, so it now includes the broken example.
+There is no manifest `skip_build` field (only `skip_probe`).
+
+**To fix**: either fix the example's link (board glue + `memory.x`), or add a
+manifest `skip_build`/exclude flag and mark it, restoring the pre-226
+omission. (Separate from the pre-existing RTIC `_defmt_timestamp` link gap.)
+
+## 14. `examples/templates/multi-node-workspace` missing generated dir in broad build
+
+Surfaced by Phase 226.F. `build-all-jobserver.sh` fails: `failed to load
+source for dependency builtin_interfaces` —
+`examples/templates/multi-node-workspace/generated/builtin_interfaces/Cargo.toml`
+no such file. The template path-deps generated message crates under
+`generated/` (gitignored) but the broad build runs no codegen / `nros ws
+sync` pass for `examples/templates/*` before resolving it.
+
+**To fix**: add a codegen/`ws sync` preflight for `examples/templates/*` in
+the broad build, or exclude templates from the broad cargo resolve.
+
+## 15. threadx-linux C++ `nros_cpp_ffi.h` regeneration race
+
+Surfaced by Phase 226.E/226.F. Intermittent `nros_cpp_ffi.h` "multiple
+definition / conflicting declaration of `nros_cpp_qos_t`" during a cold
+threadx-linux C++ fixture build. The on-disk header is clean (1 definition);
+the duplication is transient when a cold workspace Corrosion target
+regenerates the header mid-build.
+
+**To fix**: serialize/guard the `nros_cpp_ffi.h` (re)generation so concurrent
+cold C++ builds cannot observe a half-written/duplicated header.
+
+## 16. threadx-riscv64 `build-fixture-extras` exits 127 on the maintainer host
+
+Surfaced by Phase 226.F. `just threadx_riscv64` fixture extras exit 127
+(command not found) during the broad build — a missing tool/env on the host.
+
+**To fix**: identify the missing tool (`just threadx_riscv64 doctor`) and
+provision it via `nros setup`, or skip-with-hint when absent.
+

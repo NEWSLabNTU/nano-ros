@@ -2058,6 +2058,10 @@ tree to the Phase 226 source changes only.
 
 ### 226.F Follow-ups (out of Phase 226 orchestration scope)
 
+These are pre-existing breakages surfaced by the broad validation, not
+regressions from the orchestration work. Tracked as issues in
+`docs/known-issues.md` #12–#16; summarised here for context.
+
 - **Stale standalone lockfiles (218.J).** Own maintenance pass: propagate
   the `0.5.0` bundle version into the ~56 standalone example/testing
   `Cargo.lock` (and 7 `Cargo.toml` patch blocks), resolve the
