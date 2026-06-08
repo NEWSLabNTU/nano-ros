@@ -92,6 +92,15 @@ pub enum NrosConfigError {
         #[source]
         source: toml::de::Error,
     },
+
+    /// A bringup system (on-disk or synthesised) declares an RMW backend that
+    /// is not one of the supported set (Phase 227.2, RFC-0031).
+    #[error("bringup package `{package}`: {source}")]
+    InvalidSystemRmw {
+        package: String,
+        #[source]
+        source: crate::orchestration::rmw_resolver::UnknownRmw,
+    },
 }
 
 /// Phase 212.B `NrosConfig` — every nros-relevant fact derived from a
@@ -353,6 +362,18 @@ impl NrosConfig {
         }
         for (k, v) in synthesised {
             bringup_packages.insert(k, v);
+        }
+
+        // Phase 227.2 — validate the declared RMW on every bringup (on-disk,
+        // Path-A, and synthesised single-node) so a typo fails early with the
+        // known-list rather than as a broken downstream build (RFC-0031).
+        for (name, entry) in &bringup_packages {
+            crate::orchestration::rmw_resolver::resolve_rmw(&entry.system.system.rmw).map_err(
+                |source| NrosConfigError::InvalidSystemRmw {
+                    package: name.clone(),
+                    source,
+                },
+            )?;
         }
 
         Ok(NrosConfig {
@@ -933,6 +954,49 @@ locator = "tcp/127.0.0.1:7447"
             .expect("native deploy block synthesised");
         assert_eq!(native.kind.as_deref(), Some("self"));
         assert_eq!(native.board.as_deref(), Some("native_sim/native/64"));
+    }
+
+    #[test]
+    fn rejects_unknown_rmw_on_synthesised_system() {
+        // Phase 227.2 — a typo'd rmw in a deploy block surfaces at load time
+        // (via the synthesised single-node system), not as a broken build.
+        let dir = scratch_dir("rejects_unknown_rmw_on_synthesised_system");
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\nmembers = [\"alpha_pkg\"]\n",
+        )
+        .unwrap();
+        fs::create_dir_all(dir.join("alpha_pkg/src")).unwrap();
+        fs::write(
+            dir.join("alpha_pkg/Cargo.toml"),
+            r#"
+[package]
+name = "alpha_pkg"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.component]
+class = "alpha_pkg::Node"
+name = "alpha"
+
+[package.metadata.nros.deploy.native]
+rmw = "dust-dds"
+"#,
+        )
+        .unwrap();
+        fs::write(dir.join("alpha_pkg/src/lib.rs"), "").unwrap();
+
+        let err = NrosConfig::from_cargo_metadata(&dir).expect_err("unknown rmw must fail load");
+        match err {
+            NrosConfigError::InvalidSystemRmw { package, source } => {
+                assert_eq!(package, "alpha_pkg");
+                assert_eq!(source.declared, "dust-dds");
+            }
+            other => panic!("expected InvalidSystemRmw, got {other:?}"),
+        }
     }
 
     #[test]

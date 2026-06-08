@@ -37,11 +37,13 @@ already true (workspace `system.toml` `rmw`, root-`nros.toml` rejection,
 
 ## Work items
 
-### 227.1 — Single-node `system.toml` synthesis + read path
-Implement implicit-1-component-system synthesis when no `system.toml` is present,
-and the optional single-node `system.toml` read path in the orchestration layer.
-**Files:** `packages/cli/nros-cli-core/src/orchestration/nros_config.rs`,
-`packages/cli/nros-cli-core/src/cmd/{plan,check,codegen_system}.rs`.
+### 227.1 — Single-node `system.toml` synthesis + read path  ✅ DONE
+Already implemented: `synthesise_self_bringup()` in `nros_config.rs` synthesizes
+the implicit 1-component system from node metadata (rmw/domain_id/locator from the
+first `[deploy.<t>]` block, default `zenoh`), tagged `BringupSource::SelfBringup`;
+covered by `discovers_self_bringup_{component,application}_pkg` tests. No further
+work — Wave 1 only adds RMW validation on this path (227.2).
+**Files:** `packages/cli/nros-cli-core/src/orchestration/nros_config.rs`.
 
 ### 227.2 — RMW resolver + per-language lowering
 Add the RFC-0031 precedence resolver; read declared `rmw` for single-node

@@ -19,6 +19,7 @@ pub mod nros_config;
 pub mod params;
 pub mod plan;
 pub mod planner;
+pub mod rmw_resolver;
 pub mod root_config;
 pub mod schema;
 pub mod sdk_index;
@@ -31,6 +32,7 @@ pub use nros_config::{
     BringupPackageEntry, BringupSource, ComponentPackageEntry, NrosConfig, NrosConfigError,
 };
 pub use plan::NrosPlan;
+pub use rmw_resolver::{ResolvedRmw, UnknownRmw, resolve_rmw};
 pub use root_config::WorkspaceConfig;
 pub use source_metadata::SourceMetadata;
 pub use workspace::{ComponentDeclaration, Package, Workspace};
