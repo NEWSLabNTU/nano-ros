@@ -32,6 +32,11 @@ std = [
     "nros-rmw/std",
     "nros-params/std",
     "nros-serdes/std",
+    # Phase 227.3 (unified RMW) — forward std to a linked backend so the umbrella
+    # `nros = { features = ["rmw-zenoh", "std", …] }` fully wires it. The `?`
+    # makes each inert unless that optional backend is selected (bridge-safe).
+    "nros-rmw-zenoh?/std",
+    "nros-rmw-xrce-cffi?/std",
 ]
 alloc = [
     "nros-core/alloc",
@@ -103,6 +108,9 @@ platform-posix = [
     "nros-platform/platform-posix",
     "nros-node/platform-posix",
     "platform-udp",
+    # Phase 227.3 (unified RMW) — forward to the zenoh backend's posix C port
+    # when linked (inert via `?` otherwise).
+    "nros-rmw-zenoh?/platform-posix",
 ]
 platform-zephyr = [
     "nros-platform/platform-zephyr",
@@ -140,7 +148,8 @@ platform-orin-spe = [
 # `nros-rmw-zenoh` (always-on in vendor build). The umbrella
 # crate's inert markers go with them. `link-tls` / `link-custom`
 # stay — both have real build-host gates.
-link-tls = []
+# Phase 227.3 (unified RMW) — TLS link is zenoh-pico-specific; forward when linked.
+link-tls = ["nros-rmw-zenoh?/link-tls"]
 link-custom = []
 
 # XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features).
@@ -154,6 +163,8 @@ safety-e2e = [
     "nros-node/safety-e2e",
     "nros-rmw/safety-e2e",
     "nros-rmw-cffi?/safety-e2e",
+    # Phase 227.3 (unified RMW) — forward to the zenoh backend when linked.
+    "nros-rmw-zenoh?/safety-e2e",
 ]
 
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API).
@@ -172,8 +183,9 @@ param-services = ["nros-node/param-services"]
 lifecycle-services = ["nros-node/lifecycle-services"]
 
 # ROS edition feature flags.
-ros-humble = ["nros-node/ros-humble"]
-ros-iron = ["nros-node/ros-iron"]
+# Phase 227.3 (unified RMW) — forward the ROS edition to the zenoh backend.
+ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh?/ros-humble"]
+ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron"]
 
 [dependencies]
 # Core functionality (default-features = false for no_std support).

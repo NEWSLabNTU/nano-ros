@@ -41,28 +41,12 @@ compile_error!(
      `--no-default-features --features rmw-X` to switch.",
 );
 
-fn register_rmw() -> Result<(), &'static str> {
-    // Phase 128.B.1 — the one-line `register()` doubles as the
-    // (idempotent) backend registration AND the symbol reference that
-    // drags the backend rlib's CGU into the binary on stable Rust.
-    #[cfg(feature = "rmw-zenoh")]
-    {
-        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
-    }
-    // Phase 214.S.4.b — no explicit cyclonedds register call. The
-    // umbrella `nros/rmw-cyclonedds` feature pulls `nros-rmw-
-    // cyclonedds-sys` into `nros-node` via the private
-    // `__cyclonedds-link` feature; the `#[used]
-    // __FORCE_LINK_CYCLONEDDS_SYS` static inside
-    // `nros-node::cyclonedds_register` keeps the `-sys` rlib alive
-    // and the backend's linkme self-register section fires inside
-    // `nros::init` via the cffi-rmw walker.
-    #[cfg(feature = "rmw-xrce")]
-    {
-        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
-    }
-    Ok(())
-}
+// Phase 227.3 (unified RMW) — no explicit `register()` calls. The RMW is
+// declared via the build feature (`rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds`),
+// which routes through the `nros` umbrella; `nros`'s `#[used] __FORCE_LINK_*`
+// statics keep the selected backend's `RMW_INIT_ENTRIES` self-register section
+// in the link graph, and it fires inside `nros::init` via the cffi-rmw walker.
+// (Bare-metal targets, where linkme is unsupported, still call `register()`.)
 
 const ACTIVE_RMW_NAME: &str = if cfg!(feature = "rmw-zenoh") {
     "Zenoh"
@@ -78,8 +62,6 @@ fn main() {
     env_logger::init();
     info!("nros Native Talker ({} Transport)", ACTIVE_RMW_NAME);
     info!("=========================================");
-
-    register_rmw().expect("Failed to register RMW backend");
 
     // Phase 212.L.5 Pattern 2 — launch-aware init. Picks up
     // `ROS_DOMAIN_ID` / `NROS_LOCATOR` / `NROS_SESSION_MODE` /

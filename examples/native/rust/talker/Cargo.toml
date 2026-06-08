@@ -21,7 +21,12 @@ deploy = ["native"]
 # `cargo run -p native-rs-talker` Just Works for the docs-first
 # experience.
 default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 227.3 (unified RMW) — zenoh routes through the `nros` umbrella feature
+# (the cargo lowering of the declared RMW, RFC-0031). `nros` forwards the
+# backend's std/platform/ros/safety/tls features and force-links it
+# (`__FORCE_LINK_ZENOH`), so no project-level `nros-rmw-zenoh` dep and no
+# `register()` call in `main.rs`.
+rmw-zenoh = ["nros/rmw-zenoh"]
 # Phase 214.S.4.b — strict 1-entry parity with rmw-zenoh / rmw-xrce.
 # The umbrella `nros/rmw-cyclonedds` pulls `nros-rmw-cyclonedds-sys`
 # into `nros-node` via the private `__cyclonedds-link` feature and
@@ -30,7 +35,9 @@ rmw-zenoh = ["dep:nros-rmw-zenoh"]
 # `register()` call needed in `src/main.rs` — the linkme self-register
 # section fires inside `nros::init` via the cffi-rmw walker.
 rmw-cyclonedds = ["nros/rmw-cyclonedds"]
-rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
+# Phase 227.3 (unified RMW) — xrce routes through the umbrella too
+# (`__FORCE_LINK_XRCE` + std forwarding in `nros`); no project dep, no register().
+rmw-xrce = ["nros/rmw-xrce"]
 
 # Carry-over feature gates that previously lived in
 # `native/rust/talker/`. These are zenoh-specific and silently
@@ -38,12 +45,12 @@ rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 # advertises only `rmw-*` for each example; downstream tooling
 # should not combine zenoh-specific gates with `rmw-cyclonedds` /
 # `rmw-xrce`.
-safety-e2e     = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+safety-e2e     = ["nros/safety-e2e"]
 param-services = ["nros/param-services"]
-link-tls       = ["nros/link-tls", "nros-rmw-zenoh?/link-tls"]
+link-tls       = ["nros/link-tls"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's
@@ -57,9 +64,6 @@ env_logger = "0.11"
 # feature toggles the matching dep on. Exactly one of the three
 # is enabled per build; the cfg-chain in `src/main.rs` calls the
 # corresponding `register()` entry.
-nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
-
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the
 # outer nano-ros workspace (in nested checkouts) or gets adopted by a user's

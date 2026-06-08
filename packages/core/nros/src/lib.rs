@@ -153,6 +153,49 @@ extern crate self as nros;
 #[used]
 pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_LINK_CFFI;
 
+// Phase 227.3 (unified RMW) — force-link the zenoh backend rlib so its
+// `RMW_INIT_ENTRIES` self-register section survives stable-Rust rlib pruning,
+// retiring the explicit `nros_rmw_zenoh::register()` call from user `main.rs`.
+// Mirrors `__FORCE_LINK_CYCLONEDDS_SYS` (nros-node) + `__FORCE_LINK_PLATFORM_CFFI`
+// above. Cycle-free: the backend crate does not depend on `nros`. Gated on a
+// (non-bare-metal) platform feature because the backend's `register` only exists
+// with one; bare-metal keeps its explicit `register()` (linkme is unsupported
+// there). Inert unless `rmw-zenoh` selects the backend.
+#[cfg(all(
+    feature = "rmw-zenoh",
+    any(
+        feature = "platform-posix",
+        feature = "platform-zephyr",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+        feature = "platform-orin-spe",
+    )
+))]
+#[doc(hidden)]
+#[used]
+pub static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
+    nros_rmw_zenoh::register;
+
+// Phase 227.3 (unified RMW) — same force-link for the xrce backend. Gated to
+// exclude bare-metal (linkme self-register is unsupported there → explicit
+// `register()` stays). Inert unless `rmw-xrce` selects the backend.
+#[cfg(all(
+    feature = "rmw-xrce",
+    any(
+        feature = "platform-posix",
+        feature = "platform-zephyr",
+        feature = "platform-freertos",
+        feature = "platform-nuttx",
+        feature = "platform-threadx",
+        feature = "platform-orin-spe",
+    )
+))]
+#[doc(hidden)]
+#[used]
+pub static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
+    nros_rmw_xrce_cffi::register;
+
 pub mod dispatch_tag;
 pub mod guide;
 pub mod node;
