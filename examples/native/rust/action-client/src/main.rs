@@ -21,33 +21,17 @@ use nros::prelude::*;
 )))]
 compile_error!("this example requires exactly one of `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce`",);
 
-fn register_rmw() -> Result<(), &'static str> {
-    #[cfg(feature = "rmw-zenoh")]
-    {
-        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
-    }
-    // Phase 214.S.4.b — no explicit cyclonedds register call. See
-    // talker for the link-keep-alive rationale (the
-    // __FORCE_LINK_CYCLONEDDS_SYS static inside nros-node::
-    // cyclonedds_register pins the -sys rlib so its linkme
-    // self-register section fires inside nros::init).
-    #[cfg(feature = "rmw-xrce")]
-    {
-        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
-    }
-    Ok(())
-}
+// Phase 227.3 (unified RMW) — no explicit `register()` calls. The RMW is
+// declared via the build feature (`rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds`),
+// which routes through the `nros` umbrella; `nros`'s `#[used] __FORCE_LINK_*`
+// statics keep the selected backend's self-register section in the link graph,
+// and it fires inside `nros::init` via the cffi-rmw walker.
 
 /// Action-client body — send a `Fibonacci` goal and collect feedback.
 /// Returns 0 if any feedback arrived, 1 otherwise.
 fn run() -> i32 {
     info!("nros Action Client Example");
     info!("================================");
-
-    if register_rmw().is_err() {
-        error!("Failed to register RMW backend");
-        return 1;
-    }
 
     // Phase 212.K.7.4.c — see action-server's main for rationale.
     #[cfg(feature = "rmw-cyclonedds")]

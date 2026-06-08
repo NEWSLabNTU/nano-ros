@@ -23,12 +23,10 @@ fn main() {
     nros_info!(&LOGGER, "nros RTIC-pattern Talker (native)");
 
     let config = ExecutorConfig::from_env().node_name("talker");
-    // Phase 115.L.5 — install zenoh-pico C-vtable backend.
-
-    // Phase 104.A — explicit RMW backend registration. The auto-ctor
-    // in `.init_array` doesn't survive Rust's archive-walk linkage
-    // when no symbol from the rlib is otherwise referenced.
-    nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+    // Phase 227.3 (unified RMW) — no explicit `register()`. The RMW is declared
+    // via the build feature (routed through the `nros` umbrella); `nros`'s
+    // `#[used] __FORCE_LINK_*` static keeps the backend's self-register section
+    // in the link graph, and it fires inside `Executor::open` via the cffi walker.
     let mut executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor

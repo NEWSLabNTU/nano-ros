@@ -16,7 +16,10 @@ deploy = ["native"]
 [features]
 # Phase 118 — RMW selected at build time via mutually exclusive features.
 default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 227.3 (unified RMW) — zenoh/xrce route through the `nros` umbrella
+# feature; `nros` forwards the backend features + force-links it, so no
+# project-level backend dep and no `register()` call in `main.rs`.
+rmw-zenoh = ["nros/rmw-zenoh"]
 rmw-cyclonedds = [
     # Phase 214.S.4.b — collapsed `dep:nros-rmw-cyclonedds-sys` out (the
     # umbrella + `nros-node::__FORCE_LINK_CYCLONEDDS_SYS` keep the `-sys`
@@ -31,17 +34,16 @@ rmw-cyclonedds = [
     "dep:nros-rmw-cyclonedds",
     "dep:action_msgs",
 ]
-rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
+rmw-xrce = ["nros/rmw-xrce"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
 example_interfaces = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
 heapless = "0.8"
 
-nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
 # Phase 212.K.7.4.c — direct access to the cyclonedds type registry so
 # the example can explicitly register `action_msgs::srv::CancelGoal_{Request,Response}`
 # descriptors before `create_action_server` (the trait `RosAction` does
@@ -49,7 +51,6 @@ nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", featur
 # internalizes the registration.
 nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds", optional = true }
 action_msgs = { version = "*", default-features = false, optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

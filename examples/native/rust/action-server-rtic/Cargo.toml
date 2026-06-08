@@ -16,11 +16,11 @@ name = "rtic-action-server"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
-# Phase 115.L.5 — pull the cffi shim that exposes the zenoh-pico backend
-# via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
-# `Executor::open`.
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble", "rmw-zenoh"] }
+# Phase 227.3 (unified RMW) — zenoh routes through the `nros` umbrella feature
+# (`rmw-zenoh` above); `nros` forwards the backend features + force-links it
+# (`__FORCE_LINK_ZENOH`), so no project-level `nros-rmw-zenoh` dep and no
+# `register()` call in `main.rs`. This example is zenoh-only (no RMW matrix).
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's

@@ -13,19 +13,15 @@ deploy = ["native"]
 [features]
 # Phase 118 — RMW selected at build time via mutually exclusive features.
 default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
-# Phase 214.S.4 — collapsed from 3-entry form. `dep:` activator stays
-# for `nros_rmw_cyclonedds_sys::register` symbol-drag (see talker).
+# Phase 227.3 (unified RMW) — all backends route through the `nros` umbrella;
+# `nros` forwards the backend features + force-links it, so no project dep and
+# no `register()` in `main.rs`. cyclonedds keeps its CMake/Corrosion link path.
+rmw-zenoh = ["nros/rmw-zenoh"]
 rmw-cyclonedds = ["nros/rmw-cyclonedds"]  # Phase 214.S.4.b — strict 1-entry parity
-rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
+rmw-xrce = ["nros/rmw-xrce"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
-# Phase 115.L.5 — pull the cffi shim that exposes the zenoh-pico backend
-# via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
-# `Executor::open`.
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "ros-humble"], optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's

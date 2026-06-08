@@ -16,21 +16,19 @@ deploy = ["native"]
 [features]
 # Phase 118 — RMW selected at build time via mutually exclusive features.
 default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
-# Phase 214.S.4 — collapsed from 3-entry form. `dep:` activator stays
-# for `nros_rmw_cyclonedds_sys::register` symbol-drag (see talker).
+# Phase 227.3 (unified RMW) — all backends route through the `nros` umbrella;
+# `nros` forwards the backend features + force-links it, so no project dep and
+# no `register()` in `main.rs`. cyclonedds keeps its CMake/Corrosion link path.
+rmw-zenoh = ["nros/rmw-zenoh"]
 rmw-cyclonedds = ["nros/rmw-cyclonedds"]  # Phase 214.S.4.b — strict 1-entry parity
-rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
+rmw-xrce = ["nros/rmw-xrce"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
 example_interfaces = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
-
-nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

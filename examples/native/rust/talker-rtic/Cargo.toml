@@ -15,12 +15,19 @@ deploy = ["native"]
 name = "rtic-talker"
 path = "src/main.rs"
 
+[features]
+# Phase 227.3 (unified RMW) — RMW selected at build time and routed through
+# the `nros` umbrella feature (the cargo lowering of the declared RMW,
+# RFC-0031). `nros` forwards the backend features and force-links it
+# (`__FORCE_LINK_*`), so no project-level backend dep and no `register()`
+# call in `main.rs`. Default is `rmw-zenoh` so `cargo run` Just Works.
+default = ["rmw-zenoh"]
+rmw-zenoh = ["nros/rmw-zenoh"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds"]
+rmw-xrce = ["nros/rmw-xrce"]
+
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
-# Phase 115.L.5 — pull the cffi shim that exposes the zenoh-pico backend
-# via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
-# `Executor::open`.
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's

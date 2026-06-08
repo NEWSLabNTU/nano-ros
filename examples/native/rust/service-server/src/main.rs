@@ -19,29 +19,12 @@ use nros::prelude::*;
 )))]
 compile_error!("this example requires exactly one of `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce`",);
 
-fn register_rmw() -> Result<(), &'static str> {
-    #[cfg(feature = "rmw-zenoh")]
-    {
-        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
-    }
-    // Phase 214.S.4.b — no explicit cyclonedds register call. See
-    // talker for the link-keep-alive rationale (the
-    // __FORCE_LINK_CYCLONEDDS_SYS static inside nros-node::
-    // cyclonedds_register pins the -sys rlib so its linkme
-    // self-register section fires inside nros::init).
-    #[cfg(feature = "rmw-xrce")]
-    {
-        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
-    }
-    Ok(())
-}
+// Phase 227.3 (unified RMW) — backend self-registers via nros's __FORCE_LINK_* + the cffi walker; no register() call.
 
 fn main() {
     env_logger::init();
     info!("nros Service Server Example");
     info!("================================");
-
-    register_rmw().expect("Failed to register RMW backend");
 
     let ctx = nros::init_with_launch_auto().expect("nros init failed");
     let cfg = ctx.config("add_two_ints_server");
