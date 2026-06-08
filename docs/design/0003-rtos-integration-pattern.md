@@ -138,7 +138,13 @@ Fallback when exceeded: **split shell into shared core + per-board overlays** (T
 
 ## 7. Open questions
 
-- **OPEN:** Does `nros codegen system` need to run **inside** vendor cmake configure (Zephyr/ESP-IDF/ThreadX) or **ahead** of it (PlatformIO/PX4)? Two codepaths or unify on ahead-of-vendor?
+- **RESOLVED (2026-06):** Codegen timing — **ahead-of-vendor is the contract.**
+  `nros deploy` always runs `nros codegen system` first, producing the baked tree
+  the vendor tool then consumes. For hook-capable vendors (Zephyr/ESP-IDF/ThreadX/
+  NuttX/FreeRTOS) the configure-time hook is kept as an **idempotent convenience**
+  so a raw `west build` / `idf.py build` still works in dev — it runs the *same*
+  codegen and yields the *same* tree. There is one contract (ahead-of-vendor) with
+  an optional second trigger (configure-time), not two divergent codepaths.
 - **OPEN:** Multi-component on FreeRTOS — one DDS/zenoh participant per component or one shared per ELF? Memory budget on Cortex-M3 likely forces shared; breaks domain-isolation semantics.
 - **OPEN:** Bridge mode (`Executor::open_multi`, Phase 128) interaction with embedded — does `[[bridge]]` in `system.toml` even make sense on MCU (multi-RMW = double the link cost)?
 - **OPEN:** Zephyr **snippet** vs `[deploy.<board>]` for RMW choice — pick one. Snippet is Zephyr-native + composable (`west build -S nros-cyclonedds`); `[deploy]` is portable across vendors. Today's `prj-<rmw>.conf` overlay is third option already shipped.

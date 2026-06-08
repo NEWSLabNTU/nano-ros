@@ -177,8 +177,12 @@ poll_priority = 16; poll_interval_ms = 5
 ```
 
 In planned mode this maps to the `SchedContextConfig` the planner carries
-(RFC-0015/0016). Exposing per-component RT in multi-node `system.toml` is open
-(phase-227).
+(RFC-0015/0016). **Multi-node RT home (decided 2026-06):** the *node* declares its
+callback groups (`[package.metadata.nros.node]` / `nano_ros_node_register`);
+`system.toml` owns tier definitions + group→tier assignment
+(`[tiers.<name>.<rtos>]` priority/stack + a per-`[[component]]` group→tier map) and
+`[[shared_state]]`. See RFC-0015 (Phase 212 reconciliation). Schema + codegen are
+tracked by phase-227 / Phase 94.
 
 ## 8. RMW selection & retired files
 

@@ -3,17 +3,33 @@ rfc: 0015
 title: "RTOS Orchestration via Launch Tree + Manifest Codegen"
 status: Stable
 since: 2026-04
-last-reviewed: 2026-04
-implements-tracked-by: []
+last-reviewed: 2026-06
+implements-tracked-by: [phase-94, phase-227]
 supersedes: []
 superseded-by: null
 ---
 
 # RTOS Orchestration via Launch Tree + Manifest Codegen
 
-**Status:** Draft
-**Companion roadmap:** [Phase 94](../roadmap/phase-94-0015-rtos-orchestration.md)
+**Status:** Stable (execution model); manifest homes reconciled to Phase 212 (see banner)
+**Companion roadmap:** [Phase 94](../roadmap/archived/phase-94-rtos-orchestration.md)
 **Related repos:** `~/repos/nano-ros`, `~/repos/play_launch`, `~/repos/play_launch/src/ros-launch-manifest`, `~/repos/autoware-nano-ros`
+
+> **Phase 212 reconciliation (2026-06).** This RFC predates Phase 212 and below
+> describes a standalone *"node manifest"* / *"system manifest"*. Those homes are
+> **superseded** by the Phase 212 surfaces; read the manifest sections as:
+> - **Callback groups** are declared by the *node* (it owns its callbacks):
+>   `[package.metadata.nros.node]` (Rust) / `nano_ros_node_register(...)` (C/C++).
+> - **Tier definitions + group→tier assignment** are *deployment*-owned, in
+>   `system.toml`: `[tiers.<name>.<rtos>]` (priority/stack) + a per-`[[component]]`
+>   group→tier map.
+> - **Shared state** → `system.toml [[shared_state]]`, codegen-emitted accessors.
+>
+> The **execution model is unchanged and current**: one binary, one RTOS task per
+> priority tier (each owning one `Executor`), one shared session per binary;
+> all-default-tier degenerates to a single task/Executor (today's shipped case).
+> Per-tier codegen is tracked by Phase 94. Config authority: RFC-0004; workspace
+> layout: RFC-0024; codegen timing: RFC-0003 §7 (ahead-of-vendor contract).
 
 ---
 

@@ -28,9 +28,14 @@ superseded-by: null
 > - **`system.toml` scope** → it is the *universal* system descriptor; single-node
 >   may omit it (implicit 1-component system synthesized). (RFC-0004 §2.)
 >
-> Configuration authority is RFC-0004; RMW selection is RFC-0031. Genuinely-open
-> items (multi-node RT exposure, mixed-language bootstrap friction, embedded-MCU
-> multi-pkg) remain below and are tracked by phase-227.
+> Configuration authority is RFC-0004; RMW selection is RFC-0031. **Embedded-MCU
+> multi-pkg composition is also decided** (2026-06): one binary links N node-pkg
+> staticlibs + a generated Entry; one Executor per priority tier + one shared
+> session (RFC-0015); codegen is ahead-of-vendor with a configure-time convenience
+> hook (RFC-0003 §7). Multi-node RT config has a home (RFC-0015 reconciliation /
+> RFC-0004 §7). Genuinely-open items now narrow to **cross-language workflow**
+> (Cluster C: Rust-cargo vs C++-cmake asymmetry, interface-pkg placement,
+> mixed-language bootstrap) and multi-system shared config — tracked by phase-227.
 
 > **Revision 2026-06-03 — Three roles: Bringup pkg + Node pkg + Entry pkg.**
 > Supersedes the 2026-06-02 "Entry pkg subsumes Bringup pkg" revision.

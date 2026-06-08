@@ -68,11 +68,23 @@ Add a C/C++ single-node descriptor function so single-node C/C++ has parity with
 Rust's `[package.metadata.nros.application]`.
 **Files:** `cmake/*.cmake`.
 
-### 227.6 — Multi-node RT/scheduling exposure (design + impl)
-Design and expose per-component RT/scheduling config in multi-node `system.toml`
-(today only board defaults apply). Update RFC-0004 §7 + RFC-0016 when the shape
-locks.
-**Files:** `system.toml` schema, orchestration, RFC-0004/0016.
+### 227.6 — Multi-node RT/scheduling exposure (schema + impl)
+The *shape* is decided (2026-06, RFC-0015 Phase 212 reconciliation): node declares
+callback groups (`[package.metadata.nros.node]` / `nano_ros_node_register`);
+`system.toml` owns `[tiers.<name>.<rtos>]` (priority/stack) + a per-`[[component]]`
+group→tier map + `[[shared_state]]`. Implement the `system.toml` schema + loader;
+the per-tier task/Executor codegen is **Phase 94**. (Today only board defaults
+apply.)
+**Files:** `system.toml` schema, `packages/cli/nros-cli-core/src/orchestration/`,
+cross-ref Phase 94.
+
+### 227.8 — Codegen-timing contract (ahead-of-vendor + hook convenience)
+Make `nros deploy` always run `nros codegen system` ahead of the vendor tool
+(the contract, RFC-0003 §7), keeping the configure-time hook as an idempotent
+convenience that yields the same baked tree. Ensure both triggers are
+byte-identical so raw `west build` / `idf.py build` stay valid in dev.
+**Files:** `packages/cli/nros-cli-core/src/cmd/{deploy,codegen_system}.rs`,
+`cmake/NanoRosEntry.cmake`, `integrations/<rtos>/`.
 
 ### 227.7 — Book sync
 - `book/src/user-guide/configuration.md` — replace the Phase-172.K
