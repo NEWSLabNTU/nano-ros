@@ -98,6 +98,12 @@ def workspace_record(entry):
 
 
 def matches_filters(entry, args, *, for_probe=False):
+    # `skip_build` rows stay in the manifest for documentation/inventory but
+    # are intentionally NOT built as fixtures (e.g. an incomplete example).
+    # Exclude them from both the build list and the stale probe — a row that
+    # is never built can never be stale.
+    if entry.get("skip_build"):
+        return False
     if args.platform and entry.get("platform") != args.platform:
         return False
     if args.lang and entry.get("lang") != args.lang:

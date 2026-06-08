@@ -560,6 +560,14 @@ platform = "stm32f4"
 lang = "rust"
 dir = "examples/stm32f4/rust/talker-embassy"
 target = "thumbv7em-none-eabihf"
+# Incomplete example: does not link as a standalone fixture (missing board
+# libc/platform glue + memory layout — undefined __assert_func / strncmp /
+# nros_platform_alloc). The pre-226 hard-coded stm32f4 recipe deliberately
+# omitted it; the manifest migration would otherwise build + fail on it.
+# Kept in the manifest for documentation/inventory; skip_build excludes it
+# from the fixture build + stale probe until the example is fixed.
+# See docs/known-issues.md #13.
+skip_build = true
 
 [[fixture]]
 platform = "stm32f4"

@@ -124,6 +124,8 @@ def fixture_notes(row):
         notes.append("env=" + ",".join(sorted(row["env"].keys())))
     if row.get("skip_probe"):
         notes.append("skip-probe")
+    if row.get("skip_build"):
+        notes.append("skip-build")
     return "; ".join(notes)
 
 
