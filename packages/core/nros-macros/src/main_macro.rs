@@ -1140,7 +1140,7 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
             "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
         }
         "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
-        "esp32" => "::nros_board_esp32::Esp32",
+        "esp32" => "::nros_board_esp32::Esp32C3",
         "zephyr" => "::nros_board_zephyr::Zephyr",
         // Phase 216.B.3 — RTIC + STM32F4 framework-owned-spin board.
         // The board ZST impls `RticBoardEntry` (not `BoardEntry`);

@@ -798,24 +798,89 @@ Wave A platform Entry update:
 
 Remaining blockers:
 
-- NuttX cannot be added as a green workspace Entry row yet. The
-  supported `just nuttx build-examples` path currently fails before
-  reaching a workspace row because the NuttX `libapps.a` link includes
-  stale/unrelated C/C++ app objects with unresolved `nros_*` and
-  `nros_cpp_*` symbols. A direct workspace-row probe reaches the
-  `qemu_nuttx_entry` shape but then fails while building `std` for
-  `armv7a-nuttx-eabihf` because the workspace path does not receive the
-  NuttX-only patched `libc` override that
-  `scripts/build/nuttx-libc-patch.sh` applies to single-node fixtures.
+- NuttX cannot be added as a green workspace Entry row yet. Three
+  compounding problems, narrowed 2026-06-08:
+  - **Named libc gap — now wired.** The workspace path did not receive
+    the NuttX-only patched `libc` override that
+    `scripts/build/nuttx-libc-patch.sh` applies to single-node fixtures
+    (sourced + called in `fixtures-build.sh`, absent in
+    `workspace-fixtures-build.sh`). `workspace-fixtures-build.sh` now
+    sources the helper and calls `nros_nuttx_libc_patch` right after
+    `nros ws sync`, mirroring the single-node lane. Idempotent and a
+    no-op for non-NuttX rows (verified: native rust workspace build
+    unaffected). This is necessary but only fires once the rendered
+    config carries the global `armv7a-nuttx-eabi` target line — i.e.
+    once the row below exists.
+  - **ws-sync merged-config poisoning (deeper blocker, unresolved).**
+    `nros ws sync` renders one merged root `.cargo/config.toml` for the
+    whole workspace. The NuttX board template
+    (`nros-board-nuttx-qemu-arm/nros-board.toml`) declares
+    workspace-global `[build] target = "armv7a-nuttx-eabihf"` +
+    `[unstable] build-std`, which would poison `native_entry` (no
+    `--target`) and force build-std on every row. freertos/threadx work
+    because their templates contribute only a target-scoped
+    `[target.<triple>]` block + per-row `--target`. A green NuttX row
+    needs either ws-sync per-target config emission or a
+    workspace-friendly NuttX board `cargo_config` variant (omit global
+    `[build] target`/`[unstable]`, rely on per-row `--target` +
+    `CARGO_UNSTABLE_BUILD_STD` env). This sits in the CLI/board-template
+    layer.
+  - **Unverified deploy shape (unresolved).** All existing NuttX Rust
+    examples are staticlib Components linked into the kernel image via
+    `libapps.a`; none use `nros::main!`. A `[[bin]]` + `nros::main!`
+    `qemu_nuttx_entry` would be the first standalone NuttX Rust binary,
+    and `nros-board-nuttx-qemu-arm`'s `BoardEntry::run` path is
+    unverified. The separate `libapps.a` stale-object link failure
+    (unresolved `nros_*`/`nros_cpp_*`) is orthogonal to the cargo
+    workspace build but still blocks `just nuttx build-examples` as a
+    whole.
 - Zephyr's Phase 226 scheduler is still a single-node fixture scheduler:
   `just zephyr build-fixtures` emits leaves from
   `scripts/build/zephyr-fixture-leaves.sh` and runs them through
   `scripts/build/zephyr-fixture-run-one.sh`; it does not consume
   `[[workspace_fixture]]` rows or route Zephyr workspace examples
-  through `scripts/build/workspace-fixtures-build.sh`.
+  through `scripts/build/workspace-fixtures-build.sh`. Scoped
+  2026-06-08: tractable but multi-day. `workspace-fixtures-build.sh`
+  has only two build branches (cargo / cmake-target) — neither is
+  `west`. A Zephyr Entry is a Corrosion staticlib that links into a
+  `west build` ELF, and the codegen contract differs (native's
+  `nros codegen-system --out` emits Rust; the Zephyr lane uses
+  CMake-time `nros_system_generate`/`rust_cargo_application`).
+  **Recommended path (Approach A):** teach
+  `scripts/build/zephyr-fixture-leaves.sh` to also emit a
+  workspace-Entry leaf from the `[[workspace_fixture]] platform="zephyr"`
+  row so the proven `zephyr-fixture-run-one.sh` west path builds it
+  unchanged, rather than re-implementing west orchestration in the
+  lightweight workspace script. Also needs a `zephyr_entry` package
+  (CMakeLists + prj overlays + staticlib `lib.rs`), new `fixtures.toml`
+  schema fields (`board`, `conf_files`), and a `fixtures-manifest.py`
+  Zephyr validation branch (`_cmake_has_entry_target` rejects the
+  `project()` + `rust_cargo_application()` shape).
 - ESP32 has no workspace fixture row/build lane yet; add it only after
   the platform recipe has a workspace-aware `nros setup` + codegen +
-  platform build path.
+  platform build path. Scoped 2026-06-08: not tractable in one pass.
+  - **Latent macro bug — fixed.** `nros-macros` `main_macro.rs` mapped
+    `"esp32" => "::nros_board_esp32::Esp32"`, but the crate exports
+    `Esp32C3` (no `Esp32` type exists). Form-3 `nros::main!(launch=…)`
+    would have failed to compile. Fixed to `Esp32C3` (verified
+    `cargo check -p nros-macros` clean). No example exercised this path,
+    which is why it went unnoticed.
+  - **Runtime stubs (unresolved).** `Esp32C3::run` routes through
+    `nros-board-bare-metal::run_entry`, which builds the closure context
+    with `NullNodeRuntime` — every `register()` errors loud (awaiting
+    the deferred 212.N.4 codegen runtime). Contrast freertos, whose
+    driver opens a real `Executor` + `ExecutorNodeRuntime`; that is why
+    freertos/threadx workspace rows work and bare-metal/esp32 cannot.
+    `Esp32C3::init_hardware` also only installs the clock — no
+    WiFi/radio/smoltcp bringup.
+  - **No CI-runnable board (unresolved).** `nros-board-esp32` is
+    WiFi-only (needs SSID/PASSWORD + AP). The CI/QEMU-runnable OpenETH
+    board `nros-board-esp32-qemu` has no `BoardEntry`/board-ZST and is
+    not in the macro table, so `nros::main!` cannot drive it.
+  - **Build-lane plumbing (unresolved).** The lane runs bare `cargo`;
+    `riscv32imc-unknown-none-elf` needs nightly (`RUSTUP_TOOLCHAIN`) +
+    scoped `-Z build-std` (global `[unstable] build-std` in the shared
+    workspace config would break native/freertos/threadx rows).
 - Mixed C/C++/Rust registration now builds through the static CMake
   entry path, but the C/C++ native board adapter still records node
   declarations with no-op operations. Full mixed-language runtime

@@ -23,6 +23,8 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 source "$repo_root/scripts/build/cargo.sh"
 # shellcheck source=scripts/build/cmake-incremental.sh
 source "$repo_root/scripts/build/cmake-incremental.sh"
+# shellcheck source=scripts/build/nuttx-libc-patch.sh
+source "$repo_root/scripts/build/nuttx-libc-patch.sh"
 
 cd "$repo_root"
 
@@ -87,6 +89,13 @@ build_workspace() {
 
         echo "     nros ws sync"
         "$nros_cli" ws sync >/dev/null
+
+        # Phase 225.O — `nros ws sync` strips the board-template
+        # `[patch.crates-io] libc` from the rendered `.cargo/config.toml`,
+        # so re-append the patched NuttX libc here, mirroring the
+        # single-node lane in scripts/build/fixtures-build.sh. Idempotent
+        # and a no-op for non-NuttX workspace rows.
+        NROS_REPO_DIR="$repo_root" nros_nuttx_libc_patch "$repo_root/$dir"
 
         echo "     nros codegen-system --bringup $bringup --out $codegen_out"
         "$nros_cli" codegen-system --bringup "$bringup" --out "$codegen_out" >/dev/null
