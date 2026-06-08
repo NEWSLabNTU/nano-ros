@@ -756,14 +756,21 @@ The review found example topology issues separate from the API surface.
   now has `native_entry`, `qemu_freertos_entry`, and
   `threadx_linux_entry` sharing the same Talker/Listener Node pkgs and
   `demo_bringup`.
-- [ ] Add `qemu_nuttx_entry` — **walled** (not a cargo-lane row). Empirically
-  confirmed 2026-06-09: a standalone `cargo build -p qemu_nuttx_entry
-  --target armv7a-nuttx-eabihf` compiles but cannot link (build-std `std`
-  needs NuttX kernel libc/pthread symbols the thin `nros-board-nuttx`
-  crate does not bundle). NuttX deploys via the kernel-image link
-  (`integrations/nuttx/` + `libapps.a`), not a standalone cargo ELF — a
-  different build contract. See the NuttX "Remaining blockers" entry. A
-  real `nros-board-nuttx` no_std-predicate bug was fixed in passing.
+- [x] Add `qemu_nuttx_entry` — **builds + boots via the cargo lane** (Phase
+  225.O NuttX push, 2026-06-09). The earlier "walled" framing was wrong: a
+  `build.rs` on the entry crate links the prebuilt NuttX staging libs
+  (`$NUTTX_DIR/staging/*.a`) + `dramboot.ld` + vector-table head object
+  (the freertos pattern), so the NuttX flat-build kernel image *is* the
+  cargo binary. `scripts/build/workspace-fixtures-build.sh nuttx rust`
+  builds it (cold build-std, EXIT 0); verified booting on `qemu-system-arm
+  -M virt -cpu cortex-a7` through `nx_start → nsh_main → main →
+  BoardEntry::run → run_entry → Executor::open`. `std` kept (resolves from
+  NuttX `libc.a`; RFC-0003 §9). Fixed a real `nros-board-nuttx`
+  no_std-predicate bug + a contaminated-`libapps.a` link (empty-builtins
+  stub) in passing. **Cross-process E2E is NOT green** — blocked by NuttX
+  guest virtio-net not coming up (`Transport(ConnectionFailed)`, zero
+  packets leave the guest), an environmental NuttX-networking issue
+  parallel to the Zephyr NSOS block; tracked in known-issue #18.
 - [x] Add the Zephyr Entry package — DONE (Phase 225.P). `src/zephyr_entry`
   builds via `west build` on native_sim through the workspace fixture lane;
   the `nros setup` + `nros ws sync`/codegen + west workflow is wired. Its

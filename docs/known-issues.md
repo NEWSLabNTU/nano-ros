@@ -529,14 +529,50 @@ host-socket offload on this host. Build-only verification (`just zephyr
 build-fixtures` with `NROS_ZEPHYR_FIXTURE_FILTER=workspace-entry`) is
 green and is the local gate until NSOS connectivity is restored.
 
-## 18. NuttX workspace Entry as a standalone cargo-lane fixture (link path identified)
+## 18. NuttX workspace Entry — builds + boots via cargo lane; E2E blocked by guest networking
+
+**Status (2026-06-09): the "wall" is overturned — `qemu_nuttx_entry` now
+BUILDS + LINKS + BOOTS** a standalone NuttX image via the workspace cargo
+lane (`scripts/build/workspace-fixtures-build.sh nuttx rust`), from the
+uniform `nros::main!(launch = …)` source. Verified on `qemu-system-arm -M
+virt -cpu cortex-a7 -kernel <elf>`: the chain `__start → nx_start → init
+task → board nsh_main → nsh_initialize → Rust main → BoardEntry::run →
+nros-board-nuttx::run_entry → Executor::open` all executes inside the
+guest. The unblock was the **freertos pattern** — a `build.rs` on the
+entry crate links the prebuilt NuttX staging libs (`$NUTTX_DIR/staging/*.a`)
++ `dramboot.ld` + the vector-table head object + `--entry=__start
+-nostartfiles -nodefaultlibs`, so the NuttX flat-build kernel image *is*
+the cargo binary. `std` stays (resolves from NuttX `libc.a`); RFC-0003 §9.
+
+**Remaining block — NuttX guest virtio-net does not come up** (the same
+*class* as #17, NuttX side). `Executor::open` fails with
+`Transport(ConnectionFailed)` before node registration. Decisively
+characterized: a qemu `filter-dump` pcap shows **zero packets** leave the
+guest, and a 12×/24s `Executor::open` retry all failed — so it is neither a
+timing race nor a wrong locator (correctly baked to slirp `tcp/10.0.2.2:7452`),
+but a genuine NuttX/qemu virtio-net no-network condition. Uncharted in this
+repo: there is no existing NuttX nano-ros connectivity E2E (`test_nuttx_kernel_boots`
+is boot-to-NSH with `-nic none`), and every NuttX example shares this
+board `nsh_main` + `run_entry` path. Two latent product gaps surfaced
+alongside: `run_entry` does a one-shot `Executor::open` with no retry, and
+the NuttX `run_entry` reads `ExecutorConfig::from_env` rather than the baked
+`[deploy.nuttx] locator` (deploy locator is metadata-only on NuttX today).
+
+The `qemu_nuttx_entry` crate + `workspace-rust-qemu-nuttx` fixture row are
+landed (`skip_probe`, build+boot green); the cross-process E2E stays gated
+on resolving NuttX guest networking in a capable environment, filed
+alongside #17 as a NuttX networking-layer issue.
+
+---
+
+Original link-wall analysis (now resolved by the build.rs above):
 
 Surfaced by Phase 225.O (NuttX workspace Entry attempt). A
 `qemu_nuttx_entry` built through the workspace cargo lane (`cargo build -p
-qemu_nuttx_entry --target armv7a-nuttx-eabihf`, build-std) **compiles but
-fails to link**: build-std `std` references NuttX libc/pthread symbols
+qemu_nuttx_entry --target armv7a-nuttx-eabihf`, build-std) **compiled but
+failed to link**: build-std `std` references NuttX libc/pthread symbols
 (`pthread_cond_*`, `pthread_key_*`, `clock_gettime`, `getcwd`, `__errno`,
-`strerror_r`, `exit`, …) that the standalone `arm-none-eabi-gcc` link does
+`strerror_r`, `exit`, …) that the standalone `arm-none-eabi-gcc` link did
 not resolve.
 
 **`std` is NOT the cause** (verified 2026-06-09). `armv7a-nuttx-eabihf` is

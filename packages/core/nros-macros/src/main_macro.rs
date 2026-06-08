@@ -551,9 +551,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // examples today don't follow this — they always declare
     // `node_pkgs = [...]` explicitly).
     let framework_node_pkg_idents: Vec<Ident> = match framework {
-        // OwnedSpin + Zephyr + Esp32 all register via the launch-resolved
-        // `register_calls` (the `RuntimeCtx`-based `<pkg>::register`
-        // flow), NOT the RTIC/Embassy `register_dispatch` splice.
+        // OwnedSpin (incl. NuttX) + Zephyr + Esp32 all register via the
+        // launch-resolved `register_calls` (the `RuntimeCtx`-based
+        // `<pkg>::register` flow), NOT the RTIC/Embassy
+        // `register_dispatch` splice.
         Framework::OwnedSpin | Framework::Zephyr | Framework::Esp32 => Vec::new(),
         Framework::Rtic | Framework::Embassy => {
             let cargo_toml = manifest_dir.join("Cargo.toml");
@@ -1372,12 +1373,27 @@ enum Framework {
     Esp32,
 }
 
+// Phase 225.O follow-up (known-issue #18) — NOTE on NuttX. NuttX does
+// NOT get its own `Framework` variant: it rides `Framework::OwnedSpin`.
+// The NuttX flat-build init task calls `CONFIG_INIT_ENTRYPOINT="nsh_main"`,
+// but the board crate (`nros-board-nuttx-qemu-arm`'s `entry.rs`) already
+// exports a `#[no_mangle] nsh_main` that runs `nsh_initialize()` (virtio
+// FDT discovery + network bringup) and then calls the Rust `main`
+// lang-start symbol. OwnedSpin emits exactly that `fn main()` (NuttX is
+// `target_os = "nuttx"`, the `not(target_os = "none")` hosted arm), which
+// delegates to `<QemuArmVirt as BoardEntry>::run`. So no NuttX-specific
+// emit is needed; emitting our own `nsh_main` would both collide with
+// the board's and skip the critical `nsh_initialize()` network bringup.
+
 fn framework_for(deploy: &str) -> Framework {
     match deploy {
         "rtic-stm32f4" | "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => Framework::Rtic,
         "embassy-stm32f4" => Framework::Embassy,
         "zephyr" => Framework::Zephyr,
         "esp32-qemu" | "qemu-esp32-baremetal" => Framework::Esp32,
+        // NuttX ("nuttx" / "qemu-arm-nuttx") rides OwnedSpin — the board
+        // crate's `nsh_main` bridges the kernel init task to the emitted
+        // `fn main()`. See the `Framework` enum NOTE.
         _ => Framework::OwnedSpin,
     }
 }

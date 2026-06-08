@@ -127,6 +127,34 @@ target_dir = "target-fixtures/esp32"
 target = "riscv32imc-unknown-none-elf"
 env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc", ESP_LOG = "info", NROS_EXECUTOR_ARENA_SIZE = "16384", NROS_SMOLTCP_MAX_UDP_SOCKETS = "2" }
 
+# Phase 225.O follow-up (known-issue #18) — NuttX QEMU ARM virt
+# (Cortex-A7) workspace Entry. Built by the cargo lane
+# (`scripts/build/workspace-fixtures-build.sh nuttx rust`): nightly +
+# `-Z build-std=std,panic_abort` via the per-row `env` (NuttX is a
+# std-capable POSIX target; std maps onto NuttX libc). The Cortex-A7
+# link flags come from the workspace `.cargo/config.toml`
+# `[target.armv7a-nuttx-eabihf]` block; the prebuilt NuttX kernel libs
+# (`$NUTTX_DIR/staging/lib*.a`), linker script, head object, and the
+# `nsh_main`-before-`-lapps` link order are wired by
+# `src/qemu_nuttx_entry/build.rs`. `NUTTX_DIR` is exported by the
+# `just nuttx build-examples` recipe. Standalone bootable image — the
+# cargo binary IS the NuttX flat-build kernel image. `skip_probe` —
+# the stale probe runs the default stable toolchain and cannot replicate
+# the nightly + build-std + NUTTX_DIR recipe env.
+[[workspace_fixture]]
+id = "workspace-rust-qemu-nuttx"
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "qemu_nuttx_entry"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures/nuttx"
+target = "armv7a-nuttx-eabihf"
+skip_probe = true
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem" }
+
 [[workspace_fixture]]
 id = "workspace-c-native"
 platform = "native"

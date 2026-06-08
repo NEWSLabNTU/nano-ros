@@ -24,5 +24,44 @@ rustflags = [
     "force-frame-pointers",
 ]
 
+# Phase 225.O follow-up (known-issue #18) — NuttX QEMU ARM virt
+# (Cortex-A7) Entry link flags, copied from the single-node nuttx
+# example + `logging-smoke-nuttx-qemu-arm`. Only applies when
+# `--target armv7a-nuttx-eabihf` is selected (the `qemu_nuttx_entry`
+# fixture row), so it is inert for the native / freertos / threadx /
+# esp32 rows. The kernel-lib link group, linker script, and head object
+# are added by `src/qemu_nuttx_entry/build.rs` (it reads `NUTTX_DIR`).
+# `-Z build-std=std,panic_abort` arrives per-row via the
+# `CARGO_UNSTABLE_BUILD_STD` env in fixtures.toml so the shared workspace
+# config stays buildable on stable for the other members.
+[target.armv7a-nuttx-eabihf]
+linker = "arm-none-eabi-gcc"
+rustflags = [
+    "-C", "link-arg=-mcpu=cortex-a7",
+    "-C", "link-arg=-mfloat-abi=hard",
+    "-C", "link-arg=-mfpu=neon-vfpv4",
+]
+
 [env]
 CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"
+CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
+CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
+
+# Phase 225.O follow-up (known-issue #18) — patched NuttX `libc` for
+# `-Z build-std`. The pinned nightly's `std`
+# (`sys/net/hostname/unix.rs`) references `libc::_SC_HOST_NAME_MAX`,
+# which crates.io `libc` 0.2.186 does not expose for the NuttX target;
+# the fork at `third-party/nuttx/libc/` adds it (+ the rest of the
+# NuttX-specific symbols build-std's `std` needs). REQUIRED for a cold
+# `-Z build-std=std,panic_abort` of the nuttx row — omitting it fails
+# `std` with `cannot find value _SC_HOST_NAME_MAX`. cargo reports it
+# "not used in the crate graph" because it patches only build-std's
+# `std` libc, NOT the regular workspace graph (the native / freertos /
+# threadx / esp32 rows keep crates.io `libc` 0.2.186 — confirmed
+# unaffected). Hand-maintained (the single-node lane appends it via
+# `scripts/build/nuttx-libc-patch.sh`, which only fires on a per-example
+# `[build] target` line — this shared workspace config has none).
+# `nros ws sync` does not touch `.cargo/config.toml`, so it persists.
+# Path is relative to the workspace root (this dir).
+[patch.crates-io]
+libc = { path = "../../../third-party/nuttx/libc" }

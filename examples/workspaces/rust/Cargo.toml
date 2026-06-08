@@ -18,6 +18,7 @@ members = [
     "src/qemu_freertos_entry",
     "src/threadx_linux_entry",
     "src/esp32_entry",
+    "src/qemu_nuttx_entry",
 ]
 # `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
 # The pkg-index walks `package.xml` anywhere under the workspace root.

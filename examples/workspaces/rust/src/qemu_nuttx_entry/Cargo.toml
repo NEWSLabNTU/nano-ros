@@ -1,0 +1,64 @@
+# Entry pkg — boots the `demo_bringup` demo topology on NuttX QEMU ARM
+# virt (Cortex-A7 + virtio-net).
+#
+# Phase 225.O follow-up (known-issue #18) — the Entry source is the same
+# one-line `nros::main!(launch = ...)` the native / freertos / threadx /
+# zephyr / esp32 entries use. The macro routes `deploy = "nuttx"` to the
+# `Framework::Nuttx` emit shape, which emits a
+# `#[no_mangle] extern "C" fn nsh_main(...)` (NuttX's flat-build init
+# entrypoint, `CONFIG_INIT_ENTRYPOINT="nsh_main"`) that delegates to the
+# board crate's real-runtime `BoardEntry::run`
+# (`nros-board-nuttx::run_entry`).
+#
+# Built via plain `cargo build -p qemu_nuttx_entry --target
+# armv7a-nuttx-eabihf` with nightly + `-Z build-std=std,panic_abort`
+# (supplied per-row by the fixtures.toml `env` + the workspace
+# `.cargo/config.toml` `[target.armv7a-nuttx-eabihf]` block + the
+# patched NuttX `libc`), so it is a normal cargo workspace member. The
+# prebuilt NuttX kernel libs are linked by `build.rs` (the freertos
+# build.rs pattern, consuming `$NUTTX_DIR/staging/lib*.a`).
+
+[package]
+name = "qemu_nuttx_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the demo topology on NuttX QEMU ARM virt."
+
+[[bin]]
+name = "qemu_nuttx_entry"
+path = "src/main.rs"
+test = false
+bench = false
+
+# Entry pkg metadata — `deploy = "nuttx"` routes the `nros::main!()`
+# proc-macro onto the `Framework::Nuttx` emit branch (board ->
+# `nros_board_nuttx_qemu_arm::QemuArmVirt`) and feeds `nros check`.
+[package.metadata.nros.entry]
+deploy = "nuttx"
+
+[package.metadata.nros.deploy.nuttx]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:7452"
+
+[dependencies]
+# Single `nros` dep for the macro-emitted `::nros::…` paths. Features
+# unify with the Node pkgs' `nuttx` feature (`std` + `platform-nuttx`).
+nros = { path = "../../../../../packages/core/nros", default-features = false }
+# NuttX QEMU ARM virt board crate — supplies `QemuArmVirt` (real-runtime
+# `BoardEntry`, gated `target_os = "nuttx"`) + the `nros_platform_nuttx`
+# C shim (compiled by its own build.rs).
+nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-nuttx"] }
+
+# Node pkg rlibs — the launch XML names `talker` + `listener`, so the
+# macro emits `talker_pkg::register` + `listener_pkg::register`; the bin
+# must link both. Each selects the `nuttx` platform feature.
+talker_pkg = { path = "../talker_pkg", default-features = false, features = ["nuttx"] }
+listener_pkg = { path = "../listener_pkg", default-features = false, features = ["nuttx"] }
+
+[build-dependencies]
+# build.rs preprocesses the NuttX linker script + stages the kernel-lib
+# link group (no cc compile — the board crate compiles the platform C).
+cc = "1"
