@@ -40,6 +40,11 @@ pub struct Args {
     #[arg(long, default_value = "humble")]
     pub ros_edition: String,
 
+    /// Explicit per-field capacity config (`nros-codegen.toml`, RFC-0033).
+    /// Wins over any file discovered by walking up from the manifest dir.
+    #[arg(long)]
+    pub codegen_config: Option<PathBuf>,
+
     /// Overwrite existing bindings
     #[arg(long)]
     pub force: bool,
@@ -94,6 +99,11 @@ pub struct RustArgs {
     /// ROS 2 edition (`humble` | `iron`)
     #[arg(long, default_value = "humble")]
     pub ros_edition: String,
+
+    /// Explicit per-field capacity config (`nros-codegen.toml`, RFC-0033).
+    /// Wins over any file discovered by walking up from the manifest dir.
+    #[arg(long)]
+    pub codegen_config: Option<PathBuf>,
 
     /// Overwrite existing bindings
     #[arg(long)]
@@ -174,6 +184,7 @@ pub fn run_rust(args: RustArgs) -> Result<()> {
         verbose: args.verbose,
         ros_edition: args.ros_edition,
         renames: args.rename.into_iter().collect(),
+        codegen_config: args.codegen_config,
     })
 }
 
@@ -190,6 +201,7 @@ fn generate_rust(args: &Args) -> Result<()> {
         verbose: args.verbose,
         ros_edition: args.ros_edition.clone(),
         renames: args.rename.clone().into_iter().collect::<HashMap<_, _>>(),
+        codegen_config: args.codegen_config.clone(),
     })
 }
 
@@ -204,6 +216,7 @@ fn generate_c(args: &Args) -> Result<()> {
         force: args.force,
         verbose: args.verbose,
         ros_edition: args.ros_edition.clone(),
+        codegen_config: args.codegen_config.clone(),
     };
     generate_c_from_package_xml(cfg)
 }

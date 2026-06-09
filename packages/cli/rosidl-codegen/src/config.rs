@@ -15,7 +15,10 @@
 //! Precedence (highest wins): `.msg` bound (caller) → `[fields]` → `[types]` →
 //! `[packages]` → `[defaults]` → built-in constant.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use serde::Deserialize;
 
@@ -160,11 +163,19 @@ impl RawConfig {
     }
 }
 
-/// Error parsing a `nros-codegen.toml`.
+/// The conventional config filename discovered by [`CapacityResolver::discover`].
+pub const CODEGEN_CONFIG_FILENAME: &str = "nros-codegen.toml";
+
+/// Error parsing or loading a `nros-codegen.toml`.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("failed to parse codegen config: {0}")]
     Parse(#[from] toml::de::Error),
+    #[error("failed to read codegen config '{path}': {source}")]
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 /// Resolves per-field storage from a merged `nros-codegen.toml`. One instance
@@ -186,6 +197,58 @@ impl CapacityResolver {
         Ok(Self {
             raw: toml::from_str(s)?,
         })
+    }
+
+    /// Load a single `nros-codegen.toml` from `path`.
+    pub fn from_file(path: &Path) -> Result<Self, ConfigError> {
+        let body = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        Self::from_toml_str(&body)
+    }
+
+    /// Discover and merge `nros-codegen.toml` files by walking up from
+    /// `start_dir` to the filesystem root (or until `stop_dir`, inclusive).
+    /// Files are merged root-most → `start_dir`, so the **closest** file (the
+    /// app) wins over ancestors (the workspace). Missing files are skipped; an
+    /// absent chain yields an empty resolver (built-in defaults).
+    pub fn discover(start_dir: &Path, stop_dir: Option<&Path>) -> Result<Self, ConfigError> {
+        // Collect candidate dirs from start upward, then reverse so the
+        // root-most is merged first and the closest file wins.
+        let mut dirs: Vec<&Path> = Vec::new();
+        let mut cur = Some(start_dir);
+        while let Some(dir) = cur {
+            dirs.push(dir);
+            if stop_dir == Some(dir) {
+                break;
+            }
+            cur = dir.parent();
+        }
+
+        let mut resolver = Self::empty();
+        for dir in dirs.into_iter().rev() {
+            let candidate = dir.join(CODEGEN_CONFIG_FILENAME);
+            if candidate.is_file() {
+                resolver = resolver.merged_with(Self::from_file(&candidate)?);
+            }
+        }
+        Ok(resolver)
+    }
+
+    /// Build a resolver from an optional explicit config path plus discovery
+    /// from `start_dir`. The explicit file (if any) is merged **last** so a
+    /// `--codegen-config` flag wins over any discovered `nros-codegen.toml`.
+    pub fn resolve_for(
+        explicit: Option<&Path>,
+        start_dir: &Path,
+        stop_dir: Option<&Path>,
+    ) -> Result<Self, ConfigError> {
+        let mut resolver = Self::discover(start_dir, stop_dir)?;
+        if let Some(path) = explicit {
+            resolver = resolver.merged_with(Self::from_file(path)?);
+        }
+        Ok(resolver)
     }
 
     /// Merge another config on top of this one; `over` (e.g. the app file) wins
@@ -393,6 +456,73 @@ mod tests {
         assert!(StorageMode::Owned.is_phase1_supported());
         assert!(!StorageMode::Heap.is_phase1_supported());
         assert!(!StorageMode::Borrowed.is_phase1_supported());
+    }
+
+    #[test]
+    fn discover_walks_up_and_closest_wins() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path();
+        let app = ws.join("pkgs").join("app");
+        fs::create_dir_all(&app).unwrap();
+
+        // Workspace-root config: default + a field.
+        fs::write(
+            ws.join(CODEGEN_CONFIG_FILENAME),
+            r#"
+            [defaults]
+            sequence = 64
+            string = 256
+            [fields]
+            "a/B.c" = 10
+            "a/B.d" = 20
+            "#,
+        )
+        .unwrap();
+        // App config: overrides one default + one field.
+        fs::write(
+            app.join(CODEGEN_CONFIG_FILENAME),
+            r#"
+            [defaults]
+            sequence = 128
+            [fields]
+            "a/B.c" = 99
+            "#,
+        )
+        .unwrap();
+
+        let r = CapacityResolver::discover(&app, Some(ws)).unwrap();
+        assert_eq!(r.resolve("z", "Z", "z", SEQ).cap, 128); // app default wins
+        assert_eq!(r.resolve("z", "Z", "z", STR).cap, 256); // workspace default survives
+        assert_eq!(r.resolve("a", "B", "c", SEQ).cap, 99); // app field wins
+        assert_eq!(r.resolve("a", "B", "d", SEQ).cap, 20); // workspace-only survives
+    }
+
+    #[test]
+    fn discover_empty_chain_is_builtin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = CapacityResolver::discover(tmp.path(), Some(tmp.path())).unwrap();
+        assert_eq!(
+            r.resolve("p", "M", "f", SEQ).cap,
+            NROS_DEFAULT_SEQUENCE_CAPACITY
+        );
+    }
+
+    #[test]
+    fn explicit_config_wins_over_discovered() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        fs::write(
+            dir.join(CODEGEN_CONFIG_FILENAME),
+            "[fields]\n\"a/B.c\" = 10\n",
+        )
+        .unwrap();
+        let explicit = dir.join("override.toml");
+        fs::write(&explicit, "[fields]\n\"a/B.c\" = 77\n").unwrap();
+
+        let r = CapacityResolver::resolve_for(Some(&explicit), dir, Some(dir)).unwrap();
+        assert_eq!(r.resolve("a", "B", "c", SEQ).cap, 77);
     }
 
     #[test]
