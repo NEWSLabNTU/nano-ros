@@ -80,8 +80,16 @@ rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys", "nros-node/__cyclonedds-link"]
 # `just freertos build-examples` / `just threadx_linux build-examples`
 # which invoke `cargo build --features rmw-zenoh` (or `rmw-xrce`)
 # to exercise the alternative-backend build path.
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
+# Phase 227.3 follow-up — forward `linkme-register` to the backend so its
+# `nros_rmw_register_backend!` macro actually emits the `RMW_INIT_ENTRIES`
+# linkme entry the walker discovers at `Executor::open`. `nros` pulls the
+# backend with `default-features = false` (linkme-register is a default
+# feature of the backend), so without this `?/` forward the entry is never
+# emitted and a pure-cargo binary opens with no registered backend
+# (`Transport(ConnectionFailed)`). The static-lib / CMake path is unaffected
+# (it auto-registers via `.init_array`).
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-rmw-zenoh?/linkme-register"]
+rmw-xrce  = ["dep:nros-rmw-xrce-cffi", "nros-rmw-xrce-cffi?/linkme-register"]
 
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix.
