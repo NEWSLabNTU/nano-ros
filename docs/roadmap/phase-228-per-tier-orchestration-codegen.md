@@ -13,9 +13,12 @@ emit → per-tier registration gate → one shared session — is implemented an
 verified **end-to-end on native and FreeRTOS** (boot + QEMU), with cross-tier
 `[[shared_state]]` in all three languages. The original top-level items
 228.B/D/E/F shipped under the newer sub-items (228.G / 228.D.2 / 228.E.2 /
-228.G.6) — their markers below are reconciled to ✅. What remains is **optional
-deeper validation** (router-backed both-tiers-observed runs; a cross-*language*
-shared-state example) + the descoped 228.H. Design-of-record: **RFC-0032**.
+228.G.6) — their markers below are reconciled to ✅. Router-backed both-tiers
+runs now land on **native** (NSOS, `multi_tier_binary_runs_both_tiers_with_router`)
+and **FreeRTOS** (QEMU slirp, `multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers`),
+plus a single-tier gate-parity guard. What remains is **optional**: a
+cross-*language* shared-state example + the descoped 228.H. Design-of-record:
+**RFC-0032**.
 
 **Priority.** P2 — the single-tier path works today and covers most cases;
 multi-tier is the differentiator for hard-RT embedded (mixed-criticality on one
@@ -185,9 +188,15 @@ and the off-tier timer is gated out entirely (zero fires) on both executors. Thi
 validates the previously-unproven `session_ptr`/`open_with_session`/
 `set_active_groups`/`.callback_group()` path. **Files:**
 `packages/testing/nros-tests/tests/phase228_tier_filter.rs`.
-**Remaining:** a codegen-level fixture once the proc-macro `run_tiers` emit lands
-(asserts distinct OS tasks/priorities at runtime on native + FreeRTOS), plus the
-single-tier byte-parity check on the emitted entry.
+**Done (single-tier gate-parity):** `single_tier_system_takes_the_legacy_boardentry_run_path`
+(in `orchestration_tiers_native.rs`) — the multi-tier fixture with `[tiers.*]`
+stripped from `system.toml` falls back to the unchanged `BoardEntry::run` emit
+(macro gate G.4: `has_tiers == false` → `resolved_tiers = None`), proven by the
+single-tier `NullNodeRuntime` line + the absence of any multi-tier marker. Pairs
+with `multi_tier_binary_boots_into_run_tiers` to bracket the gate.
+**Remaining (optional):** a codegen-level fixture asserting distinct OS
+tasks/priorities at runtime (the run-E2Es below already prove both tiers execute
+over one session on native + FreeRTOS).
 
 ## Implementation plan — remaining emit (per RFC-0032 §8)
 
@@ -257,10 +266,13 @@ The emitted multi-tier fixture binary builds + runs (no router); the boot tier
 opens the one session, fails, and `run_tiers` prints its unique
 `"multi-tier entry needs a live session"` abort — proving the macro emitted
 `run_tiers` AND the boot tier executed (the single-tier path prints a different
-line). Test `multi_tier_binary_boots_into_run_tiers`. A richer
-observe-both-tiers-publishing E2E (both tiers' topic output via an external sub)
-is an optional follow-up; the boot path + the 228.F runtime mechanism together
-cover correctness.
+line). Test `multi_tier_binary_boots_into_run_tiers`.
+**Done (router-backed both-tiers run):** `multi_tier_binary_runs_both_tiers_with_router`
+— with a live zenohd (NSOS — native host networking, no QEMU) the emitted binary
+gets *past* `Executor::open`, spawns the low tier, and the boot tier prints the
+unique `multi-tier run — N tier(s)` marker before its forever-spin. Seeing the
+marker — and NOT the abort line — proves the emitted multi-tier binary entered
+the per-tier run over a real shared session.
 **Files:** `packages/testing/nros-tests/tests/orchestration_tiers_native.rs`.
 
 ### 228.E.2 — FreeRTOS `run_tiers` port  ✅ DONE (build + QEMU-boot verified)
@@ -285,9 +297,16 @@ brings up the network, and reaches the boot-tier `Executor::open` (fails only on
 the absent router — the entry-poc lifecycle proof). The build caught a real bug
 (`pvPortFree`→`vPortFree`) and a stack-tuning need (small inline arena so two
 tier executors fit the task stacks). Gated on freertos prereqs.
-**Remaining (optional, deeper):** a router-backed run asserting both tiers' topic
-output + distinct task priorities + zenoh-pico concurrent-multi-spin holds (needs
-zenohd + TAP); the boot-lifecycle proof above covers the emit + boot path.
+**Done (slirp router-backed run):** `multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers`
+— a host zenohd on `0.0.0.0` + QEMU user/slirp networking (guest reaches the host
+at `10.0.2.2:7447`, **no TAP**) lets the firmware connect past `Executor::open`
+and set up both tiers over one session on device, printing the unique `Multi-tier
+setup complete` line. The banner + network bringup are hard-asserted; the
+connected-run line is best-effort (slirp/virtual-clock timing) — but observed in
+practice. The on-device complement to the native router run.
+**Remaining (optional, deeper):** asserting distinct task priorities +
+zenoh-pico concurrent-multi-spin holds under load; the connected-run proof above
+covers the emit + boot + per-tier-run path.
 **Files:** `packages/boards/nros-board-freertos/src/{entry,lib}.rs`,
 `packages/boards/nros-board-mps2-an385-freertos/src/lib.rs`,
 `packages/core/nros-node/src/executor/spin.rs` (`SessionHandle`),

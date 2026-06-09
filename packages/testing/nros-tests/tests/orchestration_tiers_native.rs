@@ -175,6 +175,59 @@ fn multi_tier_binary_runs_both_tiers_with_router() {
 }
 
 #[test]
+fn single_tier_system_takes_the_legacy_boardentry_run_path() {
+    // 228.F gate-parity guard: the SAME multi-tier fixture, with the `[tiers.*]`
+    // blocks stripped from `system.toml`, must fall back to the unchanged
+    // single-tier `BoardEntry::run` emit (RFC-0032 §5 / macro gate G.4 —
+    // `has_tiers == false` → `resolved_tiers = None`). The components still
+    // declare `callback_groups`, but with no `[tiers.*]` the macro never
+    // resolves a tier table, so the legacy path is selected. Proof: the binary
+    // prints the single-tier `NullNodeRuntime` line and NONE of the multi-tier
+    // markers. (Pairs with `multi_tier_binary_boots_into_run_tiers`, which
+    // asserts the opposite branch on the un-stripped fixture — together they
+    // bracket the gate.)
+    let (_g, root) = stage_fixture();
+    let system_toml = root.join("src/demo_bringup/system.toml");
+    let body = fs::read_to_string(&system_toml).expect("read system.toml");
+    let cut = body
+        .find("[tiers.")
+        .expect("fixture system.toml should declare [tiers.*]");
+    let single = &body[..cut];
+    assert!(
+        !single.contains("[tiers."),
+        "tier blocks not fully stripped"
+    );
+    fs::write(&system_toml, single).expect("write single-tier system.toml");
+
+    let build = cargo_build(&root);
+    assert!(
+        build.status.success(),
+        "single-tier (tiers-stripped) fixture failed to build.\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stderr),
+    );
+    let bin = root.join("target/debug/demo_entry");
+    assert!(bin.is_file(), "binary not produced at {}", bin.display());
+
+    // No router — the legacy boot path opens the session, fails, and falls back
+    // to NullNodeRuntime (its unique single-tier line).
+    let out = Command::new(&bin).output().expect("spawn demo_entry");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        combined.contains("proceeding with NullNodeRuntime"),
+        "tiers-stripped binary did not take the legacy BoardEntry::run path.\noutput:\n{combined}",
+    );
+    assert!(
+        !combined.contains("multi-tier"),
+        "tiers-stripped binary emitted a multi-tier marker — the gate leaked into run_tiers.\n\
+         output:\n{combined}",
+    );
+}
+
+#[test]
 fn instance_identity_mismatch_is_a_compile_error() {
     // RFC-0032 §7: a launch node that carries callback groups but does not name
     // a `[[component]]` is a hard error. Rename one launch node away from its
