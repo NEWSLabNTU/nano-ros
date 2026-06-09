@@ -288,17 +288,28 @@ zenohd + TAP); the boot-lifecycle proof above covers the emit + boot path.
 `packages/core/nros-node/src/executor/spin.rs` (`SessionHandle`),
 `packages/testing/nros-tests/{fixtures/orchestration_tiers_freertos,tests/orchestration_tiers_freertos.rs}`.
 
-### 228.D.2 — Multi-tier shared-state locking + accessor emit  ⏳ GATED
-The lock-free `nros_orchestration::SharedRegion<N>` (Phase 172.I blackboard) +
-its `render_shared_state` codegen already exist for the cooperative single-tier
-case — its own access-discipline note explicitly defers the preemptive case
-("wrap access in the platform critical section"). So 228.D.2 is: (a) add a
-**locked** region variant backed by `PlatformThreading::mutex_*` /
-`critical_section` for cross-tier `sync = "mutex"`, (b) wire the resolved
-`shared_state` policy from the new `system.toml` bake to the emitter, (c) the
-C/C++ `nros_shared_context` wrappers. Gated on the lock-free→locked refactor +
-a cross-tier consuming example.
-**Files:** `nros-orchestration` (locked region), codegen, `nros-cpp`/`nros-c`.
+### 228.D.2 — Multi-tier shared-state locking + accessor emit  ✅ DONE (Rust path; C/C++ pending)
+**Wave 1 (runtime primitive):** `nros_orchestration::LockedSharedRegion<N>` — the
+cross-tier counterpart to the lock-free `SharedRegion<N>` (Phase 172.I), every
+`with` access under `critical_section::with` (platform supplies the impl — the
+same primitive `ffi-sync` uses). Fills the gap the `SharedRegion` access-discipline
+note explicitly deferred. No restore-state feature selected (avoids the
+critical-section feature-unification conflict).
+**Wave 2 (Rust accessor emit):** `codegen-system` emits `nros_shared_state.rs`
+from the resolved `[[shared_state]]` — per region a `#[repr(C)]` struct from the
+typed fields, a backing static (`LockedSharedRegion` when `sync=mutex`/
+`critical_section`, else lock-free `SharedRegion`), and `_get/_set/_modify`
+accessors viewing the struct over the bytes (`size_of::<Schema>()`-sized). Wired
+into the bake tree (idempotent: written when regions exist, removed when absent).
+Tests: `emit_shared_state_rust_typed_accessors` + the tiered-fixture bake test
+(asserts the emitted module) + a standalone compile-check (generated module is
+valid Rust against `nros-orchestration`).
+**Remaining (Wave 3):** the C/C++ `nros_shared_context.{h,hpp}` wrappers mirroring
+the `#[repr(C)]` struct + accessors, and a cross-tier consuming example/test
+(two tiers `_modify` one region) exercising the guarded path at runtime.
+**Files:** `packages/core/nros-orchestration/src/lib.rs` (locked region),
+`packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (emit + wire);
+`nros-cpp`/`nros-c` wrappers (remaining).
 
 ### 228.H — Spin-period bound-check warning  ❌ DESCOPED
 `spin_period_us` ≤ tightest timer period (RFC-0015 §4.3) needs each callback's
