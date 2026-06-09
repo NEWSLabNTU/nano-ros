@@ -37,12 +37,19 @@ templates. `nros_find_interfaces()` was confirmed to work cross-compiled
   via `cmake/compat/NrosRclcppCompat.cmake`. Converging these onto
   `nros_find_interfaces()` is optional cleanup.
 
+**RMW-variant verification — DONE.** The migrated C examples were
+build-verified on the **non-zenoh** RMWs too: native C × {XRCE, CycloneDDS}
+(12), ThreadX-linux/riscv64 C × CycloneDDS (8), Zephyr C × {XRCE, CycloneDDS}
+(12) — **32/32 build clean**. Confirmed `nros_find_interfaces` (message
+bindings from `package.xml`) coexists with the per-example CycloneDDS
+IDL/descriptor path on every platform. (Intermittent failures during the
+sweep were a parallel-build fs race, not a regression — see issue #19.)
+
 **To close** (all optional): converge the NuttX C++ /
 ThreadX-linux C++ paths onto `nros_find_interfaces()`; migrate the
 `examples/templates/zephyr-byo/app` copy-out starter; build-verify the
-XRCE / cyclonedds variants of the migrated C examples and the
-`talker-aemv8r` C++ carve-out. The substantive migration (all C examples
-across native/FreeRTOS/NuttX/ThreadX/Zephyr + native C/C++ + FreeRTOS C++ +
-templates) is **done and build-verified** — what remains is convergence of
-the two C++ holdouts (which already resolve deps from `package.xml`, just via
-different mechanisms) and unverified RMW variants.
+`talker-aemv8r` C++ cyclonedds carve-out. The substantive migration (all C
+examples across native/FreeRTOS/NuttX/ThreadX/Zephyr + native C/C++ + FreeRTOS
+C++ + templates, on all three RMWs) is **done and build-verified** — what
+remains is convergence of the two C++ holdouts (which already resolve deps
+from `package.xml`, just via different mechanisms).

@@ -50,5 +50,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 7  | Unbounded message sequences capped at 64 elements                     | enhancement | codegen| [0007-seq-capacity-64.md](0007-seq-capacity-64.md) |
 | 8  | Two-copy receive path and static buffer pre-allocation at scale       | tech-debt   | rmw    | [0008-two-copy-receive.md](0008-two-copy-receive.md) |
 | 11 | C/C++ examples do not use package.xml as single source of truth       | tech-debt   | cmake  | [0011-cmake-msg-deps-ssot.md](0011-cmake-msg-deps-ssot.md) |
+| 19 | Parallel Zephyr fixture builds race on shared build-dir / probe writes | tech-debt   | build  | [0019-parallel-fixture-build-race.md](0019-parallel-fixture-build-race.md) |
 
 Resolved issues live in [`archived/`](archived/).
