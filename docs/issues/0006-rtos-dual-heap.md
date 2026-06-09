@@ -47,12 +47,22 @@ allocators** that cannot share memory or statistics:
    both C and Rust allocations. This is what the DDS backend already
    does (Phase 70).
 
-**Possible improvements**:
+**Possible improvements** — both landed (opt-in, non-breaking; commit `43ef7ce1a`):
 
-- Implement `GlobalAlloc` on `FreeListHeap` so bare-metal platforms
-  can optionally use `zpico-alloc` as the Rust global allocator too,
-  creating a single unified heap.
-- Extend heap usage tracking to RTOS platforms, so developers can
-  monitor total heap pressure. Bare-metal `zpico-alloc` already has an
-  opt-in `stats` feature for this; the equivalent visibility is missing
-  on the RTOS allocators.
+- ~~Implement `GlobalAlloc` on `FreeListHeap`~~ **(done)** — behind the
+  opt-in `zpico-alloc/global-alloc` feature, so a bare-metal board can
+  install the same free-list heap as the Rust `#[global_allocator]`,
+  unifying the C (`z_malloc`) and Rust heaps. Backing storage is now
+  8-byte aligned for soundness. Default builds install no global allocator
+  (unchanged). Demonstrated in `nros-platform-mps2-an385` (`global-alloc`).
+- ~~Extend heap usage tracking to RTOS platforms~~ **(partially done)** —
+  opt-in `alloc-stats` `used`/`peak` tracking on the FreeRTOS/ThreadX/Zephyr
+  Rust global allocators (reusable `zpico_alloc::HeapStats`), exposed as
+  `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`.
+
+**Remaining (why this stays open):** the unified heap + stats are *opt-in*,
+not default, and the RTOS stats count only the Rust `#[global_allocator]`
+footprint — zenoh-pico's direct C-side `z_malloc`/`pvPortMalloc` traffic is
+not included. For the true unified total, instrument the C allocator
+(`nros_platform_alloc`) or use the RTOS-native query (FreeRTOS
+`xPortGetFreeHeapSize()`, ThreadX `tx_byte_pool_info_get()`).
