@@ -145,6 +145,42 @@ existing POSIX/ThreadX path) + the optional global-allocator (230.1.4) +
 heap stats (Z5). The 40-site static grep over-counted: the RMW C path on
 Zephyr/ThreadX is already funneled.
 
+---
+
+## Picked: Wave 1b — canonical heap-stats ABI → close #6 cross-platform
+
+Next wave. Bounded, mostly mechanical, hosted-verifiable. Promotes the
+verified Zephyr Z5 query into the canonical platform ABI so every platform
+reports a true heap total, closing #6 everywhere (not just Zephyr).
+
+- [ ] **1b.1 — Canonical symbol.** Add `nros_platform_heap_used_bytes()` +
+  `nros_platform_heap_total_bytes()` to `nros-platform-cffi`'s
+  `<nros/platform.h>` + the Rust `extern` mirror + the
+  `nros_platform_export!` surface, with a **default = 0 ("unknown")** so
+  ports that don't override still compile. Update
+  `scripts/check-platform-abi-mirror.sh` (the symbol count + both mirrors).
+- [ ] **1b.2 — Port impls.** Zephyr (move the existing port-local fns onto
+  the canonical symbol — already `sys_heap`-backed); ThreadX
+  `tx_byte_pool_info_get`; POSIX best-effort (`mallinfo2`, else 0);
+  bare-metal `FreeListHeap::used`/capacity; FreeRTOS `xPortGetFreeHeapSize`
+  / `xPortGetMinimumEverFreeHeapSize`; esp `heap_caps_get_*`.
+- [ ] **1b.3 — Public accessor.** Back `nros_heap_used_bytes()` (and a new
+  `nros_heap_total_bytes()`) with the platform query on RTOS; document the
+  two-mode (D7) — exact single-funnel where nano-ros owns the allocator,
+  native-query total where the framework does.
+- [ ] **1b.4 — Verify + close.** POSIX host test, threadx-linux, Zephyr
+  native_sim show sane non-zero totals; mark [issue 0006] resolved.
+
+**Deferred to later waves (split completion, heavier verify):**
+- **Wave 1c — FreeRTOS C-side funnel:** guard vendored
+  `system/freertos/system.c` `z_malloc` + enable the (memory) alias so
+  FreeRTOS joins the universal `nros_platform_alloc` funnel; needs FreeRTOS
+  QEMU E2E. The last C-side bypass.
+- **Wave 1d — optional Rust global allocator (D6):** `nros-global-alloc`
+  feature + board selection for the owned-allocator platforms
+  (bare-metal/FreeRTOS/ThreadX); at-most-one-provider guard.
+- **Wave 1e — board-crate task-context sites + flip the lint hard.**
+
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
 > are two allocators and neither is nros's: the `#[global_allocator]` is
 > **zephyr-lang-rust's** (`modules/lang/rust/zephyr/src/alloc_impl.rs` →
