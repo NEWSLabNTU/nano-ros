@@ -56,20 +56,34 @@ landable and leaves the tree green.
 
 ### Wave 0 — Audit + lint scaffold
 
-#### 230.0.1 — Direct-kernel-call audit
-Enumerate every direct host-allocator call outside the platform ports:
-zenoh-pico vendored `system/<rtos>/system.c`, `nros-c`/`nros-cpp` global
-allocators, `nros-rmw-xrce` aliases. Produce the authoritative bypass list
-(seed: RFC-0034 table). Record each call site + intended `nros_platform_*`
-target.
+#### 230.0.1 — Direct-kernel-call audit  ✅ DONE
+`scripts/check-no-direct-kernel-alloc.sh` is the executable audit. It found
+**40 bypass sites** — broader than RFC-0034's initial table:
 
-#### 230.0.2 — `no-direct-kernel-call` lint (alloc subset)
-Extend `scripts/check-platform-abi-mirror.sh` (or a sibling
-`check-no-direct-kernel-alloc.sh`) to fail on
-`pvPortMalloc`/`vPortFree`/`k_malloc`/`k_free`/`tx_byte_allocate`/
-`tx_byte_release`/`heap_caps_malloc` references outside the legitimate port
-crate. Start **advisory** (warn) so Wave 1 can flip it to hard-fail once
-the call sites are migrated. Wire into `just check`.
+- **Rust `#[global_allocator]`** — `nros-c`/`nros-cpp/src/lib.rs`
+  (FreeRTOS→`pvPortMalloc`, Zephyr→`k_malloc`, ThreadX→`z_malloc`) + the
+  cbindgen-emitted `extern` re-decls in `nros_generated.h` / `nros_cpp_ffi.h`.
+- **C-API inline platform headers** — `nros-c/include/nros/platform/{freertos,zephyr}.h`.
+- **Board crates (newly surfaced)** — `nros-board-freertos`
+  (`entry.rs`/`node.rs`: task-context + `AppContext` allocation via
+  `pvPortMalloc`), `nros-board-orin-spe` (same), `nros-board-threadx-qemu-riscv64`
+  + `nros-board-common` (net/IP/ARP/BSD pools via `tx_byte_allocate`).
+- **Vendored zenoh-pico** `system/{freertos,threadx,zephyr}/system.c`
+  `z_malloc` (out of the lint's scope — guarded separately in 230.1.1).
+
+Implication: Wave 1 scope grew. Board-crate task-context allocations + the
+C-API inline headers are additional funnel sites. The board allocations
+are a distinct sub-case (board glue sizing its own task contexts / net
+pools) and may legitimately keep direct calls if scoped out — decided per
+site during 230.1.
+
+#### 230.0.2 — `no-direct-kernel-alloc` lint  ✅ DONE
+`scripts/check-no-direct-kernel-alloc.sh` — word-boundaried symbol scan
+(`pvPortMalloc`/`vPortFree`/`k_malloc`/`k_free`/`tx_byte_allocate`/
+`tx_byte_release`/`heap_caps_*`), excludes vendored zenoh-pico/mbedtls +
+build output, allows `nros-platform-*` / `platforms/*` ports. **Advisory**
+(prints the worklist, exit 0); `NROS_ALLOC_GATE_HARD=1` enforces. Wired
+into `just check`. 230.1.7 flips it hard once the inventory is migrated.
 
 ### Wave 1 — Allocator unification (the starter)
 

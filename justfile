@@ -282,6 +282,7 @@ check: \
     check-workspace-all check-workspace-features \
     check-nros-log-riscv32 \
     check-platform-abi-mirror check-board-abi-mirror check-profile-board-mirror check-example-matrix \
+    check-no-direct-kernel-alloc \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
 
@@ -296,6 +297,14 @@ check-platform-abi-mirror:
 [private]
 check-board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
+
+# Phase 230.0.2 (RFC-0034) — no crate may call the host kernel allocator
+# directly except a platform port; everything routes through
+# nros_platform_alloc. Advisory until Wave 1 migrates the inventory
+# (set NROS_ALLOC_GATE_HARD=1 to enforce).
+[private]
+check-no-direct-kernel-alloc:
+    @bash scripts/check-no-direct-kernel-alloc.sh
 
 # Phase 176.3 — verify the orchestration generator's PlatformProfile
 # board-crate references match the actual board crates (existence +
