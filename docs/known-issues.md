@@ -529,9 +529,41 @@ host-socket offload on this host. Build-only verification (`just zephyr
 build-fixtures` with `NROS_ZEPHYR_FIXTURE_FILTER=workspace-entry`) is
 green and is the local gate until NSOS connectivity is restored.
 
-## 18. NuttX workspace Entry — builds + boots via cargo lane; E2E blocked by guest networking
+## 18. NuttX workspace Entry — RESOLVED (builds + boots + E2E delivers via cargo lane)
 
-**Status (2026-06-09): the "wall" is overturned — `qemu_nuttx_entry` now
+**Status (2026-06-09, RESOLVED): the NuttX workspace Entry now publishes
+`/chatter` over zenoh and an external native listener receives it
+cross-process** (`Received: 17,18,19,…`; ~92 packets on the wire). The full
+chain — `just`/lane build → boot on qemu-system-arm virt cortex-a7 →
+register the zenoh backend → `Executor::open` → publish → cross-process
+delivery — works end to end through the fixture lane
+(`scripts/build/workspace-fixtures-build.sh nuttx rust`).
+
+The transport blocker was a multi-layer cascade in the never-before-built
+cargo-NuttX-zenoh path, all fixed (`93dbae16b` + `c5453a5b3` + `7648cb43a`):
+(1) the runtime locator defaulted to loopback `127.0.0.1:7447` (`from_env`
+on the env-less guest) — now baked via `option_env!`; (2) the entry linked
+NO RMW backend — added `nros/rmw-zenoh`; (3) `nros/platform-nuttx` did not
+forward `nros-rmw-zenoh?/platform-nuttx` (so `zpico-sys` missed
+`ZENOH_NUTTX` and zenoh-pico's NuttX SO_LINGER/TCP_NODELAY setsockopt
+guards stayed off) — fixed; (4) `nros-smoltcp` gated
+`portable-atomic/unsafe-assume-single-core` too broadly (`cfg(any(arm,
+riscv32))` caught hosted armv7a-nuttx) — narrowed to bare-metal
+(`target_os="none"`); (5) the unified-RMW `nros_rmw_register_backend!`
+macro is a no-op on NuttX (linkme unsupported) and the flat image doesn't
+run `.init_array`, so `nros-board-nuttx::run_entry` now calls
+`nros_rmw_zenoh::register()` explicitly (feature `rmw-zenoh`, wired entry →
+board-qemu-arm → board-nuttx).
+
+One minor follow-up: the NuttX standalone flat image miscompiles at the
+`nros-fast-release` opt-level (boots to `main` but the runtime never
+functions; `release` opt-level 3 works), so the lane builds the NuttX
+Entry with `--release` (`workspace-fixtures-build.sh`) until that
+profile-specific break is root-caused.
+
+---
+
+Earlier status — superseded by RESOLVED above: the "wall" is overturned — `qemu_nuttx_entry`
 BUILDS + LINKS + BOOTS** a standalone NuttX image via the workspace cargo
 lane (`scripts/build/workspace-fixtures-build.sh nuttx rust`), from the
 uniform `nros::main!(launch = …)` source. Verified on `qemu-system-arm -M

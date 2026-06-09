@@ -767,10 +767,18 @@ The review found example topology issues separate from the API surface.
   BoardEntry::run → run_entry → Executor::open`. `std` kept (resolves from
   NuttX `libc.a`; RFC-0003 §9). Fixed a real `nros-board-nuttx`
   no_std-predicate bug + a contaminated-`libapps.a` link (empty-builtins
-  stub) in passing. **Cross-process E2E is NOT green** — blocked by NuttX
-  guest virtio-net not coming up (`Transport(ConnectionFailed)`, zero
-  packets leave the guest), an environmental NuttX-networking issue
-  parallel to the Zephyr NSOS block; tracked in known-issue #18.
+  stub) in passing. **Cross-process E2E is now GREEN** (2026-06-09): the
+  Entry registers the zenoh backend, publishes `/chatter`, and an external
+  native listener receives it cross-process (~92 packets;
+  `Received: 17,18,19,…`). The earlier "guest virtio-net doesn't come up"
+  was a mis-diagnosis — networking always came up; the real blocker was a
+  multi-layer cargo-NuttX-zenoh transport cascade (loopback locator
+  default, no RMW backend linked, platform-feature forwarding gap,
+  `nros-smoltcp` portable-atomic gate too broad, and the unified-RMW
+  register macro being a no-op on NuttX → explicit `nros_rmw_zenoh::register()`
+  in `run_entry`), all fixed. See known-issue #18. The lane builds the
+  NuttX Entry with `--release` (the `nros-fast-release` opt-level miscompiles
+  the standalone flat image — separate follow-up).
 - [x] Add the Zephyr Entry package — DONE (Phase 225.P). `src/zephyr_entry`
   builds via `west build` on native_sim through the workspace fixture lane;
   the `nros setup` + `nros ws sync`/codegen + west workflow is wired. Its

@@ -101,7 +101,18 @@ build_workspace() {
         "$nros_cli" codegen-system --bringup "$bringup" --out "$codegen_out" >/dev/null
 
         if [ "$lang" = "rust" ]; then
-            local cargo_args=(build "${cargo_profile_args[@]}" -p "$entry")
+            local profile_args=("${cargo_profile_args[@]}")
+            local row_profile_dir="$profile_dir"
+            # The NuttX standalone flat image miscompiles at the
+            # `nros-fast-release` opt-level (it boots to `main` but the
+            # runtime never functions — no transport, zero output;
+            # `release` opt-level 3 works). Build the NuttX workspace
+            # Entry with `--release` until that profile issue is root-caused.
+            if [ "$platform" = "nuttx" ]; then
+                profile_args=(--release)
+                row_profile_dir="release"
+            fi
+            local cargo_args=(build "${profile_args[@]}" -p "$entry")
             if [ -n "$target_dir" ]; then
                 cargo_args+=(--target-dir "$target_dir")
             fi
@@ -117,7 +128,7 @@ build_workspace() {
             cargo "${cargo_args[@]}"
 
             local out_root="${target_dir:-target}"
-            echo "     built: $dir/$out_root/$profile_dir/$entry"
+            echo "     built: $dir/$out_root/$row_profile_dir/$entry"
         else
             [ -n "$build_subdir" ] || {
                 echo "workspace fixture '$id' is missing build_subdir for CMake build" >&2
