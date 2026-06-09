@@ -21,7 +21,10 @@ allowed_roots=(
   "examples/px4/rust/uorb"
 
   # One-board Zephyr CycloneDDS reference, documented in CLAUDE.md.
+  # Both languages carve out — the rust sibling was missed when the cpp one
+  # landed (same single-board reference shape).
   "examples/zephyr/cpp/cyclonedds"
+  "examples/zephyr/rust/cyclonedds"
 )
 
 is_allowed() {

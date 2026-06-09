@@ -271,11 +271,17 @@ format: format-workspace native::format format-c format-cpp format-python
     @echo "All formatting completed!"
 
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
+# `check-decoupling` is intentionally NOT in this gate: it guards the Phase-104.A
+# "no concrete backend/platform refs in nros/nros-node" goal, which RFC-0031
+# (Stable) superseded — the `?/` forwarding + optional backend deps were
+# deliberately restored (Phase 214.S / 227.3) as the unified RMW-selection model.
+# The recipe stays runnable (`just check-decoupling`) for anyone revisiting the
+# bridge-decoupling track, but it must not fail the green `check` gate.
 [group("main")]
 check: \
     check-workspace-all check-workspace-features \
     check-nros-log-riscv32 \
-    check-platform-abi-mirror check-board-abi-mirror check-profile-board-mirror check-decoupling check-example-matrix \
+    check-platform-abi-mirror check-board-abi-mirror check-profile-board-mirror check-example-matrix \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
 

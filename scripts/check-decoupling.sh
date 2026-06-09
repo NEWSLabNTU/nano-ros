@@ -13,10 +13,15 @@
 # means backend / platform selection has leaked into the umbrella's
 # Cargo graph and Thread A of Phase 104 has regressed.
 #
-# Today this script is EXPECTED TO FAIL — Phase 104.A.1 + A.2 are
-# the migrations that bring it to green. The guard is wired in
-# advance so the target state is documented and CI prevents
-# regression once the migration lands.
+# SUPERSEDED (2026-06-09) — RFC-0031 (RMW selection + lowering, Stable)
+# deliberately RESTORED the `?/` forwarding + optional backend deps in the
+# `nros` umbrella (and kept the cyclonedds keep-alive in `nros-node`) as the
+# unified RMW-selection model (Phase 214.S / 227.3 reopened what 104.A had
+# dropped only as bridge-decoupling collateral). So this guard now tests a goal
+# the design-of-record reversed; it is EXPECTED TO FAIL and has been UN-WIRED
+# from the `just check` gate. Kept runnable for anyone revisiting the
+# bridge-decoupling track — re-wire into `check` only if RFC-0031's forwarding
+# model is itself superseded.
 
 set -euo pipefail
 
