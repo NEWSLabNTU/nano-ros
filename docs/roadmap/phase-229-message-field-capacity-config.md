@@ -203,12 +203,39 @@ sequence-of-nested-messages**. Sequence elements stay fixed-capacity (unbounded
   `generator/common.rs`, `templates/message_nros.rs.jinja`, `tests/`.
 
 ### 229.6 — `borrowed` storage mode (phase 3, closes issue 0007)  ⬜
-Lifetime-carrying generated types (`struct Image<'a>`), deserializer returns slices
-into the CDR receive buffer, `Subscriber`/callback signature ripple, C/C++ ptr+len
-ABI structs. Bounded only by `NROS_SUBSCRIPTION_BUFFER_SIZE`.
-- **Files:** generators, deserializer, subscription/callback path, C/C++ FFI glue.
+A receive-side, callback-scoped, read-only zero-copy view — **mostly a runtime change,
+not codegen** (design-of-record: RFC-0033 "Borrowed mode"). Ordered so the runtime
+seam is proven before the codegen leans on it:
+
+1. **Callback-scoped buffer borrow (the substantive work).** Today's callback dispatch
+   (`nros-node executor/arena.rs::sub_buffered_try_process`) deserializes into an owned
+   `M` then calls `FnMut(&M)`. Change it to hold the existing `sub_borrow` view
+   (`RecvView<'a>`, already used on the polling path) **across** the callback and
+   release after, calling `FnMut(&Msg<'a>)`. Restrict borrowed subscriptions to the
+   **triple-buffer** strategy (queue depth ≤ 1); reject depth > 1 (SPSC ring holds
+   several in flight → no single well-defined view).
+   - **Files:** `nros-node/src/executor/{arena.rs, spin.rs, node.rs, handles.rs}`.
+2. **Borrowed-view deserialize.** A pass that walks the CDR fields recording
+   `(offset, len)` per borrowed field and materialises `Msg<'a>` with `&'a [u8]` /
+   `&'a str` slices (no copy). Owned/heap fields in the same message still copy.
+   - **Files:** generated message code + `nros-serdes` (a borrow-aware reader).
+3. **Codegen — lifetime-carrying types.** `mode = "borrowed"` emits `struct Image<'a>`
+   with `&'a [T]` / `&'a str` fields (Rust), `{ const T* data; size_t size; }` views
+   (C/C++). Replaces the phase-1 `UnsupportedStorageMode` error for `borrowed`.
+   - **Files:** `types.rs`, `generator/{common,msg,cpp}.rs`, the message templates.
+4. **Alignment guard.** `&[u8]` is unconditional; for `&[T]` where `T` needs > 1-byte
+   alignment (`f32`/`f64`/…), emit a runtime alignment check on
+   `buffer_base + field_offset` with a fallback (copy into a scratch / degrade that
+   field to owned) on strict-alignment targets.
+5. **C/C++ surface.** The C/C++ callbacks already receive raw `(data, len)`
+   (`nros-c subscription`); the borrowed type is a typed ptr+len accessor over that
+   same callback — no new ABI, just generated views + a span-like C++ wrapper.
+
 - On landing: set issue 0007 `status: resolved`, `resolved_in: Phase 229`, move to
   `docs/issues/archived/`.
+- **Out of scope (by design):** `take()`/polling returning a borrowed message, storing
+  a borrowed message past the callback, and any publish-side borrow (that is the
+  Phase 124 `pub_loan` loan API).
 
 ## Acceptance
 

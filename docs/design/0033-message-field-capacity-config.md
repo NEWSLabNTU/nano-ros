@@ -120,6 +120,65 @@ zero-copy direction in issue 0007: the deserializer returns a slice into the CDR
 receive buffer (no copy, no fixed capacity), the message struct gains a lifetime, and
 the payload is bounded only by `NROS_SUBSCRIPTION_BUFFER_SIZE`.
 
+### Borrowed mode — when it is used and how it meets the user API
+
+`borrowed` is fundamentally different from `owned`/`heap`: it is a **receive-side,
+callback-scoped, read-only view**, not a container. A borrowed field is a `&'a [u8]`
+/ `&'a str` (C/C++: `{ const T* data; size_t size; }`) pointing into the live CDR
+receive buffer; the "deserialize" pass records each field's offset+len instead of
+copying.
+
+**When it is the right mode:**
+
+- **Large unbounded payloads on receive** — `sensor_msgs/Image.data` (≈900 KB),
+  `PointCloud2.data`, `LaserScan.ranges`. The original issue-0007 case.
+- **Allocator-free MCUs** — `owned` can't fit the payload inline and `heap` needs a
+  `malloc` per message; `borrowed` needs neither (the bytes already sit in the RX
+  buffer). For a 64–256 KB MCU receiving frames it is the only viable mode for big
+  payloads.
+- **Process-in-callback-then-discard** — vision/DSP over the slice, or a bridge that
+  inspects headers while forwarding raw bytes. The view is never retained.
+
+**Hard constraints (what borrowed cannot do):**
+
+- **Callback-scoped only.** The slice is valid only for the duration of the
+  subscription callback; the buffer is released/reused immediately after. A borrowed
+  `Msg<'a>` therefore **cannot** be returned by `Subscription::try_recv() -> Option<M>`
+  (no lifetime anchor outside a callback) and **cannot** be stored past the callback —
+  copy the needed parts out instead.
+- **Read-only**, receive-only. The publish side owns the data it sends; "borrow on
+  publish" is a different mechanism (the `pub_loan` zero-copy loan API, Phase 124), not
+  this mode.
+
+**How it cooperates with the existing API:**
+
+The infrastructure already exists — `borrowed` is a *typed* layer over it, not new
+plumbing:
+
+- The RMW exposes `sub_borrow`/`sub_release` (Phase 124, `nros-rmw-cffi`) returning the
+  raw received buffer with a release token; `RecvView<'a>` (`nros-node executor/handles`)
+  is the Rust wrapper. Today that borrow is exposed **only on the polling path**
+  (`RawSubscription::try_borrow()`).
+- Today's callback path deserializes into an **owned** `M` and calls `FnMut(&M)`
+  (`executor/arena.rs::sub_buffered_try_process`). Borrowed mode changes the callback
+  to `FnMut(&Msg<'a>)` and makes the dispatch **hold the `sub_borrow` view across the
+  callback**, build the typed slice view over it, then release. The C/C++ callbacks
+  already receive raw `(data, len)` (`nros-c subscription`), so the C/C++ borrowed type
+  is a typed accessor over the same raw callback.
+- **Buffer-strategy limit:** a single borrowed view per invocation is well-defined only
+  on the **triple-buffer** strategy (queue depth ≤ 1). The SPSC ring (depth > 1) holds
+  several messages in flight, so `borrowed` subscriptions are restricted to depth ≤ 1.
+
+**Caveat — element alignment.** `&[u8]` is always safe. `&[f32]` (`LaserScan.ranges`)
+requires the buffer region to be 4-aligned: CDR aligns elements *within* the buffer,
+but `buffer_base + field_offset` must also satisfy the element alignment. On
+strict-alignment targets this needs a runtime check with a fallback copy (degrading to
+`owned`/`heap` for that field).
+
+**The work is mostly runtime, not codegen.** Generating `Msg<'a>` with slice fields is
+the smaller half of phase 3; the substantive change is the executor/subscription
+callback-borrow dispatch above. See phase-229 § 229.6.
+
 ### Codegen: one resolver, three emitters
 
 A `CapacityResolver` is loaded once per codegen invocation from the merged config:
@@ -183,11 +242,16 @@ Absent any file, the resolver uses built-in defaults — no behavior change.
 2. ~~Whether `[packages.*]` / `[types.*]` accept the inline-table `{ cap, mode }`
    form.~~ **Resolved (229.1):** yes — every level uses the same int-or-table value
    under `sequence` / `string` keys.
-3. `borrowed`-mode lifetime threading through `Subscriber` / callback signatures and
-   the C/C++ ptr+len ABI — deferred to phase 3; resolved as part of closing issue 0007.
+3. ~~`borrowed`-mode lifetime threading through `Subscriber` / callback signatures and
+   the C/C++ ptr+len ABI.~~ **Resolved (design):** borrowed is a receive-side,
+   callback-scoped, read-only view over the existing `sub_borrow` zero-copy primitive
+   — `FnMut(&Msg<'a>)`, depth ≤ 1 only, no `take()`/store/publish. See "Borrowed mode"
+   above; implementation in phase-229 § 229.6.
 
 ## Changelog
 
 - 2026-06 — created (Draft). Brainstormed design captured at
   `docs/superpowers/specs/2026-06-09-per-field-message-capacity-config-design.md`;
   work breakdown in [phase-229](../roadmap/phase-229-message-field-capacity-config.md).
+- 2026-06 — added the "Borrowed mode" section (use cases, callback-scoped constraint,
+  `sub_borrow`/`RecvView` integration, alignment caveat); resolved open question 3.
