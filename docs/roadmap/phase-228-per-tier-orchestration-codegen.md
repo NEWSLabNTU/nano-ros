@@ -288,7 +288,7 @@ zenohd + TAP); the boot-lifecycle proof above covers the emit + boot path.
 `packages/core/nros-node/src/executor/spin.rs` (`SessionHandle`),
 `packages/testing/nros-tests/{fixtures/orchestration_tiers_freertos,tests/orchestration_tiers_freertos.rs}`.
 
-### 228.D.2 — Multi-tier shared-state locking + accessor emit  ✅ DONE (Rust path; C/C++ pending)
+### 228.D.2 — Multi-tier shared-state locking + accessor emit  ✅ DONE (codegen + 3-lang surface; cross-lang example pending)
 **Wave 1 (runtime primitive):** `nros_orchestration::LockedSharedRegion<N>` — the
 cross-tier counterpart to the lock-free `SharedRegion<N>` (Phase 172.I), every
 `with` access under `critical_section::with` (platform supplies the impl — the
@@ -304,12 +304,22 @@ into the bake tree (idempotent: written when regions exist, removed when absent)
 Tests: `emit_shared_state_rust_typed_accessors` + the tiered-fixture bake test
 (asserts the emitted module) + a standalone compile-check (generated module is
 valid Rust against `nros-orchestration`).
-**Remaining (Wave 3):** the C/C++ `nros_shared_context.{h,hpp}` wrappers mirroring
-the `#[repr(C)]` struct + accessors, and a cross-tier consuming example/test
-(two tiers `_modify` one region) exercising the guarded path at runtime.
-**Files:** `packages/core/nros-orchestration/src/lib.rs` (locked region),
-`packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (emit + wire);
-`nros-cpp`/`nros-c` wrappers (remaining).
+**Wave 3a (cross-tier guard proof):** `locked_shared_region_serializes_concurrent_modify`
+— two threads × 50k read-modify-writes on one `LockedSharedRegion` = exactly
+100k, no lost updates (a lock-free region would fail). The serialization contract
+holds.
+**Wave 3b (C/C++ surface):** `codegen-system` also emits `nros_shared_context.h`
+(the `#[repr(C)]`-matching `typedef struct` + accessor decls, `extern "C"`-guarded
+for C and C++; Rust→C type map) + the Rust `#[unsafe(no_mangle)] extern "C"`
+`nros_<name>_get/set/modify` exports (one definition; `modify` takes a C fn
+pointer + ctx). Both wired into the bake (idempotent). Verified by the emitter
+test + a standalone compile-check of the full emitted module (typed accessors +
+C-ABI exports) for edition 2024.
+**Remaining (optional):** a cross-*language* consuming example — a C/C++ node and
+a Rust node sharing one region at runtime (links the bake-generated `.h` + `.rs`).
+The single-language paths + the cross-tier guard are proven.
+**Files:** `packages/core/nros-orchestration/src/lib.rs` (locked region + proof),
+`packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (Rust + C emit + wire).
 
 ### 228.H — Spin-period bound-check warning  ❌ DESCOPED
 `spin_period_us` ≤ tightest timer period (RFC-0015 §4.3) needs each callback's
