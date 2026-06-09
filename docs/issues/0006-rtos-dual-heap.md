@@ -47,7 +47,7 @@ allocators** that cannot share memory or statistics:
    both C and Rust allocations. This is what the DDS backend already
    does (Phase 70).
 
-**Possible improvements** — both landed (opt-in, non-breaking; commit `43ef7ce1a`):
+**Possible improvements** — both landed (opt-in, non-breaking; commit `a16c824f4`):
 
 - ~~Implement `GlobalAlloc` on `FreeListHeap`~~ **(done)** — behind the
   opt-in `zpico-alloc/global-alloc` feature, so a bare-metal board can

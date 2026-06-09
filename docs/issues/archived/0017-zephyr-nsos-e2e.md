@@ -4,7 +4,8 @@ title: Zephyr workspace Entry — native_sim zenoh E2E delivers (RESOLVED)
 status: resolved
 type: bug
 area: zephyr
-related: [issue-0018]
+related: [issue-0018, phase-225]
+resolved_in: "Phase 225.P (036906ced + f6ab9e898 + 297d87117)"
 ---
 
 **Status (2026-06-09, RESOLVED): the Phase 225.P Zephyr workspace Entry
