@@ -1,0 +1,256 @@
+---
+rfc: 0032
+title: "Entry-Codegen Pipeline — main() emission across frameworks + tiers"
+status: Draft
+since: 2026-06
+last-reviewed: 2026-06
+implements-tracked-by: [phase-228]
+supersedes: []
+superseded-by: null
+---
+
+# Entry-Codegen Pipeline — `main()` emission across frameworks + tiers
+
+**Status:** Draft (design-of-record for the entry emitter; the multi-tier slice
+is tracked by Phase 228).
+
+**Scope boundary.** This RFC is the **how-`main()`-is-emitted** doc. It is the
+companion to:
+
+- **RFC-0015** (RTOS orchestration) — the *execution model* (priority tiers, one
+  `Executor` per tier, one shared session). RFC-0015 says *what* runs; this RFC
+  says *how the entry TU is generated* to make it run. RFC-0015 §3/§11 sketch a
+  `cargo nano-ros generate-main` template pipeline that **predates** the
+  proc-macro entry codegen and is superseded by this RFC (see the RFC-0015
+  banner).
+- **RFC-0003** (RTOS integration pattern) — the *embedded host-time C baking*
+  path (`nros codegen-system` → `system_config.h` + `system_main.c`, consumed at
+  the vendor's configure phase). That is the **C/vendor** entry scaffold; this
+  RFC's proc-macro is the **Rust** entry scaffold. Both consume the same
+  node-set source of truth (launch tree + `system.toml`).
+- **RFC-0031** (RMW selection + lowering), **RFC-0023/0024/0025** (workspace +
+  codegen discovery), **RFC-0016** (per-RTOS scheduling).
+
+Non-goals: the executor internals, the RMW vtable, message codegen.
+
+---
+
+## 1. Problem
+
+A nano-ros binary needs a `main()` (or the framework's boot symbol) that:
+
+1. brings up the board (HW init, transport, network-wait),
+2. opens the RMW session,
+3. registers every Node package the launch tree names, and
+4. spins.
+
+On Linux this is a hand-written `main.rs`. nano-ros generates it from the launch
+tree + `system.toml` so the ROS 2 mental model survives onto RTOS (RFC-0015 §1).
+The generation must cover **five framework shapes** (the boot symbol differs per
+framework) **and** the single-vs-multi-tier execution model — without forking
+into N bespoke generators, and without the multi-tier path perturbing the
+single-tier output that ships today.
+
+---
+
+## 2. Two emitters, one node-set source of truth
+
+The Rust entry TU is produced by **two** code paths that resolve the same launch
+tree the same way:
+
+| Emitter | Where | When | Why it exists |
+| --- | --- | --- | --- |
+| **`nros::main!()` proc-macro** | `packages/core/nros-macros/src/main_macro.rs` | the consumer's `cargo build` (compile time) | **Canonical.** Has `proc_macro::Span` for diagnostics a shell-out can't match; expands directly into the Entry crate. |
+| **`nros codegen entry --lang rust\|cpp\|c`** | `packages/cli/nros-cli-core/src/codegen/entry/emit_{rust,cpp,c}.rs` | host-time CLI invocation | **Mirror.** Pre-bakes the macro expansion for byte-level diffing, inspection outside a cargo build, and the C/C++ entry TUs. |
+
+Both consult the workspace pkg-index + launch parser (`nros_build::pkg_index` /
+`launch_parser`) and lower to a per-node register list. The CLI path lowers into
+the shared `codegen::entry::Plan` IR (`board`, `nodes[]`, `bringup`,
+`launch_file`, `depfile_paths`); the proc-macro keeps its own in-place walk
+because it additionally needs `Span` per node. **The launch tree + `system.toml`
+are the single source of truth for the node set** — neither emitter invents
+nodes.
+
+The **embedded-C path** (RFC-0003) is a third emitter for a *different language*
+(`nros codegen-system` → `system_main.c`), not a competitor: it bakes the same
+node set into C for vendors whose build owns `main`. This RFC governs the Rust
+emitters; RFC-0003 governs the C bake. They share the node-set inputs, not the
+output.
+
+---
+
+## 3. Boot scaffolds — one per framework
+
+`nros::main!` resolves a `Framework` from the Entry pkg's
+`[package.metadata.nros.entry] deploy = "<board>"` (or an explicit `board = X`),
+then emits the matching boot scaffold. All five register the **same**
+launch-resolved `<pkg>::register(runtime)?` calls; only the boot/spin envelope
+differs.
+
+| `Framework` | Boot symbol | Spin owner | Notes |
+| --- | --- | --- | --- |
+| `OwnedSpin` | `fn main` (hosted) + `extern "C" fn main` (`target_os = "none"`) | `BoardEntry::run` | Native/POSIX, FreeRTOS, NuttX, ThreadX. Default for any board key not routed below. |
+| `Zephyr` | `extern "C" fn rust_main` (staticlib export) | in-body loop | RTOS owns boot + C `main`; no Rust `fn main`. Gates on `wait_link_up`. |
+| `Rtic` | `#[rtic::app]` module + `#[init]` | RTIC tasks | Per-Node `register_dispatch(&mut executor)` splice into the dispatch-slot table. |
+| `Embassy` | `#[embassy_executor::main] async fn main` | Embassy tasks | Same `register_dispatch` splice. |
+| `Esp32` | `#[esp_hal::main] fn main -> !` | `BoardEntry::run` | esp-hal `_start` requires the hal entry; delegates to the real-runtime `run`. |
+
+The `BoardEntry` trait (`nros-platform`) is the portable seam: codegen names a
+per-board ZST and calls `<Board>::run(setup)` without knowing the family; the
+family driver crate (`nros-board-posix`, `nros-board-freertos`, …) owns the
+lifecycle body (`init_hardware` → open executor → build `RuntimeCtx` → `setup` →
+spin/exit).
+
+---
+
+## 4. The single-tier contract (today)
+
+`BoardEntry::run<F>(setup: F)` where `F: FnOnce(&mut RuntimeCtx) -> Result<(),E>`.
+The board opens **one** `Executor`, wraps it in `ExecutorNodeRuntime`, hands the
+`setup` closure a `RuntimeCtx`, and the closure registers every Node pkg. **The
+spin is owned by `setup`** on hosted targets (the macro emits a bounded
+`NROS_ENTRY_SPIN_MS` loop for the E2E harness; embedded loops forever inside the
+board body). This is the shape Phases 94/126/212.N shipped and what every example
+builds today.
+
+---
+
+## 5. The multi-tier contract (Phase 228)
+
+When the system declares scheduling tiers, codegen emits **one RTOS task +
+`Executor` per tier over one shared session** (RFC-0015 §2.2/§2.3). The board
+seam for this is a sibling entry point:
+
+```
+<Board>::run_tiers(tiers: &[TierSpec], setup: F)
+    where F: Fn(&mut RuntimeCtx) -> Result<(),E> + Sync
+```
+
+Contract differences from `run` (and *why*):
+
+- **`setup` is `Fn`, not `FnOnce`, and register-only.** It is invoked **once per
+  tier executor** (each tier registers the whole node set; the executor's
+  `active_groups` filter admits only that tier's callbacks). The closure must
+  *register only* — **the board owns the per-tier spin** so it can install the
+  group filter (`set_active_groups`) before spinning. (In `run`, by contrast,
+  `setup` owns the spin.)
+- **One shared session.** The boot task opens the session once; tier tasks borrow
+  it via `Executor::open_with_session(session_ptr)` (the RMW session is a
+  process-wide singleton — opening twice fails, RFC-0015 §2.3). The boot task
+  runs the highest-priority tier; the rest are spawned with the platform's task
+  primitive (`nros_platform_task_init` / `nros_freertos_create_task` / …).
+- **`TierSpec`** (`nros-platform`) carries `{name, groups: &[&str], priority:
+  i64, stack_bytes, spin_period_us}`. `priority` is the **raw per-RTOS** value
+  the author wrote in `[tiers.<name>.<rtos>].priority` (already in the kernel's
+  scale; `i64` admits Zephyr negative coop) — passed straight to the spawn call.
+  The RFC-0016 `*_priority_for` mappers are a separate utility for authors who
+  prefer a normalized 0–31 scale; the codegen path uses the raw value.
+
+### 5.1 Degenerate gate — single-tier stays byte-identical
+
+The emitter chooses the path on **tier presence**:
+
+- system has no `[tiers.*]` **or** the resolved table `is_single_tier()` (one
+  synthesized `default` tier) → emit the **unchanged `BoardEntry::run`** path.
+  Every example today takes this branch; output is byte-identical to pre-228.
+- otherwise → emit `run_tiers(&[TierSpec{…}, …], run_plan)` with a register-only
+  `run_plan`.
+
+This keeps the multi-tier blast radius to systems that opt in (none today): a
+bug in the new path cannot affect a single-tier build.
+
+---
+
+## 6. Where tier data enters the emitter — the shared resolver
+
+The proc-macro must resolve the tier table **at expansion time**, and it must
+resolve it **identically** to the CLI's `codegen-system` bake (else a binary's
+compile-time entry and its baked `nros-plan.json` disagree). Three sources were
+considered (Phase 228):
+
+1. **Re-read + re-implement in the macro** — duplicates `resolve_tiers`; drifts.
+2. **Read the baked `nros-plan.json`** — true SSoT, but native builds use plain
+   `cargo build` with no prior bake step → ordering dependency.
+3. **Shared resolver crate** *(chosen)* — extract the tier schema + `resolve_tiers`
+   into a leaf crate both consumers depend on.
+
+**Decision: a shared leaf crate `nros-orchestration-ir`** (runtime workspace,
+serde + thiserror only) owns the tier schema (`TierDef`, `TierRtosSpec`,
+`CallbackGroupDecl`, `NodeOverride`, `CallbackGroupOverride`) + `resolve_tiers`.
+- `nros-cli-core` path-deps it (re-exports the types; `codegen-system` calls it).
+- `nros-macros` path-deps it (same workspace) and calls the *same* function at
+  expansion. The archived GitHub `nros-build` git-dep is untouched — the macro
+  reads `system.toml` + node `[package.metadata.nros.node].callback_groups`
+  itself and feeds the shared resolver.
+
+`resolve_tiers` takes the **decomposed** inputs `(tiers, node_overrides,
+component_names, callback_groups, target_rtos)` rather than a whole `SystemToml`,
+so the leaf crate stays free of the full CLI config type. The macro derives
+`target_rtos` from the resolved board (`native`/`posix` → `posix`, `freertos*` →
+`freertos`, …).
+
+```
+launch tree + system.toml + node callback_groups
+        │
+        ├── nros codegen-system ──► resolve_tiers ──► nros-plan.json (bake / RFC-0003)
+        └── nros::main! (expand) ──► resolve_tiers ──► run / run_tiers emit
+                                        ▲
+                              nros-orchestration-ir  (one definition, no drift)
+```
+
+---
+
+## 7. Invariants
+
+- **Single-tier byte-identical.** No `[tiers.*]` ⇒ the `run` emit is unchanged.
+  (Phase 228 keeps a parity check.)
+- **One node-set SSoT.** Both Rust emitters + the C bake resolve the launch tree
+  identically; none invents nodes.
+- **One resolver.** Compile-time (macro) and bake-time (CLI) tier resolution call
+  the same `nros-orchestration-ir::resolve_tiers`.
+- **Node-pinned-to-tier (v1).** A node's callback groups must all resolve to one
+  tier (enforced in the resolver). Cross-tier data is `[[shared_state]]`
+  (RFC-0015 §8). v2 relaxes with multi-task state-sync.
+- **Raw per-RTOS priority.** Authored in `[tiers.<name>.<rtos>].priority`, emitted
+  verbatim into the spawn call; codegen does not auto-flip direction.
+
+---
+
+## 8. Status + open questions
+
+**Landed (Phase 228):** the runtime mechanism — the `active_groups` registration
+gate, the `.callback_group()` label, `Executor::session_ptr` /
+`open_with_session` / `set_active_groups`, `TierSpec` + RFC-0016 maps,
+`PosixBoard::run_tiers`, and the `nros-orchestration-ir` extraction. Validated by
+`phase228_tier_filter.rs` (two executors, one shared session, off-tier callbacks
+gated to zero) against real zenohd.
+
+**Open:**
+
+1. **Proc-macro emit** — wire `nros-macros` to `nros-orchestration-ir`, resolve
+   tiers at expansion, emit `run_tiers` behind the §5.1 gate with a register-only
+   `run_plan`. Needs a multi-tier example fixture to validate the emitted TU
+   compiles + runs.
+2. **FreeRTOS `run_tiers`** — port the native primitive via
+   `nros_freertos_create_task` at the raw FreeRTOS priority; validate real
+   preemption + zenoh-pico concurrent multi-spin on QEMU.
+3. **RTIC / Embassy multi-tier** — those frameworks own scheduling via
+   `#[task(priority)]` / Embassy executors; tiers map to framework priorities,
+   not `run_tiers`. Out of scope for v1; documented as future work.
+4. **Spin-period bound check** — `spin_period_us` ≤ tightest timer period in the
+   tier (RFC-0015 §4.3) is not yet enforced at emit time.
+
+---
+
+## 9. References
+
+- Execution model: RFC-0015 (esp. §2.2, §2.3, §3, §10).
+- Embedded C bake: RFC-0003 §1.
+- Per-RTOS scheduling: RFC-0016.
+- Proc-macro: `packages/core/nros-macros/src/main_macro.rs`.
+- CLI mirror + Plan IR: `packages/cli/nros-cli-core/src/codegen/entry/`.
+- BoardEntry seam: `packages/core/nros-platform/src/board/entry.rs`.
+- `run_tiers` + `TierSpec`: `packages/boards/nros-board-posix/src/lib.rs`,
+  `packages/core/nros-platform/src/board/tier.rs`.
+- Shared resolver: `packages/core/nros-orchestration-ir/`.
+- Phase tracking: `docs/roadmap/phase-228-per-tier-orchestration-codegen.md`.
