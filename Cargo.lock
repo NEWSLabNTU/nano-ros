@@ -2056,6 +2056,7 @@ dependencies = [
  "panic-halt",
  "paste",
  "portable-atomic",
+ "zpico-alloc",
 ]
 
 [[package]]
@@ -2100,6 +2101,7 @@ dependencies = [
  "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",
  "panic-halt",
+ "zpico-alloc",
 ]
 
 [[package]]

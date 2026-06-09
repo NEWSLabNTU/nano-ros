@@ -15,8 +15,13 @@ categories = ["embedded", "no-std", "memory-management"]
 
 [features]
 default = []
-## Track peak heap usage (adds one atomic per heap).
+## Track peak heap usage (adds two atomics per heap) and expose the reusable
+## `HeapStats` counter for instrumenting the RTOS allocator wrappers.
 stats = []
+## Implement `GlobalAlloc` for `FreeListHeap` so a bare-metal board can opt in
+## to using the free-list heap as the Rust `#[global_allocator]`, unifying the
+## C (`z_malloc`) and Rust heaps. Off by default — never forces an allocator.
+global-alloc = []
 
 [lints]
 workspace = true

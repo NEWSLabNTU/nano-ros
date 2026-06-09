@@ -109,6 +109,15 @@ ros-iron = ["nros/ros-iron"]
 # Bare-metal panic handler (enables building staticlib without std)
 panic-halt = ["dep:panic-halt"]
 
+# Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
+# pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
+# bytes routed through the Rust `#[global_allocator]` and exposes them via
+# `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. Mirrors zpico-alloc's
+# bare-metal `stats` feature. NOTE: counts only the Rust allocator's
+# footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc traffic is not
+# included (see issue #6).
+alloc-stats = ["dep:zpico-alloc", "zpico-alloc/stats"]
+
 # Expose ROS 2 parameter services (~/get_parameters, ~/set_parameters, etc.)
 # via `nros_executor_register_parameter_services`. Requires alloc for boxed
 # service responses.
@@ -129,6 +138,8 @@ nros-core.workspace = true
 nros-log = { workspace = true }
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
+# Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.
+zpico-alloc = { path = "../../zpico/zpico-alloc", optional = true, default-features = false }
 paste = "1"
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on

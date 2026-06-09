@@ -643,6 +643,16 @@ nros_cpp_ret_t nros_cpp_bind_handle_to_sched_context(void *handle,
  */
 uint64_t nros_cpp_time_ns(void);
 
+/**
+ * Bytes currently outstanding through the Rust global allocator.
+ */
+size_t nros_heap_used_bytes(void);
+
+/**
+ * Peak outstanding bytes through the Rust global allocator since boot.
+ */
+size_t nros_heap_peak_bytes(void);
+
 extern void *pvPortMalloc(uint32_t size);
 
 extern void vPortFree(void *ptr);

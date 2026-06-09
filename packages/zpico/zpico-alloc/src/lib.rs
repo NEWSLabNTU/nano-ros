@@ -32,6 +32,30 @@
 //!     HEAP.realloc(ptr, size)
 //! }
 //! ```
+//!
+//! ## Unified Rust global allocator (opt-in, `global-alloc` feature)
+//!
+//! With the `global-alloc` feature, [`FreeListHeap`] also implements
+//! [`core::alloc::GlobalAlloc`], so a bare-metal board can use the *same*
+//! free-list heap for both zenoh-pico's `z_malloc` and Rust's `alloc`
+//! (`Box`/`Vec`/`String`) — a single unified heap instead of two. This is
+//! strictly opt-in: without the feature, no global allocator is installed and
+//! existing bare-metal targets are unchanged.
+//!
+//! ```rust,ignore
+//! use zpico_alloc::FreeListHeap;
+//!
+//! #[global_allocator]
+//! static HEAP: FreeListHeap<{64 * 1024}> = FreeListHeap::new();
+//!
+//! // z_malloc/z_free still route through the same static:
+//! #[unsafe(no_mangle)]
+//! pub extern "C" fn z_malloc(size: usize) -> *mut core::ffi::c_void { HEAP.alloc(size) }
+//! ```
+//!
+//! All allocations are 8-byte aligned. Requested alignments greater than 8 are
+//! not supported and yield a null pointer (the caller's `handle_alloc_error`
+//! fires) — no nros runtime type needs more than 8-byte alignment.
 
 #![no_std]
 
@@ -59,6 +83,16 @@ const SLAB_SLOT_COUNT: usize = 8;
 /// Total slab region size in bytes.
 const SLAB_REGION_SIZE: usize = SLAB_SLOT_SIZE * SLAB_SLOT_COUNT;
 
+/// 8-byte-aligned byte-array wrapper for the heap / slab backing storage.
+///
+/// A bare `[u8; N]` has alignment 1, so the free-list base could land on an
+/// odd address. Forcing the storage to 8-byte alignment makes every returned
+/// pointer 8-aligned (headers and aligned sizes are 8-byte multiples), which
+/// is required for the `GlobalAlloc` impl to be sound on strict-alignment
+/// targets. Strictly stronger than before — never weakens existing behaviour.
+#[repr(C, align(8))]
+struct Aligned<const M: usize>([u8; M]);
+
 /// Block header stored immediately before each allocation.
 #[repr(C)]
 struct BlockHeader {
@@ -80,11 +114,11 @@ const fn align_up(val: usize, align: usize) -> usize {
 /// Single-threaded bare-metal only — uses `Relaxed` atomics for the free-list
 /// head pointer and initialization flag. Not safe for multi-threaded use.
 pub struct FreeListHeap<const N: usize> {
-    heap: UnsafeCell<[u8; N]>,
+    heap: UnsafeCell<Aligned<N>>,
     free_list: AtomicUsize,
     initialized: AtomicBool,
     /// Slab region: 8 slots × 64 bytes, separate from the main heap.
-    slab: UnsafeCell<[u8; SLAB_REGION_SIZE]>,
+    slab: UnsafeCell<Aligned<SLAB_REGION_SIZE>>,
     /// Bitmap of free slab slots (bit set = free). Starts as 0xFF (all free).
     slab_free_bitmap: AtomicU8,
     #[cfg(feature = "stats")]
@@ -110,10 +144,10 @@ impl<const N: usize> FreeListHeap<N> {
     /// ```
     pub const fn new() -> Self {
         Self {
-            heap: UnsafeCell::new([0u8; N]),
+            heap: UnsafeCell::new(Aligned([0u8; N])),
             free_list: AtomicUsize::new(0),
             initialized: AtomicBool::new(false),
-            slab: UnsafeCell::new([0u8; SLAB_REGION_SIZE]),
+            slab: UnsafeCell::new(Aligned([0u8; SLAB_REGION_SIZE])),
             slab_free_bitmap: AtomicU8::new(0xFF), // all 8 slots free
             #[cfg(feature = "stats")]
             used_bytes: AtomicUsize::new(0),
@@ -400,6 +434,109 @@ impl<const N: usize> FreeListHeap<N> {
 }
 
 // ============================================================================
+// Opt-in: use FreeListHeap as the Rust #[global_allocator]
+// ============================================================================
+
+/// `GlobalAlloc` lets a bare-metal board install the free-list heap as the Rust
+/// `#[global_allocator]`, unifying the C (`z_malloc`) and Rust (`Box`/`Vec`)
+/// heaps. Opt-in via the `global-alloc` feature — never installed implicitly.
+///
+/// All allocations are 8-byte aligned (the backing storage is `align(8)` and
+/// block headers / aligned sizes are 8-byte multiples). Alignments greater
+/// than 8 are unsupported and return null so the caller's `handle_alloc_error`
+/// fires rather than handing back misaligned memory — no nros runtime type
+/// requires more than 8-byte alignment.
+#[cfg(feature = "global-alloc")]
+unsafe impl<const N: usize> core::alloc::GlobalAlloc for FreeListHeap<N> {
+    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        if layout.align() > ALIGN {
+            return ptr::null_mut();
+        }
+        // Inherent `alloc(size)` wins method resolution over the trait method.
+        self.alloc(layout.size()) as *mut u8
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: core::alloc::Layout) {
+        self.free(ptr as *mut core::ffi::c_void);
+    }
+
+    unsafe fn realloc(
+        &self,
+        ptr: *mut u8,
+        layout: core::alloc::Layout,
+        new_size: usize,
+    ) -> *mut u8 {
+        if layout.align() > ALIGN {
+            return ptr::null_mut();
+        }
+        self.realloc(ptr as *mut core::ffi::c_void, new_size) as *mut u8
+    }
+}
+
+// ============================================================================
+// Reusable heap-usage counter (stats feature)
+// ============================================================================
+
+/// Lightweight `used`/`peak` byte counter for instrumenting an allocator.
+///
+/// Mirrors the `used_bytes`/`peak_bytes` tracking [`FreeListHeap`] keeps under
+/// the `stats` feature, but as a standalone unit so the RTOS allocator
+/// wrappers (FreeRTOS `pvPortMalloc`, ThreadX `tx_byte_allocate`, Zephyr
+/// `k_malloc`) in `nros-c` / `nros-cpp` can expose the same visibility into the
+/// Rust global allocator's footprint.
+///
+/// Single-threaded bare-metal / RTOS use: `Relaxed` atomics. `AtomicUsize` is
+/// already `Sync`, so this can live in a `static`.
+#[cfg(feature = "stats")]
+pub struct HeapStats {
+    used_bytes: AtomicUsize,
+    peak_bytes: AtomicUsize,
+}
+
+#[cfg(feature = "stats")]
+impl Default for HeapStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "stats")]
+impl HeapStats {
+    /// Create a zeroed counter. `const` so it can be a `static`.
+    pub const fn new() -> Self {
+        Self {
+            used_bytes: AtomicUsize::new(0),
+            peak_bytes: AtomicUsize::new(0),
+        }
+    }
+
+    /// Record a successful allocation of `size` bytes and update the peak.
+    #[inline]
+    pub fn on_alloc(&self, size: usize) {
+        let used = self.used_bytes.fetch_add(size, Ordering::Relaxed) + size;
+        let _ = self.peak_bytes.fetch_max(used, Ordering::Relaxed);
+    }
+
+    /// Record a deallocation of `size` bytes.
+    #[inline]
+    pub fn on_dealloc(&self, size: usize) {
+        self.used_bytes.fetch_sub(size, Ordering::Relaxed);
+    }
+
+    /// Bytes currently outstanding.
+    #[inline]
+    pub fn used(&self) -> usize {
+        self.used_bytes.load(Ordering::Relaxed)
+    }
+
+    /// Peak outstanding bytes since boot.
+    #[inline]
+    pub fn peak(&self) -> usize {
+        self.peak_bytes.load(Ordering::Relaxed)
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -520,6 +657,67 @@ mod tests {
         let big = heap.alloc(384);
         assert!(!big.is_null());
         heap.free(big);
+    }
+
+    #[test]
+    fn allocations_are_8_byte_aligned() {
+        let heap: FreeListHeap<4096> = FreeListHeap::new();
+        // Slab path
+        let p1 = heap.alloc(16);
+        assert_eq!(p1 as usize % ALIGN, 0);
+        // Free-list path
+        let p2 = heap.alloc(200);
+        assert_eq!(p2 as usize % ALIGN, 0);
+        heap.free(p1);
+        heap.free(p2);
+    }
+
+    #[cfg(feature = "global-alloc")]
+    #[test]
+    fn global_alloc_trait() {
+        use core::alloc::{GlobalAlloc, Layout};
+
+        let heap: FreeListHeap<4096> = FreeListHeap::new();
+
+        // Standard (<=8) alignment: alloc, write, realloc preserving data, free.
+        let layout = Layout::from_size_align(128, 8).unwrap();
+        let p = unsafe { GlobalAlloc::alloc(&heap, layout) };
+        assert!(!p.is_null());
+        assert_eq!(p as usize % 8, 0);
+        unsafe { ptr::write_bytes(p, 0xCD, 128) };
+
+        let p2 = unsafe { GlobalAlloc::realloc(&heap, p, layout, 256) };
+        assert!(!p2.is_null());
+        unsafe {
+            let slice = core::slice::from_raw_parts(p2, 128);
+            assert!(slice.iter().all(|&b| b == 0xCD));
+        }
+        unsafe { GlobalAlloc::dealloc(&heap, p2, Layout::from_size_align(256, 8).unwrap()) };
+
+        // Over-aligned request (>8) is rejected with null, not misaligned memory.
+        let over = Layout::from_size_align(64, 32).unwrap();
+        assert!(unsafe { GlobalAlloc::alloc(&heap, over) }.is_null());
+    }
+
+    #[cfg(feature = "stats")]
+    #[test]
+    fn heap_stats_counter() {
+        let stats = HeapStats::new();
+        assert_eq!(stats.used(), 0);
+        assert_eq!(stats.peak(), 0);
+
+        stats.on_alloc(100);
+        stats.on_alloc(50);
+        assert_eq!(stats.used(), 150);
+        assert_eq!(stats.peak(), 150);
+
+        stats.on_dealloc(100);
+        assert_eq!(stats.used(), 50);
+        assert_eq!(stats.peak(), 150); // peak is sticky
+
+        stats.on_alloc(200);
+        assert_eq!(stats.used(), 250);
+        assert_eq!(stats.peak(), 250);
     }
 
     #[cfg(feature = "stats")]

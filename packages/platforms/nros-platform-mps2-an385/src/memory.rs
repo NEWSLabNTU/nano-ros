@@ -45,6 +45,16 @@ const fn parse_usize(s: &str) -> usize {
     n
 }
 
+// Issue #6 — opt-in unified heap. With the `global-alloc` feature, the same
+// `FreeListHeap` that backs `z_malloc` is also installed as the Rust
+// `#[global_allocator]`, so zenoh-pico C allocations and Rust `Box`/`Vec`
+// draw from one heap. Without the feature (the default) no global allocator
+// is installed and the bare-metal target is unchanged.
+#[cfg(feature = "global-alloc")]
+#[global_allocator]
+static HEAP: FreeListHeap<HEAP_SIZE> = FreeListHeap::new();
+
+#[cfg(not(feature = "global-alloc"))]
 static HEAP: FreeListHeap<HEAP_SIZE> = FreeListHeap::new();
 
 pub fn alloc(size: usize) -> *mut core::ffi::c_void {

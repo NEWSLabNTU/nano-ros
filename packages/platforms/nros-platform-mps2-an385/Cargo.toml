@@ -26,6 +26,11 @@ critical-section = ["cortex-m/critical-section-single-core"]
 # symbols by expanding the `nros-platform-cffi` macro against
 # `Mps2An385Platform`.
 cffi-export = ["dep:nros-platform-cffi"]
+# Issue #6 — opt in to using the bare-metal free-list heap as the Rust
+# `#[global_allocator]`, so zenoh-pico `z_malloc` and Rust `alloc`
+# (`Box`/`Vec`) share ONE heap. Off by default: bare-metal targets that
+# don't enable it install no global allocator and are unchanged.
+global-alloc = ["zpico-alloc/global-alloc"]
 
 [dependencies]
 # Platform trait definitions (trait impls live in lib.rs)

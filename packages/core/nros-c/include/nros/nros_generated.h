@@ -2457,6 +2457,16 @@ extern const uint32_t NROS_TRANSPORT_OPS_ABI_VERSION_V1;
 
 extern int32_t nros_rmw_zenoh_register(void);
 
+/**
+ * Bytes currently outstanding through the Rust global allocator.
+ */
+NROS_PUBLIC size_t nros_heap_used_bytes(void);
+
+/**
+ * Peak outstanding bytes through the Rust global allocator since boot.
+ */
+NROS_PUBLIC size_t nros_heap_peak_bytes(void);
+
 extern void *pvPortMalloc(uint32_t size);
 
 extern void vPortFree(void *ptr);

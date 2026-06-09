@@ -108,6 +108,15 @@ ros-iron = [
 # Bare-metal panic handler (enables building staticlib without std)
 panic-halt = ["dep:panic-halt"]
 
+# Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
+# pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
+# bytes routed through the Rust `#[global_allocator]` and exposes them via
+# `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. Mirrors zpico-alloc's
+# bare-metal `stats` feature. NOTE: counts only the Rust allocator's
+# footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc traffic is not
+# included (see issue #6).
+alloc-stats = ["dep:zpico-alloc", "zpico-alloc/stats"]
+
 [dependencies]
 nros = { version = "0.5.0", path = "../nros", default-features = false }
 nros-node.workspace = true
@@ -118,6 +127,8 @@ nros-rmw = { version = "0.5.0", path = "../nros-rmw", default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 # Phase 169.4 — DDS retired. Dep removed.
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
+# Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.
+zpico-alloc = { path = "../../zpico/zpico-alloc", optional = true, default-features = false }
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on
 # platform-zephyr. DDS + portable-atomic depend on it being set.

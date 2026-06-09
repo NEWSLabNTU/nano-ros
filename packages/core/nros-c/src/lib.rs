@@ -52,6 +52,29 @@ unsafe extern "C" {
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// Opt-in RTOS heap-usage tracking (issue #6). A single shared `HeapStats`
+// counter instruments whichever RTOS global allocator is active (exactly one
+// platform feature is on at a time). Reports the Rust global allocator's
+// footprint only — zenoh-pico's direct C-side z_malloc/pvPortMalloc traffic is
+// not counted (residual gap; use the RTOS-native heap query for the unified
+// total: FreeRTOS `xPortGetFreeHeapSize`, ThreadX `tx_byte_pool_info_get`).
+#[cfg(feature = "alloc-stats")]
+mod heap_stats {
+    pub static STATS: zpico_alloc::HeapStats = zpico_alloc::HeapStats::new();
+
+    /// Bytes currently outstanding through the Rust global allocator.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_heap_used_bytes() -> usize {
+        STATS.used()
+    }
+
+    /// Peak outstanding bytes through the Rust global allocator since boot.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn nros_heap_peak_bytes() -> usize {
+        STATS.peak()
+    }
+}
+
 // FreeRTOS global allocator: wraps pvPortMalloc/vPortFree for alloc on no_std.
 // FreeRTOS heap_4 returns 8-byte aligned pointers, sufficient for all nros types.
 #[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-freertos"))]
@@ -67,11 +90,18 @@ mod freertos_alloc {
 
     unsafe impl GlobalAlloc for FreeRtosAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            unsafe { pvPortMalloc(layout.size() as u32) as *mut u8 }
+            let p = unsafe { pvPortMalloc(layout.size() as u32) as *mut u8 };
+            #[cfg(feature = "alloc-stats")]
+            if !p.is_null() {
+                crate::heap_stats::STATS.on_alloc(layout.size());
+            }
+            p
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
             unsafe { vPortFree(ptr as *mut core::ffi::c_void) }
+            #[cfg(feature = "alloc-stats")]
+            crate::heap_stats::STATS.on_dealloc(_layout.size());
         }
     }
 
@@ -96,11 +126,18 @@ mod zephyr_alloc {
 
     unsafe impl GlobalAlloc for ZephyrAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            unsafe { k_malloc(layout.size()) as *mut u8 }
+            let p = unsafe { k_malloc(layout.size()) as *mut u8 };
+            #[cfg(feature = "alloc-stats")]
+            if !p.is_null() {
+                crate::heap_stats::STATS.on_alloc(layout.size());
+            }
+            p
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
             unsafe { k_free(ptr as *mut core::ffi::c_void) }
+            #[cfg(feature = "alloc-stats")]
+            crate::heap_stats::STATS.on_dealloc(_layout.size());
         }
     }
 
@@ -179,11 +216,18 @@ mod threadx_alloc {
 
     unsafe impl GlobalAlloc for ThreadXAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            unsafe { z_malloc(layout.size()) as *mut u8 }
+            let p = unsafe { z_malloc(layout.size()) as *mut u8 };
+            #[cfg(feature = "alloc-stats")]
+            if !p.is_null() {
+                crate::heap_stats::STATS.on_alloc(layout.size());
+            }
+            p
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
             unsafe { z_free(ptr as *mut core::ffi::c_void) }
+            #[cfg(feature = "alloc-stats")]
+            crate::heap_stats::STATS.on_dealloc(_layout.size());
         }
     }
 
