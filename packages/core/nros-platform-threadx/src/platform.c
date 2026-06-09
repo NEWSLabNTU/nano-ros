@@ -86,6 +86,31 @@ void nros_platform_dealloc(void *ptr) {
     }
 }
 
+/* ---- Heap stats (phase-230 1b / RFC-0034 D7) ----
+ * Query the byte pool: used = pool size − available. ThreadX is a Mode-A
+ * platform (both zenoh-pico's z_malloc and nano-ros allocations funnel
+ * through nros_platform_alloc → tx_byte_allocate), so this is the exact
+ * unified figure. Returns 0 before the pool is registered. */
+size_t nros_platform_heap_used_bytes(void) {
+    if (s_byte_pool == NULL) {
+        return 0u;
+    }
+    ULONG available = 0;
+    if (tx_byte_pool_info_get(s_byte_pool, TX_NULL, &available, TX_NULL, TX_NULL, TX_NULL,
+                              TX_NULL) != TX_SUCCESS) {
+        return 0u;
+    }
+    ULONG total = s_byte_pool->tx_byte_pool_size;
+    return (size_t) (total >= available ? total - available : 0u);
+}
+
+size_t nros_platform_heap_total_bytes(void) {
+    if (s_byte_pool == NULL) {
+        return 0u;
+    }
+    return (size_t) s_byte_pool->tx_byte_pool_size;
+}
+
 __attribute__((weak)) void *z_malloc(size_t size) {
     return nros_platform_alloc(size);
 }

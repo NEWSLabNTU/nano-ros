@@ -89,6 +89,19 @@ void nros_platform_dealloc(void *ptr) {
     }
 }
 
+/* ---- Heap stats (phase-230 1b / RFC-0034 D7) ----
+ * FreeRTOS heap_4/5: used = configTOTAL_HEAP_SIZE − current free. FreeRTOS
+ * is a Mode-A platform (nano-ros owns the allocator; zenoh-pico's z_malloc
+ * → pvPortMalloc once Wave 1c funnels it), so this tracks the nano-ros +
+ * RMW heap. `xPortGetFreeHeapSize` is available on heap_4/heap_5. */
+size_t nros_platform_heap_used_bytes(void) {
+    return (size_t) (configTOTAL_HEAP_SIZE - xPortGetFreeHeapSize());
+}
+
+size_t nros_platform_heap_total_bytes(void) {
+    return (size_t) configTOTAL_HEAP_SIZE;
+}
+
 /*
  * FreeRTOS has no `pvPortRealloc` in stock builds. Emulate it with
  * malloc + memcpy + free. The caller must keep the original `size`

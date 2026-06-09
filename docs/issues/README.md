@@ -46,7 +46,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| 6  | Two separate heap allocators on RTOS platforms                        | tech-debt   | memory | [0006-rtos-dual-heap.md](0006-rtos-dual-heap.md) |
 | 7  | Unbounded message sequences capped at 64 elements                     | enhancement | codegen| [0007-seq-capacity-64.md](0007-seq-capacity-64.md) |
 | 8  | Two-copy receive path and static buffer pre-allocation at scale       | tech-debt   | rmw    | [0008-two-copy-receive.md](0008-two-copy-receive.md) |
 

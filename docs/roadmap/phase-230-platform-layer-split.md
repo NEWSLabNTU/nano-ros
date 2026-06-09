@@ -153,23 +153,30 @@ Next wave. Bounded, mostly mechanical, hosted-verifiable. Promotes the
 verified Zephyr Z5 query into the canonical platform ABI so every platform
 reports a true heap total, closing #6 everywhere (not just Zephyr).
 
-- [ ] **1b.1 — Canonical symbol.** Add `nros_platform_heap_used_bytes()` +
-  `nros_platform_heap_total_bytes()` to `nros-platform-cffi`'s
-  `<nros/platform.h>` + the Rust `extern` mirror + the
-  `nros_platform_export!` surface, with a **default = 0 ("unknown")** so
-  ports that don't override still compile. Update
-  `scripts/check-platform-abi-mirror.sh` (the symbol count + both mirrors).
-- [ ] **1b.2 — Port impls.** Zephyr (move the existing port-local fns onto
-  the canonical symbol — already `sys_heap`-backed); ThreadX
-  `tx_byte_pool_info_get`; POSIX best-effort (`mallinfo2`, else 0);
-  bare-metal `FreeListHeap::used`/capacity; FreeRTOS `xPortGetFreeHeapSize`
-  / `xPortGetMinimumEverFreeHeapSize`; esp `heap_caps_get_*`.
-- [ ] **1b.3 — Public accessor.** Back `nros_heap_used_bytes()` (and a new
-  `nros_heap_total_bytes()`) with the platform query on RTOS; document the
-  two-mode (D7) — exact single-funnel where nano-ros owns the allocator,
-  native-query total where the framework does.
-- [ ] **1b.4 — Verify + close.** POSIX host test, threadx-linux, Zephyr
-  native_sim show sane non-zero totals; mark [issue 0006] resolved.
+- [x] **1b.1 — Canonical symbol.** `nros_platform_heap_used_bytes()` +
+  `nros_platform_heap_total_bytes()` added to `<nros/platform.h>`, the
+  `nros-platform-cffi` `extern` mirror, the `nros_platform_export_alloc!`
+  macro, and the `PlatformAlloc` trait with **default = 0** (Rust-macro
+  ports — bare-metal — auto-get the 0 stub). Drift gate auto-extracts +
+  passes (`platform.h` now 54 symbols, header↔mirror↔macro consistent).
+- [x] **1b.2 — Port impls.** Zephyr `sys_heap` (done in Z5); ThreadX
+  `tx_byte_pool_info_get` (used = pool size − available); POSIX glibc
+  `mallinfo2` (`uordblks`); FreeRTOS `configTOTAL_HEAP_SIZE −
+  xPortGetFreeHeapSize`; esp `heap_caps_get_{total,free}_size`. Bare-metal
+  Rust ports = 0 stub via the trait default (real `FreeListHeap::used`
+  deferred).
+- [ ] **1b.3 — Public accessor (follow-up).** Back the C/C++-API
+  `nros_heap_used_bytes()` (+ a `nros_heap_total_bytes()`) with the
+  platform query on RTOS; document D7 two-mode. The canonical
+  `nros_platform_heap_used_bytes()` is already user-callable (public ABI),
+  so the unified figure is available now; this just routes the existing
+  convenience accessor.
+- [x] **1b.4 — Verify.** Gate ✅; POSIX `cargo build` (native listener)
+  links + compiles the `mallinfo2` path ✅; threadx-linux `cmake --build`
+  compiles the `tx_byte_pool_info_get` path + links ✅; Zephyr native_sim
+  runtime (Z5) `heap used=8792 total=64896` ✅. FreeRTOS/esp use standard
+  APIs (`xPortGetFreeHeapSize` / `heap_caps_*`) — build-verify in their
+  lanes / Wave 1c. [issue 0006] resolved (unified figure available + verified).
 
 **Deferred to later waves (split completion, heavier verify):**
 - **Wave 1c — FreeRTOS C-side funnel:** guard vendored

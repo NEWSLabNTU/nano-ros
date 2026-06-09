@@ -63,6 +63,8 @@ unsafe extern "C" {
     pub fn nros_platform_alloc(size: usize) -> *mut c_void;
     pub fn nros_platform_realloc(ptr: *mut c_void, size: usize) -> *mut c_void;
     pub fn nros_platform_dealloc(ptr: *mut c_void);
+    pub fn nros_platform_heap_used_bytes() -> usize;
+    pub fn nros_platform_heap_total_bytes() -> usize;
 
     // -- Sleep --
     pub fn nros_platform_sleep_us(us: usize);
@@ -350,6 +352,16 @@ impl nros_platform_api::PlatformAlloc for CffiPlatform {
     #[inline]
     fn dealloc(ptr: *mut c_void) {
         unsafe { nros_platform_dealloc(ptr) }
+    }
+
+    #[inline]
+    fn heap_used_bytes() -> usize {
+        unsafe { nros_platform_heap_used_bytes() }
+    }
+
+    #[inline]
+    fn heap_total_bytes() -> usize {
+        unsafe { nros_platform_heap_total_bytes() }
     }
 }
 
@@ -828,6 +840,14 @@ macro_rules! nros_platform_export_alloc {
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_dealloc(ptr: *mut ::core::ffi::c_void) {
             <$ty as ::nros_platform_api::PlatformAlloc>::dealloc(ptr)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_heap_used_bytes() -> usize {
+            <$ty as ::nros_platform_api::PlatformAlloc>::heap_used_bytes()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_heap_total_bytes() -> usize {
+            <$ty as ::nros_platform_api::PlatformAlloc>::heap_total_bytes()
         }
     };
 }

@@ -77,6 +77,15 @@ void *nros_platform_realloc(void *ptr, size_t size);
 /** Free a previously allocated block. `NULL` is a no-op. */
 void nros_platform_dealloc(void *ptr);
 
+/** Bytes currently allocated from the platform heap, or `0` if the port
+ *  does not instrument it. Phase 230 / RFC-0034 D7: the true unified figure
+ *  where the platform owns one kernel heap shared by the C side and the
+ *  Rust `#[global_allocator]`. */
+size_t nros_platform_heap_used_bytes(void);
+
+/** Total managed heap size in bytes (used + free), or `0` if unknown. */
+size_t nros_platform_heap_total_bytes(void);
+
 /* ---- Sleep ---- */
 
 /** Sleep at least `us` microseconds. Spin if the platform clock has no

@@ -90,6 +90,19 @@ pub trait PlatformAlloc {
 
     /// Free a previously allocated block.
     fn dealloc(ptr: *mut c_void);
+
+    /// Phase 230 Z5 / RFC-0034 D7 — bytes currently allocated from the
+    /// platform heap. The true unified figure where the platform owns one
+    /// kernel heap shared by the C side (`alloc`) and the Rust
+    /// `#[global_allocator]`. Default `0` = "unknown / not instrumented".
+    fn heap_used_bytes() -> usize {
+        0
+    }
+
+    /// Total managed heap size in bytes (used + free), or `0` if unknown.
+    fn heap_total_bytes() -> usize {
+        0
+    }
 }
 
 // ============================================================================

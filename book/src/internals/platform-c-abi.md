@@ -23,7 +23,7 @@ Three hand-written headers under
 
 | Header | Purpose | Symbol count |
 |---|---|---|
-| `platform.h` | Core kernel surface: clock, sleep, alloc, threading, scheduler, time, yield, random, critical section, opaque wake primitive. | 57 |
+| `platform.h` | Core kernel surface: clock, sleep, alloc + heap stats, threading, scheduler, time, yield, random, critical section, opaque wake primitive. | 59 |
 | `platform_net.h` | Network surface: TCP/UDP/multicast socket helpers, endpoint resolution, IVC. | 29 |
 | `platform_timer.h` | Periodic timer surface (`nros_platform_timer_*`). | 8 |
 
@@ -173,7 +173,7 @@ The platform tier today is:
   binary semaphore that lets the executor block on RMW activity
   without burning a thread.
 
-The current canonical surface is 57 + 29 + 8 = **94 symbols** across
+The current canonical surface is 59 + 29 + 8 = **96 symbols** across
 three headers, mirrored exactly by the Rust extern block, exported by
 six ports plus four bare-metal board crates, and gated by one drift
 script. Adding a capability touches all four columns in one PR.

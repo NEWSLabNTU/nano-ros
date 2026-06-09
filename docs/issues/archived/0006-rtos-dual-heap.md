@@ -1,11 +1,29 @@
 ---
 id: 6
 title: Two separate heap allocators on RTOS platforms
-status: open
+status: resolved
 type: tech-debt
 area: memory
 related: [rfc-0034, phase-230]
+resolved_in: "Phase 230 Wave 1b (RFC-0034 D7)"
 ---
+
+> **Resolved (2026-06, phase-230 Wave 1b).** The actionable gap — no way to
+> see the true unified heap total on RTOS — is closed. A canonical platform
+> ABI query `nros_platform_heap_used_bytes()` / `_total_bytes()`
+> (`<nros/platform.h>`) reports it per port: Zephyr `sys_heap` (verified
+> `used=8792 total=64896` on native_sim), ThreadX `tx_byte_pool_info_get`,
+> POSIX `mallinfo2`, FreeRTOS `xPortGetFreeHeapSize`, esp `heap_caps_*`.
+> Because the C side (zenoh-pico) funnels through `nros_platform_alloc` and
+> — where nano-ros owns the Rust allocator — the Rust side too, the figure
+> is exact (Mode A); where a framework owns the Rust allocator it shares the
+> one kernel heap, so the native query is still exact (Mode B). The
+> two-allocators-coexist structure itself is **by design** (RFC-0034: the
+> platform owns one heap; the global allocator is an optional singleton) —
+> not debt. Follow-ups (don't block this close): routing the convenience
+> `nros_heap_used_bytes()` accessor through the platform query (phase-230
+> 1b.3), the FreeRTOS C-side funnel (1c), real bare-metal `FreeListHeap`
+> stats. Original analysis below.
 
 > **Direction (2026-06):** addressed by the RFC-0034 platform layer split,
 > implemented in [phase-230](../roadmap/phase-230-platform-layer-split.md)

@@ -34,6 +34,7 @@
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 
+#include <esp_heap_caps.h>
 #include <esp_random.h>
 #include <esp_timer.h>
 #include <esp_rom_sys.h>
@@ -71,6 +72,18 @@ void *nros_platform_realloc(void *ptr, size_t size) {
 
 void nros_platform_dealloc(void *ptr) {
     free(ptr);
+}
+
+/* ---- Heap stats (phase-230 1b / RFC-0034 D7) ----
+ * ESP-IDF heap_caps: used = total − free for the default (8-bit) caps. */
+size_t nros_platform_heap_used_bytes(void) {
+    size_t total = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
+    size_t freeb = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+    return total >= freeb ? total - freeb : 0u;
+}
+
+size_t nros_platform_heap_total_bytes(void) {
+    return heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
 }
 
 /* ---- Sleep ---- */

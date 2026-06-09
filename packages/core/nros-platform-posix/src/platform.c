@@ -69,6 +69,26 @@ void nros_platform_dealloc(void *ptr) {
     free(ptr);
 }
 
+/* ---- Heap stats (phase-230 1b / RFC-0034 D7) ----
+ * Host best-effort via glibc mallinfo2 (uordblks = in-use bytes). Not all
+ * libcs provide it; return 0 ("unknown") elsewhere. POSIX is a Mode-A
+ * platform (nano-ros owns the allocator: malloc), so this reflects the
+ * process's nano-ros + zenoh-pico heap use. */
+#if defined(__GLIBC__)
+#include <malloc.h>
+size_t nros_platform_heap_used_bytes(void) {
+    struct mallinfo2 mi = mallinfo2();
+    return (size_t) mi.uordblks;
+}
+size_t nros_platform_heap_total_bytes(void) {
+    struct mallinfo2 mi = mallinfo2();
+    return (size_t) (mi.arena + mi.hblkhd);
+}
+#else
+size_t nros_platform_heap_used_bytes(void) { return 0u; }
+size_t nros_platform_heap_total_bytes(void) { return 0u; }
+#endif
+
 /* ---- Sleep ---- */
 
 void nros_platform_sleep_us(size_t us) {
