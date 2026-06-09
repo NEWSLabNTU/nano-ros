@@ -11,7 +11,7 @@ set(NANO_ROS_BOARD    mps2-an385-freertos)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
-nros_generate_interfaces(example_interfaces "action/Fibonacci.action" LANGUAGE C SKIP_INSTALL)
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 nano_ros_node_register(
     NAME    action_server

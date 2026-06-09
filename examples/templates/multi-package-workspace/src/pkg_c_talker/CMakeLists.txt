@@ -5,7 +5,8 @@ project(pkg_c_talker LANGUAGES C)
 #
 # Tiny C talker that:
 #   * Pulls nano-ros source into the build via add_subdirectory.
-#   * Generates std_msgs C bindings via nros_generate_interfaces().
+#   * Generates std_msgs C bindings via nros_find_interfaces()
+#     (package.xml is the single source of truth for msg deps).
 #   * Links the umbrella NanoRos::NanoRos target (which transitively
 #     wires the RMW staticlib + platform shim).
 #   * Calls nros_platform_link_app() for per-platform fixups.
@@ -17,8 +18,7 @@ set(NANO_ROS_PLATFORM posix)
 set(NANO_ROS_RMW     zenoh)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
-nros_generate_interfaces(builtin_interfaces SKIP_INSTALL)
-nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces SKIP_INSTALL)
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 add_executable(pkg_c_talker src/main.c)
 target_link_libraries(pkg_c_talker PRIVATE

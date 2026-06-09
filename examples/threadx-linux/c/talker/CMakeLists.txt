@@ -13,7 +13,8 @@ set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD    threadx-linux)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
+# Message deps resolved from the sibling package.xml SSoT (issue #11).
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 add_executable(threadx_c_talker src/main.c)
 target_link_libraries(threadx_c_talker PRIVATE

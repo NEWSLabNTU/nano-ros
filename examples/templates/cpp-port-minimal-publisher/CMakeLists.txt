@@ -10,7 +10,7 @@ project(minimal_publisher LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 1) Pull nano-ros (NanoRos::NanoRos / NanoRos::NanoRosCpp / nros_generate_interfaces).
+# 1) Pull nano-ros (NanoRos::NanoRos / NanoRos::NanoRosCpp / nros_find_interfaces).
 set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW (zenoh|cyclonedds|xrce).")
 set(NANO_ROS_RMW "${NROS_RMW}")
@@ -19,9 +19,10 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../.." nano_ros)
 # 2) rclcpp / ament_cmake_auto / rclcpp_components source-compat.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/compat/NrosRclcppCompat.cmake")
 
-# 3) Generate the message bindings the ported source includes (folded by 209.E).
-nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
-nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
+# 3) Generate the message bindings the ported source includes. package.xml is the
+#    single source of truth for the msg deps; nros_find_interfaces() resolves the
+#    transitive closure (builtin_interfaces ← std_msgs) from it.
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 # --- below: unmodified stock-ROS-2 ament_cmake_auto pattern ---
 

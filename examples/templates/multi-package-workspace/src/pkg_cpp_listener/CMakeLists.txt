@@ -17,9 +17,7 @@ set(NANO_ROS_PLATFORM posix)
 set(NANO_ROS_RMW     zenoh)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
-nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
-nros_generate_interfaces(std_msgs LANGUAGE CPP
-    DEPENDENCIES builtin_interfaces SKIP_INSTALL)
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 add_executable(pkg_cpp_listener src/main.cpp)
 target_link_libraries(pkg_cpp_listener PRIVATE

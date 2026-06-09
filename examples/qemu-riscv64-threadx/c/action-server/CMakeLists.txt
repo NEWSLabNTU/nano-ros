@@ -11,7 +11,8 @@ set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD    riscv64-qemu)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-nros_generate_interfaces(example_interfaces "action/Fibonacci.action" LANGUAGE C SKIP_INSTALL)
+# Message deps resolved from the sibling package.xml SSoT (issue #11).
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 add_executable(riscv64_threadx_c_action_server src/main.c)
 target_link_libraries(riscv64_threadx_c_action_server PRIVATE

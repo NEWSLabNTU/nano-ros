@@ -14,7 +14,9 @@ set(NANO_ROS_BOARD    nuttx-qemu-arm)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
-nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
+# Message deps resolved from the sibling package.xml SSoT (issue #11)
+# instead of a hardcoded interface-file list.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 # Phase 212.L.9 — declarative Component pkg shape. No add_executable
 # here, no `main()`; the generated runtime (emitted by `nros codegen-

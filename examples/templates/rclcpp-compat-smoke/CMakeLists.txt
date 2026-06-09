@@ -4,8 +4,7 @@
 # ROS 2 user would write. The only nano-ros-specific lines are:
 #   1) the platform / rmw selection + `add_subdirectory(<nano-ros>)`,
 #   2) the `include(<nano-ros>/cmake/compat/NrosRclcppCompat.cmake)` one-liner,
-#   3) the `nros_generate_interfaces(...)` codegen calls (until 209.E ships the
-#      bulk `nros generate cpp --workspace` form).
+#   3) the `nros_find_interfaces()` codegen call (package.xml drives the msg deps).
 # Everything below those is unmodified `find_package + ament_auto_*`.
 
 cmake_minimum_required(VERSION 3.22)
@@ -24,12 +23,11 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../.." nano_ros)
 #    diagnostic_updater. Everything below mirrors a stock ROS 2 CMakeLists.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/compat/NrosRclcppCompat.cmake")
 
-# 3) Generate the C++ bindings for the message packages this node uses. This is
-#    nano-ros's current per-package shape; 209.E folds bulk codegen so a ported
-#    `find_package(std_msgs)` etc. alone is enough.
-nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
-nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
-nros_generate_interfaces(diagnostic_msgs DEPENDENCIES builtin_interfaces std_msgs LANGUAGE CPP SKIP_INSTALL)
+# 3) Generate the C++ bindings for the message packages this node uses.
+#    package.xml is the single source of truth for the msg deps;
+#    nros_find_interfaces() resolves the transitive closure (builtin_interfaces,
+#    std_msgs, geometry_msgs, diagnostic_msgs) from its <depend> entries.
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 # --- below: unmodified stock-ROS-2 ament_cmake_auto pattern ---
 

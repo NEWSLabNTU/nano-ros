@@ -11,9 +11,9 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/compat/NrosRclcppCompat.cmake")
 
-nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
-nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
-nros_generate_interfaces(diagnostic_msgs DEPENDENCIES builtin_interfaces std_msgs LANGUAGE CPP SKIP_INSTALL)
+# package.xml is the single source of truth for the msg deps;
+# nros_find_interfaces() resolves the transitive closure from its <depend> entries.
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 # Stock ament_cmake_auto-shape below — unchanged from what an Autoware
 # CMakeLists would carry.
