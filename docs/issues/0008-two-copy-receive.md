@@ -91,6 +91,22 @@ with only fixed-size header fields deserialized onto the stack.
 `SUBSCRIBER_BUFFERS` arrays are unconditionally pre-allocated regardless
 of how many subscribers a node actually creates.
 
+**Implementation note (where the copy-#1 fix lands).** The base
+`Subscriber` trait already has a zero-copy in-place method
+(`process_raw_in_place(f: impl FnOnce(&[u8]))` — borrows the head ring slot,
+no arena memcpy), and some handle paths use it (`executor/handles.rs`). But
+the **main executor arena dispatch** (`packages/core/nros-node/src/executor/
+arena.rs`) still copies the slot into the per-subscriber `entry.buffer` via
+the copying `try_recv_raw`/`n(&mut entry.buffer)`, then deserializes from
+there. So design-direction item 1 (skip the arena buffer) is concretely:
+route arena subscriber dispatch through the in-place borrow and deserialize
+directly from the ring slot, which also lets the per-subscriber `entry.buffer`
+shrink/disappear. **Caveat:** that lives in `nros-node`'s executor — an
+actively-churning Phase 228 area (callback-group filter, tier resolver,
+per-tier spawn) — so this change should be coordinated with / sequenced
+after that work to avoid conflict. Copy #2 cannot be removed without the
+borrowed-deserialization codegen of issue #7.
+
 **Workarounds available today**:
 
 - Set `ZPICO_MAX_SUBSCRIBERS` to the actual subscriber count to reduce
