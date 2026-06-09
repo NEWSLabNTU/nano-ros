@@ -72,6 +72,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0027 | [ros2-user-workflow](0027-ros2-user-workflow.md) | Stable | user-facing workflow + `nros new` scaffolding |
 | 0030 | [sequence-of-nested](0030-sequence-of-nested.md) | Draft | nested-sequence message handling (Phase 212 spike) |
 | 0032 | [entry-codegen-pipeline](0032-entry-codegen-pipeline.md) | Draft | how `main()` is emitted: proc-macro + CLI mirror, BoardEntry run/run_tiers, tier resolver |
+| 0033 | [message-field-capacity-config](0033-message-field-capacity-config.md) | Draft | per-field, language-agnostic message capacity via `nros-codegen.toml`; owned/heap/borrowed modes |
 
 ### Domain & safety
 
