@@ -112,6 +112,19 @@ duplicate `platform_aliases.c` copies). Emission is **per-category**:
   fork carrying `ZENOH_*` accommodations; this is one more, scoped to the
   scalar functions.
 
+> **Verified link-level reality (2026-06).** This bridge is **already
+> active** on every platform where the alias TU compiles — POSIX,
+> bare-metal, and **Zephyr** (disassembly: `z_malloc → jmp
+> nros_platform_alloc`; the nano-ros Zephyr build does not even compile
+> vendored `system/zephyr/system.c`), and presumably **ThreadX** (alias
+> gated `!freertos` — verify with `objdump`). So the fork-strip above is
+> needed **only on FreeRTOS**, where the alias TU is explicitly skipped and
+> the vendored `system/freertos/system.c` `z_malloc → pvPortMalloc` is the
+> genuine bypass. The static audit (issue 0006 / [phase-230] 230.0.1) could
+> not see this routing; the real C-side worklist is much smaller than the
+> 40-site grep implied — mostly FreeRTOS + the board-crate / Rust-allocator
+> sites, not the RMW C path on Zephyr/ThreadX.
+
 ### D4. Allocator ownership + init contract
 
 The platform port **owns and initializes the heap/pool** (ThreadX

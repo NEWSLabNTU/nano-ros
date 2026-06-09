@@ -91,29 +91,39 @@ into `just check`. 230.1.7 flips it hard once the inventory is migrated.
 
 ### Wave 1 — Allocator unification (the starter)
 
-**Active slice (2026-06): Zephyr C-side funnel.** First vertical slice,
-fully verifiable here via native_sim E2E. Scope = route zenoh-pico's C
-`z_malloc`/`z_free`/`z_realloc` through `nros_platform_alloc` on Zephyr;
-nano-ros `global-alloc` stays **off** (framework owns the Rust heap, D6);
-true heap total via native `sys_heap` stats (D7). Steps:
+**Active slice — VERIFIED FINDING (2026-06): the Zephyr C-side funnel
+already exists.** Attempting Z1/Z2 (fork-guard + memory-only alias) broke
+the link (`undefined z_sleep_s`/`z_random_fill`), which proved the
+opposite of the earlier assumption: the nano-ros Zephyr build **does not
+compile** vendored `system/zephyr/system.c` at all — the
+`platform_aliases.c` TU is the sole `z_*` provider and already forwards
+**all** scalar services to `nros_platform_*`. Disassembly of the built
+`zephyr.exe` confirms it:
 
-- [ ] Z1 — fork-guard vendored Zephyr `z_malloc/free/realloc` behind
-  `Z_FEATURE_NROS_PLATFORM_ALLOC` (submodule commit; pointer bump deferred
-  until the fork branch is pushed).
-- [ ] Z2 — emit a **memory-only** `z_*`→`nros_platform_alloc` alias for
-  Zephyr in `nros-zpico-build` + define `Z_FEATURE_NROS_PLATFORM_ALLOC`
-  (sleep/random/clock stay vendored — no dup symbols).
-- [ ] Z3 — confirm `nros-platform-zephyr::nros_platform_alloc` is on the
-  Zephyr app link line.
-- [ ] Z4 — build `rust/{talker,listener}/zenoh` Zephyr fixtures; run
-  `test_zephyr_to_native_e2e` / `test_native_to_zephyr_e2e`; verify green +
-  zenoh-pico allocs resolve to `nros_platform_alloc` (`nm`/strace).
-- [ ] Z5 — instrument `nros_platform_alloc` (`used`/`peak`) for the C side;
-  expose Zephyr-native `sys_heap` total as the unified figure (D7).
+```
+<z_malloc>:  jmp <nros_platform_alloc>
+<z_free>:    jmp <nros_platform_dealloc>
+```
 
-Cross-RTOS rollout (FreeRTOS/ThreadX) + the optional global-allocator
-provider (230.1.4) + lint hard-flip (230.1.7) follow once the Zephyr slice
-is green. The generic work items below are the cross-RTOS form.
+So on Zephyr there is **no bypass to remove** — zenoh-pico's C allocation
+is already funneled through `nros_platform_alloc` (k_heap-backed via
+`nros-platform-zephyr`). Z1–Z4 are **unnecessary on Zephyr** and were
+reverted. The earlier audit/RFC premise ("vendored zenoh-pico `z_malloc` →
+`k_malloc` bypass") is true only for a *standalone* zenoh-pico Zephyr-module
+build, **not** the nano-ros Rust-entry build. The Zephyr slice reduces to:
+
+- [ ] Z5 — instrument `nros_platform_alloc` (`used`/`peak`) so the existing
+  C-side funnel is counted; expose Zephyr-native `sys_heap` total
+  (`CONFIG_SYS_HEAP_RUNTIME_STATS`) as the unified figure (D7, since
+  zephyr-lang-rust owns the Rust heap). That closes #6 for Zephyr.
+
+**Per-RTOS reality (refined by this finding):** the C-side funnel exists
+wherever the alias TU compiles (POSIX, bare-metal, Zephyr, and — to verify
+— ThreadX, since the alias is gated `!freertos`). **FreeRTOS is the genuine
+bypass** (alias TU explicitly skipped, vendored `system/freertos/system.c`
+→ `pvPortMalloc`). So the real cross-RTOS work narrows to FreeRTOS (guard +
+alias) + ThreadX verification + the optional global-allocator (230.1.4) +
+stats. Verify ThreadX with the same `objdump` check before assuming work.
 
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
 > are two allocators and neither is nros's: the `#[global_allocator]` is
