@@ -286,7 +286,7 @@ where
 }
 
 unsafe extern "C" {
-    fn pvPortFree(ptr: *mut c_void);
+    fn vPortFree(ptr: *mut c_void);
     fn pvPortMalloc(size: u32) -> *mut c_void;
 }
 
@@ -318,7 +318,7 @@ where
     E: core::fmt::Debug,
 {
     let ctx = unsafe { core::ptr::read(arg as *mut TierTaskCtx<F>) };
-    unsafe { pvPortFree(arg) };
+    unsafe { vPortFree(arg) };
 
     // SAFETY: the boot task owns the session for the firmware lifetime (its spin
     // loop never returns), so the handle stays valid.

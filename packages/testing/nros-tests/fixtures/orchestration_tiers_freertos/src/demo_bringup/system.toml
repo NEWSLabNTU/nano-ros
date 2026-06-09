@@ -1,0 +1,28 @@
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+
+# Two FreeRTOS priority tiers. Raw FreeRTOS priorities (0..configMAX-1, higher =
+# higher) authored directly in the per-RTOS sub-table.
+[tiers.high]
+spin_period_us = 1000
+[tiers.high.freertos]
+priority = 5
+stack_bytes = 8192
+
+[tiers.low]
+spin_period_us = 10000
+[tiers.low.freertos]
+priority = 2
+stack_bytes = 4096

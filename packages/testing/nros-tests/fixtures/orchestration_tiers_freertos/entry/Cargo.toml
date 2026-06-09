@@ -1,0 +1,25 @@
+[package]
+name = "demo_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "demo_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "freertos"
+
+[package.metadata.nros.deploy.freertos]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:7447"
+
+[dependencies]
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false }
+nros-board-mps2-an385-freertos = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-mps2-an385-freertos" }
+nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
+ctrl_pkg = { path = "../src/ctrl_pkg" }
+telem_pkg = { path = "../src/telem_pkg" }
+panic-semihosting = "0.6"

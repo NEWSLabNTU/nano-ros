@@ -1,0 +1,23 @@
+# Phase 228.E.2 fixture — multi-tier FreeRTOS firmware via `nros::main!()`.
+#
+# A single thumbv7m-none-eabi workspace: an Entry pkg whose `main.rs` is
+# `nros::main!(launch = "demo_bringup")` with `deploy = "freertos"`, plus two
+# no_std Node pkgs assigned to two tiers, plus a metadata-only bringup with
+# `[tiers.high.freertos]` + `[tiers.low.freertos]`. Because the system declares
+# tiers, the macro emits `<Mps2An385>::run_tiers(TIERS, run_plan)` (228.G) which
+# routes to the FreeRTOS per-tier entry (228.E.2). The companion test stages +
+# rewrites `@NANO_ROS_ROOT@` and `cargo build`s for thumbv7m — proving the
+# macro→run_tiers→kernel-link path for FreeRTOS.
+
+[workspace]
+resolver = "2"
+members = ["entry", "src/ctrl_pkg", "src/telem_pkg"]
+exclude = ["src/demo_bringup"]
+
+# Cross-build hygiene: keep the host `std` default from cascading into the
+# no_std thumbv7m build (mirrors the talker_entry example's patch set; the
+# generated message-crate patches are omitted — the timer-only nodes use no
+# messages).
+[patch.crates-io]
+nros-core = { path = "@NANO_ROS_ROOT@/packages/core/nros-core" }
+nros-serdes = { path = "@NANO_ROS_ROOT@/packages/core/nros-serdes" }

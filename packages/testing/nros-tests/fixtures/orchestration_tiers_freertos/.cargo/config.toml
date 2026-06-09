@@ -1,0 +1,16 @@
+[build]
+target = "thumbv7m-none-eabi"
+
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = [
+    "-C", "link-arg=--gc-sections",
+    "-C", "link-arg=-Tmps2_an385.ld",
+    "-C", "link-arg=--nmagic",
+]
+
+# Keep the inline executor arena small so two tier executors (boot + spawned)
+# fit on the FreeRTOS task stacks (the arena lives inline in each `Executor`).
+[env]
+NROS_EXECUTOR_ARENA_SIZE = "8192"
+

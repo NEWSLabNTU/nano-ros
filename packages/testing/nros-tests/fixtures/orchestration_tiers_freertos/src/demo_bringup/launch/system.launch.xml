@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- Phase 228.E.2 fixture — 2-node, 2-tier launch. Node names match the
+     system.toml [[component]].names (RFC-0032 §7 instance identity). -->
+<launch>
+    <node pkg="ctrl_pkg" exec="control_node" name="control_node"/>
+    <node pkg="telem_pkg" exec="telem_node" name="telem_node"/>
+</launch>
