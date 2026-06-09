@@ -1,6 +1,8 @@
 //! Integration tests for nros code generation
 
-use rosidl_codegen::{RosEdition, generate_nros_message_package, generate_nros_service_package};
+use rosidl_codegen::{
+    CapacityResolver, RosEdition, generate_nros_message_package, generate_nros_service_package,
+};
 use rosidl_parser::{parse_message, parse_service};
 use std::collections::HashSet;
 
@@ -17,6 +19,7 @@ fn test_generate_std_msgs_int32() {
         &deps,
         "5.3.0",
         RosEdition::Humble,
+        &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
 
@@ -55,6 +58,7 @@ fn test_generate_std_msgs_string() {
         &deps,
         "5.3.0",
         RosEdition::Humble,
+        &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
 
@@ -81,6 +85,7 @@ fn test_generate_std_msgs_header() {
         &deps,
         "5.3.0",
         RosEdition::Humble,
+        &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
 
@@ -106,6 +111,7 @@ fn test_generate_geometry_msgs_point() {
         &deps,
         "3.2.0",
         RosEdition::Humble,
+        &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
 
@@ -130,6 +136,7 @@ fn test_generate_sensor_msgs_range() {
         &deps,
         "4.1.0",
         RosEdition::Humble,
+        &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
 
@@ -188,6 +195,7 @@ fn test_generate_message_with_sequence() {
         &deps,
         "0.1.0",
         RosEdition::Humble,
+        &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
 
@@ -221,6 +229,7 @@ fn test_generate_message_with_bounded_sequence() {
         &deps,
         "0.1.0",
         RosEdition::Humble,
+        &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
 
@@ -243,6 +252,7 @@ fn test_generate_message_with_array() {
         &deps,
         "0.1.0",
         RosEdition::Humble,
+        &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
 
@@ -250,4 +260,114 @@ fn test_generate_message_with_array() {
 
     // Verify fixed-size array
     assert!(pkg.message_rs.contains("[f64; 3]"));
+}
+
+// ---------------------------------------------------------------------------
+// RFC-0033 / Phase 229 — per-field capacity configuration
+// ---------------------------------------------------------------------------
+
+fn gen_frame(resolver: &CapacityResolver) -> Result<String, String> {
+    // One message with a big unbounded sequence + a small unbounded string.
+    let msg = parse_message("uint8[] pixels\nstring label\n").expect("parse");
+    generate_nros_message_package(
+        "my_msgs",
+        "Frame",
+        &msg,
+        &HashSet::new(),
+        "0.1.0",
+        RosEdition::Humble,
+        resolver,
+    )
+    .map(|p| p.message_rs)
+    .map_err(|e| e.to_string())
+}
+
+#[test]
+fn per_field_config_sets_big_seq_and_small_string_in_one_message() {
+    let resolver = CapacityResolver::from_toml_str(
+        r#"
+        [fields]
+        "my_msgs/Frame.pixels" = 921600
+        "my_msgs/Frame.label"  = 16
+        "#,
+    )
+    .unwrap();
+    let rs = gen_frame(&resolver).expect("owned config should generate");
+    assert!(
+        rs.contains("heapless::Vec<u8, 921600>"),
+        "big sequence capacity not applied:\n{rs}"
+    );
+    assert!(
+        rs.contains("heapless::String<16>"),
+        "small string capacity not applied:\n{rs}"
+    );
+}
+
+#[test]
+fn empty_config_keeps_builtin_defaults() {
+    let rs = gen_frame(&CapacityResolver::empty()).expect("generate");
+    assert!(rs.contains("heapless::Vec<u8, 64>"), "{rs}");
+    assert!(rs.contains("heapless::String<256>"), "{rs}");
+}
+
+#[test]
+fn type_level_default_applies_to_unbounded_fields() {
+    let resolver = CapacityResolver::from_toml_str(
+        r#"
+        [types."my_msgs/Frame"]
+        sequence = 4096
+        "#,
+    )
+    .unwrap();
+    let rs = gen_frame(&resolver).expect("generate");
+    assert!(rs.contains("heapless::Vec<u8, 4096>"), "{rs}");
+    // string untouched → builtin default
+    assert!(rs.contains("heapless::String<256>"), "{rs}");
+}
+
+#[test]
+fn bounded_field_ignores_config() {
+    // `.msg` bound is authoritative; a conflicting [fields] entry must not win.
+    let msg = parse_message("uint8[<=8] payload\n").expect("parse");
+    let resolver = CapacityResolver::from_toml_str(
+        r#"
+        [fields]
+        "my_msgs/Bounded.payload" = 999
+        "#,
+    )
+    .unwrap();
+    let pkg = generate_nros_message_package(
+        "my_msgs",
+        "Bounded",
+        &msg,
+        &HashSet::new(),
+        "0.1.0",
+        RosEdition::Humble,
+        &resolver,
+    )
+    .expect("generate");
+    assert!(
+        pkg.message_rs.contains("heapless::Vec<u8, 8>"),
+        "bound must win over config:\n{}",
+        pkg.message_rs
+    );
+    assert!(!pkg.message_rs.contains("999"));
+}
+
+#[test]
+fn heap_and_borrowed_modes_error_in_phase1() {
+    for mode in ["heap", "borrowed"] {
+        let resolver = CapacityResolver::from_toml_str(&format!(
+            r#"
+            [fields]
+            "my_msgs/Frame.pixels" = {{ cap = 1000, mode = "{mode}" }}
+            "#
+        ))
+        .unwrap();
+        let err = gen_frame(&resolver).unwrap_err();
+        assert!(
+            err.contains(mode) && err.contains("not yet supported"),
+            "expected unsupported-mode error for '{mode}', got: {err}"
+        );
+    }
 }

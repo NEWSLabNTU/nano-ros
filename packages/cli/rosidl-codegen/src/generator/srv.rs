@@ -3,6 +3,7 @@ use super::common::{
     field_to_nros_field, field_to_nros_field_with_mode,
 };
 use crate::{
+    config::CapacityResolver,
     templates::{
         BuildRsTemplate, CConstant, CField, CargoNrosTomlTemplate, CargoTomlTemplate,
         IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageConstant, NrosField, RmwField,
@@ -186,13 +187,19 @@ pub fn generate_nros_service_package(
     };
     let lib_rs = lib_rs_template.render()?;
 
+    // Per-field capacity config is not yet threaded into services (Phase 229
+    // wave: messages first); an empty resolver reproduces built-in defaults.
+    let resolver = CapacityResolver::empty();
+    let request_msg = format!("{service_name}_Request");
+    let response_msg = format!("{service_name}_Response");
+
     // Generate request fields
     let request_fields: Vec<NrosField> = service
         .request
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name))
-        .collect();
+        .map(|f| field_to_nros_field(f, package_name, &request_msg, &resolver))
+        .collect::<Result<_, _>>()?;
 
     let request_constants: Vec<MessageConstant> = service
         .request
@@ -210,8 +217,8 @@ pub fn generate_nros_service_package(
         .response
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name))
-        .collect();
+        .map(|f| field_to_nros_field(f, package_name, &response_msg, &resolver))
+        .collect::<Result<_, _>>()?;
 
     let response_constants: Vec<MessageConstant> = service
         .response
@@ -284,13 +291,16 @@ pub fn generate_nros_inline_service(
     edition: RosEdition,
 ) -> Result<String, GeneratorError> {
     let mode = NrosCodegenMode::Inline;
+    let resolver = CapacityResolver::empty();
+    let request_msg = format!("{service_name}_Request");
+    let response_msg = format!("{service_name}_Response");
 
     let request_fields: Vec<NrosField> = service
         .request
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, mode))
-        .collect();
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &request_msg, &resolver, mode))
+        .collect::<Result<_, _>>()?;
 
     let request_constants: Vec<MessageConstant> = service
         .request
@@ -307,8 +317,8 @@ pub fn generate_nros_inline_service(
         .response
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, mode))
-        .collect();
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &response_msg, &resolver, mode))
+        .collect::<Result<_, _>>()?;
 
     let response_constants: Vec<MessageConstant> = service
         .response

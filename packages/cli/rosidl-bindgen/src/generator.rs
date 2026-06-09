@@ -11,7 +11,7 @@
 use crate::ament::Package;
 use eyre::{Result, WrapErr};
 use rosidl_codegen::{
-    RosEdition, generate_nros_action_package, generate_nros_message_package,
+    CapacityResolver, RosEdition, generate_nros_action_package, generate_nros_message_package,
     generate_nros_service_package,
     utils::{extract_dependencies, to_snake_case},
 };
@@ -73,6 +73,11 @@ pub fn generate_package(
     let mut service_count = 0;
     let mut all_dependencies = HashSet::new();
 
+    // Per-field capacity config (RFC-0033). Empty for now → built-in defaults;
+    // Phase 229.3 wires `nros-codegen.toml` discovery (workspace + app walk-up)
+    // and threads the loaded resolver here and into the service/action paths.
+    let resolver = CapacityResolver::empty();
+
     // Create src/msg directory
     let src_dir = package_output.join("src");
     let msg_dir = src_dir.join("msg");
@@ -98,6 +103,7 @@ pub fn generate_package(
             &all_dependencies,
             &package.version,
             edition,
+            &resolver,
         )
         .wrap_err_with(|| format!("Failed to generate nros message: {}", msg_name))?;
 
