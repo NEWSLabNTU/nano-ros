@@ -1,6 +1,6 @@
 # Phase 230 — Platform layer split: enforce the system-ABI boundary (alloc first)
 
-**Goal:** Make the platform/RMW/core split (RFC-0033) a real, enforced
+**Goal:** Make the platform/RMW/core split (RFC-0034) a real, enforced
 invariant. Today the `nros_platform_*` ABI is bypassed on every RTOS:
 zenoh-pico and the Rust `#[global_allocator]` call `pvPortMalloc` /
 `k_malloc` / `tx_byte_allocate` directly, so the platform layer's RTOS
@@ -12,18 +12,18 @@ The unified allocation funnel also yields the true heap stats that
 
 **Status:** Planned
 
-**Priority:** Medium — architecture/tech-debt. Design is locked (RFC-0033);
+**Priority:** Medium — architecture/tech-debt. Design is locked (RFC-0034);
 no new public API. Unblocks accurate embedded heap accounting and a
 genuinely single system-access layer.
 
-**Depends on:** RFC-0033 (this phase implements it), RFC-0006 (C-ABI
+**Depends on:** RFC-0034 (this phase implements it), RFC-0006 (C-ABI
 canonical + platform free-symbol model), [platform-c-abi.md](../../book/src/internals/platform-c-abi.md)
 (symbol contract + drift gate). Touches the vendored zenoh-pico fork
 (`packages/zpico/zpico-sys/zenoh-pico`) and `nros-zpico-build`.
 
 ## Overview
 
-RFC-0033 establishes: (1) `nros_platform_*` is the sole system boundary;
+RFC-0034 establishes: (1) `nros_platform_*` is the sole system boundary;
 (2) **scalar** services (alloc/sleep/clock/random) unify through it on
 every platform, **opaque-struct** services (task/sync/net) stay
 per-RTOS-vendored by design; (3) one platform-owned `z_* → nros_platform_*`
@@ -60,7 +60,7 @@ landable and leaves the tree green.
 Enumerate every direct host-allocator call outside the platform ports:
 zenoh-pico vendored `system/<rtos>/system.c`, `nros-c`/`nros-cpp` global
 allocators, `nros-rmw-xrce` aliases. Produce the authoritative bypass list
-(seed: RFC-0033 table). Record each call site + intended `nros_platform_*`
+(seed: RFC-0034 table). Record each call site + intended `nros_platform_*`
 target.
 
 #### 230.0.2 — `no-direct-kernel-call` lint (alloc subset)
@@ -126,14 +126,14 @@ Collapse the duplicated `platform_aliases.c` (zpico-sys + nros-rmw-xrce)
 into a single platform-layer shim both RMWs consume.
 
 #### 230.3.2 — Document the opaque-struct boundary
-Record in [platform-c-abi.md] (and ARCHITECTURE.md when RFC-0033 → Stable)
+Record in [platform-c-abi.md] (and ARCHITECTURE.md when RFC-0034 → Stable)
 that task/sync/net stay per-RTOS-vendored by ABI constraint — a design
 boundary, not debt — with the canonical-layout + `size_probe` static-assert
 escape hatch noted for any future move (net first candidate).
 
 ## Out of scope
 
-- Unifying opaque-struct services (task/mutex/condvar/socket) — RFC-0033
+- Unifying opaque-struct services (task/mutex/condvar/socket) — RFC-0034
   D2; needs canonical layouts + static-asserts, deferred.
 - Runtime platform pluggability — one port per binary stays (RFC-0006).
 - Touching the working POSIX/bare-metal alias path beyond the dedup.

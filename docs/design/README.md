@@ -50,7 +50,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0015 | [rtos-orchestration](0015-rtos-orchestration.md) | Stable | launch tree + manifest codegen across RTOSes |
 | 0016 | [rtos-scheduling-features](0016-rtos-scheduling-features.md) | Stable | per-RTOS scheduling feature survey |
 | 0017 | [platform-timer](0017-platform-timer.md) | Stable | `PlatformTimer` + `AtomicSporadicState` |
-| 0033 | [platform-layer-split](0033-platform-layer-split.md) | Draft | enforce `nros_platform_*` as sole system boundary; alloc-first unification; scalar vs opaque-struct ABI |
+| 0034 | [platform-layer-split](0034-platform-layer-split.md) | Draft | enforce `nros_platform_*` as sole system boundary; alloc-first unification; scalar vs opaque-struct ABI |
 
 ### Language APIs
 

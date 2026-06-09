@@ -1,5 +1,5 @@
 ---
-rfc: 0033
+rfc: 0034
 title: "Platform Layer Split & System-ABI Ownership"
 status: Draft
 since: 2026-06
@@ -9,7 +9,7 @@ supersedes: []
 superseded-by: null
 ---
 
-# RFC-0033 — Platform Layer Split & System-ABI Ownership
+# RFC-0034 — Platform Layer Split & System-ABI Ownership
 
 ## Summary
 
