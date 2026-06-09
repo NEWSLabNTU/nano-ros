@@ -8,7 +8,16 @@ generators identically, replacing the hardcoded `*_DEFAULT_SEQUENCE_CAPACITY` (6
 [0007-seq-capacity-64](../issues/0007-seq-capacity-64.md); the `borrowed` storage
 mode (phase 3 below) closes the issue entirely.
 
-**Status.** Not started (2026-06-10). Design-of-record is RFC-0033 (Draft).
+**Status.** In progress (2026-06-10). **The `owned` configuration method is
+complete across all three languages (Rust/C/C++) with discovery + CLI/CMake
+wiring, and `heap` is done + verified on the Rust path.** Remaining: `heap` for
+C/C++ (needs runtime growable-seq types) and `borrowed` (229.6 — its own
+multi-crate runtime effort, closes issue 0007). Design-of-record is RFC-0033.
+
+Landed on branch `phase-229-message-field-capacity-config`:
+`a6b30ca9` (1: config core) · `8f158447` (2: nros Rust) · `4b91423f` (3a: C) ·
+`45877183` (3b: C++) · `415abe79` (4/229.3: discovery + activation) ·
+`40aca32e` (5/229.5: heap Rust).
 
 **Priority.** P2 — large sensor messages are unusable on embedded today, but bounded
 `.msg` types and the raw-CDR API are working interim workarounds. Phase 1 (owned)
