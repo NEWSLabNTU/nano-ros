@@ -97,12 +97,43 @@ into `just check`. 230.1.7 flips it hard once the inventory is migrated.
 > single funnel on Zephyr Rust needs BOTH: (a) route zenoh-pico `z_malloc`
 > → `nros_platform_alloc` (guard + alias), and (b) install an nros
 > `#[global_allocator]` in the entry/board that wraps `nros_platform_alloc`,
-> shadowing zephyr-lang-rust's. Open design choice (see RFC-0034): do (a)+(b)
-> for a real funnel, or do (a) only and read the true total from Zephyr's
-> native `sys_heap` runtime stats (`CONFIG_SYS_HEAP_RUNTIME_STATS`) — since
-> both allocators already share `k_heap`, the native query is exact without
-> owning the Rust global allocator. **Pending decision before Zephyr 230.1
-> implementation.**
+> shadowing zephyr-lang-rust's.
+>
+> **Decision (2026-06): full funnel — do both (a) and (b).** The platform
+> truly owns system access; stats become exact + source-attributable.
+>
+> **Added constraint found while scoping (b):** zephyr-lang-rust's
+> `#[global_allocator]` (`ZEPHYR_ALLOCATOR`) is **unconditional — not
+> feature-gated**. Rust permits exactly one `#[global_allocator]` per
+> binary, so the nros entry cannot simply add a second. (b) therefore
+> requires **patching zephyr-lang-rust** (a west-workspace module) to gate
+> or reroute `ZEPHYR_ALLOCATOR` — via the same provisioning-patch mechanism
+> that already applies the Cortex-A/-R/AArch64 Rust patches to the
+> workspace (`scripts/.../*-rust-patch`), not a clean in-repo edit. Two
+> viable patch shapes: (i) feature-gate `ZEPHYR_ALLOCATOR` off and let the
+> nros entry install its own, or (ii) reroute zephyr-lang-rust's
+> `malloc`/`free` calls to `nros_platform_alloc`/`_dealloc`. (ii) is less
+> invasive (no entry-side allocator, no per-entry boilerplate) and keeps
+> one allocator symbol — **preferred**. This makes the Zephyr slice a
+> multi-step provisioning + fork + build effort, not a single repo commit.
+
+**Concrete Zephyr 230.1 steps (ready to execute):**
+1. Fork-edit `zenoh-pico/src/system/zephyr/system.c`: guard `z_malloc`/
+   `z_free` (+ the NULL `z_realloc`) behind `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC`.
+   Commit in the submodule (it is the project's own fork); bump the pointer.
+2. `nros-zpico-build`: emit the memory-only alias (`z_malloc` →
+   `nros_platform_alloc`) for Zephyr and define `Z_FEATURE_NROS_PLATFORM_ALLOC`
+   so the vendored defs disable; confirm no dup-symbol with the alias TU.
+3. Ensure `nros-platform-zephyr` (its `nros_platform_alloc`) is on the
+   Zephyr app link line (it ships as a Zephyr CMake module — wire it into
+   the entry's `west` build if not already pulled).
+4. Provisioning-patch zephyr-lang-rust per shape (ii): reroute its
+   `malloc`/`free` to `nros_platform_alloc`/`_dealloc`. Add to the
+   workspace patch set.
+5. Instrument `nros_platform_alloc` (`used`/`peak`) → unified stat.
+6. Build `rust/listener/zenoh` + `rust/talker/zenoh` Zephyr fixtures; run
+   `test_zephyr_to_native_e2e` / `test_native_to_zephyr_e2e`; confirm green
+   + the stat reflects C+Rust traffic.
 
 #### 230.1.1 — Fork guard for vendored scalar alloc
 Guard `z_malloc`/`z_free`/`z_realloc` in zenoh-pico's
