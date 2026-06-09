@@ -2,7 +2,10 @@
 
 use core::marker::PhantomData;
 
-use nros_core::{CdrReader, MessageInfo, RawMessageInfo, RosAction, RosMessage, RosService};
+use nros_core::{
+    BorrowedMessage, CdrReader, DeserializeBorrowed, MessageInfo, RawMessageInfo, RosAction,
+    RosMessage, RosService,
+};
 use nros_rmw::{ServiceServerTrait, Subscriber, TransportError};
 
 use super::{
@@ -452,6 +455,88 @@ where
 /// `ptr` must point to a valid `SubBufferedRawEntry<F>`.
 pub(crate) unsafe fn sub_buffered_raw_has_data<F>(ptr: *const u8) -> bool {
     let entry = unsafe { &*(ptr as *const SubBufferedRawEntry<F>) };
+    entry.handle.has_data() || entry.buffer.has_data()
+}
+
+// ============================================================================
+// Borrowed (zero-copy) buffered subscription (Phase 229.6, issue 0007)
+// ============================================================================
+
+/// Buffered subscription entry for borrowed (zero-copy) message callbacks.
+///
+/// The callback receives `&B::View<'a>` — a lifetime-carrying message whose
+/// unbounded sequence/string fields borrow directly from the triple buffer's
+/// read slot (no arena copy, no `heapless::Vec` copy). The view is materialised
+/// per dispatch via [`DeserializeBorrowed`] and dropped before the slot is
+/// released, so the borrow never outlives the buffer.
+///
+/// **Triple-buffer only.** A borrowed view must reference exactly one
+/// well-defined slot for the duration of the callback; an SPSC ring (depth > 1)
+/// holds several samples in flight with no single such slot. Registration
+/// rejects `qos.depth > 1` for borrowed subscriptions, so `buffer` is always
+/// [`BufferStrategy::Triple`] here.
+#[repr(C)]
+pub(crate) struct SubBufferedBorrowedEntry<B, F> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: BufferStrategy,
+    pub(crate) callback: F,
+    pub(crate) _phantom: PhantomData<B>,
+}
+
+/// Dispatch for borrowed (zero-copy) buffered subscriptions.
+///
+/// Drains the RMW handle into the triple buffer, then materialises a borrowed
+/// `B::View<'_>` over the read slot and hands it to the callback. The view
+/// borrows the slot; it is dropped at the end of the callback, before the next
+/// dispatch can publish over the slot.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubBufferedBorrowedEntry<B, F>`.
+pub(crate) unsafe fn sub_buffered_borrowed_try_process<B, F>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    B: BorrowedMessage,
+    F: for<'a> FnMut(&B::View<'a>),
+{
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedBorrowedEntry<B, F>) };
+
+    // Borrowed subscriptions are triple-buffer only (enforced at registration).
+    let tb = match &entry.buffer {
+        BufferStrategy::Triple(tb) => tb,
+        // Unreachable: registration rejects depth > 1. Treat as no work.
+        BufferStrategy::Ring(_) => return Ok(false),
+    };
+
+    // Phase 1: drain RMW subscriber → triple buffer write slot.
+    {
+        let slot = tb.write_slot();
+        if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+            tb.writer_publish(len);
+        }
+    }
+
+    // Phase 2: borrow the read slot and deserialize a view over it (no copy).
+    match tb.reader_acquire() {
+        Some((data, len)) => {
+            let mut reader = CdrReader::new_with_header(&data[..len])
+                .map_err(|_| TransportError::DeserializationError)?;
+            let msg = <B::View<'_> as DeserializeBorrowed>::deserialize_borrowed(&mut reader)
+                .map_err(|_| TransportError::DeserializationError)?;
+            (entry.callback)(&msg);
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+/// Readiness check for borrowed buffered subscriptions.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubBufferedBorrowedEntry<B, F>`.
+pub(crate) unsafe fn sub_buffered_borrowed_has_data<B, F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedBorrowedEntry<B, F>) };
     entry.handle.has_data() || entry.buffer.has_data()
 }
 
@@ -1501,5 +1586,83 @@ pub(crate) unsafe fn as_for_each_active_goal<
             goal: entry.server.typed_goals[i].clone(),
         };
         f(&active);
+    }
+}
+
+#[cfg(test)]
+mod borrowed_sub_tests {
+    use nros_core::{CdrReader, CdrWriter, DeserError};
+
+    use super::*;
+
+    // Hand-written borrowed message mirroring what codegen will emit for
+    // `{ uint32 width; uint8[] data; }` in `borrowed` mode (Phase 229.6).
+    struct ImageView<'a> {
+        width: u32,
+        data: &'a [u8],
+    }
+
+    impl<'a> DeserializeBorrowed<'a> for ImageView<'a> {
+        fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+            let width = reader.read_u32()?;
+            let data = reader.read_slice_u8()?;
+            Ok(ImageView { width, data })
+        }
+    }
+
+    // Zero-sized borrowed-family marker (codegen emits `struct ImageBorrow;`).
+    struct ImageBorrow;
+    impl BorrowedMessage for ImageBorrow {
+        type View<'a> = ImageView<'a>;
+        const TYPE_NAME: &'static str = "test_msgs::msg::dds_::Image_";
+        const TYPE_HASH: &'static str = "borrowed-test-hash";
+    }
+
+    // The borrowed view must alias the source CDR buffer (no `heapless::Vec`
+    // copy) — the whole point of `borrowed` mode (issue 0007).
+    #[test]
+    fn borrowed_view_is_zero_copy_into_source_buffer() {
+        let payload: [u8; 64] = core::array::from_fn(|i| i as u8);
+        let mut buf = [0u8; 128];
+        let written = {
+            let mut w = CdrWriter::new_with_header(&mut buf).unwrap();
+            w.write_u32(7).unwrap();
+            w.write_sequence_len(payload.len()).unwrap();
+            w.write_bytes(&payload).unwrap();
+            w.position()
+        };
+
+        let mut reader = CdrReader::new_with_header(&buf[..written]).unwrap();
+        let view = ImageView::deserialize_borrowed(&mut reader).unwrap();
+
+        assert_eq!(view.width, 7);
+        assert_eq!(view.data, &payload[..]);
+
+        // The borrowed slice points INTO `buf`, proving zero-copy.
+        let buf_start = buf.as_ptr() as usize;
+        let buf_end = buf_start + buf.len();
+        let data_ptr = view.data.as_ptr() as usize;
+        assert!(
+            data_ptr >= buf_start && data_ptr < buf_end,
+            "borrowed data must alias the source buffer (zero-copy)"
+        );
+    }
+
+    // Compile-time proof that the codegen marker + GAT + a borrowed closure
+    // satisfy exactly the bounds the executor's borrowed dispatch
+    // (`sub_buffered_borrowed_try_process`) and registration require.
+    fn assert_borrowed_sub_bounds<B, F>(_callback: F)
+    where
+        B: BorrowedMessage + 'static,
+        F: for<'a> FnMut(&B::View<'a>) + 'static,
+    {
+    }
+
+    #[test]
+    fn borrowed_marker_satisfies_dispatch_bounds() {
+        assert_borrowed_sub_bounds::<ImageBorrow, _>(|view: &ImageView<'_>| {
+            let _ = view.width;
+            let _ = view.data.len();
+        });
     }
 }

@@ -2,7 +2,7 @@
 
 use core::{marker::PhantomData, mem::MaybeUninit};
 
-use nros_core::{RosMessage, RosService};
+use nros_core::{BorrowedMessage, RosMessage, RosService};
 use nros_rmw::{QosSettings, ServiceInfo, Session, TopicInfo, TransportError};
 
 use crate::{session, timer::TimerDuration};
@@ -18,11 +18,12 @@ use super::types::SpinOptions;
 use super::{
     arena::{
         BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientRawArenaEntry,
-        SrvEntry, SrvRawEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
-        SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubInfoEntry, TimerEntry, TimerHeader,
-        always_ready, buffered_region_size, drop_entry, guard_has_data, guard_try_process,
-        no_pre_sample, service_client_raw_try_process, srv_has_data, srv_raw_has_data,
-        srv_raw_try_process, srv_try_process, sub_buffered_has_data, sub_buffered_raw_c_has_data,
+        SrvEntry, SrvRawEntry, SubBufferedBorrowedEntry, SubBufferedEntry, SubBufferedRawCEntry,
+        SubBufferedRawEntry, SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubInfoEntry,
+        TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry, guard_has_data,
+        guard_try_process, no_pre_sample, service_client_raw_try_process, srv_has_data,
+        srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_borrowed_has_data,
+        sub_buffered_borrowed_try_process, sub_buffered_has_data, sub_buffered_raw_c_has_data,
         sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
         sub_buffered_raw_info_c_has_data, sub_buffered_raw_info_c_try_process,
         sub_buffered_raw_info_has_data, sub_buffered_raw_info_try_process,
@@ -2546,6 +2547,100 @@ impl Executor {
         // Phase 104.C.4 — apply Node's default SchedContext.
         self.apply_node_default_sched(handle_id.0, Some(node_id));
         Ok(handle_id)
+    }
+
+    /// Register a borrowed (zero-copy) buffered subscription (Phase 229.6,
+    /// issue 0007 / RFC-0033 `borrowed` mode).
+    ///
+    /// `B` is the code-generated borrowed-message marker (e.g. `ImageBorrow`)
+    /// implementing [`BorrowedMessage`](nros_core::BorrowedMessage); the
+    /// callback receives `&B::View<'a>` — a lifetime-carrying message whose
+    /// unbounded sequence/string fields borrow directly from the receive buffer
+    /// (no `heapless::Vec` copy). The view is valid only for the callback's
+    /// duration.
+    ///
+    /// **Triple-buffer only.** A borrowed view must reference exactly one
+    /// well-defined buffer slot for the callback's duration; an SPSC ring
+    /// (`qos.depth > 1`) keeps several samples in flight with no single such
+    /// slot. `qos.depth > 1` is therefore rejected with
+    /// [`TransportError::Unsupported`].
+    pub(crate) fn register_subscription_buffered_borrowed_on<B, F, const RX_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        B: nros_core::BorrowedMessage + 'static,
+        F: for<'a> FnMut(&B::View<'a>) + 'static,
+    {
+        type Entry<B, F> = SubBufferedBorrowedEntry<B, F>;
+
+        // Borrowed views require a single well-defined slot (triple buffer).
+        if qos.depth > 1 {
+            return Err(NodeError::Transport(TransportError::Unsupported));
+        }
+
+        let slot = self.next_entry_slot()?;
+        let (node_name, ns, session_idx) = {
+            let r = self
+                .nodes
+                .get(node_id.index())
+                .ok_or(NodeError::InvalidSchedContextBinding)?;
+            (r.name.clone(), r.namespace.clone(), r.session_idx)
+        };
+        let mut topic = TopicInfo::new(
+            topic_name,
+            <B as BorrowedMessage>::TYPE_NAME,
+            <B as BorrowedMessage>::TYPE_HASH,
+        )
+        .with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscriber(&topic, qos)
+                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+        };
+
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
+        let (entry_offset, trailing_offset) =
+            self.arena_alloc_with_trailing::<Entry<B, F>>(trailing_bytes)?;
+        let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
+
+        // depth <= 1 guaranteed above → always triple buffer.
+        let buffer = BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, RX_BUF) });
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(entry_offset) as *mut Entry<B, F>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer,
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset: entry_offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_buffered_borrowed_try_process::<B, F>,
+            has_data: sub_buffered_borrowed_has_data::<B, F>,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<Entry<B, F>>,
+        });
+        self.apply_node_default_sched(slot, Some(node_id));
+        Ok(HandleId(slot))
     }
 
     /// Register a raw (type-erased) buffered subscription whose callback

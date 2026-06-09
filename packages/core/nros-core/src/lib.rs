@@ -42,10 +42,12 @@ pub use logger::{Logger, OnceFlag};
 pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE, RawMessageInfo};
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceResult, ServiceServer};
 pub use time::{Duration, Time};
-pub use types::{RosMessage, RosService};
+pub use types::{BorrowedMessage, RosMessage, RosService};
 
 // Re-export serdes types for convenience
-pub use nros_serdes::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Serialize};
+pub use nros_serdes::{
+    CdrReader, CdrWriter, DeserError, Deserialize, DeserializeBorrowed, SerError, Serialize,
+};
 
 // Re-export heapless for generated message types
 pub use heapless;

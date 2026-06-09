@@ -1265,6 +1265,38 @@ impl<'e> NodeCtx<'e> {
             )
     }
 
+    /// Convenient borrowed (zero-copy) subscription (Phase 229.6, issue 0007 /
+    /// RFC-0033 `borrowed` mode).
+    ///
+    /// `B` is the code-generated borrowed-message marker (e.g. `ImageBorrow`,
+    /// emitted alongside the owned `Image` for a `.msg` with a `borrowed`-mode
+    /// field). The callback receives `&B::View<'a>` — a lifetime-carrying
+    /// message whose unbounded sequence/string fields borrow directly from the
+    /// receive buffer (no `heapless::Vec` copy); the view is valid only for the
+    /// callback's duration.
+    ///
+    /// Uses default QoS (`KEEP_LAST(1)` → triple buffer). Borrowed
+    /// subscriptions require a triple buffer; a `KEEP_LAST(N>1)` QoS is rejected
+    /// (use the owned [`create_subscription`](Self::create_subscription) for
+    /// deeper queues).
+    pub fn create_subscription_borrowed<B, F>(
+        &mut self,
+        topic: &str,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        B: nros_core::BorrowedMessage + 'static,
+        F: for<'a> FnMut(&B::View<'a>) + 'static,
+    {
+        self.executor
+            .register_subscription_buffered_borrowed_on::<B, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+                self.node_id,
+                topic,
+                QosSettings::default(),
+                callback,
+            )
+    }
+
     /// Service-server builder (the `clone` tier) — `node.service(name)`.
     /// Set `.qos()` (defaults to the services profile = RELIABLE+VOLATILE+
     /// KEEP_LAST(10)), then `.build::<Svc, _>(callback)` (Phase 193.2).
