@@ -258,16 +258,24 @@ is an optional follow-up; the boot path + the 228.F runtime mechanism together
 cover correctness.
 **Files:** `packages/testing/nros-tests/tests/orchestration_tiers_native.rs`.
 
-### 228.E.2 — FreeRTOS `run_tiers` port  ⏳ INFRA-GATED (RFC-0032 §8.2)
-Mirror `PosixBoard::run_tiers` for the FreeRTOS board. **Substantive no_std
-plumbing:** no `std::thread::scope`, so each tier task is a
-`nros_freertos_create_task(tier_trampoline::<F>, …)` with a heap-leaked
-`TierCtx<F>` arg (session_ptr + groups + `setup`), forked off the existing
-`AppContext`/network-init flow in `entry.rs`. MT=1 is already the default there
-(RFC-0032 §5.0). **Validation needs QEMU** (assert distinct task priorities +
-zenoh-pico concurrent-multi-spin holds) — landing it unverified is risky, so it
-is its own QEMU-equipped wave.
-**Files:** `packages/boards/nros-board-freertos/src/`, a FreeRTOS tier fixture.
+### 228.E.2 — FreeRTOS `run_tiers` port  ✅ DONE (compile-verified; QEMU run pending)
+**Landed + compile-verified for `thumbv7m-none-eabi`** (real kernel glue):
+`nros-board-freertos::run_tiers_entry` + `app_task_entry_tiers` (boot task) +
+`tier_task_entry` (spawned tiers via `nros_freertos_create_task` at the raw
+`[tiers.x.freertos].priority`, heap-leaked `TierTaskCtx<F>` arg). The boot tier
+opens the one session, **moves it into its final `crt` location before handing
+out `SessionHandle`s** (avoids dangling the spawned tasks' pointer when the boot
+executor moves), spawns `tiers[1..]`, runs `tiers[0]`. Boot bringup
+(network/RNG/poll/zenoh-cfg) extracted to `freertos_boot_bringup`, shared with
+the unchanged single-tier path. New `Executor::session_handle()` / opaque `Send`
+`SessionHandle` / `open_with_session_handle()` make the session movable across
+the RTOS task boundary. `Mps2An385::run_tiers` delegates here. MT=1 is the
+FreeRTOS default (RFC-0032 §5.0).
+**Remaining:** QEMU run E2E — assert distinct task priorities + zenoh-pico
+concurrent-multi-spin holds (no session corruption) on a 2-tier FreeRTOS example.
+**Files:** `packages/boards/nros-board-freertos/src/{entry,lib}.rs`,
+`packages/boards/nros-board-mps2-an385-freertos/src/lib.rs`,
+`packages/core/nros-node/src/executor/spin.rs` (`SessionHandle`).
 
 ### 228.D.2 — Multi-tier shared-state locking + accessor emit  ⏳ GATED
 The lock-free `nros_orchestration::SharedRegion<N>` (Phase 172.I blackboard) +
