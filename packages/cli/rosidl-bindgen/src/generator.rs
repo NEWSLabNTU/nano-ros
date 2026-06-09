@@ -136,6 +136,7 @@ pub fn generate_package(
                 &all_dependencies,
                 &package.version,
                 edition,
+                resolver,
             )
             .wrap_err_with(|| format!("Failed to generate nros service: {}", srv_name))?;
 
@@ -190,6 +191,7 @@ pub fn generate_package(
                 &all_dependencies,
                 &package.version,
                 edition,
+                resolver,
             )
             .wrap_err_with(|| format!("Failed to generate nros action: {}", action_name))?;
 

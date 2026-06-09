@@ -232,6 +232,7 @@ mod tests {
             &deps,
             "0.1.0",
             RosEdition::Humble,
+            &crate::config::CapacityResolver::empty(),
         );
         assert!(result.is_ok());
 
@@ -287,6 +288,7 @@ mod tests {
             &deps,
             "0.1.0",
             RosEdition::Humble,
+            &crate::config::CapacityResolver::empty(),
         );
         assert!(result.is_ok());
 
@@ -713,7 +715,13 @@ mod tests {
         let srv = parse_service("int32 a\nint32 b\n---\nint32 sum\n").unwrap();
         let type_hash = "srv123";
 
-        let result = generate_c_service_package("test_srvs", "AddTwoInts", &srv, type_hash);
+        let result = generate_c_service_package(
+            "test_srvs",
+            "AddTwoInts",
+            &srv,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
@@ -761,7 +769,13 @@ mod tests {
             parse_action("int32 order\n---\nint32 result_code\n---\nint32 progress\n").unwrap();
         let type_hash = "act456";
 
-        let result = generate_c_action_package("test_actions", "Fibonacci", &action, type_hash);
+        let result = generate_c_action_package(
+            "test_actions",
+            "Fibonacci",
+            &action,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
@@ -1096,7 +1110,13 @@ mod tests {
         let srv = parse_service("int32 a\nint32 b\n---\nint32 sum\n").unwrap();
         let type_hash = "TypeHashNotSupported";
 
-        let result = generate_cpp_service_package("test_srvs", "AddTwoInts", &srv, type_hash);
+        let result = generate_cpp_service_package(
+            "test_srvs",
+            "AddTwoInts",
+            &srv,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
@@ -1124,8 +1144,13 @@ mod tests {
             parse_action("int32 order\n---\nint32 result_code\n---\nint32 progress\n").unwrap();
         let type_hash = "TypeHashNotSupported";
 
-        let result =
-            generate_cpp_action_package("example_interfaces", "Fibonacci", &action, type_hash);
+        let result = generate_cpp_action_package(
+            "example_interfaces",
+            "Fibonacci",
+            &action,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();

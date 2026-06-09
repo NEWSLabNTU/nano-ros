@@ -166,6 +166,7 @@ pub fn generate_nros_action_package(
     all_dependencies: &HashSet<String>,
     package_version: &str,
     edition: RosEdition,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedNrosActionPackage, GeneratorError> {
     // Extract dependencies from goal, result, and feedback
     let mut goal_deps = extract_dependencies(&action.spec.goal);
@@ -209,9 +210,6 @@ pub fn generate_nros_action_package(
     };
     let lib_rs = lib_rs_template.render()?;
 
-    // Per-field capacity config is not yet threaded into actions (Phase 229
-    // wave: messages first); an empty resolver reproduces built-in defaults.
-    let resolver = CapacityResolver::empty();
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
@@ -222,7 +220,7 @@ pub fn generate_nros_action_package(
         .goal
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &goal_msg, &resolver))
+        .map(|f| field_to_nros_field(f, package_name, &goal_msg, resolver))
         .collect::<Result<_, _>>()?;
 
     let goal_constants: Vec<MessageConstant> = action
@@ -243,7 +241,7 @@ pub fn generate_nros_action_package(
         .result
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &result_msg, &resolver))
+        .map(|f| field_to_nros_field(f, package_name, &result_msg, resolver))
         .collect::<Result<_, _>>()?;
 
     let result_constants: Vec<MessageConstant> = action
@@ -264,7 +262,7 @@ pub fn generate_nros_action_package(
         .feedback
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &feedback_msg, &resolver))
+        .map(|f| field_to_nros_field(f, package_name, &feedback_msg, resolver))
         .collect::<Result<_, _>>()?;
 
     let feedback_constants: Vec<MessageConstant> = action
@@ -372,9 +370,9 @@ pub fn generate_nros_inline_action(
     action_name: &str,
     action: &Action,
     edition: RosEdition,
+    resolver: &CapacityResolver,
 ) -> Result<String, GeneratorError> {
     let mode = NrosCodegenMode::Inline;
-    let resolver = CapacityResolver::empty();
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
@@ -384,7 +382,7 @@ pub fn generate_nros_inline_action(
         .goal
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &goal_msg, &resolver, mode))
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &goal_msg, resolver, mode))
         .collect::<Result<_, _>>()?;
 
     let goal_constants: Vec<MessageConstant> = action
@@ -404,7 +402,7 @@ pub fn generate_nros_inline_action(
         .result
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &result_msg, &resolver, mode))
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &result_msg, resolver, mode))
         .collect::<Result<_, _>>()?;
 
     let result_constants: Vec<MessageConstant> = action
@@ -424,7 +422,7 @@ pub fn generate_nros_inline_action(
         .feedback
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &feedback_msg, &resolver, mode))
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &feedback_msg, resolver, mode))
         .collect::<Result<_, _>>()?;
 
     let feedback_constants: Vec<MessageConstant> = action
@@ -538,6 +536,7 @@ pub fn generate_c_action_package(
     action_name: &str,
     action: &Action,
     type_hash: &str,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedCActionPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let action_snake = to_snake_case(action_name);
@@ -610,9 +609,6 @@ pub fn generate_c_action_package(
     dependencies.sort();
     type_includes.sort();
 
-    // Per-field capacity config is not yet threaded into C actions (Phase 229
-    // wave: messages first); an empty resolver reproduces built-in defaults.
-    let c_resolver = CapacityResolver::empty();
     let goal_msg = format!("{action_name}_Goal");
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
@@ -629,7 +625,7 @@ pub fn generate_c_action_package(
                 &field.field_type,
                 Some(package_name),
                 &goal_msg,
-                &c_resolver,
+                resolver,
             )
         })
         .collect::<Result<_, _>>()?;
@@ -658,7 +654,7 @@ pub fn generate_c_action_package(
                 &field.field_type,
                 Some(package_name),
                 &result_msg,
-                &c_resolver,
+                resolver,
             )
         })
         .collect::<Result<_, _>>()?;
@@ -687,7 +683,7 @@ pub fn generate_c_action_package(
                 &field.field_type,
                 Some(package_name),
                 &feedback_msg,
-                &c_resolver,
+                resolver,
             )
         })
         .collect::<Result<_, _>>()?;

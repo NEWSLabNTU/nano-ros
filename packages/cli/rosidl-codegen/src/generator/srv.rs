@@ -159,6 +159,7 @@ pub fn generate_nros_service_package(
     all_dependencies: &HashSet<String>,
     package_version: &str,
     edition: RosEdition,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedNrosServicePackage, GeneratorError> {
     // Extract dependencies from request and response
     let mut req_deps = extract_dependencies(&service.request);
@@ -187,9 +188,6 @@ pub fn generate_nros_service_package(
     };
     let lib_rs = lib_rs_template.render()?;
 
-    // Per-field capacity config is not yet threaded into services (Phase 229
-    // wave: messages first); an empty resolver reproduces built-in defaults.
-    let resolver = CapacityResolver::empty();
     let request_msg = format!("{service_name}_Request");
     let response_msg = format!("{service_name}_Response");
 
@@ -198,7 +196,7 @@ pub fn generate_nros_service_package(
         .request
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &request_msg, &resolver))
+        .map(|f| field_to_nros_field(f, package_name, &request_msg, resolver))
         .collect::<Result<_, _>>()?;
 
     let request_constants: Vec<MessageConstant> = service
@@ -217,7 +215,7 @@ pub fn generate_nros_service_package(
         .response
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name, &response_msg, &resolver))
+        .map(|f| field_to_nros_field(f, package_name, &response_msg, resolver))
         .collect::<Result<_, _>>()?;
 
     let response_constants: Vec<MessageConstant> = service
@@ -289,9 +287,9 @@ pub fn generate_nros_inline_service(
     service_name: &str,
     service: &Service,
     edition: RosEdition,
+    resolver: &CapacityResolver,
 ) -> Result<String, GeneratorError> {
     let mode = NrosCodegenMode::Inline;
-    let resolver = CapacityResolver::empty();
     let request_msg = format!("{service_name}_Request");
     let response_msg = format!("{service_name}_Response");
 
@@ -299,7 +297,7 @@ pub fn generate_nros_inline_service(
         .request
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &request_msg, &resolver, mode))
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &request_msg, resolver, mode))
         .collect::<Result<_, _>>()?;
 
     let request_constants: Vec<MessageConstant> = service
@@ -317,7 +315,7 @@ pub fn generate_nros_inline_service(
         .response
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, &response_msg, &resolver, mode))
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &response_msg, resolver, mode))
         .collect::<Result<_, _>>()?;
 
     let response_constants: Vec<MessageConstant> = service
@@ -396,6 +394,7 @@ pub fn generate_c_service_package(
     service_name: &str,
     service: &Service,
     type_hash: &str,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedCServicePackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let srv_snake = to_snake_case(service_name);
@@ -466,9 +465,6 @@ pub fn generate_c_service_package(
     dependencies.sort();
     type_includes.sort();
 
-    // Per-field capacity config is not yet threaded into C services (Phase 229
-    // wave: messages first); an empty resolver reproduces built-in defaults.
-    let resolver = CapacityResolver::empty();
     let request_msg = format!("{service_name}_Request");
     let response_msg = format!("{service_name}_Response");
 

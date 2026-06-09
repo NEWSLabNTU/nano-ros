@@ -164,6 +164,7 @@ fn test_generate_example_interfaces_add_two_ints() {
         &deps,
         "0.10.0",
         RosEdition::Humble,
+        &CapacityResolver::empty(),
     );
     assert!(result.is_ok(), "Generation failed: {:?}", result.err());
 
@@ -180,6 +181,41 @@ fn test_generate_example_interfaces_add_two_ints() {
     assert!(pkg.service_rs.contains("impl RosService for AddTwoInts"));
     assert!(pkg.service_rs.contains("type Request = AddTwoIntsRequest"));
     assert!(pkg.service_rs.contains("type Reply = AddTwoIntsResponse"));
+}
+
+#[test]
+fn service_request_field_honors_capacity_config() {
+    // RFC-0033 / Phase 229.4: per-field config reaches service request/response
+    // fields, keyed by the ROS-convention `<Service>_Request` / `_Response` name.
+    let srv = parse_service("uint8[] blob\n---\nstring note\n").unwrap();
+    let resolver = CapacityResolver::from_toml_str(
+        r#"
+        [fields]
+        "big_srvs/Upload_Request.blob" = 4096
+        "big_srvs/Upload_Response.note" = 16
+        "#,
+    )
+    .unwrap();
+    let pkg = generate_nros_service_package(
+        "big_srvs",
+        "Upload",
+        &srv,
+        &HashSet::new(),
+        "0.1.0",
+        RosEdition::Humble,
+        &resolver,
+    )
+    .expect("generate");
+    assert!(
+        pkg.service_rs.contains("heapless::Vec<u8, 4096>"),
+        "request field cap not applied:\n{}",
+        pkg.service_rs
+    );
+    assert!(
+        pkg.service_rs.contains("heapless::String<16>"),
+        "response field cap not applied:\n{}",
+        pkg.service_rs
+    );
 }
 
 #[test]

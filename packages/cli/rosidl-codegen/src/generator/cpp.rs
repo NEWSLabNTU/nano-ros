@@ -334,6 +334,7 @@ pub fn generate_cpp_service_package(
     service_name: &str,
     service: &Service,
     type_hash: &str,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedCppServicePackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let srv_snake = to_snake_case(service_name);
@@ -362,15 +363,12 @@ pub fn generate_cpp_service_package(
         c_pkg_name, srv_snake
     );
 
-    // Per-field capacity config is not yet threaded into C++ services (Phase 229
-    // wave: messages first); an empty resolver reproduces built-in defaults.
-    let resolver = CapacityResolver::empty();
     let (req_cpp_fields, req_ffi_fields, req_seq_structs) = build_fields(
         &service.request.fields,
         &req_struct,
         Some(package_name),
         &format!("{service_name}_Request"),
-        &resolver,
+        resolver,
     )?;
     let req_constants = build_constants(&service.request.constants);
     let req_serialized_size = compute_serialized_size_max(&req_ffi_fields);
@@ -397,7 +395,7 @@ pub fn generate_cpp_service_package(
         &resp_struct,
         Some(package_name),
         &format!("{service_name}_Response"),
-        &resolver,
+        resolver,
     )?;
     let resp_constants = build_constants(&service.response.constants);
     let resp_serialized_size = compute_serialized_size_max(&resp_ffi_fields);
@@ -492,6 +490,7 @@ pub fn generate_cpp_action_package(
     action_name: &str,
     action: &Action,
     type_hash: &str,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedCppActionPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let act_snake = to_snake_case(action_name);
@@ -518,9 +517,6 @@ pub fn generate_cpp_action_package(
         size: usize,
     }
 
-    // Per-field capacity config is not yet threaded into C++ actions (Phase 229
-    // wave: messages first); an empty resolver reproduces built-in defaults.
-    let resolver = CapacityResolver::empty();
     let build_part = |part_name: &str, msg: &Message| -> Result<ActionPart, GeneratorError> {
         let struct_name = format!("{}_action_{}_{}_t", c_pkg_name, act_snake, part_name);
         let (cpp_f, ffi_f, seq_s) = build_fields(
@@ -528,7 +524,7 @@ pub fn generate_cpp_action_package(
             &struct_name,
             Some(package_name),
             &format!("{action_name}_{part_name}"),
-            &resolver,
+            resolver,
         )?;
         let constants = build_constants(&msg.constants);
         let size = compute_serialized_size_max(&ffi_f);

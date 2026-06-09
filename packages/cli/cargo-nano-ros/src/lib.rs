@@ -849,6 +849,7 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
+                    &resolver,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C code for service: {}", file_name)
@@ -875,6 +876,7 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
+                    &resolver,
                 )
                 .wrap_err_with(|| format!("Failed to generate C code for action: {}", file_name))?;
 
@@ -1078,7 +1080,7 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                     let parsed = rosidl_parser::parse_service(&content)
                         .wrap_err_with(|| format!("Failed to parse service: {}", file_name))?;
                     let generated = rosidl_codegen::generate_c_service_package(
-                        pkg_name, file_name, &parsed, type_hash,
+                        pkg_name, file_name, &parsed, type_hash, &resolver,
                     )?;
                     write_if_changed(srv_dir.join(&generated.header_name), &generated.header)?;
                     write_if_changed(srv_dir.join(&generated.source_name), &generated.source)?;
@@ -1088,7 +1090,7 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                     let parsed = rosidl_parser::parse_action(&content)
                         .wrap_err_with(|| format!("Failed to parse action: {}", file_name))?;
                     let generated = rosidl_codegen::generate_c_action_package(
-                        pkg_name, file_name, &parsed, type_hash,
+                        pkg_name, file_name, &parsed, type_hash, &resolver,
                     )?;
                     write_if_changed(action_dir.join(&generated.header_name), &generated.header)?;
                     write_if_changed(action_dir.join(&generated.source_name), &generated.source)?;
@@ -1412,6 +1414,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
+                    &resolver,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for service: {}", file_name)
@@ -1451,6 +1454,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
+                    &resolver,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for action: {}", file_name)

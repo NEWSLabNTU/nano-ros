@@ -102,7 +102,7 @@ level-6 fallback (empty config == today's output). 9 unit tests green.
   `cargo-nano-ros/src/lib.rs`, `nros-cli-core/src/cmd/{generate,ws}.rs`,
   `cmake/NanoRosGenerateInterfaces.cmake`.
 
-### 229.4 — Wire resolver through the generators (owned)  🟡 IN PROGRESS
+### 229.4 — Wire resolver through the generators (owned)  ✅ DONE
 Replace every direct `*_DEFAULT_SEQUENCE_CAPACITY` / `*_DEFAULT_STRING_CAPACITY`
 reference for an **unbounded** field with `resolver.resolve(...)`. `mode = "owned"`
 emits the resolved-`N` container (today's shape, parameterized). `heap`/`borrowed`
@@ -131,13 +131,21 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
   `cpp.rs::build_fields` + `generate_cpp_message_package` thread `&CapacityResolver`.
   C++ service/action pass `empty()` + ROS keys. 2 golden tests (`mod.rs`):
   header+FFI cap agreement, heap→error.
-- ⬜ **Serialized-size-max** (`compute_serialized_size_max`) still uses default
-  `CPP_DEFAULT_STRING_CAPACITY` for worst-case wire/buffer sizing — should scale with
-  a configured cap so big-payload buffers size correctly (follow-up, note in 229.3/.5).
+- ✅ **Serialized-size-max** — `compute_serialized_size_max` already scales with the
+  resolved owned cap: top-level strings parse the cap from `repr_c_type` (`[u8; cap]`),
+  sequences use the resolved `sequence_capacity`; heap fields contribute only the CDR
+  length prefix (the heap publish path sizes the buffer at runtime). The remaining
+  `CPP_DEFAULT_STRING_CAPACITY` uses are for *element* strings inside arrays/sequences,
+  which are not per-field configurable. No change needed.
 - ✅ **Activated** the production message paths (Rust/C/C++) via 229.3 discovery —
   `generate_package` + the C/C++ args-file paths now receive a discovered resolver.
-- ⬜ **Service/action** still pass `empty()` internally (their `generate_*` fns don't
-  take a resolver yet) — a real resolver + correct per-part keys is a follow-up.
+- ✅ **Service/action** — all eight `generate_{nros,c,cpp}_{service,action}_package`
+  (+ the nros inline variants) now take a `&CapacityResolver` and thread it into their
+  request/response/goal/result/feedback field builders, keyed by the ROS-convention
+  `<Service>_Request` / `<Action>_Goal` … names. Callers (rosidl-bindgen
+  `generate_package`, cargo-nano-ros C/C++ paths) pass the discovered resolver. Test:
+  `service_request_field_honors_capacity_config` (request `Vec<u8,4096>` + response
+  `String<16>` from config).
 - **Files:** `packages/cli/rosidl-codegen/src/types.rs`,
   `.../generator/{common,msg,srv,action}.rs`, `.../rosidl-bindgen/src/generator.rs`.
 
@@ -248,9 +256,11 @@ seam is proven before the codegen leans on it:
 - **No-config regression** — empty/absent config reproduces current generated output
   byte-for-byte (locks against default drift).
 - **Compat** — a `.msg` with explicit bounds plus a conflicting `[fields]` entry: the
-  bound wins; the entry is ignored with a warning.
-- **Phase gating** — phase-1 build emits a clear error for `heap`/`borrowed`; lifted
-  as 229.5 / 229.6 land.
+  bound wins; the entry is ignored (verified by `bounded_field_ignores_config`). The
+  *warning* on a stale bounded-field entry (RFC-0033 open question 1) is deferred — the
+  behavior is correct; a library `eprintln` is left out as low-value noise.
+- **Phase gating** — phase-1 build emits a clear error for `borrowed`; `heap` lifted
+  in 229.5, `borrowed` in 229.6.
 - `just ci` green.
 
 ## Notes
