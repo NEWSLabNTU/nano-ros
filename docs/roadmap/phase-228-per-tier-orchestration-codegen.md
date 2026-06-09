@@ -122,11 +122,36 @@ accessors only have a second consumer once multi-tier tasks exist.
 **Files:** `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (done),
 codegen + `nros-cpp`/`nros-c` shared-context wrappers (remaining).
 
-### 228.E — Per-RTOS spawn + priority lowering
-Map the normalized 0–31 tier priority to each RTOS (RFC-0016) and emit the native
-spawn (`xTaskCreate` / `tx_thread_create` / `k_thread_create` / `pthread_create`).
-Use `PlatformTimer` (RFC-0017) for the `Sporadic` class budget refill.
-**Files:** per-platform codegen templates, `nros-platform-*`.
+### 228.E — Per-RTOS spawn + priority lowering  🔄 IN PROGRESS (Wave C1)
+**Done (native foundation):**
+- `Executor::session_ptr()` — the boot executor exposes its session as a raw
+  pointer so each tier opens an `Executor` over the *same* session (the RMW
+  session is a process-wide singleton; sharing is the only correct shape).
+- `nros-platform::TierSpec` (name / groups / normalized-priority / stack /
+  spin-period) + RFC-0016 priority maps `freertos_priority_for` /
+  `threadx_priority_for` / `posix_nice_for` (pure `const`, unit-tested to the
+  RFC table).
+- `PosixBoard::run_tiers(tiers, setup)` — opens the session once, runs the
+  highest tier on the boot task and spawns the rest as scoped threads; each
+  sets `active_groups`, runs a **register-only** `setup` (so the board owns the
+  group-filtered spin), then spins. Additive — the single-tier
+  `BoardEntry::run` path is untouched. Native priority is advisory (default
+  scheduler); strict ordering lands with the FreeRTOS port.
+**Remaining:**
+- **Proc-macro emit (couples 228.B/C):** `main_macro.rs` reads the baked tier
+  table; when >1 tier, emit a `<Board>::run_tiers(&[TierSpec{…}], run_plan)`
+  call (with a register-only `run_plan`) instead of `BoardEntry::run`.
+  Degenerate single-tier → unchanged `run` path (byte-identical).
+- **FreeRTOS port:** `run_tiers` for the FreeRTOS board via
+  `nros_freertos_create_task` at `freertos_priority_for(...)`; this is where
+  real preemption is validated. Needs the zenoh-pico concurrent-multi-spin
+  check on QEMU.
+- `PlatformTimer` (RFC-0017) for the `Sporadic` class budget refill (later).
+**Files:** `packages/core/nros-node/src/executor/spin.rs` (done),
+`packages/core/nros-platform/src/board/tier.rs` (done),
+`packages/boards/nros-board-posix/src/lib.rs` (done);
+`packages/core/nros-macros/src/main_macro.rs` + `nros-board-freertos`
+(remaining).
 
 ### 228.F — Multi-tier fixture + acceptance test
 A 2-tier fixture (e.g. a `high` control loop + a `low` telemetry group) building on
