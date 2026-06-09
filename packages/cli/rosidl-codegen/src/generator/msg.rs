@@ -3,6 +3,7 @@ use super::common::{
     field_to_nros_field, field_to_nros_field_with_mode,
 };
 use crate::{
+    config::CapacityResolver,
     templates::{
         BuildRsTemplate, CConstant, CField, CargoNrosTomlTemplate, CargoTomlTemplate,
         IdiomaticField, LibNrosRsTemplate, LibRsTemplate, MessageCHeaderTemplate,
@@ -161,6 +162,7 @@ pub fn generate_nros_message_package(
     all_dependencies: &HashSet<String>,
     package_version: &str,
     edition: RosEdition,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedNrosPackage, GeneratorError> {
     // Extract dependencies from this specific message
     let msg_deps = extract_dependencies(message);
@@ -191,8 +193,8 @@ pub fn generate_nros_message_package(
     let fields: Vec<NrosField> = message
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name))
-        .collect();
+        .map(|f| field_to_nros_field(f, package_name, message_name, resolver))
+        .collect::<Result<_, _>>()?;
 
     // Generate constants
     let constants: Vec<MessageConstant> = message
@@ -242,13 +244,14 @@ pub fn generate_nros_inline_message(
     message_name: &str,
     message: &Message,
     edition: RosEdition,
+    resolver: &CapacityResolver,
 ) -> Result<String, GeneratorError> {
     let mode = NrosCodegenMode::Inline;
     let fields: Vec<NrosField> = message
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, mode))
-        .collect();
+        .map(|f| field_to_nros_field_with_mode(f, package_name, message_name, resolver, mode))
+        .collect::<Result<_, _>>()?;
 
     let constants: Vec<MessageConstant> = message
         .constants

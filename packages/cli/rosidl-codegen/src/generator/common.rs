@@ -1,10 +1,12 @@
 use crate::{
+    config::{CapacityResolver, FieldKind as CapFieldKind, StorageMode},
     templates::{CField, CppFfiField, CppField, FieldKind, NrosField, SequenceStructDef},
     types::{
         C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
         NrosCodegenMode, c_array_suffix_for_field, c_cdr_read_method, c_cdr_write_method,
         c_type_for_field, cpp_array_suffix_for_field, cpp_type_for_field, escape_keyword,
-        nros_type_for_field_with_mode, repr_c_type_for_field, to_c_package_name,
+        nros_type_for_field_with_capacity, nros_type_for_field_with_mode, repr_c_type_for_field,
+        to_c_package_name,
     },
     utils::to_snake_case,
 };
@@ -18,6 +20,17 @@ pub enum GeneratorError {
 
     #[error("Invalid message structure: {0}")]
     InvalidMessage(String),
+
+    #[error(
+        "{package}/{message}.{field}: storage mode '{mode}' is not yet supported \
+         (Phase 229 ships 'owned'; 'heap' lands in 229.5, 'borrowed' in 229.6)"
+    )]
+    UnsupportedStorageMode {
+        package: String,
+        message: String,
+        field: String,
+        mode: &'static str,
+    },
 }
 
 /// Determine the exhaustive FieldKind enum variant for a given ROS 2 field type
@@ -103,14 +116,43 @@ pub(super) fn primitive_to_cdr_method(prim: &rosidl_parser::PrimitiveType) -> St
     }
 }
 
-/// Convert a Message field to NrosField with explicit codegen mode
+/// Convert a Message field to NrosField with explicit codegen mode.
+///
+/// `resolver` supplies the per-field capacity for **unbounded** sequence/string
+/// fields (RFC-0033). Bounded fields, arrays, primitives, and nested types are
+/// unaffected. A non-`owned` storage mode is rejected in Phase 229 (`heap` and
+/// `borrowed` land in 229.5 / 229.6).
 pub(super) fn field_to_nros_field_with_mode(
     field: &rosidl_parser::Field,
     package_name: &str,
+    message_name: &str,
+    resolver: &CapacityResolver,
     mode: NrosCodegenMode,
-) -> NrosField {
+) -> Result<NrosField, GeneratorError> {
     let name = escape_keyword(&field.name);
-    let rust_type = nros_type_for_field_with_mode(&field.field_type, Some(package_name), mode);
+
+    // Resolve per-field capacity for the two configurable shapes: an unbounded
+    // string and an unbounded sequence. Everything else keeps default rendering.
+    let cap_kind = match &field.field_type {
+        FieldType::String | FieldType::WString => Some(CapFieldKind::String),
+        FieldType::Sequence { .. } => Some(CapFieldKind::Sequence),
+        _ => None,
+    };
+    let rust_type = if let Some(kind) = cap_kind {
+        let storage = resolver.resolve(package_name, message_name, &field.name, kind);
+        if !storage.mode.is_phase1_supported() {
+            return Err(GeneratorError::UnsupportedStorageMode {
+                package: package_name.to_string(),
+                message: message_name.to_string(),
+                field: field.name.clone(),
+                mode: storage.mode.as_str(),
+            });
+        }
+        debug_assert_eq!(storage.mode, StorageMode::Owned);
+        nros_type_for_field_with_capacity(&field.field_type, Some(package_name), mode, storage.cap)
+    } else {
+        nros_type_for_field_with_mode(&field.field_type, Some(package_name), mode)
+    };
 
     // Determine field properties
     let (is_primitive, primitive_method) = match &field.field_type {
@@ -154,7 +196,7 @@ pub(super) fn field_to_nros_field_with_mode(
             _ => (false, false, String::new()),
         };
 
-    NrosField {
+    Ok(NrosField {
         name,
         rust_type,
         primitive_method,
@@ -168,12 +210,23 @@ pub(super) fn field_to_nros_field_with_mode(
         is_primitive_element,
         is_string_element,
         is_large_array: array_size > 32,
-    }
+    })
 }
 
-/// Convert a Message field to NrosField
-pub(super) fn field_to_nros_field(field: &rosidl_parser::Field, package_name: &str) -> NrosField {
-    field_to_nros_field_with_mode(field, package_name, NrosCodegenMode::Crate)
+/// Convert a Message field to NrosField (crate mode).
+pub(super) fn field_to_nros_field(
+    field: &rosidl_parser::Field,
+    package_name: &str,
+    message_name: &str,
+    resolver: &CapacityResolver,
+) -> Result<NrosField, GeneratorError> {
+    field_to_nros_field_with_mode(
+        field,
+        package_name,
+        message_name,
+        resolver,
+        NrosCodegenMode::Crate,
+    )
 }
 
 /// Build a CField from a field type

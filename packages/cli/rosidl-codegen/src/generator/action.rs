@@ -3,6 +3,7 @@ use super::common::{
     determine_field_kind, field_to_nros_field, field_to_nros_field_with_mode,
 };
 use crate::{
+    config::CapacityResolver,
     templates::{
         ActionCHeaderTemplate, ActionCSourceTemplate, ActionIdiomaticTemplate, ActionNrosTemplate,
         ActionRmwTemplate, BuildRsTemplate, CConstant, CField, CargoNrosTomlTemplate,
@@ -208,14 +209,21 @@ pub fn generate_nros_action_package(
     };
     let lib_rs = lib_rs_template.render()?;
 
+    // Per-field capacity config is not yet threaded into actions (Phase 229
+    // wave: messages first); an empty resolver reproduces built-in defaults.
+    let resolver = CapacityResolver::empty();
+    let goal_msg = format!("{action_name}_Goal");
+    let result_msg = format!("{action_name}_Result");
+    let feedback_msg = format!("{action_name}_Feedback");
+
     // Generate goal fields
     let goal_fields: Vec<NrosField> = action
         .spec
         .goal
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name))
-        .collect();
+        .map(|f| field_to_nros_field(f, package_name, &goal_msg, &resolver))
+        .collect::<Result<_, _>>()?;
 
     let goal_constants: Vec<MessageConstant> = action
         .spec
@@ -235,8 +243,8 @@ pub fn generate_nros_action_package(
         .result
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name))
-        .collect();
+        .map(|f| field_to_nros_field(f, package_name, &result_msg, &resolver))
+        .collect::<Result<_, _>>()?;
 
     let result_constants: Vec<MessageConstant> = action
         .spec
@@ -256,8 +264,8 @@ pub fn generate_nros_action_package(
         .feedback
         .fields
         .iter()
-        .map(|f| field_to_nros_field(f, package_name))
-        .collect();
+        .map(|f| field_to_nros_field(f, package_name, &feedback_msg, &resolver))
+        .collect::<Result<_, _>>()?;
 
     let feedback_constants: Vec<MessageConstant> = action
         .spec
@@ -366,14 +374,18 @@ pub fn generate_nros_inline_action(
     edition: RosEdition,
 ) -> Result<String, GeneratorError> {
     let mode = NrosCodegenMode::Inline;
+    let resolver = CapacityResolver::empty();
+    let goal_msg = format!("{action_name}_Goal");
+    let result_msg = format!("{action_name}_Result");
+    let feedback_msg = format!("{action_name}_Feedback");
 
     let goal_fields: Vec<NrosField> = action
         .spec
         .goal
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, mode))
-        .collect();
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &goal_msg, &resolver, mode))
+        .collect::<Result<_, _>>()?;
 
     let goal_constants: Vec<MessageConstant> = action
         .spec
@@ -392,8 +404,8 @@ pub fn generate_nros_inline_action(
         .result
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, mode))
-        .collect();
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &result_msg, &resolver, mode))
+        .collect::<Result<_, _>>()?;
 
     let result_constants: Vec<MessageConstant> = action
         .spec
@@ -412,8 +424,8 @@ pub fn generate_nros_inline_action(
         .feedback
         .fields
         .iter()
-        .map(|f| field_to_nros_field_with_mode(f, package_name, mode))
-        .collect();
+        .map(|f| field_to_nros_field_with_mode(f, package_name, &feedback_msg, &resolver, mode))
+        .collect::<Result<_, _>>()?;
 
     let feedback_constants: Vec<MessageConstant> = action
         .spec

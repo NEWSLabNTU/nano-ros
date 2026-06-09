@@ -84,13 +84,28 @@ level-6 fallback (empty config == today's output). 9 unit tests green.
 - **Files:** `packages/cli/` generate command(s), `cmake/*.cmake`
   (`nano_ros_generate_interfaces`).
 
-### 229.4 — Wire resolver through all three generators (owned)  ⬜
+### 229.4 — Wire resolver through the generators (owned)  🟡 IN PROGRESS
 Replace every direct `*_DEFAULT_SEQUENCE_CAPACITY` / `*_DEFAULT_STRING_CAPACITY`
 reference for an **unbounded** field with `resolver.resolve(...)`. `mode = "owned"`
 emits the resolved-`N` container (today's shape, parameterized). `heap`/`borrowed`
-emit a clear `"storage mode '<m>' not yet supported"` error in phase 1.
+emit `GeneratorError::UnsupportedStorageMode` in phase 1.
+- ✅ **nros (Rust) message path** — `nros_type_for_field_with_capacity` (types.rs);
+  `field_to_nros_field{,_with_mode}` resolver-aware + `Result` + phase gate
+  (common.rs); `generate_nros_message_package` / `generate_nros_inline_message`
+  take a `&CapacityResolver` (msg.rs). 5 golden tests in `tests/nros_test.rs`
+  (big-seq+small-string in one msg, type-level default, bounded short-circuit,
+  empty==builtin, heap/borrowed error). Full cli workspace builds; 70+ green.
+- ✅ **nros service/action** — builders updated to the new arity; pass
+  `CapacityResolver::empty()` + ROS-convention message keys (`_Request`/`_Response`,
+  `_Goal`/`_Result`/`_Feedback`) so behavior is unchanged and a real resolver drops
+  in later. (srv.rs, action.rs)
+- ⬜ **C + C++ emitters** — `build_c_field` / `build_cpp_field` + `c_type_for_field` /
+  `cpp_type_for_field` still use the `C_*` / `CPP_*` consts; thread the resolver
+  (next wave).
+- ⬜ **Activate real resolver** in service/action + the production
+  `rosidl-bindgen::generate_package` callsite (currently `empty()` with a 229.3 TODO).
 - **Files:** `packages/cli/rosidl-codegen/src/types.rs`,
-  `packages/cli/rosidl-codegen/src/generator/common.rs`.
+  `.../generator/{common,msg,srv,action}.rs`, `.../rosidl-bindgen/src/generator.rs`.
 
 ### 229.5 — `heap` storage mode (phase 2)  ⬜
 `alloc::Vec<T>` / growable C/C++ sequence behind the `alloc`/`std` feature gate;

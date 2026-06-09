@@ -626,6 +626,35 @@ pub fn nros_type_for_field_with_mode(
     }
 }
 
+/// Like [`nros_type_for_field_with_mode`], but overrides the capacity of a
+/// **top-level unbounded** `String` / `WString` / `Sequence` container with
+/// `cap` (resolved per-field from `nros-codegen.toml`, RFC-0033). All other
+/// field shapes — bounded strings/sequences, arrays, primitives, nested types,
+/// and sequence *element* types — keep their default rendering. Used by the
+/// `owned` storage mode; the resolver picks `cap`.
+pub fn nros_type_for_field_with_capacity(
+    field_type: &FieldType,
+    current_package: Option<&str>,
+    mode: NrosCodegenMode,
+    cap: usize,
+) -> String {
+    let inline = mode == NrosCodegenMode::Inline;
+    let prefix = if inline {
+        "nros_core::heapless::"
+    } else {
+        "heapless::"
+    };
+    match field_type {
+        FieldType::String | FieldType::WString => format!("{prefix}String<{cap}>"),
+        FieldType::Sequence { element_type } => {
+            let elem = nros_type_for_field_with_mode(element_type, current_package, mode);
+            format!("{prefix}Vec<{elem}, {cap}>")
+        }
+        // Bounded / array / primitive / nested — capacity is not configurable.
+        _ => nros_type_for_field_with_mode(field_type, current_package, mode),
+    }
+}
+
 /// Get the Rust type string for a constant using nros backend
 /// Similar to `nros_type_for_field` but uses `&'static str` for string types
 pub fn nros_type_for_constant(field_type: &FieldType) -> String {

@@ -173,6 +173,7 @@ mod tests {
             &deps,
             "0.1.0",
             RosEdition::Humble,
+            &crate::config::CapacityResolver::empty(),
         );
         assert!(result.is_ok());
 
@@ -210,6 +211,7 @@ mod tests {
             &deps,
             "0.1.0",
             RosEdition::Humble,
+            &crate::config::CapacityResolver::empty(),
         );
         assert!(result.is_ok());
 
