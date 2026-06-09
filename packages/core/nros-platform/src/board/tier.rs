@@ -31,9 +31,15 @@ pub struct TierSpec<'a> {
     /// `Executor::set_active_groups`; an empty slice = wildcard
     /// (admit every group — the single-tier degenerate case).
     pub groups: &'a [&'a str],
-    /// Normalized 0–31 priority (RFC-0016). Lowered per-RTOS by the
-    /// mappers in this module.
-    pub priority: u8,
+    /// **Raw per-RTOS** task priority — the value passed straight to the
+    /// native spawn call. The system author writes it in
+    /// `[tiers.<name>.<rtos>].priority`, so it is already in the target
+    /// kernel's scale (FreeRTOS 0–7, ThreadX 0–31 lower=higher, …);
+    /// `i64` admits Zephyr's negative coop priorities. (The
+    /// `*_priority_for` mappers in this module are a separate utility for
+    /// authors who prefer a normalized 0–31 scale; the codegen path uses
+    /// the raw value verbatim.)
+    pub priority: i64,
     /// Task stack size in bytes. `0` = let the board pick its default.
     pub stack_bytes: usize,
     /// Spin period for this tier's `spin_once` loop, in microseconds.
@@ -47,7 +53,7 @@ impl<'a> TierSpec<'a> {
         TierSpec {
             name: "default",
             groups: &[],
-            priority: 12,
+            priority: 0,
             stack_bytes: 0,
             spin_period_us: 1_000,
         }
@@ -131,6 +137,6 @@ mod tests {
     fn single_tier_is_wildcard() {
         let t = TierSpec::single();
         assert!(t.groups.is_empty());
-        assert_eq!(t.priority, 12);
+        assert_eq!(t.priority, 0);
     }
 }
