@@ -135,3 +135,50 @@ zenoh-pico needs ~8+ mutexes (transport TX/RX/peer + a write-filter mutex per pu
 `Z_FEATURE_INTEREST=1`). Exhaustion makes `pthread_mutex_init` fail → zenoh-pico returns -80.
 Set `CONFIG_MAX_PTHREAD_MUTEX_COUNT=32` and `CONFIG_MAX_PTHREAD_COND_COUNT=16` in `prj.conf`
 (cyclonedds action overlays use 2048, archived Phase 184.8).
+
+## NuttX ↔ zenoh-pico cooperation (Phase 225.O)
+
+zenoh-pico is **not** platform-agnostic on the C side and is not meant to be;
+the Phase 227.3 "platform-agnostic" refactor (`365d5cdce`) only made the
+**Rust shim** (`nros-rmw-zenoh`) generic (no `target_os`/NuttX branches —
+just feature gates). zenoh-pico C keeps per-platform system layers and
+`#ifdef ZENOH_NUTTX` accommodations. How NuttX wires up:
+
+1. **Feature → define.** `nros/platform-nuttx` forwards
+   `nros-rmw-zenoh?/platform-nuttx` → `zpico-sys/nuttx` → `CARGO_FEATURE_NUTTX`,
+   and `nros-zpico-build` then `#define ZENOH_NUTTX` + selects the **`unix`**
+   system layer (`zenoh-pico/system/common/platform.h`: NuttX is grouped with
+   `ZENOH_LINUX`/`MACOS`/`BSD`) + `LinkPolicy::nuttx()`. The forwarding clause
+   is load-bearing: without it `ZENOH_NUTTX` is undefined and the setsockopt
+   guards below stay off.
+2. **`unix` system layer = direct POSIX.** NuttX is a hosted POSIX RTOS, so
+   `system/unix/system.c` backs the primitives directly — `z_malloc`→libc
+   `malloc`, `_z_task_*`→`pthread_create`/`join`, `_z_mutex_*`→`pthread_mutex_*`,
+   sockets→NuttX kernel BSD sockets. No bare-metal platform shim is needed
+   (contrast bare-metal/ESP32, which route through `nros-platform-*` + smoltcp).
+   `nros-platform-nuttx` is a thin C-only glue crate (`platform.c`/`net.c`).
+3. **`ZENOH_NUTTX` accommodations** (6 branches in `system/unix/network.c`):
+   skip `<ifaddrs.h>`/`getifaddrs` (NuttX lacks it → multicast binds
+   `INADDR_ANY`); skip `SO_LINGER` (no `CONFIG_NET_SOLINGER`); skip
+   `TCP_NODELAY` (host vs NuttX optname value mismatch under cross-compile);
+   use `MSG_NOSIGNAL` on `send` and free `getaddrinfo` results (both shared
+   with `ZENOH_LINUX`). The SO_LINGER/TCP_NODELAY skips are why
+   step 1's `ZENOH_NUTTX` define matters — otherwise those setsockopts fail on
+   NuttX and `_z_open_tcp` returns `Transport(ConnectionFailed)`.
+4. **Backend registration is explicit on NuttX.** The unified-RMW
+   `nros_rmw_register_backend!` macro expands to a `linkme` distributed-slice
+   entry on supported targets but to **nothing** on NuttX (linkme unsupported),
+   and the standalone flat image does not run the auto-register `.init_array`.
+   So `nros-board-nuttx::run_entry` calls `nros_rmw_zenoh::register()`
+   explicitly before `Executor::open` (feature `rmw-zenoh`, wired entry →
+   `nros-board-nuttx-qemu-arm` → `nros-board-nuttx`) — same shape as the esp32
+   board.
+5. **pthread pool.** Like Zephyr, NuttX needs enough pthread mutex/sem
+   resources (zenoh-pico uses ~8+ mutexes; transport TX/RX/peer + per-publisher
+   write-filter under `Z_FEATURE_INTEREST=1`). The reference `qemu-armv7a`
+   defconfig suffices for talker+listener; raise the NuttX pthread limits for
+   heavier graphs.
+
+Verified 2026-06-09: native_sim-less, on `qemu-system-arm -M virt -cpu
+cortex-a7`, the NuttX workspace Entry boots → registers → publishes `/chatter`
+→ an external native listener receives it cross-process.
