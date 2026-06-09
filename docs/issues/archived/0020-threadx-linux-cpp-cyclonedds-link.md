@@ -1,11 +1,30 @@
 ---
 id: 20
 title: ThreadX-linux C++ CycloneDDS fixtures fail to link (nros_rmw_cffi_register_named undefined)
-status: open
+status: resolved
 type: bug
 area: cyclonedds
 related: [issue-0011]
+resolved_in: "43ea3104d (cmake/platform/nano-ros-threadx.cmake -u flag)"
 ---
+
+**Resolved.** Root cause was ld single-pass archive ordering: the root
+CMakeLists whole-archives `libnros_rmw_cyclonedds.a` (references
+`nros_rmw_cffi_register_named`, `U`) AFTER the Corrosion staticlibs
+`libnros_c.a`/`libnros_cpp.a` (define it, `T`). Native C++ examples pull the
+defining Rust object early via `main.cpp`'s `nros::init()` →
+`CffiSession::open`/`lookup` (co-located with `register_named`); the
+threadx-linux examples bring up from a C `main.c` + system-codegen that never
+references that object before the archives are scanned, so the member is never
+extracted. Fix: `nros_platform_link_app()` adds
+`-u nros_rmw_cffi_register_named` for the threadx-linux + cyclonedds combo,
+forcing extraction when the early staticlibs are scanned. Verified all 6
+threadx-linux cpp cyclonedds examples link; threadx-linux cpp zenoh + native
+cpp cyclonedds unaffected.
+
+---
+
+Original report:
 
 The ThreadX-linux **C++ + CycloneDDS** examples
 (`examples/threadx-linux/cpp/*`, `build-cyclonedds`) fail at link with:
