@@ -27,5 +27,11 @@ nros-node = { workspace = true, default-features = false }
 # impl crate's choice under feature unification (`ffi-sync` etc.).
 critical-section = { version = "1", default-features = false }
 
+[dev-dependencies]
+# Host `critical-section` impl so the cross-tier `LockedSharedRegion` concurrency
+# test can take the guard. `default-features = false` keeps it from pulling a
+# second restore-state feature (which would conflict under unification).
+critical-section = { version = "1", default-features = false, features = ["std"] }
+
 [lints]
 workspace = true

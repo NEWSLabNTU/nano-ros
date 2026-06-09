@@ -368,6 +368,9 @@ fn opt_us(value: Option<u32>) -> nros_node::executor::sched_context::OptUs {
 }
 
 #[cfg(test)]
+extern crate std;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -425,6 +428,39 @@ mod tests {
         assert_eq!(LOCKED_BLACKBOARD.len(), 16);
         assert!(!LOCKED_BLACKBOARD.is_empty());
         assert!(LockedSharedRegion::<0>::new().is_empty());
+    }
+
+    // Cross-tier guard proof: two threads (≈ two tiers) hammer one region with
+    // read-modify-write; the `critical_section` guard must serialize them so no
+    // update is lost. A lock-free region here would drop updates and fail.
+    static SHARED_COUNTER: LockedSharedRegion<8> = LockedSharedRegion::new();
+
+    #[test]
+    fn locked_shared_region_serializes_concurrent_modify() {
+        const PER_THREAD: u64 = 50_000;
+        // Zero the region first.
+        SHARED_COUNTER.with(|b| *b = [0u8; 8]);
+
+        std::thread::scope(|s| {
+            for _ in 0..2 {
+                s.spawn(|| {
+                    for _ in 0..PER_THREAD {
+                        SHARED_COUNTER.with(|b| {
+                            let mut v = u64::from_ne_bytes(*b);
+                            v += 1;
+                            *b = v.to_ne_bytes();
+                        });
+                    }
+                });
+            }
+        });
+
+        let total = SHARED_COUNTER.with(|b| u64::from_ne_bytes(*b));
+        assert_eq!(
+            total,
+            2 * PER_THREAD,
+            "lost updates → the cross-tier guard did not serialize access"
+        );
     }
 
     #[test]
