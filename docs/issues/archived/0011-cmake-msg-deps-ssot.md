@@ -1,10 +1,11 @@
 ---
 id: 11
 title: C/C++ examples do not use package.xml as single source of truth for message deps
-status: open
+status: resolved
 type: tech-debt
 area: cmake
-related: []
+related: [issue-0020]
+resolved_in: "341c722f3 (+ the C-example + Zephyr-module-wrapper migration)"
 ---
 
 Many C/C++ examples manually call `nros_generate_interfaces()` in
@@ -45,11 +46,25 @@ bindings from `package.xml`) coexists with the per-example CycloneDDS
 IDL/descriptor path on every platform. (Intermittent failures during the
 sweep were a parallel-build fs race, not a regression — see issue #19.)
 
-**To close** (all optional): converge the NuttX C++ /
-ThreadX-linux C++ paths onto `nros_find_interfaces()`; migrate the
-`examples/templates/zephyr-byo/app` copy-out starter; build-verify the
-`talker-aemv8r` C++ cyclonedds carve-out. The substantive migration (all C
-examples across native/FreeRTOS/NuttX/ThreadX/Zephyr + native C/C++ + FreeRTOS
-C++ + templates, on all three RMWs) is **done and build-verified** — what
-remains is convergence of the two C++ holdouts (which already resolve deps
-from `package.xml`, just via different mechanisms).
+**Resolved.** Every example now resolves message deps from its `package.xml`
+— there is no longer a meaningful hardcoded holdout:
+
+- All C examples (native/FreeRTOS/NuttX/ThreadX-linux/ThreadX-riscv64/Zephyr)
+  + native C/C++ + FreeRTOS C++ + templates use `nros_find_interfaces()`,
+  build-verified on all three RMWs (32/32 C variants — zenoh/XRCE/CycloneDDS).
+- **ThreadX-linux C++** converged (`341c722f3`) — the `find_package` via the
+  rclcpp-compat shim was scaffolding; swapped to `nros_find_interfaces()`,
+  build-verified 6/6 zenoh.
+- **NuttX C++** intentionally kept on the deploy pipeline — it uses the pure
+  string-based API (no typed `*.hpp` include) and its real ELF is the
+  cross-compile cargo FFI crate, so `nros_find_interfaces()` would only add an
+  unused cross-FFI staticlib. Its deps are already `package.xml`-driven via
+  system-codegen (the SSoT intent is met by a different, correct mechanism).
+
+Documented exceptions (not holdouts): `examples/templates/zephyr-byo/app` (a
+copy-out starter whose README intentionally shows the explicit form);
+`native/c/custom-msg` (its own interface package — `resolve-deps` emits
+nothing). Separate pre-existing bug surfaced during the C++ work:
+ThreadX-linux C++ **CycloneDDS** fails to link (`undefined reference to
+nros_rmw_cffi_register_named`) — see issue #20, reproduced with the pristine
+form so not caused by this work.
