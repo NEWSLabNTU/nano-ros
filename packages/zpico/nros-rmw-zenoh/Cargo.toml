@@ -119,6 +119,14 @@ nros-ghost-types = { version = "0.5.0", path = "../../verification/nros-ghost-ty
 # Workspace-context builds get this via feature unification from a board
 # crate; standalone `cargo test` here doesn't.
 nros-platform = { version = "0.5.0", path = "../../core/nros-platform", features = ["platform-posix"] }
+# Phase 227.3(B) — the Rust shim is now platform-agnostic and the
+# `--lib` unit-test binary references the zpico C-port symbols
+# unconditionally. Pin the posix C port (threading / mutex / task
+# symbols) for the standalone `cargo test` link, so a plain
+# `cargo test -p nros-rmw-zenoh` (no `--features platform-posix`)
+# links and runs the full unit suite. Workspace-context builds get
+# this via feature unification from a board crate.
+zpico-sys = { version = "0.5.0", path = "../zpico-sys", features = ["posix"] }
 
 [lints]
 workspace = true

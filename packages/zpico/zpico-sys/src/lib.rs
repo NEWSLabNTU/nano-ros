@@ -43,15 +43,14 @@ extern crate zpico_platform_custom;
 // Note: The smoltcp platform uses a custom bump allocator for C FFI (zenoh-pico),
 // not Rust's global allocator. The `alloc` crate is NOT needed.
 
-#[cfg(any(
-    feature = "posix",
-    feature = "zephyr",
-    feature = "bare-metal",
-    feature = "freertos",
-    feature = "nuttx",
-    feature = "threadx",
-    feature = "orin-spe"
-))]
+// Phase 227.3(B) — the C-ABI import declarations below are
+// platform-agnostic (identical signatures on every target); the
+// per-platform feature gate was vestigial. Imports are resolved at
+// link time against the C lib (`c/zpico/zpico.c`), so declaring them
+// unconditionally is harmless on a platform-feature-free `cargo
+// build`. Only the `cbindgen` guard is genuine (cbindgen must not
+// re-emit a Rust import of a C function into the generated header).
+#[cfg(not(cbindgen))]
 use core::ffi::c_void;
 
 // ============================================================================
@@ -125,18 +124,11 @@ pub struct zpico_ring_desc_t {
 //
 // Note: Excluded from cbindgen - these are Rust imports of C functions,
 // not declarations for the header file.
-#[cfg(all(
-    any(
-        feature = "posix",
-        feature = "zephyr",
-        feature = "bare-metal",
-        feature = "freertos",
-        feature = "nuttx",
-        feature = "threadx",
-        feature = "orin-spe"
-    ),
-    not(cbindgen)
-))]
+// Phase 227.3(B) — un-gated from the per-platform umbrella (vestigial;
+// see the `use core::ffi::c_void` note above). The `not(cbindgen)`
+// guard stays — these are Rust imports of C functions, not header
+// declarations.
+#[cfg(not(cbindgen))]
 #[allow(improper_ctypes)]
 unsafe extern "C" {
     // Session lifecycle

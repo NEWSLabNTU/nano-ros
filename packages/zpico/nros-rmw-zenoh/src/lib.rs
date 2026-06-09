@@ -21,28 +21,10 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-))]
 pub(crate) mod config;
 pub mod keyexpr;
 pub mod zpico;
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-))]
 pub mod shim;
 
 // Re-export zpico types (always available)
@@ -69,35 +51,25 @@ pub use zpico::{ZenohId, ZpicoError};
 // untouched and `rust-lld` errors with `undefined symbol:
 // nros_platform_mutex_*`. See Track G in
 // `docs/roadmap/phase-214-antipattern-audit-findings.md`.
-#[cfg(feature = "platform-posix")]
+//
+// Phase 227.3(B) — `test` added to the gate: the Rust shim is now
+// platform-agnostic and compiles into the `--lib` unit-test binary
+// unconditionally, so that binary references the zpico C-port symbols
+// and must link the posix C provider. The `[dev-dependencies]` entry
+// pins `nros-platform` to `platform-posix`, so `__FORCE_LINK_CFFI`
+// exists under `cfg(test)` and re-anchors the cffi rlib for the test
+// binary even when this crate's own `platform-posix` feature is off.
+#[cfg(any(feature = "platform-posix", test))]
 #[doc(hidden)]
 #[used]
 pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_LINK_CFFI;
 
 // Re-export platform-gated zpico types
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-))]
 pub use zpico::{
     Context, LivelinessToken, Publisher as ZpicoPublisher, Queryable, Subscriber as ZpicoSubscriber,
 };
 
 // Re-export shim types when platform feature is enabled
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-))]
 pub use shim::{
     MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, SERVICE_BUFFER_SIZE,
     SUBSCRIBER_BUFFER_SIZE, ZenohPublisher, ZenohRmw, ZenohServiceClient, ZenohServiceServer,
@@ -105,14 +77,7 @@ pub use shim::{
 };
 
 // Re-export std-only executor wake functions
-#[cfg(all(
-    feature = "std",
-    any(
-        feature = "platform-posix",
-        feature = "platform-zephyr",
-        feature = "platform-bare-metal"
-    )
-))]
+#[cfg(feature = "std")]
 pub use shim::{signal_executor_wake, wait_for_executor_wake};
 
 // Re-export extension traits
@@ -132,15 +97,6 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 // other's trait surface. So the register fn lives next to the trait
 // impl, and the legacy `*-cffi` two-crate split goes away.
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-))]
 mod cffi_register {
     use core::ffi::c_int;
 
@@ -206,15 +162,6 @@ mod cffi_register {
     }
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-))]
 pub use cffi_register::{RegisterError, nros_rmw_zenoh_register, register};
 
 // ============================================================================
@@ -235,18 +182,7 @@ pub use cffi_register::{RegisterError, nros_rmw_zenoh_register, register};
 //   - The loan trampoline boxes a lifetime-erased `ZenohSlot<'static>`
 //     and stows the raw pointer in `*out_token`. Commit / discard /
 //     drop reclaim the box.
-#[cfg(all(
-    feature = "lending",
-    any(
-        feature = "platform-posix",
-        feature = "platform-zephyr",
-        feature = "platform-bare-metal",
-        feature = "platform-freertos",
-        feature = "platform-nuttx",
-        feature = "platform-threadx",
-        feature = "platform-orin-spe",
-    ),
-))]
+#[cfg(feature = "lending")]
 mod loan_trampolines {
     extern crate alloc;
     use alloc::boxed::Box;

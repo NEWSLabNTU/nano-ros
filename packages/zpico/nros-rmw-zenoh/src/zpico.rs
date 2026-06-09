@@ -3,28 +3,7 @@
 //! This module provides a safe Rust wrapper around the zenoh-pico C shim,
 //! enabling embedded applications to use zenoh for communication.
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
-use core::ffi::c_void;
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
-use core::marker::PhantomData;
+use core::{ffi::c_void, marker::PhantomData};
 
 // ============================================================================
 // FFI Reentrancy Guard
@@ -58,16 +37,6 @@ pub use zpico_sys::{
 };
 
 // Import FFI functions from sys crate
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 use zpico_sys::{
     zpico_close, zpico_declare_liveliness, zpico_declare_publisher, zpico_declare_queryable,
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write, zpico_declare_subscriber_ring,
@@ -107,16 +76,6 @@ pub enum ZpicoError {
     Timeout,
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    test
-))]
 impl ZpicoError {
     fn from_code(code: i32) -> Self {
         match code {
@@ -201,30 +160,10 @@ impl ZenohId {
 ///
 /// Note: The C shim manages tokens via static storage with integer handles,
 /// so the token does not need a lifetime parameter.
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 pub struct LivelinessToken {
     handle: i32,
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl LivelinessToken {
     /// Get the liveliness handle
     pub fn handle(&self) -> i32 {
@@ -232,16 +171,6 @@ impl LivelinessToken {
     }
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl Drop for LivelinessToken {
     fn drop(&mut self) {
         ffi_guard(|| unsafe {
@@ -261,30 +190,10 @@ impl Drop for LivelinessToken {
 ///
 /// Note: The C shim manages queryables via static storage with integer handles,
 /// so the queryable does not need a lifetime parameter.
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 pub struct Queryable {
     handle: i32,
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl Queryable {
     /// Get the queryable handle
     pub fn handle(&self) -> i32 {
@@ -292,16 +201,6 @@ impl Queryable {
     }
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl Drop for Queryable {
     fn drop(&mut self) {
         ffi_guard(|| unsafe {
@@ -323,30 +222,10 @@ impl Drop for Queryable {
 ///
 /// Only one `Context` can exist at a time due to the global state
 /// in the C shim.
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 pub struct Context {
     _private: PhantomData<*const ()>,
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl Context {
     /// Create a new shim context with the given locator
     ///
@@ -933,16 +812,6 @@ impl Context {
     }
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl Drop for Context {
     fn drop(&mut self) {
         ffi_guard(|| unsafe {
@@ -958,31 +827,11 @@ impl Drop for Context {
 /// Publisher handle for sending data
 ///
 /// Created via `Context::declare_publisher()`.
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 pub struct Publisher<'a> {
     handle: i32,
     _ctx: PhantomData<&'a Context>,
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl<'a> Publisher<'a> {
     /// Publish data
     ///
@@ -1066,16 +915,6 @@ impl<'a> Publisher<'a> {
     }
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl<'a> Drop for Publisher<'a> {
     fn drop(&mut self) {
         ffi_guard(|| unsafe {
@@ -1091,31 +930,11 @@ impl<'a> Drop for Publisher<'a> {
 /// Subscriber handle for receiving data
 ///
 /// Created via `Context::declare_subscriber_raw()`.
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 pub struct Subscriber<'a> {
     handle: i32,
     _ctx: PhantomData<&'a Context>,
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl<'a> Subscriber<'a> {
     /// Get the subscriber handle
     pub fn handle(&self) -> i32 {
@@ -1123,16 +942,6 @@ impl<'a> Subscriber<'a> {
     }
 }
 
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal",
-    feature = "platform-freertos",
-    feature = "platform-nuttx",
-    feature = "platform-threadx",
-    feature = "platform-orin-spe",
-    feature = "platform-orin-spe",
-))]
 impl<'a> Drop for Subscriber<'a> {
     fn drop(&mut self) {
         ffi_guard(|| unsafe {
