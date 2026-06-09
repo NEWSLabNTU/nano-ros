@@ -264,6 +264,17 @@ where
         }
         None => ::nros::ExecutorConfig::from_env(),
     };
+
+    // Explicitly register the zenoh RMW backend before opening the executor.
+    // The unified-RMW `nros_rmw_register_backend!` macro is a no-op on NuttX
+    // (linkme has no NuttX support) and the flat image does not run the
+    // auto-register `.init_array` path, so without this the CFFI vtable has
+    // no transport and `Executor::open` fails with `Transport(ConnectionFailed)`.
+    #[cfg(feature = "rmw-zenoh")]
+    if let Err(err) = ::nros_rmw_zenoh::register() {
+        eprintln!("nros: zenoh RMW backend register failed: {:?}", err);
+    }
+
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {

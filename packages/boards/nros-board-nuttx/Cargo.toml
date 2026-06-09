@@ -51,8 +51,21 @@ nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-
 # backend at boot.
 nros = { path = "../../core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-nuttx"] }
 nros-board-nuttx-qemu-arm = { path = "../nros-board-nuttx-qemu-arm", optional = true }
+# Phase 225.O — explicit RMW backend registration on NuttX. The unified-RMW
+# `nros_rmw_register_backend!` macro is a NO-OP on NuttX (linkme has no
+# NuttX support — see nros-rmw-zenoh/src/lib.rs), and the NuttX flat image
+# does not run the auto-register `.init_array` path, so `run_entry` must
+# call `nros_rmw_zenoh::register()` explicitly (like the esp32 board does)
+# before `Executor::open`. Optional + feature-gated so non-zenoh NuttX
+# deployments don't pull the backend.
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-nuttx",
+    "ros-humble",
+], optional = true }
 
 [features]
 default = []
 # Reference QEMU ARM virt (Cortex-A7 + virtio-net) configuration.
 reference-qemu-arm = ["dep:nros-board-nuttx-qemu-arm"]
+# Link + explicitly register the zenoh RMW backend in `run_entry`.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]

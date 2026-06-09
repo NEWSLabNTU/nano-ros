@@ -44,12 +44,22 @@ locator = "tcp/10.0.2.2:7452"
 
 [dependencies]
 # Single `nros` dep for the macro-emitted `::nros::…` paths. Features
-# unify with the Node pkgs' `nuttx` feature (`std` + `platform-nuttx`).
-nros = { path = "../../../../../packages/core/nros", default-features = false }
+# unify with the Node pkgs' `nuttx` feature, and ADD `rmw-zenoh` so the
+# zenoh backend (`nros-rmw-zenoh` + zpico-sys zenoh-pico) is linked +
+# registered — without it the entry has only the CFFI vtable and no
+# transport (`Transport(ConnectionFailed)`). `nros/platform-nuttx`
+# forwards `nros-rmw-zenoh?/platform-nuttx` → `zpico-sys/nuttx` →
+# `ZENOH_NUTTX` (NuttX setsockopt guards in zenoh-pico's unix network.c).
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "rmw-zenoh",
+    "platform-nuttx",
+] }
 # NuttX QEMU ARM virt board crate — supplies `QemuArmVirt` (real-runtime
 # `BoardEntry`, gated `target_os = "nuttx"`) + the `nros_platform_nuttx`
 # C shim (compiled by its own build.rs).
-nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
+# `rmw-zenoh` feature → the board's `run_entry` explicitly registers the
+# zenoh RMW backend (NuttX has no linkme/.init_array auto-register).
+nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm", features = ["rmw-zenoh"] }
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-nuttx"] }
 
 # Node pkg rlibs — the launch XML names `talker` + `listener`, so the

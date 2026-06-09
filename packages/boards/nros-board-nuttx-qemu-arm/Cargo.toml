@@ -41,5 +41,10 @@ nros-platform = { path = "../../core/nros-platform", default-features = false }
 # `BoardEntry` impl below).
 nros-board-nuttx = { path = "../nros-board-nuttx" }
 
+[features]
+# Forward to the generic NuttX board's explicit zenoh-backend registration
+# (its `run_entry` calls `nros_rmw_zenoh::register()` under this feature).
+rmw-zenoh = ["nros-board-nuttx/rmw-zenoh"]
+
 [build-dependencies]
 cc = "1"

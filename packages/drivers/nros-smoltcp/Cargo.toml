@@ -38,15 +38,20 @@ smoltcp = { version = "0.12", default-features = false, features = [
 # provides a polyfill via interrupt disable. Cortex-M targets get the
 # native atomic instructions; both are safe.
 #
-# Phase 214.L.1 — `unsafe-assume-single-core` is only valid on
-# single-core targets without native CAS (riscv32imc, single-core
+# Phase 214.L.1 — `unsafe-assume-single-core` is only valid on single-core
+# *bare-metal* targets without native CAS (riscv32imc, single-core
 # Cortex-M). The host x86_64 target rejects it at compile time, which
-# previously made `cargo test --lib` impossible. The split below keeps
-# the feature on the embedded targets the crate actually ships to and
-# drops it on hosts so unit tests (e.g. `init_twice_errors_cleanly`)
-# can run.
-[target.'cfg(any(target_arch = "arm", target_arch = "riscv32"))'.dependencies]
+# previously made `cargo test --lib` impossible. The split below keeps the
+# feature on the bare-metal embedded targets the crate actually ships to
+# and drops it everywhere else so unit tests run.
+#
+# Gate on `target_os = "none"` (bare-metal): hosted-OS ARM/RISC-V targets
+# like `armv7a-nuttx-eabihf` (Cortex-A7 — native atomic CAS via LDREX/STREX
+# AND an OS) are NOT single-core bare-metal MCUs, and portable-atomic
+# rejects `unsafe-assume-single-core` there ("privileged instructions …
+# obviously unavailable"). They use native atomics via the base dep below.
+[target.'cfg(all(any(target_arch = "arm", target_arch = "riscv32"), target_os = "none"))'.dependencies]
 portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
 
-[target.'cfg(not(any(target_arch = "arm", target_arch = "riscv32")))'.dependencies]
+[target.'cfg(not(all(any(target_arch = "arm", target_arch = "riscv32"), target_os = "none")))'.dependencies]
 portable-atomic = { version = "1", default-features = false }
