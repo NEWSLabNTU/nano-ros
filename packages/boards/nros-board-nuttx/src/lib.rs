@@ -240,14 +240,30 @@ where
     let _ = std::io::stdout().flush();
 
     // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
-    // `ExecutorNodeRuntime` so the codegen-emitted
-    // `run_plan(runtime)` body can register components against a
-    // live RMW session. NuttX uses env-derived config (it ships
-    // `std` + libc `getenv`); ROS_DOMAIN_ID / NROS_LOCATOR /
-    // NROS_SESSION_MODE flow through `from_env`. Embedded NuttX is
-    // a hosted-POSIX-style target so the `from_env` path matches
-    // what the legacy `node::run` body did before this phase.
-    let exec_cfg = ::nros::ExecutorConfig::from_env();
+    // `ExecutorNodeRuntime` so the codegen-emitted `run_plan(runtime)`
+    // body can register components against a live RMW session.
+    //
+    // Locator/domain are baked at COMPILE time on NuttX, not read from
+    // the runtime env. Although NuttX ships `std` + libc `getenv`, the
+    // QEMU guest has no environment populated, so `from_env()` would
+    // silently fall back to its loopback default (`tcp/127.0.0.1:7447`)
+    // — the connection then never leaves the guest over virtio-net and
+    // fails fast with `Transport(ConnectionFailed)`. Bake via
+    // `option_env!` (the freertos/esp32 pattern; CLAUDE.md "compile-time
+    // on embedded") and fall back to `from_env` only when nothing was
+    // baked (hosted/dev use).
+    const BAKED_LOCATOR: Option<&str> = option_env!("NROS_LOCATOR");
+    const BAKED_DOMAIN: Option<&str> = option_env!("NROS_DOMAIN_ID");
+    let exec_cfg = match BAKED_LOCATOR {
+        Some(loc) => {
+            let mut cfg = ::nros::ExecutorConfig::new(loc).node_name("nros_app");
+            if let Some(d) = BAKED_DOMAIN.and_then(|s| s.parse::<u32>().ok()) {
+                cfg = cfg.domain_id(d);
+            }
+            cfg
+        }
+        None => ::nros::ExecutorConfig::from_env(),
+    };
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {

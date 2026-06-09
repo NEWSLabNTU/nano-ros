@@ -153,7 +153,7 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx"
 target = "armv7a-nuttx-eabihf"
 skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:7452", NROS_DOMAIN_ID = "0" }
 
 [[workspace_fixture]]
 id = "workspace-c-native"
