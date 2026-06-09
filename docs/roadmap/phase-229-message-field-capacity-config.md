@@ -75,14 +75,22 @@ field > type > package > defaults > builtin ladder. Built-in `NROS_DEFAULT_*` ar
 level-6 fallback (empty config == today's output). 9 unit tests green.
 - **Files:** `packages/cli/rosidl-codegen/src/config.rs`.
 
-### 229.3 — Config discovery + entry-point wiring  ⬜
-- `--codegen-config <path>` flag on the `nros generate-rust` / `generate cpp` / C
-  commands.
-- `CODEGEN_CONFIG` argument on CMake `nano_ros_generate_interfaces(...)`.
-- Auto-discovery: `nros-codegen.toml` in output package/app dir, walk up to workspace
-  root, deep-merge ancestor → descendant. Shares the RFC-0023 walk-up.
-- **Files:** `packages/cli/` generate command(s), `cmake/*.cmake`
-  (`nano_ros_generate_interfaces`).
+### 229.3 — Config discovery + entry-point wiring  ✅ DONE
+- `CapacityResolver::from_file` / `discover(start, stop)` (walk-up, root→leaf merge,
+  closest wins) / `resolve_for(explicit, start, stop)` (explicit `--codegen-config`
+  wins over discovered). `CODEGEN_CONFIG_FILENAME = "nros-codegen.toml"`. 3 unit tests.
+- `generate_package` (rosidl-bindgen) takes `&CapacityResolver`; production paths
+  build it: `generate_from_package_xml` (Rust) + `generate_c_from_package_xml`
+  discover from the **manifest dir**; `generate_c_from_args_file` /
+  `generate_cpp_from_args_file` (CMake JSON path) + the single-package + `ws` codegen
+  paths discover from **output/source dir**.
+- `--codegen-config <path>` flag on `nros generate` (multi-lang + rust); threaded
+  through `GenerateConfig` / `GenerateCStandaloneConfig` / `GenerateCArgs`
+  (`codegen_config` field).
+- CMake `nros_generate_interfaces(... CODEGEN_CONFIG <path>)` → JSON arg.
+- **Files:** `config.rs`, `rosidl-bindgen/src/generator.rs`,
+  `cargo-nano-ros/src/lib.rs`, `nros-cli-core/src/cmd/{generate,ws}.rs`,
+  `cmake/NanoRosGenerateInterfaces.cmake`.
 
 ### 229.4 — Wire resolver through the generators (owned)  🟡 IN PROGRESS
 Replace every direct `*_DEFAULT_SEQUENCE_CAPACITY` / `*_DEFAULT_STRING_CAPACITY`
@@ -116,8 +124,10 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
 - ⬜ **Serialized-size-max** (`compute_serialized_size_max`) still uses default
   `CPP_DEFAULT_STRING_CAPACITY` for worst-case wire/buffer sizing — should scale with
   a configured cap so big-payload buffers size correctly (follow-up, note in 229.3/.5).
-- ⬜ **Activate real resolver** in service/action + the production
-  `rosidl-bindgen::generate_package` callsite (currently `empty()` with a 229.3 TODO).
+- ✅ **Activated** the production message paths (Rust/C/C++) via 229.3 discovery —
+  `generate_package` + the C/C++ args-file paths now receive a discovered resolver.
+- ⬜ **Service/action** still pass `empty()` internally (their `generate_*` fns don't
+  take a resolver yet) — a real resolver + correct per-part keys is a follow-up.
 - **Files:** `packages/cli/rosidl-codegen/src/types.rs`,
   `.../generator/{common,msg,srv,action}.rs`, `.../rosidl-bindgen/src/generator.rs`.
 

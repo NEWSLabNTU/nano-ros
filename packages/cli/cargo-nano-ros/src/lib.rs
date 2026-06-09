@@ -26,6 +26,7 @@
 //!     verbose: false,
 //!     ros_edition: "humble".to_string(),
 //!     renames: std::collections::HashMap::new(),
+//!     codegen_config: None,
 //! };
 //!
 //! generate_from_package_xml(config).expect("Failed to generate bindings");
@@ -108,6 +109,10 @@ pub struct GenerateConfig {
     /// and Cargo.toml dependency names. Used by nano-ros to generate
     /// `nros-rcl-interfaces` instead of `rcl_interfaces`.
     pub renames: std::collections::HashMap<String, String>,
+    /// Explicit `nros-codegen.toml` path (RFC-0033). When `None`, the config is
+    /// discovered by walking up from the manifest directory. The explicit file,
+    /// if any, wins over discovered ones.
+    pub codegen_config: Option<PathBuf>,
 }
 
 /// Configuration for binding generation (single package)
@@ -160,6 +165,9 @@ pub struct GenerateCStandaloneConfig {
     pub verbose: bool,
     /// ROS 2 edition for type hash format ("humble" or "iron")
     pub ros_edition: String,
+    /// Explicit `nros-codegen.toml` path (RFC-0033); discovered from the
+    /// manifest dir when `None`.
+    pub codegen_config: Option<PathBuf>,
 }
 
 /// Configuration for C++ code generation
@@ -198,6 +206,18 @@ pub fn generate_from_package_xml(config: GenerateConfig) -> Result<()> {
 
     // Parse package.xml
     let pkg_xml = PackageXml::parse(&config.manifest_path)?;
+
+    // Per-field capacity config (RFC-0033): discover `nros-codegen.toml` by
+    // walking up from the manifest directory; an explicit --codegen-config wins.
+    let manifest_dir = config
+        .manifest_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let resolver = rosidl_codegen::CapacityResolver::resolve_for(
+        config.codegen_config.as_deref(),
+        manifest_dir,
+        None,
+    )?;
 
     if config.verbose {
         println!("Package: {} v{}", pkg_xml.name, pkg_xml.version);
@@ -247,8 +267,12 @@ pub fn generate_from_package_xml(config: GenerateConfig) -> Result<()> {
             }
         }
 
-        let result =
-            rosidl_bindgen::generator::generate_package(package, &config.output_dir, edition)?;
+        let result = rosidl_bindgen::generator::generate_package(
+            package,
+            &config.output_dir,
+            edition,
+            &resolver,
+        )?;
 
         println!(
             "  ✓ {} ({} messages, {} services, {} actions)",
@@ -691,8 +715,14 @@ pub fn generate_bindings(config: BindgenConfig) -> Result<()> {
             .clone()
     };
 
-    // Generate bindings using rosidl-bindgen library (default to Humble)
-    let result = generator::generate_package(&package, &config.output_dir, RosEdition::Humble)?;
+    // Generate bindings using rosidl-bindgen library (default to Humble).
+    // Single-package path (colcon convenience): discover nros-codegen.toml from
+    // the output directory upward (RFC-0033). The workspace path
+    // (`generate_from_package_xml`) discovers from the manifest directory.
+    let resolver =
+        rosidl_codegen::CapacityResolver::discover(&config.output_dir, None).unwrap_or_default();
+    let result =
+        generator::generate_package(&package, &config.output_dir, RosEdition::Humble, &resolver)?;
 
     if config.verbose {
         eprintln!(
@@ -715,6 +745,10 @@ struct GenerateCArgs {
     /// ROS 2 edition for type hash format (defaults to "humble")
     #[serde(default = "default_ros_edition")]
     ros_edition: String,
+    /// Explicit `nros-codegen.toml` path (CMake `CODEGEN_CONFIG`, RFC-0033).
+    /// When absent, discovered by walking up from the output directory.
+    #[serde(default)]
+    codegen_config: Option<PathBuf>,
 }
 
 fn default_ros_edition() -> String {
@@ -735,6 +769,14 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
 
     let edition = parse_ros_edition(&args.ros_edition)?;
     let type_hash = edition.type_hash();
+
+    // Per-field capacity config (RFC-0033): explicit CMake CODEGEN_CONFIG, else
+    // discover by walking up from the output dir (nested in the consumer tree).
+    let resolver = rosidl_codegen::CapacityResolver::resolve_for(
+        args.codegen_config.as_deref(),
+        &args.output_dir,
+        None,
+    )?;
 
     if config.verbose {
         println!("Generating C bindings for package: {}", args.package_name);
@@ -780,8 +822,7 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
-                    // Phase 229.3 will wire nros-codegen.toml discovery here.
-                    &rosidl_codegen::CapacityResolver::empty(),
+                    &resolver,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C code for message: {}", file_name)
@@ -901,6 +942,17 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
     // Parse package.xml
     let pkg_xml = PackageXml::parse(&config.manifest_path)?;
 
+    // Per-field capacity config (RFC-0033), discovered from the manifest dir.
+    let manifest_dir = config
+        .manifest_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let resolver = rosidl_codegen::CapacityResolver::resolve_for(
+        config.codegen_config.as_deref(),
+        manifest_dir,
+        None,
+    )?;
+
     if config.verbose {
         println!("Package: {} v{}", pkg_xml.name, pkg_xml.version);
         println!(
@@ -1016,12 +1068,7 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                     let parsed = rosidl_parser::parse_message(&content)
                         .wrap_err_with(|| format!("Failed to parse message: {}", file_name))?;
                     let generated = rosidl_codegen::generate_c_message_package(
-                        pkg_name,
-                        file_name,
-                        &parsed,
-                        type_hash,
-                        // Phase 229.3 will wire nros-codegen.toml discovery here.
-                        &rosidl_codegen::CapacityResolver::empty(),
+                        pkg_name, file_name, &parsed, type_hash, &resolver,
                     )?;
                     write_if_changed(msg_dir.join(&generated.header_name), &generated.header)?;
                     write_if_changed(msg_dir.join(&generated.source_name), &generated.source)?;
@@ -1277,6 +1324,14 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
     let edition = parse_ros_edition(&args.ros_edition)?;
     let type_hash = edition.type_hash();
 
+    // Per-field capacity config (RFC-0033): explicit CMake CODEGEN_CONFIG, else
+    // discover by walking up from the output dir.
+    let resolver = rosidl_codegen::CapacityResolver::resolve_for(
+        args.codegen_config.as_deref(),
+        &args.output_dir,
+        None,
+    )?;
+
     if config.verbose {
         println!("Generating C++ bindings for package: {}", args.package_name);
         println!("Output directory: {}", args.output_dir.display());
@@ -1321,8 +1376,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
-                    // Phase 229.3 will wire nros-codegen.toml discovery here.
-                    &rosidl_codegen::CapacityResolver::empty(),
+                    &resolver,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for message: {}", file_name)

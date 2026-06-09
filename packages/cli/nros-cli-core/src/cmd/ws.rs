@@ -478,7 +478,9 @@ fn codegen_workspace_pkg(
     }
     let package = Package::from_share_dir(pkg.dir.clone())
         .wrap_err_with(|| format!("ws sync: read pkg {}", pkg.dir.display()))?;
-    rosidl_bindgen::generator::generate_package(&package, &out_dir, edition)
+    // Per-field capacity config (RFC-0033), discovered from the pkg source dir.
+    let resolver = rosidl_codegen::CapacityResolver::discover(&pkg.dir, None)?;
+    rosidl_bindgen::generator::generate_package(&package, &out_dir, edition, &resolver)
         .wrap_err_with(|| format!("ws sync: generate_package failed for {}", pkg.name))?;
     // Codegen emits <out_dir>/<pkg>/{Cargo.toml,src/} with sibling `path =
     // "../<dep>"` deps. We keep that flat layout (no extra `rust/`
@@ -533,7 +535,8 @@ fn codegen_ament_deps_for(
         } else {
             println!("ws sync: codegen {}", amented.name);
         }
-        rosidl_bindgen::generator::generate_package(&amented, &out_dir, edition)
+        let resolver = rosidl_codegen::CapacityResolver::discover(&amented.share_dir, None)?;
+        rosidl_bindgen::generator::generate_package(&amented, &out_dir, edition, &resolver)
             .wrap_err_with(|| format!("ws sync: generate_package failed for {}", amented.name))?;
         emitted.insert(amented.name.clone());
         // Queue this pkg's own deps (parse its package.xml).

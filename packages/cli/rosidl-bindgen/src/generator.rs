@@ -60,6 +60,7 @@ pub fn generate_package(
     package: &Package,
     output_dir: &Path,
     edition: RosEdition,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedRustPackage> {
     let package_output = output_dir.join(&package.name);
     std::fs::create_dir_all(&package_output).wrap_err_with(|| {
@@ -72,11 +73,6 @@ pub fn generate_package(
     let mut message_count = 0;
     let mut service_count = 0;
     let mut all_dependencies = HashSet::new();
-
-    // Per-field capacity config (RFC-0033). Empty for now → built-in defaults;
-    // Phase 229.3 wires `nros-codegen.toml` discovery (workspace + app walk-up)
-    // and threads the loaded resolver here and into the service/action paths.
-    let resolver = CapacityResolver::empty();
 
     // Create src/msg directory
     let src_dir = package_output.join("src");
@@ -103,7 +99,7 @@ pub fn generate_package(
             &all_dependencies,
             &package.version,
             edition,
-            &resolver,
+            resolver,
         )
         .wrap_err_with(|| format!("Failed to generate nros message: {}", msg_name))?;
 
@@ -405,7 +401,12 @@ mod tests {
         let package = create_test_package(temp_dir.path());
         let output_dir = temp_dir.path().join("output");
 
-        let result = generate_package(&package, &output_dir, RosEdition::Humble);
+        let result = generate_package(
+            &package,
+            &output_dir,
+            RosEdition::Humble,
+            &CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let generated = result.unwrap();
@@ -455,7 +456,12 @@ mod tests {
         let package = Package::from_share_dir(share_dir).unwrap();
         let output_dir = temp_dir.path().join("output");
 
-        let result = generate_package(&package, &output_dir, RosEdition::Humble);
+        let result = generate_package(
+            &package,
+            &output_dir,
+            RosEdition::Humble,
+            &CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         // Check Cargo.toml content
@@ -486,7 +492,13 @@ mod tests {
         let package = create_test_package(temp_dir.path());
         let output_dir = temp_dir.path().join("output");
 
-        generate_package(&package, &output_dir, RosEdition::Humble).unwrap();
+        generate_package(
+            &package,
+            &output_dir,
+            RosEdition::Humble,
+            &CapacityResolver::empty(),
+        )
+        .unwrap();
 
         // Check lib.rs is no_std
         let lib_rs =
@@ -509,7 +521,12 @@ mod tests {
         let package = Package::from_share_dir(share_dir).unwrap();
         let output_dir = temp_dir.path().join("output");
 
-        let result = generate_package(&package, &output_dir, RosEdition::Humble);
+        let result = generate_package(
+            &package,
+            &output_dir,
+            RosEdition::Humble,
+            &CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let generated = result.unwrap();

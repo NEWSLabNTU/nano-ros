@@ -172,7 +172,7 @@ endfunction()
 function(nros_generate_interfaces target)
   cmake_parse_arguments(_ARG
     "SKIP_INSTALL"
-    "ROS_EDITION;LANGUAGE"
+    "ROS_EDITION;LANGUAGE;CODEGEN_CONFIG"
     "DEPENDENCIES"
     ${ARGN}
   )
@@ -387,6 +387,14 @@ function(nros_generate_interfaces target)
     string(APPEND _deps_json "\n    \"${_dep}\"")
   endforeach()
 
+  # RFC-0033 / Phase 229.3 — optional per-field capacity config. When unset,
+  # the `nros` CLI discovers `nros-codegen.toml` by walking up from output_dir.
+  if(DEFINED _ARG_CODEGEN_CONFIG AND NOT _ARG_CODEGEN_CONFIG STREQUAL "")
+    set(_codegen_config_json ",\n  \"codegen_config\": \"${_ARG_CODEGEN_CONFIG}\"")
+  else()
+    set(_codegen_config_json "")
+  endif()
+
   set(_args_content "{
   \"package_name\": \"${target}\",
   \"output_dir\": \"${_output_dir}\",
@@ -394,7 +402,7 @@ function(nros_generate_interfaces target)
   ],
   \"dependencies\": [${_deps_json}
   ],
-  \"ros_edition\": \"${_ARG_ROS_EDITION}\"
+  \"ros_edition\": \"${_ARG_ROS_EDITION}\"${_codegen_config_json}
 }
 ")
 
