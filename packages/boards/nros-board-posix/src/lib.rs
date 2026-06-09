@@ -286,6 +286,14 @@ impl PosixBoard {
                     ));
                 }
             }
+            // Reached once the session is open + every non-boot tier task is
+            // spawned; the boot tier then registers + spins below. Unique line
+            // (the single-tier path never prints it) so an E2E can confirm the
+            // emitted binary entered the per-tier run with a live session.
+            <Self as BoardPrint>::println(format_args!(
+                "nros: multi-tier run — {} tier(s) over one session",
+                tiers.len()
+            ));
             // Boot tier runs on this task, reusing the owning executor.
             run_boot_tier::<Self, F, E>(&mut boot_crt, &tiers[0], setup);
         });

@@ -127,6 +127,54 @@ fn multi_tier_binary_boots_into_run_tiers() {
 }
 
 #[test]
+fn multi_tier_binary_runs_both_tiers_with_router() {
+    // The complement to the no-router boot test: with a live zenohd (NSOS —
+    // native host networking, no QEMU), the emitted binary gets *past*
+    // `Executor::open`, spawns the low tier, and the boot tier prints the unique
+    // `multi-tier run — N tier(s)` marker before its forever-spin (which the
+    // timeout kills). Seeing the marker — and NOT the abort line — proves the
+    // emitted multi-tier binary actually entered the per-tier run over a real
+    // shared session.
+    if !nros_tests::fixtures::require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    let (_g, root) = stage_fixture();
+    let build = cargo_build(&root);
+    assert!(
+        build.status.success(),
+        "build failed.\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stderr),
+    );
+    let bin = root.join("target/debug/demo_entry");
+    assert!(bin.is_file(), "binary not produced at {}", bin.display());
+
+    let domain = nros_tests::unique_ros_domain_id();
+    let port = 17_400u16 + u16::from(domain);
+    let router = nros_tests::fixtures::ZenohRouter::start(port).expect("start zenohd router");
+    let locator = router.locator();
+
+    let out = Command::new("timeout")
+        .args(["6", bin.to_str().expect("bin path utf-8")])
+        .env("NROS_LOCATOR", &locator)
+        .env("ROS_DOMAIN_ID", domain.to_string())
+        .output()
+        .expect("spawn demo_entry");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        combined.contains("nros: multi-tier run — 2 tier(s)"),
+        "binary did not enter the per-tier run with a live session.\noutput:\n{combined}",
+    );
+    assert!(
+        !combined.contains("multi-tier entry needs a live session"),
+        "binary aborted at session open despite a live router.\noutput:\n{combined}",
+    );
+}
+
+#[test]
 fn instance_identity_mismatch_is_a_compile_error() {
     // RFC-0032 §7: a launch node that carries callback groups but does not name
     // a `[[component]]` is a hard error. Rename one launch node away from its
