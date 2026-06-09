@@ -131,10 +131,23 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
 - **Files:** `packages/cli/rosidl-codegen/src/types.rs`,
   `.../generator/{common,msg,srv,action}.rs`, `.../rosidl-bindgen/src/generator.rs`.
 
-### 229.5 — `heap` storage mode (phase 2)  ⬜
-`alloc::Vec<T>` / growable C/C++ sequence behind the `alloc`/`std` feature gate;
-`cap` is a reserve hint.
-- **Files:** generators + the message-runtime crates that define the sequence types.
+### 229.5 — `heap` storage mode  🟡 Rust DONE; C/C++ deferred
+`mode = "heap"` → `alloc`-backed growable containers (`cap` ignored — unbounded).
+- ✅ **Rust path** — `nros-core` exposes `pub mod heap { pub use alloc::{String, Vec} }`
+  under `any(feature="alloc", feature="std")` (the `extern crate alloc` cfg widened to
+  match); `nros_type_for_field_heap` emits `nros_core::heap::{Vec<T>, String}`;
+  `NrosField.is_heap` drives the deserialize template (growable `Vec::new()` + `push`
+  with no `CapacityExceeded`, `String::from(&str)`). Serialize is unchanged (`.len()` /
+  `.as_str()` / iteration work for both). Works in crate + inline modes.
+- ✅ **Verified** — `tests/heap_compile_check.rs` (`--ignored`) generates a heap message
+  (`uint8[] + string + string[] + int32`), drops it in a temp crate path-dep'd on real
+  nros-core/nros-serdes, and `cargo check` passes. Plus `heap_mode_emits_alloc_containers`
+  golden test.
+- ⬜ **C / C++** — still gated (`UnsupportedStorageMode`): a heap-backed sequence needs
+  a new runtime growable type in `nros-c` / `nros-cpp` (no `FixedSequence` equivalent).
+  Deferred.
+- **Files:** `nros-core/src/lib.rs`, `types.rs`, `templates.rs`,
+  `generator/common.rs`, `templates/message_nros.rs.jinja`, `tests/`.
 
 ### 229.6 — `borrowed` storage mode (phase 3, closes issue 0007)  ⬜
 Lifetime-carrying generated types (`struct Image<'a>`), deserializer returns slices

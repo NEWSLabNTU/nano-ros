@@ -655,6 +655,26 @@ pub fn nros_type_for_field_with_capacity(
     }
 }
 
+/// Heap (`mode = "heap"`, RFC-0033) rendering of a **top-level unbounded**
+/// `String` / `WString` / `Sequence`: `alloc`-backed `nros_core::heap::{String,
+/// Vec}` rather than a fixed-capacity `heapless` container. Element types keep
+/// their default (fixed-capacity) rendering. The `nros_core::heap::` path works
+/// in both crate and inline modes.
+pub fn nros_type_for_field_heap(
+    field_type: &FieldType,
+    current_package: Option<&str>,
+    mode: NrosCodegenMode,
+) -> String {
+    match field_type {
+        FieldType::String | FieldType::WString => "nros_core::heap::String".to_string(),
+        FieldType::Sequence { element_type } => {
+            let elem = nros_type_for_field_with_mode(element_type, current_package, mode);
+            format!("nros_core::heap::Vec<{elem}>")
+        }
+        _ => nros_type_for_field_with_mode(field_type, current_package, mode),
+    }
+}
+
 /// Get the Rust type string for a constant using nros backend
 /// Similar to `nros_type_for_field` but uses `&'static str` for string types
 pub fn nros_type_for_constant(field_type: &FieldType) -> String {
