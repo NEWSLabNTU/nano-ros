@@ -1,0 +1,55 @@
+# nano-ros Issues
+
+This directory tracks nano-ros bugs, limitations, and tech-debt — one file
+per issue, mirroring the repo's numbered-RFC convention
+(`docs/design/NNNN-*.md`) and the roadmap `archived/` pattern. Each file
+carries YAML frontmatter plus the issue body (problem, evidence, current
+state, fix/direction). Open issues live directly in `docs/issues/`; resolved
+ones move to `docs/issues/archived/`.
+
+## Conventions
+
+**Frontmatter schema** (every issue file):
+
+```yaml
+---
+id: 7                    # the issue number (matches the 4-digit filename id)
+title: Unbounded message sequences capped at 64 elements
+status: open             # open | resolved | wontfix
+type: enhancement        # bug | enhancement | tech-debt
+area: codegen            # codegen | rmw | memory | cmake | zephyr | nuttx | freertos | threadx | build | testing
+related: []              # e.g. [rfc-0023, phase-218] — cross-links to RFCs / phases
+resolved_in:             # (resolved only) commit short-hash or phase, e.g. "Phase 140"
+---
+```
+
+**Lifecycle**:
+
+1. Open an issue as `docs/issues/NNNN-slug.md` with `status: open`.
+2. When resolved, set `status: resolved` + `resolved_in:` and **move** the
+   file to `docs/issues/archived/NNNN-slug.md` (trimmed to a terse
+   resolution summary).
+3. **Numbering** = the next integer after the highest existing id.
+   **Slug** = a kebab-case form of the title; the filename id is the
+   zero-padded 4-digit issue number.
+
+## Issue vs RFC vs phase doc
+
+- **Issue** (`docs/issues/`) = a bug, limitation, or tech-debt item.
+- **RFC** (`docs/design/NNNN-*.md`) = a design decision.
+- **Roadmap phase** (`docs/roadmap/`) = an implementation plan.
+
+Issues cross-link to the RFCs and phases that inform or resolve them via the
+`related:` frontmatter field.
+
+## Open issues
+
+| id | title                                                                 | type        | area   | file |
+|----|-----------------------------------------------------------------------|-------------|--------|------|
+| 6  | Two separate heap allocators on RTOS platforms                        | tech-debt   | memory | [0006-rtos-dual-heap.md](0006-rtos-dual-heap.md) |
+| 7  | Unbounded message sequences capped at 64 elements                     | enhancement | codegen| [0007-seq-capacity-64.md](0007-seq-capacity-64.md) |
+| 8  | Two-copy receive path and static buffer pre-allocation at scale       | tech-debt   | rmw    | [0008-two-copy-receive.md](0008-two-copy-receive.md) |
+| 11 | C/C++ examples do not use package.xml as single source of truth       | tech-debt   | cmake  | [0011-cmake-msg-deps-ssot.md](0011-cmake-msg-deps-ssot.md) |
+| 17 | Zephyr native_sim ↔ zenoh E2E does not connect on some hosts (NSOS)    | bug         | zephyr | [0017-zephyr-nsos-e2e.md](0017-zephyr-nsos-e2e.md) |
+
+Resolved issues live in [`archived/`](archived/).
