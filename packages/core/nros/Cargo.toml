@@ -129,6 +129,14 @@ platform-nuttx = [
     "nros-platform/platform-nuttx",
     "nros-node/platform-nuttx",
     "platform-udp",
+    # Phase 227.3 (unified RMW) — forward to the zenoh backend's NuttX C
+    # port when linked (inert via `?` otherwise). Without this, zpico-sys
+    # compiles zenoh-pico WITHOUT `ZENOH_NUTTX`, so the NuttX setsockopt
+    # guards in `src/system/unix/network.c` (skip SO_LINGER / fix
+    # TCP_NODELAY) stay off — the SO_LINGER setsockopt then fails on NuttX
+    # (no `CONFIG_NET_SOLINGER`) and `_z_open_tcp` returns
+    # `Transport(ConnectionFailed)` before the connect succeeds.
+    "nros-rmw-zenoh?/platform-nuttx",
 ]
 platform-threadx = [
     "nros-platform/platform-threadx",

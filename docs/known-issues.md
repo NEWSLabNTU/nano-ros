@@ -565,20 +565,39 @@ Two distinct problems were found:
    `NROS_LOCATOR=tcp/10.0.2.2:7452`. Verified the correct locator is now in
    the ELF.
 
-2. **Connect still fails before the TCP layer (open follow-up).** Even with
-   the correct locator baked, `Executor::open` still returns
-   `Transport(ConnectionFailed)` with zero packets. gdb shows the libc
-   `connect()` is entered but `psock_connect`/`psock_tcp_connect` are
-   **never reached** and neither `arp_send` nor `virtio_net_send` ever
-   fires — so the failure is in socket creation / connect dispatch, before
-   any transmission. `socket()` is invoked with an unusual type argument
-   (`0x80006`; NuttX `SOCK_STREAM`=1, `SOCK_TYPE_MASK`=0xf, and the
-   `0x80000` bit is *Linux* `SOCK_CLOEXEC`, not NuttX's `0x100000`) —
-   pointing at a possible socket type/flag mismatch on the NuttX
-   zenoh-pico/std socket path (or a gdb register-read artifact; the
-   hit-counts are reliable, some arg reads on the thumb target are not).
-   Uncharted: no existing NuttX nano-ros connectivity E2E
-   (`test_nuttx_kernel_boots` is boot-to-NSH with `-nic none`).
+2. **ROOT CAUSE found — the entry links NO RMW backend.** Decisive: `nm`
+   on the entry ELF shows **`_z_open_tcp` and the whole zenoh-pico network
+   layer are absent** — zenoh-pico is not linked at all. The gdb spelunking
+   above (device up, IP set, `getaddrinfo`, the `socket`/`connect`/
+   `psock_socket` calls, the `0x80006` socket type) was all tracing NuttX's
+   OWN kernel + netlib ioctl sockets, never a zenoh connection — because
+   there is none. The entry depends on `nros` (rmw-cffi vtable) +
+   `nros-board-nuttx-qemu-arm` + the node pkgs, but **nothing pulls
+   `nros-rmw-zenoh`/`zpico-sys`** (verified: neither is in `cargo tree`).
+   So the CFFI vtable has no registered transport → `Executor::open`
+   returns `Transport(ConnectionFailed)`. (Contrast: the esp32 board calls
+   `nros_rmw_zenoh::register()`; the zephyr entry deps `nros-rmw-zenoh`;
+   the freertos/threadx boards dep it. The NuttX board/entry do neither.)
+
+   **Fix is a cascade (the cargo-NuttX-zenoh path has never been built).**
+   Adding `nros/rmw-zenoh` to the entry pulls the backend, but then:
+   (a) `nros/platform-nuttx` did NOT forward `nros-rmw-zenoh?/platform-nuttx`
+   the way `platform-posix` does (so `zpico-sys` would miss `ZENOH_NUTTX`
+   and the NuttX `SO_LINGER`/`TCP_NODELAY` setsockopt guards in
+   `system/unix/network.c` would stay off → setsockopt fails) — **FIXED**
+   in `nros/Cargo.toml`; (b) `nros-smoltcp` gates
+   `portable-atomic/unsafe-assume-single-core` on `cfg(any(target_arch =
+   "arm","riscv32"))`, too broad — it catches hosted armv7a-nuttx (has CAS)
+   and portable-atomic rejects it; and `nros-smoltcp` should not be pulled
+   for NuttX at all (NuttX uses kernel sockets via zenoh-pico's `unix`
+   system layer, not smoltcp); (c) backend registration on the NuttX flat
+   image (`.init_array`/`CONFIG_HAVE_CXXINITIALIZE` vs an explicit
+   `nros_rmw_zenoh::register()` in the board `run_entry`) is unverified.
+   Completing (b)+(c) is systematic follow-up to bring up the
+   cargo-NuttX-zenoh transport path; the locator fix + the platform-feature
+   forwarding fix are landed. Uncharted: no existing NuttX nano-ros
+   connectivity E2E (`test_nuttx_kernel_boots` is boot-to-NSH
+   with `-nic none`).
 
 3. **`nros-fast-release` profile image does not boot** (open follow-up).
    Only the `release`-profile ELF reaches `run_entry` and prints; the
