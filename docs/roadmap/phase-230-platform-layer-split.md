@@ -91,6 +91,30 @@ into `just check`. 230.1.7 flips it hard once the inventory is migrated.
 
 ### Wave 1 — Allocator unification (the starter)
 
+**Active slice (2026-06): Zephyr C-side funnel.** First vertical slice,
+fully verifiable here via native_sim E2E. Scope = route zenoh-pico's C
+`z_malloc`/`z_free`/`z_realloc` through `nros_platform_alloc` on Zephyr;
+nano-ros `global-alloc` stays **off** (framework owns the Rust heap, D6);
+true heap total via native `sys_heap` stats (D7). Steps:
+
+- [ ] Z1 — fork-guard vendored Zephyr `z_malloc/free/realloc` behind
+  `Z_FEATURE_NROS_PLATFORM_ALLOC` (submodule commit; pointer bump deferred
+  until the fork branch is pushed).
+- [ ] Z2 — emit a **memory-only** `z_*`→`nros_platform_alloc` alias for
+  Zephyr in `nros-zpico-build` + define `Z_FEATURE_NROS_PLATFORM_ALLOC`
+  (sleep/random/clock stay vendored — no dup symbols).
+- [ ] Z3 — confirm `nros-platform-zephyr::nros_platform_alloc` is on the
+  Zephyr app link line.
+- [ ] Z4 — build `rust/{talker,listener}/zenoh` Zephyr fixtures; run
+  `test_zephyr_to_native_e2e` / `test_native_to_zephyr_e2e`; verify green +
+  zenoh-pico allocs resolve to `nros_platform_alloc` (`nm`/strace).
+- [ ] Z5 — instrument `nros_platform_alloc` (`used`/`peak`) for the C side;
+  expose Zephyr-native `sys_heap` total as the unified figure (D7).
+
+Cross-RTOS rollout (FreeRTOS/ThreadX) + the optional global-allocator
+provider (230.1.4) + lint hard-flip (230.1.7) follow once the Zephyr slice
+is green. The generic work items below are the cross-RTOS form.
+
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
 > are two allocators and neither is nros's: the `#[global_allocator]` is
 > **zephyr-lang-rust's** (`modules/lang/rust/zephyr/src/alloc_impl.rs` →
