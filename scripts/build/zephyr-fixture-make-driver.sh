@@ -210,6 +210,26 @@ if [ "$dry_run" = "1" ]; then
     exit 0
 fi
 
+# issue #19 — serialize concurrent invocations on the shared Zephyr workspace.
+# Within ONE invocation, leaves use disjoint `build-<name>` dirs (safe under
+# `-j`), but two OVERLAPPING `just zephyr build-fixtures` runs (e.g. a manual
+# build alongside a CI/agent build) write the same `zephyr-workspace/build-*`
+# trees and race — a torn-down build dir surfaces as garbled cmake/ninja errors
+# and `nros-c` size-probe `.fingerprint` write failures. A repo-level advisory
+# lock makes a second invocation queue instead of clobbering the first. The
+# lock is held only for the build phase and auto-releases when fd 9 closes on
+# exit. flock-absent hosts skip it (best-effort).
+lockfile="$repo_root/build/zephyr-fixture-build.lock"
+mkdir -p "$(dirname "$lockfile")"
+exec 9>"$lockfile"
+if command -v flock >/dev/null 2>&1; then
+    if ! flock -n 9; then
+        echo "zephyr-fixture-make-driver: another zephyr fixture build holds $lockfile; waiting…"
+        flock 9
+    fi
+    echo "zephyr-fixture-make-driver: acquired build lock $lockfile"
+fi
+
 env -u MAKEFLAGS -u CARGO_MAKEFLAGS "$make_bin" "${make_args[@]}" -f "$makefile"
 
 echo "zephyr-fixture-make-driver: joblog=$joblog"

@@ -1,11 +1,28 @@
 ---
 id: 19
 title: Parallel Zephyr fixture builds race on shared build-dir / probe writes
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [phase-226]
+resolved_in: "scripts/build/zephyr-fixture-make-driver.sh (repo build lock)"
 ---
+
+**Resolved.** The race was between *overlapping* `just zephyr build-fixtures`
+invocations writing the same `zephyr-workspace/build-*` trees (e.g. a manual
+build alongside a CI/agent build) — within a single invocation, `-j` leaves
+already use disjoint `build-<name>` dirs. Added a repo-level advisory `flock`
+in `scripts/build/zephyr-fixture-make-driver.sh` around the build phase
+(`build/zephyr-fixture-build.lock`, held only during make, auto-released when
+fd 9 closes on exit): a second invocation now queues instead of clobbering the
+first. Verified: flock serializes a contended second invocation; a normal
+`just zephyr build-fixtures` acquires the lock and builds clean. The size-probe
+robustness option below is not needed for the observed symptom; keep it noted
+in case a same-invocation collision ever recurs.
+
+---
+
+Original report:
 
 Surfaced during the issue #11 #3 RMW-variant verification: building Zephyr
 native_sim fixtures with `NROS_ZEPHYR_BUILD_JOBS >= 2` (or with two
