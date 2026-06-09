@@ -302,6 +302,37 @@ function(nros_platform_link_app target)
         target_link_libraries(${target} PRIVATE threadx_platform)
     endif()
 
+    # Issue #20 — threadx-linux C++ + CycloneDDS: resolve the cyclone
+    # backend's back-reference to `nros_rmw_cffi_register_named`.
+    #
+    # The root CMakeLists whole-archives `libnros_rmw_cyclonedds.a`
+    # (which references `nros_rmw_cffi_register_named`, U) AFTER the
+    # Corrosion staticlibs `libnros_c.a` / `libnros_cpp.a` (which DEFINE
+    # it, T). With ld's single-pass archive semantics the cffi member is
+    # only extracted if something references the symbol BEFORE those
+    # archives are scanned. The native (POSIX) C++ examples get that for
+    # free: their `main.cpp` calls `nros::init()` → `CffiSession::open`/
+    # `nros_rmw_cffi_lookup`, which live in the SAME Rust object as
+    # `nros_rmw_cffi_register_named`, so the member is pulled early. The
+    # threadx-linux examples drive bring-up from a C `main.c` + the
+    # ThreadX system-codegen, whose pre-cyclone references never touch
+    # that object — so the member is left in the archive and the later
+    # whole-archived cyclone group fails to resolve the symbol.
+    #
+    # Fix: add `-u nros_rmw_cffi_register_named` so the linker carries the
+    # symbol as undefined from the start of the link and extracts the
+    # defining member when it first scans `libnros_c.a` / `libnros_cpp.a`
+    # (both of which already precede the cyclone group). The cyclone
+    # group's pending U-reference then resolves against that pulled
+    # member — no archive duplication, no link-order surgery. Scoped to
+    # the threadx-linux board + cyclonedds RMW; other boards/RMWs are
+    # unaffected.
+    if(NANO_ROS_RMW STREQUAL "cyclonedds"
+       AND NANO_ROS_BOARD STREQUAL "threadx-linux")
+        target_link_options(${target} PRIVATE
+            "LINKER:-u,nros_rmw_cffi_register_named")
+    endif()
+
     # Delegate per-board fixup (linker script, --nmagic, -u app_main,
     # pthread, etc.) to the overlay.
     if(COMMAND nros_board_link_app)
