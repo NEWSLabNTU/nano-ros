@@ -8,8 +8,8 @@
 
 #include <cstdint>
 
-#include <nros/node_pkg.hpp>
 #include <nros/nros.hpp>
+#include <nros/node_pkg.hpp>
 #include "std_msgs.hpp"
 
 namespace threadx_linux_cpp_talker {

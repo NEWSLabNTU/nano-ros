@@ -7,8 +7,8 @@
 
 #include <cstdint>
 
-#include <nros/node_pkg.hpp>
 #include <nros/nros.hpp>
+#include <nros/node_pkg.hpp>
 #include "example_interfaces.hpp"
 
 namespace threadx_linux_cpp_action_server {
