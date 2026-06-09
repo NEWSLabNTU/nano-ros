@@ -1,44 +1,69 @@
 ---
 id: 17
-title: Zephyr native_sim ↔ zenoh E2E does not connect on some hosts (NSOS offload)
-status: open
+title: Zephyr workspace Entry — native_sim zenoh E2E delivers (RESOLVED)
+status: resolved
 type: bug
 area: zephyr
 related: [issue-0018]
 ---
 
-Surfaced by Phase 225.P (Zephyr workspace Entry). On the maintainer host,
-every zephyr-zenoh native_sim E2E fails: the zephyr `zephyr.exe` reports
-`Transport(ConnectionFailed)` reaching the host `zenohd`, and the listener
-times out with zero messages. This affects the new
-`test_zephyr_workspace_entry_native_sim_e2e` **and** the pre-existing
-single-node reference `test_zephyr_to_native_e2e` identically.
+**Status (2026-06-09, RESOLVED): the Phase 225.P Zephyr workspace Entry
+now publishes `/chatter` over zenoh on native_sim and an external native
+listener receives it cross-process** (`Received: 0,1,2,…`).
+`test_zephyr_workspace_entry_native_sim_e2e` passes (`1 passed`, 9
+messages delivered in a 41 s window). The chain — `just zephyr
+build-fixtures` (`west build`) → boot `zephyr.exe` → `nros_net_wait`
+network gate → register the launch node set → register the zenoh backend
+→ `Executor::open` → publish → cross-process delivery to the external
+listener — works end to end.
 
-**Root cause (environmental, not a nano-ros defect)**: the native_sim NSOS
-(`CONFIG_NET_SOCKETS_OFFLOAD` + `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS`,
-both confirmed `=y` in the built `.config`) host-socket offload is
-non-functional in this environment. Evidence: `zenohd` v1.7.2 listens on
-`tcp/127.0.0.1:7456` and the host shell connects fine, but when the
-native_sim binary runs, (a) `zenohd` logs **no** incoming TCP, (b)
-`ss -tnp` shows **no** connection to 7456 during the connect window, and
-(c) `strace -f -e connect` on the binary shows **no** `connect()` syscall
-to 7456 at all. So NSOS fails the connect *inside* the offload layer
-before issuing any host syscall — a Zephyr/native_simulator NSOS-layer
-problem (kernel / libc / host-trampoline), independent of nano-ros.
+**The earlier "environmental NSOS offload is broken" diagnosis was WRONG
+— same misdiagnosis class as issue #18 (NuttX).** The evidence that read
+as "NSOS never issues a `connect()`" was actually an EMPTY locator: the
+Rust path used `ExecutorConfig::default_const()` (empty locator) → no TCP
+target → zenoh-pico fell back to multicast scouting (which native_sim
+can't satisfy), so there was nothing to `connect()` *to*. NSOS host-socket
+offload is fully functional: with the locator fixed, `strace` shows
+`connect(127.0.0.1:7456)=EINPROGRESS` followed by `sendto(...)` carrying
+the `0/chatter/std_msgs::msg::dds_::Int32_` declarations + data samples,
+and `zenohd --debug` logs the accepted transport, the subscriber/token
+declarations, and routes data to the external listener.
 
-**Impact**: no zephyr-zenoh E2E can pass in this environment. The Phase
-225.P workspace Entry itself is correct — it builds via `west build`,
-boots, brings up the network, registers its launch node set, and attempts
-the session exactly like the proven reference; only the host's NSOS
-connectivity blocks delivery.
+The fix was a two-part cascade in the never-before-exercised Rust
+Zephyr-zenoh native_sim path (commit `fix(zephyr): wire RMW backend +
+baked locator …`):
 
-**To fix / workaround**: run the zephyr E2E in a capable environment (CI,
-where the reference test passes), or repair the native_sim NSOS
-host-socket offload on this host. Build-only verification (`just zephyr
-build-fixtures` with `NROS_ZEPHYR_FIXTURE_FILTER=workspace-entry`) is
-green and is the local gate until NSOS connectivity is restored.
+1. **No RMW backend linked.** On `target_os = "none"` (native_sim)
+   `linkme` is a no-op and the image does not run the `.init_array`
+   auto-register fallback, so the CFFI vtable had no transport and
+   `Executor::open` returned `Transport(ConnectionFailed)`. The
+   `nros::main!` Zephyr branch now calls `nros::__register_linked_rmw()`
+   (a feature-dispatched, idempotent facade) before `Executor::open`;
+   `zephyr_component_main!` (single-node) does the same.
 
-**Cross-reference**: the sibling issue #18 (added in the same commit
-`5565da2d3`) is now RESOLVED, but via a DIFFERENT path — the cargo-lane
-NuttX entry boots on `qemu-system-arm` rather than native_sim — so that
-resolution does not transfer to this NSOS host-offload problem.
+2. **Empty locator.** `default_const()` → multicast scouting. The branch
+   now bakes the locator via `option_env!("NROS_LOCATOR")`, and the Entry
+   `build.rs` re-exports `CONFIG_NROS_ZENOH_LOCATOR` (the Kconfig the C API
+   path already consumes) into that env — Kconfig is now the single source
+   of truth for both languages.
+
+**native_sim timing note:** on a slow native_sim host the Entry's
+zenoh-pico session setup + first publish lands ~20 s after boot, then the
+publish cadence tracks the ~2.5 s lease keepalive. The E2E listener wait
+is 40 s to accommodate this (it always runs the full duration — the
+listener `spin_blocking`s and never self-exits, so the bound caps
+wall-time, not the success path). CI is faster; the bound is generous, not
+tight.
+
+**Follow-up (single-node reference `test_zephyr_to_native_e2e`):** the
+shared macros are fixed, but the single-node zephyr examples' `build.rs`
+still calls the renamed-away `export_kconfig_bool_options` (now
+`export_bool_kconfig`) and does not yet bake `CONFIG_NROS_ZENOH_LOCATOR`
+into `NROS_LOCATOR`. So the single-node reference E2E needs the same
+per-example `build.rs` locator-baking pass the Entry got before it will
+deliver. Tracked as a remaining cleanup under this issue.
+
+**Cross-reference**: the sibling issue #18 (NuttX) is also RESOLVED via
+the same locator + backend-register cascade (its entry boots on
+`qemu-system-arm` rather than native_sim, but the root cause and fix shape
+are identical).

@@ -178,6 +178,24 @@ pub static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError>
 pub static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
     nros_rmw_xrce_cffi::register;
 
+// Phase 225.P — explicitly register the linked RMW backend(s) into the CFFI
+// vtable. On targets `linkme` supports (linux/macos/windows/…) the
+// `RMW_INIT_ENTRIES` section auto-registers and this is redundant (but safe —
+// `register()` is idempotent). On targets `linkme` does NOT recognise
+// (`target_os = "none"` for Zephyr native_sim / bare-metal, `"nuttx"`,
+// `"espidf"`, …) the section walker is a no-op AND the standalone image may
+// not run the `.init_array` fallback, so the backend is never registered and
+// `Executor::open` fails with `Transport(ConnectionFailed)`. The
+// `nros::main!` framework branches for those targets call this before
+// `Executor::open`. Feature-dispatched, so the umbrella stays RMW-agnostic.
+#[doc(hidden)]
+pub fn __register_linked_rmw() {
+    #[cfg(feature = "rmw-zenoh")]
+    let _ = nros_rmw_zenoh::register();
+    #[cfg(feature = "rmw-xrce")]
+    let _ = nros_rmw_xrce_cffi::register();
+}
+
 pub mod dispatch_tag;
 pub mod guide;
 pub mod node;
@@ -296,8 +314,26 @@ macro_rules! zephyr_component_main {
                 zephyr::set_logger().ok();
             }
             let _ = $crate::platform::zephyr::wait_for_network(2000);
-            let config =
-                $crate::ExecutorConfig::default_const().node_name(<$node as $crate::Node>::NAME);
+            // Register the linked RMW backend. On Zephyr (`target_os =
+            // "none"`) `linkme` is a no-op and the image does not run the
+            // `.init_array` auto-register fallback, so without this the
+            // CFFI vtable has no transport and `Executor::open` fails with
+            // `Transport(ConnectionFailed)`.
+            $crate::__register_linked_rmw();
+            // Locator: `default_const()` = EMPTY locator → zenoh-pico
+            // multicast scouting, which native_sim NSOS can't satisfy.
+            // Bake `NROS_LOCATOR` at compile time (the example `build.rs`
+            // re-exports `CONFIG_NROS_ZENOH_LOCATOR` from Kconfig into that
+            // env). No baked value → falls back to the empty locator.
+            const BAKED_LOCATOR: ::core::option::Option<&str> = ::core::option_env!("NROS_LOCATOR");
+            let config = match BAKED_LOCATOR {
+                ::core::option::Option::Some(loc) if !loc.is_empty() => {
+                    $crate::ExecutorConfig::new(loc).node_name(<$node as $crate::Node>::NAME)
+                }
+                _ => {
+                    $crate::ExecutorConfig::default_const().node_name(<$node as $crate::Node>::NAME)
+                }
+            };
             let executor = match $crate::Executor::open(&config) {
                 Ok(executor) => executor,
                 Err(_) => return,

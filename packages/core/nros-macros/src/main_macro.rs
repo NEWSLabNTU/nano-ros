@@ -862,13 +862,38 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // the native_sim final link fails with undefined references.)
                 let _ = ::nros::platform::zephyr::wait_for_network(2000);
 
+                // Register the linked RMW backend into the CFFI vtable. On
+                // the Zephyr native_sim target (`x86_64-unknown-none`,
+                // `target_os = "none"`) `linkme` is a no-op and the image
+                // does not run the `.init_array` auto-register fallback, so
+                // without this the vtable has no transport and
+                // `Executor::open` fails with `Transport(ConnectionFailed)`.
+                ::nros::__register_linked_rmw();
+
                 // Open the executor + wrap it in the dispatch runtime, then
                 // register each launch-named Node pkg through a `RuntimeCtx`
                 // — exactly the `<pkg>::register(runtime)?` flow the native
                 // entry uses, so the launch file stays the single source of
                 // truth.
-                let config = ::nros::ExecutorConfig::default_const()
-                    .node_name(::core::env!("CARGO_PKG_NAME"));
+                // Locator: `default_const()` = EMPTY locator → zenoh-pico
+                // multicast scouting, which fails on native_sim NSOS (no
+                // multicast; the offload layer never even issues a
+                // `connect()`). The Zephyr target is `no_std`, so the
+                // hosted `from_env()` is unavailable — bake the locator at
+                // compile time via `option_env!("NROS_LOCATOR")`. The Entry
+                // `build.rs` re-exports `CONFIG_NROS_ZENOH_LOCATOR` (the
+                // same Kconfig the C API path consumes) into that env, so
+                // Kconfig is the single source of truth for both languages.
+                const BAKED_LOCATOR: ::core::option::Option<&str> =
+                    ::core::option_env!("NROS_LOCATOR");
+                let config = match BAKED_LOCATOR {
+                    ::core::option::Option::Some(loc) if !loc.is_empty() => {
+                        ::nros::ExecutorConfig::new(loc)
+                            .node_name(::core::env!("CARGO_PKG_NAME"))
+                    }
+                    _ => ::nros::ExecutorConfig::default_const()
+                        .node_name(::core::env!("CARGO_PKG_NAME")),
+                };
                 let executor = match ::nros::Executor::open(&config) {
                     ::core::result::Result::Ok(executor) => executor,
                     ::core::result::Result::Err(e) => {

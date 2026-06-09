@@ -2904,8 +2904,13 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
         .expect("Failed to start Zephyr workspace Entry");
 
     // The external listener must log at least one real `Received:` line.
+    // Timeout is generous: on a slow native_sim host the Entry's zenoh-pico
+    // session setup + first publish lands ~20 s after boot (steady-state
+    // cadence then tracks the ~2.5 s lease keepalive). `wait_for_all_output`
+    // always runs the full duration (the listener `spin_blocking`s and never
+    // self-exits), so this bounds the test wall-time, not its success path.
     let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(15))
+        .wait_for_all_output(Duration::from_secs(40))
         .expect("Listener timed out");
     let entry_output = entry
         .wait_for_output(Duration::from_secs(1))
