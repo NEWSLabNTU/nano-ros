@@ -466,13 +466,27 @@ pub fn generate_c_service_package(
     dependencies.sort();
     type_includes.sort();
 
+    // Per-field capacity config is not yet threaded into C services (Phase 229
+    // wave: messages first); an empty resolver reproduces built-in defaults.
+    let resolver = CapacityResolver::empty();
+    let request_msg = format!("{service_name}_Request");
+    let response_msg = format!("{service_name}_Response");
+
     // Build C fields for request
     let request_fields: Vec<CField> = service
         .request
         .fields
         .iter()
-        .map(|field| build_c_field(&field.name, &field.field_type, Some(package_name)))
-        .collect();
+        .map(|field| {
+            build_c_field(
+                &field.name,
+                &field.field_type,
+                Some(package_name),
+                &request_msg,
+                &resolver,
+            )
+        })
+        .collect::<Result<_, _>>()?;
 
     let request_constants: Vec<CConstant> = service
         .request
@@ -490,8 +504,16 @@ pub fn generate_c_service_package(
         .response
         .fields
         .iter()
-        .map(|field| build_c_field(&field.name, &field.field_type, Some(package_name)))
-        .collect();
+        .map(|field| {
+            build_c_field(
+                &field.name,
+                &field.field_type,
+                Some(package_name),
+                &response_msg,
+                &resolver,
+            )
+        })
+        .collect::<Result<_, _>>()?;
 
     let response_constants: Vec<CConstant> = service
         .response

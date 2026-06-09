@@ -780,6 +780,8 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
+                    // Phase 229.3 will wire nros-codegen.toml discovery here.
+                    &rosidl_codegen::CapacityResolver::empty(),
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C code for message: {}", file_name)
@@ -1014,7 +1016,12 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                     let parsed = rosidl_parser::parse_message(&content)
                         .wrap_err_with(|| format!("Failed to parse message: {}", file_name))?;
                     let generated = rosidl_codegen::generate_c_message_package(
-                        pkg_name, file_name, &parsed, type_hash,
+                        pkg_name,
+                        file_name,
+                        &parsed,
+                        type_hash,
+                        // Phase 229.3 will wire nros-codegen.toml discovery here.
+                        &rosidl_codegen::CapacityResolver::empty(),
                     )?;
                     write_if_changed(msg_dir.join(&generated.header_name), &generated.header)?;
                     write_if_changed(msg_dir.join(&generated.source_name), &generated.source)?;

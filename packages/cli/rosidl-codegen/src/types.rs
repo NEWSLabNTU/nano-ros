@@ -1046,6 +1046,34 @@ pub fn c_type_for_field(field_type: &FieldType, _current_package: Option<&str>) 
     }
 }
 
+/// Like [`c_type_for_field`], but overrides the capacity of a **top-level
+/// unbounded** `Sequence` with `cap` (RFC-0033, `owned` mode). Strings carry
+/// their capacity in the array suffix, not the base type, so the string arms
+/// are unchanged here — see [`c_array_suffix_for_field_with_capacity`].
+pub fn c_type_for_field_with_capacity(
+    field_type: &FieldType,
+    current_package: Option<&str>,
+    cap: usize,
+) -> String {
+    match field_type {
+        FieldType::Sequence { element_type } => {
+            let elem = c_type_for_field(element_type, current_package);
+            let elem_suffix = c_array_suffix_for_field(element_type);
+            format!("struct {{ uint32_t size; {elem} data{elem_suffix}[{cap}]; }}")
+        }
+        _ => c_type_for_field(field_type, current_package),
+    }
+}
+
+/// Like [`c_array_suffix_for_field`], but overrides the capacity of a
+/// **top-level unbounded** `String` / `WString` (the `char[N]` size) with `cap`.
+pub fn c_array_suffix_for_field_with_capacity(field_type: &FieldType, cap: usize) -> String {
+    match field_type {
+        FieldType::String | FieldType::WString => format!("[{cap}]"),
+        _ => c_array_suffix_for_field(field_type),
+    }
+}
+
 /// Get the C array suffix for a field type (e.g., "[256]" for strings, "[3]" for arrays)
 /// This comes after the field name in C declarations: `char name[256];`
 pub fn c_array_suffix_for_field(field_type: &FieldType) -> String {

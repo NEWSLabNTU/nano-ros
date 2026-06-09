@@ -610,14 +610,29 @@ pub fn generate_c_action_package(
     dependencies.sort();
     type_includes.sort();
 
+    // Per-field capacity config is not yet threaded into C actions (Phase 229
+    // wave: messages first); an empty resolver reproduces built-in defaults.
+    let c_resolver = CapacityResolver::empty();
+    let goal_msg = format!("{action_name}_Goal");
+    let result_msg = format!("{action_name}_Result");
+    let feedback_msg = format!("{action_name}_Feedback");
+
     // Build C fields for goal
     let goal_fields: Vec<CField> = action
         .spec
         .goal
         .fields
         .iter()
-        .map(|field| build_c_field(&field.name, &field.field_type, Some(package_name)))
-        .collect();
+        .map(|field| {
+            build_c_field(
+                &field.name,
+                &field.field_type,
+                Some(package_name),
+                &goal_msg,
+                &c_resolver,
+            )
+        })
+        .collect::<Result<_, _>>()?;
 
     let goal_constants: Vec<CConstant> = action
         .spec
@@ -637,8 +652,16 @@ pub fn generate_c_action_package(
         .result
         .fields
         .iter()
-        .map(|field| build_c_field(&field.name, &field.field_type, Some(package_name)))
-        .collect();
+        .map(|field| {
+            build_c_field(
+                &field.name,
+                &field.field_type,
+                Some(package_name),
+                &result_msg,
+                &c_resolver,
+            )
+        })
+        .collect::<Result<_, _>>()?;
 
     let result_constants: Vec<CConstant> = action
         .spec
@@ -658,8 +681,16 @@ pub fn generate_c_action_package(
         .feedback
         .fields
         .iter()
-        .map(|field| build_c_field(&field.name, &field.field_type, Some(package_name)))
-        .collect();
+        .map(|field| {
+            build_c_field(
+                &field.name,
+                &field.field_type,
+                Some(package_name),
+                &feedback_msg,
+                &c_resolver,
+            )
+        })
+        .collect::<Result<_, _>>()?;
 
     let feedback_constants: Vec<CConstant> = action
         .spec
