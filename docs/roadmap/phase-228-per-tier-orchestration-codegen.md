@@ -258,7 +258,7 @@ is an optional follow-up; the boot path + the 228.F runtime mechanism together
 cover correctness.
 **Files:** `packages/testing/nros-tests/tests/orchestration_tiers_native.rs`.
 
-### 228.E.2 — FreeRTOS `run_tiers` port  ✅ DONE (compile-verified; QEMU run pending)
+### 228.E.2 — FreeRTOS `run_tiers` port  ✅ DONE (build + QEMU-boot verified)
 **Landed + compile-verified for `thumbv7m-none-eabi`** (real kernel glue):
 `nros-board-freertos::run_tiers_entry` + `app_task_entry_tiers` (boot task) +
 `tier_task_entry` (spawned tiers via `nros_freertos_create_task` at the raw
@@ -271,11 +271,22 @@ the unchanged single-tier path. New `Executor::session_handle()` / opaque `Send`
 `SessionHandle` / `open_with_session_handle()` make the session movable across
 the RTOS task boundary. `Mps2An385::run_tiers` delegates here. MT=1 is the
 FreeRTOS default (RFC-0032 §5.0).
-**Remaining:** QEMU run E2E — assert distinct task priorities + zenoh-pico
-concurrent-multi-spin holds (no session corruption) on a 2-tier FreeRTOS example.
+**Build + QEMU-boot verified:** fixture `orchestration_tiers_freertos`
+(`nros::main!(launch)` + `deploy="freertos"` + 2-tier `system.toml`) + test
+`multi_tier_freertos_firmware_builds_and_boots_run_tiers` — builds the firmware
+for `thumbv7m-none-eabi` (proves macro→`run_tiers`→kernel-link) and boots it on
+QEMU (mps2-an385): `run_tiers_entry` prints the unique `(multi-tier)` banner,
+brings up the network, and reaches the boot-tier `Executor::open` (fails only on
+the absent router — the entry-poc lifecycle proof). The build caught a real bug
+(`pvPortFree`→`vPortFree`) and a stack-tuning need (small inline arena so two
+tier executors fit the task stacks). Gated on freertos prereqs.
+**Remaining (optional, deeper):** a router-backed run asserting both tiers' topic
+output + distinct task priorities + zenoh-pico concurrent-multi-spin holds (needs
+zenohd + TAP); the boot-lifecycle proof above covers the emit + boot path.
 **Files:** `packages/boards/nros-board-freertos/src/{entry,lib}.rs`,
 `packages/boards/nros-board-mps2-an385-freertos/src/lib.rs`,
-`packages/core/nros-node/src/executor/spin.rs` (`SessionHandle`).
+`packages/core/nros-node/src/executor/spin.rs` (`SessionHandle`),
+`packages/testing/nros-tests/{fixtures/orchestration_tiers_freertos,tests/orchestration_tiers_freertos.rs}`.
 
 ### 228.D.2 — Multi-tier shared-state locking + accessor emit  ⏳ GATED
 The lock-free `nros_orchestration::SharedRegion<N>` (Phase 172.I blackboard) +
