@@ -1321,6 +1321,8 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                     file_name,
                     &parsed,
                     type_hash,
+                    // Phase 229.3 will wire nros-codegen.toml discovery here.
+                    &rosidl_codegen::CapacityResolver::empty(),
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for message: {}", file_name)

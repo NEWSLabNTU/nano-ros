@@ -1,5 +1,6 @@
-use super::common::{GeneratorError, build_cpp_ffi_field, build_cpp_field};
+use super::common::{GeneratorError, build_cpp_ffi_field, build_cpp_field, resolve_cap_override};
 use crate::{
+    config::CapacityResolver,
     templates::{
         ActionCppHeaderTemplate, CConstant, CppFfiField, CppField, MessageCppFfiTemplate,
         MessageCppHeaderTemplate, SequenceStructDef, ServiceCppHeaderTemplate,
@@ -60,31 +61,49 @@ pub struct GeneratedCppActionPackage {
     pub feedback_ffi_rs_name: String,
 }
 
-/// Helper: build CppField list and CppFfiField list + sequence structs from message fields
+/// Helper: build CppField list and CppFfiField list + sequence structs from message fields.
+///
+/// `message_name` + `resolver` supply per-field capacity (RFC-0033); the same
+/// resolved `cap` feeds both the header type and the FFI repr so the two agree.
 fn build_fields(
     fields: &[rosidl_parser::Field],
     struct_name: &str,
     current_package: Option<&str>,
-) -> (Vec<CppField>, Vec<CppFfiField>, Vec<SequenceStructDef>) {
+    message_name: &str,
+    resolver: &CapacityResolver,
+) -> Result<(Vec<CppField>, Vec<CppFfiField>, Vec<SequenceStructDef>), GeneratorError> {
     let mut cpp_fields = Vec::new();
     let mut ffi_fields = Vec::new();
     let mut seq_structs = Vec::new();
 
     for field in fields {
+        let cap = resolve_cap_override(
+            &field.name,
+            &field.field_type,
+            current_package,
+            message_name,
+            resolver,
+        )?;
         cpp_fields.push(build_cpp_field(
             &field.name,
             &field.field_type,
             current_package,
+            cap,
         ));
-        let (ffi_field, seq_struct) =
-            build_cpp_ffi_field(&field.name, &field.field_type, struct_name, current_package);
+        let (ffi_field, seq_struct) = build_cpp_ffi_field(
+            &field.name,
+            &field.field_type,
+            struct_name,
+            current_package,
+            cap,
+        );
         ffi_fields.push(ffi_field);
         if let Some(ss) = seq_struct {
             seq_structs.push(ss);
         }
     }
 
-    (cpp_fields, ffi_fields, seq_structs)
+    Ok((cpp_fields, ffi_fields, seq_structs))
 }
 
 /// Helper: build CConstant list
@@ -231,6 +250,7 @@ pub fn generate_cpp_message_package(
     message_name: &str,
     message: &Message,
     type_hash: &str,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedCppPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let msg_snake = to_snake_case(message_name);
@@ -250,8 +270,13 @@ pub fn generate_cpp_message_package(
     let header_name = format!("{}_msg_{}.hpp", c_pkg_name, msg_snake);
     let ffi_rs_name = format!("{}_msg_{}_ffi.rs", c_pkg_name, msg_snake);
 
-    let (cpp_fields, ffi_fields, seq_structs) =
-        build_fields(&message.fields, &struct_name, Some(package_name));
+    let (cpp_fields, ffi_fields, seq_structs) = build_fields(
+        &message.fields,
+        &struct_name,
+        Some(package_name),
+        message_name,
+        resolver,
+    )?;
     let constants = build_constants(&message.constants);
     let dependencies = extract_deps(&message.fields);
     let intra_package_includes = extract_intra_package_includes(&message.fields, package_name);
@@ -333,8 +358,16 @@ pub fn generate_cpp_service_package(
         c_pkg_name, srv_snake
     );
 
-    let (req_cpp_fields, req_ffi_fields, req_seq_structs) =
-        build_fields(&service.request.fields, &req_struct, Some(package_name));
+    // Per-field capacity config is not yet threaded into C++ services (Phase 229
+    // wave: messages first); an empty resolver reproduces built-in defaults.
+    let resolver = CapacityResolver::empty();
+    let (req_cpp_fields, req_ffi_fields, req_seq_structs) = build_fields(
+        &service.request.fields,
+        &req_struct,
+        Some(package_name),
+        &format!("{service_name}_Request"),
+        &resolver,
+    )?;
     let req_constants = build_constants(&service.request.constants);
     let req_serialized_size = compute_serialized_size_max(&req_ffi_fields);
 
@@ -355,8 +388,13 @@ pub fn generate_cpp_service_package(
         c_pkg_name, srv_snake
     );
 
-    let (resp_cpp_fields, resp_ffi_fields, resp_seq_structs) =
-        build_fields(&service.response.fields, &resp_struct, Some(package_name));
+    let (resp_cpp_fields, resp_ffi_fields, resp_seq_structs) = build_fields(
+        &service.response.fields,
+        &resp_struct,
+        Some(package_name),
+        &format!("{service_name}_Response"),
+        &resolver,
+    )?;
     let resp_constants = build_constants(&service.response.constants);
     let resp_serialized_size = compute_serialized_size_max(&resp_ffi_fields);
 
@@ -476,12 +514,21 @@ pub fn generate_cpp_action_package(
         size: usize,
     }
 
-    let build_part = |part_name: &str, msg: &Message| -> ActionPart {
+    // Per-field capacity config is not yet threaded into C++ actions (Phase 229
+    // wave: messages first); an empty resolver reproduces built-in defaults.
+    let resolver = CapacityResolver::empty();
+    let build_part = |part_name: &str, msg: &Message| -> Result<ActionPart, GeneratorError> {
         let struct_name = format!("{}_action_{}_{}_t", c_pkg_name, act_snake, part_name);
-        let (cpp_f, ffi_f, seq_s) = build_fields(&msg.fields, &struct_name, Some(package_name));
+        let (cpp_f, ffi_f, seq_s) = build_fields(
+            &msg.fields,
+            &struct_name,
+            Some(package_name),
+            &format!("{action_name}_{part_name}"),
+            &resolver,
+        )?;
         let constants = build_constants(&msg.constants);
         let size = compute_serialized_size_max(&ffi_f);
-        ActionPart {
+        Ok(ActionPart {
             publish_fn: format!(
                 "nros_cpp_publish_{}_action_{}_{}",
                 c_pkg_name, act_snake, part_name
@@ -508,12 +555,12 @@ pub fn generate_cpp_action_package(
             seq_structs: seq_s,
             constants,
             size,
-        }
+        })
     };
 
-    let goal = build_part("goal", &action.spec.goal);
-    let result = build_part("result", &action.spec.result);
-    let feedback = build_part("feedback", &action.spec.feedback);
+    let goal = build_part("goal", &action.spec.goal)?;
+    let result = build_part("result", &action.spec.result)?;
+    let feedback = build_part("feedback", &action.spec.feedback)?;
 
     let dependencies = {
         let mut deps = extract_deps(&action.spec.goal.fields);

@@ -693,7 +693,13 @@ mod tests {
         let msg = parse_message("int32 data\n").unwrap();
         let type_hash = "TypeHashNotSupported";
 
-        let result = generate_cpp_message_package("std_msgs", "Int32", &msg, type_hash);
+        let result = generate_cpp_message_package(
+            "std_msgs",
+            "Int32",
+            &msg,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
@@ -729,7 +735,13 @@ mod tests {
         let msg = parse_message("string data\n").unwrap();
         let type_hash = "TypeHashNotSupported";
 
-        let result = generate_cpp_message_package("std_msgs", "String", &msg, type_hash);
+        let result = generate_cpp_message_package(
+            "std_msgs",
+            "String",
+            &msg,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
@@ -748,7 +760,13 @@ mod tests {
         let msg = parse_message("int32[3] values\n").unwrap();
         let type_hash = "TypeHashNotSupported";
 
-        let result = generate_cpp_message_package("test_msgs", "IntArray", &msg, type_hash);
+        let result = generate_cpp_message_package(
+            "test_msgs",
+            "IntArray",
+            &msg,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
@@ -767,7 +785,13 @@ mod tests {
         let msg = parse_message("int32[] data\n").unwrap();
         let type_hash = "TypeHashNotSupported";
 
-        let result = generate_cpp_message_package("test_msgs", "IntSeq", &msg, type_hash);
+        let result = generate_cpp_message_package(
+            "test_msgs",
+            "IntSeq",
+            &msg,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
@@ -779,6 +803,64 @@ mod tests {
         assert!(pkg.ffi_rs.contains("_seq_t"));
         assert!(pkg.ffi_rs.contains("pub size: u32"));
         assert!(pkg.ffi_rs.contains("write_u32"));
+    }
+
+    #[test]
+    fn test_cpp_per_field_capacity_config() {
+        // RFC-0033: header type AND FFI repr must both reflect the resolved cap.
+        let msg = parse_message("uint8[] pixels\nstring label\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/Frame.pixels" = 921600
+            "my_msgs/Frame.label"  = 16
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_cpp_message_package("my_msgs", "Frame", &msg, "h", &resolver).unwrap();
+
+        // Header: configured sequence + string capacities.
+        assert!(
+            pkg.header.contains("nros::FixedSequence<uint8_t, 921600>"),
+            "header seq cap:\n{}",
+            pkg.header
+        );
+        assert!(
+            pkg.header.contains("nros::FixedString<16>"),
+            "header string cap:\n{}",
+            pkg.header
+        );
+        // FFI repr must agree: [u8; 16] string + sequence struct capacity 921600.
+        assert!(
+            pkg.ffi_rs.contains("[u8; 16]"),
+            "ffi string repr:\n{}",
+            pkg.ffi_rs
+        );
+        assert!(
+            pkg.ffi_rs.contains("921600"),
+            "ffi seq cap:\n{}",
+            pkg.ffi_rs
+        );
+        assert!(!pkg.header.contains(", 64>"));
+        assert!(!pkg.ffi_rs.contains("[u8; 256]"));
+    }
+
+    #[test]
+    fn test_cpp_borrowed_mode_errors_in_phase1() {
+        let msg = parse_message("string label\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/M.label" = { cap = 8, mode = "heap" }
+            "#,
+        )
+        .unwrap();
+        let err = match generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver) {
+            Ok(_) => panic!("expected unsupported-mode error"),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("heap"), "{err}");
+        assert!(err.contains("not yet supported"), "{err}");
     }
 
     #[test]
