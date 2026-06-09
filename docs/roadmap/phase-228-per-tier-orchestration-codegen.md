@@ -16,9 +16,9 @@ verified **end-to-end on native and FreeRTOS** (boot + QEMU), with cross-tier
 228.G.6) — their markers below are reconciled to ✅. Router-backed both-tiers
 runs now land on **native** (NSOS, `multi_tier_binary_runs_both_tiers_with_router`)
 and **FreeRTOS** (QEMU slirp, `multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers`),
-plus a single-tier gate-parity guard. What remains is **optional**: a
-cross-*language* shared-state example + the descoped 228.H. Design-of-record:
-**RFC-0032**.
+plus a single-tier gate-parity guard and a cross-*language* shared-state roundtrip
+(C + Rust over one `LockedSharedRegion`). Only the descoped 228.H remains.
+Design-of-record: **RFC-0032**.
 
 **Priority.** P2 — the single-tier path works today and covers most cases;
 multi-tier is the differentiator for hard-RT embedded (mixed-criticality on one
@@ -312,7 +312,7 @@ covers the emit + boot + per-tier-run path.
 `packages/core/nros-node/src/executor/spin.rs` (`SessionHandle`),
 `packages/testing/nros-tests/{fixtures/orchestration_tiers_freertos,tests/orchestration_tiers_freertos.rs}`.
 
-### 228.D.2 — Multi-tier shared-state locking + accessor emit  ✅ DONE (codegen + 3-lang surface; cross-lang example pending)
+### 228.D.2 — Multi-tier shared-state locking + accessor emit  ✅ DONE (codegen + 3-lang surface + cross-lang runtime roundtrip)
 **Wave 1 (runtime primitive):** `nros_orchestration::LockedSharedRegion<N>` — the
 cross-tier counterpart to the lock-free `SharedRegion<N>` (Phase 172.I), every
 `with` access under `critical_section::with` (platform supplies the impl — the
@@ -339,11 +339,19 @@ for C and C++; Rust→C type map) + the Rust `#[unsafe(no_mangle)] extern "C"`
 pointer + ctx). Both wired into the bake (idempotent). Verified by the emitter
 test + a standalone compile-check of the full emitted module (typed accessors +
 C-ABI exports) for edition 2024.
-**Remaining (optional):** a cross-*language* consuming example — a C/C++ node and
-a Rust node sharing one region at runtime (links the bake-generated `.h` + `.rs`).
-The single-language paths + the cross-tier guard are proven.
+**Wave 4 (cross-language consuming example):** `shared_state_xlang` fixture +
+`shared_state_region_is_shared_across_c_and_rust` — bakes a one-region
+`[[shared_state]]` system with `nros codegen-system`, then builds + runs a
+consumer that links BOTH generated halves into one binary: `nros_shared_state.rs`
+(Rust accessors + C-ABI exports, consumed as a module) and `nros_shared_context.h`
+(included by a C TU calling the Rust-exported accessors). Asserts a Rust write is
+seen by C, a C write by Rust, and a guarded C `modify` by Rust — i.e. both
+languages share the ONE `LockedSharedRegion`. The `sync = "mutex"` region links
+the `critical_section`-guarded path (consumer supplies `critical-section/std`).
+Gated on the `nros` CLI + a C compiler.
 **Files:** `packages/core/nros-orchestration/src/lib.rs` (locked region + proof),
-`packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (Rust + C emit + wire).
+`packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (Rust + C emit + wire),
+`packages/testing/nros-tests/{fixtures/shared_state_xlang,tests/orchestration_shared_state_xlang.rs}`.
 
 ### 228.H — Spin-period bound-check warning  ❌ DESCOPED
 `spin_period_us` ≤ tightest timer period (RFC-0015 §4.3) needs each callback's
