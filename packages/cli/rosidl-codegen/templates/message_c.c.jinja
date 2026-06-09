@@ -6,6 +6,7 @@
 #include "{{ header_name }}"
 #include <nros/types.h>
 #include <nros/cdr.h>
+#include <nros/platform.h>
 #include <string.h>
 
 // Type support structure
@@ -22,6 +23,21 @@ const nros_message_type_t* {{ struct_name }}_get_type_support(void) {
 void {{ struct_name }}_init({{ struct_name }}* msg) {
     if (msg == NULL) return;
     memset(msg, 0, sizeof({{ struct_name }}));
+}
+
+// Release heap-backed (`mode = "heap"`, RFC-0033) fields. Safe on a zero-inited
+// or already-fini'd message (frees NULL, re-zeroes). No-op when the message has
+// no heap fields.
+void {{ struct_name }}_fini({{ struct_name }}* msg) {
+    if (msg == NULL) return;
+{%- for field in fields %}
+{%- if field.is_heap %}
+    nros_platform_free(msg->{{ field.name }}.data);
+    msg->{{ field.name }}.data = NULL;
+    msg->{{ field.name }}.size = 0;
+    msg->{{ field.name }}.capacity = 0;
+{%- endif %}
+{%- endfor %}
 }
 
 // =============================================================================
@@ -123,6 +139,29 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
     {
         uint32_t len;
         if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+{%- if field.is_heap %}
+        // Heap sequence (RFC-0033): allocate exactly `len` elements; freed by
+        // {{ struct_name }}_fini. A re-deserialize leaks the prior buffer unless
+        // the caller _fini's first.
+        if (len > 0) {
+            msg->{{ field.name }}.data = nros_platform_malloc((size_t)len * sizeof(*msg->{{ field.name }}.data));
+            if (msg->{{ field.name }}.data == NULL) return -1;
+        } else {
+            msg->{{ field.name }}.data = NULL;
+        }
+        msg->{{ field.name }}.size = len;
+        msg->{{ field.name }}.capacity = len;
+        for (size_t i = 0; i < len; ++i) {
+            if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}.data[i]) < 0) {
+                nros_platform_free(msg->{{ field.name }}.data);
+                msg->{{ field.name }}.data = NULL;
+                msg->{{ field.name }}.size = 0;
+                msg->{{ field.name }}.capacity = 0;
+                return -1;
+            }
+        }
+    }
+{%- else %}
         msg->{{ field.name }}.size = len;
         if (len > {{ field.sequence_capacity }}) return -1;
         for (size_t i = 0; i < len; ++i) {
@@ -135,6 +174,7 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
 {%- endif %}
         }
     }
+{%- endif %}
 {%- else %}
     if ({{ field.nested_struct_name }}_deserialize_inline(&msg->{{ field.name }}, &ptr, end, origin) < 0) return -1;
 {%- endif %}

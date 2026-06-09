@@ -48,6 +48,12 @@ static inline const char* {{ struct_name }}_get_type_hash(void) {
 /// Initialize a {{ message_name }} message to default values
 void {{ struct_name }}_init({{ struct_name }}* msg);
 
+/// Release heap-backed (`mode = "heap"`, RFC-0033) fields and re-zero them.
+/// Safe on a zero-initialized or already-fini'd message; a no-op when the
+/// message has no heap fields. Call after deserializing a message with heap
+/// sequences to avoid leaking the malloc'd element buffers.
+void {{ struct_name }}_fini({{ struct_name }}* msg);
+
 /// Serialize a {{ message_name }} message to CDR format (writes a fresh
 /// 4-byte CDR encapsulation header followed by the fields).
 /// Returns 0 on success, -1 on error. On success, *serialized_size contains

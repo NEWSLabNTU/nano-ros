@@ -4,11 +4,11 @@ use crate::{
     types::{
         C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
         NrosCodegenMode, c_array_suffix_for_field, c_array_suffix_for_field_with_capacity,
-        c_cdr_read_method, c_cdr_write_method, c_type_for_field, c_type_for_field_with_capacity,
-        cpp_array_suffix_for_field, cpp_type_for_field, cpp_type_for_field_with_capacity,
-        escape_keyword, nros_type_for_field_heap, nros_type_for_field_with_capacity,
-        nros_type_for_field_with_mode, repr_c_type_for_field, repr_c_type_for_field_with_capacity,
-        to_c_package_name,
+        c_cdr_read_method, c_cdr_write_method, c_type_for_field, c_type_for_field_heap,
+        c_type_for_field_with_capacity, cpp_array_suffix_for_field, cpp_type_for_field,
+        cpp_type_for_field_with_capacity, escape_keyword, nros_type_for_field_heap,
+        nros_type_for_field_with_capacity, nros_type_for_field_with_mode, repr_c_type_for_field,
+        repr_c_type_for_field_with_capacity, to_c_package_name,
     },
     utils::to_snake_case,
 };
@@ -263,31 +263,44 @@ pub(super) fn build_c_field(
         FieldType::Sequence { .. } => Some(CapFieldKind::Sequence),
         _ => None,
     };
-    let cap_override = if let Some(kind) = cap_kind {
+    let unsupported = |mode: &'static str| GeneratorError::UnsupportedStorageMode {
+        package: current_package.unwrap_or("").to_string(),
+        message: message_name.to_string(),
+        field: name.to_string(),
+        mode,
+    };
+    // (c_type, array_suffix, is_heap, resolved owned sequence capacity).
+    let mut is_heap = false;
+    let mut owned_seq_cap: Option<usize> = None;
+    let (c_type, array_suffix) = if let Some(kind) = cap_kind {
         let package = current_package.unwrap_or("");
         let storage = resolver.resolve(package, message_name, name, kind);
-        if !storage.mode.is_phase1_supported() {
-            return Err(GeneratorError::UnsupportedStorageMode {
-                package: package.to_string(),
-                message: message_name.to_string(),
-                field: name.to_string(),
-                mode: storage.mode.as_str(),
-            });
+        match storage.mode {
+            StorageMode::Owned => {
+                if matches!(field_type, FieldType::Sequence { .. }) {
+                    owned_seq_cap = Some(storage.cap);
+                }
+                (
+                    c_type_for_field_with_capacity(field_type, current_package, storage.cap),
+                    c_array_suffix_for_field_with_capacity(field_type, storage.cap),
+                )
+            }
+            StorageMode::Heap => match c_type_for_field_heap(field_type, current_package) {
+                // Heap-backed `{ T* data; size_t size, capacity; }` — no suffix,
+                // unbounded. Mallocs on deserialize; freed by `_fini`.
+                Some(ty) => {
+                    is_heap = true;
+                    (ty, String::new())
+                }
+                None => return Err(unsupported("heap")),
+            },
+            StorageMode::Borrowed => return Err(unsupported("borrowed")),
         }
-        Some(storage.cap)
     } else {
-        None
-    };
-
-    let (c_type, array_suffix) = match cap_override {
-        Some(cap) => (
-            c_type_for_field_with_capacity(field_type, current_package, cap),
-            c_array_suffix_for_field_with_capacity(field_type, cap),
-        ),
-        None => (
+        (
             c_type_for_field(field_type, current_package),
             c_array_suffix_for_field(field_type),
-        ),
+        )
     };
 
     // Determine type characteristics
@@ -311,10 +324,11 @@ pub(super) fn build_c_field(
     );
     let is_nested = matches!(field_type, FieldType::NamespacedType { .. });
 
-    // Get array/sequence info. Unbounded sequences use the resolved capacity.
+    // Get array/sequence info. Owned unbounded sequences use the resolved
+    // capacity; heap sequences are unbounded (capacity unused → 0).
     let (array_size, sequence_capacity) = match field_type {
         FieldType::Array { size, .. } => (*size, 0),
-        FieldType::Sequence { .. } => (0, cap_override.unwrap_or(C_DEFAULT_SEQUENCE_CAPACITY)),
+        FieldType::Sequence { .. } => (0, owned_seq_cap.unwrap_or(C_DEFAULT_SEQUENCE_CAPACITY)),
         FieldType::BoundedSequence { max_size, .. } => (0, *max_size),
         _ => (0, 0),
     };
@@ -392,6 +406,7 @@ pub(super) fn build_c_field(
         is_nested,
         is_primitive_element,
         is_string_element,
+        is_heap,
     })
 }
 

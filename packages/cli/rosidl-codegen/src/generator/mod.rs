@@ -569,7 +569,7 @@ mod tests {
     }
 
     #[test]
-    fn test_c_heap_mode_errors_in_phase1() {
+    fn test_c_borrowed_mode_errors() {
         let msg = parse_message("uint8[] data\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
@@ -584,6 +584,57 @@ mod tests {
         };
         assert!(err.contains("borrowed"), "{err}");
         assert!(err.contains("not yet supported"), "{err}");
+    }
+
+    #[test]
+    fn test_c_heap_primitive_sequence() {
+        // RFC-0033 mode = "heap" → rclc-style `{ T* data; size_t size, capacity; }`.
+        let msg = parse_message("uint8[] data\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/Blob.data" = { cap = 0, mode = "heap" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_c_message_package("my_msgs", "Blob", &msg, "h", &resolver).unwrap();
+        // Heap struct in the header (pointer + size + capacity, no inline array).
+        assert!(
+            pkg.header
+                .contains("struct { uint8_t* data; size_t size; size_t capacity; } data"),
+            "heap struct missing:\n{}",
+            pkg.header
+        );
+        assert!(pkg.header.contains("_fini"), "fini decl missing");
+        // Deserialize mallocs via the platform allocator; fini frees.
+        assert!(
+            pkg.source.contains("nros_platform_malloc"),
+            "{}",
+            pkg.source
+        );
+        assert!(pkg.source.contains("nros_platform_free"), "{}", pkg.source);
+        assert!(!pkg.header.contains("data[64]"));
+    }
+
+    #[test]
+    fn test_c_heap_string_unsupported() {
+        // Heap strings / heap seq-of-strings are not yet supported in C.
+        let msg = parse_message("string label\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/M.label" = { cap = 0, mode = "heap" }
+            "#,
+        )
+        .unwrap();
+        let err = match generate_c_message_package("my_msgs", "M", &msg, "h", &resolver) {
+            Ok(_) => panic!("expected unsupported-mode error for heap string"),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            err.contains("heap") && err.contains("not yet supported"),
+            "{err}"
+        );
     }
 
     #[test]

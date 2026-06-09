@@ -366,6 +366,11 @@ pub struct CField {
     pub is_nested: bool,
     pub is_primitive_element: bool,
     pub is_string_element: bool,
+    /// RFC-0033: `mode = "heap"` — the field is a heap-backed
+    /// `{ T* data; size_t size; size_t capacity; }` (rclc `rosidl_runtime_c`
+    /// pattern) rather than an inline fixed-capacity buffer. The deserialize
+    /// codegen mallocs; `<struct>_fini` frees.
+    pub is_heap: bool,
 }
 
 /// Constant for C code generation

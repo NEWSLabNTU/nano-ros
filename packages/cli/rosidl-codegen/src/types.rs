@@ -1085,6 +1085,30 @@ pub fn c_type_for_field_with_capacity(
     }
 }
 
+/// Heap (`mode = "heap"`, RFC-0033) C rendering of a **top-level unbounded
+/// primitive `Sequence`**, mirroring rclc's `rosidl_runtime_c__<T>__Sequence`:
+/// a `{ T* data; size_t size; size_t capacity; }` struct (no inline array). The
+/// deserializer mallocs; `<struct>_fini` frees. Returns `None` for shapes
+/// C-heap does not yet support (heap strings, sequences of strings / nested
+/// messages) so the caller rejects them with a clear error.
+pub fn c_type_for_field_heap(
+    field_type: &FieldType,
+    current_package: Option<&str>,
+) -> Option<String> {
+    match field_type {
+        FieldType::Sequence { element_type } => match element_type.as_ref() {
+            FieldType::Primitive(_) => {
+                let elem = c_type_for_field(element_type, current_package);
+                Some(format!(
+                    "struct {{ {elem}* data; size_t size; size_t capacity; }}"
+                ))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Like [`c_array_suffix_for_field`], but overrides the capacity of a
 /// **top-level unbounded** `String` / `WString` (the `char[N]` size) with `cap`.
 pub fn c_array_suffix_for_field_with_capacity(field_type: &FieldType, cap: usize) -> String {
