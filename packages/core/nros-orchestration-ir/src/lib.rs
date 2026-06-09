@@ -236,14 +236,14 @@ pub fn resolve_tiers(
     let mut node_tier: BTreeMap<&str, &str> = BTreeMap::new();
     for (tier, members) in &members_by_tier {
         for (node, _group) in members {
-            if let Some(prev) = node_tier.insert(node.as_str(), tier.as_str()) {
-                if prev != tier.as_str() {
-                    return Err(TierResolveError::NodeSpansTiers {
-                        node: node.clone(),
-                        tier_a: prev.to_string(),
-                        tier_b: tier.clone(),
-                    });
-                }
+            if let Some(prev) = node_tier.insert(node.as_str(), tier.as_str())
+                && prev != tier.as_str()
+            {
+                return Err(TierResolveError::NodeSpansTiers {
+                    node: node.clone(),
+                    tier_a: prev.to_string(),
+                    tier_b: tier.clone(),
+                });
             }
         }
     }
