@@ -117,8 +117,12 @@ if(CONFIG_NROS_C_API)
     # Define platform macro so nros/platform.h selects the Zephyr backend
     zephyr_compile_definitions(NROS_PLATFORM_ZEPHYR)
 
-    # Make nros_generate_interfaces() available for C examples
+    # Make nros_generate_interfaces() + nros_find_interfaces() available
+    # for C examples. nros_find_interfaces() is the package.xml SSoT entry
+    # point (issue #11) — it resolves the transitive interface closure and
+    # delegates to the Zephyr emit-into-`app` nros_generate_interfaces.
     include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_generate_interfaces.cmake)
+    include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_find_interfaces.cmake)
 
     # Select Cargo features based on RMW backend
     if(CONFIG_NROS_RMW_ZENOH)
@@ -253,8 +257,10 @@ if(CONFIG_NROS_CPP_API)
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-c/include)
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-c/include/nros/zephyr)
 
-    # Make nros_generate_interfaces() available for C++ examples
+    # Make nros_generate_interfaces() + nros_find_interfaces() available
+    # for C++ examples (see the C-API path above for the rationale).
     include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_generate_interfaces.cmake)
+    include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_find_interfaces.cmake)
 
     # Select Cargo features based on RMW backend
     if(CONFIG_NROS_RMW_ZENOH)

@@ -9,7 +9,9 @@ project(nros_zephyr_listener_c)
 # nros module (CONFIG_NROS=y, CONFIG_NROS_C_API=y) provides zenoh shim,
 # platform support, and the nros-c library automatically.
 
-nros_generate_interfaces(std_msgs "msg/Int32.msg")
+# package.xml SSoT (issue #11): resolve + generate the transitive interface
+# closure declared in package.xml (<depend>std_msgs</depend>) into `app`.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 # Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
 # each message type (the backend's `find_descriptor` looks it up by

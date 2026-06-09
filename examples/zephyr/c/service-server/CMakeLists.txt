@@ -6,7 +6,9 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_zenoh_service_server_c)
 
-nros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv")
+# package.xml SSoT (issue #11): resolve + generate the transitive interface
+# closure declared in package.xml (<depend>example_interfaces</depend>) into `app`.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 if(CONFIG_NROS_RMW_CYCLONEDDS)
     list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")

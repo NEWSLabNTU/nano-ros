@@ -10,7 +10,10 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_talker_c)
 
-nros_generate_interfaces(std_msgs "msg/Int32.msg")
+# package.xml SSoT (issue #11): resolve + generate the transitive interface
+# closure declared in package.xml (<depend>std_msgs</depend>), emitting C
+# bindings into the Zephyr `app` target. Same line a native C example uses.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 # Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
 # each message type (the backend's `find_descriptor` looks it up by
