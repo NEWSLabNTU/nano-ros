@@ -55,7 +55,11 @@ int32_t {{ struct_name }}_serialize_inline(const {{ struct_name }}* msg, uint8_t
 {%- if field.is_primitive %}
     if (nros_cdr_{{ field.cdr_write_method }}(&ptr, end, origin, msg->{{ field.name }}) < 0) return -1;
 {%- else if field.is_string %}
+{%- if field.is_heap %}
+    if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}.data ? msg->{{ field.name }}.data : "") < 0) return -1;
+{%- else %}
     if (nros_cdr_write_string(&ptr, end, origin, msg->{{ field.name }}) < 0) return -1;
+{%- endif %}
 {%- else if field.is_array %}
     for (size_t i = 0; i < {{ field.array_size }}; ++i) {
 {%- if field.is_primitive_element %}
@@ -124,7 +128,31 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
 {%- if field.is_primitive %}
     if (nros_cdr_{{ field.cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}) < 0) return -1;
 {%- else if field.is_string %}
+{%- if field.is_heap %}
+    {
+        // Heap string (RFC-0033): CDR length (incl. null) is 4-byte aligned;
+        // read it, then raw-copy the bytes (chars need no alignment). Freed by
+        // {{ struct_name }}_fini.
+        uint32_t slen;
+        if (nros_cdr_read_u32(&ptr, end, origin, &slen) < 0) return -1;
+        if ((size_t)(end - ptr) < slen) return -1;
+        if (slen > 0) {
+            msg->{{ field.name }}.data = nros_platform_malloc(slen);
+            if (msg->{{ field.name }}.data == NULL) return -1;
+            memcpy(msg->{{ field.name }}.data, ptr, slen);
+            msg->{{ field.name }}.data[slen - 1] = '\0'; // ensure NUL-terminated
+            msg->{{ field.name }}.size = slen - 1;
+            msg->{{ field.name }}.capacity = slen;
+        } else {
+            msg->{{ field.name }}.data = NULL;
+            msg->{{ field.name }}.size = 0;
+            msg->{{ field.name }}.capacity = 0;
+        }
+        ptr += slen;
+    }
+{%- else %}
     if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}, sizeof(msg->{{ field.name }})) < 0) return -1;
+{%- endif %}
 {%- else if field.is_array %}
     for (size_t i = 0; i < {{ field.array_size }}; ++i) {
 {%- if field.is_primitive_element %}

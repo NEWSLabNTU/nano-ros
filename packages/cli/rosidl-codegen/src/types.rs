@@ -1085,17 +1085,21 @@ pub fn c_type_for_field_with_capacity(
     }
 }
 
-/// Heap (`mode = "heap"`, RFC-0033) C rendering of a **top-level unbounded
-/// primitive `Sequence`**, mirroring rclc's `rosidl_runtime_c__<T>__Sequence`:
-/// a `{ T* data; size_t size; size_t capacity; }` struct (no inline array). The
-/// deserializer mallocs; `<struct>_fini` frees. Returns `None` for shapes
-/// C-heap does not yet support (heap strings, sequences of strings / nested
-/// messages) so the caller rejects them with a clear error.
+/// Heap (`mode = "heap"`, RFC-0033) C rendering of a **top-level unbounded**
+/// `String` / `WString` or primitive `Sequence`, mirroring rclc's
+/// `rosidl_runtime_c__{String, <T>__Sequence}`: a `{ T* data; size_t size;
+/// size_t capacity; }` struct (no inline array). The deserializer mallocs;
+/// `<struct>_fini` frees. Returns `None` for shapes C-heap does not yet support
+/// (sequences of strings / nested messages) so the caller rejects them.
 pub fn c_type_for_field_heap(
     field_type: &FieldType,
     current_package: Option<&str>,
 ) -> Option<String> {
     match field_type {
+        // rclc `rosidl_runtime_c__String` shape.
+        FieldType::String | FieldType::WString => {
+            Some("struct { char* data; size_t size; size_t capacity; }".to_string())
+        }
         FieldType::Sequence { element_type } => match element_type.as_ref() {
             FieldType::Primitive(_) => {
                 let elem = c_type_for_field(element_type, current_package);
@@ -1339,16 +1343,17 @@ pub fn cpp_type_for_field_with_capacity(
     }
 }
 
-/// Heap (`mode = "heap"`, RFC-0033) C++ rendering of a **top-level unbounded
-/// primitive `Sequence`**: `nros::HeapSequence<elem>` (layout `{ T* data;
-/// size_t size; size_t capacity; }`, allocated via the shared platform
-/// allocator). Returns `None` for shapes C++-heap does not yet support (heap
-/// strings, sequences of strings / nested messages) so the caller rejects them.
+/// Heap (`mode = "heap"`, RFC-0033) C++ rendering of a **top-level unbounded**
+/// `String` / `WString` (`nros::HeapString`) or primitive `Sequence`
+/// (`nros::HeapSequence<elem>`) — both `{ ptr; size_t size; size_t capacity; }`
+/// allocated via the shared platform allocator. Returns `None` for shapes
+/// C++-heap does not yet support (sequences of strings / nested messages).
 pub fn cpp_type_for_field_heap(
     field_type: &FieldType,
     current_package: Option<&str>,
 ) -> Option<String> {
     match field_type {
+        FieldType::String | FieldType::WString => Some("nros::HeapString".to_string()),
         FieldType::Sequence { element_type } => match element_type.as_ref() {
             FieldType::Primitive(_) => {
                 let elem = cpp_type_for_field(element_type, current_package);

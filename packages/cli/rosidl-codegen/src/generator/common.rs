@@ -633,6 +633,9 @@ pub(super) fn build_cpp_ffi_field(
         // Sequence uses named struct
         let seq_struct_name = format!("{}_{}_seq_t", struct_name, to_snake_case(name));
         seq_struct_name
+    } else if is_heap && is_string {
+        // Heap string → the shared pointer-trio repr (matches nros::HeapString).
+        "nros_cpp_heap_str_t".to_string()
     } else {
         match cap_override {
             Some(cap) => repr_c_type_for_field_with_capacity(field_type, current_package, cap),

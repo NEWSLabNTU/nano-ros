@@ -26,10 +26,11 @@ fn generated_heap_cpp_compiles() {
         [fields]
         "my_msgs/Frame.pixels" = { cap = 0, mode = "heap" }
         "my_msgs/Frame.ranges" = { cap = 0, mode = "heap" }
+        "my_msgs/Frame.label" = { cap = 0, mode = "heap" }
         "#,
     )
     .unwrap();
-    let msg = parse_message("uint8[] pixels\nfloat32[] ranges\nint32 seq\n").unwrap();
+    let msg = parse_message("uint8[] pixels\nfloat32[] ranges\nstring label\nint32 seq\n").unwrap();
     let pkg = generate_cpp_message_package("my_msgs", "Frame", &msg, "h", &resolver).unwrap();
     let root = repo_root();
 

@@ -63,11 +63,14 @@ fn generated_heap_c_message_compiles() {
         [fields]
         "my_msgs/Blob.data" = { cap = 0, mode = "heap" }
         "my_msgs/Blob.vals" = { cap = 0, mode = "heap" }
+        "my_msgs/Blob.label" = { cap = 0, mode = "heap" }
         "#,
     )
     .unwrap();
-    // Heap primitive sequences + a scalar + an owned bounded seq (mixed).
-    let msg = parse_message("uint8[] data\nfloat32[] vals\nint32 seq\nint8[<=4] small\n").unwrap();
+    // Heap primitive sequences + heap string + a scalar + an owned bounded seq.
+    let msg =
+        parse_message("uint8[] data\nfloat32[] vals\nstring label\nint32 seq\nint8[<=4] small\n")
+            .unwrap();
     let pkg = generate_c_message_package("my_msgs", "Blob", &msg, "h", &resolver).unwrap();
 
     let tmp = tempfile::tempdir().unwrap();

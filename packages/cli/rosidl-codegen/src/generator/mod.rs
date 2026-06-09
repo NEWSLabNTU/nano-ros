@@ -617,8 +617,8 @@ mod tests {
     }
 
     #[test]
-    fn test_c_heap_string_unsupported() {
-        // Heap strings / heap seq-of-strings are not yet supported in C.
+    fn test_c_heap_string() {
+        // RFC-0033 mode = "heap" on a string → rclc rosidl_runtime_c__String shape.
         let msg = parse_message("string label\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
@@ -627,8 +627,35 @@ mod tests {
             "#,
         )
         .unwrap();
+        let pkg = generate_c_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
+        assert!(
+            pkg.header
+                .contains("struct { char* data; size_t size; size_t capacity; } label"),
+            "heap string struct missing:\n{}",
+            pkg.header
+        );
+        assert!(
+            pkg.source.contains("nros_platform_malloc"),
+            "{}",
+            pkg.source
+        );
+        assert!(pkg.source.contains("memcpy"), "{}", pkg.source);
+        assert!(!pkg.header.contains("char label[256]"));
+    }
+
+    #[test]
+    fn test_c_heap_seq_of_strings_unsupported() {
+        // Heap sequences of strings / nested messages remain unsupported in C.
+        let msg = parse_message("string[] tags\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/M.tags" = { cap = 0, mode = "heap" }
+            "#,
+        )
+        .unwrap();
         let err = match generate_c_message_package("my_msgs", "M", &msg, "h", &resolver) {
-            Ok(_) => panic!("expected unsupported-mode error for heap string"),
+            Ok(_) => panic!("expected unsupported-mode error"),
             Err(e) => e.to_string(),
         };
         assert!(
@@ -897,13 +924,46 @@ mod tests {
     }
 
     #[test]
-    fn test_cpp_heap_string_unsupported() {
-        // C++ heap is only bridgeable for primitive sequences; heap strings error.
+    fn test_cpp_heap_string() {
+        // RFC-0033 mode = "heap" on a string → nros::HeapString + nros_cpp_heap_str_t FFI repr.
         let msg = parse_message("string label\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "my_msgs/M.label" = { cap = 8, mode = "heap" }
+            "my_msgs/M.label" = { cap = 0, mode = "heap" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
+        assert!(
+            pkg.header.contains("nros::HeapString"),
+            "header heap string:\n{}",
+            pkg.header
+        );
+        assert!(
+            pkg.header.contains("heap_string.hpp"),
+            "heap string include missing"
+        );
+        assert!(
+            pkg.ffi_rs.contains("nros_cpp_heap_str_t"),
+            "ffi heap string repr:\n{}",
+            pkg.ffi_rs
+        );
+        assert!(
+            pkg.ffi_rs.contains("nros_platform_malloc"),
+            "{}",
+            pkg.ffi_rs
+        );
+        assert!(!pkg.ffi_rs.contains("[u8; 256]"));
+    }
+
+    #[test]
+    fn test_cpp_heap_seq_of_strings_unsupported() {
+        let msg = parse_message("string[] tags\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/M.tags" = { cap = 0, mode = "heap" }
             "#,
         )
         .unwrap();
@@ -911,8 +971,10 @@ mod tests {
             Ok(_) => panic!("expected unsupported-mode error"),
             Err(e) => e.to_string(),
         };
-        assert!(err.contains("heap"), "{err}");
-        assert!(err.contains("not yet supported"), "{err}");
+        assert!(
+            err.contains("heap") && err.contains("not yet supported"),
+            "{err}"
+        );
     }
 
     #[test]

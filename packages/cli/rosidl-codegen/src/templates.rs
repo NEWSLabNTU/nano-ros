@@ -597,9 +597,12 @@ pub struct MessageCppFfiTemplate<'a> {
     pub sequence_structs: Vec<SequenceStructDef>,
     pub has_fields: bool,
     pub serialized_size_max: usize,
-    /// RFC-0033: at least one heap (`mode = "heap"`) sequence field — gates the
+    /// RFC-0033: at least one heap (`mode = "heap"`) field — gates the
     /// `nros_platform_malloc`/`free` extern decls and the heap publish-buffer path.
     pub has_heap: bool,
+    /// RFC-0033: at least one heap **string** field — gates the shared
+    /// `nros_cpp_heap_str_t` repr struct.
+    pub has_heap_string: bool,
 }
 
 #[derive(Template)]

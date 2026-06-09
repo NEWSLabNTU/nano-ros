@@ -227,6 +227,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<String, GeneratorError> {
     let has_fields = !spec.ffi_fields.is_empty();
     let serialized_size_max = compute_serialized_size_max(spec.ffi_fields);
     let has_heap = spec.ffi_fields.iter().any(|f| f.is_heap);
+    let has_heap_string = spec.ffi_fields.iter().any(|f| f.is_heap && f.is_string);
 
     let template = MessageCppFfiTemplate {
         package_name: spec.package_name,
@@ -242,6 +243,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<String, GeneratorError> {
         has_fields,
         serialized_size_max,
         has_heap,
+        has_heap_string,
     };
     Ok(template.render()?)
 }

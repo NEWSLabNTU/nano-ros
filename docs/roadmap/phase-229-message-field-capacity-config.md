@@ -141,9 +141,12 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
 - **Files:** `packages/cli/rosidl-codegen/src/types.rs`,
   `.../generator/{common,msg,srv,action}.rs`, `.../rosidl-bindgen/src/generator.rs`.
 
-### 229.5 — `heap` storage mode  ✅ DONE (Rust + C + C++, primitive sequences)
-`mode = "heap"` → growable containers (`cap` ignored — unbounded). Heap strings and
-sequences of strings/nested messages stay rejected across C/C++ (a follow-up).
+### 229.5 — `heap` storage mode  ✅ DONE (Rust + C + C++; primitive sequences + strings)
+`mode = "heap"` → growable containers (`cap` ignored — unbounded). **Heap strings now
+done on all three** (Rust `nros_core::heap::String`; C rclc `rosidl_runtime_c__String`
+struct `{ char* data; size_t size, capacity; }` + read-u32-then-`memcpy` deserialize +
+`_fini`; C++ `nros::HeapString` + shared `nros_cpp_heap_str_t` FFI repr). Only heap
+**sequences of strings / nested messages** remain rejected (a further follow-up).
 - ✅ **Rust path** — `nros-core` exposes `pub mod heap { pub use alloc::{String, Vec} }`
   under `any(feature="alloc", feature="std")` (the `extern crate alloc` cfg widened to
   match); `nros_type_for_field_heap` emits `nros_core::heap::{Vec<T>, String}`;

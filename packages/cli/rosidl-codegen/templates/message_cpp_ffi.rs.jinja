@@ -14,6 +14,17 @@ unsafe extern "C" {
     fn nros_platform_free(ptr: *mut core::ffi::c_void);
 }
 {%- endif %}
+{%- if has_heap_string %}
+
+/// Heap string repr — matches `nros::HeapString` (`{ char* data; size_t size;
+/// size_t capacity; }`). `data` is NUL-terminated; `capacity == size + 1`.
+#[repr(C)]
+pub struct nros_cpp_heap_str_t {
+    pub data: *mut u8,
+    pub size: usize,
+    pub capacity: usize,
+}
+{%- endif %}
 
 {% for seq in sequence_structs %}
 /// Sequence helper for {{ seq.struct_name }}
@@ -48,7 +59,21 @@ pub fn {{ serialize_fn }}(msg: &{{ repr_c_struct_name }}, writer: &mut CdrWriter
 {%- if field.is_primitive %}
     writer.{{ field.cdr_write_method }}(msg.{{ field.name }})?;
 {%- else if field.is_string %}
+{%- if field.is_heap %}
+    {
+        let s = if msg.{{ field.name }}.size > 0 && !msg.{{ field.name }}.data.is_null() {
+            let bytes = unsafe {
+                core::slice::from_raw_parts(msg.{{ field.name }}.data, msg.{{ field.name }}.size)
+            };
+            core::str::from_utf8(bytes).unwrap_or("")
+        } else {
+            ""
+        };
+        writer.write_string(s)?;
+    }
+{%- else %}
     writer.write_string(core::str::from_utf8(&msg.{{ field.name }}).unwrap_or("").trim_end_matches('\0'))?;
+{%- endif %}
 {%- else if field.is_array %}
     for i in 0..{{ field.array_size }} {
 {%- if field.is_primitive_element %}
@@ -90,6 +115,24 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
 {%- if field.is_primitive %}
     out.{{ field.name }} = reader.{{ field.cdr_read_method }}()?;
 {%- else if field.is_string %}
+{%- if field.is_heap %}
+    {
+        // Heap string (RFC-0033): malloc len+1, copy + NUL-terminate; the C++
+        // nros::HeapString destructor frees it via the shared allocator.
+        let s = reader.read_string()?;
+        let bytes = s.as_bytes();
+        let n = bytes.len();
+        let data = unsafe { nros_platform_malloc(n + 1) } as *mut u8;
+        if data.is_null() {
+            return Err(DeserError::CapacityExceeded);
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(bytes.as_ptr(), data, n);
+            *data.add(n) = 0;
+        }
+        out.{{ field.name }} = nros_cpp_heap_str_t { data, size: n, capacity: n + 1 };
+    }
+{%- else %}
     {
         let s = reader.read_string()?;
         let bytes = s.as_bytes();
@@ -97,6 +140,7 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
         out.{{ field.name }} = [0u8; {{ field.string_capacity }}];
         out.{{ field.name }}[..len].copy_from_slice(&bytes[..len]);
     }
+{%- endif %}
 {%- else if field.is_array %}
     for i in 0..{{ field.array_size }} {
 {%- if field.is_primitive_element %}
@@ -231,7 +275,11 @@ pub unsafe extern "C" fn {{ ffi_publish_fn }}(
     let mut needed: usize = {{ serialized_size_max }};
 {%- for field in fields %}
 {%- if field.is_heap %}
+{%- if field.is_string %}
+    needed += 16 + msg.{{ field.name }}.size;
+{%- else %}
     needed += 16 + msg.{{ field.name }}.size * core::mem::size_of::<{{ field.element_repr_type }}>();
+{%- endif %}
 {%- endif %}
 {%- endfor %}
     let needed = needed.max(64);
