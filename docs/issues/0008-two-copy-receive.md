@@ -4,7 +4,7 @@ title: Two-copy receive path and static buffer pre-allocation at scale
 status: open
 type: tech-debt
 area: rmw
-related: [issue-0007]
+related: [issue-0007, phase-228]
 ---
 
 Every subscription message traverses two copies before reaching user code:

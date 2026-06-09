@@ -347,3 +347,23 @@ Per the design→RFC rule, a design change in the execution model updates RFC-00
 first; a change in the emit mechanics updates RFC-0032 first. RT acceptance
 harness + hardware gates are Phase 162; this phase is the codegen, not the test
 rig.
+
+### Coordination — issue #8 (two-copy receive) touches this executor
+
+`docs/issues/0008-two-copy-receive.md` has a fix that lands in the same
+`packages/core/nros-node/src/executor/` this phase is actively editing (228.B
+per-tier executor emission, 228.C callback-group registration, 228.E spawn),
+so it is **deliberately not being done in parallel** — flagging it here so the
+executor work can fold it in or sequence it cleanly.
+
+The concrete change: the **arena subscriber dispatch**
+(`executor/arena.rs`) currently copies each message out of the rmw ring slot
+into the per-subscriber `entry.buffer` (copy #1) before deserializing (copy #2).
+A zero-copy in-place path already exists on the `Subscriber` trait
+(`process_raw_in_place(f: FnOnce(&[u8]))`, used in `executor/handles.rs`) and as
+the opt-in `lending`/`SlotBorrowing` API, but the main arena loop doesn't use
+it. Routing arena dispatch through the in-place borrow eliminates copy #1 and
+lets the per-subscriber `entry.buffer` shrink/disappear (a static-RAM win on
+embedded). Copy #2 needs the borrowed-deserialization codegen of issue #7
+(picked up separately). No action required for this phase — just awareness so a
+future executor edit here doesn't collide with, or can absorb, the #8 rewire.
