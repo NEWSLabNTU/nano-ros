@@ -180,7 +180,11 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
         msg->{{ field.name }}.size = len;
         msg->{{ field.name }}.capacity = len;
         for (size_t i = 0; i < len; ++i) {
+{%- if field.is_string_element %}
+            if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}.data[i], sizeof(*msg->{{ field.name }}.data)) < 0) {
+{%- else %}
             if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}.data[i]) < 0) {
+{%- endif %}
                 nros_platform_free(msg->{{ field.name }}.data);
                 msg->{{ field.name }}.data = NULL;
                 msg->{{ field.name }}.size = 0;

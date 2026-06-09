@@ -50,5 +50,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 7  | Unbounded message sequences capped at 64 elements                     | enhancement | codegen| [0007-seq-capacity-64.md](0007-seq-capacity-64.md) |
 | 8  | Two-copy receive path and static buffer pre-allocation at scale       | tech-debt   | rmw    | [0008-two-copy-receive.md](0008-two-copy-receive.md) |
 | 20 | ThreadX-linux C++ CycloneDDS fixtures fail to link                     | bug         | cyclonedds | [0020-threadx-linux-cpp-cyclonedds-link.md](0020-threadx-linux-cpp-cyclonedds-link.md) |
+| 21 | C++ sequence-of-strings FFI repr omits the FixedString size field      | bug         | codegen | [0021-cpp-seq-of-strings-ffi-repr-mismatch.md](0021-cpp-seq-of-strings-ffi-repr-mismatch.md) |
 
 Resolved issues live in [`archived/`](archived/).

@@ -1107,6 +1107,16 @@ pub fn c_type_for_field_heap(
                     "struct {{ {elem}* data; size_t size; size_t capacity; }}"
                 ))
             }
+            // Heap array of fixed-capacity strings (unbounded count, bounded
+            // element): `{ char (*data)[N]; size_t size; size_t capacity; }` — a
+            // single-level heap allocation; each element is an inline `char[N]`.
+            FieldType::String | FieldType::WString => Some(format!(
+                "struct {{ char (*data)[{}]; size_t size; size_t capacity; }}",
+                C_DEFAULT_STRING_CAPACITY
+            )),
+            FieldType::BoundedString(n) | FieldType::BoundedWString(n) => Some(format!(
+                "struct {{ char (*data)[{n}]; size_t size; size_t capacity; }}"
+            )),
             _ => None,
         },
         _ => None,

@@ -141,12 +141,19 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
 - **Files:** `packages/cli/rosidl-codegen/src/types.rs`,
   `.../generator/{common,msg,srv,action}.rs`, `.../rosidl-bindgen/src/generator.rs`.
 
-### 229.5 — `heap` storage mode  ✅ DONE (Rust + C + C++; primitive sequences + strings)
-`mode = "heap"` → growable containers (`cap` ignored — unbounded). **Heap strings now
-done on all three** (Rust `nros_core::heap::String`; C rclc `rosidl_runtime_c__String`
-struct `{ char* data; size_t size, capacity; }` + read-u32-then-`memcpy` deserialize +
-`_fini`; C++ `nros::HeapString` + shared `nros_cpp_heap_str_t` FFI repr). Only heap
-**sequences of strings / nested messages** remain rejected (a further follow-up).
+### 229.5 — `heap` storage mode  ✅ DONE (Rust + C + C++; sequences, strings, seq-of-strings)
+`mode = "heap"` → growable containers (`cap` ignored — unbounded). Done: heap primitive
+sequences + heap strings + **heap sequence-of-strings** (single-level heap of
+fixed-capacity elements — unbounded count, bounded element).
+- **Rust** `Vec<heapless::String<N>>` (already worked); **C** `{ char (*data)[N]; size_t
+  size, capacity; }` + per-element `read_string` into the malloc'd rows + `_fini`.
+  Both gcc/cargo compile-verified.
+- **C++ seq-of-strings deferred** — blocked on issue
+  [0021](../issues/0021-cpp-seq-of-strings-ffi-repr-mismatch.md): the C++ seq-of-strings
+  FFI element repr (`[u8; N]`) omits `FixedString<N>`'s leading `size: u32`, a
+  pre-existing fixed-mode bug the heap variant would inherit. Stays rejected until
+  0021 is fixed.
+- Still rejected: heap sequences of **nested messages** (all langs).
 - ✅ **Rust path** — `nros-core` exposes `pub mod heap { pub use alloc::{String, Vec} }`
   under `any(feature="alloc", feature="std")` (the `extern crate alloc` cfg widened to
   match); `nros_type_for_field_heap` emits `nros_core::heap::{Vec<T>, String}`;

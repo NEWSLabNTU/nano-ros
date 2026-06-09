@@ -644,13 +644,44 @@ mod tests {
     }
 
     #[test]
-    fn test_c_heap_seq_of_strings_unsupported() {
-        // Heap sequences of strings / nested messages remain unsupported in C.
+    fn test_c_heap_seq_of_strings() {
+        // RFC-0033 heap string[] → heap array of fixed-capacity char[N] elements.
         let msg = parse_message("string[] tags\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
             "my_msgs/M.tags" = { cap = 0, mode = "heap" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_c_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
+        assert!(
+            pkg.header
+                .contains("struct { char (*data)[256]; size_t size; size_t capacity; } tags"),
+            "heap string[] struct missing:\n{}",
+            pkg.header
+        );
+        // Per-element read_string into the malloc'd char[N] rows.
+        assert!(
+            pkg.source.contains("nros_cdr_read_string"),
+            "{}",
+            pkg.source
+        );
+        assert!(
+            pkg.source.contains("nros_platform_malloc"),
+            "{}",
+            pkg.source
+        );
+    }
+
+    #[test]
+    fn test_c_heap_seq_of_nested_unsupported() {
+        // Heap sequences of nested messages remain unsupported in C.
+        let msg = parse_message("geometry_msgs/Point[] pts\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/M.pts" = { cap = 0, mode = "heap" }
             "#,
         )
         .unwrap();
@@ -959,6 +990,8 @@ mod tests {
 
     #[test]
     fn test_cpp_heap_seq_of_strings_unsupported() {
+        // Blocked on issue 0021 (C++ seq-of-strings FFI element repr omits the
+        // FixedString size field); rejected until that is fixed.
         let msg = parse_message("string[] tags\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
