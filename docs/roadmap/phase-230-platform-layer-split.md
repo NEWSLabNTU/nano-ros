@@ -179,10 +179,29 @@ reports a true heap total, closing #6 everywhere (not just Zephyr).
   lanes / Wave 1c. [issue 0006] resolved (unified figure available + verified).
 
 **Deferred to later waves (split completion, heavier verify):**
-- **Wave 1c — FreeRTOS C-side funnel:** guard vendored
-  `system/freertos/system.c` `z_malloc` + enable the (memory) alias so
-  FreeRTOS joins the universal `nros_platform_alloc` funnel; needs FreeRTOS
-  QEMU E2E. The last C-side bypass.
+- **Wave 1c — FreeRTOS C-side funnel** (attempted 2026-06, reverted — two
+  more steps needed). The last C-side bypass: baseline `objdump` confirms
+  FreeRTOS `z_malloc → b.w pvPortMalloc`. The mechanism is proven in part:
+  guarding vendored `system/freertos/system.c` `z_malloc` behind
+  `Z_FEATURE_NROS_PLATFORM_ALLOC` (set on the freertos vendored cc build in
+  `build_zenoh_pico_unified`) **works** — the rebuilt `libzenohpico.a` had
+  **no** `z_malloc`/`pvPortMalloc`. BUT the memory-only alias TU was **not
+  compiled** for FreeRTOS, so `z_malloc` would be **undefined at the final
+  ELF link**. Two gaps to close before this lands:
+  1. **Feature gating.** The FreeRTOS examples build `--no-default-features`,
+     so `zpico-sys`'s default `platform-aliases` feature is OFF → the alias
+     TU never compiles. Removing `!use_freertos` from the alias gate
+     (`runner.rs`) is necessary but not sufficient; `nros-rmw-zenoh`'s
+     `platform-freertos` chain must also enable `zpico-sys/platform-aliases`
+     (or force the memory-only alias unconditionally on FreeRTOS).
+  2. **ELF-link verification.** Plain `cargo build` + `fixtures-build` do
+     NOT relink the qemu ELF in a clean tree here (stamp/codegen mechanics),
+     so the `undefined z_malloc` was hidden and `objdump` couldn't confirm
+     routing. Needs a real FreeRTOS qemu link (CI lane) to verify
+     `z_malloc → nros_platform_alloc` and run the E2E.
+  Ready-to-redo edits (reverted): freertos `system.c` `#ifndef` guard;
+  `platform_aliases.c` `NROS_ZP_ALIAS_MEMORY_ONLY` guards; `runner.rs` alias
+  gate + `Z_FEATURE_NROS_PLATFORM_ALLOC` define — plus the feature-chain fix.
 - **Wave 1d — optional Rust global allocator (D6):** `nros-global-alloc`
   feature + board selection for the owned-allocator platforms
   (bare-metal/FreeRTOS/ThreadX); at-most-one-provider guard.
