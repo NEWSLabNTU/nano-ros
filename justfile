@@ -2057,6 +2057,13 @@ clean: clean-examples clean-fixtures
     # removes it for a full tool re-build.
     # Clean stale per-crate target/ dirs inside workspace members (left by standalone builds)
     find packages -maxdepth 4 -name target -type d -not -path '*/codegen/packages/*' -exec rm -rf {} + 2>/dev/null || true
+    # Catch-all for example target/ dirs the per-platform `clean` recipes miss
+    # (e.g. stm32f4 leaves listener-embassy/target, fixture entry crates, …).
+    # `-prune` so we don't recurse into a target we're already deleting.
+    find examples packages/testing/nros-tests/fixtures -type d -name target -prune -exec rm -rf {} + 2>/dev/null || true
+    # Custom CARGO_TARGET_DIR used by the embedded clippy/check tier
+    # (`check-workspace-embedded` sets `CARGO_TARGET_DIR=target-embedded`).
+    rm -rf target-embedded
     # Build-stage outputs under build/ (SDK installs preserved — see clean-setup).
     rm -rf build/zephyr-fixtures build/esp32-qemu build/qemu-zenoh-pico
     @echo "Build artifacts cleaned (SDK installs + host nros-codegen preserved; 'just clean-setup' to remove them)"
@@ -2068,6 +2075,10 @@ clean: clean-examples clean-fixtures
 [group("maintenance")]
 clean-setup: clean-zenohd
     rm -rf build/install build/cyclonedds build/qemu build/xrce-agent build/zephyr-cache
+    # The Zephyr SDK install + downloads live under `scripts/zephyr/` (gitignored,
+    # ~9 GB) — a `just setup`-stage tool install, so nuke it here too. Re-fetched
+    # by the zephyr setup recipe.
+    rm -rf scripts/zephyr/sdk scripts/zephyr/downloads
     # Phase 218 — `nros` builds in-tree at `packages/cli/target/`; that
     # tree is gitignored and a regular `cargo clean` (run from the
     # CLI sub-workspace) removes it. The transitional `~/.nros/`
