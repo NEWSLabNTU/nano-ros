@@ -275,9 +275,13 @@ fn test_zephyr_to_native_e2e() {
     // Wait for communication
     eprintln!("Waiting for Zephyr → Native communication...");
 
-    // Wait for listener output (use wait_for_all_output to capture stderr where env_logger logs)
+    // Wait for listener output (use wait_for_all_output to capture stderr where env_logger logs).
+    // 40 s: on a slow native_sim host the Zephyr talker's zenoh-pico session
+    // setup + first publish lands ~20 s after boot (issue #17). The wait always
+    // runs the full duration (listener never self-exits), so this caps
+    // wall-time, not the success path.
     let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(10))
+        .wait_for_all_output(Duration::from_secs(40))
         .expect("Listener timed out");
 
     // Get Zephyr output for debugging
@@ -372,9 +376,11 @@ fn test_native_to_zephyr_e2e() {
     // Wait for communication
     eprintln!("Waiting for Native → Zephyr communication...");
 
-    // Wait for Zephyr output
+    // Wait for Zephyr output. 40 s: the Zephyr listener's zenoh-pico
+    // subscription setup is slow on a slow native_sim host (issue #17); the
+    // fast native talker only delivers once the subscriber is declared.
     let zephyr_output = zephyr
-        .wait_for_output(Duration::from_secs(10))
+        .wait_for_output(Duration::from_secs(40))
         .unwrap_or_default();
 
     // Get native talker output for debugging
@@ -504,10 +510,14 @@ fn test_bidirectional_native_zephyr_e2e() {
         .expect("Failed to start Zephyr talker");
 
     eprintln!("Waiting for bidirectional communication...");
+    // 45 s: both directions gate on a slow native_sim Zephyr endpoint (issue
+    // #17) — the native listener waits on the slow Zephyr talker's first
+    // publish (~20 s after boot), and the Zephyr listener's own subscription
+    // setup is slow before the fast native talker's samples land.
     let native_ready_output = native_listener
-        .wait_for_output_count("Received:", 1, Duration::from_secs(30))
+        .wait_for_output_count("Received:", 1, Duration::from_secs(45))
         .unwrap_or_default();
-    let _ = zephyr_listener.wait_for_pattern("Received", Duration::from_secs(30));
+    let _ = zephyr_listener.wait_for_pattern("Received", Duration::from_secs(45));
 
     // Collect outputs
     let native_remaining = native_listener
