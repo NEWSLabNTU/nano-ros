@@ -180,6 +180,10 @@ pub struct NrosField {
     pub is_string_element: bool,
     /// True if this is a fixed-size array with > 32 elements (no Default for [T; N] where N > 32)
     pub is_large_array: bool,
+    /// RFC-0033: `mode = "heap"` — the field is an `alloc`-backed
+    /// `nros_core::heap::{Vec, String}` rather than a fixed-capacity `heapless`
+    /// container. Changes the deserialize codegen (growable, no `CapacityExceeded`).
+    pub is_heap: bool,
 }
 
 #[derive(Template)]

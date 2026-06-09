@@ -6,8 +6,9 @@ use crate::{
         NrosCodegenMode, c_array_suffix_for_field, c_array_suffix_for_field_with_capacity,
         c_cdr_read_method, c_cdr_write_method, c_type_for_field, c_type_for_field_with_capacity,
         cpp_array_suffix_for_field, cpp_type_for_field, cpp_type_for_field_with_capacity,
-        escape_keyword, nros_type_for_field_with_capacity, nros_type_for_field_with_mode,
-        repr_c_type_for_field, repr_c_type_for_field_with_capacity, to_c_package_name,
+        escape_keyword, nros_type_for_field_heap, nros_type_for_field_with_capacity,
+        nros_type_for_field_with_mode, repr_c_type_for_field, repr_c_type_for_field_with_capacity,
+        to_c_package_name,
     },
     utils::to_snake_case,
 };
@@ -139,18 +140,30 @@ pub(super) fn field_to_nros_field_with_mode(
         FieldType::Sequence { .. } => Some(CapFieldKind::Sequence),
         _ => None,
     };
+    let mut is_heap = false;
     let rust_type = if let Some(kind) = cap_kind {
         let storage = resolver.resolve(package_name, message_name, &field.name, kind);
-        if !storage.mode.is_phase1_supported() {
-            return Err(GeneratorError::UnsupportedStorageMode {
-                package: package_name.to_string(),
-                message: message_name.to_string(),
-                field: field.name.clone(),
-                mode: storage.mode.as_str(),
-            });
+        match storage.mode {
+            StorageMode::Owned => nros_type_for_field_with_capacity(
+                &field.field_type,
+                Some(package_name),
+                mode,
+                storage.cap,
+            ),
+            StorageMode::Heap => {
+                is_heap = true;
+                nros_type_for_field_heap(&field.field_type, Some(package_name), mode)
+            }
+            // `borrowed` lands in Phase 229.6 (issue 0007).
+            StorageMode::Borrowed => {
+                return Err(GeneratorError::UnsupportedStorageMode {
+                    package: package_name.to_string(),
+                    message: message_name.to_string(),
+                    field: field.name.clone(),
+                    mode: storage.mode.as_str(),
+                });
+            }
         }
-        debug_assert_eq!(storage.mode, StorageMode::Owned);
-        nros_type_for_field_with_capacity(&field.field_type, Some(package_name), mode, storage.cap)
     } else {
         nros_type_for_field_with_mode(&field.field_type, Some(package_name), mode)
     };
@@ -211,6 +224,7 @@ pub(super) fn field_to_nros_field_with_mode(
         is_primitive_element,
         is_string_element,
         is_large_array: array_size > 32,
+        is_heap,
     })
 }
 

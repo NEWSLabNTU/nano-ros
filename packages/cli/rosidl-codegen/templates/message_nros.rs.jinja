@@ -96,7 +96,9 @@ impl Deserialize for {{ message_name }} {
 {%- else if field.is_string %}
             {{ field.name }}: {
                 let s = reader.read_string()?;
-{%- if inline_mode %}
+{%- if field.is_heap %}
+                nros_core::heap::String::from(s)
+{%- else if inline_mode %}
                 nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
 {%- else %}
                 heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
@@ -128,23 +130,38 @@ impl Deserialize for {{ message_name }} {
 {%- else if field.is_sequence %}
             {{ field.name }}: {
                 let len = reader.read_u32()? as usize;
-{%- if inline_mode %}
+{%- if field.is_heap %}
+                let mut vec = nros_core::heap::Vec::new();
+{%- else if inline_mode %}
                 let mut vec = nros_core::heapless::Vec::new();
 {%- else %}
                 let mut vec = heapless::Vec::new();
 {%- endif %}
                 for _ in 0..len {
 {%- if field.is_primitive_element %}
+{%- if field.is_heap %}
+                    vec.push(reader.read_{{ field.element_primitive_method }}()?);
+{%- else %}
                     vec.push(reader.read_{{ field.element_primitive_method }}()?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
 {%- else if field.is_string_element %}
                     let s = reader.read_string()?;
 {%- if inline_mode %}
-                    vec.push(nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+                    let elem = nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
 {%- else %}
-                    vec.push(heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?).map_err(|_| DeserError::CapacityExceeded)?;
+                    let elem = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- if field.is_heap %}
+                    vec.push(elem);
+{%- else %}
+                    vec.push(elem).map_err(|_| DeserError::CapacityExceeded)?;
 {%- endif %}
 {%- else %}
+{%- if field.is_heap %}
+                    vec.push(Deserialize::deserialize(reader)?);
+{%- else %}
                     vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
 {%- endif %}
                 }
                 vec

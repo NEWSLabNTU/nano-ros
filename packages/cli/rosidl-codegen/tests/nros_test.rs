@@ -355,19 +355,44 @@ fn bounded_field_ignores_config() {
 }
 
 #[test]
-fn heap_and_borrowed_modes_error_in_phase1() {
-    for mode in ["heap", "borrowed"] {
-        let resolver = CapacityResolver::from_toml_str(&format!(
-            r#"
-            [fields]
-            "my_msgs/Frame.pixels" = {{ cap = 1000, mode = "{mode}" }}
-            "#
-        ))
-        .unwrap();
-        let err = gen_frame(&resolver).unwrap_err();
-        assert!(
-            err.contains(mode) && err.contains("not yet supported"),
-            "expected unsupported-mode error for '{mode}', got: {err}"
-        );
-    }
+fn borrowed_mode_errors_until_phase6() {
+    let resolver = CapacityResolver::from_toml_str(
+        r#"
+        [fields]
+        "my_msgs/Frame.pixels" = { cap = 1000, mode = "borrowed" }
+        "#,
+    )
+    .unwrap();
+    let err = gen_frame(&resolver).unwrap_err();
+    assert!(
+        err.contains("borrowed") && err.contains("not yet supported"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn heap_mode_emits_alloc_containers() {
+    // RFC-0033 mode = "heap": growable alloc-backed Vec/String, no fixed capacity.
+    let resolver = CapacityResolver::from_toml_str(
+        r#"
+        [fields]
+        "my_msgs/Frame.pixels" = { cap = 0, mode = "heap" }
+        "my_msgs/Frame.label"  = { cap = 0, mode = "heap" }
+        "#,
+    )
+    .unwrap();
+    let rs = gen_frame(&resolver).expect("heap config should generate");
+    // Field types use the alloc-backed re-export.
+    assert!(
+        rs.contains("nros_core::heap::Vec<u8>"),
+        "heap Vec type missing:\n{rs}"
+    );
+    assert!(
+        rs.contains("nros_core::heap::String"),
+        "heap String type missing:\n{rs}"
+    );
+    // Deserialize is growable: no fixed-capacity Vec + no CapacityExceeded on push.
+    assert!(rs.contains("nros_core::heap::Vec::new()"), "{rs}");
+    assert!(rs.contains("nros_core::heap::String::from(s)"), "{rs}");
+    assert!(!rs.contains("heapless::Vec<u8"));
 }
