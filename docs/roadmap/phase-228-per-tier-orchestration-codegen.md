@@ -192,7 +192,24 @@ The runtime mechanism (gate, label, `session_ptr`/`open_with_session`/
 **emit** + the platform ports, in this order. Each step is independently
 buildable + testable; steps 1–2 are the critical path.
 
-### 228.G — Proc-macro multi-tier emit  ⏳ NEXT (RFC-0032 §8.1)
+### 228.G — Proc-macro multi-tier emit  ✅ DONE (G.1–G.6; E2E run pending)
+**Landed:** the `nros::main!()` macro emits `<Board>::run_tiers(&[TierSpec{…}],
+register-only run_plan)` for multi-tier systems and the unchanged `BoardEntry::run`
+for single-tier. `nros-macros` deps `nros-orchestration-ir`; the launch arm reads
+node `callback_groups` + `system.toml` tiers, keys by instance name, validates
+`<node name>` == `[[component]].name` (hard error), derives rtos, and resolves via
+the shared crate. `NativeBoard::run_tiers` delegates to `PosixBoard`. Fixture
+`orchestration_tiers_native` + test prove the multi-tier emit **compiles** and the
+instance-identity mismatch is a **compile error**; the 8 single-tier `n9` forms
+still pass (byte-identical path). **Remaining:** G.6 external-observer **run** E2E
+(spawn the multi-tier binary, observe both tiers' topic output, kill) — the
+compile is proven; running it is the behavioral check.
+**Files:** `packages/core/nros-macros/{Cargo.toml,src/main_macro.rs}`,
+`packages/boards/nros-board-native/src/lib.rs`,
+`packages/testing/nros-tests/fixtures/orchestration_tiers_native/*`,
+`packages/testing/nros-tests/tests/orchestration_tiers_native.rs`.
+
+<details><summary>Original ordered substeps (all landed)</summary>
 The `nros::main!()` proc-macro emits `run_tiers` for multi-tier systems. Ordered
 substeps:
 
@@ -228,6 +245,7 @@ substeps:
 **Files:** `packages/core/nros-macros/{Cargo.toml,src/main_macro.rs}`,
 `packages/testing/nros-tests/fixtures/orchestration_tiers_native/*`,
 `packages/testing/nros-tests/tests/orchestration_tiers_native.rs`.
+</details>
 
 ### 228.E.2 — FreeRTOS `run_tiers` port  (RFC-0032 §8.2)
 Mirror `PosixBoard::run_tiers` for the FreeRTOS board using
