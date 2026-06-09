@@ -7,7 +7,10 @@ assigned to tiers from `system.toml`, plus shared-state accessor codegen. Phases
 nodes in one task / one Executor — today's `nros codegen-system` output). This
 phase closes the gap to the full RFC-0015 execution model.
 
-**Status.** Proposed (2026-06-08).
+**Status.** In progress (2026-06-09). **Runtime mechanism + bake complete**
+(228.A/C/D-bake/E-native/F-runtime); **the emit is the remaining work** — fully
+specified by **RFC-0032** (entry-codegen pipeline). See the ordered
+implementation plan below.
 
 **Priority.** P2 — the single-tier path works today and covers most cases;
 multi-tier is the differentiator for hard-RT embedded (mixed-criticality on one
@@ -15,8 +18,9 @@ MCU) but not blocking the common deployment.
 
 **Depends on.** Phase 227 (`system.toml` `[tiers.*]` + group→tier schema + loader —
 227.6), Phase 126 (orchestration codegen foundation, archived), RFC-0015
-(execution model), RFC-0016 (per-RTOS priority mapping), RFC-0017 (`PlatformTimer`
-for the `Sporadic` class).
+(execution model), **RFC-0032 (entry-codegen pipeline — the emit design-of-record,
+incl. the resolved open issues + MT study)**, RFC-0016 (per-RTOS priority
+mapping), RFC-0017 (`PlatformTimer` for the `Sporadic` class).
 
 ## Overview
 
@@ -79,7 +83,7 @@ the Rust entry codegen (`codegen/entry/emit_rust.rs`) + per-RTOS spawn (228.E).
 **Files:** `packages/cli/nros-cli-core/src/{cmd/codegen_system,codegen/entry/emit_rust}.rs`,
 `packages/core/nros-node/src/executor/`.
 
-### 228.C — Callback-group → tier registration
+### 228.C — Callback-group → tier registration  ✅ DONE (runtime; emit in 228.G)
 **Design decided 2026-06** (per-group registration). Execution model = **Model 1**:
 one RTOS task + `Executor` per tier (true preemption; works on no_std MCU — the
 single-executor/SchedContext alternative is cooperative-only, the OS-worker
@@ -100,10 +104,12 @@ alternative is std-only). Registration rides existing machinery:
   (`TierResolveError::NodeSpansTiers`, ✅ done + tested). v2 with multi-task
   state-sync relaxes it.
 
-**Remaining (the codegen):** emit `exec.set_active_groups(&[…])` + the
-group-filtered register calls per tier task. Couples with 228.B-emit.
-**Files:** codegen (`codegen/entry/emit_rust.rs`) + `nros-node` (`set_active_groups`
-+ the `.callback_group()` builder + group-gated registration).
+**Done (runtime):** `set_active_groups` + the `.callback_group()` sticky builder +
+the group-gated registration (`ExecutorSink::create_entity` skips off-tier
+entities) all landed + proven by `phase228_tier_filter.rs`. The **emit** of
+`set_active_groups` + register calls per tier task moved to **228.G** (it is the
+`run_tiers` closure body the proc-macro emits).
+**Files:** `nros-node`/`nros` runtime (done); proc-macro emit → 228.G.
 
 ### 228.D — Shared-state accessor codegen  🔄 IN PROGRESS (Wave B)
 **Done (resolve + bake):** `codegen-system` now resolves every `system.toml
@@ -178,6 +184,71 @@ validates the previously-unproven `session_ptr`/`open_with_session`/
 (asserts distinct OS tasks/priorities at runtime on native + FreeRTOS), plus the
 single-tier byte-parity check on the emitted entry.
 
+## Implementation plan — remaining emit (per RFC-0032 §8)
+
+The runtime mechanism (gate, label, `session_ptr`/`open_with_session`/
+`set_active_groups`, `TierSpec`, `PosixBoard::run_tiers`) and the shared
+`nros-orchestration-ir` resolver are **done + pushed**. What remains is the
+**emit** + the platform ports, in this order. Each step is independently
+buildable + testable; steps 1–2 are the critical path.
+
+### 228.G — Proc-macro multi-tier emit  ⏳ NEXT (RFC-0032 §8.1)
+The `nros::main!()` proc-macro emits `run_tiers` for multi-tier systems. Ordered
+substeps:
+
+- **G.1 — dep wiring.** `nros-macros` → `nros-orchestration-ir` (path, same
+  workspace). Proc-macro deps are host-only, so this doesn't touch the runtime
+  feature view. *Verify:* `nros-macros` builds.
+- **G.2 — tier inputs from the macro's launch view.** In the `Some(launch)` arm
+  (where `bringup_dir` + per-node `node_pkg_dir` are in scope): parse
+  `system.toml` `[tiers.*]` + `[[node_overrides]]` + `[[component]]` names; read
+  each launch node pkg's `[package.metadata.nros.node].callback_groups`; build the
+  `callback_groups` map keyed **per RFC-0032 §7 instance-identity** (groups per
+  pkg, overrides by node name, **hard-error if launch `<node name>` ≠
+  `[[component]].name`**). *Verify:* unit-test the input-builder on a fixture
+  `system.toml` + node `Cargo.toml`.
+- **G.3 — resolve.** Derive `target_rtos` from the resolved board
+  (`native`/`posix`→`posix`, `freertos*`→`freertos`, …); call
+  `nros_orchestration_ir::resolve_tiers(...)`. Surface resolver errors as
+  `syn::Error` at the `launch` literal's span.
+- **G.4 — gate.** `tiers.is_empty()` **or** `table.is_single_tier()` → emit the
+  **unchanged** `BoardEntry::run` path (byte-identical). Else → multi-tier emit.
+  *Verify:* a single-tier example's expanded output is unchanged (snapshot/build).
+- **G.5 — emit `run_tiers`.** Bake a `const TIERS: &[TierSpec]` from the resolved
+  table (raw per-RTOS `i64` priority, the tier's group ids as `groups`,
+  `stack_bytes`, `spin_period_us`), and emit
+  `<Board>::run_tiers(TIERS, |runtime| { <register_calls> Ok(()) })` —
+  **register-only** (no `__nros_hosted_spin_if_requested`; the board owns the
+  per-tier spin). Reuses the existing `register_calls`.
+- **G.6 — fixture + E2E.** A 2-tier native example fixture (control@high +
+  telemetry@low). Validate via an **external-observer E2E** (spawn the binary,
+  observe topic output, kill — RFC-0032 §8 decided; not a bounded `run_tiers`
+  mode). *Verify:* fixture compiles + the E2E sees both tiers' output; a
+  single-tier sibling stays byte-identical.
+**Files:** `packages/core/nros-macros/{Cargo.toml,src/main_macro.rs}`,
+`packages/testing/nros-tests/fixtures/orchestration_tiers_native/*`,
+`packages/testing/nros-tests/tests/orchestration_tiers_native.rs`.
+
+### 228.E.2 — FreeRTOS `run_tiers` port  (RFC-0032 §8.2)
+Mirror `PosixBoard::run_tiers` for the FreeRTOS board using
+`nros_freertos_create_task` at the raw `[tiers.x.freertos].priority` (MT=1 is
+already the default there — RFC-0032 §5.0). This is where **real preemption** is
+validated. *Verify:* a 2-tier FreeRTOS QEMU example; assert distinct task
+priorities + zenoh-pico concurrent-multi-spin holds (no session corruption).
+**Files:** `packages/boards/nros-board-freertos/src/`, a FreeRTOS tier fixture.
+
+### 228.D.2 — Shared-state accessor emit  (the codegen half of 228.D)
+From the baked `shared_state` region: emit the `nros_shared_context` C-ABI struct
++ `_get/_set/_modify` accessors + Rust/C++/C wrappers. Sync per the resolved
+policy (`none` single-tier, `mutex` cross-tier via `nros-platform`). Couples with
+228.G (the accessors get a second consumer once multi-tier tasks exist).
+**Files:** codegen + `nros-cpp`/`nros-c` shared-context wrappers.
+
+### 228.H — Spin-period bound-check warning  (RFC-0032 §8.3, low priority)
+At resolve/emit time, warn when a tier's `spin_period_us` exceeds the tightest
+timer period among its members (RFC-0015 §4.3). Warning, not error.
+**Files:** `packages/core/nros-orchestration-ir/` (or the emit call sites).
+
 ## Acceptance
 
 - A `system.toml` with two `[tiers.*]` + a group→tier map produces a binary with
@@ -190,8 +261,11 @@ single-tier byte-parity check on the emitted entry.
 
 ## Notes
 
-Design-of-record: RFC-0015 (execution model, reconciled to Phase 212). The
-scheduling *config home* is decided (RFC-0015 banner / RFC-0004 §7 / Phase 227.6);
-this phase is the codegen + runtime that consumes it. Per the design→RFC rule, any
-design change discovered here updates RFC-0015 first. RT acceptance harness +
-hardware gates are Phase 162; this phase is the codegen, not the test rig.
+Design-of-record: **RFC-0015** (execution model, reconciled to Phase 212) +
+**RFC-0032** (the entry-codegen/emit pipeline — boot scaffolds, `run`/`run_tiers`
+contract, the shared resolver, the MT study, and the resolved open issues). The
+scheduling *config home* is decided (RFC-0015 banner / RFC-0004 §7 / Phase 227.6).
+Per the design→RFC rule, a design change in the execution model updates RFC-0015
+first; a change in the emit mechanics updates RFC-0032 first. RT acceptance
+harness + hardware gates are Phase 162; this phase is the codegen, not the test
+rig.
