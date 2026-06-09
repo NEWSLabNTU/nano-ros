@@ -86,8 +86,22 @@ Picks up REP-2014 (callback-group priority) data model statically at build time.
 
 ### 2.3 Zenoh-pico session — one shared session per binary
 
-- Platforms with `Z_FEATURE_MULTI_THREAD=1` (POSIX, Zephyr, ESP-IDF): rely on zenoh-pico internal mutexes (`_z_session_t::_mutex_inner`, per-transport TX mutex, cancellation mutex).
-- Platforms with `Z_FEATURE_MULTI_THREAD=0` (bare-metal, FreeRTOS, NuttX, ThreadX): codegen enables `ffi-sync` feature on `nros-rmw-zenoh`, wraps FFI in `critical_section::with()`. Bounded ~µs ISR-disabled window per call (one decomposed `spin_once(0)`).
+> **MT correction (2026-06, RFC-0032 study).** The split below was aspirational;
+> the **shipped** posture is: **every RTOS target runs `Z_FEATURE_MULTI_THREAD=1`**
+> (`zenoh_platforms.toml` sets it for POSIX, Zephyr, FreeRTOS, NuttX, ThreadX,
+> ESP-IDF, Orin-SPE; each has a real zenoh-pico system backend with
+> `_z_mutex/_z_condvar/_z_task` — NuttX via `system/unix` pthreads, ThreadX via
+> `system/threadx`, FreeRTOS/ESP32 via `system/freertos`). **`Z_FEATURE_MULTI_THREAD=0`
+> is forced only on bare-metal** (no RTOS, no threading backend — `build.rs`).
+> `ffi-sync` (`critical_section`) is the bare-metal/RTIC mixed-priority path, not a
+> FreeRTOS/NuttX/ThreadX path. **Consequence for per-tier (RFC-0032 §5):** the
+> multi-task model needs MT=1 internal mutexes; that requirement is satisfied on
+> every RTOS target with no change, since MT=1 is already the default there.
+> Bare-metal has no preemptive tasks, so multi-tier is inherently N/A there (its
+> "tiers" are RTIC interrupt priorities, framework-owned).
+
+- Platforms with `Z_FEATURE_MULTI_THREAD=1` (**all RTOS**: POSIX, Zephyr, FreeRTOS, NuttX, ThreadX, ESP-IDF): rely on zenoh-pico internal mutexes (`_z_session_t::_mutex_inner`, per-transport TX mutex, cancellation mutex). This is what the per-tier model (one shared session, N preemptive spin tasks) builds on.
+- Platforms with `Z_FEATURE_MULTI_THREAD=0` (**bare-metal only**): single execution context; `ffi-sync` wraps FFI in `critical_section::with()` for RTIC mixed-priority. No `run_tiers` here.
 
 Per-tier session model rejected:
 
@@ -383,15 +397,19 @@ Single-tier codegen output ≡ hand-written single-`main` shape (modulo formatti
 
 ### 7.1 Per-platform MT setting (already in `zpico-sys/build.rs`)
 
-| Platform   | `Z_FEATURE_MULTI_THREAD` | Sync mechanism              |
-| ---------- | ------------------------ | --------------------------- |
-| POSIX      | 1                        | zenoh-pico internal mutexes |
-| Zephyr     | 1                        | zenoh-pico internal mutexes |
-| ESP-IDF    | 1                        | zenoh-pico internal mutexes |
-| Bare-metal | 0                        | `ffi-sync` critical_section |
-| FreeRTOS   | 0                        | `ffi-sync` critical_section |
-| NuttX      | 0                        | `ffi-sync` critical_section |
-| ThreadX    | 0                        | `ffi-sync` critical_section |
+> **Corrected 2026-06 (RFC-0032 study)** — the table previously showed
+> FreeRTOS/NuttX/ThreadX as MT=0+`ffi-sync`; the shipped `zenoh_platforms.toml`
+> runs them at **MT=1** with real system backends. Updated below.
+
+| Platform   | `Z_FEATURE_MULTI_THREAD` | Sync mechanism              | zenoh-pico backend |
+| ---------- | ------------------------ | --------------------------- | ------------------ |
+| POSIX      | 1                        | zenoh-pico internal mutexes | `system/unix` (pthread) |
+| Zephyr     | 1                        | zenoh-pico internal mutexes | `system/zephyr` (pthread) |
+| ESP-IDF    | 1                        | zenoh-pico internal mutexes | `system/freertos` |
+| FreeRTOS   | 1                        | zenoh-pico internal mutexes | `system/freertos` |
+| NuttX      | 1                        | zenoh-pico internal mutexes | `system/unix` (pthread) |
+| ThreadX    | 1                        | zenoh-pico internal mutexes | `system/threadx` |
+| Bare-metal | 0                        | `ffi-sync` critical_section | none (stubs) — no `run_tiers` |
 
 ### 7.2 Shared-session cost (chosen)
 

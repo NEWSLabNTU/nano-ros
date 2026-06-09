@@ -146,6 +146,26 @@ Contract differences from `run` (and *why*):
   The RFC-0016 `*_priority_for` mappers are a separate utility for authors who
   prefer a normalized 0–31 scale; the codegen path uses the raw value.
 
+### 5.0 Platform applicability — multi-tier ⟹ MT=1, satisfied by every RTOS
+
+`run_tiers` runs N preemptive spin tasks on one shared zenoh-pico session, which
+requires the session's **internal mutexes** (`Z_FEATURE_MULTI_THREAD=1`). A 2026-06
+study (vs `zenoh_platforms.toml` + the `system/*` backends) established:
+
+- **Every RTOS target already builds MT=1** — POSIX, Zephyr, FreeRTOS, NuttX
+  (`system/unix` pthreads), ThreadX (`system/threadx`), ESP-IDF/Orin-SPE
+  (`system/freertos`). So multi-tier needs **no MT change** and adds no
+  session-MT cost (MT=1 is already paid by the single-session model). The 228.F
+  two-executor result generalizes to these.
+- **Bare-metal forces MT=0** (no RTOS / no threading backend). Multi-tier is
+  inherently N/A there — there are no preemptive tasks. Bare-metal is
+  `Framework::Rtic`/`Esp32`-bare; its "tiers" are RTIC `#[task(priority)]`
+  interrupt priorities (framework-owned, §8 item 3), not `run_tiers`.
+
+So the emitter never needs an MT-flip or an MT error gate: the `OwnedSpin`-RTOS
+boards that take the `run_tiers` path are exactly the MT=1 platforms. (This
+corrected RFC-0015 §2.3/§7.1, which had claimed MT=0 for FreeRTOS/NuttX/ThreadX.)
+
 ### 5.1 Degenerate gate — single-tier stays byte-identical
 
 The emitter chooses the path on **tier presence**:
@@ -213,10 +233,17 @@ launch tree + system.toml + node callback_groups
   (RFC-0015 §8). v2 relaxes with multi-task state-sync.
 - **Raw per-RTOS priority.** Authored in `[tiers.<name>.<rtos>].priority`, emitted
   verbatim into the spawn call; codegen does not auto-flip direction.
+- **Instance identity.** `callback_groups` are per-*package* metadata
+  (`[package.metadata.nros.node].callback_groups`); tiers + `[[node_overrides]]`
+  key by node *instance* name. The emitter keys groups by the node pkg, applies
+  instance overrides by name, and **requires the launch `<node name=…>` to equal
+  the `system.toml [[component]].name`** — mismatch is a hard error at emit
+  (matches `codegen-system`). Two instances of one pkg share the pkg's groups but
+  can be reassigned independently via overrides.
 
 ---
 
-## 8. Status + open questions
+## 8. Status, decisions, open items
 
 **Landed (Phase 228):** the runtime mechanism — the `active_groups` registration
 gate, the `.callback_group()` label, `Executor::session_ptr` /
@@ -225,20 +252,38 @@ gate, the `.callback_group()` label, `Executor::session_ptr` /
 `phase228_tier_filter.rs` (two executors, one shared session, off-tier callbacks
 gated to zero) against real zenohd.
 
-**Open:**
+**Decided (2026-06 design discussion):**
+
+- **MT model** — multi-tier ⟹ MT=1, satisfied by every RTOS target with no
+  change; bare-metal (MT=0) has no `run_tiers` (§5.0). No MT-flip or error gate.
+- **Testing the emitted multi-tier example** — use an **external-observer E2E**
+  (spawn the binary, observe topic output, kill it — matches the existing
+  Zephyr/FreeRTOS workspace E2E). Do **not** add a bounded-spin mode to
+  `run_tiers`. The runtime *mechanism* is already covered by
+  `phase228_tier_filter.rs`.
+- **Native multi-tier is advisory-priority** — `PosixBoard::run_tiers` uses
+  `std::thread` (default scheduler, no strict preemption); it validates the
+  task-per-tier + filter shape + serves dev ergonomics. Real preemption is
+  FreeRTOS/embedded. `SCHED_FIFO` via libc is a later optional add.
+- **Node-pinned-to-tier (v1) accepted** — a node's groups all resolve to one
+  tier; mixed-criticality within one node splits the package or routes through
+  `[[shared_state]]`. v2 relaxes (§7, RFC-0015 §8).
+- **RTIC / Embassy multi-tier is a non-goal v1** — those frameworks express
+  priority via `#[task(priority)]` / Embassy executors; tiers there map to
+  framework priorities, not `run_tiers`. `run_tiers` applies only to
+  `OwnedSpin`-RTOS boards.
+
+**Open (implementation):**
 
 1. **Proc-macro emit** — wire `nros-macros` to `nros-orchestration-ir`, resolve
-   tiers at expansion, emit `run_tiers` behind the §5.1 gate with a register-only
-   `run_plan`. Needs a multi-tier example fixture to validate the emitted TU
-   compiles + runs.
+   tiers at expansion (keying groups per §7 instance-identity), emit `run_tiers`
+   behind the §5.1 gate with a register-only `run_plan`. Add a multi-tier example
+   fixture + the external-observer E2E above.
 2. **FreeRTOS `run_tiers`** — port the native primitive via
-   `nros_freertos_create_task` at the raw FreeRTOS priority; validate real
-   preemption + zenoh-pico concurrent multi-spin on QEMU.
-3. **RTIC / Embassy multi-tier** — those frameworks own scheduling via
-   `#[task(priority)]` / Embassy executors; tiers map to framework priorities,
-   not `run_tiers`. Out of scope for v1; documented as future work.
-4. **Spin-period bound check** — `spin_period_us` ≤ tightest timer period in the
-   tier (RFC-0015 §4.3) is not yet enforced at emit time.
+   `nros_freertos_create_task` at the raw FreeRTOS priority; this is where real
+   preemption is validated on QEMU (MT=1 already, §5.0).
+3. **Spin-period bound check** — emit a warning when `spin_period_us` exceeds the
+   tightest timer period in the tier (RFC-0015 §4.3). Low priority.
 
 ---
 
