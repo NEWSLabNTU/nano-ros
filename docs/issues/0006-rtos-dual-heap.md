@@ -4,8 +4,18 @@ title: Two separate heap allocators on RTOS platforms
 status: open
 type: tech-debt
 area: memory
-related: []
+related: [rfc-0033, phase-230]
 ---
+
+> **Direction (2026-06):** the true unified heap total is being addressed by
+> unifying the allocator through the `nros_platform_*` ABI (RFC-0033 layer
+> split, implemented in [phase-230](../roadmap/phase-230-platform-layer-split.md)
+> Wave 1). A single `nros_platform_alloc` funnel for both zenoh-pico C and the
+> Rust `#[global_allocator]` makes one counter the true C+Rust total — this
+> issue closes when phase-230 Wave 1 lands. (The alternative — RTOS-native pool
+> queries without unification — was considered but leaves the layer bypass +
+> dead platform code in place; see RFC-0033 open questions.)
+
 
 On RTOS platforms (FreeRTOS, ThreadX), there are **two independent heap
 allocators** that cannot share memory or statistics:
