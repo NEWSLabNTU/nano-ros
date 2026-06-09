@@ -1,0 +1,15 @@
+[package]
+name = "nros-orchestration-ir"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared per-tier orchestration schema + resolver (RFC-0015), consumed by both the nros CLI codegen and the nros::main! proc-macro."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

@@ -40,6 +40,12 @@ cargo_metadata = "0.18"
 # separately (`pip install play-launch-parser` / its own binary).
 ros-launch-manifest-types = { path = "../third-party/ros-launch-manifest/types" }
 
+# Phase 228.E — shared per-tier orchestration schema + resolver (RFC-0015),
+# from the runtime workspace at `packages/core/`. Same crate the
+# `nros::main!()` proc-macro consumes, so tier resolution can't drift between
+# the CLI bake path and the codegen path.
+nros-orchestration-ir = { path = "../../core/nros-orchestration-ir" }
+
 # Reuse the codegen implementation that still lives in the
 # cargo-nano-ros library crate. The canonical CLI surface is
 # `nros generate-rust`; the Cargo subcommand is compatibility-only.

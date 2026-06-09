@@ -844,6 +844,7 @@ dependencies = [
  "eyre",
  "libc",
  "nros-msg-to-idl",
+ "nros-orchestration-ir",
  "pathdiff",
  "quick-xml",
  "ros-launch-manifest-types",
@@ -861,6 +862,14 @@ dependencies = [
 [[package]]
 name = "nros-msg-to-idl"
 version = "0.5.0"
+
+[[package]]
+name = "nros-orchestration-ir"
+version = "0.5.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "num-traits"

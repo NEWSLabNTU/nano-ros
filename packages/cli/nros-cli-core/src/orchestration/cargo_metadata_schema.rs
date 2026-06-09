@@ -19,6 +19,14 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+// Phase 228.E — the per-tier schema types live in the shared
+// `nros-orchestration-ir` crate (single source of truth, also consumed by the
+// `nros::main!()` proc-macro). Re-exported here so the rest of the CLI keeps
+// referencing them through `cargo_metadata_schema::` unchanged.
+pub use nros_orchestration_ir::{
+    CallbackGroupDecl, CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
+};
+
 use super::schema::RemapRule;
 
 // ---------------------------------------------------------------------------
@@ -266,29 +274,6 @@ pub struct ComponentMetadata {
     pub callback_groups: Vec<CallbackGroupDecl>,
 }
 
-/// `[[node.callback_groups]]` row (Phase 228.A, RFC-0015 §4.1).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CallbackGroupDecl {
-    /// Logical id within the node (e.g. `"ctrl_loop"`, `"telemetry"`).
-    pub id: String,
-    /// `"MutuallyExclusive"` (default) or `"Reentrant"`. v1 treats every group
-    /// as mutually-exclusive within its tier task; the field is recorded for
-    /// the future multi-worker executor.
-    #[serde(default = "default_cbg_type")]
-    pub r#type: String,
-    /// Symbolic tier name resolved against the system's `[tiers.*]`.
-    #[serde(default = "default_tier_name")]
-    pub tier: String,
-}
-
-fn default_cbg_type() -> String {
-    "MutuallyExclusive".to_string()
-}
-fn default_tier_name() -> String {
-    "default".to_string()
-}
-
 /// `[package.metadata.nros.application]` — Phase 212.L.2.
 ///
 /// Application pkgs are native-only orchestration roots: they wire several
@@ -464,42 +449,6 @@ pub struct SystemToml {
     pub node_overrides: Vec<NodeOverride>,
 }
 
-/// `[tiers.<name>]` — a symbolic priority tier (RFC-0015 §4.2). Carries the
-/// RTOS-agnostic `spin_period_us` plus a per-RTOS sub-table
-/// (`[tiers.<name>.<rtos>]`) giving the concrete priority/stack for each target.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TierDef {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub spin_period_us: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub freertos: Option<TierRtosSpec>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub zephyr: Option<TierRtosSpec>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub threadx: Option<TierRtosSpec>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub nuttx: Option<TierRtosSpec>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub posix: Option<TierRtosSpec>,
-}
-
-/// `[tiers.<name>.<rtos>]` — concrete per-RTOS task knobs. One shape for all
-/// RTOSes; `priority` is `i64` to admit Zephyr's negative coop priorities.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TierRtosSpec {
-    pub priority: i64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stack_bytes: Option<u32>,
-    /// ThreadX preemption threshold (ignored on other RTOSes).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preempt_threshold: Option<i64>,
-    /// POSIX scheduler class (e.g. `"SCHED_FIFO"`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sched_class: Option<String>,
-}
-
 /// `[[shared_state]]` — a named cross-node shared region (RFC-0015 §8).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -528,24 +477,6 @@ pub struct SharedStateDecl {
 pub struct SharedStateField {
     pub name: String,
     pub r#type: String,
-}
-
-/// `[[node_overrides]]` row — reassigns a node's callback groups to tiers.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NodeOverride {
-    /// Node instance name (matches a `[[component]].name`).
-    pub name: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub callback_groups: Vec<CallbackGroupOverride>,
-}
-
-/// A single `id → tier` reassignment inside a `[[node_overrides]]`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CallbackGroupOverride {
-    pub id: String,
-    pub tier: String,
 }
 
 fn default_storage() -> String {

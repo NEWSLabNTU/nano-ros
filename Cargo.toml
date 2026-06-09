@@ -11,6 +11,10 @@ members = [
     "packages/core/nros-node",
     "packages/core/nros-log",
     "packages/core/nros-orchestration",
+    # Shared per-tier orchestration schema + resolver (RFC-0015). Leaf crate
+    # consumed by BOTH the nros CLI codegen and the nros::main! proc-macro so
+    # the tier resolution never drifts between build-time and codegen paths.
+    "packages/core/nros-orchestration-ir",
     # Build-script helper: extracts Rust type sizes from a compiled rlib so
     # nros-c/nros-cpp can size their opaque storage from Rust's size_of.
     "packages/core/nros-sizes-build",
@@ -493,6 +497,7 @@ keywords = ["ros2", "robotics", "embedded", "no-std", "rtos"]
 nros-core = { version = "0.5.0", path = "packages/core/nros-core", default-features = false }
 nros-serdes = { version = "0.5.0", path = "packages/core/nros-serdes", default-features = false }
 nros-macros = { version = "0.5.0", path = "packages/core/nros-macros" }
+nros-orchestration-ir = { version = "0.5.0", path = "packages/core/nros-orchestration-ir" }
 nros-params = { version = "0.5.0", path = "packages/core/nros-params", default-features = false }
 nros-rmw = { version = "0.5.0", path = "packages/core/nros-rmw", default-features = false }
 nros-rmw-zenoh = { version = "0.5.0", path = "packages/zpico/nros-rmw-zenoh", default-features = false }

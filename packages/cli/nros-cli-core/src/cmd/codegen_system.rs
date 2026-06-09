@@ -43,7 +43,7 @@ use crate::orchestration::{
     cargo_metadata_schema::{CallbackGroupDecl, SystemComponentEntry, SystemToml},
     launch_synth::{LaunchInput, resolve_launch},
     nros_config::{BringupPackageEntry, NrosConfig},
-    tier_resolver::{ResolvedTierTable, resolve_tiers},
+    tier_resolver::{ResolvedTierTable, TierResolveError, resolve_tiers},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -119,7 +119,7 @@ pub fn run(args: Args) -> Result<()> {
     // the single `default` tier (today's single-task output, unchanged).
     let callback_groups = collect_callback_groups(&cfg, &bringup.system.components);
     let target_rtos = derive_target_rtos(&bringup.system, args.target.as_deref());
-    let tier_table = resolve_tiers(&bringup.system, &callback_groups, &target_rtos)
+    let tier_table = resolve_system_tiers(&bringup.system, &callback_groups, &target_rtos)
         .map_err(|e| eyre::eyre!("tier resolution: {e}"))?;
 
     // Phase 212.L.6 — resolve the launch input. For a Path A bringup
@@ -765,6 +765,26 @@ fn render_plan_json(
     Ok(s)
 }
 
+/// Adapt a full [`SystemToml`] to the decomposed [`resolve_tiers`] signature
+/// (Phase 228.E): the resolver moved to the shared `nros-orchestration-ir`
+/// crate and takes only the tier-relevant pieces, so the CLI hands it the
+/// `[tiers.*]` table, `[[node_overrides]]`, and the component instance names.
+fn resolve_system_tiers(
+    system: &SystemToml,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+    target_rtos: &str,
+) -> Result<ResolvedTierTable, TierResolveError> {
+    let component_names: std::collections::BTreeSet<&str> =
+        system.components.iter().map(|c| c.name.as_str()).collect();
+    resolve_tiers(
+        &system.tiers,
+        &system.node_overrides,
+        &component_names,
+        callback_groups,
+        target_rtos,
+    )
+}
+
 /// Build the `node instance name → declared callback groups` map for the
 /// system from the loaded component-package metadata (Phase 228.B).
 fn collect_callback_groups(
@@ -959,7 +979,7 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
     );
     // PX4 side-car plan: no NrosConfig here (callback groups unavailable), so
     // the tier table is the degenerate single tier (omitted from the json).
-    let px4_tiers = resolve_tiers(&bringup.system, &BTreeMap::new(), "posix")
+    let px4_tiers = resolve_system_tiers(&bringup.system, &BTreeMap::new(), "posix")
         .unwrap_or(ResolvedTierTable { tiers: Vec::new() });
     write_if_changed(
         &out_dir.join("nros-plan.json"),
