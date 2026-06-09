@@ -36,6 +36,12 @@ impl ExecutableNode for Listener {
         if callback.as_str() == "on_chatter" {
             if let Ok(msg) = ctx.message::<Int32>() {
                 *state = msg.data;
+                // Canonical delivery line every Zephyr listener fixture
+                // (c/cpp/rust) emits — the E2E `count_zephyr_received`
+                // asserts on `Received: <n>`. Without it the rust
+                // listener received samples silently and the
+                // native→Zephyr E2E read 0 despite working transport.
+                log::info!("Received: {}", msg.data);
             }
         }
     }

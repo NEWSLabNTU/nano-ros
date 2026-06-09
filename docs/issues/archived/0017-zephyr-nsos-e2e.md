@@ -63,48 +63,36 @@ zephyr rust examples (`talker`, `listener`, `action-{client,server}`,
 the Entry. `test_zephyr_to_native_e2e` (Zephyr talker → native listener)
 **passes — 13 messages delivered cross-process.**
 
-**Remaining open — Zephyr-as-subscriber dispatch on no_std (NOT a timing
-issue).** `test_native_to_zephyr_e2e` and `test_bidirectional_native_zephyr_e2e`
-fail: the Zephyr **listener** receives 0 samples from a continuously-
-publishing native talker, while the reverse direction works
-(bidirectional: `Zephyr → Native: 66 messages`). An earlier hypothesis
-("slow-host receive starvation") was **disproven** by tracing.
+**Single-node reference — RESOLVED (transport always worked; the rust
+listener fixture had lost its `Received:` print).** `test_native_to_zephyr_e2e`
+and `test_bidirectional_native_zephyr_e2e` reported the Zephyr **listener**
+receiving 0 from a continuously-publishing native talker, while the reverse
+direction worked. This was traced end to end and is NOT a transport,
+timing, or dispatch defect — the receive path works fully:
 
-Investigation (2026-06-09), in order:
-1. `zenohd --debug` shows the Zephyr listener opens its transport and
-   declares its subscriber `0/chatter/std_msgs::msg::dds_::Int32_/*` + the
-   `/listener/` liveliness token — discovery is correct.
-2. `strace -f -e recvfrom` on the listener shows the data samples DO
-   arrive on its socket: `recvfrom(fd) = 102` once per second, payloads
-   carrying `0/chatter/…/Int32_/TypeHashNotSupported`. So NSOS receive and
-   zenoh-pico socket reads are healthy and on-time — not starved.
-3. Yet nros dispatches **0** to the user callback.
+1. `zenohd --debug`: the Zephyr listener opens its transport and declares
+   its subscriber `0/chatter/std_msgs::msg::dds_::Int32_/*` + `/listener/`
+   liveliness token — discovery correct.
+2. `strace -e recvfrom`: data samples arrive on the socket (`recvfrom=102`
+   ~1/s) — NSOS receive healthy.
+3. Probes through the no_std receive path confirm the C shim writes each
+   sample into the SPSC ring, the executor drains it via
+   `try_recv_with_info` (24 consumes for 24 samples), and the payload is
+   **valid CDR** (`00 01 00 00` LE encapsulation header + an incrementing
+   `i32`: 0, 1, 2, …). The sample reaches `sub_info_try_process`,
+   deserializes, and the Node's `on_callback` runs.
+4. But `examples/zephyr/rust/listener`'s `on_callback` only did
+   `*state = msg.data` — **it printed nothing.** `count_zephyr_received`
+   (and the c/cpp fixtures) assert on the canonical `Received: <n>` line,
+   so the test read 0 despite every sample being delivered. A regression
+   had dropped the listener's delivery log.
 
-Root cause is the no_std receive→executor dispatch bridge, not transport
-or timing. The zenoh subscriber is declared with
-`declare_subscriber_ring_raw` (an SPSC ring): the C shim writes each
-received payload into `SUBSCRIBER_BUFFERS[i]`'s ring (advancing
-`ring_tail`) and fires `subscriber_notify_callback`. That callback only
-does `buffer.waker.wake()` (for the async `Future` path) plus a
-`#[cfg(feature = "std")] signal_executor_wake()` — **on no_std there is no
-synchronous signal to the blocking executor.** The blocking `spin_once`
-readiness scan evaluates `(meta.has_data)(arena_ptr + offset)` against the
-executor *arena*, which the ring producer never populates, so the ring is
-never drained (`peek_head_slot` → `consume_head` in the `take_*` methods
-is never reached) and the subscription callback never fires. Publishing is
-unaffected because TX is push-driven inside `spin_once`.
+Fix: restore `log::info!("Received: {}", msg.data)` in the listener's
+`on_callback`. Verified: the Zephyr listener now logs `Received: 0,1,2,…`
+(19 samples in a ~20 s window) from an external native talker.
 
-This is a genuine, almost-certainly-never-worked no_std zephyr receive gap
-(consistent with the single-node reference never having delivered). The
-fix is to wire the no_std path so a ring write marks the owning executor
-entry ready (or so the executor unconditionally drains each ring-backed
-subscriber per spin) — a focused change in
-`packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs`
-(`subscriber_notify_callback`) + the executor readiness/`has_data` wiring
-for ring-backed CFFI subscriptions. Tracked as the remaining work here.
-
-The E2E listener/receive waits were still raised (40 s / 45 s) — correct
-regardless, since first delivery is slow even once dispatch is fixed.
+The E2E receive waits were raised (40 s / 45 s) for the slow native_sim
+first-delivery window — correct regardless.
 
 **Cross-reference**: the sibling issue #18 (NuttX) is also RESOLVED via
 the same locator + backend-register cascade (its entry boots on
