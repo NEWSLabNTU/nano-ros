@@ -1008,8 +1008,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // them inside the macro would double-declare.
             let custom_task_items: Vec<proc_macro2::TokenStream> = args
                 .custom_tasks
-                .as_ref()
-                .map(|v| v.as_slice())
+                .as_deref()
                 .unwrap_or(&[])
                 .iter()
                 .map(|f| {

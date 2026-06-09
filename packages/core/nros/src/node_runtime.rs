@@ -639,10 +639,10 @@ impl NodeRuntime for ExecutorSink<'_> {
         // and always registers; the degenerate single-tier executor leaves
         // `active_groups == None`, so every entity registers (byte-identical
         // to pre-228 output).
-        if let Some(group) = metadata.callback_group.as_ref() {
-            if !self.executor.group_active(group.as_str()) {
-                return Ok(());
-            }
+        if let Some(group) = metadata.callback_group.as_ref()
+            && !self.executor.group_active(group.as_str())
+        {
+            return Ok(());
         }
         let node = self
             .lookup_node(metadata.node_id.as_str())

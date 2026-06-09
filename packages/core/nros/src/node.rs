@@ -348,7 +348,7 @@ impl<
                     continue;
                 };
                 let callback_id = callback_id.as_str();
-                if seen.iter().any(|seen_id| *seen_id == callback_id) {
+                if seen.contains(&callback_id) {
                     continue;
                 }
                 if callback_id == id {
@@ -368,7 +368,7 @@ impl<
                     continue;
                 };
                 let callback_id = callback_id.as_str();
-                if !seen.iter().any(|seen_id| *seen_id == callback_id) {
+                if !seen.contains(&callback_id) {
                     let _ = seen.push(callback_id);
                 }
             }
@@ -604,7 +604,7 @@ struct CStrBuf<const N: usize> {
 
 impl<const N: usize> CStrBuf<N> {
     fn new(value: &str) -> NodeResult<Self> {
-        if N == 0 || value.as_bytes().len() + 1 > N || value.as_bytes().contains(&0) {
+        if N == 0 || value.len() + 1 > N || value.as_bytes().contains(&0) {
             return Err(NodeDeclError::Metadata(NodeMetadataError::NameTooLong));
         }
         let mut bytes = [0 as c_char; N];
@@ -1178,10 +1178,10 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare a service server using `name` as the stable entity ID and
     /// `callback_name` as the source callback name.
     #[track_caller]
-    pub fn create_service_server_for_name_with_callback<'entity, 'callback, S: RosService>(
+    pub fn create_service_server_for_name_with_callback<'entity, S: RosService>(
         &mut self,
         name: &'entity str,
-        callback_name: &'callback str,
+        callback_name: &str,
     ) -> NodeResult<NodeServiceServer<'entity, S>> {
         self.create_service_server::<S>(EntityId::new(name), CallbackId::new(callback_name), name)
     }
@@ -1299,18 +1299,12 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     /// Declare an action server using `name` as the stable entity ID and
     /// explicit source callback names for goal, cancel, and accepted events.
     #[track_caller]
-    pub fn create_action_server_for_name_with_callbacks<
-        'entity,
-        'goal,
-        'cancel,
-        'accepted,
-        A: RosAction,
-    >(
+    pub fn create_action_server_for_name_with_callbacks<'entity, A: RosAction>(
         &mut self,
         name: &'entity str,
-        goal_callback_name: &'goal str,
-        cancel_callback_name: &'cancel str,
-        accepted_callback_name: &'accepted str,
+        goal_callback_name: &str,
+        cancel_callback_name: &str,
+        accepted_callback_name: &str,
     ) -> NodeResult<NodeActionServer<'entity, A>> {
         self.create_action_server_with_callbacks::<A>(
             EntityId::new(name),

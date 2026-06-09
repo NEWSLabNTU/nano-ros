@@ -235,7 +235,7 @@ pub fn run(linker_script: &[u8]) {
     // (zenoh locator, domain_id) — the C startup reads the network
     // stack bring-up values directly from `NROS_APP_CONFIG` and
     // happens before Rust user code runs.
-    emit_nros_app_config(&out_dir, &workspace_root);
+    emit_nros_app_config(&out_dir, workspace_root);
 
     // ---- Link order (reverse dependency) ----
     // `libnros_platform_threadx.a` + `libthreadx_kernel.a` come
@@ -344,14 +344,13 @@ fn get_picolibc_sysroot() -> Option<PathBuf> {
             "-print-sysroot",
         ])
         .output()
+        && output.status.success()
     {
-        if output.status.success() {
-            let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !sysroot.is_empty() {
-                let path = PathBuf::from(&sysroot);
-                if path.join("include").exists() {
-                    return Some(path);
-                }
+        let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !sysroot.is_empty() {
+            let path = PathBuf::from(&sysroot);
+            if path.join("include").exists() {
+                return Some(path);
             }
         }
     }
@@ -386,11 +385,10 @@ fn get_libgcc_dir() -> Option<PathBuf> {
     if let Ok(output) = Command::new("riscv64-unknown-elf-gcc")
         .args(["-march=rv64gc", "-mabi=lp64d", "-print-libgcc-file-name"])
         .output()
+        && output.status.success()
     {
-        if output.status.success() {
-            let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string());
-            return path.parent().map(|p| p.to_path_buf());
-        }
+        let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string());
+        return path.parent().map(|p| p.to_path_buf());
     }
     None
 }

@@ -268,7 +268,6 @@ impl PosixBoard {
             // Spawn every tier after the first; each borrows the shared
             // session pointer and `&setup` from the enclosing scope.
             for tier in &tiers[1..] {
-                let shared = shared;
                 let builder = std::thread::Builder::new().name(format!("nros-tier-{}", tier.name));
                 let spawn = builder.spawn_scoped(scope, move || {
                     // Re-bind the whole wrapper so the closure captures the

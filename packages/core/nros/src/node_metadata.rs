@@ -597,7 +597,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                     continue;
                 };
                 let callback_id = callback_id.as_str();
-                if seen.iter().any(|seen_id| *seen_id == callback_id) {
+                if seen.contains(&callback_id) {
                     continue;
                 }
                 if callback_id == id {
@@ -617,7 +617,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                     continue;
                 };
                 let callback_id = callback_id.as_str();
-                if !seen.iter().any(|seen_id| *seen_id == callback_id) {
+                if !seen.contains(&callback_id) {
                     let _ = seen.push(callback_id);
                 }
             }

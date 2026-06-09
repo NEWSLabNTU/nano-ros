@@ -131,6 +131,9 @@ impl ServiceBufferRef {
 pub(super) static SERVICE_SEQ_COUNTER: AtomicSeqCounter = AtomicSeqCounter::new(0);
 
 /// Callback function invoked by the C shim when queries arrive
+// `keyexpr as *const u8` is a no-op on platforms where `c_char == u8` (ARM) but
+// a real reinterpret where `c_char == i8` (x86) — keep it for portability.
+#[allow(clippy::unnecessary_cast)]
 extern "C" fn queryable_callback(
     keyexpr: *const core::ffi::c_char,
     keyexpr_len: usize,

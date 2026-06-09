@@ -2221,6 +2221,12 @@ impl Executor {
     /// [`Executor::register_dispatch_slot`] explicitly with the
     /// `__nros_node_<pkg>_on_callback` symbol + a `state` blob from
     /// the macro-emitted `i()`.
+    //
+    // `ctx` is an opaque FFI cookie forwarded verbatim to each slot's
+    // `on_callback`; this fn never dereferences it (the registered callback
+    // does, under the `register_dispatch_slot` safety contract), so it is sound
+    // to call from safe code.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn dispatch_callback(&mut self, cb_id: &str, ctx: *mut core::ffi::c_void) {
         let cb_id_ptr = cb_id.as_ptr();
         let cb_id_len = cb_id.len();
