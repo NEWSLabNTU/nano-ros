@@ -34,6 +34,10 @@ proc-macro2 = { workspace = true }
 #     the consumer's compile time on the host.
 toml = "0.8"
 nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
+# Phase 228.G — shared per-tier schema + resolver. Same crate the CLI's
+# codegen-system uses, so the macro's compile-time tier resolution can't drift
+# from the bake path (RFC-0032 §6). Proc-macro deps are host-only.
+nros-orchestration-ir = { workspace = true }
 
 [lints]
 workspace = true

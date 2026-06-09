@@ -47,7 +47,7 @@
 extern crate nros_rmw_zenoh as _;
 
 use nros_board_posix::PosixBoard;
-use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx};
+use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
 
 /// Tier-1 per-board shim. See the crate-level docs for the rationale
 /// behind shipping a dedicated ZST rather than re-exporting
@@ -91,6 +91,21 @@ impl BoardEntry for NativeBoard {
         E: core::fmt::Debug,
     {
         <PosixBoard as BoardEntry>::run::<F, E>(setup)
+    }
+}
+
+impl NativeBoard {
+    /// Phase 228.G — per-tier multi-task entry; delegates to
+    /// [`PosixBoard::run_tiers`]. The `nros::main!()` proc-macro emits
+    /// `<NativeBoard>::run_tiers(TIERS, run_plan)` for multi-tier systems
+    /// (single-tier keeps the `BoardEntry::run` path). See `nros-board-posix`.
+    #[inline]
+    pub fn run_tiers<F, E>(tiers: &[TierSpec<'_>], setup: F) -> Result<(), E>
+    where
+        F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E> + Sync,
+        E: core::fmt::Debug,
+    {
+        PosixBoard::run_tiers::<F, E>(tiers, setup)
     }
 }
 

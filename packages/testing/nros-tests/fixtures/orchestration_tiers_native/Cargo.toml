@@ -1,0 +1,23 @@
+# Phase 228.G fixture — multi-tier `nros::main!()` emit round-trip.
+#
+# A colcon-style workspace with TWO node pkgs assigned to two tiers:
+#   src/ctrl_pkg/      — control node, callback group `ctrl` → tier `high`.
+#   src/telem_pkg/     — telemetry node, group `telem` → tier `low`.
+#   src/demo_bringup/  — bringup pkg: system.toml with `[tiers.*]` + two
+#                        `[[component]]`s + a launch spawning both nodes.
+#   src/demo_entry/    — Entry pkg whose `main.rs` is `nros::main!(launch =
+#                        "demo_bringup")`; deploy = "native".
+#
+# The companion test stages this into a tempdir, rewrites `@NANO_ROS_ROOT@`,
+# and `cargo check`s the Entry pkg. Because system.toml declares `[tiers.*]`,
+# the macro emits `<NativeBoard>::run_tiers(TIERS, ...)` (RFC-0032 §5) — the
+# check proves that emit compiles.
+
+[workspace]
+members = [
+    "src/ctrl_pkg",
+    "src/telem_pkg",
+    "src/demo_entry",
+]
+# `demo_bringup` is metadata-only (package.xml + launch.xml + system.toml).
+resolver = "2"

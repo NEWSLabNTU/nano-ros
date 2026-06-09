@@ -28,8 +28,14 @@
 //! so touching any of these files invalidates the Entry pkg's
 //! compilation cache.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+};
 
+use nros_orchestration_ir::{
+    CallbackGroupDecl, NodeOverride, ResolvedTierTable, TierDef, resolve_tiers,
+};
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
@@ -341,6 +347,16 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         ));
     }
 
+    // --- Phase 228.G — per-tier resolution state (RFC-0032 §6) ---
+    // Populated only in the launch arm (where bringup_dir + node pkgs are in
+    // scope). `node_groups` maps a node *instance* name → its declared callback
+    // groups; `node_instances` is every launch node name (for the
+    // instance-identity check vs `[[component]]`). `resolved_tiers` stays `None`
+    // unless `system.toml` declares `[tiers.*]`.
+    let mut node_groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
+    let mut node_instances: Vec<String> = Vec::new();
+    let mut resolved_tiers: Option<ResolvedTierTable> = None;
+
     // --- Launch resolution → list of <pkg_ident> register calls ---
     let pkg_idents: Vec<Ident> = match &args.launch {
         None => {
@@ -494,7 +510,74 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 }
                 let crate_ident = pkg_to_crate_ident(&node.pkg);
                 idents.push(Ident::new(&crate_ident, Span::call_site()));
+
+                // Phase 228.G — collect the node instance + its declared
+                // callback groups for tier resolution. The instance name keys
+                // the group map (RFC-0032 §7); when the launch `<node>` has no
+                // explicit name, fall back to the executable name.
+                let instance = node
+                    .name
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| node.exec.clone());
+                let groups = read_node_callback_groups(&cargo_toml);
+                if !groups.is_empty() {
+                    node_groups.insert(instance.clone(), groups);
+                }
+                node_instances.push(instance);
             }
+
+            // Phase 228.G — resolve the tier table from `system.toml` when it
+            // declares `[tiers.*]`. No tiers → leave `resolved_tiers = None`
+            // (the single-tier `BoardEntry::run` emit, byte-identical).
+            let system_toml = bringup_dir.join("system.toml");
+            if system_toml.exists() {
+                let cfg = read_system_tier_config(&system_toml).map_err(|e| {
+                    syn::Error::new(
+                        launch_lit.span(),
+                        format!(
+                            "nros::main!: parse tiers in `{}`: {e}",
+                            system_toml.display()
+                        ),
+                    )
+                })?;
+                if cfg.has_tiers {
+                    tracked.push(system_toml.clone());
+                    // Instance-identity (RFC-0032 §7): every launch node that
+                    // carries callback groups must name a `[[component]]`.
+                    let component_names: BTreeSet<&str> =
+                        cfg.component_names.iter().map(String::as_str).collect();
+                    for inst in node_groups.keys() {
+                        if !component_names.contains(inst.as_str()) {
+                            return Err(syn::Error::new(
+                                launch_lit.span(),
+                                format!(
+                                    "nros::main!: launch node `{inst}` declares callback groups \
+                                     but is not a `[[component]]` in `{}` (the launch \
+                                     `<node name>` must match a `system.toml` component name).",
+                                    system_toml.display()
+                                ),
+                            ));
+                        }
+                    }
+                    let rtos = derive_target_rtos(deploy_for_framework.as_deref());
+                    let table = resolve_tiers(
+                        &cfg.tiers,
+                        &cfg.node_overrides,
+                        &component_names,
+                        &node_groups,
+                        &rtos,
+                    )
+                    .map_err(|e| {
+                        syn::Error::new(
+                            launch_lit.span(),
+                            format!("nros::main!: tier resolution: {e}"),
+                        )
+                    })?;
+                    resolved_tiers = Some(table);
+                }
+            }
+
             idents
         }
     };
@@ -532,6 +615,50 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // Node count for the Zephyr framework boot banner (literal baked at
     // expansion time so the runtime body needs no extra import).
     let num_register_calls = register_calls.len();
+
+    // Phase 228.G (RFC-0032 §5) — the OwnedSpin entry call. Multi-tier
+    // (`[tiers.*]` present, more than the synthesized `default` tier) emits
+    // `<Board>::run_tiers(TIERS, register-only-closure)`; the board owns the
+    // per-tier spin. Single-tier / no tiers keeps the unchanged
+    // `BoardEntry::run` path (`setup` owns the bounded hosted spin) — so the
+    // emitted TU is byte-identical to pre-228 for every current example.
+    let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
+    let entry_call: proc_macro2::TokenStream = match multi_tier {
+        Some(table) => {
+            let tiers_ts = tier_specs_tokens(table);
+            quote! {
+                <#board_path>::run_tiers(
+                    #tiers_ts,
+                    |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
+                        -> ::core::result::Result<
+                            (),
+                            ::nros::__macro_support::nros_platform::RuntimeError,
+                        >
+                    {
+                        // Register-only: the board sets each tier's
+                        // `active_groups` filter and owns the spin loop.
+                        #( #register_calls )*
+                        ::core::result::Result::Ok(())
+                    },
+                )
+            }
+        }
+        None => quote! {
+            <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run(
+                |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
+                    -> ::core::result::Result<
+                        (),
+                        ::nros::__macro_support::nros_platform::RuntimeError,
+                    >
+                {
+                    #( #register_calls )*
+                    #[cfg(not(target_os = "none"))]
+                    __nros_hosted_spin_if_requested(runtime)?;
+                    ::core::result::Result::Ok(())
+                },
+            )
+        },
+    };
 
     // Phase 216 final wave — Node-pkg registration for framework
     // targets (RTIC + Embassy). The OwnedSpin branch keeps its
@@ -619,22 +746,14 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
-                <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run(
-                    |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
-                        -> ::core::result::Result<
-                            (),
-                            ::nros::__macro_support::nros_platform::RuntimeError,
-                        >
-                    {
-                        #( #register_calls )*
-                        #[cfg(not(target_os = "none"))]
-                        __nros_hosted_spin_if_requested(runtime)?;
-                        ::core::result::Result::Ok(())
-                    },
-                )
+                #entry_call
             }
 
+            // `#[allow(dead_code)]` — the multi-tier `run_tiers` entry path
+            // (Phase 228.G) owns its own spin and never calls these, so they
+            // are unused in that emit; harmless in the single-tier path.
             #[cfg(not(target_os = "none"))]
+            #[allow(dead_code)]
             fn __nros_env_usize(name: &str, default: usize) -> usize {
                 ::std::env::var(name)
                     .ok()
@@ -643,6 +762,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
 
             #[cfg(not(target_os = "none"))]
+            #[allow(dead_code)]
             fn __nros_hosted_spin_if_requested(
                 runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
             ) -> ::core::result::Result<
@@ -1244,6 +1364,116 @@ fn read_default_launch(system_toml: &Path) -> Result<Option<String>, String> {
         .and_then(|s| s.get("default_launch"))
         .and_then(|d| d.as_str())
         .map(str::to_string))
+}
+
+// =============================================================================
+// Phase 228.G — per-tier resolution inputs (RFC-0032 §6)
+// =============================================================================
+
+/// Read `[package.metadata.nros.node].callback_groups` from a node pkg's
+/// `Cargo.toml`. Missing / malformed → empty (the node contributes no groups,
+/// so it lands on the synthesized `default` tier).
+fn read_node_callback_groups(cargo_toml: &Path) -> Vec<CallbackGroupDecl> {
+    let Ok(raw) = std::fs::read_to_string(cargo_toml) else {
+        return Vec::new();
+    };
+    let Ok(v) = toml::from_str::<toml::Value>(&raw) else {
+        return Vec::new();
+    };
+    v.get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("nros"))
+        .and_then(|n| n.get("node"))
+        .and_then(|nd| nd.get("callback_groups"))
+        .and_then(|cg| cg.clone().try_into::<Vec<CallbackGroupDecl>>().ok())
+        .unwrap_or_default()
+}
+
+/// The tier-relevant slice of a bringup `system.toml`.
+struct SystemTierConfig {
+    tiers: BTreeMap<String, TierDef>,
+    node_overrides: Vec<NodeOverride>,
+    component_names: Vec<String>,
+    has_tiers: bool,
+}
+
+/// Parse `[tiers.*]`, `[[node_overrides]]`, and `[[component]].name` from a
+/// bringup `system.toml`. `has_tiers` gates the multi-tier emit — when no
+/// `[tiers.*]` table exists the macro stays on the single-tier `BoardEntry::run`
+/// path (byte-identical).
+fn read_system_tier_config(system_toml: &Path) -> Result<SystemTierConfig, String> {
+    let raw = std::fs::read_to_string(system_toml).map_err(|e| format!("read: {e}"))?;
+    let v: toml::Value = toml::from_str(&raw).map_err(|e| format!("parse toml: {e}"))?;
+
+    let tiers: BTreeMap<String, TierDef> = match v.get("tiers") {
+        Some(t) => t
+            .clone()
+            .try_into()
+            .map_err(|e| format!("`[tiers]`: {e}"))?,
+        None => BTreeMap::new(),
+    };
+    let node_overrides: Vec<NodeOverride> = match v.get("node_overrides") {
+        Some(o) => o
+            .clone()
+            .try_into()
+            .map_err(|e| format!("`[[node_overrides]]`: {e}"))?,
+        None => Vec::new(),
+    };
+    let component_names: Vec<String> = v
+        .get("component")
+        .and_then(|c| c.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| c.get("name").and_then(|n| n.as_str()).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(SystemTierConfig {
+        has_tiers: !tiers.is_empty(),
+        tiers,
+        node_overrides,
+        component_names,
+    })
+}
+
+/// Map the resolved board deploy string to the RTOS key `resolve_tiers` expects
+/// (picks the `[tiers.<name>.<rtos>]` sub-table). `None` (explicit `board = X`)
+/// defaults to `posix` — the native dev target.
+fn derive_target_rtos(deploy: Option<&str>) -> String {
+    match deploy {
+        Some(d) if d.contains("freertos") => "freertos",
+        Some(d) if d.contains("threadx") => "threadx",
+        Some(d) if d.contains("nuttx") => "nuttx",
+        Some(d) if d.contains("zephyr") => "zephyr",
+        _ => "posix",
+    }
+    .to_string()
+}
+
+/// Emit a `&[TierSpec]` literal from the resolved tier table (Phase 228.G,
+/// RFC-0032 §5). `priority` is the raw per-RTOS value; `groups` is the tier's
+/// distinct callback-group ids (the executor's `active_groups` filter).
+fn tier_specs_tokens(table: &ResolvedTierTable) -> proc_macro2::TokenStream {
+    let entries = table.tiers.iter().map(|t| {
+        let name = &t.name;
+        let mut groups: Vec<&str> = t.members.iter().map(|(_, g)| g.as_str()).collect();
+        groups.sort();
+        groups.dedup();
+        let priority = t.priority;
+        let stack_bytes = t.stack_bytes.unwrap_or(0) as usize;
+        let spin_period_us = t.spin_period_us.unwrap_or(1000);
+        quote! {
+            ::nros::__macro_support::nros_platform::TierSpec {
+                name: #name,
+                groups: &[ #(#groups),* ],
+                priority: #priority,
+                stack_bytes: #stack_bytes,
+                spin_period_us: #spin_period_us,
+            }
+        }
+    });
+    quote! { &[ #(#entries),* ] }
 }
 
 /// Map a board key from `[package.metadata.nros.entry] deploy = "X"`

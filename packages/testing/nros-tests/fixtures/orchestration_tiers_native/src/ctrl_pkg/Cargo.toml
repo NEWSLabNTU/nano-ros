@@ -1,0 +1,24 @@
+[package]
+name = "ctrl_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+# Phase 228.G — the control node declares its callback group + tier. The
+# `nros::main!()` macro reads this to resolve the per-tier table.
+[package.metadata.nros.node]
+class = "ctrl_pkg::Control"
+name = "control_node"
+default_namespace = "/"
+callback_groups = [{ id = "ctrl", tier = "high" }]
+
+[dependencies]
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }

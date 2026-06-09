@@ -454,6 +454,11 @@ exclude = [
     "packages/testing/nros-tests/fixtures/n9_workspace",
     "packages/testing/nros-tests/fixtures/n9_workspace/src/talker_pkg",
     "packages/testing/nros-tests/fixtures/n9_workspace/src/demo_entry",
+    # Phase 228.G — multi-tier `nros::main!()` emit fixture (own `[workspace]`).
+    "packages/testing/nros-tests/fixtures/orchestration_tiers_native",
+    "packages/testing/nros-tests/fixtures/orchestration_tiers_native/src/ctrl_pkg",
+    "packages/testing/nros-tests/fixtures/orchestration_tiers_native/src/telem_pkg",
+    "packages/testing/nros-tests/fixtures/orchestration_tiers_native/src/demo_entry",
     # Phase 218 — `packages/cli/` is the merged-in nros-cli tree, a
     # SUB-WORKSPACE with its own `[workspace]` table + `Cargo.lock`.
     # Cargo's auto-discovery stops at sub-workspace boundaries, so the

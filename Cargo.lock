@@ -2130,6 +2130,7 @@ name = "nros-macros"
 version = "0.5.0"
 dependencies = [
  "nros-build",
+ "nros-orchestration-ir",
  "proc-macro2",
  "quote",
  "syn",

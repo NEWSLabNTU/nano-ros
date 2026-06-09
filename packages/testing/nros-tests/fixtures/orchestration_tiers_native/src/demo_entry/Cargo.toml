@@ -1,0 +1,23 @@
+[package]
+name = "demo_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "demo_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
+nros-board-native = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-native" }
+ctrl_pkg = { path = "../ctrl_pkg" }
+telem_pkg = { path = "../telem_pkg" }
