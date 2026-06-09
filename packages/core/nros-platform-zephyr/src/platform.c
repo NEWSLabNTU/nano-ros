@@ -78,6 +78,34 @@ void nros_platform_dealloc(void *ptr) {
     k_free(ptr);
 }
 
+/* ---- Heap stats (phase-230 Z5 / RFC-0034 D7) ----
+ *
+ * The true unified heap total on Zephyr: `k_malloc` (and thus
+ * `nros_platform_alloc`, which backs zenoh-pico's `z_malloc`) AND
+ * zephyr-lang-rust's `#[global_allocator]` (`malloc`) both draw from the
+ * kernel system heap `_system_heap`. Querying its runtime stats gives the
+ * exact C+Rust figure without owning the Rust allocator (D7 Mode B).
+ * Requires CONFIG_SYS_HEAP_RUNTIME_STATS + a non-zero CONFIG_HEAP_MEM_POOL_SIZE
+ * (which is what defines `_system_heap`); returns 0 ("unknown") otherwise. */
+#if defined(CONFIG_SYS_HEAP_RUNTIME_STATS) && (CONFIG_HEAP_MEM_POOL_SIZE > 0)
+extern struct k_heap _system_heap;
+
+size_t nros_platform_heap_used_bytes(void) {
+    struct sys_memory_stats st;
+    if (sys_heap_runtime_stats_get(&_system_heap.heap, &st) != 0) return 0u;
+    return (size_t) st.allocated_bytes;
+}
+
+size_t nros_platform_heap_total_bytes(void) {
+    struct sys_memory_stats st;
+    if (sys_heap_runtime_stats_get(&_system_heap.heap, &st) != 0) return 0u;
+    return (size_t) (st.allocated_bytes + st.free_bytes);
+}
+#else
+size_t nros_platform_heap_used_bytes(void) { return 0u; }
+size_t nros_platform_heap_total_bytes(void) { return 0u; }
+#endif
+
 /* ---- Sleep ---- */
 
 void nros_platform_sleep_us(size_t us) {

@@ -112,18 +112,38 @@ reverted. The earlier audit/RFC premise ("vendored zenoh-pico `z_malloc` →
 `k_malloc` bypass") is true only for a *standalone* zenoh-pico Zephyr-module
 build, **not** the nano-ros Rust-entry build. The Zephyr slice reduces to:
 
-- [ ] Z5 — instrument `nros_platform_alloc` (`used`/`peak`) so the existing
-  C-side funnel is counted; expose Zephyr-native `sys_heap` total
-  (`CONFIG_SYS_HEAP_RUNTIME_STATS`) as the unified figure (D7, since
-  zephyr-lang-rust owns the Rust heap). That closes #6 for Zephyr.
+- [x] Z5 (Zephyr) — heap-stats query **landed + verified**.
+  `nros_platform_heap_used_bytes()` / `_total_bytes()` in
+  `nros-platform-zephyr/src/platform.c` query `_system_heap` via
+  `sys_heap_runtime_stats_get` under `CONFIG_SYS_HEAP_RUNTIME_STATS`
+  (enabled in the listener `prj-zenoh.conf`). Verified end to end on
+  native_sim: `heap used=8792 total=64896` — the exact D7 Mode-B unified
+  figure (both zenoh-pico via `nros_platform_alloc` and zephyr-lang-rust's
+  Rust allocator draw from `_system_heap`). Closes #6 for Zephyr.
+- [ ] Z5 (follow-up) — promote to the **canonical** platform ABI
+  (`platform.h` + `nros-platform-cffi` mirror + export macro + drift gate)
+  with a **default = 0 ("unknown")** so existing ports compile unchanged;
+  add the native-query impls for ThreadX (`tx_byte_pool_info_get`), POSIX
+  (best-effort), bare-metal (`FreeListHeap::used`); back the public
+  `nros_heap_used_bytes()` with it on RTOS. Cross-cutting (every port + the
+  gate) — own change. On ThreadX both the C/C++ Rust allocator and
+  zenoh-pico funnel through `nros_platform_alloc` → `tx_byte_allocate`, so
+  the pool query will be exact there too.
 
-**Per-RTOS reality (refined by this finding):** the C-side funnel exists
-wherever the alias TU compiles (POSIX, bare-metal, Zephyr, and — to verify
-— ThreadX, since the alias is gated `!freertos`). **FreeRTOS is the genuine
-bypass** (alias TU explicitly skipped, vendored `system/freertos/system.c`
-→ `pvPortMalloc`). So the real cross-RTOS work narrows to FreeRTOS (guard +
-alias) + ThreadX verification + the optional global-allocator (230.1.4) +
-stats. Verify ThreadX with the same `objdump` check before assuming work.
+**Per-RTOS reality (verified 2026-06).** The C-side funnel exists wherever
+the alias TU compiles — confirmed by `objdump` on built binaries:
+- **Zephyr** `zephyr.exe`: `z_malloc → jmp nros_platform_alloc` ✅
+- **ThreadX** `threadx_c_talker` (build-zenoh): `z_malloc → jmp
+  nros_platform_alloc`, `z_realloc → jmp nros_platform_realloc` ✅
+- POSIX / bare-metal: alias TU active ✅ (by the same gate).
+
+**FreeRTOS is the ONLY genuine C-side bypass** — the alias TU is explicitly
+skipped (`runner.rs` `!use_freertos`) and vendored
+`system/freertos/system.c` defines `z_malloc → pvPortMalloc`. So the real
+cross-RTOS C-side work is **FreeRTOS-only** (guard + alias, mirroring the
+existing POSIX/ThreadX path) + the optional global-allocator (230.1.4) +
+heap stats (Z5). The 40-site static grep over-counted: the RMW C path on
+Zephyr/ThreadX is already funneled.
 
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
 > are two allocators and neither is nros's: the `#[global_allocator]` is
