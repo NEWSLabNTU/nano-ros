@@ -247,25 +247,45 @@ substeps:
 `packages/testing/nros-tests/tests/orchestration_tiers_native.rs`.
 </details>
 
-### 228.E.2 — FreeRTOS `run_tiers` port  (RFC-0032 §8.2)
-Mirror `PosixBoard::run_tiers` for the FreeRTOS board using
-`nros_freertos_create_task` at the raw `[tiers.x.freertos].priority` (MT=1 is
-already the default there — RFC-0032 §5.0). This is where **real preemption** is
-validated. *Verify:* a 2-tier FreeRTOS QEMU example; assert distinct task
-priorities + zenoh-pico concurrent-multi-spin holds (no session corruption).
+### 228.G.6 — Multi-tier binary boot E2E  ✅ DONE
+The emitted multi-tier fixture binary builds + runs (no router); the boot tier
+opens the one session, fails, and `run_tiers` prints its unique
+`"multi-tier entry needs a live session"` abort — proving the macro emitted
+`run_tiers` AND the boot tier executed (the single-tier path prints a different
+line). Test `multi_tier_binary_boots_into_run_tiers`. A richer
+observe-both-tiers-publishing E2E (both tiers' topic output via an external sub)
+is an optional follow-up; the boot path + the 228.F runtime mechanism together
+cover correctness.
+**Files:** `packages/testing/nros-tests/tests/orchestration_tiers_native.rs`.
+
+### 228.E.2 — FreeRTOS `run_tiers` port  ⏳ INFRA-GATED (RFC-0032 §8.2)
+Mirror `PosixBoard::run_tiers` for the FreeRTOS board. **Substantive no_std
+plumbing:** no `std::thread::scope`, so each tier task is a
+`nros_freertos_create_task(tier_trampoline::<F>, …)` with a heap-leaked
+`TierCtx<F>` arg (session_ptr + groups + `setup`), forked off the existing
+`AppContext`/network-init flow in `entry.rs`. MT=1 is already the default there
+(RFC-0032 §5.0). **Validation needs QEMU** (assert distinct task priorities +
+zenoh-pico concurrent-multi-spin holds) — landing it unverified is risky, so it
+is its own QEMU-equipped wave.
 **Files:** `packages/boards/nros-board-freertos/src/`, a FreeRTOS tier fixture.
 
-### 228.D.2 — Shared-state accessor emit  (the codegen half of 228.D)
-From the baked `shared_state` region: emit the `nros_shared_context` C-ABI struct
-+ `_get/_set/_modify` accessors + Rust/C++/C wrappers. Sync per the resolved
-policy (`none` single-tier, `mutex` cross-tier via `nros-platform`). Couples with
-228.G (the accessors get a second consumer once multi-tier tasks exist).
-**Files:** codegen + `nros-cpp`/`nros-c` shared-context wrappers.
+### 228.D.2 — Multi-tier shared-state locking + accessor emit  ⏳ GATED
+The lock-free `nros_orchestration::SharedRegion<N>` (Phase 172.I blackboard) +
+its `render_shared_state` codegen already exist for the cooperative single-tier
+case — its own access-discipline note explicitly defers the preemptive case
+("wrap access in the platform critical section"). So 228.D.2 is: (a) add a
+**locked** region variant backed by `PlatformThreading::mutex_*` /
+`critical_section` for cross-tier `sync = "mutex"`, (b) wire the resolved
+`shared_state` policy from the new `system.toml` bake to the emitter, (c) the
+C/C++ `nros_shared_context` wrappers. Gated on the lock-free→locked refactor +
+a cross-tier consuming example.
+**Files:** `nros-orchestration` (locked region), codegen, `nros-cpp`/`nros-c`.
 
-### 228.H — Spin-period bound-check warning  (RFC-0032 §8.3, low priority)
-At resolve/emit time, warn when a tier's `spin_period_us` exceeds the tightest
-timer period among its members (RFC-0015 §4.3). Warning, not error.
-**Files:** `packages/core/nros-orchestration-ir/` (or the emit call sites).
+### 228.H — Spin-period bound-check warning  ❌ DESCOPED
+`spin_period_us` ≤ tightest timer period (RFC-0015 §4.3) needs each callback's
+**timer period**, which is node-code metadata not present in the resolver inputs
+(`system.toml` tiers + node `callback_groups`). Revisit if timer periods are
+ever surfaced into node metadata; not worth a separate metadata channel now.
 
 ## Acceptance
 
