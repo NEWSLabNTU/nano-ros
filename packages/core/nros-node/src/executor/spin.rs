@@ -1302,6 +1302,23 @@ impl Executor {
         unsafe { Self::from_session_ptr(session) }
     }
 
+    /// Raw pointer to this executor's RMW session, for the per-tier model:
+    /// the boot task opens the one session via [`Executor::open`] (the RMW
+    /// session is a process-wide singleton — opening twice fails), then hands
+    /// this pointer to each spawned tier task's
+    /// [`Executor::open_with_session`]. The boot task's executor owns the
+    /// session and outlives every borrower, so the pointer stays valid for the
+    /// program's life. Works for both `Owned` and `Borrowed` stores.
+    ///
+    /// # Safety
+    /// The returned pointer aliases `self.session`. Callers must keep `self`
+    /// alive (not moved/dropped) for as long as any tier executor uses the
+    /// pointer, and must only touch the session through executor spin calls
+    /// (the RMW backend serializes concurrent access through its own locks).
+    pub fn session_ptr(&mut self) -> *mut session::ConcreteSession {
+        &mut *self.session as *mut session::ConcreteSession
+    }
+
     /// Phase 228.C — set this tier executor's active callback-group filter. The
     /// generated per-tier task calls this before registering nodes; afterwards
     /// only callbacks whose `.callback_group()` is in `groups` register here.

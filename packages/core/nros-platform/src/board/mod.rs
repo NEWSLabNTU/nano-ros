@@ -57,6 +57,7 @@ pub mod network;
 pub mod print;
 pub mod rtic_entry;
 pub mod runtime;
+pub mod tier;
 pub mod transport;
 
 pub use config::{BoardConfig, BoardTransportConfig};
@@ -72,6 +73,7 @@ pub use runtime::{
     NodeDispatchFn, NodeDispatchRuntime, NodeInitFn, NodeRegisterFn, NodeTickFn, NullNodeRuntime,
     RuntimeCtx, RuntimeError, SignaledCallback,
 };
+pub use tier::{TierSpec, freertos_priority_for, posix_nice_for, threadx_priority_for};
 
 /// Phase 214.K.1 — backward-compat alias. The board-side dispatch
 /// sink was renamed `NodeRuntime` → `NodeDispatchRuntime` to

@@ -39,7 +39,8 @@ pub use board::{
     Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, BoardTransportConfig,
     DispatchStrategy, EmbassyBoardEntry, NetworkWait, NodeDispatchFn, NodeDispatchRuntime,
     NodeInitFn, NodeRegisterFn, NodeTickFn, NullNodeRuntime, RticBoardEntry, RuntimeCtx,
-    RuntimeError, SignaledCallback, TransportBringup,
+    RuntimeError, SignaledCallback, TierSpec, TransportBringup, freertos_priority_for,
+    posix_nice_for, threadx_priority_for,
 };
 // Phase 214.K.1 — backward-compat alias at the crate root. See
 // `board::NodeRuntime` for the deprecation note.

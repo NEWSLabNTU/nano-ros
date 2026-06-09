@@ -52,7 +52,28 @@ use std::io::Write as _;
 
 // `nros_platform::board` is `mod board;` (private); the Board trait
 // family is re-exported at the crate root.
-use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx};
+use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
+
+/// `Send` wrapper for the shared raw session pointer so it can cross the
+/// `std::thread::scope` boundary. The pointed-to RMW session type is
+/// `pub(crate)` in `nros-node` (unnameable here), so the wrapper is
+/// generic over `T` and never names it — `T` is inferred from
+/// [`nros::Executor::session_ptr`]. Sharing the pointer is sound under
+/// the per-tier contract: the boot executor owns the one session, the
+/// RMW backend serializes concurrent access through its own locks, and
+/// `thread::scope` guarantees no spawned tier outlives the owner.
+struct SharedSession<T>(*mut T);
+// Hand-written Copy/Clone: `#[derive]` would add a spurious `T: Copy`
+// bound (the session type isn't `Copy`), but a raw pointer always is.
+impl<T> Clone for SharedSession<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for SharedSession<T> {}
+// SAFETY: the per-tier model shares one RMW session across tier tasks by
+// design; concurrent access is serialized inside the backend.
+unsafe impl<T> Send for SharedSession<T> {}
 
 /// POSIX family driver ZST. Plug into an Entry pkg `main.rs` via:
 ///
@@ -187,6 +208,150 @@ impl BoardEntry for PosixBoard {
                 <Self as BoardPrint>::println(format_args!("nros: application error: {e:?}"));
                 <Self as BoardExit>::exit_failure();
             }
+        }
+    }
+}
+
+impl PosixBoard {
+    /// Phase 228.E — per-tier multi-task entry. Opens the one RMW
+    /// session, then runs one `Executor` per [`TierSpec`] over that
+    /// shared session: the highest-priority tier (`tiers[0]`, the
+    /// resolver orders highest-first) runs on the boot task; the rest
+    /// are spawned as `std::thread`s. Each tier sets its
+    /// `active_groups` filter, runs `setup` (register-only — only this
+    /// tier's callbacks take), then spins forever.
+    ///
+    /// `setup` is `Fn` (not `FnOnce`) — it is invoked once per tier
+    /// executor — and `Sync`, since spawned tiers share `&setup`. It
+    /// must register entities only; the spin loop is owned here so the
+    /// board can install the group filter first. (The single-tier
+    /// [`BoardEntry::run`] path, where `setup` owns the spin, is
+    /// unchanged.)
+    ///
+    /// Native preemption uses the default scheduler; the normalized
+    /// [`TierSpec::priority`] is advisory here (strict ordering needs
+    /// `SCHED_FIFO` + privileges). The FreeRTOS port maps it to real
+    /// task priorities (RFC-0016). Blocks forever (server semantics);
+    /// returns only if a tier `setup` fails before the spin loop.
+    pub fn run_tiers<F, E>(tiers: &[TierSpec<'_>], setup: F) -> Result<(), E>
+    where
+        F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E> + Sync,
+        E: core::fmt::Debug,
+    {
+        <Self as BoardInit>::init_hardware();
+
+        if tiers.is_empty() {
+            <Self as BoardPrint>::println(format_args!(
+                "nros: run_tiers called with no tiers — nothing to run"
+            ));
+            <Self as BoardExit>::exit_failure();
+        }
+
+        // Open the one session on the boot task; it owns the session for
+        // the program's life (the boot tier's spin loop never returns).
+        let exec_cfg = ::nros::ExecutorConfig::from_env();
+        let boot_exec = match ::nros::Executor::open(&exec_cfg) {
+            Ok(e) => e,
+            Err(err) => {
+                <Self as BoardPrint>::println(format_args!(
+                    "nros: Executor::open failed ({err:?}); multi-tier entry needs a live \
+                     session — aborting."
+                ));
+                <Self as BoardExit>::exit_failure();
+            }
+        };
+        let mut boot_crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(boot_exec);
+        let shared = SharedSession(boot_crt.executor_mut().session_ptr());
+
+        let setup = &setup;
+        std::thread::scope(|scope| {
+            // Spawn every tier after the first; each borrows the shared
+            // session pointer and `&setup` from the enclosing scope.
+            for tier in &tiers[1..] {
+                let shared = shared;
+                let builder = std::thread::Builder::new().name(format!("nros-tier-{}", tier.name));
+                let spawn = builder.spawn_scoped(scope, move || {
+                    // Re-bind the whole wrapper so the closure captures the
+                    // `Send` `SharedSession`, not the bare `*mut` field
+                    // (edition-2021 disjoint capture would grab the field).
+                    let shared = shared;
+                    // SAFETY: `shared.0` aliases the boot executor's
+                    // session, kept alive for this scope by `thread::scope`.
+                    let exec = unsafe { ::nros::Executor::open_with_session(shared.0) };
+                    run_one_tier::<Self, F, E>(exec, tier, setup);
+                });
+                if let Err(e) = spawn {
+                    <Self as BoardPrint>::println(format_args!(
+                        "nros: failed to spawn tier `{}`: {e}",
+                        tier.name
+                    ));
+                }
+            }
+            // Boot tier runs on this task, reusing the owning executor.
+            run_boot_tier::<Self, F, E>(&mut boot_crt, &tiers[0], setup);
+        });
+
+        // Unreachable: the boot tier's spin loop never returns.
+        Ok(())
+    }
+}
+
+/// Register + spin one tier on a freshly-opened borrowed-session
+/// executor (spawned-tier path).
+fn run_one_tier<B, F, E>(exec: ::nros::Executor, tier: &TierSpec<'_>, setup: &F)
+where
+    B: BoardPrint,
+    F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
+    E: core::fmt::Debug,
+{
+    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
+    crt.executor_mut().set_active_groups(tier.groups);
+    {
+        let mut ctx = RuntimeCtx::with_runtime(&mut crt);
+        if let Err(e) = setup(&mut ctx) {
+            B::println(format_args!(
+                "nros: tier `{}` setup failed: {e:?} — tier task exiting",
+                tier.name
+            ));
+            return;
+        }
+    }
+    spin_forever::<B>(&mut crt, tier);
+}
+
+/// Register + spin the boot tier on the session-owning executor.
+fn run_boot_tier<B, F, E>(
+    crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
+    tier: &TierSpec<'_>,
+    setup: &F,
+) where
+    B: BoardPrint,
+    F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
+    E: core::fmt::Debug,
+{
+    crt.executor_mut().set_active_groups(tier.groups);
+    {
+        let mut ctx = RuntimeCtx::with_runtime(crt);
+        if let Err(e) = setup(&mut ctx) {
+            B::println(format_args!(
+                "nros: boot tier `{}` setup failed: {e:?}",
+                tier.name
+            ));
+            return;
+        }
+    }
+    spin_forever::<B>(crt, tier);
+}
+
+/// Drive a tier executor's `spin_once` at its declared period, forever.
+fn spin_forever<B: BoardPrint>(
+    crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
+    tier: &TierSpec<'_>,
+) {
+    let period = std::time::Duration::from_micros(tier.spin_period_us.max(1));
+    loop {
+        if let Err(e) = crt.spin_once(period) {
+            B::println(format_args!("nros: tier `{}` spin error: {e:?}", tier.name));
         }
     }
 }
