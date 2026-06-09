@@ -87,6 +87,23 @@ into `just check`. 230.1.7 flips it hard once the inventory is migrated.
 
 ### Wave 1 — Allocator unification (the starter)
 
+> **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
+> are two allocators and neither is nros's: the `#[global_allocator]` is
+> **zephyr-lang-rust's** (`modules/lang/rust/zephyr/src/alloc_impl.rs` →
+> `k_malloc`), and zenoh-pico's C `z_malloc` → `k_malloc` independently.
+> `nros-c`/`nros-cpp`'s `ZephyrAllocator` only governs the **C/C++ API**
+> path, not the Rust entry. `nros-platform-zephyr` does provide
+> `nros_platform_alloc` (k_heap-backed) as a Zephyr CMake module. So a true
+> single funnel on Zephyr Rust needs BOTH: (a) route zenoh-pico `z_malloc`
+> → `nros_platform_alloc` (guard + alias), and (b) install an nros
+> `#[global_allocator]` in the entry/board that wraps `nros_platform_alloc`,
+> shadowing zephyr-lang-rust's. Open design choice (see RFC-0034): do (a)+(b)
+> for a real funnel, or do (a) only and read the true total from Zephyr's
+> native `sys_heap` runtime stats (`CONFIG_SYS_HEAP_RUNTIME_STATS`) — since
+> both allocators already share `k_heap`, the native query is exact without
+> owning the Rust global allocator. **Pending decision before Zephyr 230.1
+> implementation.**
+
 #### 230.1.1 — Fork guard for vendored scalar alloc
 Guard `z_malloc`/`z_free`/`z_realloc` in zenoh-pico's
 `system/{freertos,threadx,zephyr}/system.c` behind

@@ -158,10 +158,22 @@ Work breakdown: [phase-230].
 - **Do opaque services ever move?** Net is the strongest candidate (a
   `nros_platform_net_*` surface already exists, 29 symbols). Threads/sync
   are the least likely (deep struct coupling). Left open.
-- **Zephyr port crate.** Zephyr currently has no C `nros_platform_*`
-  provider in practice (the `zephyr` crate + zenoh-pico own it). Unifying
-  alloc on Zephyr implies standing up at least the scalar surface of a
-  Zephyr port. Scope confirmed in [phase-230].
+- **Zephyr port crate.** `nros-platform-zephyr` *does* ship
+  `nros_platform_alloc` (k_heap-backed) as a Zephyr CMake module; the gap
+  is link-line presence + who installs the Rust global allocator (next
+  point), not a missing port.
+
+- **RTOS-owned Rust global allocator.** On platforms whose Rust
+  integration provides its own `#[global_allocator]` (Zephyr via
+  zephyr-lang-rust → `k_malloc`; potentially others), the Rust side does
+  not route through `nros_platform_alloc` and nros does not own it. A true
+  single funnel then requires the nros entry/board to **install its own
+  `#[global_allocator]`** wrapping `nros_platform_alloc`, shadowing the
+  RTOS module's. The alternative — route only the RMW C side through the
+  ABI and read the true total from the RTOS-native heap query (Option B,
+  e.g. Zephyr `CONFIG_SYS_HEAP_RUNTIME_STATS`) — gets correct stats without
+  owning the Rust allocator, since both already share one kernel heap.
+  Decide per platform; this gates the Zephyr Wave-1 slice ([phase-230]).
 
 ## Changelog
 
