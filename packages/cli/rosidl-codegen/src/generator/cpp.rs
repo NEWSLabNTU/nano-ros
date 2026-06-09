@@ -77,7 +77,7 @@ fn build_fields(
     let mut seq_structs = Vec::new();
 
     for field in fields {
-        let cap = resolve_cap_override(
+        let storage = resolve_cap_override(
             &field.name,
             &field.field_type,
             current_package,
@@ -88,14 +88,14 @@ fn build_fields(
             &field.name,
             &field.field_type,
             current_package,
-            cap,
+            storage,
         ));
         let (ffi_field, seq_struct) = build_cpp_ffi_field(
             &field.name,
             &field.field_type,
             struct_name,
             current_package,
-            cap,
+            storage,
         );
         ffi_fields.push(ffi_field);
         if let Some(ss) = seq_struct {
@@ -226,6 +226,7 @@ struct FfiRenderSpec<'a> {
 fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<String, GeneratorError> {
     let has_fields = !spec.ffi_fields.is_empty();
     let serialized_size_max = compute_serialized_size_max(spec.ffi_fields);
+    let has_heap = spec.ffi_fields.iter().any(|f| f.is_heap);
 
     let template = MessageCppFfiTemplate {
         package_name: spec.package_name,
@@ -240,6 +241,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<String, GeneratorError> {
         sequence_structs: spec.seq_structs.to_vec(),
         has_fields,
         serialized_size_max,
+        has_heap,
     };
     Ok(template.render()?)
 }

@@ -8,11 +8,12 @@ generators identically, replacing the hardcoded `*_DEFAULT_SEQUENCE_CAPACITY` (6
 [0007-seq-capacity-64](../issues/0007-seq-capacity-64.md); the `borrowed` storage
 mode (phase 3 below) closes the issue entirely.
 
-**Status.** In progress (2026-06-10). **The `owned` configuration method is
-complete across all three languages (Rust/C/C++) with discovery + CLI/CMake
-wiring, and `heap` is done + verified on the Rust path.** Remaining: `heap` for
-C/C++ (needs runtime growable-seq types) and `borrowed` (229.6 — its own
-multi-crate runtime effort, closes issue 0007). Design-of-record is RFC-0033.
+**Status.** In progress (2026-06-10). **`owned` is complete across all three
+languages (Rust/C/C++) with discovery + CLI/CMake wiring; `heap` (primitive
+sequences) is done + verified on all three (Rust `alloc::Vec`, C rclc-style
+malloc'd struct + `_fini`, C++ `nros::HeapSequence` + repr(C) FFI).** Remaining:
+heap strings / seq-of-string-or-nested (C/C++ follow-up) and `borrowed` (229.6 —
+its own multi-crate runtime effort, closes issue 0007). Design-of-record is RFC-0033.
 
 Landed on branch `phase-229-message-field-capacity-config`:
 `a6b30ca9` (1: config core) · `8f158447` (2: nros Rust) · `4b91423f` (3a: C) ·
@@ -140,8 +141,9 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
 - **Files:** `packages/cli/rosidl-codegen/src/types.rs`,
   `.../generator/{common,msg,srv,action}.rs`, `.../rosidl-bindgen/src/generator.rs`.
 
-### 229.5 — `heap` storage mode  🟡 Rust DONE; C/C++ deferred
-`mode = "heap"` → `alloc`-backed growable containers (`cap` ignored — unbounded).
+### 229.5 — `heap` storage mode  ✅ DONE (Rust + C + C++, primitive sequences)
+`mode = "heap"` → growable containers (`cap` ignored — unbounded). Heap strings and
+sequences of strings/nested messages stay rejected across C/C++ (a follow-up).
 - ✅ **Rust path** — `nros-core` exposes `pub mod heap { pub use alloc::{String, Vec} }`
   under `any(feature="alloc", feature="std")` (the `extern crate alloc` cfg widened to
   match); `nros_type_for_field_heap` emits `nros_core::heap::{Vec<T>, String}`;
@@ -157,25 +159,24 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
   `nros_platform_malloc`; `<struct>_fini` frees; serialize shared. `gcc -Werror`
   verified (`tests/c_heap_compile_check.rs`). Heap strings / seq-of-string/nested
   still rejected.
-- 🟡 **C++ — runtime foundation done, FFI codegen pending.**
-  - ✅ `nros::HeapSequence<T>` (`packages/core/nros-cpp/include/nros/heap_sequence.hpp`)
-    — RAII, non-copyable/movable, layout `{ T* data; size_t size; size_t capacity; }`
+- ✅ **C++ primitive sequences — runtime + FFI codegen done.**
+  - `nros::HeapSequence<T>` (`packages/core/nros-cpp/include/nros/heap_sequence.hpp`) —
+    RAII, non-copyable/movable, layout `{ T* data; size_t size; size_t capacity; }`
     (rclc shape, repr(C)-bridgeable), allocates via `nros_platform_malloc/free` so the
-    SAME allocator spans the Rust↔C++ FFI. `g++ -std=c++14 -fno-exceptions -fno-rtti
-    -Werror` verified.
-  - ⬜ **FFI codegen** (the careful remaining part) for primitive heap sequences:
-    1. `cpp_type_for_field_heap` → `nros::HeapSequence<elem>` (header type).
-    2. `SequenceStructDef.is_heap` → Rust mirror `#[repr(C)] { data: *mut T, size: usize,
-       capacity: usize }` (replaces the fixed `{ size: u32, data: [T; N] }`).
-    3. FFI serialize: `for i in 0..size { writer.write(unsafe { *data.add(i) }) }`.
-    4. FFI deserialize: `nros_platform_malloc(len * size_of::<T>())`, populate, **free on
-       mid-loop read error** (no leak); `extern "C"` decls for malloc/free in the `.rs`.
-    5. **Publish path**: `nros_cpp_publish_<msg>` serializes into a fixed
-       `[u8; serialized_size_max]` stack buffer — unbounded for a heap payload. Heap
-       messages must route publish through a `nros_platform_malloc`'d serialize buffer
-       (sized from the runtime `.size`), not the stack array.
-    6. Ungate C++ heap (primitive seq) in `build_cpp_field` / `build_cpp_ffi_field` /
-       `resolve_cap_override`; verify with `g++` (header) + `cargo check` (FFI `.rs`).
+    SAME allocator spans the Rust↔C++ FFI.
+  - `cpp_type_for_field_heap` → `nros::HeapSequence<elem>` (header); `CppStorage`
+    enum threads owned-vs-heap; `SequenceStructDef.is_heap` + `CppFfiField.{is_heap,
+    element_repr_type}` → Rust mirror `#[repr(C)] { data: *mut T, size: usize,
+    capacity: usize }`.
+  - FFI serialize: raw-pointer `*data.add(i)`. FFI deserialize: `nros_platform_malloc`
+    + populate + **free on mid-loop read error** (no leak); `extern "C"` malloc/free
+    decls gated on `has_heap`.
+  - **Publish path**: heap messages serialize into a `nros_platform_malloc`'d buffer
+    sized from the runtime sequence lengths (`serialized_size_max + Σ(16 + size·elemsz)`),
+    not the fixed stack array; freed after publish.
+  - **Verified** — `tests/cpp_heap_compile_check.rs` (`--ignored`): the FFI `.rs`
+    `cargo check`s against real nros-serdes **and** the `.hpp` (`nros::HeapSequence`)
+    `g++ -std=c++14 -fno-exceptions -fno-rtti`s. + 2 golden tests.
   - Heap strings / seq-of-string/nested stay rejected (as in C).
 - **Files:** `nros-core/src/lib.rs`, `types.rs`, `templates.rs`,
   `generator/common.rs`, `templates/message_nros.rs.jinja`, `tests/`.

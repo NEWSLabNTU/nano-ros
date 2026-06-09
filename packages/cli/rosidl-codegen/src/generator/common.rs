@@ -6,9 +6,9 @@ use crate::{
         NrosCodegenMode, c_array_suffix_for_field, c_array_suffix_for_field_with_capacity,
         c_cdr_read_method, c_cdr_write_method, c_type_for_field, c_type_for_field_heap,
         c_type_for_field_with_capacity, cpp_array_suffix_for_field, cpp_type_for_field,
-        cpp_type_for_field_with_capacity, escape_keyword, nros_type_for_field_heap,
-        nros_type_for_field_with_capacity, nros_type_for_field_with_mode, repr_c_type_for_field,
-        repr_c_type_for_field_with_capacity, to_c_package_name,
+        cpp_type_for_field_heap, cpp_type_for_field_with_capacity, escape_keyword,
+        nros_type_for_field_heap, nros_type_for_field_with_capacity, nros_type_for_field_with_mode,
+        repr_c_type_for_field, repr_c_type_for_field_with_capacity, to_c_package_name,
     },
     utils::to_snake_case,
 };
@@ -410,51 +410,73 @@ pub(super) fn build_c_field(
     })
 }
 
-/// Resolve the per-field capacity override for a **top-level unbounded**
-/// string/sequence field (RFC-0033). Returns `Ok(None)` for shapes whose
-/// capacity is not configurable (bounded, array, primitive, nested), and an
-/// error for a non-`owned` storage mode (Phase 229 ships `owned` only).
-///
-/// Shared by the C++ header + FFI builders so both sides see the same `cap`.
+/// Resolved C++ storage for a field (RFC-0033). `Owned(cap)` keeps a
+/// fixed-capacity container (`cap` = `Some` only for the configurable
+/// string/sequence shapes); `Heap` is an `nros::HeapSequence<T>` primitive
+/// sequence.
+#[derive(Clone, Copy)]
+pub(super) enum CppStorage {
+    Owned(Option<usize>),
+    Heap,
+}
+
+/// Resolve the per-field storage for a C++ field (RFC-0033). Owned shapes carry
+/// their resolved capacity; `heap` is allowed only for primitive sequences
+/// (rejected for heap strings / sequences of strings / nested messages, and for
+/// `borrowed`). Shared by the C++ header + FFI builders so both agree.
 pub(super) fn resolve_cap_override(
     name: &str,
     field_type: &FieldType,
     current_package: Option<&str>,
     message_name: &str,
     resolver: &CapacityResolver,
-) -> Result<Option<usize>, GeneratorError> {
+) -> Result<CppStorage, GeneratorError> {
     let kind = match field_type {
         FieldType::String | FieldType::WString => CapFieldKind::String,
         FieldType::Sequence { .. } => CapFieldKind::Sequence,
-        _ => return Ok(None),
+        _ => return Ok(CppStorage::Owned(None)),
     };
     let package = current_package.unwrap_or("");
+    let unsupported = |mode: &'static str| GeneratorError::UnsupportedStorageMode {
+        package: package.to_string(),
+        message: message_name.to_string(),
+        field: name.to_string(),
+        mode,
+    };
     let storage = resolver.resolve(package, message_name, name, kind);
-    if !storage.mode.is_phase1_supported() {
-        return Err(GeneratorError::UnsupportedStorageMode {
-            package: package.to_string(),
-            message: message_name.to_string(),
-            field: name.to_string(),
-            mode: storage.mode.as_str(),
-        });
+    match storage.mode {
+        StorageMode::Owned => Ok(CppStorage::Owned(Some(storage.cap))),
+        StorageMode::Heap => {
+            // Heap is only bridgeable for primitive sequences (see
+            // cpp_type_for_field_heap); reject heap strings / non-primitive seqs.
+            if cpp_type_for_field_heap(field_type, current_package).is_some() {
+                Ok(CppStorage::Heap)
+            } else {
+                Err(unsupported("heap"))
+            }
+        }
+        StorageMode::Borrowed => Err(unsupported("borrowed")),
     }
-    Ok(Some(storage.cap))
 }
 
 /// Build a CppField for C++ header generation.
 ///
-/// `cap_override` is the resolved per-field capacity for a **top-level
-/// unbounded** string/sequence (RFC-0033, `owned` mode); `None` keeps defaults.
+/// `storage` is the resolved per-field storage (RFC-0033): an owned
+/// fixed-capacity container or an `nros::HeapSequence<T>` heap sequence.
 pub(super) fn build_cpp_field(
     name: &str,
     field_type: &FieldType,
     current_package: Option<&str>,
-    cap_override: Option<usize>,
+    storage: CppStorage,
 ) -> CppField {
     let escaped_name = escape_keyword(name);
-    let cpp_type = match cap_override {
-        Some(cap) => cpp_type_for_field_with_capacity(field_type, current_package, cap),
-        None => cpp_type_for_field(field_type, current_package),
+    let cpp_type = match storage {
+        CppStorage::Owned(Some(cap)) => {
+            cpp_type_for_field_with_capacity(field_type, current_package, cap)
+        }
+        CppStorage::Owned(None) => cpp_type_for_field(field_type, current_package),
+        CppStorage::Heap => cpp_type_for_field_heap(field_type, current_package)
+            .expect("resolve_cap_override only yields Heap for bridgeable shapes"),
     };
     let array_suffix = cpp_array_suffix_for_field(field_type);
 
@@ -487,9 +509,14 @@ pub(super) fn build_cpp_ffi_field(
     field_type: &FieldType,
     struct_name: &str,
     current_package: Option<&str>,
-    cap_override: Option<usize>,
+    storage: CppStorage,
 ) -> (CppFfiField, Option<SequenceStructDef>) {
     let escaped_name = escape_keyword(name);
+    let is_heap = matches!(storage, CppStorage::Heap);
+    let cap_override = match storage {
+        CppStorage::Owned(cap) => cap,
+        CppStorage::Heap => None,
+    };
 
     // Determine type characteristics
     let (is_primitive, primitive_type) = match field_type {
@@ -635,9 +662,19 @@ pub(super) fn build_cpp_ffi_field(
             struct_name: format!("{}_{}_seq_t", struct_name, to_snake_case(name)),
             element_type: elem_repr_c,
             capacity: sequence_capacity,
+            is_heap,
         })
     } else {
         None
+    };
+
+    // For a heap sequence the FFI deserializer needs the element repr type for
+    // `size_of::<T>()` and the `*mut T` cast.
+    let element_repr_type = match element_type {
+        Some(FieldType::Primitive(prim)) => {
+            repr_c_type_for_field(&FieldType::Primitive(*prim), current_package)
+        }
+        _ => String::new(),
     };
 
     // Use element nested functions for array/sequence elements
@@ -687,6 +724,8 @@ pub(super) fn build_cpp_ffi_field(
         is_nested,
         is_primitive_element,
         is_string_element,
+        is_heap,
+        element_repr_type,
     };
 
     (field, seq_struct)

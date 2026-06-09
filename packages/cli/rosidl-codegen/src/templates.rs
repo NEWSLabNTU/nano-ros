@@ -528,6 +528,13 @@ pub struct CppFfiField {
     pub is_nested: bool,
     pub is_primitive_element: bool,
     pub is_string_element: bool,
+    /// RFC-0033 `mode = "heap"`: heap-backed primitive sequence — the repr is a
+    /// `*mut T` pointer trio, (de)serialized via raw pointers + the shared
+    /// `nros_platform_malloc`/`free` allocator.
+    pub is_heap: bool,
+    /// The element's repr(C) type (e.g. `u8`, `f32`) — used by the heap
+    /// deserialize codegen for `size_of::<T>()` and the `*mut T` cast.
+    pub element_repr_type: String,
 }
 
 /// C++ field info for header generation (uses FixedString/FixedSequence types)
@@ -547,8 +554,12 @@ pub struct SequenceStructDef {
     pub struct_name: String,
     /// Element type (e.g., "i32", "[u8; 256]")
     pub element_type: String,
-    /// Capacity
+    /// Capacity (fixed sequences only; unused for heap)
     pub capacity: usize,
+    /// RFC-0033 `mode = "heap"`: the Rust mirror is a pointer trio
+    /// `{ data: *mut T, size: usize, capacity: usize }` (matching
+    /// `nros::HeapSequence<T>`) rather than the fixed `{ size: u32, data: [T; N] }`.
+    pub is_heap: bool,
 }
 
 #[derive(Template)]
@@ -586,6 +597,9 @@ pub struct MessageCppFfiTemplate<'a> {
     pub sequence_structs: Vec<SequenceStructDef>,
     pub has_fields: bool,
     pub serialized_size_max: usize,
+    /// RFC-0033: at least one heap (`mode = "heap"`) sequence field — gates the
+    /// `nros_platform_malloc`/`free` extern decls and the heap publish-buffer path.
+    pub has_heap: bool,
 }
 
 #[derive(Template)]

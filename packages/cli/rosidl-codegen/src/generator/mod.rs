@@ -897,7 +897,8 @@ mod tests {
     }
 
     #[test]
-    fn test_cpp_borrowed_mode_errors_in_phase1() {
+    fn test_cpp_heap_string_unsupported() {
+        // C++ heap is only bridgeable for primitive sequences; heap strings error.
         let msg = parse_message("string label\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
@@ -912,6 +913,44 @@ mod tests {
         };
         assert!(err.contains("heap"), "{err}");
         assert!(err.contains("not yet supported"), "{err}");
+    }
+
+    #[test]
+    fn test_cpp_heap_primitive_sequence() {
+        // RFC-0033 mode = "heap" → nros::HeapSequence<T> header + pointer-trio FFI repr.
+        let msg = parse_message("uint8[] pixels\nint32 seq\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/Frame.pixels" = { cap = 0, mode = "heap" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_cpp_message_package("my_msgs", "Frame", &msg, "h", &resolver).unwrap();
+        // Header: HeapSequence type + include.
+        assert!(
+            pkg.header.contains("nros::HeapSequence<uint8_t>"),
+            "header heap type:\n{}",
+            pkg.header
+        );
+        assert!(
+            pkg.header.contains("heap_sequence.hpp"),
+            "heap include missing"
+        );
+        // FFI: pointer-trio repr + shared allocator + heap publish buffer.
+        assert!(
+            pkg.ffi_rs.contains("pub data: *mut u8"),
+            "ffi heap repr:\n{}",
+            pkg.ffi_rs
+        );
+        assert!(
+            pkg.ffi_rs.contains("nros_platform_malloc"),
+            "{}",
+            pkg.ffi_rs
+        );
+        assert!(pkg.ffi_rs.contains("nros_platform_free"), "{}", pkg.ffi_rs);
+        // No fixed inline array for the heap field.
+        assert!(!pkg.ffi_rs.contains("data: [u8; 64]"));
     }
 
     #[test]

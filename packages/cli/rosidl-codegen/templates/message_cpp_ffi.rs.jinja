@@ -5,12 +5,28 @@
 //
 // no_std, no alloc — stack-only buffers
 
+{%- if has_heap %}
+// Heap (`mode = "heap"`, RFC-0033) sequences allocate through the shared
+// platform allocator so the SAME allocator spans the Rust↔C++ FFI boundary
+// (the C++ `nros::HeapSequence` destructor frees what we allocate here).
+unsafe extern "C" {
+    fn nros_platform_malloc(size: usize) -> *mut core::ffi::c_void;
+    fn nros_platform_free(ptr: *mut core::ffi::c_void);
+}
+{%- endif %}
+
 {% for seq in sequence_structs %}
 /// Sequence helper for {{ seq.struct_name }}
 #[repr(C)]
 pub struct {{ seq.struct_name }} {
+{%- if seq.is_heap %}
+    pub data: *mut {{ seq.element_type }},
+    pub size: usize,
+    pub capacity: usize,
+{%- else %}
     pub size: u32,
     pub data: [{{ seq.element_type }}; {{ seq.capacity }}],
+{%- endif %}
 }
 {% endfor %}
 
@@ -44,6 +60,12 @@ pub fn {{ serialize_fn }}(msg: &{{ repr_c_struct_name }}, writer: &mut CdrWriter
 {%- endif %}
     }
 {%- else if field.is_sequence %}
+{%- if field.is_heap %}
+    writer.write_u32(msg.{{ field.name }}.size as u32)?;
+    for i in 0..msg.{{ field.name }}.size {
+        writer.{{ field.element_cdr_write_method }}(unsafe { *msg.{{ field.name }}.data.add(i) })?;
+    }
+{%- else %}
     writer.write_u32(msg.{{ field.name }}.size)?;
     for i in 0..msg.{{ field.name }}.size as usize {
 {%- if field.is_primitive_element %}
@@ -54,6 +76,7 @@ pub fn {{ serialize_fn }}(msg: &{{ repr_c_struct_name }}, writer: &mut CdrWriter
         {{ field.nested_serialize_fn }}(&msg.{{ field.name }}.data[i], writer)?;
 {%- endif %}
     }
+{%- endif %}
 {%- else if field.is_nested %}
     {{ field.nested_serialize_fn }}(&msg.{{ field.name }}, writer)?;
 {%- endif %}
@@ -91,6 +114,37 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
 {%- endif %}
     }
 {%- else if field.is_sequence %}
+{%- if field.is_heap %}
+    {
+        // Heap sequence (RFC-0033): allocate `len` elements via the shared
+        // platform allocator; nros::HeapSequence's destructor frees them. Frees
+        // on a mid-loop read error so a partial read never leaks.
+        let len = reader.read_u32()? as usize;
+        let data: *mut {{ field.element_repr_type }} = if len > 0 {
+            let p = unsafe {
+                nros_platform_malloc(len * core::mem::size_of::<{{ field.element_repr_type }}>())
+            } as *mut {{ field.element_repr_type }};
+            if p.is_null() {
+                return Err(DeserError::CapacityExceeded);
+            }
+            p
+        } else {
+            core::ptr::null_mut()
+        };
+        for i in 0..len {
+            match reader.{{ field.element_cdr_read_method }}() {
+                Ok(v) => unsafe { *data.add(i) = v; },
+                Err(e) => {
+                    unsafe { nros_platform_free(data as *mut core::ffi::c_void); }
+                    return Err(e);
+                }
+            }
+        }
+        out.{{ field.name }}.data = data;
+        out.{{ field.name }}.size = len;
+        out.{{ field.name }}.capacity = len;
+    }
+{%- else %}
     {
         let len = reader.read_u32()?;
         out.{{ field.name }}.size = len;
@@ -110,6 +164,7 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
 {%- endif %}
         }
     }
+{%- endif %}
 {%- else if field.is_nested %}
     {{ field.nested_deserialize_fn }}(reader, &mut out.{{ field.name }})?;
 {%- endif %}
@@ -167,7 +222,39 @@ pub unsafe extern "C" fn {{ ffi_publish_fn }}(
     handle: *mut core::ffi::c_void,
     msg_ptr: *const core::ffi::c_void,
 ) -> i32 {
-{%- if has_fields %}
+{%- if has_heap %}
+    // Heap message (RFC-0033): the payload is unbounded, so serialize into a
+    // platform-malloc'd buffer sized from the runtime sequence lengths rather
+    // than a fixed stack array. `+ 16` per heap field covers the CDR length
+    // header + worst-case element alignment padding.
+    let msg = unsafe { &*(msg_ptr as *const {{ repr_c_struct_name }}) };
+    let mut needed: usize = {{ serialized_size_max }};
+{%- for field in fields %}
+{%- if field.is_heap %}
+    needed += 16 + msg.{{ field.name }}.size * core::mem::size_of::<{{ field.element_repr_type }}>();
+{%- endif %}
+{%- endfor %}
+    let needed = needed.max(64);
+    let buf = unsafe { nros_platform_malloc(needed) } as *mut u8;
+    if buf.is_null() {
+        return -1;
+    }
+    let buf_slice = unsafe { core::slice::from_raw_parts_mut(buf, needed) };
+    let r = (|| -> i32 {
+        let mut writer = match CdrWriter::new_with_header(buf_slice) {
+            Ok(w) => w,
+            Err(_) => return -1,
+        };
+        if {{ serialize_fn }}(msg, &mut writer).is_err() {
+            return -1;
+        }
+        let len = writer.position();
+        drop(writer);
+        unsafe { nros_cpp_publish_raw(handle, buf as *const u8, len) }
+    })();
+    unsafe { nros_platform_free(buf as *mut core::ffi::c_void); }
+    r
+{%- else if has_fields %}
     let msg = unsafe { &*(msg_ptr as *const {{ repr_c_struct_name }}) };
     let mut buf = [0u8; {{ serialized_size_max }}];
     let mut writer = match CdrWriter::new_with_header(&mut buf) {

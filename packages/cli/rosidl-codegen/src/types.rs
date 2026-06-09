@@ -1339,6 +1339,27 @@ pub fn cpp_type_for_field_with_capacity(
     }
 }
 
+/// Heap (`mode = "heap"`, RFC-0033) C++ rendering of a **top-level unbounded
+/// primitive `Sequence`**: `nros::HeapSequence<elem>` (layout `{ T* data;
+/// size_t size; size_t capacity; }`, allocated via the shared platform
+/// allocator). Returns `None` for shapes C++-heap does not yet support (heap
+/// strings, sequences of strings / nested messages) so the caller rejects them.
+pub fn cpp_type_for_field_heap(
+    field_type: &FieldType,
+    current_package: Option<&str>,
+) -> Option<String> {
+    match field_type {
+        FieldType::Sequence { element_type } => match element_type.as_ref() {
+            FieldType::Primitive(_) => {
+                let elem = cpp_type_for_field(element_type, current_package);
+                Some(format!("nros::HeapSequence<{elem}>"))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Like [`repr_c_type_for_field`], but overrides the `[u8; N]` size of a
 /// **top-level unbounded** `String` / `WString` with `cap`. Sequences keep the
 /// empty (caller-overridden) repr; their capacity flows via the sequence struct.
