@@ -32,6 +32,12 @@ void {{ struct_name }}_fini({{ struct_name }}* msg) {
     if (msg == NULL) return;
 {%- for field in fields %}
 {%- if field.is_heap %}
+{%- if field.is_sequence && field.element_struct_name != "" %}
+    // Release each nested element's own heap fields before freeing the array.
+    for (size_t i = 0; i < msg->{{ field.name }}.size; ++i) {
+        {{ field.element_struct_name }}_fini(&msg->{{ field.name }}.data[i]);
+    }
+{%- endif %}
     nros_platform_free(msg->{{ field.name }}.data);
     msg->{{ field.name }}.data = NULL;
     msg->{{ field.name }}.size = 0;
@@ -182,8 +188,10 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
         for (size_t i = 0; i < len; ++i) {
 {%- if field.is_string_element %}
             if (nros_cdr_read_string(&ptr, end, origin, msg->{{ field.name }}.data[i], sizeof(*msg->{{ field.name }}.data)) < 0) {
-{%- else %}
+{%- else if field.is_primitive_element %}
             if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &msg->{{ field.name }}.data[i]) < 0) {
+{%- else %}
+            if ({{ field.element_struct_name }}_deserialize_inline(&msg->{{ field.name }}.data[i], &ptr, end, origin) < 0) {
 {%- endif %}
                 nros_platform_free(msg->{{ field.name }}.data);
                 msg->{{ field.name }}.data = NULL;

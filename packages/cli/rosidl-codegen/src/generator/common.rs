@@ -643,27 +643,32 @@ pub(super) fn build_cpp_ffi_field(
         }
     };
 
+    // The repr(C) type of a sequence element (Rust mirror). Shared by the
+    // SequenceStructDef and — for heap sequences — `element_repr_type` (used for
+    // `size_of::<T>()` + the `*mut T` cast in the FFI deserializer).
+    let elem_repr_c = match element_type {
+        Some(FieldType::Primitive(prim)) => {
+            repr_c_type_for_field(&FieldType::Primitive(*prim), current_package)
+        }
+        Some(FieldType::String) | Some(FieldType::WString) => {
+            format!("[u8; {}]", CPP_DEFAULT_STRING_CAPACITY)
+        }
+        Some(FieldType::BoundedString(sz)) | Some(FieldType::BoundedWString(sz)) => {
+            format!("[u8; {sz}]")
+        }
+        Some(FieldType::NamespacedType { package, name: n }) => {
+            // When package is None the element type is from the current package
+            let pkg = package.as_deref().or(current_package).unwrap_or("unknown");
+            format!("{}_msg_{}_t", to_c_package_name(pkg), to_snake_case(n))
+        }
+        _ => "u8".to_string(),
+    };
+
     // Build sequence struct def if needed
     let seq_struct = if is_sequence {
-        let elem_repr_c = match element_type {
-            Some(FieldType::Primitive(prim)) => {
-                use crate::types::repr_c_type_for_field;
-                repr_c_type_for_field(&FieldType::Primitive(*prim), current_package)
-            }
-            Some(FieldType::String) => format!("[u8; {}]", CPP_DEFAULT_STRING_CAPACITY),
-            Some(FieldType::BoundedString(sz)) => format!("[u8; {}]", sz),
-            Some(FieldType::WString) => format!("[u8; {}]", CPP_DEFAULT_STRING_CAPACITY),
-            Some(FieldType::BoundedWString(sz)) => format!("[u8; {}]", sz),
-            Some(FieldType::NamespacedType { package, name: n }) => {
-                // When package is None the element type is from the current package
-                let pkg = package.as_deref().or(current_package).unwrap_or("unknown");
-                format!("{}_msg_{}_t", to_c_package_name(pkg), to_snake_case(n))
-            }
-            _ => "u8".to_string(),
-        };
         Some(SequenceStructDef {
             struct_name: format!("{}_{}_seq_t", struct_name, to_snake_case(name)),
-            element_type: elem_repr_c,
+            element_type: elem_repr_c.clone(),
             capacity: sequence_capacity,
             is_heap,
         })
@@ -671,13 +676,11 @@ pub(super) fn build_cpp_ffi_field(
         None
     };
 
-    // For a heap sequence the FFI deserializer needs the element repr type for
-    // `size_of::<T>()` and the `*mut T` cast.
-    let element_repr_type = match element_type {
-        Some(FieldType::Primitive(prim)) => {
-            repr_c_type_for_field(&FieldType::Primitive(*prim), current_package)
-        }
-        _ => String::new(),
+    // For a heap sequence the FFI deserializer needs the element repr type.
+    let element_repr_type = if is_sequence {
+        elem_repr_c
+    } else {
+        String::new()
     };
 
     // Use element nested functions for array/sequence elements

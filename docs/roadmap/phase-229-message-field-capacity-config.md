@@ -141,19 +141,30 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
 - **Files:** `packages/cli/rosidl-codegen/src/types.rs`,
   `.../generator/{common,msg,srv,action}.rs`, `.../rosidl-bindgen/src/generator.rs`.
 
-### 229.5 — `heap` storage mode  ✅ DONE (Rust + C + C++; sequences, strings, seq-of-strings)
-`mode = "heap"` → growable containers (`cap` ignored — unbounded). Done: heap primitive
-sequences + heap strings + **heap sequence-of-strings** (single-level heap of
-fixed-capacity elements — unbounded count, bounded element).
-- **Rust** `Vec<heapless::String<N>>` (already worked); **C** `{ char (*data)[N]; size_t
-  size, capacity; }` + per-element `read_string` into the malloc'd rows + `_fini`.
-  Both gcc/cargo compile-verified.
-- **C++ seq-of-strings deferred** — blocked on issue
-  [0021](../issues/0021-cpp-seq-of-strings-ffi-repr-mismatch.md): the C++ seq-of-strings
-  FFI element repr (`[u8; N]`) omits `FixedString<N>`'s leading `size: u32`, a
-  pre-existing fixed-mode bug the heap variant would inherit. Stays rejected until
-  0021 is fixed.
-- Still rejected: heap sequences of **nested messages** (all langs).
+### 229.5 — `heap` storage mode  ✅ DONE (Rust + C + C++; sequences incl. of strings & nested, + strings)
+`mode = "heap"` → growable containers (`cap` ignored — unbounded). Covers heap
+primitive sequences, heap strings, **heap sequence-of-strings**, and **heap
+sequence-of-nested-messages**. Sequence elements stay fixed-capacity (unbounded
+*count*, bounded element) — a single-level heap allocation.
+- **Rust** — `Vec<heapless::String<N>>` / `Vec<NestedMsg>` (already worked via the
+  generic heap-vec deserialize; verified by `heap_compile_check`).
+- **C** — element-typed heap struct (`char (*data)[N]` for strings, `NestedStruct*`
+  for nested); deserialize does per-element `read_string` / `_deserialize_inline`;
+  `_fini` calls each nested element's `_fini` before freeing the array. `gcc -Werror`
+  verified (heap primitive seqs + heap string + heap `string[]` in one message).
+- **C++** — `nros::HeapSequence<nros::FixedString<N>>` / `HeapSequence<NestedMsg>`
+  (FixedString is `char[N]`, nested structs are POD → trivially copyable, safe in
+  the raw-malloc'd HeapSequence). FFI heap serialize/deserialize gained string +
+  nested element branches (`[u8; N]` slots / nested `*_fields` fns). Verified — FFI
+  `.rs` `cargo check` + `.hpp` `g++` with heap seqs + heap string + heap `string[]`.
+- **Issue 0021 retracted** — the suspected FFI repr mismatch was a wrong reading:
+  `nros::FixedString<N>` is `char[N]` (no leading `size` field), so it already
+  matches the Rust mirror `[u8; N]`. Fixed and heap seq-of-strings were both correct.
+- **C++ caveat** — `HeapSequence<T>` frees its array via `nros_platform_free` but
+  does not run element destructors, so a heap sequence whose **nested element type
+  itself has heap fields** would leak the inner heap on drop. Nested messages without
+  heap fields (the common case — `Point`, `Quaternion`, …) are unaffected. Tracked
+  as a follow-up if a nested-heap-in-heap-seq case arises.
 - ✅ **Rust path** — `nros-core` exposes `pub mod heap { pub use alloc::{String, Vec} }`
   under `any(feature="alloc", feature="std")` (the `extern crate alloc` cfg widened to
   match); `nros_type_for_field_heap` emits `nros_core::heap::{Vec<T>, String}`;

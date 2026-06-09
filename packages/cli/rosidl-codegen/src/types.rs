@@ -1117,6 +1117,15 @@ pub fn c_type_for_field_heap(
             FieldType::BoundedString(n) | FieldType::BoundedWString(n) => Some(format!(
                 "struct {{ char (*data)[{n}]; size_t size; size_t capacity; }}"
             )),
+            // Heap array of nested message structs (each a fixed inline struct;
+            // its own heap fields are released by the element's `_fini`, which
+            // the sequence's `_fini` calls per element).
+            FieldType::NamespacedType { .. } => {
+                let elem = c_type_for_field(element_type, current_package);
+                Some(format!(
+                    "struct {{ {elem}* data; size_t size; size_t capacity; }}"
+                ))
+            }
             _ => None,
         },
         _ => None,
@@ -1364,8 +1373,16 @@ pub fn cpp_type_for_field_heap(
 ) -> Option<String> {
     match field_type {
         FieldType::String | FieldType::WString => Some("nros::HeapString".to_string()),
+        // Primitive / string / nested elements are all trivially-copyable inline
+        // structs (`FixedString<N>` is `char[N]`; nested message structs are POD),
+        // so `nros::HeapSequence<T>` (raw-malloc'd) is safe for each.
         FieldType::Sequence { element_type } => match element_type.as_ref() {
-            FieldType::Primitive(_) => {
+            FieldType::Primitive(_)
+            | FieldType::String
+            | FieldType::WString
+            | FieldType::BoundedString(_)
+            | FieldType::BoundedWString(_)
+            | FieldType::NamespacedType { .. } => {
                 let elem = cpp_type_for_field(element_type, current_package);
                 Some(format!("nros::HeapSequence<{elem}>"))
             }

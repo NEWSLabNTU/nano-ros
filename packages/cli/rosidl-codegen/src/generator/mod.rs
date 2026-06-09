@@ -675,8 +675,9 @@ mod tests {
     }
 
     #[test]
-    fn test_c_heap_seq_of_nested_unsupported() {
-        // Heap sequences of nested messages remain unsupported in C.
+    fn test_c_heap_seq_of_nested() {
+        // RFC-0033 heap `Point[]` → heap array of nested structs; per-element
+        // `_fini` releases each element's own heap fields before the array free.
         let msg = parse_message("geometry_msgs/Point[] pts\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
@@ -685,13 +686,25 @@ mod tests {
             "#,
         )
         .unwrap();
-        let err = match generate_c_message_package("my_msgs", "M", &msg, "h", &resolver) {
-            Ok(_) => panic!("expected unsupported-mode error"),
-            Err(e) => e.to_string(),
-        };
+        let pkg = generate_c_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
         assert!(
-            err.contains("heap") && err.contains("not yet supported"),
-            "{err}"
+            pkg.header.contains(
+                "struct { struct geometry_msgs_msg_point* data; size_t size; size_t capacity; } pts"
+            ),
+            "heap nested-seq struct missing:\n{}",
+            pkg.header
+        );
+        // Per-element deserialize_inline + per-element _fini in cleanup.
+        assert!(
+            pkg.source
+                .contains("geometry_msgs_msg_point_deserialize_inline"),
+            "{}",
+            pkg.source
+        );
+        assert!(
+            pkg.source.contains("geometry_msgs_msg_point_fini"),
+            "per-element fini missing:\n{}",
+            pkg.source
         );
     }
 
@@ -989,9 +1002,9 @@ mod tests {
     }
 
     #[test]
-    fn test_cpp_heap_seq_of_strings_unsupported() {
-        // Blocked on issue 0021 (C++ seq-of-strings FFI element repr omits the
-        // FixedString size field); rejected until that is fixed.
+    fn test_cpp_heap_seq_of_strings() {
+        // RFC-0033 heap string[] → nros::HeapSequence<nros::FixedString<N>>
+        // (FixedString<N> is char[N], trivially copyable → safe in HeapSequence).
         let msg = parse_message("string[] tags\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
@@ -1000,13 +1013,43 @@ mod tests {
             "#,
         )
         .unwrap();
-        let err = match generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver) {
-            Ok(_) => panic!("expected unsupported-mode error"),
-            Err(e) => e.to_string(),
-        };
+        let pkg = generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
         assert!(
-            err.contains("heap") && err.contains("not yet supported"),
-            "{err}"
+            pkg.header
+                .contains("nros::HeapSequence<nros::FixedString<256>>"),
+            "header heap string-seq:\n{}",
+            pkg.header
+        );
+        // FFI heap repr is a pointer to the [u8; N] element; element read_string.
+        assert!(
+            pkg.ffi_rs.contains("pub data: *mut [u8; 256]"),
+            "ffi heap string-seq repr:\n{}",
+            pkg.ffi_rs
+        );
+        assert!(pkg.ffi_rs.contains("read_string"), "{}", pkg.ffi_rs);
+    }
+
+    #[test]
+    fn test_cpp_heap_seq_of_nested() {
+        let msg = parse_message("geometry_msgs/Point[] pts\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/M.pts" = { cap = 0, mode = "heap" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
+        assert!(
+            pkg.header
+                .contains("nros::HeapSequence<geometry_msgs::msg::Point>"),
+            "header heap nested-seq:\n{}",
+            pkg.header
+        );
+        assert!(
+            pkg.ffi_rs.contains("geometry_msgs_msg_point_t"),
+            "ffi heap nested-seq elem repr:\n{}",
+            pkg.ffi_rs
         );
     }
 

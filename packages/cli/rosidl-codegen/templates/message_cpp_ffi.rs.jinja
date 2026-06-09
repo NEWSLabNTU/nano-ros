@@ -88,7 +88,14 @@ pub fn {{ serialize_fn }}(msg: &{{ repr_c_struct_name }}, writer: &mut CdrWriter
 {%- if field.is_heap %}
     writer.write_u32(msg.{{ field.name }}.size as u32)?;
     for i in 0..msg.{{ field.name }}.size {
+{%- if field.is_string_element %}
+        let e = unsafe { &*msg.{{ field.name }}.data.add(i) };
+        writer.write_string(core::str::from_utf8(e).unwrap_or("").trim_end_matches('\0'))?;
+{%- else if field.is_primitive_element %}
         writer.{{ field.element_cdr_write_method }}(unsafe { *msg.{{ field.name }}.data.add(i) })?;
+{%- else %}
+        {{ field.nested_serialize_fn }}(unsafe { &*msg.{{ field.name }}.data.add(i) }, writer)?;
+{%- endif %}
     }
 {%- else %}
     writer.write_u32(msg.{{ field.name }}.size)?;
@@ -176,6 +183,21 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
             core::ptr::null_mut()
         };
         for i in 0..len {
+{%- if field.is_string_element %}
+            match reader.read_string() {
+                Ok(s) => {
+                    let bytes = s.as_bytes();
+                    let m = core::cmp::min(bytes.len(), {{ field.element_string_capacity }} - 1);
+                    let slot = unsafe { &mut *data.add(i) };
+                    *slot = [0u8; {{ field.element_string_capacity }}];
+                    slot[..m].copy_from_slice(&bytes[..m]);
+                }
+                Err(e) => {
+                    unsafe { nros_platform_free(data as *mut core::ffi::c_void); }
+                    return Err(e);
+                }
+            }
+{%- else if field.is_primitive_element %}
             match reader.{{ field.element_cdr_read_method }}() {
                 Ok(v) => unsafe { *data.add(i) = v; },
                 Err(e) => {
@@ -183,6 +205,12 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
                     return Err(e);
                 }
             }
+{%- else %}
+            if let Err(e) = {{ field.nested_deserialize_fn }}(reader, unsafe { &mut *data.add(i) }) {
+                unsafe { nros_platform_free(data as *mut core::ffi::c_void); }
+                return Err(e);
+            }
+{%- endif %}
         }
         out.{{ field.name }}.data = data;
         out.{{ field.name }}.size = len;
