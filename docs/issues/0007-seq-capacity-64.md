@@ -86,8 +86,32 @@ callback).
 4. Transport buffer size becomes the effective message size limit,
    configurable per-subscription via `NROS_SUBSCRIPTION_BUFFER_SIZE`.
 
+**Progress — Phase 229 (config + heap mode landed; borrowed pending)**:
+
+The hardcoded-64 limitation is **resolved**; only the zero-copy `borrowed`
+design direction above is still pending. As of `5aa64a233`:
+
+- **Per-field capacity config** (229.1–229.4, all three langs): the `64`
+  default is now a *default*, not a hardcoded ceiling. `nros-codegen.toml`
+  sets per-field `cap = N` (e.g. `"sensor_msgs/LaserScan.ranges" = { cap = 1080 }`).
+  `CapacityResolver` + discovery in `packages/cli/rosidl-codegen/src/config.rs`.
+- **`heap` storage mode** (229.5, Rust + C + C++; sequences incl. of-strings
+  and of-nested, plus strings): `mode = "heap"` emits a heap-backed container
+  (`HeapSequence<T>` in C++, heap `Vec` in Rust) — large payloads carry **no
+  inline stack/struct cost**. An `sensor_msgs/Image.data` at `{ cap = 921600,
+  mode = "heap" }` is representable today on any target with a heap.
+- **`borrowed` mode** (229.6, the zero-copy `&'a [u8]` design above): ⬜ **not
+  landed** — design-of-record in RFC-0033. **This issue closes when 229.6
+  lands** (per `docs/roadmap/phase-229-message-field-capacity-config.md`).
+
+So large sensor messages are **usable now** via `mode = "heap"` (with a heap);
+the remaining gap is the alloc-free zero-copy receive path for heapless
+bare-metal, which is exactly 229.6 / issue #8's single-copy work.
+
 **Workarounds available today**:
 
+- Set `mode = "heap"` + an explicit `cap` in `nros-codegen.toml` for the
+  large field (requires `alloc` on the target).
 - Define bounded message types for the application's actual payload
   size (e.g., `uint8[<=4096] data` in a custom `.msg` file).
 - Use raw CDR APIs (`try_recv_raw`) to access the receive buffer
