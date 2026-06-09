@@ -298,6 +298,60 @@ impl<const N: usize> Default for SharedRegion<N> {
     }
 }
 
+/// Phase 228.D.2 — the **cross-tier** counterpart to [`SharedRegion`]. When a
+/// `system.toml [[shared_state]]` region's accessors span more than one
+/// scheduling tier (RFC-0015 §8.3, `sync = "mutex"` / `tier_aware` on a
+/// multi-tier system), preemptive RTOS tasks can touch it concurrently, so the
+/// single-threaded access discipline no longer holds. This variant wraps every
+/// access in `critical_section::with` — the platform supplies the impl (RTOS =
+/// interrupt mask / kernel guard, bare-metal = PRIMASK, native = std mutex),
+/// the same primitive `nros-rmw-zenoh`'s `ffi-sync` already relies on. Codegen
+/// selects this type instead of [`SharedRegion`] when the resolved sync policy
+/// is `mutex` / `critical_section`; single-tier `none` keeps the lock-free
+/// [`SharedRegion`] (byte-identical to today).
+pub struct LockedSharedRegion<const N: usize> {
+    cell: core::cell::UnsafeCell<[u8; N]>,
+}
+
+// SAFETY: every access goes through `critical_section::with`, so no two `with`
+// closures run concurrently even under preemptive multi-tier dispatch.
+unsafe impl<const N: usize> Sync for LockedSharedRegion<N> {}
+
+impl<const N: usize> LockedSharedRegion<N> {
+    /// Create a zero-initialized region (const, for `static` placement).
+    pub const fn new() -> Self {
+        Self {
+            cell: core::cell::UnsafeCell::new([0u8; N]),
+        }
+    }
+
+    /// Run `f` with mutable access to the region's bytes, under the platform
+    /// critical section. The closure must be short — it runs with the guard
+    /// held (interrupts masked on bare-metal / single-core RTOS).
+    pub fn with<R>(&self, f: impl FnOnce(&mut [u8; N]) -> R) -> R {
+        critical_section::with(|_cs| {
+            // SAFETY: the critical section serializes all accessors, so this is
+            // the only live borrow of the cell for the closure's duration.
+            unsafe { f(&mut *self.cell.get()) }
+        })
+    }
+
+    /// Region size in bytes.
+    pub const fn len(&self) -> usize {
+        N
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        N == 0
+    }
+}
+
+impl<const N: usize> Default for LockedSharedRegion<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Runtime orchestration errors that are independent of transport errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrchestrationError {
@@ -358,6 +412,19 @@ mod tests {
         SHARED_BLACKBOARD.with(|bytes| bytes[0] = 0xAB);
         let read = SHARED_BLACKBOARD.with(|bytes| bytes[0]);
         assert_eq!(read, 0xAB);
+    }
+
+    // `LockedSharedRegion::with` needs a platform `critical-section` impl (the
+    // RTOS / native runtime provides it at link time), so the unit test covers
+    // only the `const` surface; the guarded access is exercised by the
+    // cross-tier orchestration integration where the impl is present.
+    static LOCKED_BLACKBOARD: LockedSharedRegion<16> = LockedSharedRegion::new();
+
+    #[test]
+    fn locked_shared_region_const_surface() {
+        assert_eq!(LOCKED_BLACKBOARD.len(), 16);
+        assert!(!LOCKED_BLACKBOARD.is_empty());
+        assert!(LockedSharedRegion::<0>::new().is_empty());
     }
 
     #[test]

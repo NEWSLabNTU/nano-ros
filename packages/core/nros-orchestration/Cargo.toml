@@ -20,6 +20,12 @@ rmw-cffi = ["nros-node/rmw-cffi"]
 
 [dependencies]
 nros-node = { workspace = true, default-features = false }
+# Phase 228.D.2 — cross-tier `LockedSharedRegion` guard. The platform provides
+# the `critical-section` impl at link time (RTOS = interrupt mask, bare-metal =
+# PRIMASK, native = the std impl); this crate only needs the API. No
+# restore-state feature is selected here — picking one would conflict with the
+# impl crate's choice under feature unification (`ffi-sync` etc.).
+critical-section = { version = "1", default-features = false }
 
 [lints]
 workspace = true
