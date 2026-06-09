@@ -39,6 +39,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0010 | [zero-copy-raw-api](0010-zero-copy-raw-api.md) | Stable | zero-copy raw publish/subscribe API |
 | 0011 | [px4-rmw-uorb](0011-px4-rmw-uorb.md) | Stable | PX4 uORB RMW backend |
 | 0031 | [rmw-selection-and-lowering](0031-rmw-selection-and-lowering.md) | Stable | RMW declared (system.toml/flag) + lowered per language; per-deploy |
+| 0035 | [rmw-vtable-abi](0035-rmw-vtable-abi.md) | Draft | frozen 34-slot RMW vtable ABI + append-only rule + NULL contract + `abi_version` |
 
 ### Platform, board & toolchain
 
@@ -61,6 +62,8 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0020 | [thin-wrapper-audit](0020-thin-wrapper-audit.md) | Stable | nros-c / nros-cpp thin-wrapper compliance audit |
 | 0021 | [blocking-api-rules](0021-blocking-api-rules.md) | Stable | every blocking helper takes an executor handle |
 | 0022 | [entity-api-tiers](0022-entity-api-tiers.md) | Stable | convenient `fork` + customizable `clone` entity ctors |
+| 0036 | [ros2-api-divergences](0036-ros2-api-divergences.md) | Draft | authoritative catalog of nano-ros vs rclrs/rclcpp/rclc divergences + rationale |
+| 0037 | [rust-c-user-api-surface](0037-rust-c-user-api-surface.md) | Draft | records the Rust (`nros-node`) + C (`nros-c`) user surfaces; C++ is 0018 |
 
 ### Codegen, workspace & user workflow
 
