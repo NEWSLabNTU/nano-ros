@@ -152,9 +152,31 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
   (`uint8[] + string + string[] + int32`), drops it in a temp crate path-dep'd on real
   nros-core/nros-serdes, and `cargo check` passes. Plus `heap_mode_emits_alloc_containers`
   golden test.
-- ⬜ **C / C++** — still gated (`UnsupportedStorageMode`): a heap-backed sequence needs
-  a new runtime growable type in `nros-c` / `nros-cpp` (no `FixedSequence` equivalent).
-  Deferred.
+- ✅ **C primitive sequences** — `c_type_for_field_heap` emits the rclc-style
+  `{ T* data; size_t size, capacity; }`; deserialize mallocs via
+  `nros_platform_malloc`; `<struct>_fini` frees; serialize shared. `gcc -Werror`
+  verified (`tests/c_heap_compile_check.rs`). Heap strings / seq-of-string/nested
+  still rejected.
+- 🟡 **C++ — runtime foundation done, FFI codegen pending.**
+  - ✅ `nros::HeapSequence<T>` (`packages/core/nros-cpp/include/nros/heap_sequence.hpp`)
+    — RAII, non-copyable/movable, layout `{ T* data; size_t size; size_t capacity; }`
+    (rclc shape, repr(C)-bridgeable), allocates via `nros_platform_malloc/free` so the
+    SAME allocator spans the Rust↔C++ FFI. `g++ -std=c++14 -fno-exceptions -fno-rtti
+    -Werror` verified.
+  - ⬜ **FFI codegen** (the careful remaining part) for primitive heap sequences:
+    1. `cpp_type_for_field_heap` → `nros::HeapSequence<elem>` (header type).
+    2. `SequenceStructDef.is_heap` → Rust mirror `#[repr(C)] { data: *mut T, size: usize,
+       capacity: usize }` (replaces the fixed `{ size: u32, data: [T; N] }`).
+    3. FFI serialize: `for i in 0..size { writer.write(unsafe { *data.add(i) }) }`.
+    4. FFI deserialize: `nros_platform_malloc(len * size_of::<T>())`, populate, **free on
+       mid-loop read error** (no leak); `extern "C"` decls for malloc/free in the `.rs`.
+    5. **Publish path**: `nros_cpp_publish_<msg>` serializes into a fixed
+       `[u8; serialized_size_max]` stack buffer — unbounded for a heap payload. Heap
+       messages must route publish through a `nros_platform_malloc`'d serialize buffer
+       (sized from the runtime `.size`), not the stack array.
+    6. Ungate C++ heap (primitive seq) in `build_cpp_field` / `build_cpp_ffi_field` /
+       `resolve_cap_override`; verify with `g++` (header) + `cargo check` (FFI `.rs`).
+  - Heap strings / seq-of-string/nested stay rejected (as in C).
 - **Files:** `nros-core/src/lib.rs`, `types.rs`, `templates.rs`,
   `generator/common.rs`, `templates/message_nros.rs.jinja`, `tests/`.
 
