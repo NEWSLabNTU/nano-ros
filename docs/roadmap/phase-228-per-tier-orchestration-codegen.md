@@ -137,14 +137,25 @@ codegen + `nros-cpp`/`nros-c` shared-context wrappers (remaining).
   group-filtered spin), then spins. Additive — the single-tier
   `BoardEntry::run` path is untouched. Native priority is advisory (default
   scheduler); strict ordering lands with the FreeRTOS port.
-**Remaining:**
-- **Proc-macro emit (couples 228.B/C):** `main_macro.rs` reads the baked tier
-  table; when >1 tier, emit a `<Board>::run_tiers(&[TierSpec{…}], run_plan)`
-  call (with a register-only `run_plan`) instead of `BoardEntry::run`.
-  Degenerate single-tier → unchanged `run` path (byte-identical).
+**Done (shared resolver extraction — the proc-macro prerequisite):** the tier
+schema + `resolve_tiers` moved to the new leaf crate `nros-orchestration-ir`
+(runtime workspace), consumed by BOTH `nros-cli-core` and (next) the
+`nros::main!()` proc-macro, so compile-time tier resolution can't drift from the
+CLI bake. `resolve_tiers` decomposed to `(tiers, node_overrides,
+component_names, callback_groups, rtos)`; 8 resolver tests moved with it; CLI
+re-exports the types (call sites unchanged). `TierSpec.priority` reconciled to
+raw per-RTOS `i64` (the spawn value), matching `ResolvedTier`.
+**Remaining (the emit itself):**
+- **Proc-macro emit:** `main_macro.rs` depends on `nros-orchestration-ir`, reads
+  `system.toml [tiers.*]`/`[[node_overrides]]` + each launch node pkg's
+  `[package.metadata.nros.node].callback_groups`, calls `resolve_tiers`, and —
+  **gated on `[tiers.*]` presence** (so every current example takes the
+  unchanged path, byte-identical) — emits `<Board>::run_tiers(&[TierSpec{…}],
+  run_plan)` with a register-only `run_plan` instead of `BoardEntry::run`.
+  Needs a multi-tier example fixture to validate the new path compiles + runs.
 - **FreeRTOS port:** `run_tiers` for the FreeRTOS board via
-  `nros_freertos_create_task` at `freertos_priority_for(...)`; this is where
-  real preemption is validated. Needs the zenoh-pico concurrent-multi-spin
+  `nros_freertos_create_task` at the raw `[tiers.x.freertos].priority`; this is
+  where real preemption is validated. Needs the zenoh-pico concurrent-multi-spin
   check on QEMU.
 - `PlatformTimer` (RFC-0017) for the `Sporadic` class budget refill (later).
 **Files:** `packages/core/nros-node/src/executor/spin.rs` (done),
