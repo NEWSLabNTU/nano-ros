@@ -46,11 +46,15 @@ landable and leaves the tree green.
   `#ifdef` (`Z_FEATURE_NROS_PLATFORM_ALLOC` / `…_SCALAR`) so the alias wins
   with no double-definition.
 - **Heap ownership:** each port owns + initializes its pool before first
-  alloc; Rust global allocators (`nros-c`/`nros-cpp`) call
-  `nros_platform_alloc`, not the raw kernel API.
-- **Stats:** instrument the single `nros_platform_alloc` funnel
-  (`used`/`peak`), superseding the Rust-only `nros_heap_used_bytes`
-  accounting with a true C+Rust total.
+  alloc; the C side always calls `nros_platform_alloc`. The Rust
+  `#[global_allocator]` is an **optional, board-selected singleton**
+  (RFC-0034 D6): nano-ros provides one (→ `nros_platform_alloc`) only where
+  no framework claims the slot; on Zephyr/esp-hal/native the framework owns
+  it and nano-ros yields.
+- **Stats (two-mode, RFC-0034 D7):** where nano-ros owns the allocator, the
+  single `nros_platform_alloc` funnel (`used`/`peak`) is the exact C+Rust
+  total; where the framework owns it, the funnel counts the C side and the
+  platform-native heap query gives the unified total.
 
 ## Work items
 
@@ -99,41 +103,38 @@ into `just check`. 230.1.7 flips it hard once the inventory is migrated.
 > `#[global_allocator]` in the entry/board that wraps `nros_platform_alloc`,
 > shadowing zephyr-lang-rust's.
 >
-> **Decision (2026-06): full funnel — do both (a) and (b).** The platform
-> truly owns system access; stats become exact + source-attributable.
->
-> **Added constraint found while scoping (b):** zephyr-lang-rust's
-> `#[global_allocator]` (`ZEPHYR_ALLOCATOR`) is **unconditional — not
-> feature-gated**. Rust permits exactly one `#[global_allocator]` per
-> binary, so the nros entry cannot simply add a second. (b) therefore
-> requires **patching zephyr-lang-rust** (a west-workspace module) to gate
-> or reroute `ZEPHYR_ALLOCATOR` — via the same provisioning-patch mechanism
-> that already applies the Cortex-A/-R/AArch64 Rust patches to the
-> workspace (`scripts/.../*-rust-patch`), not a clean in-repo edit. Two
-> viable patch shapes: (i) feature-gate `ZEPHYR_ALLOCATOR` off and let the
-> nros entry install its own, or (ii) reroute zephyr-lang-rust's
-> `malloc`/`free` calls to `nros_platform_alloc`/`_dealloc`. (ii) is less
-> invasive (no entry-side allocator, no per-entry boilerplate) and keeps
-> one allocator symbol — **preferred**. This makes the Zephyr slice a
-> multi-step provisioning + fork + build effort, not a single repo commit.
+> **Decision (2026-06, revised): C-side funnel + optional Rust allocator
+> (RFC-0034 D6/D7).** The earlier "full funnel via patching zephyr-lang-rust"
+> plan is dropped. zephyr-lang-rust's `#[global_allocator]`
+> (`ZEPHYR_ALLOCATOR` → `malloc`) is unconditional and Rust allows one per
+> binary; rather than patch a framework allocator, nano-ros's
+> `global-alloc` is **off on Zephyr** (the framework owns the Rust heap).
+> nano-ros still routes the **C side** (zenoh-pico `z_malloc`) through
+> `nros_platform_alloc`, and reads the **true heap total from Zephyr's
+> native `sys_heap` runtime stats** (`CONFIG_SYS_HEAP_RUNTIME_STATS`) —
+> both the framework Rust allocator and zenoh-pico share `k_heap`, so the
+> native query is exact without owning the Rust allocator. No
+> zephyr-lang-rust patch, no entry-side allocator boilerplate.
 
-**Concrete Zephyr 230.1 steps (ready to execute):**
+**Concrete Zephyr 230.1 steps (ready to execute, revised):**
 1. Fork-edit `zenoh-pico/src/system/zephyr/system.c`: guard `z_malloc`/
    `z_free` (+ the NULL `z_realloc`) behind `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC`.
-   Commit in the submodule (it is the project's own fork); bump the pointer.
-2. `nros-zpico-build`: emit the memory-only alias (`z_malloc` →
-   `nros_platform_alloc`) for Zephyr and define `Z_FEATURE_NROS_PLATFORM_ALLOC`
-   so the vendored defs disable; confirm no dup-symbol with the alias TU.
-3. Ensure `nros-platform-zephyr` (its `nros_platform_alloc`) is on the
-   Zephyr app link line (it ships as a Zephyr CMake module — wire it into
-   the entry's `west` build if not already pulled).
-4. Provisioning-patch zephyr-lang-rust per shape (ii): reroute its
-   `malloc`/`free` to `nros_platform_alloc`/`_dealloc`. Add to the
-   workspace patch set.
-5. Instrument `nros_platform_alloc` (`used`/`peak`) → unified stat.
+   Commit in the submodule (the project's own fork); bump the pointer.
+2. `nros-zpico-build`: emit a **memory-only** alias (`z_malloc` →
+   `nros_platform_alloc`, no sleep/random/clock — those stay vendored to
+   avoid dup symbols) for Zephyr and define `Z_FEATURE_NROS_PLATFORM_ALLOC`.
+3. Ensure `nros-platform-zephyr`'s `nros_platform_alloc` is on the Zephyr
+   app link line (ships as a Zephyr CMake module — wire into the entry's
+   `west` build if not already pulled).
+4. **No zephyr-lang-rust patch.** nano-ros `global-alloc` feature stays
+   **off** on Zephyr; the framework keeps `ZEPHYR_ALLOCATOR`.
+5. Stats: instrument `nros_platform_alloc` (`used`/`peak`) for the C side,
+   and expose the Zephyr-native `sys_heap` total as the unified figure
+   (enable `CONFIG_SYS_HEAP_RUNTIME_STATS`); document the two-number mode
+   per D7.
 6. Build `rust/listener/zenoh` + `rust/talker/zenoh` Zephyr fixtures; run
    `test_zephyr_to_native_e2e` / `test_native_to_zephyr_e2e`; confirm green
-   + the stat reflects C+Rust traffic.
+   + zenoh-pico allocations route through `nros_platform_alloc`.
 
 #### 230.1.1 — Fork guard for vendored scalar alloc
 Guard `z_malloc`/`z_free`/`z_realloc` in zenoh-pico's
@@ -154,10 +155,16 @@ Stand up the scalar `nros_platform_alloc/dealloc/realloc` provider for
 Zephyr (k_heap-backed) — today Zephyr has no C `nros_platform_*` provider
 on the link path. Wire it so the memory-only alias resolves.
 
-#### 230.1.4 — Rust global allocators through the ABI
-Repoint `FreeRtosAllocator` / `ZephyrAllocator` / `ThreadXAllocator`
-(`nros-c`/`nros-cpp/src/lib.rs`) at `nros_platform_alloc`/`_dealloc`
-instead of the raw kernel calls. One funnel for C + Rust.
+#### 230.1.4 — Optional nano-ros Rust global allocator (RFC-0034 D6)
+nano-ros's `#[global_allocator]` becomes optional + board-selected. Where
+no framework owns the slot (bare-metal, FreeRTOS-via-nros-board, ThreadX),
+provide one (a small `nros-alloc` gated by `nros-global-alloc`, or the
+existing `nros-c`/`nros-cpp` allocators) that wraps `nros_platform_alloc`/
+`_dealloc` — one funnel for C + Rust. Where a framework owns it (Zephyr
+zephyr-lang-rust, esp-hal esp-alloc, native `std`), the feature is **off**
+and nano-ros installs nothing — never patch the framework allocator. Add a
+`just check` assertion that at most one global-allocator provider is on the
+link line.
 
 #### 230.1.5 — Init-order contract
 Ensure each port initializes its pool before first alloc; document the
@@ -165,10 +172,14 @@ contract in [platform-c-abi.md](../../book/src/internals/platform-c-abi.md)
 (board/runtime platform-init → transport/alloc). Verify on
 ThreadX/FreeRTOS QEMU + Zephyr native_sim.
 
-#### 230.1.6 — Unified heap stats
-Instrument `nros_platform_alloc` (`used`/`peak`, opt-in `alloc-stats`) as
-the true C+Rust total; keep `nros_heap_used_bytes()` as the public
-accessor but back it with the funnel counter. Update + close
+#### 230.1.6 — Heap stats (two-mode, RFC-0034 D7)
+Instrument `nros_platform_alloc` (`used`/`peak`, opt-in `alloc-stats`).
+**Mode A** (nano-ros owns the allocator, D6 on): the funnel counter is the
+exact C+Rust total; `nros_heap_used_bytes()` reads it. **Mode B**
+(framework owns the allocator, D6 off — Zephyr/esp-hal): the funnel counts
+the C side; expose the platform-native heap total (Zephyr `sys_heap`,
+FreeRTOS `xPortGetFreeHeapSize`) as the unified figure. Document which mode
+each platform is in. Update + close
 [issue 0006](../issues/0006-rtos-dual-heap.md).
 
 #### 230.1.7 — Flip the lint to hard-fail
@@ -198,15 +209,22 @@ escape hatch noted for any future move (net first candidate).
 - Unifying opaque-struct services (task/mutex/condvar/socket) — RFC-0034
   D2; needs canonical layouts + static-asserts, deferred.
 - Runtime platform pluggability — one port per binary stays (RFC-0006).
+- **Patching a framework's `#[global_allocator]`** (zephyr-lang-rust,
+  esp-alloc) — RFC-0034 D6; nano-ros yields the slot, never reroutes it.
 - Touching the working POSIX/bare-metal alias path beyond the dedup.
 
 ## Done when
 
-- zenoh-pico + Rust allocations on FreeRTOS/ThreadX/Zephyr resolve to
+- zenoh-pico's C allocations on FreeRTOS/ThreadX/Zephyr resolve to
   `nros_platform_alloc`; no direct kernel-allocator calls remain outside
-  the ports (lint hard-fails on violation).
-- `nros_heap_used_bytes()` reports a true C+Rust total on RTOS; [issue 0006]
-  closed.
+  the ports + the one optional global-allocator provider (lint hard-fails
+  on violation).
+- The Rust `#[global_allocator]` is nano-ros-owned (→ `nros_platform_alloc`)
+  where no framework claims the slot, and cleanly yielded where one does;
+  at most one provider links.
+- `nros_heap_used_bytes()` reports the exact C+Rust total where nano-ros
+  owns the allocator; the platform-native heap query is the documented
+  unified figure where the framework owns it. [issue 0006] closed.
 - The ThreadX weak-`z_malloc` footgun and the dead `nros-platform-*` alloc
   paths are gone.
 - All embedded E2E (ThreadX/FreeRTOS QEMU, Zephyr native_sim, NuttX) stay

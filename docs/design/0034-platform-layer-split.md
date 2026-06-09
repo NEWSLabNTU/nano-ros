@@ -116,33 +116,88 @@ duplicate `platform_aliases.c` copies). Emission is **per-category**:
 
 The platform port **owns and initializes the heap/pool** (ThreadX
 `tx_byte_pool`, FreeRTOS heap region, Zephyr `k_heap`/`sys_heap`,
-bare-metal `FreeListHeap`) before the first allocation. Init order
-becomes a contract: *board/runtime platform-init → then any Rust or RMW
-allocation*. The Rust `#[global_allocator]` (`FreeRtos/Zephyr/ThreadX`
-allocators in `nros-c`/`nros-cpp`) routes through `nros_platform_alloc`,
-not the raw kernel call. With one funnel, heap stats instrument
-`nros_platform_alloc` once and report the true C+Rust total — closing
-[issue 0006] as a side effect rather than a separate feature.
+bare-metal `FreeListHeap`) before the first allocation. Init order is a
+contract: *board/runtime platform-init → then any Rust or RMW allocation*.
+The **C side** (zenoh-pico) always routes through `nros_platform_alloc`
+(D3). The **Rust `#[global_allocator]`** is handled by D6 — it is a
+binary-wide singleton that a framework may already own, so nano-ros
+provides it only optionally.
 
-### D5. Enforcement gate
+### D6. The Rust global allocator is an optional, board-selected singleton
 
-Extend `scripts/check-platform-abi-mirror.sh` (or a sibling) with a
-**no-direct-kernel-call** lint: fail the build if any non-port crate
-references `pvPortMalloc`/`vPortFree`/`k_malloc`/`k_free`/`tx_byte_allocate`
-/`tx_byte_release`/`heap_caps_malloc` (and, later, the thread/sync
-primitives) outside the platform port that legitimately defines the
-`nros_platform_*` symbol. This is what keeps the boundary from re-rotting.
+Rust permits **exactly one** `#[global_allocator]` per binary, and on many
+targets the framework/runtime integration already installs it
+(zephyr-lang-rust → `malloc`; esp-hal → `esp-alloc`; `std` → system). That
+is a *different* concern from the platform ABI: the allocator is owned by
+whoever owns the binary's boot/runtime, not necessarily by nano-ros.
+
+So nano-ros provides its `#[global_allocator]` **optionally**, behind a
+feature the **board/platform crate selects** (it knows whether a framework
+already claims the slot):
+
+| Platform | Framework allocator? | nano-ros `global-alloc` | Rust heap owner |
+|---|---|---|---|
+| bare-metal (MPS2 / STM32F4 / ESP32-bare) | no | **on** → wraps `nros_platform_alloc` | nano-ros |
+| FreeRTOS (nros-board) | no | **on** → wraps `nros_platform_alloc` | nano-ros |
+| ThreadX | no | **on** → wraps `nros_platform_alloc` | nano-ros |
+| Zephyr | yes (zephyr-lang-rust) | **off** | framework |
+| esp-hal | yes (esp-alloc) | **off** | framework |
+| native / POSIX | yes (`std`) | **off** | `std` |
+
+When **on**, nano-ros's allocator wraps `nros_platform_alloc`/`_dealloc`
+→ one funnel for C + Rust. When **off**, nano-ros installs nothing and the
+framework owns the Rust heap. The feature MUST be off wherever a framework
+allocator is linked (a double `#[global_allocator]` is a compile error);
+the board crate is the single point that enforces this, and a `just check`
+assertion can guard against two providers landing together. nano-ros
+**never patches a framework's allocator** to reroute it — it simply yields
+the slot.
+
+This means the platform ABI (`nros_platform_*`) is the layer boundary; the
+Rust global allocator is a runtime-integration detail layered on top, not
+part of the platform contract.
+
+### D7. Heap stats are two-mode (follows D6)
+
+- **nano-ros owns the allocator** (D6 on): a single funnel through
+  `nros_platform_alloc` → instrument once → **exact, source-attributable**
+  C+Rust total.
+- **Framework owns the allocator** (D6 off): `nros_platform_alloc` counts
+  the C (zenoh-pico) side; the **true unified total** comes from the
+  platform-native heap query (Zephyr `sys_heap` runtime stats, FreeRTOS
+  `xPortGetFreeHeapSize`, …) — both allocators share one kernel heap, so
+  the native query is exact without nano-ros owning the Rust allocator.
+
+Either way [issue 0006] is resolved: exact where nano-ros owns the
+allocator, native-query elsewhere. The doc records which mode each platform
+is in.
+
+### D8. Enforcement gate
+
+A **no-direct-kernel-call** lint (`scripts/check-no-direct-kernel-alloc.sh`,
+wired into `just check`): fail the build if any non-port crate references
+`pvPortMalloc`/`vPortFree`/`k_malloc`/`k_free`/`tx_byte_allocate`/
+`tx_byte_release`/`heap_caps_*` (and, later, the thread/sync primitives)
+outside the platform port that legitimately defines the `nros_platform_*`
+symbol. Advisory while the inventory is migrated; flips to hard-fail when
+the worklist is empty. This keeps the boundary from re-rotting.
 
 ## Decision
 
-1. **Alloc first** (the starter): unify the allocator through
-   `nros_platform_alloc` on all RTOSes; route Rust global allocators
-   through it; instrument once → unified stats.
-2. **Scalar services next** (sleep/clock/random): same treatment, low risk.
-3. **Opaque-struct services scoped out**: documented as the per-RTOS
+1. **C-side funnel first** (the starter): route zenoh-pico `z_malloc`/
+   `z_free`/`z_realloc` through `nros_platform_alloc` on all RTOSes (D3) —
+   guard the vendored defs, emit the memory-only alias.
+2. **Rust global allocator is optional** (D6): nano-ros installs its own
+   `#[global_allocator]` (wrapping `nros_platform_alloc`) only where no
+   framework already claims the slot, board-selected. Never patch a
+   framework allocator.
+3. **Stats are two-mode** (D7): exact single-funnel where nano-ros owns the
+   allocator; platform-native heap query where the framework owns it.
+4. **Scalar services next** (sleep/clock/random): same C-side treatment.
+5. **Opaque-struct services scoped out**: documented as the per-RTOS
    boundary; revisit only behind a canonical-layout + static-assert effort.
-4. **One bridge**: dedupe zenoh/XRCE alias TUs into a platform-owned shim.
-5. **Gate it**: the D5 lint prevents regression.
+6. **One bridge**: dedupe zenoh/XRCE alias TUs into a platform-owned shim.
+7. **Gate it**: the D8 lint prevents regression.
 
 Work breakdown: [phase-230].
 
@@ -163,23 +218,31 @@ Work breakdown: [phase-230].
   is link-line presence + who installs the Rust global allocator (next
   point), not a missing port.
 
-- **RTOS-owned Rust global allocator.** On platforms whose Rust
-  integration provides its own `#[global_allocator]` (Zephyr via
-  zephyr-lang-rust → `k_malloc`; potentially others), the Rust side does
-  not route through `nros_platform_alloc` and nros does not own it. A true
-  single funnel then requires the nros entry/board to **install its own
-  `#[global_allocator]`** wrapping `nros_platform_alloc`, shadowing the
-  RTOS module's. The alternative — route only the RMW C side through the
-  ABI and read the true total from the RTOS-native heap query (Option B,
-  e.g. Zephyr `CONFIG_SYS_HEAP_RUNTIME_STATS`) — gets correct stats without
-  owning the Rust allocator, since both already share one kernel heap.
-  Decide per platform; this gates the Zephyr Wave-1 slice ([phase-230]).
+- **RTOS-owned Rust global allocator — RESOLVED by D6/D7.** Earlier this
+  was an open question (do we shadow/patch the framework allocator on
+  Zephyr/esp-hal?). Resolved: nano-ros's `#[global_allocator]` is optional
+  and board-selected (D6); where a framework owns the slot, nano-ros yields
+  it and the true heap total comes from the native query (D7). No framework
+  allocator is ever patched.
+
+- **`global-alloc` provider crate + double-provider guard.** Mechanics left
+  to [phase-230]: which crate hosts the optional `#[global_allocator]`
+  static (candidate: a small `nros-alloc` gated by `nros-global-alloc`,
+  installed by the board), and the `just check` assertion that at most one
+  global-allocator provider is on the link line.
 
 ## Changelog
 
 - 2026-06: Initial draft. Captures the split-enforcement decision, the
   scalar/opaque-struct ABI classification, and the alloc-first plan that
   subsumes [issue 0006].
+- 2026-06: D6/D7 — the Rust `#[global_allocator]` is an optional,
+  board-selected singleton (nano-ros provides it only where no framework
+  claims the slot; never patch a framework allocator), and heap stats are
+  two-mode (exact single-funnel when owned; native heap query otherwise).
+  Resolves the RTOS-owned-allocator open question; drops the
+  zephyr-lang-rust patch from the Zephyr slice. Renumbered the enforcement
+  gate to D8.
 
 ## See also
 

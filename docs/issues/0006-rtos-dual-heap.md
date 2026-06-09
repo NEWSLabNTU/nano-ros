@@ -7,14 +7,16 @@ area: memory
 related: [rfc-0034, phase-230]
 ---
 
-> **Direction (2026-06):** the true unified heap total is being addressed by
-> unifying the allocator through the `nros_platform_*` ABI (RFC-0034 layer
-> split, implemented in [phase-230](../roadmap/phase-230-platform-layer-split.md)
-> Wave 1). A single `nros_platform_alloc` funnel for both zenoh-pico C and the
-> Rust `#[global_allocator]` makes one counter the true C+Rust total — this
-> issue closes when phase-230 Wave 1 lands. (The alternative — RTOS-native pool
-> queries without unification — was considered but leaves the layer bypass +
-> dead platform code in place; see RFC-0034 open questions.)
+> **Direction (2026-06):** addressed by the RFC-0034 platform layer split,
+> implemented in [phase-230](../roadmap/phase-230-platform-layer-split.md)
+> Wave 1. zenoh-pico's C allocations route through `nros_platform_alloc`
+> (the C-side funnel). The Rust `#[global_allocator]` is an optional,
+> board-selected singleton (RFC-0034 D6): where nano-ros owns it, the
+> `nros_platform_alloc` funnel is the **exact** C+Rust total; where a
+> framework owns it (Zephyr zephyr-lang-rust, esp-hal), the unified total
+> comes from the **platform-native heap query** (Zephyr `sys_heap`,
+> FreeRTOS `xPortGetFreeHeapSize`) since both share one kernel heap (D7).
+> Two-mode but always exact. Closes when phase-230 Wave 1 lands.
 
 
 On RTOS platforms (FreeRTOS, ThreadX), there are **two independent heap
