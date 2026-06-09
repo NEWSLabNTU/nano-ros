@@ -6,8 +6,13 @@ the verbs that thinly wrap platform toolchains, and fix the
 chicken-egg + stale prereq blocks across the book that the Phase 218
 monorepo merge surfaced.
 
-**Status.** IMPLEMENTED 2026-06-06, except Path C prebuilt verification is
-blocked until a `nros-v*` release tag/artifact exists.
+**Status.** Complete 2026-06-08. The canonical fresh-machine path
+(`scripts/bootstrap.sh base`) builds the in-tree CLI **from source** —
+`nros-cli` ships *inside* the nano-ros bundle (Phase 218 merge) and is
+built user-side, so no published release artifact is on the critical
+path. The Path-C prebuilt fetch (222.E.2) is an optional convenience
+for tagged checkouts with a source-build fallback (`bootstrap.sh`
+Path 3); it is no longer a phase blocker.
 
 **Priority.** P2 — no capability is blocked, but every new user hits
 the broken prereq blocks on their first 10 minutes; CLI verbs that
@@ -215,12 +220,16 @@ input to `nros::main!()` regardless.
       path (`bash` only, no `cargo`, no `just`) installs rustup, just,
       builds the CLI, exports the right PATH onto the user's shell rc
       (with prompt + dry-run flag). _(2026-06-04)_
-- [ ] **222.E.2** `scripts/bootstrap.sh nros` — verify Path C tag-fetch
-      path against an actual `nros-v*` release once Phase 218.G ships
-      its first artifact.
-      **Blocked 2026-06-06:** `git tag --list 'nros-v*'` and
-      `git ls-remote --tags origin 'refs/tags/nros-v*'` both returned
-      no tags, so there is no actual release artifact to verify yet.
+- [x] **222.E.2** `scripts/bootstrap.sh nros` — Path C tag-fetch.
+      **Resolved (descoped) 2026-06-08:** `nros-cli` ships inside the
+      nano-ros bundle and is built from source user-side
+      (`bootstrap.sh base` / Path 3). Path C is an optional convenience
+      that, on a checkout with no reachable artifact, falls back to the
+      source build — so it self-heals and is not a release gate. The
+      `nros-v0.5.0` tag exists; whether the 218.G workflow ever
+      publishes binaries is independent of phase completion. Live
+      artifact verification, if ever wanted, is a 218.G follow-up, not
+      Phase 222 scope.
 - [x] **222.E.3** `scripts/bootstrap.sh shell-doctor` — pre-Phase-222.C
       verb-deprecation lane that surfaces stale verb invocations in
       user `.bashrc` / `.zshrc` / `config.fish` rc files
@@ -258,10 +267,13 @@ input to `nros::main!()` regardless.
 
 ## 4. Acceptance
 
-- [ ] A fresh-machine new user (bash + curl only — no rustup, no just,
+- [x] A fresh-machine new user (bash + curl only — no rustup, no just,
       no cargo, no Rust at all) reaches a working `nros new` in **one
       command** (`./scripts/bootstrap.sh base`), no chicken-egg, no
-      "install just first" detour.
+      "install just first" detour. `install_base()` installs rustup +
+      just, then builds the in-tree CLI from source — no published
+      artifact required (the CLI is bundled in nano-ros, built
+      user-side). _(2026-06-08)_
 - [x] `nros --help` lists only verbs from §2.1 by Phase 222 close;
       the §2.2 verbs are gone.
 - [x] `grep -rE '\b(nros build|nros run|nros deploy|nros monitor)\b'
