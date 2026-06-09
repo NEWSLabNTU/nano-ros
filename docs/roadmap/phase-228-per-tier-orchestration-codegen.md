@@ -153,12 +153,19 @@ codegen + `nros-cpp`/`nros-c` shared-context wrappers (remaining).
 `packages/core/nros-macros/src/main_macro.rs` + `nros-board-freertos`
 (remaining).
 
-### 228.F — Multi-tier fixture + acceptance test
-A 2-tier fixture (e.g. a `high` control loop + a `low` telemetry group) building on
-≥2 platforms; assert distinct tasks/priorities at runtime. Single-tier parity test
-confirms the degenerate output is byte-equivalent to today's.
-**Files:** `packages/testing/nros-tests/fixtures/orchestration_tiers/*`,
-`packages/testing/nros-tests/tests/orchestration_tiers.rs`.
+### 228.F — Multi-tier fixture + acceptance test  🔄 IN PROGRESS
+**Done (runtime acceptance):** `phase228_tier_filter.rs` proves the 228.C gate +
+228.E shared-session primitive end-to-end against real zenohd — two
+`ExecutorNodeRuntime`s over one session (the second via `session_ptr` →
+`open_with_session`), each with a distinct `active_groups` filter, registering a
+node with `high`+`low` group-labelled timers. Asserts the active-tier timer fires
+and the off-tier timer is gated out entirely (zero fires) on both executors. This
+validates the previously-unproven `session_ptr`/`open_with_session`/
+`set_active_groups`/`.callback_group()` path. **Files:**
+`packages/testing/nros-tests/tests/phase228_tier_filter.rs`.
+**Remaining:** a codegen-level fixture once the proc-macro `run_tiers` emit lands
+(asserts distinct OS tasks/priorities at runtime on native + FreeRTOS), plus the
+single-tier byte-parity check on the emitted entry.
 
 ## Acceptance
 

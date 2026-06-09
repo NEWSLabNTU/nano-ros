@@ -230,6 +230,13 @@ name = "phase212_m5a2_component_runtime"
 path = "tests/phase212_m5a2_component_runtime.rs"
 required-features = ["component-runtime-test"]
 
+# Phase 228 — per-tier callback-group filter + shared-session
+# (session_ptr / open_with_session) acceptance test.
+[[test]]
+name = "phase228_tier_filter"
+path = "tests/phase228_tier_filter.rs"
+required-features = ["component-runtime-test"]
+
 # Phase 212.M.5.a.4 — BSP-path dispatch wiring (typed-erased state +
 # `_init` / `_dispatch` / `_tick` symbol-table coverage).
 [[test]]
