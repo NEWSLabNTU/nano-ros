@@ -73,6 +73,14 @@ fn cargo_check(root: &Path) -> std::process::Output {
         .expect("spawn cargo check")
 }
 
+fn cargo_build(root: &Path) -> std::process::Output {
+    Command::new("cargo")
+        .args(["build", "-p", "demo_entry", "--manifest-path"])
+        .arg(root.join("Cargo.toml"))
+        .output()
+        .expect("spawn cargo build")
+}
+
 #[test]
 fn multi_tier_main_macro_emits_run_tiers_and_compiles() {
     let (_g, root) = stage_fixture();
@@ -82,6 +90,39 @@ fn multi_tier_main_macro_emits_run_tiers_and_compiles() {
         "multi-tier `nros::main!()` emit failed to compile.\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+#[test]
+fn multi_tier_binary_boots_into_run_tiers() {
+    // Build the emitted multi-tier binary and run it with NO zenohd. The boot
+    // tier opens the one session, fails (no router), and `PosixBoard::run_tiers`
+    // prints its unique abort line. Seeing that message proves the macro emitted
+    // `run_tiers` AND the boot tier executed end-to-end — the single-tier
+    // `BoardEntry::run` path prints a *different* line ("proceeding with
+    // NullNodeRuntime"), so this needle is specific to the multi-tier emit. (No
+    // router needed — the boot lifecycle is the proof, same as the entry-poc
+    // gate.)
+    let (_g, root) = stage_fixture();
+    let build = cargo_build(&root);
+    assert!(
+        build.status.success(),
+        "multi-tier binary failed to build.\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stderr),
+    );
+    let bin = root.join("target/debug/demo_entry");
+    assert!(bin.is_file(), "binary not produced at {}", bin.display());
+
+    let out = Command::new(&bin).output().expect("spawn demo_entry");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        combined.contains("multi-tier entry needs a live session"),
+        "binary did not reach the run_tiers boot path (no multi-tier abort line).\n\
+         output:\n{combined}",
     );
 }
 
