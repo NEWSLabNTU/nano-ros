@@ -5,9 +5,9 @@ use crate::{
         C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
         NrosCodegenMode, c_array_suffix_for_field, c_array_suffix_for_field_with_capacity,
         c_cdr_read_method, c_cdr_write_method, c_type_for_field, c_type_for_field_with_capacity,
-        cpp_array_suffix_for_field, cpp_type_for_field, escape_keyword,
-        nros_type_for_field_with_capacity, nros_type_for_field_with_mode, repr_c_type_for_field,
-        to_c_package_name,
+        cpp_array_suffix_for_field, cpp_type_for_field, cpp_type_for_field_with_capacity,
+        escape_keyword, nros_type_for_field_with_capacity, nros_type_for_field_with_mode,
+        repr_c_type_for_field, repr_c_type_for_field_with_capacity, to_c_package_name,
     },
     utils::to_snake_case,
 };
@@ -381,14 +381,52 @@ pub(super) fn build_c_field(
     })
 }
 
-/// Build a CppField for C++ header generation
+/// Resolve the per-field capacity override for a **top-level unbounded**
+/// string/sequence field (RFC-0033). Returns `Ok(None)` for shapes whose
+/// capacity is not configurable (bounded, array, primitive, nested), and an
+/// error for a non-`owned` storage mode (Phase 229 ships `owned` only).
+///
+/// Shared by the C++ header + FFI builders so both sides see the same `cap`.
+pub(super) fn resolve_cap_override(
+    name: &str,
+    field_type: &FieldType,
+    current_package: Option<&str>,
+    message_name: &str,
+    resolver: &CapacityResolver,
+) -> Result<Option<usize>, GeneratorError> {
+    let kind = match field_type {
+        FieldType::String | FieldType::WString => CapFieldKind::String,
+        FieldType::Sequence { .. } => CapFieldKind::Sequence,
+        _ => return Ok(None),
+    };
+    let package = current_package.unwrap_or("");
+    let storage = resolver.resolve(package, message_name, name, kind);
+    if !storage.mode.is_phase1_supported() {
+        return Err(GeneratorError::UnsupportedStorageMode {
+            package: package.to_string(),
+            message: message_name.to_string(),
+            field: name.to_string(),
+            mode: storage.mode.as_str(),
+        });
+    }
+    Ok(Some(storage.cap))
+}
+
+/// Build a CppField for C++ header generation.
+///
+/// `cap_override` is the resolved per-field capacity for a **top-level
+/// unbounded** string/sequence (RFC-0033, `owned` mode); `None` keeps defaults.
 pub(super) fn build_cpp_field(
     name: &str,
     field_type: &FieldType,
     current_package: Option<&str>,
+    cap_override: Option<usize>,
 ) -> CppField {
     let escaped_name = escape_keyword(name);
-    let cpp_type = cpp_type_for_field(field_type, current_package);
+    let cpp_type = match cap_override {
+        Some(cap) => cpp_type_for_field_with_capacity(field_type, current_package, cap),
+        None => cpp_type_for_field(field_type, current_package),
+    };
     let array_suffix = cpp_array_suffix_for_field(field_type);
 
     // For arrays, the cpp_type already contains the base type, and array_suffix has [N]
@@ -420,6 +458,7 @@ pub(super) fn build_cpp_ffi_field(
     field_type: &FieldType,
     struct_name: &str,
     current_package: Option<&str>,
+    cap_override: Option<usize>,
 ) -> (CppFfiField, Option<SequenceStructDef>) {
     let escaped_name = escape_keyword(name);
 
@@ -444,10 +483,10 @@ pub(super) fn build_cpp_ffi_field(
     );
     let is_nested = matches!(field_type, FieldType::NamespacedType { .. });
 
-    // Array/sequence size info
+    // Array/sequence size info. Unbounded sequences use the resolved capacity.
     let (array_size, sequence_capacity) = match field_type {
         FieldType::Array { size, .. } => (*size, 0),
-        FieldType::Sequence { .. } => (0, CPP_DEFAULT_SEQUENCE_CAPACITY),
+        FieldType::Sequence { .. } => (0, cap_override.unwrap_or(CPP_DEFAULT_SEQUENCE_CAPACITY)),
         FieldType::BoundedSequence { max_size, .. } => (0, *max_size),
         _ => (0, 0),
     };
@@ -539,7 +578,10 @@ pub(super) fn build_cpp_ffi_field(
         let seq_struct_name = format!("{}_{}_seq_t", struct_name, to_snake_case(name));
         seq_struct_name
     } else {
-        repr_c_type_for_field(field_type, current_package)
+        match cap_override {
+            Some(cap) => repr_c_type_for_field_with_capacity(field_type, current_package, cap),
+            None => repr_c_type_for_field(field_type, current_package),
+        }
     };
 
     // Build sequence struct def if needed
@@ -581,9 +623,11 @@ pub(super) fn build_cpp_ffi_field(
         elem_nested_deser
     };
 
-    // String capacity for deserialization
+    // String capacity for deserialization (resolved for unbounded strings).
     let string_capacity = match field_type {
-        FieldType::String | FieldType::WString => CPP_DEFAULT_STRING_CAPACITY,
+        FieldType::String | FieldType::WString => {
+            cap_override.unwrap_or(CPP_DEFAULT_STRING_CAPACITY)
+        }
         FieldType::BoundedString(sz) | FieldType::BoundedWString(sz) => *sz,
         _ => 0,
     };

@@ -105,9 +105,14 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
   sequence struct `[N]` + `sequence_capacity` (common.rs); `generate_c_message_package`
   takes a `&CapacityResolver` (msg.rs). C service/action pass `empty()` + ROS keys.
   2 golden tests (`mod.rs`): big-seq+small-string, borrowed→error.
-- ⬜ **C++ emitters** — header `FixedString<N>`/`FixedSequence<…,N>` **and** the FFI
-  repr `[u8; N]` + sequence struct defs must agree; thread resolver through
-  `build_cpp_field` + `build_cpp_ffi_field` + `cpp.rs::build_fields` (wave 3b).
+- ✅ **C++ message path** — `cpp_type_for_field_with_capacity` +
+  `repr_c_type_for_field_with_capacity` (types.rs); `resolve_cap_override` helper
+  resolves+gates once per field; `build_cpp_field` + `build_cpp_ffi_field` take the
+  resolved `cap` so header `FixedString<N>`/`FixedSequence<…,N>` **and** the FFI repr
+  `[u8; N]` + `sequence_capacity` + `string_capacity` all agree (common.rs);
+  `cpp.rs::build_fields` + `generate_cpp_message_package` thread `&CapacityResolver`.
+  C++ service/action pass `empty()` + ROS keys. 2 golden tests (`mod.rs`):
+  header+FFI cap agreement, heap→error.
 - ⬜ **Serialized-size-max** (`compute_serialized_size_max`) still uses default
   `CPP_DEFAULT_STRING_CAPACITY` for worst-case wire/buffer sizing — should scale with
   a configured cap so big-payload buffers size correctly (follow-up, note in 229.3/.5).

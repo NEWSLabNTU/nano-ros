@@ -1278,6 +1278,37 @@ pub fn cpp_type_for_field(field_type: &FieldType, current_package: Option<&str>)
     }
 }
 
+/// Like [`cpp_type_for_field`], but overrides the capacity of a **top-level
+/// unbounded** `String` / `WString` / `Sequence` with `cap` (RFC-0033, `owned`).
+pub fn cpp_type_for_field_with_capacity(
+    field_type: &FieldType,
+    current_package: Option<&str>,
+    cap: usize,
+) -> String {
+    match field_type {
+        FieldType::String | FieldType::WString => format!("nros::FixedString<{cap}>"),
+        FieldType::Sequence { element_type } => {
+            let elem = cpp_type_for_field(element_type, current_package);
+            format!("nros::FixedSequence<{elem}, {cap}>")
+        }
+        _ => cpp_type_for_field(field_type, current_package),
+    }
+}
+
+/// Like [`repr_c_type_for_field`], but overrides the `[u8; N]` size of a
+/// **top-level unbounded** `String` / `WString` with `cap`. Sequences keep the
+/// empty (caller-overridden) repr; their capacity flows via the sequence struct.
+pub fn repr_c_type_for_field_with_capacity(
+    field_type: &FieldType,
+    current_package: Option<&str>,
+    cap: usize,
+) -> String {
+    match field_type {
+        FieldType::String | FieldType::WString => format!("[u8; {cap}]"),
+        _ => repr_c_type_for_field(field_type, current_package),
+    }
+}
+
 /// Get the C++ array suffix for a field type (e.g., "[3]" for fixed arrays)
 ///
 /// Unlike C where strings use array suffix, C++ uses `FixedString<N>` which
