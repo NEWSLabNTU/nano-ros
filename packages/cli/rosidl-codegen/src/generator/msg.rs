@@ -303,6 +303,7 @@ pub fn generate_c_message_package(
     message_name: &str,
     message: &Message,
     type_hash: &str,
+    resolver: &CapacityResolver,
 ) -> Result<GeneratedCPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let msg_snake = to_snake_case(message_name);
@@ -367,8 +368,16 @@ pub fn generate_c_message_package(
     let fields: Vec<CField> = message
         .fields
         .iter()
-        .map(|field| build_c_field(&field.name, &field.field_type, Some(package_name)))
-        .collect();
+        .map(|field| {
+            build_c_field(
+                &field.name,
+                &field.field_type,
+                Some(package_name),
+                message_name,
+                resolver,
+            )
+        })
+        .collect::<Result<_, _>>()?;
 
     // Build C constants
     let constants: Vec<CConstant> = message

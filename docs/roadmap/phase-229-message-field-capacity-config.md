@@ -99,9 +99,18 @@ emit `GeneratorError::UnsupportedStorageMode` in phase 1.
   `CapacityResolver::empty()` + ROS-convention message keys (`_Request`/`_Response`,
   `_Goal`/`_Result`/`_Feedback`) so behavior is unchanged and a real resolver drops
   in later. (srv.rs, action.rs)
-- ⬜ **C + C++ emitters** — `build_c_field` / `build_cpp_field` + `c_type_for_field` /
-  `cpp_type_for_field` still use the `C_*` / `CPP_*` consts; thread the resolver
-  (next wave).
+- ✅ **C message path** — `c_type_for_field_with_capacity` +
+  `c_array_suffix_for_field_with_capacity` (types.rs); `build_c_field` resolver-aware
+  + `Result` + phase gate, overrides the unbounded `char[N]` suffix and the inline
+  sequence struct `[N]` + `sequence_capacity` (common.rs); `generate_c_message_package`
+  takes a `&CapacityResolver` (msg.rs). C service/action pass `empty()` + ROS keys.
+  2 golden tests (`mod.rs`): big-seq+small-string, borrowed→error.
+- ⬜ **C++ emitters** — header `FixedString<N>`/`FixedSequence<…,N>` **and** the FFI
+  repr `[u8; N]` + sequence struct defs must agree; thread resolver through
+  `build_cpp_field` + `build_cpp_ffi_field` + `cpp.rs::build_fields` (wave 3b).
+- ⬜ **Serialized-size-max** (`compute_serialized_size_max`) still uses default
+  `CPP_DEFAULT_STRING_CAPACITY` for worst-case wire/buffer sizing — should scale with
+  a configured cap so big-payload buffers size correctly (follow-up, note in 229.3/.5).
 - ⬜ **Activate real resolver** in service/action + the production
   `rosidl-bindgen::generate_package` callsite (currently `empty()` with a 229.3 TODO).
 - **Files:** `packages/cli/rosidl-codegen/src/types.rs`,

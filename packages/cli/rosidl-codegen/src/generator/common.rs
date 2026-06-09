@@ -3,8 +3,9 @@ use crate::{
     templates::{CField, CppFfiField, CppField, FieldKind, NrosField, SequenceStructDef},
     types::{
         C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
-        NrosCodegenMode, c_array_suffix_for_field, c_cdr_read_method, c_cdr_write_method,
-        c_type_for_field, cpp_array_suffix_for_field, cpp_type_for_field, escape_keyword,
+        NrosCodegenMode, c_array_suffix_for_field, c_array_suffix_for_field_with_capacity,
+        c_cdr_read_method, c_cdr_write_method, c_type_for_field, c_type_for_field_with_capacity,
+        cpp_array_suffix_for_field, cpp_type_for_field, escape_keyword,
         nros_type_for_field_with_capacity, nros_type_for_field_with_mode, repr_c_type_for_field,
         to_c_package_name,
     },
@@ -229,15 +230,51 @@ pub(super) fn field_to_nros_field(
     )
 }
 
-/// Build a CField from a field type
+/// Build a CField from a field type.
+///
+/// `resolver` supplies the per-field capacity for **unbounded** sequence/string
+/// fields (RFC-0033). A non-`owned` storage mode is rejected in Phase 229.
 pub(super) fn build_c_field(
     name: &str,
     field_type: &FieldType,
     current_package: Option<&str>,
-) -> CField {
+    message_name: &str,
+    resolver: &CapacityResolver,
+) -> Result<CField, GeneratorError> {
     let escaped_name = escape_keyword(name);
-    let c_type = c_type_for_field(field_type, current_package);
-    let array_suffix = c_array_suffix_for_field(field_type);
+
+    // Resolve per-field capacity for the two configurable shapes.
+    let cap_kind = match field_type {
+        FieldType::String | FieldType::WString => Some(CapFieldKind::String),
+        FieldType::Sequence { .. } => Some(CapFieldKind::Sequence),
+        _ => None,
+    };
+    let cap_override = if let Some(kind) = cap_kind {
+        let package = current_package.unwrap_or("");
+        let storage = resolver.resolve(package, message_name, name, kind);
+        if !storage.mode.is_phase1_supported() {
+            return Err(GeneratorError::UnsupportedStorageMode {
+                package: package.to_string(),
+                message: message_name.to_string(),
+                field: name.to_string(),
+                mode: storage.mode.as_str(),
+            });
+        }
+        Some(storage.cap)
+    } else {
+        None
+    };
+
+    let (c_type, array_suffix) = match cap_override {
+        Some(cap) => (
+            c_type_for_field_with_capacity(field_type, current_package, cap),
+            c_array_suffix_for_field_with_capacity(field_type, cap),
+        ),
+        None => (
+            c_type_for_field(field_type, current_package),
+            c_array_suffix_for_field(field_type),
+        ),
+    };
 
     // Determine type characteristics
     let (is_primitive, primitive_type) = match field_type {
@@ -260,10 +297,10 @@ pub(super) fn build_c_field(
     );
     let is_nested = matches!(field_type, FieldType::NamespacedType { .. });
 
-    // Get array/sequence info
+    // Get array/sequence info. Unbounded sequences use the resolved capacity.
     let (array_size, sequence_capacity) = match field_type {
         FieldType::Array { size, .. } => (*size, 0),
-        FieldType::Sequence { .. } => (0, C_DEFAULT_SEQUENCE_CAPACITY),
+        FieldType::Sequence { .. } => (0, cap_override.unwrap_or(C_DEFAULT_SEQUENCE_CAPACITY)),
         FieldType::BoundedSequence { max_size, .. } => (0, *max_size),
         _ => (0, 0),
     };
@@ -322,7 +359,7 @@ pub(super) fn build_c_field(
             String::new()
         };
 
-    CField {
+    Ok(CField {
         name: escaped_name,
         c_type,
         array_suffix,
@@ -341,7 +378,7 @@ pub(super) fn build_c_field(
         is_nested,
         is_primitive_element,
         is_string_element,
-    }
+    })
 }
 
 /// Build a CppField for C++ header generation

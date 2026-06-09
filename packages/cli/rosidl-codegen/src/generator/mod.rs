@@ -470,7 +470,13 @@ mod tests {
         let msg = parse_message("int32 x\nfloat64 y\nbool flag\n").unwrap();
         let type_hash = "abc123";
 
-        let result = generate_c_message_package("test_msgs", "Point", &msg, type_hash);
+        let result = generate_c_message_package(
+            "test_msgs",
+            "Point",
+            &msg,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
@@ -501,7 +507,13 @@ mod tests {
         let msg = parse_message("string name\n").unwrap();
         let type_hash = "def456";
 
-        let result = generate_c_message_package("std_msgs", "String", &msg, type_hash);
+        let result = generate_c_message_package(
+            "std_msgs",
+            "String",
+            &msg,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
@@ -514,12 +526,64 @@ mod tests {
         let msg = parse_message("int32[3] values\n").unwrap();
         let type_hash = "ghi789";
 
-        let result = generate_c_message_package("test_msgs", "IntArray", &msg, type_hash);
+        let result = generate_c_message_package(
+            "test_msgs",
+            "IntArray",
+            &msg,
+            type_hash,
+            &crate::config::CapacityResolver::empty(),
+        );
         assert!(result.is_ok());
 
         let pkg = result.unwrap();
         assert!(pkg.header.contains("int32_t values[3]"));
         assert!(pkg.source.contains("for (size_t i = 0; i < 3; ++i)"));
+    }
+
+    #[test]
+    fn test_c_per_field_capacity_config() {
+        // RFC-0033: big unbounded sequence + small unbounded string, one message.
+        let msg = parse_message("uint8[] pixels\nstring label\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/Frame.pixels" = 921600
+            "my_msgs/Frame.label"  = 16
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_c_message_package("my_msgs", "Frame", &msg, "h", &resolver).unwrap();
+        // Sequence capacity reflected in both the inline struct and the count.
+        assert!(
+            pkg.header.contains("data[921600]"),
+            "seq cap missing:\n{}",
+            pkg.header
+        );
+        // Small string char buffer.
+        assert!(
+            pkg.header.contains("char label[16]"),
+            "string cap missing:\n{}",
+            pkg.header
+        );
+        assert!(!pkg.header.contains("[64]"));
+    }
+
+    #[test]
+    fn test_c_heap_mode_errors_in_phase1() {
+        let msg = parse_message("uint8[] data\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/Blob.data" = { cap = 100, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let err = match generate_c_message_package("my_msgs", "Blob", &msg, "h", &resolver) {
+            Ok(_) => panic!("expected unsupported-mode error"),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("borrowed"), "{err}");
+        assert!(err.contains("not yet supported"), "{err}");
     }
 
     #[test]
