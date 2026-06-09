@@ -7,10 +7,15 @@ assigned to tiers from `system.toml`, plus shared-state accessor codegen. Phases
 nodes in one task / one Executor — today's `nros codegen-system` output). This
 phase closes the gap to the full RFC-0015 execution model.
 
-**Status.** In progress (2026-06-09). **Runtime mechanism + bake complete**
-(228.A/C/D-bake/E-native/F-runtime); **the emit is the remaining work** — fully
-specified by **RFC-0032** (entry-codegen pipeline). See the ordered
-implementation plan below.
+**Status.** Feature-complete (2026-06-10). The full pipeline — `system.toml
+[tiers.*]` → shared `nros-orchestration-ir` resolver → `nros::main!` `run_tiers`
+emit → per-tier registration gate → one shared session — is implemented and
+verified **end-to-end on native and FreeRTOS** (boot + QEMU), with cross-tier
+`[[shared_state]]` in all three languages. The original top-level items
+228.B/D/E/F shipped under the newer sub-items (228.G / 228.D.2 / 228.E.2 /
+228.G.6) — their markers below are reconciled to ✅. What remains is **optional
+deeper validation** (router-backed both-tiers-observed runs; a cross-*language*
+shared-state example) + the descoped 228.H. Design-of-record: **RFC-0032**.
 
 **Priority.** P2 — the single-tier path works today and covers most cases;
 multi-tier is the differentiator for hard-RT embedded (mixed-criticality on one
@@ -68,7 +73,7 @@ Validates unknown-tier / missing-RTOS-spec / override-on-unknown-node. The
 schema round-trip.
 **Files:** `packages/cli/nros-cli-core/src/orchestration/{tier_resolver,cargo_metadata_schema}.rs`.
 
-### 228.B — Per-tier task + executor emission  🔄 IN PROGRESS (Wave 2)
+### 228.B — Per-tier task + executor emission  ✅ DONE (emit landed in 228.G)
 **Done:** `Executor::open_with_session(session)` landed (the documented shared-session
 constructor; a contract wrapper over the existing `from_session_ptr` Borrowed
 primitive — the "API doesn't exist" blocker was really just naming). The resolver
@@ -111,7 +116,7 @@ entities) all landed + proven by `phase228_tier_filter.rs`. The **emit** of
 `run_tiers` closure body the proc-macro emits).
 **Files:** `nros-node`/`nros` runtime (done); proc-macro emit → 228.G.
 
-### 228.D — Shared-state accessor codegen  🔄 IN PROGRESS (Wave B)
+### 228.D — Shared-state accessor codegen  ✅ DONE (bake here; accessors in 228.D.2)
 **Done (resolve + bake):** `codegen-system` now resolves every `system.toml
 [[shared_state]]` region and bakes it into `nros-plan.json` (`shared_state: [...]`),
 symmetric with the tier table. The `tier_aware` sync sentinel lowers to `mutex`
@@ -128,7 +133,7 @@ accessors only have a second consumer once multi-tier tasks exist.
 **Files:** `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (done),
 codegen + `nros-cpp`/`nros-c` shared-context wrappers (remaining).
 
-### 228.E — Per-RTOS spawn + priority lowering  🔄 IN PROGRESS (Wave C1)
+### 228.E — Per-RTOS spawn + priority lowering  ✅ DONE (native + FreeRTOS in 228.E.2)
 **Done (native foundation):**
 - `Executor::session_ptr()` — the boot executor exposes its session as a raw
   pointer so each tier opens an `Executor` over the *same* session (the RMW
@@ -170,7 +175,7 @@ raw per-RTOS `i64` (the spawn value), matching `ResolvedTier`.
 `packages/core/nros-macros/src/main_macro.rs` + `nros-board-freertos`
 (remaining).
 
-### 228.F — Multi-tier fixture + acceptance test  🔄 IN PROGRESS
+### 228.F — Multi-tier fixture + acceptance test  ✅ DONE (runtime + native/freertos fixtures; deeper run-E2E optional)
 **Done (runtime acceptance):** `phase228_tier_filter.rs` proves the 228.C gate +
 228.E shared-session primitive end-to-end against real zenohd — two
 `ExecutorNodeRuntime`s over one session (the second via `session_ptr` →
