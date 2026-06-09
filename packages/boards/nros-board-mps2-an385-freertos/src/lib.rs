@@ -254,3 +254,21 @@ impl nros_platform::BoardEntry for Mps2An385 {
         nros_board_freertos::run_entry::<Mps2An385, F, E>(Config::default(), setup)
     }
 }
+
+impl Mps2An385 {
+    /// Phase 228.E.2 — per-tier multi-task entry; delegates to
+    /// [`nros_board_freertos::run_tiers_entry`]. The `nros::main!()` macro emits
+    /// `<Mps2An385>::run_tiers(TIERS, run_plan)` for multi-tier systems
+    /// (single-tier keeps the `BoardEntry::run` path).
+    pub fn run_tiers<F, E>(
+        tiers: &'static [nros_platform::TierSpec<'static>],
+        setup: F,
+    ) -> Result<(), E>
+    where
+        F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Copy,
+        E: core::fmt::Debug,
+    {
+        register_log_writer();
+        nros_board_freertos::run_tiers_entry::<Mps2An385, F, E>(Config::default(), tiers, setup)
+    }
+}

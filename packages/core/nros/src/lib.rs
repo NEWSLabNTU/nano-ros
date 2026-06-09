@@ -538,7 +538,7 @@ pub use nros_node::{
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
     LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec,
-    RawActiveGoal, RawSubscription, RecvView, SessionSpec, Subscription,
+    RawActiveGoal, RawSubscription, RecvView, SessionHandle, SessionSpec, Subscription,
 };
 
 // Phase 173.5 — board config traits. `BoardConfig` (read locator /

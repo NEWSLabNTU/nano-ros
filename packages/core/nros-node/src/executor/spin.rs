@@ -392,6 +392,25 @@ impl core::ops::DerefMut for SessionStore {
     }
 }
 
+/// Phase 228.E — an opaque, `Send` handle to an [`Executor`]'s RMW session.
+///
+/// In the per-tier model the boot executor opens the one session and hands each
+/// spawned tier task a handle (not a borrow) so the task opens its own
+/// [`Executor`] over that *same* session across the RTOS task boundary. Wrapping
+/// the `pub(crate)` session pointer lets board crates (`nros-board-posix`,
+/// `nros-board-freertos`, …) name + move the handle without naming the session
+/// type. Obtain via [`Executor::session_handle`]; consume via
+/// [`Executor::open_with_session_handle`].
+#[cfg(any(has_rmw, test))]
+pub struct SessionHandle(*mut session::ConcreteSession);
+
+// SAFETY: the per-tier model deliberately shares one session across RTOS tasks;
+// concurrent access is serialized by the RMW backend's internal locks (the RTOS
+// targets build zenoh-pico `Z_FEATURE_MULTI_THREAD=1` — RFC-0032 §5.0). The
+// boot executor owns the session and outlives every tier task.
+#[cfg(any(has_rmw, test))]
+unsafe impl Send for SessionHandle {}
+
 /// Phase 228.C — pure callback-group filter decision. `None` = wildcard (accept
 /// every group); `Some` = accept only listed groups. Backs
 /// [`Executor::group_active`]; split out so the logic is unit-testable without a
@@ -1317,6 +1336,28 @@ impl Executor {
     /// (the RMW backend serializes concurrent access through its own locks).
     pub fn session_ptr(&mut self) -> *mut session::ConcreteSession {
         &mut *self.session as *mut session::ConcreteSession
+    }
+
+    /// Opaque, `Send` form of [`session_ptr`](Self::session_ptr) — the per-tier
+    /// model hands this to each spawned tier task (it can cross the RTOS task /
+    /// thread boundary, which a bare `*mut` cannot). See [`SessionHandle`].
+    ///
+    /// # Safety
+    /// Same contract as [`session_ptr`](Self::session_ptr): `self` (the session
+    /// owner) must outlive every executor built from the handle.
+    pub fn session_handle(&mut self) -> SessionHandle {
+        SessionHandle(self.session_ptr())
+    }
+
+    /// Open an [`Executor`] over the session a [`SessionHandle`] refers to (the
+    /// `Borrowed` store — neither owns nor closes it). The tier-task counterpart
+    /// to [`session_handle`](Self::session_handle).
+    ///
+    /// # Safety
+    /// The handle's session must still be alive (its owning executor not moved
+    /// or dropped); access only through executor spin calls.
+    pub unsafe fn open_with_session_handle(handle: SessionHandle) -> Self {
+        unsafe { Self::open_with_session(handle.0) }
     }
 
     /// Phase 228.C — set this tier executor's active callback-group filter. The

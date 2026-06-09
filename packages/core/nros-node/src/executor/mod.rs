@@ -81,6 +81,8 @@ pub use node::NodeHandle;
 pub use node_record::{NodeBuilder, NodeId, NodeRecord};
 #[cfg(any(has_rmw, test))]
 pub use spin::Executor;
+#[cfg(any(has_rmw, test))]
+pub use spin::SessionHandle;
 #[cfg(all(any(has_rmw, test), feature = "rmw-cffi"))]
 pub use spin::SessionSpec;
 pub use types::*;

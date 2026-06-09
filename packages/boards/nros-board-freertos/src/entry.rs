@@ -44,7 +44,7 @@
 
 use core::ffi::c_void;
 
-use nros_platform::{BoardExit, BoardInit, BoardPrint, RuntimeCtx};
+use nros_platform::{BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
 
 use crate::{
     Config,
@@ -101,98 +101,9 @@ where
 {
     let ctx = unsafe { &mut *(arg as *mut AppContext<F>) };
 
-    if let Err(e) = init_network(&ctx.config) {
-        B::println(format_args!("Error initializing network: {:?}", e));
-        B::exit_failure();
-    }
-    B::println(format_args!("Network ready."));
-    B::println(format_args!(""));
-
-    // Seed the platform RNG. Mirrors the legacy `run<B>` body —
-    // without this, listener + talker get identical xorshift output
-    // and zenoh rejects the duplicate session IDs.
-    {
-        let ip = &ctx.config.ip;
-        let mac = &ctx.config.mac;
-        let mut seed = ((ip[0] as u32) << 24)
-            | ((ip[1] as u32) << 16)
-            | ((ip[2] as u32) << 8)
-            | (ip[3] as u32);
-        seed = seed.wrapping_mul(2654435761);
-        seed ^= ((mac[4] as u32) << 8) | (mac[5] as u32);
-        if seed == 0 {
-            seed = 1;
-        }
-        unsafe extern "C" {
-            fn nros_platform_freertos_seed_rng(value: u32);
-        }
-        unsafe { nros_platform_freertos_seed_rng(seed) };
-    }
-
-    let poll_pri = Config::to_freertos_priority(ctx.config.poll_priority);
-
-    #[cfg(feature = "rmw-zenoh")]
-    {
-        let read_pri = Config::to_freertos_priority(ctx.config.zenoh_read_priority);
-        let lease_pri = Config::to_freertos_priority(ctx.config.zenoh_lease_priority);
-        unsafe extern "C" {
-            fn zpico_set_task_config(
-                read_priority: u32,
-                read_stack_bytes: u32,
-                lease_priority: u32,
-                lease_stack_bytes: u32,
-            );
-        }
-        unsafe {
-            zpico_set_task_config(
-                read_pri,
-                ctx.config.zenoh_read_stack_bytes,
-                lease_pri,
-                ctx.config.zenoh_lease_stack_bytes,
-            );
-        }
-    }
-
-    unsafe {
-        nros_trace_scheduler_started();
-    }
-
-    unsafe {
-        POLL_INTERVAL_MS = ctx.config.poll_interval_ms;
-    }
-    let ret = unsafe {
-        nros_freertos_create_task(
-            poll_task_entry,
-            b"net_poll\0".as_ptr(),
-            POLL_TASK_STACK,
-            core::ptr::null_mut(),
-            poll_pri,
-        )
-    };
-    if ret != 0 {
-        B::println(format_args!("Error creating network poll task"));
-        B::exit_failure();
-    }
-
-    // Brief delay so the poll task can flush stale RX + bridge / TAP
-    // settle before TCP connections begin.
-    unsafe {
-        unsafe extern "C" {
-            fn vTaskDelay(ticks: u32);
-        }
-        vTaskDelay(2000);
-    }
-
-    let netif_state = unsafe { nros_freertos_get_netif_state() };
-    if netif_state & 0xF != 0xF {
-        B::println(format_args!(
-            "WARNING: lwIP netif not ready (default={} up={} link={} ip={})",
-            netif_state & 1 != 0,
-            netif_state & 2 != 0,
-            netif_state & 4 != 0,
-            netif_state & 8 != 0,
-        ));
-    }
+    // Phase 228.E.2 — the boot bringup (network + RNG + poll task + zenoh task
+    // config + netif wait) is shared with the per-tier app task.
+    unsafe { freertos_boot_bringup::<B>(&ctx.config) };
 
     // FnOnce — `core::ptr::read` because this task entry is only
     // called once by FreeRTOS.
@@ -267,6 +178,343 @@ unsafe extern "C" fn poll_task_entry(_arg: *mut c_void) {
             vTaskDelay(interval);
         }
     }
+}
+
+// =============================================================================
+// Phase 228.E.2 — per-tier multi-task entry (RFC-0032 §5, §8.2)
+// =============================================================================
+
+/// Shared boot bringup: network init + RNG seed + poll task + zenoh task config
+/// + netif wait. Extracted from `app_task_entry_runtime` so the per-tier app
+/// task reuses the exact same sequence.
+///
+/// # Safety
+/// Runs inside a FreeRTOS task, pre-`Executor::open`. `config` must be valid.
+unsafe fn freertos_boot_bringup<B>(config: &Config)
+where
+    B: BoardPrint + BoardExit,
+{
+    if let Err(e) = init_network(config) {
+        B::println(format_args!("Error initializing network: {:?}", e));
+        B::exit_failure();
+    }
+    B::println(format_args!("Network ready."));
+    B::println(format_args!(""));
+
+    // Seed the platform RNG so distinct sessions get distinct xorshift output.
+    {
+        let ip = &config.ip;
+        let mac = &config.mac;
+        let mut seed = ((ip[0] as u32) << 24)
+            | ((ip[1] as u32) << 16)
+            | ((ip[2] as u32) << 8)
+            | (ip[3] as u32);
+        seed = seed.wrapping_mul(2654435761);
+        seed ^= ((mac[4] as u32) << 8) | (mac[5] as u32);
+        if seed == 0 {
+            seed = 1;
+        }
+        unsafe extern "C" {
+            fn nros_platform_freertos_seed_rng(value: u32);
+        }
+        unsafe { nros_platform_freertos_seed_rng(seed) };
+    }
+
+    let poll_pri = Config::to_freertos_priority(config.poll_priority);
+
+    #[cfg(feature = "rmw-zenoh")]
+    {
+        let read_pri = Config::to_freertos_priority(config.zenoh_read_priority);
+        let lease_pri = Config::to_freertos_priority(config.zenoh_lease_priority);
+        unsafe extern "C" {
+            fn zpico_set_task_config(
+                read_priority: u32,
+                read_stack_bytes: u32,
+                lease_priority: u32,
+                lease_stack_bytes: u32,
+            );
+        }
+        unsafe {
+            zpico_set_task_config(
+                read_pri,
+                config.zenoh_read_stack_bytes,
+                lease_pri,
+                config.zenoh_lease_stack_bytes,
+            );
+        }
+    }
+
+    unsafe {
+        nros_trace_scheduler_started();
+    }
+
+    unsafe {
+        POLL_INTERVAL_MS = config.poll_interval_ms;
+    }
+    let ret = unsafe {
+        nros_freertos_create_task(
+            poll_task_entry,
+            b"net_poll\0".as_ptr(),
+            POLL_TASK_STACK,
+            core::ptr::null_mut(),
+            poll_pri,
+        )
+    };
+    if ret != 0 {
+        B::println(format_args!("Error creating network poll task"));
+        B::exit_failure();
+    }
+
+    // Brief delay so the poll task flushes stale RX + the TAP settles.
+    unsafe {
+        unsafe extern "C" {
+            fn vTaskDelay(ticks: u32);
+        }
+        vTaskDelay(2000);
+    }
+
+    let netif_state = unsafe { nros_freertos_get_netif_state() };
+    if netif_state & 0xF != 0xF {
+        B::println(format_args!(
+            "WARNING: lwIP netif not ready (default={} up={} link={} ip={})",
+            netif_state & 1 != 0,
+            netif_state & 2 != 0,
+            netif_state & 4 != 0,
+            netif_state & 8 != 0,
+        ));
+    }
+}
+
+unsafe extern "C" {
+    fn pvPortFree(ptr: *mut c_void);
+    fn pvPortMalloc(size: u32) -> *mut c_void;
+}
+
+/// Heap context for the boot (per-tier) app task.
+struct AppContextTiers<F> {
+    config: Config,
+    tiers: &'static [TierSpec<'static>],
+    setup: F,
+}
+
+/// Heap context handed to each spawned (non-boot) tier task.
+struct TierTaskCtx<F> {
+    session: ::nros::SessionHandle,
+    tier: TierSpec<'static>,
+    setup: F,
+}
+
+/// Spawned tier task: open an `Executor` over the shared session, install this
+/// tier's `active_groups` filter, register (the off-tier callbacks are gated
+/// out), then spin forever at the tier's period.
+///
+/// # Safety
+/// `arg` is a `pvPortMalloc`-allocated `TierTaskCtx<F>` from
+/// `app_task_entry_tiers`; this task consumes + frees it.
+unsafe extern "C" fn tier_task_entry<B, F, E>(arg: *mut c_void)
+where
+    B: BoardPrint + BoardExit,
+    F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
+    E: core::fmt::Debug,
+{
+    let ctx = unsafe { core::ptr::read(arg as *mut TierTaskCtx<F>) };
+    unsafe { pvPortFree(arg) };
+
+    // SAFETY: the boot task owns the session for the firmware lifetime (its spin
+    // loop never returns), so the handle stays valid.
+    let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
+    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
+    crt.executor_mut().set_active_groups(ctx.tier.groups);
+    {
+        let mut runtime = RuntimeCtx::with_runtime(&mut crt);
+        if let Err(e) = (ctx.setup)(&mut runtime) {
+            B::println(format_args!(
+                "nros: tier `{}` setup failed: {:?}",
+                ctx.tier.name, e
+            ));
+            B::exit_failure();
+        }
+    }
+    let period_ms = (ctx.tier.spin_period_us / 1000).max(1) as u32;
+    loop {
+        if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
+            unsafe {
+                nros_trace_trigger_and_dump();
+            }
+            B::println(format_args!(
+                "nros: tier `{}` spin error: {:?}",
+                ctx.tier.name, err
+            ));
+            B::exit_failure();
+        }
+    }
+}
+
+/// Boot app task for the per-tier model: bring up the network, open the one
+/// session, spawn one FreeRTOS task per non-boot tier (each sharing the session
+/// via a `SessionHandle`), then run the highest-priority tier on this task.
+///
+/// # Safety
+/// `arg` is a `pvPortMalloc`-allocated `AppContextTiers<F>` from
+/// `run_tiers_entry`, surviving until the scheduler exits.
+unsafe extern "C" fn app_task_entry_tiers<B, F, E>(arg: *mut c_void)
+where
+    B: BoardPrint + BoardExit,
+    F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
+    E: core::fmt::Debug,
+{
+    let ctx = unsafe { &mut *(arg as *mut AppContextTiers<F>) };
+    unsafe { freertos_boot_bringup::<B>(&ctx.config) };
+
+    if ctx.tiers.is_empty() {
+        B::println(format_args!("nros: run_tiers called with no tiers"));
+        B::exit_failure();
+    }
+
+    // Open the one session on the boot task, then move it into its final
+    // location (`crt`) BEFORE handing out `SessionHandle`s — the handle aliases
+    // `crt`'s owned session, and `crt` never moves again (the boot spin loop
+    // below never returns), so the spawned tasks' pointers stay valid.
+    let exec_cfg = ::nros::ExecutorConfig::new(ctx.config.zenoh_locator)
+        .domain_id(ctx.config.domain_id)
+        .node_name("nros_app");
+    let boot_exec = match ::nros::Executor::open(&exec_cfg) {
+        Ok(e) => e,
+        Err(err) => {
+            unsafe {
+                nros_trace_trigger_and_dump();
+            }
+            B::println(format_args!("Executor::open failed: {:?}", err));
+            B::exit_failure();
+        }
+    };
+    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(boot_exec);
+
+    // Spawn tiers[1..]; tiers[0] (highest priority) runs on this boot task.
+    for tier in &ctx.tiers[1..] {
+        let tier_ctx = TierTaskCtx::<F> {
+            session: crt.executor_mut().session_handle(),
+            tier: *tier,
+            setup: ctx.setup,
+        };
+        let size = core::mem::size_of::<TierTaskCtx<F>>() as u32;
+        let ptr = unsafe { pvPortMalloc(size) as *mut TierTaskCtx<F> };
+        if ptr.is_null() {
+            B::println(format_args!("nros: tier `{}` ctx alloc failed", tier.name));
+            B::exit_failure();
+        }
+        unsafe { core::ptr::write(ptr, tier_ctx) };
+        // Raw per-RTOS priority (the author wrote the FreeRTOS value directly).
+        let prio = tier.priority.clamp(0, u32::MAX as i64) as u32;
+        let stack_words = if tier.stack_bytes == 0 {
+            ctx.config.app_stack_bytes / 4
+        } else {
+            (tier.stack_bytes / 4) as u32
+        };
+        let ret = unsafe {
+            nros_freertos_create_task(
+                tier_task_entry::<B, F, E>,
+                b"nros_tier\0".as_ptr(),
+                stack_words,
+                ptr as *mut c_void,
+                prio,
+            )
+        };
+        if ret != 0 {
+            B::println(format_args!("nros: failed to spawn tier `{}`", tier.name));
+            B::exit_failure();
+        }
+    }
+
+    let boot_tier = ctx.tiers[0];
+    crt.executor_mut().set_active_groups(boot_tier.groups);
+    {
+        let mut runtime = RuntimeCtx::with_runtime(&mut crt);
+        if let Err(e) = (ctx.setup)(&mut runtime) {
+            unsafe {
+                nros_trace_trigger_and_dump();
+            }
+            B::println(format_args!("Application error: {:?}", e));
+            B::exit_failure();
+        }
+    }
+    B::println(format_args!(""));
+    B::println(format_args!(
+        "Multi-tier setup complete — entering boot-tier spin loop."
+    ));
+    let period_ms = (boot_tier.spin_period_us / 1000).max(1) as u32;
+    loop {
+        if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
+            unsafe {
+                nros_trace_trigger_and_dump();
+            }
+            B::println(format_args!("spin_once error: {:?}", err));
+            B::exit_failure();
+        }
+    }
+}
+
+/// Phase 228.E.2 — per-tier FreeRTOS entry. The `nros::main!()` macro emits
+/// `<Board>::run_tiers(TIERS, run_plan)`; the board ZST routes here. Mirrors
+/// [`run_entry`] but spawns one FreeRTOS task per priority tier over one shared
+/// session (RFC-0032 §5; MT=1 is the default on FreeRTOS, §5.0). `tiers` are the
+/// macro-baked `&'static [TierSpec]`; `setup` is the register-only `run_plan`
+/// (invoked once per tier, hence `Fn + Copy`).
+pub fn run_tiers_entry<B, F, E>(
+    config: Config,
+    tiers: &'static [TierSpec<'static>],
+    setup: F,
+) -> core::result::Result<(), E>
+where
+    B: BoardInit + BoardPrint + BoardExit,
+    F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
+    E: core::fmt::Debug,
+{
+    B::println(format_args!(""));
+    B::println(format_args!("========================================"));
+    B::println(format_args!("  nros FreeRTOS Platform (multi-tier)"));
+    B::println(format_args!("========================================"));
+    B::println(format_args!(""));
+
+    B::init_hardware();
+
+    let app_pri = Config::to_freertos_priority(config.app_priority);
+    let app_stack_words = config.app_stack_bytes / 4;
+
+    let ctx_ptr = unsafe {
+        let size = core::mem::size_of::<AppContextTiers<F>>() as u32;
+        let ptr = pvPortMalloc(size) as *mut AppContextTiers<F>;
+        assert!(!ptr.is_null(), "Failed to allocate AppContextTiers");
+        core::ptr::write(
+            ptr,
+            AppContextTiers {
+                config,
+                tiers,
+                setup,
+            },
+        );
+        ptr
+    };
+
+    let ret = unsafe {
+        nros_freertos_create_task(
+            app_task_entry_tiers::<B, F, E>,
+            b"nros_app\0".as_ptr(),
+            app_stack_words,
+            ctx_ptr as *mut c_void,
+            app_pri,
+        )
+    };
+    if ret != 0 {
+        B::println(format_args!("Error creating application task"));
+        B::exit_failure();
+    }
+
+    unsafe {
+        nros_freertos_start_scheduler();
+    }
+
+    B::exit_failure()
 }
 
 fn init_network(config: &Config) -> FrResult<()> {

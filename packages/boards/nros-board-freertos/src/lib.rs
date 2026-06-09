@@ -71,7 +71,7 @@ mod error;
 mod node;
 
 pub use config::Config;
-pub use entry::run_entry;
+pub use entry::{run_entry, run_tiers_entry};
 pub use node::run;
 pub use nros_board_common::{BoardExit, BoardInit, BoardPrint};
 
