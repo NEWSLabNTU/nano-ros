@@ -1,9 +1,11 @@
+pub mod config;
 pub mod generator;
 pub mod idl_generator;
 pub mod templates;
 pub mod types;
 pub mod utils;
 
+pub use config::{CapacityResolver, ConfigError, FieldKind, FieldStorage, StorageMode};
 pub use generator::{
     GeneratedActionPackage, GeneratedCActionPackage, GeneratedCPackage, GeneratedCServicePackage,
     GeneratedCppActionPackage, GeneratedCppPackage, GeneratedCppServicePackage,

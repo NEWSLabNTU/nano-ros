@@ -4,7 +4,7 @@ title: Unbounded message sequences capped at 64 elements
 status: open
 type: enhancement
 area: codegen
-related: []
+related: [rfc-0033, phase-229]
 ---
 
 Generated message bindings use `heapless::Vec<T, N>` for unbounded sequences
