@@ -21,12 +21,13 @@ C **and C++** (12, fixing the C++ regression), NuttX C (6), ThreadX-linux C
 templates. `nros_find_interfaces()` was confirmed to work cross-compiled
 (host `nros codegen resolve-deps` runs at configure time).
 
-**Remaining**:
+**Remaining** (all optional / edge cases — the core C migration is done):
 
-- **Zephyr C (blocked)** — the Zephyr module ships its own
-  `nros_generate_interfaces` and never defines `nros_find_interfaces`.
-  Closing this needs a `nros_find_interfaces` wrapper added to the **Zephyr
-  module** (`zephyr/cmake/`), out of the examples scope. ← the main open item.
+- ~~**Zephyr C**~~ **(done, `0a3b867a5`)** — added
+  `zephyr/cmake/nros_find_interfaces.cmake` (a Zephyr-module wrapper that
+  mirrors the native resolve-deps and delegates to the Zephyr
+  emit-into-`app` generator), and migrated all 6 Zephyr C examples to the
+  package.xml SSoT pattern (build-verified via `just zephyr build-fixtures`).
 - **`examples/native/c/custom-msg`** — intentionally kept on
   `nros_generate_interfaces`: it is its own interface package, so
   `resolve-deps` against its `package.xml` emits nothing.
@@ -36,6 +37,12 @@ templates. `nros_find_interfaces()` was confirmed to work cross-compiled
   via `cmake/compat/NrosRclcppCompat.cmake`. Converging these onto
   `nros_find_interfaces()` is optional cleanup.
 
-**To close**: add the Zephyr-module `nros_find_interfaces` wrapper and
-migrate the Zephyr C examples; optionally converge the NuttX C++ /
-ThreadX-linux C++ paths.
+**To close** (all optional): converge the NuttX C++ /
+ThreadX-linux C++ paths onto `nros_find_interfaces()`; migrate the
+`examples/templates/zephyr-byo/app` copy-out starter; build-verify the
+XRCE / cyclonedds variants of the migrated C examples and the
+`talker-aemv8r` C++ carve-out. The substantive migration (all C examples
+across native/FreeRTOS/NuttX/ThreadX/Zephyr + native C/C++ + FreeRTOS C++ +
+templates) is **done and build-verified** — what remains is convergence of
+the two C++ holdouts (which already resolve deps from `package.xml`, just via
+different mechanisms) and unverified RMW variants.
