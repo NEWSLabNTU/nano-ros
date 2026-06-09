@@ -544,24 +544,55 @@ entry crate links the prebuilt NuttX staging libs (`$NUTTX_DIR/staging/*.a`)
 -nostartfiles -nodefaultlibs`, so the NuttX flat-build kernel image *is*
 the cargo binary. `std` stays (resolves from NuttX `libc.a`); RFC-0003 §9.
 
-**Remaining block — NuttX guest virtio-net does not come up** (the same
-*class* as #17, NuttX side). `Executor::open` fails with
-`Transport(ConnectionFailed)` before node registration. Decisively
-characterized: a qemu `filter-dump` pcap shows **zero packets** leave the
-guest, and a 12×/24s `Executor::open` retry all failed — so it is neither a
-timing race nor a wrong locator (correctly baked to slirp `tcp/10.0.2.2:7452`),
-but a genuine NuttX/qemu virtio-net no-network condition. Uncharted in this
-repo: there is no existing NuttX nano-ros connectivity E2E (`test_nuttx_kernel_boots`
-is boot-to-NSH with `-nic none`), and every NuttX example shares this
-board `nsh_main` + `run_entry` path. Two latent product gaps surfaced
-alongside: `run_entry` does a one-shot `Executor::open` with no retry, and
-the NuttX `run_entry` reads `ExecutorConfig::from_env` rather than the baked
-`[deploy.nuttx] locator` (deploy locator is metadata-only on NuttX today).
+**Diagnosis re-done with gdb (2026-06-09) — the prior "virtio-net does not
+come up" was WRONG.** gdb-multiarch on `qemu-system-arm -M virt -cpu
+cortex-a7 -S -gdb` (breakpoint hit-counts are reliable) shows NuttX
+networking *does* come up: `fdt_virtio_mmio_devices_register` is called
+with a valid FDT (`0x40000000`), `netdev_register` fires (virtio-net
+device registers), `netdev_ifup` fires (interface up), and
+`netlib_set_ipv4addr` + `netlib_set_ipv4netmask` run (static IP
+`10.0.2.30/24`, gw `10.0.2.2`).
 
-The `qemu_nuttx_entry` crate + `workspace-rust-qemu-nuttx` fixture row are
-landed (`skip_probe`, build+boot green); the cross-process E2E stays gated
-on resolving NuttX guest networking in a capable environment, filed
-alongside #17 as a NuttX networking-layer issue.
+Two distinct problems were found:
+
+1. **Loopback locator default — FIXED** (`c5453a5b3`). `run_entry` used
+   `ExecutorConfig::from_env()`, but the QEMU guest has no environment
+   populated, so it fell back to the loopback default `tcp/127.0.0.1:7447`
+   — the runtime "connected" to loopback (never hitting virtio-net → zero
+   packets) and failed fast. The baked `[deploy.nuttx] locator` was
+   metadata-only. Now baked at compile time via `option_env!("NROS_LOCATOR")`
+   + a `rerun-if-env-changed` build.rs; the fixture row passes
+   `NROS_LOCATOR=tcp/10.0.2.2:7452`. Verified the correct locator is now in
+   the ELF.
+
+2. **Connect still fails before the TCP layer (open follow-up).** Even with
+   the correct locator baked, `Executor::open` still returns
+   `Transport(ConnectionFailed)` with zero packets. gdb shows the libc
+   `connect()` is entered but `psock_connect`/`psock_tcp_connect` are
+   **never reached** and neither `arp_send` nor `virtio_net_send` ever
+   fires — so the failure is in socket creation / connect dispatch, before
+   any transmission. `socket()` is invoked with an unusual type argument
+   (`0x80006`; NuttX `SOCK_STREAM`=1, `SOCK_TYPE_MASK`=0xf, and the
+   `0x80000` bit is *Linux* `SOCK_CLOEXEC`, not NuttX's `0x100000`) —
+   pointing at a possible socket type/flag mismatch on the NuttX
+   zenoh-pico/std socket path (or a gdb register-read artifact; the
+   hit-counts are reliable, some arg reads on the thumb target are not).
+   Uncharted: no existing NuttX nano-ros connectivity E2E
+   (`test_nuttx_kernel_boots` is boot-to-NSH with `-nic none`).
+
+3. **`nros-fast-release` profile image does not boot** (open follow-up).
+   Only the `release`-profile ELF reaches `run_entry` and prints; the
+   `nros-fast-release` profile (opt-level 2 + `incremental`) produces an
+   image that never boots (no console output), even stripped — likely a
+   flat-image section-layout interaction with the build.rs `dramboot.ld`
+   link. The workspace lane uses `nros-fast-release`, so the fixture build
+   currently produces a non-booting image; gdb boot evidence was on a
+   `release` build.
+
+Latent product gap also noted: `run_entry` does a one-shot `Executor::open`
+with no retry. The `qemu_nuttx_entry` crate + `workspace-rust-qemu-nuttx`
+fixture row are landed (`skip_probe`); the cross-process E2E stays gated on
+(2) + (3).
 
 ---
 
