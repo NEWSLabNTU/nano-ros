@@ -13,10 +13,14 @@ set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD threadx-linux)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.cmake")
-find_package(example_interfaces REQUIRED)
-
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
+
+# Message deps resolved from the sibling package.xml SSoT (issue #11) —
+# mirrors the native + FreeRTOS C++ shape: nros_find_interfaces reads
+# package.xml's <depend>example_interfaces</depend>, generates the C++ bindings, and
+# registers example_interfaces__nano_ros_cpp in NROS_GENERATED_INTERFACE_LIBS so
+# nano_ros_node_register auto-links it onto the component (Phase 220.G.2).
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 nano_ros_node_register(
     NAME    action_client
     CLASS   threadx_linux_cpp_action_client::ActionClient
@@ -31,6 +35,6 @@ nros_threadx_codegen_system(
 add_executable(threadx_cpp_action_client src/main.c)
 target_link_libraries(threadx_cpp_action_client PRIVATE
     threadx_linux_cpp_action_client_action_client_component
-    example_interfaces::example_interfaces)
+    example_interfaces__nano_ros_cpp)
 nros_threadx_link_app(threadx_cpp_action_client)
 nano_ros_link_rmw(threadx_cpp_action_client RMW "${NROS_RMW}")
