@@ -373,6 +373,10 @@ exclude = [
     # walk for the same reason as `nros-board-stm32f4` above.
     "packages/boards/nros-board-rtic-stm32f4",
     "packages/boards/nros-board-nuttx-qemu-arm",
+    # 194.3c — riscv (rv-virt) NuttX board: cross-only
+    # (riscv32imac-unknown-nuttx-elf, build-std), excluded from the host
+    # workspace walk like the arm NuttX board crate.
+    "packages/boards/nros-board-nuttx-qemu-riscv",
     "packages/boards/nros-board-mps2-an385-freertos",
     # Phase 212.N.7 step-4 — the `freertos-qemu-mps2-an385-bsp` baker
     # crate is retired. Its `bake_system_main_rs` + `__nros_component_*`

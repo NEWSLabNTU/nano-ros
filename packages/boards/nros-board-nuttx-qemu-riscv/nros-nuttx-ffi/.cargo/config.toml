@@ -1,0 +1,33 @@
+[build]
+target = "riscv32imac-unknown-nuttx-elf"
+
+[unstable]
+build-std = ["std", "panic_abort"]
+build-std-features = ["compiler-builtins-mem"]
+
+[target.riscv32imac-unknown-nuttx-elf]
+linker = "riscv-none-elf-gcc"
+rustflags = [
+    "-C", "link-arg=-march=rv32imac",
+    "-C", "link-arg=-mabi=ilp32",
+]
+
+[env]
+CC_riscv32imac_unknown_nuttx_elf = "riscv-none-elf-gcc"
+CFLAGS_riscv32imac_unknown_nuttx_elf = "-march=rv32imac -mabi=ilp32"
+# 194.3c — arch knobs read by the shared FFI (run_nuttx) + platform build
+# helpers. Default values in the helpers are arm; these override for riscv.
+NUTTX_CROSS = "riscv-none-elf-gcc"
+NUTTX_ARCH = "risc-v"
+NUTTX_ARCH_CFLAGS = "-march=rv32imac -mabi=ilp32"
+NUTTX_PLATFORM_CFLAGS = "-march=rv32imac -mabi=ilp32"
+NUTTX_LIBGCC_FLAGS = "-march=rv32imac -mabi=ilp32"
+NUTTX_VECTORTAB_OBJ = ""
+NUTTX_ARCH_INCLUDES = "arch/risc-v/src/chip arch/risc-v/src/common"
+NUTTX_LINKER_SCRIPT = "boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
+NUTTX_BOARD_MAKEDEFS = "boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs"
+
+[patch.crates-io]
+nros-core = { path = "../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../packages/core/nros-serdes" }
+libc = { path = "../../../../third-party/nuttx/libc" }

@@ -220,10 +220,19 @@ function(nros_nuttx_build_example)
         if(NROS_NUTTX_DEFCONFIG)
             set(_nnbe_defconfig_env "NUTTX_DEFCONFIG=${NROS_NUTTX_DEFCONFIG}")
         endif()
+        # 194.3c.3 — a new-arch board's Make.defs lives at a per-arch path
+        # (boards/<arch>/<chip>/<board>/scripts/Make.defs); forward it through
+        # NUTTX_BOARD_MAKEDEFS when the overlay supplied one (default in
+        # build-nuttx.sh is the qemu-arm board, so arm overlays need not set it).
+        set(_nnbe_makedefs_env "")
+        if(NROS_NUTTX_BOARD_MAKEDEFS)
+            set(_nnbe_makedefs_env "NUTTX_BOARD_MAKEDEFS=${NROS_NUTTX_BOARD_MAKEDEFS}")
+        endif()
         set(_provision_cmd
             COMMAND ${CMAKE_COMMAND} -E env
                 "NUTTX_DIR=${NUTTX_DIR}" "NUTTX_APPS_DIR=${_nnbe_apps_dir}"
                 ${_nnbe_defconfig_env}
+                ${_nnbe_makedefs_env}
                 ${CMAKE_COMMAND} -E chdir "${NUTTX_DIR}"
                 bash "${NROS_NUTTX_PROVISION_SCRIPT}")
     endif()

@@ -1,0 +1,50 @@
+# 194.3c — board profile descriptor. NuttX QEMU rv-virt (rv32imac).
+# Mirror of the arm board's nros-board.toml with the riscv cross-toolchain +
+# the NUTTX_* arch env that drives the shared FFI / platform build helpers.
+
+[[board]]
+names = ["nuttx-riscv", "NuttX-riscv"]
+target_contains = "riscv"
+platform = "nuttx"
+toolchain = "nightly"
+platform_feature = "platform-nuttx"
+local_aliases = ["platform-nuttx"]
+link_kind = "nuttx-staging"
+entry_kind = "board-run"
+net_stack = "rtos-owned"
+board_crate = "nros-board-nuttx-qemu-riscv"
+cargo_config = '''
+[build]
+target = "riscv32imac-unknown-nuttx-elf"
+
+[unstable]
+build-std = ["std", "panic_abort"]
+build-std-features = ["compiler-builtins-mem"]
+
+[target.riscv32imac-unknown-nuttx-elf]
+linker = "riscv-none-elf-gcc"
+rustflags = [
+    "-C", "link-arg=-march=rv32imac",
+    "-C", "link-arg=-mabi=ilp32",
+]
+
+[env]
+CC_riscv32imac_unknown_nuttx_elf = "riscv-none-elf-gcc"
+CFLAGS_riscv32imac_unknown_nuttx_elf = "-march=rv32imac -mabi=ilp32"
+# 194.3c.1/.2/.3 — arch knobs the shared build helpers read (defaults are arm).
+NUTTX_CROSS = "riscv-none-elf-gcc"
+NUTTX_ARCH = "risc-v"
+NUTTX_ARCH_CFLAGS = "-march=rv32imac -mabi=ilp32"
+NUTTX_PLATFORM_CFLAGS = "-march=rv32imac -mabi=ilp32"
+NUTTX_LIBGCC_FLAGS = "-march=rv32imac -mabi=ilp32"
+NUTTX_VECTORTAB_OBJ = ""
+NUTTX_ARCH_INCLUDES = "arch/risc-v/src/chip arch/risc-v/src/common"
+NUTTX_LINKER_SCRIPT = "boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
+NUTTX_BOARD_MAKEDEFS = "boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs"
+NUTTX_DEFCONFIG_DIR = "rv-virt:netnsh"
+
+[patch.crates-io]
+libc = { path = "${workspace}/third-party/nuttx/libc" }
+'''
+# NuttX is BoardRun, no entry block — hosted `fn main` shim drives it (the
+# nsh_main override in src/entry.rs), identical to the arm board.
