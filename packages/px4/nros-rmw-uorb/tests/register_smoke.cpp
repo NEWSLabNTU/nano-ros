@@ -18,7 +18,7 @@
 #include "uorb_abi.hpp"
 
 namespace {
-const nros_rmw_vtable_t *g_stashed_vtable = nullptr;
+const nros_rmw_vtable_t* g_stashed_vtable = nullptr;
 
 // uORB ABI mock — tracks call counts + most-recent payload so the
 // test can validate the pub/sub trampoline plumbing.
@@ -41,15 +41,14 @@ struct MockOrbState {
 MockOrbState g_orb;
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable) {
+extern "C" nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t* vtable) {
     g_stashed_vtable = vtable;
     return NROS_RMW_RET_OK;
 }
 
 extern "C" {
 
-orb_advert_t orb_advertise_multi(const struct orb_metadata *meta,
-                                 const void *data, int *instance) {
+orb_advert_t orb_advertise_multi(const struct orb_metadata* meta, const void* data, int* instance) {
     g_orb.advertise_calls++;
     if (instance != nullptr) {
         *instance = 0;
@@ -66,8 +65,7 @@ orb_advert_t orb_advertise_multi(const struct orb_metadata *meta,
     return reinterpret_cast<orb_advert_t>(0xCAFEBABEull);
 }
 
-int orb_publish(const struct orb_metadata *meta, orb_advert_t handle,
-                const void *data) {
+int orb_publish(const struct orb_metadata* meta, orb_advert_t handle, const void* data) {
     g_orb.publish_calls++;
     if (handle == nullptr) {
         return -1;
@@ -88,7 +86,7 @@ int orb_unadvertise(orb_advert_t /*handle*/) {
     return 0;
 }
 
-int orb_subscribe_multi(const struct orb_metadata * /*meta*/, unsigned) {
+int orb_subscribe_multi(const struct orb_metadata* /*meta*/, unsigned) {
     g_orb.subscribe_calls++;
     return g_orb.next_sub_handle++;
 }
@@ -96,7 +94,7 @@ int orb_unsubscribe(int /*handle*/) {
     g_orb.unsubscribe_calls++;
     return 0;
 }
-int orb_copy(const struct orb_metadata *meta, int /*handle*/, void *buf) {
+int orb_copy(const struct orb_metadata* meta, int /*handle*/, void* buf) {
     g_orb.copy_calls++;
     if (!g_orb.pending || buf == nullptr || meta == nullptr) {
         return -1;
@@ -107,7 +105,7 @@ int orb_copy(const struct orb_metadata *meta, int /*handle*/, void *buf) {
     g_orb.pending = false;
     return 0;
 }
-int orb_check(int /*handle*/, bool *updated) {
+int orb_check(int /*handle*/, bool* updated) {
     g_orb.check_calls++;
     if (updated != nullptr) *updated = g_orb.pending;
     return 0;
@@ -119,17 +117,14 @@ int orb_check(int /*handle*/, bool *updated) {
 // verify subscriber.cpp's atomic flag latches.
 struct PushWakeState {
     nros_orb_callback_t cb = nullptr;
-    void *arg = nullptr;
+    void* arg = nullptr;
     int last_handle = -1;
     int register_calls = 0;
     int unregister_calls = 0;
 } g_push;
 
-int nros_orb_register_callback(const struct orb_metadata * /*meta*/,
-                               uint8_t /*instance*/,
-                               int handle,
-                               nros_orb_callback_t cb,
-                               void *arg) {
+int nros_orb_register_callback(const struct orb_metadata* /*meta*/, uint8_t /*instance*/,
+                               int handle, nros_orb_callback_t cb, void* arg) {
     g_push.register_calls++;
     g_push.cb = cb;
     g_push.arg = arg;
@@ -162,10 +157,9 @@ int main() {
     // Spot-check: a few slots must be non-null. NULL is reserved for
     // optional event hooks; the lifecycle / data-plane slots must
     // resolve to real (stub-returning-UNSUPPORTED) functions.
-    const auto *vt = g_stashed_vtable;
-    if (vt->open == nullptr || vt->close == nullptr
-        || vt->create_publisher == nullptr
-        || vt->create_subscriber == nullptr) {
+    const auto* vt = g_stashed_vtable;
+    if (vt->open == nullptr || vt->close == nullptr || vt->create_publisher == nullptr ||
+        vt->create_subscriber == nullptr) {
         std::fprintf(stderr, "required vtable slot is NULL\n");
         return 1;
     }
@@ -211,21 +205,23 @@ int main() {
     // Without a registered topic, create_publisher must reject with
     // TOPIC_NAME_INVALID — distinct from UNSUPPORTED.
     nros_rmw_publisher_t pubp{};
-    rc = vt->create_publisher(&session, "/unregistered", "T", "H", 0,
-                              nullptr, &pubp);
+    rc = vt->create_publisher(&session, "/unregistered", "T", "H", 0, nullptr, &pubp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
-        std::fprintf(stderr,
-                     "create_publisher on unregistered topic returned %d, expected TOPIC_NAME_INVALID\n",
-                     rc);
+        std::fprintf(
+            stderr,
+            "create_publisher on unregistered topic returned %d, expected TOPIC_NAME_INVALID\n",
+            rc);
         return 1;
     }
 
     // Register a synthetic topic and create the publisher.
     static const struct orb_metadata kFakeMeta = {
-        /*o_name           =*/ "test_topic",
-        /*o_size           =*/ 8,
-        /*o_size_no_padding=*/ 8,
-        /*o_fields         =*/ "",
+        /*o_name           =*/"test_topic",
+        /*o_size           =*/8,
+        /*o_size_no_padding=*/8,
+        /*message_hash      =*/0,
+        /*o_id              =*/0,
+        /*o_queue           =*/1,
     };
     nros_rmw_uorb_clear_registry();
     rc = nros_rmw_uorb_register_topic("/test_topic", "test::Msg", &kFakeMeta);
@@ -234,8 +230,7 @@ int main() {
         return 1;
     }
 
-    rc = vt->create_publisher(&session, "/test_topic", "test::Msg", "H", 0,
-                              nullptr, &pubp);
+    rc = vt->create_publisher(&session, "/test_topic", "test::Msg", "H", 0, nullptr, &pubp);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher returned %d, expected OK\n", rc);
         return 1;
@@ -253,12 +248,12 @@ int main() {
         return 1;
     }
     if (g_orb.advertise_calls != 1) {
-        std::fprintf(stderr, "expected 1 advertise call, got %d\n",
-                     g_orb.advertise_calls);
+        std::fprintf(stderr, "expected 1 advertise call, got %d\n", g_orb.advertise_calls);
         return 1;
     }
     if (g_orb.publish_calls != 0) {
-        std::fprintf(stderr, "first publish must use advertise, not publish; got %d publish calls\n",
+        std::fprintf(stderr,
+                     "first publish must use advertise, not publish; got %d publish calls\n",
                      g_orb.publish_calls);
         return 1;
     }
@@ -275,8 +270,7 @@ int main() {
         return 1;
     }
     if (g_orb.publish_calls != 1) {
-        std::fprintf(stderr, "expected 1 publish call, got %d\n",
-                     g_orb.publish_calls);
+        std::fprintf(stderr, "expected 1 publish call, got %d\n", g_orb.publish_calls);
         return 1;
     }
     if (g_orb.last_payload[0] != 0xff) {
@@ -287,16 +281,14 @@ int main() {
     // Short payload must reject with BUFFER_TOO_SMALL.
     rc = vt->publish_raw(&pubp, payload, sizeof(payload) - 1);
     if (rc != NROS_RMW_RET_BUFFER_TOO_SMALL) {
-        std::fprintf(stderr,
-                     "short publish returned %d, expected BUFFER_TOO_SMALL\n", rc);
+        std::fprintf(stderr, "short publish returned %d, expected BUFFER_TOO_SMALL\n", rc);
         return 1;
     }
 
     // destroy_publisher must unadvertise.
     vt->destroy_publisher(&pubp);
     if (g_orb.unadvertise_calls != 1) {
-        std::fprintf(stderr, "expected 1 unadvertise call, got %d\n",
-                     g_orb.unadvertise_calls);
+        std::fprintf(stderr, "expected 1 unadvertise call, got %d\n", g_orb.unadvertise_calls);
         return 1;
     }
     if (pubp.backend_data != nullptr) {
@@ -309,17 +301,16 @@ int main() {
     // Without a registered topic, create_subscriber must reject
     // with TOPIC_NAME_INVALID.
     nros_rmw_subscriber_t subp{};
-    rc = vt->create_subscriber(&session, "/unregistered", "T", "H", 0,
-                               nullptr, &subp);
+    rc = vt->create_subscriber(&session, "/unregistered", "T", "H", 0, nullptr, &subp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
-        std::fprintf(stderr,
-                     "create_subscriber on unregistered topic returned %d, expected TOPIC_NAME_INVALID\n",
-                     rc);
+        std::fprintf(
+            stderr,
+            "create_subscriber on unregistered topic returned %d, expected TOPIC_NAME_INVALID\n",
+            rc);
         return 1;
     }
 
-    rc = vt->create_subscriber(&session, "/test_topic", "test::Msg", "H", 0,
-                               nullptr, &subp);
+    rc = vt->create_subscriber(&session, "/test_topic", "test::Msg", "H", 0, nullptr, &subp);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscriber returned %d, expected OK\n", rc);
         return 1;
@@ -329,15 +320,13 @@ int main() {
         return 1;
     }
     if (g_orb.subscribe_calls != 1) {
-        std::fprintf(stderr, "expected 1 subscribe call, got %d\n",
-                     g_orb.subscribe_calls);
+        std::fprintf(stderr, "expected 1 subscribe call, got %d\n", g_orb.subscribe_calls);
         return 1;
     }
     // K.4.2-sub-push: subscriber_create must register a callback.
     if (g_push.register_calls != 1 || g_push.cb == nullptr) {
-        std::fprintf(stderr,
-                     "expected 1 register_callback call with non-null cb, got %d / %p\n",
-                     g_push.register_calls, (void *)g_push.cb);
+        std::fprintf(stderr, "expected 1 register_callback call with non-null cb, got %d / %p\n",
+                     g_push.register_calls, (void*)g_push.cb);
         return 1;
     }
 
@@ -360,8 +349,7 @@ int main() {
         return 1;
     }
     if (g_orb.check_calls != check_after_first) {
-        std::fprintf(stderr,
-                     "has_data fast-path missed: orb_check called %d times, expected %d\n",
+        std::fprintf(stderr, "has_data fast-path missed: orb_check called %d times, expected %d\n",
                      g_orb.check_calls, check_after_first);
         return 1;
     }
@@ -393,14 +381,13 @@ int main() {
     }
     n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
     if (n != static_cast<int32_t>(kFakeMeta.o_size)) {
-        std::fprintf(stderr, "try_recv_raw returned %d, expected %u\n",
-                     n, kFakeMeta.o_size);
+        std::fprintf(stderr, "try_recv_raw returned %d, expected %u\n", n, kFakeMeta.o_size);
         return 1;
     }
     for (size_t i = 0; i < kFakeMeta.o_size; ++i) {
         if (rxbuf[i] != static_cast<uint8_t>(0xA0 + i)) {
-            std::fprintf(stderr, "rxbuf[%zu] = 0x%02x, expected 0x%02x\n",
-                         i, rxbuf[i], 0xA0 + (int)i);
+            std::fprintf(stderr, "rxbuf[%zu] = 0x%02x, expected 0x%02x\n", i, rxbuf[i],
+                         0xA0 + (int)i);
             return 1;
         }
     }
@@ -425,15 +412,13 @@ int main() {
     // Retry with full buffer drains.
     n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
     if (n != static_cast<int32_t>(kFakeMeta.o_size)) {
-        std::fprintf(stderr, "retry try_recv_raw returned %d, expected %u\n",
-                     n, kFakeMeta.o_size);
+        std::fprintf(stderr, "retry try_recv_raw returned %d, expected %u\n", n, kFakeMeta.o_size);
         return 1;
     }
 
     vt->destroy_subscriber(&subp);
     if (g_orb.unsubscribe_calls != 1) {
-        std::fprintf(stderr, "expected 1 unsubscribe call, got %d\n",
-                     g_orb.unsubscribe_calls);
+        std::fprintf(stderr, "expected 1 unsubscribe call, got %d\n", g_orb.unsubscribe_calls);
         return 1;
     }
     if (g_push.unregister_calls != 1) {
