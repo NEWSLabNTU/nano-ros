@@ -326,16 +326,17 @@ commit). 1c.4 runtime E2E is the gating acceptance on the CI lane.
     gate). `objdump` on the image should show zenoh `z_malloc →
     nros_platform_alloc`.
 
-  **Status: both ✅.** ThreadX (already funneled; dead weak footgun removed)
-  and Zephyr (C-side already funneled via the alias TU; Rust-side
-  framework-owned per D6). **FreeRTOS (1c) was the only RTOS that compiled a
-  vendored `z_malloc`-defining `system.c`** (via `build_zenoh_pico_unified`) and
-  thus the only real bypass; ThreadX (generic `system/common`) and Zephyr (CMake
-  globs `system/common` + `network.c` only) never put a vendored `z_malloc` on
-  the link, so the pre-existing alias TU already funneled them. RFC-0034's
-  motivation table (which showed ThreadX/Zephyr `z_malloc` as *direct*) reflected
-  a pre-alias-TU snapshot; corrected in the RFC. Runtime confirmation of all
-  three rides the per-RTOS CI lanes.
+  **Status: all ✅.** ThreadX (already funneled; dead weak footgun removed),
+  Zephyr (C-side already funneled via the alias TU; Rust-side framework-owned
+  per D6), and **NuttX** (also generic `system/common` + `system/unix/
+  network.c`, no vendored `z_malloc` → already funneled via the alias TU).
+  **FreeRTOS (1c/Wave 2) was the only RTOS that compiled a vendored
+  `z_malloc`-defining `system.c`** (via `build_zenoh_pico_unified`) and thus the
+  only real bypass; every other RTOS uses zenoh-pico's generic `system/common`
+  (which defines no `z_malloc`), so the pre-existing alias TU already funneled
+  them. RFC-0034's motivation table (which showed ThreadX/Zephyr `z_malloc` as
+  *direct*) reflected a pre-alias-TU snapshot; corrected in the RFC. Runtime
+  confirmation of all RTOSes rides the per-RTOS CI lanes.
 
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
 > are two allocators and neither is nros's: the `#[global_allocator]` is
@@ -490,9 +491,22 @@ is needed.
 
 ### Wave 3 — Bridge dedup + boundary documentation
 
-#### 230.3.1 — One platform-owned bridge
-Collapse the duplicated `platform_aliases.c` (zpico-sys + nros-rmw-xrce)
-into a single platform-layer shim both RMWs consume.
+#### 230.3.1 — One platform-owned bridge  ✅ DONE (reframed; not a code merge)
+The premise ("duplicated `platform_aliases.c`") does not hold on inspection:
+the two files have **zero symbol overlap**. `zpico-sys/c/zpico/
+platform_aliases.c` defines the zenoh-pico names (`z_*` / `_z_*` /
+`smoltcp_*`); `nros-rmw-xrce/src/platform_aliases.c` defines only the
+micro-XRCE names (`uxr_millis` / `uxr_nanos`). They are **disjoint per-RMW
+adapters**, each mapping its vendor's symbol spelling onto the same canonical
+`nros_platform_*` ABI. There is no shared code to collapse.
+
+The **one bridge** D3 asks for is the `nros_platform_*` ABI itself — and both
+adapters already consume only it (no RMW reaches the host kernel directly).
+Merging the two thin files into one crate would *add* coupling (each is tied
+to its RMW's build gating — `nros-zpico-build`'s platform/feature matrix vs.
+`nros-rmw-xrce-cffi`'s) for no dedup benefit. So D3 is satisfied by the
+shared ABI, not by a file merge; nothing to do. (Same false-premise pattern
+as the ThreadX/Zephyr "bypass" that turned out to be already-funneled.)
 
 #### 230.3.2 — Document the opaque-struct boundary  ✅ DONE
 Recorded in [platform-c-abi.md] §"The scalar / opaque-struct boundary":
