@@ -6,8 +6,13 @@ topics into `msg/versioned/`. This is **Track A** of the two-track PX4 plan in
 **RFC-0039** ("support both uORB and XRCE as first-class") — the *reactive* track
 that tracks PX4 releases. RFC-0011 owns the backend internals.
 
-**Status.** Not started (2026-06). Design-of-record: RFC-0039 (Draft) + RFC-0011
-(Stable).
+**Status.** In progress (2026-06). The px4-rs codegen jobs **232.1 (the blocker)
++ 232.2** are done on the px4-rs branch `phase-232-uorb-versioned-msgs` (pushed;
+PR open) — `cargo xtask gen-msgs` now emits 246 messages (was 209), including all
+37 `msg/versioned/` core topics, verified against `v1.17.0-alpha1`. The nano-ros
+submodule pointer bumps once that branch merges to px4-rs `main`. Remaining: the
+in-tree jobs 232.4/232.5/232.6 + optional 232.3. Design-of-record: RFC-0039
+(Draft) + RFC-0011 (Stable).
 
 **Priority.** P1 — without item 232.1 the offboard/telemetry topics
 (`VehicleOdometry`, `VehicleCommand`, `VehicleLocalPosition`, `VehicleAttitude`,
@@ -43,7 +48,7 @@ msg/*.msg + msg/versioned/*.msg ─► px4-msg-codegen ─► Rust types + orb_m
 
 ## Work Items
 
-### 232.1 — Enumerate `msg/versioned/` (the blocker)  ⬜ (px4-rs)
+### 232.1 — Enumerate `msg/versioned/` (the blocker)  ✅ (px4-rs)
 The xtask (`third-party/px4/px4-rs/crates/.../xtask/src/main.rs:136-160`) reads only
 `<px4>/msg/*.msg` and search-paths `[msg/]`. Extend it to also enumerate
 `<px4>/msg/versioned/*.msg` and add `msg/versioned/` to the codegen `search_path`
@@ -53,7 +58,7 @@ generate (spot-check `VehicleOdometry`, `VehicleCommand`).
 - **Acceptance:** the core control/telemetry topics generate; `cargo build` of a
   module that uses `VehicleOdometry`/`VehicleCommand` links.
 
-### 232.2 — Track `MESSAGE_VERSION`  ⬜ (px4-rs)
+### 232.2 — Track `MESSAGE_VERSION`  ✅ (px4-rs)
 `px4-msg-codegen` parses `MESSAGE_VERSION = N` as a plain constant. Capture it on
 the message model (e.g. `message_version: Option<u32>`) so version-aware tooling
 (compat checks, emitting the version) can use it. The generated `pub const
