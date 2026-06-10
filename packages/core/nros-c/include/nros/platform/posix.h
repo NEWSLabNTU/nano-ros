@@ -13,7 +13,13 @@
 
 #include <time.h>
 #include <stdlib.h>
+#ifndef __cplusplus
+// C11 `<stdatomic.h>` is unused now that the atomic helpers below use the
+// `__atomic_*` builtins (see `nros_platform_atomic_load_bool`). It is also
+// broken under g++ (`atomic_flag does not name a type`), and this header is
+// included from C++ TUs (the nros-cpp umbrella), so keep it C-only.
 #include <stdatomic.h>
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -65,16 +71,22 @@ static inline void nros_platform_sleep_ns(uint64_t ns) {
 
 /**
  * Atomically store a boolean value with release semantics.
+ *
+ * Uses the `__atomic_*` compiler builtins (GCC/Clang) rather than C11
+ * `<stdatomic.h>` `atomic_*_explicit`: this header is included from both C
+ * and C++ translation units (the nros-cpp umbrella header), and the C11
+ * `_Atomic` cast + `atomic_load_explicit` macro do not compile cleanly under
+ * g++. The builtins have identical acquire/release semantics in both languages.
  */
 static inline void nros_platform_atomic_store_bool(volatile bool* ptr, bool value) {
-    atomic_store_explicit((_Atomic bool*)ptr, value, memory_order_release);
+    __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
 }
 
 /**
  * Atomically load a boolean value with acquire semantics.
  */
 static inline bool nros_platform_atomic_load_bool(volatile bool* ptr) {
-    return atomic_load_explicit((_Atomic bool*)ptr, memory_order_acquire);
+    return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
 }
 
 // ============================================================================
