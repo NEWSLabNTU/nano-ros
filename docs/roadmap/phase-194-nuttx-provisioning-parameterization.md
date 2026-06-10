@@ -157,8 +157,25 @@ build-std compiles (tiny crates like `quote`/`encoding_rs` crash, signal 11), an
 environment/toolchain instability unrelated to the refactor. Host `cargo check`
 of the board crates is not a valid gate (cross-only: `build-std` +
 `target_os="nuttx"`; host pulls no_std staticlibs that fail without a
-panic_handler — the arm crate fails identically). Defconfig is the stock
-`rv-virt:netnsh` base, pending the .7 build iteration.
+panic_handler — the arm crate fails identically).
+
+**Update — riscv export GREEN + C-build blocker found (2026-06-11).** With the
+toolchains provisioned (`nros setup qemu-riscv-nuttx`) and on PATH (activate
+fix), the **riscv NuttX export builds end-to-end**: `build-nuttx.sh` with the
+riscv defconfig/makedefs reconfigures the shared tree arm→rv-virt (**.8 marker
+swap proven live**) and `make export` produces a **soft-float rv32imac NuttX
+ELF** (`file nuttx` → "RISC-V, RVC, soft-float ABI"). This validated three
+defconfig deltas found by build feedback (apps-dir, RV32 toolchain, FPU-off for
+ilp32) and the `[tool.genromfs]` setup-config addition (the rv-virt board bakes
+an etc/ ROMFS the arm board doesn't). The riscv C example (.7) gets all board
+wiring right — cmake configures, host codegen runs, the message lib compiles
+with `-DNROS_PLATFORM_NUTTX` + the riscv cross toolchain — but the **cross-link
+is blocked downstream of the board** by an nros-c gcc-14 portability bug
+([issue-0026]): riscv-none-elf-gcc is 14.2 vs arm's 10.3, and nros-c's posix
+platform header (NuttX reuses it) hits `-Werror=implicit-function-declaration`
+on `nanosleep` + a `nros_platform_atomic_*_bool` `volatile`/`const` signature
+mismatch vs the cbindgen-generated decls. That is a separate nros-c fix, not
+194.3c board wiring. Defconfig is the validated `rv-virt:netnsh` + 3 deltas.
 
 - [x] **194.3c.1 — Generalize `run_qemu_arm` → `run_nuttx`.** Parameterize the
       linker-script path (`NUTTX_LINKER_SCRIPT`), the preprocess compiler (reuse
@@ -174,7 +191,7 @@ panic_handler — the arm crate fails identically). Defconfig is the stock
 - [x] **194.3c.3 — `build-nuttx.sh` BOARD_MAKEDEFS param.** Add
       `NUTTX_BOARD_MAKEDEFS` (board overlay supplies; default = arm
       `boards/arm/qemu/qemu-armv7a/scripts/Make.defs`). Arm provisioning unchanged.
-- [~] **194.3c.4 — riscv defconfig.** `rv-virt:flats` + nano-ros feature set
+- [x] **194.3c.4 — riscv defconfig.** `rv-virt:flats` + nano-ros feature set
       (zenoh-pico + **virtio-net** for the e2e), no board etc-ROMFS (drops the
       `genromfs` host-tool dep 194.3b hit). Lands under the new crate's
       `nuttx-config/defconfig`.
@@ -190,12 +207,12 @@ panic_handler — the arm crate fails identically). Defconfig is the stock
       mirroring the arm overlay (FFI crate dir, provision script + riscv defconfig,
       `nros_nuttx_set_cargo_target("riscv32imac-unknown-nuttx-elf")`,
       `nros_board_link_app`). Auto-wired by the board-name dispatch.
-- [ ] **194.3c.7 — riscv qemu example + e2e.** Mirror
+- [~] **194.3c.7 — riscv qemu example + e2e.** Mirror
       `examples/qemu-arm-nuttx/c/.../talker` as a riscv C example; add the
       `fixtures.toml` row + a `qemu-system-riscv` run that asserts cross-process
       `/chatter` delivery to an external native listener (the real acceptance,
       à la 225.O esp32).
-- [ ] **194.3c.8 — Shared-tree marker (194.5 tail).** Confirm the board-aware
+- [x] **194.3c.8 — Shared-tree marker (194.5 tail).** Confirm the board-aware
       marker reconfigures on the arm↔riscv `.config` swap (it keys on
       `CONFIG_ARCH_BOARD`); full out-of-tree per-board build-dir retirement stays
       deferred.
