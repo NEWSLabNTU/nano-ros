@@ -72,13 +72,28 @@ such a topic is exported to ROS 2 via the DDS client, compute FNV-1a (seed
 urgency.
 - **Files (px4-rs):** `px4-msg-codegen` emit + a hash module.
 
-### 232.4 — Refresh the fallback `orb_metadata`  ⬜ (nano-ros, in-tree)
+### 232.4 — Refresh the fallback `orb_metadata`  ✅ (nano-ros, in-tree)
 `packages/px4/nros-rmw-uorb/src/uorb_abi.hpp` declares a pre-1.16 tail (`o_fields`).
 Update the standalone fallback struct to the 6-field v1.16 layout (`o_name`,
 `o_size`, `o_size_no_padding`, `message_hash`, `o_id`, `o_queue`). Harmless today (the
 backend reads only the 3-field prefix; real module builds shadow it with PX4's
 header) but correct + future-proof.
-- **Files:** `packages/px4/nros-rmw-uorb/src/uorb_abi.hpp` (+ the header doc-comment).
+Done: `uorb_abi.hpp` now mirrors PX4 1.16+'s 6-field `orb_metadata`
+(`orb_id_size_t = uint16_t`); `register_smoke`'s `kFakeMeta` updated. The C++
+backend builds + the smoke test passes.
+- **Files:** `packages/px4/nros-rmw-uorb/src/uorb_abi.hpp`,
+  `tests/register_smoke.cpp`.
+
+### 232.4b — Repair the uORB RMW vtable vs the current ABI  ✅ (nano-ros, found while validating 232.4)
+The uORB C++ vtable no longer compiled against `nros_rmw_vtable_t`: the service
+`create_*` slots gained a `const nros_rmw_qos_t*` param the stubs lacked, and the
+positional initializer skipped Phase-130 `send_request_raw`/`try_recv_reply_raw`,
+shifting every later slot (hard error). Fixed: qos param on the two UNSUPPORTED
+service-create stubs + gap-free positional init through `call_raw` (rest NULL via
+C++14 aggregate value-init; designated init isn't available at C++14). The whole
+uORB backend was non-compiling before this — pre-existing RMW-ABI drift, not PX4
+versioning.
+- **Files:** `src/{vtable,service}.cpp`, `src/internal.hpp`.
 
 ### 232.5 — Pin a stable PX4 tag  ⬜ (nano-ros, in-tree)
 The current `v1.17.0-alpha1` pin risks a silent uORB ABI break (raw `repr(C)`). Pin
@@ -87,11 +102,16 @@ record the supported window in `px4-rs` (`px4-sys` min + codegen parity note). K
 `main` only in an opt-in forward-compat lane.
 - **Files:** `nros-sdk-index.toml`; (px4-rs) `px4-sys` version doc.
 
-### 232.6 — Resync `topics.toml` ↔ `dds_topics.yaml`  ⬜ (nano-ros, in-tree)
-On the pin chosen in 232.5, resync `packages/px4/nros-rmw-uorb/topics.toml` to the
-firmware's `src/modules/uxrce_dds_client/dds_topics.yaml` (the ROS-name ↔ uORB-name
-map), including any versioned entries.
-- **Files:** `packages/px4/nros-rmw-uorb/topics.toml`.
+### 232.6 — Resync `topics.toml` ↔ `dds_topics.yaml`  ⚠️ STALE — needs re-scoping (nano-ros, in-tree)
+**Premise is stale:** there is no `topics.toml` anywhere under `packages/px4/`
+(nor any `dds_topics`/topics-map file). The ROS↔uORB mapping is handled in the
+px4-rs codegen instead — generated topics carry a `TOPICS` const + resolve their
+canonical `orb_metadata` at runtime via `px4_rs_find_orb_meta()` (see any
+`crates/px4-msg-codegen/generated/*.rs`). So either this item refers to a file
+that was never created / since removed, or the resync belongs in px4-rs. Revisit
+when 232.5 picks a pin — confirm whether nano-ros needs a static ROS↔uORB map at
+all, or whether the px4-rs canonical-resolution path already covers it.
+- **Files (if revived):** TBD — no `topics.toml` exists today.
 
 ## Acceptance
 
