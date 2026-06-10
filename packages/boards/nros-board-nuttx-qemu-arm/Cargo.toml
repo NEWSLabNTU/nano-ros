@@ -47,4 +47,7 @@ nros-board-nuttx = { path = "../nros-board-nuttx" }
 rmw-zenoh = ["nros-board-nuttx/rmw-zenoh"]
 
 [build-dependencies]
-cc = "1"
+# 194.3c.2 — the NuttX platform-port compile moved to the shared
+# nros-board-common build helper (pulls cc + repo-path resolution via its
+# build-helpers feature); the board no longer drives cc-rs directly.
+nros-board-common = { path = "../nros-board-common" }
