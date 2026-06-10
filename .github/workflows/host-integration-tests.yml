@@ -119,7 +119,7 @@ jobs:
         run: |
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \
                      --source micro-cdr --source micro-xrce-dds-client \
-                     --source cyclonedds-src
+                     --source cyclonedds-src --source nuttx-libc
 
       # `test-integration` has `build-zenohd` as a prereq — it spawns
       # zenohd to back the Phase 211 / Phase 212 host integration tests.
