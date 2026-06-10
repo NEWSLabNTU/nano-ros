@@ -147,6 +147,9 @@ static XRCE_SERIAL_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the px4-stub binary (Phase 233.4 — PX4 XRCE companion).
 static PX4_STUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the px4 offboard-companion binary (Phase 233.4).
+static PX4_COMPANION_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the c-talker binary
 static C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1736,6 +1739,27 @@ pub fn build_px4_stub() -> TestResult<&'static Path> {
 pub fn px4_stub_binary() -> PathBuf {
     build_px4_stub()
         .expect("Failed to build px4-stub")
+        .to_path_buf()
+}
+
+/// Resolve the prebuilt px4 offboard-companion example binary (Phase 233.4).
+pub fn build_px4_companion() -> TestResult<&'static Path> {
+    PX4_COMPANION_BINARY
+        .get_or_try_init(|| {
+            build_example_rmw(
+                "px4/rust/xrce/offboard-companion",
+                "offboard-companion",
+                Rmw::Xrce,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the px4 offboard-companion binary path.
+#[rstest::fixture]
+pub fn px4_companion_binary() -> PathBuf {
+    build_px4_companion()
+        .expect("Failed to build px4 offboard-companion")
         .to_path_buf()
 }
 

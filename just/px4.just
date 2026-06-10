@@ -186,9 +186,11 @@ build-fixtures:
         echo "  → generate px4_msgs for $dir"
         "$nros_cli" generate-px4-msgs --px4 "$PX4_DIR" --output "$dir/generated" >/dev/null
     done
-    echo "  → cargo build px4-stub (rmw-xrce, target-xrce/)"
-    ( cd examples/px4/rust/xrce/px4-stub \
-      && cargo build $cargo_profile_args --no-default-features --features rmw-xrce --target-dir target-xrce )
+    for ex in px4-stub offboard-companion; do
+        echo "  → cargo build $ex (rmw-xrce, target-xrce/)"
+        ( cd "examples/px4/rust/xrce/$ex" \
+          && cargo build $cargo_profile_args --no-default-features --features rmw-xrce --target-dir target-xrce )
+    done
     echo "PX4 XRCE fixtures built."
 
 # Build every PX4 tier: core crates, example integrations, and fixtures.

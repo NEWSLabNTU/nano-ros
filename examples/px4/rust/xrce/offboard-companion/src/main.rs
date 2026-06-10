@@ -20,11 +20,6 @@
 //! # 2. Start PX4 SITL (or real firmware) so /fmu/out/* flows.
 //! #    (see docs/reference/px4-xrce-companion.md)
 //!
-//! NOTE: receive is currently unreliable — a session holding both a publisher
-//! and a subscriber starves the subscriber in `nros-rmw-xrce`
-//! (docs/issues/0026-px4-xrce-bare-agent-type-matching.md). Setpoint publish
-//! works; the odometry callback rarely fires until that bug is fixed.
-//!
 //! # 3. Run this companion against the same agent:
 //! NROS_LOCATOR=127.0.0.1:8888 cargo run -p px4-offboard-companion
 //! ```

@@ -19,7 +19,9 @@
 
 use std::{path::PathBuf, process::Command, time::Duration};
 
-use nros_tests::fixtures::{ManagedProcess, XrceAgent, px4_stub_binary, require_xrce_agent};
+use nros_tests::fixtures::{
+    ManagedProcess, XrceAgent, px4_companion_binary, px4_stub_binary, require_xrce_agent,
+};
 use rstest::rstest;
 
 /// The px4-stub in loopback mode round-trips `px4_msgs/VehicleOdometry`
@@ -47,4 +49,56 @@ fn test_px4_msgs_roundtrip_over_agent(px4_stub_binary: PathBuf) {
     // px4() QoS profile + the XRCE pub/sub path work end-to-end over the agent.
     stub.wait_for_output_count("loopback rx[", 5, Duration::from_secs(30))
         .expect("px4-stub did not round-trip 5 VehicleOdometry samples through the agent");
+}
+
+/// Cross-session companion ↔ PX4-stub: the companion subscribes
+/// `/fmu/out/vehicle_odometry` *and* publishes `/fmu/in/offboard_control_mode`
+/// in one session while the stub (separate session) streams odometry. This is
+/// the real companion shape — a mixed-direction (reader+writer) node receiving
+/// from a separate publisher across the agent.
+///
+/// Regression guard for issue 0026: before the `drive_io` spin-pacing fix the
+/// companion free-ran its spin loop and closed (`DELETE_CLIENT`) before DDS
+/// discovery completed, so it never received. With the fix it receives
+/// reliably.
+#[rstest]
+fn test_px4_companion_cross_session_receive(
+    px4_companion_binary: PathBuf,
+    px4_stub_binary: PathBuf,
+) {
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+    let domain = nros_tests::unique_ros_domain_id().to_string();
+
+    // Companion (subscriber+publisher) up first so its datareader is requested
+    // before the stub's writer comes online.
+    let mut comp_cmd = Command::new(&px4_companion_binary);
+    comp_cmd
+        .env("NROS_LOCATOR", &addr)
+        .env("ROS_DOMAIN_ID", &domain)
+        .env("PX4_COMPANION_TICKS", "400")
+        .env("RUST_LOG", "info");
+    let mut companion = ManagedProcess::spawn_command(comp_cmd, "px4-companion")
+        .expect("Failed to start companion");
+    let _ = companion.wait_for_output_pattern("companion wired", Duration::from_secs(20));
+    std::thread::sleep(Duration::from_secs(2));
+
+    let mut stub_cmd = Command::new(&px4_stub_binary);
+    stub_cmd
+        .env("NROS_LOCATOR", &addr)
+        .env("ROS_DOMAIN_ID", &domain)
+        .env("PX4_STUB_TICKS", "400");
+    let _stub =
+        ManagedProcess::spawn_command(stub_cmd, "px4-stub").expect("Failed to start px4-stub");
+
+    companion
+        .wait_for_output_count("odometry:", 5, Duration::from_secs(40))
+        .expect(
+            "companion did not receive /fmu/out/vehicle_odometry — regression of the \
+             issue-0026 spin-pacing fix (pub+sub node closing before DDS discovery)",
+        );
 }

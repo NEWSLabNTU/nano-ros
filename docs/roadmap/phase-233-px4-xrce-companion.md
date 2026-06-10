@@ -6,13 +6,13 @@ uses — the **mainstream PX4↔ROS 2 integration**, which nano-ros's `nros-rmw-
 backend already fits but does not yet exercise. This is **Track B** of the
 two-track PX4 plan in **RFC-0039** ("support both") — the *additive* track.
 
-**Status.** Mostly complete (2026-06). 233.1 codegen, 233.2 QoS, 233.3 example,
-233.4 doc + CI round-trip all landed. **Caveat:** the companion's *receive* is
-blocked by an `nros-rmw-xrce` bug — a session holding both a publisher and a
-subscriber starves the subscriber (independent of agent/type), so the companion
-streams setpoints but does not reliably receive `/fmu/out/*`. Found while wiring
-233.4; tracked in [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
-The single-session loopback round-trip is CI-covered. Design-of-record: RFC-0039 (Draft).
+**Status.** Complete (2026-06). 233.1 codegen, 233.2 QoS, 233.3 example, 233.4
+doc + CI round-trip all landed. Wiring 233.4 surfaced an `nros-rmw-xrce`
+spin-pacing bug (a poll-based pub+sub node free-ran its spin loop and closed
+before DDS discovery, so it never received) — **fixed** and regression-guarded
+by `nros-tests::px4_xrce::test_px4_companion_cross_session_receive`
+([issue 0026](../issues/archived/0026-px4-xrce-bare-agent-type-matching.md),
+resolved). Design-of-record: RFC-0039 (Draft).
 
 **Priority.** P2 — additive (nothing breaks without it), but it is the path most
 PX4+ROS 2 users actually deploy, and nano-ros is already 90% wired for it.
@@ -96,22 +96,25 @@ the existing zenohd/cyclonedds support-service pattern (not a platform scope).
   self-test mode); `just px4 build-fixtures` (generate px4_msgs + build the stub to
   `target-xrce/`); `nros-tests::px4_xrce::test_px4_msgs_roundtrip_over_agent` (starts
   `XrceAgent`, runs the stub loopback, asserts ≥5 `VehicleOdometry` round-trip through
-  the agent). **Passes** — the full `px4_msgs` CDR + `px4()` QoS + XRCE pub/sub path is
-  CI-covered over a real agent.
-- **Scope note.** The CI round-trip is single-session (loopback). Wiring it surfaced a
-  real `nros-rmw-xrce` bug: a session with both a publisher and a subscriber starves the
-  subscriber's receive (reproduced with custom + generated types, any topic/agent), which
-  is why the *cross-session* companion does not receive `/fmu/out/*`. The earlier
-  "typed-agent" theory was disproven. Root cause + repro + fix directions:
-  [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
+  the agent) **+ `test_px4_companion_cross_session_receive`** (companion subscribes
+  `/fmu/out/*` while the stub streams it, asserts the companion receives ≥5 samples).
+  Both **pass** over a real agent.
+- **Bug found + fixed.** Wiring 233.4 surfaced an `nros-rmw-xrce` spin-pacing bug:
+  XRCE is a poll-based backend, so `spin_once(t)` paces by relying on the backend to
+  block for `t` — but `uxr_run_session_time` returned in ~0 µs when the session held a
+  publisher (unconfirmed output), so a pub+sub node free-ran its spin loop and sent
+  `DELETE_CLIENT` before DDS discovery, never receiving. `xrce_session_drive_io` now
+  paces to its timeout. (Two earlier wrong theories — "type matching" and
+  "mixed-direction reader+writer" — are recorded in
+  [issue 0026](../issues/archived/0026-px4-xrce-bare-agent-type-matching.md), resolved.)
 
 ## Acceptance
 
 - nano-ros generates CDR `px4_msgs` from the shared PX4 `.msg` tree (no ament dep).
 - A "PX4" QoS profile (`TRANSIENT_LOCAL`/`BEST_EFFORT`/`KEEP_LAST`) is selectable.
 - The companion example subscribes `/fmu/out/*` and publishes `/fmu/in/*` against
-  `MicroXRCEAgent`. Publish/connect verified against a bare agent; full receive
-  round-trip needs a typed agent (PX4 SITL or `-r refs`) — [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
+  `MicroXRCEAgent` and **receives** — regression-guarded by
+  `nros-tests::px4_xrce::test_px4_companion_cross_session_receive`.
 - `examples/README.md` matrix updated for the px4 XRCE cell.
 
 ## Notes

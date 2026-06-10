@@ -53,9 +53,8 @@ NROS_LOCATOR=127.0.0.1:8888 PX4_STUB_LOOPBACK=1 PX4_STUB_TICKS=200 cargo run -p 
 
 This is the CI round-trip (`nros-tests::px4_xrce`, built by `just px4 build-fixtures`).
 
-> The companion (subscribe `/fmu/out/*` **and** publish `/fmu/in/*` in one
-> session) does not reliably receive — an `nros-rmw-xrce` bug where a publisher
-> in the same session starves the subscriber's receive, independent of the
-> agent or message type. It streams setpoints but its odometry callback rarely
-> fires. Tracked in
-> [issue 0026](../../../../docs/issues/0026-px4-xrce-bare-agent-type-matching.md).
+The cross-session companion ↔ PX4 receive is regression-guarded by
+`nros-tests::px4_xrce::test_px4_companion_cross_session_receive`. (It once
+failed — a poll-based spin-pacing bug closed the node before DDS discovery;
+fixed, see
+[issue 0026](../../../../docs/issues/archived/0026-px4-xrce-bare-agent-type-matching.md).)

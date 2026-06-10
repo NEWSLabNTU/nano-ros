@@ -7,12 +7,10 @@
 //! ## Loopback (`PX4_STUB_LOOPBACK=1`)
 //!
 //! Also subscribes its own `/fmu/out/vehicle_odometry` in the *same* XRCE
-//! session. The pub and sub are on the **same** topic, so the writer feeds the
-//! reader intra-participant — this is the CI self-test of the full `px4_msgs`
-//! round-trip (serialize → agent → deserialize) over a real `MicroXRCEAgent`.
-//! It does NOT exercise the cross-session receive that the companion needs;
-//! that path hits an `nros-rmw-xrce` pub+sub starvation bug
-//! (`docs/issues/0026-px4-xrce-bare-agent-type-matching.md`).
+//! session — the CI self-test of the full `px4_msgs` round-trip
+//! (serialize → agent → deserialize) over a real `MicroXRCEAgent`. The
+//! cross-session companion receive is covered by
+//! `nros-tests::px4_xrce::test_px4_companion_cross_session_receive`.
 //!
 //! ```bash
 //! MicroXRCEAgent udp4 -p 8888
