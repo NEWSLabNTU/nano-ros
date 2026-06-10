@@ -2457,6 +2457,10 @@ extern const uint32_t NROS_TRANSPORT_OPS_ABI_VERSION_V1;
 
 extern int32_t nros_rmw_zenoh_register(void);
 
+extern size_t nros_platform_heap_used_bytes(void);
+
+extern size_t nros_platform_heap_total_bytes(void);
+
 /**
  * Bytes currently outstanding through the Rust global allocator.
  */
@@ -2466,6 +2470,20 @@ NROS_PUBLIC size_t nros_heap_used_bytes(void);
  * Peak outstanding bytes through the Rust global allocator since boot.
  */
 NROS_PUBLIC size_t nros_heap_peak_bytes(void);
+
+/**
+ * Bytes currently outstanding from the platform's *unified* heap — the
+ * true figure spanning both the Rust global allocator and the C side
+ * (zenoh-pico etc.), where the port owns one shared kernel heap. `0` if
+ * the port does not instrument heap usage.
+ */
+NROS_PUBLIC size_t nros_heap_platform_used_bytes(void);
+
+/**
+ * Total managed heap size in bytes (used + free) reported by the
+ * platform, or `0` if unknown.
+ */
+NROS_PUBLIC size_t nros_heap_total_bytes(void);
 
 extern void *nros_platform_alloc(size_t size);
 

@@ -643,6 +643,10 @@ nros_cpp_ret_t nros_cpp_bind_handle_to_sched_context(void *handle,
  */
 uint64_t nros_cpp_time_ns(void);
 
+extern size_t nros_platform_heap_used_bytes(void);
+
+extern size_t nros_platform_heap_total_bytes(void);
+
 /**
  * Bytes currently outstanding through the Rust global allocator.
  */
@@ -652,6 +656,20 @@ size_t nros_heap_used_bytes(void);
  * Peak outstanding bytes through the Rust global allocator since boot.
  */
 size_t nros_heap_peak_bytes(void);
+
+/**
+ * Bytes currently outstanding from the platform's *unified* heap — the
+ * true figure spanning both the Rust global allocator and the C side
+ * (zenoh-pico etc.), where the port owns one shared kernel heap. `0` if
+ * the port does not instrument heap usage.
+ */
+size_t nros_heap_platform_used_bytes(void);
+
+/**
+ * Total managed heap size in bytes (used + free) reported by the
+ * platform, or `0` if unknown.
+ */
+size_t nros_heap_total_bytes(void);
 
 extern void *nros_platform_alloc(size_t size);
 
