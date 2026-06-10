@@ -147,12 +147,25 @@ PY
         } >"$leaf_file"
         ;;
     native-cyclonedds-cmake)
+        # Issue 0022: the C and C++ cyclone leaves build the SAME nros-c/nros
+        # crates via corrosion->cargo, concurrently under the outer fifo make.
+        # Passing the fifo jobserver into cargo deadlocks (cargo 1.96 + nested
+        # `cargo build -p nros` contend fifo tokens); it also hangs on the global
+        # `~/.cargo/.package-cache-mutate` lock under competing CPU load. Fix:
+        # strip the fifo jobserver from each leaf (`MAKEFLAGS=`/`MAKELEVEL=`) so
+        # cargo self-schedules with a bounded `CARGO_BUILD_JOBS`, while the
+        # SHARED `~/.cargo` (no `CARGO_HOME` override) keeps cargo's package-cache
+        # lock serializing the two concurrent dep builds safely — isolating
+        # `CARGO_HOME` instead surfaced a `.fingerprint` write race. Net: the two
+        # leaves run in parallel again without deadlock or race.
+        cyc_cargo_jobs=$(( ( $(nproc 2>/dev/null || echo 8) + 1 ) / 2 ))
+        [ "$cyc_cargo_jobs" -lt 1 ] && cyc_cargo_jobs=1
         {
             for lang in c cpp; do
                 name="native-$lang-cyclonedds"
                 target="fixture-$name"
                 label="native $lang cyclonedds"
-                command="NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native $lang cyclonedds"
+                command="MAKEFLAGS= MAKELEVEL= CARGO_BUILD_JOBS=$cyc_cargo_jobs NROS_JOBSERVER=1 scripts/build/fixtures-build.sh native $lang cyclonedds"
                 printf '%s\tnative\t%s\tcyclonedds\t%s\t%s\t%s\n' "$target" "$lang" "$label" "$name" "$command"
             done
         } >"$leaf_file"

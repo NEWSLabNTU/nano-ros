@@ -1,10 +1,23 @@
 ---
 id: 22
 title: native-cyclonedds fixture build deadlocks (parallel corrosion→cargo on nros-c)
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-226, issue-0012]
+resolved_in: 2026-06-10 (strip fifo jobserver from cyclone leaf cargo)
+---
+
+**RESOLVED (2026-06-10).** The two cyclone leaves now build **in parallel**
+without deadlock. Fix: `scripts/build/fixture-make-driver.sh` runs each cyclone
+leaf with `MAKEFLAGS= MAKELEVEL= CARGO_BUILD_JOBS=<nproc/2>` — stripping the
+make **fifo jobserver** from cargo (the deadlock source) while keeping the
+**shared** `~/.cargo` whose package-cache lock serializes the two concurrent dep
+builds safely (isolating `CARGO_HOME` instead caused a `.fingerprint` write
+race). `just/native.just` reverted to the parallel (no `NROS_BUILD_JOBS=1`)
+call. Validated end-to-end: `PAR3EXIT=0`, both leaves, ~6 min vs ~11 min
+serialized — even under the heavy competing host load. Details below.
+
 ---
 
 `just build-test-fixtures` (the `test-all` prerequisite) hangs for hours in the
