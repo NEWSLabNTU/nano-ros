@@ -164,6 +164,14 @@ jobs:
         run: |
           source ./setup.bash
           source /opt/ros/humble/setup.bash
+          # `examples/workspaces/rust/.cargo/config.toml` patches `libc` to the
+          # NuttX fork (Phase 225.O / issue #18 — `_SC_HOST_NAME_MAX`) at the
+          # *workspace* level, so the per-platform Entry build (qemu_<plat>_entry)
+          # cannot resolve its deps without `third-party/nuttx/libc` — on EVERY
+          # cell, not just nuttx. Provision it (the SDK index `[source.nuttx-libc]`
+          # is the canonical provisioner; never hand-checked-out). px4-rs too,
+          # for the same workspace-load reason the Test step documents below.
+          nros setup --source px4-rs --source nuttx-libc
           just ${{ matrix.plat }} build-all || just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
 
       # Heavier QEMU test/e2e: on-demand only (`workflow_dispatch` with run_e2e).
@@ -179,5 +187,6 @@ jobs:
           # workspace, which parses the (optional) px4-sitl-tests path dep — its
           # Cargo.toml must exist or metadata fails. Provision the px4-rs source
           # (same as host-unit-tests); it's gitignored/extended-tier otherwise.
-          nros setup --source px4-rs
+          # nuttx-libc: the workspace Entry builds path-dep the patched libc.
+          nros setup --source px4-rs --source nuttx-libc
           just ${{ matrix.plat }} test
