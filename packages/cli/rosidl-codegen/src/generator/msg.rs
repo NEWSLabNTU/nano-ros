@@ -211,6 +211,7 @@ pub fn generate_nros_message_package(
 
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
+    let has_borrowed = fields.iter().any(|f| f.is_borrowed);
     let schema = build_nros_message_schema(package_name, message_name, &message.fields);
     let message_template = MessageNrosTemplate {
         package_name,
@@ -220,6 +221,7 @@ pub fn generate_nros_message_package(
         constants,
         has_fields,
         has_large_array,
+        has_borrowed,
         inline_mode: false,
         schema_helper_consts: schema.helper_consts,
         schema_fields_block: schema.fields_block,
@@ -266,6 +268,7 @@ pub fn generate_nros_inline_message(
     let type_hash = edition.type_hash();
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
+    let has_borrowed = fields.iter().any(|f| f.is_borrowed);
     let schema = build_nros_message_schema(package_name, message_name, &message.fields);
 
     let template = MessageNrosTemplate {
@@ -276,6 +279,7 @@ pub fn generate_nros_inline_message(
         constants,
         has_fields,
         has_large_array,
+        has_borrowed,
         inline_mode: true,
         schema_helper_consts: schema.helper_consts,
         schema_fields_block: schema.fields_block,

@@ -589,6 +589,101 @@ mod tests {
     }
 
     #[test]
+    fn test_nros_borrowed_mode_view_and_marker() {
+        // RFC-0033 `borrowed` (Phase 229.6, issue 0007): a byte-sequence field
+        // marked `borrowed` additionally emits `{Msg}View<'a>` (zero-copy slice)
+        // + a `{Msg}Borrow` marker, alongside the unchanged owned `{Msg}`.
+        let msg = parse_message("uint32 width\nstring encoding\nuint8[] data\n").unwrap();
+        let deps = HashSet::new();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/Image.data" = { cap = 921600, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_nros_message_package(
+            "my_msgs",
+            "Image",
+            &msg,
+            &deps,
+            "0.1.0",
+            RosEdition::Humble,
+            &resolver,
+        )
+        .unwrap();
+        let rs = &pkg.message_rs;
+
+        // Owned struct still exists for the publish path.
+        assert!(
+            rs.contains("pub struct Image {"),
+            "owned struct missing:\n{rs}"
+        );
+        assert!(rs.contains("impl RosMessage for Image"), "{rs}");
+
+        // Zero-copy view: borrowed field is a slice, copied field stays owned.
+        assert!(
+            rs.contains("pub struct ImageView<'a>"),
+            "view missing:\n{rs}"
+        );
+        assert!(
+            rs.contains("pub data: &'a [u8]"),
+            "borrowed slice missing:\n{rs}"
+        );
+        assert!(
+            rs.contains("impl<'a> nros_core::DeserializeBorrowed<'a> for ImageView<'a>"),
+            "DeserializeBorrowed missing:\n{rs}"
+        );
+        assert!(
+            rs.contains("reader.read_slice_u8()?"),
+            "zero-copy reader missing:\n{rs}"
+        );
+
+        // Marker + BorrowedMessage impl wire into create_subscription_borrowed.
+        assert!(
+            rs.contains("pub struct ImageBorrow;"),
+            "marker missing:\n{rs}"
+        );
+        assert!(
+            rs.contains("impl nros_core::BorrowedMessage for ImageBorrow"),
+            "BorrowedMessage impl missing:\n{rs}"
+        );
+        assert!(
+            rs.contains("type View<'a> = ImageView<'a>;"),
+            "GAT View missing:\n{rs}"
+        );
+    }
+
+    #[test]
+    fn test_nros_borrowed_non_byte_sequence_errors() {
+        // Non-byte numeric sequences need the alignment guard (a later slice);
+        // borrowed mode must reject them with a clear, actionable error.
+        let msg = parse_message("float32[] ranges\n").unwrap();
+        let deps = HashSet::new();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/Scan.ranges" = { cap = 1080, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let err = match generate_nros_message_package(
+            "my_msgs",
+            "Scan",
+            &msg,
+            &deps,
+            "0.1.0",
+            RosEdition::Humble,
+            &resolver,
+        ) {
+            Ok(_) => panic!("expected unsupported borrowed-element error"),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("borrowed"), "{err}");
+        assert!(err.contains("alignment guard"), "{err}");
+    }
+
+    #[test]
     fn test_c_heap_primitive_sequence() {
         // RFC-0033 mode = "heap" → rclc-style `{ T* data; size_t size, capacity; }`.
         let msg = parse_message("uint8[] data\n").unwrap();

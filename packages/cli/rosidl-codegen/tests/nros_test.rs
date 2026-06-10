@@ -391,7 +391,11 @@ fn bounded_field_ignores_config() {
 }
 
 #[test]
-fn borrowed_mode_errors_until_phase6() {
+fn borrowed_mode_emits_zero_copy_view() {
+    // Phase 229.6 (issue 0007): a byte-sequence field marked `borrowed` emits a
+    // `{Msg}View<'a>` zero-copy view + a `{Msg}Borrow` marker, alongside the
+    // unchanged owned `{Msg}` (which keeps a default-capacity owned container
+    // for the publish path).
     let resolver = CapacityResolver::from_toml_str(
         r#"
         [fields]
@@ -399,10 +403,27 @@ fn borrowed_mode_errors_until_phase6() {
         "#,
     )
     .unwrap();
-    let err = gen_frame(&resolver).unwrap_err();
+    let rs = gen_frame(&resolver).expect("borrowed byte-sequence now generates");
     assert!(
-        err.contains("borrowed") && err.contains("not yet supported"),
-        "got: {err}"
+        rs.contains("pub struct FrameView<'a>"),
+        "view missing:\n{rs}"
+    );
+    assert!(
+        rs.contains("pub pixels: &'a [u8]"),
+        "borrowed slice missing:\n{rs}"
+    );
+    assert!(
+        rs.contains("impl<'a> nros_core::DeserializeBorrowed<'a> for FrameView<'a>"),
+        "DeserializeBorrowed missing:\n{rs}"
+    );
+    assert!(
+        rs.contains("impl nros_core::BorrowedMessage for FrameBorrow"),
+        "marker impl missing:\n{rs}"
+    );
+    // Owned struct is preserved for publishers.
+    assert!(
+        rs.contains("pub struct Frame {"),
+        "owned struct missing:\n{rs}"
     );
 }
 

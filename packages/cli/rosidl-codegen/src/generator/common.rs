@@ -33,6 +33,57 @@ pub enum GeneratorError {
         field: String,
         mode: &'static str,
     },
+
+    #[error(
+        "{package}/{message}.{field}: `borrowed` mode does not yet support \
+         element type `{element}` — only byte sequences (`uint8[]`, `byte[]`, \
+         `int8[]`, `bool[]`) and strings borrow zero-copy today. Non-byte numeric \
+         sequences (`float32[]`, `uint16[]`, …) need the alignment guard \
+         (Phase 229.6 follow-up); use `mode = \"heap\"` or `\"owned\"` meanwhile."
+    )]
+    UnsupportedBorrowedElement {
+        package: String,
+        message: String,
+        field: String,
+        element: String,
+    },
+}
+
+/// Resolve the borrowed-view field type + zero-copy `CdrReader` reader method
+/// for a `borrowed`-mode field (RFC-0033, Phase 229.6, issue 0007).
+///
+/// Returns `(borrowed_rust_type, read_method)`. `read_method` is empty for
+/// string fields (rendered via `read_string`, which already returns `&'a str`).
+/// Byte sequences borrow as `&'a [u8]`; non-byte numeric sequences are rejected
+/// (they require the alignment guard, a later slice).
+fn nros_borrowed_view_for_field(
+    field_type: &FieldType,
+    package_name: &str,
+    message_name: &str,
+    field_name: &str,
+) -> Result<(String, String), GeneratorError> {
+    let unsupported = |elem: &str| GeneratorError::UnsupportedBorrowedElement {
+        package: package_name.to_string(),
+        message: message_name.to_string(),
+        field: field_name.to_string(),
+        element: elem.to_string(),
+    };
+    match field_type {
+        FieldType::String | FieldType::WString => Ok(("&'a str".to_string(), String::new())),
+        FieldType::Sequence { element_type } => match element_type.as_ref() {
+            FieldType::Primitive(PrimitiveType::UInt8 | PrimitiveType::Byte) => {
+                Ok(("&'a [u8]".to_string(), "slice_u8".to_string()))
+            }
+            FieldType::Primitive(PrimitiveType::Int8) => {
+                Ok(("&'a [u8]".to_string(), "slice_i8".to_string()))
+            }
+            FieldType::Primitive(PrimitiveType::Bool) => {
+                Ok(("&'a [u8]".to_string(), "slice_bool".to_string()))
+            }
+            other => Err(unsupported(&format!("{other:?}"))),
+        },
+        other => Err(unsupported(&format!("{other:?}"))),
+    }
 }
 
 /// Determine the exhaustive FieldKind enum variant for a given ROS 2 field type
@@ -141,6 +192,9 @@ pub(super) fn field_to_nros_field_with_mode(
         _ => None,
     };
     let mut is_heap = false;
+    let mut is_borrowed = false;
+    let mut borrowed_rust_type = String::new();
+    let mut borrowed_read_method = String::new();
     let rust_type = if let Some(kind) = cap_kind {
         let storage = resolver.resolve(package_name, message_name, &field.name, kind);
         match storage.mode {
@@ -154,14 +208,26 @@ pub(super) fn field_to_nros_field_with_mode(
                 is_heap = true;
                 nros_type_for_field_heap(&field.field_type, Some(package_name), mode)
             }
-            // `borrowed` lands in Phase 229.6 (issue 0007).
+            // RFC-0033 `borrowed` (Phase 229.6, issue 0007): the owned `{Msg}`
+            // struct keeps a default-capacity owned container for the publish
+            // path; the additionally-emitted `{Msg}View<'a>` borrows this field
+            // zero-copy (see `borrowed_rust_type` / `borrowed_read_method`).
             StorageMode::Borrowed => {
-                return Err(GeneratorError::UnsupportedStorageMode {
-                    package: package_name.to_string(),
-                    message: message_name.to_string(),
-                    field: field.name.clone(),
-                    mode: storage.mode.as_str(),
-                });
+                is_borrowed = true;
+                let (bt, rm) = nros_borrowed_view_for_field(
+                    &field.field_type,
+                    package_name,
+                    message_name,
+                    &field.name,
+                )?;
+                borrowed_rust_type = bt;
+                borrowed_read_method = rm;
+                nros_type_for_field_with_capacity(
+                    &field.field_type,
+                    Some(package_name),
+                    mode,
+                    storage.cap,
+                )
             }
         }
     } else {
@@ -225,6 +291,9 @@ pub(super) fn field_to_nros_field_with_mode(
         is_string_element,
         is_large_array: array_size > 32,
         is_heap,
+        is_borrowed,
+        borrowed_rust_type,
+        borrowed_read_method,
     })
 }
 

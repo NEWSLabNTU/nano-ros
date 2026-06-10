@@ -184,6 +184,19 @@ pub struct NrosField {
     /// `nros_core::heap::{Vec, String}` rather than a fixed-capacity `heapless`
     /// container. Changes the deserialize codegen (growable, no `CapacityExceeded`).
     pub is_heap: bool,
+    /// RFC-0033 `mode = "borrowed"` (Phase 229.6, issue 0007) — in the generated
+    /// borrowed *view* (`{Msg}View<'a>`), this field is a zero-copy slice
+    /// borrowing the receive buffer rather than an owned container. The owned
+    /// `{Msg}` struct still renders this field with [`rust_type`](Self::rust_type)
+    /// (default-capacity owned) for the publish path.
+    pub is_borrowed: bool,
+    /// Borrowed view type for this field (e.g. `&'a [u8]`, `&'a str`). Empty
+    /// unless [`is_borrowed`](Self::is_borrowed).
+    pub borrowed_rust_type: String,
+    /// `CdrReader` zero-copy reader method for the borrowed view (e.g.
+    /// `slice_u8`, `slice_i8`, `slice_bool`). Empty for string fields (which use
+    /// `read_string`) and non-borrowed fields.
+    pub borrowed_read_method: String,
 }
 
 #[derive(Template)]
@@ -198,6 +211,10 @@ pub struct MessageNrosTemplate<'a> {
     pub has_fields: bool,
     /// True if any field is a large array (> 32 elements), requiring manual Default impl
     pub has_large_array: bool,
+    /// RFC-0033 `borrowed` mode (Phase 229.6): true if any field resolves to
+    /// `mode = "borrowed"`, which additionally emits a `{Msg}View<'a>` zero-copy
+    /// view + a `{Msg}Borrow` marker alongside the owned `{Msg}`.
+    pub has_borrowed: bool,
     /// When true, uses nros_core:: prefixed imports instead of direct use statements
     pub inline_mode: bool,
     /// Pre-rendered `::nros_serdes::NestedType` / `FieldType` helper `pub const`

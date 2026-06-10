@@ -184,6 +184,127 @@ impl RosMessage for {{ message_name }} {
     const TYPE_NAME: &'static str = "{{ package_name }}::msg::dds_::{{ message_name }}_";
     const TYPE_HASH: &'static str = "{{ type_hash }}";
 }
+{%- if has_borrowed %}
+
+// ── RFC-0033 `borrowed` storage mode (Phase 229.6, issue 0007) ──────────────
+// Zero-copy view: fields marked `mode = "borrowed"` slice directly into the
+// receive buffer (no `heapless::Vec`/`String` copy). Other fields are copied.
+// The view is valid only for the subscription-callback scope (lifetime `'a`).
+// Subscribe with `node.create_subscription_borrowed::<{{ message_name }}Borrow, _>()`.
+
+/// Borrowed (zero-copy) view of [`{{ message_name }}`].
+pub struct {{ message_name }}View<'a> {
+{%- for field in fields %}
+{%- if field.is_borrowed %}
+    pub {{ field.name }}: {{ field.borrowed_rust_type }},
+{%- else %}
+    pub {{ field.name }}: {{ field.rust_type }},
+{%- endif %}
+{%- endfor %}
+}
+
+impl<'a> nros_core::DeserializeBorrowed<'a> for {{ message_name }}View<'a> {
+    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        Ok(Self {
+{%- for field in fields %}
+{%- if field.is_borrowed %}
+{%- if field.is_string %}
+            {{ field.name }}: reader.read_string()?,
+{%- else %}
+            {{ field.name }}: reader.read_{{ field.borrowed_read_method }}()?,
+{%- endif %}
+{%- else if field.is_primitive %}
+            {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
+{%- else if field.is_string %}
+            {{ field.name }}: {
+                let s = reader.read_string()?;
+{%- if field.is_heap %}
+                nros_core::heap::String::from(s)
+{%- else if inline_mode %}
+                nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- else %}
+                heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+{%- endif %}
+            },
+{%- else if field.is_array %}
+            {{ field.name }}: {
+{%- if field.is_large_array %}
+                let mut arr: {{ field.rust_type }} = [Default::default(); {{ field.array_size }}];
+{%- else %}
+                let mut arr: {{ field.rust_type }} = Default::default();
+{%- endif %}
+                for i in 0..{{ field.array_size }} {
+{%- if field.is_primitive_element %}
+                    arr[i] = reader.read_{{ field.element_primitive_method }}()?;
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    arr[i] = nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    arr[i] = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+                    arr[i] = Deserialize::deserialize(reader)?;
+{%- endif %}
+                }
+                arr
+            },
+{%- else if field.is_sequence %}
+            {{ field.name }}: {
+                let len = reader.read_u32()? as usize;
+{%- if field.is_heap %}
+                let mut vec = nros_core::heap::Vec::new();
+{%- else if inline_mode %}
+                let mut vec = nros_core::heapless::Vec::new();
+{%- else %}
+                let mut vec = heapless::Vec::new();
+{%- endif %}
+                for _ in 0..len {
+{%- if field.is_primitive_element %}
+{%- if field.is_heap %}
+                    vec.push(reader.read_{{ field.element_primitive_method }}()?);
+{%- else %}
+                    vec.push(reader.read_{{ field.element_primitive_method }}()?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else if field.is_string_element %}
+                    let s = reader.read_string()?;
+{%- if inline_mode %}
+                    let elem = nros_core::heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- else %}
+                    let elem = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- if field.is_heap %}
+                    vec.push(elem);
+{%- else %}
+                    vec.push(elem).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- else %}
+{%- if field.is_heap %}
+                    vec.push(Deserialize::deserialize(reader)?);
+{%- else %}
+                    vec.push(Deserialize::deserialize(reader)?).map_err(|_| DeserError::CapacityExceeded)?;
+{%- endif %}
+{%- endif %}
+                }
+                vec
+            },
+{%- else %}
+            {{ field.name }}: Deserialize::deserialize(reader)?,
+{%- endif %}
+{%- endfor %}
+        })
+    }
+}
+
+/// Zero-sized borrowed-family marker for [`{{ message_name }}`] (Phase 229.6).
+pub struct {{ message_name }}Borrow;
+
+impl nros_core::BorrowedMessage for {{ message_name }}Borrow {
+    type View<'a> = {{ message_name }}View<'a>;
+    const TYPE_NAME: &'static str = "{{ package_name }}::msg::dds_::{{ message_name }}_";
+    const TYPE_HASH: &'static str = "{{ type_hash }}";
+}
+{%- endif %}
 
 // ── nros_serdes::Message — runtime field schema ─────────────────────────────
 // Consumed by RMW backends that build wire-type descriptors at runtime
