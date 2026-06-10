@@ -26,10 +26,11 @@ unsafe extern "C" {
         created_task: *mut *mut c_void,
     ) -> i32;
 
-    /// FSP-provided heap allocator (FreeRTOS `heap_4`). Used for the
-    /// app-task context box; lasts the program lifetime so we never
-    /// `vPortFree` it.
-    fn pvPortMalloc(size: u32) -> *mut c_void;
+    /// Canonical platform-ABI heap (RFC-0034 / phase-230 1e). On orin-spe
+    /// this wraps the FSP-provided FreeRTOS `heap_4` via
+    /// `nros-platform-freertos`. Used for the app-task context box; lasts the
+    /// program lifetime so we never free it.
+    fn nros_platform_alloc(size: usize) -> *mut c_void;
 
     /// Configure zenoh-pico's internal read+lease task priorities.
     /// Provided by `zpico-platform-shim`'s C glue, gated on
@@ -59,7 +60,7 @@ where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
-    // SAFETY: `arg` is the `Box::leak`-analogous `pvPortMalloc`
+    // SAFETY: `arg` is the `Box::leak`-analogous `nros_platform_alloc`
     // allocation written in `run()`; lives forever.
     let ctx = unsafe { &mut *(arg as *mut AppContext<F>) };
 
@@ -121,7 +122,7 @@ pub fn init_hardware(_config: &Config) {}
 ///
 /// - Must be called from within an existing FreeRTOS task (typically
 ///   the FSP's `app_init`-spawned task). Calling from an ISR will
-///   panic — `pvPortMalloc` is not ISR-safe.
+///   panic — `nros_platform_alloc` (FSP `pvPortMalloc`) is not ISR-safe.
 /// - The closure runs forever; on return the task blocks via `wfi`.
 ///
 /// # Example
@@ -157,11 +158,11 @@ where
     let app_stack_words = config.app_stack_bytes / 4;
 
     let ctx_ptr = unsafe {
-        let size = core::mem::size_of::<AppContext<F>>() as u32;
-        let ptr = pvPortMalloc(size) as *mut AppContext<F>;
+        let size = core::mem::size_of::<AppContext<F>>();
+        let ptr = nros_platform_alloc(size) as *mut AppContext<F>;
         assert!(
             !ptr.is_null(),
-            "nros-board-orin-spe: pvPortMalloc returned null — heap exhausted?"
+            "nros-board-orin-spe: nros_platform_alloc returned null — heap exhausted?"
         );
         core::ptr::write(ptr, AppContext { config, closure: f });
         ptr

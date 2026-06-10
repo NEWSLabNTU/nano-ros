@@ -262,12 +262,14 @@ where
     // reclaimed by FreeRTOS when vPortStartFirstTask() resets MSP
     // to _estack. Local variables would be clobbered by the next
     // exception that stacks on MSP.
+    // Task-context heap via the canonical platform ABI (RFC-0034 / phase-230
+    // 1e). `nros_platform_alloc` wraps `pvPortMalloc` (heap_4) — same heap.
     unsafe extern "C" {
-        fn pvPortMalloc(size: u32) -> *mut c_void;
+        fn nros_platform_alloc(size: usize) -> *mut c_void;
     }
     let ctx_ptr = unsafe {
-        let size = core::mem::size_of::<AppContext<F>>() as u32;
-        let ptr = pvPortMalloc(size) as *mut AppContext<F>;
+        let size = core::mem::size_of::<AppContext<F>>();
+        let ptr = nros_platform_alloc(size) as *mut AppContext<F>;
         assert!(!ptr.is_null(), "Failed to allocate AppContext");
         core::ptr::write(ptr, AppContext { config, closure: f });
         ptr

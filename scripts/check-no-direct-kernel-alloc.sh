@@ -37,6 +37,18 @@ ROOTS='packages'
 # the repo-relative path).
 ALLOW_RE='(packages/core/nros-platform-[^/]+/|packages/platforms/[^/]+/)'
 
+# Vendored opaque-struct task/net carve-outs (RFC-0034). ThreadX exposes a
+# SINGLE allocation primitive (`tx_byte_allocate`/`tx_byte_release`) used for
+# BOTH the scalar heap AND task stacks / NetX packet pools. The scalar heap is
+# already funneled through nros-platform-threadx's `nros_platform_alloc`; the
+# remaining board-crate sites carve out *thread stacks* and *NetX net pools* —
+# the TASK and NET opaque-struct services, which RFC-0034 keeps per-RTOS-
+# vendored (NOT part of the scalar-alloc unification). Allowed only for the
+# ThreadX byte-pool symbols, only in these board files — a stray scalar
+# pvPortMalloc/k_malloc here would still fail.
+TASK_NET_ALLOW_RE='(packages/boards/nros-board-common/c/threadx_hooks\.c|packages/boards/nros-board-threadx-qemu-riscv64/c/board_threadx_qemu_riscv64\.c)'
+TASK_NET_SYM_RE='\b(tx_byte_allocate|tx_byte_release)\b'
+
 # Out-of-scope trees: vendored submodules + build output. Not nros source.
 EXCLUDE_RE='(zpico-sys/zenoh-pico/|zpico-sys/mbedtls/|/target/|/out/|\.lock$|\.ld$)'
 
@@ -55,16 +67,25 @@ bypass=()
 for line in "${hits[@]}"; do
     path="${line%%:*}"
     [[ "$path" =~ $ALLOW_RE ]] && continue  # legitimate port
+    # Vendored task/net carve-out: ThreadX byte-pool symbol in a board file.
+    if [[ "$path" =~ $TASK_NET_ALLOW_RE && "$line" =~ $TASK_NET_SYM_RE ]]; then
+        continue
+    fi
     bypass+=("$line")
 done
 
-# ADVISORY mode (Phase 230 Wave 0): report the bypass inventory — the
-# Wave 1 migration worklist — but do not fail. The surface is broader than
-# the initial scope (the Rust `#[global_allocator]`s in nros-c/nros-cpp,
-# the C-API inline platform headers, and several board crates allocate
-# task contexts / net pools directly). Phase 230.1.7 flips this to
-# hard-fail once Wave 1 has routed them through nros_platform_alloc.
-HARD_FAIL="${NROS_ALLOC_GATE_HARD:-0}"
+# HARD mode (Phase 230.1.7, RFC-0034). The nros-OWNED allocation surface is
+# fully migrated: nros-c/nros-cpp `#[global_allocator]`s + the C-API inline
+# platform headers + the FreeRTOS/orin board task-context sites all route
+# through `nros_platform_alloc`; the ThreadX board task-stack / NetX net-pool
+# carve-outs are the vendored task/net opaque-struct services (see
+# TASK_NET_ALLOW_RE). A NEW direct kernel-alloc in nros source now fails the
+# build. The vendored zenoh-pico scalar funnel (Wave 1c) is enforced
+# SEPARATELY by the fork `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC` guard +
+# its CI relink lane — it is out of THIS gate's scope (EXCLUDE_RE drops the
+# submodule), so it is not a precondition for hard mode here.
+# Escape hatch: `NROS_ALLOC_GATE_HARD=0` reverts to advisory for triage.
+HARD_FAIL="${NROS_ALLOC_GATE_HARD:-1}"
 
 if ((${#bypass[@]} == 0)); then
     echo "✓ no-direct-kernel-alloc: clean (all allocation routes through nros_platform_alloc)"

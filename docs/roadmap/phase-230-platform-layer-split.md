@@ -85,9 +85,11 @@ site during 230.1.
 `scripts/check-no-direct-kernel-alloc.sh` — word-boundaried symbol scan
 (`pvPortMalloc`/`vPortFree`/`k_malloc`/`k_free`/`tx_byte_allocate`/
 `tx_byte_release`/`heap_caps_*`), excludes vendored zenoh-pico/mbedtls +
-build output, allows `nros-platform-*` / `platforms/*` ports. **Advisory**
-(prints the worklist, exit 0); `NROS_ALLOC_GATE_HARD=1` enforces. Wired
-into `just check`. 230.1.7 flips it hard once the inventory is migrated.
+build output, allows `nros-platform-*` / `platforms/*` ports plus the
+documented ThreadX task/net byte-pool carve-out (`TASK_NET_ALLOW_RE`).
+**HARD by default** as of 230.1.7 (nros-owned surface clean);
+`NROS_ALLOC_GATE_HARD=0` reverts to advisory for triage. Wired into
+`just check`.
 
 ### Wave 1 — Allocator unification (the starter)
 
@@ -244,7 +246,17 @@ test since it cannot be done in this environment.
   - **Remaining:** real bare-metal `FreeListHeap::used` for the 1b heap
     query (currently 0-stub via the trait default); optional `just check`
     enumerator of `#[global_allocator]` sites for earlier auditability.
-- **Wave 1e — board-crate task-context sites + flip the lint hard.**
+- **Wave 1e — board-crate task-context sites + flip the lint hard.  ✅ DONE**
+  FreeRTOS (`nros-board-freertos` `entry.rs`/`node.rs`) + orin-spe
+  (`nros-board-orin-spe` `node.rs`) task-context `pvPortMalloc`/`vPortFree`
+  sites now route through `nros_platform_alloc`/`_dealloc` (the
+  platform-freertos provider wraps `pvPortMalloc`/`heap_4` — same heap, one
+  funnel). The ThreadX board `tx_byte_allocate` sites (`threadx_hooks.c` app
+  thread stack; `board_threadx_qemu_riscv64.c` NetX packet/IP/ARP/BSD pools)
+  are the vendored TASK + NET opaque-struct services and stay direct, now on
+  a documented symbol-scoped lint allowlist (`TASK_NET_ALLOW_RE`). With the
+  nros-owned surface clean, 230.0.2 flips HARD by default (230.1.7). Embedded
+  ELF link verification of the board edits is CI-gated (full firmware build).
 
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
 > are two allocators and neither is nros's: the `#[global_allocator]` is
@@ -337,8 +349,14 @@ FreeRTOS `xPortGetFreeHeapSize`) as the unified figure. Document which mode
 each platform is in. Update + close
 [issue 0006](../issues/0006-rtos-dual-heap.md).
 
-#### 230.1.7 — Flip the lint to hard-fail
-Once 230.1.1–230.1.4 land, make 230.0.2 a hard error for the alloc subset.
+#### 230.1.7 — Flip the lint to hard-fail  ✅ DONE
+`check-no-direct-kernel-alloc.sh` defaults to `HARD_FAIL=1`. The
+precondition is the **nros-owned** surface being clean (nros-c/nros-cpp
+allocators 1d, C-API headers 1e, board task-context sites 1e); it is met.
+The vendored zenoh-pico scalar funnel (1c) is OUT of this gate's scope
+(`EXCLUDE_RE` drops the submodule) and is enforced separately by the fork
+`#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC` guard + its CI relink lane, so it is
+not a precondition. `NROS_ALLOC_GATE_HARD=0` reverts to advisory.
 
 ### Wave 2 — Remaining scalar services
 

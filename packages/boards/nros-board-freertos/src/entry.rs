@@ -285,9 +285,12 @@ where
     }
 }
 
+// Task-context heap goes through the canonical platform ABI (RFC-0034 /
+// phase-230 1e). On FreeRTOS boards `nros_platform_alloc` wraps `pvPortMalloc`
+// (heap_4) — same heap, single funnel.
 unsafe extern "C" {
-    fn vPortFree(ptr: *mut c_void);
-    fn pvPortMalloc(size: u32) -> *mut c_void;
+    fn nros_platform_alloc(size: usize) -> *mut c_void;
+    fn nros_platform_dealloc(ptr: *mut c_void);
 }
 
 /// Heap context for the boot (per-tier) app task.
@@ -309,7 +312,7 @@ struct TierTaskCtx<F> {
 /// out), then spin forever at the tier's period.
 ///
 /// # Safety
-/// `arg` is a `pvPortMalloc`-allocated `TierTaskCtx<F>` from
+/// `arg` is an `nros_platform_alloc`-allocated `TierTaskCtx<F>` from
 /// `app_task_entry_tiers`; this task consumes + frees it.
 unsafe extern "C" fn tier_task_entry<B, F, E>(arg: *mut c_void)
 where
@@ -318,7 +321,7 @@ where
     E: core::fmt::Debug,
 {
     let ctx = unsafe { core::ptr::read(arg as *mut TierTaskCtx<F>) };
-    unsafe { vPortFree(arg) };
+    unsafe { nros_platform_dealloc(arg) };
 
     // SAFETY: the boot task owns the session for the firmware lifetime (its spin
     // loop never returns), so the handle stays valid.
@@ -355,7 +358,7 @@ where
 /// via a `SessionHandle`), then run the highest-priority tier on this task.
 ///
 /// # Safety
-/// `arg` is a `pvPortMalloc`-allocated `AppContextTiers<F>` from
+/// `arg` is an `nros_platform_alloc`-allocated `AppContextTiers<F>` from
 /// `run_tiers_entry`, surviving until the scheduler exits.
 unsafe extern "C" fn app_task_entry_tiers<B, F, E>(arg: *mut c_void)
 where
@@ -397,8 +400,8 @@ where
             tier: *tier,
             setup: ctx.setup,
         };
-        let size = core::mem::size_of::<TierTaskCtx<F>>() as u32;
-        let ptr = unsafe { pvPortMalloc(size) as *mut TierTaskCtx<F> };
+        let size = core::mem::size_of::<TierTaskCtx<F>>();
+        let ptr = unsafe { nros_platform_alloc(size) as *mut TierTaskCtx<F> };
         if ptr.is_null() {
             B::println(format_args!("nros: tier `{}` ctx alloc failed", tier.name));
             B::exit_failure();
@@ -482,8 +485,8 @@ where
     let app_stack_words = config.app_stack_bytes / 4;
 
     let ctx_ptr = unsafe {
-        let size = core::mem::size_of::<AppContextTiers<F>>() as u32;
-        let ptr = pvPortMalloc(size) as *mut AppContextTiers<F>;
+        let size = core::mem::size_of::<AppContextTiers<F>>();
+        let ptr = nros_platform_alloc(size) as *mut AppContextTiers<F>;
         assert!(!ptr.is_null(), "Failed to allocate AppContextTiers");
         core::ptr::write(
             ptr,
@@ -607,12 +610,10 @@ where
     // reclaimed by FreeRTOS when `vPortStartFirstTask()` resets MSP
     // to `_estack`, so locals would be clobbered by the next
     // exception that stacks on MSP. (Same rationale as legacy `run`.)
-    unsafe extern "C" {
-        fn pvPortMalloc(size: u32) -> *mut c_void;
-    }
+    // `nros_platform_alloc` is declared at module scope (heap_4 funnel).
     let ctx_ptr = unsafe {
-        let size = core::mem::size_of::<AppContext<F>>() as u32;
-        let ptr = pvPortMalloc(size) as *mut AppContext<F>;
+        let size = core::mem::size_of::<AppContext<F>>();
+        let ptr = nros_platform_alloc(size) as *mut AppContext<F>;
         assert!(!ptr.is_null(), "Failed to allocate AppContext");
         core::ptr::write(
             ptr,
