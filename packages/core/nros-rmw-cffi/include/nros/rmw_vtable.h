@@ -379,6 +379,26 @@ typedef struct nros_rmw_vtable_t {
     nros_rmw_ret_t (*ping_session)(
         nros_rmw_session_t *session,
         int32_t             timeout_ms);
+
+    /* ---- Phase 231 (RFC-0038) — zero-copy in-place subscription take ---- */
+
+    /** Capability query: does this subscriber support process_raw_in_place()?
+     *  Returns 1 if yes, 0 if no. The runtime consults this at subscription
+     *  registration to choose in-place dispatch over the buffered (copying)
+     *  path. NULL function pointer = treated as unsupported (buffered path). */
+    int32_t (*subscriber_supports_in_place)(
+        nros_rmw_subscriber_t *subscriber);
+
+    /** Borrow one ready message in place: hand its raw CDR bytes to `cb` (with
+     *  the opaque `ctx`) for the duration of the call, then release the slot —
+     *  no copy into a caller buffer. Returns 1 if a message was processed (`cb`
+     *  invoked), NROS_RMW_RET_NO_DATA if none was ready, or a negative error.
+     *  `cb` MUST NOT re-enter this subscriber's receive. NULL function
+     *  pointer = unsupported (the runtime uses the buffered path). */
+    int32_t (*process_raw_in_place)(
+        nros_rmw_subscriber_t *subscriber,
+        void                  *ctx,
+        void                 (*cb)(void *ctx, const uint8_t *ptr, size_t len));
 } nros_rmw_vtable_t;
 
 /** Register a custom RMW backend under the implicit name "default".

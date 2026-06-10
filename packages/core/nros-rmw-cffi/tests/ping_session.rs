@@ -203,6 +203,8 @@ const fn base_vtable() -> NrosRmwVtable {
         try_recv_sequence: None,
         publish_streamed: None,
         ping_session: None,
+        subscriber_supports_in_place: None,
+        process_raw_in_place: None,
     }
 }
 

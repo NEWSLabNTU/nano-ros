@@ -319,6 +319,8 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         try_recv_sequence: Some(try_recv_sequence_trampoline::<R>),
         publish_streamed: Some(publish_streamed_trampoline::<R>),
         ping_session: Some(ping_session_trampoline::<R>),
+        subscriber_supports_in_place: Some(subscriber_supports_in_place_trampoline::<R>),
+        process_raw_in_place: Some(process_raw_in_place_trampoline::<R>),
     };
 
     /// Install the per-`R` vtable into the cffi registry under the
@@ -592,6 +594,36 @@ unsafe extern "C" fn has_data_trampoline<R: RustBackend>(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     if Subscriber::has_data(s) { 1 } else { 0 }
+}
+
+// Phase 231 (RFC-0038) — in-place subscription take across the C ABI.
+
+unsafe extern "C" fn subscriber_supports_in_place_trampoline<R: RustBackend>(
+    subscriber: *mut NrosRmwSubscriber,
+) -> i32 {
+    let Some(s) = (unsafe { subscriber_ref::<R::Subscriber>(subscriber) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    if Subscriber::supports_process_in_place(s) {
+        1
+    } else {
+        0
+    }
+}
+
+unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
+    subscriber: *mut NrosRmwSubscriber,
+    ctx: *mut core::ffi::c_void,
+    cb: unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize),
+) -> i32 {
+    let Some(s) = (unsafe { subscriber_mut::<R::Subscriber>(subscriber) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    match Subscriber::process_raw_in_place(s, |raw| unsafe { cb(ctx, raw.as_ptr(), raw.len()) }) {
+        Ok(true) => 1,
+        Ok(false) => NROS_RMW_RET_NO_DATA,
+        Err(e) => ret_from_error(&e),
+    }
 }
 
 // ============================================================================

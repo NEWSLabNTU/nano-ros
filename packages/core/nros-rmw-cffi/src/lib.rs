@@ -708,6 +708,28 @@ pub struct NrosRmwVtable {
     /// NULL slot = runtime surfaces `Unsupported` to the caller.
     pub ping_session:
         Option<unsafe extern "C" fn(session: *mut NrosRmwSession, timeout_ms: i32) -> NrosRmwRet>,
+
+    // ---- Phase 231 (RFC-0038) — zero-copy in-place subscription take ----
+    /// Capability query: does this subscriber support
+    /// [`process_raw_in_place`](Self::process_raw_in_place)? Returns `1` if yes,
+    /// `0` if no. The executor consults this at registration to pick the in-place
+    /// arena dispatch over the buffered one. NULL slot = treated as unsupported.
+    pub subscriber_supports_in_place:
+        Option<unsafe extern "C" fn(subscriber: *mut NrosRmwSubscriber) -> i32>,
+
+    /// Borrow one ready message in place and hand its raw CDR bytes to `cb`
+    /// (along with the opaque `ctx`) for the duration of the call, then release
+    /// the slot — no copy into a caller buffer. Returns `1` if a message was
+    /// processed (`cb` invoked), `NROS_RMW_RET_NO_DATA` if none was ready, or a
+    /// negative error. `cb` MUST NOT re-enter this subscriber's receive. NULL
+    /// slot = unsupported (the runtime uses the buffered path).
+    pub process_raw_in_place: Option<
+        unsafe extern "C" fn(
+            subscriber: *mut NrosRmwSubscriber,
+            ctx: *mut core::ffi::c_void,
+            cb: unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize),
+        ) -> i32,
+    >,
 }
 
 // ============================================================================
@@ -1690,6 +1712,7 @@ impl Session for CffiSession {
             qos: qos_struct,
             can_loan_messages: false,
             backend_data: core::ptr::null_mut(),
+            supports_in_place: false,
         };
         let topic_ptr = to_c_str(topic.name, &mut sub_state.topic_name_buf);
         let type_ptr = to_c_str(topic.type_name, &mut sub_state.type_name_buf);
@@ -1722,6 +1745,14 @@ impl Session for CffiSession {
         }
         sub_state.backend_data = view.backend_data;
         sub_state.can_loan_messages = view.can_loan_messages;
+        // Phase 231 (RFC-0038) — cache the in-place capability once.
+        sub_state.supports_in_place = match sub_state.vtable.subscriber_supports_in_place {
+            Some(f) => {
+                let mut v = sub_state.make_view();
+                unsafe { f(&mut v) == 1 }
+            }
+            None => false,
+        };
         Ok(sub_state)
     }
 
@@ -2359,6 +2390,9 @@ pub struct CffiSubscriber {
     qos: NrosRmwQos,
     can_loan_messages: bool,
     backend_data: *mut c_void,
+    /// Phase 231 (RFC-0038) — cached `subscriber_supports_in_place` capability,
+    /// queried once at creation so `supports_process_in_place(&self)` is cheap.
+    supports_in_place: bool,
 }
 
 impl CffiSubscriber {
@@ -2370,6 +2404,43 @@ impl CffiSubscriber {
             can_loan_messages: self.can_loan_messages,
             _reserved: [0u8; 7],
             backend_data: self.backend_data,
+        }
+    }
+
+    /// Phase 231 (RFC-0038) — drive the `process_raw_in_place` vtable slot,
+    /// marshalling the Rust `FnOnce` through the C `ctx`/`cb`. A monomorphized
+    /// trampoline takes the closure out of a stack `Option` cell and calls it
+    /// with the borrowed slice. The named generic `G` is why the public trait
+    /// method (which uses APIT) delegates here.
+    fn run_process_in_place<G: FnOnce(&[u8])>(&mut self, f: G) -> Result<bool, TransportError> {
+        let Some(slot) = self.vtable.process_raw_in_place else {
+            return Err(TransportError::MessageTooLarge);
+        };
+        unsafe extern "C" fn cb_tramp<G: FnOnce(&[u8])>(
+            ctx: *mut c_void,
+            ptr: *const u8,
+            len: usize,
+        ) {
+            let cell = unsafe { &mut *(ctx as *mut Option<G>) };
+            if let Some(g) = cell.take() {
+                g(unsafe { core::slice::from_raw_parts(ptr, len) });
+            }
+        }
+        let mut cell: Option<G> = Some(f);
+        let mut view = self.make_view();
+        let rc = unsafe {
+            slot(
+                &mut view,
+                &mut cell as *mut Option<G> as *mut c_void,
+                cb_tramp::<G>,
+            )
+        };
+        if rc == NROS_RMW_RET_NO_DATA {
+            Ok(false)
+        } else if rc < 0 {
+            Err(error_from_ret(rc))
+        } else {
+            Ok(rc > 0)
         }
     }
 
@@ -2468,6 +2539,14 @@ impl nros_rmw::SlotBorrowing for CffiSubscriber {
 
 impl nros_rmw::Subscriber for CffiSubscriber {
     type Error = TransportError;
+
+    fn supports_process_in_place(&self) -> bool {
+        self.supports_in_place
+    }
+
+    fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error> {
+        self.run_process_in_place(f)
+    }
 
     fn has_data(&self) -> bool {
         // has_data takes &mut to match the C signature; cast away const
@@ -3163,6 +3242,8 @@ mod tests {
         try_recv_sequence: None,
         publish_streamed: None,
         ping_session: None,
+        subscriber_supports_in_place: None,
+        process_raw_in_place: None,
     };
 
     #[test]
