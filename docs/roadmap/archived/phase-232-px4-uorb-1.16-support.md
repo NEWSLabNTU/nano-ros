@@ -14,9 +14,12 @@ the current ABI), **232.5** (pin stable **v1.17.0** + px4-rs supported-window
 note). px4-rs `main` at `3817421`; PX4-Autopilot pinned to v1.17.0 (`d6f12ad`);
 `cargo xtask gen-msgs` emits 235 messages incl. the versioned core topics (each
 now carrying its real FNV `message_hash`); the uORB C++ backend builds +
-`register_smoke` passes. Only **232.6** is open and it is **stale** (no
-`topics.toml` exists — needs re-scoping, not a blind resync). Design-of-record:
-RFC-0039 (Draft) + RFC-0011 (Stable).
+`register_smoke` passes. **232.6** is **closed (wontfix)** — its premise is dead:
+no `topics.toml`/`dds_topics` map exists anywhere under `packages/px4/` or
+px4-rs, and the ROS↔uORB mapping is resolved at runtime by px4-rs codegen
+(`px4_rs_find_orb_meta()` + per-message `TOPICS` const), so nano-ros needs no
+static map. Phase fully complete. Design-of-record: RFC-0039 (Draft) +
+RFC-0011 (Stable).
 
 **Priority.** P1 — without item 232.1 the offboard/telemetry topics
 (`VehicleOdometry`, `VehicleCommand`, `VehicleLocalPosition`, `VehicleAttitude`,
@@ -107,16 +110,14 @@ record the supported window in `px4-rs` (`px4-sys` min + codegen parity note). K
 `main` only in an opt-in forward-compat lane.
 - **Files:** `nros-sdk-index.toml`; (px4-rs) `px4-sys` version doc.
 
-### 232.6 — Resync `topics.toml` ↔ `dds_topics.yaml`  ⚠️ STALE — needs re-scoping (nano-ros, in-tree)
-**Premise is stale:** there is no `topics.toml` anywhere under `packages/px4/`
-(nor any `dds_topics`/topics-map file). The ROS↔uORB mapping is handled in the
-px4-rs codegen instead — generated topics carry a `TOPICS` const + resolve their
-canonical `orb_metadata` at runtime via `px4_rs_find_orb_meta()` (see any
-`crates/px4-msg-codegen/generated/*.rs`). So either this item refers to a file
-that was never created / since removed, or the resync belongs in px4-rs. Revisit
-when 232.5 picks a pin — confirm whether nano-ros needs a static ROS↔uORB map at
-all, or whether the px4-rs canonical-resolution path already covers it.
-- **Files (if revived):** TBD — no `topics.toml` exists today.
+### 232.6 — Resync `topics.toml` ↔ `dds_topics.yaml`  ❌ CLOSED (wontfix) (nano-ros, in-tree)
+**Premise dead, item dismissed.** Verified (2026-06): no `topics.toml` /
+`dds_topics` / topics-map file exists anywhere under `packages/px4/` or
+`third-party/px4/px4-rs/`. The ROS↔uORB mapping is owned by px4-rs codegen —
+generated topics carry a `TOPICS` const and resolve their canonical
+`orb_metadata` at runtime via `px4_rs_find_orb_meta()`
+(`crates/px4-msg-codegen/{generated/*.rs,src/emit.rs}`). nano-ros needs no
+static ROS↔uORB map, so there is nothing to resync. No file to create.
 
 ## Acceptance
 
@@ -124,7 +125,8 @@ all, or whether the px4-rs canonical-resolution path already covers it.
   PX4 module build.
 - `MESSAGE_VERSION` is captured on the message model (232.2).
 - The standalone fallback `orb_metadata` matches the 6-field v1.16 layout.
-- PX4-Autopilot pinned to a stable tag; `topics.toml` resynced.
+- PX4-Autopilot pinned to a stable tag. (`topics.toml` resync — 232.6 — dropped:
+  no such file exists; px4-rs owns the ROS↔uORB map at runtime.)
 - A uORB smoke/register test (extend `examples/px4/cpp/uorb/nros-register-check`)
   exercises a versioned topic.
 
