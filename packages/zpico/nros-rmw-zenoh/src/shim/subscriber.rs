@@ -861,7 +861,6 @@ impl ZenohSubscriber {
 
         Ok(Some((len, message_info)))
     }
-
 }
 
 impl Subscriber for ZenohSubscriber {
