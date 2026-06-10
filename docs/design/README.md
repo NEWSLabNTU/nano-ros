@@ -40,7 +40,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0011 | [px4-rmw-uorb](0011-px4-rmw-uorb.md) | Stable | PX4 uORB RMW backend |
 | 0031 | [rmw-selection-and-lowering](0031-rmw-selection-and-lowering.md) | Stable | RMW declared (system.toml/flag) + lowered per language; per-deploy |
 | 0035 | [rmw-vtable-abi](0035-rmw-vtable-abi.md) | Draft | frozen 34-slot RMW vtable ABI + append-only rule + NULL contract + `abi_version` |
-| 0038 | [zero-copy-data-transport](0038-zero-copy-data-transport.md) | Draft | single-copy receive: shared slot pool (runtime QoS depth) + in-place dispatch; removes copy #1 + arena buffer (issue #8) |
+| 0038 | [zero-copy-data-transport](0038-zero-copy-data-transport.md) | Draft | single-copy receive: size-class slot pools (per-sub QoS-depth budget) + in-place dispatch; removes copy #1 + arena buffer (issue #8) |
 
 ### Platform, board & toolchain
 

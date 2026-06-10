@@ -4,8 +4,9 @@ title: Two-copy receive path and static buffer pre-allocation at scale
 status: open
 type: tech-debt
 area: rmw
-related: [issue-0007, phase-228, phase-229, rfc-0033, rfc-0038]
+related: [issue-0007, phase-228, phase-229, phase-231, rfc-0033, rfc-0038]
 design-of-record: rfc-0038
+tracked-by: phase-231
 ---
 
 > **Design-of-record: [RFC-0038 — Zero-copy data transport](../design/0038-zero-copy-data-transport.md).**

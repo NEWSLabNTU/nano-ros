@@ -4,7 +4,7 @@ title: "Zero-copy data transport — shared slot pool + in-place receive dispatc
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: []
+implements-tracked-by: [phase-231]
 supersedes: []
 superseded-by: null
 ---
@@ -22,10 +22,12 @@ for collapsing the redundant copy and the redundant buffer:
    (the existing `Subscriber::process_raw_in_place` borrow), deleting the
    executor's second buffering layer (the arena `BufferStrategy`). This removes
    **copy #1** (ring → arena) and the arena receive buffer.
-2. **Replace per-subscriber fixed rings** with **one shared slot pool** drawn
-   per-subscription up to its runtime QoS depth (drop-oldest), so static RAM is
-   `MAX_HISTORY × slot` (shared) instead of `MAX_SUBS × DEPTH × slot` (per-sub).
-   This is the scaling fix for large messages.
+2. **Replace per-subscriber fixed rings** with **size-class slot pools**
+   (`small` / `large`) drawn per-subscription up to its runtime QoS depth
+   (drop-oldest), so static RAM is `Σ_class (N × slot_size)` (shared within a
+   class) instead of `MAX_SUBS × DEPTH × largest_slot` (per-sub). The per-sub
+   depth budget isolates subscribers; pools sized `≥ Σ(depths)` guarantee no
+   cross-sub starvation. This is the scaling fix for large messages.
 
 The lifetime guard is the backend's slot-ownership protocol: the consumer
 (executor) controls slot release (after the callback returns); the producer never
@@ -194,28 +196,57 @@ backend is forced to populate it.
 ## Design — Form B (refined)
 
 ```
-Network → [shared slot pool] → in-place deserialize + user callback → release slot
-          (transport writes here)  (borrow window = callback scope)
+Network → [size-class slot pool] → in-place deserialize + user callback → release slot
+          (transport writes here)    (borrow window = callback scope)
+          per-sub depth budget = isolation
 ```
 
 The data plane is **backend-internal**; the executor sees only the two trait
-methods above. D1 (pool) and D2 (dispatch loop) are described together for
+methods above. D1 (pools) and D2 (dispatch loop) are described together for
 clarity, but D1 is per-backend and optional while D2 is the one executor change.
 
-### D1. Shared receive slot pool (replaces per-sub fixed rings)
+### D1. Size-class slot pools with a per-subscription depth budget
 
-Replace the per-subscriber fixed ring
-(`[[u8; SIZE]; DEPTH]` × `MAX_SUBSCRIBERS`) with a single backend-owned pool of
-`MAX_HISTORY` slots of `SLOT_SIZE` bytes, plus a parallel attachment slot array.
-Each slot carries `{ len, owner, timestamp, attachment }`. A subscription draws
-slots from the pool up to its **runtime QoS depth**; on overflow it recycles its
-own oldest slot (drop-oldest by timestamp). Static RAM becomes
-`MAX_HISTORY × SLOT_SIZE` (shared) regardless of subscriber count or per-sub
-depth. `MAX_HISTORY`, `SLOT_SIZE`, `MAX_SUBSCRIBERS` stay build-time knobs
-(env → generated consts, as today), but the *per-sub* depth is runtime.
+Replace the per-subscriber fixed ring (`[[u8; SIZE]; DEPTH]` × `MAX_SUBSCRIBERS`)
+with a small set of backend-owned **size-class pools**. Each pool is `N` slots of
+a fixed `slot_size`, plus a parallel attachment slot array; each slot carries
+`{ len, owner, timestamp, attachment }`.
 
-This mirrors micro-XRCE `custom_static_buffers` and rmw_zenoh's per-sub deque,
-fused into one shared allocation.
+- **Size classes (resolves Q1).** Two classes by default — `small` and `large` —
+  split by a build-time threshold (e.g. 2 KB). A subscription is routed to a
+  class at codegen by its **bounded max-serialized-size** (known from RFC-0033
+  capacity config). This avoids forcing every slot to fit the largest message: a
+  64-byte IMU subscriber draws from `small`, not from a 64 KB `large` slot. Slot
+  sizes and per-class counts are build-time knobs; the class count stays at 2 by
+  default (do **not** expand to a `#QoS × #size` matrix — see Q4).
+- **Per-subscription depth budget (resolves Q4 / the isolation mechanism).**
+  Within its class pool, a subscription draws slots up to its **runtime
+  `KEEP_LAST(N)` depth** and no further. A flooding `KEEP_LAST(1)` best-effort
+  sensor holds exactly one slot — it recycles *its own* oldest slot
+  (drop-oldest), never reaching into another subscriber's budget. The depth
+  budget — not a separate QoS pool — is the cross-subscriber isolation.
+- **Sizing default: guaranteed.** Size each class pool `≥ Σ(depths of its member
+  subscriptions)` so every subscription is guaranteed its depth and the only drop
+  is the intended per-sub `KEEP_LAST(N)` recycle — **zero** cross-subscriber
+  starvation. Codegen knows the membership and depths, so it can size the pools
+  (or warn) at bake time.
+- **Overcommit + reliable reservation: opt-in.** A tight-RAM deployment may size
+  a pool **below** `Σ(depths)`; then subscribers compete and drop-oldest can
+  evict across subscriptions. **Only in that overcommitted mode** does a reserved
+  `reliable` sub-pool earn its keep (reserve slots for `RELIABLE` traffic so a
+  best-effort flood cannot evict control messages). This is a documented opt-in
+  knob, not the default, so the common case keeps the pool count low and the
+  statistical-multiplexing benefit of sharing within a class.
+
+Static RAM becomes `Σ_class (N_class × slot_size_class)` — independent of
+subscriber count and bounded by the guaranteed/overcommit choice, not by
+`MAX_SUBS × DEPTH × largest_slot`. The 64 KB-image config sizes only the `large`
+pool's few slots.
+
+This fuses micro-XRCE's shared static pool (runtime per-entity depth, static
+total) with rmw_zenoh's per-sub `KEEP_LAST` budget, partitioned by size class.
+**Backend-internal and optional**: a backend that keeps per-sub buffers still
+works via the fallback (C2); the pools are a zpico-first storage refactor.
 
 ### D2. In-place arena dispatch (removes copy #1 + the arena buffer)
 
@@ -352,10 +383,16 @@ one receive design across all links.
   method (attachment) is added alongside, defaulting to the same unsupported
   error so existing backends compile untouched.
 - **Latest-value (`KEEP_LAST(1)`) semantics.** The `Triple` buffer gave
-  drop-old/keep-newest. The shared pool's drop-oldest-by-timestamp reproduces
-  KEEP_LAST(N) FIFO; KEEP_LAST(1) collapses to a single slot recycled per
-  message, which is the same observable latest-value behavior for a
-  single-consumer executor.
+  drop-old/keep-newest. The per-sub depth budget with drop-oldest-by-timestamp
+  reproduces KEEP_LAST(N) FIFO; KEEP_LAST(1) collapses to a single slot recycled
+  per message, the same observable latest-value behavior for a single-consumer
+  executor.
+- **Back-pressure policy (resolved Q4).** Overflow **drops-oldest at the pool**,
+  never blocks the shared transport thread (blocking it = head-of-line blocking
+  across every subscription on that thread). RELIABLE is honored **upstream**
+  (zenoh reliable channel / DDS history retransmit), not by stalling the consumer
+  — matching rmw_zenoh and micro-XRCE. With pools sized `≥ Σ(depths)` the only
+  drop is the intended per-sub `KEEP_LAST(N)`.
 - **Attachment / metadata.** The attachment ring must move with the payload slot
   (co-located `{payload, attachment}` per pool slot), so
   `try_recv_raw_with_info` / `process_raw_in_place_with_info` borrow both together.
@@ -368,8 +405,8 @@ one receive design across all links.
 
 | Backend | `process_raw_in_place` today | Plan |
 | --- | --- | --- |
-| zpico (zenoh-pico) | implemented (subscriber.rs:1043) | shared pool (D1) + arena dispatch (D2); primary target |
-| xrce (micro-XRCE) | falls back | shared pool already its native model; add in-place take or keep buffered fallback |
+| zpico (zenoh-pico) | implemented (subscriber.rs:1043) | size-class pools (D1) + arena dispatch (D2); primary target |
+| xrce (micro-XRCE) | falls back | shared static pool already its native model; add in-place take or keep buffered fallback |
 | cyclonedds | falls back | buffered fallback first; native loan path is a later follow-up |
 | cffi (C ABI) | falls back | add an append-to-tail in-place vtable slot (RFC-0035); else buffered fallback |
 | mock | falls back | buffered fallback (test-only) |
@@ -395,31 +432,45 @@ until individually migrated.
   internally without the user-facing borrow/return contract. Revisit if a
   user-facing loaned-message API is wanted.
 
-## Open questions
+## Resolved decisions
 
-1. **Pool sizing default.** `MAX_HISTORY` and `SLOT_SIZE` defaults that balance
-   small-message subscriber count vs large-message depth. micro-XRCE uses 8 total
-   slots; is a single `SLOT_SIZE` right, or should the pool be tiered by size
-   class (small vs large slots)?
-2. **Fallback vs full migration.** Ship C2b (buffered fallback for non-zpico) and
-   migrate backends lazily, or block on all-backend in-place support?
-3. **cffi in-place ABI shape.** What does the in-place take slot look like across
-   the C ABI — a callback-taking `process_raw_in_place(ctx, fn)` slot, vs a
-   borrow/return slot pair? (RFC-0035 append-to-tail.)
-4. **Producer back-pressure policy.** Block the transport thread vs drop-oldest
-   when a callback holds the pool full — per-QoS (RELIABLE vs BEST_EFFORT)?
-5. **Interaction with multi-tier executors (Phase 228).** A pool slot borrowed by
-   a callback on one tier while another tier's transport thread produces — the
-   slot allocator guard must be tier-safe (it already must be thread-safe).
-6. **Polled-pump contract (T3).** Should `process_raw_in_place` itself pump a
-   polled link, or should a separate `spin`-time drain step own the
-   read+linearize so the method stays "dispatch only"? Affects single-threaded
-   bare-metal serial/UDP backends and the method's documented contract.
-7. **Linearization for scatter-gather backends (T1).** For a backend whose link
-   delivers non-contiguous payloads (zenoh `Bytes`, fragmented datagrams), is the
-   one-linearization-into-slot acceptable as the backend's responsibility, or
-   should the trait expose a chunked/segmented in-place variant to avoid even
-   that copy for very large messages? (Defaults to "backend linearizes.")
+All seven open questions are resolved (2026-06; discussion folded in here):
+
+1. **Pool sizing → size-class pools (D1).** Not a single `SLOT_SIZE`. Two classes
+   (`small` / `large`) split by a build-time threshold; a subscription is routed
+   by its bounded max-serialized-size (RFC-0033). Avoids large-slot waste for
+   small messages while keeping the shared-pool RAM win. No `#QoS × #size` matrix.
+2. **Rollout → incremental + buffered fallback.** Ship zpico first; the buffered
+   dispatch is retained as the fallback for backends that do not (yet) implement
+   the in-place methods. No flag-day; mock keeps the fallback permanently.
+3. **cffi ABI → one optional callback-taking slot.**
+   `process_raw_in_place(handle, ctx, fn(ctx, ptr, len)) -> bool`, mirroring the
+   Rust `FnOnce` trait so the borrow cannot escape (a borrow/return pair would
+   leak/UB if the caller forgets to return). Append-to-tail (RFC-0035); NULL →
+   buffered fallback. Documented constraint: the in-place callback must not
+   re-enter the *same* subscriber's receive (the backend holds its slot guard
+   across it).
+4. **Back-pressure → drop-oldest, never block the consumer.** Overflow drops at
+   the pool; the shared transport thread is never blocked (head-of-line
+   blocking). RELIABLE is honored upstream (reliable channel / DDS history), not
+   by stalling the consumer. The per-sub depth budget is the isolation; pools
+   sized `≥ Σ(depths)` make drops purely the intended `KEEP_LAST(N)` recycle.
+   Overcommit + a reserved `reliable` sub-pool is a documented opt-in for
+   tight-RAM deployments (the only case QoS-partitioning earns its keep).
+5. **Multi-tier (Phase 228) → no new problem.** 228.C pins a node (and its
+   subscriptions) to one tier, so per-subscription consumption stays
+   single-consumer even multi-tier; only the cross-subscription pool allocator is
+   cross-tier contention, and it already requires the thread-safe (`critical_section`)
+   guard. Depends on the 228 node-pinning invariant.
+6. **Polled vs threaded (T3) → `process_raw_in_place` is dispatch-only.** The
+   method dispatches at most one *staged* message, uniform across backends. Link
+   advancement (read + linearize) stays in the existing per-backend spin/poll
+   hook (zpico RX thread for threaded; `zp_read`/`select` at spin for polled). The
+   method is not overloaded with pumping.
+7. **Scatter-gather (T1) → backend linearizes; no chunked trait variant.** The
+   trait stays `&[u8]`; backends with non-contiguous payloads linearize into the
+   slot (rmw_zenoh_cpp does the same with `as_vector`). A segmented in-place
+   variant is revisited only on a profiled fragmented hot path.
 
 ## Relationship to other work
 
@@ -431,19 +482,21 @@ until individually migrated.
   ABI change governed by 0035's evolution rule.
 - **RFC-0006** — C-ABI-is-canonical; the in-place path must be expressible across
   the vtable, not Rust-only.
-- A `docs/roadmap/` phase doc will carry the work items + acceptance tests and
-  name this RFC in its `Implements:` header (per the RFC → roadmap → code flow).
+- **Phase 231** (`docs/roadmap/phase-231-zero-copy-receive.md`) carries the work
+  items + acceptance tests and names this RFC in its `Implements:` header (per the
+  RFC → roadmap → code flow). This RFC flips to **Stable** when Phase 231 lands.
 
 ## Acceptance (for the implementing phase)
 
 - Default subscription receive on zpico performs **one** data-plane copy
   (transport → pool slot), with owned-message CDR as the only remaining copy and
   borrowed-message dispatch as zero data-plane copy.
-- Static receive RAM is `MAX_HISTORY × SLOT_SIZE` (shared), independent of
-  subscriber count and per-sub QoS depth; the 64 KB-image config no longer scales
-  with `MAX_SUBSCRIBERS × DEPTH`.
-- Per-subscription `KEEP_LAST(N)` is honored (N-deep FIFO, drop-oldest) from the
-  shared pool.
+- Static receive RAM is `Σ_class (N × slot_size)` (shared within each size
+  class), independent of subscriber count; the 64 KB-image config sizes only the
+  `large` pool's few slots, not `MAX_SUBSCRIBERS × DEPTH × largest_slot`.
+- Per-subscription `KEEP_LAST(N)` is honored (N-deep, drop-oldest) from the
+  subscription's size-class pool; with pools sized `≥ Σ(depths)` there is no
+  cross-subscriber starvation.
 - Non-zpico backends keep working via buffered fallback; no regression.
 - `just ci` green; the existing `lending` / safety-e2e in-place tests pass
   against the new default dispatch.
