@@ -102,11 +102,16 @@ jobs:
       # `px4-rs` readable (cargo load gate); `zpico-sys/build.rs` compiles
       # zenoh-pico + mbedtls C sources; `xrce-sys/build.rs` compiles micro-cdr
       # + micro-xrce-dds-client C sources. The clippy clean workspace pass
-      # exercises every build.rs that participates, so it needs all four.
+      # exercises every build.rs that participates, so it needs them all —
+      # including cyclonedds-src: `check-workspace-all`'s HOST clippy builds
+      # cyclonedds-sys, whose build.rs panics without the
+      # `third-party/dds/cyclonedds` submodule (the embedded clippy excludes it,
+      # but the host pass does not). host-unit-tests already provisions it.
       - name: Provision workspace sources via nros
         run: |
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \
-                     --source micro-cdr --source micro-xrce-dds-client
+                     --source micro-cdr --source micro-xrce-dds-client \
+                     --source cyclonedds-src
 
       - name: just check-workspace-all (host + embedded clippy + nightly fmt)
         run: just check-workspace-all
