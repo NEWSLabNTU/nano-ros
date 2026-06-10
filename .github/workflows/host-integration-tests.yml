@@ -123,11 +123,14 @@ jobs:
 
       # `test-integration` has `build-zenohd` as a prereq — it spawns
       # zenohd to back the Phase 211 / Phase 212 host integration tests.
-      # `just test-integration` chains the build itself; keeping the
-      # explicit step makes the failure surface obvious if zenohd build
-      # ever breaks (vs. a confusing "test-integration" red).
-      - name: Build zenohd
-        run: just build-zenohd
+      # Provision the prebuilt router from the SDK index up front (the
+      # source-build path in `build-zenohd` needs the zenoh submodule, which
+      # this lane does not check out). `build.sh` then short-circuits on the
+      # present binary, so the recipe prereq is satisfied. Keeping the
+      # explicit step makes a provisioning failure surface obviously (vs. a
+      # confusing "test-integration" red).
+      - name: Provision zenohd
+        run: just zenohd setup
 
       - name: just test-integration
         # Source the AMENT prefix so `nros generate-rust` (used by some

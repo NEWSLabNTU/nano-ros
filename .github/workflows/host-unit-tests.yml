@@ -1,7 +1,9 @@
 # Host unit-test lane (Phase 196 — CI coverage gap).
 #
 # Runs `just test-unit` — the workspace unit tests (`cargo nextest --workspace
-# --exclude nros-tests`), the cheap host tier (no QEMU / zenohd / ROS / SDKs).
+# --exclude nros-tests`), the cheap host tier (no QEMU / ROS / SDKs). A
+# prebuilt zenohd IS provisioned (the workspace suite includes
+# nros-rmw-zenoh's router-backed `status_events_matrix`).
 # Closes the gap where no GitHub Actions lane ran the host test suite: core-libs
 # only `cargo check`s the no_std crates, dep-chain only resolves, and the
 # per-platform lanes build/boot fixtures — none execute the workspace unit tests,
@@ -95,6 +97,13 @@ jobs:
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \
                      --source micro-cdr --source micro-xrce-dds-client \
                      --source cyclonedds-src
+
+      # The workspace unit suite includes nros-rmw-zenoh's
+      # `status_events_matrix`, which opens a client-mode session against a
+      # local zenohd (build/zenohd/zenohd). Provision the prebuilt router so
+      # the test runs here instead of panicking on a missing binary.
+      - name: Provision zenohd
+        run: just zenohd setup
 
       - name: just test-unit
         run: just test-unit

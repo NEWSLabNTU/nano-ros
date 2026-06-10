@@ -30,6 +30,15 @@ if [ "$1" = "--clean" ]; then
     exit 0
 fi
 
+# Already provisioned (e.g. by `just zenohd setup` / `nros setup --tool
+# zenohd`)? Honour the existing binary so `build-zenohd` is idempotent and a
+# prior prebuilt-fetch step satisfies it — the host CI lanes provision zenohd
+# up front, so the `build-zenohd` recipe prereq must not re-fail here.
+if [ -x "$BUILD_DIR/zenohd" ]; then
+    echo "zenohd present: $BUILD_DIR/zenohd"
+    exit 0
+fi
+
 # Check prerequisites
 if ! command -v cargo &>/dev/null; then
     echo "Error: cargo not found"
