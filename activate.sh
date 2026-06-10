@@ -86,7 +86,9 @@ _nros_sdk="${NROS_HOME:-$HOME/.nros}/sdk"
 if [ -d "$_nros_sdk" ]; then
     for _nros_tcbin in "$_nros_sdk"/*/*/bin "$_nros_sdk"/*/bin; do
         [ -d "$_nros_tcbin" ] || continue
-        if ls "$_nros_tcbin"/*-gcc >/dev/null 2>&1; then
+        # Cross-gcc toolchains, plus build host tools the RTOS `make` invokes by
+        # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c).
+        if ls "$_nros_tcbin"/*-gcc >/dev/null 2>&1 || [ -x "$_nros_tcbin/genromfs" ]; then
             export PATH="$_nros_tcbin:$PATH"
         fi
     done
