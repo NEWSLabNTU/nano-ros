@@ -653,21 +653,21 @@ size_t nros_heap_used_bytes(void);
  */
 size_t nros_heap_peak_bytes(void);
 
-extern void *pvPortMalloc(uint32_t size);
+extern void *nros_platform_alloc(size_t size);
 
-extern void vPortFree(void *ptr);
+extern void nros_platform_dealloc(void *ptr);
 
-extern void *k_malloc(size_t size);
+extern void *nros_platform_alloc(size_t size);
 
-extern void k_free(void *ptr);
+extern void nros_platform_dealloc(void *ptr);
 
 extern uint32_t nros_zephyr_irq_lock(void);
 
 extern void nros_zephyr_irq_unlock(uint32_t key);
 
-extern void *z_malloc(size_t size);
+extern void *nros_platform_alloc(size_t size);
 
-extern void z_free(void *ptr);
+extern void nros_platform_dealloc(void *ptr);
 
 /**
  * Create a guard condition and register it with the executor.

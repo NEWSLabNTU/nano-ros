@@ -75,22 +75,25 @@ mod heap_stats {
     }
 }
 
-// FreeRTOS global allocator: wraps pvPortMalloc/vPortFree for alloc on no_std.
-// FreeRTOS heap_4 returns 8-byte aligned pointers, sufficient for all nros types.
+// FreeRTOS global allocator (C/C++ API path). Phase 230 1d / RFC-0034 D6:
+// routes through the platform ABI (`nros_platform_alloc` → `pvPortMalloc`)
+// rather than calling `pvPortMalloc` directly, so Rust `Box`/`Vec` and
+// zenoh-pico's C `z_malloc` share the one `nros_platform_alloc` funnel and
+// the unified heap query (`nros_platform_heap_used_bytes`, 1b) is exact.
 #[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-freertos"))]
 mod freertos_alloc {
     use core::alloc::{GlobalAlloc, Layout};
 
     unsafe extern "C" {
-        fn pvPortMalloc(size: u32) -> *mut core::ffi::c_void;
-        fn vPortFree(ptr: *mut core::ffi::c_void);
+        fn nros_platform_alloc(size: usize) -> *mut core::ffi::c_void;
+        fn nros_platform_dealloc(ptr: *mut core::ffi::c_void);
     }
 
     struct FreeRtosAllocator;
 
     unsafe impl GlobalAlloc for FreeRtosAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            let p = unsafe { pvPortMalloc(layout.size() as u32) as *mut u8 };
+            let p = unsafe { nros_platform_alloc(layout.size()) as *mut u8 };
             #[cfg(feature = "alloc-stats")]
             if !p.is_null() {
                 crate::heap_stats::STATS.on_alloc(layout.size());
@@ -99,7 +102,7 @@ mod freertos_alloc {
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-            unsafe { vPortFree(ptr as *mut core::ffi::c_void) }
+            unsafe { nros_platform_dealloc(ptr as *mut core::ffi::c_void) }
             #[cfg(feature = "alloc-stats")]
             crate::heap_stats::STATS.on_dealloc(_layout.size());
         }
@@ -117,16 +120,19 @@ mod freertos_alloc {
 mod zephyr_alloc {
     use core::alloc::{GlobalAlloc, Layout};
 
+    // Phase 230 1d / RFC-0034 D6 — route through the platform ABI
+    // (`nros_platform_alloc` → `k_malloc`) so the C/C++ API Rust heap shares
+    // the funnel with zenoh-pico's C side.
     unsafe extern "C" {
-        fn k_malloc(size: usize) -> *mut core::ffi::c_void;
-        fn k_free(ptr: *mut core::ffi::c_void);
+        fn nros_platform_alloc(size: usize) -> *mut core::ffi::c_void;
+        fn nros_platform_dealloc(ptr: *mut core::ffi::c_void);
     }
 
     struct ZephyrAllocator;
 
     unsafe impl GlobalAlloc for ZephyrAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            let p = unsafe { k_malloc(layout.size()) as *mut u8 };
+            let p = unsafe { nros_platform_alloc(layout.size()) as *mut u8 };
             #[cfg(feature = "alloc-stats")]
             if !p.is_null() {
                 crate::heap_stats::STATS.on_alloc(layout.size());
@@ -135,7 +141,7 @@ mod zephyr_alloc {
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-            unsafe { k_free(ptr as *mut core::ffi::c_void) }
+            unsafe { nros_platform_dealloc(ptr as *mut core::ffi::c_void) }
             #[cfg(feature = "alloc-stats")]
             crate::heap_stats::STATS.on_dealloc(_layout.size());
         }
@@ -201,22 +207,25 @@ mod zephyr_critical_section {
     }
 }
 
-// ThreadX global allocator: wraps z_malloc/z_free which delegate to
-// tx_byte_allocate/tx_byte_release via nros-platform-threadx.
+// ThreadX global allocator (C/C++ API path). Phase 230 1d / RFC-0034 D6 —
+// route through the platform ABI directly (`nros_platform_alloc` →
+// `tx_byte_allocate`). Previously called `z_malloc`, which on ThreadX is the
+// alias TU forwarding to the same symbol; the direct call drops the
+// indirection and keeps every owned-allocator platform on one funnel.
 #[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-threadx"))]
 mod threadx_alloc {
     use core::alloc::{GlobalAlloc, Layout};
 
     unsafe extern "C" {
-        fn z_malloc(size: usize) -> *mut core::ffi::c_void;
-        fn z_free(ptr: *mut core::ffi::c_void);
+        fn nros_platform_alloc(size: usize) -> *mut core::ffi::c_void;
+        fn nros_platform_dealloc(ptr: *mut core::ffi::c_void);
     }
 
     struct ThreadXAllocator;
 
     unsafe impl GlobalAlloc for ThreadXAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            let p = unsafe { z_malloc(layout.size()) as *mut u8 };
+            let p = unsafe { nros_platform_alloc(layout.size()) as *mut u8 };
             #[cfg(feature = "alloc-stats")]
             if !p.is_null() {
                 crate::heap_stats::STATS.on_alloc(layout.size());
@@ -225,7 +234,7 @@ mod threadx_alloc {
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-            unsafe { z_free(ptr as *mut core::ffi::c_void) }
+            unsafe { nros_platform_dealloc(ptr as *mut core::ffi::c_void) }
             #[cfg(feature = "alloc-stats")]
             crate::heap_stats::STATS.on_dealloc(_layout.size());
         }

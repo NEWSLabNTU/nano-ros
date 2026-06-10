@@ -202,9 +202,30 @@ reports a true heap total, closing #6 everywhere (not just Zephyr).
   Ready-to-redo edits (reverted): freertos `system.c` `#ifndef` guard;
   `platform_aliases.c` `NROS_ZP_ALIAS_MEMORY_ONLY` guards; `runner.rs` alias
   gate + `Z_FEATURE_NROS_PLATFORM_ALLOC` define — plus the feature-chain fix.
-- **Wave 1d — optional Rust global allocator (D6):** `nros-global-alloc`
-  feature + board selection for the owned-allocator platforms
-  (bare-metal/FreeRTOS/ThreadX); at-most-one-provider guard.
+- **Wave 1d — optional Rust global allocator (D6)** — largely landed
+  (2026-06):
+  - The optional, board-selected provider **already existed**:
+    `nros-platform`'s `global-allocator` feature installs
+    `PlatformGlobalAllocator` → `<ConcretePlatform as PlatformAlloc>` →
+    `nros_platform_alloc` (off by default; the example/board crate opts in).
+    `nros-platform-mps2-an385` similarly exposes `global-alloc` →
+    `FreeListHeap` (bare-metal single heap). So D6's "optional, owned where
+    the slot is free, off where a framework owns it" is satisfied.
+  - **Funnel fix (landed):** `nros-c`/`nros-cpp`'s per-platform
+    `#[global_allocator]`s (FreeRtos/Zephyr/ThreadX, the C/C++ API path) now
+    call `nros_platform_alloc`/`_dealloc` instead of `pvPortMalloc`/
+    `k_malloc`/`z_malloc` directly — one funnel (Mode A: exact heap stats
+    via 1b). Verified: the no-direct-kernel-alloc inventory dropped 40 → 20
+    (both crates cleared). Embedded link verified in their lanes.
+  - **At-most-one-provider:** enforced by **rustc** (a second
+    `#[global_allocator]` in the link is a hard compile error). The
+    providers (`nros-platform/global-allocator`,
+    `nros-platform-mps2/global-alloc`, `nros-c`/`nros-cpp` per-platform,
+    `zpico-alloc/global-alloc`) are mutually exclusive by the platform-`*`
+    feature compile-error + opt-in features; a board enables exactly one.
+  - **Remaining:** real bare-metal `FreeListHeap::used` for the 1b heap
+    query (currently 0-stub via the trait default); optional `just check`
+    enumerator of `#[global_allocator]` sites for earlier auditability.
 - **Wave 1e — board-crate task-context sites + flip the lint hard.**
 
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
