@@ -80,6 +80,15 @@ So the agent stops delivering to a client's datareader **whenever that same
 client/session also holds a datawriter** — the DDS reader↔writer match for that
 client's reader never produces `on_data_available`. Deterministic (0/8).
 
+Agent internals: each datareader gets a dedicated read thread
+(`include/uxr/agent/reader/Reader.hpp:102` → `read_task` → `read_fn`) that
+`take()`s from its Fast-DDS DataReader. `read_fn` = 0 means that Fast-DDS
+DataReader never received — i.e. it never matched the external writer — so the
+failure is at the **Fast-DDS matching** layer for the mixed-direction client's
+reader, not in `nros-rmw-xrce`. (Confirming whether it is Fast-DDS intra-process
+discovery vs the agent's ProxyClient endpoint setup needs Fast-DDS-level logs —
+`export FASTDDS_…` — a further layer down.)
+
 `nros-rmw-xrce` runs **one** reliable output stream + one reliable input stream
 per session (`session.c:381` `uxr_create_output_reliable_stream` /
 `uxr_create_input_reliable_stream`). Both the subscriber's `request_data` and
