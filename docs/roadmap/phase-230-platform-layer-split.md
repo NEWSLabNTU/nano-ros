@@ -269,6 +269,62 @@ commit). 1c.4 runtime E2E is the gating acceptance on the CI lane.
   nros-owned surface clean, 230.0.2 flips HARD by default (230.1.7). Embedded
   ELF link verification of the board edits is CI-gated (full firmware build).
 
+- **Wave 1f — extend the alloc funnel to ThreadX + Zephyr (PLANNED, post-1c).**
+  Replicates the 1c FreeRTOS pattern — fork-guard the vendored `z_malloc` +
+  memory-only alias + board `platform-aliases` + provider `nros_platform_alloc`
+  — with per-RTOS deltas. Gate everything on `CARGO_FEATURE_PLATFORM_ALIASES`
+  exactly as 1c, so a node that drops `platform-aliases` keeps its vendored
+  heap (no undefined `z_malloc`).
+
+  **ThreadX.** The alias TU is *already compiled* for ThreadX (the runner.rs
+  alias gate allows non-FreeRTOS; ThreadX builds it with `NROS_PLATFORM_ALIASES`
+  + `NROS_ZP_ALIAS_OPAQUE_NET` + `NROS_PLATFORM_ALIASES_SKIP_TASK`), so the
+  alias `z_malloc → nros_platform_alloc` is emitted today — but the vendored
+  `system/threadx/system.c` `z_malloc` (→ `tx_byte_allocate`) co-exists and
+  wins/ties under `--allow-multiple-definition`. Steps:
+  1. Fork-guard the vendored ThreadX `z_malloc`/`z_realloc`/`z_free` behind
+     `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC` (same edit as 1c, in
+     `system/threadx/system.c`).
+  2. `runner.rs` Step 6.5: also define `Z_FEATURE_NROS_PLATFORM_ALLOC` on the
+     ThreadX `build_zenoh_pico_unified` build (extend the `use_freertos`
+     condition to `|| use_threadx`), coupled to `CARGO_FEATURE_PLATFORM_ALIASES`.
+     No new alias-gate branch needed — ThreadX already compiles the full alias;
+     once the vendored def is guarded out, the alias's `z_malloc` is the only
+     definition.
+  3. Enable `zpico-sys/platform-aliases` on the ThreadX board(s)
+     (`nros-board-threadx*`) if off — **verify current state** (the FreeRTOS
+     board had it off via `default-features = false`; ThreadX likely the same).
+  4. **Remove the dead weak-`z_malloc`/`z_free` footgun** in
+     `nros-platform-threadx/src/platform.c` (`__attribute__((weak)) z_malloc`,
+     lines ~114-118) — it is silently shadowed by the vendored strong def and
+     is superseded by the guard+alias mechanism.
+  5. Confirm `nros-platform-threadx`'s `nros_platform_alloc`
+     (`tx_byte_allocate`-backed) is on the link.
+  - Verify (CI): ThreadX QEMU (riscv64) + threadx-linux link + e2e; `nm`/
+    `objdump` shows zenoh `z_malloc → nros_platform_alloc`.
+
+  **Zephyr (C-side only — Rust allocator stays framework-owned, D6).** zenoh-pico
+  C is built by **Zephyr CMake** (`zephyr/cmake/nros_rmw_zenoh.cmake`), NOT
+  `runner.rs` (which returns early for Zephyr), so the guard define + memory-only
+  alias compile wire into that CMake glue, not Step 6.5. Steps:
+  1. Fork-guard the vendored Zephyr `z_malloc`/`z_realloc`/`z_free` in
+     `system/zephyr/system.c` behind `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC`.
+  2. In `nros_rmw_zenoh.cmake`: define `Z_FEATURE_NROS_PLATFORM_ALLOC` on the
+     zenoh-pico compile and add `platform_aliases.c` (with
+     `NROS_ZP_ALIAS_MEMORY_ONLY`) to the Zephyr source list.
+  3. Ensure `nros-platform-zephyr`'s `nros_platform_alloc` (k_heap, already a
+     Zephyr CMake module) is on the app link.
+  4. `nano-ros` `global-alloc` stays **off** on Zephyr (zephyr-lang-rust owns
+     the Rust `#[global_allocator]`); stats are Mode B via the native
+     `sys_heap` query (already wired — Z5/1b). See the "Concrete Zephyr 230.1
+     steps" block below.
+  - Verify (CI): Zephyr native_sim + QEMU zenoh e2e; the C heap funnels while
+    the framework owns the Rust heap; `sys_heap` reports the unified total.
+
+  Sequenced after 1c lands CI-green (the FreeRTOS lane is the reference
+  validation; do not replicate the pattern across two more CI-gated targets
+  until it is confirmed).
+
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
 > are two allocators and neither is nros's: the `#[global_allocator]` is
 > **zephyr-lang-rust's** (`modules/lang/rust/zephyr/src/alloc_impl.rs` →
