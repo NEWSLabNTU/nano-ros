@@ -33,4 +33,4 @@ firmware example workspaces adopt LTO per-workspace (nuttx already did, out of b
 necessity). Sizes are layout-determined (`size_of::<T>()` ← target triple), so LTO
 never changes them.
 
-See `docs/roadmap/phase-234-enable-lto.md` for full work-item evidence.
+See `docs/roadmap/archived/phase-234-enable-lto.md` for full work-item evidence.

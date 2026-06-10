@@ -1,5 +1,5 @@
 ---
-id: 26
+id: 27
 title: nros-c posix platform headers fail to compile under gcc 14 (riscv NuttX C build)
 status: open
 type: bug
