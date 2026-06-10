@@ -1008,6 +1008,10 @@ impl Subscriber for ZenohSubscriber {
         }
     }
 
+    fn supports_process_in_place(&self) -> bool {
+        true
+    }
+
     fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error> {
         let buffer = self.buf.get();
 

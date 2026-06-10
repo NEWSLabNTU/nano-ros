@@ -374,6 +374,77 @@ pub(crate) unsafe fn sub_buffered_has_data<M, F>(ptr: *const u8) -> bool {
 }
 
 // ============================================================================
+// In-place typed subscription (Phase 231 Wave 0.2 — RFC-0038)
+// ============================================================================
+
+/// In-place typed subscription entry — **no arena buffer**.
+///
+/// Unlike [`SubBufferedEntry`], this carries no trailing `BufferStrategy`: the
+/// callback deserializes directly from the backend's borrowed receive slot via
+/// [`Subscriber::process_raw_in_place`], so copy #1 (ring → arena) and the arena
+/// buffer are both gone. Selected at registration when the backend advertises
+/// `supports_process_in_place()`.
+#[repr(C)]
+pub(crate) struct SubInplaceEntry<M, F> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) callback: F,
+    pub(crate) _phantom: PhantomData<M>,
+}
+
+/// Monomorphized in-place dispatch for typed subscriptions.
+///
+/// Drains all pending messages from the backend, deserializing + invoking the
+/// callback directly from each borrowed slot. Returns `Ok(true)` if any message
+/// was dispatched.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubInplaceEntry<M, F>`.
+pub(crate) unsafe fn sub_inplace_try_process<M, F>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    M: RosMessage,
+    F: FnMut(&M),
+{
+    let entry = unsafe { &mut *(ptr as *mut SubInplaceEntry<M, F>) };
+    // Split-borrow the handle and callback (disjoint fields).
+    let SubInplaceEntry {
+        handle, callback, ..
+    } = entry;
+    let mut did_work = false;
+    loop {
+        let mut deser_err = false;
+        let processed =
+            handle.process_raw_in_place(|raw| match CdrReader::new_with_header(raw) {
+                Ok(mut reader) => match M::deserialize(&mut reader) {
+                    Ok(msg) => (callback)(&msg),
+                    Err(_) => deser_err = true,
+                },
+                Err(_) => deser_err = true,
+            })?;
+        if deser_err {
+            return Err(TransportError::DeserializationError);
+        }
+        if processed {
+            did_work = true;
+        } else {
+            break;
+        }
+    }
+    Ok(did_work)
+}
+
+/// Readiness check for in-place typed subscriptions.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubInplaceEntry<M, F>`.
+pub(crate) unsafe fn sub_inplace_has_data<M, F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubInplaceEntry<M, F>) };
+    entry.handle.has_data()
+}
+
+// ============================================================================
 // Zero-copy raw buffered subscription (Phase 73.10)
 // ============================================================================
 

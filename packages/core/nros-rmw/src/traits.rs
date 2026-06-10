@@ -1445,6 +1445,21 @@ pub trait Subscriber {
         Err(TransportError::MessageTooLarge.into())
     }
 
+    /// Whether this backend implements the in-place dispatch methods
+    /// ([`process_raw_in_place`](Subscriber::process_raw_in_place) /
+    /// [`process_raw_in_place_with_info`](Subscriber::process_raw_in_place_with_info))
+    /// with a real zero-copy borrow.
+    ///
+    /// The executor consults this at subscription registration to choose the
+    /// **in-place** arena dispatch (borrow + deserialize from the backend slot, no
+    /// arena buffer) over the **buffered** dispatch (copy into an arena buffer
+    /// first). Backends that leave the in-place methods at their unsupported
+    /// default return `false` (the default) and keep the buffered path. (RFC-0038,
+    /// Phase 231 Wave 0.2.)
+    fn supports_process_in_place(&self) -> bool {
+        false
+    }
+
     /// In-place processing variant that also surfaces publisher metadata.
     ///
     /// Same borrow contract as

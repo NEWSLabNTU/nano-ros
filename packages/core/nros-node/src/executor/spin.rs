@@ -20,15 +20,16 @@ use super::{
         BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientRawArenaEntry,
         SrvEntry, SrvRawEntry, SubBufferedBorrowedEntry, SubBufferedEntry, SubBufferedRawCEntry,
         SubBufferedRawEntry, SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubInfoEntry,
-        TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry, guard_has_data,
-        guard_try_process, no_pre_sample, service_client_raw_try_process, srv_has_data,
-        srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_borrowed_has_data,
-        sub_buffered_borrowed_try_process, sub_buffered_has_data, sub_buffered_raw_c_has_data,
-        sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
+        SubInplaceEntry, TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry,
+        guard_has_data, guard_try_process, no_pre_sample, service_client_raw_try_process,
+        srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
+        sub_buffered_borrowed_has_data, sub_buffered_borrowed_try_process, sub_buffered_has_data,
+        sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
         sub_buffered_raw_info_c_has_data, sub_buffered_raw_info_c_try_process,
         sub_buffered_raw_info_has_data, sub_buffered_raw_info_try_process,
         sub_buffered_raw_try_process, sub_buffered_try_process, sub_info_has_data,
-        sub_info_pre_sample, sub_info_try_process, timer_try_process,
+        sub_info_pre_sample, sub_info_try_process, sub_inplace_has_data, sub_inplace_try_process,
+        timer_try_process,
     },
     node::NodeHandle,
     spsc_ring::SpscRing,
@@ -2449,6 +2450,39 @@ impl Executor {
                 .create_subscriber(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
+
+        // Phase 231 Wave 0.2 (RFC-0038) — in-place dispatch when the backend
+        // advertises it: deserialize straight from the borrowed receive slot,
+        // no arena buffer (copy #1 removed). Else the buffered path below.
+        {
+            use nros_rmw::Subscriber as _;
+            if handle.supports_process_in_place() {
+                let entry_offset = self.arena_alloc::<SubInplaceEntry<M, F>>()?;
+                unsafe {
+                    let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+                    let entry_ptr = arena_ptr.add(entry_offset) as *mut SubInplaceEntry<M, F>;
+                    core::ptr::write(
+                        entry_ptr,
+                        SubInplaceEntry {
+                            handle,
+                            callback,
+                            _phantom: PhantomData,
+                        },
+                    );
+                }
+                self.entries[slot] = Some(CallbackMeta {
+                    offset: entry_offset,
+                    kind: EntryKind::Subscription,
+                    try_process: sub_inplace_try_process::<M, F>,
+                    has_data: sub_inplace_has_data::<M, F>,
+                    pre_sample: no_pre_sample,
+                    invocation: InvocationMode::OnNewData,
+                    drop_fn: drop_entry::<SubInplaceEntry<M, F>>,
+                });
+                self.apply_node_default_sched(slot, Some(node_id));
+                return Ok(HandleId(slot));
+            }
+        }
 
         let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
 
