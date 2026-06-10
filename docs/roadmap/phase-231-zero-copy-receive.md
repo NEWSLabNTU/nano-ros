@@ -13,7 +13,9 @@ subscription dispatch through the backend's in-place borrow
 boundary grows by exactly two `Subscriber` trait methods plus one optional cffi
 vtable slot; every other backend keeps working via a buffered fallback.
 
-**Status:** Planned
+**Status:** In progress (2026-06-10). Wave 0 (trait surface + executor scaffold)
+landed — dormant pending Wave 1 (CFFI in-place activation, the gate). See the
+Routing-reality note under Work items.
 
 **Priority:** P2 — the two-copy path works today; the win is RAM scaling for large
 messages (the blocker for image/point-cloud on MCUs) + per-message CPU. Not
@@ -32,9 +34,11 @@ per-subscription consumption single-consumer under multi-tier).
 ## Overview
 
 RFC-0038 fixes the design; this phase is the implementation, in waves that each
-build + test independently. The critical path is Waves 1–2 (trait surface + zpico
-pools + arena dispatch behind the fallback); the rest is per-backend migration and
-hardening.
+build + test independently. The critical path is **Wave 0 (executor scaffold,
+done) → Wave 1 (CFFI in-place activation — the gate) → Wave 2 (zpico size-class
+pools, the RAM win)**; Waves 3–4 are acceptance + per-backend migration. The
+executor never holds a Rust `ZenohSubscriber`, so in-place stays dormant until the
+CFFI vtable slot lands (Wave 1) — see the Routing-reality note.
 
 The **anti-bloat contract** (RFC-0038 "RMW interface surface") is the invariant to
 preserve throughout: the executor learns nothing about a backend's buffer model;
@@ -65,81 +69,103 @@ executor arena dispatch:  loop { sub.process_raw_in_place(deserialize+callback) 
 
 ## Work items
 
-### Wave 0 — Trait surface + fallback scaffold  (critical path, no behavior change)
+> **Routing reality (RFC-0038).** The executor's `ConcreteSession` is always
+> `CffiSession` (or `MockSession` in tests), so it holds a `CffiSubscriber` — it
+> **never holds a Rust `ZenohSubscriber` directly**. zenoh-pico is reached through
+> the CFFI vtable. Therefore the **CFFI in-place vtable slot is the activation
+> gate** for any in-place dispatch through the executor (Wave 1 below), not an
+> optional follow-up. The executor scaffold (Wave 0) is correct but **dormant**
+> until that slot exists — which is exactly why it lands first, risk-free.
 
-- **0.1 — Promote `process_raw_in_place_with_info` to the `Subscriber` trait.**
-  Add the attachment-carrying in-place method
-  (`fn process_raw_in_place_with_info(&mut self, f: impl FnOnce(&[u8], &MessageInfo)) -> Result<bool>`)
-  with a default body returning the unsupported error (mirrors the existing
-  `process_raw_in_place` default, traits.rs:1440). Move zpico's inherent
-  `process_raw_in_place_with_info` (subscriber.rs:871) onto the trait impl.
-  *Verify:* `nros-rmw` + all backends compile; existing manual-poll in-place users
-  (handles.rs:1187) unaffected.
-- **0.2 — In-place arena dispatch fn + fallback selection.** Add
-  `sub_inplace_try_process<M, F>` / `sub_inplace_raw_try_process<F>` in `arena.rs`
-  that loop `process_raw_in_place(_with_info)` and deserialize/callback from the
-  borrowed slice. At registration, select in-place dispatch when the backend
-  advertises support, else the existing buffered dispatch. **No pool yet** — the
-  in-place path still borrows zpico's current ring slot (already copy-#1-free for
-  the borrowed slice). *Verify:* a zpico subscription dispatched in-place sees the
-  same messages as buffered; `phase228_tier_filter` + `lending` + safety-e2e tests
-  green.
+### Wave 0 — Trait surface + executor scaffold  ✅ DONE (dormant, no behavior change)
 
-### Wave 1 — zpico size-class pools  (the RAM win)
+- **0.1 ✅ — `process_raw_in_place_with_info` on the `Subscriber` trait.** Added
+  with a default unsupported body; signature `f: impl FnOnce(&[u8],
+  Option<nros_core::MessageInfo>)` (matches the existing attachment model — not
+  `&MessageInfo`). zpico's former inherent method moved onto the trait impl,
+  converting `shim::MessageInfo` → `nros_core::MessageInfo`. All backends compile;
+  no behavior change. (commit `231.0.1`.)
+- **0.2 ✅ — In-place arena dispatch + registration selection.** Added
+  `Subscriber::supports_process_in_place()` (default false; zpico→true),
+  `SubInplaceEntry<M,F>` (no arena buffer), `sub_inplace_try_process` /
+  `sub_inplace_has_data`. `register_subscription_buffered_on` selects in-place
+  when the backend advertises support, else the buffered fallback. Compiles clean
+  (default + `rmw-cffi,platform-posix`); 70 executor unit tests pass (cffi →
+  buffered, unchanged). **Dormant on cffi/mock** until Wave 1. (commit `231.0.2`.)
+  *Deferred to a later wave:* the raw / raw-info dispatch variants
+  (`sub_inplace_raw_*`) — typed path done first.
 
-- **1.1 — Pool data structure.** Replace `SUBSCRIBER_BUFFERS:
+### Wave 1 — CFFI in-place activation (the gate)  ← critical path
+
+This is what makes Wave 0 live. Until it lands, every subscription uses the
+buffered fallback.
+
+- **1.1 — Append the in-place vtable slot.** Add one append-to-tail slot to
+  `nros_rmw_vtable_t` (RFC-0035 + `abi_version` bump):
+  `process_raw_in_place(handle, ctx, fn(ctx, ptr, len)) -> i32` (callback-taking,
+  borrow cannot escape). NULL → buffered fallback per the 0035 NULL contract.
+  Document the no-reenter-same-sub rule. *Verify:* the vtable ABI test +
+  `abi_version` reject on skew.
+- **1.2 — `CffiSubscriber` forwarding.** Override `process_raw_in_place` /
+  `process_raw_in_place_with_info` to invoke the slot (marshal the Rust `FnOnce`
+  through the C `ctx`/`fn`); `supports_process_in_place()` returns whether the
+  slot is non-NULL. *Verify:* a cffi backend with the slot dispatches in-place; a
+  NULL slot falls back.
+- **1.3 — zenoh-pico C backend populates the slot.** Wire the slot to call the
+  Rust `ZenohSubscriber::process_raw_in_place` leaf (Wave 0.1), borrowing the ring
+  slot. *Verify:* a native zpico pub/sub roundtrip through the executor takes the
+  **in-place** path (`supports_process_in_place()` now true) and sees the same
+  messages as buffered; `phase228_tier_filter` + `lending` + safety-e2e green.
+
+### Wave 2 — zpico size-class pools  (the RAM win)
+
+- **2.1 — Pool data structure.** Replace `SUBSCRIBER_BUFFERS:
   [SubscriberBuffer; MAX_SUBSCRIBERS]` (per-sub fixed ring) with two shared pools
   (`small` / `large`), each `N × slot_size` slots + parallel attachment slots;
   per-slot `{ len, owner, timestamp }`. Build-time knobs:
   `ZPICO_POOL_{SMALL,LARGE}_{COUNT,SLOT_SIZE}` + threshold (extend
   `nros-zpico-build`). *Verify:* ghost-type tests updated; static-size assertions.
-- **1.2 — Per-sub depth budget + drop-oldest.** A subscription draws from its
+- **2.2 — Per-sub depth budget + drop-oldest.** A subscription draws from its
   size-class pool up to its `KEEP_LAST(N)`; overflow recycles its own oldest slot
   by timestamp (the micro-XRCE model). The C producer claims a free slot; the
   consumer releases after dispatch. Slot allocator guarded by `critical_section`
   on multi-threaded platforms (SPSC cursor-only on single producer). *Verify:* a
   `KEEP_LAST(1)` flooding sub holds exactly 1 slot and never evicts another sub's
   slots (pool not overcommitted).
-- **1.3 — Size-class routing at registration.** Route each subscription to
+- **2.3 — Size-class routing at registration.** Route each subscription to
   `small`/`large` by its bounded max-serialized-size (RFC-0033 capacity). Bake a
   warning when `Σ(member depths) > pool count` (overcommit). *Verify:* a mixed
   workspace (64 KB image sub + 64 B control sub) places each in the right pool;
   image sub does not consume a `large` slot from the control sub's budget.
-- **1.4 — Delete the arena `BufferStrategy` for in-place subs.** Remove the
+- **2.4 — Delete the arena `BufferStrategy` for in-place subs.** Remove the
   trailing arena buffer from `SubBufferedEntry` / `SubBufferedRawEntry` on the
   in-place path; the entry holds handle + callback only. Keep `BufferStrategy` +
   `drain_into_buffer` alive solely as the fallback for non-in-place backends.
   *Verify:* arena per-entry size shrinks (static-RAM assertion); single-tier byte
   parity for non-subscription entries unchanged.
 
-### Wave 2 — Acceptance + RAM proof
+### Wave 3 — Acceptance + RAM proof
 
-- **2.1 — Single-copy proof.** A test asserting the zpico default receive path
+- **3.1 — Single-copy proof.** A test asserting the zpico default receive path
   performs one data-plane copy (transport → pool slot) — e.g. instrument the
   arena dispatch to confirm no `try_recv_raw`-into-arena memcpy occurs on the
   in-place path. *Verify:* the copy-#1 memcpy is gone for the default path.
-- **2.2 — RAM-scaling proof.** A test/figure showing receive static RAM is
+- **3.2 — RAM-scaling proof.** A test/figure showing receive static RAM is
   `Σ_class (N × slot_size)` and does **not** grow with `MAX_SUBSCRIBERS × DEPTH`;
   the 64 KB-image config sizes only the `large` pool. *Verify:* compile two
   configs (many small subs vs one large sub) and assert the static footprint.
-- **2.3 — QoS depth + isolation.** `KEEP_LAST(N)` honored (N-deep, drop-oldest)
+- **3.3 — QoS depth + isolation.** `KEEP_LAST(N)` honored (N-deep, drop-oldest)
   per subscription from its pool; with `≥ Σ(depths)` no cross-sub starvation under
   a flooding best-effort neighbor. *Verify:* a deterministic flood test.
 
-### Wave 3 — Per-backend migration (incremental, post-MVP)
+### Wave 4 — Other backends (incremental, post-MVP)
 
-- **3.1 — cffi in-place vtable slot.** Append one optional slot to
-  `nros_rmw_vtable_t` (RFC-0035 append-to-tail + `abi_version` bump):
-  `process_raw_in_place(handle, ctx, fn(ctx, ptr, len)) -> bool`. NULL → the
-  runtime uses the buffered fallback. Document the no-reenter-same-sub rule.
-  *Verify:* a cffi backend populating the slot dispatches in-place; a NULL slot
-  falls back.
-- **3.2 — xrce in-place.** micro-XRCE already stages into a shared static pool;
-  expose an in-place take over its `custom_static_buffers` slot. *Verify:* xrce
+- **4.1 — xrce in-place.** micro-XRCE already stages into a shared static pool;
+  populate its in-place vtable slot over `custom_static_buffers`. *Verify:* xrce
   subscription dispatches in-place.
-- **3.3 — cyclonedds / mock.** cyclonedds keeps the buffered fallback (native loan
-  path is a later follow-up); mock keeps the fallback permanently. *Verify:* no
-  regression.
+- **4.2 — cyclonedds / mock.** cyclonedds leaves its slot NULL (buffered fallback;
+  native loan path a later follow-up); mock keeps the fallback permanently.
+  *Verify:* no regression.
 
 ## Out of scope
 

@@ -193,6 +193,33 @@ The cffi C ABI grows by **one optional vtable slot** for the in-place take
 (append-to-tail per RFC-0035); NULL → the runtime uses the buffered fallback. No
 backend is forced to populate it.
 
+### Routing reality — the CFFI vtable is the activation gate
+
+A correction to an earlier framing of this RFC ("zpico first, cffi later"): the
+executor's `ConcreteSession` is **always** `CffiSession` or, in tests,
+`MockSession` (`nros-node/src/session.rs:11/13`). The executor **never holds a
+Rust `ZenohSubscriber` directly** — on native *and* embedded, zenoh-pico is
+reached through the **CFFI vtable** (`CffiSubscriber`). Therefore:
+
+- The arena consults `supports_process_in_place()` / `process_raw_in_place` on
+  the **`CffiSubscriber`**, not on `ZenohSubscriber`. zpico's Rust
+  `process_raw_in_place` is the **leaf** the vtable slot invokes, not a
+  subscriber the executor selects.
+- So the **CFFI in-place vtable slot is the activation gate** for *any* in-place
+  dispatch through the executor — it is on the **critical path**, not an optional
+  follow-up. Until `CffiSubscriber` forwards `process_raw_in_place` to a non-NULL
+  vtable slot (and returns `true` from `supports_process_in_place`), the
+  executor's in-place selection stays dormant and every subscription uses the
+  buffered fallback (which is exactly why landing the executor scaffold first is
+  safe and regression-free).
+- The only backend the executor can hold **without** going through CFFI is
+  `MockSubscriber` (tests). It keeps the buffered fallback.
+
+Net: the activation order is (1) executor scaffold [done], (2) **CFFI vtable slot
++ `CffiSubscriber` forwarding + zenoh-pico C backend impl** [the activation], then
+(3) the size-class pools (D1) underneath. The anti-bloat contract is unchanged —
+the boundary still grows by two trait methods plus one optional vtable slot.
+
 ## Design — Form B (refined)
 
 ```
@@ -372,16 +399,19 @@ one receive design across all links.
   multi-threaded RTOS this is a short critical section or an atomic free-list —
   one per message, off the payload-copy path. Bounded and cheap vs the eliminated
   memcpy.
-- **Backend coverage (incremental, no flag-day).** Only zpico implements
-  `process_raw_in_place`. xrce, cffi (vtable/opaque), cyclonedds, and the mock
-  fall back to the trait default. The buffered dispatch is **retained as a
-  fallback** invoked when the in-place method returns the unsupported error, so
-  each backend opts in independently — zpico first, the rest as follow-ups, no
-  flag-day. cffi gets **one optional** in-place vtable slot (append-to-tail per
-  RFC-0035); **NULL → buffered fallback** per the 0035 NULL contract, so no
-  backend is forced to populate it. The `process_raw_in_place_with_info` trait
-  method (attachment) is added alongside, defaulting to the same unsupported
-  error so existing backends compile untouched.
+- **Backend coverage (incremental, gated on the CFFI slot).** Because the
+  executor holds a `CffiSubscriber` (not `ZenohSubscriber`) for every non-mock
+  backend, the **CFFI in-place vtable slot is the activation gate** — until it
+  exists and `CffiSubscriber` forwards to it, the executor's in-place selection is
+  dormant and everything uses the buffered fallback. The buffered dispatch is
+  **retained as the fallback** invoked when `supports_process_in_place()` is
+  false, so a NULL slot per backend (cyclonedds, an un-migrated xrce) keeps
+  working with no flag-day. cffi gets **one optional** in-place vtable slot
+  (append-to-tail per RFC-0035 + `abi_version` bump); **NULL → buffered fallback**
+  per the 0035 NULL contract. The `process_raw_in_place_with_info` trait method
+  (attachment) is added alongside, defaulting to the unsupported error so existing
+  backends compile untouched. `MockSubscriber` (the only directly-held non-CFFI
+  backend, test-only) keeps the buffered fallback.
 - **Latest-value (`KEEP_LAST(1)`) semantics.** The `Triple` buffer gave
   drop-old/keep-newest. The per-sub depth budget with drop-oldest-by-timestamp
   reproduces KEEP_LAST(N) FIFO; KEEP_LAST(1) collapses to a single slot recycled
@@ -403,16 +433,25 @@ one receive design across all links.
 
 ## Per-backend plan
 
-| Backend | `process_raw_in_place` today | Plan |
-| --- | --- | --- |
-| zpico (zenoh-pico) | implemented (subscriber.rs:1043) | size-class pools (D1) + arena dispatch (D2); primary target |
-| xrce (micro-XRCE) | falls back | shared static pool already its native model; add in-place take or keep buffered fallback |
-| cyclonedds | falls back | buffered fallback first; native loan path is a later follow-up |
-| cffi (C ABI) | falls back | add an append-to-tail in-place vtable slot (RFC-0035); else buffered fallback |
-| mock | falls back | buffered fallback (test-only) |
+The executor reaches every non-mock backend through **`CffiSubscriber`** (the
+"Routing reality" section), so the layers are: the **CFFI vtable slot** (the
+activation gate), the **C backend** that populates it, and the **Rust leaf** the C
+backend calls.
 
-Land zpico first behind the fallback (C2b) so the other backends are unaffected
-until individually migrated.
+| Layer | `process_raw_in_place` today | Plan |
+| --- | --- | --- |
+| executor / arena | selects via `supports_process_in_place()` | done (Wave 0.2) — dormant until `CffiSubscriber` says yes |
+| `CffiSubscriber` (the held handle) | falls back (default) | **forward** to a new vtable slot; `supports_process_in_place` = slot non-NULL — **the activation gate** |
+| CFFI vtable (`nros_rmw_vtable_t`) | no slot | **add** one append-to-tail in-place slot (RFC-0035 + `abi_version` bump) |
+| zenoh-pico C backend | n/a | **populate** the slot → call the Rust `ZenohSubscriber` leaf |
+| zpico `ZenohSubscriber` (Rust leaf) | implemented (subscriber.rs:1043) | the leaf the slot invokes; gains size-class pools (D1) |
+| xrce (C backend) | no slot | populate the slot over its shared static pool, or leave NULL (buffered) |
+| cyclonedds (C backend) | no slot | leave NULL (buffered) first; native loan path a later follow-up |
+| mock (Rust, test-only) | falls back | buffered fallback permanently |
+
+Land the executor scaffold first (done, behind the fallback), then the CFFI vtable
+slot + zenoh-pico C impl (the activation), then the size-class pools. Backends
+whose slot stays NULL are unaffected.
 
 ## Alternatives considered
 
@@ -440,9 +479,14 @@ All seven open questions are resolved (2026-06; discussion folded in here):
    (`small` / `large`) split by a build-time threshold; a subscription is routed
    by its bounded max-serialized-size (RFC-0033). Avoids large-slot waste for
    small messages while keeping the shared-pool RAM win. No `#QoS × #size` matrix.
-2. **Rollout → incremental + buffered fallback.** Ship zpico first; the buffered
-   dispatch is retained as the fallback for backends that do not (yet) implement
-   the in-place methods. No flag-day; mock keeps the fallback permanently.
+2. **Rollout → executor scaffold, then CFFI activation, then pools.** Because the
+   executor reaches every non-mock backend through `CffiSubscriber` (Routing
+   reality), the order is: (i) executor in-place selection + dispatch [done, Wave
+   0.2, dormant]; (ii) the **CFFI in-place vtable slot + `CffiSubscriber`
+   forwarding + zenoh-pico C impl** — the activation gate, on the critical path;
+   (iii) size-class pools (D1) underneath. The buffered dispatch is retained as
+   the fallback for any backend whose vtable slot is NULL; no flag-day; mock keeps
+   the fallback permanently.
 3. **cffi ABI → one optional callback-taking slot.**
    `process_raw_in_place(handle, ctx, fn(ctx, ptr, len)) -> bool`, mirroring the
    Rust `FnOnce` trait so the borrow cannot escape (a borrow/return pair would
