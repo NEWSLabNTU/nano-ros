@@ -105,7 +105,7 @@ template <typename A> class ActionClient {
             return Result(ErrorCode::Error);
         }
         return Result(nros_cpp_action_client_send_goal(storage_, buf, len,
-                                                       reinterpret_cast<uint8_t (*)[16]>(goal_id)));
+                                                       reinterpret_cast<uint8_t(*)[16]>(goal_id)));
     }
 
     /// Get the result for a goal (blocking with timeout).
@@ -122,7 +122,7 @@ template <typename A> class ActionClient {
         uint8_t buf[ResultType::SERIALIZED_SIZE_MAX];
         size_t len = 0;
         nros_cpp_ret_t ret = nros_cpp_action_client_get_result(
-            storage_, executor_, reinterpret_cast<const uint8_t (*)[16]>(goal_id), buf, sizeof(buf),
+            storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, sizeof(buf),
             &len);
         if (ret != 0) return Result(ret);
 
@@ -163,7 +163,7 @@ template <typename A> class ActionClient {
 
         uint8_t goal_id[16];
         nros_cpp_ret_t ret = nros_cpp_action_client_send_goal_async(
-            storage_, buf, len, reinterpret_cast<uint8_t (*)[16]>(goal_id));
+            storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id));
         if (ret != 0) return Future<GoalAccept>();
 
         return Future<GoalAccept>(storage_, &nros_cpp_action_client_try_recv_goal_response,
@@ -191,7 +191,7 @@ template <typename A> class ActionClient {
         if (!initialized_) return Future<ResultType>();
 
         nros_cpp_ret_t ret = nros_cpp_action_client_get_result_async(
-            storage_, reinterpret_cast<const uint8_t (*)[16]>(goal_id));
+            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id));
         if (ret != 0) return Future<ResultType>();
 
         return Future<ResultType>(storage_, &nros_cpp_action_client_try_recv_result,
@@ -292,7 +292,7 @@ template <typename A> class ActionClient {
             return Result(ErrorCode::Error);
         }
         return Result(nros_cpp_action_client_send_goal_async(
-            storage_, buf, len, reinterpret_cast<uint8_t (*)[16]>(goal_id)));
+            storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id)));
     }
 
     /// Request the result for a goal asynchronously (non-blocking).
@@ -305,7 +305,7 @@ template <typename A> class ActionClient {
     Result get_result_async(const uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_get_result_async(
-            storage_, reinterpret_cast<const uint8_t (*)[16]>(goal_id)));
+            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
     }
 
     /// Register async callbacks for goal response, feedback, and result.

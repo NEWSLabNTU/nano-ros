@@ -339,7 +339,6 @@ class Node : public std::enable_shared_from_this<Node> {
     }
 
   public:
-
     // create_publisher<M>(topic, qos)
     //
     // QoS arg is `const QoS&` OR an integer depth (`10`) — both bind via

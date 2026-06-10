@@ -72,7 +72,8 @@ struct HeapString {
     bool assign(const char* src, size_t n) {
         char* fresh = static_cast<char*>(nros_platform_malloc(n + 1));
         if (fresh == nullptr) return false;
-        for (size_t i = 0; i < n; ++i) fresh[i] = src[i];
+        for (size_t i = 0; i < n; ++i)
+            fresh[i] = src[i];
         fresh[n] = '\0';
         nros_platform_free(data);
         data = fresh;

@@ -74,7 +74,8 @@ template <typename T> struct HeapSequence {
         if (n <= capacity) return true;
         T* fresh = static_cast<T*>(nros_platform_malloc(n * sizeof(T)));
         if (fresh == nullptr) return false;
-        for (size_t i = 0; i < size; ++i) fresh[i] = data[i];
+        for (size_t i = 0; i < size; ++i)
+            fresh[i] = data[i];
         nros_platform_free(data);
         data = fresh;
         capacity = n;
