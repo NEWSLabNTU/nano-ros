@@ -395,7 +395,24 @@ test-integration verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
+    # (missing fixture/binary/emulator/agent/SDK) — nextest has no native skip,
+    # so those count as failures and exit non-zero. Treat the run as passing iff
+    # there are no *real* (non-[SKIPPED]) failures — same contract as
+    # `_nextest-platform`. Real failures still fail the recipe.
+    set +e
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    rc=$?
+    set -e
+    just _rewrite-skipped-junit || true
+    [ $rc -eq 0 ] && exit 0
+    real="$(just _count-real-failures)"
+    just _test-summary || true
+    if [ "$real" -ne 0 ]; then
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s)."
+        exit 1
+    fi
+    echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 # Shared helper: run a single nros-tests integration test binary with the
 # standard verbose-flag handling. Used by per-platform `test` / `test-all`

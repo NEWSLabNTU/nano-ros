@@ -132,6 +132,22 @@ jobs:
       - name: Provision zenohd
         run: just zenohd setup
 
+      # The native integration tests (actions / services / qos / multi_node /
+      # native_api / executor / ...) spawn PREBUILT example binaries via
+      # `require_prebuilt_binary` ("Run `just build-test-fixtures` first") — the
+      # lane never staged them, so ~300 tests failed (issue #25). Build the
+      # native fixtures the way a user does (unblocked now that the issue-0022
+      # fixture-build deadlock is fixed); toolchains/sources come from the
+      # `nros setup` above. The XRCE agent is best-effort — if its source build
+      # hiccups, the `xrce` / `c_xrce` / `bridge` tests `skip!` cleanly (the
+      # test-integration recipe now tolerates `[SKIPPED]`), as do the Zephyr
+      # tests when no SDK is present.
+      - name: Build native fixtures + XRCE agent
+        run: |
+          source /opt/ros/humble/setup.bash
+          just native build-fixtures
+          just xrce build-agent || echo "xrce agent unavailable — xrce/bridge tests will [SKIPPED]"
+
       - name: just test-integration
         # Source the AMENT prefix so `nros generate-rust` (used by some
         # Phase 212 fixtures' build.rs steps) finds the ROS 2 Humble

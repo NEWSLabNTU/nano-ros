@@ -1,7 +1,7 @@
 ---
 id: 25
 title: host-integration lane fails native action/c_xrce/bridge tests — fixtures not staged
-status: open
+status: open  # fix applied, pending CI confirmation
 type: bug
 area: build
 related: [phase-230, issue-0022]
@@ -57,3 +57,18 @@ fixtures (its only build prereq is `build-zenohd`).
 A partial fix (e.g. only #1) leaves the lane red, so this is a coordinated
 change in the team's just-unblocked 0022 follow-up territory, not a surgical
 one-liner.
+
+**Fix applied (2026-06), mirroring the user workflow.**
+1. `test-integration` recipe now tolerates `[SKIPPED]` (same contract as
+   `_nextest-platform`): run, rewrite `[SKIPPED]` failures → `<skipped>`, pass
+   iff no *real* failures. So the `skip!`-based tests — Zephyr (no SDK; #3),
+   XRCE / c_xrce / bridge (no agent; #2) — skip cleanly instead of reddening
+   the job (no `-E` exclusion needed).
+2. `host-integration-tests.yml` builds the native fixtures the way a user does
+   (`just native build-fixtures`) before `test-integration`, so the
+   `require_prebuilt_binary` tests (native_api / services / qos / actions /
+   multi_node / executor / …) RUN and pass; the XRCE agent build is
+   best-effort. Toolchains/sources come from the existing `nros setup`.
+
+Not verifiable in this dev env (slow lane, full ROS/AMENT setup); the
+host-integration CI lane is the confirmation. Archive once green.
