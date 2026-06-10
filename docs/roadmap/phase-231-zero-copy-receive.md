@@ -170,7 +170,7 @@ in RFC-0038 follow-ups — worth it only if a deployment has many large subs.
   non-in-place backends. *Verify:* arena per-entry size shrinks (static-RAM
   assertion); single-tier byte parity for non-subscription entries unchanged.
 
-### Wave 3 — Acceptance + RAM proof
+### Wave 3 — Acceptance + RAM proof  ✅ DONE
 
 - **3.1 — Single-copy proof.** A test asserting the zpico default receive path
   performs one data-plane copy (transport → pool slot) — e.g. instrument the

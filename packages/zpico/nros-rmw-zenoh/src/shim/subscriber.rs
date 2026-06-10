@@ -200,6 +200,26 @@ static mut LARGE_PAYLOADS: [LargePayloadBlock; MAX_LARGE_SUBSCRIBERS] =
 pub(super) static NEXT_SMALL_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
 pub(super) static NEXT_LARGE_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
 
+// Phase 231 Wave 3 (RFC-0038) — RAM-scaling proof (compile-time). The whole
+// point of size classes: the big `large` slots are bounded by
+// `MAX_LARGE_SUBSCRIBERS`, NOT by `ZPICO_MAX_SUBSCRIBERS`, so raising
+// `SUBSCRIBER_LARGE_SIZE` (e.g. to 64 KB for images) does not multiply across
+// every subscriber. Total receive payload RAM is
+// `MAX_SUBS×DEPTH×SMALL + MAX_LARGE×DEPTH×LARGE`, and the `small` array uses the
+// small slot size — never the large one.
+const _: () = {
+    assert!(
+        core::mem::size_of::<[LargePayloadBlock; MAX_LARGE_SUBSCRIBERS]>()
+            == MAX_LARGE_SUBSCRIBERS * SUBSCRIBER_RING_DEPTH * SUBSCRIBER_LARGE_SIZE,
+        "large-class storage must be bounded by MAX_LARGE_SUBSCRIBERS, not MAX_SUBSCRIBERS"
+    );
+    assert!(
+        core::mem::size_of::<[SmallPayloadBlock; ZPICO_MAX_SUBSCRIBERS]>()
+            == ZPICO_MAX_SUBSCRIBERS * SUBSCRIBER_RING_DEPTH * SUBSCRIBER_BUFFER_SIZE,
+        "small-class storage must use the small slot size"
+    );
+};
+
 /// Reserve a payload block for a subscription whose receive-buffer hint is
 /// `rx_buffer_hint` bytes. Returns `(payload_base, payload_stride)` for
 /// `init_ring_desc`, or `None` if that size class is exhausted.
@@ -1438,6 +1458,64 @@ pub(super) mod tests {
         assert_eq!(&recv_buf[..100], &payload);
 
         assert!(!buffer.has_data());
+    }
+
+    // Phase 231 Wave 3 (RFC-0038) — size-class routing + exhaustion.
+    #[test]
+    fn wave3_size_class_routing_and_exhaustion() {
+        // The allocators are process-global statics; reset so the assertions are
+        // deterministic (no real ZenohSubscriber is created in lib tests).
+        NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+
+        // A small hint routes to the small class (small slot stride).
+        let (_b, stride) = alloc_payload_block(64).expect("small alloc");
+        assert_eq!(
+            stride, SUBSCRIBER_BUFFER_SIZE,
+            "hint <= threshold routes to the small class"
+        );
+
+        // A hint above the threshold routes to the large class.
+        let (_b, stride) = alloc_payload_block(SUBSCRIBER_SIZE_THRESHOLD + 1).expect("large alloc");
+        assert_eq!(
+            stride, SUBSCRIBER_LARGE_SIZE,
+            "hint > threshold routes to the large class"
+        );
+
+        // The large class exhausts at MAX_LARGE_SUBSCRIBERS, then returns None
+        // (the caller surfaces SubscriberCreationFailed rather than over-allocate).
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+        for _ in 0..MAX_LARGE_SUBSCRIBERS {
+            assert!(alloc_payload_block(SUBSCRIBER_LARGE_SIZE).is_some());
+        }
+        assert!(
+            alloc_payload_block(SUBSCRIBER_LARGE_SIZE).is_none(),
+            "large class is bounded by MAX_LARGE_SUBSCRIBERS"
+        );
+        // Leave the allocators reset for any sibling test.
+        NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+    }
+
+    // Phase 231 Wave 3 — per-subscriber isolation: each subscriber owns its ring
+    // (separate meta + payload block), so one subscriber's traffic never touches
+    // another's buffer (stronger than the shared-pool depth budget).
+    #[test]
+    fn wave3_per_sub_isolation() {
+        let (a, b) = (5, 6);
+        reset_subscriber_buffer(a);
+        reset_subscriber_buffer(b);
+
+        simulate_subscription_callback(a, &[0xAAu8; 50]);
+
+        assert!(
+            SubscriberBufferRef::new(a).get().has_data(),
+            "the pushed-to subscriber has data"
+        );
+        assert!(
+            !SubscriberBufferRef::new(b).get().has_data(),
+            "a sibling subscriber is unaffected by the other's traffic"
+        );
     }
 
     #[test]

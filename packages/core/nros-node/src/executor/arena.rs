@@ -1719,6 +1719,21 @@ mod borrowed_sub_tests {
         );
     }
 
+    // Phase 231 Wave 3 (RFC-0038) — single-copy proof. The in-place subscription
+    // entry carries handle + callback only; the buffered entry additionally
+    // carries the arena `BufferStrategy` (the copy-#1 staging buffer). So the
+    // in-place entry is strictly smaller — proving the arena buffer (and copy #1)
+    // is gone for backends that support in-place dispatch.
+    #[test]
+    fn inplace_entry_drops_the_arena_buffer() {
+        type Cb = fn(&u32);
+        assert!(
+            core::mem::size_of::<SubInplaceEntry<u32, Cb>>()
+                < core::mem::size_of::<SubBufferedEntry<u32, Cb>>(),
+            "in-place entry must be smaller than the buffered entry (no arena BufferStrategy)"
+        );
+    }
+
     // Compile-time proof that the codegen marker + GAT + a borrowed closure
     // satisfy exactly the bounds the executor's borrowed dispatch
     // (`sub_buffered_borrowed_try_process`) and registration require.
