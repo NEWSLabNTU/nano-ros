@@ -311,30 +311,33 @@ fn find_dep_rlib_isolated(crate_name: &str, symbol_prefix: &str) -> Result<PathB
     //     control codegen, not layout).
     // We keep `CARGO_TARGET_<TRIPLE>_RUSTFLAGS` because it's already
     // target-scoped and won't poison host builds.
+    // ISSUE 0022 — strip the make jobserver from the nested probe cargo. This is
+    // the SOURCE fix for the cyclone fixture deadlock (every platform's cyclone
+    // build goes through `nros`, hence this probe). When the outer build runs
+    // under a GNU make jobserver (the fixture builder uses `make
+    // --jobserver-style=fifo`), the outer cargo holds jobserver tokens and then
+    // BLOCKS in this build script waiting for the nested probe cargo below; if
+    // the probe inherited the same jobserver it would wait for a token the outer
+    // cargo holds → circular wait (cargo does not release its tokens before
+    // blocking on a child cargo — a known recursive-cargo jobserver hazard).
+    // Removing `MAKEFLAGS` / `CARGO_MAKEFLAGS` makes the probe use its OWN job
+    // budget, so it never competes for the parent's tokens and the deadlock
+    // cannot form — on ANY platform, without disabling jobserver coordination
+    // for the outer build. DO NOT drop these two without restoring an
+    // equivalent jobserver strip (see the issue-0022 box in
+    // scripts/build/fixture-make-driver.sh).
     for var in [
         "RUSTFLAGS",
         "CARGO_BUILD_RUSTFLAGS",
         "CARGO_ENCODED_RUSTFLAGS",
         "CARGO_BUILD_TARGET",
         "CARGO_BUILD_TARGET_DIR",
+        "MAKEFLAGS",
+        "CARGO_MAKEFLAGS",
+        "MAKELEVEL",
     ] {
         cmd.env_remove(var);
     }
-
-    // NOTE (issue 0022): this nested cargo deliberately does NOT strip
-    // `MAKEFLAGS` / `CARGO_MAKEFLAGS`, so when the outer build is driven under a
-    // GNU make jobserver it inherits the jobserver here. That is the root of the
-    // native-cyclonedds fixture deadlock: the outer cargo holds jobserver tokens
-    // and then blocks in *this* build script waiting for the nested cargo below,
-    // while the nested cargo waits for a token the outer cargo holds → circular
-    // wait (cargo doesn't release tokens before blocking on a child cargo).
-    // The fixture driver works around it by stripping the jobserver from the
-    // cyclone leaf's cargo (scripts/build/fixture-make-driver.sh,
-    // native-cyclonedds-cmake). If you want the outer build to KEEP jobserver
-    // coordination instead, the surgical fix is here — add `MAKEFLAGS` and
-    // `CARGO_MAKEFLAGS` to the `env_remove` list above so the probe never
-    // competes for the parent's tokens. (Left as-is for now: the probe is short,
-    // and the driver-side workaround is already deployed + validated.)
 
     // Phase 118.E.2: derive the feature set for the nested invocation
     // by intersecting the consumer's active features (CARGO_FEATURE_*
