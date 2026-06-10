@@ -97,18 +97,24 @@ static inline bool nros_platform_atomic_load_bool(volatile bool* ptr) {
 
 #ifdef NROS_PLATFORM_HAS_MALLOC
 
+// Canonical allocation ABI (RFC-0034): the single C-side allocation funnel,
+// provided by the linked platform port. Routing through it keeps one heap
+// counter authoritative instead of calling the FreeRTOS allocator directly.
+extern void* nros_platform_alloc(size_t size);
+extern void nros_platform_dealloc(void* ptr);
+
 /**
  * Allocate memory from FreeRTOS heap.
  */
 static inline void* nros_platform_malloc(size_t size) {
-    return pvPortMalloc(size);
+    return nros_platform_alloc(size);
 }
 
 /**
  * Free previously allocated memory.
  */
 static inline void nros_platform_free(void* ptr) {
-    vPortFree(ptr);
+    nros_platform_dealloc(ptr);
 }
 
 #endif // NROS_PLATFORM_HAS_MALLOC
