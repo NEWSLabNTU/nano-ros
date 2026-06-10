@@ -46,7 +46,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| 7  | Unbounded message sequences capped at 64 elements                     | enhancement | codegen| [0007-seq-capacity-64.md](0007-seq-capacity-64.md) |
 | 8  | Two-copy receive path and static buffer pre-allocation at scale       | tech-debt   | rmw    | [0008-two-copy-receive.md](0008-two-copy-receive.md) |
+| 21 | Borrowed (zero-copy) message views for C and C++                      | enhancement | codegen| [0021-cpp-c-borrowed-views.md](0021-cpp-c-borrowed-views.md) |
 
 Resolved issues live in [`archived/`](archived/).

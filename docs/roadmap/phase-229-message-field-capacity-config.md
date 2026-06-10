@@ -4,9 +4,10 @@
 specified in **RFC-0033** — a `nros-codegen.toml` resolved once per codegen
 invocation into a single `CapacityResolver` that feeds the Rust, C, and C++
 generators identically, replacing the hardcoded `*_DEFAULT_SEQUENCE_CAPACITY` (64) /
-`*_DEFAULT_STRING_CAPACITY` (256) constants. Closes the configuration half of issue
-[0007-seq-capacity-64](../issues/0007-seq-capacity-64.md); the `borrowed` storage
-mode (phase 3 below) closes the issue entirely.
+`*_DEFAULT_STRING_CAPACITY` (256) constants. Closed the configuration half of issue
+[0007-seq-capacity-64](../issues/archived/0007-seq-capacity-64.md); the `borrowed`
+storage mode (phase 3 below) closed the issue entirely (Rust borrowed + C/C++ heap;
+C/C++ borrowed views deferred to [issue 0021](../issues/0021-cpp-c-borrowed-views.md)).
 
 **Status.** In progress (2026-06-10). **`owned` is complete across all three
 languages (Rust/C/C++) with discovery + CLI/CMake wiring; `heap` (primitive
@@ -210,9 +211,13 @@ sequence-of-nested-messages**. Sequence elements stay fixed-capacity (unbounded
 - **Files:** `nros-core/src/lib.rs`, `types.rs`, `templates.rs`,
   `generator/common.rs`, `templates/message_nros.rs.jinja`, `tests/`.
 
-### 229.6 — `borrowed` storage mode (phase 3, closes issue 0007)  🟡 Rust done; C/C++ pending
-**Status (2026-06-10).** The **Rust** path is complete and E2E-validated; only the
-C/C++ span views remain before issue 0007 closes.
+### 229.6 — `borrowed` storage mode (phase 3, closed issue 0007)  ✅ Rust done; C/C++ → issue 0021
+**Status (2026-06-10).** The **Rust** path is complete and E2E-validated.
+**Issue 0007 is resolved**: large payloads are representable on every target —
+allocator targets via `heap` (all 3 langs, 229.5), allocator-free targets via
+`borrowed` (Rust, this section). The remaining **borrowed views for C/C++** are an
+alloc-free optimization (C/C++ already have `heap`), tracked as
+[issue 0021](../issues/0021-cpp-c-borrowed-views.md).
 
 - ✅ **Runtime seam** (`670a62a4`): `nros_serdes::DeserializeBorrowed<'a>` +
   `nros_core::BorrowedMessage` GAT marker (`type View<'a>`) + executor
@@ -231,7 +236,9 @@ C/C++ span views remain before issue 0007 closes.
   MockSession executor `spin_once` — `ImageView` with `&[u8]` + `LeSliceView<f32>`
   decodes correctly.
 - ⬜ **C/C++ span views** (slice 5): `{const T* data; size_t size}` over the
-  existing raw `(data,len)` callback. On landing, close issue 0007.
+  existing raw `(data,len)` callback. Deferred to [issue 0021](../issues/0021-cpp-c-borrowed-views.md)
+  (alloc-free C/C++ optimization; issue 0007 already closed via Rust borrowed +
+  C/C++ heap).
 
 Original design (the runtime seam was proven before codegen leaned on it):
 
@@ -259,8 +266,9 @@ Original design (the runtime seam was proven before codegen leaned on it):
    (`nros-c subscription`); the borrowed type is a typed ptr+len accessor over that
    same callback — no new ABI, just generated views + a span-like C++ wrapper.
 
-- On landing: set issue 0007 `status: resolved`, `resolved_in: Phase 229`, move to
-  `docs/issues/archived/`.
+- ✅ Done for Rust: issue 0007 set `status: resolved`, `resolved_in: Phase 229`,
+  moved to `docs/issues/archived/`. C/C++ borrowed views tracked separately as
+  [issue 0021](../issues/0021-cpp-c-borrowed-views.md).
 - **Out of scope (by design):** `take()`/polling returning a borrowed message, storing
   a borrowed message past the callback, and any publish-side borrow (that is the
   Phase 124 `pub_loan` loan API).
