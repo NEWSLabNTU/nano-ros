@@ -161,6 +161,12 @@ exclude = [
     "examples/native/rust/service-client",
     "examples/native/rust/action-server",
     "examples/native/rust/action-client",
+    # Phase 233.3 — PX4 XRCE-DDS companion (RFC-0039 Track B). Standalone
+    # copy-out; carries a trimmed generated `px4_msgs` under `generated/`.
+    "examples/px4/rust/xrce/offboard-companion",
+    # Phase 233.4 — fake-PX4 stub publishing /fmu/out/vehicle_odometry so the
+    # companion round-trip is CI-able without PX4 SITL. Standalone copy-out.
+    "examples/px4/rust/xrce/px4-stub",
     "examples/qemu-arm-freertos/rust/talker",
     "examples/qemu-arm-freertos/rust/listener",
     "examples/qemu-arm-freertos/rust/service-server",

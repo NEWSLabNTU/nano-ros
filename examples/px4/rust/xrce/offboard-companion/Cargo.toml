@@ -1,0 +1,42 @@
+[package]
+name = "px4-offboard-companion"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "PX4 XRCE-DDS companion: subscribe /fmu/out/vehicle_odometry, publish /fmu/in/offboard_control_mode (RFC-0039 Track B / Phase 233)"
+
+[[bin]]
+name = "offboard-companion"
+path = "src/main.rs"
+
+# Companion runs on the host (or a peer MCU) beside PX4, not in firmware.
+[package.metadata.nros.application]
+deploy = ["px4"]
+
+[features]
+# XRCE-DDS only — this is the companion path (peer of PX4's uxrce_dds_client).
+default = ["rmw-xrce"]
+rmw-xrce = ["nros/rmw-xrce"]
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
+nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+
+# Generated CDR `px4_msgs::msg::*` (from the PX4 `.msg` tree via
+# `nros generate-px4-msgs`; trimmed to the two topics this example touches).
+px4_msgs = { version = "*", default-features = false, features = ["std"] }
+
+log = "0.4"
+env_logger = "0.11"
+
+# Empty `[workspace]` table — standalone copy-out template (see the native
+# examples' note). Canonical in-tree builds also pass via the root `exclude`.
+[workspace]
+
+[patch.crates-io]
+# === BEGIN nros-managed [patch.crates-io] ===
+px4_msgs = { path = "generated/px4_msgs" }
+nros-core = { path = "../../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
+# === END nros-managed [patch.crates-io] ===

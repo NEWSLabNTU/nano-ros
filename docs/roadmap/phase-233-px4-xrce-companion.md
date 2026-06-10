@@ -6,7 +6,9 @@ uses — the **mainstream PX4↔ROS 2 integration**, which nano-ros's `nros-rmw-
 backend already fits but does not yet exercise. This is **Track B** of the
 two-track PX4 plan in **RFC-0039** ("support both") — the *additive* track.
 
-**Status.** In progress (2026-06). Wave 1 (233.2) + Wave 2 (233.1) landed.
+**Status.** In progress (2026-06). Wave 1 (233.2), Wave 2 (233.1), Wave 3 (233.3 +
+233.4 doc/harness) landed; 233.4 automated round-trip blocked on a typed agent
+([issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md)).
 Design-of-record: RFC-0039 (Draft).
 
 **Priority.** P2 — additive (nothing breaks without it), but it is the path most
@@ -68,25 +70,42 @@ reliable+volatile won't connect).
 - **Files:** `packages/xrce/nros-rmw-xrce` QoS mapping; a named profile surfaced in
   the user API.
 
-### 233.3 — Companion example  ⬜
+### 233.3 — Companion example  ✅
 Add `examples/px4/<lang>/xrce/<example>/` — a nano-ros node that subscribes
 `/fmu/out/vehicle_odometry` and publishes `/fmu/in/offboard_control_mode` (or
 `vehicle_command`) against a running `MicroXRCEAgent`, with the PX4 QoS profile. The
 first companion-side PX4 example (existing px4 examples are uORB in-firmware only).
 - **Files:** `examples/px4/.../xrce/...`, `examples/README.md` coverage matrix.
+- **Landed.** `examples/px4/rust/xrce/offboard-companion/` — subscribes
+  `/fmu/out/vehicle_odometry` + streams `/fmu/in/offboard_control_mode` at ~10 Hz with
+  `QosSettings::px4()`. Standalone copy-out carrying a trimmed pre-generated
+  `generated/px4_msgs/` (VehicleOdometry + OffboardControlMode). Builds + links the XRCE
+  backend; connects to a live agent and creates entities/streams setpoints (verified
+  locally). README matrix px4-rust xrce cell updated.
 
-### 233.4 — Agent bring-up doc + test harness  ⬜
+### 233.4 — Agent bring-up doc + test harness  ◐
 Document standing up `MicroXRCEAgent` (udp4 `-p 8888` / serial) for the example, and
 wire a host test (SITL or a stubbed agent) so CI can exercise the round-trip. Mirror
 the existing zenohd/cyclonedds support-service pattern (not a platform scope).
 - **Files:** a docs/reference PX4-companion guide; `nros_tests` agent helper.
+- **Landed.** `docs/reference/px4-xrce-companion.md` (agent + SITL + QoS bring-up) and
+  `examples/px4/rust/xrce/px4-stub/` (fake-PX4 publisher of `/fmu/out/vehicle_odometry`)
+  to drive the companion without SITL.
+- **Blocked (automated round-trip).** A bare `MicroXRCEAgent` matches only built-in ROS
+  DDS types, not `px4_msgs::msg::dds_::*` (entities are created binary, type-name only —
+  no TypeObject). std_msgs round-trips between two nros XRCE clients; px4_msgs does not.
+  Real PX4 runs the agent **with** px4_msgs typesupport, so the example is correct there;
+  a self-contained CI *receive* round-trip needs a typed agent (PX4 SITL or
+  `-r <refs.xml>`). Tracked in [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
+  The CI-able surface against a bare agent is connect + publish.
 
 ## Acceptance
 
 - nano-ros generates CDR `px4_msgs` from the shared PX4 `.msg` tree (no ament dep).
 - A "PX4" QoS profile (`TRANSIENT_LOCAL`/`BEST_EFFORT`/`KEEP_LAST`) is selectable.
 - The companion example subscribes `/fmu/out/*` and publishes `/fmu/in/*` against
-  `MicroXRCEAgent` (round-trip observed).
+  `MicroXRCEAgent`. Publish/connect verified against a bare agent; full receive
+  round-trip needs a typed agent (PX4 SITL or `-r refs`) — [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
 - `examples/README.md` matrix updated for the px4 XRCE cell.
 
 ## Notes

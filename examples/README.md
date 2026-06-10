@@ -32,7 +32,7 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `esp32`                   | rust     | 2     | –    | –          | –    |
 | `stm32f4`                 | rust     | 1+rtic×6 | –  | –          | –    |
 | `px4`                     | cpp      | –     | –    | –          | nros_register_check |
-| `px4`                     | rust     | –     | –    | –          | (pending) |
+| `px4`                     | rust     | –     | companion+stub | – | (pending) |
 | `qemu-arm-baremetal`      | rust     | 6+rtic+serial | – | –     | –    |
 | `qemu-arm-freertos`       | c        | 6     | –    | –          | –    |
 | `qemu-arm-freertos`       | cpp      | 6     | –    | –          | –    |
