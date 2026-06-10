@@ -17,7 +17,8 @@ cffi-export = ["dep:nros-platform-cffi"]
 [dependencies]
 nros-platform-api = { path = "../../core/nros-platform-api" }
 nros-platform-cffi = { path = "../../core/nros-platform-cffi", optional = true }
-zpico-alloc = { path = "../../zpico/zpico-alloc" }
+# `stats` backs `PlatformAlloc::heap_used_bytes` (Phase 230 1b / RFC-0034).
+zpico-alloc = { path = "../../zpico/zpico-alloc", features = ["stats"] }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 defmt = "0.3"
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }

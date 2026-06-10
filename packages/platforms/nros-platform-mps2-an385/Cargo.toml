@@ -36,8 +36,10 @@ global-alloc = ["zpico-alloc/global-alloc"]
 # Platform trait definitions (trait impls live in lib.rs)
 nros-platform-api = { path = "../../core/nros-platform-api" }
 nros-platform-cffi = { path = "../../core/nros-platform-cffi", optional = true }
-# Free-list allocator for heap
-zpico-alloc = { path = "../../zpico/zpico-alloc" }
+# Free-list allocator for heap. `stats` tracks live/peak usage so the
+# `PlatformAlloc::heap_used_bytes` override reports real figures
+# (Phase 230 1b / RFC-0034).
+zpico-alloc = { path = "../../zpico/zpico-alloc", features = ["stats"] }
 # Cortex-M register access
 cortex-m = "0.7"
 # Phase 110.E.b — `Interrupt::TIMER1` NVIC slot ID for

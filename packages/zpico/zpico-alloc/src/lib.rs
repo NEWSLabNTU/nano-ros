@@ -408,6 +408,14 @@ impl<const N: usize> FreeListHeap<N> {
         }
     }
 
+    /// Total managed heap capacity in bytes (main free-list region +
+    /// slab region). The denominator that pairs with [`used`](Self::used)
+    /// for a "used / total" footprint figure — same basis as
+    /// [`free_bytes`](Self::free_bytes). Always available (no atomics).
+    pub const fn capacity(&self) -> usize {
+        N + SLAB_REGION_SIZE
+    }
+
     /// Current heap usage in bytes (slab + free-list, including headers).
     ///
     /// Only available with the `stats` feature.

@@ -139,6 +139,14 @@ impl nros_platform_api::PlatformAlloc for Stm32f4Platform {
     fn dealloc(ptr: *mut core::ffi::c_void) {
         memory::dealloc(ptr)
     }
+    #[inline]
+    fn heap_used_bytes() -> usize {
+        memory::used()
+    }
+    #[inline]
+    fn heap_total_bytes() -> usize {
+        memory::total()
+    }
 }
 
 impl nros_platform_api::PlatformSleep for Stm32f4Platform {

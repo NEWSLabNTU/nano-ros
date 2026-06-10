@@ -42,3 +42,15 @@ pub fn realloc(ptr: *mut core::ffi::c_void, size: usize) -> *mut core::ffi::c_vo
 pub fn dealloc(ptr: *mut core::ffi::c_void) {
     HEAP.free(ptr)
 }
+
+/// Bytes currently allocated from the heap (Phase 230 1b / RFC-0034 —
+/// backs `nros_platform_heap_used_bytes`). Tracked by `FreeListHeap`'s
+/// `stats` feature.
+pub fn used() -> usize {
+    HEAP.used()
+}
+
+/// Total managed heap capacity in bytes (used + free).
+pub fn total() -> usize {
+    HEAP.capacity()
+}

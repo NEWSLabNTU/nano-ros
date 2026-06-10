@@ -161,6 +161,16 @@ impl nros_platform_api::PlatformAlloc for Mps2An385Platform {
     fn dealloc(ptr: *mut core::ffi::c_void) {
         memory::dealloc(ptr)
     }
+
+    #[inline]
+    fn heap_used_bytes() -> usize {
+        memory::used()
+    }
+
+    #[inline]
+    fn heap_total_bytes() -> usize {
+        memory::total()
+    }
 }
 
 // ============================================================================
