@@ -7,13 +7,35 @@ area: codegen
 related: [rfc-0033, phase-229]
 ---
 
-Generated message bindings use `heapless::Vec<T, N>` for unbounded sequences
-(`uint8[] data`, `float32[] ranges`, etc.). The capacity `N` is hardcoded in
-the codegen at **64 elements** (`NROS_DEFAULT_SEQUENCE_CAPACITY` in
-`packages/cli/rosidl-codegen/src/types.rs`, line 490). The C/C++ generators
-mirror this default (`C_DEFAULT_SEQUENCE_CAPACITY` at line 970,
-`CPP_DEFAULT_SEQUENCE_CAPACITY` at line 1125, both `= 64`). It is a plain
-compile-time `const` with no environment variable or attribute override.
+## Status (Phase 229 — owned + heap shipped; borrowed remains)
+
+The original problem below — a hardcoded 64-element cap with **no override** — is
+**resolved** by RFC-0033 / Phase 229. Per-field capacity is now configurable via
+`nros-codegen.toml` across all three languages, in three storage modes:
+
+- **`owned`** — `heapless::Vec<T, N>` with the resolved `N` (64 is now only the
+  fallback when neither config nor a `.msg` bound applies).
+- **`heap`** — `alloc`-backed growable containers (`nros_core::heap::{Vec,String}`,
+  rclc-style malloc'd C structs, `nros::HeapSequence`/`HeapString`), unbounded — for
+  hosted / allocator targets. Covers primitive sequences, strings, and sequences of
+  strings/nested.
+
+What still remains is the **`borrowed`** zero-copy mode (Phase 229.6): `&'a [T]` /
+`&'a str` slices into the CDR receive buffer — the only viable mode for **large
+payloads on an allocator-free MCU** (owned can't fit, heap needs malloc). Design in
+RFC-0033 "Borrowed mode"; receive-side, callback-scoped, mostly an
+executor/subscription change (tied to issue #8). **This issue closes when
+`borrowed` lands.**
+
+---
+
+## Original report
+
+Generated message bindings used `heapless::Vec<T, N>` for unbounded sequences
+(`uint8[] data`, `float32[] ranges`, etc.) with the capacity `N` hardcoded at
+**64 elements** (the `*_DEFAULT_SEQUENCE_CAPACITY` consts in
+`packages/cli/rosidl-codegen/src/types.rs`) — a plain compile-time `const` with no
+override. (Per-field overrides now exist — see Status above.)
 
 This creates a fundamental mismatch for messages with large variable-length
 payloads:
