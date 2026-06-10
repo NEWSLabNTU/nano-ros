@@ -241,3 +241,45 @@ int32_t xrce_subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
     }
     return ss->slot->count > 0 ? 1 : 0;
 }
+
+/* Phase 231 (RFC-0038) — the XRCE backend already stages each message in a
+ * static ring entry (`entry->data`), so it can hand the bytes to the callback
+ * in place instead of copying into a caller buffer (copy #1 removed). */
+int32_t xrce_subscriber_supports_in_place(nros_rmw_subscriber_t *subscriber) {
+    (void)subscriber;
+    return 1;
+}
+
+int32_t xrce_subscriber_process_raw_in_place(
+    nros_rmw_subscriber_t *subscriber, void *ctx,
+    void (*cb)(void *ctx, const uint8_t *ptr, size_t len)) {
+    if (subscriber == NULL || subscriber->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
+    xrce_subscriber_slot *slot = ss->slot;
+    if (slot == NULL || slot->count == 0) {
+        return NROS_RMW_RET_NO_DATA;
+    }
+    xrce_subscriber_ring_entry *entry = &slot->entries[slot->read_idx];
+    /* Always consume the head slot (overflow + success both advance) so a single
+     * bad entry can't wedge the queue — mirrors try_recv_raw. */
+    int32_t ret;
+    if (entry->overflow) {
+        ret = NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    } else {
+        /* Borrow the ring entry in place — no copy into a caller buffer. The
+         * callback must not re-enter this subscriber's receive (slot locked). */
+        slot->locked = true;
+        if (cb != NULL && entry->len > 0) {
+            cb(ctx, entry->data, entry->len);
+        }
+        slot->locked = false;
+        ret = 1; /* one message processed */
+    }
+    entry->len = 0;
+    entry->overflow = false;
+    slot->read_idx = (uint16_t)((slot->read_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
+    slot->count--;
+    return ret;
+}

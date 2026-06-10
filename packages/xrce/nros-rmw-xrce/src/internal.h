@@ -316,6 +316,11 @@ void           xrce_subscriber_destroy(nros_rmw_subscriber_t *subscriber);
 int32_t        xrce_subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
                                             uint8_t *buf, size_t buf_len);
 int32_t        xrce_subscriber_has_data(nros_rmw_subscriber_t *subscriber);
+/* Phase 231 (RFC-0038) — zero-copy in-place take over the XRCE static ring. */
+int32_t        xrce_subscriber_supports_in_place(nros_rmw_subscriber_t *subscriber);
+int32_t        xrce_subscriber_process_raw_in_place(
+                   nros_rmw_subscriber_t *subscriber, void *ctx,
+                   void (*cb)(void *ctx, const uint8_t *ptr, size_t len));
 
 /* Topic data callback — single instance per session, registered at
  * session_open. Exposed so session.c can pass its address to

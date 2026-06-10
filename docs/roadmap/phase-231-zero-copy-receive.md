@@ -13,7 +13,7 @@ subscription dispatch through the backend's in-place borrow
 boundary grows by exactly two `Subscriber` trait methods plus one optional cffi
 vtable slot; every other backend keeps working via a buffered fallback.
 
-**Status:** In progress (2026-06-10). **Waves 0–3 landed.** Wave 0 (trait surface
+**Status:** COMPLETE (2026-06-10). **All waves (0–4) landed.** Wave 0 (trait surface
 + executor scaffold) + Wave 1 (CFFI in-place activation — vtable slots +
 `CffiSubscriber` forwarding + adapter wiring, hermetic test green) + Wave 2
 (zenoh-pico size-class receive buffers + the full `rx_buffer_hint` plumbing:
@@ -187,7 +187,7 @@ in RFC-0038 follow-ups — worth it only if a deployment has many large subs.
   per subscription from its pool; with `≥ Σ(depths)` no cross-sub starvation under
   a flooding best-effort neighbor. *Verify:* a deterministic flood test.
 
-### Wave 4 — Other backends (incremental, post-MVP)
+### Wave 4 — Other backends  ✅ DONE
 
 - **4.1 — xrce in-place.** micro-XRCE already stages into a shared static pool;
   populate its in-place vtable slot over `custom_static_buffers`. *Verify:* xrce

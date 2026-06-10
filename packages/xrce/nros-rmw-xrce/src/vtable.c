@@ -91,6 +91,12 @@ static const nros_rmw_vtable_t kVtable = {
 
     /* Phase 124.F.2 — connectivity probe via uxr_ping_agent_session. */
     .ping_session               = xrce_session_ping,
+
+    /* Phase 231 (RFC-0038) — zero-copy in-place take over the XRCE static
+     * ring (the staged `entry->data`), so the executor's in-place dispatch
+     * borrows the bytes instead of copying into an arena buffer. */
+    .subscriber_supports_in_place = xrce_subscriber_supports_in_place,
+    .process_raw_in_place         = xrce_subscriber_process_raw_in_place,
 };
 
 nros_rmw_ret_t nros_rmw_xrce_register(void) {
