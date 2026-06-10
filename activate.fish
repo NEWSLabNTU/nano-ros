@@ -51,6 +51,20 @@ if test -x $_nros_home_play/play_launch_parser
     set -gx PATH $_nros_home_play $PATH
 end
 
+# Cross-compiler toolchains installed by `nros setup` (SDK store
+# ~/.nros/sdk/<tool>/<version>/bin). A cross-gcc MUST be on PATH for cargo's
+# `linker=` and NuttX/Zephyr `make` to find it (e.g. riscv-none-elf-gcc, Phase
+# 194.3c). Scoped to store bin dirs holding a `*-gcc` so qemu/zenohd stay off
+# PATH (resolved via build/<tool>). Mirror of the activate.sh block.
+set -l _nros_sdk (set -q NROS_HOME; and echo $NROS_HOME/sdk; or echo $HOME/.nros/sdk)
+if test -d $_nros_sdk
+    for _nros_tcbin in $_nros_sdk/*/*/bin $_nros_sdk/*/bin
+        if test -d $_nros_tcbin; and count $_nros_tcbin/*-gcc >/dev/null 2>&1
+            set -gx PATH $_nros_tcbin $PATH
+        end
+    end
+end
+
 # Pinned ninja + make (Phase 176 jobserver tooling)
 if test -x $_nros_root/third-party/ninja/ninja
     set -gx PATH $_nros_root/third-party/ninja $PATH

@@ -74,6 +74,26 @@ if [ -x "${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin/play_launch_parser
     export PATH="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin:$PATH"
 fi
 
+# Cross-compiler toolchains installed by `nros setup` land in the SDK store
+# (~/.nros/sdk/<tool>/<version>/bin). Unlike qemu/zenohd — which the test
+# harness resolves via a build/<tool> prefix and deliberately keeps OFF the
+# global PATH — a cross-gcc MUST be on PATH for cargo's `linker=` and the
+# NuttX/Zephyr `make` to find it (e.g. riscv-none-elf-gcc for the riscv NuttX
+# board, Phase 194.3c). Scope to store bin dirs that hold a `*-gcc` so the
+# build/<tool> convention for qemu/zenohd is preserved. A system cross-gcc
+# (e.g. /usr/bin/arm-none-eabi-gcc) still resolves when the store has none.
+_nros_sdk="${NROS_HOME:-$HOME/.nros}/sdk"
+if [ -d "$_nros_sdk" ]; then
+    for _nros_tcbin in "$_nros_sdk"/*/*/bin "$_nros_sdk"/*/bin; do
+        [ -d "$_nros_tcbin" ] || continue
+        if ls "$_nros_tcbin"/*-gcc >/dev/null 2>&1; then
+            export PATH="$_nros_tcbin:$PATH"
+        fi
+    done
+    unset _nros_tcbin
+fi
+unset _nros_sdk
+
 # Pinned ninja (>=1.13, GNU-jobserver client — Phase 176) installed by
 # `just workspace install-ninja`. Wins over Ubuntu's apt 1.10 (no
 # jobserver). Required by `just build-all-jobserver` to scale cargo +
