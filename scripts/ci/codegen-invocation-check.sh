@@ -13,9 +13,12 @@
 # user-facing verbs (`nros generate-rust`, `nros generate cpp`) are untouched —
 # they don't use `--args-file`, so they never trip this.
 #
-# Scope = superproject-owned build glue. `third-party/` (vendored) and
-# `packages/codegen/` (the CLI's own repo — its own CI owns its consumers) are
-# excluded. Exits non-zero listing every offending line.
+# Scope = superproject-owned build glue. `third-party/` (vendored) and the
+# codegen CLI's own source — historically `packages/codegen/` (retired
+# submodule), now the in-tree sub-workspace `packages/cli/` — are excluded:
+# the CLI *implements* the `--args-file` contract (doc comments, clap flag
+# parsing, error strings), so its mentions are the definition, not a legacy
+# invocation to guard. Exits non-zero listing every offending line.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
@@ -24,7 +27,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 mapfile -t files < <(
     git ls-files \
         '*.cmake' '*CMakeLists.txt' '*.just' 'justfile' '*.sh' '*.rs' \
-    | grep -vE '^(third-party/|packages/codegen/)' \
+    | grep -vE '^(third-party/|packages/codegen/|packages/cli/)' \
     | grep -vxF 'scripts/ci/codegen-invocation-check.sh' # self (docs mention --args-file)
 )
 

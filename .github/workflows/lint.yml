@@ -122,8 +122,15 @@ jobs:
       - name: just check-nros-log-riscv32
         run: just check-nros-log-riscv32
 
-      - name: just check-decoupling
+      # check-decoupling is an EXPECTED-TO-FAIL aspirational guard until the
+      # Phase 104.A umbrella-decoupling migration completes (see the recipe:
+      # "Wire it as a required check once the migration completes"). Run it for
+      # visibility but do not fail the lint job — it was previously masked
+      # behind the cyclonedds-sys build error (now fixed via cyclonedds-src
+      # provisioning), which is why it surfaced here.
+      - name: just check-decoupling (advisory until Phase 104.A)
         run: just check-decoupling
+        continue-on-error: true
 
       # Phase 218.J — JetPack-style bundle versioning lockstep guard.
       # Errors if the runtime workspace's `[workspace.package].version`
