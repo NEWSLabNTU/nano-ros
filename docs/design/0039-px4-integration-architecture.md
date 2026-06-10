@@ -73,6 +73,21 @@ Both are legitimate and serve different niches; nano-ros is unusual in being abl
 to occupy *either*. The in-firmware path is the perf/zero-copy niche PX4's own ROS
 2 push does not touch; the companion path is the mainstream PX4↔ROS 2 integration.
 
+**Decision (2026-06): support both as first-class.** This is not a transitional
+state — nano-ros commits to *both* PX4 positions. The two have opposite version
+philosophies, which sets their maintenance contracts:
+
+- **uORB (in-firmware)** is raw-ABI-rigid → it needs a **stable pin** (OQ3) and
+  must keep pace with PX4's `.msg` reorganisation (the `msg/versioned/` blocker,
+  #1) just to keep generating the live topic set. Maintenance is *reactive to PX4
+  releases*.
+- **XRCE (companion)** is version-buffered by the agent translation node → it is
+  comparatively turnkey but currently **untapped** (no example, no px4_msgs CDR
+  emit). Work here is *additive*, not reactive.
+
+So the roadmap carries two parallel tracks: keep uORB working on new PX4 (the
+codegen fixes), and stand up the XRCE companion path (codegen emitter + example).
+
 ### `px4-rs` and the version-robustness mechanism
 
 The in-firmware path rests on the `px4-rs` submodule (`third-party/px4/px4-rs`,
@@ -196,3 +211,6 @@ resolution):
   incl. the core control/telemetry set, do not generate on 1.16+ → promoted #1 to
   confirmed blocker); recommended one-source-two-emitters for OQ2 and a stable-tag
   pin for OQ3.
+- 2026-06 — **decision: support both uORB and XRCE as first-class** (not
+  transitional). Recorded the per-path maintenance contracts (uORB reactive to PX4
+  releases; XRCE additive) and the two parallel roadmap tracks.
