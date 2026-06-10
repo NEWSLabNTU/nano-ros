@@ -6,15 +6,17 @@ topics into `msg/versioned/`. This is **Track A** of the two-track PX4 plan in
 **RFC-0039** ("support both uORB and XRCE as first-class") — the *reactive* track
 that tracks PX4 releases. RFC-0011 owns the backend internals.
 
-**Status.** Substantially complete (2026-06). Done: **232.1** (msg/versioned/
-enumeration — the blocker), **232.2** (MESSAGE_VERSION on the model), **232.4**
-(6-field orb_metadata), **232.4b** (repair the uORB RMW vtable — it was
-non-compiling vs the current ABI), **232.5** (pin stable **v1.17.0** + px4-rs
-supported-window note). px4-rs `main` at `0f45e83`; PX4-Autopilot pinned to
-v1.17.0 (`d6f12ad`); `cargo xtask gen-msgs` emits 235 messages incl. the
-versioned core topics; the uORB C++ backend builds + `register_smoke` passes.
-Remaining: **232.3** (optional FNV hash) + **232.6** (stale — no `topics.toml`
-exists; needs re-scoping). Design-of-record: RFC-0039 (Draft) + RFC-0011 (Stable).
+**Status.** Complete (2026-06) — every load-bearing item landed. Done: **232.1**
+(msg/versioned/ enumeration — the blocker), **232.2** (MESSAGE_VERSION on the
+model), **232.3** (FNV-1a `message_hash` for custom topics), **232.4** (6-field
+orb_metadata), **232.4b** (repair the uORB RMW vtable — it was non-compiling vs
+the current ABI), **232.5** (pin stable **v1.17.0** + px4-rs supported-window
+note). px4-rs `main` at `3817421`; PX4-Autopilot pinned to v1.17.0 (`d6f12ad`);
+`cargo xtask gen-msgs` emits 235 messages incl. the versioned core topics (each
+now carrying its real FNV `message_hash`); the uORB C++ backend builds +
+`register_smoke` passes. Only **232.6** is open and it is **stale** (no
+`topics.toml` exists — needs re-scoping, not a blind resync). Design-of-record:
+RFC-0039 (Draft) + RFC-0011 (Stable).
 
 **Priority.** P1 — without item 232.1 the offboard/telemetry topics
 (`VehicleOdometry`, `VehicleCommand`, `VehicleLocalPosition`, `VehicleAttitude`,
@@ -67,7 +69,7 @@ the message model (e.g. `message_version: Option<u32>`) so version-aware tooling
 MESSAGE_VERSION` may stay.
 - **Files (px4-rs):** `px4-msg-codegen` parser + model.
 
-### 232.3 — FNV-1a `message_hash` for custom topics (optional)  ⬜ (px4-rs)
+### 232.3 — FNV-1a `message_hash` for custom topics  ✅ (px4-rs)
 Standard topics already get PX4's real hash via canonical resolution; the synthesized
 `message_hash = 0` only applies to user-introduced topics absent from PX4's table. If
 such a topic is exported to ROS 2 via the DDS client, compute FNV-1a (seed
