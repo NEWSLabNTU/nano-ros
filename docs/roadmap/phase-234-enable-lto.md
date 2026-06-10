@@ -7,10 +7,12 @@ lifted: `nros-sizes-build` has a bitcode-aware `llvm-nm` reader, validated to
 recover every size under `lto = "fat"`. This phase flips the profiles and proves the
 probe consumers (`nros-c`, `nros-cpp`) get identical sizes across the target matrix.
 
-**Status.** In progress (2026-06). Profiles flipped, probe validated byte-identical
-on host + `thumbv7m-none-eabi`, regression test landed. Remaining acceptance gate:
-the `nuttx` filesystem-fallback path, the embedded-link CI matrix, and the size-win
-measurement (234.6). Resolves issue
+**Status.** Implemented (2026-06). Profiles flipped; probe validated byte-identical
+on host + `thumbv7m-none-eabi` + `armv7a-nuttx-eabihf` (the filesystem-fallback
+target); regression test landed; size win measured (−24.7% `.text` on a baremetal
+smoke firmware). Remaining before `resolved`: confirm the full per-platform firmware
+**link** matrix (zephyr / threadx / freertos / nuttx-kernel ELF) stays green in CI —
+the one part needing each platform's full toolchain + image link. Resolves issue
 [0023](../issues/0023-lto-disabled-for-size-probe.md).
 
 **Priority.** P2 — pure size/perf win on space-constrained MCUs; no correctness gate.
@@ -65,7 +67,7 @@ to keep fast-iteration builds LTO-free; dropping it would silently re-enable fat
 there. Per-crate `lto` opt-ins in smoke / logging-smoke fixtures untouched.
 - **Files:** `Cargo.toml` (`[profile.release]`).
 
-### 234.3 — Validate sizes across the target matrix  🟡 (host + thumbv7m ✅, nuttx ⬜)
+### 234.3 — Validate sizes across the target matrix  ✅ (host + thumbv7m + nuttx)
 Rebuild the probe consumers under LTO and assert the recovered sizes **equal the
 234.1 baseline**:
 - **host** ✅ — `CARGO_PROFILE_RELEASE_LTO=fat` build of `nros` → bitcode rlib;
@@ -76,9 +78,14 @@ Rebuild the probe consumers under LTO and assert the recovered sizes **equal the
 - **`thumbv7m-none-eabi`** ✅ — `lto=off` and `lto=fat` both recover `520/552/79208`
   (32-bit layout), confirming host `llvm-nm` reads cross-target bitcode names and the
   size `N` is baked per-target at monomorphisation.
-- **`armv7a-nuttx-eabihf`** ⬜ — custom-target JSON → the **filesystem-fallback**
-  probe path (reads the *outer* LTO'd rlib — the path most at risk). Needs the
-  custom-target toolchain; deferred to CI / out-of-band.
+- **`armv7a-nuttx-eabihf`** ✅ — built `nuttx-rs-service-server` (custom target,
+  `build-std`, patched libc) `lto=off` and `lto=fat`; both compile clean. Host
+  `llvm-nm` reads the fat-LTO `nros` rlib's markers **byte-identical** to the
+  `lto=off` rlib — all 17 (`EXECUTOR=79328`, `PUBLISHER=552`, `SESSION=520`, …)
+  match. This is exactly the filesystem-fallback path's extract step (it reads the
+  outer rlib via `extract_sizes`), so that path is proven on the most-at-risk target.
+  The example builds a `staticlib` (`.a`) linked into the kernel image by the nuttx
+  `make`/gcc build (not `rust-lld`), so the final-ELF link is out of scope here.
 Any divergence (esp. a `0` or a placeholder `*_OPAQUE_U64S = 1`) is a fail.
 - **Files:** none (verification); fixes land in 234.4 if a gap surfaces.
 
@@ -102,10 +109,19 @@ Driven by 234.3 results:
 `cargo test -p nros-sizes-build --test bitcode_probe -- --ignored`. Passed in 14.79s.
 - **Files:** `packages/core/nros-sizes-build/tests/bitcode_probe.rs`.
 
-### 234.6 — Measure + record the size win  ⬜
-Diff a representative embedded binary (e.g. a `logging-smoke-*` or a QEMU example)
-`lto=off` vs `lto=fat`; record the `.text`/total delta in the phase notes + issue
-0023 resolution. The payoff that justifies the change.
+### 234.6 — Measure + record the size win  ✅
+`logging-smoke-mps2-baremetal` (probe-consuming `thumbv7m-none-eabi` firmware, links a
+full ELF via `rust-lld`) built `lto=off` vs `lto=fat`:
+
+| section | lto=off | lto=fat | Δ |
+|---|---|---|---|
+| `.text` | 7488 | 5636 | **−1852 (−24.7%)** |
+| `dec` (text+data+bss) | 7676 | 5912 | **−1764 (−23.0%)** |
+
+Both link cleanly; `rust-lld` LTO-links the bitcode rlibs with no error. Larger
+RMW-carrying firmware should see a bigger absolute win. The memory-noted Cyclone
+`rust-lld` link hazard is a C-side cmake `ENABLE_LTO` setting, untouched by the Rust
+profile flip.
 
 ## Acceptance
 
