@@ -39,8 +39,22 @@ MicroXRCEAgent udp4 -p 8888 &
 NROS_LOCATOR=127.0.0.1:8888 cargo run -p px4-offboard-companion
 ```
 
-> Against a *bare* agent the companion connects and streams setpoints but
-> receives nothing — a bare agent matches only built-in ROS DDS types, not
-> `px4_msgs`. The receive round-trip needs a typed agent (PX4 SITL, or
-> `MicroXRCEAgent -r <refs.xml>`). See
-> [issue 0026](../../../../docs/issues/0026-px4-xrce-bare-agent-type-matching.md).
+## Self-test (no SITL, no companion)
+
+`px4-stub` in loopback mode publishes **and** subscribes its own
+`/fmu/out/vehicle_odometry` in one XRCE session — a single-session pub+sub
+round-trips `px4_msgs` through a bare agent:
+
+```bash
+MicroXRCEAgent udp4 -p 8888 &
+NROS_LOCATOR=127.0.0.1:8888 PX4_STUB_LOOPBACK=1 PX4_STUB_TICKS=200 cargo run -p px4-stub
+# → "loopback rx[N]: ..." lines
+```
+
+This is the CI round-trip (`nros-tests::px4_xrce`, built by `just px4 build-fixtures`).
+
+> The *cross-session* companion ↔ PX4 receive is different: against a **bare**
+> agent the companion connects and streams setpoints but receives nothing — a
+> bare agent matches non-built-in types only intra-session. The cross-session
+> receive needs a typed agent (PX4 SITL, or `MicroXRCEAgent -r <refs.xml>`).
+> See [issue 0026](../../../../docs/issues/0026-px4-xrce-bare-agent-type-matching.md).

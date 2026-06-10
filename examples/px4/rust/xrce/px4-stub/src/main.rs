@@ -1,26 +1,35 @@
 //! Fake-PX4 XRCE-DDS stub — Phase 233.4 (RFC-0039 Track B).
 //!
-//! Stands in for PX4's `uxrce_dds_client` so the companion example can be
-//! driven without a full PX4 SITL: publishes `VehicleOdometry` on
+//! Stands in for PX4's `uxrce_dds_client`: publishes `VehicleOdometry` on
 //! `/fmu/out/vehicle_odometry` with the PX4 QoS profile — exactly what a real
-//! PX4 advertises.
+//! PX4 advertises — so the companion example can be driven without SITL.
 //!
-//! NOTE: a *bare* `MicroXRCEAgent` (no px4_msgs typesupport) registers DDS
-//! types by name only; two such clients match for built-in ROS types but not
-//! for `px4_msgs::msg::dds_::*`. A real PX4 runs the agent with px4_msgs
-//! typesupport, so the companion round-trip works there. See
-//! `docs/issues/` (px4-xrce bare-agent type matching) and
-//! `docs/reference/px4-xrce-companion.md`.
+//! ## Loopback (`PX4_STUB_LOOPBACK=1`)
+//!
+//! Also subscribes its own `/fmu/out/vehicle_odometry` in the *same* XRCE
+//! session. This is the CI self-test of the full `px4_msgs` round-trip
+//! (serialize → agent → deserialize) over a real `MicroXRCEAgent`: a
+//! single-session pub+sub matches intra-participant, so it works against a
+//! *bare* agent. (Two *separate* sessions — companion ↔ PX4 — need an agent
+//! that knows the px4_msgs DDS types, i.e. PX4's; see
+//! `docs/issues/0026-px4-xrce-bare-agent-type-matching.md`.)
 //!
 //! ```bash
 //! MicroXRCEAgent udp4 -p 8888
-//! NROS_LOCATOR=127.0.0.1:8888 cargo run -p px4-stub
+//! NROS_LOCATOR=127.0.0.1:8888 cargo run -p px4-stub                 # drive the companion
+//! NROS_LOCATOR=127.0.0.1:8888 PX4_STUB_LOOPBACK=1 cargo run -p px4-stub  # self-test
 //! ```
 //!
 //! Environment:
-//!   NROS_LOCATOR    — agent `host:port` (default `127.0.0.1:8888`)
-//!   ROS_DOMAIN_ID   — DDS domain (default `0`)
-//!   PX4_STUB_TICKS  — publish N samples then exit (default: stream forever)
+//!   NROS_LOCATOR      — agent `host:port` (default `127.0.0.1:8888`)
+//!   ROS_DOMAIN_ID     — DDS domain (default `0`)
+//!   PX4_STUB_TICKS    — publish N samples then exit (default: stream forever)
+//!   PX4_STUB_LOOPBACK — also subscribe own topic and count received samples
+
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use log::info;
 use nros::prelude::*;
@@ -48,6 +57,26 @@ fn main() {
         .node_builder("px4_stub")
         .build()
         .expect("Failed to build node");
+
+    // Optional same-session loopback: subscribe our own /fmu/out topic so a
+    // host test can assert the px4_msgs round-trip flowed through the agent.
+    let rx = Arc::new(AtomicU64::new(0));
+    if std::env::var_os("PX4_STUB_LOOPBACK").is_some() {
+        let rx_cb = rx.clone();
+        executor
+            .node_mut(nid)
+            .subscription("/fmu/out/vehicle_odometry")
+            .typed::<VehicleOdometry>()
+            .qos(QosSettings::px4())
+            .build(move |m: &VehicleOdometry| {
+                let n = rx_cb.fetch_add(1, Ordering::SeqCst) + 1;
+                info!(
+                    "loopback rx[{n}]: t={} pos0={:.1}",
+                    m.timestamp, m.position[0]
+                );
+            })
+            .expect("Failed to subscribe loopback /fmu/out/vehicle_odometry");
+    }
 
     let odom = executor
         .node_mut(nid)
@@ -85,7 +114,10 @@ fn main() {
         }
 
         if let Some(max) = max.filter(|&max| tick >= max) {
-            info!("tick budget {max} reached");
+            info!(
+                "tick budget {max} reached, loopback rx={}",
+                rx.load(Ordering::SeqCst)
+            );
             break;
         }
     }

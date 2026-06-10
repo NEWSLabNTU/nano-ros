@@ -144,6 +144,9 @@ static XRCE_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the xrce-serial-listener binary
 static XRCE_SERIAL_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the px4-stub binary (Phase 233.4 — PX4 XRCE companion).
+static PX4_STUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the c-talker binary
 static C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1717,6 +1720,22 @@ pub fn xrce_talker_binary() -> PathBuf {
 pub fn xrce_listener_binary() -> PathBuf {
     build_xrce_listener()
         .expect("Failed to build xrce-listener")
+        .to_path_buf()
+}
+
+/// Resolve the prebuilt px4-stub example binary (Phase 233.4). Built by
+/// `just px4 build-fixtures` to `examples/px4/rust/xrce/px4-stub/target-xrce/`.
+pub fn build_px4_stub() -> TestResult<&'static Path> {
+    PX4_STUB_BINARY
+        .get_or_try_init(|| build_example_rmw("px4/rust/xrce/px4-stub", "px4-stub", Rmw::Xrce))
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the px4-stub binary path.
+#[rstest::fixture]
+pub fn px4_stub_binary() -> PathBuf {
+    build_px4_stub()
+        .expect("Failed to build px4-stub")
         .to_path_buf()
 }
 

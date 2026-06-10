@@ -158,9 +158,38 @@ build-examples: build-sitl build-sitl-cpp
     @echo "PX4 examples built."
 
 # Build PX4 test fixtures.
+#
+# Phase 233.4 — the XRCE companion host test (`nros-tests::px4_xrce`) runs the
+# prebuilt `px4-stub` example. Generate its `px4_msgs` bindings from the PX4
+# `.msg` tree (no `nros ws sync` path — px4_msgs isn't an ament package) then
+# build the standalone example to `target-xrce/` where `build_example_rmw`
+# resolves it. Companion gets the same bindings so a `just px4 build-examples`
+# copy-out builds too.
 [group("full-matrix")]
 build-fixtures:
-    @echo "PX4 has no separate test fixture build today."
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
+    if [ ! -d "$PX4_DIR/msg" ]; then
+        echo "[PREREQ] PX4-Autopilot .msg tree not found at $PX4_DIR/msg — run: just px4 setup"
+        exit 0
+    fi
+    nros_cli="$(nros_cli_bin)"
+    if ! "$nros_cli" generate-px4-msgs --help >/dev/null 2>&1; then
+        echo "[PREREQ] '$nros_cli' lacks 'generate-px4-msgs' — rebuild the in-tree CLI (just setup-cli)"
+        exit 0
+    fi
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    for ex in px4-stub offboard-companion; do
+        dir="examples/px4/rust/xrce/$ex"
+        echo "  → generate px4_msgs for $dir"
+        "$nros_cli" generate-px4-msgs --px4 "$PX4_DIR" --output "$dir/generated" >/dev/null
+    done
+    echo "  → cargo build px4-stub (rmw-xrce, target-xrce/)"
+    ( cd examples/px4/rust/xrce/px4-stub \
+      && cargo build $cargo_profile_args --no-default-features --features rmw-xrce --target-dir target-xrce )
+    echo "PX4 XRCE fixtures built."
 
 # Build every PX4 tier: core crates, example integrations, and fixtures.
 [group("full-matrix")]

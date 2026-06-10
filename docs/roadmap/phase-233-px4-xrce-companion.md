@@ -6,9 +6,10 @@ uses — the **mainstream PX4↔ROS 2 integration**, which nano-ros's `nros-rmw-
 backend already fits but does not yet exercise. This is **Track B** of the
 two-track PX4 plan in **RFC-0039** ("support both") — the *additive* track.
 
-**Status.** In progress (2026-06). Wave 1 (233.2), Wave 2 (233.1), Wave 3 (233.3 +
-233.4 doc/harness) landed; 233.4 automated round-trip blocked on a typed agent
-([issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md)).
+**Status.** Complete (2026-06). All four work items landed (233.1 codegen, 233.2 QoS,
+233.3 example, 233.4 doc + CI round-trip). The CI round-trip is single-session; the
+cross-session companion ↔ PX4 receive needs a typed agent (PX4 SITL or `-r refs`),
+tracked as a follow-up in [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
 Design-of-record: RFC-0039 (Draft).
 
 **Priority.** P2 — additive (nothing breaks without it), but it is the path most
@@ -83,21 +84,22 @@ first companion-side PX4 example (existing px4 examples are uORB in-firmware onl
   backend; connects to a live agent and creates entities/streams setpoints (verified
   locally). README matrix px4-rust xrce cell updated.
 
-### 233.4 — Agent bring-up doc + test harness  ◐
+### 233.4 — Agent bring-up doc + test harness  ✅
 Document standing up `MicroXRCEAgent` (udp4 `-p 8888` / serial) for the example, and
 wire a host test (SITL or a stubbed agent) so CI can exercise the round-trip. Mirror
 the existing zenohd/cyclonedds support-service pattern (not a platform scope).
 - **Files:** a docs/reference PX4-companion guide; `nros_tests` agent helper.
-- **Landed.** `docs/reference/px4-xrce-companion.md` (agent + SITL + QoS bring-up) and
-  `examples/px4/rust/xrce/px4-stub/` (fake-PX4 publisher of `/fmu/out/vehicle_odometry`)
-  to drive the companion without SITL.
-- **Blocked (automated round-trip).** A bare `MicroXRCEAgent` matches only built-in ROS
-  DDS types, not `px4_msgs::msg::dds_::*` (entities are created binary, type-name only —
-  no TypeObject). std_msgs round-trips between two nros XRCE clients; px4_msgs does not.
-  Real PX4 runs the agent **with** px4_msgs typesupport, so the example is correct there;
-  a self-contained CI *receive* round-trip needs a typed agent (PX4 SITL or
-  `-r <refs.xml>`). Tracked in [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
-  The CI-able surface against a bare agent is connect + publish.
+- **Landed.** `docs/reference/px4-xrce-companion.md` (agent + SITL + QoS bring-up);
+  `examples/px4/rust/xrce/px4-stub/` (fake-PX4 publisher with a `PX4_STUB_LOOPBACK`
+  self-test mode); `just px4 build-fixtures` (generate px4_msgs + build the stub to
+  `target-xrce/`); `nros-tests::px4_xrce::test_px4_msgs_roundtrip_over_agent` (starts
+  `XrceAgent`, runs the stub loopback, asserts ≥5 `VehicleOdometry` round-trip through
+  the agent). **Passes** — the full `px4_msgs` CDR + `px4()` QoS + XRCE pub/sub path is
+  CI-covered over a real agent.
+- **Scope note.** The CI round-trip is single-session (loopback). The *cross-session*
+  companion ↔ PX4 receive needs a typed agent (PX4 SITL or `-r refs`) — a bare agent
+  matches non-built-in types only intra-participant. Refined analysis +
+  remaining-work tracking: [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
 
 ## Acceptance
 
