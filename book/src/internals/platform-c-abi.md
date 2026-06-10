@@ -177,3 +177,39 @@ The current canonical surface is 59 + 29 + 8 = **96 symbols** across
 three headers, mirrored exactly by the Rust extern block, exported by
 six ports plus four bare-metal board crates, and gated by one drift
 script. Adding a capability touches all four columns in one PR.
+
+## The scalar / opaque-struct boundary (RFC-0034 D2)
+
+Not every kernel service unifies the same way. The ABI splits into two
+classes, and the split is a **design boundary, not tech debt**:
+
+- **Scalar services — fully unified.** Alloc, sleep, clock, time, yield,
+  random. Their ABI is plain scalars (sizes, millisecond counts, byte
+  buffers) with no host-type in the signature, so a single canonical
+  `nros_platform_*` symbol works for every RTOS and every consumer
+  (core, RMW, vendored zenoh-pico/XRCE) funnels through it. The D8 gate
+  (`check-no-direct-kernel-alloc.sh`) enforces this for allocation; the
+  same pattern extends to the other scalars (the vendored `z_*`/`uxr_*`
+  funnel is the CI-relink-gated remainder of phase-230).
+
+- **Opaque-struct services — stay per-RTOS-vendored.** Threading
+  (`mutex`/`condvar`/`task`), the wake primitive, and network sockets
+  carry RTOS-defined structs (`SemaphoreHandle_t`, `TX_MUTEX`,
+  `struct k_mutex`, socket/`NX_*` control blocks) whose layout the
+  vendor owns. A single C ABI cannot name those types portably, so each
+  port vendors its own body and nano-ros exposes only opaque storage
+  (`*_storage_size`/`*_storage_align` + an init/drop pair). This is why
+  the ThreadX board's `tx_byte_allocate` thread-stack / NetX-pool sites
+  are **not** D8 violations — they are the *task* and *net* opaque
+  services, allowed on a documented symbol-scoped lint allowlist.
+
+**Escape hatch (if an opaque service must move later).** The way out is
+NOT to widen the C ABI with host types; it is to pin a **canonical
+fixed-layout struct** in `platform.h`, give each port a compile-time
+`size_probe` / `_Static_assert` that the canonical layout is ≥ the
+vendor struct (so opaque storage stays sound), and let the port
+memcpy/place the vendor object inside the canonical slot. **Net is the
+first candidate** — `platform_net.h` already exposes 29 symbols over an
+opaque socket handle — but it is deferred (RFC-0034 "out of scope")
+until there is a consumer that needs portable socket structs. Threads
+and sync are the least likely to move (deepest struct coupling).

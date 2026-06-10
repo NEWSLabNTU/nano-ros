@@ -371,11 +371,14 @@ risk than alloc (no heap-ownership/init subtlety).
 Collapse the duplicated `platform_aliases.c` (zpico-sys + nros-rmw-xrce)
 into a single platform-layer shim both RMWs consume.
 
-#### 230.3.2 — Document the opaque-struct boundary
-Record in [platform-c-abi.md] (and ARCHITECTURE.md when RFC-0034 → Stable)
-that task/sync/net stay per-RTOS-vendored by ABI constraint — a design
-boundary, not debt — with the canonical-layout + `size_probe` static-assert
-escape hatch noted for any future move (net first candidate).
+#### 230.3.2 — Document the opaque-struct boundary  ✅ DONE
+Recorded in [platform-c-abi.md] §"The scalar / opaque-struct boundary":
+scalar services (alloc/sleep/clock/time/yield/random) fully unify; opaque-
+struct services (task/sync/net) stay per-RTOS-vendored by ABI constraint —
+a design boundary, not debt — with the canonical fixed-layout +
+`size_probe`/`_Static_assert` escape hatch noted for any future move (net
+the first candidate). Ties the ThreadX board lint allowlist to the
+classification. ARCHITECTURE.md sync deferred to RFC-0034 → Stable.
 
 ## Out of scope
 

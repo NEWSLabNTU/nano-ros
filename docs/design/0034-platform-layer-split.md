@@ -214,6 +214,40 @@ the worklist is empty. This keeps the boundary from re-rotting.
 
 Work breakdown: [phase-230].
 
+## Implementation status (2026-06)
+
+Tracks what [phase-230] has landed against the decisions above.
+
+| Decision | State | Where |
+|---|---|---|
+| D1 boundary invariant | **enforced** for the nros-owned surface | D8 gate hard (below) |
+| D2 scalar vs opaque classification | **documented** | [platform-c-abi.md] §opaque-struct boundary |
+| D3 one category-gated bridge | **partial** | POSIX/bare-metal alias TU live; RTOS `z_*` funnel is the CI-gated remainder |
+| D4 alloc ownership + init contract | **landed** (FreeRTOS/ThreadX/POSIX/esp) | `nros-platform-*/src/platform.c` |
+| D6 optional Rust global allocator | **landed** | `nros-platform-api` `global-allocator` feature → `nros_platform_alloc`; off where a framework owns the slot (Zephyr/esp-hal/std) |
+| D7 two-mode heap stats | **landed**; closes [issue 0006] | canonical `nros_platform_heap_used_bytes`/`_total_bytes` (ABI) + per-port impls + bare-metal `FreeListHeap` stats |
+| D8 enforcement gate | **HARD** by default | `scripts/check-no-direct-kernel-alloc.sh` (`NROS_ALLOC_GATE_HARD=1` default) |
+
+**nros-owned surface — DONE.** The Rust `#[global_allocator]`s
+(nros-c/nros-cpp), the C-API inline platform headers
+(`nros-c/include/nros/platform/{freertos,zephyr}.h`), and the board
+task-context allocations (`nros-board-freertos`, `nros-board-orin-spe`) all
+route through `nros_platform_alloc`/`_dealloc`. The ThreadX board
+`tx_byte_allocate` sites (thread stack, NetX pools) are the vendored
+TASK/NET opaque-struct services (D2) and stay direct on a documented
+lint allowlist.
+
+**Vendored funnel — CI-gated remainder.** Routing vendored zenoh-pico's
+C scalar services (`z_malloc`/`z_free`/`z_realloc`, then
+`z_sleep`/`z_clock`/`z_random`) through `nros_platform_*` on
+FreeRTOS/ThreadX/Zephyr requires a fork guard
+(`#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC`) + the memory-only alias emission,
+coupled to `CARGO_FEATURE_PLATFORM_ALIASES`. It cannot be verified by a
+local `cargo check` (no ELF relink — the change only manifests at the final
+embedded link); it is owned by the CI relink lane and is **out of D8's
+scope** (the lint excludes the vendored submodule), so it is not a
+precondition for the gate being hard.
+
 ## Open questions
 
 - **Fork maintenance.** Stripping vendored scalar defs behind a guard adds
@@ -256,6 +290,11 @@ Work breakdown: [phase-230].
   Resolves the RTOS-owned-allocator open question; drops the
   zephyr-lang-rust patch from the Zephyr slice. Renumbered the enforcement
   gate to D8.
+- 2026-06: Added Implementation status. Wave 1 landed the nros-owned alloc
+  surface (D4/D6/D7) + flipped the D8 gate hard; [issue 0006] closed. The
+  vendored zenoh-pico `z_*` scalar funnel (D3 on RTOS) + the alias-TU dedup
+  (D3 "one bridge") are the CI-relink-gated remainder. D2 boundary recorded
+  in [platform-c-abi.md].
 
 ## See also
 
