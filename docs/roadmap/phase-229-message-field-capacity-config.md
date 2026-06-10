@@ -210,10 +210,30 @@ sequence-of-nested-messages**. Sequence elements stay fixed-capacity (unbounded
 - **Files:** `nros-core/src/lib.rs`, `types.rs`, `templates.rs`,
   `generator/common.rs`, `templates/message_nros.rs.jinja`, `tests/`.
 
-### 229.6 — `borrowed` storage mode (phase 3, closes issue 0007)  ⬜
-A receive-side, callback-scoped, read-only zero-copy view — **mostly a runtime change,
-not codegen** (design-of-record: RFC-0033 "Borrowed mode"). Ordered so the runtime
-seam is proven before the codegen leans on it:
+### 229.6 — `borrowed` storage mode (phase 3, closes issue 0007)  🟡 Rust done; C/C++ pending
+**Status (2026-06-10).** The **Rust** path is complete and E2E-validated; only the
+C/C++ span views remain before issue 0007 closes.
+
+- ✅ **Runtime seam** (`670a62a4`): `nros_serdes::DeserializeBorrowed<'a>` +
+  `nros_core::BorrowedMessage` GAT marker (`type View<'a>`) + executor
+  `SubBufferedBorrowedEntry` / `sub_buffered_borrowed_try_process` (triple-buffer
+  only; depth>1 → `Unsupported`) + `NodeCtx::create_subscription_borrowed::<B,_>`
+  (uses `KEEP_LAST(1)`).
+- ✅ **Rust codegen** (`5097a7a7`): `mode = "borrowed"` emits `{Msg}View<'a>`
+  (borrowed fields `&'a [u8]`/`&'a str`, others copied) + `{Msg}Borrow` ZST marker,
+  alongside the unchanged owned `{Msg}` (additive — owned still publishes).
+- ✅ **Alignment guard** (`40e5c97e`): multi-byte numeric sequences
+  (`float32[]`, `uint16[]`, …) → `nros_core::LeSliceView<'a, T>` — borrows raw LE
+  bytes zero-copy, decodes per element (no `&[T]` cast → no buffer-alignment
+  requirement). Single-byte (`uint8`/`int8`/`bool`) stay true `&'a [u8]`. Sequences
+  of strings/nested rejected (no fixed-width span).
+- ✅ **E2E** (`aeed3d4d`): owned-publish-wire → borrowed-subscribe through the
+  MockSession executor `spin_once` — `ImageView` with `&[u8]` + `LeSliceView<f32>`
+  decodes correctly.
+- ⬜ **C/C++ span views** (slice 5): `{const T* data; size_t size}` over the
+  existing raw `(data,len)` callback. On landing, close issue 0007.
+
+Original design (the runtime seam was proven before codegen leaned on it):
 
 1. **Callback-scoped buffer borrow (the substantive work).** Today's callback dispatch
    (`nros-node executor/arena.rs::sub_buffered_try_process`) deserializes into an owned
