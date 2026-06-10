@@ -52,5 +52,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 25 | host-integration lane fails native action/c_xrce/bridge tests — fixtures not staged | bug | build | [0025-host-integration-native-fixtures-unstaged.md](0025-host-integration-native-fixtures-unstaged.md) |
 | 26 | nros-rmw-xrce datareader stops matching in a mixed pub+sub session     | bug         | rmw-xrce | [0026-px4-xrce-bare-agent-type-matching.md](0026-px4-xrce-bare-agent-type-matching.md) |
 | 27 | nros-c posix platform headers fail to compile under gcc 14 (riscv NuttX) | bug       | c-api  | [0027-nros-c-posix-headers-gcc14.md](0027-nros-c-posix-headers-gcc14.md) |
+| 28 | nros::main!() RTIC examples miss defmt::timestamp! → undefined _defmt_timestamp | bug | build | [0028-nros-main-rtic-defmt-timestamp.md](0028-nros-main-rtic-defmt-timestamp.md) |
 
 Resolved issues live in [`archived/`](archived/).

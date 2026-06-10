@@ -49,3 +49,24 @@ are `staticlib`/`rlib`, no link). Cuts the large block from 128 KiB to
 the build via `workspace-fixtures-build.sh` (`export $envstr` before
 `cargo build -p esp32_entry`). Not verifiable in the dev env (no esp toolchain);
 the platform-ci esp32 cell is the confirmation. Archive once green.
+
+**Also affects stm32f4 (found 2026-06-11, full `build-test-fixtures` run).** The
+same Phase 231 size-class blocks overflow stm32f4 RAM, not just esp32 DRAM —
+`examples/stm32f4/rust/talker` (`stm32f4-bsp-talker`) fails to link:
+
+```
+rust-lld: error: section '.bss' will not fit in region 'RAM': overflowed by 36904 bytes
+rust-lld: error: section '.uninit' will not fit in region 'RAM': overflowed by 37928 bytes
+```
+
+The esp32 fix above does **not** cover stm32f4: the stm32f4 fixture rows
+(`examples/fixtures.toml`, `platform = "stm32f4"`, plain `dir`/`target` cargo
+builds) carry no `env`, so they still build the 128 KiB large block. **Fix
+direction:** same knob — add `ZPICO_SUBSCRIBER_LARGE_SIZE` (≈4096) to the
+stm32f4 fixture rows. ⚠️ Verify the manifest `env` field actually propagates to
+the direct-cargo stm32f4 rows (confirmed only for the esp32 *workspace* path via
+`workspace-fixtures-build.sh`; the non-workspace fixtures-build path may consume
+`env` differently). Reinforces the "per-RAM-budget size-class profile" direction:
+small-RAM targets (esp32, stm32f4, …) all need a shrunk large block, so a
+profile keyed on the board's RAM budget is more robust than per-row env
+overrides.
