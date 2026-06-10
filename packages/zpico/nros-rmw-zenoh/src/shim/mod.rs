@@ -127,7 +127,10 @@ pub(crate) const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE;
 #[cfg(feature = "safety-e2e")]
 pub(crate) const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE_WITH_CRC;
 
-pub use crate::config::{SERVICE_BUFFER_SIZE, SUBSCRIBER_BUFFER_SIZE, SUBSCRIBER_RING_DEPTH};
+pub use crate::config::{
+    MAX_LARGE_SUBSCRIBERS, SERVICE_BUFFER_SIZE, SUBSCRIBER_BUFFER_SIZE, SUBSCRIBER_LARGE_SIZE,
+    SUBSCRIBER_RING_DEPTH, SUBSCRIBER_SIZE_THRESHOLD,
+};
 
 // ============================================================================
 // Executor Wake Signal (std only)

@@ -8,8 +8,9 @@ use portable_atomic::{AtomicUsize, Ordering};
 use nros_rmw::{Subscriber, TransportError};
 
 use super::{
-    KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, MessageInfo, RMW_ATTACHMENT_SIZE,
-    SUBSCRIBER_ATTACHMENT_BUF_SIZE, SUBSCRIBER_BUFFER_SIZE, SUBSCRIBER_RING_DEPTH,
+    KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, MAX_LARGE_SUBSCRIBERS, MessageInfo,
+    RMW_ATTACHMENT_SIZE, SUBSCRIBER_ATTACHMENT_BUF_SIZE, SUBSCRIBER_BUFFER_SIZE,
+    SUBSCRIBER_LARGE_SIZE, SUBSCRIBER_RING_DEPTH, SUBSCRIBER_SIZE_THRESHOLD,
 };
 use crate::{
     keyexpr::TopicKeyExpr,
@@ -43,9 +44,10 @@ use super::signal_executor_wake;
 /// lock is needed: the SPSC discipline + the Release/Acquire fence
 /// on `ring_tail` / `ring_head` covers the cross-FFI handoff.
 pub(super) struct SubscriberBuffer {
-    /// Ring of payload slots.
-    pub(super) ring_payload: [[u8; SUBSCRIBER_BUFFER_SIZE]; SUBSCRIBER_RING_DEPTH],
-    /// Ring of attachment slots, parallel to `ring_payload`.
+    /// Ring of attachment slots, parallel to the (externally-stored) payload
+    /// ring. Phase 231 (RFC-0038): the payload storage lives in a size-class
+    /// array (`SMALL_PAYLOADS` / `LARGE_PAYLOADS`); this metadata struct is
+    /// size-independent and reaches the payload through `ring_desc.payload_base`.
     pub(super) ring_att: [[u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE]; SUBSCRIBER_RING_DEPTH],
     /// Per-slot payload byte length. Written by the C shim before
     /// its Release-store to `ring_tail`; read by the Rust shim
@@ -71,7 +73,6 @@ pub(super) struct SubscriberBuffer {
 impl SubscriberBuffer {
     pub(super) const fn new() -> Self {
         Self {
-            ring_payload: [[0u8; SUBSCRIBER_BUFFER_SIZE]; SUBSCRIBER_RING_DEPTH],
             ring_att: [[0u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE]; SUBSCRIBER_RING_DEPTH],
             ring_len: [0usize; SUBSCRIBER_RING_DEPTH],
             ring_att_len: [0usize; SUBSCRIBER_RING_DEPTH],
@@ -122,13 +123,16 @@ impl SubscriberBuffer {
             .store(head.wrapping_add(1), Ordering::Release);
     }
 
-    /// Populate `ring_desc` so the C shim can produce into this
-    /// buffer. Must be called once, after the buffer's static
-    /// address is known (i.e. from `ZenohSubscriber::new`).
-    pub(super) fn init_ring_desc(&mut self) {
+    /// Populate `ring_desc` so the C shim can produce into this buffer. Must be
+    /// called once, after the buffer's static address is known and a payload
+    /// block has been allocated (i.e. from `ZenohSubscriber::new`). Phase 231
+    /// (RFC-0038): the payload storage is external (a size-class array), so its
+    /// base + stride are passed in; the att/len/head/tail still reference this
+    /// metadata struct.
+    pub(super) fn init_ring_desc(&mut self, payload_base: *mut u8, payload_stride: usize) {
         self.ring_desc = zpico_ring_desc_t {
-            payload_base: self.ring_payload.as_mut_ptr() as *mut u8,
-            payload_stride: SUBSCRIBER_BUFFER_SIZE,
+            payload_base,
+            payload_stride,
             att_base: self.ring_att.as_mut_ptr() as *mut u8,
             att_stride: SUBSCRIBER_ATTACHMENT_BUF_SIZE,
             slot_count: SUBSCRIBER_RING_DEPTH,
@@ -137,6 +141,87 @@ impl SubscriberBuffer {
             head: self.ring_head.as_ptr(),
             tail: self.ring_tail.as_ptr(),
         };
+    }
+
+    /// Borrow the payload bytes of ring slot `slot` (`len` bytes). Phase 231
+    /// (RFC-0038): reads through `ring_desc.payload_base` (the external
+    /// size-class storage) + `payload_stride`, so the consumer is agnostic to
+    /// which size class backs this subscriber.
+    pub(super) fn payload_slot(&self, slot: usize, len: usize) -> &'static [u8] {
+        // Safety: `ring_desc` was populated in `init_ring_desc` with a stable
+        // 'static payload base; `slot < slot_count` and `len <= payload_stride`
+        // hold by the SPSC producer contract.
+        unsafe {
+            core::slice::from_raw_parts(
+                self.ring_desc
+                    .payload_base
+                    .add(slot * self.ring_desc.payload_stride),
+                len,
+            )
+        }
+    }
+
+    /// Mutable counterpart to [`payload_slot`](Self::payload_slot) — for the
+    /// Rust-side producer paths that write into a ring slot directly (non-C-shim
+    /// push / loopback). Writes through the external size-class storage.
+    /// (Only some platform/feature configs exercise the Rust-side producer.)
+    #[allow(dead_code)]
+    pub(super) fn payload_slot_mut(&mut self, slot: usize, len: usize) -> &'static mut [u8] {
+        unsafe {
+            core::slice::from_raw_parts_mut(
+                self.ring_desc
+                    .payload_base
+                    .add(slot * self.ring_desc.payload_stride),
+                len,
+            )
+        }
+    }
+
+    /// Payload slot capacity (the size-class stride) for this subscriber.
+    pub(super) fn payload_stride(&self) -> usize {
+        self.ring_desc.payload_stride
+    }
+}
+
+/// Phase 231 (RFC-0038) — size-class payload storage, external to the
+/// (size-independent) `SubscriberBuffer` metadata. A subscription allocates one
+/// payload block from the class its `rx_buffer_hint` selects; the block's
+/// address + stride are baked into the subscriber's `ring_desc`. RAM is
+/// `MAX_SUBS×DEPTH×SMALL + MAX_LARGE×DEPTH×LARGE` instead of
+/// `MAX_SUBS×DEPTH×LARGE` — only the few `large` blocks are big.
+type SmallPayloadBlock = [[u8; SUBSCRIBER_BUFFER_SIZE]; SUBSCRIBER_RING_DEPTH];
+type LargePayloadBlock = [[u8; SUBSCRIBER_LARGE_SIZE]; SUBSCRIBER_RING_DEPTH];
+
+static mut SMALL_PAYLOADS: [SmallPayloadBlock; ZPICO_MAX_SUBSCRIBERS] =
+    [[[0u8; SUBSCRIBER_BUFFER_SIZE]; SUBSCRIBER_RING_DEPTH]; ZPICO_MAX_SUBSCRIBERS];
+static mut LARGE_PAYLOADS: [LargePayloadBlock; MAX_LARGE_SUBSCRIBERS] =
+    [[[0u8; SUBSCRIBER_LARGE_SIZE]; SUBSCRIBER_RING_DEPTH]; MAX_LARGE_SUBSCRIBERS];
+
+pub(super) static NEXT_SMALL_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
+pub(super) static NEXT_LARGE_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
+
+/// Reserve a payload block for a subscription whose receive-buffer hint is
+/// `rx_buffer_hint` bytes. Returns `(payload_base, payload_stride)` for
+/// `init_ring_desc`, or `None` if that size class is exhausted.
+pub(super) fn alloc_payload_block(rx_buffer_hint: usize) -> Option<(*mut u8, usize)> {
+    if rx_buffer_hint > SUBSCRIBER_SIZE_THRESHOLD {
+        let idx = NEXT_LARGE_PAYLOAD.fetch_add(1, Ordering::SeqCst);
+        if idx >= MAX_LARGE_SUBSCRIBERS {
+            NEXT_LARGE_PAYLOAD.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        // Safety: idx is in-bounds; LARGE_PAYLOADS is a static with a stable address.
+        let base = unsafe { (&raw mut LARGE_PAYLOADS[idx]) as *mut u8 };
+        Some((base, SUBSCRIBER_LARGE_SIZE))
+    } else {
+        let idx = NEXT_SMALL_PAYLOAD.fetch_add(1, Ordering::SeqCst);
+        if idx >= ZPICO_MAX_SUBSCRIBERS {
+            NEXT_SMALL_PAYLOAD.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        // Safety: idx is in-bounds; SMALL_PAYLOADS is a static with a stable address.
+        let base = unsafe { (&raw mut SMALL_PAYLOADS[idx]) as *mut u8 };
+        Some((base, SUBSCRIBER_BUFFER_SIZE))
     }
 }
 
@@ -241,14 +326,17 @@ extern "C" fn subscriber_notify_callback(
     // `test_zenoh_overflow_detection`, and it doubles as a
     // user-visible signal that the subscriber's QoS / buffer sizing
     // is wrong for the producer's payload size.
-    if len > SUBSCRIBER_BUFFER_SIZE {
-        OVERFLOW_DROPS.fetch_add(1, Ordering::Relaxed);
-    }
-
     let buf_ref = SubscriberBufferRef {
         index: buffer_index,
     };
     let buffer = buf_ref.get();
+
+    // Phase 231 (RFC-0038) — the oversize threshold is now the subscriber's own
+    // size-class slot stride, not the global small size, so a large-class
+    // subscriber isn't falsely counted as overflowing.
+    if len > buffer.payload_stride() {
+        OVERFLOW_DROPS.fetch_add(1, Ordering::Relaxed);
+    }
 
     // Wake any async task waiting for data on this subscriber.
     buffer.waker.wake();
@@ -433,6 +521,14 @@ impl ZenohSubscriber {
             return Err(TransportError::SubscriberCreationFailed);
         }
 
+        // Phase 231 (RFC-0038) — reserve a size-class payload block (small vs
+        // large by the topic's rx_buffer_hint). Roll back the metadata index if
+        // the class is exhausted.
+        let Some((payload_base, payload_stride)) = alloc_payload_block(topic.rx_buffer_hint) else {
+            NEXT_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+            return Err(TransportError::SubscriberCreationFailed);
+        };
+
         let mut buf = SubscriberBufferRef::new(buffer_index);
 
         // Generate the topic key with wildcard for type hash
@@ -460,7 +556,7 @@ impl ZenohSubscriber {
         // pointers from the buffer's (stable) static address.
         let subscriber = unsafe {
             let buffer = buf.get_mut();
-            buffer.init_ring_desc();
+            buffer.init_ring_desc(payload_base, payload_stride);
             let desc_ptr: *mut zpico_ring_desc_t = &mut buffer.ring_desc;
             let sub_result = context.declare_subscriber_ring_raw(
                 &keyexpr_buf,
@@ -789,7 +885,7 @@ impl ZenohSubscriber {
 
         // Copy payload out of the ring slot. SPSC: the C producer
         // never touches this slot while head points at it.
-        buf[..len].copy_from_slice(&buffer.ring_payload[slot][..len]);
+        buf[..len].copy_from_slice(buffer.payload_slot(slot, len));
 
         // Parse attachment for sequence number and CRC.
         let attachment_len = buffer.ring_att_len[slot];
@@ -848,7 +944,7 @@ impl ZenohSubscriber {
             return Err(TransportError::BufferTooSmall);
         }
 
-        buf[..len].copy_from_slice(&buffer.ring_payload[slot][..len]);
+        buf[..len].copy_from_slice(buffer.payload_slot(slot, len));
 
         let attachment_len = buffer.ring_att_len[slot];
         let message_info = if attachment_len > 0 {
@@ -908,7 +1004,7 @@ impl Subscriber for ZenohSubscriber {
 
         // Copy data out of the ring slot. SPSC: the C producer never
         // touches this slot while head points at it.
-        buf[..len].copy_from_slice(&buffer.ring_payload[slot][..len]);
+        buf[..len].copy_from_slice(buffer.payload_slot(slot, len));
 
         // Phase 108.C.zenoh.5 — detect publisher seq gap before
         // advancing head so the attachment is still valid.
@@ -1020,7 +1116,7 @@ impl Subscriber for ZenohSubscriber {
 
         let len = buffer.ring_len[slot];
         // Process in-place out of the ring slot, then advance head.
-        f(&buffer.ring_payload[slot][..len]);
+        f(buffer.payload_slot(slot, len));
         buffer.consume_head();
 
         Ok(true)
@@ -1056,7 +1152,7 @@ impl Subscriber for ZenohSubscriber {
             None
         };
 
-        f(&buffer.ring_payload[slot][..len], core_info);
+        f(buffer.payload_slot(slot, len), core_info);
 
         buffer.consume_head();
 
@@ -1101,7 +1197,7 @@ impl Subscriber for ZenohSubscriber {
                 continue;
             }
             let off = count * per_msg_cap;
-            buf[off..off + len].copy_from_slice(&buffer.ring_payload[slot][..len]);
+            buf[off..off + len].copy_from_slice(buffer.payload_slot(slot, len));
             out_lens[count] = len;
             buffer.consume_head();
             count += 1;
@@ -1203,8 +1299,7 @@ mod borrowing {
             // while `ring_head` points at it (its full-check stops it
             // from lapping the consumer). The borrow is valid until
             // ZenohView::drop advances `ring_head`.
-            let bytes =
-                unsafe { core::slice::from_raw_parts(buffer.ring_payload[slot].as_ptr(), len) };
+            let bytes = buffer.payload_slot(slot, len);
 
             Ok(Some(ZenohView { bytes, buffer }))
         }
@@ -1235,6 +1330,14 @@ pub(super) mod tests {
         let mut buf_ref = SubscriberBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
 
+        // Phase 231 (RFC-0038) — these test buffers don't go through
+        // `ZenohSubscriber::new`, so wire a small-class payload block (same
+        // index) into the descriptor the first time, mirroring `init_ring_desc`.
+        if buffer.ring_desc.payload_base.is_null() {
+            let base = unsafe { (&raw mut SMALL_PAYLOADS[slot]) as *mut u8 };
+            buffer.init_ring_desc(base, SUBSCRIBER_BUFFER_SIZE);
+        }
+
         if payload.is_empty() {
             return; // Empty probe — dropped by the C producer.
         }
@@ -1247,7 +1350,8 @@ pub(super) mod tests {
             return; // Oversized for a slot — drop.
         }
         let s = tail % SUBSCRIBER_RING_DEPTH;
-        buffer.ring_payload[s][..payload.len()].copy_from_slice(payload);
+        let plen = payload.len();
+        buffer.payload_slot_mut(s, plen).copy_from_slice(payload);
         buffer.ring_len[s] = payload.len();
         buffer.ring_att_len[s] = 0;
         buffer.ring_tail.store(tail + 1, Ordering::Release);
@@ -1278,7 +1382,7 @@ pub(super) mod tests {
             buffer.consume_head();
             return Err(TransportError::BufferTooSmall);
         }
-        recv_buf[..len].copy_from_slice(&buffer.ring_payload[s][..len]);
+        recv_buf[..len].copy_from_slice(buffer.payload_slot(s, len));
         buffer.consume_head();
         Ok(Some(len))
     }
@@ -1294,7 +1398,7 @@ pub(super) mod tests {
             return Ok(None);
         };
         let len = buffer.ring_len[s];
-        let data = buffer.ring_payload[s][..len].to_vec();
+        let data = buffer.payload_slot(s, len).to_vec();
         buffer.consume_head();
         Ok(Some(data))
     }
