@@ -4,7 +4,7 @@
 use std::{env, fs};
 
 fn main() {
-    zephyr_build::export_bool_kconfig();
+    zephyr_build::export_kconfig_bool_options();
 
     // Phase 225.P (known-issue #17) — bake the zenoh locator + domain id
     // into the Rust path. The `nros::main!` Zephyr branch reads
