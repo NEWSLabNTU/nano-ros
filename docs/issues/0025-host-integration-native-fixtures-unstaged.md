@@ -30,9 +30,30 @@ stages (`build-test-fixtures` / the native example builds are a separate,
 heavier step). zenohd provisioning was fixed separately (the lane now shows
 `zenohd present`), which unmasked this fixture gap.
 
-**Fix direction.** Either (a) build the needed native fixtures in the
-host-integration lane before `test-integration` (scoped to the native cells,
-not the full embedded `build-test-fixtures`), or (b) have the affected tests
-`nros_tests::skip!` when their fixture binary is absent (matching the repo's
-skip convention) so the lane stays light. A design call for the test-infra
-owner; overlaps the in-flight fixture-build work in [issue 0022].
+**Scope is broad (updated 2026-06).** Not a handful of tests — the latest
+`host integration-tests` run fails ~300 of 348 tests across many binaries
+(`native_api` 56, `xrce` 40, `zephyr` 96, `multi_node`, `services`, `qos`,
+`executor`, `custom_msg`, `platform`, `zero_copy`, `actions`, `c_xrce_api`,
+`bridge_mixed_rmw`). They RUN and fail (not a compile error) — nearly every
+integration test spawns a prebuilt example binary via `require_prebuilt_binary`
+(`build_example_rmw` does not build, it looks up). The lane never stages any
+fixtures (its only build prereq is `build-zenohd`).
+
+**Blocked-by, now unblocked.** The fixture build the lane needs
+(`build-test-fixtures` / `just native build-fixtures`) was deadlocking in
+[issue 0022] (native-cyclonedds parallel corrosion→cargo); 0022 is now
+**resolved**. So the lane can finally stage fixtures.
+
+**Fix direction (multi-part — test-infra owner).** To green the lane:
+1. Run the native fixture build (`just native build-fixtures`, host-only,
+   now safe post-0022) before `test-integration` so the native example
+   binaries the bulk of tests spawn are present.
+2. Provision the micro-XRCE-DDS Agent (the `xrce` / `c_xrce_api` / bridge
+   tests `require_xrce_agent`) or let those skip cleanly.
+3. Exclude or skip the `zephyr`-binary group (96 tests) — it needs a Zephyr
+   fixture/SDK absent in a host lane; it is not covered by the existing
+   `group(=qemu-zephyr)` exclusion in the `test-integration` `-E` filter.
+
+A partial fix (e.g. only #1) leaves the lane red, so this is a coordinated
+change in the team's just-unblocked 0022 follow-up territory, not a surgical
+one-liner.
