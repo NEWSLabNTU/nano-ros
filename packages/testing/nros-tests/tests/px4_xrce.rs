@@ -6,12 +6,12 @@
 //! session — a single-session pub+sub matches intra-participant, so the full
 //! serialize → agent → deserialize round-trip flows against a *bare* agent.
 //!
-//! The companion ↔ PX4 path is two *separate* sessions; cross-participant DDS
-//! discovery of `px4_msgs` types needs an agent that knows them (PX4's, or
-//! `-r refs`), which a bare agent does not — see
-//! `docs/issues/0026-px4-xrce-bare-agent-type-matching.md`. That path is
-//! covered by the SITL bring-up in `docs/reference/px4-xrce-companion.md`,
-//! not this host test.
+//! The companion ↔ PX4 cross-session receive is NOT covered here: it hits an
+//! `nros-rmw-xrce` bug where a session holding both a publisher and a
+//! subscriber starves the subscriber (independent of agent/type) — see
+//! `docs/issues/0026-px4-xrce-bare-agent-type-matching.md`. This loopback test
+//! uses pub+sub on the **same** topic, which matches intra-participant and so
+//! sidesteps that bug while still exercising the px4_msgs CDR + QoS + XRCE path.
 //!
 //! Prerequisites:
 //!   just build-xrce-agent   # or `nros setup` provisions MicroXRCEAgent

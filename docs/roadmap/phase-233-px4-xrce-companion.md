@@ -6,11 +6,13 @@ uses — the **mainstream PX4↔ROS 2 integration**, which nano-ros's `nros-rmw-
 backend already fits but does not yet exercise. This is **Track B** of the
 two-track PX4 plan in **RFC-0039** ("support both") — the *additive* track.
 
-**Status.** Complete (2026-06). All four work items landed (233.1 codegen, 233.2 QoS,
-233.3 example, 233.4 doc + CI round-trip). The CI round-trip is single-session; the
-cross-session companion ↔ PX4 receive needs a typed agent (PX4 SITL or `-r refs`),
-tracked as a follow-up in [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
-Design-of-record: RFC-0039 (Draft).
+**Status.** Mostly complete (2026-06). 233.1 codegen, 233.2 QoS, 233.3 example,
+233.4 doc + CI round-trip all landed. **Caveat:** the companion's *receive* is
+blocked by an `nros-rmw-xrce` bug — a session holding both a publisher and a
+subscriber starves the subscriber (independent of agent/type), so the companion
+streams setpoints but does not reliably receive `/fmu/out/*`. Found while wiring
+233.4; tracked in [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
+The single-session loopback round-trip is CI-covered. Design-of-record: RFC-0039 (Draft).
 
 **Priority.** P2 — additive (nothing breaks without it), but it is the path most
 PX4+ROS 2 users actually deploy, and nano-ros is already 90% wired for it.
@@ -96,10 +98,12 @@ the existing zenohd/cyclonedds support-service pattern (not a platform scope).
   `XrceAgent`, runs the stub loopback, asserts ≥5 `VehicleOdometry` round-trip through
   the agent). **Passes** — the full `px4_msgs` CDR + `px4()` QoS + XRCE pub/sub path is
   CI-covered over a real agent.
-- **Scope note.** The CI round-trip is single-session (loopback). The *cross-session*
-  companion ↔ PX4 receive needs a typed agent (PX4 SITL or `-r refs`) — a bare agent
-  matches non-built-in types only intra-participant. Refined analysis +
-  remaining-work tracking: [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
+- **Scope note.** The CI round-trip is single-session (loopback). Wiring it surfaced a
+  real `nros-rmw-xrce` bug: a session with both a publisher and a subscriber starves the
+  subscriber's receive (reproduced with custom + generated types, any topic/agent), which
+  is why the *cross-session* companion does not receive `/fmu/out/*`. The earlier
+  "typed-agent" theory was disproven. Root cause + repro + fix directions:
+  [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
 
 ## Acceptance
 

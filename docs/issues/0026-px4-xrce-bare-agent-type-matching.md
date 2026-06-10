@@ -1,94 +1,91 @@
 ---
 id: 26
-title: cross-session px4_msgs matching needs a typed agent — bare MicroXRCEAgent matches non-built-in types only intra-session
+title: nros-rmw-xrce — a session with both a publisher and a subscriber starves the subscriber's receive
 status: open
-type: limitation
+type: bug
 area: rmw-xrce
 related: [phase-233, rfc-0039]
 ---
 
-> **Refined (Phase 233.4).** It is **cross-session** (two XRCE sessions / two
-> DDS participants) discovery that fails on a bare agent for non-built-in
-> types — *not* the type itself. A **single-session** pub+sub of `px4_msgs`
-> round-trips fine against a bare agent (matched intra-participant); this is
-> now CI-covered by `nros-tests::px4_xrce` driving `px4-stub` in loopback
-> mode. The companion ↔ PX4 path is inherently cross-session, so it still
-> needs PX4's typed agent (or `-r refs`). See the refined analysis below.
+An nano-ros XRCE node that holds **both a publisher and a subscriber in one
+session** receives few or no samples on the subscriber. This breaks the PX4
+companion (`examples/px4/rust/xrce/offboard-companion`, which subscribes
+`/fmu/out/vehicle_odometry` *and* publishes `/fmu/in/offboard_control_mode`) —
+**including against a real PX4 agent**, not just a bare one.
 
+> **History.** This issue first read as "bare agent can't match `px4_msgs`
+> types cross-session." That diagnosis was **wrong** — an artifact of (a) a
+> flaky BEST_EFFORT discovery race and (b) the real pub+sub bug below. A
+> non-built-in custom type *does* match cross-session on a bare agent; the
+> message type is irrelevant.
 
-The PX4 XRCE companion path (Phase 233 / RFC-0039 Track B) works against the
-agent **PX4 runs** but not against a *bare* `MicroXRCEAgent` started with no
-type configuration. This blocks a fully self-contained CI round-trip for the
-`examples/px4/rust/xrce/offboard-companion` example.
+## Minimal repro
 
-## Symptom
+Two host processes, one bare `MicroXRCEAgent udp4`, BEST_EFFORT (`px4()`) QoS,
+subscriber up first, then a publisher streams `VehicleOdometry` on
+`/fmu/out/vehicle_odometry`. Vary only the *subscriber* process's entities;
+5 runs each (rx = samples the subscriber received):
 
-Two nano-ros XRCE clients on one agent (`examples/px4/rust/xrce/px4-stub`
-publishes `px4_msgs/VehicleOdometry` on `/fmu/out/vehicle_odometry`; the
-companion subscribes it):
+| subscriber-process entities                       | hits (rx>0) |
+|---------------------------------------------------|-------------|
+| sub only                                          | 2–3 / 5     |
+| sub + a publisher (on `/fmu/in/...`), never used  | 1 / 5       |
+| sub + a publisher actively publishing             | **0 / 5**   |
 
-```
-MicroXRCEAgent udp4 -p 8888           # bare agent, no -r refs
-px4-stub        → publishes 80 samples, all OK
-offboard-companion → rx = 0           # never matched, nothing received
-```
+The companion is the last row → never receives. Entity-creation order
+(pub-before-sub vs sub-before-pub) does not matter. Reproduced with both a
+hand-written custom type and the generated `px4_msgs` types, on `/chatter`,
+`/xsess_topic`, and `/fmu/out/*`.
 
-The same two-binary / one-agent pattern with `std_msgs/Int32` on `/chatter`
-(`examples/native/rust/{talker,listener}` built `--features rmw-xrce`) works:
-the listener receives every sample. Controlled A/B — identical agent, harness,
-ordering (subscriber up first), domain, QoS — the **only** difference is the
-message type. `std_msgs::msg::dds_::Int32_` matches; `px4_msgs::msg::dds_::*_`
-does not. It is not size-related: the 15-byte `OffboardControlMode` fails the
-same way as the 108-byte `VehicleOdometry`. It reproduces under `-m dds`,
-`-m rtps`, and `-m ced`.
+Two distinct defects show up:
 
-## Cause
+1. **Pub+sub starvation (primary).** Adding a publisher to a subscriber's
+   session degrades receive; *active* publishing kills it. Companion-shaped.
+2. **BEST_EFFORT discovery flakiness (secondary).** Even a *sub-only* session
+   only matches ~50% of runs under BEST_EFFORT with a 2 s sub→pub gap — a
+   discovery/timing race, not deterministic.
 
-`nros-rmw-xrce` creates entities by **binary** (`uxr_buffer_create_topic_bin`
-+ `create_datawriter_bin` / `create_datareader_bin`, `subscriber.c` /
-`publisher.c`) carrying only the DDS topic name + type **name** — no
-`TypeObject` / IDL. Within **one** XRCE session the agent matches the writer
-and reader under a single participant without consulting a type registry, so
-any type — `px4_msgs` included — round-trips. Across **two** sessions the
-agent's DDS layer must discover and type-check two participants; without a
-`TypeObject` it can only match types its own plugin already knows. The bundled
-build resolves built-in ROS types but not `px4_msgs`. A real PX4 deployment
-runs the agent **with px4_msgs typesupport** (built/run alongside `px4_msgs`),
-so PX4's `uxrce_dds_client` and an nano-ros companion (two sessions) match
-there.
+## What works (controls)
 
-Verified by controlled A/B: `examples/native/rust/custom-msg` (a non-built-in
-custom type, single session) round-trips on a bare agent; `std_msgs/Int32`
-(built-in) round-trips cross-session; `px4_msgs` round-trips single-session
-(`px4-stub` loopback) but not cross-session (`px4-stub` → `offboard-companion`)
-on a bare agent.
+- **Single-session loopback** — pub + sub on the **same** topic in one session
+  round-trips reliably (`px4-stub` `PX4_STUB_LOOPBACK=1`, rx≈117/120). The
+  writer feeds the reader intra-participant, so it never exercises the broken
+  external-receive path. This is what `nros-tests::px4_xrce` covers — it
+  validates `px4_msgs` CDR + `px4()` QoS + the XRCE pub/sub path, but **not**
+  the pub+sub cross-session receive.
+- **Cross-session, sub-only, non-built-in custom type** — matches on a bare
+  agent (flakily, per defect 2). Disproves the old "type/typed-agent" theory.
 
-## Impact
+## Likely cause
 
-- The `offboard-companion` example is correct for a real PX4 agent; the
-  publish (`/fmu/in/*`) and subscribe (`/fmu/out/*`) wiring + the `px4()` QoS
-  profile are exercised, and the session/entity creation succeeds.
-- The full `px4_msgs` serialize → agent → deserialize round-trip **is**
-  CI-covered against a bare agent via the single-session loopback
-  (`nros-tests::px4_xrce` → `px4-stub` `PX4_STUB_LOOPBACK=1`). What a bare
-  agent cannot do is the **cross-session** companion ↔ PX4 receive; that needs
-  a typed agent (PX4 SITL or `-r refs`).
+`nros-rmw-xrce` runs **one** reliable output stream + one reliable input
+stream per session (`session.c` `uxr_create_output_reliable_stream` /
+`uxr_create_input_reliable_stream`). Both the subscriber's `request_data` and
+every publisher `uxr_buffer_topic` WRITE_DATA share that single
+`output_reliable` stream (`subscriber.c:170`, `publisher.c:122`); inbound
+samples arrive on `input_reliable`. Publisher traffic on the shared reliable
+output stream appears to interfere with the continuous data-delivery /
+ACK flow the subscriber needs — the agent stalls delivery on `input_reliable`.
+`publish_raw` flushes with `uxr_run_session_time(session, 0)` (zero timeout),
+which may not service inbound/ACK adequately when interleaved with the spin
+loop. (Echoes the known `request_data`-flush hazard already fixed for the
+service path — see the zenoh/XRCE notes in agent memory.)
 
-## Resolutions (not yet done)
+The agent ships with logging compiled out, so agent-side matched/delivery
+state could not be observed directly; the above is inferred from the client
+stream model + the behaviour table.
 
-1. **Typed agent for CI** — start the agent with `-r <refs.xml>` registering
-   the px4_msgs types so the cross-session stub↔companion round-trip becomes
-   CI-able. A first attempt (a Fast-DDS `<types>` profiles XML for
-   `VehicleOdometry` / `OffboardControlMode` passed via `-r`) did **not** make
-   them match; the bundled agent ships no logging, so it could not be
-   confirmed whether the XML was loaded/registered. Needs the exact agent refs
-   format (likely full `TypeObject`/IDL, not just a `<types>` member list).
-   *(The single-session loopback already covers the serialization round-trip,
-   so this is only needed to exercise cross-participant discovery in CI.)*
-2. **PX4 SITL in CI** — run the bring-up in
-   `docs/reference/px4-xrce-companion.md` and assert against real `/fmu/out/*`.
-   Heavy; gate on SITL availability (`nros_tests::skip!`).
-3. **Emit TypeObject from `nros-rmw-xrce`** — have the backend send full type
-   information (`create_topic_xml` / binary `TypeObject`) so a bare agent can
-   match arbitrary types. Largest change; benefits all non-built-in types, not
-   just px4.
+## Fix directions (not yet done)
+
+1. **Separate publisher data onto a best-effort output stream** for BEST_EFFORT
+   QoS (don't share the reliable output stream the subscriber's control +
+   delivery depend on). Most likely the right fix and QoS-correct.
+2. **Service inbound on every publish** — give `publish_raw`'s
+   `uxr_run_session_time` a small nonzero budget, or run the input stream
+   after each publish so delivery/ACK keeps flowing.
+3. **Investigate the BEST_EFFORT discovery race** (defect 2) separately — may
+   need a longer discovery window or a reliable-on-discovery handshake.
+
+Until fixed, the companion example streams setpoints (`/fmu/in/*`, publish
+works) but does not reliably receive `/fmu/out/*`. The single-session loopback
+CI test (`px4_xrce`) stays valid for the serialization/QoS surface.

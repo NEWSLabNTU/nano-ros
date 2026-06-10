@@ -63,9 +63,10 @@ Serial / other transports: see the PX4 uXRCE-DDS docs. `nros setup` provisions
 a `MicroXRCEAgent` under `~/.nros/bin/`; the in-tree build is
 `build/xrce-agent/MicroXRCEAgent`.
 
-> The agent must know the px4_msgs DDS types. PX4 runs the agent with
-> px4_msgs typesupport, so a real bring-up matches. A *bare* agent with no
-> type configuration matches only built-in ROS types — see
+> Known limitation: the companion holds a subscriber and a publisher in one
+> session, and `nros-rmw-xrce` currently starves the subscriber's receive in
+> that shape — so the companion streams setpoints but rarely receives
+> `/fmu/out/*`. Tracked in
 > [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
 
 ## 4. Run PX4
@@ -103,10 +104,11 @@ NROS_LOCATOR=127.0.0.1:8888 PX4_COMPANION_TICKS=200 cargo run -p px4-offboard-co
 NROS_LOCATOR=127.0.0.1:8888 PX4_STUB_TICKS=120        cargo run -p px4-stub
 ```
 
-The full `/fmu/out/*` → companion **receive** round-trip needs a typed agent
-(PX4 SITL, or `MicroXRCEAgent -r <refs.xml>` registering the px4_msgs types) —
-[issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md). Against a
-bare agent the companion connects and streams setpoints but receives nothing.
+The companion **receive** is currently unreliable regardless of agent: a
+session with both a publisher and a subscriber starves the subscriber in
+`nros-rmw-xrce` — [issue 0026](../issues/0026-px4-xrce-bare-agent-type-matching.md).
+The single-session loopback (`px4-stub PX4_STUB_LOOPBACK=1`) round-trips fine
+and is what CI exercises.
 
 ## Topics
 
