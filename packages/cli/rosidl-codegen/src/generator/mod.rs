@@ -655,9 +655,10 @@ mod tests {
     }
 
     #[test]
-    fn test_nros_borrowed_non_byte_sequence_errors() {
-        // Non-byte numeric sequences need the alignment guard (a later slice);
-        // borrowed mode must reject them with a clear, actionable error.
+    fn test_nros_borrowed_float_sequence_uses_le_view() {
+        // Alignment guard (229.6): a `float32[]` borrowed field becomes an
+        // alignment-agnostic `LeSliceView<'a, f32>` (borrows raw LE bytes,
+        // decodes per element) rather than an unaligned `&'a [f32]` cast.
         let msg = parse_message("float32[] ranges\n").unwrap();
         let deps = HashSet::new();
         let resolver = crate::config::CapacityResolver::from_toml_str(
@@ -667,9 +668,43 @@ mod tests {
             "#,
         )
         .unwrap();
-        let err = match generate_nros_message_package(
+        let pkg = generate_nros_message_package(
             "my_msgs",
             "Scan",
+            &msg,
+            &deps,
+            "0.1.0",
+            RosEdition::Humble,
+            &resolver,
+        )
+        .unwrap();
+        let rs = &pkg.message_rs;
+        assert!(
+            rs.contains("pub ranges: nros_core::LeSliceView<'a, f32>"),
+            "LeSliceView field missing:\n{rs}"
+        );
+        assert!(
+            rs.contains("reader.read_le_slice::<f32>()?"),
+            "LeSliceView reader missing:\n{rs}"
+        );
+    }
+
+    #[test]
+    fn test_nros_borrowed_nested_sequence_errors() {
+        // Sequences of nested messages / strings have no fixed-width byte span
+        // and cannot borrow zero-copy — must reject with a clear error.
+        let msg = parse_message("string[] tags\n").unwrap();
+        let deps = HashSet::new();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "my_msgs/M.tags" = { cap = 16, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let err = match generate_nros_message_package(
+            "my_msgs",
+            "M",
             &msg,
             &deps,
             "0.1.0",
@@ -680,7 +715,7 @@ mod tests {
             Err(e) => e.to_string(),
         };
         assert!(err.contains("borrowed"), "{err}");
-        assert!(err.contains("alignment guard"), "{err}");
+        assert!(err.contains("nested"), "{err}");
     }
 
     #[test]

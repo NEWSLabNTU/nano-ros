@@ -46,7 +46,8 @@ pub use types::{BorrowedMessage, RosMessage, RosService};
 
 // Re-export serdes types for convenience
 pub use nros_serdes::{
-    CdrReader, CdrWriter, DeserError, Deserialize, DeserializeBorrowed, SerError, Serialize,
+    CdrReader, CdrWriter, DeserError, Deserialize, DeserializeBorrowed, LeDecode, LeSliceView,
+    SerError, Serialize,
 };
 
 // Re-export heapless for generated message types

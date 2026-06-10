@@ -35,11 +35,11 @@ pub enum GeneratorError {
     },
 
     #[error(
-        "{package}/{message}.{field}: `borrowed` mode does not yet support \
-         element type `{element}` — only byte sequences (`uint8[]`, `byte[]`, \
-         `int8[]`, `bool[]`) and strings borrow zero-copy today. Non-byte numeric \
-         sequences (`float32[]`, `uint16[]`, …) need the alignment guard \
-         (Phase 229.6 follow-up); use `mode = \"heap\"` or `\"owned\"` meanwhile."
+        "{package}/{message}.{field}: `borrowed` mode does not support element \
+         type `{element}` — only fixed-width primitive sequences (`uint8[]`, \
+         `int8[]`, `bool[]`, `float32[]`, `uint16[]`, …) and strings can borrow \
+         zero-copy. Sequences of strings or nested messages have no fixed-width \
+         byte span; use `mode = \"heap\"` or `\"owned\"` for those fields."
     )]
     UnsupportedBorrowedElement {
         package: String,
@@ -49,13 +49,20 @@ pub enum GeneratorError {
     },
 }
 
-/// Resolve the borrowed-view field type + zero-copy `CdrReader` reader method
-/// for a `borrowed`-mode field (RFC-0033, Phase 229.6, issue 0007).
+/// Resolve the borrowed-view field type + full `CdrReader` read expression for
+/// a `borrowed`-mode field (RFC-0033, Phase 229.6, issue 0007).
 ///
-/// Returns `(borrowed_rust_type, read_method)`. `read_method` is empty for
-/// string fields (rendered via `read_string`, which already returns `&'a str`).
-/// Byte sequences borrow as `&'a [u8]`; non-byte numeric sequences are rejected
-/// (they require the alignment guard, a later slice).
+/// Returns `(borrowed_rust_type, read_expr)`:
+/// - **strings** → `&'a str` via `reader.read_string()?`,
+/// - **single-byte sequences** (`uint8[]`/`byte[]`/`int8[]`/`bool[]`) → true
+///   `&'a [u8]` slices (no alignment concern),
+/// - **multi-byte numeric sequences** (`float32[]`, `uint16[]`, …) → an
+///   alignment-agnostic `nros_core::LeSliceView<'a, T>` (the alignment guard):
+///   borrows the raw LE bytes zero-copy, decodes per element on access, so the
+///   receive buffer need not be `T`-aligned.
+///
+/// Sequences of strings or nested messages are rejected — their elements are
+/// not fixed-width byte spans, so they cannot borrow zero-copy.
 fn nros_borrowed_view_for_field(
     field_type: &FieldType,
     package_name: &str,
@@ -68,18 +75,38 @@ fn nros_borrowed_view_for_field(
         field: field_name.to_string(),
         element: elem.to_string(),
     };
+    // Multi-byte numeric → alignment-agnostic `LeSliceView<'a, T>`.
+    let le_view = |t: &str| {
+        (
+            format!("nros_core::LeSliceView<'a, {t}>"),
+            format!("reader.read_le_slice::<{t}>()?"),
+        )
+    };
     match field_type {
-        FieldType::String | FieldType::WString => Ok(("&'a str".to_string(), String::new())),
+        FieldType::String | FieldType::WString => {
+            Ok(("&'a str".to_string(), "reader.read_string()?".to_string()))
+        }
         FieldType::Sequence { element_type } => match element_type.as_ref() {
-            FieldType::Primitive(PrimitiveType::UInt8 | PrimitiveType::Byte) => {
-                Ok(("&'a [u8]".to_string(), "slice_u8".to_string()))
-            }
-            FieldType::Primitive(PrimitiveType::Int8) => {
-                Ok(("&'a [u8]".to_string(), "slice_i8".to_string()))
-            }
-            FieldType::Primitive(PrimitiveType::Bool) => {
-                Ok(("&'a [u8]".to_string(), "slice_bool".to_string()))
-            }
+            FieldType::Primitive(PrimitiveType::UInt8 | PrimitiveType::Byte) => Ok((
+                "&'a [u8]".to_string(),
+                "reader.read_slice_u8()?".to_string(),
+            )),
+            FieldType::Primitive(PrimitiveType::Int8) => Ok((
+                "&'a [u8]".to_string(),
+                "reader.read_slice_i8()?".to_string(),
+            )),
+            FieldType::Primitive(PrimitiveType::Bool) => Ok((
+                "&'a [u8]".to_string(),
+                "reader.read_slice_bool()?".to_string(),
+            )),
+            FieldType::Primitive(PrimitiveType::UInt16) => Ok(le_view("u16")),
+            FieldType::Primitive(PrimitiveType::Int16) => Ok(le_view("i16")),
+            FieldType::Primitive(PrimitiveType::UInt32) => Ok(le_view("u32")),
+            FieldType::Primitive(PrimitiveType::Int32) => Ok(le_view("i32")),
+            FieldType::Primitive(PrimitiveType::UInt64) => Ok(le_view("u64")),
+            FieldType::Primitive(PrimitiveType::Int64) => Ok(le_view("i64")),
+            FieldType::Primitive(PrimitiveType::Float32) => Ok(le_view("f32")),
+            FieldType::Primitive(PrimitiveType::Float64) => Ok(le_view("f64")),
             other => Err(unsupported(&format!("{other:?}"))),
         },
         other => Err(unsupported(&format!("{other:?}"))),
@@ -194,7 +221,7 @@ pub(super) fn field_to_nros_field_with_mode(
     let mut is_heap = false;
     let mut is_borrowed = false;
     let mut borrowed_rust_type = String::new();
-    let mut borrowed_read_method = String::new();
+    let mut borrowed_read_expr = String::new();
     let rust_type = if let Some(kind) = cap_kind {
         let storage = resolver.resolve(package_name, message_name, &field.name, kind);
         match storage.mode {
@@ -214,14 +241,14 @@ pub(super) fn field_to_nros_field_with_mode(
             // zero-copy (see `borrowed_rust_type` / `borrowed_read_method`).
             StorageMode::Borrowed => {
                 is_borrowed = true;
-                let (bt, rm) = nros_borrowed_view_for_field(
+                let (bt, expr) = nros_borrowed_view_for_field(
                     &field.field_type,
                     package_name,
                     message_name,
                     &field.name,
                 )?;
                 borrowed_rust_type = bt;
-                borrowed_read_method = rm;
+                borrowed_read_expr = expr;
                 nros_type_for_field_with_capacity(
                     &field.field_type,
                     Some(package_name),
@@ -293,7 +320,7 @@ pub(super) fn field_to_nros_field_with_mode(
         is_heap,
         is_borrowed,
         borrowed_rust_type,
-        borrowed_read_method,
+        borrowed_read_expr,
     })
 }
 

@@ -208,11 +208,7 @@ impl<'a> nros_core::DeserializeBorrowed<'a> for {{ message_name }}View<'a> {
         Ok(Self {
 {%- for field in fields %}
 {%- if field.is_borrowed %}
-{%- if field.is_string %}
-            {{ field.name }}: reader.read_string()?,
-{%- else %}
-            {{ field.name }}: reader.read_{{ field.borrowed_read_method }}()?,
-{%- endif %}
+            {{ field.name }}: {{ field.borrowed_read_expr }},
 {%- else if field.is_primitive %}
             {{ field.name }}: reader.read_{{ field.primitive_method }}()?,
 {%- else if field.is_string %}

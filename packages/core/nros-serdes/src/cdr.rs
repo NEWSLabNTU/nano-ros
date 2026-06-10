@@ -511,6 +511,105 @@ impl<'a> CdrReader<'a> {
         let bytes = self.read_bytes(byte_len)?;
         Ok((bytes, len))
     }
+
+    /// Read a multi-byte numeric sequence (`float32[]`, `uint16[]`, …) as a
+    /// borrowed [`LeSliceView`] — the alignment-agnostic borrowed reader for
+    /// RFC-0033 `borrowed` mode (Phase 229.6, issue 0007).
+    ///
+    /// Unlike a `&'a [T]` cast, this never requires the source buffer to be
+    /// `T`-aligned: the view borrows the raw little-endian bytes zero-copy and
+    /// decodes each element on access via `from_le_bytes`. Reads the 4-byte
+    /// length prefix, aligns the reader to `T` within the CDR stream, then
+    /// returns a view over `len * size_of::<T>()` bytes.
+    pub fn read_le_slice<T: LeDecode>(&mut self) -> Result<LeSliceView<'a, T>, DeserError> {
+        let len = self.read_u32()? as usize;
+        self.align(T::SIZE)?;
+        let byte_len = len * T::SIZE;
+        let bytes = self.read_bytes(byte_len)?;
+        Ok(LeSliceView::new(bytes))
+    }
+}
+
+/// A little-endian-decodable fixed-width numeric element of a borrowed sequence.
+///
+/// Implemented for the multi-byte CDR numeric primitives. Single-byte types
+/// (`u8`/`i8`/`bool`) do not need this — they borrow directly as `&[u8]`.
+pub trait LeDecode: Sized + Copy {
+    /// Encoded width in bytes (CDR little-endian).
+    const SIZE: usize;
+    /// Decode one element from exactly [`SIZE`](Self::SIZE) little-endian bytes.
+    fn from_le(bytes: &[u8]) -> Self;
+}
+
+macro_rules! impl_le_decode {
+    ($($t:ty),+ $(,)?) => {$(
+        impl LeDecode for $t {
+            const SIZE: usize = core::mem::size_of::<$t>();
+            #[inline]
+            fn from_le(bytes: &[u8]) -> Self {
+                let mut buf = [0u8; core::mem::size_of::<$t>()];
+                buf.copy_from_slice(bytes);
+                <$t>::from_le_bytes(buf)
+            }
+        }
+    )+};
+}
+impl_le_decode!(u16, i16, u32, i32, u64, i64, f32, f64);
+
+/// A borrowed, alignment-agnostic view over a CDR little-endian numeric
+/// sequence (RFC-0033 `borrowed` mode). Borrows the raw payload bytes
+/// zero-copy; decodes elements lazily on access, so the source buffer need not
+/// be `T`-aligned. Valid only for the borrow lifetime `'a` (the subscription
+/// callback scope).
+#[derive(Clone, Copy)]
+pub struct LeSliceView<'a, T> {
+    bytes: &'a [u8],
+    _marker: core::marker::PhantomData<fn() -> T>,
+}
+
+impl<'a, T: LeDecode> LeSliceView<'a, T> {
+    /// Wrap raw little-endian payload bytes. `bytes.len()` must be a multiple of
+    /// `T::SIZE` (guaranteed by [`CdrReader::read_le_slice`]).
+    #[inline]
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            bytes,
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Number of elements in the view.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.bytes.len() / T::SIZE
+    }
+
+    /// Whether the view is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    /// The raw little-endian payload bytes (zero-copy).
+    #[inline]
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.bytes
+    }
+
+    /// Decode the element at `index`, or `None` if out of bounds.
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<T> {
+        let start = index.checked_mul(T::SIZE)?;
+        let end = start.checked_add(T::SIZE)?;
+        self.bytes.get(start..end).map(T::from_le)
+    }
+
+    /// Iterate over the decoded elements.
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = T> + 'a {
+        let bytes = self.bytes;
+        (0..bytes.len() / T::SIZE).map(move |i| T::from_le(&bytes[i * T::SIZE..(i + 1) * T::SIZE]))
+    }
 }
 
 #[cfg(test)]
@@ -527,6 +626,49 @@ mod tests {
         let mut reader = CdrReader::new(&buf);
         assert_eq!(reader.read_u8().unwrap(), 0x42);
         assert_eq!(reader.read_u8().unwrap(), 0xFF);
+    }
+
+    #[test]
+    fn le_slice_view_decodes_unaligned_f32() {
+        // The whole point of the alignment guard (Phase 229.6): a view can sit
+        // at an odd byte offset and still decode correctly — no `&[f32]` cast.
+        let vals = [1.5f32, -2.25, 3.0e10, 0.0];
+        let mut backing = [0u8; 1 + 4 * 4];
+        backing[0] = 0xAA; // shift the f32 payload to an odd (1-byte) offset.
+        for (i, v) in vals.iter().enumerate() {
+            backing[1 + i * 4..1 + i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+        }
+        let view: LeSliceView<f32> = LeSliceView::new(&backing[1..]);
+        assert_eq!(view.len(), 4);
+        assert!(!view.is_empty());
+        for (i, v) in vals.iter().enumerate() {
+            assert_eq!(view.get(i).unwrap(), *v);
+        }
+        assert_eq!(view.get(4), None);
+        let collected: heapless::Vec<f32, 4> = view.iter().collect();
+        assert_eq!(&collected[..], &vals[..]);
+    }
+
+    #[test]
+    fn read_le_slice_roundtrips_through_cdr() {
+        // Write a `uint16[]` sequence with the CDR writer, read it back as a
+        // borrowed `LeSliceView` — values + count must match.
+        let vals = [10u16, 4000, 65535, 1];
+        let mut buf = [0u8; 64];
+        let written = {
+            let mut w = CdrWriter::new_with_header(&mut buf).unwrap();
+            w.write_sequence_len(vals.len()).unwrap();
+            for v in &vals {
+                w.write_u16(*v).unwrap();
+            }
+            w.position()
+        };
+        let mut reader = CdrReader::new_with_header(&buf[..written]).unwrap();
+        let view = reader.read_le_slice::<u16>().unwrap();
+        assert_eq!(view.len(), vals.len());
+        for (i, v) in vals.iter().enumerate() {
+            assert_eq!(view.get(i).unwrap(), *v);
+        }
     }
 
     #[test]

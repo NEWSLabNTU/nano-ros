@@ -190,13 +190,15 @@ pub struct NrosField {
     /// `{Msg}` struct still renders this field with [`rust_type`](Self::rust_type)
     /// (default-capacity owned) for the publish path.
     pub is_borrowed: bool,
-    /// Borrowed view type for this field (e.g. `&'a [u8]`, `&'a str`). Empty
-    /// unless [`is_borrowed`](Self::is_borrowed).
+    /// Borrowed view type for this field (e.g. `&'a [u8]`, `&'a str`,
+    /// `nros_core::LeSliceView<'a, f32>`). Empty unless
+    /// [`is_borrowed`](Self::is_borrowed).
     pub borrowed_rust_type: String,
-    /// `CdrReader` zero-copy reader method for the borrowed view (e.g.
-    /// `slice_u8`, `slice_i8`, `slice_bool`). Empty for string fields (which use
-    /// `read_string`) and non-borrowed fields.
-    pub borrowed_read_method: String,
+    /// Full `CdrReader` borrowed-read expression for the view's
+    /// `deserialize_borrowed` (e.g. `reader.read_slice_u8()?`,
+    /// `reader.read_string()?`, `reader.read_le_slice::<f32>()?`). Empty for
+    /// non-borrowed fields.
+    pub borrowed_read_expr: String,
 }
 
 #[derive(Template)]

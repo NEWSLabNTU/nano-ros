@@ -42,7 +42,7 @@ pub mod traits;
 #[cfg(test)]
 mod compat_tests;
 
-pub use cdr::{CdrReader, CdrWriter};
+pub use cdr::{CdrReader, CdrWriter, LeDecode, LeSliceView};
 pub use error::{DeserError, SerError};
 pub use schema::{Field, FieldType, Message, NestedType};
 pub use traits::{Deserialize, DeserializeBorrowed, Serialize};
