@@ -8,17 +8,42 @@ related: [phase-233, rfc-0039]
 ---
 
 An nano-ros XRCE node that holds **both a publisher and a subscriber in one
-session** receives **nothing** on the subscriber (agent `read_fn` = 0×,
-deterministic). This breaks the PX4 companion
-(`examples/px4/rust/xrce/offboard-companion`, which subscribes
-`/fmu/out/vehicle_odometry` *and* publishes `/fmu/in/offboard_control_mode`) —
-**including against a real PX4 agent**, not just a bare one.
+session** does not reliably receive on the subscriber. This breaks the PX4
+companion (`examples/px4/rust/xrce/offboard-companion`).
 
-> **History.** This issue first read as "bare agent can't match `px4_msgs`
-> types cross-session." That diagnosis was **wrong** — an artifact of (a) a
-> flaky BEST_EFFORT discovery race and (b) the real pub+sub bug below. A
-> non-built-in custom type *does* match cross-session on a bare agent; the
-> message type is irrelevant.
+> **Resolution status (Phase 233.4).** Deep debugging (tshark packet capture +
+> a logging-enabled agent build + gdb) split this into **two** distinct bugs.
+> The original "bare agent can't match `px4_msgs` types" diagnosis was wrong
+> (message type is irrelevant; a non-built-in custom type round-trips fine).
+>
+> **Bug A — spin pacing (FIXED).** XRCE is a *poll-based* backend (no wake
+> callback, unlike Zenoh): the executor's `spin_once(t)` paces by relying on
+> the backend to block for `t`. But `uxr_run_session_time` returns the instant
+> the reliable output streams are confirmed, so a session **with a publisher**
+> (unconfirmed WRITE_DATA) returned in ~0 µs instead of `t` ms. Confirmed by
+> measuring `drive_io`: 0 µs with a publisher vs 11 ms without. The spin loop
+> then free-ran — a pub+sub node burned through a bounded loop in ~1 ms and
+> sent `DELETE_CLIENT` (close) before discovery, so the agent tore the
+> subscriber's datareader down (proven on the wire: a `DELETE` submessage with
+> `object_id=0xFFFE` as the node's *last* packet at t≈0.12 s; agent
+> `~DataReader` + `delete_client` right after). **Fix:** `xrce_session_drive_io`
+> now drives the session across the whole `t` ms window (servicing inbound each
+> pass) and yields ~1 ms when a pass returns early — like the `zpico_spin_once`
+> `z_sleep_ms` fix. Validated: `nros-tests::px4_xrce` (loopback) and
+> `nros-tests::xrce::{talker_listener_communication,multiple_messages}` pass;
+> no regression.
+>
+> **Bug B — mixed-direction datareader matching (OPEN).** Independently, when a
+> client/session holds **both** a datareader and a datawriter, the agent's
+> per-reader read thread starts but its Fast-DDS DataReader never receives
+> (`read_fn` = 0×) — the reader never matches the external writer at the
+> Fast-DDS layer *inside the agent*. Ruled out (all still fail): a separate
+> best-effort output stream, no publish-time flush, a separate DDS participant
+> for the publisher, and lower publish rates. A pub-only→sub-only pair
+> (talker/listener) matches reliably; only the **same-client reader+writer**
+> shape fails. This is below `nros-rmw-xrce` (agent / Fast-DDS); the fix is
+> either an agent-side change (mixed-direction ProxyClient handling) or, less
+> cleanly, separate XRCE sessions per direction. **Remaining work.**
 
 ## Minimal repro
 

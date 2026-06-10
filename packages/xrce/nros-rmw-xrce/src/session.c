@@ -27,6 +27,7 @@
 #include <uxr/client/util/ping.h>
 
 #include <stdint.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -440,7 +441,49 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t *session,
         return NROS_RMW_RET_ERROR;
     }
     int t = timeout_ms < 0 ? 0 : (int)timeout_ms;
-    (void)uxr_run_session_time(&st->session, t);
+
+    /* `uxr_run_session_time` returns as soon as the reliable output streams
+     * are confirmed — so when the session holds a publisher with unconfirmed
+     * WRITE_DATA (or a pending heartbeat) it returns almost immediately
+     * (~0 us) instead of listening for `t` ms. XRCE is a *poll-based* backend
+     * (no `set_wake_callback`): the executor's `spin_once(t)` paces by relying
+     * on this call to block for `t`. When it returns early the spin loop
+     * free-runs — a pub+sub node burns through a bounded loop in ~1 ms and
+     * closes its session (DELETE_CLIENT) before its subscriber finishes DDS
+     * discovery, so it never receives. See issue 0026.
+     *
+     * Drive the session across the whole `t` ms window — each pass services
+     * inbound (delivering subscriber samples) — and yield ~1 ms when a pass
+     * returns early, so the call consumes ~t ms wall-clock the way the caller
+     * expects, without busy-spinning. (Mirrors the zpico_spin_once
+     * `z_sleep_ms` fix for multi-threaded platforms.) */
+    if (t == 0) {
+        (void)uxr_run_session_time(&st->session, 0);
+        return NROS_RMW_RET_OK;
+    }
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    for (;;) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long elapsed_ms =
+            (now.tv_sec - start.tv_sec) * 1000L + (now.tv_nsec - start.tv_nsec) / 1000000L;
+        int remaining = t - (int)elapsed_ms;
+        if (remaining <= 0) {
+            break;
+        }
+        (void)uxr_run_session_time(&st->session, remaining);
+        /* If the run returned well before `remaining`, sleep ~1 ms so the next
+         * pass picks up freshly-arrived inbound without busy-spinning. */
+        struct timespec after;
+        clock_gettime(CLOCK_MONOTONIC, &after);
+        long pass_us =
+            (after.tv_sec - now.tv_sec) * 1000000L + (after.tv_nsec - now.tv_nsec) / 1000L;
+        if (pass_us < 1000) {
+            struct timespec nap = {0, 1000000L}; /* 1 ms */
+            nanosleep(&nap, NULL);
+        }
+    }
     return NROS_RMW_RET_OK;
 }
 
