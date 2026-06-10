@@ -206,6 +206,21 @@ ref = "esp-develop-9.2.2-20260417"
 configure = "./configure --target-list=riscv32-softmmu --prefix={prefix} --enable-gcrypt --enable-slirp --disable-strip --disable-user --disable-capstone --disable-vnc --disable-gtk --disable-sdl --disable-docs"
 install = "ninja -C build -j$(nproc) && ninja -C build install"
 
+# 194.3c — genromfs: the NuttX rv-virt board's src/Makefile unconditionally bakes
+# an etc/ ROMFS (RCSRCS = etc/init.d/{rc.sysinit,rcS}) via `genromfs`, so any
+# rv-virt `make export` needs it on PATH. The qemu-armv7a board has no RCSRCS, so
+# arm doesn't. Source-built (tiny single-file C tool; not apt — keeps "everything
+# via nros setup"). Installs to {prefix}/bin/genromfs; activate puts the SDK-store
+# bins on PATH. Only the qemu-riscv-nuttx board lists it.
+[tool.genromfs]
+version = "0.5.7-nros1"
+upstream = "0.5.7"
+[tool.genromfs.source]
+git = "https://github.com/chexum/genromfs"
+ref = "0.5.7"
+configure = "make genromfs"
+install = "install -D -m 0755 genromfs {prefix}/bin/genromfs"
+
 # --- source packages (built with the app for the user's target) ---
 #
 # Phase 195.B — data-driven provisioning. Each source is a committed submodule,
@@ -438,9 +453,10 @@ packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-ap
 # --target-list). The nano-ros riscv defconfig drops the board etc-ROMFS, so no
 # genromfs host tool is needed (the stock rv-virt board would require it).
 [board.qemu-riscv-nuttx]
-arch = "riscv32" # rv-virt:flats (rv32imac); riscv32imac-unknown-nuttx-elf
+arch = "riscv32" # rv-virt (rv32imac); riscv32imac-unknown-nuttx-elf
 platform = "nuttx"
-packages = ["riscv-none-elf-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
+# genromfs: the rv-virt board bakes an etc/ ROMFS at export time (arm doesn't).
+packages = ["riscv-none-elf-gcc", "qemu", "genromfs", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
 
 [board.qemu-riscv64-threadx]
 arch = "riscv64"

@@ -59,7 +59,9 @@ end
 set -l _nros_sdk (set -q NROS_HOME; and echo $NROS_HOME/sdk; or echo $HOME/.nros/sdk)
 if test -d $_nros_sdk
     for _nros_tcbin in $_nros_sdk/*/*/bin $_nros_sdk/*/bin
-        if test -d $_nros_tcbin; and count $_nros_tcbin/*-gcc >/dev/null 2>&1
+        # Cross-gcc toolchains, plus build host tools the RTOS `make` invokes by
+        # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c).
+        if test -d $_nros_tcbin; and begin; count $_nros_tcbin/*-gcc >/dev/null 2>&1; or test -x $_nros_tcbin/genromfs; end
             set -gx PATH $_nros_tcbin $PATH
         end
     end

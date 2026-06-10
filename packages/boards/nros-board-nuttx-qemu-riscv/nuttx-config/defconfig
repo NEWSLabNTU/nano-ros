@@ -5,6 +5,21 @@
 # You can then do "make savedefconfig" to generate a new defconfig file that includes your
 # modifications.
 #
+# 194.3c — nano-ros repo layout: NuttX apps live at the `nuttx-apps` sibling of
+# `nuttx`, not the upstream-default `../apps`. Mirror the arm board's defconfig.
+CONFIG_APPS_DIR="../nuttx-apps"
+# 194.3c — force the RV32 GNU toolchain profile (-march=rv32imac… -mabi=ilp32,
+# soft-float). The stock netnsh defaults to the RV64 multilib whose double-float
+# ABI mismatches the soft-float Rust target `riscv32imac-unknown-nuttx-elf` at
+# the FFI link. ilp32 keeps the kernel libs + Rust objects ABI-compatible.
+CONFIG_RISCV_TOOLCHAIN_GNU_RV32=y
+# 194.3c — disable the kernel FPU so the ABI is ilp32 (soft), not ilp32d. The
+# stock netnsh enables DPFPU → -mabi=ilp32d, but rustc ships no
+# riscv32imafdc-unknown-nuttx-elf; the matching nuttx target is
+# riscv32imac-unknown-nuttx-elf (ilp32, soft-float). Soft-float keeps the kernel
+# libs ABI-compatible with the Rust FFI objects at the final link.
+# CONFIG_ARCH_FPU is not set
+# CONFIG_ARCH_DPFPU is not set
 # CONFIG_DISABLE_OS_API is not set
 # CONFIG_NSH_DISABLE_LOSMART is not set
 CONFIG_16550_ADDRWIDTH=0
