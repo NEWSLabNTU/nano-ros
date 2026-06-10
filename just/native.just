@@ -296,12 +296,16 @@ check JOBS="75%":
     toml_list="$(mktemp "${TMPDIR:-/tmp}/nros_check_toml.XXXXXX")"
     trap 'rm -f "$toml_list"' EXIT
 
-    # ws-sync templates (workspace msg pkgs resolved via the `[patch.crates-io]`
-    # block `nros ws sync` writes) can't be clippy'd standalone here — `cargo`
-    # can't find e.g. `extra_msgs` / `local_msgs` on crates.io. They are built +
-    # validated through the fixture manifest path (which runs `ws sync` first),
-    # so exclude them from this standalone matrix (as multi-package-workspace
-    # already is).
+    # Exclude example trees that can't be host-clippy'd standalone (validated
+    # via the fixture-manifest / orchestration path instead, as
+    # multi-package-workspace already is):
+    #   - ws-sync templates: workspace msg pkgs (`extra_msgs`/`local_msgs`) only
+    #     resolve via the `[patch.crates-io]` block `nros ws sync` writes; cargo
+    #     can't find them on crates.io here.
+    #   - `examples/workspaces/*`: a multi-target workspace whose entry packages
+    #     are cross-compiled (esp32/threadx/nuttx/freertos/zephyr) — e.g.
+    #     `esp32_entry` configures `portable-atomic` single-core, which fails to
+    #     compile for the host x86_64 target.
     find examples -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
@@ -310,6 +314,7 @@ check JOBS="75%":
                        -not -path '*/templates/local-msg-package/*' \
                        -not -path '*/templates/multi-node-workspace/*' \
                        -not -path '*/templates/workspace-shadowing/*' \
+                       -not -path '*/workspaces/*' \
                        -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
