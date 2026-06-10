@@ -1,0 +1,30 @@
+[workspace]
+
+[package]
+name = "nros-nuttx-riscv-ffi"
+version = "0.4.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "NuttX rv-virt kernel + nros C/C++ FFI bundle for CMake-built examples"
+
+[dependencies]
+# Path deps go up 3 levels to the repo root.
+nros-board-nuttx-qemu-riscv = { path = ".." }
+nros-c = { path = "../../../core/nros-c", features = [
+    "std", "cffi-zenoh-cffi", "platform-nuttx", "ros-humble"
+] }
+nros-cpp = { path = "../../../core/nros-cpp", features = [
+    "std", "rmw-zenoh-cffi", "platform-nuttx", "ros-humble"
+] }
+# Link the cffi shim directly so register() is callable from main.rs before
+# app_main() jumps into C/C++ code.
+nros-rmw-zenoh = { path = "../../../zpico/nros-rmw-zenoh", features = ["platform-nuttx", "ros-humble"] }
+
+[build-dependencies]
+# NuttX FFI build helper (run_nuttx) + repo path resolution.
+nros-board-common = { path = "../../nros-board-common" }
+
+[profile.release]
+opt-level = "s"
+lto = true

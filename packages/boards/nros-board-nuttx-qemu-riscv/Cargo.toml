@@ -1,0 +1,36 @@
+# 194.3c — riscv (rv-virt) NuttX board crate. Mirror of
+# nros-board-nuttx-qemu-arm; the Rust board code is arch-agnostic (NuttX
+# abstracts the arch via its POSIX/std layer), so config/node/entry/entry_212n
+# are identical to the arm crate. The arch-specifics live in the FFI subcrate's
+# .cargo/config.toml (target triple + NUTTX_* env) and nros-board.toml.
+[workspace]
+
+[package]
+name = "nros-board-nuttx-qemu-riscv"
+version = "0.4.0"
+publish = false
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "NuttX QEMU rv-virt board crate for nros (rv32imac + virtio-net)"
+
+[lib]
+name = "nros_board_nuttx_qemu_riscv"
+
+[dependencies]
+# NuttX is POSIX/std — no platform crate, no smoltcp/lwIP, no custom net driver
+# (virtio-net is in the kernel). Same dependency shape as the arm board crate.
+nros-board-common = { path = "../nros-board-common" }
+nros-platform = { path = "../../core/nros-platform", default-features = false }
+# BoardEntry::run delegates to the NuttX family driver's run_entry (gated
+# target_os = "nuttx"); reference-qemu-arm is NOT enabled (it would pull the arm
+# board crate as an optional dep → cyclic).
+nros-board-nuttx = { path = "../nros-board-nuttx" }
+
+[features]
+# Forward to the generic NuttX board's explicit zenoh-backend registration.
+rmw-zenoh = ["nros-board-nuttx/rmw-zenoh"]
+
+[build-dependencies]
+# 194.3c.2 — shared NuttX platform-port build helper (riscv env set by the FFI
+# subcrate's .cargo/config.toml reaches this board build.rs too).
+nros-board-common = { path = "../nros-board-common" }
