@@ -16,7 +16,10 @@
 #   - NUTTX_DIR — NuttX source (default: third-party/nuttx/nuttx)
 #   - NUTTX_APPS_DIR — NuttX apps source (default: third-party/nuttx/nuttx-apps)
 #   - NUTTX_DEFCONFIG — board defconfig (the board overlay supplies this; default
-#     is the qemu-arm board, the only NuttX board today)
+#     is the qemu-arm board)
+#   - NUTTX_BOARD_MAKEDEFS — board Make.defs path relative to NUTTX_DIR (the board
+#     overlay supplies this; default = the qemu-arm board's
+#     boards/arm/qemu/qemu-armv7a/scripts/Make.defs)
 #
 # Usage:
 #   ./build-nuttx.sh                    # Build with default defconfig
@@ -131,7 +134,11 @@ export APPDIR="$NUTTX_APPS_DIR"
 # stdio/lib_libbsprintf.c → stream/lib_libbsprintf.c after an upstream
 # reorganization), causing "No rule to make target" failures. We track the
 # NuttX submodule HEAD in a marker file and distclean when it changes.
-BOARD_MAKEDEFS="$(pwd)/boards/arm/qemu/qemu-armv7a/scripts/Make.defs"
+# 194.3c.3: the board Make.defs path is per-board (arch/chip/board), supplied by
+# the board overlay via NUTTX_BOARD_MAKEDEFS (relative to NUTTX_DIR); default =
+# the qemu-arm board so the arm provisioning is unchanged. A new-arch board
+# (e.g. riscv rv-virt) sets NUTTX_BOARD_MAKEDEFS=boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs.
+BOARD_MAKEDEFS="$(pwd)/${NUTTX_BOARD_MAKEDEFS:-boards/arm/qemu/qemu-armv7a/scripts/Make.defs}"
 MARKER=".nros-nuttx-build-head"
 CURRENT_HEAD=$(git -C "$NUTTX_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 # 194.5: key the marker on the NuttX HEAD *and* this board's defconfig (content
