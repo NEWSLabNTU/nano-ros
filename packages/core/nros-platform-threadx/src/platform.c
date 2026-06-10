@@ -111,13 +111,16 @@ size_t nros_platform_heap_total_bytes(void) {
     return (size_t) s_byte_pool->tx_byte_pool_size;
 }
 
-__attribute__((weak)) void *z_malloc(size_t size) {
-    return nros_platform_alloc(size);
-}
-
-__attribute__((weak)) void z_free(void *ptr) {
-    nros_platform_dealloc(ptr);
-}
+/* phase-230 1f (RFC-0034): the `z_malloc`/`z_free` funnel on ThreadX is owned
+ * by zpico-sys's `platform_aliases.c` (the `platform-aliases` feature, on by
+ * default for the ThreadX boards) — a STRONG `z_malloc`/`z_free` →
+ * `nros_platform_alloc`/`_dealloc`. ThreadX uses zenoh-pico's generic
+ * `system/common` platform, which defines NO `z_malloc`, so there is no
+ * vendored bypass to guard (unlike FreeRTOS) and the alias is the sole
+ * definition on the link. The earlier `__attribute__((weak)) z_malloc` here
+ * (RFC-0034's "footgun") was silently shadowed by that alias and is removed:
+ * a ThreadX zenoh build without `platform-aliases` should fail to link loudly
+ * (no `z_malloc` provider) rather than fall back to a hidden weak forwarder. */
 
 /*
  * Minimal POSIX/picolibc hooks for freestanding ThreadX links. Cyclone DDS

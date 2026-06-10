@@ -276,32 +276,29 @@ commit). 1c.4 runtime E2E is the gating acceptance on the CI lane.
   exactly as 1c, so a node that drops `platform-aliases` keeps its vendored
   heap (no undefined `z_malloc`).
 
-  **ThreadX.** The alias TU is *already compiled* for ThreadX (the runner.rs
-  alias gate allows non-FreeRTOS; ThreadX builds it with `NROS_PLATFORM_ALIASES`
-  + `NROS_ZP_ALIAS_OPAQUE_NET` + `NROS_PLATFORM_ALIASES_SKIP_TASK`), so the
-  alias `z_malloc → nros_platform_alloc` is emitted today — but the vendored
-  `system/threadx/system.c` `z_malloc` (→ `tx_byte_allocate`) co-exists and
-  wins/ties under `--allow-multiple-definition`. Steps:
-  1. Fork-guard the vendored ThreadX `z_malloc`/`z_realloc`/`z_free` behind
-     `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC` (same edit as 1c, in
-     `system/threadx/system.c`).
-  2. `runner.rs` Step 6.5: also define `Z_FEATURE_NROS_PLATFORM_ALLOC` on the
-     ThreadX `build_zenoh_pico_unified` build (extend the `use_freertos`
-     condition to `|| use_threadx`), coupled to `CARGO_FEATURE_PLATFORM_ALIASES`.
-     No new alias-gate branch needed — ThreadX already compiles the full alias;
-     once the vendored def is guarded out, the alias's `z_malloc` is the only
-     definition.
-  3. Enable `zpico-sys/platform-aliases` on the ThreadX board(s)
-     (`nros-board-threadx*`) if off — **verify current state** (the FreeRTOS
-     board had it off via `default-features = false`; ThreadX likely the same).
-  4. **Remove the dead weak-`z_malloc`/`z_free` footgun** in
-     `nros-platform-threadx/src/platform.c` (`__attribute__((weak)) z_malloc`,
-     lines ~114-118) — it is silently shadowed by the vendored strong def and
-     is superseded by the guard+alias mechanism.
-  5. Confirm `nros-platform-threadx`'s `nros_platform_alloc`
-     (`tx_byte_allocate`-backed) is on the link.
-  - Verify (CI): ThreadX QEMU (riscv64) + threadx-linux link + e2e; `nm`/
-    `objdump` shows zenoh `z_malloc → nros_platform_alloc`.
+  **ThreadX — ALREADY FUNNELED (verified 2026-06); only the footgun removed.**
+  The earlier plan here assumed a vendored `system/threadx/system.c` to guard
+  like FreeRTOS. That file does **not** exist: nano-ros ThreadX uses zenoh-pico's
+  **generic `system/common`** platform (`zenoh_platforms.toml`
+  `include = ["system/common"]`), which defines **no** `z_malloc` — so there is
+  no vendored bypass to guard. The funnel is owned by the alias TU
+  (`platform_aliases.c`), which is **on by default** for the ThreadX boards
+  (`nros-board-threadx*` keep `zpico-sys` default features, unlike the FreeRTOS
+  board) and emits a STRONG `z_malloc`/`z_free` → `nros_platform_alloc`/
+  `_dealloc`. Verified on a threadx-linux zenoh build: `objdump` shows
+  `z_malloc: jmp nros_platform_alloc` (strong `T`, from `platform_aliases.o`),
+  `z_free → nros_platform_dealloc`. Mode-A heap stats already exact (1b).
+
+  So no fork guard, no `runner.rs` change, no board change is needed for ThreadX
+  allocation. The one cleanup (DONE): **removed the dead
+  `__attribute__((weak)) z_malloc`/`z_free` in
+  `nros-platform-threadx/src/platform.c`** — RFC-0034's "footgun". It was
+  silently shadowed by the strong alias (never linked), so removal cannot change
+  the linked output; it makes a `platform-aliases`-off ThreadX zenoh build fail
+  to link **loudly** (no `z_malloc` provider) instead of falling back to a hidden
+  weak forwarder. (If such a config is wanted later, it needs `platform-aliases`
+  on — there is no vendored `z_malloc` to fall back to on the generic platform.)
+  - Verify (CI): threadx-linux + ThreadX QEMU (riscv64) links + e2e stay green.
 
   **Zephyr (C-side only — Rust allocator stays framework-owned, D6).** zenoh-pico
   C is built by **Zephyr CMake** (`zephyr/cmake/nros_rmw_zenoh.cmake`), NOT
@@ -321,9 +318,12 @@ commit). 1c.4 runtime E2E is the gating acceptance on the CI lane.
   - Verify (CI): Zephyr native_sim + QEMU zenoh e2e; the C heap funnels while
     the framework owns the Rust heap; `sys_heap` reports the unified total.
 
-  Sequenced after 1c lands CI-green (the FreeRTOS lane is the reference
-  validation; do not replicate the pattern across two more CI-gated targets
-  until it is confirmed).
+  **Status:** ThreadX ✅ (already funneled; footgun removed — see above).
+  Zephyr remains — and unlike ThreadX it genuinely needs the guard: zenoh-pico's
+  `system/zephyr/system.c` **does** define a vendored `z_malloc → k_malloc`, and
+  the Zephyr alias TU is not compiled by `runner.rs` (CMake-built), so today the
+  Zephyr C heap bypasses `nros_platform_alloc`. Sequenced after 1c lands
+  CI-green (the FreeRTOS lane is the reference validation).
 
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
 > are two allocators and neither is nros's: the `#[global_allocator]` is

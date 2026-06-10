@@ -50,9 +50,16 @@ Concrete defects this creates:
   `nros_platform_alloc` (and the would-be Zephyr equivalent) is never on
   the link path — a platform layer that exists but isn't used. False
   sense of a clean split.
-- **A footgun.** `nros-platform-threadx` ships a `__attribute__((weak))
-  z_malloc → nros_platform_alloc` that is *silently shadowed* by
-  zenoh-pico's strong `z_malloc`. Looks bridged; isn't.
+- **A footgun (RESOLVED, phase-230 1f).** `nros-platform-threadx` shipped a
+  `__attribute__((weak)) z_malloc → nros_platform_alloc`. The original framing
+  ("silently shadowed by zenoh-pico's strong `z_malloc`") was inaccurate for
+  ThreadX: nano-ros ThreadX uses zenoh-pico's generic `system/common`, which
+  defines no `z_malloc`, so the weak was shadowed by the *alias TU*'s strong
+  `z_malloc` (also → `nros_platform_alloc`) — i.e. ThreadX was in fact already
+  funneled. The dead weak forwarder is removed; a `platform-aliases`-off
+  ThreadX zenoh build now fails the link loudly instead of relying on a hidden
+  fallback. (Verified: `objdump` shows `z_malloc → nros_platform_alloc` on a
+  threadx-linux zenoh build.)
 - **Duplicated bridge.** The `z_* → nros_platform_*` alias TU
   (`platform_aliases.c`) is copied per-RMW — once in `zpico-sys`, again in
   `nros-rmw-xrce`. The split should have *one* bridge the platform layer
