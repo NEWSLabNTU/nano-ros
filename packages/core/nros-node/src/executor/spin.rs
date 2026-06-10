@@ -2438,7 +2438,10 @@ impl Executor {
             <M as RosMessage>::TYPE_NAME,
             <M as RosMessage>::TYPE_HASH,
         )
-        .with_namespace(&ns);
+        .with_namespace(&ns)
+        // Phase 231 (RFC-0038) — hand the backend the receive-buffer size so it
+        // can size-class its receive storage (zenoh-pico: small vs large).
+        .with_rx_buffer_hint(RX_BUF);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }

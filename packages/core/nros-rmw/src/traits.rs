@@ -27,6 +27,12 @@ pub struct TopicInfo<'a> {
     /// Node namespace for liveliness token generation (default: "/").
     /// In ROS 2, "/" is the root namespace and the standard default.
     pub namespace: &'a str,
+    /// Phase 231 (RFC-0038) — receive-buffer size hint, bytes. The executor sets
+    /// this from the subscription's `RX_BUF`; a backend may use it to route the
+    /// subscription to a size-class receive buffer (zenoh-pico: small vs large).
+    /// `0` = unset (backend picks its default). Ignored by backends that don't
+    /// size-class their receive storage.
+    pub rx_buffer_hint: usize,
 }
 
 impl<'a> TopicInfo<'a> {
@@ -39,12 +45,21 @@ impl<'a> TopicInfo<'a> {
             domain_id: 0,
             node_name: None,
             namespace: "/",
+            rx_buffer_hint: 0,
         }
     }
 
     /// Create topic info with custom domain ID
     pub const fn with_domain(mut self, domain_id: u32) -> Self {
         self.domain_id = domain_id;
+        self
+    }
+
+    /// Phase 231 (RFC-0038) — set the receive-buffer size hint (bytes) used by
+    /// size-classing backends (zenoh-pico) to route the subscription's receive
+    /// buffer to the small or large class.
+    pub const fn with_rx_buffer_hint(mut self, hint: usize) -> Self {
+        self.rx_buffer_hint = hint;
         self
     }
 

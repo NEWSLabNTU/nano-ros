@@ -443,6 +443,9 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
         domain_id,
         node_name,
         namespace,
+        // Phase 231 (RFC-0038): the rx_buffer_hint does not yet traverse the
+        // CFFI create_subscriber surface; 0 = unset until that ABI plumbing lands.
+        rx_buffer_hint: 0,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_publisher(s, &topic, qos_settings) {
@@ -509,6 +512,9 @@ unsafe extern "C" fn create_subscriber_trampoline<R: RustBackend>(
         domain_id,
         node_name,
         namespace,
+        // Phase 231 (RFC-0038): the rx_buffer_hint does not yet traverse the
+        // CFFI create_subscriber surface; 0 = unset until that ABI plumbing lands.
+        rx_buffer_hint: 0,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_subscriber(s, &topic, qos_settings) {
