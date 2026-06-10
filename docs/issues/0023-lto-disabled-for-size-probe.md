@@ -53,9 +53,36 @@ perf) on the table on space-constrained MCUs — solely a probe limitation, not 
 correctness requirement. The size values themselves are LTO-independent
 (`size_of::<T>()` is fixed by the target triple's data layout).
 
+## Option B is already implemented and empirically validated (2026-06)
+
+The bitcode-aware reader **already exists**: `extract_sizes` flags bitcode members
+(`saw_bitcode`) and, when the ELF path yields nothing, falls back to
+`extract_sizes_via_llvm_nm` (`lib.rs:715`) — it runs rustc's bundled
+`<sysroot>/lib/rustlib/<host>/bin/llvm-nm --demangle <rlib>` and parses
+`::__nros_size_<NAME>::<<SIZE>>`. Validation under `lto = "fat"`:
+
+```
+$ CARGO_PROFILE_RELEASE_LTO=fat cargo build --release -p nros \
+      --no-default-features --features rmw-cffi,ffi-size-markers
+$ llvm-nm --demangle libnros-*.rlib | grep __nros_size_
+... T nros::sizes::rmw_sizes::__nros_size_SESSION_SIZE::<528>
+... T nros::sizes::rmw_sizes::__nros_size_PUBLISHER_SIZE::<560>
+... T nros::sizes::rmw_sizes::__nros_size_EXECUTOR_SIZE::<79560>
+... (all markers present, global `T`, sizes intact)
+```
+
+Findings: under fat LTO the rlib's CGU member is raw bitcode (`BC\xC0\xDE`), so the
+`object` ELF path reads nothing and `saw_bitcode` is set → the `llvm-nm` fallback
+fires; **the markers survive fat-LTO pruning** (the `#[used]` fn-pointer static
+holds them — rust#105734 does not bite here); host `llvm-nm` reads a cross-target
+bitcode rlib's symbol *names* fine (the size `N` is baked at monomorphisation for
+the target, so the name string is correct regardless of which `nm` reads it). So
+**the `lto=off` pins are stale** — flipping LTO on should Just Work via the existing
+fallback.
+
 ## Fix directions
 
-The two are independent; B is the complete fix.
+The two are independent; B is the complete fix — and is already built.
 
 **A — decouple the probe build from the consumer's LTO (surgical).** Sizes are
 layout-determined, so the probe rlib need not be LTO'd. Force the nested probe
@@ -81,8 +108,26 @@ every `lto=off` pin be removed. This is the "future sizes-probe that reads bitco
 directly" the `Cargo.toml` comment foreshadows.
 
 **Recommendation:** ship B (removes the LTO constraint everywhere); optionally keep
-A's decoupling as belt-and-suspenders. Verify a `lto=fat` build round-trips the
-sizes (probe output matches the `lto=off` baseline) before removing the pins.
+A's decoupling as belt-and-suspenders.
+
+### B landing plan (the reader exists; this is the remaining work)
+
+1. **Flip the profiles:** `[profile.release] lto = "fat"` (or `"thin"`), drop the
+   `nros-fast-release` `lto=off`, delete the stale Cargo.toml comment.
+2. **Validate the probe consumers** under LTO: `nros-c` + `nros-cpp` build.rs recover
+   sizes that **equal the `lto=off` baseline** (e.g. `EXECUTOR_SIZE = 79560`,
+   `PUBLISHER_SIZE = 560`) on host **and** a cross target (`thumbv7m-none-eabi`)
+   **and** the filesystem-fallback path (`armv7a-nuttx-eabihf` custom-target JSON).
+3. **Harden the fallback (optional, recommended):**
+   - widen `saw_bitcode` magic beyond `BC\xC0\xDE` (Mach-O-embedded `\xDE\xC0\x17\x0B`
+     for macOS hosts);
+   - fix the `lib.rmeta` skip (the member is named `lib.rmeta/` with a trailing
+     slash — `name_bytes == b"lib.rmeta"` never matches; harmless today, rmeta has no
+     `__NROS_SIZE_` symbols, but the ELF parse is wasted);
+   - consider making the name-based path **primary** (llvm-nm reads native *and*
+     bitcode rlibs uniformly), with the `object` byte-size path as the fallback for
+     setups without the `llvm-tools` component — collapsing the dual-path logic.
+4. **Measure** the embedded binary-size win (the payoff that motivates this).
 
 ## Workarounds today
 
