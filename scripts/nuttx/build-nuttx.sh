@@ -223,7 +223,19 @@ echo ""
 echo "=== Build Complete ==="
 echo "  NuttX ELF: $NUTTX_DIR/nuttx"
 echo ""
+# 194.3c — arch-aware run hint (was hardcoded arm). Derive the qemu machine from
+# the configured board arch so a riscv (rv-virt) export prints the right command.
+_BUILT_ARCH=$(grep -E '^CONFIG_ARCH=' .config 2>/dev/null | cut -d'"' -f2)
 echo "Run with QEMU:"
-echo "  qemu-system-arm -M virt -cpu cortex-a7 -nographic \\"
-echo "      -kernel $NUTTX_DIR/nuttx \\"
-echo "      -nic tap,ifname=tap-qemu0,script=no,downscript=no"
+case "$_BUILT_ARCH" in
+    risc-v)
+        echo "  qemu-system-riscv32 -M virt -bios none -nographic \\"
+        echo "      -kernel $NUTTX_DIR/nuttx \\"
+        echo "      -netdev user,id=u1 -device virtio-net-device,netdev=u1"
+        ;;
+    *)
+        echo "  qemu-system-arm -M virt -cpu cortex-a7 -nographic \\"
+        echo "      -kernel $NUTTX_DIR/nuttx \\"
+        echo "      -nic tap,ifname=tap-qemu0,script=no,downscript=no"
+        ;;
+esac

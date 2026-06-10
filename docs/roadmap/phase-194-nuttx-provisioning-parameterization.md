@@ -270,13 +270,35 @@ mismatch vs the cbindgen-generated decls. That is a separate nros-c fix, not
 
 ## Acceptance criteria
 
-- [ ] No `arm-none-eabi-gcc` / `cortex-a7` literal in the NuttX provisioning path;
-      both come from the board overlay/env.
-- [ ] A second-arch NuttX board crate builds its export + links an example using
+- [x] No `arm-none-eabi-gcc` / `cortex-a7` literal in the NuttX provisioning path;
+      both come from the board overlay/env. **Done (194.3c.1/.2/.3)** — the FFI
+      linker-script step, the platform-port compile, and `build-nuttx.sh`
+      BOARD_MAKEDEFS are env-driven; the riscv export builds with only the
+      board's `NUTTX_*` env, no shared-script arm literals on the path.
+- [~] A second-arch NuttX board crate builds its export + links an example using
       only its overlay + `nros setup`'d cross-toolchain — no edits to shared
-      scripts/build.rs.
-- [ ] `just nuttx build` (arm-qemu) still green (behavior-preserving for the
-      existing board).
+      scripts/build.rs. **Export half: DONE** (riscv soft-float rv32imac export
+      builds via overlay + `nros setup qemu-riscv-nuttx`). **Link half: blocked**
+      on [issue-0026] (nros-c posix headers under gcc 14) — board wiring is
+      correct, the failure is downstream in nros-c.
+- [x] `just nuttx build` (arm-qemu) still green (behavior-preserving for the
+      existing board). **Verified** — `just nuttx build` runs the de-armed
+      `build-nuttx.sh` → arm `make export` → `staging/libc.a` (4.2 MB).
+
+## Remaining to close 194 (all 194.3c.7, after issue-0026 lands)
+
+- [ ] Confirm the riscv C example links + boots once nros-c gcc-14 headers are
+      fixed (validates 194.3c.5/.6 end-to-end).
+- [ ] Harness wiring: add a `[[fixture]]` row for `examples/qemu-riscv-nuttx/c/talker`
+      and a riscv branch in `just nuttx build-examples`/`build-fixtures` (today it
+      hardcodes the arm toolchain `cmake/toolchain/armv7a-nuttx-eabi.cmake` + the
+      arm FFI crate at `just/nuttx.just:156-157`) so `just nuttx` + CI build/test
+      the riscv board. Land with the #26 unblock so it's validatable.
+- [ ] virtio-net cross-process e2e (external native listener receives `/chatter`),
+      à la the 225.O esp32 pattern — needs a build host whose rustc survives the
+      cross `build-std` compile.
+- [ ] Cosmetic: `build-nuttx.sh` success footer hardcodes the arm qemu run cmd
+      (`qemu-system-arm -M virt -cpu cortex-a7`); make it arch-aware.
 
 ## Notes
 
