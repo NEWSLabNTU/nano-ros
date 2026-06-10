@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc-arm-none-eabi gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf \
         kconfig-frontends socat parallel unzip flex bison \
         libslirp0 libpixman-1-0 \
+        libmbedtls-dev \
         ros-humble-example-interfaces \
     && rm -rf /var/lib/apt/lists/*
 

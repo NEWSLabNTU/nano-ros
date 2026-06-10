@@ -72,3 +72,20 @@ one-liner.
 
 Not verifiable in this dev env (slow lane, full ROS/AMENT setup); the
 host-integration CI lane is the confirmation. Archive once green.
+
+**Follow-up (2026-06): mbedtls gap in the fixture build.** The first attempt
+greened the `[SKIPPED]` side but `just native build-fixtures` then failed:
+`fatal error: mbedtls/entropy.h: No such file or directory` while building the
+native **TLS** fixtures (`features=["link-tls"]`, `target-tls`). Root cause:
+posix uses `mbedtls = "pkg-config"` (`zenoh_platforms.toml`) → build.rs
+generates a `.pc` pointing at **system** mbedtls (`/usr/include`,
+`/usr/lib/...`), but the CI base image had no `libmbedtls-dev`. (`nros setup
+--source mbedtls` provisions the *vendored* submodule for embedded; the posix
+pkg-config path ignores it, and the vendored branch isn't posix-viable — no
+`mbedtls_config.h`.) Versions are compatible: the vendored submodule is
+2.28.9, Ubuntu 22.04 `libmbedtls-dev` is 2.28, and zenoh-pico's `unix/tls.c`
+supports 2.x. Fix: add `libmbedtls-dev` to the CI base image
+(`ci/docker/ci-base/Dockerfile`) — the right place, since every lane that
+builds the native TLS fixtures needs it. The base image auto-rebuilds on the
+`ci/docker/ci-base/**` push; host-integration greens on its next run with the
+new image.
