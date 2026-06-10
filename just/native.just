@@ -256,7 +256,17 @@ build-fixture-extras:
     # fixtures build cleanly here. These cells are manifest rows and run through
     # fixtures-build.sh, preserving the incremental build-cyclonedds directories.
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py"
-    bash scripts/build/fixture-make-driver.sh native-cyclonedds-cmake
+    # Serialize the two cyclone leaves (issue 0022). Each leaf
+    # (`fixtures-build.sh native <lang> cyclonedds`) is already internally serial
+    # (`NROS_JOBSERVER=1` → `run()` loops), and each builds the SAME `nros-c` /
+    # `nros` crates via corrosion→cargo into its own target-dir. Running the C and
+    # C++ leaves concurrently (outer `make -j`) puts two cargo dependency builds
+    # in contention on the global `~/.cargo/.package-cache-mutate` lock; under
+    # competing host CPU load that degrades to an apparent multi-hour hang.
+    # `NROS_BUILD_JOBS=1` here forces the outer make `-j1` so only one cargo
+    # builds at a time — the intra-leaf serial cmake build still runs at full
+    # native parallelism.
+    NROS_BUILD_JOBS=1 bash scripts/build/fixture-make-driver.sh native-cyclonedds-cmake
     unset NROS_CMAKE_EXTRA_DEFS
 
 # Build every native tier: core artifacts, Rust/C/C++ examples, and test fixtures.
