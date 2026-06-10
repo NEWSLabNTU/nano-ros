@@ -27,13 +27,22 @@ for collapsing the redundant copy and the redundant buffer:
    `MAX_HISTORY × slot` (shared) instead of `MAX_SUBS × DEPTH × slot` (per-sub).
    This is the scaling fix for large messages.
 
-The lifetime guard is the existing single-producer/single-consumer (SPSC)
-slot protocol: the consumer (executor) controls slot release (after the callback
-returns); the producer (transport thread) blocks when the pool is full. No new
-lock on the hot path. Copy #2 (CDR deserialize into the message struct) is out of
-scope here — it is removed for borrowed `&'a` message types by the
-borrowed-deserialization codegen of **issue #7 / RFC-0033**, using the same
-borrow window this RFC opens.
+The lifetime guard is the backend's slot-ownership protocol: the consumer
+(executor) controls slot release (after the callback returns); the producer never
+overwrites a borrowed slot. On a true SPSC backend (zpico) this needs no extra
+lock; multi-producer backends guard only slot (de)allocation, not the borrow
+(D3). Copy #2 (CDR deserialize into the message struct) is out of scope here — it
+is removed for borrowed `&'a` message types by the borrowed-deserialization
+codegen of **issue #7 / RFC-0033**, using the same borrow window this RFC opens.
+
+**Interface minimality.** The change crosses the RMW boundary as exactly **two
+`Subscriber` trait methods** — `process_raw_in_place` (already present) and
+`process_raw_in_place_with_info` (added) — plus **one optional** cffi vtable slot.
+No QoS, pool, or depth concept enters the trait; the shared pool is
+backend-internal and optional, reached only through those methods. The design is
+**transport-agnostic**: the link (TCP / UDP / serial / Bluetooth / CAN / custom
+`NrosTransportOps`) is configured below the RMW boundary, and switching links
+does not touch the receive path (see *Transport portability*).
 
 This is the design-of-record for **issue #8** (two-copy receive + static
 pre-allocation at scale). It is **"Form B"** from the issue #8 design discussion:
@@ -155,12 +164,43 @@ messages.
 - DDS's **is_plain gate** + **slot-pin-during-borrow** are the portable parts of
   the loan model; they apply to copy #2 elimination for borrowed types (issue #7).
 
+## RMW interface surface — what crosses the boundary (and what does not)
+
+The executor must not learn anything about a backend's buffer model. It
+references **zero** backend ring internals today (no `ring_payload` /
+`SUBSCRIBER_BUFFERS` in `nros-node`); it goes through the `Subscriber` trait
+only. This RFC keeps it that way. The **entire** interface Form B needs is two
+trait methods:
+
+| Method | Status | Contract |
+| --- | --- | --- |
+| `process_raw_in_place(f: FnOnce(&[u8])) -> Result<bool>` | **exists** (traits.rs:1440) | Borrow one ready message as a **contiguous** CDR slice for the closure; release after. `Ok(false)` = none ready. |
+| `process_raw_in_place_with_info(f: FnOnce(&[u8], &MessageInfo)) -> Result<bool>` | **must add to trait** | Same, plus the co-located attachment (GID / seq / source-stamp). Currently a zpico *inherent* method (subscriber.rs:871); promote it to the trait. |
+
+That is the whole interface delta — two methods, one already present. **No QoS,
+pool, depth, or slot concept appears in the trait**: QoS depth is already passed
+at subscription creation (`QosSettings::depth`) and is handled entirely
+backend-side. Everything in **D1 below is backend-internal and optional** — a
+zpico-and-friends storage refactor, not a cross-backend mandate. A backend that
+never adopts the shared pool, or never implements the in-place methods, keeps
+working via the buffered fallback (C2). This is the anti-bloat guarantee: the
+boundary grows by one method, and the default-NULL/`Err(unsupported)` contract
+(RFC-0035) lets each backend opt in independently.
+
+The cffi C ABI grows by **one optional vtable slot** for the in-place take
+(append-to-tail per RFC-0035); NULL → the runtime uses the buffered fallback. No
+backend is forced to populate it.
+
 ## Design — Form B (refined)
 
 ```
 Network → [shared slot pool] → in-place deserialize + user callback → release slot
           (transport writes here)  (borrow window = callback scope)
 ```
+
+The data plane is **backend-internal**; the executor sees only the two trait
+methods above. D1 (pool) and D2 (dispatch loop) are described together for
+clarity, but D1 is per-backend and optional while D2 is the one executor change.
 
 ### D1. Shared receive slot pool (replaces per-sub fixed rings)
 
@@ -198,18 +238,28 @@ is passed to the backend as the per-sub slot budget (D1).
 ### D3. Lifetime model
 
 The borrow window is the `process_raw_in_place` closure = the callback scope. The
-**SPSC slot protocol is the lifetime guard**:
+slot-ownership protocol is the lifetime guard:
 
-- Consumer (executor thread) holds the slot for the callback's duration, then
-  advances the consume cursor (`consume_head`) — *the slot is released only after
-  the callback returns*.
-- Producer (transport thread) writes into free slots and **blocks / drops when
-  the pool is full** (`tail - head == budget`), exactly as the ring does today.
-  It never touches a slot the consumer is borrowing.
+- Consumer (executor) holds the slot for the callback's duration, then advances
+  the consume cursor (`consume_head`) — *the slot is released only after the
+  callback returns*.
+- The producer never touches a slot the consumer is borrowing; on a full pool it
+  **blocks or drops-oldest** (per QoS) rather than overwrite a live slot.
 
-No additional lock on the borrow itself. The shared-pool **slot allocator**
-(which sub owns which slot) does need a guard at the producer/consumer boundary —
-see C2.
+The cost of the slot guard is **backend-shaped**, and this is where the
+generic "no new lock" claim must be qualified:
+
+- **True SPSC backend (zpico today):** one transport thread, one executor
+  consumer, head/tail cursors. The borrow needs **no extra lock** — the cursor
+  protocol alone is the guard.
+- **Multi-producer / multi-consumer backend (e.g. DDS reader threads, or a
+  multi-tier executor consuming one pool):** the shared-pool **slot allocator**
+  (which sub owns which slot, claim/release) needs a short critical section or
+  atomic free-list at the producer/consumer boundary regardless — see C2. The
+  *borrow itself* is still lock-free; only slot (de)allocation is guarded.
+- **Single-threaded polled backend (no producer thread — see Transport
+  portability):** there is no concurrent producer at all, so the borrow window
+  cannot stall anything; back-pressure is moot.
 
 ### D4. Copy #2 and borrowed types (scope boundary)
 
@@ -221,26 +271,86 @@ D2 window. The `is_plain` gate (DDS) decides per type whether the borrowed path
 is available. The borrowed-deserialization codegen is **issue #7 / RFC-0033**
 (owned / heap / borrowed modes); this RFC provides the borrow window it needs.
 
+## Transport portability — network, serial, and other links
+
+The in-place design sits **above** the link layer and is therefore
+transport-agnostic, but only because the backend upholds two obligations. The
+link (TCP / UDP / serial / Bluetooth / raw-eth / CAN) is configured **below** the
+RMW boundary — zenoh-pico `Z_FEATURE_LINK_{TCP,SERIAL,BLUETOOTH,WS,RAWETH}`,
+micro-XRCE UART/UDP transports, the runtime-pluggable `NrosTransportOps`
+(`nros-rmw-cffi/include/nros/rmw_transport.h`). The `Subscriber` never sees the
+link; it sees a reassembled message in a slot. For that to hold:
+
+### T1. Linearization is the backend's job (the one unavoidable copy)
+
+`process_raw_in_place(&[u8])` requires a **contiguous** CDR slice. Links that
+deliver fragments — serial/CAN frame streams, scatter-gather datagrams, zenoh's
+non-contiguous `Bytes` — must **reassemble/linearize into one slot before
+exposing the slice**. That linearization is the unavoidable *network → slot*
+write (the same copy micro-XRCE keeps; rmw_zenoh_cpp's `as_vector()` for the
+non-contiguous case). It is **distinct from copy #1**: copy #1 was *slot → a
+second slot*, which Form B removes; the linearization into the first slot
+remains and is not "a copy we eliminate." The contract is: **the backend owns
+exactly one linearization into the pool slot, then dispatches in-place from it.**
+Backends whose link is already message-framed and contiguous (zenoh-pico over
+TCP into its ring) do this for free.
+
+### T2. Slot size is bounded by the message, not the MTU
+
+On small-MTU links (serial, CAN, BLE), a ROS message spans many frames. The pool
+`SLOT_SIZE` must hold the **largest reassembled message**, decoupled from the
+link MTU (micro-XRCE sizes its input buffer `MTU × STREAM_HISTORY`). Reassembly
+staging (the partial-message buffer) is a per-backend concern below the pool and
+is **not** part of this RFC's slot accounting — the pool holds completed
+messages only.
+
+### T3. Polled vs threaded links drive who pumps and whether stall applies
+
+- **Threaded link (RTOS network thread, zenoh-pico RX task, RTOS serial ISR +
+  task):** a producer thread linearizes into pool slots asynchronously;
+  `process_raw_in_place` dispatches what is staged. D3's back-pressure applies.
+- **Single-threaded polled link (bare-metal serial/UDP, no RTOS threads):** there
+  is no producer thread. `process_raw_in_place` must itself **pump the
+  transport** (read + linearize one message) before dispatching, or a sibling
+  `spin`-time drain must. The borrow cannot stall a producer (there is none);
+  the cost is simply that receive progresses only while the executor spins —
+  already true for the polled execution model. The trait contract is therefore
+  *"advance the link if needed, then borrow-dispatch at most one message,"* which
+  both the threaded and polled backends satisfy.
+
+### T4. The link is swappable without touching the receive path
+
+Because the pool + in-place dispatch live above `NrosTransportOps` /
+`Z_FEATURE_LINK_*`, switching a deployment from network to serial (or adding a
+custom link) changes only the transport config, **not** the subscription receive
+path, the executor, or the QoS-depth handling. This is the portability payoff:
+one receive design across all links.
+
 ## Consequences
 
-- **Producer stall (the central tradeoff).** A callback now runs while holding a
-  pool slot, so a slow callback back-pressures the transport thread (pool fills →
-  producer blocks or drops). Today the arena copy decouples them. Mitigation: the
-  pool depth *is* the decoupling budget (a slow consumer tolerates `budget`
-  in-flight messages before drops), and the executor already bounds callback
-  work per spin. This must be documented as a QoS-tuning knob, not hidden.
+- **Producer stall (the central tradeoff — threaded links only).** On a threaded
+  link a callback now runs while holding a pool slot, so a slow callback
+  back-pressures the transport thread (pool fills → producer blocks or
+  drops-oldest). Today the arena copy decouples them. Mitigation: the pool depth
+  *is* the decoupling budget (a slow consumer tolerates `budget` in-flight
+  messages before drops), and the executor already bounds callback work per spin.
+  Documented as a QoS-tuning knob, not hidden. On single-threaded polled links
+  (T3) there is no producer to stall.
 - **Slot allocator cost.** The shared pool needs a per-slot `owner`/`free` state
   updated by the producer (claim a slot) and consumer (release). On
   multi-threaded RTOS this is a short critical section or an atomic free-list —
   one per message, off the payload-copy path. Bounded and cheap vs the eliminated
   memcpy.
-- **Backend coverage.** Only zpico implements `process_raw_in_place`. xrce, cffi
-  (vtable/opaque), cyclonedds, and the mock fall back to the trait default. Two
-  options: (a) implement the in-place path per backend, or (b) keep the buffered
-  dispatch as a **fallback** when `process_raw_in_place` returns the
-  unsupported error. (b) lets the change land incrementally without a flag-day
-  across four backends. cffi needs a new vtable slot
-  (append-only-to-tail per RFC-0035) to expose an in-place take across the C ABI.
+- **Backend coverage (incremental, no flag-day).** Only zpico implements
+  `process_raw_in_place`. xrce, cffi (vtable/opaque), cyclonedds, and the mock
+  fall back to the trait default. The buffered dispatch is **retained as a
+  fallback** invoked when the in-place method returns the unsupported error, so
+  each backend opts in independently — zpico first, the rest as follow-ups, no
+  flag-day. cffi gets **one optional** in-place vtable slot (append-to-tail per
+  RFC-0035); **NULL → buffered fallback** per the 0035 NULL contract, so no
+  backend is forced to populate it. The `process_raw_in_place_with_info` trait
+  method (attachment) is added alongside, defaulting to the same unsupported
+  error so existing backends compile untouched.
 - **Latest-value (`KEEP_LAST(1)`) semantics.** The `Triple` buffer gave
   drop-old/keep-newest. The shared pool's drop-oldest-by-timestamp reproduces
   KEEP_LAST(N) FIFO; KEEP_LAST(1) collapses to a single slot recycled per
@@ -301,6 +411,15 @@ until individually migrated.
 5. **Interaction with multi-tier executors (Phase 228).** A pool slot borrowed by
    a callback on one tier while another tier's transport thread produces — the
    slot allocator guard must be tier-safe (it already must be thread-safe).
+6. **Polled-pump contract (T3).** Should `process_raw_in_place` itself pump a
+   polled link, or should a separate `spin`-time drain step own the
+   read+linearize so the method stays "dispatch only"? Affects single-threaded
+   bare-metal serial/UDP backends and the method's documented contract.
+7. **Linearization for scatter-gather backends (T1).** For a backend whose link
+   delivers non-contiguous payloads (zenoh `Bytes`, fragmented datagrams), is the
+   one-linearization-into-slot acceptable as the backend's responsibility, or
+   should the trait expose a chunked/segmented in-place variant to avoid even
+   that copy for very large messages? (Defaults to "backend linearizes.")
 
 ## Relationship to other work
 
