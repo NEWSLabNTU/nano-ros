@@ -20,12 +20,21 @@ The original problem below — a hardcoded 64-element cap with **no override** �
   hosted / allocator targets. Covers primitive sequences, strings, and sequences of
   strings/nested.
 
-What still remains is the **`borrowed`** zero-copy mode (Phase 229.6): `&'a [T]` /
-`&'a str` slices into the CDR receive buffer — the only viable mode for **large
-payloads on an allocator-free MCU** (owned can't fit, heap needs malloc). Design in
-RFC-0033 "Borrowed mode"; receive-side, callback-scoped, mostly an
-executor/subscription change (tied to issue #8). **This issue closes when
-`borrowed` lands.**
+The **`borrowed`** zero-copy mode (Phase 229.6) — `&'a [T]` / `&'a str` slices into
+the CDR receive buffer, the only viable mode for **large payloads on an
+allocator-free MCU** (owned can't fit, heap needs malloc) — is **landed for Rust**
+and E2E-validated; only the **C/C++ span views remain**. As of `aeed3d4d`:
+
+- **Rust**: `mode = "borrowed"` emits `{Msg}View<'a>` + `{Msg}Borrow` marker;
+  subscribe via `node.create_subscription_borrowed::<{Msg}Borrow, _>()`. Byte
+  sequences → `&'a [u8]`, strings → `&'a str`, multi-byte numerics (`float32[]`,
+  `uint16[]`, …) → `nros_core::LeSliceView<'a, T>` (alignment-agnostic). Runtime
+  seam (`670a62a4`), codegen (`5097a7a7`), alignment guard (`40e5c97e`), E2E
+  (`aeed3d4d`).
+- **C/C++**: `{const T* data; size_t size}` span views — ⬜ pending.
+
+**This issue closes when the C/C++ span views land.** (Design: RFC-0033
+"Borrowed mode"; tied to issue #8's single-copy receive path.)
 
 ---
 
