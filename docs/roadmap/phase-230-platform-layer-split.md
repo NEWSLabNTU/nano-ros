@@ -197,31 +197,42 @@ zpico-sys` edge does not disable defaults). The real blocker was the
 "feature off" read was a build-cache artifact (the env never relinked).
 So the **code is ~the original size**, but two subtleties expand it:
 
-- [ ] **1c.1 — Couple guard ⇔ alias.** A serial-only FreeRTOS node builds
-  `nros-rmw-zenoh default-features = false` (drops `link-ip`) which *also*
-  drops the default `platform-aliases`. An **unconditional** vendored-guard
-  + feature-gated alias = guarded-out `z_malloc` with no provider =
-  **broken link**. Fix: gate the `Z_FEATURE_NROS_PLATFORM_ALLOC` define on
-  `CARGO_FEATURE_PLATFORM_ALIASES` so guard ⇔ alias (off ⇒ vendored
-  `z_malloc` stays = today's behaviour). orin-spe (which sets
-  `platform-aliases` off for FSP-native FreeRTOS) then naturally keeps its
-  vendored `z_malloc` — confirm no regression.
-- [ ] **1c.2 — Memory-only alias for FreeRTOS.** `runner.rs`: drop
-  `!use_freertos` from the alias gate + define `NROS_ZP_ALIAS_MEMORY_ONLY`
-  for FreeRTOS (vendored keeps sleep/random/clock/task/net). `system.c`
-  `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC` guard; `platform_aliases.c`
-  `NROS_ZP_ALIAS_MEMORY_ONLY` guards (the reverted edits, plus 1c.1).
-- [ ] **1c.3 — Coverage.** Also the FreeRTOS **workspace-entry**
-  (`qemu_freertos_entry`) and the role examples, not just the talker.
-- [ ] **1c.4 — CI verification (required — not reproducible locally).**
-  This env can't relink the FreeRTOS qemu ELF (separate link step + build
-  stamps hide an undefined symbol). Verify on the FreeRTOS QEMU CI lane:
-  `objdump` shows `z_malloc → nros_platform_alloc`, the image links, and
-  the pub/sub E2E passes. Re-check the serial-only / `default-features =
-  false` config links (guard off ⇒ vendored).
+**Implemented 2026-06 (commit fc3b6a464 + fork branch `nros-platform-scalar-funnel`
+@ 735ee769). Correction to the earlier diagnosis:** the alias gate's
+`!use_freertos` was one half; the *other* half was that the FreeRTOS board
+(`nros-board-mps2-an385-freertos`) pulls `zpico-sys` with
+`default-features = false, features = ["freertos"]` — so `platform-aliases`
+was OFF on FreeRTOS all along (not the `nros-rmw-zenoh` edge). Enabling it on
+the board is what activates the funnel.
 
-This is the redo plan; treat 1c.4 (CI link/E2E) as the gating acceptance
-test since it cannot be done in this environment.
+- [x] **1c.1 — Couple guard ⇔ alias.** `Z_FEATURE_NROS_PLATFORM_ALLOC` (the
+  vendored-guard define, Step 6.5 in `build_zenoh_pico_unified`) AND the
+  memory-only alias compile are both gated on `CARGO_FEATURE_PLATFORM_ALIASES`
+  (+ `CARGO_FEATURE_FREERTOS`). Off ⇒ vendored `z_malloc` stays = today's
+  behaviour. orin-spe keeps `platform-aliases` off (FSP-native) ⇒ unchanged.
+- [x] **1c.2 — Memory-only alias for FreeRTOS.** `runner.rs` adds a FreeRTOS
+  alias-gate branch compiling `platform_aliases.c` with
+  `NROS_ZP_ALIAS_MEMORY_ONLY` (only `z_malloc`/`z_realloc`/`z_free`; vendored
+  keeps sleep/random/clock/task/net). `system.c` guards the vendored defs
+  behind `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC`; `platform_aliases.c` wraps
+  everything after `z_free` in `#ifndef NROS_ZP_ALIAS_MEMORY_ONLY`.
+- [x] **1c.3 — Coverage.** Board feature enabled on
+  `nros-board-mps2-an385-freertos` (shared by the workspace entry + every
+  role example), so all FreeRTOS zenoh fixtures inherit the funnel.
+- [~] **1c.4 — Verification.** **Static proof done locally** (contradicts the
+  earlier "can't relink locally" assumption): on a clean thumbv7m build the
+  guarded `libzenohpico.a` has `z_malloc` def=0 / 32 undef-refs, the
+  memory-only alias archive defines `z_malloc → nros_platform_alloc`, and the
+  full FreeRTOS firmware **links clean** (only weak C++ EH symbols undefined)
+  — proving `z_malloc` resolves through the funnel at the real embedded link.
+  Heap-identical to before (`nros_platform_alloc → pvPortMalloc`, same
+  heap_4). **Runtime QEMU pub/sub E2E remains the CI gate** — the local
+  fixture-staging env (`NROS_PLATFORM_FREERTOS_SRC`, `_entry` ELF rename)
+  blocks running it here; the FreeRTOS QEMU CI lane runs it.
+
+Push order: push the `nros-platform-scalar-funnel` fork branch FIRST, then
+push fc3b6a464 (the superproject pointer references the unpushed fork
+commit). 1c.4 runtime E2E is the gating acceptance on the CI lane.
 - **Wave 1d — optional Rust global allocator (D6)** — largely landed
   (2026-06):
   - The optional, board-selected provider **already existed**:
