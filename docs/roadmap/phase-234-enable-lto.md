@@ -7,7 +7,10 @@ lifted: `nros-sizes-build` has a bitcode-aware `llvm-nm` reader, validated to
 recover every size under `lto = "fat"`. This phase flips the profiles and proves the
 probe consumers (`nros-c`, `nros-cpp`) get identical sizes across the target matrix.
 
-**Status.** Not started (2026-06). Resolves issue
+**Status.** In progress (2026-06). Profiles flipped, probe validated byte-identical
+on host + `thumbv7m-none-eabi`, regression test landed. Remaining acceptance gate:
+the `nuttx` filesystem-fallback path, the embedded-link CI matrix, and the size-win
+measurement (234.6). Resolves issue
 [0023](../issues/0023-lto-disabled-for-size-probe.md).
 
 **Priority.** P2 — pure size/perf win on space-constrained MCUs; no correctness gate.
@@ -47,28 +50,35 @@ nros (lto=fat) ─► bitcode rlib ─► extract_sizes
 
 ## Work Items
 
-### 234.1 — Baseline capture  ⬜
-Record the current (`lto=off`) probe outputs for every consumer + target as the
-golden reference: the `*_OPAQUE_U64S` / `*_SIZE` values nros-c / nros-cpp emit
-(host, `thumbv7m-none-eabi`, `armv7a-nuttx-eabihf`). Save to `tmp/` for the diff in
-234.3.
+### 234.1 — Baseline capture  ✅
+Captured the `lto=off` probe outputs as the golden reference. Host: `SESSION=528`,
+`PUBLISHER=560`, `EXECUTOR=79560`; `thumbv7m-none-eabi`: `SESSION=520`,
+`PUBLISHER=552`, `EXECUTOR=79208` (32-bit layout). Both probe paths (`object`
+byte-size and `llvm-nm` name-based) agree under `lto=off`.
 - **Files:** none (capture only).
 
-### 234.2 — Flip the profiles  ⬜
-`[profile.release] lto = "fat"` (start with `"thin"` if fat link time is a concern);
-remove `lto = "off"` from `[profile.nros-fast-release]`; delete the stale
-`lto = "off"` explanatory comment. Leave the per-crate `lto` opt-ins in the smoke /
-logging-smoke fixtures untouched.
-- **Files:** `Cargo.toml` (`[profile.release]`, `[profile.nros-fast-release]`).
+### 234.2 — Flip the profiles  ✅
+`[profile.release] lto = "fat"`; stale `lto = "off"` comment replaced with the
+Phase-234 rationale. **`[profile.nros-fast-release]` keeps its explicit
+`lto = "off"`** — it `inherits = "release"` (now fat), so the override is *required*
+to keep fast-iteration builds LTO-free; dropping it would silently re-enable fat LTO
+there. Per-crate `lto` opt-ins in smoke / logging-smoke fixtures untouched.
+- **Files:** `Cargo.toml` (`[profile.release]`).
 
-### 234.3 — Validate sizes across the target matrix  ⬜
+### 234.3 — Validate sizes across the target matrix  🟡 (host + thumbv7m ✅, nuttx ⬜)
 Rebuild the probe consumers under LTO and assert the recovered sizes **equal the
 234.1 baseline**:
-- **host** (nested-isolated probe path),
-- **`thumbv7m-none-eabi`** (cross target; confirms host `llvm-nm` reads a
-  cross-target bitcode rlib's names),
-- **`armv7a-nuttx-eabihf`** (custom-target JSON → the **filesystem-fallback** probe
-  path, which reads the *outer* LTO'd rlib — the path most at risk).
+- **host** ✅ — `CARGO_PROFILE_RELEASE_LTO=fat` build of `nros` → bitcode rlib;
+  `llvm-nm` fallback recovers `SESSION=528`, `PUBLISHER=560`, `EXECUTOR=79560` —
+  byte-identical to baseline. `nros-cpp` end-to-end under fat LTO emits
+  `CPP_EXECUTOR_OPAQUE_U64S = 9946` (matches `79560/8 = 9945` + `CPP_CONTEXT_OVERHEAD`
+  rounding). No `0` / no `*_OPAQUE_U64S = 1` placeholder.
+- **`thumbv7m-none-eabi`** ✅ — `lto=off` and `lto=fat` both recover `520/552/79208`
+  (32-bit layout), confirming host `llvm-nm` reads cross-target bitcode names and the
+  size `N` is baked per-target at monomorphisation.
+- **`armv7a-nuttx-eabihf`** ⬜ — custom-target JSON → the **filesystem-fallback**
+  probe path (reads the *outer* LTO'd rlib — the path most at risk). Needs the
+  custom-target toolchain; deferred to CI / out-of-band.
 Any divergence (esp. a `0` or a placeholder `*_OPAQUE_U64S = 1`) is a fail.
 - **Files:** none (verification); fixes land in 234.4 if a gap surfaces.
 
@@ -83,11 +93,14 @@ Driven by 234.3 results:
   uniformly) with the `object` byte-size path as the no-`llvm-tools` fallback.
 - **Files:** `packages/core/nros-sizes-build/src/lib.rs`.
 
-### 234.5 — Add a probe regression test  ⬜
-A `nros-sizes-build` test (or a `nros-tests` harness) that builds a probe-consuming
-crate under `lto=fat` and asserts a known size (e.g. `PUBLISHER_SIZE`) is recovered
-non-zero — so a future `object`-only regression can't silently re-pin LTO.
-- **Files:** `packages/core/nros-sizes-build/tests/` (or `nros-tests`).
+### 234.5 — Add a probe regression test  ✅
+`packages/core/nros-sizes-build/tests/bitcode_probe.rs` builds `nros` with
+`CARGO_PROFILE_RELEASE_LTO=fat` into a throwaway target dir, finds the bitcode
+`libnros-*.rlib`, and asserts `extract_sizes` recovers `PUBLISHER_SIZE > 0` and
+`EXECUTOR_SIZE > PUBLISHER_SIZE` — which for a bitcode rlib can only come from the
+`llvm-nm` name-based fallback. `#[ignore]` (spawns a ~15s fat-LTO compile); run with
+`cargo test -p nros-sizes-build --test bitcode_probe -- --ignored`. Passed in 14.79s.
+- **Files:** `packages/core/nros-sizes-build/tests/bitcode_probe.rs`.
 
 ### 234.6 — Measure + record the size win  ⬜
 Diff a representative embedded binary (e.g. a `logging-smoke-*` or a QEMU example)
