@@ -276,6 +276,12 @@ pub struct NrosRmwQos {
     pub avoid_ros_namespace_conventions: u8,
     /// Reserved; must be zero.
     pub _reserved1: [u8; 3],
+    /// Phase 231 (RFC-0038) — subscription receive-buffer size hint, bytes.
+    /// Carries `TopicInfo::rx_buffer_hint` across the C ABI to `create_subscriber`
+    /// so a size-classing backend (zenoh-pico) can pick a small/large receive
+    /// buffer. `0` = unset. Appended at the struct tail (ABI-append); ignored by
+    /// every slot except `create_subscriber`.
+    pub rx_buffer_hint: u32,
 }
 
 /// Standard `rmw_qos_profile_default`-equivalent.
@@ -291,6 +297,7 @@ pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
     liveliness_lease_ms: 0,
     avoid_ros_namespace_conventions: 0,
     _reserved1: [0; 3],
+    rx_buffer_hint: 0,
 };
 
 /// Standard `rmw_qos_profile_sensor_data`-equivalent.
@@ -306,6 +313,7 @@ pub const NROS_RMW_QOS_PROFILE_SENSOR_DATA: NrosRmwQos = NrosRmwQos {
     liveliness_lease_ms: 0,
     avoid_ros_namespace_conventions: 0,
     _reserved1: [0; 3],
+    rx_buffer_hint: 0,
 };
 
 /// Standard `rmw_qos_profile_services_default`-equivalent.
@@ -422,6 +430,7 @@ impl From<QosSettings> for NrosRmwQos {
             liveliness_lease_ms: qos.liveliness_lease_ms,
             avoid_ros_namespace_conventions: qos.avoid_ros_namespace_conventions as u8,
             _reserved1: [0; 3],
+            rx_buffer_hint: 0,
         }
     }
 }
@@ -1703,7 +1712,10 @@ impl Session for CffiSession {
     ) -> Result<CffiSubscriber, TransportError> {
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
-        let qos_struct = NrosRmwQos::from(qos);
+        let mut qos_struct = NrosRmwQos::from(qos);
+        // Phase 231 (RFC-0038) — carry the receive-buffer size hint across the
+        // C ABI so a size-classing backend can route its receive storage.
+        qos_struct.rx_buffer_hint = topic.rx_buffer_hint.min(u32::MAX as usize) as u32;
 
         let mut sub_state = CffiSubscriber {
             vtable: self.vtable,
@@ -3021,6 +3033,7 @@ mod tests {
         liveliness_lease_ms: 0,
         avoid_ros_namespace_conventions: 0,
         _reserved1: [0; 3],
+        rx_buffer_hint: 0,
     };
 
     /// Read a null-terminated `*const u8` into the supplied byte

@@ -116,7 +116,13 @@ typedef struct nros_rmw_qos_t {
      *  toolchains.) */
     uint8_t  avoid_ros_namespace_conventions;
     uint8_t  _reserved1[3];   /**< Reserved; must be zero. */
-} nros_rmw_qos_t;             /* 24 bytes */
+    /** Phase 231 (RFC-0038) — subscription receive-buffer size hint, bytes.
+     *  Carries `TopicInfo::rx_buffer_hint` to `create_subscriber` so a
+     *  size-classing backend (zenoh-pico) can pick a small/large receive
+     *  buffer. `0` = unset. Appended at the tail (ABI-append); only
+     *  `create_subscriber` reads it. */
+    uint32_t rx_buffer_hint;
+} nros_rmw_qos_t;             /* 28 bytes */
 
 /* ---- Standard QoS profile constants ---- */
 /* Defined as static const initialisers at the bottom of this

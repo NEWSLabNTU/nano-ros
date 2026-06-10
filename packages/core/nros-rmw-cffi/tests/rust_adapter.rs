@@ -431,6 +431,7 @@ fn rust_backend_adapter_routes_every_slot() {
         liveliness_lease_ms: 0,
         avoid_ros_namespace_conventions: 0,
         _reserved1: [0; 3],
+        rx_buffer_hint: 0,
     };
     let mut pubr = nros_rmw_cffi::NrosRmwPublisher {
         topic_name: b"/chatter\0".as_ptr(),
@@ -534,6 +535,7 @@ fn rust_backend_adapter_preserves_session_identity() {
         liveliness_lease_ms: 0,
         avoid_ros_namespace_conventions: 0,
         _reserved1: [0; 3],
+        rx_buffer_hint: 0,
     };
 
     let mut pubr = nros_rmw_cffi::NrosRmwPublisher {
@@ -801,6 +803,7 @@ fn rust_backend_adapter_routes_events_and_services() {
         liveliness_lease_ms: 0,
         avoid_ros_namespace_conventions: 0,
         _reserved1: [0; 3],
+        rx_buffer_hint: 0,
     };
     let mut pubr = nros_rmw_cffi::NrosRmwPublisher {
         topic_name: b"/t\0".as_ptr(),
