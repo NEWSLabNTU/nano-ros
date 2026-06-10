@@ -269,12 +269,12 @@ commit). 1c.4 runtime E2E is the gating acceptance on the CI lane.
   nros-owned surface clean, 230.0.2 flips HARD by default (230.1.7). Embedded
   ELF link verification of the board edits is CI-gated (full firmware build).
 
-- **Wave 1f — extend the alloc funnel to ThreadX + Zephyr (PLANNED, post-1c).**
-  Replicates the 1c FreeRTOS pattern — fork-guard the vendored `z_malloc` +
-  memory-only alias + board `platform-aliases` + provider `nros_platform_alloc`
-  — with per-RTOS deltas. Gate everything on `CARGO_FEATURE_PLATFORM_ALIASES`
-  exactly as 1c, so a node that drops `platform-aliases` keeps its vendored
-  heap (no undefined `z_malloc`).
+- **Wave 1f — alloc funnel on ThreadX + Zephyr  ✅ DONE (both already funneled).**
+  Investigation (post-1c) found that neither ThreadX nor Zephyr actually had a
+  bypass: only FreeRTOS compiled a vendored `z_malloc`-defining `system.c`. The
+  pre-existing alias TU (`platform_aliases.c`, `platform-aliases` on) already
+  routes `z_malloc → nros_platform_alloc` on both. The only change was removing
+  ThreadX's dead weak footgun. Details per-RTOS below.
 
   **ThreadX — ALREADY FUNNELED (verified 2026-06); only the footgun removed.**
   The earlier plan here assumed a vendored `system/threadx/system.c` to guard
@@ -300,30 +300,42 @@ commit). 1c.4 runtime E2E is the gating acceptance on the CI lane.
   on — there is no vendored `z_malloc` to fall back to on the generic platform.)
   - Verify (CI): threadx-linux + ThreadX QEMU (riscv64) links + e2e stay green.
 
-  **Zephyr (C-side only — Rust allocator stays framework-owned, D6).** zenoh-pico
-  C is built by **Zephyr CMake** (`zephyr/cmake/nros_rmw_zenoh.cmake`), NOT
-  `runner.rs` (which returns early for Zephyr), so the guard define + memory-only
-  alias compile wire into that CMake glue, not Step 6.5. Steps:
-  1. Fork-guard the vendored Zephyr `z_malloc`/`z_realloc`/`z_free` in
-     `system/zephyr/system.c` behind `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC`.
-  2. In `nros_rmw_zenoh.cmake`: define `Z_FEATURE_NROS_PLATFORM_ALLOC` on the
-     zenoh-pico compile and add `platform_aliases.c` (with
-     `NROS_ZP_ALIAS_MEMORY_ONLY`) to the Zephyr source list.
-  3. Ensure `nros-platform-zephyr`'s `nros_platform_alloc` (k_heap, already a
-     Zephyr CMake module) is on the app link.
-  4. `nano-ros` `global-alloc` stays **off** on Zephyr (zephyr-lang-rust owns
-     the Rust `#[global_allocator]`); stats are Mode B via the native
-     `sys_heap` query (already wired — Z5/1b). See the "Concrete Zephyr 230.1
-     steps" block below.
-  - Verify (CI): Zephyr native_sim + QEMU zenoh e2e; the C heap funnels while
-    the framework owns the Rust heap; `sys_heap` reports the unified total.
+  **Zephyr — C-side ALREADY FUNNELED (confirmed by design 2026-06); no guard
+  needed.** Same correction as ThreadX. zenoh-pico C is built by **Zephyr CMake**
+  (`zephyr/cmake/nros_rmw_zenoh.cmake`), which globs only `src/system/common/*`
+  + `src/system/zephyr/network.c` — it does **NOT** compile
+  `src/system/zephyr/system.c` (the file that defines the vendored
+  `z_malloc → k_malloc`). So that vendored def never reaches the Zephyr link;
+  there is no bypass to guard. The CMake comment is explicit: Zephyr's
+  memory/clock/sleep "is replaced by the alias TU (`platform_aliases.c`)
+  compiled inside the cargo staticlib... the single replacement provider." The
+  alias TU is compiled for Zephyr (the runner.rs alias gate fires —
+  `platform-aliases` is on via `nros-rmw-zenoh`'s default `zpico-sys` dep — with
+  the network section elided via `NROS_ZENOH_PLATFORM_USES_UNIX`, memory aliases
+  kept), emitting `z_malloc → nros_platform_alloc` resolved against
+  `nros-platform-zephyr`'s k_heap provider.
 
-  **Status:** ThreadX ✅ (already funneled; footgun removed — see above).
-  Zephyr remains — and unlike ThreadX it genuinely needs the guard: zenoh-pico's
-  `system/zephyr/system.c` **does** define a vendored `z_malloc → k_malloc`, and
-  the Zephyr alias TU is not compiled by `runner.rs` (CMake-built), so today the
-  Zephyr C heap bypasses `nros_platform_alloc`. Sequenced after 1c lands
-  CI-green (the FreeRTOS lane is the reference validation).
+  So the **C side is funneled** with no guard, no `runner.rs`/CMake change. The
+  **Rust `#[global_allocator]` stays zephyr-lang-rust's** (k_malloc) by design
+  (D6 — nano-ros yields the slot to the framework; `global-alloc` off on
+  Zephyr), and stats are **Mode B** via the native `sys_heap` query (both the
+  framework Rust heap and zenoh-pico share `k_heap`, so the native total is
+  exact — already wired, Z5/1b). This is the RFC-0034 D6/D7 Zephyr end-state.
+  - Verify (CI): Zephyr native_sim + QEMU zenoh e2e (SDK not provisioned in this
+    dev env, so confirmed by design here; the Zephyr CI lane is the runtime
+    gate). `objdump` on the image should show zenoh `z_malloc →
+    nros_platform_alloc`.
+
+  **Status: both ✅.** ThreadX (already funneled; dead weak footgun removed)
+  and Zephyr (C-side already funneled via the alias TU; Rust-side
+  framework-owned per D6). **FreeRTOS (1c) was the only RTOS that compiled a
+  vendored `z_malloc`-defining `system.c`** (via `build_zenoh_pico_unified`) and
+  thus the only real bypass; ThreadX (generic `system/common`) and Zephyr (CMake
+  globs `system/common` + `network.c` only) never put a vendored `z_malloc` on
+  the link, so the pre-existing alias TU already funneled them. RFC-0034's
+  motivation table (which showed ThreadX/Zephyr `z_malloc` as *direct*) reflected
+  a pre-alias-TU snapshot; corrected in the RFC. Runtime confirmation of all
+  three rides the per-RTOS CI lanes.
 
 > **Zephyr-slice investigation (2026-06).** On the Zephyr *Rust* path there
 > are two allocators and neither is nros's: the `#[global_allocator]` is

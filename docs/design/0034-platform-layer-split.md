@@ -37,12 +37,18 @@ RMW  (zenoh-pico, xrce, cyclonedds, dust)   ─┼─► nros_platform_*  ─►
                                              ┘     (link-time)        (posix/freertos/threadx/zephyr/…)
 ```
 
-Reality (measured — see [issue 0006] + the Phase 230 audit):
+Reality (measured — see [issue 0006] + the Phase 230 audit). **Note (corrected
+2026-06):** the `z_malloc` row below was an early snapshot; the phase-230
+implementation found that only **FreeRTOS** actually compiled a vendored
+`z_malloc`-defining `system.c` and so was the only real bypass. ThreadX (uses
+zenoh-pico's generic `system/common`, no vendored `z_malloc`) and Zephyr (CMake
+compiles `system/common` + `network.c`, **not** `system/zephyr/system.c`) were
+already funneled through the alias TU. The corrected, post-phase-230 state:
 
 | Service | POSIX / bare-metal | FreeRTOS | ThreadX | Zephyr |
 |---|---|---|---|---|
-| `z_malloc` (zenoh-pico) | → `nros_platform_alloc` (alias TU) | → `pvPortMalloc` **direct** | → `tx_byte_allocate` **direct** | → `k_malloc` **direct** |
-| Rust `#[global_allocator]` | (host) | → `pvPortMalloc` **direct** | → `z_malloc` (vendor) | → `k_malloc` **direct** |
+| `z_malloc` (zenoh-pico) | → `nros_platform_alloc` (alias TU) | → `nros_platform_alloc` (1c: fork guard + memory-only alias) | → `nros_platform_alloc` (alias TU; already funneled, 1f) | → `nros_platform_alloc` (alias TU; already funneled, 1f) |
+| Rust `#[global_allocator]` | (host) | → `nros_platform_alloc` (D6 provider) | → `nros_platform_alloc` (D6 provider) | zephyr-lang-rust → `k_malloc` (D6: framework owns it; native `sys_heap` stats) |
 
 Concrete defects this creates:
 
@@ -229,7 +235,7 @@ Tracks what [phase-230] has landed against the decisions above.
 |---|---|---|
 | D1 boundary invariant | **enforced** for the nros-owned surface | D8 gate hard (below) |
 | D2 scalar vs opaque classification | **documented** | [platform-c-abi.md] §opaque-struct boundary |
-| D3 one category-gated bridge | **partial** | POSIX/bare-metal alias TU live; RTOS `z_*` funnel is the CI-gated remainder |
+| D3 one category-gated bridge | **alloc funnel complete across RTOSes** | POSIX/bare-metal/ThreadX/Zephyr via the alias TU; FreeRTOS via 1c (fork guard + memory-only alias). Sleep/clock/random (Wave 2) + the zpico/xrce alias-TU dedup (Wave 3) remain |
 | D4 alloc ownership + init contract | **landed** (FreeRTOS/ThreadX/POSIX/esp) | `nros-platform-*/src/platform.c` |
 | D6 optional Rust global allocator | **landed** | `nros-platform-api` `global-allocator` feature → `nros_platform_alloc`; off where a framework owns the slot (Zephyr/esp-hal/std) |
 | D7 two-mode heap stats | **landed**; closes [issue 0006] | canonical `nros_platform_heap_used_bytes`/`_total_bytes` (ABI) + per-port impls + bare-metal `FreeListHeap` stats |
@@ -244,16 +250,20 @@ route through `nros_platform_alloc`/`_dealloc`. The ThreadX board
 TASK/NET opaque-struct services (D2) and stay direct on a documented
 lint allowlist.
 
-**Vendored funnel — CI-gated remainder.** Routing vendored zenoh-pico's
-C scalar services (`z_malloc`/`z_free`/`z_realloc`, then
-`z_sleep`/`z_clock`/`z_random`) through `nros_platform_*` on
-FreeRTOS/ThreadX/Zephyr requires a fork guard
-(`#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC`) + the memory-only alias emission,
-coupled to `CARGO_FEATURE_PLATFORM_ALIASES`. It cannot be verified by a
-local `cargo check` (no ELF relink — the change only manifests at the final
-embedded link); it is owned by the CI relink lane and is **out of D8's
-scope** (the lint excludes the vendored submodule), so it is not a
-precondition for the gate being hard.
+**Vendored alloc funnel — LANDED across all RTOSes.** zenoh-pico's C
+`z_malloc`/`z_free`/`z_realloc` now resolve to `nros_platform_alloc` on every
+RTOS: **FreeRTOS** via 1c (fork guard `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC`
+in `system/freertos/system.c` + the memory-only alias, coupled to
+`CARGO_FEATURE_PLATFORM_ALIASES`); **ThreadX** and **Zephyr** were already
+funneled by the alias TU (they never compiled a vendored `z_malloc` —
+generic `system/common` / a Zephyr CMake glob that omits `system/zephyr/
+system.c`), so 1f only removed ThreadX's dead weak forwarder. Static link
+proof was done locally for FreeRTOS (guarded archive + alias, clean firmware
+link) and ThreadX (objdump `z_malloc → nros_platform_alloc`); Zephyr is
+confirmed by the CMake source wiring. Runtime confirmation rides the per-RTOS
+CI lanes. **Remaining vendored work:** the other scalar services
+(`z_sleep`/`z_clock`/`z_random`, Wave 2) and the zpico/xrce alias-TU dedup
+(Wave 3) — both out of D8's scope (the lint excludes the vendored submodule).
 
 ## Open questions
 
