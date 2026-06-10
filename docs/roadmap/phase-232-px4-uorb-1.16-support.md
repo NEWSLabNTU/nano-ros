@@ -7,10 +7,9 @@ topics into `msg/versioned/`. This is **Track A** of the two-track PX4 plan in
 that tracks PX4 releases. RFC-0011 owns the backend internals.
 
 **Status.** In progress (2026-06). The px4-rs codegen jobs **232.1 (the blocker)
-+ 232.2** are done on the px4-rs branch `phase-232-uorb-versioned-msgs` (pushed;
-PR open) — `cargo xtask gen-msgs` now emits 246 messages (was 209), including all
-37 `msg/versioned/` core topics, verified against `v1.17.0-alpha1`. The nano-ros
-submodule pointer bumps once that branch merges to px4-rs `main`. Remaining: the
++ 232.2** are merged to px4-rs `main` (submodule pin bumped → `318456a`) —
+`cargo xtask gen-msgs` now emits 246 messages (was 209), including all 37
+`msg/versioned/` core topics, verified against `v1.17.0-alpha1`. Remaining: the
 in-tree jobs 232.4/232.5/232.6 + optional 232.3. Design-of-record: RFC-0039
 (Draft) + RFC-0011 (Stable).
 
