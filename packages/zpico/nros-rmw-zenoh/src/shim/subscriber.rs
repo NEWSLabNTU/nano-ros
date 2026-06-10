@@ -862,38 +862,6 @@ impl ZenohSubscriber {
         Ok(Some((len, message_info)))
     }
 
-    /// Process the received message in-place with message info, without copying.
-    ///
-    /// Calls `f` with a reference to the raw CDR bytes and optional message info.
-    /// The buffer is locked during `f`.
-    ///
-    /// Returns `Ok(true)` if a message was available and `f` was called.
-    pub fn process_raw_in_place_with_info(
-        &mut self,
-        f: impl FnOnce(&[u8], Option<MessageInfo>),
-    ) -> Result<bool, TransportError> {
-        let buffer = self.buf.get();
-
-        let Some(slot) = buffer.peek_head_slot() else {
-            return Ok(false);
-        };
-
-        let len = buffer.ring_len[slot];
-
-        // Parse attachment (small: 33-37 bytes).
-        let attachment_len = buffer.ring_att_len[slot];
-        let message_info = if attachment_len > 0 {
-            MessageInfo::from_attachment(&buffer.ring_att[slot][..attachment_len])
-        } else {
-            None
-        };
-
-        f(&buffer.ring_payload[slot][..len], message_info);
-
-        buffer.consume_head();
-
-        Ok(true)
-    }
 }
 
 impl Subscriber for ZenohSubscriber {
@@ -1050,6 +1018,43 @@ impl Subscriber for ZenohSubscriber {
         let len = buffer.ring_len[slot];
         // Process in-place out of the ring slot, then advance head.
         f(&buffer.ring_payload[slot][..len]);
+        buffer.consume_head();
+
+        Ok(true)
+    }
+
+    // Phase 231 Wave 0.1 — in-place dispatch with the co-located attachment.
+    // Borrows the ring slot's payload + parses its attachment into the canonical
+    // `nros_core::MessageInfo` (same conversion as `try_recv_raw_with_info`) for
+    // `f`, then advances head. Promoted from the former inherent method.
+    fn process_raw_in_place_with_info(
+        &mut self,
+        f: impl FnOnce(&[u8], Option<nros_core::MessageInfo>),
+    ) -> Result<bool, Self::Error> {
+        let buffer = self.buf.get();
+
+        let Some(slot) = buffer.peek_head_slot() else {
+            return Ok(false);
+        };
+
+        let len = buffer.ring_len[slot];
+
+        // Parse attachment (small: 33-37 bytes) into the core MessageInfo.
+        let attachment_len = buffer.ring_att_len[slot];
+        let core_info = if attachment_len > 0 {
+            MessageInfo::from_attachment(&buffer.ring_att[slot][..attachment_len]).map(|zi| {
+                let mut info = nros_core::MessageInfo::new();
+                info.set_publication_sequence_number(zi.sequence_number);
+                info.set_source_timestamp(nros_core::Time::from_nanos(zi.timestamp_ns));
+                info.set_publisher_gid(zi.publisher_gid);
+                info
+            })
+        } else {
+            None
+        };
+
+        f(&buffer.ring_payload[slot][..len], core_info);
+
         buffer.consume_head();
 
         Ok(true)

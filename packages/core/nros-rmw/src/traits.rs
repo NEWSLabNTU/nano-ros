@@ -1445,6 +1445,32 @@ pub trait Subscriber {
         Err(TransportError::MessageTooLarge.into())
     }
 
+    /// In-place processing variant that also surfaces publisher metadata.
+    ///
+    /// Same borrow contract as
+    /// [`process_raw_in_place`](Subscriber::process_raw_in_place): `f` receives
+    /// the raw CDR bytes plus the parsed [`MessageInfo`](nros_core::MessageInfo)
+    /// — the co-located attachment (publisher GID / sequence / source timestamp),
+    /// or `None` when no attachment was present — for the duration of the call;
+    /// the slot is released after `f` returns. `Ok(true)` = a message was
+    /// available and `f` was called; `Ok(false)` = none ready.
+    ///
+    /// **Default body**: returns the unsupported error (mirrors
+    /// `process_raw_in_place`). Backends that advertise in-place support override
+    /// this with a real zero-copy path; callers that hit the default should use
+    /// the buffered [`try_recv_raw_with_info`](Subscriber::try_recv_raw_with_info)
+    /// path instead. (RFC-0038, Phase 231 Wave 0.1.)
+    fn process_raw_in_place_with_info(
+        &mut self,
+        f: impl FnOnce(&[u8], Option<nros_core::MessageInfo>),
+    ) -> Result<bool, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = f;
+        Err(TransportError::MessageTooLarge.into())
+    }
+
     /// Try to receive raw data along with publisher metadata.
     ///
     /// When available, [`MessageInfo`](nros_core::MessageInfo) contains
