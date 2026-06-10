@@ -4,7 +4,7 @@ title: "PX4 integration architecture (uORB in-firmware + companion XRCE; 1.16 me
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: []
+implements-tracked-by: [phase-232, phase-233]
 supersedes: []
 superseded-by: null
 ---
@@ -85,8 +85,9 @@ philosophies, which sets their maintenance contracts:
   comparatively turnkey but currently **untapped** (no example, no px4_msgs CDR
   emit). Work here is *additive*, not reactive.
 
-So the roadmap carries two parallel tracks: keep uORB working on new PX4 (the
-codegen fixes), and stand up the XRCE companion path (codegen emitter + example).
+So the roadmap carries two parallel tracks: **Phase 232** (keep uORB working on new
+PX4 — the codegen fixes) and **Phase 233** (stand up the XRCE companion path — CDR
+emitter + example).
 
 ### `px4-rs` and the version-robustness mechanism
 
