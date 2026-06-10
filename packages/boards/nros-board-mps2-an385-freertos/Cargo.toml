@@ -15,9 +15,8 @@ name = "nros_board_mps2_an385_freertos"
 # lines propagate to the final binary.
 nros-board-freertos = { path = "../nros-board-freertos" }
 # Phase 129.D — `zpico-platform-shim` retired. `zpico-sys`'s
-# default-on `platform-aliases` C TU emits every `z_*` / `_z_*`
-# symbol zenoh-pico needs; DDS-only builds drop `zpico-sys`
-# entirely.
+# `platform-aliases` C TU emits the `z_*` / `_z_*` symbols zenoh-pico
+# needs; DDS-only builds drop `zpico-sys` entirely.
 # Phase 212.M-F.15 — enable the `freertos` platform-backend feature so
 # `zpico-sys/build.rs` compiles the `freertos-lwip` platform manifest
 # (which pulls `zpico.c` providing `zpico_set_task_config` +
@@ -26,7 +25,16 @@ nros-board-freertos = { path = "../nros-board-freertos" }
 # header-only path and the binary's link fails with `undefined symbol:
 # zpico_set_task_config` (called from `nros_board_freertos::entry`
 # when `rmw-zenoh` is on).
-zpico-sys = { path = "../../zpico/zpico-sys", default-features = false, features = ["freertos"], optional = true }
+# Phase 230 1c (RFC-0034) — enable `platform-aliases` so the scalar-alloc
+# funnel activates: the memory-only alias TU forwards zenoh-pico's
+# `z_malloc`/`z_realloc`/`z_free` to `nros_platform_alloc` (paired with the
+# `Z_FEATURE_NROS_PLATFORM_ALLOC` fork guard that drops the vendored
+# `pvPortMalloc` defs in `system/freertos/system.c`). Net/task/sync stay
+# vendored — `nros-zpico-build` compiles the alias TU in memory-only mode on
+# FreeRTOS, so the historical net-ABI clash that kept the full alias TU off
+# FreeRTOS does not apply. Combined with `nros-platform/global-allocator`
+# below, both the Rust and C heaps funnel through one `nros_platform_alloc`.
+zpico-sys = { path = "../../zpico/zpico-sys", default-features = false, features = ["freertos", "platform-aliases"], optional = true }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
 # Phase 88 — Rust binding for `nros_platform_register_log_writer`.
 # The board crate hands a semihosting writer to the platform's

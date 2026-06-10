@@ -465,6 +465,48 @@ pub fn run() {
     // (the resulting rlib must not be loaded at runtime — that's
     // already the same contract the no-backend-selected path emits
     // above).
+    // phase-230 1c (RFC-0034) — FreeRTOS memory-only alias TU. The full
+    // alias path below is gated `!use_freertos` because its net + task +
+    // mutex/condvar sections collide with FreeRTOS's vendored
+    // `system/freertos/*` primitives (the reason FreeRTOS was excluded). The
+    // memory-only mode emits ONLY the `z_malloc`/`z_realloc`/`z_free` →
+    // `nros_platform_alloc`/`_realloc`/`_dealloc` forwarders; the vendored
+    // copies are guarded out by `Z_FEATURE_NROS_PLATFORM_ALLOC` (Step 6.5 on
+    // the zenoh-pico build), so exactly these three land on the link. Same
+    // `CARGO_FEATURE_PLATFORM_ALIASES` opt-in keeps the guard + alias coupled.
+    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && use_freertos && any_explicit {
+        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+        let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
+        let mut alias_build = cc::Build::new();
+        alias_build
+            .file(manifest_dir.join("c/zpico/platform_aliases.c"))
+            .include(&nros_platform_cffi_include)
+            .include(manifest_dir.join("c/zpico"))
+            .define("NROS_ZP_ALIAS_MEMORY_ONLY", None)
+            .warnings(true);
+        let target_os_for_alias = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+        if target_os_for_alias == "none" {
+            alias_build.flag("-ffreestanding");
+        }
+        // Match zpico.c's `[arch.*]` float-ABI / march / mabi so
+        // platform_aliases.o lands in the same archive without an ABI clash.
+        if let Some(name) = platform_name
+            && let Ok(resolved) = platform_manifest.for_platform(name)
+        {
+            for arch_name in &resolved.arch {
+                if let Some(arch) = platform_manifest.arch.get(arch_name.as_str())
+                    && arch_matches(arch, &target)
+                {
+                    apply_arch(arch, &mut alias_build, &out_dir);
+                    break;
+                }
+            }
+        }
+        alias_build.compile("zpico_platform_aliases");
+        println!("cargo:rerun-if-changed=c/zpico/platform_aliases.c");
+        println!("cargo:rerun-if-changed=c/zpico/nros_zenoh_generic_platform.h");
+    }
+
     if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && !use_freertos && any_explicit {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
@@ -1208,6 +1250,24 @@ fn build_zenoh_pico_unified(
         let value = env::var(&env_def.env).unwrap_or_else(|_| env_def.default.clone());
         build.define(key, value.as_str());
         println!("cargo:rerun-if-env-changed={}", env_def.env);
+    }
+
+    // Step 6.5 — phase-230 1c (RFC-0034): scalar-alloc funnel guard.
+    // When the consumer pulls the memory-only alias TU (the `platform-aliases`
+    // feature) AND this is the FreeRTOS unified build, define
+    // `Z_FEATURE_NROS_PLATFORM_ALLOC` so `system/freertos/system.c` drops its
+    // vendored `z_malloc`/`z_realloc`/`z_free` (→ `pvPortMalloc`). The
+    // alias TU then supplies them as `nros_platform_alloc`/`_realloc`/
+    // `_dealloc` forwarders — one heap funnel, one stats counter. Coupled to
+    // `CARGO_FEATURE_PLATFORM_ALIASES`: a serial-only node that drops
+    // `platform-aliases` (via `default-features = false`) gets neither the
+    // guard nor the alias, so the vendored heap stays intact (no undefined
+    // `z_malloc`). The matching memory-only alias compile lives in the alias
+    // gate below.
+    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some()
+        && env::var_os("CARGO_FEATURE_FREERTOS").is_some()
+    {
+        build.define("Z_FEATURE_NROS_PLATFORM_ALLOC", None);
     }
 
     // Step 7 — TLS / mbedtls. Manifest sets `mbedtls` to

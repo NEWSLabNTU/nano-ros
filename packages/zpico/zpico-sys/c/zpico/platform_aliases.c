@@ -50,6 +50,21 @@ void z_free(void *ptr) {
 }
 
 /* -------------------------------------------------------------------------
+ *  Memory-only mode (RFC-0034 / phase-230 1c). On an RTOS that vendors its
+ *  own sleep / random / threading / net primitives (FreeRTOS:
+ *  `system/freertos/system.c` + `lwip/network.c`), emit ONLY the three
+ *  memory forwarders above — the scalar heap is the single service we
+ *  funnel first, while sleep/random/mutex/condvar/task/net stay vendored
+ *  (emitting alias copies would duplicate the vendor's strong symbols).
+ *  `NROS_ZP_ALIAS_MEMORY_ONLY` (set by `nros-zpico-build` for FreeRTOS)
+ *  drops everything below; the vendored `z_malloc`/`z_realloc`/`z_free` are
+ *  meanwhile guarded out by `Z_FEATURE_NROS_PLATFORM_ALLOC`, so only these
+ *  three forwarders remain on the link. Wave 2 extends the funnel to
+ *  sleep/random behind the same pattern.
+ * ----------------------------------------------------------------------- */
+#ifndef NROS_ZP_ALIAS_MEMORY_ONLY
+
+/* -------------------------------------------------------------------------
  *  Sleep — wrapper (z_sleep_* returns int8_t, nros_platform_sleep_*
  *  returns void).
  * ----------------------------------------------------------------------- */
@@ -648,3 +663,5 @@ __attribute__((weak)) int32_t smoltcp_init(void) {
 __attribute__((weak)) void smoltcp_cleanup(void) {}
 
 #endif /* NROS_PLATFORM_ALIASES */
+
+#endif /* !NROS_ZP_ALIAS_MEMORY_ONLY — phase-230 1c memory-only funnel */
