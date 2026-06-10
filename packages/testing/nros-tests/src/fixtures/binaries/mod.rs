@@ -250,14 +250,25 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
 /// stretched a 14 s test to 125 s on a saturated host.
 pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf> {
     if binary_path.exists() {
-        Ok(binary_path.to_path_buf())
-    } else {
-        Err(TestError::BuildFailed(format!(
-            "Test fixture binary not prebuilt: {}\n\
-             Run `just build-test-fixtures` first.",
-            binary_path.display()
-        )))
+        return Ok(binary_path.to_path_buf());
     }
+    // Tier-aware (#25): the LIGHT host-integration lane (`NROS_FIXTURES_OPTIONAL=1`)
+    // does not build every native fixture variant (TLS / cyclonedds / zero-copy /
+    // workspace-entry need extra system deps + tools). There an unstaged fixture
+    // is an environment-conditional skip, not a failure — `skip!` ([SKIPPED]) so
+    // the [SKIPPED]-aware recipe treats it as a skip. The FULL `test-all` tier
+    // leaves the var unset and still hard-fails, surfacing any real fixture gap.
+    if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() {
+        crate::skip!(
+            "fixture binary not prebuilt: {} (light tier; run `just build-test-fixtures` for full coverage)",
+            binary_path.display()
+        );
+    }
+    Err(TestError::BuildFailed(format!(
+        "Test fixture binary not prebuilt: {}\n\
+         Run `just build-test-fixtures` first.",
+        binary_path.display()
+    )))
 }
 
 fn cargo_profile_name() -> String {
