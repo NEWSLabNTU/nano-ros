@@ -258,8 +258,10 @@ build-fixture-extras:
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py"
     # The two cyclone leaves run in parallel; the driver strips the fifo
     # jobserver from each leaf's cargo + bounds CARGO_BUILD_JOBS to avoid the
-    # cargo×fifo-jobserver deadlock / package-cache hang (issue 0022). Validated
-    # ~2x faster than serializing.
+    # recursive-cargo jobserver deadlock / package-cache hang (issue 0022).
+    # Validated ~2x faster than serializing. DO NOT re-add `NROS_BUILD_JOBS=1`
+    # here (re-serializes) or undo the driver's `MAKEFLAGS=` strip (re-deadlocks)
+    # — rationale in the issue-0022 box in fixture-make-driver.sh.
     bash scripts/build/fixture-make-driver.sh native-cyclonedds-cmake
     unset NROS_CMAKE_EXTRA_DEFS
 
