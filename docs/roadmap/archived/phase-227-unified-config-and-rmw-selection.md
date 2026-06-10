@@ -5,7 +5,11 @@ configuration + RMW-selection design (RFC-0004, RFC-0031). The design is locked;
 this phase closes the gaps where the implementation still uses the older
 per-language / Phase-172.K shapes.
 
-**Status:** Planned
+**Status:** Done — archived 2026-06-11. All convergence + doc-sync items landed.
+227.6 (multi-node RT/scheduling schema) was co-designed and delivered under
+Phase 228 (tier schema + resolver, commit `2fe4cbf34`). One low-urgency doc
+follow-up remains (227.9 per-`just <plat>` `-D`-arg command-map); tracked there,
+not blocking closure.
 
 **Priority:** Medium — design-of-record is settled (RFC-0004/0031); these are
 convergence + doc-sync items, not new design.
