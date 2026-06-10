@@ -13,9 +13,14 @@ subscription dispatch through the backend's in-place borrow
 boundary grows by exactly two `Subscriber` trait methods plus one optional cffi
 vtable slot; every other backend keeps working via a buffered fallback.
 
-**Status:** In progress (2026-06-10). Wave 0 (trait surface + executor scaffold)
-landed — dormant pending Wave 1 (CFFI in-place activation, the gate). See the
-Routing-reality note under Work items.
+**Status:** In progress (2026-06-10). **Waves 0–2 landed.** Wave 0 (trait surface
++ executor scaffold) + Wave 1 (CFFI in-place activation — vtable slots +
+`CffiSubscriber` forwarding + adapter wiring, hermetic test green) + Wave 2
+(zenoh-pico size-class receive buffers + the full `rx_buffer_hint` plumbing:
+`TopicInfo` → `NrosRmwQos` ABI-append → backend routing). On native zenoh-pico,
+typed subscriptions dispatch in-place (copy #1 gone) and receive storage no longer
+scales `MAX_SUBS × DEPTH × large_slot`. Remaining: Wave 3 (acceptance/RAM proof) +
+Wave 4 (other backends). See the Routing-reality note under Work items.
 
 **Priority:** P2 — the two-copy path works today; the win is RAM scaling for large
 messages (the blocker for image/point-cloud on MCUs) + per-message CPU. Not
@@ -95,7 +100,7 @@ executor arena dispatch:  loop { sub.process_raw_in_place(deserialize+callback) 
   *Deferred to a later wave:* the raw / raw-info dispatch variants
   (`sub_inplace_raw_*`) — typed path done first.
 
-### Wave 1 — CFFI in-place activation (the gate)  ← critical path
+### Wave 1 — CFFI in-place activation (the gate)  ✅ DONE ← critical path
 
 This is what makes Wave 0 live. Until it lands, every subscription uses the
 buffered fallback.
@@ -117,7 +122,7 @@ buffered fallback.
   **in-place** path (`supports_process_in_place()` now true) and sees the same
   messages as buffered; `phase228_tier_filter` + `lending` + safety-e2e green.
 
-### Wave 2 — zpico size-class buffers  (the RAM win)
+### Wave 2 — zpico size-class buffers  ✅ DONE (the RAM win)
 
 **Mechanism discovery (2026-06).** The zenoh-pico C producer (`sample_handler`
 ring branch, `zpico-sys/c/zpico/zpico.c`) is **fully generic over the
