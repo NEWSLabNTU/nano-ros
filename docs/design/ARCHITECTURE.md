@@ -52,6 +52,12 @@ cannot implement fall back in the runtime or return `RET_UNSUPPORTED` — no obl
 - In-binary cross-session topic relay → RFC-0009 (bridge-topic-forwarding).
 - Zero-copy loan/commit/borrow/release with arena fallback → RFC-0010.
 - PX4 uORB backend → RFC-0011.
+- **Single-copy receive** → RFC-0038 (zero-copy-data-transport). The executor's arena
+  dispatches subscription callbacks **in-place** from the backend's receive slot via the
+  `process_raw_in_place` vtable slot (eliminating the arena staging copy); backends without
+  the slot keep the buffered fallback. zenoh-pico routes each subscription to a **size-class**
+  receive buffer (small/large by the `rx_buffer_hint` that flows `TopicInfo`→`NrosRmwQos`), so
+  receive RAM stops scaling `MAX_SUBS × DEPTH × largest_slot`. Live on zenoh-pico + XRCE.
 
 Backend host-language policy: a backend's host language matches its underlying library's native
 language unless overridden (cyclonedds=C++, XRCE=Rust→C, zenoh-pico=Rust).

@@ -1,7 +1,8 @@
 ---
 id: 8
 title: Two-copy receive path and static buffer pre-allocation at scale
-status: open
+status: resolved
+resolved-by: phase-231
 type: tech-debt
 area: rmw
 related: [issue-0007, phase-228, phase-229, phase-231, rfc-0033, rfc-0038]
@@ -9,13 +10,18 @@ design-of-record: rfc-0038
 tracked-by: phase-231
 ---
 
-> **Design-of-record: [RFC-0038 — Zero-copy data transport](../design/0038-zero-copy-data-transport.md).**
-> The direction is **Form B**: dispatch user callbacks in-place from the backend
-> receive slot (removing copy #1 + the arena `BufferStrategy`) and replace the
-> per-subscriber fixed rings with **one shared slot pool** drawn per-sub up to its
-> runtime QoS depth (the static-RAM scaling fix). Copy #2 elimination for borrowed
-> types links to issue #7 / RFC-0033. Reference survey (rmw_zenoh / DDS loans /
-> micro-XRCE-DDS) is in the RFC.
+> **RESOLVED by Phase 231 (RFC-0038, now Stable).** Copy #1 (the arena staging
+> copy) is eliminated: the executor dispatches subscription callbacks **in-place**
+> from the backend receive slot via the `process_raw_in_place` vtable slot (live on
+> zenoh-pico + XRCE; cyclone/mock keep the buffered fallback). The per-subscriber
+> fixed rings are replaced by **size-class receive buffers** (small/large by
+> `rx_buffer_hint`), so receive RAM no longer scales `MAX_SUBS × DEPTH ×
+> largest_slot`. The implementation landed size-classed per-sub rings rather than a
+> single shared pool — the shared-pool refinement (full sub-count independence) is
+> deferred as **Q-pool** in RFC-0038. **Copy #2** (CDR deserialize) is out of scope
+> here — eliminated for borrowed types by issue #7 / RFC-0033.
+>
+> Original analysis below (historical).
 
 Every subscription message traverses two copies before reaching user code:
 

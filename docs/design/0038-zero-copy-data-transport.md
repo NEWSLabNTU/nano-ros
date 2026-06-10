@@ -1,7 +1,7 @@
 ---
 rfc: 0038
 title: "Zero-copy data transport — shared slot pool + in-place receive dispatch"
-status: Draft
+status: Stable
 since: 2026-06
 last-reviewed: 2026-06
 implements-tracked-by: [phase-231]
