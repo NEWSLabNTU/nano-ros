@@ -4,7 +4,7 @@ title: LTO disabled workspace-wide so the opaque-size probe can read symbol byte
 status: open
 type: tech-debt
 area: build
-related: [phase-87, phase-118]
+related: [phase-87, phase-118, phase-234]
 ---
 
 The release profiles force `lto = "off"` purely so the `nros-sizes-build` opaque-size
