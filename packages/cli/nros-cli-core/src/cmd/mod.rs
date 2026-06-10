@@ -22,6 +22,7 @@ pub mod doctor;
 pub mod emit_package_xml;
 pub mod explain;
 pub mod generate;
+pub mod generate_px4;
 pub mod metadata;
 pub mod migrate;
 pub mod new;
@@ -46,6 +47,11 @@ pub enum Cmd {
     /// Generate Rust message bindings from `package.xml`
     #[command(name = "generate-rust")]
     GenerateRust(generate::RustArgs),
+
+    /// Generate CDR `px4_msgs::msg::*` from a PX4-Autopilot `.msg` tree (no
+    /// ament dep) for the XRCE companion path (Phase 233 / RFC-0039 Track B).
+    #[command(name = "generate-px4-msgs")]
+    GeneratePx4Msgs(generate_px4::Args),
 
     /// Build-tool C/C++ binding generation (`--args-file` / `resolve-deps`).
     /// The interface the cmake / build.rs consumers speak (Phase 195.A — folds

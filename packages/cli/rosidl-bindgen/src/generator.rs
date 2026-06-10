@@ -370,6 +370,85 @@ heapless = "0.8"
     Ok(())
 }
 
+/// Phase 233.1 (RFC-0039 Track B) — generate CDR-serializable `px4_msgs::msg::*`
+/// from the PX4 `.msg` tree (`<px4>/msg/` + `<px4>/msg/versioned/`), with no
+/// ament `package.xml`.
+///
+/// PX4 1.16+ moved the versioned core ROS 2 interface topics into
+/// `msg/versioned/`; both directories are staged into one flat `msg/` (versioned
+/// shadows a same-named base — it is the canonical definition) so the standard
+/// ament-driven [`generate_package`] can emit the complete `px4_msgs` crate. The
+/// generated types carry `TYPE_NAME = "px4_msgs::msg::dds_::<Name>_"`, which is
+/// what the Micro XRCE-DDS Agent matches against PX4's `/fmu/*` endpoints.
+pub fn generate_px4_msgs(
+    px4_dir: &Path,
+    output_dir: &Path,
+    version: &str,
+    edition: RosEdition,
+    resolver: &CapacityResolver,
+) -> Result<GeneratedRustPackage> {
+    use crate::ament::InterfaceFiles;
+
+    // Stage `msg/` + `msg/versioned/` into one flat `msg/` dir (versioned copied
+    // last so it shadows a same-named base entry).
+    let stage = output_dir.join(".px4_msg_stage");
+    let stage_msg = stage.join("msg");
+    std::fs::create_dir_all(&stage_msg)
+        .wrap_err_with(|| format!("create staging dir {}", stage_msg.display()))?;
+
+    let mut names: Vec<String> = Vec::new();
+    for sub in ["msg", "msg/versioned"] {
+        let dir = px4_dir.join(sub);
+        if !dir.is_dir() {
+            continue;
+        }
+        for entry in
+            std::fs::read_dir(&dir).wrap_err_with(|| format!("readdir {}", dir.display()))?
+        {
+            let path = entry?.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("msg") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()).map(String::from) else {
+                continue;
+            };
+            std::fs::copy(&path, stage_msg.join(format!("{stem}.msg")))
+                .wrap_err_with(|| format!("stage {}", path.display()))?;
+            if !names.contains(&stem) {
+                names.push(stem);
+            }
+        }
+    }
+    if names.is_empty() {
+        let _ = std::fs::remove_dir_all(&stage);
+        eyre::bail!(
+            "{}: no `.msg` files under `msg/` or `msg/versioned/` (is this a PX4-Autopilot tree?)",
+            px4_dir.display()
+        );
+    }
+    names.sort();
+
+    // Synthetic ament package — `share_dir/msg/<name>.msg` is exactly what the
+    // staging layout provides, so `generate_package` resolves every msg.
+    let package = Package {
+        name: "px4_msgs".to_string(),
+        version: version.to_string(),
+        share_dir: stage.clone(),
+        interfaces: InterfaceFiles {
+            messages: names,
+            services: Vec::new(),
+            actions: Vec::new(),
+            idl_messages: Vec::new(),
+            idl_services: Vec::new(),
+            idl_actions: Vec::new(),
+        },
+    };
+
+    let result = generate_package(&package, output_dir, edition, resolver);
+    let _ = std::fs::remove_dir_all(&stage);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

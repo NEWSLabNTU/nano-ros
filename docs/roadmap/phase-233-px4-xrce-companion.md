@@ -6,7 +6,8 @@ uses — the **mainstream PX4↔ROS 2 integration**, which nano-ros's `nros-rmw-
 backend already fits but does not yet exercise. This is **Track B** of the
 two-track PX4 plan in **RFC-0039** ("support both") — the *additive* track.
 
-**Status.** Not started (2026-06). Design-of-record: RFC-0039 (Draft).
+**Status.** In progress (2026-06). Wave 1 (233.2) + Wave 2 (233.1) landed.
+Design-of-record: RFC-0039 (Draft).
 
 **Priority.** P2 — additive (nothing breaks without it), but it is the path most
 PX4+ROS 2 users actually deploy, and nano-ros is already 90% wired for it.
@@ -40,7 +41,7 @@ nano-ros peer (nros-rmw-xrce) ──XRCE serial/UDP──► MicroXRCEAgent ─�
 
 ## Work Items
 
-### 233.1 — `px4_msgs` CDR emit (one-source, two-emitters)  ⬜
+### 233.1 — `px4_msgs` CDR emit (one-source, two-emitters)  ✅
 Per RFC-0039 OQ2: feed the *same* PX4 `.msg` tree (`msg/` + `msg/versioned/`) into
 `rosidl-codegen` to emit CDR-serializable `px4_msgs::msg::*` types for the XRCE path —
 no external ament `px4_msgs` dependency. Settle: (a) `rosidl-codegen` accepting the
@@ -51,8 +52,15 @@ name; nano-ros `type_hash` is orthogonal to PX4's `message_hash`).
   entry (CLI/CMake), shared with the Phase 232 pin.
 - **Acceptance:** `VehicleOdometry`/`OffboardControlMode`/`VehicleCommand` generate as
   CDR types that round-trip.
+- **Landed.** `nros generate-px4-msgs --px4 <tree> --output <dir>` stages `msg/` +
+  `msg/versioned/` into one flat `px4_msgs` package and reuses `generate_package`
+  (`rosidl-bindgen::generator::generate_px4_msgs`). 235 messages emit; generated crate
+  `cargo check`s clean against local `nros-core`/`nros-serdes`; the three acceptance
+  types round-trip (serialize → deserialize → eq, hermetic test under `tmp/`). Type
+  names are `px4_msgs::msg::dds_::*_`; `MESSAGE_VERSION` and the `version` field emit
+  as normal payload.
 
-### 233.2 — QoS profile matching PX4  ⬜
+### 233.2 — QoS profile matching PX4  ✅
 PX4 publishers are `TRANSIENT_LOCAL + BEST_EFFORT + KEEP_LAST`. `nros-rmw-xrce`
 supports `TRANSIENT_LOCAL` (`session.c:177`); confirm `BEST_EFFORT` reliability is
 exposed and add a "PX4" QoS profile so a nano-ros sub on `/fmu/out/*` matches (default
