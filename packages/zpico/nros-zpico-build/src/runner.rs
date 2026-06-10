@@ -465,15 +465,17 @@ pub fn run() {
     // (the resulting rlib must not be loaded at runtime — that's
     // already the same contract the no-backend-selected path emits
     // above).
-    // phase-230 1c (RFC-0034) — FreeRTOS memory-only alias TU. The full
-    // alias path below is gated `!use_freertos` because its net + task +
+    // phase-230 1c + Wave 2 (RFC-0034) — FreeRTOS scalar-only alias TU. The
+    // full alias path below is gated `!use_freertos` because its net + task +
     // mutex/condvar sections collide with FreeRTOS's vendored
     // `system/freertos/*` primitives (the reason FreeRTOS was excluded). The
-    // memory-only mode emits ONLY the `z_malloc`/`z_realloc`/`z_free` →
-    // `nros_platform_alloc`/`_realloc`/`_dealloc` forwarders; the vendored
-    // copies are guarded out by `Z_FEATURE_NROS_PLATFORM_ALLOC` (Step 6.5 on
-    // the zenoh-pico build), so exactly these three land on the link. Same
-    // `CARGO_FEATURE_PLATFORM_ALIASES` opt-in keeps the guard + alias coupled.
+    // scalar-only mode emits the `z_malloc`/`z_realloc`/`z_free` (1c) +
+    // `z_sleep_*` + `z_random_*` (Wave 2) forwarders → `nros_platform_*`; the
+    // vendored copies are guarded out by
+    // `Z_FEATURE_NROS_PLATFORM_{ALLOC,SLEEP,RANDOM}` (Step 6.5 on the
+    // zenoh-pico build), so exactly these land on the link. Clock/time + the
+    // opaque services stay vendored. Same `CARGO_FEATURE_PLATFORM_ALIASES`
+    // opt-in keeps the guard + alias coupled.
     if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && use_freertos && any_explicit {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
@@ -482,7 +484,7 @@ pub fn run() {
             .file(manifest_dir.join("c/zpico/platform_aliases.c"))
             .include(&nros_platform_cffi_include)
             .include(manifest_dir.join("c/zpico"))
-            .define("NROS_ZP_ALIAS_MEMORY_ONLY", None)
+            .define("NROS_ZP_ALIAS_SCALAR_ONLY", None)
             .warnings(true);
         let target_os_for_alias = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
         if target_os_for_alias == "none" {
@@ -1268,6 +1270,12 @@ fn build_zenoh_pico_unified(
         && env::var_os("CARGO_FEATURE_FREERTOS").is_some()
     {
         build.define("Z_FEATURE_NROS_PLATFORM_ALLOC", None);
+        // phase-230 Wave 2 — extend the scalar funnel to sleep + random
+        // (clock/time stay vendored: `z_clock_t` is FreeRTOS's `TickType_t`).
+        // The scalar alias TU emits the matching forwarders (see the
+        // `NROS_ZP_ALIAS_SCALAR_ONLY` compile below).
+        build.define("Z_FEATURE_NROS_PLATFORM_SLEEP", None);
+        build.define("Z_FEATURE_NROS_PLATFORM_RANDOM", None);
     }
 
     // Step 7 — TLS / mbedtls. Manifest sets `mbedtls` to

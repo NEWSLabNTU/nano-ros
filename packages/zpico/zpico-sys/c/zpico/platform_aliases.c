@@ -50,19 +50,15 @@ void z_free(void *ptr) {
 }
 
 /* -------------------------------------------------------------------------
- *  Memory-only mode (RFC-0034 / phase-230 1c). On an RTOS that vendors its
- *  own sleep / random / threading / net primitives (FreeRTOS:
- *  `system/freertos/system.c` + `lwip/network.c`), emit ONLY the three
- *  memory forwarders above — the scalar heap is the single service we
- *  funnel first, while sleep/random/mutex/condvar/task/net stay vendored
- *  (emitting alias copies would duplicate the vendor's strong symbols).
- *  `NROS_ZP_ALIAS_MEMORY_ONLY` (set by `nros-zpico-build` for FreeRTOS)
- *  drops everything below; the vendored `z_malloc`/`z_realloc`/`z_free` are
- *  meanwhile guarded out by `Z_FEATURE_NROS_PLATFORM_ALLOC`, so only these
- *  three forwarders remain on the link. Wave 2 extends the funnel to
- *  sleep/random behind the same pattern.
+ *  Scalar services — memory (above) + sleep + random. These are pure
+ *  scalars (no host-type in the ABI), so they are ALWAYS emitted, including
+ *  in the FreeRTOS `NROS_ZP_ALIAS_SCALAR_ONLY` mode. The vendored FreeRTOS
+ *  copies are guarded out by `Z_FEATURE_NROS_PLATFORM_{ALLOC,SLEEP,RANDOM}`
+ *  (RFC-0034 / phase-230 1c + Wave 2), so exactly these forwarders remain on
+ *  the link. The non-scalar services below (wall-clock z_time, threading,
+ *  net) carry per-platform layouts and stay vendored on FreeRTOS — they are
+ *  dropped by `NROS_ZP_ALIAS_SCALAR_ONLY` (see the guard after `z_random`).
  * ----------------------------------------------------------------------- */
-#ifndef NROS_ZP_ALIAS_MEMORY_ONLY
 
 /* -------------------------------------------------------------------------
  *  Sleep — wrapper (z_sleep_* returns int8_t, nros_platform_sleep_*
@@ -107,6 +103,16 @@ uint64_t z_random_u64(void) {
 void z_random_fill(void *buf, size_t len) {
     nros_platform_random_fill(buf, len);
 }
+
+/* -------------------------------------------------------------------------
+ *  Non-scalar services below (wall-clock z_time, threading, net). On an RTOS
+ *  that vendors these (FreeRTOS: `system/freertos/system.c` clock/threading +
+ *  `lwip/network.c`), `NROS_ZP_ALIAS_SCALAR_ONLY` (set by `nros-zpico-build`
+ *  for FreeRTOS) drops them so they do not duplicate the vendor's strong
+ *  symbols. `z_time`/`z_clock` stay vendored because `z_clock_t` is the
+ *  FreeRTOS `TickType_t`, not a portable scalar.
+ * ----------------------------------------------------------------------- */
+#ifndef NROS_ZP_ALIAS_SCALAR_ONLY
 
 /* -------------------------------------------------------------------------
  *  Wall-clock time — wrapper. zenoh-pico's `z_time_now()` returns a
@@ -664,4 +670,4 @@ __attribute__((weak)) void smoltcp_cleanup(void) {}
 
 #endif /* NROS_PLATFORM_ALIASES */
 
-#endif /* !NROS_ZP_ALIAS_MEMORY_ONLY — phase-230 1c memory-only funnel */
+#endif /* !NROS_ZP_ALIAS_SCALAR_ONLY — phase-230 1c/Wave2 scalar funnel */

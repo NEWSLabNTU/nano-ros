@@ -261,9 +261,13 @@ system.c`), so 1f only removed ThreadX's dead weak forwarder. Static link
 proof was done locally for FreeRTOS (guarded archive + alias, clean firmware
 link) and ThreadX (objdump `z_malloc → nros_platform_alloc`); Zephyr is
 confirmed by the CMake source wiring. Runtime confirmation rides the per-RTOS
-CI lanes. **Remaining vendored work:** the other scalar services
-(`z_sleep`/`z_clock`/`z_random`, Wave 2) and the zpico/xrce alias-TU dedup
-(Wave 3) — both out of D8's scope (the lint excludes the vendored submodule).
+CI lanes. **Sleep + random** are likewise funneled (Wave 2): FreeRTOS guards
+the vendored `z_sleep_*`/`z_random_*` (`Z_FEATURE_NROS_PLATFORM_SLEEP`/
+`_RANDOM`) and the FreeRTOS alias goes memory-only → scalar-only; ThreadX/
+Zephyr already forward them via the full alias TU. **Remaining vendored
+work:** `z_clock`/`z_time` (deferred — `z_clock_t` is a non-portable
+`TickType_t`) and the zpico/xrce alias-TU dedup (Wave 3) — both out of D8's
+scope (the lint excludes the vendored submodule).
 
 ## Open questions
 

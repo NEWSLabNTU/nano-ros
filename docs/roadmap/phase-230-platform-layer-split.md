@@ -468,8 +468,25 @@ verified: Zephyr's `nros_platform_clock_ms` == `k_uptime_get()` (semantics
 preserved); `nros_platform_clock_ms`/`_us` are defined in
 `nros-platform-zephyr/src/platform.c` (on the link).
 
-The vendored part (guard zenoh-pico `z_sleep`/`z_clock`/`z_random`, alias to
-`nros_platform_*`) is the CI-relink-gated remainder, bundled with 1c.
+**Vendored FreeRTOS sleep + random — ✅ DONE (Wave 2).** Same shape as 1c:
+guard the vendored `system/freertos/system.c` `z_sleep_*` / `z_random_*`
+behind `Z_FEATURE_NROS_PLATFORM_SLEEP` / `_RANDOM` (fork branch
+`nros-platform-scalar-funnel-wave2` @ `b59c963c`, ff-merged to the fork
+`main`), and extend the FreeRTOS alias TU from memory-only to **scalar-only**
+(`NROS_ZP_ALIAS_MEMORY_ONLY` → `NROS_ZP_ALIAS_SCALAR_ONLY`): it now emits
+`z_malloc`/`z_realloc`/`z_free` + `z_sleep_*` + `z_random_*` →
+`nros_platform_*`. `runner.rs` Step 6.5 defines the two new guards alongside
+`_ALLOC`, all coupled to `CARGO_FEATURE_PLATFORM_ALIASES`. ThreadX/Zephyr
+already forward sleep/random via the full alias TU, so FreeRTOS was again the
+only target. Verified at archive level on a clean thumbv7m build:
+`libzenohpico.a` has `z_sleep_ms`/`z_random_u32` def=0 (guarded) and the
+scalar alias defines them → `nros_platform_*`; firmware links clean.
+
+**Clock / time — deferred (ABI).** `z_clock_t` is FreeRTOS's `TickType_t`
+(not a portable scalar) and `z_time_now` rides the same clock section, so
+those stay vendored — the scalar-only alias deliberately excludes them
+(no `z_time_now` forwarder emitted). Revisit only if a portable `z_clock_t`
+is needed.
 
 ### Wave 3 — Bridge dedup + boundary documentation
 
