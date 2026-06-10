@@ -171,7 +171,7 @@ an etc/ ROMFS the arm board doesn't). The riscv C example (.7) gets all board
 wiring right — cmake configures, host codegen runs, the message lib compiles
 with `-DNROS_PLATFORM_NUTTX` + the riscv cross toolchain — but the **cross-link
 is blocked downstream of the board** by an nros-c gcc-14 portability bug
-([issue-0026]): riscv-none-elf-gcc is 14.2 vs arm's 10.3, and nros-c's posix
+([issue-0027]): riscv-none-elf-gcc is 14.2 vs arm's 10.3, and nros-c's posix
 platform header (NuttX reuses it) hits `-Werror=implicit-function-declaration`
 on `nanosleep` + a `nros_platform_atomic_*_bool` `volatile`/`const` signature
 mismatch vs the cbindgen-generated decls. That is a separate nros-c fix, not
@@ -279,13 +279,13 @@ mismatch vs the cbindgen-generated decls. That is a separate nros-c fix, not
       only its overlay + `nros setup`'d cross-toolchain — no edits to shared
       scripts/build.rs. **Export half: DONE** (riscv soft-float rv32imac export
       builds via overlay + `nros setup qemu-riscv-nuttx`). **Link half: blocked**
-      on [issue-0026] (nros-c posix headers under gcc 14) — board wiring is
+      on [issue-0027] (nros-c posix headers under gcc 14) — board wiring is
       correct, the failure is downstream in nros-c.
 - [x] `just nuttx build` (arm-qemu) still green (behavior-preserving for the
       existing board). **Verified** — `just nuttx build` runs the de-armed
       `build-nuttx.sh` → arm `make export` → `staging/libc.a` (4.2 MB).
 
-## Remaining to close 194 (all 194.3c.7, after issue-0026 lands)
+## Remaining to close 194 (all 194.3c.7, after issue-0027 lands)
 
 - [ ] Confirm the riscv C example links + boots once nros-c gcc-14 headers are
       fixed (validates 194.3c.5/.6 end-to-end).
