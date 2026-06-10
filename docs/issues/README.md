@@ -48,5 +48,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 |----|-----------------------------------------------------------------------|-------------|--------|------|
 | 8  | Two-copy receive path and static buffer pre-allocation at scale       | tech-debt   | rmw    | [0008-two-copy-receive.md](0008-two-copy-receive.md) |
 | 21 | Borrowed (zero-copy) message views for C and C++                      | enhancement | codegen| [0021-cpp-c-borrowed-views.md](0021-cpp-c-borrowed-views.md) |
+| 22 | native-cyclonedds fixture build deadlocks (parallel corrosion→cargo)   | bug         | build  | [0022-native-cyclonedds-fixture-deadlock.md](0022-native-cyclonedds-fixture-deadlock.md) |
 
 Resolved issues live in [`archived/`](archived/).
