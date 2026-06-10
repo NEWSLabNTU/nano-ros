@@ -117,32 +117,53 @@ buffered fallback.
   **in-place** path (`supports_process_in_place()` now true) and sees the same
   messages as buffered; `phase228_tier_filter` + `lending` + safety-e2e green.
 
-### Wave 2 — zpico size-class pools  (the RAM win)
+### Wave 2 — zpico size-class buffers  (the RAM win)
 
-- **2.1 — Pool data structure.** Replace `SUBSCRIBER_BUFFERS:
-  [SubscriberBuffer; MAX_SUBSCRIBERS]` (per-sub fixed ring) with two shared pools
-  (`small` / `large`), each `N × slot_size` slots + parallel attachment slots;
-  per-slot `{ len, owner, timestamp }`. Build-time knobs:
-  `ZPICO_POOL_{SMALL,LARGE}_{COUNT,SLOT_SIZE}` + threshold (extend
-  `nros-zpico-build`). *Verify:* ghost-type tests updated; static-size assertions.
-- **2.2 — Per-sub depth budget + drop-oldest.** A subscription draws from its
-  size-class pool up to its `KEEP_LAST(N)`; overflow recycles its own oldest slot
-  by timestamp (the micro-XRCE model). The C producer claims a free slot; the
-  consumer releases after dispatch. Slot allocator guarded by `critical_section`
-  on multi-threaded platforms (SPSC cursor-only on single producer). *Verify:* a
-  `KEEP_LAST(1)` flooding sub holds exactly 1 slot and never evicts another sub's
-  slots (pool not overcommitted).
-- **2.3 — Size-class routing at registration.** Route each subscription to
-  `small`/`large` by its bounded max-serialized-size (RFC-0033 capacity). Bake a
-  warning when `Σ(member depths) > pool count` (overcommit). *Verify:* a mixed
-  workspace (64 KB image sub + 64 B control sub) places each in the right pool;
-  image sub does not consume a `large` slot from the control sub's budget.
-- **2.4 — Delete the arena `BufferStrategy` for in-place subs.** Remove the
-  trailing arena buffer from `SubBufferedEntry` / `SubBufferedRawEntry` on the
-  in-place path; the entry holds handle + callback only. Keep `BufferStrategy` +
-  `drain_into_buffer` alive solely as the fallback for non-in-place backends.
-  *Verify:* arena per-entry size shrinks (static-RAM assertion); single-tier byte
-  parity for non-subscription entries unchanged.
+**Mechanism discovery (2026-06).** The zenoh-pico C producer (`sample_handler`
+ring branch, `zpico-sys/c/zpico/zpico.c`) is **fully generic over the
+`zpico_ring_desc_t` descriptor** (`payload_base` / `payload_stride` /
+`slot_count` / `head` / `tail` / `att_*` / `*_len`). A subscriber's receive ring
+is entirely described by that descriptor; the C side copies into
+`payload_base + slot*stride` for whatever storage the descriptor points at. So
+**the C producer needs no change** — only the Rust-side backing storage + which
+descriptor a subscriber receives. The SPSC head/tail protocol and
+`subscriber_notify_callback` stay as-is.
+
+**Decision — size-classed per-sub rings, not a shared slot pool (yet).** RFC-0038
+D1's *shared* pool (subs draw slots from one pool) would require replacing the
+per-sub SPSC ring with a claim/release slot allocator in the C producer — a real
+C-side rewrite. Instead, Wave 2 keeps the proven per-sub SPSC ring and splits the
+**static storage into two size classes**: a sub of the `large` class gets a ring
+of `LARGE_SIZE` slots, a `small` sub gets `SMALL_SIZE`. This kills the headline
+explosion (`MAX_SUBS × DEPTH × 64 KB`): only the few `large` rings are big. It
+gives **full per-sub isolation** (each sub owns its ring — even stronger than the
+shared-pool depth budget) at the cost of not being fully sub-count-independent
+(RAM is `MAX_LARGE×DEPTH×LARGE + MAX_SMALL×DEPTH×SMALL`, not `N×slot`). The true
+shared pool (sub-count independence) is a deferred refinement — recorded as Q-pool
+in RFC-0038 follow-ups — worth it only if a deployment has many large subs.
+
+- **2.1 — Two size-class buffer types + static arrays.** Split
+  `SubscriberBuffer` into `SmallSubscriberBuffer` (`[[u8; SMALL_SIZE]; DEPTH]`) and
+  `LargeSubscriberBuffer` (`[[u8; LARGE_SIZE]; DEPTH]`), each with its own static
+  array + `NEXT_*_INDEX` allocator + ghost checks. Both emit the same
+  `zpico_ring_desc_t` via `init_ring_desc()` (the C producer is none the wiser).
+  Build knobs: `ZPICO_SUBSCRIBER_{SMALL,LARGE}_SIZE`,
+  `ZPICO_MAX_{SMALL,LARGE}_SUBSCRIBERS`, `ZPICO_SUBSCRIBER_SIZE_THRESHOLD`
+  (`nros-zpico-build` + `nros-rmw-zenoh/build.rs`). *Verify:* ghost tests updated;
+  static-size assertions per class.
+- **2.2 — Size hint plumbed to `create_subscriber`.** The class is chosen by the
+  subscription's receive-buffer size, which is known at the nros-node registration
+  layer (`RX_BUF` on `register_subscription_buffered_on<M,F,RX_BUF>`) but **not**
+  at the shim today (`create_subscriber` sees only topic + qos). Plumb a
+  `rx_buffer_hint` from the executor through the `Session::create_subscriber`
+  surface to the shim, which routes to `small`/`large` by the threshold. Other
+  backends ignore the hint. *Verify:* a `large` sub allocates a `LargeSubscriberBuffer`,
+  a `small` sub a `SmallSubscriberBuffer`.
+- **2.3 — Delete the arena `BufferStrategy` for in-place subs.** Remove the
+  trailing arena buffer from the in-place entry path; the entry holds handle +
+  callback only. Keep `BufferStrategy` + `drain_into_buffer` as the fallback for
+  non-in-place backends. *Verify:* arena per-entry size shrinks (static-RAM
+  assertion); single-tier byte parity for non-subscription entries unchanged.
 
 ### Wave 3 — Acceptance + RAM proof
 

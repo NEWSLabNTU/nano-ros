@@ -275,6 +275,19 @@ total) with rmw_zenoh's per-sub `KEEP_LAST` budget, partitioned by size class.
 **Backend-internal and optional**: a backend that keeps per-sub buffers still
 works via the fallback (C2); the pools are a zpico-first storage refactor.
 
+**Implementation note (Phase 231 Wave 2).** The zenoh-pico C producer
+(`sample_handler`) is generic over the per-sub `zpico_ring_desc_t` descriptor, so
+the first landing keeps the proven per-sub SPSC ring and splits the **static
+storage into two size classes** (`small` / `large` per-sub rings) rather than a
+single shared slot pool. This kills the `MAX_SUBS × DEPTH × large_slot` explosion
+and gives full per-sub isolation, but RAM is
+`Σ_class (MAX_class × DEPTH × slot_size)` — **not** fully sub-count-independent.
+The *shared* slot pool (sub-count independence, drawing slots across subs via a
+claim/release allocator that replaces the per-sub SPSC ring in the C producer) is
+a **deferred refinement** (call it **Q-pool**), worth its C-side rewrite only for
+deployments with many large subscribers. The size-class split delivers the
+headline win at a fraction of the risk.
+
 ### D2. In-place arena dispatch (removes copy #1 + the arena buffer)
 
 Delete `BufferStrategy` (`Triple`/`Ring`) from the subscription arena entries
