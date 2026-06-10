@@ -177,12 +177,33 @@ ensure_just() {
     fi
 }
 
+# Init the submodules the in-tree CLI build needs. Scoped to the CLI's
+# own third-party deps (e.g. ros-launch-manifest) — NOT a blanket
+# `--init --recursive` over the whole repo, which would drag in the
+# gitignored platform SDKs (zenoh, cyclonedds, …). Without this a fresh
+# clone fails: `failed to read packages/cli/third-party/ros-launch-manifest/types/Cargo.toml`.
+ensure_cli_submodules() {
+    local sub="packages/cli/third-party/ros-launch-manifest"
+    # Already populated (has the types manifest the build reads)? No-op.
+    if [[ -f "${REPO_ROOT}/${sub}/types/Cargo.toml" ]]; then
+        return 0
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        echo "bootstrap: git not on PATH — cannot init CLI submodule ${sub}." >&2
+        return 1
+    fi
+    run_cmd "initializing in-tree CLI submodule (${sub})" \
+        git -C "${REPO_ROOT}" submodule update --init --recursive "${sub}" \
+        || return 1
+}
+
 # Build the in-tree CLI (`packages/cli/`) from source. Used by `base`.
 build_in_tree_cli() {
     if [[ ! -f "${REPO_ROOT}/packages/cli/Cargo.toml" ]]; then
         echo "bootstrap: packages/cli/Cargo.toml not found — Phase 218 monorepo merge?" >&2
         return 1
     fi
+    ensure_cli_submodules || return 1
     if ! command -v cargo >/dev/null 2>&1; then
         if [[ $DRY_RUN -eq 1 ]]; then
             echo "bootstrap: (cargo absent — would build CLI from packages/cli/)"
