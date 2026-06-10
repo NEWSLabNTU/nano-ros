@@ -6,7 +6,18 @@ examples tree demonstrates the real target workflow: Node packages for
 node logic, Bringup packages for launch/config only, and one Entry
 package per target platform.
 
-**Status.** IN PROGRESS. Created 2026-06-06 after review of the book's
+**Status.** Done — archived 2026-06-11. All tracks 225.A–225.P and the §6
+acceptance are complete. Three residuals are scoped OUT of this phase and
+tracked elsewhere, none a 225 defect: (1) Zephyr workspace-Entry E2E
+data-delivery is blocked by a native_sim NSOS host-socket offload failure in
+this environment that breaks the pre-existing single-node reference
+`test_zephyr_to_native_e2e` identically (env/Zephyr-layer, expected green in
+CI); (2) a green NuttX workspace Entry needs the kernel-integration build lane
+(NuttX deploy model is out of the `cargo build -p <entry>` contract); (3) full
+mixed/bare-metal runtime pub/sub is blocked on the deferred 212.N.4 codegen
+runtime (native C/C++ NodeContext recording-only adapter).
+
+Original status line (kept for history): IN PROGRESS. Created 2026-06-06 after review of the book's
 multi-node workflow pages:
 `workspace-from-app-node.md`, `workspace-node-pkgs.md`,
 `workspace-bringup.md`, `workspace-entry-pkg.md`,

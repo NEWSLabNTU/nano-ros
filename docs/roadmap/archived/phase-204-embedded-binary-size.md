@@ -8,7 +8,16 @@ the IP stack droppable (serial-only) + reuse the RTOS stack, mostly already buil
 (see below); (c) **compiler + linker options across every layer** (core Rust, RMW
 C, platform C/C++) — several size/perf levers are not pulled today.
 
-**Status.** Proposed (2026-05-29). Investigation done (figures below); work items
+**Status.** Done — archived 2026-06-11. All work items 204.1–204.15 and the phase
+Acceptance landed 2026-05-30 (figures below). Two carve-outs are scoped OUT, not
+204 work: (1) the XRCE bare-metal RAM figure (204.5) is owned by
+[Phase 207](phase-207-xrce-bare-metal-example.md) and lands in the book size table
+when 207 closes; (2) the 204.1.L lean-vtable lever was explored and reverted
+(feature-gating pushed runtime `RET_UNSUPPORTED` drift onto users) — the only
+acceptable revisit is a call-graph-driven lazy `VTABLE`, flagged invasive and
+deferred/not-scheduled.
+
+Original status line (kept for history): Proposed (2026-05-29). Investigation done (figures below); work items
 ranked by impact, not yet started.
 
 > **Post-Phase-218**: References below to `scripts/install-nros.sh`
