@@ -122,11 +122,16 @@ piece that must track this struct.
 Ordered by real impact (severity re-scoped after confirming the canonical-metadata
 resolution):
 
-1. **HIGH — `msg/versioned/` in the codegen search path.** Many live topics
-   (`BatteryStatus`, `VehicleOdometry`, `Event`, …) moved there in v1.16.
-   `px4-msg-codegen` resolves `.msg` + nested types from a caller-supplied
-   `search_path`; the px4-rs xtask and the nano-ros `nros-rmw-uorb` build must
-   include `msg/versioned/` or those topics won't resolve. (px4-rs.)
+1. **CONFIRMED BLOCKER — `msg/versioned/` is not enumerated.** The px4-rs xtask
+   (`xtask/src/main.rs:136-160`) reads only `<px4>/msg/*.msg` (`read_dir`, no
+   recursion) and passes search_path `[msg/]`. On the v1.17-alpha pin, **37 topics
+   live in `msg/versioned/`** and are *removed from flat `msg/`* — including the
+   core ROS 2 interface set (`VehicleOdometry`, `VehicleCommand`,
+   `VehicleLocalPosition`, `VehicleAttitude`, `TrajectorySetpoint`,
+   `BatteryStatus`). So px4-rs currently **cannot generate the offboard/telemetry
+   topics** on PX4 1.16+. Fix: enumerate `msg/versioned/` too and add it to the
+   search_path (for nested-type resolution). The single highest-priority item.
+   (px4-rs.)
 2. **MEDIUM — track `MESSAGE_VERSION`.** It is parsed as a plain constant; capture
    it on the message model for version-aware tooling. (px4-rs.)
 3. **MEDIUM (custom topics only) — `message_hash = 0`.** Moot for standard topics
@@ -157,13 +162,28 @@ resolution):
 
 ## Open questions
 
-1. Does the px4-rs xtask / nano-ros uORB build already pass `msg/versioned/`?
-   (Confirms/denies #1; the single most impactful item.)
-2. Should nano-ros generate `px4_msgs` (CDR, for the XRCE path) from the *same*
-   PX4 `.msg` tree as the uORB codegen (one source, two emitters), or consume the
-   upstream `px4_msgs` ROS 2 package?
-3. Pin policy: track PX4 `main` (currently `v1.17.0-alpha1`) or the latest tagged
-   release? Stability vs. feature currency.
+1. ~~Does the px4-rs codegen pass `msg/versioned/`?~~ **Resolved: no.** The xtask
+   (`xtask/src/main.rs:136-160`) enumerates only `<px4>/msg/*.msg` and search_paths
+   `[msg/]`; the 37 versioned-only topics (incl. the core control/telemetry set) do
+   not generate on 1.16+. Promoted to revision opportunity #1 (confirmed blocker).
+2. **`px4_msgs` (CDR) for the XRCE path — one source, two emitters (recommended),
+   not an external package.** Feed the *same* PX4 `.msg` tree (`msg/` +
+   `msg/versioned/`) into both `px4-msg-codegen` (raw `repr(C)`, uORB) and nano-ros's
+   `rosidl-codegen` (CDR, XRCE). Rationale: `px4_msgs` *is* generated from these
+   files, so the format is compatible; one source keeps both emitters lock-stepped to
+   the same PX4 pin with no external ament dependency. Caveats to resolve: (a)
+   `rosidl-codegen` must accept the PX4-`.msg` `MESSAGE_VERSION` constant; (b) the
+   `version` field is a normal payload field — generate it, and the agent-side
+   translation node handles cross-version matching; (c) nano-ros's `type_hash`
+   ("TypeHashNotSupported" on Humble) is orthogonal to PX4's `message_hash` — DDS
+   matching is by topic+type name, so the XRCE path needs the right type *names*
+   (`px4_msgs::msg::*`) and QoS, not the uORB hash.
+3. **Pin policy — pin a stable PX4 *tag*, not `main` (recommended).** The current
+   `v1.17.0-alpha1` pin is risky: the in-firmware uORB path is raw `repr(C)`, so an
+   alpha `orb_metadata`/struct change is a silent ABI break. Pin the latest *stable*
+   release (e.g. 1.16.x once tagged) for reproducible, deployable builds; bump on PX4
+   releases; track `main` only in an opt-in forward-compat CI lane. The companion
+   XRCE path tolerates version skew (translation node); the uORB path does not.
 
 ## Changelog
 
@@ -172,3 +192,7 @@ resolution):
   `px4-rs`'s canonical-metadata robustness, the 6-field `orb_metadata` ABI, and the
   1.16 revision opportunities. Detail for the uORB backend stays in RFC-0011.
   External refs: PX4 Guide — uXRCE-DDS + ROS 2 User Guide (v1.16/main).
+- 2026-06 — resolved OQ1 (px4-rs xtask reads only `msg/`; 37 versioned-only topics,
+  incl. the core control/telemetry set, do not generate on 1.16+ → promoted #1 to
+  confirmed blocker); recommended one-source-two-emitters for OQ2 and a stable-tag
+  pin for OQ3.
