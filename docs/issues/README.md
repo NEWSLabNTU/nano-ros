@@ -48,7 +48,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 |----|-----------------------------------------------------------------------|-------------|--------|------|
 | 8  | Two-copy receive path and static buffer pre-allocation at scale       | tech-debt   | rmw    | [0008-two-copy-receive.md](0008-two-copy-receive.md) |
 | 21 | Borrowed (zero-copy) message views for C and C++                      | enhancement | codegen| [0021-cpp-c-borrowed-views.md](0021-cpp-c-borrowed-views.md) |
-| 23 | LTO disabled workspace-wide so the opaque-size probe can read symbols   | tech-debt   | build  | [0023-lto-disabled-for-size-probe.md](0023-lto-disabled-for-size-probe.md) |
 | 24 | esp32 .bss overflows DRAM — Phase 231 size-class receive buffers too large | bug       | build  | [0024-esp32-dram-overflow-size-class-buffers.md](0024-esp32-dram-overflow-size-class-buffers.md) |
 | 25 | host-integration lane fails native action/c_xrce/bridge tests — fixtures not staged | bug | build | [0025-host-integration-native-fixtures-unstaged.md](0025-host-integration-native-fixtures-unstaged.md) |
 

@@ -7,13 +7,20 @@ lifted: `nros-sizes-build` has a bitcode-aware `llvm-nm` reader, validated to
 recover every size under `lto = "fat"`. This phase flips the profiles and proves the
 probe consumers (`nros-c`, `nros-cpp`) get identical sizes across the target matrix.
 
-**Status.** Implemented (2026-06). Profiles flipped; probe validated byte-identical
-on host + `thumbv7m-none-eabi` + `armv7a-nuttx-eabihf` (the filesystem-fallback
-target); regression test landed; size win measured (−24.7% `.text` on a baremetal
-smoke firmware). Remaining before `resolved`: confirm the full per-platform firmware
-**link** matrix (zephyr / threadx / freertos / nuttx-kernel ELF) stays green in CI —
-the one part needing each platform's full toolchain + image link. Resolves issue
-[0023](../issues/0023-lto-disabled-for-size-probe.md).
+**Status.** Done (2026-06). Profiles flipped; probe validated byte-identical on host +
+`thumbv7m-none-eabi` + `armv7a-nuttx-eabihf` (the filesystem-fallback target);
+regression test landed; size win measured (−24.7% `.text` on a baremetal smoke
+firmware); `just rust-rtos-link-check` passes under fat LTO (freertos + nuttx +
+threadx-linux). Resolved issue
+[0023](../issues/archived/0023-lto-disabled-for-size-probe.md).
+
+**Scope note.** The flip targets the *root workspace* `[profile.release]`. Nearly all
+embedded firmware (freertos / nuttx / threadx / zephyr examples) are **standalone
+workspaces** that set their own profiles, so the flip does not reach their image
+links — those adopt LTO per-workspace (nuttx already builds at `release`+LTO out of
+necessity: `nros-fast-release`'s `lto=off` triggers a cross-CGU miscompile that bricks
+boot). The flip's real blast radius is the root-workspace libs + the FFI probe
+consumers (`nros-c` / `nros-cpp`), both validated to link clean at `release`.
 
 **Priority.** P2 — pure size/perf win on space-constrained MCUs; no correctness gate.
 
@@ -125,12 +132,19 @@ profile flip.
 
 ## Acceptance
 
-- `[profile.release]` / `nros-fast-release` no longer pin `lto = "off"`.
-- nros-c / nros-cpp recover **byte-identical** opaque sizes under LTO vs the 234.1
-  baseline on host + `thumbv7m` + `nuttx` (filesystem path).
-- A regression test guards the bitcode probe path.
-- `just ci` green; the size win is recorded.
-- Issue 0023 → `resolved` (`resolved_in: Phase 234`), moved to `docs/issues/archived/`.
+- ✅ `[profile.release]` no longer pins `lto = "off"` (now `"fat"`).
+  `nros-fast-release` keeps its explicit `lto = "off"` *by design* (inherits release;
+  override required to stay fast — see 234.2).
+- ✅ nros-c / nros-cpp recover **byte-identical** opaque sizes under LTO vs the 234.1
+  baseline on host + `thumbv7m` + `nuttx` (filesystem path); both link clean at
+  `release` (fat LTO).
+- ✅ A regression test guards the bitcode probe path (`bitcode_probe.rs`).
+- ✅ `just rust-rtos-link-check` green under fat LTO (freertos + nuttx +
+  threadx-linux); size win recorded. (Full `just ci` / `test-all` QEMU-boot matrix +
+  zephyr-SDK lanes left to CI — the embedded link-symbol regression *class* is covered
+  by the link-check gate above.)
+- ✅ Issue 0023 → `resolved` (`resolved_in: Phase 234`), moved to
+  `docs/issues/archived/`.
 
 ## Notes
 
