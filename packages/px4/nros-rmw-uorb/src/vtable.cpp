@@ -17,56 +17,51 @@ namespace {
 
 using namespace nros_rmw_uorb;
 
-// uORB has no native status-event surface; the backend never fires
-// liveliness / deadline / message-lost events. Slots left NULL — the
-// runtime treats NULL fn pointers as "this kind unsupported."
-constexpr nros_rmw_ret_t (*kRegisterSubscriberEvent)(
-    nros_rmw_subscriber_t *, nros_rmw_event_kind_t, uint32_t,
-    nros_rmw_event_callback_t, void *) = nullptr;
-constexpr nros_rmw_ret_t (*kRegisterPublisherEvent)(
-    nros_rmw_publisher_t *, nros_rmw_event_kind_t, uint32_t,
-    nros_rmw_event_callback_t, void *) = nullptr;
-constexpr nros_rmw_ret_t (*kAssertPublisherLiveliness)(
-    nros_rmw_publisher_t *) = nullptr;
-
+// Designated initializers (C++20) — robust to the vtable growing: every slot
+// uORB doesn't implement is value-initialized to NULL, which the runtime treats
+// as "unsupported / use the fallback." This is the only correct shape now that
+// the table carries optional tail slots (Phase 130 non-blocking client, Phase
+// 124 zero-copy/borrow/sequence, Phase 231 in-place) that uORB never fills.
+// Positional initialization through `call_raw`, in `nros_rmw_vtable_t` field
+// order with NO gaps — every slot AFTER `call_raw` (Phase 130 non-blocking
+// client, Phase 108 events, Phase 110 deadline, Phase 124 zero-copy/borrow/
+// sequence/streamed, Phase 124.F ping, Phase 231 in-place) is left to C++
+// aggregate value-initialization (NULL), which the runtime treats as
+// "unsupported." Designated initializers would be cleaner but need C++20; this
+// crate is C++14 (CMAKE_CXX_STANDARD 14), so keep the gap-free positional form —
+// the previous list skipped `send_request_raw`/`try_recv_reply_raw`, which
+// shifted every later slot and broke the build.
+//
+// The trailing-NULL `-Wmissing-field-initializers` is the intended shape here.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 const nros_rmw_vtable_t kVtable = {
     /* ---- Session lifecycle ---- */
-    /*open*/                      session_open,
-    /*close*/                     session_close,
-    /*drive_io*/                  session_drive_io,
-
+    /*open*/ session_open,
+    /*close*/ session_close,
+    /*drive_io*/ session_drive_io,
     /* ---- Publisher ---- */
-    /*create_publisher*/          publisher_create,
-    /*destroy_publisher*/         publisher_destroy,
-    /*publish_raw*/               publisher_publish_raw,
-
+    /*create_publisher*/ publisher_create,
+    /*destroy_publisher*/ publisher_destroy,
+    /*publish_raw*/ publisher_publish_raw,
     /* ---- Subscriber ---- */
-    /*create_subscriber*/         subscriber_create,
-    /*destroy_subscriber*/        subscriber_destroy,
-    /*try_recv_raw*/              subscriber_try_recv_raw,
-    /*has_data*/                  subscriber_has_data,
-
-    /* ---- Service Server ---- */
-    /*create_service_server*/     service_server_create,
-    /*destroy_service_server*/    service_server_destroy,
-    /*try_recv_request*/          service_try_recv_request,
-    /*has_request*/               service_has_request,
-    /*send_reply*/                service_send_reply,
-
-    /* ---- Service Client ---- */
-    /*create_service_client*/     service_client_create,
-    /*destroy_service_client*/    service_client_destroy,
-    /*call_raw*/                  service_call_raw,
-
-    /* ---- Phase 108 event hooks (uORB: never fires) ---- */
-    /*register_subscriber_event*/ kRegisterSubscriberEvent,
-    /*register_publisher_event*/  kRegisterPublisherEvent,
-    /*assert_publisher_liveliness*/ kAssertPublisherLiveliness,
-
-    /* ---- Phase 110.0 next-deadline (uORB push-based, no
-     *      internal timers to surface) ---- */
-    /*next_deadline_ms*/          nullptr,
+    /*create_subscriber*/ subscriber_create,
+    /*destroy_subscriber*/ subscriber_destroy,
+    /*try_recv_raw*/ subscriber_try_recv_raw,
+    /*has_data*/ subscriber_has_data,
+    /* ---- Service Server (uORB: UNSUPPORTED stubs) ---- */
+    /*create_service_server*/ service_server_create,
+    /*destroy_service_server*/ service_server_destroy,
+    /*try_recv_request*/ service_try_recv_request,
+    /*has_request*/ service_has_request,
+    /*send_reply*/ service_send_reply,
+    /* ---- Service Client (uORB: UNSUPPORTED stubs) ---- */
+    /*create_service_client*/ service_client_create,
+    /*destroy_service_client*/ service_client_destroy,
+    /*call_raw*/ service_call_raw,
+    // Everything after this point stays NULL (see header comment).
 };
+#pragma GCC diagnostic pop
 
 } // namespace
 

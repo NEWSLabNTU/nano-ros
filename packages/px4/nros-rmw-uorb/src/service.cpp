@@ -17,47 +17,40 @@
 
 namespace nros_rmw_uorb {
 
-nros_rmw_ret_t service_server_create(nros_rmw_session_t * /*session*/,
-                                     const char * /*service_name*/,
-                                     const char * /*type_name*/,
-                                     const char * /*type_hash*/,
-                                     uint32_t /*domain_id*/,
-                                     nros_rmw_service_server_t * /*out*/) {
+nros_rmw_ret_t service_server_create(nros_rmw_session_t* /*session*/, const char* /*service_name*/,
+                                     const char* /*type_name*/, const char* /*type_hash*/,
+                                     uint32_t /*domain_id*/, const nros_rmw_qos_t* /*qos*/,
+                                     nros_rmw_service_server_t* /*out*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-void service_server_destroy(nros_rmw_service_server_t * /*server*/) {}
+void service_server_destroy(nros_rmw_service_server_t* /*server*/) {}
 
-int32_t service_try_recv_request(nros_rmw_service_server_t * /*server*/,
-                                 uint8_t * /*buf*/, size_t /*buf_len*/,
-                                 int64_t * /*seq_out*/) {
+int32_t service_try_recv_request(nros_rmw_service_server_t* /*server*/, uint8_t* /*buf*/,
+                                 size_t /*buf_len*/, int64_t* /*seq_out*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-int32_t service_has_request(nros_rmw_service_server_t * /*server*/) {
+int32_t service_has_request(nros_rmw_service_server_t* /*server*/) {
     return 0;
 }
 
-nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t * /*server*/,
-                                  int64_t /*seq*/,
-                                  const uint8_t * /*data*/, size_t /*len*/) {
+nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t* /*server*/, int64_t /*seq*/,
+                                  const uint8_t* /*data*/, size_t /*len*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-nros_rmw_ret_t service_client_create(nros_rmw_session_t * /*session*/,
-                                     const char * /*service_name*/,
-                                     const char * /*type_name*/,
-                                     const char * /*type_hash*/,
-                                     uint32_t /*domain_id*/,
-                                     nros_rmw_service_client_t * /*out*/) {
+nros_rmw_ret_t service_client_create(nros_rmw_session_t* /*session*/, const char* /*service_name*/,
+                                     const char* /*type_name*/, const char* /*type_hash*/,
+                                     uint32_t /*domain_id*/, const nros_rmw_qos_t* /*qos*/,
+                                     nros_rmw_service_client_t* /*out*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-void service_client_destroy(nros_rmw_service_client_t * /*client*/) {}
+void service_client_destroy(nros_rmw_service_client_t* /*client*/) {}
 
-int32_t service_call_raw(nros_rmw_service_client_t * /*client*/,
-                         const uint8_t * /*request*/, size_t /*req_len*/,
-                         uint8_t * /*reply_buf*/, size_t /*reply_buf_len*/) {
+int32_t service_call_raw(nros_rmw_service_client_t* /*client*/, const uint8_t* /*request*/,
+                         size_t /*req_len*/, uint8_t* /*reply_buf*/, size_t /*reply_buf_len*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
