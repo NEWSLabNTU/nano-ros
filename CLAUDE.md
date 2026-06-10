@@ -4,8 +4,18 @@ Lightweight ROS 2 client for embedded RTOS (Zephyr, FreeRTOS, NuttX, ThreadX). `
 
 This file is a **router + agent practices + pitfall index**, kept short because it is loaded
 every session. Design rationale lives in RFCs, operational detail in `AGENTS.md` and `docs/`.
-**When you learn something durable, put design in an RFC and impl/pitfall detail in `docs/`,
-not here — add only a one-line pointer.**
+
+**Docs convention — three numbered series, do not mix them:**
+- **Design decision** → an RFC in [`docs/design/`](docs/design/README.md) (`NNNN-slug.md`,
+  living docs; `Draft`→`Stable`→`Superseded`). Whole-system view = `ARCHITECTURE.md`.
+- **Planned / in-flight work** → a phase doc in [`docs/roadmap/`](docs/roadmap/) (work items +
+  acceptance; names the RFC it implements; completed → `archived/`).
+- **Known bug / limitation / tech-debt** → an issue in [`docs/issues/`](docs/issues/README.md)
+  (`NNNN-slug.md` + frontmatter; `status: open`→`resolved`/`wontfix`; resolved → `archived/`).
+  Issues cross-link the RFCs/phases that inform or close them.
+
+**When you learn something durable, file it in the right series above and add only a one-line
+pointer here — never grow CLAUDE.md with design/impl detail.**
 
 ## Where things live
 
@@ -13,6 +23,7 @@ not here — add only a one-line pointer.**
 | --- | --- |
 | Finalized whole-system design | [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) |
 | A specific design decision (stable vs evolving) | [docs/design/](docs/design/README.md) — numbered RFCs |
+| A known bug / limitation / tech-debt (troubleshooting) | [docs/issues/](docs/issues/README.md) — numbered issues (open) + `archived/` |
 | Build / test / SDK tiers / jobserver / zephyr versions | [AGENTS.md](AGENTS.md) + [docs/development/](docs/development/) + `just/*.just` |
 | `nros setup` / provisioning / `nros-sdk-index.toml` | RFC-0014 + AGENTS.md “Toolchain & SDK Provisioning” |
 | Feature axes (RMW × platform × ROS edition) | ARCHITECTURE §2 + RFC-0005, RFC-0006 |
