@@ -1,6 +1,20 @@
 use std::{env, path::PathBuf, process::Command};
 
+/// 194.3c.1 — back-compat shim. The arm board's FFI crate calls
+/// `run_qemu_arm()`; it now forwards to the arch-generic `run_nuttx()`,
+/// whose arm defaults reproduce the pre-194.3c behaviour byte-for-byte.
 pub fn run_qemu_arm() {
+    run_nuttx();
+}
+
+/// Arch-generic NuttX FFI build (194.3c.1). All arch-specifics come from
+/// `NUTTX_*` env (the board overlay sets them); the defaults are the
+/// qemu-arm cortex-a7 hardfloat values, so a build with no overrides is
+/// identical to the old `run_qemu_arm`. A new-arch NuttX board (e.g. riscv)
+/// supplies its own `NUTTX_CROSS` / `NUTTX_ARCH` / `NUTTX_ARCH_CFLAGS` /
+/// `NUTTX_LIBGCC_FLAGS` / `NUTTX_VECTORTAB_OBJ` / `NUTTX_LINKER_SCRIPT` /
+/// `NUTTX_ARCH_INCLUDES`.
+pub fn run_nuttx() {
     // APP_MAIN_CPP: path to the C or C++ source file to compile (set by CMake)
     // APP_INCLUDE_DIRS: semicolon-separated include directories (set by CMake)
     // Phase 208.B Track A — paths come from `nros-build-paths`
@@ -34,11 +48,27 @@ pub fn run_qemu_arm() {
     let nuttx_arch = env::var("NUTTX_ARCH").unwrap_or_else(|_| "arm".to_string());
     let vectortab_obj =
         env::var("NUTTX_VECTORTAB_OBJ").unwrap_or_else(|_| "arm_vectortab.o".to_string());
+    // 194.3c.1: the flat-build linker script lives under the board's NuttX
+    // tree (`boards/<arch>/<chip>/<board>/scripts/<name>.ld`) and the
+    // linker-script preprocessor needs the arch's source include dirs. Both
+    // were arm-hardcoded before 194.3c; now per-board via env (defaults =
+    // qemu-arm). `NUTTX_ARCH_INCLUDES` is a space-separated list of dirs
+    // relative to `NUTTX_DIR` (the arm default carries the armv7-a family dir
+    // that has no `arch/<arch>/{chip,common}` analogue).
+    let linker_script_rel = env::var("NUTTX_LINKER_SCRIPT")
+        .unwrap_or_else(|_| "boards/arm/qemu/qemu-armv7a/scripts/dramboot.ld".to_string());
+    let arch_includes: Vec<String> = env::var("NUTTX_ARCH_INCLUDES")
+        .unwrap_or_else(|_| "arch/arm/src/chip arch/arm/src/common arch/arm/src/armv7-a".to_string())
+        .split_whitespace()
+        .map(String::from)
+        .collect();
     println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_CFLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_LIBGCC_FLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH");
     println!("cargo:rerun-if-env-changed=NUTTX_VECTORTAB_OBJ");
+    println!("cargo:rerun-if-env-changed=NUTTX_LINKER_SCRIPT");
+    println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");
 
     let main_src = env::var("APP_MAIN_CPP").unwrap_or_else(|_| {
         panic!(
@@ -220,25 +250,29 @@ pub fn run_qemu_arm() {
         return;
     }
 
-    // Preprocess linker script
+    // Preprocess linker script (194.3c.1: script path + arch include dirs +
+    // the preprocessor itself are per-board via env; the cross-compiler is
+    // `nuttx_cross`, not a hardcoded `arm-none-eabi-gcc`).
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let processed_ld = out_dir.join("dramboot.ld");
-    let linker_script = nuttx_dir.join("boards/arm/qemu/qemu-armv7a/scripts/dramboot.ld");
+    let linker_script = nuttx_dir.join(&linker_script_rel);
 
-    let status = Command::new("arm-none-eabi-gcc")
-        .args([
-            "-E",
-            "-P",
-            "-x",
-            "c",
-            &format!("-isystem{}", nuttx_dir.join("include").display()),
-            "-D__NuttX__",
-            "-D__KERNEL__",
-            &format!("-I{}", nuttx_dir.join("arch/arm/src/chip").display()),
-            &format!("-I{}", nuttx_dir.join("arch/arm/src/common").display()),
-            &format!("-I{}", nuttx_dir.join("arch/arm/src/armv7-a").display()),
-            &format!("-I{}", nuttx_dir.join("sched").display()),
-        ])
+    let mut pp_args: Vec<String> = vec![
+        "-E".into(),
+        "-P".into(),
+        "-x".into(),
+        "c".into(),
+        format!("-isystem{}", nuttx_dir.join("include").display()),
+        "-D__NuttX__".into(),
+        "-D__KERNEL__".into(),
+    ];
+    for inc in &arch_includes {
+        pp_args.push(format!("-I{}", nuttx_dir.join(inc).display()));
+    }
+    pp_args.push(format!("-I{}", nuttx_dir.join("sched").display()));
+
+    let status = Command::new(&nuttx_cross)
+        .args(&pp_args)
         .arg(&linker_script)
         .arg("-o")
         .arg(&processed_ld)
