@@ -432,6 +432,16 @@ platform = "nuttx" # NuttX kernel/apps are submodule SDKs (built with the app)
 # provision it. (Kernel/apps are pulled by the full west/make build, not here.)
 packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
 
+# 194.3c — the riscv (rv-virt) NuttX board: the 2nd-arch proof that the NuttX
+# provisioning path is arch-agnostic. Same source set as qemu-arm-nuttx but the
+# riscv cross-gcc; qemu already builds riscv64-softmmu (see [tool.qemu] configure
+# --target-list). The nano-ros riscv defconfig drops the board etc-ROMFS, so no
+# genromfs host tool is needed (the stock rv-virt board would require it).
+[board.qemu-riscv-nuttx]
+arch = "riscv32" # rv-virt:flats (rv32imac); riscv32imac-unknown-nuttx-elf
+platform = "nuttx"
+packages = ["riscv-none-elf-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
+
 [board.qemu-riscv64-threadx]
 arch = "riscv64"
 platform = "threadx"
