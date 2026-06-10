@@ -1,6 +1,6 @@
 ---
 id: 26
-title: nros-rmw-xrce — a session with both a publisher and a subscriber starves the subscriber's receive
+title: nros-rmw-xrce — a datareader stops matching once its session also holds a datawriter (mixed pub+sub session)
 status: open
 type: bug
 area: rmw-xrce
@@ -8,8 +8,9 @@ related: [phase-233, rfc-0039]
 ---
 
 An nano-ros XRCE node that holds **both a publisher and a subscriber in one
-session** receives few or no samples on the subscriber. This breaks the PX4
-companion (`examples/px4/rust/xrce/offboard-companion`, which subscribes
+session** receives **nothing** on the subscriber (agent `read_fn` = 0×,
+deterministic). This breaks the PX4 companion
+(`examples/px4/rust/xrce/offboard-companion`, which subscribes
 `/fmu/out/vehicle_odometry` *and* publishes `/fmu/in/offboard_control_mode`) —
 **including against a real PX4 agent**, not just a bare one.
 
@@ -56,12 +57,28 @@ Two distinct defects show up:
 - **Cross-session, sub-only, non-built-in custom type** — matches on a bare
   agent (flakily, per defect 2). Disproves the old "type/typed-agent" theory.
 
-## Mechanism (instrumented)
+## Mechanism (agent-confirmed)
 
-The subscriber's topic callback (`xrce_topic_callback`, `subscriber.c`) **never
-fires** in the dual case — confirmed with an `fprintf` at callback entry: 0
-invocations across the run. So the agent stops *delivering* samples to the
-datareader; it is not a client-side drop (slot mismatch / ring-full / locked).
+Rebuilt the bundled `MicroXRCEAgent` with logging on
+(`cmake build/xrce-agent -DUAGENT_LOGGER_PROFILE=ON && cmake --build …`; the
+shipped binary is built `-DUAGENT_LOGGER_PROFILE=OFF`, hence the earlier
+log-silence) and ran `MicroXRCEAgent udp4 -p <port> -v 6`.
+
+The decisive signal is `DataReader.cpp read_fn` — the agent reading a sample
+from DDS and forwarding it to the subscribing client:
+
+- **sub-only (works):** `read_fn` fires ~95×; it starts the moment the matched
+  external writer comes online (data-driven).
+- **dual (broken):** `read_fn` fires **0×**. The agent's DataReader never reads
+  → never forwards → the client's `xrce_topic_callback` never fires (also
+  confirmed 0× with an `fprintf` probe). Entity creation all succeeds
+  (`create_participant`/`create_datareader`/`create_datawriter` all logged OK,
+  no errors/NACKs); the agent's DataWriter `write` fires for the publisher
+  traffic. Only the *reader* side is dead.
+
+So the agent stops delivering to a client's datareader **whenever that same
+client/session also holds a datawriter** — the DDS reader↔writer match for that
+client's reader never produces `on_data_available`. Deterministic (0/8).
 
 `nros-rmw-xrce` runs **one** reliable output stream + one reliable input stream
 per session (`session.c:381` `uxr_create_output_reliable_stream` /
@@ -70,44 +87,49 @@ every publisher `uxr_buffer_topic` WRITE_DATA share that single
 `output_reliable` stream (`subscriber.c:170`, `publisher.c:122`); inbound
 samples arrive on `input_reliable`.
 
-Isolation experiments (custom 2-process harness, RELIABLE QoS, 6–8 runs each;
-the agent ships with logging compiled out, so this is client-side bisection):
+## What was ruled out (custom 2-process harness, RELIABLE QoS, 8 runs each)
 
-| change to the publisher path                                  | dual hits |
+The condition is the **datawriter in the reader's session**, not any of:
+
+| attempted change                                              | dual hits |
 |---------------------------------------------------------------|-----------|
-| baseline (`publish_raw` → `output_reliable` + `run_session(0)`)| **0 / 8** |
-| drop the publish-time `run_session(0)` flush                   | 1 / 8     |
-| route WRITE_DATA to a separate **best-effort** output stream   | 0 / 1     |
-| best-effort stream **and** no publish-time flush              | 2 / 8     |
-| (sub-only, for reference)                                      | ~4 / 8    |
+| baseline                                                      | 0 / 8     |
+| drop the publish-time `run_session(0)` flush                  | 1 / 8     |
+| publisher WRITE_DATA on a separate **best-effort** out stream | 0 / 8     |
+| best-effort stream **+** no publish-time flush                | 2 / 8     |
+| publisher in a **separate DDS participant** (id 2)            | 0 / 8     |
+| publish at 10 Hz instead of every spin                        | 0 / 8     |
+| (sub-only, reference)                                         | ~4 / 8    |
 
-Reading: the publish-time `uxr_run_session_time(&session, 0)` flush
-(`publisher.c:128`) is the **primary** contributor — calling it per-publish,
-interleaved with the spin's own `run_session`, disrupts the reliable
-input-stream delivery/ACK cycle so the agent stalls delivery. Moving publisher
-data off the reliable output stream helps a little but does **not** restore
-sub-only levels, so there is residual interference from the publisher's
-session activity beyond stream choice — the exact reliable-stream state
-interaction is unresolved and needs the micro-XRCE-DDS client reliable-stream
-machine stepped through (or the agent rebuilt with logging).
+None restore sub-only levels; the participant split (homogeneous reader-only
+participant) and the publish-rate cut both still 0/8 — so it is **session/
+client-level**, inside the micro-XRCE-DDS agent or client, not a stream / QoS /
+participant / rate problem in `nros-rmw-xrce`. (The 1–2/8 from dropping the
+flush is in the discovery-race noise band, not a real fix.) All experimental C
+patches were reverted.
 
-## Fix directions (not yet done — experimental patches reverted)
+The proven workaround is **separate XRCE sessions**: running the publisher and
+subscriber as two processes (two sessions, two agent connections) recovers the
+sub-only ~50% — i.e. a reader-only session matches.
 
-1. **Don't flush per-publish** — let the executor's spin `run_session` push
-   buffered WRITE_DATA instead of `publish_raw` calling `run_session(0)` every
-   call. Biggest single lever (0/8 → 1/8). Needs a guard so a publish-then-exit
-   (no spin) path still flushes.
-2. **Separate publisher data onto a best-effort output stream** for BEST_EFFORT
-   QoS (QoS-correct anyway). Helps in combination with (1) (→ 2/8) but is not
-   sufficient alone.
-3. **Find the residual interference** — even fully decoupled the publisher
-   still degrades receive vs sub-only. Likely the shared single reliable
-   session state machine; instrument the client (`uxr_run_session*`,
-   reliable-stream seq/ACK) or rebuild MicroXRCEAgent with logging to see why
-   the agent stops delivering on `input_reliable`.
-4. **BEST_EFFORT discovery race** (defect 2) — separate ~50% flakiness even
-   sub-only; needs a longer discovery window or reliable-on-discovery.
+## Fix directions (not yet done)
+
+1. **Separate XRCE sessions per direction** — give publishers their own session
+   (agent connection) so the subscriber session stays reader-only. Proven to
+   work, but a real architecture change: the executor opens one
+   `ConcreteSession`; this needs the backend to manage two (sub + pub) and
+   route entity creation accordingly.
+2. **Fix the agent/client mixed-direction bug** — root the agent-side reason a
+   client's datareader stops matching once the client gains a datawriter
+   (vendored Micro-XRCE-DDS-Agent / -Client). Repro: the logging-enabled agent
+   above shows `read_fn` = 0 for the dual client. Benefits all mixed pub+sub
+   XRCE nodes, not just PX4.
+3. **BEST_EFFORT discovery race** (separate defect) — even a reader-only session
+   matches only ~50% with a 2 s sub→pub gap; needs a longer discovery window or
+   reliable-on-discovery.
 
 Until fixed, the companion example streams setpoints (`/fmu/in/*`, publish
 works) but does not reliably receive `/fmu/out/*`. The single-session loopback
-CI test (`px4_xrce`) stays valid for the serialization/QoS surface.
+CI test (`px4_xrce`) stays valid for the serialization/QoS surface (its pub+sub
+are the *same* session+topic, which matches intra-participant and sidesteps the
+mixed-direction match failure).
