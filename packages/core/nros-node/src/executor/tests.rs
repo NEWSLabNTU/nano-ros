@@ -1,6 +1,7 @@
 use super::*;
 use nros_core::{
-    CdrReader, CdrWriter, DeserError, Deserialize, RosAction, RosMessage, SerError, Serialize,
+    BorrowedMessage, CdrReader, CdrWriter, DeserError, Deserialize, DeserializeBorrowed,
+    LeSliceView, RosAction, RosMessage, SerError, Serialize,
 };
 use nros_rmw::{QosSettings, TransportError};
 
@@ -146,6 +147,120 @@ fn test_add_subscription_and_spin_once_with_data() {
     assert_eq!(result.subscriptions_processed, 1);
     assert!(result.any_work());
     assert_eq!(*received.lock().unwrap(), Some(42));
+}
+
+// ====================================================================
+// Borrowed (zero-copy) subscription E2E (Phase 229.6, issue 0007)
+//
+// These hand-written types mirror EXACTLY what the codegen emits for a
+// `{ uint32 width; uint8[] pixels; float32[] ranges; }` message with
+// `pixels` + `ranges` in `borrowed` mode (golden test:
+// rosidl-codegen test_nros_borrowed_mode_view_and_marker /
+// test_nros_borrowed_float_sequence_uses_le_view). The test drives the
+// full owned-publish-wire → borrowed-subscribe path through `spin_once`,
+// proving the generated shape compiles + decodes against the runtime.
+// ====================================================================
+
+/// Owned message — the publish side (matches codegen `Image`).
+#[derive(Debug, Clone, PartialEq)]
+struct Image {
+    width: u32,
+    pixels: heapless::Vec<u8, 64>,
+    ranges: heapless::Vec<f32, 64>,
+}
+
+impl Serialize for Image {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        writer.write_u32(self.width)?;
+        writer.write_u32(self.pixels.len() as u32)?;
+        for b in &self.pixels {
+            writer.write_u8(*b)?;
+        }
+        writer.write_u32(self.ranges.len() as u32)?;
+        for f in &self.ranges {
+            writer.write_f32(*f)?;
+        }
+        Ok(())
+    }
+}
+
+/// Borrowed view — the zero-copy receive side (matches codegen `ImageView<'a>`).
+struct ImageView<'a> {
+    width: u32,
+    pixels: &'a [u8],
+    ranges: LeSliceView<'a, f32>,
+}
+
+impl<'a> DeserializeBorrowed<'a> for ImageView<'a> {
+    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        Ok(Self {
+            width: reader.read_u32()?,
+            pixels: reader.read_slice_u8()?,
+            ranges: reader.read_le_slice::<f32>()?,
+        })
+    }
+}
+
+/// ZST marker — matches codegen `ImageBorrow`.
+struct ImageBorrow;
+impl BorrowedMessage for ImageBorrow {
+    type View<'a> = ImageView<'a>;
+    const TYPE_NAME: &'static str = "test/msg/Image";
+    const TYPE_HASH: &'static str = "image_hash";
+}
+
+#[test]
+fn borrowed_subscription_e2e_zero_copy_through_spin_once() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    let nid = executor.node_builder("borrowed_e2e").build().unwrap();
+
+    // Captured on the receive side: (width, pixels copy, ranges decoded).
+    type Captured = (u32, std::vec::Vec<u8>, std::vec::Vec<f32>);
+    let received: std::sync::Arc<std::sync::Mutex<Option<Captured>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(None));
+    let received2 = received.clone();
+
+    executor
+        .node_mut(nid)
+        .create_subscription_borrowed::<ImageBorrow, _>("/image", move |view: &ImageView<'_>| {
+            *received2.lock().unwrap() = Some((
+                view.width,
+                view.pixels.to_vec(),
+                view.ranges.iter().collect(),
+            ));
+        })
+        .unwrap();
+
+    // Encode the OWNED message exactly as a publisher would, then feed those
+    // wire bytes to the borrowed subscriber's mock handle.
+    let msg = Image {
+        width: 7,
+        pixels: heapless::Vec::from_slice(&[10, 20, 30, 40, 250]).unwrap(),
+        ranges: heapless::Vec::from_slice(&[1.5f32, -2.25, 3.0e10]).unwrap(),
+    };
+    let mut buf = [0u8; 256];
+    let len = {
+        let mut w = CdrWriter::new_with_header(&mut buf).unwrap();
+        msg.serialize(&mut w).unwrap();
+        w.position()
+    };
+
+    // The MockSubscriber is the first field of SubBufferedBorrowedEntry, so it
+    // sits at the entry offset (same layout trick as the typed test above).
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let sub_ptr = unsafe { arena_ptr.add(meta.offset) } as *const MockSubscriber;
+    unsafe { &*sub_ptr }.load(buf, len);
+
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(result.subscriptions_processed, 1);
+    assert!(result.any_work());
+
+    let got = received.lock().unwrap().take().expect("callback fired");
+    assert_eq!(got.0, 7);
+    assert_eq!(got.1, std::vec![10, 20, 30, 40, 250]);
+    assert_eq!(got.2, std::vec![1.5f32, -2.25, 3.0e10]);
 }
 
 #[test]

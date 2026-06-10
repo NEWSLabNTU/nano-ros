@@ -1275,10 +1275,11 @@ impl<'e> NodeCtx<'e> {
     /// receive buffer (no `heapless::Vec` copy); the view is valid only for the
     /// callback's duration.
     ///
-    /// Uses default QoS (`KEEP_LAST(1)` → triple buffer). Borrowed
-    /// subscriptions require a triple buffer; a `KEEP_LAST(N>1)` QoS is rejected
-    /// (use the owned [`create_subscription`](Self::create_subscription) for
-    /// deeper queues).
+    /// Uses `KEEP_LAST(1)` QoS → triple buffer, as borrowed subscriptions
+    /// require (a single well-defined slot for the callback's borrow). For an
+    /// explicit deeper queue use the owned
+    /// [`create_subscription`](Self::create_subscription); a borrowed
+    /// subscription registered with `KEEP_LAST(N>1)` is rejected.
     pub fn create_subscription_borrowed<B, F>(
         &mut self,
         topic: &str,
@@ -1292,7 +1293,7 @@ impl<'e> NodeCtx<'e> {
             .register_subscription_buffered_borrowed_on::<B, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
                 self.node_id,
                 topic,
-                QosSettings::default(),
+                QosSettings::default().keep_last(1),
                 callback,
             )
     }
