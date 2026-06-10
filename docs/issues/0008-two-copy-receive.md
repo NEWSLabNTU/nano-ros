@@ -4,8 +4,17 @@ title: Two-copy receive path and static buffer pre-allocation at scale
 status: open
 type: tech-debt
 area: rmw
-related: [issue-0007, phase-228, phase-229, rfc-0033]
+related: [issue-0007, phase-228, phase-229, rfc-0033, rfc-0038]
+design-of-record: rfc-0038
 ---
+
+> **Design-of-record: [RFC-0038 — Zero-copy data transport](../design/0038-zero-copy-data-transport.md).**
+> The direction is **Form B**: dispatch user callbacks in-place from the backend
+> receive slot (removing copy #1 + the arena `BufferStrategy`) and replace the
+> per-subscriber fixed rings with **one shared slot pool** drawn per-sub up to its
+> runtime QoS depth (the static-RAM scaling fix). Copy #2 elimination for borrowed
+> types links to issue #7 / RFC-0033. Reference survey (rmw_zenoh / DDS loans /
+> micro-XRCE-DDS) is in the RFC.
 
 Every subscription message traverses two copies before reaching user code:
 
