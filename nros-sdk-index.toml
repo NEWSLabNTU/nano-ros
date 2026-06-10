@@ -334,20 +334,20 @@ submodule = "third-party/nuttx/nuttx-apps"
 # PX4-Autopilot — the heavy (>1 GB) reference tree (extended/opt-in). px4-rs (the
 # bindings) is the separate `[source.px4-rs]`.
 [source.px4-autopilot]
-version = "1.15.x"
+version = "1.17.0"
 git = "https://github.com/PX4/PX4-Autopilot.git"
-ref = "ecfe44a74cda5b1815776e56d7f0253b41b0ebe2"
+ref = "d6f12ad1c4f70ad3230afd7d86e971421e02fef4"
 dest = "third-party/px4/PX4-Autopilot"
 submodule = "third-party/px4/PX4-Autopilot"
-# Phase 203 — the pin (`ecfe44a`, 1.15.x) lags PX4's `main` tip and is NOT an
-# advertised ref, so a plain `git submodule update --depth 1` (which fetches the
-# branch tip, NOT the pinned SHA) can't reach it → empty checkout, no `Makefile`.
-# nros ≥ 0.3.7 handles this: on a failed shallow submodule update it falls back
-# to an explicit depth-1 fetch-by-SHA (GitHub serves reachable SHAs), so the top
-# tree (with the `Makefile` + `Tools/` the template smoke test needs) is a real
-# depth-1 snapshot — no full-history clone. `recursive = false`: PX4's ~50 OWN
-# sub-submodules are PX4's concern, pulled shallow by `just px4 setup` (`--depth 1
-# --recommend-shallow --recursive`), not nano-ros source provisioning.
+# Phase 232.5 — pin the stable release tag `v1.17.0` (SHA `d6f12ad`) instead of
+# the previous dev commit (`ecfe44a`, mislabeled 1.15.x, post-1.17.0-alpha1),
+# which risked a silent uORB ABI drift. `v1.17.0` carries `msg/versioned/` (the
+# 37 versioned core topics 232.1 enumerates) + the 6-field `orb_metadata` (232.4).
+# The pin is now an advertised tag, so a shallow `git submodule update --depth 1`
+# can reach it directly; nros ≥ 0.3.7 still falls back to an explicit depth-1
+# fetch-by-SHA if needed. `recursive = false`: PX4's ~50 OWN sub-submodules are
+# PX4's concern, pulled shallow by `just px4 setup` (`--depth 1 --recommend-shallow
+# --recursive`), not nano-ros source provisioning.
 shallow = true
 recursive = false
 
