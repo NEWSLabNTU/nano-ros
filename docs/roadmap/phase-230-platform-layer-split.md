@@ -179,29 +179,47 @@ reports a true heap total, closing #6 everywhere (not just Zephyr).
   lanes / Wave 1c. [issue 0006] resolved (unified figure available + verified).
 
 **Deferred to later waves (split completion, heavier verify):**
-- **Wave 1c — FreeRTOS C-side funnel** (attempted 2026-06, reverted — two
-  more steps needed). The last C-side bypass: baseline `objdump` confirms
-  FreeRTOS `z_malloc → b.w pvPortMalloc`. The mechanism is proven in part:
-  guarding vendored `system/freertos/system.c` `z_malloc` behind
-  `Z_FEATURE_NROS_PLATFORM_ALLOC` (set on the freertos vendored cc build in
-  `build_zenoh_pico_unified`) **works** — the rebuilt `libzenohpico.a` had
-  **no** `z_malloc`/`pvPortMalloc`. BUT the memory-only alias TU was **not
-  compiled** for FreeRTOS, so `z_malloc` would be **undefined at the final
-  ELF link**. Two gaps to close before this lands:
-  1. **Feature gating.** The FreeRTOS examples build `--no-default-features`,
-     so `zpico-sys`'s default `platform-aliases` feature is OFF → the alias
-     TU never compiles. Removing `!use_freertos` from the alias gate
-     (`runner.rs`) is necessary but not sufficient; `nros-rmw-zenoh`'s
-     `platform-freertos` chain must also enable `zpico-sys/platform-aliases`
-     (or force the memory-only alias unconditionally on FreeRTOS).
-  2. **ELF-link verification.** Plain `cargo build` + `fixtures-build` do
-     NOT relink the qemu ELF in a clean tree here (stamp/codegen mechanics),
-     so the `undefined z_malloc` was hidden and `objdump` couldn't confirm
-     routing. Needs a real FreeRTOS qemu link (CI lane) to verify
-     `z_malloc → nros_platform_alloc` and run the E2E.
-  Ready-to-redo edits (reverted): freertos `system.c` `#ifndef` guard;
-  `platform_aliases.c` `NROS_ZP_ALIAS_MEMORY_ONLY` guards; `runner.rs` alias
-  gate + `Z_FEATURE_NROS_PLATFORM_ALLOC` define — plus the feature-chain fix.
+#### Wave 1c — FreeRTOS C-side funnel (EXPANDED 2026-06)
+
+The last genuine C-side bypass: baseline `objdump` confirms FreeRTOS
+`z_malloc → b.w pvPortMalloc`. A first attempt (reverted) proved the guard
+half works — defining `Z_FEATURE_NROS_PLATFORM_ALLOC` on the freertos
+vendored cc build (`build_zenoh_pico_unified`) removed `z_malloc`/
+`pvPortMalloc` from the rebuilt `libzenohpico.a`. But no alias TU was
+linked, so `z_malloc` would be **undefined at the final ELF link**.
+
+Design exploration (re-scope): the alias TU is **default-on**
+(`zpico-sys default = ["platform-aliases", …]`; the `nros-rmw-zenoh →
+zpico-sys` edge does not disable defaults). The real blocker was the
+`runner.rs` alias gate (`!use_freertos`) skipping FreeRTOS — the earlier
+"feature off" read was a build-cache artifact (the env never relinked).
+So the **code is ~the original size**, but two subtleties expand it:
+
+- [ ] **1c.1 — Couple guard ⇔ alias.** A serial-only FreeRTOS node builds
+  `nros-rmw-zenoh default-features = false` (drops `link-ip`) which *also*
+  drops the default `platform-aliases`. An **unconditional** vendored-guard
+  + feature-gated alias = guarded-out `z_malloc` with no provider =
+  **broken link**. Fix: gate the `Z_FEATURE_NROS_PLATFORM_ALLOC` define on
+  `CARGO_FEATURE_PLATFORM_ALIASES` so guard ⇔ alias (off ⇒ vendored
+  `z_malloc` stays = today's behaviour). orin-spe (which sets
+  `platform-aliases` off for FSP-native FreeRTOS) then naturally keeps its
+  vendored `z_malloc` — confirm no regression.
+- [ ] **1c.2 — Memory-only alias for FreeRTOS.** `runner.rs`: drop
+  `!use_freertos` from the alias gate + define `NROS_ZP_ALIAS_MEMORY_ONLY`
+  for FreeRTOS (vendored keeps sleep/random/clock/task/net). `system.c`
+  `#ifndef Z_FEATURE_NROS_PLATFORM_ALLOC` guard; `platform_aliases.c`
+  `NROS_ZP_ALIAS_MEMORY_ONLY` guards (the reverted edits, plus 1c.1).
+- [ ] **1c.3 — Coverage.** Also the FreeRTOS **workspace-entry**
+  (`qemu_freertos_entry`) and the role examples, not just the talker.
+- [ ] **1c.4 — CI verification (required — not reproducible locally).**
+  This env can't relink the FreeRTOS qemu ELF (separate link step + build
+  stamps hide an undefined symbol). Verify on the FreeRTOS QEMU CI lane:
+  `objdump` shows `z_malloc → nros_platform_alloc`, the image links, and
+  the pub/sub E2E passes. Re-check the serial-only / `default-features =
+  false` config links (guard off ⇒ vendored).
+
+This is the redo plan; treat 1c.4 (CI link/E2E) as the gating acceptance
+test since it cannot be done in this environment.
 - **Wave 1d — optional Rust global allocator (D6)** — largely landed
   (2026-06):
   - The optional, board-selected provider **already existed**:
