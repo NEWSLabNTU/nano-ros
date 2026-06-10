@@ -41,6 +41,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0031 | [rmw-selection-and-lowering](0031-rmw-selection-and-lowering.md) | Stable | RMW declared (system.toml/flag) + lowered per language; per-deploy |
 | 0035 | [rmw-vtable-abi](0035-rmw-vtable-abi.md) | Draft | frozen 34-slot RMW vtable ABI + append-only rule + NULL contract + `abi_version` |
 | 0038 | [zero-copy-data-transport](0038-zero-copy-data-transport.md) | Draft | single-copy receive: size-class slot pools (per-sub QoS-depth budget) + in-place dispatch; removes copy #1 + arena buffer (issue #8) |
+| 0039 | [px4-integration-architecture](0039-px4-integration-architecture.md) | Draft | PX4 umbrella: in-firmware uORB vs companion XRCE; 1.16 message versioning; px4-rs revision opportunities (RFC-0011 = uORB detail) |
 
 ### Platform, board & toolchain
 
