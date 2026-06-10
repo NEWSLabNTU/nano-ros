@@ -107,7 +107,7 @@ extern void nros_platform_sleep_ns(uint64_t ns);
  *
  * For single-core bare-metal, volatile write with barrier is sufficient.
  */
-static inline void nros_platform_atomic_store_bool(volatile bool* ptr, bool value) {
+static inline void nros_platform_atomic_store_bool(bool* ptr, bool value) {
     NROS_MEMORY_BARRIER();
     *ptr = value;
     NROS_MEMORY_BARRIER();
@@ -116,7 +116,7 @@ static inline void nros_platform_atomic_store_bool(volatile bool* ptr, bool valu
 /**
  * Atomically load a boolean value with acquire semantics.
  */
-static inline bool nros_platform_atomic_load_bool(volatile bool* ptr) {
+static inline bool nros_platform_atomic_load_bool(const bool* ptr) {
     NROS_MEMORY_BARRIER();
     bool value = *ptr;
     NROS_MEMORY_BARRIER();

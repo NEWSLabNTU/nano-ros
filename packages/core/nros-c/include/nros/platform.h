@@ -108,7 +108,7 @@ void nros_platform_sleep_ns(uint64_t ns);
  * @param ptr Pointer to the boolean variable
  * @param value Value to store
  */
-void nros_platform_atomic_store_bool(volatile bool* ptr, bool value);
+void nros_platform_atomic_store_bool(bool* ptr, bool value);
 
 /**
  * Atomically load a boolean value with acquire semantics.
@@ -119,7 +119,7 @@ void nros_platform_atomic_store_bool(volatile bool* ptr, bool value);
  * @param ptr Pointer to the boolean variable
  * @return The current value
  */
-bool nros_platform_atomic_load_bool(volatile bool* ptr);
+bool nros_platform_atomic_load_bool(const bool* ptr);
 
 #endif // !NROS_PLATFORM_HAS_ATOMICS
 

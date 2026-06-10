@@ -74,14 +74,14 @@ static inline void nros_platform_sleep_ns(uint64_t ns) {
  *
  * Zephyr's atomic_set provides the necessary memory ordering.
  */
-static inline void nros_platform_atomic_store_bool(volatile bool* ptr, bool value) {
+static inline void nros_platform_atomic_store_bool(bool* ptr, bool value) {
     atomic_set((atomic_t*)ptr, value ? 1 : 0);
 }
 
 /**
  * Atomically load a boolean value with acquire semantics.
  */
-static inline bool nros_platform_atomic_load_bool(volatile bool* ptr) {
+static inline bool nros_platform_atomic_load_bool(const bool* ptr) {
     return atomic_get((atomic_t*)ptr) != 0;
 }
 

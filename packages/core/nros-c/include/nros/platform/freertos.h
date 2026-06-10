@@ -74,7 +74,7 @@ static inline void nros_platform_sleep_ns(uint64_t ns) {
  * Uses compiler barrier and volatile for basic atomicity.
  * For Cortex-M, single-byte writes are atomic.
  */
-static inline void nros_platform_atomic_store_bool(volatile bool* ptr, bool value) {
+static inline void nros_platform_atomic_store_bool(bool* ptr, bool value) {
     taskENTER_CRITICAL();
     *ptr = value;
     taskEXIT_CRITICAL();
@@ -83,7 +83,7 @@ static inline void nros_platform_atomic_store_bool(volatile bool* ptr, bool valu
 /**
  * Atomically load a boolean value with acquire semantics.
  */
-static inline bool nros_platform_atomic_load_bool(volatile bool* ptr) {
+static inline bool nros_platform_atomic_load_bool(const bool* ptr) {
     bool value;
     taskENTER_CRITICAL();
     value = *ptr;
