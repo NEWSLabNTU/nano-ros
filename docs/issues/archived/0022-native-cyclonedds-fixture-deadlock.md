@@ -5,18 +5,42 @@ status: resolved
 type: bug
 area: build
 related: [phase-226, issue-0012]
-resolved_in: 2026-06-10 (strip fifo jobserver from cyclone leaf cargo)
+resolved_in: 2026-06-11 (strip jobserver from nros-sizes-build nested probe)
 ---
 
-**RESOLVED (2026-06-10).** The two cyclone leaves now build **in parallel**
-without deadlock. Fix: `scripts/build/fixture-make-driver.sh` runs each cyclone
-leaf with `MAKEFLAGS= MAKELEVEL= CARGO_BUILD_JOBS=<nproc/2>` — stripping the
-make **fifo jobserver** from cargo (the deadlock source) while keeping the
-**shared** `~/.cargo` whose package-cache lock serializes the two concurrent dep
-builds safely (isolating `CARGO_HOME` instead caused a `.fingerprint` write
-race). `just/native.just` reverted to the parallel (no `NROS_BUILD_JOBS=1`)
-call. Validated end-to-end: `PAR3EXIT=0`, both leaves, ~6 min vs ~11 min
-serialized — even under the heavy competing host load. Details below.
+**RESOLVED — final fix `de086ce45` (2026-06-11).** Running the **full** fixture
+build (`just build-test-fixtures`) showed the deadlock is **cross-platform**,
+not native-only: with the platforms building concurrently, cyclone cargos on
+**threadx-linux** (6 examples), **qemu-riscv64-threadx** and
+**qemu-arm-freertos** all hung in `futex_wait_queue` inheriting the fifo
+jobserver (`--jobserver-auth=fifo:`). The first fix below was native-only and
+couldn't cover them.
+
+**Universal fix:** strip the jobserver at its *source* — `nros-sizes-build`'s
+nested opaque-size probe cargo now `env_remove`s `MAKEFLAGS` / `CARGO_MAKEFLAGS`
+/ `MAKELEVEL` (`packages/core/nros-sizes-build/src/lib.rs`). Every platform's
+cyclone build goes through `nros` → this probe, so the recursive hold-and-wait
+(outer cargo holds tokens → blocks in the build script → waits for the nested
+probe → which waits for a token the outer holds) can no longer form anywhere,
+*without* disabling jobserver coordination for the outer build. The native
+driver workaround was reverted to the plain parallel call (superseded).
+
+⚠️ **Validation caveat:** the under-load full-build re-run was thwarted by
+competing host CPU (Carla sim + ML training, ~300%) + cargo-lock contention, so
+the universal fix is **correct by construction** (textbook recursive-cargo
+jobserver break) + nros-sizes-build compiles, but the full end-to-end run was
+not re-confirmed on this host. Re-validate `just build-test-fixtures` →
+`just test-all` on an idle host.
+
+---
+
+**First fix (2026-06-10, native-only, superseded by the source fix above).**
+`scripts/build/fixture-make-driver.sh` ran each native cyclone leaf with
+`MAKEFLAGS= MAKELEVEL= CARGO_BUILD_JOBS=<nproc/2>` — stripping the fifo jobserver
+from cargo while keeping the **shared** `~/.cargo` whose package-cache lock
+serializes the two concurrent dep builds safely (isolating `CARGO_HOME` instead
+caused a `.fingerprint` write race). Validated `PAR3EXIT=0`, both native leaves,
+~6 min vs ~11 min serialized. Covered native only; the source fix supersedes it.
 
 ---
 
