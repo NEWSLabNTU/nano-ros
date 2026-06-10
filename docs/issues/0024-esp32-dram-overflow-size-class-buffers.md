@@ -1,7 +1,7 @@
 ---
 id: 24
 title: esp32 .bss overflows DRAM — Phase 231 size-class receive buffers too large
-status: open
+status: open  # fix applied, pending CI confirmation
 type: bug
 area: build
 related: [phase-231, rfc-0038, phase-230]
@@ -40,3 +40,12 @@ and/or `ZPICO_MAX_LARGE_SUBSCRIBERS` / `ZPICO_SUBSCRIBER_RING_DEPTH`) so the
 static blocks fit DRAM. esp32 cannot meaningfully buffer 16 KiB messages
 anyway. Longer term, RFC-0038 should document a per-RAM-budget size-class
 profile (the same knobs already exist).
+
+**Fix applied (2026-06).** Added `ZPICO_SUBSCRIBER_LARGE_SIZE = "4096"` to the
+`workspace-rust-esp32` row `env` in `examples/fixtures.toml` (the esp32_entry
+firmware — the only esp32 cell that links; the standalone `examples/esp32/rust/*`
+are `staticlib`/`rlib`, no link). Cuts the large block from 128 KiB to
+`2 × 4 × 4096` = 32 KiB (~96 KiB saved vs the 54 KiB overflow). The env reaches
+the build via `workspace-fixtures-build.sh` (`export $envstr` before
+`cargo build -p esp32_entry`). Not verifiable in the dev env (no esp toolchain);
+the platform-ci esp32 cell is the confirmation. Archive once green.

@@ -125,7 +125,14 @@ entry = "esp32_entry"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/esp32"
 target = "riscv32imc-unknown-none-elf"
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc", ESP_LOG = "info", NROS_EXECUTOR_ARENA_SIZE = "16384", NROS_SMOLTCP_MAX_UDP_SOCKETS = "2" }
+# ZPICO_SUBSCRIBER_LARGE_SIZE: shrink the Phase 231 (RFC-0038) size-class large
+# receive buffer from the 16 KiB default to 4 KiB on esp32 (issue #24). The
+# static large-payload blocks are MAX_LARGE_SUBSCRIBERS(2) × RING_DEPTH(4) ×
+# LARGE_SIZE, i.e. 128 KiB at the default — which overflows esp32 DRAM `.bss`
+# by ~54 KiB. 4 KiB cuts that block to 32 KiB (saves ~96 KiB); 4096 > the 2048
+# size threshold so the small/large split holds, and esp32 cannot buffer 16 KiB
+# messages anyway.
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc", ESP_LOG = "info", NROS_EXECUTOR_ARENA_SIZE = "16384", NROS_SMOLTCP_MAX_UDP_SOCKETS = "2", ZPICO_SUBSCRIBER_LARGE_SIZE = "4096" }
 
 # Phase 225.O follow-up (known-issue #18) — NuttX QEMU ARM virt
 # (Cortex-A7) workspace Entry. Built by the cargo lane
