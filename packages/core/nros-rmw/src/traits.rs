@@ -512,11 +512,31 @@ impl QosSettings {
         1,
     );
 
+    /// PX4 companion QoS profile (Phase 233 / RFC-0039 Track B). Matches the
+    /// QoS PX4's `uxrce_dds_client` advertises on `/fmu/out/*` and expects on
+    /// `/fmu/in/*` — `BEST_EFFORT` + `TRANSIENT_LOCAL` + `KEEP_LAST(1)`. A
+    /// nano-ros node talking to the same `MicroXRCEAgent` must use this (the
+    /// default reliable+volatile profile will not match PX4's endpoints).
+    /// Adjust depth via `.keep_last(n)` for higher-rate streams.
+    pub const QOS_PROFILE_PX4: Self = Self::build(
+        QosReliabilityPolicy::BestEffort,
+        QosDurabilityPolicy::TransientLocal,
+        QosHistoryPolicy::KeepLast,
+        1,
+    );
+
     // --- Static constructor methods (matching rclrs API) ---
 
     /// Get the default QoS profile for ordinary topics
     pub const fn topics_default() -> Self {
         Self::QOS_PROFILE_DEFAULT
+    }
+
+    /// The PX4 companion QoS profile ([`QOS_PROFILE_PX4`](Self::QOS_PROFILE_PX4))
+    /// — use for `/fmu/out/*` subscriptions and `/fmu/in/*` publications against
+    /// a `MicroXRCEAgent`.
+    pub const fn px4() -> Self {
+        Self::QOS_PROFILE_PX4
     }
 
     /// Get the default QoS profile for sensor data topics
@@ -2386,6 +2406,22 @@ mod tests {
     #[test]
     fn test_validate_udp_locator_missing_port() {
         assert!(validate_locator("udp/127.0.0.1").is_err());
+    }
+
+    // Phase 233.2 — the PX4 companion QoS profile must be BEST_EFFORT +
+    // TRANSIENT_LOCAL + KEEP_LAST so it matches PX4's uxrce_dds_client endpoints.
+    #[test]
+    fn px4_qos_profile_matches_uxrce_dds_client() {
+        let q = QosSettings::px4();
+        assert_eq!(q.reliability, QosReliabilityPolicy::BestEffort);
+        assert_eq!(q.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(q.history, QosHistoryPolicy::KeepLast);
+        assert_eq!(q, QosSettings::QOS_PROFILE_PX4);
+        // Depth is tunable via the builder without losing the PX4 policies.
+        let deep = QosSettings::px4().keep_last(5);
+        assert_eq!(deep.depth, 5);
+        assert_eq!(deep.reliability, QosReliabilityPolicy::BestEffort);
+        assert_eq!(deep.durability, QosDurabilityPolicy::TransientLocal);
     }
 
     // --- RmwConfig Tests ---
