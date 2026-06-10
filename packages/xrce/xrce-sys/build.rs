@@ -129,9 +129,10 @@ fn main() {
     // Stream framing protocol (HDLC framing for serial transports)
     build.file(uxr_src.join("profile/transport/stream_framing/stream_framing_protocol.c"));
 
-    // time.c is no longer compiled — uxr_millis/uxr_nanos provided by
-    // xrce-platform-shim via nros-platform for all platforms except Zephyr
-    // (which provides its own symbols via xrce_zephyr.c).
+    // time.c is no longer compiled — uxr_millis/uxr_nanos are provided on
+    // EVERY target (Zephyr included, phase-230 Wave 2) by
+    // nros-rmw-xrce/src/platform_aliases.c, routed through the canonical
+    // monotonic clock ABI (nros_platform_clock_ms / nros_platform_clock_us).
 
     // Rust FFI shim (field accessor helpers)
     build.file(manifest_dir.join("src/shim.c"));

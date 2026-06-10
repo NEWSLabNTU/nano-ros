@@ -365,6 +365,33 @@ Apply the Wave-1 pattern to the other scalar services (no struct ABI):
 guard vendored defs, alias to `nros_platform_*`, extend the lint. Lower
 risk than alloc (no heap-ownership/init subtlety).
 
+**Audit finding (2026-06).** The nros-owned scalar-time/sleep surface has
+NO portable-layer bypass to migrate (unlike alloc's 1d/1e): the remaining
+direct `vTaskDelay`/`tx_thread_sleep`/`k_msleep`/`k_uptime_get` calls are
+all either platform PROVIDERS (board `startup.c`, the C-API inline platform
+headers — they *implement* the ABI) or board-composition crates
+(`nros-board-*`, RTOS-specific by definition — routing them adds indirection
+for zero portability gain). So Wave 2's real payload is the **vendored**
+funnel, same CI-relink-gated mechanism as 1c.
+
+**Landed nros-owned slice — XRCE Zephyr clock (✅ DONE).** Exception found:
+`xrce-zephyr/src/xrce_zephyr.c` defined `uxr_millis`/`uxr_nanos` via direct
+`k_uptime_get()` and, being an app object, shadowed the canonical
+`nros-rmw-xrce/src/platform_aliases.c` (a static-archive member) on the
+Zephyr link — so XRCE-on-Zephyr ran the bypass. Fixed: drop `xrce_zephyr.c`
+from the Zephyr build (its net-readiness moved to `nros-platform-zephyr` in
+Phase 200.1; clock was its only other content) and delete the now-dead dir;
+the canonical alias now resolves `uxr_*` for every target. Also corrected
+the alias to use the **monotonic** `nros_platform_clock_ms` (not wall-clock
+`nros_platform_time_now_ms`, which steps/returns 0 on Zephyr without an RTC)
+— micro-XRCE uses these only for relative deadline deltas. Statically
+verified: Zephyr's `nros_platform_clock_ms` == `k_uptime_get()` (semantics
+preserved); `nros_platform_clock_ms`/`_us` are defined in
+`nros-platform-zephyr/src/platform.c` (on the link).
+
+The vendored part (guard zenoh-pico `z_sleep`/`z_clock`/`z_random`, alias to
+`nros_platform_*`) is the CI-relink-gated remainder, bundled with 1c.
+
 ### Wave 3 — Bridge dedup + boundary documentation
 
 #### 230.3.1 — One platform-owned bridge
