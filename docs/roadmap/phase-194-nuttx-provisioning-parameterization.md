@@ -142,25 +142,43 @@ build.rs):
 
 **Waves (each wave: implement → `just ci` / scoped build → commit):**
 
-- [ ] **194.3c.1 — Generalize `run_qemu_arm` → `run_nuttx`.** Parameterize the
+**Validation state (2026-06-11, branch `feat/194.3c-nuttx-riscv-board`):**
+Waves .1–.3 landed + `cargo check -p nros-board-common` clean; **.3 proven
+functionally** — `just nuttx build` ran the de-armed `build-nuttx.sh` and
+`make export` produced `staging/libc.a` (arm). The **setup-config fix is
+provision-verified**: `nros setup qemu-riscv-nuttx` fetched the full set
+(riscv-none-elf-gcc + qemu-riscv64 + nuttx kernel/apps/libc + zenoh stack) with
+no apt/manual-submodule. Waves .4–.6 are **code-complete** (riscv crate +
+overlay + cmake makedefs-forward patch), a faithful mirror of the known-good arm
+crate. **Not yet build-validated end-to-end:** the arm full-example regression
+and the riscv example build (.7) need a host that can sustain the NuttX cross
+`build-std` matrix — this dev box's rustc **SIGSEGVs** under the parallel
+build-std compiles (tiny crates like `quote`/`encoding_rs` crash, signal 11), an
+environment/toolchain instability unrelated to the refactor. Host `cargo check`
+of the board crates is not a valid gate (cross-only: `build-std` +
+`target_os="nuttx"`; host pulls no_std staticlibs that fail without a
+panic_handler — the arm crate fails identically). Defconfig is the stock
+`rv-virt:netnsh` base, pending the .7 build iteration.
+
+- [x] **194.3c.1 — Generalize `run_qemu_arm` → `run_nuttx`.** Parameterize the
       linker-script path (`NUTTX_LINKER_SCRIPT`), the preprocess compiler (reuse
       `nuttx_cross`, not literal `arm-none-eabi-gcc`), and the preprocess arch
       includes (`NUTTX_ARCH_INCLUDES`). Arm defaults byte-for-byte unchanged
       (`run_qemu_arm` kept as a thin wrapper). Verify `just nuttx build-examples`
       still green.
-- [ ] **194.3c.2 — Shared NuttX platform-lib build helper.** Extract the
+- [x] **194.3c.2 — Shared NuttX platform-lib build helper.** Extract the
       `nros-board-nuttx-qemu-arm/build.rs` platform.c/net.c compile into a
       `nros_board_common::nuttx_platform_build::run()` parameterized by
       `NUTTX_CROSS`/`NUTTX_ARCH_CFLAGS`/`NUTTX_ARCH_INCLUDES`; arm root build.rs
       delegates (removes the last 3 arm literals in the arm crate). Arm build green.
-- [ ] **194.3c.3 — `build-nuttx.sh` BOARD_MAKEDEFS param.** Add
+- [x] **194.3c.3 — `build-nuttx.sh` BOARD_MAKEDEFS param.** Add
       `NUTTX_BOARD_MAKEDEFS` (board overlay supplies; default = arm
       `boards/arm/qemu/qemu-armv7a/scripts/Make.defs`). Arm provisioning unchanged.
-- [ ] **194.3c.4 — riscv defconfig.** `rv-virt:flats` + nano-ros feature set
+- [~] **194.3c.4 — riscv defconfig.** `rv-virt:flats` + nano-ros feature set
       (zenoh-pico + **virtio-net** for the e2e), no board etc-ROMFS (drops the
       `genromfs` host-tool dep 194.3b hit). Lands under the new crate's
       `nuttx-config/defconfig`.
-- [ ] **194.3c.5 — `nros-board-nuttx-qemu-riscv` crate.** `nros-board.toml`
+- [~] **194.3c.5 — `nros-board-nuttx-qemu-riscv` crate.** `nros-board.toml`
       (`names=["nuttx-riscv"]`, `target_contains="riscv"`, `cargo_config` = riscv
       target + `riscv-none-elf-gcc` linker + riscv cflags + build-std);
       `src/{lib,config,entry,node}` with a `QemuRvVirt` board ZST
@@ -168,7 +186,7 @@ build.rs):
       build.rs calls the 194.3c.1 helper with riscv env (`NUTTX_ARCH=risc-v`,
       `NUTTX_VECTORTAB_OBJ=""`, riscv `NUTTX_LINKER_SCRIPT` + `NUTTX_ARCH_INCLUDES`
       + `NUTTX_LIBGCC_FLAGS`); riscv toolchain cmake file.
-- [ ] **194.3c.6 — cmake overlay.** `cmake/board/nano-ros-board-nuttx-qemu-riscv.cmake`
+- [~] **194.3c.6 — cmake overlay.** `cmake/board/nano-ros-board-nuttx-qemu-riscv.cmake`
       mirroring the arm overlay (FFI crate dir, provision script + riscv defconfig,
       `nros_nuttx_set_cargo_target("riscv32imac-unknown-nuttx-elf")`,
       `nros_board_link_app`). Auto-wired by the board-name dispatch.
