@@ -1039,11 +1039,16 @@ mod ghost_checks {
     /// Structural check: construct ServiceBufferGhost from ServiceBuffer private fields.
     /// If a field is renamed or retyped, this fails to compile.
     fn ghost_from_service_buffer(b: &ServiceBuffer) -> ServiceBufferGhost {
+        // Phase 237 follow-up — the request inbox is now a ring; map the head
+        // entry's state into the ghost (`has_request` = ring non-empty).
+        let head = b.head.load(Ordering::Relaxed);
+        let tail = b.tail.load(Ordering::Relaxed);
+        let slot = &b.ring[head % service::SERVICE_REQUEST_RING_DEPTH];
         ServiceBufferGhost {
-            has_request: b.has_request.load(Ordering::Relaxed),
-            overflow: b.overflow.load(Ordering::Relaxed),
-            stored_len: b.len.load(Ordering::Relaxed),
-            buf_capacity: b.data.len(),
+            has_request: head != tail,
+            overflow: slot.overflow.load(Ordering::Relaxed),
+            stored_len: slot.len.load(Ordering::Relaxed),
+            buf_capacity: slot.data.len(),
         }
     }
 
@@ -1067,9 +1072,9 @@ mod ghost_checks {
     #[test]
     fn svc_buf_overflow_signals_error() {
         let buffer = ServiceBuffer::new();
-        // Simulate the callback detecting an oversized request
-        buffer.overflow.store(true, Ordering::Release);
-        buffer.has_request.store(true, Ordering::Release);
+        // Simulate the callback enqueuing an oversized request into the ring.
+        buffer.ring[0].overflow.store(true, Ordering::Release);
+        buffer.tail.store(1, Ordering::Release);
 
         let ghost = ghost_from_service_buffer(&buffer);
         assert!(ghost.has_request);

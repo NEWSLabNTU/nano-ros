@@ -24,24 +24,52 @@ use super::signal_executor_wake;
 // ServiceBuffer
 // ============================================================================
 
-/// Shared buffer for service server callbacks
-pub(super) struct ServiceBuffer {
-    /// Buffer for received request data
+/// Phase 237 follow-up — depth of the per-server request ring. The single
+/// request buffer dropped a request that arrived before the previous one was
+/// drained (a burst of queries delivered in one read-task batch — concurrent
+/// goals under load). A ring buffers the burst so each request is read in order.
+/// Mirrors the subscriber SPSC ring (Phase 124.D.3.c).
+pub(super) const SERVICE_REQUEST_RING_DEPTH: usize = 4;
+
+/// One buffered request in the service-server inbox ring.
+pub(super) struct ServiceRequestSlot {
+    /// Buffer for received request data.
     pub(super) data: [u8; SERVICE_BUFFER_SIZE],
-    /// Buffer for keyexpr (for reply)
-    pub(super) keyexpr: [u8; 256],
-    /// Flag indicating new request is available
-    pub(super) has_request: AtomicBool,
-    /// Flag indicating the incoming request exceeded the buffer capacity.
-    /// Set by the callback when `payload_len > data.len()`. Checked by
-    /// `try_recv_request` which returns `Err(MessageTooLarge)` and clears this flag.
-    pub(super) overflow: AtomicBool,
-    /// Length of valid data
+    /// Length of valid data.
     pub(super) len: AtomicUsize,
-    /// Length of keyexpr
+    /// Reply-correlation token (the C shim's reply-slot index).
+    pub(super) seq: AtomicSeqCounter,
+    /// Set when the incoming request exceeded `data.len()`.
+    pub(super) overflow: AtomicBool,
+}
+
+impl ServiceRequestSlot {
+    pub(super) const fn new() -> Self {
+        Self {
+            data: [0u8; SERVICE_BUFFER_SIZE],
+            len: AtomicUsize::new(0),
+            seq: AtomicSeqCounter::new(0),
+            overflow: AtomicBool::new(false),
+        }
+    }
+}
+
+/// Shared buffer for service server callbacks — a single-producer (the queryable
+/// callback on the zenoh read task) single-consumer (`try_recv_request` on the
+/// executor) ring. `head`/`tail` are monotonic wrapping counters; the slot index
+/// is `counter % depth`. `tail - head` is the queued count; full → the callback
+/// drops the newest (preserving in-order delivery).
+pub(super) struct ServiceBuffer {
+    pub(super) ring: [ServiceRequestSlot; SERVICE_REQUEST_RING_DEPTH],
+    /// Consumer cursor (written only by `try_recv_request`).
+    pub(super) head: AtomicUsize,
+    /// Producer cursor (written only by the callback).
+    pub(super) tail: AtomicUsize,
+    /// Reply keyexpr — constant per server (same rr/ topic for every request),
+    /// so a single copy suffices.
+    pub(super) keyexpr: [u8; 256],
+    /// Length of keyexpr.
     pub(super) keyexpr_len: AtomicUsize,
-    /// Sequence number (counter)
-    pub(super) sequence_number: AtomicSeqCounter,
     /// Phase 122.3.c.6.e — waker registered by event-driven service
     /// servers. Woken by `queryable_callback` after a request lands.
     pub(super) waker: AtomicWaker,
@@ -50,13 +78,11 @@ pub(super) struct ServiceBuffer {
 impl ServiceBuffer {
     pub(super) const fn new() -> Self {
         Self {
-            data: [0u8; SERVICE_BUFFER_SIZE],
+            ring: [const { ServiceRequestSlot::new() }; SERVICE_REQUEST_RING_DEPTH],
+            head: AtomicUsize::new(0),
+            tail: AtomicUsize::new(0),
             keyexpr: [0u8; 256],
-            has_request: AtomicBool::new(false),
-            overflow: AtomicBool::new(false),
-            len: AtomicUsize::new(0),
             keyexpr_len: AtomicUsize::new(0),
-            sequence_number: AtomicSeqCounter::new(0),
             waker: AtomicWaker::new(),
         }
     }
@@ -180,31 +206,38 @@ extern "C" fn queryable_callback(
         return;
     }
 
-    if payload_len > buffer.data.len() {
-        // Request exceeds static buffer capacity — flag as overflow.
-        // Store keyexpr + sequence_number for diagnostics, but skip payload.
-        buffer.overflow.store(true, Ordering::Release);
-        // Phase 237 — the reply correlation token is the C shim's reply-slot
-        // index (the cloned query held for a possibly-deferred reply), not a
-        // free-running counter. `buffer_index` is the queryable handle.
-        let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(buffer_index as i32) };
-        buffer.sequence_number.store(seq, Ordering::Release);
-        buffer.has_request.store(true, Ordering::Release);
-    } else {
-        // Normal case: copy payload
-        buffer.overflow.store(false, Ordering::Release);
-        // Safety: payload pointer is valid for payload_len bytes (from C shim)
-        unsafe {
-            core::ptr::copy_nonoverlapping(payload, buffer.data.as_mut_ptr(), payload_len);
-        }
-        buffer.len.store(payload_len, Ordering::Release);
-
-        // Set the reply correlation token (Phase 237 — see above).
-        let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(buffer_index as i32) };
-        buffer.sequence_number.store(seq, Ordering::Release);
-
-        buffer.has_request.store(true, Ordering::Release);
+    // Phase 237 follow-up — enqueue into the request ring. Drop the newest when
+    // full (preserves in-order delivery of buffered requests), so a burst of
+    // concurrent arrivals doesn't clobber an unread request.
+    let head = buffer.head.load(Ordering::Acquire);
+    let tail = buffer.tail.load(Ordering::Relaxed);
+    if tail.wrapping_sub(head) >= SERVICE_REQUEST_RING_DEPTH {
+        return;
     }
+    let slot = &mut buffer.ring[tail % SERVICE_REQUEST_RING_DEPTH];
+
+    // Phase 237 — the reply correlation token is the C shim's reply-slot index
+    // (the cloned query held for a possibly-deferred reply), not a free-running
+    // counter. `buffer_index` is the queryable handle.
+    let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(buffer_index as i32) };
+    slot.seq.store(seq, Ordering::Relaxed);
+
+    if payload_len > slot.data.len() {
+        // Request exceeds static slot capacity — flag overflow, skip payload.
+        slot.overflow.store(true, Ordering::Relaxed);
+        slot.len.store(0, Ordering::Relaxed);
+    } else {
+        slot.overflow.store(false, Ordering::Relaxed);
+        // Safety: payload pointer is valid for payload_len bytes (from C shim).
+        unsafe {
+            core::ptr::copy_nonoverlapping(payload, slot.data.as_mut_ptr(), payload_len);
+        }
+        slot.len.store(payload_len, Ordering::Relaxed);
+    }
+
+    // Publish the slot: the Release pairs with the consumer's Acquire load of
+    // `tail`, so the data/len/seq writes above are visible before the request.
+    buffer.tail.store(tail.wrapping_add(1), Ordering::Release);
 
     // Phase 122.3.c.6.e — wake any task that registered a Waker on
     // this server (event-driven callers).
@@ -299,7 +332,8 @@ impl ServiceServerTrait for ZenohServiceServer {
     type Error = TransportError;
 
     fn has_request(&self) -> bool {
-        self.buf.get().has_request.load(Ordering::Acquire)
+        let b = self.buf.get();
+        b.head.load(Ordering::Relaxed) != b.tail.load(Ordering::Acquire)
     }
 
     fn register_waker(&self, waker: &core::task::Waker) {
@@ -312,33 +346,40 @@ impl ServiceServerTrait for ZenohServiceServer {
     ) -> Result<Option<ServiceRequest<'a>>, Self::Error> {
         let buffer = self.buf.get();
 
-        if !buffer.has_request.load(Ordering::Acquire) {
+        // Phase 237 follow-up — dequeue the head of the request ring. The Acquire
+        // load of `tail` pairs with the callback's Release store, making the
+        // slot's data/len/seq visible before we read them.
+        let head = buffer.head.load(Ordering::Relaxed);
+        let tail = buffer.tail.load(Ordering::Acquire);
+        if head == tail {
             return Ok(None);
         }
+        let slot = &buffer.ring[head % SERVICE_REQUEST_RING_DEPTH];
 
-        // Check for overflow (request exceeded static buffer capacity)
-        if buffer.overflow.load(Ordering::Acquire) {
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.has_request.store(false, Ordering::Release);
+        // Advance past the head entry (drop it).
+        let pop = || buffer.head.store(head.wrapping_add(1), Ordering::Release);
+
+        if slot.overflow.load(Ordering::Acquire) {
+            pop();
             return Err(TransportError::MessageTooLarge);
         }
 
-        let len = buffer.len.load(Ordering::Acquire);
+        let len = slot.len.load(Ordering::Acquire);
         if len > buf.len() {
-            // Clear has_request to avoid permanently stuck service — the oversized
-            // request is dropped, but the service recovers on the next request.
-            buffer.has_request.store(false, Ordering::Release);
+            // Oversized request dropped; the service recovers on the next one.
+            pop();
             return Err(TransportError::BufferTooSmall);
         }
 
-        // Copy data and keyexpr under FFI guard to prevent callback from
-        // overwriting the buffer mid-read (service buffers have no `locked` flag).
+        // Copy data + keyexpr under FFI guard so the callback can't write a slot
+        // mid-read (the ring keeps producer/consumer on different slots, but the
+        // shared keyexpr is copied here too).
         zpico::ffi_guard(|| {
-            // Safety: buffer data and keyexpr are valid up to their respective lengths
+            // Safety: slot data + keyexpr are valid up to their respective lengths.
             unsafe {
-                core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
+                core::ptr::copy_nonoverlapping(slot.data.as_ptr(), buf.as_mut_ptr(), len);
 
-                // Save keyexpr for potential reply
+                // Save keyexpr for potential reply (constant per server).
                 let keyexpr_len = buffer.keyexpr_len.load(Ordering::Acquire);
                 core::ptr::copy_nonoverlapping(
                     buffer.keyexpr.as_ptr(),
@@ -351,8 +392,8 @@ impl ServiceServerTrait for ZenohServiceServer {
         });
 
         #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
-        let seq: i64 = buffer.sequence_number.load(Ordering::Acquire).into();
-        buffer.has_request.store(false, Ordering::Release);
+        let seq: i64 = slot.seq.load(Ordering::Acquire).into();
+        pop();
 
         Ok(Some(ServiceRequest {
             data: &buf[..len],
@@ -856,31 +897,33 @@ pub(super) mod tests {
 
     // --- Service buffer helpers ---
 
-    /// Simulate a service request callback by writing directly to the service buffer.
+    /// Simulate a service request callback by enqueuing into the buffer ring.
     pub(in crate::shim) fn simulate_service_request(slot: usize, payload: &[u8], keyexpr: &[u8]) {
         let mut buf_ref = ServiceBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
-        let copy_len = payload.len().min(buffer.data.len());
-        buffer.data[..copy_len].copy_from_slice(&payload[..copy_len]);
-        buffer.len.store(copy_len, Ordering::Release);
 
         let klen = keyexpr.len().min(buffer.keyexpr.len() - 1);
         buffer.keyexpr[..klen].copy_from_slice(&keyexpr[..klen]);
         buffer.keyexpr[klen] = 0;
         buffer.keyexpr_len.store(klen, Ordering::Release);
 
+        let tail = buffer.tail.load(Ordering::Relaxed);
+        let entry = &mut buffer.ring[tail % SERVICE_REQUEST_RING_DEPTH];
+        let copy_len = payload.len().min(entry.data.len());
+        entry.data[..copy_len].copy_from_slice(&payload[..copy_len]);
+        entry.len.store(copy_len, Ordering::Relaxed);
+        entry.overflow.store(false, Ordering::Relaxed);
         let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
-        buffer.sequence_number.store(seq, Ordering::Release);
-
-        buffer.has_request.store(true, Ordering::Release);
+        entry.seq.store(seq, Ordering::Relaxed);
+        buffer.tail.store(tail.wrapping_add(1), Ordering::Release);
     }
 
-    /// Reset a service buffer to idle state.
+    /// Reset a service buffer to idle state (empty ring).
     pub(in crate::shim) fn reset_service_buffer(slot: usize) {
         let mut buf_ref = ServiceBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
-        buffer.has_request.store(false, Ordering::Release);
-        buffer.len.store(0, Ordering::Release);
+        buffer.head.store(0, Ordering::Release);
+        buffer.tail.store(0, Ordering::Release);
         buffer.keyexpr_len.store(0, Ordering::Release);
     }
 
@@ -893,22 +936,25 @@ pub(super) mod tests {
         let buf_ref = ServiceBufferRef::new(slot);
         let buffer = buf_ref.get();
 
-        if !buffer.has_request.load(Ordering::Acquire) {
+        let head = buffer.head.load(Ordering::Relaxed);
+        let tail = buffer.tail.load(Ordering::Acquire);
+        if head == tail {
             return Ok(None);
         }
+        let entry = &buffer.ring[head % SERVICE_REQUEST_RING_DEPTH];
 
-        let len = buffer.len.load(Ordering::Acquire);
+        let len = entry.len.load(Ordering::Acquire);
         if len > recv_buf.len() {
-            buffer.has_request.store(false, Ordering::Release);
+            buffer.head.store(head.wrapping_add(1), Ordering::Release);
             return Err(TransportError::BufferTooSmall);
         }
 
         // Safety: Data is valid up to len bytes
         unsafe {
-            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), recv_buf.as_mut_ptr(), len);
+            core::ptr::copy_nonoverlapping(entry.data.as_ptr(), recv_buf.as_mut_ptr(), len);
         }
 
-        buffer.has_request.store(false, Ordering::Release);
+        buffer.head.store(head.wrapping_add(1), Ordering::Release);
         Ok(Some(len))
     }
 
@@ -924,10 +970,22 @@ pub(super) mod tests {
         v
     }
 
-    /// Read the sequence number from a service buffer slot.
+    /// Read the sequence number of the next-to-consume request in a slot's ring.
     fn read_service_seq(slot: usize) -> i64 {
         let buf_ref = ServiceBufferRef::new(slot);
-        buf_ref.get().sequence_number.load(Ordering::Acquire).into()
+        let b = buf_ref.get();
+        let head = b.head.load(Ordering::Relaxed);
+        b.ring[head % SERVICE_REQUEST_RING_DEPTH]
+            .seq
+            .load(Ordering::Acquire)
+            .into()
+    }
+
+    /// Test-only: does the slot's request ring hold an unread request?
+    fn service_buf_has_request(slot: usize) -> bool {
+        let buf_ref = ServiceBufferRef::new(slot);
+        let b = buf_ref.get();
+        b.head.load(Ordering::Acquire) != b.tail.load(Ordering::Acquire)
     }
 
     // ========================================================================
@@ -946,13 +1004,9 @@ pub(super) mod tests {
         let result = try_recv_service(slot, &mut small_buf);
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
-        // Phase 212.x3 — `ServiceBufferRef::get` returns `&ServiceBuffer` tied to
-        // the lifetime of `&self`, so the temporary must outlive the borrow.
-        let buf_ref = ServiceBufferRef::new(slot);
-        let buffer = buf_ref.get();
         assert!(
-            !buffer.has_request.load(Ordering::Acquire),
-            "has_request must be cleared after BufferTooSmall to avoid stuck state"
+            !service_buf_has_request(slot),
+            "ring must be drained after BufferTooSmall to avoid stuck state"
         );
 
         simulate_service_request(slot, b"hello", b"test/service");
@@ -999,9 +1053,7 @@ pub(super) mod tests {
         let result = try_recv_service(slot, &mut buf);
         assert!(matches!(result, Ok(None)));
 
-        let buf_ref = ServiceBufferRef::new(slot);
-        let buffer = buf_ref.get();
-        assert!(!buffer.has_request.load(Ordering::Acquire));
+        assert!(!service_buf_has_request(slot));
     }
 
     #[test]
@@ -1011,16 +1063,14 @@ pub(super) mod tests {
 
         simulate_service_request(slot, b"request_data", b"svc/test");
 
-        let buf_ref = ServiceBufferRef::new(slot);
-        let buffer = buf_ref.get();
-        assert!(buffer.has_request.load(Ordering::Acquire));
+        assert!(service_buf_has_request(slot));
 
         let mut recv_buf = [0u8; 1024];
         let result = try_recv_service(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(12))));
         assert_eq!(&recv_buf[..12], b"request_data");
 
-        assert!(!buffer.has_request.load(Ordering::Acquire));
+        assert!(!service_buf_has_request(slot));
     }
 
     #[test]
@@ -1051,10 +1101,8 @@ pub(super) mod tests {
         let result = try_recv_service(slot, &mut small_buf);
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
-        // has_request cleared (post-fix behavior)
-        let buf_ref = ServiceBufferRef::new(slot);
-        let buffer = buf_ref.get();
-        assert!(!buffer.has_request.load(Ordering::Acquire));
+        // Oversized head entry dropped → ring drained.
+        assert!(!service_buf_has_request(slot));
 
         // Next request accepted
         simulate_service_request(slot, b"ok", b"svc/test");
@@ -1065,18 +1113,26 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn svc_buf_overwrite_unread() {
+    fn svc_buf_ring_buffers_unread() {
+        // Phase 237 follow-up — two requests arriving before a drain are both
+        // buffered in the ring (in order), not overwritten (the old single-buffer
+        // behaviour dropped the first).
         let slot = 4;
         reset_service_buffer(slot);
 
         simulate_service_request(slot, b"first_req", b"svc/a");
         simulate_service_request(slot, b"second_req", b"svc/a");
 
-        // Only second request delivered
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_service(slot, &mut recv_buf);
-        assert!(matches!(result, Ok(Some(10))));
+        let r1 = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(r1, Ok(Some(9))));
+        assert_eq!(&recv_buf[..9], b"first_req");
+
+        let r2 = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(r2, Ok(Some(10))));
         assert_eq!(&recv_buf[..10], b"second_req");
+
+        assert!(!service_buf_has_request(slot));
     }
 
     #[test]
@@ -1152,10 +1208,8 @@ pub(super) mod tests {
         assert!(matches!(result, Ok(Some(9))));
         assert_eq!(&recv_buf[..9], b"req_seven");
 
-        // slot_a still has request
-        let buf_ref_a = ServiceBufferRef::new(slot_a);
-        let buffer_a = buf_ref_a.get();
-        assert!(buffer_a.has_request.load(Ordering::Acquire));
+        // slot_a still has its request
+        assert!(service_buf_has_request(slot_a));
 
         let result = try_recv_service(slot_a, &mut recv_buf);
         assert!(matches!(result, Ok(Some(8))));
