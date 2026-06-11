@@ -118,10 +118,23 @@ nros_rmw_ret_t xrce_publisher_publish_raw(nros_rmw_publisher_t *publisher,
     xrce_publisher_state *ps = (xrce_publisher_state *)publisher->backend_data;
     xrce_session_state_t *st = ps->session_state;
 
+    /* XRCE-DDS interop: strip the 4-byte CDR encapsulation header the executor
+     * prepends. The XRCE DATA payload carries the bare serialized sample; the
+     * agent owns the DDS-side representation header. Real PX4 / ROS 2 endpoints
+     * read headerless XRCE payloads — sending the header makes our samples
+     * unparseable to them (and is symmetric with the subscriber, which
+     * re-prepends the header on receive). */
+    const uint8_t *body = data;
+    size_t body_len = len;
+    if (body_len >= XRCE_CDR_HEADER_LEN) {
+        body += XRCE_CDR_HEADER_LEN;
+        body_len -= XRCE_CDR_HEADER_LEN;
+    }
+
     /* Try the non-fragmented fast path first. */
     uint16_t req = uxr_buffer_topic(
         &st->session, st->output_reliable, ps->datawriter_oid,
-        (uint8_t *)(uintptr_t)data, len);
+        (uint8_t *)(uintptr_t)body, body_len);
     if (req != UXR_INVALID_REQUEST_ID) {
         /* Flush so the bytes reach the agent without waiting for the
          * next drive_io tick. Mirrors the Rust impl. */

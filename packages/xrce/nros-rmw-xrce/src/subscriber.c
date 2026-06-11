@@ -56,12 +56,25 @@ void xrce_topic_callback(uxrSession *session,
             return;
         }
         xrce_subscriber_ring_entry *entry = &slot->entries[slot->write_idx];
-        if (len > XRCE_BUFFER_SIZE) {
+        /* XRCE-DDS interop: the agent delivers the bare CDR-serialized sample,
+         * WITHOUT the 4-byte CDR encapsulation header (representation id +
+         * options) — that header lives on the DDS/RTPS side, which the agent
+         * owns. nano-ros's deserializers (and every other RMW path) expect the
+         * header, so prepend the little-endian header here. Real PX4 /
+         * `uxrce_dds_client` and real ROS 2 nodes both send headerless XRCE
+         * payloads; without this, deserialization is misaligned by 4 bytes and
+         * every inbound sample is dropped. (Symmetric with the publish side,
+         * which strips the header before `uxr_buffer_topic`.) */
+        if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
             entry->overflow = true;
             entry->len = 0;
         } else {
-            memcpy(entry->data, ub->iterator, len);
-            entry->len = len;
+            entry->data[0] = 0x00; /* CDR_LE representation id */
+            entry->data[1] = 0x01;
+            entry->data[2] = 0x00; /* options */
+            entry->data[3] = 0x00;
+            memcpy(entry->data + XRCE_CDR_HEADER_LEN, ub->iterator, len);
+            entry->len = len + XRCE_CDR_HEADER_LEN;
             entry->overflow = false;
         }
         slot->write_idx = (uint16_t)((slot->write_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);

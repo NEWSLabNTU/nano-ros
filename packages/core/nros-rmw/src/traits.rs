@@ -513,14 +513,16 @@ impl QosSettings {
     );
 
     /// PX4 companion QoS profile (Phase 233 / RFC-0039 Track B). Matches the
-    /// QoS PX4's `uxrce_dds_client` advertises on `/fmu/out/*` and expects on
-    /// `/fmu/in/*` — `BEST_EFFORT` + `TRANSIENT_LOCAL` + `KEEP_LAST(1)`. A
-    /// nano-ros node talking to the same `MicroXRCEAgent` must use this (the
-    /// default reliable+volatile profile will not match PX4's endpoints).
+    /// QoS PX4's `uxrce_dds_client` uses on `/fmu/out/*` and `/fmu/in/*` —
+    /// `BEST_EFFORT` + `VOLATILE` + `KEEP_LAST(1)`. A nano-ros node talking to
+    /// the same `MicroXRCEAgent` must use this (a reliable or
+    /// `TRANSIENT_LOCAL` reader will not match PX4's volatile best-effort
+    /// writers). Verified against real PX4 SITL (`nros-px4-sitl-test`):
+    /// `TRANSIENT_LOCAL` durability silently fails to match `/fmu/out/*`.
     /// Adjust depth via `.keep_last(n)` for higher-rate streams.
     pub const QOS_PROFILE_PX4: Self = Self::build(
         QosReliabilityPolicy::BestEffort,
-        QosDurabilityPolicy::TransientLocal,
+        QosDurabilityPolicy::Volatile,
         QosHistoryPolicy::KeepLast,
         1,
     );
@@ -2414,14 +2416,16 @@ mod tests {
     fn px4_qos_profile_matches_uxrce_dds_client() {
         let q = QosSettings::px4();
         assert_eq!(q.reliability, QosReliabilityPolicy::BestEffort);
-        assert_eq!(q.durability, QosDurabilityPolicy::TransientLocal);
+        // VOLATILE — PX4's /fmu/out writers are volatile; a TRANSIENT_LOCAL
+        // reader silently fails to match (verified against real PX4 SITL).
+        assert_eq!(q.durability, QosDurabilityPolicy::Volatile);
         assert_eq!(q.history, QosHistoryPolicy::KeepLast);
         assert_eq!(q, QosSettings::QOS_PROFILE_PX4);
         // Depth is tunable via the builder without losing the PX4 policies.
         let deep = QosSettings::px4().keep_last(5);
         assert_eq!(deep.depth, 5);
         assert_eq!(deep.reliability, QosReliabilityPolicy::BestEffort);
-        assert_eq!(deep.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(deep.durability, QosDurabilityPolicy::Volatile);
     }
 
     // --- RmwConfig Tests ---
