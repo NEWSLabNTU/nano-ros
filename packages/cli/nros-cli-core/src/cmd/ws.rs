@@ -1058,6 +1058,24 @@ fn is_dependencies_table(trimmed: &str) -> bool {
 /// path for. Restricts the 220.E extension surface to vetted names.
 fn is_managed_runtime_crate_name(name: &str) -> bool {
     nros_crate_path_lookup().iter().any(|(n, _)| *n == name)
+        // RFC-0040 D-Q3 — board crates are managed too (a scaffolded embedded
+        // project deps `nros-board-<x> = "*"`). Their path is derived uniformly
+        // (`packages/boards/<name>`), not enumerated in the static table.
+        || name.starts_with("nros-board-")
+}
+
+/// RFC-0040 D-Q3 — map a managed crate name to its `<NROS_REPO_DIR>`-relative
+/// subpath. Core/RMW crates come from the static [`nros_crate_path_lookup`]
+/// table; board crates follow the uniform `packages/boards/<name>` convention,
+/// so any current or future `nros-board-*` resolves without a table entry.
+fn nros_crate_subpath(name: &str) -> Option<String> {
+    if let Some((_, p)) = nros_crate_path_lookup().iter().find(|(n, _)| *n == name) {
+        Some((*p).to_string())
+    } else if name.starts_with("nros-board-") {
+        Some(format!("packages/boards/{name}"))
+    } else {
+        None
+    }
 }
 
 fn render_patch_block(
@@ -1100,23 +1118,15 @@ fn render_patch_block(
     //    `nros-serdes` for generated msg crates) is emitted in a single
     //    deduped, alphabetical pass for deterministic diffs.
     if let Some(nrp) = nano_ros_path {
-        let lookup = nros_crate_path_lookup();
         // Always include the minimum runtime patches the generated msg
         // crates depend on, then union in the consumer-referenced extras.
-        let mut wanted: Vec<&'static str> = vec!["nros-core", "nros-serdes"];
+        let mut wanted: Vec<String> = vec!["nros-core".to_string(), "nros-serdes".to_string()];
         for extra in extra_runtime_crates {
-            if lookup.iter().any(|(name, _)| *name == extra.as_str())
-                && !wanted.iter().any(|w| *w == extra.as_str())
-            {
-                // Anchor to the static str in the lookup table — the
-                // dedup pass relies on string equality.
-                let anchored = lookup
-                    .iter()
-                    .find(|(n, _)| *n == extra.as_str())
-                    .map(|(n, _)| *n)
-                    .unwrap();
-                wanted.push(anchored);
-            } else if !lookup.iter().any(|(name, _)| *name == extra.as_str()) {
+            if nros_crate_subpath(extra).is_some() {
+                if !wanted.iter().any(|w| w == extra) {
+                    wanted.push(extra.clone());
+                }
+            } else {
                 // Unknown nros-* / cyclonedds-sys variant — likely a
                 // third-party extension. Log + skip rather than fail;
                 // user can still hand-patch outside the managed block.
@@ -1132,18 +1142,14 @@ fn render_patch_block(
         wanted.sort();
         wanted.dedup();
         for cname in &wanted {
-            let sub = lookup
-                .iter()
-                .find(|(n, _)| n == cname)
-                .map(|(_, p)| *p)
-                .expect("cname comes from lookup; entry must exist");
-            let crate_root = nrp.join(sub);
+            let sub = nros_crate_subpath(cname).expect("cname is a managed crate; subpath exists");
+            let crate_root = nrp.join(&sub);
             if !crate_root.join("Cargo.toml").is_file() {
                 continue;
             }
             let rel = pathdiff::diff_paths(&crate_root, authority_dir).unwrap_or(crate_root);
             entries.push_str(&format!("{cname} = {{ path = \"{}\" }}\n", rel.display()));
-            managed_names.push((*cname).to_string());
+            managed_names.push(cname.clone());
         }
     }
 

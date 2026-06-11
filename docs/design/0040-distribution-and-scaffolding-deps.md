@@ -147,10 +147,13 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
 - **D-Q2 — version pinning without crates.io.** If git deps (option 1) are
   offered, what pins the version — a release tag, a branch, or a rev? Tie to the
   release cadence (is there a tagged source release, or is `main` the contract?).
-- **D-Q3 — board + generated-msg crate coords.** The board crate
-  (`nros-board-*`) and the codegen-emitted message crates need the same shape as
-  `nros`; confirm the patch block / git coords cover them uniformly (the in-tree
-  block already lists `nros-*` runtime crates + generated msg crates — D2).
+- **D-Q3 — board + generated-msg crate coords. RESOLVED 2026-06.** `nros ws sync`
+  now patches `nros-board-*` deps too: they resolve to the uniform
+  `packages/boards/<name>` path (no static table entry — any current/future board
+  crate works), alongside the `nros-*` runtime crates and generated msg crates.
+  Verified: a `nros new … --platform freertos` scaffold's `nros` **and**
+  `nros-board-mps2-an385-freertos` are both path-patched after sync, and the
+  project resolves under plain `cargo`.
 - **D-Q4 — does `nros new` itself run/scaffold the sync?** If option 2 is chosen,
   should `nros new` print the exact `eval "$(nros ws env)" && nros ws sync`
   follow-up, or attempt it when `NROS_REPO_DIR` is already set?

@@ -352,7 +352,7 @@ The three conventions (191.6 review) must collapse to the source-release reality
 - [x] README install line: wrong org + contradictory `--git`＋`--path`. Correct to
       `cargo install --git https://github.com/NEWSLabNTU/nano-ros nros-cli` (or the
       source-release's documented CLI install).
-- [ ] The user-journey CI lane (196 background) builds a scaffolded project end to
+- [x] The user-journey CI lane (196 background) builds a scaffolded project end to
       end, so this convention is exercised, not assumed.
 
 ### 196.9 — [DONE] Per-platform setup/build/test CI matrix
