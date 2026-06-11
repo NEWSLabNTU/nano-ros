@@ -82,6 +82,9 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     println!();
     println!("Next steps:");
     println!("  cd {}", cfg.name);
+    println!("  export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros source checkout");
+    println!("  eval \"$(nros ws env)\"   # ROS + interface search path");
+    println!("  nros ws sync          # codegen + write the [patch.crates-io] block (RFC-0040)");
     println!("  cargo build           # or: cmake --build build / west build / idf.py build");
 
     Ok(())
@@ -165,8 +168,12 @@ edition = "2024"
 [workspace]
 
 # A reusable component is a library (rlib); the deployed system links it.
+# nano-ros crates are not published to crates.io (RFC-0040) — `version = "*"` is
+# only the patched left-hand side. Run `nros ws sync` (with NROS_REPO_DIR set) to
+# write the nros-managed [patch.crates-io] block redirecting `nros` to your
+# nano-ros checkout, then `cargo build`.
 [dependencies]
-nros = {{ version = "0.1", default-features = false }}
+nros = {{ version = "*", default-features = false }}
 "#,
         name = cfg.name,
     );
@@ -562,7 +569,7 @@ fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> R
 
     if is_embedded {
         deps.push_str(&format!(
-            "nros = {{ version = \"0.1\", default-features = false, features = [\"{rmw_feature}\", \"platform-{platform}\", \"ros-humble\"] }}\n"
+            "nros = {{ version = \"*\", default-features = false, features = [\"{rmw_feature}\", \"platform-{platform}\", \"ros-humble\"] }}\n"
         ));
         let board_crate = match platform {
             "freertos" => "nros-board-mps2-an385-freertos",
@@ -570,11 +577,11 @@ fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> R
             "nuttx" => "nros-board-nuttx-qemu-arm",
             _ => "# TODO: add board crate for this platform",
         };
-        deps.push_str(&format!("{board_crate} = {{ version = \"0.1\" }}\n"));
+        deps.push_str(&format!("{board_crate} = {{ version = \"*\" }}\n"));
         deps.push_str("panic-semihosting = \"0.6\"\n");
     } else {
         deps.push_str(&format!(
-            "# nros = {{ version = \"0.1\", features = [\"std\", \"{rmw_feature}\", \"platform-posix\", \"ros-humble\"] }}\n"
+            "# nros = {{ version = \"*\", features = [\"std\", \"{rmw_feature}\", \"platform-posix\", \"ros-humble\"] }}\n"
         ));
     }
 
@@ -592,6 +599,10 @@ path = "src/main.rs"
 
 [dependencies]
 {deps}
+# nano-ros crates are not published to crates.io (RFC-0040) — the `version = "*"`
+# requirements above are patched, not resolved from crates.io. Run `nros ws sync`
+# (with NROS_REPO_DIR set) to write the nros-managed [patch.crates-io] block here
+# (path deps into your nano-ros checkout + any generated msg crates), then build.
 
 # Phase 204.15 inc 3 — named size/speed profiles so the plain-cargo path honours
 # the same intent as `[build].optimize` (`cargo build --profile

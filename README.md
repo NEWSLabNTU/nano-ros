@@ -60,12 +60,16 @@ std_msgs = { version = "*", default-features = false }
 Generate message bindings with `nros`:
 
 ```bash
-# Install the binding generator
-cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/nros-cli
+# Install the nros CLI. nano-ros is a source release (its crates are NOT on
+# crates.io — RFC-0040); the CLI lives in the in-tree sub-workspace packages/cli/.
+git clone https://github.com/NEWSLabNTU/nano-ros
+cd nano-ros
+just setup-cli                 # builds packages/cli/ → nros (on PATH via ./activate.sh)
+# or, full quick-start:  ./scripts/bootstrap.sh base
 
-# Source ROS 2 and generate bindings
+# Source ROS 2 and generate bindings in your package
 source /opt/ros/humble/setup.bash
-nros generate rust --generate-config --nano-ros-git
+nros generate-rust
 ```
 
 This creates `generated/` with Rust types for your ROS 2 messages and a `.cargo/config.toml` with the necessary patch entries.

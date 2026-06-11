@@ -344,12 +344,12 @@ toolchains (`nros setup`). So the items below are the right direction (drop the
 "maybe", they are required. (The dep-chain lane 196.6 already validates the
 source-release path resolution.)
 The three conventions (191.6 review) must collapse to the source-release reality:
-- [ ] `nros new` scaffolds `nros = { version = "0.1" }` (crates.io — **the crates
+- [x] `nros new` scaffolds `nros = { version = "0.1" }` (crates.io — **the crates
       are not published**). Change it to the source-release dep: a path/relative
       reference into the installed source tree (or a documented `git =
       "https://github.com/NEWSLabNTU/nano-ros"` for out-of-tree projects) — match
       whatever the source-release layout actually places the crates at.
-- [ ] README install line: wrong org + contradictory `--git`＋`--path`. Correct to
+- [x] README install line: wrong org + contradictory `--git`＋`--path`. Correct to
       `cargo install --git https://github.com/NEWSLabNTU/nano-ros nros-cli` (or the
       source-release's documented CLI install).
 - [ ] The user-journey CI lane (196 background) builds a scaffolded project end to
