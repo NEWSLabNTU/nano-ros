@@ -828,16 +828,43 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     # self-provision + boot, so run the tests; if it's absent (lighter tier),
     # filter them OUT so they report `skipped`, not `failed` (`skip!` is a panic
     # ⇒ a nextest failure; only *filtering* yields a skip).
-    cyc_exclude=()
+    env_exclude=()
     command -v arm-none-eabi-gcc >/dev/null 2>&1 \
-        || cyc_exclude+=("not (binary(freertos_qemu) and test(~cyclonedds))")
+        || env_exclude+=("not (binary(freertos_qemu) and test(~cyclonedds))")
     command -v riscv64-unknown-elf-gcc >/dev/null 2>&1 \
-        || cyc_exclude+=("not (binary(threadx_riscv64_qemu) and test(~cyclonedds))")
-    if [ "${#cyc_exclude[@]}" -gt 0 ]; then
-        cyc_filter="${cyc_exclude[0]}"
-        for _e in "${cyc_exclude[@]:1}"; do cyc_filter="$cyc_filter and $_e"; done
-        echo "test-all: cross toolchain absent — filtering embedded Cyclone tests out (skipped, not failed); install the toolchain to run them (Phase 185.2/186.4): $cyc_filter"
-        args+=(-E "$cyc_filter")
+        || env_exclude+=("not (binary(threadx_riscv64_qemu) and test(~cyclonedds))")
+    # Issue 0030 — deselect OPTIONAL-toolchain suites when their toolchain is
+    # absent, the same way the embedded-Cyclone tests above are gated. These
+    # suites already `nros_tests::skip!` at runtime (→ `[SKIPPED]` panic →
+    # rewritten to `<skipped>` by `_rewrite-skipped-junit`, so they never count
+    # as real failures), but the *live nextest console* still shows the skip!
+    # panic as a red FAIL — the "non-bug failure" a user shouldn't have to fight.
+    # Filtering deselects them entirely: no scary console line, no wasted in-test
+    # build attempt. Each suite runs (and skip!s with an actionable reason) the
+    # moment its toolchain is present, so this only loosens lighter tiers.
+    if ! { command -v idf.py >/dev/null 2>&1 || [ -n "${IDF_PATH:-}" ] || [ -n "${NROS_ESP_IDF_ENV_SHIM:-}" ]; }; then
+        env_exclude+=("not binary(integration_esp_idf)")
+        env_exclude+=("not binary(phase212_h5_esp_idf)")
+        env_exclude+=("not binary(phase212_m7_esp32_talker)")
+        env_exclude+=("not binary(phase212_m7_esp32_listener)")
+    fi
+    if ! command -v pio >/dev/null 2>&1 && ! command -v platformio >/dev/null 2>&1; then
+        env_exclude+=("not binary(integration_platformio)")
+        env_exclude+=("not binary(phase212_h6_platformio)")
+    fi
+    if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
+        env_exclude+=("not binary(phase215_g_fvp_smoke)")
+        env_exclude+=("not binary(phase217_c_fvp_runtime)")
+        env_exclude+=("not binary(phase217_d_fvp_runtime_rust)")
+    fi
+    if ! command -v qemu-system-riscv32 >/dev/null 2>&1 || ! command -v espflash >/dev/null 2>&1; then
+        env_exclude+=("not binary(esp32_emulator)")
+    fi
+    if [ "${#env_exclude[@]}" -gt 0 ]; then
+        env_filter="${env_exclude[0]}"
+        for _e in "${env_exclude[@]:1}"; do env_filter="$env_filter and $_e"; done
+        echo "test-all: toolchain-gated suites filtered OUT (reported deselected, not failed); install the toolchain to run them: $env_filter"
+        args+=(-E "$env_filter")
     fi
     nros_nextest_record_begin test-all
     nros_nextest_record_write_command \

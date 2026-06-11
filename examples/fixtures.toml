@@ -105,6 +105,17 @@ entry = "zephyr_entry"
 codegen_out = "build-fixtures/demo_bringup"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
+# skip_probe = true (issue 0030): the zephyr workspace Entry is built by the
+# WEST lane (scripts/build/zephyr-fixture-leaves.sh --include-workspace-entry,
+# via `just zephyr build-fixtures`), which tracks its own staleness in the
+# build dir's `.nros-zephyr-fixture.sig`. The generic
+# `workspace-fixtures-build.sh`/`workspace-fixture-stale.sh` pair (cargo/cmake
+# lane) neither builds this row NOR writes the `.nros-workspace-fixture.*.
+# inputsig` stamp it then demands — so requiring it in the test-all preflight
+# is unsatisfiable (permanent false-stale) even with west installed. Like
+# `workspace-rust-esp32`/`-qemu-nuttx`, it is an own-lane artifact; the zephyr
+# e2e test skip!s at runtime on the absent binary.
+skip_probe = true
 
 # Phase 225.O — ESP32-C3 QEMU (OpenETH) workspace Entry. Built by the
 # cargo lane (`scripts/build/workspace-fixtures-build.sh esp32 rust`):
@@ -125,6 +136,16 @@ entry = "esp32_entry"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/esp32"
 target = "riscv32imc-unknown-none-elf"
+# skip_probe = true (issue 0030): esp32 is NOT in the `build-test-fixtures`
+# platform fan-out (build-test-fixtures-leaves runs zephyr/native/qemu/freertos/
+# nuttx/threadx_linux/threadx_riscv64/stm32f4 — no esp32), so the standard
+# fixture build never produces this Entry. Like `workspace-rust-qemu-nuttx`,
+# it is built only by its own lane (`just esp32 build-fixtures` →
+# workspace-fixtures-build.sh esp32). Requiring it in the test-all preflight
+# would hard-fail the whole suite on every host (the esp32 e2e test already
+# skip!s at runtime on the absent binary). The stale-probe also can't replicate
+# the nightly + build-std + esp env.
+skip_probe = true
 # ZPICO_SUBSCRIBER_LARGE_SIZE: shrink the Phase 231 (RFC-0038) size-class large
 # receive buffer from the 16 KiB default to 4 KiB on esp32 (issue #24). The
 # static large-payload blocks are MAX_LARGE_SUBSCRIBERS(2) × RING_DEPTH(4) ×
