@@ -11,13 +11,14 @@ server) accepts + streams feedback, but `ros2` waits forever for the final *resu
 time after the handler returns. Concurrent goals can occur under heavy load, so the
 single-in-flight shortcut (Option C) is rejected.
 
-**Status.** ◐ Implemented across all backends: runtime (237.1) + XRCE (237.3) +
-Cyclone-verify (237.2) + Zenoh (237.4), validated against real `rmw_fastrtps`
-ROS 2 (forward action delivers the final result) plus backend-agnostic concurrent
-unit tests (237.5). Remaining: a concurrent-goals **e2e** over a live transport
-and `rmw_zenoh_cpp` interop validation (237.5 tail). Implements the "REMAINING —
-get_result deferral" item in [phase-233](phase-233-px4-xrce-companion.md). Off the
-PX4 critical path (PX4 is topic-only).
+**Status.** ✅ Implemented + validated across all backends: runtime (237.1) +
+XRCE (237.3) + Cyclone-verify (237.2) + Zenoh (237.4) + tests (237.5). Validated
+against real ROS 2 over **both** transports: `rmw_fastrtps` over XRCE (forward
+result + 2-client concurrent) and `rmw_zenoh_cpp` over Zenoh (forward result),
+plus backend-agnostic concurrent unit tests. The only follow-up is a request-path
+robustness item (multi-entry request inbox), not get_result-specific. Implements
+the "REMAINING — get_result deferral" item in
+[phase-233](phase-233-px4-xrce-companion.md). Off the PX4 critical path.
 
 **Depends on.** RFC-0035 (CFFI vtable), the action runtime in
 `packages/core/nros-node/src/executor/action_core.rs`, the three service backends
@@ -123,7 +124,7 @@ robust fix would thread the C handle into the service buffer — tracked separat
   `z_query_drop` it + clear `in_use`. **Owned-query lifetime is the correctness-critical
   bit** — clone on store, drop on reply *and* on queryable teardown, else leak / UAF.
 
-### 237.5 — Tests ◐
+### 237.5 — Tests ✅
 **Done:**
 - `test_xrce_action_ros2_client` (forward) now hard-asserts the final
   `SUCCEEDED` result — real rclcpp_action get_result deferral over XRCE.
@@ -142,12 +143,26 @@ robust fix would thread the C handle into the service buffer — tracked separat
   nano-ros↔nano-ros action + service over Zenoh, XRCE service interop, Cyclone
   `feedback_roundtrip`, and the full `nros-node` lib suite (159 mock / 71 cffi).
 
-**Remaining:**
-- Concurrent-goals **e2e** over a live transport (needs a multi-goal action server
-  example/bin — the stock example processes one goal at a time, so it can't
-  exercise concurrent deferral end-to-end).
-- `rmw_zenoh_cpp` ↔ nano-ros Zenoh action interop validation (real ROS 2 over
-  Zenoh; needs the rmw_zenoh router + a ROS 2 action client/server).
+**Done (e2e):**
+- `test_xrce_action_ros2_concurrent` — TWO `ros2 action send_goal` clients against
+  one nano-ros XRCE action server (env-gated `NROS_ACTION_CONCURRENT` mode: a
+  non-blocking state machine accepting + advancing several goals at once). Both
+  goals active simultaneously → both early get_results deferred at once → both
+  clients get their own `SUCCEEDED` result. Exercises the XRCE reply-token table
+  with multiple in-flight replies (stable 3/3). The two clients are staggered 1 s
+  so the two send_goal *requests* don't collide on the single request inbox.
+- `test_action_nano_server_ros2_client` (rmw_interop) upgraded to hard-assert the
+  final result — a real `rmw_zenoh_cpp` `ros2 action send_goal` against the
+  nano-ros Zenoh action server gets accept + feedback + `SUCCEEDED`, validating
+  the Zenoh seq-keyed reply table over the real ROS 2 Zenoh transport (stable 3/3).
+
+**Remaining (separate, pre-existing — not get_result-specific):**
+- Multi-entry service *request* inbox for XRCE/Zenoh (concurrent send_goal /
+  get_result *arrivals* in the same drain window still drop the later one — the
+  237.3 "optional hardening"). The reply-token tables handle concurrent *replies*;
+  concurrent simultaneous *requests* are bounded by the single inbox. Out of
+  Phase 237 scope (it's a request-path robustness item, tracked here for the
+  record).
 
 ## Sizing / bounds
 

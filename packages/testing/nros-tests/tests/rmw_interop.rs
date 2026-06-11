@@ -498,29 +498,25 @@ fn test_action_nano_server_ros2_client(zenohd_unique: ZenohRouter, action_server
 
     eprintln!("ROS 2 action client output:\n{}", ros2_output);
 
-    // Check if ROS 2 received goal response and result
+    // A real `rmw_zenoh_cpp` `ros2 action send_goal` against the nano-ros Zenoh
+    // action server must accept the goal, stream feedback, and deliver the final
+    // result. The result exercises the Zenoh seq-keyed reply table (Phase 237):
+    // rclcpp_action sends get_result right after acceptance and the server holds
+    // the reply until the goal terminates.
     let goal_accepted = ros2_output.contains("Goal accepted") || ros2_output.contains("accepted");
     let feedback_received =
         count_pattern(&ros2_output, "feedback") > 0 || count_pattern(&ros2_output, "Feedback") > 0;
-    let result_received = ros2_output.contains("Result")
-        || ros2_output.contains("sequence")
-        || ros2_output.contains("result");
+    let result_received = ros2_output.contains("SUCCEEDED") || ros2_output.contains("Result:");
 
-    if goal_accepted || feedback_received || result_received {
-        eprintln!("[PASS] nros action server ↔ ROS 2 action client works");
-        if goal_accepted {
-            eprintln!("  - Goal accepted");
-        }
-        if feedback_received {
-            eprintln!("  - Feedback received");
-        }
-        if result_received {
-            eprintln!("  - Result received");
-        }
-    } else {
-        eprintln!("[INFO] ROS 2 action client did not receive expected output");
-        eprintln!("  This may be a timing issue or protocol incompatibility");
-    }
+    assert!(
+        goal_accepted && feedback_received && result_received,
+        "nros Zenoh action server ↔ ROS 2 rmw_zenoh client did not complete \
+         (233.6 / 237): accepted={goal_accepted} feedback={feedback_received} \
+         result={result_received}.\n{ros2_output}"
+    );
+    eprintln!(
+        "[PASS] nros Zenoh action server ↔ ROS 2 rmw_zenoh client: accept + feedback + result"
+    );
 }
 
 #[rstest]
