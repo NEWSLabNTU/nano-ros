@@ -112,6 +112,10 @@ def matches_filters(entry, args, *, for_probe=False):
         return False
     if args.id and entry.get("id") != args.id:
         return False
+    # Issue #29 — `--core-only` excludes the isolated-`target_dir` variant cells
+    # (the RMW/feature rebuilds that duplicate the dep graph + overrun disk).
+    if getattr(args, "core_only", False) and entry.get("target_dir"):
+        return False
     if for_probe and entry.get("skip_probe"):
         return False
     return True
@@ -307,6 +311,16 @@ def main():
     # build path (fixtures-build.sh) already knows the platform from its
     # CLI arg, so it does NOT pass this flag and keeps the 3-field record.
     p.add_argument("--with-platform", action="store_true")
+    # Issue #29 — `--core-only` restricts to the default-config fixtures: rows
+    # that do NOT declare an isolated `target_dir`. The RMW/feature variant
+    # cells (TLS, safety-e2e, zero-copy, zenoh, xrce, large-buf) each author an
+    # isolated `target_dir`, so each is a full standalone rebuild of the dep
+    # graph — the duplication that overruns the host-integration runner disk.
+    # Those variants are exercised by other lanes (platform-ci native cells,
+    # the RMW-specific lanes); the host-integration lane only needs the
+    # default-RMW per-example fixtures + the workspace fixtures, so it builds
+    # with `--core-only` and the variant-spawning tests `skip!` here.
+    p.add_argument("--core-only", action="store_true")
     a = p.parse_args()
 
     if a.command in ("list-workspaces", "validate-workspaces"):

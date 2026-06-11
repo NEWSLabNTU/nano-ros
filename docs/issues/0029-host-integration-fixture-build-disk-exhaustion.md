@@ -83,16 +83,40 @@ CycloneDDS into a **separate `build-cyclonedds/` tree per example**
 duplication of the dep graph, several GB each, that overruns the 146 GB overlay
 even without LTO.
 
-**Fix (2026-06) — reclaim the extras trees before the test compile.** A new step
-between the build and `test-integration` deletes the `build-cyclonedds/` trees
-(+ re-derivable cargo caches + the suppressed build logs). Those extras are
-best-effort — their C/C++/Cyclone tests `skip!` when the binary is absent (and
-extras was failing on ENOSPC anyway, so no usable binaries were produced) — so
-dropping the trees changes no test outcome while freeing tens of GB for
-test-integration. The rust per-example fixtures (`target-fixtures/`) + workspace
-fixtures the bulk of tests need are untouched.
+A reclaim-the-extras-trees attempt followed but only freed ~1.5 GB (the C/C++
+`build-cyclonedds/` trees were small; the run had already filled the overlay
+100% during `build-fixture-rust`). The reclaim `df` made the real culprit
+plain — **the rust fixture build itself, not the extras**: `build-fixture-rust`
+builds ~40 standalone per-example × RMW/feature variant rows, each its own
+`target_dir` with a full dep-graph rebuild (zenoh-pico-sys, cyclonedds-sys, all
+msg crates) → ~140 GB. That run also exposed a masking bug: 2 nros-tests
+binaries `rustc-LLVM ERROR: No space left on device` (failed to *compile*), yet
+the recipe printed "All failures were [SKIPPED] preconditions — treating as
+pass" and exited 0 — a false green.
 
-Confirmation is the host-integration lane greening to test-integration on a run
-that survives to completion (verified on the isolated `ci/host-int-verify`
-branch, immune to the main-branch push churn that cancels the long build step).
-Archive once it greens *consistently* (not the one-off coin-flip green above).
+**Fix (2026-06) — scope the build (Option 3) + stop masking compile failures.**
+
+1. **`--core-only` fixture scoping.** New manifest filter
+   (`fixtures-manifest.py --core-only`, threaded through `fixtures-build.sh
+   --core-only`) excludes rows that declare an isolated `target_dir` — i.e. the
+   RMW/feature variant cells (TLS, safety-e2e, zero-copy, zenoh, xrce,
+   large-buf). New recipe `just native build-fixture-rust-core` builds only the
+   default-config per-example fixtures (native rust rows: 40 → 22). The
+   host-integration lane uses it: its tests are the Phase 212.N/O workspace /
+   launch / codegen shapes, which need the default fixtures + workspace
+   fixtures; the variants are exercised by other lanes (platform-ci native
+   cells, the RMW lanes) and `skip!` here via `NROS_FIXTURES_OPTIONAL`. With the
+   build scoped the overlay has headroom, so the C/C++ Cyclone extras keep full
+   coverage (the reclaim step was removed — no longer needed).
+
+2. **Compile-failure no longer masked.** `test-integration` /
+   `_nextest-platform` now treat any `cargo nextest` exit ≠ 100 (or a missing
+   junit) as a real build/setup failure and hard-fail, instead of running the
+   [SKIPPED] tolerance. nextest exits 100 *only* when tests ran and some failed;
+   101 (compile/build error, ENOSPC) is a setup failure that must not green a
+   broken build. This is the guard that would have caught the false green above
+   — and that surfaces any future disk regression as a real red.
+
+Confirmation is the host-integration lane greening to test-integration on an
+isolated `ci/host-int-verify` run (immune to the main-branch push churn that
+cancels the long build step). Archive once green with the scoped build.

@@ -416,6 +416,18 @@ test-integration verbose="": build-zenohd
     set -e
     just _rewrite-skipped-junit || true
     [ $rc -eq 0 ] && exit 0
+    # Issue #29 — distinguish a real BUILD/setup failure from test-level
+    # [SKIPPED] preconditions. `cargo nextest` exits 100 ONLY when tests ran and
+    # some failed; any other non-zero (101 = compile/build error, ENOSPC, a
+    # missing junit) is a setup failure that the [SKIPPED] tolerance must NOT
+    # mask as a pass — otherwise a fixture/test that fails to *compile* produces
+    # zero junit testcases, `_count-real-failures` sees 0, and the lane greens
+    # over a broken build.
+    if [ "$rc" -ne 100 ] || [ ! -f target/nextest/default/junit.xml ]; then
+        echo "ERROR: nros-tests build/setup failed (nextest exit $rc) — not a [SKIPPED] precondition."
+        just _test-summary || true
+        exit 1
+    fi
     real="$(just _count-real-failures)"
     just _test-summary || true
     if [ "$real" -ne 0 ]; then
@@ -449,6 +461,13 @@ _nextest-platform test_name verbose="":
     # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying.
     just _rewrite-skipped-junit || true
     [ $rc -eq 0 ] && exit 0
+    # Issue #29 — a build/setup failure (nextest exit != 100, or no junit) must
+    # NOT be masked by the [SKIPPED] tolerance: a binary that fails to compile
+    # emits zero junit cases, which would otherwise tally as "0 real failures".
+    if [ "$rc" -ne 100 ] || [ ! -f target/nextest/default/junit.xml ]; then
+        echo "ERROR: nros-tests build/setup failed (nextest exit $rc) — not a [SKIPPED] precondition."
+        exit 1
+    fi
     real="$(just _count-real-failures)"
     just _test-summary || true
     if [ "$real" -ne 0 ]; then

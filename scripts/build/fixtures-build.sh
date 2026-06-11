@@ -21,7 +21,7 @@
 # runs manifest rows through a temporary makefile. No GNU parallel dependency.
 set -euo pipefail
 
-usage="usage: fixtures-build.sh <platform> [lang] [rmw] [--id <id>]"
+usage="usage: fixtures-build.sh <platform> [lang] [rmw] [--id <id>] [--core-only]"
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     echo "$usage"
     exit 0
@@ -32,6 +32,7 @@ shift
 lang="rust"
 rmw=""
 fixture_id=""
+core_only=""
 
 if [ $# -gt 0 ] && [ "$1" != "--id" ] && [[ "$1" != --id=* ]]; then
     lang="$1"
@@ -50,6 +51,13 @@ while [ $# -gt 0 ]; do
             ;;
         --id=*)
             fixture_id="${1#--id=}"
+            shift
+            ;;
+        --core-only)
+            # Issue #29 — restrict to default-config rows (no isolated
+            # target_dir); skips the RMW/feature variant rebuilds that
+            # duplicate the dep graph + overrun the host-integration disk.
+            core_only="1"
             shift
             ;;
         --*)
@@ -76,7 +84,7 @@ source scripts/build/cargo.sh
 manifest() {
     python3 scripts/build/fixtures-manifest.py list \
         --platform "$platform" --lang "$lang" ${rmw:+--rmw "$rmw"} \
-        ${fixture_id:+--id "$fixture_id"}
+        ${fixture_id:+--id "$fixture_id"} ${core_only:+--core-only}
 }
 
 run_with_make() {

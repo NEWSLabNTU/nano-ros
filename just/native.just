@@ -184,6 +184,33 @@ build-fixture-rust:
     bash scripts/build/fixtures-build.sh native rust
     echo "Native rust fixtures built (from examples/fixtures.toml)."
 
+# Issue #29 — like `build-fixture-rust` but `--core-only`: builds just the
+# default-config per-example fixtures (no isolated-`target_dir` RMW/feature
+# variants). The variant cells (TLS / safety / zero-copy / zenoh / xrce /
+# large-buf) each rebuild the full dep graph into their own target dir, and
+# that duplication overruns the host-integration runner disk. Those variants
+# are covered by other lanes; the host-integration lane uses this recipe and
+# lets the variant-spawning tests `skip!` (NROS_FIXTURES_OPTIONAL). The codegen
+# prep below covers the default example dirs (the core set).
+[group("examples")]
+build-fixture-rust-core:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    source scripts/build/codegen-stamp.sh
+    nros_cli="$(nros_cli_bin)"
+    nros_require_ws_sync "$nros_cli"
+    nros_repo_root="$PWD"
+    for ex in talker listener service-server service-client action-server \
+              action-client custom-transport-talker custom-transport-listener; do
+        dir="examples/native/rust/$ex"
+        NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
+        NROS_REPO_DIR="$nros_repo_root" "$nros_cli" ws sync "$dir" >/dev/null
+        NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
+    done
+    bash scripts/build/fixtures-build.sh native rust --core-only
+    echo "Native rust CORE fixtures built (default-config rows only)."
+
 # Internal Phase 178.B target: only fixture artifacts not already covered by
 # `build-fixture-role-examples`.
 [group("examples")]

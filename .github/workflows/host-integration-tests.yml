@@ -201,9 +201,17 @@ jobs:
       # the big overlay disk and surface only a tail (on failure / at the end).
       # `RUSTFLAGS=-C debuginfo=0` is kept as a cheap artifact/link-time trim
       # (tests spawn the binaries; no symbols needed) — not a disk fix.
-      # LTO-off + debuginfo=0 come from the job-level CI-build tuning env (#29):
-      # without them the fat-LTO `lto1` transients across the duplicated
-      # per-fixture target dirs exhaust the overlay disk mid-build.
+      # Issue #29 — scope the rust fixture build (`build-fixture-rust-core`, not
+      # `build-fixture-rust`). The full set rebuilds ~40 standalone per-example ×
+      # RMW/feature variants (each its own target dir, full dep graph) → ~140 GB,
+      # overrunning even the 146 GB overlay. The variant cells (TLS / safety /
+      # zero-copy / zenoh / xrce / large-buf) belong to other lanes (platform-ci
+      # native cells, the RMW lanes); this lane's tests are the Phase 212.N/O
+      # workspace / launch / codegen shapes, which need only the default-config
+      # per-example fixtures + the workspace fixtures. The variant-spawning tests
+      # `skip!` here (NROS_FIXTURES_OPTIONAL). LTO-off + debuginfo=0 come from the
+      # job-level CI-build env. With the build scoped, the overlay has headroom,
+      # so the C/C++ Cyclone extras keep full coverage (no reclaim needed).
       - name: Build native fixtures + XRCE agent (best-effort)
         run: |
           source /opt/ros/humble/setup.bash
@@ -218,28 +226,10 @@ jobs:
               echo "$name partial — affected tests [SKIPPED]"
             fi
           }
-          build_quiet build-fixture-rust       just native build-fixture-rust
+          build_quiet build-fixture-rust-core  just native build-fixture-rust-core
           build_quiet build-workspace-fixtures just native build-workspace-fixtures
           build_quiet build-fixture-extras     just native build-fixture-extras
-
-      # Issue #29 — the C/C++ CycloneDDS extras build is the dominant disk
-      # consumer: it rebuilds nros-cpp + Cyclone into a SEPARATE
-      # `build-cyclonedds/` tree PER example (native/c/{talker,listener},
-      # native/cpp/{talker,listener}, …), and even with LTO off that
-      # duplication overruns the 146 GB overlay mid-build — leaving no room for
-      # test-integration's own compile (the failure was non-deterministic: the
-      # lane sat right at the disk limit). Those extras are best-effort: their
-      # C/C++/Cyclone tests `skip!` when the binary is absent. So drop the extras
-      # build trees (+ re-derivable cargo caches + the suppressed build logs)
-      # here to give test-integration headroom. The rust per-example fixtures
-      # (`target-fixtures/`) and workspace fixtures the bulk of tests need are
-      # NOT touched.
-      - name: Reclaim extras build trees before test (best-effort fixtures)
-        run: |
-          echo "before:"; df -h / | tail -1
-          find examples -type d -name 'build-cyclonedds' -prune -exec rm -rf {} + 2>/dev/null || true
-          rm -rf "$HOME/.cargo/registry/src" "$HOME/.cargo/git/checkouts" build/ci-logs 2>/dev/null || true
-          echo "after:";  df -h / | tail -1
+          df -h / | tail -1   # disk headroom after the scoped build (#29)
 
       - name: just test-integration
         # Source the AMENT prefix so `nros generate-rust` (used by some
