@@ -67,8 +67,9 @@ len)`. The borrowed view is a typed accessor over that same buffer.
 
 ### Increment 1 — C borrowed (unblocked)
 
-**Status (2026-06-11).** 235.1–235.3 done; 235.4 golden tests done, runtime
-C-compile E2E pending. Codegen tests green (82 lib tests).
+**Status (2026-06-11).** Done. 235.1–235.3 codegen; 235.4 golden tests + a runtime
+E2E (`tests/borrowed_c_e2e.sh`: serialize owned → `deserialize_borrowed` → assert
+string/byte/LE-f32 views alias the CDR buffer) — passes. 86 lib tests green.
 
 #### 235.1 — C borrowed field mapping  ✅
 Add `c_borrowed_view_for_field` (parallel to `nros_borrowed_view_for_field`) and
@@ -96,7 +97,7 @@ that walks CDR, bounds-checks against `end`, and **sets pointers into `buf`** fo
 borrowed fields (copies owned fields with today's logic). No `malloc`, no `_fini`.
 - **Files:** `templates/message_c.h.jinja`, `templates/message_c.c.jinja`.
 
-#### 235.4 — C tests + example  🟡 (golden ✅; runtime C-compile E2E ⬜)
+#### 235.4 — C tests + example  ✅
 Golden codegen tests (byte-seq, string, numeric-seq borrow; seq-of-string → error)
 in `generator/mod.rs`; an E2E that owned-publishes → borrowed-subscribes in C and
 asserts the view pointers alias the callback buffer (no copy, no alloc).

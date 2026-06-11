@@ -504,6 +504,36 @@ mod tests {
         assert_eq!(pkg.source_name, "test_msgs_msg_point.c");
     }
 
+    /// Emit the generated borrowed C header+source to `tmp/borrowed_e2e/` for
+    /// the host compile-and-run E2E (235.4). `#[ignore]` — run explicitly:
+    ///   cargo test -p rosidl-codegen emit_c_borrowed_e2e -- --ignored
+    #[test]
+    #[ignore = "emits files for the host C E2E driver"]
+    fn emit_c_borrowed_e2e() {
+        let msg =
+            parse_message("uint32 width\nstring label\nuint8[] data\nfloat32[] ranges\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "e2e_msgs/Borrowed.label"  = { cap = 64,  mode = "borrowed" }
+            "e2e_msgs/Borrowed.data"   = { cap = 256, mode = "borrowed" }
+            "e2e_msgs/Borrowed.ranges" = { cap = 256, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let pkg =
+            generate_c_message_package("e2e_msgs", "Borrowed", &msg, "h", &resolver).unwrap();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap()
+            .join("tmp/borrowed_e2e");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(&pkg.header_name), &pkg.header).unwrap();
+        std::fs::write(dir.join(&pkg.source_name), &pkg.source).unwrap();
+        eprintln!("emitted {} + {} to {}", pkg.header_name, pkg.source_name, dir.display());
+    }
+
     #[test]
     fn test_c_borrowed_view_generation() {
         // RFC-0033 `borrowed` (Phase 235): a `mode = "borrowed"` field emits a
