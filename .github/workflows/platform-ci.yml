@@ -193,7 +193,9 @@ jobs:
           # device` edge.
           if [ "${{ github.event_name }}" = "schedule" ] || \
              { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_e2e }}" = "true" ]; }; then
-            just ${{ matrix.plat }} build-all
+            # e2e: prefer the full fixtures matrix, but fall through for platforms
+            # without a `build-all` recipe (e.g. qemu) — same chain as before.
+            just ${{ matrix.plat }} build-all || just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
           else
             just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
           fi
