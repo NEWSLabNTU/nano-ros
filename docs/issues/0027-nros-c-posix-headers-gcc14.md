@@ -1,11 +1,41 @@
 ---
 id: 27
 title: nros-c posix platform headers fail to compile under gcc 14 (riscv NuttX C build)
-status: resolved
+status: open  # reopened 2026-06-11 — qualifier fix incomplete; symptom #1 unfixed
 type: bug
 area: c-api
 related: [phase-194]
-resolved_in: acab1f81b
+---
+
+> **REOPENED 2026-06-11.** The first pass (`9fcac7d79`) reconciled the
+> `volatile`/`const` qualifiers but did not fully resolve either symptom:
+>
+> - **#2 (atomics) — real defect was cbindgen emission; fixed here.** Matching
+>   the qualifiers turned "conflicting types" into "**static declaration follows
+>   non-static**": `nros_generated.h` (cbindgen) still emitted `extern` decls for
+>   the four platform-provided `nros_platform_{time_ns,sleep_ns,atomic_store_bool,
+>   atomic_load_bool}`, colliding with the `static inline` defs in
+>   `platform/{posix,…}.h` under gcc 14. Root cause: `[parse] clean` does not
+>   strip the **edition-2024 `unsafe extern "C"`** import block in `platform.rs`,
+>   and the `// cbindgen:ignore` sits above the `#[cfg]` so it no-ops. Fixed by
+>   adding the four names to `cbindgen.toml [export] exclude` (`platform.h` is
+>   their canonical, gated declaration site). The message lib now compiles past
+>   the atomics.
+>
+> - **#1 (clock_gettime / nanosleep / CLOCK_MONOTONIC) — still open, root-caused.**
+>   Not a feature-macro problem: `riscv-none-elf-gcc 14`'s newlib gates the entire
+>   POSIX-options block (`_POSIX_TIMERS`, `_POSIX_MONOTONIC_CLOCK`, …) behind
+>   `#ifdef __rtems__` (`…/riscv-none-elf/include/sys/features.h:349`). NuttX is
+>   not RTEMS, so bare newlib never declares these regardless of
+>   `_POSIX_C_SOURCE`/`_GNU_SOURCE` (`-D_POSIX_C_SOURCE=200809L` tried → no effect,
+>   reverted). The decls exist unconditionally in NuttX's own headers
+>   (`third-party/nuttx/.../include/time.h`). **Fix:** the NuttX C message-lib
+>   compile (`nros_generate_interfaces`) must use the NuttX sysroot includes
+>   (`-isystem $NUTTX_DIR/include`) so `posix.h`'s `<time.h>` resolves to NuttX's,
+>   not the cross toolchain's bare newlib. The FFI app compile (cc-rs in
+>   `run_nuttx`) already adds NuttX includes; the cmake-built message libs do not.
+>   The arm path only escaped because its older system newlib lacks the
+>   `__rtems__` gate. (Was prematurely `resolved_in: acab1f81b`.)
 ---
 
 gcc 14 (riscv NuttX, `riscv-none-elf-gcc 14.2.0`) rejected the nros-c C build that

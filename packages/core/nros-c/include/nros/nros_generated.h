@@ -2921,26 +2921,6 @@ nros_ret_t nros_executor_set_param_string(struct nros_executor_t *executor,
 NROS_PUBLIC bool nros_executor_has_param(struct nros_executor_t *executor, const char *name);
 
 /**
- * Get current monotonic time in nanoseconds.
- */
-extern uint64_t nros_platform_time_ns(void);
-
-/**
- * Sleep for the specified duration in nanoseconds.
- */
-extern void nros_platform_sleep_ns(uint64_t ns);
-
-/**
- * Atomically store a boolean value with release semantics.
- */
-extern void nros_platform_atomic_store_bool(bool *ptr, bool value);
-
-/**
- * Atomically load a boolean value with acquire semantics.
- */
-extern bool nros_platform_atomic_load_bool(const bool *ptr);
-
-/**
  * Phase 115.C — register a custom transport vtable.
  *
  * Must be called BEFORE `nros_support_init`. Subsequent calls
