@@ -1,10 +1,22 @@
 ---
 id: 24
 title: esp32 .bss overflows DRAM — Phase 231 size-class receive buffers too large
-status: open  # fix applied, pending CI confirmation
+status: resolved
 type: bug
 area: build
 related: [phase-231, rfc-0038, phase-230]
+resolved_in: 533230d85  # stm32f4 half; esp32 half via the fixtures.toml env
+---
+
+> **RESOLVED 2026-06-11 (CI-confirmed).** Both halves green:
+> - **esp32** — the `ZPICO_SUBSCRIBER_LARGE_SIZE=4096` row env shrank the large
+>   block 128→32 KiB; the platform-ci **esp32 cell passes** (run 27324485981,
+>   `esp32 ✓ 4m32s`). (That run's overall red was an unrelated `qemu` cell.)
+> - **stm32f4** — `.cargo/config.toml [env]` override; `stm32f4-bsp-talker` +
+>   `stm32f4-rtic-service-server` link clean (validated locally, `533230d85`).
+>
+> The "per-RAM-budget size-class profile" idea below remains a worthwhile RFC-0038
+> follow-up but is not needed to close this bug.
 ---
 
 The `esp32` cell of `platform-ci` fails to **link** the per-platform Entry

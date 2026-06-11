@@ -108,3 +108,12 @@ play_launch_parser best-effort (its workspace-entry fixtures `skip!` under
 `NROS_FIXTURES_OPTIONAL`). **Verified:** the "Provision QEMU + XRCE agent +
 play_launch_parser" step is green in CI (run 27324486004); full lane
 confirmation pending a run that survives the main-branch push churn.
+
+**Status 2026-06-11 — STILL OPEN.** Re-checked CI: the host-integration lane is
+still red on main. The latest completed run (`27324014711`) gets further —
+workspace sources + zenohd provision ✓ — but **fails at the "Provision QEMU +
+XRCE agent + play_launch_parser (nros setup --tool)" step**. So the staging +
+`[SKIPPED]`-tolerance fixes are in, but the all-prereqs-via-`nros setup` step
+isn't green yet. An on-demand verify run (`ci/host-int-verify`, `27326941199`)
+is in flight. Keep open until a host integration-tests run completes green
+(rapid main pushes keep cancelling runs).
