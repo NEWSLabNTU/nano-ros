@@ -315,8 +315,18 @@ constructs **no** live publishers/subscriptions, on native or embedded.
 
 **Open (decide during Phase 236 impl):**
 
-- **Board granularity** — one `ZephyrBoard` parameterized by `board.cmake`, or
-  per-board adapters (`FvpAemv8rBoard`)? Leaning single + metadata-driven.
+- **Callback bodies (HARD blocker — `→` Phase 236.D).** The 236.A/B runtime
+  constructs entities and *synthesizes* a `std_msgs/Int32` counter for a
+  timer-`Publishes` binding; it runs **no real user callback bodies**. The
+  talker/listener demo passes on the counter, but a real consumer (ASI's MPC/PID
+  `Controller`) cannot be driven — the register sequence creates entities but
+  instantiates no component object and wires no actual C++ callback. The
+  declarative register API must grow a seam that instantiates the user's
+  component and binds its real callbacks. Surfaced 2026-06-11 by the ASI
+  reference consumer; blocks ASI phase-2.C. Board granularity resolved:
+- **Board granularity** — RESOLVED (236.B): one `ZephyrBoard` parameterized by
+  `board.cmake`, not per-board adapters — everything board-specific comes from
+  the Phase 215 import + Kconfig at build time.
 - **Entity handle storage** — ASI uses `std::shared_ptr<Publisher<M>>`; the
   `no_std` C++ Entry runtime needs an `alloc`-free equivalent (executor-owned
   arena, sized via the Phase 118.B opaque-size probe).

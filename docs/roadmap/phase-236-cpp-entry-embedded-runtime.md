@@ -227,6 +227,44 @@ What WAS verified:
 
 **Files.** (external) `autoware-safety-island/actuation_module/`.
 
+### 236.D — Real callback-body binding + monolithic-app composition (gates 236.C)
+
+Discovered 2026-06-11 by the ASI reference consumer (ASI phase-2.C): the
+236.A/B runtime constructs entities and, for a timer-`Publishes` binding,
+*synthesizes* a `std_msgs/Int32` counter — it runs **no real user
+callback bodies**. The talker/listener demo passed on the synthesized
+counter; ASI's vendored MPC/PID `Controller` (real C++ sub/timer
+callbacks publishing `AckermannControlCommand`) cannot be driven. So the
+generated register sequence boots a node that creates entities but runs
+no control logic. This is RFC-0032 §8a's "callback bodies" open item,
+now a hard blocker.
+
+- [ ] **236.D.1** Real callback-body binding — the declarative register
+      sequence must instantiate the user's component object and wire its
+      actual C++ subscription/timer callbacks into `EntryNodeRuntime`,
+      not synthesize a counter. ASI's `common/node` shim
+      (`SubscriptionHandler<T>` poll + the vendored `Controller` ctor) is
+      the blueprint. Decide the binding seam (component-object lifetime
+      owned by the NodeContext? the register fn returns a driver?).
+- [ ] **236.D.2** Monolithic-app composition — `nano_ros_entry` today
+      `add_executable`s + links per-Node `<pkg>_<exec>_component` static
+      libs. A Zephyr consumer that links everything into the
+      `find_package(Zephyr)`-owned `app` target (ASI) needs: (a) the
+      `nano_ros_entry(NAME app …)` append-to-existing-target path proven
+      in a real Zephyr build, and (b) the link-libs sidecar to tolerate a
+      Node pkg compiled as `APP_SOURCES` rather than its own
+      `nano_ros_node_register` `project()`.
+- [ ] **236.D.3** A non-trivial (non-counter) C++ Entry E2E — a node with
+      a real subscription→publish callback, proving 236.D.1 before ASI
+      consumes it.
+
+**Files.** `packages/core/nros-cpp/include/nros/`, `cmake/NanoRosEntry.cmake`,
+`packages/cli/nros-cli-core/src/codegen/entry/`, a fixture under
+`packages/testing/nros-tests/`.
+
+> **236.C is blocked on 236.D.** ASI cannot delete its imperative
+> `main.cpp` until the declarative path runs the real controller.
+
 ## Acceptance
 
 - [ ] A C++ Entry pkg with ≥2 nodes boots on native with **live**
