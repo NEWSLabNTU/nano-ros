@@ -881,12 +881,21 @@ fn path_newer_than(path: &Path, cutoff: std::time::SystemTime) -> bool {
     let Ok(meta) = path.metadata() else {
         return false;
     };
-    if meta.modified().is_ok_and(|mtime| mtime > cutoff) {
-        return true;
-    }
     if !meta.is_dir() {
-        return false;
+        // Files: a newer mtime is a real content change.
+        return meta.modified().is_ok_and(|mtime| mtime > cutoff);
     }
+    // Directories: do NOT trust the directory's OWN mtime — it bumps on any
+    // transient entry add/remove (e.g. a codegen step writing then deleting a
+    // temp file inside a watched `include/` dir), which is not a source change
+    // and would falsely mark EVERY fixture stale right after a clean rebuild.
+    // (Observed: `_test-c-codegen` churns `packages/core/nros-{c,cpp}/include/
+    // nros/`, bumping the dir mtime while every header inside stays unchanged
+    // — git-clean — yet the old `meta.modified() > cutoff` early-return tripped
+    // here and reported all zephyr fixtures stale.) Recurse into entries
+    // instead; only real file mtimes count. Pure deletions are not detected by
+    // mtime anyway — the build-side content `.nros-zephyr-fixture.sig` is the
+    // safety net for those.
     let Ok(entries) = std::fs::read_dir(path) else {
         return false;
     };

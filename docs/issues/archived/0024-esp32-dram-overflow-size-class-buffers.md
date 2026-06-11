@@ -86,3 +86,24 @@ issue stays open until the platform-ci esp32 cell goes green; the stm32f4 half
 is done. Reinforces the "per-RAM-budget size-class profile" direction: small-RAM
 targets (esp32, stm32f4, …) all need a shrunk large block, so a profile keyed on
 the board's RAM budget would be more robust than per-row overrides.
+
+**Follow-up (2026-06-11, local test-all run) — the standalone bare-metal esp32
+example was missed.** The note above ("the standalone `examples/esp32/rust/*`
+are `staticlib`/`rlib`, no link") conflated the esp-idf `examples/esp32/rust/*`
+(staticlib) with `examples/qemu-esp32-baremetal/rust/{talker,listener}` — which
+ARE riscv32imc bare-metal **binaries** (`esp32-qemu-talker`/`-listener`,
+exercised by the `esp32_emulator` test suite). They use the default
+`SUBSCRIBER_LARGE_SIZE = 16384` → same 128 KiB block → `.bss overflowed by
+53964 bytes`:
+
+```
+rust-lld: error: section '.bss' will not fit in region 'DRAM': overflowed by 53964 bytes
+```
+
+Fixed identically: added `ZPICO_SUBSCRIBER_LARGE_SIZE = "4096"` to each
+`examples/qemu-esp32-baremetal/rust/{talker,listener}/.cargo/config.toml`
+`[env]` (cargo-native → applies to standalone + fixture builds). **Validated
+locally**: both `release` and `nros-fast-release` (the `esp32_emulator` test's
+profile) link clean for `riscv32imc-unknown-none-elf`. This is the local
+confirmation the archived note wanted — the size-class shrink works on real esp32
+hardware-layout binaries, not just the workspace fixture.
