@@ -9,7 +9,18 @@ CMake call shape are ROS's, so the same `src/` tree builds under both
 `colcon build` (rosidl's bindings) and a nano-ros build (ours). Subsumes the
 Phase 209.E bulk-codegen item.
 
-**Status.** MVP + Rust workspace flow DONE (2026-05-31). Mixed-workspace
+**Status.** DONE — archived 2026-06-11. All work items A–F and every acceptance
+criterion are complete: the MVP surface (`rosidl_generate_interfaces` + smart
+Find-stub + `nros_workspace_interfaces()`), the Rust `nros ws sync` flow, the
+full in-tree example migration (native/embedded/zephyr cpp + 21 native rust),
+the book pages, the colcon-parity CI gate, the `nros ws {doctor,list,status,
+clean}` siblings, and the shadowing fixture all landed. (C.1/C.2 are OBSOLETE —
+superseded by `nros ws sync` + `nros_workspace_interfaces()`.) The nuttx /
+threadx-riscv embedded-cpp build failures noted under 210.E.3.b are
+pre-existing + unrelated (reproduce on unmigrated CMakeLists), tracked
+separately — not 210 work.
+
+Original status line (kept for history): MVP + Rust workspace flow DONE (2026-05-31). Mixed-workspace
 cmake + Rust path proved end-to-end. Remaining work: book refresh +
 in-tree migration + ws doctor siblings + shadowing fixture.
 
