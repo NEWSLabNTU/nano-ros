@@ -237,12 +237,15 @@ jobs:
             || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; echo "workspace partial — [SKIPPED]"; }
           echo "after workspace ($(wc -l < build/ci-logs/workspace.log) lines suppressed):"; df -h / | tail -1
 
-      - name: Build C/C++ extras fixtures (best-effort)
-        run: |
-          source /opt/ros/humble/setup.bash
-          just native build-fixture-extras > build/ci-logs/extras.log 2>&1 \
-            || { echo "::group::extras FAILED tail"; tail -120 build/ci-logs/extras.log; echo "::endgroup::"; echo "extras partial — [SKIPPED]"; }
-          echo "after extras ($(wc -l < build/ci-logs/extras.log) lines suppressed):"; df -h / | tail -1
+      # Issue #29 — `build-fixture-extras` (C/C++ + CycloneDDS, rebuilt PER C/C++
+      # example) is NOT run in this lane: the disk-progression `df` showed it
+      # adds ~52 GB (64% → 100% of the 146 GB disk), starving test-integration's
+      # own compile → ENOSPC. It is also not this lane's purpose (Phase 212.N/O
+      # workspace/launch/codegen) and was already failing to build on the
+      # issue-0027 nros-c posix clash, so its C/C++/Cyclone tests `skip!` here via
+      # NROS_FIXTURES_OPTIONAL regardless. C/C++ coverage lives in its own lanes +
+      # platform-ci native cells. Dropping it leaves peak disk at ~93 GB (64%),
+      # giving test-integration ~53 GB of headroom.
 
       - name: just test-integration
         # Source the AMENT prefix so `nros generate-rust` (used by some

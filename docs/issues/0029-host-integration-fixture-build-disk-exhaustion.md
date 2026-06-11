@@ -105,9 +105,30 @@ pass" and exited 0 — a false green.
    host-integration lane uses it: its tests are the Phase 212.N/O workspace /
    launch / codegen shapes, which need the default fixtures + workspace
    fixtures; the variants are exercised by other lanes (platform-ci native
-   cells, the RMW lanes) and `skip!` here via `NROS_FIXTURES_OPTIONAL`. With the
-   build scoped the overlay has headroom, so the C/C++ Cyclone extras keep full
-   coverage (the reclaim step was removed — no longer needed).
+   cells, the RMW lanes) and `skip!` here via `NROS_FIXTURES_OPTIONAL`.
+
+   **It is also a single ~146 GB disk** (the runner `_diag` log + the container
+   overlay share it — earlier "two filesystems" framing was wrong), and a build
+   that fills `/__w` kills the runner agent mid-step, *discarding that step's
+   whole log*. So the three sub-builds were split into separate workflow steps,
+   each with a `df` checkpoint that survives a later step's crash. That exposed
+   the precise breakdown (run 27379181858):
+
+   | stage | disk used | Δ |
+   |---|---|---|
+   | base (image + CLI + sources + provision) | 64 GB | — |
+   | + rust-core (22 rows) | 81 GB | **+17 GB** ✓ |
+   | + workspace fixtures | 93 GB | +12 GB ✓ |
+   | + C/C++ extras | **145 GB (100%)** | **+52 GB** ✗ |
+
+   So `--core-only` fixed the rust side (+17 GB), but **`build-fixture-extras`
+   (C/C++ + CycloneDDS, rebuilt per C/C++ example) is the real ~52 GB hog** — it
+   filled the disk to 100%, leaving test-integration 269 MB → ENOSPC. The lane
+   therefore **does not run `build-fixture-extras`**: it is not this lane's
+   purpose, was already failing to build on the issue-0027 nros-c posix clash,
+   and its C/C++/Cyclone tests `skip!` here regardless. C/C++ coverage lives in
+   its own lanes + platform-ci native cells. Peak now ~93 GB (64%), leaving
+   ~53 GB for test-integration's compile.
 
 2. **Compile-failure no longer masked.** `test-integration` /
    `_nextest-platform` now treat any `cargo nextest` exit ≠ 100 (or a missing
