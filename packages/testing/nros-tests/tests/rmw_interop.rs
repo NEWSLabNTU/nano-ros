@@ -442,6 +442,83 @@ fn test_qos_compatibility(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
 // ROS 2 Action Interop Tests
 // =============================================================================
 
+/// Phase 237 follow-up — TWO concurrent ROS 2 (rmw_zenoh) action clients against
+/// one nano-ros Zenoh action server (concurrent mode). Both send_goal (and early
+/// get_result) requests arrive essentially simultaneously: the service-server
+/// request ring buffers both arrivals and the reply-token table holds both
+/// deferred replies, so each client gets its own SUCCEEDED result.
+#[rstest]
+fn test_action_concurrent_nano_server_ros2_clients(
+    zenohd_unique: ZenohRouter,
+    action_server_binary: PathBuf,
+) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 not found");
+    }
+
+    let locator = zenohd_unique.locator();
+
+    let mut server_cmd = Command::new(&action_server_binary);
+    server_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &locator)
+        // Concurrent mode: accept + advance several goals at once, draining
+        // get_result every spin so two early get_results are held together.
+        .env("NROS_ACTION_CONCURRENT", "1");
+    let mut server =
+        ManagedProcess::spawn_command(server_cmd, "native-rs-action-server-concurrent")
+            .expect("Failed to start action server");
+    let _ = server.wait_for_output_pattern("Waiting for action", Duration::from_secs(10));
+    if !server.is_running() {
+        panic!("native-rs-action-server exited early before the action-ready pattern");
+    }
+
+    // Long goals (order 20 ≈ 2 s) so both overlap; fired simultaneously — the
+    // request ring (237 follow-up) buffers both send_goal arrivals.
+    let spawn = || {
+        Ros2Process::action_send_goal(
+            "/fibonacci",
+            "example_interfaces/action/Fibonacci",
+            "{order: 20}",
+            &locator,
+            DEFAULT_ROS_DISTRO,
+        )
+    };
+    let mut c1 = match spawn() {
+        Ok(p) => p,
+        Err(e) => {
+            server.kill();
+            nros_tests::skip!("ROS 2 action client could not start: {e}");
+        }
+    };
+    let mut c2 = match spawn() {
+        Ok(p) => p,
+        Err(e) => {
+            server.kill();
+            nros_tests::skip!("ROS 2 action client 2 could not start: {e}");
+        }
+    };
+    let out1 = c1
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+    let out2 = c2
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+    server.kill();
+
+    eprintln!("client 1:\n{out1}\nclient 2:\n{out2}");
+    let ok1 = out1.contains("SUCCEEDED");
+    let ok2 = out2.contains("SUCCEEDED");
+    assert!(
+        ok1 && ok2,
+        "concurrent rmw_zenoh action: both clients must get their own SUCCEEDED \
+         (237 request ring + reply-token table): client1={ok1} client2={ok2}"
+    );
+    eprintln!("[PASS] two concurrent rmw_zenoh action clients ↔ nano-ros Zenoh server");
+}
+
 #[rstest]
 fn test_action_nano_server_ros2_client(zenohd_unique: ZenohRouter, action_server_binary: PathBuf) {
     use nros_tests::count_pattern;

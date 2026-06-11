@@ -156,13 +156,16 @@ robust fix would thread the C handle into the service buffer — tracked separat
   nano-ros Zenoh action server gets accept + feedback + `SUCCEEDED`, validating
   the Zenoh seq-keyed reply table over the real ROS 2 Zenoh transport (stable 3/3).
 
-**Remaining (separate, pre-existing — not get_result-specific):**
-- Multi-entry service *request* inbox for XRCE/Zenoh (concurrent send_goal /
-  get_result *arrivals* in the same drain window still drop the later one — the
-  237.3 "optional hardening"). The reply-token tables handle concurrent *replies*;
-  concurrent simultaneous *requests* are bounded by the single inbox. Out of
-  Phase 237 scope (it's a request-path robustness item, tracked here for the
-  record).
+**Done (request-inbox hardening):** the service-server *request* inbox is now a
+depth-N SPSC ring on both backends (XRCE `req_ring` in `service.c`; Zenoh
+`ServiceRequestSlot` ring keyed by head/tail in `shim/service.rs`), so concurrent
+send_goal / get_result *arrivals* in the same drain window are buffered in order
+instead of the later one clobbering the earlier (default depth 4, overridable).
+Pairs with the reply-token tables (concurrent *replies*). Both concurrent action
+e2e tests now fire their two clients **simultaneously** (no stagger):
+`test_xrce_action_ros2_concurrent` (rmw_fastrtps/XRCE) and
+`test_action_concurrent_nano_server_ros2_clients` (rmw_zenoh/Zenoh) — each client
+gets its own `SUCCEEDED`, stable across repeats.
 
 ## Sizing / bounds
 
