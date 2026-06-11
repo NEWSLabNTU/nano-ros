@@ -1334,7 +1334,13 @@ where
             entry.hdr.pending = false;
             let mut reader = CdrReader::new_with_header(&entry.hdr.reply_buffer[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
-            let reply = Svc::Reply::deserialize(&mut reader)
+            // Fully-qualify the `Deserialize` trait (mirrors the
+            // `DeserializeBorrowed` call above): arena.rs imports
+            // `DeserializeBorrowed` but not `Deserialize`, so the bare
+            // `Svc::Reply::deserialize` only resolved when a default/std feature
+            // happened to glob it into scope — under `rmw-cffi` (embedded) it
+            // failed E0599. The fully-qualified path resolves under every feature.
+            let reply = <Svc::Reply as nros_serdes::Deserialize>::deserialize(&mut reader)
                 .map_err(|_| TransportError::DeserializationError)?;
             (entry.callback)(&reply);
             Ok(true)
