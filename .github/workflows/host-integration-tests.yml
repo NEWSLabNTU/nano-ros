@@ -176,50 +176,60 @@ jobs:
       # best-effort: with `NROS_FIXTURES_OPTIONAL=1` on the test step, any
       # fixture that did not build makes its test `skip!` ([SKIPPED]-tolerated)
       # instead of failing — while `test-all` (var unset) still hard-fails.
-      # Issue #29 — the full native fixture build (rust per-example × RMW
-      # variants + C/C++/Cyclone CMake cells + workspace entries) exhausts the
-      # runner disk (ENOSPC crashed the runner agent mid-build). Reclaim the
-      # only space reachable from inside the job container: the GitHub tool
-      # cache (~8 GB, mounted at /opt/hostedtoolcache + /__t but unused — the
-      # rust/nightly toolchains are baked into the image at /usr/local). The
-      # host dotnet/android dirs the usual free-disk actions target are NOT in
-      # this container's fs namespace, so they cannot help here. The job runs as
-      # root in the ROS image, so no `sudo`.
-      - name: Free disk space (in-container reclaim)
-        run: |
-          echo "before:"; df -h / | tail -1
-          rm -rf /opt/hostedtoolcache /__t/* 2>/dev/null || true
-          apt-get clean 2>/dev/null || true
-          echo "after:";  df -h / | tail -1
-
+      # Issue #29 — the ENOSPC that crashed the runner agent mid-build is NOT
+      # the container disk (the overlay `/` has ~88 GB free). It is the runner
+      # *host's* small OS disk: GitHub streams every step's stdout/stderr to the
+      # agent log under `/home/runner/actions-runner/.../_diag`, and the ~100-min
+      # verbose cargo+cmake fixture/test build emits GIGABYTES of `Compiling …`
+      # lines that overflow that host log volume. The fix is to keep the noisy
+      # build/test output OFF the streamed agent log: redirect it to a file on
+      # the big overlay disk and surface only a tail (on failure / at the end).
+      # `RUSTFLAGS=-C debuginfo=0` is kept as a cheap artifact/link-time trim
+      # (tests spawn the binaries; no symbols needed) — not a disk fix.
       - name: Build native fixtures + XRCE agent (best-effort)
-        # Issue #29 — `debuginfo=0` strips the dominant disk consumer (debug
-        # symbols in each fixture's target dir) so the full rust + C/C++/Cyclone
-        # + workspace build fits the runner disk. Integration tests spawn the
-        # binaries; they need no symbols. Keeps full coverage (the chosen
-        # reclaim-and-keep-full-build path) rather than dropping fixtures.
         env:
           RUSTFLAGS: "-C debuginfo=0"
         run: |
           source /opt/ros/humble/setup.bash
-          just native build-fixture-rust       || echo "rust fixtures partial — affected tests [SKIPPED]"
-          just native build-workspace-fixtures || echo "workspace fixtures unavailable — affected tests [SKIPPED]"
-          just native build-fixture-extras     || echo "C/C++ extras unavailable (issue #27) — affected tests [SKIPPED]"
+          mkdir -p build/ci-logs
+          build_quiet() {
+            local name="$1"; shift
+            local log="build/ci-logs/$name.log"
+            if "$@" > "$log" 2>&1; then
+              echo "$name: ok ($(wc -l < "$log") lines, suppressed)"
+            else
+              echo "::group::$name FAILED — tail"; tail -120 "$log"; echo "::endgroup::"
+              echo "$name partial — affected tests [SKIPPED]"
+            fi
+          }
+          build_quiet build-fixture-rust       just native build-fixture-rust
+          build_quiet build-workspace-fixtures just native build-workspace-fixtures
+          build_quiet build-fixture-extras     just native build-fixture-extras
 
       - name: just test-integration
         # Source the AMENT prefix so `nros generate-rust` (used by some
         # Phase 212 fixtures' build.rs steps) finds the ROS 2 Humble
         # rosidl pipeline. Same as platform-ci's e2e step. NROS_FIXTURES_OPTIONAL
         # makes an unstaged fixture a [SKIPPED], not a failure (light tier).
-        # Issue #29 — strip debuginfo here too: `cargo nextest` compiles the
-        # nros-tests crate + all its integration test binaries, which piled
-        # debug symbols onto the (already large) fixture target dirs and re-hit
-        # ENOSPC even after the fixture build itself fit. Tests assert on
-        # values, not symbolised backtraces, so dropping debuginfo is safe.
+        # Issue #29 — `cargo nextest` compiles the nros-tests crate + all its
+        # integration test binaries, emitting thousands more `Compiling …` lines.
+        # Redirect that to a file on the overlay disk (not the host agent log)
+        # and tail it, so the verbose compile can't overflow the runner's small
+        # host log volume. The recipe's own per-test summary + the real-failure
+        # verdict print near the end, so a tail still surfaces them; the recipe
+        # exit code (preserved via PIPESTATUS) still gates the step.
         env:
           NROS_FIXTURES_OPTIONAL: "1"
           RUSTFLAGS: "-C debuginfo=0"
-        run: source /opt/ros/humble/setup.bash && just test-integration
+        run: |
+          source /opt/ros/humble/setup.bash
+          mkdir -p build/ci-logs
+          set +e
+          just test-integration > build/ci-logs/test-integration.log 2>&1
+          rc=$?
+          set -e
+          echo "::group::test-integration output (tail)"; tail -200 build/ci-logs/test-integration.log; echo "::endgroup::"
+          exit $rc
 
       # Phase 214.R.1 — surface the per-fixture skip/fail tally even on
       # success runs so the CI log shows which gated fixtures (Zephyr

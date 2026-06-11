@@ -27,31 +27,35 @@ ENOSPC.
 **Cause.** `just native build-fixtures` = `build-fixture-rust`
 (8 example crates × multiple RMW variants + TLS / bench / large-buf rows from
 `examples/fixtures.toml`) + `build-fixture-extras` (C/C++ + CycloneDDS via
-CMake/Corrosion) + `build-workspace-fixtures`. Each carries its own target dir
-full of debug symbols. Cumulatively this overruns the GitHub-hosted runner's
-~14 GB OS disk.
+CMake/Corrosion) + `build-workspace-fixtures`, plus `test-integration`'s own
+`cargo nextest` compile of the nros-tests crate + every integration test binary.
 
-**Constraint.** The job runs *inside a container* (`ghcr.io/newslabntu/nano-ros-ci`).
-The usual "free disk space" actions delete host paths (`/usr/share/dotnet`,
-`/usr/local/lib/android`, `/opt/ghc`) that are **not in the container's fs
-namespace**, so they cannot help. The only space reachable from inside the job
-is the mounted GitHub tool cache (`/opt/hostedtoolcache` + `/__t`, ~8 GB, unused
-here — the rust/nightly toolchains are baked into the image at `/usr/local`)
-and the build artifacts themselves.
+**Real root cause (corrected).** The first hypothesis — container disk
+exhaustion — was *wrong*. The reclaim step's `df` showed the container overlay
+`/` at **146 GB total, ~88 GB free** (40% used). The ENOSPC path in the crash
+is `/home/runner/actions-runner/cached/<ver>/_diag/Worker_*.log` — the runner
+**host's** small OS disk, a *different* filesystem from the container overlay.
+GitHub streams every step's stdout/stderr to the agent log on that host volume,
+and the ~100-minute verbose cargo+cmake build emits **gigabytes** of
+`Compiling …` lines. The log itself overflows the host disk; the runner agent
+then crashes writing its own diag log. So it is a *log-volume* problem, not a
+build-artifact problem — and freeing container space (or stripping debuginfo)
+does nothing for it.
 
-**Fix applied (2026-06) — reclaim + shrink, keep full coverage.**
-1. New `Free disk space (in-container reclaim)` step removes the mounted tool
-   cache (`/opt/hostedtoolcache`, `/__t/*`) + `apt-get clean` before the build.
-   Job runs as root in the ROS image, so no `sudo`.
-2. The build step exports `RUSTFLAGS=-C debuginfo=0` — debug symbols are the
-   dominant disk consumer in each fixture target dir, and the integration tests
-   only *spawn* the binaries (no symbols needed). This shrinks the full
-   rust + C/C++/Cyclone + workspace build enough to fit, keeping full fixture
-   coverage rather than dropping the heavy cells.
+**Fix applied (2026-06) — keep the noisy output off the streamed agent log.**
+Both heavy steps redirect their stdout/stderr to a file on the big overlay disk
+(`build/ci-logs/*.log`) and surface only a tail (on failure for each fixture
+sub-build; always, last 200 lines, for `test-integration` so its per-test
+summary + real-failure verdict still show). The recipe exit code still gates the
+step. `RUSTFLAGS=-C debuginfo=0` is kept only as a cheap artifact/link-time trim,
+not as a disk fix. Full fixture coverage is preserved (the chosen
+keep-full-build path).
 
-`test-integration` itself only has `build-zenohd` as a prereq (it spawns the
-prebuilt fixtures, does not rebuild them), so the test step neither refills the
-disk nor re-compiles fixtures with mismatched flags.
+(Superseded earlier attempts, for the record: an in-container tool-cache reclaim
+step + `debuginfo=0` — both targeted the wrong filesystem and did not stop the
+ENOSPC; they were replaced by the log-redirection fix above.)
 
 Confirmation is the host-integration lane greening to test-integration on a run
-that survives to completion. Archive once green.
+that survives to completion (verified on the isolated `ci/host-int-verify`
+branch, immune to the main-branch push churn that cancels the long build step).
+Archive once green.
