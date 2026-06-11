@@ -1,7 +1,7 @@
 ---
 id: 29
 title: host-integration native fixture build exhausts runner disk (ENOSPC)
-status: open  # fix applied, pending CI confirmation
+status: resolved  # host-integration lane green end-to-end (run 27345714715)
 type: bug
 area: build
 related: [issue-0025, issue-0022]

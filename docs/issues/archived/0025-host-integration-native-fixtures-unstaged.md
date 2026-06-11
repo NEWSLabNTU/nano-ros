@@ -1,10 +1,10 @@
 ---
 id: 25
 title: host-integration lane fails native action/c_xrce/bridge tests — fixtures not staged
-status: open  # fix applied, pending CI confirmation
+status: resolved  # host-integration lane green end-to-end (run 27345714715)
 type: bug
 area: build
-related: [phase-230, issue-0022]
+related: [phase-230, issue-0022, issue-0029]
 ---
 
 The `host integration-tests` lane (`just test-integration`) fails a cluster of
