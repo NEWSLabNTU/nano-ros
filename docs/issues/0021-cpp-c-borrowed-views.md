@@ -4,8 +4,15 @@ title: Borrowed (zero-copy) message views for C and C++
 status: open
 type: enhancement
 area: codegen
-related: [rfc-0033, phase-229, issue-0007]
+related: [rfc-0033, phase-229, phase-235, issue-0007]
 ---
+
+**Plan:** the implementation work items live in [Phase
+235](../roadmap/phase-235-c-cpp-borrowed-views.md) (C first, then C++). Design
+decisions locked there (2026-06): C++ **wraps the Rust API** via an FFI seam that
+returns per-field `(offset, len)` (no native C++ CDR reader); numeric sequences borrow
+through a `LeSliceView`-equivalent unaligned decoder in C and C++ (full Rust parity,
+not rejected).
 
 RFC-0033 `borrowed` storage mode (Phase 229.6) shipped for **Rust** — large
 variable-length fields borrow zero-copy from the CDR receive buffer instead of
