@@ -184,7 +184,19 @@ jobs:
           # is the canonical provisioner; never hand-checked-out). px4-rs too,
           # for the same workspace-load reason the Test step documents below.
           nros setup --source px4-rs --source nuttx-libc
-          just ${{ matrix.plat }} build-all || just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
+          # Disk lever (directive 1 — pull/build only what the run needs): push/PR
+          # get the lighter `build-examples` smoke ("does the core link clean?").
+          # The heavy `build-fixtures` matrix (full lang×rmw + cyclone cross builds)
+          # is what the QEMU e2e consumes, and e2e is on-demand only (the Test step
+          # below) — so build it only on schedule / dispatch-with-run_e2e. This
+          # keeps the per-push freertos/zephyr cells off the `No space left on
+          # device` edge.
+          if [ "${{ github.event_name }}" = "schedule" ] || \
+             { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_e2e }}" = "true" ]; }; then
+            just ${{ matrix.plat }} build-all
+          else
+            just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
+          fi
 
       # Heavier QEMU test/e2e: on-demand only (`workflow_dispatch` with run_e2e).
       # push/PR get fast build-coverage; e2e is run deliberately (and a nightly
