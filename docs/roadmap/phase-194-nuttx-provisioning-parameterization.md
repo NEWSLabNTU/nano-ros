@@ -195,7 +195,7 @@ mismatch vs the cbindgen-generated decls. That is a separate nros-c fix, not
       (zenoh-pico + **virtio-net** for the e2e), no board etc-ROMFS (drops the
       `genromfs` host-tool dep 194.3b hit). Lands under the new crate's
       `nuttx-config/defconfig`.
-- [~] **194.3c.5 — `nros-board-nuttx-qemu-riscv` crate.** `nros-board.toml`
+- [x] **194.3c.5 — `nros-board-nuttx-qemu-riscv` crate.** `nros-board.toml`
       (`names=["nuttx-riscv"]`, `target_contains="riscv"`, `cargo_config` = riscv
       target + `riscv-none-elf-gcc` linker + riscv cflags + build-std);
       `src/{lib,config,entry,node}` with a `QemuRvVirt` board ZST
@@ -203,7 +203,7 @@ mismatch vs the cbindgen-generated decls. That is a separate nros-c fix, not
       build.rs calls the 194.3c.1 helper with riscv env (`NUTTX_ARCH=risc-v`,
       `NUTTX_VECTORTAB_OBJ=""`, riscv `NUTTX_LINKER_SCRIPT` + `NUTTX_ARCH_INCLUDES`
       + `NUTTX_LIBGCC_FLAGS`); riscv toolchain cmake file.
-- [~] **194.3c.6 — cmake overlay.** `cmake/board/nano-ros-board-nuttx-qemu-riscv.cmake`
+- [x] **194.3c.6 — cmake overlay.** `cmake/board/nano-ros-board-nuttx-qemu-riscv.cmake`
       mirroring the arm overlay (FFI crate dir, provision script + riscv defconfig,
       `nros_nuttx_set_cargo_target("riscv32imac-unknown-nuttx-elf")`,
       `nros_board_link_app`). Auto-wired by the board-name dispatch.
@@ -285,20 +285,34 @@ mismatch vs the cbindgen-generated decls. That is a separate nros-c fix, not
       existing board). **Verified** — `just nuttx build` runs the de-armed
       `build-nuttx.sh` → arm `make export` → `staging/libc.a` (4.2 MB).
 
-## Remaining to close 194 (all 194.3c.7, after issue-0027 lands)
+## Remaining to close 194 (all 194.3c.7)
 
-- [ ] Confirm the riscv C example links + boots once nros-c gcc-14 headers are
-      fixed (validates 194.3c.5/.6 end-to-end).
-- [ ] Harness wiring: add a `[[fixture]]` row for `examples/qemu-riscv-nuttx/c/talker`
-      and a riscv branch in `just nuttx build-examples`/`build-fixtures` (today it
-      hardcodes the arm toolchain `cmake/toolchain/armv7a-nuttx-eabi.cmake` + the
-      arm FFI crate at `just/nuttx.just:156-157`) so `just nuttx` + CI build/test
-      the riscv board. Land with the #26 unblock so it's validatable.
-- [ ] virtio-net cross-process e2e (external native listener receives `/chatter`),
-      à la the 225.O esp32 pattern — needs a build host whose rustc survives the
-      cross `build-std` compile.
-- [ ] Cosmetic: `build-nuttx.sh` success footer hardcodes the arm qemu run cmd
-      (`qemu-system-arm -M virt -cpu cortex-a7`); make it arch-aware.
+**issue-0027 RESOLVED 2026-06-11** (cbindgen `[export] exclude` + NuttX sysroot
+include on the NanoRos umbrella). The riscv C compile blockers are gone:
+**both the riscv (rv32imac) and arm (cortex-a7) NuttX C talkers compile their
+generated std_msgs message libs + component archive clean** (serial build,
+provisioned exports). That validates the de-arm refactor + the riscv overlay/FFI
+on the *compile* path (194.3c.5/.6 compile side). What remains, easiest→hardest:
+
+- [ ] **Harness wiring** (easy, mechanical). Add a `[[fixture]]` row for
+      `examples/qemu-riscv-nuttx/c/talker` and a riscv branch in
+      `just nuttx build-examples`/`build-fixtures` — today it hardcodes the arm
+      toolchain (`cmake/toolchain/armv7a-nuttx-eabi.cmake`) + the arm FFI crate
+      (`just/nuttx.just:156-157`). So `just nuttx` + CI build/test the riscv board.
+- [ ] **Final entry ELF** (medium). The C example is a 212.L *component*; the
+      runnable rv-virt kernel binary comes from `nros codegen-system` synthesising
+      the self-bringup entry, then the FFI crate's `cargo build` (`build-std`)
+      linking the component + NuttX export. Drive the full workflow serially and
+      confirm the ELF (`file` → riscv soft-float) + boot under `qemu-system-riscv32`.
+- [ ] **virtio-net cross-process e2e** (hardest). External native listener
+      receives `/chatter`, à la the 225.O esp32 pattern. Needs the entry ELF +
+      qemu rv-virt virtio-net up.
+- [x] ~~Cosmetic: `build-nuttx.sh` arch-aware run hint~~ — done (`05e159217`).
+
+**Env note:** the cross `build-std` link must run **serially** here — the parallel
+`just nuttx build-fixtures` matrix SIGSEGVs host rustc under memory pressure
+(not a missing SDK; everything provisions via `nros setup`). CI / a larger host
+runs it parallel.
 
 ## Notes
 
