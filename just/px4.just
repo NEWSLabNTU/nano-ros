@@ -226,9 +226,13 @@ test:
     cargo test $cargo_profile_args -p nros-rmw-uorb --features std,test-helpers --lib --tests
     cargo test $cargo_profile_args -p nros-px4 --features test-helpers --tests
 
-# Run E2E test against PX4 SITL. Builds SITL first, then runs the test.
+# Run E2E tests against PX4 SITL. Builds SITL + the XRCE fixtures first.
+#
+#   px4_e2e       — Track A (uORB in-firmware modules)
+#   px4_xrce_e2e  — Track B (real PX4 uxrce_dds_client → agent → nano-ros
+#                   companion receives /fmu/out telemetry over nros-rmw-xrce)
 [group("debug")]
-test-sitl: build-sitl
+test-sitl: build-sitl build-fixtures
     #!/usr/bin/env bash
     # Phase 208.D.3 — `px4_e2e` moved to the out-of-workspace
     # `nros-px4-sitl-test` crate so the root workspace doesn't try to
@@ -237,7 +241,7 @@ test-sitl: build-sitl
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     cd packages/testing/nros-px4-sitl-test
-    cargo nextest run "${cargo_nextest_args[@]}" --test px4_e2e
+    cargo nextest run "${cargo_nextest_args[@]}" --test px4_e2e --test px4_xrce_e2e
 
 # Combined CI: check + unit tests (SITL gated separately via test-sitl).
 [group("full-matrix")]

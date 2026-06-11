@@ -108,13 +108,32 @@ the existing zenohd/cyclonedds support-service pattern (not a platform scope).
   "mixed-direction reader+writer" — are recorded in
   [issue 0026](../issues/archived/0026-px4-xrce-bare-agent-type-matching.md), resolved.)
 
+### 233.5 — Real PX4 SITL end-to-end + interop fixes  ✅
+Validate Track B against **actual PX4 firmware**, not the stub.
+- **Landed.** `examples/px4/rust/xrce/px4-probe` (subscribes `/fmu/out/timesync_status`,
+  flows headless) + `nros-px4-sitl-test::px4_xrce_e2e` (`just px4 test-sitl`): boots real
+  PX4 SITL, points its `uxrce_dds_client` at a `MicroXRCEAgent`, asserts the nano-ros
+  probe receives real PX4 telemetry over `nros-rmw-xrce`. **Passes.**
+- **Two interop bugs found + fixed** (the agent delivered real samples but nano-ros
+  dropped them — caught with tshark + a logging agent + the probe's raw hexdump):
+  1. **CDR encapsulation header.** nano-ros wrapped the XRCE DATA payload in a 4-byte CDR
+     header; PX4 / real ROS 2 send the bare sample (the DDS representation header is the
+     agent's concern). The 4-byte misalignment dropped every inbound PX4 sample.
+     `publisher.c` strips the header before `uxr_buffer_topic`; `subscriber.c` re-prepends
+     it on receive — symmetric, so nano-ros↔nano-ros is unchanged and nano-ros↔PX4 works.
+  2. **`px4()` QoS durability.** Was `TRANSIENT_LOCAL`; PX4's `/fmu/out` writers are
+     `VOLATILE`, so a transient-local reader never matched. Now `BEST_EFFORT + VOLATILE +
+     KEEP_LAST(1)`.
+
 ## Acceptance
 
 - nano-ros generates CDR `px4_msgs` from the shared PX4 `.msg` tree (no ament dep).
-- A "PX4" QoS profile (`TRANSIENT_LOCAL`/`BEST_EFFORT`/`KEEP_LAST`) is selectable.
+- A "PX4" QoS profile (`BEST_EFFORT`/`VOLATILE`/`KEEP_LAST`) is selectable and matches
+  real PX4 `/fmu/out` writers.
 - The companion example subscribes `/fmu/out/*` and publishes `/fmu/in/*` against
   `MicroXRCEAgent` and **receives** — regression-guarded by
-  `nros-tests::px4_xrce::test_px4_companion_cross_session_receive`.
+  `nros-tests::px4_xrce::test_px4_companion_cross_session_receive`, and validated against
+  **real PX4 SITL** by `nros-px4-sitl-test::px4_xrce_e2e`.
 - `examples/README.md` matrix updated for the px4 XRCE cell.
 
 ## Notes
