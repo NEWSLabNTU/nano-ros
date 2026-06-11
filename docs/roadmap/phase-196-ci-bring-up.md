@@ -333,6 +333,10 @@ emits `generated/` and `cargo tree` resolves `nros-core 0.5.0` from the path
 deps. The underlying stale-lockfile cleanup stays tracked in known-issue #12.
 
 ### 196.7 — [P2] Fix the dep convention for the source-release model
+**Design home:** [RFC-0040](../design/0040-distribution-and-scaffolding-deps.md)
+(no-crates.io distribution model + the `nros new` dependency convention). The
+out-of-tree dep shape is RFC-0040 open question D-Q1 — resolve it there before
+implementing the scaffold change below.
 **Policy confirmed 2026-06-11 (maintainer):** nano-ros crates are **never
 published to crates.io** — the distribution is source-release + prebuilt host
 toolchains (`nros setup`). So the items below are the right direction (drop the
