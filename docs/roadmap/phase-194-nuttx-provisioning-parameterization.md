@@ -292,21 +292,36 @@ include on the NanoRos umbrella). The riscv C compile blockers are gone:
 **both the riscv (rv32imac) and arm (cortex-a7) NuttX C talkers compile their
 generated std_msgs message libs + component archive clean** (serial build,
 provisioned exports). That validates the de-arm refactor + the riscv overlay/FFI
-on the *compile* path (194.3c.5/.6 compile side). What remains, easiest→hardest:
+on the *compile* path (194.3c.5/.6 compile side). What remains:
 
-- [ ] **Harness wiring** (easy, mechanical). Add a `[[fixture]]` row for
-      `examples/qemu-riscv-nuttx/c/talker` and a riscv branch in
-      `just nuttx build-examples`/`build-fixtures` — today it hardcodes the arm
-      toolchain (`cmake/toolchain/armv7a-nuttx-eabi.cmake`) + the arm FFI crate
-      (`just/nuttx.just:156-157`). So `just nuttx` + CI build/test the riscv board.
-- [ ] **Final entry ELF** (medium). The C example is a 212.L *component*; the
-      runnable rv-virt kernel binary comes from `nros codegen-system` synthesising
-      the self-bringup entry, then the FFI crate's `cargo build` (`build-std`)
-      linking the component + NuttX export. Drive the full workflow serially and
-      confirm the ELF (`file` → riscv soft-float) + boot under `qemu-system-riscv32`.
-- [ ] **virtio-net cross-process e2e** (hardest). External native listener
-      receives `/chatter`, à la the 225.O esp32 pattern. Needs the entry ELF +
-      qemu rv-virt virtio-net up.
+**Scope correction.** The NuttX **C** examples are **build-coverage only** — the
+arm C nuttx examples are never run as kernels (the runnable nuttx kernels are the
+**rust** standalone examples, `build_rust_example`; arm's C coverage is the
+component/bringup *build* test `nuttx_qemu_arm_2_component_bringup_builds`). So a
+runnable riscv C kernel + a virtio-net e2e are **not** part of the C-path design
+(they'd belong to a separate riscv *rust* standalone example, the
+`nros::main!`-style path 194.3c deliberately did not target). The earlier
+"final entry ELF / e2e" checklist items were over-scoped against the arm
+baseline and are dropped. The C-path proof is: **the riscv C component builds**
+(✅ validated), exactly mirroring the arm C build-coverage.
+
+- [ ] **Harness wiring** (the only real remainder). Register the riscv board in
+      the NuttX build/test coverage so CI compiles it, mirroring the arm pattern:
+      (a) a riscv C build-coverage equivalent of
+      `nuttx_qemu_arm_2_component_bringup_builds` (the canonical arm C coverage is
+      bringup staging via `scripts/nuttx/stage-external-apps.sh`, *and/or* the
+      direct cmake component compile already proven here); (b) a riscv branch in
+      `just nuttx build-examples`/`build-fixtures` (today hardcodes the arm
+      toolchain `cmake/toolchain/armv7a-nuttx-eabi.cmake` + the arm FFI crate at
+      `just/nuttx.just:156-157`); (c) a `qemu-riscv-nuttx` cell in the cmake
+      platform/board matrix. Mechanical but spans fixtures.toml +
+      fixtures-manifest.py + nuttx.just + a test — and the parallel `build-std`
+      matrix SIGSEGVs host rustc here (serial only), so CI is the natural place to
+      land + green it.
+- [ ] (Optional, separate from 194.3c) a riscv **rust** standalone example
+      (`examples/qemu-riscv-nuttx/rust/talker`, mirror of the arm rust talker) for
+      a runnable rv-virt kernel + virtio-net e2e — only if a runnable riscv demo is
+      wanted; not required to close the de-hardcode goal.
 - [x] ~~Cosmetic: `build-nuttx.sh` arch-aware run hint~~ — done (`05e159217`).
 
 **Env note:** the cross `build-std` link must run **serially** here — the parallel
