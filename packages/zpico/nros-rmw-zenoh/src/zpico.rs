@@ -42,9 +42,9 @@ use zpico_sys::{
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write, zpico_declare_subscriber_ring,
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
-    zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_spin_once,
-    zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,
-    zpico_undeclare_subscriber, zpico_uses_polling,
+    zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_queryable_take_reply_seq,
+    zpico_spin_once, zpico_undeclare_liveliness, zpico_undeclare_publisher,
+    zpico_undeclare_queryable, zpico_undeclare_subscriber, zpico_uses_polling,
 };
 
 // ============================================================================
@@ -687,6 +687,7 @@ impl Context {
     pub fn query_reply(
         &self,
         queryable_handle: i32,
+        reply_seq: i64,
         keyexpr: &[u8],
         data: &[u8],
         attachment: Option<&[u8]>,
@@ -699,6 +700,7 @@ impl Context {
         let ret = ffi_guard(|| unsafe {
             zpico_query_reply(
                 queryable_handle,
+                reply_seq,
                 keyexpr.as_ptr().cast(),
                 data.as_ptr(),
                 data.len(),
@@ -710,6 +712,13 @@ impl Context {
             return Err(ZpicoError::from_code(ret));
         }
         Ok(())
+    }
+
+    /// Phase 237 — reply-slot index allocated by the most recent query callback
+    /// for `queryable_handle` (the deferred-reply seq). Call from inside the
+    /// synchronous query callback; -1 if the reply table was full.
+    pub fn queryable_take_reply_seq(&self, queryable_handle: i32) -> i64 {
+        unsafe { zpico_queryable_take_reply_seq(queryable_handle) }
     }
 
     /// Start a non-blocking query (for async service client).

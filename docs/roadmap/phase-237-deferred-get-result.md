@@ -11,9 +11,12 @@ server) accepts + streams feedback, but `ros2` waits forever for the final *resu
 time after the handler returns. Concurrent goals can occur under heavy load, so the
 single-in-flight shortcut (Option C) is rejected.
 
-**Status.** Design. Implements the "REMAINING — get_result deferral" item in
-[phase-233](phase-233-px4-xrce-companion.md). Off the PX4 critical path (PX4 is
-topic-only).
+**Status.** ◐ Implemented: runtime (237.1) + XRCE (237.3) + Cyclone-verify (237.2)
+landed and validated against real `rmw_fastrtps` ROS 2 (forward action now
+delivers the final result). Zenoh (237.4) implemented; its concurrent /
+`rmw_zenoh_cpp` interop validation is pending (237.5). Implements the "REMAINING —
+get_result deferral" item in [phase-233](phase-233-px4-xrce-companion.md). Off the
+PX4 critical path (PX4 is topic-only).
 
 **Depends on.** RFC-0035 (CFFI vtable), the action runtime in
 `packages/core/nros-node/src/executor/action_core.rs`, the three service backends
@@ -88,7 +91,26 @@ spin). Add a unit/e2e covering an interleaved 2-request deferral.
   inbox for request bursts faster than the spin rate — separable, not required for
   deferral.
 
-### 237.4 — Zenoh: seq-keyed reply-query table (the real work)
+### 237.4 — Zenoh: seq-keyed reply-query table (the real work) ✅ implemented
+**Done:** `g_stored_queries` is now `[ZPICO_MAX_QUERYABLES][ZPICO_MAX_PENDING_REPLIES]`
+of owned cloned queries; `query_handler` allocates a free slot and records its
+index in `g_last_reply_seq[handle]`; the new `zpico_queryable_take_reply_seq`
+getter (called from inside the synchronous callback) hands that index to the Rust
+`queryable_callback`, which records it as the request `sequence_number` (replacing
+the free-running `SERVICE_SEQ_COUNTER`); `zpico_query_reply(handle, seq, …)` replies
+to `g_stored_queries[handle][seq]` and frees the slot; `undeclare` drops all held
+slots. `send_reply` no longer clears `reply_keyexpr` (constant per server, re-set
+each `try_recv_request`), so successive deferred replies reuse it. Header is
+cbindgen-regenerated from the `ffi.rs` stub; `lib.rs` extern + `zpico.rs` wrapper
+updated.
+
+**Caveat (pre-existing):** the callback keys the getter by `buffer_index`, which
+equals the C queryable handle only because both are allocated without mid-run
+reuse (`NEXT_SERVICE_BUFFER_INDEX` is monotonic; `declare_queryable` returns the
+first free slot). The existing reply path already relied on this coupling. A fully
+robust fix would thread the C handle into the service buffer — tracked separately.
+
+**Original design notes:**
 `packages/zpico/zpico-sys/c/zpico/zpico.c` + `packages/zpico/nros-rmw-zenoh/src/shim/service.rs`.
 - C shim: `g_stored_queries[ZPICO_MAX_QUERYABLES]` → `[ZPICO_MAX_QUERYABLES][N]` with
   `{ z_owned_query_t; bool in_use }`. `z_query_clone` already yields an owned copy.

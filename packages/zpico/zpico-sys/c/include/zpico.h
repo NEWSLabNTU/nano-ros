@@ -236,6 +236,10 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * Caller guarantees `data` outlives the call.
  */
 /**
+ * Phase 237 — reply-slot index from the most recent query callback (the
+ * deferred-reply seq); call from inside the synchronous query callback.
+ */
+/**
  * Phase 108.C.zenoh.4-followup — count of liveliness-token
  * replies on this slot. Used by the subscriber-side
  * `LivelinessChanged` bridge to surface `alive_count > 1`.
@@ -583,11 +587,19 @@ int32_t zpico_undeclare_queryable(int32_t _handle);
  * 0 on success, negative error code on failure.
  */
 int32_t zpico_query_reply(int32_t _queryable_handle,
+                          int64_t _reply_seq,
                           const char *_keyexpr,
                           const uint8_t *_data,
                           uintptr_t _len,
                           const uint8_t *_attachment,
                           uintptr_t _attachment_len);
+
+/**
+ * Phase 237 — reply-slot index from the most recent query callback (the
+ * deferred-reply seq); call from inside the synchronous query callback.
+ * Stub returns -1 (no slot) in the pure-Rust no-op build.
+ */
+int64_t zpico_queryable_take_reply_seq(int32_t _queryable_handle);
 
 /**
  * Send a query and wait for reply (blocking, for service client).

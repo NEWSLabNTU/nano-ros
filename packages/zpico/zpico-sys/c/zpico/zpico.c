@@ -31,7 +31,7 @@
 #endif
 
 #ifdef ZENOH_ZEPHYR
-#include <zephyr/kernel.h>  // For printk
+#include <zephyr/kernel.h> // For printk
 #include <zephyr/random/random.h>
 #if defined(CONFIG_POSIX_MULTI_PROCESS)
 #include <zephyr/posix/unistd.h>
@@ -40,7 +40,7 @@
 // On FreeRTOS, route printk to semihosting for debug output.
 // Uses SYS_WRITE0 semihosting call (null-terminated string to stdout).
 #include <stdio.h>
-static void _freertos_printk(const char *fmt, ...) {
+static void _freertos_printk(const char* fmt, ...) {
     char buf[128];
     va_list ap;
     va_start(ap, fmt);
@@ -48,7 +48,7 @@ static void _freertos_printk(const char *fmt, ...) {
     va_end(ap);
     // ARM semihosting SYS_WRITE0 (op=0x04): write null-terminated string
     register unsigned r0 __asm__("r0") = 0x04;
-    register const char *r1 __asm__("r1") = buf;
+    register const char* r1 __asm__("r1") = buf;
     __asm__ volatile("bkpt #0xAB" : : "r"(r0), "r"(r1) : "memory");
 }
 #define printk(...) _freertos_printk(__VA_ARGS__)
@@ -60,8 +60,8 @@ static void _freertos_printk(const char *fmt, ...) {
 #define printk(...) printf(__VA_ARGS__)
 #else
 #include "nxd_bsd.h"
-extern void uart_puts(const char *s);
-static void _threadx_printk(const char *fmt, ...) {
+extern void uart_puts(const char* s);
+static void _threadx_printk(const char* fmt, ...) {
     char buf[128];
     va_list ap;
     va_start(ap, fmt);
@@ -72,9 +72,9 @@ static void _threadx_printk(const char *fmt, ...) {
 #define printk(...) _threadx_printk(__VA_ARGS__)
 #endif
 #elif defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
-#define printk(...)  // No libc printf on bare-metal
+#define printk(...) // No libc printf on bare-metal
 #else
-#define printk(...)  // No-op on other platforms
+#define printk(...) // No-op on other platforms
 #endif
 
 // Internal zenoh-pico headers for socket FD access (select()-based timeout).
@@ -83,7 +83,7 @@ static void _threadx_printk(const char *fmt, ...) {
 #if defined(ZENOH_THREADX)
 #include "nxd_bsd.h"
 #endif
-#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && \
+#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) &&          \
     !defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD != 1
 #include "zenoh-pico/net/session.h"
 #include "zenoh-pico/transport/transport.h"
@@ -114,25 +114,25 @@ extern uint64_t smoltcp_clock_now_ms(void);
 typedef struct {
     z_owned_subscriber_t subscriber;
     union {
-        ZpicoCallback callback;                     // Legacy callback (payload only)
-        ZpicoCallbackWithAttachment callback_ext;   // Extended callback (with attachment)
-        ZpicoNotifyCallback notify;                 // Direct-write notify (len + attachment)
+        ZpicoCallback callback;                   // Legacy callback (payload only)
+        ZpicoCallbackWithAttachment callback_ext; // Extended callback (with attachment)
+        ZpicoNotifyCallback notify;               // Direct-write notify (len + attachment)
     };
-    void *ctx;
+    void* ctx;
     bool active;
-    bool with_attachment;  // true = use callback_ext, false = use callback
+    bool with_attachment; // true = use callback_ext, false = use callback
     // Direct-write fields (set when mode == direct_write)
-    bool direct_write;     // true = direct-write mode
-    uint8_t *buf_ptr;      // Pointer into Rust SUBSCRIBER_BUFFERS[i].data
-    size_t buf_capacity;   // Size of the Rust buffer
-    const bool *locked_ptr; // Pointer to Rust SUBSCRIBER_BUFFERS[i].locked (AtomicBool)
+    bool direct_write;      // true = direct-write mode
+    uint8_t* buf_ptr;       // Pointer into Rust SUBSCRIBER_BUFFERS[i].data
+    size_t buf_capacity;    // Size of the Rust buffer
+    const bool* locked_ptr; // Pointer to Rust SUBSCRIBER_BUFFERS[i].locked (AtomicBool)
     // Phase 124.D.3.c — SPSC ring descriptor (set when mode == ring).
     // C is the sole producer, Rust the sole consumer. See
     // `zpico_ring_desc_t` in the header. NULL = not in ring mode.
     bool ring_mode;
-    zpico_ring_desc_t *ring;
+    zpico_ring_desc_t* ring;
 #if defined(Z_FEATURE_UNSTABLE_API)
-    bool zero_copy;        // true = zero-copy mode (borrows from zenoh-pico buffer)
+    bool zero_copy; // true = zero-copy mode (borrows from zenoh-pico buffer)
     ZpicoZeroCopyCallback zero_copy_cb;
 #endif
 } subscriber_entry_t;
@@ -153,7 +153,7 @@ typedef struct {
 typedef struct {
     z_owned_queryable_t queryable;
     ZpicoQueryCallback callback;
-    void *ctx;
+    void* ctx;
     bool active;
 } queryable_entry_t;
 
@@ -194,9 +194,23 @@ static subscriber_entry_t g_subscribers[ZPICO_MAX_SUBSCRIBERS];
 static liveliness_entry_t g_liveliness[ZPICO_MAX_LIVELINESS];
 static queryable_entry_t g_queryables[ZPICO_MAX_QUERYABLES];
 
-// Per-queryable storage for cloned queries (for later reply)
-static z_owned_query_t g_stored_queries[ZPICO_MAX_QUERYABLES];
-static bool g_stored_query_valid[ZPICO_MAX_QUERYABLES];  // zero-initialized = all false
+// Phase 237 — per-queryable seq-keyed reply slots. A reply can be sent long
+// after the query callback returned (an action `get_result` held until the goal
+// terminates), and concurrent goals mean several queries may be outstanding at
+// once, so a single stored query per queryable would be overwritten. Each slot
+// holds one cloned (owned) query; `query_handler` allocates a free slot and
+// records its index as the reply seq, `zpico_query_reply(handle, seq)` consumes
+// it. Override for servers fielding more concurrent in-flight requests.
+#ifndef ZPICO_MAX_PENDING_REPLIES
+#define ZPICO_MAX_PENDING_REPLIES 4
+#endif
+static z_owned_query_t g_stored_queries[ZPICO_MAX_QUERYABLES][ZPICO_MAX_PENDING_REPLIES];
+static bool g_stored_query_valid[ZPICO_MAX_QUERYABLES]
+                                [ZPICO_MAX_PENDING_REPLIES]; // zero-init = all false
+// Index of the slot allocated by the most recent `query_handler` invocation,
+// read by `zpico_queryable_take_reply_seq` from inside the (synchronous) user
+// callback. -1 if the table was full (the reply is dropped — back-pressure).
+static int64_t g_last_reply_seq[ZPICO_MAX_QUERYABLES];
 #if defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
 static uint32_t g_session_zid_counter;
 #else
@@ -343,7 +357,7 @@ static z_task_attr_t g_lease_task_attr;
 // Internal Helper Functions
 // ============================================================================
 
-static uint64_t zpico_splitmix64(uint64_t *state) {
+static uint64_t zpico_splitmix64(uint64_t* state) {
     uint64_t z = (*state += UINT64_C(0x9e3779b97f4a7c15));
     z = (z ^ (z >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
     z = (z ^ (z >> 27)) * UINT64_C(0x94d049bb133111eb);
@@ -351,8 +365,8 @@ static uint64_t zpico_splitmix64(uint64_t *state) {
 }
 
 #if defined(ZENOH_FREERTOS_LWIP) || defined(ZENOH_THREADX)
-static void zpico_mix_clock_bytes(uint64_t *seed, const void *data, size_t len) {
-    const uint8_t *bytes = (const uint8_t *)data;
+static void zpico_mix_clock_bytes(uint64_t* seed, const void* data, size_t len) {
+    const uint8_t* bytes = (const uint8_t*)data;
     for (size_t i = 0; i < len; i++) {
         *seed ^= (uint64_t)bytes[i] << ((i % sizeof(uint64_t)) * 8);
         *seed = zpico_splitmix64(seed);
@@ -449,27 +463,27 @@ static void zpico_format_session_zid(char out[37], const uint8_t bytes[ZPICO_ZID
 /**
  * Internal callback for queryable that receives queries
  */
-static void query_handler(z_loaned_query_t *query, void *arg) {
+static void query_handler(z_loaned_query_t* query, void* arg) {
     int idx = (int)(intptr_t)arg;
     if (idx < 0 || idx >= ZPICO_MAX_QUERYABLES) {
         return;
     }
 
-    queryable_entry_t *entry = &g_queryables[idx];
+    queryable_entry_t* entry = &g_queryables[idx];
     if (!entry->active || entry->callback == NULL) {
         return;
     }
 
     // Get keyexpr
-    const z_loaned_keyexpr_t *keyexpr = z_query_keyexpr(query);
+    const z_loaned_keyexpr_t* keyexpr = z_query_keyexpr(query);
     z_view_string_t keyexpr_view;
     z_keyexpr_as_view_string(keyexpr, &keyexpr_view);
-    const char *keyexpr_str = z_string_data(z_view_string_loan(&keyexpr_view));
+    const char* keyexpr_str = z_string_data(z_view_string_loan(&keyexpr_view));
     size_t keyexpr_len = z_string_len(z_view_string_loan(&keyexpr_view));
 
     // Get payload
-    const z_loaned_bytes_t *payload_bytes = z_query_payload(query);
-    const uint8_t *payload_data = NULL;
+    const z_loaned_bytes_t* payload_bytes = z_query_payload(query);
+    const uint8_t* payload_data = NULL;
     size_t payload_len = 0;
 
     z_owned_slice_t payload_slice;
@@ -480,16 +494,21 @@ static void query_handler(z_loaned_query_t *query, void *arg) {
         }
     }
 
-    // Drop any previously stored query for this queryable
-    if (g_stored_query_valid[idx]) {
-        z_query_drop(z_query_move(&g_stored_queries[idx]));
-        g_stored_query_valid[idx] = false;
+    // Phase 237 — allocate a free reply slot and clone the query into it so the
+    // reply can be sent after this callback returns (deferred get_result) even
+    // if more queries land meanwhile. Record the slot index as the reply seq for
+    // `zpico_queryable_take_reply_seq` to hand to the (synchronous) callback.
+    int64_t reply_seq = -1;
+    for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; ++j) {
+        if (!g_stored_query_valid[idx][j]) {
+            if (z_query_clone(&g_stored_queries[idx][j], query) == 0) {
+                g_stored_query_valid[idx][j] = true;
+                reply_seq = j;
+            }
+            break;
+        }
     }
-
-    // Clone the query for later reply (after callback returns)
-    if (z_query_clone(&g_stored_queries[idx], query) == 0) {
-        g_stored_query_valid[idx] = true;
-    }
+    g_last_reply_seq[idx] = reply_seq;
 
     // Call user callback
     entry->callback(keyexpr_str, keyexpr_len, payload_data, payload_len, entry->ctx);
@@ -509,19 +528,19 @@ static void query_handler(z_loaned_query_t *query, void *arg) {
  * - with_attachment: copies payload via z_bytes_to_slice() (legacy path)
  * - legacy: copies payload only via z_bytes_to_slice()
  */
-static void sample_handler(z_loaned_sample_t *sample, void *arg) {
+static void sample_handler(z_loaned_sample_t* sample, void* arg) {
     int idx = (int)(intptr_t)arg;
     if (idx < 0 || idx >= ZPICO_MAX_SUBSCRIBERS) {
         return;
     }
 
-    subscriber_entry_t *entry = &g_subscribers[idx];
+    subscriber_entry_t* entry = &g_subscribers[idx];
     if (!entry->active) {
         return;
     }
 
     // Get payload
-    const z_loaned_bytes_t *payload = z_sample_payload(sample);
+    const z_loaned_bytes_t* payload = z_sample_payload(sample);
     size_t payload_len = z_bytes_len(payload);
 
 #if defined(Z_FEATURE_UNSTABLE_API)
@@ -532,17 +551,16 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
         // Get contiguous view — borrows directly from zenoh-pico's receive buffer
         z_view_slice_t view;
         if (z_bytes_get_contiguous_view(payload, &view) == 0) {
-            const uint8_t *data = z_slice_data(z_view_slice_loan(&view));
+            const uint8_t* data = z_slice_data(z_view_slice_loan(&view));
             size_t len = z_slice_len(z_view_slice_loan(&view));
 
             // Get attachment (small copy, 33-37 bytes)
-            const z_loaned_bytes_t *att = z_sample_attachment(sample);
+            const z_loaned_bytes_t* att = z_sample_attachment(sample);
             if (att != NULL) {
                 z_owned_slice_t att_slice;
                 if (z_bytes_to_slice(att, &att_slice) == 0) {
-                    entry->zero_copy_cb(data, len,
-                        z_slice_data(z_slice_loan(&att_slice)),
-                        z_slice_len(z_slice_loan(&att_slice)), entry->ctx);
+                    entry->zero_copy_cb(data, len, z_slice_data(z_slice_loan(&att_slice)),
+                                        z_slice_len(z_slice_loan(&att_slice)), entry->ctx);
                     z_slice_drop(z_slice_move(&att_slice));
                 } else {
                     entry->zero_copy_cb(data, len, NULL, 0, entry->ctx);
@@ -570,7 +588,7 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
         if (payload_len == 0) {
             return;
         }
-        zpico_ring_desc_t *r = entry->ring;
+        zpico_ring_desc_t* r = entry->ring;
 
         // Acquire-load head (published by the Rust consumer) and a
         // relaxed-load of our own tail. Ring full when the gap is
@@ -578,10 +596,9 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
         // KEEP_LAST overwrite-from-the-front intent loosely; a
         // dropped burst tail is reported via msg-lost accounting on
         // the Rust side from the sequence gap).
-        uintptr_t head = atomic_load_explicit(
-            (const _Atomic uintptr_t *)r->head, memory_order_acquire);
-        uintptr_t tail = atomic_load_explicit(
-            (_Atomic uintptr_t *)r->tail, memory_order_relaxed);
+        uintptr_t head =
+            atomic_load_explicit((const _Atomic uintptr_t*)r->head, memory_order_acquire);
+        uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_relaxed);
         if (tail - head >= r->slot_count) {
             // Ring full — drop. Still fire notify(len) so the Rust
             // side can observe the arrival for waker / lost-count.
@@ -591,7 +608,7 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
         }
 
         uintptr_t slot = tail % r->slot_count;
-        uint8_t *pay_dst = r->payload_base + slot * r->payload_stride;
+        uint8_t* pay_dst = r->payload_base + slot * r->payload_stride;
         if (payload_len > r->payload_stride) {
             // Slot too small — report overflow via notify, don't
             // advance tail.
@@ -604,21 +621,20 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
 
         // Attachment into the parallel per-slot array.
         size_t att_written = 0;
-        const z_loaned_bytes_t *attachment = z_sample_attachment(sample);
+        const z_loaned_bytes_t* attachment = z_sample_attachment(sample);
         if (attachment != NULL && r->att_stride > 0) {
             size_t att_len = z_bytes_len(attachment);
             if (att_len <= r->att_stride) {
                 z_bytes_reader_t att_reader = z_bytes_get_reader(attachment);
-                att_written = z_bytes_reader_read(
-                    &att_reader, r->att_base + slot * r->att_stride, att_len);
+                att_written =
+                    z_bytes_reader_read(&att_reader, r->att_base + slot * r->att_stride, att_len);
             }
         }
         r->att_len[slot] = att_written;
 
         // Publish the slot: Release store advances tail so the Rust
         // consumer sees the payload + len writes above.
-        atomic_store_explicit((_Atomic uintptr_t *)r->tail, tail + 1,
-                              memory_order_release);
+        atomic_store_explicit((_Atomic uintptr_t*)r->tail, tail + 1, memory_order_release);
 
         // Fire notify for the async waker. Pass NULL attachment —
         // the consumer reads the per-slot attachment array directly.
@@ -649,11 +665,11 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
         z_bytes_reader_read(&reader, entry->buf_ptr, payload_len);
 
         // Attachment still uses z_bytes_to_slice (33-37 bytes, negligible)
-        const z_loaned_bytes_t *attachment = z_sample_attachment(sample);
+        const z_loaned_bytes_t* attachment = z_sample_attachment(sample);
         if (attachment != NULL) {
             z_owned_slice_t attachment_slice;
             if (z_bytes_to_slice(attachment, &attachment_slice) == 0) {
-                const uint8_t *att_data = z_slice_data(z_slice_loan(&attachment_slice));
+                const uint8_t* att_data = z_slice_data(z_slice_loan(&attachment_slice));
                 size_t att_len = z_slice_len(z_slice_loan(&attachment_slice));
                 entry->notify(payload_len, att_data, att_len, entry->ctx);
                 z_slice_drop(z_slice_move(&attachment_slice));
@@ -670,10 +686,10 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
     // Legacy path: copy payload to owned slice (malloc + memcpy)
     z_owned_slice_t payload_slice;
     if (z_bytes_to_slice(payload, &payload_slice) != 0) {
-        return;  // Failed to get payload
+        return; // Failed to get payload
     }
 
-    const uint8_t *data = z_slice_data(z_slice_loan(&payload_slice));
+    const uint8_t* data = z_slice_data(z_slice_loan(&payload_slice));
     size_t len = z_slice_len(z_slice_loan(&payload_slice));
 
     if (entry->with_attachment) {
@@ -684,11 +700,11 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
         }
 
         // Get attachment
-        const z_loaned_bytes_t *attachment = z_sample_attachment(sample);
+        const z_loaned_bytes_t* attachment = z_sample_attachment(sample);
         if (attachment != NULL) {
             z_owned_slice_t attachment_slice;
             if (z_bytes_to_slice(attachment, &attachment_slice) == 0) {
-                const uint8_t *att_data = z_slice_data(z_slice_loan(&attachment_slice));
+                const uint8_t* att_data = z_slice_data(z_slice_loan(&attachment_slice));
                 size_t att_len = z_slice_len(z_slice_loan(&attachment_slice));
                 entry->callback_ext(data, len, att_data, att_len, entry->ctx);
                 z_slice_drop(z_slice_move(&attachment_slice));
@@ -715,14 +731,12 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
 // Session Lifecycle Implementation
 // ============================================================================
 
-int32_t zpico_init(const char *locator) {
+int32_t zpico_init(const char* locator) {
     return zpico_init_with_config(locator, "client", NULL, 0);
 }
 
-int32_t zpico_init_with_config(const char *locator,
-                                     const char *mode,
-                                     const zpico_property_t *properties,
-                                     size_t num_properties) {
+int32_t zpico_init_with_config(const char* locator, const char* mode,
+                               const zpico_property_t* properties, size_t num_properties) {
     // Initialize storage
     memset(g_publishers, 0, sizeof(g_publishers));
     memset(g_subscribers, 0, sizeof(g_subscribers));
@@ -730,7 +744,10 @@ int32_t zpico_init_with_config(const char *locator,
     memset(g_queryables, 0, sizeof(g_queryables));
     memset(g_stored_query_valid, 0, sizeof(g_stored_query_valid));
     for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
-        z_internal_query_null(&g_stored_queries[i]);
+        g_last_reply_seq[i] = -1;
+        for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; j++) {
+            z_internal_query_null(&g_stored_queries[i][j]);
+        }
     }
     g_session_open = false;
 
@@ -836,8 +853,9 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     g_lease_task_opts.task_attributes = &g_lease_task_attr;
     g_read_task_configured = true;
     g_lease_task_configured = true;
-#elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__) || \
-       defined(ZENOH_ZEPHYR)) && !defined(ZENOH_THREADX)
+#elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__) ||                       \
+       defined(ZENOH_ZEPHYR)) &&                                                                   \
+    !defined(ZENOH_THREADX)
     // POSIX: set stack size via pthread_attr. Priority requires SCHED_FIFO
     // (root privileges); for now only stack size is configurable.
     pthread_attr_init(&g_read_task_attr);
@@ -910,10 +928,8 @@ int32_t zpico_open(void) {
     g_spin_cv_initialized = true;
 #endif
 
-    const zp_task_read_options_t *read_opts =
-        g_read_task_configured ? &g_read_task_opts : NULL;
-    const zp_task_lease_options_t *lease_opts =
-        g_lease_task_configured ? &g_lease_task_opts : NULL;
+    const zp_task_read_options_t* read_opts = g_read_task_configured ? &g_read_task_opts : NULL;
+    const zp_task_lease_options_t* lease_opts = g_lease_task_configured ? &g_lease_task_opts : NULL;
 
     if (zp_start_read_task(z_session_loan_mut(&g_session), read_opts) < 0) {
         z_close(z_session_loan_mut(&g_session), NULL);
@@ -953,15 +969,10 @@ int32_t zpico_is_open(void) {
  * For a 32 KiB message, that's 32 KiB less stack pressure on the
  * publishing task.
  */
-int32_t zpico_publish_streamed(int32_t handle,
-                                size_t total_len,
-                                void (*chunk_cb)(uint8_t *out_buf,
-                                                 size_t cap,
-                                                 size_t *out_written,
-                                                 void *user_ctx),
-                                void *user_ctx,
-                                const uint8_t *attachment,
-                                size_t attachment_len) {
+int32_t zpico_publish_streamed(int32_t handle, size_t total_len,
+                               void (*chunk_cb)(uint8_t* out_buf, size_t cap, size_t* out_written,
+                                                void* user_ctx),
+                               void* user_ctx, const uint8_t* attachment, size_t attachment_len) {
     if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
@@ -997,8 +1008,8 @@ int32_t zpico_publish_streamed(int32_t handle,
         if (actually_written > want) {
             actually_written = want;
         }
-        if (z_bytes_writer_write_all(z_bytes_writer_loan_mut(&writer), chunk,
-                                     actually_written) < 0) {
+        if (z_bytes_writer_write_all(z_bytes_writer_loan_mut(&writer), chunk, actually_written) <
+            0) {
             z_bytes_writer_drop(z_bytes_writer_move(&writer));
             return ZPICO_ERR_PUBLISH;
         }
@@ -1022,8 +1033,8 @@ int32_t zpico_publish_streamed(int32_t handle,
         opts.attachment = z_bytes_move(&attachment_bytes);
     }
 
-    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
-                        z_bytes_move(&payload), &opts) < 0) {
+    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher), z_bytes_move(&payload),
+                        &opts) < 0) {
         return ZPICO_ERR_PUBLISH;
     }
 
@@ -1135,7 +1146,7 @@ void zpico_close(void) {
 // Publisher Implementation
 // ============================================================================
 
-int32_t zpico_declare_publisher(const char *keyexpr) {
+int32_t zpico_declare_publisher(const char* keyexpr) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1169,7 +1180,7 @@ int32_t zpico_declare_publisher(const char *keyexpr) {
     return idx;
 }
 
-int32_t zpico_publish(int32_t handle, const uint8_t *data, size_t len) {
+int32_t zpico_publish(int32_t handle, const uint8_t* data, size_t len) {
     if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
@@ -1182,7 +1193,7 @@ int32_t zpico_publish(int32_t handle, const uint8_t *data, size_t len) {
     }
 
     int put_ret = z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
-                        z_bytes_move(&payload), NULL);
+                                  z_bytes_move(&payload), NULL);
     if (put_ret < 0) {
         printk("zpico: z_publisher_put failed: %d\n", put_ret);
         return ZPICO_ERR_PUBLISH;
@@ -1205,9 +1216,7 @@ int32_t zpico_undeclare_publisher(int32_t handle) {
 // Subscriber Implementation
 // ============================================================================
 
-int32_t zpico_declare_subscriber(const char *keyexpr,
-                                       ZpicoCallback callback,
-                                       void *ctx) {
+int32_t zpico_declare_subscriber(const char* keyexpr, ZpicoCallback callback, void* ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1226,7 +1235,7 @@ int32_t zpico_declare_subscriber(const char *keyexpr,
 
     g_subscribers[idx].callback = callback;
     g_subscribers[idx].ctx = ctx;
-    g_subscribers[idx].with_attachment = false;  // Legacy mode
+    g_subscribers[idx].with_attachment = false; // Legacy mode
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
@@ -1237,10 +1246,11 @@ int32_t zpico_declare_subscriber(const char *keyexpr,
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
 
-    int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
-                                       z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    int sub_ret =
+        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+                             z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].callback = NULL;
@@ -1252,9 +1262,8 @@ int32_t zpico_declare_subscriber(const char *keyexpr,
     return idx;
 }
 
-int32_t zpico_declare_subscriber_with_attachment(const char *keyexpr,
-                                                       ZpicoCallbackWithAttachment callback,
-                                                       void *ctx) {
+int32_t zpico_declare_subscriber_with_attachment(const char* keyexpr,
+                                                 ZpicoCallbackWithAttachment callback, void* ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1273,7 +1282,7 @@ int32_t zpico_declare_subscriber_with_attachment(const char *keyexpr,
 
     g_subscribers[idx].callback_ext = callback;
     g_subscribers[idx].ctx = ctx;
-    g_subscribers[idx].with_attachment = true;  // Extended mode with attachment
+    g_subscribers[idx].with_attachment = true; // Extended mode with attachment
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
@@ -1284,10 +1293,11 @@ int32_t zpico_declare_subscriber_with_attachment(const char *keyexpr,
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
 
-    int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
-                                       z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    int sub_ret =
+        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+                             z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].callback_ext = NULL;
@@ -1299,12 +1309,9 @@ int32_t zpico_declare_subscriber_with_attachment(const char *keyexpr,
     return idx;
 }
 
-int32_t zpico_declare_subscriber_direct_write(const char *keyexpr,
-                                                     uint8_t *buf_ptr,
-                                                     size_t buf_capacity,
-                                                     const bool *locked_ptr,
-                                                     ZpicoNotifyCallback callback,
-                                                     void *ctx) {
+int32_t zpico_declare_subscriber_direct_write(const char* keyexpr, uint8_t* buf_ptr,
+                                              size_t buf_capacity, const bool* locked_ptr,
+                                              ZpicoNotifyCallback callback, void* ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1339,10 +1346,11 @@ int32_t zpico_declare_subscriber_direct_write(const char *keyexpr,
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
 
-    int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
-                                       z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    int sub_ret =
+        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+                             z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].notify = NULL;
@@ -1355,10 +1363,8 @@ int32_t zpico_declare_subscriber_direct_write(const char *keyexpr,
     return idx;
 }
 
-int32_t zpico_declare_subscriber_ring(const char *keyexpr,
-                                      zpico_ring_desc_t *desc,
-                                      ZpicoNotifyCallback callback,
-                                      void *ctx) {
+int32_t zpico_declare_subscriber_ring(const char* keyexpr, zpico_ring_desc_t* desc,
+                                      ZpicoNotifyCallback callback, void* ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1394,10 +1400,11 @@ int32_t zpico_declare_subscriber_ring(const char *keyexpr,
     }
 
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
 
-    int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
-                                       z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    int sub_ret =
+        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+                             z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber (ring) failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].notify = NULL;
@@ -1412,9 +1419,7 @@ int32_t zpico_declare_subscriber_ring(const char *keyexpr,
 }
 
 #if defined(Z_FEATURE_UNSTABLE_API)
-int32_t zpico_subscribe_zero_copy(const char *keyexpr,
-                                        ZpicoZeroCopyCallback callback,
-                                        void *ctx) {
+int32_t zpico_subscribe_zero_copy(const char* keyexpr, ZpicoZeroCopyCallback callback, void* ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1447,10 +1452,11 @@ int32_t zpico_subscribe_zero_copy(const char *keyexpr,
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, (void*)(intptr_t)idx);
 
-    int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
-                                       z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    int sub_ret =
+        z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+                             z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zpico: z_declare_subscriber (zero_copy) failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].zero_copy = false;
@@ -1464,9 +1470,7 @@ int32_t zpico_subscribe_zero_copy(const char *keyexpr,
 }
 #else
 // Stub when unstable API is not enabled — returns error
-int32_t zpico_subscribe_zero_copy(const char *keyexpr,
-                                        ZpicoZeroCopyCallback callback,
-                                        void *ctx) {
+int32_t zpico_subscribe_zero_copy(const char* keyexpr, ZpicoZeroCopyCallback callback, void* ctx) {
     (void)keyexpr;
     (void)callback;
     (void)ctx;
@@ -1494,7 +1498,7 @@ int32_t zpico_undeclare_subscriber(int32_t handle) {
 // get_session_fd() is only needed for select()-based paths. Most
 // multi-threaded builds use background tasks, but ThreadX/NSOS uses the same
 // select + read + keepalive path as single-threaded hosts.
-#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && \
+#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) &&          \
     (Z_FEATURE_MULTI_THREAD != 1 || defined(ZENOH_THREADX))
 /**
  * Extract the socket file descriptor from the zenoh session.
@@ -1504,11 +1508,11 @@ int32_t zpico_undeclare_subscriber(int32_t handle) {
  * Returns -1 if the session is not unicast or has no connected peers.
  */
 static int get_session_fd(void) {
-    _z_session_t *session = _Z_RC_IN_VAL(z_session_loan(&g_session));
+    _z_session_t* session = _Z_RC_IN_VAL(z_session_loan(&g_session));
     if (session->_tp._type != _Z_TRANSPORT_UNICAST_TYPE) {
         return -1;
     }
-    _z_transport_peer_unicast_t *peer =
+    _z_transport_peer_unicast_t* peer =
         _z_transport_peer_unicast_slist_value(session->_tp._transport._unicast._peers);
     if (peer == NULL) {
         return -1;
@@ -1559,8 +1563,8 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     int ret;
     do {
         ret = zp_read(z_session_loan_mut(&g_session), &opts);
-        if (ret == 0 && timeout_ms != 0) break;  // Processed one message (timeout mode)
-        if (ret != 0 && timeout_ms == 0) break;  // No data (drain mode)
+        if (ret == 0 && timeout_ms != 0) break; // Processed one message (timeout mode)
+        if (ret != 0 && timeout_ms == 0) break; // No data (drain mode)
         // timeout_ms == 0 && ret == 0: data processed, loop to drain next message
         // timeout_ms != 0 && ret != 0: no data yet, keep waiting (while decides)
     } while (ret == 0 || smoltcp_clock_now_ms() - start < timeout_ms);
@@ -1584,7 +1588,7 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     int ret;
     do {
         ret = zp_read(z_session_loan_mut(&g_session), NULL);
-        if (ret == 0) break;  // Data processed
+        if (ret == 0) break; // Data processed
         if (timeout_ms == 0) break;
     } while (z_clock_elapsed_ms(&start) < timeout_ms);
     _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
@@ -1665,8 +1669,7 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
             }
             // EINTR / ETIMEDOUT are both acceptable — the outer executor
             // loop re-checks arena state regardless of why we woke up.
-            while (sem_timedwait(&g_spin_sem_posix, &deadline) != 0
-                   && errno == EINTR) {
+            while (sem_timedwait(&g_spin_sem_posix, &deadline) != 0 && errno == EINTR) {
                 // retry on signal
             }
         } else {
@@ -1718,7 +1721,7 @@ bool zpico_uses_polling(void) {
 // ZenohId Implementation
 // ============================================================================
 
-int32_t zpico_get_zid(uint8_t *zid_out) {
+int32_t zpico_get_zid(uint8_t* zid_out) {
     if (!g_session_open || zid_out == NULL) {
         return ZPICO_ERR_SESSION;
     }
@@ -1732,7 +1735,7 @@ int32_t zpico_get_zid(uint8_t *zid_out) {
 // Liveliness Implementation
 // ============================================================================
 
-int32_t zpico_declare_liveliness(const char *keyexpr) {
+int32_t zpico_declare_liveliness(const char* keyexpr) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1754,8 +1757,7 @@ int32_t zpico_declare_liveliness(const char *keyexpr) {
         return ZPICO_ERR_KEYEXPR;
     }
 
-    int lv_ret = z_liveliness_declare_token(z_session_loan(&g_session),
-                                            &g_liveliness[idx].token,
+    int lv_ret = z_liveliness_declare_token(z_session_loan(&g_session), &g_liveliness[idx].token,
                                             z_view_keyexpr_loan(&ke), NULL);
     if (lv_ret < 0) {
         return ZPICO_ERR_GENERIC;
@@ -1779,9 +1781,8 @@ int32_t zpico_undeclare_liveliness(int32_t handle) {
 // Publish with Attachment Implementation
 // ============================================================================
 
-int32_t zpico_publish_with_attachment(int32_t handle,
-                                            const uint8_t *data, size_t len,
-                                            const uint8_t *attachment, size_t attachment_len) {
+int32_t zpico_publish_with_attachment(int32_t handle, const uint8_t* data, size_t len,
+                                      const uint8_t* attachment, size_t attachment_len) {
     if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
@@ -1805,8 +1806,8 @@ int32_t zpico_publish_with_attachment(int32_t handle,
         options.attachment = z_bytes_move(&attachment_bytes);
     }
 
-    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
-                        z_bytes_move(&payload), &options) < 0) {
+    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher), z_bytes_move(&payload),
+                        &options) < 0) {
         return ZPICO_ERR_PUBLISH;
     }
 
@@ -1818,10 +1819,8 @@ int32_t zpico_publish_with_attachment(int32_t handle,
 // `data` outlives the call (z_publisher_put consumes the alias
 // synchronously on posix/embedded transports). Attachment is still
 // copied (small, fixed size).
-int32_t zpico_publish_with_attachment_aliased(int32_t handle,
-                                                    const uint8_t *data, size_t len,
-                                                    const uint8_t *attachment,
-                                                    size_t attachment_len) {
+int32_t zpico_publish_with_attachment_aliased(int32_t handle, const uint8_t* data, size_t len,
+                                              const uint8_t* attachment, size_t attachment_len) {
     if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
@@ -1845,8 +1844,8 @@ int32_t zpico_publish_with_attachment_aliased(int32_t handle,
         options.attachment = z_bytes_move(&attachment_bytes);
     }
 
-    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
-                        z_bytes_move(&payload), &options) < 0) {
+    if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher), z_bytes_move(&payload),
+                        &options) < 0) {
         return ZPICO_ERR_PUBLISH;
     }
 
@@ -1857,9 +1856,7 @@ int32_t zpico_publish_with_attachment_aliased(int32_t handle,
 // Queryable Implementation (for ROS 2 Services)
 // ============================================================================
 
-int32_t zpico_declare_queryable(const char *keyexpr,
-                                      ZpicoQueryCallback callback,
-                                      void *ctx) {
+int32_t zpico_declare_queryable(const char* keyexpr, ZpicoQueryCallback callback, void* ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1888,7 +1885,7 @@ int32_t zpico_declare_queryable(const char *keyexpr,
 
     // Create closure for callback
     z_owned_closure_query_t closure;
-    z_closure_query(&closure, query_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_query(&closure, query_handler, NULL, (void*)(intptr_t)idx);
 
     // Set complete=true so that queries with Z_QUERY_TARGET_ALL_COMPLETE
     // (used by rmw_zenoh_cpp service clients) match this queryable.
@@ -1896,8 +1893,9 @@ int32_t zpico_declare_queryable(const char *keyexpr,
     z_queryable_options_default(&opts);
     opts.complete = true;
 
-    int q_ret = z_declare_queryable(z_session_loan(&g_session), &g_queryables[idx].queryable,
-                                    z_view_keyexpr_loan(&ke), z_closure_query_move(&closure), &opts);
+    int q_ret =
+        z_declare_queryable(z_session_loan(&g_session), &g_queryables[idx].queryable,
+                            z_view_keyexpr_loan(&ke), z_closure_query_move(&closure), &opts);
     if (q_ret < 0) {
         printk("zpico: z_declare_queryable failed: %d for '%s'\n", q_ret, keyexpr);
         g_queryables[idx].callback = NULL;
@@ -1918,6 +1916,15 @@ int32_t zpico_undeclare_queryable(int32_t handle) {
     g_queryables[handle].active = false;
     g_queryables[handle].callback = NULL;
     g_queryables[handle].ctx = NULL;
+    // Phase 237 — drop any cloned queries still held in this queryable's reply
+    // slots (unanswered deferred requests) so they don't leak session refs.
+    for (int j = 0; j < ZPICO_MAX_PENDING_REPLIES; j++) {
+        if (g_stored_query_valid[handle][j]) {
+            z_query_drop(z_query_move(&g_stored_queries[handle][j]));
+            g_stored_query_valid[handle][j] = false;
+        }
+    }
+    g_last_reply_seq[handle] = -1;
     return ZPICO_OK;
 }
 
@@ -1928,8 +1935,8 @@ int32_t zpico_undeclare_queryable(int32_t handle) {
 /**
  * Internal callback for z_get reply handling
  */
-static void get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
-    get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
+static void get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
+    get_reply_ctx_t* rctx = (get_reply_ctx_t*)ctx;
 
     // Only process successful replies
     if (!z_reply_is_ok(reply)) {
@@ -1948,13 +1955,13 @@ static void get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
         return;
     }
 
-    const z_loaned_sample_t *sample = z_reply_ok(reply);
-    const z_loaned_bytes_t *payload = z_sample_payload(sample);
+    const z_loaned_sample_t* sample = z_reply_ok(reply);
+    const z_loaned_bytes_t* payload = z_sample_payload(sample);
 
     // Copy payload to reply buffer
     z_owned_slice_t slice;
     if (z_bytes_to_slice(payload, &slice) == 0) {
-        const uint8_t *data = z_slice_data(z_slice_loan(&slice));
+        const uint8_t* data = z_slice_data(z_slice_loan(&slice));
         size_t len = z_slice_len(z_slice_loan(&slice));
 
         if (len <= ZPICO_GET_REPLY_BUF_SIZE) {
@@ -1974,8 +1981,8 @@ static void get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
 /**
  * Internal callback for z_get completion (dropper)
  */
-static void get_reply_dropper(void *ctx) {
-    get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
+static void get_reply_dropper(void* ctx) {
+    get_reply_ctx_t* rctx = (get_reply_ctx_t*)ctx;
 #if Z_FEATURE_MULTI_THREAD == 1
     _z_mutex_lock(&rctx->mutex);
     rctx->done = true;
@@ -1986,10 +1993,8 @@ static void get_reply_dropper(void *ctx) {
 #endif
 }
 
-int32_t zpico_get(const char *keyexpr,
-                       const uint8_t *payload, size_t payload_len,
-                       uint8_t *reply_buf, size_t reply_buf_size,
-                       uint32_t timeout_ms) {
+int32_t zpico_get(const char* keyexpr, const uint8_t* payload, size_t payload_len,
+                  uint8_t* reply_buf, size_t reply_buf_size, uint32_t timeout_ms) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -2035,8 +2040,8 @@ int32_t zpico_get(const char *keyexpr,
     z_closure(&callback, get_reply_handler, get_reply_dropper, &ctx);
 
     // Send the query
-    if (z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "",
-              z_move(callback), &opts) < 0) {
+    if (z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts) <
+        0) {
         return ZPICO_ERR_GENERIC;
     }
 
@@ -2096,12 +2101,12 @@ int32_t zpico_get(const char *keyexpr,
 
     // Check if we got a reply
     if (!ctx.received) {
-        return -9;  // ZPICO_ERR_TIMEOUT (defined in Rust FFI)
+        return -9; // ZPICO_ERR_TIMEOUT (defined in Rust FFI)
     }
 
     // Copy reply to output buffer
     if (ctx.len > reply_buf_size) {
-        return ZPICO_ERR_FULL;  // Buffer too small
+        return ZPICO_ERR_FULL; // Buffer too small
     }
 
     memcpy(reply_buf, ctx.buf, ctx.len);
@@ -2113,7 +2118,7 @@ int32_t zpico_get(const char *keyexpr,
 // ============================================================================
 
 // Reply handler for pending get slots — reuses the same logic as get_reply_handler
-static void pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
+static void pending_get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
     g_diag_reply_handler_calls++;
     /* Phase 127.D.2 — keep the address-recording side effect. It
      * defeats whole-program LTO alias analysis that would otherwise
@@ -2135,19 +2140,19 @@ static void pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
     _zpico_notify_spin();
     if (g_reply_waker) {
         // ctx is &ps->ctx which is the first field, so ps == (pending_get_slot_t*)ctx
-        int32_t slot = (int32_t)((pending_get_slot_t *)ctx - g_pending_gets);
+        int32_t slot = (int32_t)((pending_get_slot_t*)ctx - g_pending_gets);
         g_reply_waker(slot);
     }
 }
 
 // Dropper for pending get slots — just sets the done flag (no condvar)
-static void pending_get_dropper(void *ctx) {
+static void pending_get_dropper(void* ctx) {
     g_diag_reply_dropper_calls++;
-    get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
+    get_reply_ctx_t* rctx = (get_reply_ctx_t*)ctx;
     __atomic_store_n(&rctx->done, true, __ATOMIC_SEQ_CST);
     _zpico_notify_spin();
     if (g_reply_waker) {
-        int32_t slot = (int32_t)((pending_get_slot_t *)ctx - g_pending_gets);
+        int32_t slot = (int32_t)((pending_get_slot_t*)ctx - g_pending_gets);
         g_reply_waker(slot);
     }
 }
@@ -2173,9 +2178,8 @@ void zpico_get_diag_counters(uint32_t out[18]) {
     out[17] = g_diag_check_ctx_addr;
 }
 
-int32_t zpico_get_start(const char *keyexpr,
-                              const uint8_t *payload, size_t payload_len,
-                              uint32_t timeout_ms) {
+int32_t zpico_get_start(const char* keyexpr, const uint8_t* payload, size_t payload_len,
+                        uint32_t timeout_ms) {
     g_diag_get_start_calls++;
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
@@ -2200,7 +2204,7 @@ int32_t zpico_get_start(const char *keyexpr,
     }
 
     // Initialize slot context
-    pending_get_slot_t *ps = &g_pending_gets[slot];
+    pending_get_slot_t* ps = &g_pending_gets[slot];
     ps->ctx.len = 0;
     ps->ctx.received = false;
     ps->ctx.done = false;
@@ -2233,8 +2237,8 @@ int32_t zpico_get_start(const char *keyexpr,
     /* Same aliasing-defeat trick. */
     g_diag_start_ctx_addr = (uint32_t)(uintptr_t)&ps->ctx;
 
-    z_result_t zret = z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "",
-                             z_move(callback), &opts);
+    z_result_t zret =
+        z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts);
     if (zret < 0) {
         ps->in_use = false;
         return ZPICO_ERR_GENERIC;
@@ -2259,7 +2263,7 @@ int32_t zpico_get_start(const char *keyexpr,
  *
  * Returns the slot handle on success, ZPICO_ERR_* on failure.
  */
-int32_t zpico_liveliness_get_start(const char *keyexpr, uint32_t timeout_ms) {
+int32_t zpico_liveliness_get_start(const char* keyexpr, uint32_t timeout_ms) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -2278,7 +2282,7 @@ int32_t zpico_liveliness_get_start(const char *keyexpr, uint32_t timeout_ms) {
         return ZPICO_ERR_FULL;
     }
 
-    pending_get_slot_t *ps = &g_pending_gets[slot];
+    pending_get_slot_t* ps = &g_pending_gets[slot];
     ps->ctx.len = 0;
     ps->ctx.received = false;
     ps->ctx.done = false;
@@ -2298,9 +2302,8 @@ int32_t zpico_liveliness_get_start(const char *keyexpr, uint32_t timeout_ms) {
     z_owned_closure_reply_t callback;
     z_closure(&callback, pending_get_reply_handler, pending_get_dropper, &ps->ctx);
 
-    z_result_t zret = z_liveliness_get(z_session_loan(&g_session),
-                                        z_view_keyexpr_loan(&ke),
-                                        z_move(callback), &opts);
+    z_result_t zret = z_liveliness_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke),
+                                       z_move(callback), &opts);
     if (zret < 0) {
         ps->in_use = false;
         return ZPICO_ERR_GENERIC;
@@ -2337,7 +2340,7 @@ int32_t zpico_liveliness_get_count(int32_t handle) {
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
         return ZPICO_ERR_INVALID;
     }
-    pending_get_slot_t *ps = &g_pending_gets[handle];
+    pending_get_slot_t* ps = &g_pending_gets[handle];
     if (!ps->in_use) {
         return ZPICO_ERR_INVALID;
     }
@@ -2352,7 +2355,7 @@ int32_t zpico_liveliness_get_check(int32_t handle) {
         return ZPICO_ERR_INVALID;
     }
 
-    pending_get_slot_t *ps = &g_pending_gets[handle];
+    pending_get_slot_t* ps = &g_pending_gets[handle];
     if (!ps->in_use) {
         return ZPICO_ERR_INVALID;
     }
@@ -2368,20 +2371,19 @@ int32_t zpico_liveliness_get_check(int32_t handle) {
     }
     if (__atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST)) {
         ps->in_use = false;
-        return -9;  /* ZPICO_ERR_TIMEOUT */
+        return -9; /* ZPICO_ERR_TIMEOUT */
     }
     return 0;
 }
 
-int32_t zpico_get_check(int32_t handle,
-                              uint8_t *reply_buf, size_t reply_buf_size) {
+int32_t zpico_get_check(int32_t handle, uint8_t* reply_buf, size_t reply_buf_size) {
     g_diag_get_check_calls++;
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
         g_diag_gck_invalid_arg++;
         return ZPICO_ERR_INVALID;
     }
 
-    pending_get_slot_t *ps = &g_pending_gets[handle];
+    pending_get_slot_t* ps = &g_pending_gets[handle];
     if (!ps->in_use) {
         g_diag_gck_not_in_use++;
         return ZPICO_ERR_INVALID;
@@ -2417,7 +2419,7 @@ int32_t zpico_get_check(int32_t handle,
         g_diag_gck_timeout++;
         // Dropper fired without a reply — timeout
         ps->in_use = false;
-        return -9;  // ZPICO_ERR_TIMEOUT
+        return -9; // ZPICO_ERR_TIMEOUT
     }
 
     g_diag_gck_pending++;
@@ -2433,16 +2435,20 @@ void zpico_set_reply_waker(zpico_waker_fn fn) {
 // Query Reply Implementation (for service servers)
 // ============================================================================
 
-int32_t zpico_query_reply(int32_t queryable_handle,
-                                const char *keyexpr,
-                                const uint8_t *data, size_t len,
-                                const uint8_t *attachment, size_t attachment_len) {
+int32_t zpico_query_reply(int32_t queryable_handle, int64_t reply_seq, const char* keyexpr,
+                          const uint8_t* data, size_t len, const uint8_t* attachment,
+                          size_t attachment_len) {
     if (queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
         return ZPICO_ERR_INVALID;
     }
-    if (!g_stored_query_valid[queryable_handle]) {
+    // Phase 237 — `reply_seq` selects the cloned query captured by
+    // `query_handler` (the slot index it recorded). The reply may arrive long
+    // after the query callback returned (deferred get_result).
+    if (reply_seq < 0 || reply_seq >= ZPICO_MAX_PENDING_REPLIES ||
+        !g_stored_query_valid[queryable_handle][reply_seq]) {
         return ZPICO_ERR_INVALID;
     }
+    z_owned_query_t* stored_query = &g_stored_queries[queryable_handle][reply_seq];
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
@@ -2470,14 +2476,12 @@ int32_t zpico_query_reply(int32_t queryable_handle,
     } else {
         // Echo back the original query's attachment (required by rmw_zenoh_cpp
         // which expects sequence_number, source_timestamp, gid in the reply).
-        const z_loaned_bytes_t *query_att = z_query_attachment(
-            z_query_loan(&g_stored_queries[queryable_handle]));
+        const z_loaned_bytes_t* query_att = z_query_attachment(z_query_loan(stored_query));
         if (query_att != NULL && z_bytes_len(query_att) > 0) {
             z_owned_slice_t att_slice;
             if (z_bytes_to_slice(query_att, &att_slice) == 0) {
-                if (z_bytes_copy_from_buf(&attachment_bytes,
-                        z_slice_data(z_slice_loan(&att_slice)),
-                        z_slice_len(z_slice_loan(&att_slice))) == 0) {
+                if (z_bytes_copy_from_buf(&attachment_bytes, z_slice_data(z_slice_loan(&att_slice)),
+                                          z_slice_len(z_slice_loan(&att_slice))) == 0) {
                     options.attachment = z_bytes_move(&attachment_bytes);
                 }
                 z_slice_drop(z_slice_move(&att_slice));
@@ -2485,18 +2489,27 @@ int32_t zpico_query_reply(int32_t queryable_handle,
         }
     }
 
-    // Reply using the stored (cloned) query for this queryable
-    if (z_query_reply(z_query_loan(&g_stored_queries[queryable_handle]),
-                      z_view_keyexpr_loan(&ke),
-                      z_bytes_move(&payload), &options) < 0) {
+    // Reply using the cloned query held in this reply slot.
+    if (z_query_reply(z_query_loan(stored_query), z_view_keyexpr_loan(&ke), z_bytes_move(&payload),
+                      &options) < 0) {
         return ZPICO_ERR_GENERIC;
     }
 
-    // Drop the stored query after reply
-    z_query_drop(z_query_move(&g_stored_queries[queryable_handle]));
-    g_stored_query_valid[queryable_handle] = false;
+    // Drop the cloned query + free the slot after reply.
+    z_query_drop(z_query_move(stored_query));
+    g_stored_query_valid[queryable_handle][reply_seq] = false;
 
     return ZPICO_OK;
+}
+
+// Phase 237 — return the reply-slot index allocated by the most recent
+// `query_handler` for this queryable (the deferred-reply seq). Must be called
+// from inside the synchronous query callback; -1 if the reply table was full.
+int64_t zpico_queryable_take_reply_seq(int32_t queryable_handle) {
+    if (queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
+        return -1;
+    }
+    return g_last_reply_seq[queryable_handle];
 }
 
 // ============================================================================
@@ -2507,11 +2520,11 @@ int32_t zpico_query_reply(int32_t queryable_handle,
 // struct { uint64_t tv_sec; uint64_t tv_nsec; } (16 bytes) on ThreadX/POSIX.
 _Static_assert(sizeof(z_clock_t) <= 16, "z_clock_t must fit in 16 bytes");
 
-void zpico_clock_start(uint8_t *clock_buf) {
+void zpico_clock_start(uint8_t* clock_buf) {
     z_clock_t now = z_clock_now();
     memcpy(clock_buf, &now, sizeof(z_clock_t));
 }
 
-unsigned long zpico_clock_elapsed_ms_since(uint8_t *clock_buf) {
-    return z_clock_elapsed_ms((z_clock_t *)clock_buf);
+unsigned long zpico_clock_elapsed_ms_since(uint8_t* clock_buf) {
+    return z_clock_elapsed_ms((z_clock_t*)clock_buf);
 }

@@ -243,12 +243,16 @@ unsafe extern "C" {
     pub fn zpico_undeclare_queryable(handle: i32) -> i32;
     pub fn zpico_query_reply(
         queryable_handle: i32,
+        reply_seq: i64,
         keyexpr: *const core::ffi::c_char,
         data: *const u8,
         len: usize,
         attachment: *const u8,
         attachment_len: usize,
     ) -> i32;
+    /// Phase 237 — reply-slot index from the most recent query callback (the
+    /// deferred-reply seq); call from inside the synchronous query callback.
+    pub fn zpico_queryable_take_reply_seq(queryable_handle: i32) -> i64;
 
     // Service client (queries)
     pub fn zpico_get(

@@ -580,6 +580,7 @@ mod cbindgen_stubs {
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_query_reply(
         _queryable_handle: i32,
+        _reply_seq: i64,
         _keyexpr: *const c_char,
         _data: *const u8,
         _len: usize,
@@ -587,6 +588,14 @@ mod cbindgen_stubs {
         _attachment_len: usize,
     ) -> i32 {
         0
+    }
+
+    /// Phase 237 — reply-slot index from the most recent query callback (the
+    /// deferred-reply seq); call from inside the synchronous query callback.
+    /// Stub returns -1 (no slot) in the pure-Rust no-op build.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_queryable_take_reply_seq(_queryable_handle: i32) -> i64 {
+        -1
     }
 
     /// Send a query and wait for reply (blocking, for service client).

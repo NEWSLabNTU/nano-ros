@@ -128,6 +128,10 @@ impl ServiceBufferRef {
 }
 
 /// Sequence counter for service requests
+// Phase 237 — the production queryable callback now records the C shim's
+// reply-slot index as the correlation token (seq); only the `#[cfg(test)]`
+// service-buffer simulator still hands out monotonic counter values.
+#[allow(dead_code)]
 pub(super) static SERVICE_SEQ_COUNTER: AtomicSeqCounter = AtomicSeqCounter::new(0);
 
 /// Callback function invoked by the C shim when queries arrive
@@ -180,7 +184,10 @@ extern "C" fn queryable_callback(
         // Request exceeds static buffer capacity — flag as overflow.
         // Store keyexpr + sequence_number for diagnostics, but skip payload.
         buffer.overflow.store(true, Ordering::Release);
-        let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
+        // Phase 237 — the reply correlation token is the C shim's reply-slot
+        // index (the cloned query held for a possibly-deferred reply), not a
+        // free-running counter. `buffer_index` is the queryable handle.
+        let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(buffer_index as i32) };
         buffer.sequence_number.store(seq, Ordering::Release);
         buffer.has_request.store(true, Ordering::Release);
     } else {
@@ -192,8 +199,8 @@ extern "C" fn queryable_callback(
         }
         buffer.len.store(payload_len, Ordering::Release);
 
-        // Set sequence number
-        let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
+        // Set the reply correlation token (Phase 237 — see above).
+        let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(buffer_index as i32) };
         buffer.sequence_number.store(seq, Ordering::Release);
 
         buffer.has_request.store(true, Ordering::Release);
@@ -353,7 +360,7 @@ impl ServiceServerTrait for ZenohServiceServer {
         }))
     }
 
-    fn send_reply(&mut self, _sequence_number: i64, data: &[u8]) -> Result<(), Self::Error> {
+    fn send_reply(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), Self::Error> {
         if self.reply_keyexpr_len == 0 {
             return Err(TransportError::ServiceReplyFailed);
         }
@@ -361,18 +368,21 @@ impl ServiceServerTrait for ZenohServiceServer {
         // Get context reference
         let context = unsafe { &*self.context };
 
-        // Send reply using the queryable handle and stored keyexpr
+        // Phase 237 — `sequence_number` selects the cloned query the C shim is
+        // holding for this request (the reply-slot index from `try_recv_request`),
+        // so a deferred get_result reply reaches the original requester even
+        // after later requests arrived. The reply keyexpr is constant per server
+        // (same rr/ topic), so it is NOT cleared — subsequent deferred replies
+        // reuse it; it is re-set on every `try_recv_request` regardless.
         context
             .query_reply(
                 self._queryable.handle(),
+                sequence_number,
                 &self.reply_keyexpr[..=self.reply_keyexpr_len],
                 data,
                 None,
             )
             .map_err(|_| TransportError::ServiceReplyFailed)?;
-
-        // Clear the stored keyexpr
-        self.reply_keyexpr_len = 0;
 
         Ok(())
     }
