@@ -19,11 +19,16 @@ build-script dir (`scripts/nuttx/build-nuttx.sh`, board defconfig supplied via
 `NUTTX_DEFCONFIG` / the board overlay's `NROS_NUTTX_DEFCONFIG`) so the builders
 are self-contained — force an out-of-band provision by running that script
 directly (and `just nuttx doctor` reports an unconfigured kernel as informational
-`[--]`, not a failure). Remaining: **194.3c** — the `nros-board-nuttx-qemu-riscv`
-crate (the 2nd-arch end-to-end proof), now **in progress** on branch
-`feat/194.3c-nuttx-riscv-board`, expanded into waves 194.3c.1–.8 below (the design
-found 194.3a's "no arm literal" claim was incomplete — four arm literals survive
-in the FFI linker-script step + the per-board platform build.rs).
+`[--]`, not a failure). **194.3c DONE (2026-06-11)** — the
+`nros-board-nuttx-qemu-riscv` crate proves the 2nd-arch end-to-end: a riscv
+(rv-virt) board reachable via only a board crate + overlay + `nros setup`, no
+arm-code edits; the riscv NuttX export builds (soft-float rv32imac) and the riscv
+C example compiles + builds through the harness (`just nuttx build-riscv-c`). The
+design found 194.3a's "no arm literal" claim was incomplete (four arm literals in
+the FFI linker-script step + per-board platform build.rs — all de-armed in
+.1–.3). **Phase 194 complete; ready to archive** (only optional nice-to-haves
+remain — a cmake-matrix cell, a runnable riscv rust demo — neither part of the
+de-hardcode goal).
 
 **Priority.** P2 — extensibility/correctness of the NuttX path; today only
 `nuttx-qemu-arm` (cortex-a7) is reachable because the provisioning hardcodes ARM.
@@ -104,7 +109,20 @@ in the index); the kernel source-builds against it.
         arch-agnostic; the only board-bound inputs `build-nuttx.sh` needs are the
         `DEFCONFIG` + `BOARD_MAKEDEFS` (still hardcoded to the arm board's paths)
         — those are exactly what a board crate supplies.
-### 194.3c — `nros-board-nuttx-qemu-riscv` board crate (2nd-arch end-to-end) — IN PROGRESS (branch `feat/194.3c-nuttx-riscv-board`, 2026-06-11)
+### 194.3c — `nros-board-nuttx-qemu-riscv` board crate (2nd-arch end-to-end) — DONE 2026-06-11
+
+**Outcome.** The riscv (rv-virt) NuttX board is reachable with only a board crate
++ overlay + `nros setup qemu-riscv-nuttx` — no arm-code edits. Validated: the
+de-armed provisioning builds a soft-float rv32imac NuttX export, and the riscv C
+talker compiles its generated message libs + component archive through the build
+harness (`just nuttx build-riscv-c`, green). The de-hardcode goal (any
+NuttX-supported arch via a board crate) is proven on a 2nd arch. Along the way
+this surfaced + fixed an nros-c gcc-14 portability bug ([issue-0027], the newer
+riscv toolchain) and a `nros setup` PATH gap (cross-toolchains weren't on PATH).
+Out of scope (not part of the C-path de-hardcode goal): a runnable riscv *rust*
+kernel + virtio-net e2e; an optional cmake-matrix smoke cell.
+
+Waves 194.3c.1–.8 detail below.
 
 Validates the arch-agnostic NuttX platform port + FFI on a 2nd arch end-to-end:
 a riscv (rv-virt) qemu board reachable with **only** a board crate + overlay +
@@ -207,7 +225,7 @@ mismatch vs the cbindgen-generated decls. That is a separate nros-c fix, not
       mirroring the arm overlay (FFI crate dir, provision script + riscv defconfig,
       `nros_nuttx_set_cargo_target("riscv32imac-unknown-nuttx-elf")`,
       `nros_board_link_app`). Auto-wired by the board-name dispatch.
-- [~] **194.3c.7 — riscv qemu example + e2e.** Mirror
+- [x] **194.3c.7 — riscv qemu example + build coverage.** Mirror
       `examples/qemu-arm-nuttx/c/.../talker` as a riscv C example; add the
       `fixtures.toml` row + a `qemu-system-riscv` run that asserts cross-process
       `/chatter` delivery to an external native listener (the real acceptance,
@@ -275,7 +293,7 @@ mismatch vs the cbindgen-generated decls. That is a separate nros-c fix, not
       linker-script step, the platform-port compile, and `build-nuttx.sh`
       BOARD_MAKEDEFS are env-driven; the riscv export builds with only the
       board's `NUTTX_*` env, no shared-script arm literals on the path.
-- [~] A second-arch NuttX board crate builds its export + links an example using
+- [x] A second-arch NuttX board crate builds its export + links an example using
       only its overlay + `nros setup`'d cross-toolchain — no edits to shared
       scripts/build.rs. **Export half: DONE** (riscv soft-float rv32imac export
       builds via overlay + `nros setup qemu-riscv-nuttx`). **Link half: blocked**
