@@ -371,7 +371,7 @@ lifetime transmute footgun. All in board crates / nros-node.
       tally script's output. R.1 + R.2 both [x] (`cd85a6645` —
       Python JUnit post-processor + recipe hooks + test-harness doc;
       `xrce test` 10/10 SKIPPED-as-FAIL now reports 0 failures).
-- [ ] Phase doc retired to `archived/` when all checkboxes flip.
+- [x] Phase doc retired to `archived/` when all checkboxes flip. _(2026-06-11)_
 
 ---
 
@@ -804,12 +804,15 @@ tag).
       Verified both paths (working installed CLI silent; faked
       no-`ws` binary emits `[PREREQ]` + recipe exits 0).
 
-- [ ] **214.I.3 Maintainer follow-up: cut a new nros-cli release**
-      — once 210.D.1, 212.E, 212.J, K.7.1.{c,d,d.b}, and the post-
-      `0.3.7` commits land in a tagged release (likely `0.4.0` given
-      the verb-surface growth), bump `NROS_VERSION` in
-      `scripts/install-nros.sh` and update the Path B doc note. The
-      env-var path stays supported for development iterations.
+- [x] **214.I.3 Maintainer follow-up: cut a new nros-cli release**
+      — **obsolete via Phase 218 (2026-06-11).** The premise (bump
+      `NROS_VERSION` in `scripts/install-nros.sh`) no longer exists:
+      the Phase 218 monorepo merge deleted the `install-nros.sh` curl
+      shim and the standalone `nros-cli` repo, so the CLI ships in-tree
+      under `packages/cli/` — one checkout = one CLI version = one
+      runtime ABI, no `NROS_VERSION` pin to police. The release intent
+      itself is satisfied: the `nros-v0.5.0` bundle tag was cut on
+      2026-06-08 (Phase 222 close). No action remains.
 
 ---
 
