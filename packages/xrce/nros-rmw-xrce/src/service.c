@@ -41,25 +41,34 @@ void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t 
         if (!slot->active || slot->replier_id != object_id.id) {
             continue;
         }
+        /* Phase 237 follow-up — enqueue into the request ring. Drop the newest
+         * when full (preserves in-order delivery of already-buffered requests),
+         * so a burst of concurrent arrivals doesn't clobber an unread request. */
+        if (slot->req_count >= XRCE_SERVICE_REQUEST_RING_DEPTH) {
+            return;
+        }
+        xrce_service_request_entry* e = &slot->req_ring[slot->req_write_idx];
         /* XRCE-DDS interop: the agent delivers the bare CDR-serialized request
          * WITHOUT the 4-byte CDR encapsulation header (it owns the DDS-side
          * representation header). nano-ros's deserializers expect the header,
          * so prepend it — mirrors `xrce_topic_callback` and is symmetric with
          * the strip on `uxr_buffer_request` / `uxr_buffer_reply`. */
         if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
-            slot->overflow = true;
-            slot->has_request = true;
-            return;
+            e->overflow = true;
+            e->len = 0;
+        } else {
+            e->overflow = false;
+            e->data[0] = 0x00; /* CDR_LE representation id */
+            e->data[1] = 0x01;
+            e->data[2] = 0x00; /* options */
+            e->data[3] = 0x00;
+            memcpy(e->data + XRCE_CDR_HEADER_LEN, ub->iterator, len);
+            e->len = len + XRCE_CDR_HEADER_LEN;
         }
-        slot->overflow = false;
-        slot->data[0] = 0x00; /* CDR_LE representation id */
-        slot->data[1] = 0x01;
-        slot->data[2] = 0x00; /* options */
-        slot->data[3] = 0x00;
-        memcpy(slot->data + XRCE_CDR_HEADER_LEN, ub->iterator, len);
-        slot->len = len + XRCE_CDR_HEADER_LEN;
-        slot->sample_id = *sample_id;
-        slot->has_request = true;
+        e->sample_id = *sample_id;
+        slot->req_write_idx =
+            (uint16_t)((slot->req_write_idx + 1) % XRCE_SERVICE_REQUEST_RING_DEPTH);
+        slot->req_count++;
         return;
     }
 }
@@ -175,11 +184,14 @@ nros_rmw_ret_t xrce_service_server_create(nros_rmw_session_t* session, const cha
         return cret;
     }
 
-    /* Activate the slot. */
+    /* Activate the slot — empty request ring. */
     slot->replier_id = replier_oid.id;
-    slot->has_request = false;
-    slot->overflow = false;
-    slot->len = 0;
+    slot->req_write_idx = 0;
+    slot->req_read_idx = 0;
+    slot->req_count = 0;
+    for (int i = 0; i < XRCE_MAX_PENDING_REPLIES; ++i) {
+        slot->reply_tokens[i].in_use = false;
+    }
     slot->active = true;
     ss->replier_oid = replier_oid;
 
@@ -207,7 +219,7 @@ void xrce_service_server_destroy(nros_rmw_service_server_t* server) {
 
     if (ss->slot != NULL) {
         ss->slot->active = false;
-        ss->slot->has_request = false;
+        ss->slot->req_count = 0;
     }
     (void)uxr_buffer_delete_entity(&st->session, st->output_reliable, ss->replier_oid);
     (void)uxr_run_session_time(&st->session, 0);
@@ -223,28 +235,34 @@ int32_t xrce_service_try_recv_request(nros_rmw_service_server_t* server, uint8_t
     }
     xrce_service_server_state* ss = (xrce_service_server_state*)server->backend_data;
     xrce_service_server_slot* slot = ss->slot;
-    if (slot == NULL || !slot->has_request) {
+    if (slot == NULL || slot->req_count == 0) {
         return NROS_RMW_RET_NO_DATA;
     }
-    if (slot->overflow) {
-        slot->overflow = false;
-        slot->has_request = false;
+    xrce_service_request_entry* e = &slot->req_ring[slot->req_read_idx];
+
+    /* Advance the read cursor + drop the head entry. */
+#define XRCE_REQ_RING_POP()                                                                        \
+    do {                                                                                           \
+        slot->req_read_idx =                                                                       \
+            (uint16_t)((slot->req_read_idx + 1) % XRCE_SERVICE_REQUEST_RING_DEPTH);                \
+        slot->req_count--;                                                                         \
+    } while (0)
+
+    if (e->overflow) {
+        XRCE_REQ_RING_POP();
         return NROS_RMW_RET_MESSAGE_TOO_LARGE;
     }
-    size_t len = slot->len;
+    size_t len = e->len;
     if (len > buf_len) {
-        slot->has_request = false;
+        XRCE_REQ_RING_POP();
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
-    if (buf != NULL && len > 0) {
-        memcpy(buf, slot->data, len);
-    }
-    /* Phase 237 — move the request's `SampleIdentity` from the single inbox into
-     * a seq-keyed reply token, so the reply can be sent after a later request
-     * has overwritten `slot->sample_id` (deferred action `get_result`). Return
-     * the token index as the runtime `sequence_number`; `send_reply(seq)` reads
-     * it back. WOULD_BLOCK if the table is full so the runtime retries the
-     * request on a later spin rather than losing the correlation. */
+    /* Phase 237 — move the request's `SampleIdentity` into a seq-keyed reply
+     * token so the reply can be sent after later requests (deferred action
+     * `get_result`). Return the token index as the runtime `sequence_number`;
+     * `send_reply(seq)` reads it back. WOULD_BLOCK (leaving the request in the
+     * ring) if the token table is full so the runtime retries on a later spin
+     * rather than losing the correlation. */
     int reply_idx = -1;
     for (int i = 0; i < XRCE_MAX_PENDING_REPLIES; ++i) {
         if (!slot->reply_tokens[i].in_use) {
@@ -253,15 +271,18 @@ int32_t xrce_service_try_recv_request(nros_rmw_service_server_t* server, uint8_t
         }
     }
     if (reply_idx < 0) {
-        /* Leave the request buffered (has_request stays true) for a retry. */
         return NROS_RMW_RET_WOULD_BLOCK;
     }
-    slot->reply_tokens[reply_idx].sample_id = slot->sample_id;
+    if (buf != NULL && len > 0) {
+        memcpy(buf, e->data, len);
+    }
+    slot->reply_tokens[reply_idx].sample_id = e->sample_id;
     slot->reply_tokens[reply_idx].in_use = true;
     if (seq_out != NULL) {
         *seq_out = (int64_t)reply_idx;
     }
-    slot->has_request = false;
+    XRCE_REQ_RING_POP();
+#undef XRCE_REQ_RING_POP
     return (int32_t)len;
 }
 
@@ -273,7 +294,7 @@ int32_t xrce_service_has_request(nros_rmw_service_server_t* server) {
     if (ss->slot == NULL) {
         return 0;
     }
-    return ss->slot->has_request ? 1 : 0;
+    return ss->slot->req_count > 0 ? 1 : 0;
 }
 
 nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_server_t* server, int64_t seq,

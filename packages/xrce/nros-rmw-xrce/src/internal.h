@@ -57,6 +57,14 @@ extern "C" {
 #ifndef XRCE_MAX_PENDING_REPLIES
 #define XRCE_MAX_PENDING_REPLIES 4
 #endif
+/* Phase 237 follow-up — depth of the service-server request inbox ring. The
+ * single inbox dropped a request that arrived before the previous one was
+ * drained (two clients sending send_goal / get_result in the same spin window —
+ * concurrent goals under load). A ring buffers a burst of arrivals so each is
+ * read in order. Override on RAM-tight targets (depth 1 = single-inbox). */
+#ifndef XRCE_SERVICE_REQUEST_RING_DEPTH
+#define XRCE_SERVICE_REQUEST_RING_DEPTH 4
+#endif
 #ifndef XRCE_BUFFER_SIZE
 #define XRCE_BUFFER_SIZE 1024
 #endif
@@ -168,13 +176,24 @@ typedef struct xrce_reply_token {
     bool in_use;
 } xrce_reply_token;
 
-/* Service-server slot — request inbox + deferred-reply token table. */
-typedef struct xrce_service_server_slot {
+/* One buffered request in the service-server inbox ring. */
+typedef struct xrce_service_request_entry {
     uint8_t data[XRCE_BUFFER_SIZE];
     size_t len;
-    bool has_request;
     bool overflow;
     SampleIdentity sample_id;
+} xrce_service_request_entry;
+
+/* Service-server slot — request inbox RING + deferred-reply token table. */
+typedef struct xrce_service_server_slot {
+    /* Phase 237 follow-up — SPSC ring of buffered requests (callback produces,
+     * `try_recv_request` consumes). `req_count` distinguishes empty (0) from
+     * full (depth); on full the callback drops the newest, preserving in-order
+     * delivery of the buffered requests. */
+    xrce_service_request_entry req_ring[XRCE_SERVICE_REQUEST_RING_DEPTH];
+    uint16_t req_write_idx;
+    uint16_t req_read_idx;
+    uint16_t req_count;
     uint16_t replier_id;
     bool active;
     /* Phase 237 — outstanding replies keyed by index (the runtime `seq`). */

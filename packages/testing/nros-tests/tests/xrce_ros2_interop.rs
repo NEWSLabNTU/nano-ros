@@ -422,10 +422,10 @@ fn test_xrce_action_ros2_concurrent(xrce_action_server_binary: PathBuf) {
     let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(8));
     std::thread::sleep(Duration::from_secs(1));
 
-    // Long-running goals (order 20 ≈ 2 s) so both overlap. Stagger the second
-    // client by 1 s so the two send_goal requests don't collide on the single
-    // request inbox (a separate, pre-existing limitation — see phase-237; the
-    // reply-token table this test guards is for concurrent *replies*).
+    // Long-running goals (order 20 ≈ 2 s) so both overlap. The two clients fire
+    // their send_goal (and early get_result) requests essentially simultaneously
+    // — the request-inbox ring (Phase 237 follow-up) buffers both arrivals so
+    // neither is dropped, and the reply-token table holds both deferred replies.
     let spawn_client = || {
         Ros2DdsProcess::action_send_goal_with_domain(
             "/fibonacci",
@@ -442,7 +442,6 @@ fn test_xrce_action_ros2_concurrent(xrce_action_server_binary: PathBuf) {
             nros_tests::skip!("ROS 2 DDS action client could not start: {e}");
         }
     };
-    std::thread::sleep(Duration::from_secs(1));
     let mut c2 = match spawn_client() {
         Ok(p) => p,
         Err(e) => {
