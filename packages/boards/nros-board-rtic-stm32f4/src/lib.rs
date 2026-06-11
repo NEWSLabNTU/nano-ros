@@ -121,6 +121,16 @@ pub use cortex_m_rt::entry;
 pub use defmt;
 pub use nros_platform_stm32f4;
 
+// Issue 0028 — provide the single `defmt::timestamp!` that defmt requires every
+// binary to define. The RTIC examples collapse their whole body to
+// `nros::main!()` and link `defmt_rtt` but never define a timestamp themselves,
+// so without this the `_defmt_timestamp` symbol is undefined and they fail to
+// link. Defining it here (the crate every RTIC example links, and which the
+// plain `#[entry]` `talker` does NOT — it carries its own) gives all RTIC
+// examples one provider with no duplicate-symbol risk. Constant 0 mirrors the
+// talker; defmt timestamps are cosmetic for these fixtures.
+defmt::timestamp!("{=u64:us}", { 0 });
+
 /// Queue depth used by [`RticRuntime`]. Sized to match the sibling
 /// `EmbassyRuntime` channel (Phase 216.C.2 follow-up,
 /// `CHANNEL_CAPACITY = 32`). STM32F4 callback density fits
