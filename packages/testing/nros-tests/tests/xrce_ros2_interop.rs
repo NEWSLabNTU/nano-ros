@@ -387,6 +387,90 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
     eprintln!("[PASS] XRCE action server ↔ ROS 2 DDS client: accept + feedback + result");
 }
 
+/// Phase 237 — TWO concurrent ROS 2 action clients against one nano-ros XRCE
+/// action server (concurrent mode). Both goals are active at once, so both
+/// `rclcpp_action` clients have an early `get_result` deferred SIMULTANEOUSLY —
+/// exercising the XRCE seq-keyed reply-token table with multiple in-flight
+/// replies (the case a single stored `SampleIdentity` would cross-wire). Each
+/// client must get its OWN `SUCCEEDED` result.
+#[rstest]
+fn test_xrce_action_ros2_concurrent(xrce_action_server_binary: PathBuf) {
+    use std::process::Command;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 DDS not available");
+    }
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
+
+    let mut server_cmd = Command::new(&xrce_action_server_binary);
+    server_cmd
+        .env("NROS_LOCATOR", &addr)
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
+        .env("XRCE_TIMEOUT", "40")
+        // Concurrent mode: accept + advance several goals at once, draining
+        // get_result every spin so two early get_result requests are held
+        // simultaneously.
+        .env("NROS_ACTION_CONCURRENT", "1")
+        .env("RUST_LOG", "info");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-action-server-concurrent")
+        .expect("Failed to start xrce action server");
+    let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(8));
+    std::thread::sleep(Duration::from_secs(1));
+
+    // Long-running goals (order 20 ≈ 2 s) so both overlap. Stagger the second
+    // client by 1 s so the two send_goal requests don't collide on the single
+    // request inbox (a separate, pre-existing limitation — see phase-237; the
+    // reply-token table this test guards is for concurrent *replies*).
+    let spawn_client = || {
+        Ros2DdsProcess::action_send_goal_with_domain(
+            "/fibonacci",
+            "example_interfaces/action/Fibonacci",
+            "{order: 20}",
+            DEFAULT_ROS_DISTRO,
+            domain_id,
+        )
+    };
+    let mut c1 = match spawn_client() {
+        Ok(p) => p,
+        Err(e) => {
+            server.kill();
+            nros_tests::skip!("ROS 2 DDS action client could not start: {e}");
+        }
+    };
+    std::thread::sleep(Duration::from_secs(1));
+    let mut c2 = match spawn_client() {
+        Ok(p) => p,
+        Err(e) => {
+            server.kill();
+            nros_tests::skip!("ROS 2 DDS action client 2 could not start: {e}");
+        }
+    };
+
+    let out1 = c1
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+    let out2 = c2
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+    server.kill();
+    drop(agent);
+
+    eprintln!("client 1 output:\n{out1}\nclient 2 output:\n{out2}");
+    let ok1 = out1.contains("SUCCEEDED");
+    let ok2 = out2.contains("SUCCEEDED");
+    assert!(
+        ok1 && ok2,
+        "concurrent action: both clients must get their own SUCCEEDED result \
+         (237 reply-token table): client1={ok1} client2={ok2}"
+    );
+    eprintln!("[PASS] two concurrent ROS 2 action clients ↔ nano-ros XRCE server: both SUCCEEDED");
+}
+
 /// ROS 2 (DDS) action server ↔ nano-XRCE action client (reverse direction).
 #[rstest]
 fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {

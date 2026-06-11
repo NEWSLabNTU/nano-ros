@@ -62,6 +62,77 @@ fn main() -> ! {
     info!("Action server created: /fibonacci");
     info!("Waiting for action goals...");
 
+    // Phase 237 — concurrent mode: accept and advance several goals at once,
+    // draining get_result every spin so multiple early get_result requests are
+    // held (deferred) simultaneously. Exercises the backends' seq-keyed reply
+    // tables under real concurrent load. Opt-in via NROS_ACTION_CONCURRENT;
+    // the default path below stays the simple one-goal-at-a-time demo.
+    if std::env::var("NROS_ACTION_CONCURRENT").is_ok() {
+        info!("Concurrent action server mode");
+        struct Tracked {
+            id: GoalId,
+            order: i32,
+            seq: heapless::Vec<i32, 64>,
+        }
+        let mut tracked: heapless::Vec<Tracked, 4> = heapless::Vec::new();
+        loop {
+            let _ = executor.spin_once(core::time::Duration::from_millis(10));
+
+            // Accept a new goal without blocking the in-flight ones.
+            if let Ok(Some(goal_id)) = server.try_accept_goal(|_id, goal: &FibonacciGoal| {
+                info!("Received goal request: order={}", goal.order);
+                GoalResponse::AcceptAndExecute
+            }) {
+                if let Some(ag) = server.get_goal(&goal_id) {
+                    let order = ag.goal.order;
+                    server.set_goal_status(&goal_id, GoalStatus::Executing);
+                    let _ = tracked.push(Tracked {
+                        id: goal_id,
+                        order,
+                        seq: heapless::Vec::new(),
+                    });
+                    info!("Goal accepted (concurrent): {goal_id}");
+                }
+            }
+
+            // Advance every tracked goal one Fibonacci step.
+            let mut i = 0;
+            while i < tracked.len() {
+                let n = tracked[i].seq.len();
+                let val = if n == 0 {
+                    0
+                } else if n == 1 {
+                    1
+                } else {
+                    tracked[i].seq[n - 1] + tracked[i].seq[n - 2]
+                };
+                let _ = tracked[i].seq.push(val);
+                let fb = FibonacciFeedback {
+                    sequence: tracked[i].seq.clone(),
+                };
+                let _ = server.publish_feedback(&tracked[i].id, &fb);
+
+                if tracked[i].seq.len() as i32 > tracked[i].order {
+                    let id = tracked[i].id;
+                    let result = FibonacciResult {
+                        sequence: tracked[i].seq.clone(),
+                    };
+                    info!("Goal completed (concurrent): {:?}", result.sequence);
+                    // Flushes any get_result held for this goal.
+                    server.complete_goal(&id, GoalStatus::Succeeded, result);
+                    let _ = tracked.swap_remove(i);
+                } else {
+                    i += 1;
+                }
+            }
+
+            // Drain get_result: requests for still-active goals are held;
+            // completed goals reply immediately.
+            let _ = server.try_handle_get_result();
+            std::thread::sleep(core::time::Duration::from_millis(100));
+        }
+    }
+
     loop {
         let _ = executor.spin_once(core::time::Duration::from_millis(10));
         match server.try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
