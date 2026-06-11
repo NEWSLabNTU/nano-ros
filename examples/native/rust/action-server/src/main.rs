@@ -93,11 +93,21 @@ fn main() -> ! {
                             info!("Feedback: {:?}", feedback.sequence);
                         }
                         let _ = executor.spin_once(core::time::Duration::from_millis(10));
+                        // Drain get_result queries during execution. A real
+                        // `rcl_action` client (rclcpp_action) sends get_result
+                        // right after acceptance; the server defers the reply
+                        // until the goal terminates (Phase 237).
+                        let _ = server.try_handle_get_result();
                         std::thread::sleep(std::time::Duration::from_millis(500));
                     }
                     let result = FibonacciResult { sequence };
                     info!("Goal completed: {:?}", result.sequence);
+                    // `complete_goal` flushes any deferred get_result replies.
                     server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
+                    let _ = executor.spin_once(core::time::Duration::from_millis(10));
+                    // Also answer a get_result that arrives only after completion
+                    // (it hits the completed-results path → immediate reply).
+                    let _ = server.try_handle_get_result();
                     let _ = executor.spin_once(core::time::Duration::from_millis(10));
                 }
             }

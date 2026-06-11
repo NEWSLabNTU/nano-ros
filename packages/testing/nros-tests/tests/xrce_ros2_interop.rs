@@ -370,26 +370,21 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
 
     eprintln!("ROS 2 DDS action client output:\n{ros2_output}");
     // A real `ros2 action send_goal --feedback` against the nano-ros XRCE
-    // action server accepts the goal and streams feedback — exercising the
-    // send_goal service + feedback topic with ROS-2-correct names/types and
-    // the fixed `uint8[16]` goal-id framing (233.6). Goal acceptance proves the
-    // send_goal request crossed DDS→agent→XRCE and the reply returned; a
-    // non-empty feedback entry proves the feedback topic + goal-id framing
-    // round-trips to a real `rcl_action` client.
-    //
-    // NOTE: the final get_result reply is NOT asserted — the nano-ros server
-    // currently answers get_result with the live status instead of deferring
-    // the reply until the goal terminates, so `ros2` keeps waiting for the
-    // result. Tracked as a remaining 233.6 item (get_result deferral); the
-    // wire-format work this test guards (goal-id + per-channel types) is done.
+    // action server accepts the goal, streams feedback, and delivers the final
+    // result — exercising the send_goal/get_result services + feedback topic
+    // with ROS-2-correct names/types, the fixed `uint8[16]` goal-id framing
+    // (233.6), and the deferred get_result reply (Phase 237): rclcpp_action
+    // sends get_result right after acceptance and the server holds the reply
+    // until the goal terminates.
     let accepted = ros2_output.contains("Goal accepted");
     let got_feedback = ros2_output.contains("- 0");
+    let got_result = ros2_output.contains("SUCCEEDED") || ros2_output.contains("Result:");
     assert!(
-        accepted && got_feedback,
-        "XRCE action server ↔ ROS 2 DDS client did not accept+feedback (233.6): \
-         accepted={accepted} got_feedback={got_feedback}.\n{ros2_output}"
+        accepted && got_feedback && got_result,
+        "XRCE action server ↔ ROS 2 DDS client did not complete (233.6 / 237): \
+         accepted={accepted} feedback={got_feedback} result={got_result}.\n{ros2_output}"
     );
-    eprintln!("[PASS] XRCE action server ↔ ROS 2 DDS client: goal accepted + feedback");
+    eprintln!("[PASS] XRCE action server ↔ ROS 2 DDS client: accept + feedback + result");
 }
 
 /// ROS 2 (DDS) action server ↔ nano-XRCE action client (reverse direction).

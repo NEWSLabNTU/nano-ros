@@ -61,6 +61,19 @@ pub struct RawActiveGoal {
     pub status: GoalStatus,
 }
 
+/// A `get_result` request held until its goal terminates (Phase 237).
+///
+/// `sequence_number` is the service-backend reply-correlation token; the backend
+/// must be able to `send_reply(sequence_number, …)` after the handler returned
+/// (Cyclone native; XRCE/Zenoh via the Phase 237 seq-keyed reply tables).
+#[derive(Clone, Copy)]
+pub struct PendingGetResult {
+    /// Goal whose terminal result the requester is waiting for.
+    pub goal_id: GoalId,
+    /// Backend reply-correlation token for the deferred `send_reply`.
+    pub sequence_number: i64,
+}
+
 /// Completed goal result metadata — indexes into the result slab.
 #[derive(Clone, Copy)]
 pub struct CompletedResultEntry {
@@ -157,6 +170,14 @@ pub struct ActionServerCore<
     pub(crate) status_publisher: session::RmwPublisher,
     pub(crate) active_goals: heapless::Vec<RawActiveGoal, MAX_GOALS>,
     pub(crate) completed_results: heapless::Vec<CompletedResultEntry, MAX_GOALS>,
+    /// `get_result` requests that arrived while their goal was still active
+    /// (Phase 237). `rclcpp_action` sends `get_result` immediately after
+    /// acceptance and expects the reply only once the goal terminates, so we
+    /// hold the request's correlation token (`sequence_number`) here and flush
+    /// it in [`Self::complete_goal_raw`]. Deferral relies on the service
+    /// backend honoring `send_reply(seq)` after the handler returns — the
+    /// seq-keyed reply contract (Cyclone native; XRCE/Zenoh per Phase 237).
+    pub(crate) pending_get_results: heapless::Vec<PendingGetResult, MAX_GOALS>,
     /// Slab storage for completed result CDR bytes.
     pub(crate) result_slab: [u8; RESULT_BUF],
     pub(crate) result_slab_used: usize,
@@ -191,6 +212,7 @@ impl<
             status_publisher,
             active_goals: heapless::Vec::new(),
             completed_results: heapless::Vec::new(),
+            pending_get_results: heapless::Vec::new(),
             result_slab: [0u8; RESULT_BUF],
             result_slab_used: 0,
             goal_buffer: [0u8; GOAL_BUF],
@@ -350,7 +372,7 @@ impl<
         // Store result CDR in the slab
         let offset = self.result_slab_used;
         let end = offset + result_cdr.len();
-        if end <= RESULT_BUF {
+        let stored = if end <= RESULT_BUF {
             self.result_slab[offset..end].copy_from_slice(result_cdr);
             self.result_slab_used = end;
             let _ = self.completed_results.push(CompletedResultEntry {
@@ -359,6 +381,27 @@ impl<
                 offset,
                 len: result_cdr.len(),
             });
+            true
+        } else {
+            false
+        };
+
+        // Phase 237 — flush any get_result requests that arrived while this goal
+        // was still active. The result is now in the slab; reply to each held
+        // requester via its retained `sequence_number`.
+        if stored {
+            let len = result_cdr.len();
+            let mut i = 0;
+            while i < self.pending_get_results.len() {
+                if self.pending_get_results[i].goal_id.uuid == goal_id.uuid {
+                    let seq = self.pending_get_results[i].sequence_number;
+                    // swap_remove moves the last entry into slot `i`; re-check `i`.
+                    let _ = self.pending_get_results.swap_remove(i);
+                    let _ = self.reply_get_result_from_slab(seq, status, offset, len);
+                } else {
+                    i += 1;
+                }
+            }
         }
 
         let _ = self.publish_status_array();
@@ -585,42 +628,38 @@ impl<
             .find(|c| c.goal_id.uuid == goal_id.uuid);
 
         if let Some(entry) = completed {
-            // Completed: send status + stored result CDR from slab
-            let result_bytes = &self.result_slab[entry.offset..entry.offset + entry.len];
-
-            // Build reply in goal_buffer (we've already consumed the request)
-            let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-                .map_err(|_| NodeError::BufferTooSmall)?;
-            writer
-                .write_i8(entry.status as i8)
-                .map_err(|_| NodeError::Serialization)?;
-            // Align to 4 bytes after the status byte so that the result CDR
-            // fields (which start with a u32 sequence length) are properly
-            // aligned for the reader's align(4) calls.
-            writer.align(4).map_err(|_| NodeError::Serialization)?;
-            let pos = writer.position();
-            if pos + result_bytes.len() > GOAL_BUF {
+            // Completed: send status + stored result CDR from the slab.
+            let (off, len, status) = (entry.offset, entry.len, entry.status);
+            self.reply_get_result_from_slab(sequence_number, status, off, len)?;
+        } else if self
+            .active_goals
+            .iter()
+            .any(|g| g.goal_id.uuid == goal_id.uuid)
+        {
+            // Active goal → DEFER (Phase 237). `rclcpp_action` sends get_result
+            // right after acceptance and expects the reply only once the goal
+            // terminates; replying now with a non-terminal status makes the
+            // client treat an unfinished goal as done. Hold the request's
+            // correlation token; `complete_goal_raw` flushes it. The backend
+            // retains the reply token keyed by `sequence_number`.
+            if self
+                .pending_get_results
+                .push(PendingGetResult {
+                    goal_id,
+                    sequence_number,
+                })
+                .is_err()
+            {
+                // Table full — fail loud rather than silently strand the
+                // requester (caller surfaces it; the request is not re-queued).
                 return Err(NodeError::BufferTooSmall);
             }
-            self.goal_buffer[pos..pos + result_bytes.len()].copy_from_slice(result_bytes);
-            let reply_len = pos + result_bytes.len();
-
-            self.get_result_server
-                .send_reply(sequence_number, &self.goal_buffer[..reply_len])
-                .map_err(|_| NodeError::ServiceReplyFailed)?;
         } else {
-            // Active or unknown: send status + default result
-            let status = self
-                .active_goals
-                .iter()
-                .find(|g| g.goal_id.uuid == goal_id.uuid)
-                .map(|g| g.status)
-                .unwrap_or(GoalStatus::Unknown);
-
+            // Unknown goal → reply immediately with UNKNOWN + default result.
             let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
                 .map_err(|_| NodeError::BufferTooSmall)?;
             writer
-                .write_i8(status as i8)
+                .write_i8(GoalStatus::Unknown as i8)
                 .map_err(|_| NodeError::Serialization)?;
             writer.align(4).map_err(|_| NodeError::Serialization)?;
             let pos = writer.position();
@@ -637,6 +676,38 @@ impl<
         }
 
         Ok(Some(goal_id))
+    }
+
+    /// Build + send a `get_result` reply — `[status i8][align(4)][result CDR]`
+    /// — copying the result bytes from the slab. Shared by the immediate
+    /// completed-goal path and the deferred flush in `complete_goal_raw`
+    /// (Phase 237). `goal_buffer` and `result_slab` are disjoint fields, so the
+    /// header build (into `goal_buffer`) and the slab copy don't alias.
+    fn reply_get_result_from_slab(
+        &mut self,
+        sequence_number: i64,
+        status: GoalStatus,
+        slab_offset: usize,
+        slab_len: usize,
+    ) -> Result<(), NodeError> {
+        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
+            .map_err(|_| NodeError::BufferTooSmall)?;
+        writer
+            .write_i8(status as i8)
+            .map_err(|_| NodeError::Serialization)?;
+        // Align to 4 after the status byte: the result CDR starts with a u32
+        // sequence length the reader will `align(4)` to.
+        writer.align(4).map_err(|_| NodeError::Serialization)?;
+        let pos = writer.position();
+        if pos + slab_len > GOAL_BUF {
+            return Err(NodeError::BufferTooSmall);
+        }
+        self.goal_buffer[pos..pos + slab_len]
+            .copy_from_slice(&self.result_slab[slab_offset..slab_offset + slab_len]);
+        let reply_len = pos + slab_len;
+        self.get_result_server
+            .send_reply(sequence_number, &self.goal_buffer[..reply_len])
+            .map_err(|_| NodeError::ServiceReplyFailed)
     }
 
     /// Get the number of active goals.
