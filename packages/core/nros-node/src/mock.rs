@@ -57,15 +57,26 @@ impl Subscriber for MockSubscriber {
 /// Mock service server (needed for Session).
 /// Mock service server that can be loaded with a canned CDR request, so unit
 /// tests can drive a service callback through `spin_once` (Phase 189.M3.3.d).
+///
+/// Phase 237 — `try_recv_request` hands out a distinct, monotonically increasing
+/// `sequence_number` per request (the reply-correlation token), and `send_reply`
+/// records `(seq, data)` so tests can assert deferred replies route to the right
+/// requester — the concurrent-safety the seq-keyed backends guarantee.
 pub struct MockServiceServer {
     /// Pre-encoded request returned on the next `try_recv_request` call.
     pub pending: Cell<Option<([u8; 256], usize)>>,
+    /// Next correlation token `try_recv_request` will return (then increments).
+    pub next_seq: Cell<i64>,
+    /// Replies recorded by `send_reply`: `(seq, data, len)`.
+    pub sent: core::cell::RefCell<heapless::Vec<(i64, [u8; 256], usize), 8>>,
 }
 
 impl MockServiceServer {
     pub fn new() -> Self {
         Self {
             pending: Cell::new(None),
+            next_seq: Cell::new(0),
+            sent: core::cell::RefCell::new(heapless::Vec::new()),
         }
     }
 
@@ -89,16 +100,23 @@ impl ServiceServerTrait for MockServiceServer {
             Some((data, len)) => {
                 buf[..len].copy_from_slice(&data[..len]);
                 self.pending.set(None);
+                let seq = self.next_seq.get();
+                self.next_seq.set(seq + 1);
                 Ok(Some(ServiceRequest {
                     data: &buf[..len],
-                    sequence_number: 1,
+                    sequence_number: seq,
                 }))
             }
             None => Ok(None),
         }
     }
 
-    fn send_reply(&mut self, _seq: i64, _data: &[u8]) -> Result<(), TransportError> {
+    fn send_reply(&mut self, seq: i64, data: &[u8]) -> Result<(), TransportError> {
+        let mut rec = [0u8; 256];
+        let len = data.len().min(rec.len());
+        rec[..len].copy_from_slice(&data[..len]);
+        // Bounded by the test's expected reply count; ignore overflow.
+        let _ = self.sent.borrow_mut().push((seq, rec, len));
         Ok(())
     }
 }

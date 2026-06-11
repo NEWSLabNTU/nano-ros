@@ -2811,3 +2811,125 @@ fn node_builder_session_idx_binds_explicit_slot_and_validates() {
     // Out-of-range slot (only 0 + 1 exist) → error, not a silent bad bind.
     assert!(executor.node_builder("bad").session_idx(2).build().is_err());
 }
+
+// ============================================================================
+// Phase 237 — deferred get_result (concurrent-safe seq routing)
+// ============================================================================
+
+/// Two concurrently-active goals each have a `get_result` request arrive while
+/// they are still executing. The server must HOLD both replies (rclcpp_action
+/// sends get_result right after acceptance) and, on completion, reply to each
+/// using ITS OWN correlation token — never cross-wire them. This is the
+/// backend-agnostic heart of Option A; the seq routing lives in
+/// `ActionServerCore`, shared by the XRCE / Zenoh / Cyclone backends.
+#[test]
+fn test_get_result_deferred_per_goal_concurrent() {
+    use super::action_core::{ActionServerCore, RawActiveGoal};
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher,
+        MockPublisher,
+    );
+
+    let g1 = GoalId { uuid: [1u8; 16] };
+    let g2 = GoalId { uuid: [2u8; 16] };
+    let _ = core.active_goals.push(RawActiveGoal {
+        goal_id: g1,
+        status: GoalStatus::Executing,
+    });
+    let _ = core.active_goals.push(RawActiveGoal {
+        goal_id: g2,
+        status: GoalStatus::Executing,
+    });
+
+    // A get_result request is [CDR-LE header][fixed uint8[16] goal_id].
+    let mk_req = |g: &GoalId| -> ([u8; 256], usize) {
+        let mut b = [0u8; 256];
+        b[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
+        b[4..20].copy_from_slice(&g.uuid);
+        (b, 20)
+    };
+    let default_result = [0u8; 4];
+
+    // g1's get_result arrives first (mock seq 0), then g2's (mock seq 1).
+    let (r1, l1) = mk_req(&g1);
+    core.get_result_server.load(r1, l1);
+    core.try_handle_get_result_raw(&default_result).unwrap();
+    let (r2, l2) = mk_req(&g2);
+    core.get_result_server.load(r2, l2);
+    core.try_handle_get_result_raw(&default_result).unwrap();
+
+    // Both deferred; nothing replied while the goals are active.
+    assert_eq!(core.pending_get_results.len(), 2);
+    assert_eq!(core.get_result_server.sent.borrow().len(), 0);
+
+    // Reply layout: [4-byte CDR header][i8 status][3 pad][result CDR] → result
+    // bytes begin at offset 8.
+    const RESULT_OFF: usize = 8;
+
+    // Complete g2 FIRST (out of arrival order) → flush only g2's held request,
+    // with g2's token (seq 1) — not g1's.
+    let res2 = [0xBBu8; 8];
+    core.complete_goal_raw(&g2, GoalStatus::Succeeded, &res2);
+    {
+        let sent = core.get_result_server.sent.borrow();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].0, 1, "g2 reply must use g2's correlation token");
+        assert_eq!(sent[0].1[4], GoalStatus::Succeeded as u8 as i8 as u8);
+        assert_eq!(&sent[0].1[RESULT_OFF..RESULT_OFF + res2.len()], &res2);
+    }
+    assert_eq!(core.pending_get_results.len(), 1);
+
+    // Complete g1 → flush g1's held request with g1's token (seq 0).
+    let res1 = [0xAAu8; 8];
+    core.complete_goal_raw(&g1, GoalStatus::Succeeded, &res1);
+    {
+        let sent = core.get_result_server.sent.borrow();
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[1].0, 0, "g1 reply must use g1's token, not g2's");
+        assert_eq!(&sent[1].1[RESULT_OFF..RESULT_OFF + res1.len()], &res1);
+    }
+    assert_eq!(core.pending_get_results.len(), 0);
+}
+
+/// A `get_result` that arrives AFTER the goal already terminated is answered
+/// immediately from the completed-results slab (the nano-ros↔nano-ros path),
+/// never entering the pending table.
+#[test]
+fn test_get_result_after_completion_replies_immediately() {
+    use super::action_core::ActionServerCore;
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher,
+        MockPublisher,
+    );
+
+    let g = GoalId { uuid: [7u8; 16] };
+    // Goal completes before any get_result arrives.
+    let res = [0xCCu8; 8];
+    core.complete_goal_raw(&g, GoalStatus::Succeeded, &res);
+    assert_eq!(core.pending_get_results.len(), 0);
+    assert_eq!(core.get_result_server.sent.borrow().len(), 0);
+
+    let mut b = [0u8; 256];
+    b[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
+    b[4..20].copy_from_slice(&g.uuid);
+    core.get_result_server.load(b, 20);
+    core.try_handle_get_result_raw(&[0u8; 4]).unwrap();
+
+    // Replied immediately, not deferred.
+    assert_eq!(core.pending_get_results.len(), 0);
+    let sent = core.get_result_server.sent.borrow();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(&sent[0].1[8..8 + res.len()], &res);
+}
