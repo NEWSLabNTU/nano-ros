@@ -42,6 +42,40 @@ Contrast the **Rust** path (works): the example deps `nros-board-nuttx-qemu-arm`
 whose build.rs links the NuttX kernel staging, and `cargo build` emits a complete
 bootable ELF at `target/armv7a-nuttx-eabihf/release/nuttx-rs-<name>`.
 
+## Root cause (precise — found 2026-06-12)
+
+The bootable-ELF mechanism **already exists and is complete**, but is **orphaned**
+for the current example shape:
+
+- `cmake/board/nano-ros-board-nuttx-qemu-arm.cmake::nros_board_link_app(target)`
+  calls `nros_nuttx_build_example(...)` (in `nros-c/cmake/nros-nuttx.cmake`), which
+  runs `cargo build` on `nros-nuttx-ffi` with `APP_MAIN_CPP` / `APP_FFI_LIBS_FILE`
+  set → the NuttX kernel relink (the SSoT link in
+  `nros-board-common::nuttx_ffi_build.rs`: `dramboot.ld` + `staging/` start-group +
+  vectortab + libgcc, `--entry=__start -nostartfiles -nodefaultlibs`) → a `*_build`
+  **ALL** target that copies the ELF to `build-zenoh/nuttx_<lang>_<name>`
+  (`nros-nuttx.cmake:288`).
+- **Nothing calls `nros_board_link_app` for the examples.** `nano_ros_node_register`
+  only emits the `<pkg>_<name>_component` static lib + records component JSON;
+  `nano_ros_deploy` only records deploy JSON; `nano_ros_entry` / `_nros_metadata_emit`
+  don't call the board link either. So the `*_build` target is never created and the
+  ELF is never produced.
+- The C/C++ NuttX examples are the **Phase 212.L.9 "declarative Component pkg shape"**
+  (their CMakeLists literally say "No add_executable"). That migration dropped the
+  per-example bootable-ELF target; the **Rust** examples kept producing ELFs via
+  cargo, so only the **C/C++** rtos_e2e cases lost their binaries — matching 194.3c
+  ("C path is build-coverage, no e2e"). NuttX C/C++ E2E has been non-functional
+  since 212.L.9.
+
+So the fix is **not** writing a new link — it is **re-triggering the existing
+`nros_board_link_app`** for a deployed NuttX node. The cleanest hook: a metadata
+finalize (driven by `NROS_COMPONENTS_JSON` + the deploy targets) that, for each
+component with `deploy: ["nuttx"]`, calls `nros_board_link_app(<component>)` — or an
+explicit `nano_ros_entry`/deploy step in the example CMakeLists that does so. Verify
+by confirming `cmake --build <ex>/build-zenoh` then produces
+`build-zenoh/nuttx_<lang>_<name>` for both C and C++, and that the rtos_e2e
+Nuttx×{C,Cpp} cases boot.
+
 ## Approaches
 
 ### A — cmake executable target (recommended; mirrors the Rust board crate)
