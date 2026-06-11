@@ -3,8 +3,8 @@ rfc: 0033
 title: "Per-field message capacity configuration"
 status: Draft
 since: 2026-06
-last-reviewed: 2026-06
-implements-tracked-by: [phase-229]
+last-reviewed: 2026-06-11
+implements-tracked-by: [phase-229, phase-235]
 supersedes: []
 superseded-by: null
 ---
@@ -169,15 +169,61 @@ plumbing:
   on the **triple-buffer** strategy (queue depth ≤ 1). The SPSC ring (depth > 1) holds
   several messages in flight, so `borrowed` subscriptions are restricted to depth ≤ 1.
 
-**Caveat — element alignment.** `&[u8]` is always safe. `&[f32]` (`LaserScan.ranges`)
-requires the buffer region to be 4-aligned: CDR aligns elements *within* the buffer,
-but `buffer_base + field_offset` must also satisfy the element alignment. On
-strict-alignment targets this needs a runtime check with a fallback copy (degrading to
-`owned`/`heap` for that field).
+**Element alignment — solved by an unaligned decoder, not a fallback copy.** `&[u8]`
+/ `&str` are always safe to borrow directly. Multi-byte numerics (`&[f32]` in
+`LaserScan.ranges`, `uint16[]`, …) are unsafe to alias as a typed slice: CDR aligns
+elements *within* the buffer, but `buffer_base + field_offset` need not satisfy the
+element alignment, so `slice[i]` would be UB on strict-alignment targets. Rather than
+degrade such fields to `owned`/`heap`, borrowed numeric sequences are exposed through
+an **alignment-agnostic view** that decodes each element by value
+(`memcpy` of `size_of::<T>()` bytes + little-endian decode), never forming a
+`&[T]`/`T*` into the unaligned bytes:
+
+- **Rust** — `nros_core::LeSliceView<'a, T>` (`nros-serdes/src/cdr.rs`), shipped in
+  Phase 229.6. `get(i) -> Option<T>` does the unaligned LE decode.
+- **C** — a generated `{ const uint8_t* bytes; size_t count; }` view per numeric
+  element type + a `..._get(view, i)` inline that `memcpy`s and LE-decodes.
+- **C++** — `nros::LeSpan<T>` with `T operator[](i)` doing the same.
+
+So *all* sequence element types can borrow (byte/string directly as
+`{const T* ptr; size_t len;}`, numerics via the LE view); only sequence-of-string /
+sequence-of-nested are rejected (no flat byte run to alias). This is full parity
+across Rust, C, and C++.
 
 **The work is mostly runtime, not codegen.** Generating `Msg<'a>` with slice fields is
 the smaller half of phase 3; the substantive change is the executor/subscription
 callback-borrow dispatch above. See phase-229 § 229.6.
+
+### Borrowed mode — C and C++ realization
+
+Rust borrowed shipped in Phase 229.6: `mode = "borrowed"` emits `{Msg}View<'a>`
+(borrowed fields `&'a [u8]` / `&'a str` / `LeSliceView<'a, T>`, copied fields owned) +
+a `{Msg}Borrow` ZST marker + `impl DeserializeBorrowed`, dispatched via
+`create_subscription_borrowed`. C and C++ borrowed (phase-235) mirror the *view shape*
+but differ in **who walks the CDR**, following the project rule that **C++ wraps the
+Rust API and never re-implements serdes**:
+
+- **C — native, pointer-setting deserialize.** C already has its own CDR readers
+  (`nros-c/include/nros/cdr.h`). Codegen emits `{Msg}_View` (borrowed fields as
+  `{const char* data; size_t size;}` / `{const uint8_t* data; size_t size;}` / the
+  numeric LE-view) and `int32_t {Msg}_deserialize_borrowed({Msg}_View*, const uint8_t*
+  buf, size_t len)` that walks CDR, bounds-checks against `end`, and **sets pointers
+  into `buf`** for borrowed fields (owned fields copied as today). No `malloc`, no
+  `_fini`.
+
+- **C++ — wraps a Rust FFI offset seam (no native C++ CDR reader).** The C++ owned
+  path already deserializes through the Rust FFI (`ffi_deserialize`); borrowed extends
+  that seam. A `{Msg}_ffi_deserialize_borrowed` walks CDR with the Rust reader and
+  returns a per-borrowed-field `(offset, len)` struct (offsets relative to `buf`); the
+  generated C++ `{Msg}View` then sets `nros::Span<T>` / `nros::StringView` /
+  `nros::LeSpan<T>` (`nros-cpp/include/nros/span.hpp`) into the raw callback buffer.
+  CDR logic stays single-sourced in Rust. (A pure-C++ `cdr_reader.hpp` was considered
+  and rejected for this reason.)
+
+Both ride the existing raw `(data, len)` subscription callbacks
+(`nros_subscription_callback_t` / `nros_cpp_subscription_message_callback_t`) — the
+borrowed view is a typed accessor, **no new subscription ABI**. Implementation +
+work-item breakdown: [phase-235](../roadmap/phase-235-c-cpp-borrowed-views.md).
 
 ### Codegen: one resolver, three emitters
 
