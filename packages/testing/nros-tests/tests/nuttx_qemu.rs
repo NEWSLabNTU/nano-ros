@@ -167,17 +167,21 @@ fn test_nuttx_kernel_boots() {
 }
 
 // =============================================================================
-// C++ build tests (kept as `#[ignore]` markers for upstream libc block)
+// C++ build tests (kept as `#[ignore]` markers)
 // =============================================================================
 //
-// These tests are intentionally `#[ignore]`'d and serve as declarative
-// markers for the upstream NuttX libc missing `_SC_HOST_NAME_MAX` issue.
-// Running them would fail at the CMake configure step. They remain so
-// that re-enabling NuttX C/C++ is a matter of removing six `#[ignore]`
-// attributes, not restoring deleted test functions.
+// Phase 238 — the original blocker (upstream NuttX libc missing
+// `_SC_HOST_NAME_MAX`) is RESOLVED: the current submodule (nuttx-12.13.0-4)
+// defines it, and all 6 NuttX C++ examples now COMPILE clean (each produces its
+// `*_component.a`). These markers stay `#[ignore]`'d for a different, now-accurate
+// reason: the C/C++ NuttX build is component-lib only — there is no bootable-ELF
+// target yet, so `build_nuttx_cpp_*` (which resolves a prebuilt
+// `build-zenoh/nuttx_cpp_*` ELF) has nothing to find. Un-ignoring is gated on
+// wiring the kernel-staging executable link — see
+// docs/roadmap/phase-238-nuttx-cpp-e2e-enablement.md.
 
 #[test]
-#[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
+#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_talker_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -188,7 +192,7 @@ fn test_nuttx_cpp_talker_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
+#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_listener_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -199,7 +203,7 @@ fn test_nuttx_cpp_listener_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
+#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_service_server_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -211,7 +215,7 @@ fn test_nuttx_cpp_service_server_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
+#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_service_client_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -223,7 +227,7 @@ fn test_nuttx_cpp_service_client_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
+#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_action_server_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -234,7 +238,7 @@ fn test_nuttx_cpp_action_server_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
+#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_action_client_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
