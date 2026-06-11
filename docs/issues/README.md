@@ -48,5 +48,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 |----|-----------------------------------------------------------------------|-------------|--------|------|
 | 25 | host-integration lane fails native action/c_xrce/bridge tests — fixtures not staged | bug | build | [0025-host-integration-native-fixtures-unstaged.md](0025-host-integration-native-fixtures-unstaged.md) |
 | 29 | host-integration native fixture build exhausts runner disk (ENOSPC)   | bug         | build  | [0029-host-integration-fixture-build-disk-exhaustion.md](0029-host-integration-fixture-build-disk-exhaustion.md) |
+| 30 | test-all preflight requires cross-target workspace fixtures build-test-fixtures doesn't build | tech-debt | build | [0030-test-all-workspace-fixture-preflight-gap.md](0030-test-all-workspace-fixture-preflight-gap.md) |
 
 Resolved issues live in [`archived/`](archived/).
