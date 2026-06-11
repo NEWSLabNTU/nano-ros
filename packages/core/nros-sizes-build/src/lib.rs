@@ -669,8 +669,11 @@ pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, 
         // Skip rmeta and non-object members. The rustc metadata lands in
         // `lib.rmeta`; some toolchains also include a `__.SYMDEF` bookkeeping
         // member. Anything that isn't a recognised object file is silently
-        // skipped.
-        if name_bytes == b"lib.rmeta" || name_bytes.starts_with(b"__.SYMDEF") {
+        // skipped. GNU `ar` terminates member names with `/`, so the rmeta
+        // member can arrive as `lib.rmeta/` — strip a trailing slash before
+        // matching (234.4) so the skip actually fires.
+        let bare_name = name_bytes.strip_suffix(b"/").unwrap_or(name_bytes);
+        if bare_name == b"lib.rmeta" || bare_name.starts_with(b"__.SYMDEF") {
             continue;
         }
 
@@ -678,11 +681,15 @@ pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, 
         let object = match ObjectFile::parse(member_data) {
             Ok(o) => o,
             Err(_) => {
-                // Fat LTO makes rustc emit LLVM bitcode (`BC\xC0\xDE` or
-                // `\xDE\xC0\x17\x0B` Mach-O embedded) instead of ELF/COFF
-                // objects. `object` can't read bitcode. Flag for the v0
-                // fallback below.
-                if member_data.starts_with(b"BC\xC0\xDE") {
+                // Fat LTO makes rustc emit LLVM bitcode instead of ELF/COFF
+                // objects, in one of two wire forms `object` can't read:
+                //   - raw bitcode, magic `BC\xC0\xDE` (`0x4243C0DE`);
+                //   - the Darwin "bitcode wrapper", magic `0x0B17C0DE` stored
+                //     little-endian as `\xDE\xC0\x17\x0B` (macOS hosts — 234.4).
+                // Flag either for the v0-name fallback below.
+                if member_data.starts_with(b"BC\xC0\xDE")
+                    || member_data.starts_with(b"\xDE\xC0\x17\x0B")
+                {
                     saw_bitcode = true;
                 }
                 continue;

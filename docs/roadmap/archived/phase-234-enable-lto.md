@@ -96,16 +96,19 @@ Rebuild the probe consumers under LTO and assert the recovered sizes **equal the
 Any divergence (esp. a `0` or a placeholder `*_OPAQUE_U64S = 1`) is a fail.
 - **Files:** none (verification); fixes land in 234.4 if a gap surfaces.
 
-### 234.4 — Harden the fallback (as needed)  ⬜
-Driven by 234.3 results:
-- widen `saw_bitcode` detection beyond `BC\xC0\xDE` (Mach-O-embedded
-  `\xDE\xC0\x17\x0B`) so non-Linux hosts gate correctly;
-- fix the `lib.rmeta` skip — the member is `lib.rmeta/` (trailing slash), so
-  `name_bytes == b"lib.rmeta"` never matches (harmless ELF parse waste today);
-- if the `out.is_empty()` gate proves brittle on mixed native+bitcode rlibs, make
-  the `llvm-nm` name-based path **primary** (it reads native *and* bitcode
-  uniformly) with the `object` byte-size path as the no-`llvm-tools` fallback.
-- **Files:** `packages/core/nros-sizes-build/src/lib.rs`.
+### 234.4 — Harden the fallback  ✅
+234.3 surfaced no Linux gap, but two latent robustness bugs were fixed anyway:
+- **Mach-O bitcode gate** — `saw_bitcode` only matched raw `BC\xC0\xDE`; added the
+  Darwin bitcode-wrapper magic `0x0B17C0DE` (LE `\xDE\xC0\x17\x0B`) so macOS hosts
+  (a documented POSIX target) gate correctly instead of silently probing `0`.
+- **`lib.rmeta/` skip** — GNU `ar` terminates member names with `/`, so the
+  `== b"lib.rmeta"` skip never fired; strip a trailing slash before matching.
+
+Not done (deliberately): making the `llvm-nm` path **primary**. That was gated on the
+`out.is_empty()` heuristic proving brittle on mixed native+bitcode rlibs — it did not
+(all 234.3 targets recovered correctly), so the dual-path order stands.
+- **Files:** `packages/core/nros-sizes-build/src/lib.rs`. Regression test
+  (`bitcode_probe.rs`) still green.
 
 ### 234.5 — Add a probe regression test  ✅
 `packages/core/nros-sizes-build/tests/bitcode_probe.rs` builds `nros` with
