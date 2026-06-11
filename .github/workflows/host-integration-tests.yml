@@ -212,24 +212,37 @@ jobs:
       # `skip!` here (NROS_FIXTURES_OPTIONAL). LTO-off + debuginfo=0 come from the
       # job-level CI-build env. With the build scoped, the overlay has headroom,
       # so the C/C++ Cyclone extras keep full coverage (no reclaim needed).
-      - name: Build native fixtures + XRCE agent (best-effort)
+      # Issue #29 — split the three fixture sub-builds into SEPARATE steps, each
+      # with a `df` checkpoint. The runner's `_diag` log and the container
+      # overlay (`/__w`) share ONE ~146 GB disk, so a build that fills `/__w`
+      # also kills the runner agent mid-step — which discards that whole step's
+      # log. Separate steps mean each completed sub-build's log + its `df` line
+      # PERSIST even when a later sub-build exhausts the disk, so the culprit and
+      # the disk progression are visible. Each redirects its (verbose) output to
+      # a log file and surfaces only a tail on failure; best-effort (a failed
+      # sub-build → affected tests [SKIPPED]).
+      - name: Build rust core fixtures
         run: |
           source /opt/ros/humble/setup.bash
           mkdir -p build/ci-logs
-          build_quiet() {
-            local name="$1"; shift
-            local log="build/ci-logs/$name.log"
-            if "$@" > "$log" 2>&1; then
-              echo "$name: ok ($(wc -l < "$log") lines, suppressed)"
-            else
-              echo "::group::$name FAILED — tail"; tail -120 "$log"; echo "::endgroup::"
-              echo "$name partial — affected tests [SKIPPED]"
-            fi
-          }
-          build_quiet build-fixture-rust-core  just native build-fixture-rust-core
-          build_quiet build-workspace-fixtures just native build-workspace-fixtures
-          build_quiet build-fixture-extras     just native build-fixture-extras
-          df -h / | tail -1   # disk headroom after the scoped build (#29)
+          echo "before:"; df -h / | tail -1
+          just native build-fixture-rust-core > build/ci-logs/rust-core.log 2>&1 \
+            || { echo "::group::rust-core FAILED tail"; tail -120 build/ci-logs/rust-core.log; echo "::endgroup::"; echo "rust-core partial — [SKIPPED]"; }
+          echo "after rust-core ($(wc -l < build/ci-logs/rust-core.log) lines suppressed):"; df -h / | tail -1
+
+      - name: Build workspace fixtures
+        run: |
+          source /opt/ros/humble/setup.bash
+          just native build-workspace-fixtures > build/ci-logs/workspace.log 2>&1 \
+            || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; echo "workspace partial — [SKIPPED]"; }
+          echo "after workspace ($(wc -l < build/ci-logs/workspace.log) lines suppressed):"; df -h / | tail -1
+
+      - name: Build C/C++ extras fixtures (best-effort)
+        run: |
+          source /opt/ros/humble/setup.bash
+          just native build-fixture-extras > build/ci-logs/extras.log 2>&1 \
+            || { echo "::group::extras FAILED tail"; tail -120 build/ci-logs/extras.log; echo "::endgroup::"; echo "extras partial — [SKIPPED]"; }
+          echo "after extras ($(wc -l < build/ci-logs/extras.log) lines suppressed):"; df -h / | tail -1
 
       - name: just test-integration
         # Source the AMENT prefix so `nros generate-rust` (used by some
