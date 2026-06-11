@@ -58,8 +58,7 @@ pub mod emit;
 // cycle `nros-build → nros-cli-core` already exists). Re-export under
 // the original module paths so every existing caller (the upstream
 // `nros-macros` git dep included) compiles unchanged.
-pub use nros_cli_core::launch_parser;
-pub use nros_cli_core::pkg_index;
+pub use nros_cli_core::{launch_parser, pkg_index};
 
 // Phase 212.N.7 step-3 — `RuntimeError` moved to `nros-platform` (no_std)
 // so embedded Entry pkgs don't need `nros-build` as a runtime dep

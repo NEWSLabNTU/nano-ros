@@ -15,8 +15,10 @@ use clap::{Args as ClapArgs, Subcommand};
 use eyre::{Context, Result, bail, eyre};
 use std::path::PathBuf;
 
-use crate::abi_guard::{self, Verb};
-use crate::codegen::entry as entry_codegen;
+use crate::{
+    abi_guard::{self, Verb},
+    codegen::entry as entry_codegen,
+};
 
 #[derive(Debug, ClapArgs)]
 pub struct Args {
@@ -237,7 +239,9 @@ fn run_entry(args: EntryArgs) -> Result<()> {
 
 /// Parse the comma-separated `k=v[,k=v]…` form.
 fn parse_arg_overrides(raw: Option<&str>) -> Result<Vec<(String, String)>> {
-    let Some(raw) = raw else { return Ok(Vec::new()) };
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
     let mut out = Vec::new();
     for part in raw.split(',') {
         let part = part.trim();
@@ -256,7 +260,11 @@ fn parse_arg_overrides(raw: Option<&str>) -> Result<Vec<(String, String)>> {
 /// fn `include()`s after running codegen. Filters to one
 /// `<pkg>_<exec>_component` per unique entry; the cmake target name
 /// matches what `nano_ros_node_register()` produces.
-fn write_link_libs_sidecar(exe_target: &str, plan: &entry_codegen::Plan, sidecar: &PathBuf) -> Result<()> {
+fn write_link_libs_sidecar(
+    exe_target: &str,
+    plan: &entry_codegen::Plan,
+    sidecar: &PathBuf,
+) -> Result<()> {
     use std::fmt::Write;
     let mut out = String::new();
     let _ = writeln!(

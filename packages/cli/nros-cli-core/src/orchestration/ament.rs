@@ -100,10 +100,12 @@ pub fn parse_ament_metadata_value(value: &serde_json::Value) -> Result<AmentMeta
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     static SEQ: AtomicU64 = AtomicU64::new(0);
 

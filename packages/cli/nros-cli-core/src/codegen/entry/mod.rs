@@ -32,8 +32,10 @@ use std::path::{Path, PathBuf};
 
 use eyre::{Context, Result, bail};
 
-use crate::launch_parser::{LaunchDescription, NodeSpec, parse_launch_file};
-use crate::pkg_index::build_pkg_index;
+use crate::{
+    launch_parser::{LaunchDescription, NodeSpec, parse_launch_file},
+    pkg_index::build_pkg_index,
+};
 
 pub mod emit_c;
 pub mod emit_cpp;
@@ -163,7 +165,10 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
         None => (input.launch_spec.trim().to_string(), None),
     };
     if bringup_name.is_empty() {
-        bail!("empty bringup pkg name in launch spec `{}`", input.launch_spec);
+        bail!(
+            "empty bringup pkg name in launch spec `{}`",
+            input.launch_spec
+        );
     }
 
     let bringup_dir = pkg_index

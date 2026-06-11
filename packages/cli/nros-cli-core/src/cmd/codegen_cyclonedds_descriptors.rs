@@ -377,9 +377,7 @@ fn c_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
-    use std::path::Path;
+    use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 
     fn scratch_dir(test: &str) -> PathBuf {
         let base = std::env::var_os("CARGO_TARGET_TMPDIR")

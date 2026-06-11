@@ -204,8 +204,7 @@ fn info(args: InfoArgs) -> Result<()> {
         board_cmake,
         drift,
     };
-    let json =
-        serde_json::to_string_pretty(&info).wrap_err("serialise BoardInfo as JSON")?;
+    let json = serde_json::to_string_pretty(&info).wrap_err("serialise BoardInfo as JSON")?;
     println!("{json}");
 
     if args.check_drift && !info.drift.is_empty() {
@@ -224,7 +223,10 @@ fn info(args: InfoArgs) -> Result<()> {
 /// `name = "fvp-aemv8r-smp"` ⇒ `packages/boards/nros-board-fvp-aemv8r-smp/`.
 fn locate_board_crate(workspace_root: &Path, name: &str) -> Result<PathBuf> {
     let dir_name = format!("nros-board-{name}");
-    let dir = workspace_root.join("packages").join("boards").join(&dir_name);
+    let dir = workspace_root
+        .join("packages")
+        .join("boards")
+        .join(&dir_name);
     if !dir.is_dir() {
         return Err(eyre!(
             "no board crate dir `{}` under `{}/packages/boards/`",
@@ -267,4 +269,3 @@ pub(crate) fn find_workspace_root() -> Result<PathBuf> {
         }
     }
 }
-

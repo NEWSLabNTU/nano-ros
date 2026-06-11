@@ -1,10 +1,14 @@
 //! `nros check` - validate a generated nros-plan.json, a root nros.toml, or
 //! (Phase 212.F) a `<bringup>` pkg directory for pure-declarative shape.
 
-use crate::cmd::bringup::lint_bringup;
-use crate::cmd::check_workspace::check_workspace;
-use crate::cmd::emit_package_xml::{DriftStatus, check_drift};
-use crate::orchestration::{planner::check_plan_file, root_config::WorkspaceConfig};
+use crate::{
+    cmd::{
+        bringup::lint_bringup,
+        check_workspace::check_workspace,
+        emit_package_xml::{DriftStatus, check_drift},
+    },
+    orchestration::{planner::check_plan_file, root_config::WorkspaceConfig},
+};
 use clap::Args as ClapArgs;
 use eyre::Result;
 use std::path::PathBuf;

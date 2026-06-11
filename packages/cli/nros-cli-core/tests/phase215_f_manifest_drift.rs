@@ -52,8 +52,8 @@ fn no_drift_between_cargo_metadata_and_board_cmake() {
     let mut audited: Vec<String> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
 
-    let entries = fs::read_dir(&boards_dir)
-        .unwrap_or_else(|e| panic!("read {}: {e}", boards_dir.display()));
+    let entries =
+        fs::read_dir(&boards_dir).unwrap_or_else(|e| panic!("read {}: {e}", boards_dir.display()));
     for entry in entries.flatten() {
         let path = entry.path();
         let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) else {
@@ -93,10 +93,7 @@ fn no_drift_between_cargo_metadata_and_board_cmake() {
         let cmake_src = match fs::read_to_string(&board_cmake) {
             Ok(s) => s,
             Err(e) => {
-                failures.push(format!(
-                    "{dir_name}: read {}: {e}",
-                    board_cmake.display()
-                ));
+                failures.push(format!("{dir_name}: read {}: {e}", board_cmake.display()));
                 continue;
             }
         };

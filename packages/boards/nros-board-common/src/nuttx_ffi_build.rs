@@ -58,7 +58,9 @@ pub fn run_nuttx() {
     let linker_script_rel = env::var("NUTTX_LINKER_SCRIPT")
         .unwrap_or_else(|_| "boards/arm/qemu/qemu-armv7a/scripts/dramboot.ld".to_string());
     let arch_includes: Vec<String> = env::var("NUTTX_ARCH_INCLUDES")
-        .unwrap_or_else(|_| "arch/arm/src/chip arch/arm/src/common arch/arm/src/armv7-a".to_string())
+        .unwrap_or_else(|_| {
+            "arch/arm/src/chip arch/arm/src/common arch/arm/src/armv7-a".to_string()
+        })
         .split_whitespace()
         .map(String::from)
         .collect();

@@ -41,7 +41,9 @@ pub fn run_platform() {
         .map(String::from)
         .collect();
     let arch_includes: Vec<String> = env::var("NUTTX_ARCH_INCLUDES")
-        .unwrap_or_else(|_| "arch/arm/src/chip arch/arm/src/common arch/arm/src/armv7-a".to_string())
+        .unwrap_or_else(|_| {
+            "arch/arm/src/chip arch/arm/src/common arch/arm/src/armv7-a".to_string()
+        })
         .split_whitespace()
         .map(String::from)
         .collect();

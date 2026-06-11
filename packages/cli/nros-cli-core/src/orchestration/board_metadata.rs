@@ -14,10 +14,7 @@
 //! `deny_unknown_fields` so typos surface at parse time instead of being
 //! silently dropped.
 
-use std::{
-    collections::BTreeMap,
-    path::Path,
-};
+use std::{collections::BTreeMap, path::Path};
 
 use serde::{Deserialize, Serialize};
 
@@ -275,10 +272,7 @@ fn tokenise_cmake_args(s: &str) -> impl Iterator<Item = String> + '_ {
 ///
 /// A board.cmake variable that is not authored is treated as
 /// "no opinion" — not drift.
-pub fn compute_drift(
-    cargo: &BoardMetadata,
-    cmake: &BTreeMap<String, String>,
-) -> Vec<DriftEntry> {
+pub fn compute_drift(cargo: &BoardMetadata, cmake: &BTreeMap<String, String>) -> Vec<DriftEntry> {
     let mut out = Vec::new();
     for &(field, cmake_var) in FIELD_MAP {
         let cargo_val = cargo_field(cargo, field);
@@ -589,14 +583,8 @@ set(NROS_BOARD_PRJ_CONF
         cmake.insert("NROS_BOARD_DEFAULT_RMW".into(), "cyclonedds".into());
         cmake.insert("NROS_BOARD_DEFAULT_TRANSPORT".into(), "ethernet".into());
         cmake.insert("NROS_BOARD_RUNNER".into(), "armfvp".into());
-        cmake.insert(
-            "NROS_BOARD_PRJ_CONF".into(),
-            "/abs/path/to/prj.conf".into(),
-        );
-        cmake.insert(
-            "NROS_BOARD_BOARD_CONF".into(),
-            "/abs/path/to/x.conf".into(),
-        );
+        cmake.insert("NROS_BOARD_PRJ_CONF".into(), "/abs/path/to/prj.conf".into());
+        cmake.insert("NROS_BOARD_BOARD_CONF".into(), "/abs/path/to/x.conf".into());
         cmake.insert(
             "NROS_BOARD_BOARD_OVERLAY".into(),
             "/abs/path/to/x.overlay".into(),
