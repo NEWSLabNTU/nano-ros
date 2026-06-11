@@ -154,6 +154,18 @@ if(NOT TARGET NanoRos)
     elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
            OR NANO_ROS_PLATFORM STREQUAL "nuttx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_NUTTX)
+        # issue-0027 #1 — NuttX reuses nros-c's posix platform header, which
+        # calls clock_gettime/nanosleep. NuttX declares those unconditionally in
+        # its own <time.h>, but the cross toolchain's bare newlib gates the POSIX
+        # options behind `#ifdef __rtems__` (riscv-none-elf 14), so the cmake-built
+        # message libs (which only see newlib) fail to compile. Put the NuttX
+        # export include tree on the message-lib + example compile as a SYSTEM
+        # include so <time.h> resolves to NuttX's. The FFI crate's cargo build
+        # already adds this for the app TU; this covers the cmake C/C++ TUs.
+        # NUTTX_DIR is validated by the platform module included above.
+        if(NUTTX_DIR)
+            target_include_directories(NanoRos SYSTEM INTERFACE "${NUTTX_DIR}/include")
+        endif()
     elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_THREADX)
     endif()
