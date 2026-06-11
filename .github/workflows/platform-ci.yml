@@ -160,6 +160,18 @@ jobs:
       - name: just ${{ matrix.plat }} setup
         run: just ${{ matrix.plat }} setup
 
+      # Container-job host-disk headroom before the heavy SDK+cargo build. The
+      # freertos/zephyr cells exhaust the ~14 GB runner (`No space left on
+      # device`). Reclaim the image's static bloat (doc/man, apt lists). Mirrors
+      # the host-integration-tests reclaim pattern; cargo/SDK caches are left
+      # intact (the build needs them) — they get re-derived if absent.
+      - name: Reclaim disk before build (container headroom)
+        run: |
+          echo "before:"; df -h / | tail -1
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
       - name: Build (${{ matrix.plat }})
         run: |
           source ./setup.bash
