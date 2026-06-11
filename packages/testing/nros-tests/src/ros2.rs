@@ -620,9 +620,12 @@ node = Server()
 rclpy.spin(node)
 "#;
 
+        // Feed the script via a quoted heredoc so its real newlines reach
+        // python. `python3 -c '<one line with \n literals>'` is a SyntaxError —
+        // the `\n` is not a newline outside a string — so the server never
+        // started and the reverse-direction interop tests timed out.
         let cmd = format!(
-            "{env_setup} && timeout 60 python3 -c '{}'",
-            python_script.replace('\n', "\\n").replace('\'', "\\'")
+            "{env_setup} && timeout 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
 
         Self::spawn_bash(&cmd, "ros2 add_two_ints_server", Some(config_dir))
@@ -986,18 +989,60 @@ rclpy.init()
 node = Server()
 rclpy.spin(node)
 "#;
+        // Feed the script via a quoted heredoc so its real newlines reach
+        // python. `python3 -c '<one line with \n literals>'` is a SyntaxError —
+        // the `\n` is not a newline outside a string — so the server never
+        // started and the reverse-direction interop tests timed out.
         let cmd = format!(
-            "{env_setup} && timeout 60 python3 -c '{}'",
-            python_script.replace('\n', "\\n").replace('\'', "\\'")
+            "{env_setup} && timeout 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
         Self::spawn_bash(&cmd, "ros2-dds add_two_ints_server")
     }
 
-    /// ROS 2 DDS Fibonacci action server (`action_tutorials_py`) on a domain.
+    /// ROS 2 DDS Fibonacci action server on a domain.
+    ///
+    /// Serves `example_interfaces/action/Fibonacci` on `/fibonacci` — the SAME
+    /// type+name the nano-ros action client/server examples use. The stock
+    /// `action_tutorials_py fibonacci_action_server` serves
+    /// `action_tutorials_interfaces/action/Fibonacci`, a DIFFERENT type, so DDS
+    /// type matching never succeeds against our client → goal-acceptance timeout
+    /// (233.6). A small rclpy server pinned to `example_interfaces` fixes the
+    /// type alignment without depending on `action_tutorials_py` being present.
     pub fn action_server_fibonacci_with_domain(distro: &str, domain_id: u8) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
+        let python_script = r#"
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionServer
+from example_interfaces.action import Fibonacci
+
+class Server(Node):
+    def __init__(self):
+        super().__init__('fibonacci_action_server')
+        self._srv = ActionServer(self, Fibonacci, '/fibonacci', self.execute)
+        self.get_logger().info('Fibonacci action server ready')
+    def execute(self, goal_handle):
+        order = goal_handle.request.order
+        seq = [0, 1]
+        for i in range(1, order):
+            seq.append(seq[i] + seq[i - 1])
+            fb = Fibonacci.Feedback()
+            fb.sequence = seq
+            goal_handle.publish_feedback(fb)
+        goal_handle.succeed()
+        result = Fibonacci.Result()
+        result.sequence = seq
+        self.get_logger().info(f'Goal done: order={order} -> {seq}')
+        return result
+
+rclpy.init()
+node = Server()
+rclpy.spin(node)
+"#;
+        // Quoted heredoc so the script's real newlines reach python —
+        // `python3 -c '<\n literals>'` is a SyntaxError (see add_two_ints_server).
         let cmd = format!(
-            "{env_setup} && timeout 60 ros2 run action_tutorials_py fibonacci_action_server"
+            "{env_setup} && timeout 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
         Self::spawn_bash(&cmd, "ros2-dds fibonacci_action_server")
     }

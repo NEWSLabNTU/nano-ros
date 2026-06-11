@@ -119,14 +119,16 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
     let received_count = count_pattern(&ros2_output, "data:");
     eprintln!("ROS 2 received {} messages via DDS", received_count);
 
-    if received_count > 0 {
-        eprintln!("[PASS] XRCE → ROS 2 DDS pub/sub works");
-    } else {
-        eprintln!("[INFO] ROS 2 DDS listener did not receive messages from XRCE talker");
-        eprintln!("  This may indicate DDS version incompatibility between XRCE Agent and ROS 2");
-    }
-
+    // Drop the agent before asserting so a failure doesn't leak the process.
     drop(agent);
+
+    assert!(
+        received_count > 0,
+        "ROS 2 DDS listener received no messages from the XRCE talker — the \
+         header-stripped XRCE topic payload must parse as DDS CDR (233.6). Output:\n{}",
+        ros2_output
+    );
+    eprintln!("[PASS] XRCE → ROS 2 DDS pub/sub works");
 }
 
 // =============================================================================
@@ -161,7 +163,9 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
         .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
-        .env("XRCE_MSG_COUNT", "3");
+        .env("XRCE_MSG_COUNT", "3")
+        // "Received:" logs at INFO — surface them so the test can see receipt.
+        .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
         .expect("Failed to start listener");
 
@@ -207,14 +211,15 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
         received_count
     );
 
-    if received_count > 0 {
-        eprintln!("[PASS] ROS 2 DDS → XRCE pub/sub works");
-    } else {
-        eprintln!("[INFO] XRCE listener did not receive messages from ROS 2 DDS publisher");
-        eprintln!("  This may indicate DDS version incompatibility between XRCE Agent and ROS 2");
-    }
-
     drop(agent);
+
+    assert!(
+        received_count > 0,
+        "XRCE listener received no messages from the ROS 2 DDS publisher — the \
+         re-prepended CDR header on the inbound XRCE topic must parse (233.6). Output:\n{}",
+        listener_output
+    );
+    eprintln!("[PASS] ROS 2 DDS → XRCE pub/sub works");
 }
 
 // =============================================================================
@@ -409,7 +414,9 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
         .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
-        .env("XRCE_TIMEOUT", "30");
+        .env("XRCE_TIMEOUT", "30")
+        // Action result / status logs are INFO-level — surface them.
+        .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-action-client")
         .expect("Failed to start xrce action client");
     let client_output = client
@@ -465,7 +472,11 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_REQUEST_COUNT", "3")
-        .env("XRCE_TIMEOUT", "30");
+        .env("XRCE_TIMEOUT", "30")
+        // The client logs "Response: ..." at INFO — surface it so the assert
+        // below can see the reply (without this the test can't tell success
+        // from failure).
+        .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-service-client")
         .expect("Failed to start xrce service client");
     let client_output = client
@@ -476,9 +487,12 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
     drop(agent);
 
     eprintln!("XRCE service client output:\n{client_output}");
-    if client_output.contains("Response") || client_output.contains("sum") {
-        eprintln!("[PASS] ROS 2 DDS service server ↔ XRCE service client: reply received");
-    } else {
-        eprintln!("[INFO] XRCE service client got no reply — DDS service naming/version drift");
-    }
+    // Phase 233.6 wave 2 — reverse direction (nano-ros XRCE service client →
+    // real ROS 2 service server). Hard assert: the client must get a reply.
+    assert!(
+        client_output.contains("Response") || client_output.contains("sum"),
+        "nano-ros XRCE service client got no reply from the ROS 2 service server \
+         — XRCE-DDS reverse service interop regression (233.6). Output:\n{client_output}"
+    );
+    eprintln!("[PASS] ROS 2 DDS service server ↔ XRCE service client: reply received");
 }

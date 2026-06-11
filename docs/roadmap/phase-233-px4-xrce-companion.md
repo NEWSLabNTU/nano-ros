@@ -8,9 +8,10 @@ two-track PX4 plan in **RFC-0039** ("support both") — the *additive* track.
 
 **Status.** Companion path complete + validated against real PX4 SITL (2026-06).
 233.1–233.5 landed; the topic path interoperates with actual PX4 firmware.
-**233.6 (service/action XRCE-DDS interop) is open** — the CDR-header fix covers
-topics, not yet services/actions (ROS 2 service interop, off the PX4 critical
-path). Wiring the harness also surfaced + fixed a spin-pacing bug
+**233.6 (service/action XRCE-DDS interop): services + pub/sub DONE both
+directions (hard-asserted vs real `rmw_fastrtps` ROS 2); actions remain** — a
+discovery/naming gap, not the CDR header (off the PX4 critical path). Wiring the
+harness also surfaced + fixed a spin-pacing bug
 ([issue 0026](../issues/archived/0026-px4-xrce-bare-agent-type-matching.md),
 resolved). Design-of-record: RFC-0039 (Draft).
 
@@ -130,33 +131,57 @@ Validate Track B against **actual PX4 firmware**, not the stub.
      header-stripped body into the reserved slot. Validated by
      `nros-tests::xrce::test_xrce_large_message_publish` (passes).
 
-### 233.6 — Service / action XRCE-DDS interop  ◐ (wave 1 landed)
-**Wave 1 (DONE).** The CDR-header strip/prepend now covers `service.c` — the 5
-sites below (3 outbound strip + 2 inbound prepend). **Validated against real
-ROS 2:** `nros-tests::xrce_ros2_interop::test_xrce_service_ros2_client` is now a
-**hard assert** — a real `rmw_fastrtps` ROS 2 service client gets `sum=8` from a
-nano-ros XRCE service server over a `MicroXRCEAgent`. (Also fixed the interop
-tests' env: they set `XRCE_AGENT_ADDR` but the examples read `NROS_LOCATOR`, so
-the nodes had been connecting to the *default* agent — the whole interop suite
-was a no-op. `XRCE → ROS 2` pub/sub now passes too.) nano-ros↔nano-ros services
-+ actions stay symmetric (the `xrce` group still passes).
+### 233.6 — Service / action XRCE-DDS interop  ◐ (services + pub/sub landed; actions remain)
+**Wave 1 (DONE) — services + topics, forward.** The CDR-header strip/prepend now
+covers `service.c` — the 5 sites below (3 outbound strip + 2 inbound prepend).
+`test_xrce_service_ros2_client` is a **hard assert**: a real `rmw_fastrtps` ROS 2
+service client gets `sum=8` from a nano-ros XRCE service server over a
+`MicroXRCEAgent`. (Also fixed the interop tests' env: they set `XRCE_AGENT_ADDR`
+but the examples read `NROS_LOCATOR`, so the nodes had been connecting to the
+*default* agent — the whole interop suite was a no-op.) nano-ros↔nano-ros
+services + actions stay symmetric (the `xrce` group still passes).
 
-**Wave 2 (REMAINING) — reverse-direction matching.** Three interop directions
-still fail, and it is **not** the CDR header (the forward service proves the
-header logic): a **nano-ros XRCE *requester/reader* never matches a ROS 2
-*replier/writer*** across the agent.
-- `test_ros2_service_xrce_client` — nano-ros service *client* → ROS 2 server: 3×
-  `Service call failed: Timeout` (never matched in 15 s).
-- `test_ros2_action_xrce_client` — same shape (actions ride on services).
-- `test_ros2_to_xrce_pubsub` — ROS 2 *reliable* publisher → nano-ros listener: 0
-  received (yet a real PX4 *best-effort* publisher → nano-ros works, 233.5 — so
-  this is specific to the ROS 2 reliable writer ↔ nano-ros reliable reader path,
-  or nano-ros-side discovery not waiting for a match before sending/reading).
-- Forward directions (nano-ros server/listener ← ROS 2 client/talker) work, so
-  the asymmetry points at the nano-ros *requester / inbound-reliable* path or its
-  discovery wait — likely the service client `call_raw` sending before the
-  requester↔replier match is established. Investigate as wave 2; out of the PX4
-  critical path.
+**Wave 2 (DONE) — reverse direction was test bugs, not nano-ros bugs.** The
+reverse-direction "failures" were **all in the harness**, not the wire: the
+CDR-header fix already made both directions interop. Three test bugs masked it:
+- *`NROS_LOCATOR` not set* — the reverse nodes connected to the default agent,
+  not the test's ephemeral one (same root cause as wave 1, all 6 spawn sites).
+- *ROS 2 python servers never started* — `add_two_ints_server` /
+  `action_server` used `python3 -c '<\n-escaped>'`, a `SyntaxError` (the `\n` is
+  not a newline outside a string). Replaced with a quoted heredoc
+  (`python3 - <<'NROS_PYEOF'`) so real newlines reach python.
+- *Node INFO logs invisible* — the example nodes log `Received:` / `Response:` at
+  INFO; the tests didn't set `RUST_LOG`, so the pattern match saw nothing. Added
+  `RUST_LOG=info`.
+
+With those fixed, **all four service + pub/sub directions hard-assert green**
+against real `rmw_fastrtps` ROS 2:
+- `test_xrce_to_ros2_pubsub`  — nano-ros XRCE talker → ROS 2 DDS listener ✅
+- `test_ros2_to_xrce_pubsub`  — ROS 2 DDS talker → nano-ros XRCE listener ✅
+- `test_xrce_service_ros2_client` — ROS 2 client → nano-ros XRCE server (`sum=8`) ✅
+- `test_ros2_service_xrce_client` — nano-ros XRCE client → ROS 2 server (`5+3=8`) ✅
+
+**REMAINING — actions (separate work item, NOT the CDR header).** Action interop
+fails in **both** directions, and the cause is action *discovery / entity
+naming / QoS*, not payload framing:
+- `test_xrce_action_ros2_client` — a real ROS 2 action client never sees the
+  nano-ros XRCE action server: `Waiting for an action server to become
+  available...` (the 5 implicit action entities aren't recognized as an action
+  graph by `rcl_action`).
+- `test_ros2_action_xrce_client` — nano-ros XRCE action client → ROS 2 server:
+  `Goal acceptance failed: Timeout` even after the **type** was aligned (below).
+- *Type alignment landed* (removes one confound): the `action_server_fibonacci_*`
+  fixture now serves `example_interfaces/action/Fibonacci` on `/fibonacci` — the
+  SAME type+name the nano-ros examples use — via an rclpy heredoc, instead of
+  `action_tutorials_py` (which serves `action_tutorials_interfaces/Fibonacci`, a
+  different type that could never match). Matching the type was necessary but
+  **not sufficient**: goals still time out, so the gap is in how the XRCE backend
+  advertises the action's send_goal/cancel_goal/get_result services + feedback/
+  status topics (names must be `/<action>/_action/{send_goal,cancel_goal,
+  get_result,feedback,status}` with the `..._SendGoal` / `action_msgs/...` types
+  and the rcl_action-expected QoS) so ROS 2's `rcl_action` graph discovers a
+  match. The action interop tests stay diagnostic (INFO-skip) until this lands.
+  Out of the PX4 critical path (PX4 is topic-only).
 
 #### Design (wave 1, landed)
 The CDR-header strip/prepend (233.5.1) covers **topics** (`publisher.c` /
