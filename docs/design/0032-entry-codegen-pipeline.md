@@ -4,7 +4,7 @@ title: "Entry-Codegen Pipeline — main() emission across frameworks + tiers"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: [phase-228]
+implements-tracked-by: [phase-228, phase-235]
 supersedes: []
 superseded-by: null
 ---
@@ -285,6 +285,45 @@ gated to zero) against real zenohd.
 3. **Spin-period bound check** — emit a warning when `spin_period_us` exceeds the
    tightest timer period in the tier (RFC-0015 §4.3). Low priority.
 
+## 8a. Embedded board adapter + NodeContext runtime binding (C++ Entry path)
+
+The C++ Entry path (Phase 219) emits the launch tree → register sequence →
+`NodeContext` dispatch, but only against `nros::board::NativeBoard` and only
+with a **recording** `NodeContextOps` (every op a no-op — see
+`packages/core/nros-cpp/include/nros/main.hpp`). So a generated C++ `main()`
+exercises codegen + symbol resolution + launch-order dispatch end-to-end, but
+constructs **no** live publishers/subscriptions, on native or embedded.
+
+**Decided (2026-06-11 design discussion, ASI as driving consumer):**
+
+- **The `NodeContextOps` seam is the runtime binding point.** The recorded
+  op set is replaced with a real one that maps each entity to an `nros-cpp`
+  construction call (`create_node`, pub/sub/service/client/timer create,
+  callback→poll wiring). No new IR; identity stays codegen-resolved (RFC-0024).
+- **Embedded gets a sibling `Board::run()`** to `NativeBoard`, owning the
+  Zephyr + Cyclone `init → network-wait → register → spin → shutdown` ritual.
+  It is selected through the **Phase 215** `nano_ros_use_board(<name>)` import
+  (`board.cmake` feeds default RMW + runner).
+- **ASI's working imperative runtime is the reference implementation.** The
+  `actuation_module` `common/node` shim (`node_nros.hpp`
+  `SubscriptionHandler<T>` + `create_publisher`/`create_subscription` over
+  `nros::Node`) and its hand-written `main.cpp` boot ARE, respectively, the
+  real `NodeContextOps` and the embedded `Board::run()`. This phase lifts that
+  proven code under the seam rather than designing a runtime from scratch.
+- **Tracked by Phase 235** (`docs/roadmap/phase-235-cpp-entry-embedded-runtime.md`),
+  native-first (235.A) then embedded Zephyr (235.B), validated by ASI (235.C).
+
+**Open (decide during Phase 235 impl):**
+
+- **Board granularity** — one `ZephyrBoard` parameterized by `board.cmake`, or
+  per-board adapters (`FvpAemv8rBoard`)? Leaning single + metadata-driven.
+- **Entity handle storage** — ASI uses `std::shared_ptr<Publisher<M>>`; the
+  `no_std` C++ Entry runtime needs an `alloc`-free equivalent (executor-owned
+  arena, sized via the Phase 118.B opaque-size probe).
+- **Parameter arrays** — ASI keeps `std::vector<double>` MPC weights in a local
+  map because `nros::ParameterServer` is scalar-only; the Entry runtime inherits
+  this gap until the parameter API grows sequences (separate phase).
+
 ---
 
 ## 9. References
@@ -298,4 +337,6 @@ gated to zero) against real zenohd.
 - `run_tiers` + `TierSpec`: `packages/boards/nros-board-posix/src/lib.rs`,
   `packages/core/nros-platform/src/board/tier.rs`.
 - Shared resolver: `packages/core/nros-orchestration-ir/`.
-- Phase tracking: `docs/roadmap/phase-228-per-tier-orchestration-codegen.md`.
+- Phase tracking: `docs/roadmap/phase-228-per-tier-orchestration-codegen.md`
+  (multi-tier emit); `docs/roadmap/phase-235-cpp-entry-embedded-runtime.md`
+  (C++ embedded board adapter + NodeContext runtime, §8a).

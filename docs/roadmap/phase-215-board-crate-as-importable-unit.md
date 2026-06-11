@@ -113,17 +113,17 @@ against drift.
       `NROS_BOARD_BOARD_CONF` (absolute path; per-board hwv2
       Kconfig fragment),
       `NROS_BOARD_BOARD_OVERLAY` (absolute path; per-board DTS overlay).
-- [ ] **215.A.2** Write `packages/boards/nros-board-fvp-aemv8r-smp/board.cmake`
+- [x] **215.A.2** Write `packages/boards/nros-board-fvp-aemv8r-smp/board.cmake`
       filling every variable. Absolute paths via
-      `${CMAKE_CURRENT_LIST_DIR}`.
+      `${CMAKE_CURRENT_LIST_DIR}`. _(landed `01ef6bd1a`, 2026-06)_
 - [ ] **215.A.3** Documented schema cross-references this phase doc.
 - **Files:** `packages/boards/nros-board-fvp-aemv8r-smp/board.cmake`
   (new), `docs/reference/board-cmake-schema.md` (new).
 
 ### 215.B — `nano_ros_use_board(<name>)` cmake fn
 
-- [ ] **215.B.1** New `zephyr/cmake/nano_ros_use_board.cmake` (~80 LoC
-      hard cap). `function(nano_ros_use_board NAME)`:
+- [x] **215.B.1** New `zephyr/cmake/nano_ros_use_board.cmake` (~80 LoC
+      hard cap). `function(nano_ros_use_board NAME)`: _(landed `2b9a909c9`, 2026-06; 86 LoC incl. 215.B.3 call-order guard)_
       1. Resolve `BOARD_DIR = ${NROS_REPO_DIR}/packages/boards/nros-board-${NAME}`.
       2. `FATAL_ERROR` if `${BOARD_DIR}/board.cmake` missing.
       3. `include("${BOARD_DIR}/board.cmake")`.
