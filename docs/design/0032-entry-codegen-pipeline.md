@@ -4,7 +4,7 @@ title: "Entry-Codegen Pipeline — main() emission across frameworks + tiers"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: [phase-228, phase-235]
+implements-tracked-by: [phase-228, phase-236]
 supersedes: []
 superseded-by: null
 ---
@@ -310,10 +310,10 @@ constructs **no** live publishers/subscriptions, on native or embedded.
   `nros::Node`) and its hand-written `main.cpp` boot ARE, respectively, the
   real `NodeContextOps` and the embedded `Board::run()`. This phase lifts that
   proven code under the seam rather than designing a runtime from scratch.
-- **Tracked by Phase 235** (`docs/roadmap/phase-235-cpp-entry-embedded-runtime.md`),
+- **Tracked by Phase 236** (`docs/roadmap/phase-236-cpp-entry-embedded-runtime.md`),
   native-first (235.A) then embedded Zephyr (235.B), validated by ASI (235.C).
 
-**Open (decide during Phase 235 impl):**
+**Open (decide during Phase 236 impl):**
 
 - **Board granularity** — one `ZephyrBoard` parameterized by `board.cmake`, or
   per-board adapters (`FvpAemv8rBoard`)? Leaning single + metadata-driven.
@@ -338,5 +338,5 @@ constructs **no** live publishers/subscriptions, on native or embedded.
   `packages/core/nros-platform/src/board/tier.rs`.
 - Shared resolver: `packages/core/nros-orchestration-ir/`.
 - Phase tracking: `docs/roadmap/phase-228-per-tier-orchestration-codegen.md`
-  (multi-tier emit); `docs/roadmap/phase-235-cpp-entry-embedded-runtime.md`
+  (multi-tier emit); `docs/roadmap/phase-236-cpp-entry-embedded-runtime.md`
   (C++ embedded board adapter + NodeContext runtime, §8a).

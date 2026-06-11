@@ -1,4 +1,4 @@
-# Phase 235 — C++ Entry-pkg embedded board adapter + real NodeContext runtime
+# Phase 236 — C++ Entry-pkg embedded board adapter + real NodeContext runtime
 
 **Goal.** Make a C++ Entry pkg (`nano_ros_entry(LAUNCH …)` + `NROS_MAIN`)
 boot a real multi-node topology on an **embedded Zephyr board** with
@@ -90,9 +90,9 @@ its `create_publisher`/`create_subscription` wrappers ARE the real
 
 ## Work Items
 
-### 235.A — Real `NodeContext` runtime ops (host/native first)
+### 236.A — Real `NodeContext` runtime ops (host/native first)
 
-- [x] **235.A.1** Replace `NativeBoard`'s recording `NodeContextOps`
+- [x] **236.A.1** Replace `NativeBoard`'s recording `NodeContextOps`
       with a real op set that constructs `nros::Node` + entities via
       `nros-cpp`. Land native-first so it is testable without an
       embedded board. *(Done — `detail::NativeNodeRuntime` in
@@ -102,14 +102,14 @@ its `create_publisher`/`create_subscription` wrappers ARE the real
       type-erased, so the runtime can't use the typed
       `create_publisher<M>` templates and goes through the raw FFI via a
       new internal `Node::ffi_handle()` accessor.)*
-- [x] **235.A.2** Entity storage — executor-owned handle storage so
+- [x] **236.A.2** Entity storage — executor-owned handle storage so
       created pubs/subs outlive `register_fn` (ASI keeps
       `std::shared_ptr<Publisher<M>>`; pick the `no_std`-friendly
       equivalent). *(Done — fixed-capacity arena
       (`NROS_ENTRY_MAX_{NODES,ENTITIES}`) held in a process-scope
       template-static member (`NativeBoard::RuntimeHolder`), no heap/STL;
       mirrors `Node::GlobalStorageHolder`'s COMDAT-folded `.bss` trick.)*
-- [x] **235.A.3** Subscription callback → poll-loop wiring
+- [x] **236.A.3** Subscription callback → poll-loop wiring
       (`record_callback_effect`), mirroring ASI `SubscriptionHandler<T>`.
       *(Done — `NativeNodeRuntime::spin()` drains every `Reads`
       subscription each tick; a timer-driven `Publishes` effect fires its
@@ -118,7 +118,7 @@ its `create_publisher`/`create_subscription` wrappers ARE the real
       the v1 runtime synthesizes a monotonic `std_msgs/Int32` counter for
       a timer-`Publishes` binding — matching the canonical Talker's
       "fires `on_tick`, which publishes a counter" intent.)*
-- [x] **235.A.4** Native E2E: a 2-node C++ Entry pkg fixture publishes
+- [x] **236.A.4** Native E2E: a 2-node C++ Entry pkg fixture publishes
       and receives over loopback (external-observer style per RFC-0032 §8).
       *(Done — `packages/testing/nros-tests/tests/phase235_a_cpp_entry_runtime.rs`
       builds the in-tree `multi-node-workspace-cpp` Entry pkg (talker +
@@ -132,7 +132,7 @@ its `create_publisher`/`create_subscription` wrappers ARE the real
 `packages/core/nros-cpp/include/nros/node.hpp`, a fixture under
 `packages/testing/nros-tests/`.
 
-**Status.** 235.A landed 2026-06-11. The Native NodeContext runtime is
+**Status.** 236.A landed 2026-06-11. The Native NodeContext runtime is
 live (no more recording no-op). Verifications run: standalone
 `g++ -std=c++14 -fsyntax-only` of `<nros/main.hpp>`;
 `cpp_multi_node_entry` (compile + link of the real template, 90 s);
@@ -145,9 +145,9 @@ callback-body-binding work (see RFC-0032 §8a open item). Services /
 clients / actions are recorded (no hard error) but not yet constructed
 by the native runtime.
 
-### 235.B — Embedded (Zephyr) Board adapter
+### 236.B — Embedded (Zephyr) Board adapter
 
-- [x] **235.B.1** Add the embedded `Board::run()` adapter: Zephyr +
+- [x] **236.B.1** Add the embedded `Board::run()` adapter: Zephyr +
       Cyclone `init → network-wait → register_fn → spin → shutdown`.
       Blueprint: ASI `actuation_module/src/main.cpp` +
       `include/common/node/node_nros.hpp`. *(Done —
@@ -159,7 +159,7 @@ by the native runtime.
       `nano_ros_use_board(<name>)` cmake import + Kconfig at build time, so
       the C++ adapter has nothing board-specific left to specialize; every
       Phase 215 Zephyr board compiles with `__ZEPHYR__` and shares the one
-      adapter. **235.A runtime REUSED, not duplicated:** the 235.A
+      adapter. **236.A runtime REUSED, not duplicated:** the 236.A
       `NativeNodeRuntime` was renamed `detail::EntryNodeRuntime`
       (lifecycle-agnostic; a `NativeNodeRuntime` alias is kept) and the
       ops + arena were factored into `detail::entry_node_context_ops()` +
@@ -170,7 +170,7 @@ by the native runtime.
       on Zephyr. Network-wait is a weak `nros_board_network_wait()` hook
       (default no-op — Zephyr auto-brings-up networking; ASI's
       `configure_network()` can provide a strong override).)*
-- [x] **235.B.2** Wire it to the Phase 215 board import so the Entry
+- [x] **236.B.2** Wire it to the Phase 215 board import so the Entry
       codegen / `NROS_MAIN(<Board>, …)` resolves the embedded board
       from `board.cmake` (`NROS_BOARD_RUNNER`, default RMW). *(Done —
       `emit_cpp::board_cpp_path` maps `"zephyr"` / `"fvp-aemv8r-smp"` /
@@ -178,11 +178,11 @@ by the native runtime.
       (unit-tested). `cmake/NanoRosEntry.cmake` derives the `"zephyr"`
       codegen board key from the cached `NROS_BOARD_RUNNER` (set by
       `nano_ros_use_board`) when DEPLOY is non-`native` and no explicit
-      `BOARD` was passed, and relaxes the pre-235 native-only DEPLOY gate
+      `BOARD` was passed, and relaxes the pre-236 native-only DEPLOY gate
       to allow a non-`native` deploy iff a Board resolves. Default RMW
       continues to flow from `board.cmake` → `nano_ros_use_board` →
       `NANO_ROS_RMW` (unchanged).)*
-- [x] **235.B.3** Domain-id + locator come from the board / Entry
+- [x] **236.B.3** Domain-id + locator come from the board / Entry
       metadata (compile-time on embedded per the CLAUDE.md domain-id
       rule), not a runtime env. *(Done — `ZephyrBoard::run` resolves a
       compile-time `NROS_ENTRY_DOMAIN_ID`: Cyclone keys off
@@ -197,11 +197,11 @@ by the native runtime.
 `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`,
 `cmake/NanoRosEntry.cmake`.
 
-**Status.** 235.B landed in the worktree (2026-06-11). **Verification
+**Status.** 236.B landed in the worktree (2026-06-11). **Verification
 reality:** the Zephyr SDK (`ZEPHYR_BASE` unset, `third-party/zephyr/`
 absent) and ARM FVP (`ARM_FVP_DIR` unset) are NOT provisioned in this
 worktree, so a full FVP build/boot of `ZephyrBoard` could not run here —
-deferred to a Zephyr-SDK-equipped host (and to 235.C's ASI validation).
+deferred to a Zephyr-SDK-equipped host (and to 236.C's ASI validation).
 What WAS verified:
 - `g++ -std=c++14 -fsyntax-only` of `<nros/main.hpp>` on BOTH paths —
   native (no `__ZEPHYR__`) and the embedded branch (`__ZEPHYR__` + a
@@ -209,18 +209,18 @@ What WAS verified:
 - the generated TU for `--board zephyr` emits
   `::nros::board::ZephyrBoard::run(...)` and syntax-checks under
   `__ZEPHYR__`; the no-`--board` TU still emits `NativeBoard::run(...)`;
-- `cargo test -p nros-cpp` (8 passed — no NativeBoard/235.A regression);
+- `cargo test -p nros-cpp` (8 passed — no NativeBoard/236.A regression);
 - `cpp_multi_node_entry` (full cmake compile+link of the real native
   template, 83 s);
 - `nros-cli-core` `emit_cpp` unit tests (9 passed incl. 3 new board-key
   cases).
 
-### 235.C — ASI reference-consumer validation
+### 236.C — ASI reference-consumer validation
 
-- [ ] **235.C.1** ASI `actuation_module` builds as a C++ Entry pkg
-      against the 235.B board adapter (replaces the hand-written
+- [ ] **236.C.1** ASI `actuation_module` builds as a C++ Entry pkg
+      against the 236.B board adapter (replaces the hand-written
       `main.cpp` boot with `NROS_MAIN` + `nano_ros_use_board`).
-- [ ] **235.C.2** FVP smoke: the `controller` node publishes
+- [ ] **236.C.2** FVP smoke: the `controller` node publishes
       `/control/trajectory_follower/control_cmd` via the generated
       Entry path, observed by stock `ros2 topic echo` — parity with
       ASI phase-1 acceptance gate 1.9.
