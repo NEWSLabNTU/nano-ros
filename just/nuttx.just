@@ -185,9 +185,42 @@ build-fixtures:
 # under M-F.12 and the host-codegen / per-example FFI baker scripts
 # under M-F.16's commit 1/4.
 #
+# Phase 194.3c — build the riscv (rv-virt) NuttX C example fixtures. Separate
+# recipe (not folded into build-fixtures) because the shared NuttX tree holds one
+# board config at a time: this reconfigures arm->rv-virt via the 194.5
+# board-aware marker, so it must run as its own serial step. CI runs it after the
+# arm fixtures. All toolchains/SDKs come from `nros setup qemu-riscv-nuttx`.
+[group("full-matrix")]
+build-riscv-c:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
+        echo "NuttX riscv skip: riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
+    fi
+    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
+        echo "NuttX riscv skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    fi
+    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
+    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu-riscv/nuttx-config/defconfig"
+    # Provision the rv-virt export (reconfigures the shared tree if it was arm).
+    NUTTX_DEFCONFIG="$rv_defconfig" \
+        NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
+        bash scripts/nuttx/build-nuttx.sh
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
+    echo "→ host nros-codegen (C)"
+    nros_cargo_ensure_codegen_c
+    codegen="$(nros_cargo_codegen_c_bin)"
+    toolchain="$(pwd)/cmake/toolchain/riscv32imac-nuttx-elf.cmake"
+    nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu-riscv/nros-nuttx-ffi"
+    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
+    NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx-riscv c zenoh
+    unset NROS_CMAKE_EXTRA_DEFS
+    echo "NuttX riscv C examples built!"
+
 # Build every NuttX tier. `build-all-full` removed.
 [group("full-matrix")]
-build-all: build build-examples build-fixtures
+build-all: build build-examples build-fixtures build-riscv-c
     @echo "NuttX build-all completed."
 
 # Run NuttX QEMU integration tests

@@ -1266,6 +1266,20 @@ rmw = "zenoh"
 dir = "examples/qemu-arm-nuttx/cpp/action-client"
 
 # ===========================================================================
+# qemu-riscv-nuttx — C (cmake), Phase 194.3c. 2nd-arch NuttX board (rv-virt).
+# Distinct `platform = "nuttx-riscv"` so `just nuttx build-riscv-c` builds these
+# with the riscv toolchain + riscv FFI crate (the `nuttx` rows use arm). The
+# shared NuttX tree holds one board config at a time, so the riscv build is a
+# separate recipe (reconfigures arm->rv-virt via the 194.5 board-aware marker).
+# ===========================================================================
+
+[[fixture]]
+platform = "nuttx-riscv"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-riscv-nuttx/c/talker"
+
+# ===========================================================================
 # threadx-linux — C / C++ (cmake). Zenoh here; Cyclone cells stay gated inline.
 # Toolchain / SDK / codegen -D defs are platform-recipe-level (NROS_CMAKE_EXTRA_DEFS).
 # ===========================================================================

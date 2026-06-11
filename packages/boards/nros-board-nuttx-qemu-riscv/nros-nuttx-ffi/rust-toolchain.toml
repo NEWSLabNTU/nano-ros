@@ -1,0 +1,8 @@
+# 194.3c — pin the riscv FFI crate to the workspace's nightly so a bare
+# `cargo build` (driven by cmake's `nros_nuttx_build_example`) can `-Zbuild-std`
+# against the tier-3 `riscv32imac-unknown-nuttx-elf` target without a
+# `cargo +nightly` prefix. Mirrors the arm FFI crate; the sibling
+# `.cargo/config.toml` carries `build-std = ["std", "panic_abort"]`.
+# Keep `channel` in sync with the workspace's canonical pinned nightly.
+[toolchain]
+channel = "nightly-2026-04-11"

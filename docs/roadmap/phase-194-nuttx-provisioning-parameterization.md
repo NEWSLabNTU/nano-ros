@@ -305,19 +305,19 @@ runnable riscv C kernel + a virtio-net e2e are **not** part of the C-path design
 baseline and are dropped. The C-path proof is: **the riscv C component builds**
 (✅ validated), exactly mirroring the arm C build-coverage.
 
-- [ ] **Harness wiring** (the only real remainder). Register the riscv board in
-      the NuttX build/test coverage so CI compiles it, mirroring the arm pattern:
-      (a) a riscv C build-coverage equivalent of
-      `nuttx_qemu_arm_2_component_bringup_builds` (the canonical arm C coverage is
-      bringup staging via `scripts/nuttx/stage-external-apps.sh`, *and/or* the
-      direct cmake component compile already proven here); (b) a riscv branch in
-      `just nuttx build-examples`/`build-fixtures` (today hardcodes the arm
-      toolchain `cmake/toolchain/armv7a-nuttx-eabi.cmake` + the arm FFI crate at
-      `just/nuttx.just:156-157`); (c) a `qemu-riscv-nuttx` cell in the cmake
-      platform/board matrix. Mechanical but spans fixtures.toml +
-      fixtures-manifest.py + nuttx.just + a test — and the parallel `build-std`
-      matrix SIGSEGVs host rustc here (serial only), so CI is the natural place to
-      land + green it.
+- [x] **Harness wiring — DONE + validated 2026-06-11.** `examples/fixtures.toml`
+      gained a `platform = "nuttx-riscv"` C-talker row; `just nuttx build-riscv-c`
+      (new recipe) provisions the rv-virt export (reconfiguring the shared tree
+      arm→rv-virt via the marker) and builds the riscv C example via the harness
+      with the riscv toolchain + riscv FFI crate; `build-all` includes it; the
+      riscv FFI crate gained its `rust-toolchain.toml` (nightly pin). **Verified
+      green:** `just nuttx build-riscv-c` → std_msgs message lib + component
+      archive built ("NuttX riscv C examples built!"). The arm `nuttx`-platform
+      rows + recipe are untouched (riscv is a distinct platform tag + recipe, so no
+      shared-tree concurrency). CI runs `build-riscv-c` after the arm fixtures.
+- [ ] (Optional) a `qemu-riscv-nuttx` cell in the cmake `platform`/`board` smoke
+      matrix (`cmake_platform_matrix.rs`) — nice-to-have; the build recipe already
+      gives the coverage.
 - [ ] (Optional, separate from 194.3c) a riscv **rust** standalone example
       (`examples/qemu-riscv-nuttx/rust/talker`, mirror of the arm rust talker) for
       a runnable rv-virt kernel + virtio-net e2e — only if a runnable riscv demo is
