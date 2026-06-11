@@ -65,8 +65,13 @@ jobs:
           set -e
           source /opt/ros/humble/setup.bash
           cd examples/templates/local-msg-package
-          # colcon scans src/ for pkgs; topo-orders local_msgs → extra_msgs → consumer
-          colcon build --merge-install --event-handlers console_direct+
+          # `--base-paths src`: scan ONLY src/ (local_msgs → extra_msgs → consumer,
+          # topo-ordered). Without it, colcon's pure-CMake discovery also picks up
+          # the top-level `local_msg_package_fixture` CMakeLists — the *nano-ros*
+          # umbrella (`add_subdirectory(<repo>)` + `nros_workspace_interfaces()`),
+          # which needs the `nros` codegen tool and is NOT a colcon-parity target.
+          # That umbrella is the nano-ros build path; colcon parity is src/ only.
+          colcon build --base-paths src --merge-install --event-handlers console_direct+
           ls install/
 
       - name: Verify the consumer binary was produced

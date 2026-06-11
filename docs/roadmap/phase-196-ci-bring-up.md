@@ -490,8 +490,11 @@ setup/ci recipes; `nros-sdk-index.toml` (per-board package coverage);
 - [x] A codegen-consumer check fails on a stray `nros --args-file` / legacy form
       (196.2). `codegen-convention.yml` ships it; CI green.
 - [ ] Every `.github/workflows/*.yml` has had ≥1 successful live run.
-      **OPEN — one holdout:** `colcon-parity.yml` has **never** had a successful
-      run (every completed run fails). All other workflows have ≥1 green
+      **colcon-parity fix applied 2026-06-12 (pending CI):** `colcon-parity.yml` had never
+      passed — `colcon build` discovered the top-level nano-ros umbrella CMakeLists
+      (pure-CMake, needs `nros`) alongside `src/`; restricted it to `--base-paths
+      src` (validated locally: 3 pkgs + consumer binary build clean). The other
+      workflows have ≥1 green run. All other workflows have ≥1 green
       (platform-ci / lint / zephyr-dual-line green historically; ci / host-unit /
       codegen-convention / sdk-index-gate / nros-acceptance / dep-chain /
       scaffold-journey / embedded-feature-unification / string-conventions green).
