@@ -187,8 +187,18 @@ jobs:
       # `RUSTFLAGS=-C debuginfo=0` is kept as a cheap artifact/link-time trim
       # (tests spawn the binaries; no symbols needed) — not a disk fix.
       - name: Build native fixtures + XRCE agent (best-effort)
+        # Issue #29 — the container overlay ALSO exhausts (`lto1: fatal error:
+        # write: No space left on device`): the workspace `[profile.release]` is
+        # `lto = "fat"` and the C++ FFI fixture (`cmake/cpp_ffi_Cargo.toml.in`)
+        # sets `lto = true`, so cross-language LTO writes giant transient `lto1`
+        # objects on top of ~30 duplicated per-fixture target dirs. Force LTO off
+        # for the CI fixture build — these are test fixtures, LTO is irrelevant
+        # to their pass/fail — which kills the transient AND shrinks every target
+        # dir. `CARGO_PROFILE_RELEASE_LTO` overrides both the workspace profile
+        # and the cpp_ffi manifest. `debuginfo=0` is a further artifact trim.
         env:
           RUSTFLAGS: "-C debuginfo=0"
+          CARGO_PROFILE_RELEASE_LTO: "off"
         run: |
           source /opt/ros/humble/setup.bash
           mkdir -p build/ci-logs
@@ -221,6 +231,7 @@ jobs:
         env:
           NROS_FIXTURES_OPTIONAL: "1"
           RUSTFLAGS: "-C debuginfo=0"
+          CARGO_PROFILE_RELEASE_LTO: "off"
         run: |
           source /opt/ros/humble/setup.bash
           mkdir -p build/ci-logs

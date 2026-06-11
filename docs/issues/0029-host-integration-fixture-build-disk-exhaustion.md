@@ -42,6 +42,19 @@ then crashes writing its own diag log. So it is a *log-volume* problem, not a
 build-artifact problem — and freeing container space (or stripping debuginfo)
 does nothing for it.
 
+**Second filesystem also exhausts — the container overlay.** The streamed log
+showed `lto1: fatal error: write: No space left on device` + `compilation
+terminated.` — GCC's LTO backend ran out of room writing transient objects. The
+workspace `[profile.release]` is `lto = "fat"` (`Cargo.toml`) and the C++ FFI
+fixture template (`cmake/cpp_ffi_Cargo.toml.in`) sets `lto = true`, so any
+`--release` fixture + the C++ cross-language LTO writes huge `lto1` temp objects
+on top of ~30 duplicated per-fixture target dirs — enough to fill even the
+146 GB overlay. The old `|| echo "partial"` swallowed that ENOSPC, so the build
+step went green with fixtures only partly built. Fix: force `CARGO_PROFILE_RELEASE_LTO=off`
+for the CI fixture + test build (these are test fixtures; LTO is irrelevant to
+pass/fail). The env var overrides both the workspace profile and the cpp_ffi
+manifest, killing the transient and shrinking every target dir.
+
 **Fix applied (2026-06) — keep the noisy output off the streamed agent log.**
 Both heavy steps redirect their stdout/stderr to a file on the big overlay disk
 (`build/ci-logs/*.log`) and surface only a tail (on failure for each fixture
