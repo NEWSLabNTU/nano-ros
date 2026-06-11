@@ -132,6 +132,17 @@ jobs:
       - name: Provision zenohd
         run: just zenohd setup
 
+      # Provision the test prerequisites the way a user does — via `nros setup`
+      # (#25). The patched qemu-system-arm (build/qemu/, where `qemu.rs` looks)
+      # backs the `platform` / `qemu_patched_binary` tests; the prebuilt
+      # Micro-XRCE-DDS Agent (nros store, where `xrce_agent.rs` looks) backs the
+      # `xrce` / `c_xrce` / `bridge` tests. Both are prebuilt tool packages in
+      # the SDK index.
+      - name: Provision QEMU + XRCE agent (nros setup --tool)
+        run: |
+          nros setup --tool qemu --prefix "$GITHUB_WORKSPACE/build/qemu" --index nros-sdk-index.toml
+          nros setup --tool xrce-agent --index nros-sdk-index.toml
+
       # The native integration tests (actions / services / qos / multi_node /
       # native_api / executor / ...) spawn PREBUILT example binaries via
       # `require_prebuilt_binary` ("Run `just build-test-fixtures` first") — the
@@ -156,7 +167,6 @@ jobs:
           just native build-fixture-rust       || echo "rust fixtures partial — affected tests [SKIPPED]"
           just native build-workspace-fixtures || echo "workspace fixtures unavailable — affected tests [SKIPPED]"
           just native build-fixture-extras     || echo "C/C++ extras unavailable (issue #27) — affected tests [SKIPPED]"
-          just xrce build-agent                || echo "xrce agent unavailable — xrce/bridge tests [SKIPPED]"
 
       - name: just test-integration
         # Source the AMENT prefix so `nros generate-rust` (used by some
