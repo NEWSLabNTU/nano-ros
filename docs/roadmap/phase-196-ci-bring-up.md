@@ -479,18 +479,31 @@ setup/ci recipes; `nros-sdk-index.toml` (per-board package coverage);
 ---
 
 ## Acceptance criteria
-- [ ] `zephyr-dual-line` is green end-to-end on both lines (196.1).
-- [ ] A codegen-consumer check fails on a stray `nros --args-file` / legacy form
-      (196.2).
-- [ ] Every `.github/workflows/*.yml` has had ≥1 successful live run on the
-      current `main` (or a tracking branch), recorded here.
-- [ ] `ci.yml` runs a meaningful workspace check, not a single-crate stub.
-- [ ] A light **per-platform dep-chain** lane (196.6) green over the board × rmw
-      matrix: `nros setup --dry-run` + codegen + `cargo tree --target`
-      (resolution, no full build) for every cell.
-- [ ] `nros new` scaffolds a dep that resolves under the source-release model
-      (196.7); a scaffolded project builds in the user-journey lane.
-- [ ] `docs/development/ci-conventions.md` exists and the dual-line + ci
+
+> CI status checked 2026-06-12 (`gh run list`). 5/7 met; the 2 open ones are
+> real failing lanes (zephyr-dual-line regressed; colcon-parity never green).
+
+- [ ] `zephyr-dual-line` is green end-to-end on both lines (196.1). **OPEN —
+      regressed:** the lane has been green historically but the latest completed
+      runs fail (2026-06). Needs a re-green (196.8 build gaps / 196.1 codegen skew
+      class). The active 196 hardening blocker.
+- [x] A codegen-consumer check fails on a stray `nros --args-file` / legacy form
+      (196.2). `codegen-convention.yml` ships it; CI green.
+- [ ] Every `.github/workflows/*.yml` has had ≥1 successful live run.
+      **OPEN — one holdout:** `colcon-parity.yml` has **never** had a successful
+      run (every completed run fails). All other workflows have ≥1 green
+      (platform-ci / lint / zephyr-dual-line green historically; ci / host-unit /
+      codegen-convention / sdk-index-gate / nros-acceptance / dep-chain /
+      scaffold-journey / embedded-feature-unification / string-conventions green).
+- [x] `ci.yml` runs a meaningful workspace check, not a single-crate stub. It
+      cross-`check`s the package set over a target matrix (`core no_std`); CI green.
+- [x] A light **per-platform dep-chain** lane (196.6) green over the board × rmw
+      matrix: `nros setup` + codegen + `cargo tree` (resolution, no full build)
+      for every cell. `dep-chain.yml` CI green (10/10 cells).
+- [x] `nros new` scaffolds a dep that resolves under the source-release model
+      (196.7); a scaffolded project resolves in the user-journey lane.
+      `scaffold-journey.yml` CI green.
+- [x] `docs/development/ci-conventions.md` exists and the dual-line + ci
       workflows follow it.
 
 ## Notes
