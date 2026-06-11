@@ -89,3 +89,22 @@ supports 2.x. Fix: add `libmbedtls-dev` to the CI base image
 builds the native TLS fixtures needs it. The base image auto-rebuilds on the
 `ci/docker/ci-base/**` push; host-integration greens on its next run with the
 new image.
+
+**Follow-up (2026-06): all test prerequisites via `nros setup`.** The lane now
+provisions every prereq the way a user does (no apt / source-build side-steps):
+qemu (`--tool qemu` → `build/qemu/`, where `qemu.rs` looks), the Micro-XRCE-DDS
+Agent (`--tool xrce-agent` → nros store), play_launch_parser (`--tool
+play_launch_parser`, source-built), and the workspace sources (`--source …`).
+
+`nros setup --tool play_launch_parser` first failed: its `[tool.*.source]` pins
+the `main` tip **commit SHA** (no upstream tags), and the tool install path did
+`git clone --depth 1 --branch <ref>` — git rejects a SHA as a branch name
+("Remote branch <sha> not found in upstream origin"). Fixed in
+`nros-cli-core/src/orchestration/sdk_store.rs` by mirroring the `[source.*]`
+shallow path: `git init` + `git fetch --depth 1 origin <ref>` + detached
+`checkout FETCH_HEAD` (works for sha/tag/branch). The workflow resolves the
+versioned store bin dir (`<tool>/<ver>/bin`) onto PATH and keeps
+play_launch_parser best-effort (its workspace-entry fixtures `skip!` under
+`NROS_FIXTURES_OPTIONAL`). **Verified:** the "Provision QEMU + XRCE agent +
+play_launch_parser" step is green in CI (run 27324486004); full lane
+confirmation pending a run that survives the main-branch push churn.
