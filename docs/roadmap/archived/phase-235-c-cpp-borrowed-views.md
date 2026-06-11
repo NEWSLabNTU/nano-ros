@@ -5,8 +5,10 @@ the Rust path shipped in Phase 229.6. A `mode = "borrowed"` field on a large
 variable-length payload becomes an alloc-free, callback-scoped view that points into
 the live CDR receive buffer instead of copying into a fixed array / heap container.
 
-**Status.** Planned (2026-06). Implements [issue
-0021](../issues/0021-cpp-c-borrowed-views.md); continues Phase 229.6 (Rust borrowed).
+**Status.** Done (2026-06-11). C + C++ borrowed implemented, golden-tested, and
+runtime-proven by host E2Es (`tests/borrowed_{c,cpp}_e2e.sh`). Resolved [issue
+0021](../issues/archived/0021-cpp-c-borrowed-views.md); continues Phase 229.6 (Rust
+borrowed).
 
 **Priority.** P2 — optimization, not a functional gap. C/C++ already carry large
 payloads via `mode = "heap"` (229.5); borrowed adds the heap-free path for MCUs with
@@ -138,9 +140,9 @@ Golden tests + an E2E mirroring 235.4 in C++ (spans alias the callback buffer).
 
 ### Close-out
 
-#### 235.9 — Resolve issue 0021 + sync docs  ⬜
-Mark issue 0021 `resolved` (move to `archived/`), tick RFC-0033's storage table /
-phase-229 229.6 cross-ref to note C/C++ borrowed landed.
+#### 235.9 — Resolve issue 0021 + sync docs  ✅
+Issue 0021 → `resolved`, moved to `docs/issues/archived/`; RFC-0033 flipped to
+`Stable` (the borrowed C/C++ realization landed); phase-229 229.6 cross-ref ticked.
 - **Files:** `docs/issues/0021-*`, `docs/issues/README.md`, `docs/design/0033-*`,
   `docs/roadmap/phase-229-*`.
 

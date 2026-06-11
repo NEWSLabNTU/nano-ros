@@ -1,7 +1,7 @@
 ---
 rfc: 0033
 title: "Per-field message capacity configuration"
-status: Draft
+status: Stable
 since: 2026-06
 last-reviewed: 2026-06-11
 implements-tracked-by: [phase-229, phase-235]
@@ -223,7 +223,7 @@ Rust API and never re-implements serdes**:
 Both ride the existing raw `(data, len)` subscription callbacks
 (`nros_subscription_callback_t` / `nros_cpp_subscription_message_callback_t`) — the
 borrowed view is a typed accessor, **no new subscription ABI**. Implementation +
-work-item breakdown: [phase-235](../roadmap/phase-235-c-cpp-borrowed-views.md).
+work-item breakdown: [phase-235](../roadmap/archived/phase-235-c-cpp-borrowed-views.md).
 
 ### Codegen: one resolver, three emitters
 

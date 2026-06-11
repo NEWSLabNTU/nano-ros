@@ -211,13 +211,15 @@ sequence-of-nested-messages**. Sequence elements stay fixed-capacity (unbounded
 - **Files:** `nros-core/src/lib.rs`, `types.rs`, `templates.rs`,
   `generator/common.rs`, `templates/message_nros.rs.jinja`, `tests/`.
 
-### 229.6 — `borrowed` storage mode (phase 3, closed issue 0007)  ✅ Rust done; C/C++ → issue 0021
+### 229.6 — `borrowed` storage mode (phase 3, closed issue 0007)  ✅ Rust; C/C++ → Phase 235
 **Status (2026-06-10).** The **Rust** path is complete and E2E-validated.
 **Issue 0007 is resolved**: large payloads are representable on every target —
 allocator targets via `heap` (all 3 langs, 229.5), allocator-free targets via
-`borrowed` (Rust, this section). The remaining **borrowed views for C/C++** are an
-alloc-free optimization (C/C++ already have `heap`), tracked as
-[issue 0021](../issues/0021-cpp-c-borrowed-views.md).
+`borrowed` (Rust, this section). The **borrowed views for C/C++** (an alloc-free
+optimization; C/C++ already have `heap`) landed in
+[Phase 235](archived/phase-235-c-cpp-borrowed-views.md) — closing
+[issue 0021](../issues/archived/0021-cpp-c-borrowed-views.md). Borrowed is now full
+parity across Rust, C, and C++.
 
 - ✅ **Runtime seam** (`670a62a4`): `nros_serdes::DeserializeBorrowed<'a>` +
   `nros_core::BorrowedMessage` GAT marker (`type View<'a>`) + executor
