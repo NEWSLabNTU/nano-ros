@@ -47,5 +47,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
 | 25 | host-integration lane fails native action/c_xrce/bridge tests — fixtures not staged | bug | build | [0025-host-integration-native-fixtures-unstaged.md](0025-host-integration-native-fixtures-unstaged.md) |
+| 29 | host-integration native fixture build exhausts runner disk (ENOSPC)   | bug         | build  | [0029-host-integration-fixture-build-disk-exhaustion.md](0029-host-integration-fixture-build-disk-exhaustion.md) |
 
 Resolved issues live in [`archived/`](archived/).

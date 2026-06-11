@@ -176,7 +176,30 @@ jobs:
       # best-effort: with `NROS_FIXTURES_OPTIONAL=1` on the test step, any
       # fixture that did not build makes its test `skip!` ([SKIPPED]-tolerated)
       # instead of failing — while `test-all` (var unset) still hard-fails.
+      # Issue #29 — the full native fixture build (rust per-example × RMW
+      # variants + C/C++/Cyclone CMake cells + workspace entries) exhausts the
+      # runner disk (ENOSPC crashed the runner agent mid-build). Reclaim the
+      # only space reachable from inside the job container: the GitHub tool
+      # cache (~8 GB, mounted at /opt/hostedtoolcache + /__t but unused — the
+      # rust/nightly toolchains are baked into the image at /usr/local). The
+      # host dotnet/android dirs the usual free-disk actions target are NOT in
+      # this container's fs namespace, so they cannot help here. The job runs as
+      # root in the ROS image, so no `sudo`.
+      - name: Free disk space (in-container reclaim)
+        run: |
+          echo "before:"; df -h / | tail -1
+          rm -rf /opt/hostedtoolcache /__t/* 2>/dev/null || true
+          apt-get clean 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
       - name: Build native fixtures + XRCE agent (best-effort)
+        # Issue #29 — `debuginfo=0` strips the dominant disk consumer (debug
+        # symbols in each fixture's target dir) so the full rust + C/C++/Cyclone
+        # + workspace build fits the runner disk. Integration tests spawn the
+        # binaries; they need no symbols. Keeps full coverage (the chosen
+        # reclaim-and-keep-full-build path) rather than dropping fixtures.
+        env:
+          RUSTFLAGS: "-C debuginfo=0"
         run: |
           source /opt/ros/humble/setup.bash
           just native build-fixture-rust       || echo "rust fixtures partial — affected tests [SKIPPED]"
