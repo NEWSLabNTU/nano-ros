@@ -17,19 +17,20 @@ use super::types::ExecutorConfig;
 use super::types::SpinOptions;
 use super::{
     arena::{
-        BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientRawArenaEntry,
-        SrvEntry, SrvRawEntry, SubBufferedBorrowedEntry, SubBufferedEntry, SubBufferedRawCEntry,
-        SubBufferedRawEntry, SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubInfoEntry,
-        SubInplaceEntry, TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry,
-        guard_has_data, guard_try_process, no_pre_sample, service_client_raw_try_process,
-        srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
-        sub_buffered_borrowed_has_data, sub_buffered_borrowed_try_process, sub_buffered_has_data,
-        sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
-        sub_buffered_raw_info_c_has_data, sub_buffered_raw_info_c_try_process,
-        sub_buffered_raw_info_has_data, sub_buffered_raw_info_try_process,
-        sub_buffered_raw_try_process, sub_buffered_try_process, sub_info_has_data,
-        sub_info_pre_sample, sub_info_try_process, sub_inplace_has_data, sub_inplace_try_process,
-        timer_try_process,
+        BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientCallbackEntry,
+        ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
+        SubBufferedBorrowedEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
+        SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubInfoEntry, SubInplaceEntry,
+        TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry, guard_has_data,
+        guard_try_process, no_pre_sample, service_client_callback_try_process,
+        service_client_raw_try_process, srv_has_data, srv_raw_has_data, srv_raw_try_process,
+        srv_try_process, sub_buffered_borrowed_has_data, sub_buffered_borrowed_try_process,
+        sub_buffered_has_data, sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process,
+        sub_buffered_raw_has_data, sub_buffered_raw_info_c_has_data,
+        sub_buffered_raw_info_c_try_process, sub_buffered_raw_info_has_data,
+        sub_buffered_raw_info_try_process, sub_buffered_raw_try_process, sub_buffered_try_process,
+        sub_info_has_data, sub_info_pre_sample, sub_info_try_process, sub_inplace_has_data,
+        sub_inplace_try_process, timer_try_process,
     },
     node::NodeHandle,
     spsc_ring::SpscRing,
@@ -3694,6 +3695,86 @@ impl Executor {
         });
         self.apply_node_default_sched(slot, node_id);
         Ok(HandleId(slot))
+    }
+
+    /// RFC-0041 / Phase 239.1 — register a **typed callback** service client.
+    /// The reply is eager-drained at `spin_once` and dispatched to `callback` as
+    /// a deserialized `Svc::Reply`. Returns the scheduling [`HandleId`] and a
+    /// `*mut` to the arena entry's send header (used to build the typed
+    /// [`ServiceClientCallback`](super::handles::ServiceClientCallback)).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn register_service_client_callback<Svc, F, const REPLY_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<(HandleId, *mut ServiceClientSendHeader<REPLY_BUF>), NodeError>
+    where
+        Svc: nros_core::RosService + 'static,
+        F: FnMut(&Svc::Reply) + 'static,
+    {
+        let slot = self.next_entry_slot()?;
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
+        let mut info =
+            ServiceInfo::new(service_name, service_type, service_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            info = info.with_node_name(&node_name);
+        }
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            qos.validate_against(session.supported_qos_policies())
+                .map_err(NodeError::Transport)?;
+            session
+                .create_service_client(&info, qos)
+                .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
+        };
+
+        let offset = self.arena_alloc::<ServiceClientCallbackEntry<Svc, F, REPLY_BUF>>()?;
+        let hdr_ptr = unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr =
+                arena_ptr.add(offset) as *mut ServiceClientCallbackEntry<Svc, F, REPLY_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                ServiceClientCallbackEntry {
+                    hdr: ServiceClientSendHeader {
+                        handle,
+                        reply_buffer: [0u8; REPLY_BUF],
+                        pending: false,
+                        reply_ready: core::sync::atomic::AtomicBool::new(false),
+                    },
+                    callback,
+                    _phantom: core::marker::PhantomData,
+                },
+            );
+            &mut (*entry_ptr).hdr as *mut ServiceClientSendHeader<REPLY_BUF>
+        };
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::ServiceClient,
+            try_process: service_client_callback_try_process::<Svc, F, REPLY_BUF>,
+            has_data: always_ready,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::Always,
+            drop_fn: drop_entry::<ServiceClientCallbackEntry<Svc, F, REPLY_BUF>>,
+        });
+        self.apply_node_default_sched(slot, node_id);
+        Ok((HandleId(slot), hdr_ptr))
     }
 
     // ========================================================================

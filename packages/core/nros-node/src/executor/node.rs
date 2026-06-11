@@ -13,7 +13,7 @@ use crate::{
 use super::{
     handles::{
         ActionClient, ActionServer, EmbeddedPublisher, EmbeddedServiceClient,
-        EmbeddedServiceServer, Subscription,
+        EmbeddedServiceServer, ServiceClientCallback, Subscription,
     },
     types::NodeError,
 };
@@ -1268,6 +1268,57 @@ impl<'e> NodeCtx<'e> {
                 QosSettings::default(),
                 callback,
             )
+    }
+
+    /// RFC-0041 / Phase 239.1 — callback-based service client (rclcpp
+    /// `async_send_request(req, cb)` analogue). The reply is delivered to
+    /// `callback` at `spin_once` (no `Promise` poll). Returns a
+    /// [`ServiceClientCallback`] send handle; dual-mode — the `Promise`-based
+    /// [`create_client`](Self::create_client) is unchanged.
+    pub fn create_client_with_callback<Svc, F>(
+        &mut self,
+        service_name: &str,
+        callback: F,
+    ) -> Result<ServiceClientCallback<Svc>, NodeError>
+    where
+        Svc: RosService + 'static,
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+        F: FnMut(&Svc::Reply) + 'static,
+    {
+        self.create_client_with_callback_sized::<
+            Svc,
+            F,
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(service_name, callback)
+    }
+
+    /// Callback-based service client with custom buffer sizes (Phase 239.1).
+    pub fn create_client_with_callback_sized<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        callback: F,
+    ) -> Result<ServiceClientCallback<Svc, REQ_BUF, REPLY_BUF>, NodeError>
+    where
+        Svc: RosService + 'static,
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+        F: FnMut(&Svc::Reply) + 'static,
+    {
+        register_type::<Svc::Request>()?;
+        register_type::<Svc::Reply>()?;
+        let (_id, hdr) = self
+            .executor
+            .register_service_client_callback::<Svc, F, REPLY_BUF>(
+                Some(self.node_id),
+                service_name,
+                Svc::SERVICE_NAME,
+                Svc::SERVICE_HASH,
+                QosSettings::services_default(),
+                callback,
+            )?;
+        Ok(ServiceClientCallback::new(hdr))
     }
 
     /// Convenient generic (type-erased) subscription — rclcpp `create_generic_*`.

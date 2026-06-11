@@ -1826,6 +1826,66 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
 }
 
 // ============================================================================
+// ServiceClientCallback (RFC-0041, Phase 239.1)
+// ============================================================================
+
+/// Send handle for a **callback-based** typed service client.
+///
+/// Returned by `create_client_with_callback`: the reply is delivered to the
+/// registered closure at `spin_once` (no `Promise` poll). This handle only
+/// **sends** — it holds a `*mut` to the arena entry's
+/// [`ServiceClientSendHeader`](super::arena::ServiceClientSendHeader) (pinned in
+/// the executor arena, like a guard-condition flag), so a single outstanding
+/// request is gated by `hdr.pending`.
+///
+/// # Safety / lifetime
+/// Valid only while the owning executor lives (the arena backs the header). Do
+/// not use after the executor is dropped.
+pub struct ServiceClientCallback<
+    Svc: RosService,
+    const REQ_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const REPLY_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
+    hdr: *mut super::arena::ServiceClientSendHeader<REPLY_BUF>,
+    _phantom: PhantomData<Svc>,
+}
+
+impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
+    ServiceClientCallback<Svc, REQ_BUF, REPLY_BUF>
+{
+    /// Wrap an arena-resident send header. `hdr` must point at a live
+    /// `ServiceClientCallbackEntry`'s header for the executor's lifetime.
+    pub(crate) fn new(hdr: *mut super::arena::ServiceClientSendHeader<REPLY_BUF>) -> Self {
+        Self {
+            hdr,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Send a typed request. The reply is delivered to the registered callback
+    /// at a later `spin_once`. Returns `RequestInFlight` if a prior request has
+    /// not yet been answered (single outstanding request).
+    pub fn call(&mut self, request: &Svc::Request) -> Result<(), NodeError> {
+        let hdr = unsafe { &mut *self.hdr };
+        if hdr.pending {
+            return Err(NodeError::RequestInFlight);
+        }
+        let mut buf = [0u8; REQ_BUF];
+        let mut writer =
+            CdrWriter::new_with_header(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
+        request
+            .serialize(&mut writer)
+            .map_err(|_| NodeError::Serialization)?;
+        let req_len = writer.position();
+        hdr.handle
+            .send_request_raw(&buf[..req_len])
+            .map_err(|_| NodeError::ServiceRequestFailed)?;
+        hdr.pending = true;
+        Ok(())
+    }
+}
+
+// ============================================================================
 // EmbeddedServiceClient
 // ============================================================================
 

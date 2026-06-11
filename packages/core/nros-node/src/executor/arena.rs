@@ -1274,6 +1274,79 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     }
 }
 
+/// RFC-0041 / Phase 239.1 — F-independent prefix of a typed service-client
+/// callback entry. `#[repr(C)]` guarantees it is the leading member of every
+/// [`ServiceClientCallbackEntry`] regardless of the closure type `F`, so a
+/// `ServiceClientCallback` handle can hold a `*mut` to it and send requests
+/// (serialize → `send_request_raw` → set `pending`) without naming `F`.
+#[repr(C)]
+pub struct ServiceClientSendHeader<const REPLY_BUF: usize> {
+    pub handle: session::RmwServiceClient,
+    pub reply_buffer: [u8; REPLY_BUF],
+    pub pending: bool,
+    /// Set by the transport waker when a reply arrives (mirrors the raw entry).
+    pub reply_ready: core::sync::atomic::AtomicBool,
+}
+
+/// Typed service-client callback entry (RFC-0041, Phase 239.1). The executor
+/// eager-drains the reply at `spin_once` and dispatches it as a deserialized
+/// `Svc::Reply` to the user closure — the typed analogue of
+/// [`ServiceClientRawArenaEntry`]. The send side goes through the embedded
+/// [`ServiceClientSendHeader`] (offset 0) via a `ServiceClientCallback` handle.
+#[repr(C)]
+pub(crate) struct ServiceClientCallbackEntry<Svc: RosService, F, const REPLY_BUF: usize> {
+    pub(crate) hdr: ServiceClientSendHeader<REPLY_BUF>,
+    pub(crate) callback: F,
+    pub(crate) _phantom: PhantomData<Svc>,
+}
+
+/// Monomorphized typed service-client dispatch (RFC-0041, Phase 239.1).
+///
+/// Mirrors [`service_client_raw_try_process`] but deserializes the reply into
+/// `Svc::Reply` and invokes the typed closure. Single in-flight request gated by
+/// `hdr.pending`; the reply view is dropped before return (no escape).
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `ServiceClientCallbackEntry<Svc, F, REPLY_BUF>`.
+pub(crate) unsafe fn service_client_callback_try_process<Svc, F, const REPLY_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    Svc: RosService,
+    F: FnMut(&Svc::Reply),
+{
+    use core::sync::atomic::Ordering;
+    use nros_rmw::ServiceClientTrait;
+    let entry = unsafe { &mut *(ptr as *mut ServiceClientCallbackEntry<Svc, F, REPLY_BUF>) };
+
+    if !entry.hdr.pending {
+        return Ok(false);
+    }
+    entry.hdr.reply_ready.store(false, Ordering::Release);
+
+    match entry
+        .hdr
+        .handle
+        .try_recv_reply_raw(&mut entry.hdr.reply_buffer)
+    {
+        Ok(Some(len)) => {
+            entry.hdr.pending = false;
+            let mut reader = CdrReader::new_with_header(&entry.hdr.reply_buffer[..len])
+                .map_err(|_| TransportError::DeserializationError)?;
+            let reply = Svc::Reply::deserialize(&mut reader)
+                .map_err(|_| TransportError::DeserializationError)?;
+            (entry.callback)(&reply);
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => {
+            entry.hdr.pending = false;
+            Err(TransportError::ServiceRequestFailed)
+        }
+    }
+}
+
 /// Monomorphized raw service dispatch function.
 ///
 /// # Safety
