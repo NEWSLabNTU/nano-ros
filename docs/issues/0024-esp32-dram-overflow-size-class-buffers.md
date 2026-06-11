@@ -59,14 +59,18 @@ rust-lld: error: section '.bss' will not fit in region 'RAM': overflowed by 3690
 rust-lld: error: section '.uninit' will not fit in region 'RAM': overflowed by 37928 bytes
 ```
 
-The esp32 fix above does **not** cover stm32f4: the stm32f4 fixture rows
-(`examples/fixtures.toml`, `platform = "stm32f4"`, plain `dir`/`target` cargo
-builds) carry no `env`, so they still build the 128 KiB large block. **Fix
-direction:** same knob — add `ZPICO_SUBSCRIBER_LARGE_SIZE` (≈4096) to the
-stm32f4 fixture rows. ⚠️ Verify the manifest `env` field actually propagates to
-the direct-cargo stm32f4 rows (confirmed only for the esp32 *workspace* path via
-`workspace-fixtures-build.sh`; the non-workspace fixtures-build path may consume
-`env` differently). Reinforces the "per-RAM-budget size-class profile" direction:
-small-RAM targets (esp32, stm32f4, …) all need a shrunk large block, so a
-profile keyed on the board's RAM budget is more robust than per-row env
-overrides.
+**stm32f4 fixed (`533230d85`).** Rather than the manifest `env` field (whose
+propagation to the direct-cargo stm32f4 rows was uncertain), added
+`ZPICO_SUBSCRIBER_LARGE_SIZE = "4096"` to each `examples/stm32f4/rust/*/.cargo/
+config.toml` `[env]` — cargo-native, so it applies to both standalone and
+fixture builds. Cuts the large block to `2 × 4 × 4096` = 32 KiB (~96 KiB saved
+vs the ~37 KiB overflow). Validated: `stm32f4-bsp-talker` +
+`stm32f4-rtic-service-server` link clean for `thumbv7em-none-eabihf`. (The rtic
+examples also needed [issue 0028](0028-nros-main-rtic-defmt-timestamp.md) — a
+`defmt::timestamp!` provider — to link.)
+
+**esp32 still pending CI confirmation** (no esp toolchain in the dev env). This
+issue stays open until the platform-ci esp32 cell goes green; the stm32f4 half
+is done. Reinforces the "per-RAM-budget size-class profile" direction: small-RAM
+targets (esp32, stm32f4, …) all need a shrunk large block, so a profile keyed on
+the board's RAM budget would be more robust than per-row overrides.

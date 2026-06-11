@@ -50,6 +50,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 21 | Borrowed (zero-copy) message views for C and C++                      | enhancement | codegen| [0021-cpp-c-borrowed-views.md](0021-cpp-c-borrowed-views.md) |
 | 24 | esp32 .bss overflows DRAM — Phase 231 size-class receive buffers too large | bug       | build  | [0024-esp32-dram-overflow-size-class-buffers.md](0024-esp32-dram-overflow-size-class-buffers.md) |
 | 25 | host-integration lane fails native action/c_xrce/bridge tests — fixtures not staged | bug | build | [0025-host-integration-native-fixtures-unstaged.md](0025-host-integration-native-fixtures-unstaged.md) |
-| 28 | nros::main!() RTIC examples miss defmt::timestamp! → undefined _defmt_timestamp | bug | build | [0028-nros-main-rtic-defmt-timestamp.md](0028-nros-main-rtic-defmt-timestamp.md) |
+| 26 | nros-rmw-xrce datareader stops matching in a mixed pub+sub session     | bug         | rmw-xrce | [0026-px4-xrce-bare-agent-type-matching.md](0026-px4-xrce-bare-agent-type-matching.md) |
+| 27 | nros-c posix platform headers fail to compile under gcc 14 (riscv NuttX) | bug       | c-api  | [0027-nros-c-posix-headers-gcc14.md](0027-nros-c-posix-headers-gcc14.md) |
 
 Resolved issues live in [`archived/`](archived/).

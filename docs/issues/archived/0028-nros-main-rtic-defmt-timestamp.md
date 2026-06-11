@@ -1,11 +1,18 @@
 ---
 id: 28
 title: nros::main!() RTIC examples miss defmt::timestamp! → undefined _defmt_timestamp
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-216, issue-0024]
+resolved_in: 533230d85
 ---
+
+**RESOLVED (`533230d85`).** Option 1 (shared provider): added one
+`defmt::timestamp!("{=u64:us}", { 0 });` to `nros-board-rtic-stm32f4/src/lib.rs`
+— the crate every RTIC example links. The plain `#[entry]` `talker` links a
+*different* board crate (`nros-board-stm32f4`) and carries its own, so no
+duplicate-symbol risk. Validated: `stm32f4-rtic-service-server` links clean.
 
 The stm32f4 RTIC examples that use the `nros::main!()` shape (Phase 216.B.5)
 fail to link because they pull in `defmt` (via `defmt_rtt as _`) but never
