@@ -211,8 +211,14 @@ jobs:
         # Phase 212 fixtures' build.rs steps) finds the ROS 2 Humble
         # rosidl pipeline. Same as platform-ci's e2e step. NROS_FIXTURES_OPTIONAL
         # makes an unstaged fixture a [SKIPPED], not a failure (light tier).
+        # Issue #29 — strip debuginfo here too: `cargo nextest` compiles the
+        # nros-tests crate + all its integration test binaries, which piled
+        # debug symbols onto the (already large) fixture target dirs and re-hit
+        # ENOSPC even after the fixture build itself fit. Tests assert on
+        # values, not symbolised backtraces, so dropping debuginfo is safe.
         env:
           NROS_FIXTURES_OPTIONAL: "1"
+          RUSTFLAGS: "-C debuginfo=0"
         run: source /opt/ros/humble/setup.bash && just test-integration
 
       # Phase 214.R.1 — surface the per-fixture skip/fail tally even on
