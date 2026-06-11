@@ -66,15 +66,50 @@ crates `"*"`) and let `nros ws sync` write the nros-managed `[patch.crates-io]`
 block with path deps into the source tree. Already shipped; this RFC only records
 it as the canonical in-tree shape. See RFC-0023 §`nros ws sync`.
 
-### D3 — Out-of-tree projects (`nros new`) — the new convention
+### D3 — Out-of-tree projects (`nros new`) — the convention (decided 2026-06)
 
-A `nros new` project lives outside the nano-ros tree. The scaffold must produce a
-Cargo.toml that resolves against a user-pointed nano-ros source. The candidate
-shapes are in **Open questions** (the genuinely-ambiguous part); the constraint
-this RFC fixes is: **no `version = "0.1"` crates.io dependency may appear in a
-scaffolded manifest.** Whatever shape D-Q1 selects, the emitted manifest +
-`nros new`'s post-create hint must `cargo build` cleanly given only a
-`nros setup`-provisioned host and a known nano-ros checkout.
+**Canonical: the same `nros ws sync` patch-block model as the in-tree examples
+(D2).** A `nros new` project is scaffolded with crates.io-shaped requirements
+that exist only to be patched — never a real crates.io version:
+
+```toml
+[dependencies]
+nros = { version = "*", default-features = false, features = ["<rmw>", "platform-<plat>", "ros-humble"] }
+<board-crate> = "*"
+# msg crates (if any) are also "*" and emitted/redirected by `nros ws sync`.
+
+# `nros ws sync` writes/refreshes the nros-managed [patch.crates-io] block here
+# (path deps into the user's nano-ros checkout, NROS_REPO_DIR) — same delimited
+# BEGIN/END block as the examples (RFC-0023).
+```
+
+The user runs, once, before the first build:
+
+```sh
+export NROS_REPO_DIR=/path/to/nano-ros      # their source checkout
+eval "$(nros ws env)"                        # ROS / interface search path
+nros ws sync                                 # codegen msgs + write [patch] block
+cargo build                                  # plain cargo
+```
+
+**Rationale (D-Q1 resolution).** Chosen for **one convention everywhere**: a
+msg-using project must run codegen anyway, and `nros ws sync` does codegen *and*
+writes the patch block for both the generated msg crates and the `nros-*` runtime
+crates in a single step (RFC-0023). A `git`-dep shape would leave msgs on a
+second mechanism. Single mechanism, offline after sync, identical to the examples.
+
+**Alternative (documented, opt-in): git deps** — `nros new --deps git` emits
+`nros = { git = "https://github.com/NEWSLabNTU/nano-ros", package = "nros", … }`
+(+ the board crate via `package=`, one repo fetch deduped). For zero-setup /
+binary-only installs / CI quickstart / no-msg projects where no local checkout is
+present. Msg-using projects on this path still run `nros generate-rust` and carry
+the generated crates as local path deps.
+
+**Constraint (both shapes):** **no `version = "0.1"` crates.io dependency** may
+appear in a scaffolded manifest; `version = "*"` is only ever the patched
+left-hand side. The emitted manifest + `nros new`'s post-create hint must
+`cargo build` cleanly given a `nros setup`-provisioned host plus (canonical) a
+nano-ros checkout or (alt) network for the git fetch.
 
 ### D4 — CLI install line (decided)
 
@@ -102,30 +137,13 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
 
 ## Open questions
 
-These are the **ambiguous parts** — the out-of-tree dependency shape is a real
-maintainer choice, not yet locked. RFC stays `Draft` until D-Q1 is decided.
-
-- **D-Q1 — canonical out-of-tree dep shape for `nros new`.** Three viable shapes,
-  each with a trade:
-  1. **`git` dep** — `nros = { git = "https://github.com/NEWSLabNTU/nano-ros",
-     tag/rev = "…", default-features = false, features = […] }`. *Pro:*
-     zero-setup, no local checkout, version-pinnable by rev/tag. *Con:* every
-     build needs network + a git fetch; pins a rev the user must bump; the board
-     + generated-msg crates also need git coords; diverges from the in-tree
-     patch-block model (two conventions to maintain).
-  2. **`nros = "*"` + `nros ws sync` patch block** (mirror the in-tree model) —
-     the project declares `"*"` and the user runs `nros ws sync` with
-     `NROS_REPO_DIR` pointing at their nano-ros checkout; sync writes the path
-     `[patch.crates-io]` block. *Pro:* one convention everywhere; reuses shipped
-     machinery; generated msg crates handled by the same sync. *Con:* requires a
-     local checkout + an explicit `NROS_REPO_DIR` + a sync step before the first
-     build (the scaffold hint must say so).
-  3. **Direct `path` dep** computed at `nros new` time from `NROS_REPO_DIR`. *Pro:*
-     simplest manifest, no sync. *Con:* brittle absolute/relative path; breaks if
-     the project or the checkout moves; doesn't cover generated msg crates.
-  **Leaning:** option 2 (consistency with the in-tree examples + RFC-0023, single
-  mechanism), with option 1 offered as a documented zero-setup alternative for
-  CI/quick-start. Needs maintainer confirmation before locking + implementing.
+- **D-Q1 — out-of-tree dep shape for `nros new`. RESOLVED 2026-06 → option 2**
+  (`nros ws sync` patch-block) as canonical, **option 1** (git deps,
+  `nros new --deps git`) as the documented opt-in alternative. See D3. Decided
+  on the "one convention" + "msgs need the sync anyway" grounds; option 3
+  (computed path dep) dropped as brittle + doesn't cover msgs. Remaining
+  sub-questions below are minor and keep the RFC `Draft` until the 196.7
+  implementation lands.
 - **D-Q2 — version pinning without crates.io.** If git deps (option 1) are
   offered, what pins the version — a release tag, a branch, or a rev? Tie to the
   release cadence (is there a tagged source release, or is `main` the contract?).
@@ -139,6 +157,9 @@ maintainer choice, not yet locked. RFC stays `Draft` until D-Q1 is decided.
 
 ## Changelog
 
+- 2026-06 — **D-Q1 resolved**: option 2 (`nros ws sync` patch-block) canonical,
+  option 1 (`--deps git`) documented alternative; option 3 dropped. D3
+  concretized with the scaffolded manifest + first-build steps.
 - 2026-06 — initial Draft. Records the no-crates.io distribution policy (D1),
   the in-tree patch-block convention (D2, = RFC-0023), the out-of-tree
   constraint + the dep-shape open question (D3 / D-Q1), and the CLI-install
