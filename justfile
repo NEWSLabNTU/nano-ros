@@ -281,7 +281,7 @@ format: format-workspace native::format format-c format-cpp format-python
 check: \
     check-workspace-all check-workspace-features \
     check-nros-log-riscv32 \
-    check-platform-abi-mirror check-board-abi-mirror check-profile-board-mirror check-example-matrix \
+    check-platform-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
@@ -297,6 +297,16 @@ check-platform-abi-mirror:
 [private]
 check-board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
+
+# Phase 215.F.2 — board-crate manifest drift gate. For every
+# `packages/boards/nros-board-*` carrying BOTH a `board.cmake` sidecar
+# and a `[package.metadata.nros.board]` table, run `nros board info
+# <name> --check-drift` and fail on any field-by-field drift between the
+# cmake face and the Cargo face. Skips when the in-tree `nros` CLI isn't
+# built (the packages/cli phase215_f integration test still covers it).
+[private]
+check-board-manifest-drift:
+    @bash scripts/check-board-manifest-drift.sh
 
 # Phase 230.0.2 (RFC-0034) — no crate may call the host kernel allocator
 # directly except a platform port; everything routes through

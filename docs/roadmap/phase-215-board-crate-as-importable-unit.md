@@ -209,51 +209,89 @@ against drift.
 
 ### 215.E — Fixture: minimal "ASI-shaped" consumer
 
-- [ ] **215.E.1** `packages/testing/nros-tests/fixtures/board_import_fvp/` —
+- [x] **215.E.1** `packages/testing/nros-tests/fixtures/board_import_fvp/` —
       minimal Zephyr app:
-      `CMakeLists.txt` with **only** `find_package(Zephyr)` +
-      `project()` + `nano_ros_use_board(fvp-aemv8r-smp)` +
+      `CMakeLists.txt` with **only** `include(...nano_ros_use_board.cmake)`
+      + `nano_ros_use_board(fvp-aemv8r-smp)` (BEFORE `find_package(Zephyr)`
+      so BOARD / EXTRA_CONF_FILE / DTC_OVERLAY land in time — see 215.B.3)
+      + `find_package(Zephyr)` + `project()` +
       `target_sources(app PRIVATE src/main.c)`;
-      `src/main.c` with a trivial `printk` + `nros::init` smoke;
+      `src/main.c` a trivial `printk("nros: smoke ok")` (no `nros::init`
+      call — the empty-`prj.conf` minimal app doesn't bring up an RMW;
+      the board crate's layered `prj.conf` sets `CONFIG_NROS=y` and the
+      215.G UART scrape only needs the boot-reached `printk` line);
       `prj.conf` empty (everything from the board crate);
       `package.xml` for Phase 210 closure;
-      no per-board confs/overlays in the fixture.
-- [ ] **215.E.2** `packages/testing/nros-tests/tests/phase215_e_board_import.rs`
+      no per-board confs/overlays in the fixture. _(landed `df371027b` /
+      `13c542fd5`; verified present in worktree)_
+- [x] **215.E.2** `packages/testing/nros-tests/tests/phase215_e_board_import.rs`
       — `west build -d build fixtures/board_import_fvp` succeeds;
       asserts the generated `CMakeCache.txt` carries
-      `NROS_BOARD_ZEPHYR_ID=fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`
-      + `NANO_ROS_RMW=cyclonedds`. Build only — Phase 215.G runs the
-      FVP smoke.
+      `BOARD=fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp` + `NANO_ROS_RMW=cyclonedds`
+      + `NROS_BOARD_RUNNER=armfvp`. Build only — Phase 215.G runs the
+      FVP smoke. Skips loudly (`nros_tests::skip!`) when ZEPHYR_BASE /
+      west absent. _(landed; verified skips cleanly here — Zephyr SDK
+      absent; build itself gated-pending-SDK)_
 - **Files:**
   `packages/testing/nros-tests/fixtures/board_import_fvp/` (new),
   `packages/testing/nros-tests/tests/phase215_e_board_import.rs` (new).
 
 ### 215.F — Drift audit: cmake vs Cargo metadata
 
-- [ ] **215.F.1** `packages/testing/nros-tests/tests/phase215_f_manifest_drift.rs`
+- [x] **215.F.1** `packages/cli/nros-cli-core/tests/phase215_f_manifest_drift.rs`
+      (landed at the in-tree CLI sub-workspace, not `nros-tests/` — the
+      `compute_drift` impl + reader live in `nros-cli-core`)
       — for every `packages/boards/nros-board-*/` carrying both
       `board.cmake` and `[package.metadata.nros.board]`: parse each,
       assert byte-equal field-by-field for the overlapping keys
       (`zephyr_board`, `toolchain`, `default_rmw`, `runner`, conf/
-      overlay paths). Bare boards (Rust-only Phase 212.N tier-1
-      shims without `board.cmake`) are skipped.
-- [ ] **215.F.2** `nros board info <name>` (Phase 215.C.3) carries
+      overlay paths via basename). Bare boards (Rust-only Phase 212.N
+      tier-1 shims without `board.cmake`) are skipped. _(landed; verified
+      `NROS_WORKSPACE_ROOT=. cargo test -p nros-cli-core --test
+      phase215_f_manifest_drift` → 1 board audited clean; 10
+      `board_metadata` unit tests green)_
+- [x] **215.F.2** `nros board info <name>` (Phase 215.C.3) carries
       a `--check-drift` flag wired to the same audit; CI gate.
+      _(`--check-drift` landed; verified exit 0 on agreement / exit 1
+      on injected drift. CI/lint surface added:
+      `scripts/check-board-manifest-drift.sh` runs `nros board info
+      <name> --check-drift` for every board with a `board.cmake`, wired
+      into `just check`. Capability-probes the resolved `nros` and skips
+      with a `just setup-cli` hint on a pre-215.C CLI — never false-fails
+      `just check` on a clap error.)_
 - **Files:**
-  `packages/testing/nros-tests/tests/phase215_f_manifest_drift.rs`
-  (new), `nros-cli/packages/nros-cli-core/src/cmd/board.rs` (extend).
+  `packages/cli/nros-cli-core/tests/phase215_f_manifest_drift.rs`,
+  `packages/cli/nros-cli-core/src/cmd/board.rs`,
+  `scripts/check-board-manifest-drift.sh` (new), `justfile` (wire into
+  `check`).
 
 ### 215.G — End-to-end FVP smoke through the import surface
 
-- [ ] **215.G.1** Extend the Phase 214.C runtime smoke
-      (when it lands) to drive the fixture from 215.E.1 (not the
-      example carve-out). `nros_tests::skip!` if `ARM_FVP_DIR`
-      unset; otherwise `west fvp run -d build/board_import_fvp`,
-      cycle-limited, grep for the `nros: smoke ok` line.
-- [ ] **215.G.2** Document the test as the canonical "is the board
-      crate import surface healthy?" gate.
+- [x] **215.G.1** `packages/testing/nros-tests/tests/phase215_g_fvp_smoke.rs`
+      drives the fixture from 215.E.1 (not the example carve-out)
+      through the import surface. Modeled on `phase217_c_fvp_runtime`:
+      `nros_tests::skip!` (loud `[SKIPPED]` panic, never silent-pass)
+      when the FVP isn't resolvable / west absent / Zephyr workspace
+      absent / fixture ELF missing; otherwise drives
+      `just zephyr run-fvp-board-import` (→ `west fvp run -d
+      build-fvp-board-import`), 120 s cold-boot budget, scrapes the
+      `nros: smoke ok` UART line + the Zephyr boot banner. Build +
+      run recipes `build-fvp-board-import` / `run-fvp-board-import`
+      added to `just/zephyr-setup.just` (mirror the cpp/rust cyclonedds
+      recipes; export `NROS_REPO_DIR` for the fixture's pre-`find_package`
+      include). nextest override registers the binary in the serial
+      `zephyr-fvp` group. _(test + recipes landed; compiles clean;
+      verified skips loudly here — ARM FVP absent (`ARM_FVP_DIR` unset,
+      resolver exits 1) AND Zephyr SDK absent. **Runtime PASS is
+      UNVERIFIED — gated pending an FVP install + provisioned Zephyr
+      SDK.**)_
+- [x] **215.G.2** Test documented (module doc) as the canonical "is the
+      board crate import surface healthy?" gate — distinguishes itself
+      from `phase217_c` (example carve-out) by exercising the minimal
+      `nano_ros_use_board()`-only fixture.
 - **Files:** `packages/testing/nros-tests/tests/phase215_g_fvp_smoke.rs`
-  (new, gated).
+  (new, gated), `just/zephyr-setup.just` (build/run recipes),
+  `.config/nextest.toml` (zephyr-fvp group override).
 
 ### 215.H — ASI migration (consumer landing)
 
@@ -295,18 +333,23 @@ External landing in `github.com/NEWSLabNTU/autoware-safety-island`:
 - [ ] `west fvp run -d build/` discovers the Phase 214.A resolver +
       launches `FVP_BaseR_AEMv8R` end-to-end, UART → stdout, exits
       clean on Ctrl-C.
-- [ ] `nros board info fvp-aemv8r-smp` prints the board metadata
+- [x] `nros board info fvp-aemv8r-smp` prints the board metadata
       from BOTH `board.cmake` and `Cargo.toml`; `--check-drift`
       exits 0 when they agree, non-zero with a clear field-by-field
-      diff on drift.
+      diff on drift. _(verified: exit 0 clean, exit 1 on injected drift.)_
 - [ ] ASI's `actuation_module/CMakeLists.txt` includes
       `nano_ros_use_board(fvp-aemv8r-smp)` and builds clean against
       Zephyr 3.7 floor without ASI carrying any nano-ros-base
-      Kconfig fragment.
+      Kconfig fragment. _(215.H — external ASI repo; not in this phase's
+      worktree.)_
 - [ ] Phase 215.E fixture builds in CI; the fixture's
       `CMakeCache.txt` carries the expected `NROS_BOARD_*` keys.
-- [ ] Phase 215.F drift audit passes for every
+      _(fixture + build test landed; **build gated-pending-Zephyr-SDK**
+      in this environment — test skips loudly.)_
+- [x] Phase 215.F drift audit passes for every
       `packages/boards/nros-board-*` carrying a `board.cmake`.
+      _(verified: `nros-board-fvp-aemv8r-smp` audited clean by both the
+      `phase215_f` integration test and `just check-board-manifest-drift`.)_
 
 ## Notes
 

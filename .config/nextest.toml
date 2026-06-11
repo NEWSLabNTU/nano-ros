@@ -480,6 +480,17 @@ test-group = "zephyr-fvp"
 slow-timeout = { period = "180s", terminate-after = 2 }
 retries = 1
 
+# Phase 215.G — FVP smoke through the board-crate IMPORT surface. Drives
+# `just zephyr run-fvp-board-import` (the minimal ASI-shaped fixture) and
+# scrapes the `nros: smoke ok` UART line. Same single-seat FVP license +
+# UART-port constraints as 217.C/D, so share the serial `zephyr-fvp`
+# group + cold-boot timeout; skips cleanly when ARM FVP isn't installed.
+[[profile.default.overrides]]
+filter = "binary(phase215_g_fvp_smoke)"
+test-group = "zephyr-fvp"
+slow-timeout = { period = "180s", terminate-after = 2 }
+retries = 1
+
 # Phase 11W.12 — serialize the native_sim Cyclone DDS boot + pub/sub
 # E2E tests (in phase_118_collapse). They spawn host native_sim
 # processes that bind the fixed SPDP multicast port; concurrent runs

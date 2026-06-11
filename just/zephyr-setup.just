@@ -310,6 +310,84 @@ run-fvp-aemv8r-cyclonedds-rust:
     export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     west fvp run -d build-fvp-aemv8r-cyclonedds-rust-talker
 
+# Phase 215.G.1 — build the minimal ASI-shaped board-import fixture
+# (`packages/testing/nros-tests/fixtures/board_import_fvp`) for the FVP
+# AEMv8-R target THROUGH the Phase 215.B import surface: the fixture's
+# CMakeLists carries ONLY `nano_ros_use_board(fvp-aemv8r-smp)` +
+# `find_package(Zephyr)` + a trivial `printk` app — no hand-rolled
+# BOARD / EXTRA_CONF_FILE / DTC_OVERLAY_FILE / -DNANO_ROS_RMW. This is
+# the canonical "is the board crate import surface healthy?" build.
+# `nano_ros_use_board()` sets `BOARD` from `board.cmake`, so no `-b`.
+# Skips cleanly when west / Zephyr workspace / aarch64 SDK are absent.
+[group("examples")]
+build-fvp-board-import:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr/FVP board-import skip: west not found"; exit 0
+    fi
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr/FVP board-import skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+    fi
+    sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
+        echo "Zephyr/FVP board-import skip: aarch64-zephyr-elf toolchain missing"
+        exit 0
+    fi
+    bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
+    bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
+    nros_root="$(pwd)"
+    echo "  → host nros-codegen (cargo)"
+    source scripts/build/cargo.sh
+    nros_cargo_ensure_codegen_c
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
+    make_bin="$nros_root/third-party/make/make"
+    if [ ! -x "$make_bin" ]; then
+        make_bin="$(command -v make)"
+    fi
+    src="$nros_root/packages/testing/nros-tests/fixtures/board_import_fvp"
+    cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export ZEPHYR_SDK_INSTALL_DIR="$sdk"
+    # Phase 215.B — the fixture's CMakeLists includes
+    # `$ENV{NROS_REPO_DIR}/zephyr/cmake/nano_ros_use_board.cmake` BEFORE
+    # `find_package(Zephyr)`; export the repo root so the include resolves.
+    export NROS_REPO_DIR="$nros_root"
+    echo "Building board-import fixture via nano_ros_use_board(fvp-aemv8r-smp)..."
+    west build \
+        -d build-fvp-board-import -p auto \
+        "$src" \
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
+    echo "Phase 215.G.1 FVP board-import fixture build OK"
+
+# Phase 215.G.1 — run the board-import fixture on the FVP THROUGH the
+# import surface (`west fvp run` reads `NROS_BOARD_RUNNER=armfvp` from
+# the CMakeCache that `nano_ros_use_board()` cached). Same resolver +
+# west delegation as the other `run-fvp-*` recipes; different build dir.
+# The Phase 215.G integration test (`phase215_g_fvp_smoke`) drives this
+# recipe and scrapes the `nros: smoke ok` UART line.
+[group("examples")]
+run-fvp-board-import:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr/FVP board-import run skip: west not found"; exit 0
+    fi
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr/FVP board-import run skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+    fi
+    if [ ! -f "$workspace/build-fvp-board-import/zephyr/zephyr.elf" ]; then
+        echo "Zephyr/FVP board-import run skip: build-fvp-board-import/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-board-import\` first"
+        exit 0
+    fi
+    nros_root="$(pwd)"
+    cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    west fvp run -d build-fvp-board-import
+
 # Phase 117.13 — Zephyr build smoke for the NXP X-S32Z270-DC (DC2)
 # RTU0 Cortex-R52 target (Phase 117.11's reference platform). Reuses
 # cleanly when west / Zephyr workspace / arm-zephyr-eabi SDK aren't
