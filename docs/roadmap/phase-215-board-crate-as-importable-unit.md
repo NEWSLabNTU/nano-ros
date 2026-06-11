@@ -151,7 +151,7 @@ against drift.
 
 ### 215.C — Cargo.toml `[package.metadata.nros.board]` mirror
 
-- [ ] **215.C.1** Add the metadata table to
+- [x] **215.C.1** Add the metadata table to _(landed `1b003afc2`)_
       `packages/boards/nros-board-fvp-aemv8r-smp/Cargo.toml`:
       ```toml
       [package.metadata.nros.board]
@@ -165,10 +165,10 @@ against drift.
       board_conf    = "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf"
       board_overlay = "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.overlay"
       ```
-- [ ] **215.C.2** Schema struct + `deny_unknown_fields` in
+- [x] **215.C.2** Schema struct + `deny_unknown_fields` in _(landed; `board_metadata.rs` + deny_unknown_fields; 10 unit tests)_
       `nros-cli-core::orchestration::board_metadata`. (Mirrors
       Phase 212.B's strict cargo-metadata reader.)
-- [ ] **215.C.3** `nros board info <name>` subcommand (read-only)
+- [x] **215.C.3** `nros board info <name>` subcommand (read-only) _(landed; `nros board info <name> --check-drift`)_
       prints both the Cargo.toml view AND the parsed `board.cmake`
       view side-by-side; flags drift between them. Phase 215.F audit
       hook.
@@ -178,7 +178,7 @@ against drift.
 
 ### 215.D — `west fvp` extension (moves Phase 214.A runner)
 
-- [ ] **215.D.1** `scripts/west_commands/fvp.py` — west command
+- [x] **215.D.1** `scripts/west_commands/fvp.py` — west command _(landed `41c4683da`)_
       `class FvpRun(WestCommand)`. `do_run`:
       1. Argparse `-d/--build-dir` (default `build/`).
       2. Read `CMakeCache.txt` → `NROS_BOARD_RUNNER`. If not
@@ -186,7 +186,7 @@ against drift.
       3. Shell `scripts/zephyr/resolve-fvp-bin.sh` → `ARMFVP_BIN_PATH`.
       4. `os.execvpe('west', ['west', 'build', '-d', build_dir,
          '-t', 'run'], env=...)`.
-- [ ] **215.D.2** `scripts/west-commands.yml` declares `fvp` subcommand:
+- [x] **215.D.2** `scripts/west-commands.yml` declares `fvp` subcommand: _(landed)_
       ```yaml
       west-commands:
         - file: scripts/west_commands/fvp.py
@@ -195,7 +195,7 @@ against drift.
               class: FvpRun
               help: run a nano-ros FVP board in the Arm Fast Models simulator
       ```
-- [ ] **215.D.3** `zephyr/module.yml` adds `west-commands:
+- [x] **215.D.3** `zephyr/module.yml` adds `west-commands: _(landed; NOTE: Zephyr 3.7 module.yml rejects a `west-commands:` key — registration moved to the workspace west.yml nano-ros project entry)_
       scripts/west-commands.yml` so any workspace that has nano-ros as
       a west project gets the extension for free (no manual
       registration).
