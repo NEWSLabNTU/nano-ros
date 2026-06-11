@@ -17,14 +17,22 @@
 //      user wrote it. The actual code generation happens via the CLI;
 //      the macro itself is declarative.
 //
-//   2. `nros::board::NativeBoard::run(register_fn)` — the Board
-//      adapter shim the generated TU calls. Owns the
+//   2. `nros::board::<Board>::run(register_fn)` — the Board adapter shim
+//      the generated TU calls. Owns the
 //      `nros::init() → register_fn(context) → spin → nros::shutdown()`
 //      lifecycle so the generated TU stays one declarative lambda.
 //
-// Native is the only Board exposed today (Phase 212.L.2 keeps Entry
-// pkgs `native`-only at the cmake surface for v1). Embedded boards
-// land separately under Phase 235.B (cf. RFC-0032 §8a).
+// Two Board adapters ship (Phase 235.B):
+//   * `nros::board::NativeBoard` — host/POSIX; runtime domain + locator.
+//   * `nros::board::ZephyrBoard` — embedded Zephyr; compile-time domain
+//     id, network-wait hook, cooperative spin. Selected through the
+//     Phase 215 `nano_ros_use_board(<name>)` import (board.cmake feeds
+//     the default RMW + `west` runner). cf. RFC-0032 §8a.
+//
+// Both adapters share the SAME `detail::EntryNodeRuntime` ops + arena —
+// only the boot lifecycle differs (init / network-wait / cooperative
+// yield). The op set is factored into `detail::entry_register` +
+// `detail::entry_node_context_ops` so neither board duplicates it.
 
 #ifndef NROS_CPP_MAIN_HPP
 #define NROS_CPP_MAIN_HPP
@@ -34,6 +42,14 @@
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdlib> // getenv — Phase 235.A bounded-spin ($NROS_ENTRY_SPIN_MS)
+#endif
+
+// Phase 235.B — the embedded (Zephyr) Board adapter is cooperatively
+// scheduled, so the shared Entry spin loop yields each tick (`k_yield()`)
+// to let the network stack + peer threads run. Pull the kernel header
+// only on Zephyr; the native path keeps the loop dependency-free.
+#ifdef __ZEPHYR__
+#include <zephyr/kernel.h>
 #endif
 
 // Phase 235.A — fixed-capacity arena dimensions for the native
@@ -112,7 +128,28 @@ inline nros_cpp_qos_t entry_default_ffi_qos() {
     return f;
 }
 
-/// Phase 235.A — the **real** Native NodeContext runtime.
+// Phase 235.B — per-tick cooperative yield in the shared Entry spin loop.
+// Native relies on `spin_once`'s blocking I/O wait for pacing (no-op
+// here); Zephyr is cooperatively scheduled, so each tick must `k_yield()`
+// to release the CPU to the network stack + peer threads. Keeping this in
+// one helper is what lets `NativeBoard` and `ZephyrBoard` share the exact
+// same `EntryNodeRuntime::spin()` body.
+inline void entry_tick_yield() {
+#ifdef __ZEPHYR__
+    k_yield();
+#endif
+}
+
+/// Phase 235.A / 235.B — the **real**, lifecycle-agnostic Entry
+/// NodeContext runtime (shared by every Board adapter).
+///
+/// Originally `NativeNodeRuntime` (235.A); renamed `EntryNodeRuntime` in
+/// 235.B once the embedded `ZephyrBoard` started sharing the exact same
+/// `create_node` / `create_entity` / `record_callback_effect` ops + poll
+/// loop. **Only the boot lifecycle differs** between boards
+/// (init / network-wait / yield); the runtime ops are identical, so they
+/// live here once and both `NativeBoard` and `ZephyrBoard` install them.
+/// A `NativeNodeRuntime` alias is kept below for source-compat.
 ///
 /// Replaces the Phase 219.B recording no-op op set. Maps each recorded
 /// register call onto a live `nros-cpp` construction:
@@ -133,7 +170,7 @@ inline nros_cpp_qos_t entry_default_ffi_qos() {
 ///                                on the timer period.
 ///
 /// Storage is a fixed-capacity arena owned at process scope (see
-/// `NativeBoard::RuntimeHolder`), so every entity outlives the
+/// `detail::EntryRuntimeHolder`), so every entity outlives the
 /// `register_fn` lambda and the whole spin loop (235.A.2). No heap, no
 /// STL — same inline-storage discipline as `nros::Publisher<M>` et al.
 ///
@@ -146,7 +183,7 @@ inline nros_cpp_qos_t entry_default_ffi_qos() {
 /// `on_tick`, which publishes a counter" intent). Publishers of other
 /// types are created live but not auto-driven until the callback-body
 /// binding lands.
-class NativeNodeRuntime {
+class EntryNodeRuntime {
   public:
     static constexpr size_t ID_CAP = ::nros::DECLARED_NODE_SYNTHETIC_ID_MAX;
     static constexpr size_t TYPE_CAP = 128;
@@ -170,19 +207,18 @@ class NativeNodeRuntime {
 
     static int32_t op_create_node(void* user, const char* stable_id,
                                   const ::nros::NodeOptions* opts, ::nros::DeclaredNode* /*out*/) {
-        return static_cast<NativeNodeRuntime*>(user)->do_create_node(stable_id, opts);
+        return static_cast<EntryNodeRuntime*>(user)->do_create_node(stable_id, opts);
     }
 
     static int32_t op_create_entity(void* user, const void* descriptor) {
-        return static_cast<NativeNodeRuntime*>(user)->do_create_entity(
+        return static_cast<EntryNodeRuntime*>(user)->do_create_entity(
             static_cast<const ::nros::detail::NodeEntityDescriptor*>(descriptor));
     }
 
     static int32_t op_record_callback_effect(void* user, const char* callback_id,
                                              ::nros::CallbackEffectKind kind,
                                              const char* entity_id) {
-        return static_cast<NativeNodeRuntime*>(user)->do_record_effect(callback_id, kind,
-                                                                       entity_id);
+        return static_cast<EntryNodeRuntime*>(user)->do_record_effect(callback_id, kind, entity_id);
     }
 
     /// Drive the constructed topology until `nros::ok()` flips false, or
@@ -247,6 +283,14 @@ class NativeNodeRuntime {
                 if (elapsed_ms >= bound_ms) break;
                 if (!::nros::ok()) break;
             }
+
+            // Phase 235.B — cooperative tick. No-op on native (where
+            // `spin_once` blocks on I/O for pacing); `k_yield()` on Zephyr
+            // so the cooperatively-scheduled network stack + peer threads
+            // get the CPU between ticks. This is the ONLY platform-divergent
+            // line in the shared runtime — the lifecycle hooks (init /
+            // network-wait) live in the per-Board adapters below.
+            entry_tick_yield();
         }
         return last;
     }
@@ -423,7 +467,66 @@ class NativeNodeRuntime {
     size_t entity_count_ = 0;
 };
 
+/// Source-compat alias for the Phase 235.A name. The runtime is shared
+/// by every Board adapter now (235.B), so the lifecycle-agnostic
+/// `EntryNodeRuntime` is the canonical spelling.
+using NativeNodeRuntime = EntryNodeRuntime;
+
+/// The single real `NodeContextOps` table — identical for every Board
+/// adapter (native + embedded). Replaces the Phase 219.B recording no-op
+/// set. Function-local `static const` of a constant-initializable POD, so
+/// no guarded-init runs (safe on NuttX/Zephyr — see `Node`'s storage note).
+inline const ::nros::NodeContextOps& entry_node_context_ops() {
+    static const ::nros::NodeContextOps ops = {
+        /* create_node              */ &EntryNodeRuntime::op_create_node,
+        /* create_entity            */ &EntryNodeRuntime::op_create_entity,
+        /* record_callback_effect   */ &EntryNodeRuntime::op_record_callback_effect,
+    };
+    return ops;
+}
+
+/// Shared boot step (235.B): reset the runtime, install the real ops, and
+/// run the generated register sequence once. Factored out of
+/// `NativeBoard::run` so the embedded `ZephyrBoard` reuses the *exact*
+/// create_node/create_entity/callback machinery — only the surrounding
+/// lifecycle (init / network-wait / spin / shutdown) is per-board.
+///
+/// Returns `register_fn`'s code (0 on success); the caller owns
+/// `nros::shutdown()` on a non-zero result.
+template <typename Lambda> int32_t entry_register(EntryNodeRuntime& runtime, Lambda&& register_fn) {
+    runtime.reset();
+    ::nros::NodeContext context(&runtime, &entry_node_context_ops());
+    return register_fn(&context);
+}
+
+/// Process-scope, COMDAT-folded arena storage, shared by every Board
+/// adapter (one binary links exactly one board, so one arena). Template-
+/// static-member (vs a function-local static) keeps it out of the
+/// guarded-init path the `Node::GlobalStorageHolder` comment flags on
+/// NuttX, and yields a single `.bss` allocation across every including TU.
+template <int = 0> struct EntryRuntimeHolder {
+    static EntryNodeRuntime runtime;
+};
+template <int N> EntryNodeRuntime EntryRuntimeHolder<N>::runtime;
+
 } // namespace detail
+
+// Phase 235.B — weak network-readiness hook for embedded Board adapters.
+//
+// Default: no-op. The canonical in-tree Zephyr path auto-brings-up
+// networking at boot (`CONFIG_NET_CONFIG_AUTO_INIT` — static IP / DHCP),
+// so `ZephyrBoard::run` needs no explicit wait. A board crate or Entry app
+// that must block until the link / DHCP lease is ready (e.g. ASI's
+// `configure_network()` prologue) provides a STRONG definition of this
+// symbol, which the linker prefers over the weak default. Mirrors the
+// weak-default discipline already used for `nros_app_register_backends`.
+extern "C" {
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak)) void nros_board_network_wait(void) {}
+#else
+void nros_board_network_wait(void);
+#endif
+}
 
 /// Phase 219.B / 235.A — Native (POSIX) board adapter for Entry-pkg
 /// generated TUs.
@@ -432,34 +535,30 @@ class NativeNodeRuntime {
 /// per-Node register sequence as a `NodeRegisterFn`-shaped lambda.
 ///
 /// Phase 235.A replaced the recording no-op NodeContext with the real
-/// `detail::NativeNodeRuntime` — `run()` now constructs live
+/// `detail::EntryNodeRuntime` — `run()` now constructs live
 /// publishers/subscriptions and drives them in a poll loop, so a
 /// generated C++ `main()` boots a working pub/sub topology on native.
+/// Phase 235.B factored the ops + arena into `detail::` so the embedded
+/// `ZephyrBoard` shares them verbatim (only the lifecycle differs).
 class NativeBoard {
   public:
     /// Run the Entry-pkg lifecycle. `register_fn` is invoked once,
     /// before the spin loop, with a NodeContext backed by the live
-    /// `NativeNodeRuntime`.
+    /// `EntryNodeRuntime`.
     ///
     /// Returns the first non-zero code from `register_fn` or the spin
     /// loop. `0` on graceful shutdown.
     template <typename Lambda> static int32_t run(Lambda&& register_fn) {
+        // Native init resolves locator + domain from $NROS_LOCATOR /
+        // $ROS_DOMAIN_ID at runtime (the host exception to the embedded
+        // compile-time domain-id rule — see CLAUDE.md / `ZephyrBoard`).
         nros::Result r = nros::init();
         if (!r.ok()) {
             return static_cast<int32_t>(r.raw());
         }
 
-        detail::NativeNodeRuntime& runtime = RuntimeHolder<>::runtime;
-        runtime.reset();
-
-        static const ::nros::NodeContextOps ops = {
-            /* create_node              */ &detail::NativeNodeRuntime::op_create_node,
-            /* create_entity            */ &detail::NativeNodeRuntime::op_create_entity,
-            /* record_callback_effect   */ &detail::NativeNodeRuntime::op_record_callback_effect,
-        };
-        ::nros::NodeContext context(&runtime, &ops);
-
-        int32_t rc = register_fn(&context);
+        detail::EntryNodeRuntime& runtime = detail::EntryRuntimeHolder<>::runtime;
+        int32_t rc = detail::entry_register(runtime, register_fn);
         if (rc != 0) {
             nros::shutdown();
             return rc;
@@ -469,18 +568,75 @@ class NativeBoard {
         nros::shutdown();
         return static_cast<int32_t>(spin_r.raw());
     }
-
-  private:
-    // Process-scope, COMDAT-folded arena storage. Template-static-member
-    // (vs a function-local static) keeps it out of the guarded-init path
-    // the `Node::GlobalStorageHolder` comment flags on NuttX, and gives a
-    // single .bss allocation across every TU that includes this header.
-    template <int = 0> struct RuntimeHolder {
-        static detail::NativeNodeRuntime runtime;
-    };
 };
 
-template <int N> detail::NativeNodeRuntime NativeBoard::RuntimeHolder<N>::runtime;
+/// Phase 235.B — embedded (Zephyr) board adapter, the `Board::run()`
+/// sibling to `NativeBoard` (RFC-0032 §8a).
+///
+/// **Board granularity decision (RFC-0032 §8a open item).** ONE
+/// metadata-driven `ZephyrBoard`, not per-board types (`FvpAemv8rBoard`,
+/// …). Everything that varies per board — the Zephyr `BOARD` id, the DTS
+/// overlay, the default RMW, the `west` runner — is already supplied by
+/// the Phase 215 `nano_ros_use_board(<name>)` cmake import + Kconfig at
+/// *build* time, so the C++ adapter has nothing board-specific left to
+/// specialize at the source level. A per-board C++ type would only
+/// duplicate this lifecycle with no behavioural difference. (RFC-0032
+/// already leaned this way: "single + metadata-driven".)
+///
+/// Lifecycle (mirrors ASI `actuation_module/src/main.cpp`):
+///   `nros::init(domain) → network-wait → register_fn → spin → shutdown`.
+///
+/// The runtime ops + arena are the **same** `detail::EntryNodeRuntime`
+/// machinery `NativeBoard` uses — only the lifecycle differs:
+///   * domain id is **compile-time** (Kconfig `CONFIG_NROS_*_DOMAIN_ID`),
+///     never a runtime env (CLAUDE.md embedded domain-id rule);
+///   * a `nros_board_network_wait()` hook runs before init so a board /
+///     app can block for DHCP / link-up (default no-op — Zephyr
+///     auto-brings-up networking);
+///   * the spin loop yields cooperatively each tick (`entry_tick_yield`
+///     → `k_yield()`).
+class ZephyrBoard {
+  public:
+    /// Compile-time domain id (CLAUDE.md embedded rule — NOT a runtime
+    /// env). Cyclone keys off `CONFIG_NROS_CYCLONE_DOMAIN_ID` when present
+    /// (matches ASI), else the generic `CONFIG_NROS_DOMAIN_ID`. Override
+    /// by defining `NROS_ENTRY_DOMAIN_ID` before including this header.
+#ifndef NROS_ENTRY_DOMAIN_ID
+#if defined(NROS_RMW_CYCLONEDDS) && defined(CONFIG_NROS_CYCLONE_DOMAIN_ID)
+#define NROS_ENTRY_DOMAIN_ID CONFIG_NROS_CYCLONE_DOMAIN_ID
+#elif defined(CONFIG_NROS_DOMAIN_ID)
+#define NROS_ENTRY_DOMAIN_ID CONFIG_NROS_DOMAIN_ID
+#else
+#define NROS_ENTRY_DOMAIN_ID 0
+#endif
+#endif
+
+    /// Run the Entry-pkg lifecycle on a Zephyr board. Same shape +
+    /// contract as `NativeBoard::run`, with the embedded lifecycle.
+    template <typename Lambda> static int32_t run(Lambda&& register_fn) {
+        // Block for network readiness BEFORE init so the RMW backend has a
+        // routable interface to bind (weak no-op by default).
+        nros_board_network_wait();
+
+        // Compile-time domain id + default locator ("" → backend discovery
+        // default, as the in-tree FVP Cyclone example uses).
+        nros::Result r = nros::init("", static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        if (!r.ok()) {
+            return static_cast<int32_t>(r.raw());
+        }
+
+        detail::EntryNodeRuntime& runtime = detail::EntryRuntimeHolder<>::runtime;
+        int32_t rc = detail::entry_register(runtime, register_fn);
+        if (rc != 0) {
+            nros::shutdown();
+            return rc;
+        }
+
+        nros::Result spin_r = runtime.spin();
+        nros::shutdown();
+        return static_cast<int32_t>(spin_r.raw());
+    }
+};
 
 } // namespace board
 } // namespace nros

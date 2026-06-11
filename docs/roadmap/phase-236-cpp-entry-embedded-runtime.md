@@ -147,19 +147,73 @@ by the native runtime.
 
 ### 235.B — Embedded (Zephyr) Board adapter
 
-- [ ] **235.B.1** Add the embedded `Board::run()` adapter: Zephyr +
+- [x] **235.B.1** Add the embedded `Board::run()` adapter: Zephyr +
       Cyclone `init → network-wait → register_fn → spin → shutdown`.
       Blueprint: ASI `actuation_module/src/main.cpp` +
-      `include/common/node/node_nros.hpp`.
-- [ ] **235.B.2** Wire it to the Phase 215 board import so the Entry
+      `include/common/node/node_nros.hpp`. *(Done —
+      `nros::board::ZephyrBoard` in `main.hpp`, sibling to `NativeBoard`.
+      **Board granularity (RFC-0032 §8a open item): ONE metadata-driven
+      `ZephyrBoard`, not per-board `FvpAemv8rBoard` types.** Everything
+      board-specific — Zephyr `BOARD` id, DTS overlay, default RMW, `west`
+      runner — is already supplied by the Phase 215
+      `nano_ros_use_board(<name>)` cmake import + Kconfig at build time, so
+      the C++ adapter has nothing board-specific left to specialize; every
+      Phase 215 Zephyr board compiles with `__ZEPHYR__` and shares the one
+      adapter. **235.A runtime REUSED, not duplicated:** the 235.A
+      `NativeNodeRuntime` was renamed `detail::EntryNodeRuntime`
+      (lifecycle-agnostic; a `NativeNodeRuntime` alias is kept) and the
+      ops + arena were factored into `detail::entry_node_context_ops()` +
+      `detail::entry_register()` + `detail::EntryRuntimeHolder`. Both
+      boards install the SAME ops + share the SAME
+      `EntryNodeRuntime::spin()` body. The ONLY platform-divergent line is
+      a per-tick `detail::entry_tick_yield()` — no-op on native, `k_yield()`
+      on Zephyr. Network-wait is a weak `nros_board_network_wait()` hook
+      (default no-op — Zephyr auto-brings-up networking; ASI's
+      `configure_network()` can provide a strong override).)*
+- [x] **235.B.2** Wire it to the Phase 215 board import so the Entry
       codegen / `NROS_MAIN(<Board>, …)` resolves the embedded board
-      from `board.cmake` (`NROS_BOARD_RUNNER`, default RMW).
-- [ ] **235.B.3** Domain-id + locator come from the board / Entry
+      from `board.cmake` (`NROS_BOARD_RUNNER`, default RMW). *(Done —
+      `emit_cpp::board_cpp_path` maps `"zephyr"` / `"fvp-aemv8r-smp"` /
+      `"armfvp"` (and any `::nros::board::…` path) → `ZephyrBoard::run`
+      (unit-tested). `cmake/NanoRosEntry.cmake` derives the `"zephyr"`
+      codegen board key from the cached `NROS_BOARD_RUNNER` (set by
+      `nano_ros_use_board`) when DEPLOY is non-`native` and no explicit
+      `BOARD` was passed, and relaxes the pre-235 native-only DEPLOY gate
+      to allow a non-`native` deploy iff a Board resolves. Default RMW
+      continues to flow from `board.cmake` → `nano_ros_use_board` →
+      `NANO_ROS_RMW` (unchanged).)*
+- [x] **235.B.3** Domain-id + locator come from the board / Entry
       metadata (compile-time on embedded per the CLAUDE.md domain-id
-      rule), not a runtime env.
+      rule), not a runtime env. *(Done — `ZephyrBoard::run` resolves a
+      compile-time `NROS_ENTRY_DOMAIN_ID`: Cyclone keys off
+      `CONFIG_NROS_CYCLONE_DOMAIN_ID` (matches ASI), else the generic
+      `CONFIG_NROS_DOMAIN_ID`, else 0; overridable by defining
+      `NROS_ENTRY_DOMAIN_ID` before include. `nros::init("", domain)` with
+      an empty locator (backend discovery default, as the in-tree FVP
+      Cyclone example uses) — NO runtime `ROS_DOMAIN_ID`/`getenv` on the
+      embedded path. `NativeBoard` keeps the host runtime-env exception.)*
 
-**Files.** `packages/core/nros-cpp/include/nros/`,
-`packages/boards/nros-board-fvp-aemv8r-smp/`, `zephyr/cmake/`.
+**Files.** `packages/core/nros-cpp/include/nros/main.hpp`,
+`packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`,
+`cmake/NanoRosEntry.cmake`.
+
+**Status.** 235.B landed in the worktree (2026-06-11). **Verification
+reality:** the Zephyr SDK (`ZEPHYR_BASE` unset, `third-party/zephyr/`
+absent) and ARM FVP (`ARM_FVP_DIR` unset) are NOT provisioned in this
+worktree, so a full FVP build/boot of `ZephyrBoard` could not run here —
+deferred to a Zephyr-SDK-equipped host (and to 235.C's ASI validation).
+What WAS verified:
+- `g++ -std=c++14 -fsyntax-only` of `<nros/main.hpp>` on BOTH paths —
+  native (no `__ZEPHYR__`) and the embedded branch (`__ZEPHYR__` + a
+  stubbed `<zephyr/kernel.h>` for `k_yield`, all three domain-id branches);
+- the generated TU for `--board zephyr` emits
+  `::nros::board::ZephyrBoard::run(...)` and syntax-checks under
+  `__ZEPHYR__`; the no-`--board` TU still emits `NativeBoard::run(...)`;
+- `cargo test -p nros-cpp` (8 passed — no NativeBoard/235.A regression);
+- `cpp_multi_node_entry` (full cmake compile+link of the real native
+  template, 83 s);
+- `nros-cli-core` `emit_cpp` unit tests (9 passed incl. 3 new board-key
+  cases).
 
 ### 235.C — ASI reference-consumer validation
 

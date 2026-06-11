@@ -17,11 +17,14 @@
 //! - `nros::spin()` until `nros::ok()` flips false.
 //! - `nros::shutdown()`.
 //!
-//! The thin `nros::board::NativeBoard::run(lambda)` adapter shipped by
+//! The thin `nros::board::<Board>::run(lambda)` adapter shipped by
 //! `packages/core/nros-cpp/include/nros/main.hpp` owns the
 //! init/spin/shutdown ritual so the generated TU stays one declarative
-//! lambda. Embedded C/C++ boards land separately (Phase 212.L.2 keeps
-//! Entry pkgs `native`-only at the cmake surface for v1).
+//! lambda. Phase 235.B added the embedded `ZephyrBoard` sibling: a
+//! non-`native` board key (e.g. `"zephyr"`, derived by `nano_ros_entry`
+//! from the Phase 215 `NROS_BOARD_RUNNER`) emits
+//! `nros::board::ZephyrBoard::run(...)`, which owns the Zephyr + Cyclone
+//! `init → network-wait → register → spin → shutdown` lifecycle.
 
 use std::fmt::Write;
 
@@ -112,18 +115,36 @@ fn write_header(out: &mut String, plan: &Plan) {
     out.push('\n');
 }
 
-/// Board key → C++ Board adapter path. Native is the only target the
-/// C/C++ Entry-pkg surface supports today (Phase 212.L.2). Future
-/// embedded Boards land their own row here.
-fn board_cpp_path(board: &str) -> &'static str {
+/// Board key → C++ Board adapter path.
+///
+/// Two adapters ship today (Phase 235): `NativeBoard` (host/POSIX) and
+/// `ZephyrBoard` (embedded Zephyr — RFC-0032 §8a). Per the §8a decision
+/// there is ONE metadata-driven `ZephyrBoard` rather than per-board C++
+/// types: everything board-specific (the Zephyr `BOARD` id, DTS overlay,
+/// default RMW, `west` runner) is supplied by the Phase 215
+/// `nano_ros_use_board(<name>)` cmake import at build time, so the C++
+/// adapter has nothing left to specialize. The `nano_ros_entry` cmake fn
+/// derives the `"zephyr"` board key from `NROS_BOARD_RUNNER` (set by the
+/// Phase 215 import) when the Entry pkg's DEPLOY target is embedded.
+///
+/// An explicit C++ path-like key (`"::nros::board::…"`) passes through
+/// verbatim so callers can name a board adapter the emitter doesn't yet
+/// know.
+fn board_cpp_path(board: &str) -> &str {
     match board {
         "native" | "posix" => "::nros::board::NativeBoard",
+        // Embedded Zephyr family — every Phase 215 Zephyr board (FVP,
+        // qemu-zephyr, …) compiles with `__ZEPHYR__` and shares the one
+        // metadata-driven `ZephyrBoard` adapter.
+        "zephyr" | "fvp-aemv8r-smp" | "armfvp" => "::nros::board::ZephyrBoard",
+        // An explicit, already-qualified C++ board path passes through.
+        b if b.starts_with("::nros::board::") => b,
         // Unknown / future board keys fall back to NativeBoard with the
         // assumption the cmake-side configure will have already errored
-        // on the DEPLOY check (`nano_ros_entry` rejects non-`native`
-        // DEPLOY at configure time). Keeping the default as
-        // NativeBoard lets unit tests cover the unhappy path without
-        // teaching the emitter every embedded board prematurely.
+        // on the DEPLOY check (`nano_ros_entry` requires a BOARD for
+        // non-`native` DEPLOY). Keeping the default as NativeBoard lets
+        // unit tests cover the unhappy path without teaching the emitter
+        // every embedded board prematurely.
         _ => "::nros::board::NativeBoard",
     }
 }
@@ -222,5 +243,41 @@ mod tests {
         assert!(src.contains("bringup = demo_bringup"));
         assert!(src.contains("launch  = /tmp/system.launch.xml"));
         assert!(src.contains("board   = native"));
+    }
+
+    #[test]
+    fn zephyr_board_key_emits_embedded_adapter() {
+        // Phase 235.B — a `"zephyr"` board key (derived by nano_ros_entry
+        // from the Phase 215 NROS_BOARD_RUNNER) selects the embedded
+        // ZephyrBoard adapter instead of NativeBoard.
+        let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+        plan.board = "zephyr".into();
+        let src = emit(&plan);
+        assert!(src.contains("::nros::board::ZephyrBoard::run(["));
+        assert!(!src.contains("NativeBoard::run("));
+        assert!(src.contains("board   = zephyr"));
+    }
+
+    #[test]
+    fn fvp_board_key_maps_to_zephyr_adapter() {
+        // The concrete Phase 215 board name + its west runner both route
+        // to the one metadata-driven ZephyrBoard (RFC-0032 §8a).
+        for key in ["fvp-aemv8r-smp", "armfvp"] {
+            let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+            plan.board = key.into();
+            let src = emit(&plan);
+            assert!(
+                src.contains("::nros::board::ZephyrBoard::run(["),
+                "board key {key} must map to ZephyrBoard"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_cpp_board_path_passes_through() {
+        let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+        plan.board = "::nros::board::ZephyrBoard".into();
+        let src = emit(&plan);
+        assert!(src.contains("::nros::board::ZephyrBoard::run(["));
     }
 }

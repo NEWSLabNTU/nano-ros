@@ -13,15 +13,19 @@
 #   * `NAME` (required) — exe target + Entry pkg entity name.
 #   * `SOURCES` (required, multi-value) — sources passed to
 #     `add_executable`.
-#   * `DEPLOY` (required, multi-value) — L.2 rule: only `native`
-#     allowed; embedded targets reject configure with FATAL_ERROR.
-#   * `BOARD` (optional, single-value) — Phase 212.N.6 addition: name
-#     of the `Board` impl (see §212.N.1) the Entry pkg targets.
-#     Stored as the `NANO_ROS_BOARD` target property so later N.4 /
-#     N.5 work can read it at configure time + drive the codegen
-#     planner. Absent BOARD is currently valid (host-native pkgs +
-#     pre-Board callers); a future phase may make it required for
-#     embedded DEPLOY targets once the Board family lands.
+#   * `DEPLOY` (required, multi-value) — `native` is always allowed.
+#     Phase 235.B: a non-`native` DEPLOY target is the embedded path and
+#     REQUIRES a resolved Board — either an explicit `BOARD <key>` or one
+#     derived from the Phase 215 `nano_ros_use_board(<name>)` import
+#     (`NROS_BOARD_RUNNER`). Without a Board, a non-`native` DEPLOY
+#     rejects configure with FATAL_ERROR (the pre-235 native-only rule).
+#   * `BOARD` (optional, single-value) — Phase 212.N.6 addition: the
+#     codegen board key (`native`, `zephyr`, `fvp-aemv8r-smp`, …) the
+#     Entry pkg targets; flows to `nros codegen entry --board` and
+#     selects the C++ Board adapter (`NativeBoard` / `ZephyrBoard`).
+#     Stored as the `NANO_ROS_BOARD` target property. Absent BOARD is
+#     valid for host-native pkgs; for embedded DEPLOY it is auto-derived
+#     from `NROS_BOARD_RUNNER` (Phase 235.B) when not passed explicitly.
 #
 # Side effect: appends an entry to the GLOBAL `NROS_APPLICATIONS_JSON`
 # property and rewrites `${CMAKE_BINARY_DIR}/nros-metadata.json` via
@@ -60,12 +64,37 @@ function(nano_ros_entry)
             "nano_ros_entry: SOURCES required when LAUNCH is absent "
             "(single-Node self-bringup mode).")
     endif()
-    # L.2: Entry pkgs are NATIVE-ONLY at the cmake surface.
+    # Phase 235.B — derive the board key from the Phase 215 board import.
+    # `nano_ros_use_board(<name>)` caches `NROS_BOARD_RUNNER`
+    # (armfvp / qemu / native / …). When the caller didn't pass an
+    # explicit BOARD and an *embedded* board was imported (runner is set
+    # and not "native"), default the codegen board key to "zephyr" — the
+    # single metadata-driven embedded adapter (RFC-0032 §8a). Everything
+    # board-specific (Zephyr BOARD id, DTS overlay, default RMW, runner)
+    # already came from board.cmake at the `nano_ros_use_board` call, so
+    # the C++ adapter needs only native-vs-Zephyr granularity here.
+    if(NOT _NRA_BOARD AND DEFINED NROS_BOARD_RUNNER
+       AND NOT "${NROS_BOARD_RUNNER}" STREQUAL ""
+       AND NOT "${NROS_BOARD_RUNNER}" STREQUAL "native")
+        set(_NRA_BOARD "zephyr")
+        message(STATUS
+            "nano_ros_entry(${_NRA_NAME}): embedded board imported "
+            "(runner=${NROS_BOARD_RUNNER}) — codegen board key => zephyr "
+            "(nros::board::ZephyrBoard).")
+    endif()
+
+    # DEPLOY gate. `native` is always allowed. A non-`native` DEPLOY
+    # target is the embedded path (Phase 235.B) and REQUIRES a resolved
+    # BOARD — either passed explicitly or derived above from the Phase 215
+    # import. Without one, fail loudly (the pre-235 native-only rule).
     foreach(_t IN LISTS _NRA_DEPLOY)
-        if(NOT _t STREQUAL "native")
+        if(NOT _t STREQUAL "native" AND NOT _NRA_BOARD)
             message(FATAL_ERROR
                 "nano_ros_entry: DEPLOY target '${_t}' rejected — "
-                "Entry pkgs are native-only (Phase 212.L.2).")
+                "embedded Entry pkgs need a Board. Either import a board "
+                "via `nano_ros_use_board(<name>)` (sets NROS_BOARD_RUNNER) "
+                "or pass `BOARD <key>` (e.g. zephyr). Native pkgs use "
+                "`DEPLOY native`.")
         endif()
     endforeach()
 
