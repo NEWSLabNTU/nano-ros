@@ -217,20 +217,31 @@ pub fn execute(
         } => {
             let src = prefix.with_extension("src");
             let _ = std::fs::remove_dir_all(&src);
+            let src_str = src.to_string_lossy();
+            // `git_ref` may be a raw SHA (index tools with no upstream tag pin the
+            // commit), and `git clone --depth 1 --branch <sha>` is rejected ("Remote
+            // branch <sha> not found"). Mirror the `[source.*]` shallow path: init +
+            // fetch-by-ref at depth 1 (works for sha/tag/branch via the server's
+            // reachable-SHA support) + detached checkout of the fetched commit.
+            sh(&["git", "init", "-q", &src_str], None)
+                .wrap_err_with(|| format!("git init {src_str} ({tool})"))?;
+            sh(
+                &["git", "-C", &src_str, "remote", "add", "origin", git],
+                None,
+            )
+            .wrap_err_with(|| format!("git remote add ({tool})"))?;
             sh(
                 &[
-                    "git",
-                    "clone",
-                    "--depth",
-                    "1",
-                    "--branch",
-                    git_ref,
-                    git,
-                    &src.to_string_lossy(),
+                    "git", "-C", &src_str, "fetch", "-q", "--depth", "1", "origin", git_ref,
                 ],
                 None,
             )
-            .wrap_err_with(|| format!("git clone {git} @ {git_ref}"))?;
+            .wrap_err_with(|| format!("git fetch --depth 1 {git_ref} ({tool})"))?;
+            sh(
+                &["git", "-C", &src_str, "checkout", "-q", "FETCH_HEAD"],
+                None,
+            )
+            .wrap_err_with(|| format!("git checkout FETCH_HEAD ({tool})"))?;
             let prefix_abs = prefix.to_string_lossy().to_string();
             if let Some(cfg) = configure {
                 sh(

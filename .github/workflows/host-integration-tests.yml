@@ -147,8 +147,16 @@ jobs:
         run: |
           nros setup --tool qemu --prefix "$GITHUB_WORKSPACE/build/qemu" --index nros-sdk-index.toml
           nros setup --tool xrce-agent --index nros-sdk-index.toml
-          nros setup --tool play_launch_parser --index nros-sdk-index.toml
-          echo "$HOME/.nros/sdk/play_launch_parser/bin" >> "$GITHUB_PATH"
+          # play_launch_parser source-builds (cargo install); if it hiccups the
+          # workspace-entry fixtures `skip!` cleanly under NROS_FIXTURES_OPTIONAL,
+          # so keep it best-effort (qemu + agent above stay hard — their tests
+          # can't skip the binary lookup the same way).
+          nros setup --tool play_launch_parser --index nros-sdk-index.toml \
+            || echo "play_launch_parser unavailable — workspace-entry fixtures [SKIPPED]"
+          # The store installs to a versioned prefix (~/.nros/sdk/<tool>/<ver>/bin),
+          # not a flat bin/. Resolve the actual bin dir so PATH points at it.
+          plp_bin="$(dirname "$(find "$HOME/.nros/sdk/play_launch_parser" -type f -name play_launch_parser -path '*/bin/*' 2>/dev/null | head -1)")"
+          [ -n "$plp_bin" ] && echo "$plp_bin" >> "$GITHUB_PATH" || true
 
       # The native integration tests (actions / services / qos / multi_node /
       # native_api / executor / ...) spawn PREBUILT example binaries via
