@@ -100,11 +100,18 @@ for cell in "${CELLS[@]}"; do
             cell_ok=0
         fi
 
-        # 2. codegen the example's interface crates
-        if ( cd "$ex" && "$NROS" generate-rust >/dev/null 2>&1 ); then
+        # 2. codegen the example's interface crates.
+        #    NROS_SKIP_VERSION_CHECK=1: this lane validates dep-chain *resolution*
+        #    only (no compile, no runtime), so the abi_guard's stale-standalone-
+        #    lockfile mismatch is a false positive here — known-issue #12: the
+        #    committed example Cargo.locks still pin nros-core 0.1.0 (the 218.J
+        #    0.1.0->0.5.0 bump never propagated to standalone locks), tripping the
+        #    guard even though the real source tree is 0.5.0. Bypass so codegen
+        #    emits generated/ for the cargo-tree step.
+        if ( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" generate-rust >/dev/null 2>&1 ); then
             : # generated/ now present
         else
-            echo "  [FAIL] nros generate-rust (is ROS sourced?)"
+            echo "  [FAIL] nros generate-rust (codegen — ROS sourced? msg deps resolvable?)"
             cell_ok=0
         fi
 

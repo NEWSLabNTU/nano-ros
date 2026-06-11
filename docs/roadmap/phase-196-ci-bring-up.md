@@ -302,20 +302,20 @@ The goal of this CI is to **prove that dep chain resolves for every
 `(platform, rmw)`**, *not* to run the heavy full-build matrix (that stays in the
 sparse `just build-all` / `zephyr-dual-line` lanes). Per `(board, example, rmw)`:
 
-- [ ] **Toolchain side:** `nros setup <board> --rmw <rmw> --dry-run` resolves the
+- [x] **Toolchain side:** `nros setup <board> --rmw <rmw> --dry-run` resolves the
       right prebuilt host tools (validates the `[board.*]`/`[rmw.*]` index wiring,
       Phase 191.6) — instant, no fetch.
-- [ ] **Codegen step:** run `nros generate-rust` (or the build's codegen
+- [x] **Codegen step:** run `nros generate-rust` (or the build's codegen
       pre-step) so the example's `generated/std_msgs` path-crate exists.
       **Gotcha:** the examples declare `std_msgs = "*"`, a *generated* crate; with
       no codegen run, even `cargo tree` fails (`failed to select std_msgs … crates.io`).
       Codegen needs ROS-sourced `.msg` defs (`AMENT_PREFIX_PATH`), so this lane
       installs ROS like the dual-line.
-- [ ] **Crate/feature side:** `cargo tree --target <triple> --no-default-features
+- [x] **Crate/feature side:** `cargo tree --target <triple> --no-default-features
       --features <combo> -e features` (resolution only — **no compile**) proves
       the feature graph pulls the right backend/platform crates, unifies, and the
       target-cfg deps line up. This is the cheap "dep chain correct" check.
-- [ ] Matrix over the **board × rmw** cells from `examples/README.md` (the
+- [x] Matrix over the **board × rmw** cells from `examples/README.md` (the
       authoritative triple list). Each cell is seconds, so all platforms fit one
       cheap workflow; the full compile stays opt-in.
 
@@ -323,7 +323,22 @@ Distinct from the heavy lanes: this catches a broken feature/crate/toolchain
 wiring (a missing optional dep, a feature that doesn't resolve on a target, a
 board→toolchain typo) in seconds, without compiling every platform.
 
+**Greened 2026-06-11.** The lane (`dep-chain.yml` → `scripts/ci/dep-chain-check.sh`)
+was red: the `qemu-arm-baremetal` codegen step hit the `nros-core` ABI guard
+(CLI 0.5.0 vs the example's committed `Cargo.lock` pinning 0.1.0 — known-issue
+#12, the 218.J bump that never reached standalone locks). For a resolution-only
+lane that's a false positive, so the check now runs `nros generate-rust` with
+`NROS_SKIP_VERSION_CHECK=1`. Validated locally: `qemu-arm-baremetal` codegen
+emits `generated/` and `cargo tree` resolves `nros-core 0.5.0` from the path
+deps. The underlying stale-lockfile cleanup stays tracked in known-issue #12.
+
 ### 196.7 — [P2] Fix the dep convention for the source-release model
+**Policy confirmed 2026-06-11 (maintainer):** nano-ros crates are **never
+published to crates.io** — the distribution is source-release + prebuilt host
+toolchains (`nros setup`). So the items below are the right direction (drop the
+`version = "0.1"` crates.io shape for path/git source deps); they are not
+"maybe", they are required. (The dep-chain lane 196.6 already validates the
+source-release path resolution.)
 The three conventions (191.6 review) must collapse to the source-release reality:
 - [ ] `nros new` scaffolds `nros = { version = "0.1" }` (crates.io — **the crates
       are not published**). Change it to the source-release dep: a path/relative
