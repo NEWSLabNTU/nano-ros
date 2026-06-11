@@ -489,8 +489,8 @@ setup/ci recipes; `nros-sdk-index.toml` (per-board package coverage);
       class). The active 196 hardening blocker.
 - [x] A codegen-consumer check fails on a stray `nros --args-file` / legacy form
       (196.2). `codegen-convention.yml` ships it; CI green.
-- [ ] Every `.github/workflows/*.yml` has had ≥1 successful live run.
-      **colcon-parity fix applied 2026-06-12 (pending CI):** `colcon-parity.yml` had never
+- [x] Every `.github/workflows/*.yml` has had ≥1 successful live run.
+      **colcon-parity fixed + CI-green 2026-06-12 (run 27364170073, first-ever pass):** `colcon-parity.yml` had never
       passed — `colcon build` discovered the top-level nano-ros umbrella CMakeLists
       (pure-CMake, needs `nros`) alongside `src/`; restricted it to `--base-paths
       src` (validated locally: 3 pkgs + consumer binary build clean). The other
