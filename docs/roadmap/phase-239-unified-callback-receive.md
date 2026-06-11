@@ -1,4 +1,4 @@
-# Phase 238 — Unified callback receive model for clients (Rust)
+# Phase 239 — Unified callback receive model for clients (Rust)
 
 **Goal.** Implement [RFC-0041](../design/0041-unified-callback-receive-model.md):
 bring service/action **client** receives (reply / result / feedback / goal-response)
@@ -46,7 +46,7 @@ spin_once:
 
 ### Wave 1 — Rust typed callback API (dual-mode, on today's buffers)
 
-#### 238.1 — Service-client callback registration  ⬜
+#### 239.1 — Service-client callback registration  ⬜
 Add `NodeCtx::create_client_with_callback::<Svc, F>(client, callback)` where
 `F: FnMut(&Svc::Reply) + 'static`. Wrap a new typed arena entry
 (`ServiceClientCallbackEntry<Svc, F>`) over the existing
@@ -56,7 +56,7 @@ closure. Reuse the `reply_ready` waker gate. `Promise` path unchanged.
 - **Files:** `executor/handles.rs`, `executor/arena.rs`, `executor/spin.rs`
   (registration), `executor/node.rs` (`create_client_with_callback`).
 
-#### 238.2 — Action-client callbacks  ⬜
+#### 239.2 — Action-client callbacks  ⬜
 Add `NodeCtx::create_action_client_with_callbacks::<A, …>(client, on_goal_response,
 on_feedback, on_result)` with `FnMut(&GoalId, bool)` / `FnMut(&GoalId, &A::Feedback)`
 / `FnMut(&GoalId, GoalStatus, &A::Result)`. Wrap `ActionClientRawArenaEntry` (which
@@ -65,14 +65,14 @@ trampolines that deserialize the payload then call the closures. `register_actio
 client_raw_sized` is already public — add the typed wrapper.
 - **Files:** `executor/handles.rs`, `executor/action.rs`, `executor/node.rs`.
 
-#### 238.3 — Registration + executor wiring  ⬜
+#### 239.3 — Registration + executor wiring  ⬜
 Hook the new typed entries into the `CallbackMeta` list (`EntryKind::ServiceClient`
 / `ActionClient`, `InvocationMode::Always`, the typed `try_process` / `has_data` /
 `drop_fn`), mirroring `register_subscription_buffered_on`. Confirm one `drive_io`
 per spin still pumps the session for all entries (no per-entity pump).
 - **Files:** `executor/spin.rs`.
 
-#### 238.4 — Wave-1 tests  ⬜
+#### 239.4 — Wave-1 tests  ⬜
 Native tests: a callback fires at `spin_once` for service reply + action
 feedback/result/goal-response (no `Promise::try_recv`); `Promise` + callback
 coexist (dual-mode) without interfering. Assert the callback runs in the spin
@@ -82,7 +82,7 @@ thread.
 
 ### Wave 2 — QoS-depth buffering (reliability)
 
-#### 238.5 — Swap client single buffers → `BufferStrategy(qos.depth)`  ⬜
+#### 239.5 — Swap client single buffers → `BufferStrategy(qos.depth)`  ⬜
 Replace the single `reply_buffer` / `feedback_buffer` / result buffer in the
 client arena entries with the subscription `BufferStrategy`: `TripleBuffer` at
 depth ≤ 1, `SpscRing(depth)` at depth > 1, allocated in the arena trailing region
@@ -90,22 +90,22 @@ depth ≤ 1, `SpscRing(depth)` at depth > 1, allocated in the arena trailing reg
 producer; the typed `try_process` consumer pops + dispatches.
 - **Files:** `executor/arena.rs`, `executor/spin.rs`, `executor/action_core.rs`.
 
-#### 238.6 — `MessageLost` on overflow + KEEP_LAST(10)  ⬜
+#### 239.6 — `MessageLost` on overflow + KEEP_LAST(10)  ⬜
 On ring overflow, signal `MessageLost` (mirror the subscription
 `on_message_lost`). Default service-client / action-result QoS to
 `services_default` (`KEEP_LAST(10)`, RFC-0007); feedback uses its topic QoS depth.
 - **Files:** `executor/handles.rs` (lost signal), the QoS default wiring.
 
-#### 238.7 — Wave-2 reliability tests  ⬜
+#### 239.7 — Wave-2 reliability tests  ⬜
 Burst test: two replies / two feedbacks arrive between spins on a depth>1 client →
 **both delivered** (or overflow reported), never silently dropped. A depth-1
-client coalesces to latest (triple-buffer). Compare against the pre-238
+client coalesces to latest (triple-buffer). Compare against the pre-239
 single-buffer overwrite to prove the fix.
 - **Files:** `packages/testing/nros-tests/tests/`.
 
 ### Wave 3 — RT + backend validation
 
-#### 238.8 — RT hot-path + XRCE poll validation  ⬜
+#### 239.8 — RT hot-path + XRCE poll validation  ⬜
 - Confirm the callback dispatch adds **no heap alloc, no lock** vs the
   subscription path (RFC-0002) — check with `nros-bench/wcet-cycles-qemu` /
   `wake-latency`.
@@ -114,14 +114,14 @@ single-buffer overwrite to prove the fix.
 - Verify zenoh-pico + (if available) Cyclone parity.
 - **Files:** none (validation); fixes land in the relevant wave if a gap surfaces.
 
-#### 238.9 — Example  ⬜
+#### 239.9 — Example  ⬜
 A callback-based service-client (and/or action-client) example mirroring an
 existing Promise example, showing the dual-mode surface.
 - **Files:** `examples/<plat>/rust/…`.
 
 ### Close-out
 
-#### 238.10 — Docs sync  ⬜
+#### 239.10 — Docs sync  ⬜
 Tick RFC-0037 (user API surface — add `create_client_with_callback` /
 `create_action_client_with_callbacks`); flip RFC-0041 → `Stable` once landed;
 file the **C / C++ callback surface** as the follow-up phase (C raw entries exist;

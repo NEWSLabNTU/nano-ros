@@ -4,7 +4,7 @@ title: "Unified callback + QoS-depth receive model for clients (service/action)"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06-12
-implements-tracked-by: [phase-238]
+implements-tracked-by: [phase-239]
 supersedes: []
 superseded-by: null
 ---
@@ -213,4 +213,4 @@ subscription path; only the node layer changes.
   (`ActionClientRawArenaEntry`, `ServiceClientRawArenaEntry`,
   `*_raw_try_process`), `executor/{triple_buffer,spsc_ring}.rs`,
   `nros-rmw-xrce/src/{service.c,session.c}` (poll pump).
-- Phase 238 (implementation).
+- Phase 239 (implementation).
