@@ -6,7 +6,11 @@ FreeRTOS / ThreadX build must not require the user (or CI) to run an out-of-band
 `just cyclonedds <rtos>-cross-probe` first. The build system provisions the
 backend's dependency; the user only states intent in `nros.toml` / `-DNROS_RMW`.
 
-**Status.** Complete (2026-05-28). 185.1–.5 done: freertos + threadx-rv64
+**Status.** Done — archived 2026-06-11. All work items 185.1–.5 + every
+acceptance criterion met (the acceptance boxes had been left unticked; each is
+satisfied by a completed item — freertos Cyclone e2e PASS, the tier-gated
+`test-all` `-E` filter, the sdk-tiers.md tiering doc). Original status line:
+Complete (2026-05-28). 185.1–.5 done: freertos + threadx-rv64
 `build-fixtures` auto-provision the cross Cyclone install; `test-all` filters
 embedded-Cyclone tests out when out-of-tier (skipped, not failed); tiering
 documented; cross-probe scripts deduped behind `cross-build-ddsc.sh`; doctor +
@@ -213,18 +217,18 @@ embedded Cyclone test skipped and how to enable it.
 
 ## Acceptance
 
-- [ ] On a tier carrying the cross toolchains, a clean
+- [x] On a tier carrying the cross toolchains, a clean
       `setup → build-all → test-all` runs the embedded-Cyclone tests and they
       **PASS** with no manual `cross-probe` step.
-- [ ] On the default tier, the same flow **SKIPs** them (no hard failures) and the
+- [x] On the default tier, the same flow **SKIPs** them (no hard failures) and the
       rest of `test-all` is green.
-- [ ] Selecting `cyclonedds` in `nros.toml` / `-DNROS_RMW=cyclonedds` for
+- [x] Selecting `cyclonedds` in `nros.toml` / `-DNROS_RMW=cyclonedds` for
       freertos/threadx requires **no** out-of-band user command — parity with
       zenoh / XRCE and with native / Zephyr Cyclone.
-- [ ] `find_package(CycloneDDS)` is retained (no per-example
+- [x] `find_package(CycloneDDS)` is retained (no per-example
       `add_subdirectory(CycloneDDS)`); one cross `ddsc` build per target ABI,
       shared across that target's example cells.
-- [ ] `docs/development/sdk-tiers.md` documents the tiering + toolchain gate.
+- [x] `docs/development/sdk-tiers.md` documents the tiering + toolchain gate.
 
 ## Notes
 
