@@ -48,7 +48,7 @@ what you built.
 
 Recorded for reference. After fixing all the per-platform build blockers (the
 fixture build went 8/8 OK + stamped: cyclone jobserver deadlock,
-[issue 0029](archived/0029-xrce-clock-monotonic-baremetal.md) XRCE
+[issue 0031](archived/0031-xrce-clock-monotonic-baremetal.md) XRCE
 `CLOCK_MONOTONIC`, [issue 0024](0024-esp32-dram-overflow-size-class-buffers.md)
 stm32 `.bss`, [issue 0028](archived/0028-nros-main-rtic-defmt-timestamp.md) rtic
 defmt, zephyr_entry), `NROS_SKIP_FIXTURE_CHECK=1 just test-all`:
