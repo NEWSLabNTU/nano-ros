@@ -85,6 +85,21 @@ jobs:
     defaults:
       run:
         shell: bash
+    # CI-build tuning (issue #29) — applies to this lane's cargo builds ONLY,
+    # never to local/release/embedded builds (those keep the workspace
+    # `[profile.release]` `lto = "fat"` + full debuginfo untouched). The native
+    # test fixtures are spawned and asserted on *behaviour*, so optimisation and
+    # symbols are irrelevant to pass/fail — and fat LTO across ~30 standalone
+    # per-fixture target dirs writes giant transient `lto1` objects that exhaust
+    # the runner disk. Standalone fixtures (empty `[workspace]`, no custom
+    # `[profile.*]`) can't inherit a workspace CI profile, so the cross-project
+    # knob is the cargo env override, set once here rather than per step:
+    #   - CARGO_PROFILE_RELEASE_LTO=off — overrides the workspace profile AND the
+    #     C++ FFI fixture manifest (`cmake/cpp_ffi_Cargo.toml.in` `lto = true`).
+    #   - RUSTFLAGS=-C debuginfo=0 — drops debug symbols (smaller artifacts).
+    env:
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      RUSTFLAGS: "-C debuginfo=0"
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
@@ -186,19 +201,10 @@ jobs:
       # the big overlay disk and surface only a tail (on failure / at the end).
       # `RUSTFLAGS=-C debuginfo=0` is kept as a cheap artifact/link-time trim
       # (tests spawn the binaries; no symbols needed) — not a disk fix.
+      # LTO-off + debuginfo=0 come from the job-level CI-build tuning env (#29):
+      # without them the fat-LTO `lto1` transients across the duplicated
+      # per-fixture target dirs exhaust the overlay disk mid-build.
       - name: Build native fixtures + XRCE agent (best-effort)
-        # Issue #29 — the container overlay ALSO exhausts (`lto1: fatal error:
-        # write: No space left on device`): the workspace `[profile.release]` is
-        # `lto = "fat"` and the C++ FFI fixture (`cmake/cpp_ffi_Cargo.toml.in`)
-        # sets `lto = true`, so cross-language LTO writes giant transient `lto1`
-        # objects on top of ~30 duplicated per-fixture target dirs. Force LTO off
-        # for the CI fixture build — these are test fixtures, LTO is irrelevant
-        # to their pass/fail — which kills the transient AND shrinks every target
-        # dir. `CARGO_PROFILE_RELEASE_LTO` overrides both the workspace profile
-        # and the cpp_ffi manifest. `debuginfo=0` is a further artifact trim.
-        env:
-          RUSTFLAGS: "-C debuginfo=0"
-          CARGO_PROFILE_RELEASE_LTO: "off"
         run: |
           source /opt/ros/humble/setup.bash
           mkdir -p build/ci-logs
@@ -225,13 +231,13 @@ jobs:
         # integration test binaries, emitting thousands more `Compiling …` lines.
         # Redirect that to a file on the overlay disk (not the host agent log)
         # and tail it, so the verbose compile can't overflow the runner's small
-        # host log volume. The recipe's own per-test summary + the real-failure
-        # verdict print near the end, so a tail still surfaces them; the recipe
-        # exit code (preserved via PIPESTATUS) still gates the step.
+        # host log volume. The recipe's own per-test summary + real-failure
+        # verdict print near the end, so a tail still surfaces them; the captured
+        # recipe exit code still gates the step. NROS_FIXTURES_OPTIONAL makes an
+        # unstaged fixture a [SKIPPED], not a failure (light tier); LTO-off +
+        # debuginfo=0 come from the job-level CI-build env.
         env:
           NROS_FIXTURES_OPTIONAL: "1"
-          RUSTFLAGS: "-C debuginfo=0"
-          CARGO_PROFILE_RELEASE_LTO: "off"
         run: |
           source /opt/ros/humble/setup.bash
           mkdir -p build/ci-logs
