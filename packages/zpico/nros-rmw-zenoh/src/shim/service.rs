@@ -11,6 +11,7 @@ use nros_rmw::{
 
 use super::{
     AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, SERVICE_BUFFER_SIZE,
+    SeqScalar,
 };
 use crate::{
     keyexpr::ServiceKeyExpr,
@@ -219,8 +220,11 @@ extern "C" fn queryable_callback(
     // Phase 237 — the reply correlation token is the C shim's reply-slot index
     // (the cloned query held for a possibly-deferred reply), not a free-running
     // counter. `buffer_index` is the queryable handle.
+    // FFI returns i64; narrow to the counter's native width (i32 on 32-bit
+    // targets, where AtomicSeqCounter is AtomicI32). Reply-slot indices are
+    // small and fit. Symmetric with the `.into()` widening on load.
     let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(buffer_index as i32) };
-    slot.seq.store(seq, Ordering::Relaxed);
+    slot.seq.store(seq as SeqScalar, Ordering::Relaxed);
 
     if payload_len > slot.data.len() {
         // Request exceeds static slot capacity — flag overflow, skip payload.

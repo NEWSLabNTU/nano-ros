@@ -52,6 +52,17 @@ pub(crate) type AtomicSeqCounter = portable_atomic::AtomicI64;
 #[cfg(not(target_has_atomic = "64"))]
 pub(crate) type AtomicSeqCounter = portable_atomic::AtomicI32;
 
+// Scalar matching `AtomicSeqCounter`'s width — i64 on 64-bit targets, i32 on
+// 32-bit (riscv32, Cortex-M). Use it to narrow an i64 reply-seq/FFI value to the
+// counter's native width before `.store()`; the FFI
+// (`zpico_queryable_take_reply_seq`) always returns i64, but on 32-bit the
+// counter is AtomicI32 (an `i64` store would be a type error — would break the
+// esp32/cortex-m build). The load side already widens via `.into()`.
+#[cfg(target_has_atomic = "64")]
+pub(crate) type SeqScalar = i64;
+#[cfg(not(target_has_atomic = "64"))]
+pub(crate) type SeqScalar = i32;
+
 use nros_rmw::{QosSettings, ServiceInfo, TopicInfo, TransportError};
 
 use crate::{
