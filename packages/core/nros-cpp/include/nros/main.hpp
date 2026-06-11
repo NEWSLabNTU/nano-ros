@@ -1,4 +1,4 @@
-// Phase 219.E — `<nros/main.hpp>` Entry-pkg header.
+// Phase 219.E / 235.A — `<nros/main.hpp>` Entry-pkg header.
 //
 // The cmake fn `nano_ros_entry(LAUNCH "<bringup>:<file>.launch.xml")`
 // drives the per-Entry-pkg codegen via `nros codegen entry --lang cpp`,
@@ -19,14 +19,12 @@
 //
 //   2. `nros::board::NativeBoard::run(register_fn)` — the Board
 //      adapter shim the generated TU calls. Owns the
-//      `nros::init() → register_fn(context) → nros::spin() →
-//      nros::shutdown()` lifecycle so the generated TU stays one
-//      declarative lambda.
+//      `nros::init() → register_fn(context) → spin → nros::shutdown()`
+//      lifecycle so the generated TU stays one declarative lambda.
 //
 // Native is the only Board exposed today (Phase 212.L.2 keeps Entry
 // pkgs `native`-only at the cmake surface for v1). Embedded boards
-// land separately when the embedded C/C++ board family lands
-// (cf. Phase 216.D).
+// land separately under Phase 235.B (cf. RFC-0032 §8a).
 
 #ifndef NROS_CPP_MAIN_HPP
 #define NROS_CPP_MAIN_HPP
@@ -34,49 +32,432 @@
 #include "nros/nros.hpp"
 #include "nros/node_pkg.hpp"
 
-namespace nros::board {
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#include <cstdlib> // getenv — Phase 235.A bounded-spin ($NROS_ENTRY_SPIN_MS)
+#endif
 
-/// Phase 219.B — Native (POSIX) board adapter for Entry-pkg generated
-/// TUs.
+// Phase 235.A — fixed-capacity arena dimensions for the native
+// NodeContext runtime. The runtime is `no_std` / heap-free (mirrors the
+// nros-cpp inline-storage discipline), so it pre-sizes its node + entity
+// tables at compile time. Override before including this header if an
+// Entry pkg declares more than the defaults.
+#ifndef NROS_ENTRY_MAX_NODES
+#define NROS_ENTRY_MAX_NODES 8
+#endif
+#ifndef NROS_ENTRY_MAX_ENTITIES
+#define NROS_ENTRY_MAX_ENTITIES 24
+#endif
+
+namespace nros {
+namespace board {
+namespace detail {
+
+// ----- bounded-string + parse helpers (no STL) ----------------------
+
+inline void entry_copy_str(char* dst, const char* src, size_t cap) {
+    size_t i = 0;
+    if (src != nullptr) {
+        for (; src[i] != '\0' && i + 1 < cap; ++i) {
+            dst[i] = src[i];
+        }
+    }
+    dst[i] = '\0';
+}
+
+inline bool entry_str_eq(const char* a, const char* b) {
+    if (a == nullptr || b == nullptr) return false;
+    while (*a != '\0' && *b != '\0') {
+        if (*a != *b) return false;
+        ++a;
+        ++b;
+    }
+    return *a == *b;
+}
+
+inline bool entry_str_contains(const char* hay, const char* needle) {
+    if (hay == nullptr || needle == nullptr) return false;
+    for (const char* h = hay; *h != '\0'; ++h) {
+        const char* a = h;
+        const char* b = needle;
+        while (*a != '\0' && *b != '\0' && *a == *b) {
+            ++a;
+            ++b;
+        }
+        if (*b == '\0') return true;
+    }
+    return false;
+}
+
+inline uint32_t entry_parse_u32(const char* s) {
+    uint32_t v = 0;
+    if (s == nullptr) return 0;
+    for (; *s >= '0' && *s <= '9'; ++s) {
+        v = v * 10 + static_cast<uint32_t>(*s - '0');
+    }
+    return v;
+}
+
+inline nros_cpp_qos_t entry_default_ffi_qos() {
+    ::nros::QoS q = ::nros::QoS::default_profile();
+    nros_cpp_qos_t f;
+    f.reliability = static_cast<nros_cpp_qos_reliability_t>(q.reliability_raw());
+    f.durability = static_cast<nros_cpp_qos_durability_t>(q.durability_raw());
+    f.history = static_cast<nros_cpp_qos_history_t>(q.history_raw());
+    f.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(q.liveliness_raw());
+    f.depth = q.depth();
+    f.deadline_ms = q.deadline_ms();
+    f.lifespan_ms = q.lifespan_ms();
+    f.liveliness_lease_ms = q.liveliness_lease_ms();
+    f.avoid_ros_namespace_conventions = q.avoid_ros_namespace_conventions() ? 1 : 0;
+    return f;
+}
+
+/// Phase 235.A — the **real** Native NodeContext runtime.
+///
+/// Replaces the Phase 219.B recording no-op op set. Maps each recorded
+/// register call onto a live `nros-cpp` construction:
+///
+///   * `create_node`            → `nros::create_node` into an arena slot.
+///   * `create_entity`          → the matching raw `nros_cpp_*_create`
+///                                FFI on the owning node (the op boundary
+///                                is type-erased — entities arrive as
+///                                descriptor *strings* — so the runtime
+///                                cannot use the typed `create_publisher<M>`
+///                                templates and goes through the raw FFI
+///                                with the descriptor's `type_name` /
+///                                `type_hash`).
+///   * `record_callback_effect` → wire the effect into the poll loop:
+///                                a `Reads` effect drains its subscription
+///                                each spin tick; a timer-driven
+///                                `Publishes` effect fires its publisher
+///                                on the timer period.
+///
+/// Storage is a fixed-capacity arena owned at process scope (see
+/// `NativeBoard::RuntimeHolder`), so every entity outlives the
+/// `register_fn` lambda and the whole spin loop (235.A.2). No heap, no
+/// STL — same inline-storage discipline as `nros::Publisher<M>` et al.
+///
+/// **Synthesized publish body (v1).** The declarative Node-pkg
+/// `register_node()` only *describes* a `Publishes` callback by name
+/// (`"on_tick"`); it carries no executable body (RFC-0032 §8a "Open:
+/// callback bodies"). To make a timer-driven publisher emit observable
+/// data the runtime synthesizes a monotonic `std_msgs/Int32` counter on
+/// each tick (matching the canonical Talker's "the timer fires
+/// `on_tick`, which publishes a counter" intent). Publishers of other
+/// types are created live but not auto-driven until the callback-body
+/// binding lands.
+class NativeNodeRuntime {
+  public:
+    static constexpr size_t ID_CAP = ::nros::DECLARED_NODE_SYNTHETIC_ID_MAX;
+    static constexpr size_t TYPE_CAP = 128;
+    static constexpr size_t HASH_CAP = 80;
+    static constexpr size_t TOPIC_CAP = 256;
+    static constexpr size_t ENTITY_STORAGE =
+        (NROS_PUBLISHER_SIZE > NROS_SUBSCRIBER_SIZE) ? NROS_PUBLISHER_SIZE : NROS_SUBSCRIBER_SIZE;
+
+    void reset() {
+        node_count_ = 0;
+        entity_count_ = 0;
+        for (size_t i = 0; i < NROS_ENTRY_MAX_NODES; ++i) {
+            nodes_[i].used = false;
+        }
+        for (size_t i = 0; i < NROS_ENTRY_MAX_ENTITIES; ++i) {
+            entities_[i].used = false;
+        }
+    }
+
+    // ---- NodeContextOps trampolines (signatures match the typedefs) ----
+
+    static int32_t op_create_node(void* user, const char* stable_id,
+                                  const ::nros::NodeOptions* opts, ::nros::DeclaredNode* /*out*/) {
+        return static_cast<NativeNodeRuntime*>(user)->do_create_node(stable_id, opts);
+    }
+
+    static int32_t op_create_entity(void* user, const void* descriptor) {
+        return static_cast<NativeNodeRuntime*>(user)->do_create_entity(
+            static_cast<const ::nros::detail::NodeEntityDescriptor*>(descriptor));
+    }
+
+    static int32_t op_record_callback_effect(void* user, const char* callback_id,
+                                             ::nros::CallbackEffectKind kind,
+                                             const char* entity_id) {
+        return static_cast<NativeNodeRuntime*>(user)->do_record_effect(callback_id, kind,
+                                                                       entity_id);
+    }
+
+    /// Drive the constructed topology until `nros::ok()` flips false, or
+    /// for `$NROS_ENTRY_SPIN_MS` milliseconds when set (the bounded
+    /// external-observer test path — mirrors the Rust entry harness's
+    /// `NROS_ENTRY_SPIN_MS`). Each tick: `spin_once`, fire any due
+    /// timer-driven publishers, then drain every `Reads` subscription.
+    ::nros::Result spin() {
+        uint32_t bound_ms = 0;
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+        const char* env = ::std::getenv("NROS_ENTRY_SPIN_MS");
+        if (env != nullptr && env[0] != '\0') {
+            bound_ms = entry_parse_u32(env);
+        }
+#endif
+        const uint64_t start_ns = nros_cpp_time_ns();
+        // Seed each publishing entity's first fire one period out.
+        for (size_t i = 0; i < entity_count_; ++i) {
+            Entity& e = entities_[i];
+            if (e.used && e.publish_period_ms > 0) {
+                e.next_fire_ns = start_ns + static_cast<uint64_t>(e.publish_period_ms) * 1000000ull;
+            }
+        }
+
+        ::nros::Result last = ::nros::Result::success();
+        uint8_t drain[512];
+        for (;;) {
+            if (bound_ms == 0 && !::nros::ok()) break;
+
+            last = ::nros::spin_once(10);
+            if (!last.ok()) return last;
+
+            const uint64_t now = nros_cpp_time_ns();
+            for (size_t i = 0; i < entity_count_; ++i) {
+                Entity& e = entities_[i];
+                if (!e.used) continue;
+
+                if (e.kind == ::nros::NodeEntityKind::Publisher && e.publish_period_ms > 0 &&
+                    now >= e.next_fire_ns) {
+                    fire_publisher(e);
+                    const uint64_t period_ns =
+                        static_cast<uint64_t>(e.publish_period_ms) * 1000000ull;
+                    e.next_fire_ns += period_ns;
+                    if (e.next_fire_ns <= now) {
+                        e.next_fire_ns = now + period_ns;
+                    }
+                } else if (e.kind == ::nros::NodeEntityKind::Subscription && e.reads) {
+                    // Drain queued samples — this is the poll-loop wiring
+                    // of the subscription's `Reads` callback effect.
+                    for (int n = 0; n < 16; ++n) {
+                        size_t len = 0;
+                        nros_cpp_ret_t r = nros_cpp_subscription_try_recv_raw(e.storage, drain,
+                                                                              sizeof(drain), &len);
+                        if (r != 0 || len == 0) break;
+                        ++e.recv_count;
+                    }
+                }
+            }
+
+            if (bound_ms != 0) {
+                const uint64_t elapsed_ms = (nros_cpp_time_ns() - start_ns) / 1000000ull;
+                if (elapsed_ms >= bound_ms) break;
+                if (!::nros::ok()) break;
+            }
+        }
+        return last;
+    }
+
+    /// Diagnostics — number of samples the runtime drained from the
+    /// subscription whose stable id is `entity_id` (0 if none / unknown).
+    uint32_t received_count(const char* entity_id) const {
+        for (size_t i = 0; i < entity_count_; ++i) {
+            if (entities_[i].used && entry_str_eq(entities_[i].id, entity_id)) {
+                return entities_[i].recv_count;
+            }
+        }
+        return 0;
+    }
+
+  private:
+    struct NodeSlot {
+        char id[ID_CAP];
+        ::nros::Node node;
+        bool used = false;
+    };
+
+    struct Entity {
+        bool used = false;
+        ::nros::NodeEntityKind kind = ::nros::NodeEntityKind::Publisher;
+        char id[ID_CAP];
+        char node_id[ID_CAP];
+        char callback_id[ID_CAP];
+        char type_name[TYPE_CAP];
+        char type_hash[HASH_CAP];
+        char topic[TOPIC_CAP];
+        uint32_t period_ms = 0;         // Timer: declared period
+        int32_t publish_period_ms = -1; // Publisher: bound timer period, -1 = none
+        bool reads = false;             // Subscription: drained in the poll loop
+        uint64_t next_fire_ns = 0;      // Publisher: next synthesized publish
+        int32_t counter = 0;            // Publisher: synthesized Int32 value
+        uint32_t recv_count = 0;        // Subscription: drained-sample count
+        alignas(8) uint8_t storage[ENTITY_STORAGE];
+    };
+
+    NodeSlot* find_node(const char* id) {
+        for (size_t i = 0; i < node_count_; ++i) {
+            if (nodes_[i].used && entry_str_eq(nodes_[i].id, id)) return &nodes_[i];
+        }
+        return nullptr;
+    }
+
+    Entity* find_entity(const char* id) {
+        for (size_t i = 0; i < entity_count_; ++i) {
+            if (entities_[i].used && entry_str_eq(entities_[i].id, id)) return &entities_[i];
+        }
+        return nullptr;
+    }
+
+    Entity* find_timer_for_callback(const char* callback_id) {
+        for (size_t i = 0; i < entity_count_; ++i) {
+            Entity& e = entities_[i];
+            if (e.used && e.kind == ::nros::NodeEntityKind::Timer &&
+                entry_str_eq(e.callback_id, callback_id)) {
+                return &e;
+            }
+        }
+        return nullptr;
+    }
+
+    int32_t do_create_node(const char* stable_id, const ::nros::NodeOptions* opts) {
+        if (stable_id == nullptr) return static_cast<int32_t>(::nros::ErrorCode::InvalidArgument);
+        if (node_count_ >= NROS_ENTRY_MAX_NODES) {
+            return static_cast<int32_t>(::nros::ErrorCode::Full);
+        }
+        NodeSlot& slot = nodes_[node_count_];
+        entry_copy_str(slot.id, stable_id, ID_CAP);
+        const char* name = (opts != nullptr && opts->name != nullptr) ? opts->name : stable_id;
+        const char* ns = (opts != nullptr) ? opts->namespace_ : nullptr;
+        ::nros::Result r = ::nros::create_node(slot.node, name, ns);
+        if (!r.ok()) return static_cast<int32_t>(r.raw());
+        slot.used = true;
+        ++node_count_;
+        return 0;
+    }
+
+    int32_t do_create_entity(const ::nros::detail::NodeEntityDescriptor* d) {
+        if (d == nullptr || d->stable_id == nullptr || d->node_id == nullptr) {
+            return static_cast<int32_t>(::nros::ErrorCode::InvalidArgument);
+        }
+        NodeSlot* node = find_node(d->node_id);
+        if (node == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        if (entity_count_ >= NROS_ENTRY_MAX_ENTITIES) {
+            return static_cast<int32_t>(::nros::ErrorCode::Full);
+        }
+        Entity& e = entities_[entity_count_];
+        entry_copy_str(e.id, d->stable_id, ID_CAP);
+        entry_copy_str(e.node_id, d->node_id, ID_CAP);
+        entry_copy_str(e.callback_id, d->callback_id, ID_CAP);
+        entry_copy_str(e.type_name, d->type_name, TYPE_CAP);
+        entry_copy_str(e.type_hash, d->type_hash, HASH_CAP);
+        entry_copy_str(e.topic, d->source_name, TOPIC_CAP);
+        e.kind = d->kind;
+        e.reads = false;
+        e.publish_period_ms = -1;
+        e.counter = 0;
+        e.recv_count = 0;
+
+        nros_cpp_qos_t qos = entry_default_ffi_qos();
+        nros_cpp_ret_t ret = 0;
+        switch (d->kind) {
+        case ::nros::NodeEntityKind::Publisher:
+            ret = nros_cpp_publisher_create(node->node.ffi_handle(), e.topic, e.type_name,
+                                            e.type_hash, qos, e.storage);
+            break;
+        case ::nros::NodeEntityKind::Subscription:
+            ret = nros_cpp_subscription_create(node->node.ffi_handle(), e.topic, e.type_name,
+                                               e.type_hash, qos, e.storage);
+            break;
+        case ::nros::NodeEntityKind::Timer:
+            // `source_name` carries the period-ms literal ("1000").
+            e.period_ms = entry_parse_u32(e.topic);
+            break;
+        default:
+            // Services / clients / actions / parameters are not yet
+            // constructed by the native runtime; recording them keeps the
+            // register sequence intact (no hard error) so a mixed Entry
+            // pkg still boots its pub/sub topology.
+            break;
+        }
+        if (ret != 0) return static_cast<int32_t>(ret);
+        e.used = true;
+        ++entity_count_;
+        return 0;
+    }
+
+    int32_t do_record_effect(const char* callback_id, ::nros::CallbackEffectKind kind,
+                             const char* entity_id) {
+        Entity* e = find_entity(entity_id);
+        if (e == nullptr) return static_cast<int32_t>(::nros::ErrorCode::InvalidArgument);
+        switch (kind) {
+        case ::nros::CallbackEffectKind::Publishes: {
+            // Bind the publisher to the timer that drives `callback_id`.
+            Entity* timer = find_timer_for_callback(callback_id);
+            uint32_t period = (timer != nullptr && timer->period_ms > 0) ? timer->period_ms : 0;
+            e->publish_period_ms = (period > 0) ? static_cast<int32_t>(period) : -1;
+            break;
+        }
+        case ::nros::CallbackEffectKind::Reads:
+            e->reads = true;
+            break;
+        case ::nros::CallbackEffectKind::Writes:
+        default:
+            break;
+        }
+        return 0;
+    }
+
+    void fire_publisher(Entity& e) {
+        // Synthesized v1 body — see the class doc. Only std_msgs/Int32 has
+        // a known trivial CDR encoding the type-erased runtime can emit.
+        if (!entry_str_contains(e.type_name, "Int32")) return;
+        uint8_t buf[8];
+        buf[0] = 0x00; // CDR encapsulation header — CDR_LE (matches nros-c cdr.rs)
+        buf[1] = 0x01;
+        buf[2] = 0x00;
+        buf[3] = 0x00;
+        const int32_t v = e.counter++;
+        buf[4] = static_cast<uint8_t>(v & 0xff);
+        buf[5] = static_cast<uint8_t>((v >> 8) & 0xff);
+        buf[6] = static_cast<uint8_t>((v >> 16) & 0xff);
+        buf[7] = static_cast<uint8_t>((v >> 24) & 0xff);
+        nros_cpp_publish_raw(e.storage, buf, sizeof(buf));
+    }
+
+    NodeSlot nodes_[NROS_ENTRY_MAX_NODES];
+    Entity entities_[NROS_ENTRY_MAX_ENTITIES];
+    size_t node_count_ = 0;
+    size_t entity_count_ = 0;
+};
+
+} // namespace detail
+
+/// Phase 219.B / 235.A — Native (POSIX) board adapter for Entry-pkg
+/// generated TUs.
 ///
 /// Owns the init/spin/shutdown ritual; the generated TU supplies the
 /// per-Node register sequence as a `NodeRegisterFn`-shaped lambda.
 ///
-/// Today this is a thin host-only adapter — every C/C++ Node pkg's
-/// register fn is *descriptive* (records entities into a NodeContext
-/// the runtime later instantiates). The Native runtime that turns a
-/// NodeContext into running publishers/subscriptions is **NOT
-/// supplied here** — that integration sits below the Phase 219
-/// "pure orchestration" scope (see phase doc §7). The shim therefore
-/// constructs a *recording* NodeContext whose ops are no-ops, invokes
-/// the lambda (so any plain register-side logging fires), then enters
-/// `nros::spin()` so the executable stays alive for the test
-/// harness. Real per-Node publishers / subscriptions arrive when the
-/// Native NodeContext runtime lands as a follow-up.
+/// Phase 235.A replaced the recording no-op NodeContext with the real
+/// `detail::NativeNodeRuntime` — `run()` now constructs live
+/// publishers/subscriptions and drives them in a poll loop, so a
+/// generated C++ `main()` boots a working pub/sub topology on native.
 class NativeBoard {
   public:
     /// Run the Entry-pkg lifecycle. `register_fn` is invoked once,
-    /// before the spin loop, with a recording NodeContext.
+    /// before the spin loop, with a NodeContext backed by the live
+    /// `NativeNodeRuntime`.
     ///
-    /// Returns the first non-zero code from `register_fn` or
-    /// `nros::spin()`. `0` on graceful shutdown.
+    /// Returns the first non-zero code from `register_fn` or the spin
+    /// loop. `0` on graceful shutdown.
     template <typename Lambda> static int32_t run(Lambda&& register_fn) {
         nros::Result r = nros::init();
         if (!r.ok()) {
             return static_cast<int32_t>(r.raw());
         }
 
-        // Phase 219.B placeholder NodeContext — every op is a no-op
-        // until the Native runtime lands. Lets the generated TU
-        // exercise the orchestration glue (codegen, mangled symbol
-        // resolution, launch-order dispatch) end-to-end without
-        // requiring the runtime side.
+        detail::NativeNodeRuntime& runtime = RuntimeHolder<>::runtime;
+        runtime.reset();
+
         static const ::nros::NodeContextOps ops = {
-            /* create_node              */ &NativeBoard::noop_create_node,
-            /* create_entity            */ &NativeBoard::noop_create_entity,
-            /* record_callback_effect   */ &NativeBoard::noop_record_callback_effect,
+            /* create_node              */ &detail::NativeNodeRuntime::op_create_node,
+            /* create_entity            */ &detail::NativeNodeRuntime::op_create_entity,
+            /* record_callback_effect   */ &detail::NativeNodeRuntime::op_record_callback_effect,
         };
-        ::nros::NodeContext context(nullptr, &ops);
+        ::nros::NodeContext context(&runtime, &ops);
 
         int32_t rc = register_fn(&context);
         if (rc != 0) {
@@ -84,29 +465,25 @@ class NativeBoard {
             return rc;
         }
 
-        // Spin until `nros::ok()` flips false (SIGINT handler,
-        // explicit `nros::shutdown()`, or transport error). Mirrors
-        // the rclcpp `rclcpp::spin(node)` pattern.
-        nros::Result spin_r = nros::spin();
+        nros::Result spin_r = runtime.spin();
         nros::shutdown();
         return static_cast<int32_t>(spin_r.raw());
     }
 
   private:
-    static int32_t noop_create_node(void* /*user*/, const char* /*stable_id*/,
-                                    const ::nros::NodeOptions* /*opts*/,
-                                    ::nros::DeclaredNode* /*out*/) {
-        return 0;
-    }
-    static int32_t noop_create_entity(void* /*user*/, const void* /*desc*/) { return 0; }
-    static int32_t noop_record_callback_effect(void* /*user*/, const char* /*cb_id*/,
-                                               ::nros::CallbackEffectKind /*kind*/,
-                                               const char* /*entity_id*/) {
-        return 0;
-    }
+    // Process-scope, COMDAT-folded arena storage. Template-static-member
+    // (vs a function-local static) keeps it out of the guarded-init path
+    // the `Node::GlobalStorageHolder` comment flags on NuttX, and gives a
+    // single .bss allocation across every TU that includes this header.
+    template <int = 0> struct RuntimeHolder {
+        static detail::NativeNodeRuntime runtime;
+    };
 };
 
-} // namespace nros::board
+template <int N> detail::NativeNodeRuntime NativeBoard::RuntimeHolder<N>::runtime;
+
+} // namespace board
+} // namespace nros
 
 // Phase 219.E — `NROS_MAIN(<Board>, "<launch_spec>")` declarative
 // marker. Expands to a sentinel TU-local symbol so the cmake fn can

@@ -200,6 +200,23 @@ class Node {
     /// Check if the node is initialized and valid.
     bool is_valid() const { return initialized_; }
 
+    /// Phase 235.A — internal: raw FFI node handle for the Entry-pkg
+    /// NodeContext runtime.
+    ///
+    /// The declarative `NodeContextOps` boundary (`<nros/node_pkg.hpp>`)
+    /// is **type-erased** — entities arrive as descriptor *strings*
+    /// (`type_name` / `type_hash`), with no message type `M` available
+    /// at the op-function-pointer callsite. The native runtime in
+    /// `<nros/main.hpp>` therefore constructs publishers / subscriptions
+    /// through the raw `nros_cpp_{publisher,subscription}_create` FFI,
+    /// which takes a `const nros_cpp_node_t*`. This accessor hands that
+    /// pointer to the runtime. Not part of the public rclcpp-style
+    /// surface — user code creates entities via the typed
+    /// `create_publisher<M>` / `create_subscription<M>` templates.
+    ///
+    /// Returns `nullptr` on an uninitialized node.
+    const nros_cpp_node_t* ffi_handle() const { return initialized_ ? &handle_ : nullptr; }
+
     /// Create a publisher for a topic.
     ///
     /// @tparam M  Message type (must define TYPE_NAME and TYPE_HASH).

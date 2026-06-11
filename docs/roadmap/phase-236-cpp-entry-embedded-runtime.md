@@ -92,22 +92,58 @@ its `create_publisher`/`create_subscription` wrappers ARE the real
 
 ### 235.A — Real `NodeContext` runtime ops (host/native first)
 
-- [ ] **235.A.1** Replace `NativeBoard`'s recording `NodeContextOps`
+- [x] **235.A.1** Replace `NativeBoard`'s recording `NodeContextOps`
       with a real op set that constructs `nros::Node` + entities via
       `nros-cpp`. Land native-first so it is testable without an
-      embedded board.
-- [ ] **235.A.2** Entity storage — executor-owned handle storage so
+      embedded board. *(Done — `detail::NativeNodeRuntime` in
+      `main.hpp`: `create_node` → `nros::create_node`; `create_entity`
+      → raw `nros_cpp_{publisher,subscription}_create` keyed on the
+      descriptor's `type_name`/`type_hash` — the op boundary is
+      type-erased, so the runtime can't use the typed
+      `create_publisher<M>` templates and goes through the raw FFI via a
+      new internal `Node::ffi_handle()` accessor.)*
+- [x] **235.A.2** Entity storage — executor-owned handle storage so
       created pubs/subs outlive `register_fn` (ASI keeps
       `std::shared_ptr<Publisher<M>>`; pick the `no_std`-friendly
-      equivalent).
-- [ ] **235.A.3** Subscription callback → poll-loop wiring
+      equivalent). *(Done — fixed-capacity arena
+      (`NROS_ENTRY_MAX_{NODES,ENTITIES}`) held in a process-scope
+      template-static member (`NativeBoard::RuntimeHolder`), no heap/STL;
+      mirrors `Node::GlobalStorageHolder`'s COMDAT-folded `.bss` trick.)*
+- [x] **235.A.3** Subscription callback → poll-loop wiring
       (`record_callback_effect`), mirroring ASI `SubscriptionHandler<T>`.
-- [ ] **235.A.4** Native E2E: a 2-node C++ Entry pkg fixture publishes
+      *(Done — `NativeNodeRuntime::spin()` drains every `Reads`
+      subscription each tick; a timer-driven `Publishes` effect fires its
+      publisher on the timer period. Since the declarative register fn
+      carries no callback **body** (RFC-0032 §8a "Open: callback bodies"),
+      the v1 runtime synthesizes a monotonic `std_msgs/Int32` counter for
+      a timer-`Publishes` binding — matching the canonical Talker's
+      "fires `on_tick`, which publishes a counter" intent.)*
+- [x] **235.A.4** Native E2E: a 2-node C++ Entry pkg fixture publishes
       and receives over loopback (external-observer style per RFC-0032 §8).
+      *(Done — `packages/testing/nros-tests/tests/phase235_a_cpp_entry_runtime.rs`
+      builds the in-tree `multi-node-workspace-cpp` Entry pkg (talker +
+      listener nodes), boots `robot_entry` for a bounded
+      `NROS_ENTRY_SPIN_MS` window, and asserts a stock native Rust
+      `listener` subscribing to `/chatter` over the same zenohd router
+      observes the talker's live samples. Verified 2026-06-11:
+      `Received: 0` → `test result: ok`.)*
 
 **Files.** `packages/core/nros-cpp/include/nros/main.hpp`,
-`packages/core/nros-cpp/src/`, a fixture under
+`packages/core/nros-cpp/include/nros/node.hpp`, a fixture under
 `packages/testing/nros-tests/`.
+
+**Status.** 235.A landed 2026-06-11. The Native NodeContext runtime is
+live (no more recording no-op). Verifications run: standalone
+`g++ -std=c++14 -fsyntax-only` of `<nros/main.hpp>`;
+`cpp_multi_node_entry` (compile + link of the real template, 90 s);
+`phase235_a_cpp_entry_runtime` (live pub/sub over zenohd, 63 s);
+`cargo test -p nros-cpp` (8 passed). **Known v1 limitation:** a
+timer-`Publishes` effect synthesizes a `std_msgs/Int32` counter because
+the declarative register fn carries no callback *body* — non-Int32
+publishers are created live but not auto-driven until the
+callback-body-binding work (see RFC-0032 §8a open item). Services /
+clients / actions are recorded (no hard error) but not yet constructed
+by the native runtime.
 
 ### 235.B — Embedded (Zephyr) Board adapter
 
