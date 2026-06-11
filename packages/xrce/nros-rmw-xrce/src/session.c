@@ -13,6 +13,7 @@
 
 #include "internal.h"
 
+#include "nros/platform.h"
 #include "nros/rmw_ret.h"
 
 #include <uxr/client/client.h>
@@ -461,27 +462,26 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t *session,
         (void)uxr_run_session_time(&st->session, 0);
         return NROS_RMW_RET_OK;
     }
-    struct timespec start;
-    clock_gettime(CLOCK_MONOTONIC, &start);
+    /* Issue 0029 — use the platform clock/sleep (`nros_platform_time_now_ms`,
+     * `nros_platform_sleep_ms`), NOT POSIX `clock_gettime(CLOCK_MONOTONIC)` /
+     * `nanosleep`. This path compiles for every XRCE target incl. bare-metal
+     * Cortex-M (thumbv7m/thumbv7em), where `<time.h>` does not declare
+     * `CLOCK_MONOTONIC` and there is no `nanosleep`. The platform abstraction
+     * already backs both on hosted and embedded targets. */
+    uint64_t start_ms = nros_platform_time_now_ms();
     for (;;) {
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        long elapsed_ms =
-            (now.tv_sec - start.tv_sec) * 1000L + (now.tv_nsec - start.tv_nsec) / 1000000L;
-        int remaining = t - (int)elapsed_ms;
+        uint64_t now_ms = nros_platform_time_now_ms();
+        int elapsed_ms = (int)(now_ms - start_ms);
+        int remaining = t - elapsed_ms;
         if (remaining <= 0) {
             break;
         }
         (void)uxr_run_session_time(&st->session, remaining);
-        /* If the run returned well before `remaining`, sleep ~1 ms so the next
+        /* If the run returned well before `remaining`, yield ~1 ms so the next
          * pass picks up freshly-arrived inbound without busy-spinning. */
-        struct timespec after;
-        clock_gettime(CLOCK_MONOTONIC, &after);
-        long pass_us =
-            (after.tv_sec - now.tv_sec) * 1000000L + (after.tv_nsec - now.tv_nsec) / 1000L;
-        if (pass_us < 1000) {
-            struct timespec nap = {0, 1000000L}; /* 1 ms */
-            nanosleep(&nap, NULL);
+        uint64_t after_ms = nros_platform_time_now_ms();
+        if ((after_ms - now_ms) < 1u) {
+            nros_platform_sleep_ms(1);
         }
     }
     return NROS_RMW_RET_OK;
