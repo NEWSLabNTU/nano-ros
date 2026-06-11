@@ -132,27 +132,68 @@ Validate Track B against **actual PX4 firmware**, not the stub.
 
 ### 233.6 — Service / action XRCE-DDS interop  ⬜ (planned)
 The CDR-header strip/prepend (233.5.1) covers **topics** (`publisher.c` /
-`subscriber.c`). The **service** (`service.c` — `uxr_buffer_request` /
-`uxr_buffer_reply` + the request/reply inbox `memcpy`s) and **action** paths still
-carry the executor's 4-byte CDR encapsulation header on the XRCE wire. This is
-self-consistent (nano-ros↔nano-ros services/actions pass:
-`test_xrce_service_request_response`, `test_xrce_action_fibonacci`) but will **not
-interop with real ROS 2 service/action endpoints** over the agent, the same way
-topics didn't before 233.5.1. PX4's companion path is topic-only, so this is not on
-the PX4 critical path — but ROS 2 service/action interop over XRCE needs it.
-- **Work items:**
-  - `service.c` — strip the header before `uxr_buffer_request` / `uxr_buffer_reply`
-    (requester + replier), and re-prepend it on the request/reply inbox writes (the two
-    `memcpy(slot->data, ub->iterator, len)` sites), mirroring the topic fix. Mind the
-    request/reply `SampleIdentity` framing — confirm where the header sits relative to it.
-  - Actions ride on services + topics (feedback/status), so they inherit the service fix
-    plus the already-landed topic fix; verify the goal/result/feedback/status round-trip
-    end-to-end.
-  - Add a ROS 2 interop test (real `rmw_fastrtps` service client/server via the agent,
-    mirroring `xrce_ros2_interop.rs`) as the acceptance — the nano-ros↔nano-ros tests
-    can't catch this class (both sides consistently wrong).
-- **Acceptance:** a nano-ros XRCE service server answers a real ROS 2 service client (and
-  vice-versa) over a `MicroXRCEAgent`.
+`subscriber.c`). The **service** path (`service.c`) still carries the executor's
+4-byte CDR encapsulation header on the XRCE wire. Self-consistent
+(nano-ros↔nano-ros services/actions pass: `test_xrce_service_request_response`,
+`test_xrce_action_fibonacci`) but will **not interop with real ROS 2
+service/action endpoints**, exactly as topics didn't before 233.5.1. Off the PX4
+critical path (PX4 is topic-only); needed for ROS 2 service/action interop.
+
+#### Design
+
+**Same fix as topics, applied to the 5 service wire-crossings.** The executor
+serializes request/reply with `CdrWriter::new_with_header`, so the 4-byte CDR LE
+header (`00 01 00 00`) is always at **payload byte 0**. The XRCE `SampleIdentity`
+(24 B, request↔reply correlation) is **orthogonal** — it rides in the XRCE
+REQUEST/REPLY submessage, a separate `request_callback` parameter from the
+payload `ub`, handled by micro-XRCE + the agent. So the header sits at byte 0 of
+the payload, with no framing in front of it; strip/prepend at byte 0, identical
+to the topic fix.
+
+- **Outbound — strip the 4-byte header (3 sites):**
+  - `xrce_service_send_request_raw` → before `uxr_buffer_request` (`service.c:314`)
+  - `xrce_service_call_raw` (blocking) → before `uxr_buffer_request` (`service.c:493`)
+  - `xrce_service_send_reply` → before `uxr_buffer_reply` (`service.c:277`)
+
+  Advance `data += 4`, `len -= 4` when `len >= XRCE_CDR_HEADER_LEN` (guarded, as
+  in `publish_raw`).
+
+- **Inbound — re-prepend the 4-byte header (2 sites):**
+  - `xrce_request_callback` inbox write (`service.c:53`)
+  - `xrce_reply_callback` inbox write (`service.c:85`)
+
+  Write the CDR-LE header into `slot->data[0..4]`, then the payload; set
+  `slot->len = len + 4`; bound-check `len + 4 <= XRCE_BUFFER_SIZE` (overflow path
+  unchanged). Mirrors `xrce_topic_callback`.
+
+- **Actions: no separate XRCE C path.** `nros-rmw-xrce` has no action code —
+  actions ride on services (send_goal / cancel_goal / get_result via `call_raw` +
+  service reply) and topics (feedback / status). The topic channels are already
+  fixed (233.5.1); the service channels inherit the 3 strip + 2 prepend sites
+  above. So fixing `service.c` makes actions interop too — verify the full
+  goal → feedback → status → result round-trip rather than patching anything new.
+
+- **Edge cases:**
+  - *Empty request/reply* (e.g. `Trigger`/`Empty`): the executor emits just the
+    4-byte header (no body). Strip → 0-byte XRCE payload; the agent re-adds the
+    DDS representation header for ROS 2. Inbound 0-byte → prepend → 4-byte header,
+    deserializes as empty. The `len >= 4` strip guard + `len + 4` prepend handle
+    this; confirm with an empty-request service test.
+  - *Endianness:* nano-ros always emits CDR-LE; the prepend writes the LE id. A
+    big-endian ROS 2 peer is out of scope (nano-ros is LE-only elsewhere too).
+
+- **Acceptance test:** a real `rmw_fastrtps` ROS 2 service client/server talks to a
+  nano-ros XRCE service server/client over a `MicroXRCEAgent` — both directions —
+  mirroring `packages/testing/nros-tests/tests/xrce_ros2_interop.rs` (gated on
+  `require_ros2_dds()`, diagnostic-style). The nano-ros↔nano-ros tests can't catch
+  this class (both sides consistently header-wrapped). Add an empty-request case.
+
+- **Risk:** low and contained — 5 localized edits mirroring a landed, tested
+  pattern; nano-ros↔nano-ros services/actions stay symmetric (regression-guarded
+  by the existing `xrce` group). The only unknown is whether the agent does any
+  extra request/reply payload framing beyond `SampleIdentity`; the topic result
+  (agent passes the bare CDR body) strongly suggests not, but the interop test is
+  the proof.
 
 ## Acceptance
 
