@@ -505,6 +505,137 @@ mod tests {
     }
 
     #[test]
+    fn test_c_borrowed_view_generation() {
+        // RFC-0033 `borrowed` (Phase 235): a `mode = "borrowed"` field emits a
+        // `{Msg}_View` (borrowed field as an `nros/borrowed.h` view, copied
+        // fields owned) + `{Msg}_deserialize_borrowed`, alongside the unchanged
+        // owned struct.
+        let msg = parse_message("uint32 width\nstring encoding\nuint8[] data\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "test_msgs/Image.data" = { cap = 921600, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_c_message_package("test_msgs", "Image", &msg, "h", &resolver).unwrap();
+        let h = &pkg.header;
+        let c = &pkg.source;
+
+        // Owned struct + the borrowed.h include + the view + the decl.
+        assert!(
+            h.contains("typedef struct test_msgs_msg_image {"),
+            "owned struct missing:\n{h}"
+        );
+        assert!(
+            h.contains("#include <nros/borrowed.h>"),
+            "borrowed include missing:\n{h}"
+        );
+        assert!(
+            h.contains("typedef struct test_msgs_msg_image_View {"),
+            "view missing:\n{h}"
+        );
+        assert!(
+            h.contains("nros_borrowed_bytes_t data;"),
+            "borrowed byte view missing:\n{h}"
+        );
+        // Copied field stays owned in the view.
+        assert!(
+            h.contains("uint32_t width;"),
+            "owned scalar missing from view:\n{h}"
+        );
+        assert!(
+            h.contains("int32_t test_msgs_msg_image_deserialize_borrowed("),
+            "borrowed deserialize decl missing:\n{h}"
+        );
+
+        // Source: the borrowed field is read with the zero-copy borrow helper.
+        assert!(
+            c.contains("nros_cdr_borrow_bytes(&ptr, end, origin, &out->data)"),
+            "borrow call missing:\n{c}"
+        );
+    }
+
+    #[test]
+    fn test_c_borrowed_string_and_float_views() {
+        // string → nros_borrowed_str_t / borrow_string; float32[] → the
+        // alignment-agnostic LE view / borrow_le_slice_f32.
+        let msg = parse_message("string label\nfloat32[] ranges\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "test_msgs/Scan.label" = { cap = 256, mode = "borrowed" }
+            "test_msgs/Scan.ranges" = { cap = 4096, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_c_message_package("test_msgs", "Scan", &msg, "h", &resolver).unwrap();
+        let h = &pkg.header;
+        let c = &pkg.source;
+        assert!(
+            h.contains("nros_borrowed_str_t label;"),
+            "borrowed str view missing:\n{h}"
+        );
+        assert!(
+            h.contains("nros_le_slice_view_f32_t ranges;"),
+            "LE f32 view missing:\n{h}"
+        );
+        assert!(
+            c.contains("nros_cdr_borrow_string(&ptr, end, origin, &out->label)"),
+            "{c}"
+        );
+        assert!(
+            c.contains("nros_cdr_borrow_le_slice_f32(&ptr, end, origin, &out->ranges)"),
+            "{c}"
+        );
+    }
+
+    #[test]
+    fn test_c_borrowed_rejects_string_sequence() {
+        // Sequence-of-string has no flat byte span → rejected (same as Rust).
+        let msg = parse_message("string[] names\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "test_msgs/Names.names" = { cap = 16, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let err = generate_c_message_package("test_msgs", "Names", &msg, "h", &resolver);
+        assert!(
+            err.is_err(),
+            "expected borrowed string-sequence to be rejected"
+        );
+    }
+
+    #[test]
+    fn test_c_no_borrowed_omits_view() {
+        // Without any borrowed field, no view / include / deserialize_borrowed.
+        let msg = parse_message("uint32 x\n").unwrap();
+        let pkg = generate_c_message_package(
+            "test_msgs",
+            "Plain",
+            &msg,
+            "h",
+            &crate::config::CapacityResolver::empty(),
+        )
+        .unwrap();
+        assert!(
+            !pkg.header.contains("_View {"),
+            "unexpected view:\n{}",
+            pkg.header
+        );
+        assert!(
+            !pkg.header.contains("nros/borrowed.h"),
+            "unexpected include"
+        );
+        assert!(
+            !pkg.source.contains("_deserialize_borrowed"),
+            "unexpected borrowed deser"
+        );
+    }
+
+    #[test]
     fn test_c_message_with_string() {
         let msg = parse_message("string name\n").unwrap();
         let type_hash = "def456";
@@ -571,7 +702,9 @@ mod tests {
     }
 
     #[test]
-    fn test_c_borrowed_mode_errors() {
+    fn test_c_borrowed_mode_supported() {
+        // Phase 235 / issue 0021: C borrowed is now implemented (was rejected
+        // in 229.5). A `uint8[]` borrowed field emits a byte-sequence view.
         let msg = parse_message("uint8[] data\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
@@ -580,12 +713,19 @@ mod tests {
             "#,
         )
         .unwrap();
-        let err = match generate_c_message_package("my_msgs", "Blob", &msg, "h", &resolver) {
-            Ok(_) => panic!("expected unsupported-mode error"),
-            Err(e) => e.to_string(),
-        };
-        assert!(err.contains("borrowed"), "{err}");
-        assert!(err.contains("not yet supported"), "{err}");
+        let pkg = generate_c_message_package("my_msgs", "Blob", &msg, "h", &resolver)
+            .expect("C borrowed should be supported");
+        assert!(
+            pkg.header.contains("nros_borrowed_bytes_t data;"),
+            "{}",
+            pkg.header
+        );
+        assert!(
+            pkg.source
+                .contains("nros_cdr_borrow_bytes(&ptr, end, origin, &out->data)"),
+            "{}",
+            pkg.source
+        );
     }
 
     #[test]

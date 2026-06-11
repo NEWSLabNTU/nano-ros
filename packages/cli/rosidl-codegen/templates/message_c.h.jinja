@@ -11,6 +11,9 @@
 #include <stddef.h>
 
 #include <nros/types.h>
+{%- if has_borrowed %}
+#include <nros/borrowed.h>
+{%- endif %}
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +37,23 @@ typedef struct {{ struct_name }} {
     uint8_t _dummy; // Empty struct placeholder
 {%- endif %}
 } {{ struct_name }};
+{%- if has_borrowed %}
+
+/// Borrowed (zero-copy) view of {{ message_name }} — RFC-0033 `borrowed` mode.
+/// `mode = "borrowed"` fields point directly into the CDR receive buffer (set
+/// by {{ struct_name }}_deserialize_borrowed); all other fields are copied as in
+/// the owned struct. The borrowed pointers are valid ONLY while the source
+/// buffer lives (e.g. the subscription callback) — copy out anything retained.
+typedef struct {{ struct_name }}_View {
+{%- for field in fields %}
+{%- if field.is_borrowed %}
+    {{ field.borrowed_c_type }} {{ field.name }};
+{%- else %}
+    {{ field.c_type }} {{ field.name }}{{ field.array_suffix }};
+{%- endif %}
+{%- endfor %}
+} {{ struct_name }}_View;
+{%- endif %}
 
 /// Get the ROS type name for {{ message_name }}
 static inline const char* {{ struct_name }}_get_type_name(void) {
@@ -64,6 +84,15 @@ int32_t {{ struct_name }}_serialize(const {{ struct_name }}* msg, uint8_t* buffe
 /// 4-byte CDR encapsulation header followed by the fields).
 /// Returns 0 on success, -1 on error
 int32_t {{ struct_name }}_deserialize({{ struct_name }}* msg, const uint8_t* buffer, size_t buffer_size);
+{%- if has_borrowed %}
+
+/// Deserialize a {{ message_name }} into a borrowed view (RFC-0033 `borrowed`):
+/// `mode = "borrowed"` fields are set to point into `buffer` (zero-copy, no
+/// allocation); other fields are copied. `out` is fully overwritten. The
+/// borrowed pointers alias `buffer` and are valid only while it lives.
+/// Returns 0 on success, -1 on error.
+int32_t {{ struct_name }}_deserialize_borrowed({{ struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
+{%- endif %}
 
 /// Serialize a {{ message_name }} inline into an already-open CDR stream,
 /// without emitting its own encapsulation header. Used by parent messages,

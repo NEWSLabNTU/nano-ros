@@ -113,6 +113,71 @@ fn nros_borrowed_view_for_field(
     }
 }
 
+/// Resolve the borrowed-view **C** field type + the `nros/borrowed.h` reader
+/// function for a `borrowed`-mode field (RFC-0033, Phase 235, issue 0021).
+///
+/// Returns `(borrowed_c_type, borrow_fn)` — both `nros/borrowed.h` symbols. All
+/// three readers share the signature
+/// `int32_t fn(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin, T* out)`,
+/// so the C template calls them uniformly:
+/// - **strings** → `nros_borrowed_str_t` / `nros_cdr_borrow_string`,
+/// - **single-byte sequences** (`uint8[]`/`byte[]`/`int8[]`/`bool[]`) →
+///   `nros_borrowed_bytes_t` / `nros_cdr_borrow_bytes`,
+/// - **multi-byte numeric sequences** (`float32[]`, `uint16[]`, …) → the
+///   alignment-agnostic `nros_le_slice_view_<t>_t` / `nros_cdr_borrow_le_slice_<t>`.
+///
+/// Sequences of strings or nested messages are rejected (no fixed-width byte
+/// span) — same policy as the Rust generator.
+fn c_borrowed_view_for_field(
+    field_type: &FieldType,
+    package_name: &str,
+    message_name: &str,
+    field_name: &str,
+) -> Result<(String, String), GeneratorError> {
+    let unsupported = |elem: &str| GeneratorError::UnsupportedBorrowedElement {
+        package: package_name.to_string(),
+        message: message_name.to_string(),
+        field: field_name.to_string(),
+        element: elem.to_string(),
+    };
+    let le_view = |suffix: &str| {
+        (
+            format!("nros_le_slice_view_{suffix}_t"),
+            format!("nros_cdr_borrow_le_slice_{suffix}"),
+        )
+    };
+    let bytes = || {
+        (
+            "nros_borrowed_bytes_t".to_string(),
+            "nros_cdr_borrow_bytes".to_string(),
+        )
+    };
+    match field_type {
+        FieldType::String | FieldType::WString => Ok((
+            "nros_borrowed_str_t".to_string(),
+            "nros_cdr_borrow_string".to_string(),
+        )),
+        FieldType::Sequence { element_type } => match element_type.as_ref() {
+            FieldType::Primitive(
+                PrimitiveType::UInt8
+                | PrimitiveType::Byte
+                | PrimitiveType::Int8
+                | PrimitiveType::Bool,
+            ) => Ok(bytes()),
+            FieldType::Primitive(PrimitiveType::UInt16) => Ok(le_view("u16")),
+            FieldType::Primitive(PrimitiveType::Int16) => Ok(le_view("i16")),
+            FieldType::Primitive(PrimitiveType::UInt32) => Ok(le_view("u32")),
+            FieldType::Primitive(PrimitiveType::Int32) => Ok(le_view("i32")),
+            FieldType::Primitive(PrimitiveType::UInt64) => Ok(le_view("u64")),
+            FieldType::Primitive(PrimitiveType::Int64) => Ok(le_view("i64")),
+            FieldType::Primitive(PrimitiveType::Float32) => Ok(le_view("f32")),
+            FieldType::Primitive(PrimitiveType::Float64) => Ok(le_view("f64")),
+            other => Err(unsupported(&format!("{other:?}"))),
+        },
+        other => Err(unsupported(&format!("{other:?}"))),
+    }
+}
+
 /// Determine the exhaustive FieldKind enum variant for a given ROS 2 field type
 /// This function provides compile-time guarantees that all field type combinations are handled
 pub(crate) fn determine_field_kind(field_type: &FieldType) -> FieldKind {
@@ -367,6 +432,9 @@ pub(super) fn build_c_field(
     };
     // (c_type, array_suffix, is_heap, resolved owned sequence capacity).
     let mut is_heap = false;
+    let mut is_borrowed = false;
+    let mut borrowed_c_type = String::new();
+    let mut borrowed_read_fn = String::new();
     let mut owned_seq_cap: Option<usize> = None;
     let (c_type, array_suffix) = if let Some(kind) = cap_kind {
         let package = current_package.unwrap_or("");
@@ -390,7 +458,23 @@ pub(super) fn build_c_field(
                 }
                 None => return Err(unsupported("heap")),
             },
-            StorageMode::Borrowed => return Err(unsupported("borrowed")),
+            // RFC-0033 `borrowed` (Phase 235, issue 0021): the owned `{Msg}`
+            // struct keeps its resolved-capacity container for the publish path;
+            // the emitted `{Msg}_View` borrows this field zero-copy (see
+            // `borrowed_c_type` / `borrowed_read_fn`).
+            StorageMode::Borrowed => {
+                is_borrowed = true;
+                let (bt, bfn) = c_borrowed_view_for_field(field_type, package, message_name, name)?;
+                borrowed_c_type = bt;
+                borrowed_read_fn = bfn;
+                if matches!(field_type, FieldType::Sequence { .. }) {
+                    owned_seq_cap = Some(storage.cap);
+                }
+                (
+                    c_type_for_field_with_capacity(field_type, current_package, storage.cap),
+                    c_array_suffix_for_field_with_capacity(field_type, storage.cap),
+                )
+            }
         }
     } else {
         (
@@ -503,6 +587,9 @@ pub(super) fn build_c_field(
         is_primitive_element,
         is_string_element,
         is_heap,
+        is_borrowed,
+        borrowed_c_type,
+        borrowed_read_fn,
     })
 }
 

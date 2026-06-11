@@ -395,6 +395,7 @@ pub fn generate_c_message_package(
         .collect();
 
     let has_fields = !fields.is_empty();
+    let has_borrowed = fields.iter().any(|f| f.is_borrowed);
 
     // Generate header
     let header_template = MessageCHeaderTemplate {
@@ -409,6 +410,7 @@ pub fn generate_c_message_package(
         dependencies,
         type_includes,
         has_fields,
+        has_borrowed,
     };
     let header = header_template.render()?;
 
@@ -421,6 +423,7 @@ pub fn generate_c_message_package(
         struct_name,
         fields,
         has_fields,
+        has_borrowed,
     };
     let source = source_template.render()?;
 

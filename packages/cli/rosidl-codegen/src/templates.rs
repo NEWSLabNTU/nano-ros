@@ -390,6 +390,20 @@ pub struct CField {
     /// pattern) rather than an inline fixed-capacity buffer. The deserialize
     /// codegen mallocs; `<struct>_fini` frees.
     pub is_heap: bool,
+    /// RFC-0033: `mode = "borrowed"` (Phase 235, issue 0021). The owned
+    /// `{Msg}` struct keeps a fixed-capacity container for the publish path;
+    /// the additionally-emitted `{Msg}_View` borrows this field zero-copy via
+    /// [`borrowed_c_type`](Self::borrowed_c_type) /
+    /// [`borrowed_read_fn`](Self::borrowed_read_fn).
+    pub is_borrowed: bool,
+    /// Borrowed-view C type from `nros/borrowed.h` (e.g. `nros_borrowed_str_t`,
+    /// `nros_borrowed_bytes_t`, `nros_le_slice_view_f32_t`). Empty unless
+    /// [`is_borrowed`](Self::is_borrowed).
+    pub borrowed_c_type: String,
+    /// `nros/borrowed.h` reader for the borrowed view (e.g.
+    /// `nros_cdr_borrow_string`); all share one signature. Empty unless
+    /// [`is_borrowed`](Self::is_borrowed).
+    pub borrowed_read_fn: String,
 }
 
 /// Constant for C code generation
@@ -413,6 +427,10 @@ pub struct MessageCHeaderTemplate<'a> {
     pub dependencies: Vec<String>,
     pub type_includes: Vec<String>,
     pub has_fields: bool,
+    /// RFC-0033 borrowed (Phase 235): any field is `mode = "borrowed"`, so the
+    /// `{Msg}_View` + `{Msg}_deserialize_borrowed` + `<nros/borrowed.h>` include
+    /// are emitted.
+    pub has_borrowed: bool,
 }
 
 #[derive(Template)]
@@ -425,6 +443,8 @@ pub struct MessageCSourceTemplate<'a> {
     pub struct_name: String,
     pub fields: Vec<CField>,
     pub has_fields: bool,
+    /// See [`MessageCHeaderTemplate::has_borrowed`].
+    pub has_borrowed: bool,
 }
 
 #[derive(Template)]

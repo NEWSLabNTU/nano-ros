@@ -67,7 +67,10 @@ len)`. The borrowed view is a typed accessor over that same buffer.
 
 ### Increment 1 — C borrowed (unblocked)
 
-#### 235.1 — C borrowed field mapping  ⬜
+**Status (2026-06-11).** 235.1–235.3 done; 235.4 golden tests done, runtime
+C-compile E2E pending. Codegen tests green (82 lib tests).
+
+#### 235.1 — C borrowed field mapping  ✅
 Add `c_borrowed_view_for_field` (parallel to `nros_borrowed_view_for_field`) and
 extend `CField` (`generator/common.rs:347-507`) with `is_borrowed`,
 `borrowed_c_type`, `borrowed_read_expr`. Replace `StorageMode::Borrowed =>
@@ -79,21 +82,21 @@ Sequence-of-string / sequence-of-nested stay rejected (`UnsupportedBorrowedEleme
 `common.rs:44,72`) — same as Rust.
 - **Files:** `packages/cli/rosidl-codegen/src/generator/common.rs`, `templates.rs`.
 
-#### 235.2 — C unaligned numeric decoder  ⬜
+#### 235.2 — C unaligned numeric decoder  ✅
 Add a `LeSliceView` equivalent to `nros-c/include/nros/cdr.h`: per-numeric-type
 `{ const uint8_t* bytes; size_t count; }` view + `..._get(view, i)` that `memcpy`s
 `sizeof(T)` bytes and little-endian-decodes (no alignment assumption). Generated for
 the element types a borrowed numeric field can use (`u16/i16/u32/i32/u64/i64/f32/f64`).
 - **Files:** `packages/core/nros-c/include/nros/cdr.h` (+ `cdr.c` if non-inline).
 
-#### 235.3 — C borrowed view type + deserialize  ⬜
+#### 235.3 — C borrowed view type + deserialize  ✅
 Emit `{Msg}_View` (borrowed fields as the 235.1 structs, copied fields owned) and
 `int32_t {Msg}_deserialize_borrowed({Msg}_View* out, const uint8_t* buf, size_t len)`
 that walks CDR, bounds-checks against `end`, and **sets pointers into `buf`** for
 borrowed fields (copies owned fields with today's logic). No `malloc`, no `_fini`.
 - **Files:** `templates/message_c.h.jinja`, `templates/message_c.c.jinja`.
 
-#### 235.4 — C tests + example  ⬜
+#### 235.4 — C tests + example  🟡 (golden ✅; runtime C-compile E2E ⬜)
 Golden codegen tests (byte-seq, string, numeric-seq borrow; seq-of-string → error)
 in `generator/mod.rs`; an E2E that owned-publishes → borrowed-subscribes in C and
 asserts the view pointers alias the callback buffer (no copy, no alloc).

@@ -244,3 +244,107 @@ int32_t {{ struct_name }}_deserialize({{ struct_name }}* msg, const uint8_t* buf
     if ({{ struct_name }}_deserialize_inline(msg, &ptr, end, origin) < 0) return -1;
     return 0;
 }
+{%- if has_borrowed %}
+
+// =============================================================================
+// Borrowed deserialize (RFC-0033 `borrowed`, Phase 235) — `mode = "borrowed"`
+// fields are pointed into `buffer` (zero-copy); other fields are copied exactly
+// as the owned deserializer does. `out` is zeroed first so unset pointers are
+// NULL. The borrowed views alias `buffer` and are valid only while it lives.
+// =============================================================================
+int32_t {{ struct_name }}_deserialize_borrowed({{ struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size) {
+    if (out == NULL || buffer == NULL) return -1;
+
+    const uint8_t* ptr = buffer;
+    const uint8_t* end = buffer + buffer_size;
+
+    // Skip CDR header
+    if (ptr + 4 > end) return -1;
+    ptr += 4;
+    const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    (void)origin;
+
+    memset(out, 0, sizeof(*out));
+{%- if has_fields %}
+{%- for field in fields %}
+{%- if field.is_borrowed %}
+    if ({{ field.borrowed_read_fn }}(&ptr, end, origin, &out->{{ field.name }}) < 0) return -1;
+{%- else if field.is_primitive %}
+    if (nros_cdr_{{ field.cdr_read_method }}(&ptr, end, origin, &out->{{ field.name }}) < 0) return -1;
+{%- else if field.is_string %}
+{%- if field.is_heap %}
+    {
+        uint32_t slen;
+        if (nros_cdr_read_u32(&ptr, end, origin, &slen) < 0) return -1;
+        if ((size_t)(end - ptr) < slen) return -1;
+        if (slen > 0) {
+            out->{{ field.name }}.data = nros_platform_malloc(slen);
+            if (out->{{ field.name }}.data == NULL) return -1;
+            memcpy(out->{{ field.name }}.data, ptr, slen);
+            out->{{ field.name }}.data[slen - 1] = '\0';
+            out->{{ field.name }}.size = slen - 1;
+            out->{{ field.name }}.capacity = slen;
+        }
+        ptr += slen;
+    }
+{%- else %}
+    if (nros_cdr_read_string(&ptr, end, origin, out->{{ field.name }}, sizeof(out->{{ field.name }})) < 0) return -1;
+{%- endif %}
+{%- else if field.is_array %}
+    for (size_t i = 0; i < {{ field.array_size }}; ++i) {
+{%- if field.is_primitive_element %}
+        if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &out->{{ field.name }}[i]) < 0) return -1;
+{%- else if field.is_string_element %}
+        if (nros_cdr_read_string(&ptr, end, origin, out->{{ field.name }}[i], sizeof(out->{{ field.name }}[i])) < 0) return -1;
+{%- else %}
+        if ({{ field.element_struct_name }}_deserialize_inline(&out->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
+{%- endif %}
+    }
+{%- else if field.is_sequence %}
+    {
+        uint32_t len;
+        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+{%- if field.is_heap %}
+        if (len > 0) {
+            out->{{ field.name }}.data = nros_platform_malloc((size_t)len * sizeof(*out->{{ field.name }}.data));
+            if (out->{{ field.name }}.data == NULL) return -1;
+        }
+        out->{{ field.name }}.size = len;
+        out->{{ field.name }}.capacity = len;
+        for (size_t i = 0; i < len; ++i) {
+{%- if field.is_string_element %}
+            if (nros_cdr_read_string(&ptr, end, origin, out->{{ field.name }}.data[i], sizeof(*out->{{ field.name }}.data)) < 0) {
+{%- else if field.is_primitive_element %}
+            if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &out->{{ field.name }}.data[i]) < 0) {
+{%- else %}
+            if ({{ field.element_struct_name }}_deserialize_inline(&out->{{ field.name }}.data[i], &ptr, end, origin) < 0) {
+{%- endif %}
+                nros_platform_free(out->{{ field.name }}.data);
+                out->{{ field.name }}.data = NULL;
+                out->{{ field.name }}.size = 0;
+                out->{{ field.name }}.capacity = 0;
+                return -1;
+            }
+        }
+{%- else %}
+        out->{{ field.name }}.size = len;
+        if (len > {{ field.sequence_capacity }}) return -1;
+        for (size_t i = 0; i < len; ++i) {
+{%- if field.is_primitive_element %}
+            if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &out->{{ field.name }}.data[i]) < 0) return -1;
+{%- else if field.is_string_element %}
+            if (nros_cdr_read_string(&ptr, end, origin, out->{{ field.name }}.data[i], sizeof(out->{{ field.name }}.data[i])) < 0) return -1;
+{%- else %}
+            if ({{ field.element_struct_name }}_deserialize_inline(&out->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
+{%- endif %}
+        }
+{%- endif %}
+    }
+{%- else %}
+    if ({{ field.nested_struct_name }}_deserialize_inline(&out->{{ field.name }}, &ptr, end, origin) < 0) return -1;
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+    return 0;
+}
+{%- endif %}
