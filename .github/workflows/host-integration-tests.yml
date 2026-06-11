@@ -222,6 +222,25 @@ jobs:
           build_quiet build-workspace-fixtures just native build-workspace-fixtures
           build_quiet build-fixture-extras     just native build-fixture-extras
 
+      # Issue #29 — the C/C++ CycloneDDS extras build is the dominant disk
+      # consumer: it rebuilds nros-cpp + Cyclone into a SEPARATE
+      # `build-cyclonedds/` tree PER example (native/c/{talker,listener},
+      # native/cpp/{talker,listener}, …), and even with LTO off that
+      # duplication overruns the 146 GB overlay mid-build — leaving no room for
+      # test-integration's own compile (the failure was non-deterministic: the
+      # lane sat right at the disk limit). Those extras are best-effort: their
+      # C/C++/Cyclone tests `skip!` when the binary is absent. So drop the extras
+      # build trees (+ re-derivable cargo caches + the suppressed build logs)
+      # here to give test-integration headroom. The rust per-example fixtures
+      # (`target-fixtures/`) and workspace fixtures the bulk of tests need are
+      # NOT touched.
+      - name: Reclaim extras build trees before test (best-effort fixtures)
+        run: |
+          echo "before:"; df -h / | tail -1
+          find examples -type d -name 'build-cyclonedds' -prune -exec rm -rf {} + 2>/dev/null || true
+          rm -rf "$HOME/.cargo/registry/src" "$HOME/.cargo/git/checkouts" build/ci-logs 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
       - name: just test-integration
         # Source the AMENT prefix so `nros generate-rust` (used by some
         # Phase 212 fixtures' build.rs steps) finds the ROS 2 Humble

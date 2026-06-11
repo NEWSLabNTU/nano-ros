@@ -46,6 +46,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| —  | _(no open issues)_                                                    |             |        |      |
+| 29 | host-integration native fixture build exhausts runner disk (ENOSPC)   | bug         | build  | [0029-host-integration-fixture-build-disk-exhaustion.md](0029-host-integration-fixture-build-disk-exhaustion.md) |
 
 Resolved issues live in [`archived/`](archived/).

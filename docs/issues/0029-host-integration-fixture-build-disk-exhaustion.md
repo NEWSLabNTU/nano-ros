@@ -1,7 +1,7 @@
 ---
 id: 29
 title: host-integration native fixture build exhausts runner disk (ENOSPC)
-status: resolved  # host-integration lane green end-to-end (run 27345714715)
+status: open  # greened once (27345714715) then re-failed (27350995543); disk still marginal — reclaim step added
 type: bug
 area: build
 related: [issue-0025, issue-0022]
@@ -68,7 +68,31 @@ keep-full-build path).
 step + `debuginfo=0` — both targeted the wrong filesystem and did not stop the
 ENOSPC; they were replaced by the log-redirection fix above.)
 
+**Still marginal after LTO-off — the C/C++ extras duplication (2026-06).** With
+LTO off the lane greened ONCE (run 27345714715: `build-fixture-rust ok (49
+lines)`, `build-workspace-fixtures ok (1337 lines)`, extras failed best-effort,
+test-integration "treating as pass") — but the very next run on the identical
+fix (27350995543) re-hit ENOSPC: `error: failed to build archive … libnros_cpp…
+No space left on device (os error 28)` during `build-fixture-extras`, which then
+left no room for test-integration's own compile → hard fail. The lane was
+sitting right at the disk limit, so the outcome was a coin-flip.
+
+Root of the residual pressure: `build-fixture-extras` rebuilds `nros-cpp` +
+CycloneDDS into a **separate `build-cyclonedds/` tree per example**
+(`examples/native/c/{talker,listener}`, `native/cpp/{talker,listener}`, …) — full
+duplication of the dep graph, several GB each, that overruns the 146 GB overlay
+even without LTO.
+
+**Fix (2026-06) — reclaim the extras trees before the test compile.** A new step
+between the build and `test-integration` deletes the `build-cyclonedds/` trees
+(+ re-derivable cargo caches + the suppressed build logs). Those extras are
+best-effort — their C/C++/Cyclone tests `skip!` when the binary is absent (and
+extras was failing on ENOSPC anyway, so no usable binaries were produced) — so
+dropping the trees changes no test outcome while freeing tens of GB for
+test-integration. The rust per-example fixtures (`target-fixtures/`) + workspace
+fixtures the bulk of tests need are untouched.
+
 Confirmation is the host-integration lane greening to test-integration on a run
 that survives to completion (verified on the isolated `ci/host-int-verify`
 branch, immune to the main-branch push churn that cancels the long build step).
-Archive once green.
+Archive once it greens *consistently* (not the one-off coin-flip green above).
