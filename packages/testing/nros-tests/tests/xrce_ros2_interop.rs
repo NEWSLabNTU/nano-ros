@@ -96,6 +96,7 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
     eprintln!("Starting XRCE talker...");
     let mut talker_cmd = Command::new(&xrce_talker_binary);
     talker_cmd
+        .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string());
     let mut talker =
@@ -157,6 +158,7 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
     eprintln!("Starting XRCE listener...");
     let mut listener_cmd = Command::new(&xrce_listener_binary);
     listener_cmd
+        .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_MSG_COUNT", "3");
@@ -244,6 +246,7 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     eprintln!("Starting XRCE service server...");
     let mut server_cmd = Command::new(&xrce_service_server_binary);
     server_cmd
+        .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_TIMEOUT", "30");
@@ -288,21 +291,20 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     let has_sum = ros2_output.contains("sum");
     let has_correct_value = ros2_output.contains("8");
 
-    if has_sum && has_correct_value {
-        eprintln!("[PASS] XRCE service server ↔ ROS 2 DDS client: sum=8 verified");
-    } else if has_sum {
-        eprintln!(
-            "[PASS] XRCE service server ↔ ROS 2 DDS client: service responded (sum field present)"
-        );
-    } else {
-        eprintln!("[INFO] ROS 2 DDS service call did not receive expected response");
-        eprintln!("  This may indicate DDS service naming or version incompatibility");
-        if ros2_output.contains("waiting for service") {
-            eprintln!("  Service was not discovered via DDS — check naming conventions");
-        }
-    }
-
     drop(agent);
+
+    // Phase 233.6 — this direction (real ROS 2 service client ↔ nano-ros XRCE
+    // service server) is the acceptance for the XRCE-DDS service CDR-header
+    // interop fix. Hard-assert (unlike the other diagnostic interop tests): a
+    // ROS 2 `rmw_fastrtps` client must get the correct `sum=8` reply. Before the
+    // header strip/prepend in `service.c` the request deserialized misaligned
+    // and the server never replied with a valid value.
+    assert!(
+        has_sum && has_correct_value,
+        "ROS 2 service client did not get sum=8 from the nano-ros XRCE service \
+         server — XRCE-DDS service interop regression (233.6). Output:\n{ros2_output}"
+    );
+    eprintln!("[PASS] XRCE service server ↔ ROS 2 DDS client: sum=8 verified");
 }
 
 // =============================================================================
@@ -331,6 +333,7 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
 
     let mut server_cmd = Command::new(&xrce_action_server_binary);
     server_cmd
+        .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_TIMEOUT", "30");
@@ -403,6 +406,7 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
 
     let mut client_cmd = Command::new(&xrce_action_client_binary);
     client_cmd
+        .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_TIMEOUT", "30");
@@ -457,6 +461,7 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
 
     let mut client_cmd = Command::new(&xrce_service_client_binary);
     client_cmd
+        .env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_REQUEST_COUNT", "3")

@@ -130,7 +130,35 @@ Validate Track B against **actual PX4 firmware**, not the stub.
      header-stripped body into the reserved slot. Validated by
      `nros-tests::xrce::test_xrce_large_message_publish` (passes).
 
-### 233.6 — Service / action XRCE-DDS interop  ⬜ (planned)
+### 233.6 — Service / action XRCE-DDS interop  ◐ (wave 1 landed)
+**Wave 1 (DONE).** The CDR-header strip/prepend now covers `service.c` — the 5
+sites below (3 outbound strip + 2 inbound prepend). **Validated against real
+ROS 2:** `nros-tests::xrce_ros2_interop::test_xrce_service_ros2_client` is now a
+**hard assert** — a real `rmw_fastrtps` ROS 2 service client gets `sum=8` from a
+nano-ros XRCE service server over a `MicroXRCEAgent`. (Also fixed the interop
+tests' env: they set `XRCE_AGENT_ADDR` but the examples read `NROS_LOCATOR`, so
+the nodes had been connecting to the *default* agent — the whole interop suite
+was a no-op. `XRCE → ROS 2` pub/sub now passes too.) nano-ros↔nano-ros services
++ actions stay symmetric (the `xrce` group still passes).
+
+**Wave 2 (REMAINING) — reverse-direction matching.** Three interop directions
+still fail, and it is **not** the CDR header (the forward service proves the
+header logic): a **nano-ros XRCE *requester/reader* never matches a ROS 2
+*replier/writer*** across the agent.
+- `test_ros2_service_xrce_client` — nano-ros service *client* → ROS 2 server: 3×
+  `Service call failed: Timeout` (never matched in 15 s).
+- `test_ros2_action_xrce_client` — same shape (actions ride on services).
+- `test_ros2_to_xrce_pubsub` — ROS 2 *reliable* publisher → nano-ros listener: 0
+  received (yet a real PX4 *best-effort* publisher → nano-ros works, 233.5 — so
+  this is specific to the ROS 2 reliable writer ↔ nano-ros reliable reader path,
+  or nano-ros-side discovery not waiting for a match before sending/reading).
+- Forward directions (nano-ros server/listener ← ROS 2 client/talker) work, so
+  the asymmetry points at the nano-ros *requester / inbound-reliable* path or its
+  discovery wait — likely the service client `call_raw` sending before the
+  requester↔replier match is established. Investigate as wave 2; out of the PX4
+  critical path.
+
+#### Design (wave 1, landed)
 The CDR-header strip/prepend (233.5.1) covers **topics** (`publisher.c` /
 `subscriber.c`). The **service** path (`service.c`) still carries the executor's
 4-byte CDR encapsulation header on the XRCE wire. Self-consistent
