@@ -106,7 +106,9 @@ asserts the view pointers alias the callback buffer (no copy, no alloc).
 
 ### Increment 2 — C++ borrowed (FFI-offset seam)
 
-**Status (2026-06-11).** 235.5–235.7 done; 235.8 golden tests done, runtime C++-compile E2E pending. Codegen tests green (86 lib tests). The view is built from a Rust FFI that fills a layout-compatible `{Msg}ViewRepr` (borrowed fields = `nros_cpp_borrow_t {*const u8, usize}` via the existing `read_slice_u8`/`read_string`/`read_le_slice` borrow methods); C++ `{Msg}View` types them as `Span`/`StringView`/`LeSpan`.
+**Status (2026-06-11).** 235.5–235.7 done; 235.8 golden tests done, runtime E2E (`tests/borrowed_cpp_e2e.sh`: serialize owned → real Rust
+`nros_cpp_deserialize_*_borrowed` → assert Span/StringView/LeSpan alias the buffer)
+passes. Codegen tests green (86 lib tests). The view is built from a Rust FFI that fills a layout-compatible `{Msg}ViewRepr` (borrowed fields = `nros_cpp_borrow_t {*const u8, usize}` via the existing `read_slice_u8`/`read_string`/`read_le_slice` borrow methods); C++ `{Msg}View` types them as `Span`/`StringView`/`LeSpan`.
 
 #### 235.5 — Rust FFI borrowed-offsets seam  ✅
 Extend the C++ FFI (`templates/message_cpp_ffi.rs.jinja`, `build_cpp_ffi_field`
@@ -130,7 +132,7 @@ copied fields owned) + a `deserialize_borrowed(view, buf, len)` that calls the 2
 FFI to get offsets, then sets the spans into `buf` (C++ wraps Rust).
 - **Files:** `generator/common.rs`, `templates/message_cpp.hpp.jinja`.
 
-#### 235.8 — C++ tests + example  🟡 (golden ✅; runtime C++-compile E2E ⬜)
+#### 235.8 — C++ tests + example  ✅
 Golden tests + an E2E mirroring 235.4 in C++ (spans alias the callback buffer).
 - **Files:** `generator/mod.rs`; a C++ example/fixture.
 
