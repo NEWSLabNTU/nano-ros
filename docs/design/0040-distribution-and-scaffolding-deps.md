@@ -144,9 +144,14 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
   (computed path dep) dropped as brittle + doesn't cover msgs. Remaining
   sub-questions below are minor and keep the RFC `Draft` until the 196.7
   implementation lands.
-- **D-Q2 — version pinning without crates.io.** If git deps (option 1) are
-  offered, what pins the version — a release tag, a branch, or a rev? Tie to the
-  release cadence (is there a tagged source release, or is `main` the contract?).
+- **D-Q2 — version pinning without crates.io. RESOLVED 2026-06 (defer-to-impl).**
+  Scoped entirely to option 1 (`--deps git`); the canonical option-2 path needs no
+  pin — the user's checkout *is* the version. When `--deps git` is implemented it
+  pins the latest **`nros-v*` source-release tag** (reproducible + mirrors the
+  crate version; the convention already exists — today `nros-v0.5.0` = the 0.5.0
+  crates), falling back to a rev if no tag is present. `main` is rejected
+  (non-reproducible). Nothing depends on this until `--deps git` lands, so the
+  formal lock travels with that implementation.
 - **D-Q3 — board + generated-msg crate coords. RESOLVED 2026-06.** `nros ws sync`
   now patches `nros-board-*` deps too: they resolve to the uniform
   `packages/boards/<name>` path (no static table entry — any current/future board
@@ -154,12 +159,24 @@ nros-cli` nor a contradictory `--git` + `--path`. Exact string tracked by 196.7.
   Verified: a `nros new … --platform freertos` scaffold's `nros` **and**
   `nros-board-mps2-an385-freertos` are both path-patched after sync, and the
   project resolves under plain `cargo`.
-- **D-Q4 — does `nros new` itself run/scaffold the sync?** If option 2 is chosen,
-  should `nros new` print the exact `eval "$(nros ws env)" && nros ws sync`
-  follow-up, or attempt it when `NROS_REPO_DIR` is already set?
+- **D-Q4 — does `nros new` itself run/scaffold the sync? RESOLVED 2026-06 →
+  scaffold-only + opt-in `--sync`.** `nros new` stays fast, deterministic,
+  env-light file emission: it **prints** the source-release next-steps
+  (`NROS_REPO_DIR` → `eval "$(nros ws env)"` → `nros ws sync` → `cargo build`),
+  already implemented (196.7). It does **not** auto-run sync — sync codegens
+  (needs ROS sourced + `NROS_REPO_DIR`) and would fail/hang at scaffold time when
+  the env isn't ready; conditional auto-sync (run-iff-`NROS_REPO_DIR`-set) is
+  rejected as surprising. A future explicit `nros new --sync` flag may run the
+  sync in one step (iff ROS + `NROS_REPO_DIR` present; clear error otherwise) —
+  opt-in, no implicit behaviour.
 
 ## Changelog
 
+- 2026-06 — **D-Q2 + D-Q4 resolved** (the last two): D-Q2 defer-to-impl, git deps
+  pin the `nros-v*` tag; D-Q4 scaffold-only + opt-in `--sync`. D-Q3 resolved
+  earlier (sync patches `nros-board-*`). All four open questions now resolved;
+  ready to flip `Stable` once the scaffold-journey CI lane is green + the
+  ARCHITECTURE.md distribution section is synced.
 - 2026-06 — **D-Q1 resolved**: option 2 (`nros ws sync` patch-block) canonical,
   option 1 (`--deps git`) documented alternative; option 3 dropped. D3
   concretized with the scaffolded manifest + first-build steps.
