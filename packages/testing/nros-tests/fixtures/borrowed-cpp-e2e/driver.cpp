@@ -9,7 +9,9 @@
 #include "e2e_msgs_msg_borrowed.hpp"
 
 // The (unused-here) publish FFI fn references this; provide a dummy at link.
-extern "C" int nros_cpp_publish_raw(void*, const unsigned char*, unsigned long) { return 0; }
+extern "C" int nros_cpp_publish_raw(void*, const unsigned char*, unsigned long) {
+    return 0;
+}
 
 using e2e_msgs::msg::Borrowed;
 using e2e_msgs::msg::BorrowedView;

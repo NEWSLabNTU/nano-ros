@@ -521,8 +521,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        let pkg =
-            generate_c_message_package("e2e_msgs", "Borrowed", &msg, "h", &resolver).unwrap();
+        let pkg = generate_c_message_package("e2e_msgs", "Borrowed", &msg, "h", &resolver).unwrap();
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(3)
@@ -531,7 +530,12 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(&pkg.header_name), &pkg.header).unwrap();
         std::fs::write(dir.join(&pkg.source_name), &pkg.source).unwrap();
-        eprintln!("emitted {} + {} to {}", pkg.header_name, pkg.source_name, dir.display());
+        eprintln!(
+            "emitted {} + {} to {}",
+            pkg.header_name,
+            pkg.source_name,
+            dir.display()
+        );
     }
 
     /// Emit the generated borrowed C++ header + Rust FFI glue to
@@ -561,7 +565,12 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(&pkg.header_name), &pkg.header).unwrap();
         std::fs::write(dir.join(&pkg.ffi_rs_name), &pkg.ffi_rs).unwrap();
-        eprintln!("emitted {} + {} to {}", pkg.header_name, pkg.ffi_rs_name, dir.display());
+        eprintln!(
+            "emitted {} + {} to {}",
+            pkg.header_name,
+            pkg.ffi_rs_name,
+            dir.display()
+        );
     }
 
     #[test]
