@@ -80,7 +80,10 @@ fn run() -> i32 {
     match client.wait_for_action_server(&mut executor, core::time::Duration::from_secs(10)) {
         Ok(true) => info!("Action server discovered"),
         Ok(false) => warn!("Action server not confirmed within 10s — sending goal anyway"),
-        Err(e) => warn!("wait_for_action_server error: {:?} — sending goal anyway", e),
+        Err(e) => warn!(
+            "wait_for_action_server error: {:?} — sending goal anyway",
+            e
+        ),
     }
 
     let goal = FibonacciGoal { order: 10 };
