@@ -6,11 +6,11 @@ uses — the **mainstream PX4↔ROS 2 integration**, which nano-ros's `nros-rmw-
 backend already fits but does not yet exercise. This is **Track B** of the
 two-track PX4 plan in **RFC-0039** ("support both") — the *additive* track.
 
-**Status.** Complete (2026-06). 233.1 codegen, 233.2 QoS, 233.3 example, 233.4
-doc + CI round-trip all landed. Wiring 233.4 surfaced an `nros-rmw-xrce`
-spin-pacing bug (a poll-based pub+sub node free-ran its spin loop and closed
-before DDS discovery, so it never received) — **fixed** and regression-guarded
-by `nros-tests::px4_xrce::test_px4_companion_cross_session_receive`
+**Status.** Companion path complete + validated against real PX4 SITL (2026-06).
+233.1–233.5 landed; the topic path interoperates with actual PX4 firmware.
+**233.6 (service/action XRCE-DDS interop) is open** — the CDR-header fix covers
+topics, not yet services/actions (ROS 2 service interop, off the PX4 critical
+path). Wiring the harness also surfaced + fixed a spin-pacing bug
 ([issue 0026](../issues/archived/0026-px4-xrce-bare-agent-type-matching.md),
 resolved). Design-of-record: RFC-0039 (Draft).
 
@@ -124,6 +124,35 @@ Validate Track B against **actual PX4 firmware**, not the stub.
   2. **`px4()` QoS durability.** Was `TRANSIENT_LOCAL`; PX4's `/fmu/out` writers are
      `VOLATILE`, so a transient-local reader never matched. Now `BEST_EFFORT + VOLATILE +
      KEEP_LAST(1)`.
+  3. **Large-message (`publish_streamed`) header.** The streamed publish path wrote the
+     serialized message (header included) straight into the zero-copy stream region, so
+     large topics still shipped the 4-byte header. Now stages the message and copies the
+     header-stripped body into the reserved slot. Validated by
+     `nros-tests::xrce::test_xrce_large_message_publish` (passes).
+
+### 233.6 — Service / action XRCE-DDS interop  ⬜ (planned)
+The CDR-header strip/prepend (233.5.1) covers **topics** (`publisher.c` /
+`subscriber.c`). The **service** (`service.c` — `uxr_buffer_request` /
+`uxr_buffer_reply` + the request/reply inbox `memcpy`s) and **action** paths still
+carry the executor's 4-byte CDR encapsulation header on the XRCE wire. This is
+self-consistent (nano-ros↔nano-ros services/actions pass:
+`test_xrce_service_request_response`, `test_xrce_action_fibonacci`) but will **not
+interop with real ROS 2 service/action endpoints** over the agent, the same way
+topics didn't before 233.5.1. PX4's companion path is topic-only, so this is not on
+the PX4 critical path — but ROS 2 service/action interop over XRCE needs it.
+- **Work items:**
+  - `service.c` — strip the header before `uxr_buffer_request` / `uxr_buffer_reply`
+    (requester + replier), and re-prepend it on the request/reply inbox writes (the two
+    `memcpy(slot->data, ub->iterator, len)` sites), mirroring the topic fix. Mind the
+    request/reply `SampleIdentity` framing — confirm where the header sits relative to it.
+  - Actions ride on services + topics (feedback/status), so they inherit the service fix
+    plus the already-landed topic fix; verify the goal/result/feedback/status round-trip
+    end-to-end.
+  - Add a ROS 2 interop test (real `rmw_fastrtps` service client/server via the agent,
+    mirroring `xrce_ros2_interop.rs`) as the acceptance — the nano-ros↔nano-ros tests
+    can't catch this class (both sides consistently wrong).
+- **Acceptance:** a nano-ros XRCE service server answers a real ROS 2 service client (and
+  vice-versa) over a `MicroXRCEAgent`.
 
 ## Acceptance
 

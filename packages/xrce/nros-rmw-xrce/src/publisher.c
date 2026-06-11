@@ -181,45 +181,55 @@ nros_rmw_ret_t xrce_publisher_publish_streamed(
         return NROS_RMW_RET_MESSAGE_TOO_LARGE;
     }
 
-    ucdrBuffer ub;
-    uint16_t req = uxr_prepare_output_stream(
-        &st->session, st->output_reliable, ps->datawriter_oid,
-        &ub, (uint32_t)total);
-    if (req == UXR_INVALID_REQUEST_ID) {
-        /* `total` exceeds a single stream slot. No fragmented path
-         * in the K.2 backend yet — same gap as `publish_raw`. */
-        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    /* XRCE-DDS interop: the executor's serialized `total` bytes start with the
+     * 4-byte CDR encapsulation header, which must NOT be on the XRCE wire (the
+     * agent owns the DDS representation header). Same contract as `publish_raw`
+     * / the subscriber re-prepend. We can't strip from the zero-copy stream
+     * region after the fact, so stage the full message, then copy the
+     * header-stripped body into the reserved (`total - 4`) slot. */
+    if (total < XRCE_CDR_HEADER_LEN) {
+        return NROS_RMW_RET_ERROR; /* malformed: no room for a CDR header */
     }
-
-    /* Stream chunks directly into the reserved region. `ub.iterator`
-     * is the write cursor, `ub.final` the end of the slot. */
-    size_t produced = 0;
-    while (produced < total) {
-        size_t cap = (size_t)(ub.final - ub.iterator);
-        if (cap == 0) {
-            break;
-        }
+    uint8_t *stage = (uint8_t *)malloc(total);
+    if (stage == NULL) {
+        return NROS_RMW_RET_BAD_ALLOC;
+    }
+    size_t staged = 0;
+    while (staged < total) {
+        size_t cap = total - staged;
         size_t written = 0;
-        chunk_cb(ub.iterator, cap, &written, user_ctx);
+        chunk_cb(stage + staged, cap, &written, user_ctx);
         if (written == 0) {
             break; /* EOF from the user before `total` was met */
         }
         if (written > cap) {
             written = cap; /* defensive clamp against a misbehaving cb */
         }
-        ub.iterator += written;
-        produced += written;
+        staged += written;
+    }
+    if (staged != total) {
+        free(stage);
+        return NROS_RMW_RET_ERROR; /* size_cb / chunk_cb disagreed */
     }
 
-    if (produced != total) {
-        /* The callbacks disagreed: `size_cb` promised `total` but
-         * `chunk_cb` delivered fewer bytes. The WRITE_DATA submessage
-         * is already framed for `total`, so flushing now would put a
-         * short payload on the wire. Treat as a caller-contract
-         * violation; the stream slot is reclaimed on the next
-         * session run. */
-        return NROS_RMW_RET_ERROR;
+    size_t body_len = total - XRCE_CDR_HEADER_LEN;
+    ucdrBuffer ub;
+    uint16_t req = uxr_prepare_output_stream(
+        &st->session, st->output_reliable, ps->datawriter_oid,
+        &ub, (uint32_t)body_len);
+    if (req == UXR_INVALID_REQUEST_ID) {
+        /* `body_len` exceeds a single stream slot. No fragmented path
+         * in the K.2 backend yet — same gap as `publish_raw`. */
+        free(stage);
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
     }
+    if ((size_t)(ub.final - ub.iterator) < body_len) {
+        free(stage);
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    }
+    memcpy(ub.iterator, stage + XRCE_CDR_HEADER_LEN, body_len);
+    ub.iterator += body_len;
+    free(stage);
 
     (void)uxr_run_session_time(&st->session, 0);
     return NROS_RMW_RET_OK;
