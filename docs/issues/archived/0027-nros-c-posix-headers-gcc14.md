@@ -1,11 +1,22 @@
 ---
 id: 27
 title: nros-c posix platform headers fail to compile under gcc 14 (riscv NuttX C build)
-status: open  # reopened 2026-06-11 — qualifier fix incomplete; symptom #1 unfixed
+status: resolved
 type: bug
 area: c-api
 related: [phase-194]
+resolved_in: 89ccb6eee+812234321
 ---
+
+> **RESOLVED 2026-06-11 (both symptoms).** #2 fixed by `89ccb6eee` (cbindgen
+> `[export] exclude` for the four platform-provided fns → no more
+> static-vs-extern collision). #1 fixed by `812234321` (NuttX sysroot
+> `${NUTTX_DIR}/include` added SYSTEM to the NuttX NanoRos umbrella → `posix.h`'s
+> `<time.h>` resolves to NuttX's unconditional decls, not bare newlib's
+> `__rtems__`-gated ones). Verified serially with provisioned exports: both the
+> riscv (rv32imac) and arm (cortex-a7) NuttX C talkers compile their generated
+> std_msgs message libs + component archive clean. The premature `acab1f81b` only
+> matched qualifiers — see the reopen note for why that was insufficient.
 
 > **REOPENED 2026-06-11.** The first pass (`9fcac7d79`) reconciled the
 > `volatile`/`const` qualifiers but did not fully resolve either symptom:
