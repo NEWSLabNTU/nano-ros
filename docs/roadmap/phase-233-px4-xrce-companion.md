@@ -202,8 +202,9 @@ backend `sequence_number`) and flushes it on `complete_goal`. Forward
 Implemented concurrent-safe (Option A) across all three service backends — XRCE +
 Zenoh seq-keyed reply tables, Cyclone already native — so several goals can hold a
 `get_result` at once under load. nano-ros↔nano-ros is unaffected (its client sends
-get_result only after the goal terminates → immediate reply). See phase-237 for the
-remaining test tail (concurrent e2e + `rmw_zenoh_cpp` interop).
+get_result only after the goal terminates → immediate reply). Validated e2e over
+both transports (`rmw_fastrtps`/XRCE incl. a 2-client concurrent test, and
+`rmw_zenoh_cpp`/Zenoh) — see phase-237.
 
 #### Design (wave 1, landed)
 The CDR-header strip/prepend (233.5.1) covers **topics** (`publisher.c` /
