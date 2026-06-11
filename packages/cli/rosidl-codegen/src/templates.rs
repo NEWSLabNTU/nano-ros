@@ -574,16 +574,36 @@ pub struct CppFfiField {
     /// The element's repr(C) type (e.g. `u8`, `f32`) — used by the heap
     /// deserialize codegen for `size_of::<T>()` and the `*mut T` cast.
     pub element_repr_type: String,
+    /// RFC-0033 `mode = "borrowed"` (Phase 235). The `{Msg}ViewRepr` FFI struct
+    /// stores this field as `nros_cpp_borrow_t`; `{Msg}_ffi_deserialize_borrowed`
+    /// fills it via [`borrowed_reader_call`](Self::borrowed_reader_call).
+    pub is_borrowed: bool,
+    /// `CdrReader` borrow call (no `?`), e.g. `read_string()`,
+    /// `read_slice_u8()`, `read_le_slice::<f32>()`. Empty unless borrowed.
+    pub borrowed_reader_call: String,
+    /// `true` for the `LeSpan` case — the FFI takes `.as_bytes().as_ptr()`
+    /// (element count) instead of `.as_ptr()` / `.len()` (byte slice / string).
+    pub borrowed_le: bool,
+    /// `{Msg}ViewRepr` field type: `nros_cpp_borrow_t` when borrowed, else the
+    /// owned [`repr_c_type`](Self::repr_c_type).
+    pub view_repr_type: String,
 }
 
 /// C++ field info for header generation (uses FixedString/FixedSequence types)
 #[derive(Clone)]
 pub struct CppField {
     pub name: String,
-    /// C++ type (e.g., "int32_t", "nros::FixedString<256>")
+    /// C++ type (e.g., "int32_t", "nros::FixedString<256>"). For a borrowed
+    /// field this is the **owned** type kept by the `{Msg}` struct (publish
+    /// path); the view type is in [`borrowed_cpp_type`](Self::borrowed_cpp_type).
     pub cpp_type: String,
     /// Array suffix (e.g., "[3]" for fixed arrays)
     pub array_suffix: String,
+    /// RFC-0033 `mode = "borrowed"` (Phase 235): emitted in `{Msg}View`.
+    pub is_borrowed: bool,
+    /// Borrowed view type for `{Msg}View` (`nros::StringView` / `Span<T>` /
+    /// `LeSpan<T>`). Empty unless [`is_borrowed`](Self::is_borrowed).
+    pub borrowed_cpp_type: String,
 }
 
 /// Sequence helper struct definition for Rust #[repr(C)]
@@ -619,6 +639,11 @@ pub struct MessageCppHeaderTemplate<'a> {
     pub intra_package_includes: Vec<String>,
     pub has_fields: bool,
     pub serialized_size_max: usize,
+    /// RFC-0033 borrowed (Phase 235): emit `{Msg}View` + `deserialize_borrowed`
+    /// + `<nros/span.hpp>` when any field is `mode = "borrowed"`.
+    pub has_borrowed: bool,
+    /// FFI symbol for the borrowed deserializer (`{Msg}_ffi_deserialize_borrowed`).
+    pub ffi_deserialize_borrowed_fn: String,
 }
 
 #[derive(Template)]
@@ -642,6 +667,15 @@ pub struct MessageCppFfiTemplate<'a> {
     /// RFC-0033: at least one heap **string** field — gates the shared
     /// `nros_cpp_heap_str_t` repr struct.
     pub has_heap_string: bool,
+    /// RFC-0033 borrowed (Phase 235): emit `nros_cpp_borrow_t`, `{Msg}ViewRepr`,
+    /// the borrowed deserializer, and the `{Msg}_ffi_deserialize_borrowed` export.
+    pub has_borrowed: bool,
+    /// `{Msg}ViewRepr` — the repr(C) struct the borrowed FFI fills.
+    pub view_repr_struct_name: String,
+    /// Internal borrowed deserialize fn name.
+    pub deserialize_borrowed_fn: String,
+    /// Exported FFI symbol (`{Msg}_ffi_deserialize_borrowed`).
+    pub ffi_deserialize_borrowed_fn: String,
 }
 
 #[derive(Template)]

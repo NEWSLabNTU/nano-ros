@@ -17,6 +17,7 @@
 #define NROS_CPP_SPAN_HPP
 
 #include <cstddef>
+#include <cstdint>
 #include <string.h>
 
 namespace nros {
@@ -73,6 +74,44 @@ struct StringView {
     bool equals(const char* cstr) const {
         size_t clen = strlen(cstr);
         return clen == len && memcmp(ptr, cstr, len) == 0;
+    }
+};
+
+/// Alignment-agnostic view over a little-endian numeric sequence in the CDR
+/// receive buffer (RFC-0033 borrowed mode — the C++ analogue of Rust's
+/// `nros_core::LeSliceView` and C's `nros_le_slice_view_*`).
+///
+/// `T` is a fixed-width numeric (`uint16_t`, `float`, …). The raw LE bytes are
+/// borrowed zero-copy; `operator[]` decodes one element by value (no `T*` is
+/// ever formed into the unaligned buffer), so the buffer base need not be
+/// `T`-aligned. The pointer is valid only while the source buffer lives.
+template <typename T> struct LeSpan {
+    /// Pointer to the first element's little-endian bytes. Borrowed.
+    const uint8_t* bytes;
+    /// Number of elements.
+    size_t count;
+
+    /// Number of elements.
+    constexpr size_t size() const { return count; }
+    /// True if the view contains zero elements.
+    constexpr bool empty() const { return count == 0; }
+
+    /// Decode element `i` (little-endian → host); no bounds check, no alignment
+    /// assumption.
+    T operator[](size_t i) const {
+        const uint8_t* p = bytes + i * sizeof(T);
+        unsigned char tmp[sizeof(T)];
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) &&                                    \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        for (size_t b = 0; b < sizeof(T); ++b)
+            tmp[b] = p[sizeof(T) - 1 - b];
+#else
+        for (size_t b = 0; b < sizeof(T); ++b)
+            tmp[b] = p[b];
+#endif
+        T out;
+        memcpy(&out, tmp, sizeof(T));
+        return out;
     }
 };
 

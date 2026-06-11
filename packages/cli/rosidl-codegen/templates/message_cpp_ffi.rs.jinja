@@ -244,6 +244,188 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
     Ok(())
 }
 {%- endif %}
+{%- if has_borrowed %}
+
+// ---------------------------------------------------------------------------
+// RFC-0033 borrowed (Phase 235): zero-copy view FFI. `{{ view_repr_struct_name }}`
+// mirrors the C++ `{{ message_name }}View`; borrowed fields are `nros_cpp_borrow_t`
+// (a raw {ptr,len} into the CDR buffer) that the C++ side wraps as
+// nros::Span/StringView/LeSpan. Copied fields keep their owned repr.
+// ---------------------------------------------------------------------------
+
+/// Borrowed view field — raw pointer + length into the CDR receive buffer.
+/// Layout-compatible with C++ `nros::Span<T>` / `StringView` / `LeSpan<T>`.
+#[repr(C)]
+pub struct nros_cpp_borrow_t {
+    pub ptr: *const u8,
+    pub len: usize,
+}
+
+/// repr(C) struct matching C++ {{ message_name }}View
+#[repr(C)]
+pub struct {{ view_repr_struct_name }} {
+{%- for field in fields %}
+    pub {{ field.name }}: {{ field.view_repr_type }},
+{%- endfor %}
+}
+
+/// Deserialize fields into a borrowed view: borrowed fields point into the CDR
+/// buffer (zero-copy); copied fields are read as in the owned path.
+pub fn {{ deserialize_borrowed_fn }}(reader: &mut CdrReader, out: &mut {{ view_repr_struct_name }}) -> Result<(), DeserError> {
+{%- for field in fields %}
+{%- if field.is_borrowed %}
+    {
+        let __b = reader.{{ field.borrowed_reader_call }}?;
+{%- if field.borrowed_le %}
+        out.{{ field.name }} = nros_cpp_borrow_t { ptr: __b.as_bytes().as_ptr(), len: __b.len() };
+{%- else %}
+        out.{{ field.name }} = nros_cpp_borrow_t { ptr: __b.as_ptr() as *const u8, len: __b.len() };
+{%- endif %}
+    }
+{%- else if field.is_primitive %}
+    out.{{ field.name }} = reader.{{ field.cdr_read_method }}()?;
+{%- else if field.is_string %}
+{%- if field.is_heap %}
+    {
+        let s = reader.read_string()?;
+        let bytes = s.as_bytes();
+        let n = bytes.len();
+        let data = unsafe { nros_platform_malloc(n + 1) } as *mut u8;
+        if data.is_null() {
+            return Err(DeserError::CapacityExceeded);
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(bytes.as_ptr(), data, n);
+            *data.add(n) = 0;
+        }
+        out.{{ field.name }} = nros_cpp_heap_str_t { data, size: n, capacity: n + 1 };
+    }
+{%- else %}
+    {
+        let s = reader.read_string()?;
+        let bytes = s.as_bytes();
+        let len = core::cmp::min(bytes.len(), {{ field.string_capacity }} - 1);
+        out.{{ field.name }} = [0u8; {{ field.string_capacity }}];
+        out.{{ field.name }}[..len].copy_from_slice(&bytes[..len]);
+    }
+{%- endif %}
+{%- else if field.is_array %}
+    for i in 0..{{ field.array_size }} {
+{%- if field.is_primitive_element %}
+        out.{{ field.name }}[i] = reader.{{ field.element_cdr_read_method }}()?;
+{%- else if field.is_string_element %}
+        {
+            let s = reader.read_string()?;
+            let bytes = s.as_bytes();
+            let len = core::cmp::min(bytes.len(), {{ field.element_string_capacity }} - 1);
+            out.{{ field.name }}[i] = [0u8; {{ field.element_string_capacity }}];
+            out.{{ field.name }}[i][..len].copy_from_slice(&bytes[..len]);
+        }
+{%- else %}
+        {{ field.nested_deserialize_fn }}(reader, &mut out.{{ field.name }}[i])?;
+{%- endif %}
+    }
+{%- else if field.is_sequence %}
+{%- if field.is_heap %}
+    {
+        let len = reader.read_u32()? as usize;
+        let data: *mut {{ field.element_repr_type }} = if len > 0 {
+            let p = unsafe {
+                nros_platform_malloc(len * core::mem::size_of::<{{ field.element_repr_type }}>())
+            } as *mut {{ field.element_repr_type }};
+            if p.is_null() {
+                return Err(DeserError::CapacityExceeded);
+            }
+            p
+        } else {
+            core::ptr::null_mut()
+        };
+        for i in 0..len {
+{%- if field.is_string_element %}
+            match reader.read_string() {
+                Ok(s) => {
+                    let bytes = s.as_bytes();
+                    let m = core::cmp::min(bytes.len(), {{ field.element_string_capacity }} - 1);
+                    let slot = unsafe { &mut *data.add(i) };
+                    *slot = [0u8; {{ field.element_string_capacity }}];
+                    slot[..m].copy_from_slice(&bytes[..m]);
+                }
+                Err(e) => {
+                    unsafe { nros_platform_free(data as *mut core::ffi::c_void); }
+                    return Err(e);
+                }
+            }
+{%- else if field.is_primitive_element %}
+            match reader.{{ field.element_cdr_read_method }}() {
+                Ok(v) => unsafe { *data.add(i) = v; },
+                Err(e) => {
+                    unsafe { nros_platform_free(data as *mut core::ffi::c_void); }
+                    return Err(e);
+                }
+            }
+{%- else %}
+            if let Err(e) = {{ field.nested_deserialize_fn }}(reader, unsafe { &mut *data.add(i) }) {
+                unsafe { nros_platform_free(data as *mut core::ffi::c_void); }
+                return Err(e);
+            }
+{%- endif %}
+        }
+        out.{{ field.name }}.data = data;
+        out.{{ field.name }}.size = len;
+        out.{{ field.name }}.capacity = len;
+    }
+{%- else %}
+    {
+        let len = reader.read_u32()?;
+        out.{{ field.name }}.size = len;
+        for i in 0..len as usize {
+{%- if field.is_primitive_element %}
+            out.{{ field.name }}.data[i] = reader.{{ field.element_cdr_read_method }}()?;
+{%- else if field.is_string_element %}
+            {
+                let s = reader.read_string()?;
+                let bytes = s.as_bytes();
+                let copy_len = core::cmp::min(bytes.len(), {{ field.element_string_capacity }} - 1);
+                out.{{ field.name }}.data[i] = [0u8; {{ field.element_string_capacity }}];
+                out.{{ field.name }}.data[i][..copy_len].copy_from_slice(&bytes[..copy_len]);
+            }
+{%- else %}
+            {{ field.nested_deserialize_fn }}(reader, &mut out.{{ field.name }}.data[i])?;
+{%- endif %}
+        }
+    }
+{%- endif %}
+{%- else if field.is_nested %}
+    {{ field.nested_deserialize_fn }}(reader, &mut out.{{ field.name }})?;
+{%- endif %}
+{%- endfor %}
+    Ok(())
+}
+
+/// Deserialize a {{ message_name }} into a borrowed view from CDR.
+///
+/// # Safety
+/// `data` must point to valid CDR bytes of length `len`. `out_ptr` must point to
+/// a valid `{{ view_repr_struct_name }}`. The borrowed pointers written into it
+/// alias `data` and are valid only while `data` lives.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn {{ ffi_deserialize_borrowed_fn }}(
+    data: *const u8,
+    len: usize,
+    out_ptr: *mut core::ffi::c_void,
+) -> i32 {
+    let slice = unsafe { core::slice::from_raw_parts(data, len) };
+    let mut reader = match CdrReader::new_with_header(slice) {
+        Ok(r) => r,
+        Err(_) => return -1,
+    };
+    let out = unsafe { &mut *(out_ptr as *mut {{ view_repr_struct_name }}) };
+    if {{ deserialize_borrowed_fn }}(&mut reader, out).is_err() {
+        return -1;
+    }
+    0
+}
+{%- endif %}
 
 /// Serialize a {{ message_name }} message to a CDR buffer
 ///

@@ -601,6 +601,122 @@ pub(super) fn build_c_field(
 pub(super) enum CppStorage {
     Owned(Option<usize>),
     Heap,
+    /// RFC-0033 `borrowed` (Phase 235): a zero-copy view into the CDR buffer.
+    /// Carries the resolved owned capacity too — the owned `{Msg}` struct keeps
+    /// a fixed-capacity container for the publish path; only `{Msg}View` borrows.
+    Borrowed(CppBorrow, Option<usize>),
+}
+
+/// The borrowed C++ view kind for a `mode = "borrowed"` field (Phase 235).
+/// Carries `'static` strings so `CppStorage` stays `Copy`.
+#[derive(Clone, Copy)]
+pub(super) enum CppBorrow {
+    /// `nros::StringView` via `CdrReader::read_string`.
+    Str,
+    /// `nros::Span<cpp>` via `reader` (`read_slice_u8`/`_i8`/`_bool`).
+    Bytes {
+        cpp: &'static str,
+        reader: &'static str,
+    },
+    /// `nros::LeSpan<cpp>` via `read_le_slice::<suffix>` (alignment-agnostic).
+    Le {
+        cpp: &'static str,
+        suffix: &'static str,
+    },
+}
+
+impl CppBorrow {
+    /// The C++ view type for the header (`{Msg}View`) field.
+    pub(super) fn cpp_view_type(self) -> String {
+        match self {
+            CppBorrow::Str => "nros::StringView".to_string(),
+            CppBorrow::Bytes { cpp, .. } => format!("nros::Span<{cpp}>"),
+            CppBorrow::Le { cpp, .. } => format!("nros::LeSpan<{cpp}>"),
+        }
+    }
+    /// The `CdrReader` call (no `?`) that borrows this field's bytes.
+    pub(super) fn reader_call(self) -> String {
+        match self {
+            CppBorrow::Str => "read_string()".to_string(),
+            CppBorrow::Bytes { reader, .. } => format!("{reader}()"),
+            CppBorrow::Le { suffix, .. } => format!("read_le_slice::<{suffix}>()"),
+        }
+    }
+    /// `true` for the `LeSpan` case (the FFI extracts `.as_bytes().as_ptr()`
+    /// instead of `.as_ptr()`).
+    pub(super) fn is_le(self) -> bool {
+        matches!(self, CppBorrow::Le { .. })
+    }
+}
+
+/// Resolve the borrowed C++ view kind for a `borrowed`-mode field. Strings and
+/// byte/numeric sequences borrow; sequences of strings or nested messages are
+/// rejected (no fixed-width byte span) — same policy as Rust and C.
+fn cpp_borrow_kind(
+    field_type: &FieldType,
+    package_name: &str,
+    message_name: &str,
+    field_name: &str,
+) -> Result<CppBorrow, GeneratorError> {
+    let unsupported = |elem: &str| GeneratorError::UnsupportedBorrowedElement {
+        package: package_name.to_string(),
+        message: message_name.to_string(),
+        field: field_name.to_string(),
+        element: elem.to_string(),
+    };
+    match field_type {
+        FieldType::String | FieldType::WString => Ok(CppBorrow::Str),
+        FieldType::Sequence { element_type } => match element_type.as_ref() {
+            FieldType::Primitive(PrimitiveType::UInt8 | PrimitiveType::Byte) => {
+                Ok(CppBorrow::Bytes {
+                    cpp: "uint8_t",
+                    reader: "read_slice_u8",
+                })
+            }
+            FieldType::Primitive(PrimitiveType::Int8) => Ok(CppBorrow::Bytes {
+                cpp: "int8_t",
+                reader: "read_slice_i8",
+            }),
+            FieldType::Primitive(PrimitiveType::Bool) => Ok(CppBorrow::Bytes {
+                cpp: "uint8_t",
+                reader: "read_slice_bool",
+            }),
+            FieldType::Primitive(PrimitiveType::UInt16) => Ok(CppBorrow::Le {
+                cpp: "uint16_t",
+                suffix: "u16",
+            }),
+            FieldType::Primitive(PrimitiveType::Int16) => Ok(CppBorrow::Le {
+                cpp: "int16_t",
+                suffix: "i16",
+            }),
+            FieldType::Primitive(PrimitiveType::UInt32) => Ok(CppBorrow::Le {
+                cpp: "uint32_t",
+                suffix: "u32",
+            }),
+            FieldType::Primitive(PrimitiveType::Int32) => Ok(CppBorrow::Le {
+                cpp: "int32_t",
+                suffix: "i32",
+            }),
+            FieldType::Primitive(PrimitiveType::UInt64) => Ok(CppBorrow::Le {
+                cpp: "uint64_t",
+                suffix: "u64",
+            }),
+            FieldType::Primitive(PrimitiveType::Int64) => Ok(CppBorrow::Le {
+                cpp: "int64_t",
+                suffix: "i64",
+            }),
+            FieldType::Primitive(PrimitiveType::Float32) => Ok(CppBorrow::Le {
+                cpp: "float",
+                suffix: "f32",
+            }),
+            FieldType::Primitive(PrimitiveType::Float64) => Ok(CppBorrow::Le {
+                cpp: "double",
+                suffix: "f64",
+            }),
+            other => Err(unsupported(&format!("{other:?}"))),
+        },
+        other => Err(unsupported(&format!("{other:?}"))),
+    }
 }
 
 /// Resolve the per-field storage for a C++ field (RFC-0033). Owned shapes carry
@@ -638,7 +754,10 @@ pub(super) fn resolve_cap_override(
                 Err(unsupported("heap"))
             }
         }
-        StorageMode::Borrowed => Err(unsupported("borrowed")),
+        StorageMode::Borrowed => Ok(CppStorage::Borrowed(
+            cpp_borrow_kind(field_type, package, message_name, name)?,
+            Some(storage.cap),
+        )),
     }
 }
 
@@ -653,6 +772,22 @@ pub(super) fn build_cpp_field(
     storage: CppStorage,
 ) -> CppField {
     let escaped_name = escape_keyword(name);
+    // RFC-0033 borrowed (Phase 235): the owned `{Msg}` struct keeps a
+    // fixed-capacity container (publish path), while `{Msg}View` uses the
+    // zero-copy view type (`nros::StringView` / `Span<T>` / `LeSpan<T>`).
+    if let CppStorage::Borrowed(b, cap) = storage {
+        let owned = match cap {
+            Some(c) => cpp_type_for_field_with_capacity(field_type, current_package, c),
+            None => cpp_type_for_field(field_type, current_package),
+        };
+        return CppField {
+            name: escaped_name,
+            cpp_type: owned,
+            array_suffix: String::new(),
+            is_borrowed: true,
+            borrowed_cpp_type: b.cpp_view_type(),
+        };
+    }
     let cpp_type = match storage {
         CppStorage::Owned(Some(cap)) => {
             cpp_type_for_field_with_capacity(field_type, current_package, cap)
@@ -660,6 +795,7 @@ pub(super) fn build_cpp_field(
         CppStorage::Owned(None) => cpp_type_for_field(field_type, current_package),
         CppStorage::Heap => cpp_type_for_field_heap(field_type, current_package)
             .expect("resolve_cap_override only yields Heap for bridgeable shapes"),
+        CppStorage::Borrowed(..) => unreachable!("handled above"),
     };
     let array_suffix = cpp_array_suffix_for_field(field_type);
 
@@ -683,6 +819,8 @@ pub(super) fn build_cpp_field(
         name: escaped_name,
         cpp_type: final_type,
         array_suffix: final_suffix,
+        is_borrowed: false,
+        borrowed_cpp_type: String::new(),
     }
 }
 
@@ -699,6 +837,14 @@ pub(super) fn build_cpp_ffi_field(
     let cap_override = match storage {
         CppStorage::Owned(cap) => cap,
         CppStorage::Heap => None,
+        CppStorage::Borrowed(_, cap) => cap,
+    };
+    // RFC-0033 borrowed (Phase 235): the `{Msg}ViewRepr` FFI struct stores this
+    // field as `nros_cpp_borrow_t { *const u8, usize }`, filled from the
+    // `CdrReader` borrow method; the owned `{Msg}` repr keeps its owned type.
+    let (is_borrowed, borrowed_reader_call, borrowed_le) = match storage {
+        CppStorage::Borrowed(b, _) => (true, b.reader_call(), b.is_le()),
+        _ => (false, String::new(), false),
     };
 
     // Determine type characteristics
@@ -893,6 +1039,14 @@ pub(super) fn build_cpp_ffi_field(
         _ => 0,
     };
 
+    // `{Msg}ViewRepr` field type: borrowed → the shared `nros_cpp_borrow_t`
+    // pointer+len; everything else keeps its owned repr (copied into the view).
+    let view_repr_type = if is_borrowed {
+        "nros_cpp_borrow_t".to_string()
+    } else {
+        repr_c_type.clone()
+    };
+
     let field = CppFfiField {
         name: escaped_name,
         repr_c_type,
@@ -915,6 +1069,10 @@ pub(super) fn build_cpp_ffi_field(
         is_string_element,
         is_heap,
         element_repr_type,
+        is_borrowed,
+        borrowed_reader_call,
+        borrowed_le,
+        view_repr_type,
     };
 
     (field, seq_struct)

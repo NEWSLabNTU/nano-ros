@@ -228,6 +228,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<String, GeneratorError> {
     let serialized_size_max = compute_serialized_size_max(spec.ffi_fields);
     let has_heap = spec.ffi_fields.iter().any(|f| f.is_heap);
     let has_heap_string = spec.ffi_fields.iter().any(|f| f.is_heap && f.is_string);
+    let has_borrowed = spec.ffi_fields.iter().any(|f| f.is_borrowed);
 
     let template = MessageCppFfiTemplate {
         package_name: spec.package_name,
@@ -244,6 +245,10 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<String, GeneratorError> {
         serialized_size_max,
         has_heap,
         has_heap_string,
+        has_borrowed,
+        view_repr_struct_name: format!("{}_view", spec.struct_name),
+        deserialize_borrowed_fn: format!("{}_borrowed", spec.deserialize_fn),
+        ffi_deserialize_borrowed_fn: format!("{}_borrowed", spec.ffi_deserialize_fn),
     };
     Ok(template.render()?)
 }
@@ -285,6 +290,7 @@ pub fn generate_cpp_message_package(
     let dependencies = extract_deps(&message.fields);
     let intra_package_includes = extract_intra_package_includes(&message.fields, package_name);
     let has_fields = !cpp_fields.is_empty();
+    let has_borrowed = cpp_fields.iter().any(|f| f.is_borrowed);
     let serialized_size_max = compute_serialized_size_max(&ffi_fields);
 
     // Render C++ header
@@ -303,6 +309,8 @@ pub fn generate_cpp_message_package(
         intra_package_includes,
         has_fields,
         serialized_size_max,
+        has_borrowed,
+        ffi_deserialize_borrowed_fn: format!("{}_borrowed", ffi_deserialize_fn),
     };
     let header = header_template.render()?;
 

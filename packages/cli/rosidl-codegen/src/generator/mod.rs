@@ -609,6 +609,137 @@ mod tests {
     }
 
     #[test]
+    fn test_cpp_borrowed_view_generation() {
+        // RFC-0033 borrowed (Phase 235, issue 0021): C++ borrowed emits {Msg}View
+        // (Span/StringView/LeSpan) + deserialize_borrowed wrapping a Rust FFI
+        // offset seam; the owned {Msg} struct + repr are unchanged.
+        let msg = parse_message("uint32 width\nstring encoding\nuint8[] data\nfloat32[] ranges\n")
+            .unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "test_msgs/Image.data" = { cap = 921600, mode = "borrowed" }
+            "test_msgs/Image.ranges" = { cap = 4096, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_cpp_message_package("test_msgs", "Image", &msg, "h", &resolver).unwrap();
+        let h = &pkg.header;
+        let rs = &pkg.ffi_rs;
+
+        // Header: span include, view struct, view field types, wrapper + extern.
+        assert!(
+            h.contains("#include \"nros/span.hpp\""),
+            "span include missing:\n{h}"
+        );
+        assert!(
+            h.contains("struct ImageView {"),
+            "view struct missing:\n{h}"
+        );
+        assert!(
+            h.contains("nros::Span<uint8_t> data;"),
+            "byte span missing:\n{h}"
+        );
+        assert!(
+            h.contains("nros::LeSpan<float> ranges;"),
+            "LE span missing:\n{h}"
+        );
+        assert!(
+            h.contains("uint32_t width;"),
+            "owned scalar missing from view:\n{h}"
+        );
+        assert!(
+            h.contains(
+                "static int deserialize_borrowed(const uint8_t* data, size_t len, ImageView* out)"
+            ),
+            "view wrapper missing:\n{h}"
+        );
+
+        // FFI: borrow struct, view repr, borrowed deserializer reads slices/le.
+        assert!(
+            rs.contains("pub struct nros_cpp_borrow_t"),
+            "borrow_t missing:\n{rs}"
+        );
+        assert!(
+            rs.contains("reader.read_slice_u8()?"),
+            "byte borrow missing:\n{rs}"
+        );
+        assert!(
+            rs.contains("reader.read_le_slice::<f32>()?"),
+            "le borrow missing:\n{rs}"
+        );
+        assert!(
+            rs.contains(".as_bytes().as_ptr()"),
+            "le ptr extraction missing:\n{rs}"
+        );
+    }
+
+    #[test]
+    fn test_cpp_borrowed_string_view() {
+        let msg = parse_message("string label\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "test_msgs/Tag.label" = { cap = 256, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        let pkg = generate_cpp_message_package("test_msgs", "Tag", &msg, "h", &resolver).unwrap();
+        assert!(
+            pkg.header.contains("nros::StringView label;"),
+            "{}",
+            pkg.header
+        );
+        assert!(
+            pkg.ffi_rs.contains("reader.read_string()?"),
+            "{}",
+            pkg.ffi_rs
+        );
+    }
+
+    #[test]
+    fn test_cpp_borrowed_rejects_nested_sequence() {
+        let msg = parse_message("geometry_msgs/Point[] pts\n").unwrap();
+        let resolver = crate::config::CapacityResolver::from_toml_str(
+            r#"
+            [fields]
+            "test_msgs/Cloud.pts" = { cap = 16, mode = "borrowed" }
+            "#,
+        )
+        .unwrap();
+        assert!(
+            generate_cpp_message_package("test_msgs", "Cloud", &msg, "h", &resolver).is_err(),
+            "expected borrowed nested-sequence to be rejected"
+        );
+    }
+
+    #[test]
+    fn test_cpp_no_borrowed_omits_view() {
+        let msg = parse_message("uint32 x\n").unwrap();
+        let pkg = generate_cpp_message_package(
+            "test_msgs",
+            "Plain",
+            &msg,
+            "h",
+            &crate::config::CapacityResolver::empty(),
+        )
+        .unwrap();
+        assert!(
+            !pkg.header.contains("View {"),
+            "unexpected view:\n{}",
+            pkg.header
+        );
+        assert!(
+            !pkg.header.contains("nros/span.hpp"),
+            "unexpected span include"
+        );
+        assert!(
+            !pkg.ffi_rs.contains("nros_cpp_borrow_t"),
+            "unexpected borrow_t"
+        );
+    }
+
+    #[test]
     fn test_c_no_borrowed_omits_view() {
         // Without any borrowed field, no view / include / deserialize_borrowed.
         let msg = parse_message("uint32 x\n").unwrap();

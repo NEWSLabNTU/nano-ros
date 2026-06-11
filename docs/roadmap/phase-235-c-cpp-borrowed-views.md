@@ -105,21 +105,23 @@ asserts the view pointers alias the callback buffer (no copy, no alloc).
 
 ### Increment 2 — C++ borrowed (FFI-offset seam)
 
-#### 235.5 — Rust FFI borrowed-offsets seam  ⬜
+**Status (2026-06-11).** 235.5–235.7 done; 235.8 golden tests done, runtime C++-compile E2E pending. Codegen tests green (86 lib tests). The view is built from a Rust FFI that fills a layout-compatible `{Msg}ViewRepr` (borrowed fields = `nros_cpp_borrow_t {*const u8, usize}` via the existing `read_slice_u8`/`read_string`/`read_le_slice` borrow methods); C++ `{Msg}View` types them as `Span`/`StringView`/`LeSpan`.
+
+#### 235.5 — Rust FFI borrowed-offsets seam  ✅
 Extend the C++ FFI (`templates/message_cpp_ffi.rs.jinja`, `build_cpp_ffi_field`
 ~`common.rs:603`) with `{Msg}_ffi_deserialize_borrowed` that walks CDR with the
 existing Rust reader and writes a per-borrowed-field `(offset, len)` struct (offsets
 relative to `buf`), instead of copying into the repr(C) struct.
 - **Files:** `templates/message_cpp_ffi.rs.jinja`, `generator/common.rs`.
 
-#### 235.6 — C++ unaligned Span decoder  ⬜
+#### 235.6 — C++ unaligned Span decoder  ✅
 Add an alignment-agnostic numeric view to `nros-cpp/include/nros/span.hpp` (e.g.
 `nros::LeSpan<T>` with `T operator[](i)` doing `memcpy`+LE-decode), mirroring
 235.2 / Rust `LeSliceView`. `Span<uint8_t>` / `StringView` already exist for the
 byte/string cases.
 - **Files:** `packages/core/nros-cpp/include/nros/span.hpp`.
 
-#### 235.7 — C++ borrowed view type + wrapper  ⬜
+#### 235.7 — C++ borrowed view type + wrapper  ✅
 Replace `StorageMode::Borrowed => Err(unsupported("borrowed"))`
 (`resolve_cap_override`, `common.rs:554`) with the borrowed mapping. Emit `{Msg}View`
 (borrowed fields `nros::Span<uint8_t>` / `nros::StringView` / `nros::LeSpan<T>`,
@@ -127,7 +129,7 @@ copied fields owned) + a `deserialize_borrowed(view, buf, len)` that calls the 2
 FFI to get offsets, then sets the spans into `buf` (C++ wraps Rust).
 - **Files:** `generator/common.rs`, `templates/message_cpp.hpp.jinja`.
 
-#### 235.8 — C++ tests + example  ⬜
+#### 235.8 — C++ tests + example  🟡 (golden ✅; runtime C++-compile E2E ⬜)
 Golden tests + an E2E mirroring 235.4 in C++ (spans alias the callback buffer).
 - **Files:** `generator/mod.rs`; a C++ example/fixture.
 
