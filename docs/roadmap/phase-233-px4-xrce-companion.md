@@ -10,9 +10,9 @@ two-track PX4 plan in **RFC-0039** ("support both") — the *additive* track.
 233.1–233.5 landed; the topic path interoperates with actual PX4 firmware.
 **233.6 (service/action XRCE-DDS interop): services + pub/sub + actions DONE both
 directions (hard-asserted vs real `rmw_fastrtps` ROS 2)** — actions interop via
-per-channel entity types + a fixed `uint8[16]` goal-id wire fix; only deferred
-`get_result` reply remains (off the PX4 critical path). Wiring the harness also
-surfaced + fixed a spin-pacing bug
+per-channel entity types + a fixed `uint8[16]` goal-id wire fix; deferred
+`get_result` reply landed in [phase-237](phase-237-deferred-get-result.md) (off the
+PX4 critical path). Wiring the harness also surfaced + fixed a spin-pacing bug
 ([issue 0026](../issues/archived/0026-px4-xrce-bare-agent-type-matching.md),
 resolved). Design-of-record: RFC-0039 (Draft).
 
@@ -132,7 +132,7 @@ Validate Track B against **actual PX4 firmware**, not the stub.
      header-stripped body into the reserved slot. Validated by
      `nros-tests::xrce::test_xrce_large_message_publish` (passes).
 
-### 233.6 — Service / action XRCE-DDS interop  ◐ (services + pub/sub + actions landed; only get_result deferral remains)
+### 233.6 — Service / action XRCE-DDS interop  ✅ (services + pub/sub + actions, both directions; get_result deferral → phase-237)
 **Wave 1 (DONE) — services + topics, forward.** The CDR-header strip/prepend now
 covers `service.c` — the 5 sites below (3 outbound strip + 2 inbound prepend).
 `test_xrce_service_ros2_client` is a **hard assert**: a real `rmw_fastrtps` ROS 2
@@ -194,16 +194,16 @@ The example action client also now uses `wait_for_action_server` (spins discover
 instead of a blind warmup, so the first send_goal doesn't race the
 requester↔replier DDS match (volatile pre-match samples are lost otherwise).
 
-**REMAINING — get_result deferral.** The forward server (`ros2 action send_goal`)
-accepts + streams feedback, but the final **result** is not asserted: the nano-ros
-action server answers `get_result` with the goal's *live* status instead of
-deferring the reply until the goal terminates, so `ros2` keeps waiting. Implementing
-deferred get_result (hold the pending request's sequence id + goal id, flush on
-`complete_goal`) is a distinct additive feature — it touches every `ActionServerCore`
-construction site (embedded / C / FreeRTOS), so it is tracked separately from this
-wire-format wave. nano-ros↔nano-ros is unaffected (its client sends get_result only
-after seeing the goal terminate, so the immediate reply path is correct there). Out
-of the PX4 critical path (PX4 is topic-only).
+**get_result deferral — DONE in [phase-237](phase-237-deferred-get-result.md).**
+`rclcpp_action` sends `get_result` right after acceptance and expects the reply
+only once the goal terminates; the server now holds the request (keyed by its
+backend `sequence_number`) and flushes it on `complete_goal`. Forward
+`test_xrce_action_ros2_client` hard-asserts the final `SUCCEEDED` result.
+Implemented concurrent-safe (Option A) across all three service backends — XRCE +
+Zenoh seq-keyed reply tables, Cyclone already native — so several goals can hold a
+`get_result` at once under load. nano-ros↔nano-ros is unaffected (its client sends
+get_result only after the goal terminates → immediate reply). See phase-237 for the
+remaining test tail (concurrent e2e + `rmw_zenoh_cpp` interop).
 
 #### Design (wave 1, landed)
 The CDR-header strip/prepend (233.5.1) covers **topics** (`publisher.c` /
