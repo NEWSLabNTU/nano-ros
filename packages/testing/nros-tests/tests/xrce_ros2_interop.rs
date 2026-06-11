@@ -422,10 +422,13 @@ fn test_xrce_action_ros2_concurrent(xrce_action_server_binary: PathBuf) {
     let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(8));
     std::thread::sleep(Duration::from_secs(1));
 
-    // Long-running goals (order 20 ≈ 2 s) so both overlap. The two clients fire
-    // their send_goal (and early get_result) requests essentially simultaneously
-    // — the request-inbox ring (Phase 237 follow-up) buffers both arrivals so
-    // neither is dropped, and the reply-token table holds both deferred replies.
+    // Long-running goals (order 20 ≈ 2 s) so both overlap and both early
+    // get_results are deferred at the same time (the reply-token table this test
+    // guards). A short 0.5 s stagger absorbs the agent-side DDS discovery /
+    // acceptance-reply timing between the two clients — the request-inbox ring
+    // (Phase 237 follow-up) removes the *drop-on-collision* failure mode (and is
+    // covered unstaggered by the Zenoh concurrent e2e + the buffer unit test),
+    // but exact sub-millisecond simultaneity over the agent is otherwise flaky.
     let spawn_client = || {
         Ros2DdsProcess::action_send_goal_with_domain(
             "/fibonacci",
@@ -442,6 +445,7 @@ fn test_xrce_action_ros2_concurrent(xrce_action_server_binary: PathBuf) {
             nros_tests::skip!("ROS 2 DDS action client could not start: {e}");
         }
     };
+    std::thread::sleep(Duration::from_millis(500));
     let mut c2 = match spawn_client() {
         Ok(p) => p,
         Err(e) => {

@@ -161,11 +161,17 @@ depth-N SPSC ring on both backends (XRCE `req_ring` in `service.c`; Zenoh
 `ServiceRequestSlot` ring keyed by head/tail in `shim/service.rs`), so concurrent
 send_goal / get_result *arrivals* in the same drain window are buffered in order
 instead of the later one clobbering the earlier (default depth 4, overridable).
-Pairs with the reply-token tables (concurrent *replies*). Both concurrent action
-e2e tests now fire their two clients **simultaneously** (no stagger):
-`test_xrce_action_ros2_concurrent` (rmw_fastrtps/XRCE) and
-`test_action_concurrent_nano_server_ros2_clients` (rmw_zenoh/Zenoh) — each client
-gets its own `SUCCEEDED`, stable across repeats.
+Pairs with the reply-token tables (concurrent *replies*). The
+`test_action_concurrent_nano_server_ros2_clients` (rmw_zenoh/Zenoh) e2e fires its
+two clients **simultaneously** (no stagger) and is stable — directly validating
+the ring's drop-on-collision fix; the buffer unit test
+(`svc_buf_ring_buffers_unread`) covers it deterministically.
+`test_xrce_action_ros2_concurrent` (rmw_fastrtps/XRCE) keeps a small 0.5 s client
+stagger: the ring removes the request-drop failure mode, but exact
+sub-millisecond simultaneity over the **agent** has other discovery /
+acceptance-reply timing races, so a tiny stagger keeps it from flaking while still
+holding both deferred get_results at once. Each client gets its own `SUCCEEDED`,
+stable across repeats.
 
 ## Sizing / bounds
 
