@@ -44,14 +44,23 @@ void xrce_request_callback(uxrSession *session,
         if (!slot->active || slot->replier_id != object_id.id) {
             continue;
         }
-        if (len > XRCE_BUFFER_SIZE) {
+        /* XRCE-DDS interop: the agent delivers the bare CDR-serialized request
+         * WITHOUT the 4-byte CDR encapsulation header (it owns the DDS-side
+         * representation header). nano-ros's deserializers expect the header,
+         * so prepend it — mirrors `xrce_topic_callback` and is symmetric with
+         * the strip on `uxr_buffer_request` / `uxr_buffer_reply`. */
+        if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
             slot->overflow = true;
             slot->has_request = true;
             return;
         }
         slot->overflow = false;
-        memcpy(slot->data, ub->iterator, len);
-        slot->len = len;
+        slot->data[0] = 0x00; /* CDR_LE representation id */
+        slot->data[1] = 0x01;
+        slot->data[2] = 0x00; /* options */
+        slot->data[3] = 0x00;
+        memcpy(slot->data + XRCE_CDR_HEADER_LEN, ub->iterator, len);
+        slot->len = len + XRCE_CDR_HEADER_LEN;
         slot->sample_id = *sample_id;
         slot->has_request = true;
         return;
@@ -76,14 +85,20 @@ void xrce_reply_callback(uxrSession *session,
         if (!slot->active || slot->requester_id != object_id.id) {
             continue;
         }
-        if (len > XRCE_BUFFER_SIZE) {
+        /* XRCE-DDS interop: re-prepend the CDR encapsulation header stripped on
+         * the wire (mirrors the request inbox + `xrce_topic_callback`). */
+        if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
             slot->overflow = true;
             slot->has_reply = true;
             return;
         }
         slot->overflow = false;
-        memcpy(slot->data, ub->iterator, len);
-        slot->len = len;
+        slot->data[0] = 0x00;
+        slot->data[1] = 0x01;
+        slot->data[2] = 0x00;
+        slot->data[3] = 0x00;
+        memcpy(slot->data + XRCE_CDR_HEADER_LEN, ub->iterator, len);
+        slot->len = len + XRCE_CDR_HEADER_LEN;
         slot->has_reply = true;
         return;
     }
@@ -271,13 +286,24 @@ nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_server_t *server,
     xrce_service_server_state *ss = (xrce_service_server_state *)server->backend_data;
     xrce_session_state_t *st = ss->session_state;
 
+    /* XRCE-DDS interop: strip the executor's 4-byte CDR encapsulation header —
+     * the XRCE reply payload is the bare serialized sample (the agent owns the
+     * DDS representation header). Symmetric with the reply-inbox re-prepend and
+     * the topic publish path. */
+    const uint8_t *body = data;
+    size_t body_len = len;
+    if (body_len >= XRCE_CDR_HEADER_LEN) {
+        body += XRCE_CDR_HEADER_LEN;
+        body_len -= XRCE_CDR_HEADER_LEN;
+    }
+
     /* The slot's `sample_id` was captured by `request_callback` and
      * read out by `try_recv_request`. `uxr_buffer_reply` takes a
      * mutable pointer; cast away const-ness on the data side. */
     uint16_t req = uxr_buffer_reply(
         &st->session, st->output_reliable, ss->replier_oid,
         &ss->slot->sample_id,
-        (uint8_t *)(uintptr_t)data, len);
+        (uint8_t *)(uintptr_t)body, body_len);
     if (req == UXR_INVALID_REQUEST_ID) {
         return NROS_RMW_RET_ERROR;
     }
@@ -311,9 +337,17 @@ nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_service_client_t *client,
      * an earlier request's response. */
     slot->has_reply = false;
     slot->overflow = false;
+    /* XRCE-DDS interop: strip the 4-byte CDR encapsulation header (see
+     * send_reply / publish_raw). */
+    const uint8_t *body = request;
+    size_t body_len = req_len;
+    if (body_len >= XRCE_CDR_HEADER_LEN) {
+        body += XRCE_CDR_HEADER_LEN;
+        body_len -= XRCE_CDR_HEADER_LEN;
+    }
     uint16_t req = uxr_buffer_request(
         &st->session, st->output_reliable, cs->requester_oid,
-        (uint8_t *)(uintptr_t)request, req_len);
+        (uint8_t *)(uintptr_t)body, body_len);
     if (req == UXR_INVALID_REQUEST_ID) {
         return NROS_RMW_RET_ERROR;
     }
@@ -490,9 +524,16 @@ int32_t xrce_service_call_raw(nros_rmw_service_client_t *client,
     slot->has_reply = false;
     slot->overflow = false;
 
+    /* XRCE-DDS interop: strip the 4-byte CDR encapsulation header. */
+    const uint8_t *body = request;
+    size_t body_len = req_len;
+    if (body_len >= XRCE_CDR_HEADER_LEN) {
+        body += XRCE_CDR_HEADER_LEN;
+        body_len -= XRCE_CDR_HEADER_LEN;
+    }
     uint16_t req = uxr_buffer_request(
         &st->session, st->output_reliable, cs->requester_oid,
-        (uint8_t *)(uintptr_t)request, req_len);
+        (uint8_t *)(uintptr_t)body, body_len);
     if (req == UXR_INVALID_REQUEST_ID) {
         return NROS_RMW_RET_ERROR;
     }
