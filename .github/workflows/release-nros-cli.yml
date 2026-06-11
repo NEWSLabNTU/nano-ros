@@ -68,7 +68,7 @@ jobs:
       # from the nested submodule. actions/checkout default-skips
       # submodules; init only the CLI-side one (cheap; ~50KB).
       - name: Init CLI sub-workspace submodule
-        run: git submodule update --init --recursive packages/cli/third-party/ros-launch-manifest
+        run: git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

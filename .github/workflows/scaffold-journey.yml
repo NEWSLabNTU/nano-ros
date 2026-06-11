@@ -60,7 +60,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
-          git submodule update --init --recursive packages/cli/third-party/ros-launch-manifest
+          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 
       - name: Scaffold-journey check
