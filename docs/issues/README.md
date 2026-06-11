@@ -46,7 +46,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| 24 | esp32 .bss overflows DRAM — Phase 231 size-class receive buffers too large | bug       | build  | [0024-esp32-dram-overflow-size-class-buffers.md](0024-esp32-dram-overflow-size-class-buffers.md) |
 | 25 | host-integration lane fails native action/c_xrce/bridge tests — fixtures not staged | bug | build | [0025-host-integration-native-fixtures-unstaged.md](0025-host-integration-native-fixtures-unstaged.md) |
 
 Resolved issues live in [`archived/`](archived/).
