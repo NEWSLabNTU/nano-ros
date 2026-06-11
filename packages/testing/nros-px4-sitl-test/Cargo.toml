@@ -20,6 +20,10 @@ description = "PX4 SITL E2E test fixture for nano-ros uORB modules (out-of-works
 name = "px4_e2e"
 path = "tests/px4_e2e.rs"
 
+[[test]]
+name = "px4_xrce_e2e"
+path = "tests/px4_xrce_e2e.rs"
+
 [dependencies]
 # Path-dep into the px4-rs submodule. Out-of-workspace, so its
 # absence on a fresh clone is a build-time error here only, not a

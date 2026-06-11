@@ -167,6 +167,7 @@ exclude = [
     # Phase 233.4 — fake-PX4 stub publishing /fmu/out/vehicle_odometry so the
     # companion round-trip is CI-able without PX4 SITL. Standalone copy-out.
     "examples/px4/rust/xrce/px4-stub",
+    "examples/px4/rust/xrce/px4-probe",
     "examples/qemu-arm-freertos/rust/talker",
     "examples/qemu-arm-freertos/rust/listener",
     "examples/qemu-arm-freertos/rust/service-server",

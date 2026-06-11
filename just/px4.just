@@ -181,12 +181,12 @@ build-fixtures:
         exit 0
     fi
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    for ex in px4-stub offboard-companion; do
+    for ex in px4-stub offboard-companion px4-probe; do
         dir="examples/px4/rust/xrce/$ex"
         echo "  → generate px4_msgs for $dir"
         "$nros_cli" generate-px4-msgs --px4 "$PX4_DIR" --output "$dir/generated" >/dev/null
     done
-    for ex in px4-stub offboard-companion; do
+    for ex in px4-stub offboard-companion px4-probe; do
         echo "  → cargo build $ex (rmw-xrce, target-xrce/)"
         ( cd "examples/px4/rust/xrce/$ex" \
           && cargo build $cargo_profile_args --no-default-features --features rmw-xrce --target-dir target-xrce )
