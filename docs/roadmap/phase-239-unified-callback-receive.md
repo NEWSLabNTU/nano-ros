@@ -7,7 +7,9 @@ up to the subscription model — executor-dispatched **callbacks** fed by a QoS-
 C/C++ follow in a later phase. Fixes the silent single-buffer overwrite and honors
 ROS service `KEEP_LAST(10)` (RFC-0007).
 
-**Status.** Planned (2026-06). Implements RFC-0041.
+**Status.** In progress (2026-06). 239.1 (service-client typed callback) landed
+(builds + clippy clean); runtime test → 239.4; action-client (239.2) + QoS buffering
+(wave 2) next. Implements RFC-0041.
 
 **Priority.** P2 — reliability + RT-ergonomics + ROS alignment; not a correctness
 blocker (Promise works today) but removes a real silent-loss bug.
@@ -46,7 +48,7 @@ spin_once:
 
 ### Wave 1 — Rust typed callback API (dual-mode, on today's buffers)
 
-#### 239.1 — Service-client callback registration  ⬜
+#### 239.1 — Service-client callback registration  ✅ (code; runtime test → 239.4)
 Add `NodeCtx::create_client_with_callback::<Svc, F>(client, callback)` where
 `F: FnMut(&Svc::Reply) + 'static`. Wrap a new typed arena entry
 (`ServiceClientCallbackEntry<Svc, F>`) over the existing
