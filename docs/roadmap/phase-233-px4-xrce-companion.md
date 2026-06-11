@@ -8,10 +8,11 @@ two-track PX4 plan in **RFC-0039** ("support both") — the *additive* track.
 
 **Status.** Companion path complete + validated against real PX4 SITL (2026-06).
 233.1–233.5 landed; the topic path interoperates with actual PX4 firmware.
-**233.6 (service/action XRCE-DDS interop): services + pub/sub DONE both
-directions (hard-asserted vs real `rmw_fastrtps` ROS 2); actions remain** — a
-discovery/naming gap, not the CDR header (off the PX4 critical path). Wiring the
-harness also surfaced + fixed a spin-pacing bug
+**233.6 (service/action XRCE-DDS interop): services + pub/sub + actions DONE both
+directions (hard-asserted vs real `rmw_fastrtps` ROS 2)** — actions interop via
+per-channel entity types + a fixed `uint8[16]` goal-id wire fix; only deferred
+`get_result` reply remains (off the PX4 critical path). Wiring the harness also
+surfaced + fixed a spin-pacing bug
 ([issue 0026](../issues/archived/0026-px4-xrce-bare-agent-type-matching.md),
 resolved). Design-of-record: RFC-0039 (Draft).
 
@@ -131,7 +132,7 @@ Validate Track B against **actual PX4 firmware**, not the stub.
      header-stripped body into the reserved slot. Validated by
      `nros-tests::xrce::test_xrce_large_message_publish` (passes).
 
-### 233.6 — Service / action XRCE-DDS interop  ◐ (services + pub/sub landed; actions remain)
+### 233.6 — Service / action XRCE-DDS interop  ◐ (services + pub/sub + actions landed; only get_result deferral remains)
 **Wave 1 (DONE) — services + topics, forward.** The CDR-header strip/prepend now
 covers `service.c` — the 5 sites below (3 outbound strip + 2 inbound prepend).
 `test_xrce_service_ros2_client` is a **hard assert**: a real `rmw_fastrtps` ROS 2
@@ -161,27 +162,48 @@ against real `rmw_fastrtps` ROS 2:
 - `test_xrce_service_ros2_client` — ROS 2 client → nano-ros XRCE server (`sum=8`) ✅
 - `test_ros2_service_xrce_client` — nano-ros XRCE client → ROS 2 server (`5+3=8`) ✅
 
-**REMAINING — actions (separate work item, NOT the CDR header).** Action interop
-fails in **both** directions, and the cause is action *discovery / entity
-naming / QoS*, not payload framing:
-- `test_xrce_action_ros2_client` — a real ROS 2 action client never sees the
-  nano-ros XRCE action server: `Waiting for an action server to become
-  available...` (the 5 implicit action entities aren't recognized as an action
-  graph by `rcl_action`).
-- `test_ros2_action_xrce_client` — nano-ros XRCE action client → ROS 2 server:
-  `Goal acceptance failed: Timeout` even after the **type** was aligned (below).
-- *Type alignment landed* (removes one confound): the `action_server_fibonacci_*`
-  fixture now serves `example_interfaces/action/Fibonacci` on `/fibonacci` — the
-  SAME type+name the nano-ros examples use — via an rclpy heredoc, instead of
-  `action_tutorials_py` (which serves `action_tutorials_interfaces/Fibonacci`, a
-  different type that could never match). Matching the type was necessary but
-  **not sufficient**: goals still time out, so the gap is in how the XRCE backend
-  advertises the action's send_goal/cancel_goal/get_result services + feedback/
-  status topics (names must be `/<action>/_action/{send_goal,cancel_goal,
-  get_result,feedback,status}` with the `..._SendGoal` / `action_msgs/...` types
-  and the rcl_action-expected QoS) so ROS 2's `rcl_action` graph discovers a
-  match. The action interop tests stay diagnostic (INFO-skip) until this lands.
-  Out of the PX4 critical path (PX4 is topic-only).
+**Wave 3 (DONE) — actions interop both directions.** `test_xrce_action_ros2_client`
+and `test_ros2_action_xrce_client` are now **hard asserts** against a real
+`rmw_fastrtps` ROS 2 action server/client: goal **accept + feedback** round-trip
+both ways (full Fibonacci sequence `[0,1,1,…,55]` streamed). Two bugs, both in
+the action runtime (Rust `nros-node`), not the CDR header:
+
+1. *Per-channel entity types.* `executor/action.rs` + `node.rs` advertised every
+   action sub-entity with the bare action type (`…Fibonacci_`). ROS 2 matches the
+   send_goal / get_result **services** by their per-channel service types and the
+   feedback **topic** by `…Fibonacci_FeedbackMessage_`. Fixed: derive
+   `…Fibonacci_SendGoal_` / `…Fibonacci_GetResult_` from the request envelope
+   (`action_core::action_service_base_type`) and use `FeedbackMessage::TYPE_NAME`
+   for feedback (cancel_goal/status already used `action_msgs/*`). ROS 2 now
+   discovers all 5 entities (verified via `ros2 topic/service list -t`).
+
+2. *GoalId wire format (protocol-wide).* `write_goal_id`/`read_goal_id` framed the
+   goal UUID as a `u32(16)` sequence prefix + 16 bytes (20 B). ROS 2
+   `unique_identifier_msgs/UUID` is a fixed `uint8[16]` (16 B, **no** prefix), so a
+   real `rcl_action` peer rejected the 28-byte send_goal request (Fast-DDS
+   `RTPS_READER_HISTORY` payload-size error) and nano-ros mis-read inbound goal
+   ids. Fixed to fixed-16 everywhere: `write_goal_id`/`read_goal_id`, the
+   hand-rolled skips in `handles.rs`, the FFI feedback offset in `arena.rs`,
+   `GoalId::SEQ_PREFIX_LEN` → `0` (auto-corrects the nros-c / nros-cpp framing
+   calcs), and the Cyclone `strip_feedback_goal_id_prefix` /
+   `insert_goal_id_len_at` adapter removed (the runtime now emits the IDL-correct
+   fixed array directly). nano-ros↔nano-ros stays self-consistent (both ends
+   fixed-16); Cyclone `feedback_roundtrip` updated + green.
+
+The example action client also now uses `wait_for_action_server` (spins discovery)
+instead of a blind warmup, so the first send_goal doesn't race the
+requester↔replier DDS match (volatile pre-match samples are lost otherwise).
+
+**REMAINING — get_result deferral.** The forward server (`ros2 action send_goal`)
+accepts + streams feedback, but the final **result** is not asserted: the nano-ros
+action server answers `get_result` with the goal's *live* status instead of
+deferring the reply until the goal terminates, so `ros2` keeps waiting. Implementing
+deferred get_result (hold the pending request's sequence id + goal id, flush on
+`complete_goal`) is a distinct additive feature — it touches every `ActionServerCore`
+construction site (embedded / C / FreeRTOS), so it is tracked separately from this
+wire-format wave. nano-ros↔nano-ros is unaffected (its client sends get_result only
+after seeing the goal terminate, so the immediate reply path is correct there). Out
+of the PX4 critical path (PX4 is topic-only).
 
 #### Design (wave 1, landed)
 The CDR-header strip/prepend (233.5.1) covers **topics** (`publisher.c` /

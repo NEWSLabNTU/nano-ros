@@ -1020,9 +1020,10 @@ class Server(Node):
     def __init__(self):
         super().__init__('fibonacci_action_server')
         self._srv = ActionServer(self, Fibonacci, '/fibonacci', self.execute)
-        self.get_logger().info('Fibonacci action server ready')
+        print('SERVER READY', flush=True)
     def execute(self, goal_handle):
         order = goal_handle.request.order
+        print(f'SERVER GOAL order={order}', flush=True)
         seq = [0, 1]
         for i in range(1, order):
             seq.append(seq[i] + seq[i - 1])
@@ -1032,7 +1033,7 @@ class Server(Node):
         goal_handle.succeed()
         result = Fibonacci.Result()
         result.sequence = seq
-        self.get_logger().info(f'Goal done: order={order} -> {seq}')
+        print(f'SERVER DONE {seq}', flush=True)
         return result
 
 rclpy.init()

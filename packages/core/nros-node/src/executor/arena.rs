@@ -1149,20 +1149,20 @@ pub(crate) unsafe fn action_client_raw_try_process<
             // Feedback buffer layout from `publish_feedback_raw` in
             // `action_core.rs`:
             //   bytes 0..4   outer CDR header (`new_with_header`)
-            //   bytes 4..8   GoalId.length (u32 = 16, written by
-            //                `write_goal_id`)
-            //   bytes 8..24  GoalId.uuid (16 bytes)
-            //   bytes 24..   payload — exactly the bytes the caller
+            //   bytes 4..20  GoalId.uuid (16 bytes, fixed `uint8[16]`,
+            //                no length prefix — ROS 2
+            //                `unique_identifier_msgs/UUID`; see
+            //                `action_core::write_goal_id`)
+            //   bytes 20..   payload — exactly the bytes the caller
             //                of `publish_feedback_raw` handed in
             //                (typed serializers like `ffi_serialize`
             //                write a CDR header at the front).
             //
-            // Earlier offset of 4 + 16 = 20 missed the GoalId
-            // length-prefix u32, so 4 bytes of GoalId UUID leaked
-            // into the payload prefix and `ffi_deserialize` blew
-            // up — surfaced as `feedback=0` on cpp/xrce action E2E
-            // (Phase 96.1 follow-up).
-            const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 4 + 16;
+            // 233.6: the GoalId carries NO sequence-length prefix (it did
+            // pre-233.6, which made the offset `4 + 4 + 16`; that framing
+            // self-matched nano-ros peers but a real `rcl_action` peer
+            // rejects the extra 4 bytes).
+            const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 16;
             if total_len > FEEDBACK_PAYLOAD_OFFSET {
                 unsafe {
                     cb(

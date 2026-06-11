@@ -19,6 +19,30 @@ use crate::session;
 /// goal/result/feedback slabs.
 pub(crate) const CANCEL_BUF: usize = 256;
 
+/// DDS type name of an action's `send_goal` / `get_result` service.
+///
+/// ROS 2 names the action's two services by their per-channel service types —
+/// `<Action>_SendGoal` / `<Action>_GetResult` — **not** the bare action type
+/// (`<Action>`). A real `rcl_action` peer matches on those, so advertising the
+/// bare action type leaves our send_goal/get_result services undiscovered and
+/// every goal times out.
+///
+/// The codegen emits each channel's *request* envelope type name in DDS form,
+/// e.g. `example_interfaces::action::dds_::Fibonacci_SendGoal_Request_`. The
+/// service layer (`xrce_dds_request_type` / the Zenoh shim) extends a base type
+/// ending in `_` with `Request_` / `Response_`, so the base we must pass is the
+/// request type name with its trailing `Request_` stripped:
+/// `…Fibonacci_SendGoal_Request_` → `…Fibonacci_SendGoal_`. Falls back to the
+/// bare action type if the request name has an unexpected shape.
+pub(crate) fn action_service_base_type<'a>(
+    request_type_name: &'a str,
+    fallback_action_type: &'a str,
+) -> &'a str {
+    request_type_name
+        .strip_suffix("Request_")
+        .unwrap_or(fallback_action_type)
+}
+
 /// Scratch buffer for serializing a `GoalStatusArray` before publishing it
 /// on the status topic. 512 bytes holds the CDR header plus a status entry
 /// (`GoalInfo` + status enum) for every concurrently-tracked goal.
@@ -82,26 +106,27 @@ pub struct RawGoalRequest {
 // GoalId CDR helpers
 // ============================================================================
 
-/// Read a GoalId from a CDR reader (4-byte sequence length + 16 UUID bytes).
+/// Read a GoalId from a CDR reader as a fixed `uint8[16]` array.
+///
+/// ROS 2 actions carry the goal id as `unique_identifier_msgs/UUID`, whose
+/// single field is a **fixed-size** `uint8[16]` array — CDR fixed arrays have
+/// **no** length prefix. We must read exactly 16 bytes with no leading count,
+/// matching `unique_identifier_msgs::msg::UUID::deserialize`. (The pre-233.6
+/// framing wrote a `u32(16)` sequence prefix, which self-matched nano-ros peers
+/// but added 4 bytes a real `rcl_action` peer rejects.)
 fn read_goal_id(reader: &mut CdrReader<'_>) -> Result<GoalId, NodeError> {
-    let uuid_len = reader
-        .read_u32()
-        .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?
-        as usize;
     let mut goal_id = GoalId::default();
-    if uuid_len == 16 {
-        for byte in &mut goal_id.uuid {
-            *byte = reader
-                .read_u8()
-                .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-        }
+    for byte in &mut goal_id.uuid {
+        *byte = reader
+            .read_u8()
+            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
     }
     Ok(goal_id)
 }
 
-/// Write a GoalId into a CDR writer (4-byte sequence length + 16 UUID bytes).
+/// Write a GoalId into a CDR writer as a fixed `uint8[16]` array (no length
+/// prefix) — see [`read_goal_id`] for why the prefix must be absent.
 fn write_goal_id(writer: &mut CdrWriter<'_>, goal_id: &GoalId) -> Result<(), NodeError> {
-    writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
     for b in &goal_id.uuid {
         writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
     }

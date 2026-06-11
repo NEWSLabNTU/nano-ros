@@ -178,12 +178,17 @@ impl GoalId {
     /// Length of the goal UUID in bytes (ROS 2 `unique_identifier_msgs/UUID`).
     pub const UUID_LEN: usize = 16;
 
-    /// Length of the CDR sequence-length prefix (4-byte LE count) that precedes
-    /// the goal UUID bytes in the action wire framing. Phase 192.2 — single
-    /// source of truth for this `4` (was re-inlined inconsistently across the
-    /// C/C++/Cyclone action paths). The goal-request framing is
-    /// `CDR_HEADER_LEN + SEQ_PREFIX_LEN + UUID_LEN`.
-    pub const SEQ_PREFIX_LEN: usize = 4;
+    /// Length of any CDR length-prefix preceding the goal UUID bytes — **zero**.
+    ///
+    /// ROS 2 carries the goal id as `unique_identifier_msgs/UUID`, a fixed
+    /// `uint8[16]` array; CDR fixed arrays have **no** length prefix, so the goal
+    /// UUID sits directly after the CDR header. Pre-233.6 the action framing
+    /// wrote a `u32(16)` sequence prefix here (this const was `4`), which
+    /// self-matched nano-ros peers but added 4 bytes a real `rcl_action` peer
+    /// rejects. Kept as a named `0` (rather than deleted) so the C/C++/Cyclone
+    /// framing calcs that read `CDR_HEADER_LEN + SEQ_PREFIX_LEN + UUID_LEN` stay
+    /// correct after the migration.
+    pub const SEQ_PREFIX_LEN: usize = 0;
 
     /// Create a new GoalId from UUID bytes
     pub const fn new(uuid: [u8; 16]) -> Self {

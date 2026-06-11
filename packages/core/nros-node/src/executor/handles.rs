@@ -77,7 +77,8 @@ impl WaitBudget {
 
 /// UUID byte count in a ROS 2 GoalId.
 ///
-/// CDR encoding: 4-byte sequence-length prefix (`read_u32`) + 16 UUID bytes.
+/// CDR encoding: a fixed `uint8[16]` array — ROS 2 `unique_identifier_msgs/UUID`
+/// — with **no** length prefix (fixed arrays are unprefixed in CDR).
 const GOAL_UUID_SIZE: usize = 16;
 
 // ============================================================================
@@ -2246,8 +2247,8 @@ impl<
         let end = start + raw_req.data_len;
         let mut reader = CdrReader::new_with_header(&buf[start..end])
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-        // Skip past the GoalId (CDR length prefix + UUID bytes)
-        let _ = reader.read_u32();
+        // Skip past the GoalId — a fixed `uint8[16]` UUID, no length prefix
+        // (ROS 2 `unique_identifier_msgs/UUID`; see action_core::read_goal_id).
         for _ in 0..GOAL_UUID_SIZE {
             let _ = reader.read_u8();
         }
@@ -2489,8 +2490,8 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         // Deserialize feedback from the core's feedback buffer (after GoalId)
         let mut reader = CdrReader::new_with_header(&self.core.feedback_buffer[..len])
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-        // Skip GoalId (CDR length prefix + UUID bytes)
-        let _ = reader.read_u32();
+        // Skip GoalId — a fixed `uint8[16]` UUID, no length prefix
+        // (ROS 2 `unique_identifier_msgs/UUID`; see action_core::read_goal_id).
         for _ in 0..GOAL_UUID_SIZE {
             let _ = reader.read_u8();
         }

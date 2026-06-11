@@ -99,33 +99,6 @@ nros_rmw_ret_t wait_for_writer_match(dds_entity_t writer, uint64_t deadline_ms) 
     return NROS_RMW_RET_TIMEOUT;
 }
 
-// Phase 212.K.7.4.d — adapter for `_FeedbackMessage_` types only.
-//
-// The Rust side serialises the action `goal_id` field as
-//   [4 u32=16] [16 raw uuid bytes]
-// (the runtime's `write_goal_id` in `action_core.rs` treats UUID as
-// a `sequence<octet>` rather than the fixed `octet[16]` the Cyclone
-// IDL declares). Strip the extra 4-byte length prefix so the body
-// matches the IDL layout `dds_stream_read_sample` expects.
-//
-// `body` points to the post-encap-header payload; `body_len` is its
-// length. On success the prefix bytes are removed in-place by
-// memmove and `*body_len` is decremented. Returns false on a
-// malformed input (too short, or the length prefix isn't 16).
-bool strip_feedback_goal_id_prefix(uint8_t* body, size_t* body_len) {
-    if (body == nullptr || body_len == nullptr || *body_len < 4 + 16) {
-        return false;
-    }
-    uint32_t uuid_len = 0;
-    std::memcpy(&uuid_len, body, sizeof(uuid_len));
-    if (uuid_len != 16) {
-        return false;
-    }
-    std::memmove(body, body + 4, *body_len - 4);
-    *body_len -= 4;
-    return true;
-}
-
 } // namespace
 
 nros_rmw_ret_t publisher_create(nros_rmw_session_t* session, const char* topic_name,
@@ -233,17 +206,13 @@ nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t* publisher, const uint
         std::memcpy(body, data + 4, body_len);
     }
 
-    // Phase 212.K.7.4.d — Rust serialises `goal_id` in `*_FeedbackMessage_`
-    // with a `[4 u32=16]` length prefix (sequence-style), but the Cyclone
-    // IDL declares `octet goal_id[16]` (fixed array). Strip the prefix
-    // so the body matches what `dds_stream_read_sample` expects. The
-    // receive-side mirror sits in `subscriber.cpp::insert_goal_id_len_at`.
-    if (type_ends_with(desc, "_FeedbackMessage_")) {
-        if (!strip_feedback_goal_id_prefix(body, &body_len)) {
-            ddsrt_free(body);
-            return NROS_RMW_RET_INVALID_ARGUMENT;
-        }
-    }
+    // 233.6 — the Rust runtime now serialises the action `goal_id` as the
+    // fixed `octet[16]` the Cyclone IDL declares (no `[4 u32=16]`
+    // sequence-style prefix), matching ROS 2 `unique_identifier_msgs/UUID`.
+    // So the body already matches `dds_stream_read_sample`'s layout — no
+    // strip needed (the old `strip_feedback_goal_id_prefix` adapter and its
+    // `subscriber.cpp::insert_goal_id_len_at` receive-side mirror were both
+    // removed together).
 
     // For action status (e.g. `GoalStatusArray_`) the publisher only
     // emits valid wire data once at least one reader has matched (the

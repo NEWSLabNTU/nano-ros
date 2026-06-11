@@ -841,13 +841,26 @@ impl<'a> NodeHandle<'a> {
         // for it. Without `with_node_name` the shim's
         // `declare_entity_liveliness` short-circuits (`node_name.and_then`
         // → None) and `wait_for_action_server` has nothing to find.
+        // Advertise the per-channel service / topic types ROS 2 matches on
+        // (`<Action>_SendGoal` / `<Action>_GetResult` / `<Action>_FeedbackMessage`),
+        // not the bare action type — see `action_core::action_service_base_type`.
+        let send_goal_type = super::action_core::action_service_base_type(
+            <A::SendGoalRequest as RosMessage>::TYPE_NAME,
+            A::ACTION_NAME,
+        );
+        let get_result_type = super::action_core::action_service_base_type(
+            <A::GetResultRequest as RosMessage>::TYPE_NAME,
+            A::ACTION_NAME,
+        );
+        let feedback_type = <A::FeedbackMessage as RosMessage>::TYPE_NAME;
+
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
         let send_goal_info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
             &send_goal_keyexpr,
-            A::ACTION_NAME,
+            send_goal_type,
             A::ACTION_HASH,
         );
         let send_goal_server = self
@@ -875,7 +888,7 @@ impl<'a> NodeHandle<'a> {
             &self.name,
             &self.namespace,
             &get_result_keyexpr,
-            A::ACTION_NAME,
+            get_result_type,
             A::ACTION_HASH,
         );
         let get_result_server = self
@@ -889,7 +902,7 @@ impl<'a> NodeHandle<'a> {
             &self.name,
             &self.namespace,
             &feedback_keyexpr,
-            A::ACTION_NAME,
+            feedback_type,
             A::ACTION_HASH,
         );
         let feedback_publisher = self
@@ -989,13 +1002,25 @@ impl<'a> NodeHandle<'a> {
         // declares the matching client-side liveliness tokens (and so the
         // discovery wildcard built from `send_goal_info` ends up in the
         // same domain as the server's tokens).
+        // Same per-channel typing as the server side so the client's requesters
+        // and feedback reader match a real ROS 2 action server over DDS.
+        let send_goal_type = super::action_core::action_service_base_type(
+            <A::SendGoalRequest as RosMessage>::TYPE_NAME,
+            A::ACTION_NAME,
+        );
+        let get_result_type = super::action_core::action_service_base_type(
+            <A::GetResultRequest as RosMessage>::TYPE_NAME,
+            A::ACTION_NAME,
+        );
+        let feedback_type = <A::FeedbackMessage as RosMessage>::TYPE_NAME;
+
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
         let send_goal_info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
             &send_goal_keyexpr,
-            A::ACTION_NAME,
+            send_goal_type,
             A::ACTION_HASH,
         );
         let send_goal_client = self
@@ -1023,7 +1048,7 @@ impl<'a> NodeHandle<'a> {
             &self.name,
             &self.namespace,
             &get_result_keyexpr,
-            A::ACTION_NAME,
+            get_result_type,
             A::ACTION_HASH,
         );
         let get_result_client = self
@@ -1037,7 +1062,7 @@ impl<'a> NodeHandle<'a> {
             &self.name,
             &self.namespace,
             &feedback_keyexpr,
-            A::ACTION_NAME,
+            feedback_type,
             A::ACTION_HASH,
         );
         let feedback_subscriber = self

@@ -27,51 +27,24 @@ namespace {
 struct SubState {
     dds_entity_t topic{0};
     dds_entity_t reader{0};
-    const dds_topic_descriptor_t *desc{nullptr};
-    SertypeMin                   *st{nullptr};
+    const dds_topic_descriptor_t* desc{nullptr};
+    SertypeMin* st{nullptr};
 };
 
-inline SubState *as_state(nros_rmw_subscriber_t *s) {
-    return static_cast<SubState *>(s->backend_data);
-}
-
-bool type_ends_with(const dds_topic_descriptor_t *desc, const char *suffix) {
-    if (desc == nullptr || desc->m_typename == nullptr || suffix == nullptr) {
-        return false;
-    }
-    const std::size_t len = std::strlen(desc->m_typename);
-    const std::size_t slen = std::strlen(suffix);
-    return len >= slen && std::strcmp(desc->m_typename + len - slen, suffix) == 0;
-}
-
-bool insert_goal_id_len_at(uint8_t *buf, size_t len, size_t cap,
-                           size_t len_off, size_t *out_len) {
-    if (buf == nullptr || out_len == nullptr || len_off > len ||
-        len + 4 > cap) {
-        return false;
-    }
-    std::memmove(buf + len_off + 4, buf + len_off, len - len_off);
-    buf[len_off] = 16;
-    buf[len_off + 1] = 0;
-    buf[len_off + 2] = 0;
-    buf[len_off + 3] = 0;
-    *out_len = len + 4;
-    return true;
+inline SubState* as_state(nros_rmw_subscriber_t* s) {
+    return static_cast<SubState*>(s->backend_data);
 }
 
 } // namespace
 
-nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
-                                 const char *topic_name, const char *type_name,
-                                 const char * /*type_hash*/,
-                                 uint32_t /*domain_id*/,
-                                 const nros_rmw_qos_t *qos,
-                                 nros_rmw_subscriber_t *out) {
-    if (out == nullptr || session == nullptr || topic_name == nullptr ||
-        type_name == nullptr) {
+nros_rmw_ret_t subscriber_create(nros_rmw_session_t* session, const char* topic_name,
+                                 const char* type_name, const char* /*type_hash*/,
+                                 uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
+                                 nros_rmw_subscriber_t* out) {
+    if (out == nullptr || session == nullptr || topic_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    out->backend_data      = nullptr;
+    out->backend_data = nullptr;
     out->can_loan_messages = false;
 
     dds_entity_t pp = session_participant(session);
@@ -83,12 +56,12 @@ nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
     if (!action_topic_type(topic_name, type_name, eff_type, sizeof(eff_type))) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    const dds_topic_descriptor_t *desc = find_descriptor(eff_type);
+    const dds_topic_descriptor_t* desc = find_descriptor(eff_type);
     if (desc == nullptr) {
         return NROS_RMW_RET_UNSUPPORTED;
     }
 
-    auto *state = new (std::nothrow) SubState();
+    auto* state = new (std::nothrow) SubState();
     if (state == nullptr) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -106,15 +79,15 @@ nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
         return NROS_RMW_RET_ERROR;
     }
     state->topic = topic;
-    state->desc  = desc;
+    state->desc = desc;
 
-    dds_qos_t *dq = (qos != nullptr) ? make_dds_qos(qos) : nullptr;
+    dds_qos_t* dq = (qos != nullptr) ? make_dds_qos(qos) : nullptr;
     dds_entity_t reader = dds_create_reader(pp, topic, dq, nullptr);
     if (dq != nullptr) {
         dds_delete_qos(dq);
     }
     if (reader < 0) {
-        (void) dds_delete(topic);
+        (void)dds_delete(topic);
         delete state;
         return NROS_RMW_RET_ERROR;
     }
@@ -122,34 +95,33 @@ nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
 
     state->st = new (std::nothrow) SertypeMin(desc);
     if (state->st == nullptr) {
-        (void) dds_delete(reader);
-        (void) dds_delete(topic);
+        (void)dds_delete(reader);
+        (void)dds_delete(topic);
         delete state;
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
     out->backend_data = state;
-    graph_track_reader(session_graph(session), reader);  // Phase 177.36
+    graph_track_reader(session_graph(session), reader); // Phase 177.36
     return NROS_RMW_RET_OK;
 }
 
-void subscriber_destroy(nros_rmw_subscriber_t *subscriber) {
+void subscriber_destroy(nros_rmw_subscriber_t* subscriber) {
     if (subscriber == nullptr) return;
-    SubState *state = as_state(subscriber);
+    SubState* state = as_state(subscriber);
     if (state == nullptr) return;
-    if (state->reader > 0) (void) dds_delete(state->reader);
-    if (state->topic > 0)  (void) dds_delete(state->topic);
+    if (state->reader > 0) (void)dds_delete(state->reader);
+    if (state->topic > 0) (void)dds_delete(state->topic);
     delete state->st;
     delete state;
     subscriber->backend_data = nullptr;
 }
 
-int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
-                                uint8_t *buf, size_t buf_len) {
+int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t* subscriber, uint8_t* buf, size_t buf_len) {
     if (subscriber == nullptr || buf == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    SubState *state = as_state(subscriber);
+    SubState* state = as_state(subscriber);
     if (state == nullptr || state->desc == nullptr || state->st == nullptr) {
         return NROS_RMW_RET_ERROR;
     }
@@ -161,11 +133,11 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     // deserialises into this buffer and dds_stream_free_sample frees nested
     // members through the ddsrt heap, so the buffer itself must match. Mirrors
     // the publisher path (Phase 177.22).
-    void *sample = ddsrt_calloc(1, state->desc->m_size);
+    void* sample = ddsrt_calloc(1, state->desc->m_size);
     if (sample == nullptr) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
-    void *samples[1] = {sample};
+    void* samples[1] = {sample};
     dds_sample_info_t si[1];
     dds_return_t taken = dds_take(state->reader, samples, si, 1, 1);
     if (taken < 0) {
@@ -201,12 +173,14 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
 #endif
     constexpr uint8_t kEncOpts[2] = {0x00, 0x00};
 
+    // 233.6 — the action `goal_id` is a fixed `octet[16]` on both the IDL
+    // and the Rust runtime side now (ROS 2 `unique_identifier_msgs/UUID`),
+    // so the serialised sample already matches what the Rust read path
+    // expects — no length-prefix insert (the old `insert_goal_id_len_at`
+    // mirror of `publisher.cpp::strip_feedback_goal_id_prefix` was removed
+    // together with it).
     uint32_t paylen = os.m_index;
-    uint32_t total  = paylen + 4;
-    bool insert_goal_len = type_ends_with(state->desc, "_FeedbackMessage_");
-    if (insert_goal_len) {
-        total += 4;
-    }
+    uint32_t total = paylen + 4;
     if (buf_len < total) {
         dds_ostream_fini(&os);
         dds_stream_free_sample(sample, state->desc->m_ops);
@@ -218,16 +192,6 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     buf[2] = kEncOpts[0];
     buf[3] = kEncOpts[1];
     std::memcpy(buf + 4, os.m_buffer, paylen);
-    if (insert_goal_len) {
-        size_t adjusted = 0;
-        if (!insert_goal_id_len_at(buf, paylen + 4, buf_len, 4, &adjusted)) {
-            dds_ostream_fini(&os);
-            dds_stream_free_sample(sample, state->desc->m_ops);
-            ddsrt_free(sample);
-            return NROS_RMW_RET_BUFFER_TOO_SMALL;
-        }
-        total = static_cast<uint32_t>(adjusted);
-    }
     dds_ostream_fini(&os);
     dds_stream_free_sample(sample, state->desc->m_ops);
     ddsrt_free(sample);
@@ -239,18 +203,15 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
 // (reader, buf, info, count, maxs) and returns N samples in one
 // call. Serialise each typed sample back to CDR with the same
 // encoding-header convention as `subscriber_try_recv_raw`.
-int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t *subscriber,
-                                     uint8_t *buf,
-                                     size_t   per_msg_cap,
-                                     size_t   max_msgs,
-                                     size_t  *out_lens) {
+int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t* subscriber, uint8_t* buf,
+                                     size_t per_msg_cap, size_t max_msgs, size_t* out_lens) {
     if (subscriber == nullptr || buf == nullptr || out_lens == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     if (per_msg_cap == 0 || max_msgs == 0) {
         return 0;
     }
-    SubState *state = as_state(subscriber);
+    SubState* state = as_state(subscriber);
     if (state == nullptr || state->desc == nullptr || state->st == nullptr) {
         return NROS_RMW_RET_ERROR;
     }
@@ -261,7 +222,7 @@ int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t *subscriber,
     constexpr size_t kMaxBatch = 32;
     const size_t take_n = max_msgs > kMaxBatch ? kMaxBatch : max_msgs;
 
-    void *samples[kMaxBatch] = {nullptr};
+    void* samples[kMaxBatch] = {nullptr};
     dds_sample_info_t si[kMaxBatch];
 
     dds_return_t taken = dds_take(state->reader, samples, si, take_n, take_n);
@@ -294,13 +255,13 @@ int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t *subscriber,
             break;
         }
         uint32_t paylen = os.m_index;
-        uint32_t total  = paylen + 4;
+        uint32_t total = paylen + 4;
         if (per_msg_cap < total) {
             dds_ostream_fini(&os);
             err = NROS_RMW_RET_BUFFER_TOO_SMALL;
             break;
         }
-        uint8_t *slot = buf + produced * per_msg_cap;
+        uint8_t* slot = buf + produced * per_msg_cap;
         slot[0] = kEncId[0];
         slot[1] = kEncId[1];
         slot[2] = kEncOpts[0];
@@ -312,7 +273,7 @@ int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t *subscriber,
     }
 
     // Return all loans (valid + invalid) in one call.
-    (void) dds_return_loan(state->reader, samples, taken);
+    (void)dds_return_loan(state->reader, samples, taken);
 
     if (err < 0) {
         return err;
@@ -320,7 +281,7 @@ int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t *subscriber,
     return static_cast<int32_t>(produced);
 }
 
-int32_t subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
+int32_t subscriber_has_data(nros_rmw_subscriber_t* subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) return 0;
     // Cyclone's DATA_AVAILABLE status is edge-like for our executor use:
     // querying it as a pre-filter can clear/suppress the subsequent take
@@ -330,9 +291,9 @@ int32_t subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
     return 1;
 }
 
-dds_entity_t subscriber_reader(const nros_rmw_subscriber_t *subscriber) {
+dds_entity_t subscriber_reader(const nros_rmw_subscriber_t* subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) return 0;
-    return static_cast<const SubState *>(subscriber->backend_data)->reader;
+    return static_cast<const SubState*>(subscriber->backend_data)->reader;
 }
 
 } // namespace nros_rmw_cyclonedds

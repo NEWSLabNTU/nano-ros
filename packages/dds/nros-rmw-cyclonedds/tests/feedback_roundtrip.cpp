@@ -1,17 +1,18 @@
-// Phase 212.K.7.4.d — `_FeedbackMessage_` publisher wire-format adapter.
+// `_FeedbackMessage_` publisher/subscriber goal_id round-trip (233.6).
 //
 // Builds a `Fibonacci_FeedbackMessage_`-shaped descriptor via the K.7.4.b
 // dynamic bridge, registers it, then publishes a hand-crafted nano-ros
-// runtime payload (4-byte enc header + `[4 u32=16]` length prefix + 16
-// raw UUID bytes + sequence<int32> body) and asserts the subscriber takes
-// the same bytes back (the subscriber path already re-inserts the goal_id
-// length prefix via `insert_goal_id_len_at`, so a round-trip should be
-// byte-identical).
+// runtime payload (4-byte enc header + 16 raw UUID bytes + sequence<int32>
+// body) and asserts the subscriber takes the same bytes back.
 //
-// This proves the publisher's `strip_feedback_goal_id_prefix` adapter
-// drives the generic `dds_stream_read_sample` path correctly for the
-// `[octet goal_id[16]; sequence<int32> sequence;]` IDL shape — the same
-// IDL the action runtime carries on the live wire.
+// Since 233.6 the action `goal_id` is a fixed `octet[16]` on both the wire
+// and the IDL (ROS 2 `unique_identifier_msgs/UUID`), so the publisher and
+// subscriber pass it straight through — the old `[4 u32=16]` length-prefix
+// strip/reinsert adapter (`strip_feedback_goal_id_prefix` /
+// `insert_goal_id_len_at`) was removed. This proves the generic
+// `dds_stream_read_sample` path round-trips the
+// `[octet goal_id[16]; sequence<int32> sequence;]` IDL shape — the same IDL
+// the action runtime carries on the live wire.
 
 #include <cstdint>
 #include <cstdio>
@@ -153,19 +154,17 @@ int main() {
         return 4;
     }
 
-    // Hand-build the nano-ros runtime wire payload:
+    // Hand-build the nano-ros runtime wire payload (233.6 — goal_id is a fixed
+    // `octet[16]` with NO length prefix, matching ROS 2
+    // `unique_identifier_msgs/UUID`):
     //   [4 enc=00 01 00 00]
-    //   [4 u32=16]            ← goal_id length prefix (stripped by publisher)
-    //   [16 raw uuid bytes]
+    //   [16 raw uuid bytes]   ← goal_id, inline, no prefix
     //   [4 u32=3]             ← sequence<int32> length
     //   [3*4 int32 elems]
     uint8_t wire[64] = {};
     size_t pos = 0;
     const uint8_t enc[4] = {0x00, 0x01, 0x00, 0x00};
     std::memcpy(wire + pos, enc, 4);
-    pos += 4;
-    const uint32_t goal_len = 16;
-    std::memcpy(wire + pos, &goal_len, 4);
     pos += 4;
     const uint8_t goal_id_bytes[16] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                                        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10};
@@ -199,34 +198,21 @@ int main() {
     int32_t n = g_vt->try_recv_raw(&sub, recv, sizeof(recv));
     EXPECT(n > 0, "try_recv_raw returned %d", n);
 
-    // The subscriber re-inserts the 4-byte goal_id length prefix
-    // (subscriber.cpp::insert_goal_id_len_at), so a round-trip should
-    // be byte-identical to what we sent — modulo any padding Cyclone
-    // adds when re-serialising.
-    //
-    // We accept either:
-    //   a) byte-identical (length-prefix path symmetric, no padding), or
-    //   b) longer than the input with the same goal_id length prefix +
-    //      uuid bytes present (Cyclone may add padding before the
-    //      sequence length depending on alignment).
-    // The contract under test is that the goal_id strip-then-reinsert
-    // round-trips both halves of the message, so we assert the leading
-    // `[4 enc][4 u32=16][16 uuid]` survive intact regardless of any
-    // tail padding.
-    EXPECT(n >= 4 + 4 + 16 + 4 + 4, "recv too short: %d", n);
+    // 233.6 — the goal_id is a fixed `octet[16]` on both wire and IDL, so the
+    // publisher/subscriber pass it straight through (no strip/reinsert). The
+    // round-trip should preserve `[4 enc][16 uuid]` intact, with the sequence
+    // body following (modulo any tail padding Cyclone adds on re-serialise).
+    EXPECT(n >= 4 + 16 + 4 + 4, "recv too short: %d", n);
     EXPECT(std::memcmp(recv, enc, 4) == 0, "enc header drift");
-    uint32_t recv_goal_len = 0;
-    std::memcpy(&recv_goal_len, recv + 4, 4);
-    EXPECT(recv_goal_len == 16, "goal_id length prefix expected 16 got %u", recv_goal_len);
-    EXPECT(std::memcmp(recv + 8, goal_id_bytes, 16) == 0, "uuid bytes drift");
+    EXPECT(std::memcmp(recv + 4, goal_id_bytes, 16) == 0, "uuid bytes drift");
 
     // Body sanity: the sequence length should be 3, and the three int32
-    // values should follow.
+    // values should follow (offset = 4 enc + 16 uuid).
     uint32_t recv_seq_len = 0;
-    std::memcpy(&recv_seq_len, recv + 4 + 4 + 16, 4);
+    std::memcpy(&recv_seq_len, recv + 4 + 16, 4);
     EXPECT(recv_seq_len == 3, "feedback sequence length expected 3 got %u", recv_seq_len);
     int32_t recv_vals[3] = {-1, -1, -1};
-    std::memcpy(recv_vals, recv + 4 + 4 + 16 + 4, sizeof(recv_vals));
+    std::memcpy(recv_vals, recv + 4 + 16 + 4, sizeof(recv_vals));
     EXPECT(recv_vals[0] == 0 && recv_vals[1] == 1 && recv_vals[2] == 1,
            "feedback sequence values drift: [%d,%d,%d]", recv_vals[0], recv_vals[1], recv_vals[2]);
 
@@ -234,6 +220,6 @@ int main() {
     g_vt->destroy_subscriber(&sub);
     (void)g_vt->close(&s);
 
-    std::printf("OK feedback_roundtrip — %d recv bytes, goal_id strip/reinsert symmetric\n", n);
+    std::printf("OK feedback_roundtrip — %d recv bytes, fixed octet[16] goal_id round-trips\n", n);
     return 0;
 }

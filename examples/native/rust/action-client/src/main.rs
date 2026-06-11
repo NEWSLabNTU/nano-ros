@@ -69,14 +69,18 @@ fn run() -> i32 {
     };
     info!("Action client created: /fibonacci");
 
-    // Warm up discovery before the first goal: send_goal is a service
-    // call under the hood, and its request races the writer↔server-reader
-    // endpoint match (same first-call race the service-client hits). The
-    // action client exposes no `wait_for`/retry, so spin the executor for
-    // a few seconds to let the endpoints match.
-    let warmup = std::time::Instant::now();
-    while warmup.elapsed() < std::time::Duration::from_millis(3000) {
-        let _ = executor.spin_once(core::time::Duration::from_millis(10));
+    // Wait for the action server before the first goal: send_goal is a
+    // service call under the hood, and its request races the
+    // writer↔server-reader endpoint match (same first-call race the
+    // service-client hits) — a request published before the match is lost
+    // under VOLATILE durability. `wait_for_action_server` spins the executor
+    // while probing send_goal-server reachability, so it both drives
+    // discovery and blocks until the endpoints match. Proceed anyway on
+    // timeout (backends without liveliness probing fall back to the spin).
+    match client.wait_for_action_server(&mut executor, core::time::Duration::from_secs(10)) {
+        Ok(true) => info!("Action server discovered"),
+        Ok(false) => warn!("Action server not confirmed within 10s — sending goal anyway"),
+        Err(e) => warn!("wait_for_action_server error: {:?} — sending goal anyway", e),
     }
 
     let goal = FibonacciGoal { order: 10 };

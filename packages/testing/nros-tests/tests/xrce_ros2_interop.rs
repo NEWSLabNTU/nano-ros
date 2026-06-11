@@ -369,15 +369,27 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
     drop(agent);
 
     eprintln!("ROS 2 DDS action client output:\n{ros2_output}");
-    if ros2_output.contains("Result") || ros2_output.contains("sequence") {
-        eprintln!("[PASS] XRCE action server ↔ ROS 2 DDS client: result received");
-    } else if ros2_output.contains("Goal accepted") || ros2_output.contains("ACCEPTED") {
-        eprintln!("[PASS] XRCE action server ↔ ROS 2 DDS client: goal accepted (no result yet)");
-    } else {
-        eprintln!(
-            "[INFO] ROS 2 DDS action goal did not complete — likely DDS action naming/version drift"
-        );
-    }
+    // A real `ros2 action send_goal --feedback` against the nano-ros XRCE
+    // action server accepts the goal and streams feedback — exercising the
+    // send_goal service + feedback topic with ROS-2-correct names/types and
+    // the fixed `uint8[16]` goal-id framing (233.6). Goal acceptance proves the
+    // send_goal request crossed DDS→agent→XRCE and the reply returned; a
+    // non-empty feedback entry proves the feedback topic + goal-id framing
+    // round-trips to a real `rcl_action` client.
+    //
+    // NOTE: the final get_result reply is NOT asserted — the nano-ros server
+    // currently answers get_result with the live status instead of deferring
+    // the reply until the goal terminates, so `ros2` keeps waiting for the
+    // result. Tracked as a remaining 233.6 item (get_result deferral); the
+    // wire-format work this test guards (goal-id + per-channel types) is done.
+    let accepted = ros2_output.contains("Goal accepted");
+    let got_feedback = ros2_output.contains("- 0");
+    assert!(
+        accepted && got_feedback,
+        "XRCE action server ↔ ROS 2 DDS client did not accept+feedback (233.6): \
+         accepted={accepted} got_feedback={got_feedback}.\n{ros2_output}"
+    );
+    eprintln!("[PASS] XRCE action server ↔ ROS 2 DDS client: goal accepted + feedback");
 }
 
 /// ROS 2 (DDS) action server ↔ nano-XRCE action client (reverse direction).
@@ -405,9 +417,12 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
             );
         }
     };
-    // Demo server may be absent (action_tutorials_py not installed) — give it a
-    // moment; the client side then INFO-skips if discovery never lands.
-    std::thread::sleep(Duration::from_secs(3));
+    // The rclpy ActionServer needs a few seconds to import rclpy, create the
+    // 5 action entities, and announce them over DDS so the agent's requesters
+    // can match before the client's send_goal fires (the action client has no
+    // wait_for/retry — see the example's warmup loop). 3s was too tight under
+    // test load and intermittently missed the match; 6s lands reliably.
+    std::thread::sleep(Duration::from_secs(6));
 
     let mut client_cmd = Command::new(&xrce_action_client_binary);
     client_cmd
@@ -419,23 +434,28 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
         .env("RUST_LOG", "info");
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-action-client")
         .expect("Failed to start xrce action client");
+    // The example logs "Final sequence" once it has streamed the full
+    // Fibonacci feedback; "Action client finished" is its terminal line.
     let client_output = client
-        .wait_for_output_pattern("Final result", Duration::from_secs(20))
+        .wait_for_output_pattern("Action client finished", Duration::from_secs(20))
         .unwrap_or_default();
     client.kill();
     ros2_server.kill();
     drop(agent);
 
     eprintln!("XRCE action client output:\n{client_output}");
-    if client_output.contains("Final result") || client_output.contains("Result") {
-        eprintln!("[PASS] ROS 2 DDS action server ↔ XRCE action client: result received");
-    } else if client_output.contains("Goal accepted") {
-        eprintln!("[PASS] ROS 2 DDS action server ↔ XRCE action client: goal accepted");
-    } else {
-        eprintln!(
-            "[INFO] XRCE action client got no result — ROS 2 demo action server may be absent (action_tutorials_py) or DDS action naming drift"
-        );
-    }
+    // Goal acceptance proves the send_goal request crossed XRCE→agent→DDS and
+    // the reply came back (goal_id framing + per-channel service types). At
+    // least one non-empty feedback proves the feedback topic + UUID framing
+    // round-trips from a real `rcl_action` server.
+    let accepted = client_output.contains("Goal accepted");
+    let got_feedback = client_output.contains("Feedback #1: [0, 1");
+    assert!(
+        accepted && got_feedback,
+        "ROS 2 DDS action server ↔ XRCE action client did not complete (233.6): \
+         accepted={accepted} got_feedback={got_feedback}.\n{client_output}"
+    );
+    eprintln!("[PASS] ROS 2 DDS action server ↔ XRCE action client: goal accepted + feedback");
 }
 
 /// ROS 2 (DDS) service server ↔ nano-XRCE service client (reverse direction).

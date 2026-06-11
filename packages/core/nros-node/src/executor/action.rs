@@ -175,9 +175,23 @@ impl Executor {
         // Create the action server entities (same logic as Node::create_action_server_sized)
         let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH);
 
+        // ROS 2 matches the action's send_goal / get_result services by their
+        // per-channel service types (`<Action>_SendGoal` / `<Action>_GetResult`)
+        // and the feedback topic by `<Action>_FeedbackMessage` — not the bare
+        // action type. Pass those so a real `rcl_action` peer discovers us.
+        let send_goal_type = super::action_core::action_service_base_type(
+            <A::SendGoalRequest as nros_core::RosMessage>::TYPE_NAME,
+            A::ACTION_NAME,
+        );
+        let get_result_type = super::action_core::action_service_base_type(
+            <A::GetResultRequest as nros_core::RosMessage>::TYPE_NAME,
+            A::ACTION_NAME,
+        );
+        let feedback_type = <A::FeedbackMessage as nros_core::RosMessage>::TYPE_NAME;
+
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
         let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+            ServiceInfo::new(&send_goal_keyexpr, send_goal_type, A::ACTION_HASH).with_domain(0);
         let send_goal_server = self
             .session
             .create_service_server(&send_goal_info, QosSettings::services_default())
@@ -197,7 +211,7 @@ impl Executor {
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
         let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+            ServiceInfo::new(&get_result_keyexpr, get_result_type, A::ACTION_HASH).with_domain(0);
         let get_result_server = self
             .session
             .create_service_server(&get_result_info, QosSettings::services_default())
@@ -205,7 +219,7 @@ impl Executor {
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
         let feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+            TopicInfo::new(&feedback_keyexpr, feedback_type, A::ACTION_HASH).with_domain(0);
         let feedback_publisher = self
             .session
             .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
