@@ -7,6 +7,22 @@ up to the subscription model — executor-dispatched **callbacks** fed by a QoS-
 C/C++ follow in a later phase. Fixes the silent single-buffer overwrite and honors
 ROS service `KEEP_LAST(10)` (RFC-0007).
 
+**Status.** **COMPLETE — archived (2026-06).** All in-phase work landed: the
+callback receive model (service + action clients) across Rust / C / C++,
+dual-mode with `Promise`, QoS-depth buffering, the native cross-language matrix
+(239.15), and live Cyclone backend-parity (239.8). RFC-0041 → **Stable**,
+RFC-0037 ticked. Bugs found + fixed en route: C++ service reply dispatch
+(`pending`), C++ action result offset (8→5), **#39** (cpp `init_with_launch_auto`
+null-locator, fixed at the 3-arg `init` root) and **#40** (its action-result
+symptom). Out-of-phase follow-ups only: the embedded/QEMU lane (blocked on the
+deferred embedded imperative service-client seam, 212.M-F.4), **#43** (C++
+action server empty-result for a C-framed goal), and WCET/wake-latency cycle
+benches (deferred to CI infra).
+
+---
+
+_Historical wave log below._
+
 **Status.** In progress (2026-06). **Wave 1 complete** (239.1-4: both client
 callbacks + in-process E2Es). **Wave 2 core done** — 239.5 (action-feedback
 QoS-depth ring) + 239.7 (burst test: 2 feedbacks both delivered). 162 nros-node
