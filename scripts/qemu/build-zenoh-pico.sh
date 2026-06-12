@@ -185,7 +185,7 @@ INCLUDES="$INCLUDES -I$C_DIR/include"
 # platform ABI header). It lives in nros-platform-cffi, which the
 # Rust build.rs already has on its include path; the standalone
 # embedded build script needs it too.
-INCLUDES="$INCLUDES -I$REPO_ROOT/packages/core/nros-platform-cffi/include"
+INCLUDES="$INCLUDES -I$REPO_ROOT/packages/core/nros-platform-api/include"
 
 # Platform defines (matches build.rs build_zenoh_pico_embedded)
 DEFINES="-DZENOH_GENERIC"

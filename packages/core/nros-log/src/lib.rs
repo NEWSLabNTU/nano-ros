@@ -11,7 +11,7 @@
 //!   `nros-platform-<rtos>` crate, exposing
 //!   `nros_platform_log_write` / `nros_platform_log_flush` via the
 //!   `nros_platform_*` ABI (header at
-//!   `packages/core/nros-platform-cffi/include/nros/platform.h`).
+//!   `packages/core/nros-platform-api/include/nros/platform.h`).
 //! - `PlatformSink` is the bridge: a single `LogSink` impl that
 //!   forwards to the ABI. Apps that want fan-out (e.g.
 //!   `Platform + /rosout`) compose a `&'static [&dyn LogSink]`

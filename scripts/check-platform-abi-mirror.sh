@@ -19,7 +19,7 @@
 set -euo pipefail
 
 RUST="packages/core/nros-platform-cffi/src/lib.rs"
-INCLUDE_DIR="packages/core/nros-platform-cffi/include/nros"
+INCLUDE_DIR="packages/core/nros-platform-api/include/nros"
 
 # Each header lists the symbols whose Rust mirror must include both:
 #   (a) a `pub fn <name>(` declaration inside an `unsafe extern "C" {}` block

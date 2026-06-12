@@ -83,7 +83,7 @@ export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
 CSRCS = $(NANO_ROS_ROOT)/packages/core/nros-platform-posix/src/platform.c
 # Include the platform.h header in CFLAGS so the POSIX port's
 # `#include <nros/platform.h>` resolves.
-CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/packages/core/nros-platform-cffi/include
+CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/packages/core/nros-platform-api/include
 
 # Phase 157.C — resolve the real nano-ros repo root via the
 # `apps/external/nano-ros` symlink (which points at

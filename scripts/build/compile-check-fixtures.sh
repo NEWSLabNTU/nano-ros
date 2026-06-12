@@ -186,7 +186,7 @@ stage_and_cross_build() {
     # the repo via env (the build.rs codegen + cc compile).
     ( cd "$staged/$subdir" \
         && NROS_PLATFORM_FREERTOS_SRC="$repo_root/packages/core/nros-platform-freertos/src" \
-           NROS_PLATFORM_CFFI_INCLUDE="$repo_root/packages/core/nros-platform-cffi/include" \
+           NROS_PLATFORM_CFFI_INCLUDE="$repo_root/packages/core/nros-platform-api/include" \
            cargo build --target "$target" -p "$pkg" )
     date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
     echo "   built $staged/$subdir (target/$target)"
