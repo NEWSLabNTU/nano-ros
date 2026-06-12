@@ -133,16 +133,23 @@ wave lands).
           `phase235_a` synthesized-counter path. (Needs the C++/zenoh build tier.)
   - [ ] raw↔typed type-name-form unification (240.1 finding) — still open.
 
-### 240.3 — Carrier + embedded board adapter (NuttX)
-- [ ] Rewrite the NuttX carrier branch (`NanoRosNodeRegister.cmake`) +
-      `nuttx_entry_main.cpp.in`: emit `#include` + construct + executor spin
-      instead of `NuttxBoard::run(register_symbol)`. Pass `CLASS` + `class_header`
-      (the carrier already has `_NRC_CLASS`).
-- [ ] Board lifecycle: `nros::init(locator, domain)` → construct components →
-      `spin_once` loop → `shutdown`; delete the `EntryNodeRuntime` use in
-      `NuttxBoard`. (Keep the slirp-locator bake + `app_main` shim from 238.)
-- [ ] NuttX cpp talker/listener **real-logic** pub/sub E2E (real counter from the
-      user `on_tick`, not synthesized). Migrate `examples/qemu-arm-nuttx/cpp/{talker,listener}`.
+### 240.3 — Carrier + embedded board adapter (NuttX) — **mechanism DONE 2026-06-12**
+- [x] Typed NuttX carrier: `nano_ros_node_register(TYPED …)` (C++) emits
+      `cmake/templates/nuttx_entry_main_typed.cpp.in` — construct the component +
+      `configure(node)` + `NuttxBoard::run_components(locator, &setup)` — instead of
+      the register-symbol → interpreter template. Substitution vars `NROS_ENTRY_CLASS`
+      / `NROS_ENTRY_CLASS_HEADER` (= derived/`HEADER`) / `NROS_ENTRY_NODE_NAME`.
+      Render-verified against the listener (matches the proven native typed TU shape).
+- [x] Board lifecycle already lands in 240.2: `NuttxBoard::run_components` does
+      `network_wait → init(locator,domain) → setup() → component_spin_loop →
+      shutdown` (no `EntryNodeRuntime`). Slirp-locator bake + `app_main` shim kept.
+- [x] Migrated `examples/qemu-arm-nuttx/cpp/listener` to a typed component
+      (`Result configure(nros::Node&)` binding a raw member sub by identity;
+      `TYPED HEADER Listener.hpp`; keeps the `Waiting for messages` rtos_e2e marker).
+- [ ] **240.3-rest** — migrate `…/cpp/talker` to a typed `Publisher<Int32>`
+      timer component (needs C++ `std_msgs` header provisioning via
+      `nros_find_interfaces(LANGUAGE CPP)` on the example); cross-build the typed
+      ELFs + run the NuttX two-process real-logic pub/sub E2E (build tier).
 
 ### 240.4 — C path parity
 - [ ] C component shape: a `struct` (state) + `nros_ret_t configure(nros_node_t*)`

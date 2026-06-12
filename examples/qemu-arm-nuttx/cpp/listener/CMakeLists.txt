@@ -12,10 +12,18 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
+# Phase 240.3 (RFC-0043) — TYPED carrier: the NuttX bootable ELF constructs
+# the `Listener` component + calls `configure(node)` on the real executor
+# (`NuttxBoard::run_components`), instead of the declarative register-symbol →
+# interpreter path. HEADER is the component header relative to the `src`
+# include dir (the carrier `#include`s it to construct the class).
 nano_ros_node_register(
-    NAME    listener
-    CLASS   nuttx_cpp_listener::Listener
-    SOURCES src/Listener.cpp
-    DEPLOY  nuttx)
+    NAME     listener
+    CLASS    nuttx_cpp_listener::Listener
+    LANGUAGE CPP
+    HEADER   Listener.hpp
+    TYPED
+    SOURCES  src/Listener.cpp
+    DEPLOY   nuttx)
 
 nano_ros_deploy(TARGET nuttx RMW ${NROS_RMW} DOMAIN_ID 0)

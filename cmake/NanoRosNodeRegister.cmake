@@ -95,7 +95,7 @@ function(_nros_json_strlist out_var)
 endfunction()
 
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "" "NAME;CLASS;LANGUAGE;HEADER" "SOURCES;DEPLOY" ${ARGN})
+    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER" "SOURCES;DEPLOY" ${ARGN})
     foreach(_req NAME CLASS SOURCES DEPLOY)
         if(NOT _NRC_${_req})
             message(FATAL_ERROR
@@ -259,9 +259,29 @@ function(nano_ros_node_register)
         set(NROS_ENTRY_LOCATOR "${NROS_NUTTX_LOCATOR}")
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
         set(_entry_src "${_entry_dir}/main.cpp")
-        configure_file(
-            "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main.cpp.in"
-            "${_entry_src}" @ONLY)
+        # Phase 240.3 (RFC-0043) — TYPED routes the carrier to the real
+        # executor via the component object (`NuttxBoard::run_components`
+        # constructs `CLASS` + calls `configure(node)`), instead of the legacy
+        # register-symbol → `EntryNodeRuntime` interpreter. Substitution vars
+        # `NROS_ENTRY_CLASS` / `NROS_ENTRY_CLASS_HEADER` / `NROS_ENTRY_NODE_NAME`
+        # feed the typed template. C++ only (the C path is 240.4).
+        if(_NRC_TYPED)
+            if(NOT _nrc_lang STREQUAL "CPP")
+                message(FATAL_ERROR
+                    "nano_ros_node_register(TYPED): NuttX carrier supports only "
+                    "LANGUAGE CPP today (got '${_nrc_lang}'). C is phase-240.4.")
+            endif()
+            set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
+            set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
+            set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main_typed.cpp.in"
+                "${_entry_src}" @ONLY)
+        else()
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main.cpp.in"
+                "${_entry_src}" @ONLY)
+        endif()
 
         # Carrier executable named after the pkg so the ELF lands at
         # `build-zenoh/${PROJECT_NAME}`. SOURCES = entry (main.cpp, picked
