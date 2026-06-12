@@ -102,7 +102,7 @@ mbedtls = "pkg-config"
 # Add `-ffunction-sections`/`-fdata-sections` so a `--gc-sections`
 # link (204.8) can strip the unused zenoh-pico surface.
 compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
-# Phase 154 — `nros-platform-cffi/include` carries
+# Phase 154 — `nros-platform-api/include` carries
 # `<nros/platform_net.h>` which the zpico.c TU pulls in for
 # the multicast / UDP shim glue. Bare-metal already carries
 # this path; POSIX was missing it, so `cargo build` on
@@ -110,7 +110,7 @@ compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-
 # bridge examples) failed with "platform_net.h: No such
 # file or directory". Phase 104.D.3.
 include_paths = [
-  "{nros}/../../core/nros-platform-cffi/include",
+  "{nros}/../../core/nros-platform-api/include",
 ]
 
 [platform.zephyr]
@@ -167,10 +167,10 @@ include_paths = [
   "{env:FREERTOS_CONFIG_DIR}",
   "{env:LWIP_DIR}/src/include",
   "{env:LWIP_DIR}/contrib/ports/freertos/include",
-  # Phase 154 — `nros-platform-cffi/include` carries
+  # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI).
   # `zpico.c` includes it unconditionally.
-  "{nros}/../../core/nros-platform-cffi/include",
+  "{nros}/../../core/nros-platform-api/include",
 ]
 rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_CONFIG_DIR"]
 
@@ -203,7 +203,7 @@ include_paths = [
   "{env:NUTTX_DIR}/include",
   # Phase 154 — `<nros/platform_net.h>` source; same need as posix/
   # bare-metal/freertos-lwip blocks above.
-  "{nros}/../../core/nros-platform-cffi/include",
+  "{nros}/../../core/nros-platform-api/include",
 ]
 rerun_if_env_changed = ["NUTTX_DIR"]
 
@@ -251,12 +251,12 @@ include_paths = [
   # ABI-misaligning every `_z_send_tcp` / `_z_read_tcp` call
   # into the alias TU.
   "{nros}/c/zpico",
-  # Phase 154 — `nros-platform-cffi/include` carries
+  # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*`
   # ABI + the `nros_platform_socket_get_fd` accessor used by
   # `zpico.c::get_session_fd` to read peer fd without
   # depending on the per-RTOS socket-struct layout).
-  "{nros}/../../core/nros-platform-cffi/include",
+  "{nros}/../../core/nros-platform-api/include",
   "{nros}/c/include",
   "{env:THREADX_DIR}/common/inc",
   "{env:THREADX_CONFIG_DIR}",
@@ -307,13 +307,13 @@ compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", 
 include_paths = [
   "{nros}/c/platform",
   "{nros}/c/include",
-  # Phase 154 — `nros-platform-cffi/include` carries
+  # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI +
   # `nros_platform_socket_get_fd` accessor). `zpico.c` includes it
   # unconditionally; without this on the bare-metal path
   # `cargo check` against any `examples/qemu-arm-baremetal/...`
   # example fails with `nros/platform_net.h: No such file or directory`.
-  "{nros}/../../core/nros-platform-cffi/include",
+  "{nros}/../../core/nros-platform-api/include",
 ]
 
 [platform.generic]
@@ -341,6 +341,6 @@ include_paths = [
   "{env:NV_SPE_FSP_DIR}/include/freertos/portable/GCC/ARM_R5",
   "{env:NV_SPE_FSP_DIR}/include",
   # Phase 154 — `<nros/platform_net.h>` source.
-  "{nros}/../../core/nros-platform-cffi/include",
+  "{nros}/../../core/nros-platform-api/include",
 ]
 rerun_if_env_changed = ["NV_SPE_FSP_DIR"]

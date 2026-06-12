@@ -134,7 +134,7 @@ if(TARGET nros_c-static)
     target_include_directories(nros_c-static INTERFACE
         "${_nros_c_intree_include_dir}"
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../nros-platform-cffi/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../nros-platform-api/include"
     )
 endif()
 

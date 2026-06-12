@@ -48,7 +48,7 @@ zephyr_library_named(nros)
 # Real-symbol wrappers around Zephyr kernel inlines (k_msleep, k_uptime_get,
 # sys_rand_get, getaddrinfo) that nros-platform-zephyr needs to call via FFI.
 zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_platform_zephyr_shims.c)
-zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-platform-cffi/include)
+zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-platform-api/include)
 zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/platform.c
     ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/net.c

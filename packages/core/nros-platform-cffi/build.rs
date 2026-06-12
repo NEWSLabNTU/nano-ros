@@ -45,7 +45,9 @@ fn main() {
             .file("../nros-platform-posix/src/platform.c")
             .file("../nros-platform-posix/src/net.c")
             .file("../nros-platform-posix/src/timer.c")
-            .include("include")
+            // phase-241 B.2 — the canonical `<nros/platform.h>` moved to
+            // nros-platform-api; this crate's own include/ is now empty.
+            .include("../nros-platform-api/include")
             .warnings(true)
             .extra_warnings(true)
             .flag_if_supported("-Wpedantic")

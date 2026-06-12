@@ -97,7 +97,7 @@ function(nros_set_cargo_env_from_kconfig)
         # (Phase 202.7). CMAKE_CURRENT_FUNCTION_LIST_DIR = this cmake's dir
         # (<repo>/zephyr/cmake) → ../.. = the nano-ros module root.
         set(ENV{NROS_PLATFORM_CFFI_INCLUDE}
-            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../packages/core/nros-platform-cffi/include")
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../packages/core/nros-platform-api/include")
     endif()
 
     # XRCE-specific transport tuning (xrce-sys build.rs, nros-rmw-xrce build.rs)

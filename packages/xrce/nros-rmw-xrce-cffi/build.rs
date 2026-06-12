@@ -126,7 +126,7 @@ fn main() {
         .include(xrce_c.join("src"))
         .include(xrce_c.join("include"))
         .include(workspace.join("packages/core/nros-rmw-cffi/include"))
-        .include(workspace.join("packages/core/nros-platform-cffi/include"));
+        .include(workspace.join("packages/core/nros-platform-api/include"));
     if is_posix {
         // `_POSIX_C_SOURCE` is what unlocks `clock_gettime`,
         // `getaddrinfo`, etc in `<sys/socket.h>` + `<time.h>` on
@@ -305,7 +305,7 @@ fn main() {
             .warnings(false)
             .define("_DEFAULT_SOURCE", None)
             .define("_POSIX_C_SOURCE", Some("200809L"))
-            .include(workspace.join("packages/core/nros-platform-cffi/include"))
+            .include(workspace.join("packages/core/nros-platform-api/include"))
             .file(posix_src.join("platform.c"))
             .file(posix_src.join("net.c"))
             .file(posix_src.join("timer.c"));

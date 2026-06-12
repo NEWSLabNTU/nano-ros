@@ -51,10 +51,15 @@ pub fn env_or_repo_path(env_name: &str, rel: &str) -> PathBuf {
 // instead of hand-rolling `env::var("NROS_PLATFORM_*")` in every
 // build script.
 
+/// Canonical platform-header include dir. RFC-0042 D1 / phase-241 B.2 — the
+/// canonical `<nros/platform.h>` (and its `platform_{net,timer,zephyr}.h`
+/// siblings) moved from `nros-platform-cffi` to `nros-platform-api` (the lowest
+/// crate). The name + the `NROS_PLATFORM_CFFI_INCLUDE` env var are kept for
+/// caller/cmake compatibility; both now resolve to `nros-platform-api/include`.
 pub fn nros_platform_cffi_include() -> PathBuf {
     env_or_repo_path(
         "NROS_PLATFORM_CFFI_INCLUDE",
-        "packages/core/nros-platform-cffi/include",
+        "packages/core/nros-platform-api/include",
     )
 }
 

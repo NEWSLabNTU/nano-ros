@@ -21,7 +21,7 @@ add_subdirectory("${REPO_ROOT}/third-party/threadx/kernel"
 
 # 2. Add nros-platform-threadx without NetX Duo + without install.
 set(NROS_PLATFORM_CFFI_INCLUDE
-    "${REPO_ROOT}/packages/core/nros-platform-cffi/include")
+    "${REPO_ROOT}/packages/core/nros-platform-api/include")
 set(NROS_PLATFORM_THREADX_WITH_NET OFF CACHE BOOL "" FORCE)
 set(NROS_PLATFORM_THREADX_INSTALL  OFF CACHE BOOL "" FORCE)
 set(THREADX_KERNEL_TARGET threadx CACHE STRING "" FORCE)

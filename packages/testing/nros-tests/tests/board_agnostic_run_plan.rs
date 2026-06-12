@@ -297,7 +297,7 @@ fn board_agnostic_run_plan_links_against_any_board() {
         ),
         (
             "NROS_PLATFORM_CFFI_INCLUDE",
-            workspace.join("packages/core/nros-platform-cffi/include"),
+            workspace.join("packages/core/nros-platform-api/include"),
         ),
     ];
 

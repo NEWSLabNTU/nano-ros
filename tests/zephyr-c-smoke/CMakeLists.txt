@@ -21,7 +21,7 @@ project(nros_zephyr_c_smoke)
 set(NROS_PLATFORM_C_SRC
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-zephyr/src")
 set(NROS_PLATFORM_CFFI_INCLUDE
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-cffi/include")
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-api/include")
 
 target_sources(app PRIVATE
     src/main.c
