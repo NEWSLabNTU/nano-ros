@@ -63,7 +63,7 @@ pub mod transport;
 pub use config::{BoardConfig, BoardTransportConfig};
 pub use dispatch::DispatchStrategy;
 pub use embassy_entry::EmbassyBoardEntry;
-pub use entry::BoardEntry;
+pub use entry::{BoardEntry, DeployOverlay};
 pub use exit::BoardExit;
 pub use init::BoardInit;
 pub use network::NetworkWait;

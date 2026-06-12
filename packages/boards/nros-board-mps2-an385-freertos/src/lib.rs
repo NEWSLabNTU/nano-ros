@@ -263,6 +263,38 @@ impl nros_platform::BoardEntry for Mps2An385 {
         register_log_writer();
         nros_board_freertos::run_entry::<Mps2An385, F, E>(Config::default(), setup)
     }
+
+    /// Issue #48 cause 1 — apply the `nros::main!()` deploy overlay
+    /// (`[package.metadata.nros.deploy.freertos]`: locator / ip / gateway /
+    /// netmask / domain_id) onto `Config::default()` before boot, so the
+    /// firmware dials the deploy-named endpoint (e.g. the slirp host alias
+    /// `tcp/10.0.2.2:7451` on guest `10.0.2.15`) instead of the inert
+    /// compiled-in `192.0.3.x` default. Fields the deploy block omits keep the
+    /// board default.
+    fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        register_log_writer();
+        let mut config = Config::default();
+        if let Some(loc) = deploy.locator {
+            config.zenoh_locator = loc;
+        }
+        if let Some(ip) = deploy.ip {
+            config.ip = ip;
+        }
+        if let Some(gw) = deploy.gateway {
+            config.gateway = gw;
+        }
+        if let Some(nm) = deploy.netmask {
+            config.netmask = nm;
+        }
+        if let Some(d) = deploy.domain_id {
+            config.domain_id = d;
+        }
+        nros_board_freertos::run_entry::<Mps2An385, F, E>(config, setup)
+    }
 }
 
 impl Mps2An385 {

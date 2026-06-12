@@ -622,6 +622,16 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // per-tier spin. Single-tier / no tiers keeps the unchanged
     // `BoardEntry::run` path (`setup` owns the bounded hosted spin) — so the
     // emitted TU is byte-identical to pre-228 for every current example.
+    // Issue #48 cause 1 — bake the deploy overlay from
+    // `[package.metadata.nros.deploy.<board>]`. Only Form 1 (deploy key present)
+    // has a board key to read; Form 2 (explicit `board = X`) gets an all-`None`
+    // overlay, so `run_with_deploy` then behaves exactly like `run`.
+    let deploy_overlay_lit = match deploy_for_framework.as_deref() {
+        Some(board_key) => read_deploy_overlay(&manifest_dir.join("Cargo.toml"), board_key),
+        None => DeployOverlayLit::default(),
+    };
+    let deploy_overlay_ts = deploy_overlay_tokens(&deploy_overlay_lit);
+
     let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
     let entry_call: proc_macro2::TokenStream = match multi_tier {
         Some(table) => {
@@ -644,7 +654,14 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         }
         None => quote! {
-            <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run(
+            // Issue #48 cause 1 — `run_with_deploy` applies the deploy-metadata
+            // overlay (locator / ip / gateway / domain) to the board's boot
+            // config. The default trait body ignores the overlay and forwards
+            // to `run`, so hosted / framework boards are byte-identical; the
+            // FreeRTOS / bare-metal boards override it to stop the
+            // `[deploy.<board>]` block being inert.
+            <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy(
+                &#deploy_overlay_ts,
                 |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                     -> ::core::result::Result<
                         (),
@@ -1389,6 +1406,110 @@ fn read_entry_deploy(cargo_toml: &Path) -> Result<String, String> {
             "missing `[package.metadata.nros.entry] deploy = \"<board>\"`".to_string()
         })?;
     Ok(deploy.to_string())
+}
+
+/// Issue #48 cause 1 — the deploy-overlay values read from the Entry pkg's
+/// `[package.metadata.nros.deploy.<board>]` block. Every field is `Option`
+/// (absent key → `None`), baked into a `DeployOverlay` const by
+/// [`deploy_overlay_tokens`] and threaded through `BoardEntry::run_with_deploy`.
+#[derive(Default)]
+struct DeployOverlayLit {
+    locator: Option<String>,
+    ip: Option<[u8; 4]>,
+    gateway: Option<[u8; 4]>,
+    netmask: Option<[u8; 4]>,
+    domain_id: Option<u32>,
+}
+
+/// Parse a dotted IPv4 string (`"10.0.2.15"`) into 4 octets. Returns `None`
+/// on any malformed input so a bad deploy value silently keeps the board
+/// default rather than baking garbage.
+fn parse_ipv4_lit(s: &str) -> Option<[u8; 4]> {
+    let mut out = [0u8; 4];
+    let mut n = 0usize;
+    for part in s.split('.') {
+        if n >= 4 {
+            return None;
+        }
+        out[n] = part.parse::<u8>().ok()?;
+        n += 1;
+    }
+    if n == 4 { Some(out) } else { None }
+}
+
+/// Read `[package.metadata.nros.deploy.<board>]` from the Entry pkg's
+/// `Cargo.toml`. Missing block / keys → all-`None` overlay (the firmware keeps
+/// its compiled-in `Config::default()`). Only the network/locator/domain keys
+/// are consumed here; `rmw` is handled elsewhere (feature/link wiring).
+fn read_deploy_overlay(cargo_toml: &Path, board_key: &str) -> DeployOverlayLit {
+    let Ok(raw) = std::fs::read_to_string(cargo_toml) else {
+        return DeployOverlayLit::default();
+    };
+    let Ok(v) = toml::from_str::<toml::Value>(&raw) else {
+        return DeployOverlayLit::default();
+    };
+    let Some(block) = v
+        .get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("nros"))
+        .and_then(|n| n.get("deploy"))
+        .and_then(|d| d.get(board_key))
+    else {
+        return DeployOverlayLit::default();
+    };
+    DeployOverlayLit {
+        locator: block
+            .get("locator")
+            .and_then(|x| x.as_str())
+            .map(str::to_string),
+        ip: block
+            .get("ip")
+            .and_then(|x| x.as_str())
+            .and_then(parse_ipv4_lit),
+        gateway: block
+            .get("gateway")
+            .and_then(|x| x.as_str())
+            .and_then(parse_ipv4_lit),
+        netmask: block
+            .get("netmask")
+            .and_then(|x| x.as_str())
+            .and_then(parse_ipv4_lit),
+        domain_id: block
+            .get("domain_id")
+            .and_then(|x| x.as_integer())
+            .and_then(|i| u32::try_from(i).ok()),
+    }
+}
+
+/// Bake a [`DeployOverlayLit`] into a `nros_platform::DeployOverlay` struct
+/// literal (all fields `Option`, so the board overlays only the present ones).
+fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
+    fn opt_ipv4(v: &Option<[u8; 4]>) -> proc_macro2::TokenStream {
+        match v {
+            Some([a, b, c, d]) => quote! { ::core::option::Option::Some([#a, #b, #c, #d]) },
+            None => quote! { ::core::option::Option::None },
+        }
+    }
+    let locator = match &lit.locator {
+        Some(s) => quote! { ::core::option::Option::Some(#s) },
+        None => quote! { ::core::option::Option::None },
+    };
+    let ip = opt_ipv4(&lit.ip);
+    let gateway = opt_ipv4(&lit.gateway);
+    let netmask = opt_ipv4(&lit.netmask);
+    let domain_id = match lit.domain_id {
+        Some(d) => quote! { ::core::option::Option::Some(#d) },
+        None => quote! { ::core::option::Option::None },
+    };
+    quote! {
+        ::nros::__macro_support::nros_platform::DeployOverlay {
+            locator: #locator,
+            ip: #ip,
+            gateway: #gateway,
+            netmask: #netmask,
+            domain_id: #domain_id,
+        }
+    }
 }
 
 /// Read `[system] default_launch = "<file>"` from a bringup pkg's

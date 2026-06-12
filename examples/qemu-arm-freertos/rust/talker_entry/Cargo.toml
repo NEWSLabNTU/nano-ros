@@ -23,6 +23,12 @@ deploy = "freertos"
 [package.metadata.nros.deploy.freertos]
 rmw = "zenoh"
 domain_id = 0
+# Issue #48 cause 1 — slirp addressing (`-nic user,model=lan9118`): the guest
+# sits on 10.0.2.0/24 with gateway/host alias 10.0.2.2 and dials the host
+# zenohd via that alias. `nros::main!()` threads these into the firmware's boot
+# `Config` via `BoardEntry::run_with_deploy` (the block was inert before).
+ip = "10.0.2.15"
+gateway = "10.0.2.2"
 locator = "tcp/10.0.2.2:7451"
 [dependencies]
 freertos_rs_talker = { path = "../talker" }

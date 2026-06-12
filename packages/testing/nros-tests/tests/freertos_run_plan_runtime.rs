@@ -142,7 +142,12 @@ fn require_freertos_qemu_prereqs() -> Option<String> {
 /// triple from `.cargo/config.toml`. If the binary already exists at
 /// the expected path we trust it; otherwise we drive a `cargo build`.
 fn build_or_locate_entry_binary(dir: &Path) -> Result<PathBuf, String> {
-    let bin = dir.join("target/thumbv7m-none-eabi/debug/freertos_rs_talker_entry");
+    // Release, not debug: the connected run opens a real zenoh-pico session over
+    // slirp on the emulated Cortex-M3, and a debug-profile zenoh-pico is far too
+    // slow to complete the session handshake within the test's wait budget (it
+    // boots to `Network ready.` but never reaches `Executor::open` success in
+    // 90s). The release fixture connects in a few seconds (#48).
+    let bin = dir.join("target/thumbv7m-none-eabi/release/freertos_rs_talker_entry");
     if bin.is_file() {
         return Ok(bin);
     }
@@ -154,7 +159,7 @@ fn build_or_locate_entry_binary(dir: &Path) -> Result<PathBuf, String> {
     // (mirrors the board_agnostic_run_plan freertos leg).
     let root = project_root();
     let out = Command::new("cargo")
-        .args(["build", "--bin", "freertos_rs_talker_entry"])
+        .args(["build", "--release", "--bin", "freertos_rs_talker_entry"])
         .current_dir(dir)
         .env(
             "NROS_PLATFORM_FREERTOS_SRC",
@@ -221,12 +226,12 @@ fn freertos_board_run_executes_run_plan() {
     let output = qemu
         .wait_for_output_pattern("Network ready.", Duration::from_secs(15))
         .unwrap_or_default();
-    // The post-network connected run goes through `Executor::open`. It currently
-    // never establishes (NOT "flaky"): the deploy-metadata config is inert so the
-    // firmware uses `Config::default()` (unreachable `192.0.3.1:7447`), and even
-    // with the config forced correct, zenoh-pico `open()` hangs on FreeRTOS before
-    // any TCP connect (gratuitous-ARP-only) — root-caused in #48. Best-effort
-    // budget; log — not assert — the outcome below until #48 lands.
+    // The post-network connected run goes through `Executor::open`. #48 (both
+    // causes) is fixed, so it now establishes: the zenoh RMW backend is linked +
+    // registered (cause 2) AND the deploy overlay threads the reachable slirp
+    // locator/ip (`tcp/10.0.2.2:7451` on guest `10.0.2.15`) into the firmware
+    // (cause 1), so the firmware connects to the host zenohd above and the
+    // run-plan closure returns `Ok` ("Application setup complete").
     let extra = qemu
         .wait_for_output_pattern("Application", Duration::from_secs(25))
         .unwrap_or_default();
@@ -249,25 +254,24 @@ fn freertos_board_run_executes_run_plan() {
          output:\n{combined}",
     );
 
-    // (b) run_plan(runtime) body reached — best-effort, NOT asserted. The
-    // app-task closure runs `Executor::open` over the flaky slirp→zenohd path;
-    // when it connects, one of these prints. A miss is logged (the boot path
-    // above is the deterministic gate), mirroring `orchestration_tiers_freertos`.
+    // (b) Connected run — ASSERTED (no longer best-effort) now that #48 is fixed.
+    // `Executor::open` connects to the host zenohd and the run-plan closure
+    // returns `Ok`, so the firmware must NOT print the open-failure marker and
+    // MUST print a run-plan success marker.
     let saw_executor_open_fail = combined.contains("Executor::open failed");
     let saw_app_setup_complete = combined.contains("Application setup complete");
-    let saw_app_error = combined.contains("Application error:");
     let saw_publish = combined.contains("Published:");
     let saw_receive = combined.contains("Received:");
-    let reached_run_plan = saw_executor_open_fail
-        || saw_app_setup_complete
-        || saw_app_error
-        || saw_publish
-        || saw_receive;
-    if !reached_run_plan {
-        eprintln!(
-            "note: run_plan(runtime) connected-run marker not observed (deploy \
-             config inert + zenoh-pico open() hangs pre-connect, #48; boot \
-             lifecycle already proven).\noutput:\n{combined}",
-        );
-    }
+    assert!(
+        !saw_executor_open_fail,
+        "Executor::open failed on the connected run — #48 regression (zenoh RMW \
+         backend unlinked/unregistered, or the deploy locator/ip is inert again).\n\
+         output:\n{combined}",
+    );
+    assert!(
+        saw_app_setup_complete || saw_publish || saw_receive,
+        "connected run reached neither a setup-complete nor a pub/sub marker \
+         (expected `Application setup complete` once `Executor::open` connects to \
+         the slirp zenohd).\noutput:\n{combined}",
+    );
 }
