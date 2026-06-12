@@ -63,30 +63,58 @@ files share name + guard `NROS_PLATFORM_H` today → include-order ABI poison.
 Staged so each step is CI-validated before the next; the 241.A gate + the existing
 `c_stub_platform.rs` parity test guard the churn.
 
-- [ ] **B.1 — canonical header in `nros-platform-api`.** Move B's surface into
-      `packages/core/nros-platform-api/include/nros/platform.h` (the sole file
-      named so); fold in A's capability macros (`NROS_PLATFORM_HAS_*`,
-      `NROS_NO_DYNAMIC_MEMORY`, `nros_mutex_t`) + the single malloc/free shim
-      (gated by the capability, forwarding to `alloc`/`dealloc`). One include
-      guard. Keep the `lib.rs` extern mirror + `c_stub_platform.rs` pointed at it.
-- [ ] **B.2 — rewire include dirs to the canonical.** Repoint the SSoT chokepoints
-      — `nros-build-paths` path helper + the `NROS_PLATFORM_CFFI_INCLUDE` cmake/env
-      var (rename → `NROS_PLATFORM_INCLUDE`) — to `nros-platform-api/include`, plus
-      the literal-path cmake sites (the ~20 from the wave-B investigation). Delete
-      `nros-platform-cffi/include/nros/platform.h`.
-- [ ] **B.3 — retire A.** Confirm no live C consumer of A's legacy-only surface
-      (ns clock, typed mutex, atomics) via grep + the gate; remove it. `nros-c`'s
-      `platform.h` becomes a thin re-include of the canonical (back-compat) or is
-      dropped; the per-RTOS sub-headers' divergent shims (incl. posix's libc
-      outlier) are deleted in favour of the single shim.
-- [ ] **B.4 — single shim + parity.** Posix's direct-libc malloc/free is changed
-      to forward to the funnel (RFC-0034 D6). Add the canonical-surface parity
-      assert (header ↔ `lib.rs`) if `c_stub_platform.rs` doesn't already cover it.
-- [ ] **B.5 — repoint the 241.A gate.** The host matrix test currently resolves
-      to A; repoint it at the canonical header; keep the negative #38 cell.
+> **Execution note (2026-06-12, after reading the full surface).** B is **one
+> high-blast-radius change** — it deletes a header (`nros-platform-cffi`'s 349-line
+> canonical ABI) that ~20 include sites + every platform port + xrce/cyclone/
+> zpico/smokes resolve, and moves the hand-written Rust mirror + the
+> `c_stub_platform.rs` parity test. It **cannot be locally cross-validated** (RTOS
+> builds need their exports) and cannot be sliced without dead-weight (a second
+> file named `nros/platform.h` re-creates the include-order race). Execute it as a
+> **dedicated, CI-monitored run** (host gate + a `run_e2e` dispatch after the
+> rewire), not a session-tail blind push. The design + exact targets below are
+> settled so the run is mechanical.
+
+Target design (canonical header, self-contained in `nros-platform-api` — breaks
+the nros-c↔cffi tangle):
+- Body = the current `nros-platform-cffi/include/nros/platform.h` ABI **verbatim**
+  (keeps `lib.rs` parity; `c_stub_platform.rs` moves with it).
+- The unconditional malloc/free shim becomes **gated**: `#ifdef
+  NROS_PLATFORM_HAS_MALLOC` … forward to `alloc`/`dealloc` … `#endif`. Preserves
+  the 241.A #38 compile-gate (no-heap board → no malloc/free → heap-container use
+  is a *compile* error, not a link error).
+- A **small self-contained capability-default block** (`#if defined(NROS_PLATFORM_POSIX)`
+  → `#define NROS_PLATFORM_HAS_MALLOC`/`HAS_ATOMICS`; bare-metal → atomics only;
+  …) supplies the platform-*constant* defaults — NOT a re-host of A's legacy
+  sub-headers (those carry the ns-clock/typed-mutex legacy ABI and are retired).
+  The variable case (bare-metal heap) comes from C.2's board.toml `-D`.
+
+Steps (each a commit; CI between the riskier ones):
+- [ ] **B.1** — author the canonical header (above) at
+      `packages/core/nros-platform-api/include/nros/platform.h`; move the Rust
+      mirror (`nros-platform-cffi/src/lib.rs` extern block) + `c_stub_platform.rs`
+      to track it (or keep them in cffi, re-exporting api's include). One include
+      guard. Validate with the 241.A gate semantics (host g++).
+- [ ] **B.2** — rewire include dirs to api: the chokepoints
+      `nros-build-paths::nros_platform_cffi_include()` + the
+      `NROS_PLATFORM_CFFI_INCLUDE` cmake/env var (→ `nros-platform-api/include`),
+      plus the literal-path cmake sites (nros-c:137; nros-platform-{posix,freertos,
+      zephyr,threadx,nuttx,esp-idf} CMakeLists; xrce:33/35/198; the 3 *-c-smoke
+      CMakeLists; zephyr/CMakeLists:51 + nros_cargo_build.cmake:99/287). **Delete**
+      `nros-platform-cffi/include/nros/platform.h`. → CI `run_e2e` (xrce/cyclone
+      are B-only consumers — this is the cell-reddening risk).
+- [ ] **B.3** — retire A: confirm no live C consumer of A's legacy-only surface
+      (ns clock / typed mutex / atomics) via grep + the gate; drop
+      `nros-c/include/nros/platform.h` + the per-RTOS sub-headers (or reduce them
+      to the capability-default block if still referenced). Posix's direct-libc
+      malloc/free outlier dies with them (the canonical shim forwards to the
+      funnel — RFC-0034 D6).
+- [ ] **B.4** — parity assert: `c_stub_platform.rs` already gates header↔`lib.rs`;
+      confirm it covers the moved header.
+- [ ] **B.5** — repoint the 241.A gate at the canonical header (it currently
+      resolves to A); keep the negative #38 cell.
 - **Acceptance:** exactly one file named `nros/platform.h`; `#include
       <nros/platform.h>` resolves identically regardless of `-I`/`-isystem` order;
-      all per-platform CI cells (incl. xrce/cyclone B-only consumers) green;
+      all per-platform CI cells (incl. xrce/cyclone) green via `run_e2e`;
       #36/#38 reproductions stay fixed.
 
 > **Note — include precedence (#27/#36, the two-libc class) is NOT in B.** That is
