@@ -2410,6 +2410,9 @@ static CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the cpp-action-client binary
 static CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the cpp-action-client-callback binary (RFC-0041 / Phase 239)
+static CPP_ACTION_CLIENT_CALLBACK_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the cpp-parameters binary
 static CPP_PARAMETERS_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -2514,6 +2517,19 @@ pub fn build_cpp_action_client() -> TestResult<&'static Path> {
     CPP_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example_cmake_rmw("native/cpp/action-client", "cpp_action_client", Rmw::Zenoh)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build cpp-action-client-callback example (cached, RFC-0041 / Phase 239)
+pub fn build_cpp_action_client_callback() -> TestResult<&'static Path> {
+    CPP_ACTION_CLIENT_CALLBACK_BINARY
+        .get_or_try_init(|| {
+            build_example_cmake_rmw(
+                "native/cpp/action-client-callback",
+                "cpp_action_client_callback",
+                Rmw::Zenoh,
+            )
         })
         .map(|p| p.as_path())
 }

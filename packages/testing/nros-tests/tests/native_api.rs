@@ -16,11 +16,12 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, Rmw, ZenohRouter, build_c_action_client, build_c_action_server,
         build_c_listener, build_c_service_client, build_c_service_client_callback,
-        build_c_service_server, build_c_talker, build_cpp_action_client, build_cpp_action_server,
-        build_cpp_listener, build_cpp_service_client, build_cpp_service_client_callback,
-        build_cpp_service_server, build_cpp_talker, build_native_c_example_rmw,
-        build_native_cpp_example_rmw, build_native_listener_rmw, build_native_talker_rmw,
-        require_cmake, require_zenohd, zenohd_unique,
+        build_c_service_server, build_c_talker, build_cpp_action_client,
+        build_cpp_action_client_callback, build_cpp_action_server, build_cpp_listener,
+        build_cpp_service_client, build_cpp_service_client_callback, build_cpp_service_server,
+        build_cpp_talker, build_native_c_example_rmw, build_native_cpp_example_rmw,
+        build_native_listener_rmw, build_native_talker_rmw, require_cmake, require_zenohd,
+        zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -542,6 +543,65 @@ fn test_cpp_action_communication(zenohd_unique: ZenohRouter) {
         return;
     }
     native_action_communication_body(Language::Cpp, &zenohd_unique.locator());
+}
+
+// =============================================================================
+// Action communication — callback receive (RFC-0041 / Phase 239.14)
+// =============================================================================
+
+/// C++ callback action client vs the stock C++ action server. Proves the
+/// RFC-0041 action callback **dispatch** path E2E: goal-response and result
+/// callbacks fire through `SendGoalOptions` dispatched by `ActionClient::poll()`
+/// at each `spin_once` (no Future/stream poll), with correct acceptance and
+/// SUCCEEDED status.
+///
+/// NOTE: this asserts dispatch + acceptance + result-callback firing only — it
+/// does NOT assert the result *sequence* or feedback delivery, both of which
+/// carry wrong payloads in the C++ poll path today (truncated result `[0]`,
+/// zero feedback). Tracked by issue #40; tighten this test once it lands.
+#[rstest]
+fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
+    if !require_native_env() {
+        return;
+    }
+    let locator = zenohd_unique.locator();
+    let server_bin = Language::Cpp.action_server_binary();
+    let client_bin = build_cpp_action_client_callback()
+        .unwrap_or_else(|e| skip_missing_fixture("native action client (callback)", e))
+        .to_path_buf();
+
+    let mut server = spawn_native(&server_bin, Language::Cpp, "action-server", &locator);
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .expect("action server did not become ready");
+
+    let mut client = spawn_native(
+        &client_bin,
+        Language::Cpp,
+        "action-client-callback",
+        &locator,
+    );
+
+    let client_output = client
+        .wait_for_output_pattern("Action completed via callbacks", Duration::from_secs(25))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
+        .unwrap_or_default();
+
+    server.kill();
+
+    eprintln!("C++ callback action client output:\n{}", client_output);
+
+    assert!(
+        client_output.contains("Goal response (callback): ACCEPTED"),
+        "Expected goal-response callback to fire with acceptance.\nOutput:\n{}",
+        client_output
+    );
+    assert!(
+        client_output.contains("Result (callback)")
+            && client_output.contains("Action completed via callbacks [OK]"),
+        "Expected the result callback to deliver the action result.\nOutput:\n{}",
+        client_output
+    );
 }
 
 // =============================================================================

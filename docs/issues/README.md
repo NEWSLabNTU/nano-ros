@@ -50,5 +50,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 35 | zephyr native_sim e2e fail consistently (XRCE-heavy) — not load flakes | bug        | zephyr | [0035-zephyr-native-sim-e2e-consistent-failures.md](0035-zephyr-native-sim-e2e-consistent-failures.md) |
 | 38 | nros-cpp heap headers need `nros_platform_malloc`/`free`; platform-cffi only has `alloc`/`dealloc` | bug | c-api | [0038-threadx-riscv64-cpp-platform-cffi-missing-malloc-free.md](0038-threadx-riscv64-cpp-platform-cffi-missing-malloc-free.md) |
 | 39 | C++ `init_with_launch_auto` skips the `NROS_LOCATOR`/`ROS_DOMAIN_ID` env fallback → null locator → TransportError | bug | c-api | [0039-cpp-init-with-launch-auto-skips-locator-env-fallback.md](0039-cpp-init-with-launch-auto-skips-locator-env-fallback.md) |
+| 40 | C++ action-client callback path delivers a truncated result (`[0]`) and no feedback | bug | c-api | [0040-cpp-action-client-callback-result-truncated-feedback-missing.md](0040-cpp-action-client-callback-result-truncated-feedback-missing.md) |
 
 Resolved issues live in [`archived/`](archived/).

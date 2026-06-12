@@ -1531,10 +1531,13 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
 
     // Poll result reply
     //
-    // Layout: [CDR_HEADER(4)][status(i8)][align(4)→pad(3)][payload].
-    // Skip 8 bytes to land on the payload — prior 5-byte offset
-    // missed the alignment pad (Phase 96.1).
-    const RESULT_PAYLOAD_OFFSET: usize = 8;
+    // Layout: [CDR_HEADER(4)][status(i8)][payload]. The payload (the
+    // serialized result message) starts immediately after the status byte at
+    // offset 5 — there is no alignment pad here, matching the C wrapper's
+    // `nros_action_client_poll` (which yields the full result sequence E2E).
+    // A prior 8-byte offset (a mistaken Phase-96.1 "alignment" change) skipped
+    // 3 bytes into the payload and truncated the sequence to `[0]` (Phase 239).
+    const RESULT_PAYLOAD_OFFSET: usize = 5;
     if let Ok(Some(total_len)) = core.try_recv_get_result_reply()
         && let Some(cb) = result_cb
         && total_len >= RESULT_PAYLOAD_OFFSET

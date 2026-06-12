@@ -186,13 +186,16 @@ receives raw reply bytes → user deserializes with the generated
 C callback client; assert the callback fires at spin, no poll) + a doc/example.
 - **Files:** a C fixture/example under `examples/*/c/` or `packages/testing/`.
 
-#### 239.12 — C action-client callback surface + E2E  🟡 (surface ✅ already; E2E ⬜)
-**Finding.** Already wired: `nros_action_client_set_goal_response_callback` /
+#### 239.12 — C action-client callback surface + E2E  ✅ (E2E GREEN via existing C action example)
+**Done.** Already wired: `nros_action_client_set_goal_response_callback` /
 `_set_feedback_callback` / `_set_result_callback` + `register_action_client_raw`
 (`executor.rs:1404-1494`) install the `ActionClientRawArenaEntry`'s three raw
-callbacks, drained at spin. **Remaining:** a native C action server + callback
-client E2E + example.
-- **Files:** a C fixture/example.
+callbacks, drained at spin. The existing `examples/native/c/action-client`
+already exercises these (feedback + result callbacks); `test_c_action_communication`
+is GREEN and the **result callback delivers the full Fibonacci sequence**
+`[0,1,1,…,55]` — the C result-payload offset (5) is correct. (Feedback callbacks
+fire but with an empty sequence — an offset bug shared with the C++ path,
+captured in issue #40; not specific to the callback model.)
 
 #### 239.13 — C++ service-client callback wrapper + E2E  ✅ (E2E GREEN; **bug fixed**)
 **Done — but the wrapper was broken.** The C++ surface existed (Phase 189.M3.3.f:
@@ -210,15 +213,20 @@ null-locator bug → issue #39.
 - **Files:** `packages/core/nros-cpp/src/service.rs` (the fix),
   `examples/native/cpp/service-client-callback/`, `native_api.rs`.
 
-#### 239.14 — C++ action-client callback wrapper + E2E  🟡 (wrapper ✅ already; E2E ⬜)
-**Finding.** Already exists (Phase 189.M3.3.f): `action_client.hpp` has
-`SendGoalOptions{goal_response, feedback, result, context}` (line 263) +
-`ActionClient<A>::set_callbacks(options)` (line 316) wiring
-`nros_cpp_action_client_register_callbacks` (line 42) with three typed trampolines
-(goal-response/feedback/result) that `ffi_deserialize` the bytes before the typed
-closure. **Remaining:** a native C++ action server + callback client E2E.
-- **Files:** C++ fixture (wrapper already in
-  `packages/core/nros-cpp/include/nros/action_client.hpp`).
+#### 239.14 — C++ action-client callback wrapper + E2E  🟡 (dispatch ✅ GREEN; payload bug → #40)
+**Done (dispatch); payload bug filed.** The wrapper exists (Phase 189.M3.3.f):
+`SendGoalOptions{goal_response, feedback, result}` + `ActionClient<A>::set_callbacks`
++ `poll()`. Added `examples/native/cpp/action-client-callback` +
+`test_cpp_action_communication_callback` (vs stock `cpp_action_server`). The
+**dispatch is verified GREEN**: goal-response (ACCEPTED) and result callbacks fire
+at `spin_once` with correct SUCCEEDED status. **But** the C++ poll path delivers a
+**truncated result (`[0]`) and zero feedback** — real payload bugs, **issue #40**.
+The result offset was corrected 8→5 (to match the working C path) but the
+truncation persists (buffer content, not offset), so #40 stays open. The E2E
+asserts dispatch + acceptance + result-callback firing only — not the sequence —
+until #40 lands.
+- **Files:** `packages/core/nros-cpp/src/action.rs` (offset fix),
+  `examples/native/cpp/action-client-callback/`, `native_api.rs`; bug → issue #40.
 
 #### 239.15 — Cross-language E2E matrix  ⬜
 Callback-client interop across Rust / C / C++ (each language's callback client
