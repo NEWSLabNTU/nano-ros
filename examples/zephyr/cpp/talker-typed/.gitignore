@@ -1,0 +1,7 @@
+/build-*/
+/build/
+/build-zenoh/
+/build-cyclonedds/
+/build-dds/
+/build-xrce/
+/generated/

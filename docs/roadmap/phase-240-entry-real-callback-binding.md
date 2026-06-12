@@ -379,6 +379,21 @@ gaps:
 **Files.** `cmake/templates/zephyr_entry_main_typed.cpp.in` (new),
 `cmake/NanoRosNodeRegister.cmake` (Zephyr branch), `packages/boards/nros-board-fvp-aemv8r-smp/`.
 
+- **240.8.3 — verification + consumer (2026-06-13).** Carrier render-verified
+  (the substituted template is valid C++ — plain `int main(void)` + construct +
+  `configure` + `ZephyrBoard::run_components`) and the cmake branch reviewed
+  correct (gated on CPP + zephyr DEPLOY + `NANO_ROS_PLATFORM=zephyr` + `TARGET
+  app` + `TYPED`; composes the entry + component lib into `app`). Added the
+  consumer `examples/zephyr/cpp/talker-typed` (typed `Talker` component + a
+  CMakeLists mirroring the imperative example's Zephyr glue, with
+  `set(NANO_ROS_PLATFORM zephyr)` + `nano_ros_node_register(TYPED … DEPLOY
+  zephyr)`). **NOT built** — no Zephyr SDK / west workspace in this env (the
+  carrier was validated on the **NuttX** tier in QEMU instead). **Open question**
+  (in the example README): the component lib's nros-cpp + `std_msgs` C++ header
+  provisioning on Zephyr (`find_package`/`zephyr_library_named` vs the
+  native/NuttX `NanoRos::NanoRosCpp` + `NROS_GENERATED_INTERFACE_LIBS`) — verify
+  on `native_sim` when the SDK is available. The FVP/ASI run remains 240.7.
+
 ## Acceptance
 
 - Generated C++/C Entry boots a multi-node app with **live** pub/sub through the

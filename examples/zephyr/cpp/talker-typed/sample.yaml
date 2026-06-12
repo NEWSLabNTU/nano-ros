@@ -1,0 +1,25 @@
+# nano-ros C++ TYPED talker (RFC-0043 / phase-240.8) as a Zephyr sample.
+# The node is a stateful component; the Zephyr typed carrier generates the
+# entry (ZephyrBoard::run_components). build_only — the typed-carrier component
+# path on Zephyr is not yet runtime-validated (no Zephyr SDK in CI for this).
+sample:
+  name: nano-ros C++ TYPED Talker
+  description: nano-ros ROS 2 publisher (typed component, RFC-0043) on Zephyr
+common:
+  tags:
+    - nano-ros
+    - nros
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "Published:"
+tests:
+  sample.nano-ros.cpp.talker-typed.zenoh:
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    extra_args:
+      - SNIPPET=nros-zenoh
