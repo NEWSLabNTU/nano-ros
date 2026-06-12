@@ -121,14 +121,63 @@ A callback-based service-client (and/or action-client) example mirroring an
 existing Promise example, showing the dual-mode surface.
 - **Files:** `examples/<plat>/rust/…`.
 
+### Wave 4 — C / C++ callback clients (service + action)
+
+C/C++ deliver the same callback model, reusing the Rust FFI (project principle:
+**C++ wraps Rust; C uses the raw arena callbacks**). The raw arena entries
+(`ServiceClientRawArenaEntry`, `ActionClientRawArenaEntry`) + their registrations
+already eager-drain at spin and invoke C-ABI callbacks (`RawResponseCallback`,
+`RawGoalResponseCallback`, `RawFeedbackCallback`, `RawResultCallback`) — so the C
+runtime path largely **exists**; this wave exposes the ergonomic surface, adds the
+C++ typed wrappers, and proves both end-to-end.
+
+#### 239.11 — C service-client callback surface + E2E  ⬜
+Expose a clean C API over the raw response callback: `nros_client_init` +
+`nros_client_set_response_callback` (or an init-with-callback) + `nros_client_send_request`;
+the callback receives raw reply bytes which the user feeds to the generated
+`{Svc}_Response_deserialize`. E2E: a native C service server + callback client
+round-trip (assert the callback fires at spin, no poll).
+- **Files:** `packages/core/nros-c/src/service.rs`, `nros-c/include/nros/client.h`,
+  a C fixture under `packages/testing/` or `examples/*/c/`.
+
+#### 239.12 — C action-client callback surface + E2E  ⬜
+Same over `ActionClientRawArenaEntry`'s goal-response / feedback / result raw
+callbacks (already wired in the C API): confirm/expose `nros_action_client_init` +
+the three callback setters + `send_goal` / `get_result`. E2E: native C action
+server + callback client.
+- **Files:** `packages/core/nros-c/src/action.rs`, `nros-c/include/nros/action_client.h`,
+  a C fixture.
+
+#### 239.13 — C++ service-client callback wrapper + E2E  ⬜
+C++ wraps the Rust FFI: `nros::Client<Svc>::async_send_request(req, callback)` that
+registers the raw callback + deserializes the reply via the generated
+`ffi_deserialize` into `Svc::Response`, then invokes the typed C++ closure —
+mirroring the C++ subscription callback (Phase 235 pattern). E2E: native C++ server
++ callback client (spans/owned).
+- **Files:** `packages/core/nros-cpp/include/nros/client.hpp`, cpp codegen if a
+  per-type trampoline is needed, a C++ fixture.
+
+#### 239.14 — C++ action-client callback wrapper + E2E  ⬜
+`nros::ActionClient<A>` with `goal_response` / `feedback` / `result` callbacks
+wrapping the raw FFI + generated deserialize. E2E: native C++ action server +
+callback client.
+- **Files:** `packages/core/nros-cpp/include/nros/action_client.hpp`, a C++ fixture.
+
+#### 239.15 — Cross-language E2E matrix  ⬜
+Callback-client interop across Rust / C / C++ (each language's callback client
+against another language's server), native + one QEMU/embedded lane, to prove the
+callback receive model is wire-compatible and backend-agnostic (zenoh + XRCE).
+- **Files:** `packages/testing/nros-tests/tests/` (a `client_callbacks_interop`
+  harness), reusing the existing cross-RMW fixture matrix.
+
 ### Close-out
 
 #### 239.10 — Docs sync  ⬜
-Tick RFC-0037 (user API surface — add `create_client_with_callback` /
-`create_action_client_with_callbacks`); flip RFC-0041 → `Stable` once landed;
-file the **C / C++ callback surface** as the follow-up phase (C raw entries exist;
-C++ wraps via FFI, mirroring Phase 235's pattern).
-- **Files:** `docs/design/0037-*`, `docs/design/0041-*`, a new follow-up phase doc.
+Tick RFC-0037 (user API surface — `create_client_with_callback` /
+`create_action_client_with_callbacks` + the C/C++ surfaces); flip RFC-0041 →
+`Stable` once Rust + C/C++ land. (C/C++ are now in-phase — Wave 4 — not a deferred
+follow-up.)
+- **Files:** `docs/design/0037-*`, `docs/design/0041-*`.
 
 ## Acceptance
 
@@ -140,7 +189,10 @@ C++ wraps via FFI, mirroring Phase 235's pattern).
 - One `drive_io` per spin per session across XRCE / zenoh / Cyclone; callbacks
   fire on the poll-based XRCE path without `Promise::wait` budget-burn.
 - No new heap alloc / lock in the dispatch hot path (RFC-0002).
-- `just ci` green. RFC-0041 → `Stable`; C/C++ follow-up phase filed.
+- **C and C++** callback service/action clients deliver typed receives at spin
+  (C: raw callback + generated deserialize; C++: typed wrapper over the Rust FFI),
+  each with a native E2E + a cross-language interop test (zenoh + XRCE).
+- `just ci` green. RFC-0041 → `Stable` once Rust + C/C++ land.
 
 ## Notes
 
