@@ -50,8 +50,8 @@ negative cmake-CONFIGURE-fail test (must fail) → kept as a documented exceptio
 `phase212_l9_cmake_fns` (cmake-configure cluster), `platform` (cmake/codegen),
 `phase215_e_board_import`.
 
-**Reclassified (scan refined):** `phase212_o3/o4/o5` are `#[ignore]`'d gates (inert,
-not live). `phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) and
+**Reclassified (scan refined):** `phase212_o3/o4/o5`, `phase212_n_freertos_run_plan_runtime`,
+and all of `phase212_h4_threadx` are `#[ignore]`'d gates (inert, not live). `phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) and
 `cmake_platform_matrix` are NEGATIVE — the compile/configure MUST fail with exact
 text → documented exceptions (fast-fail, can't be prebuilt).
 
@@ -62,8 +62,9 @@ text → documented exceptions (fast-fail, can't be prebuilt).
 
 **Wave B — freertos / threadx cross-build** (cross-build mechanism):
 `orchestration_tiers_freertos` CONVERTED (→ `orch_tiers_freertos` cross-build
-fixture, tests boot the prebuilt thumbv7m firmware in QEMU). Remaining:
-`phase212_n_freertos_run_plan_runtime`, `phase212_h4_threadx`.
+fixture, tests boot the prebuilt thumbv7m firmware in QEMU). Wave B effectively
+DONE: `phase212_n_freertos_run_plan_runtime` (1 test) and `phase212_h4_threadx`
+(3 tests) are entirely `#[ignore]`'d gates — inert, not live offenders.
 
 **Wave C — zephyr** (west; heavy, gate on SDK): `phase212_h1_zephyr`,
 `phase212_mf3_zephyr_self_pkg`, `integration_zephyr`.
