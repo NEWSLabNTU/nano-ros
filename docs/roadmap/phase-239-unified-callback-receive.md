@@ -146,7 +146,7 @@ client coalesces to latest (triple-buffer). In-process `MockSession` E2E extendi
   callback client over XRCE / zenoh-pico / Cyclone (needs the QEMU lanes).
 - **Files:** none (validation).
 
-#### 239.9 — Example  ⬜
+#### 239.9 — Example  ✅ (service-client; action-client → Wave 4)
 A callback-based service-client (and/or action-client) example mirroring an
 existing Promise example, showing the dual-mode surface.
 - **Files:** `examples/<plat>/rust/…`.
