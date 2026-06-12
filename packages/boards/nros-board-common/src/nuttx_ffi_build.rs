@@ -132,6 +132,30 @@ pub fn run_nuttx() {
         }
     }
 
+    // issue-0036 — NuttX C++ libc header precedence. The toolchain's libstdc++
+    // `<cstdlib>` does `#include_next <stdlib.h>`, which skips the `-I` NuttX
+    // include dir and reaches the toolchain's **newlib** `stdlib.h` — whose
+    // `div_t`/`ldiv_t`/`lldiv_t` are anonymous-struct typedefs, conflicting with
+    // NuttX's named-struct (`struct div_s`) ones that arrive via the direct
+    // `<stdlib.h>` (e.g. from nros-c's `platform/posix.h`). Two libc header sets
+    // in one TU → "conflicting declaration 'typedef struct div_t div_t'". We
+    // link NuttX libc, so NuttX's headers must win. NuttX ships its own C++
+    // wrappers under `include/cxx/` (`cstdlib` → NuttX `<stdlib.h>`); putting
+    // that dir on the search path AHEAD of the cmake-passed `${NUTTX_DIR}/include`
+    // makes `<cstdlib>` resolve to NuttX's wrapper instead of libstdc++'s, so the
+    // newlib `include_next` never fires. `<type_traits>` etc. (not shipped under
+    // `include/cxx/`) still fall through to libstdc++. This is lighter than
+    // `-nostdinc++` (which NuttX's own build uses) — that would also drop
+    // `<type_traits>`, which nros-cpp's `node.hpp` requires.
+    if is_cpp {
+        if let Ok(nuttx_dir) = env::var("NUTTX_DIR") {
+            let cxx = PathBuf::from(nuttx_dir).join("include").join("cxx");
+            if cxx.is_dir() {
+                build.include(&cxx);
+            }
+        }
+    }
+
     // APP_INCLUDE_DIRS_FILE from cmake lists per-example codegen
     // paths (`build/nano_ros_c/std_msgs`, `build/nano_ros_cpp/...`),
     // the per-build mirror of nros-c/nros-cpp headers

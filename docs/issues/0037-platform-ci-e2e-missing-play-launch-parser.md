@@ -7,6 +7,15 @@ area: ci
 related: [issue-0034, phase-196, phase-240]
 ---
 
+> **FIX LANDED 2026-06-12 (pending e2e confirmation).** `platform-ci.yml` gains a
+> `Provision play_launch_parser` step (after `just <plat> setup`, e2e-gated) that
+> runs `just workspace install-play-launch-parser` and appends
+> `~/.nros/sdk/play_launch_parser/bin` to `$GITHUB_PATH` for the Build/Test
+> steps. Targeted PATH append, NOT `source activate.sh` — sourcing the full
+> activate would shadow the in-tree-built `nros` already on `$GITHUB_PATH` with an
+> installed one. e2e-only because push/PR build the `build-examples` smoke, which
+> never invokes `nros plan`. Awaiting an e2e dispatch to confirm.
+
 The platform-ci **Test/e2e** step fails in `build-fixture-extras` because
 `play_launch_parser` is not on PATH. Surfaced by run 27393704883 (threadx_linux
 cell):

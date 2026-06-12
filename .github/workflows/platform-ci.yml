@@ -160,6 +160,19 @@ jobs:
       - name: just ${{ matrix.plat }} setup
         run: just ${{ matrix.plat }} setup
 
+      # issue-0037 — the e2e fixture build (`nros plan` → `build-fixture-extras`)
+      # shells out to `play_launch_parser`, a separate binary the in-tree CLI
+      # build does NOT produce (`cargo build --bin nros` only). Provision it
+      # (idempotent; version-stamped) and put its bin on PATH for the later
+      # Build/Test steps. Targeted PATH append (NOT `source activate.sh`, which
+      # would shadow the in-tree-built `nros` already on $GITHUB_PATH). e2e-only:
+      # push/PR build the `build-examples` smoke, which never hits `nros plan`.
+      - name: Provision play_launch_parser (launch-manifest fixtures, #37)
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e) }}
+        run: |
+          just workspace install-play-launch-parser
+          echo "$HOME/.nros/sdk/play_launch_parser/bin" >> "$GITHUB_PATH"
+
       # Container-job host-disk headroom before the heavy SDK+cargo build. The
       # freertos/zephyr cells exhaust the ~14 GB runner (`No space left on
       # device`). Reclaim the image's static bloat (doc/man, apt lists). Mirrors

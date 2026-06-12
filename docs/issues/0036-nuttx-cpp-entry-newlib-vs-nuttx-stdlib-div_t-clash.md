@@ -7,6 +7,18 @@ area: c-api
 related: [issue-0027, issue-0034, phase-235]
 ---
 
+> **FIX LANDED 2026-06-12 (pending e2e confirmation).** `nuttx_ffi_build.rs`
+> (`run_nuttx`) now adds `${NUTTX_DIR}/include/cxx` to the C++ compile's include
+> search **ahead of** the cmake-passed `${NUTTX_DIR}/include`, so `<cstdlib>`
+> resolves to NuttX's own wrapper (which pulls NuttX's `<stdlib.h>`) instead of
+> libstdc++'s — the libstdc++ `#include_next <stdlib.h>` that reached newlib never
+> fires. `<type_traits>` (not under `include/cxx/`, required by `node.hpp`) still
+> falls through to libstdc++, so this is lighter than NuttX's own `-nostdinc++`.
+> Verified in isolation with the real arm-none-eabi-g++ + NuttX headers: a TU
+> including `<type_traits>` + `<cstdlib>` + `<stdlib.h>` failed with the exact
+> `div_t` clash and compiled clean once `include/cxx` was prepended. Awaiting an
+> e2e dispatch on the nuttx cell to confirm the full talker fixture.
+
 The NuttX **C++** entry compile pulls two libc header sets and they clash on
 `div_t`. Surfaced by the honest platform-ci e2e run 27393704883 (nuttx cell,
 Test/e2e step) building the cpp talker fixture:
