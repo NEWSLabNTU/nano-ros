@@ -15,6 +15,8 @@
 //! AGENTS.md "No compilation inside tests"). Fixture absence → tier-aware
 //! skip/fail via the resolver.
 
+use nros_tests::fixtures::zenohd_unique;
+
 #[test]
 fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestResult<()> {
     let exe = nros_tests::fixtures::require_cmake_fixture(
@@ -85,5 +87,56 @@ fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestRes
     assert!(link_body.contains("talker_pkg_talker_component"));
     assert!(link_body.contains("listener_pkg_listener_component"));
 
+    Ok(())
+}
+
+/// Runtime E2E: the typed entry boots + runs **real** callbacks on the executor.
+/// `robot_entry` runs both nodes (talker + listener) in one process; same-session
+/// has no loopback, so we run **two** processes vs a router — each listener
+/// receives the other's talker pubs. Asserts ≥1 `Received` (the typed
+/// `bind_subscription_raw` callback fired) and that the talker published.
+#[rstest::rstest]
+fn multi_node_workspace_cpp_typed_pubsub_e2e(
+    zenohd_unique: nros_tests::fixtures::ZenohRouter,
+) -> nros_tests::TestResult<()> {
+    use nros_tests::{TestError, count_pattern, fixtures::ManagedProcess};
+    use std::{process::Command, time::Duration};
+
+    let zenohd = zenohd_unique;
+    if !nros_tests::fixtures::require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    let exe = nros_tests::fixtures::require_cmake_fixture(
+        "cpp_robot_entry_typed",
+        "src/robot_entry/robot_entry",
+    )?;
+    let locator = zenohd.locator();
+
+    let spawn = |name: &str| -> nros_tests::TestResult<ManagedProcess> {
+        let mut cmd = Command::new(&exe);
+        cmd.env("NROS_LOCATOR", &locator)
+            .env("NROS_SESSION_MODE", "client")
+            .env("NROS_ENTRY_SPIN_MS", "20000");
+        ManagedProcess::spawn_command(cmd, name.to_string())
+    };
+
+    let mut a = spawn("entry_a")?;
+    a.wait_for_output_pattern("Waiting for messages", Duration::from_secs(10))
+        .map_err(|e| TestError::ProcessFailed(format!("entry_a not ready: {e:?}")))?;
+    let mut b = spawn("entry_b")?;
+
+    // a's listener receives b's talker pubs (cross-process).
+    let out = a
+        .wait_for_output_pattern("Received", Duration::from_secs(20))
+        .unwrap_or_default();
+    a.kill();
+    b.kill();
+
+    let received = count_pattern(&out, "Received");
+    eprintln!("[typed-entry] received: {received}\n{out}");
+    assert!(
+        received > 0,
+        "typed multi-node entry pubsub E2E — 0 messages received"
+    );
     Ok(())
 }

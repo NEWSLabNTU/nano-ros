@@ -19,6 +19,7 @@ void Listener::on_raw(const uint8_t* data, size_t len) {
 }
 
 ::nros::Result Listener::configure(::nros::Node& node) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     // The typed `Publisher<Int32>` registers the DDS-mangled keyexpr, so the
     // raw sub must match on `Int32::TYPE_NAME` (240.1 finding; raw↔typed
     // type-name unification is a separate concern).
