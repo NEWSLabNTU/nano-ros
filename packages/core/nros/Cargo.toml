@@ -132,6 +132,11 @@ platform-freertos = [
     "nros-platform/platform-freertos",
     "nros-node/platform-freertos",
     "platform-udp",
+    # Issue #48 — forward to the zenoh backend's FreeRTOS C port when
+    # linked (inert via `?` otherwise), parity with the NuttX row below.
+    # Ensures `zpico-sys` compiles zenoh-pico with the FreeRTOS platform
+    # manifest under the unified-RMW link path.
+    "nros-rmw-zenoh?/platform-freertos",
 ]
 platform-nuttx = [
     "nros-platform/platform-nuttx",

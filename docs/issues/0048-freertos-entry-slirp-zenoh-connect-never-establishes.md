@@ -1,6 +1,6 @@
 ---
 id: 48
-title: FreeRTOS Entry firmware never connects over zenoh — deploy config is inert (uses Config::default) AND zenoh-pico open() hangs pre-connect
+title: FreeRTOS Entry firmware never connects over zenoh — RMW backend not linked (cause 2, FIXED) AND deploy config is inert (cause 1, open)
 status: open
 type: bug
 area: freertos
@@ -10,15 +10,14 @@ related: [issue-0046, phase-212]
 ## Summary
 
 The FreeRTOS Entry/run-plan firmware boots cleanly (since #46) to `Network ready.`
-but its `Executor::open` never connects — it hangs, printing none of the run_plan
-markers (`Application setup complete`, `Published:`, `Executor::open failed`).
+but its `Executor::open` never connects.
 `freertos_run_plan_runtime.rs` and `orchestration_tiers_freertos.rs` label this
 **"timing-flaky"** and treat the connected run as best-effort. **That label is
 wrong — the connection never establishes; it is not flaky, it is non-functional.**
 
-Two **independent** root causes, both confirmed with on-device DBG + packet
-capture (gratuitous-ARP-only). The earlier "subnet mismatch / guest→host gap"
-framing was a symptom of cause 1.
+Two **independent** root causes. **Cause 2 (RMW backend never linked/registered)
+is FIXED and verified.** Cause 1 (deploy-metadata config is inert) is still open
+and is the only thing now blocking a fully-green connected run.
 
 ## 1. Deploy-metadata config is inert — the firmware uses `Config::default()`
 
@@ -51,41 +50,68 @@ unreachable over slirp (`10.0.2.0/24`). (The board default itself can't move to
 `10.0.2.x`: the mcast cross-instance pubsub path needs `Config::default()` =
 `192.0.3.10` / `Config::listener()` = `192.0.3.11` on a shared L2.)
 
-## 2. zenoh-pico `open()` hangs on FreeRTOS before the TCP connect
+## 2. The zenoh RMW backend is never linked → `Executor::open` returns `NoBackend` (FIXED)
 
-Forcing the config fully correct (`Config::default()` → ip `10.0.2.15`, gw
-`10.0.2.2`, locator `tcp/10.0.2.2:7447`, verified via DBG) and running a host
-zenohd on `7447`, `Executor::open` **still** hangs — and a packet capture
-(`-nic user,model=lan9118,id=mynet -object filter-dump,netdev=mynet`) shows the
-guest emits **only one gratuitous ARP for its own IP**, then nothing:
+**This was mis-framed as a "zenoh-pico `open()` hang". It is not a hang and not a
+networking problem — `Executor::open` returned `Transport(ConnectionFailed)`
+*before any* `z_open` / TCP connect.** On-device instrumentation pinned the exit
+to `nros_rmw_cffi::resolve_backend(...)` returning `BackendResolution::NoBackend`
+(zero RMW backends registered in the CFFI vtable). The earlier
+"gratuitous-ARP-only" capture is exactly consistent: open bails before any
+connect, so the only traffic is lwIP's init ARP.
+
+Root cause: the FreeRTOS Entry firmware linked only the **generic vtable shim**
+(`nros-rmw-cffi`) and the **zenoh-pico C transport** (`zpico-sys`) — *not* the
+`nros-rmw-zenoh` Rust crate that bridges zenoh-pico into the CFFI registry and
+exposes `register()`. With no backend crate linked, nothing registers a vtable.
+Compounding it: on `target_os = "none"` `linkme` is a no-op and the image does
+not run the `.init_array` auto-register fallback (section.rs Phase 142), so even
+a linked backend would need an *explicit* `register()` call — the `nros::main!()`
+OwnedSpin branch never made one (only the Zephyr branch did, via
+`__register_linked_rmw()`).
+
+**Fix (three coordinated changes):**
+
+1. `nros-board-freertos`: `rmw-zenoh` feature now enables `nros/rmw-zenoh`, so
+   the `nros-rmw-zenoh` backend crate is actually pulled into the link graph
+   (`rmw-zenoh = ["nros/rmw-zenoh"]`).
+2. `nros` umbrella: `platform-freertos` forwards `nros-rmw-zenoh?/platform-freertos`
+   (inert via `?` when the backend isn't linked), parity with the NuttX row, so
+   `zpico-sys` builds zenoh-pico with the FreeRTOS platform manifest under the
+   unified-RMW link path.
+3. `nros::main!()` OwnedSpin branch: calls `::nros::__register_linked_rmw()` on
+   `target_os = "none"` before the board opens the executor (mirrors the Zephyr
+   branch + `zephyr_component_main!`).
+
+**Verified:** the firmware now reaches `z_open` and actively retries the TCP
+connect — packet capture shows repeated `ARP who-has 192.0.3.1` (the locator
+host), where before there was only the single init ARP:
 
 ```
-ARP, Request who-has 10.0.2.15 tell 10.0.2.15     ← lwIP init only
-(no ARP for the gateway 10.0.2.2, no SYN to 7447)
+ARP, Request who-has 192.0.3.10 tell 192.0.3.10   ← lwIP init
+ARP, Request who-has 192.0.3.1  tell 192.0.3.10   ← z_open connect attempt (repeats)
 ```
 
-So the hang is **inside `z_open` / the zenoh-pico platform shim, before any TCP
-connect** — not a slirp / guest→host networking problem (the firmware never tries
-to reach the gateway). The session is **Client** mode (`SessionMode::Client`
-default — connects to the locator, no multicast scout), so it is not a blocking
-scout. Where it blocks (mutex/semaphore creation on the FreeRTOS heap, a task
-handshake, or the lwIP socket setup) is still TBD — it needs `z_open`-level
-instrumentation in `nros-rmw-zenoh`/zenoh-pico on the FreeRTOS target.
+The connect does not yet *complete* — but only because of cause 1 (the baked
+`192.0.3.1:7447` locator is unreachable over the slirp `10.0.2.x` net). That is a
+networking/config gap, not a backend gap.
 
 ## Fix path
 
-1. **Thread the deploy config into the firmware.** Either give `BoardEntry::run`
-   a `Config` (signature change + macro passes a deploy-derived const), or have
-   `nros::main!()` codegen emit an `NROS_APP_CONFIG`/`Config` from the deploy
-   block and make the board read it instead of `Config::default()`. The
+1. **(OPEN) Thread the deploy config into the firmware.** Either give
+   `BoardEntry::run` a `Config` (signature change + macro passes a deploy-derived
+   const), or have `nros::main!()` codegen emit an `NROS_APP_CONFIG`/`Config` from
+   the deploy block and make the board read it instead of `Config::default()`. The
    `[transport]` config parser already accepts `ip`/`gateway`/`locator`; the
    codegen path just never populates them for the freertos firmware.
-2. **Fix the zenoh-pico FreeRTOS `open()` hang.** Instrument `z_open` to find
-   where it blocks before the connect; likely a platform-shim
-   (mutex/semaphore/task) issue on FreeRTOS.
-3. Then the `freertos_run_plan_runtime` / `orchestration_tiers_freertos`
-   connected runs can assert (not best-effort) `Application setup complete` /
-   `Published:`.
+2. **(DONE) Link + register the zenoh RMW backend** — see cause 2 above:
+   `nros-board-freertos rmw-zenoh → nros/rmw-zenoh`, umbrella
+   `platform-freertos → nros-rmw-zenoh?/platform-freertos`, and the
+   `nros::main!()` OwnedSpin branch calls `__register_linked_rmw()` on
+   `target_os = "none"`.
+3. Once cause 1 lands, the `freertos_run_plan_runtime` /
+   `orchestration_tiers_freertos` connected runs can assert (not best-effort)
+   `Application setup complete` / `Published:`.
 
 ## Not blocked by this
 

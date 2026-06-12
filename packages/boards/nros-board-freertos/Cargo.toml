@@ -55,4 +55,14 @@ reference-mps2 = ["dep:nros-board-mps2-an385-freertos"]
 # `zpico_set_task_config` to tune zenoh-pico's read/lease
 # task priorities from `Config`. DDS-only builds leave it
 # off and reach the linker without the FFI call.
-rmw-zenoh = []
+#
+# Issue #48 — also enable `nros/rmw-zenoh` so the Rust CFFI backend
+# crate `nros-rmw-zenoh` (the bridge that registers the zenoh-pico
+# vtable into `nros-rmw-cffi`) is actually linked. Without it the
+# firmware links only the generic vtable shim + the zenoh-pico C
+# transport (`zpico-sys`), no backend registers, and `Executor::open`
+# fails with `Transport(ConnectionFailed)` (resolve_backend →
+# NoBackend). The `nros::main!()` OwnedSpin branch calls
+# `__register_linked_rmw()` on `target_os = "none"` to register it
+# (linkme is a no-op there).
+rmw-zenoh = ["nros/rmw-zenoh"]

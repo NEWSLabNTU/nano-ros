@@ -746,6 +746,19 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
+                // Issue #48 — on bare-metal / RTOS targets (`target_os =
+                // "none"`: FreeRTOS, bare Cortex-M) `linkme` is a no-op and
+                // the image does not run the `.init_array` auto-register
+                // fallback, so the linked RMW backend is never contributed
+                // to the CFFI vtable and the board's `Executor::open` fails
+                // with `Transport(ConnectionFailed)` (resolve_backend →
+                // NoBackend). Register it explicitly before the board opens
+                // the executor — mirrors the Zephyr branch and
+                // `zephyr_component_main!`. Hosted targets auto-register via
+                // linkme / `.init_array`, so the call is gated to
+                // `target_os = "none"`.
+                #[cfg(target_os = "none")]
+                ::nros::__register_linked_rmw();
                 #entry_call
             }
 
