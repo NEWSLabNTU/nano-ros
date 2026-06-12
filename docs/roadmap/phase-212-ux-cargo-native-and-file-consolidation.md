@@ -2170,41 +2170,10 @@ canonical-shape regression test can run green tree-wide:
       service-/action-client) keep no-op bodies + the
       `_state, _ctx` ABI; M-F.4.b transcription unblocks once
       M-F.4.a reaches the installed nros-cli.
-- [ ] **M-F.4.d — single-node `ExecutorNodeRuntime` service/action
-      dispatch (the OTHER path; blocks issue #35).** M-F.4.a's
-      `GenClientDispatch` is emitted by nros-cli **only for the
-      orchestration / Entry path** (multi-component, `has_shared_instance`).
-      The single-node `nros::zephyr_component_main!` macro does NOT go
-      through that codegen — it builds `ExecutorNodeRuntime` directly, whose
-      `run_ticks` hardwires `UnsupportedClients` + `UnsupportedActions`
-      (`packages/core/nros/src/node_runtime.rs`), and whose `create_entity`
-      handles `ServiceServer | ServiceClient | ActionServer | ActionClient |
-      Parameter` with a single **no-op arm** ("dispatch lands in M.5.a.4 —
-      until then registration succeeds and the callbacks simply never fire").
-      So for every single-node Zephyr/FreeRTOS/NuttX rust example the entire
-      service + action seam (client AND server) is unbuilt — only
-      pub/sub/timer (M.5.a.2) work. This is what fails issue #35's
-      `test_zephyr_rust_service_e2e`, `test_zephyr_action_e2e`, and
-      `test_zephyr_dds_rs_action_e2e` (now `#[ignore]`-gated; the XRCE-clock
-      + zenoh-marker parts of #35 are unrelated and resolved).
-      **Scope (not a test un-ignore):**
-      - `create_entity`: actually register service-server/client +
-        action-server/client on the executor (the primitives exist —
-        `register_service_client_raw_sized_on`,
-        `register_action_client_raw_sized`, the server equivalents) and store
-        their handles per-`ComponentCell` (today the cell tracks publishers
-        only).
-      - Server side: route inbound requests/goals to the component's
-        declared callback during spin (wire the service-server / action-server
-        callback seam into `ExecutorNodeRuntime`).
-      - Client side: a `RuntimeClientDispatch` (+ `RuntimeActions`) mirroring
-        `GenClientDispatch`/`GenActionExec` — `call_raw`/`send_goal_raw` over
-        `executor.service_client_entry_mut` / `action_client_core_mut`, wired
-        into `run_ticks` with the `*mut Executor` borrow trick (the tick
-        borrows `&self.components` while needing `&mut executor`).
-      - Un-ignore the three #35 tests + verify native_sim service/action e2e.
-      Sized as its own wave (service + action × client + server + borrow
-      plumbing), not a follow-up tweak.
+      `GenClientDispatch` (M-F.4.a) covers only the orchestration / Entry
+      codegen path — the **single-node** `zephyr_component_main!` macro path
+      stays on `UnsupportedClients`/`UnsupportedActions` and is tracked
+      separately as **M-F.23** (blocks issue #35).
 - [x] **M-F.5 Async-Component trait** (nros). `examples/zephyr/
       rust/service-client-async/` used Embassy; no async-Component
       shape exists today. Decision 2026-06-02: **drop the
@@ -2904,6 +2873,45 @@ canonical-shape regression test can run green tree-wide:
 
       **Blocks:** §212.O.1 (`freertos_board_run_executes_run_
       plan`).
+- [ ] **M-F.23 single-node `ExecutorNodeRuntime` service/action dispatch**
+      (nros) — the OTHER client path; blocks issue #35. M-F.4.a's
+      `GenClientDispatch` is emitted by nros-cli **only for the orchestration /
+      Entry path** (multi-component, `has_shared_instance`). The single-node
+      `nros::zephyr_component_main!` macro does NOT go through that codegen — it
+      builds `ExecutorNodeRuntime` directly, whose `run_ticks` hardwires
+      `UnsupportedClients` + `UnsupportedActions`
+      (`packages/core/nros/src/node_runtime.rs`), and whose `create_entity`
+      handles `ServiceServer | ServiceClient | ActionServer | ActionClient |
+      Parameter` with a single **no-op arm** ("dispatch lands in M.5.a.4 — until
+      then registration succeeds and the callbacks simply never fire"). So for
+      every single-node Zephyr/FreeRTOS/NuttX rust example the entire service +
+      action seam (client AND server) is unbuilt — only pub/sub/timer (M.5.a.2)
+      work. This is what fails issue #35's `test_zephyr_rust_service_e2e`,
+      `test_zephyr_action_e2e`, and `test_zephyr_dds_rs_action_e2e` (now
+      `#[ignore]`-gated; the XRCE-clock + zenoh-marker parts of #35 are
+      unrelated and resolved).
+
+      **Scope (not a test un-ignore):**
+      - `create_entity`: actually register service-server/client +
+        action-server/client on the executor (the primitives exist —
+        `register_service_client_raw_sized_on`,
+        `register_action_client_raw_sized`, the server equivalents) and store
+        their handles per-`ComponentCell` (today the cell tracks publishers
+        only).
+      - Server side: route inbound requests/goals to the component's declared
+        callback during spin (wire the service-server / action-server callback
+        seam into `ExecutorNodeRuntime`).
+      - Client side: a `RuntimeClientDispatch` (+ `RuntimeActions`) mirroring
+        `GenClientDispatch`/`GenActionExec` — `call_raw`/`send_goal_raw` over
+        `executor.service_client_entry_mut` / `action_client_core_mut`, wired
+        into `run_ticks` with the `*mut Executor` borrow trick (the tick borrows
+        `&self.components` while needing `&mut executor`).
+      - Un-ignore the three #35 tests + verify native_sim service/action e2e.
+
+      Sized as its own wave (service + action × client + server + borrow
+      plumbing), not a follow-up tweak.
+
+      **Blocks:** issue #35 (`docs/issues/0035-*`).
 
 ### §212.O — Acceptance test fill-ins (parallel-dispatchable)
 
