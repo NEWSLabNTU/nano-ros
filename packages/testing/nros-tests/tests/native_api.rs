@@ -20,8 +20,8 @@ use nros_tests::{
         build_cpp_action_client_callback, build_cpp_action_server, build_cpp_listener,
         build_cpp_service_client, build_cpp_service_client_callback, build_cpp_service_server,
         build_cpp_talker, build_native_c_example_rmw, build_native_cpp_example_rmw,
-        build_native_listener_rmw, build_native_talker_rmw, require_cmake, require_zenohd,
-        zenohd_unique,
+        build_native_listener_rmw, build_native_service_client_callback, build_native_talker_rmw,
+        require_cmake, require_zenohd, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -534,6 +534,72 @@ fn test_service_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter)
         Language::Cpp,
         &client_bin,
     );
+}
+
+/// Spawn the native Rust callback service client. Unlike the C / C++ binaries it
+/// logs via `env_logger`, so `RUST_LOG=info` is required to surface the
+/// `Response (callback)` markers.
+fn spawn_rust_callback_client(binary: &Path, locator: &str) -> ManagedProcess {
+    let mut cmd = stdbuf_command(binary);
+    cmd.env("NROS_LOCATOR", locator);
+    cmd.env("RUST_LOG", "info");
+    ManagedProcess::spawn_command(cmd, "rust-service-client-callback")
+        .expect("Failed to start rust-service-client-callback")
+}
+
+/// Rust callback client ↔ a C / C++ service server. Extends the 239.15 matrix to
+/// the Rust FFI surface: the typed `create_client_with_callback` closure
+/// dispatched at `spin_once` receives a reply framed by the other language's RMW.
+fn rust_callback_interop_body(locator: &str, server_bin: &Path, server_lang: Language) {
+    let client_bin = build_native_service_client_callback()
+        .unwrap_or_else(|e| skip_missing_fixture("Rust service client (callback)", e))
+        .to_path_buf();
+
+    let mut server = spawn_native(server_bin, server_lang, "service-server", locator);
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .expect("service server did not become ready");
+
+    let mut client = spawn_rust_callback_client(&client_bin, locator);
+    let client_output = client
+        .wait_for_output_pattern("callback service calls succeeded", Duration::from_secs(20))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
+        .unwrap_or_default();
+    server.kill();
+
+    eprintln!(
+        "rust callback client ↔ {} server output:\n{}",
+        server_lang.label(),
+        client_output
+    );
+    let cb_count = count_pattern(&client_output, "Response (callback)");
+    assert!(
+        cb_count >= 3,
+        "Expected >=3 callback-dispatched replies (rust↔{}), got {}.\nOutput:\n{}",
+        server_lang.label(),
+        cb_count,
+        client_output
+    );
+}
+
+/// Rust callback client ↔ C service server.
+#[rstest]
+fn test_service_callback_interop_rust_client_c_server(zenohd_unique: ZenohRouter) {
+    if !require_native_env() {
+        return;
+    }
+    let server_bin = Language::C.service_server_binary();
+    rust_callback_interop_body(&zenohd_unique.locator(), &server_bin, Language::C);
+}
+
+/// Rust callback client ↔ C++ service server.
+#[rstest]
+fn test_service_callback_interop_rust_client_cpp_server(zenohd_unique: ZenohRouter) {
+    if !require_native_env() {
+        return;
+    }
+    let server_bin = Language::Cpp.service_server_binary();
+    rust_callback_interop_body(&zenohd_unique.locator(), &server_bin, Language::Cpp);
 }
 
 // =============================================================================

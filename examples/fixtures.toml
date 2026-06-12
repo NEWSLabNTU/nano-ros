@@ -257,6 +257,12 @@ platform = "native"
 lang = "rust"
 dir = "examples/native/rust/service-client"
 
+# RFC-0041 / Phase 239 — callback-receive variant of the service client.
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/service-client-callback"
+
 [[fixture]]
 platform = "native"
 lang = "rust"

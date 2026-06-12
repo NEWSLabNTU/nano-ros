@@ -75,6 +75,9 @@ static NATIVE_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-service-client binary
 static NATIVE_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the native-rs-service-client-callback binary (RFC-0041 / Phase 239)
+static NATIVE_SERVICE_CLIENT_CALLBACK_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native-rs-custom-msg binary
 static NATIVE_CUSTOM_MSG_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1474,6 +1477,19 @@ pub fn build_native_service_client() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example_rmw("native/rust/service-client", "service-client", Rmw::Zenoh)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build native-rs-service-client-callback (cached, RFC-0041 / Phase 239)
+pub fn build_native_service_client_callback() -> TestResult<&'static Path> {
+    NATIVE_SERVICE_CLIENT_CALLBACK_BINARY
+        .get_or_try_init(|| {
+            build_example_rmw(
+                "native/rust/service-client-callback",
+                "service-client-callback",
+                Rmw::Zenoh,
+            )
         })
         .map(|p| p.as_path())
 }
