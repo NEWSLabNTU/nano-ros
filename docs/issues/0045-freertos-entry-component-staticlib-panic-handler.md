@@ -90,6 +90,57 @@ lifecycle + panic" convention.
 These let the build progress to the panic-handler error above; the crate-type
 panic-handler conflict is the remaining blocker.
 
+## Design exploration + chosen approach (2026-06-12)
+
+**Design-of-record: [RFC-0032 §3.1](../design/0032-entry-codegen-pipeline.md)**
+(boot-scaffold completeness) + [RFC-0024 §6.4](../design/0024-multi-node-workspace-layout.md)
+(Node-pkg crate-type). Work items tracked in
+[phase-212 §212.O.1](../roadmap/phase-212-ux-cargo-native-and-file-consolidation.md).
+
+Explored the design end-to-end and **validated the fix experimentally** (changes
+made, build/boot verified, then reverted pending a scoped implementation).
+
+**Chosen approach: board crate owns the embedded panic handler** (a variant of
+candidate 2, but in the *board* crate, not the Component). The board crate
+(`nros-board-mps2-an385-freertos`) is `#![no_std]`, cortex-m-only, and already
+deps `panic-semihosting` unconditionally — it cannot compile on host, so a
+`#[cfg(target_os = "none")] use panic_semihosting as _;` at its crate root is
+safe and brings the `panic_impl` lang item to any bin that links the board rlib.
+The Entry pkg stays untouched (no panic dep, no macro injection). Combined with
+**candidate 1** (Component → `["rlib"]` only, staticlib is a cmake/Corrosion-path
+concern), this clears both panic gaps.
+
+**Three independent gaps were uncovered (not just one):**
+
+1. **Component staticlib** (this issue's title) — fixed by `crate-type =
+   ["rlib"]` on the 6 pure-cargo FreeRTOS Component examples. The cmake-consumed
+   threadx fixtures already declare `["staticlib"]` only + build for host, so the
+   crate-type is deployment-path-specific; the spec's "irreducible
+   `["rlib","staticlib"]`" overspecified.
+2. **Entry-bin panic handler lost in the `nros::main!()` migration** — the board
+   descriptor's `crate_root_extra = "use panic_semihosting as _;"` was injected by
+   the *old* `nros codegen-system` path (`generate.rs:768`); the Phase-213.C.1
+   `nros::main!()` macro never consumes it, so the Entry bin had no handler.
+   Fixed by the board-owned approach above (no macro change needed).
+3. **Linker-script config drift** — `talker_entry/.cargo/config.toml` pins
+   `-Tlink.x`, but the board descriptor's `cargo_config` specifies
+   `-Tmps2_an385.ld` + `--nmagic` (and the board build.rs emits `mps2_an385.ld`
+   to its `OUT_DIR`, which its own comment says the config should reference). The
+   committed example config is stale.
+
+**Validation result:** with all three applied, `freertos_rs_talker_entry` for
+`thumbv7m-none-eabi` **compiles, links, and boots** through the full board
+lifecycle under QEMU — banner → `Initializing LAN9118 + lwIP` → MAC/IP assigned.
+
+**Residual (separate, deeper gap — the "O.1 runtime stabilisation"):** the app
+task then hits `*** STACK OVERFLOW: nros_app ***` at Executor creation, BEFORE
+the run_plan body. `app_stack_bytes` already defaults to 256 KB, so the overflow
+is from the inline Executor arena — the firmware links **both** `zpico_sys`
+(zenoh, the board default) AND `nros_rmw_cyclonedds` (pulled via the Component's
+`nros` umbrella `rmw-cffi`), even though the deploy config says `rmw = "zenoh"`.
+Resolving this is rmw-backend-selection + stack/heap tuning, NOT the panic-handler
+design — track as the O.1 runtime tail (here or a sibling issue).
+
 ## Not blocked by this
 
 Phase 212 M-F.17 (`nros plan` source-metadata α-bridge) is landed and validated

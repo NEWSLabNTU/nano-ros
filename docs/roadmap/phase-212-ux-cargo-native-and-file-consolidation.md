@@ -156,7 +156,12 @@ See companion design documents (live, expected to iterate):
 
 **Irreducible per-Component-pkg user-authored items (Rust):**
 - `Cargo.toml.[package].name` — pkg dir name
-- `Cargo.toml.[lib]` + `crate-type = ["rlib", "staticlib"]`
+- `Cargo.toml.[lib]` + `crate-type` — **deployment-path-specific** (corrected
+  2026-06-12, RFC-0032 §3.1 / issue 0045): `["rlib"]` on the pure-cargo Entry path
+  (Rust-native FreeRTOS/NuttX/ThreadX), `["staticlib"]` on the cmake/Corrosion
+  path. NOT a universal `["rlib","staticlib"]` — a redundant staticlib on the
+  cargo path forces a no_std `#[panic_handler]` that collides with the board-owned
+  handler.
 - `Cargo.toml.[package.metadata.nros.component].class = "<pkg>::<UserClass>"`
 - `Cargo.toml.[package.metadata.ament].{build_depend, exec_depend}` (non-cargo ROS deps)
 - `package.xml` (colcon parity)
@@ -2925,6 +2930,43 @@ rebase conflict.
       Cargo.toml`. Stays [~] until Wave A's talker_entry patch
       lands; un-`#[ignore]` flip + `[~] → [x]` follow on once
       the build path resolves to a real QEMU lifecycle outcome.
+
+      **Status 2026-06-12 (design explored + validated; boot-scaffold
+      work items defined).** The M-F.21/M-F.22 manifest blockers above
+      are resolved; the build now reaches linking and exposes three
+      **boot-scaffold** gaps — design decision recorded in
+      **RFC-0032 §3.1** + **issue 0045**, design **approved** 2026-06-12:
+      1. **Component staticlib panic** — the Node pkg's
+         `crate-type = ["rlib","staticlib"]` makes rustc emit a no_std
+         `staticlib` for `thumbv7m` that demands a `#[panic_handler]`
+         the rlib must not carry. **Fix:** the 6 FreeRTOS Node examples
+         → `crate-type = ["rlib"]` (the staticlib is a cmake/Corrosion
+         concern; RFC-0032 §3.1 rule 2 / RFC-0024 §6.4).
+      2. **Entry-bin has no panic handler** — `nros::main!()` (213.C.1)
+         never consumed the board descriptor's `crate_root_extra`
+         panic injection the old `nros codegen-system` path did. **Fix:**
+         the board family crate (`nros-board-*-freertos`) owns it via
+         `#[cfg(target_os = "none")] use panic_semihosting as _;`
+         (RFC-0032 §3.1 rule 1); Entry pkg untouched.
+      3. **Linker-script config drift** — `talker_entry/.cargo/config.toml`
+         pins stale `-Tlink.x`; board descriptor specifies
+         `-Tmps2_an385.ld` + `--nmagic` (board build.rs emits the script
+         to `OUT_DIR`). **Fix:** sync the example config (audit all
+         freertos examples; ideally regen via `nros ws sync`).
+
+      **Validated:** with all three applied, `freertos_rs_talker_entry`
+      compiles, links, and **boots** through the board lifecycle under
+      QEMU (banner → `Initializing LAN9118 + lwIP` → MAC/IP).
+
+      **Residual runtime gap (NOT the panic design; un-ignore O.1 only
+      after this).** The app task then `*** STACK OVERFLOW: nros_app ***`
+      at Executor creation — `app_stack_bytes` is already 256 KB, so the
+      bloat is a **dual-rmw link**: both `zpico_sys` (zenoh, board
+      default) AND `nros_rmw_cyclonedds` (pulled via the Node's `nros`
+      umbrella `rmw-cffi`) compile in, despite `deploy.rmw = "zenoh"`.
+      This is RMW-backend selection (RFC-0031) + inline-arena/stack
+      tuning. Stays `[~]` + `#[ignore]`d until the boot-scaffold fixes
+      land AND the rmw-selection residual is resolved.
 
 - [x] **O.2 `entry_pkg_metadata_required_board`** (nros-cli
       `check`) — `nros check` hard-error test for missing

@@ -4,7 +4,7 @@ title: "Entry-Codegen Pipeline — main() emission across frameworks + tiers"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: [phase-228, phase-236]
+implements-tracked-by: [phase-212, phase-228, phase-236]
 supersedes: []
 superseded-by: null
 ---
@@ -100,6 +100,50 @@ per-board ZST and calls `<Board>::run(setup)` without knowing the family; the
 family driver crate (`nros-board-posix`, `nros-board-freertos`, …) owns the
 lifecycle body (`init_hardware` → open executor → build `RuntimeCtx` → `setup` →
 spin/exit).
+
+### 3.1 Embedded panic handler + Node-pkg crate-type (boot-scaffold completeness)
+
+A no_std firmware needs **exactly one** `#[panic_handler]` in its crate graph,
+and the `OwnedSpin`-RTOS split (Entry pkg + Node pkg + board crate) must guarantee
+it without collision. Two boot-scaffold rules close this (design-of-record;
+surfaced by FreeRTOS Entry-pkg bring-up, [issue 0045](../issues/0045-freertos-entry-component-staticlib-panic-handler.md)):
+
+1. **The embedded panic handler is board-owned, cfg-gated.** The per-board family
+   crate (e.g. `nros-board-mps2-an385-freertos`) carries
+   `#[cfg(target_os = "none")] use panic_semihosting as _;` at its crate root and
+   deps the panic crate. Linking the board rlib — which every Entry pkg does —
+   brings the `panic_impl` lang item to the firmware bin; the **Entry pkg stays
+   untouched** (no panic dep, no macro injection). The `cfg(target_os = "none")`
+   gate keeps the board crate host-compatible. This **replaces** the legacy
+   board-descriptor `crate_root_extra = "use panic_semihosting as _;"` injection:
+   that string was emitted into the generated Entry main by the old
+   `nros codegen-system` path (RFC-0003), which `nros::main!()` does **not**
+   consume — so under the macro emitter the bin had no handler. Board-ownership
+   is emitter-independent (works for both the macro and the CLI mirror) and is the
+   single source; `crate_root_extra` is retired for Rust Entry panic.
+
+2. **Node-pkg crate-type is deployment-path-specific, not universal.** The
+   pure-cargo Entry path links the Node pkg as an **rlib** only; its `staticlib`
+   output is never consumed there, yet rustc still demands a `#[panic_handler]`
+   for any no_std `staticlib` it emits — which the rlib must **not** carry (it
+   would duplicate the board's). Therefore:
+   - **Pure-cargo Entry path** (Rust-native FreeRTOS/NuttX/ThreadX) → Node pkg
+     declares `crate-type = ["rlib"]`.
+   - **cmake / Corrosion path** (C-owned firmware, the RFC-0003 bake) → Node pkg
+     declares `crate-type = ["staticlib"]`; the staticlib's panic comes from the
+     vendor/host link (host-linked sims use std; embedded C firmware owns abort).
+     Corrosion 0.5 `CRATE_TYPES` only *selects from declared* types, so the path
+     that needs a staticlib must declare it.
+
+   This corrects RFC-0024's earlier "irreducible `["rlib", "staticlib"]`" Node-pkg
+   shape, which conflated the two paths. See RFC-0024 §6.4.
+
+The boot scaffold is only "complete" when both hold: every `OwnedSpin` firmware
+links a board rlib that owns panic, and its Node pkgs are rlib-only on the
+pure-cargo path. The linker script is the third leg — the Entry pkg's
+`.cargo/config.toml` `link-arg=-T<board>.ld` must track the board descriptor's
+`cargo_config` (the board build.rs emits the script to `OUT_DIR`); a stale pin
+(`-Tlink.x`) is a config-sync bug, not a codegen one.
 
 ---
 
@@ -273,7 +317,33 @@ gated to zero) against real zenohd.
   framework priorities, not `run_tiers`. `run_tiers` applies only to
   `OwnedSpin`-RTOS boards.
 
+**Decided (2026-06-12 design discussion — FreeRTOS Entry-pkg bring-up, issue 0045):**
+
+- **Embedded panic handler is board-owned, cfg-gated** (§3.1 rule 1). The board
+  family crate carries `#[cfg(target_os = "none")] use panic_semihosting as _;`;
+  the Entry pkg stays panic-free. Retires the board-descriptor `crate_root_extra`
+  panic injection (which `nros::main!()` never consumed → the macro-emitted bin
+  had no handler).
+- **Node-pkg crate-type is deployment-path-specific** (§3.1 rule 2): `["rlib"]` on the
+  pure-cargo Entry path, `["staticlib"]` on the cmake/Corrosion path. Corrects
+  RFC-0024's "irreducible `["rlib","staticlib"]`".
+- **Validated end-to-end:** with both rules + the linker-script sync,
+  `freertos_rs_talker_entry` (`thumbv7m-none-eabi`) compiles, links, and boots
+  through the board lifecycle under QEMU.
+
 **Open (implementation):**
+
+4. **Land the §3.1 boot-scaffold fixes (Phase 212.O.1).** Board panic line on the
+   `nros-board-*-freertos` family; the 6 FreeRTOS Node examples → `["rlib"]`;
+   linker-script `.cargo/config.toml` sync (audit all freertos examples for the
+   `-Tlink.x` drift, ideally regen via `nros ws sync`). Tracked by phase-212 O.1
+   + issue 0045.
+5. **O.1 runtime residual (separate from the panic design).** After §3.1, the app
+   task stack-overflows at Executor creation because the firmware links **both**
+   rmw backends (`zpico_sys` zenoh + `nros_rmw_cyclonedds` via the Node's `nros`
+   umbrella `rmw-cffi`) despite `deploy.rmw = "zenoh"`. This is RMW-backend
+   selection (RFC-0031) + inline-arena/stack tuning, not entry codegen — un-ignore
+   `freertos_run_plan_runtime` only after it lands.
 
 1. **Proc-macro emit** — wire `nros-macros` to `nros-orchestration-ir`, resolve
    tiers at expansion (keying groups per §7 instance-identity), emit `run_tiers`
@@ -354,4 +424,8 @@ constructs **no** live publishers/subscriptions, on native or embedded.
 - Shared resolver: `packages/core/nros-orchestration-ir/`.
 - Phase tracking: `docs/roadmap/phase-228-per-tier-orchestration-codegen.md`
   (multi-tier emit); `docs/roadmap/phase-236-cpp-entry-embedded-runtime.md`
-  (C++ embedded board adapter + NodeContext runtime, §8a).
+  (C++ embedded board adapter + NodeContext runtime, §8a);
+  `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md` §212.O.1
+  (embedded panic + Node-pkg crate-type, §3.1).
+- Embedded panic / crate-type: `docs/issues/0045-freertos-entry-component-staticlib-panic-handler.md`,
+  RFC-0024 §6.4, RFC-0031 (rmw selection — the O.1 dual-backend residual).
