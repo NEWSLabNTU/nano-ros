@@ -221,9 +221,11 @@ fn freertos_board_run_executes_run_plan() {
         .wait_for_output_pattern("Network ready.", Duration::from_secs(15))
         .unwrap_or_default();
     // The post-network connected run goes through `Executor::open` over
-    // slirp → host zenohd, which is timing-flaky on QEMU virtual-clock (same
-    // as `orchestration_tiers_freertos`), so give it a generous best-effort
-    // budget and log — not assert — the outcome below.
+    // slirp → host zenohd. It currently never establishes (NOT "flaky"): the
+    // firmware boots on the board-default `192.0.3.10/24` while slirp is
+    // `10.0.2.0/24`, and even on the right subnet the guest→host path doesn't
+    // deliver — root-caused in #48. Give it a best-effort budget and log — not
+    // assert — the outcome below until #48 lands.
     let extra = qemu
         .wait_for_output_pattern("Application", Duration::from_secs(25))
         .unwrap_or_default();
@@ -262,9 +264,9 @@ fn freertos_board_run_executes_run_plan() {
         || saw_receive;
     if !reached_run_plan {
         eprintln!(
-            "note: run_plan(runtime) connected-run marker not observed within \
-             budget (slirp→zenohd timing-flaky; boot lifecycle already proven). \
-             Tracked as the #46 connected-run tail.\noutput:\n{combined}",
+            "note: run_plan(runtime) connected-run marker not observed (the \
+             firmware never connects over slirp — subnet mismatch + guest→host \
+             gap, #48; boot lifecycle already proven).\noutput:\n{combined}",
         );
     }
 }

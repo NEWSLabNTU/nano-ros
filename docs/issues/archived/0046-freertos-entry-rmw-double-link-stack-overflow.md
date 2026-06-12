@@ -32,12 +32,13 @@ asserts the boot lifecycle (the deterministic part this fix enables) and starts 
 host zenohd on `7451` (the entry's `tcp/10.0.2.2:7451` locator) for the connected
 run.
 
-**Known limitation (not a regression):** the post-network connected run goes
-through `Executor::open` over the slirp→host-zenohd path, which is timing-flaky on
-QEMU virtual-clock — the test logs (does not assert) the `Application setup
-complete` / `Published:` markers, exactly as the sibling
-`orchestration_tiers_freertos` does. Making that path deterministic
-(zenoh connect-timeout / reliable slirp routing) is a separate networking concern.
+**Known limitation (not a regression) → #48:** the post-network connected run goes
+through `Executor::open` over the slirp→host-zenohd path, which **never
+establishes** (originally mislabeled "timing-flaky"). Investigated: the firmware
+boots on the board-default `192.0.3.10/24` while slirp is `10.0.2.0/24`, and even
+on the right subnet the guest→host connection doesn't deliver — filed as **#48**.
+The test logs (does not assert) the `Application setup complete` / `Published:`
+markers until #48 lands.
 
 ---
 
