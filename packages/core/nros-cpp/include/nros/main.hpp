@@ -41,10 +41,8 @@
 #include "nros/node_pkg.hpp"
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#include <cstdio>  // printf — Phase 238.B listener readiness / received-sample lines
 #include <cstdlib> // getenv — Phase 235.A bounded-spin ($NROS_ENTRY_SPIN_MS)
-#ifdef NROS_NUTTX_ENTRY_DEBUG
-#include <cstdio> // Phase 238 NuttxBoard boot diagnostics (opt-in)
-#endif
 #endif
 
 // Phase 235.B — the embedded (Zephyr) Board adapter is cooperatively
@@ -246,6 +244,20 @@ class EntryNodeRuntime {
             }
         }
 
+        // Phase 238.B — listener readiness banner. Printed once when the
+        // topology has a draining subscription, so an external harness
+        // (rtos_e2e) can gate on the node being up before sending traffic.
+        // Matches the native listener's "Waiting for messages" readiness
+        // string. Publisher-only entries (e.g. the native phase235 talker)
+        // print nothing here.
+        for (size_t i = 0; i < entity_count_; ++i) {
+            const Entity& e = entities_[i];
+            if (e.used && e.kind == ::nros::NodeEntityKind::Subscription && e.reads) {
+                ::std::printf("Waiting for messages\n");
+                break;
+            }
+        }
+
         ::nros::Result last = ::nros::Result::success();
         uint8_t drain[512];
         for (;;) {
@@ -277,6 +289,22 @@ class EntryNodeRuntime {
                                                                               sizeof(drain), &len);
                         if (r != 0 || len == 0) break;
                         ++e.recv_count;
+                        // Phase 238.B — emit a per-sample line so an external
+                        // harness (rtos_e2e) can count receipts. Decode the
+                        // `std_msgs/Int32` value (4-byte CDR encapsulation
+                        // header + LE int32, the layout `fire_publisher`
+                        // writes); fall back to the receipt count if the
+                        // payload is shorter.
+                        int32_t value;
+                        if (len >= 8) {
+                            value = static_cast<int32_t>(static_cast<uint32_t>(drain[4]) |
+                                                         (static_cast<uint32_t>(drain[5]) << 8) |
+                                                         (static_cast<uint32_t>(drain[6]) << 16) |
+                                                         (static_cast<uint32_t>(drain[7]) << 24));
+                        } else {
+                            value = static_cast<int32_t>(e.recv_count);
+                        }
+                        ::std::printf("Received: %d\n", static_cast<int>(value));
                     }
                 }
             }
@@ -407,6 +435,13 @@ class EntryNodeRuntime {
         case ::nros::NodeEntityKind::Subscription:
             ret = nros_cpp_subscription_create(node->node.ffi_handle(), e.topic, e.type_name,
                                                e.type_hash, qos, e.storage);
+            // Phase 238.B — a subscription declared WITH a callback reads in
+            // the poll loop. The declarative `register_node()` wires the sub
+            // to a callback (`create_subscription(sub, …, on_msg)`) but the
+            // canonical example classes don't separately record a `Reads`
+            // effect, so infer it from the callback's presence. An explicit
+            // `record_callback_effect(Reads)` still works (sets `reads` too).
+            e.reads = (d->callback_id != nullptr && d->callback_id[0] != '\0');
             break;
         case ::nros::NodeEntityKind::Timer:
             // `source_name` carries the period-ms literal ("1000").
@@ -461,7 +496,13 @@ class EntryNodeRuntime {
         buf[5] = static_cast<uint8_t>((v >> 8) & 0xff);
         buf[6] = static_cast<uint8_t>((v >> 16) & 0xff);
         buf[7] = static_cast<uint8_t>((v >> 24) & 0xff);
-        nros_cpp_publish_raw(e.storage, buf, sizeof(buf));
+        nros_cpp_ret_t pr = nros_cpp_publish_raw(e.storage, buf, sizeof(buf));
+        // Phase 238.B — talker-side observability (symmetric to the
+        // subscriber "Received: N" line; matches the native talker). Lets a
+        // harness gate on the publisher being live + count emissions.
+        if (pr == 0) {
+            ::std::printf("Published: %d\n", static_cast<int>(v));
+        }
     }
 
     NodeSlot nodes_[NROS_ENTRY_MAX_NODES];
@@ -693,8 +734,7 @@ class NuttxBoard {
 #endif
         // Compile-time domain id. `NROS_ENTRY_DOMAIN_ID` resolves from
         // `CONFIG_NROS_DOMAIN_ID` (else 0) — same macro ZephyrBoard uses.
-        nros::Result r =
-            nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
 #ifdef NROS_NUTTX_ENTRY_DEBUG
         ::std::printf("[nuttx-cpp] init -> %d\n", (int)r.raw());
 #endif

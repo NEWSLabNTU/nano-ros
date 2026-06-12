@@ -5,13 +5,14 @@ QEMU ARM virt, the same way the NuttX **Rust** examples already do. The compile
 blocker that gated this is gone; what remains is producing a bootable ELF from the
 C/C++ build.
 
-**Status.** 238.A (C++ pub/sub pair) **DONE** 2026-06-12 — `nuttx_cpp_talker`
-+ `nuttx_cpp_listener` boot as bootable kernel ELFs in QEMU ARM virt, connect
-to a host zenoh router over slirp, and form a routed `/chatter`
-`std_msgs/msg/Int32` pub/sub topology (proven via zenohd debug log: two client
-transports + publisher resource + subscriber declare). Service/action C++ +
-the whole C path remain deferred (see §"Done / remaining" below). Off the
-critical path (NuttX is a secondary platform).
+**Status.** 238.A + 238.B (C++ pub/sub pair + E2E observability) **DONE**
+2026-06-12 — `nuttx_cpp_talker` + `nuttx_cpp_listener` boot as bootable kernel
+ELFs in QEMU ARM virt, connect to a host zenoh router over slirp, and exchange
+`/chatter` `std_msgs/msg/Int32`: talker prints `Published: N`, listener prints
+`Waiting for messages` + `Received: N` with matching values. `rtos_e2e`
+`(Nuttx, Cpp, Pubsub)` now satisfiable. Service/action C++ + the whole C path
+remain deferred (see §238.B "Deferred"). Off the critical path (NuttX is a
+secondary platform).
 
 **Depends on.** `nros-board-nuttx-qemu-arm` (kernel staging + link), the NuttX
 submodule (`nuttx-12.13.0-4`), `cmake/NanoRosNodeRegister.cmake`, the rtos_e2e
@@ -202,16 +203,34 @@ topology routes — the proven `Variant::Pubsub` exchange.
 produces a real `build-zenoh/nuttx_cpp_<name>` ELF for every C++ example —
 build coverage; service/action build + boot + *register* but do not execute).
 
+## 238.B — pub/sub E2E observability (DONE 2026-06-12)
+
+The shared `EntryNodeRuntime` (`nros-cpp/include/nros/main.hpp`) was silent: it
+never drained a subscription unless a `Reads` callback-effect was recorded (the
+declarative `Listener.cpp` records none), and printed nothing. Three changes
+make the `Nuttx × Cpp × Pubsub` E2E observable + green:
+
+1. **Auto-`reads`** — `do_create_entity` infers `reads` for any subscription
+   declared *with* a callback (`d->callback_id` present), so the canonical
+   declarative listener drains without a separate `record_callback_effect`.
+2. **Readiness banner** — `spin()` prints `"Waiting for messages"` once when the
+   topology has a draining subscription (publisher-only entries print nothing).
+3. **Per-sample lines** — the drain prints `"Received: <v>"` (decoding the
+   synthesized `std_msgs/Int32`), and `fire_publisher` prints `"Published: <v>"`
+   — symmetric to the native imperative examples + the strings rtos_e2e greps.
+
+**Proof.** Boot the pair (45 s) against host `zenohd`: talker prints
+`Published: 0..43`, listener prints `Waiting for messages` then
+`Received: 0,1,2,3…` — **received values equal published values** (the decode +
+routing are correct). The earlier `Received: 0` was a cold-boot overlap timing
+fluke, not a data-path bug. `rtos_e2e` `(Nuttx, Cpp, Pubsub)` (rtos_e2e.rs:370)
+now satisfies its `"Waiting for messages"` + `"Received"` criteria once the
+fixtures rebuild with these prints. The prints are unconditional in the shared
+runtime (every Entry consumer) — they match the native examples' demo output;
+native phase235 greps its *external* observer, so it is unaffected.
+
 ### Deferred (follow-ups)
 
-- **rtos_e2e `Nuttx × Cpp × Pubsub` E2E.** The harness greps the listener for
-  `"Waiting for messages"` + `"Received"` (count > 0). The shared
-  `EntryNodeRuntime` is silent and does not drain a subscription unless a
-  `Reads` callback-effect was recorded (the declarative `Listener.cpp` records
-  none). Making this E2E green needs runtime-side observability: auto-drain
-  subscriptions + emit a readiness banner and per-sample line. Scoped change to
-  `EntryNodeRuntime::spin` (affects native/zephyr entry paths too — verify
-  their expectations first).
 - **Service / action C++.** The `EntryNodeRuntime` interpreter only synthesizes
   timer-driven `std_msgs/Int32` pub/sub; services/actions are *recorded* (no
   hard error) but never executed. True service/action E2E needs the imperative
