@@ -82,95 +82,19 @@ pub fn run_nuttx() {
     let is_cpp =
         main_src.ends_with(".cpp") || main_src.ends_with(".cxx") || main_src.ends_with(".cc");
 
-    let mut build = cc::Build::new();
-    build
-        .cpp(is_cpp)
-        .file(&main_src)
-        .flag("-ffunction-sections")
-        .flag("-fdata-sections")
-        .define("NROS_PLATFORM_NUTTX", None)
-        .warnings(false);
-    // The arch ABI flags must match the NuttX export + Rust closure (e.g. the
-    // qemu-arm default `-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=vfpv3-d16` is
-    // hardfloat — cc-rs's softfloat default for `-march=armv7-a` would trip ld
-    // with `uses VFP register arguments`). Per-board via NUTTX_ARCH_CFLAGS.
-    for f in &arch_cflags {
-        build.flag(f);
-    }
+    // Phase 238.C — mixed C/C++ app build. A NuttX C example registers a
+    // declarative C node (`Talker.c`, C-linkage `__nros_component_<pkg>_register`)
+    // but is driven by the header-only C++ `EntryNodeRuntime` (the generated
+    // entry is a `.cpp`). cc-rs compiles every file in one `cc::Build` with a
+    // single language, so a `.c` extra under a `.cpp` main would be forced to
+    // C++ — mangling the C node's register symbol. Compile `.c` sources in a
+    // separate C `cc::Build` (and `.cpp/.cc/.cxx` in a C++ one), so each source
+    // keeps its native linkage. The two archives both link into the kernel ELF.
+    let is_cxx_ext = |p: &str| p.ends_with(".cpp") || p.ends_with(".cxx") || p.ends_with(".cc");
 
-    if is_cpp {
-        // The NuttX flat-build kernel ELF is statically linked and has no
-        // dynamic linker / GOT-init startup. cc-rs defaults to `-fPIC`,
-        // which causes g++ to emit `R_ARM_GOT_BREL` relocations for
-        // COMDAT statics (e.g. `Node::GlobalStorageHolder<>::storage`).
-        // The static linker leaves those GOT slots zero in a `-static`
-        // binary, so accessors return 0 at runtime and `nros::init`
-        // fails with INVALID_ARGUMENT. Disable PIC for C++ only — the
-        // C examples don't have COMDAT statics and rely on cc-rs's
-        // default PIC for their NuttX kernel-symbol references.
-        build.pic(false);
-    }
-
-    // Phase 156 (NuttX, supersedes 155.B.5) — generated per-build header paths MUST come
-    // first so they shadow the source-tree `#error` stubs at
-    // `packages/core/nros-{c,cpp}/include/nros/nros_{,cpp_}config_generated.h`.
-    //
-    // nros-c / nros-cpp `build.rs` each emit their
-    // `nros_{,cpp_}config_generated.h` under
-    // `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/`. Cmake also
-    // mirrors the C header into
-    // `<build_dir>/nano_ros/packages/core/nros-c/include/nros/...`
-    // (passed via APP_INCLUDE_DIRS_FILE), but the cpp variant is
-    // not mirrored — the cargo-target path is the only place it
-    // lives. Add both up front; the APP_INCLUDE_DIRS_FILE and the
-    // source-tree fallback come after so they cannot win.
-    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
-        let td = PathBuf::from(target_dir);
-        build.include(td.join("nros-c-generated"));
-        if is_cpp {
-            build.include(td.join("nros-cpp-generated"));
-        }
-    }
-
-    // issue-0036 — NuttX C++ libc header precedence. The toolchain's libstdc++
-    // `<cstdlib>` does `#include_next <stdlib.h>`, which skips the `-I` NuttX
-    // include dir and reaches the toolchain's **newlib** `stdlib.h` — whose
-    // `div_t`/`ldiv_t`/`lldiv_t` are anonymous-struct typedefs, conflicting with
-    // NuttX's named-struct (`struct div_s`) ones that arrive via the direct
-    // `<stdlib.h>` (e.g. from nros-c's `platform/posix.h`). Two libc header sets
-    // in one TU → "conflicting declaration 'typedef struct div_t div_t'". We
-    // link NuttX libc, so NuttX's headers must win. NuttX ships its own C++
-    // wrappers under `include/cxx/` (`cstdlib` → NuttX `<stdlib.h>`); putting
-    // that dir on the search path AHEAD of the cmake-passed `${NUTTX_DIR}/include`
-    // makes `<cstdlib>` resolve to NuttX's wrapper instead of libstdc++'s, so the
-    // newlib `include_next` never fires. `<type_traits>` etc. (not shipped under
-    // `include/cxx/`) still fall through to libstdc++. This is lighter than
-    // `-nostdinc++` (which NuttX's own build uses) — that would also drop
-    // `<type_traits>`, which nros-cpp's `node.hpp` requires.
-    if is_cpp {
-        if let Ok(nuttx_dir) = env::var("NUTTX_DIR") {
-            let cxx = PathBuf::from(nuttx_dir).join("include").join("cxx");
-            if cxx.is_dir() {
-                build.include(&cxx);
-            }
-        }
-    }
-
-    // APP_INCLUDE_DIRS_FILE from cmake lists per-example codegen
-    // paths (`build/nano_ros_c/std_msgs`, `build/nano_ros_cpp/...`),
-    // the per-build mirror of nros-c/nros-cpp headers
-    // (`build/nano_ros/packages/core/nros-{c,cpp}/include`), AND
-    // the in-tree source-tree fallbacks
-    // (`packages/core/nros-{c,cpp}/include`). cmake puts the
-    // source-tree path first in the list — but those source-tree
-    // paths hold `#error` stubs of nros_{,cpp_}config_generated.h.
-    // If applied verbatim, the source-tree stub wins over the
-    // per-build mirror that has the real header.
-    //
-    // Filter the source-tree nros-{c,cpp}/include paths out of
-    // the first pass and re-add them at the end as a last-resort
-    // fallback. Other entries (codegen + per-build mirrors) keep
-    // their original order.
+    // Resolve the source-tree stub dirs so the APP_INCLUDE_DIRS_FILE pass can
+    // defer them (they hold `#error` stubs of nros_{,cpp_}config_generated.h;
+    // the per-build mirror must win). Same logic as pre-238.C.
     let nros_c_src = nros_c_include.clone();
     let nros_cpp_src = nros_cpp_include.clone();
     let is_src_tree_stub = |dir: &str| -> bool {
@@ -179,7 +103,14 @@ pub fn run_nuttx() {
         canon == nros_c_src.canonicalize().unwrap_or(nros_c_src.clone())
             || canon == nros_cpp_src.canonicalize().unwrap_or(nros_cpp_src.clone())
     };
-    let mut deferred_src_tree: Vec<String> = Vec::new();
+
+    // Materialise the include-dir lists ONCE so both builds share them.
+    //   * `file_regular` / `file_deferred` — APP_INCLUDE_DIRS_FILE entries, with
+    //     the source-tree stubs deferred to the end (the per-build generated
+    //     header wins).
+    //   * `app_include_dirs` — the legacy APP_INCLUDE_DIRS semicolon list.
+    let mut file_regular: Vec<String> = Vec::new();
+    let mut file_deferred: Vec<String> = Vec::new();
     if let Ok(includes_file) = env::var("APP_INCLUDE_DIRS_FILE") {
         match std::fs::read_to_string(&includes_file) {
             Ok(contents) => {
@@ -189,78 +120,152 @@ pub fn run_nuttx() {
                         continue;
                     }
                     if is_src_tree_stub(dir) {
-                        // Defer to the end so the per-build mirror at
-                        // `build/nano_ros/packages/core/nros-{c,cpp}/include`
-                        // (which has the real `nros_{,cpp_}config_generated.h`)
-                        // is searched first, but source-tree headers like
-                        // `nros/app_main.h` are still found.
-                        deferred_src_tree.push(dir.to_string());
+                        file_deferred.push(dir.to_string());
                     } else {
-                        build.include(dir);
+                        file_regular.push(dir.to_string());
                     }
-                }
-                for dir in &deferred_src_tree {
-                    build.include(dir);
                 }
             }
             Err(e) => panic!("APP_INCLUDE_DIRS_FILE={includes_file} not readable: {e}"),
         }
     }
+    let app_include_dirs: Vec<String> = env::var("APP_INCLUDE_DIRS")
+        .unwrap_or_default()
+        .split(';')
+        .filter(|d| !d.is_empty())
+        .map(String::from)
+        .collect();
+    // Compile defs (APP_COMPILE_DEFS) shared by both builds (incl NROS_PKG_NAME
+    // so the C node's NROS_NODE_REGISTER macro emits the right symbol).
+    let compile_defs: Vec<(String, Option<String>)> = env::var("APP_COMPILE_DEFS")
+        .unwrap_or_default()
+        .split(';')
+        .filter(|d| !d.is_empty())
+        .map(|def| {
+            let mut it = def.splitn(2, '=');
+            let k = it.next().unwrap_or(def).to_string();
+            let v = it.next().map(String::from);
+            (k, v)
+        })
+        .collect();
 
-    if is_cpp {
-        build.include(&nros_cpp_include);
-        build.flag("-std=c++14");
-    } else {
-        build.include(&nros_c_include);
-    }
+    // Apply the common (language-agnostic + per-language) config to a build.
+    let configure = |build: &mut cc::Build, want_cpp: bool| {
+        build
+            .cpp(want_cpp)
+            .flag("-ffunction-sections")
+            .flag("-fdata-sections")
+            .define("NROS_PLATFORM_NUTTX", None)
+            .warnings(false);
+        for f in &arch_cflags {
+            build.flag(f);
+        }
+        if want_cpp {
+            // NuttX flat-build kernel ELF is `-static` with no GOT-init startup;
+            // cc-rs's default `-fPIC` emits R_ARM_GOT_BREL relocations for COMDAT
+            // statics that the static linker leaves zero (→ `nros::init` fails).
+            // Disable PIC for C++ only — C TUs rely on the default PIC for their
+            // NuttX kernel-symbol references.
+            build.pic(false);
 
-    // Additional include directories. Two paths:
-    //   * `APP_INCLUDE_DIRS` (semicolon-separated env var) — legacy
-    //     callers that build the include list directly in cmake.
-    //   * `APP_INCLUDE_DIRS_FILE` (newline-separated file) — the
-    //     `nuttx_build_example(LINK_INTERFACES …)` path, which
-    //     materialises the cmake link-graph closure via
-    //     `file(GENERATE)`. File-based passing avoids the
-    //     `cmake -E env` ambiguity around `;` (it's both list-sep
-    //     and a valid path char).
-    if let Ok(include_dirs) = env::var("APP_INCLUDE_DIRS") {
-        for dir in include_dirs.split(';') {
-            if !dir.is_empty() {
-                build.include(dir);
+            // issue-0036 — NuttX C++ libc header precedence. The toolchain's
+            // libstdc++ `<cstdlib>` does `#include_next <stdlib.h>`, which skips
+            // the `-I` NuttX include dir and reaches the toolchain's **newlib**
+            // `stdlib.h` — whose `div_t`/`ldiv_t`/`lldiv_t` are anonymous-struct
+            // typedefs, conflicting with NuttX's named-struct (`struct div_s`)
+            // ones that arrive via the direct `<stdlib.h>` (e.g. from nros-c's
+            // `platform/posix.h`). Two libc header sets in one TU →
+            // "conflicting declaration 'typedef struct div_t div_t'". We link
+            // NuttX libc, so NuttX's headers must win. NuttX ships its own C++
+            // wrappers under `include/cxx/` (`cstdlib` → NuttX `<stdlib.h>`);
+            // putting that dir AHEAD of the cmake-passed `${NUTTX_DIR}/include`
+            // makes `<cstdlib>` resolve to NuttX's wrapper, so the newlib
+            // `include_next` never fires. `<type_traits>` etc. (not shipped under
+            // `include/cxx/`) still fall through to libstdc++. Lighter than
+            // `-nostdinc++` (which would also drop `<type_traits>`, needed by
+            // nros-cpp's `node.hpp`).
+            if let Ok(nuttx_dir) = env::var("NUTTX_DIR") {
+                let cxx = PathBuf::from(nuttx_dir).join("include").join("cxx");
+                if cxx.is_dir() {
+                    build.include(&cxx);
+                }
             }
         }
-    }
-    // (Note: APP_INCLUDE_DIRS_FILE applied above before the source-tree
-    // includes, to make the per-build generated header win.)
+        // Generated per-build header dirs first (shadow the source-tree stubs).
+        if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+            let td = PathBuf::from(target_dir);
+            build.include(td.join("nros-c-generated"));
+            if want_cpp {
+                build.include(td.join("nros-cpp-generated"));
+            }
+        }
+        for dir in &file_regular {
+            build.include(dir);
+        }
+        for dir in &file_deferred {
+            build.include(dir);
+        }
+        if want_cpp {
+            build.include(&nros_cpp_include);
+            build.flag("-std=c++14");
+        } else {
+            build.include(&nros_c_include);
+        }
+        for dir in &app_include_dirs {
+            build.include(dir);
+        }
+        // Source-tree fallback (lowest priority).
+        if want_cpp {
+            build.include(&nros_cpp_include);
+            build.flag("-std=c++14");
+        } else {
+            build.include(&nros_c_include);
+        }
+        for (k, v) in &compile_defs {
+            build.define(k, v.as_deref());
+        }
+    };
 
-    // Source-tree fallbacks (lowest priority — stub headers may
-    // live here, must come AFTER any caller mirror dirs).
+    // Partition all sources (main + extras) by language.
+    let mut cpp_files: Vec<String> = Vec::new();
+    let mut c_files: Vec<String> = Vec::new();
     if is_cpp {
-        build.include(&nros_cpp_include);
-        build.flag("-std=c++14");
+        cpp_files.push(main_src.clone());
     } else {
-        build.include(&nros_c_include);
+        c_files.push(main_src.clone());
     }
-
-    // Extra source files from CMake (semicolon-separated, e.g. generated interface .c files)
     if let Ok(extra_sources) = env::var("APP_EXTRA_SOURCES") {
         for src in extra_sources.split(';') {
-            if !src.is_empty() {
-                build.file(src);
+            if src.is_empty() {
+                continue;
+            }
+            if is_cxx_ext(src) {
+                cpp_files.push(src.to_string());
+            } else {
+                c_files.push(src.to_string());
             }
         }
     }
 
-    // Compile definitions from CMake (semicolon-separated, e.g. from config.toml)
-    if let Ok(compile_defs) = env::var("APP_COMPILE_DEFS") {
-        for def in compile_defs.split(';') {
-            if !def.is_empty() {
-                build.define(def.split('=').next().unwrap_or(def), def.split('=').nth(1));
-            }
+    // Compile each language's sources in its own archive; both link into the
+    // kernel ELF. The C++ archive carries the entry + the header-only runtime;
+    // the C archive carries the declarative C node(s) with native C linkage.
+    if !cpp_files.is_empty() {
+        let mut build_cpp = cc::Build::new();
+        configure(&mut build_cpp, true);
+        for f in &cpp_files {
+            build_cpp.file(f);
         }
+        build_cpp.compile("app_cpp");
     }
-
-    build.compile("app");
+    if !c_files.is_empty() {
+        let mut build_c = cc::Build::new();
+        configure(&mut build_c, false);
+        for f in &c_files {
+            build_c.file(f);
+        }
+        build_c.compile("app_c");
+    }
 
     // ---- NuttX kernel link args ----
     // The binary IS the NuttX kernel. Link against all NuttX staging libraries,

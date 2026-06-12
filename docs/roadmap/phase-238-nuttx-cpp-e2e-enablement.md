@@ -5,13 +5,14 @@ QEMU ARM virt, the same way the NuttX **Rust** examples already do. The compile
 blocker that gated this is gone; what remains is producing a bootable ELF from the
 C/C++ build.
 
-**Status.** 238.A + 238.B (C++ pub/sub pair + E2E observability) **DONE**
-2026-06-12 — `nuttx_cpp_talker` + `nuttx_cpp_listener` boot as bootable kernel
-ELFs in QEMU ARM virt, connect to a host zenoh router over slirp, and exchange
-`/chatter` `std_msgs/msg/Int32`: talker prints `Published: N`, listener prints
-`Waiting for messages` + `Received: N` with matching values. `rtos_e2e`
-`(Nuttx, Cpp, Pubsub)` now satisfiable. Service/action C++ + the whole C path
-remain deferred (see §238.B "Deferred"). Off the critical path (NuttX is a
+**Status.** 238.A + 238.B + 238.C (C++ pub/sub pair, E2E observability, C path)
+**DONE** 2026-06-12 — `nuttx_{cpp,c}_talker` + `nuttx_{cpp,c}_listener` boot as
+bootable kernel ELFs in QEMU ARM virt, connect to a host zenoh router over
+slirp, and exchange `/chatter` `std_msgs/msg/Int32`: talker prints
+`Published: N`, listener prints `Waiting for messages` + `Received: N` with
+matching values (C and C++). `rtos_e2e` `(Nuttx, {Cpp,C}, Pubsub)` now
+satisfiable. Service/action (both languages) remain deferred (interpreter has
+no callback bodies — see §238.B "Deferred"). Off the critical path (NuttX is a
 secondary platform).
 
 **Depends on.** `nros-board-nuttx-qemu-arm` (kernel staging + link), the NuttX
@@ -229,12 +230,50 @@ fixtures rebuild with these prints. The prints are unconditional in the shared
 runtime (every Entry consumer) — they match the native examples' demo output;
 native phase235 greps its *external* observer, so it is unaffected.
 
+## 238.C — C path bootable ELF (DONE 2026-06-12)
+
+The C examples (`examples/qemu-arm-nuttx/c/*`) are component-lib only, and the C
+entry adapter (`nros-c/c-stubs/main_board.c`) is a no-op sleep-spin — no live
+pub/sub even on native. Rather than port the ~400-line `EntryNodeRuntime`
+interpreter to C, the C node is driven by the **proven C++ runtime** (the
+C/C++ `NodeContext` / ops / descriptor structs are ABI-identical — see
+`nros-c/include/nros/node_pkg.h` vs `nros-cpp/.../node_pkg.hpp`). Three changes:
+
+1. **Mixed C/C++ cargo build** (`nros-board-common/src/nuttx_ffi_build.rs`).
+   cc-rs compiles one `cc::Build` with a single language; a `.c` node under a
+   `.cpp` entry would be forced to C++, mangling the C node's C-linkage
+   `__nros_component_<pkg>_register`. Refactored to compile `.c` sources in a
+   separate C `cc::Build` (`app_c` archive) and `.cpp/.cc/.cxx` in a C++ one
+   (`app_cpp`); a shared `configure` closure applies the include/define/flag set
+   to both. Each source keeps its native linkage; both archives link into the
+   kernel ELF.
+2. **Carrier accepts `LANGUAGE C`** (`NanoRosNodeRegister.cmake`). The generated
+   entry stays C++ (it drives the header-only C++ `EntryNodeRuntime`); the C
+   node is added as an extra source (compiled as C by (1)). Its C-linkage
+   register symbol matches the entry's `extern "C"` decl.
+3. **C-style Publishes binding** (`nros-cpp/.../main.hpp`,
+   `do_record_effect`). The C declarative API records
+   `record_callback_effect(timer, Publishes, pub)` — the "callback" IS the timer
+   entity (no separate declared callback). `find_timer_for_callback` only
+   matched a timer bound to a callback, so the C publisher never got a period.
+   Added a fallback: if no timer-by-callback, treat `callback_id` as a Timer
+   entity id. (C++ examples bind a named callback, so they match the primary
+   path unchanged.)
+
+**Proof.** `nuttx_c_talker` + `nuttx_c_listener` boot, exchange `/chatter`
+`std_msgs/msg/Int32`: talker `Published: 0..36`, listener `Waiting for messages`
++ `Received: 0..36` (matching values). Cross-tested both directions
+(C↔C++) — the C node publishes to a C++ subscriber and receives from a C++
+publisher. `rtos_e2e` `(Nuttx, C, Pubsub)` (rtos_e2e.rs:357) now satisfiable.
+NB: a stale cargo build (the `nuttx_ffi_build` change not yet recompiled into
+the FFI build.rs on the first pass) silently produced a non-receiving listener;
+a clean rebuild fixed it — `just nuttx build-fixtures` builds from scratch.
+
 ### Deferred (follow-ups)
 
-- **Service / action C++.** The `EntryNodeRuntime` interpreter only synthesizes
+- **Service / action (C and C++).** The `EntryNodeRuntime` interpreter only synthesizes
   timer-driven `std_msgs/Int32` pub/sub; services/actions are *recorded* (no
   hard error) but never executed. True service/action E2E needs the imperative
   entry shape (hand-written `nros_app_main` with real logic, like the native
-  C/C++ examples), not the declarative carrier.
-- **C (non-C++) path.** The carrier branch is `LANGUAGE CPP` only — the C
-  examples need a C-side board runtime + entry (no `NuttxBoard` C analogue yet).
+  C/C++ examples), not the declarative carrier. (The C path uses the same C++
+  interpreter via the mixed build, so it inherits the same limit.)

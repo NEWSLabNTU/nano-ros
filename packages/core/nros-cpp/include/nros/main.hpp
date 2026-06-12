@@ -468,6 +468,19 @@ class EntryNodeRuntime {
         case ::nros::CallbackEffectKind::Publishes: {
             // Bind the publisher to the timer that drives `callback_id`.
             Entity* timer = find_timer_for_callback(callback_id);
+            if (timer == nullptr) {
+                // Phase 238.C — the C declarative API records the effect
+                // against the Timer entity itself
+                // (`record_callback_effect(timer, Publishes, pub)`), i.e. the
+                // "callback" IS the timer — there is no separate declared
+                // callback bound to it. Fall back to treating `callback_id`
+                // as a Timer entity id. (The C++ examples bind a named
+                // callback to the timer, so they match above.)
+                Entity* maybe = find_entity(callback_id);
+                if (maybe != nullptr && maybe->kind == ::nros::NodeEntityKind::Timer) {
+                    timer = maybe;
+                }
+            }
             uint32_t period = (timer != nullptr && timer->period_ms > 0) ? timer->period_ms : 0;
             e->publish_period_ms = (period > 0) ? static_cast<int32_t>(period) : -1;
             break;

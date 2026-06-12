@@ -219,11 +219,15 @@ function(nano_ros_node_register)
     # `nros_nuttx_build_example`), which drives the cargo `nros-nuttx-ffi`
     # kernel link and copies the ELF to `build-zenoh/<PROJECT_NAME>`.
     #
-    # Scope: C++ pub/sub (talker/listener). The shared EntryNodeRuntime
-    # interpreter runs timer-driven std_msgs/Int32 pub/sub; services /
-    # actions register but do not execute, and the C path needs a C-side
-    # board runtime — both deferred (see phase-238).
-    if(_nrc_lang STREQUAL "CPP"
+    # Scope: pub/sub (talker/listener), C AND C++ (238.C). The generated
+    # entry is ALWAYS C++ (it drives the header-only C++ EntryNodeRuntime);
+    # a C example's declarative node (`Talker.c`) is added as an extra source
+    # and compiled as C by the mixed-language cargo build
+    # (nros-board-common::nuttx_ffi_build), so its C-linkage
+    # `__nros_component_<pkg>_register` symbol matches the entry's
+    # `extern "C"` decl. Services / actions register but do not execute
+    # (interpreter limit; deferred — see phase-238).
+    if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND "nuttx" IN_LIST _NRC_DEPLOY
        AND NANO_ROS_PLATFORM STREQUAL "nuttx"
        AND COMMAND nros_platform_link_app
