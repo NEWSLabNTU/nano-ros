@@ -686,6 +686,73 @@ fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
 }
 
 // =============================================================================
+// Cross-language action-callback interop (RFC-0041 / Phase 239.15)
+// =============================================================================
+//
+// Pair each language's callback action client against the *other* language's
+// action server. Proves the action callback receive model (goal-response /
+// feedback / result dispatched at spin) is wire-compatible across the C / C++
+// FFI surfaces over zenoh. Sequence length differs slightly by server
+// (`c_action_server` emits one more Fibonacci term than `cpp_action_server`),
+// so assert a stable prefix rather than the exact tail.
+
+/// C++ callback action client ↔ C action server.
+#[rstest]
+fn test_action_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) {
+    if !require_native_env() {
+        return;
+    }
+    let locator = zenohd_unique.locator();
+    let server_bin = build_c_action_server()
+        .unwrap_or_else(|e| skip_missing_fixture("C action server", e))
+        .to_path_buf();
+    let client_bin = build_cpp_action_client_callback()
+        .unwrap_or_else(|e| skip_missing_fixture("C++ action client (callback)", e))
+        .to_path_buf();
+
+    let mut server = spawn_native(&server_bin, Language::C, "action-server", &locator);
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .expect("C action server did not become ready");
+    let mut client = spawn_native(
+        &client_bin,
+        Language::Cpp,
+        "action-client-callback",
+        &locator,
+    );
+
+    let client_output = client
+        .wait_for_output_pattern("Action completed via callbacks", Duration::from_secs(25))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
+        .unwrap_or_default();
+    server.kill();
+
+    eprintln!(
+        "cross-lang action client (cpp↔c) output:\n{}",
+        client_output
+    );
+    assert!(
+        client_output.contains("Goal response (callback): ACCEPTED"),
+        "Expected goal-response ACCEPTED across languages.\nOutput:\n{}",
+        client_output
+    );
+    assert!(
+        client_output.contains("Result (callback): status=4 sequence=[0, 1, 1, 2")
+            && client_output.contains("Action completed via callbacks [OK]"),
+        "Expected the result callback to deliver the Fibonacci prefix.\nOutput:\n{}",
+        client_output
+    );
+}
+
+// NOTE: the reverse pairing (C callback action client ↔ C++ action server) is
+// NOT covered here — the C++ action server returns an empty result for a goal
+// sent by the C client (the C client gets `status=SUCCEEDED` + `[]`). That is a
+// distinct cross-language quirk in the C++ action server's handling of a
+// C-framed goal/get-result, tracked by issue #43 — not a defect in the callback
+// receive model (proven wire-compatible by the cpp↔c pairing above and by the
+// same-language C↔C / C++↔C++ action E2Es).
+
+// =============================================================================
 // C++ goal rejection (Phase 83.15) — C++ only; C action examples don't
 // read NROS_TEST_GOAL_ORDER yet.
 // =============================================================================

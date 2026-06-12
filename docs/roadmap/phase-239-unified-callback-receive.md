@@ -238,14 +238,23 @@ Both #39 and #40 resolved.
   `packages/core/nros-cpp/src/action.rs` (offset fix),
   `examples/native/cpp/action-client-callback/`, `native_api.rs`.
 
-#### 239.15 — Cross-language E2E matrix  🟡 (service cross-lang ✅ GREEN; action/embedded ⬜)
-**Service cross-language done.** `test_service_callback_interop_c_client_cpp_server`
-+ `test_service_callback_interop_cpp_client_c_server` (native_api.rs) pair each
-language's callback client against the *other* language's service server — both
-GREEN (replies dispatched via callback, correct sums). Proves the callback
-receive model is wire-compatible across the C / C++ FFI surfaces over zenoh.
-**Remaining:** action cross-lang (now unblocked — #40 resolved) + a Rust-client
-lane + one QEMU/embedded lane.
+#### 239.15 — Cross-language E2E matrix  🟡 (service ✅ + action one-direction ✅; Rust/embedded ⬜)
+**Service cross-language done.** `test_service_callback_interop_{c_client_cpp_server,
+cpp_client_c_server}` (native_api.rs) pair each language's callback client against
+the *other* language's service server — both GREEN (replies dispatched via
+callback, correct sums).
+
+**Action cross-language (one direction) done.**
+`test_action_callback_interop_cpp_client_c_server` — C++ callback action client ↔
+C action server — GREEN (goal-response ACCEPTED + full Fibonacci result via the
+result callback). The reverse (C client ↔ C++ server) is blocked by **issue #43**
+(the C++ action server returns an empty result for a C-framed goal — a
+server-side cross-lang quirk, not a callback-model defect; same-lang C↔C /
+C++↔C++ action E2Es are green).
+
+Together these prove the callback receive model is wire-compatible across the
+C / C++ FFI surfaces over zenoh. **Remaining:** a Rust-client lane + one
+QEMU/embedded lane + the #43 reverse-action pairing.
 
 Original scope:
 Callback-client interop across Rust / C / C++ (each language's callback client
