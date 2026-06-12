@@ -85,6 +85,16 @@ fn prebuilt_posix_archive(root: &Path) -> PathBuf {
             return archive;
         }
     }
+    // Issue #34 — the zenoh-posix fixture archive is built by
+    // `just build-zenoh-posix-fixture` / `build-test-fixtures`, not by the light
+    // host-integration lane. Skip cleanly there (NROS_FIXTURES_OPTIONAL set);
+    // the full `test-all` tier still fails loudly on the missing archive.
+    if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() {
+        nros_tests::skip!(
+            "zenoh-posix staticlib fixture not built (light tier); searched {}",
+            root.join("target-zenoh-fixture-posix").display()
+        );
+    }
     panic!(
         "POSIX zenoh staticlib fixture not built. Run `just build-test-fixtures` \
          or `just build-zenoh-posix-fixture` first; searched {}",

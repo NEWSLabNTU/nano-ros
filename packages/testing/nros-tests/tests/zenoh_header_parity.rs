@@ -106,7 +106,19 @@ fn parse_define(header: &str, key: &str) -> Option<String> {
 
 #[test]
 fn posix_canonical_header_matches_link_policy() {
-    let header_path = resolve_header_path().unwrap_or_else(|e| panic!("{e}"));
+    // Issue #34 — the zenoh-posix fixture (`target-zenoh-fixture-posix/`) is
+    // built by `just build-zenoh-posix-fixture` / `build-test-fixtures`, which
+    // the light host-integration lane does NOT run (it builds only the core
+    // rust + workspace fixtures). Skip cleanly there (NROS_FIXTURES_OPTIONAL set)
+    // rather than hard-failing on the missing artifact; the full `test-all` tier
+    // (var unset) still fails loudly so a real header-drift regression surfaces.
+    let header_path = match resolve_header_path() {
+        Ok(p) => p,
+        Err(e) if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() => {
+            nros_tests::skip!("zenoh-posix header fixture not built (light tier): {e}");
+        }
+        Err(e) => panic!("{e}"),
+    };
     let text = fs::read_to_string(&header_path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", header_path.display()));
 
