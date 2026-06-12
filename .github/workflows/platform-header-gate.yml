@@ -1,0 +1,86 @@
+# Platform-header compile gate (Phase 241.A — RFC-0042 D4).
+#
+# The cheap merge-time safety net for the recurring libc/std-header + capability
+# class (issues #27/#36/#38). Until now NOTHING on the PR path compiled the
+# C/C++ platform headers — they were exercised only by the on-demand e2e
+# `build-fixtures` matrix (days late). This lane drives the HOST g++/cc over the
+# real `<nros/platform.h>` + the nros-cpp heap containers for the host-compilable
+# platform×capability cells, asserting positive AND negative outcomes (e.g.
+# bare-metal WITHOUT `NROS_PLATFORM_HAS_MALLOC` MUST fail to compile the heap
+# containers; WITH it MUST succeed — the #38 mechanism in both directions).
+#
+# Host tier only: POSIX + bare-metal headers parse without an RTOS sysroot. The
+# two-libc-set class (#27/#36, needs the cross toolchain + RTOS sysroot +
+# `#include_next`) stays on the e2e lane; see the test's module doc.
+#
+# Fresh-runner-safe: no SDK, no cross target — just the baked rustup + host
+# g++/cc in the nano-ros-ci image. Mirrors the core-libs lane shape (ci.yml).
+name: platform-header-gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/core/nros-c/include/**"
+      - "packages/core/nros-cpp/include/**"
+      - "packages/core/nros-platform-cffi/include/**"
+      - "packages/boards/**/nros-board.toml"
+      - "packages/testing/nros-tests/tests/platform_header_matrix.rs"
+      - ".github/workflows/platform-header-gate.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/core/nros-c/include/**"
+      - "packages/core/nros-cpp/include/**"
+      - "packages/core/nros-platform-cffi/include/**"
+      - "packages/boards/**/nros-board.toml"
+      - "packages/testing/nros-tests/tests/platform_header_matrix.rs"
+      - ".github/workflows/platform-header-gate.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: platform-header-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform-header-gate:
+    name: platform-header compile matrix
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    # nano-ros-ci bakes rustup + host g++/cc; no per-run toolchain provisioning.
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        run: |
+          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      # cargo loads the whole root workspace to run any -p member; nros-tests
+      # path-deps px4-sitl-tests under third-party/px4/px4-rs. Provision it the
+      # user way (index-driven), same as core-libs.
+      - name: Provision workspace sources via nros
+        run: nros setup --source px4-rs
+
+      - name: Platform-header compile matrix
+        run: cargo test -p nros-tests --test platform_header_matrix

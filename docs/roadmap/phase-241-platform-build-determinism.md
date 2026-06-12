@@ -29,17 +29,28 @@ Ordered so the **gate lands first** (safety net), then the most-recurring
 fix (interface), then config, then the largest change (linking). Each wave is
 independently revertible.
 
-### 241.A — Merge-time compile + link gate (RFC-0042 D4) — FIRST
-- [ ] Add a `platform × language` compile+link lane to PR CI: one representative
-      TU per supported cell exercising the fragile surface — a generated message
-      type (pulls `HeapString`/`HeapSequence`) + a minimal entry that forces
-      backend registration + the final link.
-- [ ] Cells: {posix, zephyr, freertos, nuttx, threadx, bare-metal, esp-idf} ×
-      {C, C++, Rust}, gated by which combos are supported.
-- [ ] Cheap: cross-`check`/compile only (no QEMU run); mirror the `core-libs`
-      lane shape. Must be a *required* PR check.
-- **Acceptance:** a PR that reintroduces #36/#38-class breakage goes red on the
-      gate, not green-then-red-in-e2e.
+### 241.A — Merge-time compile gate (RFC-0042 D4) — FIRST
+Two tiers, by what a cell needs to compile:
+
+- [x] **Host tier (landed).** `packages/testing/nros-tests/tests/platform_header_matrix.rs`
+      + `.github/workflows/platform-header-gate.yml`: drives host `g++`/`cc` over
+      the real `<nros/platform.h>` + the nros-cpp heap containers for the
+      host-compilable cells (POSIX, bare-metal), asserting positive AND negative
+      outcomes — bare-metal **without** `NROS_PLATFORM_HAS_MALLOC` MUST fail to
+      compile the heap containers, **with** it MUST succeed (the #38 mechanism,
+      both directions). Cheap (no SDK, no cross target, ~seconds); mirrors the
+      `core-libs` lane; PR-gated on the platform headers + `nros-board.toml` + the
+      test. This is the safety net that guards the D1/D2/D3 migration churn.
+- [ ] **Cross tier (later).** The two-libc-set class (#27/#36) needs the cross
+      toolchain + RTOS sysroot + `#include_next`, so it can't run host-cheap.
+      Options: (a) provision just the cross toolchain + a minimal vendored RTOS
+      header stub to reproduce the clash without a full export, or (b) compile the
+      RTOS cpp examples on the PR path (heavier; needs the export). Until then the
+      cross class stays covered by the e2e `build-fixtures` lane (Phase 240).
+- **Acceptance (host tier):** ✅ a PR that reintroduces the #38-class capability
+      breakage goes red on the gate, not green-then-red-in-e2e. Verified locally:
+      the 5-cell matrix passes, the bare-metal-no-malloc negative cell fails to
+      compile as required.
 
 ### 241.B — Collapse to one canonical interface (RFC-0042 D1)
 - [ ] Make `<nros/platform.h>` (nros-c) the sole header resolvable under that
