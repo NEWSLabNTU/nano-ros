@@ -101,12 +101,19 @@ This is the documented anti-pattern **"No compilation inside tests"** (AGENTS.md
 asserted the old "native-only"/L.2 wording; the fn is now a shim →
 `nano_ros_entry` with board-centric wording. Updated the drift-guard; l9 5/5 pass.
 
-**Real — owner triage (2).**
+**FIXED — real failures (2).**
 - **m12 `every_example_leaf_has_package_xml`** — genuine gap: `examples/stm32f4/
-  rust/*_pkg` (Cargo node-libs) were added without `package.xml`. The test
-  correctly flags it; fix is adding the right `package.xml` (stm32f4 owner).
-- **j_launch `nros_launch_spawns_components`** — `nros launch` hits the top-level
-  CLI usage (`Usage: nros <COMMAND>`), i.e. launch-subcommand CLI drift.
+  rust/*_pkg` (Cargo node-libs) were added without `package.xml`. Fixed by
+  adding a minimal `ament_cargo` `package.xml` to the 7 Node-lib pkgs (deps =
+  `nros` only, `<name>` matching the crate + node-class prefix) and carving
+  `listener-embassy` into `UNMIGRATED_PREFIXES` alongside `talker-embassy` (same
+  Embassy variant, `skip_build`/non-linking, known-issue #13 — it had been
+  omitted). m12 now 7/7 pass.
+- **j_launch `nros_launch_spawns_components`** — the Phase 212.J host launcher
+  verb `nros launch` is not in the build (`nros` has no `launch` subcommand,
+  only `plan`), so the test hit the top-level usage banner. Fixed by adding the
+  same verb-presence skip-gate its sibling `nros_launch_detach_returns_pid_file`
+  already uses — now `[SKIPPED]` when the verb is absent, resuming when it lands.
 
 **CI-ENV-ONLY — pass locally (3).** `zenoh_archive_symbols`, `zenoh_header_parity`,
 `zpico_build_matrix` PASS in the dev env but failed in CI run 27385404078. They
