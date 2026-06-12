@@ -4,7 +4,7 @@ title: "Platform & build determinism — one canonical interface, capability-dri
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: [phase-241-platform-build-determinism]
+implements-tracked-by: [phase-241-platform-build-determinism, phase-243-platform-abi-unification]
 supersedes: []
 superseded-by: null
 ---
