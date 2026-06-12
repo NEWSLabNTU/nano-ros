@@ -168,37 +168,17 @@ Steps (each a commit; CI between the riskier ones):
 > **Recommendation:** treat B.3–B.5 as a separate scoped effort; B.2 already
 > delivered the concrete win (the cffi duplicate is gone, one fewer `platform.h`).
 
-- [ ] **B.3 (re-scoped) — unify A's surface into api, then retire A.** Method
-      explored 2026-06-12 (maintainer-chosen options). Steps, each validated:
-      1. **api gains generic atomics.** `static inline nros_platform_atomic_store_bool`
-         = `__atomic_store_n(ptr,v,__ATOMIC_RELEASE)`, `…load_bool` =
-         `__atomic_load_n(ptr,__ATOMIC_ACQUIRE)`. One impl, every target (1-byte
-         bool, no CAS; riscv32imc never builds nros-c; boards already use `__atomic`).
-      2. **Migrate Rust atomics consumers** off the extern — `nros-c/src/platform.rs`
-         (no_std path) + `nros-c/src/guard_condition.rs` → `core::sync::atomic::AtomicBool`.
-         No extern atomics symbol remains.
-      3. **Drop `time_ns`/`sleep_ns`; migrate to api `clock_us`/`sleep_us`.** Reimpl
-         the one `get_time_ns()` wrapper (`nros-c/src/platform.rs`) over
-         `nros_platform_clock_us()*1000` (its ~20 callers unchanged); point
-         `nros-rmw-cyclonedds/src/internal.hpp` + `nros-cpp/src/lib.rs` self-externs
-         at `clock_ms` (already `/1e6` to ms); delete the boards' `time_ns`/`sleep_ns`
-         strong defs (`nros-board-{mps2-an385-freertos,threadx-qemu-riscv64}/startup.c`,
-         the custom-platform example). us precision — fine for the ms-scale spins.
-      4. **Drop the typed mutex** (`nros_mutex_t` + A's `mutex_{init,lock,unlock,destroy}`)
-         — dead (no caller; `NROS_FEATURE_THREADS` never `-D`'d; smoke tests use api's
-         `void*` mutex).
-      5. **Reconcile malloc/free.** A/posix's direct-libc shim dies with A; POSIX heap
-         now funnels through `nros_platform_alloc` (the posix port provides it) —
-         RFC-0034 D6 compliance, ending the POSIX(direct)-vs-Zephyr(funnel) split.
-      6. **baremetal-only utils** (`NROS_MEMORY_BARRIER`, `disable_irq`/`restore_irq`):
-         move to a board-local header if still used, else drop (check consumers).
-      7. **Retire A** — delete `nros-c/include/nros/platform.h` + `platform/{posix,
-         zephyr,freertos,baremetal}.h`. Repoint `nros-c/CMakeLists.txt:134-137` +
-         the top-level `NanoRos` interface to list `nros-platform-api/include`
-         **first**, so POSIX/native resolve api (not the deleted A). Then every
-         consumer resolves the one canonical header.
-      - ABI change touching every platform (atomics, clock, POSIX funnel) — guard
-        with the 241.A gate + `c_stub_platform.rs` + a full `run_e2e` on a branch.
+- [ ] **B.3 — unify A's surface into api, then retire A.** Grew from "delete the
+      duplicate" into a real ABI unification (A is a *live* complementary surface,
+      not legacy) → **carved out as its own phase doc:
+      [phase-243](phase-243-platform-abi-unification.md)** (6 waves, exact file:line
+      work items + acceptance). Summary: api gains a generic `__atomic` atomics
+      inline; the Rust `platform.rs` wrappers re-point to `core::sync::atomic` +
+      `clock_us` (collapsing ~20 call sites into one edit); `time_ns`/`sleep_ns` and
+      the dead typed-mutex are dropped; POSIX heap funnels through
+      `nros_platform_alloc`; A + its 4 sub-headers are deleted and the `nros-c`
+      INTERFACE include order flips to api-first. ABI change, every platform — gate +
+      parity + full `run_e2e` on a branch.
 - [ ] **B.4** — parity assert: extend `c_stub_platform.rs` (or add one) to cover
       the unified canonical header ↔ `lib.rs` once B.3 lands.
 - [ ] **B.5** — repoint the 241.A gate at the canonical header. **Unblocked by
