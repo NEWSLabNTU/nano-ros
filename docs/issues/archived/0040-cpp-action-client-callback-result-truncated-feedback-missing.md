@@ -1,11 +1,43 @@
 ---
 id: 40
 title: C++ action-client callback path delivers a truncated result (`[0]`) and no feedback
-status: open
+status: resolved
 type: bug
 area: c-api
 related: [phase-239, issue-0039]
 ---
+
+## Resolution (Phase 239.14)
+
+**Root cause: the action *server*, not the client callback path.** The C++
+action-client callback code is correct. The truncated `[0]` result + zero
+feedback were a downstream symptom of the **action server** running on a
+degraded session: the stock `cpp_action_server` used
+`nros::init_with_launch_auto`, which routes through the 3-arg `init` overload and
+passes a **null locator** to the backend (issue #39). On that degraded session
+the server mis-handled the goal request (observed: it parsed `order=1` — the
+goal-id counter — instead of `order=10`, or failed to accept at all, flakily),
+so it computed `[0]` / sent nothing.
+
+Switching `examples/native/cpp/action-server` (and the callback client +
+`service-client-callback`) to `nros::init()` (the env-var-fallback path used by
+talker/listener) makes the action callback E2E deliver the **full** Fibonacci
+result `[0,1,1,2,3,5,8,13,21,34]` + multiple feedback callbacks, reliably (3/3
+runs). `test_cpp_action_communication_callback` now asserts the full sequence +
+≥1 feedback.
+
+Also corrected a genuine latent offset in `nros_cpp_action_client_poll`: the
+result payload begins at offset **5** (`[CDR_HDR(4)][status(1)][payload]`), not 8
+— the prior 8 would have skipped 3 bytes into a *valid* reply. Verified against
+the C path (offset 5) which yields the full sequence.
+
+The underlying null-locator init bug (**#39**) is also fixed: the 3-arg
+`init` overload now applies the env fallback, so `init_with_launch_auto` works
+everywhere. The callback examples use `init_with_launch_auto` like their siblings.
+
+---
+
+_Original report below._
 
 The C++ action-client **callback** receive path
 (`nros_cpp_action_client_poll` → `SendGoalOptions{goal_response, feedback,

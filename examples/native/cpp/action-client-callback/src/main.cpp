@@ -5,11 +5,6 @@
 /// acceptance, feedback, and the result through `SendGoalOptions` callbacks
 /// dispatched by `ActionClient::poll()` at each `spin_once` (the rclcpp
 /// `send_goal(goal, SendGoalOptions{...})` analogue). Drives Fibonacci.
-///
-/// NOTE: the callback *dispatch* is correct (goal-response + result fire at
-/// spin), but the C++ action poll path currently truncates the result sequence
-/// and drops feedback — tracked by issue #40. This example demonstrates the
-/// `SendGoalOptions` API shape; the payload extraction fix lands with #40.
 
 #include <cstdio>
 #include <cstdlib>
@@ -82,11 +77,9 @@ int main(int argc, char** argv) {
     std::printf("nros C++ Action Client (Fibonacci, callback)\n");
     std::printf("=============================================\n");
 
-    // `nros::init()` (env-var fallback), not `init_with_launch_auto` — see
-    // issue #39 (the launch-aware path skips the locator env fallback).
-    (void)argc;
-    (void)argv;
-    NROS_TRY_RET(nros::init(), 1);
+    // Launch-aware init (Phase 212.M.2). Env overlay
+    // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`) active today.
+    NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_action_client_callback"), 1);

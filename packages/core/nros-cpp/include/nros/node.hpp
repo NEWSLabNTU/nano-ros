@@ -579,6 +579,39 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     if (session_name == nullptr) {
         return Result(-3);
     }
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    // Issue #39 — apply the same `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` env
+    // fallback as the 2-arg `init()` when `locator` is null / `domain_id` is
+    // 0. This makes `init_with_launch_auto()` (which delegates here with a
+    // null locator) honor the env overlay instead of passing a null locator
+    // to the backend → TransportError / degraded session.
+    if (locator == nullptr) {
+        const char* env_loc = ::std::getenv("NROS_LOCATOR");
+        if (env_loc != nullptr && env_loc[0] != '\0') {
+            locator = env_loc;
+        } else {
+            locator = "tcp/127.0.0.1:7447";
+        }
+    }
+    if (domain_id == 0) {
+        const char* env_dom = ::std::getenv("ROS_DOMAIN_ID");
+        if (env_dom != nullptr && env_dom[0] != '\0') {
+            unsigned acc = 0;
+            for (const char* p = env_dom; *p; ++p) {
+                if (*p < '0' || *p > '9') {
+                    acc = 0;
+                    break;
+                }
+                acc = acc * 10 + static_cast<unsigned>(*p - '0');
+                if (acc > 232) {
+                    acc = 0;
+                    break;
+                }
+            }
+            domain_id = static_cast<uint8_t>(acc);
+        }
+    }
+#endif
     // Phase 128.C.1 — RMW-blind init. Every backend (cyclonedds,
     // xrce, dds, zenoh, uorb, …) contributes its registration entry
     // to the `RMW_INIT_ENTRIES` linker section via the

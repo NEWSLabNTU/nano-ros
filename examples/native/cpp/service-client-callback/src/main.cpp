@@ -42,15 +42,9 @@ int main(int argc, char** argv) {
     std::printf("nros C++ Service Client (AddTwoInts, callback)\n");
     std::printf("===============================================\n");
 
-    // `nros::init()` (no-arg) pulls locator + domain_id from
-    // `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` with a env-var fallback (Phase
-    // 212.M.2 canonical pattern, as in talker/listener). The launch-aware
-    // `init_with_launch_auto` is avoided here: it routes through the 3-arg
-    // `init(locator, …)` overload, which skips the env-var fallback and so
-    // passes a null locator to the backend → TransportError.
-    (void)argc;
-    (void)argv;
-    NROS_TRY_RET(nros::init(), 1);
+    // Launch-aware init (Phase 212.M.2). Env overlay
+    // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`) active today.
+    NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_service_client_callback"), 1);

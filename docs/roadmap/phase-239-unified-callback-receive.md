@@ -14,10 +14,13 @@ tests green. 239.6 resolved (descope — MessageLost is an RMW event, not ring o
 239.8 RT/XRCE validated by inspection. 239.9 (native callback example) done.
 **Wave 4 landed:** service-client callbacks GREEN E2E in C (239.11), C++ (239.13,
 **bug fixed** — reply dispatch missing `pending`) and cross-language both
-directions (239.15 service); action-client callbacks: C result GREEN (239.12),
-C++ dispatch GREEN (239.14) with a result-payload bug filed (#40). Two latent
-bugs found + filed en route (#39 cpp init env-fallback, #40 cpp action payload).
-RFC-0041 → **Stable**. Remaining: #40 fix + action/embedded cross-lang lanes.
+directions (239.15 service); action-client callbacks GREEN E2E in C (239.12,
+full result) and C++ (239.14, full result + feedback). Bugs found + fixed en
+route (all resolved): C++ service reply dispatch (`pending`), C++ action result
+offset (8→5), **#40** (C++ action truncated result — root-caused to **#39**) and
+**#39** itself (cpp `init_with_launch_auto` null-locator → fixed at the root: the
+3-arg `init` overload now applies the env fallback). RFC-0041 → **Stable**.
+Remaining: action/embedded cross-lang lanes + Rust-client lane (239.15).
 Implements RFC-0041.
 
 **Priority.** P2 — reliability + RT-ergonomics + ROS alignment; not a correctness
@@ -217,20 +220,23 @@ null-locator bug → issue #39.
 - **Files:** `packages/core/nros-cpp/src/service.rs` (the fix),
   `examples/native/cpp/service-client-callback/`, `native_api.rs`.
 
-#### 239.14 — C++ action-client callback wrapper + E2E  🟡 (dispatch ✅ GREEN; payload bug → #40)
-**Done (dispatch); payload bug filed.** The wrapper exists (Phase 189.M3.3.f):
-`SendGoalOptions{goal_response, feedback, result}` + `ActionClient<A>::set_callbacks`
-+ `poll()`. Added `examples/native/cpp/action-client-callback` +
-`test_cpp_action_communication_callback` (vs stock `cpp_action_server`). The
-**dispatch is verified GREEN**: goal-response (ACCEPTED) and result callbacks fire
-at `spin_once` with correct SUCCEEDED status. **But** the C++ poll path delivers a
-**truncated result (`[0]`) and zero feedback** — real payload bugs, **issue #40**.
-The result offset was corrected 8→5 (to match the working C path) but the
-truncation persists (buffer content, not offset), so #40 stays open. The E2E
-asserts dispatch + acceptance + result-callback firing only — not the sequence —
-until #40 lands.
-- **Files:** `packages/core/nros-cpp/src/action.rs` (offset fix),
-  `examples/native/cpp/action-client-callback/`, `native_api.rs`; bug → issue #40.
+#### 239.14 — C++ action-client callback wrapper + E2E  ✅ (E2E GREEN, full result)
+**Done.** The wrapper exists (Phase 189.M3.3.f): `SendGoalOptions{goal_response,
+feedback, result}` + `ActionClient<A>::set_callbacks` + `poll()`. Added
+`examples/native/cpp/action-client-callback` + `test_cpp_action_communication_callback`
+(vs stock `cpp_action_server`). GREEN and reliable (3/3): goal-response ACCEPTED,
+≥1 feedback callback, and the **full Fibonacci result** `[0,1,1,2,3,5,8,13,21,34]`
+all delivered via `SendGoalOptions` callbacks at `spin_once`.
+
+Two fixes en route: (1) the initial `[0]`-truncation was a **symptom of #39** —
+the action *server* on `init_with_launch_auto`'s null-locator degraded session
+mis-handled the goal (parsed order=1). Fixed #39 at the root (3-arg `init` env
+fallback in `node.hpp`), so all `init_with_launch_auto` examples work. (2)
+Corrected a latent result-payload offset 8→5 in `nros_cpp_action_client_poll`.
+Both #39 and #40 resolved.
+- **Files:** `packages/core/nros-cpp/include/nros/node.hpp` (#39 fix),
+  `packages/core/nros-cpp/src/action.rs` (offset fix),
+  `examples/native/cpp/action-client-callback/`, `native_api.rs`.
 
 #### 239.15 — Cross-language E2E matrix  🟡 (service cross-lang ✅ GREEN; action/embedded ⬜)
 **Service cross-language done.** `test_service_callback_interop_c_client_cpp_server`
@@ -238,8 +244,8 @@ until #40 lands.
 language's callback client against the *other* language's service server — both
 GREEN (replies dispatched via callback, correct sums). Proves the callback
 receive model is wire-compatible across the C / C++ FFI surfaces over zenoh.
-**Remaining:** action cross-lang (gated on issue #40) + a Rust-client lane + one
-QEMU/embedded lane.
+**Remaining:** action cross-lang (now unblocked — #40 resolved) + a Rust-client
+lane + one QEMU/embedded lane.
 
 Original scope:
 Callback-client interop across Rust / C / C++ (each language's callback client

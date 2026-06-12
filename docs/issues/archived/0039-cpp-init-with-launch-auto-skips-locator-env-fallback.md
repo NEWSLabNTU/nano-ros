@@ -1,11 +1,30 @@
 ---
 id: 39
 title: C++ `init_with_launch_auto` skips the `NROS_LOCATOR`/`ROS_DOMAIN_ID` env fallback → null locator → TransportError
-status: open
+status: resolved
 type: bug
 area: c-api
 related: [phase-239]
 ---
+
+## Resolution (Phase 239)
+
+Fixed at the library root: the **3-arg** `init(locator, domain_id, session_name)`
+overload now applies the same `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` env fallback as
+the 2-arg `init()` when `locator` is null / `domain_id` is 0
+(`packages/core/nros-cpp/include/nros/node.hpp`). Since `init_with_launch_auto()`
+delegates to the 3-arg overload with a null locator, it now honors the env
+overlay — no more null-locator TransportError or degraded session.
+
+Verified: with the fix, every native C++ example using `init_with_launch_auto`
+works against the harness `$NROS_LOCATOR`, including the action server/client
+(`test_cpp_action_*` GREEN, goal-rejection included) — which previously ran on a
+degraded session (the root cause of #40). No per-example workaround needed; the
+callback examples use `init_with_launch_auto` like their siblings.
+
+---
+
+_Original report below._
 
 `nros::init_with_launch_auto()` (the Phase 212.L.5 launch-aware init) routes
 through the **3-arg** `init(locator, domain_id, session_name)` overload with a
@@ -34,6 +53,14 @@ init — unless `$NROS_RUNTIME_OVERLAY` or an explicit locator is supplied.
   `init_with_launch_auto` and is **latently broken on rebuild**; its currently
   prebuilt fixture binary predates the regression (uses the explicit-locator
   2-arg `init`), masking it in CI.
+- **Degraded-session symptom (not just hard -100):** the `cpp_action_server`
+  built fresh with `init_with_launch_auto` *starts* (the backend appears to read
+  `NROS_LOCATOR` itself even with a null locator) but runs on a degraded session
+  — it mis-handles the action goal request (parses `order=1` = the goal-id
+  counter instead of the real order, or fails to accept, flakily). This was the
+  real root cause of issue #40 (truncated action result). Switching the server
+  to `nros::init()` fixed it. So the null locator can produce a *subtly wrong*
+  session, not only a clean init failure.
 
 ## Discovery
 

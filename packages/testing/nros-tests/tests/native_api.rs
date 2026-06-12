@@ -627,15 +627,10 @@ fn test_cpp_action_communication(zenohd_unique: ZenohRouter) {
 // =============================================================================
 
 /// C++ callback action client vs the stock C++ action server. Proves the
-/// RFC-0041 action callback **dispatch** path E2E: goal-response and result
-/// callbacks fire through `SendGoalOptions` dispatched by `ActionClient::poll()`
-/// at each `spin_once` (no Future/stream poll), with correct acceptance and
-/// SUCCEEDED status.
-///
-/// NOTE: this asserts dispatch + acceptance + result-callback firing only — it
-/// does NOT assert the result *sequence* or feedback delivery, both of which
-/// carry wrong payloads in the C++ poll path today (truncated result `[0]`,
-/// zero feedback). Tracked by issue #40; tighten this test once it lands.
+/// RFC-0041 action callback path E2E: goal-response, feedback, and result all
+/// arrive through `SendGoalOptions` callbacks dispatched by `ActionClient::poll()`
+/// at each `spin_once` (no Future/stream poll). Asserts acceptance, ≥1 feedback
+/// callback, and the full Fibonacci result sequence delivered via the callback.
 #[rstest]
 fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
     if !require_native_env() {
@@ -673,10 +668,19 @@ fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
         "Expected goal-response callback to fire with acceptance.\nOutput:\n{}",
         client_output
     );
+    // Full Fibonacci(order=10) result delivered via the result callback.
     assert!(
-        client_output.contains("Result (callback)")
-            && client_output.contains("Action completed via callbacks [OK]"),
-        "Expected the result callback to deliver the action result.\nOutput:\n{}",
+        client_output
+            .contains("Result (callback): status=4 sequence=[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]"),
+        "Expected the result callback to deliver the full Fibonacci sequence.\nOutput:\n{}",
+        client_output
+    );
+    // At least one feedback callback fired during execution.
+    let fb_count = count_pattern(&client_output, "Feedback (callback)");
+    assert!(
+        fb_count >= 1 && client_output.contains("Action completed via callbacks [OK]"),
+        "Expected >=1 feedback callback + completion, got {} feedback.\nOutput:\n{}",
+        fb_count,
         client_output
     );
 }
