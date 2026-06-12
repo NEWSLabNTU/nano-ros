@@ -14,11 +14,12 @@ superseded-by: null
 ## Summary
 
 Resolves [RFC-0032 §8a](0032-entry-codegen-pipeline.md)'s open **"callback
-bodies"** item. The codegen Entry path runs **real user callbacks** by routing
-to the existing Rust executor (the same one the imperative native examples use),
+bodies"** item. The codegen Entry path runs **real user logic** by routing to the
+existing Rust executor (the same crate the native imperative API targets),
 **not** by extending the type-erased declarative register seam. The user's
-component becomes a **stateful object** that binds its real callbacks through the
-thin typed/raw callback API — bound **by identity, never by a string name**. The
+component becomes a **stateful object** that binds its real callbacks (where the
+executor offers them) and drives the real poll API (where it doesn't yet) through
+the thin typed/raw API — bound **by identity, never by a string name**. The
 synthesizing C++ `EntryNodeRuntime` interpreter and the `DeclaredNode` /
 `record_callback_effect` string-descriptor layer are **retired** — they were a
 v1 scaffold that existed only because the declarative register had no callback to
@@ -27,8 +28,10 @@ hand the executor.
 This honours two standing principles: **(1) no user-named callbacks** — a
 callback is bound by being written, like the imperative API and the Rust
 `nros::node!()` macro; **(2) C/C++ = thin Rust wrapper** ([RFC-0019](0019-nros-c-thin-wrapper-discipline.md))
-— the C++ Entry surface holds no runtime logic; the Rust executor
-([RFC-0041](0041-unified-callback-receive-model.md)) does all dispatch.
+— the C++ Entry surface holds no interpreter; the Rust executor + transport own
+entity lifetime, buffering, and dispatch
+([RFC-0041](0041-unified-callback-receive-model.md)). The C++ side is the
+component object + a `spin_once` loop.
 
 ## Motivation / problem
 
@@ -57,34 +60,42 @@ Two forces shape the resolution:
   declarative model: no callback to register → nothing to spin → synthesize.
 
 **The binding primitive already exists** and already carries everything needed —
-no new seam is required:
+no new seam is required. But two delivery models coexist in the FFI today, and
+the RFC must not conflate them:
 
-- The executor dispatches an **identity-bound callback** fed by a QoS-depth
-  `BufferStrategy` ([RFC-0041](0041-unified-callback-receive-model.md);
-  `packages/core/nros-node/src/executor/arena.rs`).
-- The C++/C FFI already exposes the registration: typed
-  `node.create_subscription(sub, topic, cb)` /
-  `node.create_timer(t, ms, cb, ctx)` /
-  `node.create_service(srv, name, handler)`, and the **raw, zero-copy**
-  `nros_cpp_subscription_register(node, topic, type, hash, qos, cb, ctx, …)`
-  whose callback is `void(const uint8_t* data, size_t len, void* ctx)` —
-  borrowing the wire bytes, no copy, no typed header
-  (`packages/core/nros-cpp/include/nros/subscription.hpp:29`;
-  [RFC-0010](0010-zero-copy-raw-api.md), [RFC-0038](0038-zero-copy-data-transport.md)).
+- **Callback-bound** (executor dispatches an identity-bound callback fed by a
+  QoS-depth `BufferStrategy` — [RFC-0041](0041-unified-callback-receive-model.md);
+  `packages/core/nros-node/src/executor/arena.rs`): **subscription, timer,
+  service-server, action-server**. Verified FFI: `node.create_subscription(sub,
+  topic, cb)`, `node.create_timer(t, ms, cb, ctx)`,
+  `nros_cpp_service_server_register(node, …, cb, …)`,
+  `nros_cpp_action_server_register(…)`, plus the **raw, zero-copy**
+  `nros_cpp_subscription_register(node, topic, type, hash, qos, cb, ctx, …)` with
+  callback `void(const uint8_t* data, size_t len, void* ctx)` — borrowing the
+  wire bytes, no copy, no typed header
+  (`subscription.hpp:29`; [RFC-0010](0010-zero-copy-raw-api.md),
+  [RFC-0038](0038-zero-copy-data-transport.md)).
+- **Poll-driven** (the component owns a `try_recv_*` loop inside the spin tick —
+  still real logic, still on the real executor, no synthesis): **service-client,
+  action-client** (`polling_action_client.hpp` — "caller drives `send_goal_raw` +
+  `try_recv_*` from a spin loop"). [RFC-0041](0041-unified-callback-receive-model.md)
+  converges these to callbacks later; until it lands, the component polls. This
+  RFC is **independent** of RFC-0041 — poll today, callback once 0041 ships, both
+  identity-bound and synthesis-free.
 
-The three receive flavours all sit on this one primitive — none names a callback:
+The subscription receive flavours (none names a callback):
 
-| flavour | callback signature | copy |
-|---|---|---|
-| untyped / zero-copy | `(const uint8_t* data, size_t len, void* ctx)` | none |
-| borrowed-typed | `(const M<'a>&)` via `DeserializeBorrowed` over the slot | none |
-| typed | `(const M&)` — trampoline deserializes (opt-in) | one |
+| flavour | callback signature | copy | status |
+|---|---|---|---|
+| untyped / zero-copy | `(const uint8_t* data, size_t len, void* ctx)` | none | exists; spiked on NuttX |
+| typed | `(const M&)` — trampoline deserializes (opt-in) | one | exists (`create_subscription(sub, topic, cb)`) |
+| borrowed-typed | `(const M<'a>&)` via `DeserializeBorrowed` over the slot | none | Rust-executor reality; **C++ surface TBD** (the spike used raw bytes, not `M<'a>`) |
 
-### Spike (2026-06-12) — the one unproven edge, now validated
+### Spike (2026-06-12) — pub/sub executor-callback path on embedded
 
-The executor's callback path was proven on **native** (imperative examples) but
-never exercised on embedded — the embedded Entry path always ran the
-interpreter. A throwaway imperative NuttX entry (init → `create_node` →
+The executor's callback path runs on **native**, but on embedded the Entry path
+always ran the interpreter, never the executor — that was the architectural
+risk. A throwaway imperative NuttX entry (init → `create_node` →
 `create_timer(cb)` + `nros_cpp_subscription_register(raw_cb)` → `spin_once` loop,
 ~10 lines of C++ glue, built by a direct `nros-nuttx-ffi` cargo invocation) was
 booted in QEMU against the talker:
@@ -97,7 +108,14 @@ SPIKE Received 0..38     ← executor RAW zero-copy SUB callback fires (correct 
 
 So the Rust executor's real-callback dispatch (timer + raw zero-copy message)
 runs under the NuttX board lifecycle via the C++ FFI, with the C++ side a thin
-wrapper. The architectural risk is retired.
+wrapper.
+
+**Scope of the spike: pub/sub + timer only.** Service-server / action-server
+callback dispatch and the poll-driven service/action **clients** under the
+embedded board lifecycle are **not** spiked — they are expected (same FFI, same
+executor, same `spin_once` pump) but unverified. A non-counter service/action
+E2E on the executor (236.D.5) is the proof obligation before claiming the Phase
+238 service/action examples migrate cleanly.
 
 ## Design
 
@@ -107,25 +125,29 @@ Three pieces replace the interpreter; none introduces a callback name.
 
 A component is no longer a static `register_node(NodeContext&)` emitting string
 descriptors. It is an **object** that owns its entity handles + state as members
-and binds real callbacks by identity:
+and binds real callbacks by identity. The sketch below is **illustrative —
+pending Open Q1 (ctor vs `configure`) + Q2 (instance ownership); `NROS_NODE` and
+`create_subscription_raw` are PROPOSED, not current API** (the raw register
+exists only as the FFI `nros_cpp_subscription_register`):
 
 ```cpp
-class Talker {                       // arena-owned instance
+class Talker {                       // arena-owned instance (Q2)
     nros::Publisher<Int32> pub_;
     nros::Timer timer_;
     int count_ = 0;
     void on_tick() { Int32 m; m.data = count_++; pub_.publish(m); }  // real body, unnamed
   public:
-    explicit Talker(nros::Node& node) {            // ctor binds — no configure() ceremony
+    explicit Talker(nros::Node& node) {            // ctor-binds — vs configure(Node&) (Q1)
         node.create_publisher(pub_, "/chatter");
         node.create_timer(timer_, 1000, [this]{ on_tick(); });      // bound by identity
     }
 };
-NROS_NODE(Talker);   // emits factory + sizeof + the per-pkg register symbol
+NROS_NODE(Talker);   // PROPOSED: emits factory + sizeof + the per-pkg symbol
 ```
 
-Zero-copy / untyped subscribers bind the raw form
-(`node.create_subscription_raw(sub_, topic, [this](const uint8_t* d, size_t n){…})`)
+Zero-copy / untyped subscribers bind the raw form (a proposed C++ wrapper over
+`nros_cpp_subscription_register`, e.g.
+`node.create_subscription_raw(sub_, topic, [this](const uint8_t* d, size_t n){…})`)
 — same no-naming, no deserialize. This mirrors Rust's `nros::node!()` (instantiate
 a real struct, executor owns it) and ASI's `common/node` shim (RFC-0032 §8a's
 reference implementation).
@@ -137,9 +159,20 @@ shifts from emitting a type-erased `__nros_component_<pkg>_register(NodeContext*
 call to a **typed** entry: per launch node, `#include` the component header,
 construct the component into an entry-owned arena slot (`sizeof` known via the
 include), and run the **real executor** (`nros::init → spin_once loop →
-shutdown`). The `NodeContextOps` recording dispatch + the synthesizing spin loop
-are gone; `spin_once` drives the executor's RFC-0041 callback dispatch. This is
-the necessary codegen boilerplate (launch → construct), kept minimal.
+shutdown`). The recording dispatch + the synthesizing spin loop are gone;
+`spin_once` drives the executor.
+
+Two non-trivial mechanics this opens (Open Q5, Q6 — not yet in the 238 entry
+codegen, which is type-erased by design):
+
+- **Launch-node → concrete type + header.** The launch XML names a node by
+  `pkg`/`exec` strings; today the entry mangles `pkg` into a register symbol. A
+  *typed* entry needs the component's C++ class name + header path. The mapping
+  source (pkg metadata → class → `#include`) must be defined.
+- **Carrier / cmake migration.** The Phase 238 `nano_ros_node_register` carrier +
+  the emitter produce/consume the `__nros_component_<pkg>_register` symbol;
+  retiring it means rewriting both to emit a `#include` + construct instead of a
+  register-symbol call. Real work, not a flag flip.
 
 ### 3. C path parity
 
@@ -158,9 +191,11 @@ entry, so the C path inherits the executor route unchanged.
   once callbacks are real. (RFC-0032 §8a named this seam the binding point; this
   RFC supersedes that sub-decision: the binding point is the executor callback
   registration, not the recording op set.)
-- The Phase 238 NuttX C/C++ E2E migrates onto the executor and runs **real**
-  logic for free (the synthesized counter / `a+b` / fixed result were stand-ins
-  for exactly the callbacks this RFC binds).
+- The Phase 238 NuttX C/C++ E2E migrates onto the executor + real bodies. **Free
+  for pub/sub** (spiked); **expected-but-unspiked for service/action** (servers =
+  callback, clients = poll until RFC-0041) — gated on the 236.D.5 E2E. The
+  synthesized counter / `a+b` / fixed result were stand-ins for exactly the
+  logic this RFC binds.
 
 ## Alternatives considered
 
@@ -197,9 +232,35 @@ entry, so the C path inherits the executor route unchanged.
 4. **Parameter sequences.** Orthogonal but inherited (RFC-0032 §8a): the
    `ParameterServer` is scalar-only; a real `Controller` needs `double[]` weights
    — a separate phase, not gated here.
+5. **Launch-node → C++ type/header resolution.** How the codegen maps a launch
+   `<node pkg=… exec=…>` to the component's concrete class name + header path to
+   `#include` + construct (today only the mangled register symbol is derived).
+   Needs a metadata source (pkg → class).
+6. **Carrier / emitter migration.** Rewriting `nano_ros_node_register` + the entry
+   emitter from "emit a register-symbol call" to "emit `#include` + construct +
+   executor spin", and deleting the register symbol they currently
+   produce/consume. Scope + staging (can the 238 examples flip per-transport?).
+7. **C component in a typed C++ entry.** A C node is a `struct` + C fns, not a
+   C++-constructible class. Define the seam the typed entry uses to instantiate +
+   configure a C component (a C factory + `configure(node)` the entry calls?),
+   esp. under the 238.C mixed build.
+8. **Service/action on the executor under the embedded lifecycle.** Unspiked
+   (§Spike). Prove service-server/action-server callback dispatch + the poll
+   clients boot + exchange on NuttX before retiring the 238 synthesis for those
+   transports (236.D.5).
+9. **C++ borrowed-typed surface.** The zero-copy *typed* flavor (`const M<'a>&`
+   via `DeserializeBorrowed`) is Rust-executor reality but may lack a C++
+   wrapper; the spike only exercised raw bytes. Confirm or scope it out of v1.
 
 ## Changelog
 
 - 2026-06 — created. Resolves RFC-0032 §8a "callback bodies" open item; informed
   by the no-naming + thin-wrapper (RFC-0019) principles and the 2026-06-12 NuttX
   executor-callback spike. Tracked by phase-236 (236.D).
+- 2026-06 — review pass. Split callback-bound (sub/timer/service-server/
+  action-server) from poll-driven clients (service/action, until RFC-0041);
+  scoped the spike to pub/sub + timer (service/action embedded path unspiked);
+  marked `NROS_NODE` / `create_subscription_raw` as proposed + the component
+  sketch illustrative-pending-Q1/Q2; added Q5–Q9 (launch-node→type resolution,
+  carrier/emitter migration, C-component construction, service/action executor
+  proof, C++ borrowed-typed surface).
