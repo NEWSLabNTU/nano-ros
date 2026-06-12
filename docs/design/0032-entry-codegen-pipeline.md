@@ -315,11 +315,11 @@ constructs **no** live publishers/subscriptions, on native or embedded.
 
 **Open (decide during Phase 236 impl):**
 
-- **Callback bodies — RESOLVED by [RFC-0042](0042-entry-real-callback-binding.md)
+- **Callback bodies — RESOLVED by [RFC-0043](0043-entry-real-callback-binding.md)
   (`→` Phase 236.D).** The 236.A/B runtime constructs entities and *synthesizes* a
   `std_msgs/Int32` counter for a timer-`Publishes` binding; it runs **no real user
   callback bodies** (the talker/listener demo passes on the counter, but ASI's
-  MPC/PID `Controller` cannot be driven). RFC-0042 resolves this **against** the
+  MPC/PID `Controller` cannot be driven). RFC-0043 resolves this **against** the
   first sub-decision of this section ("the `NodeContextOps` seam is the runtime
   binding point"): the type-erased string-descriptor register cannot carry a
   body, so the binding point is the **executor callback registration**, not the

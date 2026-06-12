@@ -1,5 +1,5 @@
 ---
-rfc: 0042
+rfc: 0043
 title: "C++/C Entry real-callback binding — executor-routed, no callback naming"
 status: Draft
 since: 2026-06
@@ -9,7 +9,7 @@ supersedes: []
 superseded-by: null
 ---
 
-# RFC-0042 — Entry real-callback binding (executor-routed, no naming)
+# RFC-0043 — Entry real-callback binding (executor-routed, no naming)
 
 ## Summary
 

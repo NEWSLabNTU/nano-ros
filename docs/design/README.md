@@ -82,7 +82,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0033 | [message-field-capacity-config](0033-message-field-capacity-config.md) | Draft | per-field, language-agnostic message capacity via `nros-codegen.toml`; owned/heap/borrowed modes |
 | 0040 | [distribution-and-scaffolding-deps](0040-distribution-and-scaffolding-deps.md) | Draft | no-crates.io source-release model; `nros new` dep convention: in-tree + out-of-tree both use the ws-sync patch-block (git deps opt-in); CLI install line |
 | 0041 | [unified-callback-receive-model](0041-unified-callback-receive-model.md) | Draft | service/action clients move from poll/`Promise`-single-buffer to callback-at-spin + QoS-depth `BufferStrategy` (triple/ring), unifying with subscriptions; dual-mode (Promise kept); ROS-aligned (KEEP_LAST 10, rclcpp callbacks); RT-safe + poll-backend (XRCE) compatible |
-| 0042 | [entry-real-callback-binding](0042-entry-real-callback-binding.md) | Draft | resolves RFC-0032 §8a "callback bodies"; Entry path routes real user callbacks to the Rust executor (not the string-descriptor register), component = stateful object binding callbacks by identity (no naming, RFC-0019 thin wrapper), typed codegen entry; retires the synthesizing `EntryNodeRuntime`; NuttX executor-callback spike validated |
+| 0043 | [entry-real-callback-binding](0043-entry-real-callback-binding.md) | Draft | resolves RFC-0032 §8a "callback bodies"; Entry path routes real user callbacks to the Rust executor (not the string-descriptor register), component = stateful object binding callbacks by identity (no naming, RFC-0019 thin wrapper), typed codegen entry; retires the synthesizing `EntryNodeRuntime`; NuttX executor-callback spike validated |
 
 ### Domain & safety
 

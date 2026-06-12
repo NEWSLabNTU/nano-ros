@@ -239,7 +239,7 @@ generated register sequence boots a node that creates entities but runs
 no control logic. This is RFC-0032 §8a's "callback bodies" open item,
 now a hard blocker.
 
-**Design decided — [RFC-0042](../design/0042-entry-real-callback-binding.md).**
+**Design decided — [RFC-0043](../design/0043-entry-real-callback-binding.md).**
 Under the no-callback-naming + thin-Rust-wrapper (RFC-0019) principles: route the
 Entry path to the **Rust executor** (the same one the native examples use), not
 the type-erased string-descriptor register. The component becomes a **stateful
@@ -260,14 +260,14 @@ the C++ side is a thin wrapper.
 
 - [ ] **236.D.1** Component-object shape + `NROS_NODE(Talker)` macro
       (factory + `sizeof` + per-pkg register symbol). Ctor-binds-`Node&` vs
-      `configure(Node&)` — RFC-0042 open Q1. Binds real callbacks via the typed
+      `configure(Node&)` — RFC-0043 open Q1. Binds real callbacks via the typed
       (`create_subscription(sub_, topic, cb)`) + raw zero-copy
       (`create_subscription_raw(sub_, topic, raw_cb)`) APIs. C parity via the C
       callback FFI (`fn ptr + void* ctx`).
 - [ ] **236.D.2** Typed codegen Entry — per launch node, `#include` the component
       header, construct into an entry-owned arena slot (`sizeof` known), run the
       executor (`spin_once`). Replaces the `NodeContextOps` recording dispatch +
-      the synthesizing spin loop. Instance-arena sizing — RFC-0042 open Q2.
+      the synthesizing spin loop. Instance-arena sizing — RFC-0043 open Q2.
 - [ ] **236.D.3** Monolithic-app composition — `nano_ros_entry` today
       `add_executable`s + links per-Node `<pkg>_<exec>_component` static
       libs. A Zephyr consumer that links everything into the
