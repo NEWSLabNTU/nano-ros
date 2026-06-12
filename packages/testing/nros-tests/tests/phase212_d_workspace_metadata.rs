@@ -22,52 +22,16 @@
 //! with the standard prebuilt-fixture hint when the build-fixtures stage
 //! has not run.
 
-use std::{fs, path::PathBuf, process::Command, time::Duration};
-
-fn workspace_root() -> PathBuf {
-    nros_tests::project_root()
-}
-
-fn workspace_example(name: &str) -> PathBuf {
-    workspace_root().join("examples/workspaces").join(name)
-}
-
-fn require_test_prereqs() -> Option<()> {
-    if !nros_tests::require_nros_cli() {
-        return None;
-    }
-    if !nros_tests::process::require_cmake() {
-        return None;
-    }
-    Some(())
-}
+use std::{fs, process::Command, time::Duration};
 
 #[test]
-fn cmake_workspace_metadata_emits_components_cmake() {
-    if require_test_prereqs().is_none() {
-        nros_tests::skip!("prereqs missing (nros CLI / cmake)");
-    }
-
-    let root = workspace_example("cpp");
-    let build = tempfile::tempdir().expect("build tempdir");
-    let build_dir = build.path().join("cpp");
-
-    let out = Command::new("cmake")
-        .arg("-S")
-        .arg(&root)
-        .arg("-B")
-        .arg(&build_dir)
-        .output()
-        .expect("spawn cmake configure");
-    assert!(
-        out.status.success(),
-        "cmake configure failed:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-
-    // §212.L.9 cmake fns emit a single metadata JSON at the build root.
-    let metadata = build_dir.join("nros-metadata.json");
+fn cmake_workspace_metadata_emits_components_cmake() -> nros_tests::TestResult<()> {
+    // The cmake configure runs in the build stage — the `metadata_cpp` cmake
+    // fixture (compile-check-fixtures.sh) configures examples/workspaces/cpp and
+    // the §212.L cmake fns emit nros-metadata.json. This test inspects the
+    // prebuilt JSON instead of running cmake at run time (issue 0034 / 0041).
+    let metadata =
+        nros_tests::fixtures::require_cmake_fixture("metadata_cpp", "nros-metadata.json")?;
     assert!(
         metadata.is_file(),
         "expected {} to be emitted by the §212.L cmake fns",
@@ -91,6 +55,7 @@ fn cmake_workspace_metadata_emits_components_cmake() {
         body.contains("\"native\""),
         "metadata missing native deploy target:\n{body}"
     );
+    Ok(())
 }
 
 #[test]

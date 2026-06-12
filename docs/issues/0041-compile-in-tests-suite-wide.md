@@ -47,10 +47,17 @@ negative cmake-CONFIGURE-fail test (must fail) → kept as a documented exceptio
 ## Remaining offenders, by wave
 
 **Wave A — native cmake/codegen smoke** (fastest; cmake/compile-check fixtures):
-`phase212_diagnostic_verbatim`,
-`phase212_o3_board_agnostic_run_plan`, `phase212_o4_pkg_index`,
-`phase212_o5_nav2_compat`, `phase212_d_workspace_metadata`,
-`phase212_l9_cmake_fns`, `phase215_e_board_import`.
+`phase212_l9_cmake_fns` (cmake-configure cluster), `platform` (cmake/codegen),
+`phase215_e_board_import`.
+
+**Reclassified (scan refined):** `phase212_o3/o4/o5` are `#[ignore]`'d gates (inert,
+not live). `phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) and
+`cmake_platform_matrix` are NEGATIVE — the compile/configure MUST fail with exact
+text → documented exceptions (fast-fail, can't be prebuilt).
+
+**Wave A also converted:** `phase212_d_workspace_metadata`'s lone cmake test →
+`metadata_cpp` cmake fixture (inspects prebuilt nros-metadata.json); its 6 other
+tests already consume prebuilt workspace fixtures.
 
 **Wave B — freertos / threadx cross-build** (cross-build mechanism):
 `orchestration_tiers_freertos`, `phase212_n_freertos_run_plan_runtime`,

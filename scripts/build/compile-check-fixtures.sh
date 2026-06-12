@@ -124,6 +124,9 @@ CMAKE_FIXTURES=(
     # add_subdirectory(nano-ros) link smoke (a user project linking
     # NanoRos::NanoRos via add_subdirectory).
     "cmake_add_subdir:packages/testing/nros-tests/fixtures/cmake_add_subdirectory_smoke"
+    # cpp workspace cmake configure emits nros-metadata.json (the §212.L cmake fns
+    # component/application/deploy metadata) — the test inspects it.
+    "metadata_cpp:examples/workspaces/cpp"
 )
 cmake_out="$repo_root/build/cmake-fixtures"
 
