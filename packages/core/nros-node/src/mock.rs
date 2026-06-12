@@ -6,28 +6,31 @@
 //! only compiles when the test paths that actually consume it are
 //! also compiled.
 
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 
 use nros_rmw::{
     Publisher, QosSettings, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait,
     Session, Subscriber, TopicInfo, TransportError,
 };
 
-/// Mock subscriber that can be loaded with canned CDR data.
+/// Mock subscriber that can be loaded with canned CDR data. Holds a small
+/// **queue** (not a single slot) so tests can inject a burst — several messages
+/// arriving before a `try_recv_raw`/spin — to exercise the QoS-depth ring
+/// (Phase 239.5/7). `load` pushes; `try_recv_raw` pops in FIFO order.
 pub struct MockSubscriber {
-    /// Pre-encoded data to return on the next `try_recv_raw` call.
-    pub pending: Cell<Option<([u8; 256], usize)>>,
+    queue: RefCell<heapless::Deque<([u8; 256], usize), 8>>,
 }
 
 impl MockSubscriber {
     pub fn new() -> Self {
         Self {
-            pending: Cell::new(None),
+            queue: RefCell::new(heapless::Deque::new()),
         }
     }
 
+    /// Enqueue one canned message (FIFO). Silently drops if the queue is full.
     pub fn load(&self, data: [u8; 256], len: usize) {
-        self.pending.set(Some((data, len)));
+        let _ = self.queue.borrow_mut().push_back((data, len));
     }
 }
 
@@ -35,14 +38,13 @@ impl Subscriber for MockSubscriber {
     type Error = TransportError;
 
     fn has_data(&self) -> bool {
-        self.pending.get().is_some()
+        !self.queue.borrow().is_empty()
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
-        match self.pending.get() {
+        match self.queue.borrow_mut().pop_front() {
             Some((data, len)) => {
                 buf[..len].copy_from_slice(&data[..len]);
-                self.pending.set(None);
                 Ok(Some(len))
             }
             None => Ok(None),

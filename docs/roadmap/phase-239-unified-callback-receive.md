@@ -111,7 +111,7 @@ result honor `services_default` (`KEEP_LAST(10)`, RFC-0007) on the gated buffer
 (≤ 1 in flight, so a no-op in practice — documented).
 - **Files:** `executor/arena.rs` / `executor/handles.rs` (lost signal).
 
-#### 239.7 — Wave-2 reliability test  ⬜
+#### 239.7 — Wave-2 reliability test  ✅
 Burst test: two feedbacks arrive between spins on a depth > 1 action callback
 client → **both delivered** (vs the pre-239 single-buffer overwrite). A depth-1
 client coalesces to latest (triple-buffer). In-process `MockSession` E2E extending

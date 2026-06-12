@@ -2774,6 +2774,68 @@ fn test_action_client_callbacks_fire_at_spin() {
     );
 }
 
+/// RFC-0041 / Phase 239.7 — two feedbacks arriving before a spin are **both**
+/// delivered via the QoS-depth ring (vs the pre-239 single-buffer overwrite).
+#[test]
+fn test_action_client_feedback_burst_buffered() {
+    use crate::executor::action_core::ActionClientCore;
+
+    fn encode_i32_cdr(v: i32) -> ([u8; 256], usize) {
+        let mut b = [0u8; 256];
+        let mut w = CdrWriter::new_with_header(&mut b).unwrap();
+        w.write_i32(v).unwrap();
+        let n = w.position();
+        drop(w);
+        (b, n)
+    }
+
+    let mut executor: Executor = Executor::from_session(MockSession::new());
+    let nid = executor.node_builder("act_burst").build().unwrap();
+
+    let feedbacks = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
+    let fb2 = feedbacks.clone();
+    let _client = executor
+        .node_mut(nid)
+        .create_action_client_with_callbacks::<TestAction, _, _, _>(
+            "/act",
+            |_: &nros_core::GoalId, _: bool| {},
+            move |_: &nros_core::GoalId, fb: &TestFeedback| {
+                fb2.lock().unwrap().push(fb.progress);
+            },
+            |_: &nros_core::GoalId, _: nros_core::GoalStatus, _: &TestResult| {},
+        )
+        .unwrap();
+
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let core = unsafe {
+        &*(arena_ptr.add(off)
+            as *const ActionClientCore<
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+            >)
+    };
+
+    // Inject TWO feedbacks into the subscriber queue BEFORE spinning.
+    for p in [7i32, 8i32] {
+        let mut fb = [0u8; 256];
+        fb[0..4].copy_from_slice(&[0, 1, 0, 0]);
+        fb[4..12].copy_from_slice(&1u64.to_le_bytes());
+        let (inner, il) = encode_i32_cdr(p);
+        fb[20..20 + il].copy_from_slice(&inner[..il]);
+        core.feedback_subscriber.load(fb, 20 + il);
+    }
+
+    // One spin drains BOTH into the ring and dispatches both — no overwrite.
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        *feedbacks.lock().unwrap(),
+        std::vec![7, 8],
+        "both burst feedbacks delivered via the QoS ring"
+    );
+}
+
 /// Phase 189.M3.3.d — runtime proof that a **service** bound to a sched context
 /// honours it in `spin_once`: two services bound to EDF contexts dispatch in
 /// deadline order, not registration order. This is the runtime payoff of M3.3 —
