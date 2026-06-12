@@ -50,7 +50,7 @@ triage.
 | native_entry_poc_boot (was phase212_n_entry_poc_runs) | 2 | CONVERTED to fixture-consuming (#0034) — entry-poc is now a build-fixture |
 | phase223_c_mixed_workspace | 2 | `c_node_pkg_links_into_cpp_entry_template`, `c_node_pkgs_link_into_c_entry_template` |
 | cpp_multi_node_entry | 1 | `multi_node_workspace_cpp_configures_and_builds` |
-| phase212_j_launch | 1 | `nros_launch_spawns_components` |
+| phase212_j_launch | 1 | `nros_launch_spawns_components` — **test removed** (`nros launch` unsupported, RFC-0027) |
 | phase212_l9_cmake_fns | 1 | `nano_ros_application_rejects_embedded_deploy` |
 | phase210_f4_shadowing | 1 | `workspace_std_msgs_shadows_ament_in_consumer_binary` |
 | phase212_m12_example_shape | 1 | `every_example_leaf_has_package_xml` — **cause known: `78ac799ee`** |
@@ -110,11 +110,15 @@ asserted the old "native-only"/L.2 wording; the fn is now a shim →
   `listener-embassy` into `UNMIGRATED_PREFIXES` alongside `talker-embassy` (same
   Embassy variant, `skip_build`/non-linking, known-issue #13 — it had been
   omitted). m12 now 7/7 pass.
-- **j_launch `nros_launch_spawns_components`** — the Phase 212.J host launcher
-  verb `nros launch` is not in the build (`nros` has no `launch` subcommand,
-  only `plan`), so the test hit the top-level usage banner. Fixed by adding the
-  same verb-presence skip-gate its sibling `nros_launch_detach_returns_pid_file`
-  already uses — now `[SKIPPED]` when the verb is absent, resuming when it lands.
+- **j_launch (whole file removed).** `nros launch` is not a supported verb:
+  RFC-0027 (CLI-verb note, Phase 222) records that `nros build`/`nros run` were
+  **removed** — `nros` is now provisioner + codegen + metadata only, and a host
+  `launch` verb was never part of that surface (runtime is native: `cargo run`,
+  `west run`, `probe-rs run`). So `phase212_j_launch.rs` (both
+  `nros_launch_spawns_components` + `nros_launch_detach_returns_pid_file`) tests
+  a non-existent feature and was deleted rather than skip-gated. Audit confirmed
+  it was the ONLY test invoking `nros launch`; all other test `build`/`run`
+  calls are native `cargo`/`west`/`pio`, which the RFC sanctions.
 
 **CI-ENV-ONLY — pass locally (3).** `zenoh_archive_symbols`, `zenoh_header_parity`,
 `zpico_build_matrix` PASS in the dev env but failed in CI run 27385404078. They
