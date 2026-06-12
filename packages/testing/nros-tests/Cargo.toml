@@ -226,8 +226,8 @@ name = "init_api"
 path = "tests/init_api.rs"
 
 [[test]]
-name = "phase212_m5a2_component_runtime"
-path = "tests/phase212_m5a2_component_runtime.rs"
+name = "component_runtime"
+path = "tests/component_runtime.rs"
 required-features = ["component-runtime-test"]
 
 # Phase 228 — per-tier callback-group filter + shared-session
@@ -240,8 +240,8 @@ required-features = ["component-runtime-test"]
 # Phase 212.M.5.a.4 — BSP-path dispatch wiring (typed-erased state +
 # `_init` / `_dispatch` / `_tick` symbol-table coverage).
 [[test]]
-name = "phase212_m5a4_dispatch"
-path = "tests/phase212_m5a4_dispatch.rs"
+name = "component_dispatch"
+path = "tests/component_dispatch.rs"
 required-features = ["component-runtime-test"]
 
 # Phase 134.6 E2E.1 — wraps scripts/check-zenoh-archive-symbols.sh as
@@ -385,8 +385,8 @@ path = "tests/phase212_h5_esp_idf.rs"
 # (or when `nros codegen-system --ahead-of-vendor --target px4` is not
 # yet implemented in the installed CLI).
 [[test]]
-name = "phase212_h7_px4"
-path = "tests/phase212_h7_px4.rs"
+name = "cli_bringup_px4"
+path = "tests/cli_bringup_px4.rs"
 
 # Phase 212.M.12 — examples/ canonical-shape regression. Walks every
 # package.xml-bearing leaf under examples/ and asserts the post-M
@@ -397,8 +397,8 @@ path = "tests/phase212_h7_px4.rs"
 # threadx-linux/c are skipped per the per-wave migration status in
 # the Phase 212.M table.
 [[test]]
-name = "phase212_m12_example_shape"
-path = "tests/phase212_m12_example_shape.rs"
+name = "example_shape"
+path = "tests/example_shape.rs"
 
 # Phase 212.M.11 (parallel sibling) — canonical-shape regression: every
 # `package.xml` under `examples/` carries the §212.L pkg taxonomy
@@ -415,8 +415,8 @@ path = "tests/examples_canonical_shape.rs"
 # committed metadata/*.json file exists ANYWHERE under `examples/`
 # OR `packages/testing/nros-tests/fixtures/`.
 [[test]]
-name = "phase212_pre_212_files_forbidden"
-path = "tests/phase212_pre_212_files_forbidden.rs"
+name = "legacy_files_forbidden"
+path = "tests/legacy_files_forbidden.rs"
 
 # Phase 210.F.4 — workspace-over-AMENT shadowing regression. Drives the
 # `examples/templates/workspace-shadowing/` smoke fixture through

@@ -492,7 +492,7 @@ retries = 2
 # 180 s × 2 terminate-after for the cold-cache first run; skip cleanly when
 # ARM FVP isn't installed.
 [[profile.default.overrides]]
-filter = "binary(phase217_c_fvp_runtime)"
+filter = "binary(fvp_runtime)"
 test-group = "zephyr-fvp"
 slow-timeout = { period = "180s", terminate-after = 2 }
 retries = 1
@@ -502,7 +502,7 @@ retries = 1
 # 212.L.7 self-pkg `rust_main` codegen). Same group / timeout as C.1
 # so the two tests don't race the single FVP license seat.
 [[profile.default.overrides]]
-filter = "binary(phase217_d_fvp_runtime_rust)"
+filter = "binary(fvp_runtime_rust)"
 test-group = "zephyr-fvp"
 slow-timeout = { period = "180s", terminate-after = 2 }
 retries = 1
@@ -513,7 +513,7 @@ retries = 1
 # UART-port constraints as 217.C/D, so share the serial `zephyr-fvp`
 # group + cold-boot timeout; skips cleanly when ARM FVP isn't installed.
 [[profile.default.overrides]]
-filter = "binary(phase215_g_fvp_smoke)"
+filter = "binary(fvp_smoke)"
 test-group = "zephyr-fvp"
 slow-timeout = { period = "180s", terminate-after = 2 }
 retries = 1

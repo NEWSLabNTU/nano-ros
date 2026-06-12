@@ -874,12 +874,12 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     fi
     if ! command -v pio >/dev/null 2>&1 && ! command -v platformio >/dev/null 2>&1; then
         env_exclude+=("not binary(integration_platformio)")
-        env_exclude+=("not binary(phase212_h6_platformio)")
+        env_exclude+=("not binary(cli_bringup_platformio)")
     fi
     if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
-        env_exclude+=("not binary(phase215_g_fvp_smoke)")
-        env_exclude+=("not binary(phase217_c_fvp_runtime)")
-        env_exclude+=("not binary(phase217_d_fvp_runtime_rust)")
+        env_exclude+=("not binary(fvp_smoke)")
+        env_exclude+=("not binary(fvp_runtime)")
+        env_exclude+=("not binary(fvp_runtime_rust)")
     fi
     if ! command -v qemu-system-riscv32 >/dev/null 2>&1 || ! command -v espflash >/dev/null 2>&1; then
         env_exclude+=("not binary(esp32_emulator)")
