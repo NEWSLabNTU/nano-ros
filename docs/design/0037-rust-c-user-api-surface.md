@@ -44,7 +44,10 @@ NodeCtx<'_>`. Domain id is in the config / baked (RFC-0036). No `Arc<Node>` —
 - `create_subscription*` — callback `FnMut(&M)` (owned today; borrowed view is
   RFC-0033 § borrowed / phase-229.6).
 - `register_service::<Svc, F>` / `register_service_client_raw`.
-- action client/server via `Promise` handles.
+- service/action clients via `Promise` handles **or** spin-dispatched callbacks
+  (RFC-0041): `NodeCtx::create_client_with_callback::<Svc, _>(name, FnMut(&Reply))`
+  and `create_action_client_with_callbacks::<A>(…)` (goal-response / feedback /
+  result), dual-mode with the `Promise` path.
 - `register_timer::<F>`.
 
 **Spin** (RFC-0021 blocking rule — helpers take `&mut Executor`):
@@ -70,9 +73,12 @@ timeout)`.
 - pub/sub: `nros_publisher_init[_with_qos|_with_options]`, `nros_publish_raw`,
   `nros_subscription_init[_with_qos|_polling]`.
 - services/clients: `nros_service_init[_polling]`, `nros_service_send_reply_raw`,
-  `nros_client_init`, `nros_client_send_request_raw`, `nros_client_call`.
+  `nros_client_init`, `nros_client_send_request_raw`, `nros_client_call`;
+  callback receive (RFC-0041): `nros_client_set_response_callback` +
+  `nros_client_send_request_async` (reply dispatched at `nros_executor_spin_some`).
 - actions: `nros_action_{server,client}_init`, `nros_action_send_goal`,
-  `nros_action_get_result`.
+  `nros_action_get_result`; callback receive (RFC-0041):
+  `nros_action_client_set_{goal_response,feedback,result}_callback`.
 - executor: `nros_executor_register_{subscription,timer}`,
   `nros_executor_spin[_some]`.
 - guard/lifecycle/params: `nros_guard_condition_*`, `nros_lifecycle_*`,
@@ -110,3 +116,7 @@ Entities are opaque structs (`nros_node_t`, `nros_publisher_t`, …). Error:
 
 - 2026-06 — created (Draft). Recorded the current Rust (`nros-node`/`nros-core`)
   and C (`nros-c`) user surfaces and the freeze policy; C++ remains RFC-0018.
+- 2026-06 (phase-239) — added the RFC-0041 callback-receive surfaces:
+  Rust `create_client_with_callback` / `create_action_client_with_callbacks`; C
+  `nros_client_set_response_callback` + `_send_request_async` and the action
+  client `set_{goal_response,feedback,result}_callback` setters.

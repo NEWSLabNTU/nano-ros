@@ -250,14 +250,14 @@ callback receive model is wire-compatible and backend-agnostic (zenoh + XRCE).
 
 ### Close-out
 
-#### 239.10 — Docs sync  🟡 (RFC-0041 → Stable ✅; RFC-0037 tick ⬜)
+#### 239.10 — Docs sync  ✅
 RFC-0041 flipped to **Stable**: the model is validated E2E — service-client
 callbacks across Rust / C / C++ + cross-language, action-client callbacks
 dispatched at spin (C result correct; C++ dispatch correct, payload bug #40 is an
-impl follow-up, not a design flaw). **Remaining:** tick RFC-0037 (user API
-surface — `create_client_with_callback` / `create_action_client_with_callbacks`
-+ the C/C++ surfaces).
-- **Files:** `docs/design/0041-*` (done), `docs/design/0037-*` (todo).
+impl follow-up, not a design flaw). RFC-0037 ticked with the callback-receive
+surfaces (Rust `create_client_with_callback` / `create_action_client_with_callbacks`;
+C `nros_client_set_response_callback` + `_send_request_async` + action setters).
+- **Files:** `docs/design/0041-*`, `docs/design/0037-*`.
 
 ## Acceptance
 
