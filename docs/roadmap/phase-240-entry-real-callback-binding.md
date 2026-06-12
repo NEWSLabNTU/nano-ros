@@ -134,7 +134,13 @@ wave lands).
           vs `build/zenohd`: `Published 0..7` + `Received 0..7` — the typed codegen
           entry constructs both components, `configure` binds real timer-publish +
           raw-sub callbacks, `run_components` spins the real executor, callbacks
-          fire. (cmake-fixture registration for CI still TODO.)
+          fire.
+    - [x] **CI fixture registered 2026-06-13.** `cpp_robot_entry_typed` cell in
+          `compile-check-fixtures.sh` (build-stage, per issue-0041) + the inspect
+          test `cpp_multi_node_entry_typed.rs` — asserts the generated TU is typed
+          (constructs `talker_pkg::Talker`/`listener_pkg::Listener` + `configure`
+          + `NativeBoard::run_components`, **no** `__nros_component_*`/`NodeContext`)
+          + the auto-link sidecar names both component libs.
   - [ ] raw↔typed type-name-form unification (240.1 finding) — still open.
 
 ### 240.3 — Carrier + embedded board adapter (NuttX) — **mechanism DONE 2026-06-12**
