@@ -250,6 +250,14 @@ wave lands).
         action server (create/register/set_callbacks + the timer-driven execute +
         the hand-rolled Fibonacci result CDR + `complete_goal`) executes a real
         goal end-to-end.
+  - [ ] **Pub/sub E2E — blocked on the talker (not the typed listener).** In QEMU
+        the typed listener boots + reaches `Waiting for messages`, but 0 received:
+        the paired NuttX talker is still the **declarative** example and published
+        nothing (empty output) — the publish-from-component talker gap (240.6
+        blocker). Also undetermined until then: the raw-sub keyexpr the listener
+        must match — services passed with the ROS slash form, native pub/sub used
+        the DDS-mangled form (the raw↔typed type-name unification, 240.1 finding).
+        Resolve by migrating the talker to a typed `Publisher` component.
   - [ ] **Action CLIENT poll — open gap.** The raw poll client sends one goal
         (fixed: blocking `send_goal` re-enters the executor from the spin_once
         timer → switched to `send_goal_async`; `setvbuf` unbuffers the
