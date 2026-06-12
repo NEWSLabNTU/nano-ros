@@ -340,18 +340,26 @@ delivered the typed carrier for **NuttX only** — the templates are
 240.7's "ASI Controller on FVP (Zephyr+Cyclone)" cannot be built. Two coupled
 gaps:
 
-- [ ] **240.8.1** Zephyr typed-entry carrier — a `zephyr_entry_main_typed`
-      template + `NanoRosNodeRegister.cmake` Zephyr branch that constructs each
-      launch node's component (`emit_typed` `class`/`class_header`) + calls
-      `configure(node)` under the `ZephyrBoard` lifecycle (236.B), mirroring the
-      NuttX carrier.
-- [ ] **240.8.2** Monolithic-app composition — ASI is a single
-      `project(actuation_module)` Zephyr build where every source is
-      `target_sources(app …)`, not `add_executable` + per-node component libs.
-      The typed entry + `nano_ros_node_register` carrier must compose into the
-      `find_package(Zephyr)`-owned `app` target (append TU + link the component
-      objects), not emit a second executable / a `<pkg>_<exec>_component` lib the
-      monolithic build never produces. (= phase-236 236.D.2.)
+- [x] **240.8.1** Zephyr typed-entry carrier — `cmake/templates/zephyr_entry_main_typed.cpp.in`
+      (new) mirrors the NuttX typed template but for the Zephyr boot convention:
+      plain `int main(void)` (Zephyr owns boot + C `main`, **not** NuttX's
+      `nros_app_main` + `NROS_APP_MAIN_REGISTER_VOID`), constructs the component +
+      `configure(node)`, runs `ZephyrBoard::run_components(&__nros_entry_setup)`
+      (locator-less — Zephyr `CONFIG_NET_CONFIG_AUTO_INIT` discovery, no baked
+      slirp dial). A new Zephyr branch in `NanoRosNodeRegister.cmake` (gated on
+      `CPP` + `zephyr IN_LIST DEPLOY` + `NANO_ROS_PLATFORM=zephyr` + `TARGET app`)
+      `configure_file`s it. **Single-node per app**; multi-node Zephyr uses the
+      `nros codegen entry --typed` emitter. _(2026-06-13; cmake parses clean in
+      project mode; FVP build/boot gated on the Zephyr SDK → 240.7.)_
+- [x] **240.8.2** Monolithic-app composition — the Zephyr branch does
+      `target_sources(app PRIVATE <generated entry TU>)` + `target_link_libraries(app
+      PRIVATE ${_lib})` (the component lib built above), composing into the
+      `find_package(Zephyr)`-owned `app` target — **no** second executable, **no**
+      separately-exposed component lib. Resolves the L.4 `CLASS = <PROJECT_NAME>::`
+      rule by each Node pkg being its **own** `project(<pkg>)` subdirectory (ASI
+      `add_subdirectory(controller_pkg)` → `PROJECT_NAME=controller_pkg` →
+      `controller_pkg::Controller` passes); the global Zephyr `app` is appended
+      from that subdir scope. (= phase-236 236.D.2.) _(2026-06-13)_
 
 **Files.** `cmake/templates/zephyr_entry_main_typed.cpp.in` (new),
 `cmake/NanoRosNodeRegister.cmake` (Zephyr branch), `packages/boards/nros-board-fvp-aemv8r-smp/`.

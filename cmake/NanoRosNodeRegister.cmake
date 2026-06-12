@@ -317,6 +317,49 @@ function(nano_ros_node_register)
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 
+    # Phase 240.8 (RFC-0043) — Zephyr typed-entry carrier. Unlike NuttX (a
+    # standalone bootable ELF via add_executable + nros_platform_link_app), a
+    # Zephyr app IS the find_package(Zephyr)-owned monolithic `app` target. The
+    # carrier APPENDS the generated typed entry TU to `app` and links the
+    # component lib (`${_lib}`, built above) into it — no second executable, no
+    # per-node component lib the build has to expose separately. The component
+    # lib's PUBLIC include dirs (the class header + generated interface libs)
+    # propagate to `app`, so the entry TU's `#include "<class_header>"` resolves.
+    #
+    # The L.4 rule (CLASS starts with `${PROJECT_NAME}::`) means each Node pkg is
+    # its own `project(<pkg>)` subdirectory (e.g. ASI `add_subdirectory(controller_pkg)`
+    # with `project(controller_pkg)` → CLASS `controller_pkg::Controller`); the
+    # Zephyr `app` target is global, so `target_sources(app …)` from that subdir
+    # composes into the outer app. SINGLE-NODE per app: one Node pkg deploys to
+    # zephyr per `app` (it owns the one `int main`). Multi-node Zephyr uses the
+    # `nros codegen entry --typed` multi-node emitter (one entry constructs all
+    # nodes) — out of scope here.
+    if(_nrc_lang STREQUAL "CPP"
+       AND "zephyr" IN_LIST _NRC_DEPLOY
+       AND NANO_ROS_PLATFORM STREQUAL "zephyr"
+       AND TARGET app
+       AND NOT TARGET ${PROJECT_NAME}_nros_zephyr_entry)
+        if(NOT _NRC_TYPED)
+            message(FATAL_ERROR
+                "nano_ros_node_register: the Zephyr carrier requires TYPED — "
+                "the RFC-0043 real-callback component path. The legacy "
+                "declarative-register entry is not generated on Zephyr.")
+        endif()
+        set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
+        set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
+        set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
+        set(_zephyr_entry_src "${CMAKE_CURRENT_BINARY_DIR}/nros-entry/zephyr_entry_main.cpp")
+        configure_file(
+            "${_NROS_NODE_REGISTER_DIR}/templates/zephyr_entry_main_typed.cpp.in"
+            "${_zephyr_entry_src}" @ONLY)
+        # Idempotency marker — guard one entry TU per Node pkg (re-runnable
+        # configure). PROJECT_NAME is the Node pkg (its own project()), so the
+        # marker is per-pkg, not per-app.
+        add_custom_target(${PROJECT_NAME}_nros_zephyr_entry)
+        target_sources(app PRIVATE "${_zephyr_entry_src}")
+        target_link_libraries(app PRIVATE ${_lib})
+    endif()
+
     _nros_json_strlist(_sources_json ${_NRC_SOURCES})
     _nros_json_strlist(_deploy_json  ${_NRC_DEPLOY})
     get_property(_acc GLOBAL PROPERTY NROS_COMPONENTS_JSON)
