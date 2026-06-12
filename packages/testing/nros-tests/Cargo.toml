@@ -367,12 +367,12 @@ path = "tests/orchestration_includes.rs"
 name = "phase212_f_bringup_scaffold"
 path = "tests/phase212_f_bringup_scaffold.rs"
 
-# Phase 212.H.3 — FreeRTOS cargo-native adapter (per-board BSP crate
-# audit). Skips cleanly when the thumbv7m-none-eabi target, arm-gcc,
-# or FREERTOS_DIR / LWIP_DIR aren't available.
+# FreeRTOS MPS2-AN385 Entry-pkg firmware (Phase 212.H.3): asserts the build-stage
+# `freertos_firmware` cross-build fixture's prebuilt run_plan.rs (issue 0034 —
+# no in-test cargo build).
 [[test]]
-name = "phase212_h3_freertos"
-path = "tests/phase212_h3_freertos.rs"
+name = "freertos_firmware_entry"
+path = "tests/freertos_firmware_entry.rs"
 
 # Phase 212.H.5 — ESP-IDF 2-component bringup build via `idf.py`. Skips
 # cleanly when `$IDF_PATH` / `idf.py` / nros CLI are missing.
