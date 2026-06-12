@@ -167,21 +167,20 @@ fn test_nuttx_kernel_boots() {
 }
 
 // =============================================================================
-// C++ build tests (kept as `#[ignore]` markers)
+// C++ build tests (Phase 238.A — bootable-ELF carrier wired)
 // =============================================================================
 //
-// Phase 238 — the original blocker (upstream NuttX libc missing
-// `_SC_HOST_NAME_MAX`) is RESOLVED: the current submodule (nuttx-12.13.0-4)
-// defines it, and all 6 NuttX C++ examples now COMPILE clean (each produces its
-// `*_component.a`). These markers stay `#[ignore]`'d for a different, now-accurate
-// reason: the C/C++ NuttX build is component-lib only — there is no bootable-ELF
-// target yet, so `build_nuttx_cpp_*` (which resolves a prebuilt
-// `build-zenoh/nuttx_cpp_*` ELF) has nothing to find. Un-ignoring is gated on
-// wiring the kernel-staging executable link — see
-// docs/roadmap/phase-238-nuttx-cpp-e2e-enablement.md.
+// Phase 238.A — the bootable-ELF carrier is now wired (the
+// `nano_ros_node_register` NuttX branch synthesises a single-node entry TU and
+// delegates to `nros_platform_link_app` → cargo `nros-nuttx-ffi`), so every C++
+// example produces a real `build-zenoh/nuttx_cpp_<name>` kernel ELF. These
+// build tests resolve it (build coverage). The talker/listener pub/sub pair is
+// additionally proven to boot + route over zenoh in QEMU; service/action build
+// + boot + *register* but do not execute (interpreter limitation), and the
+// rtos_e2e `Nuttx × Cpp` E2E cases need listener-side observability — both
+// deferred (see docs/roadmap/phase-238-nuttx-cpp-e2e-enablement.md).
 
 #[test]
-#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_talker_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -192,7 +191,6 @@ fn test_nuttx_cpp_talker_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_listener_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -203,7 +201,6 @@ fn test_nuttx_cpp_listener_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_service_server_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -215,7 +212,6 @@ fn test_nuttx_cpp_service_server_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_service_client_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -227,7 +223,6 @@ fn test_nuttx_cpp_service_client_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_action_server_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");
@@ -238,7 +233,6 @@ fn test_nuttx_cpp_action_server_builds() {
 }
 
 #[test]
-#[ignore = "NuttX C/C++ bootable-ELF target not wired (compile OK; phase-238)"]
 fn test_nuttx_cpp_action_client_builds() {
     if !require_nuttx_cpp() {
         nros_tests::skip!("require_nuttx_cpp check failed");

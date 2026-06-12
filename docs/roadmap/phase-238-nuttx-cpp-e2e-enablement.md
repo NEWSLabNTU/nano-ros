@@ -5,8 +5,13 @@ QEMU ARM virt, the same way the NuttX **Rust** examples already do. The compile
 blocker that gated this is gone; what remains is producing a bootable ELF from the
 C/C++ build.
 
-**Status.** Planned. Created 2026-06-12 after verifying the `_SC_HOST_NAME_MAX`
-blocker is resolved. Off the critical path (NuttX is a secondary platform).
+**Status.** 238.A (C++ pub/sub pair) **DONE** 2026-06-12 — `nuttx_cpp_talker`
++ `nuttx_cpp_listener` boot as bootable kernel ELFs in QEMU ARM virt, connect
+to a host zenoh router over slirp, and form a routed `/chatter`
+`std_msgs/msg/Int32` pub/sub topology (proven via zenohd debug log: two client
+transports + publisher resource + subscriber declare). Service/action C++ +
+the whole C path remain deferred (see §"Done / remaining" below). Off the
+critical path (NuttX is a secondary platform).
 
 **Depends on.** `nros-board-nuttx-qemu-arm` (kernel staging + link), the NuttX
 submodule (`nuttx-12.13.0-4`), `cmake/NanoRosNodeRegister.cmake`, the rtos_e2e
@@ -154,3 +159,63 @@ harness change.
   staging libs / linker script / toolchain flags; mismatches manifest as a silent
   QEMU reboot loop (cf. the Phase 177.8.c rust cross-CGU miscompile). Build the
   link from the Rust path's known-good inputs, don't hand-roll.
+
+## 238.A — what landed (C++ pub/sub pair), and what's deferred
+
+**Approach taken.** Not Approach A's "new cmake link" — the bootable-ELF link
+already exists (`nros_board_link_app` → `nros_nuttx_build_example` → cargo
+`nros-nuttx-ffi`). The gap was purely that nothing *called* it for the
+declarative C++ examples. 238.A wires the carrier + a C++ board adapter:
+
+1. **`::nros::board::NuttxBoard`** (`packages/core/nros-cpp/include/nros/main.hpp`)
+   — sibling to `NativeBoard`/`ZephyrBoard`, sharing the exact same
+   `detail::EntryNodeRuntime` ops + arena. NuttX network is up at kernel boot
+   (`nsh_initialize()` runs netinit before the app), so — like Zephyr — no
+   explicit network wait is needed. Adds a `run(locator, lambda)` overload: the
+   QEMU slirp guest must *dial* the host router (`tcp/10.0.2.2:<port>`), so the
+   locator is baked rather than discovered. `emit_cpp.rs` maps the `"nuttx"`
+   board key → `NuttxBoard` (with a unit test).
+2. **Carrier** — `nano_ros_node_register` grew a NuttX branch (gated:
+   `LANGUAGE CPP` + `nuttx IN_LIST DEPLOY` + `nros_platform_link_app` defined).
+   It `configure_file`s `cmake/templates/nuttx_entry_main.cpp.in` into a
+   single-node entry TU (`nros_app_main` → `NuttxBoard::run` → the one
+   `__nros_component_<pkg>_register`, emitted `void app_main(void)` via
+   `NROS_APP_MAIN_REGISTER_VOID`), creates `add_executable(<PROJECT_NAME> …)`
+   (so the ELF lands at `build-zenoh/<PROJECT_NAME>`), and calls
+   `nros_platform_link_app`. The Component static lib stays as build-coverage.
+3. **`NROS_PKG_NAME` plumbing** — `nros_board_link_app` now ferries the
+   carrier's `COMPILE_DEFINITIONS` into `nros_nuttx_build_example`'s
+   `COMPILE_DEFS` (→ `APP_COMPILE_DEFS` → the cc-rs build), so the class TU
+   (compiled as `APP_EXTRA_SOURCES`) sees `NROS_PKG_NAME` and its
+   `NROS_NODE_REGISTER` macro emits the symbol the entry calls.
+
+**Proof (manual).** Boot both ELFs in QEMU ARM virt (slirp,
+`-netdev user,id=net0 -device virtio-net-device,netdev=net0`) against
+`build/zenohd/zenohd -l tcp/0.0.0.0:7447`. zenohd `RUST_LOG=debug` shows:
+two `whatami: client` transports; talker registers resource
+`0/chatter/std_msgs/msg/Int32`; listener `Declare subscriber … 0/chatter/…`.
+Both reach `init -> 0` / `register -> 0; spinning` (with the opt-in
+`NROS_NUTTX_ENTRY_DEBUG` template flag). The pair connects + the pub/sub
+topology routes — the proven `Variant::Pubsub` exchange.
+
+**Un-ignored.** The six `nuttx_qemu.rs` `*_builds` markers (the carrier now
+produces a real `build-zenoh/nuttx_cpp_<name>` ELF for every C++ example —
+build coverage; service/action build + boot + *register* but do not execute).
+
+### Deferred (follow-ups)
+
+- **rtos_e2e `Nuttx × Cpp × Pubsub` E2E.** The harness greps the listener for
+  `"Waiting for messages"` + `"Received"` (count > 0). The shared
+  `EntryNodeRuntime` is silent and does not drain a subscription unless a
+  `Reads` callback-effect was recorded (the declarative `Listener.cpp` records
+  none). Making this E2E green needs runtime-side observability: auto-drain
+  subscriptions + emit a readiness banner and per-sample line. Scoped change to
+  `EntryNodeRuntime::spin` (affects native/zephyr entry paths too — verify
+  their expectations first).
+- **Service / action C++.** The `EntryNodeRuntime` interpreter only synthesizes
+  timer-driven `std_msgs/Int32` pub/sub; services/actions are *recorded* (no
+  hard error) but never executed. True service/action E2E needs the imperative
+  entry shape (hand-written `nros_app_main` with real logic, like the native
+  C/C++ examples), not the declarative carrier.
+- **C (non-C++) path.** The carrier branch is `LANGUAGE CPP` only — the C
+  examples need a C-side board runtime + entry (no `NuttxBoard` C analogue yet).

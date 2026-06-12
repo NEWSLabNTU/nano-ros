@@ -232,6 +232,17 @@ function(nros_board_link_app target)
         endforeach()
     endif()
 
+    # Phase 238 — ferry the carrier's COMPILE_DEFINITIONS into the cargo
+    # cc-rs build so EXTRA_SOURCES (e.g. a declarative Component class
+    # `Talker.cpp`) see `NROS_PKG_NAME` — required by the
+    # `NROS_NODE_REGISTER` macro to emit the per-pkg
+    # `__nros_component_<pkg>_register` symbol the generated entry calls.
+    get_target_property(_cdefs ${target} COMPILE_DEFINITIONS)
+    set(_compile_defs "")
+    if(_cdefs)
+        set(_compile_defs ${_cdefs})
+    endif()
+
     nros_nuttx_build_example(
         NAME            "${target}"
         MAIN_SOURCE     "${_main_src}"
@@ -239,6 +250,7 @@ function(nros_board_link_app target)
         TARGET_TRIPLE   "armv7a-nuttx-eabihf"
         INCLUDE_DIRS    ${_incs}
         SOURCES         ${_extra_srcs}
+        COMPILE_DEFS    ${_compile_defs}
         LINK_INTERFACES ${_link_ifaces})
 
     # Phase 156 (NuttX) — neutralise the carrier `add_executable`

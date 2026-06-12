@@ -137,6 +137,10 @@ fn board_cpp_path(board: &str) -> &str {
         // qemu-zephyr, …) compiles with `__ZEPHYR__` and shares the one
         // metadata-driven `ZephyrBoard` adapter.
         "zephyr" | "fvp-aemv8r-smp" | "armfvp" => "::nros::board::ZephyrBoard",
+        // Phase 238 — embedded NuttX (qemu-arm-virt etc.). Network is up at
+        // kernel boot; shares the EntryNodeRuntime via the `NuttxBoard`
+        // lifecycle adapter.
+        "nuttx" | "nuttx-qemu-arm" | "nuttx-qemu-riscv" => "::nros::board::NuttxBoard",
         // An explicit, already-qualified C++ board path passes through.
         b if b.starts_with("::nros::board::") => b,
         // Unknown / future board keys fall back to NativeBoard with the
@@ -270,6 +274,22 @@ mod tests {
                 src.contains("::nros::board::ZephyrBoard::run(["),
                 "board key {key} must map to ZephyrBoard"
             );
+        }
+    }
+
+    #[test]
+    fn nuttx_board_key_emits_nuttx_adapter() {
+        // Phase 238 — a `"nuttx"` board key selects the embedded NuttxBoard
+        // adapter (network up at kernel boot), not NativeBoard.
+        for key in ["nuttx", "nuttx-qemu-arm", "nuttx-qemu-riscv"] {
+            let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+            plan.board = key.into();
+            let src = emit(&plan);
+            assert!(
+                src.contains("::nros::board::NuttxBoard::run(["),
+                "board key {key} must map to NuttxBoard"
+            );
+            assert!(!src.contains("NativeBoard::run("));
         }
     }
 

@@ -46,6 +46,12 @@ if(DEFINED _NROS_NODE_REGISTER_INCLUDED)
 endif()
 set(_NROS_NODE_REGISTER_INCLUDED TRUE)
 
+# Capture this module's directory at include time. `CMAKE_CURRENT_LIST_DIR`
+# is dynamic — inside a function body it resolves to the *caller's* list
+# dir, not this file's — so the Phase 238 carrier `configure_file` must use
+# this captured path to find `templates/nuttx_entry_main.cpp.in`.
+set(_NROS_NODE_REGISTER_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
 define_property(GLOBAL PROPERTY NROS_COMPONENTS_JSON
     BRIEF_DOCS "Accumulated component JSON fragments"
     FULL_DOCS  "Phase 212.L.9 — appended by nano_ros_node_register().")
@@ -201,6 +207,68 @@ function(nano_ros_node_register)
                 target_link_libraries(${_lib} PUBLIC ${_nros_iface_libs})
             endif()
         endif()
+    endif()
+
+    # Phase 238 — NuttX bootable-ELF carrier. The Component lib above is
+    # build-coverage only; the rtos_e2e harness + `build_nuttx_cpp_*`
+    # resolvers need a bootable kernel ELF at `build-zenoh/<PROJECT_NAME>`.
+    # When this Node pkg deploys to nuttx AND the NuttX platform/board
+    # overlay is active (`nros_platform_link_app` defined), synthesise a
+    # single-node entry TU + a carrier `add_executable(<PROJECT_NAME> …)`
+    # and delegate to `nros_platform_link_app` (→ `nros_board_link_app` →
+    # `nros_nuttx_build_example`), which drives the cargo `nros-nuttx-ffi`
+    # kernel link and copies the ELF to `build-zenoh/<PROJECT_NAME>`.
+    #
+    # Scope: C++ pub/sub (talker/listener). The shared EntryNodeRuntime
+    # interpreter runs timer-driven std_msgs/Int32 pub/sub; services /
+    # actions register but do not execute, and the C path needs a C-side
+    # board runtime — both deferred (see phase-238).
+    if(_nrc_lang STREQUAL "CPP"
+       AND "nuttx" IN_LIST _NRC_DEPLOY
+       AND NANO_ROS_PLATFORM STREQUAL "nuttx"
+       AND COMMAND nros_platform_link_app
+       AND NOT TARGET ${PROJECT_NAME})
+        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
+        # Baked connect locator. QEMU slirp routes the guest to the host
+        # zenoh router at `10.0.2.2:<port>`. Override per-build with
+        # `-DNROS_NUTTX_LOCATOR=tcp/10.0.2.2:<port>` (the rtos_e2e harness
+        # passes the per-cell `zenohd_port_for` port); the default 7447
+        # serves manual `zenohd` runs. Mirrors the Rust `*_entry`
+        # `[…entry] locator = …` bake.
+        if(NOT DEFINED NROS_NUTTX_LOCATOR)
+            set(NROS_NUTTX_LOCATOR "tcp/10.0.2.2:7447")
+        endif()
+        set(NROS_ENTRY_LOCATOR "${NROS_NUTTX_LOCATOR}")
+        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
+        set(_entry_src "${_entry_dir}/main.cpp")
+        configure_file(
+            "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main.cpp.in"
+            "${_entry_src}" @ONLY)
+
+        # Carrier executable named after the pkg so the ELF lands at
+        # `build-zenoh/${PROJECT_NAME}`. SOURCES = entry (main.cpp, picked
+        # up as MAIN_SOURCE by nros_board_link_app's `/main\.cpp$` match) +
+        # the Component class source(s) (compiled as APP_EXTRA_SOURCES).
+        add_executable(${PROJECT_NAME} "${_entry_src}" ${_NRC_SOURCES})
+        target_include_directories(${PROJECT_NAME} PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src")
+        # NROS_PKG_NAME reaches the class TU through nros_board_link_app's
+        # COMPILE_DEFINITIONS → APP_COMPILE_DEFS forwarding (Phase 238).
+        target_compile_definitions(${PROJECT_NAME} PRIVATE
+            NROS_PKG_NAME=${_pkg_sym})
+        if(TARGET NanoRos::NanoRosCpp)
+            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRosCpp)
+        elseif(TARGET NanoRos::NanoRos)
+            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRos)
+        endif()
+        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
+        if(_nros_iface_libs)
+            list(REMOVE_DUPLICATES _nros_iface_libs)
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
+        endif()
+        nros_platform_link_app(${PROJECT_NAME})
     endif()
 
     _nros_json_strlist(_sources_json ${_NRC_SOURCES})

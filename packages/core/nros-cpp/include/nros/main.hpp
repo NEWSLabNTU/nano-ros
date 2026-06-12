@@ -42,6 +42,9 @@
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdlib> // getenv — Phase 235.A bounded-spin ($NROS_ENTRY_SPIN_MS)
+#ifdef NROS_NUTTX_ENTRY_DEBUG
+#include <cstdio> // Phase 238 NuttxBoard boot diagnostics (opt-in)
+#endif
 #endif
 
 // Phase 235.B — the embedded (Zephyr) Board adapter is cooperatively
@@ -635,6 +638,92 @@ class ZephyrBoard {
         nros::Result spin_r = runtime.spin();
         nros::shutdown();
         return static_cast<int32_t>(spin_r.raw());
+    }
+};
+
+/// Phase 238 — embedded NuttX board adapter, sibling to `ZephyrBoard`.
+///
+/// NuttX brings up `eth0` (virtio-net) during kernel boot **before** the
+/// app entry runs (see `nros-board-nuttx-qemu-arm::entry_212n` —
+/// "NuttX brings up eth0 during kernel boot before main"), so — like the
+/// Zephyr `CONFIG_NET_CONFIG_AUTO_INIT` path — no explicit network wait is
+/// needed; the weak `nros_board_network_wait()` default no-op is correct.
+///
+/// The runtime ops + arena are the **same** `detail::EntryNodeRuntime`
+/// machinery `NativeBoard` / `ZephyrBoard` use — only the lifecycle differs:
+///   * domain id is **compile-time** (`NROS_ENTRY_DOMAIN_ID`, fed from the
+///     example's `nano_ros_deploy(DOMAIN_ID …)` → `CONFIG_NROS_DOMAIN_ID`),
+///     never a runtime env (CLAUDE.md embedded domain-id rule);
+///   * the cooperative `entry_tick_yield()` is a no-op on NuttX (the
+///     preemptive scheduler + `spin_once`'s `z_sleep_ms` pacing release the
+///     CPU to the zenoh-pico read/lease tasks — see CLAUDE.md
+///     `zpico_spin_once` note).
+///
+/// The bootable ELF *is* the NuttX kernel: the generated entry TU is
+/// compiled as `APP_MAIN_CPP` and linked into the kernel by the cargo
+/// `nros-nuttx-ffi` build (`nuttx_ffi_build.rs`), driven from the carrier
+/// cmake (`nano_ros_node_register` NuttX branch → `nros_platform_link_app`).
+// Phase 238 — compile-time default connect locator for the locator-less
+// `NuttxBoard::run(lambda)` overload. The carrier normally bakes the real
+// locator into the generated entry TU and calls the 2-arg overload; this
+// default only applies if a hand-written entry uses the 1-arg form.
+#ifndef NROS_ENTRY_LOCATOR
+#define NROS_ENTRY_LOCATOR ""
+#endif
+
+class NuttxBoard {
+  public:
+    /// Run the Entry-pkg lifecycle on a NuttX board with an explicit
+    /// connect `locator`. The bootable-ELF carrier
+    /// (`nano_ros_node_register` NuttX branch) bakes the locator into the
+    /// generated entry TU (`configure_file` of
+    /// `cmake/templates/nuttx_entry_main.cpp.in`) because — unlike Zephyr's
+    /// `CONFIG_NET_CONFIG_AUTO_INIT` peer discovery — the QEMU slirp guest
+    /// must dial the host zenoh router explicitly (`tcp/10.0.2.2:<port>`),
+    /// mirroring the Rust `*_entry` pkg's `[…entry] locator = …` bake.
+    /// `locator == ""` falls back to backend discovery.
+    template <typename Lambda> static int32_t run(const char* locator, Lambda&& register_fn) {
+        // Network is up at kernel boot; the weak hook stays a no-op unless a
+        // board/app provides a strong override (mirrors ZephyrBoard).
+        nros_board_network_wait();
+
+#ifdef NROS_NUTTX_ENTRY_DEBUG
+        ::std::printf("[nuttx-cpp] run: locator=%s domain=%d\n", locator,
+                      (int)NROS_ENTRY_DOMAIN_ID);
+#endif
+        // Compile-time domain id. `NROS_ENTRY_DOMAIN_ID` resolves from
+        // `CONFIG_NROS_DOMAIN_ID` (else 0) — same macro ZephyrBoard uses.
+        nros::Result r =
+            nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+#ifdef NROS_NUTTX_ENTRY_DEBUG
+        ::std::printf("[nuttx-cpp] init -> %d\n", (int)r.raw());
+#endif
+        if (!r.ok()) {
+            return static_cast<int32_t>(r.raw());
+        }
+
+        detail::EntryNodeRuntime& runtime = detail::EntryRuntimeHolder<>::runtime;
+        int32_t rc = detail::entry_register(runtime, register_fn);
+#ifdef NROS_NUTTX_ENTRY_DEBUG
+        ::std::printf("[nuttx-cpp] register -> %d; spinning\n", (int)rc);
+#endif
+        if (rc != 0) {
+            nros::shutdown();
+            return rc;
+        }
+
+        nros::Result spin_r = runtime.spin();
+#ifdef NROS_NUTTX_ENTRY_DEBUG
+        ::std::printf("[nuttx-cpp] spin exit -> %d\n", (int)spin_r.raw());
+#endif
+        nros::shutdown();
+        return static_cast<int32_t>(spin_r.raw());
+    }
+
+    /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`
+    /// (default `""`, i.e. backend discovery).
+    template <typename Lambda> static int32_t run(Lambda&& register_fn) {
+        return run(NROS_ENTRY_LOCATOR, static_cast<Lambda&&>(register_fn));
     }
 };
 
