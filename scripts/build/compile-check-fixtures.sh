@@ -118,6 +118,10 @@ CMAKE_FIXTURES=(
     "cpp_robot_entry:examples/templates/multi-node-workspace-cpp"
     "c_mixed_workspace:examples/templates/c-and-cpp-mixed-workspace"
     "pure_c_workspace:examples/templates/pure-c-workspace"
+    # workspace-over-AMENT shadowing: the build links the workspace `std_msgs`
+    # shadow (carrying Marker.msg) over the AMENT one; the test `nm`s the
+    # consumer to prove which won. Needs an AMENT std_msgs in the build env.
+    "shadowing:examples/templates/workspace-shadowing"
 )
 cmake_out="$repo_root/build/cmake-fixtures"
 

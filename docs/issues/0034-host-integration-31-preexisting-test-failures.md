@@ -53,7 +53,7 @@ triage.
 | cpp_multi_node_entry | 1 | CONVERTED — cmake build-fixture `cpp_robot_entry`, test inspects prebuilt (#0034) |
 | phase212_j_launch | 1 | `nros_launch_spawns_components` — **test removed** (`nros launch` unsupported, RFC-0027) |
 | phase212_l9_cmake_fns | 1 | `nano_ros_application_rejects_embedded_deploy` |
-| phase210_f4_shadowing | 1 | `workspace_std_msgs_shadows_ament_in_consumer_binary` |
+| workspace_shadowing (was phase210_f4) | 1 | CONVERTED — cmake build-fixture `shadowing`, test nm's prebuilt consumer (#0034) |
 | phase212_m12_example_shape | 1 | `every_example_leaf_has_package_xml` — **cause known: `78ac799ee`** |
 | macro_one_dep_resolves (was phase212_macro_one_dep) | 1 | CONVERTED — build-stage compile-check fixture + `.compile-ok` stamp (#0034) |
 | stm32f4_rtic_main_macro (was phase216_b) | 1 | `rtic_main_macro_expansion_builds` — CONVERTED to fixture-consuming (#0034 antipattern) |
