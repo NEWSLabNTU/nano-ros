@@ -1,0 +1,22 @@
+# Bringup pkg system descriptor — declarative topology + per-target
+# deploy config (typed variant; RFC-0043).
+
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[[component]]
+pkg = "listener_pkg"
+class = "listener_pkg::Listener"
+name = "listener"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

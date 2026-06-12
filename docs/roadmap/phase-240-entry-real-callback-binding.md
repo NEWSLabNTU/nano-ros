@@ -120,10 +120,17 @@ wave lands).
         ${CMAKE_BINARY_DIR}/nros-metadata.json` through `_nros_entry_invoke_codegen`
         (`NanoRosEntry.cmake`). Node pkgs' `add_subdirectory` must precede the entry
         (metadata must list every component; the entry links them anyway).
-  - [ ] **240.2b-E2E** — a typed `multi-node-workspace-cpp` variant (components
-        expose `Result configure(nros::Node&)` + a header at `include/<pkg>/<Class>.hpp`
-        instead of `register_node(NodeContext&)`); cmake fixture + native two-process
-        E2E running real logic (replaces the `phase235_a` synthesized-counter path).
+  - **240.2b-E2E — typed example + TU generation DONE 2026-06-12**:
+    - [x] `examples/templates/multi-node-workspace-cpp-typed/` — talker/listener
+          components expose `Result configure(nros::Node&)` (binding member
+          callbacks by identity via `component.hpp`) + headers at
+          `include/<pkg>/<Class>.hpp`; the Entry uses `nano_ros_entry(... TYPED)`.
+    - [x] Verified `nros codegen entry --lang cpp --typed --metadata …` against
+          that workspace emits a TU constructing both real components +
+          `NativeBoard::run_components` (no `__nros_component_*`, no `NodeContext`).
+    - [ ] cmake fixture registration (`compile-check-fixtures.sh`) + native
+          two-process runtime E2E (grep `Published`/`Received`) — replaces the
+          `phase235_a` synthesized-counter path. (Needs the C++/zenoh build tier.)
   - [ ] raw↔typed type-name-form unification (240.1 finding) — still open.
 
 ### 240.3 — Carrier + embedded board adapter (NuttX)

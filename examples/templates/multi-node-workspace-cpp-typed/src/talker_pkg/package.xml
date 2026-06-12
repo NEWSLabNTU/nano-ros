@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>talker_pkg</name>
+  <version>0.1.0</version>
+  <description>C++ typed component — publishes std_msgs/Int32 on /chatter from a timer member callback.</description>
+  <maintainer email="TODO@todo.com">TODO</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

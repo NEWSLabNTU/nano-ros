@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- ROS 2 launch schema, verbatim. The typed Entry routes each <node> to
+     its C++ component object on the real executor (RFC-0043). -->
+<launch>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+  <node pkg="listener_pkg" exec="listener" name="listener"/>
+</launch>
