@@ -161,8 +161,9 @@ fn build_or_locate_entry_binary(dir: &Path) -> Result<PathBuf, String> {
             root.join("packages/core/nros-platform-freertos/src"),
         )
         .env(
+            // phase-241 B.2 — canonical platform headers moved to nros-platform-api.
             "NROS_PLATFORM_CFFI_INCLUDE",
-            root.join("packages/core/nros-platform-cffi/include"),
+            root.join("packages/core/nros-platform-api/include"),
         )
         .output()
         .map_err(|e| format!("spawn cargo build: {e}"))?;
