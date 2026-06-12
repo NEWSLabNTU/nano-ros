@@ -110,7 +110,21 @@ Steps (each a commit; CI between the riskier ones):
       *ESP gap: resolved/moot* — ESP builds no cpp examples or cpp-heap fixtures
       (`examples/esp32` + fixtures.toml have no esp cpp), so the heap-container
       compile is never exercised on ESP; the forward won't break it.
-- [ ] **B.2 wave 2 — the forward/rewire (CI-monitored).** Repoint the chokepoints
+- [x] **B.2 wave 2 — the forward/rewire (LANDED on main, 2026-06-12).** Deleted
+      cffi's `platform.h`; moved its `platform_{net,timer,zephyr}.h` siblings to
+      `nros-platform-api/include`. Repointed every consumer to api: the
+      `nros-build-paths` helper, the `NROS_PLATFORM_CFFI_INCLUDE` env (`sdk-env.just`),
+      ~20 cmake/build.rs/toml sites + the shell/Makefile sites the first e2e caught
+      (`scripts/qemu/build-zenoh-pico.sh` was the qemu breaker). **Zero tracked code
+      files reference `cffi/include`.** Validated on branch `run_e2e`:
+      **5/6 cells green** (qemu, esp32, freertos, threadx_linux, threadx_riscv64 full
+      incl. cpp/cyclone/xrce). nuttx red is a **pre-existing main regression** (the
+      `240.6` NuttX-talker migration — undefined `nros_platform_*` are Rust
+      `#[no_mangle]` symbols, header-independent; origin/main fails identically),
+      not this rewire. Local: ABI parity (`c-stub-test`), `posix-c-port`, the 241.A
+      gate, and a `cpp_talker` ELF all clean. Merged ff to main (`62ea551eb`).
+      <details><summary>original wave-2 plan</summary>
+      Repoint the chokepoints
       `nros-build-paths::nros_platform_cffi_include()` + the
       `NROS_PLATFORM_CFFI_INCLUDE` cmake/env var (→ `nros-platform-api/include`),
       plus the literal-path cmake sites (nros-c:137; nros-platform-{posix,freertos,
@@ -129,6 +143,7 @@ Steps (each a commit; CI between the riskier ones):
         `nros_platform_api_include()` helper for the build.rs callers. Irreducibly
         ~20 edits; run as a focused pass with a `run_e2e` dispatch, not a
         session-tail blind push.
+      </details>
 - [ ] **B.3** — retire A: confirm no live C consumer of A's legacy-only surface
       (ns clock / typed mutex / atomics) via grep + the gate; drop
       `nros-c/include/nros/platform.h` + the per-RTOS sub-headers (or reduce them
