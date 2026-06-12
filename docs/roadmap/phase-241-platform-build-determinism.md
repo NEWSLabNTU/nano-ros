@@ -91,6 +91,24 @@ Staged so each step is CI-validated before the next; the 241.A gate + the existi
 > precedence helper (and the 241.A cross tier). B is purely the
 > one-canonical-header collapse.
 
+> **Coupling found in B.1 (2026-06-12): B depends on C's capability home.** The
+> capability macros are NOT centralized in A's `platform.h` — they are *produced*
+> by A's compile-time dispatch to the per-RTOS sub-headers (`posix.h` `#define`s
+> `NROS_PLATFORM_HAS_MALLOC`/`HAS_ATOMICS`/`HAS_MUTEX`; `baremetal.h` `#define`s
+> `NROS_NO_DYNAMIC_MEMORY`; etc.). So "fold the capability macros into the one
+> canonical header" can't be answered without deciding where capabilities *come
+> from*. Two orders:
+> - **(rec) Do 241.C's capability-macro home first** (board.toml `[board.capabilities]`
+>   → generated `-D`s), then the canonical header simply *consumes* the generated
+>   `NROS_PLATFORM_HAS_*` and the per-RTOS sub-headers + their `#define`s are
+>   retired. Clean: the collapse lands on a settled capability source.
+> - **(interim) Canonical header keeps A's dispatch-to-sub-headers** purely for the
+>   capability `#define`s while B's ABI is the body — a transitional two-mechanism
+>   header, removed when C lands. Faster to the single file, but carries the
+>   dispatch lore B was meant to kill.
+> Recommendation: reorder to **C before B** (or do C's macro-home slice first),
+> since B's value (one clean header) is undercut if it must re-host A's dispatch.
+
 ### 241.C — Capability-driven config SSoT (RFC-0042 D2)
 - [ ] Add `[board.capabilities]` to `nros-board.toml` (`heap`, `atomics`,
       `threads`, `libc`); populate every in-tree board.
