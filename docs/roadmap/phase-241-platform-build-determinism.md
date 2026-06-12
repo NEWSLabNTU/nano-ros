@@ -107,9 +107,9 @@ Steps (each a commit; CI between the riskier ones):
       ESP stay heap-opt-in via the board.toml `-D` (C.2). Validated host g++:
       POSIX/ZEPHYR/FREERTOS heap-container compile OK; bare-metal no-`D` FAIL
       (correct #38 gate); bare-metal +`D` OK. Still additive (api not on any `-I`).
-      *ESP gap:* ESP maps to `NROS_PLATFORM_BAREMETAL` but has a heap — it needs the
-      board.toml `-D` wired (C.2 extension) before the forward, OR confirmation it
-      builds no cpp-heap fixtures.
+      *ESP gap: resolved/moot* — ESP builds no cpp examples or cpp-heap fixtures
+      (`examples/esp32` + fixtures.toml have no esp cpp), so the heap-container
+      compile is never exercised on ESP; the forward won't break it.
 - [ ] **B.2 wave 2 — the forward/rewire (CI-monitored).** Repoint the chokepoints
       `nros-build-paths::nros_platform_cffi_include()` + the
       `NROS_PLATFORM_CFFI_INCLUDE` cmake/env var (→ `nros-platform-api/include`),
@@ -118,8 +118,17 @@ Steps (each a commit; CI between the riskier ones):
       CMakeLists; zephyr/CMakeLists:51 + nros_cargo_build.cmake:99/287). **Delete**
       `nros-platform-cffi/include/nros/platform.h`. (Prefer the include-dir rewire
       over a relative-`#include` forward — the latter is fragile under the
-      build-zenoh copy-out.) → CI `run_e2e`; xrce/cyclone/esp are the
-      cell-reddening risks; iterate per red cell.
+      build-zenoh copy-out.) → CI `run_e2e`; xrce/cyclone are the cell-reddening
+      risks; iterate per red cell.
+      - **Mechanics note:** no single chokepoint flips it. `nros_platform_cffi_include()`
+        returns one path that consumers ALSO use for cffi's other headers
+        (`platform_net.h`, `platform_timer.h`), so each of the ~20 consumers must
+        *add* `nros-platform-api/include` AHEAD of `nros-platform-cffi/include`
+        (then `<nros/platform.h>` resolves to api's; cffi's siblings still found),
+        and cffi's `platform.h` is deleted. Add a sibling
+        `nros_platform_api_include()` helper for the build.rs callers. Irreducibly
+        ~20 edits; run as a focused pass with a `run_e2e` dispatch, not a
+        session-tail blind push.
 - [ ] **B.3** — retire A: confirm no live C consumer of A's legacy-only surface
       (ns clock / typed mutex / atomics) via grep + the gate; drop
       `nros-c/include/nros/platform.h` + the per-RTOS sub-headers (or reduce them
