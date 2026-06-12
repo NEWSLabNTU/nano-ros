@@ -47,13 +47,17 @@ negative cmake-CONFIGURE-fail test (must fail) → kept as a documented exceptio
 ## Remaining offenders, by wave
 
 **Wave A — native cmake/codegen smoke** (fastest; cmake/compile-check fixtures):
-`phase212_l9_cmake_fns` (cmake-configure cluster), `platform` (cmake/codegen),
-`phase215_e_board_import`.
+(Wave A native cmake/codegen DONE.)
 
 **Reclassified (scan refined):** `phase212_o3/o4/o5`, `phase212_n_freertos_run_plan_runtime`,
 and all of `phase212_h4_threadx` are `#[ignore]`'d gates (inert, not live). `phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) and
 `cmake_platform_matrix` are NEGATIVE — the compile/configure MUST fail with exact
 text → documented exceptions (fast-fail, can't be prebuilt).
+
+**Wave A COMPLETE.** Also: `platform` is a FALSE POSITIVE — it spawns
+`west --version`/`rustup target list`/`qemu --version` (availability probes), NOT
+compilation. `phase215_e_board_import` is a `west build` (Zephyr/FVP) →
+toolchain-gated, reclassified to Wave C (skips when ZEPHYR_BASE absent).
 
 **Wave A also converted:** `phase212_d_workspace_metadata`'s lone cmake test →
 `metadata_cpp` cmake fixture. `phase212_l9_cmake_fns` → `cmake_node_register_metadata`
