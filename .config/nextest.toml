@@ -295,7 +295,6 @@ filter = """
   binary(native_orchestration_misuse) \
   or binary(native_main_macro_misuse) \
   or binary(board_agnostic_run_plan) \
-  or binary(pkg_index) \
   or binary(nav2_compat) \
   or binary(threadx_corrosion_bringup) \
 """

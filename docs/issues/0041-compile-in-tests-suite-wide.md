@@ -57,6 +57,13 @@ are un-`#[ignore]`d + renamed to behavioural names and now run live:
 `threadx_corrosion_bringup` (H.4, 3 fns). They compile cargo/cmake at run time, so
 they're added to the slow-compile `nextest.toml` override as STOPGAP exceptions
 (alongside the `*_misuse` cases) pending build-stage-fixture conversion.
+**`pkg_index` (O.4) CONVERTED (2026-06-13):** the `o4_pkg_index` BUILD_FIXTURE
+(`compile-check-fixtures.sh` `stage_and_build` → `cargo build -p demo_entry`)
+moves the compile to the build stage; `pkg_index.rs` now `require_compile_check`s
+the stamp (build succeeded = package.xml pkg-index resolved `demo_bringup`) +
+inspects the prebuilt `node_{a,b,c}` rlibs — runs in ~0s, no runtime compile.
+Removed `binary(pkg_index)` from the slow-compile override. (`board_agnostic_run_plan`
+O.3 + `nav2_compat` O.5 + `threadx_corrosion_bringup` H.4 remain STOPGAP.)
 `freertos_run_plan_runtime` (O.1) stays `#[ignore]`d on issue 0045 (FreeRTOS
 Entry-pkg `staticlib` panic-handler link path — NOT a compile-in-test concern).
 `phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) and

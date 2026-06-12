@@ -66,6 +66,10 @@ post_stage() {
 # the build stage; the test runs the prebuilt binary.
 BUILD_FIXTURES=(
     "orch_tiers_multi:packages/testing/nros-tests/fixtures/orchestration_tiers_native"
+    # issue-0041 — O.4 pkg-index walk: `cargo build -p demo_entry` proves the
+    # macro's package.xml pkg-index discovered `demo_bringup` (no Cargo.toml).
+    # The test inspects the prebuilt node_{a,b,c} rlibs (pkg_index.rs).
+    "o4_pkg_index:packages/testing/nros-tests/fixtures/o4_pkg_index_workspace"
     "orch_tiers_single:packages/testing/nros-tests/fixtures/orchestration_tiers_native"
 )
 
