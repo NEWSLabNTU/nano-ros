@@ -5,15 +5,15 @@ QEMU ARM virt, the same way the NuttX **Rust** examples already do. The compile
 blocker that gated this is gone; what remains is producing a bootable ELF from the
 C/C++ build.
 
-**Status.** 238.A + 238.B + 238.C (C++ pub/sub pair, E2E observability, C path)
-**DONE** 2026-06-12 — `nuttx_{cpp,c}_talker` + `nuttx_{cpp,c}_listener` boot as
-bootable kernel ELFs in QEMU ARM virt, connect to a host zenoh router over
-slirp, and exchange `/chatter` `std_msgs/msg/Int32`: talker prints
-`Published: N`, listener prints `Waiting for messages` + `Received: N` with
-matching values (C and C++). `rtos_e2e` `(Nuttx, {Cpp,C}, Pubsub)` now
-satisfiable. Service/action (both languages) remain deferred (interpreter has
-no callback bodies — see §238.B "Deferred"). Off the critical path (NuttX is a
-secondary platform).
+**Status.** 238.A–D (C++ pub/sub pair, E2E observability, C path, service)
+**DONE** 2026-06-12 — `nuttx_{cpp,c}_{talker,listener,service_server,service_client}`
+boot as bootable kernel ELFs in QEMU ARM virt, connect to a host zenoh router
+over slirp, and exchange data: pub/sub `/chatter` `std_msgs/msg/Int32` (talker
+`Published: N`, listener `Waiting for messages` + `Received: N`) and the
+`/add_two_ints` service (server `Waiting for requests`, client `Response: <sum>`)
+— C and C++. `rtos_e2e` `(Nuttx, {Cpp,C}, {Pubsub,Service})` now satisfiable.
+**Action** remains deferred (next wave — §238.D "Deferred"). Off the critical
+path (NuttX is a secondary platform).
 
 **Depends on.** `nros-board-nuttx-qemu-arm` (kernel staging + link), the NuttX
 submodule (`nuttx-12.13.0-4`), `cmake/NanoRosNodeRegister.cmake`, the rtos_e2e
@@ -269,11 +269,42 @@ NB: a stale cargo build (the `nuttx_ffi_build` change not yet recompiled into
 the FFI build.rs on the first pass) silently produced a non-receiving listener;
 a clean rebuild fixed it — `just nuttx build-fixtures` builds from scratch.
 
+## 238.D — service E2E (synthesized, DONE 2026-06-12)
+
+The `EntryNodeRuntime` recorded but never constructed service entities. Extended
+it to drive a synthesized service round-trip (same philosophy as the synthesized
+`Int32` publisher — the tests string-grep `Waiting for requests` / `Response:`
+with no value assertion, so synthesized responses pass; real handler bodies stay
+the 236.D gate):
+
+1. **Storage** — service-server fits the inline `Entity::storage`
+   (`NROS_SERVICE_SERVER_SIZE` ≤ slot); the service-client context doesn't, so it
+   borrows from a small `svc_client_pool_` (`Entity::pool_index`). `entity_store`
+   returns the right pointer.
+2. **`do_create_entity`** — new `ServiceServer` (→ `nros_cpp_service_server_create`)
+   and `ServiceClient` (→ `nros_cpp_service_client_create`, pool slot, 1 Hz send
+   cadence) cases.
+3. **`spin()`** — prints `Waiting for requests` once if a server exists. Server:
+   drains requests (`try_recv_raw` → seq), decodes the `AddTwoInts` `{a,b}`,
+   replies `{sum}` (`send_reply_raw`). Client: sends a synthesized request each
+   period, drains replies, prints `Response: <sum>` (the rtos_e2e grep). The
+   reply IS the real `a+b` (the synthesized server computes it) even though the
+   tests don't check the value.
+
+**Proof.** `nuttx_{cpp,c}_service_server` + `…_client` boot, exchange over the
+`/add_two_ints` service: server `Waiting for requests`, client `Response: 1, 2,
+3, …` (= `a+1` with `a` the request counter — correct sums). C++ pair: 41
+responses; C pair: 49. `rtos_e2e` `(Nuttx, {Cpp,C}, Service)` now satisfiable.
+The C path drives the same C++ runtime via the mixed build, so it works
+identically.
+
 ### Deferred (follow-ups)
 
-- **Service / action (C and C++).** The `EntryNodeRuntime` interpreter only synthesizes
-  timer-driven `std_msgs/Int32` pub/sub; services/actions are *recorded* (no
-  hard error) but never executed. True service/action E2E needs the imperative
-  entry shape (hand-written `nros_app_main` with real logic, like the native
-  C/C++ examples), not the declarative carrier. (The C path uses the same C++
-  interpreter via the mixed build, so it inherits the same limit.)
+- **Action (C and C++).** The `EntryNodeRuntime` does not yet construct action
+  entities (the 5-channel send_goal / cancel / get_result + feedback / status
+  dance, with much larger storage). The synthesized-responder approach extends to
+  it (the FFI exists), but it's the next wave. Service is done (238.D).
+- **Real callback bodies (236.D).** Pub/sub publishers + service replies are
+  *synthesized* (counter / `a+b`), not user handler bodies. Real component
+  instantiation + callback binding is the 236.D gate (also blocks ASI). The C
+  path inherits the same limit (it uses the C++ interpreter via the mixed build).

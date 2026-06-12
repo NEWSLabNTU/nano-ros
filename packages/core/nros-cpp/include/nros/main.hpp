@@ -114,6 +114,33 @@ inline uint32_t entry_parse_u32(const char* s) {
     return v;
 }
 
+// Phase 238.D — little-endian int64 (de)serialization for the synthesized
+// service request/reply CDR bodies (AddTwoInts request `{a,b}`, reply `{sum}`),
+// laid out after the 4-byte CDR encapsulation header. Bounds-checked reads.
+inline int64_t entry_read_i64_le(const uint8_t* buf, size_t len, size_t off) {
+    if (off + 8 > len) return 0;
+    uint64_t v = 0;
+    for (size_t i = 0; i < 8; ++i) {
+        v |= static_cast<uint64_t>(buf[off + i]) << (8 * i);
+    }
+    return static_cast<int64_t>(v);
+}
+
+inline void entry_write_i64_le(uint8_t* buf, size_t off, int64_t value) {
+    uint64_t v = static_cast<uint64_t>(value);
+    for (size_t i = 0; i < 8; ++i) {
+        buf[off + i] = static_cast<uint8_t>((v >> (8 * i)) & 0xff);
+    }
+}
+
+// CDR_LE encapsulation header (matches `fire_publisher` + nros-c cdr.rs).
+inline void entry_write_cdr_header(uint8_t* buf) {
+    buf[0] = 0x00;
+    buf[1] = 0x01;
+    buf[2] = 0x00;
+    buf[3] = 0x00;
+}
+
 inline nros_cpp_qos_t entry_default_ffi_qos() {
     ::nros::QoS q = ::nros::QoS::default_profile();
     nros_cpp_qos_t f;
@@ -196,6 +223,7 @@ class EntryNodeRuntime {
     void reset() {
         node_count_ = 0;
         entity_count_ = 0;
+        svc_client_count_ = 0;
         for (size_t i = 0; i < NROS_ENTRY_MAX_NODES; ++i) {
             nodes_[i].used = false;
         }
@@ -257,6 +285,15 @@ class EntryNodeRuntime {
                 break;
             }
         }
+        // Phase 238.D — service server readiness banner (rtos_e2e gates the
+        // client on "Waiting for requests" before sending calls).
+        for (size_t i = 0; i < entity_count_; ++i) {
+            const Entity& e = entities_[i];
+            if (e.used && e.kind == ::nros::NodeEntityKind::ServiceServer) {
+                ::std::printf("Waiting for requests\n");
+                break;
+            }
+        }
 
         ::nros::Result last = ::nros::Result::success();
         uint8_t drain[512];
@@ -305,6 +342,55 @@ class EntryNodeRuntime {
                             value = static_cast<int32_t>(e.recv_count);
                         }
                         ::std::printf("Received: %d\n", static_cast<int>(value));
+                    }
+                } else if (e.kind == ::nros::NodeEntityKind::ServiceServer) {
+                    // Phase 238.D — synthesized service server. Drain pending
+                    // requests and reply with an AddTwoInts response (decode
+                    // `{a, b}`, reply `{sum}`). The reply payload is opaque to
+                    // the transport (raw bytes keyed by service name); the
+                    // synthesized client below counts replies, not values.
+                    for (int n = 0; n < 16; ++n) {
+                        size_t len = 0;
+                        int64_t seq = 0;
+                        nros_cpp_ret_t r = nros_cpp_service_server_try_recv_raw(
+                            entity_store(e), drain, sizeof(drain), &len, &seq);
+                        if (r != 0 || len == 0) break;
+                        const int64_t a = entry_read_i64_le(drain, len, 4);
+                        const int64_t b = entry_read_i64_le(drain, len, 12);
+                        uint8_t reply[12];
+                        entry_write_cdr_header(reply);
+                        entry_write_i64_le(reply, 4, a + b);
+                        nros_cpp_service_server_send_reply_raw(entity_store(e), seq, reply,
+                                                               sizeof(reply));
+                    }
+                } else if (e.kind == ::nros::NodeEntityKind::ServiceClient &&
+                           e.publish_period_ms > 0) {
+                    // Phase 238.D — synthesized service client. Send a request
+                    // each period (the examples declare no client timer — the
+                    // runtime owns the cadence), then drain replies + print
+                    // `Response: N` (the rtos_e2e success grep).
+                    if (now >= e.next_fire_ns) {
+                        const int64_t a = e.counter++;
+                        uint8_t req[20];
+                        entry_write_cdr_header(req);
+                        entry_write_i64_le(req, 4, a);
+                        entry_write_i64_le(req, 12, 1); // b = 1
+                        nros_cpp_service_client_send_request(entity_store(e), req, sizeof(req));
+                        const uint64_t period_ns =
+                            static_cast<uint64_t>(e.publish_period_ms) * 1000000ull;
+                        e.next_fire_ns += period_ns;
+                        if (e.next_fire_ns <= now) {
+                            e.next_fire_ns = now + period_ns;
+                        }
+                    }
+                    for (int n = 0; n < 16; ++n) {
+                        size_t len = 0;
+                        nros_cpp_ret_t r = nros_cpp_service_client_try_recv_reply(
+                            entity_store(e), drain, sizeof(drain), &len);
+                        if (r != 0 || len == 0) break;
+                        ++e.recv_count;
+                        const int64_t sum = entry_read_i64_le(drain, len, 4);
+                        ::std::printf("Response: %lld\n", static_cast<long long>(sum));
                     }
                 }
             }
@@ -356,9 +442,14 @@ class EntryNodeRuntime {
         uint32_t period_ms = 0;         // Timer: declared period
         int32_t publish_period_ms = -1; // Publisher: bound timer period, -1 = none
         bool reads = false;             // Subscription: drained in the poll loop
-        uint64_t next_fire_ns = 0;      // Publisher: next synthesized publish
-        int32_t counter = 0;            // Publisher: synthesized Int32 value
-        uint32_t recv_count = 0;        // Subscription: drained-sample count
+        uint64_t next_fire_ns = 0;      // Publisher / service-client: next synth fire
+        int32_t counter = 0;            // Publisher / service-client: synthesized value
+        uint32_t recv_count = 0;        // Subscription / service-client: receipt count
+        // Phase 238.D — service-client storage doesn't fit the inline slot
+        // (NROS_SERVICE_CLIENT_SIZE ≫ ENTITY_STORAGE); a ServiceClient borrows a
+        // slot from `svc_client_pool_` and records its index here (-1 = uses the
+        // inline `storage` below: pub/sub/timer/service-server all fit).
+        int32_t pool_index = -1;
         alignas(8) uint8_t storage[ENTITY_STORAGE];
     };
 
@@ -424,6 +515,7 @@ class EntryNodeRuntime {
         e.publish_period_ms = -1;
         e.counter = 0;
         e.recv_count = 0;
+        e.pool_index = -1;
 
         nros_cpp_qos_t qos = entry_default_ffi_qos();
         nros_cpp_ret_t ret = 0;
@@ -447,11 +539,33 @@ class EntryNodeRuntime {
             // `source_name` carries the period-ms literal ("1000").
             e.period_ms = entry_parse_u32(e.topic);
             break;
+        case ::nros::NodeEntityKind::ServiceServer:
+            // Phase 238.D — synthesized service server. Fits the inline slot
+            // (NROS_SERVICE_SERVER_SIZE ≤ ENTITY_STORAGE). The spin loop drains
+            // requests and replies with a synthesized AddTwoInts response.
+            ret = nros_cpp_service_server_create(node->node.ffi_handle(), e.topic, e.type_name,
+                                                 e.type_hash, qos, e.storage);
+            break;
+        case ::nros::NodeEntityKind::ServiceClient: {
+            // Phase 238.D — synthesized service client. Borrows an oversized
+            // pool slot; the spin loop sends a synthesized request each period
+            // and prints `Response:` per reply.
+            if (svc_client_count_ >= MAX_SVC_CLIENTS) {
+                ret = static_cast<nros_cpp_ret_t>(::nros::ErrorCode::Full);
+                break;
+            }
+            e.pool_index = static_cast<int32_t>(svc_client_count_++);
+            ret = nros_cpp_service_client_create(node->node.ffi_handle(), e.topic, e.type_name,
+                                                 e.type_hash, qos, entity_store(e));
+            // Drive synthesized requests at 1 Hz (the examples declare no timer
+            // for the client — the runtime owns the call cadence).
+            e.publish_period_ms = 1000;
+            break;
+        }
         default:
-            // Services / clients / actions / parameters are not yet
-            // constructed by the native runtime; recording them keeps the
-            // register sequence intact (no hard error) so a mixed Entry
-            // pkg still boots its pub/sub topology.
+            // Actions / parameters are not yet constructed by the runtime;
+            // recording them keeps the register sequence intact (no hard error)
+            // so a mixed Entry pkg still boots its pub/sub + service topology.
             break;
         }
         if (ret != 0) return static_cast<int32_t>(ret);
@@ -518,10 +632,26 @@ class EntryNodeRuntime {
         }
     }
 
+    // Phase 238.D — storage accessor. Service clients borrow an oversized slot
+    // from `svc_client_pool_` (their FFI context doesn't fit `Entity::storage`);
+    // everything else uses the inline slot.
+    void* entity_store(Entity& e) {
+        if (e.pool_index >= 0 && static_cast<size_t>(e.pool_index) < MAX_SVC_CLIENTS) {
+            return svc_client_pool_[e.pool_index];
+        }
+        return e.storage;
+    }
+
     NodeSlot nodes_[NROS_ENTRY_MAX_NODES];
     Entity entities_[NROS_ENTRY_MAX_ENTITIES];
     size_t node_count_ = 0;
     size_t entity_count_ = 0;
+    // Phase 238.D — oversized storage pool for synthesized service clients
+    // (NROS_SERVICE_CLIENT_SIZE ≫ ENTITY_STORAGE). One slot per declared client;
+    // the canonical examples declare a single client, so a small cap suffices.
+    static constexpr size_t MAX_SVC_CLIENTS = 2;
+    alignas(8) uint8_t svc_client_pool_[MAX_SVC_CLIENTS][NROS_SERVICE_CLIENT_SIZE];
+    size_t svc_client_count_ = 0;
 };
 
 /// Source-compat alias for the Phase 235.A name. The runtime is shared
