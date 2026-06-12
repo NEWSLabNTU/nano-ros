@@ -299,7 +299,6 @@ filter = """
   or binary(cpp_multi_node_entry) \
   or binary(phase212_n12_cpp_api_drift) \
   or binary(phase223_c_mixed_workspace) \
-  or binary(phase235_a_cpp_entry_runtime)
 """
 slow-timeout = { period = "120s", terminate-after = 4 }
 

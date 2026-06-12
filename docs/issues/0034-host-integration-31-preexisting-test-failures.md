@@ -50,7 +50,7 @@ triage.
 | phase212_n12_cpp_api_drift | 2 | `declared_node_typed_helpers_compile`, `rclcpp_node_options_and_component_factory_compile` |
 | native_entry_poc_boot (was phase212_n_entry_poc_runs) | 2 | CONVERTED to fixture-consuming (#0034) — entry-poc is now a build-fixture |
 | phase223_c_mixed_workspace | 2 | `c_node_pkg_links_into_cpp_entry_template`, `c_node_pkgs_link_into_c_entry_template` |
-| cpp_multi_node_entry | 1 | `multi_node_workspace_cpp_configures_and_builds` |
+| cpp_multi_node_entry | 1 | CONVERTED — cmake build-fixture `cpp_robot_entry`, test inspects prebuilt (#0034) |
 | phase212_j_launch | 1 | `nros_launch_spawns_components` — **test removed** (`nros launch` unsupported, RFC-0027) |
 | phase212_l9_cmake_fns | 1 | `nano_ros_application_rejects_embedded_deploy` |
 | phase210_f4_shadowing | 1 | `workspace_std_msgs_shadows_ament_in_consumer_binary` |
@@ -58,7 +58,7 @@ triage.
 | macro_one_dep_resolves (was phase212_macro_one_dep) | 1 | CONVERTED — build-stage compile-check fixture + `.compile-ok` stamp (#0034) |
 | stm32f4_rtic_main_macro (was phase216_b) | 1 | `rtic_main_macro_expansion_builds` — CONVERTED to fixture-consuming (#0034 antipattern) |
 | phase216_c_embassy_main_macro_expansion | 1 | `embassy_main_macro_expansion_compiles` |
-| phase235_a_cpp_entry_runtime | 1 | `cpp_entry_runtime_publishes_live_samples` |
+| cpp_entry_runtime (was phase235_a) | 1 | CONVERTED — runs the prebuilt `cpp_robot_entry` fixture (shares cpp_multi_node's build) |
 | zenoh_archive_symbols | 1 | `zenoh_archive_wrapper_impl_parity` |
 | zenoh_header_parity | 1 | `posix_canonical_header_matches_link_policy` |
 | zpico_build_matrix | 1 | `zpico_posix_archive_carries_link_feature_symbols` |

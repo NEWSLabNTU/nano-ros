@@ -764,6 +764,22 @@ pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
     require_prebuilt_binary(&bin)
 }
 
+/// Resolve a file inside a build-stage **cmake** fixture's persistent build dir
+/// (issue 0034). `compile-check-fixtures.sh` cmake-configures + builds a C/C++
+/// template into `build/cmake-fixtures/<id>/`, keeping generated TUs / link
+/// sidecars / depfiles + the produced executable so a test can inspect / run /
+/// `nm` them instead of running cmake at run time. Tier-aware (the cmake build
+/// is skipped when cmake or a `codegen entry`-capable `nros` is absent → the
+/// fixture file is missing → `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard
+/// fail in the full tier).
+pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
+    let p = project_root()
+        .join("build/cmake-fixtures")
+        .join(id)
+        .join(rel);
+    require_prebuilt_binary(&p)
+}
+
 /// Resolve the prebuilt `entry-poc` fixture (cached). The
 /// `examples/native/rust/entry-poc` Entry pkg (`nros::main!()` → native
 /// `BoardEntry::run`) is built by `just native build-fixtures` /

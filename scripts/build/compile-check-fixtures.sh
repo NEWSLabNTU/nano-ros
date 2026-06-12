@@ -108,11 +108,52 @@ stage_and_build() {
     echo "   built $staged/target/debug/demo_entry"
 }
 
+# cmake fixtures (id : template-dir relative to repo). Configure + build a C/C++
+# template into a PERSISTENT build dir (build/cmake-fixtures/<id>) so the test
+# can inspect generated TUs / link sidecars / depfiles AND run/`nm` the produced
+# executable — instead of running cmake at test time (issue 0034). The codegen
+# step shells the `nros` CLI; the build is skipped (no stamp → test skips/fails
+# per tier) when cmake or a `codegen entry`-capable `nros` is unavailable.
+CMAKE_FIXTURES=(
+    "cpp_robot_entry:examples/templates/multi-node-workspace-cpp"
+)
+cmake_out="$repo_root/build/cmake-fixtures"
+
+cmake_fixture_prereqs_ok() {
+    command -v cmake >/dev/null 2>&1 || { echo "cmake-fixtures: cmake absent — skipping" >&2; return 1; }
+    local nb="${NROS_CLI:-$(command -v nros || true)}"
+    [ -n "$nb" ] || { echo "cmake-fixtures: nros CLI absent — skipping" >&2; return 1; }
+    "$nb" codegen entry --help >/dev/null 2>&1 || {
+        echo "cmake-fixtures: nros lacks 'codegen entry' — skipping" >&2; return 1; }
+    NROS_CLI_BIN="$nb"
+    return 0
+}
+
+build_cmake_fixture() {
+    local id="$1" src="$2"
+    local bld="$cmake_out/$id"
+    [ -d "$repo_root/$src" ] || { echo "cmake-fixtures: template missing: $src" >&2; return 2; }
+    echo "== cmake-fixture: $id =="
+    rm -rf "$bld"
+    mkdir -p "$bld"
+    cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN"
+    cmake --build "$bld" -j
+    echo "   built $bld"
+}
+
 for entry in "${COMPILE_CHECK_FIXTURES[@]}"; do
     stage_and_check "${entry%%:*}" "${entry#*:}"
 done
 for entry in "${BUILD_FIXTURES[@]}"; do
     stage_and_build "${entry%%:*}" "${entry#*:}"
 done
+cmake_n=0
+if cmake_fixture_prereqs_ok; then
+    mkdir -p "$cmake_out"
+    for entry in "${CMAKE_FIXTURES[@]}"; do
+        build_cmake_fixture "${entry%%:*}" "${entry#*:}"
+        cmake_n=$((cmake_n + 1))
+    done
+fi
 
-echo "compile-check fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]})."
+echo "fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]} cmake=$cmake_n)."
