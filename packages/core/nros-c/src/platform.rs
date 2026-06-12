@@ -15,20 +15,18 @@
 // FFI Declarations (for no_std)
 // ============================================================================
 
+// phase-243 — the no_std time/sleep path is built on the canonical platform ABI's
+// monotonic µs clock (`nros-platform-api`), not the retired A-only ns symbols.
+// Atomics no longer cross the FFI at all — they use `core::sync::atomic` on both
+// std and no_std (see below).
 // cbindgen:ignore
 #[cfg(not(feature = "std"))]
 unsafe extern "C" {
-    /// Get current monotonic time in nanoseconds.
-    pub fn nros_platform_time_ns() -> u64;
+    /// Monotonic microseconds since a platform-defined epoch.
+    fn nros_platform_clock_us() -> u64;
 
-    /// Sleep for the specified duration in nanoseconds.
-    pub fn nros_platform_sleep_ns(ns: u64);
-
-    /// Atomically store a boolean value with release semantics.
-    pub fn nros_platform_atomic_store_bool(ptr: *mut bool, value: bool);
-
-    /// Atomically load a boolean value with acquire semantics.
-    pub fn nros_platform_atomic_load_bool(ptr: *const bool) -> bool;
+    /// Sleep at least `us` microseconds.
+    fn nros_platform_sleep_us(us: usize);
 }
 
 // ============================================================================
@@ -50,9 +48,14 @@ pub fn get_time_ns() -> u64 {
 }
 
 /// Get current monotonic time in nanoseconds (no_std version).
+///
+/// phase-243: derived from the canonical platform µs clock (`clock_us * 1000`).
+/// The callers are ms-scale spins/deadlines (executor/service/action), so µs
+/// granularity is ample; add a dedicated `clock_ns` to the ABI if ns is ever
+/// needed rather than resurrecting the A ns-clock.
 #[cfg(not(feature = "std"))]
 pub fn get_time_ns() -> u64 {
-    unsafe { nros_platform_time_ns() }
+    unsafe { nros_platform_clock_us().wrapping_mul(1000) }
 }
 
 /// Get system time in nanoseconds since Unix epoch.
@@ -92,9 +95,11 @@ pub fn sleep_ns(ns: u64) {
 }
 
 /// Sleep for the specified duration in nanoseconds (no_std version).
+///
+/// phase-243: forwarded to the canonical platform µs sleep (`sleep_us(ns/1000)`).
 #[cfg(not(feature = "std"))]
 pub fn sleep_ns(ns: u64) {
-    unsafe { nros_platform_sleep_ns(ns) }
+    unsafe { nros_platform_sleep_us((ns / 1000) as usize) }
 }
 
 // ============================================================================
@@ -103,42 +108,32 @@ pub fn sleep_ns(ns: u64) {
 
 /// Atomically store a boolean value with release semantics.
 ///
-/// For `std` builds, uses `std::sync::atomic`.
-/// For `no_std` builds, calls the C platform function.
-#[cfg(feature = "std")]
+/// phase-243: `core::sync::atomic` on BOTH std and no_std (was an FFI call to the
+/// A-only `nros_platform_atomic_store_bool` on no_std). A naturally-aligned
+/// `AtomicBool` store is lock-free on every target nros builds.
+///
+/// # Safety
+/// `ptr` must be valid + properly aligned for the access.
 pub fn atomic_store_bool(ptr: *mut bool, value: bool) {
     use core::sync::atomic::{AtomicBool, Ordering};
-    // Safety: caller must ensure ptr is valid
     unsafe {
         let atomic_ptr = ptr as *const AtomicBool;
         (*atomic_ptr).store(value, Ordering::Release);
     }
 }
 
-/// Atomically store a boolean value (no_std version).
-#[cfg(not(feature = "std"))]
-pub fn atomic_store_bool(ptr: *mut bool, value: bool) {
-    unsafe { nros_platform_atomic_store_bool(ptr, value) }
-}
-
 /// Atomically load a boolean value with acquire semantics.
 ///
-/// For `std` builds, uses `std::sync::atomic`.
-/// For `no_std` builds, calls the C platform function.
-#[cfg(feature = "std")]
+/// phase-243: `core::sync::atomic` on BOTH std and no_std.
+///
+/// # Safety
+/// `ptr` must be valid + properly aligned for the access.
 pub fn atomic_load_bool(ptr: *const bool) -> bool {
     use core::sync::atomic::{AtomicBool, Ordering};
-    // Safety: caller must ensure ptr is valid
     unsafe {
         let atomic_ptr = ptr as *const AtomicBool;
         (*atomic_ptr).load(Ordering::Acquire)
     }
-}
-
-/// Atomically load a boolean value (no_std version).
-#[cfg(not(feature = "std"))]
-pub fn atomic_load_bool(ptr: *const bool) -> bool {
-    unsafe { nros_platform_atomic_load_bool(ptr) }
 }
 
 // ============================================================================
