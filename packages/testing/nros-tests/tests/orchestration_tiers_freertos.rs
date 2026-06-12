@@ -1,44 +1,21 @@
-//! Phase 228.E.2 — multi-tier FreeRTOS `run_tiers` build + QEMU-boot E2E.
+//! Multi-tier `nros::main!()` on FreeRTOS QEMU (mps2-an385) — `run_tiers`
+//! executes on device (Phase 228.G).
 //!
-//! Stages the `orchestration_tiers_freertos` fixture (an `nros::main!(launch=…)`
-//! Entry pkg with `deploy = "freertos"` + a 2-tier `system.toml`), rewrites
-//! `@NANO_ROS_ROOT@`, `cargo build`s for `thumbv7m-none-eabi`, then boots the
-//! firmware on QEMU (mps2-an385).
+//! The fixture's `system.toml` declares `[tiers.*]`, so the macro emits
+//! `<Mps2An385>::run_tiers(TIERS, run_plan)`. Booting the firmware proves the
+//! emit links with the kernel and the run_tiers path runs on device (the
+//! `(multi-tier)` banner + network bringup). A second test brings up a host
+//! zenohd reachable over slirp and best-effort confirms the connected per-tier
+//! run.
 //!
-//! Because the system declares `[tiers.*]`, the macro emits
-//! `<Mps2An385>::run_tiers(TIERS, run_plan)` (228.G) which routes to the
-//! FreeRTOS per-tier entry (228.E.2). The build proves the
-//! macro→run_tiers→kernel-link path; the QEMU boot proves `run_tiers_entry`
-//! executes on the device — it prints the unique `(multi-tier)` banner, brings
-//! up the network, then reaches the boot-tier `Executor::open` (which fails on
-//! the absent router, exactly the entry-poc/native-G.6 lifecycle proof — no
-//! zenohd needed).
-//!
-//! A second test brings up a host zenohd on `0.0.0.0` and boots the firmware
-//! over QEMU user/slirp networking (guest reaches the host at `10.0.2.2:7447`,
-//! NO TAP). With the router live the firmware connects past `Executor::open`
-//! and sets up both tiers over the one session — the on-device complement to
-//! the native router run. The banner + network bringup are hard-asserted; the
-//! connected-run line is best-effort (slirp/virtual-clock timing).
-//!
-//! Skips cleanly when the FreeRTOS bring-up prerequisites are missing.
-//!
-//! Run with: `cargo test -p nros-tests --test orchestration_tiers_freertos`
+//! The thumbv7m firmware cross build runs in the **build stage** — the
+//! `orch_tiers_freertos` cross-build fixture (`compile-check-fixtures.sh`, run
+//! by `build-test-fixtures`) builds `demo_entry`. These tests boot the prebuilt
+//! ELF in QEMU instead of running cargo at run time (issue 0034 / 0041). Fixture
+//! absent (thumbv7m / arm-gcc / FreeRTOS+lwIP not provisioned) → tier-aware
+//! skip/fail via the resolver.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-    time::Duration,
-};
-
-fn workspace_root() -> PathBuf {
-    nros_tests::project_root()
-}
-
-fn fixture_src() -> PathBuf {
-    workspace_root().join("packages/testing/nros-tests/fixtures/orchestration_tiers_freertos")
-}
+use std::{path::PathBuf, process::Command, time::Duration};
 
 fn tool_on_path(tool: &str) -> bool {
     Command::new(tool)
@@ -48,120 +25,24 @@ fn tool_on_path(tool: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn thumbv7m_installed() -> bool {
-    Command::new("rustup")
-        .args(["target", "list", "--installed"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("thumbv7m-none-eabi"))
-        .unwrap_or(false)
-}
-
-/// Returns the FreeRTOS SDK env the build needs, or `None` if a prerequisite is
-/// missing (→ skip).
-fn freertos_env() -> Option<Vec<(&'static str, PathBuf)>> {
-    if !thumbv7m_installed()
-        || !tool_on_path("arm-none-eabi-gcc")
-        || !tool_on_path("qemu-system-arm")
-    {
-        return None;
-    }
-    let root = workspace_root();
-    let kernel = root.join("third-party/freertos/kernel");
-    let lwip = root.join("third-party/freertos/lwip");
-    // `is_dir()` is true for a deinitialized (empty) submodule dir — gate on a
-    // real source file so a missing checkout skips instead of failing the build.
-    if !kernel.join("tasks.c").is_file() || !lwip.join("src").is_dir() {
-        return None;
-    }
-    Some(vec![
-        ("FREERTOS_DIR", kernel),
-        ("LWIP_DIR", lwip),
-        (
-            "FREERTOS_CONFIG_DIR",
-            root.join("packages/boards/nros-board-mps2-an385-freertos/config"),
-        ),
-        (
-            "NROS_PLATFORM_CFFI_INCLUDE",
-            root.join("packages/core/nros-platform-cffi/include"),
-        ),
-        (
-            "NROS_PLATFORM_FREERTOS_SRC",
-            root.join("packages/core/nros-platform-freertos/src"),
-        ),
-    ])
-}
-
-fn stage_fixture() -> (tempfile::TempDir, PathBuf) {
-    let dst = tempfile::tempdir().expect("tempdir");
-    copy_tree(&fixture_src(), dst.path()).expect("copy fixture");
-    let root_str = workspace_root().to_str().expect("utf-8").to_string();
-    let mut stack = vec![dst.path().to_path_buf()];
-    while let Some(p) = stack.pop() {
-        if p.is_dir() {
-            for e in fs::read_dir(&p).expect("read_dir") {
-                stack.push(e.expect("entry").path());
-            }
-        } else if let Ok(text) = fs::read_to_string(&p) {
-            if text.contains("@NANO_ROS_ROOT@") {
-                fs::write(&p, text.replace("@NANO_ROS_ROOT@", &root_str)).expect("rewrite");
-            }
-        }
-    }
-    let root = dst.path().to_path_buf();
-    (dst, root)
-}
-
-fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_tree(&from, &to)?;
-        } else {
-            fs::copy(&from, &to)?;
-        }
-    }
-    Ok(())
+/// Resolve the prebuilt multi-tier freertos firmware ELF.
+fn firmware() -> nros_tests::TestResult<PathBuf> {
+    let stamp = nros_tests::fixtures::require_compile_check("orch_tiers_freertos")?;
+    Ok(stamp
+        .parent()
+        .expect("fixture dir")
+        .join("target/thumbv7m-none-eabi/debug/demo_entry"))
 }
 
 #[test]
-fn multi_tier_freertos_firmware_builds_and_boots_run_tiers() {
-    let Some(env) = freertos_env() else {
-        nros_tests::skip!("FreeRTOS prereqs missing (thumbv7m / arm-gcc / qemu / kernel / lwip)");
-    };
-    let (_guard, root) = stage_fixture();
-
-    // Build the multi-tier firmware for thumbv7m. Success proves the macro
-    // emitted `run_tiers` for the freertos deploy AND it links with the kernel.
-    let mut build = Command::new("cargo");
-    build
-        .args([
-            "build",
-            "-p",
-            "demo_entry",
-            "--target",
-            "thumbv7m-none-eabi",
-        ])
-        .current_dir(&root);
-    for (k, v) in &env {
-        build.env(k, v);
+fn multi_tier_freertos_firmware_builds_and_boots_run_tiers() -> nros_tests::TestResult<()> {
+    let bin = firmware()?;
+    assert!(bin.is_file(), "firmware ELF missing at {}", bin.display());
+    if !tool_on_path("qemu-system-arm") {
+        nros_tests::skip!("qemu-system-arm not on PATH");
     }
-    let out = build.output().expect("spawn cargo build");
-    assert!(
-        out.status.success(),
-        "multi-tier freertos firmware failed to build.\nstderr:\n{}",
-        String::from_utf8_lossy(&out.stderr),
-    );
-    let bin = root.join("target/thumbv7m-none-eabi/debug/demo_entry");
-    assert!(
-        bin.is_file(),
-        "firmware ELF not produced at {}",
-        bin.display()
-    );
 
-    // Boot it on QEMU (no router). `run_tiers_entry` prints the unique
+    // Boot on QEMU (no router). `run_tiers_entry` prints the unique
     // `(multi-tier)` banner + brings up the network before the boot-tier
     // Executor::open fails — proving the run_tiers path executes on device.
     let qemu = Command::new("timeout")
@@ -193,54 +74,19 @@ fn multi_tier_freertos_firmware_builds_and_boots_run_tiers() {
         combined.contains("Network ready."),
         "run_tiers boot bringup did not complete the network init.\noutput:\n{combined}",
     );
+    Ok(())
 }
 
 #[test]
-fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() {
-    // The networked complement to the boot test: a host zenohd bound on
-    // 0.0.0.0 (reachable from the QEMU guest at 10.0.2.2:7447 via user/slirp
-    // networking — NO TAP), the firmware connects past `Executor::open`, sets
-    // up both tiers over the one session, and prints the unique
-    // `Multi-tier setup complete` line. Seeing it proves the freertos
-    // `run_tiers` path ran end-to-end over a real shared session on device.
-    //
-    // Slirp + QEMU virtual-clock timing makes the *connected* path inherently
-    // flaky (same reason phase212_n tolerates the open-fail path), so the
-    // banner + network bringup are hard-asserted while the connected-run line
-    // is best-effort: we log when it is missed rather than fail the suite.
-    let Some(env) = freertos_env() else {
-        nros_tests::skip!("FreeRTOS prereqs missing (thumbv7m / arm-gcc / qemu / kernel / lwip)");
-    };
+fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tests::TestResult<()> {
+    let bin = firmware()?;
+    assert!(bin.is_file(), "firmware ELF missing at {}", bin.display());
+    if !tool_on_path("qemu-system-arm") {
+        nros_tests::skip!("qemu-system-arm not on PATH");
+    }
     if !nros_tests::fixtures::require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
-    let (_guard, root) = stage_fixture();
-
-    let mut build = Command::new("cargo");
-    build
-        .args([
-            "build",
-            "-p",
-            "demo_entry",
-            "--target",
-            "thumbv7m-none-eabi",
-        ])
-        .current_dir(&root);
-    for (k, v) in &env {
-        build.env(k, v);
-    }
-    let out = build.output().expect("spawn cargo build");
-    assert!(
-        out.status.success(),
-        "multi-tier freertos firmware failed to build.\nstderr:\n{}",
-        String::from_utf8_lossy(&out.stderr),
-    );
-    let bin = root.join("target/thumbv7m-none-eabi/debug/demo_entry");
-    assert!(
-        bin.is_file(),
-        "firmware ELF not produced at {}",
-        bin.display()
-    );
 
     // Host router on 0.0.0.0:7447 — the fixture's deploy overlay points the
     // firmware at tcp/10.0.2.2:7447 (the slirp host alias).
@@ -250,8 +96,6 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() {
     let mut qemu = nros_tests::qemu::QemuProcess::start_mps2_an385_networked(&bin)
         .expect("boot multi-tier freertos firmware on QEMU");
 
-    // Hard proof: the run_tiers entry executed (banner) and brought the network
-    // up — the reliable on-device path, independent of the router.
     let boot = qemu
         .wait_for_output_pattern("Network ready.", Duration::from_secs(15))
         .expect("firmware did not reach network bringup");
@@ -260,9 +104,9 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() {
         "QEMU boot did not reach run_tiers_entry (no multi-tier banner).\noutput:\n{boot}",
     );
 
-    // Best-effort proof: with the slirp router live, the firmware should connect
-    // past Executor::open and set up both tiers. Timing-sensitive, so a miss is
-    // logged, not fatal.
+    // Best-effort: with the slirp router live, the firmware should connect past
+    // Executor::open and set up both tiers. Slirp + QEMU virtual-clock timing is
+    // flaky, so a miss is logged, not fatal.
     match qemu.wait_for_output_pattern("Multi-tier setup complete", Duration::from_secs(25)) {
         Ok(_) => {}
         Err(e) => eprintln!(
@@ -271,4 +115,5 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() {
         ),
     }
     qemu.kill();
+    Ok(())
 }

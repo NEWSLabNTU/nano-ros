@@ -168,6 +168,8 @@ build_cmake_fixture() {
 # inspects. Gated on the rust target being installed; absent → no stamp → skip.
 CROSS_BUILD_FIXTURES=(
     "freertos_firmware:packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos:firmware:firmware:thumbv7m-none-eabi"
+    # multi-tier freertos firmware (228.G run_tiers): built from the staged root.
+    "orch_tiers_freertos:packages/testing/nros-tests/fixtures/orchestration_tiers_freertos:.:demo_entry:thumbv7m-none-eabi"
 )
 
 stage_and_cross_build() {

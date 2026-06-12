@@ -61,8 +61,9 @@ text → documented exceptions (fast-fail, can't be prebuilt).
 `cmake_node_register_misuse` (2 negative configure-fail cases, exception).
 
 **Wave B — freertos / threadx cross-build** (cross-build mechanism):
-`orchestration_tiers_freertos`, `phase212_n_freertos_run_plan_runtime`,
-`phase212_h4_threadx`.
+`orchestration_tiers_freertos` CONVERTED (→ `orch_tiers_freertos` cross-build
+fixture, tests boot the prebuilt thumbv7m firmware in QEMU). Remaining:
+`phase212_n_freertos_run_plan_runtime`, `phase212_h4_threadx`.
 
 **Wave C — zephyr** (west; heavy, gate on SDK): `phase212_h1_zephyr`,
 `phase212_mf3_zephyr_self_pkg`, `integration_zephyr`.
