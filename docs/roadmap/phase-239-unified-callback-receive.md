@@ -168,7 +168,14 @@ runtime path **already exists and is wired** for both service (239.11) and actio
 its only remaining work is the **E2E fixtures** (C + C++) and the **cross-language
 E2E matrix** (239.15).
 
-#### 239.11 — C service-client callback surface + E2E  🟡 (surface ✅ already; E2E ⬜)
+#### 239.11 — C service-client callback surface + E2E  ✅ (E2E GREEN)
+**Done.** Added `examples/native/c/service-client-callback` (registers
+`nros_client_set_response_callback`, sends with `nros_client_send_request_async`,
+replies dispatched at `nros_executor_spin_some`). E2E
+`test_native_service_communication_callback::C` (native_api.rs) pairs it with the
+stock C service server — 4/4 replies delivered via the callback (no poll).
+
+Original finding (still accurate):
 **Finding.** The C surface already exists + is wired (Phase 189.M3.3):
 `nros_client_set_response_callback` (`service.rs:1437`) +
 `nros_client_send_request_async` (`service.rs:1701`); the registration
@@ -187,17 +194,21 @@ callbacks, drained at spin. **Remaining:** a native C action server + callback
 client E2E + example.
 - **Files:** a C fixture/example.
 
-#### 239.13 — C++ service-client callback wrapper + E2E  🟡 (wrapper ✅ already; E2E ⬜)
-**Finding.** The C++ wrapper already exists (Phase 189.M3.3.f): `client.hpp`
-exposes `Node::create_client(out, name, callback, qos, ...)` (line 265) which sets
-`callback_mode_` + registers the raw FFI via the `nros_cpp_service_response_callback_t`
-trampoline (`response_trampoline`, line 209 — `ResponseType::ffi_deserialize(data,
-len, &response)` then the typed `user_fn_`); the user then sends via
-`Client<S>::async_send_request(req)` (line 135). Mirrors the C++ subscription
-callback (Phase 235 pattern). **Remaining:** a native C++ server + callback client
-E2E (spans/owned).
-- **Files:** C++ fixture under `packages/testing/` (wrapper already in
-  `packages/core/nros-cpp/include/nros/client.hpp`).
+#### 239.13 — C++ service-client callback wrapper + E2E  ✅ (E2E GREEN; **bug fixed**)
+**Done — but the wrapper was broken.** The C++ surface existed (Phase 189.M3.3.f:
+`create_client(out, name, callback, …)` + `response_trampoline`, `async_send_request`)
+but **never delivered replies**: `nros_cpp_service_client_send_on_handle` called
+`send_request_raw` without setting the arena entry's `pending` flag, and
+`service_client_raw_try_process` early-returns unless `pending` is set — so the
+reply arrived but was never dispatched. **Fixed** to mirror the C wrapper exactly
+(clear `reply_ready`, send, set `pending = true`, register the reply waker). E2E
+`test_native_service_communication_callback::Cpp` now GREEN (4/4 via callback).
+
+Also added `examples/native/cpp/service-client-callback`. It uses `nros::init()`
+(env-var fallback) rather than `init_with_launch_auto`, which has a latent
+null-locator bug → issue #39.
+- **Files:** `packages/core/nros-cpp/src/service.rs` (the fix),
+  `examples/native/cpp/service-client-callback/`, `native_api.rs`.
 
 #### 239.14 — C++ action-client callback wrapper + E2E  🟡 (wrapper ✅ already; E2E ⬜)
 **Finding.** Already exists (Phase 189.M3.3.f): `action_client.hpp` has
