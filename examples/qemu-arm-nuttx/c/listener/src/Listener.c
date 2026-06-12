@@ -33,7 +33,7 @@ static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor
                                      listener_t* self) {
     (void)executor; /* node-scoped sub; executor unused */
     size_t handle;
-    int32_t rc = nros_cpp_subscription_register(node, "/chatter", "std_msgs/msg/Int32", "",
+    int32_t rc = nros_cpp_subscription_register(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
                                                 nros_c_qos_default(), on_raw, self,
                                                 /*sched_context=*/0, &handle);
     if (rc == 0) {

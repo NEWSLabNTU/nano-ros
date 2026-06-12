@@ -26,7 +26,7 @@ void Listener::on_raw(const uint8_t* data, size_t len) {
     // typed `Publisher<Int32>` registers the DDS-mangled form; raw↔typed
     // type-name unification is tracked separately (240.1 finding / 240.2b).
     ::nros::Result r = ::nros::bind_subscription_raw<Listener, &Listener::on_raw>(
-        node, "/chatter", "std_msgs/msg/Int32", this);
+        node, "/chatter", "std_msgs::msg::dds_::Int32_", this);
     if (r.ok()) {
         // Readiness marker the rtos_e2e harness greps before driving the talker.
         std::printf("Waiting for messages\n");

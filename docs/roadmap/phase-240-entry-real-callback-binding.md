@@ -250,14 +250,16 @@ wave lands).
         action server (create/register/set_callbacks + the timer-driven execute +
         the hand-rolled Fibonacci result CDR + `complete_goal`) executes a real
         goal end-to-end.
-  - [ ] **Pub/sub E2E — blocked on the talker (not the typed listener).** In QEMU
-        the typed listener boots + reaches `Waiting for messages`, but 0 received:
-        the paired NuttX talker is still the **declarative** example and published
-        nothing (empty output) — the publish-from-component talker gap (240.6
-        blocker). Also undetermined until then: the raw-sub keyexpr the listener
-        must match — services passed with the ROS slash form, native pub/sub used
-        the DDS-mangled form (the raw↔typed type-name unification, 240.1 finding).
-        Resolve by migrating the talker to a typed `Publisher` component.
+  - [x] **Pub/sub E2E — DONE 2026-06-13.** Migrated the NuttX talker to a typed
+        `Publisher` component (cpp: `Publisher<Int32>` via `nros_find_interfaces(CPP)`
+        + `bind_timer` `on_tick`; C: a raw publisher + CDR-encoded Int32 via the new
+        `nros_cpp_publisher_create`/`publish_raw` in `component.h`) — closes the
+        **publish-from-component** blocker (240.6 #1). Resolved the **type-name
+        unification** (240.1 finding): a typed `Publisher<Int32>` registers the
+        DDS-mangled keyexpr `std_msgs::msg::dds_::Int32_`, so the raw listeners now
+        subscribe on that exact form. **QEMU E2E green** (cpp + C): talker
+        `Published 0..` / listener `Received` (59 msgs). All three NuttX transports
+        (pub/sub, service, action) now pass at runtime for both languages.
   - [x] **Action CLIENT — DONE 2026-06-13 (callback-based;
         [issue-0047](../issues/archived/0047-cpp-c-action-client-no-arena-callback-dispatch.md)).**
         Root cause: a bare poll client is not arena-registered, so `spin_once`

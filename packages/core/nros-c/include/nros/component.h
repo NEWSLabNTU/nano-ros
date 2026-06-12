@@ -111,6 +111,19 @@ int32_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* 
                                        nros_cpp_qos_t qos, nros_c_subscription_callback_t callback,
                                        void* context, uint8_t sched_context, size_t* out_handle_id);
 
+/* --- Publisher (raw) ---------------------------------------------------- */
+
+#ifndef NROS_C_PUBLISHER_STORAGE_SIZE
+#define NROS_C_PUBLISHER_STORAGE_SIZE 560
+#endif
+
+/** Create a publisher into the component-owned `storage`, then publish CDR bytes
+ *  with `nros_cpp_publish_raw`. C-ABI symbols from nros-cpp. */
+int32_t nros_cpp_publisher_create(const nros_cpp_node_t* node, const char* topic,
+                                  const char* type_name, const char* type_hash, nros_cpp_qos_t qos,
+                                  void* storage);
+int32_t nros_cpp_publish_raw(void* storage, const uint8_t* data, size_t len);
+
 /** Raw callback-style service handler: receives the request bytes (`req`,
  *  `req_len`), fills the reply into `resp` (capacity `resp_cap`) + writes the
  *  byte count to `*resp_len`; returns `true` to send, `false` to drop. ABI-
