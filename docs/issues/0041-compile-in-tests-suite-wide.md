@@ -82,3 +82,26 @@ DONE: `phase212_n_freertos_run_plan_runtime` (1 test) and `phase212_h4_threadx`
 Each conversion also: renames off any `phaseNNN_` tag, removes the binary from
 the nextest timeout-override (a `binary()` matching nothing aborts the run), and
 updates this table.
+
+## Rename sweep COMPLETE (37/37)
+
+All phase-numbered `nros-tests` test files are renamed to behavioral names
+(AGENTS.md convention), with every Cargo.toml `[[test]]`, `.config/nextest.toml`
+`binary()`, and justfile test-all env-gate ref updated; `cargo nextest list` is
+clean. A latent dangling `[[test]]` (phase210_f4_shadowing) was fixed en route.
+
+## Remaining compile-in-test conversions (Wave C/D — gated west/idf builds)
+
+The 6 still-live offenders are heavy cross-toolchain builds, now renamed but not
+yet fixture-converted (they `skip!` cleanly when the SDK is absent, so they don't
+break lighter tiers):
+- zephyr (`west build`): `cli_bringup_zephyr`, `zephyr_self_pkg`, `board_import`.
+- esp-idf (`idf.py build`): `cli_bringup_esp_idf`, `esp32_idf_talker_builds`,
+  `esp32_idf_listener_builds`.
+
+Conversion approach (deferred — cost/urgency tradeoff): add an idf.py / west
+build-fixture type that builds these in the esp32 / zephyr fixture lanes
+(`build-test-fixtures` gated on idf.py / ZEPHYR_BASE), then the tests resolve the
+prebuilt ELF. This adds minutes of cross-toolchain build to the build stage for
+tests that already skip cleanly — hence deferred behind the higher-value native
+conversions (all done).

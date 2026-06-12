@@ -868,9 +868,9 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     # moment its toolchain is present, so this only loosens lighter tiers.
     if ! { command -v idf.py >/dev/null 2>&1 || [ -n "${IDF_PATH:-}" ] || [ -n "${NROS_ESP_IDF_ENV_SHIM:-}" ]; }; then
         env_exclude+=("not binary(integration_esp_idf)")
-        env_exclude+=("not binary(phase212_h5_esp_idf)")
-        env_exclude+=("not binary(phase212_m7_esp32_talker)")
-        env_exclude+=("not binary(phase212_m7_esp32_listener)")
+        env_exclude+=("not binary(cli_bringup_esp_idf)")
+        env_exclude+=("not binary(esp32_idf_talker_builds)")
+        env_exclude+=("not binary(esp32_idf_listener_builds)")
     fi
     if ! command -v pio >/dev/null 2>&1 && ! command -v platformio >/dev/null 2>&1; then
         env_exclude+=("not binary(integration_platformio)")

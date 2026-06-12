@@ -377,8 +377,8 @@ path = "tests/freertos_firmware_entry.rs"
 # Phase 212.H.5 — ESP-IDF 2-component bringup build via `idf.py`. Skips
 # cleanly when `$IDF_PATH` / `idf.py` / nros CLI are missing.
 [[test]]
-name = "phase212_h5_esp_idf"
-path = "tests/phase212_h5_esp_idf.rs"
+name = "cli_bringup_esp_idf"
+path = "tests/cli_bringup_esp_idf.rs"
 
 # Phase 212.H.7 — PX4 hookless-vendor 2-component module-build gate.
 # Skips cleanly when `$PX4_AUTOPILOT_DIR` / nros CLI / `make` are missing
@@ -434,8 +434,8 @@ path = "tests/workspace_shadowing.rs"
 # downstream Zephyr app build via the `board_import_fvp` fixture. Skips
 # cleanly when ZEPHYR_BASE / west aren't provisioned.
 [[test]]
-name = "phase215_e_board_import"
-path = "tests/phase215_e_board_import.rs"
+name = "board_import"
+path = "tests/board_import.rs"
 
 # Phase 216.A — dispatch substrate integration test. Exercises
 # `DispatchStrategy` / `Node::DISPATCH` / `NodeDispatchRuntime`
