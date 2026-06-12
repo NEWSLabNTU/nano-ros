@@ -75,6 +75,11 @@ crate list. Layer map → RFC-0001; `packages/drivers/` category split → RFC-0
   then promote. Temp files in `$project/tmp/` (gitignored), not `/tmp`; use Write/Edit not heredoc.
 - **Tests must fail on unmet preconditions** (`assert!`/`bail!`/`nros_tests::skip!`). Bare
   `eprintln!`+`return` reports PASS — never. Same for runtime: panic, not silent early-return.
+- **No compilation inside tests** — never `cargo`/`cmake`/`idf.py`/`west build` at run time. Compile in
+  the build stage (`build-test-fixtures` + `examples/fixtures.toml`); the test consumes the prebuilt
+  fixture. "Does it compile?" intent → make it a build-step fixture and assert the artifact. → AGENTS.md Testing.
+- **Test names describe behavior, not phase numbers** (`zephyr_xrce_service_e2e`, not `phase212_n9_…`).
+  Phases go stale; cross-ref a phase in a doc-comment, never the identifier. → AGENTS.md Testing.
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
   `nros`, `play_launch_parser`, `zenohd`). `just doctor` enforces it. The pre-218
   `export PATH="$HOME/.nros/bin:$PATH"` is insufficient.

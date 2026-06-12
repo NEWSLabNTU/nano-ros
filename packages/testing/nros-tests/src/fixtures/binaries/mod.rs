@@ -1585,11 +1585,14 @@ static RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the stm32f4-rtic-action-client binary
 static RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Build stm32f4-rtic-talker (cached)
+/// Resolve the prebuilt stm32f4 RTIC talker fixture (cached). The
+/// `examples/stm32f4/rust/talker-rtic` crate's `[[bin]]` is named
+/// `stm32f4-rs-rtic-example` (not `stm32f4-rtic-talker` — the old name here was
+/// stale and matched nothing, so this accessor never resolved).
 pub fn build_rtic_talker() -> TestResult<&'static Path> {
     RTIC_TALKER_BINARY
         // Phase 226.D — built into build/fixtures-cargo/stm32f4.
-        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rtic-talker"))
+        .get_or_try_init(|| require_stm32f4_fixture("stm32f4-rs-rtic-example"))
         .map(|p| p.as_path())
 }
 

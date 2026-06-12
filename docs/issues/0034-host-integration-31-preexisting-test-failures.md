@@ -54,7 +54,7 @@ triage.
 | phase210_f4_shadowing | 1 | `workspace_std_msgs_shadows_ament_in_consumer_binary` |
 | phase212_m12_example_shape | 1 | `every_example_leaf_has_package_xml` — **cause known: `78ac799ee`** |
 | phase212_macro_one_dep | 1 | `one_dep_pkg_compiles_implicit_platform` |
-| phase216_b_rtic_main_macro_expansion | 1 | `rtic_main_macro_expansion_compiles` |
+| stm32f4_rtic_main_macro (was phase216_b) | 1 | `rtic_main_macro_expansion_builds` — CONVERTED to fixture-consuming (#0034 antipattern) |
 | phase216_c_embassy_main_macro_expansion | 1 | `embassy_main_macro_expansion_compiles` |
 | phase235_a_cpp_entry_runtime | 1 | `cpp_entry_runtime_publishes_live_samples` |
 | zenoh_archive_symbols | 1 | `zenoh_archive_wrapper_impl_parity` |
@@ -63,32 +63,50 @@ triage.
 
 ## Triage + progress (2026-06-12)
 
-Local reproduction split the 31 into four categories, two now fixed:
+Local reproduction split the 31 into four categories:
 
-**FIXED — timeout class (~22).** orchestration_tiers (5), phase212_n9_main_macro_forms
-(8), phase212_n_entry_poc_runs (2), phase212_macro_one_dep (1),
-phase216_b/c (2), phase210_f4_shadowing (1), and the cpp_* compile tests
-(cpp_multi_node_entry, phase212_n12_cpp_api_drift, phase223_c_mixed_workspace,
-phase235_a_cpp_entry_runtime) **shell out to cargo/nros to build a generated
-crate** — a COLD build legitimately exceeds the 60s nextest default kill
-(`slow-timeout period 30s × terminate-after 2`). Measured: an
-`orchestration_tiers_native` case passes in **72–94 s**. Fix: a nextest override
-(`120s × 4`) for those binaries in `.config/nextest.toml`. Confirmed locally:
-orchestration_tiers 5/5 pass once the limit is lifted.
+**Timeout class (~22) — in-test compilation (convention violation).**
+orchestration_tiers (5), phase212_n9_main_macro_forms (8),
+phase212_n_entry_poc_runs (2), phase212_macro_one_dep (1), phase216_b/c (2),
+phase210_f4_shadowing (1), and the cpp_* compile tests (cpp_multi_node_entry,
+phase212_n12_cpp_api_drift, phase223_c_mixed_workspace, phase235_a_cpp_entry_runtime)
+**shell out to cargo/nros to build a generated crate at run time** (e.g.
+`phase212_n9` makes 21 build calls, `phase235_a` 11). A COLD build exceeds the
+60s nextest default kill (`slow-timeout 30s × terminate-after 2`); measured, an
+`orchestration_tiers_native` case takes **72–94 s**.
 
-**FIXED — l9 rename drift (1).** `nano_ros_application_rejects_embedded_deploy`
+This is the documented anti-pattern **"No compilation inside tests"** (AGENTS.md
+→ Testing Guidelines; CLAUDE.md Practices). Two responses, in order of merit:
+- **Stopgap (masks it):** a nextest timeout override (`120s × 4`) for those
+  binaries in `.config/nextest.toml` lets them pass (orchestration_tiers 5/5
+  once lifted) — but it only hides the wall-clock, keeps the build-lock
+  serialization, and conflates "builds" with "behaves".
+- **Durable fix (the convention):** move the build to the **build stage** — add
+  the project as a row in `examples/fixtures.toml` (or a build-lane target) so
+  `build-test-fixtures` compiles it once; rewrite the test to assert the
+  prebuilt artifact / inspect it. The "does-it-compile?" signal becomes a
+  green/red **build**, not a timeout-prone test. Rename the binary off its phase
+  number at the same time (AGENTS.md → Testing Guidelines).
+
+  **Progress:** `phase216_b_rtic_main_macro_expansion` → `stm32f4_rtic_main_macro`
+  is the first conversion — it now resolves the prebuilt `stm32f4-rs-rtic-example`
+  fixture instead of running `cargo check` (30 s → 0.002 s; also fixed the stale
+  `build_rtic_talker()` resolver that pointed at a non-existent binary name).
+  Each remaining compile-intent test follows the same shape; negative
+  compile-*fail* cases (n9's `*_emits_error`, `unknown_board_emits_compile_error`)
+  can't be fixtures (they must fail to build) — relocate those to a dedicated
+  compile-fail harness excluded from the timeout-sensitive suite.
+
+**l9 rename drift (1) — FIXED.** `nano_ros_application_rejects_embedded_deploy`
 asserted the old "native-only"/L.2 wording; the fn is now a shim →
 `nano_ros_entry` with board-centric wording. Updated the drift-guard; l9 5/5 pass.
 
-**REAL — owner triage (2).**
-- **m12 `every_example_leaf_has_package_xml`** — genuine gap: commit `78ac799ee`
-  added `examples/stm32f4/rust/*_pkg` without `package.xml`. The test correctly
-  flags it; fix is adding the right `package.xml` (stm32f4 owner — needs the
-  examples' real deps, not invented here). Reproduces on plain `main`.
-- **j_launch `nros_launch_spawns_components`** — `nros launch` invocation hits
-  the top-level CLI usage (`Usage: nros <COMMAND>`), i.e. launch-subcommand CLI
-  drift. (`nros_launch_detach_returns_pid_file` is NOT in scope — it panics
-  `[SKIPPED]` and is already excluded by the recipe's `[SKIPPED]` tolerance.)
+**Real — owner triage (2).**
+- **m12 `every_example_leaf_has_package_xml`** — genuine gap: `examples/stm32f4/
+  rust/*_pkg` (Cargo node-libs) were added without `package.xml`. The test
+  correctly flags it; fix is adding the right `package.xml` (stm32f4 owner).
+- **j_launch `nros_launch_spawns_components`** — `nros launch` hits the top-level
+  CLI usage (`Usage: nros <COMMAND>`), i.e. launch-subcommand CLI drift.
 
 **CI-ENV-ONLY — pass locally (3).** `zenoh_archive_symbols`, `zenoh_header_parity`,
 `zpico_build_matrix` PASS in the dev env but failed in CI run 27385404078. They

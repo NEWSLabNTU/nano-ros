@@ -447,13 +447,13 @@ name = "phase216_a_dispatch_strategy"
 path = "tests/phase216_a_dispatch_strategy.rs"
 required-features = ["phase216-substrate"]
 
-# Phase 216.B.5 — `nros::main!()` RTIC macro expansion compile
-# smoke. Shells out to `cargo check --target thumbv7em-none-eabihf`
-# against `examples/stm32f4/rust/talker-rtic/`, skipping cleanly if
-# the cross-target isn't installed.
+# `nros::main!()` RTIC macro expansion (Phase 216.B.5): consumes the prebuilt
+# `stm32f4-rtic-talker` fixture (examples/stm32f4/rust/talker-rtic, built by
+# `just stm32f4 build-fixtures` for thumbv7em-none-eabihf) and asserts it
+# exists — the fixture build IS the compile check (no in-test cargo; issue 0034).
 [[test]]
-name = "phase216_b_rtic_main_macro_expansion"
-path = "tests/phase216_b_rtic_main_macro_expansion.rs"
+name = "stm32f4_rtic_main_macro"
+path = "tests/stm32f4_rtic_main_macro.rs"
 
 # Phase 216.C.4 — `nros::main!()` Embassy macro expansion compile
 # smoke. Sibling of `phase216_b_*` against

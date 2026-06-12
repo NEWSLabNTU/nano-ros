@@ -47,5 +47,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
 | 34 | host-integration surfaces 31 pre-existing nros-tests failures        | bug         | testing| [0034-host-integration-31-preexisting-test-failures.md](0034-host-integration-31-preexisting-test-failures.md) |
+| 35 | zephyr native_sim e2e fail consistently (XRCE-heavy) — not load flakes | bug        | zephyr | [0035-zephyr-native-sim-e2e-consistent-failures.md](0035-zephyr-native-sim-e2e-consistent-failures.md) |
 
 Resolved issues live in [`archived/`](archived/).
