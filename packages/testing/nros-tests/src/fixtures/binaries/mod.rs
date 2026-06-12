@@ -736,6 +736,18 @@ pub fn build_native_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Resolve the prebuilt `entry-poc` fixture (cached). The
+/// `examples/native/rust/entry-poc` Entry pkg (`nros::main!()` → native
+/// `BoardEntry::run`) is built by `just native build-fixtures` /
+/// `build-test-fixtures` (examples/fixtures.toml). Tests consume the artifact
+/// instead of running `cargo build` at run time (issue 0034).
+pub fn build_entry_poc() -> TestResult<&'static Path> {
+    static ENTRY_POC_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    ENTRY_POC_BINARY
+        .get_or_try_init(|| build_example("native/rust/entry-poc", "entry-poc", None, None))
+        .map(|p| p.as_path())
+}
+
 /// Phase 118 — collapsed-shape native talker, RMW-parametrized.
 ///
 /// Returns the prebuilt binary for the named RMW. Phase 220.C path B

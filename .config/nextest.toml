@@ -279,12 +279,15 @@ retries = 2
 # (120s × 4 = 480s) so a slow compile is not a false failure. These binaries do
 # not match any earlier override, so first-match-wins routing reaches this rule.
 [[profile.default.overrides]]
+# NOTE: as each compile-in-test binary is CONVERTED to consume a build-stage
+# fixture (issue 0034 — it becomes a fast artifact check, no in-test cargo), it
+# is removed from this list; it no longer needs the headroom AND nextest errors
+# on a `binary()` that matches nothing. Converted so far: phase216_b →
+# stm32f4_rtic_main_macro, phase212_n_entry_poc_runs → native_entry_poc_boot.
 filter = """
   binary(orchestration_tiers_native) \
   or binary(phase212_n9_main_macro_forms) \
-  or binary(phase212_n_entry_poc_runs) \
   or binary(phase212_macro_one_dep) \
-  or binary(phase216_b_rtic_main_macro_expansion) \
   or binary(phase216_c_embassy_main_macro_expansion) \
   or binary(phase210_f4_shadowing) \
   or binary(cpp_multi_node_entry) \

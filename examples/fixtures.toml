@@ -238,6 +238,15 @@ platform = "native"
 lang = "rust"
 dir = "examples/native/rust/custom-msg"
 
+# entry-poc: the canonical Phase 212.N Entry-pkg shape (`nros::main!()` →
+# `<NativeBoard as BoardEntry>::run`). Built here so the macro-expansion compile
+# check + the BoardEntry::run boot test consume the prebuilt binary instead of
+# running `cargo build` at test time (issue 0034 / AGENTS.md no-compile-in-tests).
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/entry-poc"
+
 [[fixture]]
 platform = "native"
 lang = "rust"
