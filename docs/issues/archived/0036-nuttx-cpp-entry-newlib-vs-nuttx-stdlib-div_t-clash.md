@@ -1,11 +1,16 @@
 ---
 id: 36
 title: NuttX cpp entry — newlib vs NuttX stdlib.h `div_t` conflicting declaration
-status: open
+status: resolved
 type: bug
 area: c-api
 related: [issue-0027, issue-0034, phase-235]
+resolved_in: 7b0517121
 ---
+
+> **RESOLVED 2026-06-12.** Confirmed by e2e dispatch run 27395089910: the **nuttx
+> cell is fully green** (18m12s, including the Test/e2e step that builds the cpp
+> talker fixture). The include-precedence fix below cleared the clash.
 
 > **FIX LANDED 2026-06-12 (pending e2e confirmation).** `nuttx_ffi_build.rs`
 > (`run_nuttx`) now adds `${NUTTX_DIR}/include/cxx` to the C++ compile's include

@@ -7,14 +7,18 @@ area: ci
 related: [issue-0034, phase-196, phase-240]
 ---
 
-> **FIX LANDED 2026-06-12 (pending e2e confirmation).** `platform-ci.yml` gains a
-> `Provision play_launch_parser` step (after `just <plat> setup`, e2e-gated) that
-> runs `just workspace install-play-launch-parser` and appends
-> `~/.nros/sdk/play_launch_parser/bin` to `$GITHUB_PATH` for the Build/Test
-> steps. Targeted PATH append, NOT `source activate.sh` — sourcing the full
-> activate would shadow the in-tree-built `nros` already on `$GITHUB_PATH` with an
-> installed one. e2e-only because push/PR build the `build-examples` smoke, which
-> never invokes `nros plan`. Awaiting an e2e dispatch to confirm.
+> **FIX v2 2026-06-12 (pending re-validation).** The v1 `$GITHUB_PATH` append
+> (commit 7b0517121) did **not** work — run 27395089910 still failed: the install
+> ran fine (binary at `/github/home/.nros/sdk/play_launch_parser/bin`) but the
+> later steps `source ./setup.bash`, which **strips** `~/.nros/sdk/*` from PATH
+> (`setup.bash:68`) and only re-adds the `*/*/bin` SDK layout (`setup.bash:56`) —
+> play_launch_parser's `*/bin` (two-level) layout is never re-added. So the
+> `$GITHUB_PATH` entry was wiped before `nros plan` ran. (activate.sh special-cases
+> the `*/bin` layout at lines 73–74; setup.bash does not — the documented
+> sweep-contract divergence.) v2 instead exports
+> `NROS_PLAY_LAUNCH_PARSER=<abs path>` via `$GITHUB_ENV` — nros's designed
+> override (`planner.rs:459`), an env var that survives the PATH strip. e2e-gated;
+> targeted (not `source activate.sh`, which would shadow the in-tree `nros`).
 
 The platform-ci **Test/e2e** step fails in `build-fixture-extras` because
 `play_launch_parser` is not on PATH. Surfaced by run 27393704883 (threadx_linux

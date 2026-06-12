@@ -163,15 +163,18 @@ jobs:
       # issue-0037 — the e2e fixture build (`nros plan` → `build-fixture-extras`)
       # shells out to `play_launch_parser`, a separate binary the in-tree CLI
       # build does NOT produce (`cargo build --bin nros` only). Provision it
-      # (idempotent; version-stamped) and put its bin on PATH for the later
-      # Build/Test steps. Targeted PATH append (NOT `source activate.sh`, which
-      # would shadow the in-tree-built `nros` already on $GITHUB_PATH). e2e-only:
+      # (idempotent; version-stamped) and point nros at it via the designed
+      # `NROS_PLAY_LAUNCH_PARSER` override (GITHUB_ENV → an env var, not PATH).
+      # Why not PATH: the later steps `source ./setup.bash`, which *strips*
+      # `~/.nros/sdk/*` from PATH (its re-add glob only matches the `*/*/bin`
+      # SDK layout, not play_launch_parser's `*/bin`) — so a `$GITHUB_PATH`
+      # entry would be wiped. The env override is immune to that. e2e-only:
       # push/PR build the `build-examples` smoke, which never hits `nros plan`.
       - name: Provision play_launch_parser (launch-manifest fixtures, #37)
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e) }}
         run: |
           just workspace install-play-launch-parser
-          echo "$HOME/.nros/sdk/play_launch_parser/bin" >> "$GITHUB_PATH"
+          echo "NROS_PLAY_LAUNCH_PARSER=$HOME/.nros/sdk/play_launch_parser/bin/play_launch_parser" >> "$GITHUB_ENV"
 
       # Container-job host-disk headroom before the heavy SDK+cargo build. The
       # freertos/zephyr cells exhaust the ~14 GB runner (`No space left on
