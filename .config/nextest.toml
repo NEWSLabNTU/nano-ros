@@ -270,6 +270,30 @@ test-group = "qemu-baremetal"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
+# Issue #34 — host-integration "compile-shape" tests shell out to cargo / nros
+# to build a generated crate or workspace, so a COLD build legitimately exceeds
+# the 60s default kill (period 30s × terminate-after 2). Measured: a single
+# `orchestration_tiers_native` case passes in ~72s. Under the 60s limit these
+# were terminated mid-compile and counted as failures — the bulk of the 31
+# failures the now-honest host-integration lane surfaced. Give them headroom
+# (120s × 4 = 480s) so a slow compile is not a false failure. These binaries do
+# not match any earlier override, so first-match-wins routing reaches this rule.
+[[profile.default.overrides]]
+filter = """
+  binary(orchestration_tiers_native) \
+  or binary(phase212_n9_main_macro_forms) \
+  or binary(phase212_n_entry_poc_runs) \
+  or binary(phase212_macro_one_dep) \
+  or binary(phase216_b_rtic_main_macro_expansion) \
+  or binary(phase216_c_embassy_main_macro_expansion) \
+  or binary(phase210_f4_shadowing) \
+  or binary(cpp_multi_node_entry) \
+  or binary(phase212_n12_cpp_api_drift) \
+  or binary(phase223_c_mixed_workspace) \
+  or binary(phase235_a_cpp_entry_runtime)
+"""
+slow-timeout = { period = "120s", terminate-after = 4 }
+
 # Phase 169.4 — bare-metal Rust DDS E2E binary removed.
 
 # Phase 89.12 #15-17 — Per-variant serialization for rtos_e2e. These overrides

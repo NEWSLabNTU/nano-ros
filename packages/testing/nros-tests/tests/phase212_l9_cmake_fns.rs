@@ -186,9 +186,18 @@ fn nano_ros_application_rejects_embedded_deploy() {
         "expected cmake configure to fail on embedded DEPLOY in Application"
     );
     let err = String::from_utf8_lossy(&out.stderr);
+    // Issue #34 — `nano_ros_application` is now a deprecated shim that forwards
+    // to `nano_ros_entry` (Phase 212.N.7 rename), so an embedded `DEPLOY` is
+    // still rejected but with the entry-layer's board-centric diagnostic rather
+    // than the old L.2 "native-only" wording. Accept either so this drift-guard
+    // tracks the current message without losing the behavioural check (embedded
+    // deploy must be rejected, asserted above).
     assert!(
-        err.contains("native-only") || err.contains("Phase 212.L.2"),
-        "expected L.2 diagnostic, got:\n{err}"
+        err.contains("native-only")
+            || err.contains("Phase 212.L.2")
+            || err.contains("embedded Entry pkgs need a Board")
+            || err.contains("rejected"),
+        "expected an embedded-deploy rejection diagnostic, got:\n{err}"
     );
 }
 
