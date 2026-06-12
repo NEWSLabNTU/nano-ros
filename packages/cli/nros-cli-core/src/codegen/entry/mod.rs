@@ -116,6 +116,14 @@ pub struct PlanNode {
     pub exec: String,
     pub name: Option<String>,
     pub namespace: Option<String>,
+    /// Phase 240.2 (RFC-0043) — fully-qualified C++ component class
+    /// (`"talker_pkg::Talker"`), from `nano_ros_node_register(CLASS …)` via the
+    /// cmake metadata. Required by the **typed** entry emitter (`emit_cpp_typed`)
+    /// which constructs the class; `None` for the legacy register-symbol path.
+    pub class_name: Option<String>,
+    /// Phase 240.2 — the component class header to `#include`
+    /// (`"talker_pkg/Talker.hpp"`). Paired with `class_name`.
+    pub class_header: Option<String>,
 }
 
 impl PlanNode {
@@ -218,6 +226,11 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             exec: n.exec.clone(),
             name: n.name.clone(),
             namespace: n.namespace.clone(),
+            // Phase 240.2 — the launch path doesn't carry the C++ class/header
+            // yet (threaded from cmake metadata in 240.2b); the legacy
+            // register-symbol emitters ignore these.
+            class_name: None,
+            class_header: None,
         });
     };
     for n in &desc.nodes {
@@ -319,6 +332,8 @@ mod tests {
             exec: "talker".into(),
             name: None,
             namespace: None,
+            class_name: None,
+            class_header: None,
         };
         assert_eq!(n.register_symbol(), "__nros_component_talker_pkg_register");
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");

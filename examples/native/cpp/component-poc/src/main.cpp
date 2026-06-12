@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include <nros/component.hpp>
+#include <nros/main.hpp> // Phase 240.2 — NativeBoard::run_components (real executor)
 #include <nros/nros.hpp>
 
 #include "std_msgs.hpp"
@@ -70,42 +71,29 @@ int main(int argc, char** argv) {
     const char* role = (argc > 1) ? argv[1] : "both";
     std::printf("component-poc role=%s\n", role);
 
-    if (!nros::init().ok()) {
-        std::printf("init failed\n");
-        return 1;
-    }
-
+    // Components + node are stack-owned in main, so they outlive the executor
+    // spin loop (which runs inside `run_components` and holds `&member` as the
+    // dispatch context). The codegen Entry (240.2b) will own them in static
+    // storage; the lifetime contract is the same.
     nros::Node node;
-    if (!nros::create_node(node, "component_poc").ok()) {
-        std::printf("create_node failed\n");
-        return 1;
-    }
-
-    // Components are stack-owned here (must outlive the spin loop — the executor
-    // holds &member as dispatch context). The codegen Entry (240.2) will own
-    // them in an arena slot.
     Talker talker;
     Listener listener;
 
-    if (std::strcmp(role, "listener") != 0) {
-        if (!talker.configure(node).ok()) {
-            std::printf("talker.configure failed\n");
-            return 1;
+    // Phase 240.2 — the board owns init → setup → spin_once loop → shutdown,
+    // driving the REAL executor (no synthesizing interpreter). `setup`
+    // constructs the topology + binds the real member callbacks.
+    return ::nros::board::NativeBoard::run_components([&]() -> int32_t {
+        nros::Result r = nros::create_node(node, "component_poc");
+        if (!r.ok()) return static_cast<int32_t>(r.raw());
+        if (std::strcmp(role, "listener") != 0) {
+            r = talker.configure(node);
+            if (!r.ok()) return static_cast<int32_t>(r.raw());
         }
-    }
-    if (std::strcmp(role, "talker") != 0) {
-        if (!listener.configure(node).ok()) {
-            std::printf("listener.configure failed\n");
-            return 1;
+        if (std::strcmp(role, "talker") != 0) {
+            r = listener.configure(node);
+            if (!r.ok()) return static_cast<int32_t>(r.raw());
+            std::printf("Waiting for messages\n");
         }
-        std::printf("Waiting for messages\n");
-    }
-
-    for (int i = 0; i < 200 && nros::ok(); ++i) {
-        nros::spin_once(50); // executor dispatches the real member callbacks
-    }
-
-    nros::shutdown();
-    std::printf("done\n");
-    return 0;
+        return 0;
+    });
 }

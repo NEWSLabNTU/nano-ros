@@ -822,6 +822,36 @@ template <typename Lambda> int32_t entry_register(EntryNodeRuntime& runtime, Lam
     return register_fn(&context);
 }
 
+/// Phase 240.2 (RFC-0043) — the **real-executor** spin loop, shared by every
+/// Board's `run_components`. Unlike `EntryNodeRuntime::spin`, it runs NO
+/// synthesizing interpreter: the user's components already registered their real
+/// callbacks on the executor during their `configure`, so this just pumps
+/// `spin_once` (which dispatches them) until `nros::ok()` flips false, or for
+/// `$NROS_ENTRY_SPIN_MS` ms when set (the bounded external-observer test path).
+/// Returns the first non-zero `spin_once` code, else 0.
+inline int32_t component_spin_loop() {
+    uint32_t bound_ms = 0;
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    const char* env = ::std::getenv("NROS_ENTRY_SPIN_MS");
+    if (env != nullptr && env[0] != '\0') {
+        bound_ms = entry_parse_u32(env);
+    }
+#endif
+    const uint64_t start_ns = nros_cpp_time_ns();
+    for (;;) {
+        if (bound_ms == 0 && !::nros::ok()) break;
+        ::nros::Result last = ::nros::spin_once(10);
+        if (!last.ok()) return static_cast<int32_t>(last.raw());
+        if (bound_ms != 0) {
+            const uint64_t elapsed_ms = (nros_cpp_time_ns() - start_ns) / 1000000ull;
+            if (elapsed_ms >= bound_ms) break;
+            if (!::nros::ok()) break;
+        }
+        entry_tick_yield();
+    }
+    return 0;
+}
+
 /// Process-scope, COMDAT-folded arena storage, shared by every Board
 /// adapter (one binary links exactly one board, so one arena). Template-
 /// static-member (vs a function-local static) keeps it out of the
@@ -891,6 +921,23 @@ class NativeBoard {
         nros::shutdown();
         return static_cast<int32_t>(spin_r.raw());
     }
+
+    /// Phase 240.2 (RFC-0043) — real-executor entry. `setup` (invoked once after
+    /// init, before the spin loop) constructs + `configure`s the user's
+    /// component objects, which bind their real callbacks on the executor.
+    /// `setup` returns 0 on success. No `EntryNodeRuntime` / synthesis.
+    template <typename Setup> static int32_t run_components(Setup&& setup) {
+        nros::Result r = nros::init();
+        if (!r.ok()) return static_cast<int32_t>(r.raw());
+        int32_t rc = setup();
+        if (rc != 0) {
+            nros::shutdown();
+            return rc;
+        }
+        int32_t sc = detail::component_spin_loop();
+        nros::shutdown();
+        return sc;
+    }
 };
 
 /// Phase 235.B — embedded (Zephyr) board adapter, the `Board::run()`
@@ -958,6 +1005,21 @@ class ZephyrBoard {
         nros::Result spin_r = runtime.spin();
         nros::shutdown();
         return static_cast<int32_t>(spin_r.raw());
+    }
+
+    /// Phase 240.2 (RFC-0043) — real-executor entry (Zephyr lifecycle).
+    template <typename Setup> static int32_t run_components(Setup&& setup) {
+        nros_board_network_wait();
+        nros::Result r = nros::init("", static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        if (!r.ok()) return static_cast<int32_t>(r.raw());
+        int32_t rc = setup();
+        if (rc != 0) {
+            nros::shutdown();
+            return rc;
+        }
+        int32_t sc = detail::component_spin_loop();
+        nros::shutdown();
+        return sc;
     }
 };
 
@@ -1043,6 +1105,27 @@ class NuttxBoard {
     /// (default `""`, i.e. backend discovery).
     template <typename Lambda> static int32_t run(Lambda&& register_fn) {
         return run(NROS_ENTRY_LOCATOR, static_cast<Lambda&&>(register_fn));
+    }
+
+    /// Phase 240.2 (RFC-0043) — real-executor entry (NuttX lifecycle, explicit
+    /// connect locator). `setup` constructs + `configure`s the components.
+    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+        nros_board_network_wait();
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        if (!r.ok()) return static_cast<int32_t>(r.raw());
+        int32_t rc = setup();
+        if (rc != 0) {
+            nros::shutdown();
+            return rc;
+        }
+        int32_t sc = detail::component_spin_loop();
+        nros::shutdown();
+        return sc;
+    }
+
+    /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
+    template <typename Setup> static int32_t run_components(Setup&& setup) {
+        return run_components(NROS_ENTRY_LOCATOR, static_cast<Setup&&>(setup));
     }
 };
 

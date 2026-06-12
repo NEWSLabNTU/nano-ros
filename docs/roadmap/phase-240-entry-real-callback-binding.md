@@ -88,16 +88,27 @@ wave lands).
       class-name symbols, drop the register trampoline) → **moved to 240.2**,
       where the codegen entry's construction needs determine its exact shape.
 
-### 240.2 — Typed codegen Entry (native first)
-- [ ] `nano_ros_node_register` records `class_header` into the metadata JSON.
-- [ ] Entry codegen (`codegen/entry/`): read `nros-metadata.json`, extend
-      `PlanNode` with `{class, class_header}`; map launch `(pkg,exec)` → them.
-- [ ] `emit_cpp`: new typed-entry mode — per node `#include "<class_header>"`,
-      construct into an arena slot, `configure(node)`, run the real executor
-      (`nros::init → spin_once loop → shutdown`). Retire the `NodeContextOps`
-      recording dispatch.
-- [ ] Native multi-node workspace entry runs real logic end-to-end (replaces the
-      `phase235_a` synthesized-counter path).
+### 240.2 — Typed codegen Entry (native first) — **core DONE 2026-06-12**
+- [x] Board `run_components` (`main.hpp`) — the real-executor entry on every board
+      (`NativeBoard`/`ZephyrBoard`/`NuttxBoard`): init → `setup()` (constructs +
+      `configure`s the components) → `detail::component_spin_loop()` (pumps
+      `spin_once`, dispatches the real callbacks; honors `$NROS_ENTRY_SPIN_MS`) →
+      shutdown. **No** `EntryNodeRuntime`. Validated on native via
+      `component-poc` (`Published 22` / `Received 22`).
+- [x] `PlanNode` extended with `{class_name, class_header}`
+      (`codegen/entry/mod.rs`); legacy emitters ignore them.
+- [x] `emit_cpp::emit_typed` (`codegen/entry/emit_cpp.rs`) — per node
+      `#include "<class_header>"` + static component/node storage + a
+      `__nros_entry_setup` (construct node + `configure`) + `main` →
+      `Board::run_components(&__nros_entry_setup)`. No register symbol, no
+      `NodeContext`. 4 unit tests (headers/construct/run_components, dup-pkg →
+      two instances one include, nuttx board, missing-class error).
+- [ ] **240.2b** — `nano_ros_node_register` records `class_header` into the
+      metadata JSON; the codegen reads `nros-metadata.json` to populate
+      `PlanNode.{class_name, class_header}` (Q5); wire `emit_typed` into the CLI +
+      `nano_ros_entry`; native multi-node workspace entry runs real logic E2E
+      (replaces the `phase235_a` synthesized-counter path). Also: raw↔typed
+      type-name-form unification (240.1 finding).
 
 ### 240.3 — Carrier + embedded board adapter (NuttX)
 - [ ] Rewrite the NuttX carrier branch (`NanoRosNodeRegister.cmake`) +

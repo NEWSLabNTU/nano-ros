@@ -171,6 +171,8 @@ mod tests {
                     exec: (*exec).into(),
                     name: None,
                     namespace: None,
+                    class_name: None,
+                    class_header: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),
