@@ -151,14 +151,33 @@ wave lands).
       `nros_find_interfaces(LANGUAGE CPP)` on the example); cross-build the typed
       ELFs + run the NuttX two-process real-logic pub/sub E2E (build tier).
 
-### 240.4 — C path parity
-- [ ] C component shape: a `struct` (state) + `nros_ret_t configure(nros_node_t*)`
-      registering C callbacks (`fn ptr + void* ctx`) via the C FFI
-      (`nros_subscription_callback_t (data,len,ctx)` — exists in nros-c). C
-      `NROS_NODE` equivalent (factory + sizeof) [Q7].
-- [ ] Typed C++ entry constructs + configures a C component (define the C
-      factory/configure seam the entry calls — mixed 238.C build).
-- [ ] NuttX C talker/listener real-logic E2E.
+### 240.4 — C path parity — **mechanism DONE 2026-06-12**
+- [x] C component shape: a `struct` (state) + `nros_ret_t configure(const
+      nros_cpp_node_t*, StructT*)` binding C callbacks (`fn ptr + void* ctx`)
+      by identity. `packages/core/nros-c/include/nros/component.h`:
+      `NROS_C_COMPONENT(StructT, configure_fn)` emits the C-ABI factory +
+      configure (`__nros_c_component_<pkg>_{create,configure}`, keyed on
+      `NROS_PKG_NAME`); plain-C prototypes for the C-ABI `nros_cpp_subscription_register`
+      + a `nros_cpp_qos_t` mirror + `nros_c_qos_default()`. **The bridge:** the
+      `nros_cpp_*` FFI symbols are C-ABI (the `cpp` is a namespace prefix, not C++
+      linkage), so C calls them directly against the node the Entry hands it — C
+      and C++ components share the SAME executor + node. Header gcc-syntax-checked;
+      macro symbol-names verified. (Q7 → factory, storage in the C TU — no sizeof
+      leak to the Entry; timer-from-C deferred since the executor handle is
+      private, so the C mechanism is sub-only like the cpp listener.)
+- [x] Typed entry constructs + configures a C component: `emit_typed` branches on
+      `lang` — a `"c"` node forward-declares + calls the factory/configure seam
+      with `node.ffi_handle()` (no class, no header), a `"cpp"` node uses its class
+      (`emit_cpp.rs`; `lang` threaded through `PlanNode` + the metadata reader).
+      Unit-tested (C-only + mixed C/C++). NuttX C typed carrier:
+      `nuttx_entry_main_c_typed.cpp.in` + the `nano_ros_node_register(TYPED LANGUAGE
+      C)` carrier branch (render-verified).
+- [x] Migrated `examples/qemu-arm-nuttx/c/listener` to a typed C component
+      (`NROS_C_COMPONENT` + raw member sub; `TYPED LANGUAGE C`; keeps the
+      `Waiting for messages` marker). gcc-syntax-checked.
+- [ ] **240.4-rest** — NuttX C talker (publish needs a typed publisher / a raw
+      publisher-create-from-C seam — the timer-from-C gap) + cross-build the C
+      typed ELFs and run the NuttX two-process real-logic E2E (build tier).
 
 ### 240.5 — Service / action on the executor (the unspiked transports)
 - [ ] Prove service-server / action-server **callback** dispatch

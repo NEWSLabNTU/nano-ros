@@ -28,6 +28,8 @@ struct ComponentMeta {
     class: String,
     #[serde(default)]
     class_header: Option<String>,
+    #[serde(default)]
+    lang: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,9 +39,17 @@ struct MetadataDoc {
 }
 
 /// `(pkg, exec)` → `(class, class_header)` lookup built from the metadata.
+/// Per-component facts the typed emitter needs.
+#[derive(Debug, Clone)]
+struct ComponentFacts {
+    class: String,
+    class_header: Option<String>,
+    lang: Option<String>,
+}
+
 #[derive(Debug, Default)]
 pub struct ComponentIndex {
-    by_key: HashMap<(String, String), (String, Option<String>)>,
+    by_key: HashMap<(String, String), ComponentFacts>,
 }
 
 impl ComponentIndex {
@@ -66,14 +76,18 @@ impl ComponentIndex {
             };
             by_key.insert(
                 (pkg.to_string(), c.name.clone()),
-                (c.class.clone(), c.class_header.clone()),
+                ComponentFacts {
+                    class: c.class.clone(),
+                    class_header: c.class_header.clone(),
+                    lang: c.lang.clone(),
+                },
             );
         }
         Ok(Self { by_key })
     }
 
     /// Look up a component by `(pkg, exec)`.
-    fn get(&self, pkg: &str, exec: &str) -> Option<&(String, Option<String>)> {
+    fn get(&self, pkg: &str, exec: &str) -> Option<&ComponentFacts> {
         self.by_key.get(&(pkg.to_string(), exec.to_string()))
     }
 }
@@ -85,7 +99,7 @@ impl ComponentIndex {
 /// surface later as a confusing emit error.
 pub fn enrich_plan(plan: &mut Plan, index: &ComponentIndex) -> Result<()> {
     for n in &mut plan.nodes {
-        let Some((class, header)) = index.get(&n.pkg, &n.exec) else {
+        let Some(facts) = index.get(&n.pkg, &n.exec) else {
             bail!(
                 "typed entry: launch node pkg `{}` exec `{}` has no matching component in \
                  nros-metadata.json — is it declared with nano_ros_node_register(NAME {} CLASS {}::… )?",
@@ -95,16 +109,23 @@ pub fn enrich_plan(plan: &mut Plan, index: &ComponentIndex) -> Result<()> {
                 n.pkg
             );
         };
-        let Some(header) = header else {
-            bail!(
-                "typed entry: component `{}::{}` (pkg `{}`) has no class_header in metadata",
-                n.pkg,
-                n.exec,
-                n.pkg
-            );
-        };
-        n.class_name = Some(class.clone());
-        n.class_header = Some(header.clone());
+        n.class_name = Some(facts.class.clone());
+        n.lang = facts.lang.clone();
+        // A C component is constructed via its C-ABI factory + configure seam
+        // (mangled on pkg) — the entry never `#include`s a class header for it.
+        // A C++ component needs its header to construct the class.
+        let is_c = facts.lang.as_deref() == Some("c");
+        if !is_c {
+            let Some(header) = &facts.class_header else {
+                bail!(
+                    "typed entry: C++ component `{}::{}` (pkg `{}`) has no class_header in metadata",
+                    n.pkg,
+                    n.exec,
+                    n.pkg
+                );
+            };
+            n.class_header = Some(header.clone());
+        }
     }
     Ok(())
 }
@@ -142,6 +163,7 @@ mod tests {
                     namespace: None,
                     class_name: None,
                     class_header: None,
+                    lang: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),

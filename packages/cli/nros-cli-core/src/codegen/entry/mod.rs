@@ -125,6 +125,12 @@ pub struct PlanNode {
     /// Phase 240.2 — the component class header to `#include`
     /// (`"talker_pkg/Talker.hpp"`). Paired with `class_name`.
     pub class_header: Option<String>,
+    /// Phase 240.4 (RFC-0043) — component implementation language from the
+    /// cmake metadata (`"c"` / `"cpp"` / `"rust"`). `None` for the launch-only
+    /// legacy path. The **typed** entry emitter branches on it: a `"c"` node is
+    /// constructed via its C-ABI factory + `configure(node_handle, self)` seam
+    /// (`NROS_C_COMPONENT`), a `"cpp"` node via its C++ class + `configure(node)`.
+    pub lang: Option<String>,
 }
 
 impl PlanNode {
@@ -232,6 +238,7 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             // register-symbol emitters ignore these.
             class_name: None,
             class_header: None,
+            lang: None,
         });
     };
     for n in &desc.nodes {
@@ -335,6 +342,7 @@ mod tests {
             namespace: None,
             class_name: None,
             class_header: None,
+            lang: None,
         };
         assert_eq!(n.register_symbol(), "__nros_component_talker_pkg_register");
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");

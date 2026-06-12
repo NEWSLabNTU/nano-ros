@@ -266,17 +266,26 @@ function(nano_ros_node_register)
         # `NROS_ENTRY_CLASS` / `NROS_ENTRY_CLASS_HEADER` / `NROS_ENTRY_NODE_NAME`
         # feed the typed template. C++ only (the C path is 240.4).
         if(_NRC_TYPED)
-            if(NOT _nrc_lang STREQUAL "CPP")
-                message(FATAL_ERROR
-                    "nano_ros_node_register(TYPED): NuttX carrier supports only "
-                    "LANGUAGE CPP today (got '${_nrc_lang}'). C is phase-240.4.")
-            endif()
-            set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
-            set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
             set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
-            configure_file(
-                "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main_typed.cpp.in"
-                "${_entry_src}" @ONLY)
+            if(_nrc_lang STREQUAL "CPP")
+                set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
+                set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
+                configure_file(
+                    "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main_typed.cpp.in"
+                    "${_entry_src}" @ONLY)
+            elseif(_nrc_lang STREQUAL "C")
+                # Phase 240.4 — C typed component. The entry TU is C++ but
+                # constructs the C component via its `__nros_c_component_<pkg>_*`
+                # factory/configure seam (NROS_C_COMPONENT). `NROS_ENTRY_PKG_SYM`
+                # is already set above to the sanitized pkg.
+                configure_file(
+                    "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main_c_typed.cpp.in"
+                    "${_entry_src}" @ONLY)
+            else()
+                message(FATAL_ERROR
+                    "nano_ros_node_register(TYPED): NuttX carrier supports "
+                    "LANGUAGE C or CPP (got '${_nrc_lang}').")
+            endif()
         else()
             configure_file(
                 "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main.cpp.in"

@@ -162,14 +162,24 @@ fn board_cpp_path(board: &str) -> &str {
 /// `component.configure(node)` (binds the real callbacks). `main` hands the setup
 /// fn to `Board::run_components` (init → setup → `spin_once` loop → shutdown).
 ///
-/// Requires `class_name` + `class_header` on every node (threaded from the cmake
-/// metadata in 240.2b); returns an error naming the offending pkg otherwise.
+/// Each node is routed by its `lang` (Phase 240.4): a **C++** node needs
+/// `class_name` + `class_header` (construct the class, call `configure(node)`);
+/// a **C** node (`lang == "c"`) needs only its pkg — it is built via the C-ABI
+/// factory + configure seam `__nros_c_component_<pkg>_{create,configure}`
+/// (`NROS_C_COMPONENT`), to which the entry hands the node's `ffi_handle()`.
+/// Returns an error naming the offending pkg on a missing requirement.
 pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     for n in &plan.nodes {
-        if n.class_name.is_none() || n.class_header.is_none() {
+        if n.class_name.is_none() {
             return Err(format!(
-                "typed entry emit: node pkg `{}` exec `{}` is missing class_name/class_header \
-                 — the typed Entry needs the component's C++ class + header (cmake metadata)",
+                "typed entry emit: node pkg `{}` exec `{}` is missing class_name (cmake metadata)",
+                n.pkg, n.exec
+            ));
+        }
+        if !is_c_node(n) && n.class_header.is_none() {
+            return Err(format!(
+                "typed entry emit: C++ node pkg `{}` exec `{}` is missing class_header \
+                 — the typed Entry needs the component's class header (cmake metadata)",
                 n.pkg, n.exec
             ));
         }
@@ -196,24 +206,62 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     out.push_str("#include <nros/main.hpp>\n");
     out.push_str("#include <nros/nros.hpp>\n\n");
 
-    // One `#include` per unique component header (first-seen order).
+    // One `#include` per unique C++ component header (first-seen order). C nodes
+    // carry no header — their factory/configure are extern "C" decls below.
     let mut seen_headers: Vec<&str> = Vec::new();
     for n in &plan.nodes {
+        if is_c_node(n) {
+            continue;
+        }
         let h = n.class_header.as_deref().unwrap();
         if !seen_headers.contains(&h) {
             let _ = writeln!(out, "#include \"{h}\"");
             seen_headers.push(h);
         }
     }
+
+    // Forward-declare the C-ABI factory + configure for each unique C pkg.
+    let mut seen_c_pkgs: Vec<String> = Vec::new();
+    let mut wrote_extern = false;
+    for n in &plan.nodes {
+        if !is_c_node(n) {
+            continue;
+        }
+        let pkg = sanitize_pkg(&n.pkg);
+        if seen_c_pkgs.contains(&pkg) {
+            continue;
+        }
+        if !wrote_extern {
+            out.push_str(
+                "\n// C component factory + configure seam (NROS_C_COMPONENT); the\n\
+                 // node's `ffi_handle()` is handed to the C `configure` as an opaque\n\
+                 // `nros_cpp_node_t*` — the C side registers real callbacks on it.\n",
+            );
+            out.push_str("extern \"C\" {\n");
+            wrote_extern = true;
+        }
+        let _ = writeln!(out, "    void* __nros_c_component_{pkg}_create(void);");
+        let _ = writeln!(
+            out,
+            "    int32_t __nros_c_component_{pkg}_configure(const ::nros_cpp_node_t* node, void* self);"
+        );
+        seen_c_pkgs.push(pkg);
+    }
+    if wrote_extern {
+        out.push_str("}\n");
+    }
     out.push('\n');
 
-    // Static per-node storage — one component + node per launch `<node>` row
-    // (instances are NOT deduped: two rows of the same pkg = two objects).
+    // Static per-node storage — one node per launch `<node>` row. A C++ node
+    // also gets a static component object; a C node's state lives in its own TU
+    // (the factory returns `&static_instance`), so only the node is declared here.
     out.push_str("// Static per-node storage (outlives the spin loop; no heap).\n");
     for (i, n) in plan.nodes.iter().enumerate() {
-        let cls = n.class_name.as_deref().unwrap();
         let _ = writeln!(out, "static ::nros::Node __nros_node_{i};");
-        let _ = writeln!(out, "static ::{cls} __nros_comp_{i};");
+        if !is_c_node(n) {
+            let cls = n.class_name.as_deref().unwrap();
+            let _ = writeln!(out, "static ::{cls} __nros_comp_{i};");
+        }
     }
     out.push('\n');
 
@@ -228,11 +276,24 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             name = node_name.replace('\\', "\\\\").replace('"', "\\\"")
         );
         out.push_str("        if (!r.ok()) return static_cast<int32_t>(r.raw());\n");
-        let _ = writeln!(
-            out,
-            "        r = __nros_comp_{i}.configure(__nros_node_{i});"
-        );
-        out.push_str("        if (!r.ok()) return static_cast<int32_t>(r.raw());\n");
+        if is_c_node(n) {
+            let pkg = sanitize_pkg(&n.pkg);
+            let _ = writeln!(
+                out,
+                "        void* self = __nros_c_component_{pkg}_create();"
+            );
+            let _ = writeln!(
+                out,
+                "        int32_t crc = __nros_c_component_{pkg}_configure(__nros_node_{i}.ffi_handle(), self);"
+            );
+            out.push_str("        if (crc != 0) return crc;\n");
+        } else {
+            let _ = writeln!(
+                out,
+                "        r = __nros_comp_{i}.configure(__nros_node_{i});"
+            );
+            out.push_str("        if (!r.ok()) return static_cast<int32_t>(r.raw());\n");
+        }
         out.push_str("    }\n");
     }
     out.push_str("    return 0;\n}\n\n");
@@ -246,6 +307,11 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     out.push_str("}\n");
 
     Ok(out)
+}
+
+/// A `lang == "c"` node is built via the C factory/configure seam (no C++ class).
+fn is_c_node(n: &super::PlanNode) -> bool {
+    n.lang.as_deref() == Some("c")
 }
 
 #[cfg(test)]
@@ -266,6 +332,7 @@ mod tests {
                     namespace: None,
                     class_name: None,
                     class_header: None,
+                    lang: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),
@@ -287,6 +354,7 @@ mod tests {
                     namespace: None,
                     class_name: Some((*class).into()),
                     class_header: Some((*header).into()),
+                    lang: Some("cpp".into()),
                 })
                 .collect(),
             depfile_paths: Vec::new(),
@@ -348,6 +416,68 @@ mod tests {
     }
 
     #[test]
+    fn typed_emit_c_node_uses_factory_configure_seam() {
+        // A `lang == "c"` node routes through the C-ABI factory + configure seam
+        // (no C++ class, no header include); the entry hands it `ffi_handle()`.
+        let mut plan = fixture_plan_typed(&[(
+            "sensor_pkg",
+            "sensor",
+            "sensor",
+            "sensor_pkg::Sensor",
+            "sensor_pkg/Sensor.hpp",
+        )]);
+        plan.nodes[0].lang = Some("c".into());
+        let src = emit_typed(&plan).expect("typed emit ok");
+        // extern "C" factory + configure decls, mangled on pkg.
+        assert!(src.contains("void* __nros_c_component_sensor_pkg_create(void);"));
+        assert!(src.contains(
+            "int32_t __nros_c_component_sensor_pkg_configure(const ::nros_cpp_node_t* node, void* self);"
+        ));
+        // setup uses create() + configure(ffi_handle, self) — not a C++ class.
+        assert!(src.contains("void* self = __nros_c_component_sensor_pkg_create();"));
+        assert!(
+            src.contains(
+                "__nros_c_component_sensor_pkg_configure(__nros_node_0.ffi_handle(), self)"
+            )
+        );
+        // No C++ class storage / header / .configure for the C node.
+        assert!(!src.contains("static ::sensor_pkg::Sensor"));
+        assert!(!src.contains("#include \"sensor_pkg/Sensor.hpp\""));
+        assert!(!src.contains("__nros_comp_0.configure"));
+        // Still routes to the real executor.
+        assert!(src.contains("::nros::board::NativeBoard::run_components(&__nros_entry_setup)"));
+    }
+
+    #[test]
+    fn typed_emit_mixed_c_and_cpp_nodes() {
+        let mut plan = fixture_plan_typed(&[
+            (
+                "talker_pkg",
+                "talker",
+                "talker",
+                "talker_pkg::Talker",
+                "talker_pkg/Talker.hpp",
+            ),
+            (
+                "sensor_pkg",
+                "sensor",
+                "sensor",
+                "sensor_pkg::Sensor",
+                "sensor_pkg/Sensor.hpp",
+            ),
+        ]);
+        plan.nodes[1].lang = Some("c".into()); // sensor is C
+        let src = emit_typed(&plan).expect("typed emit ok");
+        // C++ node: header + class + .configure.
+        assert!(src.contains("#include \"talker_pkg/Talker.hpp\""));
+        assert!(src.contains("static ::talker_pkg::Talker __nros_comp_0;"));
+        assert!(src.contains("__nros_comp_0.configure(__nros_node_0)"));
+        // C node: factory seam, no header/class.
+        assert!(src.contains("void* self = __nros_c_component_sensor_pkg_create();"));
+        assert!(!src.contains("static ::sensor_pkg::Sensor"));
+    }
+
+    #[test]
     fn typed_emit_nuttx_board_uses_nuttxboard_run_components() {
         let mut plan = fixture_plan_typed(&[("t_pkg", "t", "t", "t_pkg::T", "t_pkg/T.hpp")]);
         plan.board = "nuttx".into();
@@ -359,7 +489,7 @@ mod tests {
     fn typed_emit_errors_when_class_missing() {
         let plan = fixture_plan(&[("talker_pkg", "talker")]); // class_name None
         let err = emit_typed(&plan).unwrap_err();
-        assert!(err.contains("missing class_name/class_header"), "{err}");
+        assert!(err.contains("missing class_name"), "{err}");
         assert!(err.contains("talker_pkg"), "{err}");
     }
 

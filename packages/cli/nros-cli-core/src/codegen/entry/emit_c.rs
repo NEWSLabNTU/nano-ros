@@ -117,6 +117,7 @@ mod tests {
                     namespace: None,
                     class_name: None,
                     class_header: None,
+                    lang: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),
