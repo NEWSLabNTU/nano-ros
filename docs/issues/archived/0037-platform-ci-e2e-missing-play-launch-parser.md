@@ -1,11 +1,19 @@
 ---
 id: 37
 title: platform-ci e2e — `play_launch_parser` not provisioned/PATH'd (build-fixture-extras fails)
-status: open
+status: resolved
 type: bug
 area: ci
 related: [issue-0034, phase-196, phase-240]
+resolved_in: 95f325836
 ---
+
+> **RESOLVED 2026-06-12.** Confirmed by e2e dispatch run 27396365520: the
+> **threadx_linux cell is fully green** (30m41s, including the
+> `build-fixture-extras` → `nros plan` step that previously failed), and
+> threadx_riscv64 also cleared play_launch_parser (it now fails later on an
+> unrelated cpp compile — see [issue 0038]). The `NROS_PLAY_LAUNCH_PARSER` env
+> override (fix v2 below) resolved it; the v1 `$GITHUB_PATH` approach did not.
 
 > **FIX v2 2026-06-12 (pending re-validation).** The v1 `$GITHUB_PATH` append
 > (commit 7b0517121) did **not** work — run 27395089910 still failed: the install
