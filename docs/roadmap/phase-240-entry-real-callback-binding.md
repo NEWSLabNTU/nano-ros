@@ -229,12 +229,55 @@ wave lands).
 - [ ] **240.5-E2E** — cross-build the migrated ELFs + NuttX boot/exchange
       (build tier; validates the hand-rolled CDR + action protocol end-to-end).
 
-### 240.6 — Retire the interpreter
-- [ ] Delete `EntryNodeRuntime` + `detail::entry_*` synthesis (`main.hpp`); delete
-      `DeclaredNode` / `DeclaredCallback` / `record_callback_effect` + the
-      `NodeEntityDescriptor` string-descriptor `NodeContextOps` seam.
-- [ ] Remove the 238 synthesized bodies (counter / `a+b` / fixed result) once all
-      examples run real logic. Update RFC-0032 §8a + RFC-0043 to `Stable`.
+### 240.6 — Retire the interpreter — **BLOCKED (retirement plan + RFC done 2026-06-12)**
+
+The interpreter deletion is the **terminal** step (RFC-0043 is now `Stable` — the
+binding mechanism is implemented + validated across every transport and both
+languages). Deletion is **gated** on removing every remaining declarative
+consumer first; doing it before then breaks unmigrated platforms that the build
+tier (not this env) must validate.
+
+- [x] RFC-0043 `Draft → Stable`; RFC-0032 §8a "callback bodies" → resolved by
+      RFC-0043. Retirement plan + blockers recorded here.
+
+**Blockers — declarative consumers still live (must migrate/delete first):**
+- **~46 example sources** on platforms not yet migrated + unbuildable here:
+  - `examples/qemu-arm-freertos/{c,cpp}/*` (talker/listener/service-*/action-*)
+  - `examples/threadx-linux/cpp/*` (all roles)
+  - `examples/qemu-arm-nuttx/{c,cpp}/talker`, `examples/qemu-riscv-nuttx/c/talker`
+    (talker = the publish-from-component / timer gap; needs the typed `Publisher`
+    + C++ msg-header provisioning, or a raw-publisher-create seam)
+  - native templates/workspaces: `examples/templates/{multi-node-workspace-cpp,
+    c-and-cpp-mixed-workspace,pure-c-workspace}`, `examples/workspaces/{c,cpp,mixed}`
+    (a typed `multi-node-workspace-cpp-typed` already exists as the replacement
+    shape — 240.2b).
+- **Codegen:** the legacy `emit_cpp::emit` + `emit_c::emit` (register-symbol →
+  interpreter) and their CLI dispatch; replace with `emit_typed` once all launch
+  entries are typed.
+- **C++ headers:** `EntryNodeRuntime` + `detail::entry_*` + `Board::run(lambda)`
+  (`main.hpp`); `declared_node.hpp`; the declarative bits of `node_pkg.hpp` +
+  `NodeContextOps` / `NodeEntityDescriptor` string-descriptor seam.
+- **C headers:** the `nros_declared_node_*` / `NROS_NODE_REGISTER` declarative API
+  (`node_pkg.h`) + the 238 carrier's non-typed `nuttx_entry_main.cpp.in`.
+- **Synthesized 238 bodies** (counter / `a+b` / fixed result) — removable once no
+  example relies on them.
+
+**Ordered deletion (when unblocked, per-step build-validated):**
+1. Migrate the publish-from-component talker gap (typed `Publisher` or raw
+   publisher-create seam) → migrate all talker/pub examples.
+2. Migrate freertos + threadx example sets (their carriers must learn the typed
+   entry, mirroring the NuttX 240.3/240.4 carriers).
+3. Migrate the native templates/workspaces to the typed shape; delete the legacy
+   `emit_cpp::emit`/`emit_c::emit` + wire `emit_typed` as the only C/C++ emitter.
+4. Delete `EntryNodeRuntime` + `Board::run(lambda)` + `declared_node.hpp` + the
+   `NodeContextOps`/`NROS_NODE_REGISTER`/`nros_declared_node_*` declarative API +
+   the non-typed carrier template + the synthesized bodies.
+
+### 240.6-prep — deprecation markers (done 2026-06-12)
+- [x] Doc-comment the interpreter + declarative entry API (`main.hpp`
+      `EntryNodeRuntime`, `declared_node.hpp`) as **deprecated**, pointing at
+      `component.hpp` / RFC-0043 as the replacement + naming phase-240.6 as the
+      removal step. Non-breaking (comments only).
 
 ### 240.7 — Non-counter E2E + ASI (gates 236.C)
 - [ ] A node with a real subscription→publish callback (transform), C++ and C,

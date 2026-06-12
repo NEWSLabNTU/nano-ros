@@ -1,7 +1,7 @@
 ---
 rfc: 0043
 title: "C++/C Entry real-callback binding — executor-routed, no callback naming"
-status: Draft
+status: Stable
 since: 2026-06
 last-reviewed: 2026-06-12
 implements-tracked-by: [phase-236, phase-240]
@@ -293,3 +293,18 @@ entry, so the C path inherits the executor route unchanged.
   not `node!()`. Added Q10 (Rust Entry no-naming parity + RTIC/Embassy
   framework-dispatch trampoline vs `spin_once`-only). Implementation breakdown →
   phase-240.
+- 2026-06-12 — **Draft → Stable.** The design is implemented + validated across
+  every transport and both languages (phase-240.1–240.5): the binding primitives
+  (`component.hpp` `bind_{subscription,timer,service,action_server}_raw` +
+  `create_{service,action}_client_raw`; the C `component.h` `NROS_C_COMPONENT`
+  seam), the typed codegen Entry (`emit_cpp::emit_typed`, metadata-driven), and
+  the C++/C NuttX typed carriers all route real callbacks through the real
+  executor with no callback naming. Open questions resolved: **Q1** →
+  `Result configure(Node&)`; **Q2** → entry-/component-owned static storage (no
+  heap); **Q5** → `class`+`class_header`+`lang` from the cmake metadata; **Q10**
+  → `spin_once`-only for v1. The **one remaining step is deleting the legacy
+  declarative interpreter** (`EntryNodeRuntime` + the string-descriptor
+  `DeclaredNode`/`NodeContextOps` layer + the synthesized 238 bodies) — gated on
+  migrating the remaining cross-platform declarative examples (freertos, threadx,
+  the talker pkgs, native templates) + build-tier validation. Tracked by
+  phase-240.6 (retirement plan + blockers there).

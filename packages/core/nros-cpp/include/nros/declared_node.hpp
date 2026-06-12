@@ -5,6 +5,14 @@
  * @file component_node.hpp
  * @ingroup grp_node
  * @brief `nros::DeclaredNode` declaration handle.
+ *
+ * @deprecated RFC-0043 / phase-240.6 — the string-descriptor declarative entry
+ * API (`DeclaredNode` / `DeclaredCallback` / `record_callback_effect`) feeds the
+ * synthesizing `EntryNodeRuntime` interpreter. The typed Entry binds **real**
+ * callbacks by identity on the real executor via component objects
+ * (`<nros/component.hpp>` + `Result configure(Node&)`). This header is slated for
+ * removal once the remaining declarative examples migrate (see the 240.6
+ * retirement plan). New Entry code MUST use the component shape.
  */
 
 #ifndef NROS_CPP_COMPONENT_NODE_HPP

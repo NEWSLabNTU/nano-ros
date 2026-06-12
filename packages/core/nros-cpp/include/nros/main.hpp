@@ -168,6 +168,14 @@ inline void entry_tick_yield() {
 #endif
 }
 
+/// DEPRECATED (RFC-0043, phase-240.6) — the synthesizing declarative
+/// interpreter. The typed Entry (`Board::run_components` + the codegen
+/// `emit_typed`) routes real user callbacks through the real executor via
+/// component objects (`<nros/component.hpp>`), so this string-descriptor
+/// `NodeContext` interpreter + `Board::run(lambda)` are slated for removal once
+/// the remaining declarative examples migrate (the 240.6 retirement plan lists
+/// the blockers). New Entry code MUST use the component/`configure(Node&)` shape.
+///
 /// Phase 235.A / 235.B — the **real**, lifecycle-agnostic Entry
 /// NodeContext runtime (shared by every Board adapter).
 ///
