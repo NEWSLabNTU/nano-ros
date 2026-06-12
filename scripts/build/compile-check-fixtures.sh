@@ -26,7 +26,32 @@ mkdir -p "$out_root"
 # id : source template dir (carries @NANO_ROS_ROOT@ placeholders)
 COMPILE_CHECK_FIXTURES=(
     "one_dep_component_pkg:packages/testing/nros-tests/fixtures/one_dep_component_pkg"
+    # n9 `nros::main!()` positive forms — all stage the same n9_workspace
+    # template; `post_stage` writes the form-specific demo_entry/src/main.rs.
+    "n9_form1:packages/testing/nros-tests/fixtures/n9_workspace"
+    "n9_form2:packages/testing/nros-tests/fixtures/n9_workspace"
+    "n9_form3:packages/testing/nros-tests/fixtures/n9_workspace"
+    "n9_form4:packages/testing/nros-tests/fixtures/n9_workspace"
 )
+
+# Per-id staging hook: overwrite files in the staged tree before `cargo check`.
+# Used by the n9 forms — each is the same workspace with a different
+# `nros::main!(...)` invocation in the Entry pkg's main.rs.
+post_stage() {
+    local id="$1" staged="$2"
+    local main_rs="$staged/src/demo_entry/src/main.rs"
+    case "$id" in
+        n9_form1)
+            printf '//! n9 form 1 (no args).\n\nnros::main!();\n' > "$main_rs" ;;
+        n9_form2)
+            printf '//! n9 form 2 (board only).\n\nnros::main!(board = ::nros_board_native::NativeBoard);\n' > "$main_rs" ;;
+        n9_form3)
+            printf '//! n9 form 3 (launch, default file).\n\nnros::main!(launch = "demo_bringup");\n' > "$main_rs" ;;
+        n9_form4)
+            printf '//! n9 form 4 (all explicit).\n\nnros::main!(\n    board = ::nros_board_native::NativeBoard,\n    launch = "demo_bringup:sim.launch.xml",\n    args = [("use_sim", "true")],\n);\n' > "$main_rs" ;;
+        *) : ;;  # no overlay
+    esac
+}
 
 stage_and_check() {
     local id="$1" src="$2"
@@ -46,6 +71,8 @@ stage_and_check() {
     grep -rlZ '@NANO_ROS_ROOT@' "$staged" 2>/dev/null | while IFS= read -r -d '' f; do
         sed -i "s#@NANO_ROS_ROOT@#$repo_root#g" "$f"
     done
+
+    post_stage "$id" "$staged"
 
     rm -f "$staged/.compile-ok"
     ( cd "$staged" && cargo check --manifest-path Cargo.toml )

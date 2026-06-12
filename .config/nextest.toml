@@ -293,7 +293,7 @@ retries = 2
 # stm32f4_rtic_main_macro, phase212_n_entry_poc_runs → native_entry_poc_boot.
 filter = """
   binary(orchestration_tiers_native) \
-  or binary(phase212_n9_main_macro_forms) \
+  or binary(native_main_macro_misuse) \
   or binary(phase216_c_embassy_main_macro_expansion) \
   or binary(phase210_f4_shadowing) \
   or binary(cpp_multi_node_entry) \

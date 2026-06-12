@@ -43,7 +43,8 @@ triage.
 
 | binary | n | tests |
 |---|---|---|
-| phase212_n9_main_macro_forms | 8 | form1/2/3/4 `*_compiles`, `unknown_board_emits_compile_error`, `custom_tasks_*` (2), `rebuilds_on_launch_xml_touch` |
+| native_main_macro_forms (was phase212_n9, 4 pos) | 4 | CONVERTED — 4 positive forms → compile-check fixtures (#0034) |
+| native_main_macro_misuse (was phase212_n9, 4 neg) | 4 | compile-FAIL + rebuild — documented exception (can't prebuild a failing/rebuild check); kept on nextest timeout override |
 | orchestration_tiers_native | 5 | `instance_identity_mismatch_is_a_compile_error`, `multi_tier_binary_boots_into_run_tiers`, `…runs_both_tiers_with_router`, `multi_tier_main_macro_emits_run_tiers_and_compiles`, `single_tier_system_takes_the_legacy_boardentry_run_path` |
 | phase212_n12_cpp_api_drift | 2 | `declared_node_typed_helpers_compile`, `rclcpp_node_options_and_component_factory_compile` |
 | native_entry_poc_boot (was phase212_n_entry_poc_runs) | 2 | CONVERTED to fixture-consuming (#0034) — entry-poc is now a build-fixture |
