@@ -100,14 +100,26 @@ Steps (each a commit; CI between the riskier ones):
       `c_stub_platform.rs` stay in cffi until B.2 deletes cffi's copy. **One-step
       duplication window**: api's header diverges from cffi's (gated vs
       unconditional shim) until B.2 rewires + deletes cffi's.
-- [ ] **B.2** — rewire include dirs to api: the chokepoints
+- [x] **B.2 wave 1 — api block forward-ready (landed, additive).** The capability
+      block now defines `HAS_MALLOC` for every heap platform so nothing breaks when
+      consumers switch to it: POSIX-family (posix/nuttx/threadx-linux/native, all
+      POSIX-mapped) + the heap RTOSes (zephyr/freertos). Bare-metal/ThreadX-RV64/
+      ESP stay heap-opt-in via the board.toml `-D` (C.2). Validated host g++:
+      POSIX/ZEPHYR/FREERTOS heap-container compile OK; bare-metal no-`D` FAIL
+      (correct #38 gate); bare-metal +`D` OK. Still additive (api not on any `-I`).
+      *ESP gap:* ESP maps to `NROS_PLATFORM_BAREMETAL` but has a heap — it needs the
+      board.toml `-D` wired (C.2 extension) before the forward, OR confirmation it
+      builds no cpp-heap fixtures.
+- [ ] **B.2 wave 2 — the forward/rewire (CI-monitored).** Repoint the chokepoints
       `nros-build-paths::nros_platform_cffi_include()` + the
       `NROS_PLATFORM_CFFI_INCLUDE` cmake/env var (→ `nros-platform-api/include`),
       plus the literal-path cmake sites (nros-c:137; nros-platform-{posix,freertos,
       zephyr,threadx,nuttx,esp-idf} CMakeLists; xrce:33/35/198; the 3 *-c-smoke
       CMakeLists; zephyr/CMakeLists:51 + nros_cargo_build.cmake:99/287). **Delete**
-      `nros-platform-cffi/include/nros/platform.h`. → CI `run_e2e` (xrce/cyclone
-      are B-only consumers — this is the cell-reddening risk).
+      `nros-platform-cffi/include/nros/platform.h`. (Prefer the include-dir rewire
+      over a relative-`#include` forward — the latter is fragile under the
+      build-zenoh copy-out.) → CI `run_e2e`; xrce/cyclone/esp are the
+      cell-reddening risks; iterate per red cell.
 - [ ] **B.3** — retire A: confirm no live C consumer of A's legacy-only surface
       (ns clock / typed mutex / atomics) via grep + the gate; drop
       `nros-c/include/nros/platform.h` + the per-RTOS sub-headers (or reduce them

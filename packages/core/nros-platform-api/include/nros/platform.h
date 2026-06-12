@@ -63,19 +63,26 @@
  *    Those boards declare `heap = true` in board.toml and the build lowers it to
  *    the Kconfig/FreeRTOSConfig knob, keeping the C view tied to the RTOS config.
  */
-#if defined(NROS_PLATFORM_POSIX)
+/* HAS_ATOMICS is a constant on every supported target. */
+#ifndef NROS_PLATFORM_HAS_ATOMICS
+#  define NROS_PLATFORM_HAS_ATOMICS
+#endif
+
+/* HAS_MALLOC by platform. POSIX (and the POSIX-mapped hosted platforms: NuttX,
+ * ThreadX-linux, native) and the heap RTOSes (Zephyr, FreeRTOS) always run with
+ * an allocator under nros — the generator always configures the RTOS heap
+ * (`CONFIG_HEAP_MEM_POOL_SIZE`, `configSUPPORT_DYNAMIC_ALLOCATION`), and each
+ * declares `heap = true` in its `nros-board.toml`. They get the canonical
+ * malloc/free unconditionally here.
+ *
+ * Bare-metal / ThreadX-RV64 / ESP / custom do NOT default a heap: they opt in
+ * via the board.toml-derived `-DNROS_PLATFORM_HAS_MALLOC` (phase-241 C.2), so a
+ * genuinely heap-less board still fails to compile a heap container (the #38
+ * compile-gate). */
+#if defined(NROS_PLATFORM_POSIX) || defined(NROS_PLATFORM_ZEPHYR) \
+    || defined(NROS_PLATFORM_FREERTOS)
 #  ifndef NROS_PLATFORM_HAS_MALLOC
 #    define NROS_PLATFORM_HAS_MALLOC
-#  endif
-#  ifndef NROS_PLATFORM_HAS_ATOMICS
-#    define NROS_PLATFORM_HAS_ATOMICS
-#  endif
-#else
-/* bare-metal / ThreadX / ESP / FreeRTOS / Zephyr / custom: atomics are a
- * constant; heap (HAS_MALLOC) is opt-in via the board.toml-derived `-D`
- * (or the RTOS config knob for freertos/zephyr). */
-#  ifndef NROS_PLATFORM_HAS_ATOMICS
-#    define NROS_PLATFORM_HAS_ATOMICS
 #  endif
 #endif
 
