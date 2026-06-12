@@ -7,9 +7,9 @@ up to the subscription model — executor-dispatched **callbacks** fed by a QoS-
 C/C++ follow in a later phase. Fixes the silent single-buffer overwrite and honors
 ROS service `KEEP_LAST(10)` (RFC-0007).
 
-**Status.** In progress (2026-06). 239.1 (service-client typed callback) landed
-(builds + clippy clean); runtime test → 239.4; action-client (239.2) + QoS buffering
-(wave 2) next. Implements RFC-0041.
+**Status.** In progress (2026-06). 239.1 (service-client) + 239.2 (action-client) typed
+callbacks landed (build + clippy clean); 239.3 wiring inherent. Runtime tests →
+239.4; QoS-depth buffering (wave 2) next. Implements RFC-0041.
 
 **Priority.** P2 — reliability + RT-ergonomics + ROS alignment; not a correctness
 blocker (Promise works today) but removes a real silent-loss bug.
@@ -58,7 +58,7 @@ closure. Reuse the `reply_ready` waker gate. `Promise` path unchanged.
 - **Files:** `executor/handles.rs`, `executor/arena.rs`, `executor/spin.rs`
   (registration), `executor/node.rs` (`create_client_with_callback`).
 
-#### 239.2 — Action-client callbacks  ⬜
+#### 239.2 — Action-client callbacks  ✅ (code; runtime test → 239.4)
 Add `NodeCtx::create_action_client_with_callbacks::<A, …>(client, on_goal_response,
 on_feedback, on_result)` with `FnMut(&GoalId, bool)` / `FnMut(&GoalId, &A::Feedback)`
 / `FnMut(&GoalId, GoalStatus, &A::Result)`. Wrap `ActionClientRawArenaEntry` (which
@@ -67,7 +67,7 @@ trampolines that deserialize the payload then call the closures. `register_actio
 client_raw_sized` is already public — add the typed wrapper.
 - **Files:** `executor/handles.rs`, `executor/action.rs`, `executor/node.rs`.
 
-#### 239.3 — Registration + executor wiring  ⬜
+#### 239.3 — Registration + executor wiring  ✅ (done in 239.1/239.2 registrations)
 Hook the new typed entries into the `CallbackMeta` list (`EntryKind::ServiceClient`
 / `ActionClient`, `InvocationMode::Always`, the typed `try_process` / `has_data` /
 `drop_fn`), mirroring `register_subscription_buffered_on`. Confirm one `drive_io`
