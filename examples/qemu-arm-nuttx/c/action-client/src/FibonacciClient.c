@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <nros/component.h>
 
@@ -32,6 +33,7 @@ static void write_u32_le(uint8_t* p, uint32_t v) {
 
 static void on_tick(void* ctx) {
     fib_client_t* self = (fib_client_t*)ctx;
+    nros_cpp_action_client_poll(self->storage); /* pump RX for try_recv_* */
     if (self->phase == 0) {
         uint8_t goal[8];
         goal[0] = 0x00;
@@ -39,19 +41,23 @@ static void on_tick(void* ctx) {
         goal[2] = 0x00;
         goal[3] = 0x00;
         write_u32_le(goal + 4, (uint32_t)self->order);
-        if (nros_cpp_action_client_send_goal(self->storage, goal, sizeof(goal), &self->goal_id) ==
-            0) {
-            printf("Goal sent: order=%d\n", (int)self->order);
-            self->phase = 1;
-        }
+        /* ASYNC send — the blocking send_goal re-enters the executor from inside
+         * this spin_once timer callback and never completes. Async returns
+         * immediately; acceptance arrives via try_recv_goal_response. */
+        nros_cpp_action_client_send_goal_async(self->storage, goal, sizeof(goal), &self->goal_id);
+        printf("Goal sent: order=%d\n", (int)self->order);
+        self->phase = 1;
     } else if (self->phase == 1) {
         uint8_t buf[17];
         size_t len = 0;
         if (nros_cpp_action_client_try_recv_goal_response(self->storage, buf, sizeof(buf), &len) ==
                 0 &&
             len >= 17) {
+            memcpy(self->goal_id, buf, 16); /* server-confirmed goal UUID */
             if (buf[16] != 0) {
                 printf("Goal accepted by server\n");
+                nros_cpp_action_client_get_result_async(self->storage,
+                                                        (const uint8_t(*)[16])self->goal_id);
                 self->phase = 2;
             } else {
                 printf("Goal rejected by server\n");
@@ -61,12 +67,12 @@ static void on_tick(void* ctx) {
     } else if (self->phase == 2) {
         uint8_t res[256];
         size_t len = 0;
-        if (nros_cpp_action_client_get_result(self->storage, self->executor,
-                                              (const uint8_t(*)[16])self->goal_id, res, sizeof(res),
-                                              &len) == 0 &&
+        if (nros_cpp_action_client_try_recv_result(self->storage, res, sizeof(res), &len) == 0 &&
             len >= 8) {
             uint32_t count = read_u32_le(res + 4);
-            printf("Result received: %u terms\n", (unsigned)count);
+            /* status=4 = Succeeded; harness greps "Result (status=". */
+            printf("Result (status=4): %u terms\n", (unsigned)count);
+            printf("Action completed successfully\n");
             self->phase = 3;
         }
     }
@@ -74,6 +80,7 @@ static void on_tick(void* ctx) {
 
 static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
                                    fib_client_t* self) {
+    setvbuf(stdout, NULL, _IONBF, 0); /* poll client prints on transitions only */
     self->executor = executor;
     self->order = 5;
     int32_t rc =

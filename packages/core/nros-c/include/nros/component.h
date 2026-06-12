@@ -199,13 +199,19 @@ int32_t nros_cpp_service_client_try_recv_reply(void* storage, uint8_t* resp_data
 int32_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,
                                       const char* type_name, const char* type_hash,
                                       nros_cpp_qos_t qos, void* storage);
-int32_t nros_cpp_action_client_send_goal(void* handle, const uint8_t* goal_buf, size_t goal_len,
-                                         uint8_t (*goal_id_out)[16]);
+/* ASYNC (non-blocking) goal/result — required from a poll client driven by a
+ * timer callback: the *blocking* send_goal/get_result re-enter the executor from
+ * inside spin_once and never complete. */
+int32_t nros_cpp_action_client_send_goal_async(void* handle, const uint8_t* goal_buf,
+                                               size_t goal_len, uint8_t (*goal_id_out)[16]);
+int32_t nros_cpp_action_client_get_result_async(void* handle, const uint8_t (*goal_id)[16]);
 int32_t nros_cpp_action_client_try_recv_goal_response(void* handle, uint8_t* out_data,
                                                       size_t out_capacity, size_t* out_len);
-int32_t nros_cpp_action_client_get_result(void* handle, void* executor_handle,
-                                          const uint8_t (*goal_id)[16], uint8_t* result_buf,
-                                          size_t result_buf_len, size_t* result_len);
+int32_t nros_cpp_action_client_try_recv_result(void* handle, uint8_t* out_data, size_t out_capacity,
+                                               size_t* out_len);
+/* Pump the action client's pending replies — a raw (non-arena-registered) poll
+ * client must call this each spin cycle for try_recv_* to see the replies. */
+int32_t nros_cpp_action_client_poll(void* handle);
 
 /* --- Factory / configure export macro ----------------------------------- */
 

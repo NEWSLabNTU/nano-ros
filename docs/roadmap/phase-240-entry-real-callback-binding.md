@@ -239,9 +239,26 @@ wave lands).
   `create_*_client_raw`, and the hand-rolled CDR / action FFI (240.5) all compile
   + link on-target. The generated NuttX entry is the typed
   `NuttxBoard::run_components` (no `EntryNodeRuntime`, no `NodeContext`).
-- [ ] **240.5-runtime-E2E** — boot the ELFs in QEMU + exchange vs a host
-      talker/client (rtos_e2e harness) — validates the CDR/protocol at runtime
-      (the build tier already caught compile/link errors).
+- **240.5-runtime-E2E — partial 2026-06-13** (QEMU boot + exchange):
+  - [x] **Service E2E PASSES** on NuttX (cpp) in QEMU (`rtos_e2e`
+        `test_rtos_service_e2e` — an existing case, now green via the typed
+        migration): 15 responses `3,5,7,…,31` (correct `a+b`). The typed
+        `bind_service_raw` handler + the typed poll client + the hand-rolled
+        AddTwoInts CDR all work at runtime.
+  - [x] **Action SERVER runtime-validated**: in QEMU the server logs
+        `Goal accepted: order=5` → `Goal succeeded: 5 terms (rc=0)` — the raw
+        action server (create/register/set_callbacks + the timer-driven execute +
+        the hand-rolled Fibonacci result CDR + `complete_goal`) executes a real
+        goal end-to-end.
+  - [ ] **Action CLIENT poll — open gap.** The raw poll client sends one goal
+        (fixed: blocking `send_goal` re-enters the executor from the spin_once
+        timer → switched to `send_goal_async`; `setvbuf` unbuffers the
+        transition-only output; `nros_cpp_action_client_poll` each tick) and the
+        server receives + completes it, but the client's goal-response/result
+        queryable replies are not surfaced by `try_recv_goal_response` /
+        `try_recv_result`. Needs the client RX wiring investigated (likely a
+        register/async-poll nuance). NuttX kept OUT of `test_rtos_action_e2e`
+        until fixed.
 
 ### 240.6 — Retire the interpreter — **BLOCKED (retirement plan + RFC done 2026-06-12)**
 
