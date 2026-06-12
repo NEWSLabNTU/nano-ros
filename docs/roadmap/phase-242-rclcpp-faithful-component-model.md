@@ -67,14 +67,23 @@ has — see RFC-0044 §Motivation.
 
 ### 242.3 — Parameter sequences
 
-- [ ] **242.3.1** `ParameterServer` fixed-capacity sequence parameters —
-      `declare_parameter<Seq<double, N>>` / a `vector`-shaped accessor, bounded
-      `no_std` storage (RFC-0044 Q3 — compile-time `N`). Unblocks the MPC
+- [x] **242.3.1** `ParameterServer` fixed-capacity sequence parameters —
+      `nros::Seq<T, N>` value type (`T` = double/int64/bool) + `declare_parameter`
+      overload, bounded `no_std` storage (RFC-0044 Q3 — compile-time `N`).
+      Per-parameter capacity is the `Seq<T,N>` compile-time `N`; the server owns
+      the element bytes in an inline `SeqPoolBytes` pool + `SeqSlots` record
+      table (no heap, no shared dynamic arena). Unblocks the MPC
       `std::vector<double>` weight matrices.
-- [ ] **242.3.2** `get/set_parameter` sequence accessors + the C/Rust FFI mirror
-      if the param surface crosses the boundary.
+- [x] **242.3.2** `get/set_parameter` sequence accessors — `Seq<T,N>` (bounds-
+      checked: too-small `out` or over-`N` set rejected, never UB), a zero-copy
+      borrow accessor, and `std::vector<T>` overloads under `NROS_CPP_STD`.
+      Sequences are **C++-storage-local — they do not cross the FFI** (the C
+      array FFI stores a *borrowed* caller pointer + len, which dangles under
+      server-owns-the-value semantics), so no C/Rust FFI mirror was added.
 
-**Files.** `parameter.hpp`, `parameter.cpp` / the param FFI.
+**Files.** `parameter.hpp` (sequence storage + API; no `parameter.cpp` /
+FFI change needed). Verified by `examples/native/cpp/parameters/src/main.cpp`
++ `cpp_parameters_roundtrip`.
 
 ### 242.4 — Codegen entry + carrier: construct-with-handle
 

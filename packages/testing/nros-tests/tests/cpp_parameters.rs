@@ -50,4 +50,11 @@ fn cpp_parameters_roundtrip() {
         "expected updated frame_id in stdout, got:\n{}",
         stdout,
     );
+    // Phase 242.3 — sequence parameter declared, updated to 4 elements,
+    // and read back (mpc_weights[0] = 4.0 after the set).
+    assert!(
+        stdout.contains("mpc_weights[0]=4.000000 n=4"),
+        "expected updated mpc_weights sequence in stdout, got:\n{}",
+        stdout,
+    );
 }

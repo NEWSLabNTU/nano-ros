@@ -1,9 +1,11 @@
 /// @file main.cpp
 /// @brief C++ parameters example — exercises nros::ParameterServer.
 ///
-/// Declares bool / int64 / double / string parameters, reads them back,
-/// updates a value, and prints the results. Used by the
-/// `cpp_parameters` integration test (Phase 117.9).
+/// Declares bool / int64 / double / string parameters plus a
+/// fixed-capacity `nros::Seq<double, N>` sequence parameter (Phase
+/// 242.3), reads them back, updates values, exercises the bounds checks,
+/// and prints the results. Used by the `cpp_parameters` integration test
+/// (Phase 117.9 / 242.3).
 
 #include <cstdio>
 #include <cstdlib>
@@ -68,9 +70,48 @@ int run() {
     nros::Result missing = params.get_parameter<bool>("missing", tmp);
     if (missing.ok()) return 5;
 
-    std::printf("OK use_sim_time=%d max_iters=%lld ctrl_period=%f frame_id=%s\n",
-                static_cast<int>(use_sim_time),
-                static_cast<long long>(max_iters), ctrl_period, frame_id);
+    // ---- Sequence parameters (Phase 242.3) ----
+
+    // Declare a fixed-capacity double sequence (MPC weight-matrix shape).
+    if (!params.declare_parameter("mpc_weights", nros::Seq<double, 8>{1.5, 2.5, 3.5}).ok()) {
+        std::fprintf(stderr, "declare seq failed\n");
+        return 6;
+    }
+    if (!params.has_parameter("mpc_weights")) return 6;
+    if (params.parameter_count() != 5) {
+        std::fprintf(stderr, "expected 5 params, got %zu\n", params.parameter_count());
+        return 6;
+    }
+
+    nros::Seq<double, 8> weights;
+    if (!params.get_parameter("mpc_weights", weights).ok()) return 7;
+    if (weights.size() != 3) return 7;
+    if (weights[0] != 1.5 || weights[1] != 2.5 || weights[2] != 3.5) return 7;
+
+    // Bounds: getting into a too-small Seq must be rejected, not UB.
+    nros::Seq<double, 2> too_small;
+    if (params.get_parameter("mpc_weights", too_small).ok()) return 7;
+
+    // Update the sequence value (server owns the new bytes).
+    if (!params.set_parameter("mpc_weights", nros::Seq<double, 8>{4.0, 5.0, 6.0, 7.0}).ok())
+        return 8;
+    if (!params.get_parameter("mpc_weights", weights).ok()) return 8;
+    if (weights.size() != 4 || weights[3] != 7.0) return 8;
+
+    // Bounds: a value exceeding the declared capacity must be rejected.
+    if (!params.declare_parameter("small_seq", nros::Seq<double, 3>{0.1}).ok()) return 8;
+    if (params.set_parameter("small_seq", nros::Seq<double, 8>{1, 2, 3, 4, 5}).ok()) return 8;
+
+    // Seq<T,N> itself is bounded: over-capacity push_back is a no-op.
+    nros::Seq<double, 2> bounded;
+    if (!bounded.push_back(1.0) || !bounded.push_back(2.0)) return 8;
+    if (bounded.push_back(3.0)) return 8; // rejected, not UB
+    if (bounded.size() != 2) return 8;
+
+    std::printf(
+        "OK use_sim_time=%d max_iters=%lld ctrl_period=%f frame_id=%s mpc_weights[0]=%f n=%zu\n",
+        static_cast<int>(use_sim_time), static_cast<long long>(max_iters), ctrl_period, frame_id,
+        weights[0], weights.size());
     return 0;
 }
 
