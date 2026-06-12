@@ -131,6 +131,14 @@ pub struct PlanNode {
     /// constructed via its C-ABI factory + `configure(node_handle, self)` seam
     /// (`NROS_C_COMPONENT`), a `"cpp"` node via its C++ class + `configure(node)`.
     pub lang: Option<String>,
+    /// Phase 242.4 (RFC-0044) — component *shape* from the cmake metadata:
+    /// `"rclcpp"` (IS-A-node, ctor-wired — construct-with-handle) or `"configure"`
+    /// (RFC-0043 default-construct + `configure(Node&)`). `None` ⇒ `"configure"`
+    /// (back-compat). The **typed** entry emitter branches construct on it: an
+    /// `"rclcpp"` C++ node is placement-new'd with the executor handle *after*
+    /// `nros::init` (the ctor owns the node); a `"configure"` node keeps the
+    /// 240.x static-construct-then-`configure(node)` path.
+    pub shape: Option<String>,
 }
 
 impl PlanNode {
@@ -239,6 +247,7 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             class_name: None,
             class_header: None,
             lang: None,
+            shape: None,
         });
     };
     for n in &desc.nodes {
@@ -343,6 +352,7 @@ mod tests {
             class_name: None,
             class_header: None,
             lang: None,
+            shape: None,
         };
         assert_eq!(n.register_symbol(), "__nros_component_talker_pkg_register");
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");

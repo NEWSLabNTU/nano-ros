@@ -204,7 +204,15 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
 
     out.push_str("#include <nros/component.hpp>\n");
     out.push_str("#include <nros/main.hpp>\n");
-    out.push_str("#include <nros/nros.hpp>\n\n");
+    out.push_str("#include <nros/nros.hpp>\n");
+    // Phase 242.4 (RFC-0044) — `nros::ComponentNode` / `NodeHandle` /
+    // `detail::report_component_failure` for any rclcpp-shape (construct-with-
+    // handle) node. Pulled in only when one is present.
+    if plan.nodes.iter().any(is_rclcpp_node) {
+        out.push_str("#include <new> // placement-new into the component arena slot\n");
+        out.push_str("#include <nros/component_node.hpp>\n");
+    }
+    out.push('\n');
 
     // One `#include` per unique C++ component header (first-seen order). C nodes
     // carry no header — their factory/configure are extern "C" decls below.
@@ -252,47 +260,91 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     }
     out.push('\n');
 
-    // Static per-node storage — one node per launch `<node>` row. A C++ node
-    // also gets a static component object; a C node's state lives in its own TU
-    // (the factory returns `&static_instance`), so only the node is declared here.
+    // Static per-node storage — one node per launch `<node>` row. Shape-branched
+    // (Phase 242.4):
+    //  - configure (240.x) C++ node: a static `Node` + a static component object
+    //    (default-constructed before init, then `configure(node)` in setup).
+    //  - C node: only the static `Node` (its state lives in its own TU — the
+    //    factory returns `&static_instance`).
+    //  - rclcpp (RFC-0044) C++ node: NO separate `Node` — the component OWNS its
+    //    node, constructed from the executor handle. An aligned arena slot holds
+    //    the component; it is placement-new'd in setup *after* `nros::init`.
     out.push_str("// Static per-node storage (outlives the spin loop; no heap).\n");
     for (i, n) in plan.nodes.iter().enumerate() {
-        let _ = writeln!(out, "static ::nros::Node __nros_node_{i};");
-        if !is_c_node(n) {
+        if is_rclcpp_node(n) {
             let cls = n.class_name.as_deref().unwrap();
-            let _ = writeln!(out, "static ::{cls} __nros_comp_{i};");
+            let _ = writeln!(
+                out,
+                "alignas(::{cls}) static unsigned char __nros_comp_buf_{i}[sizeof(::{cls})];"
+            );
+            let _ = writeln!(out, "static ::{cls}* __nros_comp_{i} = nullptr;");
+        } else {
+            let _ = writeln!(out, "static ::nros::Node __nros_node_{i};");
+            if !is_c_node(n) {
+                let cls = n.class_name.as_deref().unwrap();
+                let _ = writeln!(out, "static ::{cls} __nros_comp_{i};");
+            }
         }
     }
     out.push('\n');
 
-    // setup: construct each node + configure its component (binds real callbacks).
+    // setup (post-`nros::init`): construct each node + wire its component's real
+    // callbacks. Shape-branched (Phase 242.4).
     out.push_str("static int32_t __nros_entry_setup() {\n");
     for (i, n) in plan.nodes.iter().enumerate() {
         let node_name = n.name.as_deref().unwrap_or(&n.exec);
+        let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
         let _ = writeln!(out, "    {{");
-        let _ = writeln!(
-            out,
-            "        ::nros::Result r = ::nros::create_node(__nros_node_{i}, \"{name}\");",
-            name = node_name.replace('\\', "\\\\").replace('"', "\\\"")
-        );
-        out.push_str("        if (!r.ok()) return static_cast<int32_t>(r.raw());\n");
-        if is_c_node(n) {
-            let pkg = sanitize_pkg(&n.pkg);
-            let _ = writeln!(
-                out,
-                "        void* self = __nros_c_component_{pkg}_create();"
+        if is_rclcpp_node(n) {
+            // rclcpp shape (RFC-0044): placement-new the component with the live
+            // executor node handle — the ctor creates the node + entities. The
+            // component owns its node, so no separate `create_node`/`configure`.
+            let cls = n.class_name.as_deref().unwrap();
+            out.push_str(
+                "        ::nros::NodeHandle __h(::nros::global_handle());\n",
+            );
+            out.push_str(
+                "        if (!__h.valid()) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);\n",
             );
             let _ = writeln!(
                 out,
-                "        int32_t crc = __nros_c_component_{pkg}_configure(__nros_node_{i}.ffi_handle(), __nros_node_{i}.executor_handle(), self);"
+                "        __nros_comp_{i} = new (__nros_comp_buf_{i}) ::{cls}(__h);"
             );
-            out.push_str("        if (crc != 0) return crc;\n");
+            // Q2: check ok() post-construct, halt naming the failing node.
+            let _ = writeln!(out, "        if (!__nros_comp_{i}->ok()) {{");
+            let _ = writeln!(
+                out,
+                "            ::nros::detail::report_component_failure(\"{name_lit}\", __nros_comp_{i}->error_what(), __nros_comp_{i}->error_code());"
+            );
+            let _ = writeln!(
+                out,
+                "            return __nros_comp_{i}->error_code();"
+            );
+            out.push_str("        }\n");
         } else {
             let _ = writeln!(
                 out,
-                "        r = __nros_comp_{i}.configure(__nros_node_{i});"
+                "        ::nros::Result r = ::nros::create_node(__nros_node_{i}, \"{name_lit}\");"
             );
             out.push_str("        if (!r.ok()) return static_cast<int32_t>(r.raw());\n");
+            if is_c_node(n) {
+                let pkg = sanitize_pkg(&n.pkg);
+                let _ = writeln!(
+                    out,
+                    "        void* self = __nros_c_component_{pkg}_create();"
+                );
+                let _ = writeln!(
+                    out,
+                    "        int32_t crc = __nros_c_component_{pkg}_configure(__nros_node_{i}.ffi_handle(), __nros_node_{i}.executor_handle(), self);"
+                );
+                out.push_str("        if (crc != 0) return crc;\n");
+            } else {
+                let _ = writeln!(
+                    out,
+                    "        r = __nros_comp_{i}.configure(__nros_node_{i});"
+                );
+                out.push_str("        if (!r.ok()) return static_cast<int32_t>(r.raw());\n");
+            }
         }
         out.push_str("    }\n");
     }
@@ -314,6 +366,13 @@ fn is_c_node(n: &super::PlanNode) -> bool {
     n.lang.as_deref() == Some("c")
 }
 
+/// Phase 242.4 (RFC-0044) — an rclcpp-shape (IS-A-node, construct-with-handle)
+/// C++ component: `shape == "rclcpp"` AND not a C node. Everything else (incl.
+/// `shape == None` / `"configure"`) keeps the 240.x `configure(Node&)` path.
+fn is_rclcpp_node(n: &super::PlanNode) -> bool {
+    !is_c_node(n) && n.shape.as_deref() == Some("rclcpp")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,6 +392,7 @@ mod tests {
                     class_name: None,
                     class_header: None,
                     lang: None,
+                    shape: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),
@@ -342,6 +402,8 @@ mod tests {
     }
 
     /// Typed-emit fixture: each tuple is `(pkg, exec, name, class, header)`.
+    /// Defaults to the `configure(Node&)` shape (240.x); use
+    /// [`fixture_plan_rclcpp`] for the construct-with-handle shape.
     fn fixture_plan_typed(nodes: &[(&str, &str, &str, &str, &str)]) -> Plan {
         Plan {
             board: "native".into(),
@@ -355,12 +417,23 @@ mod tests {
                     class_name: Some((*class).into()),
                     class_header: Some((*header).into()),
                     lang: Some("cpp".into()),
+                    shape: Some("configure".into()),
                 })
                 .collect(),
             depfile_paths: Vec::new(),
             bringup: "demo_bringup".into(),
             launch_file: PathBuf::from("/tmp/system.launch.xml"),
         }
+    }
+
+    /// Phase 242.4 — rclcpp-shape typed fixture: same tuple as
+    /// [`fixture_plan_typed`] but `shape == "rclcpp"` (construct-with-handle).
+    fn fixture_plan_rclcpp(nodes: &[(&str, &str, &str, &str, &str)]) -> Plan {
+        let mut plan = fixture_plan_typed(nodes);
+        for n in &mut plan.nodes {
+            n.shape = Some("rclcpp".into());
+        }
+        plan
     }
 
     #[test]
@@ -398,6 +471,78 @@ mod tests {
         assert!(src.contains("::nros::board::NativeBoard::run_components(&__nros_entry_setup)"));
         assert!(!src.contains("__nros_component_"));
         assert!(!src.contains("NodeContext"));
+        // configure shape: no construct-with-handle artifacts.
+        assert!(!src.contains("global_handle()"));
+        assert!(!src.contains("__nros_comp_buf_"));
+    }
+
+    #[test]
+    fn typed_emit_rclcpp_shape_constructs_with_handle() {
+        // Phase 242.4 (RFC-0044) — an rclcpp-shape component OWNS its node: the
+        // entry placement-news it with the executor handle *after* init, then
+        // checks ok(); there is no separate `create_node` / `configure`.
+        let plan = fixture_plan_rclcpp(&[(
+            "ctrl_pkg",
+            "controller",
+            "controller",
+            "ctrl_pkg::Controller",
+            "ctrl_pkg/Controller.hpp",
+        )]);
+        let src = emit_typed(&plan).expect("rclcpp emit ok");
+        // construct-with-handle headers + arena slot
+        assert!(src.contains("#include <nros/component_node.hpp>"));
+        assert!(src.contains("#include \"ctrl_pkg/Controller.hpp\""));
+        assert!(src.contains(
+            "alignas(::ctrl_pkg::Controller) static unsigned char __nros_comp_buf_0[sizeof(::ctrl_pkg::Controller)];"
+        ));
+        assert!(src.contains("static ::ctrl_pkg::Controller* __nros_comp_0 = nullptr;"));
+        // setup: handle → placement-new → ok() check naming the node
+        assert!(src.contains("::nros::NodeHandle __h(::nros::global_handle());"));
+        assert!(src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Controller(__h);"));
+        assert!(src.contains("if (!__nros_comp_0->ok()) {"));
+        assert!(src.contains("report_component_failure(\"controller\""));
+        // The rclcpp shape does NOT default-construct a Node or call configure.
+        assert!(!src.contains("static ::nros::Node __nros_node_0;"));
+        assert!(!src.contains("__nros_comp_0.configure"));
+        assert!(!src.contains("create_node(__nros_node_0"));
+        // still routes to the real executor
+        assert!(src.contains("::nros::board::NativeBoard::run_components(&__nros_entry_setup)"));
+    }
+
+    #[test]
+    fn typed_emit_mixed_rclcpp_and_configure_shapes() {
+        // One rclcpp node + one configure node in the same entry: each constructs
+        // its own way; the includes carry both seams.
+        let mut plan = fixture_plan_typed(&[
+            (
+                "ctrl_pkg",
+                "controller",
+                "controller",
+                "ctrl_pkg::Controller",
+                "ctrl_pkg/Controller.hpp",
+            ),
+            (
+                "legacy_pkg",
+                "legacy",
+                "legacy",
+                "legacy_pkg::Legacy",
+                "legacy_pkg/Legacy.hpp",
+            ),
+        ]);
+        plan.nodes[0].shape = Some("rclcpp".into());
+        // plan.nodes[1] stays "configure".
+        let src = emit_typed(&plan).expect("mixed emit ok");
+        // node 0 = rclcpp: arena slot + handle construct, no Node/configure.
+        assert!(src.contains("static ::ctrl_pkg::Controller* __nros_comp_0 = nullptr;"));
+        assert!(src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Controller(__h);"));
+        assert!(!src.contains("static ::nros::Node __nros_node_0;"));
+        // node 1 = configure: Node + configure, no arena slot.
+        assert!(src.contains("static ::nros::Node __nros_node_1;"));
+        assert!(src.contains("static ::legacy_pkg::Legacy __nros_comp_1;"));
+        assert!(src.contains("__nros_comp_1.configure(__nros_node_1)"));
+        assert!(!src.contains("__nros_comp_buf_1"));
+        // rclcpp include present because at least one rclcpp node exists.
+        assert!(src.contains("#include <nros/component_node.hpp>"));
     }
 
     #[test]

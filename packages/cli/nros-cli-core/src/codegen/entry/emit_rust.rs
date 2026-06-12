@@ -174,6 +174,7 @@ mod tests {
                     class_name: None,
                     class_header: None,
                     lang: None,
+                    shape: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),

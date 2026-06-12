@@ -30,6 +30,11 @@ struct ComponentMeta {
     class_header: Option<String>,
     #[serde(default)]
     lang: Option<String>,
+    /// Phase 242.4 (RFC-0044) — component shape: `"rclcpp"` (construct-with-
+    /// handle IS-A-node) or `"configure"` (RFC-0043 `configure(Node&)`). Absent
+    /// ⇒ `"configure"` (back-compat: pre-242 metadata carries no shape).
+    #[serde(default)]
+    shape: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +50,7 @@ struct ComponentFacts {
     class: String,
     class_header: Option<String>,
     lang: Option<String>,
+    shape: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -80,6 +86,7 @@ impl ComponentIndex {
                     class: c.class.clone(),
                     class_header: c.class_header.clone(),
                     lang: c.lang.clone(),
+                    shape: c.shape.clone(),
                 },
             );
         }
@@ -111,6 +118,14 @@ pub fn enrich_plan(plan: &mut Plan, index: &ComponentIndex) -> Result<()> {
         };
         n.class_name = Some(facts.class.clone());
         n.lang = facts.lang.clone();
+        // Phase 242.4 (RFC-0044) — component shape (construct-with-handle vs
+        // configure). Absent in metadata ⇒ `"configure"` (back-compat).
+        n.shape = Some(
+            facts
+                .shape
+                .clone()
+                .unwrap_or_else(|| "configure".to_string()),
+        );
         // A C component is constructed via its C-ABI factory + configure seam
         // (mangled on pkg) — the entry never `#include`s a class header for it.
         // A C++ component needs its header to construct the class.
@@ -141,7 +156,7 @@ mod tests {
         {"name": "talker", "class": "talker_pkg::Talker",
          "class_header": "talker_pkg/Talker.hpp",
          "sources": ["src/Talker.cpp"], "deploy": ["native"],
-         "pkg_dir": "/ws/src/talker_pkg", "lang": "cpp"},
+         "pkg_dir": "/ws/src/talker_pkg", "lang": "cpp", "shape": "rclcpp"},
         {"name": "listener", "class": "listener_pkg::Listener",
          "class_header": "listener_pkg/Listener.hpp",
          "sources": ["src/Listener.cpp"], "deploy": ["native"],
@@ -164,6 +179,7 @@ mod tests {
                     class_name: None,
                     class_header: None,
                     lang: None,
+                    shape: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),
@@ -186,6 +202,16 @@ mod tests {
             p.nodes[1].class_name.as_deref(),
             Some("listener_pkg::Listener")
         );
+    }
+
+    #[test]
+    fn enrich_stamps_shape_rclcpp_and_defaults_configure() {
+        // talker carries `"shape": "rclcpp"`; listener omits it → "configure".
+        let index = ComponentIndex::parse(META).unwrap();
+        let mut p = plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
+        enrich_plan(&mut p, &index).unwrap();
+        assert_eq!(p.nodes[0].shape.as_deref(), Some("rclcpp"));
+        assert_eq!(p.nodes[1].shape.as_deref(), Some("configure"));
     }
 
     #[test]
