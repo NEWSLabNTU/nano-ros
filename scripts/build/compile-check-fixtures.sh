@@ -222,13 +222,19 @@ cxx_syntax_check() {
     mkdir -p "$staged"
     rm -f "$staged/.compile-ok"
     local cxx="${CXX:-c++}"
-    local inc=(-I "$repo_root/packages/core/nros-cpp/include"
-               -I "$repo_root/packages/core/nros-c/include"
-               -I "$repo_root/cmake/compat/include")
+    # Issue #34 — the per-build generated config headers MUST precede the
+    # source include dir: `packages/core/nros-cpp/include/nros/nros_cpp_config_generated.h`
+    # is a stub that `#error`s, so if it is searched first the real header
+    # (`target/nros-cpp-generated/nros/...`, emitted by nros-cpp's build.rs) is
+    # never reached. Prepend the generated dirs.
+    local inc=()
     [ -f "$repo_root/target/nros-cpp-generated/nros/nros_cpp_config_generated.h" ] \
         && inc+=(-I "$repo_root/target/nros-cpp-generated")
     [ -f "$repo_root/target/nros-c-generated/nros/nros_config_generated.h" ] \
         && inc+=(-I "$repo_root/target/nros-c-generated")
+    inc+=(-I "$repo_root/packages/core/nros-cpp/include"
+          -I "$repo_root/packages/core/nros-c/include"
+          -I "$repo_root/cmake/compat/include")
     # Best-effort: a snippet that doesn't compile (pre-existing API drift or a
     # missing generated header) does NOT fail build-test-fixtures — it just
     # leaves no `.compile-ok`, so the consuming test reports the gap per tier
@@ -252,6 +258,16 @@ fi
 
 cxx_n=0
 if command -v "${CXX:-c++}" >/dev/null 2>&1; then
+    # Issue #34 — generate the per-build config headers the snippets need
+    # (`nros_cpp_config_generated.h` / `nros_config_generated.h`). nros-cpp's /
+    # nros-c's build.rs emit them under `target/nros-{cpp,c}-generated/` on a host
+    # build; `cxx_syntax_check` then prepends those dirs. Best-effort: if the host
+    # cargo build fails, the headers stay absent and the snippets that include
+    # them leave no stamp (consuming test reports the gap per tier). The sizes
+    # need not be exact — this is a `-fsyntax-only` check, not a link.
+    echo "== generating nros-cpp / nros-c config headers for cxx-syntax =="
+    ( cd "$repo_root" && cargo build -q -p nros-cpp -p nros-c --features nros-cpp/ros-humble ) \
+        || echo "cxx-syntax: config-header generation build failed (snippets needing them will skip)" >&2
     for id in "${CXX_SYNTAX_FIXTURES[@]}"; do
         cxx_syntax_check "$id"
         cxx_n=$((cxx_n + 1))
