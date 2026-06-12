@@ -46,7 +46,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 function(nano_ros_entry)
     # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
     cmake_parse_arguments(_NRA
-        ""
+        "TYPED"
         "NAME;BOARD;LAUNCH;LANG"
         "SOURCES;DEPLOY;ARGS"
         ${ARGN})
@@ -110,12 +110,23 @@ function(nano_ros_entry)
                 "nano_ros_entry: LANG '${_NRA_LANG}' rejected — "
                 "expected 'cpp' (default) or 'c'.")
         endif()
+        # Phase 240.2b (RFC-0043) — TYPED routes each launch node to the real
+        # executor via its component object (`--typed`), reading the cmake
+        # metadata for each node's C++ class + header. C++ only; the metadata
+        # must already list every component, so the node pkgs' add_subdirectory
+        # has to precede the entry's (it links them anyway).
+        if(_NRA_TYPED AND NOT _NRA_LANG STREQUAL "cpp")
+            message(FATAL_ERROR
+                "nano_ros_entry(TYPED): only LANG cpp supports the typed "
+                "executor Entry (got LANG '${_NRA_LANG}').")
+        endif()
         _nros_entry_invoke_codegen(
             NAME      "${_NRA_NAME}"
             LANG      "${_NRA_LANG}"
             LAUNCH    "${_NRA_LAUNCH}"
             BOARD     "${_NRA_BOARD}"
             ARGS_LIST "${_NRA_ARGS}"
+            TYPED     "${_NRA_TYPED}"
             OUT_VAR_GEN     _gen_tu
             OUT_VAR_LINKLIB _link_libs_cmake)
         list(APPEND _sources_for_exe "${_gen_tu}")
@@ -194,7 +205,7 @@ endfunction()
 function(_nros_entry_invoke_codegen)
     cmake_parse_arguments(_NRX
         ""
-        "NAME;LANG;LAUNCH;BOARD;OUT_VAR_GEN;OUT_VAR_LINKLIB"
+        "NAME;LANG;LAUNCH;BOARD;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
         "ARGS_LIST"
         ${ARGN})
 
@@ -266,6 +277,13 @@ function(_nros_entry_invoke_codegen)
         --emit-link-libs "${_NRX_NAME}=${_link_libs_path}")
     if(_NRX_BOARD)
         list(APPEND _cli_args --board "${_NRX_BOARD}")
+    endif()
+    # Phase 240.2b — typed executor Entry: pass the cmake metadata so the
+    # codegen can map each launch `(pkg, exec)` to its C++ class + header.
+    if(_NRX_TYPED)
+        list(APPEND _cli_args
+            --typed
+            --metadata "${CMAKE_BINARY_DIR}/nros-metadata.json")
     endif()
     if(_NRX_ARGS_LIST)
         # The cmake list uses `;` separators; the CLI expects `,`.

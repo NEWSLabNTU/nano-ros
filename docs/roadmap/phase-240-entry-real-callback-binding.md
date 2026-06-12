@@ -103,12 +103,28 @@ wave lands).
       `Board::run_components(&__nros_entry_setup)`. No register symbol, no
       `NodeContext`. 4 unit tests (headers/construct/run_components, dup-pkg →
       two instances one include, nuttx board, missing-class error).
-- [ ] **240.2b** — `nano_ros_node_register` records `class_header` into the
-      metadata JSON; the codegen reads `nros-metadata.json` to populate
-      `PlanNode.{class_name, class_header}` (Q5); wire `emit_typed` into the CLI +
-      `nano_ros_entry`; native multi-node workspace entry runs real logic E2E
-      (replaces the `phase235_a` synthesized-counter path). Also: raw↔typed
-      type-name-form unification (240.1 finding).
+- **240.2b — plumbing DONE 2026-06-12** (the metadata → codegen → cmake seam):
+  - [x] `nano_ros_node_register` accepts an optional `HEADER` and otherwise
+        derives the component header from `CLASS` by convention
+        (`pkg::Sub::Class` → `pkg/Sub/Class.hpp`), recording `class_header` in the
+        `components[]` metadata JSON (`NanoRosNodeRegister.cmake`).
+  - [x] `codegen/entry/metadata.rs` — `ComponentIndex` reads `nros-metadata.json`,
+        keys components by `(pkg, exec)` (pkg = `class` prefix before `::`, L.4),
+        and `enrich_plan` stamps `PlanNode.{class_name, class_header}` (errors on a
+        launch node with no matching component / no header). Unit-tested.
+  - [x] CLI `nros codegen entry --typed --metadata <json>` (C++ only) enriches the
+        plan then calls `emit_cpp::emit_typed` (`cmd/codegen.rs`). Full Rust seam
+        (plan → enrich → emit_typed) integration-tested against the
+        `multi-node-workspace-cpp` template (`tests/entry_typed_plan.rs`).
+  - [x] `nano_ros_entry(... TYPED)` opt-in threads `--typed --metadata
+        ${CMAKE_BINARY_DIR}/nros-metadata.json` through `_nros_entry_invoke_codegen`
+        (`NanoRosEntry.cmake`). Node pkgs' `add_subdirectory` must precede the entry
+        (metadata must list every component; the entry links them anyway).
+  - [ ] **240.2b-E2E** — a typed `multi-node-workspace-cpp` variant (components
+        expose `Result configure(nros::Node&)` + a header at `include/<pkg>/<Class>.hpp`
+        instead of `register_node(NodeContext&)`); cmake fixture + native two-process
+        E2E running real logic (replaces the `phase235_a` synthesized-counter path).
+  - [ ] raw↔typed type-name-form unification (240.1 finding) — still open.
 
 ### 240.3 — Carrier + embedded board adapter (NuttX)
 - [ ] Rewrite the NuttX carrier branch (`NanoRosNodeRegister.cmake`) +

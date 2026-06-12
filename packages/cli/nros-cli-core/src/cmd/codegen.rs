@@ -105,6 +105,20 @@ pub struct EntryArgs {
     #[arg(long)]
     pub out: PathBuf,
 
+    /// Phase 240.2b (RFC-0043) — emit the **typed** C++ Entry: route each
+    /// launch node to the real executor via its component object (construct
+    /// `class` + call `configure(node)`), instead of the legacy type-erased
+    /// `__nros_component_<pkg>_register` call into the synthesizing interpreter.
+    /// Requires `--metadata` (the component class/header source). C++ only.
+    #[arg(long)]
+    pub typed: bool,
+
+    /// Phase 240.2b — path to the cmake-emitted `nros-metadata.json` whose
+    /// `components[]` carry each node's C++ `class` + `class_header`. Required
+    /// by `--typed`; ignored otherwise.
+    #[arg(long)]
+    pub metadata: Option<PathBuf>,
+
     /// Optional `.d`-style depfile path. Populated with every file the
     /// CLI read; consumed by cmake `CMAKE_CONFIGURE_DEPENDS` /
     /// build.rs `cargo:rerun-if-changed=` plumbing.
@@ -205,12 +219,24 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         board: args.board.clone(),
         arg_overrides,
     };
-    let plan = entry_codegen::plan_from_launch(input)?;
+    let mut plan = entry_codegen::plan_from_launch(input)?;
 
-    let src = match lang {
-        entry_codegen::Lang::Rust => entry_codegen::emit_rust::emit(&plan),
-        entry_codegen::Lang::Cpp => entry_codegen::emit_cpp::emit(&plan),
-        entry_codegen::Lang::C => entry_codegen::emit_c::emit(&plan),
+    let src = if args.typed {
+        if lang != entry_codegen::Lang::Cpp {
+            bail!("--typed is C++ only (got --lang {})", args.lang);
+        }
+        let Some(meta_path) = args.metadata.as_ref() else {
+            bail!("--typed requires --metadata <nros-metadata.json>");
+        };
+        let index = entry_codegen::metadata::ComponentIndex::load(meta_path)?;
+        entry_codegen::metadata::enrich_plan(&mut plan, &index)?;
+        entry_codegen::emit_cpp::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
+    } else {
+        match lang {
+            entry_codegen::Lang::Rust => entry_codegen::emit_rust::emit(&plan),
+            entry_codegen::Lang::Cpp => entry_codegen::emit_cpp::emit(&plan),
+            entry_codegen::Lang::C => entry_codegen::emit_c::emit(&plan),
+        }
     };
 
     // Atomic-ish write: only touch `out` when the contents actually

@@ -40,6 +40,7 @@ use crate::{
 pub mod emit_c;
 pub mod emit_cpp;
 pub mod emit_rust;
+pub mod metadata;
 
 /// Target language for the emitted TU.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

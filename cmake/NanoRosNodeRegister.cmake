@@ -95,7 +95,7 @@ function(_nros_json_strlist out_var)
 endfunction()
 
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "" "NAME;CLASS;LANGUAGE" "SOURCES;DEPLOY" ${ARGN})
+    cmake_parse_arguments(_NRC "" "NAME;CLASS;LANGUAGE;HEADER" "SOURCES;DEPLOY" ${ARGN})
     foreach(_req NAME CLASS SOURCES DEPLOY)
         if(NOT _NRC_${_req})
             message(FATAL_ERROR
@@ -135,6 +135,19 @@ function(nano_ros_node_register)
             "nano_ros_node_register: CLASS '${_NRC_CLASS}' must "
             "start with '${PROJECT_NAME}::' (Phase 212.L.4 rule — the "
             "pkg directory name IS the pkg name).")
+    endif()
+
+    # Phase 240.2b (RFC-0043) — the typed Entry emitter `#include`s the
+    # component's class header to construct it. Accept an explicit HEADER or
+    # derive it from CLASS by convention: `pkg::Sub::Class` → `pkg/Sub/Class.hpp`
+    # (namespace `::` → `/`, `.hpp` suffix), which resolves against the component
+    # lib's `include/` (added to its PUBLIC include dirs below). Recorded in the
+    # metadata JSON so the codegen can populate `PlanNode.class_header`.
+    if(_NRC_HEADER)
+        set(_nrc_header "${_NRC_HEADER}")
+    else()
+        string(REPLACE "::" "/" _nrc_header "${_NRC_CLASS}")
+        set(_nrc_header "${_nrc_header}.hpp")
     endif()
 
     set(_lib "${PROJECT_NAME}_${_NRC_NAME}_component")
@@ -285,6 +298,7 @@ function(nano_ros_node_register)
     endif()
     set(_entry
 "${_sep}\n    {\"name\": \"${_NRC_NAME}\", \"class\": \"${_NRC_CLASS}\", \
+\"class_header\": \"${_nrc_header}\", \
 \"sources\": [${_sources_json}], \"deploy\": [${_deploy_json}], \
 \"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"${_nrc_lang_lc}\"}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_COMPONENTS_JSON "${_entry}")
