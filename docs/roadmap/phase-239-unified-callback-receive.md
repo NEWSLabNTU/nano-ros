@@ -11,8 +11,10 @@ ROS service `KEEP_LAST(10)` (RFC-0007).
 callbacks + in-process E2Es). **Wave 2 core done** — 239.5 (action-feedback
 QoS-depth ring) + 239.7 (burst test: 2 feedbacks both delivered). 162 nros-node
 tests green. 239.6 resolved (descope — MessageLost is an RMW event, not ring overflow);
-239.8 RT/XRCE validated by inspection. Remaining: 239.9 (example), Wave 4
-(C/C++ callback clients + cross-language E2E). Implements RFC-0041.
+239.8 RT/XRCE validated by inspection. 239.9 (native callback example) done.
+**Wave 4 audit:** C *and* C++ callback surfaces (service + action) all already
+exist from Phase 189.M3.3 — Wave 4 ships no new wrapper code; remaining is E2E
+fixtures (C + C++) + cross-language matrix (239.15). Implements RFC-0041.
 
 **Priority.** P2 — reliability + RT-ergonomics + ROS alignment; not a correctness
 blocker (Promise works today) but removes a real silent-loss bug.
@@ -159,8 +161,12 @@ C/C++ deliver the same callback model, reusing the Rust FFI (project principle:
 already eager-drain at spin and invoke C-ABI callbacks (`RawResponseCallback`,
 `RawGoalResponseCallback`, `RawFeedbackCallback`, `RawResultCallback`) — so the C
 runtime path **already exists and is wired** for both service (239.11) and action
-(239.12) — Phase 189.M3.3 et al. So Wave 4's real new work is the **C E2E
-fixtures** and the **C++ typed wrappers** (239.13/14) + cross-language E2E (239.15).
+(239.12) — Phase 189.M3.3 et al. **Update (Wave 4 audit):** the C++ typed wrappers
+(239.13/14) **also already exist** from the same phase — `async_send_request` +
+`response_trampoline` (client.hpp) and `SendGoalOptions` + `set_callbacks` /
+`register_callbacks` (action_client.hpp). So Wave 4 ships **no new wrapper code** —
+its only remaining work is the **E2E fixtures** (C + C++) and the **cross-language
+E2E matrix** (239.15).
 
 #### 239.11 — C service-client callback surface + E2E  🟡 (surface ✅ already; E2E ⬜)
 **Finding.** The C surface already exists + is wired (Phase 189.M3.3):
@@ -181,20 +187,27 @@ callbacks, drained at spin. **Remaining:** a native C action server + callback
 client E2E + example.
 - **Files:** a C fixture/example.
 
-#### 239.13 — C++ service-client callback wrapper + E2E  ⬜
-C++ wraps the Rust FFI: `nros::Client<Svc>::async_send_request(req, callback)` that
-registers the raw callback + deserializes the reply via the generated
-`ffi_deserialize` into `Svc::Response`, then invokes the typed C++ closure —
-mirroring the C++ subscription callback (Phase 235 pattern). E2E: native C++ server
-+ callback client (spans/owned).
-- **Files:** `packages/core/nros-cpp/include/nros/client.hpp`, cpp codegen if a
-  per-type trampoline is needed, a C++ fixture.
+#### 239.13 — C++ service-client callback wrapper + E2E  🟡 (wrapper ✅ already; E2E ⬜)
+**Finding.** The C++ wrapper already exists (Phase 189.M3.3.f): `client.hpp`
+exposes `Node::create_client(out, name, callback, qos, ...)` (line 265) which sets
+`callback_mode_` + registers the raw FFI via the `nros_cpp_service_response_callback_t`
+trampoline (`response_trampoline`, line 209 — `ResponseType::ffi_deserialize(data,
+len, &response)` then the typed `user_fn_`); the user then sends via
+`Client<S>::async_send_request(req)` (line 135). Mirrors the C++ subscription
+callback (Phase 235 pattern). **Remaining:** a native C++ server + callback client
+E2E (spans/owned).
+- **Files:** C++ fixture under `packages/testing/` (wrapper already in
+  `packages/core/nros-cpp/include/nros/client.hpp`).
 
-#### 239.14 — C++ action-client callback wrapper + E2E  ⬜
-`nros::ActionClient<A>` with `goal_response` / `feedback` / `result` callbacks
-wrapping the raw FFI + generated deserialize. E2E: native C++ action server +
-callback client.
-- **Files:** `packages/core/nros-cpp/include/nros/action_client.hpp`, a C++ fixture.
+#### 239.14 — C++ action-client callback wrapper + E2E  🟡 (wrapper ✅ already; E2E ⬜)
+**Finding.** Already exists (Phase 189.M3.3.f): `action_client.hpp` has
+`SendGoalOptions{goal_response, feedback, result, context}` (line 263) +
+`ActionClient<A>::set_callbacks(options)` (line 316) wiring
+`nros_cpp_action_client_register_callbacks` (line 42) with three typed trampolines
+(goal-response/feedback/result) that `ffi_deserialize` the bytes before the typed
+closure. **Remaining:** a native C++ action server + callback client E2E.
+- **Files:** C++ fixture (wrapper already in
+  `packages/core/nros-cpp/include/nros/action_client.hpp`).
 
 #### 239.15 — Cross-language E2E matrix  ⬜
 Callback-client interop across Rust / C / C++ (each language's callback client
