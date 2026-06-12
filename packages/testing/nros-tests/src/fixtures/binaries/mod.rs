@@ -162,6 +162,9 @@ static C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the c-service-client binary
 static C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the c-service-client-callback binary (RFC-0041 / Phase 239)
+static C_SERVICE_CLIENT_CALLBACK_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the c-action-server binary
 static C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -2122,6 +2125,19 @@ pub fn build_c_service_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Build c-service-client-callback example (cached, RFC-0041 / Phase 239)
+pub fn build_c_service_client_callback() -> TestResult<&'static Path> {
+    C_SERVICE_CLIENT_CALLBACK_BINARY
+        .get_or_try_init(|| {
+            build_example_cmake_rmw(
+                "native/c/service-client-callback",
+                "c_service_client_callback",
+                Rmw::Zenoh,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Build c-action-server example (cached)
 pub fn build_c_action_server() -> TestResult<&'static Path> {
     C_ACTION_SERVER_BINARY
@@ -2153,6 +2169,14 @@ pub fn c_service_server_binary() -> PathBuf {
 pub fn c_service_client_binary() -> PathBuf {
     build_c_service_client()
         .expect("Failed to build c-service-client")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the c-service-client-callback binary path
+#[rstest::fixture]
+pub fn c_service_client_callback_binary() -> PathBuf {
+    build_c_service_client_callback()
+        .expect("Failed to build c-service-client-callback")
         .to_path_buf()
 }
 

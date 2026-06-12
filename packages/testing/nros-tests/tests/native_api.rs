@@ -15,7 +15,8 @@ use nros_tests::{
     count_pattern,
     fixtures::{
         ManagedProcess, Rmw, ZenohRouter, build_c_action_client, build_c_action_server,
-        build_c_listener, build_c_service_client, build_c_service_server, build_c_talker,
+        build_c_listener, build_c_service_client, build_c_service_client_callback,
+        build_c_service_server, build_c_talker,
         build_cpp_action_client, build_cpp_action_server, build_cpp_listener,
         build_cpp_service_client, build_cpp_service_server, build_cpp_talker,
         build_native_c_example_rmw, build_native_cpp_example_rmw, build_native_listener_rmw,
@@ -384,6 +385,62 @@ fn test_native_service_communication(
         ok_count >= 3,
         "Expected at least 3 successful service calls, got {}.\nOutput:\n{}",
         ok_count,
+        client_output
+    );
+}
+
+// =============================================================================
+// Service communication — callback receive (RFC-0041 / Phase 239)
+// =============================================================================
+
+/// C callback service client vs the stock C service server. Proves the
+/// RFC-0041 callback receive path E2E: replies arrive through the
+/// `nros_response_callback_t` dispatched at `nros_executor_spin_some` (no
+/// Promise poll). Asserts both the callback dispatch markers and the success
+/// tally printed by `service-client-callback`.
+#[rstest]
+fn test_c_service_communication_callback(zenohd_unique: ZenohRouter) {
+    if !require_native_env() {
+        return;
+    }
+    let locator = zenohd_unique.locator();
+    let server_bin = build_c_service_server()
+        .unwrap_or_else(|e| skip_missing_fixture("native service server", e))
+        .to_path_buf();
+    let client_bin = build_c_service_client_callback()
+        .unwrap_or_else(|e| skip_missing_fixture("native service client (callback)", e))
+        .to_path_buf();
+
+    let mut server = spawn_native(&server_bin, Language::C, "service-server", &locator);
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .expect("service server did not become ready");
+
+    let mut client = spawn_native(&client_bin, Language::C, "service-client-callback", &locator);
+
+    let client_output = client
+        .wait_for_output_pattern("callback calls succeeded", Duration::from_secs(15))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
+        .unwrap_or_default();
+
+    server.kill();
+
+    eprintln!("C callback service client output:\n{}", client_output);
+
+    // The reply must arrive via the callback, not a poll: every successful
+    // call prints a "Response (callback)" line from `on_response`.
+    let cb_count = count_pattern(&client_output, "Response (callback)");
+    eprintln!("C callback service client: {} callback dispatches", cb_count);
+    assert!(
+        cb_count >= 3,
+        "Expected at least 3 callback-dispatched replies, got {}.\nOutput:\n{}",
+        cb_count,
+        client_output
+    );
+    let ok_count = count_pattern(&client_output, "Call [");
+    assert!(
+        ok_count >= 3 && client_output.contains("callback calls succeeded"),
+        "Expected the callback client to report successful calls.\nOutput:\n{}",
         client_output
     );
 }
