@@ -62,6 +62,19 @@ diagnostics — *which* node failed). No `Result` threading in the ctor.
 **Files.** `packages/core/nros-cpp/include/nros/component_node.hpp` (new),
 `component.hpp`, `node.hpp`.
 
+> **Status (2026-06-13).** The `ComponentNode` base + `NROS_COMPONENT` +
+> the typed member-callback subs (242.2) **landed + verified** (g++ syntax;
+> `cargo test -p nros-cpp` 8/8; `examples/native/cpp/component-node-poc`
+> live e2e — typed member `on_msg(const Int32&)` received 15/15). Boxes
+> left **unchecked**: the impl diverges from this doc's refined spec on two
+> points the implementation predates — it **aborts on fatal** (vs the Q2
+> `bool ok()`-flag) and `NROS_COMPONENT` **emits `sizeof`/align symbols**
+> (vs no-`sizeof`, header-`#include` compile-time). Both align in **242.4**,
+> where the entry is what reads `ok()` (an abort→flag change with no reader
+> until then) and where the construct-with-handle path fixes the metadata
+> shape (`shape:"rclcpp"`). Functionally equivalent on the happy path
+> (abort vs flag differs only at boot-failure).
+
 ### 242.2 — Typed member-callback subscriptions
 
 - [ ] **242.2.1** `create_subscription<M>(topic, &C::on_msg [, qos])` member form
