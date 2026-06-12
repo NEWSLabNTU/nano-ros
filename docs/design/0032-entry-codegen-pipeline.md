@@ -315,15 +315,20 @@ constructs **no** live publishers/subscriptions, on native or embedded.
 
 **Open (decide during Phase 236 impl):**
 
-- **Callback bodies (HARD blocker — `→` Phase 236.D).** The 236.A/B runtime
-  constructs entities and *synthesizes* a `std_msgs/Int32` counter for a
-  timer-`Publishes` binding; it runs **no real user callback bodies**. The
-  talker/listener demo passes on the counter, but a real consumer (ASI's MPC/PID
-  `Controller`) cannot be driven — the register sequence creates entities but
-  instantiates no component object and wires no actual C++ callback. The
-  declarative register API must grow a seam that instantiates the user's
-  component and binds its real callbacks. Surfaced 2026-06-11 by the ASI
-  reference consumer; blocks ASI phase-2.C. Board granularity resolved:
+- **Callback bodies — RESOLVED by [RFC-0042](0042-entry-real-callback-binding.md)
+  (`→` Phase 236.D).** The 236.A/B runtime constructs entities and *synthesizes* a
+  `std_msgs/Int32` counter for a timer-`Publishes` binding; it runs **no real user
+  callback bodies** (the talker/listener demo passes on the counter, but ASI's
+  MPC/PID `Controller` cannot be driven). RFC-0042 resolves this **against** the
+  first sub-decision of this section ("the `NodeContextOps` seam is the runtime
+  binding point"): the type-erased string-descriptor register cannot carry a
+  body, so the binding point is the **executor callback registration**, not the
+  recording op set. The Entry path routes real callbacks to the Rust executor
+  (RFC-0041); the component becomes a stateful object binding callbacks **by
+  identity** (no naming, RFC-0019 thin wrapper); the synthesizing
+  `EntryNodeRuntime` + `DeclaredNode`/`record_callback_effect` string layer are
+  retired. Surfaced 2026-06-11 by ASI; the NuttX executor-callback path was
+  spike-validated 2026-06-12. Board granularity resolved:
 - **Board granularity** — RESOLVED (236.B): one `ZephyrBoard` parameterized by
   `board.cmake`, not per-board adapters — everything board-specific comes from
   the Phase 215 import + Kconfig at build time.

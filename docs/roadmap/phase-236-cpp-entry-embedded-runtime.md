@@ -239,14 +239,36 @@ generated register sequence boots a node that creates entities but runs
 no control logic. This is RFC-0032 §8a's "callback bodies" open item,
 now a hard blocker.
 
-- [ ] **236.D.1** Real callback-body binding — the declarative register
-      sequence must instantiate the user's component object and wire its
-      actual C++ subscription/timer callbacks into `EntryNodeRuntime`,
-      not synthesize a counter. ASI's `common/node` shim
-      (`SubscriptionHandler<T>` poll + the vendored `Controller` ctor) is
-      the blueprint. Decide the binding seam (component-object lifetime
-      owned by the NodeContext? the register fn returns a driver?).
-- [ ] **236.D.2** Monolithic-app composition — `nano_ros_entry` today
+**Design decided — [RFC-0042](../design/0042-entry-real-callback-binding.md).**
+Under the no-callback-naming + thin-Rust-wrapper (RFC-0019) principles: route the
+Entry path to the **Rust executor** (the same one the native examples use), not
+the type-erased string-descriptor register. The component becomes a **stateful
+object** binding real callbacks **by identity** (typed *or* raw zero-copy) — no
+`declare_callback("name")`. The synthesizing `EntryNodeRuntime` + the
+`DeclaredNode`/`record_callback_effect` string layer are **retired**; the Phase
+238 NuttX C/C++ E2E migrates onto the executor and runs real logic for free.
+
+**Spike (2026-06-12) — risk retired.** The one unproven edge was whether the
+executor's callback dispatch runs under the embedded board lifecycle via the C++
+FFI (native proven; embedded always ran the interpreter). A throwaway imperative
+NuttX entry (`init → create_node → create_timer(cb) +
+nros_cpp_subscription_register(raw zero-copy cb) → spin_once loop`, ~10 lines of
+C++ glue, direct `nros-nuttx-ffi` cargo build) booted in QEMU vs the talker:
+`tick 0..88` (executor timer callback) + `Received 0..38` (executor raw zero-copy
+sub callback, correct `Int32`). Executor real-callback dispatch works on NuttX;
+the C++ side is a thin wrapper.
+
+- [ ] **236.D.1** Component-object shape + `NROS_NODE(Talker)` macro
+      (factory + `sizeof` + per-pkg register symbol). Ctor-binds-`Node&` vs
+      `configure(Node&)` — RFC-0042 open Q1. Binds real callbacks via the typed
+      (`create_subscription(sub_, topic, cb)`) + raw zero-copy
+      (`create_subscription_raw(sub_, topic, raw_cb)`) APIs. C parity via the C
+      callback FFI (`fn ptr + void* ctx`).
+- [ ] **236.D.2** Typed codegen Entry — per launch node, `#include` the component
+      header, construct into an entry-owned arena slot (`sizeof` known), run the
+      executor (`spin_once`). Replaces the `NodeContextOps` recording dispatch +
+      the synthesizing spin loop. Instance-arena sizing — RFC-0042 open Q2.
+- [ ] **236.D.3** Monolithic-app composition — `nano_ros_entry` today
       `add_executable`s + links per-Node `<pkg>_<exec>_component` static
       libs. A Zephyr consumer that links everything into the
       `find_package(Zephyr)`-owned `app` target (ASI) needs: (a) the
@@ -254,8 +276,12 @@ now a hard blocker.
       in a real Zephyr build, and (b) the link-libs sidecar to tolerate a
       Node pkg compiled as `APP_SOURCES` rather than its own
       `nano_ros_node_register` `project()`.
-- [ ] **236.D.3** A non-trivial (non-counter) C++ Entry E2E — a node with
-      a real subscription→publish callback, proving 236.D.1 before ASI
+- [ ] **236.D.4** Retire the interpreter — delete `EntryNodeRuntime` +
+      `detail::entry_*` synthesis (`main.hpp`) and the `DeclaredNode` /
+      `record_callback_effect` string seam; migrate the Phase 238 NuttX C/C++
+      examples (pub/sub + service + action) onto the executor with real bodies.
+- [ ] **236.D.5** A non-trivial (non-counter) C++ + C Entry E2E — a node with
+      a real subscription→publish callback, proving 236.D.1/.2 before ASI
       consumes it.
 
 **Files.** `packages/core/nros-cpp/include/nros/`, `cmake/NanoRosEntry.cmake`,
