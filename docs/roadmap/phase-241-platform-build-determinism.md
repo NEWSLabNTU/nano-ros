@@ -122,14 +122,23 @@ Staged so each step is CI-validated before the next; the 241.A gate + the existi
       baremetal/orin-spe/stm32f4×2. threadx-riscv64 = `heap = true` (the #38
       board — what C.2 lowers to `-D NROS_PLATFORM_HAS_MALLOC`, replacing the
       hand-set `THREADX_GLUE_DEFINES` entry). Catalog parses clean; CLI builds.
-- [ ] **C.2 — the per-platform lowering.** One generator lowers capabilities to
-      the *right* mechanism per platform: `-D NROS_PLATFORM_HAS_*` for
-      baremetal/threadx (emitted into the board/entry cmake), **Kconfig**
-      (`prj.conf`) for zephyr, FreeRTOSConfig for freertos malloc. The
-      RTOS-config-conditional capabilities (zephyr heap/mutex, freertos malloc)
-      stay config-derived but are *validated* against the declaration rather than
-      overridden. Replace the one hand-set capability `-D`
-      (`nano-ros-board-riscv64-qemu.cmake:399`) with the generated value.
+- [x] **C.2 — the `-D` lowering (landed).** `cmake/NanoRosCapabilities.cmake`'s
+      `nros_board_capability_defines(<board_dir> OUT)` reads `[board.capabilities]`
+      from the board's `nros-board.toml` (SSoT) via `file(STRINGS)` and emits the
+      matching `NROS_PLATFORM_HAS_*` — no generator, no committed fragment, cmake
+      reads the SSoT directly. The threadx-riscv64 overlay's hand-set
+      `NROS_PLATFORM_HAS_MALLOC` (the issue-0038 site) is **replaced** by this
+      derived value in `THREADX_GLUE_DEFINES`. Because that set is applied to all
+      threadx targets (platform cmake), it covers **both** in-tree fixtures and
+      scaffolded examples (they build through the same board/platform cmake path).
+      Verified: helper unit-checked (threadx heap=true → `-D`, baremetal
+      heap=false → none) + a full local `threadx_riscv64 build-fixture-extras`
+      builds all 6 zenoh cpp fixtures clean off the *derived* `-D`. The cargo side
+      needs no capability lowering — `platform-*` already implies `alloc`.
+- [ ] **C.2b — zephyr/freertos validation (deferred).** zephyr heap/mutex
+      (Kconfig) + freertos malloc (FreeRTOSConfig) stay config-derived; add a
+      check that the board.toml declaration agrees with the RTOS config rather
+      than overriding it. (Lower priority — those paths work today.)
 - [ ] **C.3 — retire the per-RTOS header self-`#define`s** (the unconditional
       ones: all `HAS_ATOMICS`, posix `HAS_MALLOC`, freertos `HAS_MUTEX`) in favour
       of the generated `-D`; leave RTOS-config-conditional ones header/Kconfig-

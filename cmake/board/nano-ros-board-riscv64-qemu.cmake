@@ -388,15 +388,19 @@ set(THREADX_STARTUP_INCLUDES
     "${NETX_DIR}/addons/BSD"
     CACHE INTERNAL "Include dirs for THREADX_STARTUP_SOURCE TUs")
 
+# phase-241 C.2 — derive the capability defines (e.g. NROS_PLATFORM_HAS_MALLOC)
+# from this board's `[board.capabilities]` in nros-board.toml (the SSoT), instead
+# of the hand-set `-D` the issue-0038 fix added here. `heap = true` for this
+# bare-metal-with-CFFI-heap board → NROS_PLATFORM_HAS_MALLOC, so nros-cpp's
+# HeapString/HeapSequence (used by generated message types) compile.
+include("${_NROS_BOARD_ROOT}/cmake/NanoRosCapabilities.cmake")
+nros_board_capability_defines("${_NROS_BOARD_DIR}" _NROS_BOARD_CAP_DEFINES)
+
 set(THREADX_GLUE_DEFINES
     ${NROS_THREADX_DEFINES}
     NX_INCLUDE_USER_DEFINE_FILE
     NROS_PLATFORM_BAREMETAL
-    # issue-0038 — ThreadX RV64 is bare-metal but HAS a heap (the CFFI port
-    # provides nros_platform_alloc/dealloc). Opt into the canonical malloc/free
-    # surface so nros-cpp's HeapString/HeapSequence (used by generated message
-    # types) compile; baremetal.h shims malloc/free over alloc/dealloc.
-    NROS_PLATFORM_HAS_MALLOC
+    ${_NROS_BOARD_CAP_DEFINES}
     CACHE INTERNAL "Compile defines for THREADX_STARTUP_SOURCE TUs")
 
 set(THREADX_LINKER_SCRIPT "${_NROS_BOARD_CONFIG_DIR}/link.lds"
