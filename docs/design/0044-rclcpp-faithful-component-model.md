@@ -183,11 +183,14 @@ builds on is proven, not theoretical.
    (keeps `Node`'s value-semantics + clean FFI handle; the user writes
    `create_publisher<M>(…)` as members regardless). Revisit deriving `Node`
    directly only if a consumer needs `Node`'s full surface on `this`.
-2. **Abort vs error-flag →** ctor sets a **`bool ok()`** the entry checks
-   post-construct, *then* the entry aborts/halts with the offending node named.
-   Cheap, and multi-node entries need "which node failed" boot diagnostics; bare
-   `nros_abort` inside the ctor loses that. (Single-node carriers can still just
-   halt.)
+2. **Abort vs error-flag → target is the `bool ok()` flag** (the entry checks it
+   post-construct + halts naming the failed node — multi-node "which node failed"
+   diagnostics, vs a bare in-ctor `abort` that loses identity). **Staged impl:**
+   242.1 shipped the simpler `abort`-on-fatal (the §Motivation default) because
+   the entry — the only `ok()` reader — does not exist until **242.4**, so there
+   is nothing to read the flag yet. The abort→flag switch + the entry's
+   `if (!__c->ok()) …` land together in 242.4. Functionally identical on the happy
+   path (differs only at boot-failure).
 3. **Param sequence capacity →** **compile-time fixed `N`** per parameter
    (`declare_parameter<Seq<double, N>>`), bounded `no_std` storage. ASI MPC weight
    vectors are small + fixed; a shared arena is unneeded complexity for v1.
@@ -223,7 +226,7 @@ builds on is proven, not theoretical.
 - 2026-06 — created (Draft); amends RFC-0043 Q1; driver = ASI phase-2.C; tracked
   by phase-242.
 - 2026-06-13 — **Adoption decision: adopt.** Resolved all 5 open questions
-  (Q1 wrap-a-Node, Q2 `ok()`-flag-then-halt, Q3 compile-time `N`, Q4 confirmed
+  (Q1 wrap-a-Node, Q2 ok()-flag target (242.1 ships abort interim, switches at 242.4), Q3 compile-time `N`, Q4 confirmed
   mangled `M::TYPE_NAME` via 240.6, Q5 Rust parity deferred). Recorded the
   construct-ordering delta + the one-field `shape` metadata marker + the
   template-migration-defer.
