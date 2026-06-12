@@ -46,6 +46,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| 29 | host-integration native fixture build exhausts runner disk (ENOSPC)   | bug         | build  | [0029-host-integration-fixture-build-disk-exhaustion.md](0029-host-integration-fixture-build-disk-exhaustion.md) |
+| 34 | host-integration surfaces 31 pre-existing nros-tests failures        | bug         | testing| [0034-host-integration-31-preexisting-test-failures.md](0034-host-integration-31-preexisting-test-failures.md) |
 
 Resolved issues live in [`archived/`](archived/).

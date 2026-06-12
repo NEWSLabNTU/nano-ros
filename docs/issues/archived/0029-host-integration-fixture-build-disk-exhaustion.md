@@ -1,10 +1,10 @@
 ---
 id: 29
 title: host-integration native fixture build exhausts runner disk (ENOSPC)
-status: open  # greened once (27345714715) then re-failed (27350995543); disk still marginal — reclaim step added
+status: resolved  # disk fits (df stable ~64%, no ENOSPC) + masking fixed; lane runs test-integration honestly. Remaining red = pre-existing failures tracked in issue-0034
 type: bug
 area: build
-related: [issue-0025, issue-0022]
+related: [issue-0025, issue-0022, issue-0034]
 ---
 
 When the `host integration-tests` lane is allowed to run the full native
