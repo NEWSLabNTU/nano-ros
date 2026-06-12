@@ -7,11 +7,26 @@ area: c-api
 related: [issue-0034, issue-0036, phase-235]
 ---
 
-> **FIX LANDED 2026-06-12 (pending e2e confirmation).** Added the two
-> `static inline` shims (`nros_platform_malloc → alloc`, `free → dealloc`) to
-> `nros-platform-cffi/include/nros/platform.h`, mirroring `platform/freertos.h`.
-> Header verified to compile under riscv-none-elf-g++ (`-std=c++14 -ffreestanding`)
-> with the shims usable. Awaiting an e2e dispatch on threadx_riscv64.
+> **FIX v2 2026-06-12 (verified locally; pending e2e).** The v1 shim in
+> `nros-platform-cffi/platform.h` (commit 9f60dbd5b) was the **wrong header** —
+> `-H` tracing the real cpp compile showed `<nros/platform.h>` resolves to
+> **`nros-c/include/nros/platform.h`** (reached via `-isystem`), not the CFFI one.
+> nros-c/platform.h gates the canonical `malloc`/`free` prototypes behind
+> `#ifndef NROS_NO_DYNAMIC_MEMORY`, and **`platform/baremetal.h:47` hard-defines
+> `NROS_NO_DYNAMIC_MEMORY`** — so on the bare-metal ThreadX RV64 build the
+> prototypes are omitted entirely. But ThreadX RV64 *has* a heap (its CFFI port
+> provides `nros_platform_alloc`/`dealloc`); qemu-riscv64-threadx is the **only**
+> bare-metal example that builds cpp + heap containers (freertos/posix/zephyr all
+> `#define NROS_PLATFORM_HAS_MALLOC`), so it alone hit this.
+>
+> v2: `baremetal.h` now, when the board opts in via `NROS_PLATFORM_HAS_MALLOC`,
+> declares the CFFI alloc/dealloc + exposes `malloc`/`free` as inline forwards
+> (same shim shape as `freertos.h`) and leaves `NROS_NO_DYNAMIC_MEMORY` unset; the
+> ThreadX RV64 board's `THREADX_GLUE_DEFINES` (cmake) adds the `-D`. **Verified:**
+> a full local `just threadx_riscv64 build-fixture-extras` builds all 6 zenoh cpp
+> fixtures clean (0 malloc/free errors). The v1 CFFI-header shim is harmless +
+> kept (correct for direct platform-cffi consumers), but the bare-metal path is
+> the operative fix. Awaiting an e2e dispatch to confirm.
 
 The CFFI-platform C++ build fails to compile nros-cpp's heap containers because
 the platform header it resolves declares only `nros_platform_alloc` /

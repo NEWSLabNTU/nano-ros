@@ -392,6 +392,11 @@ set(THREADX_GLUE_DEFINES
     ${NROS_THREADX_DEFINES}
     NX_INCLUDE_USER_DEFINE_FILE
     NROS_PLATFORM_BAREMETAL
+    # issue-0038 — ThreadX RV64 is bare-metal but HAS a heap (the CFFI port
+    # provides nros_platform_alloc/dealloc). Opt into the canonical malloc/free
+    # surface so nros-cpp's HeapString/HeapSequence (used by generated message
+    # types) compile; baremetal.h shims malloc/free over alloc/dealloc.
+    NROS_PLATFORM_HAS_MALLOC
     CACHE INTERNAL "Compile defines for THREADX_STARTUP_SOURCE TUs")
 
 set(THREADX_LINKER_SCRIPT "${_NROS_BOARD_CONFIG_DIR}/link.lds"

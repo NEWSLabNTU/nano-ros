@@ -43,10 +43,32 @@ extern "C" {
 // Bare-metal provides simple atomic operations via volatile
 #define NROS_PLATFORM_HAS_ATOMICS
 
-// No dynamic memory by default on bare-metal
+// Dynamic memory (issue-0038). Generic bare-metal has no heap, so the default
+// is `NROS_NO_DYNAMIC_MEMORY` — which makes `nros/platform.h` omit the canonical
+// `nros_platform_malloc` / `nros_platform_free` prototypes, and nros-cpp's heap
+// containers (`HeapString`, `HeapSequence`) won't compile. But a bare-metal
+// board CAN have a heap: the CFFI/RTOS ports (e.g. ThreadX RV64) provide a real
+// allocator via `nros_platform_alloc` / `nros_platform_dealloc`. Such a board
+// opts in by defining `NROS_PLATFORM_HAS_MALLOC` (its cmake board config adds the
+// `-D`); we then expose the canonical malloc/free as thin inline forwards over
+// alloc/dealloc — the same shim shape `platform/freertos.h` uses — and leave
+// `NROS_NO_DYNAMIC_MEMORY` unset so the C++ heap containers build.
+#ifdef NROS_PLATFORM_HAS_MALLOC
+extern void *nros_platform_alloc(size_t size);
+extern void nros_platform_dealloc(void *ptr);
+
+static inline void *nros_platform_malloc(size_t size) {
+    return nros_platform_alloc(size);
+}
+
+static inline void nros_platform_free(void *ptr) {
+    nros_platform_dealloc(ptr);
+}
+#else
 #ifndef NROS_NO_DYNAMIC_MEMORY
 #define NROS_NO_DYNAMIC_MEMORY
 #endif
+#endif // NROS_PLATFORM_HAS_MALLOC
 
 // No threading on bare-metal
 #ifdef NROS_FEATURE_THREADS
