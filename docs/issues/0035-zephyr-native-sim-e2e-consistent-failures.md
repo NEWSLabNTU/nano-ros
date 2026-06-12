@@ -121,32 +121,60 @@ Instrumented `xrce_topic_callback` / `xrce_subscriber_has_data` in
 
 So: **data is received and buffered but never delivered to the subscription callback.**
 
-### Why it's native_sim-specific
+### The exact defect (the `spin_once` that never returns)
 
-The native host C listener (which **passes**) builds `nros-node` with `feature = "std"`.
-The native_sim Zephyr C example builds `nros-node` as **`no_std` + `alloc` +
-`platform-zephyr`** (even though the host-run binary targets `x86_64-unknown-linux-gnu`).
-The drain/poll step that runs on the `std` path does not run on the embedded-executor
-path. This is an **executor / `nros-c` ↔ `nros-rmw-cffi` integration gap**, not an rmw
-bug — which is why the **zenoh and cyclone native_sim pubsub/action cases fail the same
-way** (shared executor) and matches the phase-240
-`phase-240-entry-real-callback-binding.md` "pub/sub runtime gap" note.
+Instrumenting further: the executor's readiness scan does run on `std`, but on the
+native_sim build `spin_once` is **entered once and never returns** — it blocks inside
+`xrce_session_drive_io` (`packages/xrce/nros-rmw-xrce/src/session.c`). That function
+paces the spin by looping `uxr_run_session_time` until a relative deadline elapses:
 
-### Fix area (for the executor owner)
+```c
+uint64_t start_ms = nros_platform_time_now_ms();   // ← wall clock
+for (;;) {
+    uint64_t now_ms = nros_platform_time_now_ms();  // ← wall clock
+    int remaining = t - (int)(now_ms - start_ms);
+    if (remaining <= 0) break;
+    uxr_run_session_time(&st->session, remaining);
+    ...
+}
+```
 
-The `Executor::spin_once` readiness-scan/dispatch
-(`packages/core/nros-node/src/executor/spin.rs`, the `sub_buffered_raw_c_has_data` /
-`sub_buffered_raw_c_try_process` entries in `executor/arena.rs`) must actually run and
-drain registered C subscriptions on the `no_std`+`alloc`+`platform-zephyr` build, as it
-does on `std`. Pinning the exact unreached line was hampered by stale multi-profile
-cargo artifacts in the local `nano-ros-workspace` (a clean rebuild is advised before the
-final fix). A green native_sim XRCE pubsub e2e (`test_zephyr_xrce_c_talker_listener`) is
-the acceptance check.
+`nros_platform_time_now_ms()` is the **wall-clock / epoch** service. On every RTC-less
+platform it is a stub returning `0` (`nros-platform-{zephyr,freertos,threadx}/src/platform.c`;
+the header documents "`0` if the platform has no real-time clock"). With `now_ms`
+permanently `0`, `remaining` is always `t` and the loop **spins forever** inside
+`uxr_run_session_time` — it keeps receiving + buffering inbound (so `topic_cb` fires)
+but never returns, so `spin_once` never reaches the readiness scan / dispatch and the
+buffered samples are never delivered. The native host build passes because POSIX
+`nros_platform_time_now_ms` returns real epoch ms.
+
+Confirmed with a probe: `drive_io t=100 start_ms=0`, then `iter=0..3 now_ms=0 elapsed=0
+remaining=100` — `now_ms` never advances.
+
+### Fix (resolves all 9 XRCE cases)
+
+`xrce_session_drive_io` must use the **monotonic** clock `nros_platform_clock_ms()`
+(`k_uptime_get()` on Zephyr — works without an RTC, never decreases) for its relative
+deadline deltas, not the wall-clock `nros_platform_time_now_ms()`. This is the same
+contract the XRCE platform shim already documents for `uxr_millis` (`platform_aliases.c`)
+and that zenoh-pico already uses for `z_clock_*`. One-symbol swap at the three call
+sites in `session.c`.
+
+**Verified after the fix** (rebuild fixtures, then run): `test_zephyr_xrce_c_talker_listener`,
+`test_zephyr_xrce_c_service_e2e`, `test_zephyr_xrce_c_action_e2e` all **pass**. The C++/Rust
+XRCE cases share the identical `session.c` drive path.
+
+### Remaining (separate root cause — still open)
+
+The **3 zenoh** + **1 cyclone** native_sim failures are **not** this clock bug — zenoh-pico's
+timeout path (`z_clock_*`) already uses the monotonic clock, and cyclone has its own
+discovery path. They need their own triage (likely native_sim NSOS connect/discovery,
+as the original RCA directions noted). This issue stays **open** for those 4; the XRCE
+cluster (9/13) is resolved.
 
 **Reproduce (minimal):**
 ```sh
 just zephyr build-one c/talker xrce && just zephyr build-one c/listener xrce
 cargo nextest run -p nros-tests --test zephyr \
   test_zephyr_xrce_c_talker_listener --no-capture --test-threads=1
-# talker: "Published: 0..N"; listener: "Waiting for messages…" then 0 received.
 ```

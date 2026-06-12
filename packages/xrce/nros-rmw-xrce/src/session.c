@@ -462,15 +462,24 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t *session,
         (void)uxr_run_session_time(&st->session, 0);
         return NROS_RMW_RET_OK;
     }
-    /* Issue 0029 — use the platform clock/sleep (`nros_platform_time_now_ms`,
-     * `nros_platform_sleep_ms`), NOT POSIX `clock_gettime(CLOCK_MONOTONIC)` /
-     * `nanosleep`. This path compiles for every XRCE target incl. bare-metal
-     * Cortex-M (thumbv7m/thumbv7em), where `<time.h>` does not declare
-     * `CLOCK_MONOTONIC` and there is no `nanosleep`. The platform abstraction
-     * already backs both on hosted and embedded targets. */
-    uint64_t start_ms = nros_platform_time_now_ms();
+    /* Issue 0029 — use the platform clock/sleep, NOT POSIX
+     * `clock_gettime(CLOCK_MONOTONIC)` / `nanosleep`. This path compiles for
+     * every XRCE target incl. bare-metal Cortex-M (thumbv7m/thumbv7em), where
+     * `<time.h>` does not declare `CLOCK_MONOTONIC` and there is no `nanosleep`.
+     *
+     * Issue 0035 — use the *monotonic* clock `nros_platform_clock_ms`, NOT the
+     * *wall* clock `nros_platform_time_now_ms`. The latter is epoch time and
+     * returns 0 on any platform without an RTC (Zephyr/native_sim, FreeRTOS,
+     * ThreadX — see each provider's `platform.c`). With a 0 clock `elapsed_ms`
+     * is always 0, `remaining` never reaches 0, and this loop spins forever
+     * inside `uxr_run_session_time` — so `spin_once` never returns to run the
+     * executor's readiness scan and buffered subscriber samples are never
+     * delivered to callbacks. `nros_platform_clock_ms` is monotonic ms since
+     * boot (k_uptime_get on Zephyr) and is the contract for relative deadline
+     * deltas (mirrors `uxr_millis` in platform_aliases.c). */
+    uint64_t start_ms = nros_platform_clock_ms();
     for (;;) {
-        uint64_t now_ms = nros_platform_time_now_ms();
+        uint64_t now_ms = nros_platform_clock_ms();
         int elapsed_ms = (int)(now_ms - start_ms);
         int remaining = t - elapsed_ms;
         if (remaining <= 0) {
@@ -479,7 +488,7 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t *session,
         (void)uxr_run_session_time(&st->session, remaining);
         /* If the run returned well before `remaining`, yield ~1 ms so the next
          * pass picks up freshly-arrived inbound without busy-spinning. */
-        uint64_t after_ms = nros_platform_time_now_ms();
+        uint64_t after_ms = nros_platform_clock_ms();
         if ((after_ms - now_ms) < 1u) {
             nros_platform_sleep_ms(1);
         }
