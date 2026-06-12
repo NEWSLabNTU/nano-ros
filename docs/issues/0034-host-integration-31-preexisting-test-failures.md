@@ -98,3 +98,17 @@ now that the env leak (#29) is gone — they may already be green.
 
 A verify run after the timeout + l9 fixes is expected to drop the count from 31
 to roughly the m12 + j_launch (+ possibly the 3 CI-env) failures.
+
+### Sibling lane — NuttX cpp talker `div_t` clash (platform-ci e2e, run 27393704883)
+
+Separate from the host-integration nextest classes above (this is the
+*platform-ci* nuttx e2e cell building real fixtures, not a nextest timeout): the
+honest e2e run surfaces a genuine **cpp** compile clash. arm-none-eabi-g++
+building `examples/qemu-arm-nuttx/cpp/talker/.../nros-entry/main.cpp` fails with
+`conflicting declaration 'typedef struct div_t div_t'` — `arm-none-eabi/include/stdlib.h`
+(newlib) and NuttX's own `stdlib.h` both on the cpp entry's include path.
+issue-0027 made the NuttX sysroot win for the *C* message-lib path; the **cpp**
+entry's cc-rs `-I third-party/nuttx/nuttx/include` still also pulls newlib's libc
+headers (no SYSTEM-include precedence as the C path got). Fix is the cpp-entry
+analogue of 0027 #1 (NuttX sysroot precedence for the C++ FFI compile), owner =
+nros-cpp / NuttX C++ header.

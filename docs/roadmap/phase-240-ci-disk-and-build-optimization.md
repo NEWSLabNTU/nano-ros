@@ -7,9 +7,13 @@ on-demand full end-to-end (e2e) validation that complete coverage needs. Three
 disk levers (maintainer directive): pull/build only what a run needs, shallow
 clone everywhere, reclaim space once a binary is built.
 
-**Status.** In progress (2026-06-12). The build-scope + shallow + reclaim levers
-landed; the e2e-on-trigger path is preserved + being re-validated. Several CI
-regressions surfaced + fixed en route.
+**Status.** Near-complete (2026-06-12). The build-scope + shallow + reclaim levers
+landed and are **validated** by dispatch run 27393704883: the heavy embedded cells
+no longer die on `No space left on device` or the embedded compile — nuttx ran
+~10 min into the cpp fixtures, esp32 went fully green. The one remaining e2e red
+(nuttx cpp `div_t` header clash) is a pre-existing fixture bug, not a disk/build
+issue — handed to issue #34's cpp bucket. Several CI regressions surfaced + fixed
+en route.
 
 **Priority.** P2 — no product capability depends on it, but green CI is the gate
 for trusting every phase's "verified" claim, and disk-exhausted lanes train
@@ -91,12 +95,26 @@ the CI-conventions baseline), Phase 218 (in-tree CLI build), RFC-0014
 - [x] All CI git submodule inits are shallow.
 - [x] The on-demand e2e (`run_e2e` / nightly) still builds fixtures + runs the
       QEMU Test step (feature alive).
-- [ ] A `run_e2e` dispatch goes green on the heavy cells (freertos/nuttx/zephyr) —
-      confirming the compile fix + the disk levers suffice on the full build-all
-      path. **In flight** (re-validation dispatch after the nros-node + qemu
-      fixes). If the heavy cells still exhaust disk on `build-all`, the residual
-      fix is a larger runner or a build-footprint reduction (the static reclaim is
-      only ~1–2 GB; `build-all` is fundamentally the heavy build).
+- [x] **Disk + compile levers validated on the heavy `build-all` path.** Dispatch
+      `run_e2e` run 27393704883 (after the nros-node compile + qemu fallback fixes):
+      esp32 fully green; **nuttx ran 9m46s — no `No space left on device`, passed
+      the nros-node compile that killed every embedded cell at ~2–3 min in the
+      prior run, and reached deep into the cpp `build-fixtures` matrix.** That is
+      the disk/compile goal: the heavy cells no longer die on disk or the embedded
+      compile. (Earlier run 27375218361 had qemu/nuttx/esp32 all fail at the
+      *Build* step in 2–6 min — disk/compile; this run they get to the fixtures.)
+- [ ] **Residual: nuttx cpp fixture header clash (NOT disk — separate owner).**
+      nuttx's Test/e2e is red on a cpp compile clash, not disk: arm-none-eabi-g++
+      building the cpp talker `nros-entry/main.cpp` hits
+      `conflicting declaration 'typedef struct div_t div_t'` — newlib's
+      `arm-none-eabi/include/stdlib.h` vs NuttX's own `stdlib.h` (both libc header
+      sets on the include path for the C++ entry; issue-0027 made the NuttX sysroot
+      win for the *C* message-lib path, but the cpp entry's cc-rs invocation still
+      sees both). Same family as the cpp cases tracked in **issue #34** (honest-red
+      e2e/integration now surfaces pre-existing cpp fixture bugs). Belongs to the
+      nros-cpp / NuttX C++ header owner, not this phase. Phase-240's disk/build
+      goal is met; the e2e-green box is gated on that fixture bug, filed against
+      #34's cpp bucket.
 
 ## Notes / cross-refs
 
