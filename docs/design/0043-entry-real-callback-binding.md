@@ -91,15 +91,18 @@ the RFC must not conflate them:
   result)** receive through executor-dispatched callbacks too, per the RFC-0041
   Principle (callback by default; poll is a user-scheduling opt-in, never an RMW
   requirement). The component binds a reply/result/feedback callback by identity;
-  the executor drives it each `spin_once`. **Caveat (impl gap):** the *Rust*
-  executor arena-registers the action client (`register_action_client_raw`,
-  `InvocationMode::Always`) so `spin_once` auto-dispatches its three reply
-  channels, but the **C/C++ FFI** has only `nros_cpp_action_client_set_callbacks`
-  + a **manual** `nros_cpp_action_client_poll(handle)` (the auto-dispatch
-  `register_async` is referenced in docstrings but **unimplemented**). So a C/C++
-  component action client today must call `poll()` itself each spin tick — and a
-  bare `create + try_recv` with no pump receives nothing. Tracked in
-  [issue-0047](../issues/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
+  the executor drives it each `spin_once`. **Action-client mechanics
+  (resolved — issue-0047):** the *Rust* executor arena-registers the action
+  client (`register_action_client_raw`, `InvocationMode::Always`) so `spin_once`
+  auto-dispatches its three reply channels; the **C/C++ FFI** has
+  `nros_cpp_action_client_set_callbacks` + a **manual**
+  `nros_cpp_action_client_poll(handle)` (the auto-dispatch `register_async` is
+  referenced in docstrings but unimplemented). The component helper
+  `nros::bind_action_client<C, &on_goal_response, &on_feedback, &on_result>`
+  hides this: it `create`s + `set_callbacks` + binds a poll timer that calls
+  `poll()` each spin tick, so the user writes only member callbacks (no naming,
+  no poll loop). Validated in QEMU on NuttX (cpp + C) — see
+  [issue-0047](../issues/archived/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
   The **poll** API (`polling_action_client.hpp`, `Promise::try_recv`,
   `Subscription::try_recv`) is retained for **user-owned scheduling** (RTIC /
   Embassy / task-per-entity), not as the client default.

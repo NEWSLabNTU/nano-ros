@@ -34,6 +34,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "nros/action_client.hpp" // action-client set_callbacks + goal/feedback/result typedefs
 #include "nros/action_server.hpp" // raw action-server register + set_callbacks + storage size
 #include "nros/node.hpp"
 #include "nros/result.hpp"
@@ -213,13 +214,55 @@ struct ActionClientStorage {
 /// Create a raw poll-style action client into the component-owned `storage`.
 /// Drive it with `nros_cpp_action_client_send_goal` /
 /// `nros_cpp_action_client_try_recv_goal_response` /
-/// `nros_cpp_action_client_get_result`.
+/// `nros_cpp_action_client_get_result`. (Poll opt-in — for callback dispatch use
+/// `bind_action_client` below.)
 inline Result create_action_client_raw(Node& node, void* storage, const char* action_name,
                                        const char* type_name, const QoS& qos = QoS::services()) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
     return Result(nros_cpp_action_client_create(h, action_name, type_name, "", ffi_qos, storage));
+}
+
+/// Bind a component's action client to **member callbacks** (RFC-0041 — callback
+/// by default; issue-0047). `on_goal_response(bool accepted, const uint8_t
+/// goal_id[16])`, `on_feedback(const uint8_t goal_id[16], const uint8_t* data,
+/// size_t len)`, `on_result(const uint8_t goal_id[16], int32_t status, const
+/// uint8_t* data, size_t len)` are bound by identity (no naming), `self` as ctx.
+///
+/// Unlike subscription/service whose RX is pumped by the session each
+/// `spin_once`, the action client's goal-response/feedback/result arrive via
+/// GET-query replies that must be drained with `nros_cpp_action_client_poll` —
+/// which is NOT auto-called by `spin_once` (issue-0047). So this binds a
+/// component-owned `poll_timer` that calls `poll()` each `poll_ms`; `poll()`
+/// dispatches the buffered replies into the member callbacks. Send goals with
+/// `nros_cpp_action_client_send_goal_async(storage.bytes, …)`; the acceptance
+/// then arrives in `on_goal_response`.
+template <class C, void (C::*OnGoalResponse)(bool accepted, const uint8_t goal_id[16]),
+          void (C::*OnFeedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len),
+          void (C::*OnResult)(const uint8_t goal_id[16], int32_t status, const uint8_t* data,
+                              size_t len)>
+inline Result bind_action_client(Node& node, ActionClientStorage& storage, Timer& poll_timer,
+                                 const char* action_name, const char* type_name, C* self,
+                                 uint64_t poll_ms = 20, const QoS& qos = QoS::services()) {
+    Result r = create_action_client_raw(node, storage.bytes, action_name, type_name, qos);
+    if (!r.ok()) return r;
+    nros_cpp_ret_t ret = nros_cpp_action_client_set_callbacks(
+        storage.bytes,
+        [](bool accepted, const uint8_t goal_id[16], void* ctx) {
+            (static_cast<C*>(ctx)->*OnGoalResponse)(accepted, goal_id);
+        },
+        [](const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) {
+            (static_cast<C*>(ctx)->*OnFeedback)(goal_id, data, len);
+        },
+        [](const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len, void* ctx) {
+            (static_cast<C*>(ctx)->*OnResult)(goal_id, status, data, len);
+        },
+        self);
+    if (ret != 0) return Result(ret);
+    // Pump the GET-query replies each spin tick → callbacks fire from poll().
+    return node.create_timer(
+        poll_timer, poll_ms, [](void* ctx) { nros_cpp_action_client_poll(ctx); }, storage.bytes);
 }
 
 } // namespace nros

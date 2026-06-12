@@ -793,15 +793,12 @@ fn test_rtos_service_e2e(
 // on native (Cyclone) and zephyr (xrce/dds) e2e.
 #[rstest]
 fn test_rtos_action_e2e(
-    // Phase 240.5 — NuttX action SERVER is migrated + runtime-validated (the typed
-    // component executes real goals: accept → compute Fibonacci → complete_goal,
-    // observed in QEMU). NuttX is NOT yet in this matrix because the action
-    // *client* poll model has an open gap: the raw client's goal-response/result
-    // queryable replies are not surfaced by `try_recv_*` from the spin_once timer
-    // (async send + `nros_cpp_action_client_poll` each tick still doesn't receive
-    // the reply). Tracked in phase-240 (240.5 action-client). Re-add Nuttx here
-    // once the client RX is wired.
-    #[values(Platform::Freertos, Platform::ThreadxLinux)] platform: Platform,
+    // Phase 240.5 / issue-0047 — NuttX action transport (server + CALLBACK client)
+    // is migrated + runtime-validated: the typed component server executes real
+    // goals (accept → compute Fibonacci → complete_goal) and the callback client
+    // (`bind_action_client` — set_callbacks + a poll-timer pump per RFC-0041)
+    // receives goal-response + result.
+    #[values(Platform::Freertos, Platform::Nuttx, Platform::ThreadxLinux)] platform: Platform,
     #[values(Lang::Rust, Lang::C, Lang::Cpp)] lang: Lang,
 ) {
     if maybe_skip(platform, lang, Variant::Action) {

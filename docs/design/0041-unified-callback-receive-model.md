@@ -69,7 +69,7 @@ buffered RX; `InvocationMode::Always` for the action client's three reply
 channels). An entity that is merely *created* (not arena-registered) has **no
 pump**: nothing drains its reply channel, so a bare `create + try_recv` loop
 receives nothing. This is the action-client trap — see the impl gaps in
-[issue-0047](../issues/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
+[issue-0047](../issues/archived/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
 
 ## Motivation / problem
 
@@ -241,7 +241,7 @@ subscription path; only the node layer changes.
   poll is an opt-in for user-owned scheduling, never an RMW requirement) +
   the arena-registration corollary. Generalises the model from "clients only"
   to all callback-capable entities. Surfaced the action-client arena-dispatch
-  impl gap → [issue-0047](../issues/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
+  impl gap → [issue-0047](../issues/archived/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
 
 ## References
 

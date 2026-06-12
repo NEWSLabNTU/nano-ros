@@ -1,8 +1,9 @@
-// NuttX C++ Fibonacci action client — typed poll component (RFC-0043, 240.5).
+// NuttX C++ Fibonacci action client — typed CALLBACK component (RFC-0041/0043).
 //
-// `configure` creates an action client + a timer that drives a poll state
-// machine: send goal → poll the acceptance → fetch the result → print it.
-// (Poll model — clients move to callbacks when RFC-0041's C/C++ wave lands.)
+// `configure` binds member callbacks (goal-response / feedback / result) by
+// identity via `bind_action_client` (callback by default, RFC-0041; issue-0047),
+// then sends one goal. The acceptance + result arrive in the member callbacks,
+// dispatched by the binding's poll-timer pump each spin tick.
 #ifndef NUTTX_CPP_ACTION_CLIENT_FIBONACCICLIENT_HPP
 #define NUTTX_CPP_ACTION_CLIENT_FIBONACCICLIENT_HPP
 
@@ -16,13 +17,13 @@ namespace nuttx_cpp_action_client {
 
 class FibonacciClient {
     ::nros::ActionClientStorage client_;
-    ::nros::Timer timer_;
-    void* executor_ = nullptr;
-    int phase_ = 0; // 0 send, 1 await-accept, 2 get-result, 3 done
+    ::nros::Timer poll_timer_;
     int32_t order_ = 5;
-    uint8_t goal_id_[16] = {};
 
-    void on_tick(); // poll state machine, bound by identity
+    // Member callbacks, bound by identity (no naming).
+    void on_goal_response(bool accepted, const uint8_t goal_id[16]);
+    void on_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len);
+    void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len);
 
   public:
     ::nros::Result configure(::nros::Node& node);

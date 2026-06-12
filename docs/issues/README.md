@@ -50,7 +50,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 41 | suite-wide compile-in-tests antipattern — convert to build-stage fixtures | tech-debt | testing | [0041-compile-in-tests-suite-wide.md](0041-compile-in-tests-suite-wide.md) |
 | 44 | esp-idf platform.c build fails — `_heap_start`/`_heap_end` undeclared | bug | esp32 | [0044-esp-idf-platform-c-heap-symbols-undeclared.md](0044-esp-idf-platform-c-heap-symbols-undeclared.md) |
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
-| 47 | C/C++ action client has no executor-arena callback dispatch (manual poll required); component layer lacks callback client bindings | enhancement | rmw | [0047-cpp-c-action-client-no-arena-callback-dispatch.md](0047-cpp-c-action-client-no-arena-callback-dispatch.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the
@@ -63,3 +62,7 @@ build/panic-handler (Component → rlib-only + board-owned `panic_semihosting` +
 (app-task stack 256→384 KiB + zenoh heap 512 KiB→2 MiB; runtime gate un-ignored +
 green). See `archived/0039-*`, `archived/0040-*`, `archived/0043-*`,
 `archived/0045-*`, `archived/0046-*`.
+
+Recently resolved (Phase 240.5): **#47** — C/C++ action client now callback-based
+(`nros::bind_action_client` = `set_callbacks` + a poll-timer pump per RFC-0041);
+NuttX cpp+C action E2E green in QEMU. See `archived/0047-*`.

@@ -1,23 +1,20 @@
 /// @file FibonacciClient.c
-/// @brief NuttX C Fibonacci action client — typed poll component (240.5).
+/// @brief NuttX C Fibonacci action client — typed CALLBACK component.
 ///
-/// `client_configure` creates an action client + a timer that drives a poll
-/// state machine: send goal → poll acceptance → fetch result → print it.
-/// (Poll model — clients move to callbacks when RFC-0041's C/C++ wave lands.)
+/// `client_configure` registers member-style callbacks (goal-response / feedback
+/// / result) via set_callbacks (callback by default, RFC-0041; issue-0047) + a
+/// poll timer that drains the GET-query replies each spin tick, then sends one
+/// goal. Acceptance + result arrive in the callbacks.
 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 
 #include <nros/component.h>
 
 typedef struct {
     _Alignas(8) uint8_t storage[NROS_C_ACTION_CLIENT_STORAGE_SIZE];
-    void* executor;
-    int phase; /* 0 send, 1 await-accept, 2 get-result, 3 done */
     int32_t order;
-    uint8_t goal_id[16];
 } fib_client_t;
 
 static uint32_t read_u32_le(const uint8_t* p) {
@@ -31,57 +28,40 @@ static void write_u32_le(uint8_t* p, uint32_t v) {
     p[3] = (uint8_t)(v >> 24);
 }
 
-static void on_tick(void* ctx) {
+static void on_goal_response(bool accepted, const uint8_t goal_id[16], void* ctx) {
     fib_client_t* self = (fib_client_t*)ctx;
-    nros_cpp_action_client_poll(self->storage); /* pump RX for try_recv_* */
-    if (self->phase == 0) {
-        uint8_t goal[8];
-        goal[0] = 0x00;
-        goal[1] = 0x01;
-        goal[2] = 0x00;
-        goal[3] = 0x00;
-        write_u32_le(goal + 4, (uint32_t)self->order);
-        /* ASYNC send — the blocking send_goal re-enters the executor from inside
-         * this spin_once timer callback and never completes. Async returns
-         * immediately; acceptance arrives via try_recv_goal_response. */
-        nros_cpp_action_client_send_goal_async(self->storage, goal, sizeof(goal), &self->goal_id);
-        printf("Goal sent: order=%d\n", (int)self->order);
-        self->phase = 1;
-    } else if (self->phase == 1) {
-        uint8_t buf[17];
-        size_t len = 0;
-        if (nros_cpp_action_client_try_recv_goal_response(self->storage, buf, sizeof(buf), &len) ==
-                0 &&
-            len >= 17) {
-            memcpy(self->goal_id, buf, 16); /* server-confirmed goal UUID */
-            if (buf[16] != 0) {
-                printf("Goal accepted by server\n");
-                nros_cpp_action_client_get_result_async(self->storage,
-                                                        (const uint8_t(*)[16])self->goal_id);
-                self->phase = 2;
-            } else {
-                printf("Goal rejected by server\n");
-                self->phase = 3;
-            }
-        }
-    } else if (self->phase == 2) {
-        uint8_t res[256];
-        size_t len = 0;
-        if (nros_cpp_action_client_try_recv_result(self->storage, res, sizeof(res), &len) == 0 &&
-            len >= 8) {
-            uint32_t count = read_u32_le(res + 4);
-            /* status=4 = Succeeded; harness greps "Result (status=". */
-            printf("Result (status=4): %u terms\n", (unsigned)count);
-            printf("Action completed successfully\n");
-            self->phase = 3;
-        }
+    if (accepted) {
+        printf("Goal accepted by server\n");
+        nros_cpp_action_client_get_result_async(self->storage, (const uint8_t(*)[16])goal_id);
+    } else {
+        printf("Goal rejected by server\n");
     }
+}
+
+static void on_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) {
+    (void)goal_id;
+    (void)data;
+    (void)len;
+    (void)ctx;
+}
+
+static void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len,
+                      void* ctx) {
+    (void)goal_id;
+    (void)ctx;
+    uint32_t count = (len >= 8) ? read_u32_le(data + 4) : 0u;
+    printf("Result (status=%d): %u terms\n", (int)status, (unsigned)count);
+    printf("Action completed successfully\n");
+}
+
+static void on_poll(void* ctx) {
+    fib_client_t* self = (fib_client_t*)ctx;
+    nros_cpp_action_client_poll(self->storage); /* drain GET replies -> callbacks */
 }
 
 static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
                                    fib_client_t* self) {
-    setvbuf(stdout, NULL, _IONBF, 0); /* poll client prints on transitions only */
-    self->executor = executor;
+    setvbuf(stdout, NULL, _IONBF, 0); /* callbacks print on transitions only */
     self->order = 5;
     int32_t rc =
         nros_cpp_action_client_create(node, "/fibonacci", "example_interfaces/action/Fibonacci", "",
@@ -89,12 +69,27 @@ static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
     if (rc != 0) {
         return rc;
     }
-    size_t timer_handle;
-    rc = nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
-    if (rc == 0) {
-        printf("Sending goal\n");
+    rc = nros_cpp_action_client_set_callbacks(self->storage, on_goal_response, on_feedback,
+                                              on_result, self);
+    if (rc != 0) {
+        return rc;
     }
-    return rc;
+    size_t timer_handle;
+    rc = nros_cpp_timer_create(executor, /*period_ms=*/20, on_poll, self, &timer_handle);
+    if (rc != 0) {
+        return rc;
+    }
+    /* Send one goal (async — acceptance arrives in on_goal_response). */
+    uint8_t goal[8];
+    goal[0] = 0x00;
+    goal[1] = 0x01;
+    goal[2] = 0x00;
+    goal[3] = 0x00;
+    write_u32_le(goal + 4, (uint32_t)self->order);
+    uint8_t goal_id[16];
+    nros_cpp_action_client_send_goal_async(self->storage, goal, sizeof(goal), &goal_id);
+    printf("Goal sent: order=%d\n", (int)self->order);
+    return 0;
 }
 
 NROS_C_COMPONENT(fib_client_t, client_configure)

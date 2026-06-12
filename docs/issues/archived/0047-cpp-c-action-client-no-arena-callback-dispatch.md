@@ -1,11 +1,42 @@
 ---
 id: 47
 title: C/C++ action client has no executor-arena callback dispatch (manual poll required); component layer lacks callback client bindings
-status: open
+status: resolved
 type: enhancement
 area: rmw
 related: [rfc-0041, rfc-0043, phase-239, phase-240]
+resolved_in: Phase 240.5 (commit on 2026-06-13)
 ---
+
+## Resolution (2026-06-13)
+
+The action client is now **callback-based** (RFC-0041 Principle). Added
+`nros::bind_action_client<C, &C::on_goal_response, &C::on_feedback, &C::on_result>`
+to `component.hpp` (+ the `nros_cpp_action_client_set_callbacks` callback typedefs
+in the C `component.h`): it `create`s the client, registers the three member
+callbacks by identity, and binds a component-owned **poll timer** that calls
+`nros_cpp_action_client_poll` each spin tick — which drains the GET-query replies
+and dispatches them into the member callbacks. Send goals with
+`send_goal_async`; the acceptance + result arrive in the callbacks (no
+`try_recv_*` poll loop, no re-entrant blocking `send_goal`/`get_result`).
+
+Migrated `examples/qemu-arm-nuttx/{cpp,c}/action-client` to the callback shape;
+re-added `Platform::Nuttx` to `test_rtos_action_e2e`. **Runtime-validated in
+QEMU** (both langs): `Goal sent → Goal accepted by server → Result (status=4):
+5 terms → Action completed successfully`; the test asserts `accepted=true,
+completed=true`.
+
+**Residual (minor, not blocking):** a `bind_service_client` callback helper is
+not added — the service-client *poll* path already works (its reply channel is
+pumped by the session each `spin_once`, unlike the action client's GET replies),
+so its E2E passes today. Adding the callback helper for symmetry is a small
+follow-up. A C/C++ FFI that arena-registers the action client (so `spin_once`
+auto-pumps it without the per-client poll timer, matching Rust's
+`register_action_client_raw`) is also a possible future cleanup.
+
+---
+
+## Original report
 
 Per the [RFC-0041](../design/0041-unified-callback-receive-model.md) **Principle**
 (callback by default; poll is a user-scheduling opt-in, never an RMW requirement),

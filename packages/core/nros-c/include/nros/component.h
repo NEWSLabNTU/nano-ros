@@ -209,9 +209,22 @@ int32_t nros_cpp_action_client_try_recv_goal_response(void* handle, uint8_t* out
                                                       size_t out_capacity, size_t* out_len);
 int32_t nros_cpp_action_client_try_recv_result(void* handle, uint8_t* out_data, size_t out_capacity,
                                                size_t* out_len);
-/* Pump the action client's pending replies — a raw (non-arena-registered) poll
- * client must call this each spin cycle for try_recv_* to see the replies. */
+/* Pump the action client's pending replies — a raw (non-arena-registered) client
+ * must call this each spin cycle: it drains the GET-query replies and dispatches
+ * them into the callbacks registered with set_callbacks. */
 int32_t nros_cpp_action_client_poll(void* handle);
+
+/* Callback dispatch (RFC-0041; issue-0047). ABI-identical to the C++ typedefs. */
+typedef void (*nros_c_action_goal_response_callback_t)(bool accepted, const uint8_t goal_id[16],
+                                                       void* ctx);
+typedef void (*nros_c_action_feedback_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
+                                                  size_t len, void* ctx);
+typedef void (*nros_c_action_result_callback_t)(const uint8_t goal_id[16], int32_t status,
+                                                const uint8_t* data, size_t len, void* ctx);
+int32_t nros_cpp_action_client_set_callbacks(void* handle,
+                                             nros_c_action_goal_response_callback_t goal_response,
+                                             nros_c_action_feedback_callback_t feedback,
+                                             nros_c_action_result_callback_t result, void* context);
 
 /* --- Factory / configure export macro ----------------------------------- */
 

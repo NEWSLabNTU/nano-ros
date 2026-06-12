@@ -258,21 +258,20 @@ wave lands).
         must match — services passed with the ROS slash form, native pub/sub used
         the DDS-mangled form (the raw↔typed type-name unification, 240.1 finding).
         Resolve by migrating the talker to a typed `Publisher` component.
-  - [ ] **Action CLIENT poll — open gap.** The raw poll client sends one goal
-        (fixed: blocking `send_goal` re-enters the executor from the spin_once
-        timer → switched to `send_goal_async`; `setvbuf` unbuffers the
-        transition-only output; `nros_cpp_action_client_poll` each tick) and the
-        server receives + completes it, but the client's goal-response/result
-        queryable replies are not surfaced by `try_recv_*`. **Root cause found**
-        ([issue-0047](../issues/0047-cpp-c-action-client-no-arena-callback-dispatch.md)):
-        the action client must be **callback-based** per the
-        [RFC-0041](../design/0041-unified-callback-receive-model.md) Principle, not
-        bare poll — the C/C++ client is not arena-registered, so `spin_once` never
-        pumps its reply channels (the auto-dispatch `register_async` FFI is
-        unimplemented; only `set_callbacks` + a *manual* `poll()` exist). Fix: a
-        callback `bind_action_client` (set_callbacks + poll-each-tick, or a new
-        arena-dispatch FFI) + re-migrate the client examples, then re-add
-        `Platform::Nuttx` to `test_rtos_action_e2e`. NuttX kept OUT until then.
+  - [x] **Action CLIENT — DONE 2026-06-13 (callback-based;
+        [issue-0047](../issues/archived/0047-cpp-c-action-client-no-arena-callback-dispatch.md)).**
+        Root cause: a bare poll client is not arena-registered, so `spin_once`
+        never pumps its GET-query replies. Fix: `nros::bind_action_client<C,
+        &on_goal_response, &on_feedback, &on_result>` (`component.hpp`) +
+        `nros_cpp_action_client_set_callbacks` typedefs in `component.h` —
+        `create` + `set_callbacks` + a component-owned **poll timer** that calls
+        `nros_cpp_action_client_poll` each spin tick (drains GET replies →
+        dispatches the member callbacks). Migrated `{cpp,c}/action-client` to the
+        callback shape; re-added `Platform::Nuttx` to `test_rtos_action_e2e`.
+        **QEMU E2E green** (cpp + C): `Goal sent → Goal accepted → Result
+        (status=4): 5 terms → Action completed` (`accepted=true, completed=true`).
+        Residual (minor): a `bind_service_client` callback helper — the
+        service-client *poll* already works (session pumps its reply).
 
 ### 240.6 — Retire the interpreter — **BLOCKED (retirement plan + RFC done 2026-06-12)**
 
