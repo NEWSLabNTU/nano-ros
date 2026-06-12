@@ -121,6 +121,9 @@ CMAKE_FIXTURES=(
     # shadow (carrying Marker.msg) over the AMENT one; the test `nm`s the
     # consumer to prove which won. Needs an AMENT std_msgs in the build env.
     "shadowing:examples/templates/workspace-shadowing"
+    # add_subdirectory(nano-ros) link smoke (a user project linking
+    # NanoRos::NanoRos via add_subdirectory).
+    "cmake_add_subdir:packages/testing/nros-tests/fixtures/cmake_add_subdirectory_smoke"
 )
 cmake_out="$repo_root/build/cmake-fixtures"
 

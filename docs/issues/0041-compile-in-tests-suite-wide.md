@@ -39,10 +39,15 @@ test kept on the `.config/nextest.toml` timeout-override.
 `cpp_multi_node_entry`, `cpp_entry_runtime`, `cpp_api_drift`, `c_mixed_workspace`,
 `workspace_shadowing`, `stm32f4_embassy_main_macro`, `freertos_firmware_entry`.
 
+**Wave A converted:** `cmake_add_subdirectory` → cmake build-fixture
+`cmake_add_subdir` (asserts prebuilt `smoke`). `cmake_platform_matrix` is a
+negative cmake-CONFIGURE-fail test (must fail) → kept as a documented exception
+(configure is fast, no build).
+
 ## Remaining offenders, by wave
 
 **Wave A — native cmake/codegen smoke** (fastest; cmake/compile-check fixtures):
-`cmake_add_subdirectory`, `cmake_platform_matrix`, `phase212_diagnostic_verbatim`,
+`phase212_diagnostic_verbatim`,
 `phase212_o3_board_agnostic_run_plan`, `phase212_o4_pkg_index`,
 `phase212_o5_nav2_compat`, `phase212_d_workspace_metadata`,
 `phase212_l9_cmake_fns`, `phase215_e_board_import`.
