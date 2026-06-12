@@ -46,10 +46,17 @@ static void _freertos_printk(const char* fmt, ...) {
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    // ARM semihosting SYS_WRITE0 (op=0x04): write null-terminated string
+    // ARM semihosting SYS_WRITE0 (op=0x04): write null-terminated string.
+    // ARM-only (the `r0`/`r1` register binds + `bkpt` are invalid elsewhere);
+    // guarded so this TU also compiles when zpico-sys is built for a host target
+    // (phase-243 — surfaced when the freertos config TU is host-compiled).
+#if defined(__arm__) || defined(__thumb__)
     register unsigned r0 __asm__("r0") = 0x04;
     register const char* r1 __asm__("r1") = buf;
     __asm__ volatile("bkpt #0xAB" : : "r"(r0), "r"(r1) : "memory");
+#else
+    (void)buf;
+#endif
 }
 #define printk(...) _freertos_printk(__VA_ARGS__)
 #elif defined(ZENOH_THREADX)
