@@ -95,13 +95,34 @@ function(_nros_json_strlist out_var)
 endfunction()
 
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER" "SOURCES;DEPLOY" ${ARGN})
+    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE" "SOURCES;DEPLOY" ${ARGN})
     foreach(_req NAME CLASS SOURCES DEPLOY)
         if(NOT _NRC_${_req})
             message(FATAL_ERROR
                 "nano_ros_node_register: ${_req} required")
         endif()
     endforeach()
+    # Phase 242.4 (RFC-0044) — component SHAPE: `rclcpp` (IS-A-node, ctor-wired,
+    # construct-with-handle — the typed entry placement-news it with the executor
+    # handle *after* init and checks `ok()`) or `configure` (RFC-0043, the
+    # default/back-compat: default-construct + `configure(node)`). Recorded in the
+    # metadata JSON (the CLI `emit_typed` reads it onto `PlanNode.shape`) AND
+    # surfaced to the carrier template as `NROS_ENTRY_SHAPE_RCLCPP` (0|1).
+    if(_NRC_SHAPE)
+        string(TOLOWER "${_NRC_SHAPE}" _nrc_shape)
+    else()
+        set(_nrc_shape "configure")
+    endif()
+    if(NOT (_nrc_shape STREQUAL "rclcpp" OR _nrc_shape STREQUAL "configure"))
+        message(FATAL_ERROR
+            "nano_ros_node_register: SHAPE '${_NRC_SHAPE}' rejected — "
+            "expected rclcpp or configure")
+    endif()
+    if(_nrc_shape STREQUAL "rclcpp")
+        set(_nrc_shape_rclcpp 1)
+    else()
+        set(_nrc_shape_rclcpp 0)
+    endif()
     if(_NRC_LANGUAGE)
         string(TOUPPER "${_NRC_LANGUAGE}" _nrc_lang)
     else()
@@ -267,6 +288,7 @@ function(nano_ros_node_register)
         # feed the typed template. C++ only (the C path is 240.4).
         if(_NRC_TYPED)
             set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
+            set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
             if(_nrc_lang STREQUAL "CPP")
                 set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
                 set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
@@ -348,6 +370,7 @@ function(nano_ros_node_register)
         set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
         set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
         set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
+        set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         set(_zephyr_entry_src "${CMAKE_CURRENT_BINARY_DIR}/nros-entry/zephyr_entry_main.cpp")
         configure_file(
             "${_NROS_NODE_REGISTER_DIR}/templates/zephyr_entry_main_typed.cpp.in"
@@ -370,7 +393,7 @@ function(nano_ros_node_register)
     endif()
     set(_entry
 "${_sep}\n    {\"name\": \"${_NRC_NAME}\", \"class\": \"${_NRC_CLASS}\", \
-\"class_header\": \"${_nrc_header}\", \
+\"class_header\": \"${_nrc_header}\", \"shape\": \"${_nrc_shape}\", \
 \"sources\": [${_sources_json}], \"deploy\": [${_deploy_json}], \
 \"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"${_nrc_lang_lc}\"}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_COMPONENTS_JSON "${_entry}")

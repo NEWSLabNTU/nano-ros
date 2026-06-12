@@ -46,14 +46,14 @@ diagnostics — *which* node failed). No `Result` threading in the ctor.
 
 ### 242.1 — `nros::ComponentNode` base (the IS-A-node shape)
 
-- [ ] **242.1.1** Add the node base `nros::ComponentNode` (RFC-0044 Q1: **wraps/
+- [x] **242.1.1** Add the node base `nros::ComponentNode` (RFC-0044 Q1: **wraps/
       owns** the `nros::Node` — keeps value-semantics + the clean FFI handle),
       constructed from the executor-bound handle + identity:
       `ComponentNode(NodeHandle, const char* name)`. Member `create_*` forward to
       the owned node. **Q2:** a creation failure in the ctor sets an internal flag
       surfaced via `bool ok() const`; the ctor does NOT abort — the entry checks
       `ok()` post-construct + halts naming the node (no `Result` in the ctor).
-- [ ] **242.1.2** `NROS_COMPONENT(Class)` — factory + the **`shape:"rclcpp"`**
+- [x] **242.1.2** `NROS_COMPONENT(Class)` — factory + the **`shape:"rclcpp"`**
       component metadata marker (RFC-0044 §impl) + the existing class/header
       (recorded by `nano_ros_node_register`). **No `sizeof` metadata** — the entry
       `#include`s the header, so `sizeof(Class)` / `Storage<Class>` is a
@@ -62,22 +62,20 @@ diagnostics — *which* node failed). No `Result` threading in the ctor.
 **Files.** `packages/core/nros-cpp/include/nros/component_node.hpp` (new),
 `component.hpp`, `node.hpp`.
 
-> **Status (2026-06-13).** The `ComponentNode` base + `NROS_COMPONENT` +
-> the typed member-callback subs (242.2) **landed + verified** (g++ syntax;
-> `cargo test -p nros-cpp` 8/8; `examples/native/cpp/component-node-poc`
-> live e2e — typed member `on_msg(const Int32&)` received 15/15). Boxes
-> left **unchecked**: the impl diverges from this doc's refined spec on two
-> points the implementation predates — it **aborts on fatal** (vs the Q2
-> `bool ok()`-flag) and `NROS_COMPONENT` **emits `sizeof`/align symbols**
-> (vs no-`sizeof`, header-`#include` compile-time). Both align in **242.4**,
-> where the entry is what reads `ok()` (an abort→flag change with no reader
-> until then) and where the construct-with-handle path fixes the metadata
-> shape (`shape:"rclcpp"`). Functionally equivalent on the happy path
-> (abort vs flag differs only at boot-failure).
+> **Status (2026-06-13) — aligned to spec by 242.4.** The `ComponentNode`
+> base + `NROS_COMPONENT` + typed member-callback subs landed, and the two
+> spec points aligned in 242.4: the ctor sets a **`bool ok()`-flag** (no
+> abort; `error_what()`/`error_code()`), and `NROS_COMPONENT` emits the
+> **`shape:"rclcpp"`** marker with **no `sizeof`/align** symbols. Verified:
+> `cargo test -p nros-cpp` 8/8; emit-codegen unit tests (56) +
+> `entry_typed_plan` (1) pass; `examples/native/cpp/component-node-poc`
+> builds + links against the reworked base; the cmake seam
+> (`nano_ros_node_register SHAPE rclcpp` → JSON `shape` + carrier
+> `NROS_ENTRY_SHAPE_RCLCPP`) parses clean (project mode).
 
 ### 242.2 — Typed member-callback subscriptions
 
-- [ ] **242.2.1** `create_subscription<M>(topic, &C::on_msg [, qos])` member form
+- [x] **242.2.1** `create_subscription<M>(topic, &C::on_msg [, qos])` member form
       — a member-fn-pointer-as-template-param trampoline (the RFC-0043 no-alloc
       pattern) that `M::ffi_deserialize`s the wire bytes then dispatches to the
       typed member `void C::on_msg(const M&)`. Register the DDS-mangled
@@ -85,7 +83,7 @@ diagnostics — *which* node failed). No `Result` threading in the ctor.
       `Publisher<M>` already registers the mangled form (`std_msgs::msg::dds_::Int32_`),
       runtime-proven by the NuttX talker↔listener pairing, so the member sub on
       `M::TYPE_NAME` matches with no new divergence.
-- [ ] **242.2.2** Member timer + (later) service-server/action-server member
+- [x] **242.2.2** Member timer + (later) service-server/action-server member
       callbacks, same trampoline shape.
 
 **Files.** `node.hpp`, `component.hpp`, `subscription.hpp`.
@@ -116,17 +114,17 @@ The two shapes coexist (RFC-0044 keeps `configure(Node&)` lower-level), so the
 entry **branches on the `shape` metadata field** — it does NOT replace the 240.x
 construct path.
 
-- [ ] **242.4.1** Metadata seam: `nano_ros_node_register` / `NROS_COMPONENT`
+- [x] **242.4.1** Metadata seam: `nano_ros_node_register` / `NROS_COMPONENT`
       record `shape:"rclcpp"|"configure"` into the `components[]` JSON;
       `codegen/entry/metadata.rs` `ComponentIndex` reads it onto `PlanNode`
       (`class`/`class_header` unchanged).
-- [ ] **242.4.2** `emit_cpp::emit_typed` — per node, branch on `shape`:
+- [x] **242.4.2** `emit_cpp::emit_typed` — per node, branch on `shape`:
       - `configure` (240.x): `static C __c; … __c.configure(node);` — static
         construct *before* init, then configure (unchanged).
       - `rclcpp`: **placement-new in `__nros_entry_setup` *after* `nros::init`**
         (the ctor needs the live handle) — `static Storage<C> __c;
         __c.emplace(node_handle);` then `if (!__c->ok()) return …;` (Q2).
-- [ ] **242.4.3** Carrier templates `{nuttx,zephyr}_entry_main_typed.cpp.in` —
+- [x] **242.4.3** Carrier templates `{nuttx,zephyr}_entry_main_typed.cpp.in` —
       add the rclcpp construct line (placement-new + `ok()` check) gated the same
       way; `run_components` + the board lifecycle unchanged.
 
