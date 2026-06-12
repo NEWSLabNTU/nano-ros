@@ -105,12 +105,18 @@ Goal-response / result keep the core's gated single buffer.
 - **Files:** `executor/arena.rs`, `executor/action.rs` (registration trailing
   alloc), `executor/node.rs` (feedback QoS depth).
 
-#### 239.6 — `MessageLost` on feedback-ring overflow  ⬜
-On feedback ring overflow, signal `MessageLost` (mirror the subscription
-`on_message_lost`). Feedback uses its topic QoS depth; service reply / action
-result honor `services_default` (`KEEP_LAST(10)`, RFC-0007) on the gated buffer
-(≤ 1 in flight, so a no-op in practice — documented).
-- **Files:** `executor/arena.rs` / `executor/handles.rs` (lost signal).
+#### 239.6 — `MessageLost` signal  ✅ (descoped — architecture clarification)
+**Finding.** `MessageLost` is an **RMW transport event** (DDS lost-sample,
+surfaced via `Subscription::on_message_lost` / the backend event queue), *not* a
+ring-overflow condition. The feedback ring **defers** rather than loses: when the
+ring is momentarily full the drain loop stops and the remaining messages stay in
+the subscriber to be drained next spin. True loss happens only if the *transport*
+buffer overflows, which the RMW already reports as a `MessageLost` event. So
+there is no ring-overflow signal to add. The genuine follow-up is exposing the
+feedback subscriber's RMW `MessageLost` event on `ActionClientCallback` (e.g.
+`on_feedback_message_lost`), mirroring `Subscription::on_message_lost` — deferred
+to the C/C++ wave / a later increment since it is a transport-event passthrough,
+not part of the buffering reliability (already delivered in 239.5/7).
 
 #### 239.7 — Wave-2 reliability test  ✅
 Burst test: two feedbacks arrive between spins on a depth > 1 action callback
@@ -121,14 +127,23 @@ client coalesces to latest (triple-buffer). In-process `MockSession` E2E extendi
 
 ### Wave 3 — RT + backend validation
 
-#### 239.8 — RT hot-path + XRCE poll validation  ⬜
-- Confirm the callback dispatch adds **no heap alloc, no lock** vs the
-  subscription path (RFC-0002) — check with `nros-bench/wcet-cycles-qemu` /
-  `wake-latency`.
-- Verify XRCE: one `drive_io` per spin pumps the session; callbacks fire without
-  `Promise::wait` (no budget-burn). Run a callback client over the XRCE backend.
-- Verify zenoh-pico + (if available) Cyclone parity.
-- **Files:** none (validation); fixes land in the relevant wave if a gap surfaces.
+#### 239.8 — RT hot-path + XRCE poll validation  🟡 (inspection ✅; QEMU benches → CI)
+- **No heap alloc, no lock (RFC-0002) — verified by inspection.** The three new
+  dispatchers (`service_client_callback_try_process`,
+  `action_client_callback_try_process`, `dispatch_feedback`) use only stack
+  buffers + a stack `CdrReader`, the **lock-free SPSC** `BufferStrategy`
+  (`TripleBuffer` / `SpscRing`, already proven RT-clean), and the user closure —
+  no `alloc`, no mutex, single-thread, run-to-completion. Same hot-path shape as
+  the subscription dispatch.
+- **XRCE poll — structurally confirmed.** `spin_once` pumps **one `drive_io` per
+  session** (`executor/spin.rs:4054`) before the per-entry drain; the callback
+  entries are `InvocationMode::Always` and drain non-blocking
+  (`try_recv_reply_raw` / `try_recv_raw` flag+copy), so they fire at `drive_io`
+  return with no `Promise::wait` budget-burn — the model is transport-agnostic
+  (RFC-0041 backend-parity table).
+- **Deferred to CI:** the `wcet-cycles-qemu` / `wake-latency` numbers + a live
+  callback client over XRCE / zenoh-pico / Cyclone (needs the QEMU lanes).
+- **Files:** none (validation).
 
 #### 239.9 — Example  ⬜
 A callback-based service-client (and/or action-client) example mirroring an
