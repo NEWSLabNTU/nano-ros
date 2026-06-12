@@ -47,7 +47,7 @@ triage.
 | native_main_macro_misuse (was phase212_n9, 4 neg) | 4 | compile-FAIL + rebuild — documented exception (can't prebuild a failing/rebuild check); kept on nextest timeout override |
 | native_orchestration_tiers (was orchestration_tiers_native, 4) | 4 | CONVERTED — build-fixtures (orch_tiers_multi/single binaries), tests run prebuilt (#0034) |
 | native_orchestration_misuse (1 neg) | 1 | compile-FAIL exception (instance-identity); on nextest timeout override |
-| phase212_n12_cpp_api_drift | 2 | `declared_node_typed_helpers_compile`, `rclcpp_node_options_and_component_factory_compile` |
+| cpp_api_drift (was phase212_n12) | 1+2 | static lint PASS; 2 g++ snippets → cxx-syntax build-fixtures, SKIP pending pre-existing C++ drift fix (#0034) |
 | native_entry_poc_boot (was phase212_n_entry_poc_runs) | 2 | CONVERTED to fixture-consuming (#0034) — entry-poc is now a build-fixture |
 | phase223_c_mixed_workspace | 2 | `c_node_pkg_links_into_cpp_entry_template`, `c_node_pkgs_link_into_c_entry_template` |
 | cpp_multi_node_entry | 1 | CONVERTED — cmake build-fixture `cpp_robot_entry`, test inspects prebuilt (#0034) |

@@ -296,8 +296,6 @@ filter = """
   or binary(native_main_macro_misuse) \
   or binary(phase216_c_embassy_main_macro_expansion) \
   or binary(phase210_f4_shadowing) \
-  or binary(cpp_multi_node_entry) \
-  or binary(phase212_n12_cpp_api_drift) \
   or binary(phase223_c_mixed_workspace) \
 """
 slow-timeout = { period = "120s", terminate-after = 4 }

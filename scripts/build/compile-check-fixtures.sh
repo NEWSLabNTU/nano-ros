@@ -147,6 +147,45 @@ done
 for entry in "${BUILD_FIXTURES[@]}"; do
     stage_and_build "${entry%%:*}" "${entry#*:}"
 done
+# C++ syntax-only compile-checks (id : snippet.cpp under
+# packages/testing/nros-tests/fixtures/cpp_compat_snippets/). `c++ -fsyntax-only`
+# the snippet against the nros-cpp / nros-c / compat include set — a compile-only
+# proof the public C++ API headers type-check. Stamped into build/compile-check
+# (same resolver as the cargo compile-checks).
+CXX_SYNTAX_FIXTURES=(
+    "declared_node_typed_helpers"
+    "rclcpp_node_options"
+)
+snippet_dir="$repo_root/packages/testing/nros-tests/fixtures/cpp_compat_snippets"
+
+cxx_syntax_check() {
+    local id="$1"
+    local src="$snippet_dir/$id.cpp"
+    local staged="$out_root/$id"
+    [ -f "$src" ] || { echo "cxx-syntax: snippet missing: $src" >&2; return 2; }
+    echo "== cxx-syntax: $id =="
+    mkdir -p "$staged"
+    rm -f "$staged/.compile-ok"
+    local cxx="${CXX:-c++}"
+    local inc=(-I "$repo_root/packages/core/nros-cpp/include"
+               -I "$repo_root/packages/core/nros-c/include"
+               -I "$repo_root/cmake/compat/include")
+    [ -f "$repo_root/target/nros-cpp-generated/nros/nros_cpp_config_generated.h" ] \
+        && inc+=(-I "$repo_root/target/nros-cpp-generated")
+    [ -f "$repo_root/target/nros-c-generated/nros/nros_config_generated.h" ] \
+        && inc+=(-I "$repo_root/target/nros-c-generated")
+    # Best-effort: a snippet that doesn't compile (pre-existing API drift or a
+    # missing generated header) does NOT fail build-test-fixtures — it just
+    # leaves no `.compile-ok`, so the consuming test reports the gap per tier
+    # (hard-fail full / [SKIPPED] light). The compile error is in this log.
+    if "$cxx" -std=c++14 -fsyntax-only "${inc[@]}" "$src"; then
+        date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
+        echo "   stamped $staged/.compile-ok"
+    else
+        echo "   cxx-syntax FAILED for $id (no stamp; consuming test will report)" >&2
+    fi
+}
+
 cmake_n=0
 if cmake_fixture_prereqs_ok; then
     mkdir -p "$cmake_out"
@@ -156,4 +195,14 @@ if cmake_fixture_prereqs_ok; then
     done
 fi
 
-echo "fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]} cmake=$cmake_n)."
+cxx_n=0
+if command -v "${CXX:-c++}" >/dev/null 2>&1; then
+    for id in "${CXX_SYNTAX_FIXTURES[@]}"; do
+        cxx_syntax_check "$id"
+        cxx_n=$((cxx_n + 1))
+    done
+else
+    echo "cxx-syntax: no C++ compiler — skipping" >&2
+fi
+
+echo "fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]} cmake=$cmake_n cxx=$cxx_n)."
