@@ -1,11 +1,18 @@
 ---
 id: 38
 title: nros-cpp heap headers need `nros_platform_malloc`/`free`; platform-cffi only declares `alloc`/`dealloc`
-status: open
+status: resolved
 type: bug
 area: c-api
 related: [issue-0034, issue-0036, phase-235]
+resolved_in: bc846a898
 ---
+
+> **RESOLVED 2026-06-12.** Confirmed by e2e dispatch run 27404888355: the
+> **threadx_riscv64 cell is fully green** (40m56s) — and so are all 6 cells (qemu,
+> nuttx, threadx_riscv64, threadx_linux, esp32, freertos). The bare-metal
+> `NROS_PLATFORM_HAS_MALLOC` opt-in (v2 fix below) cleared the cpp heap-container
+> compile.
 
 > **FIX v2 2026-06-12 (verified locally; pending e2e).** The v1 shim in
 > `nros-platform-cffi/platform.h` (commit 9f60dbd5b) was the **wrong header** —
