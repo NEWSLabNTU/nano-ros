@@ -9,11 +9,13 @@ path to runtime parity with the Rust embedded path (which already runs real
 bodies). Unblocks RFC-0032 §8a / phase-236 236.C (ASI deletes its imperative
 `main.cpp`).
 
-**Status.** Planned (2026-06). Design = RFC-0043 (Draft). The NuttX
-executor-callback path is **spike-validated for pub/sub + timer** (RFC-0043
-§Spike, 2026-06-12); service/action on the executor under the embedded lifecycle
-is unspiked (240.5). This phase carries 236.D's detailed breakdown
-(phase-236 236.D now points here).
+**Status.** In progress (2026-06). Design = RFC-0043 (Draft). **240.1 DONE**
+(2026-06-12) — `nros/component.hpp` member-callback binding + a native
+component-object POC running real pub/sub on the executor
+(`examples/native/cpp/component-poc`). The NuttX executor-callback path is also
+spike-validated for pub/sub + timer (RFC-0043 §Spike); service/action on the
+executor under the embedded lifecycle is unspiked (240.5). This phase carries
+236.D's detailed breakdown (phase-236 236.D now points here).
 
 **Depends on.** RFC-0043; the Rust executor + `ExecutorNodeRuntime`
 (`packages/core/nros/src/node_runtime.rs`, `nros-node/src/executor/`); the
@@ -61,19 +63,30 @@ wave lands).
 
 ## Work breakdown
 
-### 240.1 — Component-object API + `NROS_NODE` macro (C++, native)
-- [ ] New component shape: a class with member entity handles + state + a
-      `Result configure(nros::Node&)` that binds real callbacks by identity
-      (typed `create_subscription(sub_, topic, [this]{…})` + raw
-      `create_subscription_raw(sub_, topic, [this](const uint8_t*, size_t){…})`).
-- [ ] Add the C++ `create_subscription_raw` wrapper over
-      `nros_cpp_subscription_register` (`subscription.hpp`) — the no-deserialize
-      zero-copy form.
-- [ ] `NROS_NODE(Talker)` macro: emit a factory (`construct(void* slot, Node&)`)
-      + `sizeof`/`alignof` export + the present/class-name symbols. Drop the
-      register trampoline.
-- [ ] Convert ONE example (native cpp talker→listener) to the new shape; prove
-      real pub/sub through the **executor** (not the interpreter) on native.
+### 240.1 — Component-object API (C++, native) — **DONE 2026-06-12**
+- [x] Component shape: a class with member entity handles + state + a
+      `Result configure(nros::Node&)` that binds real callbacks **by identity**.
+      The typed callback-style API is *stateless* (`void(const M&)`, no ctx), so
+      the binding uses the ctx-carrying paths (timer `cb,ctx`; the **raw**
+      register `cb(data,len,ctx),ctx`) with the component pointer as `ctx`.
+- [x] `packages/core/nros-cpp/include/nros/component.hpp`: `create_subscription_raw`
+      (over `nros_cpp_subscription_register`) + `bind_timer<C,&C::m>` /
+      `bind_subscription_raw<C,&C::m>` — member-fn-pointer-as-template-param →
+      a **no-alloc** non-capturing-lambda trampoline (no `std::function`, no
+      string name). `NROS_BIND_TIMER` / `NROS_BIND_SUB_RAW` convenience macros.
+- [x] Proof: `examples/native/cpp/component-poc/` — a `Talker` (timer member
+      `on_tick` publishes a real counter) + `Listener` (raw zero-copy member
+      `on_raw` receives) constructed + `configure`d + spun on the **real
+      executor** (no interpreter). Native, two-process vs zenohd:
+      `Published 0..19` + `Received 0..16` (correct values).
+- **Finding (raw vs typed type-name form):** the typed `Publisher<Int32>`
+      registers the **DDS-mangled** keyexpr `std_msgs::msg::dds_::Int32_`, but the
+      raw register uses the passed string verbatim — a raw sub must pass
+      `M::TYPE_NAME` (the mangled form) to match a typed publisher. Raw-vs-typed
+      type-name-form unification is a separate concern; noted for 240.2.
+- [ ] `NROS_NODE(Talker)` factory/marker macro (factory + `sizeof` + present/
+      class-name symbols, drop the register trampoline) → **moved to 240.2**,
+      where the codegen entry's construction needs determine its exact shape.
 
 ### 240.2 — Typed codegen Entry (native first)
 - [ ] `nano_ros_node_register` records `class_header` into the metadata JSON.
