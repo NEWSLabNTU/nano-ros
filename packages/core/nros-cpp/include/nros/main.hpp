@@ -224,6 +224,8 @@ class EntryNodeRuntime {
         node_count_ = 0;
         entity_count_ = 0;
         svc_client_count_ = 0;
+        action_server_count_ = 0;
+        action_client_count_ = 0;
         for (size_t i = 0; i < NROS_ENTRY_MAX_NODES; ++i) {
             nodes_[i].used = false;
         }
@@ -291,6 +293,14 @@ class EntryNodeRuntime {
             const Entity& e = entities_[i];
             if (e.used && e.kind == ::nros::NodeEntityKind::ServiceServer) {
                 ::std::printf("Waiting for requests\n");
+                break;
+            }
+        }
+        // Phase 238.E — action server readiness banner ("Waiting for goals").
+        for (size_t i = 0; i < entity_count_; ++i) {
+            const Entity& e = entities_[i];
+            if (e.used && e.kind == ::nros::NodeEntityKind::ActionServer) {
+                ::std::printf("Waiting for goals\n");
                 break;
             }
         }
@@ -392,6 +402,77 @@ class EntryNodeRuntime {
                         const int64_t sum = entry_read_i64_le(drain, len, 4);
                         ::std::printf("Response: %lld\n", static_cast<long long>(sum));
                     }
+                } else if (e.kind == ::nros::NodeEntityKind::ActionServer) {
+                    // Phase 238.E — synthesized action server. On a goal request:
+                    // accept → publish one feedback → complete (Succeeded) with a
+                    // synthesized result. Every tick: serve a pending get_result
+                    // query so the client's get_result resolves.
+                    uint8_t gid[16];
+                    int64_t gseq = 0;
+                    int32_t gr = nros_cpp_action_server_try_recv_goal_request_raw(
+                        entity_store(e), drain, sizeof(drain), &gid, &gseq);
+                    if (gr > 0) {
+                        nros_cpp_action_server_accept_goal_raw(entity_store(e), &gid, gseq);
+                        uint8_t fb[8];
+                        entry_write_cdr_header(fb);
+                        fb[4] = 1; // synthesized feedback payload (opaque)
+                        nros_cpp_action_server_publish_feedback_raw(entity_store(e), &gid, fb,
+                                                                    sizeof(fb));
+                        uint8_t res[8];
+                        entry_write_cdr_header(res);
+                        nros_cpp_action_server_complete_goal_raw(entity_store(e), &gid,
+                                                                 4 /*Succeeded*/, res, sizeof(res));
+                    }
+                    uint8_t defres[8];
+                    entry_write_cdr_header(defres);
+                    nros_cpp_action_server_try_handle_get_result_raw(entity_store(e), defres,
+                                                                     sizeof(defres));
+                } else if (e.kind == ::nros::NodeEntityKind::ActionClient &&
+                           e.publish_period_ms > 0) {
+                    // Phase 238.E — synthesized action client state machine:
+                    // send_goal → "Goal accepted" → send get_result → result →
+                    // "Action completed successfully". A phase that stalls past
+                    // one period restarts from idle (handles a lost first goal).
+                    const uint64_t period_ns =
+                        static_cast<uint64_t>(e.publish_period_ms) * 1000000ull;
+                    if (e.action_phase == 0) {
+                        if (now >= e.next_fire_ns) {
+                            uint8_t goal[8];
+                            entry_write_cdr_header(goal);
+                            goal[4] = 5; // Fibonacci goal `order` = 5 (opaque to test)
+                            nros_cpp_action_client_send_goal_raw(entity_store(e), goal,
+                                                                 sizeof(goal), &e.goal_id);
+                            e.action_phase = 1;
+                            e.next_fire_ns = now + period_ns;
+                        }
+                    } else if (e.action_phase == 1) {
+                        int32_t rr = nros_cpp_action_client_try_recv_goal_response_raw(
+                            entity_store(e), drain, sizeof(drain));
+                        if (rr > 0) {
+                            ::std::printf("Goal accepted\n");
+                            nros_cpp_action_client_send_get_result_request_raw(entity_store(e),
+                                                                               &e.goal_id);
+                            e.action_phase = 2;
+                            e.next_fire_ns = now + period_ns;
+                        } else if (now >= e.next_fire_ns) {
+                            e.action_phase = 0;
+                        }
+                    } else if (e.action_phase == 2) {
+                        int32_t rr = nros_cpp_action_client_try_recv_result_raw(
+                            entity_store(e), drain, sizeof(drain));
+                        if (rr > 0) {
+                            ::std::printf("Result (status=4)\n");
+                            ::std::printf("Action completed successfully\n");
+                            e.action_phase = 3; // terminal — one round-trip is enough
+                        } else if (now >= e.next_fire_ns) {
+                            e.action_phase = 0;
+                        }
+                    }
+                    // Drain any feedback (content ignored — the test checks the
+                    // goal/result markers, not feedback values).
+                    uint8_t fgid[16];
+                    nros_cpp_action_client_try_recv_feedback_raw(entity_store(e), drain,
+                                                                 sizeof(drain), &fgid);
                 }
             }
 
@@ -445,11 +526,18 @@ class EntryNodeRuntime {
         uint64_t next_fire_ns = 0;      // Publisher / service-client: next synth fire
         int32_t counter = 0;            // Publisher / service-client: synthesized value
         uint32_t recv_count = 0;        // Subscription / service-client: receipt count
-        // Phase 238.D — service-client storage doesn't fit the inline slot
-        // (NROS_SERVICE_CLIENT_SIZE ≫ ENTITY_STORAGE); a ServiceClient borrows a
-        // slot from `svc_client_pool_` and records its index here (-1 = uses the
-        // inline `storage` below: pub/sub/timer/service-server all fit).
+        // Phase 238.D/E — service-client + action server/client storage doesn't
+        // fit the inline slot; those kinds borrow a slot from a per-kind pool
+        // (`svc_client_pool_` / `action_server_pool_` / `action_client_pool_`)
+        // and record its index here (-1 = uses the inline `storage` below:
+        // pub/sub/timer/service-server all fit). `entity_store()` dispatches by
+        // kind.
         int32_t pool_index = -1;
+        // Phase 238.E — synthesized action-client state machine. `action_phase`:
+        // 0 = idle (send goal), 1 = awaiting goal response, 2 = awaiting result,
+        // 3 = terminal. `goal_id` holds the in-flight goal's UUID.
+        int32_t action_phase = 0;
+        uint8_t goal_id[16] = {0};
         alignas(8) uint8_t storage[ENTITY_STORAGE];
     };
 
@@ -562,10 +650,38 @@ class EntryNodeRuntime {
             e.publish_period_ms = 1000;
             break;
         }
+        case ::nros::NodeEntityKind::ActionServer: {
+            // Phase 238.E — synthesized action server (L1 polling). Big context;
+            // borrows an action-server pool slot.
+            if (action_server_count_ >= MAX_ACTION_SERVERS) {
+                ret = static_cast<nros_cpp_ret_t>(::nros::ErrorCode::Full);
+                break;
+            }
+            e.pool_index = static_cast<int32_t>(action_server_count_++);
+            ret = nros_cpp_action_server_init_polling(node->node.ffi_handle(), e.topic, e.type_name,
+                                                      e.type_hash, entity_store(e));
+            break;
+        }
+        case ::nros::NodeEntityKind::ActionClient: {
+            // Phase 238.E — synthesized action client (L1 polling). The spin loop
+            // drives a send_goal → goal-response → get_result state machine.
+            if (action_client_count_ >= MAX_ACTION_CLIENTS) {
+                ret = static_cast<nros_cpp_ret_t>(::nros::ErrorCode::Full);
+                break;
+            }
+            e.pool_index = static_cast<int32_t>(action_client_count_++);
+            ret = nros_cpp_action_client_init_polling(node->node.ffi_handle(), e.topic, e.type_name,
+                                                      e.type_hash, entity_store(e));
+            // Retry cadence for the goal state machine (a goal that doesn't
+            // complete within a period restarts from idle).
+            e.publish_period_ms = 2000;
+            e.action_phase = 0;
+            break;
+        }
         default:
-            // Actions / parameters are not yet constructed by the runtime;
-            // recording them keeps the register sequence intact (no hard error)
-            // so a mixed Entry pkg still boots its pub/sub + service topology.
+            // Parameters are not yet constructed by the runtime; recording them
+            // keeps the register sequence intact (no hard error) so a mixed
+            // Entry pkg still boots its pub/sub + service + action topology.
             break;
         }
         if (ret != 0) return static_cast<int32_t>(ret);
@@ -632,12 +748,24 @@ class EntryNodeRuntime {
         }
     }
 
-    // Phase 238.D — storage accessor. Service clients borrow an oversized slot
-    // from `svc_client_pool_` (their FFI context doesn't fit `Entity::storage`);
-    // everything else uses the inline slot.
+    // Phase 238.D/E — storage accessor. Service clients + action server/client
+    // borrow oversized slots from per-kind pools (their FFI contexts don't fit
+    // `Entity::storage`); everything else uses the inline slot. Dispatch by kind.
     void* entity_store(Entity& e) {
-        if (e.pool_index >= 0 && static_cast<size_t>(e.pool_index) < MAX_SVC_CLIENTS) {
-            return svc_client_pool_[e.pool_index];
+        if (e.pool_index < 0) return e.storage;
+        const size_t i = static_cast<size_t>(e.pool_index);
+        switch (e.kind) {
+        case ::nros::NodeEntityKind::ServiceClient:
+            if (i < MAX_SVC_CLIENTS) return svc_client_pool_[i];
+            break;
+        case ::nros::NodeEntityKind::ActionServer:
+            if (i < MAX_ACTION_SERVERS) return action_server_pool_[i];
+            break;
+        case ::nros::NodeEntityKind::ActionClient:
+            if (i < MAX_ACTION_CLIENTS) return action_client_pool_[i];
+            break;
+        default:
+            break;
         }
         return e.storage;
     }
@@ -646,12 +774,20 @@ class EntryNodeRuntime {
     Entity entities_[NROS_ENTRY_MAX_ENTITIES];
     size_t node_count_ = 0;
     size_t entity_count_ = 0;
-    // Phase 238.D — oversized storage pool for synthesized service clients
-    // (NROS_SERVICE_CLIENT_SIZE ≫ ENTITY_STORAGE). One slot per declared client;
-    // the canonical examples declare a single client, so a small cap suffices.
+    // Phase 238.D/E — oversized storage pools (the FFI contexts ≫ ENTITY_STORAGE).
+    // One slot per declared entity; the canonical examples declare a single
+    // service-client / action-server / action-client, so small caps suffice.
     static constexpr size_t MAX_SVC_CLIENTS = 2;
+    static constexpr size_t MAX_ACTION_SERVERS = 1;
+    static constexpr size_t MAX_ACTION_CLIENTS = 1;
     alignas(8) uint8_t svc_client_pool_[MAX_SVC_CLIENTS][NROS_SERVICE_CLIENT_SIZE];
+    alignas(8) uint8_t
+        action_server_pool_[MAX_ACTION_SERVERS][NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S * 8];
+    alignas(8) uint8_t
+        action_client_pool_[MAX_ACTION_CLIENTS][NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S * 8];
     size_t svc_client_count_ = 0;
+    size_t action_server_count_ = 0;
+    size_t action_client_count_ = 0;
 };
 
 /// Source-compat alias for the Phase 235.A name. The runtime is shared

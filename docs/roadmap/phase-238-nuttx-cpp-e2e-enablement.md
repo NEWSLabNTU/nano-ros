@@ -5,15 +5,16 @@ QEMU ARM virt, the same way the NuttX **Rust** examples already do. The compile
 blocker that gated this is gone; what remains is producing a bootable ELF from the
 C/C++ build.
 
-**Status.** 238.A–D (C++ pub/sub pair, E2E observability, C path, service)
-**DONE** 2026-06-12 — `nuttx_{cpp,c}_{talker,listener,service_server,service_client}`
-boot as bootable kernel ELFs in QEMU ARM virt, connect to a host zenoh router
-over slirp, and exchange data: pub/sub `/chatter` `std_msgs/msg/Int32` (talker
-`Published: N`, listener `Waiting for messages` + `Received: N`) and the
-`/add_two_ints` service (server `Waiting for requests`, client `Response: <sum>`)
-— C and C++. `rtos_e2e` `(Nuttx, {Cpp,C}, {Pubsub,Service})` now satisfiable.
-**Action** remains deferred (next wave — §238.D "Deferred"). Off the critical
-path (NuttX is a secondary platform).
+**Status.** 238.A–E (C++ pub/sub pair, E2E observability, C path, service,
+action) **DONE** 2026-06-12 — all 12 `nuttx_{cpp,c}_*` examples boot as bootable
+kernel ELFs in QEMU ARM virt, connect to a host zenoh router over slirp, and
+exchange data over all three transports: pub/sub `/chatter` `std_msgs/msg/Int32`
+(`Published`/`Received`), `/add_two_ints` service (`Waiting for requests` /
+`Response: <sum>`), and `/fibonacci` action (`Waiting for goals` / `Goal
+accepted` / `Action completed successfully`) — C and C++. `rtos_e2e`
+`(Nuttx, {Cpp,C}, {Pubsub,Service,Action})` now satisfiable. The full NuttX
+C/C++ E2E matrix is green. Off the critical path (NuttX is a secondary
+platform).
 
 **Depends on.** `nros-board-nuttx-qemu-arm` (kernel staging + link), the NuttX
 submodule (`nuttx-12.13.0-4`), `cmake/NanoRosNodeRegister.cmake`, the rtos_e2e
@@ -298,13 +299,35 @@ responses; C pair: 49. `rtos_e2e` `(Nuttx, {Cpp,C}, Service)` now satisfiable.
 The C path drives the same C++ runtime via the mixed build, so it works
 identically.
 
+## 238.E — action E2E (synthesized, DONE 2026-06-12)
+
+Extended `EntryNodeRuntime` to construct + drive action entities (L1 polling
+FFI). Storage: action server (`NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S × 8` ≈
+6 KB) + client (≈ 5 KB) don't fit the inline slot, so per-kind pools
+(`action_server_pool_` / `action_client_pool_`, `entity_store()` dispatches by
+kind). `do_create_entity` adds `ActionServer` (→ `…_init_polling`) +
+`ActionClient` (→ `…_init_polling`, 2 s retry cadence). `spin()`:
+
+- **Server** — prints `Waiting for goals`. Per goal: `try_recv_goal_request_raw`
+  → `accept_goal_raw` → one `publish_feedback_raw` → `complete_goal_raw`
+  (Succeeded, synthesized result). Every tick serves `try_handle_get_result_raw`
+  so the client's get_result resolves.
+- **Client** — a `goal_id`-tracked state machine (`Entity::action_phase`):
+  send_goal → `try_recv_goal_response_raw` (`Goal accepted`) →
+  `send_get_result_request_raw` → `try_recv_result_raw` (`Result (status=4)` +
+  `Action completed successfully`). A phase stalled past one period restarts
+  from idle (handles a lost first goal).
+
+**Proof.** `nuttx_{cpp,c}_action_server` + `…_client` boot, exchange over
+`/fibonacci`: server `Waiting for goals`, client `Goal accepted` → `Result
+(status=4)` → `Action completed successfully` (accepted=1, completed=1), both C
+and C++. `rtos_e2e` `(Nuttx, {Cpp,C}, Action)` now satisfiable.
+
 ### Deferred (follow-ups)
 
-- **Action (C and C++).** The `EntryNodeRuntime` does not yet construct action
-  entities (the 5-channel send_goal / cancel / get_result + feedback / status
-  dance, with much larger storage). The synthesized-responder approach extends to
-  it (the FFI exists), but it's the next wave. Service is done (238.D).
-- **Real callback bodies (236.D).** Pub/sub publishers + service replies are
-  *synthesized* (counter / `a+b`), not user handler bodies. Real component
-  instantiation + callback binding is the 236.D gate (also blocks ASI). The C
+- **Real callback bodies (236.D).** Everything synthesized here — pub/sub
+  publishers (counter), service replies (`a+b`), action goals/results (fixed) —
+  is runtime-driven, not user handler bodies. Real component instantiation +
+  callback binding is the 236.D gate (also blocks ASI). Until then the
+  declarative E2E proves transport + topology end-to-end, not user logic. The C
   path inherits the same limit (it uses the C++ interpreter via the mixed build).
