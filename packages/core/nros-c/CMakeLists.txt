@@ -132,9 +132,9 @@ add_custom_command(TARGET cargo-build_nros_c POST_BUILD
 )
 if(TARGET nros_c-static)
     target_include_directories(nros_c-static INTERFACE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../nros-platform-api/include"
         "${_nros_c_intree_include_dir}"
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../nros-platform-api/include"
     )
 endif()
 

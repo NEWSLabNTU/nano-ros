@@ -2921,6 +2921,16 @@ nros_ret_t nros_executor_set_param_string(struct nros_executor_t *executor,
 NROS_PUBLIC bool nros_executor_has_param(struct nros_executor_t *executor, const char *name);
 
 /**
+ * Monotonic microseconds since a platform-defined epoch.
+ */
+extern uint64_t nros_platform_clock_us(void);
+
+/**
+ * Sleep at least `us` microseconds.
+ */
+extern void nros_platform_sleep_us(size_t us);
+
+/**
  * Phase 115.C — register a custom transport vtable.
  *
  * Must be called BEFORE `nros_support_init`. Subsequent calls
