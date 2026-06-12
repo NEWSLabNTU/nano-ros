@@ -50,7 +50,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 41 | suite-wide compile-in-tests antipattern — convert to build-stage fixtures | tech-debt | testing | [0041-compile-in-tests-suite-wide.md](0041-compile-in-tests-suite-wide.md) |
 | 44 | esp-idf platform.c build fails — `_heap_start`/`_heap_end` undeclared | bug | esp32 | [0044-esp-idf-platform-c-heap-symbols-undeclared.md](0044-esp-idf-platform-c-heap-symbols-undeclared.md) |
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
-| 48 | FreeRTOS Entry firmware never connects to host zenohd over slirp — subnet mismatch + guest→host gap (the "timing-flaky" connected-run is a misnomer) | bug | freertos | [0048-freertos-entry-slirp-zenoh-connect-never-establishes.md](0048-freertos-entry-slirp-zenoh-connect-never-establishes.md) |
+| 48 | FreeRTOS Entry firmware never connects over zenoh — deploy config is inert (uses Config::default) AND zenoh-pico open() hangs pre-connect | bug | freertos | [0048-freertos-entry-slirp-zenoh-connect-never-establishes.md](0048-freertos-entry-slirp-zenoh-connect-never-establishes.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the

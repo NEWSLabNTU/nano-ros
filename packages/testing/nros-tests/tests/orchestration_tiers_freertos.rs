@@ -106,9 +106,9 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tes
 
     // Best-effort: with the slirp router live, the firmware should connect past
     // Executor::open and set up both tiers. It currently never does — NOT
-    // "timing-flaky": the firmware boots on the board-default 192.0.3.10/24
-    // while slirp is 10.0.2.0/24, plus a guest→host gap (#48). A miss is logged,
-    // not fatal (boot path already proven).
+    // "timing-flaky": the deploy config is inert (firmware uses Config::default,
+    // unreachable locator) and zenoh-pico open() hangs pre-connect (#48). A miss
+    // is logged, not fatal (boot path already proven).
     match qemu.wait_for_output_pattern("Multi-tier setup complete", Duration::from_secs(25)) {
         Ok(_) => {}
         Err(e) => eprintln!(
