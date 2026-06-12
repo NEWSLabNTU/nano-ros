@@ -20,8 +20,10 @@ route (all resolved): C++ service reply dispatch (`pending`), C++ action result
 offset (8→5), **#40** (C++ action truncated result — root-caused to **#39**) and
 **#39** itself (cpp `init_with_launch_auto` null-locator → fixed at the root: the
 3-arg `init` overload now applies the env fallback). RFC-0041 → **Stable**.
-Remaining: action/embedded cross-lang lanes + Rust-client lane (239.15).
-Implements RFC-0041.
+239.15 native cross-language matrix complete (service: C/C++/Rust clients × C/C++
+servers; action: C++ client ↔ C server). Remaining = out-of-phase only: the
+embedded/QEMU lane (blocked on the deferred embedded imperative service-client
+seam, 212.M-F.4) and the #43 reverse-action pairing. Implements RFC-0041.
 
 **Priority.** P2 — reliability + RT-ergonomics + ROS alignment; not a correctness
 blocker (Promise works today) but removes a real silent-loss bug.
@@ -238,7 +240,7 @@ Both #39 and #40 resolved.
   `packages/core/nros-cpp/src/action.rs` (offset fix),
   `examples/native/cpp/action-client-callback/`, `native_api.rs`.
 
-#### 239.15 — Cross-language E2E matrix  🟡 (service ✅ + action one-direction ✅; Rust/embedded ⬜)
+#### 239.15 — Cross-language E2E matrix  ✅ (native matrix complete; embedded blocked out-of-phase)
 **Service cross-language done.** `test_service_callback_interop_{c_client_cpp_server,
 cpp_client_c_server}` (native_api.rs) pair each language's callback client against
 the *other* language's service server — both GREEN (replies dispatched via
@@ -259,8 +261,19 @@ callbacks are now proven wire-compatible across **all three** languages' clients
 × servers.
 
 Together these prove the callback receive model is wire-compatible across the
-Rust / C / C++ FFI surfaces over zenoh. **Remaining:** one QEMU/embedded lane +
-the #43 reverse-action pairing.
+Rust / C / C++ FFI surfaces over zenoh — the native cross-language matrix is
+complete.
+
+**Embedded/QEMU lane — blocked (out of phase).** The embedded service clients
+(`examples/qemu-arm-freertos|nuttx|threadx/rust/service-client`) are *declarative
+no-op stubs*: their imperative request→reply runtime body is deferred to the
+TickCtx `call()` seam (Phase 212.M-F.4), and they use the Component/`node!` model
+rather than the `Executor` + `create_client_with_callback` API that RFC-0041
+callbacks live on. So an embedded callback lane can't be cloned from them — it
+needs the embedded imperative service-client runtime first. Deferred until that
+seam ships; the callback arena itself is `no_std`-clean and already compiles on
+embedded targets. **Remaining:** the embedded lane (blocked as above) + the #43
+reverse-action pairing.
 
 Original scope:
 Callback-client interop across Rust / C / C++ (each language's callback client
