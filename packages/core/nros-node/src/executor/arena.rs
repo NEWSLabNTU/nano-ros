@@ -1353,6 +1353,134 @@ where
     }
 }
 
+/// Typed action-client callback entry (RFC-0041, Phase 239.2). The executor
+/// eager-drains the three client receives (goal-response / feedback / result)
+/// at `spin_once` and dispatches them as deserialized `A::Feedback` / `A::Result`
+/// to typed closures — the typed analogue of [`ActionClientRawArenaEntry`]. The
+/// send side (`send_goal` / `get_result`) goes through the embedded `core`
+/// (offset 0) via an `ActionClientCallback` handle.
+#[repr(C)]
+pub(crate) struct ActionClientCallbackEntry<
+    A: RosAction,
+    GRespF,
+    FbF,
+    ResF,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+> {
+    pub(crate) core: ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    pub(crate) on_goal_response: GRespF,
+    pub(crate) on_feedback: FbF,
+    pub(crate) on_result: ResF,
+    pub(crate) _phantom: PhantomData<A>,
+}
+
+/// Reconstruct a `GoalId` from the core's monotonically increasing counter
+/// (mirrors `action_client_raw_try_process`).
+#[inline]
+fn goal_id_from_counter(counter: u64) -> nros_core::GoalId {
+    let mut uuid = [0u8; 16];
+    uuid[..8].copy_from_slice(&counter.to_le_bytes());
+    nros_core::GoalId { uuid }
+}
+
+/// Monomorphized typed action-client dispatch (RFC-0041, Phase 239.2). Mirrors
+/// [`action_client_raw_try_process`] but deserializes the feedback / result
+/// payloads into `A::Feedback` / `A::Result` and invokes the typed closures.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `ActionClientCallbackEntry<…>`.
+#[allow(clippy::type_complexity)]
+pub(crate) unsafe fn action_client_callback_try_process<
+    A,
+    GRespF,
+    FbF,
+    ResF,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    A: RosAction,
+    GRespF: FnMut(&nros_core::GoalId, bool),
+    FbF: FnMut(&nros_core::GoalId, &A::Feedback),
+    ResF: FnMut(&nros_core::GoalId, nros_core::GoalStatus, &A::Result),
+{
+    let entry = unsafe {
+        &mut *(ptr as *mut ActionClientCallbackEntry<
+            A,
+            GRespF,
+            FbF,
+            ResF,
+            GOAL_BUF,
+            RESULT_BUF,
+            FEEDBACK_BUF,
+        >)
+    };
+    let ActionClientCallbackEntry {
+        core,
+        on_goal_response,
+        on_feedback,
+        on_result,
+        _phantom,
+    } = entry;
+
+    let mut did_work = false;
+
+    // 1. Goal-acceptance reply.
+    if let Ok(Some(total_len)) = core.try_recv_send_goal_reply() {
+        let accepted = total_len >= 5 && core.result_buffer[4] != 0;
+        let goal_id = goal_id_from_counter(core.goal_counter);
+        on_goal_response(&goal_id, accepted);
+        did_work = true;
+    }
+
+    // 2. Feedback — payload at [4 + 16 ..] (outer CDR header + GoalId); see the
+    //    raw dispatcher for the layout rationale (233.6).
+    if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw() {
+        const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 16;
+        if total_len > FEEDBACK_PAYLOAD_OFFSET {
+            if let Ok(mut reader) = CdrReader::new_with_header(
+                &core.feedback_buffer[FEEDBACK_PAYLOAD_OFFSET..total_len],
+            ) {
+                if let Ok(fb) = A::Feedback::deserialize(&mut reader) {
+                    on_feedback(&goal_id, &fb);
+                }
+            }
+        }
+        did_work = true;
+    }
+
+    // 3. Result reply — status at byte 4, payload at [8 ..] (header + status +
+    //    align pad); see the raw dispatcher (Phase 96.1).
+    if let Ok(Some(total_len)) = core.try_recv_get_result_reply() {
+        const RESULT_PAYLOAD_OFFSET: usize = 8;
+        if total_len >= RESULT_PAYLOAD_OFFSET {
+            let status = match core.result_buffer[4] {
+                4 => nros_core::GoalStatus::Succeeded,
+                5 => nros_core::GoalStatus::Canceled,
+                6 => nros_core::GoalStatus::Aborted,
+                _ => nros_core::GoalStatus::Unknown,
+            };
+            let goal_id = goal_id_from_counter(core.goal_counter);
+            if let Ok(mut reader) =
+                CdrReader::new_with_header(&core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len])
+            {
+                if let Ok(res) = A::Result::deserialize(&mut reader) {
+                    on_result(&goal_id, status, &res);
+                }
+            }
+        }
+        did_work = true;
+    }
+
+    Ok(did_work)
+}
+
 /// Monomorphized raw service dispatch function.
 ///
 /// # Safety

@@ -11,12 +11,13 @@ use crate::cyclonedds_register::{MessageForRmw, register_type};
 use super::{
     action_core::{ActionClientCore, ActionServerCore, RawActiveGoal},
     arena::{
-        ActionClientRawArenaEntry, ActionServerArenaEntry, ActionServerRawArenaEntry, CallbackMeta,
-        EntryKind, action_client_raw_try_process, action_server_raw_try_process,
-        action_server_try_process, always_ready, as_active_goal_count, as_complete_goal,
-        as_for_each_active_goal, as_publish_feedback, as_raw_active_goal_count,
-        as_raw_complete_goal, as_raw_for_each_active_goal, as_raw_publish_feedback,
-        as_raw_set_goal_status, as_set_goal_status, drop_entry, no_pre_sample,
+        ActionClientCallbackEntry, ActionClientRawArenaEntry, ActionServerArenaEntry,
+        ActionServerRawArenaEntry, CallbackMeta, EntryKind, action_client_callback_try_process,
+        action_client_raw_try_process, action_server_raw_try_process, action_server_try_process,
+        always_ready, as_active_goal_count, as_complete_goal, as_for_each_active_goal,
+        as_publish_feedback, as_raw_active_goal_count, as_raw_complete_goal,
+        as_raw_for_each_active_goal, as_raw_publish_feedback, as_raw_set_goal_status,
+        as_set_goal_status, drop_entry, no_pre_sample,
     },
     handles::{ActionServer, ActiveGoal},
     spin::Executor,
@@ -1100,6 +1101,154 @@ impl Executor {
         self.apply_node_default_sched(slot, node_id);
 
         Ok(ActionClientRawHandle { entry_index: slot })
+    }
+
+    /// RFC-0041 / Phase 239.2 — register a **typed callback** action client.
+    /// Goal-response / feedback / result are eager-drained at `spin_once` and
+    /// dispatched as deserialized `A::Feedback` / `A::Result` to the typed
+    /// closures. Returns the scheduling [`HandleId`] and a `*mut` to the arena
+    /// entry's core (used to build the typed
+    /// [`ActionClientCallback`](super::handles::ActionClientCallback)).
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    pub(crate) fn register_action_client_callback<
+        A,
+        GRespF,
+        FbF,
+        ResF,
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        on_goal_response: GRespF,
+        on_feedback: FbF,
+        on_result: ResF,
+    ) -> Result<
+        (
+            HandleId,
+            *mut ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+        ),
+        NodeError,
+    >
+    where
+        A: nros_core::RosAction + 'static,
+        GRespF: FnMut(&nros_core::GoalId, bool) + 'static,
+        FbF: FnMut(&nros_core::GoalId, &A::Feedback) + 'static,
+        ResF: FnMut(&nros_core::GoalId, nros_core::GoalStatus, &A::Result) + 'static,
+    {
+        type Entry<A, G, Fb, R, const GB: usize, const RB: usize, const FB: usize> =
+            ActionClientCallbackEntry<A, G, Fb, R, GB, RB, FB>;
+
+        let slot = self.next_entry_slot()?;
+        let action_info = ActionInfo::new(action_name, type_name, type_hash);
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
+
+        let (send_goal_client, cancel_goal_client, get_result_client, feedback_sub) = {
+            let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
+            let mut send_goal_info =
+                ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_namespace(&ns);
+            if !node_name.is_empty() {
+                send_goal_info = send_goal_info.with_node_name(&node_name);
+            }
+            let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+            let mut cancel_goal_info = ServiceInfo::new(
+                &cancel_goal_keyexpr,
+                "action_msgs::srv::dds_::CancelGoal_",
+                type_hash,
+            )
+            .with_namespace(&ns);
+            if !node_name.is_empty() {
+                cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
+            }
+            let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
+            let mut get_result_info =
+                ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_namespace(&ns);
+            if !node_name.is_empty() {
+                get_result_info = get_result_info.with_node_name(&node_name);
+            }
+            let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
+            let mut feedback_topic =
+                TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_namespace(&ns);
+            if !node_name.is_empty() {
+                feedback_topic = feedback_topic.with_node_name(&node_name);
+            }
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            (
+                session
+                    .create_service_client(&send_goal_info, QosSettings::services_default())
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_service_client(&cancel_goal_info, QosSettings::services_default())
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_service_client(&get_result_info, QosSettings::services_default())
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                session
+                    .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
+                    .map_err(|_| NodeError::ActionCreationFailed)?,
+            )
+        };
+
+        let core = ActionClientCore::new(
+            send_goal_client,
+            cancel_goal_client,
+            get_result_client,
+            feedback_sub,
+        );
+
+        let offset =
+            self.arena_alloc::<Entry<A, GRespF, FbF, ResF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>()?;
+        let core_ptr = unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset)
+                as *mut Entry<A, GRespF, FbF, ResF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                ActionClientCallbackEntry {
+                    core,
+                    on_goal_response,
+                    on_feedback,
+                    on_result,
+                    _phantom: core::marker::PhantomData,
+                },
+            );
+            &mut (*entry_ptr).core as *mut ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+        };
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::ActionClient,
+            has_data: always_ready,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::Always,
+            try_process: action_client_callback_try_process::<
+                A,
+                GRespF,
+                FbF,
+                ResF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+            >,
+            drop_fn: drop_entry::<Entry<A, GRespF, FbF, ResF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>,
+        });
+        self.apply_node_default_sched(slot, node_id);
+        Ok((HandleId(slot), core_ptr))
     }
 }
 

@@ -1886,6 +1886,65 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
 }
 
 // ============================================================================
+// ActionClientCallback (RFC-0041, Phase 239.2)
+// ============================================================================
+
+/// Send handle for a **callback-based** typed action client.
+///
+/// Returned by `create_action_client_with_callbacks`: goal-response, feedback,
+/// and result are delivered to the registered closures at `spin_once` (no
+/// `Promise` poll). This handle only **sends** — it holds a `*mut` to the arena
+/// entry's [`ActionClientCore`](super::action_core::ActionClientCore) (offset 0,
+/// pinned in the executor arena, like a guard-condition flag).
+///
+/// # Safety / lifetime
+/// Valid only while the owning executor lives.
+pub struct ActionClientCallback<
+    A: RosAction,
+    const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
+    core: *mut super::action_core::ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    _phantom: PhantomData<A>,
+}
+
+impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
+    ActionClientCallback<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+{
+    /// Wrap an arena-resident core. `core` must point at a live
+    /// `ActionClientCallbackEntry`'s core for the executor's lifetime.
+    pub(crate) fn new(
+        core: *mut super::action_core::ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    ) -> Self {
+        Self {
+            core,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Send a typed goal. Returns its `GoalId`; acceptance arrives via the
+    /// registered goal-response callback.
+    pub fn send_goal(&mut self, goal: &A::Goal) -> Result<nros_core::GoalId, NodeError> {
+        let core = unsafe { &mut *self.core };
+        let mut buf = [0u8; GOAL_BUF];
+        let mut writer =
+            CdrWriter::new_with_header(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
+        goal.serialize(&mut writer)
+            .map_err(|_| NodeError::Serialization)?;
+        let len = writer.position();
+        core.send_goal_raw(&buf[..len])
+    }
+
+    /// Request the result for `goal_id`; the result arrives via the registered
+    /// result callback.
+    pub fn get_result(&mut self, goal_id: &nros_core::GoalId) -> Result<(), NodeError> {
+        let core = unsafe { &mut *self.core };
+        core.send_get_result_request(goal_id)
+    }
+}
+
+// ============================================================================
 // EmbeddedServiceClient
 // ============================================================================
 

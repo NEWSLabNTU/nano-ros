@@ -12,7 +12,7 @@ use crate::{
 
 use super::{
     handles::{
-        ActionClient, ActionServer, EmbeddedPublisher, EmbeddedServiceClient,
+        ActionClient, ActionClientCallback, ActionServer, EmbeddedPublisher, EmbeddedServiceClient,
         EmbeddedServiceServer, ServiceClientCallback, Subscription,
     },
     types::NodeError,
@@ -1319,6 +1319,84 @@ impl<'e> NodeCtx<'e> {
                 callback,
             )?;
         Ok(ServiceClientCallback::new(hdr))
+    }
+
+    /// RFC-0041 / Phase 239.2 — callback-based action client (rclcpp
+    /// `SendGoalOptions{goal_response_callback, feedback_callback,
+    /// result_callback}` analogue). Goal-response / feedback / result are
+    /// delivered to the closures at `spin_once`. Returns an
+    /// [`ActionClientCallback`] send handle (`send_goal` / `get_result`);
+    /// dual-mode — the `Promise`-based [`create_action_client`](Self::create_action_client)
+    /// is unchanged.
+    #[allow(clippy::type_complexity)]
+    pub fn create_action_client_with_callbacks<A, GRespF, FbF, ResF>(
+        &mut self,
+        action_name: &str,
+        on_goal_response: GRespF,
+        on_feedback: FbF,
+        on_result: ResF,
+    ) -> Result<ActionClientCallback<A>, NodeError>
+    where
+        A: RosAction + 'static,
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+        GRespF: FnMut(&nros_core::GoalId, bool) + 'static,
+        FbF: FnMut(&nros_core::GoalId, &A::Feedback) + 'static,
+        ResF: FnMut(&nros_core::GoalId, nros_core::GoalStatus, &A::Result) + 'static,
+    {
+        self.create_action_client_with_callbacks_sized::<
+            A,
+            GRespF,
+            FbF,
+            ResF,
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(action_name, on_goal_response, on_feedback, on_result)
+    }
+
+    /// Callback-based action client with custom buffer sizes (Phase 239.2).
+    #[allow(clippy::type_complexity)]
+    pub fn create_action_client_with_callbacks_sized<
+        A,
+        GRespF,
+        FbF,
+        ResF,
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        action_name: &str,
+        on_goal_response: GRespF,
+        on_feedback: FbF,
+        on_result: ResF,
+    ) -> Result<ActionClientCallback<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError>
+    where
+        A: RosAction + 'static,
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+        GRespF: FnMut(&nros_core::GoalId, bool) + 'static,
+        FbF: FnMut(&nros_core::GoalId, &A::Feedback) + 'static,
+        ResF: FnMut(&nros_core::GoalId, nros_core::GoalStatus, &A::Result) + 'static,
+    {
+        register_type::<A::Goal>()?;
+        register_type::<A::Result>()?;
+        register_type::<A::Feedback>()?;
+        let (_id, core) = self
+            .executor
+            .register_action_client_callback::<A, GRespF, FbF, ResF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>(
+                Some(self.node_id),
+                action_name,
+                A::ACTION_NAME,
+                A::ACTION_HASH,
+                on_goal_response,
+                on_feedback,
+                on_result,
+            )?;
+        Ok(ActionClientCallback::new(core))
     }
 
     /// Convenient generic (type-erased) subscription — rclcpp `create_generic_*`.
