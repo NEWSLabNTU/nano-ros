@@ -158,25 +158,28 @@ C/C++ deliver the same callback model, reusing the Rust FFI (project principle:
 (`ServiceClientRawArenaEntry`, `ActionClientRawArenaEntry`) + their registrations
 already eager-drain at spin and invoke C-ABI callbacks (`RawResponseCallback`,
 `RawGoalResponseCallback`, `RawFeedbackCallback`, `RawResultCallback`) — so the C
-runtime path largely **exists**; this wave exposes the ergonomic surface, adds the
-C++ typed wrappers, and proves both end-to-end.
+runtime path **already exists and is wired** for both service (239.11) and action
+(239.12) — Phase 189.M3.3 et al. So Wave 4's real new work is the **C E2E
+fixtures** and the **C++ typed wrappers** (239.13/14) + cross-language E2E (239.15).
 
-#### 239.11 — C service-client callback surface + E2E  ⬜
-Expose a clean C API over the raw response callback: `nros_client_init` +
-`nros_client_set_response_callback` (or an init-with-callback) + `nros_client_send_request`;
-the callback receives raw reply bytes which the user feeds to the generated
-`{Svc}_Response_deserialize`. E2E: a native C service server + callback client
-round-trip (assert the callback fires at spin, no poll).
-- **Files:** `packages/core/nros-c/src/service.rs`, `nros-c/include/nros/client.h`,
-  a C fixture under `packages/testing/` or `examples/*/c/`.
+#### 239.11 — C service-client callback surface + E2E  🟡 (surface ✅ already; E2E ⬜)
+**Finding.** The C surface already exists + is wired (Phase 189.M3.3):
+`nros_client_set_response_callback` (`service.rs:1437`) +
+`nros_client_send_request_async` (`service.rs:1701`); the registration
+(`executor.rs:1153` → `register_service_client_raw_sized_on`) installs the raw
+`RawResponseCallback` arena entry that the executor drains at spin. The callback
+receives raw reply bytes → user deserializes with the generated
+`{Svc}_Response_deserialize`. **Remaining:** a native E2E (C service server +
+C callback client; assert the callback fires at spin, no poll) + a doc/example.
+- **Files:** a C fixture/example under `examples/*/c/` or `packages/testing/`.
 
-#### 239.12 — C action-client callback surface + E2E  ⬜
-Same over `ActionClientRawArenaEntry`'s goal-response / feedback / result raw
-callbacks (already wired in the C API): confirm/expose `nros_action_client_init` +
-the three callback setters + `send_goal` / `get_result`. E2E: native C action
-server + callback client.
-- **Files:** `packages/core/nros-c/src/action.rs`, `nros-c/include/nros/action_client.h`,
-  a C fixture.
+#### 239.12 — C action-client callback surface + E2E  🟡 (surface ✅ already; E2E ⬜)
+**Finding.** Already wired: `nros_action_client_set_goal_response_callback` /
+`_set_feedback_callback` / `_set_result_callback` + `register_action_client_raw`
+(`executor.rs:1404-1494`) install the `ActionClientRawArenaEntry`'s three raw
+callbacks, drained at spin. **Remaining:** a native C action server + callback
+client E2E + example.
+- **Files:** a C fixture/example.
 
 #### 239.13 — C++ service-client callback wrapper + E2E  ⬜
 C++ wraps the Rust FFI: `nros::Client<Svc>::async_send_request(req, callback)` that
