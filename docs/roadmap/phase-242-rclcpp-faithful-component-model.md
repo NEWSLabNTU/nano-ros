@@ -10,8 +10,11 @@ blocked ASI's vendored Autoware `Controller` from migrating onto RFC-0043's
 sequences (`std::vector<double>`), (3) ctor-wired IS-A-node lifetime on the entry
 executor.
 
-**Status.** Proposed (2026-06-13). Driven by ASI phase-2.C — the reference
-consumer whose real rclcpp-shaped node surfaced the gap. Amends RFC-0043 Q1.
+**Status.** Accepted (2026-06-13 — [RFC-0044](../design/0044-rclcpp-faithful-component-model.md)
+adoption decision; all 5 open Qs resolved). 242.3 (parameter sequences) DONE;
+242.1/242.2/242.4 pending; 242.5 (ASI) gated on a Zephyr-SDK + FVP host. Driven
+by ASI phase-2.C — the reference consumer whose real rclcpp-shaped node surfaced
+the gap. Amends RFC-0043 Q1.
 
 **Priority.** P1 — the only path to ASI 2.C (a real Autoware node through the
 generated Entry on FVP) and to the stated "follow rclcpp composable-node
@@ -33,22 +36,28 @@ and kept. But its component *shape* (default-construct + two-phase
 with ctor-created entities + declared params. This phase adds the rclcpp-faithful
 shape alongside (RFC-0043's `bind_*`/`configure` stays as the lower-level option).
 
-No-exceptions reconciliation: ctor entity/param creation **aborts on fatal** (boot
-is all-or-nothing on firmware), the same outcome a thrown rclcpp ctor exception
-has — see RFC-0044 §Motivation.
+No-exceptions reconciliation (RFC-0044 Q2 resolved): ctor entity/param creation
+failure sets a **`bool ok()`** flag the entry checks **post-construct**, then the
+entry halts naming the failed node (boot is all-or-nothing on firmware, the same
+outcome a thrown rclcpp ctor exception has, but with multi-node boot
+diagnostics — *which* node failed). No `Result` threading in the ctor.
 
 ## Work Items
 
 ### 242.1 — `nros::ComponentNode` base (the IS-A-node shape)
 
-- [ ] **242.1.1** Add the node base (working name `nros::ComponentNode`) that
-      wraps/owns the executor-bound `nros::Node`, constructed from a node handle +
-      identity: `ComponentNode(NodeHandle, const char* name)`. Member `create_*`
-      forward to the owned node. Abort-on-fatal creation (RFC-0044 Q2).
-- [ ] **242.1.2** `NROS_COMPONENT(Class)` — factory + `sizeof` + the class/header
-      metadata the typed entry needs (replaces/augments `NROS_NODE_REGISTER`).
-- [ ] **242.1.3** Decide base name + wrap-vs-derive (RFC-0044 Q1) — confirm value
-      semantics + the FFI handle stay clean.
+- [ ] **242.1.1** Add the node base `nros::ComponentNode` (RFC-0044 Q1: **wraps/
+      owns** the `nros::Node` — keeps value-semantics + the clean FFI handle),
+      constructed from the executor-bound handle + identity:
+      `ComponentNode(NodeHandle, const char* name)`. Member `create_*` forward to
+      the owned node. **Q2:** a creation failure in the ctor sets an internal flag
+      surfaced via `bool ok() const`; the ctor does NOT abort — the entry checks
+      `ok()` post-construct + halts naming the node (no `Result` in the ctor).
+- [ ] **242.1.2** `NROS_COMPONENT(Class)` — factory + the **`shape:"rclcpp"`**
+      component metadata marker (RFC-0044 §impl) + the existing class/header
+      (recorded by `nano_ros_node_register`). **No `sizeof` metadata** — the entry
+      `#include`s the header, so `sizeof(Class)` / `Storage<Class>` is a
+      compile-time fact (242.4), not a codegen input. Replaces `NROS_NODE_REGISTER`.
 
 **Files.** `packages/core/nros-cpp/include/nros/component_node.hpp` (new),
 `component.hpp`, `node.hpp`.
@@ -59,7 +68,10 @@ has — see RFC-0044 §Motivation.
       — a member-fn-pointer-as-template-param trampoline (the RFC-0043 no-alloc
       pattern) that `M::ffi_deserialize`s the wire bytes then dispatches to the
       typed member `void C::on_msg(const M&)`. Register the DDS-mangled
-      `M::TYPE_NAME` (240.1 finding, RFC-0044 Q4).
+      `M::TYPE_NAME` — **RFC-0044 Q4 CONFIRMED by 240.6**: the typed
+      `Publisher<M>` already registers the mangled form (`std_msgs::msg::dds_::Int32_`),
+      runtime-proven by the NuttX talker↔listener pairing, so the member sub on
+      `M::TYPE_NAME` matches with no new divergence.
 - [ ] **242.2.2** Member timer + (later) service-server/action-server member
       callbacks, same trampoline shape.
 
@@ -85,16 +97,28 @@ has — see RFC-0044 §Motivation.
 FFI change needed). Verified by `examples/native/cpp/parameters/src/main.cpp`
 + `cpp_parameters_roundtrip`.
 
-### 242.4 — Codegen entry + carrier: construct-with-handle
+### 242.4 — Codegen entry + carrier: construct-with-handle (shape-branched)
 
-- [ ] **242.4.1** `emit_cpp::emit_typed` — shift the generated entry from
-      `default-construct + configure(node)` to placement-new the component into
-      the arena slot with the entry's node handle (`Storage<C> __c;
-      __c.emplace(handle)`), via the `NROS_COMPONENT` factory.
-- [ ] **242.4.2** Carrier templates `{nuttx,zephyr}_entry_main_typed.cpp.in` —
-      update the construct line; `run_components` + the board lifecycle unchanged.
+The two shapes coexist (RFC-0044 keeps `configure(Node&)` lower-level), so the
+entry **branches on the `shape` metadata field** — it does NOT replace the 240.x
+construct path.
 
-**Files.** `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`,
+- [ ] **242.4.1** Metadata seam: `nano_ros_node_register` / `NROS_COMPONENT`
+      record `shape:"rclcpp"|"configure"` into the `components[]` JSON;
+      `codegen/entry/metadata.rs` `ComponentIndex` reads it onto `PlanNode`
+      (`class`/`class_header` unchanged).
+- [ ] **242.4.2** `emit_cpp::emit_typed` — per node, branch on `shape`:
+      - `configure` (240.x): `static C __c; … __c.configure(node);` — static
+        construct *before* init, then configure (unchanged).
+      - `rclcpp`: **placement-new in `__nros_entry_setup` *after* `nros::init`**
+        (the ctor needs the live handle) — `static Storage<C> __c;
+        __c.emplace(node_handle);` then `if (!__c->ok()) return …;` (Q2).
+- [ ] **242.4.3** Carrier templates `{nuttx,zephyr}_entry_main_typed.cpp.in` —
+      add the rclcpp construct line (placement-new + `ok()` check) gated the same
+      way; `run_components` + the board lifecycle unchanged.
+
+**Files.** `packages/cli/nros-cli-core/src/codegen/entry/{emit_cpp.rs,metadata.rs,mod.rs}`,
+`cmake/NanoRosNodeRegister.cmake` (shape field),
 `cmake/templates/{nuttx,zephyr}_entry_main_typed.cpp.in`.
 
 ### 242.5 — ASI migration (the consumer proof)
