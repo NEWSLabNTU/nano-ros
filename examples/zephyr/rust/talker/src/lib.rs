@@ -52,8 +52,19 @@ impl ExecutableNode for Talker {
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_tick" {
+            // Canonical talker fixture markers every Zephyr talker (c/cpp/rust)
+            // emits — the E2E harness keys readiness off "Publishing messages"
+            // (talker_created_pub) and counts "Published: <n>" lines
+            // (published_count). The Rust publish path is silent (unlike the C
+            // nros lib), so emit them here, mirroring the listener's "Received:"
+            // line (issue #35: the zenoh native_sim rust pubsub failure was this
+            // missing marker, not a transport fault).
+            if *state == 0 {
+                log::info!("Publishing messages");
+            }
             let msg = Int32 { data: *state };
             let _ = ctx.publish_to_topic::<Int32, 64>("/chatter", &msg);
+            log::info!("Published: {}", *state);
             *state = state.wrapping_add(1);
         }
     }

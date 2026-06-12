@@ -164,13 +164,37 @@ sites in `session.c`.
 `test_zephyr_xrce_c_service_e2e`, `test_zephyr_xrce_c_action_e2e` all **pass**. The C++/Rust
 XRCE cases share the identical `session.c` drive path.
 
-### Remaining (separate root cause — still open)
+### The other 4 (zenoh + cyclone) — NOT the clock bug, two further root causes
 
-The **3 zenoh** + **1 cyclone** native_sim failures are **not** this clock bug — zenoh-pico's
-timeout path (`z_clock_*`) already uses the monotonic clock, and cyclone has its own
-discovery path. They need their own triage (likely native_sim NSOS connect/discovery,
-as the original RCA directions noted). This issue stays **open** for those 4; the XRCE
-cluster (9/13) is resolved.
+zenoh-pico's timeout path (`z_clock_*`) already uses the monotonic clock, so these are
+unrelated to the XRCE fix. Reproducing them needed the **stale zephyr-lang-rust workspace
+module** migrated to the manifest-pinned rev (`west.yml` pins `404fcef…`; the local
+`nano-ros-workspace` was stuck at the old `248e23e…`, whose `export_bool_kconfig` predates
+the example `build.rs`'s `export_kconfig_bool_options`). With the module at the pinned rev
++ the `scripts/zephyr/*-patch.sh` re-vendoring, the Rust Zephyr fixtures build again.
+
+**(a) zenoh Rust pub/sub — `test_zephyr_talker_to_listener_e2e` — FIXED (observability, not transport).**
+The transport worked all along; the failure was missing harness markers on the Rust path.
+The C/C++ listeners print `Waiting for messages` and the C publish path logs `Published:`
+/ `Publishing messages`; the Rust spin loop lives in `nros::zephyr_component_main!` and the
+node only owns callbacks, so none of those lines were emitted. `Executor::open` +
+`register_node` had already succeeded (the process spun for the full 30 s instead of
+exiting). Fix: emit `Waiting for messages` from the macro after `register_node`, and
+`Publishing messages` / `Published: <n>` from the Rust talker's `on_tick` (mirroring the
+listener's existing `Received:`). Now **passes**.
+
+**(b) Rust service + action clients — `test_zephyr_rust_service_e2e`, `test_zephyr_action_e2e`
+(zenoh), `test_zephyr_dds_rs_action_e2e` (cyclone) — feature gap, not a bug.**
+The Rust service/action CLIENT dispatch is an in-tree stub: `UnsupportedClients` returns
+`NodeDeclError::Runtime` from `call`/`send_goal_raw` until the M-F.4.a `ClientDispatch`
+impl ships in nros-cli (documented in `examples/zephyr/rust/{service,action}-client/src/lib.rs`).
+The client never sends a request/goal, so "got no reply" is correct. These three are gated
+with `#[ignore]` (reason references the stub + M-F.4.a); re-enable when the dispatch lands.
+
+### Status
+
+9 XRCE (clock) + 1 zenoh pub/sub (markers) = **10/13 resolved**; the remaining 3 are gated
+on the unimplemented Rust client/action dispatch (nros-cli M-F.4.a), not a native_sim bug.
 
 **Reproduce (minimal):**
 ```sh
