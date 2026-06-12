@@ -2674,6 +2674,106 @@ fn test_service_client_callback_fires_at_spin() {
     );
 }
 
+/// RFC-0041 / Phase 239.4 — a callback-based action client delivers
+/// goal-response / feedback / result to typed closures at `spin_once`. Drives
+/// each receive by injecting into the entry's mock channels and spinning.
+#[test]
+fn test_action_client_callbacks_fire_at_spin() {
+    use crate::executor::action_core::ActionClientCore;
+
+    /// CDR-with-header encode of a single i32 (mirrors a `{ i32 }` message).
+    fn encode_i32_cdr(v: i32) -> ([u8; 256], usize) {
+        let mut b = [0u8; 256];
+        let mut w = CdrWriter::new_with_header(&mut b).unwrap();
+        w.write_i32(v).unwrap();
+        let n = w.position();
+        drop(w);
+        (b, n)
+    }
+    fn buf256(src: &[u8]) -> ([u8; 256], usize) {
+        let mut b = [0u8; 256];
+        b[..src.len()].copy_from_slice(src);
+        (b, src.len())
+    }
+
+    let mut executor: Executor = Executor::from_session(MockSession::new());
+    let nid = executor.node_builder("act_cb").build().unwrap();
+
+    let goal_resp = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let feedback = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let result = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let (gr2, fb2, rs2) = (goal_resp.clone(), feedback.clone(), result.clone());
+
+    let mut client = executor
+        .node_mut(nid)
+        .create_action_client_with_callbacks::<TestAction, _, _, _>(
+            "/act",
+            move |id: &nros_core::GoalId, accepted: bool| {
+                let mut c = [0u8; 8];
+                c.copy_from_slice(&id.uuid[..8]);
+                *gr2.lock().unwrap() = Some((u64::from_le_bytes(c), accepted));
+            },
+            move |_id: &nros_core::GoalId, fb: &TestFeedback| {
+                *fb2.lock().unwrap() = Some(fb.progress);
+            },
+            move |_id: &nros_core::GoalId, st: nros_core::GoalStatus, r: &TestResult| {
+                *rs2.lock().unwrap() = Some((st, r.value));
+            },
+        )
+        .unwrap();
+
+    // Reach the entry's core (first field of the entry → entry offset).
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let core = unsafe {
+        &*(arena_ptr.add(off)
+            as *const ActionClientCore<
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+            >)
+    };
+
+    // send_goal → goal_counter = 1.
+    let goal_id = client.send_goal(&TestGoal { order: 1 }).unwrap();
+
+    // 1. Goal-response: header(4) + accepted(1). `try_recv_send_goal_reply`
+    //    copies it into `result_buffer`; the dispatcher reads byte 4.
+    let (gr, grl) = buf256(&[0, 1, 0, 0, 1]);
+    core.send_goal_client.load_reply(gr, grl);
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        *goal_resp.lock().unwrap(),
+        Some((1u64, true)),
+        "goal-response"
+    );
+
+    // 2. Feedback: outer header(4) + GoalId(16) + inner CDR(header + i32).
+    let mut fb = [0u8; 256];
+    fb[0..4].copy_from_slice(&[0, 1, 0, 0]);
+    fb[4..12].copy_from_slice(&1u64.to_le_bytes()); // GoalId uuid[..8] = counter 1
+    let (inner, il) = encode_i32_cdr(7);
+    fb[20..20 + il].copy_from_slice(&inner[..il]);
+    core.feedback_subscriber.load(fb, 20 + il);
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(*feedback.lock().unwrap(), Some(7), "feedback deserialized");
+
+    // 3. Result: header(4) + status@4 + pad(3) + inner CDR(header + i32) @8.
+    client.get_result(&goal_id).unwrap();
+    let mut rs = [0u8; 256];
+    rs[0..4].copy_from_slice(&[0, 1, 0, 0]);
+    rs[4] = 4; // GoalStatus::Succeeded
+    let (inner_r, irl) = encode_i32_cdr(99);
+    rs[8..8 + irl].copy_from_slice(&inner_r[..irl]);
+    core.get_result_client.load_reply(rs, 8 + irl);
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        *result.lock().unwrap(),
+        Some((nros_core::GoalStatus::Succeeded, 99)),
+        "result deserialized"
+    );
+}
+
 /// Phase 189.M3.3.d — runtime proof that a **service** bound to a sched context
 /// honours it in `spin_once`: two services bound to EDF contexts dispatch in
 /// deadline order, not registration order. This is the runtime payoff of M3.3 —

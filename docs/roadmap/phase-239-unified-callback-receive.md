@@ -74,7 +74,7 @@ Hook the new typed entries into the `CallbackMeta` list (`EntryKind::ServiceClie
 per spin still pumps the session for all entries (no per-entity pump).
 - **Files:** `executor/spin.rs`.
 
-#### 239.4 — Wave-1 tests  ⬜
+#### 239.4 — Wave-1 tests  ✅
 Native tests: a callback fires at `spin_once` for service reply + action
 feedback/result/goal-response (no `Promise::try_recv`); `Promise` + callback
 coexist (dual-mode) without interfering. Assert the callback runs in the spin
