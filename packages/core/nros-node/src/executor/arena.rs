@@ -1370,6 +1370,12 @@ pub(crate) struct ActionClientCallbackEntry<
     const FEEDBACK_BUF: usize,
 > {
     pub(crate) core: ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    /// RFC-0041 / Phase 239.5 — the feedback stream's QoS-depth buffer. The
+    /// callback path drains `core.feedback_subscriber` directly into this ring
+    /// (depth > 1) or triple-buffer (depth ≤ 1), so a burst of feedbacks between
+    /// spins is buffered/reported instead of overwriting a single slot — and the
+    /// shared `ActionClientCore` buffers (the `Promise` path) stay untouched.
+    pub(crate) feedback_buffer: BufferStrategy,
     pub(crate) on_goal_response: GRespF,
     pub(crate) on_feedback: FbF,
     pub(crate) on_result: ResF,
@@ -1383,6 +1389,27 @@ fn goal_id_from_counter(counter: u64) -> nros_core::GoalId {
     let mut uuid = [0u8; 16];
     uuid[..8].copy_from_slice(&counter.to_le_bytes());
     nros_core::GoalId { uuid }
+}
+
+/// Decode one raw feedback slot (outer header + GoalId at [4..20] + inner-CDR
+/// payload at `offset`) and invoke the typed feedback closure (Phase 239.5).
+#[inline]
+fn dispatch_feedback<A, F>(data: &[u8], offset: usize, on_feedback: &mut F)
+where
+    A: RosAction,
+    F: FnMut(&nros_core::GoalId, &A::Feedback),
+{
+    if data.len() <= offset {
+        return;
+    }
+    let mut uuid = [0u8; 16];
+    uuid.copy_from_slice(&data[4..20]);
+    let goal_id = nros_core::GoalId { uuid };
+    if let Ok(mut reader) = CdrReader::new_with_header(&data[offset..]) {
+        if let Ok(fb) = A::Feedback::deserialize(&mut reader) {
+            on_feedback(&goal_id, &fb);
+        }
+    }
 }
 
 /// Monomorphized typed action-client dispatch (RFC-0041, Phase 239.2). Mirrors
@@ -1423,6 +1450,7 @@ where
     };
     let ActionClientCallbackEntry {
         core,
+        feedback_buffer,
         on_goal_response,
         on_feedback,
         on_result,
@@ -1431,7 +1459,7 @@ where
 
     let mut did_work = false;
 
-    // 1. Goal-acceptance reply.
+    // 1. Goal-acceptance reply (single-outstanding → gated single buffer).
     if let Ok(Some(total_len)) = core.try_recv_send_goal_reply() {
         let accepted = total_len >= 5 && core.result_buffer[4] != 0;
         let goal_id = goal_id_from_counter(core.goal_counter);
@@ -1439,20 +1467,37 @@ where
         did_work = true;
     }
 
-    // 2. Feedback — payload at [4 + 16 ..] (outer CDR header + GoalId); see the
+    // 2. Feedback — a stream: drain `feedback_subscriber` into the QoS-depth ring
+    //    (Phase 239.5), then dispatch each slot. Each slot holds the raw feedback
+    //    message: outer CDR header (4) + GoalId (16) + inner-CDR payload; see the
     //    raw dispatcher for the layout rationale (233.6).
-    if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw() {
+    {
         const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 16;
-        if total_len > FEEDBACK_PAYLOAD_OFFSET {
-            if let Ok(mut reader) = CdrReader::new_with_header(
-                &core.feedback_buffer[FEEDBACK_PAYLOAD_OFFSET..total_len],
-            ) {
-                if let Ok(fb) = A::Feedback::deserialize(&mut reader) {
-                    on_feedback(&goal_id, &fb);
+        match feedback_buffer {
+            BufferStrategy::Triple(tb) => {
+                let slot = tb.write_slot();
+                if let Ok(Some(len)) = core.feedback_subscriber.try_recv_raw(slot) {
+                    tb.writer_publish(len);
+                }
+                if let Some((data, len)) = tb.reader_acquire() {
+                    dispatch_feedback::<A, _>(&data[..len], FEEDBACK_PAYLOAD_OFFSET, on_feedback);
+                    did_work = true;
+                }
+            }
+            BufferStrategy::Ring(ring) => {
+                while let Some(slot) = ring.try_push() {
+                    match core.feedback_subscriber.try_recv_raw(slot) {
+                        Ok(Some(len)) => ring.commit_push(len),
+                        _ => break,
+                    }
+                }
+                while let Some((data, len)) = ring.try_pop() {
+                    dispatch_feedback::<A, _>(&data[..len], FEEDBACK_PAYLOAD_OFFSET, on_feedback);
+                    ring.commit_pop();
+                    did_work = true;
                 }
             }
         }
-        did_work = true;
     }
 
     // 3. Result reply — status at byte 4, payload at [8 ..] (header + status +

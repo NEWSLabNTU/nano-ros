@@ -85,26 +85,38 @@ thread.
 
 ### Wave 2 — QoS-depth buffering (reliability)
 
-#### 239.5 — Swap client single buffers → `BufferStrategy(qos.depth)`  ⬜
-Replace the single `reply_buffer` / `feedback_buffer` / result buffer in the
-client arena entries with the subscription `BufferStrategy`: `TripleBuffer` at
-depth ≤ 1, `SpscRing(depth)` at depth > 1, allocated in the arena trailing region
-(same as `register_subscription_buffered_on`). The RMW drain at spin is the
-producer; the typed `try_process` consumer pops + dispatches.
-- **Files:** `executor/arena.rs`, `executor/spin.rs`, `executor/action_core.rs`.
+**Scope refinement (2026-06).** The burst hazard only exists where multiple
+messages can arrive before one is consumed. **Service reply** and **action
+result** are *single-outstanding* (gated by `pending` — a second request can't be
+sent until the first is answered), so they hold ≤ 1 in flight and a ring adds no
+demonstrable benefit; they keep their gated single buffer. The real stream is
+**action feedback** — that gets a ring. Crucially, the callback entry gets its
+**own** feedback ring (drain `core.feedback_subscriber` → ring), so the shared
+`ActionClientCore` buffers (used by the `Promise` path) are **not** touched.
 
-#### 239.6 — `MessageLost` on overflow + KEEP_LAST(10)  ⬜
-On ring overflow, signal `MessageLost` (mirror the subscription
-`on_message_lost`). Default service-client / action-result QoS to
-`services_default` (`KEEP_LAST(10)`, RFC-0007); feedback uses its topic QoS depth.
-- **Files:** `executor/handles.rs` (lost signal), the QoS default wiring.
+#### 239.5 — Action-feedback ring on the callback entry  ✅
+Add a `feedback_buffer: BufferStrategy` to `ActionClientCallbackEntry` (trailing-
+allocated; `SpscRing(depth)` for depth > 1, `TripleBuffer` for depth ≤ 1). The
+feedback phase of `action_client_callback_try_process` drains
+`core.feedback_subscriber` directly into the ring (replicating the goal-id +
+payload-offset extraction), then pops + deserializes `A::Feedback` per slot.
+Goal-response / result keep the core's gated single buffer.
+- **Files:** `executor/arena.rs`, `executor/action.rs` (registration trailing
+  alloc), `executor/node.rs` (feedback QoS depth).
 
-#### 239.7 — Wave-2 reliability tests  ⬜
-Burst test: two replies / two feedbacks arrive between spins on a depth>1 client →
-**both delivered** (or overflow reported), never silently dropped. A depth-1
-client coalesces to latest (triple-buffer). Compare against the pre-239
-single-buffer overwrite to prove the fix.
-- **Files:** `packages/testing/nros-tests/tests/`.
+#### 239.6 — `MessageLost` on feedback-ring overflow  ⬜
+On feedback ring overflow, signal `MessageLost` (mirror the subscription
+`on_message_lost`). Feedback uses its topic QoS depth; service reply / action
+result honor `services_default` (`KEEP_LAST(10)`, RFC-0007) on the gated buffer
+(≤ 1 in flight, so a no-op in practice — documented).
+- **Files:** `executor/arena.rs` / `executor/handles.rs` (lost signal).
+
+#### 239.7 — Wave-2 reliability test  ⬜
+Burst test: two feedbacks arrive between spins on a depth > 1 action callback
+client → **both delivered** (vs the pre-239 single-buffer overwrite). A depth-1
+client coalesces to latest (triple-buffer). In-process `MockSession` E2E extending
+`test_action_client_callbacks_fire_at_spin`.
+- **Files:** `packages/core/nros-node/src/executor/tests.rs`.
 
 ### Wave 3 — RT + backend validation
 

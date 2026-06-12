@@ -12,15 +12,18 @@ use super::{
     action_core::{ActionClientCore, ActionServerCore, RawActiveGoal},
     arena::{
         ActionClientCallbackEntry, ActionClientRawArenaEntry, ActionServerArenaEntry,
-        ActionServerRawArenaEntry, CallbackMeta, EntryKind, action_client_callback_try_process,
-        action_client_raw_try_process, action_server_raw_try_process, action_server_try_process,
-        always_ready, as_active_goal_count, as_complete_goal, as_for_each_active_goal,
-        as_publish_feedback, as_raw_active_goal_count, as_raw_complete_goal,
-        as_raw_for_each_active_goal, as_raw_publish_feedback, as_raw_set_goal_status,
-        as_set_goal_status, drop_entry, no_pre_sample,
+        ActionServerRawArenaEntry, BufferStrategy, CallbackMeta, EntryKind,
+        action_client_callback_try_process, action_client_raw_try_process,
+        action_server_raw_try_process, action_server_try_process, always_ready,
+        as_active_goal_count, as_complete_goal, as_for_each_active_goal, as_publish_feedback,
+        as_raw_active_goal_count, as_raw_complete_goal, as_raw_for_each_active_goal,
+        as_raw_publish_feedback, as_raw_set_goal_status, as_set_goal_status, buffered_region_size,
+        drop_entry, no_pre_sample,
     },
     handles::{ActionServer, ActiveGoal},
     spin::Executor,
+    spsc_ring::SpscRing,
+    triple_buffer::TripleBuffer,
     types::{
         HandleId, InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback,
         RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback, RawResultCallback,
@@ -1124,6 +1127,7 @@ impl Executor {
         action_name: &str,
         type_name: &str,
         type_hash: &str,
+        feedback_depth: u16,
         on_goal_response: GRespF,
         on_feedback: FbF,
         on_result: ResF,
@@ -1211,8 +1215,28 @@ impl Executor {
             feedback_sub,
         );
 
-        let offset =
-            self.arena_alloc::<Entry<A, GRespF, FbF, ResF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>()?;
+        // Phase 239.5 — trailing-allocate the feedback QoS-depth buffer alongside
+        // the entry (ring for depth > 1, triple for depth ≤ 1), then drain
+        // `core.feedback_subscriber` into it in the dispatcher.
+        let (_slot_count, trailing_bytes) =
+            buffered_region_size(feedback_depth as u32, FEEDBACK_BUF);
+        let (offset, trailing_offset) = self.arena_alloc_with_trailing::<Entry<
+            A,
+            GRespF,
+            FbF,
+            ResF,
+            GOAL_BUF,
+            RESULT_BUF,
+            FEEDBACK_BUF,
+        >>(trailing_bytes)?;
+        let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
+        let feedback_buffer = if feedback_depth <= 1 {
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, FEEDBACK_BUF) })
+        } else {
+            BufferStrategy::Ring(unsafe {
+                SpscRing::init(buf_ptr, FEEDBACK_BUF, feedback_depth as usize)
+            })
+        };
         let core_ptr = unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
             let entry_ptr = arena_ptr.add(offset)
@@ -1221,6 +1245,7 @@ impl Executor {
                 entry_ptr,
                 ActionClientCallbackEntry {
                     core,
+                    feedback_buffer,
                     on_goal_response,
                     on_feedback,
                     on_result,
