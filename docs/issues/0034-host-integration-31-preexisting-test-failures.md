@@ -61,17 +61,40 @@ triage.
 | zenoh_header_parity | 1 | `posix_canonical_header_matches_link_policy` |
 | zpico_build_matrix | 1 | `zpico_posix_archive_carries_link_feature_symbols` |
 
-## Triage notes
+## Triage + progress (2026-06-12)
 
-- **m12** — allowlist the new stm32f4 `*_pkg` dirs in
-  `phase212_m12_example_shape.rs`, or add their `package.xml` (owner: stm32f4 /
-  #24 follow-up).
-- **cpp / phase223 / phase235** — likely need the C/C++ extras (nros-cpp /
-  Cyclone) that this lane no longer builds (#29) and/or the issue-0027 nros-c
-  posix fix; confirm whether they should run in this lane at all, or move to a
-  C/C++ lane.
-- **n9 / n_entry / macro / orchestration_tiers / phase216 / l9 / j_launch /
-  f4_shadowing** — macro-expansion + codegen-shape compile tests; reproduce
-  standalone, owner triage.
-- **zenoh_archive_symbols / zenoh_header_parity / zpico_build_matrix** — archive
-  symbol / header-parity assertions; verify against current link policy.
+Local reproduction split the 31 into four categories, two now fixed:
+
+**FIXED — timeout class (~22).** orchestration_tiers (5), phase212_n9_main_macro_forms
+(8), phase212_n_entry_poc_runs (2), phase212_macro_one_dep (1),
+phase216_b/c (2), phase210_f4_shadowing (1), and the cpp_* compile tests
+(cpp_multi_node_entry, phase212_n12_cpp_api_drift, phase223_c_mixed_workspace,
+phase235_a_cpp_entry_runtime) **shell out to cargo/nros to build a generated
+crate** — a COLD build legitimately exceeds the 60s nextest default kill
+(`slow-timeout period 30s × terminate-after 2`). Measured: an
+`orchestration_tiers_native` case passes in **72–94 s**. Fix: a nextest override
+(`120s × 4`) for those binaries in `.config/nextest.toml`. Confirmed locally:
+orchestration_tiers 5/5 pass once the limit is lifted.
+
+**FIXED — l9 rename drift (1).** `nano_ros_application_rejects_embedded_deploy`
+asserted the old "native-only"/L.2 wording; the fn is now a shim →
+`nano_ros_entry` with board-centric wording. Updated the drift-guard; l9 5/5 pass.
+
+**REAL — owner triage (2).**
+- **m12 `every_example_leaf_has_package_xml`** — genuine gap: commit `78ac799ee`
+  added `examples/stm32f4/rust/*_pkg` without `package.xml`. The test correctly
+  flags it; fix is adding the right `package.xml` (stm32f4 owner — needs the
+  examples' real deps, not invented here). Reproduces on plain `main`.
+- **j_launch `nros_launch_spawns_components`** — `nros launch` invocation hits
+  the top-level CLI usage (`Usage: nros <COMMAND>`), i.e. launch-subcommand CLI
+  drift. (`nros_launch_detach_returns_pid_file` is NOT in scope — it panics
+  `[SKIPPED]` and is already excluded by the recipe's `[SKIPPED]` tolerance.)
+
+**CI-ENV-ONLY — pass locally (3).** `zenoh_archive_symbols`, `zenoh_header_parity`,
+`zpico_build_matrix` PASS in the dev env but failed in CI run 27385404078. They
+inspect built zpico/zenoh archive symbols + header parity, so the CI build
+context (feature resolution / link policy) differs. Re-check on the next CI run
+now that the env leak (#29) is gone — they may already be green.
+
+A verify run after the timeout + l9 fixes is expected to drop the count from 31
+to roughly the m12 + j_launch (+ possibly the 3 CI-env) failures.
