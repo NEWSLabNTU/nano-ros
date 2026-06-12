@@ -193,10 +193,10 @@ the single-node embedded path — only pub/sub/timer work. The client never send
 request/goal, so "got no reply" is correct. NOTE: the orchestration `GenClientDispatch`
 codegen (phase-212 M-F.4.a) is a **different path** (multi-component Entry) and does **not**
 cover these single-node examples. Implementing this is a sized wave, scoped in phase-212 as
-**M-F.4.d** (register clients+servers on the executor, track handles per `ComponentCell`,
+**M-F.23** (register clients+servers on the executor, track handles per `ComponentCell`,
 server-side request/goal dispatch on tick, `RuntimeClientDispatch`/`RuntimeActions` with the
 `*mut Executor` borrow). The three tests are gated with `#[ignore]` (reasons reference the
-stub); re-enable when M-F.4.d lands.
+stub); re-enable when M-F.23 lands.
 
 ### Status
 

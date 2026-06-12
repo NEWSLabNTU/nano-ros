@@ -775,9 +775,9 @@ fn test_zephyr_action_client_smoke() {
 // issue #35: the Rust action CLIENT dispatch is an in-tree stub
 // (`UnsupportedClients::send_goal_raw` -> `NodeDeclError::Runtime`, see
 // examples/zephyr/rust/action-client/src/lib.rs) until the single-node
-// ExecutorNodeRuntime dispatch lands (phase-212 M-F.4.d) — so the client never sends a goal
+// ExecutorNodeRuntime dispatch lands (phase-212 M-F.23) — so the client never sends a goal
 // and this e2e cannot pass yet. Not a transport/runtime bug.
-#[ignore = "rust action client dispatch unimplemented (UnsupportedClients stub, single-node ExecutorNodeRuntime — phase-212 M-F.4.d); issue #35"]
+#[ignore = "rust action client dispatch unimplemented (UnsupportedClients stub, single-node ExecutorNodeRuntime — phase-212 M-F.23); issue #35"]
 #[test]
 fn test_zephyr_action_e2e() {
     if !require_zephyr() {
@@ -1704,9 +1704,9 @@ fn test_zephyr_dds_cpp_action_e2e() {
 }
 
 // issue #35: same root as test_zephyr_action_e2e — the Rust action client
-// dispatch is the in-tree `UnsupportedClients` stub (single-node runtime, phase-212 M-F.4.d), so the
+// dispatch is the in-tree `UnsupportedClients` stub (single-node runtime, phase-212 M-F.23), so the
 // client never sends a goal. Cyclone backend, same feature gap. Not a bug.
-#[ignore = "rust action client dispatch unimplemented (UnsupportedClients stub, single-node ExecutorNodeRuntime — phase-212 M-F.4.d); issue #35"]
+#[ignore = "rust action client dispatch unimplemented (UnsupportedClients stub, single-node ExecutorNodeRuntime — phase-212 M-F.23); issue #35"]
 #[test]
 fn test_zephyr_dds_rs_action_e2e() {
     if !require_zephyr() {
@@ -2826,9 +2826,9 @@ fn test_zephyr_xrce_c_action_e2e() {
 // issue #35: the Rust service CLIENT dispatch is an in-tree stub
 // (`UnsupportedClients` -> `NodeDeclError::Runtime`, see
 // examples/zephyr/rust/service-client/src/lib.rs `tick`) until the single-node
-// ExecutorNodeRuntime dispatch lands (phase-212 M-F.4.d) — so the client never sends a request
+// ExecutorNodeRuntime dispatch lands (phase-212 M-F.23) — so the client never sends a request
 // ("got no reply" is correct). Not a transport/runtime bug.
-#[ignore = "rust service client dispatch unimplemented (UnsupportedClients stub, single-node ExecutorNodeRuntime — phase-212 M-F.4.d); issue #35"]
+#[ignore = "rust service client dispatch unimplemented (UnsupportedClients stub, single-node ExecutorNodeRuntime — phase-212 M-F.23); issue #35"]
 #[test]
 fn test_zephyr_rust_service_e2e() {
     if !require_zephyr() {
