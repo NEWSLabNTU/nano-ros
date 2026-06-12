@@ -183,13 +183,20 @@ exiting). Fix: emit `Waiting for messages` from the macro after `register_node`,
 `Publishing messages` / `Published: <n>` from the Rust talker's `on_tick` (mirroring the
 listener's existing `Received:`). Now **passes**.
 
-**(b) Rust service + action clients — `test_zephyr_rust_service_e2e`, `test_zephyr_action_e2e`
+**(b) Rust service + action — `test_zephyr_rust_service_e2e`, `test_zephyr_action_e2e`
 (zenoh), `test_zephyr_dds_rs_action_e2e` (cyclone) — feature gap, not a bug.**
-The Rust service/action CLIENT dispatch is an in-tree stub: `UnsupportedClients` returns
-`NodeDeclError::Runtime` from `call`/`send_goal_raw` until the M-F.4.a `ClientDispatch`
-impl ships in nros-cli (documented in `examples/zephyr/rust/{service,action}-client/src/lib.rs`).
-The client never sends a request/goal, so "got no reply" is correct. These three are gated
-with `#[ignore]` (reason references the stub + M-F.4.a); re-enable when the dispatch lands.
+The single-node `nros::zephyr_component_main!` path builds `ExecutorNodeRuntime`, whose
+`run_ticks` hardwires `UnsupportedClients`/`UnsupportedActions` and whose `create_entity`
+**no-ops** service/action registration (`packages/core/nros/src/node_runtime.rs` — "dispatch
+lands in M.5.a.4"). So the entire service + action seam (client AND server) is unbuilt on
+the single-node embedded path — only pub/sub/timer work. The client never sends a
+request/goal, so "got no reply" is correct. NOTE: the orchestration `GenClientDispatch`
+codegen (phase-212 M-F.4.a) is a **different path** (multi-component Entry) and does **not**
+cover these single-node examples. Implementing this is a sized wave, scoped in phase-212 as
+**M-F.4.d** (register clients+servers on the executor, track handles per `ComponentCell`,
+server-side request/goal dispatch on tick, `RuntimeClientDispatch`/`RuntimeActions` with the
+`*mut Executor` borrow). The three tests are gated with `#[ignore]` (reasons reference the
+stub); re-enable when M-F.4.d lands.
 
 ### Status
 
