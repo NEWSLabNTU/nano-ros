@@ -121,14 +121,24 @@ asserted the old "native-only"/L.2 wording; the fn is now a shim →
   it was the ONLY test invoking `nros launch`; all other test `build`/`run`
   calls are native `cargo`/`west`/`pio`, which the RFC sanctions.
 
-**CI-ENV-ONLY — pass locally (3).** `zenoh_archive_symbols`, `zenoh_header_parity`,
-`zpico_build_matrix` PASS in the dev env but failed in CI run 27385404078. They
-inspect built zpico/zenoh archive symbols + header parity, so the CI build
-context (feature resolution / link policy) differs. Re-check on the next CI run
-now that the env leak (#29) is gone — they may already be green.
+**FIXED — CI-env (3).** `zenoh_archive_symbols`, `zenoh_header_parity`,
+`zpico_build_matrix` PASS in the dev env but failed in CI. Root cause: all three
+resolve the **zenoh-posix fixture** (`target-zenoh-fixture-posix/`, built by
+`just build-zenoh-posix-fixture` / `build-test-fixtures`) and **panic when
+absent**. The light host-integration lane builds only the core rust + workspace
+fixtures, not the zenoh-posix one — so they failed in CI (no fixture) but passed
+locally (fixture present from a prior `build-test-fixtures`). Fixed by gating the
+missing-fixture path on `NROS_FIXTURES_OPTIONAL`: `skip!` in the light lane (it
+already sets the flag), hard-fail in the full `test-all` tier so a real
+header/symbol regression still surfaces. Verified both paths.
 
-A verify run after the timeout + l9 fixes is expected to drop the count from 31
-to roughly the m12 + j_launch (+ possibly the 3 CI-env) failures.
+**Progress: 31 → 7.** Timeout-class conversions + override (team), j_launch
+removal, m12 + l9 fixes, and this CI-env skip-gate clear 24 of the 31. Remaining
+**7**: the cpp compile-in-tests (`phase212_n12_cpp_api_drift` ×2,
+`phase223_c_mixed_workspace` ×2, `cpp_multi_node_entry`) + `phase216_c` embassy
+(blocked on the non-linking example, #13) + `phase210_f4_shadowing` (slow
+consumer-binary build). All are the remaining compile-in-test conversions /
+blocked example — team/owner domain.
 
 ### Sibling lane — NuttX cpp talker `div_t` clash (platform-ci e2e, run 27393704883)
 
