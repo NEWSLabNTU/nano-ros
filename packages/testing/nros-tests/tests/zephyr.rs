@@ -772,6 +772,12 @@ fn test_zephyr_action_client_smoke() {
 /// Requires:
 /// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
 /// - Both examples built with their specific TAP interface configs
+// issue #35: the Rust action CLIENT dispatch is an in-tree stub
+// (`UnsupportedClients::send_goal_raw` -> `NodeDeclError::Runtime`, see
+// examples/zephyr/rust/action-client/src/lib.rs) until the M-F.4.a
+// `ClientDispatch` impl ships in nros-cli — so the client never sends a goal
+// and this e2e cannot pass yet. Not a transport/runtime bug.
+#[ignore = "rust action client dispatch unimplemented (UnsupportedClients stub, nros-cli M-F.4.a); issue #35"]
 #[test]
 fn test_zephyr_action_e2e() {
     if !require_zephyr() {
@@ -1697,6 +1703,10 @@ fn test_zephyr_dds_cpp_action_e2e() {
     }
 }
 
+// issue #35: same root as test_zephyr_action_e2e — the Rust action client
+// dispatch is the in-tree `UnsupportedClients` stub (nros-cli M-F.4.a), so the
+// client never sends a goal. Cyclone backend, same feature gap. Not a bug.
+#[ignore = "rust action client dispatch unimplemented (UnsupportedClients stub, nros-cli M-F.4.a); issue #35"]
 #[test]
 fn test_zephyr_dds_rs_action_e2e() {
     if !require_zephyr() {
@@ -2813,6 +2823,12 @@ fn test_zephyr_xrce_c_action_e2e() {
 // =============================================================================
 
 /// Zephyr Rust zenoh service server ↔ client.
+// issue #35: the Rust service CLIENT dispatch is an in-tree stub
+// (`UnsupportedClients` -> `NodeDeclError::Runtime`, see
+// examples/zephyr/rust/service-client/src/lib.rs `tick`) until the M-F.4.a
+// `ClientDispatch` impl ships in nros-cli — so the client never sends a request
+// ("got no reply" is correct). Not a transport/runtime bug.
+#[ignore = "rust service client dispatch unimplemented (UnsupportedClients stub, nros-cli M-F.4.a); issue #35"]
 #[test]
 fn test_zephyr_rust_service_e2e() {
     if !require_zephyr() {

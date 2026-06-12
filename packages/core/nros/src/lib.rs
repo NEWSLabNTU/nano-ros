@@ -342,6 +342,18 @@ macro_rules! zephyr_component_main {
             if runtime.register_node::<$node>().is_err() {
                 return;
             }
+            // Readiness marker. The C/C++ Zephyr listeners print
+            // "Waiting for messages..." from their `main()` before the spin
+            // loop; the e2e harness polls for that substring to know the
+            // subscriber has declared before starting the talker (Phase 89.12).
+            // The Rust path's spin loop lives in this macro (the node only owns
+            // callbacks), so emit the same canonical marker here — without it a
+            // fully-working Rust listener never signals readiness and the e2e
+            // times out at 30 s (issue #35: the zenoh native_sim rust pubsub /
+            // service / action failures were this missing marker, not a
+            // transport fault — `Executor::open` + `register_node` had already
+            // succeeded).
+            ::log::info!("Waiting for messages");
             loop {
                 let _ = runtime.spin_once(::core::time::Duration::from_millis(10));
             }
