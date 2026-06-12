@@ -139,7 +139,7 @@ client coalesces to latest (triple-buffer). In-process `MockSession` E2E extendi
 
 ### Wave 3 — RT + backend validation
 
-#### 239.8 — RT hot-path + XRCE poll validation  🟡 (inspection ✅; QEMU benches → CI)
+#### 239.8 — RT hot-path + XRCE poll validation  ✅ (inspection + live Cyclone parity; benches → CI)
 - **No heap alloc, no lock (RFC-0002) — verified by inspection.** The three new
   dispatchers (`service_client_callback_try_process`,
   `action_client_callback_try_process`, `dispatch_feedback`) use only stack
@@ -153,9 +153,16 @@ client coalesces to latest (triple-buffer). In-process `MockSession` E2E extendi
   (`try_recv_reply_raw` / `try_recv_raw` flag+copy), so they fire at `drive_io`
   return with no `Promise::wait` budget-burn — the model is transport-agnostic
   (RFC-0041 backend-parity table).
-- **Deferred to CI:** the `wcet-cycles-qemu` / `wake-latency` numbers + a live
-  callback client over XRCE / zenoh-pico / Cyclone (needs the QEMU lanes).
-- **Files:** none (validation).
+- **Backend parity — live on CycloneDDS.** `test_native_cyclonedds_service_callback`
+  (C + C++) runs the callback service client over **CycloneDDS** (non-zenoh DDS
+  backend, domain-based discovery, no router) against the Cyclone service server —
+  both GREEN (4/4 replies dispatched at spin, no `Promise::wait`). Empirically
+  confirms the structurally-transport-agnostic claim beyond zenoh. zenoh /
+  zenoh-pico already covered by the zenoh callback E2Es.
+- **Deferred to CI:** the `wcet-cycles-qemu` / `wake-latency` cycle numbers + an
+  XRCE-agent live lane (needs the QEMU/agent infra).
+- **Files:** `examples/native/{c,cpp}/service-client-callback` built with
+  `-DNROS_RMW=cyclonedds` (`fixtures.toml`), `native_api.rs`.
 
 #### 239.9 — Example  ✅ (service-client; action-client → Wave 4)
 A callback-based service-client (and/or action-client) example mirroring an

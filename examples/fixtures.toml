@@ -996,6 +996,20 @@ lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/service-client"
 
+# RFC-0041 / Phase 239 — C service-client callback variant (zenoh + cyclonedds
+# for the 239.8 backend-parity check).
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/service-client-callback"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/native/c/service-client-callback"
+
 [[fixture]]
 platform = "native"
 lang = "c"
@@ -1103,6 +1117,26 @@ platform = "native"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/native/cpp/service-client"
+
+# RFC-0041 / Phase 239 — C++ callback variants. service-client-callback gets
+# zenoh + cyclonedds (239.8 backend-parity); action-client-callback gets zenoh.
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/service-client-callback"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/native/cpp/service-client-callback"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/action-client-callback"
 
 [[fixture]]
 platform = "native"

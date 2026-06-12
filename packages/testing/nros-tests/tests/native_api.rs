@@ -1295,6 +1295,52 @@ fn test_native_cyclonedds_service(#[values(Language::C, Language::Cpp)] lang: La
     );
 }
 
+/// Native CycloneDDS service server ↔ **callback** client (RFC-0041 / Phase 239.8).
+///
+/// Backend-parity check: the callback receive model is structurally
+/// transport-agnostic (one `drive_io` per spin, non-blocking drain); this proves
+/// it empirically on a non-zenoh backend — the reply is dispatched to the
+/// spin-time callback over CycloneDDS, no `Promise::wait` budget-burn.
+#[rstest]
+fn test_native_cyclonedds_service_callback(#[values(Language::C, Language::Cpp)] lang: Language) {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let domain = next_cyclonedds_domain();
+    let server_bin = cyclone_role_binary(lang, "service-server");
+    let client_bin = cyclone_role_binary(lang, "service-client-callback");
+
+    let mut server = spawn_cyclone_binary(
+        &server_bin,
+        &format!("{}-cyclonedds-service-server", lang.tag()),
+        &domain,
+    );
+    let _ = server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(30));
+    let mut client = spawn_cyclone_binary(
+        &client_bin,
+        &format!("{}-cyclonedds-service-client-callback", lang.tag()),
+        &domain,
+    );
+
+    let client_out = client
+        .wait_for_output_pattern("callback calls succeeded", Duration::from_secs(30))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!(
+        "{} Cyclone callback service client:\n{client_out}",
+        lang.label()
+    );
+    // Replies dispatched via the spin-time callback over CycloneDDS.
+    let cb = count_pattern(&client_out, "Response (callback)");
+    assert!(
+        cb >= 1,
+        "{} Cyclone callback service roundtrip produced no callback-dispatched replies.\nclient:\n{client_out}",
+        lang.label()
+    );
+}
+
 /// Native CycloneDDS action server ↔ client (Fibonacci goal → feedback → result).
 #[rstest]
 fn test_native_cyclonedds_action(#[values(Language::C, Language::Cpp)] lang: Language) {
