@@ -38,6 +38,7 @@
 #ifndef NROS_COMPONENT_H
 #define NROS_COMPONENT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -57,7 +58,7 @@ typedef struct nros_cpp_node_t nros_cpp_node_t;
 
 /** Raw zero-copy subscription callback — `(data, len, ctx)`. ABI-identical to
  *  the C++ `nros_cpp_subscription_message_callback_t`. */
-typedef void (*nros_c_subscription_callback_t)(const uint8_t *data, size_t len, void *ctx);
+typedef void (*nros_c_subscription_callback_t)(const uint8_t* data, size_t len, void* ctx);
 
 /* --- QoS mirror (layout-identical to the C++ `nros_cpp_qos_t`) ----------- */
 enum nros_c_qos_reliability_t { NROS_C_QOS_RELIABLE = 0, NROS_C_QOS_BEST_EFFORT = 1 };
@@ -105,11 +106,27 @@ static inline nros_cpp_qos_t nros_c_qos_default(void) {
  * callback borrows the wire bytes; `context` is carried through. C-ABI symbol
  * provided by nros-cpp (declared here for C; same signature as the C++ side).
  */
-int32_t nros_cpp_subscription_register(const nros_cpp_node_t *node, const char *topic,
-                                       const char *type_name, const char *type_hash,
+int32_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* topic,
+                                       const char* type_name, const char* type_hash,
                                        nros_cpp_qos_t qos, nros_c_subscription_callback_t callback,
-                                       void *context, uint8_t sched_context,
-                                       size_t *out_handle_id);
+                                       void* context, uint8_t sched_context, size_t* out_handle_id);
+
+/** Raw callback-style service handler: receives the request bytes (`req`,
+ *  `req_len`), fills the reply into `resp` (capacity `resp_cap`) + writes the
+ *  byte count to `*resp_len`; returns `true` to send, `false` to drop. ABI-
+ *  identical to the C++ `nros_cpp_service_request_callback_t`. */
+typedef bool (*nros_c_service_request_callback_t)(const uint8_t* req, size_t req_len, uint8_t* resp,
+                                                  size_t resp_cap, size_t* resp_len, void* ctx);
+
+/**
+ * Register a raw callback-style service server on the executor that owns `node`.
+ * The handler runs during `spin_once`. C-ABI symbol provided by nros-cpp.
+ */
+int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char* service_name,
+                                         const char* type_name, const char* type_hash,
+                                         nros_cpp_qos_t qos,
+                                         nros_c_service_request_callback_t callback, void* context,
+                                         uint8_t sched_context, size_t* out_handle_id);
 
 /* --- Factory / configure export macro ----------------------------------- */
 
@@ -129,13 +146,13 @@ int32_t nros_cpp_subscription_register(const nros_cpp_node_t *node, const char *
  * lives in this TU (no heap, no sizeof leak to the Entry).
  */
 #define NROS_C_COMPONENT(StructT, configure_fn)                                                    \
-    static StructT NROS_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                     \
-    void *NROS_C_PASTE(NROS_C_PASTE(__nros_c_component_, NROS_PKG_NAME), _create)(void) {           \
-        return &NROS_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                        \
+    static StructT NROS_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                    \
+    void* NROS_C_PASTE(NROS_C_PASTE(__nros_c_component_, NROS_PKG_NAME), _create)(void) {          \
+        return &NROS_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                       \
     }                                                                                              \
-    nros_ret_t NROS_C_PASTE(NROS_C_PASTE(__nros_c_component_, NROS_PKG_NAME), _configure)(          \
-        const nros_cpp_node_t *node, void *self) {                                                  \
-        return configure_fn(node, (StructT *)self);                                                 \
+    nros_ret_t NROS_C_PASTE(NROS_C_PASTE(__nros_c_component_, NROS_PKG_NAME),                      \
+                            _configure)(const nros_cpp_node_t* node, void* self) {                 \
+        return configure_fn(node, (StructT*)self);                                                 \
     }
 
 #ifdef __cplusplus

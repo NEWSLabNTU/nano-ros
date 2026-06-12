@@ -36,6 +36,7 @@
 
 #include "nros/node.hpp"
 #include "nros/result.hpp"
+#include "nros/service.hpp"      // nros_cpp_service_server_register (raw callback)
 #include "nros/subscription.hpp" // nros_cpp_subscription_register (raw callback)
 
 namespace nros {
@@ -96,6 +97,42 @@ template <class C, void (C::*Method)()>
 inline Result bind_timer(Node& node, Timer& out, uint64_t period_ms, C* self) {
     return node.create_timer(
         out, period_ms, [](void* ctx) { (static_cast<C*>(ctx)->*Method)(); }, self);
+}
+
+/// Register a **raw** callback-style service server on the executor that owns
+/// `node`. The handler receives the request's wire bytes (`req`, `req_len`) and
+/// fills the reply into `resp` (capacity `resp_cap`), writing the byte count to
+/// `*resp_len`; return `true` to send the reply, `false` to drop. `ctx` is
+/// carried through. The executor owns the server; it dispatches the handler
+/// during `spin_once`. (Thin wrapper over `nros_cpp_service_server_register`.)
+inline Result create_service_raw(Node& node, const char* service, const char* type_name,
+                                 nros_cpp_service_request_callback_t callback, void* ctx,
+                                 const QoS& qos = QoS::services()) {
+    const nros_cpp_node_t* h = node.ffi_handle();
+    if (h == nullptr) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+    size_t handle = static_cast<size_t>(-1);
+    nros_cpp_ret_t ret = nros_cpp_service_server_register(
+        h, service, type_name, "", ffi_qos, callback, ctx, /*sched_context=*/0, &handle);
+    return Result(ret);
+}
+
+/// Bind a component **member**
+/// `bool C::on_request(const uint8_t* req, size_t req_len, uint8_t* resp,
+///                     size_t resp_cap, size_t* resp_len)`
+/// as a raw service handler. Same no-alloc member-fn-pointer-as-template-param
+/// trampoline; `self` is the executor `ctx`.
+template <class C, bool (C::*Method)(const uint8_t* req, size_t req_len, uint8_t* resp,
+                                     size_t resp_cap, size_t* resp_len)>
+inline Result bind_service_raw(Node& node, const char* service, const char* type_name, C* self,
+                               const QoS& qos = QoS::services()) {
+    return create_service_raw(
+        node, service, type_name,
+        [](const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap, size_t* resp_len,
+           void* ctx) -> bool {
+            return (static_cast<C*>(ctx)->*Method)(req, req_len, resp, resp_cap, resp_len);
+        },
+        self, qos);
 }
 
 } // namespace nros

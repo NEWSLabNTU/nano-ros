@@ -180,13 +180,26 @@ wave lands).
       typed ELFs and run the NuttX two-process real-logic E2E (build tier).
 
 ### 240.5 — Service / action on the executor (the unspiked transports)
-- [ ] Prove service-server / action-server **callback** dispatch
-      (`nros_cpp_service_server_register`, `nros_cpp_action_server_register`) +
-      the **poll** clients (`try_recv_*`) boot + exchange on NuttX. (Closes the
-      RFC-0043 §Spike scope gap.)
-- [ ] Migrate `examples/qemu-arm-nuttx/{c,cpp}/{service-*,action-*}` to real
-      handler bodies. (Clients: poll now; move to callbacks when RFC-0041's C/C++
-      wave lands — phase-239 follow-up.)
+- **Service-server DONE 2026-06-12** (callback dispatch on the executor):
+  - [x] C++ `bind_service_raw<C, &C::on_request>` over
+        `nros_cpp_service_server_register` (`component.hpp`) — member handler
+        `bool(req, req_len, resp, resp_cap, resp_len)` bound by identity, `this`
+        as ctx, no-alloc trampoline; `create_service_raw` wrapper.
+  - [x] C `nros_cpp_service_server_register` prototype + callback typedef
+        (`component.h`); the C component's `configure` calls it directly.
+  - [x] Migrated `examples/qemu-arm-nuttx/{cpp,c}/service-server` to typed
+        components with **real** AddTwoInts handlers (decode CDR int64 a/b →
+        write int64 sum), `TYPED` carrier; keep the `Waiting for requests`
+        marker. Both gcc-syntax-checked; cpp mirrors the proven `bind_*` pattern.
+        The typed carrier is component-agnostic (same `configure(node)` shape) —
+        no template change needed.
+- [ ] **240.5-action** — action-server callback binding (heavier:
+      `ActionServer<A>` storage + `nros_cpp_action_server_set_callbacks` goal/
+      cancel/accepted, ctx-carrying) + migrate the action-server examples.
+- [ ] **240.5-clients** — service/action **poll** clients (`try_recv_*`) as typed
+      components (a timer member drives the poll); migrate `{c,cpp}/service-client`,
+      `action-client`. (Clients move to callbacks when RFC-0041's C/C++ wave lands.)
+- [ ] **240.5-E2E** — cross-build + NuttX boot/exchange (build tier).
 
 ### 240.6 — Retire the interpreter
 - [ ] Delete `EntryNodeRuntime` + `detail::entry_*` synthesis (`main.hpp`); delete

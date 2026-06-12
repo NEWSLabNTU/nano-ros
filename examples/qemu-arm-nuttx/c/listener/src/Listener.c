@@ -17,8 +17,8 @@ typedef struct {
     int recv;
 } listener_t;
 
-static void on_raw(const uint8_t *data, size_t len, void *ctx) {
-    listener_t *self = (listener_t *)ctx;
+static void on_raw(const uint8_t* data, size_t len, void* ctx) {
+    listener_t* self = (listener_t*)ctx;
     /* CDR-encoded std_msgs/Int32: 4-byte encapsulation header, then LE i32. */
     int32_t v = 0;
     if (len >= 8) {
@@ -29,7 +29,7 @@ static void on_raw(const uint8_t *data, size_t len, void *ctx) {
     self->recv++;
 }
 
-static nros_ret_t listener_configure(const nros_cpp_node_t *node, listener_t *self) {
+static nros_ret_t listener_configure(const nros_cpp_node_t* node, listener_t* self) {
     size_t handle;
     int32_t rc = nros_cpp_subscription_register(node, "/chatter", "std_msgs/msg/Int32", "",
                                                 nros_c_qos_default(), on_raw, self,

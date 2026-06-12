@@ -1,14 +1,27 @@
-// Phase 212.L Component pkg — NuttX C++ AddTwoInts service server.
+// NuttX C++ AddTwoInts service server — typed component (RFC-0043, phase-240.5).
+//
+// `configure` binds the member `handle_add` (by identity) as a raw callback-
+// style service on `/add_two_ints`; the real handler decodes the CDR request
+// (int64 a, b) and writes the CDR reply (int64 sum). No interpreter synthesis.
 #ifndef NUTTX_CPP_SERVICE_SERVER_ADDTWOINTSSERVER_HPP
 #define NUTTX_CPP_SERVICE_SERVER_ADDTWOINTSSERVER_HPP
 
-#include <nros/node_pkg.hpp>
+#include <cstddef>
+#include <cstdint>
+
+#include <nros/component.hpp>
+#include <nros/nros.hpp>
 
 namespace nuttx_cpp_service_server {
 
 class AddTwoIntsServer {
+    // Real handler bound by identity: fills `resp` from `req`, returns true to
+    // send the reply. (No callback name, no ctx arg — `this` is the executor ctx.)
+    bool handle_add(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
+                    size_t* resp_len);
+
   public:
-    static ::nros::Result register_node(::nros::NodeContext& context);
+    ::nros::Result configure(::nros::Node& node);
 };
 
 } // namespace nuttx_cpp_service_server

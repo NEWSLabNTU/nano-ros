@@ -11,13 +11,17 @@ set(NANO_ROS_BOARD    nuttx-qemu-arm)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
-# Message deps resolved from the sibling package.xml SSoT (issue #11).
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
+# Phase 240.5 (RFC-0043) — TYPED carrier: the bootable ELF constructs the C
+# component via its factory/configure seam (NROS_C_COMPONENT) + registers the
+# real service handler on the executor. The raw service register carries the
+# type name as a string, so no generated message headers are needed.
 nano_ros_node_register(
-    NAME    service_server
-    CLASS   nuttx_c_service_server::AddTwoIntsServer
-    SOURCES src/AddTwoIntsServer.c ${example_interfaces_GENERATED_SOURCES}
-    DEPLOY  nuttx)
+    NAME     service_server
+    CLASS    nuttx_c_service_server::AddTwoIntsServer
+    LANGUAGE C
+    TYPED
+    SOURCES  src/AddTwoIntsServer.c
+    DEPLOY   nuttx)
 
 nano_ros_deploy(TARGET nuttx RMW ${NROS_RMW} DOMAIN_ID 0)
