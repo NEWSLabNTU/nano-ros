@@ -1,0 +1,19 @@
+/* Slidev auto-loads ./style.css. Presentation-time tweaks live here. */
+
+/* Goto dialog (the `g`-key slide-jump panel) overlays the top-right of the
+   slide and, on remote/touch clients, can miss the focus-out that closes it,
+   so it sits there blocking content. Not needed for a linear talk — navigate
+   with arrows / click / overview (`o`). Hard-hide it. */
+#slidev-goto-dialog {
+  display: none !important;
+}
+
+/* PDF export captures each slide at its FINAL click step, where the line-focus
+   directive ({all|1-5|...}) dims every non-focused line to 0.3 — code reads as
+   washed-out gray. The live browser deck shows it bright at rest. Slidev's print
+   route adds `.print` to <html>; scope the un-dim to it so the exported PDF gets
+   fully-readable code while the live deck keeps its strong click-through highlight.
+   (@media print does NOT work — Slidev exports in screen emulation.) */
+html.print .slidev-code .slidev-code-dishonored {
+  opacity: 1 !important;
+}
