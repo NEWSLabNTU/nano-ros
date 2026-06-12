@@ -128,6 +128,85 @@ int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char
                                          nros_c_service_request_callback_t callback, void* context,
                                          uint8_t sched_context, size_t* out_handle_id);
 
+/* --- Action server (executor-scoped; needs the `executor` configure arg) -- */
+
+/** Storage sizes mirror the C++ `NROS_CPP_*` config values (nuttx defaults).
+ *  The build may `-D` override; a C component declares an 8-aligned buffer of
+ *  the right size for the transport it binds. */
+#ifndef NROS_C_ACTION_SERVER_STORAGE_SIZE
+#define NROS_C_ACTION_SERVER_STORAGE_SIZE 80
+#endif
+#ifndef NROS_C_SERVICE_CLIENT_STORAGE_SIZE
+#define NROS_C_SERVICE_CLIENT_STORAGE_SIZE 4632
+#endif
+
+/** GoalResponse discriminant returned from the goal callback. */
+enum nros_c_goal_response_t {
+    NROS_C_GOAL_REJECT = 0,
+    NROS_C_GOAL_ACCEPT_AND_EXECUTE = 1,
+    NROS_C_GOAL_ACCEPT_AND_DEFER = 2
+};
+/** CancelResponse discriminant returned from the cancel callback. */
+enum nros_c_cancel_response_t { NROS_C_CANCEL_REJECT = 0, NROS_C_CANCEL_ACCEPT = 1 };
+
+/** Goal callback: receives the goal UUID + the goal's CDR bytes; returns a
+ *  `nros_c_goal_response_t`. ABI-identical to `nros_cpp_goal_callback_t`. */
+typedef int32_t (*nros_c_goal_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
+                                          size_t len, void* ctx);
+/** Cancel callback: returns a `nros_c_cancel_response_t`. */
+typedef int32_t (*nros_c_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
+
+/* Raw action-server FFI (C-ABI symbols from nros-cpp; node + executor scoped). */
+int32_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* action_name,
+                                      const char* type_name, const char* type_hash,
+                                      nros_cpp_qos_t qos, void* storage);
+int32_t nros_cpp_action_server_register(void* storage, void* executor_handle,
+                                        const char* action_name, const char* type_name,
+                                        const char* type_hash, uint8_t sched_context);
+int32_t nros_cpp_action_server_set_callbacks(void* handle, nros_c_goal_callback_t goal_cb,
+                                             nros_c_cancel_callback_t cancel_cb, void* ctx);
+int32_t nros_cpp_action_server_complete_goal(void* handle, void* executor_handle,
+                                             const uint8_t (*goal_id)[16],
+                                             const uint8_t* result_buf, size_t result_len);
+
+/* --- Timer (executor-scoped) -------------------------------------------- */
+
+/** Timer callback — `(ctx)`. ABI-identical to `nros_cpp_timer_callback_t`. */
+typedef void (*nros_c_timer_callback_t)(void* ctx);
+
+/** Create + register a repeating timer on the executor (fires during spin_once).
+ *  C-ABI symbol from nros-cpp. */
+int32_t nros_cpp_timer_create(void* executor_handle, uint64_t period_ms,
+                              nros_c_timer_callback_t callback, void* context,
+                              size_t* out_handle_id);
+
+/* --- Service client (poll model) ---------------------------------------- */
+
+int32_t nros_cpp_service_client_create(const nros_cpp_node_t* node, const char* service_name,
+                                       const char* type_name, const char* type_hash,
+                                       nros_cpp_qos_t qos, void* storage);
+int32_t nros_cpp_service_client_send_request(void* storage, const uint8_t* req_data,
+                                             size_t req_len);
+int32_t nros_cpp_service_client_try_recv_reply(void* storage, uint8_t* resp_data,
+                                               size_t resp_capacity, size_t* resp_len);
+
+/* --- Action client (poll model) ----------------------------------------- */
+
+#ifndef NROS_C_ACTION_CLIENT_STORAGE_SIZE
+#define NROS_C_ACTION_CLIENT_STORAGE_SIZE 48
+#endif
+
+int32_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,
+                                      const char* type_name, const char* type_hash,
+                                      nros_cpp_qos_t qos, void* storage);
+int32_t nros_cpp_action_client_send_goal(void* handle, const uint8_t* goal_buf, size_t goal_len,
+                                         uint8_t (*goal_id_out)[16]);
+int32_t nros_cpp_action_client_try_recv_goal_response(void* handle, uint8_t* out_data,
+                                                      size_t out_capacity, size_t* out_len);
+int32_t nros_cpp_action_client_get_result(void* handle, void* executor_handle,
+                                          const uint8_t (*goal_id)[16], uint8_t* result_buf,
+                                          size_t result_buf_len, size_t* result_len);
+
 /* --- Factory / configure export macro ----------------------------------- */
 
 #define NROS_C_PASTE_(a, b) a##b
@@ -142,8 +221,11 @@ int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char
  *   nros_ret_t __nros_c_component_<pkg>_configure(const nros_cpp_node_t*, void*);
  *
  * `StructT` is the component state struct; `configure_fn` has signature
- * `nros_ret_t configure_fn(const nros_cpp_node_t* node, StructT* self)`. Storage
- * lives in this TU (no heap, no sizeof leak to the Entry).
+ * `nros_ret_t configure_fn(const nros_cpp_node_t* node, void* executor, StructT* self)`.
+ * `executor` is the opaque executor handle (the C analog of
+ * `Node::executor_handle()`) — needed for executor-scoped transports (action
+ * server register / complete_goal); node-scoped binds (sub / service) ignore it.
+ * Storage lives in this TU (no heap, no sizeof leak to the Entry).
  */
 #define NROS_C_COMPONENT(StructT, configure_fn)                                                    \
     static StructT NROS_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                    \
@@ -151,8 +233,8 @@ int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char
         return &NROS_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                       \
     }                                                                                              \
     nros_ret_t NROS_C_PASTE(NROS_C_PASTE(__nros_c_component_, NROS_PKG_NAME),                      \
-                            _configure)(const nros_cpp_node_t* node, void* self) {                 \
-        return configure_fn(node, (StructT*)self);                                                 \
+                            _configure)(const nros_cpp_node_t* node, void* executor, void* self) { \
+        return configure_fn(node, executor, (StructT*)self);                                       \
     }
 
 #ifdef __cplusplus

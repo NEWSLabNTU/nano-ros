@@ -12,10 +12,14 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
+# Phase 240.5 (RFC-0043) — TYPED carrier: poll-style service client component.
 nano_ros_node_register(
-    NAME    service_client
-    CLASS   nuttx_cpp_service_client::AddTwoIntsClient
-    SOURCES src/AddTwoIntsClient.cpp
-    DEPLOY  nuttx)
+    NAME     service_client
+    CLASS    nuttx_cpp_service_client::AddTwoIntsClient
+    LANGUAGE CPP
+    HEADER   AddTwoIntsClient.hpp
+    TYPED
+    SOURCES  src/AddTwoIntsClient.cpp
+    DEPLOY   nuttx)
 
 nano_ros_deploy(TARGET nuttx RMW ${NROS_RMW} DOMAIN_ID 0)

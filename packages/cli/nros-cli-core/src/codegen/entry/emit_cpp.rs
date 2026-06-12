@@ -243,7 +243,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         let _ = writeln!(out, "    void* __nros_c_component_{pkg}_create(void);");
         let _ = writeln!(
             out,
-            "    int32_t __nros_c_component_{pkg}_configure(const ::nros_cpp_node_t* node, void* self);"
+            "    int32_t __nros_c_component_{pkg}_configure(const ::nros_cpp_node_t* node, void* executor, void* self);"
         );
         seen_c_pkgs.push(pkg);
     }
@@ -284,7 +284,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             );
             let _ = writeln!(
                 out,
-                "        int32_t crc = __nros_c_component_{pkg}_configure(__nros_node_{i}.ffi_handle(), self);"
+                "        int32_t crc = __nros_c_component_{pkg}_configure(__nros_node_{i}.ffi_handle(), __nros_node_{i}.executor_handle(), self);"
             );
             out.push_str("        if (crc != 0) return crc;\n");
         } else {
@@ -431,15 +431,13 @@ mod tests {
         // extern "C" factory + configure decls, mangled on pkg.
         assert!(src.contains("void* __nros_c_component_sensor_pkg_create(void);"));
         assert!(src.contains(
-            "int32_t __nros_c_component_sensor_pkg_configure(const ::nros_cpp_node_t* node, void* self);"
+            "int32_t __nros_c_component_sensor_pkg_configure(const ::nros_cpp_node_t* node, void* executor, void* self);"
         ));
-        // setup uses create() + configure(ffi_handle, self) — not a C++ class.
+        // setup uses create() + configure(ffi_handle, executor_handle, self) — not a C++ class.
         assert!(src.contains("void* self = __nros_c_component_sensor_pkg_create();"));
-        assert!(
-            src.contains(
-                "__nros_c_component_sensor_pkg_configure(__nros_node_0.ffi_handle(), self)"
-            )
-        );
+        assert!(src.contains(
+            "__nros_c_component_sensor_pkg_configure(__nros_node_0.ffi_handle(), __nros_node_0.executor_handle(), self)"
+        ));
         // No C++ class storage / header / .configure for the C node.
         assert!(!src.contains("static ::sensor_pkg::Sensor"));
         assert!(!src.contains("#include \"sensor_pkg/Sensor.hpp\""));

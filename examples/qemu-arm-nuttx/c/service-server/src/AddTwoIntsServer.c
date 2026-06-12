@@ -53,7 +53,9 @@ static bool handle_add(const uint8_t* req, size_t req_len, uint8_t* resp, size_t
     return true;
 }
 
-static nros_ret_t server_configure(const nros_cpp_node_t* node, add_server_t* self) {
+static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
+                                   add_server_t* self) {
+    (void)executor; /* node-scoped service; executor unused */
     size_t handle;
     int32_t rc =
         nros_cpp_service_server_register(node, "/add_two_ints", "example_interfaces/srv/AddTwoInts",

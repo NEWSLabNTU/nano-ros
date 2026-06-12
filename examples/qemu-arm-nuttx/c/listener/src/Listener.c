@@ -29,7 +29,9 @@ static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     self->recv++;
 }
 
-static nros_ret_t listener_configure(const nros_cpp_node_t* node, listener_t* self) {
+static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
+                                     listener_t* self) {
+    (void)executor; /* node-scoped sub; executor unused */
     size_t handle;
     int32_t rc = nros_cpp_subscription_register(node, "/chatter", "std_msgs/msg/Int32", "",
                                                 nros_c_qos_default(), on_raw, self,

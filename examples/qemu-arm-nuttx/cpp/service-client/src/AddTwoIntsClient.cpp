@@ -1,24 +1,63 @@
 /// @file AddTwoIntsClient.cpp
-/// @brief NuttX C++ AddTwoInts service client — Phase 212.L Component pkg.
-///
-/// Declarative metadata; imperative call sequencing follows once the
-/// runtime grows a TickCtx service-client seam.
+/// @brief NuttX C++ AddTwoInts service client — typed poll component (240.5).
 
 #include "AddTwoIntsClient.hpp"
 
+#include <cstdio>
+
 namespace nuttx_cpp_service_client {
 
-::nros::Result AddTwoIntsClient::register_node(::nros::NodeContext& ctx) {
-    ::nros::DeclaredNode node;
-    auto opts = ::nros::NodeOptions::make("add_two_ints_client");
-    auto r = ctx.create_node(node, opts);
-    if (!r.ok()) return r;
+static int64_t read_i64_le(const uint8_t* p) {
+    uint64_t v = 0;
+    for (int i = 0; i < 8; ++i) {
+        v |= static_cast<uint64_t>(p[i]) << (8 * i);
+    }
+    return static_cast<int64_t>(v);
+}
 
-    ::nros::DeclaredEntity client;
-    return node.create_service_client(client, "/add_two_ints", "example_interfaces/srv/AddTwoInts");
+static void write_i64_le(uint8_t* p, int64_t x) {
+    uint64_t v = static_cast<uint64_t>(x);
+    for (int i = 0; i < 8; ++i) {
+        p[i] = static_cast<uint8_t>(v >> (8 * i));
+    }
+}
+
+void AddTwoIntsClient::on_tick() {
+    if (!awaiting_) {
+        // Request CDR: encapsulation header (CDR_LE) + int64 a + int64 b.
+        uint8_t req[20];
+        req[0] = 0x00;
+        req[1] = 0x01;
+        req[2] = 0x00;
+        req[3] = 0x00;
+        write_i64_le(req + 4, a_);
+        write_i64_le(req + 12, b_);
+        if (nros_cpp_service_client_send_request(client_.bytes, req, sizeof(req)) == 0) {
+            awaiting_ = true;
+        }
+        return;
+    }
+    uint8_t resp[64];
+    size_t len = 0;
+    if (nros_cpp_service_client_try_recv_reply(client_.bytes, resp, sizeof(resp), &len) == 0 &&
+        len >= 12) {
+        int64_t sum = read_i64_le(resp + 4);
+        std::printf("Response: %lld\n", static_cast<long long>(sum));
+        ++a_;
+        ++b_;
+        awaiting_ = false;
+    }
+}
+
+::nros::Result AddTwoIntsClient::configure(::nros::Node& node) {
+    ::nros::Result r = ::nros::create_service_client_raw(node, client_.bytes, "/add_two_ints",
+                                                         "example_interfaces/srv/AddTwoInts");
+    if (!r.ok()) return r;
+    r = ::nros::bind_timer<AddTwoIntsClient, &AddTwoIntsClient::on_tick>(node, timer_, 1000, this);
+    if (r.ok()) {
+        std::printf("Sending requests\n");
+    }
+    return r;
 }
 
 } // namespace nuttx_cpp_service_client
-
-NROS_NODE_REGISTER(nuttx_cpp_service_client::AddTwoIntsClient,
-                   "nuttx_cpp_service_client::AddTwoIntsClient");

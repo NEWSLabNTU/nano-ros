@@ -205,12 +205,29 @@ wave lands).
         CDR, `nros_cpp_action_server_complete_goal`); prints `Waiting for goals` /
         `Goal accepted`. **CDR hand-encoding + action protocol need build-tier
         validation** (no C++/zenoh+NuttX cross-build in this env).
-- [ ] **240.5-action-C** — C action-server (needs an executor-handle-from-node C
-      seam; the C `configure` only gets the node handle today).
-- [ ] **240.5-clients** — service/action **poll** clients (`try_recv_*`) as typed
-      components (a timer member drives the poll); migrate `{c,cpp}/service-client`,
-      `action-client`. (Clients move to callbacks when RFC-0041's C/C++ wave lands.)
-- [ ] **240.5-E2E** — cross-build + NuttX boot/exchange (build tier).
+- **C executor seam + C action-server DONE 2026-06-12**:
+  - [x] Uniform C `configure(node, executor, self)` — the C component now gets the
+        opaque executor handle (the C analog of `Node::executor_handle()`) for
+        executor-scoped transports. Rippled through `NROS_C_COMPONENT`, the
+        codegen `emit_typed` C branch + the C typed carrier template + the
+        existing C listener/service-server configures (executor unused there).
+  - [x] `component.h`: C action FFI (create/register/set_callbacks/complete_goal +
+        goal/cancel typedefs + GoalResponse/CancelResponse consts + storage size)
+        + a C timer FFI. Migrated `c/action-server` to a typed Fibonacci component
+        (symmetric with the cpp one). gcc-syntax-checked.
+- **Poll clients (service + action, C++ + C) DONE 2026-06-12**:
+  - [x] `component.hpp`: `ServiceClientStorage`/`ActionClientStorage` + `create_*_raw`
+        wrappers. `component.h`: the C poll-client FFI (service_client create/send/
+        try_recv; action_client create/send_goal/try_recv_goal_response/get_result)
+        + storage sizes.
+  - [x] Migrated `{cpp,c}/service-client` (timer-driven send/poll → prints
+        `Response: N`) and `{cpp,c}/action-client` (timer-driven poll state machine:
+        send goal → poll acceptance → get_result → prints `Result received: N terms`)
+        to typed poll components. All hand-rolled CDR; gcc-syntax-checked (C),
+        pattern-aligned (C++). (Clients move to callbacks when RFC-0041's C/C++
+        wave lands.)
+- [ ] **240.5-E2E** — cross-build the migrated ELFs + NuttX boot/exchange
+      (build tier; validates the hand-rolled CDR + action protocol end-to-end).
 
 ### 240.6 — Retire the interpreter
 - [ ] Delete `EntryNodeRuntime` + `detail::entry_*` synthesis (`main.hpp`); delete

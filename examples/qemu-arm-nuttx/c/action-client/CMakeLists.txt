@@ -11,13 +11,14 @@ set(NANO_ROS_BOARD    nuttx-qemu-arm)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
-# Message deps resolved from the sibling package.xml SSoT (issue #11).
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
+# Phase 240.5 (RFC-0043) — TYPED carrier: poll-style C action client component.
 nano_ros_node_register(
-    NAME    action_client
-    CLASS   nuttx_c_action_client::FibonacciClient
-    SOURCES src/FibonacciClient.c ${example_interfaces_GENERATED_SOURCES}
-    DEPLOY  nuttx)
+    NAME     action_client
+    CLASS    nuttx_c_action_client::FibonacciClient
+    LANGUAGE C
+    TYPED
+    SOURCES  src/FibonacciClient.c
+    DEPLOY   nuttx)
 
 nano_ros_deploy(TARGET nuttx RMW ${NROS_RMW} DOMAIN_ID 0)

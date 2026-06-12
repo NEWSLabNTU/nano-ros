@@ -189,6 +189,39 @@ inline Result bind_action_server_raw(Node& node, void* storage, const char* acti
         self, qos);
 }
 
+/// Storage a component must own for a raw, poll-style service client (8-aligned,
+/// app lifetime). Send with `nros_cpp_service_client_send_request(bytes, …)`,
+/// poll with `nros_cpp_service_client_try_recv_reply(bytes, …)`.
+struct ServiceClientStorage {
+    alignas(8) uint8_t bytes[NROS_SERVICE_CLIENT_SIZE];
+};
+
+/// Create a raw poll-style service client into the component-owned `storage`.
+inline Result create_service_client_raw(Node& node, void* storage, const char* service,
+                                        const char* type_name, const QoS& qos = QoS::services()) {
+    const nros_cpp_node_t* h = node.ffi_handle();
+    if (h == nullptr) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+    return Result(nros_cpp_service_client_create(h, service, type_name, "", ffi_qos, storage));
+}
+
+/// Storage a component must own for a raw, poll-style action client.
+struct ActionClientStorage {
+    alignas(8) uint8_t bytes[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE];
+};
+
+/// Create a raw poll-style action client into the component-owned `storage`.
+/// Drive it with `nros_cpp_action_client_send_goal` /
+/// `nros_cpp_action_client_try_recv_goal_response` /
+/// `nros_cpp_action_client_get_result`.
+inline Result create_action_client_raw(Node& node, void* storage, const char* action_name,
+                                       const char* type_name, const QoS& qos = QoS::services()) {
+    const nros_cpp_node_t* h = node.ffi_handle();
+    if (h == nullptr) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+    return Result(nros_cpp_action_client_create(h, action_name, type_name, "", ffi_qos, storage));
+}
+
 } // namespace nros
 
 /// Convenience: bind a component subscription member without spelling the

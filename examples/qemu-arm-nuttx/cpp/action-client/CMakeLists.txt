@@ -12,10 +12,14 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
+# Phase 240.5 (RFC-0043) — TYPED carrier: poll-style action client component.
 nano_ros_node_register(
-    NAME    action_client
-    CLASS   nuttx_cpp_action_client::FibonacciClient
-    SOURCES src/FibonacciClient.cpp
-    DEPLOY  nuttx)
+    NAME     action_client
+    CLASS    nuttx_cpp_action_client::FibonacciClient
+    LANGUAGE CPP
+    HEADER   FibonacciClient.hpp
+    TYPED
+    SOURCES  src/FibonacciClient.cpp
+    DEPLOY   nuttx)
 
 nano_ros_deploy(TARGET nuttx RMW ${NROS_RMW} DOMAIN_ID 0)
