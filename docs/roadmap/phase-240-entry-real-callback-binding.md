@@ -193,9 +193,20 @@ wave lands).
         marker. Both gcc-syntax-checked; cpp mirrors the proven `bind_*` pattern.
         The typed carrier is component-agnostic (same `configure(node)` shape) —
         no template change needed.
-- [ ] **240.5-action** — action-server callback binding (heavier:
-      `ActionServer<A>` storage + `nros_cpp_action_server_set_callbacks` goal/
-      cancel/accepted, ctx-carrying) + migrate the action-server examples.
+- **Action-server (C++) DONE 2026-06-12**:
+  - [x] `Node::executor_handle()` accessor (the raw action FFI is executor- not
+        node-scoped). `component.hpp`: `ActionServerStorage` (arena-held buffer) +
+        `create_action_server_raw` (create → register → set_callbacks) +
+        `bind_action_server_raw<C, &C::on_goal, &C::on_cancel>` — ctx-carrying
+        goal/cancel trampolines bound by identity.
+  - [x] Migrated `examples/qemu-arm-nuttx/cpp/action-server` to a typed Fibonacci
+        component: `on_goal` decodes the CDR `int32 order` + accepts, a bound
+        timer executes (computes the sequence, hand-encodes the `int32[]` result
+        CDR, `nros_cpp_action_server_complete_goal`); prints `Waiting for goals` /
+        `Goal accepted`. **CDR hand-encoding + action protocol need build-tier
+        validation** (no C++/zenoh+NuttX cross-build in this env).
+- [ ] **240.5-action-C** — C action-server (needs an executor-handle-from-node C
+      seam; the C `configure` only gets the node handle today).
 - [ ] **240.5-clients** — service/action **poll** clients (`try_recv_*`) as typed
       components (a timer member drives the poll); migrate `{c,cpp}/service-client`,
       `action-client`. (Clients move to callbacks when RFC-0041's C/C++ wave lands.)

@@ -34,6 +34,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "nros/action_server.hpp" // raw action-server register + set_callbacks + storage size
 #include "nros/node.hpp"
 #include "nros/result.hpp"
 #include "nros/service.hpp"      // nros_cpp_service_server_register (raw callback)
@@ -131,6 +132,59 @@ inline Result bind_service_raw(Node& node, const char* service, const char* type
         [](const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap, size_t* resp_len,
            void* ctx) -> bool {
             return (static_cast<C*>(ctx)->*Method)(req, req_len, resp, resp_cap, resp_len);
+        },
+        self, qos);
+}
+
+/// Storage a component must own for a raw action server (8-aligned, lives for
+/// the app lifetime — the executor arena holds it). Declare one per action:
+/// `::nros::ActionServerStorage fib_storage_;` then pass `fib_storage_.bytes`.
+struct ActionServerStorage {
+    alignas(8) uint8_t bytes[NROS_CPP_ACTION_SERVER_STORAGE_SIZE];
+};
+
+/// Register a **raw** action server on the executor that owns `node`: create →
+/// register → set goal/cancel callbacks. `storage` is the component-owned buffer
+/// (`ActionServerStorage::bytes`). The goal callback returns a `GoalResponse`
+/// discriminant (`int32_t`; 0 reject / 1 accept-and-execute / 2 accept-defer),
+/// the cancel callback a `CancelResponse`. `ctx` is carried through. After a
+/// goal is accepted, complete it with `nros_cpp_action_server_complete_goal(
+/// storage, node.executor_handle(), goal_id, result_cdr, len)` (and feedback via
+/// `nros_cpp_action_server_publish_feedback`).
+inline Result create_action_server_raw(Node& node, void* storage, const char* action_name,
+                                       const char* type_name, nros_cpp_goal_callback_t goal_cb,
+                                       nros_cpp_cancel_callback_t cancel_cb, void* ctx,
+                                       const QoS& qos = QoS::services()) {
+    const nros_cpp_node_t* h = node.ffi_handle();
+    void* exec = node.executor_handle();
+    if (h == nullptr || exec == nullptr) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+    nros_cpp_ret_t ret =
+        nros_cpp_action_server_create(h, action_name, type_name, "", ffi_qos, storage);
+    if (ret != 0) return Result(ret);
+    ret = nros_cpp_action_server_register(storage, exec, action_name, type_name, "",
+                                          /*sched_context=*/0);
+    if (ret != 0) return Result(ret);
+    return Result(nros_cpp_action_server_set_callbacks(storage, goal_cb, cancel_cb, ctx));
+}
+
+/// Bind component **members**
+/// `int32_t C::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len)`
+/// and `int32_t C::on_cancel(const uint8_t goal_id[16])` as the action server's
+/// goal/cancel callbacks (by identity, `self` as ctx, no-alloc trampolines).
+template <class C,
+          int32_t (C::*GoalMethod)(const uint8_t goal_id[16], const uint8_t* data, size_t len),
+          int32_t (C::*CancelMethod)(const uint8_t goal_id[16])>
+inline Result bind_action_server_raw(Node& node, void* storage, const char* action_name,
+                                     const char* type_name, C* self,
+                                     const QoS& qos = QoS::services()) {
+    return create_action_server_raw(
+        node, storage, action_name, type_name,
+        [](const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) -> int32_t {
+            return (static_cast<C*>(ctx)->*GoalMethod)(goal_id, data, len);
+        },
+        [](const uint8_t goal_id[16], void* ctx) -> int32_t {
+            return (static_cast<C*>(ctx)->*CancelMethod)(goal_id);
         },
         self, qos);
 }

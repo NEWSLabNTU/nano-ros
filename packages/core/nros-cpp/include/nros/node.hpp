@@ -217,6 +217,14 @@ class Node {
     /// Returns `nullptr` on an uninitialized node.
     const nros_cpp_node_t* ffi_handle() const { return initialized_ ? &handle_ : nullptr; }
 
+    /// Phase 240.5 (RFC-0043) — the opaque executor handle this node was opened
+    /// against (from `nros_cpp_init`). The component layer needs it for the raw
+    /// FFI that is executor- rather than node-scoped (action server register /
+    /// complete_goal / publish_feedback) — `Node::create_*` use it internally,
+    /// but a stateful component binding those transports raw needs direct access.
+    /// `nullptr` on an uninitialized node.
+    void* executor_handle() const { return initialized_ ? executor_handle_ : nullptr; }
+
     /// Create a publisher for a topic.
     ///
     /// @tparam M  Message type (must define TYPE_NAME and TYPE_HASH).
