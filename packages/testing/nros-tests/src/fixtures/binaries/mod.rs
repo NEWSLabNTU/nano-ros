@@ -786,6 +786,17 @@ pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     require_prebuilt_binary(&p)
 }
 
+/// Resolve a file inside a build-stage **esp-idf** fixture (issue 0041).
+/// `scripts/build/idf-fixtures.sh` stages an esp-idf example/fixture and runs
+/// `idf.py set-target && build` into `build/idf-fixtures/<id>/`, producing an ELF
+/// the test resolves instead of running `idf.py` at run time. Tier-aware: the
+/// idf build is skipped (no stamp / no ELF) when idf.py/IDF_PATH is absent →
+/// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard fail in the full tier.
+pub fn require_idf_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
+    let p = project_root().join("build/idf-fixtures").join(id).join(rel);
+    require_prebuilt_binary(&p)
+}
+
 /// Resolve the prebuilt `entry-poc` fixture (cached). The
 /// `examples/native/rust/entry-poc` Entry pkg (`nros::main!()` → native
 /// `BoardEntry::run`) is built by `just native build-fixtures` /

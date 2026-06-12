@@ -97,7 +97,12 @@ yet fixture-converted (they `skip!` cleanly when the SDK is absent, so they don'
 break lighter tiers):
 - zephyr (`west build`): `cli_bringup_zephyr`, `zephyr_self_pkg`, `board_import`.
 - esp-idf (`idf.py build`): `cli_bringup_esp_idf`, `esp32_idf_talker_builds`,
-  `esp32_idf_listener_builds`.
+  `esp32_idf_listener_builds` — **CONVERTED** (idf-fixture mechanism
+  `scripts/build/idf-fixtures.sh` + `require_idf_fixture`; built by `just esp32
+  build-fixtures`, gated on idf.py). BLOCKED at build time on
+  [issue 0044](0044-esp-idf-platform-c-heap-symbols-undeclared.md) — a pre-existing
+  esp-idf `_heap_start/_heap_end` compile failure the conversion exposed. Tests
+  resolve the ELF + skip/deselect cleanly until 0044 lands.
 
 **Conversion approach (validated, deferred — cost/value tradeoff):**
 

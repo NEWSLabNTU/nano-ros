@@ -156,7 +156,14 @@ build-logging-smoke:
 # Build ESP32 test fixtures.
 [group("full-matrix")]
 build-fixtures: build-qemu build-logging-smoke
-    @echo "ESP32 fixtures built."
+    #!/usr/bin/env bash
+    # esp-idf build-stage fixtures (issue 0041): build the idf.py ELFs the
+    # esp32_idf_* / cli_bringup_esp_idf tests consume, so they don't run idf.py
+    # at test time. Self-gates on idf.py/IDF env; non-fatal (a failed build —
+    # e.g. issue 0044's _heap symbols — leaves no stamp, and the test skips per
+    # tier). Slow (~7 min/ELF), so scoped to this esp lane, not build-test-fixtures.
+    bash scripts/build/idf-fixtures.sh || true
+    echo "ESP32 fixtures built."
 
 # Build every ESP32 tier: core artifacts, examples, and test fixtures.
 [group("full-matrix")]
