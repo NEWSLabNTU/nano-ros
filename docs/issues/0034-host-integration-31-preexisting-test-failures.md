@@ -47,7 +47,7 @@ triage.
 | native_main_macro_misuse (was phase212_n9, 4 neg) | 4 | compile-FAIL + rebuild — documented exception (can't prebuild a failing/rebuild check); kept on nextest timeout override |
 | native_orchestration_tiers (was orchestration_tiers_native, 4) | 4 | CONVERTED — build-fixtures (orch_tiers_multi/single binaries), tests run prebuilt (#0034) |
 | native_orchestration_misuse (1 neg) | 1 | compile-FAIL exception (instance-identity); on nextest timeout override |
-| cpp_api_drift (was phase212_n12) | 1+2 | static lint PASS; 2 g++ snippets → cxx-syntax build-fixtures, SKIP pending pre-existing C++ drift fix (#0034) |
+| cpp_api_drift (was phase212_n12) | 1+2 | static lint PASS; `declared_node_typed_helpers` snippet **FIXED** (updated to the typed `DeclaredEntity&`/`DeclaredCallback&` API — `c++ -fsyntax-only` rc=0); `rclcpp_node_options` still SKIPs pending the per-build generated config headers (`nros_cpp_config_generated.h` — C++ build-pipeline owner) |
 | native_entry_poc_boot (was phase212_n_entry_poc_runs) | 2 | CONVERTED to fixture-consuming (#0034) — entry-poc is now a build-fixture |
 | c_mixed_workspace (was phase223) | 2 | CONVERTED — cmake build-fixtures (c_mixed/pure_c), tests assert prebuilt robot_entry (#0034) |
 | cpp_multi_node_entry | 1 | CONVERTED — cmake build-fixture `cpp_robot_entry`, test inspects prebuilt (#0034) |
