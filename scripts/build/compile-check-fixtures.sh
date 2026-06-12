@@ -116,6 +116,8 @@ stage_and_build() {
 # per tier) when cmake or a `codegen entry`-capable `nros` is unavailable.
 CMAKE_FIXTURES=(
     "cpp_robot_entry:examples/templates/multi-node-workspace-cpp"
+    "c_mixed_workspace:examples/templates/c-and-cpp-mixed-workspace"
+    "pure_c_workspace:examples/templates/pure-c-workspace"
 )
 cmake_out="$repo_root/build/cmake-fixtures"
 
@@ -125,6 +127,9 @@ cmake_fixture_prereqs_ok() {
     [ -n "$nb" ] || { echo "cmake-fixtures: nros CLI absent — skipping" >&2; return 1; }
     "$nb" codegen entry --help >/dev/null 2>&1 || {
         echo "cmake-fixtures: nros lacks 'codegen entry' — skipping" >&2; return 1; }
+    # The C/mixed Entry templates parse launch XML via play_launch_parser.
+    command -v play_launch_parser >/dev/null 2>&1 || {
+        echo "cmake-fixtures: play_launch_parser absent — skipping (source ./activate.sh)" >&2; return 1; }
     NROS_CLI_BIN="$nb"
     return 0
 }
@@ -136,7 +141,9 @@ build_cmake_fixture() {
     echo "== cmake-fixture: $id =="
     rm -rf "$bld"
     mkdir -p "$bld"
-    cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN"
+    # Pass both nros cmake vars — different templates name it differently
+    # (NROS_CLI_BIN vs NROS_BIN); the unused one is harmless.
+    cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN"
     cmake --build "$bld" -j
     echo "   built $bld"
 }

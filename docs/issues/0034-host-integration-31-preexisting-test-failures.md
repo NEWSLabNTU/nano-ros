@@ -49,7 +49,7 @@ triage.
 | native_orchestration_misuse (1 neg) | 1 | compile-FAIL exception (instance-identity); on nextest timeout override |
 | cpp_api_drift (was phase212_n12) | 1+2 | static lint PASS; 2 g++ snippets → cxx-syntax build-fixtures, SKIP pending pre-existing C++ drift fix (#0034) |
 | native_entry_poc_boot (was phase212_n_entry_poc_runs) | 2 | CONVERTED to fixture-consuming (#0034) — entry-poc is now a build-fixture |
-| phase223_c_mixed_workspace | 2 | `c_node_pkg_links_into_cpp_entry_template`, `c_node_pkgs_link_into_c_entry_template` |
+| c_mixed_workspace (was phase223) | 2 | CONVERTED — cmake build-fixtures (c_mixed/pure_c), tests assert prebuilt robot_entry (#0034) |
 | cpp_multi_node_entry | 1 | CONVERTED — cmake build-fixture `cpp_robot_entry`, test inspects prebuilt (#0034) |
 | phase212_j_launch | 1 | `nros_launch_spawns_components` — **test removed** (`nros launch` unsupported, RFC-0027) |
 | phase212_l9_cmake_fns | 1 | `nano_ros_application_rejects_embedded_deploy` |
