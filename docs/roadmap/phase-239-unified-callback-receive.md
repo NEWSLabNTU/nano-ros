@@ -10,8 +10,9 @@ ROS service `KEEP_LAST(10)` (RFC-0007).
 **Status.** In progress (2026-06). **Wave 1 complete** (239.1-4: both client
 callbacks + in-process E2Es). **Wave 2 core done** — 239.5 (action-feedback
 QoS-depth ring) + 239.7 (burst test: 2 feedbacks both delivered). 162 nros-node
-tests green. Remaining: 239.6 (MessageLost signal — observability), Wave 3
-(RT/XRCE + example), Wave 4 (C/C++). Implements RFC-0041.
+tests green. 239.6 resolved (descope — MessageLost is an RMW event, not ring overflow);
+239.8 RT/XRCE validated by inspection. Remaining: 239.9 (example), Wave 4
+(C/C++ callback clients + cross-language E2E). Implements RFC-0041.
 
 **Priority.** P2 — reliability + RT-ergonomics + ROS alignment; not a correctness
 blocker (Promise works today) but removes a real silent-loss bug.
