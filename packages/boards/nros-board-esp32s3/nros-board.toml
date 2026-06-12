@@ -34,3 +34,9 @@ comment = "// Phase 173.6 — ESP32-S3 esp-hal `#[main]` entry. The board's `run
 signature = "#[esp_hal::main]\nfn main() -> !"
 crate_root_extra = "use esp_backtrace as _;\nnros_board_esp32s3::esp_bootloader_esp_idf::esp_app_desc!();"
 closure_extra = "\n                .clock_us(nros_board_esp32s3::nros_platform_esp32s3::clock::clock_us)"
+
+# RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
+[board.capabilities]
+heap = true
+atomics = true
+threads = true

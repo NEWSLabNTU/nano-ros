@@ -11,3 +11,10 @@ platform_feature = "platform-orin-spe"
 link_kind = "none"
 entry_kind = "board-run"
 net_stack = "nanoros-owned"
+
+# RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT). Cortex-R5
+# bare-metal: no heap by default.
+[board.capabilities]
+heap = false
+atomics = true
+threads = false

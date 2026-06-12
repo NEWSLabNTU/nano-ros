@@ -48,3 +48,9 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 '''
 # NuttX is BoardRun, no entry block — hosted `fn main` shim drives it (the
 # nsh_main override in src/entry.rs), identical to the arm board.
+
+# RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
+[board.capabilities]
+heap = true
+atomics = true
+threads = true

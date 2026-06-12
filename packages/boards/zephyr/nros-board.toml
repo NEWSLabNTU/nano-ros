@@ -12,3 +12,11 @@ local_aliases = ["platform-zephyr"]
 link_kind = "none"
 entry_kind = "zephyr-staticlib"
 net_stack = "rtos-owned"
+
+# RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT). Zephyr heap +
+# mutex are Kconfig-gated (CONFIG_HEAP_MEM_POOL_SIZE / CONFIG_MULTITHREADING);
+# declared true, lowered to prj.conf (not -D) by C.2.
+[board.capabilities]
+heap = true
+atomics = true
+threads = true

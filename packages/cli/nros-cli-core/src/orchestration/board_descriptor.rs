@@ -101,6 +101,52 @@ pub struct BoardEntry {
     pub closure_extra: String,
 }
 
+/// Declared board capabilities (RFC-0042 D2 / phase-241 wave C). The single
+/// source of truth for what a board provides; the generator (241.C.2) lowers
+/// each to the right per-platform mechanism — `-D NROS_PLATFORM_HAS_*` for
+/// baremetal/threadx, Kconfig (`prj.conf`) for zephyr, etc. — instead of the
+/// per-RTOS-header self-`#define`s + the one hand-set cmake `-D` they replace.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct BoardCapabilities {
+    /// Board has a usable heap allocator. Drives the canonical malloc/free +
+    /// `NROS_PLATFORM_HAS_MALLOC` (and `!NROS_NO_DYNAMIC_MEMORY` on bare-metal).
+    #[serde(default)]
+    pub heap: bool,
+    /// Board provides atomic load/store. Drives `NROS_PLATFORM_HAS_ATOMICS`.
+    #[serde(default)]
+    pub atomics: bool,
+    /// Board has threads + a mutex. Drives `NROS_FEATURE_THREADS` /
+    /// `NROS_PLATFORM_HAS_MUTEX`.
+    #[serde(default)]
+    pub threads: bool,
+}
+
+impl BoardCapabilities {
+    /// Conservative defaults inferred from the platform when a board omits the
+    /// `[board.capabilities]` block (migration path; a lint flags reliance on
+    /// inference). RTOS + hosted platforms have a heap/threads; generic
+    /// bare-metal does not (it must opt in — the #38 lesson). Atomics are
+    /// assumed everywhere (every supported target provides them today).
+    fn inferred(platform: PlatformKind) -> Self {
+        use PlatformKind::*;
+        match platform {
+            Posix | Freertos | Nuttx | Zephyr | ThreadxLinux | ThreadxRiscv64 | Esp32 => {
+                BoardCapabilities {
+                    heap: true,
+                    atomics: true,
+                    threads: true,
+                }
+            }
+            // Generic bare-metal / SPE: no heap by default (opt in via board.toml).
+            BareMetal | Stm32 | OrinSpe => BoardCapabilities {
+                heap: false,
+                atomics: true,
+                threads: false,
+            },
+        }
+    }
+}
+
 /// One board profile. Mirrors the old hardcoded `PlatformProfile` +
 /// `BoardEntry`, but every field is owned data read from `nros-board.toml`.
 #[derive(Debug, Clone, Deserialize)]
@@ -147,6 +193,10 @@ pub struct BoardDescriptor {
     /// so `board = "threadx"` picks riscv64 vs linux by target).
     #[serde(default)]
     pub target_contains: Option<String>,
+    /// Declared board capabilities (heap/atomics/threads). `None` → inferred from
+    /// `platform` via `capabilities()` during the 241.C migration.
+    #[serde(default)]
+    pub capabilities: Option<BoardCapabilities>,
 }
 
 impl BoardDescriptor {
@@ -158,6 +208,19 @@ impl BoardDescriptor {
                 .as_ref()
                 .map(|c| format!("packages/boards/{c}"))
         })
+    }
+
+    /// Resolved board capabilities — the declared `[board.capabilities]` block,
+    /// or platform-inferred conservative defaults when omitted (241.C migration).
+    pub fn capabilities(&self) -> BoardCapabilities {
+        self.capabilities
+            .unwrap_or_else(|| BoardCapabilities::inferred(self.platform))
+    }
+
+    /// Whether the board declared its capabilities explicitly (vs relying on the
+    /// platform-inferred defaults). Used by the migration lint.
+    pub fn has_declared_capabilities(&self) -> bool {
+        self.capabilities.is_some()
     }
 
     /// Render `cargo_config` with `${workspace}` resolved to `workspace`.
@@ -375,6 +438,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             cargo_config: Some("inc = \"${workspace}/third-party/x\"".into()),
             entry: None,
             target_contains: None,
+            capabilities: None,
         };
         let rendered = descriptor.cargo_config_rendered(Path::new("/ws")).unwrap();
         assert_eq!(rendered, "inc = \"/ws/third-party/x\"");
@@ -400,6 +464,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             cargo_config: None,
             entry: None,
             target_contains: None,
+            capabilities: None,
         });
         let cat = BoardCatalog::from_descriptors(boards);
         let d = cat

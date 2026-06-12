@@ -25,9 +25,12 @@ into.
 
 ## Waves
 
-Ordered so the **gate lands first** (safety net), then the most-recurring
-fix (interface), then config, then the largest change (linking). Each wave is
-independently revertible.
+Order: **A (gate) → C (capability SSoT) → B (header collapse) → D (linking) → E.**
+The gate lands first (safety net). C precedes B because the header collapse needs
+a settled capability source — the capability macros are produced by A's per-RTOS
+sub-header dispatch today, so the canonical header can't be authored until C
+decides where capabilities come from (see the B↔C coupling note under 241.B).
+Each wave is independently revertible.
 
 ### 241.A — Merge-time compile gate (RFC-0042 D4) — FIRST
 Two tiers, by what a cell needs to compile:
@@ -110,16 +113,33 @@ Staged so each step is CI-validated before the next; the 241.A gate + the existi
 > since B's value (one clean header) is undercut if it must re-host A's dispatch.
 
 ### 241.C — Capability-driven config SSoT (RFC-0042 D2)
-- [ ] Add `[board.capabilities]` to `nros-board.toml` (`heap`, `atomics`,
-      `threads`, `libc`); populate every in-tree board.
-- [ ] One generator lowers capabilities → cargo features + cmake `-D
-      NROS_PLATFORM_HAS_*` + capability macros + include-precedence selection.
-- [ ] Remove the ~10 scattered `EXTRA_DEFINES` / per-header capability defaults;
-      they read generated values. Capability defaults become
-      deny-only-when-known-absent.
-- [ ] Migration lint: flag boards relying on inferred capabilities (Q3).
+- [x] **C.1 — schema + parse + populate (landed).** `[board.capabilities]`
+      (`heap`/`atomics`/`threads`) added to `BoardDescriptor` (mirrors the
+      `[board.entry]` nested-table pattern) with a `capabilities()` resolver that
+      falls back to platform-inferred defaults + a `has_declared_capabilities()`
+      helper for the migration lint. All 12 board.toml (13 entries) populated:
+      heap-capable = posix/zephyr/freertos/nuttx×2/threadx×2/esp32×2; heap-less =
+      baremetal/orin-spe/stm32f4×2. threadx-riscv64 = `heap = true` (the #38
+      board — what C.2 lowers to `-D NROS_PLATFORM_HAS_MALLOC`, replacing the
+      hand-set `THREADX_GLUE_DEFINES` entry). Catalog parses clean; CLI builds.
+- [ ] **C.2 — the per-platform lowering.** One generator lowers capabilities to
+      the *right* mechanism per platform: `-D NROS_PLATFORM_HAS_*` for
+      baremetal/threadx (emitted into the board/entry cmake), **Kconfig**
+      (`prj.conf`) for zephyr, FreeRTOSConfig for freertos malloc. The
+      RTOS-config-conditional capabilities (zephyr heap/mutex, freertos malloc)
+      stay config-derived but are *validated* against the declaration rather than
+      overridden. Replace the one hand-set capability `-D`
+      (`nano-ros-board-riscv64-qemu.cmake:399`) with the generated value.
+- [ ] **C.3 — retire the per-RTOS header self-`#define`s** (the unconditional
+      ones: all `HAS_ATOMICS`, posix `HAS_MALLOC`, freertos `HAS_MUTEX`) in favour
+      of the generated `-D`; leave RTOS-config-conditional ones header/Kconfig-
+      derived. Capability defaults become deny-only-when-known-absent.
+- [ ] **C.4 — migration lint** wiring: warn when a board relies on inferred
+      capabilities (`has_declared_capabilities()` == false). (All in-tree boards
+      declare today, so the lint is clean — it guards future boards.)
 - **Acceptance:** flipping a board's `heap`/`atomics`/`threads` in one place
-      changes the build everywhere; no capability named in >1 site.
+      changes the build everywhere; no capability named in >1 site; the
+      threadx-riscv64 `-D` is generated from board.toml, not hand-set.
 
 ### 241.D — Deterministic linking (RFC-0042 D3)
 - [ ] One registration path: codegen emits the explicit backend-register table,

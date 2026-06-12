@@ -18,3 +18,9 @@ board_crate = "nros-board-threadx-linux"
 crate_name = "nros_board_threadx_linux"
 comment = "// Phase 126.M5.threadx — ThreadX-Linux is host-hosted: the board\n// crate's `run()` boots the ThreadX kernel + NetX Duo stack, then\n// invokes the closure on the application thread. Referencing\n// `nros_board_threadx_linux::run` is REQUIRED — it pins the board\n// rlib (and its build-script-linked ThreadX kernel + NetX archives)\n// into the link graph so `--gc-sections` doesn't drop the platform\n// `nros_platform_*` / `_tx_*` symbols."
 signature = "fn main() -> !"
+
+# RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
+[board.capabilities]
+heap = true
+atomics = true
+threads = true

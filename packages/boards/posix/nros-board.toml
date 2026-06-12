@@ -10,3 +10,9 @@ platform_feature = "platform-posix"
 link_kind = "none"
 entry_kind = "hosted-main"
 net_stack = "nanoros-owned"
+
+# RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
