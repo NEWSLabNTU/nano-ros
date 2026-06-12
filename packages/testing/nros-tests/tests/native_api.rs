@@ -460,6 +460,83 @@ fn test_native_service_communication_callback(
 }
 
 // =============================================================================
+// Cross-language service-callback interop (RFC-0041 / Phase 239.15)
+// =============================================================================
+//
+// Pair each language's callback CLIENT against the *other* language's service
+// server to prove the callback receive model is wire-compatible and
+// backend-agnostic — the reply is framed by one language's RMW and dispatched
+// to the other's spin-time callback. Reuses the existing same-language
+// fixtures; only the pairing is new.
+
+/// Run a callback-client (`client_bin`, language `client_lang`) against a
+/// service server (`server_bin`) on a fresh router; assert the reply arrives
+/// via the callback. Shared by the cross-language 239.15 cases.
+fn service_callback_interop_body(
+    locator: &str,
+    server_bin: &Path,
+    client_lang: Language,
+    client_bin: &Path,
+) {
+    let mut server = spawn_native(server_bin, client_lang, "service-server", locator);
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .expect("service server did not become ready");
+
+    let mut client = spawn_native(client_bin, client_lang, "service-client-callback", locator);
+    let client_output = client
+        .wait_for_output_pattern("callback calls succeeded", Duration::from_secs(15))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
+        .unwrap_or_default();
+    server.kill();
+
+    eprintln!("cross-lang callback client output:\n{}", client_output);
+    let cb_count = count_pattern(&client_output, "Response (callback)");
+    assert!(
+        cb_count >= 3,
+        "Expected >=3 callback-dispatched replies cross-language, got {}.\nOutput:\n{}",
+        cb_count,
+        client_output
+    );
+}
+
+/// C callback client ↔ C++ service server.
+#[rstest]
+fn test_service_callback_interop_c_client_cpp_server(zenohd_unique: ZenohRouter) {
+    if !require_native_env() {
+        return;
+    }
+    let server_bin = Language::Cpp.service_server_binary();
+    let client_bin = build_c_service_client_callback()
+        .unwrap_or_else(|e| skip_missing_fixture("C service client (callback)", e))
+        .to_path_buf();
+    service_callback_interop_body(
+        &zenohd_unique.locator(),
+        &server_bin,
+        Language::C,
+        &client_bin,
+    );
+}
+
+/// C++ callback client ↔ C service server.
+#[rstest]
+fn test_service_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) {
+    if !require_native_env() {
+        return;
+    }
+    let server_bin = Language::C.service_server_binary();
+    let client_bin = build_cpp_service_client_callback()
+        .unwrap_or_else(|e| skip_missing_fixture("C++ service client (callback)", e))
+        .to_path_buf();
+    service_callback_interop_body(
+        &zenohd_unique.locator(),
+        &server_bin,
+        Language::Cpp,
+        &client_bin,
+    );
+}
+
+// =============================================================================
 // Action communication (one function per language)
 // =============================================================================
 //

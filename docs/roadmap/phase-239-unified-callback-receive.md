@@ -12,9 +12,13 @@ callbacks + in-process E2Es). **Wave 2 core done** — 239.5 (action-feedback
 QoS-depth ring) + 239.7 (burst test: 2 feedbacks both delivered). 162 nros-node
 tests green. 239.6 resolved (descope — MessageLost is an RMW event, not ring overflow);
 239.8 RT/XRCE validated by inspection. 239.9 (native callback example) done.
-**Wave 4 audit:** C *and* C++ callback surfaces (service + action) all already
-exist from Phase 189.M3.3 — Wave 4 ships no new wrapper code; remaining is E2E
-fixtures (C + C++) + cross-language matrix (239.15). Implements RFC-0041.
+**Wave 4 landed:** service-client callbacks GREEN E2E in C (239.11), C++ (239.13,
+**bug fixed** — reply dispatch missing `pending`) and cross-language both
+directions (239.15 service); action-client callbacks: C result GREEN (239.12),
+C++ dispatch GREEN (239.14) with a result-payload bug filed (#40). Two latent
+bugs found + filed en route (#39 cpp init env-fallback, #40 cpp action payload).
+RFC-0041 → **Stable**. Remaining: #40 fix + action/embedded cross-lang lanes.
+Implements RFC-0041.
 
 **Priority.** P2 — reliability + RT-ergonomics + ROS alignment; not a correctness
 blocker (Promise works today) but removes a real silent-loss bug.
@@ -228,7 +232,16 @@ until #40 lands.
 - **Files:** `packages/core/nros-cpp/src/action.rs` (offset fix),
   `examples/native/cpp/action-client-callback/`, `native_api.rs`; bug → issue #40.
 
-#### 239.15 — Cross-language E2E matrix  ⬜
+#### 239.15 — Cross-language E2E matrix  🟡 (service cross-lang ✅ GREEN; action/embedded ⬜)
+**Service cross-language done.** `test_service_callback_interop_c_client_cpp_server`
++ `test_service_callback_interop_cpp_client_c_server` (native_api.rs) pair each
+language's callback client against the *other* language's service server — both
+GREEN (replies dispatched via callback, correct sums). Proves the callback
+receive model is wire-compatible across the C / C++ FFI surfaces over zenoh.
+**Remaining:** action cross-lang (gated on issue #40) + a Rust-client lane + one
+QEMU/embedded lane.
+
+Original scope:
 Callback-client interop across Rust / C / C++ (each language's callback client
 against another language's server), native + one QEMU/embedded lane, to prove the
 callback receive model is wire-compatible and backend-agnostic (zenoh + XRCE).
@@ -237,12 +250,14 @@ callback receive model is wire-compatible and backend-agnostic (zenoh + XRCE).
 
 ### Close-out
 
-#### 239.10 — Docs sync  ⬜
-Tick RFC-0037 (user API surface — `create_client_with_callback` /
-`create_action_client_with_callbacks` + the C/C++ surfaces); flip RFC-0041 →
-`Stable` once Rust + C/C++ land. (C/C++ are now in-phase — Wave 4 — not a deferred
-follow-up.)
-- **Files:** `docs/design/0037-*`, `docs/design/0041-*`.
+#### 239.10 — Docs sync  🟡 (RFC-0041 → Stable ✅; RFC-0037 tick ⬜)
+RFC-0041 flipped to **Stable**: the model is validated E2E — service-client
+callbacks across Rust / C / C++ + cross-language, action-client callbacks
+dispatched at spin (C result correct; C++ dispatch correct, payload bug #40 is an
+impl follow-up, not a design flaw). **Remaining:** tick RFC-0037 (user API
+surface — `create_client_with_callback` / `create_action_client_with_callbacks`
++ the C/C++ surfaces).
+- **Files:** `docs/design/0041-*` (done), `docs/design/0037-*` (todo).
 
 ## Acceptance
 

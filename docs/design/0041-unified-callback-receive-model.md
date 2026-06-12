@@ -1,7 +1,7 @@
 ---
 rfc: 0041
 title: "Unified callback + QoS-depth receive model for clients (service/action)"
-status: Draft
+status: Stable
 since: 2026-06
 last-reviewed: 2026-06-12
 implements-tracked-by: [phase-239]
