@@ -25,13 +25,61 @@ fn tool_on_path(tool: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Resolve the prebuilt multi-tier freertos firmware ELF.
+/// Resolve the prebuilt multi-tier freertos firmware ELF (debug — the build
+/// stage's default profile). Used by the boot-only test, where speed of
+/// `Executor::open` is irrelevant.
 fn firmware() -> nros_tests::TestResult<PathBuf> {
     let stamp = nros_tests::fixtures::require_compile_check("orch_tiers_freertos")?;
     Ok(stamp
         .parent()
         .expect("fixture dir")
         .join("target/thumbv7m-none-eabi/debug/demo_entry"))
+}
+
+/// Build + resolve the **release** firmware in the already-staged fixture tree.
+///
+/// The connected run opens a real zenoh-pico session over slirp on the emulated
+/// Cortex-M3; a debug-profile zenoh-pico is far too slow to finish the session
+/// handshake within the test budget (boots to `Network ready.` but never
+/// connects). The build stage produces only the debug ELF, so build release here
+/// in the same staged tree (the firmware C glue env mirrors
+/// `compile-check-fixtures.sh`).
+fn firmware_release() -> nros_tests::TestResult<PathBuf> {
+    let stamp = nros_tests::fixtures::require_compile_check("orch_tiers_freertos")?;
+    let staged = stamp.parent().expect("fixture dir").to_path_buf();
+    let root = nros_tests::project_root();
+    let out = Command::new("cargo")
+        .args([
+            "build",
+            "--release",
+            "--target",
+            "thumbv7m-none-eabi",
+            "-p",
+            "demo_entry",
+        ])
+        .current_dir(&staged)
+        .env(
+            "NROS_PLATFORM_FREERTOS_SRC",
+            root.join("packages/core/nros-platform-freertos/src"),
+        )
+        .env(
+            // phase-241 B.2 — canonical platform headers live in nros-platform-api.
+            "NROS_PLATFORM_CFFI_INCLUDE",
+            root.join("packages/core/nros-platform-api/include"),
+        )
+        .output()
+        .map_err(|e| {
+            nros_tests::TestError::BuildFailed(format!("spawn cargo build --release: {e}"))
+        })?;
+    if !out.status.success() {
+        return Err(nros_tests::TestError::BuildFailed(format!(
+            "release cross build failed in {}.\nstdout:\n{}\nstderr:\n{}",
+            staged.display(),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        )));
+    }
+    Ok(staged.join("target/thumbv7m-none-eabi/release/demo_entry"))
 }
 
 #[test]
@@ -79,14 +127,16 @@ fn multi_tier_freertos_firmware_builds_and_boots_run_tiers() -> nros_tests::Test
 
 #[test]
 fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tests::TestResult<()> {
-    let bin = firmware()?;
-    assert!(bin.is_file(), "firmware ELF missing at {}", bin.display());
     if !tool_on_path("qemu-system-arm") {
         nros_tests::skip!("qemu-system-arm not on PATH");
     }
     if !nros_tests::fixtures::require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
+    // Release fixture — debug zenoh-pico on the emulated M3 is too slow to finish
+    // the session handshake in budget (see `firmware_release`).
+    let bin = firmware_release()?;
+    assert!(bin.is_file(), "firmware ELF missing at {}", bin.display());
 
     // Host router on 0.0.0.0:7447 — the fixture's deploy overlay points the
     // firmware at tcp/10.0.2.2:7447 (the slirp host alias).
@@ -104,18 +154,20 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tes
         "QEMU boot did not reach run_tiers_entry (no multi-tier banner).\noutput:\n{boot}",
     );
 
-    // Best-effort: with the slirp router live, the firmware should connect past
-    // Executor::open and set up both tiers. It currently never does — NOT
-    // "timing-flaky": the deploy config is inert (firmware uses Config::default,
-    // unreachable locator) and zenoh-pico open() hangs pre-connect (#48). A miss
-    // is logged, not fatal (boot path already proven).
-    match qemu.wait_for_output_pattern("Multi-tier setup complete", Duration::from_secs(25)) {
-        Ok(_) => {}
-        Err(e) => eprintln!(
-            "note: freertos slirp connected-run not observed — firmware never \
-             connects over slirp (#48); boot path already proven: {e}"
-        ),
-    }
+    // Connected run — ASSERTED (was best-effort) now that #48 is fixed: the zenoh
+    // RMW backend is linked + registered (cause 2) AND `Mps2An385::run_tiers`
+    // threads the deploy overlay (cause 1, multi-tier path) so the firmware dials
+    // the reachable slirp locator. With adequate tier stacks (system.toml 64 KiB,
+    // not the old 8/4 KiB that overflowed once the connect succeeded), both tiers
+    // set up and the boot tier enters its spin loop.
+    let connected = qemu
+        .wait_for_output_pattern("Multi-tier setup complete", Duration::from_secs(25))
+        .unwrap_or_default();
     qemu.kill();
+    assert!(
+        connected.contains("Multi-tier setup complete"),
+        "multi-tier firmware did not reach `Multi-tier setup complete` over slirp \
+         (Executor::open / per-tier setup failed).\noutput:\n{connected}",
+    );
     Ok(())
 }

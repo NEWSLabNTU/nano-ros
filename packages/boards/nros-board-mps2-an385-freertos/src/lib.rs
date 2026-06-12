@@ -277,32 +277,46 @@ impl nros_platform::BoardEntry for Mps2An385 {
         E: core::fmt::Debug,
     {
         register_log_writer();
-        let mut config = Config::default();
-        if let Some(loc) = deploy.locator {
-            config.zenoh_locator = loc;
-        }
-        if let Some(ip) = deploy.ip {
-            config.ip = ip;
-        }
-        if let Some(gw) = deploy.gateway {
-            config.gateway = gw;
-        }
-        if let Some(nm) = deploy.netmask {
-            config.netmask = nm;
-        }
-        if let Some(d) = deploy.domain_id {
-            config.domain_id = d;
-        }
-        nros_board_freertos::run_entry::<Mps2An385, F, E>(config, setup)
+        nros_board_freertos::run_entry::<Mps2An385, F, E>(config_with_overlay(deploy), setup)
     }
+}
+
+/// Issue #48 cause 1 — overlay the `nros::main!()` deploy block
+/// (`[package.metadata.nros.deploy.freertos]`) onto `Config::default()`. Fields
+/// the deploy block omits keep the board default. Shared by the single-tier
+/// [`BoardEntry::run_with_deploy`] and the multi-tier [`Mps2An385::run_tiers`]
+/// entry paths so both stop ignoring the deploy metadata.
+fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
+    let mut config = Config::default();
+    if let Some(loc) = deploy.locator {
+        config.zenoh_locator = loc;
+    }
+    if let Some(ip) = deploy.ip {
+        config.ip = ip;
+    }
+    if let Some(gw) = deploy.gateway {
+        config.gateway = gw;
+    }
+    if let Some(nm) = deploy.netmask {
+        config.netmask = nm;
+    }
+    if let Some(d) = deploy.domain_id {
+        config.domain_id = d;
+    }
+    config
 }
 
 impl Mps2An385 {
     /// Phase 228.E.2 — per-tier multi-task entry; delegates to
     /// [`nros_board_freertos::run_tiers_entry`]. The `nros::main!()` macro emits
-    /// `<Mps2An385>::run_tiers(TIERS, run_plan)` for multi-tier systems
-    /// (single-tier keeps the `BoardEntry::run` path).
+    /// `<Mps2An385>::run_tiers(&DEPLOY, TIERS, run_plan)` for multi-tier systems
+    /// (single-tier keeps the `BoardEntry::run_with_deploy` path).
+    ///
+    /// Issue #48 cause 1 — `deploy` overlays the `[deploy.<board>]` block onto
+    /// `Config::default()` (same seam as the single-tier path) so the multi-tier
+    /// firmware dials the deploy-named locator/ip instead of the inert default.
     pub fn run_tiers<F, E>(
+        deploy: &nros_platform::DeployOverlay,
         tiers: &'static [nros_platform::TierSpec<'static>],
         setup: F,
     ) -> Result<(), E>
@@ -311,6 +325,10 @@ impl Mps2An385 {
         E: core::fmt::Debug,
     {
         register_log_writer();
-        nros_board_freertos::run_tiers_entry::<Mps2An385, F, E>(Config::default(), tiers, setup)
+        nros_board_freertos::run_tiers_entry::<Mps2An385, F, E>(
+            config_with_overlay(deploy),
+            tiers,
+            setup,
+        )
     }
 }

@@ -233,11 +233,18 @@ impl PosixBoard {
     /// `SCHED_FIFO` + privileges). The FreeRTOS port maps it to real
     /// task priorities (RFC-0016). Blocks forever (server semantics);
     /// returns only if a tier `setup` fails before the spin loop.
-    pub fn run_tiers<F, E>(tiers: &[TierSpec<'_>], setup: F) -> Result<(), E>
+    pub fn run_tiers<F, E>(
+        _deploy: &nros_platform::DeployOverlay,
+        tiers: &[TierSpec<'_>],
+        setup: F,
+    ) -> Result<(), E>
     where
         F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E> + Sync,
         E: core::fmt::Debug,
     {
+        // Issue #48 — hosted boards take their locator from `from_env()`, so the
+        // deploy overlay is ignored here (kept for signature parity with the
+        // firmware boards' `run_tiers`).
         <Self as BoardInit>::init_hardware();
 
         if tiers.is_empty() {

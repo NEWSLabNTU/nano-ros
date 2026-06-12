@@ -14,6 +14,11 @@ deploy = "freertos"
 [package.metadata.nros.deploy.freertos]
 rmw = "zenoh"
 domain_id = 0
+# Issue #48 cause 1 — slirp addressing threaded into the firmware boot Config
+# via `Mps2An385::run_tiers` (multi-tier path): guest 10.0.2.15 / gateway 10.0.2.2,
+# dialing the host zenohd at the slirp alias 10.0.2.2:7447.
+ip = "10.0.2.15"
+gateway = "10.0.2.2"
 locator = "tcp/10.0.2.2:7447"
 
 [dependencies]

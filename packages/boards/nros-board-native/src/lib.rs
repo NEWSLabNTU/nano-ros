@@ -100,12 +100,18 @@ impl NativeBoard {
     /// `<NativeBoard>::run_tiers(TIERS, run_plan)` for multi-tier systems
     /// (single-tier keeps the `BoardEntry::run` path). See `nros-board-posix`.
     #[inline]
-    pub fn run_tiers<F, E>(tiers: &[TierSpec<'_>], setup: F) -> Result<(), E>
+    pub fn run_tiers<F, E>(
+        deploy: &nros_platform::DeployOverlay,
+        tiers: &[TierSpec<'_>],
+        setup: F,
+    ) -> Result<(), E>
     where
         F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E> + Sync,
         E: core::fmt::Debug,
     {
-        PosixBoard::run_tiers::<F, E>(tiers, setup)
+        // Issue #48 — hosted boards take their locator from the environment, so
+        // the deploy overlay is a no-op; forwarded for signature parity.
+        PosixBoard::run_tiers::<F, E>(deploy, tiers, setup)
     }
 }
 

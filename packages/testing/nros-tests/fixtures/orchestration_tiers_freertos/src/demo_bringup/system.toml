@@ -15,14 +15,21 @@ name = "telem_node"
 
 # Two FreeRTOS priority tiers. Raw FreeRTOS priorities (0..configMAX-1, higher =
 # higher) authored directly in the per-RTOS sub-table.
+#
+# Issue #48 — each spawned tier task shares the boot session and runs the
+# zenoh-pico-backed per-tier spin (publish/take). zenoh-pico operations are
+# stack-heavy on the Cortex-M3; the original 8192/4096-byte stacks overflowed
+# (`*** STACK OVERFLOW: nros_tier ***`) the moment the firmware actually
+# connected (a #46-class overflow, previously masked because the inert deploy
+# config never let `Executor::open` succeed). 64 KiB boots + runs both tiers.
 [tiers.high]
 spin_period_us = 1000
 [tiers.high.freertos]
 priority = 5
-stack_bytes = 8192
+stack_bytes = 65536
 
 [tiers.low]
 spin_period_us = 10000
 [tiers.low.freertos]
 priority = 2
-stack_bytes = 4096
+stack_bytes = 65536

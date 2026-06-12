@@ -638,6 +638,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             let tiers_ts = tier_specs_tokens(table);
             quote! {
                 <#board_path>::run_tiers(
+                    // Issue #48 cause 1 — thread the deploy overlay into the
+                    // multi-tier path too (firmware boards apply it to their boot
+                    // `Config`; hosted boards ignore it).
+                    &#deploy_overlay_ts,
                     #tiers_ts,
                     |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                         -> ::core::result::Result<
