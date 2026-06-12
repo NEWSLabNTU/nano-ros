@@ -49,39 +49,70 @@ post_stage() {
             printf '//! n9 form 3 (launch, default file).\n\nnros::main!(launch = "demo_bringup");\n' > "$main_rs" ;;
         n9_form4)
             printf '//! n9 form 4 (all explicit).\n\nnros::main!(\n    board = ::nros_board_native::NativeBoard,\n    launch = "demo_bringup:sim.launch.xml",\n    args = [("use_sim", "true")],\n);\n' > "$main_rs" ;;
-        *) : ;;  # no overlay
+        orch_tiers_single)
+            # Strip the `[tiers.*]` blocks from system.toml so the macro takes
+            # the legacy single-tier BoardEntry::run path (RFC-0032 §5 gate G.4).
+            local sys="$staged/src/demo_bringup/system.toml"
+            if [ -f "$sys" ]; then
+                sed -n '0,/^\[tiers\./{/^\[tiers\./!p}' "$sys" > "$sys.tmp" && mv "$sys.tmp" "$sys"
+            fi ;;
+        *) : ;;  # no overlay (orch_tiers_multi uses the fixture verbatim)
     esac
 }
 
-stage_and_check() {
-    local id="$1" src="$2"
-    local staged="$out_root/$id"
+# Build fixtures (id : src): same staging, but `cargo build -p demo_entry`
+# producing a runnable binary at build/compile-check/<id>/target/debug/demo_entry
+# that the test executes (e.g. boot/run-tier assertions). The compile is still
+# the build stage; the test runs the prebuilt binary.
+BUILD_FIXTURES=(
+    "orch_tiers_multi:packages/testing/nros-tests/fixtures/orchestration_tiers_native"
+    "orch_tiers_single:packages/testing/nros-tests/fixtures/orchestration_tiers_native"
+)
+
+stage_tree() {
+    local id="$1" src="$2" staged="$3"
     [ -d "$repo_root/$src" ] || {
         echo "compile-check: source template missing: $src" >&2
         return 2
     }
-
-    echo "== compile-check: $id =="
     rm -rf "$staged"
     mkdir -p "$staged"
     cp -r "$repo_root/$src/." "$staged/"
-
     # Rewrite the placeholder to the absolute repo root so the staged tree's
     # `path =` deps resolve (mirrors the staging the test used to do inline).
     grep -rlZ '@NANO_ROS_ROOT@' "$staged" 2>/dev/null | while IFS= read -r -d '' f; do
         sed -i "s#@NANO_ROS_ROOT@#$repo_root#g" "$f"
     done
-
     post_stage "$id" "$staged"
+}
 
+stage_and_check() {
+    local id="$1" src="$2"
+    local staged="$out_root/$id"
+    echo "== compile-check: $id =="
+    stage_tree "$id" "$src" "$staged"
     rm -f "$staged/.compile-ok"
     ( cd "$staged" && cargo check --manifest-path Cargo.toml )
     date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
     echo "   stamped $staged/.compile-ok"
 }
 
+stage_and_build() {
+    local id="$1" src="$2"
+    local staged="$out_root/$id"
+    echo "== build-fixture: $id =="
+    stage_tree "$id" "$src" "$staged"
+    rm -f "$staged/.compile-ok"
+    ( cd "$staged" && cargo build -p demo_entry --manifest-path Cargo.toml )
+    date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
+    echo "   built $staged/target/debug/demo_entry"
+}
+
 for entry in "${COMPILE_CHECK_FIXTURES[@]}"; do
     stage_and_check "${entry%%:*}" "${entry#*:}"
 done
+for entry in "${BUILD_FIXTURES[@]}"; do
+    stage_and_build "${entry%%:*}" "${entry#*:}"
+done
 
-echo "compile-check fixtures built (${#COMPILE_CHECK_FIXTURES[@]})."
+echo "compile-check fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]})."

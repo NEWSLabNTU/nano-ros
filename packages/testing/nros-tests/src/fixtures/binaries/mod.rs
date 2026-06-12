@@ -751,6 +751,19 @@ pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
     require_prebuilt_binary(&stamp)
 }
 
+/// Resolve a build-stage build-fixture's binary (issue 0034). The build entries
+/// in `compile-check-fixtures.sh` run `cargo build -p demo_entry`, producing a
+/// runnable binary at `build/compile-check/<id>/<rel>` (e.g.
+/// `target/debug/demo_entry`) that a test executes. Tier-aware like
+/// `require_compile_check`.
+pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
+    let bin = project_root()
+        .join("build/compile-check")
+        .join(id)
+        .join(rel);
+    require_prebuilt_binary(&bin)
+}
+
 /// Resolve the prebuilt `entry-poc` fixture (cached). The
 /// `examples/native/rust/entry-poc` Entry pkg (`nros::main!()` → native
 /// `BoardEntry::run`) is built by `just native build-fixtures` /

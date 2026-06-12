@@ -45,7 +45,8 @@ triage.
 |---|---|---|
 | native_main_macro_forms (was phase212_n9, 4 pos) | 4 | CONVERTED — 4 positive forms → compile-check fixtures (#0034) |
 | native_main_macro_misuse (was phase212_n9, 4 neg) | 4 | compile-FAIL + rebuild — documented exception (can't prebuild a failing/rebuild check); kept on nextest timeout override |
-| orchestration_tiers_native | 5 | `instance_identity_mismatch_is_a_compile_error`, `multi_tier_binary_boots_into_run_tiers`, `…runs_both_tiers_with_router`, `multi_tier_main_macro_emits_run_tiers_and_compiles`, `single_tier_system_takes_the_legacy_boardentry_run_path` |
+| native_orchestration_tiers (was orchestration_tiers_native, 4) | 4 | CONVERTED — build-fixtures (orch_tiers_multi/single binaries), tests run prebuilt (#0034) |
+| native_orchestration_misuse (1 neg) | 1 | compile-FAIL exception (instance-identity); on nextest timeout override |
 | phase212_n12_cpp_api_drift | 2 | `declared_node_typed_helpers_compile`, `rclcpp_node_options_and_component_factory_compile` |
 | native_entry_poc_boot (was phase212_n_entry_poc_runs) | 2 | CONVERTED to fixture-consuming (#0034) — entry-poc is now a build-fixture |
 | phase223_c_mixed_workspace | 2 | `c_node_pkg_links_into_cpp_entry_template`, `c_node_pkgs_link_into_c_entry_template` |

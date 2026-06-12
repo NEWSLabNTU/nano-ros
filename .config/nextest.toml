@@ -292,7 +292,7 @@ retries = 2
 # on a `binary()` that matches nothing. Converted so far: phase216_b →
 # stm32f4_rtic_main_macro, phase212_n_entry_poc_runs → native_entry_poc_boot.
 filter = """
-  binary(orchestration_tiers_native) \
+  binary(native_orchestration_misuse) \
   or binary(native_main_macro_misuse) \
   or binary(phase216_c_embassy_main_macro_expansion) \
   or binary(phase210_f4_shadowing) \
