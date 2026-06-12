@@ -127,6 +127,11 @@ CMAKE_FIXTURES=(
     # cpp workspace cmake configure emits nros-metadata.json (the §212.L cmake fns
     # component/application/deploy metadata) — the test inspects it.
     "metadata_cpp:examples/workspaces/cpp"
+    # §212.L.9 cmake-fn metadata: each configures a tiny CMakeLists exercising
+    # nano_ros_node_register / nano_ros_deploy → nros-metadata.json (test inspects).
+    "l9_register_cpp:packages/testing/nros-tests/fixtures/l9_register_cpp"
+    "l9_register_c:packages/testing/nros-tests/fixtures/l9_register_c"
+    "l9_deploy:packages/testing/nros-tests/fixtures/l9_deploy"
 )
 cmake_out="$repo_root/build/cmake-fixtures"
 

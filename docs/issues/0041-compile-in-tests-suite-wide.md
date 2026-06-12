@@ -56,8 +56,9 @@ not live). `phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) 
 text → documented exceptions (fast-fail, can't be prebuilt).
 
 **Wave A also converted:** `phase212_d_workspace_metadata`'s lone cmake test →
-`metadata_cpp` cmake fixture (inspects prebuilt nros-metadata.json); its 6 other
-tests already consume prebuilt workspace fixtures.
+`metadata_cpp` cmake fixture. `phase212_l9_cmake_fns` → `cmake_node_register_metadata`
+(3 positives → `l9_register_cpp`/`l9_register_c`/`l9_deploy` cmake fixtures) +
+`cmake_node_register_misuse` (2 negative configure-fail cases, exception).
 
 **Wave B — freertos / threadx cross-build** (cross-build mechanism):
 `orchestration_tiers_freertos`, `phase212_n_freertos_run_plan_runtime`,
