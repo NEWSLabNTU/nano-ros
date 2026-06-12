@@ -92,6 +92,36 @@ inline Result bind_subscription_raw(Node& node, const char* topic, const char* t
         self, qos);
 }
 
+/// Phase 242.2 (RFC-0044 §Design.2(1)) — bind a component **member**
+/// `void C::on_msg(const M&)` as a **typed** subscription callback. This is the
+/// `bind_subscription_raw` no-alloc trampoline lifted to the typed path: it
+/// registers a RAW subscription (so the executor arena owns it, no C++
+/// `Subscription<M>` storage object) keyed on the DDS-mangled `M::TYPE_NAME`
+/// (the same wire keyexpr a typed `Publisher<M>` registers — the 240.1 finding,
+/// RFC-0044 Q4), and the trampoline `M::ffi_deserialize`s the wire bytes into a
+/// stack `M` before dispatching to the typed member. `self` is the executor
+/// `ctx`; the member-fn pointer is a template parameter, so the trampoline is a
+/// non-capturing lambda that decays to a function pointer — no heap, no
+/// `std::function`.
+///
+/// C++14 note: `M`, `C`, and `Method` are all template parameters (none is
+/// deducible from a runtime member-pointer argument without storing it). This
+/// mirrors `bind_subscription_raw<C, &C::m>`; the ergonomic
+/// `ComponentNode::create_subscription` member + `NROS_SUBSCRIBE` macro hide the
+/// spelling.
+template <typename M, class C, void (C::*Method)(const M& msg)>
+inline Result bind_subscription(Node& node, const char* topic, C* self,
+                                const QoS& qos = QoS::default_profile()) {
+    return create_subscription_raw(
+        node, topic, M::TYPE_NAME,
+        [](const uint8_t* data, size_t len, void* ctx) {
+            M msg;
+            if (M::ffi_deserialize(data, len, &msg) != 0) return;
+            (static_cast<C*>(ctx)->*Method)(msg);
+        },
+        self, qos);
+}
+
 /// Bind a component **member** `void C::on_tick()` as a timer callback. Same
 /// no-alloc member-pointer-as-template-param trampoline; `self` is the ctx the
 /// executor hands back. Wraps the existing `Node::create_timer(out, ms, cb, ctx)`.
@@ -272,6 +302,12 @@ inline Result bind_action_client(Node& node, ActionClientStorage& storage, Timer
 /// the wire) but documents the topic's type; pass the ROS type-name string.
 #define NROS_BIND_SUB_RAW(node, Class, method, topic, type_name, self)                             \
     ::nros::bind_subscription_raw<Class, &Class::method>((node), (topic), (type_name), (self))
+
+/// Convenience: bind a **typed** component subscription member
+/// `void Class::method(const Msg&)` without spelling the template arguments.
+/// `Msg::TYPE_NAME` (the DDS-mangled keyexpr) is registered automatically.
+#define NROS_BIND_SUB(node, Msg, Class, method, topic, self)                                       \
+    ::nros::bind_subscription<Msg, Class, &Class::method>((node), (topic), (self))
 
 /// Convenience: bind a component timer member.
 #define NROS_BIND_TIMER(node, Class, method, out, period_ms, self)                                 \

@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>component_node_poc</name>
+  <version>0.1.0</version>
+  <description>Phase 242.1+242.2 (RFC-0044) — rclcpp-faithful ComponentNode proof: a node that IS-A node, ctor-creates entities with typed member callbacks</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <depend>std_msgs</depend>
+</package>

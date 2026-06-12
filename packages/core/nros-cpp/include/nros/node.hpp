@@ -73,6 +73,11 @@ template <typename A> class ActionClient;
 // Phase 122.3.d.b — L1 polling-mode action wrappers.
 template <typename A> class PollingActionServer;
 template <typename A> class PollingActionClient;
+// Phase 242.1 (RFC-0044) — rclcpp-faithful IS-A-node base. It wraps an owned
+// `Node` and creates that node against an executor-bound handle in its ctor, so
+// it needs friend access to set `executor_handle_` + call `Node::create`
+// (the same private-create pattern `Executor` / `NodeBuilder` already use).
+class ComponentNode;
 
 /// Initialize an nros session.
 ///
@@ -507,6 +512,7 @@ class Node {
 
     friend class Executor;
     friend class NodeBuilder;
+    friend class ComponentNode; // Phase 242.1 — ctor-creates the owned node
     friend Result init(const char* locator, uint8_t domain_id);
     friend Result init(const char* locator, uint8_t domain_id, const char* session_name);
     friend Result shutdown();
