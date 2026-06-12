@@ -24,7 +24,7 @@ uint64_t nros_platform_random_u64(void);
 }
 #elif defined(NROS_PLATFORM_ZEPHYR) || defined(__ZEPHYR__)
 extern "C" {
-uint64_t nros_platform_time_ns(void);
+uint64_t nros_platform_clock_ms(void);
 void nros_platform_sleep_ms(size_t ms);
 uint64_t nros_platform_random_u64(void);
 }
@@ -60,7 +60,7 @@ inline uint64_t platform_now_ms() {
 #if defined(NROS_PLATFORM_FREERTOS)
     return static_cast<uint64_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
 #elif defined(NROS_PLATFORM_ZEPHYR) || defined(__ZEPHYR__)
-    return nros_platform_time_ns() / 1000000ULL;
+    return nros_platform_clock_ms();
 #elif defined(NROS_PLATFORM_THREADX)
     return nros_platform_clock_ms();
 #else

@@ -1244,20 +1244,11 @@ pub extern "C" fn nros_cpp_time_ns() -> u64 {
     }
     #[cfg(not(feature = "std"))]
     {
-        // Use the canonical platform clock instead of depending on a
-        // backend-specific shim symbol such as zenoh-pico's z_clock_now.
-        #[cfg(feature = "platform-zephyr")]
-        {
-            unsafe extern "C" {
-                fn nros_platform_time_ns() -> u64;
-            }
-            unsafe { nros_platform_time_ns() }
-        }
-        #[cfg(not(feature = "platform-zephyr"))]
-        {
-            <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_us()
-                .saturating_mul(1_000)
-        }
+        // phase-243: the canonical platform µs clock, ns-scaled — for every no_std
+        // platform incl. Zephyr (was a Zephyr-only `nros_platform_time_ns` extern,
+        // an A-only symbol now retired).
+        <nros_platform::ConcretePlatform as nros_platform::PlatformClock>::clock_us()
+            .saturating_mul(1_000)
     }
 }
 
