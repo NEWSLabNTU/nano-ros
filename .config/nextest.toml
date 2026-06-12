@@ -278,6 +278,13 @@ retries = 2
 # failures the now-honest host-integration lane surfaced. Give them headroom
 # (120s × 4 = 480s) so a slow compile is not a false failure. These binaries do
 # not match any earlier override, so first-match-wins routing reaches this rule.
+#
+# This is a STOPGAP, not the fix. The durable fix (AGENTS.md "No compilation
+# inside tests") is to convert each compile-in-test into a build-stage fixture
+# (examples/fixtures.toml) that the test merely asserts exists — see the
+# `stm32f4_rtic_main_macro` conversion. As each binary is converted it becomes
+# fast and is dropped from this filter (phase216_b already converted + removed);
+# the rule shrinks to empty when the last compile-in-test is gone.
 [[profile.default.overrides]]
 # NOTE: as each compile-in-test binary is CONVERTED to consume a build-stage
 # fixture (issue 0034 — it becomes a fast artifact check, no in-test cargo), it
