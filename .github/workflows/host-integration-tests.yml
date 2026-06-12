@@ -85,21 +85,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    # CI-build tuning (issue #29) — applies to this lane's cargo builds ONLY,
-    # never to local/release/embedded builds (those keep the workspace
-    # `[profile.release]` `lto = "fat"` + full debuginfo untouched). The native
-    # test fixtures are spawned and asserted on *behaviour*, so optimisation and
-    # symbols are irrelevant to pass/fail — and fat LTO across ~30 standalone
-    # per-fixture target dirs writes giant transient `lto1` objects that exhaust
-    # the runner disk. Standalone fixtures (empty `[workspace]`, no custom
-    # `[profile.*]`) can't inherit a workspace CI profile, so the cross-project
-    # knob is the cargo env override, set once here rather than per step:
-    #   - CARGO_PROFILE_RELEASE_LTO=off — overrides the workspace profile AND the
-    #     C++ FFI fixture manifest (`cmake/cpp_ffi_Cargo.toml.in` `lto = true`).
-    #   - RUSTFLAGS=-C debuginfo=0 — drops debug symbols (smaller artifacts).
-    env:
-      CARGO_PROFILE_RELEASE_LTO: "off"
-      RUSTFLAGS: "-C debuginfo=0"
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
@@ -173,55 +158,33 @@ jobs:
           plp_bin="$(dirname "$(find "$HOME/.nros/sdk/play_launch_parser" -type f -name play_launch_parser -path '*/bin/*' 2>/dev/null | head -1)")"
           [ -n "$plp_bin" ] && echo "$plp_bin" >> "$GITHUB_PATH" || true
 
-      # The native integration tests (actions / services / qos / multi_node /
-      # native_api / executor / ...) spawn PREBUILT example binaries via
-      # `require_prebuilt_binary` ("Run `just build-test-fixtures` first") — the
-      # lane never staged them, so ~300 tests failed (issue #25). Build the
-      # native fixtures the way a user does (unblocked now that the issue-0022
-      # fixture-build deadlock is fixed); toolchains/sources come from the
-      # `nros setup` above. The XRCE agent is best-effort — if its source build
-      # hiccups, the `xrce` / `c_xrce` / `bridge` tests `skip!` cleanly (the
-      # test-integration recipe now tolerates `[SKIPPED]`), as do the Zephyr
-      # tests when no SDK is present.
-      # Build the native fixtures best-effort. The rust per-example fixtures
-      # (the bulk of the integration tests) build from the `nros setup` sources
-      # above; the other variants need extra deps/tools the light host lane does
-      # not carry — C/C++ extras (nros-c posix.h compile clash, issue #27), the
-      # workspace entry (`play_launch_parser`), the XRCE agent. Those stay
-      # best-effort: with `NROS_FIXTURES_OPTIONAL=1` on the test step, any
-      # fixture that did not build makes its test `skip!` ([SKIPPED]-tolerated)
-      # instead of failing — while `test-all` (var unset) still hard-fails.
-      # Issue #29 — the ENOSPC that crashed the runner agent mid-build is NOT
-      # the container disk (the overlay `/` has ~88 GB free). It is the runner
-      # *host's* small OS disk: GitHub streams every step's stdout/stderr to the
-      # agent log under `/home/runner/actions-runner/.../_diag`, and the ~100-min
-      # verbose cargo+cmake fixture/test build emits GIGABYTES of `Compiling …`
-      # lines that overflow that host log volume. The fix is to keep the noisy
-      # build/test output OFF the streamed agent log: redirect it to a file on
-      # the big overlay disk and surface only a tail (on failure / at the end).
-      # `RUSTFLAGS=-C debuginfo=0` is kept as a cheap artifact/link-time trim
-      # (tests spawn the binaries; no symbols needed) — not a disk fix.
-      # Issue #29 — scope the rust fixture build (`build-fixture-rust-core`, not
-      # `build-fixture-rust`). The full set rebuilds ~40 standalone per-example ×
-      # RMW/feature variants (each its own target dir, full dep graph) → ~140 GB,
-      # overrunning even the 146 GB overlay. The variant cells (TLS / safety /
-      # zero-copy / zenoh / xrce / large-buf) belong to other lanes (platform-ci
-      # native cells, the RMW lanes); this lane's tests are the Phase 212.N/O
-      # workspace / launch / codegen shapes, which need only the default-config
-      # per-example fixtures + the workspace fixtures. The variant-spawning tests
-      # `skip!` here (NROS_FIXTURES_OPTIONAL). LTO-off + debuginfo=0 come from the
-      # job-level CI-build env. With the build scoped, the overlay has headroom,
-      # so the C/C++ Cyclone extras keep full coverage (no reclaim needed).
-      # Issue #29 — split the three fixture sub-builds into SEPARATE steps, each
-      # with a `df` checkpoint. The runner's `_diag` log and the container
-      # overlay (`/__w`) share ONE ~146 GB disk, so a build that fills `/__w`
-      # also kills the runner agent mid-step — which discards that whole step's
-      # log. Separate steps mean each completed sub-build's log + its `df` line
-      # PERSIST even when a later sub-build exhausts the disk, so the culprit and
-      # the disk progression are visible. Each redirects its (verbose) output to
-      # a log file and surfaces only a tail on failure; best-effort (a failed
-      # sub-build → affected tests [SKIPPED]).
+      # The native integration tests spawn PREBUILT example binaries via
+      # `require_prebuilt_binary` — unstaged, the lane failed ~300 tests (#25).
+      # Stage them by building the fixtures the way a user does. Issue #29 shaped
+      # how:
+      #   - ONE ~146 GB disk backs both `/__w` (container overlay) and the runner
+      #     `_diag` log, and a build that fills it kills the agent mid-step,
+      #     DISCARDING that step's whole log. So the sub-builds are SPLIT into
+      #     separate steps, each with a `df` checkpoint that survives a later
+      #     step's crash (this is how the per-stage disk breakdown was found).
+      #   - `build-fixture-rust-core` (not `build-fixture-rust`): only the
+      #     default-config rows (40 → 22), +17 GB. The isolated-`target_dir`
+      #     RMW/feature variants belong to other lanes; their tests `skip!` here
+      #     via NROS_FIXTURES_OPTIONAL.
+      #   - `build-fixture-extras` (C/C++ + Cyclone) is NOT run: the `df` trail
+      #     showed it adds ~52 GB (64% → 100%), starving test-integration → ENOSPC.
+      #     Not this lane's purpose; C/C++ coverage lives in its own lanes.
+      #   - The CI-build env (`CARGO_PROFILE_RELEASE_LTO=off` + `-C debuginfo=0`)
+      #     is scoped to THESE FIXTURE-BUILD STEPS ONLY — never the job, so it
+      #     cannot leak into test-integration's own compiles (which assert on
+      #     symbols / sizes / compile shape). Fixtures are spawned, not inspected,
+      #     so dropping LTO/symbols there is safe and trims disk.
+      #   - Output is redirected to a log file (tail-on-failure); best-effort (a
+      #     failed sub-build → affected tests [SKIPPED]).
       - name: Build rust core fixtures
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "off"
+          RUSTFLAGS: "-C debuginfo=0"
         run: |
           source /opt/ros/humble/setup.bash
           mkdir -p build/ci-logs
@@ -231,6 +194,9 @@ jobs:
           echo "after rust-core ($(wc -l < build/ci-logs/rust-core.log) lines suppressed):"; df -h / | tail -1
 
       - name: Build workspace fixtures
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "off"
+          RUSTFLAGS: "-C debuginfo=0"
         run: |
           source /opt/ros/humble/setup.bash
           just native build-workspace-fixtures > build/ci-logs/workspace.log 2>&1 \
