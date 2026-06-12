@@ -53,7 +53,7 @@ triage.
 | phase212_l9_cmake_fns | 1 | `nano_ros_application_rejects_embedded_deploy` |
 | phase210_f4_shadowing | 1 | `workspace_std_msgs_shadows_ament_in_consumer_binary` |
 | phase212_m12_example_shape | 1 | `every_example_leaf_has_package_xml` — **cause known: `78ac799ee`** |
-| phase212_macro_one_dep | 1 | `one_dep_pkg_compiles_implicit_platform` |
+| macro_one_dep_resolves (was phase212_macro_one_dep) | 1 | CONVERTED — build-stage compile-check fixture + `.compile-ok` stamp (#0034) |
 | stm32f4_rtic_main_macro (was phase216_b) | 1 | `rtic_main_macro_expansion_builds` — CONVERTED to fixture-consuming (#0034 antipattern) |
 | phase216_c_embassy_main_macro_expansion | 1 | `embassy_main_macro_expansion_compiles` |
 | phase235_a_cpp_entry_runtime | 1 | `cpp_entry_runtime_publishes_live_samples` |

@@ -294,7 +294,6 @@ retries = 2
 filter = """
   binary(orchestration_tiers_native) \
   or binary(phase212_n9_main_macro_forms) \
-  or binary(phase212_macro_one_dep) \
   or binary(phase216_c_embassy_main_macro_expansion) \
   or binary(phase210_f4_shadowing) \
   or binary(cpp_multi_node_entry) \

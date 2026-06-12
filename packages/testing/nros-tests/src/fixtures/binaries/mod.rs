@@ -736,6 +736,21 @@ pub fn build_native_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Resolve a build-stage "compile-check" fixture's `.compile-ok` stamp (issue
+/// 0034). `scripts/build/compile-check-fixtures.sh` (run by
+/// `build-test-fixtures`) stages the template, rewrites placeholders, runs
+/// `cargo check`, and writes the stamp on success — so a test asserts the stamp
+/// instead of running `cargo check` at run time. Tier-aware via
+/// `require_prebuilt_binary` (hard-fail in full tier → run `build-test-fixtures`;
+/// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL=1`).
+pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
+    let stamp = project_root()
+        .join("build/compile-check")
+        .join(id)
+        .join(".compile-ok");
+    require_prebuilt_binary(&stamp)
+}
+
 /// Resolve the prebuilt `entry-poc` fixture (cached). The
 /// `examples/native/rust/entry-poc` Entry pkg (`nros::main!()` → native
 /// `BoardEntry::run`) is built by `just native build-fixtures` /

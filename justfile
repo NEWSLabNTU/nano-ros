@@ -625,6 +625,11 @@ test verbose="": build-zenohd
 [group("full-matrix")]
 build-test-fixtures: generate-bindings build-zenoh-posix-fixture build-test-fixtures-leaves
     #!/usr/bin/env bash
+    set -e
+    # Compile-check fixtures (issue 0034): build-stage `cargo check` of small
+    # template crates whose tests only prove they compile — the test asserts the
+    # `.compile-ok` stamp instead of running cargo at run time.
+    bash scripts/build/compile-check-fixtures.sh
     # Drop a stamp so `_require-fixtures` (the test-all/test preflight) can
     # fast-fail with a build hint instead of letting the suite run and
     # surface dozens of "Binary not found" failures. The body only runs
