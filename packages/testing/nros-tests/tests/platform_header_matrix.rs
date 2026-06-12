@@ -181,6 +181,11 @@ fn try_compile(cell: &Cell) -> (bool, String) {
             ]);
         }
     }
+    // phase-243 B.5 — resolve `<nros/platform.h>` to the ONE canonical header in
+    // nros-platform-api (now carrying the generic atomics). Listed first so it
+    // wins; nros-c/include kept for the other nros-c headers.
+    cmd.arg("-I")
+        .arg(root.join("packages/core/nros-platform-api/include"));
     cmd.arg("-I")
         .arg(root.join("packages/core/nros-cpp/include"));
     cmd.arg("-I").arg(root.join("packages/core/nros-c/include"));

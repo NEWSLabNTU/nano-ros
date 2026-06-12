@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 /**
  * @file platform.h
@@ -151,6 +152,23 @@ size_t nros_platform_heap_used_bytes(void);
 
 /** Total managed heap size in bytes (used + free), or `0` if unknown. */
 size_t nros_platform_heap_total_bytes(void);
+
+/* ---- Atomics ---- */
+/* RFC-0042 D1 / phase-243 — single portable atomic-bool pair (was per-RTOS
+ * `static inline` in the retired nros-c sub-headers: posix `__atomic`, zephyr
+ * `atomic_set`, freertos critical-section, bare-metal barrier). The `__atomic_*`
+ * builtins lower to a plain load/store + acquire/release fence for a
+ * naturally-aligned 1-byte `bool` on every target nros builds — no CAS /
+ * A-extension needed (riscv32imc never builds nros-c). Used directly (not C11
+ * `<stdatomic.h>`, which does not compile under g++). Header-only inline, so
+ * there is no extern symbol + no Rust-mirror entry. */
+static inline void nros_platform_atomic_store_bool(bool *ptr, bool value) {
+    __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
+}
+
+static inline bool nros_platform_atomic_load_bool(const bool *ptr) {
+    return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
+}
 
 /* ---- Sleep ---- */
 
