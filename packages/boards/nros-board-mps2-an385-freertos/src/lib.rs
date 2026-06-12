@@ -26,6 +26,16 @@
 // Rust allocator adapter over the FreeRTOS C heap.
 extern crate nros_platform as _;
 
+// Issue #45 — the board crate owns the embedded `#[panic_handler]`. The board
+// is `no_std`, cortex-m-only, and deps `panic-semihosting` unconditionally, so
+// importing it here brings the `panic_impl` lang item to every Entry bin that
+// links this board rlib — without the Entry pkg declaring its own handler (which
+// the `nros::main!()` migration no longer injects). Gated on `target_os = "none"`
+// so the host-side build (`cargo check`) — where no handler is needed and
+// `panic-semihosting` cannot compile — is unaffected.
+#[cfg(target_os = "none")]
+use panic_semihosting as _;
+
 // Force-link the zenoh-pico C transport + platform shim when
 // `rmw-zenoh` is active. DDS-only builds drop both deps via
 // `default-features = false` and reach the linker without the

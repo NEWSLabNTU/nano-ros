@@ -50,12 +50,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 41 | suite-wide compile-in-tests antipattern — convert to build-stage fixtures | tech-debt | testing | [0041-compile-in-tests-suite-wide.md](0041-compile-in-tests-suite-wide.md) |
 | 44 | esp-idf platform.c build fails — `_heap_start`/`_heap_end` undeclared | bug | esp32 | [0044-esp-idf-platform-c-heap-symbols-undeclared.md](0044-esp-idf-platform-c-heap-symbols-undeclared.md) |
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
-| 45 | FreeRTOS Entry-pkg build fails — Component `staticlib` needs a no_std panic handler that collides with the Entry bin's | bug | freertos | [0045-freertos-entry-component-staticlib-panic-handler.md](0045-freertos-entry-component-staticlib-panic-handler.md) |
+| 46 | FreeRTOS Entry-pkg boots but stack-overflows at Executor — Component links both zenoh + cyclonedds rmw | bug | freertos | [0046-freertos-entry-rmw-double-link-stack-overflow.md](0046-freertos-entry-rmw-double-link-stack-overflow.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the
 3-arg `init` overload); **#40** — C++ action callback truncated result (a symptom
 of #39 + a latent result offset 8→5); **#43** — C++ action server empty result
 for a C-framed goal (a stale pre-233.6 C fixture writing a removed GoalId
-sequence prefix; resolved by a fresh build). See `archived/0039-*`,
+sequence prefix; resolved by a fresh build); **#45** — FreeRTOS Entry-pkg
+build/panic-handler (Component → rlib-only + board-owned `panic_semihosting` +
+`mps2_an385.ld`; boots under QEMU, runtime tail → #46). See `archived/0039-*`,
 `archived/0040-*`, `archived/0043-*`.

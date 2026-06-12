@@ -7,7 +7,7 @@ publish = false
 description = "FreeRTOS QEMU MPS2-AN385 AddTwoInts service server — Phase 212.L Component pkg"
 
 [lib]
-crate-type = ["rlib", "staticlib"]
+crate-type = ["rlib"]
 
 [features]
 # Phase 214.S.5 — `rmw-cyclonedds` parity row. The default deploy rmw is
@@ -45,7 +45,7 @@ exec_depend = ["example_interfaces"]
 
 [profile.dev]
 # Phase 214.S.5.b — `panic = "abort"` is required for the no_std
-# staticlib crate-type. The embedded Entry pkg inherits this on the
+# rlib crate-type (pure-cargo Entry-pkg path; #45). The Entry pkg inherits this on the
 # firmware build; the standalone host `cargo check` also needs it for
 # its host-only panic-handler shim (see src/lib.rs::host_shim).
 panic = "abort"

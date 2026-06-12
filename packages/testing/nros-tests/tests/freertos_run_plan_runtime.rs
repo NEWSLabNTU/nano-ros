@@ -179,14 +179,14 @@ fn build_or_locate_entry_binary(dir: &Path) -> Result<PathBuf, String> {
 }
 
 #[test]
-#[ignore = "Phase 212.O.1 — FreeRTOS Entry-pkg link path NOT yet stable \
-            (separate from M-F.17, which is landed). The Component pkg's \
-            `crate-type = [\"rlib\", \"staticlib\"]` makes cargo build a \
-            no_std `staticlib` of `freertos_rs_talker` for thumbv7m, which \
-            needs a `#[panic_handler]` — but adding one to the rlib would \
-            collide with the Entry bin's `panic-semihosting` handler. \
-            Unblock needs an O.1 design decision on where the Component- \
-            staticlib embedded panic handler lives. See docs/issues/0045."]
+#[ignore = "Phase 212.O.1 runtime tail — #45 (the Entry-pkg link/panic-handler \
+            blocker) is RESOLVED: `freertos_rs_talker_entry` now compiles, links, \
+            and boots through the board lifecycle under QEMU (banner → LAN9118 + \
+            lwIP → MAC/IP). It then hits `*** STACK OVERFLOW: nros_app ***` at \
+            Executor creation because the firmware links BOTH zpico_sys (zenoh) \
+            and nros_rmw_cyclonedds via the Component's `rmw-cffi` umbrella, even \
+            though the deploy config says rmw=zenoh — an rmw-selection + stack/heap \
+            tuning problem, not a link bug. See docs/issues/0046."]
 fn freertos_board_run_executes_run_plan() {
     if let Some(reason) = require_freertos_qemu_prereqs() {
         nros_tests::skip!("{reason}");

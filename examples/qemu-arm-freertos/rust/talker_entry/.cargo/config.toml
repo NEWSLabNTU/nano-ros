@@ -3,7 +3,12 @@ target = "thumbv7m-none-eabi"
 
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+# Issue #45 — link against the board's own `mps2_an385.ld` (emitted to OUT_DIR by
+# `nros-board-mps2-an385-freertos/build.rs`), not the generic cortex-m-rt
+# `link.x`. Matches the working freertos bins (e.g. logging-smoke-freertos-mps2);
+# `--nmagic` disables page alignment for the small MPS2 image.
 rustflags = [
     "-C", "link-arg=--gc-sections",
-    "-C", "link-arg=-Tlink.x",
+    "-C", "link-arg=-Tmps2_an385.ld",
+    "-C", "link-arg=--nmagic",
 ]

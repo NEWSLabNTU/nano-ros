@@ -1,11 +1,49 @@
 ---
 id: 45
 title: FreeRTOS Entry-pkg cargo build fails — Component `staticlib` crate-type needs a no_std `#[panic_handler]` that collides with the Entry bin's
-status: open
+status: resolved
 type: bug
 area: freertos
-related: [issue-0041, phase-212]
+related: [issue-0041, phase-212, issue-0046]
 ---
+
+## Resolution (2026-06-13)
+
+Applied the three-gap fix designed + validated below:
+
+1. **Component staticlib (candidate 1).** The 6 pure-cargo FreeRTOS Component
+   examples (`examples/qemu-arm-freertos/rust/{talker,listener,service-server,
+   service-client,action-server,action-client}`) now declare `crate-type =
+   ["rlib"]` only — consumed via pure-cargo (the Entry pkg), not cmake, so the
+   embedded-link `staticlib` was over-specified; dropping it removes the
+   no_std-`staticlib`-needs-`#[panic_handler]` requirement on the rlib.
+2. **Board-owned panic handler (candidate 2, in the board crate).**
+   `nros-board-mps2-an385-freertos/src/lib.rs` now carries
+   `#[cfg(target_os = "none")] use panic_semihosting as _;`. The board crate is
+   no_std cortex-m-only and already deps `panic-semihosting`, so this brings the
+   `panic_impl` lang item to every Entry bin that links the board rlib — the
+   Entry pkg needs no handler (the `nros::main!()` macro never re-injected the old
+   board-descriptor handler), and the host build is unaffected by the
+   `target_os = "none"` gate.
+3. **Linker-script drift.** `talker_entry/.cargo/config.toml` now links
+   `-Tmps2_an385.ld` + `--nmagic` (the board build.rs's own script, emitted to
+   OUT_DIR) instead of the generic cortex-m-rt `-Tlink.x` — matching the working
+   freertos bins.
+
+**Verified:** `freertos_rs_talker_entry` (`thumbv7m-none-eabi`) compiles, links
+(no `panic_handler` / duplicate `panic_impl` error), and boots through the full
+board lifecycle under QEMU (banner → LAN9118 + lwIP → MAC/IP assigned).
+
+**Residual → #46:** the app task then hits `*** STACK OVERFLOW: nros_app ***` at
+Executor creation because the firmware links both `zpico_sys` (zenoh) and
+`nros_rmw_cyclonedds` (via the Component's `rmw-cffi` umbrella) despite
+`rmw = "zenoh"`. That is rmw-backend-selection + stack tuning, tracked
+separately as **#46**; the runtime test `freertos_board_run_executes_run_plan`
+stays `#[ignore]`d on #46, no longer on this issue.
+
+---
+
+_Original report below._
 
 ## Symptom
 
