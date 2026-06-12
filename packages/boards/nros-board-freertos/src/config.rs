@@ -60,9 +60,13 @@ impl Default for Config {
             // zenoh read/lease default to 4 in zenoh-pico (configMAX_PRIORITIES/2)
             app_priority: 12,
             // The Rust zenoh executor can exceed 160 KiB while opening a
-            // FreeRTOS session with lwIP enabled. Keep headroom so stack
-            // overflow checks fail cleanly instead of corrupting the TCB.
-            app_stack_bytes: 262144,
+            // FreeRTOS session with lwIP enabled; the Phase 212 Entry /
+            // run-plan Executor open exceeds the old 256 KiB default and
+            // stack-overflows (issue #46). 384 KiB boots cleanly. The task
+            // stack is drawn from the FreeRTOS heap (heap_4), sized to match in
+            // `nros-board-freertos/build.rs`. Keep headroom so stack-overflow
+            // checks fail cleanly instead of corrupting the TCB.
+            app_stack_bytes: 393216,
             zenoh_read_priority: 16,
             zenoh_read_stack_bytes: 5120,
             zenoh_lease_priority: 16,

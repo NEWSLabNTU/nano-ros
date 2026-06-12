@@ -73,16 +73,20 @@ fn main() {
     // bss; this is the only TU that sizes it). FreeRTOSConfig.h defaults to a
     // cyclone-safe 3 MiB. Two overrides, env wins:
     //   1. explicit `NROS_FREERTOS_HEAP_KB` build env (any value), else
-    //   2. the `rmw-zenoh` feature (forwarded from the board) → 512 KiB. zenoh-
-    //      pico's own working set is small, but lwIP (netconns/pbufs/socket
-    //      semaphores) + the FreeRTOS task stacks also draw from this heap: 256
-    //      KiB MALLOC-FAILs during lwIP init, 512 KiB boots + publishes cleanly
-    //      (verified on the qemu MPS2-AN385 talker). Still far below the cyclone
-    //      DDS-discovery default. cyclone/xrce don't enable this feature on the
-    //      base crate, so they keep the safe 3 MiB default; tune via the env.
+    //   2. the `rmw-zenoh` feature (forwarded from the board) → 2 MiB. The
+    //      FreeRTOS task stacks are allocated *from* this heap (heap_4), so it
+    //      must hold the `nros_app` task stack (now 384 KiB — the Phase 212
+    //      Entry / run-plan Executor open exceeds the old 256 KiB) PLUS lwIP
+    //      (netconns/pbufs/socket semaphores) PLUS zenoh-pico's working set.
+    //      512 KiB sufficed for the old *direct* talker but the Entry path
+    //      MALLOC-FAILs at it (issue #46); 2 MiB boots cleanly through Executor
+    //      + network on the qemu MPS2-AN385 (4 MiB SRAM, ample headroom). Still
+    //      below the cyclone DDS-discovery default; cyclone/xrce don't enable
+    //      this feature on the base crate, so they keep the 3 MiB default; tune
+    //      via the env (`xPortGetMinimumEverFreeHeapSize()` high-water).
     let heap_kb = env::var("NROS_FREERTOS_HEAP_KB")
         .ok()
-        .or_else(|| (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then(|| "512".to_string()));
+        .or_else(|| (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then(|| "2048".to_string()));
     if let Some(kb) = heap_kb {
         freertos.define("NROS_FREERTOS_HEAP_KB", kb.as_str());
     }
