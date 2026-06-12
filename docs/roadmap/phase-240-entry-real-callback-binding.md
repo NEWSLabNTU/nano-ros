@@ -128,9 +128,13 @@ wave lands).
     - [x] Verified `nros codegen entry --lang cpp --typed --metadata …` against
           that workspace emits a TU constructing both real components +
           `NativeBoard::run_components` (no `__nros_component_*`, no `NodeContext`).
-    - [ ] cmake fixture registration (`compile-check-fixtures.sh`) + native
-          two-process runtime E2E (grep `Published`/`Received`) — replaces the
-          `phase235_a` synthesized-counter path. (Needs the C++/zenoh build tier.)
+    - [x] **Native build + run E2E validated 2026-06-12.** Built
+          `multi-node-workspace-cpp-typed` with the real toolchain (nano-ros C++ +
+          zenoh-pico host + `emit_typed` entry → `robot_entry`); ran two processes
+          vs `build/zenohd`: `Published 0..7` + `Received 0..7` — the typed codegen
+          entry constructs both components, `configure` binds real timer-publish +
+          raw-sub callbacks, `run_components` spins the real executor, callbacks
+          fire. (cmake-fixture registration for CI still TODO.)
   - [ ] raw↔typed type-name-form unification (240.1 finding) — still open.
 
 ### 240.3 — Carrier + embedded board adapter (NuttX) — **mechanism DONE 2026-06-12**
@@ -226,8 +230,18 @@ wave lands).
         to typed poll components. All hand-rolled CDR; gcc-syntax-checked (C),
         pattern-aligned (C++). (Clients move to callbacks when RFC-0041's C/C++
         wave lands.)
-- [ ] **240.5-E2E** — cross-build the migrated ELFs + NuttX boot/exchange
-      (build tier; validates the hand-rolled CDR + action protocol end-to-end).
+- **Build-tier cross-build validated 2026-06-12.** With the real NuttX toolchain
+  (arm-none-eabi-gcc + nightly-2026-04-11 `-Z build-std` + staged kernel), the
+  **entire migrated NuttX matrix** cross-compiles + links into bootable ARM ELFs:
+  `{cpp,c}/{listener, service-server, action-server, service-client,
+  action-client}` (10 ELFs). Validates the typed C++/C carriers (240.3/240.4),
+  the `NROS_C_COMPONENT` C-ABI bridge + executor-arg seam, `bind_*_raw` +
+  `create_*_client_raw`, and the hand-rolled CDR / action FFI (240.5) all compile
+  + link on-target. The generated NuttX entry is the typed
+  `NuttxBoard::run_components` (no `EntryNodeRuntime`, no `NodeContext`).
+- [ ] **240.5-runtime-E2E** — boot the ELFs in QEMU + exchange vs a host
+      talker/client (rtos_e2e harness) — validates the CDR/protocol at runtime
+      (the build tier already caught compile/link errors).
 
 ### 240.6 — Retire the interpreter — **BLOCKED (retirement plan + RFC done 2026-06-12)**
 
