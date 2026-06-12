@@ -3,8 +3,8 @@
 use core::marker::PhantomData;
 
 use nros_core::{
-    BorrowedMessage, CdrReader, DeserializeBorrowed, MessageInfo, RawMessageInfo, RosAction,
-    RosMessage, RosService,
+    BorrowedMessage, CdrReader, Deserialize, DeserializeBorrowed, MessageInfo, RawMessageInfo,
+    RosAction, RosMessage, RosService,
 };
 use nros_rmw::{ServiceServerTrait, Subscriber, TransportError};
 

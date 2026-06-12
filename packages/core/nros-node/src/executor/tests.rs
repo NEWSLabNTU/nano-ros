@@ -2623,6 +2623,57 @@ fn test_node_service_client_with_qos() {
         .expect("client with qos");
 }
 
+/// RFC-0041 / Phase 239.4 — a callback-based service client delivers the reply
+/// to its typed closure at `spin_once` (no `Promise::try_recv`). Drives the full
+/// `call` → inject-reply → dispatch → callback path through the executor with the
+/// mock transport.
+#[test]
+fn test_service_client_callback_fires_at_spin() {
+    use crate::executor::arena::ServiceClientSendHeader;
+
+    let mut executor: Executor = Executor::from_session(MockSession::new());
+    let nid = executor.node_builder("svc_cb").build().unwrap();
+
+    let got = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let got2 = got.clone();
+    let mut client = executor
+        .node_mut(nid)
+        .create_client_with_callback::<TestService, _>("/svc", move |reply: &TestServiceReply| {
+            *got2.lock().unwrap() = Some(reply.sum);
+        })
+        .unwrap();
+
+    // Send a request → `pending = true` (the mock send is a no-op).
+    client.call(&TestServiceRequest { a: 7 }).unwrap();
+    assert_eq!(*got.lock().unwrap(), None, "no reply delivered yet");
+
+    // Inject a reply into the arena entry's mock client. The send header is the
+    // first field of the typed entry, so it sits at the entry offset.
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let hdr = unsafe {
+        &*(arena_ptr.add(off)
+            as *const ServiceClientSendHeader<{ crate::config::DEFAULT_RX_BUF_SIZE }>)
+    };
+    let mut buf = [0u8; 256];
+    let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
+    writer.write_i32(14).unwrap();
+    let len = writer.position();
+    let mut reply = [0u8; 256];
+    reply[..len].copy_from_slice(&buf[..len]);
+    hdr.handle.load_reply(reply, len);
+
+    // Spin → dispatcher drains the reply, deserializes `TestServiceReply`, fires
+    // the typed callback.
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(result.any_work(), "spin did work");
+    assert_eq!(
+        *got.lock().unwrap(),
+        Some(14),
+        "callback delivered the deserialized reply"
+    );
+}
+
 /// Phase 189.M3.3.d — runtime proof that a **service** bound to a sched context
 /// honours it in `spin_once`: two services bound to EDF contexts dispatch in
 /// deadline order, not registration order. This is the runtime payoff of M3.3 —
