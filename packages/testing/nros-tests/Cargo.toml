@@ -222,8 +222,8 @@ path = "tests/loan_e2e.rs"
 required-features = ["loan-e2e"]
 
 [[test]]
-name = "phase212_l5_init_api"
-path = "tests/phase212_l5_init_api.rs"
+name = "init_api"
+path = "tests/init_api.rs"
 
 [[test]]
 name = "phase212_m5a2_component_runtime"
@@ -233,8 +233,8 @@ required-features = ["component-runtime-test"]
 # Phase 228 — per-tier callback-group filter + shared-session
 # (session_ptr / open_with_session) acceptance test.
 [[test]]
-name = "phase228_tier_filter"
-path = "tests/phase228_tier_filter.rs"
+name = "tier_filter"
+path = "tests/tier_filter.rs"
 required-features = ["component-runtime-test"]
 
 # Phase 212.M.5.a.4 — BSP-path dispatch wiring (typed-erased state +
@@ -364,8 +364,8 @@ path = "tests/orchestration_includes.rs"
 # Phase 212.F — `nros new system` bringup scaffold + `nros check --bringup`
 # lint smoke. Skips cleanly when the `nros` CLI is not installed.
 [[test]]
-name = "phase212_f_bringup_scaffold"
-path = "tests/phase212_f_bringup_scaffold.rs"
+name = "bringup_scaffold"
+path = "tests/bringup_scaffold.rs"
 
 # FreeRTOS MPS2-AN385 Entry-pkg firmware (Phase 212.H.3): asserts the build-stage
 # `freertos_firmware` cross-build fixture's prebuilt run_plan.rs (issue 0034 —
@@ -407,8 +407,8 @@ path = "tests/phase212_m12_example_shape.rs"
 # Different skip-set + punch-list shape from `phase212_m12_example_shape`;
 # both run, both report.
 [[test]]
-name = "phase212_examples_canonical_shape"
-path = "tests/phase212_examples_canonical_shape.rs"
+name = "examples_canonical_shape"
+path = "tests/examples_canonical_shape.rs"
 
 # Phase 212.M.12 (parallel sibling) — pre-212 file ban: no nros.toml /
 # component_nros.toml / gen-app-config.py / app_config.h.in /
@@ -426,8 +426,8 @@ path = "tests/phase212_pre_212_files_forbidden.rs"
 # `Marker.msg`. Skips cleanly if AMENT isn't sourced (the shadowing
 # contract degenerates without an AMENT layer to displace).
 [[test]]
-name = "phase210_f4_shadowing"
-path = "tests/phase210_f4_shadowing.rs"
+name = "workspace_shadowing"
+path = "tests/workspace_shadowing.rs"
 
 # Phase 215.E.2 — verifies `nano_ros_use_board()` layers a board crate's
 # artifacts (BOARD, EXTRA_CONF_FILE/overlay, RMW default, runner) into a
@@ -443,8 +443,8 @@ path = "tests/phase215_e_board_import.rs"
 # is caught. Requires `phase216-substrate` for the `nros-platform`
 # dep — host-only, no embedded toolchain needed.
 [[test]]
-name = "phase216_a_dispatch_strategy"
-path = "tests/phase216_a_dispatch_strategy.rs"
+name = "dispatch_strategy"
+path = "tests/dispatch_strategy.rs"
 required-features = ["phase216-substrate"]
 
 # `nros::main!()` RTIC macro expansion (Phase 216.B.5): consumes the prebuilt
