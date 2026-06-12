@@ -164,7 +164,6 @@ fn walk(root: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// §212.O.4 doc bullet — the surface is landed, the gate-flip is
 /// what this test is for).
 #[test]
-#[ignore = "Phase 212.O.4 acceptance: install pin must include nros-cli de165c8 (§212.N.10)"]
 fn n10_pkg_index_resolves_across_workspace() {
     // Preflight: cargo must be reachable. `nros_tests::skip!` raises
     // a `[SKIPPED]` panic so the test reports skipped (not silently

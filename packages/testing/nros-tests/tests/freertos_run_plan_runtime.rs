@@ -142,9 +142,23 @@ fn build_or_locate_entry_binary(dir: &Path) -> Result<PathBuf, String> {
         return Ok(bin);
     }
 
+    // `nros-board-freertos/build.rs` compiles the FreeRTOS + CFFI
+    // platform glue and needs these paths — normally injected by the
+    // `just freertos` overlay's `.cargo/config.toml [env]`. This
+    // standalone example carries no such overlay, so supply them here
+    // (mirrors the board_agnostic_run_plan freertos leg).
+    let root = project_root();
     let out = Command::new("cargo")
         .args(["build", "--bin", "freertos_rs_talker_entry"])
         .current_dir(dir)
+        .env(
+            "NROS_PLATFORM_FREERTOS_SRC",
+            root.join("packages/core/nros-platform-freertos/src"),
+        )
+        .env(
+            "NROS_PLATFORM_CFFI_INCLUDE",
+            root.join("packages/core/nros-platform-cffi/include"),
+        )
         .output()
         .map_err(|e| format!("spawn cargo build: {e}"))?;
     if !out.status.success() {
@@ -165,10 +179,14 @@ fn build_or_locate_entry_binary(dir: &Path) -> Result<PathBuf, String> {
 }
 
 #[test]
-#[ignore = "Phase 212.O.1 — runtime gate is staged behind M-F.17 \
-            stabilisation of the FreeRTOS Entry pkg link path. Re-enable \
-            once the talker_entry fixture boots through the family \
-            driver under QEMU. See docs/roadmap/phase-212-…O.1."]
+#[ignore = "Phase 212.O.1 — FreeRTOS Entry-pkg link path NOT yet stable \
+            (separate from M-F.17, which is landed). The Component pkg's \
+            `crate-type = [\"rlib\", \"staticlib\"]` makes cargo build a \
+            no_std `staticlib` of `freertos_rs_talker` for thumbv7m, which \
+            needs a `#[panic_handler]` — but adding one to the rlib would \
+            collide with the Entry bin's `panic-semihosting` handler. \
+            Unblock needs an O.1 design decision on where the Component- \
+            staticlib embedded panic handler lives. See docs/issues/0045."]
 fn freertos_board_run_executes_run_plan() {
     if let Some(reason) = require_freertos_qemu_prereqs() {
         nros_tests::skip!("{reason}");

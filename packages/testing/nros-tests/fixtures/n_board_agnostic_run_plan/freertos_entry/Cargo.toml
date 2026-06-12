@@ -28,6 +28,11 @@ nros-board-mps2-an385-freertos = { path = "@NANO_ROS_ROOT@/packages/boards/nros-
 # Trait surface — BoardEntry / RuntimeCtx / RuntimeError.
 nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
 panic-semihosting = { version = "0.6", features = ["exit"] }
+# Codegen-emitted `run_plan.rs` defines a `register_dispatch` shim
+# typed `&mut ::nros::Executor`, so the Entry pkg depends on `nros`
+# directly — same platform features the Component pkg forwards (no
+# `std` on `thumbv7m-none-eabi`).
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "platform-freertos"] }
 # Component pkg under test — enable the `freertos` feature gate so
 # its `nros` dep links the FreeRTOS platform backend.
 shared_node_pkg = { path = "../src/shared_node_pkg", features = ["freertos"] }
@@ -43,4 +48,4 @@ nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "mai
 # posix_entry Cargo.toml — must be the same nros-build source so the
 # byte-identical OUT_DIR/run_plan.rs assertion holds).
 [patch."https://github.com/NEWSLabNTU/nros-cli.git"]
-nros-build = { path = "@NROS_CLI_ROOT@/packages/nros-build" }
+nros-build = { path = "@NROS_CLI_ROOT@/nros-build" }

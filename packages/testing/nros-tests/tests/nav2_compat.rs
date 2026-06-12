@@ -90,19 +90,31 @@ fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
     // Post-Phase-218 the CLI lives in-tree at `packages/cli/`; default
     // there. Fall back to a sibling `nros-cli/` checkout for users still
     // on the pre-218 layout.
+    // Resolve the `nros-build` crate dir across layouts — in-tree
+    // `packages/cli/nros-build`, sibling `../nros-cli/packages/nros-build`,
+    // or `$NROS_CLI_ROOT/{nros-build,packages/nros-build}` — then substitute
+    // its PARENT for `@NROS_CLI_ROOT@` so the fixture's
+    // `@NROS_CLI_ROOT@/nros-build` patch path resolves regardless of layout
+    // (the in-tree `packages/cli/` drops the external repo's `packages/`
+    // segment).
+    let find_nros_build = |base: &std::path::Path| -> Option<std::path::PathBuf> {
+        ["nros-build", "packages/nros-build"]
+            .into_iter()
+            .map(|sub| base.join(sub))
+            .find(|cand| cand.join("Cargo.toml").is_file())
+    };
     let nros_cli_root = std::env::var("NROS_CLI_ROOT")
         .ok()
-        .filter(|p| std::path::Path::new(p).is_dir())
+        .and_then(|p| find_nros_build(std::path::Path::new(&p)))
+        .or_else(|| find_nros_build(&std::path::Path::new(replacement).join("packages/cli")))
         .or_else(|| {
-            let in_tree = std::path::Path::new(replacement).join("packages/cli");
-            in_tree.is_dir().then(|| in_tree.display().to_string())
-        })
-        .or_else(|| {
-            let guess = std::path::Path::new(replacement)
+            std::path::Path::new(replacement)
                 .parent()
-                .map(|p| p.join("nros-cli"))?;
-            guess.is_dir().then(|| guess.display().to_string())
-        });
+                .and_then(|p| find_nros_build(&p.join("nros-cli")))
+        })
+        .as_deref()
+        .and_then(|d| d.parent())
+        .map(|p| p.display().to_string());
     for entry in walk(root)? {
         if !entry.is_file() {
             continue;
@@ -150,8 +162,6 @@ fn play_launch_parser_available() -> bool {
 }
 
 #[test]
-#[ignore = "Phase 212.O.5 gate — confirm M-F.17 + N.11 + emit run_plan path lands end-to-end; \
-            sibling H.3 / L.7 tests still tolerate the Placeholder fallback. Lift after a green run."]
 fn n11_launch_xml_ros2_compat_smoke() {
     if !play_launch_parser_available() {
         nros_tests::skip!(

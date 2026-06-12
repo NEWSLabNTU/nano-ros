@@ -51,6 +51,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 44 | esp-idf platform.c build fails — `_heap_start`/`_heap_end` undeclared | bug | esp32 | [0044-esp-idf-platform-c-heap-symbols-undeclared.md](0044-esp-idf-platform-c-heap-symbols-undeclared.md) |
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
 | 43 | C++ action server returns an empty result for a goal sent by the C action client | bug | c-api | [0043-cpp-action-server-empty-result-for-c-client-goal.md](0043-cpp-action-server-empty-result-for-c-client-goal.md) |
+| 45 | FreeRTOS Entry-pkg build fails — Component `staticlib` needs a no_std panic handler that collides with the Entry bin's | bug | freertos | [0045-freertos-entry-component-staticlib-panic-handler.md](0045-freertos-entry-component-staticlib-panic-handler.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the

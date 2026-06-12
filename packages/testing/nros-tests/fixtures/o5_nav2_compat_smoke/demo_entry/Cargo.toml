@@ -64,4 +64,4 @@ nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "mai
 # the placeholder stays + the patch block is malformed (cargo skips
 # cleanly) + the `git = …` dep wins.
 [patch."https://github.com/NEWSLabNTU/nros-cli.git"]
-nros-build = { path = "@NROS_CLI_ROOT@/packages/nros-build" }
+nros-build = { path = "@NROS_CLI_ROOT@/nros-build" }

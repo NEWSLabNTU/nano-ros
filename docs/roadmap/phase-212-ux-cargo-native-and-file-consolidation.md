@@ -2655,6 +2655,38 @@ canonical-shape regression test can run green tree-wide:
       `packages/testing/nros-tests/tests/phase212_h{1_zephyr,4_
       threadx,5_esp_idf,7_px4}.rs`.
 
+      **Nano-ros-side un-ignore — DONE (2026-06-12).** Post-Phase-218
+      the CLI lives in-tree at `packages/cli/` (built by `just setup-cli`,
+      resolved on PATH by `activate.sh`), so the "CLI bump" is a rebuild,
+      not an `install-nros.sh` pin. The M.10-gated tests were renamed to
+      behavioural names (issue 0041) and un-`#[ignore]`d after verifying
+      green against the in-tree CLI:
+      - `threadx_corrosion_bringup.rs` (was `phase212_h4_threadx`) — all
+        3 fns (threadx-linux, corrosion-imports, rv64-qemu) pass; `nros
+        plan` reads `[package.metadata.nros.component]` via
+        `synthetic_metadata_artifacts`.
+      - `board_agnostic_run_plan.rs` (O.3), `pkg_index.rs` (O.4),
+        `nav2_compat.rs` (O.5) — the `nros-build` codegen-lib siblings;
+        pass. Two fixture fixes were needed: (a) the `@NROS_CLI_ROOT@`
+        `[patch]` path resolution handles the in-tree
+        `packages/cli/nros-build` layout (drops the external repo's
+        `packages/` segment), and (b) the O.3 Entry fixtures gained a
+        direct `nros` dep so the M-F.19 emit's `register_dispatch(&mut
+        ::nros::Executor)` shim resolves.
+      - These 4 binaries compile-in-test (cargo/cmake at run time), so
+        they join the issue-0041 slow-compile `nextest.toml` override as
+        STOPGAP exceptions pending build-stage-fixture conversion.
+      - `freertos_run_plan_runtime.rs` (O.1) STAYS `#[ignore]`d — its
+        blocker is NOT M-F.17 but the FreeRTOS Entry-pkg link path:
+        the Component pkg's `rlib`+`staticlib` crate-type forces a no_std
+        `#[panic_handler]` that collides with the Entry bin's
+        `panic-semihosting`. Tracked as **issue 0045** (needs an O.1
+        design decision). The env + `panic = "abort"` fixups that get
+        the build to that point are landed.
+      - `phase212_h{1_zephyr,5_esp_idf,7_px4}` are handled under their
+        own gates (H.1 west-fixture, H.5 issue 0044 esp-idf `_heap`, H.7
+        M-F.8 PX4 SITL) — not this M-F.17 un-ignore wave.
+
       **Blocks:** every M.10-gated `#[ignore]` line in
       `phase212_h{1,4,5,7}*.rs`. SINGLE BIGGEST OPEN PHASE 212
       RUNTIME GATE.

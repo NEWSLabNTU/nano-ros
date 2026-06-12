@@ -49,8 +49,17 @@ negative cmake-CONFIGURE-fail test (must fail) → kept as a documented exceptio
 **Wave A — native cmake/codegen smoke** (fastest; cmake/compile-check fixtures):
 (Wave A native cmake/codegen DONE.)
 
-**Reclassified (scan refined):** `phase212_o3/o4/o5`, `phase212_n_freertos_run_plan_runtime`,
-and all of `phase212_h4_threadx` are `#[ignore]`'d gates (inert, not live). `phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) and
+**Reclassified (scan refined):** `phase212_o3/o4/o5`,
+`phase212_n_freertos_run_plan_runtime`, and all of `phase212_h4_threadx` WERE
+`#[ignore]`'d gates (inert). **As of 2026-06-12 (M-F.17 landed)** the first four
+are un-`#[ignore]`d + renamed to behavioural names and now run live:
+`board_agnostic_run_plan` (O.3), `pkg_index` (O.4), `nav2_compat` (O.5),
+`threadx_corrosion_bringup` (H.4, 3 fns). They compile cargo/cmake at run time, so
+they're added to the slow-compile `nextest.toml` override as STOPGAP exceptions
+(alongside the `*_misuse` cases) pending build-stage-fixture conversion.
+`freertos_run_plan_runtime` (O.1) stays `#[ignore]`d on issue 0045 (FreeRTOS
+Entry-pkg `staticlib` panic-handler link path — NOT a compile-in-test concern).
+`phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) and
 `cmake_platform_matrix` are NEGATIVE — the compile/configure MUST fail with exact
 text → documented exceptions (fast-fail, can't be prebuilt).
 
@@ -66,9 +75,12 @@ toolchain-gated, reclassified to Wave C (skips when ZEPHYR_BASE absent).
 
 **Wave B — freertos / threadx cross-build** (cross-build mechanism):
 `orchestration_tiers_freertos` CONVERTED (→ `orch_tiers_freertos` cross-build
-fixture, tests boot the prebuilt thumbv7m firmware in QEMU). Wave B effectively
-DONE: `phase212_n_freertos_run_plan_runtime` (1 test) and `phase212_h4_threadx`
-(3 tests) are entirely `#[ignore]`'d gates — inert, not live offenders.
+fixture, tests boot the prebuilt thumbv7m firmware in QEMU). Wave B update
+(2026-06-12): `threadx_corrosion_bringup` (was `phase212_h4_threadx`, 3 fns) is
+un-`#[ignore]`d + live (M-F.17 `nros plan` reads `[package.metadata.nros.component]`)
+and joins the slow-compile override as a STOPGAP compile-in-test exception.
+`freertos_run_plan_runtime` (was `phase212_n_freertos_run_plan_runtime`) stays
+`#[ignore]`d on issue 0045.
 
 **Wave C — zephyr** (west; heavy, gate on SDK): `phase212_h1_zephyr`,
 `phase212_mf3_zephyr_self_pkg`, `integration_zephyr`.

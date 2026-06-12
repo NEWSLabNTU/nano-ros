@@ -24,6 +24,10 @@ deploy = "posix"
 nros-board-posix = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-posix" }
 # Trait surface — BoardEntry / RuntimeCtx / RuntimeError.
 nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = ["std", "platform-posix"] }
+# Codegen-emitted `run_plan.rs` defines a `register_dispatch` shim
+# typed `&mut ::nros::Executor`, so the Entry pkg depends on `nros`
+# directly — same platform features the Component pkg forwards.
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "std", "platform-posix"] }
 # Component pkg under test — enable the `posix` feature gate so its
 # `nros` dep links the POSIX platform backend.
 shared_node_pkg = { path = "../src/shared_node_pkg", features = ["posix"] }
@@ -43,4 +47,4 @@ nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "mai
 # intact + the patch block is malformed (cargo skips it cleanly), so
 # the `git = …` dep above wins as before.
 [patch."https://github.com/NEWSLabNTU/nros-cli.git"]
-nros-build = { path = "@NROS_CLI_ROOT@/packages/nros-build" }
+nros-build = { path = "@NROS_CLI_ROOT@/nros-build" }

@@ -24,17 +24,19 @@
 //! is documented + skip-reported on the reduced path; full
 //! board-agnosticism only proven when both halves build.
 //!
-//! ## Ignore status
+//! ## M-F.17 dependency (resolved)
 //!
-//! `#[ignore]`'d behind Phase 212 M-F.17 — the `nros plan` source-
-//! metadata α-bridge that lets `nros-build` resolve component pkgs
-//! through `[package.metadata.nros.component]` rather than sidecar
-//! `metadata/*.json` artifacts. Until M-F.17 lands in nros-cli, the
-//! `nros-build::generate_run_plan(launch)` call may not be able to
-//! resolve `shared_node_pkg` from the launch XML's
-//! `<node pkg="shared_node_pkg" ...>` directive. Remove `#[ignore]`
-//! once M-F.17 is `[x]` in
-//! `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`.
+//! This test exercises the Phase 212 M-F.17 `nros plan` source-metadata
+//! α-bridge — `nros-build` resolves component pkgs through
+//! `[package.metadata.nros.component]` rather than sidecar
+//! `metadata/*.json` artifacts. M-F.17 is landed (planner wires
+//! `Workspace::synthetic_metadata_artifacts`), so `generate_run_plan`
+//! resolves `shared_node_pkg` from the launch XML's
+//! `<node pkg="shared_node_pkg" ...>` directive. The fixtures `[patch]`
+//! `nros-build` to the in-tree `packages/cli/nros-build` checkout (see
+//! `rewrite_placeholders`), so they pick up the local M-F.17 + M-F.19
+//! emit. The FreeRTOS leg is skip-reported when the cross-toolchain is
+//! absent (reduced-coverage path).
 
 use std::{
     fs,
@@ -124,19 +126,31 @@ fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
     // checkout for users still on the pre-218 layout. When neither
     // resolves the placeholder is left intact and the `[patch]` block
     // fails open — the git dep wins as before.
+    // Resolve the `nros-build` crate dir across layouts — in-tree
+    // `packages/cli/nros-build`, sibling `../nros-cli/packages/nros-build`,
+    // or `$NROS_CLI_ROOT/{nros-build,packages/nros-build}` — then substitute
+    // its PARENT for `@NROS_CLI_ROOT@` so the fixture's
+    // `@NROS_CLI_ROOT@/nros-build` patch path resolves regardless of layout
+    // (the in-tree `packages/cli/` drops the external repo's `packages/`
+    // segment).
+    let find_nros_build = |base: &std::path::Path| -> Option<std::path::PathBuf> {
+        ["nros-build", "packages/nros-build"]
+            .into_iter()
+            .map(|sub| base.join(sub))
+            .find(|cand| cand.join("Cargo.toml").is_file())
+    };
     let nros_cli_root = std::env::var("NROS_CLI_ROOT")
         .ok()
-        .filter(|p| std::path::Path::new(p).is_dir())
+        .and_then(|p| find_nros_build(std::path::Path::new(&p)))
+        .or_else(|| find_nros_build(&std::path::Path::new(replacement).join("packages/cli")))
         .or_else(|| {
-            let in_tree = std::path::Path::new(replacement).join("packages/cli");
-            in_tree.is_dir().then(|| in_tree.display().to_string())
-        })
-        .or_else(|| {
-            let guess = std::path::Path::new(replacement)
+            std::path::Path::new(replacement)
                 .parent()
-                .map(|p| p.join("nros-cli"))?;
-            guess.is_dir().then(|| guess.display().to_string())
-        });
+                .and_then(|p| find_nros_build(&p.join("nros-cli")))
+        })
+        .as_deref()
+        .and_then(|d| d.parent())
+        .map(|p| p.display().to_string());
     for entry in walk(root)? {
         if !entry.is_file() {
             continue;
@@ -193,7 +207,6 @@ fn is_placeholder_stub(body: &str) -> bool {
 }
 
 #[test]
-#[ignore = "blocked on Phase 212 M-F.17 nros plan source-metadata α-bridge — nros-build cannot resolve component pkgs from launch XML without it; cross-ref docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md"]
 fn board_agnostic_run_plan_links_against_any_board() {
     assert!(
         fixture_src().is_dir(),
