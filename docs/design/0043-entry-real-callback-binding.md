@@ -314,9 +314,13 @@ entry, so the C path inherits the executor route unchanged.
   seam), the typed codegen Entry (`emit_cpp::emit_typed`, metadata-driven), and
   the C++/C NuttX typed carriers all route real callbacks through the real
   executor with no callback naming. Open questions resolved: **Q1** →
-  `Result configure(Node&)`; **Q2** → entry-/component-owned static storage (no
-  heap); **Q5** → `class`+`class_header`+`lang` from the cmake metadata; **Q10**
-  → `spin_once`-only for v1. The **one remaining step is deleting the legacy
+  `Result configure(Node&)` **(AMENDED 2026-06-13 by [RFC-0044](0044-rclcpp-faithful-component-model.md))**
+  — a real `rclcpp`-shaped node (ASI's vendored Autoware `Controller`) IS-A node
+  with ctor-created entities + declared params, which `configure(Node&)` cannot
+  host; RFC-0044 adds the rclcpp-faithful ctor-wired shape (this `configure`/`bind_*`
+  path stays as the lower-level option). **Q2** → entry-/component-owned static
+  storage (no heap); **Q5** → `class`+`class_header`+`lang` from the cmake metadata;
+  **Q10** → `spin_once`-only for v1. The **one remaining step is deleting the legacy
   declarative interpreter** (`EntryNodeRuntime` + the string-descriptor
   `DeclaredNode`/`NodeContextOps` layer + the synthesized 238 bodies) — gated on
   migrating the remaining cross-platform declarative examples (freertos, threadx,
