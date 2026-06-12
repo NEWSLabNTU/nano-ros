@@ -7,10 +7,11 @@ up to the subscription model — executor-dispatched **callbacks** fed by a QoS-
 C/C++ follow in a later phase. Fixes the silent single-buffer overwrite and honors
 ROS service `KEEP_LAST(10)` (RFC-0007).
 
-**Status.** In progress (2026-06). **Wave 1 complete** — 239.1 (service-client) +
-239.2 (action-client) typed callbacks + 239.3 wiring + 239.4 in-process E2Es
-(`test_{service,action}_client_callback*`, 161 nros-node tests green). Next:
-Wave 2 (QoS-depth buffering), Wave 4 (C/C++). Implements RFC-0041.
+**Status.** In progress (2026-06). **Wave 1 complete** (239.1-4: both client
+callbacks + in-process E2Es). **Wave 2 core done** — 239.5 (action-feedback
+QoS-depth ring) + 239.7 (burst test: 2 feedbacks both delivered). 162 nros-node
+tests green. Remaining: 239.6 (MessageLost signal — observability), Wave 3
+(RT/XRCE + example), Wave 4 (C/C++). Implements RFC-0041.
 
 **Priority.** P2 — reliability + RT-ergonomics + ROS alignment; not a correctness
 blocker (Promise works today) but removes a real silent-loss bug.
