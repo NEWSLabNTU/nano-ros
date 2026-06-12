@@ -16,11 +16,11 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, Rmw, ZenohRouter, build_c_action_client, build_c_action_server,
         build_c_listener, build_c_service_client, build_c_service_client_callback,
-        build_c_service_server, build_c_talker,
-        build_cpp_action_client, build_cpp_action_server, build_cpp_listener,
-        build_cpp_service_client, build_cpp_service_server, build_cpp_talker,
-        build_native_c_example_rmw, build_native_cpp_example_rmw, build_native_listener_rmw,
-        build_native_talker_rmw, require_cmake, require_zenohd, zenohd_unique,
+        build_c_service_server, build_c_talker, build_cpp_action_client, build_cpp_action_server,
+        build_cpp_listener, build_cpp_service_client, build_cpp_service_client_callback,
+        build_cpp_service_server, build_cpp_talker, build_native_c_example_rmw,
+        build_native_cpp_example_rmw, build_native_listener_rmw, build_native_talker_rmw,
+        require_cmake, require_zenohd, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -393,30 +393,35 @@ fn test_native_service_communication(
 // Service communication — callback receive (RFC-0041 / Phase 239)
 // =============================================================================
 
-/// C callback service client vs the stock C service server. Proves the
-/// RFC-0041 callback receive path E2E: replies arrive through the
-/// `nros_response_callback_t` dispatched at `nros_executor_spin_some` (no
-/// Promise poll). Asserts both the callback dispatch markers and the success
-/// tally printed by `service-client-callback`.
+/// Callback service client (C or C++) vs the stock same-language service
+/// server. Proves the RFC-0041 callback receive path E2E: replies arrive
+/// through the typed response handler dispatched at `spin_once`
+/// (`nros_executor_spin_some` / `nros::spin_once`) — no Promise/Future poll.
+/// Both `service-client-callback` variants print the same markers
+/// (`Response (callback)`, `Call [`, `callback calls succeeded`).
 #[rstest]
-fn test_c_service_communication_callback(zenohd_unique: ZenohRouter) {
+fn test_native_service_communication_callback(
+    zenohd_unique: ZenohRouter,
+    #[values(Language::C, Language::Cpp)] lang: Language,
+) {
     if !require_native_env() {
         return;
     }
     let locator = zenohd_unique.locator();
-    let server_bin = build_c_service_server()
-        .unwrap_or_else(|e| skip_missing_fixture("native service server", e))
-        .to_path_buf();
-    let client_bin = build_c_service_client_callback()
-        .unwrap_or_else(|e| skip_missing_fixture("native service client (callback)", e))
-        .to_path_buf();
+    let server_bin = lang.service_server_binary();
+    let client_bin = match lang {
+        Language::C => build_c_service_client_callback(),
+        Language::Cpp => build_cpp_service_client_callback(),
+    }
+    .unwrap_or_else(|e| skip_missing_fixture("native service client (callback)", e))
+    .to_path_buf();
 
-    let mut server = spawn_native(&server_bin, Language::C, "service-server", &locator);
+    let mut server = spawn_native(&server_bin, lang, "service-server", &locator);
     server
         .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
         .expect("service server did not become ready");
 
-    let mut client = spawn_native(&client_bin, Language::C, "service-client-callback", &locator);
+    let mut client = spawn_native(&client_bin, lang, "service-client-callback", &locator);
 
     let client_output = client
         .wait_for_output_pattern("callback calls succeeded", Duration::from_secs(15))
@@ -425,12 +430,20 @@ fn test_c_service_communication_callback(zenohd_unique: ZenohRouter) {
 
     server.kill();
 
-    eprintln!("C callback service client output:\n{}", client_output);
+    eprintln!(
+        "{} callback service client output:\n{}",
+        lang.label(),
+        client_output
+    );
 
     // The reply must arrive via the callback, not a poll: every successful
-    // call prints a "Response (callback)" line from `on_response`.
+    // call prints a "Response (callback)" line from the registered handler.
     let cb_count = count_pattern(&client_output, "Response (callback)");
-    eprintln!("C callback service client: {} callback dispatches", cb_count);
+    eprintln!(
+        "{} callback service client: {} callback dispatches",
+        lang.label(),
+        cb_count
+    );
     assert!(
         cb_count >= 3,
         "Expected at least 3 callback-dispatched replies, got {}.\nOutput:\n{}",

@@ -33,8 +33,8 @@ static struct {
     nros_client_t client;
     nros_executor_t executor;
     // Reply state shared with the callback.
-    int reply_count;     // bumped each time the callback fires
-    int64_t last_sum;    // sum from the most recent reply
+    int reply_count;  // bumped each time the callback fires
+    int64_t last_sum; // sum from the most recent reply
 } app;
 
 // ----------------------------------------------------------------------------
@@ -139,8 +139,7 @@ int nros_app_main(int argc, char** argv) {
         int before = app.reply_count;
         printf("Calling service: %lld + %lld = ?\n", (long long)request.a, (long long)request.b);
 
-        nros_ret_t ret =
-            nros_client_send_request_async(&app.client, req_buf, (size_t)req_len);
+        nros_ret_t ret = nros_client_send_request_async(&app.client, req_buf, (size_t)req_len);
         if (ret != NROS_RET_OK) {
             fprintf(stderr, "Call [%d]: async send failed with error %d\n", i + 1, ret);
             continue;

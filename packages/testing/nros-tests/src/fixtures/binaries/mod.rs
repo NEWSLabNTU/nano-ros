@@ -2401,6 +2401,9 @@ static CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the cpp-service-client binary
 static CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the cpp-service-client-callback binary (RFC-0041 / Phase 239)
+static CPP_SERVICE_CLIENT_CALLBACK_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the cpp-action-server binary
 static CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -2466,6 +2469,19 @@ pub fn cpp_listener_binary() -> PathBuf {
     build_cpp_listener()
         .expect("Failed to build cpp-listener")
         .to_path_buf()
+}
+
+/// Build cpp-service-client-callback example (cached, RFC-0041 / Phase 239)
+pub fn build_cpp_service_client_callback() -> TestResult<&'static Path> {
+    CPP_SERVICE_CLIENT_CALLBACK_BINARY
+        .get_or_try_init(|| {
+            build_example_cmake_rmw(
+                "native/cpp/service-client-callback",
+                "cpp_service_client_callback",
+                Rmw::Zenoh,
+            )
+        })
+        .map(|p| p.as_path())
 }
 
 /// rstest fixture that provides the cpp-service-server binary path

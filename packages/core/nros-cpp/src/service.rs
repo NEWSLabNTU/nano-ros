@@ -16,6 +16,36 @@ use crate::{
     nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
+use core::{
+    sync::atomic::AtomicBool,
+    task::{RawWaker, RawWakerVTable, Waker},
+};
+
+/// Build a `Waker` that sets `flag` to `true` when woken — the transport
+/// signals reply-arrival into the arena entry's `reply_ready` slot. Mirrors
+/// `nros_c::service::atomic_bool_waker`; see that function for the full
+/// # Safety contract (lifetime / unregister-before-free / wake races). The
+/// only callsite here borrows `&entry.reply_ready` from the executor's
+/// service-client arena, which is heap-allocated at session-open and never
+/// recycled until the executor is destroyed; `register_waker` is a
+/// single-slot overwrite. Both contracts hold by construction.
+unsafe fn atomic_bool_waker(flag: &AtomicBool) -> Waker {
+    static VTABLE: RawWakerVTable = RawWakerVTable::new(
+        |data| RawWaker::new(data, &VTABLE),
+        |data| unsafe {
+            (*(data as *const AtomicBool)).store(true, core::sync::atomic::Ordering::Release);
+        },
+        |data| unsafe {
+            (*(data as *const AtomicBool)).store(true, core::sync::atomic::Ordering::Release);
+        },
+        |_data| {},
+    );
+    let raw = RawWaker::new(flag as *const AtomicBool as *const (), &VTABLE);
+    // SAFETY: the vtable is valid; the caller asserts `flag` outlives the
+    // returned Waker + clones (see the doc-comment).
+    unsafe { Waker::from_raw(raw) }
+}
+
 // ============================================================================
 // Service Server
 // ============================================================================
@@ -555,9 +585,30 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
         Some(e) => e,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
+    // Single in-flight request per entry: refuse a second send while a reply
+    // is still outstanding (the dispatcher gates on `pending`).
+    if entry.pending {
+        return NROS_CPP_RET_ERROR;
+    }
     let request = unsafe { core::slice::from_raw_parts(req_data, req_len) };
+    // Clear the ready flag before sending so we don't pick up a stale wake
+    // from a previous request.
+    entry
+        .reply_ready
+        .store(false, core::sync::atomic::Ordering::Release);
     match entry.handle.send_request_raw(request) {
-        Ok(()) => NROS_CPP_RET_OK,
+        Ok(()) => {
+            // CRITICAL (RFC-0041 / Phase 239): `service_client_raw_try_process`
+            // early-returns unless `pending` is set, so the reply would never be
+            // dispatched to the response trampoline without this. Mirror the C
+            // wrapper's `nros_client_send_request_async` exactly.
+            entry.pending = true;
+            // Register a waker that flips `reply_ready` when the transport
+            // delivers the reply, so the executor wakes instead of blind-polling.
+            let waker = unsafe { atomic_bool_waker(&entry.reply_ready) };
+            entry.handle.register_waker(&waker);
+            NROS_CPP_RET_OK
+        }
         Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
     }
 }
