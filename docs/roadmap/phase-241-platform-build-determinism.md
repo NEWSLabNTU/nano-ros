@@ -53,18 +53,43 @@ Two tiers, by what a cell needs to compile:
       compile as required.
 
 ### 241.B — Collapse to one canonical interface (RFC-0042 D1)
-- [ ] Make `<nros/platform.h>` (nros-c) the sole header resolvable under that
-      include name; `nros-platform-cffi` `#include`s it for the shared surface +
-      moves its extras off the shared name (Q1 lean: include, generate nothing).
-- [ ] Define the `malloc→alloc` / `free→dealloc` shim **once** (shared inline
-      header); delete the 5 copies in `platform/{posix,zephyr,freertos,baremetal}.h`
-      + `nros-platform-cffi/platform.h`.
-- [ ] Implement the normative include-precedence rule once (RTOS sysroot wins;
-      RTOS C++ wrapper dir precedes libstdc++) — see 241.D's shared helper.
-- [ ] Add the canonical-surface parity `static_assert`/CI check.
-- **Acceptance:** `#include <nros/platform.h>` resolves identically regardless of
-      `-I`/`-isystem` order; #27/#36/#38 reproductions stay green with the
-      per-board `-D` workarounds (#38's `NROS_PLATFORM_HAS_MALLOC`) removed.
+
+Direction (corrected, see RFC-0042 D1): **B (the cffi full ABI) is canonical, A
+(nros-c legacy) is retired, `nros-platform-api` owns the one header.** The two
+files share name + guard `NROS_PLATFORM_H` today → include-order ABI poison.
+Staged so each step is CI-validated before the next; the 241.A gate + the existing
+`c_stub_platform.rs` parity test guard the churn.
+
+- [ ] **B.1 — canonical header in `nros-platform-api`.** Move B's surface into
+      `packages/core/nros-platform-api/include/nros/platform.h` (the sole file
+      named so); fold in A's capability macros (`NROS_PLATFORM_HAS_*`,
+      `NROS_NO_DYNAMIC_MEMORY`, `nros_mutex_t`) + the single malloc/free shim
+      (gated by the capability, forwarding to `alloc`/`dealloc`). One include
+      guard. Keep the `lib.rs` extern mirror + `c_stub_platform.rs` pointed at it.
+- [ ] **B.2 — rewire include dirs to the canonical.** Repoint the SSoT chokepoints
+      — `nros-build-paths` path helper + the `NROS_PLATFORM_CFFI_INCLUDE` cmake/env
+      var (rename → `NROS_PLATFORM_INCLUDE`) — to `nros-platform-api/include`, plus
+      the literal-path cmake sites (the ~20 from the wave-B investigation). Delete
+      `nros-platform-cffi/include/nros/platform.h`.
+- [ ] **B.3 — retire A.** Confirm no live C consumer of A's legacy-only surface
+      (ns clock, typed mutex, atomics) via grep + the gate; remove it. `nros-c`'s
+      `platform.h` becomes a thin re-include of the canonical (back-compat) or is
+      dropped; the per-RTOS sub-headers' divergent shims (incl. posix's libc
+      outlier) are deleted in favour of the single shim.
+- [ ] **B.4 — single shim + parity.** Posix's direct-libc malloc/free is changed
+      to forward to the funnel (RFC-0034 D6). Add the canonical-surface parity
+      assert (header ↔ `lib.rs`) if `c_stub_platform.rs` doesn't already cover it.
+- [ ] **B.5 — repoint the 241.A gate.** The host matrix test currently resolves
+      to A; repoint it at the canonical header; keep the negative #38 cell.
+- **Acceptance:** exactly one file named `nros/platform.h`; `#include
+      <nros/platform.h>` resolves identically regardless of `-I`/`-isystem` order;
+      all per-platform CI cells (incl. xrce/cyclone B-only consumers) green;
+      #36/#38 reproductions stay fixed.
+
+> **Note — include precedence (#27/#36, the two-libc class) is NOT in B.** That is
+> the cross-toolchain/RTOS-sysroot concern; it lands in 241.D's shared
+> precedence helper (and the 241.A cross tier). B is purely the
+> one-canonical-header collapse.
 
 ### 241.C — Capability-driven config SSoT (RFC-0042 D2)
 - [ ] Add `[board.capabilities]` to `nros-board.toml` (`heap`, `atomics`,

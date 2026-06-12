@@ -92,17 +92,42 @@ upheld by comments and per-combination workarounds:
 
 ### D1 — One canonical platform interface
 
-- `<nros/platform.h>` (nros-c) is the **sole** canonical C ABI header. RFC-0006
-  already declares this; D1 enforces it.
-- `nros-platform-cffi`'s header stops being a second file resolvable as
-  `<nros/platform.h>`: it either `#include`s the canonical header for the shared
-  surface and adds its extras under a distinct include path/name, or is generated
-  from the same declaration list. There is exactly one resolution of
-  `#include <nros/platform.h>` regardless of include order.
-- The `malloc`→`alloc` / `free`→`dealloc` shim is defined **once** (a single
-  shared inline header included by every platform variant), replacing the 5
-  copies. A platform that has a heap exposes the canonical `malloc`/`free`
-  automatically; one that does not, does not — no per-board `-D` to remember.
+> **Direction (corrected after the wave-B investigation, 2026-06-12).** There are
+> today **two** files named `nros/platform.h` sharing the include guard
+> `NROS_PLATFORM_H`, so they can never coexist in a TU — whichever is first on the
+> `-I` path wins and ABI-poisons the other. They are **layers, not duplicates**:
+> - **A** = `nros-c/include/nros/platform.h` — legacy: compile-time dispatch +
+>   capability macros (`NROS_PLATFORM_HAS_*`, `NROS_NO_DYNAMIC_MEMORY`,
+>   `nros_mutex_t`) + an *ns* clock + atomics + a typed mutex + malloc/free
+>   *prototypes*.
+> - **B** = `nros-platform-cffi/include/nros/platform.h` — the canonical **full**
+>   C ABI (≈39 symbols: *ms/us* clock, `alloc`/`realloc`/`dealloc` + heap stats,
+>   tasks, mutex, condvar, wake, critical section, logging), hand-mirrored by
+>   `nros-platform-cffi/src/lib.rs` and guarded by `c_stub_platform.rs`.
+>
+> Every real implementor + consumer (all RTOS ports, xrce, cyclone, zpico, the
+> smoke TUs) already resolves to **B** — and xrce/cyclone call **B-only** symbols
+> (`clock_ms`, `time_now_ms`, `alloc`/`dealloc`). Only the nros-cpp heap headers
+> (reached via nros-c's INTERFACE include order) and the 241.A host gate resolve
+> to **A**, and they use only the malloc/free overlap. So **B is canonical and A
+> is legacy** — the *reverse* of this section's original lean.
+
+- **B's surface is THE canonical `<nros/platform.h>`.** A is retired: its
+  divergent legacy surface (ns clock, typed mutex, atomics) is removed after
+  confirming no live C consumers; its still-needed pieces (the capability macros
+  + the malloc/free *consumer view*) move into the canonical header.
+- **`nros-platform-api` owns the one canonical header** (`include/nros/platform.h`)
+  + the single malloc/free shim + the capability macros. `nros-c` and
+  `nros-platform-cffi` both depend on / re-export it, so neither package's
+  consumers need the other's include dir — this breaks today's nros-c↔cffi header
+  tangle (each currently puts the other on the path inconsistently). The Rust
+  extern mirror (`lib.rs`) and `c_stub_platform.rs` parity test move with it.
+- The `malloc`→`alloc` / `free`→`dealloc` shim is defined **once** in the
+  canonical header, gated by the capability macro, replacing the 5 divergent
+  copies (4 forwarders + posix's outlier that calls libc directly, bypassing the
+  RFC-0034 D6 funnel — fixed to forward). A platform with a heap exposes the
+  canonical `malloc`/`free`; a heap-less one does not — the capability gate
+  (preserving the 241.A #38 semantics) stays.
 - **Include-precedence rule (normative):** when an RTOS ships its own libc, its
   sysroot headers win over the toolchain's bare newlib/picolibc for *all*
   entrypoints. This is implemented once (see D3's helper), not re-derived per
@@ -182,11 +207,13 @@ upheld by comments and per-combination workarounds:
 
 ## Open questions
 
-- **Q1 — CFFI header collapse mechanism.** Does `nros-platform-cffi`'s header
-  `#include` the canonical nros-c header, or is both generated from one IDL-ish
-  declaration list? (Affects whether the Rust extern block and the C header share
-  a generator.) *Lean: include the canonical header for the shared surface;
-  generate nothing new in wave B.*
+- **Q1 — RESOLVED (2026-06-12, reversed).** The wave-B investigation showed B
+  (cffi) is the canonical full ABI everyone uses and A (nros-c) is legacy — the
+  opposite of the original lean. **Decision: `nros-platform-api` owns the single
+  canonical `<nros/platform.h>` (= B's surface + capability macros + one shim);
+  nros-c and nros-platform-cffi re-export it; A's legacy-only surface is retired.**
+  No new generator in wave B (header stays hand-mirrored against `lib.rs`, guarded
+  by `c_stub_platform.rs`).
 - **Q2 — Link-manifest owner.** Does the manifest live in the cmake glue, in
   `nros` codegen (`nros plan`/`ws sync`), or both? *Lean: codegen emits a
   manifest file; cmake + build.rs consume it — one producer, two consumers,
