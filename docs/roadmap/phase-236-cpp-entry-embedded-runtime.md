@@ -258,35 +258,25 @@ C++ glue, direct `nros-nuttx-ffi` cargo build) booted in QEMU vs the talker:
 sub callback, correct `Int32`). Executor real-callback dispatch works on NuttX;
 the C++ side is a thin wrapper.
 
-- [ ] **236.D.1** Component-object shape + `NROS_NODE(Talker)` macro
-      (factory + `sizeof` + per-pkg register symbol). Ctor-binds-`Node&` vs
-      `configure(Node&)` — RFC-0043 open Q1. Binds real callbacks via the typed
-      (`create_subscription(sub_, topic, cb)`) + raw zero-copy
-      (`create_subscription_raw(sub_, topic, raw_cb)`) APIs. C parity via the C
-      callback FFI (`fn ptr + void* ctx`).
-- [ ] **236.D.2** Typed codegen Entry — per launch node, `#include` the component
-      header, construct into an entry-owned arena slot (`sizeof` known), run the
-      executor (`spin_once`). Replaces the `NodeContextOps` recording dispatch +
-      the synthesizing spin loop. Instance-arena sizing — RFC-0043 open Q2.
-- [ ] **236.D.3** Monolithic-app composition — `nano_ros_entry` today
-      `add_executable`s + links per-Node `<pkg>_<exec>_component` static
-      libs. A Zephyr consumer that links everything into the
-      `find_package(Zephyr)`-owned `app` target (ASI) needs: (a) the
-      `nano_ros_entry(NAME app …)` append-to-existing-target path proven
-      in a real Zephyr build, and (b) the link-libs sidecar to tolerate a
-      Node pkg compiled as `APP_SOURCES` rather than its own
-      `nano_ros_node_register` `project()`.
-- [ ] **236.D.4** Retire the interpreter — delete `EntryNodeRuntime` +
-      `detail::entry_*` synthesis (`main.hpp`) and the `DeclaredNode` /
-      `record_callback_effect` string seam; migrate the Phase 238 NuttX C/C++
-      examples (pub/sub + service + action) onto the executor with real bodies.
-- [ ] **236.D.5** A non-trivial (non-counter) C++ + C Entry E2E — a node with
-      a real subscription→publish callback, proving 236.D.1/.2 before ASI
-      consumes it.
+**Breakdown → [phase-240](phase-240-entry-real-callback-binding.md)** (RFC-0043
+implementation). The detailed, code-grounded work items live there; the waves:
 
-**Files.** `packages/core/nros-cpp/include/nros/`, `cmake/NanoRosEntry.cmake`,
-`packages/cli/nros-cli-core/src/codegen/entry/`, a fixture under
-`packages/testing/nros-tests/`.
+- **240.1** component-object API + `NROS_NODE` macro (member entities +
+  `configure(Node&)` binding callbacks by identity, C++ `create_subscription_raw`).
+- **240.2** typed codegen Entry — read `nros-metadata.json` for `(pkg,exec)`→
+  `{class, class_header}`, `#include` + construct + executor spin (retire the
+  recording dispatch). Resolves RFC-0043 Q5.
+- **240.3** carrier + board adapter (NuttX) — rewrite the 238 carrier/template to
+  the typed entry; board lifecycle runs the executor, not `EntryNodeRuntime`.
+- **240.4** C path parity (C `struct` + `configure` + C callback FFI; C node in
+  the typed C++ entry).
+- **240.5** service/action on the executor (the unspiked transports) + migrate
+  the 238 service/action examples to real bodies.
+- **240.6** retire the interpreter + string-descriptor layer.
+- **240.7** non-counter E2E + ASI `Controller` on FVP (the 236.C gate).
+
+Monolithic-app composition (the Zephyr `app`-target append + link-libs sidecar
+for ASI) folds into 240.3/240.7.
 
 > **236.C is blocked on 236.D.** ASI cannot delete its imperative
 > `main.cpp` until the declarative path runs the real controller.

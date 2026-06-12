@@ -4,7 +4,7 @@ title: "C++/C Entry real-callback binding — executor-routed, no callback namin
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06-12
-implements-tracked-by: [phase-236]
+implements-tracked-by: [phase-236, phase-240]
 supersedes: []
 superseded-by: null
 ---
@@ -26,8 +26,15 @@ v1 scaffold that existed only because the declarative register had no callback t
 hand the executor.
 
 This honours two standing principles: **(1) no user-named callbacks** — a
-callback is bound by being written, like the imperative API and the Rust
-`nros::node!()` macro; **(2) C/C++ = thin Rust wrapper** ([RFC-0019](0019-nros-c-thin-wrapper-discipline.md))
+callback is bound by being written, like the **imperative executor API** (Rust
+`executor.node_mut(n).create_subscription::<M,_>(topic, |m| …)` /
+C++ `node.create_subscription(sub, topic, lambda)`). **Note:** the *declarative*
+macros on BOTH sides name today — Rust `nros::node!()` uses
+`create_timer_for_callback_name("on_tick")` + an `on_callback(cb){ if
+cb=="on_tick" … }` dispatcher, exactly the C++ `declare_callback("on_tick")`
+pattern. The no-naming primitive is the closure/lambda binding the executor
+already exposes; this RFC routes the Entry path to it. **(2) C/C++ = thin Rust
+wrapper** ([RFC-0019](0019-nros-c-thin-wrapper-discipline.md))
 — the C++ Entry surface holds no interpreter; the Rust executor + transport own
 entity lifetime, buffering, and dispatch
 ([RFC-0041](0041-unified-callback-receive-model.md)). The C++ side is the
@@ -52,7 +59,10 @@ Two forces shape the resolution:
   `declare_callback(on_tick, "on_tick"); create_timer(t, "1000", on_tick)`.
   The name carries no body — it is exactly the anti-pattern to remove. A
   callback should be bound by **identity** (the actual method/lambda), as the
-  imperative API and Rust macro already do.
+  imperative executor closure API already does (Rust + C++). The Rust
+  `nros::node!()` declarative macro names too (`on_callback` matched on
+  `"on_tick"`); it runs real bodies but does not satisfy this principle — so it
+  is a *real-logic* reference, not a *no-naming* one.
 - **Thin Rust wrapper.** The synthesizing interpreter re-implements in C++ what
   the Rust executor already does (entity lifetime, the spin/dispatch loop,
   buffer draining). That violates [RFC-0019](0019-nros-c-thin-wrapper-discipline.md).
@@ -148,9 +158,13 @@ NROS_NODE(Talker);   // PROPOSED: emits factory + sizeof + the per-pkg symbol
 Zero-copy / untyped subscribers bind the raw form (a proposed C++ wrapper over
 `nros_cpp_subscription_register`, e.g.
 `node.create_subscription_raw(sub_, topic, [this](const uint8_t* d, size_t n){…})`)
-— same no-naming, no deserialize. This mirrors Rust's `nros::node!()` (instantiate
-a real struct, executor owns it) and ASI's `common/node` shim (RFC-0032 §8a's
-reference implementation).
+— same no-naming, no deserialize. The instantiate-a-real-object + executor-owns
+shape mirrors Rust's `ExecutorNodeRuntime` (owns a per-node `ComponentCell` with
+leaked state; `nros/src/node_runtime.rs`) and ASI's `common/node` shim (RFC-0032
+§8a's reference implementation) — but the **binding** uses the executor's
+closure API, not the name-dispatched `on_callback` that `nros::node!()` emits.
+Whether the Rust *Entry* path also moves to closure-binding for no-naming parity
+is a Rust-side follow-up (Open Q10).
 
 ### 2. Typed codegen Entry routes to the executor
 
@@ -251,6 +265,15 @@ entry, so the C path inherits the executor route unchanged.
 9. **C++ borrowed-typed surface.** The zero-copy *typed* flavor (`const M<'a>&`
    via `DeserializeBorrowed`) is Rust-executor reality but may lack a C++
    wrapper; the spike only exercised raw bytes. Confirm or scope it out of v1.
+10. **Rust Entry no-naming parity + framework dispatch.** The Rust `nros::node!()`
+    declarative macro names callbacks (`on_callback` + `"on_tick"`) and emits the
+    extern-`"C"` `__nros_node_<pkg>_on_callback` trampoline used by RTIC/Embassy
+    *framework* dispatch (interrupt-driven, not `spin_once`). This RFC's
+    no-naming closure binding is `spin_once`-model. Decide: does Rust's Entry
+    path also move to closure-binding (no-naming parity), and does the C++ side
+    ever need the name-dispatched trampoline for a future C++ RTIC/Embassy, or is
+    `spin_once`-only acceptable for C++ v1 (the spike's model)? Likely
+    `spin_once`-only for C++ now; Rust parity is a separate decision.
 
 ## Changelog
 
@@ -264,3 +287,9 @@ entry, so the C path inherits the executor route unchanged.
   sketch illustrative-pending-Q1/Q2; added Q5–Q9 (launch-node→type resolution,
   carrier/emitter migration, C-component construction, service/action executor
   proof, C++ borrowed-typed surface).
+- 2026-06 — code-grounding pass. **Corrected:** Rust `nros::node!()` *names*
+  callbacks too (`on_callback` + `"on_tick"`) — the no-naming primitive is the
+  executor *closure* API (Rust `create_subscription(topic, |m|…)` / C++ lambda),
+  not `node!()`. Added Q10 (Rust Entry no-naming parity + RTIC/Embassy
+  framework-dispatch trampoline vs `spin_once`-only). Implementation breakdown →
+  phase-240.
