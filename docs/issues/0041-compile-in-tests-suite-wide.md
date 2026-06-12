@@ -99,9 +99,21 @@ break lighter tiers):
 - esp-idf (`idf.py build`): `cli_bringup_esp_idf`, `esp32_idf_talker_builds`,
   `esp32_idf_listener_builds`.
 
-Conversion approach (deferred — cost/urgency tradeoff): add an idf.py / west
-build-fixture type that builds these in the esp32 / zephyr fixture lanes
-(`build-test-fixtures` gated on idf.py / ZEPHYR_BASE), then the tests resolve the
-prebuilt ELF. This adds minutes of cross-toolchain build to the build stage for
-tests that already skip cleanly — hence deferred behind the higher-value native
-conversions (all done).
+**Conversion approach (validated, deferred — cost/value tradeoff):**
+
+- esp-idf: stage the example, `source $IDF_PATH/export.sh`, then
+  `NANO_ROS_ROOT=<repo-root> idf.py -B build -DNANO_ROS_SKIP_BOOTSTRAP=ON
+  set-target esp32c3 && idf.py -B build build` → `<name>.elf`. (`-DNANO_ROS_SKIP_BOOTSTRAP=ON`
+  is required: the bootstrap re-runs `tools/setup.sh` which fails offline even
+  though submodules are populated. `NANO_ROS_ROOT` must be the repo root so the
+  staged copy finds `integrations/nano-ros`.) **Verified** set-target +
+  build-start succeed; a full esp32 build is ~7 min.
+- zephyr: analogous `west build` of the bringup fixture (needs ZEPHYR_BASE).
+
+**Why deferred:** each build is a multi-minute cross-toolchain compile, so wiring
+all 6 into `build-test-fixtures` (esp32 / zephyr lanes, gated on idf.py /
+ZEPHYR_BASE) adds ~30–45 min to the build stage — for tests that already `skip!`
+cleanly when the SDK is absent (no lighter-tier breakage). The principled fix is
+clear and the env path is proven; it is sequenced last, behind the (completed)
+native conversions, because of the build-stage cost vs the gated-skip safety net.
+The 6 are renamed off their phase numbers and remain in-test compiles, gated.
