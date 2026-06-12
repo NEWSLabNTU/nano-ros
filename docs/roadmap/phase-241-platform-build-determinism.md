@@ -89,11 +89,17 @@ the nros-c↔cffi tangle):
   The variable case (bare-metal heap) comes from C.2's board.toml `-D`.
 
 Steps (each a commit; CI between the riskier ones):
-- [ ] **B.1** — author the canonical header (above) at
-      `packages/core/nros-platform-api/include/nros/platform.h`; move the Rust
-      mirror (`nros-platform-cffi/src/lib.rs` extern block) + `c_stub_platform.rs`
-      to track it (or keep them in cffi, re-exporting api's include). One include
-      guard. Validate with the 241.A gate semantics (host g++).
+- [x] **B.1 — canonical header authored (landed, additive).**
+      `packages/core/nros-platform-api/include/nros/platform.h` = the cffi ABI
+      verbatim + the self-contained capability-default block (posix → HAS_MALLOC +
+      HAS_ATOMICS; others → HAS_ATOMICS, heap opt-in via the C.2 `-D`) + the
+      malloc/free shim gated on `NROS_PLATFORM_HAS_MALLOC`. Validated with host
+      g++ across the 241.A cells: posix → malloc OK; baremetal no-`-D` → malloc
+      *and* the nros-cpp heap containers fail to compile (correct #38 gate);
+      baremetal +`-D` → OK. Additive (not yet on any `-I`); the Rust mirror +
+      `c_stub_platform.rs` stay in cffi until B.2 deletes cffi's copy. **One-step
+      duplication window**: api's header diverges from cffi's (gated vs
+      unconditional shim) until B.2 rewires + deletes cffi's.
 - [ ] **B.2** — rewire include dirs to api: the chokepoints
       `nros-build-paths::nros_platform_cffi_include()` + the
       `NROS_PLATFORM_CFFI_INCLUDE` cmake/env var (→ `nros-platform-api/include`),
