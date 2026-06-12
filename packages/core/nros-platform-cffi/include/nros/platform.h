@@ -77,6 +77,21 @@ void *nros_platform_realloc(void *ptr, size_t size);
 /** Free a previously allocated block. `NULL` is a no-op. */
 void nros_platform_dealloc(void *ptr);
 
+/* Canonical `malloc`/`free` C-ABI surface (issue-0038). nros-cpp's heap
+ * containers (`heap_string.hpp`, `heap_sequence.hpp`) allocate through
+ * `nros_platform_malloc` / `nros_platform_free` so C and C++ share one
+ * allocator. `nros-c/platform.h` and every per-RTOS header expose these
+ * (e.g. `platform/freertos.h` shims them over alloc/dealloc); the CFFI
+ * platform header must too, else the CFFI-platform C++ build can't find them
+ * (`<nros/platform.h>` resolves here, not to nros-c's). Thin inline forwards. */
+static inline void *nros_platform_malloc(size_t size) {
+    return nros_platform_alloc(size);
+}
+
+static inline void nros_platform_free(void *ptr) {
+    nros_platform_dealloc(ptr);
+}
+
 /** Bytes currently allocated from the platform heap, or `0` if the port
  *  does not instrument it. Phase 230 / RFC-0034 D7: the true unified figure
  *  where the platform owns one kernel heap shared by the C side and the

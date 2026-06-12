@@ -7,6 +7,12 @@ area: c-api
 related: [issue-0034, issue-0036, phase-235]
 ---
 
+> **FIX LANDED 2026-06-12 (pending e2e confirmation).** Added the two
+> `static inline` shims (`nros_platform_malloc → alloc`, `free → dealloc`) to
+> `nros-platform-cffi/include/nros/platform.h`, mirroring `platform/freertos.h`.
+> Header verified to compile under riscv-none-elf-g++ (`-std=c++14 -ffreestanding`)
+> with the shims usable. Awaiting an e2e dispatch on threadx_riscv64.
+
 The CFFI-platform C++ build fails to compile nros-cpp's heap containers because
 the platform header it resolves declares only `nros_platform_alloc` /
 `nros_platform_dealloc`, not the `nros_platform_malloc` / `nros_platform_free`
