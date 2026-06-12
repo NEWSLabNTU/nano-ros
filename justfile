@@ -880,6 +880,16 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
         env_exclude+=("not binary(fvp_smoke)")
         env_exclude+=("not binary(fvp_runtime)")
         env_exclude+=("not binary(fvp_runtime_rust)")
+        # board_import west-builds the FVP board (needs the FVP SDK gate).
+        env_exclude+=("not binary(board_import)")
+    fi
+    # zephyr west build-fixtures (issue 0041): deselect when west / a provisioned
+    # Zephyr workspace is absent — the west fixtures can't be built there.
+    if ! command -v west >/dev/null 2>&1 \
+        || { [ -z "${ZEPHYR_BASE:-}" ] && [ ! -d zephyr-workspace/zephyr ]; }; then
+        env_exclude+=("not binary(cli_bringup_zephyr)")
+        env_exclude+=("not binary(zephyr_self_pkg)")
+        env_exclude+=("not binary(board_import)")
     fi
     if ! command -v qemu-system-riscv32 >/dev/null 2>&1 || ! command -v espflash >/dev/null 2>&1; then
         env_exclude+=("not binary(esp32_emulator)")

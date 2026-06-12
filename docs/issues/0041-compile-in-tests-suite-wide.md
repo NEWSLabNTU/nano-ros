@@ -95,7 +95,13 @@ clean. A latent dangling `[[test]]` (phase210_f4_shadowing) was fixed en route.
 The 6 still-live offenders are heavy cross-toolchain builds, now renamed but not
 yet fixture-converted (they `skip!` cleanly when the SDK is absent, so they don't
 break lighter tiers):
-- zephyr (`west build`): `cli_bringup_zephyr`, `zephyr_self_pkg`, `board_import`.
+- zephyr (`west build`): `cli_bringup_zephyr` + `board_import` **CONVERTED**
+  (west-fixture mechanism `scripts/build/west-fixtures.sh` + `require_west_fixture`;
+  built by `just zephyr build-fixtures`, gated on west/ZEPHYR_BASE, board_import
+  also on the FVP SDK). The tests inspect the prebuilt build dir (baked artifacts /
+  CMakeCache / boot zephyr.exe). `zephyr_self_pkg` is **deferred** — it generates
+  its zephyr app in-test (fs::write Cargo.toml/lib.rs/prj.conf/CMakeLists), so its
+  conversion needs the generated app promoted to a fixture template first.
 - esp-idf (`idf.py build`): `cli_bringup_esp_idf`, `esp32_idf_talker_builds`,
   `esp32_idf_listener_builds` — **CONVERTED** (idf-fixture mechanism
   `scripts/build/idf-fixtures.sh` + `require_idf_fixture`; built by `just esp32

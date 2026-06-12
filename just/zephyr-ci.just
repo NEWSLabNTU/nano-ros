@@ -277,4 +277,9 @@ build-fixtures:
         printf '  ✗ failed: %s\n' "${failures[@]}"
         exit 1
     fi
+    # zephyr west build-fixtures (issue 0041): build the west bringup fixtures the
+    # cli_bringup_zephyr / board_import tests consume, so they don't run west at
+    # test time. Self-gates on west/ZEPHYR_BASE; non-fatal (a failed build — e.g.
+    # board_import without the FVP SDK — leaves no stamp, and the test deselects/skips).
+    bash scripts/build/west-fixtures.sh || true
     echo "Zephyr test fixtures built successfully."

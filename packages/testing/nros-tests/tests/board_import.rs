@@ -1,47 +1,18 @@
-//! Phase 215.E.2 — verify `nano_ros_use_board()` layers a board
-//! crate's artifacts into a downstream Zephyr app build.
+//! `nano_ros_use_board()` layers a board crate's artifacts into a downstream
+//! Zephyr app build (Phase 215.E.2).
 //!
-//! Skips if Zephyr / west / FVP SDK env not provisioned.
-
-use nros_tests::{project_root, skip};
-
-fn have(cmd: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(cmd)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
+//! The `west build` (FVP board) runs in the **build stage** — the
+//! `west_board_import` west fixture (`scripts/build/west-fixtures.sh`, run by
+//! `just zephyr build-fixtures`) configures `board_import_fvp`. This test
+//! inspects the prebuilt `CMakeCache.txt` (BOARD / NANO_ROS_RMW / NROS_BOARD_RUNNER
+//! propagation) rather than running west at run time (issue 0034 / 0041). Fixture
+//! absent (no west / Zephyr+FVP SDK) → tier-aware skip/fail via the resolver.
 
 #[test]
-fn board_import_fvp_builds_via_nano_ros_use_board() {
-    // Prereqs: Zephyr SDK, west on PATH, ARM_FVP_DIR for the SDK
-    // gate (the gated pkg per board.cmake — even though FVP runtime
-    // isn't needed at build time, the toolchain may be).
-    if std::env::var("ZEPHYR_BASE").is_err() {
-        skip!("ZEPHYR_BASE not set; Phase 215.E.2 needs a provisioned Zephyr SDK");
-    }
-    if !have("west") {
-        skip!("west not on PATH");
-    }
-
-    let fixture = project_root().join("packages/testing/nros-tests/fixtures/board_import_fvp");
-    let build_dir = fixture.join("build");
-    let _ = std::fs::remove_dir_all(&build_dir);
-
-    let status = std::process::Command::new("west")
-        .args([
-            "build",
-            "-d",
-            build_dir.to_str().unwrap(),
-            fixture.to_str().unwrap(),
-        ])
-        .status()
-        .expect("spawn west");
-    assert!(status.success(), "west build failed");
-
-    let cache =
-        std::fs::read_to_string(build_dir.join("CMakeCache.txt")).expect("read CMakeCache.txt");
+fn board_import_fvp_builds_via_nano_ros_use_board() -> nros_tests::TestResult<()> {
+    let cache_path =
+        nros_tests::fixtures::require_west_fixture("west_board_import", "CMakeCache.txt")?;
+    let cache = std::fs::read_to_string(&cache_path).expect("read CMakeCache.txt");
     assert!(
         cache.contains("BOARD:STRING=fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp")
             || cache.contains("BOARD:UNINITIALIZED=fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp"),
@@ -55,4 +26,5 @@ fn board_import_fvp_builds_via_nano_ros_use_board() {
         cache.contains("NROS_BOARD_RUNNER:STRING=armfvp"),
         "NROS_BOARD_RUNNER did not cache for `west fvp run`"
     );
+    Ok(())
 }

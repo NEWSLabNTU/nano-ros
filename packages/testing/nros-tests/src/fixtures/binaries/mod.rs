@@ -793,7 +793,26 @@ pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
 /// idf build is skipped (no stamp / no ELF) when idf.py/IDF_PATH is absent →
 /// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard fail in the full tier.
 pub fn require_idf_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
+    // Toolchain-gated via the test-all env_exclude (deselect when idf.py absent);
+    // resolves the prebuilt ELF here. Built by `just esp32 build-fixtures`.
     let p = project_root().join("build/idf-fixtures").join(id).join(rel);
+    require_prebuilt_binary(&p)
+}
+
+/// Resolve a file inside a build-stage **zephyr west** fixture (issue 0041).
+/// `scripts/build/west-fixtures.sh` `west build`s a zephyr bringup fixture into
+/// `build/west-fixtures/<id>/`, keeping baked artifacts / CMakeCache / zephyr.exe
+/// the test inspects instead of running west at run time. Tier-aware: the west
+/// build is skipped (no stamp) when west / a provisioned Zephyr workspace is
+/// absent → `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard fail in the full tier.
+pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
+    // Toolchain-gated via the test-all env_exclude (deselect when west / Zephyr
+    // SDK absent); resolves the prebuilt artifact here. Built by `just zephyr
+    // build-fixtures`.
+    let p = project_root()
+        .join("build/west-fixtures")
+        .join(id)
+        .join(rel);
     require_prebuilt_binary(&p)
 }
 
