@@ -326,11 +326,24 @@ tier (not this env) must validate.
       removal step. Non-breaking (comments only).
 
 ### 240.7 — Non-counter E2E + ASI (gates 236.C)
-- [ ] A node with a real subscription→publish callback (transform), C++ and C,
-      proving 240.1/.2 (= phase-236 236.D.5).
-- [ ] ASI `actuation_module` `Controller` runs through the generated Entry path
-      on FVP (Zephyr+Cyclone), output observed by stock ROS 2 (phase-236 236.C
-      acceptance).
+- **Transform node DONE 2026-06-13** (sub→callback→pub; = phase-236 236.D.5):
+  - [x] `examples/native/cpp/transform-poc` — a `Relay` component whose
+        **subscription callback publishes** (sub `/in` → double → pub `/out`), the
+        real ROS transform pattern beyond a counter, on the real executor (no
+        interpreter). Plus `Source` (pub `/in` counter) + `Sink` (sub `/out`),
+        one role per process. Built + ran the 3-process chain vs `build/zenohd`:
+        `Source 0,1,2,… → Relay N -> 2N → Sink Doubled: 0,2,4,6,…`. Uses
+        `bind_subscription_raw` + typed `Publisher<Int32>` + the mangled
+        `Int32::TYPE_NAME` keyexpr (the 240.6 type-name convention).
+  - [ ] C transform variant — mechanical (the C sub `bind`/`register` + raw
+        publisher primitives are each already runtime-proven, 240.6); add for parity.
+- [ ] **ASI `Controller` on FVP — BLOCKED here** (Zephyr+Cyclone): the Arm FVP
+      simulator binary is not installed (`scripts/installers/arm-fvp-installer.sh`,
+      Arm EULA/download) and the ASI `actuation_module`/`Controller` sources are
+      not in this repo (external). Needs the FVP runtime + the ASI module. Gated
+      additionally by **240.8** (Zephyr typed carrier). The native transform above
+      de-risks the codegen/component half; the FVP run is the remaining hardware-
+      model acceptance for phase-236 236.C.
 
 ### 240.8 — Zephyr typed carrier + monolithic-app composition (gates 240.7 ASI)
 

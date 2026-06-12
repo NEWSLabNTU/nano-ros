@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>transform_poc</name>
+  <version>0.1.0</version>
+  <description>Phase 240.7 (RFC-0043) — transform node (sub→callback→pub) proof</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <depend>std_msgs</depend>
+</package>
