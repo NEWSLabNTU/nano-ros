@@ -1,11 +1,33 @@
 ---
 id: 34
 title: host-integration surfaces 31 pre-existing nros-tests failures (lane now runs honestly)
-status: open
+status: resolved  # host-integration lane GREEN — 0 real failures (run 27409756254, was 31)
 type: bug
 area: testing
 related: [issue-0029, issue-0025, issue-0027]
 ---
+
+**RESOLVED (2026-06-12) — host-integration lane green, 0 real failures**
+(isolated verify run 27409756254, down from 31). How the 31 cleared:
+- **Timeout-class (~22)** — every in-test-compile converted to a build-stage
+  fixture (cargo compile-check / cargo build / cmake / cxx-syntax / cross
+  cargo-check) per AGENTS.md "No compilation inside tests"; negative
+  compile-FAIL cases split into documented `*_misuse` exceptions on the nextest
+  timeout-override bridge.
+- **j_launch** — removed (`nros launch` unsupported, RFC-0027).
+- **m12** — `package.xml` added to the 7 stm32f4 `_pkg` node-libs +
+  `listener-embassy` carved into `UNMIGRATED_PREFIXES`.
+- **l9** — rename-drift assertion updated (application→entry).
+- **zenoh/zpico (3)** — skip under `NROS_FIXTURES_OPTIONAL` when the zenoh-posix
+  fixture is absent (light tier); hard-fail in full tier.
+- **cpp_api_drift** — `declared_node` snippet updated to the typed API;
+  `rclcpp_node_options` fixed by generating the per-build config headers +
+  prepending the generated `-I` so the real header shadows the `#error` stub.
+- **lane build-break** — stale `phase210_f4_shadowing` `[[test]]` entry (pointed
+  at a renamed/deleted file) removed.
+
+The masking-fix (#29) makes a recurrence visible: any compile/setup failure
+hard-fails the lane (nextest exit ≠ 100), never a silent green.
 
 With [issue 0025] (all prereqs via `nros setup`) and [issue 0029] (disk ENOSPC +
 the compile-failure masking bug) fixed, the `host integration-tests` lane runs
