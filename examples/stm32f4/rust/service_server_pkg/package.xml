@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>stm32f4_service_server_pkg</name>
+  <version>0.1.0</version>
+  <description>STM32F4 service-server Node pkg (Phase 216 node-lib; consumed by the embassy + rtic Entry pkgs)</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

@@ -193,6 +193,15 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
         "stm32f4 Embassy variant — pre-212 shape, no package.xml; \
          falls under M-F.5 async-Node work",
     ),
+    // Issue #34 — listener-embassy is the Embassy *listener* variant, same
+    // category as talker-embassy above (pre-212 shape, non-linking — skip_build
+    // in examples/fixtures.toml, known-issue #13). It was omitted from the
+    // carve-out, so m12 wrongly required a package.xml for it.
+    (
+        "examples/stm32f4/rust/listener-embassy/",
+        "stm32f4 Embassy variant — pre-212 shape, no package.xml; \
+         falls under M-F.5 async-Node work",
+    ),
     // `examples/native/rust/bridge/` UNMIGRATED entry retired 2026-06-02:
     // the sole occupant (`tt-zenoh-to-xrce`) moved to `examples/bridges/`
     // per §212.L sibling-category rule. `examples/bridges/` carries no
