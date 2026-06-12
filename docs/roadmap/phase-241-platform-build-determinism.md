@@ -139,13 +139,25 @@ Staged so each step is CI-validated before the next; the 241.A gate + the existi
       (Kconfig) + freertos malloc (FreeRTOSConfig) stay config-derived; add a
       check that the board.toml declaration agrees with the RTOS config rather
       than overriding it. (Lower priority — those paths work today.)
-- [ ] **C.3 — retire the per-RTOS header self-`#define`s** (the unconditional
-      ones: all `HAS_ATOMICS`, posix `HAS_MALLOC`, freertos `HAS_MUTEX`) in favour
-      of the generated `-D`; leave RTOS-config-conditional ones header/Kconfig-
-      derived. Capability defaults become deny-only-when-known-absent.
-- [ ] **C.4 — migration lint** wiring: warn when a board relies on inferred
-      capabilities (`has_declared_capabilities()` == false). (All in-tree boards
-      declare today, so the lint is clean — it guards future boards.)
+- [x] **C.3 — reassessed: resolved by design, no risky churn.** The original
+      "retire all per-RTOS self-`#define`s" would *break* every platform whose
+      C/C++ build doesn't yet receive the capability `-D` (C.2 wired only the
+      threadx overlay; posix/freertos/zephyr still rely on their header
+      `#define`s). But those self-`#define`s are correct platform **constants**
+      (posix always has a heap; freertos always has a mutex) — not a drifting
+      dual source. The drift that *did* bite (#38: bare-metal header says
+      "no heap" but the board has one) is the only variable case, and C.2 already
+      fixed it via the board.toml-driven `-D` opt-in (baremetal.h's
+      `NROS_PLATFORM_HAS_MALLOC` gate). So board.toml is authoritative for the
+      variable case; the header supplies platform-constant defaults. Full
+      retirement (header constants → universal generated `-D`) is low-value purism
+      that needs the `-D` wired into *every* platform's C/C++ path first; deferred
+      unless a second variable-capability case appears.
+- [x] **C.4 — migration lint (landed).** A merge-gate unit test
+      (`every_in_tree_board_declares_capabilities` in `board_descriptor.rs`) loads
+      the real `packages/boards/*` catalog and fails if any board lacks
+      `[board.capabilities]` (relying on inference). All in-tree boards declare
+      today; it guards future boards from silently inheriting a wrong default.
 - **Acceptance:** flipping a board's `heap`/`atomics`/`threads` in one place
       changes the build everywhere; no capability named in >1 site; the
       threadx-riscv64 `-D` is generated from board.toml, not hand-set.

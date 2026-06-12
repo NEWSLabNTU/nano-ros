@@ -384,6 +384,37 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
         BoardCatalog::from_descriptors(file.boards)
     }
 
+    /// phase-241 C.4 — migration lint (merge gate): every in-tree board must
+    /// declare `[board.capabilities]` rather than rely on the platform-inferred
+    /// defaults. All boards declare today; this catches a future board that
+    /// omits the block (which would silently inherit a possibly-wrong heap/
+    /// threads default — the issue-0038 footgun).
+    #[test]
+    fn every_in_tree_board_declares_capabilities() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root from packages/cli/nros-cli-core")
+            .to_path_buf();
+        let cat = BoardCatalog::load(&root).expect("load real board catalog");
+        assert!(
+            !cat.descriptors().is_empty(),
+            "no boards loaded from {}/packages/boards",
+            root.display()
+        );
+        let undeclared: Vec<String> = cat
+            .descriptors()
+            .iter()
+            .filter(|d| !d.has_declared_capabilities())
+            .map(|d| d.names.join("/"))
+            .collect();
+        assert!(
+            undeclared.is_empty(),
+            "boards relying on inferred capabilities — add [board.capabilities] \
+             to their nros-board.toml: {undeclared:?}"
+        );
+    }
+
     #[test]
     fn resolves_board_by_alias() {
         let cat = catalog();
