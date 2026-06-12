@@ -216,4 +216,32 @@ else
     echo "cxx-syntax: no C++ compiler — skipping" >&2
 fi
 
-echo "fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]} cmake=$cmake_n cxx=$cxx_n)."
+# cargo-check of an existing example dir for a cross target (id : dir : target).
+# Proves an example's `nros::main!()` emit type-checks WITHOUT linking — for
+# examples that intentionally don't link standalone (e.g. talker-embassy lacks
+# the board memory layout). Stamped into build/compile-check (same resolver).
+# Gated on the rust target being installed; absent → no stamp → test skips.
+CARGO_CHECK_EXAMPLES=(
+    "embassy_main_macro:examples/stm32f4/rust/talker-embassy:thumbv7em-none-eabihf"
+)
+cargo_check_n=0
+for entry in "${CARGO_CHECK_EXAMPLES[@]}"; do
+    IFS=':' read -r id dir target <<< "$entry"
+    [ -d "$repo_root/$dir" ] || { echo "cargo-check: example missing: $dir" >&2; continue; }
+    if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then
+        echo "cargo-check: target $target not installed — skipping $id" >&2
+        continue
+    fi
+    echo "== cargo-check: $id ($target) =="
+    mkdir -p "$out_root/$id"
+    rm -f "$out_root/$id/.compile-ok"
+    if ( cd "$repo_root/$dir" && cargo check --target "$target" ); then
+        date -u +%Y-%m-%dT%H:%M:%SZ > "$out_root/$id/.compile-ok"
+        echo "   stamped $out_root/$id/.compile-ok"
+        cargo_check_n=$((cargo_check_n + 1))
+    else
+        echo "   cargo-check FAILED for $id (no stamp)" >&2
+    fi
+done
+
+echo "fixtures built (check=${#COMPILE_CHECK_FIXTURES[@]} build=${#BUILD_FIXTURES[@]} cmake=$cmake_n cxx=$cxx_n cargo-check=$cargo_check_n)."

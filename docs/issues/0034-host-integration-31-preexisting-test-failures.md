@@ -57,7 +57,7 @@ triage.
 | phase212_m12_example_shape | 1 | `every_example_leaf_has_package_xml` — **cause known: `78ac799ee`** |
 | macro_one_dep_resolves (was phase212_macro_one_dep) | 1 | CONVERTED — build-stage compile-check fixture + `.compile-ok` stamp (#0034) |
 | stm32f4_rtic_main_macro (was phase216_b) | 1 | `rtic_main_macro_expansion_builds` — CONVERTED to fixture-consuming (#0034 antipattern) |
-| phase216_c_embassy_main_macro_expansion | 1 | `embassy_main_macro_expansion_compiles` |
+| stm32f4_embassy_main_macro (was phase216_c) | 1 | CONVERTED — cargo-check fixture (cross `cargo check`, no link) (#0034) |
 | cpp_entry_runtime (was phase235_a) | 1 | CONVERTED — runs the prebuilt `cpp_robot_entry` fixture (shares cpp_multi_node's build) |
 | zenoh_archive_symbols | 1 | `zenoh_archive_wrapper_impl_parity` |
 | zenoh_header_parity | 1 | `posix_canonical_header_matches_link_policy` |
@@ -89,6 +89,14 @@ This is the documented anti-pattern **"No compilation inside tests"** (AGENTS.md
   prebuilt artifact / inspect it. The "does-it-compile?" signal becomes a
   green/red **build**, not a timeout-prone test. Rename the binary off its phase
   number at the same time (AGENTS.md → Testing Guidelines).
+
+  **Status (compile-in-test class): COMPLETE.** All in-test-compile binaries are
+  converted to build-stage fixtures (cargo compile-check / cargo build / cmake /
+  cxx-syntax / cross cargo-check), with negative compile-FAIL + rebuild-tracking
+  cases split into documented `*_misuse` exceptions kept on the nextest
+  timeout-override. The n12 cpp snippets are relocated but skip pending a
+  pre-existing C++ API-drift fix (owner). No remaining test compiles a project
+  at run time.
 
   **Progress:** `phase216_b_rtic_main_macro_expansion` → `stm32f4_rtic_main_macro`
   is the first conversion — it now resolves the prebuilt `stm32f4-rs-rtic-example`

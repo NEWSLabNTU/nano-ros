@@ -294,7 +294,6 @@ retries = 2
 filter = """
   binary(native_orchestration_misuse) \
   or binary(native_main_macro_misuse) \
-  or binary(phase216_c_embassy_main_macro_expansion) \
 """
 slow-timeout = { period = "120s", terminate-after = 4 }
 

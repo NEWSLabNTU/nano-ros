@@ -455,12 +455,12 @@ required-features = ["phase216-substrate"]
 name = "stm32f4_rtic_main_macro"
 path = "tests/stm32f4_rtic_main_macro.rs"
 
-# Phase 216.C.4 — `nros::main!()` Embassy macro expansion compile
-# smoke. Sibling of `phase216_b_*` against
-# `examples/stm32f4/rust/talker-embassy/`.
+# `nros::main!()` Embassy macro expansion (Phase 216.C.4): asserts the build-stage
+# `embassy_main_macro` cargo-check fixture stamp (a cross `cargo check` of
+# examples/stm32f4/rust/talker-embassy — no link; issue 0034).
 [[test]]
-name = "phase216_c_embassy_main_macro_expansion"
-path = "tests/phase216_c_embassy_main_macro_expansion.rs"
+name = "stm32f4_embassy_main_macro"
+path = "tests/stm32f4_embassy_main_macro.rs"
 
 [lints]
 workspace = true
