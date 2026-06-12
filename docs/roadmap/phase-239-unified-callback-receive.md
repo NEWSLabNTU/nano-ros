@@ -252,9 +252,15 @@ result callback). The reverse (C client ↔ C++ server) is blocked by **issue #4
 server-side cross-lang quirk, not a callback-model defect; same-lang C↔C /
 C++↔C++ action E2Es are green).
 
+**Rust-client lane done.** `test_service_callback_interop_rust_client_{c,cpp}_server`
+— the Rust callback service client (`create_client_with_callback`) ↔ C / C++
+service servers — both GREEN (4/4 replies via the spin-time closure). Service
+callbacks are now proven wire-compatible across **all three** languages' clients
+× servers.
+
 Together these prove the callback receive model is wire-compatible across the
-C / C++ FFI surfaces over zenoh. **Remaining:** a Rust-client lane + one
-QEMU/embedded lane + the #43 reverse-action pairing.
+Rust / C / C++ FFI surfaces over zenoh. **Remaining:** one QEMU/embedded lane +
+the #43 reverse-action pairing.
 
 Original scope:
 Callback-client interop across Rust / C / C++ (each language's callback client
