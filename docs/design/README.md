@@ -54,6 +54,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0016 | [rtos-scheduling-features](0016-rtos-scheduling-features.md) | Stable | per-RTOS scheduling feature survey |
 | 0017 | [platform-timer](0017-platform-timer.md) | Stable | `PlatformTimer` + `AtomicSporadicState` |
 | 0034 | [platform-layer-split](0034-platform-layer-split.md) | Draft | enforce `nros_platform_*` as sole system boundary; alloc-first unification; scalar vs opaque-struct ABI |
+| 0042 | [platform-build-determinism](0042-platform-build-determinism.md) | Draft | one canonical `<nros/platform.h>`; capability-driven config SSoT in `nros-board.toml`; generated deterministic link manifest (one register path, no `--allow-multiple-definition`/`-u`); merge-time platform×lang gate |
 
 ### Language APIs
 

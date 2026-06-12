@@ -4,8 +4,16 @@ title: platform/std-header architecture is fragile — recurring libc/std compil
 status: open
 type: tech-debt
 area: c-api
-related: [issue-0027, issue-0036, issue-0038, issue-0034, phase-240]
+related: [issue-0027, issue-0036, issue-0038, issue-0034, phase-240, rfc-0042, phase-241]
 ---
+
+> **DESIGN 2026-06-12.** The architectural fix is designed in
+> [RFC-0042](../design/0042-platform-build-determinism.md) and broken down in
+> [phase-241](../roadmap/phase-241-platform-build-determinism.md): one canonical
+> `<nros/platform.h>`, capability-driven config SSoT (`nros-board.toml`),
+> deterministic linking (generated manifest, one register path), and a
+> merge-time platform×lang gate. This issue stays open as the motivating
+> tracker; it resolves when phase-241's D1–D4 acceptances pass.
 
 Three recently-fixed bugs are the **same class** — a C/C++ compile clash between
 the platform's libc/std headers and nano-ros's platform shim:
