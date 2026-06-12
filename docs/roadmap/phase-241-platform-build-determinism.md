@@ -144,16 +144,41 @@ Steps (each a commit; CI between the riskier ones):
         ~20 edits; run as a focused pass with a `run_e2e` dispatch, not a
         session-tail blind push.
       </details>
-- [ ] **B.3** — retire A: confirm no live C consumer of A's legacy-only surface
-      (ns clock / typed mutex / atomics) via grep + the gate; drop
-      `nros-c/include/nros/platform.h` + the per-RTOS sub-headers (or reduce them
-      to the capability-default block if still referenced). Posix's direct-libc
-      malloc/free outlier dies with them (the canonical shim forwards to the
-      funnel — RFC-0034 D6).
-- [ ] **B.4** — parity assert: `c_stub_platform.rs` already gates header↔`lib.rs`;
-      confirm it covers the moved header.
-- [ ] **B.5** — repoint the 241.A gate at the canonical header (it currently
-      resolves to A); keep the negative #38 cell.
+> **B.3 RE-SCOPED (2026-06-12) — A is a live complementary ABI, not legacy.**
+> Investigation for B.3 found `nros-c/include/nros/platform.h` (+ its per-RTOS
+> sub-headers) is NOT a retirable duplicate. It uniquely provides a surface the
+> api/B header lacks, and that surface is **in active use**:
+> - **ns-clock** `nros_platform_time_ns` / `sleep_ns` — `nros-board-*/startup.c`,
+>   `nros-rmw-cyclonedds/src/internal.hpp`, `nros-cpp/src/lib.rs`,
+>   `examples/native/c/custom-platform`.
+> - **atomics** `nros_platform_atomic_store_bool` / `load_bool` — per-platform
+>   (memory-barrier inline on bare-metal, `__atomic` on POSIX, `atomic_set/get`
+>   on Zephyr); used by the board `startup.c` + custom-platform.
+> - typed mutex `nros_mutex_t` (FEATURE_THREADS).
+>
+> api/B is a *different* live surface (ms/us clock, alloc/dealloc, tasks, condvar,
+> log). Some consumers (e.g. `nros-cpp`) use symbols from BOTH. So these are two
+> live platform ABIs that happen to share the `<nros/platform.h>` name + guard —
+> deleting A breaks real builds. A true single canonical header requires
+> **unifying the two ABIs**: absorb A's atomics (re-encode the per-platform
+> impls), ns-clock, and typed-mutex into the api header (or migrate consumers off
+> them to api's clock/mutex), keep `lib.rs` parity, and validate across every
+> platform. That is a design step (an RFC-0042 amendment), not a mechanical wave —
+> and higher-risk than B.2 since it's an ABI change, not an include-path move.
+> **Recommendation:** treat B.3–B.5 as a separate scoped effort; B.2 already
+> delivered the concrete win (the cffi duplicate is gone, one fewer `platform.h`).
+
+- [ ] **B.3 (re-scoped)** — unify A's surface into the api canonical: port the
+      per-platform atomics + ns-clock (+ typed mutex if still used) into the api
+      header or migrate consumers to api's clock/mutex; only THEN retire A + the
+      sub-headers. ABI change — gate (241.A) + `c_stub_platform.rs` + a full
+      `run_e2e` guard it. Do as its own pass.
+- [ ] **B.4** — parity assert: extend `c_stub_platform.rs` (or add one) to cover
+      the unified canonical header ↔ `lib.rs` once B.3 lands.
+- [ ] **B.5** — repoint the 241.A gate at the canonical header. **Blocked on B.3**:
+      the gate's `core-no-malloc` cell exercises A-only atomics; pointing it at api
+      today fails (api lacks atomics) — confirming A and api are not yet one
+      surface. Lands with B.3's unification.
 - **Acceptance:** exactly one file named `nros/platform.h`; `#include
       <nros/platform.h>` resolves identically regardless of `-I`/`-isystem` order;
       all per-platform CI cells (incl. xrce/cyclone) green via `run_e2e`;
