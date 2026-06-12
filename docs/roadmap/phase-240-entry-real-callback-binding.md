@@ -331,6 +331,32 @@ tier (not this env) must validate.
       on FVP (Zephyr+Cyclone), output observed by stock ROS 2 (phase-236 236.C
       acceptance).
 
+### 240.8 — Zephyr typed carrier + monolithic-app composition (gates 240.7 ASI)
+
+Filed 2026-06-13 (surfaced resuming ASI 2.C on the RFC-0043 model). 240.3
+delivered the typed carrier for **NuttX only** — the templates are
+`cmake/templates/nuttx_entry_main{,_c,_}typed.cpp.in` and
+`NanoRosNodeRegister.cmake` gates `TYPED` on the NuttX carrier
+(`NanoRosNodeRegister.cmake:286`). **There is no Zephyr typed carrier**, so
+240.7's "ASI Controller on FVP (Zephyr+Cyclone)" cannot be built. Two coupled
+gaps:
+
+- [ ] **240.8.1** Zephyr typed-entry carrier — a `zephyr_entry_main_typed`
+      template + `NanoRosNodeRegister.cmake` Zephyr branch that constructs each
+      launch node's component (`emit_typed` `class`/`class_header`) + calls
+      `configure(node)` under the `ZephyrBoard` lifecycle (236.B), mirroring the
+      NuttX carrier.
+- [ ] **240.8.2** Monolithic-app composition — ASI is a single
+      `project(actuation_module)` Zephyr build where every source is
+      `target_sources(app …)`, not `add_executable` + per-node component libs.
+      The typed entry + `nano_ros_node_register` carrier must compose into the
+      `find_package(Zephyr)`-owned `app` target (append TU + link the component
+      objects), not emit a second executable / a `<pkg>_<exec>_component` lib the
+      monolithic build never produces. (= phase-236 236.D.2.)
+
+**Files.** `cmake/templates/zephyr_entry_main_typed.cpp.in` (new),
+`cmake/NanoRosNodeRegister.cmake` (Zephyr branch), `packages/boards/nros-board-fvp-aemv8r-smp/`.
+
 ## Acceptance
 
 - Generated C++/C Entry boots a multi-node app with **live** pub/sub through the
