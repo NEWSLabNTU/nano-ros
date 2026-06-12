@@ -44,20 +44,11 @@ nros-platform = { path = "../../../../packages/core/nros-platform", default-feat
 # populated launch.xml lands in step-3+. Mirrors the entry-poc
 # convention of keeping the Entry-pkg dep graph minimal.
 
-# Phase 212.O.1 — `panic = "abort"` is mandatory for the no_std
-# `thumbv7m-none-eabi` firmware build: the sibling Component pkg's
-# `staticlib` crate-type (`freertos_rs_talker`) has no `#[panic_handler]`
-# for the embedded target, so the unwinding runtime can't link. Profiles
-# only apply from the root crate being built, so the Entry pkg must carry
-# this itself (the Component pkg's own `[profile.*]` is inert when it's a
-# dependency). Mirrors `freertos_rs_talker/Cargo.toml`'s profile note.
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-opt-level = "s"
-lto = true
-panic = "abort"
+# No `[profile.*] panic = "abort"` needed: `thumbv7m-none-eabi` already
+# defaults to `panic-strategy = abort`, and the embedded `#[panic_handler]`
+# is owned by the board crate (#45 / RFC-0032 §3.1). The old "the sibling
+# Component's staticlib needs it" rationale is moot — the Component is
+# `crate-type = ["rlib"]` after #45.
 
 [patch.crates-io]
 # === BEGIN nros-managed [patch.crates-io] ===
