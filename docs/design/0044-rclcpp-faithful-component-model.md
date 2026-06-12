@@ -159,6 +159,75 @@ construct line; `run_components` + the board lifecycle are unchanged.
 5. **Rust parity** — does Rust's `ExecutableNode` move to an IS-A-node ctor shape
    too, or stay name-dispatched? Separate decision (242.6).
 
+## Adoption decision (2026-06-13)
+
+**Adopt.** The design is sound, driven by a real consumer (the vendored ASI
+`Controller`, which cannot sit on `configure(Node&)` without rewriting control
+math), aligns with the committed rclcpp-composable-node convention, and is
+**additive** — `configure(Node&)` + the `bind_*` helpers (RFC-0043) **stay** as
+the lower-level path. Critically it **reuses the RFC-0043 runtime substrate**
+unchanged: the no-alloc member-fn-pointer trampoline, executor routing,
+`Board::run_components` single-`spin_once` loop, and the typed-entry codegen +
+NuttX/Zephyr carriers. The only new substantive work is the `ComponentNode`
+base + typed member subs + sequence params (phase-242); everything else is a
+small delta on the proven 240.x path.
+
+This was reinforced by the 240.x runtime validation: the full NuttX matrix
+(pub/sub, service, action; C++ + C) and the native transform node run real
+callbacks through `run_components` in QEMU/host — so the substrate this RFC
+builds on is proven, not theoretical.
+
+### Open-question resolutions
+
+1. **Base name/shape →** `nros::ComponentNode` that **wraps/owns** a `Node`
+   (keeps `Node`'s value-semantics + clean FFI handle; the user writes
+   `create_publisher<M>(…)` as members regardless). Revisit deriving `Node`
+   directly only if a consumer needs `Node`'s full surface on `this`.
+2. **Abort vs error-flag →** ctor sets a **`bool ok()`** the entry checks
+   post-construct, *then* the entry aborts/halts with the offending node named.
+   Cheap, and multi-node entries need "which node failed" boot diagnostics; bare
+   `nros_abort` inside the ctor loses that. (Single-node carriers can still just
+   halt.)
+3. **Param sequence capacity →** **compile-time fixed `N`** per parameter
+   (`declare_parameter<Seq<double, N>>`), bounded `no_std` storage. ASI MPC weight
+   vectors are small + fixed; a shared arena is unneeded complexity for v1.
+4. **Typed-vs-raw type-name form → CONFIRMED (resolved by 240.6).** The typed
+   `Publisher<M>` registers the **DDS-mangled** `M::TYPE_NAME`
+   (`std_msgs::msg::dds_::Int32_`), proven by the runtime-green talker↔listener
+   pairing on NuttX (typed pub ↔ raw sub on the mangled string). The typed
+   *member* subscription must register the same mangled `M::TYPE_NAME` — it does,
+   mirroring `create_subscription<M>`. No new divergence.
+5. **Rust parity →** defer (242.6). Rust already runs real bodies via
+   `ExecutableNode`; the IS-A-node ctor shape is a parity nicety, not an ASI gate.
+
+### Implementation notes (delta on the 240.x path)
+
+- **Construct ordering changes.** `configure(Node&)` = static-construct the
+  component *before* `nros::init`, then `configure`. `ComponentNode` = the ctor
+  creates entities, so it must be **placement-new'd in `__nros_entry_setup`
+  *after* `nros::init`** (the live handle). `emit_cpp::emit_typed` + the
+  `{nuttx,zephyr}_entry_main_typed.cpp.in` carriers gain a construct branch
+  (`static Storage<C> __c; __c.emplace(handle);` vs `static C __c; __c.configure(node);`).
+- **Metadata: one new field.** Add a `shape: "rclcpp" | "configure"` marker to the
+  `components[]` JSON (`nano_ros_node_register` / `NROS_COMPONENT`); the entry
+  branches construct on it. `class` + `class_header` are unchanged, and **`sizeof`
+  needs no metadata** — the entry `#include`s the header, so `sizeof(C)` /
+  `Storage<C>` is a compile-time fact, not a codegen input.
+- `configure(Node&)` examples (the migrated NuttX set + the native templates)
+  stay on the existing branch; **template/workspace migration to the recommended
+  shape should target `ComponentNode` and therefore wait for 242.1–242.3** (else
+  migrate-to-`configure` now + re-migrate later = churn).
+
+## Changelog
+
+- 2026-06 — created (Draft); amends RFC-0043 Q1; driver = ASI phase-2.C; tracked
+  by phase-242.
+- 2026-06-13 — **Adoption decision: adopt.** Resolved all 5 open questions
+  (Q1 wrap-a-Node, Q2 `ok()`-flag-then-halt, Q3 compile-time `N`, Q4 confirmed
+  mangled `M::TYPE_NAME` via 240.6, Q5 Rust parity deferred). Recorded the
+  construct-ordering delta + the one-field `shape` metadata marker + the
+  template-migration-defer.
+
 ## References
 
 - Runtime binding: RFC-0043 (this RFC amends its Q1 component shape).
