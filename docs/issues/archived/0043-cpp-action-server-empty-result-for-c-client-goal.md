@@ -1,11 +1,39 @@
 ---
 id: 43
 title: C++ action server returns an empty result for a goal sent by the C action client
-status: open
+status: resolved
 type: bug
 area: c-api
 related: [phase-239]
 ---
+
+## Resolution (Phase 239)
+
+**Stale fixture, not a code bug.** The prebuilt `c_action_client` predated the
+Phase 233.6 GoalId-framing migration: it still wrote the goal request with a
+`u32(16)` **sequence length prefix** before the UUID
+(`[CDR_HDR][len=16][uuid×16][order]`, 28 bytes), whereas current code
+(`GoalId::serialize` / `write_goal_id`, `SEQ_PREFIX_LEN = 0`) writes the UUID as
+a fixed `uint8[16]` array with no prefix (`[CDR_HDR][uuid×16][order]`, 24 bytes).
+
+The fresh C++ action server strips `framing_len = CDR_HDR(4) + SEQ_PREFIX(0) +
+UUID(16) = 20`, so on the stale C client's 28-byte wire it read `order` from the
+UUID tail = `0` → computed `[]`. The pre-233.6 C↔C pairing masked it (both peers
+used the prefix); cross-lang surfaced it.
+
+Verified by dumping the server-received bytes (C client = 28B with the `0x10`
+prefix; C++ client = 24B without). **Rebuilding `c_action_client` fresh** drops
+the prefix → the C++ server reads `order=10` and returns the full result
+`[0,1,1,2,3,5,8,13,21,34]`. No code change — Phase 233.6 already fixed the
+framing; only the stale binary lagged. CI's `build-test-fixtures` rebuilds fresh,
+so it never reproduces there.
+
+`test_action_callback_interop_c_client_cpp_server` restored (asserts the C
+client's `Final result (status=SUCCEEDED): [0, 1, 1, 2, …]`) — GREEN.
+
+---
+
+_Original report below._
 
 Cross-language action interop is **asymmetric**. Pairing the C++ callback action
 client against the C action server works end-to-end (full Fibonacci result +

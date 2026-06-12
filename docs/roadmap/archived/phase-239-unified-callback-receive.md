@@ -13,11 +13,12 @@ dual-mode with `Promise`, QoS-depth buffering, the native cross-language matrix
 (239.15), and live Cyclone backend-parity (239.8). RFC-0041 → **Stable**,
 RFC-0037 ticked. Bugs found + fixed en route: C++ service reply dispatch
 (`pending`), C++ action result offset (8→5), **#39** (cpp `init_with_launch_auto`
-null-locator, fixed at the 3-arg `init` root) and **#40** (its action-result
-symptom). Out-of-phase follow-ups only: the embedded/QEMU lane (blocked on the
-deferred embedded imperative service-client seam, 212.M-F.4), **#43** (C++
-action server empty-result for a C-framed goal), and WCET/wake-latency cycle
-benches (deferred to CI infra).
+null-locator, fixed at the 3-arg `init` root), **#40** (its action-result
+symptom), and **#43** (C++ action server empty-result for a C-framed goal — a
+stale pre-233.6 C fixture; resolved by a fresh build, both action cross-lang
+directions now GREEN). Out-of-phase follow-ups only: the embedded/QEMU lane
+(blocked on the deferred embedded imperative service-client seam, 212.M-F.4) and
+WCET/wake-latency cycle benches (deferred to CI infra).
 
 ---
 
@@ -37,9 +38,9 @@ offset (8→5), **#40** (C++ action truncated result — root-caused to **#39**)
 **#39** itself (cpp `init_with_launch_auto` null-locator → fixed at the root: the
 3-arg `init` overload now applies the env fallback). RFC-0041 → **Stable**.
 239.15 native cross-language matrix complete (service: C/C++/Rust clients × C/C++
-servers; action: C++ client ↔ C server). Remaining = out-of-phase only: the
-embedded/QEMU lane (blocked on the deferred embedded imperative service-client
-seam, 212.M-F.4) and the #43 reverse-action pairing. Implements RFC-0041.
+servers; action: both C++ client ↔ C server and C client ↔ C++ server). Remaining
+= out-of-phase only: the embedded/QEMU lane (blocked on the deferred embedded
+imperative service-client seam, 212.M-F.4). Implements RFC-0041.
 
 **Priority.** P2 — reliability + RT-ergonomics + ROS alignment; not a correctness
 blocker (Promise works today) but removes a real silent-loss bug.
@@ -269,13 +270,14 @@ cpp_client_c_server}` (native_api.rs) pair each language's callback client again
 the *other* language's service server — both GREEN (replies dispatched via
 callback, correct sums).
 
-**Action cross-language (one direction) done.**
-`test_action_callback_interop_cpp_client_c_server` — C++ callback action client ↔
-C action server — GREEN (goal-response ACCEPTED + full Fibonacci result via the
-result callback). The reverse (C client ↔ C++ server) is blocked by **issue #43**
-(the C++ action server returns an empty result for a C-framed goal — a
-server-side cross-lang quirk, not a callback-model defect; same-lang C↔C /
-C++↔C++ action E2Es are green).
+**Action cross-language — both directions done.**
+`test_action_callback_interop_cpp_client_c_server` (C++ callback client ↔ C
+server) and `test_action_callback_interop_c_client_cpp_server` (C client ↔ C++
+server) both GREEN — full Fibonacci result delivered each way. The reverse pairing
+initially failed (**#43** — C++ server returned `[]` for a C-framed goal); root
+cause was a **stale pre-233.6 `c_action_client` fixture** still writing a removed
+`u32(16)` GoalId sequence prefix, not a code bug. Fixed by a fresh build; #43
+resolved.
 
 **Rust-client lane done.** `test_service_callback_interop_rust_client_{c,cpp}_server`
 — the Rust callback service client (`create_client_with_callback`) ↔ C / C++
@@ -295,8 +297,8 @@ rather than the `Executor` + `create_client_with_callback` API that RFC-0041
 callbacks live on. So an embedded callback lane can't be cloned from them — it
 needs the embedded imperative service-client runtime first. Deferred until that
 seam ships; the callback arena itself is `no_std`-clean and already compiles on
-embedded targets. **Remaining:** the embedded lane (blocked as above) + the #43
-reverse-action pairing.
+embedded targets. **Remaining:** the embedded lane (blocked as above). The #43
+reverse-action pairing is now done (both action directions GREEN).
 
 Original scope:
 Callback-client interop across Rust / C / C++ (each language's callback client

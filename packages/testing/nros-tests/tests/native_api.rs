@@ -810,13 +810,54 @@ fn test_action_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) 
     );
 }
 
-// NOTE: the reverse pairing (C callback action client ↔ C++ action server) is
-// NOT covered here — the C++ action server returns an empty result for a goal
-// sent by the C client (the C client gets `status=SUCCEEDED` + `[]`). That is a
-// distinct cross-language quirk in the C++ action server's handling of a
-// C-framed goal/get-result, tracked by issue #43 — not a defect in the callback
-// receive model (proven wire-compatible by the cpp↔c pairing above and by the
-// same-language C↔C / C++↔C++ action E2Es).
+/// C action client ↔ C++ action server (the reverse of the pairing above).
+///
+/// Completes the action cross-language matrix. The C action client uses its
+/// feedback/result callbacks; this asserts the C++ server returns the full
+/// Fibonacci result for the C-framed goal (issue #43 — was a stale pre-233.6 C
+/// fixture writing a now-removed GoalId sequence prefix; resolved by a fresh
+/// build).
+#[rstest]
+fn test_action_callback_interop_c_client_cpp_server(zenohd_unique: ZenohRouter) {
+    if !require_native_env() {
+        return;
+    }
+    let locator = zenohd_unique.locator();
+    let server_bin = build_cpp_action_server()
+        .unwrap_or_else(|e| skip_missing_fixture("C++ action server", e))
+        .to_path_buf();
+    let client_bin = build_c_action_client()
+        .unwrap_or_else(|e| skip_missing_fixture("C action client", e))
+        .to_path_buf();
+
+    let mut server = spawn_native(&server_bin, Language::Cpp, "action-server", &locator);
+    server
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .expect("C++ action server did not become ready");
+    let mut client = spawn_native(&client_bin, Language::C, "action-client", &locator);
+
+    // The C action client signals completion with "Goodbye".
+    let client_output = client
+        .wait_for_output_pattern("Goodbye", Duration::from_secs(25))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
+        .unwrap_or_default();
+    server.kill();
+
+    eprintln!(
+        "cross-lang action client (c↔cpp) output:\n{}",
+        client_output
+    );
+    assert!(
+        client_output.contains("Goal accepted!"),
+        "Expected the C client to get goal acceptance from the C++ server.\nOutput:\n{}",
+        client_output
+    );
+    assert!(
+        client_output.contains("Final result (status=SUCCEEDED): [0, 1, 1, 2"),
+        "Expected the C++ server to return the full Fibonacci result.\nOutput:\n{}",
+        client_output
+    );
+}
 
 // =============================================================================
 // C++ goal rejection (Phase 83.15) — C++ only; C action examples don't
