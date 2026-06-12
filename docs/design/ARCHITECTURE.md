@@ -59,6 +59,18 @@ cannot implement fall back in the runtime or return `RET_UNSUPPORTED` — no obl
   receive buffer (small/large by the `rx_buffer_hint` that flows `TopicInfo`→`NrosRmwQos`), so
   receive RAM stops scaling `MAX_SUBS × DEPTH × largest_slot`. Live on zenoh-pico + XRCE.
 
+- **Callback by default; poll is an opt-in, not an RMW requirement** → RFC-0041
+  (Principle). Every callback-capable entity — subscription, timer, service
+  server/client, action server/client — is callback-driven: the executor pumps
+  the transport once per `spin_once` and dispatches the user callback. The pump is
+  **per-session, not per-entity**, so a poll-backend (XRCE `uxr_run_session_time`)
+  and a wake-backend (zenoh-pico MT, Cyclone) converge at the same dispatch path —
+  poll-vs-wake only changes *when* `drive_io` returns, never the user API. Poll
+  (`try_recv_*`, `Promise`, `polling_action_*`) is for **user-owned scheduling**
+  (RTIC / Embassy / task-per-entity), not an RMW constraint. To be callback-driven
+  an entity must be **arena-registered** (`spin_once` runs its `try_process`); a
+  merely-created entity has no pump (the action-client trap → issue-0047).
+
 Backend host-language policy: a backend's host language matches its underlying library's native
 language unless overridden (cyclonedds=C++, XRCE=Rust→C, zenoh-pico=Rust).
 

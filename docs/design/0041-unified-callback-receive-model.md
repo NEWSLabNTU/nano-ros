@@ -38,6 +38,39 @@ This converges nano-ros toward the ROS 2 client libraries (rclcpp
 feedback_callback, result_callback}`) while preserving the deliberate non-blocking
 `Promise` divergence (RFC-0036, RFC-0021).
 
+## Principle — callback by default; poll is an opt-in, not an RMW requirement
+
+**Normative.** Every callback-capable entity — subscription, service server,
+**service client**, action server, **action client** (goal-response / feedback /
+result) — is **callback-based by default**: the executor pumps the transport once
+per `spin_once`, drains ready entities into their QoS-depth buffers, and
+**dispatches the user callback**. This holds on **every** RMW backend and
+platform, because the pump is **per-session, not per-entity** — see
+[§Backend parity](#backend-parity): a poll-based backend (XRCE) runs
+`uxr_run_session_time` inside the one `drive_io`; a wake-capable backend
+(zenoh-pico multi-thread, Cyclone) unblocks `drive_io` on arrival; **both feed
+the same buffer → dispatch path.** The backend's poll-vs-wake nature only changes
+*when* `drive_io` returns — it never leaks into the user API.
+
+**Poll is therefore never *required* by an RMW.** It is an explicit **opt-in for
+user-owned scheduling** — RTIC / Embassy / FreeRTOS-task-per-entity, where there
+is no central `spin_once` loop and the caller drives `try_recv_*` itself
+(`polling_action_server.hpp` / `polling_action_client.hpp`, `Subscription::try_recv`,
+`Promise::try_recv`). The single genuine platform constraint is **bare-metal
+single-threaded zenoh-pico** (`Z_FEATURE_MULTI_THREAD=0`, smoltcp): no background
+RX thread, so callbacks fire only *during* `spin_once` (not preemptively) — but
+they still fire. Choosing poll anywhere a `spin_once` loop exists is a style
+choice, not a necessity.
+
+**Corollary — the contract every callback-capable entity must satisfy.** To be
+callback-driven, an entity must be **registered in the executor arena** so
+`spin_once` runs its `try_process` each tick (`InvocationMode::OnNewData` for
+buffered RX; `InvocationMode::Always` for the action client's three reply
+channels). An entity that is merely *created* (not arena-registered) has **no
+pump**: nothing drains its reply channel, so a bare `create + try_recv` loop
+receives nothing. This is the action-client trap — see the impl gaps in
+[issue-0047](../issues/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
+
 ## Motivation / problem
 
 ### The current asymmetry
@@ -200,6 +233,15 @@ subscription path; only the node layer changes.
   path (verified against `wcet-cycles` / `wake-latency` benches).
 - One `drive_io` per `spin_once` per session across XRCE / zenoh / Cyclone.
 - Existing `Promise` call sites compile + pass unchanged (dual-mode).
+
+## Changelog
+
+- 2026-06 — created; Stable (Phase 239).
+- 2026-06-13 — added the normative **Principle** section (callback by default;
+  poll is an opt-in for user-owned scheduling, never an RMW requirement) +
+  the arena-registration corollary. Generalises the model from "clients only"
+  to all callback-capable entities. Surfaced the action-client arena-dispatch
+  impl gap → [issue-0047](../issues/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
 
 ## References
 

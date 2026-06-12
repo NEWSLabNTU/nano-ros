@@ -85,13 +85,24 @@ the RFC must not conflate them:
   wire bytes, no copy, no typed header
   (`subscription.hpp:29`; [RFC-0010](0010-zero-copy-raw-api.md),
   [RFC-0038](0038-zero-copy-data-transport.md)).
-- **Poll-driven** (the component owns a `try_recv_*` loop inside the spin tick —
-  still real logic, still on the real executor, no synthesis): **service-client,
-  action-client** (`polling_action_client.hpp` — "caller drives `send_goal_raw` +
-  `try_recv_*` from a spin loop"). [RFC-0041](0041-unified-callback-receive-model.md)
-  converges these to callbacks later; until it lands, the component polls. This
-  RFC is **independent** of RFC-0041 — poll today, callback once 0041 ships, both
-  identity-bound and synthesis-free.
+- **Clients are ALSO callback-bound** (updated 2026-06-13 —
+  [RFC-0041](0041-unified-callback-receive-model.md) is now `Stable`):
+  **service-client (reply)** and **action-client (goal-response / feedback /
+  result)** receive through executor-dispatched callbacks too, per the RFC-0041
+  Principle (callback by default; poll is a user-scheduling opt-in, never an RMW
+  requirement). The component binds a reply/result/feedback callback by identity;
+  the executor drives it each `spin_once`. **Caveat (impl gap):** the *Rust*
+  executor arena-registers the action client (`register_action_client_raw`,
+  `InvocationMode::Always`) so `spin_once` auto-dispatches its three reply
+  channels, but the **C/C++ FFI** has only `nros_cpp_action_client_set_callbacks`
+  + a **manual** `nros_cpp_action_client_poll(handle)` (the auto-dispatch
+  `register_async` is referenced in docstrings but **unimplemented**). So a C/C++
+  component action client today must call `poll()` itself each spin tick — and a
+  bare `create + try_recv` with no pump receives nothing. Tracked in
+  [issue-0047](../issues/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
+  The **poll** API (`polling_action_client.hpp`, `Promise::try_recv`,
+  `Subscription::try_recv`) is retained for **user-owned scheduling** (RTIC /
+  Embassy / task-per-entity), not as the client default.
 
 The subscription receive flavours (none names a callback):
 
@@ -308,3 +319,10 @@ entry, so the C path inherits the executor route unchanged.
   migrating the remaining cross-platform declarative examples (freertos, threadx,
   the talker pkgs, native templates) + build-tier validation. Tracked by
   phase-240.6 (retirement plan + blockers there).
+- 2026-06-13 — **corrected the callback-vs-poll classification** now that RFC-0041
+  is `Stable`: clients (service reply, action goal-response/feedback/result) are
+  **callback-bound by default**, not poll-driven (the old §Motivation split was
+  written while RFC-0041 was Draft). Per the RFC-0041 Principle, poll is a
+  user-scheduling opt-in, not an RMW requirement. Recorded the C/C++ action-client
+  arena-dispatch impl gap → issue-0047; the migrated NuttX action/service *client*
+  examples (phase-240.5) used the poll path and should move to callbacks.

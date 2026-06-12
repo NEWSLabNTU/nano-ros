@@ -51,6 +51,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 44 | esp-idf platform.c build fails — `_heap_start`/`_heap_end` undeclared | bug | esp32 | [0044-esp-idf-platform-c-heap-symbols-undeclared.md](0044-esp-idf-platform-c-heap-symbols-undeclared.md) |
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
 | 46 | FreeRTOS Entry-pkg boots but stack-overflows at Executor — Component links both zenoh + cyclonedds rmw | bug | freertos | [0046-freertos-entry-rmw-double-link-stack-overflow.md](0046-freertos-entry-rmw-double-link-stack-overflow.md) |
+| 47 | C/C++ action client has no executor-arena callback dispatch (manual poll required); component layer lacks callback client bindings | enhancement | rmw | [0047-cpp-c-action-client-no-arena-callback-dispatch.md](0047-cpp-c-action-client-no-arena-callback-dispatch.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the

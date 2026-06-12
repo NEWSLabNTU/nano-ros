@@ -263,10 +263,16 @@ wave lands).
         timer → switched to `send_goal_async`; `setvbuf` unbuffers the
         transition-only output; `nros_cpp_action_client_poll` each tick) and the
         server receives + completes it, but the client's goal-response/result
-        queryable replies are not surfaced by `try_recv_goal_response` /
-        `try_recv_result`. Needs the client RX wiring investigated (likely a
-        register/async-poll nuance). NuttX kept OUT of `test_rtos_action_e2e`
-        until fixed.
+        queryable replies are not surfaced by `try_recv_*`. **Root cause found**
+        ([issue-0047](../issues/0047-cpp-c-action-client-no-arena-callback-dispatch.md)):
+        the action client must be **callback-based** per the
+        [RFC-0041](../design/0041-unified-callback-receive-model.md) Principle, not
+        bare poll — the C/C++ client is not arena-registered, so `spin_once` never
+        pumps its reply channels (the auto-dispatch `register_async` FFI is
+        unimplemented; only `set_callbacks` + a *manual* `poll()` exist). Fix: a
+        callback `bind_action_client` (set_callbacks + poll-each-tick, or a new
+        arena-dispatch FFI) + re-migrate the client examples, then re-add
+        `Platform::Nuttx` to `test_rtos_action_e2e`. NuttX kept OUT until then.
 
 ### 240.6 — Retire the interpreter — **BLOCKED (retirement plan + RFC done 2026-06-12)**
 
