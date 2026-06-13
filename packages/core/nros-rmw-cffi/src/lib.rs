@@ -1264,6 +1264,11 @@ fn clear_cffi_message_info(key: usize) {
     since = "0.2.0",
     note = "use nros_rmw_cffi_register_named with the backend's canonical name; the unnamed shim will be removed"
 )]
+// RFC-0042 D3 / phase-241.D slice 4 — gate the `#[no_mangle]` C symbol the same
+// way as `REGISTRY`: default (single-cargo link, incl. a pure-Rust binary whose C
+// backend ctor calls this) DEFINES the C entry point here; under `external-registry`
+// it is Rust-mangled and the provider archive emits the lone `#[no_mangle]` wrapper.
+#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
 pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) -> NrosRmwRet {
     unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vtable) }
 }
@@ -1292,6 +1297,7 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
 ///
 /// * `name` must be a valid NUL-terminated UTF-8 string.
 /// * `vtable` must remain valid for the program's lifetime.
+#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
 pub unsafe extern "C" fn nros_rmw_cffi_register_named(
     name: *const core::ffi::c_char,
     vtable: *const NrosRmwVtable,
@@ -1368,6 +1374,7 @@ pub unsafe extern "C" fn nros_rmw_cffi_register_named(
 /// # Safety
 ///
 /// * `name` must be a valid NUL-terminated UTF-8 string.
+#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
 pub unsafe extern "C" fn nros_rmw_cffi_lookup(
     name: *const core::ffi::c_char,
 ) -> *const NrosRmwVtable {
@@ -1407,6 +1414,7 @@ pub unsafe extern "C" fn nros_rmw_cffi_lookup(
 ///
 /// * `buf` must either be NULL (when `cap == 0`) or point at writable
 ///   memory of at least `cap * sizeof(*const c_char)` bytes.
+#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
 pub unsafe extern "C" fn nros_rmw_cffi_registered_names(
     buf: *mut *const core::ffi::c_char,
     cap: usize,
@@ -1541,6 +1549,7 @@ pub fn backend_resolution_to_ret(res: &BackendResolution) -> NrosRmwRet {
 /// lifetime of the registration (i.e. until a subsequent
 /// `nros_rmw_cffi_set_custom_transport(NULL)` or a replacement
 /// install).
+#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
 pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
     ops: *const nros_rmw::NrosTransportOps,
 ) -> NrosRmwRet {

@@ -219,8 +219,11 @@ static WALKED: AtomicBool = AtomicBool::new(false);
 /// effect is calling [`crate::nros_rmw_cffi_register_named`]. Calling
 /// the walker is therefore safe provided no third-party code has
 /// injected a non-conforming entry into the same linker section.
-// RFC-0042 D3 / phase-241.D slice 4 — Rust-mangled now; the `#[no_mangle]` C
-// entry point is emitted once by the `nros_rmw_cffi_export!{}` provider macro.
+// RFC-0042 D3 / phase-241.D slice 4 — gate the `#[no_mangle]` C symbol like
+// `REGISTRY`: default (single-cargo link) DEFINES it here; under `external-registry`
+// it is Rust-mangled and the `nros_rmw_cffi_export!{}` provider macro emits the lone
+// `#[no_mangle]` wrapper.
+#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
 pub unsafe extern "C" fn nros_rmw_cffi_walk_init_section() -> usize {
     if WALKED.swap(true, Ordering::AcqRel) {
         return 0;
