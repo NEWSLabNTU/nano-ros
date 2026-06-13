@@ -175,13 +175,31 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   `native/custom-transport-loopback/src/main.c:60,189`,
   `qemu-arm-baremetal/.../talker-xrce/src/main.rs:51` into the E2 library; examples
   instantiate + plug a named transport. Leak P9.
-- [ ] **D5 — bridges + px4. Independent (no enabler).** Remove `.rmw("zenoh")`/
-  `.rmw("xrce")`/`open_with_rmw("zenoh")` + `register()` literals from
-  `bridges/tt-zenoh-to-xrce/src/main.rs:84-85,94,99,104`. In px4
-  `nros-register-check.cpp`: drop `#include "nros_rmw_uorb.h"`/`nros/rmw_vtable.h`
-  (`:17-18`), the weak `nros_rmw_cffi_register` stub (`:26`), and replace
-  `PX4_INFO`/`PX4_ERR` (`:40,43`) with agnostic logging; SITL stub → build/board.
-  Leaks P3/P7. (px4 Rust is `minor` — manual executor.)
+- [~] **D5 — bridges + px4. PARTIAL (2026-06-13) — see findings.**
+  - **px4 `nros_register_check.cpp` — DONE.** Hoisted the SITL-only weak
+    `nros_rmw_cffi_register` link stub out of the agnostic module source into a
+    `sitl_register_stub.c` build-scaffold TU (added to the module CMake `SRCS`);
+    dropped the now-unused `#include "nros/rmw_vtable.h"` from the `.cpp`. **Kept**
+    (intrinsic, not leaks): `nros_rmw_uorb.h` + the `nros_rmw_uorb_register()`
+    call — uORB IS the subject of a *uORB register-check*; and `PX4_INFO`/`PX4_ERR`
+    — this TU is a PX4 module main (`__EXPORT` + `px4_add_module MAIN`), i.e. PX4
+    platform glue, not agnostic application logic, so PX4's shell-logging idiom is
+    correct here. (px4 SITL is not buildable in-repo / not CI-gated — change is
+    structurally a weak-symbol relocation: identical module link semantics.)
+  - **bridge `tt-zenoh-to-xrce` — NOT cleaned; accepted residual (verified).**
+    Replacing the explicit `nros_rmw_{zenoh,xrce_cffi}::register()` with the
+    audit's link-force pattern (`extern crate … as _`) **breaks** the example:
+    `Executor::open_with_rmw("zenoh", …)` then returns
+    `Transport(ConnectionFailed)` (consistent across runs) vs the original
+    "Primary session open". On the raw `Executor` multi-session path the explicit
+    `register()` does more than link-force (vtable registers — hence
+    `ConnectionFailed`, not `NoBackend` — but the connect setup is incomplete);
+    the `register()`-free path only works through `nros::main!()`/`nros::init()`,
+    which a 2-RMW-in-one-binary bridge cannot use. The per-session `.rmw("zenoh")`
+    /`.rmw("xrce")` is likewise intrinsic (two RMWs in one binary can't be a
+    single `[deploy]` rmw). So the bridge's `register()` + per-node `.rmw()` are
+    **functional requirements**, recategorised from leak → accepted residual.
+  Leaks P3/P7 (px4 stub cleared). (px4 Rust is `minor` — manual executor.)
 - [ ] **D6 — threadx-linux C (6 major). Needs E5 (net) — executor lift independent.**
   Lift `nros_support_init`/`nros_executor_init` + spin loops
   (`c/talker/src/main.c:51,61`) into the generated runtime; move `tcp/127.0.0.1:PORT`
