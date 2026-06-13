@@ -12,9 +12,11 @@ recurring "fix it in one, forget the other" bug class.
 
 **Status.** COMPLETE (2026-06-13). 246.1–246.3 extracted to
 `cmake/NanoRosCodegenCore.cmake` + validated (native canonical + ASI FVP zephyr
-both build clean each wave). 246.2b (codegen-tool + interface-file resolvers) and
-246.4 (link wiring) intentionally NOT unified — documented divergences, not gaps
-(see the waves below). Original detail follows. **246.1 DONE +
+both build clean each wave). 246.2b (codegen-tool + interface-file
+resolvers) DONE (+ Zephyr bundled-tier + CODEGEN_CONFIG parity). 246.4 (link
+wiring) intentionally NOT unified — documented divergence, not a gap (opposite
+ld-order directions + target models). Only the `nros_find_interfaces()` dedup
+remains as an untouched stretch. Original detail follows. **246.1 DONE +
 verified** — `cmake/NanoRosCodegenCore.cmake` holds `_nros_collect_rs_closure`,
 `_nros_export_rs_closure`, `_nros_write_ffi_lib_rs`; both generators call them for
 lib.rs assembly + closure compute/export. Validated: native C++ listener
@@ -114,14 +116,17 @@ a follow-up wave** — not wave 1; document the shared invariant first.
   build + content-compare write) + `_nros_predict_generated_outputs` (name
   transform + header/source/`_ffi.rs` path lists). These were the two LARGEST
   byte-identical blocks (~105 lines each side). DONE.
-  - **Deferred (246.2b).** Codegen-tool resolution and interface-file
-    resolution stay per-generator for now: the tool resolver is entangled with
-    divergent pre-checks (zephyr's Kconfig `CONFIG_NROS_CODEGEN_TOOL` + the
-    `_NROS_ZEPHYR_CODEGEN_TOOL` cache var that `nros_find_interfaces.cmake`
-    reads; canonical's profile var) and the interface resolver differs by the
-    bundled-prefix tier (`_NANO_ROS_PREFIX`, absent in the zephyr tree) — both
-    are smaller + more divergent, so the dedup-vs-risk ratio is worse than 246.1
-    / the two blocks above.
+  - **246.2b — DONE.** Codegen-tool resolution + interface-file resolution now
+    share `_nros_resolve_codegen_tool(<cache_var>)` and
+    `_nros_resolve_interface_file(target relpath out [BUNDLED_PREFIX p])`. Each
+    generator keeps its OWN pre-checks (zephyr west `-D` pre-set + Kconfig
+    `CONFIG_NROS_CODEGEN_TOOL`; canonical profile var) and passes its own cache-
+    var name (the distinct `_NROS_ZEPHYR_CODEGEN_TOOL` — read by
+    `nros_find_interfaces.cmake` — vs `_NANO_ROS_CODEGEN_TOOL` — must NOT be
+    unified), then calls the shared find/validate/cache. The interface resolver
+    is now a thin per-generator wrapper supplying the bundled prefix. **Parity
+    gained:** the Zephyr tree now has the bundled-interface fallback tier AND the
+    `CODEGEN_CONFIG` (RFC-0033 per-field capacity) keyword.
 - **246.3 — cargo invocation.** `_nros_ffi_cargo_args` (build skeleton + profile
   / `--target` / `-Z build-std` conditionals). DONE. Toolchain pinning
   (`+<tc>` prefix + `.cargo/config.toml` canonical; `rust-toolchain.toml` zephyr)

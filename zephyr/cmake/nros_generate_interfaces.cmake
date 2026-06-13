@@ -78,84 +78,29 @@ if(DEFINED _NANO_ROS_CODEGEN_TOOL AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "")
   endif()
 endif()
 
-if(_NROS_ZEPHYR_CODEGEN_TOOL AND NOT EXISTS "${_NROS_ZEPHYR_CODEGEN_TOOL}")
-  unset(_NROS_ZEPHYR_CODEGEN_TOOL CACHE)
-  unset(_NROS_ZEPHYR_CODEGEN_TOOL)
+# 2. Kconfig pre-set (Zephyr-specific): CONFIG_NROS_CODEGEN_TOOL in prj.conf.
+if(NOT _NROS_ZEPHYR_CODEGEN_TOOL
+   AND DEFINED CONFIG_NROS_CODEGEN_TOOL
+   AND NOT CONFIG_NROS_CODEGEN_TOOL STREQUAL "")
+  set(_NROS_ZEPHYR_CODEGEN_TOOL "${CONFIG_NROS_CODEGEN_TOOL}")
 endif()
 
-if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
-  # 2. Kconfig: CONFIG_NROS_CODEGEN_TOOL set in prj.conf
-  if(NOT _NROS_ZEPHYR_CODEGEN_TOOL
-     AND DEFINED CONFIG_NROS_CODEGEN_TOOL
-     AND NOT CONFIG_NROS_CODEGEN_TOOL STREQUAL "")
-    set(_NROS_ZEPHYR_CODEGEN_TOOL "${CONFIG_NROS_CODEGEN_TOOL}")
-  endif()
+# 3. Shared find/validate/cache (Phase 246.2b) — drops a stale cached path then
+# find_program on PATH + ~/.nros/bin, FATAL if absent. No-op when the west `-D`
+# pre-set (above) or Kconfig already populated the var. Cache name is the
+# Zephyr-specific `_NROS_ZEPHYR_CODEGEN_TOOL` (read by nros_find_interfaces.cmake).
+_nros_resolve_codegen_tool(_NROS_ZEPHYR_CODEGEN_TOOL)
 
-  # 3. PATH search. Phase 208.D.7 — match the canonical resolver from
-  # `cmake/NanoRosGenerateInterfaces.cmake`. Post-Phase-218 the `nros`
-  # CLI lives in-tree at `packages/cli/` and is built by `just setup-cli`;
-  # `source ./activate.sh` puts `packages/cli/target/release/` on PATH.
-  # `NROS_HOME/bin` + `~/.nros/bin` remain as transitional fallbacks.
-  if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
-    find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros
-      PATHS
-        "$ENV{NROS_HOME}/bin"
-        "$ENV{HOME}/.nros/bin"
-    )
-  endif()
-
-  if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
-    message(FATAL_ERROR
-      "nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros builds "
-      "the `nros` CLI in-tree from `packages/cli/` (Phase 218 merge). "
-      "Install it with:\n"
-      "  just setup-cli && source ./activate.sh\n"
-      "Or point the Zephyr build at an out-of-tree copy via:\n"
-      "  prj.conf:   CONFIG_NROS_CODEGEN_TOOL=\"/path/to/nros\"\n"
-      "  west build: west build -b <board> -- -D_NANO_ROS_CODEGEN_TOOL=/path/to/nros")
-  endif()
-
-  set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NROS_ZEPHYR_CODEGEN_TOOL}"
-    CACHE INTERNAL "Path to nros codegen tool (Zephyr)" FORCE)
-
-  message(STATUS "Found nros codegen tool: ${_NROS_ZEPHYR_CODEGEN_TOOL}")
-endif()
-
-# =========================================================================
-# _nros_zephyr_resolve_interface(<target> <relpath> <out_var>)
-# =========================================================================
+# _nros_zephyr_resolve_interface(<target> <relpath> <out_var>) — thin wrapper
+# over the shared core resolver (Phase 246.2b). Supplies the bundled-interface
+# prefix (the nano-ros repo root, = this file's dir up two), which gives the
+# Zephyr tree the bundled fallback tier it previously lacked — a no-op in-tree
+# (no `share/nano-ros/interfaces/`) but functional for an installed layout.
 function(_nros_zephyr_resolve_interface target relpath out_var)
-  set(${out_var} "NOTFOUND" PARENT_SCOPE)
-
-  # 0. Absolute path — pass through directly (Phase 210.E.3.c — mirrors
-  # the canonical `cmake/NanoRosGenerateInterfaces.cmake` resolver so the
-  # smart Find-stub can feed already-resolved absolute paths from its
-  # workspace/AMENT scan without re-resolving relative).
-  if(IS_ABSOLUTE "${relpath}")
-    if(EXISTS "${relpath}")
-      set(${out_var} "${relpath}" PARENT_SCOPE)
-    endif()
-    return()
-  endif()
-
-  # 1. Local file
-  set(_local "${CMAKE_CURRENT_SOURCE_DIR}/${relpath}")
-  if(EXISTS "${_local}")
-    set(${out_var} "${_local}" PARENT_SCOPE)
-    return()
-  endif()
-
-  # 2. Ament index
-  if(DEFINED ENV{AMENT_PREFIX_PATH})
-    string(REPLACE ":" ";" _ament_paths "$ENV{AMENT_PREFIX_PATH}")
-    foreach(_prefix ${_ament_paths})
-      set(_candidate "${_prefix}/share/${target}/${relpath}")
-      if(EXISTS "${_candidate}")
-        set(${out_var} "${_candidate}" PARENT_SCOPE)
-        return()
-      endif()
-    endforeach()
-  endif()
+  get_filename_component(_nros_repo "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../.." ABSOLUTE)
+  _nros_resolve_interface_file("${target}" "${relpath}" _r
+    BUNDLED_PREFIX "${_nros_repo}")
+  set(${out_var} "${_r}" PARENT_SCOPE)
 endfunction()
 
 # =========================================================================
@@ -165,7 +110,7 @@ endfunction()
 function(nros_generate_interfaces target)
   cmake_parse_arguments(_ARG
     "SKIP_INSTALL"
-    "ROS_EDITION;LANGUAGE"
+    "ROS_EDITION;LANGUAGE;CODEGEN_CONFIG"
     "DEPENDENCIES"
     ${ARGN}
   )
@@ -243,13 +188,15 @@ function(nros_generate_interfaces target)
   string(TOLOWER "${_ARG_LANGUAGE}" _lang_lower)
   set(_args_file "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_generate_${_lang_lower}_args__${target}.json")
 
-  # Build + write the codegen args JSON (shared core, Phase 246.2 — identical
-  # to the canonical generator; no CODEGEN_CONFIG arg → no such JSON field).
+  # Build + write the codegen args JSON (shared core, Phase 246.2). CODEGEN_CONFIG
+  # (RFC-0033 per-field capacity) is now accepted here too (246.2b parity); empty
+  # → no JSON field, identical to before for callers that don't pass it.
   _nros_write_codegen_args_json(
     ARGS_FILE "${_args_file}"
     PACKAGE "${target}"
     OUTPUT_DIR "${_output_dir}"
     ROS_EDITION "${_ARG_ROS_EDITION}"
+    CODEGEN_CONFIG "${_ARG_CODEGEN_CONFIG}"
     INTERFACE_FILES ${_interface_files}
     DEPS ${_ARG_DEPENDENCIES})
 

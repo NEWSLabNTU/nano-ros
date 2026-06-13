@@ -81,85 +81,19 @@ else()
   set(_NROS_CODEGEN_TARGET_PROFILE_DIR "${NROS_CODEGEN_CARGO_PROFILE}")
 endif()
 
-if(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}
-   AND _NANO_ROS_CODEGEN_TOOL
-   AND NOT _NANO_ROS_CODEGEN_TOOL MATCHES "^\\$<"
-   AND NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
-  message(STATUS
-    "Cached nros codegen tool no longer exists: ${_NANO_ROS_CODEGEN_TOOL}; re-detecting")
-  unset(_NANO_ROS_CODEGEN_TOOL CACHE)
-  unset(_NANO_ROS_CODEGEN_TOOL)
-endif()
+# Phase 218: the `nros` CLI lives in-tree at packages/cli/ (built by
+# `just setup-cli`; `source ./activate.sh` puts it on PATH). Cross-compile
+# platform modules pre-set `_NANO_ROS_CODEGEN_TOOL` via nros_bootstrap_codegen();
+# a consumer may override with -D_NANO_ROS_CODEGEN_TOOL=<path>. Shared find/
+# validate/cache lives in the core (Phase 246.2b).
+_nros_resolve_codegen_tool(_NANO_ROS_CODEGEN_TOOL)
 
-if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
-  # Phase 195.D retired the `packages/codegen` submodule; Phase 218 brought
-  # the `nros` CLI back in-tree at `packages/cli/`, built by `just setup-cli`.
-  # `source ./activate.sh` puts `packages/cli/target/release/` on PATH;
-  # `~/.nros/bin` remains as a transitional fallback hint. Cross-compile
-  # platform modules pre-set `_NANO_ROS_CODEGEN_TOOL` via
-  # `nros_bootstrap_codegen()`. A consumer may override with
-  # `-D_NANO_ROS_CODEGEN_TOOL=<path>`.
-  find_program(_NANO_ROS_CODEGEN_TOOL nros
-    PATHS
-      "$ENV{NROS_HOME}/bin"
-      "$ENV{HOME}/.nros/bin"
-  )
-
-  if(NOT _NANO_ROS_CODEGEN_TOOL)
-    message(FATAL_ERROR
-      "nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros builds "
-      "the `nros` CLI in-tree from `packages/cli/` (Phase 218 merge). "
-      "Install it with:\n"
-      "  just setup-cli && source ./activate.sh\n"
-      "or pass -D_NANO_ROS_CODEGEN_TOOL=<path-to-nros> to the consumer's cmake."
-    )
-  endif()
-
-  set(_NANO_ROS_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}"
-    CACHE INTERNAL "Path to nros C codegen tool" FORCE)
-
-  message(STATUS "Found nros codegen tool: ${_NANO_ROS_CODEGEN_TOOL}")
-endif()
-
-# =========================================================================
-# _nros_resolve_interface(<target> <relpath> <out_var>)
-# =========================================================================
+# _nros_resolve_interface(<target> <relpath> <out_var>) — thin wrapper over the
+# shared core resolver (Phase 246.2b), supplying the bundled-interface prefix.
 function(_nros_resolve_interface target relpath out_var)
-  set(${out_var} "NOTFOUND" PARENT_SCOPE)
-
-  # 0. Absolute path — pass through directly
-  if(IS_ABSOLUTE "${relpath}")
-    if(EXISTS "${relpath}")
-      set(${out_var} "${relpath}" PARENT_SCOPE)
-    endif()
-    return()
-  endif()
-
-  # 1. Local file
-  set(_local "${CMAKE_CURRENT_SOURCE_DIR}/${relpath}")
-  if(EXISTS "${_local}")
-    set(${out_var} "${_local}" PARENT_SCOPE)
-    return()
-  endif()
-
-  # 2. Ament index
-  if(DEFINED ENV{AMENT_PREFIX_PATH})
-    string(REPLACE ":" ";" _ament_paths "$ENV{AMENT_PREFIX_PATH}")
-    foreach(_prefix ${_ament_paths})
-      set(_candidate "${_prefix}/share/${target}/${relpath}")
-      if(EXISTS "${_candidate}")
-        set(${out_var} "${_candidate}" PARENT_SCOPE)
-        return()
-      endif()
-    endforeach()
-  endif()
-
-  # 3. Bundled interfaces
-  set(_candidate "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/${relpath}")
-  if(EXISTS "${_candidate}")
-    set(${out_var} "${_candidate}" PARENT_SCOPE)
-    return()
-  endif()
+  _nros_resolve_interface_file("${target}" "${relpath}" _r
+    BUNDLED_PREFIX "${_NANO_ROS_PREFIX}")
+  set(${out_var} "${_r}" PARENT_SCOPE)
 endfunction()
 
 # =========================================================================

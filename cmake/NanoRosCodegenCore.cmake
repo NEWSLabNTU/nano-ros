@@ -241,3 +241,86 @@ function(_nros_ffi_cargo_args _out)
     endif()
     set(${_out} "${_args}" PARENT_SCOPE)
 endfunction()
+
+# _nros_resolve_codegen_tool(<cache_var_name>)
+#
+# Ensure the named cache var holds a valid path to the `nros` CLI (the codegen
+# tool). Drops a stale cached path (one that no longer EXISTS — but not a
+# generator-expression `$<…>` placeholder a cross-compile pre-set may use), then
+# find_program on PATH + $NROS_HOME/bin + ~/.nros/bin, FATAL if absent, cache
+# INTERNAL. Each generator runs its OWN pre-checks first (zephyr: west `-D`
+# pre-set + Kconfig CONFIG_NROS_CODEGEN_TOOL; canonical: profile var) which may
+# pre-populate the var — then calls this for the shared find/validate/cache. The
+# cache-var name is a PARAMETER because the two trees use distinct names
+# (`_NANO_ROS_CODEGEN_TOOL` vs `_NROS_ZEPHYR_CODEGEN_TOOL`, the latter read by
+# nros_find_interfaces.cmake) — they must NOT be unified.
+function(_nros_resolve_codegen_tool _cv)
+    if(${_cv} AND NOT "${${_cv}}" MATCHES "^\\$<" AND NOT EXISTS "${${_cv}}")
+        message(STATUS "Cached nros codegen tool no longer exists: ${${_cv}}; re-detecting")
+        unset(${_cv} CACHE)
+        unset(${_cv})
+    endif()
+    if(NOT ${_cv})
+        find_program(${_cv} nros
+            PATHS "$ENV{NROS_HOME}/bin" "$ENV{HOME}/.nros/bin")
+        if(NOT ${_cv})
+            message(FATAL_ERROR
+                "nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros "
+                "builds the `nros` CLI in-tree from packages/cli/ (Phase 218):\n"
+                "  just setup-cli && source ./activate.sh\n"
+                "or pre-set the cache var: -D${_cv}=<path-to-nros> (Zephyr also "
+                "accepts prj.conf CONFIG_NROS_CODEGEN_TOOL / west "
+                "-D_NANO_ROS_CODEGEN_TOOL=<path>).")
+        endif()
+        message(STATUS "Found nros codegen tool: ${${_cv}}")
+    endif()
+    # Cache unconditionally — a caller pre-check may have set the var PLAIN (e.g.
+    # zephyr's Kconfig CONFIG_NROS_CODEGEN_TOOL); persist it so a re-configure
+    # doesn't lose it. Re-caching an already-cached value is a no-op.
+    set(${_cv} "${${_cv}}" CACHE INTERNAL "Path to nros codegen tool" FORCE)
+endfunction()
+
+# _nros_resolve_interface_file(<target> <relpath> <out_var> [BUNDLED_PREFIX <p>])
+#
+# Resolve a ROS interface file in tiers, setting <out_var> (caller scope) to the
+# path or NOTFOUND:
+#   0. absolute <relpath> (pass through if it EXISTS)
+#   1. local      ${CMAKE_CURRENT_SOURCE_DIR}/<relpath>
+#   2. ament      <p>/share/<target>/<relpath> for each AMENT_PREFIX_PATH entry
+#   3. bundled    <BUNDLED_PREFIX>/share/nano-ros/interfaces/<target>/<relpath>
+#                 (only when BUNDLED_PREFIX is given)
+# `CMAKE_CURRENT_SOURCE_DIR` is the consumer's directory scope (a function does
+# not change it), matching the per-generator resolvers this replaces. The
+# bundled tier is opt-in via the prefix so a tree without one simply skips it.
+function(_nros_resolve_interface_file target relpath out_var)
+    cmake_parse_arguments(_R "" "BUNDLED_PREFIX" "" ${ARGN})
+    set(${out_var} "NOTFOUND" PARENT_SCOPE)
+    if(IS_ABSOLUTE "${relpath}")
+        if(EXISTS "${relpath}")
+            set(${out_var} "${relpath}" PARENT_SCOPE)
+        endif()
+        return()
+    endif()
+    set(_local "${CMAKE_CURRENT_SOURCE_DIR}/${relpath}")
+    if(EXISTS "${_local}")
+        set(${out_var} "${_local}" PARENT_SCOPE)
+        return()
+    endif()
+    if(DEFINED ENV{AMENT_PREFIX_PATH})
+        string(REPLACE ":" ";" _ament_paths "$ENV{AMENT_PREFIX_PATH}")
+        foreach(_prefix ${_ament_paths})
+            set(_cand "${_prefix}/share/${target}/${relpath}")
+            if(EXISTS "${_cand}")
+                set(${out_var} "${_cand}" PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+    endif()
+    if(_R_BUNDLED_PREFIX)
+        set(_cand "${_R_BUNDLED_PREFIX}/share/nano-ros/interfaces/${target}/${relpath}")
+        if(EXISTS "${_cand}")
+            set(${out_var} "${_cand}" PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+endfunction()
