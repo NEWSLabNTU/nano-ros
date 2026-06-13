@@ -6,31 +6,55 @@ license = "MIT OR Apache-2.0"
 publish = false
 description = "Simple QEMU OpenETH publisher example using nros-board-esp32-qemu"
 
+# Phase 244 D2 — single-pkg clean shape: `lib.rs` is the agnostic Node
+# (`nros::node!(Talker)` emits `register`), `main.rs` is the Entry
+# (`nros::main!()` Form-1 self-bringup links the sibling lib's
+# `register`). The board crate's `BoardEntry` owns executor / RMW / spin.
+[lib]
+name = "esp32_qemu_talker"
+
 [[bin]]
 name = "esp32-qemu-talker"
+path = "src/main.rs"
 test = false
 bench = false
 
-# Phase 212.L.2 — Application pkg shape. Single-board bare-metal
-# binary; deploy target matches the platform path it lives under.
-[package.metadata.nros.application]
-deploy = ["qemu-esp32-baremetal"]
+# Phase 244 D2 — Entry pkg deploy key. `nros::main!()` maps
+# "qemu-esp32-baremetal" → `nros_board_esp32_qemu::Esp32QemuEntry` +
+# `Framework::Esp32` emit shape.
+[package.metadata.nros.entry]
+deploy = "qemu-esp32-baremetal"
+
+[package.metadata.nros.node]
+class = "esp32_qemu_talker::Talker"
+name = "talker"
+default_namespace = "/"
+
+# Phase 244 D2 / E5 — deploy-target overlay (network endpoint + domain).
+# `[package.metadata.nros.deploy.<board>]`; the board default `Config`
+# (MAC / IP / gateway) supplies the remaining smoltcp knobs.
+[package.metadata.nros.deploy.qemu-esp32-baremetal]
+rmw = "zenoh"
+domain_id = 0
+ip = "10.0.2.50"
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:7454"
 
 [dependencies]
-# Platform crate - all you need for ESP32-C3 QEMU + OpenETH + zenoh
+# Board crate — ESP32-C3 QEMU + OpenETH + zenoh. Provides the
+# `Esp32QemuEntry` board ZST + the `esp_bootloader_esp_idf` re-export.
 nros-board-esp32-qemu = { path = "../../../../packages/boards/nros-board-esp32-qemu" }
 
-# nros Executor API
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+# nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Executor API.
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
 
 # Generated message types (from package.xml via nros generate-rust)
 std_msgs = { version = "*", default-features = false }
 
-# Required for #[main] proc macro (references esp_hal crate directly)
+# Required for the `#[esp_hal::main]` boot symbol the macro emits.
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
 
-# Panic handler (required for no_std)
+# Panic handler (required for no_std; link-forced in `main.rs`).
 esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
 
 # Phase 204.11 — release profile reconcile. `debug-assertions = true` in
