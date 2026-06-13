@@ -286,33 +286,49 @@ Steps (each a commit; CI between the riskier ones):
 > `libnros_rmw_zenoh_staticlib.a` — ALL from the shared Rust dependency closure
 > (nros-core/serdes/rmw/rmw-cffi, log, core, alloc, heapless, hash32, byteorder)
 > + the `nros_rmw_cffi_*` C shim. ZERO application/message/transport dups. So the
-> flag masks only legitimate self-contained-staticlib bundling; removing it
-> (slice 2) means deduping that closure (single shared rlib / one staticlib /
-> `-Bsymbolic`), a contained change once the validator guards it.
+> flag masks only legitimate self-contained-staticlib bundling — but note the
+> `nros_rmw_cffi_*` C exports are STRONG (`#[no_mangle]`), so removing the flag is
+> NOT a contained change: it needs `nros-rmw-cffi` deduped to a single archive
+> (see the "Remove `--allow-multiple-definition`" item below for the blocker found
+> when the `-u` cmake edit was tried).
 - [ ] One registration path: codegen emits the explicit backend-register table,
       used on all platforms; retire the linkme-vs-weak split as a *contract*
       (Q4 lean: explicit table everywhere).
 - [ ] Generated link manifest: whole-archive set + archive order (platform shim
       after RMW, msg libs before FFI glue) emitted as data; cmake + build.rs
       consume it (Q2 lean: codegen produces, two consumers).
-- [~] Remove `--allow-multiple-definition` — **strategy proven on host (slice 3,
-      2026-06-13).** The flag is needed ONLY because the backend is pulled in with
-      a broad `--whole-archive` (to force its register/ctor symbols), which drags
-      in every archive member, so the shared closure's strong defs collide
-      (reproduced: `--whole-archive` on both host staticlibs → 2462 multiple-def
-      errors). The duplicated closure symbols are COMDAT/weak, so under **lazy**
-      archive selection they dedup with no flag (host link of the pair without
-      `--whole-archive` → 0 collisions). The deterministic replacement is to force
-      ONLY the backend register entry via `-u <symbol>` and lazy-link the rest:
-      verified on host — `cc … -Wl,-u,nros_rmw_zenoh_register libnros_c.a
-      libnros_rmw_zenoh_staticlib.a` links with **no** `--allow-multiple-definition`,
-      the register entry IS included, and `REGISTRY` stays a **single** instance
-      (no split-registry / #48 `NoBackend` hazard). Guarded by
-      `host_pair_links_via_u_force_without_allow_multiple_definition`. **Remaining
-      (slice 4, run_e2e):** make the cmake link force-include the register symbol
-      via `-u` instead of whole-archiving the backend, drop the
-      `--allow-multiple-definition` line, and confirm every platform's linker
-      (rust-lld/arm/riscv + the ctor-vs-explicit register paths) still resolves.
+- [ ] Remove `--allow-multiple-definition` — **strategy partly proven, real
+      blocker found (slice 3+4 investigation, 2026-06-13).**
+      - The COMDAT/weak duplicates (generics, weak compiler-rt) are NOT the
+        problem: a **C-only** link of the 2 archives (`libnros_c.a` +
+        `libnros_rmw_zenoh_staticlib.a`) forced via `-u nros_rmw_zenoh_register`,
+        lazy (no `--whole-archive`), links with **no** flag — register included,
+        single `REGISTRY`. Guarded by
+        `host_pair_links_via_u_force_without_allow_multiple_definition`. (The flag
+        was historically needed because the real cmake link **whole-archives** the
+        backend to keep its `.init_array` register ctor; `--whole-archive` drags in
+        every member → the closure's strong defs collide → reproduced as 2462
+        multiple-def errors. `-u` keeps the ctor object without that.)
+      - **BUT the real C++ link has THREE archives** — `libnros_c.a` +
+        `libnros_cpp.a` + the RMW staticlib — and all three statically bundle
+        `nros-rmw-cffi`, whose C exports (`nros_rmw_cffi_register_named`,
+        `nros_rmw_cffi_set_custom_transport`, …) are **STRONG** (`#[no_mangle]`),
+        not COMDAT. Converting the root `CMakeLists.txt` zenoh link to `-u` (drop
+        whole-archive + flag) was tried and **fails the native cpp link**:
+        `multiple definition of nros_rmw_cffi_set_custom_transport` (libnros_cpp.a
+        vs the RMW staticlib). So lazy linking does NOT dedup these — the flag is
+        load-bearing for the strong cffi C exports.
+      - **Therefore slice 4 (drop the flag) REQUIRES the dedup first:**
+        `nros-rmw-cffi` must be defined in exactly ONE archive, not bundled into
+        each staticlib (`nros-c`, `nros-cpp`, the RMW staticlib). Options: a single
+        shared `nros-rmw-cffi` archive the others reference as undefined (hard with
+        Rust `crate-type=["staticlib"]`, which always bundles its closure), or
+        localising the cffi exports in all-but-one archive via `objcopy
+        --localize-symbol` (UNSAFE for the stateful `REGISTRY` — would split the
+        registry → #48 `NoBackend`), or collapsing nros-c+nros-cpp+RMW into one
+        staticlib. This is the architectural core of D3 and needs its own design +
+        run_e2e. The cmake `-u` edit was reverted (it broke the cpp link); the
+        validator + the C-only host proof stand as the guardrails for it.
 - [~] **Link-closure / duplicate-symbol validator — slices 1+2 landed.**
       `staticlib_duplicate_symbols.rs`: dumps the duplicate defined-globals
       between `libnros_c.a` and the RMW staticlib (via `llvm-nm`), attributes each
