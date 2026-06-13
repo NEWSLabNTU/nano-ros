@@ -9,7 +9,11 @@ does NOT redesign — the target is already RFC-0004 (config) + RFC-0031 (RMW
 selection) + the platform vtable (`nros-platform-api`/`-cffi`) + the RMW vtable
 (`nros-rmw-cffi`).
 
-**Status.** Proposed 2026-06-14. Implements issue #60.
+**Status.** Proposed 2026-06-14. Implements issue #60. **Wave 1 COMPLETE
+(2026-06-14): C1 (boards), C2 (nros-node), C3.1 (nros-c/nros-cpp), C4 (docs)
+all landed + integration-verified** (umbrella builds zenoh+posix; nros-node
+162+5 / nros-rmw 44 / cyclonedds 15 pass; native cross-process pub/sub e2e green
+after rebuild — validated C2's runtime wake-probe). Next: C5 keystone (Wave 2).
 
 **Priority.** P2 — architectural hygiene; not blocking features, but every new
 platform/RMW today pays the leakage tax (feature matrices, concrete-backend
