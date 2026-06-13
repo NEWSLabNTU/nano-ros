@@ -675,14 +675,17 @@ flipped on:
       planner lowering (unit-tested) + live runtime delivery
       (`qos_overrides_runtime_delivery`). Remaining sub-item: the C++ typed-entry
       honoring (wave3b), deferred behind the 242/244 emit work.
-- [~] The plan→deploy→publish PIPELINE is proven end-to-end
-      (`deployed_native_system_e2e`): a planned native workspace deploy builds,
-      boots, spins, and publishes to the ROS graph; a cross-process subscriber
-      receives. Remaining for the full "real ROS production" claim: run a
-      **vendored real ROS 2 workspace** (e.g. `demo_nodes_cpp`) — NOT the
-      synthetic `demo_bringup` — through the same pipeline, behind the usual
-      skip-on-missing-`ros2` gate. The pipeline is no longer the gap; the real
-      workspace fixture is.
+- [x] The plan→deploy→publish PIPELINE is proven end-to-end
+      (`deployed_native_system_e2e`), AND nano-ros is proven against a REAL
+      upstream ROS 2 workspace (2026-06-14): `demo_nodes_cpp_interop` runs a
+      stock, unmodified `ros2 run demo_nodes_cpp talker` (rclcpp
+      `std_msgs/String` on `/chatter`, `rmw_zenoh_cpp`) and a nano-ros raw
+      String subscriber (`bins/ros2-string-interop`) receives it cross-vendor
+      through `zenohd` — gated on `ros2`+`rmw_zenoh_cpp`. NOTE: nano-ros PARSES
+      a real upstream launch (`play_launch_parser` handles
+      `demo_nodes_cpp/.../talker_listener.launch.xml`) but cannot PLAN/bake
+      foreign rclcpp nodes (no nano-ros source metadata, by design) — so the
+      real-ROS proof is runtime interop, not baking someone else's nodes.
 
 ## Notes
 

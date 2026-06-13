@@ -250,6 +250,17 @@ impl Ros2Process {
         Self::spawn_bash(&cmd, "ros2 fibonacci_action_server", Some(config_dir))
     }
 
+    /// Phase 211 acceptance — start the stock `demo_nodes_cpp talker` (an
+    /// UNMODIFIED upstream rclcpp node publishing `std_msgs/String` "Hello
+    /// World: N" on `/chatter` at 1 Hz), over `rmw_zenoh_cpp` pointed at
+    /// `locator`. Pairs with a nano-ros raw-String subscriber to prove
+    /// cross-vendor interop on the ROS graph.
+    pub fn demo_nodes_cpp_talker(locator: &str, distro: &str) -> TestResult<Self> {
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
+        let cmd = format!("{env_setup} && timeout 30 ros2 run demo_nodes_cpp talker");
+        Self::spawn_bash(&cmd, "ros2 demo_nodes_cpp talker", Some(config_dir))
+    }
+
     /// Start a ROS 2 topic pub publisher
     ///
     /// # Arguments

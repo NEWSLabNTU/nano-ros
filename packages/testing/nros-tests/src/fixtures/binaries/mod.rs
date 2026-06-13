@@ -49,6 +49,10 @@ static NATIVE_BRIDGE_TT_ZENOH_XRCE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// fixture (`packages/testing/nros-tests/bins/qos-override-pubsub`).
 static NATIVE_QOS_OVERRIDE_PUBSUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Phase 211 acceptance — cached path to the `ros2-string-interop` fixture
+/// (`packages/testing/nros-tests/bins/ros2-string-interop`).
+static NATIVE_ROS2_STRING_INTEROP_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native-rs-lifecycle-node binary
 static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1192,6 +1196,23 @@ pub fn build_qos_override_pubsub() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/qos-override-pubsub");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/qos-override-pubsub"));
+            require_prebuilt_binary(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 211 acceptance — resolve the prebuilt `ros2-string-interop` fixture
+/// binary (`packages/testing/nros-tests/bins/ros2-string-interop`). A nano-ros
+/// raw `std_msgs/String` subscriber on `/chatter`, paired with a stock
+/// `demo_nodes_cpp talker` in `tests/demo_nodes_cpp_interop.rs`. Own Cargo
+/// workspace; the test skips cleanly when the binary is missing.
+pub fn build_ros2_string_interop() -> TestResult<&'static Path> {
+    NATIVE_ROS2_STRING_INTEROP_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/ros2-string-interop");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/ros2-string-interop"));
             require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())

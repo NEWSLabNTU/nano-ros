@@ -1,0 +1,19 @@
+[workspace]
+
+[package]
+name = "ros2-string-interop"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 211 acceptance — nano-ros raw std_msgs/String subscriber on /chatter, for interop against a stock `ros2 run demo_nodes_cpp talker`. Pairs with tests/demo_nodes_cpp_interop.rs."
+
+[[bin]]
+name = "ros2-string-interop"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
+log = "0.4"
+env_logger = "0.11"
