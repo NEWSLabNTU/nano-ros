@@ -59,6 +59,9 @@ mps2-an385-pac = { path = "../mps2-an385-pac", optional = true }
 # `run(Config, closure)` examples keep their lean dep set. RMW-agnostic — the
 # linked backend self-registers via the macro's `__register_linked_rmw()`.
 nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal"], optional = true }
+# Phase 244.D1 — agnostic logging dispatcher installed by `BoardEntry::boot`
+# so declarative nodes can `nros_info!` without a per-example boot closure.
+nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
 
 # Embedded dependencies
 cortex-m = "0.7"
@@ -81,7 +84,7 @@ rmw-zenoh = []
 # `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Pulls the
 # `nros` umbrella (executor + node-runtime). Off by default: legacy
 # `run(Config, closure)` examples don't need it.
-board-entry = ["dep:nros"]
+board-entry = ["dep:nros", "dep:nros-log"]
 # Ethernet transport via LAN9118 + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
 # Serial transport via CMSDK UART. The `_z_socket_*` symbols

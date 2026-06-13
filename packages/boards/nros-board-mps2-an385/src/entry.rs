@@ -92,6 +92,13 @@ where
     // Clock + ethernet/serial bring-up. Must precede any executor / socket op.
     init_hardware(&cfg);
 
+    // Phase 244.D1 — install the agnostic `nros_log` dispatcher so declarative
+    // nodes can `nros_info!` (the mps2-an385 semihosting `PlatformLog` already
+    // ships; this only wires the dispatcher to the default sinks). Replaces the
+    // per-example `nros_log::init(...)` that used to live in each talker's boot
+    // closure. Nodes still `register_logger(&LOGGER)` in their `register()`.
+    nros_log::init(nros_log::sinks::default());
+
     // Locator + domain come from the board Config (deploy overlay or default),
     // NOT env vars — bare-metal libc has no host `getenv` trampoline on QEMU.
     let exec_cfg = ExecutorConfig::new(cfg.zenoh_locator)

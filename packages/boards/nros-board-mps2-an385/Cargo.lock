@@ -955,6 +955,7 @@ dependencies = [
  "mps2-an385-pac",
  "nros",
  "nros-board-common",
+ "nros-log",
  "nros-platform",
  "nros-platform-api",
  "nros-platform-mps2-an385",
