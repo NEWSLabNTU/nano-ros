@@ -403,13 +403,26 @@ superproject), and the planner lowers it into `host_id`.
       (the existing SSOT table — kind `self`/vendor, board, ssh/target override)
       rather than a new `[host.<id>]` block; a multi-host system maps its
       `host_id` partitions onto these deploy targets. Reuse `scaffold_deploy`.
-- [ ] **Per-host bake** — `nros plan` partitions instances by `host_id`; each
-      partition bakes its own typed entry for its `[deploy.<id>]` target (each
-      host runs only its own components + the bridge config). No new runtime verb.
-- [ ] **Fixture + e2e** — single-machine *simulated* multi-host: two
-      domain-isolated processes (no real ssh needed for CI).
-- **Files:** `nros-cli` planner (`host_id` partition) + the entry emit; nano-ros
-  side: nothing new — cross-process already works via rmw.
+- [x] **Per-host bake — LANDED (`e7e9cbfff`).** The entry codegen partitions by
+      host: `launch_parser::NodeSpec.machine` → `entry::PlanNode.host`;
+      `Plan::for_host(id)` keeps host `id`'s nodes + all unhosted (shared) nodes
+      (`Plan::hosts()` = the `machine=` set); `nros codegen entry --host <id>`
+      bakes the per-host entry (errors if a host names no nodes + no shared
+      exist). Single-host launches unaffected (all nodes unhosted → kept). Unit:
+      `plan_for_host_partitions_by_machine`. In-tree codegen path only — the
+      `nros::main!()` macro (git-pinned nros-build) gets `--host` parity when
+      that distribution lands.
+- [ ] **Fixture + e2e** — single-machine *simulated* multi-host: bake two
+      per-host entries from one 2-`machine` launch, run as two processes (the
+      proven `deployed_native_system_e2e` cross-process pattern ×2), assert
+      cross-host delivery. The mechanism (above) + cross-process delivery
+      (211.A) are both proven; this is the two-entry runtime demonstration.
+- [ ] **`nros.toml` host targets (optional)** — model each host as a
+      `[deploy.<id>]` target so a multi-host system maps `--host` bakes onto
+      deploy targets via `scaffold_deploy`. Convenience over the bare
+      `--host` codegen.
+- **Files (landed):** `nros-cli-core/{launch_parser,codegen/entry/{mod,emit_*},
+  cmd/codegen}.rs`. nano-ros runtime side: nothing new — cross-process works.
 
 ### 211.G — `launch_testing` equivalent assertion harness
 
