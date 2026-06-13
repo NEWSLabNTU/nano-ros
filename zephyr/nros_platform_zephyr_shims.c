@@ -280,25 +280,10 @@ void nros_zephyr_irq_unlock(unsigned int key) {
     irq_unlock(key);
 }
 
-/* ── nros_platform_time_ns / sleep_ns wrappers (Phase 71.6) ─────────
- *
- * `nros/platform/zephyr.h` declares these as `static inline` for C
- * callers. Rust callers (nros-c on platform-zephyr) need real
- * exported symbols to link against. Re-define them here as real
- * functions; the inline path remains for direct-from-C use.
- */
-uint64_t nros_platform_time_ns(void) {
-    int64_t ticks = k_uptime_ticks();
-    return (uint64_t)ticks * (1000000000ULL / CONFIG_SYS_CLOCK_TICKS_PER_SEC);
-}
-
-void nros_platform_sleep_ns(uint64_t ns) {
-    if (ns < 1000000) {
-        k_busy_wait((uint32_t)(ns / 1000));
-    } else {
-        k_sleep(K_NSEC(ns));
-    }
-}
+/* phase-243 — the nros_platform_time_ns / sleep_ns exported wrappers are retired.
+ * nros-c's no_std path (platform-zephyr) now uses the canonical
+ * nros_platform_clock_us() / sleep_us() (nros-platform-zephyr provides them), so
+ * no Rust caller needs the ns symbols here anymore. */
 
 /* ── Phase 97.4.zephyr-native_sim debug printk shims ─────────────────
  *
