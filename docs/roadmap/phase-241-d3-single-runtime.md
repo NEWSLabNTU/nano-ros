@@ -236,6 +236,12 @@ rewire (W4), and the per-cell validation (W7) gates merge.
   and Rust nodes get the same "just a library" UX as C/C++ nodes (no per-node cargo
   feature boilerplate).
 
+**RESOLVED 2026-06-14** (`c7f8999e7` W11.1, `ae90ffb57` W11.2/W11.3). `examples/workspaces/mixed`
+links 0-dup without `--allow-multiple-definition`; native_entry boots + spins (C talker
+publishes, C++ listener subscribes, Rust heartbeat registers via one shared REGISTRY);
+`{c,cpp}` workspaces + the `robot_entry` templates stay green (synth is a no-op without a
+Rust node).
+
 #### W11 design — per-configure runtime umbrella (Option D)
 - **Seam (unchanged):** `nros::node!()` emits `#[no_mangle] extern "C"
   __nros_component_<pkg>_register`. The CLI-generated C++ `main` already calls that symbol
