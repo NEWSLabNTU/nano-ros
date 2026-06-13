@@ -263,6 +263,19 @@ add_library(nros_platform_threadx_iface INTERFACE)
 if(TARGET threadx_platform)
     target_link_libraries(nros_platform_threadx_iface INTERFACE threadx_platform)
 endif()
+# Phase 246 — propagate the board capability defines (e.g.
+# NROS_PLATFORM_HAS_MALLOC from `heap = true`) onto the public platform
+# INTERFACE so EVERY consumer inherits them — not just the app target that
+# `nros_platform_link_app` touches. Without this, a separately-compiled
+# Component static lib (the TYPED carrier's `<pkg>_<exec>_component`) parses
+# nros-cpp's heap_string/heap_sequence headers on bare-metal (where
+# NROS_PLATFORM_BAREMETAL suppresses the auto-malloc) WITHOUT the
+# `nros_platform_malloc`/`free` declaration and fails to compile. Empty for the
+# threadx-linux host board (hosted → malloc auto), so a no-op there.
+if(DEFINED _NROS_BOARD_CAP_DEFINES AND _NROS_BOARD_CAP_DEFINES)
+    target_compile_definitions(nros_platform_threadx_iface
+        INTERFACE ${_NROS_BOARD_CAP_DEFINES})
+endif()
 if(NOT TARGET NanoRos::Platform)
     add_library(NanoRos::Platform ALIAS nros_platform_threadx_iface)
 endif()

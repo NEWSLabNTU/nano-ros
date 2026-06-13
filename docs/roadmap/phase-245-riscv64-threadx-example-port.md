@@ -160,7 +160,13 @@ board-overlay enabler precedes the cargo-path de-hardcode.
   CMake firmware links (fresh configure — the stale build dir's pre-241.B.2
   `NROS_PLATFORM_CFFI_INCLUDE` cache is the only gotcha). Establishes the pattern
   for R*/C*/X*.
-- [ ] **T-c — `c/talker`** and **T-cpp — `cpp/talker`** — **deferred to
+- [x] **T-c — `c/talker`** and **T-cpp — `cpp/talker`** — **DONE via
+  [phase-246](phase-246-threadx-typed-entry-runtime.md) W2** (2026-06-13). Both
+  ported to the typed component shape (`NROS_C_COMPONENT` / `configure(Node&)`),
+  both RMW firmwares cross-build (riscv64 ELF, zenoh + CycloneDDS), runtime is the
+  real-executor `ThreadxBoard::run_components` path (no manual init/spin/locator,
+  no baker stub). Note below kept for the design trail.
+- [ ] _(historical)_ **deferred to
   [phase-246](phase-246-threadx-typed-entry-runtime.md) (framework integration).**
   The clean declarative C/C++ shape needs a *working* component runtime. An initial
   reading (against the **retired** RFC-0032/236 synthesizing-interpreter path)

@@ -291,7 +291,7 @@ class EntryNodeRuntime {
         for (size_t i = 0; i < entity_count_; ++i) {
             const Entity& e = entities_[i];
             if (e.used && e.kind == ::nros::NodeEntityKind::Subscription && e.reads) {
-                ::std::printf("Waiting for messages\n");
+                ::printf("Waiting for messages\n");
                 break;
             }
         }
@@ -300,7 +300,7 @@ class EntryNodeRuntime {
         for (size_t i = 0; i < entity_count_; ++i) {
             const Entity& e = entities_[i];
             if (e.used && e.kind == ::nros::NodeEntityKind::ServiceServer) {
-                ::std::printf("Waiting for requests\n");
+                ::printf("Waiting for requests\n");
                 break;
             }
         }
@@ -308,7 +308,7 @@ class EntryNodeRuntime {
         for (size_t i = 0; i < entity_count_; ++i) {
             const Entity& e = entities_[i];
             if (e.used && e.kind == ::nros::NodeEntityKind::ActionServer) {
-                ::std::printf("Waiting for goals\n");
+                ::printf("Waiting for goals\n");
                 break;
             }
         }
@@ -359,7 +359,7 @@ class EntryNodeRuntime {
                         } else {
                             value = static_cast<int32_t>(e.recv_count);
                         }
-                        ::std::printf("Received: %d\n", static_cast<int>(value));
+                        ::printf("Received: %d\n", static_cast<int>(value));
                     }
                 } else if (e.kind == ::nros::NodeEntityKind::ServiceServer) {
                     // Phase 238.D — synthesized service server. Drain pending
@@ -408,7 +408,7 @@ class EntryNodeRuntime {
                         if (r != 0 || len == 0) break;
                         ++e.recv_count;
                         const int64_t sum = entry_read_i64_le(drain, len, 4);
-                        ::std::printf("Response: %lld\n", static_cast<long long>(sum));
+                        ::printf("Response: %lld\n", static_cast<long long>(sum));
                     }
                 } else if (e.kind == ::nros::NodeEntityKind::ActionServer) {
                     // Phase 238.E — synthesized action server. On a goal request:
@@ -457,7 +457,7 @@ class EntryNodeRuntime {
                         int32_t rr = nros_cpp_action_client_try_recv_goal_response_raw(
                             entity_store(e), drain, sizeof(drain));
                         if (rr > 0) {
-                            ::std::printf("Goal accepted\n");
+                            ::printf("Goal accepted\n");
                             nros_cpp_action_client_send_get_result_request_raw(entity_store(e),
                                                                                &e.goal_id);
                             e.action_phase = 2;
@@ -469,8 +469,8 @@ class EntryNodeRuntime {
                         int32_t rr = nros_cpp_action_client_try_recv_result_raw(
                             entity_store(e), drain, sizeof(drain));
                         if (rr > 0) {
-                            ::std::printf("Result (status=4)\n");
-                            ::std::printf("Action completed successfully\n");
+                            ::printf("Result (status=4)\n");
+                            ::printf("Action completed successfully\n");
                             e.action_phase = 3; // terminal — one round-trip is enough
                         } else if (now >= e.next_fire_ns) {
                             e.action_phase = 0;
@@ -752,7 +752,7 @@ class EntryNodeRuntime {
         // subscriber "Received: N" line; matches the native talker). Lets a
         // harness gate on the publisher being live + count emissions.
         if (pr == 0) {
-            ::std::printf("Published: %d\n", static_cast<int>(v));
+            ::printf("Published: %d\n", static_cast<int>(v));
         }
     }
 
@@ -1104,14 +1104,14 @@ class NuttxBoard {
         nros_board_network_wait();
 
 #ifdef NROS_NUTTX_ENTRY_DEBUG
-        ::std::printf("[nuttx-cpp] run: locator=%s domain=%d\n", locator,
+        ::printf("[nuttx-cpp] run: locator=%s domain=%d\n", locator,
                       (int)NROS_ENTRY_DOMAIN_ID);
 #endif
         // Compile-time domain id. `NROS_ENTRY_DOMAIN_ID` resolves from
         // `CONFIG_NROS_DOMAIN_ID` (else 0) — same macro ZephyrBoard uses.
         nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
 #ifdef NROS_NUTTX_ENTRY_DEBUG
-        ::std::printf("[nuttx-cpp] init -> %d\n", (int)r.raw());
+        ::printf("[nuttx-cpp] init -> %d\n", (int)r.raw());
 #endif
         if (!r.ok()) {
             return static_cast<int32_t>(r.raw());
@@ -1120,7 +1120,7 @@ class NuttxBoard {
         detail::EntryNodeRuntime& runtime = detail::EntryRuntimeHolder<>::runtime;
         int32_t rc = detail::entry_register(runtime, register_fn);
 #ifdef NROS_NUTTX_ENTRY_DEBUG
-        ::std::printf("[nuttx-cpp] register -> %d; spinning\n", (int)rc);
+        ::printf("[nuttx-cpp] register -> %d; spinning\n", (int)rc);
 #endif
         if (rc != 0) {
             nros::shutdown();
@@ -1129,7 +1129,7 @@ class NuttxBoard {
 
         nros::Result spin_r = runtime.spin();
 #ifdef NROS_NUTTX_ENTRY_DEBUG
-        ::std::printf("[nuttx-cpp] spin exit -> %d\n", (int)spin_r.raw());
+        ::printf("[nuttx-cpp] spin exit -> %d\n", (int)spin_r.raw());
 #endif
         nros::shutdown();
         return static_cast<int32_t>(spin_r.raw());

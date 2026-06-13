@@ -189,12 +189,22 @@ ThreadX baker is removed only **after** its last consumer moves off it (W3).
   `ThreadxBoard::run_components`.
 
 ### W2 — bare-metal riscv64 (the phase-245 unblock)
-- [ ] **W2.1** `qemu-riscv64-threadx/cpp/talker` → typed component shape, both
-  build paths (zenoh + CycloneDDS CMake firmware). Cross-build + QEMU boot-gate.
-  (Resolves Q3 — the CycloneDDS composition seam.)
-- [ ] **W2.2** `qemu-riscv64-threadx/c/talker` → same.
-- [ ] **W2.3** Hand phase-245 T-c / T-cpp the proven template; they become the
-  remaining-role ports (Wave-2 C\*/X\*).
+- [x] **W2.1** `qemu-riscv64-threadx/cpp/talker` → typed `configure(Node&)` shape.
+  **Both firmwares cross-build** (riscv64 ELF): zenoh + CycloneDDS. **Q3 resolved**
+  — the typed entry composes with the per-example CycloneDDS riscv64 firmware
+  (cyclone-from-source + idlc `std_msgs__cyclonedds_ts` + `ThreadxBoard::run_components`),
+  no `app_main` hand-wiring. Surfaced + fixed the bare-metal-riscv64 C++-runtime
+  deltas (note 4): (a) board capability defines (`NROS_PLATFORM_HAS_MALLOC`) now
+  ride the **`nros_platform_threadx_iface` INTERFACE** so the separately-compiled
+  Component lib inherits them (not just the app target `nros_platform_link_app`
+  touches); (b) `nros-cpp/main.hpp` `::std::printf` → `::printf` (picolibc has no
+  `std::printf`); (c) example uses global `printf`/`setvbuf`.
+- [x] **W2.2** `qemu-riscv64-threadx/c/talker` → typed `NROS_C_COMPONENT` shape.
+  **Both firmwares cross-build**: zenoh + CycloneDDS (the cyclone variant keeps its
+  `src/cyclonedds_app.c` descriptor-registration TU, added via `target_sources`
+  when `NROS_RMW==cyclonedds`).
+- [ ] **W2.3** QEMU boot-gate for the four firmwares (env-limited — the standing
+  QEMU/zenohd caveat); + hand phase-245 the proven template for Wave-2 C\*/X\*.
 
 ### W3 — retire the legacy baker (gradual; last, after consumers move off)
 - [ ] **W3.1** Inventory `NanoRosThreadxSystemCodegen.cmake` consumers (grep
