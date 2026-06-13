@@ -415,6 +415,78 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
         );
     }
 
+    /// `#define <name> <val>` is present with a non-zero `<val>` (the FreeRTOS
+    /// idiom for an enabled feature). Absent or `0` → false.
+    fn freertos_define_is_one(src: &str, name: &str) -> bool {
+        src.lines().any(|line| {
+            let line = line.trim();
+            let Some(rest) = line.strip_prefix("#define") else {
+                return false;
+            };
+            let mut it = rest.split_whitespace();
+            it.next() == Some(name) && it.next().and_then(|v| v.parse::<i64>().ok()) == Some(1)
+        })
+    }
+
+    /// Phase 241.C.2b — for a FreeRTOS board that co-locates its
+    /// `config/FreeRTOSConfig.h`, the declared `[board.capabilities]` must AGREE
+    /// with the RTOS config it claims to mirror, not silently override it:
+    /// `configSUPPORT_DYNAMIC_ALLOCATION` ↔ `heap`, `configUSE_MUTEXES` ↔
+    /// `threads`. Catches the #38-class drift (board.toml says heap-capable but
+    /// the FreeRTOS config disabled dynamic allocation) at merge time rather than
+    /// in an e2e dispatch. (Zephyr's heap/mutex live in per-app Kconfig, not a
+    /// board-local file, so they stay config-derived — see 241.C.2b note.)
+    #[test]
+    fn freertos_capabilities_agree_with_freertosconfig() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root from packages/cli/nros-cli-core")
+            .to_path_buf();
+        let cat = BoardCatalog::load(&root).expect("load real board catalog");
+        let mut checked = 0usize;
+        for d in cat.descriptors() {
+            if d.platform != PlatformKind::Freertos {
+                continue;
+            }
+            let Some(rel) = d.crate_path_rel() else {
+                continue;
+            };
+            let cfg = root.join(&rel).join("config/FreeRTOSConfig.h");
+            let Ok(src) = std::fs::read_to_string(&cfg) else {
+                continue; // board without a co-located config — nothing to cross-check
+            };
+            let caps = d.capabilities();
+            let cfg_heap = freertos_define_is_one(&src, "configSUPPORT_DYNAMIC_ALLOCATION");
+            let cfg_threads = freertos_define_is_one(&src, "configUSE_MUTEXES");
+            let name = d.names.join("/");
+            assert_eq!(
+                caps.heap,
+                cfg_heap,
+                "board `{name}`: [board.capabilities] heap={} but \
+                 configSUPPORT_DYNAMIC_ALLOCATION={} in {}",
+                caps.heap,
+                cfg_heap as u8,
+                cfg.display()
+            );
+            assert_eq!(
+                caps.threads,
+                cfg_threads,
+                "board `{name}`: [board.capabilities] threads={} but \
+                 configUSE_MUTEXES={} in {}",
+                caps.threads,
+                cfg_threads as u8,
+                cfg.display()
+            );
+            checked += 1;
+        }
+        assert!(
+            checked > 0,
+            "no FreeRTOS board with a co-located config/FreeRTOSConfig.h was \
+             cross-checked — the C.2b agreement guard is vacuous"
+        );
+    }
+
     #[test]
     fn resolves_board_by_alias() {
         let cat = catalog();

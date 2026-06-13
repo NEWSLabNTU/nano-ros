@@ -189,10 +189,12 @@ Steps (each a commit; CI between the riskier ones):
       parity + full `run_e2e` on a branch.
 - [ ] **B.4** — parity assert: extend `c_stub_platform.rs` (or add one) to cover
       the unified canonical header ↔ `lib.rs` once B.3 lands.
-- [ ] **B.5** — repoint the 241.A gate at the canonical header. **Unblocked by
-      B.3 step 1**: once api gains the generic atomics, the gate's `core-no-malloc`
-      cell (which exercises atomics) passes against api. Add `nros-platform-api/include`
-      as the first `-I` in `platform_header_matrix.rs`; keep the negative #38 cell.
+- [x] **B.5 — repoint the 241.A gate at the canonical header (landed).**
+      `platform_header_matrix.rs` lists `nros-platform-api/include` as the first
+      `-I` (243.B.5), so `<nros/platform.h>` resolves to the canonical header; the
+      `core-no-malloc` atomics cell passes against api and the negative #38 cell is
+      kept. The 2026-06-13 all-platforms extension drives one heap cell per RTOS
+      target off the same canonical header.
 - **Acceptance:** exactly one file named `nros/platform.h`; `#include
       <nros/platform.h>` resolves identically regardless of `-I`/`-isystem` order;
       all per-platform CI cells (incl. xrce/cyclone) green via `run_e2e`;
@@ -244,10 +246,14 @@ Steps (each a commit; CI between the riskier ones):
       heap=false → none) + a full local `threadx_riscv64 build-fixture-extras`
       builds all 6 zenoh cpp fixtures clean off the *derived* `-D`. The cargo side
       needs no capability lowering — `platform-*` already implies `alloc`.
-- [ ] **C.2b — zephyr/freertos validation (deferred).** zephyr heap/mutex
-      (Kconfig) + freertos malloc (FreeRTOSConfig) stay config-derived; add a
-      check that the board.toml declaration agrees with the RTOS config rather
-      than overriding it. (Lower priority — those paths work today.)
+- [~] **C.2b — RTOS-config agreement check (freertos landed; zephyr deferred).**
+      `freertos_capabilities_agree_with_freertosconfig` (in `board_descriptor.rs`)
+      cross-checks every FreeRTOS board that co-locates `config/FreeRTOSConfig.h`:
+      `configSUPPORT_DYNAMIC_ALLOCATION` ↔ `[board.capabilities] heap`,
+      `configUSE_MUTEXES` ↔ `threads` — a merge-gate guard catching the #38-class
+      drift (board.toml claims a capability the RTOS config disabled). Zephyr's
+      heap/mutex live in per-app Kconfig (`prj.conf`), not a board-local file, so
+      they stay config-derived (lower priority — those paths work today).
 - [x] **C.3 — reassessed: resolved by design, no risky churn.** The original
       "retire all per-RTOS self-`#define`s" would *break* every platform whose
       C/C++ build doesn't yet receive the capability `-D` (C.2 wired only the
