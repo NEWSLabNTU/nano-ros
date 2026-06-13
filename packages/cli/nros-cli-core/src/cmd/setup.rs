@@ -254,6 +254,53 @@ pub fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
+/// Verify the consumer's Zephyr checkout matches the board's declared
+/// `zephyr_line` (major.minor), reading `<ws>/zephyr/VERSION`. Hard-errors on a
+/// mismatch: the line-specific patch set (`patches/<line>.sh`) and nano-ros's
+/// platform-zephyr code target that exact Zephyr API, so applying them to a
+/// different line drifts silently into deep compile errors (issue 0054). A
+/// missing/unparseable VERSION is a warning, not a hard stop (don't block an
+/// unusual-but-valid layout).
+fn verify_zephyr_line(zephyr_ws: &Path, zephyr_line: &str) -> Result<()> {
+    let version_file = zephyr_ws.join("zephyr").join("VERSION");
+    let text = match std::fs::read_to_string(&version_file) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!(
+                "  warning: cannot read {} ({e}) — skipping Zephyr-line check \
+                 (board declares {zephyr_line}).",
+                version_file.display()
+            );
+            return Ok(());
+        }
+    };
+    let field = |key: &str| -> Option<String> {
+        text.lines().find_map(|l| {
+            let (k, v) = l.split_once('=')?;
+            (k.trim() == key).then(|| v.trim().to_string())
+        })
+    };
+    let (Some(major), Some(minor)) = (field("VERSION_MAJOR"), field("VERSION_MINOR")) else {
+        eprintln!(
+            "  warning: {} has no VERSION_MAJOR/MINOR — skipping Zephyr-line check.",
+            version_file.display()
+        );
+        return Ok(());
+    };
+    let actual = format!("{major}.{minor}");
+    if actual != zephyr_line {
+        bail!(
+            "nros setup board: consumer Zephyr is v{actual} but this board declares \
+             zephyr_line={zephyr_line}. The {zephyr_line} patch set and nano-ros's \
+             platform-zephyr code target the {zephyr_line} API; provisioning v{actual} \
+             would drift into deep compile errors. Pin the consumer's zephyr to the \
+             {zephyr_line} line (west.yml revision / submodule) and re-run."
+        );
+    }
+    eprintln!("  zephyr check: consumer is v{actual} — matches board line {zephyr_line}");
+    Ok(())
+}
+
 /// `nros setup board <name> --zephyr-workspace <dir>` (Phase 215.J.2).
 ///
 /// Provisions a DOWNSTREAM Zephyr consumer's tree for a nano-ros board, driven
@@ -309,6 +356,12 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
             args.name
         );
     };
+
+    // Verify the consumer's Zephyr matches the board's declared line BEFORE
+    // touching the tree — the line-specific patch set + nano-ros's
+    // platform-zephyr code target that exact Zephyr API, so a mismatched
+    // checkout drifts silently into deep compile errors (issue 0054).
+    verify_zephyr_line(zephyr_ws, zephyr_line)?;
 
     eprintln!(
         "nros setup board {}: provisioning consumer Zephyr tree at {}",

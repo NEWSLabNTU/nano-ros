@@ -1,14 +1,23 @@
 ---
 id: 54
 title: nros setup board declares a Zephyr line but never verifies the consumer's checkout matches → silent net-API drift
-status: open
+status: resolved
 type: bug
 area: zephyr
 related: [phase-215, rfc-0014]
+resolved_in: nros-cli-core setup.rs — verify_zephyr_line() gate
 ---
 
-> Note: filename id 0053 reuses an available slot; the canonical id is **54**
-> (the id field is authoritative).
+> RESOLVED. `nros setup board` now calls `verify_zephyr_line()` BEFORE touching
+> the tree: it reads `<zephyr-workspace>/zephyr/VERSION`, compares
+> `VERSION_MAJOR.VERSION_MINOR` to the board's `zephyr_line`, and hard-errors on
+> a mismatch with a fix hint ("pin the consumer's zephyr to the <line> line").
+> A missing/unparseable VERSION is a warning, not a stop. Verified: v3.7.0 vs
+> board line 3.7 passes; a 3.5 tree is rejected at provision time (instead of
+> drifting into deep `net_if_addr` compile errors hours later). The first fix
+> directly below remains as the design note.
+>
+> filename id 0054 = canonical id (the `id:` field is authoritative).
 
 ## Symptom
 
