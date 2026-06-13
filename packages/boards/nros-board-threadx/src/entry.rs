@@ -110,6 +110,36 @@ where
 {
     let ctx = unsafe { &*(arg as *const AppContext<C, F>) };
 
+    // FnOnce / by-value config — `core::ptr::read` because this task
+    // entry runs once and `run_app_thread` consumes both.
+    let closure = unsafe { core::ptr::read(&ctx.closure) };
+    let config = unsafe { core::ptr::read(&ctx.config) };
+
+    run_app_thread::<B, C, F, E>(config, closure)
+}
+
+/// Phase 245 — the post-kernel app-thread body, factored out of
+/// [`app_task_entry_runtime`] so the **bare-metal CycloneDDS path** can reuse it.
+///
+/// The cargo/zenoh path enters via [`run_entry`] (which calls `tx_kernel_enter`
+/// and registers [`app_task_entry_runtime`] as the app callback). The
+/// CMake/CycloneDDS firmware instead has a **C** `startup.c::main` that calls
+/// `tx_kernel_enter` itself and dispatches to a Rust `app_main` — so by the time
+/// `app_main` runs, **the kernel is already entered**. `app_main` must therefore
+/// NOT call [`run_entry`] (double kernel-enter); it calls this directly.
+///
+/// Body: network-stabilisation sleep, open the executor (locator/domain from the
+/// board `ThreadxConfig` — CycloneDDS ignores the locator, no router), wrap it in
+/// an `ExecutorNodeRuntime`, run the user `setup` (the `nros::node!()`-emitted
+/// `register`), then spin for the firmware lifetime. Diverges (`-> !`): the
+/// ThreadX scheduler never lets the app thread exit.
+pub fn run_app_thread<B, C, F, E>(config: C, setup: F) -> !
+where
+    B: BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
+    E: core::fmt::Debug,
+{
     // Network stabilisation delay. Ticks at TX_TIMER_TICKS_PER_SECOND
     // (100 by default) — 200 ticks ≈ 2 s, matching the legacy per-
     // overlay wait in `node::app_task_entry`.
@@ -117,20 +147,14 @@ where
         tx_thread_sleep(200);
     }
 
-    // FnOnce — `core::ptr::read` because this task entry runs once.
-    let closure = unsafe { core::ptr::read(&ctx.closure) };
-
     // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
-    // `ExecutorNodeRuntime` so the codegen-emitted
-    // `run_plan(runtime)` body can register components against a
-    // live RMW session. Locator + domain_id come from the per-board
-    // `ThreadxConfig` (the overlay's TOML / default), NOT env vars
-    // — embedded libc `getenv` has no host trampoline. After the
-    // closure returns Ok, the app thread drops into a spin loop;
-    // ThreadX kernel never lets the thread exit so the loop runs
-    // for the firmware lifetime.
-    let exec_cfg = ::nros::ExecutorConfig::new(ctx.config.zenoh_locator())
-        .domain_id(ctx.config.domain_id())
+    // `ExecutorNodeRuntime` so the codegen-emitted `run_plan(runtime)`
+    // body can register components against a live RMW session.
+    // Locator + domain_id come from the per-board `ThreadxConfig` (the
+    // overlay's TOML / default), NOT env vars — embedded libc `getenv`
+    // has no host trampoline.
+    let exec_cfg = ::nros::ExecutorConfig::new(config.zenoh_locator())
+        .domain_id(config.domain_id())
         .node_name("nros_app");
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
@@ -143,7 +167,7 @@ where
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     let mut runtime = RuntimeCtx::with_runtime(&mut crt);
 
-    match closure(&mut runtime) {
+    match setup(&mut runtime) {
         Ok(()) => {
             B::println(format_args!(""));
             B::println(format_args!(

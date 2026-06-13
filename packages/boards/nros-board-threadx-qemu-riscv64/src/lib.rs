@@ -209,6 +209,24 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
     }
 }
 
+/// Phase 245 — bare-metal CycloneDDS app-thread entry.
+///
+/// The CMake/CycloneDDS firmware boots through a **C** `startup.c::main` that
+/// calls `tx_kernel_enter()` itself and dispatches to the example's Rust
+/// `app_main` *inside* the spawned ThreadX app thread — so the kernel is already
+/// running when `app_main` is reached. `app_main` must NOT call
+/// [`nros_platform::BoardEntry::run`] (that re-enters the kernel); it calls this,
+/// which runs the post-kernel body (open executor + `setup` + spin) on
+/// `Config::default()`. The cargo/zenoh path uses `nros::main!()` /
+/// `BoardEntry::run` instead and never reaches here.
+pub fn run_app_thread<F, E>(setup: F) -> !
+where
+    F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+    E: core::fmt::Debug,
+{
+    nros_board_threadx::run_app_thread::<ThreadxQemuRiscv64, Config, F, E>(Config::default(), setup)
+}
+
 /// Phase 245 B0 — overlay the `nros::main!()` deploy block onto `Config::default()`.
 /// Fields the deploy block omits keep the board default.
 fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {

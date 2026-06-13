@@ -106,7 +106,7 @@ mod sizes {
 mod entry;
 mod node;
 
-pub use entry::run_entry;
+pub use entry::{run_app_thread, run_entry};
 pub use node::run;
 pub use nros_board_common::{BoardExit, BoardInit, BoardPrint, ThreadxConfig};
 

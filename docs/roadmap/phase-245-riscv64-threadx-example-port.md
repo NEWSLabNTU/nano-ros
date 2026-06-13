@@ -1,19 +1,40 @@
-# Phase 245 — Port qemu-riscv64-threadx examples to the Phase-212 Node+Entry shape
+# Phase 245 — Port qemu-riscv64-threadx examples to the clean app-node shape
 
 **Implements.** [issue 0049](../issues/0049-example-source-platform-rmw-leakage.md)
 cluster C1, carved out of [phase-244](phase-244-example-source-cleanliness.md)
 because it is a **re-architecture**, not a delete-the-wiring cleanup (10× the other
 Wave-1 clusters). Aligns the examples with
-[RFC-0024](../design/0024-multi-node-workspace-layout.md) (Node-pkg = agnostic
-logic) + [RFC-0032](../design/0032-entry-codegen-pipeline.md) (`nros::main!()` owns
-the boot scaffold).
+[RFC-0032](../design/0032-entry-codegen-pipeline.md) (`nros::main!()` owns the boot
+scaffold) while keeping the **app-node** taxonomy intact.
+
+**Taxonomy (load-bearing — do NOT confuse the two).**
+`examples/<platform>/<lang>/<role>` are **app nodes**: a single package that owns
+`main()`. `examples/workspaces/*` are **workspace examples**: nodes are library
+dirs (Node + Entry split). The riscv64-threadx examples are platform/lang app
+nodes → they stay **single-package with a `main`**; they are NOT split into a
+Node + Entry pair. (The earlier draft of this phase mistakenly targeted the
+workspace Node+Entry shape; corrected.)
 
 **Goal.** Port all `examples/qemu-riscv64-threadx/{rust,c,cpp}/<role>` examples (6
 roles × 3 langs ≈ 18–20 pkgs) from the dual-entry, manual-executor shape to the
-**clean threadx-linux shape**, while preserving both build paths (pure-cargo zenoh
-+ CMake/CycloneDDS). The sibling `examples/threadx-linux/{rust,c,cpp}` is the
-**byte-for-byte target template** — same ThreadX family, only host (NSOS) vs
-riscv64 bare-metal differs.
+**clean single-package app-node shape**, preserving both build paths (pure-cargo
+zenoh + CMake/CycloneDDS) and **all RMWs incl. CycloneDDS**. The clean shape per
+language:
+
+- **Rust** → one package. `src/lib.rs`: `#![no_std]` + `impl Node` + `register()`
+  via `nros::node!(Role)` (agnostic logic only — node/pub/sub/timer + callback
+  body; NO executor open / spin / `register_rmw` / locator). `src/main.rs`:
+  `#![no_std] #![no_main]` + `nros::main!();` (reads
+  `[package.metadata.nros.entry] deploy = "threadx-qemu-riscv64"` + the deploy
+  overlay block). The board's `BoardEntry::run` owns executor + RMW + spin
+  (zenoh/cargo path). For the **CycloneDDS/CMake** path the same crate exposes a
+  thin `#[cfg(feature = "rmw-cyclonedds")] extern "C" fn app_main()` that calls
+  the board's post-kernel `run_app_thread(register)` (see design note 2).
+- **C** → `nros_app_main` + `<nros/*.h>` (framework owns the runtime).
+- **C++** → `NROS_NODE_REGISTER` declarative component + baked `nros_system_main()`.
+
+RMW selection lives in `Cargo.toml [features]` (Rust) / CMake `-DNROS_RMW` (C/C++);
+locator + domain in `[package.metadata.nros.deploy.*]` — never in source.
 
 **Status.** Planned (2026-06-13). Design explored below. Prereqs present in dev env
 (THREADX_DIR / NETX_DIR / riscv64-unknown-elf-gcc / riscv64imac target), so it is
@@ -37,21 +58,27 @@ Leaks (issue 0049): P1 (manual executor/spin), P2 (`#![no_std]`/`#![no_main]` in
 src), P3 (`register_rmw()`), P4 (`compile_error!` RMW guard + cfg forks), P6
 (hardcoded `const LOCATOR`), P10 (C `nros_*_type_t{}` literals).
 
-**Target** (the threadx-linux shape, already clean):
-- **Rust** → split into a **Node pkg** (`<role>/src/lib.rs`: `#![no_std]` +
-  `impl Node` + `register()` + body via `nros::node!()`; NO executor/spin/rmw) and
-  an **Entry pkg** (`<role>_entry/`: `[[bin]]`, `[package.metadata.nros.entry]
-  deploy = "threadx-qemu-riscv64"` + `[package.metadata.nros.deploy.*]`,
-  `src/main.rs = nros::main!();`). The board's `BoardEntry::run` (already impl'd in
-  `nros-board-threadx-qemu-riscv64`) owns executor + spin + RMW.
+**Target** (clean single-package app node — keeps `main`, both build paths):
+- **Rust** → ONE crate (NOT a Node + Entry split). `src/lib.rs`: `#![no_std]` +
+  `impl Node` + `register()` via `nros::node!(Role)` (agnostic logic only). The
+  crate's `[lib] crate-type = ["staticlib", "rlib"]` stays (the staticlib is the
+  CycloneDDS/CMake link surface). `src/main.rs`: `#![no_std] #![no_main]` +
+  `nros::main!();` (reads `[package.metadata.nros.entry] deploy` +
+  `[package.metadata.nros.deploy.*]`). The board's `BoardEntry::run` (impl'd in
+  `nros-board-threadx-qemu-riscv64`) owns executor + spin + RMW on the zenoh/cargo
+  path; the CycloneDDS path's thin `app_main` calls the board's `run_app_thread`.
+  `lib.rs` keeps an unconditional `extern crate nros_board_threadx_qemu_riscv64
+  as _;` so the standalone `staticlib` target inherits the board's
+  `#[panic_handler]` + allocator even when no symbol is named (zenoh path enters
+  via `main.rs`, not the lib).
 - **C** → `int nros_app_main(int argc, char **argv)` + `<nros/init.h>` /
   `<nros/publisher.h>` (framework owns the runtime); drop manual
   `nros_support_init`/`nros_executor_init`/spin. (`nros_app_main` /
   `NROS_APP_MAIN_REGISTER` is the standard entry, not a leak.)
 - **C++** → `NROS_NODE_REGISTER` declarative component + baked `nros_system_main()`.
-- **Cyclone/CMake path** → align to the threadx-linux CMake shape (which routes the
-  Cyclone build through the baked system entry, not a per-example `cyclonedds_app.c`
-  + hand-wired `app_main`).
+- **Cyclone/CMake path** → unchanged shape (`src/cyclonedds_app.c` empty TU +
+  descriptor reg + `CMakeLists.txt` corrosion-import of the staticlib); only the
+  Rust `app_main` body changes (no manual executor/spin — delegates to the board).
 
 ---
 
@@ -63,37 +90,49 @@ src), P3 (`register_rmw()`), P4 (`compile_error!` RMW guard + cfg forks), P6
    board change. The deploy overlay (`run_with_deploy`, phase-244 E5) is NOT yet on
    this board — add it here for the P6 locator/domain de-hardcode (mirror the
    threadx-linux E5 override).
-2. **Two build paths must both keep working — and the cyclone path has NO clean
-   template (verified 2026-06-13).** The pure-cargo zenoh path (board `run` /
-   `nros::main!()`) mirrors threadx-linux directly. BUT threadx-linux rust examples
-   have **no per-example `CMakeLists.txt`** — its cyclone path runs through the
-   separate **host-linked** `multi_pkg_workspace_threadx` baker fixture
-   (`threadx_corrosion_bringup`), not per-example firmware. riscv64-threadx is
-   **bare-metal**, so its cyclone path is a per-example firmware build
-   (`cyclonedds_app.c` + `corrosion_import_crate` + `add_executable` +
-   `nano_ros_link_rmw`) with its own riscv64 startup — there is no host template to
-   copy. **So the genuinely novel design work of this phase is the bare-metal
-   riscv64 cyclone baked-entry:** bake `nros_system_main` for `target_os = "none"`
-   riscv64 (mirroring the threadx baker's per-component register emission +
-   Corrosion-import of the Node staticlib), fold the riscv64 reset/startup that
-   `cyclonedds_app.c` currently provides into the board / baked entry, and keep the
-   `CMakeLists.txt` linking it. This is the load-bearing sub-problem; the Node+Entry
-   split + zenoh path is the easy half.
+2. **Two build paths, two kernel-entry routes — the load-bearing fix is
+   `run_app_thread` (verified 2026-06-13).** Both paths boot through the board's C
+   ThreadX glue; the difference is *who calls `tx_kernel_enter()`* and what the
+   app thread runs:
+   - **zenoh/cargo:** `nros::main!()` emits `extern "C" fn main` →
+     `BoardEntry::run(register)` → `nros_board_threadx::run_entry` → registers
+     `app_task_entry_runtime` as the app callback → `tx_kernel_enter()`. The app
+     thread opens the executor, runs `register`, spins. Kernel entered by Rust.
+   - **CycloneDDS/CMake:** the board's **C** `startup.c::main` calls
+     `tx_kernel_enter()` itself and dispatches to the example's Rust `app_main`
+     *inside* the spawned ThreadX app thread. So **the kernel is already running
+     when `app_main` is reached** — `app_main` must NOT call `BoardEntry::run`
+     (that re-enters the kernel → double init). It must run only the *post-kernel
+     body* (sleep → open executor → `register` → spin).
+
+   Fix: factor that post-kernel body out of `app_task_entry_runtime` into a public
+   `nros_board_threadx::run_app_thread<B, C, F, E>(config, setup) -> !`
+   (`entry.rs`), re-exported per-board as
+   `nros_board_threadx_qemu_riscv64::run_app_thread(setup)` (defaults `Config`).
+   The example's cyclone `app_main` becomes a one-liner:
+   `nros_board_threadx_qemu_riscv64::run_app_thread(register)`. No `cyclonedds_app.c`
+   rewrite, no baked `nros_system_main`, no startup re-fold — the existing C
+   startup + empty-TU + `CMakeLists.txt` shape is preserved; only the Rust
+   `app_main` body changed (manual `run_app` → board `run_app_thread`). This is far
+   lighter than the baked-entry approach the first draft assumed.
 3. **Not host-checkable — verify via the firmware build.** The board crate's
    `build.rs` compiles ThreadX riscv64 assembly (`tx_thread_*.S`) via
    `riscv64-unknown-elf-gcc`, so `cargo check` on the host target fails in cc-rs
    (unrelated to the Rust source). B0 + every cluster must be verified through the
    actual riscv64 firmware build (cmake + Corrosion + the riscv64imac target), not
    host `cargo check`.
-4. **bare-metal vs host deltas** (the only things that differ from threadx-linux):
-   linker script / reset entry (the board/`nros::main!()` `target_os = "none"` arm
-   already emits `extern "C" fn main`), no host `getenv` (locator comes from the
-   deploy overlay, not `option_env!`/`getenv`), and the riscv64 startup that
-   `cyclonedds_app.c` currently provides → fold into the board / baked entry.
-5. **Reference, don't reinvent.** For each `<role>` and lang, the corresponding
-   `examples/threadx-linux/<lang>/<role>{,_entry}` is the template; the port is
-   mostly "make the riscv64 example look like its threadx-linux sibling, swap the
-   deploy target + linker/startup."
+4. **bare-metal specifics** (vs the threadx-linux host sibling): linker script /
+   reset entry (the board global-asm `_start` → C `main`; `nros::main!()`'s
+   `target_os = "none"` arm emits that `main` on the cargo path, the board's
+   `startup.c` provides it on the cyclone path), no host `getenv` (locator comes
+   from the deploy overlay, not `option_env!`/`getenv`). The riscv64 startup stays
+   in the board's `startup.c` — no fold needed once `run_app_thread` removes the
+   double-kernel-enter hazard (design note 2).
+5. **Reference the proven talker.** Once T-rust lands + both paths verify, every
+   other `(lang, role)` follows it byte-for-byte: same single-package app-node
+   layout, same `Cargo.toml [nros.entry]` + `[nros.deploy.*]`, same thin cyclone
+   `app_main`. The agnostic-logic sibling at `examples/threadx-linux/<lang>/<role>`
+   is the cross-check for the `register()` body.
 
 ---
 
@@ -102,25 +141,33 @@ src), P3 (`register_rmw()`), P4 (`compile_error!` RMW guard + cfg forks), P6
 Each `(lang, role)` is one example dir → file-disjoint → safe to parallelize. The
 board-overlay enabler precedes the cargo-path de-hardcode.
 
-### Wave 0 — board enabler
-- [x] **B0 — `run_with_deploy` on `nros-board-threadx-qemu-riscv64`.** Add the E5
-  override (copy the threadx-linux `config_with_overlay`) so the Entry pkgs' deploy
-  metadata threads locator/domain into `Config`. Blocks the P6 leg of every cluster.
+### Wave 0 — board enablers
+- [x] **B0 — `run_with_deploy` on `nros-board-threadx-qemu-riscv64`.** E5 override +
+  `config_with_overlay` so the app-node's deploy metadata threads locator/domain
+  into `Config`. Blocks the P6 leg of every cluster.
+- [x] **B1 — `run_app_thread` post-kernel entry** (`nros-board-threadx` `entry.rs`,
+  re-exported from `nros-board-threadx-qemu-riscv64`). The CycloneDDS path's
+  kernel-already-entered fix (design note 2). Blocks the cyclone leg of every Rust
+  cluster.
 
 ### Wave 1 — template-proving (do first, end-to-end, both build paths)
-- [ ] **T-rust — `rust/talker` → `talker` (Node) + `talker_entry` (Entry).** The
-  reference migration: split the crate, `nros::node!()` Node, `nros::main!()` entry,
-  delete `run_app`/`register_rmw`/`start_from_reset`/`app_main`, rewire
-  `CMakeLists.txt` + retire `cyclonedds_app.c` to the baked entry. Build-verify BOTH
-  zenoh (cargo) and cyclonedds (cmake) paths. Establishes the pattern for R*/C*/X*.
+- [x] **T-rust — `rust/talker`** (clean single-package app node). `nros::node!()`
+  logic in `lib.rs`, `nros::main!()` in `main.rs`, deleted
+  `run_app`/`register_rmw`/`start_from_reset` + the `compile_error!` guard + the
+  `const LOCATOR`; cyclone `app_main` → board `run_app_thread(register)`;
+  `CMakeLists.txt` + `cyclonedds_app.c` unchanged. **Verified:** zenoh/cargo
+  firmware ELF builds; CycloneDDS-feature staticlib compiles for riscv64; cyclone
+  CMake firmware links (fresh configure — the stale build dir's pre-241.B.2
+  `NROS_PLATFORM_CFFI_INCLUDE` cache is the only gotcha). Establishes the pattern
+  for R*/C*/X*.
 - [ ] **T-c — `c/talker`** and **T-cpp — `cpp/talker`** — same, mirroring
   `threadx-linux/{c,cpp}/talker`. Proves the C (`nros_app_main`) + C++
   (`NROS_NODE_REGISTER`) target shapes on riscv64.
 
 ### Wave 2 — remaining roles (parallel; each follows the Wave-1 template)
 - [ ] **R* (rust):** listener, service-server, service-client, action-server,
-  action-client → Node + Entry split. (action roles also drop P10 manual type
-  registration → folds in phase-244 E3 once it lands.)
+  action-client → single-package app-node shape. (action roles also drop P10 manual
+  type registration → folds in phase-244 E3 once it lands.)
 - [ ] **C* (c):** the same 5 roles → `nros_app_main` shape.
 - [ ] **X* (cpp):** the same 5 roles → `NROS_NODE_REGISTER` shape.
 
