@@ -365,6 +365,73 @@ function(nano_ros_node_register)
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 
+    # Phase 246 (RFC-0043) — ThreadX typed-entry carrier. Mirrors the NuttX
+    # branch above (bare-metal riscv64 + threadx-linux host sim both set
+    # `NANO_ROS_PLATFORM threadx`): synthesise a single-node C++ entry TU that
+    # routes the component to the real executor via `ThreadxBoard::run_components`
+    # (construct `CLASS` + `configure(node)`), then delegate to
+    # `nros_platform_link_app` for the kernel/netstack/startup link. The board's
+    # `startup.c` dispatches to the entry's `app_main` inside the app thread, so
+    # the typed entry's `NROS_APP_MAIN_REGISTER_VOID()` symbol is the boot target.
+    #
+    # TYPED-only: the legacy declarative-register + `NanoRosThreadxSystemCodegen`
+    # NULL-context stub is retired on ThreadX (phase-246). Both C and C++.
+    if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
+       AND NANO_ROS_PLATFORM STREQUAL "threadx"
+       AND COMMAND nros_platform_link_app
+       AND NOT TARGET ${PROJECT_NAME})
+        if(NOT _NRC_TYPED)
+            message(FATAL_ERROR
+                "nano_ros_node_register: the ThreadX carrier requires TYPED — "
+                "the RFC-0043 real-callback component path. The legacy "
+                "declarative-register / NULL-context baker entry is retired on "
+                "ThreadX (phase-246).")
+        endif()
+        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
+        # Baked connect locator. QEMU slirp routes the guest to the host zenoh
+        # router at `10.0.2.2:<port>`. Override with `-DNROS_THREADX_LOCATOR=…`;
+        # the default 7553 matches the qemu-riscv64-threadx fixture port.
+        # CycloneDDS ignores the locator (no router); domain id is compile-time.
+        if(NOT DEFINED NROS_THREADX_LOCATOR)
+            set(NROS_THREADX_LOCATOR "tcp/10.0.2.2:7553")
+        endif()
+        set(NROS_ENTRY_LOCATOR "${NROS_THREADX_LOCATOR}")
+        set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
+        set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
+        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
+        set(_entry_src "${_entry_dir}/main.cpp")
+        if(_nrc_lang STREQUAL "CPP")
+            set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
+            set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/threadx_entry_main_typed.cpp.in"
+                "${_entry_src}" @ONLY)
+        else() # C
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/threadx_entry_main_c_typed.cpp.in"
+                "${_entry_src}" @ONLY)
+        endif()
+
+        add_executable(${PROJECT_NAME} "${_entry_src}" ${_NRC_SOURCES})
+        target_include_directories(${PROJECT_NAME} PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src")
+        target_compile_definitions(${PROJECT_NAME} PRIVATE
+            NROS_PKG_NAME=${_pkg_sym})
+        if(TARGET NanoRos::NanoRosCpp)
+            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRosCpp)
+        elseif(TARGET NanoRos::NanoRos)
+            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRos)
+        endif()
+        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
+        if(_nros_iface_libs)
+            list(REMOVE_DUPLICATES _nros_iface_libs)
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
+        endif()
+        nros_platform_link_app(${PROJECT_NAME})
+    endif()
+
     # Phase 240.8 (RFC-0043) — Zephyr typed-entry carrier. Unlike NuttX (a
     # standalone bootable ELF via add_executable + nros_platform_link_app), a
     # Zephyr app IS the find_package(Zephyr)-owned monolithic `app` target. The

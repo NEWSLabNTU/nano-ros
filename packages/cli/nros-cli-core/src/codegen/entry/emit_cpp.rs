@@ -192,6 +192,14 @@ fn board_cpp_path(board: &str) -> &str {
         // kernel boot; shares the EntryNodeRuntime via the `NuttxBoard`
         // lifecycle adapter.
         "nuttx" | "nuttx-qemu-arm" | "nuttx-qemu-riscv" => "::nros::board::NuttxBoard",
+        // Phase 246 — Azure RTOS ThreadX family (threadx-linux host sim +
+        // bare-metal qemu-riscv64). The board's C `startup.c` enters the kernel
+        // and dispatches to the typed entry's `app_main` inside the app thread, so
+        // the `ThreadxBoard` adapter runs `run_components` WITHOUT re-entering the
+        // kernel — same `EntryNodeRuntime` machinery as Native/NuttX/Zephyr.
+        "threadx" | "threadx-linux" | "threadx-qemu-riscv64" | "qemu-riscv64-threadx" => {
+            "::nros::board::ThreadxBoard"
+        }
         // An explicit, already-qualified C++ board path passes through.
         b if b.starts_with("::nros::board::") => b,
         // Unknown / future board keys fall back to NativeBoard with the
@@ -351,9 +359,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             // executor node handle — the ctor creates the node + entities. The
             // component owns its node, so no separate `create_node`/`configure`.
             let cls = n.class_name.as_deref().unwrap();
-            out.push_str(
-                "        ::nros::NodeHandle __h(::nros::global_handle());\n",
-            );
+            out.push_str("        ::nros::NodeHandle __h(::nros::global_handle());\n");
             out.push_str(
                 "        if (!__h.valid()) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);\n",
             );
@@ -367,10 +373,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 out,
                 "            ::nros::detail::report_component_failure(\"{name_lit}\", __nros_comp_{i}->error_what(), __nros_comp_{i}->error_code());"
             );
-            let _ = writeln!(
-                out,
-                "            return __nros_comp_{i}->error_code();"
-            );
+            let _ = writeln!(out, "            return __nros_comp_{i}->error_code();");
             out.push_str("        }\n");
         } else {
             let _ = writeln!(
@@ -615,7 +618,9 @@ mod tests {
         assert!(src.contains("static ::ctrl_pkg::Controller* __nros_comp_0 = nullptr;"));
         // setup: handle → placement-new → ok() check naming the node
         assert!(src.contains("::nros::NodeHandle __h(::nros::global_handle());"));
-        assert!(src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Controller(__h);"));
+        assert!(
+            src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Controller(__h);")
+        );
         assert!(src.contains("if (!__nros_comp_0->ok()) {"));
         assert!(src.contains("report_component_failure(\"controller\""));
         // The rclcpp shape does NOT default-construct a Node or call configure.
@@ -651,7 +656,9 @@ mod tests {
         let src = emit_typed(&plan).expect("mixed emit ok");
         // node 0 = rclcpp: arena slot + handle construct, no Node/configure.
         assert!(src.contains("static ::ctrl_pkg::Controller* __nros_comp_0 = nullptr;"));
-        assert!(src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Controller(__h);"));
+        assert!(
+            src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Controller(__h);")
+        );
         assert!(!src.contains("static ::nros::Node __nros_node_0;"));
         // node 1 = configure: Node + configure, no arena slot.
         assert!(src.contains("static ::nros::Node __nros_node_1;"));
@@ -743,6 +750,26 @@ mod tests {
         plan.board = "nuttx".into();
         let src = emit_typed(&plan).expect("typed emit ok");
         assert!(src.contains("::nros::board::NuttxBoard::run_components(&__nros_entry_setup)"));
+    }
+
+    #[test]
+    fn typed_emit_threadx_board_uses_threadxboard_run_components() {
+        // Phase 246 — the ThreadX family keys (host sim + bare-metal riscv64) all
+        // route the typed entry to the `ThreadxBoard` adapter's `run_components`.
+        for key in [
+            "threadx",
+            "threadx-linux",
+            "threadx-qemu-riscv64",
+            "qemu-riscv64-threadx",
+        ] {
+            let mut plan = fixture_plan_typed(&[("t_pkg", "t", "t", "t_pkg::T", "t_pkg/T.hpp")]);
+            plan.board = key.into();
+            let src = emit_typed(&plan).expect("typed emit ok");
+            assert!(
+                src.contains("::nros::board::ThreadxBoard::run_components(&__nros_entry_setup)"),
+                "board key {key} must map to ThreadxBoard::run_components"
+            );
+        }
     }
 
     #[test]
