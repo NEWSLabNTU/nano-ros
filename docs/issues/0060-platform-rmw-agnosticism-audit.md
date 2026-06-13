@@ -4,8 +4,13 @@ title: Platform/RMW-agnosticism audit — core + user libs leak platform-*/rmw-*
 status: open
 type: tech-debt
 area: architecture
-related: [rfc-0004, rfc-0031, rfc-0005, rfc-0006, rfc-0035, issue-0049]
+related: [rfc-0004, rfc-0031, rfc-0005, rfc-0006, rfc-0035, issue-0049, phase-248]
 ---
+
+> **Convergence plan:** [phase-248](../roadmap/phase-248-platform-rmw-agnosticism-convergence.md)
+> groups the fix into 6 crate-owned clusters across 3 dependency waves (Wave 1:
+> C1 boards / C2 nros-node / C3 nros-c+nros-cpp / C4 docs — parallel; C5 nros
+> umbrella keystone; C6 example node pkgs).
 
 ## The bar (target architecture)
 
