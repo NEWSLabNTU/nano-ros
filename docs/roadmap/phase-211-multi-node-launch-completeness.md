@@ -165,15 +165,24 @@ regression until the next nros-cli release picks it up.
       `build.rmw = zenoh` / `build.target = x86_64-unknown-linux-gnu` pin.
 - [x] **Skip cleanly** when the `nros` CLI isn't on PATH (`require_nros_cli`
       helper added to `nros-tests::lib`, mirrors `require_xrce_agent`).
-- [→] **`nros deploy native` second-stage** — **SUPERSEDED (2026-06-13).** Was:
-      "start the resulting binary → assert Published, once demo_pkg compiles +
-      exports `nros_component_talker`". Both premises are retired — there is no
-      `nros deploy` verb, and the `nros_component_*` register-symbol was replaced
-      by the RFC-0043 typed entry. The build-and-run-it leg is now covered by the
-      typed multi-node entry e2e (`multi_node_workspace_cpp_typed_pubsub_e2e`,
-      phase-240/242): a planned multi-node system bakes a typed entry that runs
-      N components in one process. The plan-only gate here (`orchestration_e2e`)
-      stays the planner-regression guard.
+- [x] **Deploy second-stage — LANDED (2026-06-13).** Was deferred ("once
+      demo_pkg compiles + exports `nros_component_talker`"); both premises are
+      retired (no `nros deploy` verb; register-symbol → RFC-0043 typed entry).
+      Proven end-to-end by `deployed_native_system_e2e` (new): the planned
+      `examples/workspaces/rust` deploy (`native_entry`,
+      `nros::main!(launch = "demo_bringup:…")`) builds → boots → spins →
+      **publishes `std_msgs/Int32` to the ROS graph**, and a separate `listener`
+      process receives it. Two mechanisms made this work without code changes:
+      (a) the macro's env-gated hosted spin `NROS_ENTRY_SPIN_MS` /
+      `NROS_ENTRY_SPIN_STEP_MS` (`nros-macros::main_macro`) RUNS the system for a
+      bounded test window; (b) the e2e is **cross-process** because zenoh-pico
+      (the `nros-rmw-zenoh` backend) has a documented "write filter" limitation
+      — **in-process pub/sub doesn't deliver**, regardless of shared session or
+      distinct executors in one OS process (`trigger_conditions.rs` header,
+      `component_runtime.rs` note). So the deployed system's own in-process
+      listener sees nothing; delivery is observed from the separate subscriber,
+      the canonical out-of-process topology every nano-ros pubsub e2e uses. The
+      plan-only `orchestration_e2e` gate stays the planner-regression guard.
 - **Files:** `packages/testing/nros-tests/fixtures/orchestration_e2e/*`,
   `packages/testing/nros-tests/tests/orchestration_e2e.rs`,
   `packages/testing/nros-tests/src/lib.rs` (`nros_cli_bin_path`, `require_nros_cli`),
@@ -593,10 +602,14 @@ flipped on:
       `nros-tests` runtime runner over a `.test.yaml`, NOT an `nros` verb
       (RFC-0024 §4: nros is never a build/test verb).
 - [ ] Per-topic `qos_overrides` from launch honored at runtime (211.H).
-- [ ] A real ROS 2 workspace fixture (e.g. vendored `demo_nodes_cpp`) — NOT a
-      synthetic `demo_pkg` — `nros plan`s, bakes a typed entry for the native
-      `[deploy.<name>]` target, builds + publishes. The "real ROS production"
-      claim, end-to-end, behind the usual skip-on-missing-`ros2` gate.
+- [~] The plan→deploy→publish PIPELINE is proven end-to-end
+      (`deployed_native_system_e2e`): a planned native workspace deploy builds,
+      boots, spins, and publishes to the ROS graph; a cross-process subscriber
+      receives. Remaining for the full "real ROS production" claim: run a
+      **vendored real ROS 2 workspace** (e.g. `demo_nodes_cpp`) — NOT the
+      synthetic `demo_bringup` — through the same pipeline, behind the usual
+      skip-on-missing-`ros2` gate. The pipeline is no longer the gap; the real
+      workspace fixture is.
 
 ## Notes
 
