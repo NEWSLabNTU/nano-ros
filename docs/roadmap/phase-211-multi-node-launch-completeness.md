@@ -441,14 +441,17 @@ superproject), and the planner lowers it into `host_id`.
 - **Files (landed):** `nros-cli-core/{launch_parser,codegen/entry/{mod,emit_*},
   cmd/codegen}.rs`. nano-ros runtime side: nothing new — cross-process works.
 
-### 211.G — `launch_testing` equivalent assertion harness
+### 211.G — `launch_testing` equivalent assertion harness — CLOSED (not needed, 2026-06-13)
 
 ROS 2 `launch_testing` lets you assert "topic X publishes ≥ N Hz for ≥ T s",
 "node enters Active in ≤ T s". nano-ros has no equivalent — every e2e
 hand-rolls the assertion.
 
-**`nros test` is RULED OUT (definitive) + the harness already EXISTS — so this
-is OPTIONAL convenience, not a gap (2026-06-13).**
+**CLOSED — will not be built.** `nros test` is ruled out, the equivalent
+capability already exists in `nros-tests`, and a `.test.yaml` data-driven
+runner is convenience for non-Rust authors, not a missing capability. No work
+item remains here; if a data-driven runner is ever wanted it is a fresh,
+self-contained convenience task, not a 211 gap.
 
 `nros test` cannot happen: RFC-0024 §4 ("nros never a build verb. No `nros
 build` / `nros test` / `nros flash`. nros = provisioner + codegen + metadata"),
@@ -512,12 +515,27 @@ generated entities and component-created entities take different create paths:
       phase-242/244 emit territory (collision risk) — and the only thing that
       exercises it (runtime delivery counters) rides on the deferred deploy
       second-stage. Sequence it after the 242/244 emit work settles.
-- [→] **Runtime delivery e2e — DEFERRED with 211.A's deploy second-stage**
-      (deploy a binary, count reliable vs best-effort samples in the rmw layer;
-      needs a compilable native system + run). The native chain above is fully
-      unit/integration-tested short of the live deploy.
+- [x] **Runtime delivery e2e — LANDED (2026-06-13).** The wired runtime path
+      (`set_qos_overrides` → `create_*_with_qos` → `apply_overrides`) is now
+      proven on LIVE entities cross-process, not just in lowering unit tests.
+      `qos_overrides_runtime_delivery` drives the `qos-override-pubsub` fixture
+      (raw pub/sub bin that installs a `&'static [QosOverride]` table on its
+      `NodeHandle` exactly like a baked entry): with `reliability=best_effort`
+      both processes log the effective `BestEffort` profile on their live entity
+      and the subscriber receives the publisher's samples through `zenohd`; a
+      baseline run with no override logs `Reliable`, proving the override (not a
+      constant) flipped the live profile. Also closed an inconsistency:
+      `create_subscription_raw` now applies node overrides + `validate_against`
+      like the raw publisher path did (was hardcoded default QoS). NOTE: the
+      executor routes through the CFFI session, whose `supported_qos_policies`
+      advertises a broad mask — so an *unsupported-policy rejection* path
+      (e.g. transient_local on zenoh-pico) can't be exercised through the
+      deployed runtime; the effective-profile contrast + delivery are the
+      runtime evidence.
 - **Files (landed):** `nros-cli-core/orchestration/{plan,planner,generate}.rs`,
-  `nros-rmw/src/traits.rs`, `nros-node/src/executor/node.rs`, `nros/src/lib.rs`.
+  `nros-rmw/src/traits.rs`, `nros-node/src/executor/node.rs`, `nros/src/lib.rs`,
+  `nros-tests/bins/qos-override-pubsub/`,
+  `nros-tests/tests/qos_overrides_runtime_delivery.rs`, `examples/fixtures.toml`.
 
 ### 211.I — Mixed-RMW discovery + bridge fixture
 
@@ -626,13 +644,16 @@ flipped on:
 
 - [ ] Multi-host: a system with `machine="…"` partitions onto per-host
       `[deploy.<id>]` targets, each baking its own typed entry (211.F).
-- [~] `launch_testing`-equivalent harness (211.G) — **DOWNGRADED to optional.**
+- [x] `launch_testing`-equivalent harness (211.G) — **CLOSED, not needed.**
       `nros test` is ruled out (RFC-0024 §4 / 0027 / 0040), and the runtime
       primitives already exist (`ManagedProcess` + `wait_for_*` + `count_pattern`,
       used by `deployed_native_system_e2e`). Hand-written `nros-tests` e2e is the
-      de-facto harness today; a `.test.yaml` data-driven runner is convenience,
-      not a gap.
-- [ ] Per-topic `qos_overrides` from launch honored at runtime (211.H).
+      de-facto harness; a `.test.yaml` data-driven runner is a fresh convenience
+      task, not a 211 gap.
+- [x] Per-topic `qos_overrides` from launch honored at runtime (211.H) —
+      planner lowering (unit-tested) + live runtime delivery
+      (`qos_overrides_runtime_delivery`). Remaining sub-item: the C++ typed-entry
+      honoring (wave3b), deferred behind the 242/244 emit work.
 - [~] The plan→deploy→publish PIPELINE is proven end-to-end
       (`deployed_native_system_e2e`): a planned native workspace deploy builds,
       boots, spins, and publishes to the ROS graph; a cross-process subscriber

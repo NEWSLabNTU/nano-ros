@@ -363,6 +363,17 @@ impl<'a> NodeHandle<'a> {
         type_name: &str,
         type_hash: &str,
     ) -> Result<crate::executor::handles::RawSubscription<RX_BUF>, NodeError> {
+        // Phase 211.H — apply plan qos_overrides (subscription side) before
+        // validate, mirroring `create_publisher_raw_with_qos`. The raw entity
+        // paths honour node overrides exactly like the typed ones — an
+        // override the active RMW can't meet errors loudly, never silently.
+        let qos = QosSettings::default().apply_overrides(
+            topic_name,
+            nros_rmw::QosOverrideRole::Subscription,
+            self.qos_overrides,
+        );
+        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
+            .map_err(NodeError::Transport)?;
         let topic = Self::topic_info(
             self.domain_id,
             &self.name,
@@ -373,7 +384,7 @@ impl<'a> NodeHandle<'a> {
         );
         let handle = self
             .session
-            .create_subscriber(&topic, QosSettings::default())
+            .create_subscriber(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
         Ok(crate::executor::handles::RawSubscription {
             handle,

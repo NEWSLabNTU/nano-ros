@@ -45,6 +45,10 @@ static NATIVE_CT_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// the mixed-RMW bridge e2e (Phase 110.G.bridge example reused as fixture).
 static NATIVE_BRIDGE_TT_ZENOH_XRCE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Phase 211.H — cached path to the `qos-override-pubsub` runtime-delivery
+/// fixture (`packages/testing/nros-tests/bins/qos-override-pubsub`).
+static NATIVE_QOS_OVERRIDE_PUBSUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native-rs-lifecycle-node binary
 static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1141,6 +1145,23 @@ pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/bridge-zenoh-to-xrce-fwd"));
+            require_prebuilt_binary(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 211.H — resolve the prebuilt `qos-override-pubsub` fixture binary
+/// (`packages/testing/nros-tests/bins/qos-override-pubsub`). Used by
+/// `tests/qos_overrides_runtime_delivery.rs` to prove a per-topic QoS override
+/// is honoured on a live entity + still delivers cross-process. Its own Cargo
+/// workspace; the test skips cleanly when the binary is missing.
+pub fn build_qos_override_pubsub() -> TestResult<&'static Path> {
+    NATIVE_QOS_OVERRIDE_PUBSUB_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/qos-override-pubsub");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/qos-override-pubsub"));
             require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())

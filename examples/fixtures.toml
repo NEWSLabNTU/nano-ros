@@ -283,6 +283,14 @@ platform = "native"
 lang = "rust"
 dir = "examples/native/rust/listener-rtic"
 
+# Phase 211.H — qos_overrides runtime-delivery fixture (raw pub/sub bin that
+# installs a per-topic QoS override on its NodeHandle and proves it is honoured
+# on a live entity). Consumed by tests/qos_overrides_runtime_delivery.rs.
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/qos-override-pubsub"
+
 [[fixture]]
 platform = "native"
 lang = "rust"
