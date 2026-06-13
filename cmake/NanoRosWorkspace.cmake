@@ -183,6 +183,14 @@ function(nano_ros_workspace)
             add_subdirectory("${CMAKE_SOURCE_DIR}/${_sub}")
         endif()
     endforeach()
+
+    # Phase 241 W11 (Option D) — if this configure contains a Rust Node pkg, synthesise the
+    # per-configure runtime umbrella (nros-cpp + all workspace Rust nodes, one staticlib)
+    # and re-point NanoRos::NanoRosCpp at it. No-op for pure-C / pure-C++ workspaces. Runs
+    # AFTER the SUBDIRS loop so nros-metadata.json lists every registered node; the umbrella
+    # archive swap is an INTERFACE property edit, evaluated at generate time.
+    include("${_nros_root}/cmake/NanoRosRuntimeCrate.cmake")
+    nros_synth_runtime_umbrella(BACKEND "${_NRW_BACKEND}" PLATFORM "${_NRW_PLATFORM}")
 endfunction()
 
 # ---------------------------------------------------------------------------

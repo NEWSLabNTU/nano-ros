@@ -236,49 +236,56 @@ rewire (W4), and the per-cell validation (W7) gates merge.
   and Rust nodes get the same "just a library" UX as C/C++ nodes (no per-node cargo
   feature boilerplate).
 
-#### W11 design — per-entry runtime staticlib (Option D)
+#### W11 design — per-configure runtime umbrella (Option D)
 - **Seam (unchanged):** `nros::node!()` emits `#[no_mangle] extern "C"
   __nros_component_<pkg>_register`. The CLI-generated C++ `main` already calls that symbol
   for every node (C/C++/Rust alike). **So `nros codegen entry` does NOT change** — only
-  the link wiring does.
-- **Runtime crate:** for an entry whose deployed node set contains ≥1 Rust node,
-  `nano_ros_entry` synthesizes (at configure time, `file(WRITE)`) a crate
-  `<build>/<entry>_runtime/`:
+  the umbrella's archive changes.
+- **Granularity = per cmake-configure (== per-arch).** A workspace targets multiple
+  boards by baking a separate `build/<board>/` tree per board (deployment contract:
+  `nros codegen-system --bringup` → vendor tool builds each), and one cmake configure is
+  single-arch (one toolchain, one `NANO_ROS_PLATFORM`). So a runtime umbrella scoped to
+  the configure is automatically per-arch; multi-arch = multiple build trees = multiple
+  umbrellas, each correct for its arch. No single configure ever hosts two arches.
+  → the runtime crate is synthesized **once per configure** and bundles that configure's
+  Rust nodes, NOT once per entry. (Within a single-arch configure, all entries share it.)
+- **Runtime crate:** when a workspace configure contains ≥1 Rust node, `nano_ros_workspace`
+  synthesizes (configure-time `file(WRITE)`) a crate `<build>/nros_ws_runtime/`:
   - `Cargo.toml`: `[lib] crate-type=["staticlib"]`; deps = `nros-cpp` (umbrella, as rlib)
-    with the workspace's `<backend>`+`<platform>`+`ros-*` features, plus one `path` dep per
-    Rust node (rlib). Carries `[workspace]` + the nros-managed `[patch.crates-io]` block
-    (copied from the workspace, same as node crates).
-  - `src/lib.rs`: `pub use nros_cpp::*;` + a `#[used]` anchor on nros-cpp's exported
-    `FORCE_LINK_ANCHOR` (re-pulls the C ABI + backend past staticlib DCE) + one `#[used]`
-    anchor per Rust node's `__nros_component_<pkg>_register` (keeps each node's register
-    symbol). Anchors are required because a `#[used]` living in a dependency rlib is DCE'd
-    from the final staticlib root (same rule as W3's nros-c→nros-cpp anchor, generalized
-    one level: nros-cpp→runtime).
-- **Synthesis site: CMake `nano_ros_entry`** (not the CLI). All inputs are already in
-  scope there — `NANO_ROS_RMW`/`NANO_ROS_PLATFORM` cache vars, `nros-metadata.json` (Rust
-  node `pkg_dir`s + sanitized syms), the on-disk patch block — and the
-  `corrosion_import_crate` + `target_link_libraries` it feeds live in the same function.
-  The CLI has no backend/platform notion; pushing synthesis there would add new CLI flags
-  and split one logical step across two layers.
-- **cmake wiring changes:**
-  - `nano_ros_node_register(LANGUAGE RUST)`: stop `corrosion_import_crate(…staticlib)`;
-    only record the node in metadata (pkg_dir + sanitized sym). No per-node archive.
-  - `nano_ros_entry`: if any deployed node is Rust → write + `corrosion_import_crate` the
-    `<entry>_runtime` staticlib and link THAT instead of `NanoRos::NanoRosCpp`. Else:
-    current path unchanged. (C entries with Rust nodes use `nros-c` in place of `nros-cpp`.)
-  - `nros-cpp`: expose one `pub` `FORCE_LINK_ANCHOR` (C-surface + backend) so the runtime
-    root can re-anchor it. Small, mirrors the existing private `_KEEP_C_SURFACE`.
-- **Scope / blast radius:** ONLY Rust-node-bearing workspaces take the new path. Pure-C /
-  pure-C++ workspaces, templates, and all single-crate examples are untouched (already
-  green). C/C++ component libs are unchanged — their undefined C-ABI refs resolve from the
-  runtime staticlib exactly as they did from the umbrella.
+    with the configure's `<backend>`+`<platform>`+`ros-*` features, plus one `path` dep per
+    Rust node (rlib). Carries `[workspace]` + the nros-managed `[patch.crates-io]` block.
+  - `src/lib.rs`: a `#[used]` anchor on nros-cpp's `FORCE_LINK_ANCHOR` (W11.1 — re-pulls
+    the full C ABI + C++ FFI + backend past staticlib DCE), a `#[used]` `.init_array` ctor
+    on `nros_cpp_auto_register_backend` (the backend auto-register, DCE'd as a dep rlib
+    otherwise), and one `#[used]` anchor per Rust node's `__nros_component_<pkg>_register`.
+- **The umbrella IS the runtime crate.** After importing nano-ros, `nano_ros_workspace`
+  re-points `nros-cpp-headers` (== `NanoRos::NanoRosCpp`) — currently
+  `target_link_libraries(nros-cpp-headers INTERFACE nros_cpp-static)` at
+  `packages/core/nros-cpp/CMakeLists.txt:152` — to link the `nros_ws_runtime` staticlib
+  instead of `nros_cpp-static`. All of nros-cpp-headers' INTERFACE includes / cyclone /
+  stdc++ wiring is preserved; only the archive swaps. `nros_cpp-static` stays built but
+  unreferenced (harmless). Components + entries link `NanoRos::NanoRosCpp` **unchanged**.
+- **Why per-configure beats per-entry here:** per-entry would force C/C++ component libs to
+  become umbrella-includes-only (so the entry can own the one archive), a fiddly
+  transitive-include split on the shared component-link path that risks the green C/C++
+  cells. Per-configure keeps components/entries byte-for-byte unchanged; the only edit is
+  the one-line archive swap on the umbrella alias, gated on "configure has a Rust node".
+- **Scope / blast radius:** ONLY workspaces that contain a Rust node take the swap. Pure-C
+  / pure-C++ workspaces, templates, and single-crate examples never trigger it (no Rust
+  node → no synth → `nros-cpp-headers` keeps `nros_cpp-static`). Already-green cells stay
+  on their exact current path.
 - **Work sub-items:**
-  - W11.1 — `nros-cpp` `pub FORCE_LINK_ANCHOR` (C-surface + backend).
-  - W11.2 — `nano_ros_node_register(LANGUAGE RUST)`: metadata-only, drop the staticlib import.
-  - W11.3 — `nano_ros_entry`: detect Rust nodes; synthesize + import + link `<entry>_runtime`.
+  - W11.1 — `nros-cpp` `pub FORCE_LINK_ANCHOR` + `nros_cpp_auto_register_backend` (DONE,
+    `c7f8999e7`).
+  - W11.2 — `nano_ros_node_register(LANGUAGE RUST)`: stop the per-node staticlib
+    `corrosion_import_crate`; record metadata + an empty INTERFACE placeholder so the
+    CLI's auto-link sidecar `target_link_libraries(entry … rust_pkg_component)` is a no-op
+    (the node's symbols come from the runtime umbrella).
+  - W11.3 — `nano_ros_workspace`: pre-scan SUBDIRS for Rust node pkgs; if any, synthesize
+    `nros_ws_runtime`, `corrosion_import_crate` it, and re-point the `nros-cpp-headers`
+    archive. New helper module `cmake/NanoRosRuntimeCrate.cmake`.
   - W11.4 — validation: `examples/workspaces/{c,cpp,mixed}` + templates rebuild 0-dup;
-    mixed heartbeat node registers + ticks at runtime; re-confirm the 6 cross cells
-    unaffected.
+    mixed heartbeat node registers + ticks at runtime; re-confirm the 6 cross cells.
 - **Acceptance:** `examples/workspaces/mixed` links with zero cffi dups under GNU-ld
   without `--allow-multiple-definition`; the Rust heartbeat node registers and ticks
   (one shared REGISTRY); c/cpp workspaces stay green.

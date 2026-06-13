@@ -178,33 +178,26 @@ function(nano_ros_node_register)
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
 
         if(_nrc_lang STREQUAL "RUST")
-            if(NOT COMMAND corrosion_import_crate)
-                message(FATAL_ERROR
-                    "nano_ros_node_register(LANGUAGE RUST): Corrosion is required. "
-                    "Build via nano_ros_workspace()/add_subdirectory(nano-ros) so "
-                    "the in-tree Corrosion dependency is available.")
-            endif()
+            # Phase 241 W11 (Option D) — a Rust Node pkg is NO LONGER imported as its own
+            # Corrosion staticlib. A per-node `lib<pkg>.a` bundles its full `nros` closure
+            # (incl. `nros-rmw-cffi`'s `#[no_mangle]` C ABI + REGISTRY); linked beside the
+            # umbrella it collided (`multiple definition`) once single-runtime dropped
+            # `--allow-multiple-definition`, and split the stateful REGISTRY (issue the W1
+            # un-gate closed). Instead the workspace's per-configure runtime umbrella
+            # (`nros_ws_runtime`, synthesised by `nano_ros_workspace`) bundles this node as
+            # a cargo **rlib** path-dep — one Rust staticlib for the whole binary.
+            #
+            # `${_lib}` stays as an EMPTY INTERFACE target so the CLI-emitted entry
+            # auto-link sidecar (`target_link_libraries(<entry> PRIVATE
+            # <pkg>_<exec>_component)`, Phase 219.J) resolves to a harmless no-op — the
+            # node's `__nros_component_<pkg>_register` symbol arrives via the runtime
+            # umbrella, which the entry already links through `NanoRos::NanoRosCpp`.
             if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml")
                 message(FATAL_ERROR
                     "nano_ros_node_register(LANGUAGE RUST): expected Cargo.toml "
                     "in ${CMAKE_CURRENT_SOURCE_DIR}")
             endif()
-            corrosion_import_crate(
-                MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
-                CRATES        "${PROJECT_NAME}"
-                CRATE_TYPES   staticlib
-            )
-            string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _crate_target "${PROJECT_NAME}")
-            set(_rust_static_target "${_crate_target}-static")
-            if(NOT TARGET ${_rust_static_target})
-                message(FATAL_ERROR
-                    "nano_ros_node_register(LANGUAGE RUST): Corrosion did not "
-                    "create target '${_rust_static_target}'. Ensure the package "
-                    "name matches project(${PROJECT_NAME}) and [lib] includes "
-                    "crate-type = [\"staticlib\", ...].")
-            endif()
             add_library(${_lib} INTERFACE)
-            target_link_libraries(${_lib} INTERFACE ${_rust_static_target})
         else()
             add_library(${_lib} STATIC ${_NRC_SOURCES})
             if(_nrc_lang STREQUAL "C")
