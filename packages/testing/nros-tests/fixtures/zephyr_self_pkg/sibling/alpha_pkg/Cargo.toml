@@ -1,0 +1,26 @@
+# §212.M-F.3 self-pkg bringup fixture (issue 0041, "sibling" layout).
+#
+# Same self-pkg as ../../self/alpha_pkg, but here it is the BRINGUP TARGET
+# referenced by name from the sibling `caller/` app's
+# `nros_system_generate(alpha_pkg)` — exercising the resolver's relative-path
+# candidate (no `system.toml`, no own CMakeLists; the caller drives the build).
+[package]
+name = "alpha_pkg"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rustapp"
+crate-type = ["rlib", "staticlib"]
+
+[package.metadata.nros.component]
+class = "alpha_pkg::Node"
+name = "selfpkg"
+default_namespace = "/"
+
+[package.metadata.nros.deploy.zephyr]
+board = "native_sim/native/64"
+rmw = "zenoh"
+domain_id = 0
+
+[workspace]

@@ -884,9 +884,17 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
         env_exclude+=("not binary(board_import)")
     fi
     # zephyr west build-fixtures (issue 0041): deselect when west / a provisioned
-    # Zephyr workspace is absent — the west fixtures can't be built there.
+    # Zephyr workspace is absent — the west fixtures can't be built there. Mirror
+    # the workspace-discovery ladder scripts/build/west-fixtures.sh uses (explicit
+    # ZEPHYR_BASE/NROS_ZEPHYR_WORKSPACE, in-repo, or the sibling
+    # ../nano-ros-workspace[-4.4] a `just zephyr setup` lands) so a sibling-layout
+    # host still RUNS these instead of wrongly deselecting buildable fixtures.
     if ! command -v west >/dev/null 2>&1 \
-        || { [ -z "${ZEPHYR_BASE:-}" ] && [ ! -d zephyr-workspace/zephyr ]; }; then
+        || { [ -z "${ZEPHYR_BASE:-}" ] \
+             && [ ! -d "${NROS_ZEPHYR_WORKSPACE:-/nonexistent}/zephyr" ] \
+             && [ ! -d zephyr-workspace/zephyr ] \
+             && [ ! -d ../nano-ros-workspace/zephyr ] \
+             && [ ! -d ../nano-ros-workspace-4.4/zephyr ]; }; then
         env_exclude+=("not binary(cli_bringup_zephyr)")
         env_exclude+=("not binary(zephyr_self_pkg)")
         env_exclude+=("not binary(board_import)")

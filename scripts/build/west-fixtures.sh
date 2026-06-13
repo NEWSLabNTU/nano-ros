@@ -69,3 +69,36 @@ for entry in "${WEST_FIXTURES[@]}"; do
     fi
 done
 echo "west fixtures built ($n/${#WEST_FIXTURES[@]})."
+
+# §212.M-F.3 self-pkg bringup (issue 0041 — promoted from zephyr_self_pkg.rs's
+# in-test `fs::write`). These exercise the `nros_system_generate` shim's L.7
+# self-pkg resolver; the contract is "the configure-time BAKE
+# (nros-system/system_{config.h,main.c}) fires", NOT a full ELF link (the link
+# needs the rest of the runtime — out of scope, same as the original test). So
+# the stamp gate is BAKE-EXISTS, not west's exit code: `west build` configures
+# (baking) then attempts the doomed link, and we stamp iff the bake landed.
+#   id : src-rel : app-subdir
+SELF_PKG_FIXTURES=(
+    "zephyr_self_pkg_rust:packages/testing/nros-tests/fixtures/zephyr_self_pkg/self:alpha_pkg"
+    "zephyr_self_pkg_sibling:packages/testing/nros-tests/fixtures/zephyr_self_pkg/sibling:caller"
+)
+sp_n=0
+for entry in "${SELF_PKG_FIXTURES[@]}"; do
+    IFS=':' read -r id src subdir <<< "$entry"
+    [ -d "$repo_root/$src/$subdir" ] || { echo "west-fixtures: src missing: $src/$subdir" >&2; continue; }
+    bld="$out_root/$id"
+    echo "== west-fixture: $id (self-pkg bake-only) =="
+    rm -rf "$bld"
+    # The link failure is expected → don't let it abort the script (set -u only,
+    # no -e, but be explicit). Inspect the bake afterward.
+    west build -b native_sim/native/64 -d "$bld" "$repo_root/$src/$subdir" \
+        -- -DCONF_FILE=prj.conf || true
+    if [ -f "$bld/nros-system/system_main.c" ] && [ -f "$bld/nros-system/system_config.h" ]; then
+        date -u +%Y-%m-%dT%H:%M:%SZ > "$bld/.compile-ok"
+        echo "   baked $bld/nros-system (link out-of-scope)"
+        sp_n=$((sp_n + 1))
+    else
+        echo "   self-pkg bake MISSING for $id (shim regressed?; test will report)" >&2
+    fi
+done
+echo "self-pkg fixtures baked ($sp_n/${#SELF_PKG_FIXTURES[@]})."

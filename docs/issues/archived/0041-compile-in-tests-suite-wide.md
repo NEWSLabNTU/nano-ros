@@ -1,11 +1,21 @@
 ---
 id: 41
 title: Suite-wide "compile inside tests" antipattern — convert to build-stage fixtures
-status: open
+status: resolved
 type: tech-debt
 area: testing
 related: [issue-0034]
+resolved_in: "2026-06-13 (native O.3/O.4/O.5 + threadx Wave B + zephyr/esp Wave C/D + zephyr_self_pkg)"
 ---
+
+**RESOLVED (2026-06-13).** Every compile-in-test offender is now a build-stage
+fixture (native `compile-check-fixtures.sh`, cross-build, cmake, west, idf
+mechanisms). The slow-compile `nextest.toml` override holds ONLY the two
+NEGATIVE cases (`native_orchestration_misuse`, `native_main_macro_misuse` —
+compile-FAIL / rebuild-tracking, can't be prebuilt → permanent documented
+exceptions). The heavy SDK-gated lanes (zephyr west, esp-idf) build in their
+`just zephyr/esp32 build-fixtures` recipes and `[SKIPPED]`/deselect when the SDK
+is absent. See the per-wave notes below for the conversion record.
 
 The "No compilation inside tests" convention (AGENTS.md → Testing Guidelines;
 CLAUDE.md Practices) is violated by ~23 `nros-tests` binaries beyond the
@@ -146,9 +156,22 @@ fixture-consuming tests pass (`cli_bringup_zephyr` boots native_sim,
 The west/idf builds are heavy + SDK-gated, so they live in the
 `just zephyr build-fixtures` / `just esp32 build-fixtures` lanes (not the
 native `compile-check-fixtures.sh` sweep); the tests `[SKIPPED]`/deselect when
-the SDK is absent. Residual: `zephyr_self_pkg` (generates its app in-test) is
-still deferred — its conversion needs the generated app promoted to a fixture
-template first.
+the SDK is absent.
+
+**`zephyr_self_pkg` (2 fns) CONVERTED (2026-06-13) — last residual cleared.**
+The M-F.3 self-pkg shim test generated its bringup app in-test (`fs::write` of
+Cargo.toml/lib.rs/prj.conf/CMakeLists, then `west build`). Promoted both app
+layouts to committed templates (`fixtures/zephyr_self_pkg/{self,sibling}/`):
+the self form (`nros_system_generate(.)`) and the sibling form
+(`caller/`'s `nros_system_generate(alpha_pkg)` resolving the sibling self-pkg).
+`west-fixtures.sh` gained a BAKE-ONLY block — the shim contract is the
+configure-time bake (`nros-system/system_{config.h,main.c}`), NOT a full ELF
+link (out of scope, as in the original), so it stamps on bake-exists after the
+(expected-to-fail-at-link) `west build`. The test inspects the prebuilt bake;
+runs ~0.002s, no runtime west. The `justfile` test-all west-gate now uses the
+same workspace-discovery ladder so a sibling-layout host RUNS these instead of
+deselecting them. **Every compile-in-test offender is now converted** — only
+the two NEGATIVE `*_misuse` cases remain on the nextest override (permanent).
 
 **Wave C — zephyr** (west; heavy, gate on SDK): `phase212_h1_zephyr`,
 `phase212_mf3_zephyr_self_pkg`, `integration_zephyr`.
