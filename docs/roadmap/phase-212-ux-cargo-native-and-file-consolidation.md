@@ -1511,12 +1511,12 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
   - [x] `native_rust_cyclonedds_talker_listener_e2e` — `cargo build
         --features rmw-cyclonedds && <run>` end-to-end exchange w/o
         CMake.
-  - [ ] `msg_to_cyclone_idl_rust_port_matches_python_output` — port
-        produces byte-identical IDL for every fixture in
-        `scripts/cyclonedds/test/`. (needs verification — TODO; the
-        nros-cli `nros-msg-to-idl` crate ships the port + claims
-        byte-for-byte parity in its lib doc, but no automated test
-        compares its output against the python reference yet.)
+  - [x] `msg_to_cyclone_idl_rust_port_matches_python_output` — port
+        produces byte-identical IDL for every fixture. Landed (exact name)
+        as `packages/cli/nros-msg-to-idl/tests/parity.rs:105` with saved
+        python-reference `.idl` siblings under `tests/fixtures/parity/`
+        (+ `srv`/`action` per-section parity tests). Verified 2026-06-13:
+        4/4 pass.
 - **Files:**
   `packages/dds/{cyclonedds-sys,nros-rmw-cyclonedds-sys}/`,
   `packages/codegen/nros-msg-to-idl/`,
@@ -1813,11 +1813,13 @@ sub-items that already shipped stay marked done.
         bringup is the only valid `system.toml` location. Landed in
         nros-cli as `nros_check_rejects_system_toml_in_component_pkg`
         (`cmd/check_workspace.rs:278`).
-  - [ ] `application_pkg_with_rtos_deploy_is_rejected` — `deploy =
-        ["zephyr"]` on Application pkg → error. (needs verification —
-        TODO; the §212.L Entry/Application redesign supersedes the
-        "Application pkg" vocabulary, but no equivalent rtos-deploy
-        rejection test has landed under the Entry pkg shape either.)
+  - [x] `application_pkg_with_rtos_deploy_is_rejected` — `deploy =
+        ["zephyr"]` on Application pkg → error. Landed as
+        `check_workspace_rejects_rtos_in_deploy`
+        (`packages/cli/nros-cli-core/src/cmd/check_workspace.rs`,
+        diagnostic `application-rtos-deploy-forbidden`) + the accept
+        siblings `…accepts_application_pkg_native_only` /
+        `…accepts_no_deploy_list`. Verified 2026-06-13.
   - [x] `launch_synth_emits_single_node_for_self_bringup` — Component
         pkg w/o launch file → synth `<launch><node pkg=… exec=…/>`.
         Landed in nros-cli as
@@ -3625,12 +3627,12 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
         `main()` reaches `BoardEntry::run`'s setup closure (the
         `NodeRegister(...)` error path IS the lifecycle proof
         per the in-file doc comment).
-  - [ ] `freertos_board_run_executes_run_plan` — same fixture under
-        `nros-board-qemu-mps2-an385-freertos` reaches `run_plan` +
-        spins under QEMU. (needs verification — TODO; the
-        FreeRTOS-side Entry pkg gate lives in `phase212_h3_freertos
-        ::freertos_qemu_mps2_an385_entry_pkg_firmware_builds` but
-        no `_run_executes_run_plan` runtime gate has landed yet.)
+  - [x] `freertos_board_run_executes_run_plan` — same fixture under
+        the MPS2-AN385 FreeRTOS board reaches `run_plan` + spins under
+        QEMU. Landed (exact name) as
+        `packages/testing/nros-tests/tests/freertos_run_plan_runtime.rs:300`
+        (FreeRTOS analog of the posix `entry_poc_boots_through_board_entry_run`).
+        Verified 2026-06-13: PASS under QEMU (~153 s).
   - [x] `single_node_native_macro_generates_main` (N.5/N.9 joint
         test) — a Node pkg with `[package.metadata.nros.entry]
         deploy = "native"` and `src/main.rs` containing just
@@ -3640,36 +3642,40 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
         (`tests/phase212_n_entry_poc_runs.rs:45`) + the four
         `nros::main!(...)` form expansions in
         `tests/phase212_n9_main_macro_forms.rs`.
-  - [ ] `entry_pkg_metadata_required_board` — Entry pkg without
+  - [x] `entry_pkg_metadata_required_board` — Entry pkg without
         `[package.metadata.nros.entry] deploy = "<board>"` →
-        `nros check` hard error. (needs verification — TODO; no
-        matching `nros check` hard-error test for missing
-        `entry.deploy` landed in nros-cli's `check_workspace`.)
-  - [ ] `board_agnostic_run_plan_links_against_any_board` — same
-        compiled `run_plan` rlib links under at least 2 distinct
-        Board impls (posix + freertos) in the test fixture.
-        (needs verification — TODO; `board_link_archives.rs`
-        gates per-board static-archive hygiene but does not link
-        the same `run_plan` under 2 Board impls.)
+        `nros check` hard error. Landed as
+        `nros_check_workspace_rejects_entry_pkg_without_deploy_field`
+        + `…_with_empty_deploy` (`check_workspace.rs`, diagnostic
+        `entry-deploy-missing`) + accept sibling
+        `…_accepts_entry_pkg_with_deploy`. Verified 2026-06-13.
+  - [x] `board_agnostic_run_plan_links_against_any_board` — same
+        compiled `run_plan` + same launch.xml under 2 distinct Board
+        impls (posix + freertos). Landed (exact name) as
+        `packages/testing/nros-tests/tests/board_agnostic_run_plan.rs:72`
+        (O.3 `o3_board_agnostic` build-fixture). Verified 2026-06-13:
+        PASS after staging `o3_board_agnostic` (needs `play_launch_parser`
+        ≥ pinned `098ccb4` for the codegen emit — see M-F.20 note below).
   - [x] `n9_main_macro_expands_for_each_form` — Entry pkg using
         each of the four `nros::main!(...)` forms (no-arg, board=,
         launch=, all-explicit) compiles. (N.9 — landed as
         `phase212_n9_main_macro_forms.rs`, 6 tests pass: 4 forms +
         unknown-board diagnostic + rebuild-on-launch-xml-touch)
-  - [ ] `n10_pkg_index_resolves_across_workspace` — given fixture
+  - [x] `n10_pkg_index_resolves_across_workspace` — given fixture
         workspace with 3 Node pkgs + 1 bringup pkg + 1 Entry pkg,
-        `nros::main!(launch = "demo_bringup:system.launch.xml")`
-        resolves via `package.xml` walk; no `Cargo.toml` on bringup
-        pkg required. (N.10) (needs verification — TODO; the N.10
-        workspace pkg-index landed `de165c8` per N.10 body, but no
-        dedicated `n10_pkg_index_resolves_across_workspace` test
-        was wired in nano-ros nor nros-cli.)
-  - [ ] `n11_launch_xml_ros2_compat_smoke` — copy-paste a stock
+        `nros::main!()` resolves via `package.xml` walk; no `Cargo.toml`
+        on bringup pkg required. (N.10) Landed (exact name) as
+        `packages/testing/nros-tests/tests/pkg_index.rs:26` (O.4
+        `o4_pkg_index` build-fixture; `demo_bringup` ships no Cargo.toml).
+        Verified 2026-06-13: PASS.
+  - [x] `n11_launch_xml_ros2_compat_smoke` — copy-paste a stock
         nav2-style launch.xml (`<node>` + `<arg>` + `<include>` +
-        `$(find <pkg>)`) into the fixture; codegen accepts it +
-        emits correct run_plan body. (N.11) (needs verification —
-        TODO; the launch_synth parser supports the directives but
-        no nav2-style smoke fixture is wired into nano-ros tests.)
+        `<remap>` + `$(var …)` + `$(find <pkg>)`); codegen accepts it +
+        emits a `run_plan` registering both nodes + an `nros-plan.json`.
+        (N.11) Landed (exact name) as
+        `packages/testing/nros-tests/tests/nav2_compat.rs:43` (O.5
+        `o5_nav2_compat` build-fixture). Verified 2026-06-13: PASS after
+        staging with `play_launch_parser` pinned `098ccb4`.
   - [x] `phase_212_n_12_node_names_resolve` (renamed from the
         alias-coexistence test) — asserts the canonical `Node*`
         names resolve at the crate root after the hard rename;
