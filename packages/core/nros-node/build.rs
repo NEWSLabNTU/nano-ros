@@ -12,15 +12,14 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
     println!("cargo:rustc-check-cfg=cfg(has_rmw)");
-    // Phase 214.S.2 — auto-detected via cargo `links =` env vars.
+    // Phase 248 (C2) — emitted from the private `__cyclonedds-link`
+    // marker feature (no dep edge). Gates the descriptor-registration
+    // schema-passing body + the `M: Message` super-bound for builds
+    // where a descriptor-needing backend (Cyclone DDS) is linked. The
+    // backend itself is brought into the link graph by the umbrella's
+    // own `dep:nros-rmw-cyclonedds-sys`; the agnostic core only flips
+    // this presence cfg.
     println!("cargo:rustc-check-cfg=cfg(rmw_cyclonedds_present)");
-    // Phase 214.S.4.b — only emitted when `__cyclonedds-link` is on
-    // (i.e. the production `-sys` archive is in the dep graph). The
-    // K.7.6.b `cyclonedds_register_smoke` test enables
-    // `rmw_cyclonedds_present` via the lighter `__cyclonedds-detect`
-    // path which leaves `-sys` out and supplies the bridge symbols
-    // through its dev-dep on `nros-rmw-cyclonedds[bridge-stub]`.
-    println!("cargo:rustc-check-cfg=cfg(cyclonedds_link_keepalive)");
 
     // Emit `has_rmw` cfg when any RMW backend feature is active, or
     // when compiling for tests (unit tests use MockSession).
@@ -32,40 +31,17 @@ fn main() {
         println!("cargo:rustc-cfg=has_rmw");
     }
 
-    // Phase 214.S.2 — auto-detect `nros-rmw-cyclonedds-sys` via cargo's
-    // `links = "cyclonedds"` metadata bridge. When that crate is in the
-    // dep graph as a direct dep, cargo exposes its `cargo:present=1`
-    // metadata as `DEP_CYCLONEDDS_PRESENT=1` here. We also fall back to
-    // probing the legacy `CARGO_FEATURE___NROS_CYCLONEDDS_DETECT`
-    // internal feature (umbrella-activated) for cases where the umbrella
-    // pulls the dep in but cargo's env-var propagation does not reach
-    // this build script (the `DEP_*` mechanism only fires for *direct*
-    // dependents of the linking crate; the umbrella keeps a private
-    // `__nros-cyclonedds-detect` feature on `nros-node` that flips on
-    // a direct optional dep, ensuring at least one direct edge exists).
-    //
-    // Either path alone is sufficient to emit `rmw_cyclonedds_present`
-    // and fire the K.7.6.b typed-creator hook. No user-facing feature
-    // on `nros-node` — callers depend on the umbrella's
-    // `nros/rmw-cyclonedds` (which drags `nros-rmw-cyclonedds-sys` in
-    // and toggles the private detect feature).
-    println!("cargo:rerun-if-env-changed=DEP_CYCLONEDDS_PRESENT");
-    let cyclonedds_present = env::var_os("DEP_CYCLONEDDS_PRESENT").is_some()
-        || env::var("CARGO_FEATURE___NROS_CYCLONEDDS_DETECT").is_ok()
-        || env::var("CARGO_FEATURE___CYCLONEDDS_DETECT").is_ok()
-        || env::vars().any(|(k, _)| k.starts_with("DEP_CYCLONEDDS_"));
-    if cyclonedds_present {
-        println!("cargo:rustc-cfg=rmw_cyclonedds_present");
-    }
-    // Phase 214.S.4.b — `__cyclonedds-link` is the path that ALSO
-    // brings the production `-sys` archive into the dep graph. Only
-    // here do we need the Rust-side keep-alive that pins it through
-    // rust-lld's gc-sections so the linkme self-register section
-    // survives. The bare detect path (smoke test) leaves keepalive
-    // off; the dev-dep on `nros-rmw-cyclonedds[bridge-stub]` supplies
-    // the bridge symbols.
+    // Phase 248 (C2) — descriptor-needing-backend presence is signalled
+    // purely by the `__cyclonedds-link` marker feature (which the
+    // umbrella `nros/rmw-cyclonedds` activates alongside its own
+    // `dep:nros-rmw-cyclonedds-sys`). No `DEP_CYCLONEDDS_*` `links=`
+    // probe anymore: the agnostic core has no Cargo dep on the Cyclone
+    // crates, so there is no direct edge for cargo's `DEP_*` env-var
+    // hand-off. The descriptor registration is a generic vtable seam
+    // (`nros_rmw::register_type_descriptor`); the Cyclone backend
+    // installs its registrar at init from its own crate.
     if env::var("CARGO_FEATURE___CYCLONEDDS_LINK").is_ok() {
-        println!("cargo:rustc-cfg=cyclonedds_link_keepalive");
+        println!("cargo:rustc-cfg=rmw_cyclonedds_present");
     }
 
     // --- Primary user-facing knobs ---

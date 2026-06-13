@@ -85,10 +85,21 @@ generic hook), and any new vtable op added to `nros-platform-api`/`-cffi`.
       `wake_*` / alloc / spin ops generically (the vtable already defines them).
 - [ ] Delete the now-unused `platform-*` feature DECLARATIONS from
       `nros-node/Cargo.toml`. Fix the stale "Phase 104.A removed" comment.
-- **Acceptance:** `cargo test -p nros-node` green; `git grep 'feature = "platform-'
-  packages/core/nros-node/src` empty; no `nros-rmw-cyclonedds`/`platform-*` in
-  `nros-node/Cargo.toml`. Cyclone E2E (`cyclonedds_ros2_interop`) still passes via
-  the generic hook.
+- **Acceptance:** DONE. Generic descriptor seam in `nros-rmw`
+  (`type_descriptor.rs`: `set_type_descriptor_registrar` /
+  `register_type_descriptor`); cyclone self-installs from `nros-rmw-cyclonedds`
+  (+ `-sys` via its `RMW_INIT_ENTRIES`); `nros-node` dropped the
+  `nros-rmw-cyclonedds[-sys]` deps (`__cyclonedds-link` now a pure marker).
+  Platform wake/alloc/spin select the kernel primitive at RUNTIME
+  (`wake_storage_size()==0` probe) — no `platform-*` cfg. grep empty; nros-node
+  162+5, nros-rmw 44, cyclonedds 15 pass; no_std + umbrella build.
+  **C5 hand-off:** 8 `platform-* = []` INERT no-op shims remain in
+  `nros-node/Cargo.toml` only because `nros/Cargo.toml` forwards
+  `nros-node/platform-*` — C5 must delete those 8 shims TOGETHER with the
+  matching `"nros-node/platform-*"`/`"nros-node/platform-udp"` forwarding in
+  `nros`, and add a `-sys` rlib keep-alive (`extern crate
+  nros_rmw_cyclonedds_sys as _;`) in the umbrella (the old
+  `__FORCE_LINK_CYCLONEDDS_SYS` left nros-node).
 
 ## C3 — nros-c / nros-cpp: platform decoupling + feature retirement (#60 T2/T3 C/C++)
 

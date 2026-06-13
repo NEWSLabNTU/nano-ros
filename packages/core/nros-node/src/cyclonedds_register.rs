@@ -1,110 +1,71 @@
-//! Phase 212.K.7.6.b — `nros_rmw_cyclonedds::register::<M>()` bridge.
+//! Per-type descriptor registration — generic seam (Phase 248 C2).
 //!
-//! The Cyclone DDS RMW backend resolves topic-type descriptors via a
-//! runtime registry (`nros-rmw-cyclonedds::type_registry`) instead of the
-//! legacy static-init `descriptors.cpp` table. Each `nros-node` typed
-//! creator (`create_publisher`, `create_subscription`, `create_client`,
-//! `create_service`, `create_action_*`) routes through
+//! Some RMW backends (Cyclone DDS) resolve topic-type descriptors via a
+//! runtime registry instead of a static-init table. Each `nros-node`
+//! typed creator (`create_publisher`, `create_subscription`,
+//! `create_client`, `create_service`, `create_action_*`) routes through
 //! [`register_type::<M>`] *before* asking the cffi vtable to create the
-//! entity so the descriptor exists in the registry when
-//! `dds_create_topic` runs in the C++ bridge.
+//! entity so the descriptor exists when the backend's `dds_create_topic`
+//! (or equivalent) runs.
 //!
-//! # cfg gating (Phase 214.S.2 — auto-detected, not feature-gated)
+//! # No named-backend dependency (issue #60, Tier 1)
 //!
-//! This module compiles to no-ops unless `cfg(rmw_cyclonedds_present)`
-//! is on. The cfg is emitted by `nros-node/build.rs` when:
+//! Previously this module depended directly on `nros-rmw-cyclonedds` and
+//! called `nros_rmw_cyclonedds::register::<M>()`, baking a concrete-RMW
+//! crate into the platform/RMW-agnostic core executor. It now forwards
+//! the message's flattened schema through the generic
+//! [`nros_rmw::register_type_descriptor`] seam. The Cyclone backend
+//! installs its registrar from its own crate
+//! (`nros-rmw-cyclonedds::install_descriptor_registrar`, driven by the
+//! `-sys` shim's `RMW_INIT_ENTRIES` self-registration); zenoh / xrce
+//! install nothing, so the seam is a no-op there.
 //!
-//! * the sibling `nros-rmw-cyclonedds-sys` shim crate (which carries
-//!   `links = "cyclonedds"`) is in the dep graph, surfacing
-//!   `DEP_CYCLONEDDS_PRESENT=1` to our build script; **or**
-//! * the private internal `__cyclonedds-link` feature is on (the umbrella
-//!   `nros/rmw-cyclonedds` activates it; this guarantees a direct edge to
-//!   the linking crate exists, since cargo's `DEP_*` env-vars only
-//!   propagate to *direct* dependents).
+//! # cfg gating (auto-detected, not feature-gated)
 //!
-//! Net effect: callers depend on `nros = { features = ["rmw-cyclonedds"] }`
-//! and the K.7.6.b hook lights up automatically — no user-facing feature
-//! flag on `nros-node` (was: `feature = "rmw-cyclonedds"`, dropped in
-//! Phase 214.S.2). Each typed creator calls [`register_type::<M>`]
-//! unconditionally; the body is empty when the cfg is off so zenoh/xrce
-//! paths pay nothing. With the cfg on, the caller pays one mutex
-//! acquisition + one `FnvIndexMap` lookup per creator invocation
-//! (idempotent; the registry caches the descriptor pointer on the
-//! first hit).
+//! This module's schema-passing body compiles to a no-op unless
+//! `cfg(rmw_cyclonedds_present)` is on. The cfg is emitted by
+//! `nros-node/build.rs` from the private internal `__cyclonedds-link`
+//! marker feature (no dep edge), which the umbrella `nros/rmw-cyclonedds`
+//! activates alongside its own `dep:nros-rmw-cyclonedds-sys`. Callers
+//! depend on `nros = { features = ["rmw-cyclonedds"] }`; the hook lights
+//! up automatically — no user-facing feature flag on `nros-node`. Each
+//! typed creator calls [`register_type::<M>`] unconditionally; the body
+//! is empty when the cfg is off so zenoh/xrce paths pay nothing. With the
+//! cfg on, the caller pays one mutex acquisition + one lookup per creator
+//! invocation (idempotent; the backend caches the descriptor on first
+//! hit).
 //!
 //! # Trait bound — [`MessageForRmw`]
 //!
-//! The cyclonedds registry needs [`nros_serdes::schema::Message`] for its
-//! static field schema, but `nros-node`'s typed creators historically
-//! only constrain `M: nros_core::RosMessage`. Adding `Message` as a
-//! super-bound on `RosMessage` breaks every existing codegen-emitted msg
-//! crate (they impl `RosMessage` but not yet `Message`). Adding it as a
-//! per-method bound on every typed creator touches 30+ sites.
+//! A descriptor-needing backend needs [`nros_serdes::schema::Message`]
+//! for the static field schema, but `nros-node`'s typed creators
+//! historically only constrain `M: nros_core::RosMessage`. Adding
+//! `Message` as a super-bound on `RosMessage` breaks every existing
+//! codegen-emitted msg crate (they impl `RosMessage` but not yet
+//! `Message`). Adding it as a per-method bound on every typed creator
+//! touches 30+ sites.
 //!
-//! Compromise: introduce a sealed helper trait
-//! [`MessageForRmw`] that is **the bound the typed creators use** in
-//! place of bare `M: RosMessage`. It is a blanket impl over
-//! `RosMessage` whose extra requirement is `Message` when
-//! `cfg(rmw_cyclonedds_present)` is on, and just `RosMessage` when off.
+//! Compromise: introduce a helper trait [`MessageForRmw`] that is **the
+//! bound the typed creators use** in place of bare `M: RosMessage`. It is
+//! a blanket impl over `RosMessage` whose extra requirement is `Message`
+//! when `cfg(rmw_cyclonedds_present)` is on, and just `RosMessage` when
+//! off.
 //!
-//! Net effect: a msg crate that impls `RosMessage` works as-is for
-//! zenoh + xrce builds; for cyclonedds builds it must additionally impl
-//! `Message`. The codegen template (`nros-cli` K.7.1.b — separate
-//! agent / repo) emits both impls for every generated msg crate.
+//! Net effect: a msg crate that impls `RosMessage` works as-is for zenoh
+//! + xrce builds; for cyclonedds builds it must additionally impl
+//! `Message`. The codegen template (`nros-cli` — separate repo) emits
+//! both impls for every generated msg crate.
 //!
 //! # Error mapping
 //!
-//! `nros_rmw_cyclonedds::BuildError` flattens onto
-//! [`crate::NodeError::Transport`] with
-//! `TransportError::PublisherCreationFailed`. Backend-specific diagnostic
-//! is lost — the underlying `BuildError` is logged via the `log` crate
-//! when that feature is enabled. The choice not to add a dedicated
-//! `NodeError::CyclonedsTypeRegistrationFailed` variant is deliberate:
-//! the C/C++ FFI shim widens to a single `nros_ret_t`, and the failure
-//! mode (out-of-capacity registry, bridge error, etc.) is a "topic could
-//! not be created" from the caller's perspective.
+//! A registrar failure flattens onto [`crate::NodeError::Transport`] with
+//! [`nros_rmw::TransportError::PublisherCreationFailed`]. The choice not
+//! to add a dedicated `NodeError` variant is deliberate: the C/C++ FFI
+//! shim widens to a single `nros_ret_t`, and the failure mode
+//! (out-of-capacity registry, descriptor build error, etc.) is a "topic
+//! could not be created" from the caller's perspective.
 
 use nros_core::RosMessage;
-
-// ============================================================================
-// Phase 214.S.4.b — link-graph keep-alive for `nros-rmw-cyclonedds-sys`
-// ============================================================================
-//
-// The Cyclone backend's C++ register entry (`nros_rmw_cyclonedds_register`)
-// and its linkme self-register section live inside `nros-rmw-cyclonedds-sys`
-// (and its C++ companion `nros-rmw-cyclonedds`). Without an explicit Rust-
-// side reference to a symbol from that crate, rust-lld drops the rlib from
-// the final link and the C++ static-init register TU is pruned along with
-// it.
-//
-// Before S.4.b, example `src/main.rs` carried `nros_rmw_cyclonedds_sys::
-// register()` directly which doubled as the symbol-drag. S.4.b moves that
-// keep-alive in here so user crates can collapse their `rmw-cyclonedds`
-// feature to strict 1-entry parity (`["nros/rmw-cyclonedds"]`) with the
-// zenoh / xrce siblings — no `dep:nros-rmw-cyclonedds-sys` activator and
-// no direct `register()` call in user code. The linkme self-register
-// section inside `-sys` (Phase 128.B.3) fires the register on
-// `nros::init` via the cffi-rmw walker.
-//
-// Mirrors the existing pattern in `nros-platform::__FORCE_LINK_CFFI`
-// (`packages/core/nros-platform/src/lib.rs:83`) which keeps
-// `nros-platform-cffi` alive through `nros-rmw-zenoh`.
-//
-// Gated on a separate cfg from `rmw_cyclonedds_present` because the
-// `cyclonedds_register_smoke` test enables the latter via the lighter
-// `__cyclonedds-detect` feature path (no `-sys` dep, bridge symbols
-// from `nros-rmw-cyclonedds[bridge-stub]` dev-dep). Production
-// callers go through the umbrella's `__cyclonedds-link` which emits
-// BOTH `rmw_cyclonedds_present` AND `cyclonedds_link_keepalive`.
-// Pinning the `-sys` rlib under the bare detect path would force
-// rust-lld to whole-archive the production C++ libnros_rmw_cyclonedds
-// in alongside the bridge-stub Rust impls → duplicate-symbol link
-// failure on the smoke test.
-#[cfg(cyclonedds_link_keepalive)]
-#[used]
-#[doc(hidden)]
-pub static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
-    nros_rmw_cyclonedds_sys::register;
 
 /// Bound used in place of bare `RosMessage` on typed creators.
 ///
@@ -128,33 +89,43 @@ impl<T> MessageForRmw for T where T: RosMessage {}
 // register_type::<M>() — the K.7.6.b hook
 // ============================================================================
 
-/// Register `M`'s cyclonedds topic descriptor with the runtime registry.
+/// Register `M`'s topic-type descriptor with whichever RMW backend
+/// installed the generic descriptor seam (`nros_rmw::register_type_descriptor`).
 ///
-/// No-op when `cfg(rmw_cyclonedds_present)` is off. With the cfg on,
-/// delegates to `nros_rmw_cyclonedds::register::<M>()`. The first call
-/// for a given `M::TYPE_NAME` builds the descriptor via the C++ bridge
-/// and caches it; subsequent calls are O(1) lookups.
+/// No-op when `cfg(rmw_cyclonedds_present)` is off (zenoh / xrce builds
+/// never compile the schema-passing body). With the cfg on, flattens
+/// `M`'s static schema (`TYPE_NAME` + `FIELDS`) and forwards it to the
+/// installed [`nros_rmw::TypeDescriptorRegistrar`] — Cyclone DDS installs
+/// one from its own crate (`nros-rmw-cyclonedds::install_descriptor_registrar`),
+/// so the core executor no longer needs a named dependency on the Cyclone
+/// shim. The first call for a given type builds + caches the descriptor;
+/// subsequent calls are O(1) lookups inside the backend.
 ///
-/// Returns `Ok(())` on success or `NodeError::Transport(
-/// TransportError::PublisherCreationFailed)` on any
-/// [`nros_rmw_cyclonedds::BuildError`].
+/// Returns `Ok(())` on success (including the "no descriptor-needing
+/// backend installed" no-op), or
+/// `NodeError::Transport(TransportError::PublisherCreationFailed)` on a
+/// backend-side build/registry failure.
 #[allow(unused_variables)] // M unused without the cfg
 #[inline]
 pub fn register_type<M: MessageForRmw>() -> Result<(), crate::NodeError> {
     #[cfg(rmw_cyclonedds_present)]
     {
         // SAFETY-OF-INPUT: `M: Message` is enforced by the `MessageForRmw`
-        // bound under `rmw_cyclonedds_present`, so `register::<M>()`
-        // receives the schema it expects.
-        nros_rmw_cyclonedds::register::<M>().map_err(|err| {
+        // bound under `rmw_cyclonedds_present`, so `TYPE_NAME` / `FIELDS`
+        // are available and the registrar receives the schema it expects.
+        nros_rmw::register_type_descriptor(
+            <M as nros_serdes::schema::Message>::TYPE_NAME,
+            <M as nros_serdes::schema::Message>::FIELDS,
+        )
+        .map_err(|err| {
             #[cfg(feature = "log")]
             log::error!(
-                "nros_rmw_cyclonedds::register::<{}>() failed: {:?}",
+                "nros_rmw::register_type_descriptor::<{}>() failed: {:?}",
                 <M as nros_serdes::schema::Message>::TYPE_NAME,
                 err
             );
             let _ = err; // silence unused without log
-            crate::NodeError::Transport(nros_rmw::TransportError::PublisherCreationFailed)
+            crate::NodeError::Transport(err)
         })?;
     }
     Ok(())

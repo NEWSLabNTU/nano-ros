@@ -67,6 +67,11 @@ pub fn register() -> Result<(), RegisterError> {
     // "call before opening any session" — that is the runtime
     // contract documented in `book/src/internals/rmw-backends.md`.
     let rc = unsafe { nros_rmw_cyclonedds_register() };
+    // Phase 248 (C2) — install the per-type descriptor registrar into the
+    // generic `nros_rmw` seam so the platform/RMW-agnostic core reaches
+    // Cyclone's runtime descriptor builder without a named dep on the
+    // Cyclone Rust shim.
+    nros_rmw_cyclonedds::install_descriptor_registrar();
     if rc == 0 {
         Ok(())
     } else {
@@ -81,6 +86,8 @@ pub fn register() -> Result<(), RegisterError> {
 nros_rmw_cffi::nros_rmw_register_backend! {
     fn() {
         let _ = unsafe { nros_rmw_cyclonedds_register() };
+        // Phase 248 (C2) — wire the descriptor registrar at backend init.
+        nros_rmw_cyclonedds::install_descriptor_registrar();
     }
 }
 

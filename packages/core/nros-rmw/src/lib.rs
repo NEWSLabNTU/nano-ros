@@ -40,6 +40,7 @@ pub mod custom_transport;
 pub mod event;
 pub mod sync;
 pub mod traits;
+pub mod type_descriptor;
 
 #[cfg(feature = "safety-e2e")]
 pub mod safety;
@@ -54,6 +55,12 @@ pub use event::{
 pub use custom_transport::{
     NROS_TRANSPORT_OPS_ABI_VERSION_V1, NrosTransportOps, peek_custom_transport,
     set_custom_transport, take_custom_transport,
+};
+
+// Phase 248 (C2) — generic per-type descriptor registration seam.
+pub use type_descriptor::{
+    TypeDescriptorRegistrar, has_type_descriptor_registrar, register_type_descriptor,
+    set_type_descriptor_registrar,
 };
 
 // Re-export safety types when feature is enabled

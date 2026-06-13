@@ -128,17 +128,7 @@ impl Executor {
         executor.set_node_identity(config.node_name, config.namespace);
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
-        #[cfg(all(
-            feature = "alloc",
-            not(feature = "std"),
-            feature = "rmw-cffi",
-            any(
-                feature = "platform-zephyr",
-                feature = "platform-freertos",
-                feature = "platform-nuttx",
-                feature = "platform-threadx",
-            )
-        ))]
+        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary_alloc();
         Ok(executor)
     }
@@ -177,17 +167,7 @@ impl Executor {
         let _ = executor.primary_locator.push_str(primary.locator);
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
-        #[cfg(all(
-            feature = "alloc",
-            not(feature = "std"),
-            feature = "rmw-cffi",
-            any(
-                feature = "platform-zephyr",
-                feature = "platform-freertos",
-                feature = "platform-nuttx",
-                feature = "platform-threadx",
-            )
-        ))]
+        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary_alloc();
 
         for spec in specs.iter().skip(1) {
@@ -202,17 +182,7 @@ impl Executor {
                 let idx = executor.extra_sessions.len() - 1;
                 executor.install_wake_signal_on_extra(idx);
             }
-            #[cfg(all(
-                feature = "alloc",
-                not(feature = "std"),
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             {
                 let idx = executor.extra_sessions.len() - 1;
                 executor.install_wake_signal_on_extra_alloc(idx);
@@ -264,17 +234,7 @@ impl Executor {
         let _ = executor.primary_locator.push_str(config.locator);
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
-        #[cfg(all(
-            feature = "alloc",
-            not(feature = "std"),
-            feature = "rmw-cffi",
-            any(
-                feature = "platform-zephyr",
-                feature = "platform-freertos",
-                feature = "platform-nuttx",
-                feature = "platform-threadx",
-            )
-        ))]
+        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary_alloc();
         Ok(executor)
     }
@@ -483,12 +443,6 @@ pub(crate) struct WakeCtx {
     /// runtime cb signals both this and the std cv so a future
     /// migration to a single primitive flips one branch instead
     /// of two.
-    #[cfg(any(
-        feature = "platform-zephyr",
-        feature = "platform-freertos",
-        feature = "platform-nuttx",
-        feature = "platform-threadx",
-    ))]
     pub(crate) node_wake: Option<std::sync::Arc<super::node_wake::NodeWake>>,
 }
 
@@ -540,12 +494,6 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     // Phase 130.3 — Zephyr+std waits on `NodeWake` (k_sem) instead
     // of the std cv. Signal both so the cb keeps working whichever
     // wait primitive spin_once is using.
-    #[cfg(any(
-        feature = "platform-zephyr",
-        feature = "platform-freertos",
-        feature = "platform-nuttx",
-        feature = "platform-threadx",
-    ))]
     if let Some(nw) = wake.node_wake.as_ref() {
         nw.signal();
     }
@@ -891,16 +839,7 @@ pub struct Executor {
     /// (e.g. test builds with `rmw-cffi` but no `platform-*`
     /// feature); spin_once falls back to driving the transport
     /// for the full timeout in that case.
-    #[cfg(all(
-        feature = "std",
-        feature = "rmw-cffi",
-        any(
-            feature = "platform-zephyr",
-            feature = "platform-freertos",
-            feature = "platform-nuttx",
-            feature = "platform-threadx",
-        )
-    ))]
+    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     pub(crate) node_wake: Option<std::sync::Arc<super::node_wake::NodeWake>>,
     /// Phase 130.4 — true when at least one session's backend
     /// installed the wake callback. Drives whether `spin_once`
@@ -933,53 +872,13 @@ pub struct Executor {
     // Drives the no_std spin_once wait branch to block on
     // `node_wake_alloc.wait_ms(deadline)` instead of relying on
     // `drive_io`'s transport-blocking recv for the full timeout.
-    #[cfg(all(
-        feature = "alloc",
-        not(feature = "std"),
-        feature = "rmw-cffi",
-        any(
-            feature = "platform-zephyr",
-            feature = "platform-freertos",
-            feature = "platform-nuttx",
-            feature = "platform-threadx",
-        )
-    ))]
+    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
     pub(crate) wake_flag_alloc: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
-    #[cfg(all(
-        feature = "alloc",
-        not(feature = "std"),
-        feature = "rmw-cffi",
-        any(
-            feature = "platform-zephyr",
-            feature = "platform-freertos",
-            feature = "platform-nuttx",
-            feature = "platform-threadx",
-        )
-    ))]
+    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
     pub(crate) node_wake_alloc: Option<portable_atomic_util::Arc<super::node_wake::NodeWake>>,
-    #[cfg(all(
-        feature = "alloc",
-        not(feature = "std"),
-        feature = "rmw-cffi",
-        any(
-            feature = "platform-zephyr",
-            feature = "platform-freertos",
-            feature = "platform-nuttx",
-            feature = "platform-threadx",
-        )
-    ))]
+    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
     pub(crate) wake_ctx_alloc: Option<portable_atomic_util::Arc<super::wake_alloc::WakeCtxAlloc>>,
-    #[cfg(all(
-        feature = "alloc",
-        not(feature = "std"),
-        feature = "rmw-cffi",
-        any(
-            feature = "platform-zephyr",
-            feature = "platform-freertos",
-            feature = "platform-nuttx",
-            feature = "platform-threadx",
-        )
-    ))]
+    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
     pub(crate) has_async_wake_alloc: bool,
     /// Phase 124.B.7.c — lazily-allocated POSIX signalfd worker.
     /// Owned by the Executor; spawned on first `signal_fd()` call.
@@ -1068,16 +967,7 @@ impl Executor {
             wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
             #[cfg(feature = "std")]
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
-            #[cfg(all(
-                feature = "std",
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
@@ -1089,55 +979,15 @@ impl Executor {
             // alloc inside spin_once. `None` when the platform
             // provider reports the primitive unavailable (matches
             // the std-RTOS path's `node_wake: Option<...>`).
-            #[cfg(all(
-                feature = "alloc",
-                not(feature = "std"),
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(
                 false,
             )),
-            #[cfg(all(
-                feature = "alloc",
-                not(feature = "std"),
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             node_wake_alloc: super::node_wake::NodeWake::new().map(portable_atomic_util::Arc::new),
-            #[cfg(all(
-                feature = "alloc",
-                not(feature = "std"),
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             wake_ctx_alloc: None,
-            #[cfg(all(
-                feature = "alloc",
-                not(feature = "std"),
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             has_async_wake_alloc: false,
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
             signal_fd: None,
@@ -1213,16 +1063,7 @@ impl Executor {
             wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
             #[cfg(feature = "std")]
             wake_mu: std::sync::Arc::new(std::sync::Mutex::new(())),
-            #[cfg(all(
-                feature = "std",
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             node_wake: super::node_wake::NodeWake::new().map(std::sync::Arc::new),
             #[cfg(all(feature = "std", feature = "rmw-cffi"))]
             wake_ctx: None,
@@ -1234,55 +1075,15 @@ impl Executor {
             // alloc inside spin_once. `None` when the platform
             // provider reports the primitive unavailable (matches
             // the std-RTOS path's `node_wake: Option<...>`).
-            #[cfg(all(
-                feature = "alloc",
-                not(feature = "std"),
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(
                 false,
             )),
-            #[cfg(all(
-                feature = "alloc",
-                not(feature = "std"),
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             node_wake_alloc: super::node_wake::NodeWake::new().map(portable_atomic_util::Arc::new),
-            #[cfg(all(
-                feature = "alloc",
-                not(feature = "std"),
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             wake_ctx_alloc: None,
-            #[cfg(all(
-                feature = "alloc",
-                not(feature = "std"),
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))]
+            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             has_async_wake_alloc: false,
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
             signal_fd: None,
@@ -1855,12 +1656,6 @@ impl Executor {
                 flag: std::sync::Arc::clone(&self.wake_flag),
                 cv: std::sync::Arc::clone(&self.wake_cv),
                 mu: std::sync::Arc::clone(&self.wake_mu),
-                #[cfg(any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                ))]
                 node_wake: self.node_wake.as_ref().map(std::sync::Arc::clone),
             }));
         }
@@ -1874,17 +1669,7 @@ impl Executor {
     // best-effort install contract: backends that don't override
     // `Session::set_wake_callback` ignore the call and continue
     // to be drained on the executor's deadline-bound wait.
-    #[cfg(all(
-        feature = "alloc",
-        not(feature = "std"),
-        feature = "rmw-cffi",
-        any(
-            feature = "platform-zephyr",
-            feature = "platform-freertos",
-            feature = "platform-nuttx",
-            feature = "platform-threadx",
-        )
-    ))]
+    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
     fn wake_ctx_alloc_ptr(&mut self) -> Option<*mut core::ffi::c_void> {
         // Without a NodeWake there's no kernel primitive to signal;
         // skip the install + let spin_once fall back to drive_io
@@ -1903,17 +1688,7 @@ impl Executor {
         Some(portable_atomic_util::Arc::as_ptr(arc) as *mut core::ffi::c_void)
     }
 
-    #[cfg(all(
-        feature = "alloc",
-        not(feature = "std"),
-        feature = "rmw-cffi",
-        any(
-            feature = "platform-zephyr",
-            feature = "platform-freertos",
-            feature = "platform-nuttx",
-            feature = "platform-threadx",
-        )
-    ))]
+    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
     fn install_wake_signal_on_primary_alloc(&mut self) {
         use nros_rmw::Session as _;
         let Some(ctx) = self.wake_ctx_alloc_ptr() else {
@@ -1931,17 +1706,7 @@ impl Executor {
         }
     }
 
-    #[cfg(all(
-        feature = "alloc",
-        not(feature = "std"),
-        feature = "rmw-cffi",
-        any(
-            feature = "platform-zephyr",
-            feature = "platform-freertos",
-            feature = "platform-nuttx",
-            feature = "platform-threadx",
-        )
-    ))]
+    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
     pub(crate) fn install_wake_signal_on_extra_alloc(&mut self, idx: usize) {
         use nros_rmw::Session as _;
         let Some(ctx) = self.wake_ctx_alloc_ptr() else {
@@ -4002,71 +3767,56 @@ impl Executor {
         // semaphore — honors its deadline, dodges Zephyr's libc
         // `pthread_cond_timedwait` hang); POSIX/macOS std keep
         // the existing `std::Condvar` path.
-        #[cfg(all(
-            feature = "std",
-            feature = "rmw-cffi",
-            any(
-                feature = "platform-zephyr",
-                feature = "platform-freertos",
-                feature = "platform-nuttx",
-                feature = "platform-threadx",
-            )
-        ))]
-        let primary_drive_timeout_ms = if !was_woken
-            && self.has_async_wake
-            && let Some(wake) = self.node_wake.as_ref()
-        {
-            let _ = wake.wait_ms(timeout_ms as u32);
-            // Clear any pending flag the cb set while we were
-            // waiting; mirrors the std cv predicate's flag drain.
-            let _ = self
-                .wake_flag
-                .swap(false, std::sync::atomic::Ordering::SeqCst);
-            0
-        } else {
-            timeout_ms
-        };
-
-        #[cfg(all(
-            feature = "std",
-            feature = "rmw-cffi",
-            not(any(
-                feature = "platform-zephyr",
-                feature = "platform-freertos",
-                feature = "platform-nuttx",
-                feature = "platform-threadx",
-            ))
-        ))]
-        if !was_woken && self.has_async_wake {
-            let dur = core::time::Duration::from_millis(timeout_ms as u64);
-            // SAFETY-invariant: `wake_mu` guards `()` — it is purely the
-            // companion mutex for `wake_cv`, protecting no shared state. A
-            // poison (another thread panicked while holding it) cannot have
-            // corrupted anything, so recover the guard rather than aborting
-            // this hot spin loop.
-            let g = self.wake_mu.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = self.wake_cv.wait_timeout_while(g, dur, |_| {
-                !self
+        // Phase 248 (C2) — platform-agnostic wake wait. The choice of
+        // wait primitive is made at runtime from the platform vtable's
+        // wake probe, NOT a compile-time per-RTOS `cfg`:
+        //
+        //   * `node_wake.is_some()` → a kernel-native binary semaphore
+        //     (`nros_platform_wake_*`) is linked; block on it. It honors
+        //     its deadline (dodging e.g. Zephyr's libc
+        //     `pthread_cond_timedwait` hang) and `nros_rmw_runtime_wake_cb`
+        //     signals it on transport arrival.
+        //   * `node_wake.is_none()` → no platform wake primitive; fall
+        //     back to the std `Condvar` wake pair.
+        //
+        // Either way, only sleep in the wake-primitive/cv wait when a
+        // backend actually installed `set_wake_callback`
+        // (`has_async_wake`); poll-only backends (XRCE, current Cyclone)
+        // leave the slot NULL and get a full-timeout `drive_io` so
+        // reliable retransmission isn't starved (Phase 127.C.4).
+        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+        let primary_drive_timeout_ms = if let Some(wake) = self.node_wake.as_ref() {
+            if !was_woken && self.has_async_wake {
+                let _ = wake.wait_ms(timeout_ms as u32);
+                // Clear any pending flag the cb set while we were
+                // waiting; mirrors the std cv predicate's flag drain.
+                let _ = self
                     .wake_flag
-                    .swap(false, std::sync::atomic::Ordering::SeqCst)
-            });
-        }
-
-        // Non-RTOS std (POSIX/macOS) drive_io is non-blocking when
-        // the cv-wait above ran; full-timeout otherwise so the
-        // transport's blocking recv yields the thread instead of
-        // busy-spinning.
-        #[cfg(all(
-            feature = "std",
-            feature = "rmw-cffi",
-            not(any(
-                feature = "platform-zephyr",
-                feature = "platform-freertos",
-                feature = "platform-nuttx",
-                feature = "platform-threadx",
-            ))
-        ))]
-        let primary_drive_timeout_ms = if self.has_async_wake { 0 } else { timeout_ms };
+                    .swap(false, std::sync::atomic::Ordering::SeqCst);
+                0
+            } else {
+                timeout_ms
+            }
+        } else {
+            if !was_woken && self.has_async_wake {
+                let dur = core::time::Duration::from_millis(timeout_ms as u64);
+                // SAFETY-invariant: `wake_mu` guards `()` — it is purely the
+                // companion mutex for `wake_cv`, protecting no shared state. A
+                // poison (another thread panicked while holding it) cannot have
+                // corrupted anything, so recover the guard rather than aborting
+                // this hot spin loop.
+                let g = self.wake_mu.lock().unwrap_or_else(|e| e.into_inner());
+                let _ = self.wake_cv.wait_timeout_while(g, dur, |_| {
+                    !self
+                        .wake_flag
+                        .swap(false, std::sync::atomic::Ordering::SeqCst)
+                });
+            }
+            // drive_io is non-blocking when the cv-wait above ran;
+            // full-timeout otherwise so the transport's blocking recv
+            // yields the thread instead of busy-spinning.
+            if self.has_async_wake { 0 } else { timeout_ms }
+        };
 
         // std builds without rmw-cffi (mock-session tests, future
         // alternative backends) keep the original "drive_io is
@@ -4074,26 +3824,15 @@ impl Executor {
         #[cfg(all(feature = "std", not(feature = "rmw-cffi")))]
         let primary_drive_timeout_ms = 0;
 
-        // Phase 141.A.3 — no_std RTOS path. Mirrors the std-RTOS
-        // branch above (lines 3454-3477 today): when a backend
-        // installed the wake-cb (`has_async_wake_alloc`) and a
-        // NodeWake primitive is available, block on
-        // `node_wake_alloc.wait_ms(timeout_ms)` so the executor
-        // unblocks on transport-arrival rather than relying on
-        // drive_io's transport-blocking recv for the full timeout.
-        // Then drive_io(0) drains whatever the backend's poll
-        // path has buffered.
-        #[cfg(all(
-            feature = "alloc",
-            not(feature = "std"),
-            feature = "rmw-cffi",
-            any(
-                feature = "platform-zephyr",
-                feature = "platform-freertos",
-                feature = "platform-nuttx",
-                feature = "platform-threadx",
-            )
-        ))]
+        // Phase 248 (C2) — no_std + alloc + rmw-cffi path. When a backend
+        // installed the wake-cb (`has_async_wake_alloc`) and a platform
+        // wake primitive is available (`node_wake_alloc.is_some()` — the
+        // runtime vtable probe), block on `node_wake_alloc.wait_ms` so the
+        // executor unblocks on transport arrival rather than relying on
+        // drive_io's blocking recv for the full timeout. Then drive_io(0)
+        // drains whatever the backend's poll path buffered. Platforms with
+        // no wake primitive (bare-metal) fall through to the full timeout.
+        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
         let primary_drive_timeout_ms = {
             let was_woken_alloc = self
                 .wake_flag_alloc
@@ -4103,8 +3842,7 @@ impl Executor {
                 && let Some(wake) = self.node_wake_alloc.as_ref()
             {
                 let _ = wake.wait_ms(timeout_ms as u32);
-                // Drain any flag the cb set while we were waiting,
-                // mirroring the std-RTOS path's post-wait swap.
+                // Drain any flag the cb set while we were waiting.
                 let _ = self
                     .wake_flag_alloc
                     .swap(false, portable_atomic::Ordering::SeqCst);
@@ -4114,21 +3852,11 @@ impl Executor {
             }
         };
 
-        // no_std without rmw-cffi OR no_std on a non-RTOS platform
-        // (bare-metal — no wake primitive, single-thread) keeps the
-        // legacy full-timeout drive_io call.
+        // no_std without (alloc + rmw-cffi) keeps the legacy
+        // full-timeout drive_io call.
         #[cfg(all(
             not(feature = "std"),
-            not(all(
-                feature = "alloc",
-                feature = "rmw-cffi",
-                any(
-                    feature = "platform-zephyr",
-                    feature = "platform-freertos",
-                    feature = "platform-nuttx",
-                    feature = "platform-threadx",
-                )
-            ))
+            not(all(feature = "alloc", feature = "rmw-cffi"))
         ))]
         let primary_drive_timeout_ms = timeout_ms;
 

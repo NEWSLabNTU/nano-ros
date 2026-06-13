@@ -35,34 +35,24 @@ scheduler-time-triggered = []
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi"]
-# Phase 214.S.2 — INTERNAL feature. The umbrella `nros/rmw-cyclonedds`
-# activates this (via `nros-node/__cyclonedds-link`) so the K.7.6.b
-# typed-creator hook (`cyclonedds_register::register_type::<M>()`)
-# fires via `cfg(rmw_cyclonedds_present)`. **Not user-facing** —
-# downstream callers depend on `nros = { features = ["rmw-cyclonedds"] }`
-# (umbrella shape) instead. The underscore prefix marks it private; we
-# kept the feature mechanism because cargo's `links =` env-var hand-off
-# (which K.7.6.b's design intended to use) only propagates to *direct*
-# dependents of the linking crate (`nros-rmw-cyclonedds-sys`). Pulling
-# the sys crate into `nros-node` as a direct optional dep gated by this
-# private feature is the smallest delta that preserves the no-extra-
-# user-feature contract while making the build-time presence detection
-# work. See `build.rs` and `docs/roadmap/phase-214-antipattern-audit-findings.md`
-# Track S.
-__cyclonedds-link = ["dep:nros-rmw-cyclonedds-sys"]
-# Phase 214.S.4.b — bare detect path. Emits the
-# `rmw_cyclonedds_present` cfg WITHOUT bringing the production
-# `nros-rmw-cyclonedds-sys` archive into the dep graph. Used by the
-# K.7.6.b `cyclonedds_register_smoke` test, which relies on the
-# dev-dep on `nros-rmw-cyclonedds[bridge-stub]` for the bridge
-# symbols. Production callers stay on `__cyclonedds-link`.
-# Phase 214.S.5.c follow-up — `bridge-stub` activation moved from the
-# unconditional dev-dep onto this feature. Smoke tests
-# (`cyclonedds_register_smoke`) opt-in via `--features __cyclonedds-detect`;
-# the stub then provides the bridge C ABI symbols. `__cyclonedds-link`
-# does NOT activate this — it pulls the real `nros-rmw-cyclonedds-sys`
-# C++ archive, structurally exclusive of the stub.
-__cyclonedds-detect = ["nros-rmw-cyclonedds/bridge-stub"]
+# Phase 248 (C2) — INTERNAL marker feature. The umbrella
+# `nros/rmw-cyclonedds` activates this (via `nros-node/__cyclonedds-link`)
+# so the typed-creator descriptor hook
+# (`cyclonedds_register::register_type::<M>()`) compiles in via
+# `cfg(rmw_cyclonedds_present)` (emitted by `build.rs` from this feature).
+# **Not user-facing** — downstream callers depend on
+# `nros = { features = ["rmw-cyclonedds"] }` (umbrella shape) instead.
+#
+# Pure marker — carries NO `dep:` edge. Issue #60 / Phase 248 made the
+# descriptor registration a generic vtable seam
+# (`nros_rmw::register_type_descriptor`), so the agnostic core no longer
+# depends on `nros-rmw-cyclonedds[-sys]`. The umbrella brings the Cyclone
+# backend (`dep:nros-rmw-cyclonedds-sys`) into the link graph on its own
+# side; that backend installs its descriptor registrar at init
+# (`nros-rmw-cyclonedds::install_descriptor_registrar`). This feature only
+# flips on the schema-passing body + the `M: Message` bound for builds
+# where a descriptor-needing backend is present.
+__cyclonedds-link = []
 # Phase 124.B.7.c — POSIX signal-handler-safe wake via eventfd + a
 # runtime-owned worker thread that forwards eventfd writes to the
 # Executor's wake condvar. Linux-only (eventfd). Off by default;
@@ -87,8 +77,10 @@ wake-latency-probe = ["portable-atomic/fallback"]
 # SlotLending trait). Forwards to whichever active backend supports it.
 rmw-lending = ["nros-rmw/lending", "nros-rmw-cffi?/lending"]
 
-# XRCE transport refinements (forwarded to nros-rmw-xrce-cffi).
-platform-udp = []
+# XRCE serial transport refinement. (`platform-udp` deleted in Phase
+# 248 C2 — it matched the forbidden `platform-*` axis and was already
+# inert; UDP-vs-serial transport selection belongs to the XRCE backend
+# crate, not the agnostic core.)
 posix-serial = []
 
 # ROS edition feature flags (controls which env vars are supported).
@@ -99,21 +91,40 @@ ros-humble = []
 ros-iron = []
 log = ["dep:log"]
 
-# Platform backend (select one). Phase 104.A — formerly forwarded
-# `platform-*` features to the active RMW backend's matching
-# feature via `?/`. With the optional concrete-RMW deps removed
-# from this crate, those forwarding clauses are gone. Callers wire
-# their own `nros-rmw-<name>` dep with the matching `platform-*`
-# feature directly.
+# Phase 248 (C2) — `platform-*` backend-selector features DELETED.
+# The core executor is platform-agnostic: it reaches the platform
+# purely through the `nros-platform-api` / `nros-platform-cffi` vtable
+# (`nros_platform_wake_*`, alloc, sleep, yield C ABI), never via a
+# compile-time `#[cfg(feature = "platform-*")]` branch (issue #60,
+# Tier 3). The wake/alloc/spin paths probe the vtable at runtime
+# (`wake_storage_size() == 0` → unavailable) instead of feature-gating
+# per RTOS. Platform selection is the board crate's / build's job
+# (RFC-0004/0031). Callers that linked a concrete platform via
+# `nros-node/platform-<rtos>` must drop it — the matching
+# `nros-platform/platform-<rtos>` + board dep already brings the
+# C-ABI provider into the link graph.
+#
+# INERT COMPAT SHIMS (Phase 248 C2 → C5 hand-off). These carry NO `dep:`
+# edge, NO `?/` forwarding, and are read by NO `#[cfg]` in `src/` — so
+# `nros-node`'s compiled output is byte-identical whether they exist or
+# not. They exist ONLY so the `nros` umbrella's not-yet-updated
+# `"nros-node/platform-<rtos>"` / `"nros-node/platform-udp"` forwarding
+# still resolves (cargo errors on a forward to a missing feature). The
+# core executor itself is fully platform-agnostic.
+#
+# **C5 MUST delete these together with the matching
+# `"nros-node/platform-*"` forwarding lines in `nros/Cargo.toml`** (phase
+# 248 sequences C5 after C2; this agent is scoped out of the `nros`
+# umbrella). Only the 8 features `nros` actually forwards are kept;
+# `platform-cffi` was dropped (no consumer).
 platform-posix = []
 platform-zephyr = []
 platform-bare-metal = []
 platform-freertos = []
 platform-nuttx = []
 platform-threadx = []
-# Phase 11 — AGX Orin SPE (zenoh-only; IVC link).
 platform-orin-spe = []
-platform-cffi = []
+platform-udp = []
 
 # E2E safety protocol (CRC-32 + sequence tracking).
 safety-e2e = ["nros-rmw/safety-e2e"]
@@ -159,27 +170,19 @@ log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
 nros-rcl-interfaces = { version = "0.5.0", path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
 nros-lifecycle-msgs = { version = "0.5.0", path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs", default-features = false, optional = true }
-# Phase 214.S.2 — runtime cyclonedds descriptor registry. Always linked
-# because the `MessageForRmw` helper trait + `cyclonedds_register`
-# module both reference it unconditionally; the no_std crate carries
-# only Rust glue (descriptor builder + bounded registry) and `extern
-# "C"` decls. Those decls become link-time references only when the
-# K.7.6.b `register_type::<M>()` hook is actually compiled in (gated by
-# `cfg(rmw_cyclonedds_present)` — emitted by `build.rs` when the
-# sibling `-sys` shim is in the dep graph). Pure zenoh / xrce builds
-# pay zero link-time cost for the bridge symbols.
-nros-rmw-cyclonedds = { version = "0.5.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false }
-# Used by the cyclonedds register bridge for the `schema::Message`
-# super trait + by every typed creator's `MessageForRmw` bound. Always
-# linked — `no_std` schema-only crate, ~negligible footprint without
-# downstream serializer glue.
+# Phase 248 (C2) — `nros-rmw-cyclonedds` + `nros-rmw-cyclonedds-sys`
+# deps REMOVED (issue #60, Tier 1). The per-type descriptor
+# registration that referenced them is now a generic vtable seam
+# (`nros_rmw::register_type_descriptor`); the Cyclone backend installs
+# its registrar from its own crate
+# (`nros-rmw-cyclonedds::install_descriptor_registrar`, driven by the
+# `-sys` shim's `RMW_INIT_ENTRIES` self-registration). The agnostic core
+# no longer names a concrete RMW backend.
+#
+# Used by `MessageForRmw`'s `cfg(rmw_cyclonedds_present)` super-bound
+# (`schema::Message`) and by `register_type`'s schema extraction. Pure
+# schema crate — no concrete-backend coupling.
 nros-serdes = { version = "0.5.0", path = "../nros-serdes", default-features = false }
-# Phase 214.S.2 — direct optional dep on the C++ backend shim. Pulled
-# in by the private `__cyclonedds-link` feature (activated by
-# `nros/rmw-cyclonedds`). Its `links = "cyclonedds"` metadata bridge
-# sets `DEP_CYCLONEDDS_PRESENT=1` in this crate's build script, which
-# emits `cfg(rmw_cyclonedds_present)` and turns the K.7.6.b hook on.
-nros-rmw-cyclonedds-sys = { workspace = true, optional = true }
 
 # Phase 124.B.7.c — POSIX signalfd / eventfd worker (only on
 # Linux + std). Other targets compile without this dep; the
@@ -202,16 +205,11 @@ libc = { version = "0.2", optional = true }
 # so the unification path collapses.
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 nros-ghost-types = { version = "0.5.0", path = "../../verification/nros-ghost-types" }
-# Phase 214.S.5.c follow-up — dev-dep no longer unconditionally
-# activates `bridge-stub`. Smoke tests opt-in via the
-# `__cyclonedds-detect` feature, which forwards `bridge-stub` here.
-# This avoids the multi-def collision that fires when a user
-# (or recipe) types `--features __cyclonedds-link` for a `cargo test`
-# invocation — `__cyclonedds-link` brings in the real cyclonedds-sys
-# C++ archive; the dev-dep stub used to clash with it. With the
-# activation now feature-gated, `__cyclonedds-link` and the stub are
-# structurally mutually exclusive.
-nros-rmw-cyclonedds = { version = "0.5.0", path = "../../dds/nros-rmw-cyclonedds", default-features = false }
+# Phase 248 (C2) — the `nros-rmw-cyclonedds[bridge-stub]` dev-dep was
+# removed along with the cyclone smoke test. That test moved into the
+# Cyclone crate itself (`nros-rmw-cyclonedds::seam_tests`), which
+# exercises the generic `nros_rmw::register_type_descriptor` seam +
+# `install_descriptor_registrar` against the `#[cfg(test)]` bridge stub.
 
 [lints]
 workspace = true

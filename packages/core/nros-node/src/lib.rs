@@ -56,12 +56,14 @@
 
 #![no_std]
 
-// Phase 214.S.5.c follow-up — the `bridge-stub` activation that
-// supplied test C-ABI symbols is now feature-gated under
-// `__cyclonedds-detect`, no longer unconditional on the dev-dep.
-// `__cyclonedds-link` only pulls the production `nros-rmw-cyclonedds-sys`
-// archive; the two paths are structurally mutually exclusive at the
-// cargo-feature layer.
+// Phase 248 (C2) — `nros-rmw-cyclonedds[-sys]` deps removed (issue #60,
+// Tier 1). Per-type descriptor registration is now the generic
+// `nros_rmw::register_type_descriptor` seam (see `cyclonedds_register`);
+// the Cyclone backend installs its registrar from its own crate. The
+// `__cyclonedds-link` marker feature (no dep edge) still emits
+// `cfg(rmw_cyclonedds_present)` to compile the schema-passing body +
+// `M: Message` bound for builds where a descriptor-needing backend is
+// linked by the umbrella.
 
 #[cfg(feature = "std")]
 extern crate std;

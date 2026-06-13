@@ -23,16 +23,14 @@
 //! `Box`/`Vec`/`Arc` types switch to the `alloc` crate; the
 //! kernel-side semantics are unchanged.
 
-#![cfg(all(
-    feature = "alloc",
-    feature = "rmw-cffi",
-    any(
-        feature = "platform-zephyr",
-        feature = "platform-freertos",
-        feature = "platform-nuttx",
-        feature = "platform-threadx",
-    )
-))]
+// Phase 248 (C2) — platform-agnostic: no `platform-*` feature gate.
+// `NodeWake` calls the `nros_platform_wake_*` C ABI (the platform
+// vtable) generically; availability is decided at runtime by the
+// `wake_storage_size() == 0` probe in [`NodeWake::new`], not by a
+// compile-time per-RTOS cfg. Compiled for any `alloc + rmw-cffi` build;
+// platforms without a wake primitive simply report size 0 and the
+// caller falls back to driving the transport for the full timeout.
+#![cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 // Phase 141.A.2 — `NodeWake` is callable from the std-gated
 // `install_wake_signal_on_*` path today; the matching no_std
 // caller for the FreeRTOS-embedded wake-cb path is the

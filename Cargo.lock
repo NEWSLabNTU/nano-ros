@@ -2163,8 +2163,6 @@ dependencies = [
  "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-cyclonedds",
- "nros-rmw-cyclonedds-sys",
  "nros-serdes",
  "portable-atomic",
  "portable-atomic-util",
@@ -2310,6 +2308,7 @@ dependencies = [
  "log",
  "nros-core",
  "nros-ghost-types",
+ "nros-serdes",
  "spin",
 ]
 
@@ -2329,6 +2328,7 @@ version = "0.5.0"
 dependencies = [
  "critical-section",
  "heapless 0.8.0",
+ "nros-rmw",
  "nros-serdes",
  "spin",
 ]
@@ -2342,6 +2342,7 @@ dependencies = [
  "linkme",
  "nros-build-paths",
  "nros-rmw-cffi",
+ "nros-rmw-cyclonedds",
 ]
 
 [[package]]

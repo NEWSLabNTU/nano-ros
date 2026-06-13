@@ -66,6 +66,9 @@ vendored = ["dep:cyclonedds-sys", "dep:cc"]
 
 [dependencies]
 nros-rmw-cffi = { version = "0.5.0", path = "../../core/nros-rmw-cffi", default-features = false }
+# Phase 248 (C2) — Rust descriptor shim; backend init installs its
+# per-type descriptor registrar into the generic `nros_rmw` seam.
+nros-rmw-cyclonedds = { version = "0.5.0", path = "../nros-rmw-cyclonedds", default-features = false }
 linkme = { version = "0.3", default-features = false }
 # Phase 212.K.2 — `cyclonedds-sys` is a build-only path provider; we
 # never `use` anything from its lib.rs. Declared as a regular dep so

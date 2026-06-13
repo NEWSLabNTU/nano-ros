@@ -69,4 +69,32 @@ pub mod sync;
 pub mod type_registry;
 
 pub use dynamic_type::{BuildError, DescriptorBuilder};
-pub use type_registry::{TypeRegistry, global, register};
+pub use type_registry::{TypeRegistry, global, register, register_raw};
+
+/// Phase 248 (C2) — the generic descriptor registrar this backend
+/// installs into [`nros_rmw`]'s type-descriptor seam.
+///
+/// Wraps [`type_registry::register_raw`] and flattens its
+/// [`BuildError`] to the seam's unit-error contract (the core maps
+/// that onto `TransportError::PublisherCreationFailed`).
+fn cyclonedds_type_descriptor_registrar(
+    type_name: &'static str,
+    fields: &'static [nros_serdes::schema::Field],
+) -> Result<(), ()> {
+    register_raw(type_name, fields)
+        .map(|_ptr| ())
+        .map_err(|_e| ())
+}
+
+/// Phase 248 (C2) — install this backend's per-type descriptor
+/// registrar into the generic [`nros_rmw`] seam.
+///
+/// Call once during backend initialisation, before any Executor opens.
+/// The Cyclone `-sys` shim drives this from its `RMW_INIT_ENTRIES`
+/// self-registration (and from `register()`), so the platform/RMW-
+/// agnostic core (`nros-node`) reaches Cyclone's descriptor builder
+/// purely through `nros_rmw::register_type_descriptor` — no named
+/// dependency on this crate.
+pub fn install_descriptor_registrar() {
+    nros_rmw::set_type_descriptor_registrar(Some(cyclonedds_type_descriptor_registrar));
+}

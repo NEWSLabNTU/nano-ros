@@ -29,7 +29,7 @@
 //! the registry — only entity creation does.
 
 use heapless::FnvIndexMap;
-use nros_serdes::schema::Message;
+use nros_serdes::schema::{Field, Message};
 
 use crate::{
     bridge::nros_rmw_cyclonedds_register_descriptor,
@@ -146,6 +146,38 @@ impl TypeRegistry {
         Ok(ptr)
     }
 
+    /// Phase 248 (C2) — raw-schema variant of [`Self::get_or_build`].
+    ///
+    /// Identical caching/build behaviour, but takes the flattened
+    /// `(type_name, fields)` pair directly instead of a `M: Message`
+    /// type parameter. This is what the generic descriptor-registration
+    /// seam (`nros_rmw::register_type_descriptor`) forwards into, so the
+    /// core executor no longer needs a monomorphised `register::<M>()`
+    /// call into this crate.
+    pub fn get_or_build_raw(
+        &mut self,
+        type_name: &'static str,
+        fields: &'static [Field],
+    ) -> Result<DescriptorPtr, BuildError> {
+        if let Some(ptr) = self.get(type_name) {
+            return Ok(ptr);
+        }
+        let ptr = DescriptorBuilder::build_raw(type_name, fields)?;
+        self.table
+            .insert(type_name, DescriptorSlot(ptr))
+            .map_err(|_| BuildError::RegistryFull)?;
+        // SAFETY: the bridge does not capture the pointer beyond the
+        // call; we hold the registry mutex throughout. `type_name` is
+        // NUL-terminated per the codegen contract.
+        unsafe {
+            nros_rmw_cyclonedds_register_descriptor(
+                type_name.as_ptr() as *const core::ffi::c_char,
+                ptr,
+            );
+        }
+        Ok(ptr)
+    }
+
     /// Diagnostic — number of cached types. Useful for tests.
     pub fn len(&self) -> usize {
         self.table.len()
@@ -194,6 +226,22 @@ pub fn global() -> &'static RegistryMutex<TypeRegistry> {
 /// `dds_create_topic`.
 pub fn register<M: Message>() -> Result<DescriptorPtr, BuildError> {
     GLOBAL.with(|r| r.get_or_build::<M>())
+}
+
+/// Phase 248 (C2) — raw-schema entry point used by the generic
+/// descriptor-registration seam.
+///
+/// Locks the global registry and calls
+/// [`TypeRegistry::get_or_build_raw`]. This is the function the
+/// installed [`nros_rmw::TypeDescriptorRegistrar`] wraps, letting the
+/// platform/RMW-agnostic core (`nros-node`) register a type's Cyclone
+/// descriptor without a direct `register::<M>()` monomorphisation into
+/// this crate.
+pub fn register_raw(
+    type_name: &'static str,
+    fields: &'static [Field],
+) -> Result<DescriptorPtr, BuildError> {
+    GLOBAL.with(|r| r.get_or_build_raw(type_name, fields))
 }
 
 #[cfg(test)]

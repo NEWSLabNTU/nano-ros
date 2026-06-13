@@ -42,6 +42,10 @@ lending = []
 
 [dependencies]
 nros-core = { workspace = true, default-features = false }
+# Phase 248 (C2) — `type_descriptor` seam passes the message's static
+# field schema (`nros_serdes::schema::{Field, Message}`) across the
+# generic descriptor-registration hook. no_std + alloc-free.
+nros-serdes = { workspace = true, default-features = false }
 heapless = { workspace = true }
 
 # Synchronization backends (optional)

@@ -26,17 +26,12 @@
 //! has no in-tree caller — `#[allow(dead_code)]` keeps the
 //! lint quiet.
 
-#![cfg(all(
-    feature = "alloc",
-    not(feature = "std"),
-    feature = "rmw-cffi",
-    any(
-        feature = "platform-zephyr",
-        feature = "platform-freertos",
-        feature = "platform-nuttx",
-        feature = "platform-threadx",
-    )
-))]
+// Phase 248 (C2) — platform-agnostic: no `platform-*` feature gate.
+// The no_std wake mirror routes through the `nros_platform_wake_*` C
+// ABI (platform vtable) generically; the runtime probe in `NodeWake`
+// decides availability. Compiled for any no_std `alloc + rmw-cffi`
+// build.
+#![cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
 #![allow(dead_code)]
 
 use portable_atomic::{AtomicBool, Ordering};
