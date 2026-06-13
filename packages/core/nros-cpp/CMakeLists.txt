@@ -116,8 +116,21 @@ if(TARGET cargo-build_nros_cpp)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
             "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
-        BYPRODUCTS "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
-        COMMENT "nros-cpp: mirroring nros_cpp_config_generated.h for in-tree consumers"
+        # Phase 241.D3-rev — ALSO mirror the C variant header. The C++ umbrella now
+        # bundles nros-c, so nros-cpp's own corrosion build emits the C
+        # `nros_config_generated.h` (the *_OPAQUE_U64S sizes) into this binary dir.
+        # A C++ TU `#include <nros/...>` needs it, but cpp_talker links
+        # nros-cpp-headers (NOT nros_c-static), so it has no build-order dependency on
+        # nros-c's own mirror and would race to nros-c's stub header. Mirroring it
+        # here — under the same POST_BUILD on cargo-build_nros_cpp, into the dir added
+        # `BEFORE INTERFACE` below — makes it both present and ordered ahead of the stub.
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
+            "${_nros_cpp_intree_include_dir}/nros/nros_config_generated.h"
+        BYPRODUCTS
+            "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
+            "${_nros_cpp_intree_include_dir}/nros/nros_config_generated.h"
+        COMMENT "nros-cpp: mirroring nros_{,cpp_}config_generated.h for in-tree consumers"
         VERBATIM
     )
     target_include_directories(nros-cpp-headers BEFORE INTERFACE
@@ -140,9 +153,23 @@ target_link_libraries(nros-cpp-headers INTERFACE nros_cpp-static)
 if(NOT DEFINED NANO_ROS_ROOT_DIR)
     set(NANO_ROS_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/../../..")
 endif()
-cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
-    target_include_directories nros-cpp-headers INTERFACE
-    "$<TARGET_PROPERTY:NanoRos,INTERFACE_INCLUDE_DIRECTORIES>")
+# C-side headers: pull from `nros_c-static`'s INTERFACE — it carries the public C
+# headers AND the per-build variant header (`nros_config_generated.h`, the
+# *_OPAQUE_U64S sizes). NanoRos's OWN INTERFACE_INCLUDE_DIRECTORIES does NOT contain
+# them: NanoRos gets them transitively via its link to nros_c-static, and
+# `$<TARGET_PROPERTY>` resolves only the named target's own property, not transitive
+# usage requirements. Without the variant header the C++ TU reaches nros-c's stub
+# `nros_config_generated.h` and fails (`*_OPAQUE_U64S not declared`). NuttX (no
+# nros_c-static) falls back to NanoRos's manually-added include tree.
+if(TARGET nros_c-static)
+    cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
+        target_include_directories nros-cpp-headers INTERFACE
+        "$<TARGET_PROPERTY:nros_c-static,INTERFACE_INCLUDE_DIRECTORIES>")
+else()
+    cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
+        target_include_directories nros-cpp-headers INTERFACE
+        "$<TARGET_PROPERTY:NanoRos,INTERFACE_INCLUDE_DIRECTORIES>")
+endif()
 cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
     target_compile_definitions nros-cpp-headers INTERFACE
     "$<TARGET_PROPERTY:NanoRos,INTERFACE_COMPILE_DEFINITIONS>")
