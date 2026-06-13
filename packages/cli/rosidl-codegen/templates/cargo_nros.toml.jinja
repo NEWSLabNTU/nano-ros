@@ -8,11 +8,21 @@ license = "Apache-2.0"
 default = ["std"]
 std = ["nros-core/std", "nros-serdes/std"]
 alloc = ["nros-core/alloc", "nros-serdes/alloc"]
+{%- if has_actions %}
+# phase-244 E3 — register the action_msgs protocol types (CancelGoal_*,
+# GoalStatusArray) with the cyclonedds backend in
+# `RosAction::register_protocol_types`. Forwarded from the consumer's
+# `rmw-cyclonedds` feature; inert otherwise.
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds"]
+{%- endif %}
 
 [dependencies]
 nros-core = { version = "0.1", default-features = false }
 nros-serdes = { version = "0.1", default-features = false }
 heapless = "0.8"
+{%- if has_actions %}
+nros-rmw-cyclonedds = { version = "*", default-features = false, optional = true }
+{%- endif %}
 {%- for dep in dependencies %}
 {{ dep }} = { version = "*", default-features = false }
 {%- endfor %}

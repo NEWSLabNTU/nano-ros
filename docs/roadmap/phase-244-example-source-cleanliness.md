@@ -112,6 +112,33 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
        codegen-touched.
     Recommend doing E3c/E3d as one focused vertical with native cyclonedds
     build + action server/client e2e as the gate, then cross-platform regen.
+  - **E3c + E3d DONE (2026-06-13).** Codegen now emits the override + wiring:
+    - `action_nros.rs.jinja` — `impl RosAction` gains `register_protocol_types()`
+      that (under `#[cfg(feature="rmw-cyclonedds")]`) registers the 3 `action_msgs`
+      types via `nros_rmw_cyclonedds::register::<…>()`.
+    - `rosidl-bindgen::generator` (the combined-crate emitter ws-sync actually
+      uses — NOT the standalone `rosidl-codegen` cargo path) — injects an
+      `action_msgs` path dep + an `rmw-cyclonedds` feature
+      (`dep:nros-rmw-cyclonedds`) + the optional `nros-rmw-cyclonedds = "*"` dep
+      into generated action crates' `Cargo.toml`.
+    - ws-sync (`cmd/ws.rs`) — added `nros-rmw-cyclonedds` to `nros_crate_path_lookup`
+      AND made `render_patch_block` scan the *generated* crates' Cargo.tomls, so the
+      `[patch.crates-io]` block resolves the generated crate's new dep.
+    - examples — action-server + action-client: `rmw-cyclonedds` feature forwards
+      to `example_interfaces/rmw-cyclonedds`; deleted the `dep:nros-rmw-cyclonedds`
+      / `dep:action_msgs` + the hand-rolled `#[cfg] { … }` registration blocks
+      (folds the D3 action leg). Standalone `rosidl-codegen` cargo path updated for
+      parity (`has_actions` field) though ws-sync doesn't use it.
+    Verified: rosidl-codegen/bindgen unit tests green; `nros ws sync` regenerates
+    the correct generated Cargo.toml + override + patch block; action-server +
+    action-client BUILD under **both** zenoh (tested path, override inert) and
+    cyclonedds; at runtime the framework's `register_protocol_types` succeeds
+    (instrumented + confirmed — replaces the manual block). NOTE: a native
+    *cyclonedds* action server then fails at downstream entity creation
+    (`ActionCreationFailed`) — a **pre-existing** issue in an untested path (no
+    native-cyclonedds-action fixture exists; only zenoh + xrce rows), independent
+    of registration (which succeeds). Not an E3 regression; tracked separately if
+    native cyclonedds action is ever gated.
 - [x] **E4 — macro-injected `#![no_std]`. IMPOSSIBLE → confirm-document.**
   Proc-macros expand at the invocation point and **cannot inject crate-level inner
   attributes** (`#![no_std]` must precede all items) — confirmed by the explicit

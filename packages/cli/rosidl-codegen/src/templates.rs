@@ -269,6 +269,11 @@ pub struct CargoNrosTomlTemplate<'a> {
     pub package_name: &'a str,
     pub package_version: &'a str,
     pub dependencies: &'a [String],
+    /// phase-244 E3 — action packages emit an `rmw-cyclonedds` feature + an
+    /// optional `nros-rmw-cyclonedds` dep so the generated `impl RosAction`'s
+    /// `register_protocol_types()` can register the `action_msgs` protocol types
+    /// under cyclonedds. `false` for plain msg/srv packages.
+    pub has_actions: bool,
 }
 
 #[derive(Template)]

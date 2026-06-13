@@ -31,23 +31,11 @@ fn main() -> ! {
     info!("nros Action Server Example");
     info!("================================");
 
-    // Phase 212.K.7.4.c — Cyclone needs descriptors for the action's
-    // cancel sub-service (`action_msgs/srv/CancelGoal_{Request,Response}`)
-    // AND the status publisher's `action_msgs/msg/GoalStatusArray` type
-    // registered before `create_action_server` calls into the C++
-    // bridge, since the trait `RosAction` does not yet surface those
-    // types. Without this registration the bridge rejects the cancel-goal
-    // service / status publisher with NROS_RMW_RET_UNSUPPORTED.
-    #[cfg(feature = "rmw-cyclonedds")]
-    {
-        nros_rmw_cyclonedds::register::<action_msgs::srv::CancelGoalRequest>()
-            .expect("register CancelGoalRequest");
-        nros_rmw_cyclonedds::register::<action_msgs::srv::CancelGoalResponse>()
-            .expect("register CancelGoalResponse");
-        nros_rmw_cyclonedds::register::<action_msgs::msg::GoalStatusArray>()
-            .expect("register GoalStatusArray");
-    }
-
+    // Phase 244 E3 — the action's cancel-service + status-publisher protocol
+    // types (`action_msgs/srv/CancelGoal_{Request,Response}`,
+    // `action_msgs/msg/GoalStatusArray`) are now registered by the framework via
+    // `RosAction::register_protocol_types` (generated impl), no example-side
+    // registration needed.
     let ctx = nros::init_with_launch_auto().expect("nros init failed");
     let cfg = ctx.config("fibonacci_action_server");
     let mut executor = Executor::open(&cfg).expect("Failed to open session");

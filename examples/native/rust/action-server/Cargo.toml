@@ -25,14 +25,12 @@ rmw-cyclonedds = [
     # umbrella + `nros-node::__FORCE_LINK_CYCLONEDDS_SYS` keep the `-sys`
     # rlib alive for us now).
     "nros/rmw-cyclonedds",
-    # Phase 212.K.7.4.c → 214.S.5.c follow-up: the per-action envelopes
-    # auto-register via K.7.6.b, but `action_msgs::srv::CancelGoal_{Request,
-    # Response}` + `action_msgs::msg::GoalStatusArray` do NOT (the
-    # `RosAction` trait does not surface them yet). The example registers
-    # them explicitly; remove these two entries once node.rs internalizes
-    # the cancel/status registration.
-    "dep:nros-rmw-cyclonedds",
-    "dep:action_msgs",
+    # Phase 244 E3 — forward to the generated action crate so its
+    # `RosAction::register_protocol_types` registers the `action_msgs`
+    # protocol types under cyclonedds. Replaces the former
+    # `dep:nros-rmw-cyclonedds` + `dep:action_msgs` + the hand-rolled
+    # registration block in `main.rs`.
+    "example_interfaces/rmw-cyclonedds",
 ]
 rmw-xrce = ["nros/rmw-xrce"]
 
@@ -43,14 +41,6 @@ example_interfaces = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
 heapless = "0.8"
-
-# Phase 212.K.7.4.c — direct access to the cyclonedds type registry so
-# the example can explicitly register `action_msgs::srv::CancelGoal_{Request,Response}`
-# descriptors before `create_action_server` (the trait `RosAction` does
-# not yet expose those types). To be removed under 214.S.5.c when node.rs
-# internalizes the registration.
-nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds", optional = true }
-action_msgs = { version = "*", default-features = false, optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the
@@ -69,5 +59,6 @@ builtin_interfaces = { path = "generated/builtin_interfaces" }
 example_interfaces = { path = "generated/example_interfaces" }
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }
 nros-core = { path = "../../../../packages/core/nros-core" }
+nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds" }
 nros-serdes = { path = "../../../../packages/core/nros-serdes" }
 # === END nros-managed [patch.crates-io] ===

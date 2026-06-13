@@ -165,6 +165,13 @@ pub fn generate_package(
         if package.name != "builtin_interfaces" {
             all_dependencies.insert("builtin_interfaces".to_string());
         }
+        // Phase 244 E3 (RFC-0044) — the generated `impl RosAction::register_protocol_types`
+        // names `action_msgs::srv::CancelGoal_{Request,Response}` + `msg::GoalStatusArray`,
+        // so the action crate depends on `action_msgs` (a sibling generated crate;
+        // path dep). `action_msgs` itself has no actions → no self-dep.
+        if package.name != "action_msgs" {
+            all_dependencies.insert("action_msgs".to_string());
+        }
 
         // Generate actions
         for action_name in &package.interfaces.actions {
@@ -229,6 +236,7 @@ pub fn generate_package(
         &package.name,
         &package.version,
         &all_dependencies,
+        !package.interfaces.actions.is_empty(),
     )?;
 
     Ok(GeneratedRustPackage {
@@ -322,6 +330,7 @@ fn generate_cargo_toml(
     package_name: &str,
     package_version: &str,
     dependencies: &HashSet<String>,
+    has_actions: bool,
 ) -> Result<()> {
     // Build std feature list including all dependencies
     let mut std_features = vec![
@@ -334,6 +343,17 @@ fn generate_cargo_toml(
     }
     let std_feature_list = std_features.join(", ");
 
+    // Phase 244 E3 — action packages expose an `rmw-cyclonedds` feature so the
+    // generated `RosAction::register_protocol_types` can register the
+    // `action_msgs` protocol types with the cyclonedds backend. The consumer's
+    // `rmw-cyclonedds` feature forwards to `<pkg>/rmw-cyclonedds`; inert (and no
+    // std RMW dep pulled) otherwise.
+    let action_feature = if has_actions {
+        "rmw-cyclonedds = [\"dep:nros-rmw-cyclonedds\"]\n"
+    } else {
+        ""
+    };
+
     // Use crates.io version specifiers for nros crates.
     // For development, use .cargo/config.toml [patch.crates-io] to point to local paths.
     let mut cargo_toml = format!(
@@ -345,7 +365,7 @@ edition = "2021"
 [features]
 default = []
 std = [{std_features}]
-
+{action_feature}
 [dependencies]
 # nros crates (patched to local via .cargo/config.toml during development)
 nros-core = {{ version = "*", default-features = false }}
@@ -354,8 +374,18 @@ heapless = "0.8"
 "#,
         package_name,
         package_version,
-        std_features = std_feature_list
+        std_features = std_feature_list,
+        action_feature = action_feature,
     );
+
+    // Phase 244 E3 — the optional cyclonedds RMW backend (not a sibling
+    // generated crate; resolved via the workspace `[patch.crates-io]` that
+    // `nros ws sync` writes — see `nros_crate_path_lookup`).
+    if has_actions {
+        cargo_toml.push_str(
+            "nros-rmw-cyclonedds = { version = \"*\", default-features = false, optional = true }\n",
+        );
+    }
 
     // Add cross-package dependencies
     for dep in dependencies {

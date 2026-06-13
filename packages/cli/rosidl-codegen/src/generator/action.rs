@@ -191,6 +191,13 @@ pub fn generate_nros_action_package(
     if package_name != "builtin_interfaces" {
         all_deps.push("builtin_interfaces".to_string());
     }
+    // Phase 244 E3 (RFC-0044) — the generated `impl RosAction::register_protocol_types`
+    // names `action_msgs::srv::CancelGoal_{Request,Response}` + `msg::GoalStatusArray`,
+    // so the action crate must depend on `action_msgs` (its own envelopes are local,
+    // these three are not). `action_msgs` itself has no actions, so no self-dep.
+    if package_name != "action_msgs" {
+        all_deps.push("action_msgs".to_string());
+    }
     all_deps.sort();
     all_deps.dedup();
 
@@ -199,6 +206,7 @@ pub fn generate_nros_action_package(
         package_name,
         package_version,
         dependencies: &all_deps,
+        has_actions: true,
     };
     let cargo_toml = cargo_toml_template.render()?;
 

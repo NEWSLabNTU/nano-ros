@@ -33,18 +33,9 @@ fn run() -> i32 {
     info!("nros Action Client Example");
     info!("================================");
 
-    // Phase 212.K.7.4.c — see action-server's main for rationale.
-    #[cfg(feature = "rmw-cyclonedds")]
-    {
-        if nros_rmw_cyclonedds::register::<action_msgs::srv::CancelGoalRequest>().is_err()
-            || nros_rmw_cyclonedds::register::<action_msgs::srv::CancelGoalResponse>().is_err()
-            || nros_rmw_cyclonedds::register::<action_msgs::msg::GoalStatusArray>().is_err()
-        {
-            error!("Failed to register CancelGoal / GoalStatusArray types");
-            return 1;
-        }
-    }
-
+    // Phase 244 E3 — CancelGoal / GoalStatusArray protocol types are registered
+    // by the framework via `RosAction::register_protocol_types` (generated impl);
+    // no example-side registration needed.
     let ctx = match nros::init_with_launch_auto() {
         Ok(c) => c,
         Err(_) => return 1,

@@ -177,6 +177,7 @@ pub fn generate_nros_service_package(
         package_name,
         package_version,
         dependencies: &all_deps,
+        has_actions: false,
     };
     let cargo_toml = cargo_toml_template.render()?;
 
