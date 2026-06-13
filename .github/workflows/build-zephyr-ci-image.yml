@@ -19,11 +19,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # The tag encodes the inputs (ROS distro + SDK version) — bump when either
-  # changes, in lockstep with the Dockerfile ARG + the dual-line `container:`.
+  # The tag encodes the inputs (ROS distro + SDK version) plus a `-rN` content
+  # revision — bump the SDK/distro part when either changes, bump `-rN` when the
+  # Dockerfile content changes without an SDK/distro bump (e.g. an added apt
+  # pkg). Keep in lockstep with the Dockerfile ARG + the dual-line `container:`.
   # GHCR repo names must be lowercase; the owner (NEWSLabNTU) is mixed-case.
+  # r2 (#59): added ros-humble-example-interfaces to the apt set.
   IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
-  TAG: humble-sdk0.17.4
+  TAG: humble-sdk0.17.4-r2
 
 jobs:
   build-push:

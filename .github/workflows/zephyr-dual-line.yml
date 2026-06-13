@@ -60,7 +60,7 @@ jobs:
     name: ${{ matrix.line }} / ${{ matrix.example }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r2
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -177,7 +177,7 @@ jobs:
     name: ci-both (3.7 + 4.4)
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r2
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -236,7 +236,7 @@ jobs:
     name: copy-out check (4.4)
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r2
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

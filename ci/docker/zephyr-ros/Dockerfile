@@ -9,8 +9,9 @@
 # docs/development/ci-conventions.md + the zephyr image design (Phase 196.3).
 #
 # Build/publish via .github/workflows/build-zephyr-ci-image.yml →
-#   ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk<ver>
-# Tag encodes the inputs (ROS distro + SDK version); a bump = a new tag.
+#   ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk<ver>-r<N>
+# Tag encodes the inputs (ROS distro + SDK version) + a `-rN` content revision;
+# bump `-rN` when the Dockerfile content changes without an SDK/distro bump.
 FROM ros:humble-ros-base
 
 # 0.17.4: the version the Zephyr 4.4 line requires (its west pulls zephyr-sdk-0.17);
