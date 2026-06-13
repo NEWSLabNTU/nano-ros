@@ -324,6 +324,53 @@ External landing in `github.com/NEWSLabNTU/autoware-safety-island`:
 - **Files:** `book/src/porting/board-crate-import.md` (new),
   `book/src/SUMMARY.md` (edit).
 
+### 215.J — Downstream Zephyr consumer provisioning (`nros setup board`)
+
+Filed 2026-06-13 — surfaced by the ASI **real local build** (ASI phase-2.C):
+`nano_ros_use_board()` imports the board *config* (prj.conf/overlay/RMW/runner)
+and that composes correctly, but an `import:false` downstream Zephyr consumer
+does **not** get nano-ros's *provisioning* — so the build walls at Kconfig with
+`RUST_SUPPORTED=n`, `POSIX_THREAD_THREADS_MAX` undefined, and no cyclonedds. The
+board crate is not yet a *fully* importable unit: it carries config, not the
+`(zephyr-patches × zephyr-lang-rust × cyclonedds-source)` toolchain provisioning
+`just zephyr setup` does for nano-ros's own tree.
+
+**Design (decided 2026-06-13; see RFC-0014 §"Downstream Zephyr consumer
+provisioning"):** the patch scripts already take a workspace dir (`patches/<line>.sh
+$WORKSPACE`) and `nros setup --source` is index-driven — expose them for a
+consumer's tree, board-driven.
+
+- [ ] **215.J.1** `board.cmake` (+ Cargo mirror) gains a **provisioning
+      contract**: `NROS_BOARD_ZEPHYR_LINE` (e.g. `3.7`), `NROS_BOARD_REQUIRES_RUST`,
+      `NROS_BOARD_RUST_TARGETS` (e.g. `aarch64-zephyr-elf;armv7a-none-eabi`),
+      `NROS_BOARD_RMW_SOURCE` (e.g. `cyclonedds-src`). Schema doc + drift audit
+      (215.F) extended.
+- [ ] **215.J.2** `nros setup board <name> --zephyr-workspace <dir>` — reads the
+      contract, fetches the RMW source (`nros setup --source …`, index-driven),
+      applies `scripts/zephyr/patches/<line>.sh <dir>` to the **consumer's**
+      zephyr, `rustup target add` the board's targets, ensures the
+      `zephyr-lang-rust` pin. Reuses the existing parameterized scripts; no
+      consumer-side duplication. (RFC-0014 surface.)
+- [ ] **215.J.3** Board-shipped **`import:false`-compatible west fragment**
+      (just `zephyr-lang-rust` at the board's pin, `name-allowlist`) so the
+      consumer adds one manifest line for the module instead of hand-copying the
+      pin. `nros setup board` does patches + cyclonedds + rustup; west does the
+      module fetch.
+- [ ] **215.J.4** `RUST_SUPPORTED` for the board's arch via a **board-shipped
+      Kconfig overlay module** (adds `config RUST_SUPPORTED \n default y if <board>`
+      — no mutation of the consumer's `lang-rust` tree). **Lean B**; verify
+      `zephyr-lang-rust`'s symbol allows cross-file `default` extension, else fall
+      back to applying `aarch64/cortex-r-rust-patch.sh` to the consumer tree (A).
+- [ ] **215.J.5** ASI `bootstrap-asi.sh` delegates to `nros setup board
+      fvp-aemv8r-smp --zephyr-workspace $ZEPHYR_BASE` (replaces the inline
+      west-fragment + ISN-poke + manual rust-module the real-run added as
+      stopgaps). Consumer proof = the FVP build/boot (240.7 / 242.5.2).
+
+**Files.** `packages/boards/nros-board-*/board.cmake` (+ `Cargo.toml`),
+`packages/cli/nros-cli-core/src/cmd/setup.rs` (the `board --zephyr-workspace`
+surface), `packages/boards/nros-board-*/west-downstream.yml` (new),
+a board Kconfig overlay module, `docs/reference/board-cmake-schema.md`.
+
 ## Acceptance
 
 - [ ] A Zephyr app's `CMakeLists.txt` calls `nano_ros_use_board(<n>)`

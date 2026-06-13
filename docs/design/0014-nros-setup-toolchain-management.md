@@ -361,6 +361,47 @@ first:
 first-image footprint from **7.4 GB → ~0.4 GB**, and the shared store (#3)
 keeps it amortized.
 
+## Downstream Zephyr consumer provisioning (`nros setup board`)
+
+**Added 2026-06-13** (tracked by phase-215.J; surfaced by the ASI real local
+build). A downstream Zephyr app that imports a nano-ros **board crate** via
+`nano_ros_use_board(<name>)` (Phase 215) with an `import:false` west manifest
+gets the board *config* but NOT nano-ros's *toolchain provisioning* — so its
+build walls at Kconfig (`RUST_SUPPORTED=n`, missing cyclonedds, POSIX symbol
+drift). `just zephyr setup` does this provisioning for nano-ros's own tree, but
+it is not exposed for a consumer's tree.
+
+**Surface:** `nros setup board <name> --zephyr-workspace <dir>`. It reads the
+board's **provisioning contract** from `board.cmake` (Phase 215 metadata,
+extended: `zephyr_line`, `requires_rust`, `rust_targets`, `rmw_source`) and,
+against the *consumer's* zephyr workspace `<dir>`:
+
+1. fetches the board's RMW source — `nros setup --source <rmw_source>`
+   (index-driven, the same `[tool.*]` / `[source.*]` entries `just zephyr setup`
+   uses; cyclonedds prebuilt-or-source);
+2. applies `scripts/zephyr/patches/<zephyr_line>.sh <dir>` — the patch scripts
+   **already take the workspace dir as `$1`**, so no new machinery;
+3. `rustup target add <rust_targets>`;
+4. ensures the `zephyr-lang-rust` pin (the consumer adds it via a board-shipped
+   `import:false`-compatible west fragment — `name-allowlist: [zephyr-lang-rust]`
+   — so west fetches the module while the consumer keeps manifest authority over
+   zephyr).
+
+`RUST_SUPPORTED` for the board's arch ships as a **board Kconfig overlay module**
+(adds `default y if <board>` — no mutation of the consumer's `lang-rust` tree),
+falling back to the existing `aarch64/cortex-r-rust-patch.sh` against the
+consumer tree if the symbol cannot be extended cross-file.
+
+**Why this shape** (vs a standalone script or a pure-west flow): the patch +
+source machinery is already index-driven + workspace-parameterized; a CLI verb
+makes it **board-driven** (the board crate is the single source of truth — a new
+board or a changed zephyr-line/RMW needs zero consumer change), **discoverable**
+(`nros setup --help`, `nros board info`), and reuses the index rather than
+forking it into a script. The one genuinely west-native piece — fetching the
+`zephyr-lang-rust` *module* — is delegated to a board-shipped west import
+fragment; everything else (patches, RMW source, rust targets) flows through
+`nros setup`. (UX comparison: phase-215.J discussion.)
+
 ## Boundaries / non-goals
 
 - **`just <module> setup` stays** the contributor / source-of-truth / CI path
