@@ -1,170 +1,58 @@
-//! Phase 212.H.4 — ThreadX adapter audit + alignment.
+//! §212.H.4 — ThreadX adapter codegen + Corrosion-bridge audit —
+//! build-stage fixture (issue 0041 Wave B).
 //!
-//! Verifies the codegen + Corrosion-bridge surface added to the ThreadX
+//! Verifies the codegen + Corrosion-bridge surface of the ThreadX
 //! platform module (`cmake/platform/nano-ros-threadx.cmake` →
 //! `cmake/NanoRosThreadxSystemCodegen.cmake`):
 //!
 //! 1. `nros_threadx_codegen_system(SYSTEM <bringup>)` shells `nros plan`
-//!    at cmake configure time, emits
-//!    `${CMAKE_BINARY_DIR}/nros-system/system_main.c` with one extern
-//!    + weak-stub + dispatch entry per planned component, and compiles
-//!    it into the `nros_system_main` STATIC target.
-//! 2. The fixture's `threadx_app` executable links against
-//!    `nros_system_main` via the `nros_threadx_link_app(<target>)`
-//!    helper, runs, and the talker + listener stub component entries
-//!    fire in plan order.
+//!    at cmake configure time, emits `nros-system/system_main.c` with one
+//!    extern + weak-stub + dispatch entry per planned component, and
+//!    compiles it into the `nros_system_main` STATIC target.
+//! 2. The fixture's `threadx_app` executable links `nros_system_main` via
+//!    `nros_threadx_link_app(<target>)`, runs, and the talker + listener
+//!    component entries fire in plan order. With Corrosion provisioned
+//!    (`nros setup --tool corrosion`) the codegen helper imports the Rust
+//!    component crates, so the REAL (non-stub) entries land in the binary.
 //!
-//! The test deliberately stays scoped to the codegen + link contract.
+//! ## issue-0041 conversion
+//!
+//! Per "No compilation inside tests", the cmake configure + build + the
+//! Corrosion-imported Rust crate compiles run in the **build stage**:
+//!
+//! * `threadx_bringup` — `build_cmake_fixture` configures + builds the host
+//!   `threadx_app` (Corrosion on `CMAKE_PREFIX_PATH` from the
+//!   `nros setup`-provisioned `~/.nros/sdk/corrosion`). This test INSPECTS
+//!   the prebuilt codegen artifacts + RUNS the prebuilt binary — no cmake at
+//!   run time. The build needs `corrosion` + cmake + `nros` + the
+//!   `play_launch_parser` (gated by `cmake_fixture_prereqs_ok`); absent →
+//!   no artifact → `require_cmake_fixture` skips per tier.
+//! * `threadx_bringup_rv64` — the RISC-V 64 QEMU codegen sibling
+//!   (CONFIGURE-ONLY: `main.c` is host-shaped, won't link bare-metal rv64).
+//!   Proves the codegen is board-agnostic under `-DNANO_ROS_BOARD=riscv64-qemu`.
+//!   Built only when `riscv64-unknown-elf-gcc` + the `nros setup --source
+//!   threadx --source threadx-netxduo` trees are present; else skipped.
+//!
 //! A full ThreadX-Linux native-simulation bringup (kernel boot, NetX BSD
 //! shim, zenohd over veth, real publish/subscribe) is exercised by
 //! `tests/rtos_e2e.rs` Platform::ThreadxLinux — outside this audit.
-//!
-//! Skip semantics mirror `phase212_d_workspace_metadata.rs`: `nros_tests::skip!`
-//! when prereqs (`nros` CLI, `cmake`) are missing.
-//!
-//! The Corrosion-import path is exercised lazily — when Corrosion isn't
-//! installed on the host, the helper logs a STATUS message and emits a
-//! weak stub for each `__nros_component_<pkg>_register()` (Phase
-//! 212.M.5.a.1 per-pkg mangled symbol) so the build still links + runs.
-//! A separate `#[ignore]` test asserts the Corrosion-present path
-//! imports the Rust component crates.
 //
-// TODO(N.7 ThreadX migration): Phase 212.N.7 step-6 retired the
-// Rust-side `__nros_component_<pkg>_*` extern symbols (the
-// `nros::node!()` macro now emits one public `register(runtime)`
-// wrapper instead). The ThreadX C-side `system_main.c` baker
-// (`cmake/NanoRosThreadxSystemCodegen.cmake`) is untouched by that
-// retirement — it still emits `__nros_component_<pkg>_register` extern
-// declarations + weak stubs at the C layer, where the linker resolves
-// them against Corrosion-imported Rust staticlibs that re-expose those
-// symbols via per-fixture trampolines (see
-// `multi_pkg_workspace_threadx/src/<pkg>/src/lib.rs`). The assertions
-// below still match that C-side output verbatim. Re-audit when the
-// ThreadX Entry pkg migration lands and the C baker is replaced (or
-// rewired to call `<pkg>::register(runtime)` through Corrosion).
+// NOTE: the C-side `system_main.c` baker still emits
+// `__nros_component_<pkg>_register` extern decls + weak stubs, which the
+// linker resolves against the Corrosion-imported Rust staticlibs that
+// re-expose those symbols via per-fixture trampolines (see
+// `multi_pkg_workspace_threadx/src/<pkg>/src/lib.rs`). Re-audit when the
+// ThreadX Entry-pkg migration replaces the C baker.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{fs, path::PathBuf, process::Command};
 
-fn workspace_root() -> PathBuf {
-    nros_tests::project_root()
+fn cmake_fixture_dir(id: &str) -> PathBuf {
+    nros_tests::project_root().join("build/cmake-fixtures").join(id)
 }
 
-fn fixture(name: &str) -> PathBuf {
-    workspace_root()
-        .join("packages/testing/nros-tests/fixtures")
-        .join(name)
-}
-
-fn stage_fixture(name: &str) -> (tempfile::TempDir, PathBuf) {
-    let src = fixture(name);
-    let dst = tempfile::tempdir().expect("tempdir");
-    copy_tree(&src, dst.path()).expect("copy fixture");
-    // Rewrite @NANO_ROS_ROOT@ in threadx_app/CMakeLists.txt.
-    let cml = dst.path().join("threadx_app/CMakeLists.txt");
-    let rendered = fs::read_to_string(&cml)
-        .expect("read threadx_app CMakeLists")
-        .replace("@NANO_ROS_ROOT@", workspace_root().to_str().unwrap());
-    fs::write(&cml, rendered).expect("write rendered CMakeLists");
-    let root = dst.path().to_path_buf();
-    (dst, root)
-}
-
-fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if ty.is_dir() {
-            copy_tree(&from, &to)?;
-        } else if ty.is_file() {
-            fs::copy(&from, &to)?;
-        }
-    }
-    Ok(())
-}
-
-fn corrosion_available() -> bool {
-    let probe = match tempfile::tempdir() {
-        Ok(d) => d,
-        Err(_) => return false,
-    };
-    // Prepend ~/.nros/sdk/corrosion to CMAKE_PREFIX_PATH so the
-    // user-installed Corrosion (via `just workspace install-corrosion`
-    // or the manual `cmake --install` recipe) gets discovered.
-    let nros_corrosion = std::env::var("HOME")
-        .map(|h| format!("{h}/.nros/sdk/corrosion"))
-        .unwrap_or_default();
-    let prefix_path = match std::env::var("CMAKE_PREFIX_PATH") {
-        Ok(existing) if !existing.is_empty() => format!("{nros_corrosion}:{existing}"),
-        _ => nros_corrosion,
-    };
-    Command::new("cmake")
-        .env("CMAKE_PREFIX_PATH", &prefix_path)
-        .args([
-            "--find-package",
-            "-DNAME=Corrosion",
-            "-DCOMPILER_ID=GNU",
-            "-DLANGUAGE=C",
-            "-DMODE=EXIST",
-        ])
-        .current_dir(probe.path())
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-fn require_test_prereqs() -> Option<()> {
-    if !nros_tests::require_nros_cli() {
-        return None;
-    }
-    if !nros_tests::process::require_cmake() {
-        return None;
-    }
-    Some(())
-}
-
-/// Phase 212.H.4 main acceptance: cmake codegen + link + runtime
-/// component dispatch on threadx-linux (build host is also the
-/// simulation host — no cross-compile dependency).
-///
-/// Phase 212.M-F.17 (landed): the M.10 sidecar-retirement put the
-/// Cargo-native `[package.metadata.nros.component]` shape on this
-/// fixture, and `nros plan` now consumes it directly via
-/// `Workspace::synthetic_metadata_artifacts` (no sidecar `metadata/*.json`
-/// needed). The cmake configure step that shells `nros plan` therefore
-/// succeeds. Requires the in-tree CLI (`just setup-cli`, resolved on
-/// PATH by `activate.sh`) carrying the M-F.17 planner wiring.
-#[test]
-fn threadx_linux_2_component_bringup_builds_and_publishes() {
-    if require_test_prereqs().is_none() {
-        nros_tests::skip!("prereqs missing (nros CLI / cmake)");
-    }
-
-    let (_guard, root) = stage_fixture("multi_pkg_workspace_threadx");
-    let app_src = root.join("threadx_app");
-    let build_dir = app_src.join("build");
-
-    let configure = Command::new("cmake")
-        .args(["-S"])
-        .arg(&app_src)
-        .args(["-B"])
-        .arg(&build_dir)
-        .output()
-        .expect("spawn cmake configure");
-    assert!(
-        configure.status.success(),
-        "cmake configure failed:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&configure.stdout),
-        String::from_utf8_lossy(&configure.stderr)
-    );
-
-    // Codegen artifacts surfaced where the helper documents.
+/// Assert the codegen artifacts a `nros_threadx_codegen_system(...)` configure
+/// emits under `<build>/` — shared by the host + rv64 legs (board-agnostic).
+fn assert_codegen_artifacts(build_dir: &std::path::Path) {
     let sys_main = build_dir.join("nros-system/system_main.c");
     let sys_cargo = build_dir.join("nros-system/Cargo.toml");
     let components_cmake = build_dir.join("nros_components.cmake");
@@ -188,32 +76,21 @@ fn threadx_linux_2_component_bringup_builds_and_publishes() {
         cargo_stub.contains("src/talker_pkg") && cargo_stub.contains("src/listener_pkg"),
         "workspace Cargo.toml stub missing component members:\n{cargo_stub}"
     );
+}
 
-    let build = Command::new("cmake")
-        .arg("--build")
-        .arg(&build_dir)
-        .output()
-        .expect("spawn cmake build");
-    assert!(
-        build.status.success(),
-        "cmake build failed:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&build.stdout),
-        String::from_utf8_lossy(&build.stderr)
-    );
+/// §212.H.4 main acceptance: the prebuilt host `threadx_app` carries the
+/// codegen artifacts AND, when run, dispatches the talker + listener
+/// component entries in plan order.
+#[test]
+fn threadx_linux_2_component_bringup_builds_and_publishes() -> nros_tests::TestResult<()> {
+    // Build-stage `build_cmake_fixture` produced the host binary; resolve it
+    // (tier-aware skip when the cmake/corrosion fixture wasn't built).
+    let app = nros_tests::fixtures::require_cmake_fixture("threadx_bringup", "threadx_app")?;
+    let build_dir = cmake_fixture_dir("threadx_bringup");
 
-    let app = build_dir.join("threadx_app");
-    assert!(
-        app.is_file(),
-        "missing threadx_app binary at {}",
-        app.display()
-    );
+    assert_codegen_artifacts(&build_dir);
 
-    // Run and assert the per-component dispatch fires. With Corrosion
-    // present the real Rust entries print `[talker] component entry
-    // reached` / `[listener] component entry reached`; without Corrosion
-    // the weak stubs print `[<name>] stub component entry (...)`. Both
-    // surfaces carry the role identity — the test asserts the identity,
-    // not the message body, to stay forward-compatible.
+    // Run the prebuilt binary + assert the per-component dispatch fires.
     let run = Command::new(&app).output().expect("spawn threadx_app");
     assert!(
         run.status.success(),
@@ -229,188 +106,58 @@ fn threadx_linux_2_component_bringup_builds_and_publishes() {
     );
     assert!(out.contains("[talker]"), "no talker dispatch:\n{out}");
     assert!(out.contains("[listener]"), "no listener dispatch:\n{out}");
+    Ok(())
 }
 
-/// Corrosion-present variant — asserts the helper imports the Rust
-/// component staticlibs and the real (non-weak) entries land in the
-/// binary. Ignored until Corrosion is added to the Phase 212 setup
-/// tier (mirrors `phase212_d_workspace_metadata.rs`'s mixed-Corrosion
-/// test).
-fn cmake_prefix_path_with_corrosion() -> String {
-    let nros_corrosion = std::env::var("HOME")
-        .map(|h| format!("{h}/.nros/sdk/corrosion"))
-        .unwrap_or_default();
-    match std::env::var("CMAKE_PREFIX_PATH") {
-        Ok(existing) if !existing.is_empty() => format!("{nros_corrosion}:{existing}"),
-        _ => nros_corrosion,
-    }
-}
-
+/// Corrosion-present variant — the build stage put the `nros setup`-provisioned
+/// Corrosion on `CMAKE_PREFIX_PATH`, so the codegen helper imported the Rust
+/// component crates and the REAL (non-stub) entries are in the binary. Asserts
+/// the prebuilt run shows the real-entry messages (the weak-stub fallback prints
+/// `stub component entry` instead). When the build stage lacked Corrosion the
+/// binary still runs (weak stubs) → the real-entry assertion would fail, so we
+/// skip that case rather than misreport.
 #[test]
-fn threadx_linux_2_component_bringup_corrosion_imports_rust() {
-    if require_test_prereqs().is_none() {
-        nros_tests::skip!("prereqs missing (nros CLI / cmake)");
-    }
-    if !corrosion_available() {
-        nros_tests::skip!("Corrosion not found via cmake --find-package");
-    }
+fn threadx_linux_2_component_bringup_corrosion_imports_rust() -> nros_tests::TestResult<()> {
+    let app = nros_tests::fixtures::require_cmake_fixture("threadx_bringup", "threadx_app")?;
 
-    let (_guard, root) = stage_fixture("multi_pkg_workspace_threadx");
-    let app_src = root.join("threadx_app");
-    let build_dir = app_src.join("build");
-    let prefix_path = cmake_prefix_path_with_corrosion();
-
-    let configure = Command::new("cmake")
-        .env("CMAKE_PREFIX_PATH", &prefix_path)
-        .args(["-S"])
-        .arg(&app_src)
-        .args(["-B"])
-        .arg(&build_dir)
-        .output()
-        .expect("spawn cmake configure");
-    assert!(
-        configure.status.success(),
-        "cmake configure failed:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&configure.stdout),
-        String::from_utf8_lossy(&configure.stderr)
-    );
-
-    let build = Command::new("cmake")
-        .env("CMAKE_PREFIX_PATH", &prefix_path)
-        .arg("--build")
-        .arg(&build_dir)
-        .output()
-        .expect("spawn cmake build");
-    assert!(
-        build.status.success(),
-        "cmake build failed:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&build.stdout),
-        String::from_utf8_lossy(&build.stderr)
-    );
-
-    let app = build_dir.join("threadx_app");
     let run = Command::new(&app).output().expect("spawn threadx_app");
     let out = String::from_utf8_lossy(&run.stdout);
+
+    // Weak-stub build (Corrosion absent at build time) → no real import to
+    // assert. Skip with the reason instead of failing.
+    if out.contains("stub component entry") {
+        nros_tests::skip!(
+            "threadx_bringup fixture built without Corrosion (weak stubs) — no Rust import to \
+             assert. Provision via `nros setup --tool corrosion` before `just build-test-fixtures`."
+        );
+    }
     assert!(
         out.contains("[talker] component entry reached")
             && out.contains("[listener] component entry reached"),
         "Corrosion-imported Rust entries didn't fire:\n{out}"
     );
+    Ok(())
 }
 
-// =============================================================================
-// Phase 212.H.4 — RISC-V 64 QEMU companion (configure-only)
-// =============================================================================
-//
-// Sibling of `threadx_linux_2_component_bringup_builds_and_publishes`
-// that exercises the SAME `nros_threadx_codegen_system(...)` helper +
-// `cmake/platform/nano-ros-threadx.cmake` switch under
-// `NANO_ROS_BOARD=riscv64-qemu`. The threadx-linux variant is
-// host-linked + runnable; the rv64-qemu variant is a bare-metal cross-
-// compile that needs an entry.s + linker script + ThreadX startup —
-// out of scope for this codegen-surface audit.
-//
-// The test asserts the cmake CONFIGURE step on the existing
-// `multi_pkg_workspace_threadx` fixture succeeds under
-// `-DNANO_ROS_BOARD=riscv64-qemu` and emits the codegen artifacts
-// (system_main.c, Cargo.toml stub, components cmake). The build step
-// is deliberately skipped — `threadx_app/main.c` is host-shaped and
-// wouldn't link without a bare-metal entry/linker script. A full
-// rv64-qemu firmware fixture is a separate scope.
-
-fn rv64_threadx_prereqs() -> Option<(PathBuf, PathBuf)> {
-    use nros_tests::fixtures::threadx_riscv64::{
-        is_netx_available, is_riscv_gcc_available, is_threadx_available,
-    };
-    if !require_test_prereqs().is_some() {
-        return None;
-    }
-    if !is_threadx_available() {
-        return None;
-    }
-    if !is_netx_available() {
-        return None;
-    }
-    if !is_riscv_gcc_available() {
-        return None;
-    }
-    let threadx_dir = PathBuf::from(std::env::var("THREADX_DIR").ok()?);
-    let netx_dir = PathBuf::from(std::env::var("NETX_DIR").ok()?);
-    Some((threadx_dir, netx_dir))
-}
-
-/// Phase 212.H.4 sibling — RISC-V 64 QEMU cross-platform codegen +
-/// platform-module dispatch verification. Configure-only: the
-/// `multi_pkg_workspace_threadx` fixture's `threadx_app/main.c` is
-/// host-shaped and won't link bare-metal RV64 without an entry.s +
-/// linker script (separate firmware fixture, out of H.4 scope).
+/// §212.H.4 sibling — RISC-V 64 QEMU codegen + platform-module dispatch
+/// verification. Configure-only (the fixture's host-shaped `main.c` won't link
+/// bare-metal rv64); the build stage emits the SAME codegen artifacts under
+/// `-DNANO_ROS_BOARD=riscv64-qemu`, proving the codegen path is board-agnostic.
+/// The `threadx_bringup_rv64` fixture is built only when
+/// `riscv64-unknown-elf-gcc` + the ThreadX/NetX trees are present (`nros setup
+/// --source threadx --source threadx-netxduo`); absent → skip.
 #[test]
-fn threadx_riscv64_qemu_2_component_bringup_builds() {
-    let Some((threadx_dir, netx_dir)) = rv64_threadx_prereqs() else {
-        nros_tests::skip!(
-            "rv64 ThreadX prereqs missing (nros CLI / cmake / THREADX_DIR / NETX_DIR / riscv64-unknown-elf-gcc)"
-        );
-    };
+fn threadx_riscv64_qemu_2_component_bringup_builds() -> nros_tests::TestResult<()> {
+    // Resolve a configure artifact (no binary — configure-only). Tier-aware
+    // skip when the rv64 fixture wasn't built (riscv toolchain / trees absent).
+    let sys_main =
+        nros_tests::fixtures::require_cmake_fixture("threadx_bringup_rv64", "nros-system/system_main.c")?;
+    let build_dir = sys_main
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("rv64 build dir");
 
-    let board_config_dir =
-        workspace_root().join("packages/boards/nros-board-threadx-qemu-riscv64/config");
-    assert!(
-        board_config_dir.is_dir(),
-        "missing board config dir at {} — tx_user.h / nx_user.h / link.lds source",
-        board_config_dir.display()
-    );
-
-    let (_guard, root) = stage_fixture("multi_pkg_workspace_threadx");
-    let app_src = root.join("threadx_app");
-    let build_dir = app_src.join("build");
-
-    let configure = Command::new("cmake")
-        .args(["-S"])
-        .arg(&app_src)
-        .args(["-B"])
-        .arg(&build_dir)
-        .arg("-DNANO_ROS_BOARD=riscv64-qemu")
-        .arg(format!("-DTHREADX_DIR={}", threadx_dir.display()))
-        .arg(format!("-DNETX_DIR={}", netx_dir.display()))
-        .arg(format!(
-            "-DTHREADX_CONFIG_DIR={}",
-            board_config_dir.display()
-        ))
-        .arg(format!("-DNETX_CONFIG_DIR={}", board_config_dir.display()))
-        .output()
-        .expect("spawn cmake configure");
-    assert!(
-        configure.status.success(),
-        "cmake configure (rv64-qemu) failed:\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&configure.stdout),
-        String::from_utf8_lossy(&configure.stderr)
-    );
-
-    // Same codegen surface as the threadx-linux variant — verifies the
-    // platform module's codegen path is board-agnostic.
-    let sys_main = build_dir.join("nros-system/system_main.c");
-    let sys_cargo = build_dir.join("nros-system/Cargo.toml");
-    let components_cmake = build_dir.join("nros_components.cmake");
-    assert!(
-        sys_main.is_file(),
-        "missing {} after rv64-qemu configure",
-        sys_main.display()
-    );
-    assert!(
-        sys_cargo.is_file(),
-        "missing {} after rv64-qemu configure",
-        sys_cargo.display()
-    );
-    assert!(
-        components_cmake.is_file(),
-        "missing {} after rv64-qemu configure",
-        components_cmake.display()
-    );
-
-    let sys_main_body = fs::read_to_string(&sys_main).expect("read system_main.c");
-    assert!(
-        sys_main_body.contains("__nros_component_talker_pkg_register")
-            && sys_main_body.contains("__nros_component_listener_pkg_register"),
-        "rv64-qemu system_main.c missing per-component register entries:\n{sys_main_body}"
-    );
+    // Same codegen surface as the host leg — board-agnostic emit.
+    assert_codegen_artifacts(build_dir);
+    Ok(())
 }

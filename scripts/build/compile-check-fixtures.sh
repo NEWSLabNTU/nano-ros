@@ -171,6 +171,15 @@ CMAKE_FIXTURES=(
     "l9_register_cpp:packages/testing/nros-tests/fixtures/l9_register_cpp"
     "l9_register_c:packages/testing/nros-tests/fixtures/l9_register_c"
     "l9_deploy:packages/testing/nros-tests/fixtures/l9_deploy"
+    # issue-0041 Wave B — ThreadX-Linux 2-component bringup. `nros setup --tool
+    # corrosion --source threadx` provisions the prereqs; the codegen helper
+    # (`NanoRosThreadxSystemCodegen.cmake`) shells `nros plan` → `system_main.c`
+    # + per-component dispatch, links the host `threadx_app`, and (Corrosion on
+    # CMAKE_PREFIX_PATH) imports the Rust component crates. `-S` points at the
+    # `threadx_app/` subdir (self-locates the repo 6-up). The test
+    # (threadx_corrosion_bringup.rs) inspects the codegen artifacts + runs the
+    # prebuilt binary. rv64-qemu cross leg stays a gated run-time skip.
+    "threadx_bringup:packages/testing/nros-tests/fixtures/multi_pkg_workspace_threadx/threadx_app"
 )
 cmake_out="$repo_root/build/cmake-fixtures"
 
@@ -194,10 +203,22 @@ build_cmake_fixture() {
     echo "== cmake-fixture: $id =="
     rm -rf "$bld"
     mkdir -p "$bld"
+    # Put the `nros setup`-provisioned Corrosion (source-built into
+    # `~/.nros/sdk/corrosion/<ver>/`) on CMAKE_PREFIX_PATH so a fixture's
+    # `find_package(Corrosion)` resolves it. Harmless for fixtures that only
+    # `find_package(Corrosion QUIET)` (no Rust import); required by the
+    # threadx-bringup fixture, whose codegen helper imports the Rust component
+    # crates via Corrosion when present. cmake's config search walks
+    # `<prefix>/<name>*/...`, so the un-versioned parent prefix suffices.
+    local prefix_path="${CMAKE_PREFIX_PATH:-}"
+    if [ -d "$HOME/.nros/sdk/corrosion" ]; then
+        prefix_path="$HOME/.nros/sdk/corrosion${prefix_path:+:$prefix_path}"
+    fi
     # Pass both nros cmake vars — different templates name it differently
     # (NROS_CLI_BIN vs NROS_BIN); the unused one is harmless.
-    cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN"
-    cmake --build "$bld" -j
+    CMAKE_PREFIX_PATH="$prefix_path" \
+        cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN"
+    CMAKE_PREFIX_PATH="$prefix_path" cmake --build "$bld" -j
     echo "   built $bld"
 }
 
@@ -294,6 +315,39 @@ if cmake_fixture_prereqs_ok; then
         build_cmake_fixture "${entry%%:*}" "${entry#*:}"
         cmake_n=$((cmake_n + 1))
     done
+
+    # issue-0041 Wave B — ThreadX RISC-V 64 QEMU codegen sibling
+    # (CONFIGURE-ONLY). Exercises the SAME `nros_threadx_codegen_system` helper
+    # under `-DNANO_ROS_BOARD=riscv64-qemu` to prove the codegen is board-
+    # agnostic. The `threadx_app/main.c` is host-shaped → won't LINK bare-metal
+    # rv64, so we stop at configure (emits system_main.c + the Cargo/components
+    # cmake the test inspects). Gated on `riscv64-unknown-elf-gcc` + the
+    # `nros setup --source threadx threadx-netxduo` trees; absent → no artifacts
+    # → the consuming test skips (require_cmake_fixture). The board config dir
+    # ships the rv64 tx_user.h / nx_user.h / link.lds.
+    _tx_kernel="$repo_root/third-party/threadx/kernel"
+    _tx_netx="$repo_root/third-party/threadx/netxduo"
+    _tx_cfg="$repo_root/packages/boards/nros-board-threadx-qemu-riscv64/config"
+    if command -v riscv64-unknown-elf-gcc >/dev/null 2>&1 \
+       && [ -f "$_tx_kernel/common/inc/tx_api.h" ] \
+       && [ -f "$_tx_netx/common/inc/nx_api.h" ]; then
+        _rv64_bld="$cmake_out/threadx_bringup_rv64"
+        _rv64_src="$repo_root/packages/testing/nros-tests/fixtures/multi_pkg_workspace_threadx/threadx_app"
+        echo "== cmake-fixture: threadx_bringup_rv64 (configure-only) =="
+        rm -rf "$_rv64_bld"; mkdir -p "$_rv64_bld"
+        _rv64_prefix="${CMAKE_PREFIX_PATH:-}"
+        [ -d "$HOME/.nros/sdk/corrosion" ] \
+            && _rv64_prefix="$HOME/.nros/sdk/corrosion${_rv64_prefix:+:$_rv64_prefix}"
+        CMAKE_PREFIX_PATH="$_rv64_prefix" cmake -S "$_rv64_src" -B "$_rv64_bld" \
+            "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN" \
+            -DNANO_ROS_BOARD=riscv64-qemu \
+            "-DTHREADX_DIR=$_tx_kernel" "-DNETX_DIR=$_tx_netx" \
+            "-DTHREADX_CONFIG_DIR=$_tx_cfg" "-DNETX_CONFIG_DIR=$_tx_cfg"
+        cmake_n=$((cmake_n + 1))
+        echo "   configured $_rv64_bld (rv64 codegen artifacts only)"
+    else
+        echo "cmake-fixtures: threadx_bringup_rv64 skipped — riscv64-unknown-elf-gcc or ThreadX/NetX trees absent (run \`nros setup --tool riscv-none-elf-gcc --source threadx --source threadx-netxduo\`)" >&2
+    fi
 fi
 
 cxx_n=0

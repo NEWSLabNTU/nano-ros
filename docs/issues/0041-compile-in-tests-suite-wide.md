@@ -109,6 +109,30 @@ un-`#[ignore]`d + live (M-F.17 `nros plan` reads `[package.metadata.nros.compone
 and joins the slow-compile override as a STOPGAP compile-in-test exception.
 `freertos_run_plan_runtime` (was `phase212_n_freertos_run_plan_runtime`) stays
 `#[ignore]`d on issue 0045.
+**`threadx_corrosion_bringup` (3 fns) CONVERTED (2026-06-13):** provisioned the
+prereqs via `nros setup` (`--tool corrosion`, `--source threadx`,
+`--source threadx-netxduo`) and moved the cmake configure + build + the
+Corrosion-imported Rust crate compiles to the build stage. Two cmake fixtures:
+`threadx_bringup` (host `threadx_app` — `build_cmake_fixture` now puts the
+provisioned `~/.nros/sdk/corrosion` on `CMAKE_PREFIX_PATH`, so the codegen helper
+imports the Rust components and the REAL non-stub entries link) and
+`threadx_bringup_rv64` (CONFIGURE-ONLY rv64 codegen sibling — gated on
+`riscv64-unknown-elf-gcc` + the ThreadX/NetX trees). The fixture
+`threadx_app/CMakeLists.txt` lost its `@NANO_ROS_ROOT@` placeholder for a
+relative `_NROS_ROOT` (6-up), mirroring the `l9_register_*` fixtures, so the
+cmake-fixture mechanism points `-S` straight at it. `threadx_corrosion_bringup.rs`
+now inspects the prebuilt codegen artifacts + runs the prebuilt host binary
+(~0.003s/fn, no runtime cmake). Removed `binary(threadx_corrosion_bringup)` from
+the override.
+
+**Native + cross-build POSITIVE conversions COMPLETE.** The slow-compile
+`nextest.toml` override now holds ONLY the two NEGATIVE cases
+(`native_orchestration_misuse`, `native_main_macro_misuse` — compile-FAIL /
+rebuild-tracking, can't be prebuilt → permanent documented exceptions). Every
+positive compile-in-test is a build-stage fixture. Residual: Wave C/D
+(zephyr/esp) are converted to the west-/idf-fixture mechanisms but SDK-gated
+(no zephyr/esp-idf entry in `nros-sdk-index.toml` → not host-provisionable here),
+plus `zephyr_self_pkg` (generates its app in-test) still deferred.
 
 **Wave C — zephyr** (west; heavy, gate on SDK): `phase212_h1_zephyr`,
 `phase212_mf3_zephyr_self_pkg`, `integration_zephyr`.
