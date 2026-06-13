@@ -30,9 +30,6 @@ extern crate std;
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
 
-#[cfg(feature = "rmw-xrce-cffi")]
-extern crate nros_rmw_xrce_cffi;
-
 // Opt-in RTOS heap-usage tracking (issue #6). A single shared `HeapStats`
 // counter instruments whichever RTOS global allocator is active (exactly one
 // platform feature is on at a time). `STATS` sees the Rust global allocator's
@@ -196,16 +193,11 @@ mod platform_critical_section {
 
 use core::ffi::{c_char, c_int, c_void};
 
-// Phase 161 — mirror nros-c's Phase 134.fix. Declaring
-// `nros_rmw_zenoh_register` as a plain `extern "C"` symbol keeps the
-// public surface (downstream C/C++ glue may resolve this) without
-// pulling `nros-rmw-zenoh` into `libnros_cpp.a`'s Rust dep graph. The
-// linker resolves the symbol at the C-binary link step from
-// `libnros_rmw_zenoh.a` (the standalone staticlib).
-#[cfg(feature = "rmw-zenoh-cffi")]
-unsafe extern "C" {
-    pub fn nros_rmw_zenoh_register() -> i32;
-}
+// Phase 241.D3-rev — force-link the selected backend into `libnros_cpp.a` (the C++
+// umbrella's staticlib root) + auto-register it before `main`. nros-c's twin anchor
+// is DCE'd as a dependency, so the root carries its own. See `rmw_backend`.
+#[cfg(any(feature = "rmw-zenoh-cffi", feature = "rmw-xrce-cffi"))]
+mod rmw_backend;
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
 #[cfg(feature = "rmw-cffi")]
@@ -507,17 +499,12 @@ pub unsafe extern "C" fn nros_cpp_init(
     unsafe {
         nros_app_register_backends();
     }
-    #[cfg(feature = "rmw-xrce-cffi")]
-    {
-        let _ = nros_rmw_xrce_cffi::register();
-    }
-    // Phase 161 — drop the redundant `nros_rmw_zenoh::register()` call;
-    // `nros_app_register_backends()` above already calls
-    // `nros_rmw_zenoh_register()` via the CMake-emitted strong stub
-    // (`cmake/NanoRosLink.cmake:62-117`). Keeping a second registration
-    // path used to pull `nros-rmw-zenoh` into the Rust dep graph and
-    // produced the dual zenoh-pico instance bug — see Cargo.toml for
-    // the full diagnosis.
+    // Phase 241.D3-rev — the selected backend is auto-registered before `main` by
+    // the `nros-c` umbrella's `rmw_backend` `.init_array` ctor (bundled into
+    // `libnros_cpp.a`). `nros_app_register_backends()` above stays as the weak
+    // board-override hook; the explicit per-backend `register()` calls are gone
+    // (idempotent re-register, and they referenced backend crates nros-cpp no
+    // longer deps directly).
     let node_name_str = match unsafe { cstr_to_str(node_name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
