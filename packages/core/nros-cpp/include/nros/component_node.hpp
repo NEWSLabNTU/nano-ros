@@ -95,6 +95,7 @@
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio> // fprintf — boot-failure diagnostic (hosted only)
+#include <string> // std::string-keyed parameter overloads (242.7 — rclcpp keys on std::string)
 #endif
 
 /// Max timers a single `ComponentNode` may own via the storage-less
@@ -360,6 +361,22 @@ class ComponentNode {
         (void)params_.template get_parameter<Elem>(name, out);
         return out;
     }
+
+    // 242.7 — `std::string`-keyed overloads (hosted). Real rclcpp nodes (ASI's
+    // vendored MPC: `node.declare_parameter<int>(s)`, `declare_parameter<double>(ns
+    // + "…")`) pass `std::string` names; `std::string` does not implicitly convert
+    // to `const char*`, so forward via `.c_str()`. Covers scalar T + std::vector<T>;
+    // these compile the vendored call sites unchanged. (rclcpp keys on std::string.)
+    // Single std::string declare overload: forwards to the const-char* layer,
+    // which SFINAE-splits scalar vs std::vector — so this one signature covers
+    // both `declare_parameter<int>(s)` and `declare_parameter<std::vector<double>>(s, {…})`.
+    template <typename T> T declare_parameter(const ::std::string& name, T default_value = T{}) {
+        return this->template declare_parameter<T>(name.c_str(), default_value);
+    }
+    template <typename T> T get_parameter(const ::std::string& name) const {
+        return this->template get_parameter<T>(name.c_str());
+    }
+    bool has_parameter(const ::std::string& name) const { return has_parameter(name.c_str()); }
 #endif // NROS_CPP_STD
 
   protected:
