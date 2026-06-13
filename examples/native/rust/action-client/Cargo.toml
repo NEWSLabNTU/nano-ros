@@ -25,11 +25,10 @@ rmw-cyclonedds = [
     # umbrella + `nros-node::__FORCE_LINK_CYCLONEDDS_SYS` keep the `-sys`
     # rlib alive for us now).
     "nros/rmw-cyclonedds",
-    # Phase 212.K.7.4.c → 214.S.5.c follow-up — see action-server's
-    # Cargo.toml. To be dropped when node.rs internalizes CancelGoal /
-    # GoalStatusArray registration.
-    "dep:nros-rmw-cyclonedds",
-    "dep:action_msgs",
+    # Phase 244 E3 — forward to the generated action crate; its
+    # `RosAction::register_protocol_types` registers the `action_msgs` protocol
+    # types under cyclonedds (replaces the former dep:* + main.rs block).
+    "example_interfaces/rmw-cyclonedds",
 ]
 rmw-xrce = ["nros/rmw-xrce"]
 
@@ -39,12 +38,6 @@ nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", fe
 example_interfaces = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
-
-# Phase 212.K.7.4.c → 214.S.5.c follow-up — see action-server's Cargo.toml.
-# (cyclonedds keeps its project dep for explicit CancelGoal / GoalStatusArray
-# type registration; to be dropped when node.rs internalizes it.)
-nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds", optional = true }
-action_msgs = { version = "*", default-features = false, optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the
@@ -63,5 +56,6 @@ builtin_interfaces = { path = "generated/builtin_interfaces" }
 example_interfaces = { path = "generated/example_interfaces" }
 unique_identifier_msgs = { path = "generated/unique_identifier_msgs" }
 nros-core = { path = "../../../../packages/core/nros-core" }
+nros-rmw-cyclonedds = { path = "../../../../packages/dds/nros-rmw-cyclonedds" }
 nros-serdes = { path = "../../../../packages/core/nros-serdes" }
 # === END nros-managed [patch.crates-io] ===

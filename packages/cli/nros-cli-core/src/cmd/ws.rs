@@ -952,6 +952,7 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
             "nros-rmw-zenoh-staticlib",
             "packages/zpico/nros-rmw-zenoh-staticlib",
         ),
+        ("nros-rmw-cyclonedds", "packages/dds/nros-rmw-cyclonedds"),
         (
             "nros-rmw-cyclonedds-sys",
             "packages/dds/nros-rmw-cyclonedds-sys",
@@ -1121,7 +1122,18 @@ fn render_patch_block(
         // Always include the minimum runtime patches the generated msg
         // crates depend on, then union in the consumer-referenced extras.
         let mut wanted: Vec<String> = vec!["nros-core".to_string(), "nros-serdes".to_string()];
-        for extra in extra_runtime_crates {
+        // Phase 244 E3 — the GENERATED crates can themselves carry registry-style
+        // runtime deps the consumer never names directly (an action crate deps
+        // `nros-rmw-cyclonedds` for `RosAction::register_protocol_types`). Scan
+        // each generated pkg's Cargo.toml so those get a `[patch.crates-io]` path
+        // too — otherwise cargo can't resolve them post-sync.
+        let mut gen_extras: Vec<String> = Vec::new();
+        for pkg in pkgs {
+            if let Ok(gen_body) = std::fs::read_to_string(build_root.join(pkg).join("Cargo.toml")) {
+                gen_extras.extend(extract_consumer_registry_nros_deps(&gen_body));
+            }
+        }
+        for extra in extra_runtime_crates.iter().chain(gen_extras.iter()) {
             if nros_crate_subpath(extra).is_some() {
                 if !wanted.iter().any(|w| w == extra) {
                     wanted.push(extra.clone());
