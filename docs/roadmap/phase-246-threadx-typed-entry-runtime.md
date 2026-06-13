@@ -158,16 +158,16 @@ The migration is staged so each wave lands green before the next, and the legacy
 ThreadX baker is removed only **after** its last consumer moves off it (W3).
 
 ### W0 — codegen + template (the reusable core)
-- [ ] **W0.1** `board_cpp_path()` ThreadX case (`emit_cpp.rs`):
+- [x] **W0.1** `board_cpp_path()` ThreadX case (`emit_cpp.rs`):
   `"threadx" | "threadx-linux" | "threadx-qemu-riscv64" | "qemu-riscv64-threadx"
   => "::nros::board::ThreadxBoard"`. Unit-test in `tests/entry_typed_plan.rs`
   (add a threadx board row).
-- [ ] **W0.2** `cmake/templates/threadx_entry_main_typed.cpp.in` — mirror the
+- [x] **W0.2** `cmake/templates/threadx_entry_main_typed.cpp.in` — mirror the
   NuttX typed template (`NuttxBoard` → `ThreadxBoard`; same shape-branch + the
   `app_main` `NROS_APP_MAIN_REGISTER_VOID()` tail).
-- [ ] **W0.3** `nano_ros_node_register` ThreadX TYPED branch (locator/domain bake +
+- [x] **W0.3** `nano_ros_node_register` ThreadX TYPED branch (locator/domain bake +
   render W0.2 + link the component lib + `nros_platform_link_app`).
-- [ ] **W0.4** Drop the phase-245 baker `RUNTIME=cpp` mode (`NanoRosThreadxSystemCodegen.cmake`)
+- [x] **W0.4** Drop the phase-245 baker `RUNTIME=cpp` mode (`NanoRosThreadxSystemCodegen.cmake`)
   + `ThreadxBoard::run` (the interpreter adapter) from `nros-cpp/main.hpp`. Leaves
   `ThreadxBoard::run_components` as the sole ThreadX entry. (The `stub` mode + the
   whole baker file stay until W3 removes its last consumer.)
