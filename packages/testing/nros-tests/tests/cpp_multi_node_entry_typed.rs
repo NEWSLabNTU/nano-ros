@@ -87,6 +87,38 @@ fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestRes
     assert!(link_body.contains("talker_pkg_talker_component"));
     assert!(link_body.contains("listener_pkg_listener_component"));
 
+    // Phase 211.H (issue #52) — the talker node's launch `<param
+    // name="qos_overrides./chatter.publisher.reliability" value="best_effort"/>`
+    // is baked by emit_cpp into a `set_qos_overrides` call BEFORE
+    // `configure(node_0)`, with role/policy/value mapped to the C-ABI codes
+    // (publisher=0, reliability=0, best_effort=0). Codegen-on-a-real-cmake-build
+    // evidence (the bake runs in `emit_typed`, driven by `nano_ros_entry`'s
+    // `nros codegen entry --typed` shell-out) — the one path the nros-cli-core
+    // unit tests can't reach. The build above linking proves the bake compiles
+    // against the real `nros::Node::set_qos_overrides`.
+    assert!(
+        gen_body.contains("__nros_qos_0[]"),
+        "generated TU missing the baked qos_overrides table:\n{gen_body}"
+    );
+    assert!(
+        gen_body.contains("{ \"/chatter\", 0, 0, 0 }"),
+        "qos_overrides table missing the best_effort publisher override (codes 0,0,0):\n{gen_body}"
+    );
+    assert!(
+        gen_body.contains("__nros_node_0.set_qos_overrides(__nros_qos_0, 1)"),
+        "generated TU missing the set_qos_overrides install call:\n{gen_body}"
+    );
+    let set_at = gen_body
+        .find("set_qos_overrides")
+        .expect("set_qos_overrides present");
+    let cfg_at = gen_body
+        .find(".configure(__nros_node_0)")
+        .expect("configure present");
+    assert!(
+        set_at < cfg_at,
+        "set_qos_overrides must be installed BEFORE configure(node_0)"
+    );
+
     Ok(())
 }
 
@@ -95,6 +127,11 @@ fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestRes
 /// has no loopback, so we run **two** processes vs a router — each listener
 /// receives the other's talker pubs. Asserts ≥1 `Received` (the typed
 /// `bind_subscription_raw` callback fired) and that the talker published.
+///
+/// Phase 211.H (issue #52) — the talker's `/chatter` publisher is created under
+/// the baked `qos_overrides…reliability=best_effort` (see the launch + the
+/// generated-TU assertions above), so this is also the cmake C++ qos_override
+/// runtime-delivery proof: delivery succeeds with the override applied.
 #[rstest::rstest]
 fn multi_node_workspace_cpp_typed_pubsub_e2e(
     zenohd_unique: nros_tests::fixtures::ZenohRouter,

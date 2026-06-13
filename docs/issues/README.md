@@ -49,7 +49,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
 | 49 | example source leaks platform/RMW selection + low-level boilerplate (audit: 81/200 major) | tech-debt | examples | [0049-example-source-platform-rmw-leakage.md](0049-example-source-platform-rmw-leakage.md) |
 | 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
-| 52 | C++ typed-entry does not honor per-topic qos_overrides (211.H wave3b) | tech-debt | cli | [0052-cpp-entry-qos-overrides-honoring.md](0052-cpp-entry-qos-overrides-honoring.md) |
 | 53 | mixed-RMW bridge has no stock-cyclonedds variant + no gateway book recipe (211.I) | tech-debt | testing | [0053-cyclonedds-bridge-variant-and-gateway-recipe.md](0053-cyclonedds-bridge-variant-and-gateway-recipe.md) |
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
 

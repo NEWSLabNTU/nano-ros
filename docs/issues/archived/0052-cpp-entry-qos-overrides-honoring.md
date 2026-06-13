@@ -1,11 +1,35 @@
 ---
 id: 52
 title: C++ typed-entry does not honor per-topic qos_overrides (211.H wave3b)
-status: open
+status: resolved
 type: tech-debt
 area: cli
 related: [phase-211, phase-242, phase-244, rfc-0032]
+resolved_in: "2026-06-14 (runtime FFI + emit auto-bake + cmake C++ e2e)"
 ---
+
+## Resolution (2026-06-14)
+
+Fully landed across three steps:
+
+1. **Runtime FFI slice** — `nros_cpp_qos_override_t` + `nros_cpp_node_set_qos_overrides`
+   + `apply_qos_overrides` in `nros_cpp_{publisher,subscription}_create`; C++
+   `Node::set_qos_overrides` wrapper. (Parity bonus: same in nros-c's rclc API.)
+2. **emit_cpp auto-bake** — entry `PlanNode.qos_overrides` + `qos_overrides_from_params`
+   decompose; `emit_typed` bakes `static const nros_cpp_qos_override_t __nros_qos_<i>[]`
+   + `set_qos_overrides(…)` before `configure(node)` (configure-shape nodes; an
+   rclcpp-shape component creates entities in its ctor before the seam).
+3. **cmake C++ runtime-delivery e2e** — the `multi-node-workspace-cpp-typed`
+   template launch carries `qos_overrides./chatter.publisher.reliability=best_effort`
+   on the talker; the `cpp_robot_entry_typed` cmake fixture bakes + builds it, and
+   `cpp_multi_node_entry_typed.rs` asserts the generated TU contains the baked
+   `set_qos_overrides(__nros_qos_0, 1)` before `configure` AND the typed entry
+   delivers cross-process under the override.
+
+Verified end-to-end: real cmake build emits the bake (codes 0,0,0 =
+publisher/reliability/best_effort), compiles + links against the real
+`nros::Node::set_qos_overrides`, boots, and delivers. Unit coverage:
+decompose, emit table+ordering, C-ABI apply (nros-c + nros-cpp).
 
 ## Gap
 
