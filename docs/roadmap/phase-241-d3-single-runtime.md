@@ -152,11 +152,15 @@ rewire (W4), and the per-cell validation (W7) gates merge.
 - **Acceptance:** `just native build-cpp` + the native C fixtures link clean with
   NO flag; `staticlib_duplicate_symbols` still green.
 
-### W5 — retire the standalone backend staticlibs
-- Delete `nros-rmw-zenoh-staticlib` / `nros-rmw-xrce-cffi-staticlib` **iff** no SDK-
-  matrix consumer still imports them (confirm via grep of cmake + docs first); else
-  keep + document why.
-- **Acceptance:** workspace builds; no dangling references.
+### W5 — standalone backend staticlibs: RETAINED (resolved 2026-06-13)
+- The grep found live consumers, so they are **kept**, not deleted:
+  - **Zephyr** (`zephyr/CMakeLists.txt`) imports `nros-rmw-zenoh-staticlib` via
+    corrosion and links the cargo-built archive directly — the west build is its own
+    link model, separate from the cmake umbrella that W4 rewired.
+  - The archive-symbol / header-parity / zpico-build-matrix tests consume the
+    `libnros_rmw_*_staticlib.a` artifacts + `scripts/check-zenoh-archive-symbols.sh`.
+- W4 already removed them from the **non-Zephyr** cmake C/C++ link (now the umbrella).
+- **Outcome:** no deletion; documented in RFC-0042 D3 + here.
 
 ### W6 — docs
 - Update RFC-0042 D3 (living) + mark the slice-4 provider/`external-registry`

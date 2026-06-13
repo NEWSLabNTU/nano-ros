@@ -181,6 +181,37 @@ upheld by comments and per-combination workarounds:
 - The unified allocator (RFC-0034) and vtable ABI (RFC-0035) are unchanged; D3
   only makes their *linkage* deterministic.
 
+#### D3 implementation — single shared runtime (2026-06-13, Stable)
+
+The "no papering-over" goal landed via a **single-runtime** model, NOT a generated
+whole-archive manifest. Detail + work items: `docs/roadmap/phase-241-d3-single-runtime.md`.
+
+- **One Rust staticlib per binary.** The FFI crate *is* the umbrella: a C binary
+  links only `libnros_c.a`, a C++ binary only `libnros_cpp.a`. Each bundles the
+  cffi shim **and** the selected Rust RMW backend (`nros-rmw-zenoh` /
+  `nros-rmw-xrce-cffi`) as an rlib dependency, force-linked via the umbrella's
+  `rmw_backend` module. One cargo build ⇒ `std`/`compiler-builtins` monomorphized
+  **once** ⇒ no `EMPTY_PANIC`/`rust_eh_personality` duplicates ⇒ the flag is gone
+  for real. (Reverts the Phase 134.fix backend-dep drop, whose multi-staticlib
+  hazard cannot occur with one archive.)
+- **Not whole-archive.** Whole-archiving a Rust staticlib force-includes its
+  `compiler-builtins` intrinsics (`__popcountdi2`, `__mulsc3`, …) which collide
+  with the system `libgcc.a` — a duplicate the old flag also masked. So the
+  umbrella is linked **normally**: the C surface is pulled lazily by each binary's
+  own references, and the backend is registered by the existing NanoRosLink.cmake
+  `nros_app_register_backends()` stub (it calls `nros_rmw_<x>_register`, now defined
+  in the umbrella). The single registration path of D3's first bullet is satisfied
+  by that stub; the `linkme` distributed-slice remains the pure-Rust-binary path.
+- **Cyclone** is a C++ CMake lib (not a Rust staticlib, no Rust `std`), linked
+  separately + whole-archived; `libstdc++` is wired for **all** languages incl. C.
+- **Superseded:** the slice-4 `nros-rmw-cffi-provider` archive + `external-registry`
+  feature (a workaround for the *multi*-staticlib cffi `REGISTRY` duplicate) are
+  **retired** — one archive ⇒ one `REGISTRY`, defined with a plain `#[no_mangle]`.
+- **Retained:** the standalone `nros-rmw-{zenoh,xrce}-cffi-staticlib` crates stay —
+  the **Zephyr** build (`zephyr/CMakeLists.txt`) links the cargo-built staticlib
+  directly (its own west link model, not the cmake umbrella), and the archive-symbol
+  / header-parity tests consume them.
+
 ### D4 — Merge-time compile + link gate
 
 - A platform × language matrix runs on **every PR** (not just on-demand e2e):
