@@ -158,7 +158,17 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   `const LOCATOR` (`:31,40` → deploy metadata via E5), and the RTIC plumbing
   (`talker-rtic/src/main.rs:47,70,72,78`). `phase216` pair is the in-group
   reference. Leaks P2/P3/P5/P6/P8.
-- [ ] **D2 — esp32 (esp32/rust 2 + qemu-esp32-baremetal 2, densest). Needs E4, E5.**
+- [~] **D2 — PARTIAL (2026-06-13). qemu-esp32-baremetal talker+listener migrated +
+  compiled** (nros::main!() Node+Entry; net/domain → deploy metadata; compiles
+  riscv32imc build-std). **esp32/rust left** (ESP-IDF staticlib stubs — no leaks,
+  already minor; cleaning needs the deferred Wi-Fi+pubsub integration). **Known-inert
+  follow-up:** the `Framework::Esp32` macro branch (`main_macro.rs:988`) calls
+  `BoardEntry::run`, not `run_with_deploy`, so the deploy overlay is not threaded yet
+  (both nodes use the board-default IP) — a 1-line macro switch (mirror the
+  `None=>run_with_deploy` branch) lands it; deferred (esp32 e2e unverifiable in this
+  env, CI-cell-gated). Pending CI esp32-cell verification (branch phase-244-wave2).
+  Original D2 plan:
+- [ ] **D2 (orig) — esp32 (esp32/rust 2 + qemu-esp32-baremetal 2, densest). Needs E4, E5.**
   Strip `#![no_std]`/`#![no_main]`/`#[entry]` (`talker/src/main.rs:19-20`),
   `use esp_backtrace as _;`/`esp_app_desc!()` (`:22,27`), `nros_rmw_zenoh::register()`
   (`:71`), hardcoded MAC/IP + `esp_println` + smoltcp diagnostics (`:32,36,55`).
@@ -170,7 +180,16 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   Delete the `#[cfg(feature="rmw-cyclonedds")] nros_rmw_cyclonedds::register::<…>()`
   action-type setup (`action-server/src/main.rs:41`, `action-client/src/main.rs:37`)
   → E3 auto-registers. Leaks P4/P10. (native C/C++ already clean.)
-- [ ] **D4 — custom-transport examples (3). Needs E2.** Move the FFI callbacks +
+- [~] **D4 — PARTIAL (2026-06-13). custom-transport-talker migrated + compiled**
+  (open-coded TcpBridge + FFI callbacks → `nros_transport_callbacks::tcp_transport_ops`
+  + `set_custom_transport`). **C loopback BLOCKED:** E2 shipped Rust-only — NO C-mirror
+  factories (the "+ C mirrors" half of E2 was not built), and the C example asserts
+  per-callback counters the E2 loopback doesn't expose → E2 must grow C-callable
+  factories w/ observable counters first. **talker-xrce already clean** (no_std XRCE
+  UART factory; E2 N/A; D1-group). Also noted: `custom-transport-listener` (4th dir,
+  omitted from the D4 bullet) has the same open-coded TCP-bridge leak — follow-up.
+  Original D4 plan:
+- [ ] **D4 (orig) — custom-transport examples (3). Needs E2.** Move the FFI callbacks +
   `set_custom_transport` from `native/custom-transport-talker/src/main.rs:81,162`,
   `native/custom-transport-loopback/src/main.c:60,189`,
   `qemu-arm-baremetal/.../talker-xrce/src/main.rs:51` into the E2 library; examples
@@ -200,7 +219,19 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
     single `[deploy]` rmw). So the bridge's `register()` + per-node `.rmw()` are
     **functional requirements**, recategorised from leak → accepted residual.
   Leaks P3/P7 (px4 stub cleared). (px4 Rust is `minor` — manual executor.)
-- [ ] **D6 — threadx-linux C (6 major). Needs E5 (net) — executor lift independent.**
+- [~] **D6 — all 6 threadx-linux C migrated + compiled (2026-06-13); pending CI.**
+  Hand-wired `main.c` → thin entry + `src/<Role>.c` declarative component
+  (`NROS_NODE_REGISTER`) + `nano_ros_node_register(LANGUAGE C DEPLOY threadx-linux)`
+  — matches the (already-clean) threadx-linux C++ shape; all 6 build
+  (`build-zenoh/threadx_c_<role>`). **CAVEAT — verify on CI:** the threadx-linux
+  generated runtime (`nros_threadx_codegen_system`) is a build-smoke PLACEHOLDER (no
+  live executor), so the migrated C examples no longer do live pub/sub at runtime
+  (matching the already-stub C++). If the threadx_linux cell e2e-gated real C pub/sub,
+  this regresses it → then revert + reclassify D6 as needing a real threadx generated
+  runtime (framework enabler, like D1). `just threadx-linux build-fixtures` (the
+  effective gate per investigation) passes. Pending CI threadx_linux-cell check.
+  Original D6 plan:
+- [ ] **D6 (orig) — threadx-linux C (6 major). Needs E5 (net) — executor lift independent.**
   Lift `nros_support_init`/`nros_executor_init` + spin loops
   (`c/talker/src/main.c:51,61`) into the generated runtime; move `tcp/127.0.0.1:PORT`
   defaults (`c/talker/src/main.c:41`, `c/service-client/src/main.c:46`) to deploy
