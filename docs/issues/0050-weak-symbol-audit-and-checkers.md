@@ -46,6 +46,30 @@ Override-default pattern (a weak default, a board/app supplies the strong def):
 Rust `#[linkage = "weak"]`: none today (the toolchain is stable; the attribute is
 unstable). Keep it that way.
 
+## Progress (2026-06-13)
+
+- **Audit (scope 1) — DONE.** Enumerated every owned weak symbol (10 files, ~26
+  symbols; vendored zenoh-pico / mbedtls excluded). Inventory + classification
+  live in the allowlist of the new gate (below). Override-defaults:
+  `nros_app_register_backends` (cmake strong stub), `nros_board_*` overlay
+  constants + `nros_board_register_netif`/`poll_netif` + `_tx_initialize_low_level`,
+  the `_z_*_serial_*` / `smoltcp_*` aliases, `nros_orb_{register,unregister}_callback`
+  (px4 glue). Optional-hooks: `nros_board_log`/`compute_rng_seed`,
+  `nros_rmw_cyclonedds_register_app_descriptors`, the threadx libc stubs,
+  `nros_board_network_wait`.
+- **Checker (scope 2) — source-level DONE.**
+  `packages/testing/nros-tests/tests/weak_symbol_audit.rs::owned_weak_symbols_are_audited`
+  scans owned C/C++/asm and fails when a non-allowlisted file introduces a weak
+  symbol, or an allowlisted file's weak-decl count drifts (forcing re-audit).
+  Fast, no builds, platform-independent — catches the "new unaudited weak site
+  slips in" failure mode at merge time.
+- **Remaining:** the per-platform *final-image* checker (assert each
+  override-default is actually strong-overridden in the linked artifact, robust
+  to `--gc-sections`/`--whole-archive` — needs `llvm-nm` over per-platform
+  fixtures); and the reduction of fragile weak defaults to define-once /
+  explicit-registration (RFC-0042 D3), prioritising the `nros_app_register_backends`
+  / register-stub dance and the 155.A-class const-weak hazards.
+
 ## Scope for the worker
 
 1. **Audit.** Enumerate every weak symbol (C `__attribute__((weak))`, asm `.weak`,
