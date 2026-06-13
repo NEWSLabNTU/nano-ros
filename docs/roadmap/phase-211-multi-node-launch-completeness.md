@@ -13,12 +13,16 @@ the **runtime-interop story** are where the gaps sit.
 parser/planner spine + most fixtures LANDED (211.A core, B-planner, C, D, E,
 I, J — all `[x]`). The remaining work was re-scoped against the current design
 (RFC-0043 typed entry + the board/`[deploy.<name>]` model) — see **Design drift
-& re-scope** below. Net: the deploy-verb-centric bullets are superseded; the
-three re-scoped gaps are now CLOSED (multi-host 211.F — bake + 2-process
-runtime; `nros test` 211.G — ruled out, harness already exists; qos_overrides
-211.H — lowering + live runtime delivery). Remaining: the real-ROS-workspace
-acceptance (`demo_nodes_cpp` through the pipeline) + two deferred sub-items
-(211.H C++ entry honoring behind 242/244; 211.I cyclonedds bridge variant).
+& re-scope** below. Net: SUBSTANTIALLY COMPLETE (2026-06-14). The
+deploy-verb-centric bullets are superseded; all re-scoped gaps + acceptance
+criteria are CLOSED — multi-host 211.F (bake + 2-process runtime +
+`[deploy.<id>]` host targets), `nros test` 211.G (ruled out, harness exists),
+qos_overrides 211.H (lowering + live runtime delivery), and the real-ROS
+acceptance (`demo_nodes_cpp` cross-vendor interop). The only remnants are two
+sub-items deferred to their OWNING phases — 211.H C++ typed-entry qos honoring
+(behind the phase-242/244 emit work, collision risk) and 211.I's stock-cyclonedds
+bridge variant + book recipe (needs a cyclonedds-enabled bridge fixture,
+C++/CMake-side). Ready to archive once those migrate to their phases.
 
 ## Design drift & re-scope (2026-06-13)
 
