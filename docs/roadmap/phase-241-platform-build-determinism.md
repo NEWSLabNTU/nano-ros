@@ -295,8 +295,24 @@ Steps (each a commit; CI between the riskier ones):
 - [ ] Generated link manifest: whole-archive set + archive order (platform shim
       after RMW, msg libs before FFI glue) emitted as data; cmake + build.rs
       consume it (Q2 lean: codegen produces, two consumers).
-- [ ] Remove `--allow-multiple-definition` and the per-combo `-u <symbol>`
-      injections (#20); the manifest makes extraction deterministic.
+- [~] Remove `--allow-multiple-definition` — **strategy proven on host (slice 3,
+      2026-06-13).** The flag is needed ONLY because the backend is pulled in with
+      a broad `--whole-archive` (to force its register/ctor symbols), which drags
+      in every archive member, so the shared closure's strong defs collide
+      (reproduced: `--whole-archive` on both host staticlibs → 2462 multiple-def
+      errors). The duplicated closure symbols are COMDAT/weak, so under **lazy**
+      archive selection they dedup with no flag (host link of the pair without
+      `--whole-archive` → 0 collisions). The deterministic replacement is to force
+      ONLY the backend register entry via `-u <symbol>` and lazy-link the rest:
+      verified on host — `cc … -Wl,-u,nros_rmw_zenoh_register libnros_c.a
+      libnros_rmw_zenoh_staticlib.a` links with **no** `--allow-multiple-definition`,
+      the register entry IS included, and `REGISTRY` stays a **single** instance
+      (no split-registry / #48 `NoBackend` hazard). Guarded by
+      `host_pair_links_via_u_force_without_allow_multiple_definition`. **Remaining
+      (slice 4, run_e2e):** make the cmake link force-include the register symbol
+      via `-u` instead of whole-archiving the backend, drop the
+      `--allow-multiple-definition` line, and confirm every platform's linker
+      (rust-lld/arm/riscv + the ctor-vs-explicit register paths) still resolves.
 - [~] **Link-closure / duplicate-symbol validator — slices 1+2 landed.**
       `staticlib_duplicate_symbols.rs`: dumps the duplicate defined-globals
       between `libnros_c.a` and the RMW staticlib (via `llvm-nm`), attributes each
