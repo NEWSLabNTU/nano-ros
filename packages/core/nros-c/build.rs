@@ -3,6 +3,91 @@ fn main() {
     generate_c_surface_anchor();
 }
 
+/// Is cargo feature `feat` enabled for this build? cargo exports `CARGO_FEATURE_<NAME>`
+/// (uppercased, `-` → `_`) for every enabled feature.
+fn cargo_feature_enabled(feat: &str) -> bool {
+    let env = format!("CARGO_FEATURE_{}", feat.to_uppercase().replace('-', "_"));
+    std::env::var_os(env).is_some()
+}
+
+/// True when `path` belongs to a feature-gated module INACTIVE in this build — gated by a
+/// non-feature cfg (e.g. `#[cfg(cbindgen)]`, header-only) or by features none of which is
+/// enabled. Matches the module name against the file stem and every parent dir component
+/// (a `mod action;` may be a directory `action/…` of submodule files).
+fn path_in_inactive_module(
+    path: &std::path::Path,
+    gated: &std::collections::BTreeMap<String, Vec<String>>,
+) -> bool {
+    for comp in path.components() {
+        let std::path::Component::Normal(os) = comp else {
+            continue;
+        };
+        let Some(s) = os.to_str() else { continue };
+        let stem = s.strip_suffix(".rs").unwrap_or(s);
+        if let Some(feats) = gated.get(stem)
+            && !feats.iter().any(|f| cargo_feature_enabled(f))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Parse `<lib_rs>` for `[#[cfg(...)]] mod <name>;` declarations → map of module name → the
+/// `feature = "X"` names in its `#[cfg(...)]` (empty when gated only by a non-feature cfg
+/// like `cbindgen`). A module with ANY cfg is recorded; the link-time anchor skips it
+/// unless one of its named features is enabled (empty list ⇒ always skipped).
+fn parse_gated_modules(lib_rs: &str) -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut map = std::collections::BTreeMap::new();
+    let Ok(content) = std::fs::read_to_string(lib_rs) else {
+        return map;
+    };
+    let lines: Vec<&str> = content.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim_start();
+        let Some(rest) = t.strip_prefix("mod ") else {
+            continue;
+        };
+        if line.starts_with(' ') || line.starts_with('\t') {
+            continue; // indented => inline/nested, not a top-level file module
+        }
+        let Some(name) = rest.strip_suffix(';') else {
+            continue; // `mod x { … }` body, not `mod x;`
+        };
+        let name = name.trim().to_string();
+        let mut saw_cfg = false;
+        let mut feats = Vec::new();
+        let mut j = i;
+        while j > 0 {
+            j -= 1;
+            let a = lines[j].trim_start();
+            if a.is_empty() || a.starts_with("//") {
+                continue;
+            }
+            if !a.starts_with("#[") {
+                break;
+            }
+            if a.contains("cfg(") {
+                saw_cfg = true;
+                let mut s = a;
+                while let Some(p) = s.find("feature = \"") {
+                    let after = &s[p + "feature = \"".len()..];
+                    if let Some(end) = after.find('"') {
+                        feats.push(after[..end].to_string());
+                        s = &after[end + 1..];
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        if saw_cfg {
+            map.insert(name, feats);
+        }
+    }
+    map
+}
+
 /// Phase 241.D3-rev — emit a `#[used]` anchor that force-references every
 /// `#[unsafe(no_mangle)] extern "C"` entry point in this crate.
 ///
@@ -17,6 +102,12 @@ fn main() {
 fn generate_c_surface_anchor() {
     use std::fmt::Write as _;
 
+    // Modules gated by `#[cfg(...)] mod <name>;` in lib.rs (e.g. the `#[cfg(cbindgen)]`
+    // header-only action/config/event/… modules, or feature-gated ones). Their column-0
+    // `#[no_mangle]` fns must NOT be anchored when the gate is inactive — they aren't
+    // compiled, so referencing them is an `undefined symbol` at link.
+    let gated_modules = parse_gated_modules("src/lib.rs");
+
     let mut names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut stack = vec![std::path::PathBuf::from("src")];
     while let Some(dir) = stack.pop() {
@@ -30,6 +121,9 @@ fn generate_c_surface_anchor() {
                 continue;
             }
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            if path_in_inactive_module(&path, &gated_modules) {
                 continue;
             }
             println!("cargo:rerun-if-changed={}", path.display());
