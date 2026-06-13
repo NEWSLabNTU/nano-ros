@@ -2443,8 +2443,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(node.id(), NodeId::new("talker"));
-        drop(node);
-        drop(context);
+        // End the `node`/`context` borrows before re-borrowing `recorder`.
+        let _ = node;
+        let _ = context;
         assert_eq!(recorder.nodes().len(), 1);
         assert_eq!(recorder.nodes()[0].id.as_str(), "talker");
         assert_eq!(recorder.nodes()[0].name.as_str(), "talker");

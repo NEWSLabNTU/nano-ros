@@ -60,31 +60,6 @@ fn sanitize_pkg_name_for_symbol(pkg: &str) -> String {
     out
 }
 
-#[cfg(test)]
-mod sanitize_tests {
-    use super::sanitize_pkg_name_for_symbol;
-
-    #[test]
-    fn plain_pkg_name_is_passthrough() {
-        assert_eq!(sanitize_pkg_name_for_symbol("talker_pkg"), "talker_pkg");
-    }
-
-    #[test]
-    fn hyphens_become_underscores() {
-        assert_eq!(sanitize_pkg_name_for_symbol("my-cool-pkg"), "my_cool_pkg");
-    }
-
-    #[test]
-    fn mixed_specials_become_underscores() {
-        assert_eq!(sanitize_pkg_name_for_symbol("a.b+c-d"), "a_b_c_d");
-    }
-
-    #[test]
-    fn empty_is_empty() {
-        assert_eq!(sanitize_pkg_name_for_symbol(""), "");
-    }
-}
-
 /// Derive macro for ROS message types
 ///
 /// Generates `Serialize`, `Deserialize`, and `RosMessage` implementations.
@@ -678,4 +653,29 @@ pub fn derive_ros_service(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+#[cfg(test)]
+mod sanitize_tests {
+    use super::sanitize_pkg_name_for_symbol;
+
+    #[test]
+    fn plain_pkg_name_is_passthrough() {
+        assert_eq!(sanitize_pkg_name_for_symbol("talker_pkg"), "talker_pkg");
+    }
+
+    #[test]
+    fn hyphens_become_underscores() {
+        assert_eq!(sanitize_pkg_name_for_symbol("my-cool-pkg"), "my_cool_pkg");
+    }
+
+    #[test]
+    fn mixed_specials_become_underscores() {
+        assert_eq!(sanitize_pkg_name_for_symbol("a.b+c-d"), "a_b_c_d");
+    }
+
+    #[test]
+    fn empty_is_empty() {
+        assert_eq!(sanitize_pkg_name_for_symbol(""), "");
+    }
 }

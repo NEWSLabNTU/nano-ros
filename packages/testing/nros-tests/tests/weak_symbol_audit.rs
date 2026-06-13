@@ -25,7 +25,10 @@
 //! defaults to define-once / explicit-registration (RFC-0042 D3). The
 //! allowlist below is the audit those phases build on.
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use nros_tests::project_root;
 

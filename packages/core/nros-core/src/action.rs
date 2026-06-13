@@ -94,6 +94,9 @@ pub trait RosAction: Sized {
     /// (RFC-0044 / phase-244 E3, non-breaking). Returns `Err(())` on a backend
     /// registration failure; the caller maps it onto its own error type
     /// (`nros-core` cannot name `nros-node::NodeError`).
+    // Unit error is deliberate — `nros-core` sits below `nros-node` and cannot
+    // name `NodeError`; the caller re-maps `Err(())` onto its own type.
+    #[allow(clippy::result_unit_err)]
     fn register_protocol_types() -> Result<(), ()> {
         Ok(())
     }

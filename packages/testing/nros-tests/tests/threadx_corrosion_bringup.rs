@@ -47,7 +47,9 @@
 use std::{fs, path::PathBuf, process::Command};
 
 fn cmake_fixture_dir(id: &str) -> PathBuf {
-    nros_tests::project_root().join("build/cmake-fixtures").join(id)
+    nros_tests::project_root()
+        .join("build/cmake-fixtures")
+        .join(id)
 }
 
 /// Assert the codegen artifacts a `nros_threadx_codegen_system(...)` configure
@@ -150,8 +152,10 @@ fn threadx_linux_2_component_bringup_corrosion_imports_rust() -> nros_tests::Tes
 fn threadx_riscv64_qemu_2_component_bringup_builds() -> nros_tests::TestResult<()> {
     // Resolve a configure artifact (no binary — configure-only). Tier-aware
     // skip when the rv64 fixture wasn't built (riscv toolchain / trees absent).
-    let sys_main =
-        nros_tests::fixtures::require_cmake_fixture("threadx_bringup_rv64", "nros-system/system_main.c")?;
+    let sys_main = nros_tests::fixtures::require_cmake_fixture(
+        "threadx_bringup_rv64",
+        "nros-system/system_main.c",
+    )?;
     let build_dir = sys_main
         .parent()
         .and_then(|p| p.parent())

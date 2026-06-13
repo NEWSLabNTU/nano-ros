@@ -51,7 +51,9 @@ fn multihost_launch_bakes_per_host_entries() {
         .output()
         .expect("nros codegen entry --help");
     if !String::from_utf8_lossy(&help.stdout).contains("--host") {
-        nros_tests::skip!("installed nros lacks `codegen entry --host` (Phase 211.F) — rebuild CLI");
+        nros_tests::skip!(
+            "installed nros lacks `codegen entry --host` (Phase 211.F) — rebuild CLI"
+        );
     }
 
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -86,8 +88,8 @@ fn multihost_launch_bakes_per_host_entries() {
 /// the per-host bake (above) to the per-host deploy SSOT.
 #[test]
 fn multihost_deploy_targets_match_baked_hosts() {
-    let system_toml = nros_tests::project_root()
-        .join("examples/workspaces/rust/src/demo_bringup/system.toml");
+    let system_toml =
+        nros_tests::project_root().join("examples/workspaces/rust/src/demo_bringup/system.toml");
     let raw = std::fs::read_to_string(&system_toml)
         .unwrap_or_else(|e| panic!("read {}: {e}", system_toml.display()));
 

@@ -2214,8 +2214,11 @@ mod tests {
         ];
 
         // Matching topic + publisher role → reliability + depth applied.
-        let pub_qos =
-            QosSettings::default().apply_overrides("/chatter", QosOverrideRole::Publisher, OVERRIDES);
+        let pub_qos = QosSettings::default().apply_overrides(
+            "/chatter",
+            QosOverrideRole::Publisher,
+            OVERRIDES,
+        );
         assert_eq!(pub_qos.reliability, QosReliabilityPolicy::BestEffort);
         assert_eq!(pub_qos.depth, 5);
         assert_eq!(pub_qos.durability, QosDurabilityPolicy::Volatile); // untouched
@@ -2230,8 +2233,11 @@ mod tests {
         assert_eq!(sub_qos, QosSettings::default());
 
         // The /scan subscription override applies only to /scan+subscription.
-        let scan_qos =
-            QosSettings::default().apply_overrides("/scan", QosOverrideRole::Subscription, OVERRIDES);
+        let scan_qos = QosSettings::default().apply_overrides(
+            "/scan",
+            QosOverrideRole::Subscription,
+            OVERRIDES,
+        );
         assert_eq!(scan_qos.durability, QosDurabilityPolicy::TransientLocal);
 
         // Empty table → identity (the zero-override fast path).

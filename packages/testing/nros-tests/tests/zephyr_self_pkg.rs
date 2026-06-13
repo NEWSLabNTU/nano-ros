@@ -48,8 +48,10 @@ fn assert_bake(build_dir: &Path) {
 ///    the system; assert the bake landed.
 #[test]
 fn zephyr_self_pkg_rust_builds_via_shim() -> nros_tests::TestResult<()> {
-    let main_c =
-        nros_tests::fixtures::require_west_fixture("zephyr_self_pkg_rust", "nros-system/system_main.c")?;
+    let main_c = nros_tests::fixtures::require_west_fixture(
+        "zephyr_self_pkg_rust",
+        "nros-system/system_main.c",
+    )?;
     let build_dir = main_c
         .parent()
         .and_then(|p| p.parent())

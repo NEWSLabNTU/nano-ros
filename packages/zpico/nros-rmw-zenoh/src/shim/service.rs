@@ -982,7 +982,6 @@ pub(super) mod tests {
         b.ring[head % SERVICE_REQUEST_RING_DEPTH]
             .seq
             .load(Ordering::Acquire)
-            .into()
     }
 
     /// Test-only: does the slot's request ring hold an unread request?
