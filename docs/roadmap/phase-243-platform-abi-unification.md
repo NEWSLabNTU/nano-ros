@@ -12,8 +12,20 @@ per-RTOS sub-headers (A)**. Ends the split-brain where POSIX/native resolve A
 (direct-libc heap, ns-clock, per-platform atomics) while Zephyr/xrce/zpico resolve
 api (alloc funnel, ms/us-clock).
 
-**Status.** Planned (2026-06-12). Method explored + maintainer-decided (atomics →
-generic `__atomic`; ns-clock → migrate to `clock_us`). Not started.
+**Status.** In progress on branch `phase-243-platform-abi-unification` (2026-06-12).
+Waves 243.1/.2/.3/.5 landed; e2e green on **5/6 cells** (esp32, freertos,
+threadx_linux, threadx_riscv64; qemu was an infra flake — runner killed mid-Build,
+re-running). **nuttx is red from the pre-existing `240.6` regression** (undefined
+Rust `nros_platform_*` link symbols — confirmed identical on clean main), NOT this
+phase. Three en-route fixes (each its own commit):
+- `zpico.c` `_freertos_printk`: arch-guard the ARM semihosting asm (`__arm__`/
+  `__thumb__`) so the freertos-config TU survives a host compile.
+- api capability block: grant `HAS_MALLOC` for **all non-bare-metal** (matches A's
+  default→posix.h fallback) — `-DNROS_PLATFORM_THREADX` (threadx-linux), nuttx, etc.
+- threadx-rv64 `cxx-compat`: add a freestanding `<initializer_list>` (the 242.3
+  `parameter.hpp` include reached by 240.6's typed-component cpp examples).
+243.4 (delete the now-dead board/shim `time_ns`/atomics strong-defs) deferred as
+harmless cleanup — e2e proves nothing references them.
 
 **Priority.** P2 — finishes the RFC-0042 D1 canonical-interface goal. B.2 already
 removed the cffi duplicate; this removes the *second* surface so there is exactly
