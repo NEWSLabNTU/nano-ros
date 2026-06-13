@@ -160,34 +160,22 @@ board-overlay enabler precedes the cargo-path de-hardcode.
   CMake firmware links (fresh configure — the stale build dir's pre-241.B.2
   `NROS_PLATFORM_CFFI_INCLUDE` cache is the only gotcha). Establishes the pattern
   for R*/C*/X*.
-- [ ] **T-c — `c/talker`** and **T-cpp — `cpp/talker`** — **BLOCKED on a
-  framework gap (found 2026-06-13).** The clean declarative C/C++ shape
-  (`NROS_NODE_REGISTER` component + baked `nros_system_main`) needs a *working*
-  bare-metal component runtime: open executor → instantiate the declared
-  node/pub/timer → spin. Investigation found:
-  - The threadx baker (`NanoRosThreadxSystemCodegen.cmake`) emits a **NULL-context
-    C stub** (`__nros_component_<pkg>_register(0)`; no executor, no spin) on *every*
-    threadx platform — a link/marker fixture, not a runtime.
-  - A real live runtime DOES exist: the C++ `detail::EntryNodeRuntime` (real ops +
-    synthesizing spin) used by `NativeBoard`/`ZephyrBoard`/`NuttxBoard::run`, and
-    the Rust `ExecutorNodeRuntime`. **Groundwork landed this phase:** a `ThreadxBoard`
-    adapter in `nros-cpp` (`main.hpp`, mirrors `NuttxBoard` — kernel already up in
-    the app thread) + a `RUNTIME cpp` mode on the baker that emits a real C++
-    `nros_system_main` driving each component against `EntryNodeRuntime` (additive;
-    the legacy `stub` mode stays for the rust/linux fixtures).
-  - **The hard blocker is upstream of the runtime:** *every* `system.launch.xml`
-    in the repo (freertos / nuttx / native / threadx-linux) is an **empty
-    placeholder** — the comments state the component `register()` live-path is a
-    "TODO stub" and a populated `<launch>` awaits "Step-3+" of the Phase-212/240
-    migration. So `nros plan` returns **zero components** → the baked entry (any
-    flavour) calls nothing → no node is ever instantiated, on any platform. And
-    `nros plan` (the codegen CLI that would populate this) is **frozen** ("DO NOT
-    add to nros-cli — Phase 212.H.4").
-  - **Conclusion:** a working clean C/C++ node is unfinished *framework-wide*, not
-    a riscv64 port. Completing it = landing the populated-`<launch>` + live-`register()`
-    path (a cross-cutting Phase-212/240 effort touching the frozen CLI), then T-c/T-cpp
-    become real ports on top. Recommend carving that into its own framework phase;
-    keep the `ThreadxBoard` + baker-`cpp` groundwork as its prerequisite.
+- [ ] **T-c — `c/talker`** and **T-cpp — `cpp/talker`** — **deferred to
+  [phase-246](phase-246-threadx-typed-entry-runtime.md) (framework integration).**
+  The clean declarative C/C++ shape needs a *working* component runtime. An initial
+  reading (against the **retired** RFC-0032/236 synthesizing-interpreter path)
+  suggested this was unbuilt framework-wide; re-examined against
+  [RFC-0043](../design/0043-entry-real-callback-binding.md) /
+  [RFC-0044](../design/0044-rclcpp-faithful-component-model.md), the **typed-entry**
+  runtime (component-as-object + identity-bound real callbacks + `run_components`)
+  is **landed and proven** on native (E2E) + NuttX (QEMU E2E), and the CLI is **not**
+  frozen (RFC-0043 edits `nros codegen entry`). The only gaps are the **ThreadX leg**
+  (codegen `board_cpp_path` case + a `threadx_entry_main_typed.cpp.in` template +
+  cmake carrier wiring) and **populating the example launches** — a bounded
+  integration, scoped as phase-246. The phase-245 groundwork (`ThreadxBoard` adapter
+  in `main.hpp`) feeds it; the baker `RUNTIME=cpp` mode it also added drove the
+  *retired* interpreter path and is superseded by phase-246's typed template.
+  Once phase-246 lands, T-c / T-cpp are straight ports onto the proven template.
 
 ### Wave 2 — remaining roles (parallel; each follows the Wave-1 template)
 - [ ] **R* (rust):** listener, service-server, service-client, action-server,
