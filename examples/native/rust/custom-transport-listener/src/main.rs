@@ -4,12 +4,7 @@
 //! over a custom-transport-bridged TCP connection to the same
 //! zenohd. See the talker for the design walkthrough.
 
-use core::ffi::c_void;
-use std::{
-    io::{ErrorKind, Read, Write},
-    net::{Shutdown, TcpStream},
-    time::Duration,
-};
+use std::time::Duration;
 
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info};
@@ -19,62 +14,6 @@ use std_msgs::msg::Int32;
 static LOGGER: Logger = Logger::new("custom-transport-listener");
 
 extern crate nros_platform_cffi as _;
-
-/// The stream is stored directly (no `Mutex`): zenoh-pico drives the
-/// `read` callback on a dedicated read-task thread while the main/tx
-/// thread drives `write` concurrently. TCP is full-duplex, and
-/// `std::net::TcpStream` implements `Read`/`Write` for `&TcpStream`, so
-/// both directions operate on a shared `&self` without serializing.
-/// A shared mutex held across the blocking `recv` would starve the tx
-/// thread and deadlock session declaration (Phase 179.G).
-struct TcpBridge {
-    stream: TcpStream,
-}
-
-impl TcpBridge {
-    fn new(target: &str) -> std::io::Result<Self> {
-        let stream = TcpStream::connect(target)?;
-        stream.set_nodelay(true)?;
-        stream.set_read_timeout(Some(Duration::from_millis(50)))?;
-        stream.set_write_timeout(Some(Duration::from_millis(1000)))?;
-        Ok(Self { stream })
-    }
-}
-
-unsafe extern "C" fn cb_open(_ud: *mut c_void, _params: *const c_void) -> i32 {
-    0
-}
-
-unsafe extern "C" fn cb_close(ud: *mut c_void) {
-    let bridge = unsafe { &*(ud as *const TcpBridge) };
-    let _ = bridge.stream.shutdown(Shutdown::Both);
-}
-
-// Stream-flow custom-link — zenoh-pico adds 2-byte LE length prefix.
-unsafe extern "C" fn cb_write(ud: *mut c_void, buf: *const u8, len: usize) -> i32 {
-    let bridge = unsafe { &*(ud as *const TcpBridge) };
-    let slice = unsafe { std::slice::from_raw_parts(buf, len) };
-    // `Write` is implemented for `&TcpStream`, so this runs concurrently
-    // with `cb_read` on the read-task thread (full-duplex, no lock).
-    if (&bridge.stream).write_all(slice).is_err() {
-        return -1;
-    }
-    let _ = (&bridge.stream).flush();
-    0
-}
-
-unsafe extern "C" fn cb_read(ud: *mut c_void, buf: *mut u8, len: usize, timeout_ms: u32) -> i32 {
-    let bridge = unsafe { &*(ud as *const TcpBridge) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
-    let to = Duration::from_millis(timeout_ms.max(1) as u64);
-    let _ = bridge.stream.set_read_timeout(Some(to));
-    match (&bridge.stream).read(slice) {
-        Ok(0) => -1,
-        Ok(n) => n as i32,
-        Err(e) if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::TimedOut => 0,
-        Err(_) => -1,
-    }
-}
 
 fn main() {
     nros_log::register_logger(&LOGGER);
@@ -88,23 +27,18 @@ fn main() {
         "nros Custom-Transport Listener — bridging to TCP {target}"
     );
 
-    let bridge = match TcpBridge::new(&target) {
-        Ok(b) => Box::leak(Box::new(b)),
+    // Phase 244 D4/E2 — the TCP-bridge custom-transport vtable comes from the
+    // reusable `nros-transport-callbacks` factory (the TcpStream + the four
+    // `extern "C"` callbacks live in the library; the factory `Box::leak`s its
+    // backing state so `user_data` outlives the session). Mirrors the talker.
+    let ops = match nros_transport_callbacks::tcp_transport_ops(&target) {
+        Ok(ops) => ops,
         Err(e) => {
             nros_error!(&LOGGER, "TCP connect to {target} failed: {e}");
             std::process::exit(1);
         }
     };
-
-    let ops = nros_rmw::NrosTransportOps {
-        abi_version: nros_rmw::NROS_TRANSPORT_OPS_ABI_VERSION_V1,
-        _reserved: 0,
-        user_data: bridge as *mut TcpBridge as *mut c_void,
-        open: cb_open,
-        close: cb_close,
-        write: cb_write,
-        read: cb_read,
-    };
+    // SAFETY: the factory leaks its backing state, so it lives until process exit.
     unsafe { nros_rmw::set_custom_transport(Some(ops)).expect("abi v1 ok") };
     nros_info!(&LOGGER, "Custom transport vtable registered");
 

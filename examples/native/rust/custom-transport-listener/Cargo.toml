@@ -30,6 +30,8 @@ nros-rmw = { path = "../../../../packages/core/nros-rmw", default-features = fal
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { path = "../../../../packages/core/nros-log" }
+# Phase 244 D4/E2 — reusable TCP-bridge custom-transport factory.
+nros-transport-callbacks = { path = "../../../../packages/drivers/nros-transport-callbacks" }
 std_msgs = { version = "*", default-features = false }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone

@@ -227,8 +227,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-nano-ros"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "cargo_metadata",
  "clap",
@@ -816,6 +815,7 @@ dependencies = [
  "nros-log",
  "nros-platform-cffi",
  "nros-rmw",
+ "nros-transport-callbacks",
  "std_msgs",
 ]
 
@@ -860,15 +860,12 @@ dependencies = [
 
 [[package]]
 name = "nros-build"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "eyre",
  "nros-cli-core",
- "quick-xml",
  "serde",
  "serde_json",
- "walkdir",
 ]
 
 [[package]]
@@ -877,8 +874,7 @@ version = "0.5.0"
 
 [[package]]
 name = "nros-cli-core"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "cargo-nano-ros",
  "cargo_metadata",
@@ -886,15 +882,19 @@ dependencies = [
  "eyre",
  "libc",
  "nros-msg-to-idl",
+ "nros-orchestration-ir",
  "pathdiff",
+ "quick-xml",
  "ros-launch-manifest-types",
  "rosidl-bindgen",
  "rosidl-codegen",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
  "toml 0.8.23",
  "toml_edit",
+ "walkdir",
 ]
 
 [[package]]
@@ -919,6 +919,7 @@ name = "nros-macros"
 version = "0.5.0"
 dependencies = [
  "nros-build",
+ "nros-orchestration-ir",
  "proc-macro2",
  "quote",
  "syn",
@@ -927,8 +928,7 @@ dependencies = [
 
 [[package]]
 name = "nros-msg-to-idl"
-version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 
 [[package]]
 name = "nros-node"
@@ -947,6 +947,14 @@ dependencies = [
  "nros-serdes",
  "portable-atomic",
  "portable-atomic-util",
+]
+
+[[package]]
+name = "nros-orchestration-ir"
+version = "0.5.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1044,6 +1052,13 @@ dependencies = [
  "nros-platform-api",
  "portable-atomic",
  "smoltcp",
+]
+
+[[package]]
+name = "nros-transport-callbacks"
+version = "0.5.0"
+dependencies = [
+ "nros-rmw",
 ]
 
 [[package]]
@@ -1237,7 +1252,6 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "serde",
  "serde_json",
@@ -1247,8 +1261,7 @@ dependencies = [
 
 [[package]]
 name = "rosidl-bindgen"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "askama",
  "clap",
@@ -1261,19 +1274,18 @@ dependencies = [
 
 [[package]]
 name = "rosidl-codegen"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "askama",
  "rosidl-parser",
  "serde",
  "thiserror 1.0.69",
+ "toml 0.8.23",
 ]
 
 [[package]]
 name = "rosidl-parser"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "chumsky",
  "logos",
