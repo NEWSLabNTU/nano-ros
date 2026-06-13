@@ -222,6 +222,20 @@ function(nano_ros_node_register)
             if(TARGET zephyr_interface)
                 target_link_libraries(${_lib} PRIVATE zephyr_interface)
             endif()
+            # Phase 242 — the per-build `<nros/nros_cpp_config_generated.h>` /
+            # `<nros/nros_config_generated.h>` (storage sizes, etc.) are emitted
+            # as byproducts of the nros-cpp / nros-c cargo builds into
+            # `${CMAKE_BINARY_DIR}/nros-rust/nros-{cpp,c}-generated` (prepended
+            # to the include path by zephyr/CMakeLists.txt). `app` already
+            # depends on those targets, but this component lib is a SEPARATE
+            # add_library; without the same dependency its TUs can compile
+            # before the headers exist (clean-build race) and pick up the
+            # in-tree stub header, which #errors. Order it after the generators.
+            foreach(_nrc_gen_dep nros_cpp_cargo_build nros_c_cargo_build)
+                if(TARGET ${_nrc_gen_dep})
+                    add_dependencies(${_lib} ${_nrc_gen_dep})
+                endif()
+            endforeach()
             if(_nrc_lang STREQUAL "C" AND TARGET NanoRos::NanoRos)
                 target_link_libraries(${_lib} PUBLIC NanoRos::NanoRos)
             elseif(TARGET NanoRos::NanoRosCpp)
