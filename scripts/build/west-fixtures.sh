@@ -15,9 +15,23 @@ cd "$repo_root"
 out_root="$repo_root/build/west-fixtures"
 mkdir -p "$out_root"
 
-# ZEPHYR_BASE: prefer the provisioned workspace under the repo.
-if [ -z "${ZEPHYR_BASE:-}" ] && [ -d "$repo_root/zephyr-workspace/zephyr" ]; then
-    export ZEPHYR_BASE="$repo_root/zephyr-workspace/zephyr"
+# ZEPHYR_BASE: discover the provisioned west workspace the same way the
+# `just zephyr` recipes resolve ZEPHYR_WORKSPACE (just/zephyr.just) — an explicit
+# `NROS_ZEPHYR_WORKSPACE`, then the in-repo `zephyr-workspace/`, then the sibling
+# `../nano-ros-workspace[-4.4]/` checkouts a `just zephyr setup` lands. Without
+# this the fixture only saw the in-repo path and skipped whenever the workspace
+# lived in the sibling (the common `just zephyr setup` layout).
+if [ -z "${ZEPHYR_BASE:-}" ]; then
+    for _ws in \
+        "${NROS_ZEPHYR_WORKSPACE:-}" \
+        "$repo_root/zephyr-workspace" \
+        "$repo_root/../nano-ros-workspace" \
+        "$repo_root/../nano-ros-workspace-4.4"; do
+        if [ -n "$_ws" ] && [ -d "$_ws/zephyr" ]; then
+            export ZEPHYR_BASE="$_ws/zephyr"
+            break
+        fi
+    done
 fi
 
 if ! command -v west >/dev/null 2>&1; then

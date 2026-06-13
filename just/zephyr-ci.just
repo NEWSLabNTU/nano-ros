@@ -281,5 +281,8 @@ build-fixtures:
     # cli_bringup_zephyr / board_import tests consume, so they don't run west at
     # test time. Self-gates on west/ZEPHYR_BASE; non-fatal (a failed build — e.g.
     # board_import without the FVP SDK — leaves no stamp, and the test deselects/skips).
-    bash scripts/build/west-fixtures.sh || true
+    # Pass the recipe's resolved workspace through as ZEPHYR_BASE so the script
+    # uses the SAME tree these CI builds did (it also self-discovers, but this
+    # keeps them in lockstep when NROS_ZEPHYR_WORKSPACE picked a non-default tree).
+    ZEPHYR_BASE="$workspace/zephyr" bash scripts/build/west-fixtures.sh || true
     echo "Zephyr test fixtures built successfully."

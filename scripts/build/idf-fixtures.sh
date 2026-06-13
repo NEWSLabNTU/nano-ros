@@ -18,6 +18,14 @@ cd "$repo_root"
 out_root="$repo_root/build/idf-fixtures"
 mkdir -p "$out_root"
 
+# Discover the esp-idf checkout the same way the zephyr fixture discovers its
+# west workspace — an explicit IDF_PATH, then the in-repo `esp-idf-workspace/esp-idf`
+# a `just esp32 setup` lands. Without this the fixture relied on IDF_PATH already
+# being in the caller's shell and skipped under the activated build env.
+if [ -z "${IDF_PATH:-}" ] && [ -f "$repo_root/esp-idf-workspace/esp-idf/export.sh" ]; then
+    export IDF_PATH="$repo_root/esp-idf-workspace/esp-idf"
+fi
+
 # Activate the IDF env (export.sh from IDF_PATH, or the workspace env shim).
 if [ -n "${IDF_PATH:-}" ] && [ -f "$IDF_PATH/export.sh" ]; then
     # shellcheck disable=SC1091
