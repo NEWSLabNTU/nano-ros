@@ -98,6 +98,28 @@ function(nano_ros_entry)
         endif()
     endforeach()
 
+    # Phase 241.D3-rev — infer LANG from the source extensions when not given.
+    # The C and C++ umbrellas are now DISTINCT staticlibs (`libnros_c.a` vs
+    # `libnros_cpp.a`, one `std` each), so a C binary must link NanoRos (nros_c)
+    # and a C++ binary NanoRosCpp (nros_cpp) — NEVER both, or `std`/compiler-builtins
+    # collide. LANG used to default to `cpp`; harmless when NanoRosCpp was an ALIAS of
+    # NanoRos, but post-single-runtime that dragged a second Rust staticlib into every
+    # C example. A `.cpp`/`.cxx`/`.cc`/`.C` source ⇒ cpp; otherwise c. LAUNCH-only
+    # (no SOURCES) keeps the historical `cpp` default.
+    if(NOT _NRA_LANG)
+        if(_NRA_SOURCES)
+            set(_NRA_LANG c)
+            foreach(_src ${_NRA_SOURCES})
+                if(_src MATCHES "\\.(cpp|cxx|cc|C)$")
+                    set(_NRA_LANG cpp)
+                    break()
+                endif()
+            endforeach()
+        else()
+            set(_NRA_LANG cpp)
+        endif()
+    endif()
+
     # Phase 219.D — LAUNCH-aware fast path: shell `nros codegen entry`
     # at configure time, append the generated TU + auto-link sidecar.
     set(_sources_for_exe ${_NRA_SOURCES})
