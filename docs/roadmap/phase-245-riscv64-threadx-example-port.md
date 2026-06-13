@@ -183,15 +183,24 @@ board-overlay enabler precedes the cargo-path de-hardcode.
   *retired* interpreter path and is superseded by phase-246's typed template.
   Once phase-246 lands, T-c / T-cpp are straight ports onto the proven template.
 
-### Wave 2 — remaining roles (parallel; each follows the Wave-1 template)
-- [ ] **R* (rust):** listener, service-server, service-client, action-server,
-  action-client → single-package app-node shape. (action roles also drop P10 manual
-  type registration → folds in phase-244 E3 once it lands.)
-- [ ] **C* (c):** the same 5 roles → `nros_app_main` shape.
-- [ ] **X* (cpp):** the same 5 roles → `NROS_NODE_REGISTER` shape.
-
-(15 disjoint dirs in Wave 2 — dispatchable as parallel agents once the Wave-1
-template is proven + reviewed.)
+### Wave 2 — remaining roles — **zenoh DONE (2026-06-14)**; cyclone tail pending
+Migrated all 15 (5 roles × rust/c/cpp) off the OLD manual shape via a 30-agent
+workflow; target shapes are the post-246 ones (not the pre-246
+`nros_app_main`/`NROS_NODE_REGISTER` these headings predate):
+- [x] **X* (cpp):** listener / service-server / service-client / action-server /
+  action-client → `configure(Node&)` typed component + `nano_ros_node_register(TYPED)`
+  carrier (copy of the threadx-linux cpp role components, riscv64 namespace).
+- [x] **C* (c):** the same 5 → `NROS_C_COMPONENT` raw-callback component + TYPED carrier.
+- [x] **R* (rust):** the same 5 → single-package app-node (`impl Node` +
+  `nros::node!()` + `nros::main!()` + `[nros.entry]` + thin cyclone `app_main` →
+  `run_app_thread`), mirroring the rust talker.
+- All 15 **cross-build on the riscv64 zenoh path**; sample QEMU boot-gates pass
+  (cpp/listener "Waiting for messages", cpp/service-server "Waiting for requests",
+  rust/action-server "nros ThreadX Platform").
+- [ ] **CycloneDDS tail** — per-role `cyclonedds_app.c` descriptor TUs (3 distinct
+  types: Int32 / AddTwoInts / Fibonacci; only Int32's `register_Int32_0` known —
+  AddTwoInts/Fibonacci `register_*` symbols need discovery via a cyclone link) +
+  cyclone cross-builds + boot-gates. Bounded follow-up.
 
 ---
 
