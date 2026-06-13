@@ -1,0 +1,59 @@
+// Freestanding <initializer_list> for the Zephyr cxx-compat set
+// (-nostdinc++ + Zephyr minimal libcpp / picolibc; no libstdc++).
+// `std::initializer_list` is compiler-magic: the layout MUST be
+// { const T* begin; size_t len } and the compiler invokes the private
+// (begin, length) constructor when it materialises a braced-init-list.
+// This mirrors libstdc++'s shape exactly.
+//
+// Needed since nros-cpp's `parameter.hpp` (`#include <initializer_list>`, phase
+// 242.3 fixed-capacity sequence params) is reached by every cpp example via
+// `<nros/nros.hpp>`. Zephyr's minimal libcpp ships only cstddef/cstdint/new, so
+// without this shim the cpp examples fail `initializer_list: No such file`
+// (issue #58). Pulling full libstdc++ (CONFIG_REQUIRES_FULL_LIBCPP) instead
+// bleeds host glibc into the C platform compile (#42 class) — this freestanding
+// shim is the no-bleed fix. Same pattern as the ThreadX-RV64 cxx-compat set.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_INITIALIZER_LIST
+#define NROS_ZEPHYR_CXX_COMPAT_INITIALIZER_LIST
+
+#include <stddef.h>
+
+namespace std {
+
+template <class T>
+class initializer_list {
+public:
+    using value_type = T;
+    using reference = const T&;
+    using const_reference = const T&;
+    using size_type = size_t;
+    using iterator = const T*;
+    using const_iterator = const T*;
+
+    constexpr initializer_list() noexcept : _begin(nullptr), _len(0) {}
+
+    constexpr size_type size() const noexcept { return _len; }
+    constexpr const T* begin() const noexcept { return _begin; }
+    constexpr const T* end() const noexcept { return _begin + _len; }
+
+private:
+    // The compiler calls this (pointer, length) constructor to build a
+    // braced-init-list; layout + signature must match what GCC expects.
+    constexpr initializer_list(const T* b, size_type n) noexcept : _begin(b), _len(n) {}
+
+    const T* _begin;
+    size_type _len;
+};
+
+template <class T>
+constexpr const T* begin(initializer_list<T> il) noexcept {
+    return il.begin();
+}
+
+template <class T>
+constexpr const T* end(initializer_list<T> il) noexcept {
+    return il.end();
+}
+
+} // namespace std
+
+#endif // NROS_ZEPHYR_CXX_COMPAT_INITIALIZER_LIST
