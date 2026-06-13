@@ -371,118 +371,24 @@ function(nros_generate_interfaces target)
     set(_args_file "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_generate_${_lang_flag}_args__${target}.json")
   endif()
 
-  set(_files_json "")
-  set(_first TRUE)
-  foreach(_file ${_interface_files})
-    if(NOT _first)
-      string(APPEND _files_json ",")
-    endif()
-    set(_first FALSE)
-    string(APPEND _files_json "\n    \"${_file}\"")
-  endforeach()
+  # Build + write the codegen args JSON (shared core, Phase 246.2 — was an
+  # identical copy in the Zephyr generator).
+  _nros_write_codegen_args_json(
+    ARGS_FILE "${_args_file}"
+    PACKAGE "${target}"
+    OUTPUT_DIR "${_output_dir}"
+    ROS_EDITION "${_ARG_ROS_EDITION}"
+    CODEGEN_CONFIG "${_ARG_CODEGEN_CONFIG}"
+    INTERFACE_FILES ${_interface_files}
+    DEPS ${_ARG_DEPENDENCIES})
 
-  set(_deps_json "")
-  set(_first TRUE)
-  foreach(_dep ${_ARG_DEPENDENCIES})
-    if(NOT _first)
-      string(APPEND _deps_json ",")
-    endif()
-    set(_first FALSE)
-    string(APPEND _deps_json "\n    \"${_dep}\"")
-  endforeach()
-
-  # RFC-0033 / Phase 229.3 — optional per-field capacity config. When unset,
-  # the `nros` CLI discovers `nros-codegen.toml` by walking up from output_dir.
-  if(DEFINED _ARG_CODEGEN_CONFIG AND NOT _ARG_CODEGEN_CONFIG STREQUAL "")
-    set(_codegen_config_json ",\n  \"codegen_config\": \"${_ARG_CODEGEN_CONFIG}\"")
-  else()
-    set(_codegen_config_json "")
-  endif()
-
-  set(_args_content "{
-  \"package_name\": \"${target}\",
-  \"output_dir\": \"${_output_dir}\",
-  \"interface_files\": [${_files_json}
-  ],
-  \"dependencies\": [${_deps_json}
-  ],
-  \"ros_edition\": \"${_ARG_ROS_EDITION}\"${_codegen_config_json}
-}
-")
-
-  # Phase 123.A.7 — only rewrite the args file when content changes,
-  # so the cache-shared codegen doesn't get re-invoked on every cmake
-  # re-configure. Preserves mtime → add_custom_command sees outputs
-  # already up-to-date.
-  set(_should_write TRUE)
-  if(EXISTS "${_args_file}")
-    file(READ "${_args_file}" _existing_content)
-    if(_existing_content STREQUAL _args_content)
-      set(_should_write FALSE)
-    endif()
-  endif()
-  if(_should_write)
-    file(WRITE "${_args_file}" "${_args_content}")
-  endif()
-
-  # ---- Predict output files ----
-  set(_generated_headers "")
-  set(_generated_sources "")
-  set(_generated_rs_files "")
-  foreach(_file ${_interface_files})
-    get_filename_component(_name "${_file}" NAME_WE)
-    get_filename_component(_ext  "${_file}" EXT)
-
-    # CamelCase → snake_case
-    string(REGEX REPLACE "([a-z])([A-Z])" "\\1_\\2" _name_snake "${_name}")
-    string(TOLOWER "${_name_snake}" _name_lower)
-
-    # Package name → C identifier (replace - with _)
-    string(REPLACE "-" "_" _c_pkg "${target}")
-
-    if(_ext STREQUAL ".msg")
-      set(_kind "msg")
-    elseif(_ext STREQUAL ".srv")
-      set(_kind "srv")
-    elseif(_ext STREQUAL ".action")
-      set(_kind "action")
-    else()
-      message(FATAL_ERROR "Unknown interface file extension: ${_ext}")
-    endif()
-
-    if(_ARG_LANGUAGE STREQUAL "CPP")
-      # C++ generates .hpp headers + .rs FFI glue
-      list(APPEND _generated_headers
-        "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}.hpp")
-      if(_kind STREQUAL "msg")
-        list(APPEND _generated_rs_files
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_ffi.rs")
-      elseif(_kind STREQUAL "srv")
-        list(APPEND _generated_rs_files
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_request_ffi.rs"
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_response_ffi.rs")
-      elseif(_kind STREQUAL "action")
-        list(APPEND _generated_rs_files
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_goal_ffi.rs"
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_result_ffi.rs"
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_feedback_ffi.rs")
-      endif()
-    else()
-      # C generates .h headers + .c sources
-      list(APPEND _generated_headers
-        "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}.h")
-      list(APPEND _generated_sources
-        "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}.c")
-    endif()
-  endforeach()
-
-  # Umbrella header + optional mod.rs
-  if(_ARG_LANGUAGE STREQUAL "CPP")
-    list(APPEND _generated_headers "${_output_dir}/${target}.hpp")
-    list(APPEND _generated_rs_files "${_output_dir}/mod.rs")
-  else()
-    list(APPEND _generated_headers "${_output_dir}/${target}.h")
-  endif()
+  # Predict the files codegen will emit — feeds add_custom_command OUTPUT below
+  # (shared core, Phase 246.2).
+  _nros_predict_generated_outputs(_generated_headers _generated_sources _generated_rs_files
+    LANGUAGE "${_ARG_LANGUAGE}"
+    PACKAGE "${target}"
+    OUTPUT_DIR "${_output_dir}"
+    INTERFACE_FILES ${_interface_files})
 
   # ---- Custom command ----
   add_custom_command(

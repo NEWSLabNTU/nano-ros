@@ -14,8 +14,10 @@ recurring "fix it in one, forget the other" bug class.
 verified** — `cmake/NanoRosCodegenCore.cmake` holds `_nros_collect_rs_closure`,
 `_nros_export_rs_closure`, `_nros_write_ffi_lib_rs`; both generators call them for
 lib.rs assembly + closure compute/export. Validated: native C++ listener
-(canonical, deduped lib.rs) + ASI FVP (`zephyr.elf`) both build clean. 246.2–246.4
-pending.
+(canonical, deduped lib.rs) + ASI FVP (`zephyr.elf`) both build clean. **246.2
+DONE + verified** — args-JSON writer + output-prediction extracted to the core;
+both generators call them; native `cpp_listener` + ASI `zephyr.elf` rebuild clean.
+246.2b (codegen-tool + interface-file resolvers) deferred; 246.3–246.4 pending.
 
 **Priority.** P2 — tech-debt, but high-leverage: the same conceptual code drifted
 **three times** during the ASI Zephyr-3.7 bring-up alone, each a separate
@@ -101,9 +103,18 @@ a follow-up wave** — not wave 1; document the shared invariant first.
 - **246.1 — the proven bugs.** Extract `_nros_assemble_ffi_lib_rs` +
   `_nros_export_rs_closure`; both generators call them. Highest value (the two
   things that actually drifted into shipped bugs).
-- **246.2 — codegen plumbing.** `_nros_resolve_codegen_tool`,
-  `_nros_resolve_interface_files` (+bundled for zephyr), `_nros_write_codegen_args_json`,
-  `_nros_compute_output_paths`.
+- **246.2 — codegen plumbing.** `_nros_write_codegen_args_json` (args JSON
+  build + content-compare write) + `_nros_predict_generated_outputs` (name
+  transform + header/source/`_ffi.rs` path lists). These were the two LARGEST
+  byte-identical blocks (~105 lines each side). DONE.
+  - **Deferred (246.2b).** Codegen-tool resolution and interface-file
+    resolution stay per-generator for now: the tool resolver is entangled with
+    divergent pre-checks (zephyr's Kconfig `CONFIG_NROS_CODEGEN_TOOL` + the
+    `_NROS_ZEPHYR_CODEGEN_TOOL` cache var that `nros_find_interfaces.cmake`
+    reads; canonical's profile var) and the interface resolver differs by the
+    bundled-prefix tier (`_NANO_ROS_PREFIX`, absent in the zephyr tree) — both
+    are smaller + more divergent, so the dedup-vs-risk ratio is worse than 246.1
+    / the two blocks above.
 - **246.3 — cargo invocation.** `_nros_ffi_cargo_args`.
 - **246.4 (follow-up) — link wiring.** Unify the FFI-link approach behind one
   helper, carefully; or converge both on whole-archive. Separate review.

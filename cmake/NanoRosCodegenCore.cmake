@@ -90,3 +90,117 @@ function(_nros_write_ffi_lib_rs)
     endforeach()
     configure_file("${_L_TEMPLATE}" "${_L_CRATE_SRC}/lib.rs" @ONLY)
 endfunction()
+
+# _nros_write_codegen_args_json(ARGS_FILE <path> PACKAGE <name> OUTPUT_DIR <dir>
+#     ROS_EDITION <edition> [CODEGEN_CONFIG <path>]
+#     INTERFACE_FILES <files...> DEPS <pkgs...>)
+#
+# Build the `nros codegen --args-file` JSON and write it ONLY when the content
+# changed (so a re-configure doesn't perturb the file mtime → the codegen
+# add_custom_command / mtime check sees its outputs already up to date,
+# essential for the workspace-shared codegen cache). `CODEGEN_CONFIG` is the
+# optional RFC-0033 per-field capacity config; omit it to emit no such field.
+function(_nros_write_codegen_args_json)
+    cmake_parse_arguments(_J ""
+        "ARGS_FILE;PACKAGE;OUTPUT_DIR;ROS_EDITION;CODEGEN_CONFIG"
+        "INTERFACE_FILES;DEPS" ${ARGN})
+    set(_files_json "")
+    set(_first TRUE)
+    foreach(_f ${_J_INTERFACE_FILES})
+        if(NOT _first)
+            string(APPEND _files_json ",")
+        endif()
+        set(_first FALSE)
+        string(APPEND _files_json "\n    \"${_f}\"")
+    endforeach()
+    set(_deps_json "")
+    set(_first TRUE)
+    foreach(_d ${_J_DEPS})
+        if(NOT _first)
+            string(APPEND _deps_json ",")
+        endif()
+        set(_first FALSE)
+        string(APPEND _deps_json "\n    \"${_d}\"")
+    endforeach()
+    set(_cfg_json "")
+    if(DEFINED _J_CODEGEN_CONFIG AND NOT _J_CODEGEN_CONFIG STREQUAL "")
+        set(_cfg_json ",\n  \"codegen_config\": \"${_J_CODEGEN_CONFIG}\"")
+    endif()
+    set(_content "{
+  \"package_name\": \"${_J_PACKAGE}\",
+  \"output_dir\": \"${_J_OUTPUT_DIR}\",
+  \"interface_files\": [${_files_json}
+  ],
+  \"dependencies\": [${_deps_json}
+  ],
+  \"ros_edition\": \"${_J_ROS_EDITION}\"${_cfg_json}
+}
+")
+    set(_write TRUE)
+    if(EXISTS "${_J_ARGS_FILE}")
+        file(READ "${_J_ARGS_FILE}" _existing)
+        if(_existing STREQUAL _content)
+            set(_write FALSE)
+        endif()
+    endif()
+    if(_write)
+        file(WRITE "${_J_ARGS_FILE}" "${_content}")
+    endif()
+endfunction()
+
+# _nros_predict_generated_outputs(<headers_var> <sources_var> <rs_var>
+#     LANGUAGE C|CPP PACKAGE <name> OUTPUT_DIR <dir> INTERFACE_FILES <files...>)
+#
+# Predict the files `nros codegen` will emit for the given interfaces, returning
+# three lists (headers / C sources / Rust `_ffi.rs`) in the caller's scope.
+# CPP: `<pkg>_<kind>_<name>.hpp` + per-kind `_ffi.rs` (msg→1, srv→request+response,
+# action→goal+result+feedback) + the `<pkg>.hpp` umbrella + `mod.rs`. C:
+# `<pkg>_<kind>_<name>.{h,c}` + the `<pkg>.h` umbrella. Names are CamelCase→snake,
+# package `-`→`_`. The canonical generator feeds these to add_custom_command
+# OUTPUT (must match codegen exactly); the Zephyr generator concatenates them for
+# its mtime "needs-regen" check.
+function(_nros_predict_generated_outputs _hdr_var _src_var _rs_var)
+    cmake_parse_arguments(_P "" "LANGUAGE;PACKAGE;OUTPUT_DIR" "INTERFACE_FILES" ${ARGN})
+    set(_headers "")
+    set(_sources "")
+    set(_rs "")
+    string(REPLACE "-" "_" _c_pkg "${_P_PACKAGE}")
+    foreach(_file ${_P_INTERFACE_FILES})
+        get_filename_component(_name "${_file}" NAME_WE)
+        get_filename_component(_ext "${_file}" EXT)
+        string(REGEX REPLACE "([a-z])([A-Z])" "\\1_\\2" _name_snake "${_name}")
+        string(TOLOWER "${_name_snake}" _name_lower)
+        if(_ext STREQUAL ".msg")
+            set(_kind "msg")
+        elseif(_ext STREQUAL ".srv")
+            set(_kind "srv")
+        elseif(_ext STREQUAL ".action")
+            set(_kind "action")
+        else()
+            message(FATAL_ERROR "_nros_predict_generated_outputs: unknown interface extension '${_ext}' (${_file})")
+        endif()
+        set(_base "${_P_OUTPUT_DIR}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}")
+        if(_P_LANGUAGE STREQUAL "CPP")
+            list(APPEND _headers "${_base}.hpp")
+            if(_kind STREQUAL "msg")
+                list(APPEND _rs "${_base}_ffi.rs")
+            elseif(_kind STREQUAL "srv")
+                list(APPEND _rs "${_base}_request_ffi.rs" "${_base}_response_ffi.rs")
+            elseif(_kind STREQUAL "action")
+                list(APPEND _rs "${_base}_goal_ffi.rs" "${_base}_result_ffi.rs" "${_base}_feedback_ffi.rs")
+            endif()
+        else()
+            list(APPEND _headers "${_base}.h")
+            list(APPEND _sources "${_base}.c")
+        endif()
+    endforeach()
+    if(_P_LANGUAGE STREQUAL "CPP")
+        list(APPEND _headers "${_P_OUTPUT_DIR}/${_P_PACKAGE}.hpp")
+        list(APPEND _rs "${_P_OUTPUT_DIR}/mod.rs")
+    else()
+        list(APPEND _headers "${_P_OUTPUT_DIR}/${_P_PACKAGE}.h")
+    endif()
+    set(${_hdr_var} "${_headers}" PARENT_SCOPE)
+    set(${_src_var} "${_sources}" PARENT_SCOPE)
+    set(${_rs_var} "${_rs}" PARENT_SCOPE)
+endfunction()

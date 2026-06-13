@@ -243,92 +243,24 @@ function(nros_generate_interfaces target)
   string(TOLOWER "${_ARG_LANGUAGE}" _lang_lower)
   set(_args_file "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_generate_${_lang_lower}_args__${target}.json")
 
-  set(_files_json "")
-  set(_first TRUE)
-  foreach(_file ${_interface_files})
-    if(NOT _first)
-      string(APPEND _files_json ",")
-    endif()
-    set(_first FALSE)
-    string(APPEND _files_json "\n    \"${_file}\"")
-  endforeach()
+  # Build + write the codegen args JSON (shared core, Phase 246.2 — identical
+  # to the canonical generator; no CODEGEN_CONFIG arg → no such JSON field).
+  _nros_write_codegen_args_json(
+    ARGS_FILE "${_args_file}"
+    PACKAGE "${target}"
+    OUTPUT_DIR "${_output_dir}"
+    ROS_EDITION "${_ARG_ROS_EDITION}"
+    INTERFACE_FILES ${_interface_files}
+    DEPS ${_ARG_DEPENDENCIES})
 
-  set(_deps_json "")
-  set(_first TRUE)
-  foreach(_dep ${_ARG_DEPENDENCIES})
-    if(NOT _first)
-      string(APPEND _deps_json ",")
-    endif()
-    set(_first FALSE)
-    string(APPEND _deps_json "\n    \"${_dep}\"")
-  endforeach()
-
-  set(_args_content "{
-  \"package_name\": \"${target}\",
-  \"output_dir\": \"${_output_dir}\",
-  \"interface_files\": [${_files_json}
-  ],
-  \"dependencies\": [${_deps_json}
-  ],
-  \"ros_edition\": \"${_ARG_ROS_EDITION}\"
-}
-")
-  set(_should_write_args TRUE)
-  if(EXISTS "${_args_file}")
-    file(READ "${_args_file}" _existing_args_content)
-    if(_existing_args_content STREQUAL _args_content)
-      set(_should_write_args FALSE)
-    endif()
-  endif()
-  if(_should_write_args)
-    file(WRITE "${_args_file}" "${_args_content}")
-  endif()
-
-  set(_expected_outputs "")
-  foreach(_file ${_interface_files})
-    get_filename_component(_name "${_file}" NAME_WE)
-    get_filename_component(_ext "${_file}" EXT)
-    string(REGEX REPLACE "([a-z])([A-Z])" "\\1_\\2" _name_snake "${_name}")
-    string(TOLOWER "${_name_snake}" _name_lower)
-    string(REPLACE "-" "_" _c_pkg "${target}")
-
-    if(_ext STREQUAL ".msg")
-      set(_kind "msg")
-    elseif(_ext STREQUAL ".srv")
-      set(_kind "srv")
-    elseif(_ext STREQUAL ".action")
-      set(_kind "action")
-    else()
-      message(FATAL_ERROR "Unknown interface file extension: ${_ext}")
-    endif()
-
-    if(_ARG_LANGUAGE STREQUAL "CPP")
-      list(APPEND _expected_outputs
-        "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}.hpp")
-      if(_kind STREQUAL "msg")
-        list(APPEND _expected_outputs
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_ffi.rs")
-      elseif(_kind STREQUAL "srv")
-        list(APPEND _expected_outputs
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_request_ffi.rs"
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_response_ffi.rs")
-      elseif(_kind STREQUAL "action")
-        list(APPEND _expected_outputs
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_goal_ffi.rs"
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_result_ffi.rs"
-          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_feedback_ffi.rs")
-      endif()
-    else()
-      list(APPEND _expected_outputs
-        "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}.h"
-        "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}.c")
-    endif()
-  endforeach()
-  if(_ARG_LANGUAGE STREQUAL "CPP")
-    list(APPEND _expected_outputs "${_output_dir}/${target}.hpp" "${_output_dir}/mod.rs")
-  else()
-    list(APPEND _expected_outputs "${_output_dir}/${target}.h")
-  endif()
+  # Predict codegen outputs for the mtime "needs-regen" check below (shared
+  # core, Phase 246.2). Order is irrelevant here — only EXISTS/mtime is tested.
+  _nros_predict_generated_outputs(_exp_hdr _exp_src _exp_rs
+    LANGUAGE "${_ARG_LANGUAGE}"
+    PACKAGE "${target}"
+    OUTPUT_DIR "${_output_dir}"
+    INTERFACE_FILES ${_interface_files})
+  set(_expected_outputs ${_exp_hdr} ${_exp_src} ${_exp_rs})
 
   # ---- Run codegen at configure time ----
   # Phase 196.1 — the codegen CLI is the `nros codegen` subcommand (Phase 195
