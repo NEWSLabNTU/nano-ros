@@ -1,37 +1,55 @@
 /// @file ServiceServer.cpp
-/// @brief C++ ServiceServer component — Phase 212.L Component pkg.
-///
-/// Handles `example_interfaces/AddTwoInts` requests on `/add_two_ints`.
+/// @brief ThreadX-Linux C++ AddTwoInts service server — typed component (RFC-0043).
 
-#include <cstdint>
+#include "ServiceServer.hpp"
 
-#include <nros/nros.hpp>
-#include <nros/node_pkg.hpp>
-#include "example_interfaces.hpp"
+#include <cstdio>
 
 namespace threadx_linux_cpp_service_server {
 
-class ServiceServer {
-  public:
-    static nros::Result register_node(nros::NodeContext& context) {
-        nros::DeclaredNode node;
-        nros::NodeOptions options;
-        options.name = "add_two_ints_server";
-        options.namespace_ = "/";
-        nros::Result rc = context.create_node(node, options);
-        if (!rc.ok()) return rc;
-
-        nros::DeclaredCallback on_add;
-        rc = node.declare_callback(on_add, "on_add");
-        if (!rc.ok()) return rc;
-
-        nros::DeclaredEntity srv;
-        return node.create_service_server(srv, "/add_two_ints", "example_interfaces/srv/AddTwoInts",
-                                          on_add);
+static int64_t read_i64_le(const uint8_t* p) {
+    uint64_t v = 0;
+    for (int i = 0; i < 8; ++i) {
+        v |= static_cast<uint64_t>(p[i]) << (8 * i);
     }
-};
+    return static_cast<int64_t>(v);
+}
+
+static void write_i64_le(uint8_t* p, int64_t x) {
+    uint64_t v = static_cast<uint64_t>(x);
+    for (int i = 0; i < 8; ++i) {
+        p[i] = static_cast<uint8_t>(v >> (8 * i));
+    }
+}
+
+bool ServiceServer::handle_add(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
+                               size_t* resp_len) {
+    // AddTwoInts request CDR: 4-byte encapsulation header, then int64 a, int64 b.
+    if (req_len < 20 || resp_cap < 12) {
+        return false;
+    }
+    int64_t a = read_i64_le(req + 4);
+    int64_t b = read_i64_le(req + 12);
+    int64_t sum = a + b;
+    resp[0] = req[0];
+    resp[1] = req[1];
+    resp[2] = req[2];
+    resp[3] = req[3];
+    write_i64_le(resp + 4, sum);
+    *resp_len = 12;
+    printf("Serving: %lld + %lld = %lld\n", static_cast<long long>(a), static_cast<long long>(b),
+           static_cast<long long>(sum));
+    return true;
+}
+
+::nros::Result ServiceServer::configure(::nros::Node& node) {
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    ::nros::Result r = ::nros::bind_service_raw<ServiceServer, &ServiceServer::handle_add>(
+        node, "/add_two_ints", "example_interfaces/srv/AddTwoInts", this);
+    if (r.ok()) {
+        printf("Waiting for requests\n");
+    }
+    return r;
+}
 
 } // namespace threadx_linux_cpp_service_server
-
-NROS_NODE_REGISTER(threadx_linux_cpp_service_server::ServiceServer,
-                   "threadx_linux_cpp_service_server::ServiceServer");

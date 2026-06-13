@@ -1,39 +1,99 @@
 /// @file ActionServer.cpp
-/// @brief C++ ActionServer component — Phase 212.L Component pkg.
-///
-/// Declares an `example_interfaces/Fibonacci` action server on
-/// `/fibonacci`. Body callbacks (goal/cancel/accepted) land with W.5.6
-/// plumbing; this file is the declarative SSoT.
+/// @brief ThreadX-Linux C++ Fibonacci action server — typed component (RFC-0043).
 
-#include <cstdint>
+#include "ActionServer.hpp"
 
-#include <nros/nros.hpp>
-#include <nros/node_pkg.hpp>
-#include "example_interfaces.hpp"
+#include <cstdio>
+#include <cstring>
 
 namespace threadx_linux_cpp_action_server {
 
-class ActionServer {
-  public:
-    static nros::Result register_node(nros::NodeContext& context) {
-        nros::DeclaredNode node;
-        nros::NodeOptions options;
-        options.name = "fibonacci_action_server";
-        options.namespace_ = "/";
-        nros::Result rc = context.create_node(node, options);
-        if (!rc.ok()) return rc;
+static int32_t read_i32_le(const uint8_t* p) {
+    return static_cast<int32_t>(static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+                                (static_cast<uint32_t>(p[2]) << 16) |
+                                (static_cast<uint32_t>(p[3]) << 24));
+}
 
-        nros::DeclaredCallback on_goal;
-        rc = node.declare_callback(on_goal, "on_goal");
-        if (!rc.ok()) return rc;
+static void write_u32_le(uint8_t* p, uint32_t v) {
+    p[0] = static_cast<uint8_t>(v);
+    p[1] = static_cast<uint8_t>(v >> 8);
+    p[2] = static_cast<uint8_t>(v >> 16);
+    p[3] = static_cast<uint8_t>(v >> 24);
+}
 
-        nros::DeclaredEntity act;
-        return node.create_action_server(act, "/fibonacci", "example_interfaces/action/Fibonacci",
-                                         on_goal);
+int32_t ActionServer::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len) {
+    // Goal CDR: 4-byte encapsulation header, then int32 order (offset 4).
+    if (len < 8 || pending_) {
+        return static_cast<int32_t>(::nros::GoalResponse::Reject);
     }
-};
+    memcpy(goal_id_, goal_id, 16);
+    order_ = read_i32_le(data + 4);
+    pending_ = true;
+    printf("Goal accepted: order=%d\n", static_cast<int>(order_));
+    return static_cast<int32_t>(::nros::GoalResponse::AcceptAndExecute);
+}
+
+int32_t ActionServer::on_cancel(const uint8_t /*goal_id*/[16]) {
+    return static_cast<int32_t>(::nros::CancelResponse::Reject);
+}
+
+void ActionServer::on_tick() {
+    if (!pending_) {
+        return;
+    }
+    pending_ = false;
+
+    int32_t n = order_;
+    if (n < 0) {
+        n = 0;
+    }
+    if (n > 16) {
+        n = 16;
+    }
+
+    int32_t seq[16];
+    for (int32_t i = 0; i < n; ++i) {
+        if (i == 0) {
+            seq[i] = 0;
+        } else if (i == 1) {
+            seq[i] = 1;
+        } else {
+            seq[i] = seq[i - 1] + seq[i - 2];
+        }
+    }
+
+    // Result CDR: encapsulation header (CDR_LE) + u32 length + N int32.
+    uint8_t buf[8 + 4 * 16];
+    buf[0] = 0x00;
+    buf[1] = 0x01;
+    buf[2] = 0x00;
+    buf[3] = 0x00;
+    write_u32_le(buf + 4, static_cast<uint32_t>(n));
+    for (int32_t i = 0; i < n; ++i) {
+        write_u32_le(buf + 8 + 4 * i, static_cast<uint32_t>(seq[i]));
+    }
+    size_t result_len = 8 + 4 * static_cast<size_t>(n);
+
+    nros_cpp_ret_t rc = nros_cpp_action_server_complete_goal(
+        storage_.bytes, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id_), buf,
+        result_len);
+    printf("Goal succeeded: %d terms (rc=%d)\n", static_cast<int>(n), static_cast<int>(rc));
+}
+
+::nros::Result ActionServer::configure(::nros::Node& node) {
+    executor_ = node.executor_handle();
+    ::nros::Result r =
+        ::nros::bind_action_server_raw<ActionServer, &ActionServer::on_goal,
+                                       &ActionServer::on_cancel>(
+            node, storage_.bytes, "/fibonacci", "example_interfaces/action/Fibonacci", this);
+    if (!r.ok()) {
+        return r;
+    }
+    r = ::nros::bind_timer<ActionServer, &ActionServer::on_tick>(node, timer_, 200, this);
+    if (r.ok()) {
+        printf("Waiting for goals\n");
+    }
+    return r;
+}
 
 } // namespace threadx_linux_cpp_action_server
-
-NROS_NODE_REGISTER(threadx_linux_cpp_action_server::ActionServer,
-                   "threadx_linux_cpp_action_server::ActionServer");
