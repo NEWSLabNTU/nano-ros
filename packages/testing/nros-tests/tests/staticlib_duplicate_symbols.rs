@@ -286,3 +286,107 @@ fn staticlib_duplicate_symbols_are_only_shared_deps() {
         dups.len(),
     );
 }
+
+/// Phase 241.D (RFC-0042 D3) slice 3 — the fix direction, proven on host.
+///
+/// `--allow-multiple-definition` is needed only because the current link pulls the
+/// RMW backend in with a broad `--whole-archive` (to force its register / ctor
+/// symbols), which drags in EVERY archive member — including the shared closure's
+/// strong defs that then collide. The deterministic fix (D3 item 3) is to force
+/// only the backend's register entry via `-u <symbol>` and lazy-link the rest:
+/// the duplicated closure symbols are COMDAT/weak, so lazy archive-member
+/// selection dedups them with no `--allow-multiple-definition`.
+///
+/// This asserts that on host the pair links **with `-u nros_rmw_zenoh_register`,
+/// WITHOUT `--allow-multiple-definition`**, AND
+///   * the forced register entry is actually included (the `-u` did its job), and
+///   * there is exactly ONE `REGISTRY` instance — the cffi backend registry stays
+///     single (localizing/duplicating it would split registration → the #48
+///     `NoBackend` hazard).
+/// It is the host-side regression guard for the slice-4 flag removal: if a future
+/// change reintroduces a real strong-dup collision on this lazy path, this goes
+/// red. The cross-platform cmake change (whole-archive → `-u`) + its validation
+/// is the run_e2e slice-4 work.
+#[test]
+fn host_pair_links_via_u_force_without_allow_multiple_definition() {
+    let root = repo_root();
+    let Some(cc) = tool("cc") else {
+        nros_tests::skip!("cc not on PATH — D3 host link-proof needs a host C compiler");
+    };
+    let Some(nm) = tool("llvm-nm") else {
+        nros_tests::skip!("llvm-nm not on PATH — D3 host link-proof needs it");
+    };
+    let Some((nros_c, rmw)) = find_archive_pair(&root) else {
+        nros_tests::skip!(
+            "no staticlib pair — run `scripts/build/link-determinism-fixture.sh` first"
+        );
+    };
+    // Only the host (posix) pair is link-checkable here; the example cpp archives
+    // are cross objects this host `cc` can't link.
+    if !nros_c.starts_with(root.join("build/link-determinism")) {
+        nros_tests::skip!(
+            "link-proof needs the host fixture pair (build/link-determinism); the \
+             discovered pair is a cross archive — run the fixture script"
+        );
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    let main_c = tmp.path().join("bare.c");
+    std::fs::write(&main_c, "int main(void){return 0;}\n").unwrap();
+    let exe = tmp.path().join("lkproof");
+
+    // `-u` forces the register entry; NO `--allow-multiple-definition`; lazy
+    // archive selection dedups the COMDAT/weak shared closure.
+    let out = Command::new(&cc)
+        .arg(&main_c)
+        .args(["-Wl,-u,nros_rmw_zenoh_register"])
+        .arg(&nros_c)
+        .arg(&rmw)
+        .args(["-lpthread", "-ldl", "-lm"])
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .unwrap_or_else(|e| panic!("spawn {cc}: {e}"));
+    assert!(
+        out.status.success(),
+        "host staticlib pair FAILED to link with `-u nros_rmw_zenoh_register` and \
+         WITHOUT `--allow-multiple-definition` — a real strong-symbol collision the \
+         flag was masking (D3 slice-4 blocker):\n{}",
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let syms = Command::new(&nm).arg(&exe).output().unwrap();
+    let listing = String::from_utf8_lossy(&syms.stdout);
+    assert!(
+        listing
+            .lines()
+            .any(|l| l.ends_with(" T nros_rmw_zenoh_register")
+                || l.ends_with(" t nros_rmw_zenoh_register")),
+        "`-u nros_rmw_zenoh_register` did not pull the backend register entry into \
+         the image — forcing the entry is the whole point of the `-u` replacement",
+    );
+    let registry_defs = listing
+        .lines()
+        .filter(|l| {
+            l.ends_with(" T REGISTRY")
+                || l.ends_with(" D REGISTRY")
+                || l.ends_with(" B REGISTRY")
+                || l.ends_with(" t REGISTRY")
+                || l.ends_with(" d REGISTRY")
+                || l.ends_with(" b REGISTRY")
+        })
+        .count();
+    assert_eq!(
+        registry_defs, 1,
+        "expected exactly ONE cffi `REGISTRY` instance in the linked image (single \
+         shared registry), found {registry_defs} — a split registry is the #48 \
+         `NoBackend` hazard",
+    );
+
+    eprintln!(
+        "D3 slice 3: host staticlib pair links with `-u nros_rmw_zenoh_register` and \
+         NO `--allow-multiple-definition` — register entry included, single REGISTRY. \
+         The flag is replaceable by targeted `-u` force + lazy linking (slice 4: the \
+         cross cmake change behind run_e2e).",
+    );
+}
