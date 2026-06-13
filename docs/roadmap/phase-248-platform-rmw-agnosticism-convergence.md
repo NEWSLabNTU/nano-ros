@@ -188,15 +188,31 @@ cyclone keep-alive moved to nros). See above.
 
 **Wave 2a (foundational — establishes the board-as-selection-point, ADDITIVE so
 nros keeps its features for now):**
-- [ ] **C5a — Selection mechanism in boards.** Move the backend force-link
-      statics (`__FORCE_LINK_{ZENOH,XRCE,CYCLONEDDS_SYS}` + `__register_linked_rmw`)
-      and the concrete-backend deps from `nros` INTO each board crate, gated by
-      the board's `rmw-X` feature (C1 already made the boards' `nros-rmw-zenoh`
-      optional). A board built with `rmw-zenoh` links + self-registers zenoh; the
-      platform impl (`nros-platform-<rtos>`) likewise comes from the board.
-      `nros` KEEPS its `rmw-*`/`platform-*` features through this step (additive).
-      Owns: `packages/boards/*` + the force-link block in `nros/src/lib.rs` (read
-      side only). Verify a board+backend links a working binary.
+- [~] **C5a — Selection mechanism in boards. PATTERN PROVEN (native zenoh).**
+      `nros-board-native` now carries a `#[cfg(feature="rmw-zenoh")]`
+      `__FORCE_LINK_ZENOH` static (mirrors nros); nm-verified that the BOARD
+      (features=["rmw-zenoh"]) — with `nros` built WITHOUT `rmw-zenoh` — pulls +
+      self-registers zenoh (`RMW_INIT_ENTRIES` reaches the binary via the board,
+      no nros force-link). Additive: nros keeps its features. Most cross boards
+      were already self-sufficient (C1 added `#[cfg(rmw-zenoh)]` boot-path
+      `register()` calls). **Remaining C5a per-board work (gates C5c — must be
+      done so NO board forwards `nros/rmw-*`):**
+      - `nros-board-freertos` (+ `-mps2-an385-freertos` via it) still forwards
+        `rmw-zenoh = ["nros/rmw-zenoh"]`; registration rides on
+        `nros::__register_linked_rmw()`. Move to board-owned register (couples
+        with C5b's macro change).
+      - Pure-marker boards (`rmw-zenoh = []`, zenoh via the C TU / zpico-sys):
+        `mps2-an385`, `stm32f4`, `esp32s3`, `fvp-aemv8r-smp`, `s32z270dc2-r52` —
+        add the optional Rust `nros-rmw-zenoh` dep + gated register for
+        board-owned linking.
+      - XRCE: `nros-board-mps2-an385` (`xrce-transport`) — add `__FORCE_LINK_XRCE`
+        + board register. CycloneDDS: `fvp-aemv8r-smp`, `s32z270dc2-r52`
+        (`rmw-cyclonedds` markers) — add optional `-sys` dep + force-link.
+      - `nros-board-esp32-qemu`: ungated `register()` (can't build rmw-zenoh-off)
+        — minor C1 nit to gate.
+      Owns: `packages/boards/*` + the force-link block in `nros/src/lib.rs` (READ
+      only). Platform-axis board debt (e.g. `nros-board-posix` enables
+      `nros/platform-posix`) is Tier-3, handled with C3.2/C5c.
 - [ ] **C5b — Codegen lowers to the board feature + RFC-0031 amendment.**
       `nros codegen entry` / `nros::main!` / `generate` emit the entry's board-dep
       `features = ["rmw-X"]` (from `system.toml` `[system].rmw`) instead of

@@ -38,17 +38,22 @@
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 
-// Phase 212.N.7 step-3.5 — force-link the zenoh RMW backend so its
-// `.nros_rmw_init` linker-section ctor reaches the final binary.
-// Without this `extern crate _`, cargo drops the rlib at link time
-// (the rest of the crate never names a zenoh symbol), and
-// `Executor::open` (now invoked inside `PosixBoard::run`) finds no
-// backend on first call.
-// Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh` feature
-// so the board can build DDS-/XRCE-only (a different `nros-rmw-*` crate
-// then provides the linked backend).
+// Phase 248 C5a (#60 T4) — the BOARD is the RMW selection point. Under its
+// own `rmw-zenoh` feature it force-links the zenoh backend rlib so the
+// backend's `RMW_INIT_ENTRIES` self-register section survives stable-Rust
+// rlib pruning and reaches the final binary, WITHOUT relying on the `nros`
+// umbrella's `rmw-zenoh` feature. Mirrors the `__FORCE_LINK_ZENOH` static in
+// `nros/src/lib.rs` (referencing `register` keeps both the symbol and its
+// linker section alive — strictly stronger than the prior `extern crate _`,
+// which only kept the rlib). On native (linkme-aware + `.init_array`) the
+// section auto-registers; the static guarantees it is not pruned first.
+// Cycle-free: the backend crate does not depend on this board crate. Inert
+// unless `rmw-zenoh` selects the backend.
 #[cfg(feature = "rmw-zenoh")]
-extern crate nros_rmw_zenoh as _;
+#[doc(hidden)]
+#[used]
+pub static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
+    nros_rmw_zenoh::register;
 
 use nros_board_posix::PosixBoard;
 use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
