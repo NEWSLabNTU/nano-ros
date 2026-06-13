@@ -248,14 +248,25 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   Delete the `#[cfg(feature="rmw-cyclonedds")] nros_rmw_cyclonedds::register::<…>()`
   action-type setup (`action-server/src/main.rs:41`, `action-client/src/main.rs:37`)
   → E3 auto-registers. Leaks P4/P10. (native C/C++ already clean.)
-- [~] **D4 — PARTIAL (2026-06-13). custom-transport-talker migrated + compiled**
-  (open-coded TcpBridge + FFI callbacks → `nros_transport_callbacks::tcp_transport_ops`
-  + `set_custom_transport`). **C loopback BLOCKED:** E2 shipped Rust-only — NO C-mirror
-  factories (the "+ C mirrors" half of E2 was not built), and the C example asserts
-  per-callback counters the E2 loopback doesn't expose → E2 must grow C-callable
-  factories w/ observable counters first. **talker-xrce already clean** (no_std XRCE
-  UART factory; E2 N/A; D1-group). Also noted: `custom-transport-listener` (4th dir,
-  omitted from the D4 bullet) has the same open-coded TCP-bridge leak — follow-up.
+- [x] **D4 — DONE (2026-06-14). Rust legs migrated; C loopback = accepted residual.**
+  - **custom-transport-talker (wave, 2026-06-13)** + **custom-transport-listener
+    (wave A, 2026-06-14)** — open-coded TcpBridge + 4 `extern "C"` callbacks +
+    manual `NrosTransportOps` → `nros_transport_callbacks::tcp_transport_ops` +
+    `set_custom_transport`. Both build (zenoh) and the full loopback roundtrip over
+    a real zenohd TCP bridge is locally verified (talker pub 10 / listener recv 9;
+    msg 0 = startup discovery race). P9 cleared for both.
+  - **custom-transport-loopback (C) — accepted residual (NOT hoisted).** This is a
+    C *custom-transport tutorial + self-test*: its ring-buffer `open/write/read/close`
+    callbacks AND the callback-count pass/fail assertions ARE the demonstrated
+    content (the file teaches "how to write the 4 `nros_transport_ops_t` callbacks
+    in C"). Moving them into an E2 C-mirror would empty the tutorial — same call as
+    `custom-platform`'s `platform_impl.c` (reference content, not an
+    application-logic leak). It would also need a large new C-ABI surface on the
+    Rust-only E2 crate (staticlib crate-type + cbindgen header + cmake wiring) for
+    one example, with counters the Rust loopback doesn't expose. Not worth gutting
+    the tutorial; left as-is.
+  - **talker-xrce (qemu-arm-baremetal) — already clean** (no_std XRCE UART factory;
+    E2 N/A; D1-group).
   Original D4 plan:
 - [ ] **D4 (orig) — custom-transport examples (3). Needs E2.** Move the FFI callbacks +
   `set_custom_transport` from `native/custom-transport-talker/src/main.rs:81,162`,
