@@ -8,7 +8,10 @@
 // NOT a drop-in libstdc++ replacement. Embedded callers that
 // need richer atomic ops should land them here on demand or
 // switch to the underlying `<stdatomic.h>` primitives directly.
-#ifndef NROS_ZEPHYR_CXX_COMPAT_ATOMIC
+// Defer to the toolchain's real <atomic> when reachable; else the minimal shim.
+#if defined(__has_include_next) && __has_include_next(<atomic>)
+#  include_next <atomic>
+#elif !defined(NROS_ZEPHYR_CXX_COMPAT_ATOMIC)
 #define NROS_ZEPHYR_CXX_COMPAT_ATOMIC
 
 // NOTE: don't `#include <stdatomic.h>` — that header uses the

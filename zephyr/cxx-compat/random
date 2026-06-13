@@ -3,7 +3,10 @@
 // generator with seed + uniform distribution). Backed by
 // Zephyr's `sys_rand32_get()` — no entropy guarantees beyond
 // Zephyr's PRNG.
-#ifndef NROS_ZEPHYR_CXX_COMPAT_RANDOM
+// Defer to the toolchain's real <random> when reachable; else the minimal shim.
+#if defined(__has_include_next) && __has_include_next(<random>)
+#  include_next <random>
+#elif !defined(NROS_ZEPHYR_CXX_COMPAT_RANDOM)
 #define NROS_ZEPHYR_CXX_COMPAT_RANDOM
 
 #include <stdint.h>
