@@ -47,6 +47,14 @@ rmw-cyclonedds-cffi = ["rmw-cffi", "nros-c/rmw-cyclonedds"]
 # `_discard`, `nros_cpp_subscription_borrow` / `_release`).
 lending = ["rmw-cffi", "nros/lending"]
 
+# Phase 241.D3-rev (W8) — expose the param / lifecycle service surfaces through the
+# umbrella. The C++ executor headers call the gated nros-c C entry points
+# (nros_executor_register_parameter_services, nros_executor_lifecycle_*, …); a C++
+# binary that uses them needs the umbrella built with these features so those symbols
+# are compiled into libnros_cpp.a. Forward to nros-c (which pulls nros/nros-node).
+param-services = ["rmw-cffi", "nros-c/param-services"]
+lifecycle-services = ["rmw-cffi", "nros-c/lifecycle-services"]
+
 # Zenoh transport refinements (require rmw-zenoh-cffi)
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.
 

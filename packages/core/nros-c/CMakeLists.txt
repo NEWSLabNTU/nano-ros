@@ -104,6 +104,13 @@ endif()
 
 set(_features ros-humble ${_rmw_features} ${_platform_features})
 
+# Phase 241.D3-rev (W9) — enable the param / lifecycle service surfaces on the hosted
+# umbrella so examples using them (the C++ executor headers call the gated C entry
+# points) link. alloc-gated, so kept to hosted platforms; embedded stays opt-in.
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    list(APPEND _features param-services lifecycle-services)
+endif()
+
 # ---- Build nros-c via Corrosion ----
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
