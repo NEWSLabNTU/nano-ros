@@ -25,10 +25,6 @@ crate-type = ["rlib"]
 default = ["linkme-register"]
 # Phase 134.fix — see nros-rmw-zenoh's identically-named feature.
 linkme-register = ["nros-rmw-cffi/linkme-register"]
-# RFC-0042 D3 / phase-241.D slice 4 — forwards to `nros-rmw-cffi/external-registry`
-# so this backend's cffi rlib references `REGISTRY` rather than defining a duplicate.
-# Threaded up from `nros-rmw-xrce-cffi-staticlib` by the cmake link.
-external-registry = ["nros-rmw-cffi/external-registry"]
 # Phase 144.3 — enable when emitting this crate as a top-level
 # `staticlib` against a hosted target (e.g. via
 # `corrosion_import_crate(... CRATE_TYPES staticlib)` from the root

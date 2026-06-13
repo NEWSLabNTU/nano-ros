@@ -33,10 +33,6 @@ default = []
 # the top-level binary via `panic-halt` / `panic-probe`).
 std = ["nros-rmw-xrce-cffi/std"]
 linkme-register = ["nros-rmw-xrce-cffi/linkme-register"]
-# RFC-0042 D3 / phase-241.D slice 4 — forwards `external-registry` down to the cffi
-# rlib so this staticlib references `REGISTRY` (the provider archive defines it once
-# for the C/C++ link). Passed by the root `CMakeLists.txt` xrce arm.
-external-registry = ["nros-rmw-xrce-cffi/external-registry"]
 # Phase 212.M.7 — ESP-IDF integration links this staticlib into a C
 # binary (app_main.c) which carries no Rust-side panic handler. Opt
 # into a `panic-halt` strategy so compile-time panic resolution

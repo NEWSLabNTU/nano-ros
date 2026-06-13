@@ -29,13 +29,6 @@ alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 # specific RMW.
 rmw-cffi = ["nros/rmw-cffi"]
 
-# RFC-0042 D3 / phase-241.D slice 4 — reference the cffi `REGISTRY` as an undefined
-# external so the `nros-rmw-cffi-provider` archive is the sole definer of it in the
-# non-NuttX C/C++ multi-archive link. The root `CMakeLists.txt` turns this on for
-# `nros_c-static` (and the sibling staticlibs) only when the provider is built;
-# pure-Rust / NuttX leave it off and self-define one copy. Lets that link drop
-# `--allow-multiple-definition`.
-external-registry = ["nros/external-registry"]
 
 # Phase 124.A — opt in to the zero-copy publisher loan / subscriber
 # borrow surface (`nros_publisher_loan` / `_commit` / `_discard` /
@@ -54,23 +47,34 @@ lending = ["rmw-cffi", "nros/lending"]
 # CMake glue that still passes them doesn't error. `cffi-xrce-c` also
 # links the C XRCE backend for Zephyr's in-tree staticlib path, where
 # downstream `nano_ros_link_rmw()` is not involved.
-cffi-xrce-c = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
-cffi-dds-cffi = ["rmw-cffi"]
-# Phase 134.fix — drop `dep:nros-rmw-zenoh`. Pulling the rlib bundled
-# a duplicate copy of nros-rmw-zenoh's entire dependency closure
-# (including a second zenoh-pico C build) into `libnros_c.a`. With
-# `--allow-multiple-definition` the linker reconciles same-named
-# symbols (`nros_rmw_zenoh_register`, `nros_rmw_cffi_register_named`,
-# etc.) but each rlib instance keeps its own private VTABLE static
-# pointing at its own trampolines wired to its own zenoh-pico
-# variant. Whichever side the linker picks for the public no_mangle
-# entry points may reference the OTHER side's zenoh-pico structs
-# through the FFI boundary, producing layout / size mismatches at
-# runtime. The `nros_rmw_zenoh_register` C symbol is now resolved
-# at the C-binary link step exclusively from `libnros_rmw_zenoh.a`
-# (the standalone staticlib), via the `extern "C"` declaration in
-# `src/lib.rs`.
-cffi-zenoh-cffi = ["rmw-cffi"]
+# Phase 241.D3-rev — single-runtime umbrella. Bundle the selected RMW backend as an
+# rlib dep so `libnros_c.a` carries the C ABI + the cffi shim + the backend in ONE
+# archive: one `std`, one `REGISTRY`, one backend closure. The backend self-registers
+# via the `RMW_INIT_ENTRIES` linkme section (same path as a pure-Rust binary), walked
+# by `nros_rmw_cffi_walk_init_section` at `Executor::open`.
+#
+# This reverts Phase 134.fix's `dep:nros-rmw-zenoh` drop. That drop worked around a
+# *multi-staticlib* hazard — `libnros_c.a` AND `libnros_rmw_zenoh.a` each bundling a
+# crate-hash-distinct cffi/zenoh-pico instance, reconciled only by
+# `--allow-multiple-definition`, leaving each public no_mangle entry possibly bound
+# to the other instance's structs. With exactly one Rust staticlib that cannot occur:
+# one cffi instance, one VTABLE, one zenoh-pico. The linkme DUPCHECK that forced the
+# standalone-staticlib `.init_array` workaround likewise cannot collide.
+#
+# Backends are mutually exclusive — select exactly one. The backend rlib is
+# force-linked into the umbrella via `src/rmw_backend.rs` (a `pub use` of its
+# `register` + an `.init_array` ctor), NOT the linkme section: `nros-c` is the
+# staticlib root and would otherwise DCE the unreferenced backend rlib entirely.
+# (Mirrors the retired `nros-rmw-zenoh-staticlib` wrapper, now folded in here.)
+rmw-zenoh = ["rmw-cffi", "dep:nros-rmw-zenoh"]
+rmw-xrce = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
+# Cyclone DDS is a C++ CMake lib linked separately (not a Rust staticlib) — the
+# umbrella only carries the cffi shim it registers against.
+rmw-cyclonedds = ["rmw-cffi"]
+# Back-compat shims (downstream cmake glue may still pass these names).
+cffi-xrce-c = ["rmw-xrce"]
+cffi-zenoh-cffi = ["rmw-zenoh"]
+cffi-dds-cffi = ["rmw-cyclonedds"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.

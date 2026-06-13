@@ -44,20 +44,12 @@ else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM}")
 endif()
 
-# RFC-0042 D3 / phase-241.D slice 4 — reference the cffi `REGISTRY` as an undefined
-# external (the provider archive is its sole definer) so this staticlib emits no
-# duplicate def. Guard var set by the root CMakeLists for the non-NuttX C/C++ link.
-set(_zenoh_staticlib_features ros-humble ${_platform_features})
-if(NROS_CFFI_EXTERNAL_REGISTRY)
-    list(APPEND _zenoh_staticlib_features external-registry)
-endif()
-
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
     CRATES        nros-rmw-zenoh-staticlib
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
-    FEATURES      ${_zenoh_staticlib_features}
+    FEATURES      ros-humble ${_platform_features}
     LOCKED
 )
 

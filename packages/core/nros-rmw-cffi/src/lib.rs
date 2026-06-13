@@ -49,11 +49,6 @@ pub use section::{RMW_INIT_ENTRIES, RmwInitEntry, nros_rmw_cffi_walk_init_sectio
 #[doc(hidden)]
 pub use linkme;
 
-// Re-exported so the `nros_rmw_cffi_export!` provider macro (RFC-0042 D3) can
-// name the transport-ops type without a direct `nros-rmw` dep.
-#[doc(hidden)]
-pub use nros_rmw::NrosTransportOps;
-
 // ============================================================================
 // Phase 102.1 — `nros_rmw_ret_t` named return codes
 // ============================================================================
@@ -959,120 +954,20 @@ impl Registry {
 // SAFETY: see `Registry` doc-comment on the mutation protocol.
 unsafe impl Sync for Registry {}
 
-// RFC-0042 D3 / phase-241.D slice 4 — where `REGISTRY` is DEFINED depends on how
-// this rlib is being linked, gated by the `external-registry` feature:
-//
-//   * DEFAULT (feature off) — a single-cargo-link target: pure-Rust firmware, the
-//     NuttX build-std ELF, the duplicate-symbol host harness's negative arm. Here
-//     this rlib is bundled into exactly ONE final archive, so it DEFINES `REGISTRY`
-//     itself (`#[no_mangle]`, one copy). No provider archive is present or needed.
-//
-//   * `external-registry` (feature on) — the non-NuttX C/C++ multi-archive cmake
-//     link, where `libnros_c.a`, `libnros_cpp.a`, and each RMW staticlib would each
-//     emit their own strong `#[no_mangle] REGISTRY` (the duplicate the old
-//     `--allow-multiple-definition` blindly masked). Every such consumer turns this
-//     feature on so they reference `REGISTRY` as an undefined external; the
-//     dedicated `nros-rmw-cffi-provider` archive (`nros_rmw_cffi_export!{}`) DEFINES
-//     it exactly once. That single definition is what lets the C/C++ link drop the
-//     blind ODR mask.
-//
-// Either way the cffi Rust API + the C exports reach the live registry through
-// [`registry()`]. `Registry` is not `#[repr(C)]`, but the extern declaration and
-// the provider's definition are both Rust with the identical type, so the layout
-// matches — the C ABI lint is spurious here.
-#[cfg(not(feature = "external-registry"))]
+// Phase 241.D3-rev — `REGISTRY` is DEFINED once in this rlib (plain
+// `#[no_mangle]`). The single-runtime model puts exactly one Rust staticlib in any
+// link (the umbrella `nros-c` / `nros-cpp` bundles the backend as an rlib), so the
+// cffi rlib appears once and one strong definition is correct everywhere: pure-Rust
+// firmware, the NuttX build-std ELF, and the umbrella C/C++ staticlib alike. This
+// supersedes the slice-4 `external-registry`/provider split, which existed only
+// because the C/C++ link used to carry multiple Rust staticlibs.
 #[unsafe(no_mangle)]
 static REGISTRY: Registry = Registry::new();
 
-#[cfg(feature = "external-registry")]
-#[allow(improper_ctypes)]
-unsafe extern "C" {
-    static REGISTRY: Registry;
-}
-
-/// The single process-wide backend registry. In the default build the storage is
-/// defined directly above; under `external-registry` it lives in the
-/// `nros-rmw-cffi-provider` archive (one definition by construction). Either way
-/// this returns a `'static` reference to the one live instance.
-///
-/// Two cfg'd definitions rather than one body with a cfg'd block: a plain static
-/// needs no `unsafe` to reference but the extern one does, and attributes on bare
-/// expressions are unstable — so the safe/unsafe split lives at the fn level.
-#[cfg(not(feature = "external-registry"))]
+/// The single process-wide backend registry.
 #[inline]
 fn registry() -> &'static Registry {
     &REGISTRY
-}
-
-#[cfg(feature = "external-registry")]
-#[inline]
-fn registry() -> &'static Registry {
-    // SAFETY: `REGISTRY` is defined exactly once by the provider crate's
-    // `nros_rmw_cffi_export!{}` invocation and is a `'static` `Registry`
-    // (`Sync`, interior-mutable via atomics + `UnsafeCell`).
-    unsafe { &REGISTRY }
-}
-
-/// RFC-0042 D3 / phase-241.D slice 4 — emit the single definition of the cffi
-/// registry + its C ABI entry points.
-///
-/// Invoked **exactly once**, by the dedicated `nros-rmw-cffi-provider` staticlib
-/// crate. Every other consumer (`nros-c`, `nros-cpp`, the RMW backends) bundles
-/// this crate as an rlib whose C exports are now Rust-mangled (no `#[no_mangle]`),
-/// so they emit ZERO strong duplicate symbols and reference `REGISTRY` + the C
-/// entry points as undefined — resolved at the final link from the one provider
-/// archive. This is what lets the C/C++ link drop `--allow-multiple-definition`
-/// (the blind ODR mask). Mirrors the `nros_platform_export_*!` pattern; a macro,
-/// not a cargo feature, so cargo feature-unification cannot re-duplicate the defs.
-#[macro_export]
-macro_rules! nros_rmw_cffi_export {
-    () => {
-        #[unsafe(no_mangle)]
-        pub static REGISTRY: $crate::Registry = $crate::Registry::new();
-
-        #[unsafe(no_mangle)]
-        #[allow(deprecated)]
-        pub unsafe extern "C" fn nros_rmw_cffi_register(
-            vtable: *const $crate::NrosRmwVtable,
-        ) -> $crate::NrosRmwRet {
-            unsafe { $crate::nros_rmw_cffi_register(vtable) }
-        }
-
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn nros_rmw_cffi_register_named(
-            name: *const ::core::ffi::c_char,
-            vtable: *const $crate::NrosRmwVtable,
-        ) -> $crate::NrosRmwRet {
-            unsafe { $crate::nros_rmw_cffi_register_named(name, vtable) }
-        }
-
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn nros_rmw_cffi_lookup(
-            name: *const ::core::ffi::c_char,
-        ) -> *const $crate::NrosRmwVtable {
-            unsafe { $crate::nros_rmw_cffi_lookup(name) }
-        }
-
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn nros_rmw_cffi_registered_names(
-            buf: *mut *const ::core::ffi::c_char,
-            cap: usize,
-        ) -> usize {
-            unsafe { $crate::nros_rmw_cffi_registered_names(buf, cap) }
-        }
-
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
-            ops: *const $crate::NrosTransportOps,
-        ) -> $crate::NrosRmwRet {
-            unsafe { $crate::nros_rmw_cffi_set_custom_transport(ops) }
-        }
-
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn nros_rmw_cffi_walk_init_section() -> usize {
-            unsafe { $crate::nros_rmw_cffi_walk_init_section() }
-        }
-    };
 }
 
 // ============================================================================
@@ -1264,11 +1159,7 @@ fn clear_cffi_message_info(key: usize) {
     since = "0.2.0",
     note = "use nros_rmw_cffi_register_named with the backend's canonical name; the unnamed shim will be removed"
 )]
-// RFC-0042 D3 / phase-241.D slice 4 — gate the `#[no_mangle]` C symbol the same
-// way as `REGISTRY`: default (single-cargo link, incl. a pure-Rust binary whose C
-// backend ctor calls this) DEFINES the C entry point here; under `external-registry`
-// it is Rust-mangled and the provider archive emits the lone `#[no_mangle]` wrapper.
-#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) -> NrosRmwRet {
     unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vtable) }
 }
@@ -1297,7 +1188,7 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
 ///
 /// * `name` must be a valid NUL-terminated UTF-8 string.
 /// * `vtable` must remain valid for the program's lifetime.
-#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_register_named(
     name: *const core::ffi::c_char,
     vtable: *const NrosRmwVtable,
@@ -1374,7 +1265,7 @@ pub unsafe extern "C" fn nros_rmw_cffi_register_named(
 /// # Safety
 ///
 /// * `name` must be a valid NUL-terminated UTF-8 string.
-#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_lookup(
     name: *const core::ffi::c_char,
 ) -> *const NrosRmwVtable {
@@ -1414,7 +1305,7 @@ pub unsafe extern "C" fn nros_rmw_cffi_lookup(
 ///
 /// * `buf` must either be NULL (when `cap == 0`) or point at writable
 ///   memory of at least `cap * sizeof(*const c_char)` bytes.
-#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_registered_names(
     buf: *mut *const core::ffi::c_char,
     cap: usize,
@@ -1549,7 +1440,7 @@ pub fn backend_resolution_to_ret(res: &BackendResolution) -> NrosRmwRet {
 /// lifetime of the registration (i.e. until a subsequent
 /// `nros_rmw_cffi_set_custom_transport(NULL)` or a replacement
 /// install).
-#[cfg_attr(not(feature = "external-registry"), unsafe(no_mangle))]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
     ops: *const nros_rmw::NrosTransportOps,
 ) -> NrosRmwRet {

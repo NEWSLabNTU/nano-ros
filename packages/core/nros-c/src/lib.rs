@@ -34,20 +34,14 @@ extern crate std;
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
 
-#[cfg(feature = "cffi-xrce-c")]
-extern crate nros_rmw_xrce_cffi as _;
-
-// Phase 134.fix — declare `nros_rmw_zenoh_register` as a plain
-// `extern "C"` symbol. Linker resolves it at the C-binary link
-// step from `libnros_rmw_zenoh.a`. Pre-134 the `pub use` pulled
-// `nros-rmw-zenoh` (and its full dep closure, including a second
-// zenoh-pico C build) into `libnros_c.a`; the resulting dual
-// instantiation produced runtime FFI-layout mismatches even when
-// the linker reconciled the public no_mangle entry points.
-#[cfg(feature = "cffi-zenoh-cffi")]
-unsafe extern "C" {
-    pub fn nros_rmw_zenoh_register() -> i32;
-}
+// Phase 241.D3-rev — single-runtime umbrella: force-link the selected RMW backend
+// rlib into this staticlib and auto-register it before `main`. `nros-c` is the
+// staticlib root, so an unreferenced backend rlib is DCE'd entirely; `rmw_backend`
+// references the backend's `register()` (pulling its closure + the cffi vtable
+// install) and installs an `.init_array` ctor. Folds in the retired
+// `nros-rmw-{zenoh,xrce}-cffi-staticlib` wrappers.
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+mod rmw_backend;
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
