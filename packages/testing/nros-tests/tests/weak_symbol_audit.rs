@@ -29,16 +29,11 @@ use std::{fs, path::PathBuf};
 
 use nros_tests::project_root;
 
-/// `(relative path, expected weak-decl line count, classification)`.
-///
-/// Classification: **override-default** = a strong def is guaranteed elsewhere
-/// (board / app / cmake-generated stub); **optional-hook** = the weak no-op IS
-/// the intended fallback. The "decl count" counts lines bearing
-/// `__attribute__((weak))` or a `.weak ` directive (a couple are doc-comment
-/// mentions in the same file — counted for stability, so any edit re-triggers
-/// review).
 /// Path to the single source-of-truth allowlist, shared with the shell gate
-/// `scripts/check-weak-symbols.sh` (run from `just check`).
+/// `scripts/check-weak-symbols.sh` (run from `just check`). Each line:
+/// `<expected weak-decl count> <repo-relative path>  # classification`
+/// (override-default = a strong def is guaranteed elsewhere; optional-hook =
+/// the weak no-op IS the intended fallback).
 const ALLOWLIST_FILE: &str = "scripts/weak-symbols-allowlist.txt";
 
 /// Parse `scripts/weak-symbols-allowlist.txt` → `path → expected-count`. Lines
