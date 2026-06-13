@@ -898,8 +898,28 @@ fn write_patch_block(
         extra_runtime_crates,
     );
     let new_body = splice_patch_block(&body, &rendered);
-    std::fs::write(authority, new_body)
-        .wrap_err_with(|| format!("ws sync: write {}", authority.display()))?;
+    // Atomic write: render to a sibling temp file, then rename over `authority`.
+    // `std::fs::write` truncates-then-writes, so a concurrent reader (the native
+    // fixture build runs `ws sync` on the SAME example manifest for the zenoh / xrce
+    // / cyclonedds variants in parallel) can observe a half-written, truncated file
+    // and splice ITS patch block onto the fragment — corrupting the manifest down to
+    // a 9-line stub with no `[package]`. A rename is atomic on the same filesystem,
+    // so a reader always sees a complete file (old or new). The patch block is
+    // idempotent across RMW variants, so last-writer-wins is harmless.
+    let fname = authority
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Cargo.toml");
+    let tmp = authority.with_file_name(format!(".{fname}.nros-sync-tmp.{}", std::process::id()));
+    std::fs::write(&tmp, new_body)
+        .wrap_err_with(|| format!("ws sync: write {}", tmp.display()))?;
+    std::fs::rename(&tmp, authority).wrap_err_with(|| {
+        format!(
+            "ws sync: rename {} -> {}",
+            tmp.display(),
+            authority.display()
+        )
+    })?;
     println!(
         "ws sync: refreshed [patch.crates-io] block in {}",
         authority.display()
