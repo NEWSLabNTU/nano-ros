@@ -214,6 +214,29 @@ rewire (W4), and the per-cell validation (W7) gates merge.
 - **Acceptance:** the `cpp_parameters` e2e test passes (was failing on undefined
   gated symbols); no regression in the other native examples.
 
+### W11 — workspace-component cffi dup (pending)
+- A workspace example links the umbrella AND a per-component staticlib, both bundling
+  `nros-rmw-cffi` → `nros_rmw_cffi_set_custom_transport` duplicate. The single-runtime
+  invariant (one Rust staticlib per binary) breaks when the workspace generator emits
+  per-component archives alongside the umbrella.
+- **Acceptance:** workspace example links with zero cffi dups under GNU-ld without
+  `--allow-multiple-definition`.
+
+### W12 — embedded no_std umbrella: panic/allocator dedup (resolved 2026-06-14)
+- `nros-cpp` now bundles `nros-c` as a hard dep. On a no_std target each crate that
+  emits a `staticlib` artifact needs exactly one `#[panic_handler]` and one
+  `#[global_allocator]`; nros-c already supplies both. nros-cpp's own per-platform
+  `freertos_alloc` / `zephyr_alloc` / `threadx_alloc` `#[global_allocator]` modules
+  (and zephyr_alloc's `#[panic_handler]`) collided → REMOVED. Only the Zephyr
+  `critical-section` impl stays (not a duplicate).
+- `panic-halt` feature forwards to `nros-c/panic-halt` (same panic-halt crate instance
+  → one handler).
+- cbindgen regen dropped the now-absent `nros_platform_alloc/dealloc` (triple-dup) and
+  `nros_rmw_zenoh_register` externs from `nros_cpp_ffi.h` / `nros_generated.h`.
+- **Acceptance:** `cargo rustc --lib --target=thumbv7m-none-eabi … --package nros-cpp
+  --crate-type=staticlib` builds clean (panic_handler + global_allocator both resolve);
+  freertos + threadx_riscv64 cross cells stay 0-dup.
+
 ## Risks
 
 - **Force-linking the backend** from an rlib dep — proven idiom, low risk.

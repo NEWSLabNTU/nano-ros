@@ -85,111 +85,14 @@ mod heap_stats {
     }
 }
 
-// Global allocator (C++ API path). RFC-0034 D6 — routes Rust `Box`/`Vec`
-// through the platform vtable (`nros_platform_alloc` → the port's kernel
-// allocator: FreeRTOS `pvPortMalloc`, Zephyr `k_malloc`, ThreadX
-// `tx_byte_allocate`, …) so the C++ API Rust heap and zenoh-pico's C-side
-// `z_malloc` share the one `nros_platform_alloc` funnel and the unified
-// heap query (`nros_platform_heap_used_bytes`) is exact. Phase 248 —
-// platform-agnostic: the concrete allocator lives behind the vtable, not
-// in this crate. Installed when the build opts into `global-allocator`
-// (RTOS ports whose kernel owns the unified heap and that don't bring an
-// external allocator such as zephyr-lang-rust's static_alloc); `std`
-// builds use the system allocator instead.
-#[cfg(all(feature = "global-allocator", not(feature = "std")))]
-mod platform_alloc {
-    use core::alloc::{GlobalAlloc, Layout};
-
-    unsafe extern "C" {
-        fn nros_platform_alloc(size: usize) -> *mut core::ffi::c_void;
-        fn nros_platform_dealloc(ptr: *mut core::ffi::c_void);
-    }
-
-    struct PlatformAllocator;
-
-    unsafe impl GlobalAlloc for PlatformAllocator {
-        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            let p = unsafe { nros_platform_alloc(layout.size()) as *mut u8 };
-            #[cfg(feature = "alloc-stats")]
-            if !p.is_null() {
-                crate::heap_stats::STATS.on_alloc(layout.size());
-            }
-            p
-        }
-
-        unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-            unsafe { nros_platform_dealloc(ptr as *mut core::ffi::c_void) }
-            #[cfg(feature = "alloc-stats")]
-            crate::heap_stats::STATS.on_dealloc(_layout.size());
-        }
-    }
-
-    #[global_allocator]
-    static ALLOCATOR: PlatformAllocator = PlatformAllocator;
-}
-
-// Minimal panic handler for the no_std C++ API staticlib when no other
-// panic strategy is linked (no `std`, no `panic-halt`). The standalone
-// C++ staticlib needs its own; looping is the safest no_std-compatible
-// default.
-#[cfg(all(
-    feature = "global-allocator",
-    not(feature = "std"),
-    not(feature = "panic-halt")
-))]
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {
-        core::hint::spin_loop();
-    }
-}
-
-// critical-section impl backed by the platform vtable
-// (`nros_platform_critical_section_{acquire,release}`). Phase 248 —
-// platform-agnostic: the concrete IRQ-mask logic lives in the platform
-// shim behind the vtable, not here. portable-atomic requires this whenever
-// the C++ staticlib is linked without the zephyr-lang-rust crate, including
-// native_sim std builds — so it is kept outside the allocator module.
-#[cfg(feature = "critical-section")]
-mod platform_critical_section {
-    unsafe extern "C" {
-        fn nros_platform_critical_section_acquire() -> u32;
-        fn nros_platform_critical_section_release(token: u32);
-    }
-
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    unsafe fn acquire_key() -> critical_section::RawRestoreState {
-        unsafe { nros_platform_critical_section_acquire() }
-    }
-
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
-    unsafe fn acquire_key() -> critical_section::RawRestoreState {
-        let _ = unsafe { nros_platform_critical_section_acquire() };
-    }
-
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    unsafe fn release_key(token: critical_section::RawRestoreState) {
-        unsafe { nros_platform_critical_section_release(token) }
-    }
-
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
-    unsafe fn release_key(_token: critical_section::RawRestoreState) {
-        unsafe { nros_platform_critical_section_release(0) }
-    }
-
-    struct PlatformCs;
-    critical_section::set_impl!(PlatformCs);
-
-    unsafe impl critical_section::Impl for PlatformCs {
-        unsafe fn acquire() -> critical_section::RawRestoreState {
-            unsafe { acquire_key() }
-        }
-
-        unsafe fn release(token: critical_section::RawRestoreState) {
-            unsafe { release_key(token) }
-        }
-    }
-}
+// Phase 241.D3-rev (W12) × phase-248 — nros-cpp bundles `nros-c` as a HARD dependency,
+// and nros-c (behind the platform vtable) owns the no_std `#[global_allocator]`
+// (`platform_alloc`), the `#[panic_handler]`, AND the `critical_section::set_impl!`
+// (`platform_critical_section`). The single-runtime umbrella permits exactly ONE of each
+// across the whole crate graph, so nros-cpp defines NONE of them here — nros-c's serve
+// the entire `libnros_cpp.a` (all route through the same `nros_platform_*` vtable). This
+// crate's `platform-*` features forward to `nros-c/platform-*` (which enable nros-c's
+// `global-allocator` / `critical-section`) and `panic-halt` → `nros-c/panic-halt`.
 
 use core::ffi::{c_char, c_int, c_void};
 

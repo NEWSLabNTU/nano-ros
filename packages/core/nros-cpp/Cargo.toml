@@ -78,25 +78,23 @@ global-allocator = ["alloc"]
 critical-section = ["dep:critical-section"]
 
 # Platform backends (select one — orthogonal to RMW and ROS version).
-# Embedded platforms imply `alloc` (so the C++ FFI layer's `extern crate
-# alloc` compiles); ports that own the unified kernel heap also enable
-# `global-allocator` (and, where DDS/portable-atomic need it,
-# `critical-section`) so the agnostic blocks in lib.rs compile without the
-# build script passing them explicitly.
+# Phase 241.D3-rev (W12) × phase-248 — single-runtime: nros-c (bundled) owns the
+# `#[global_allocator]` / `#[panic_handler]` / `critical_section::set_impl!`. nros-cpp's
+# `platform-*` therefore forward to `nros-c/platform-*` (which enable nros-c's
+# `global-allocator` / `critical-section`) and must NOT enable nros-cpp's OWN copies —
+# two of any would conflict in the one crate graph. Embedded platforms imply `alloc` so
+# the C++ FFI layer's `extern crate alloc` compiles.
 platform-posix = [
     "nros/platform-posix",
     "nros-c/platform-posix",
 ]
 platform-zephyr = [
     "alloc",
-    "global-allocator",
-    "critical-section",
     "nros/platform-zephyr",
     "nros-c/platform-zephyr",
 ]
 platform-freertos = [
     "alloc",
-    "global-allocator",
     "nros/platform-freertos",
     "nros-c/platform-freertos",
 ]
@@ -107,7 +105,6 @@ platform-nuttx = [
 ]
 platform-threadx = [
     "alloc",
-    "global-allocator",
     "nros/platform-threadx",
     "nros-c/platform-threadx",
 ]
@@ -123,7 +120,12 @@ ros-iron = [
 ]
 
 # Bare-metal panic handler (enables building staticlib without std)
-panic-halt = ["dep:panic-halt"]
+# Phase 241.D3-rev (W12) — forward to nros-c too. nros-c is now a dependency of the
+# C++ umbrella and its `[lib] crate-type` includes `staticlib`/`cdylib`, so rustc
+# emits those final artifacts for the dep too; on a no_std target each needs a
+# `#[panic_handler]`. Both crates `use panic_halt as _` over the SAME panic-halt crate
+# (one instance), so this provides exactly one handler — no duplicate.
+panic-halt = ["dep:panic-halt", "nros-c/panic-halt"]
 
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
