@@ -340,13 +340,23 @@ fn host_pair_links_via_u_force_without_allow_multiple_definition() {
     std::fs::write(&main_c, "int main(void){return 0;}\n").unwrap();
     let exe = tmp.path().join("lkproof");
 
-    // `-u` forces the register entry; NO `--allow-multiple-definition`; lazy
-    // archive selection dedups the COMDAT/weak shared closure.
+    // Slice 4 landed: the cffi C ABI (`REGISTRY` + entry points) is now defined
+    // ONCE by the `nros-rmw-cffi-provider` archive, linked LAST (lazy, trailing)
+    // so single-pass ld resolves the consumers' + rmw's back-references. `-u`
+    // forces the register entry instead of `--whole-archive`; NO
+    // `--allow-multiple-definition`. The provider must exist (fixture builds it).
+    let provider = nros_c.with_file_name("libnros_rmw_cffi_provider.a");
+    if !provider.is_file() {
+        nros_tests::skip!(
+            "provider archive missing — re-run scripts/build/link-determinism-fixture.sh"
+        );
+    }
     let out = Command::new(&cc)
         .arg(&main_c)
         .args(["-Wl,-u,nros_rmw_zenoh_register"])
         .arg(&nros_c)
         .arg(&rmw)
+        .arg(&provider) // trailing, lazy — supplies the single cffi C ABI
         .args(["-lpthread", "-ldl", "-lm"])
         .arg("-o")
         .arg(&exe)
@@ -354,9 +364,9 @@ fn host_pair_links_via_u_force_without_allow_multiple_definition() {
         .unwrap_or_else(|e| panic!("spawn {cc}: {e}"));
     assert!(
         out.status.success(),
-        "host staticlib pair FAILED to link with `-u nros_rmw_zenoh_register` and \
-         WITHOUT `--allow-multiple-definition` — a real strong-symbol collision the \
-         flag was masking (D3 slice-4 blocker):\n{}",
+        "host link FAILED with `-u nros_rmw_zenoh_register` + the provider and \
+         WITHOUT `--allow-multiple-definition` — slice-4 regression (a real \
+         strong-symbol collision or a missing provider definition):\n{}",
         String::from_utf8_lossy(&out.stderr),
     );
 

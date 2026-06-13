@@ -49,6 +49,11 @@ pub use section::{RMW_INIT_ENTRIES, RmwInitEntry, nros_rmw_cffi_walk_init_sectio
 #[doc(hidden)]
 pub use linkme;
 
+// Re-exported so the `nros_rmw_cffi_export!` provider macro (RFC-0042 D3) can
+// name the transport-ops type without a direct `nros-rmw` dep.
+#[doc(hidden)]
+pub use nros_rmw::NrosTransportOps;
+
 // ============================================================================
 // Phase 102.1 — `nros_rmw_ret_t` named return codes
 // ============================================================================
@@ -911,13 +916,15 @@ unsafe impl Sync for BackendSlot {}
 /// * The atomic `len` provides the release-acquire fence so any
 ///   reader that sees `len = N` also sees the populated slot
 ///   contents for indices `< N`.
-struct Registry {
+#[doc(hidden)]
+pub struct Registry {
     slots: core::cell::UnsafeCell<[BackendSlot; MAX_BACKENDS]>,
     len: portable_atomic::AtomicUsize,
 }
 
 impl Registry {
-    const fn new() -> Self {
+    #[doc(hidden)]
+    pub const fn new() -> Self {
         let slots = {
             #[allow(clippy::declare_interior_mutable_const)]
             const E: BackendSlot = BackendSlot::empty();
@@ -952,28 +959,94 @@ impl Registry {
 // SAFETY: see `Registry` doc-comment on the mutation protocol.
 unsafe impl Sync for Registry {}
 
-// Phase 134.fix — `#[no_mangle] pub static`. When a C binary links
-// `libnros_c.a` next to a backend staticlib (canonical case:
-// `libnros_rmw_zenoh.a`), each archive bundles its own
-// `nros-rmw-cffi` rlib instance with its own crate-hash-mangled
-// `REGISTRY` symbol. `nros_rmw_cffi_register_named` (extern,
-// dedup-able) gets picked from one of the two rlibs by the
-// linker; that function's body baked in a reference to ITS LOCAL
-// REGISTRY. Meanwhile `default_vtable` (private fn) inside the
-// other rlib accesses its OWN local REGISTRY. Registration and
-// lookup land in disjoint storage; the C binary fails to find the
-// just-registered backend.
-//
-// Stripping the crate-hash mangling with `#[no_mangle]` collapses
-// the two definitions onto one storage. `--allow-multiple-
-// definition` (already enabled for the multi-archive link) lets
-// the duplicate definition warning through silently — both
-// pointers resolve to the same backing storage, so all
-// `Registry`-mutating / `Registry`-reading code paths see a
-// single consistent registry state across rlib instances.
-#[unsafe(no_mangle)]
-#[allow(private_interfaces)]
-pub static REGISTRY: Registry = Registry::new();
+// RFC-0042 D3 / phase-241.D slice 4 — `REGISTRY` is now DEFINED in exactly one
+// archive (the `nros-rmw-cffi-provider` crate via `nros_rmw_cffi_export!{}`) and
+// referenced here as an external symbol. Previously every staticlib that bundled
+// this rlib (`libnros_c.a`, `libnros_cpp.a`, each RMW staticlib) emitted its own
+// strong `#[no_mangle] REGISTRY`, reconciled only by `--allow-multiple-definition`
+// (a blind ODR mask). The provider defines it once; the cffi Rust API + the C
+// exports (now Rust-mangled, with the `#[no_mangle]` C entry points emitted by the
+// same macro) all reach the single instance through [`registry()`].
+// `Registry` is not `#[repr(C)]`, but both the declaration here and the
+// definition (the provider crate's `nros_rmw_cffi_export!{}`) are Rust with the
+// identical type, so the layout matches — the C ABI lint is spurious here.
+#[allow(improper_ctypes)]
+unsafe extern "C" {
+    static REGISTRY: Registry;
+}
+
+/// The single process-wide backend registry. The storage lives in the
+/// `nros-rmw-cffi-provider` archive (one definition by construction); this
+/// returns a `'static` reference to it.
+#[inline]
+fn registry() -> &'static Registry {
+    // SAFETY: `REGISTRY` is defined exactly once by the provider crate's
+    // `nros_rmw_cffi_export!{}` invocation and is a `'static` `Registry`
+    // (`Sync`, interior-mutable via atomics + `UnsafeCell`).
+    unsafe { &REGISTRY }
+}
+
+/// RFC-0042 D3 / phase-241.D slice 4 — emit the single definition of the cffi
+/// registry + its C ABI entry points.
+///
+/// Invoked **exactly once**, by the dedicated `nros-rmw-cffi-provider` staticlib
+/// crate. Every other consumer (`nros-c`, `nros-cpp`, the RMW backends) bundles
+/// this crate as an rlib whose C exports are now Rust-mangled (no `#[no_mangle]`),
+/// so they emit ZERO strong duplicate symbols and reference `REGISTRY` + the C
+/// entry points as undefined — resolved at the final link from the one provider
+/// archive. This is what lets the C/C++ link drop `--allow-multiple-definition`
+/// (the blind ODR mask). Mirrors the `nros_platform_export_*!` pattern; a macro,
+/// not a cargo feature, so cargo feature-unification cannot re-duplicate the defs.
+#[macro_export]
+macro_rules! nros_rmw_cffi_export {
+    () => {
+        #[unsafe(no_mangle)]
+        pub static REGISTRY: $crate::Registry = $crate::Registry::new();
+
+        #[unsafe(no_mangle)]
+        #[allow(deprecated)]
+        pub unsafe extern "C" fn nros_rmw_cffi_register(
+            vtable: *const $crate::NrosRmwVtable,
+        ) -> $crate::NrosRmwRet {
+            unsafe { $crate::nros_rmw_cffi_register(vtable) }
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn nros_rmw_cffi_register_named(
+            name: *const ::core::ffi::c_char,
+            vtable: *const $crate::NrosRmwVtable,
+        ) -> $crate::NrosRmwRet {
+            unsafe { $crate::nros_rmw_cffi_register_named(name, vtable) }
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn nros_rmw_cffi_lookup(
+            name: *const ::core::ffi::c_char,
+        ) -> *const $crate::NrosRmwVtable {
+            unsafe { $crate::nros_rmw_cffi_lookup(name) }
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn nros_rmw_cffi_registered_names(
+            buf: *mut *const ::core::ffi::c_char,
+            cap: usize,
+        ) -> usize {
+            unsafe { $crate::nros_rmw_cffi_registered_names(buf, cap) }
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
+            ops: *const $crate::NrosTransportOps,
+        ) -> $crate::NrosRmwRet {
+            unsafe { $crate::nros_rmw_cffi_set_custom_transport(ops) }
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn nros_rmw_cffi_walk_init_section() -> usize {
+            unsafe { $crate::nros_rmw_cffi_walk_init_section() }
+        }
+    };
+}
 
 // ============================================================================
 // Rust-adapter MessageInfo side channel
@@ -1164,7 +1237,6 @@ fn clear_cffi_message_info(key: usize) {
     since = "0.2.0",
     note = "use nros_rmw_cffi_register_named with the backend's canonical name; the unnamed shim will be removed"
 )]
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) -> NrosRmwRet {
     unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vtable) }
 }
@@ -1193,7 +1265,6 @@ pub unsafe extern "C" fn nros_rmw_cffi_register(vtable: *const NrosRmwVtable) ->
 ///
 /// * `name` must be a valid NUL-terminated UTF-8 string.
 /// * `vtable` must remain valid for the program's lifetime.
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_register_named(
     name: *const core::ffi::c_char,
     vtable: *const NrosRmwVtable,
@@ -1224,16 +1295,16 @@ pub unsafe extern "C" fn nros_rmw_cffi_register_named(
     let name_bytes = unsafe { core::slice::from_raw_parts(name_u8, len) };
 
     // First pass: look for existing entry with same name → overwrite.
-    let current_len = REGISTRY.len.load(Ordering::Acquire);
+    let current_len = registry().len.load(Ordering::Acquire);
     for i in 0..current_len {
         // SAFETY: i < current_len, indices in bounds.
-        let slot = unsafe { REGISTRY.slot(i) };
+        let slot = unsafe { registry().slot(i) };
         if slot.name_matches(name_bytes) {
             // SAFETY: writer-side idempotent overwrite. The slot is
             // already published; concurrent readers will see either
             // the old or new vtable consistently, both valid.
             unsafe {
-                let slot_mut = REGISTRY.slot_mut(i);
+                let slot_mut = registry().slot_mut(i);
                 slot_mut.vtable = vtable;
             }
             core::sync::atomic::fence(Ordering::Release);
@@ -1242,18 +1313,18 @@ pub unsafe extern "C" fn nros_rmw_cffi_register_named(
     }
 
     // No existing entry; append. Reserve a slot via atomic increment.
-    let idx = REGISTRY.len.fetch_add(1, Ordering::AcqRel);
+    let idx = registry().len.fetch_add(1, Ordering::AcqRel);
     if idx >= MAX_BACKENDS {
         // Roll back the increment so subsequent registers don't see a
         // stale `len > MAX_BACKENDS`. (Race window negligible — once
         // we hit capacity, no further append succeeds.)
-        REGISTRY.len.store(MAX_BACKENDS, Ordering::Release);
+        registry().len.store(MAX_BACKENDS, Ordering::Release);
         return NROS_RMW_RET_ERROR;
     }
 
     // SAFETY: idx < MAX_BACKENDS, mutating an as-yet-unpublished slot.
     unsafe {
-        let slot = REGISTRY.slot_mut(idx);
+        let slot = registry().slot_mut(idx);
         slot.name[..len].copy_from_slice(name_bytes);
         slot.name[len] = 0;
         slot.vtable = vtable;
@@ -1270,7 +1341,6 @@ pub unsafe extern "C" fn nros_rmw_cffi_register_named(
 /// # Safety
 ///
 /// * `name` must be a valid NUL-terminated UTF-8 string.
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_lookup(
     name: *const core::ffi::c_char,
 ) -> *const NrosRmwVtable {
@@ -1290,11 +1360,11 @@ pub unsafe extern "C" fn nros_rmw_cffi_lookup(
     }
     let name_bytes = unsafe { core::slice::from_raw_parts(name_u8, len) };
 
-    let current_len = REGISTRY.len.load(Ordering::Acquire);
+    let current_len = registry().len.load(Ordering::Acquire);
     for i in 0..current_len {
         // SAFETY: i < current_len, indices in bounds; publication
         // fence via the atomic-len Acquire load.
-        let slot = unsafe { REGISTRY.slot(i) };
+        let slot = unsafe { registry().slot(i) };
         if slot.name_matches(name_bytes) {
             return slot.vtable;
         }
@@ -1310,17 +1380,16 @@ pub unsafe extern "C" fn nros_rmw_cffi_lookup(
 ///
 /// * `buf` must either be NULL (when `cap == 0`) or point at writable
 ///   memory of at least `cap * sizeof(*const c_char)` bytes.
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_registered_names(
     buf: *mut *const core::ffi::c_char,
     cap: usize,
 ) -> usize {
-    let n = REGISTRY.len.load(Ordering::Acquire);
+    let n = registry().len.load(Ordering::Acquire);
     if !buf.is_null() && cap > 0 {
         let limit = n.min(cap);
         for i in 0..limit {
             // SAFETY: i < limit <= cap, buf capacity guaranteed by caller.
-            let slot = unsafe { REGISTRY.slot(i) };
+            let slot = unsafe { registry().slot(i) };
             unsafe {
                 buf.add(i)
                     .write(slot.name.as_ptr() as *const core::ffi::c_char)
@@ -1336,7 +1405,7 @@ pub unsafe extern "C" fn nros_rmw_cffi_registered_names(
 /// session" and fail with a meaningful error.
 #[inline]
 pub fn backend_registered() -> bool {
-    REGISTRY.len.load(Ordering::Acquire) > 0
+    registry().len.load(Ordering::Acquire) > 0
 }
 
 /// Phase 104.B — internal access to the registry for the Rust-side
@@ -1344,13 +1413,13 @@ pub fn backend_registered() -> bool {
 /// switched to `backend_registered()` for the presence check; this
 /// returns the vtable for any single-backend fast-path callers.
 fn default_vtable() -> Option<&'static NrosRmwVtable> {
-    let n = REGISTRY.len.load(Ordering::Acquire);
+    let n = registry().len.load(Ordering::Acquire);
     if n == 0 {
         return None;
     }
     // SAFETY: index 0 < n, registry's len-Acquire fence orders the
     // slot read.
-    let slot = unsafe { REGISTRY.slot(0) };
+    let slot = unsafe { registry().slot(0) };
     if slot.vtable.is_null() {
         return None;
     }
@@ -1390,12 +1459,12 @@ pub enum BackendResolution {
 /// Bridge consumers (`Executor::open_multi`) bypass this function and
 /// call `nros_rmw_cffi_lookup` per spec instead.
 pub fn resolve_backend(selector: Option<&[u8]>) -> BackendResolution {
-    let n = REGISTRY.len.load(Ordering::Acquire);
+    let n = registry().len.load(Ordering::Acquire);
     if let Some(name) = selector {
         let mut i = 0usize;
         while i < n {
             // SAFETY: i < n, registry len-Acquire fence orders the read.
-            let slot = unsafe { REGISTRY.slot(i) };
+            let slot = unsafe { registry().slot(i) };
             if slot.name_matches(name) {
                 if slot.vtable.is_null() {
                     return BackendResolution::Unknown;
@@ -1445,7 +1514,6 @@ pub fn backend_resolution_to_ret(res: &BackendResolution) -> NrosRmwRet {
 /// lifetime of the registration (i.e. until a subsequent
 /// `nros_rmw_cffi_set_custom_transport(NULL)` or a replacement
 /// install).
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
     ops: *const nros_rmw::NrosTransportOps,
 ) -> NrosRmwRet {

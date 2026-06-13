@@ -21,13 +21,16 @@ echo "== link-determinism fixture: host staticlib pair =="
 rm -rf "$out_dir"
 mkdir -p "$out_dir"
 
-# Both are `crate-type = ["staticlib"]`; `platform-posix` is the host port.
+# `crate-type = ["staticlib"]`; `platform-posix` is the host port. The RFC-0042
+# D3 slice-4 provider archive (defines the cffi C ABI once) builds too.
 ( cd "$repo_root" \
     && cargo build -p nros-c --features platform-posix \
-    && cargo build -p nros-rmw-zenoh-staticlib --features platform-posix )
+    && cargo build -p nros-rmw-zenoh-staticlib --features platform-posix \
+    && cargo build -p nros-rmw-cffi-provider --features platform-posix )
 
 cp "$repo_root/target/debug/libnros_c.a" "$out_dir/"
 cp "$repo_root/target/debug/libnros_rmw_zenoh_staticlib.a" "$out_dir/"
+cp "$repo_root/target/debug/libnros_rmw_cffi_provider.a" "$out_dir/"
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "$out_dir/.compile-ok"
-echo "   built $out_dir/{libnros_c.a,libnros_rmw_zenoh_staticlib.a}"
+echo "   built $out_dir/{libnros_c.a,libnros_rmw_zenoh_staticlib.a,libnros_rmw_cffi_provider.a}"
