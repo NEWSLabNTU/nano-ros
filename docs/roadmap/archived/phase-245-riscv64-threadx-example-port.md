@@ -166,8 +166,9 @@ board-overlay enabler precedes the cargo-path de-hardcode.
   both RMW firmwares cross-build (riscv64 ELF, zenoh + CycloneDDS), runtime is the
   real-executor `ThreadxBoard::run_components` path (no manual init/spin/locator,
   no baker stub). Note below kept for the design trail.
-- [ ] _(historical)_ **deferred to
-  [phase-246](phase-246-threadx-typed-entry-runtime.md) (framework integration).**
+
+  _(historical design trail — the path that got T-c/T-cpp here)_ — deferred to
+  [phase-246](phase-246-threadx-typed-entry-runtime.md) (framework integration).
   The clean declarative C/C++ shape needs a *working* component runtime. An initial
   reading (against the **retired** RFC-0032/236 synthesizing-interpreter path)
   suggested this was unbuilt framework-wide; re-examined against
@@ -197,10 +198,17 @@ workflow; target shapes are the post-246 ones (not the pre-246
 - All 15 **cross-build on the riscv64 zenoh path**; sample QEMU boot-gates pass
   (cpp/listener "Waiting for messages", cpp/service-server "Waiting for requests",
   rust/action-server "nros ThreadX Platform").
-- [ ] **CycloneDDS tail** — per-role `cyclonedds_app.c` descriptor TUs (3 distinct
-  types: Int32 / AddTwoInts / Fibonacci; only Int32's `register_Int32_0` known —
-  AddTwoInts/Fibonacci `register_*` symbols need discovery via a cyclone link) +
-  cyclone cross-builds + boot-gates. Bounded follow-up.
+- [x] **CycloneDDS tail (done 2026-06-14)** — per-role `src/cyclonedds_app.c`
+  strong-overrides the weak `nros_rmw_cyclonedds_register_app_descriptors` with the
+  role type's descriptors: Int32 `register_Int32_0`; AddTwoInts
+  `register_AddTwoInts_0/_1`; Fibonacci `register_Fibonacci_0..7` (from the idlc
+  type support). c/cpp wire a CMakeLists `if(cyclonedds) target_sources(…)` block;
+  rust gets a per-role cyclone CMakeLists (corrosion + cyclone, mirror the talker).
+  **All 15 cyclone firmwares cross-build**; sample boot-gates confirm the runtime
+  (c/listener "Waiting for messages"; cpp/action-server reaches `run_components`
+  spin — the Fibonacci action server create succeeds, i.e. the 8 descriptors
+  register). Migrated + built via two workflows (transient API rate-limits handled
+  by resume + a couple of direct straggler builds).
 
 ---
 
