@@ -15,6 +15,8 @@ members = [
     "src/talker_pkg",
     "src/listener_pkg",
     "src/native_entry",
+    "src/native_entry_robot1",
+    "src/native_entry_robot2",
     "src/qemu_freertos_entry",
     "src/threadx_linux_entry",
     "src/esp32_entry",

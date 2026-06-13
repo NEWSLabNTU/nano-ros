@@ -1,0 +1,28 @@
+[package]
+name = "native_entry_robot2"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Phase 211.F — per-host entry for `robot2` (the multi-host demo)."
+
+[[bin]]
+name = "native_entry_robot2"
+path = "src/main.rs"
+
+# Per-host Entry pkg. `nros::main!(launch = "demo_bringup:multihost.launch.xml",
+# host = "robot2")` keeps only `<node machine="robot2">` (the listener) + any
+# unhosted node, so it emits `listener_pkg::register` only. Sibling
+# `native_entry_robot1` bakes `robot1` (the talker).
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+# robot2 hosts only the listener, so the macro emits `listener_pkg::register`.
+listener_pkg = { path = "../listener_pkg", default-features = false, features = ["native"] }

@@ -187,6 +187,10 @@ static C_XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native Rust workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Phase 211.F — cached paths to the per-host workspace Entry pkg binaries.
+static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native C workspace Entry pkg binary.
 static NATIVE_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -596,6 +600,32 @@ pub fn build_native_workspace_rust_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry("workspace-rust-native", "rust", "native_entry")
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 211.F — `robot1` per-host entry (talker) from `multihost.launch.xml`.
+pub fn build_native_workspace_rust_entry_robot1() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_ENTRY_ROBOT1_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-robot1",
+                "rust",
+                "native_entry_robot1",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 211.F — `robot2` per-host entry (listener) from `multihost.launch.xml`.
+pub fn build_native_workspace_rust_entry_robot2() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_ENTRY_ROBOT2_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-robot2",
+                "rust",
+                "native_entry_robot2",
+            )
         })
         .map(|p| p.as_path())
 }

@@ -13,9 +13,12 @@ the **runtime-interop story** are where the gaps sit.
 parser/planner spine + most fixtures LANDED (211.A core, B-planner, C, D, E,
 I, J — all `[x]`). The remaining work was re-scoped against the current design
 (RFC-0043 typed entry + the board/`[deploy.<name>]` model) — see **Design drift
-& re-scope** below. Net: the deploy-verb-centric bullets are superseded; three
-genuine production gaps (multi-host, `nros test`, qos_overrides) + the
-real-ROS-workspace acceptance remain.
+& re-scope** below. Net: the deploy-verb-centric bullets are superseded; the
+three re-scoped gaps are now CLOSED (multi-host 211.F — bake + 2-process
+runtime; `nros test` 211.G — ruled out, harness already exists; qos_overrides
+211.H — lowering + live runtime delivery). Remaining: the real-ROS-workspace
+acceptance (`demo_nodes_cpp` through the pipeline) + two deferred sub-items
+(211.H C++ entry honoring behind 242/244; 211.I cyclonedds bridge variant).
 
 ## Design drift & re-scope (2026-06-13)
 
@@ -430,21 +433,29 @@ superproject), and the planner lowers it into `host_id`.
       listener). Seals the full CLI pipeline (launch `machine=` parse →
       `PlanNode.host` → `for_host` → emit). Cross-host *delivery* is already
       proven by `deployed_native_system_e2e` (cross-process pub→sub).
-- [→] **Full 2-process runtime multi-host** — the only remaining 211.F item.
-      Both halves are proven independently: per-host partition bake (CLI +
-      macro, above) and cross-process pub→sub delivery
-      (`deployed_native_system_e2e`). The DISTRIBUTION wall that blocked macro
-      `--host` is RESOLVED (in-tree nros-cli migration, `0be1dc478`). What's
-      left is the runtime-ASSEMBLY step: bake two per-host entries, boot both as
-      separate processes, assert the cross-host topic flows — plus the
-      `system.toml` `[deploy.<id>]` host-target plumbing below to map `host_id`
-      partitions onto deploy targets. Runtime assembly, not a capability gap.
+- [x] **Full 2-process runtime multi-host — LANDED (2026-06-13).**
+      `multihost_runtime_e2e` boots the two per-host MACRO entries
+      (`native_entry_robot{1,2}` = `nros::main!(launch =
+      "demo_bringup:multihost.launch.xml", host = "robotN")`) as two separate
+      processes through `zenohd` and asserts `robot2`'s listener subscription
+      callback fires on `robot1`'s talker publishes (`message_callbacks=N`,
+      N≥1) — cross-host delivery. This is the assembly the bake + delivery
+      halves implied: the macro `host` filter partitions the multi-host launch
+      into per-host binaries, and the binaries exchange data across hosts when
+      run as the multi-host topology. Built as workspace fixtures
+      (`workspace-rust-native-robot{1,2}` in `examples/fixtures.toml`), consumed
+      prebuilt (no compile-in-test).
 - [ ] **`system.toml` `[deploy.<id>]` host targets (optional)** — model each
       host as a `[deploy.<id>]` target in `system.toml` so a multi-host system
       maps `--host` bakes onto deploy targets via `scaffold_deploy`. Convenience
       over the bare `--host` codegen. (NOT `nros.toml` — see RFC-0004 §4.)
+      NOTE: entangled with the phase-227 config convergence — `scaffold_deploy`
+      + `root_config` today still write/read a root `nros.toml`, lagging
+      RFC-0004's `system.toml` SSOT; this item rides on that migration.
 - **Files (landed):** `nros-cli-core/{launch_parser,codegen/entry/{mod,emit_*},
-  cmd/codegen}.rs`. nano-ros runtime side: nothing new — cross-process works.
+  cmd/codegen}.rs`, `nros-macros/src/main_macro.rs` (host filter),
+  `examples/workspaces/rust/src/native_entry_robot{1,2}/`,
+  `nros-tests/tests/multihost_runtime_e2e.rs`, `examples/fixtures.toml`.
 
 ### 211.G — `launch_testing` equivalent assertion harness — CLOSED (not needed, 2026-06-13)
 
@@ -647,8 +658,12 @@ flipped on:
 
 **Remaining (re-scoped onto the current entry/board model):**
 
-- [ ] Multi-host: a system with `machine="…"` partitions onto per-host
-      `[deploy.<id>]` targets, each baking its own typed entry (211.F).
+- [x] Multi-host: a system with `machine="…"` partitions into per-host entries
+      that run as separate processes and deliver across hosts (211.F —
+      `multihost_partition_bake` for the bake, `multihost_runtime_e2e` for the
+      2-process runtime). Optional remainder: mapping `host_id` onto
+      `system.toml` `[deploy.<id>]` targets (rides on phase-227 config
+      convergence).
 - [x] `launch_testing`-equivalent harness (211.G) — **CLOSED, not needed.**
       `nros test` is ruled out (RFC-0024 §4 / 0027 / 0040), and the runtime
       primitives already exist (`ManagedProcess` + `wait_for_*` + `count_pattern`,
