@@ -1,11 +1,22 @@
 ---
 id: 59
 title: Zephyr rust service/action examples fail — generated `example_interfaces` crate not resolvable at cargo build
-status: open
+status: resolved
 type: bug
 area: codegen
 related: [phase-244]
 ---
+
+> **RESOLVED 2026-06-14** — added `ros-humble-example-interfaces` to
+> `ci/docker/zephyr-ros/Dockerfile` (c71df9c55) + bumped the image tag to
+> `humble-sdk0.17.4-r2` (51b504d19) so the dual-line lane pulls the rebuilt
+> image. The image auto-republished (build-zephyr-ci-image run 27479056473) and
+> the dual-line lane (run 27479915027) went **green on both 3.7 + 4.4** for all
+> four `rust/service-*` + `rust/action-*` cells. Follow-up (still worth doing,
+> tracked here): make `nros ws sync` fail loudly when a declared interface pkg's
+> source dir is missing instead of silently skipping codegen + emitting a
+> dangling `[patch]` entry — the silent skip is what masked the missing pkg.
+
 
 `zephyr-dual-line.yml` cells `rust/service-server`, `rust/service-client`,
 `rust/action-server`, `rust/action-client` fail on **both** 3.7 and 4.4 lines

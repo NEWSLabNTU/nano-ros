@@ -51,7 +51,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
 | 53 | mixed-RMW bridge has no stock-cyclonedds variant + no gateway book recipe (211.I) | tech-debt | testing | [0053-cyclonedds-bridge-variant-and-gateway-recipe.md](0053-cyclonedds-bridge-variant-and-gateway-recipe.md) |
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
-| 59 | Zephyr rust service/action examples — generated `example_interfaces` crate not resolvable | bug | codegen | [0059-zephyr-rust-service-action-example-interfaces-codegen.md](0059-zephyr-rust-service-action-example-interfaces-codegen.md) |
 | 60 | platform/RMW-agnosticism audit — core + user libs leak platform-*/rmw-* features + concrete-backend deps | tech-debt | architecture | [0060-platform-rmw-agnosticism-audit.md](0060-platform-rmw-agnosticism-audit.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#35** —
