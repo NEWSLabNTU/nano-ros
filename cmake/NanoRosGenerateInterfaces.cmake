@@ -849,106 +849,11 @@ function(rosidl_generate_interfaces target)
 endfunction()
 
 
-# =========================================================================
-# nros_find_interfaces()
-#
-# High-level function that reads package.xml from the current source
-# directory, resolves transitive interface dependencies via AMENT index
-# (with bundled fallback), and generates bindings for all required
-# packages in topological order.
-#
-# Usage:
-#   nros_find_interfaces([LANGUAGE CPP] [SKIP_INSTALL])
-#
-# **Phase 210.E.4 — DEPRECATED for new code.** Prefer
-# `nros_workspace_interfaces()` (Phase 210.B.2) for a workspace + the
-# upstream-shape `find_package(<pkg>)` (210.A.2) for individual pkgs.
-# Retained for back-compat; existing call sites continue to work.
-# =========================================================================
-function(nros_find_interfaces)
-  cmake_parse_arguments(_ARG
-    "SKIP_INSTALL"
-    "PACKAGE_XML;LANGUAGE;ROS_EDITION"
-    ""
-    ${ARGN}
-  )
-
-  if(NOT DEFINED _ARG_PACKAGE_XML OR _ARG_PACKAGE_XML STREQUAL "")
-    set(_ARG_PACKAGE_XML "${CMAKE_CURRENT_SOURCE_DIR}/package.xml")
-  endif()
-
-  if(NOT EXISTS "${_ARG_PACKAGE_XML}")
-    message(FATAL_ERROR
-      "nros_find_interfaces: package.xml not found at ${_ARG_PACKAGE_XML}")
-  endif()
-
-  if(NOT DEFINED _ARG_LANGUAGE OR _ARG_LANGUAGE STREQUAL "")
-    set(_ARG_LANGUAGE "CPP")
-  endif()
-
-  if(NOT DEFINED _ARG_ROS_EDITION OR _ARG_ROS_EDITION STREQUAL "")
-    set(_ARG_ROS_EDITION "humble")
-  endif()
-
-  # 1. Call resolve-deps at configure time
-  set(_resolve_output "${CMAKE_CURRENT_BINARY_DIR}/_nros_resolved_deps.cmake")
-  execute_process(
-    COMMAND "${_NANO_ROS_CODEGEN_TOOL}" codegen resolve-deps
-            --package-xml "${_ARG_PACKAGE_XML}"
-            --output-cmake "${_resolve_output}"
-    RESULT_VARIABLE _result
-    ERROR_VARIABLE _stderr
-  )
-  if(NOT _result EQUAL 0)
-    message(FATAL_ERROR
-      "nros-codegen resolve-deps failed (exit ${_result}):\n${_stderr}")
-  endif()
-
-  # 2. Include generated cmake with package lists
-  include("${_resolve_output}")
-
-  if(NOT _NROS_RESOLVED_PACKAGES)
-    message(WARNING "nros_find_interfaces: no interface packages resolved from ${_ARG_PACKAGE_XML}")
-    return()
-  endif()
-
-  # 3. Generate interfaces for each resolved package in topo order.
-  #
-  # For the C++ FFI crates we pass ALL packages that have been processed so
-  # far (in topological order) as the DEPENDENCIES argument, not just the
-  # direct dependencies listed in the resolved file.  This is necessary
-  # because the include!() inlining used by FFI crates places every package's
-  # generated Rust in a single compilation unit.  If package A includes
-  # action_msgs files which reference unique_identifier_msgs types, those
-  # types must also be include!()-d in A's lib.rs even though A only
-  # directly depends on action_msgs.  Using all preceding packages is a
-  # superset of the transitive closure and guarantees correctness.
-  set(_all_preceding_pkgs "")
-  foreach(_pkg ${_NROS_RESOLVED_PACKAGES})
-    set(_skip "")
-    if(_ARG_SKIP_INSTALL)
-      set(_skip "SKIP_INSTALL")
-    endif()
-
-    nros_generate_interfaces(${_pkg}
-      ${_NROS_RESOLVED_${_pkg}_FILES}
-      DEPENDENCIES ${_all_preceding_pkgs}
-      LANGUAGE ${_ARG_LANGUAGE}
-      ROS_EDITION ${_ARG_ROS_EDITION}
-      ${_skip}
-    )
-
-    # Re-export variables from nros_generate_interfaces to caller's scope
-    set(${_pkg}_INCLUDE_DIRS "${${_pkg}_INCLUDE_DIRS}" PARENT_SCOPE)
-    set(${_pkg}_LIBRARIES "${${_pkg}_LIBRARIES}" PARENT_SCOPE)
-    set(${_pkg}_GENERATED_HEADERS "${${_pkg}_GENERATED_HEADERS}" PARENT_SCOPE)
-    set(${_pkg}_GENERATED_SOURCES "${${_pkg}_GENERATED_SOURCES}" PARENT_SCOPE)
-    set(${_pkg}_GENERATED_RS_FILES "${${_pkg}_GENERATED_RS_FILES}" PARENT_SCOPE)
-
-    # Accumulate for the next package's DEPENDENCIES
-    list(APPEND _all_preceding_pkgs "${_pkg}")
-  endforeach()
-endfunction()
+# nros_find_interfaces() is defined in the shared core
+# (NanoRosCodegenCore.cmake, included above) — Phase 246. It is
+# platform-agnostic: it resolve-deps + topo-iterates, delegating to whichever
+# `nros_generate_interfaces` the build loaded. (Was duplicated here + in
+# zephyr/cmake/nros_find_interfaces.cmake.)
 
 
 # =========================================================================

@@ -15,8 +15,8 @@ recurring "fix it in one, forget the other" bug class.
 both build clean each wave). 246.2b (codegen-tool + interface-file
 resolvers) DONE (+ Zephyr bundled-tier + CODEGEN_CONFIG parity). 246.4 (link
 wiring) intentionally NOT unified — documented divergence, not a gap (opposite
-ld-order directions + target models). Only the `nros_find_interfaces()` dedup
-remains as an untouched stretch. Original detail follows. **246.1 DONE +
+ld-order directions + target models). `nros_find_interfaces()` deduped too. No
+follow-on items remain. Original detail follows. **246.1 DONE +
 verified** — `cmake/NanoRosCodegenCore.cmake` holds `_nros_collect_rs_closure`,
 `_nros_export_rs_closure`, `_nros_write_ffi_lib_rs`; both generators call them for
 lib.rs assembly + closure compute/export. Validated: native C++ listener
@@ -168,11 +168,16 @@ cargo args touches exactly one place; all three validation builds pass.
 
 ## Side benefits
 
-- Zephyr gains the bundled-interface fallback tier + (optionally) the
-  `CODEGEN_CONFIG` keyword (RFC-0033 per-field capacity) for free.
-- `nros_find_interfaces()` exists in both trees too
-  (`zephyr/cmake/nros_find_interfaces.cmake`) — same dedup opportunity, tracked
-  here as a stretch once the core lands.
+- Zephyr gained the bundled-interface fallback tier + the `CODEGEN_CONFIG`
+  keyword (RFC-0033 per-field capacity) for free (246.2b).
+- **`nros_find_interfaces()` deduped (DONE).** Was a near-identical copy in both
+  trees; now one platform-agnostic definition in the core (it resolve-deps +
+  topo-iterates, delegating to whichever `nros_generate_interfaces` the build
+  loaded). `zephyr/cmake/nros_find_interfaces.cmake` deleted + its
+  `zephyr/CMakeLists.txt` includes removed (the core copy comes in via the
+  generator's include). Tool-var lookup uses the both-names fallback; re-export
+  is the 5-var superset. Validated: native `cpp/listener` (which calls
+  `nros_find_interfaces`) + ASI FVP both build clean.
 
 ## Non-goals
 
