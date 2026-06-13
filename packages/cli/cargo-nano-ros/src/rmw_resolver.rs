@@ -7,6 +7,12 @@
 //! C `#define` token the bake emits. The cargo feature / CMake var are lowering
 //! targets, not the user-facing knob.
 //!
+//! Phase 248 C5b (RFC-0031 amendment) — the Rust lowering target is the **board
+//! crate's** `rmw-X` feature (the board self-links + registers the concrete
+//! backend), NOT an `nros/rmw-X` feature. `cargo_feature` therefore names the
+//! `rmw-X` feature codegen places on the entry's board dep; the `nros` umbrella
+//! stays RMW-agnostic.
+//!
 //! It lives in `cargo-nano-ros` (the lower crate) so both the scaffolder here
 //! and the orchestration loader in `nros-cli-core` share one mapping.
 
@@ -20,7 +26,9 @@ pub const KNOWN_RMW: &[&str] = &["zenoh", "xrce", "cyclonedds"];
 pub struct ResolvedRmw {
     /// The canonical declared name, e.g. `"zenoh"`.
     pub declared: &'static str,
-    /// The `nros` facade cargo feature, e.g. `"rmw-zenoh"`.
+    /// The board-crate cargo feature codegen lowers the RMW to, e.g.
+    /// `"rmw-zenoh"` (Phase 248 C5b: lands on the entry's board dep, not
+    /// `nros`). Board crate and `nros` share the `rmw-X` naming.
     pub cargo_feature: &'static str,
     /// The `-DNANO_ROS_RMW` CMake value, e.g. `"zenoh"`.
     pub cmake_value: &'static str,
@@ -147,8 +155,10 @@ mod tests {
     }
 
     #[test]
-    fn cargo_feature_matches_nros_facade_naming() {
-        // Guards against drift from packages/core/nros/Cargo.toml [features].
+    fn cargo_feature_matches_board_rmw_naming() {
+        // Phase 248 C5b — the cargo lowering target is the board crate's
+        // `rmw-X` feature; guards against drift from the board crates' (and
+        // nros's) `rmw-<name>` feature naming.
         for name in KNOWN_RMW {
             let r = resolve_rmw(name).unwrap();
             assert_eq!(r.cargo_feature, format!("rmw-{name}"));

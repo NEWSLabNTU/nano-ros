@@ -1378,23 +1378,46 @@ fn transport_cargo_features(build: &PlanBuildOptions) -> Vec<String> {
 /// declared transports the dep is emitted exactly as pre-173.5 (board
 /// defaults left on) — keeping existing generated manifests
 /// byte-identical.
-fn board_dep(name: &str, path: &str, base_features: &[&str], build: &PlanBuildOptions) -> String {
+///
+/// Phase 248 C5b (RFC-0031) — `rmw_features` (e.g. `["rmw-zenoh"]`) are the
+/// **board-crate RMW lowering target**: the declared `system.toml`
+/// `[system].rmw` / `[deploy.<id>].rmw` value lowers to the board's `rmw-X`
+/// feature (the board self-links + registers the backend), NOT to an
+/// `nros/rmw-X` feature. They are appended to the board's feature list in
+/// every shape. When `rmw_features` is empty the output is byte-identical to
+/// the pre-C5b form (so an `rmw = "none"`/unset plan is unchanged).
+fn board_dep(
+    name: &str,
+    path: &str,
+    base_features: &[&str],
+    rmw_features: &[String],
+    build: &PlanBuildOptions,
+) -> String {
     let transports = transport_cargo_features(build);
+    let mut feats: Vec<String> = base_features.iter().map(|s| s.to_string()).collect();
     if transports.is_empty() {
-        if base_features.is_empty() {
+        for r in rmw_features {
+            if !feats.contains(r) {
+                feats.push(r.clone());
+            }
+        }
+        if feats.is_empty() {
             format!("{name} = {{ path = \"{path}\" }}\n")
         } else {
-            let base: Vec<String> = base_features.iter().map(|s| s.to_string()).collect();
             format!(
                 "{name} = {{ path = \"{path}\", features = {} }}\n",
-                toml_string_array(&base)
+                toml_string_array(&feats)
             )
         }
     } else {
-        let mut feats: Vec<String> = base_features.iter().map(|s| s.to_string()).collect();
         for t in transports {
             if !feats.contains(&t) {
                 feats.push(t);
+            }
+        }
+        for r in rmw_features {
+            if !feats.contains(r) {
+                feats.push(r.clone());
             }
         }
         format!(
@@ -1402,6 +1425,16 @@ fn board_dep(name: &str, path: &str, base_features: &[&str], build: &PlanBuildOp
             toml_string_array(&feats)
         )
     }
+}
+
+/// Phase 248 C5b (RFC-0031) — the board-crate RMW feature(s) the declared RMW
+/// lowers to: `["rmw-zenoh"]` for a single-RMW build, the union (e.g.
+/// `["rmw-zenoh", "rmw-cyclonedds"]`) for a bridge. Empty when no RMW is
+/// declared (`rmw = "none"`/unset). The board crate owns linking + registering
+/// the concrete backend behind this feature (C5a), so this is the Rust lowering
+/// target — replacing the old `nros/rmw-X` umbrella feature.
+fn board_rmw_features(build: &PlanBuildOptions) -> Vec<String> {
+    rmw_set(build).iter().map(|r| format!("rmw-{r}")).collect()
 }
 
 fn render_platform_dependencies(options: &GenerateOptions, plan: &NrosPlan) -> String {
@@ -1417,14 +1450,33 @@ fn render_platform_dependencies(options: &GenerateOptions, plan: &NrosPlan) -> S
     // the RTOS defconfig, not the board `Config`, so no transport-feature
     // merge. Crate-less host boards (posix / zephyr / orin-spe) have no
     // `board_crate` and emit their deps below.
+    //
+    // Phase 248 C5b (RFC-0031) — the declared RMW lowers to the BOARD crate's
+    // `rmw-X` feature here (the board self-links + registers the concrete
+    // backend, C5a), not to an `nros/rmw-X` feature. Crate-less boards
+    // (native/posix, zephyr) have no board crate to carry it yet; those still
+    // link the backend via the direct `nros-rmw-*` dep + explicit `register()`
+    // in `register_backends()` (board-driven lowering for them is a follow-up —
+    // see the C5b notes / RFC-0031).
+    let rmw_feats = board_rmw_features(&plan.build);
     let board_line = match (p.board_crate.as_deref(), p.crate_path_rel()) {
         (Some(name), Some(rel)) => {
             let path = path_for_template(&workspace.join(rel));
             if p.net_stack == NetStack::RtosOwned {
-                format!("{name} = {{ path = \"{path}\" }}\n")
+                // RtosOwned (NuttX): transports go to the RTOS defconfig (no
+                // transport-feature merge), but the board still selects + links
+                // the RMW backend via its `rmw-X` feature.
+                if rmw_feats.is_empty() {
+                    format!("{name} = {{ path = \"{path}\" }}\n")
+                } else {
+                    format!(
+                        "{name} = {{ path = \"{path}\", features = {} }}\n",
+                        toml_string_array(&rmw_feats)
+                    )
+                }
             } else {
                 let feats: Vec<&str> = p.board_features.iter().map(String::as_str).collect();
-                board_dep(name, &path, &feats, &plan.build)
+                board_dep(name, &path, &feats, &rmw_feats, &plan.build)
             }
         }
         _ => String::new(),

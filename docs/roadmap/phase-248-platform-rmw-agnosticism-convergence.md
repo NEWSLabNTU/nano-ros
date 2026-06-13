@@ -213,11 +213,20 @@ nros keeps its features for now):**
       Owns: `packages/boards/*` + the force-link block in `nros/src/lib.rs` (READ
       only). Platform-axis board debt (e.g. `nros-board-posix` enables
       `nros/platform-posix`) is Tier-3, handled with C3.2/C5c.
-- [ ] **C5b — Codegen lowers to the board feature + RFC-0031 amendment.**
-      `nros codegen entry` / `nros::main!` / `generate` emit the entry's board-dep
-      `features = ["rmw-X"]` (from `system.toml` `[system].rmw`) instead of
-      `nros = { features = ["rmw-X"] }`. Amend RFC-0031: lowering target is the
-      board feature. Owns: `packages/cli` codegen/entry templates + RFC-0031.
+- [x] **C5b — Codegen lowers to the board feature + RFC-0031 amendment. DONE.**
+      The RMW lowering target moved from `nros/rmw-X` to the **board crate's**
+      `rmw-X` feature: `render_platform_dependencies`/`board_dep` (generate.rs) +
+      `scaffold_rust` now put `features=["rmw-X"]` on the board dep, `nros` gets
+      only the `rmw-cffi` vtable. RFC-0031 amended (board = Rust lowering target).
+      Tests green: nros-cli-core lib 376, orchestration_generate 21,
+      cargo-nano-ros 46. **Follow-ups (→ C5c):** (1) PLATFORM-axis lowering
+      (`nros/platform-*` → board) still pending — more entangled (default-features
+      + per-platform jinja aliases). (2) Crate-less native/posix + zephyr
+      orchestration still link via a direct `nros-rmw-*` path dep + explicit
+      `register()` in `render_backend_register_fn` (no `nros-board-*` crate to
+      carry the feature) — moving them needs `nros-board-native` in the board
+      descriptor/catalog, dropped in C5c after C6 migration. Owns: `packages/cli`
+      + RFC-0031.
 
 **Wave 2b (migration — parallel by consumer group, AFTER 2a):**
 - [ ] **C6a — Migrate Rust workspace + native examples** off `nros/rmw-*`/
