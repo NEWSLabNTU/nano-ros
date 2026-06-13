@@ -42,7 +42,7 @@
 //!    `nros-platform` would force the dep on every consumer
 //!    (POSIX, Zephyr, FreeRTOS, …) that has no use for it.
 
-use super::{Board, runtime::NodeDispatchRuntime};
+use super::{Board, DeployOverlay, runtime::NodeDispatchRuntime};
 
 /// Board-side hook for RTIC integration. The `nros::main!()`
 /// proc-macro (216.B.3) generates a `#[rtic::app]` module that calls
@@ -96,6 +96,26 @@ pub trait RticBoardEntry: Board {
     /// transport bringup before constructing the executor + runtime
     /// pair.
     fn init_hardware(device: Self::Pac, core: Self::Core) -> (Self::Executor, Self::Runtime);
+
+    /// Like [`init_hardware`](Self::init_hardware) but applies a deploy-metadata
+    /// overlay (Phase 244.D1) to the board's compiled-in net/locator `Config`
+    /// before opening the executor. `nros::main!()` calls THIS from the
+    /// generated `#[init]` body, passing the
+    /// `[package.metadata.nros.deploy.<board>]` block.
+    ///
+    /// The default ignores `deploy` and forwards to
+    /// [`init_hardware`](Self::init_hardware), so existing RTIC boards are
+    /// unchanged. Boards with a baked net `Config` (the bare-metal firmware
+    /// boards) override it so each Entry pkg can pin its own ip / locator /
+    /// gateway — required when two RTIC firmwares share one board on the same
+    /// QEMU network (e.g. the talker-rtic / listener-rtic pub/sub pair).
+    fn init_hardware_with_deploy(
+        device: Self::Pac,
+        core: Self::Core,
+        _deploy: &DeployOverlay,
+    ) -> (Self::Executor, Self::Runtime) {
+        <Self as RticBoardEntry>::init_hardware(device, core)
+    }
 }
 
 #[cfg(test)]

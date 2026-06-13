@@ -188,6 +188,65 @@ fn qemu_config() -> nros_board_mps2_an385::Config {
     }
 }
 
+/// Phase 244.D1 — overlay a `[package.metadata.nros.deploy.rtic-mps2-an385]`
+/// block onto [`qemu_config`], so each RTIC Entry pkg can pin its own
+/// ip / locator / gateway (required when the talker-rtic + listener-rtic
+/// pub/sub pair share this board on one QEMU network). `None` fields keep the
+/// baked default.
+fn qemu_config_with_overlay(
+    deploy: &nros_platform::DeployOverlay,
+) -> nros_board_mps2_an385::Config {
+    let mut config = qemu_config();
+    if let Some(locator) = deploy.locator {
+        config.zenoh_locator = locator;
+    }
+    if let Some(ip) = deploy.ip {
+        config.ip = ip;
+    }
+    if let Some(gateway) = deploy.gateway {
+        config.gateway = gateway;
+    }
+    if let Some(netmask) = deploy.netmask {
+        config.prefix = netmask.iter().map(|b| b.count_ones() as u8).sum();
+    }
+    if let Some(domain_id) = deploy.domain_id {
+        config.domain_id = domain_id;
+    }
+    config
+}
+
+/// Shared RTIC `#[init]` body: bring up the board from `config`, register the
+/// linked RMW backend, open the executor, and build the dispatch runtime.
+fn init_with_config(config: nros_board_mps2_an385::Config) -> (::nros::Executor, RticRuntime) {
+    nros_board_mps2_an385::init_hardware(&config);
+
+    match nros_rmw_zenoh::register() {
+        Ok(()) => {}
+        Err(_) => {
+            nros_board_mps2_an385::exit_failure();
+        }
+    }
+
+    let node_name = option_env!("NROS_NODE_NAME").unwrap_or("nros-rtic-mps2");
+    let exec_config = ::nros::ExecutorConfig::new(config.zenoh_locator)
+        .domain_id(config.domain_id)
+        .node_name(node_name);
+    let executor = match ::nros::Executor::open(&exec_config) {
+        Ok(e) => e,
+        Err(_) => nros_board_mps2_an385::exit_failure(),
+    };
+
+    let (producer, consumer) = take_dispatch_queue()
+        .expect("RticMps2An385::init_hardware: dispatch queue already claimed");
+    stash_dispatch_consumer(consumer);
+    let mut runtime = RticRuntime::with_producer(producer);
+
+    #[cfg(feature = "e2e-synthetic-callback")]
+    enqueue_e2e_callback(&mut runtime);
+
+    (executor, runtime)
+}
+
 impl RticBoardEntry for RticMps2An385 {
     type Pac = mps2_an385_pac::Peripherals;
     type Core = cortex_m::Peripherals;
@@ -197,34 +256,15 @@ impl RticBoardEntry for RticMps2An385 {
     const DISPATCHERS: &'static [&'static str] = &["UARTRX0", "UARTTX0"];
 
     fn init_hardware(_device: Self::Pac, _core: Self::Core) -> (Self::Executor, Self::Runtime) {
-        let config = qemu_config();
-        nros_board_mps2_an385::init_hardware(&config);
+        init_with_config(qemu_config())
+    }
 
-        match nros_rmw_zenoh::register() {
-            Ok(()) => {}
-            Err(_) => {
-                nros_board_mps2_an385::exit_failure();
-            }
-        }
-
-        let node_name = option_env!("NROS_NODE_NAME").unwrap_or("nros-rtic-mps2");
-        let exec_config = ::nros::ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name(node_name);
-        let executor = match ::nros::Executor::open(&exec_config) {
-            Ok(e) => e,
-            Err(_) => nros_board_mps2_an385::exit_failure(),
-        };
-
-        let (producer, consumer) = take_dispatch_queue()
-            .expect("RticMps2An385::init_hardware: dispatch queue already claimed");
-        stash_dispatch_consumer(consumer);
-        let mut runtime = RticRuntime::with_producer(producer);
-
-        #[cfg(feature = "e2e-synthetic-callback")]
-        enqueue_e2e_callback(&mut runtime);
-
-        (executor, runtime)
+    fn init_hardware_with_deploy(
+        _device: Self::Pac,
+        _core: Self::Core,
+        deploy: &nros_platform::DeployOverlay,
+    ) -> (Self::Executor, Self::Runtime) {
+        init_with_config(qemu_config_with_overlay(deploy))
     }
 }
 

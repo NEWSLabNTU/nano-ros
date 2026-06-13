@@ -1173,10 +1173,15 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // `nros::node!()` emit + the runtime trait
                         // surface; same deferred story as the Embassy
                         // sibling in the C.3 follow-up).
+                        // Phase 244.D1 — thread the `[deploy.<board>]` overlay
+                        // into the RTIC `#[init]` so each Entry pkg pins its own
+                        // ip / locator (the default impl ignores it, so boards
+                        // without a baked net Config are unchanged).
                         let (mut executor, runtime) =
-                            <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::init_hardware(
+                            <__NrosBoard as ::nros::__macro_support::nros_platform::RticBoardEntry>::init_hardware_with_deploy(
                                 cx.device,
                                 cx.core,
+                                &#deploy_overlay_ts,
                             );
                         // Phase 216 final wave — per-Node dispatch
                         // registration. Each Node pkg's
