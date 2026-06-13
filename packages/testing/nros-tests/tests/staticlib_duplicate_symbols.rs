@@ -297,16 +297,21 @@ fn staticlib_duplicate_symbols_are_only_shared_deps() {
 /// the duplicated closure symbols are COMDAT/weak, so lazy archive-member
 /// selection dedups them with no `--allow-multiple-definition`.
 ///
-/// This asserts that on host the pair links **with `-u nros_rmw_zenoh_register`,
-/// WITHOUT `--allow-multiple-definition`**, AND
+/// This asserts that on host the **2-archive (C-only)** pair links **with
+/// `-u nros_rmw_zenoh_register`, WITHOUT `--allow-multiple-definition`**, AND
 ///   * the forced register entry is actually included (the `-u` did its job), and
 ///   * there is exactly ONE `REGISTRY` instance — the cffi backend registry stays
 ///     single (localizing/duplicating it would split registration → the #48
 ///     `NoBackend` hazard).
-/// It is the host-side regression guard for the slice-4 flag removal: if a future
-/// change reintroduces a real strong-dup collision on this lazy path, this goes
-/// red. The cross-platform cmake change (whole-archive → `-u`) + its validation
-/// is the run_e2e slice-4 work.
+///
+/// SCOPE: this is the C-only path (`libnros_c.a` + the RMW staticlib). The real
+/// C++ link ALSO pulls `libnros_cpp.a`, a THIRD archive that bundles
+/// `nros-rmw-cffi` too — and its C exports (`nros_rmw_cffi_set_custom_transport`,
+/// …) are STRONG, so the 3-archive cpp link still collides under `-u` (verified:
+/// converting the root `CMakeLists.txt` zenoh link to `-u` broke the native cpp
+/// build). Dropping the flag therefore needs `nros-rmw-cffi` deduped to a single
+/// archive first (the D3 architectural slice). This test guards the C-only lazy
+/// path; it does NOT claim the flag is removable for the cpp link.
 #[test]
 fn host_pair_links_via_u_force_without_allow_multiple_definition() {
     let root = repo_root();
@@ -384,9 +389,10 @@ fn host_pair_links_via_u_force_without_allow_multiple_definition() {
     );
 
     eprintln!(
-        "D3 slice 3: host staticlib pair links with `-u nros_rmw_zenoh_register` and \
-         NO `--allow-multiple-definition` — register entry included, single REGISTRY. \
-         The flag is replaceable by targeted `-u` force + lazy linking (slice 4: the \
-         cross cmake change behind run_e2e).",
+        "D3 slice 3: the C-only host pair (libnros_c.a + RMW staticlib) links with \
+         `-u nros_rmw_zenoh_register` and NO `--allow-multiple-definition` — register \
+         included, single REGISTRY. NOTE: the 3-archive C++ link (+ libnros_cpp.a) \
+         still collides on the STRONG `nros_rmw_cffi_*` C exports, so dropping the flag \
+         needs nros-rmw-cffi deduped to one archive first (the D3 architectural slice).",
     );
 }
