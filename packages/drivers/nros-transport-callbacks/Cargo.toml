@@ -1,0 +1,12 @@
+[package]
+name = "nros-transport-callbacks"
+version = "0.5.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Reusable custom-transport callback factories (loopback, TCP) over nros-rmw NrosTransportOps (Phase 244 E2)"
+
+[lib]
+name = "nros_transport_callbacks"
+
+[dependencies]
+nros-rmw = { path = "../../core/nros-rmw" }

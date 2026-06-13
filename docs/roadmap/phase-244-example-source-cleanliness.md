@@ -48,7 +48,7 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   (`:1043`); `nros-board-rtic-stm32f4` impls `RticBoardEntry` (`:385`). Monotonic
   + WFI-idle are intentionally board/user-delegated. **No build needed — D1 just
   migrates the baremetal RTIC variants to bare `nros::main!()`.** **Blocks:** D1.
-- [ ] **E2 — custom-transport callback library. PARTIAL → build.** The vtable
+- [x] **E2 — custom-transport callback library. PARTIAL → build.** The vtable
   framework exists (`nros-rmw/src/custom_transport.rs` `NrosTransportOps` +
   `set_custom_transport`; C ABI `nros-rmw-cffi/include/nros/rmw_transport.h`), but
   there is **no reusable factory** — the 3 examples open-code ring-buffer loopback /
@@ -80,7 +80,7 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   residual `minor`** (NOT downgraded to clean). Clusters only hoist `#![no_std]`
   out of crates that don't need it (host-buildable libs / the std-agnostic pattern
   of `workspaces/.../mixed_rust_heartbeat_pkg`). **No build.**
-- [ ] **E5 — deploy-config net/locator threading. PARTIAL → build (2 board
+- [x] **E5 — deploy-config net/locator threading. PARTIAL → build (2 board
   overrides).** The mechanism is **generic** and exists: the macro reads
   `[deploy.<board>]` (`main_macro.rs:1415`) → `DeployOverlay`
   (`nros-platform/src/board/entry.rs:28`) → `BoardEntry::run_with_deploy`
