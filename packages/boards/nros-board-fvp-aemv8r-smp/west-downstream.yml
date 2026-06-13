@@ -1,0 +1,47 @@
+# nros-board-fvp-aemv8r-smp — downstream west fragment (Phase 215.J.3)
+#
+# A DOWNSTREAM Zephyr consumer that imports this board crate via
+# `nano_ros_use_board(fvp-aemv8r-smp)` with `import: false` on the nano-ros
+# west project does NOT inherit nano-ros's transitive west projects — most
+# importantly the `zephyr-lang-rust` module the board's Rust build needs.
+#
+# This fragment declares ONLY `zephyr-lang-rust`, pinned to nano-ros's
+# supported rev (the (zephyr 3.7 × zephyr-lang-rust) support pair — kept in
+# lock-step with nano-ros's own west.yml). The consumer adds ONE `import:`
+# line and `west update` fetches the module; everything else nano-ros's board
+# crate needs (zephyr patches, cyclonedds source, rustup targets) is handled
+# by `nros setup board fvp-aemv8r-smp --zephyr-workspace <dir>` (Phase 215.J.2).
+#
+# Because it declares a single project, no `name-allowlist` is required to keep
+# it minimal — but a consumer who instead imports nano-ros's FULL west.yml can
+# achieve the same scoping with:
+#
+#     - name: nano-ros
+#       path: nano-ros
+#       import:
+#         name-allowlist:
+#           - zephyr-lang-rust
+#
+# Consumer usage (in the consumer's own west.yml `manifest:`):
+#
+#     manifest:
+#       self:
+#         import:
+#           - file: <path-to>/packages/boards/nros-board-fvp-aemv8r-smp/west-downstream.yml
+#
+# Then: `west update zephyr-lang-rust`
+#
+# Keep this revision in lock-step with the `zephyr-lang-rust` project in
+# nano-ros's top-level `west.yml` (Phase 199.2). See
+# docs/development/zephyr-version-support.md.
+
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr-lang-rust
+      remote: zephyrproject-rtos
+      revision: 404fcefdbab0f2711cd342a1fab9d2eda52a1ba9
+      path: modules/lang/rust

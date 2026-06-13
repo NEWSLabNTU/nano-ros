@@ -340,27 +340,50 @@ provisioning"):** the patch scripts already take a workspace dir (`patches/<line
 $WORKSPACE`) and `nros setup --source` is index-driven — expose them for a
 consumer's tree, board-driven.
 
-- [ ] **215.J.1** `board.cmake` (+ Cargo mirror) gains a **provisioning
-      contract**: `NROS_BOARD_ZEPHYR_LINE` (e.g. `3.7`), `NROS_BOARD_REQUIRES_RUST`,
-      `NROS_BOARD_RUST_TARGETS` (e.g. `aarch64-zephyr-elf;armv7a-none-eabi`),
-      `NROS_BOARD_RMW_SOURCE` (e.g. `cyclonedds-src`). Schema doc + drift audit
-      (215.F) extended.
-- [ ] **215.J.2** `nros setup board <name> --zephyr-workspace <dir>` — reads the
-      contract, fetches the RMW source (`nros setup --source …`, index-driven),
-      applies `scripts/zephyr/patches/<line>.sh <dir>` to the **consumer's**
-      zephyr, `rustup target add` the board's targets, ensures the
-      `zephyr-lang-rust` pin. Reuses the existing parameterized scripts; no
-      consumer-side duplication. (RFC-0014 surface.)
-- [ ] **215.J.3** Board-shipped **`import:false`-compatible west fragment**
-      (just `zephyr-lang-rust` at the board's pin, `name-allowlist`) so the
-      consumer adds one manifest line for the module instead of hand-copying the
-      pin. `nros setup board` does patches + cyclonedds + rustup; west does the
-      module fetch.
-- [ ] **215.J.4** `RUST_SUPPORTED` for the board's arch via a **board-shipped
-      Kconfig overlay module** (adds `config RUST_SUPPORTED \n default y if <board>`
-      — no mutation of the consumer's `lang-rust` tree). **Lean B**; verify
-      `zephyr-lang-rust`'s symbol allows cross-file `default` extension, else fall
-      back to applying `aarch64/cortex-r-rust-patch.sh` to the consumer tree (A).
+- [x] **215.J.1** `board.cmake` (+ Cargo mirror) gains a **provisioning
+      contract**: `NROS_BOARD_ZEPHYR_LINE` (`3.7`), `NROS_BOARD_REQUIRES_RUST`
+      (`y`), `NROS_BOARD_RUST_TARGETS` (`aarch64-unknown-none` — the actual
+      `_rust_map_target` triple for AArch64 AEMv8-R; the filed example
+      `aarch64-zephyr-elf;armv7a-none-eabi` conflated the SDK toolchain with the
+      rust target), `NROS_BOARD_RMW_SOURCE` (`cyclonedds-src`), plus
+      `NROS_BOARD_RUST_SUPPORT_MODULE` (J.4). Schema doc + `board_metadata`
+      struct (`deny_unknown_fields`) + drift audit (215.F) extended. _(landed;
+      cmake-parses clean; `nros board info` shows them; `--check-drift` + the
+      `phase215_f` audit pass; +1 `drift_compute_provisioning_contract` unit
+      test → 11 lib tests green.)_
+- [x] **215.J.2** `nros setup board <name> --zephyr-workspace <dir>` — a clap
+      subcommand under `nros setup` (`args_conflicts_with_subcommands`, so the
+      legacy `nros setup <board>` positional still parses). Reads the contract
+      via `board_metadata`, then against the consumer's tree: (a) `nros setup
+      --source <rmw_source>` (reuses `provision_named_sources`, index-driven —
+      provisioned into nano-ros's own tree, which the consumer links); (b) `bash
+      scripts/zephyr/patches/<line>.sh <dir>`; (c) `rustup target add` per
+      target; (d) verify the `zephyr-lang-rust` module + instruct via the J.3
+      fragment (never mutates the consumer manifest). Idempotent; `--dry-run`
+      prints the plan. _(landed; builds; `--dry-run` verified end-to-end against
+      a fixture workspace. The live patch/source/rustup actions need a real
+      zephyr dir + network — structurally verified.)_
+- [x] **215.J.3** Board-shipped **`import:false`-compatible west fragment**
+      `packages/boards/nros-board-fvp-aemv8r-smp/west-downstream.yml` — declares
+      ONLY `zephyr-lang-rust` at nano-ros's pin (rev `404fcefd…`, lock-step with
+      the top-level `west.yml`); a single project so no `name-allowlist` is
+      needed (the doc shows the allowlist form for consumers who instead import
+      nano-ros's full manifest). Consumer adds one `manifest.self.import: -file:`
+      line + `west update`. _(landed; YAML validated.)_
+- [x] **215.J.4** **Lean B** — board-shipped Kconfig overlay module
+      `zephyr-rust-support/` (`zephyr/module.yml` + `Kconfig` adding `config
+      RUST_SUPPORTED \n bool \n default y if BOARD_FVP_BASER_AEMV8R`).
+      `nano_ros_use_board()` step 9 appends `NROS_BOARD_RUST_SUPPORT_MODULE` to
+      `ZEPHYR_EXTRA_MODULES` so the consumer gets it for free.
+      **Verified B works**: the real `zephyr-lang-rust` `config RUST_SUPPORTED`
+      is a plain `bool` with a single `default y if (CPU_CORTEX_M || RISCV-… ||
+      (ARCH_POSIX && 64BIT)) && !TIMER_…` — none true on AArch64 AEMv8-R — and
+      Kconfig accumulates a symbol's properties across files (first-true
+      `default` wins), so a board-keyed `default y` fires non-destructively
+      without editing the lang-rust tree. (Scope is the `RUST_SUPPORTED` Kconfig
+      symbol only; the lang-rust CMake `_rust_map_target → aarch64-unknown-none`
+      mapping is NOT a Kconfig symbol and stays supplied by
+      `aarch64-rust-patch.sh` via J.2 step (b).)
 - [ ] **215.J.5** ASI `bootstrap-asi.sh` delegates to `nros setup board
       fvp-aemv8r-smp --zephyr-workspace $ZEPHYR_BASE` (replaces the inline
       west-fragment + ISN-poke + manual rust-module the real-run added as

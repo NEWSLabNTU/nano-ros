@@ -6,9 +6,11 @@ it to layer the board's prj.conf / per-board Kconfig / DTS overlay /
 default RMW / runner onto a downstream Zephyr app build.
 
 This document is the contract: each board's `board.cmake` MUST set every
-variable below, and EVERY variable below MUST be consumed by exactly one
-of the listed consumers. New variables land here first, then in the
-matching consumer.
+variable in the "Variables" section below, and EVERY variable MUST be
+consumed by exactly one of the listed consumers. New variables land here
+first, then in the matching consumer. The "Provisioning contract" section
+(Phase 215.J) adds OPTIONAL fields — a Zephyr consumer board sets them to
+be provisionable via `nros setup board`, non-Zephyr boards omit them.
 
 Cross-ref: `docs/roadmap/phase-215-board-crate-as-importable-unit.md`
 (work items 215.A.1–215.A.3 introduce this schema; 215.C.1 mirrors the
@@ -135,6 +137,83 @@ Absolute path to the per-board DTS overlay under the board crate's
   DTC_OVERLAY_FILE …)` so Zephyr layers it on top of the consumer's
   own DTS overlay.
 
+## Provisioning contract (Phase 215.J)
+
+`nano_ros_use_board()` layers the board *config* (the variables above),
+but an `import:false` downstream Zephyr consumer does NOT inherit
+nano-ros's *toolchain provisioning* (zephyr patches × zephyr-lang-rust ×
+cyclonedds source). The following fields make the board crate the single
+source of truth for what a consumer's tree needs, and drive
+`nros setup board <name> --zephyr-workspace <dir>` (Phase 215.J.2).
+
+All four are OPTIONAL — a board that omits them is not provisionable via
+`nros setup board` (e.g. non-Zephyr boards consumed via cargo path-deps).
+Their `Cargo.toml` mirror lives in `[package.metadata.nros.board]` as
+`zephyr_line` / `requires_rust` / `rust_targets` / `rmw_source`.
+
+### `NROS_BOARD_ZEPHYR_LINE`
+
+The Zephyr support line (the `(zephyr × zephyr-lang-rust)` pair's zephyr
+floor) — selects the patch set `scripts/zephyr/patches/<line>.sh`, which
+takes the consumer's workspace dir as `$1`.
+
+- Example: `3.7`.
+- Consumed by: `nros setup board` step (b) — `bash
+  scripts/zephyr/patches/<line>.sh <zephyr-workspace>`.
+
+### `NROS_BOARD_REQUIRES_RUST`
+
+Whether the board's build needs the Rust language module (`CONFIG_RUST`).
+
+- Format: a CMake boolean token (`y` / `ON` / `true` / `1` → true).
+  Mirrored as a TOML `bool` on the Cargo side.
+- Consumed by: `nros setup board` steps (c) + (d) — gates `rustup target
+  add` and the `zephyr-lang-rust` presence check.
+
+### `NROS_BOARD_RUST_TARGETS`
+
+Semicolon list of rustup target triple(s) the board's Zephyr build
+compiles the nros staticlib for (what `zephyr-lang-rust`'s
+`_rust_map_target` returns for the board's arch).
+
+- Example: `aarch64-unknown-none` (AArch64 AEMv8-R).
+- Consumed by: `nros setup board` step (c) — `rustup target add <t>` for
+  each.
+
+### `NROS_BOARD_RMW_SOURCE`
+
+The `nros-sdk-index.toml` `[source.*]` name for the board's RMW source
+tree. Index-driven — never a hardcoded path or a hand `git submodule
+update`.
+
+- Example: `cyclonedds-src`.
+- Consumed by: `nros setup board` step (a) — `nros setup --source
+  <name>` (provisioned into nano-ros's own tree, which the consumer
+  links via `nano_ros_use_board()` / `add_subdirectory(packages/dds/…)`).
+
+### `NROS_BOARD_RUST_SUPPORT_MODULE`
+
+Absolute path to a board-shipped Zephyr Kconfig overlay MODULE
+(`<dir>/zephyr/module.yml` + `<dir>/Kconfig`) that enables
+`RUST_SUPPORTED` for the board's arch via a cross-file `default y if
+<board>` extension — WITHOUT mutating the consumer's `zephyr-lang-rust`
+tree (Phase 215.J.4, option B).
+
+- Format: absolute path. Use
+  `${CMAKE_CURRENT_LIST_DIR}/zephyr-rust-support`.
+- Consumed by: `nano_ros_use_board()` step 9 — appended to
+  `ZEPHYR_EXTRA_MODULES` so the overlay is picked up automatically.
+
+### Board west fragment (not a `board.cmake` variable)
+
+Each Zephyr consumer board also ships
+`packages/boards/nros-board-<name>/west-downstream.yml` (Phase 215.J.3):
+an `import:false`-compatible west manifest fragment declaring ONLY
+`zephyr-lang-rust` at nano-ros's supported rev. A consumer adds one
+`manifest.self.import: - file: <…>/west-downstream.yml` line +
+`west update` to fetch the module. This is the one genuinely west-native
+piece (module fetch); everything else flows through `nros setup board`.
+
 ## Consumers
 
 The schema is consumed at three sites:
@@ -161,7 +240,9 @@ The schema is consumed at three sites:
   `board.cmake` and `[package.metadata.nros.board]`, the audit
   parses each and asserts byte-equal field-by-field for the overlap
   (`zephyr_board`, `toolchain`, `default_rmw`, `runner`, conf/overlay
-  paths). Bare Rust-only boards without `board.cmake` are skipped.
+  paths, and the Phase 215.J provisioning fields `zephyr_line`,
+  `requires_rust`, `rust_targets`, `rmw_source`). Bare Rust-only boards
+  without `board.cmake` are skipped.
 
 ## Adding a new board
 

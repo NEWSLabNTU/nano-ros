@@ -57,3 +57,47 @@ set(NROS_BOARD_BOARD_CONF
 # Per-board DTS overlay.
 set(NROS_BOARD_BOARD_OVERLAY
     "${CMAKE_CURRENT_LIST_DIR}/boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.overlay")
+
+# ---------------------------------------------------------------------------
+# Phase 215.J.1 — downstream Zephyr consumer provisioning contract.
+#
+# `nano_ros_use_board()` layers the board *config* (above), but an
+# `import:false` downstream consumer does NOT inherit nano-ros's *toolchain
+# provisioning* (zephyr patches × zephyr-lang-rust × cyclonedds source).
+# These fields drive `nros setup board fvp-aemv8r-smp --zephyr-workspace <dir>`
+# (Phase 215.J.2) so the board crate is the single source of truth for what a
+# consumer's zephyr tree needs. Schema: docs/reference/board-cmake-schema.md.
+# ---------------------------------------------------------------------------
+
+# Zephyr support line — selects `scripts/zephyr/patches/<line>.sh`, the
+# parameterized (workspace-dir = $1) patch set applied to the consumer's tree.
+set(NROS_BOARD_ZEPHYR_LINE
+    "3.7")
+
+# Whether the board requires the Rust language module (`CONFIG_RUST`). When
+# `y`, `nros setup board` adds the rust targets below + ensures `RUST_SUPPORTED`
+# is enabled for the board's arch (Phase 215.J.4 board Kconfig overlay module).
+set(NROS_BOARD_REQUIRES_RUST
+    "y")
+
+# rustup target triple(s) the board's Zephyr build compiles the nros staticlib
+# for. AArch64 AEMv8-R: `zephyr-lang-rust`'s `_rust_map_target` returns
+# `aarch64-unknown-none` (see scripts/zephyr/aarch64-rust-patch.sh). Semicolon
+# list — `nros setup board` runs `rustup target add` for each.
+set(NROS_BOARD_RUST_TARGETS
+    "aarch64-unknown-none")
+
+# `nros-sdk-index.toml` `[source.*]` name for the board's RMW source tree.
+# Index-driven (`nros setup --source cyclonedds-src`) — never a hardcoded path
+# or a hand `git submodule update`.
+set(NROS_BOARD_RMW_SOURCE
+    "cyclonedds-src")
+
+# Phase 215.J.4 — board-shipped Kconfig overlay MODULE that enables
+# `RUST_SUPPORTED` for this board's arch WITHOUT mutating the consumer's
+# `zephyr-lang-rust` tree (a cross-file `default y if <board>` extension of the
+# existing `config RUST_SUPPORTED`). The module root is the dir below (it
+# contains `zephyr/module.yml`). Consumers put it on `ZEPHYR_EXTRA_MODULES`;
+# `nano_ros_use_board()` appends it automatically.
+set(NROS_BOARD_RUST_SUPPORT_MODULE
+    "${CMAKE_CURRENT_LIST_DIR}/zephyr-rust-support")

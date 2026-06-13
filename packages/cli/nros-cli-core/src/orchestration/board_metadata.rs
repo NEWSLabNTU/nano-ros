@@ -61,6 +61,29 @@ pub struct BoardMetadata {
     pub board_conf: String,
     /// Relative path to per-board DTS overlay.
     pub board_overlay: String,
+
+    // -----------------------------------------------------------------------
+    // Phase 215.J.1 — downstream Zephyr consumer provisioning contract.
+    //
+    // These mirror the `NROS_BOARD_{ZEPHYR_LINE,REQUIRES_RUST,RUST_TARGETS,
+    // RMW_SOURCE}` cmake variables and drive `nros setup board <name>
+    // --zephyr-workspace <dir>`. All optional so pre-215.J board manifests
+    // (and non-Zephyr boards) still parse — a board that omits them simply
+    // isn't provisionable via `nros setup board`.
+    // -----------------------------------------------------------------------
+    /// Zephyr support line (e.g. `3.7`) → `scripts/zephyr/patches/<line>.sh`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zephyr_line: Option<String>,
+    /// Whether the board requires the Rust language module (`CONFIG_RUST`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires_rust: Option<bool>,
+    /// rustup target triples to add (e.g. `["aarch64-unknown-none"]`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rust_targets: Vec<String>,
+    /// `[source.*]` name in `nros-sdk-index.toml` for the board's RMW source
+    /// (e.g. `cyclonedds-src`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rmw_source: Option<String>,
 }
 
 /// Parse `[package.metadata.nros.board]` from a board crate's `Cargo.toml`.
@@ -123,6 +146,9 @@ const FIELD_MAP: &[(&str, &str)] = &[
     ("prj_conf", "NROS_BOARD_PRJ_CONF"),
     ("board_conf", "NROS_BOARD_BOARD_CONF"),
     ("board_overlay", "NROS_BOARD_BOARD_OVERLAY"),
+    // Phase 215.J.1 — provisioning contract (plain-string fields).
+    ("zephyr_line", "NROS_BOARD_ZEPHYR_LINE"),
+    ("rmw_source", "NROS_BOARD_RMW_SOURCE"),
 ];
 
 /// Tokenise `board.cmake` and return a `name → value` map for every
@@ -311,6 +337,37 @@ pub fn compute_drift(cargo: &BoardMetadata, cmake: &BTreeMap<String, String>) ->
             });
         }
     }
+    // Phase 215.J.1 — `rust_targets` is a semicolon list (same shape as
+    // `gated`); order-insensitive compare.
+    if let Some(cmake_targets) = cmake.get("NROS_BOARD_RUST_TARGETS") {
+        let mut cargo_targets = cargo.rust_targets.clone();
+        cargo_targets.sort();
+        let mut cmake_targets_v: Vec<String> = cmake_targets
+            .split(';')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+        cmake_targets_v.sort();
+        if cargo_targets != cmake_targets_v {
+            out.push(DriftEntry {
+                field: "rust_targets",
+                cargo_metadata: cargo.rust_targets.join(";"),
+                board_cmake: cmake_targets.clone(),
+            });
+        }
+    }
+    // Phase 215.J.1 — `requires_rust` is a bool on the Cargo side, a cmake
+    // boolean token (`y`/`ON`/…) on the cmake side. Compare normalised.
+    if let Some(cmake_req) = cmake.get("NROS_BOARD_REQUIRES_RUST") {
+        let cargo_req = cargo.requires_rust.unwrap_or(false);
+        if cargo_req != cmake_bool(cmake_req) {
+            out.push(DriftEntry {
+                field: "requires_rust",
+                cargo_metadata: cargo_req.to_string(),
+                board_cmake: cmake_req.clone(),
+            });
+        }
+    }
     out
 }
 
@@ -324,8 +381,19 @@ fn cargo_field(m: &BoardMetadata, field: &str) -> String {
         "prj_conf" => m.prj_conf.clone(),
         "board_conf" => m.board_conf.clone(),
         "board_overlay" => m.board_overlay.clone(),
+        "zephyr_line" => m.zephyr_line.clone().unwrap_or_default(),
+        "rmw_source" => m.rmw_source.clone().unwrap_or_default(),
         other => panic!("cargo_field: unknown field {other}"),
     }
+}
+
+/// Normalise a `board.cmake` boolean token (`y`/`yes`/`on`/`true`/`1`,
+/// case-insensitive) to a Rust bool. Anything else is `false`.
+fn cmake_bool(v: &str) -> bool {
+    matches!(
+        v.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes" | "on" | "true" | "1"
+    )
 }
 
 fn basename(p: &str) -> &str {
@@ -353,6 +421,10 @@ runner       = "armfvp"
 prj_conf      = "prj.conf"
 board_conf    = "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf"
 board_overlay = "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.overlay"
+zephyr_line   = "3.7"
+requires_rust = true
+rust_targets  = ["aarch64-unknown-none"]
+rmw_source    = "cyclonedds-src"
 "#;
 
     fn write_tmp(name: &str, body: &str) -> std::path::PathBuf {
@@ -387,6 +459,11 @@ board_overlay = "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.overlay"
             m.board_overlay,
             "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.overlay"
         );
+        // Phase 215.J.1 — provisioning contract.
+        assert_eq!(m.zephyr_line.as_deref(), Some("3.7"));
+        assert_eq!(m.requires_rust, Some(true));
+        assert_eq!(m.rust_targets, vec!["aarch64-unknown-none"]);
+        assert_eq!(m.rmw_source.as_deref(), Some("cyclonedds-src"));
 
         // Round-trip
         let reser = toml::to_string(&m).expect("serialize");
@@ -415,6 +492,12 @@ board_overlay = "boards/qemu_cortex_m3.overlay"
         let p = write_tmp("bare", raw);
         let m = parse_board_metadata(&p).expect("bare board parses");
         assert!(m.gated.is_empty());
+        // Phase 215.J.1 — provisioning contract is optional; a pre-215.J
+        // manifest omits it (board not provisionable via `nros setup board`).
+        assert!(m.zephyr_line.is_none());
+        assert!(m.requires_rust.is_none());
+        assert!(m.rust_targets.is_empty());
+        assert!(m.rmw_source.is_none());
     }
 
     #[test]
@@ -572,6 +655,10 @@ set(NROS_BOARD_PRJ_CONF
             prj_conf: "prj.conf".into(),
             board_conf: "boards/x.conf".into(),
             board_overlay: "boards/x.overlay".into(),
+            zephyr_line: Some("3.7".into()),
+            requires_rust: Some(true),
+            rust_targets: vec!["aarch64-unknown-none".into()],
+            rmw_source: Some("cyclonedds-src".into()),
         };
         let mut cmake: BTreeMap<String, String> = BTreeMap::new();
         cmake.insert(
@@ -589,6 +676,13 @@ set(NROS_BOARD_PRJ_CONF
             "NROS_BOARD_BOARD_OVERLAY".into(),
             "/abs/path/to/x.overlay".into(),
         );
+        cmake.insert("NROS_BOARD_ZEPHYR_LINE".into(), "3.7".into());
+        cmake.insert("NROS_BOARD_REQUIRES_RUST".into(), "y".into());
+        cmake.insert(
+            "NROS_BOARD_RUST_TARGETS".into(),
+            "aarch64-unknown-none".into(),
+        );
+        cmake.insert("NROS_BOARD_RMW_SOURCE".into(), "cyclonedds-src".into());
         let drift = compute_drift(&cargo, &cmake);
         assert!(drift.is_empty(), "no drift expected: {drift:?}");
     }
@@ -605,6 +699,10 @@ set(NROS_BOARD_PRJ_CONF
             prj_conf: "prj.conf".into(),
             board_conf: "x.conf".into(),
             board_overlay: "x.overlay".into(),
+            zephyr_line: None,
+            requires_rust: None,
+            rust_targets: vec![],
+            rmw_source: None,
         };
         let mut cmake: BTreeMap<String, String> = BTreeMap::new();
         cmake.insert("NROS_BOARD_RUNNER".into(), "armfvp".into());
@@ -613,5 +711,51 @@ set(NROS_BOARD_PRJ_CONF
         assert_eq!(drift[0].field, "runner");
         assert_eq!(drift[0].cargo_metadata, "qemu");
         assert_eq!(drift[0].board_cmake, "armfvp");
+    }
+
+    #[test]
+    fn drift_compute_provisioning_contract() {
+        // Phase 215.J.1 — provisioning fields participate in the drift audit.
+        let cargo = BoardMetadata {
+            zephyr_board: "x".into(),
+            toolchain: "y".into(),
+            gated: vec![],
+            default_rmw: "cyclonedds".into(),
+            default_transport: "ethernet".into(),
+            runner: "armfvp".into(),
+            prj_conf: "prj.conf".into(),
+            board_conf: "x.conf".into(),
+            board_overlay: "x.overlay".into(),
+            zephyr_line: Some("3.7".into()),
+            requires_rust: Some(true),
+            rust_targets: vec!["aarch64-unknown-none".into()],
+            rmw_source: Some("cyclonedds-src".into()),
+        };
+
+        // Agreement: cmake uses the `y` boolean token + matching values.
+        let mut cmake: BTreeMap<String, String> = BTreeMap::new();
+        cmake.insert("NROS_BOARD_ZEPHYR_LINE".into(), "3.7".into());
+        cmake.insert("NROS_BOARD_REQUIRES_RUST".into(), "y".into());
+        cmake.insert(
+            "NROS_BOARD_RUST_TARGETS".into(),
+            "aarch64-unknown-none".into(),
+        );
+        cmake.insert("NROS_BOARD_RMW_SOURCE".into(), "cyclonedds-src".into());
+        assert!(
+            compute_drift(&cargo, &cmake).is_empty(),
+            "provisioning contract agrees → no drift"
+        );
+
+        // Drift: rmw_source + requires_rust disagree.
+        let mut bad = cmake.clone();
+        bad.insert("NROS_BOARD_RMW_SOURCE".into(), "iceoryx-src".into());
+        bad.insert("NROS_BOARD_REQUIRES_RUST".into(), "n".into());
+        let drift = compute_drift(&cargo, &bad);
+        let fields: Vec<&str> = drift.iter().map(|d| d.field).collect();
+        assert!(fields.contains(&"rmw_source"), "rmw_source drift: {drift:?}");
+        assert!(
+            fields.contains(&"requires_rust"),
+            "requires_rust drift: {drift:?}"
+        );
     }
 }

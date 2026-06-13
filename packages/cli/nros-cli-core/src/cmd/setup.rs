@@ -5,21 +5,35 @@
 //!
 //! See `docs/design/0014-nros-setup-toolchain-management.md`.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
-use clap::Args as ClapArgs;
+use clap::{Args as ClapArgs, Subcommand};
 use eyre::{Result, WrapErr, bail};
 
-use crate::orchestration::{
-    sdk_index::{SdkIndex, host_key},
-    sdk_store::{
-        InstallAction, LOCK_FILE, SdkLock, SourceDisposition, execute, plan_install,
-        provision_source, store_root, tool_prefix,
+use crate::{
+    cmd::board::find_workspace_root,
+    orchestration::{
+        board_metadata::parse_board_metadata,
+        sdk_index::{SdkIndex, host_key},
+        sdk_store::{
+            InstallAction, LOCK_FILE, SdkLock, SourceDisposition, execute, plan_install,
+            provision_source, store_root, tool_prefix,
+        },
     },
 };
 
 #[derive(Debug, ClapArgs)]
+#[command(args_conflicts_with_subcommands = true)]
 pub struct Args {
+    /// Provisioning subcommands. `nros setup board <name> --zephyr-workspace
+    /// <dir>` provisions a DOWNSTREAM Zephyr consumer's tree (Phase 215.J.2);
+    /// omit it for the legacy host-toolchain `nros setup <board>` flow below.
+    #[command(subcommand)]
+    pub command: Option<SetupCommand>,
+
     /// Board to set up (resolves its toolchain/SDK package set from the index
     /// `[board.*]` table).
     pub board: Option<String>,
@@ -79,6 +93,44 @@ pub struct Args {
     pub shallow: bool,
 }
 
+/// `nros setup <subcommand>` (Phase 215.J.2).
+#[derive(Debug, Subcommand)]
+pub enum SetupCommand {
+    /// Provision a downstream Zephyr consumer's tree for a nano-ros board:
+    /// fetch the board's RMW source, apply the zephyr-line patch set, add the
+    /// rust targets, and check the `zephyr-lang-rust` pin — board-driven from
+    /// the board's provisioning contract (`board.cmake` /
+    /// `[package.metadata.nros.board]`). See RFC-0014 §"Downstream Zephyr
+    /// consumer provisioning" + phase-215.J.
+    Board(BoardSetupArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct BoardSetupArgs {
+    /// Board crate suffix (after `nros-board-`), e.g. `fvp-aemv8r-smp`.
+    pub name: String,
+
+    /// The downstream consumer's Zephyr workspace dir (the tree containing
+    /// `zephyr/` + `modules/lang/rust/`). The patch set is applied here.
+    #[arg(long)]
+    pub zephyr_workspace: PathBuf,
+
+    /// nano-ros workspace root (where the board crate, `scripts/zephyr/`, and
+    /// `nros-sdk-index.toml` live). Auto-detected by walking up from cwd, or
+    /// via `NROS_WORKSPACE_ROOT`, if omitted.
+    #[arg(long)]
+    pub workspace: Option<PathBuf>,
+
+    /// Path to the SDK index (relative paths resolve against the nano-ros
+    /// workspace root). The RMW source's `dest` is index-driven.
+    #[arg(long, default_value = "nros-sdk-index.toml")]
+    pub index: PathBuf,
+
+    /// Resolve + print the provisioning plan without fetching/patching.
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
 /// Per-invocation shallow override from `--full` / `--shallow`: `None` = use the
 /// per-source index default, `Some(false)` = full history, `Some(true)` = force
 /// shallow.
@@ -93,6 +145,12 @@ fn shallow_override(args: &Args) -> Option<bool> {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    if let Some(command) = args.command {
+        return match command {
+            SetupCommand::Board(b) => run_board(b),
+        };
+    }
+
     let index = SdkIndex::load(&args.index)?;
     let host = host_key();
 
@@ -194,6 +252,195 @@ pub fn run(args: Args) -> Result<()> {
         eprintln!("nros setup: {board} — all packages already present");
     }
     Ok(())
+}
+
+/// `nros setup board <name> --zephyr-workspace <dir>` (Phase 215.J.2).
+///
+/// Provisions a DOWNSTREAM Zephyr consumer's tree for a nano-ros board, driven
+/// entirely by the board's provisioning contract (`board.cmake` /
+/// `[package.metadata.nros.board]` — Phase 215.J.1). Reuses the existing
+/// index-driven `--source` fetch + the workspace-parameterized patch scripts
+/// (`scripts/zephyr/patches/<line>.sh $WORKSPACE`); no consumer-side
+/// duplication, no forked index logic. Idempotent: source provisioning skips
+/// when present, the patch scripts self-detect prior application, and
+/// `rustup target add` is a no-op when installed.
+fn run_board(args: BoardSetupArgs) -> Result<()> {
+    // 1. Resolve the nano-ros workspace root (board crate + scripts + index).
+    let root = match args.workspace {
+        Some(p) => p,
+        None => find_workspace_root().wrap_err(
+            "nros setup board: could not locate the nano-ros workspace root \
+             (pass --workspace <path> or set NROS_WORKSPACE_ROOT)",
+        )?,
+    };
+
+    // 2. Validate the consumer's Zephyr workspace.
+    let zephyr_ws = &args.zephyr_workspace;
+    if !zephyr_ws.join("zephyr").is_dir() {
+        bail!(
+            "nros setup board: --zephyr-workspace `{}` does not look like a Zephyr \
+             workspace (no `zephyr/` subdir). Point it at the consumer's west \
+             topdir (the tree containing `zephyr/` + `modules/`).",
+            zephyr_ws.display()
+        );
+    }
+
+    // 3. Read the board's provisioning contract.
+    let crate_dir = root
+        .join("packages")
+        .join("boards")
+        .join(format!("nros-board-{}", args.name));
+    let cargo_toml = crate_dir.join("Cargo.toml");
+    if !cargo_toml.is_file() {
+        bail!(
+            "nros setup board: no board crate at `{}` (check the board name; \
+             `nros board list` enumerates them)",
+            crate_dir.display()
+        );
+    }
+    let meta = parse_board_metadata(&cargo_toml)
+        .wrap_err_with(|| format!("read provisioning contract from {}", cargo_toml.display()))?;
+
+    let Some(zephyr_line) = meta.zephyr_line.as_deref() else {
+        bail!(
+            "nros setup board: `{}` has no `zephyr_line` in its provisioning \
+             contract — it is not a Zephyr consumer board (nothing to provision). \
+             Non-Zephyr boards are consumed via cargo path-deps, not `nros setup board`.",
+            args.name
+        );
+    };
+
+    eprintln!(
+        "nros setup board {}: provisioning consumer Zephyr tree at {}",
+        args.name,
+        zephyr_ws.display()
+    );
+    eprintln!("  contract: zephyr_line={zephyr_line}, requires_rust={}, rmw_source={}, rust_targets=[{}]",
+        meta.requires_rust.unwrap_or(false),
+        meta.rmw_source.as_deref().unwrap_or("-"),
+        meta.rust_targets.join(", "),
+    );
+
+    // (a) Fetch the board's RMW source — index-driven, into nano-ros's own
+    //     tree (the consumer links it via `nano_ros_use_board()` /
+    //     `add_subdirectory(packages/dds/...)`), same as `just zephyr setup`.
+    if let Some(rmw_source) = meta.rmw_source.as_deref() {
+        let index_path = if args.index.is_absolute() {
+            args.index.clone()
+        } else {
+            root.join(&args.index)
+        };
+        eprintln!("  (a) RMW source: nros setup --source {rmw_source}");
+        if args.dry_run {
+            eprintln!("      (--dry-run: skipped)");
+        } else {
+            let index = SdkIndex::load(&index_path).wrap_err_with(|| {
+                format!("load SDK index from {}", index_path.display())
+            })?;
+            provision_named_sources(
+                &index,
+                &index_path,
+                std::slice::from_ref(&rmw_source.to_string()),
+                false,
+                None,
+            )?;
+        }
+    }
+
+    // (b) Apply the zephyr-line patch set to the CONSUMER's tree. The patch
+    //     scripts already take the workspace dir as $1.
+    let patch_script = root
+        .join("scripts")
+        .join("zephyr")
+        .join("patches")
+        .join(format!("{zephyr_line}.sh"));
+    if !patch_script.is_file() {
+        bail!(
+            "nros setup board: no patch set for Zephyr line `{zephyr_line}` at {} \
+             (add scripts/zephyr/patches/{zephyr_line}.sh — see patches/README.md)",
+            patch_script.display()
+        );
+    }
+    eprintln!(
+        "  (b) zephyr patches: bash {} {}",
+        patch_script.display(),
+        zephyr_ws.display()
+    );
+    if !args.dry_run {
+        let status = Command::new("bash")
+            .arg(&patch_script)
+            .arg(zephyr_ws)
+            .status()
+            .wrap_err_with(|| format!("spawn {}", patch_script.display()))?;
+        if !status.success() {
+            bail!(
+                "nros setup board: patch set {} exited with {status}",
+                patch_script.display()
+            );
+        }
+    }
+
+    // (c) rustup target add (when the board requires Rust).
+    if meta.requires_rust.unwrap_or(false) && !meta.rust_targets.is_empty() {
+        eprintln!(
+            "  (c) rust targets: rustup target add {}",
+            meta.rust_targets.join(" ")
+        );
+        if !args.dry_run {
+            for target in &meta.rust_targets {
+                let status = Command::new("rustup")
+                    .args(["target", "add", target])
+                    .status()
+                    .wrap_err("spawn rustup (is it on PATH?)")?;
+                if !status.success() {
+                    bail!("nros setup board: `rustup target add {target}` failed ({status})");
+                }
+            }
+        }
+    }
+
+    // (d) Ensure the zephyr-lang-rust module is in the consumer's tree. The
+    //     module fetch itself is west-native (the board ships a
+    //     `west-downstream.yml` `import:false` fragment — Phase 215.J.3); here
+    //     we only verify + instruct, never edit the consumer's manifest.
+    if meta.requires_rust.unwrap_or(false) {
+        ensure_lang_rust_module(&crate_dir, zephyr_ws);
+    }
+
+    if args.dry_run {
+        eprintln!("nros setup board {}: (--dry-run: nothing changed)", args.name);
+    } else {
+        eprintln!(
+            "nros setup board {}: consumer Zephyr tree provisioned",
+            args.name
+        );
+    }
+    Ok(())
+}
+
+/// Phase 215.J.2 step (d) — verify the `zephyr-lang-rust` module is present in
+/// the consumer's tree; warn + point at the board's `west-downstream.yml`
+/// import fragment (Phase 215.J.3) when it is not. Never mutates the consumer's
+/// west manifest — the consumer keeps manifest authority.
+fn ensure_lang_rust_module(crate_dir: &Path, zephyr_ws: &Path) {
+    let module = zephyr_ws.join("modules").join("lang").join("rust");
+    if module.join("Kconfig").is_file() {
+        eprintln!("  (d) zephyr-lang-rust: present at {}", module.display());
+        return;
+    }
+    let fragment = crate_dir.join("west-downstream.yml");
+    eprintln!(
+        "  (d) zephyr-lang-rust: MISSING at {}.\n\
+         \x20     Add the board's import fragment to your west manifest, then `west update`:\n\
+         \x20       manifest:\n\
+         \x20         self:\n\
+         \x20           import:\n\
+         \x20             - file: {}\n\
+         \x20     (board-shipped `import:false` fragment — pins zephyr-lang-rust at\n\
+         \x20      nano-ros's supported rev; `name-allowlist` keeps it to that one module.)",
+        module.display(),
+        fragment.display()
+    );
 }
 
 /// Install one tool by name (`nros setup --tool <name>`). `prefix_override`

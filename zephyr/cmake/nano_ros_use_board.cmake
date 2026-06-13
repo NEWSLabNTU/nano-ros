@@ -80,6 +80,17 @@ function(nano_ros_use_board NAME)
     set(NROS_BOARD_RUNNER "${NROS_BOARD_RUNNER}" CACHE STRING
         "nano-ros board runner (armfvp / qemu / native / …)" FORCE)
 
+    # 9. Phase 215.J.4 — if the board ships a Rust-support Kconfig overlay
+    # module (enabling RUST_SUPPORTED for its arch without mutating the
+    # consumer's zephyr-lang-rust tree), put it on ZEPHYR_EXTRA_MODULES so the
+    # downstream build gets it for free. Must land BEFORE find_package(Zephyr)
+    # (the call-order guard above enforces that).
+    if(DEFINED NROS_BOARD_RUST_SUPPORT_MODULE
+            AND EXISTS "${NROS_BOARD_RUST_SUPPORT_MODULE}/zephyr/module.yml")
+        list(APPEND ZEPHYR_EXTRA_MODULES "${NROS_BOARD_RUST_SUPPORT_MODULE}")
+        set(ZEPHYR_EXTRA_MODULES "${ZEPHYR_EXTRA_MODULES}" PARENT_SCOPE)
+    endif()
+
     message(STATUS
         "nano_ros_use_board(${NAME}): zephyr_board=${NROS_BOARD_ZEPHYR_ID}, "
         "rmw=${NANO_ROS_RMW}, runner=${NROS_BOARD_RUNNER}")

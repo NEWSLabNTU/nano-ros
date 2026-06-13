@@ -52,3 +52,11 @@ runner            = "armfvp"
 prj_conf          = "prj.conf"
 board_conf        = "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf"
 board_overlay     = "boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.overlay"
+# Phase 215.J.1 — downstream Zephyr consumer provisioning contract
+# (mirrors NROS_BOARD_ZEPHYR_LINE / REQUIRES_RUST / RUST_TARGETS /
+# RMW_SOURCE in board.cmake). Drives `nros setup board <name>
+# --zephyr-workspace <dir>`.
+zephyr_line       = "3.7"
+requires_rust     = true
+rust_targets      = ["aarch64-unknown-none"]
+rmw_source        = "cyclonedds-src"
