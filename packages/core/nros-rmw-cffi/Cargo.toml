@@ -67,6 +67,14 @@ lending = ["nros-rmw/lending"]
 # C toolchain on the build host. `cargo test --features c-stub-test`
 # turns it on for the integration test.
 c-stub-test = []
+# RFC-0042 D3 / phase-241.D slice 4 — reference `REGISTRY` as an undefined
+# external instead of DEFINING it in this rlib. Off by default: a single-cargo-link
+# target (pure-Rust firmware, the NuttX build-std ELF) defines its own one copy. On
+# only for the non-NuttX C/C++ multi-archive cmake link, where every consumer
+# (`nros-c`, `nros-cpp`, each RMW staticlib, the provider) turns it on so the
+# `nros-rmw-cffi-provider` archive is the sole definer — letting that link drop the
+# `--allow-multiple-definition` ODR mask. See the `REGISTRY` gate in `lib.rs`.
+external-registry = []
 
 [lints]
 workspace = true

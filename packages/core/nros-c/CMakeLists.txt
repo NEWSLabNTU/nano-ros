@@ -99,6 +99,14 @@ endif()
 
 set(_features ros-humble ${_rmw_features} ${_platform_features})
 
+# RFC-0042 D3 / phase-241.D slice 4 — in the multi-archive C/C++ link the root
+# CMakeLists sets NROS_CFFI_EXTERNAL_REGISTRY; reference the cffi `REGISTRY` as an
+# undefined external (the provider archive defines it once) so `libnros_c.a` emits
+# no duplicate def. Inherited from the parent scope; unset/off on NuttX.
+if(NROS_CFFI_EXTERNAL_REGISTRY)
+    list(APPEND _features external-registry)
+endif()
+
 # ---- Build nros-c via Corrosion ----
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"

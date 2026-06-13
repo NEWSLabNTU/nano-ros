@@ -278,12 +278,49 @@ Steps (each a commit; CI between the riskier ones):
       threadx-riscv64 `-D` is generated from board.toml, not hand-set.
 
 ### 241.D — Deterministic linking (RFC-0042 D3)
-> **In progress on branch `issue-42-d3-link-determinism`.** Slices 1–4 landed +
-> **host-validated**: the duplicate-symbol gate (1–2), the `-u` strategy (3), and
-> the cffi single-definition provider + flag removal (4). The native cpp+c talkers
-> link with NO `--allow-multiple-definition` / `--whole-archive` and the cpp talker
-> RUNS + publishes (single `REGISTRY`, auto-register fires). Cross + macOS + the
-> threadx/freertos early-return + xrce/cyclone runtime need the `run_e2e` dispatch. **Characterized (2026-06-13):**
+> **In progress on branch `issue-42-d3-link-determinism`. Slice 4 complete +
+> validated.** The **C/C++ multi-archive path** (D3's actual target) is fixed: native
+> cpp+c examples link with NO `--allow-multiple-definition` / `--whole-archive`, the
+> cpp talker RUNS + publishes (single `REGISTRY`, auto-register fires), and `just
+> native build-cpp` links clean.
+>
+> **Slice-4 regression FIXED via feature-gating the `REGISTRY` def (2026-06-13).**
+> The first slice-4 cut made `nros-rmw-cffi` reference `REGISTRY` as an extern
+> *unconditionally*, which broke the **pure-Rust firmware path** (`just
+> threadx_riscv64 build-fixtures` → `rust-lld: undefined symbol: REGISTRY`): those
+> bins link via **cargo, not cmake**, so they never pull the
+> `nros-rmw-cffi-provider` archive — and that path never had the multi-archive dup
+> problem (one cffi rlib instance) so it should self-define. **Fix:** a new
+> `external-registry` cargo feature on `nros-rmw-cffi` gates the `REGISTRY` storage —
+> *off* by default → the rlib `#[no_mangle]`-DEFINES its one copy (pure-Rust firmware,
+> the NuttX build-std ELF, the dup-symbol negative harness); *on* → it references
+> `REGISTRY` as an undefined extern (the provider archive is the sole definer). The
+> non-NuttX C/C++ cmake link turns the feature on for every cffi-bundling consumer
+> via a passthrough chain (`nros-c`/`nros-cpp` → `nros` → `nros-rmw-cffi`; the
+> zenoh/xrce staticlibs → their rmw rlib → `nros-rmw-cffi`; the provider pins it on
+> its own cffi dep so `nros_rmw_cffi_export!{}`'s macro def is the lone `REGISTRY`),
+> driven by the root `CMakeLists.txt` `NROS_CFFI_EXTERNAL_REGISTRY` guard (set only in
+> the non-NuttX branch where the provider is built). **No board-crate changes** — the
+> earlier "force-link the provider from ~6 board crates" plan was abandoned in favour
+> of this single feature knob (no `#[used]`/`extern crate` hacks, no RTOS allocator
+> clash from a provider dep on the boards).
+>
+> **Validated (2026-06-13):** cffi compiles both feature states; `nm` shows default
+> `B REGISTRY` (defined) / `external-registry` `U REGISTRY` (ref) / provider exactly
+> one `B`; the host dup-symbol fixture links the 3-archive pair with a *single*
+> defined `REGISTRY` (`nros-c.a` + zenoh-staticlib.a contribute 0, provider 1);
+> `staticlib_duplicate_symbols` 2/2 pass; `just native build-cpp` GREEN; `just
+> threadx_riscv64 build-fixtures` pure-Rust bins link (REGISTRY error gone).
+>
+> **Separate, pre-existing threadx-riscv64 C-fixture bug surfaced** (now that the
+> build progresses past the fixed pure-Rust link): `fixture-0005`
+> (`threadx-riscv64-c-zenoh`) fails compiling `nros-platform-threadx/src/{timer,net}.c`
+> with `fatal error: nros/platform_{timer,net}.h: No such file or directory` — the
+> threadx example/board cmake passes `NROS_PLATFORM_CFFI_INCLUDE=…/nros-platform-cffi/
+> include`, but phase-243 moved those canonical headers to `nros-platform-api/include`.
+> Independent of slice 4 (no cffi/feature/link involvement); track + fix separately.
+>
+> **Characterized (2026-06-13):**
 > `--allow-multiple-definition` on the threadx/freertos C++ staticlib link masks
 > **239 duplicate defined-globals** between `libnros_c.a` and
 > `libnros_rmw_zenoh_staticlib.a` — ALL from the shared Rust dependency closure

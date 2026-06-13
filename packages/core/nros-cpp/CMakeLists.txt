@@ -74,6 +74,13 @@ endif()
 
 set(_cpp_features ros-humble ${_rmw_features} ${_platform_features})
 
+# RFC-0042 D3 / phase-241.D slice 4 — reference the cffi `REGISTRY` as an undefined
+# external (provider archive is its sole definer) so `libnros_cpp.a` emits no
+# duplicate def. Guard var set by the root CMakeLists for the non-NuttX link.
+if(NROS_CFFI_EXTERNAL_REGISTRY)
+    list(APPEND _cpp_features external-registry)
+endif()
+
 # ---- Build nros-cpp via Corrosion ----
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"

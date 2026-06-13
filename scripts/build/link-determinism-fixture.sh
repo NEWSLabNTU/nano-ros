@@ -22,10 +22,13 @@ rm -rf "$out_dir"
 mkdir -p "$out_dir"
 
 # `crate-type = ["staticlib"]`; `platform-posix` is the host port. The RFC-0042
-# D3 slice-4 provider archive (defines the cffi C ABI once) builds too.
+# D3 slice-4 provider archive (defines the cffi C ABI once) builds too. The
+# `external-registry` feature mirrors the non-NuttX cmake C/C++ link: `nros-c` +
+# the RMW staticlib reference `REGISTRY` as an undefined external so the provider
+# archive is its lone definer (the provider pins the feature via its cffi dep).
 ( cd "$repo_root" \
-    && cargo build -p nros-c --features platform-posix \
-    && cargo build -p nros-rmw-zenoh-staticlib --features platform-posix \
+    && cargo build -p nros-c --features platform-posix,external-registry \
+    && cargo build -p nros-rmw-zenoh-staticlib --features platform-posix,external-registry \
     && cargo build -p nros-rmw-cffi-provider --features platform-posix )
 
 cp "$repo_root/target/debug/libnros_c.a" "$out_dir/"
