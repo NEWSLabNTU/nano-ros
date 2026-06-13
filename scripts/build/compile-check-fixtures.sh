@@ -100,13 +100,18 @@ stage_tree() {
     cp -r "$repo_root/$src/." "$staged/"
     # Rewrite the placeholder to the absolute repo root so the staged tree's
     # `path =` deps resolve (mirrors the staging the test used to do inline).
+    # NOTE the `|| true`: under `set -euo pipefail`, `find -exec grep +` exits
+    # nonzero when NO staged file contains the placeholder (grep's no-match exit
+    # propagates through find), which would abort the whole run for any fixture
+    # that doesn't use that placeholder. The rewrite is best-effort — a missing
+    # placeholder is a no-op, not an error.
     find "$staged" -type f -exec grep -lZ '@NANO_ROS_ROOT@' {} + 2>/dev/null \
-        | xargs -0 -r sed -i "s#@NANO_ROS_ROOT@#$repo_root#g"
+        | xargs -0 -r sed -i "s#@NANO_ROS_ROOT@#$repo_root#g" || true
     # `@NROS_CLI_ROOT@` → the in-tree CLI dir (post-Phase-218 `packages/cli/`); its
     # `@NROS_CLI_ROOT@/nros-build` patch path resolves the standalone nros-build
-    # crate. Harmless for fixtures that don't use it (no match).
+    # crate. Harmless for fixtures that don't use it (no match → `|| true`).
     find "$staged" -type f -exec grep -lZ '@NROS_CLI_ROOT@' {} + 2>/dev/null \
-        | xargs -0 -r sed -i "s#@NROS_CLI_ROOT@#$repo_root/packages/cli#g"
+        | xargs -0 -r sed -i "s#@NROS_CLI_ROOT@#$repo_root/packages/cli#g" || true
     post_stage "$id" "$staged"
 }
 
