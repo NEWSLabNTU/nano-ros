@@ -57,26 +57,33 @@ Zephyr's POSIX, but full libcpp pulls host `/usr/include` and the two collide
 2 matrix cells; this one breaks `platform.c` for **every** cpp example. Reverted
 in the follow-up commit.
 
-## Fix direction (open — needs a live Zephyr env to iterate)
+## Fix — SHIPPED (commit f9a5c9041)
 
-`<initializer_list>` is a *freestanding* C++ header (the compiler supplies it,
-not the library); the true gap is Zephyr's `-nostdinc` not adding the GCC C++
-include dir under minimal libcpp. Candidate fixes, in preference order:
+`<initializer_list>` is a *freestanding* C++ header — the compiler supplies the
+`std::initializer_list` class shape; no library runtime is involved. The true
+gap is that Zephyr's minimal libcpp (`lib/cpp/minimal/include`, used under
+`-nostdinc++`) ships only `cstddef`/`cstdint`/`new`, and the example build adds
+`-ffreestanding`.
 
-1. Make the nros-cpp Zephyr build add the toolchain's **freestanding C++**
-   include dir (`.../include/c++/<ver>`) without selecting full libstdc++ —
-   gets `<initializer_list>` with no host-libc bleed. Best if achievable via the
-   module's CMake/Kconfig.
-2. Enable full libcpp **and** harden `platform.c`: include `<time.h>` explicitly
-   for `CLOCK_MONOTONIC` and resolve the `timer_t` host/Zephyr collision (the
-   hard part — likely needs the Zephyr POSIX `timer_t` to win the include order,
-   or picolibc kept for the C TUs while libcpp serves only C++ TUs).
-3. Make `parameter.hpp` freestanding-safe — provide the `std::initializer_list`
-   ctor only when `<initializer_list>` is available, `#if __has_include(...)`.
-   Keeps the 242.3 feature on hosted builds, drops it on bare freestanding.
-   API-divergence cost; least preferred.
+Fix: add a freestanding `std::initializer_list` shim to the nano-ros-owned
+`zephyr/cxx-compat/` include dir (already on the C++ include path via `-I`) —
+same content/pattern as the existing
+`packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat/initializer_list`.
+No host-libc bleed: the C platform TUs keep compiling against minimal
+libcpp/picolibc.
 
-Cannot validate locally (no Zephyr SDK in the dev/agent sandbox; the multi-GB
-`just zephyr setup` provision dies on detach) — CI-gated, and the lane is flaky
-from concurrent main pushes cancelling runs (shared concurrency group). Found
-2026-06-13; attempt-1 dead-end confirmed 2026-06-14. Cross-ref #42.
+**Verified locally** (Zephyr 3.7 native_sim, host toolchain — provisioned via
+`just zephyr setup --skip-sdk`, native_sim uses host gcc so the multi-GB SDK is
+unnecessary; `ZEPHYR_TOOLCHAIN_VARIANT=host`): `cpp/talker` and `cpp/listener`
+both build to `zephyr.elf`; `platform.c` compiles clean. The `cxx-compat` dir is
+on the include path for both Zephyr lines, so 4.4 is CI-gated by the dual-line
+lane.
+
+### Rejected (attempt 1, reverted)
+`CONFIG_REQUIRES_FULL_LIBCPP=y` resolved the header but bled host glibc into
+`platform.c` (`timer_t`/`CLOCK_MONOTONIC` clash — #42 class), breaking every cpp
+example. Reverted in the follow-up commit; see the section above.
+
+Found 2026-06-13; root-caused + fixed 2026-06-14. Cross-ref #42. Status flips to
+`resolved` once the dual-line lane confirms 4.4 green (the lane is also gated on
+#59's image republish for the rust service/action cells).
