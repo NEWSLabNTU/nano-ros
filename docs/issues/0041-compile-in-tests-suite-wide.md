@@ -70,8 +70,21 @@ CONVERTED (2026-06-13):** the `o5_nav2_compat` BUILD_FIXTURE builds the Entry pk
 `stage_and_build` upgrades: an optional **manifest-subdir** 3rd `id:src:dir` field
 (`demo_entry` is excluded from the fixture root workspace) + a **`@NROS_CLI_ROOT@`**
 placeholder rewrite (→ `packages/cli`, the in-tree nros-build crate). Removed
-`binary(nav2_compat)` from the override. (`board_agnostic_run_plan` O.3 +
-`threadx_corrosion_bringup` H.4 remain STOPGAP.)
+`binary(nav2_compat)` from the override.
+**`board_agnostic_run_plan` (O.3) CONVERTED (2026-06-13):** the `o3_board_agnostic`
+BUILD_FIXTURE does `cargo build -p posix_entry` (the host Board leg) in the build
+stage; `board_agnostic_run_plan.rs` now (1) reads the committed fixture and asserts
+`posix_entry/build.rs` == `freertos_entry/build.rs` byte-identical (the codegen-driver
+identity — no build needed), then (2) `require_compile_check`s the stamp + inspects
+the prebuilt `out/run_plan.rs` (`pub fn run_plan` + `shared_node_pkg::register`,
+Placeholder → skip). Runs in ~0.02s, no runtime cargo. Required a 4th
+`id:src:dir:pkg` **pkg-name** field on `stage_and_build` (O.3 builds `posix_entry`,
+not the default `demo_entry`). The strongest leg — byte-identical `run_plan.rs`
+across the POSIX *and* the `thumbv7m-none-eabi` freertos emit — needs the freertos
+Entry pkg cross-built as a build-stage fixture; that is **Wave B** (cross-build
+mechanism, gated on the arm toolchain) and is reported (not silently dropped) by
+the test. Removed `binary(board_agnostic_run_plan)` from the override.
+(`threadx_corrosion_bringup` H.4 remains STOPGAP.)
 `freertos_run_plan_runtime` (O.1) stays `#[ignore]`d on issue 0045 (FreeRTOS
 Entry-pkg `staticlib` panic-handler link path — NOT a compile-in-test concern).
 `phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) and

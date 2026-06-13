@@ -77,6 +77,15 @@ BUILD_FIXTURES=(
     # field). Needs play_launch_parser on PATH at build time (else build.rs writes
     # the Placeholder stub → the test skips).
     "o5_nav2_compat:packages/testing/nros-tests/fixtures/o5_nav2_compat_smoke:demo_entry"
+    # issue-0041 — O.3 board-agnostic codegen: build the POSIX Entry pkg
+    # (`cargo build -p posix_entry` from the `posix_entry/` subdir, its own
+    # `[workspace]` root) → emits run_plan.rs from the shared launch.xml. The
+    # test (board_agnostic_run_plan.rs) inspects the prebuilt run_plan.rs +
+    # asserts byte-identical `posix_entry/build.rs` vs `freertos_entry/build.rs`
+    # (the operational def of board-agnostic emit). The FreeRTOS cross-build leg
+    # stays a gated run-time skip (Wave B cross-toolchain). 4th field names the
+    # pkg (`posix_entry`, not the default `demo_entry`).
+    "o3_board_agnostic:packages/testing/nros-tests/fixtures/n_board_agnostic_run_plan:posix_entry:posix_entry"
     "orch_tiers_single:packages/testing/nros-tests/fixtures/orchestration_tiers_native"
 )
 
@@ -113,16 +122,18 @@ stage_and_check() {
 }
 
 stage_and_build() {
-    local id="$1" src="$2" manifest_dir="${3:-.}"
+    local id="$1" src="$2" manifest_dir="${3:-.}" pkg="${4:-demo_entry}"
     local staged="$out_root/$id"
     echo "== build-fixture: $id =="
     stage_tree "$id" "$src" "$staged"
     rm -f "$staged/.compile-ok"
     # `manifest_dir` (3rd `id:src:dir` field) builds a member that lives in a
-    # subdir excluded from the root workspace (e.g. O.5's `demo_entry/`).
-    ( cd "$staged" && cargo build -p demo_entry --manifest-path "$manifest_dir/Cargo.toml" )
+    # subdir excluded from the root workspace (e.g. O.5's `demo_entry/`, O.3's
+    # `posix_entry/`). `pkg` (4th field) names the package when it isn't the
+    # default `demo_entry` (O.3 builds `posix_entry`).
+    ( cd "$staged" && cargo build -p "$pkg" --manifest-path "$manifest_dir/Cargo.toml" )
     date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
-    echo "   built $staged/$manifest_dir/target/debug/demo_entry"
+    echo "   built $staged/$manifest_dir/target/debug/$pkg"
 }
 
 # cmake fixtures (id : template-dir relative to repo). Configure + build a C/C++
@@ -219,8 +230,8 @@ for entry in "${COMPILE_CHECK_FIXTURES[@]}"; do
     stage_and_check "${entry%%:*}" "${entry#*:}"
 done
 for entry in "${BUILD_FIXTURES[@]}"; do
-    IFS=':' read -r bf_id bf_src bf_mdir <<< "$entry"
-    stage_and_build "$bf_id" "$bf_src" "${bf_mdir:-.}"
+    IFS=':' read -r bf_id bf_src bf_mdir bf_pkg <<< "$entry"
+    stage_and_build "$bf_id" "$bf_src" "${bf_mdir:-.}" "${bf_pkg:-demo_entry}"
 done
 for entry in "${CROSS_BUILD_FIXTURES[@]}"; do
     IFS=':' read -r cb_id cb_src cb_sub cb_pkg cb_tgt <<< "$entry"
