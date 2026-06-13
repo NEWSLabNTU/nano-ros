@@ -329,6 +329,67 @@ Steps (each a commit; CI between the riskier ones):
         staticlib. This is the architectural core of D3 and needs its own design +
         run_e2e. The cmake `-u` edit was reverted (it broke the cpp link); the
         validator + the C-only host proof stand as the guardrails for it.
+        **See "Slice 4 design" below.**
+
+#### 241.D slice 4 — the `nros-rmw-cffi` dedup design (2026-06-13)
+
+**Problem (precise).** The same `nros-rmw-cffi` rlib is statically bundled into
+three archives that all reach the final link: `libnros_c.a`, `libnros_cpp.a`, the
+RMW staticlib (`libnros_rmw_zenoh_staticlib.a` / xrce). Its C exports
+(`nros_rmw_cffi_register{,_named}`, `_lookup`, `_registered_names`,
+`_walk_init_section`, `_set_custom_transport`) and the registry static `REGISTRY`
+are **strong** (`#[unsafe(no_mangle)]`, `lib.rs:976/1196/…`). Three strong
+definitions → `--allow-multiple-definition` is the only thing letting the link
+proceed. Invariant: **`REGISTRY` must resolve to exactly ONE runtime instance** —
+the backend registers into it and `Executor::open` reads it; two instances =
+`NoBackend` (#48 class).
+
+**Precedent.** The *platform*-cffi split is already done: `libnros_c.a` references
+`nros_platform_*` as **undefined** (`U nros_platform_log_write`), supplied by a
+separate `libnros_platform_<plat>.a`. The rmw-cffi split is the missing analogue
+(the `NanoRosLink.cmake` header even predicts it: "once the RMW-cffi canonical-ABI
+binary split lands, the bodies swap to linking three separate archives").
+
+**Option 1 — binary split (mirror the platform split).** Make `nros-rmw-cffi` a
+single dedicated archive; nros-c / nros-cpp / the backends reference its C ABI as
+undefined instead of bundling the rlib. *Pro:* the "right" architecture, one
+instance by construction, matches the platform precedent. *Con:* large blast
+radius — nros-c/nros-cpp use the cffi **Rust** API (`resolve_backend`, `CffiRmw`,
+`BackendResolution`), which can't be referenced undefined across a staticlib
+boundary; every such call site must move to the C ABI. A multi-crate refactor.
+
+**Option 2 — weaken the cffi exports (recommended).** Make the six C exports +
+`REGISTRY` **weak** in the staticlibs. Multiple weak defs do not error; the linker
+keeps exactly one, and every consumer resolves to that one — single `REGISTRY`
+preserved. *Pro:* tiny, localized, no API/refactor. *Con:* `#[linkage = "weak"]`
+is unstable and the toolchain is **stable** (`rust-toolchain.toml`), so it cannot
+be a source attribute — implement as a post-build **`llvm-objcopy
+--weaken-symbol`** step on each staticlib (`llvm-tools` is in the toolchain;
+`llvm-objcopy` is target-agnostic, so it covers the cross archives too).
+
+**Host validation (Option 2, proven 2026-06-13).** On the real native cpp talker
+archives: `llvm-objcopy --weaken-symbol={the 6 exports, REGISTRY}` applied to
+`libnros_cpp.a` + the RMW staticlib (leaving `libnros_c.a` authoritative), then
+`cc main c.a cpp.a -Wl,--whole-archive rmw.a -Wl,--no-whole-archive` (the real
+whole-archive shape, **no `--allow-multiple-definition`**) → links clean (exit 0,
+0 multiple-def) with **exactly one `REGISTRY`**. So weakening dedups the strong
+cffi exports while keeping the whole-archive register-ctor inclusion and the
+single registry.
+
+**Recommendation.** Ship **Option 2** as slice 4: a build step that weakens the
+cffi symbol set in every staticlib bundling `nros-rmw-cffi`, then drop the
+`--allow-multiple-definition` lines (root `CMakeLists.txt` zenoh/xrce/cyclone
+arms + the secondary `nros-c/cmake/NanoRosLink.cmake` site). Keep Option 1 (the
+clean split) as a later architectural follow-up if a deeper decoupling is wanted.
+**Open design questions for the implementation run:** (a) where to wire the
+objcopy — a corrosion `POST_BUILD` on each `*-static` target vs a wrapper around
+the staticlib emit; (b) weaken-all vs keep-one-authoritative (weaken-all is
+simpler and still yields one instance); (c) the threadx board + zpico
+`--allow-multiple-definition` uses are a *different* class (intentional
+startup.c memset/memcpy overrides) — leave them; (d) validate across every
+platform's linker (lld/arm/riscv) + the bare-metal explicit-register and posix
+`.init_array` paths via `run_e2e`. The `staticlib_duplicate_symbols` gate guards
+that no NEW non-cffi strong dup sneaks in while this lands.
 - [~] **Link-closure / duplicate-symbol validator — slices 1+2 landed.**
       `staticlib_duplicate_symbols.rs`: dumps the duplicate defined-globals
       between `libnros_c.a` and the RMW staticlib (via `llvm-nm`), attributes each
