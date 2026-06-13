@@ -39,8 +39,25 @@ the toolchain to a Rust cargo feature or a CMake `-DNANO_ROS_RMW`. Scope is per-
 (nodes inherit; in-process multi-RMW only via `[[bridge]]`); the cargo feature is the lowering
 target, not the user-facing knob.
 
+**Agnosticism contract.** The `platform-*` / `rmw-*` axis features are lowering targets that
+belong ONLY to (a) the per-deploy build of the `nros` umbrella, (b) board crates (which bring the
+concrete backend + platform into the link graph), and (c) the backend/platform crates themselves.
+They must NOT be declared on, nor `#[cfg]`-branched inside:
+- **core packages** (`nros-core`, `nros-node`, `nros-params`, `nros-log`, `nros-serdes`,
+  `nros-orchestration`),
+- **user-facing libraries** (`nros`'s API surface, `nros-c`, `nros-cpp`),
+- **user node/component packages**.
+
+Those crates carry only *functional* features (`std`/`alloc`/`no_std`, `param-services`, `lending`,
+ROS edition) and reach platform/RMW exclusively through the **vtable seams**: `nros-rmw` +
+`nros-rmw-cffi` (RMW) and `nros-platform-api` + `nros-platform-cffi` (platform). Workspace
+selection is config-file-driven (`system.toml` `[system].rmw` / `[deploy.<id>]` rmw+board); a user
+never edits a `platform-*`/`rmw-*` cargo feature on their node package. (Convergence to this
+contract is tracked by issue #60 / phase-248; a `just`-level grep guard over core/user-lib
+`Cargo.toml`s can enforce it once converged.)
+
 → RFC-0005 (rmw-layer-design), RFC-0006 (portable-rmw-platform-interface), RFC-0031 (RMW
-selection & lowering).
+selection & lowering), RFC-0004 (config home), issue #60 / phase-248 (agnosticism convergence).
 
 ## 3. RMW & data plane
 

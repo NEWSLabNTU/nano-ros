@@ -18,6 +18,13 @@ in light of multi-language consumers / providers.
 
 ---
 
+> **Enforcement role (agnosticism contract).** This C-ABI vtable seam is the
+> ONLY way core packages + user libraries (`nros-node`, `nros-c`, `nros-cpp`,
+> the `nros` API surface) reach platform/RMW behaviour — they must NOT carry
+> `platform-*`/`rmw-*` features or `#[cfg(feature="platform-*")]` branches. See
+> the **Agnosticism contract** in ARCHITECTURE §2; convergence tracked by issue
+> #60 / phase-248.
+
 ## TL;DR
 
 Make the **C ABI the canonical interface**. Rust trait becomes a

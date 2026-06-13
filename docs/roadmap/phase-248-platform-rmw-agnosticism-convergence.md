@@ -118,17 +118,16 @@ generic hook), and any new vtable op added to `nros-platform-api`/`-cffi`.
 **Owns:** `docs/design/` (RFC edits) + this phase doc + issue #60.
 **Blocked-until:** none (Wave 1).
 
-- [ ] Make the **agnostic-core + vtable-seam + config-selection** principle
-      explicit where it isn't: amend **RFC-0005/0006** (feature axes) to state
-      core + user libs carry NO `platform-*`/`rmw-*` features; cross-link
-      RFC-0004 (config) + RFC-0031 (RMW selection) + the vtable ABI as the
-      enforcement seam. Add a short "agnosticism contract" section to
-      ARCHITECTURE.md.
-- [ ] Note a CI guard idea (a `just` check or test that greps core/user-lib
-      Cargo.tomls for forbidden `platform-*`/`rmw-*` features) — spec it here;
-      implementation optional follow-up.
-- **Acceptance:** RFCs state the contract; ARCHITECTURE.md cross-links it; no
-  code change required.
+- [x] Made the **agnostic-core + vtable-seam + config-selection** principle
+      explicit: added the **Agnosticism contract** to ARCHITECTURE §2 (names the
+      crates that must NOT carry `platform-*`/`rmw-*`, the vtable seams they use
+      instead, config-driven selection) + cross-links RFC-0004/0005/0006/0031 +
+      issue #60. RFC-0006 (the vtable interface) gains an "enforcement role" note.
+- [x] CI-guard idea noted (a `just` grep over core/user-lib `Cargo.toml`s for
+      forbidden `platform-*`/`rmw-*` features) — specced in ARCHITECTURE §2 as a
+      post-convergence enforcement; implementation is an optional follow-up.
+- **Acceptance:** DONE — ARCHITECTURE §2 + RFC-0006 state the contract; no code
+  change.
 
 ## C5 — nros umbrella + selection model (keystone, #60 T2) — WAVE 2
 
