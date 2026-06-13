@@ -166,6 +166,67 @@ generic hook), and any new vtable op added to `nros-platform-api`/`-cffi`.
   graph); `nros/Cargo.toml` carries only functional features. Full pubsub E2E
   (zenoh + xrce + cyclone) still green via config selection.
 
+## C5 EXPANDED — full board-driven selection (decided 2026-06-14)
+
+Maintainer chose the **strict** reading of expectation #1: the `nros` umbrella is
+fully agnostic — it must NOT carry `rmw-*`/`platform-*` features or concrete-
+backend deps. The **board crate becomes the RMW+platform selection point** (it
+brings the concrete backend + platform impl into the link graph + carries the
+backend force-link statics); codegen lowers `system.toml` `[system].rmw` /
+`[deploy.<id>].rmw` to the **board's** `rmw-X` feature, not an `nros` feature.
+This SUPERSEDES the C4-contract escape hatch ("umbrella may carry features as
+lowering target") — update that line in ARCHITECTURE §2 to name the board crate
+as the lowering target. Likely an **RFC-0031 amendment** (lowering target moves
+nros-feature → board-feature) — land that as part of C5b.
+
+The move is large + cascades (every example/entry/fixture + the codegen). Keep
+the tree GREEN by sequencing additively — drop nros's features LAST, only after
+every consumer is migrated. Sub-clusters + sub-waves:
+
+**C5.1 — DONE** (C2 hand-off cleared; nros-node carries no platform-* surface;
+cyclone keep-alive moved to nros). See above.
+
+**Wave 2a (foundational — establishes the board-as-selection-point, ADDITIVE so
+nros keeps its features for now):**
+- [ ] **C5a — Selection mechanism in boards.** Move the backend force-link
+      statics (`__FORCE_LINK_{ZENOH,XRCE,CYCLONEDDS_SYS}` + `__register_linked_rmw`)
+      and the concrete-backend deps from `nros` INTO each board crate, gated by
+      the board's `rmw-X` feature (C1 already made the boards' `nros-rmw-zenoh`
+      optional). A board built with `rmw-zenoh` links + self-registers zenoh; the
+      platform impl (`nros-platform-<rtos>`) likewise comes from the board.
+      `nros` KEEPS its `rmw-*`/`platform-*` features through this step (additive).
+      Owns: `packages/boards/*` + the force-link block in `nros/src/lib.rs` (read
+      side only). Verify a board+backend links a working binary.
+- [ ] **C5b — Codegen lowers to the board feature + RFC-0031 amendment.**
+      `nros codegen entry` / `nros::main!` / `generate` emit the entry's board-dep
+      `features = ["rmw-X"]` (from `system.toml` `[system].rmw`) instead of
+      `nros = { features = ["rmw-X"] }`. Amend RFC-0031: lowering target is the
+      board feature. Owns: `packages/cli` codegen/entry templates + RFC-0031.
+
+**Wave 2b (migration — parallel by consumer group, AFTER 2a):**
+- [ ] **C6a — Migrate Rust workspace + native examples** off `nros/rmw-*`/
+      `nros/platform-*`; select via board + `system.toml`. (#60 T5)
+- [ ] **C6b — Migrate C/C++/mixed workspace examples** (drop `DEPLOY native` +
+      CMake rmw/platform pins → board/config). (#60 T5)
+- [ ] **C6c — Migrate embedded examples** (qemu-*/stm32f4 node pkgs). (#60 T5)
+- [ ] **C3.2 — Retire nros-c/nros-cpp features** (their C/C++ selection now flows
+      from board/CMake, not `nros/platform-*`). Owns: nros-c + nros-cpp.
+
+**Wave 2c (cleanup — AFTER every consumer migrated):**
+- [ ] **C5c — Drop nros's `rmw-*`/`platform-*` features + concrete-backend deps.**
+      Once `git grep 'nros/\(rmw\|platform\)-'` is clean across examples/fixtures,
+      remove the features + the optional `nros-rmw-{zenoh,xrce}` /
+      `nros-rmw-cyclonedds-sys` deps + the moved force-link block from `nros`. nros
+      now consumes only `nros-rmw-cffi` + `nros-platform-cffi` vtables — fully
+      agnostic. Owns: `nros/`.
+
+**Parallel dispatch:** Wave 2a = C5a ‖ C5b (boards vs cli — disjoint). Wave 2b =
+C6a ‖ C6b ‖ C6c ‖ C3.2 (disjoint example groups + crates). Wave 2c = C5c (solo,
+gated on all of 2b). Each cluster: keep the tree building; `just ci`-scope before
+handing back.
+
+---
+
 ## C6 — Example node pkgs: strip the feature matrix (#60 T5) — WAVE 3
 
 **Owns:** `examples/**` node/component pkgs (NOT the single-binary application

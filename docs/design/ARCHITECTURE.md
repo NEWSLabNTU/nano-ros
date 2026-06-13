@@ -40,12 +40,15 @@ the toolchain to a Rust cargo feature or a CMake `-DNANO_ROS_RMW`. Scope is per-
 target, not the user-facing knob.
 
 **Agnosticism contract.** The `platform-*` / `rmw-*` axis features are lowering targets that
-belong ONLY to (a) the per-deploy build of the `nros` umbrella, (b) board crates (which bring the
-concrete backend + platform into the link graph), and (c) the backend/platform crates themselves.
-They must NOT be declared on, nor `#[cfg]`-branched inside:
+belong ONLY to (a) **board crates** — the selection point that brings the concrete backend +
+platform impl into the link graph (carrying the backend force-link), and (b) the backend/platform
+crates themselves. Codegen lowers `system.toml` `[system].rmw` to the **board's** `rmw-X` feature
+(RFC-0031). The `nros` umbrella is itself agnostic — it consumes only the `nros-rmw-cffi` /
+`nros-platform-cffi` vtable shims (phase-248 C5, decided 2026-06-14). These features must NOT be
+declared on, nor `#[cfg]`-branched inside:
 - **core packages** (`nros-core`, `nros-node`, `nros-params`, `nros-log`, `nros-serdes`,
   `nros-orchestration`),
-- **user-facing libraries** (`nros`'s API surface, `nros-c`, `nros-cpp`),
+- **user-facing libraries** (`nros`, `nros-c`, `nros-cpp` — the umbrella included),
 - **user node/component packages**.
 
 Those crates carry only *functional* features (`std`/`alloc`/`no_std`, `param-services`, `lending`,
