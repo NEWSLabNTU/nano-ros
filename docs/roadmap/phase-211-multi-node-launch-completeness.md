@@ -417,35 +417,33 @@ ROS 2 `launch_testing` lets you assert "topic X publishes ≥ N Hz for ≥ T s",
 "node enters Active in ≤ T s". nano-ros has no equivalent — every e2e
 hand-rolls the assertion.
 
-**STILL RELEVANT — but NOT an `nros` verb (2026-06-13 correction).**
-RFC-0024 §4 is explicit: **"nros never a build verb. No `nros build` / `nros
-test` / `nros flash`. nros = provisioner + codegen + metadata."** The earlier
-draft's `nros test <plan>` subcommand violates that boundary. The CLI's only
-contribution here is **codegen** (it already emits the plan/typed entry; it may
-additionally *emit* a test-entry scaffold from a `.test.yaml`). **Running the
-deploy + asserting is a runtime/test-layer job** — it lives in `just` + the
-`nros-tests` harness, mirroring `idf.py`-shaped tooling (build tool ≠ test
-runner), not in `nros`.
+**`nros test` is RULED OUT (definitive) + the harness already EXISTS — so this
+is OPTIONAL convenience, not a gap (2026-06-13).**
 
-- [ ] **Assertion schema** — a `.test.yaml` next to the bringup with entries
-      (topic_rate, lifecycle_state, service_response, log_match). Language-/
-      tool-agnostic data, like the rest of the bringup inputs.
-- [ ] **Runner = `just` recipe + `nros-tests` crate, NOT a CLI verb** — a
-      `just <plat> test-system <bringup>` recipe (or an `nros-tests` harness
-      entry) builds the system's typed entry via the normal board build, runs
-      it, and asserts the `.test.yaml`. The build + run + assert stay in the
-      test layer; `nros` is only invoked for `plan` / `codegen`.
-- [ ] **(optional) codegen seam** — IF the `.test.yaml` needs build-time
-      lowering (e.g. bake expected topic names into a generated assertion
-      entry), that lowering is a `nros codegen` task; it still does not *run*
-      anything.
-- [ ] **Fixture:** in-tree `packages/testing/nros-tests/fixtures/launch_testing_e2e/`
-      with a `system.test.yaml`.
-- [ ] **Reuse the existing `wait_for_output_pattern` + `count_pattern`
-      machinery** in `nros-tests`; factor it into a small assertion crate the
-      `just`/harness runner links.
-- **Files:** `nros-tests` assertion crate + `just/*.just` recipe + the in-tree
-  fixture. **No `cmd/test.rs`** — that would re-introduce the forbidden verb.
+`nros test` cannot happen: RFC-0024 §4 ("nros never a build verb. No `nros
+build` / `nros test` / `nros flash`. nros = provisioner + codegen + metadata"),
+reaffirmed by RFC-0027 (the Phase-222 note: those verbs were *removed*) and
+RFC-0040 ("provisioner + codegen + metadata; no build/run"). The CLI surface is
+`plan` / `check` / `explain` / `codegen[-system]` / `metadata` — testing is not
+and will not be a verb.
+
+And the launch_testing-equivalent capability **already exists** in the
+`nros-tests` runtime layer: `ManagedProcess::spawn_command`,
+`wait_for_output_pattern`, `wait_for_output_count`, `count_pattern` +
+`zenohd_unique`. `deployed_native_system_e2e` (Phase 211.A) uses exactly these
+to deploy a planned system + assert cross-process delivery — i.e. an e2e
+assertion over a deployed launch topology is **writable today**, no new
+machinery. So a `launch_testing`-style `.test.yaml` is pure **data-driven
+convenience** over the existing primitives (read a YAML of
+topic_rate/lifecycle_state/log_match assertions → drive the same
+`ManagedProcess`/`wait_for_*` calls), valuable for non-Rust authors but not a
+missing capability.
+
+- [→] **DOWNGRADED to optional.** If built: a `.test.yaml` schema + a
+      `just <plat> test-system` recipe (or an `nros-tests` data-driven runner)
+      over the existing primitives. NOT a CLI verb; NO `cmd/test.rs`. Until
+      then, e2e tests are hand-written in `nros-tests` (the
+      `deployed_native_system_e2e` pattern), which is the de-facto harness.
 
 ### 211.H — DDS `qos_overrides` from launch arg
 
@@ -598,9 +596,12 @@ flipped on:
 
 - [ ] Multi-host: a system with `machine="…"` partitions onto per-host
       `[deploy.<id>]` targets, each baking its own typed entry (211.F).
-- [ ] `launch_testing`-equivalent assertion harness (211.G) — a `just` +
-      `nros-tests` runtime runner over a `.test.yaml`, NOT an `nros` verb
-      (RFC-0024 §4: nros is never a build/test verb).
+- [~] `launch_testing`-equivalent harness (211.G) — **DOWNGRADED to optional.**
+      `nros test` is ruled out (RFC-0024 §4 / 0027 / 0040), and the runtime
+      primitives already exist (`ManagedProcess` + `wait_for_*` + `count_pattern`,
+      used by `deployed_native_system_e2e`). Hand-written `nros-tests` e2e is the
+      de-facto harness today; a `.test.yaml` data-driven runner is convenience,
+      not a gap.
 - [ ] Per-topic `qos_overrides` from launch honored at runtime (211.H).
 - [~] The plan→deploy→publish PIPELINE is proven end-to-end
       (`deployed_native_system_e2e`): a planned native workspace deploy builds,
