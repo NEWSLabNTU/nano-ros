@@ -2938,7 +2938,25 @@ canonical-shape regression test can run green tree-wide:
       expect a CDR-LE encapsulation header. Fixed to `CdrWriter::new_with_header`;
       now reads len 3 (`[0,1,1]`).
 
-      Remaining follow-up (not a blocker): parameter dispatch (still no-op).
+      Follow-up wave 2 (DONE 2026-06-13): declarative parameter dispatch. The
+      `EntityKind::Parameter` arm in `ExecutorNodeRuntime::create_entity` was a
+      no-op. Now (under `#[cfg(param-services)]`) the first declared parameter
+      lazily calls `Executor::register_parameter_services()` (idempotent via
+      `executor.params().is_none()`), then seeds the source default with
+      `declare_parameter()`; `spin_once` drives the 6 ROS 2 param service servers
+      thereafter. `ParameterDefault` → `nros_params::ParameterValue` lowering
+      handles the scalar variants directly (Bool/Integer/Double-from-str/String);
+      the array variants carry no element data at the source layer so they seed
+      as `NotSet` (declared, no concrete array default). With `param-services`
+      off the arm stays a no-op (byte-identical to pre-Wave-2). **Verified:**
+      new `nros-tests::component_param::dispatch_declares_and_seeds_parameter`
+      (own test binary — `nros::node!` emits one per-crate export symbol)
+      registers a declarative `ParamNode` with `start_value = 7`, then asserts
+      `executor.params()` goes `None → Some` and `get_parameter_integer` returns
+      `Some(7)`, stable across spins. Runs on a 32 MiB-stack thread (the param
+      service buffers + embedded-sized `ParameterValue` slots overflow the test
+      harness's 2 MiB per-thread stack; the imperative `params` suite dodges this
+      via a separate process). M-F.23 follow-ups complete.
 
       **Was blocking:** issue #35 (`docs/issues/0035-*`).
 

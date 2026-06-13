@@ -816,9 +816,25 @@ impl NodeRuntime for ExecutorSink<'_> {
                 Ok(())
             }
             EntityKind::Parameter => {
-                // Parameter dispatch is still a follow-up (separate from the
-                // service/action seam landed in M-F.23). Registration succeeds;
-                // the param callbacks don't fire yet.
+                // Phase 212.M-F.23 Wave 2 — declarative parameter dispatch on
+                // the single-node runtime. The first declared parameter lazily
+                // stands up the 6 ROS 2 parameter services for this executor's
+                // node; `spin_once` drives those service servers thereafter
+                // (`#[cfg(param-services)]` block at spin.rs). The declared
+                // source default seeds the value. With `param-services` off the
+                // arm is a no-op (entity declared, no RMW handle) — byte-
+                // identical to the pre-Wave-2 behavior.
+                #[cfg(feature = "param-services")]
+                {
+                    if self.executor.params().is_none() {
+                        self.executor
+                            .register_parameter_services()
+                            .map_err(|_| NodeDeclError::Runtime)?;
+                    }
+                    let value = param_default_to_value(metadata.parameter_default.as_ref());
+                    self.executor
+                        .declare_parameter(metadata.source_name.as_str(), value);
+                }
                 Ok(())
             }
         }
@@ -833,6 +849,38 @@ impl NodeRuntime for ExecutorSink<'_> {
         // Planner concern only — the live runtime doesn't need the
         // effect graph at spin time.
         Ok(())
+    }
+}
+
+/// Lower a source-recorded [`ParameterDefault`] into the executor-facing
+/// [`nros_params::ParameterValue`] used to seed a declared parameter. Scalar
+/// defaults carry their value directly; the array variants record only the
+/// declared type (no element data at the source layer) so they seed as
+/// `NotSet` — the parameter is still declared, just without a concrete array
+/// default. A `Double` default is stored as a string at the metadata layer and
+/// parsed here (unparseable → `0.0`).
+#[cfg(feature = "param-services")]
+fn param_default_to_value(
+    default: Option<&crate::node_metadata::ParameterDefault>,
+) -> nros_params::ParameterValue {
+    use crate::node_metadata::ParameterDefault;
+    use nros_params::ParameterValue;
+    match default {
+        None => ParameterValue::NotSet,
+        Some(ParameterDefault::Bool(b)) => ParameterValue::Bool(*b),
+        Some(ParameterDefault::Integer(i)) => ParameterValue::Integer(*i),
+        Some(ParameterDefault::Double(s)) => {
+            ParameterValue::Double(s.as_str().parse::<f64>().unwrap_or(0.0))
+        }
+        Some(ParameterDefault::String(s)) => {
+            ParameterValue::from_string(s.as_str()).unwrap_or(ParameterValue::NotSet)
+        }
+        Some(
+            ParameterDefault::BoolArray
+            | ParameterDefault::IntegerArray
+            | ParameterDefault::DoubleArray
+            | ParameterDefault::StringArray,
+        ) => ParameterValue::NotSet,
     }
 }
 

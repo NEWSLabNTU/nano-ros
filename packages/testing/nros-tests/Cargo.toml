@@ -124,6 +124,11 @@ component-runtime-test = [
     "trigger-test",
     "nros/rmw-cffi",
     "nros/platform-posix",
+    # Phase 212.M-F.23 Wave 2 — declarative parameter dispatch. Lets the
+    # component_dispatch param test reach `Executor::declare_parameter` /
+    # `get_parameter` / `params()` (all `#[cfg(param-services)]`) so it can
+    # assert the runtime stood up the param services + seeded the default.
+    "nros/param-services",
     "dep:nros-platform",
 ]
 # Phase 216.A.6 — dispatch substrate integration test. Pulls in
@@ -242,6 +247,14 @@ required-features = ["component-runtime-test"]
 [[test]]
 name = "component_dispatch"
 path = "tests/component_dispatch.rs"
+required-features = ["component-runtime-test"]
+
+# Phase 212.M-F.23 Wave 2 — declarative parameter dispatch: a component
+# that declares a parameter must stand up the param services + seed the
+# default on the single-node runtime.
+[[test]]
+name = "component_param"
+path = "tests/component_param.rs"
 required-features = ["component-runtime-test"]
 
 # Phase 134.6 E2E.1 — wraps scripts/check-zenoh-archive-symbols.sh as
