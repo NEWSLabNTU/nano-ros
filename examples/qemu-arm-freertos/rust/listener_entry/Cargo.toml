@@ -23,6 +23,11 @@ deploy = "freertos"
 [package.metadata.nros.deploy.freertos]
 rmw = "zenoh"
 domain_id = 0
+# Issue #48 — slirp addressing: guest on 10.0.2.0/24, host alias 10.0.2.2.
+# `nros::main!()` threads these into the firmware boot `Config` via
+# `BoardEntry::run_with_deploy`. Mirrors talker_entry.
+ip = "10.0.2.15"
+gateway = "10.0.2.2"
 locator = "tcp/10.0.2.2:7451"
 [dependencies]
 freertos_rs_listener = { path = "../listener" }

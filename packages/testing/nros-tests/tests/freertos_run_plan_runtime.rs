@@ -89,9 +89,11 @@ use nros_tests::{
 /// this port so `Executor::open` connects instead of hanging.
 const ENTRY_ZENOHD_PORT: u16 = 7451;
 
-/// FreeRTOS Entry pkg fixture dir — the M-F.15-shipped `talker_entry/`.
-fn talker_entry_dir() -> PathBuf {
-    project_root().join("examples/qemu-arm-freertos/rust/talker_entry")
+/// FreeRTOS Entry pkg fixture dir for `<entry>` (e.g. `talker_entry`).
+fn entry_dir(entry: &str) -> PathBuf {
+    project_root()
+        .join("examples/qemu-arm-freertos/rust")
+        .join(entry)
 }
 
 /// `thumbv7m-none-eabi` Rust target installed? Mirror of the same
@@ -141,13 +143,13 @@ fn require_freertos_qemu_prereqs() -> Option<String> {
 /// The build is gated to debug-profile + the pinned `thumbv7m-none-eabi`
 /// triple from `.cargo/config.toml`. If the binary already exists at
 /// the expected path we trust it; otherwise we drive a `cargo build`.
-fn build_or_locate_entry_binary(dir: &Path) -> Result<PathBuf, String> {
+fn build_or_locate_entry_binary(dir: &Path, bin_name: &str) -> Result<PathBuf, String> {
     // Release, not debug: the connected run opens a real zenoh-pico session over
     // slirp on the emulated Cortex-M3, and a debug-profile zenoh-pico is far too
     // slow to complete the session handshake within the test's wait budget (it
     // boots to `Network ready.` but never reaches `Executor::open` success in
     // 90s). The release fixture connects in a few seconds (#48).
-    let bin = dir.join("target/thumbv7m-none-eabi/release/freertos_rs_talker_entry");
+    let bin = dir.join(format!("target/thumbv7m-none-eabi/release/{bin_name}"));
     if bin.is_file() {
         return Ok(bin);
     }
@@ -159,7 +161,7 @@ fn build_or_locate_entry_binary(dir: &Path) -> Result<PathBuf, String> {
     // (mirrors the board_agnostic_run_plan freertos leg).
     let root = project_root();
     let out = Command::new("cargo")
-        .args(["build", "--release", "--bin", "freertos_rs_talker_entry"])
+        .args(["build", "--release", "--bin", bin_name])
         .current_dir(dir)
         .env(
             "NROS_PLATFORM_FREERTOS_SRC",
@@ -189,8 +191,14 @@ fn build_or_locate_entry_binary(dir: &Path) -> Result<PathBuf, String> {
     Ok(bin)
 }
 
-#[test]
-fn freertos_board_run_executes_run_plan() {
+/// Shared boot+connected-run gate for any qemu-arm-freertos Entry pkg. All six
+/// share the `Mps2An385` board, `nros::main!()` self-bringup, the
+/// `tcp/10.0.2.2:7451` deploy locator + `10.0.2.15` deploy ip/gateway, and the
+/// release-profile build, so the #45 (panic/crate-type/linker) + #46 (stack/heap)
+/// + #48 (deploy-thread + zenoh-backend-link) fixes that unblocked the talker
+/// unblock the siblings; these prove it per pkg. Serialized via the
+/// `qemu-freertos-entry` nextest group (shared port 7451 + QEMU slirp).
+fn boot_and_connect(entry: &str, bin_name: &str) {
     if let Some(reason) = require_freertos_qemu_prereqs() {
         nros_tests::skip!("{reason}");
     }
@@ -198,19 +206,28 @@ fn freertos_board_run_executes_run_plan() {
         nros_tests::skip!("zenohd not found");
     }
 
-    let dir = talker_entry_dir();
+    let dir = entry_dir(entry);
     if !dir.is_dir() {
         nros_tests::skip!("FreeRTOS Entry pkg fixture missing at {}", dir.display());
     }
+    // The Entry pkg's `[patch.crates-io]` points its msg deps at `generated/`,
+    // which `nros ws sync` (run by `just freertos build-examples`) produces. Skip
+    // — rather than fail the in-place build — when that build step hasn't run.
+    if !dir.join("generated").is_dir() {
+        nros_tests::skip!(
+            "{} has no `generated/` msg crates — run `just freertos build-examples` first",
+            dir.display()
+        );
+    }
 
-    let bin = match build_or_locate_entry_binary(&dir) {
+    let bin = match build_or_locate_entry_binary(&dir, bin_name) {
         Ok(b) => b,
         Err(why) => panic!("{why}"),
     };
 
-    // Host router on 0.0.0.0:7451 — the `talker_entry` deploy overlay points the
-    // firmware at `tcp/10.0.2.2:7451` (slirp host alias), so `Executor::open`
-    // connects here instead of hanging on an unreachable locator (#46).
+    // Host router on 0.0.0.0:7451 — the deploy overlay points the firmware at
+    // `tcp/10.0.2.2:7451` (slirp host alias), so `Executor::open` connects here
+    // instead of hanging on an unreachable locator (#46/#48).
     let _router = ZenohRouter::start_slirp(ENTRY_ZENOHD_PORT)
         .expect("start slirp zenohd router for the FreeRTOS Entry pkg");
 
@@ -274,4 +291,37 @@ fn freertos_board_run_executes_run_plan() {
          (expected `Application setup complete` once `Executor::open` connects to \
          the slirp zenohd).\noutput:\n{combined}",
     );
+}
+
+// One boot+connected gate per qemu-arm-freertos Entry pkg. Serialized via the
+// `qemu-freertos-entry` nextest group (shared port 7451 + QEMU slirp).
+
+#[test]
+fn freertos_board_run_executes_run_plan() {
+    boot_and_connect("talker_entry", "freertos_rs_talker_entry");
+}
+
+#[test]
+fn freertos_listener_entry_boots_and_connects() {
+    boot_and_connect("listener_entry", "freertos_rs_listener_entry");
+}
+
+#[test]
+fn freertos_service_server_entry_boots_and_connects() {
+    boot_and_connect("service-server_entry", "freertos_rs_service_server_entry");
+}
+
+#[test]
+fn freertos_service_client_entry_boots_and_connects() {
+    boot_and_connect("service-client_entry", "freertos_rs_service_client_entry");
+}
+
+#[test]
+fn freertos_action_server_entry_boots_and_connects() {
+    boot_and_connect("action-server_entry", "freertos_rs_action_server_entry");
+}
+
+#[test]
+fn freertos_action_client_entry_boots_and_connects() {
+    boot_and_connect("action-client_entry", "freertos_rs_action_client_entry");
 }

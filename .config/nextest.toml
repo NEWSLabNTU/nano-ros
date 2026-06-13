@@ -79,6 +79,13 @@ max-threads = 3
 [test-groups.qemu-freertos-action]
 max-threads = 3
 
+# Phase 212.O.1 — the per-Entry-pkg boot+connected gates in
+# `freertos_run_plan_runtime.rs` all share the `tcp/10.0.2.2:7451` deploy locator
+# (one host zenohd per test) and a QEMU MPS2-AN385 slirp instance, so they must
+# run one-at-a-time.
+[test-groups.qemu-freertos-entry]
+max-threads = 1
+
 # Phase 89.13 — NuttX / ThreadX-RISC-V migrated to per-(variant, lang) host
 # ports (`lang_stride = 100`). Each (variant, lang) pair now owns a unique
 # zenohd port, so same-variant Rust/C/C++ tests no longer need serialization.
@@ -326,6 +333,14 @@ filter = "binary(rtos_e2e) and test(rtos_action_e2e::platform_1_Platform__Freert
 test-group = "qemu-freertos-action"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
+
+# Phase 212.O.1 — per-Entry-pkg boot+connected gates: serialize (shared port 7451
+# + QEMU slirp) and give cold release-build + QEMU-boot + connect headroom.
+[[profile.default.overrides]]
+filter = "binary(freertos_run_plan_runtime)"
+test-group = "qemu-freertos-entry"
+slow-timeout = { period = "180s", terminate-after = 4 }
+retries = 1
 
 # NuttX per-variant — must come before qemu-nuttx.
 [[profile.default.overrides]]

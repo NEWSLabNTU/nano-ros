@@ -79,7 +79,13 @@ build-examples:
     fi
     # Codegen prep (per-platform); build options come from the SSOT manifest
     # (examples/fixtures.toml) via the shared builder. Phase 181.4.d.
-    for example in talker listener service-server service-client action-server action-client; do
+    # Component pkgs AND their sibling Entry pkgs — the Entry pkg is the workspace
+    # root carrying the `[patch.crates-io]` block, so it needs its own `generated/`
+    # msg crates for the Phase 212.O.1 boot+connected gates to build the firmware.
+    for example in \
+        talker listener service-server service-client action-server action-client \
+        talker_entry listener_entry service-server_entry service-client_entry \
+        action-server_entry action-client_entry; do
         dir="examples/qemu-arm-freertos/rust/$example"
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
         NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
