@@ -31,16 +31,13 @@
     <remap from="chatter" to="primary/chatter"/>
   </node>
 
-  <!-- Phase 212.M-F.21: `play_launch_parser`'s `find-pkg-share`
-       resolver walks AMENT_PREFIX_PATH ONLY (see
-       `third-party/play_launch_parser/.../main.rs::find_launch_file`).
-       For in-tree workspace fixtures with no install step, use a
-       relative path until the resolver learns to also consult
-       `pkg_index::build_pkg_index(workspace_root)`. The launch shape
-       is otherwise nav2-canonical (`<node>` + `<arg>` + `<param>` +
-       `<remap>` + `<include>`); only the `find-pkg-share` is
-       sidestepped. -->
-  <include file="../../src/secondary_node/launch/secondary.launch.xml">
+  <!-- Phase 212.M-F.20: nav2-canonical `$(find-pkg-share <pkg>)` include.
+       The planner (`orchestration/planner.rs::parse_launch_file_record`)
+       synthesizes a throwaway ament prefix from the workspace pkg-index
+       (`build_pkg_index`) and prepends it to the parser's
+       AMENT_PREFIX_PATH, so `find-pkg-share` resolves the in-tree
+       `secondary_node` with no install step. -->
+  <include file="$(find-pkg-share secondary_node)/launch/secondary.launch.xml">
     <arg name="frame_id" value="$(var frame_id)"/>
   </include>
 </launch>

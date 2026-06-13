@@ -70,6 +70,11 @@ rosidl-codegen = { path = "../rosidl-codegen" }
 walkdir = "2.0"
 quick-xml = "0.37"
 
+# Phase 212.M-F.20 — `synthesize_workspace_ament_prefix` lays down a
+# throwaway ament prefix (TempDir) from the pkg-index so the launch parser's
+# `$(find-pkg-share <pkg>)` resolves in-tree, never-installed workspace pkgs.
+tempfile = "3.10"
+
 # Phase 212.J `nros launch` — raw POSIX `kill(2)` for SIGTERM propagation.
 # Unix-only: the launcher is a desktop / native_sim host runner; Windows is not
 # in scope for nano-ros host bringup (every supported workflow targets Linux /

@@ -2758,35 +2758,43 @@ canonical-shape regression test can run green tree-wide:
       via this commit's emit-template sync + the test-side
       diagnostic-header strip; O.5 still gated on M-F.20 below.)
 
-- [ ] **M-F.20 `play_launch_parser` workspace pkg-index resolver**
-      (nros-cli + `third-party/play_launch_parser`) — `find-pkg-
-      share`'s `find_launch_file` resolver in
-      `third-party/play_launch_parser/.../main.rs:81` walks
-      `AMENT_PREFIX_PATH` ONLY. For an in-tree workspace fixture
-      with no install step (the canonical Phase 212 development
-      shape), there is no `<prefix>/share/<pkg>/launch/` path to
-      resolve against, so the directive fails with `Package not
-      found.`
+- [x] **M-F.20 `play_launch_parser` workspace pkg-index resolver**
+      (nros-cli) — DONE 2026-06-13. `find-pkg-share`'s resolver in
+      `play_launch_parser` walks `AMENT_PREFIX_PATH` ONLY. For an
+      in-tree workspace with no install step (the canonical Phase 212
+      development shape), there is no `<prefix>/share/<pkg>/launch/`
+      path, so the directive failed with `Package not found` (O.5
+      historically sidestepped via a relative `../../src/<pkg>/launch`
+      include).
 
-      O.5 sidesteps via a relative `<include file="../../src/
-      <pkg>/launch/<file>"/>` path, which preserves the rest of
-      the nav2-canonical surface. M-F.20 lands the proper enhance-
-      ment: extend the resolver (or wrap it at the nros-cli
-      call site) to ALSO consult
-      `pkg_index::build_pkg_index(workspace_root)`, the same
-      surface M-F.17 + N.10 already drive. Once that ships,
-      O.5's launch XML can switch back to
-      `<include file="$(find-pkg-share <pkg>)/launch/…"/>` for
-      full ROS-2 parity.
+      Landed WITHOUT modifying the parser fork: rather than passing
+      search paths to a CLI that has no such flag, the nros-cli call
+      site synthesizes a throwaway ament prefix from the pkg-index.
+      `planner.rs::synthesize_workspace_ament_prefix` builds
+      `pkg_index::build_pkg_index(workspace_root)` (the M-F.17 / N.10
+      surface) and lays down a `TempDir` prefix —
+      `share/ament_index/resource_index/packages/<pkg>` markers +
+      `share/<pkg>` symlinks to each package source dir — then
+      `parse_launch_file_record` prepends that prefix to the parser
+      process's `AMENT_PREFIX_PATH` (workspace shadows any installed
+      copy; the `TempDir` lives until after the parser runs).
+      Discovered en route: the in-tree `play_launch_parser` submodule
+      was stale (`73f5c5b`, no `--strict-includes`); bumped to the
+      pinned `098ccb4`. Note the pinned parser supports only the modern
+      `$(find-pkg-share <pkg>)` substitution, not the legacy
+      `$(find <pkg>)`.
 
-      **Acceptance:** O.5 fixture restores the
-      `find-pkg-share`-based `<include>` shape + still passes.
+      **Acceptance MET:** O.5's `system.launch.xml` restored to
+      `<include file="$(find-pkg-share secondary_node)/launch/…"/>`;
+      `n11_launch_xml_ros2_compat_smoke` passes (emitted `run_plan`
+      registers the `<include>`d secondary node). Plus unit tests
+      `ament_prefix_synthesis_maps_pkg_share_to_source` /
+      `…_is_none_for_empty_workspace`.
 
-      **Files:** `third-party/play_launch_parser/.../main.rs` +
-      probably a thin nros-cli adapter that passes the workspace
-      pkg-index as additional search paths to the parser CLI
-      (the parser is shelled out via subprocess per
-      `planner.rs::load_or_parse_record`).
+      **Files:** `packages/cli/nros-cli-core/src/orchestration/planner.rs`
+      (+ `Cargo.toml` tempfile dep),
+      `packages/testing/nros-tests/fixtures/o5_nav2_compat_smoke/demo_entry/launch/system.launch.xml`,
+      `packages/cli/third-party/play_launch_parser` (submodule bump).
 
 - [x] **M-F.21 `nros ws sync` patch-table transitivity** (nros-cli,
       landed `nros-cli@2e33c57` + `nros-cli@8b12884` — 2026-06-04)
