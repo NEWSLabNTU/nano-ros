@@ -67,41 +67,29 @@ const ALLOWED_SHARED_CRATES: &[&str] = &[
     "rustc",
 ];
 
-/// Non-mangled C symbols both archives legitimately export (the CFFI vtable shim
-/// + its registry) and compiler-rt builtins.
+/// A non-mangled (C / runtime) duplicate symbol that is legitimately shared, not
+/// an application ODR violation:
+///   * the CFFI vtable shim (`nros_rmw_cffi_*`) + its registry,
+///   * compiler/runtime symbols — compiler-rt builtins, the Rust EH personality,
+///     LLVM-promoted local constants — which all carry a reserved prefix
+///     (`__`, `anon.`, `DW.ref.`) no nano-ros C ABI symbol uses.
+/// A real application C symbol (e.g. a message helper) defined in BOTH archives
+/// has none of these shapes, so it is still flagged.
 fn c_symbol_allowed(sym: &str) -> bool {
     sym.starts_with("nros_rmw_cffi_")
+        // the platform C ABI the linked port (nros-platform-cffi/-posix)
+        // implements — both staticlibs bundle the port, so its symbols
+        // (`nros_platform_log_write`, `_alloc`, `_clock_us`, …) appear in both.
+        || sym.starts_with("nros_platform_")
         || sym == "REGISTRY"
-        // compiler-rt / libgcc soft-float + int builtins both archives may carry
-        || (sym.starts_with("__") && {
-            let s = &sym[2..];
-            s.ends_with("di3")
-                || s.ends_with("si3")
-                || s.ends_with("ti3")
-                || s.ends_with("df3")
-                || s.ends_with("sf3")
-                || s.starts_with("udiv")
-                || s.starts_with("umod")
-                || s.starts_with("div")
-                || s.starts_with("mod")
-                || s.starts_with("mul")
-                || s.starts_with("ashl")
-                || s.starts_with("lshr")
-                || s.starts_with("ashr")
-                || s.starts_with("clz")
-                || s.starts_with("ctz")
-                || s.starts_with("ffs")
-                || s.starts_with("popcount")
-                || s.starts_with("bswap")
-                || s.starts_with("fix")
-                || s.starts_with("float")
-                || s.starts_with("extend")
-                || s.starts_with("trunc")
-                || s.starts_with("cmp")
-                || s.starts_with("unord")
-                || s.starts_with("add")
-                || s.starts_with("sub")
-        })
+        || sym == "rust_eh_personality"
+        // compiler-rt / libgcc builtins, Rust runtime shims (`__rust_*`,
+        // `__rg_*`), `__compilerrt_*`, soft-float/int helpers — all `__`-prefixed.
+        || sym.starts_with("__")
+        // LLVM-promoted anonymous local constants / merged globals.
+        || sym.starts_with("anon.")
+        // DWARF EH personality/type references.
+        || sym.starts_with("DW.ref.")
 }
 
 fn tool(name: &str) -> Option<String> {
@@ -192,9 +180,21 @@ fn v0_crate_ids(sym: &str) -> Vec<String> {
     out.into_iter().collect()
 }
 
-/// Find a prebuilt `(libnros_c.a, libnros_rmw_zenoh_staticlib.a)` pair under the
-/// example build trees. Returns the first co-located pair (same `build-zenoh`).
+/// Find a prebuilt `(libnros_c.a, libnros_rmw_zenoh_staticlib.a)` pair.
+///
+/// Prefers the dedicated build-stage fixture
+/// (`build/link-determinism/`, produced by
+/// `scripts/build/link-determinism-fixture.sh` — host-cheap, always reproducible,
+/// the hard-gate source). Falls back to any co-located pair under an example
+/// `build-zenoh` tree (so the validator still runs against the real cross link
+/// when a cpp fixture happens to be built).
 fn find_archive_pair(root: &Path) -> Option<(PathBuf, PathBuf)> {
+    let fx = root.join("build/link-determinism");
+    let fx_c = fx.join("libnros_c.a");
+    let fx_rmw = fx.join("libnros_rmw_zenoh_staticlib.a");
+    if fx.join(".compile-ok").is_file() && fx_c.is_file() && fx_rmw.is_file() {
+        return Some((fx_c, fx_rmw));
+    }
     let out = Command::new("find")
         .arg(root.join("examples"))
         .args(["-name", "libnros_rmw_zenoh_staticlib.a"])

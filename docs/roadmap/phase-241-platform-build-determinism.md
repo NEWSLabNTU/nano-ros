@@ -297,17 +297,22 @@ Steps (each a commit; CI between the riskier ones):
       consume it (Q2 lean: codegen produces, two consumers).
 - [ ] Remove `--allow-multiple-definition` and the per-combo `-u <symbol>`
       injections (#20); the manifest makes extraction deterministic.
-- [~] **Link-closure / duplicate-symbol validator — slice 1 landed.**
+- [~] **Link-closure / duplicate-symbol validator — slices 1+2 landed.**
       `staticlib_duplicate_symbols.rs`: dumps the duplicate defined-globals
       between `libnros_c.a` and the RMW staticlib (via `llvm-nm`), attributes each
       to its embedded v0 crate-id(s), and FAILS on any duplicate from a crate
       outside the shared-dependency closure — i.e. a real ODR violation
       `--allow-multiple-definition` would silently mask. Additive (no link change);
-      it turns the blind flag into a scoped, asserted reconciliation, the
-      precondition for removing it. Consumes a prebuilt cpp staticlib fixture's
-      archives (skips when absent); wiring it to a dedicated build-fixture +
-      extending to the full link-closure (every FFI-referenced symbol provided by
-      exactly one archive) is the next step.
+      it turns the blind flag into a scoped, asserted reconciliation.
+      **Slice 2 (build-fixture + CI gate):**
+      `scripts/build/link-determinism-fixture.sh` builds the host staticlib pair
+      (`platform-posix`; the masked dup set is the target-agnostic shared closure,
+      so the host pair is a faithful, always-reproducible, SDK-free proxy) into
+      `build/link-determinism/` + a stamp; the validator consumes it (falls back to
+      any prebuilt cpp `build-zenoh` archives). Wired into `check.yml` after the
+      241.A platform-header gate → it is now a HARD PR gate. Next: extend to the
+      full link-closure (every FFI-referenced symbol provided by exactly one
+      archive), then the dedup + flag removal (slices 3–4) behind `run_e2e`.
 - **Acceptance:** the #20 `-u` special-case is gone and threadx-linux+Cyclone
       still links; removing `--allow-multiple-definition` surfaces no real dup
       (the validator already proves the masked set is shared-dep-only);

@@ -193,6 +193,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo test -p nros-tests --test platform_header_matrix
 
+      # Link-determinism gate (RFC-0042 D3 / 241.D) — build the host staticlib
+      # pair, then assert the duplicate symbols `--allow-multiple-definition`
+      # masks are ONLY the shared Rust dependency closure (no application ODR
+      # violation). Host-cheap; the dup set is target-agnostic.
+      - name: staticlib duplicate-symbol validator
+        if: ${{ !cancelled() }}
+        run: |
+          bash scripts/build/link-determinism-fixture.sh
+          cargo test -p nros-tests --test staticlib_duplicate_symbols
+
       # Per-platform dependency-chain resolution (was dep-chain.yml) — proves the
       # (board, rmw) dep chain resolves (nros setup --dry-run + codegen + cargo
       # tree), no compile.
