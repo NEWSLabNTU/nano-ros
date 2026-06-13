@@ -53,6 +53,13 @@ nros-rmw-xrce-cffi = { path = "../../xrce/nros-rmw-xrce-cffi", default-features 
 # Optional + only pulled in by `serial`.
 mps2-an385-pac = { path = "../mps2-an385-pac", optional = true }
 
+# Phase 244.D1 enabler — `nros_platform::BoardEntry` impl (src/entry.rs) needs
+# the executor + node-runtime stack. Optional: only the `board-entry` feature
+# (new-style `nros::main!()` Entry pkgs) pulls the `nros` umbrella; legacy
+# `run(Config, closure)` examples keep their lean dep set. RMW-agnostic — the
+# linked backend self-registers via the macro's `__register_linked_rmw()`.
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal"], optional = true }
+
 # Embedded dependencies
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
@@ -70,6 +77,11 @@ default = ["ethernet", "rmw-zenoh"]
 # `platform-aliases` C TU, which the consumer pulls in
 # transitively via `nros-rmw-zenoh`.
 rmw-zenoh = []
+# Phase 244.D1 enabler — opt into the `nros_platform::BoardEntry` impl so
+# `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Pulls the
+# `nros` umbrella (executor + node-runtime). Off by default: legacy
+# `run(Config, closure)` examples don't need it.
+board-entry = ["dep:nros"]
 # Ethernet transport via LAN9118 + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
 # Serial transport via CMSDK UART. The `_z_socket_*` symbols

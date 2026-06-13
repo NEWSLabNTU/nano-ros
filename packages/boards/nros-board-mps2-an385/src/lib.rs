@@ -30,6 +30,11 @@
 // Application modules
 mod config;
 mod error;
+// Phase 244.D1 enabler — `nros_platform::BoardEntry` for `nros::main!()`.
+// Behind a feature so the legacy `run(Config, closure)` consumers don't pull
+// the `nros` umbrella + executor stack.
+#[cfg(feature = "board-entry")]
+mod entry;
 #[cfg(feature = "ethernet")]
 pub mod network;
 mod node;
@@ -50,7 +55,7 @@ pub use nros_platform_mps2_an385;
 
 // Re-export main types
 pub use config::Config;
-pub use node::{init_hardware, run};
+pub use node::{Mps2An385, init_hardware, run};
 pub use nros_platform::BoardConfig;
 pub use nros_platform_mps2_an385::timing::{CycleCounter, MonotonicClock};
 

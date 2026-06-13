@@ -632,6 +632,39 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     };
     let deploy_overlay_ts = deploy_overlay_tokens(&deploy_overlay_lit);
 
+    // Phase 244.D1 — `target_os = "none"` entry shape for the OwnedSpin
+    // framework. FreeRTOS / threadx-linux have a C runtime that calls `main`,
+    // so they keep the `extern "C" fn main`. A pure bare-metal Cortex-M image
+    // has no C runtime; its reset vector needs a `#[cortex_m_rt::entry]`. Both
+    // funnel through the shared `__nros_entry_run`.
+    let none_entry_ts: proc_macro2::TokenStream =
+        if is_baremetal_cortexm_deploy(deploy_for_framework.as_deref()) {
+            quote! {
+                #[cfg(target_os = "none")]
+                #[::cortex_m_rt::entry]
+                fn __nros_cortex_m_reset() -> ! {
+                    // `run_with_deploy` loops forever on success (firmware
+                    // lifetime) and exits via the board on spin error; reaching
+                    // here means `setup()` returned `Err` before the spin loop.
+                    let _ = __nros_entry_run();
+                    loop {
+                        ::cortex_m::asm::wfi();
+                    }
+                }
+            }
+        } else {
+            quote! {
+                #[cfg(target_os = "none")]
+                #[unsafe(no_mangle)]
+                pub extern "C" fn main() -> i32 {
+                    match __nros_entry_run() {
+                        ::core::result::Result::Ok(()) => 0,
+                        ::core::result::Result::Err(_) => 1,
+                    }
+                }
+            }
+        };
+
     let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
     let entry_call: proc_macro2::TokenStream = match multi_tier {
         Some(table) => {
@@ -850,14 +883,10 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 }
             }
 
-            #[cfg(target_os = "none")]
-            #[unsafe(no_mangle)]
-            pub extern "C" fn main() -> i32 {
-                match __nros_entry_run() {
-                    ::core::result::Result::Ok(()) => 0,
-                    ::core::result::Result::Err(_) => 1,
-                }
-            }
+            // Phase 244.D1 — `target_os = "none"` entry: `extern "C" fn main`
+            // for C-runtime boards (FreeRTOS / threadx-linux), or a
+            // `#[cortex_m_rt::entry]` reset for pure bare-metal Cortex-M.
+            #none_entry_ts
         },
         // Phase 225.P — Zephyr framework. The RTOS owns boot + the C
         // `main`; the Rust staticlib exports `rust_main`, which
@@ -1676,6 +1705,13 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
         // direct-exec `BoardEntry::run` shape.
         "rtic-stm32f4" => "::nros_board_rtic_stm32f4::RticStm32F4",
         "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "::nros_board_rtic_mps2_an385::RticMps2An385",
+        // Phase 244.D1 — pure bare-metal (no-RTOS) MPS2-AN385 direct-exec board.
+        // OwnedSpin framework + a `#[cortex_m_rt::entry]` reset emit (see
+        // `is_baremetal_cortexm_deploy`): the board ZST impls the new
+        // `nros_platform::BoardEntry` (behind its `board-entry` feature) and
+        // drives boot → executor → spin inline on the reset thread. Distinct
+        // from `rtic-mps2-an385`, which routes through the RTIC framework emit.
+        "qemu-mps2-an385" | "mps2-an385" => "::nros_board_mps2_an385::Mps2An385",
         // Phase 216.C.3 — Embassy + STM32F4 framework-owned-spin board.
         // Same dispatch story as `rtic-stm32f4`: the board ZST impls
         // `EmbassyBoardEntry` (not `BoardEntry`); the macro routes
@@ -1689,7 +1725,17 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
 
 fn known_boards_csv() -> &'static str {
     "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, esp32-qemu, zephyr, \
-     rtic-stm32f4, rtic-mps2-an385, embassy-stm32f4"
+     rtic-stm32f4, rtic-mps2-an385, qemu-mps2-an385, embassy-stm32f4"
+}
+
+/// Phase 244.D1 — does this deploy key name a pure bare-metal Cortex-M
+/// direct-exec board? Such boards run `OwnedSpin` but, unlike the FreeRTOS /
+/// threadx-linux `target_os = "none"` boards (whose C runtime calls `main`),
+/// have no C runtime — the reset vector needs a `#[cortex_m_rt::entry]`. The
+/// macro keys the entry-emit shape off this. RTIC bare-metal boards are NOT
+/// here: they route through the RTIC framework, which owns its own entry.
+fn is_baremetal_cortexm_deploy(deploy: Option<&str>) -> bool {
+    matches!(deploy, Some("qemu-mps2-an385" | "mps2-an385"))
 }
 
 struct RticBoardSpec {
