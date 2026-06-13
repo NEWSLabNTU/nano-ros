@@ -28,6 +28,13 @@ pub struct NodeHandle<'a> {
     namespace: heapless::String<64>,
     session: &'a mut session::ConcreteSession,
     domain_id: u32,
+    /// Phase 211.H — per-node QoS overrides lowered from the launch
+    /// `qos_overrides.<topic>.<role>.<policy>` params and baked into a
+    /// `&'static` table by the entry codegen. Folded into each entity's
+    /// `QosSettings` at `create_publisher`/`create_subscription` time
+    /// (setup-time, no alloc). Empty (`&[]`) by default → zero cost for
+    /// systems without overrides.
+    qos_overrides: &'static [nros_rmw::QosOverride],
 }
 
 impl<'a> NodeHandle<'a> {
@@ -43,7 +50,25 @@ impl<'a> NodeHandle<'a> {
             namespace,
             session,
             domain_id,
+            qos_overrides: &[],
         }
+    }
+
+    /// Phase 211.H — install the plan's QoS-override table on this node. Called
+    /// by the generated entry BEFORE the component constructs its entities, so
+    /// `create_publisher`/`create_subscription` fold the matching overrides in.
+    /// The table is `&'static` (codegen bakes it as a `static`), so there is no
+    /// lifetime to thread and no runtime allocation. Plan = authority: an
+    /// override for a topic the entity creates is applied transparently (the
+    /// user's `create_publisher(topic)` call is unchanged, matching rclcpp).
+    pub fn set_qos_overrides(&mut self, overrides: &'static [nros_rmw::QosOverride]) {
+        self.qos_overrides = overrides;
+    }
+
+    /// The installed QoS-override table (empty unless the entry set one).
+    #[must_use]
+    pub fn qos_overrides(&self) -> &'static [nros_rmw::QosOverride] {
+        self.qos_overrides
     }
 
     /// Get the node name.
@@ -172,6 +197,14 @@ impl<'a> NodeHandle<'a> {
         // type-descriptor exists before the cffi vtable creates the
         // entity. No-op for other RMWs.
         register_type::<M>()?;
+        // Phase 211.H — fold any plan qos_overrides for this topic+publisher
+        // into the profile (setup-time, no alloc) BEFORE validation, so an
+        // override the backend can't honour still errors loudly below.
+        let qos = qos.apply_overrides(
+            topic_name,
+            nros_rmw::QosOverrideRole::Publisher,
+            self.qos_overrides,
+        );
         // Phase 108.B — synchronous QoS validation against backend's
         // `supported_qos_policies()` mask. No silent downgrade.
         qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
@@ -217,6 +250,12 @@ impl<'a> NodeHandle<'a> {
         type_hash: &str,
         qos: QosSettings,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        // Phase 211.H — apply plan qos_overrides (publisher side) before validate.
+        let qos = qos.apply_overrides(
+            topic_name,
+            nros_rmw::QosOverrideRole::Publisher,
+            self.qos_overrides,
+        );
         qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
             .map_err(NodeError::Transport)?;
         let topic = Self::topic_info(
@@ -277,6 +316,12 @@ impl<'a> NodeHandle<'a> {
     ) -> Result<Subscription<M, RX_BUF>, NodeError> {
         // Phase 212.K.7.6.b — see `create_publisher_with_qos`.
         register_type::<M>()?;
+        // Phase 211.H — apply plan qos_overrides (subscription side) before validate.
+        let qos = qos.apply_overrides(
+            topic_name,
+            nros_rmw::QosOverrideRole::Subscription,
+            self.qos_overrides,
+        );
         qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
             .map_err(NodeError::Transport)?;
         let topic = Self::topic_info(

@@ -362,6 +362,52 @@ pub enum QosLivelinessPolicy {
     ManualByNode = 3,
 }
 
+/// Phase 211.H — which side of a topic a [`QosOverride`] targets.
+/// Mirrors the `<role>` segment of a ROS 2
+/// `qos_overrides.<topic>.<role>.<policy>` launch parameter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QosOverrideRole {
+    /// `qos_overrides.<topic>.publisher.*`
+    Publisher,
+    /// `qos_overrides.<topic>.subscription.*`
+    Subscription,
+}
+
+/// Phase 211.H — a single policy value a [`QosOverride`] sets. A typed enum
+/// (not a string) so the codegen that bakes these from the plan catches an
+/// unknown policy / mistyped value at generation time rather than silently
+/// no-op-ing at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QosOverrideValue {
+    /// `.reliability` → Reliable / BestEffort.
+    Reliability(QosReliabilityPolicy),
+    /// `.durability` → Volatile / TransientLocal.
+    Durability(QosDurabilityPolicy),
+    /// `.history` → KeepLast / KeepAll.
+    History(QosHistoryPolicy),
+    /// `.depth` → KeepLast depth.
+    Depth(u32),
+}
+
+/// Phase 211.H — one per-topic QoS override, lowered from a ROS 2
+/// `qos_overrides.<topic>.<role>.<policy>` launch parameter by the planner and
+/// baked into a `&'static [QosOverride]` table by the entry codegen. The node
+/// folds the matching entries into the entity's [`QosSettings`] at
+/// `create_publisher` / `create_subscription` time (setup-time, single
+/// linear scan, no alloc), *before* the backend-compat `validate_against` —
+/// so an override the active RMW can't honour still errors loudly, never a
+/// silent downgrade.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QosOverride {
+    /// The resolved (remapped) topic name the override targets, e.g.
+    /// `"/chatter"`. Matched exactly against the entity's topic.
+    pub topic: &'static str,
+    /// Publisher or subscription side.
+    pub role: QosOverrideRole,
+    /// The policy + value to set.
+    pub value: QosOverrideValue,
+}
+
 /// Full DDS-shaped QoS profile. Matches the field set of upstream
 /// `rmw_qos_profile_t`.
 ///
@@ -400,6 +446,35 @@ pub struct QosSettings {
 impl Default for QosSettings {
     fn default() -> Self {
         Self::QOS_PROFILE_DEFAULT
+    }
+}
+
+impl QosSettings {
+    /// Phase 211.H — fold the plan's `qos_overrides` matching `topic` + `role`
+    /// into this profile, returning the overridden profile. Setup-time only
+    /// (called from `create_publisher`/`create_subscription`): a single linear
+    /// scan over the baked `&'static` table, no alloc, RT-safe. Later entries
+    /// win on a duplicate `(topic, role, policy)` (last-write), matching the
+    /// planner's sorted, de-conflicted emit. Non-matching entries are ignored,
+    /// so passing the whole node table to every entity is cheap + correct.
+    #[must_use]
+    pub fn apply_overrides(
+        mut self,
+        topic: &str,
+        role: QosOverrideRole,
+        overrides: &[QosOverride],
+    ) -> Self {
+        for ovr in overrides {
+            if ovr.topic == topic && ovr.role == role {
+                match ovr.value {
+                    QosOverrideValue::Reliability(r) => self.reliability = r,
+                    QosOverrideValue::Durability(d) => self.durability = d,
+                    QosOverrideValue::History(h) => self.history = h,
+                    QosOverrideValue::Depth(d) => self.depth = d,
+                }
+            }
+        }
+        self
     }
 }
 
@@ -2115,6 +2190,55 @@ mod tests {
         let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "abc123");
         assert_eq!(topic.name, "/chatter");
         assert_eq!(topic.domain_id, 0);
+    }
+
+    #[test]
+    fn qos_apply_overrides_matches_topic_and_role() {
+        // Default is Reliable / Volatile / KeepLast(10).
+        static OVERRIDES: &[QosOverride] = &[
+            QosOverride {
+                topic: "/chatter",
+                role: QosOverrideRole::Publisher,
+                value: QosOverrideValue::Reliability(QosReliabilityPolicy::BestEffort),
+            },
+            QosOverride {
+                topic: "/chatter",
+                role: QosOverrideRole::Publisher,
+                value: QosOverrideValue::Depth(5),
+            },
+            QosOverride {
+                topic: "/scan",
+                role: QosOverrideRole::Subscription,
+                value: QosOverrideValue::Durability(QosDurabilityPolicy::TransientLocal),
+            },
+        ];
+
+        // Matching topic + publisher role → reliability + depth applied.
+        let pub_qos =
+            QosSettings::default().apply_overrides("/chatter", QosOverrideRole::Publisher, OVERRIDES);
+        assert_eq!(pub_qos.reliability, QosReliabilityPolicy::BestEffort);
+        assert_eq!(pub_qos.depth, 5);
+        assert_eq!(pub_qos.durability, QosDurabilityPolicy::Volatile); // untouched
+
+        // Same topic but subscription role → publisher overrides DON'T apply;
+        // the /scan override is for a different topic → also no change.
+        let sub_qos = QosSettings::default().apply_overrides(
+            "/chatter",
+            QosOverrideRole::Subscription,
+            OVERRIDES,
+        );
+        assert_eq!(sub_qos, QosSettings::default());
+
+        // The /scan subscription override applies only to /scan+subscription.
+        let scan_qos =
+            QosSettings::default().apply_overrides("/scan", QosOverrideRole::Subscription, OVERRIDES);
+        assert_eq!(scan_qos.durability, QosDurabilityPolicy::TransientLocal);
+
+        // Empty table → identity (the zero-override fast path).
+        assert_eq!(
+            QosSettings::default().apply_overrides("/x", QosOverrideRole::Publisher, &[]),
+            QosSettings::default()
+        );
     }
 
     #[test]
