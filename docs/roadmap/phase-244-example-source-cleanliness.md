@@ -91,6 +91,27 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   needs building all action crates across platforms to verify — the verification
   this session's env could not run reliably (0-byte nextest, cross-toolchain).
   **Blocks:** D3 (action leg), C1 (riscv64-threadx C action leg).
+  - **Progress (2026-06-13): E3a + E3b DONE** (non-breaking seam, compiles —
+    `nros-core` + `nros-node` build green). `RosAction::register_protocol_types()`
+    default-no-op added (`nros-core/src/action.rs`); called after the 8 `register_type`
+    in BOTH `register_action_server_sized` and the typed client
+    `register_action_client_callback` (`nros-node/src/executor/action.rs`), mapping
+    `Err(())` → `NodeError::ActionCreationFailed` (no new variant). **Inert until
+    E3c emits the override** (default no-op), so examples still self-register for now.
+  - **E3c/E3d cascade is BIGGER than the plan above — two gaps found, do NOT do a
+    partial E3c (it breaks every action crate's Cargo.toml on the next regen):**
+    1. **ws-sync lookup:** `nros_crate_path_lookup()` (`nros-cli-core/src/cmd/ws.rs:934`)
+       has `nros-rmw-cyclonedds-sys` but NOT `nros-rmw-cyclonedds` → the generated
+       crate's new `nros-rmw-cyclonedds = "*"` dep won't get a `[patch.crates-io]`
+       path → unresolved. Add the entry; also confirm `nros ws sync` scans the
+       *generated* crates' Cargo.tomls (not just the consumer's) so the dep is seen.
+    2. **feature forwarding:** the generated crate needs an `rmw-cyclonedds` feature
+       (`dep:nros-rmw-cyclonedds`) AND the consumer's `rmw-cyclonedds` feature must
+       forward to `example_interfaces/rmw-cyclonedds` — else the override body is
+       cfg'd out and the types never register. The consumer feature-wiring is itself
+       codegen-touched.
+    Recommend doing E3c/E3d as one focused vertical with native cyclonedds
+    build + action server/client e2e as the gate, then cross-platform regen.
 - [x] **E4 — macro-injected `#![no_std]`. IMPOSSIBLE → confirm-document.**
   Proc-macros expand at the invocation point and **cannot inject crate-level inner
   attributes** (`#![no_std]` must precede all items) — confirmed by the explicit

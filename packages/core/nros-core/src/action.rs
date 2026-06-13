@@ -80,6 +80,23 @@ pub trait RosAction: Sized {
 
     /// Type hash for discovery (RIHS format)
     const ACTION_HASH: &'static str;
+
+    /// Register the fixed ROS 2 action-protocol message types this action needs
+    /// at runtime beyond its own 8 envelopes — the `action_msgs` types the
+    /// cancel/status plumbing serializes (`CancelGoal_{Request,Response}`,
+    /// `GoalStatusArray`). The 8 `RosAction`-associated envelopes are registered
+    /// generically by the executor (`register_type::<A::Goal>()` …); these three
+    /// are NOT associated types (they live in `action_msgs`, which `nros-core`
+    /// cannot name), so the generated `impl RosAction` overrides this to register
+    /// them with the active RMW backend.
+    ///
+    /// Default: no-op (`Ok(())`) — keeps every existing `impl RosAction` valid
+    /// (RFC-0044 / phase-244 E3, non-breaking). Returns `Err(())` on a backend
+    /// registration failure; the caller maps it onto its own error type
+    /// (`nros-core` cannot name `nros-node::NodeError`).
+    fn register_protocol_types() -> Result<(), ()> {
+        Ok(())
+    }
 }
 
 /// Goal status states

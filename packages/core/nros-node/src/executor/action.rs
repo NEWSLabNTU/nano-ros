@@ -164,6 +164,12 @@ impl Executor {
         register_type::<A::GetResultRequest>()?;
         register_type::<A::GetResultResponse>()?;
         register_type::<A::FeedbackMessage>()?;
+        // Phase 244 E3 (RFC-0044) — register the fixed `action_msgs` protocol
+        // types (CancelGoal_{Request,Response}, GoalStatusArray) the cancel /
+        // status plumbing serializes. The generated `impl RosAction` overrides
+        // this (default = no-op); previously every example hand-registered these
+        // three under `#[cfg(feature = "rmw-cyclonedds")]`.
+        A::register_protocol_types().map_err(|()| NodeError::ActionCreationFailed)?;
         type Entry<
             A,
             GoalF,
@@ -1149,6 +1155,12 @@ impl Executor {
 
         let slot = self.next_entry_slot()?;
         let action_info = ActionInfo::new(action_name, type_name, type_hash);
+        // Phase 244 E3 (RFC-0044) — register the `action_msgs` protocol types
+        // (CancelGoal_{Request,Response}, GoalStatusArray) the client's cancel
+        // service + status subscription serialize, before creating those
+        // entities. Generated `impl RosAction` overrides this (default no-op);
+        // replaces the example's hand-rolled `#[cfg(rmw-cyclonedds)]` block.
+        A::register_protocol_types().map_err(|()| NodeError::ActionCreationFailed)?;
         let (node_name, ns, session_idx) = match node_id {
             Some(id) => {
                 let r = self
