@@ -1,7 +1,7 @@
 ---
 id: 35
 title: zephyr native_sim e2e fail consistently (XRCE-heavy) — not load flakes
-status: open
+status: resolved
 type: bug
 area: zephyr
 related: [issue-0032, issue-0034]
@@ -200,19 +200,26 @@ declarative `create_action_client_with_callbacks_for_name` binds result+feedback
 feedback → `Result:` → finished). Examples emit the canonical harness markers
 (`Response: sum=`, `Goal accepted`, `Feedback #`, `Result:`, `Action client finished`).
 
-**(c) `test_zephyr_dds_rs_action_e2e` (cyclone) — still `#[ignore]`, separate root cause.**
-With M-F.23 landed the action *dispatch* is proven (the zenoh twin + service pass with the
-same examples), but the CYCLONE server never reaches readiness on native_sim — it hangs in
-CycloneDDS init/discovery right after "Network ready", before `zephyr_component_main!` prints
-"Waiting for messages". That is the finicky-cyclone-native_sim-discovery issue this doc
-flagged up front (NSOS multicast / `IP_ADD_MEMBERSHIP`, unicast Peers, mutex-pool sizing),
-NOT the dispatch.
+**(c) `test_zephyr_dds_rs_action_e2e` (cyclone) — FIXED: the Cyclone backend was never
+registered in the rust path on native_sim.** (NOT a DDS-discovery issue, as first
+suspected.) `nros::__register_linked_rmw()` — the explicit RMW-register the
+`zephyr_component_main!` macro calls before `Executor::open` on `linkme`-blind targets
+(`target_os="none"` Zephyr native_sim, bare-metal, NuttX, ESP-IDF) — had branches for
+zenoh + xrce but **no `rmw-cyclonedds` branch**. So with cyclone selected: the
+`.nros_rmw_init` section walker is a no-op there, the C++ `.init_array` ctor is
+`#ifndef __ZEPHYR__`, and the explicit register was missing → the backend was never
+registered → `resolve_backend` found nothing → `Executor::open` returned
+`ConnectionFailed` → `rust_main` returned before printing readiness → the process idled
+(looked like a "discovery hang"; gdb showed the app thread already exited, only idle +
+workqueue threads remained). The C path registers cyclone via `nros_cpp_init`, so it was
+unaffected — which is why it was rust-specific. Fix: add the
+`#[cfg(feature = "rmw-cyclonedds")] nros_rmw_cyclonedds_sys::register()` branch.
+**Now passes** end-to-end (goal-accept → feedback → `Result:` → finished).
 
 ### Status
 
-9 XRCE (clock) + 1 zenoh pub/sub (markers) + 2 rust service/action (M-F.23) =
-**12/13 resolved**. The last one (cyclone rust action) is gated on a separate
-cyclone-native_sim-discovery issue, not the action dispatch.
+9 XRCE (clock) + 1 zenoh pub/sub (markers) + 2 rust service/action (M-F.23) +
+1 cyclone rust action (missing register branch) = **13/13 resolved**.
 
 **Reproduce (minimal):**
 ```sh

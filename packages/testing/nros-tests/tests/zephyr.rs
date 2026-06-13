@@ -1700,15 +1700,6 @@ fn test_zephyr_dds_cpp_action_e2e() {
     }
 }
 
-// issue #35: the M-F.23 action dispatch is done (the zenoh twin
-// `test_zephyr_action_e2e` + the service e2e pass with these same examples), but
-// the CYCLONE server never reaches readiness on native_sim — it hangs in
-// CycloneDDS init/discovery after "Network ready", before
-// `zephyr_component_main!` prints "Waiting for messages". That is the separate
-// finicky-cyclone-native_sim-discovery issue the original #35 flagged (NSOS
-// multicast / IP_ADD_MEMBERSHIP, unicast Peers, mutex-pool sizing), NOT the
-// action dispatch. Re-enable once cyclone native_sim discovery closes.
-#[ignore = "cyclone native_sim DDS discovery hangs at init (separate from the M-F.23 action dispatch, which the zenoh twin verifies); issue #35"]
 #[test]
 fn test_zephyr_dds_rs_action_e2e() {
     if !require_zephyr() {

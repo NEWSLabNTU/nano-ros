@@ -2926,10 +2926,11 @@ canonical-shape regression test can run green tree-wide:
       slot). `UnsupportedClients`/`UnsupportedActions` retired. **Verified:**
       `test_zephyr_rust_service_e2e` + `test_zephyr_action_e2e` (zenoh) **pass**
       end-to-end on native_sim (service `Response: sum=3`; action goal-accept →
-      feedback → `Result:` → finished). `test_zephyr_dds_rs_action_e2e` (cyclone)
-      stays `#[ignore]` on the **separate** finicky-cyclone-native_sim-discovery
-      issue (the server never reaches readiness — hangs in CycloneDDS init before
-      any M-F.23 code), NOT the dispatch.
+      feedback → `Result:` → finished). `test_zephyr_dds_rs_action_e2e` (cyclone) also
+      passes after a separate fix: `__register_linked_rmw()` (lib.rs) had no
+      `rmw-cyclonedds` branch, so the Cyclone backend was never registered on
+      `linkme`-blind targets and `Executor::open` returned `ConnectionFailed` (the
+      "cyclone native_sim hang" was an early Err return — issue #35 §(c)).
 
       Follow-ups (not blockers): parameter dispatch (still no-op); the deserialized
       feedback/result `sequence` reads len=0 in the demo (framing detail, the

@@ -194,6 +194,16 @@ pub fn __register_linked_rmw() {
     let _ = nros_rmw_zenoh::register();
     #[cfg(feature = "rmw-xrce")]
     let _ = nros_rmw_xrce_cffi::register();
+    // issue #35 / phase-243 — the Cyclone backend needs the same explicit
+    // register on `linkme`-blind targets (Zephyr native_sim `target_os="none"`,
+    // bare-metal, NuttX, ESP-IDF). Its `.nros_rmw_init` section entry is forced
+    // into the link (`__FORCE_LINK_CYCLONEDDS_SYS`) but the section walker is a
+    // no-op there and the C++ `.init_array` ctor is `#ifndef __ZEPHYR__`, so
+    // without this call the backend is never registered and `Executor::open`
+    // returns `ConnectionFailed` (the Rust `zephyr_component_main!` then exits
+    // before printing readiness — the native_sim cyclone "hang").
+    #[cfg(feature = "rmw-cyclonedds")]
+    let _ = nros_rmw_cyclonedds_sys::register();
 }
 
 pub mod dispatch_tag;
