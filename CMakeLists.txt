@@ -167,6 +167,21 @@ if(NOT TARGET NanoRos)
         # already adds this for the app TU; this covers the cmake C/C++ TUs.
         # NUTTX_DIR is validated by the platform module included above.
         if(NUTTX_DIR)
+            # issue-0036 — C++ TUs: NuttX ships <cstdlib>/<cstdio>/… wrappers
+            # under include/cxx that pull NuttX's own <stdlib.h>. Without this
+            # dir ahead of the toolchain's libstdc++ headers, libstdc++ <cstdlib>
+            # does `#include_next <stdlib.h>` and reaches the cross newlib
+            # stdlib.h, whose div_t/ldiv_t/lldiv_t (anonymous-struct typedefs)
+            # clash with NuttX's named-struct ones (`struct div_s`) arriving via
+            # the direct <stdlib.h> ("conflicting declaration 'typedef struct
+            # div_t div_t'"). Mirror the cargo FFI build
+            # (nros-board-common::nuttx_ffi_build). C TUs ignore the
+            # extension-less cxx wrappers, so this is safe for the shared
+            # C/C++ interface. Listed first so it precedes the toolchain's
+            # built-in C++ include dir in the -isystem search.
+            if(EXISTS "${NUTTX_DIR}/include/cxx")
+                target_include_directories(NanoRos SYSTEM INTERFACE "${NUTTX_DIR}/include/cxx")
+            endif()
             target_include_directories(NanoRos SYSTEM INTERFACE "${NUTTX_DIR}/include")
         endif()
     elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
