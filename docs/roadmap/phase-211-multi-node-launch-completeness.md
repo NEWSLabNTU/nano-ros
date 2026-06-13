@@ -449,11 +449,10 @@ superproject), and the planner lowers it into `host_id`.
       host as a `[deploy.<id>]` target in `system.toml` so a multi-host system
       maps `--host` bakes onto deploy targets via `scaffold_deploy`. Convenience
       over the bare `--host` codegen. (NOT `nros.toml` — see RFC-0004 §4.)
-      **BLOCKED on issue #51:** `scaffold_deploy` + `root_config` still
-      write/read a root `nros.toml` that the live loader rejects
-      (`NrosTomlNotSupported`) — a Phase-172 vestige phase-227 missed. Fix #51
-      (point the scaffolder + check/doctor at the RFC-0004 `system.toml` deploy
-      home) before wiring this item.
+      UNBLOCKED: issue #51 (resolved 2026-06-14) migrated `scaffold_deploy` +
+      `check` + `doctor` onto the `system.toml` `[deploy.<id>]` home, so the
+      scaffolder now writes the right file. Remaining is just wiring `--host`
+      partitions to those targets — small, deferrable convenience.
 - **Files (landed):** `nros-cli-core/{launch_parser,codegen/entry/{mod,emit_*},
   cmd/codegen}.rs`, `nros-macros/src/main_macro.rs` (host filter),
   `examples/workspaces/rust/src/native_entry_robot{1,2}/`,

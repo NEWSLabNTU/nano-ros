@@ -88,10 +88,10 @@ pub struct ComponentOverrides {
 // triple/board, `ManifestSource`, `SystemComponent`, `SystemOverlay`,
 // `InstanceSelector`, `SchedulingSelector`, `SchedulingConfig`,
 // `EndpointMapping`, `BuildConfig`) is retired. Deployment config now lives in
-// the root `nros.toml` (`[deploy.<name>]` carries target/board; the planner
-// derives the plan's `[build]` from nros.toml overlays). What remains here is
-// the component manifest (`ComponentConfig`) + the scheduling tier
-// (`SchedContextConfig`, consumed by 172.G + `root_config`).
+// the bringup `system.toml` (`[deploy.<name>]` carries kind/target/board;
+// RFC-0004 §4). What remains here is the component manifest
+// (`ComponentConfig`) + the scheduling tier (`SchedContextConfig`, consumed by
+// the planner).
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

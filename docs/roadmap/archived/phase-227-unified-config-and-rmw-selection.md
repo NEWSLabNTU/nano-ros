@@ -11,6 +11,14 @@ Phase 228 (tier schema + resolver, commit `2fe4cbf34`). One low-urgency doc
 follow-up remains (227.9 per-`just <plat>` `-D`-arg command-map); tracked there,
 not blocking closure.
 
+**Addendum (2026-06-14):** this phase converged the config *loader*, examples,
+and book but missed one cluster — `cmd/scaffold_deploy.rs` (`nros new --deploy`)
++ `orchestration/root_config.rs` + the root-`nros.toml` branches in
+`cmd/{check,doctor}.rs` still wrote/read a workspace-root `nros.toml` that the
+loader rejects (`NrosTomlNotSupported`). Closed by issue #51 (migrated the
+deploy-target SSOT to the `system.toml` `[deploy.<id>]` home; retired
+`root_config` + the dead vendor-deploy richness).
+
 **Priority:** Medium — design-of-record is settled (RFC-0004/0031); these are
 convergence + doc-sync items, not new design.
 

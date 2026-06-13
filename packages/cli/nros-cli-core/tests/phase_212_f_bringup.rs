@@ -56,6 +56,7 @@ fn default_new_args(
         kind: "self".to_string(),
         target: None,
         board: None,
+        bringup: None,
         from_launch: None,
         from_profile: None,
         force: false,

@@ -1,509 +1,413 @@
-//! Phase 172 WP-A — `nros new --deploy <name>` deploy-target scaffolder.
+//! `nros new --deploy <name>` deploy-target scaffolder (RFC-0004 home).
 //!
-//! Materializes a `[deploy.<name>]` target: appends the table to the root
-//! `nros.toml` (the SSOT — config never leaves it) and, for vendor kinds,
-//! drops a `deploy/<name>/` code dir with starter glue the table references via
-//! `{self}`. `self` targets need no dir (the startup shim is generated). The
-//! per-vendor template *content* (full CMake/Kconfig per RTOS) is WP-C; here
-//! the dir gets a minimal, TODO-marked starter so `nros check` passes and the
-//! user fills the vendor specifics.
+//! Materializes a `[deploy.<name>]` target inside the bringup package's
+//! `system.toml` — the RFC-0004 §4 single source of truth for deploy targets.
+//! (The Phase-172 root `nros.toml` model this used to write is retired; see
+//! `docs/issues/0051-deploy-target-ssot-split-root-nros-toml-vs-system-toml.md`.)
+//!
+//! The edit is surgical (`toml_edit`, preserving the rest of the file). The
+//! bringup `system.toml` is located the same way `nros_config` discovers
+//! bringup packages: a workspace with exactly one on-disk-`system.toml` bringup
+//! uses it implicitly; a workspace with several requires `--bringup <pkg>`.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use eyre::{Result, WrapErr, bail, eyre};
-use toml_edit::{Array, DocumentMut, Item, Table, value};
+use toml_edit::{DocumentMut, Item, Table, value};
 
-use crate::orchestration::root_config::{DeployKind, WorkspaceConfig};
+use crate::orchestration::{
+    cargo_metadata_schema::SystemToml,
+    nros_config::{BringupSource, NrosConfig},
+};
 
 pub struct DeployScaffold {
     pub name: String,
-    pub kind: DeployKind,
+    /// Free-form deploy kind written verbatim to `DeployTarget.kind`
+    /// (`"self"`, `"qemu"`, `"flash"`, …). `None` ⇒ the runner derives it
+    /// from the target-name key.
+    pub kind: Option<String>,
     pub target: Option<String>,
     pub board: Option<String>,
-    /// `--from-launch <path>`: also set the root `[system].launch` (bootstrap
-    /// the system + deploy together).
+    /// `--from-launch <path>`: also set the bringup `[system].default_launch`
+    /// (RFC-0004 field) so the system + deploy bootstrap together.
     pub from_launch: Option<String>,
     /// `--from-profile <name>`: base the new target on an existing
-    /// `[deploy.<name>]` (fork its kind/target/vendor/build), under a fresh
-    /// `self` dir.
+    /// `[deploy.<name>]` in the same `system.toml` (forks its fields).
     pub from_profile: Option<String>,
-    /// Workspace root holding the root `nros.toml`.
-    pub root: PathBuf,
+    /// Workspace root to discover the bringup package under.
+    pub workspace_root: PathBuf,
+    /// `--bringup <pkg>`: pick a specific bringup package when the workspace
+    /// exposes more than one.
+    pub bringup: Option<String>,
     pub force: bool,
 }
 
 pub fn scaffold_deploy(s: &DeployScaffold) -> Result<()> {
-    let root_toml = s.root.join("nros.toml");
-    if !root_toml.is_file() {
-        bail!(
-            "no root nros.toml at {} — declare a [system] first (or `nros new` a \
-             project); `nros new --deploy` only adds a [deploy.<name>] to it",
-            root_toml.display()
-        );
-    }
+    let system_toml = locate_bringup_system_toml(s)?;
 
-    // 1. Append the [deploy.<name>] table (idempotent unless --force).
-    let raw = std::fs::read_to_string(&root_toml)
-        .wrap_err_with(|| format!("read {}", root_toml.display()))?;
+    // 1. Surgically edit the bringup system.toml (idempotent unless --force).
+    let raw = std::fs::read_to_string(&system_toml)
+        .wrap_err_with(|| format!("read {}", system_toml.display()))?;
     let mut doc: DocumentMut = raw
         .parse()
-        .wrap_err_with(|| format!("parse {}", root_toml.display()))?;
+        .wrap_err_with(|| format!("parse {}", system_toml.display()))?;
+
     if doc.get("deploy").and_then(|d| d.get(&s.name)).is_some() && !s.force {
         bail!(
             "[deploy.{}] already exists in {} — pass --force to overwrite",
             s.name,
-            root_toml.display()
+            system_toml.display()
         );
     }
-    // `--from-launch`: bootstrap the root `[system].launch` alongside the deploy.
+
+    // `--from-launch`: set the RFC-0004 `[system].default_launch` field.
     if let Some(launch) = &s.from_launch {
-        if doc.get("systems").is_some() {
-            bail!(
-                "--from-launch: this workspace uses [systems.<name>] — set each \
-                 system's `launch` manually"
-            );
-        }
-        doc["system"]["launch"] = value(launch.clone());
+        doc["system"]["default_launch"] = value(launch.clone());
     }
 
-    let self_rel = format!("deploy/{}", s.name);
-    // `--from-profile`: fork an existing target; else build a fresh table. The
-    // *effective* kind (which drives the code-dir scaffold) comes from the
-    // forked profile when cloning.
-    let effective_kind = match &s.from_profile {
-        Some(from) => clone_profile(&mut doc, s, from, &self_rel)?,
-        None => {
-            write_deploy_table(&mut doc, s, &self_rel);
-            s.kind
-        }
-    };
+    // `--from-profile`: fork an existing target; else build a fresh table.
+    match &s.from_profile {
+        Some(from) => clone_profile(&mut doc, s, from)?,
+        None => write_deploy_table(&mut doc, s),
+    }
 
     // Validate the result before writing it back, so a scaffold never leaves an
-    // invalid root file.
-    let merged: WorkspaceConfig =
-        toml::from_str(&doc.to_string()).wrap_err("scaffolded nros.toml failed to parse")?;
-    merged
-        .validate()
-        .wrap_err("scaffolded nros.toml failed validation")?;
-    std::fs::write(&root_toml, doc.to_string())
-        .wrap_err_with(|| format!("write {}", root_toml.display()))?;
-
-    // Drop the deploy code dir (vendor kinds only; self is generated).
-    if effective_kind != DeployKind::Self_ {
-        scaffold_dir(s, effective_kind, &self_rel)?;
-    }
+    // invalid `system.toml` behind.
+    let _: SystemToml = toml::from_str(&doc.to_string())
+        .wrap_err("scaffolded system.toml failed to parse as a system spec")?;
+    std::fs::write(&system_toml, doc.to_string())
+        .wrap_err_with(|| format!("write {}", system_toml.display()))?;
 
     eprintln!(
-        "nros new --deploy: added [deploy.{}] (kind={}) to {}",
+        "nros new --deploy: added [deploy.{}] to {}",
         s.name,
-        effective_kind.as_str(),
-        root_toml.display()
+        system_toml.display()
     );
-    if effective_kind != DeployKind::Self_ {
-        eprintln!(
-            "  scaffolded {}/ — fill the TODO vendor steps, then run the platform build",
-            self_rel
-        );
-    } else {
-        eprintln!("  build with the Entry package's platform tool");
-    }
+    eprintln!("  build with the bringup package's platform tool (e.g. `cargo run -p <entry_pkg>`)");
     Ok(())
 }
 
+/// Discover the bringup package's `system.toml` to edit, the same way
+/// `nros_config` discovers bringup packages. Only bringups with a real on-disk
+/// `system.toml` ([`BringupSource::SystemToml`]) are eligible — a synthesised
+/// self-bringup has no file to edit.
+fn locate_bringup_system_toml(s: &DeployScaffold) -> Result<PathBuf> {
+    let cfg = NrosConfig::from_workspace(&s.workspace_root).wrap_err_with(|| {
+        format!(
+            "discover bringup packages under {}",
+            s.workspace_root.display()
+        )
+    })?;
+
+    let mut candidates: Vec<(String, PathBuf)> = cfg
+        .bringup_packages
+        .into_iter()
+        .filter(|(_, e)| e.source == BringupSource::SystemToml)
+        .map(|(name, e)| (name, e.system_toml_path))
+        .collect();
+    candidates.sort();
+
+    if let Some(want) = &s.bringup {
+        return candidates
+            .into_iter()
+            .find(|(name, _)| name == want)
+            .map(|(_, path)| path)
+            .ok_or_else(|| {
+                eyre!(
+                    "--bringup {want}: no bringup package named `{want}` with a \
+                     system.toml under {}",
+                    s.workspace_root.display()
+                )
+            });
+    }
+
+    match candidates.len() {
+        0 => bail!(
+            "no bringup package with a system.toml under {} — create one first \
+             (`nros new system <name>_bringup --components <...>`); \
+             `nros new --deploy` only adds a [deploy.<name>] to an existing system.toml",
+            s.workspace_root.display()
+        ),
+        1 => Ok(candidates.into_iter().next().unwrap().1),
+        _ => {
+            let names: Vec<&str> = candidates.iter().map(|(n, _)| n.as_str()).collect();
+            bail!(
+                "workspace under {} exposes multiple bringup packages ({}) — \
+                 pass --bringup <pkg> to pick one",
+                s.workspace_root.display(),
+                names.join(", ")
+            )
+        }
+    }
+}
+
 /// Fork an existing `[deploy.<from>]` into `[deploy.<name>]`: clone its table,
-/// repoint `self` at the new code dir, and return the forked kind.
-fn clone_profile(
-    doc: &mut DocumentMut,
-    s: &DeployScaffold,
-    from: &str,
-    self_rel: &str,
-) -> Result<DeployKind> {
+/// then apply any explicit `--target` / `--board` overrides.
+fn clone_profile(doc: &mut DocumentMut, s: &DeployScaffold, from: &str) -> Result<()> {
     let base = doc
         .get("deploy")
         .and_then(|d| d.get(from))
         .and_then(|i| i.as_table())
         .ok_or_else(|| eyre!("--from-profile: no [deploy.{from}] to fork"))?
         .clone();
-    let kind = base
-        .get("kind")
-        .and_then(|i| i.as_str())
-        .and_then(kind_from_str)
-        .unwrap_or(s.kind);
 
     let mut forked = base;
-    // The fork owns its own code dir (build[] steps use {self}, so they carry over).
-    if kind != DeployKind::Self_ {
-        forked["self"] = value(self_rel);
+    if let Some(kind) = &s.kind {
+        forked["kind"] = value(kind.clone());
     }
-    let deploy = doc
-        .entry("deploy")
-        .or_insert_with(|| Item::Table(Table::new()));
-    let deploy = deploy.as_table_mut().expect("[deploy] must be a table");
-    deploy.set_implicit(true);
-    deploy.remove(&s.name);
-    deploy.insert(&s.name, Item::Table(forked));
-    Ok(kind)
-}
+    if let Some(target) = &s.target {
+        forked["target"] = value(target.clone());
+    }
+    if let Some(board) = &s.board {
+        forked["board"] = value(board.clone());
+    }
 
-fn kind_from_str(s: &str) -> Option<DeployKind> {
-    match s {
-        "self" => Some(DeployKind::Self_),
-        "vendor-lib" => Some(DeployKind::VendorLib),
-        "vendor-module" => Some(DeployKind::VendorModule),
-        _ => None,
-    }
+    insert_deploy(doc, &s.name, forked);
+    Ok(())
 }
 
 /// Build the `[deploy.<name>]` table programmatically (toml_edit preserves the
 /// rest of the file).
-fn write_deploy_table(doc: &mut DocumentMut, s: &DeployScaffold, self_rel: &str) {
-    let name = &s.name;
+fn write_deploy_table(doc: &mut DocumentMut, s: &DeployScaffold) {
+    let mut t = Table::new();
+    if let Some(kind) = &s.kind {
+        t["kind"] = value(kind.clone());
+    }
+    if let Some(target) = &s.target {
+        t["target"] = value(target.clone());
+    }
+    if let Some(board) = &s.board {
+        t["board"] = value(board.clone());
+    }
+    insert_deploy(doc, &s.name, t);
+}
 
-    // `[deploy]` is an implicit super-table so children render as the block
-    // form `[deploy.<name>]`, not a one-line inline table.
+/// Insert `[deploy.<name>]` as a block table under the implicit `[deploy]`
+/// super-table (idempotent — removes any existing entry first).
+fn insert_deploy(doc: &mut DocumentMut, name: &str, table: Table) {
     let deploy = doc
         .entry("deploy")
         .or_insert_with(|| Item::Table(Table::new()));
     let deploy = deploy.as_table_mut().expect("[deploy] must be a table");
     deploy.set_implicit(true);
     deploy.remove(name); // idempotent / --force
-
-    let mut t = Table::new();
-    t["kind"] = value(s.kind.as_str());
-    t["target"] = value(
-        s.target
-            .clone()
-            .unwrap_or_else(|| "TODO: cargo target triple".to_string()),
-    );
-    if let Some(board) = &s.board {
-        t["board"] = value(board.clone());
-    }
-
-    match s.kind {
-        DeployKind::Self_ => {}
-        DeployKind::VendorLib => {
-            t["self"] = value(self_rel);
-            t["vendor"]["pin"] = value("TODO: vendor SDK version");
-            t["vendor"]["dir"]["env"] = value("VENDOR_SDK_DIR");
-            t["vendor"]["dir"]["default"] = value("external/vendor-sdk");
-            t["build"] = value(arr(&[
-                "TODO: link {self}/startup.o {entry_lib} against the vendor lib in {vendor.dir}",
-            ]));
-        }
-        DeployKind::VendorModule => {
-            t["self"] = value(self_rel);
-            t["build"] = value(arr(&[
-                "TODO: invoke the vendor build with EXTERNAL_MODULES_LOCATION={self} (board={board})",
-            ]));
-        }
-    }
-
-    deploy.insert(name, Item::Table(t));
+    deploy.insert(name, Item::Table(table));
 }
-
-fn arr(items: &[&str]) -> Array {
-    let mut a = Array::new();
-    for it in items {
-        a.push(*it);
-    }
-    a
-}
-
-fn scaffold_dir(s: &DeployScaffold, kind: DeployKind, self_rel: &str) -> Result<()> {
-    let dir = s.root.join(self_rel);
-    std::fs::create_dir_all(&dir).wrap_err_with(|| format!("create {}", dir.display()))?;
-
-    let readme = format!(
-        "# deploy/{name} — {kind} deployment glue\n\n\
-         Referenced from `[deploy.{name}]` in the root `nros.toml` as `{{self}}`.\n\
-         nano-ros generates the wiring entry lib; this dir holds the vendor-side\n\
-         glue. Fill the TODO `build`/`package` steps in the root `nros.toml`.\n",
-        name = s.name,
-        kind = kind.as_str(),
-    );
-    write_if_absent(&dir.join("README.md"), &readme, s.force)?;
-
-    match kind {
-        DeployKind::VendorLib => {
-            write_if_absent(&dir.join("startup.rs"), STARTUP_STUB, s.force)?;
-        }
-        DeployKind::VendorModule => {
-            write_if_absent(&dir.join("CMakeLists.txt"), CMAKE_STUB, s.force)?;
-            write_if_absent(&dir.join("Kconfig"), KCONFIG_STUB, s.force)?;
-        }
-        DeployKind::Self_ => {}
-    }
-    Ok(())
-}
-
-fn write_if_absent(path: &Path, contents: &str, force: bool) -> Result<()> {
-    if path.exists() && !force {
-        return Ok(());
-    }
-    std::fs::write(path, contents).wrap_err_with(|| format!("write {}", path.display()))
-}
-
-const STARTUP_STUB: &str = "\
-// vendor-lib startup — runs vendor + transport bring-up, then hands off to the
-// generated entry lib via its C ABI. Compile this to {self}/startup.o and link
-// it with {entry_lib} in the root nros.toml `build` step.
-//
-// extern \"C\" {
-//     fn nros_<sys>_register_all(exec: *mut core::ffi::c_void);
-//     fn nros_<sys>_build_executor() -> *mut core::ffi::c_void;
-// }
-//
-// TODO: vendor/SDK init (clocks, heap, NIC/IVC), then:
-//   let exec = nros_<sys>_build_executor();
-//   nros_<sys>_register_all(exec);
-//   // spin the executor
-";
-
-const CMAKE_STUB: &str = "\
-# vendor-module CMake glue. The vendor build (west / make / idf.py) includes
-# this via EXTERNAL_MODULES_LOCATION={self}. It add_subdirectory()s the
-# generated entry-lib source and registers the module entry.
-#
-# TODO: add_subdirectory(${ENTRY_SRC} nros_entry)   # the generated wiring lib
-# TODO: <vendor>_add_module(...) linking the entry lib + the module entry
-";
-
-const KCONFIG_STUB: &str = "\
-# vendor-module Kconfig — enable the nano-ros module in the vendor menuconfig.
-#
-# config NROS_MODULE
-#     bool \"nano-ros generated module\"
-#     default y
-";
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{
+        path::Path,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
-    fn temp_ws(name: &str) -> PathBuf {
+    const SYSTEM_TOML: &str = "\
+[system]
+name = \"demo\"
+rmw = \"zenoh\"
+domain_id = 0
+
+[[component]]
+pkg = \"talker_pkg\"
+class = \"talker_pkg::TalkerNode\"
+name = \"talker\"
+";
+
+    /// Stage a Path-A bringup workspace (package.xml + system.toml, no
+    /// Cargo.toml) so `NrosConfig::from_workspace` discovers it without
+    /// invoking cargo.
+    fn temp_ws(tag: &str) -> (PathBuf, PathBuf) {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("{name}-{}-{stamp}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let root = std::env::temp_dir().join(format!("{tag}-{}-{stamp}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let bringup = root.join("demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
         std::fs::write(
-            dir.join("nros.toml"),
-            "[system]\nrmw = \"zenoh\"\ndomain_id = 0\n",
+            bringup.join("package.xml"),
+            "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>demo_bringup</name>\n</package>\n",
         )
         .unwrap();
-        dir
+        std::fs::write(bringup.join("system.toml"), SYSTEM_TOML).unwrap();
+        (root, bringup.join("system.toml"))
     }
 
-    fn reload(root: &Path) -> WorkspaceConfig {
-        WorkspaceConfig::load(&root.join("nros.toml")).expect("reload + validate")
+    fn reload(system_toml: &Path) -> SystemToml {
+        let raw = std::fs::read_to_string(system_toml).expect("read");
+        toml::from_str(&raw).expect("reparse system.toml")
     }
 
-    #[test]
-    fn scaffold_vendor_module_appends_table_and_dir() {
-        let root = temp_ws("nros-scaffold-vm");
-        scaffold_deploy(&DeployScaffold {
-            name: "mcu".into(),
-            kind: DeployKind::VendorModule,
-            target: Some("zephyr".into()),
-            board: Some("nucleo_h753zi".into()),
-            from_launch: None,
-            from_profile: None,
-            root: root.clone(),
-            force: false,
-        })
-        .expect("scaffold");
-
-        let cfg = reload(&root);
-        let d = &cfg.deploy["mcu"];
-        assert_eq!(d.kind, DeployKind::VendorModule);
-        assert_eq!(d.board.as_deref(), Some("nucleo_h753zi"));
-        assert_eq!(d.self_dir.as_deref(), Some("deploy/mcu"));
-        assert!(!d.build.is_empty());
-        assert!(root.join("deploy/mcu/CMakeLists.txt").is_file());
-        assert!(root.join("deploy/mcu/Kconfig").is_file());
-
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn scaffold_self_appends_table_no_dir() {
-        let root = temp_ws("nros-scaffold-self");
-        scaffold_deploy(&DeployScaffold {
-            name: "native".into(),
-            kind: DeployKind::Self_,
+    fn scaffold(root: &Path, name: &str, kind: Option<&str>) -> DeployScaffold {
+        DeployScaffold {
+            name: name.into(),
+            kind: kind.map(str::to_string),
             target: Some("x86_64-unknown-linux-gnu".into()),
             board: None,
             from_launch: None,
             from_profile: None,
-            root: root.clone(),
+            workspace_root: root.to_path_buf(),
+            bringup: None,
             force: false,
-        })
-        .expect("scaffold");
+        }
+    }
 
-        let cfg = reload(&root);
-        assert_eq!(cfg.deploy["native"].kind, DeployKind::Self_);
-        assert!(!root.join("deploy/native").exists());
+    #[test]
+    fn writes_deploy_into_bringup_system_toml() {
+        let (root, system_toml) = temp_ws("nros-scaffold-sys");
+        scaffold_deploy(&scaffold(&root, "native", Some("self"))).expect("scaffold");
+
+        let sys = reload(&system_toml);
+        let d = sys.deploy.get("native").expect("[deploy.native] written");
+        assert_eq!(d.kind.as_deref(), Some("self"));
+        assert_eq!(d.target.as_deref(), Some("x86_64-unknown-linux-gnu"));
+        // No root nros.toml is ever created.
+        assert!(!root.join("nros.toml").exists());
+        // No vendor-dir scaffolding.
+        assert!(!root.join("deploy").exists());
 
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn scaffold_preserves_existing_system_and_other_deploys() {
-        let root = temp_ws("nros-scaffold-preserve");
-        scaffold_deploy(&DeployScaffold {
-            name: "a".into(),
-            kind: DeployKind::Self_,
-            target: Some("x86_64-unknown-linux-gnu".into()),
-            board: None,
-            from_launch: None,
-            from_profile: None,
-            root: root.clone(),
-            force: false,
-        })
-        .unwrap();
-        scaffold_deploy(&DeployScaffold {
-            name: "b".into(),
-            kind: DeployKind::VendorModule,
-            target: Some("zephyr".into()),
-            board: Some("brd".into()),
-            from_launch: None,
-            from_profile: None,
-            root: root.clone(),
-            force: false,
-        })
-        .unwrap();
+    fn preserves_existing_system_and_components() {
+        let (root, system_toml) = temp_ws("nros-scaffold-preserve");
+        scaffold_deploy(&scaffold(&root, "native", Some("self"))).unwrap();
+        scaffold_deploy(&scaffold(&root, "qemu", Some("qemu"))).unwrap();
 
-        let cfg = reload(&root);
-        // both deploys + the original system survive.
-        assert!(cfg.deploy.contains_key("a"));
-        assert!(cfg.deploy.contains_key("b"));
-        assert_eq!(cfg.system.as_ref().unwrap().rmw.as_deref(), Some("zenoh"));
+        let sys = reload(&system_toml);
+        assert_eq!(sys.system.name, "demo");
+        assert_eq!(sys.system.rmw, "zenoh");
+        assert_eq!(sys.components.len(), 1);
+        assert!(sys.deploy.contains_key("native"));
+        assert!(sys.deploy.contains_key("qemu"));
 
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn scaffold_rejects_duplicate_without_force() {
-        let root = temp_ws("nros-scaffold-dup");
-        let mk = |force| DeployScaffold {
-            name: "x".into(),
-            kind: DeployKind::Self_,
-            target: Some("t".into()),
-            board: None,
-            from_launch: None,
-            from_profile: None,
-            root: root.clone(),
-            force,
-        };
-        scaffold_deploy(&mk(false)).unwrap();
-        assert!(scaffold_deploy(&mk(false)).is_err());
-        scaffold_deploy(&mk(true)).expect("force overwrites");
+    fn rejects_duplicate_without_force() {
+        let (root, _) = temp_ws("nros-scaffold-dup");
+        scaffold_deploy(&scaffold(&root, "native", Some("self"))).unwrap();
+        assert!(scaffold_deploy(&scaffold(&root, "native", Some("self"))).is_err());
+
+        let mut forced = scaffold(&root, "native", Some("self"));
+        forced.force = true;
+        scaffold_deploy(&forced).expect("force overwrites");
+
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn from_launch_sets_system_launch() {
-        let root = temp_ws("nros-scaffold-launch");
-        scaffold_deploy(&DeployScaffold {
-            name: "native".into(),
-            kind: DeployKind::Self_,
-            target: Some("x86_64-unknown-linux-gnu".into()),
-            board: None,
-            from_launch: Some("launch/sys.launch.xml".into()),
-            from_profile: None,
-            root: root.clone(),
-            force: false,
-        })
-        .expect("scaffold");
+    fn from_launch_sets_system_default_launch() {
+        let (root, system_toml) = temp_ws("nros-scaffold-launch");
+        let mut s = scaffold(&root, "native", Some("self"));
+        s.from_launch = Some("demo.launch.xml".into());
+        scaffold_deploy(&s).expect("scaffold");
 
-        let cfg = reload(&root);
+        let sys = reload(&system_toml);
         assert_eq!(
-            cfg.system.as_ref().unwrap().launch.as_deref(),
-            Some("launch/sys.launch.xml")
+            sys.system.default_launch.as_deref(),
+            Some("demo.launch.xml")
         );
+
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn from_profile_forks_an_existing_target() {
-        let root = temp_ws("nros-scaffold-fork");
-        // seed a vendor-module profile.
-        scaffold_deploy(&DeployScaffold {
-            name: "mcu".into(),
-            kind: DeployKind::VendorModule,
-            target: Some("zephyr".into()),
-            board: Some("brd".into()),
-            from_launch: None,
-            from_profile: None,
-            root: root.clone(),
-            force: false,
-        })
-        .unwrap();
-        // fork it.
-        scaffold_deploy(&DeployScaffold {
-            name: "mcu2".into(),
-            kind: DeployKind::Self_, // ignored — forked kind wins
+        let (root, system_toml) = temp_ws("nros-scaffold-fork");
+        let mut base = scaffold(&root, "qemu", Some("qemu"));
+        base.board = Some("mps2_an385".into());
+        scaffold_deploy(&base).unwrap();
+
+        let fork = DeployScaffold {
+            name: "qemu2".into(),
+            kind: None,
             target: None,
             board: None,
             from_launch: None,
-            from_profile: Some("mcu".into()),
-            root: root.clone(),
+            from_profile: Some("qemu".into()),
+            workspace_root: root.clone(),
+            bringup: None,
             force: false,
-        })
-        .expect("fork");
+        };
+        scaffold_deploy(&fork).expect("fork");
 
-        let cfg = reload(&root);
-        let forked = &cfg.deploy["mcu2"];
-        assert_eq!(forked.kind, DeployKind::VendorModule); // inherited
-        assert_eq!(forked.board.as_deref(), Some("brd")); // inherited
-        assert_eq!(forked.self_dir.as_deref(), Some("deploy/mcu2")); // own dir
-        assert!(root.join("deploy/mcu2/CMakeLists.txt").is_file());
+        let sys = reload(&system_toml);
+        let forked = sys.deploy.get("qemu2").expect("forked target");
+        assert_eq!(forked.kind.as_deref(), Some("qemu")); // inherited
+        assert_eq!(forked.board.as_deref(), Some("mps2_an385")); // inherited
+
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn from_profile_errors_on_missing_base() {
-        let root = temp_ws("nros-scaffold-fork-miss");
-        let err = scaffold_deploy(&DeployScaffold {
-            name: "x".into(),
-            kind: DeployKind::Self_,
-            target: Some("t".into()),
-            board: None,
-            from_launch: None,
-            from_profile: Some("ghost".into()),
-            root: root.clone(),
-            force: false,
-        })
-        .unwrap_err()
-        .to_string();
+        let (root, _) = temp_ws("nros-scaffold-fork-miss");
+        let mut s = scaffold(&root, "x", None);
+        s.from_profile = Some("ghost".into());
+        let err = scaffold_deploy(&s).unwrap_err().to_string();
         assert!(err.contains("no [deploy.ghost]"), "{err}");
+
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn scaffold_errors_without_root_toml() {
+    fn errors_without_a_bringup_system_toml() {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("nros-scaffold-noroot-{stamp}"));
+        let root = std::env::temp_dir().join(format!("nros-scaffold-noboot-{stamp}"));
         std::fs::create_dir_all(&root).unwrap();
-        let err = scaffold_deploy(&DeployScaffold {
-            name: "x".into(),
-            kind: DeployKind::Self_,
-            target: None,
-            board: None,
-            from_launch: None,
-            from_profile: None,
-            root: root.clone(),
-            force: false,
-        })
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("no root nros.toml"), "{err}");
+        let err = scaffold_deploy(&scaffold(&root, "x", Some("self")))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no bringup package"), "{err}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn requires_bringup_selector_when_multiple() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("nros-scaffold-multi-{stamp}"));
+        let _ = std::fs::remove_dir_all(&root);
+        for name in ["alpha_bringup", "beta_bringup"] {
+            let dir = root.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("package.xml"),
+                format!(
+                    "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>{name}</name>\n</package>\n"
+                ),
+            )
+            .unwrap();
+            std::fs::write(dir.join("system.toml"), SYSTEM_TOML).unwrap();
+        }
+
+        // Ambiguous → error naming the candidates.
+        let err = scaffold_deploy(&scaffold(&root, "native", Some("self")))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("multiple bringup packages"), "{err}");
+
+        // --bringup disambiguates.
+        let mut s = scaffold(&root, "native", Some("self"));
+        s.bringup = Some("beta_bringup".into());
+        scaffold_deploy(&s).expect("explicit --bringup scaffolds");
+        let sys = reload(&root.join("beta_bringup/system.toml"));
+        assert!(sys.deploy.contains_key("native"));
+        // The other bringup is untouched.
+        let other = reload(&root.join("alpha_bringup/system.toml"));
+        assert!(other.deploy.is_empty());
+
         let _ = std::fs::remove_dir_all(&root);
     }
 }

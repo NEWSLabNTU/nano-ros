@@ -19,7 +19,6 @@ pub mod nros_config;
 pub mod params;
 pub mod plan;
 pub mod planner;
-pub mod root_config;
 pub mod schema;
 pub mod sdk_index;
 pub mod sdk_store;
@@ -36,6 +35,5 @@ pub use nros_config::{
     BringupPackageEntry, BringupSource, ComponentPackageEntry, NrosConfig, NrosConfigError,
 };
 pub use plan::NrosPlan;
-pub use root_config::WorkspaceConfig;
 pub use source_metadata::SourceMetadata;
 pub use workspace::{ComponentDeclaration, Package, Workspace};

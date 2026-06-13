@@ -1,5 +1,6 @@
-//! `nros check` - validate a generated nros-plan.json, a root nros.toml, or
-//! (Phase 212.F) a `<bringup>` pkg directory for pure-declarative shape.
+//! `nros check` - validate a generated nros-plan.json, a bringup
+//! `system.toml` (RFC-0004 §4), or (Phase 212.F) a `<bringup>` pkg directory
+//! for pure-declarative shape.
 
 use crate::{
     cmd::{
@@ -7,16 +8,17 @@ use crate::{
         check_workspace::check_workspace,
         emit_package_xml::{DriftStatus, check_drift},
     },
-    orchestration::{planner::check_plan_file, root_config::WorkspaceConfig},
+    orchestration::{cargo_metadata_schema::SystemToml, planner::check_plan_file},
 };
 use clap::Args as ClapArgs;
-use eyre::Result;
+use eyre::{Result, WrapErr};
 use std::path::PathBuf;
 
 #[derive(Debug, Default, ClapArgs)]
 pub struct Args {
-    /// Path to nros-plan.json, a root nros.toml (Phase 172 WP-A), or a
-    /// `<bringup>` pkg directory when `--bringup` is set (Phase 212.F).
+    /// Path to nros-plan.json, a bringup `system.toml` (or a directory
+    /// containing one), or a `<bringup>` pkg directory when `--bringup` is
+    /// set (Phase 212.F).
     #[arg(default_value = "build/nros/nros-plan.json")]
     pub plan: PathBuf,
 
@@ -106,16 +108,28 @@ pub fn run(args: Args) -> Result<()> {
         }
     }
 
-    // A `.toml` argument is the workspace-root deployment config; anything
-    // else is a generated plan. `WorkspaceConfig::load` validates as it parses.
-    if args.plan.extension().is_some_and(|e| e == "toml") {
-        let cfg = WorkspaceConfig::load(&args.plan)?;
-        let systems = cfg.systems.len() + usize::from(cfg.system.is_some());
+    // A `system.toml` (or a directory carrying one) is the RFC-0004 §4 system
+    // spec; anything else is a generated plan. Parsing as `SystemToml`
+    // (strict `deny_unknown_fields`) validates the shape.
+    let system_toml = if args.plan.is_dir() {
+        let candidate = args.plan.join("system.toml");
+        candidate.is_file().then_some(candidate)
+    } else if args.plan.extension().is_some_and(|e| e == "toml") {
+        Some(args.plan.clone())
+    } else {
+        None
+    };
+    if let Some(path) = system_toml {
+        let raw =
+            std::fs::read_to_string(&path).wrap_err_with(|| format!("read {}", path.display()))?;
+        let sys: SystemToml =
+            toml::from_str(&raw).wrap_err_with(|| format!("parse {}", path.display()))?;
         eprintln!(
-            "nros check: ok ({} system(s), {} deploy target(s), {})",
-            systems,
-            cfg.deploy.len(),
-            args.plan.display()
+            "nros check: ok (system '{}', {} component(s), {} deploy target(s), {})",
+            sys.system.name,
+            sys.components.len(),
+            sys.deploy.len(),
+            path.display()
         );
         return Ok(());
     }
@@ -132,6 +146,80 @@ pub fn run(args: Args) -> Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn scratch(tag: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{tag}-{}-{stamp}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    const SYSTEM_TOML: &str = "\
+[system]
+name = \"demo\"
+rmw = \"zenoh\"
+domain_id = 0
+
+[deploy.native]
+kind = \"self\"
+target = \"x86_64-unknown-linux-gnu\"
+";
+
+    #[test]
+    fn checks_a_system_toml_file() {
+        let dir = scratch("nros-check-systoml");
+        let path = dir.join("system.toml");
+        std::fs::write(&path, SYSTEM_TOML).unwrap();
+        run(Args {
+            plan: path,
+            ..Default::default()
+        })
+        .expect("valid system.toml passes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn checks_a_bringup_dir_containing_system_toml() {
+        let dir = scratch("nros-check-systoml-dir");
+        std::fs::write(dir.join("system.toml"), SYSTEM_TOML).unwrap();
+        run(Args {
+            plan: dir.clone(),
+            ..Default::default()
+        })
+        .expect("dir with system.toml passes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_an_invalid_system_toml() {
+        let dir = scratch("nros-check-systoml-bad");
+        let path = dir.join("system.toml");
+        // Unknown field → strict `deny_unknown_fields` rejects.
+        std::fs::write(
+            &path,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nbogus_field=1\n",
+        )
+        .unwrap();
+        assert!(
+            run(Args {
+                plan: path,
+                ..Default::default()
+            })
+            .is_err(),
+            "invalid system.toml must fail the check"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 // Phase 172 — `[[bridge]]` per-node routing is now emitted by the generator

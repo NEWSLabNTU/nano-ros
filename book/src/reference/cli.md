@@ -71,7 +71,7 @@ chosen platform.
 | `--use-case` | `talker`, `listener`, `service`, `action` | `talker` |
 | `--force` | overwrite an existing directory | off |
 
-**Deploy mode:** `nros new --deploy <name> --kind <self|vendor-lib|vendor-module> [--target <triple>] [--board <b>] [--from-launch <path>] [--from-profile <name>]` scaffolds a `[deploy.<name>]` target into the root `nros.toml` (and, for vendor kinds, a `deploy/<name>/` glue dir), instead of a project. `--from-launch` also seeds `[system].launch`; `--from-profile` forks an existing deploy target.
+**Deploy mode:** `nros new --deploy <name> [--kind <runner>] [--target <triple>] [--board <b>] [--bringup <pkg>] [--from-launch <path>] [--from-profile <name>]` scaffolds a `[deploy.<name>]` target into the bringup package's `system.toml` (RFC-0004 §4 — the deploy-target SSOT), instead of a project. `--kind` is a free-form runner key (`self`, `qemu`, `flash`, …). The bringup package is discovered automatically when the workspace exposes exactly one; pass `--bringup <pkg>` to pick one when there are several. `--from-launch` also seeds the bringup `[system].default_launch`; `--from-profile` forks an existing `[deploy.<name>]` in the same `system.toml`.
 
 ### `nros generate <lang> [--manifest <path>] [--output <dir>] [--ros-edition <edition>] [--force] [--verbose] [--generate-config]`
 

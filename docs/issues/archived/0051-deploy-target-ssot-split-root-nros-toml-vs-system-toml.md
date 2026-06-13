@@ -1,11 +1,35 @@
 ---
 id: 51
 title: Deploy-target SSOT split — Phase-172 root `nros.toml` path contradicts RFC-0004 (`nros new --deploy` writes a file the loader rejects)
-status: open
+status: resolved
 type: tech-debt
 area: cli
 related: [rfc-0004, phase-227, phase-211]
+resolved_in: "2026-06-14 (deploy-target → system.toml migration)"
 ---
+
+## Resolution (2026-06-14)
+
+Migrated to the RFC-0004 `system.toml` home; retired the Phase-172 root-`nros.toml`
+path entirely.
+
+- `nros new --deploy <name>` now writes `[deploy.<name>]` (live `DeployTarget`:
+  kind/target/board) into the **bringup pkg's `system.toml`** via `toml_edit`,
+  located through `NrosConfig`'s bringup discovery (one bringup → implicit;
+  several → `--bringup <pkg>`; none → error, never creates a root `nros.toml`).
+  `--from-launch` sets `[system].default_launch`; `--from-profile` forks an
+  existing `[deploy.<from>]` in the same `system.toml`.
+- `nros check <system.toml | dir>` validates by parsing `SystemToml`.
+- `nros doctor` reads deploy targets from `system.toml` (auto-discovers
+  `cwd/system.toml`); the dead vendor-pin checks are gone.
+- Deleted `orchestration/root_config.rs` (`WorkspaceConfig`/`DeployKind`/
+  `VendorSpec`/`EmitForm`/`VendorDir`) and the dead vendor-deploy richness
+  (build/package/emit/vendor/config command steps nothing executed).
+- Fixed `book/src/reference/cli.md`.
+
+`git grep WorkspaceConfig|root_config|DeployKind` in the CLI is clean; in-tree CLI
+lib tests 372 pass. The deploy-target SSOT now lives in one RFC-0004-sanctioned
+place.
 
 ## The contradiction
 

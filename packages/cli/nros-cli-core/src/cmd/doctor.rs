@@ -16,10 +16,7 @@ use std::{
 
 use crate::{
     cmd::board::find_workspace_root,
-    orchestration::{
-        root_config::{VendorDir, WorkspaceConfig},
-        sdk_index::SdkIndex,
-    },
+    orchestration::{cargo_metadata_schema::SystemToml, sdk_index::SdkIndex},
 };
 
 #[derive(Debug, ClapArgs)]
@@ -42,23 +39,32 @@ pub struct Args {
     #[arg(long)]
     pub workspace: Option<PathBuf>,
 
-    /// Root nros.toml whose deploy-target vendor pins to check (Phase 172 WP-A)
-    #[arg(long, default_value = "nros.toml")]
-    pub config: PathBuf,
+    /// Bringup `system.toml` (or a directory containing one) whose
+    /// `[deploy.<target>]` blocks to health-check (RFC-0004 §4). When
+    /// omitted, the cwd's `system.toml` is used if present.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 }
 
 pub fn run(args: Args) -> Result<()> {
-    // Phase 172 WP-A — deploy vendor-pin drift check. Engages when the given
-    // config is a loadable workspace-root nros.toml; reports each deploy
-    // target's pinned vendor dir. `None` ⇒ no root config here (e.g. running
-    // in the nano-ros repo) → only the workspace health below runs.
-    let pin_problems = check_deploy_pins(&args.config)?;
+    // RFC-0004 §4 — deploy-target health check. Resolve the bringup
+    // `system.toml` (explicit `--config`, else the cwd's `system.toml`) and
+    // report each `[deploy.<target>]` block. `None` ⇒ no system.toml here
+    // (e.g. running in the nano-ros repo) → only the workspace health below
+    // runs.
+    let config = resolve_config(args.config.as_deref());
+    let deploy_problems = match &config {
+        Some(path) => check_deploy_targets(path)?,
+        None => None,
+    };
 
     // Phase 222.B.3 — flag use of deprecated `nros build` / `run` / `deploy` /
-    // `monitor` verbs inside `[deploy.<name>].build` / `package` shell steps
-    // of the workspace's root nros.toml. WARN only (gated migration); the
-    // verbs still work today and disappear in 0.5.0 (Phase 222.C).
-    check_deprecated_verbs(&args.config);
+    // `monitor` verbs inside any shell-step arrays. WARN only (gated
+    // migration); the verbs still work today and disappear in 0.5.0
+    // (Phase 222.C).
+    if let Some(path) = &config {
+        check_deprecated_verbs(path);
+    }
 
     // Phase 187.7 — license-gated SDK presence (NVIDIA SPE, ARM FVP, …): never
     // fetched, only instructed. Read before `args.workspace` is moved below.
@@ -66,17 +72,18 @@ pub fn run(args: Args) -> Result<()> {
     // `packages` so unrelated gates don't show up.
     let gate_problems = check_license_gates(args.workspace.as_deref(), args.board.as_deref())?;
 
-    // The nano-ros workspace health (`just doctor`). When a root nros.toml was
-    // checked, missing it is non-fatal (we're in a user deploy project, not the
-    // nano-ros repo); otherwise it stays a hard requirement.
+    // The nano-ros workspace health (`just doctor`). When a bringup
+    // `system.toml` was checked, missing the nano-ros workspace is non-fatal
+    // (we're in a user deploy project, not the nano-ros repo); otherwise it
+    // stays a hard requirement.
     let root = match args.workspace {
         Some(p) => Some(p),
         None => match find_workspace_root() {
             Ok(r) => Some(r),
-            Err(_) if pin_problems.is_some() => {
+            Err(_) if deploy_problems.is_some() => {
                 eprintln!(
                     "nros doctor: no nano-ros workspace here — skipped `just doctor` \
-                     (checked deploy pins only)"
+                     (checked deploy targets only)"
                 );
                 None
             }
@@ -93,11 +100,28 @@ pub fn run(args: Args) -> Result<()> {
         run_just_doctor(&root, args.platform.as_deref())?;
     }
 
-    let problems = pin_problems.unwrap_or(0) + gate_problems;
+    let problems = deploy_problems.unwrap_or(0) + gate_problems;
     if problems > 0 {
-        bail!("nros doctor: {problems} problem(s) (deploy pins + license gates)");
+        bail!("nros doctor: {problems} problem(s) (deploy targets + license gates)");
     }
     Ok(())
+}
+
+/// Resolve the bringup `system.toml` to health-check: the explicit
+/// `--config` (a file or a directory carrying one), else the cwd's
+/// `system.toml` when present. `None` ⇒ no deploy-target check engages.
+fn resolve_config(explicit: Option<&Path>) -> Option<PathBuf> {
+    if let Some(p) = explicit {
+        let path = if p.is_dir() {
+            p.join("system.toml")
+        } else {
+            p.to_path_buf()
+        };
+        return Some(path);
+    }
+    let cwd = std::env::current_dir().ok()?;
+    let st = cwd.join("system.toml");
+    st.is_file().then_some(st)
 }
 
 /// Phase 187.7 — license-gate presence check. For each `[gated.*]` SDK in the
@@ -275,17 +299,27 @@ fn find_fvp_under(root: &Path, bin: &str) -> Option<PathBuf> {
     None
 }
 
-/// Report each deploy target's vendor-pin status. Returns the problem count,
-/// or `None` when `config` is not a loadable workspace-root nros.toml.
-fn check_deploy_pins(config: &Path) -> Result<Option<usize>> {
+/// Report each `[deploy.<target>]` block in the bringup `system.toml`
+/// (RFC-0004 §4). Returns the problem count, or `None` when `config` is not a
+/// loadable `system.toml`.
+///
+/// The live `DeployTarget` carries `kind` / `target` / `board` / `launch` —
+/// no vendor-pin/build/package machinery (that backed the retired Phase-172
+/// model). The one checkable health condition is a `launch` that points at a
+/// file which does not exist relative to the bringup dir.
+fn check_deploy_targets(config: &Path) -> Result<Option<usize>> {
     if !config.is_file() {
         return Ok(None);
     }
-    // A component nros.toml (not a workspace root) fails to load — skip silently.
-    let Ok(cfg) = WorkspaceConfig::load(config) else {
+    let raw = match std::fs::read_to_string(config) {
+        Ok(r) => r,
+        Err(_) => return Ok(None),
+    };
+    // Not a parseable system.toml (e.g. a plain component manifest) — skip.
+    let Ok(system) = toml::from_str::<SystemToml>(&raw) else {
         return Ok(None);
     };
-    let root = config
+    let bringup_dir = config
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .map(Path::to_path_buf)
@@ -293,49 +327,36 @@ fn check_deploy_pins(config: &Path) -> Result<Option<usize>> {
 
     eprintln!("nros doctor: deploy targets ({})", config.display());
     let mut problems = 0usize;
-    for (name, deploy) in &cfg.deploy {
-        let Some(vendor) = &deploy.vendor else {
-            eprintln!("  [--] {name}: no vendor pin");
-            continue;
-        };
-        let Some(pin) = &vendor.pin else {
-            eprintln!("  [--] {name}: vendor, no pin");
-            continue;
-        };
-        match resolve_vendor_dir(&root, &vendor.dir) {
-            Some(dir) if dir.exists() => {
-                eprintln!("  [OK] {name}: pinned '{pin}' at {}", dir.display());
-            }
-            Some(dir) => {
+    for (name, deploy) in &system.deploy {
+        let kind = deploy.kind.as_deref().unwrap_or("(derived)");
+        let target = deploy.target.as_deref().unwrap_or("(derived)");
+        let board = deploy.board.as_deref().unwrap_or("-");
+        if let Some(launch) = &deploy.launch {
+            let launch_path = bringup_dir.join(launch);
+            if !launch_path.exists() {
                 eprintln!(
-                    "  [!!] {name}: pinned '{pin}' — dir {} not found",
-                    dir.display()
+                    "  [!!] {name}: kind={kind} launch={launch} — file {} not found",
+                    launch_path.display()
                 );
                 problems += 1;
-            }
-            None => {
-                eprintln!("  [!!] {name}: pinned '{pin}' — dir unset (set the env or a default)");
-                problems += 1;
+                continue;
             }
         }
+        eprintln!("  [OK] {name}: kind={kind} target={target} board={board}");
     }
     Ok(Some(problems))
 }
 
-fn resolve_vendor_dir(root: &Path, dir: &VendorDir) -> Option<PathBuf> {
-    dir.resolve()
-        .map(|d| if d.is_absolute() { d } else { root.join(d) })
-}
-
 /// Phase 222.B.3 — surface `nros build` / `run` / `deploy` / `monitor` / `launch` usage
-/// inside workspace-root `nros.toml` `[deploy.<name>]` `build` / `package`
-/// shell-step arrays as WARN (not FAIL — gated migration). The wrapper verbs
-/// still work today; deletion lands in Phase 222.C with the 0.5.0 bump.
+/// inside any `[deploy.<name>]` `build` / `package` shell-step arrays as WARN
+/// (not FAIL — gated migration). The wrapper verbs still work today; deletion
+/// lands in Phase 222.C with the 0.5.0 bump.
 ///
 /// Best-effort raw TOML scan: parses the file as a generic `toml::Value` so
-/// the lint surfaces drift in fixtures that don't load through
-/// `WorkspaceConfig` cleanly. Silent no-op when the file is absent or
-/// unparseable — this is a hint, not an authority.
+/// the lint surfaces drift in any TOML config carrying such arrays. Silent
+/// no-op when the file is absent or unparseable — this is a hint, not an
+/// authority. (The live `system.toml` `DeployTarget` no longer carries
+/// `build`/`package` arrays, so this is dormant on the RFC-0004 path.)
 fn check_deprecated_verbs(config: &Path) {
     if !config.is_file() {
         return;
@@ -477,6 +498,55 @@ fn is_executable(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// RFC-0004 §4 — `check_deploy_targets` parses a bringup `system.toml`,
+    /// reports each `[deploy.<target>]`, and flags a deploy whose `launch`
+    /// file is missing relative to the bringup dir.
+    #[test]
+    fn deploy_targets_flag_missing_launch_file() {
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("nros_doctor_deploy_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let system_toml = dir.join("system.toml");
+
+        // Two healthy targets → 0 problems.
+        std::fs::write(
+            &system_toml,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [deploy.native]\nkind=\"self\"\ntarget=\"x86_64-unknown-linux-gnu\"\n\
+             [deploy.qemu]\nkind=\"qemu\"\nboard=\"mps2_an385\"\n",
+        )
+        .unwrap();
+        assert_eq!(check_deploy_targets(&system_toml).unwrap(), Some(0));
+
+        // A deploy referencing a non-existent launch file → 1 problem.
+        std::fs::write(
+            &system_toml,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [deploy.native]\nkind=\"self\"\nlaunch=\"missing.launch.xml\"\n",
+        )
+        .unwrap();
+        assert_eq!(check_deploy_targets(&system_toml).unwrap(), Some(1));
+
+        // Present launch file → 0 problems.
+        std::fs::write(dir.join("present.launch.xml"), "<launch/>").unwrap();
+        std::fs::write(
+            &system_toml,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [deploy.native]\nkind=\"self\"\nlaunch=\"present.launch.xml\"\n",
+        )
+        .unwrap();
+        assert_eq!(check_deploy_targets(&system_toml).unwrap(), Some(0));
+
+        // A non-system.toml (no [system]) → None (skipped, not a problem).
+        std::fs::write(&system_toml, "[component]\nname=\"c\"\n").unwrap();
+        assert_eq!(check_deploy_targets(&system_toml).unwrap(), None);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn license_gate_flags_misconfigured_env_only() {

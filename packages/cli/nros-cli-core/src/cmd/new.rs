@@ -15,12 +15,9 @@ use clap::Args as ClapArgs;
 use eyre::{Result, bail};
 use std::path::PathBuf;
 
-use crate::{
-    cmd::{
-        new_system::{BringupScaffold, scaffold_bringup},
-        scaffold_deploy::{DeployScaffold, scaffold_deploy},
-    },
-    orchestration::root_config::DeployKind,
+use crate::cmd::{
+    new_system::{BringupScaffold, scaffold_bringup},
+    scaffold_deploy::{DeployScaffold, scaffold_deploy},
 };
 
 #[derive(Debug, ClapArgs)]
@@ -86,24 +83,30 @@ pub struct Args {
     #[arg(long)]
     pub component: bool,
 
-    /// Phase 172 WP-A — scaffold a `[deploy.<name>]` target in the root
-    /// nros.toml (deploy mode) instead of a project.
+    /// Scaffold a `[deploy.<name>]` target into the bringup package's
+    /// `system.toml` (RFC-0004 §4) instead of a project.
     #[arg(long)]
     pub deploy: Option<String>,
 
-    /// Deploy kind (deploy mode)
-    #[arg(long, value_parser = ["self", "vendor-lib", "vendor-module"], default_value = "self")]
+    /// Deploy kind (deploy mode) — free-form runner key (`self`, `qemu`,
+    /// `flash`, …) written verbatim to `[deploy.<name>].kind`.
+    #[arg(long, default_value = "self")]
     pub kind: String,
 
-    /// Cargo target triple (deploy mode)
+    /// Cargo target triple / board id / runner key (deploy mode)
     #[arg(long)]
     pub target: Option<String>,
 
-    /// Board (deploy mode, vendor-module)
+    /// Board (deploy mode)
     #[arg(long)]
     pub board: Option<String>,
 
-    /// Deploy mode: also set the root `[system].launch` (bootstrap)
+    /// Deploy mode: pick the bringup package whose `system.toml` to edit
+    /// when the workspace exposes more than one.
+    #[arg(long)]
+    pub bringup: Option<String>,
+
+    /// Deploy mode: also set the bringup `[system].default_launch` (bootstrap)
     #[arg(long)]
     pub from_launch: Option<String>,
 
@@ -185,22 +188,18 @@ pub fn run(args: Args) -> Result<()> {
         return Ok(());
     }
 
-    // Deploy mode (Phase 172 WP-A): `nros new --deploy <name> --kind <k> ...`.
+    // Deploy mode: `nros new --deploy <name> [--kind <k>] ...` writes a
+    // `[deploy.<name>]` into the bringup package's `system.toml` (RFC-0004 §4).
     if let Some(deploy_name) = args.deploy {
-        let kind = match args.kind.as_str() {
-            "self" => DeployKind::Self_,
-            "vendor-lib" => DeployKind::VendorLib,
-            "vendor-module" => DeployKind::VendorModule,
-            other => bail!("unknown deploy kind: {other}"),
-        };
         return scaffold_deploy(&DeployScaffold {
             name: deploy_name,
-            kind,
+            kind: Some(args.kind),
             target: args.target,
             board: args.board,
             from_launch: args.from_launch,
             from_profile: args.from_profile,
-            root: std::env::current_dir()?,
+            workspace_root: std::env::current_dir()?,
+            bringup: args.bringup,
             force: args.force,
         });
     }
