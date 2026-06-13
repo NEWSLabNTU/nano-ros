@@ -153,6 +153,14 @@ pub struct PlanInstance {
     /// unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub container_id: Option<String>,
+    /// Phase 211.F — multi-host target, lowered from the launch
+    /// `<node machine="…">` attr (recorded by play_launch_parser as
+    /// `node.machine`). `None` for single-host systems. A multi-host deploy
+    /// partitions instances by `host_id` onto per-host `[deploy.<id>]` targets.
+    /// Additive: `#[serde(default)]` + `skip_serializing_if` so single-host
+    /// plans round-trip byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_id: Option<String>,
     /// Phase 225.N — optional launch-instance provenance used by generated-ID
     /// planning. The legacy `trace.launch_record_entity` string remains the
     /// compact required breadcrumb; this richer shape lets later planners carry

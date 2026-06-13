@@ -918,6 +918,19 @@ fn schema_instance(instance: &Value, declared: &BTreeMap<String, Value>) -> Valu
             .expect("schema_instance produces object")
             .insert("qos_overrides".to_string(), json!(qos_overrides));
     }
+    // Phase 211.F — lower the launch `<node machine="…">` (recorded by
+    // play_launch_parser as `machine`) into `host_id`. `skip_serializing_if`
+    // on the schema, so only emitted for multi-host launches; single-host
+    // plans stay byte-compatible.
+    if let Some(machine) = instance
+        .get("machine")
+        .and_then(Value::as_str)
+        .filter(|m| !m.is_empty())
+    {
+        out.as_object_mut()
+            .expect("schema_instance produces object")
+            .insert("host_id".to_string(), json!(machine));
+    }
     out
 }
 
@@ -1892,6 +1905,7 @@ fn build_instances(
                 domain_id: u32_field(container, &["domain_id", "domain"]),
                 launch_kind: "container",
                 container_id: None,
+                machine: string_field(container, &["machine"]),
             },
             &mut PlanCtx {
                 metadata,
@@ -1946,6 +1960,7 @@ fn build_instances(
                 domain_id: u32_field(node, &["domain_id", "domain"]),
                 launch_kind: "node",
                 container_id: None,
+                machine: string_field(node, &["machine"]),
             },
             &mut PlanCtx {
                 metadata,
@@ -1993,6 +2008,7 @@ fn build_instances(
                 domain_id: u32_field(load_node, &["domain_id", "domain"]),
                 launch_kind: "load_node",
                 container_id: container_id.as_deref(),
+                machine: string_field(load_node, &["machine"]),
             },
             &mut PlanCtx {
                 metadata,
@@ -2061,6 +2077,10 @@ struct NodeInstanceSpec<'a> {
     /// parser's `target_container_name`). `None` for plain `<node>` and
     /// for `<node_container>` itself.
     container_id: Option<&'a str>,
+    /// Phase 211.F — `<node machine="…">` target host (parser `node.machine`).
+    /// `None` for single-host launches. schema_instance lowers it onto the
+    /// public `host_id` field.
+    machine: Option<&'a str>,
 }
 
 /// Ambient state threaded through plan construction: read-only inputs
@@ -2088,6 +2108,7 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
         domain_id,
         launch_kind,
         container_id,
+        machine,
     } = spec;
     let metadata = ctx.metadata;
     let workspace = ctx.workspace;
@@ -2199,6 +2220,9 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
         // schema_instance reshapes this onto the public `container_id`
         // field (skip_serializing_if = "Option::is_none").
         "container_id": container_id,
+        // Phase 211.F — raw machine= target; schema_instance lowers it onto
+        // the public `host_id` field (skip_serializing_if = "Option::is_none").
+        "machine": machine,
         "node_name": node_name,
         "namespace": namespace,
         "domain_id": domain_id,
@@ -3909,6 +3933,89 @@ topics:
         // Malformed (no role/policy) → skipped, not panicked.
         let bad = json!({ "qos_overrides./only_topic": "x" });
         assert!(schema_qos_overrides(Some(&bad)).is_empty());
+    }
+
+    /// Phase 211.F — a launch `<node machine="…">` (recorded by
+    /// play_launch_parser as `node.machine`) flows through `plan_system` into
+    /// `instances[*].host_id`; a node without `machine` omits the field.
+    #[test]
+    fn plan_system_lowers_machine_to_host_id() {
+        let root = temp_workspace("nros-plan-host-id");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("package.xml"),
+            r#"<package format="3"><name>system_pkg</name><version>0.1.0</version></package>"#,
+        )
+        .unwrap();
+        let launch = root.join("system.launch.xml");
+        fs::write(&launch, "<launch />").unwrap();
+        let record = root.join("record.json");
+        fs::write(
+            &record,
+            r#"{
+  "node": [
+    { "package": "demo_pkg", "executable": "talker", "name": "talker_a",
+      "namespace": "/robot_a", "remaps": [], "params": [], "machine": "robot1" },
+    { "package": "demo_pkg", "executable": "talker", "name": "talker_b",
+      "namespace": "/robot_b", "remaps": [], "params": [] }
+  ]
+}"#,
+        )
+        .unwrap();
+        let metadata = root.join("talker.metadata.json");
+        fs::write(
+            &metadata,
+            r#"{
+  "version": 1, "package": "demo_pkg", "component": "talker", "language": "rust",
+  "executable": "talker", "exported_symbol": "nros_component_talker",
+  "nodes": [{
+    "id": "node_talker",
+    "unresolved_name": {"value": "talker", "kind": "relative"},
+    "namespace": null,
+    "publishers": [{
+      "id": "pub_chatter",
+      "unresolved_topic": {"value": "chatter", "kind": "relative"},
+      "interface": {"package": "std_msgs", "name": "msg/String", "kind": "message"},
+      "qos": null
+    }],
+    "subscribers": [], "timers": [], "services": [], "actions": []
+  }],
+  "callbacks": [], "parameters": [],
+  "trace": {"generator": "nros-metadata-rust", "package_manifest": "package.xml", "source_artifacts": ["src/talker.rs"]}
+}"#,
+        )
+        .unwrap();
+
+        let output = plan_system(PlanOptions {
+            system_pkg: "system_pkg".to_string(),
+            workspace_root: root.clone(),
+            launch_file: launch,
+            record_file: Some(record),
+            out_root: root.join("build/system_pkg/nros"),
+            metadata_files: vec![metadata],
+            manifest_files: vec![],
+            nros_toml_files: vec![],
+            launch_args: vec![],
+        })
+        .unwrap();
+        let plan: Value =
+            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
+        serde_json::from_value::<NrosPlan>(plan.clone()).unwrap();
+
+        let instances = plan["instances"].as_array().unwrap();
+        let with_host = instances
+            .iter()
+            .find(|i| i["launch_name"].as_str() == Some("/robot_a/talker_a"))
+            .or_else(|| instances.iter().find(|i| i["host_id"].is_string()))
+            .expect("instance with machine");
+        assert_eq!(with_host["host_id"], json!("robot1"));
+
+        // The machine-less node omits host_id entirely.
+        let without = instances
+            .iter()
+            .find(|i| i["host_id"].is_null() || i.get("host_id").is_none())
+            .expect("a host_id-less instance");
+        assert!(without.get("host_id").is_none(), "host_id should be omitted when no machine");
     }
 
     /// Phase 211.H — end-to-end planner: a launch `<param qos_overrides…>` (as
