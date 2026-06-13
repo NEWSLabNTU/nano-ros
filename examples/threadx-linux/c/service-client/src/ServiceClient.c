@@ -1,26 +1,85 @@
 /// @file ServiceClient.c
-/// @brief ThreadX Linux C service client component — declarative Node pkg (Phase 244 D6).
+/// @brief ThreadX-Linux C AddTwoInts service client — typed poll component (RFC-0043).
 ///
-/// Calls `example_interfaces/AddTwoInts` on `/add_two_ints`. The generated
-/// runtime (emitted by `nros_threadx_codegen_system`) owns init / executor /
-/// spin; this file declares the node + service client and exports the register
-/// trampoline via `NROS_NODE_REGISTER`.
+/// `client_configure` creates a service client + a timer that polls: each cycle
+/// sends a request (a, b) and polls the reply, printing the sum. (Poll model —
+/// clients move to callbacks when RFC-0041's C/C++ wave lands.)
 
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
-#include <nros/node_pkg.h>
+#include <nros/component.h>
 
-#include "example_interfaces.h"
+typedef struct {
+    _Alignas(8) uint8_t storage[NROS_C_SERVICE_CLIENT_STORAGE_SIZE];
+    void* executor;
+    int64_t a;
+    int64_t b;
+    int awaiting;
+} add_client_t;
 
-static nros_ret_t register_service_client(nros_node_context_t *ctx) {
-    nros_node_pkg_options_t opts = nros_node_pkg_options("c_service_client");
-    nros_declared_node_t node;
-    nros_ret_t r = nros_declared_node_init_with_options(ctx, &opts, &node);
-    if (r != NROS_RET_OK) return r;
-
-    nros_declared_entity_t cli;
-    return nros_declared_node_create_service_client_for_name(
-        &node, &cli, "/add_two_ints", "example_interfaces/srv/AddTwoInts", "");
+static int64_t read_i64_le(const uint8_t* p) {
+    uint64_t v = 0;
+    int i;
+    for (i = 0; i < 8; ++i) {
+        v |= (uint64_t)p[i] << (8 * i);
+    }
+    return (int64_t)v;
 }
 
-NROS_NODE_REGISTER(register_service_client);
+static void write_i64_le(uint8_t* p, int64_t x) {
+    uint64_t v = (uint64_t)x;
+    int i;
+    for (i = 0; i < 8; ++i) {
+        p[i] = (uint8_t)(v >> (8 * i));
+    }
+}
+
+static void on_tick(void* ctx) {
+    add_client_t* self = (add_client_t*)ctx;
+    if (!self->awaiting) {
+        uint8_t req[20];
+        req[0] = 0x00;
+        req[1] = 0x01;
+        req[2] = 0x00;
+        req[3] = 0x00;
+        write_i64_le(req + 4, self->a);
+        write_i64_le(req + 12, self->b);
+        if (nros_cpp_service_client_send_request(self->storage, req, sizeof(req)) == 0) {
+            self->awaiting = 1;
+        }
+        return;
+    }
+    uint8_t resp[64];
+    size_t len = 0;
+    if (nros_cpp_service_client_try_recv_reply(self->storage, resp, sizeof(resp), &len) == 0 &&
+        len >= 12) {
+        int64_t sum = read_i64_le(resp + 4);
+        printf("Response: %lld\n", (long long)sum);
+        self->a++;
+        self->b++;
+        self->awaiting = 0;
+    }
+}
+
+static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
+                                   add_client_t* self) {
+    self->executor = executor;
+    self->a = 1;
+    self->b = 2;
+    int32_t rc =
+        nros_cpp_service_client_create(node, "/add_two_ints", "example_interfaces/srv/AddTwoInts",
+                                       "", nros_c_qos_default(), self->storage);
+    if (rc != 0) {
+        return rc;
+    }
+    size_t timer_handle;
+    rc = nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
+    if (rc == 0) {
+        printf("Sending requests\n");
+    }
+    return rc;
+}
+
+NROS_C_COMPONENT(add_client_t, client_configure)
