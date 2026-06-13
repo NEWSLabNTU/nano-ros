@@ -420,13 +420,23 @@ superproject), and the planner lowers it into `host_id`.
       listener). Seals the full CLI pipeline (launch `machine=` parse →
       `PlanNode.host` → `for_host` → emit). Cross-host *delivery* is already
       proven by `deployed_native_system_e2e` (cross-process pub→sub).
-- [→] **Full 2-process runtime multi-host** — DEFERRED on the macro gap: a
-      runnable per-host entry needs `nros::main!(launch=…, host=…)`, but the
-      `main!()` macro has no `--host` (only the CLI `nros codegen entry` does).
-      Building two runnable per-host entries needs either macro `--host` parity
-      or a build.rs that shells `nros codegen entry --host`. The two halves
-      (bake-partition + cross-process delivery) are independently proven, so
-      this is a runtime-assembly demonstration, not a capability gap.
+- [→] **Full 2-process runtime multi-host** — DEFERRED on a DISTRIBUTION wall
+      (investigated 2026-06-13). The macro `host` filter is a ~20-line change
+      (`MainArgs.host` + `node_specs.retain(machine == host || None)`, mirroring
+      `Plan::for_host`) — written + reverted because it **can't compile**:
+      `nros-macros` git-deps `nros-cli-core` **0.3.7 from the archived/read-only
+      `NEWSLabNTU/nros-cli` repo**, which lacks `NodeSpec.machine`; the in-tree
+      `packages/cli` `nros-cli-core` (0.5.0, where `machine` lives) is NOT
+      consumed by the root workspace (no git-dep `[patch]`, and 0.3.7↔0.5.0 have
+      diverged). So macro `--host` is gated on the bigger build-architecture
+      task: migrate `nros-macros`' `nros-build`/`nros-cli-core` dep from the
+      archived git to in-tree `packages/cli` (tree-wide, API-divergence risk
+      across every consumer + the example workspaces' own git pins — maintainer
+      territory). Until then, per-host runnable entries go via a build.rs that
+      shells the in-tree `nros codegen entry --host` (the CLI path, which works).
+      The two halves (bake-partition + cross-process delivery) are independently
+      proven, so this is a runtime-assembly + distribution step, not a
+      capability gap.
 - [ ] **`nros.toml` host targets (optional)** — model each host as a
       `[deploy.<id>]` target so a multi-host system maps `--host` bakes onto
       deploy targets via `scaffold_deploy`. Convenience over the bare
