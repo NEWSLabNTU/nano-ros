@@ -95,12 +95,16 @@ call any of the 285. So the C++ umbrella **must** bundle `nros-c` as an rlib dep
 and **force-link its full C surface** — `nros-cpp` referencing only the 43 it uses
 would let DCE drop the rest from `libnros_cpp.a`.
 
-Force-link mechanism: `nros-c` carries an internal `#[used] static` anchor array of
-its public `extern "C"` fn pointers (a generated `force_link.rs`), so its no_mangle
-surface is retained whenever the crate is bundled as an rlib — not just when it is
-the staticlib root. (`pub use`-ing 285 symbols from the consumer is impractical.)
-The C link path is unaffected — there `nros-c` is the root and keeps them anyway,
-but the anchor is harmless and keeps both paths uniform.
+Force-link mechanism (revised 2026-06-13): **`--whole-archive` on the single
+umbrella archive** at the cmake link, not a generated Rust anchor. Whole-archiving
+`libnros_cpp.a` includes every member — the full C surface from the bundled
+`nros-c`, the C++ FFI, and the backend `.init_array` ctor — and because it is the
+**only** Rust archive on the link line (cyclone is C++, carrying no Rust std), the
+std symbols appear exactly once: no duplicate, no `--allow-multiple-definition`,
+no 285-symbol anchor to maintain. (Native C++ examples make zero raw C-API calls,
+but user C++ may, so retaining the full surface is the robust default.) The backend
+`pub use register` force-link in `nros-c::rmw_backend` stays as belt-and-suspenders
+for any non-whole-archive consumer (e.g. the host dup-symbol fixture).
 
 ## Work items
 

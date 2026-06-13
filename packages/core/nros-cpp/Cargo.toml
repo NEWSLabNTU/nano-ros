@@ -23,34 +23,24 @@ std = [
     "nros/std",
     "nros-node/std",
     "nros-rmw/std",
+    "nros-c/std",
 ]
-alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
+alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc", "nros-c/alloc"]
 
-# RMW backend (select via cargo dep, not feature) — every backend
-# ships as a cffi shim that installs a C vtable into
-# `nros-rmw-cffi`'s runtime registry via the `RMW_INIT_ENTRIES`
-# linker section.
-rmw-cffi = ["nros/rmw-cffi"]
-# Phase 128.C.3 — `rmw-{zenoh,xrce,dds}-cffi` features kept here
-# because each one is the only way to pull the matching `dep:nros-rmw-*`
-# optional dep into `nros-cpp`'s graph. The features no longer reach
-# `nros/rmw-*-cffi` (those were deleted); they just toggle
-# `rmw-cffi` plus the per-backend optional dep.
-rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
-# Phase 169.4 — generic DDS CFFI feature removed; the DDS path goes
-# through Cyclone (Phase 169.5 shim).
-# Phase 161 — mirror nros-c's Phase 134.fix: drop `dep:nros-rmw-zenoh`.
-# Pulling the rlib bundled a duplicate copy of nros-rmw-zenoh's entire
-# dependency closure (including a second zenoh-pico C build) into
-# `libnros_cpp.a`. Whichever side the linker picks for the public
-# no_mangle entry points may reference the OTHER side's zenoh-pico
-# structs through the FFI boundary, producing runtime layout / size
-# mismatches that surface as `nros::init -> -100 TransportError` on
-# the FreeRTOS C++ E2E tests (Phase 161 root cause). The
-# `nros_rmw_zenoh_register` C symbol is resolved at the C-binary link
-# step exclusively from `libnros_rmw_zenoh.a` (the standalone
-# staticlib emitted by `nano_ros_link_rmw(... RMW zenoh)`).
-rmw-zenoh-cffi = ["rmw-cffi"]
+# Phase 241.D3-rev — single-runtime umbrella. `nros-cpp` bundles `nros-c` (the C
+# ABI + the cffi shim + the force-linked backend) as an rlib dep, so `libnros_cpp.a`
+# is the ONE Rust staticlib a C++ binary links: the C++ FFI + the full C ABI + the
+# backend + one `std`. Backend selection forwards to `nros-c`'s umbrella features
+# (its `rmw_backend` ctor does the auto-register); `nros-cpp` no longer pulls a
+# backend rlib directly. Reverts Phase 161's drop, mirroring nros-c's W2.
+rmw-cffi = ["nros/rmw-cffi", "nros-c/rmw-cffi"]
+# The backend is also a DIRECT dep here (`dep:`) so nros-cpp's own `rmw_backend`
+# module can force-link it: nros-cpp is the staticlib root, and a `#[used]` anchor
+# living in the `nros-c` dependency is DCE'd before nros-cpp's archive is emitted.
+# cargo dedups the backend rlib with nros-c's, so this adds no second closure.
+rmw-zenoh-cffi = ["rmw-cffi", "nros-c/rmw-zenoh", "dep:nros-rmw-zenoh"]
+rmw-xrce-cffi = ["rmw-cffi", "nros-c/rmw-xrce", "dep:nros-rmw-xrce-cffi"]
+rmw-cyclonedds-cffi = ["rmw-cffi", "nros-c/rmw-cyclonedds"]
 
 # Phase 124.A — zero-copy publisher/subscriber loan ABI exposed
 # through the C++ FFI (`nros_cpp_publisher_loan` / `_commit` /
@@ -71,38 +61,38 @@ xrce-serial = ["nros/xrce-serial"]
 # `,alloc` alongside `platform-<rtos>`.
 platform-posix = [
     "nros/platform-posix",
-    "nros-rmw-zenoh?/platform-posix",
+    "nros-c/platform-posix",
 ]
 platform-zephyr = [
     "alloc",
     "nros/platform-zephyr",
     "dep:critical-section",
-    "nros-rmw-zenoh?/platform-zephyr",
+    "nros-c/platform-zephyr",
 ]
 platform-freertos = [
     "alloc",
     "nros/platform-freertos",
-    "nros-rmw-zenoh?/platform-freertos",
+    "nros-c/platform-freertos",
 ]
 platform-nuttx = [
     "alloc",
     "nros/platform-nuttx",
-    "nros-rmw-zenoh?/platform-nuttx",
+    "nros-c/platform-nuttx",
 ]
 platform-threadx = [
     "alloc",
     "nros/platform-threadx",
-    "nros-rmw-zenoh?/platform-threadx",
+    "nros-c/platform-threadx",
 ]
 
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = [
     "nros/ros-humble",
-    "nros-rmw-zenoh?/ros-humble",
+    "nros-c/ros-humble",
 ]
 ros-iron = [
     "nros/ros-iron",
-    "nros-rmw-zenoh?/ros-iron",
+    "nros-c/ros-iron",
 ]
 
 # Bare-metal panic handler (enables building staticlib without std)
@@ -120,13 +110,19 @@ alloc-stats = ["dep:zpico-alloc", "zpico-alloc/stats"]
 [dependencies]
 nros = { version = "0.5.0", path = "../nros", default-features = false }
 nros-node.workspace = true
+# Phase 241.D3-rev — bundle the C umbrella as an rlib so `libnros_cpp.a` carries the
+# full C ABI + the cffi shim + the force-linked RMW backend (one archive, one std).
+# Replaces the separate `libnros_c.a` + backend-staticlib links and nros-cpp's own
+# optional backend deps.
+nros-c = { version = "0.5.0", path = "../nros-c", default-features = false }
 # Phase 88.12 — `nros_cpp_node_get_logger` returns `&'static nros_log::Logger`.
 nros-log = { workspace = true }
 nros-platform = { workspace = true, default-features = false }
 nros-rmw = { version = "0.5.0", path = "../nros-rmw", default-features = false }
-nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
-# Phase 169.4 — DDS retired. Dep removed.
+# Backend deps for nros-cpp's own root-crate force-link (`src/rmw_backend.rs`);
+# shared with nros-c's copy by cargo (one backend rlib).
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
+nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 # Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.
 zpico-alloc = { path = "../../zpico/zpico-alloc", optional = true, default-features = false }
 panic-halt = { version = "1", optional = true }
