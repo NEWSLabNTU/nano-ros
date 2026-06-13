@@ -32,16 +32,23 @@ echo "[zephyr setup] applying Phase 11W.7 cyclonedds log eager-flush patch (idem
 bash ./scripts/zephyr/cyclonedds-zephyr-log-flush-patch.sh
 echo "[zephyr setup] applying Phase 11W.7/.8 cyclonedds udp sockopt patch (idempotent)..."
 bash ./scripts/zephyr/cyclonedds-zephyr-udp-rcvbuf-patch.sh
+# NSOS (Native Simulator Offloaded Sockets) patches edit the consumer's
+# Zephyr tree — they MUST get "$WORKSPACE". Called bare, they fall back to
+# nano-ros's in-tree `../nano-ros-workspace` default, which does not exist for
+# a downstream consumer (a board-provisioning run via `nros setup board`).
+# These edit native_sim driver files (nsos_*.c/h) that exist in stock Zephyr
+# regardless of board, so they apply idempotently and are inert for non-
+# native_sim targets (e.g. FVP, which does not compile the NSOS driver).
 echo "[zephyr setup] applying Phase 11W.8 NSOS getsockname patch (idempotent)..."
-bash ./scripts/zephyr/nsos-getsockname-patch.sh
+bash ./scripts/zephyr/nsos-getsockname-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.10 NSOS recvmsg patch (idempotent)..."
-bash ./scripts/zephyr/nsos-recvmsg-patch.sh
+bash ./scripts/zephyr/nsos-recvmsg-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.11 NSOS mcast-join dual-mreq patch (idempotent)..."
-bash ./scripts/zephyr/nsos-mcjoin-mreq-patch.sh
+bash ./scripts/zephyr/nsos-mcjoin-mreq-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.12 NSOS getifaddrs patch (idempotent)..."
-bash ./scripts/zephyr/nsos-getifaddrs-patch.sh
+bash ./scripts/zephyr/nsos-getifaddrs-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.12 NSOS adapt IPPROTO_IP setsockopt patch (idempotent)..."
-bash ./scripts/zephyr/nsos-adapt-ipproto-ip-patch.sh
+bash ./scripts/zephyr/nsos-adapt-ipproto-ip-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.8 cyclonedds multicast-join best-effort patch (idempotent)..."
 bash ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
 echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."
