@@ -9,9 +9,36 @@ multi-host, mixed-RMW). The parser layer is strong (260 tests, Autoware
 100 %); the **planner consumption** + the **in-tree fixture coverage** +
 the **runtime-interop story** are where the gaps sit.
 
-**Status.** Proposed (2026-05-31). Survey done — see the gap list below;
-priorities are concrete (each item maps to a missing fixture or a missing
-planner field).
+**Status.** Re-scoped 2026-06-13 (was Proposed 2026-05-31). The
+parser/planner spine + most fixtures LANDED (211.A core, B-planner, C, D, E,
+I, J — all `[x]`). The remaining work was re-scoped against the current design
+(RFC-0043 typed entry + the board/`[deploy.<name>]` model) — see **Design drift
+& re-scope** below. Net: the deploy-verb-centric bullets are superseded; three
+genuine production gaps (multi-host, `nros test`, qos_overrides) + the
+real-ROS-workspace acceptance remain.
+
+## Design drift & re-scope (2026-06-13)
+
+This phase was written (2026-05-31) against an orchestration tail that assumed a
+runtime **`nros deploy <name>`** verb generating an entry crate whose components
+were resolved by the type-erased `__nros_component_<pkg>_register` interpreter.
+Two design moves since then change the tail (the parser→planner→`nros-plan.json`
+spine is unchanged + still current):
+
+1. **No `nros deploy` runtime verb.** Deploy is now a `nros.toml`
+   `[deploy.<name>]` target table (SSOT; `nros new --deploy` scaffolds it,
+   `nros check` validates it) + the board/platform build that produces and runs
+   the binary. The CLI verbs are `nros plan` / `check` / `explain` /
+   `codegen[-system]` / `metadata` — there is no `deploy` command. Every
+   "`nros deploy` second-stage" bullet below (211.A, 211.D, parts of 211.F) is
+   therefore **superseded** — re-targeted onto the entry-pkg + board build.
+2. **RFC-0043 typed entry replaced the register-symbol interpreter.** A planned
+   system bakes to a typed entry (`emit_typed` → `Board::run_components`
+   constructing each component + `configure(node)`), NOT a `register`-symbol
+   interpreter. The **211.B runtime "one-process-many-nodes"** item is realized
+   by the typed multi-node entry (`cpp_multi_node_entry_typed` —
+   `multi_node_workspace_cpp_typed_pubsub_e2e`: 2 nodes, 1 PID) — **superseded /
+   done elsewhere** (phase-240/242).
 
 > **Post-Phase-218**: References to `scripts/install-nros.sh` pin
 > bumps below predate the Phase 218 monorepo merge. The CLI now lives
@@ -44,13 +71,19 @@ Today's orchestration pipeline:
        ▼
    nros-plan.json   ─── + nros.toml overlay (rmw, domain_id, lifecycle{autostart}, params)
        │
-       │  nros-cli-core::orchestration::generate
+       │  emit_typed (RFC-0043) — one component class + configure() per node
        ▼
-   generated entry crate   ─── compile / west build / vendor-module emit
+   typed entry (Board::run_components)   ─── compile / west build / vendor-module emit
        │
+       │  nros.toml [deploy.<name>] target (SSOT) + board/platform build
        ▼
-   `nros deploy <name>` → runs the binary / sim / hardware target
+   binary / sim / hardware target runs the components
 ```
+
+> NOTE (2026-06-13): the old tail read "generated entry crate → `nros deploy
+> <name>` runs the binary". There is no `nros deploy` verb; the entry is a TYPED
+> entry (RFC-0043) and the run is driven by the `[deploy.<name>]` target + the
+> board build. See **Design drift & re-scope** above.
 
 The pipeline carries the **happy path** (one or more nodes per package,
 parameters + remappings, lifecycle autostart, deploy-target switch). Real
@@ -86,7 +119,7 @@ launch-file features ────────────┤  play_launch_parser
                                             │ nros-plan.json
                                             ▼
                                  ┌──────────────────────┐
-                                 │  generated entry lib │
+                                 │ typed entry (RFC-43) │  emit_typed → Board::run_components
                                  └──────────┬───────────┘
                                             │ rmw vtable (zenoh / xrce / cyclonedds)
                                             ▼
@@ -126,11 +159,15 @@ regression until the next nros-cli release picks it up.
       `build.rmw = zenoh` / `build.target = x86_64-unknown-linux-gnu` pin.
 - [x] **Skip cleanly** when the `nros` CLI isn't on PATH (`require_nros_cli`
       helper added to `nros-tests::lib`, mirrors `require_xrce_agent`).
-- [ ] **`nros deploy native` second-stage** — start the resulting binary →
-      assert "Published:" in stdout. Deferred: requires the demo_pkg crate
-      to actually compile + an FFI exported `nros_component_talker` symbol;
-      the plan-only stage is enough to gate planner regressions, the build
-      stage rolls into 211.B's executor-driven container e2e.
+- [→] **`nros deploy native` second-stage** — **SUPERSEDED (2026-06-13).** Was:
+      "start the resulting binary → assert Published, once demo_pkg compiles +
+      exports `nros_component_talker`". Both premises are retired — there is no
+      `nros deploy` verb, and the `nros_component_*` register-symbol was replaced
+      by the RFC-0043 typed entry. The build-and-run-it leg is now covered by the
+      typed multi-node entry e2e (`multi_node_workspace_cpp_typed_pubsub_e2e`,
+      phase-240/242): a planned multi-node system bakes a typed entry that runs
+      N components in one process. The plan-only gate here (`orchestration_e2e`)
+      stays the planner-regression guard.
 - **Files:** `packages/testing/nros-tests/fixtures/orchestration_e2e/*`,
   `packages/testing/nros-tests/tests/orchestration_e2e.rs`,
   `packages/testing/nros-tests/src/lib.rs` (`nros_cli_bin_path`, `require_nros_cli`),
@@ -156,12 +193,17 @@ on a single container hosting many nodes for intra-process zero-copy.
       `rclcpp_components::component_container` aren't nros
       components). Per-child parameters / remaps unchanged. Gated by
       `composable_container_plan_shape`.
-- [ ] **Runtime: one-process-many-nodes** — `Executor::open` +
-      `executor.create_node(name)` already supports N nodes per process
-      (Phase 172 W.5). Add an executor unit + per-RMW build fixture
-      that exercises 2 composable libraries linked into one container
-      binary and asserts both publish from the same PID. Now unblocked
-      (planner-side `kind` / `container_id` landed) but separate work.
+- [x] **Runtime: one-process-many-nodes** — **DONE via RFC-0043 typed entry
+      (2026-06-13).** Was framed as "2 composable libraries in one container
+      binary, both publish from the same PID". The typed multi-node entry
+      realizes exactly this: `emit_typed` bakes N component classes into one
+      entry, `Board::run_components` constructs + `configure`s each and pumps
+      them on a single `spin_once` loop. Gated by
+      `multi_node_workspace_cpp_typed_pubsub_e2e` (two robot_entry components,
+      one process, both publish — ≥1 Received asserted) +
+      `cpp_multi_node_entry_typed`. The `<composable_node>`-specific intra-process
+      zero-copy optimization is a separate future item (not a launch-completeness
+      gap; tracked wherever intra-process transport lands).
 - [x] **Fixture:** `packages/testing/nros-tests/fixtures/orchestration_composable/`
       mirrors the multi-component layout (`nros/components/{talker,listener}.toml`)
       with a `<node_container>` + 2 `<composable_node>` children sharing a
@@ -264,11 +306,10 @@ that audit — the gap was the missing in-tree gate, not a planner change.
       records (`record-false.json` + `record-true.json` — outputs of
       `play_launch_parser` with the corresponding `enable_logger:=<bool>`)
       decouple the test from the parser binary on PATH.
-- [→] **`nros deploy` second-stage** — the original bullet said "two
-      `nros deploy` runs". Deferred behind 211.A's deferred deploy
-      stage: needs the demo_cond crate to actually compile + exported
-      `nros_component_*` symbols. The plan-shape gate above already
-      catches every planner-side regression of 211.D's listed behavior.
+- [→] **`nros deploy` second-stage** — **SUPERSEDED (2026-06-13)** with 211.A's
+      (no `nros deploy` verb; register-symbol retired → typed entry). The
+      plan-shape gate above already catches every planner-side regression of
+      211.D's listed behavior; build-and-run is the typed-entry e2e's job.
 - **Files:**
   *(this tree)*
   `packages/testing/nros-tests/fixtures/orchestration_conditionals/*`,
@@ -327,16 +368,24 @@ ROS 2 launches with `<node machine="robot">` route the node to a remote
 host. nano-ros today plans one host at a time. A real production launch
 (simulator on workstation + autopilot on Jetson) needs this.
 
-- [ ] **Schema** — extend `nros-plan.json` `entities[*]` with an optional
-      `host_id`; new `nros.toml` `[host.<id>]` blocks (ssh target,
-      deploy kind override).
-- [ ] **`nros deploy --all-hosts`** — run the per-host deploy in
-      parallel (or serial — see e2e); each host gets only its own
-      entities + the bridge config.
-- [ ] **Fixture + e2e** — single-machine *simulated* multi-host using
-      two domain-isolated processes (no real ssh needed for CI).
-- **Files:** `nros-cli` planner + cmd + generate; nano-ros side: nothing
-  new — already supports cross-process via rmw.
+**STILL RELEVANT — re-scoped onto the current design (2026-06-13).** No
+`nros deploy` verb, so the runtime split is per-host `[deploy.<id>]` targets +
+the board build, not a `deploy --all-hosts` flag.
+
+- [ ] **Schema** — extend `nros-plan.json` `instances[*]` with an optional
+      `host_id` (additive, `skip_serializing_if`), parsed from the launch
+      `machine="…"` attr `play_launch_parser` already records.
+- [ ] **`nros.toml` host targets** — model each host as a `[deploy.<id>]` target
+      (the existing SSOT table — kind `self`/vendor, board, ssh/target override)
+      rather than a new `[host.<id>]` block; a multi-host system maps its
+      `host_id` partitions onto these deploy targets. Reuse `scaffold_deploy`.
+- [ ] **Per-host bake** — `nros plan` partitions instances by `host_id`; each
+      partition bakes its own typed entry for its `[deploy.<id>]` target (each
+      host runs only its own components + the bridge config). No new runtime verb.
+- [ ] **Fixture + e2e** — single-machine *simulated* multi-host: two
+      domain-isolated processes (no real ssh needed for CI).
+- **Files:** `nros-cli` planner (`host_id` partition) + the entry emit; nano-ros
+  side: nothing new — cross-process already works via rmw.
 
 ### 211.G — `launch_testing` equivalent assertion harness
 
@@ -344,16 +393,22 @@ ROS 2 `launch_testing` lets you assert "topic X publishes ≥ N Hz for ≥ T s",
 "node enters Active in ≤ T s". nano-ros has no equivalent — every e2e
 hand-rolls the assertion.
 
-- [ ] **`nros test <plan>`** subcommand — accepts a `.test.yaml` next to
-      the plan with assertion entries (topic_rate, lifecycle_state,
-      service_response, log_match). Starts the deploy, waits, asserts.
-- [ ] **Fixture:** `nros-cli/testing_workspaces/launch_testing_e2e/`
-      with a `system.test.yaml`.
+**STILL RELEVANT — no `test` verb exists today (2026-06-13).** This is a NEW
+`nros` subcommand; the runner builds the system's typed entry (board build) +
+runs it, rather than calling a non-existent `nros deploy`.
+
+- [ ] **`nros test <system>`** subcommand — accepts a `.test.yaml` next to the
+      bringup with assertion entries (topic_rate, lifecycle_state,
+      service_response, log_match). Resolves the plan, builds + runs the typed
+      entry for the `self`/native `[deploy.<name>]` target, waits, asserts.
+- [ ] **Fixture:** an in-tree `packages/testing/nros-tests/fixtures/launch_testing_e2e/`
+      with a `system.test.yaml` (the nros-cli `testing_workspaces/` location
+      predates the 218 monorepo merge — keep the fixture in-tree).
 - [ ] **Reuse the existing `wait_for_output_pattern` + `count_pattern`
-      machinery** in nros-tests; expose them as a Rust crate the
-      `nros test` runner links.
-- **Files:** `nros-cli/packages/nros-cli-core/src/cmd/test.rs` + the
-  matching Rust assertion crate, mirror fixture.
+      machinery** in nros-tests; expose them as a Rust crate the `nros test`
+      runner links.
+- **Files:** `packages/cli/nros-cli-core/src/cmd/test.rs` (new verb, wire in
+  `cmd/mod.rs`) + the matching Rust assertion crate + the in-tree fixture.
 
 ### 211.H — DDS `qos_overrides` from launch arg
 
@@ -362,11 +417,16 @@ and an argument `qos_overrides_file`. The nano-ros planner doesn't
 surface these to the runtime — a user porting an existing launch can't
 override QoS per-topic.
 
+**STILL RELEVANT — no coverage today (2026-06-13); self-contained, validatable
+in-tree.** Unaffected by the deploy-verb drift (planner field + runtime QoS slot).
+
 - [ ] **Planner:** parse `qos_overrides.<topic>.<role>.<setting>`
-      parameter prefixes into a `qos_overrides` per-entity block.
+      parameter prefixes into a `qos_overrides` per-entity block on
+      `nros-plan.json`; thread it through the typed-entry emit so each
+      pub/sub binding carries its override.
 - [ ] **Runtime:** `nros-node` honours the override when constructing the
       publisher / subscriber (today QoS is the Rust-API default).
-- [ ] **Fixture + e2e** — deploy with default QoS (best-effort) +
+- [ ] **Fixture + e2e** — run with default QoS (best-effort) +
       qos_overrides file (reliable) → assert reliable counters increment
       in the rmw layer.
 - **Files:** `nros-cli` planner + `packages/core/nros-node/src/qos.rs`
@@ -465,24 +525,33 @@ flipped on:
 
 ## Acceptance
 
-- [ ] In-tree `nros-tests` exercises the full plan→deploy→assert pipeline
-      without depending on `nros-cli`'s own test suite (211.A).
-- [ ] Composable-node container deploys as ONE process hosting N node
-      handles (211.B).
-- [ ] At least one `ros2 <subcommand>` host-CLI round-trip is e2e-proven
-      against a nano-ros deploy (211.C — param OR lifecycle OR topic).
-- [ ] Conditional-node deploy works both branches (211.D).
-- [ ] A real ROS 2 workspace fixture (rclcpp samples or a vendored
-      `demo_nodes_cpp` package) — NOT a synthetic `demo_pkg` —
-      `nros plan`s + `nros deploy`s + publishes. This is the "real ROS
-      production" claim, end-to-end. Lives behind the same skip-on-missing
-      pattern as the other interop tests.
+- [x] In-tree `nros-tests` exercises the plan→assert pipeline without depending
+      on `nros-cli`'s own test suite (211.A — `orchestration_e2e` + the
+      per-feature `orchestration_*` gates).
+- [x] One process hosts N node handles (211.B) — realized by the RFC-0043 typed
+      multi-node entry (`multi_node_workspace_cpp_typed_pubsub_e2e`); the
+      `<composable_node>` intra-process zero-copy optimization is separate.
+- [x] At least one `ros2 <subcommand>` host-CLI round-trip is e2e-proven against
+      a nano-ros node (211.C — param + lifecycle + topic-rate all covered).
+- [x] Conditional-node plan works both branches (211.D — plan-shape gates).
+
+**Remaining (re-scoped onto the current entry/board model):**
+
+- [ ] Multi-host: a system with `machine="…"` partitions onto per-host
+      `[deploy.<id>]` targets, each baking its own typed entry (211.F).
+- [ ] `nros test <system>` assertion harness — a real new verb (211.G).
+- [ ] Per-topic `qos_overrides` from launch honored at runtime (211.H).
+- [ ] A real ROS 2 workspace fixture (e.g. vendored `demo_nodes_cpp`) — NOT a
+      synthetic `demo_pkg` — `nros plan`s, bakes a typed entry for the native
+      `[deploy.<name>]` target, builds + publishes. The "real ROS production"
+      claim, end-to-end, behind the usual skip-on-missing-`ros2` gate.
 
 ## Notes
 
-- Most items split across nano-ros + nros-cli. nros-cli changes need a
-  release + the `scripts/install-nros.sh` pin bump in nano-ros (Phase 207
-  exercised that flow twice).
+- Post-Phase-218 the CLI is in-tree at `packages/cli/` (build via
+  `just setup-cli`); planner/`nros test` changes land there directly — no
+  release + pin-bump dance. The pre-218 `scripts/install-nros.sh` flow the
+  earlier draft assumed is retired.
 - The vendored `play_launch_parser` already supports far more than the
   planner consumes — this phase is mostly "consume what's already
   parsed" + "add the in-tree fixture coverage to prove it works".
