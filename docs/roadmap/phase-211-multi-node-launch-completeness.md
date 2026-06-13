@@ -39,6 +39,12 @@ spine is unchanged + still current):
    by the typed multi-node entry (`cpp_multi_node_entry_typed` —
    `multi_node_workspace_cpp_typed_pubsub_e2e`: 2 nodes, 1 PID) — **superseded /
    done elsewhere** (phase-240/242).
+3. **`nros` is never a build/test/flash verb (RFC-0024 §4).** "nros =
+   provisioner + codegen + metadata. Idf.py-shaped, not colcon-shaped." So the
+   earlier **211.G `nros test`** subcommand is out of scope — the
+   `launch_testing`-equivalent harness lives in the `just` + `nros-tests`
+   runtime/test layer; the CLI contributes only codegen (it may *emit* a test
+   scaffold, never *run* one). Re-scoped below.
 
 > **Post-Phase-218**: References to `scripts/install-nros.sh` pin
 > bumps below predate the Phase 218 monorepo merge. The CLI now lives
@@ -393,22 +399,35 @@ ROS 2 `launch_testing` lets you assert "topic X publishes ≥ N Hz for ≥ T s",
 "node enters Active in ≤ T s". nano-ros has no equivalent — every e2e
 hand-rolls the assertion.
 
-**STILL RELEVANT — no `test` verb exists today (2026-06-13).** This is a NEW
-`nros` subcommand; the runner builds the system's typed entry (board build) +
-runs it, rather than calling a non-existent `nros deploy`.
+**STILL RELEVANT — but NOT an `nros` verb (2026-06-13 correction).**
+RFC-0024 §4 is explicit: **"nros never a build verb. No `nros build` / `nros
+test` / `nros flash`. nros = provisioner + codegen + metadata."** The earlier
+draft's `nros test <plan>` subcommand violates that boundary. The CLI's only
+contribution here is **codegen** (it already emits the plan/typed entry; it may
+additionally *emit* a test-entry scaffold from a `.test.yaml`). **Running the
+deploy + asserting is a runtime/test-layer job** — it lives in `just` + the
+`nros-tests` harness, mirroring `idf.py`-shaped tooling (build tool ≠ test
+runner), not in `nros`.
 
-- [ ] **`nros test <system>`** subcommand — accepts a `.test.yaml` next to the
-      bringup with assertion entries (topic_rate, lifecycle_state,
-      service_response, log_match). Resolves the plan, builds + runs the typed
-      entry for the `self`/native `[deploy.<name>]` target, waits, asserts.
-- [ ] **Fixture:** an in-tree `packages/testing/nros-tests/fixtures/launch_testing_e2e/`
-      with a `system.test.yaml` (the nros-cli `testing_workspaces/` location
-      predates the 218 monorepo merge — keep the fixture in-tree).
+- [ ] **Assertion schema** — a `.test.yaml` next to the bringup with entries
+      (topic_rate, lifecycle_state, service_response, log_match). Language-/
+      tool-agnostic data, like the rest of the bringup inputs.
+- [ ] **Runner = `just` recipe + `nros-tests` crate, NOT a CLI verb** — a
+      `just <plat> test-system <bringup>` recipe (or an `nros-tests` harness
+      entry) builds the system's typed entry via the normal board build, runs
+      it, and asserts the `.test.yaml`. The build + run + assert stay in the
+      test layer; `nros` is only invoked for `plan` / `codegen`.
+- [ ] **(optional) codegen seam** — IF the `.test.yaml` needs build-time
+      lowering (e.g. bake expected topic names into a generated assertion
+      entry), that lowering is a `nros codegen` task; it still does not *run*
+      anything.
+- [ ] **Fixture:** in-tree `packages/testing/nros-tests/fixtures/launch_testing_e2e/`
+      with a `system.test.yaml`.
 - [ ] **Reuse the existing `wait_for_output_pattern` + `count_pattern`
-      machinery** in nros-tests; expose them as a Rust crate the `nros test`
-      runner links.
-- **Files:** `packages/cli/nros-cli-core/src/cmd/test.rs` (new verb, wire in
-  `cmd/mod.rs`) + the matching Rust assertion crate + the in-tree fixture.
+      machinery** in `nros-tests`; factor it into a small assertion crate the
+      `just`/harness runner links.
+- **Files:** `nros-tests` assertion crate + `just/*.just` recipe + the in-tree
+  fixture. **No `cmd/test.rs`** — that would re-introduce the forbidden verb.
 
 ### 211.H — DDS `qos_overrides` from launch arg
 
@@ -539,7 +558,9 @@ flipped on:
 
 - [ ] Multi-host: a system with `machine="…"` partitions onto per-host
       `[deploy.<id>]` targets, each baking its own typed entry (211.F).
-- [ ] `nros test <system>` assertion harness — a real new verb (211.G).
+- [ ] `launch_testing`-equivalent assertion harness (211.G) — a `just` +
+      `nros-tests` runtime runner over a `.test.yaml`, NOT an `nros` verb
+      (RFC-0024 §4: nros is never a build/test verb).
 - [ ] Per-topic `qos_overrides` from launch honored at runtime (211.H).
 - [ ] A real ROS 2 workspace fixture (e.g. vendored `demo_nodes_cpp`) — NOT a
       synthetic `demo_pkg` — `nros plan`s, bakes a typed entry for the native
