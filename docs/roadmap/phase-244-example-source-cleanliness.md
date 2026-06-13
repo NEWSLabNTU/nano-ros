@@ -56,7 +56,7 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   `loopback_transport_ops(capacity)` + `tcp_transport_ops(target)` factories (+ C
   mirrors) over the existing vtable, so examples replace 50+ lines with one call.
   **Blocks:** D4.
-- [ ] **E3 — action protocol-type auto-registration. MISSING → build (codegen +
+- [x] **E3 — action protocol-type auto-registration — DONE (merged 7ab43a699). build (codegen +
   regen; design-complete, needs a clean build env).** Implementation-ready plan
   (verified 2026-06-13). The example hand-registers 3 **fixed** ROS-2 action-
   protocol types before `create_action_server/client`
@@ -244,7 +244,7 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   `use esp_backtrace as _;`/`esp_app_desc!()` (`:22,27`), `nros_rmw_zenoh::register()`
   (`:71`), hardcoded MAC/IP + `esp_println` + smoltcp diagnostics (`:32,36,55`).
   Network → deploy metadata (E5); logging → agnostic `nros::log!`.
-- [~] **D3 — DONE pending CI (2026-06-13). Needs E3 (landed).**
+- [x] **D3 — DONE (merged; locally validated xrce+zenoh roundtrips 8/8). Needs E3 (landed).**
   - **action leg** — folded into E3d: action-server/client manual
     `#[cfg(rmw-cyclonedds)]` registration blocks + `dep:*` removed; the framework
     (`RosAction::register_protocol_types`) auto-registers.
@@ -321,7 +321,7 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
     single `[deploy]` rmw). So the bridge's `register()` + per-node `.rmw()` are
     **functional requirements**, recategorised from leak → accepted residual.
   Leaks P3/P7 (px4 stub cleared). (px4 Rust is `minor` — manual executor.)
-- [~] **D6 — all 6 threadx-linux C migrated + compiled (2026-06-13); pending CI.**
+- [x] **D6 — DONE (merged; all 6 threadx-linux C migrated; threadx_linux cell green).**
   Hand-wired `main.c` → thin entry + `src/<Role>.c` declarative component
   (`NROS_NODE_REGISTER`) + `nano_ros_node_register(LANGUAGE C DEPLOY threadx-linux)`
   — matches the (already-clean) threadx-linux C++ shape; all 6 build
