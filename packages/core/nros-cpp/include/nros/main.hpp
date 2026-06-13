@@ -1163,6 +1163,69 @@ class NuttxBoard {
     }
 };
 
+/// Phase 245 — Azure RTOS ThreadX board adapter for the baked
+/// `nros_system_main` (C/C++ declarative components on bare-metal).
+///
+/// Lifecycle-identical to [`NuttxBoard`]: by the time this runs we are
+/// **already inside the ThreadX application thread** (the board's C
+/// `startup.c::main` called `tx_kernel_enter()` and the app thread dispatches
+/// to the baked entry), and NetX Duo is already up — so `run` MUST NOT enter
+/// the kernel. It just brings the nros runtime online and spins:
+/// `network_wait` (weak no-op — NetX is up at boot) → `nros::init` →
+/// `entry_register` (installs the real `EntryNodeRuntime` ops + runs the
+/// generated component register sequence) → `runtime.spin()` (the synthesizing
+/// interpreter that fires timer-bound publishers) → `shutdown`.
+///
+/// Same `detail::EntryNodeRuntime` machinery as Native/Zephyr/NuttX — only the
+/// (absent) kernel-entry + the compile-time domain id differ. Domain id is
+/// `NROS_ENTRY_DOMAIN_ID` (embedded: compile-time, never env — CLAUDE.md).
+class ThreadxBoard {
+  public:
+    /// Run the Entry lifecycle with an explicit connect `locator` (the baker
+    /// bakes `tcp/10.0.2.2:<port>` for QEMU slirp; `""` → backend discovery).
+    template <typename Lambda> static int32_t run(const char* locator, Lambda&& register_fn) {
+        nros_board_network_wait();
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        if (!r.ok()) {
+            return static_cast<int32_t>(r.raw());
+        }
+        detail::EntryNodeRuntime& runtime = detail::EntryRuntimeHolder<>::runtime;
+        int32_t rc = detail::entry_register(runtime, register_fn);
+        if (rc != 0) {
+            nros::shutdown();
+            return rc;
+        }
+        nros::Result spin_r = runtime.spin();
+        nros::shutdown();
+        return static_cast<int32_t>(spin_r.raw());
+    }
+
+    /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
+    template <typename Lambda> static int32_t run(Lambda&& register_fn) {
+        return run(NROS_ENTRY_LOCATOR, static_cast<Lambda&&>(register_fn));
+    }
+
+    /// RFC-0043 real-executor entry (ThreadX lifecycle, explicit locator).
+    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+        nros_board_network_wait();
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        if (!r.ok()) return static_cast<int32_t>(r.raw());
+        int32_t rc = setup();
+        if (rc != 0) {
+            nros::shutdown();
+            return rc;
+        }
+        int32_t sc = detail::component_spin_loop();
+        nros::shutdown();
+        return sc;
+    }
+
+    /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
+    template <typename Setup> static int32_t run_components(Setup&& setup) {
+        return run_components(NROS_ENTRY_LOCATOR, static_cast<Setup&&>(setup));
+    }
+};
+
 } // namespace board
 } // namespace nros
 
