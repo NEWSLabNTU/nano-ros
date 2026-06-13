@@ -11,13 +11,23 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # (or downstream CMake superbuild) should set NROS_PLATFORM_CFFI_INCLUDE
 # explicitly; default points at the in-tree source layout for convenience
 # when building this project standalone from a checked-out workspace.
+get_filename_component(_nros_platform_api_include
+    "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-api/include" ABSOLUTE)
 if(NOT DEFINED NROS_PLATFORM_CFFI_INCLUDE)
-    get_filename_component(NROS_PLATFORM_CFFI_INCLUDE
-        "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-api/include" ABSOLUTE)
-    set(NROS_PLATFORM_CFFI_INCLUDE "${NROS_PLATFORM_CFFI_INCLUDE}"
-        CACHE PATH "Path to nros-platform-cffi include directory (containing nros/platform.h)")
+    set(NROS_PLATFORM_CFFI_INCLUDE "${_nros_platform_api_include}"
+        CACHE PATH "Path to the nros platform C ABI headers (contains nros/platform.h)")
 endif()
-
+# Self-heal a STALE cache: a build dir configured before phase-243 pins the old
+# header-less `nros-platform-cffi/include` path, and `set(... CACHE ...)` cannot
+# overwrite an existing entry — so the stale value survives a reconfigure. If the
+# resolved path lacks the canonical header, FORCE it back to the in-tree location.
+if(NOT EXISTS "${NROS_PLATFORM_CFFI_INCLUDE}/nros/platform.h")
+    message(WARNING
+        "NROS_PLATFORM_CFFI_INCLUDE='${NROS_PLATFORM_CFFI_INCLUDE}' has no nros/platform.h "
+        "(stale pre-phase-243 cache?); healing to '${_nros_platform_api_include}'.")
+    set(NROS_PLATFORM_CFFI_INCLUDE "${_nros_platform_api_include}"
+        CACHE PATH "Path to the nros platform C ABI headers (contains nros/platform.h)" FORCE)
+endif()
 if(NOT EXISTS "${NROS_PLATFORM_CFFI_INCLUDE}/nros/platform.h")
     message(FATAL_ERROR
         "Cannot find <nros/platform.h>; pass -DNROS_PLATFORM_CFFI_INCLUDE=<dir> "
