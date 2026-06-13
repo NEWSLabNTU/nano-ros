@@ -25,10 +25,11 @@ were resolved by the type-erased `__nros_component_<pkg>_register` interpreter.
 Two design moves since then change the tail (the parser→planner→`nros-plan.json`
 spine is unchanged + still current):
 
-1. **No `nros deploy` runtime verb.** Deploy is now a `nros.toml`
-   `[deploy.<name>]` target table (SSOT; `nros new --deploy` scaffolds it,
-   `nros check` validates it) + the board/platform build that produces and runs
-   the binary. The CLI verbs are `nros plan` / `check` / `explain` /
+1. **No `nros deploy` runtime verb.** Deploy is now a `system.toml`
+   `[deploy.<name>]` target table (SSOT per RFC-0004 §4; `nros new --deploy`
+   scaffolds it, `nros check` validates it) + the board/platform build that
+   produces and runs the binary. The CLI verbs are `nros plan` / `check` /
+   `explain` /
    `codegen[-system]` / `metadata` — there is no `deploy` command. Every
    "`nros deploy` second-stage" bullet below (211.A, 211.D, parts of 211.F) is
    therefore **superseded** — re-targeted onto the entry-pkg + board build.
@@ -75,13 +76,13 @@ Today's orchestration pipeline:
        │
        │  nros-cli-core::orchestration::planner
        ▼
-   nros-plan.json   ─── + nros.toml overlay (rmw, domain_id, lifecycle{autostart}, params)
+   nros-plan.json   ─── + system.toml overlay (rmw, domain_id, lifecycle{autostart}, params)
        │
        │  emit_typed (RFC-0043) — one component class + configure() per node
        ▼
    typed entry (Board::run_components)   ─── compile / west build / vendor-module emit
        │
-       │  nros.toml [deploy.<name>] target (SSOT) + board/platform build
+       │  system.toml [deploy.<name>] target (SSOT) + board/platform build
        ▼
    binary / sim / hardware target runs the components
 ```
@@ -154,9 +155,9 @@ A user editing nano-ros runtime code wouldn't catch an orchestration
 regression until the next nros-cli release picks it up.
 
 - [x] **Vendor a stable fixture** — `packages/testing/nros-tests/fixtures/orchestration_e2e/`
-      mirroring the nros-cli `testing_workspaces/orchestration_e2e` shape
-      (root `nros.toml`, `src/demo_pkg/{launch,component_nros.toml,package.xml,metadata/talker.json}`).
-      One single-talker case. `record.json` is committed (pre-collected
+      in the current workspace shape: a bringup pkg (`demo_pkg_bringup/system.toml`)
+      + `src/demo_pkg/` component pkg, top-level `Cargo.toml` workspace. One
+      single-talker case. `record.json` is committed (pre-collected
       `play_launch_parser` output) so the test runs without the parser binary.
 - [x] **`orchestration_plan_emits_expected_entities`** in `packages/testing/nros-tests/tests/orchestration_e2e.rs`:
       drives `nros plan demo_pkg src/demo_pkg/launch/system.launch.xml --record record.json`
