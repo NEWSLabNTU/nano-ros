@@ -173,6 +173,46 @@ rewire (W4), and the per-cell validation (W7) gates merge.
   freertos → threadx_riscv64 → nuttx → esp → zephyr; then `just test-all`.
 - **Acceptance:** every cell links with NO `--allow-multiple-definition`; e2e
   green (or any red is a pre-existing/unrelated cause, characterized).
+- **W7 cascade fixes (the single-runtime split un-aliased NanoRos/NanoRosCpp,
+  surfacing latent gaps each behind the prior):**
+  - `c48a4df53` — `ws sync` non-atomic manifest write raced under the parallel
+    fixture build (same example synced for zenoh/xrce/cyclone) → truncation. Atomic
+    write (temp + rename).
+  - `ba5f97c3a` — `nano_ros_entry` defaulted LANG to cpp → C examples linked
+    NanoRosCpp (a 2nd std). Infer LANG from source extension.
+  - `a4e32bc47` — C++ umbrella lost the per-build variant header + C ABI includes
+    (NanoRosCpp no longer links nros_c-static). Mirror `nros_config_generated.h` in
+    nros-cpp + pull `nros_c-static` includes.
+  - `90abbf2b7` + `3cdd08147` — C++ binary DCE'd nros-c's C surface (nros-cpp bundles
+    nros-c as rlib). Generated `#[used]` C-surface anchor (column-0 / ungated entry
+    points only; gated ones excluded to avoid undefined refs).
+  - threadx_linux `main` collision (`19b90605f`, weak board main) + posix variant
+    self-heal.
+  - **Pre-existing, separately tracked:** threadx_linux `fixture-0005` header path
+    (phase-243); nuttx red (noted in 241.D header §); param/lifecycle wiring (W8–W10).
+
+### W8 — param/lifecycle feature passthrough on the umbrella
+- The param/lifecycle C/C++ surfaces ARE implemented (nros-c `param-services` /
+  `lifecycle-services`, alloc-gated). The single-runtime umbrella never exposed them:
+  `nros-cpp` has no passthrough feature, so it cannot forward to `nros-c`.
+- Add `param-services = ["nros-c/param-services"]` + `lifecycle-services =
+  ["nros-c/lifecycle-services"]` to `nros-cpp` (nros-c already has them).
+- **Acceptance:** `cargo build -p nros-cpp --features …,param-services` resolves +
+  `nros_executor_register_parameter_services` is present in `libnros_cpp.a`.
+
+### W9 — enable param/lifecycle on the hosted cmake umbrella
+- The C++ executor headers expose param/lifecycle; the native `parameters` example
+  uses them. Enable `param-services` + `lifecycle-services` on the **hosted** (posix)
+  C and C++ umbrella cmake builds (`nros-c` / `nros-cpp` `_features`). Embedded
+  (no_std / alloc-constrained) stays opt-in; per-example opt-in via `nano_ros_entry`
+  is a later refinement if size matters.
+- **Acceptance:** the native cpp `parameters` (and any lifecycle) example links with
+  no undefined `nros_executor_*param*` / `*lifecycle*` symbols.
+
+### W10 — validate param/lifecycle examples
+- Build + run the native `parameters` example (+ lifecycle if present), C and C++.
+- **Acceptance:** the `cpp_parameters` e2e test passes (was failing on undefined
+  gated symbols); no regression in the other native examples.
 
 ## Risks
 

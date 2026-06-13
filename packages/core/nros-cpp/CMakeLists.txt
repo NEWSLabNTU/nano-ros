@@ -83,6 +83,13 @@ endif()
 
 set(_cpp_features ros-humble ${_rmw_features} ${_platform_features})
 
+# Phase 241.D3-rev (W9) — enable param / lifecycle on the hosted C++ umbrella (the
+# executor headers expose them; the native `parameters` example uses them). Forwards
+# to nros-c. alloc-gated → hosted only; embedded opt-in.
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    list(APPEND _cpp_features param-services lifecycle-services)
+endif()
+
 # ---- Build nros-cpp via Corrosion ----
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
