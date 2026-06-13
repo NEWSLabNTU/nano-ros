@@ -18,11 +18,11 @@ deploy-verb-centric bullets are superseded; all re-scoped gaps + acceptance
 criteria are CLOSED — multi-host 211.F (bake + 2-process runtime +
 `[deploy.<id>]` host targets), `nros test` 211.G (ruled out, harness exists),
 qos_overrides 211.H (lowering + live runtime delivery), and the real-ROS
-acceptance (`demo_nodes_cpp` cross-vendor interop). The only remnants are two
-sub-items deferred to their OWNING phases — 211.H C++ typed-entry qos honoring
-(behind the phase-242/244 emit work, collision risk) and 211.I's stock-cyclonedds
-bridge variant + book recipe (needs a cyclonedds-enabled bridge fixture,
-C++/CMake-side). Ready to archive once those migrate to their phases.
+acceptance (`demo_nodes_cpp` cross-vendor interop). ARCHIVED 2026-06-14. The two
+remnants are split out as standalone tracked issues — 211.H C++ typed-entry qos
+honoring → **issue #52** (behind the phase-242/244 emit work, collision risk),
+and 211.I's stock-cyclonedds bridge variant + book recipe → **issue #53** (needs
+a cyclonedds-enabled bridge fixture, C++/CMake-side).
 
 ## Design drift & re-scope (2026-06-13)
 
@@ -528,13 +528,12 @@ generated entities and component-created entities take different create paths:
       onto all three generated-sub emit sites.
 - [x] **Plan→plan e2e (wave4, `1476d53fc`):** `plan_system_lowers_qos_overrides`
       proves the real launch-param→`nros-plan.json` path + full schema round-trip.
-- [→] **Typed C++ entry honoring (wave3b) — DEFERRED.** Emitting the static
-      `QosOverride[]` table + a `nros_cpp_node_set_qos_overrides` FFI + the
-      `set_qos_overrides` call in `emit_cpp` is the embedded/C++ extension. It
-      touches `emit_cpp.rs` + `component_node.hpp` — the maintainer's hot
-      phase-242/244 emit territory (collision risk) — and the only thing that
-      exercises it (runtime delivery counters) rides on the deferred deploy
-      second-stage. Sequence it after the 242/244 emit work settles.
+- [→] **Typed C++ entry honoring (wave3b) — SPLIT OUT → issue #52.** Emitting
+      the static `QosOverride[]` table + a `nros_cpp_node_set_qos_overrides` FFI
+      + the `set_qos_overrides` call in `emit_cpp` is the embedded/C++ extension.
+      It touches `emit_cpp.rs` + `component_node.hpp` — the maintainer's hot
+      phase-242/244 emit territory (collision risk). Tracked independently as
+      issue #52; sequence after the 242/244 emit work settles.
 - [x] **Runtime delivery e2e — LANDED (2026-06-13).** The wired runtime path
       (`set_qos_overrides` → `create_*_with_qos` → `apply_overrides`) is now
       proven on LIVE entities cross-process, not just in lowering unit tests.
@@ -580,16 +579,12 @@ the bridge was built for.
       publisher is declared before the listener subscribes) and
       asserts ≥ 2 bridged samples reach the listener within a 10 s
       window. Verified 2026-05-31: 2 samples received.
-- [→] **Stock cyclonedds variant** — the original "Autoware listener"
-      framing replaces XRCE with stock `rmw_cyclonedds_cpp`. Needs the
-      bridge to grow a cyclonedds egress (the in-tree fixture is
-      zenoh+XRCE today; cyclonedds backend is C++/CMake-side and
-      links differently). Deferred until a cyclonedds-enabled bridge
-      fixture lands; the zenoh-↔-XRCE round-trip above is the
-      foundation.
-- [→] **Book documentation** — "cross-RMW gateway" recipe under
-      `book/src/user-guide/`. Pairs naturally with the cyclonedds
-      variant; deferred with that.
+- [→] **Stock cyclonedds variant + book recipe — SPLIT OUT → issue #53.** The
+      original "Autoware listener" framing replaces XRCE with stock
+      `rmw_cyclonedds_cpp` (needs the bridge to grow a cyclonedds egress —
+      C++/CMake-side), plus a "cross-RMW gateway" recipe under
+      `book/src/user-guide/`. The zenoh↔XRCE round-trip above is the proven
+      foundation; the rest is tracked independently as issue #53.
 - **Files:**
   *(this tree)*
   `packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd/*`,
