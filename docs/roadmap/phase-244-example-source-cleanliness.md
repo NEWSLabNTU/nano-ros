@@ -171,13 +171,19 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   it to the clean threadx-linux Node+Entry+baker shape, across both build paths, is
   ~10× the other Wave-1 clusters. Carved into its own phase (245); the
   per-(lang,role) work clusters + waves live there.
-- [ ] **C2 — zephyr C/C++ 168.4 (~13 major).** Collapse the per-RMW `#if
-  defined(CONFIG_NROS_RMW_*)` forks (`cpp/talker/src/main.cpp:37`,
-  `c/talker/src/main.c:44`); remove `<zephyr/kernel.h>`/`<nros/platform_zephyr.h>`
-  (`main.cpp:6,11`), `nros_platform_zephyr_wait_network(...)` (`main.cpp:32`),
-  `k_sleep(...)` (`main.cpp:73`), per-app executor init
-  (`c/listener/src/main.c:78`). Target shape = `zephyr/cpp/talker-typed` (clean).
-  Leaks P4/P7/P1.
+- [→] **C2 — BLOCKED on Zephyr framework enablers (2026-06-14); re-scope like C1.**
+  Investigated (no edits — a partial would break the e2e gate, unverifiable w/o the
+  Zephyr SDK). The clean shape is the C++ TYPED carrier (`zephyr/cpp/talker-typed`),
+  but two gaps outside `examples/` block it: (1) `ZephyrBoard::run_components`
+  (`nros-cpp/include/nros/main.hpp`) hardcodes `nros::init("", domain)` — no locator
+  / per-node session threading (NuttX has it; the e2e gate dials
+  `CONFIG_NROS_ZENOH_LOCATOR` + needs a distinct XRCE session), and (2) there is NO
+  Zephyr **C** typed carrier (`NanoRosNodeRegister.cmake` only emits the C++ Zephyr
+  entry + FATAL_ERRORs for C; only `zephyr_entry_main_typed.cpp.in` exists). Needs
+  Wave-0 enablers: a `run_components(locator,…)` overload + `NROS_ENTRY_LOCATOR`
+  threading (mirror NuttX), and a `zephyr_entry_main_c_typed` template + cmake
+  branch. Then the 12 examples migrate against the proven `qemu-arm-nuttx/cpp/*`
+  references. Leaks P4/P7/P1.
 - [x] **C3 — qemu-arm-freertos Rust host_shim (6 major) — DONE 2026-06-13.** The
   `#[cfg(host)] mod host_shim { #[panic_handler] + GlobalAlloc }` block existed only
   because the Component was `crate-type = ["rlib","staticlib"]` (a no_std staticlib
@@ -185,15 +191,32 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   — deleted from all 6 libs (no compat crate needed). `#![no_std]` stays (E4:
   accepted residual minor). Verified: `freertos_rs_talker_entry` release rebuilds
   clean. The 6 examples go major → minor. Leak P5 cleared.
-- [ ] **C4 — workspaces entries + templates Pattern-A + zephyr-byo.** Lift
-  `ExecutorConfig`/`Executor::open` from `templates/.../local-msg-package/.../main.rs:36,40`
-  + `multi-package-workspace/.../main.rs:15`; remove `zephyr-byo/app/src/main.c:10,14,39`
-  platform headers/bring-up. Migrate the bare-metal-scaffolded `workspaces`
-  entries to the macro shape. Leaks P1/P7.
-- [ ] **C5 — stm32f4 legacy `talker/`.** Migrate the one legacy `talker/` (major:
-  no_std + panic + RMW register + net) to the `*-rtic`/`*-embassy` entry shape that
-  the rest of the group already uses. `*_pkg` libs are `minor` (node-lib no_std →
-  E4). Leaks P2/P3/P5/P6.
+- [~] **C4 — PARTIAL (2026-06-14). Rust template entries DONE; zephyr-byo blocked.**
+  - **rust_consumer (local-msg-package) + pkg_rust_publisher (multi-package-workspace)**
+    — DONE: hand-wired `ExecutorConfig`/`Executor::open`/spin → `nros::main!()` +
+    declarative `nros::node!` lib; RMW/net → deploy metadata. Both **build native
+    clean**. P1/P3 cleared. (`a73744d67`)
+  - **zephyr-byo (C) — blocked**, same enabler gap as C2: the only clean path is the
+    C++ TYPED carrier (no C Zephyr carrier exists) + locator threading. Force-
+    converting C→C++ unverified would change the starter's language + leave it
+    build-only (`locator=""`) — left as-is until the C2 enablers land.
+  - **"bare-metal-scaffolded workspaces entries" — none remained** (every
+    `workspaces/rust/src/*_entry` already uses `nros::main!()` from prior waves).
+  - The C/C++ workspace siblings (`pkg_c_talker`/`pkg_cpp_listener`/consumer.cpp)
+    were outside the bullet's named scope (analogous to C2). Leaks P1/P7.
+- [→] **C5 — BLOCKED on an stm32f4 BoardEntry enabler (2026-06-14).** Investigated
+  (no edits; toolchain present — `thumbv7em-none-eabihf` builds the group — so this
+  is architectural, not env). The legacy `talker/` uses `nros-board-stm32f4` (the
+  working bare-metal direct-exec ethernet/smoltcp/zenoh board), which has **no
+  `BoardEntry` impl / no deploy key** — so `nros::main!()` can't route to it. The
+  only registered stm32f4 deploy keys (`rtic-stm32f4`/`embassy-stm32f4`) point at
+  boards whose `init_hardware` is `todo!()` (skeletons); repointing `talker/` there
+  would duplicate `talker-rtic`/`talker-embassy` AND discard the only working
+  stm32f4 ethernet bring-up — coverage loss, not cleanup. Needs the stm32f4 sibling
+  of D1's `nros-board-mps2-an385` work: a `BoardEntry` (behind `board-entry`) on
+  `nros-board-stm32f4` + a `stm32f4` bare-metal deploy key in `board_path_for` /
+  `is_baremetal_cortexm_deploy` (uses E5 `run_with_deploy` for net/locator). Then
+  C5 is a trivial entry-shape swap. Leaks P2/P3/P5/P6.
 
 ---
 
