@@ -34,7 +34,7 @@
 //! |------------|--------------------------------------------------------|
 //! | Zephyr     | `zephyr/cmake/nros_system_generate.cmake`              |
 //! | NuttX      | `integrations/nuttx/` (dir sum — Makefile/CMake/glue)  |
-//! | ThreadX    | `cmake/NanoRosThreadxSystemCodegen.cmake`              |
+//! | ThreadX    | `cmake/templates/threadx_entry_main_typed.cpp.in`     |
 //! | ESP-IDF    | `integrations/nano-ros/CMakeLists.txt` (esp-idf component) |
 //! | PlatformIO | `integrations/platformio/nros_codegen.py` (extra_script) |
 //! | PX4        | `integrations/px4/module-template/` (dir sum)          |
@@ -60,7 +60,9 @@ const BUDGET_ADAPTER_SHIM: u64 = 200;
 const SHIMS: &[(&str, &str)] = &[
     ("zephyr", "zephyr/cmake/nros_system_generate.cmake"),
     ("nuttx", "integrations/nuttx"),
-    ("threadx", "cmake/NanoRosThreadxSystemCodegen.cmake"),
+    // Phase 246 — the H.4 NULL-context baker is retired; the ThreadX adapter
+    // shim is now the TYPED-carrier entry template (RFC-0043 real-callback path).
+    ("threadx", "cmake/templates/threadx_entry_main_typed.cpp.in"),
     ("esp-idf", "integrations/nano-ros/CMakeLists.txt"),
     ("platformio", "integrations/platformio/nros_codegen.py"),
     ("px4", "integrations/px4/module-template"),

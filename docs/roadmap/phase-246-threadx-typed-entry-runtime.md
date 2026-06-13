@@ -207,21 +207,33 @@ ThreadX baker is removed only **after** its last consumer moves off it (W3).
   QEMU/zenohd caveat); + hand phase-245 the proven template for Wave-2 C\*/X\*.
 
 ### W3 — retire the legacy baker (gradual; last, after consumers move off)
-- [ ] **W3.1** Inventory `NanoRosThreadxSystemCodegen.cmake` consumers (grep
-  `nros_threadx_codegen_system` / `nros_threadx_link_app`): the rust-component
-  `multi_pkg_workspace_threadx` fixture (`threadx_corrosion_bringup`) + any
-  threadx-linux C/C++ cells W1/W2 have already migrated.
-- [ ] **W3.2** Migrate `multi_pkg_workspace_threadx` (Rust components) onto the
-  Rust dispatch path — `ExecutorNodeRuntime` + the FreeRTOS/NuttX `run_entry`
-  shape, NOT the C++ typed entry (Rust components dispatch via
-  `register_dispatch_slot`). Add a ThreadX Rust system entry if one doesn't exist.
-  Keep `threadx_corrosion_bringup` green (a real spin, not the NULL-context marker).
-- [ ] **W3.3** Delete `cmake/NanoRosThreadxSystemCodegen.cmake` +
-  `nros_threadx_link_app` once W1/W2/W3.2 reference none of it; drop the dead
-  `system.toml`/launch placeholders the baker required. Update any `include()`s.
-- [ ] **W3.4** Sweep: confirm no example/fixture still emits a NULL-context
-  `nros_system_main` stub; the only ThreadX entry is the typed C/C++ carrier or the
-  Rust `run_entry`/`nros::main!()` path.
+- [x] **W3.1** Inventoried `NanoRosThreadxSystemCodegen.cmake` consumers — bigger
+  than expected: **5 threadx-linux cpp role examples** (listener / service-server /
+  service-client / action-server / action-client) still used it (W1 did only
+  talker), **plus** the rust `multi_pkg_workspace_threadx` fixture + its include in
+  `nano-ros-threadx.cmake` + `compile-check-fixtures.sh` registrations + the
+  `loc_budgets.rs` shim row.
+- [x] **W3.2** Migrated all 5 threadx-linux cpp roles to the TYPED carrier
+  (`configure(Node&)` + `bind_subscription_raw` / `bind_service_raw` /
+  `bind_action_server_raw` / `bind_action_client`, mirror of the NuttX siblings).
+  All build green (host ELF). **W3.2b finding:** the rust `multi_pkg_workspace_threadx`
+  fixture + `threadx_corrosion_bringup.rs` are a **baker codegen-artifact AUDIT**
+  (Phase 212.H.4) — the test asserts the stub `system_main.c` content + that it
+  links, NOT a real spinning runtime (the "publishes" in the name is aspirational).
+  Its sole purpose is testing the baker → **deleted with the baker**, not migrated
+  onto `run_entry` (no real rust-workspace bringup depended on it; the riscv64 rust
+  examples use `nros::main!()`/`run_app_thread`).
+- [x] **W3.3** Deleted `cmake/NanoRosThreadxSystemCodegen.cmake`, removed its
+  `include()` from `nano-ros-threadx.cmake`, deleted the
+  `multi_pkg_workspace_threadx` fixture + `threadx_corrosion_bringup.rs`, dropped
+  the `threadx_bringup`(+`_rv64`) registrations from `compile-check-fixtures.sh`,
+  and repointed the `loc_budgets.rs` ThreadX adapter-shim row to
+  `cmake/templates/threadx_entry_main_typed.cpp.in` (46 LoC < 200 budget). Residual
+  refs are doc/comment-only.
+- [x] **W3.4** Swept: no example/fixture emits a NULL-context `nros_system_main`
+  stub; ThreadX entry is the typed C/C++ carrier or the Rust
+  `run_entry`/`nros::main!()` path. Verified a threadx-linux example reconfigures +
+  builds with the baker fully removed.
 
 ## Acceptance
 

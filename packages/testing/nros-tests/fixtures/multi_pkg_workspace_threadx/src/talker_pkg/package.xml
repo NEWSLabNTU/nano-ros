@@ -1,8 +1,0 @@
-<package format="3">
-  <name>talker_pkg</name>
-  <version>0.1.0</version>
-  <description>Phase 212.H.4 fixture — Rust talker component for ThreadX adapter audit.</description>
-  <maintainer email="noreply@example.com">nano-ros</maintainer>
-  <license>MIT</license>
-  <export><build_type>ament_nros</build_type></export>
-</package>
