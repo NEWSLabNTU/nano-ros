@@ -4,7 +4,7 @@ title: Audit existing weak symbols + add checkers — weak linkage is bug-prone 
 status: open
 type: tech-debt
 area: build
-related: [issue-0042, phase-241]
+related: [issue-0042, phase-241, phase-247]
 ---
 
 ## Why
