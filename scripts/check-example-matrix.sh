@@ -16,12 +16,14 @@ allowed_roots=(
   "examples/qemu-esp32-baremetal/rust/zenoh"
   "examples/stm32f4/rust/zenoh"
 
-  # Phase 118.H carve-outs.
+  # Phase 118.H carve-outs. px4's sub-dir axis is the transport integration
+  # CASE (uORB vs XRCE — PX4's two native messaging surfaces), not the retired
+  # per-RMW layout, so these legitimately keep a `<name>` matching an RMW token.
+  # `examples/px4/rust/xrce` (the PX4 SITL XRCE e2e, commit 1031f07e4) was missed
+  # when it landed — see docs/issues/0051. Add a cpp/xrce line if/when that case
+  # lands.
   "examples/px4/cpp/uorb"
   "examples/px4/rust/uorb"
-  # PX4 SITL XRCE companion — the transport is intrinsic to the example (the
-  # px4-xrce-companion bridges PX4 uORB ↔ micro-XRCE-DDS), same carve-out
-  # rationale as the px4/uorb pair above.
   "examples/px4/rust/xrce"
 
   # One-board Zephyr CycloneDDS reference, documented in CLAUDE.md.
