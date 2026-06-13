@@ -66,6 +66,31 @@ if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")
     add_subdirectory(packages/core/nros-rmw-cffi)
     add_subdirectory(packages/core/nros-c)
     add_subdirectory(packages/core/nros-cpp)
+
+    # RFC-0042 D3 / phase-241.D slice 4 — the single `nros-rmw-cffi` provider
+    # archive. `nros-rmw-cffi` is now def-less (its `REGISTRY` + C ABI entry
+    # points are Rust-mangled), so `libnros_c.a`/`libnros_cpp.a`/the RMW staticlib
+    # no longer emit duplicate strong defs; this archive emits them exactly once
+    # via `nros_rmw_cffi_export!{}`. Linked LAST (after the whole-archive RMW + the
+    # platform shim) so its back-references resolve under single-pass ld — the same
+    # trailing-archive discipline `NanoRos::Platform` uses. This is what lets the
+    # RMW link drop `--allow-multiple-definition` (the blind ODR mask).
+    set(_cffi_provider_features "")
+    if(NANO_ROS_PLATFORM STREQUAL "posix")
+        set(_cffi_provider_features platform-posix)
+    elseif(NANO_ROS_PLATFORM MATCHES "freertos" OR NANO_ROS_PLATFORM STREQUAL "esp_idf")
+        set(_cffi_provider_features platform-freertos)
+    elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
+        set(_cffi_provider_features platform-threadx)
+    endif()
+    corrosion_import_crate(
+        MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
+        CRATES        nros-rmw-cffi-provider
+        CRATE_TYPES   staticlib
+        NO_DEFAULT_FEATURES
+        FEATURES      ${_cffi_provider_features}
+        LOCKED
+    )
 endif()
 
 # ---------------------------------------------------------------------------
@@ -217,11 +242,15 @@ if(NANO_ROS_RMW STREQUAL "zenoh")
         # auto-register .init_array ctor (phase 104.A) survives dead-strip.
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
            OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
+            # RFC-0042 D3 — `--allow-multiple-definition` dropped (cffi is now
+            # single-definition via the provider archive) AND `--whole-archive`
+            # replaced by `-u` forcing of the backend register entry: whole-archive
+            # also dragged the rmw staticlib's core/std COMDAT closure in, which
+            # collided with the consumers' copies (the other half of what the flag
+            # masked). Forcing only `nros_rmw_zenoh_register` lazy-links the rest.
             target_link_libraries(NanoRos INTERFACE
-                "-Wl,--whole-archive"
-                nros_rmw_zenoh_staticlib-static
-                "-Wl,--no-whole-archive"
-                "-Wl,--allow-multiple-definition")
+                "-Wl,-u,nros_rmw_zenoh_register"
+                nros_rmw_zenoh_staticlib-static)
         elseif(APPLE)
             target_link_libraries(NanoRos INTERFACE
                 "-Wl,-force_load,$<TARGET_FILE:nros_rmw_zenoh_staticlib-static>"
@@ -263,12 +292,13 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     )
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
        OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
+        # RFC-0042 D3 — same as the zenoh arm: cffi single-def via the provider +
+        # `-u` register-force instead of whole-archive, so no flag is needed.
         target_link_libraries(NanoRos INTERFACE
-            "-Wl,--whole-archive"
-            nros_rmw_xrce_cffi_staticlib-static
-            "-Wl,--no-whole-archive"
-            "-Wl,--allow-multiple-definition")
+            "-Wl,-u,nros_rmw_xrce_register"
+            nros_rmw_xrce_cffi_staticlib-static)
     elseif(APPLE)
+        # Untouched on macOS (no run_e2e cell to validate `-u`/force_load here).
         target_link_libraries(NanoRos INTERFACE
             "-Wl,-force_load,$<TARGET_FILE:nros_rmw_xrce_cffi_staticlib-static>"
             "-Wl,--allow-multiple-definition")
@@ -301,14 +331,16 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
         add_dependencies(NanoRos nros_rmw_cyclonedds)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
            OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
+            # RFC-0042 D3 — `--allow-multiple-definition` dropped (cffi single-def
+            # via the provider). Whole-archive kept: Cyclone is C/C++ (libddsc + the
+            # C++ wrapper), so it carries no Rust core/std COMDAT closure to collide
+            # — the `-u` swap the Rust-staticlib backends need does not apply here.
             if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)
                 target_link_libraries(NanoRos INTERFACE
-                    "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive"
-                    "-Wl,--allow-multiple-definition")
+                    "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive")
             else()
                 target_link_libraries(NanoRos INTERFACE
-                    "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive"
-                    "-Wl,--allow-multiple-definition")
+                    "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive")
             endif()
         elseif(APPLE)
             target_link_libraries(NanoRos INTERFACE
@@ -346,6 +378,14 @@ endif()
 # ---------------------------------------------------------------------------
 if(TARGET NanoRos AND TARGET NanoRos::Platform)
     target_link_libraries(NanoRos INTERFACE NanoRos::Platform)
+endif()
+
+# RFC-0042 D3 — link the cffi provider archive LAST (after the platform shim),
+# lazy, so single-pass ld pulls just its needed objects (REGISTRY + the C entry
+# points back-referenced by the whole-archive'd RMW + the consumers) without
+# dragging its dependency closure (which the consumers already provide).
+if(TARGET NanoRos AND TARGET nros_rmw_cffi_provider-static)
+    target_link_libraries(NanoRos INTERFACE nros_rmw_cffi_provider-static)
 endif()
 
 # ---------------------------------------------------------------------------

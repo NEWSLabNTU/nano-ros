@@ -252,14 +252,11 @@ function(nano_ros_link_rmw TARGET)
         if(TARGET ${_pkg}::${_name})
             target_link_libraries(${TARGET} PRIVATE ${_pkg}::${_name})
         endif()
-        # Phase 154 — always route through `-Wl,…`. When the build
-        # uses a gcc driver (`arm-none-eabi-gcc`, `riscv64-unknown-elf-gcc`,
-        # `gcc`) the bare `--allow-multiple-definition` is rejected
-        # as an unknown command-line option even on bare-metal
-        # `CMAKE_SYSTEM_NAME=Generic` targets. ld accepts both, but
-        # we never call ld directly — the compiler driver does the
-        # linking, so `-Wl,…` is the only safe form.
+        # RFC-0042 D3 — force the backend register entry via `-u` (the cffi C ABI
+        # is single-definition now via the nros-rmw-cffi-provider archive, so the
+        # blind `--allow-multiple-definition` mask is gone). Always route through
+        # `-Wl,…` — the gcc/lld compiler driver does the link.
         target_link_options(${TARGET} PRIVATE
-            "-Wl,--allow-multiple-definition")
+            "-Wl,-u,nros_rmw_${_chosen}_register")
     endif()
 endfunction()

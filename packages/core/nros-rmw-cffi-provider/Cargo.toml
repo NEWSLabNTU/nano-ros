@@ -1,0 +1,51 @@
+[package]
+name = "nros-rmw-cffi-provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "RFC-0042 D3 — the ONE archive that defines the nros-rmw-cffi C ABI (REGISTRY + entry points) via nros_rmw_cffi_export!{}, so consumers reference them undefined and the link drops --allow-multiple-definition"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+publish = false
+
+[lib]
+# `staticlib` → standalone `libnros_rmw_cffi_provider.a` (linked once, mirrors
+# nros-platform-posix). `lib` → usable as a normal cargo dep on the NuttX/ESP
+# FFI-crate path.
+crate-type = ["staticlib", "lib"]
+
+[features]
+default = []
+std = ["nros-rmw-cffi/std"]
+alloc = ["nros-rmw-cffi/alloc"]
+platform-posix = ["std", "alloc"]
+platform-zephyr = ["alloc"]
+platform-freertos = [
+    "alloc",
+    "dep:nros-platform",
+    "nros-platform/platform-freertos",
+    "nros-platform/global-allocator",
+    "dep:panic-halt",
+]
+platform-nuttx = [
+    "alloc",
+    "dep:nros-platform",
+    "nros-platform/platform-nuttx",
+    "nros-platform/global-allocator",
+    "dep:panic-halt",
+]
+platform-threadx = [
+    "alloc",
+    "dep:nros-platform",
+    "nros-platform/platform-threadx",
+    "nros-platform/global-allocator",
+    "dep:panic-halt",
+]
+platform-bare-metal = ["dep:panic-halt"]
+
+[dependencies]
+nros-rmw-cffi = { workspace = true, default-features = false }
+nros-platform = { workspace = true, default-features = false, optional = true }
+panic-halt = { workspace = true, optional = true }

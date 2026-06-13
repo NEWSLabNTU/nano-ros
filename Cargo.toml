@@ -87,6 +87,9 @@ members = [
     "packages/interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs",
     # C function table adapter for third-party RMW backends
     "packages/core/nros-rmw-cffi",
+    # RFC-0042 D3 — the ONE archive that defines the cffi C ABI (REGISTRY + entry
+    # points) via nros_rmw_cffi_export!{} so the link drops --allow-multiple-definition
+    "packages/core/nros-rmw-cffi-provider",
     # Phase 115.L.2 — zenoh-pico via C vtable
     # Ghost model types for verification (shared between production tests and Verus proofs)
     "packages/verification/nros-ghost-types",
@@ -538,6 +541,7 @@ nros-rmw-xrce-cffi = { version = "0.5.0", path = "packages/xrce/nros-rmw-xrce-cf
 # elsewhere opt out via `default-features = false` at the dep-site.
 nros-rmw-cyclonedds-sys = { version = "0.5.0", path = "packages/dds/nros-rmw-cyclonedds-sys" }
 nros-rmw-cffi = { version = "0.5.0", path = "packages/core/nros-rmw-cffi", default-features = false }
+nros-rmw-cffi-provider = { version = "0.5.0", path = "packages/core/nros-rmw-cffi-provider", default-features = false }
 nros-node = { version = "0.5.0", path = "packages/core/nros-node", default-features = false }
 nros-log = { version = "0.5.0", path = "packages/core/nros-log" }
 nros-orchestration = { version = "0.5.0", path = "packages/core/nros-orchestration", default-features = false }
