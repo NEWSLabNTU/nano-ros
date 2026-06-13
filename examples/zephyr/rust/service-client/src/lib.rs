@@ -68,8 +68,15 @@ impl ExecutableNode for AddTwoIntsClient {
             a: state.counter,
             b: state.counter.wrapping_add(1),
         };
-        let _: nros::NodeResult<AddTwoIntsResponse> = ctx
-            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req);
+        // Canonical service-client fixture marker — the e2e harness asserts on
+        // "Response: sum=<n>". The single-node runtime now dispatches the call
+        // for real (phase-212 M-F.23); log the reply so the test can observe it.
+        match ctx
+            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
+        {
+            Ok(resp) => log::info!("Response: sum={}", resp.sum),
+            Err(_) => log::info!("service call failed"),
+        }
     }
 }
 

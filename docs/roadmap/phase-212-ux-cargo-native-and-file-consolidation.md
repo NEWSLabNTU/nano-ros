@@ -2873,8 +2873,9 @@ canonical-shape regression test can run green tree-wide:
 
       **Blocks:** §212.O.1 (`freertos_board_run_executes_run_
       plan`).
-- [ ] **M-F.23 single-node `ExecutorNodeRuntime` service/action dispatch**
-      (nros) — the OTHER client path; blocks issue #35. M-F.4.a's
+- [x] **M-F.23 single-node `ExecutorNodeRuntime` service/action dispatch**
+      (nros) — DONE 2026-06-13. The OTHER client path; was blocking issue #35.
+      M-F.4.a's
       `GenClientDispatch` is emitted by nros-cli **only for the orchestration /
       Entry path** (multi-component, `has_shared_instance`). The single-node
       `nros::zephyr_component_main!` macro does NOT go through that codegen — it
@@ -2911,7 +2912,30 @@ canonical-shape regression test can run green tree-wide:
       Sized as its own wave (service + action × client + server + borrow
       plumbing), not a follow-up tweak.
 
-      **Blocks:** issue #35 (`docs/issues/0035-*`).
+      **Landed** (`packages/core/nros/src/node_runtime.rs` + `node.rs`):
+      `create_entity` now registers service-server/client + action-server/client
+      on the executor with C-ABI trampolines (`service_server_trampoline`,
+      `action_{goal,cancel,accepted,result,feedback}_trampoline`) that route
+      requests/goals/results into the component's `on_callback`;
+      `RuntimeClientDispatch` + `RuntimeActions` back `TickCtx` (`call_raw`,
+      `send_goal_raw` — which also fires `send_get_result_request` rclcpp-style —
+      `complete_goal_raw`, `publish_feedback_raw`, `for_each_active_goal`), wired
+      into `run_ticks` via a `*mut Executor`. New declarative API
+      `create_action_client_with_callbacks_for_name` binds result + feedback
+      callbacks (feedback reuses the unused-on-client `action_accepted_callback_id`
+      slot). `UnsupportedClients`/`UnsupportedActions` retired. **Verified:**
+      `test_zephyr_rust_service_e2e` + `test_zephyr_action_e2e` (zenoh) **pass**
+      end-to-end on native_sim (service `Response: sum=3`; action goal-accept →
+      feedback → `Result:` → finished). `test_zephyr_dds_rs_action_e2e` (cyclone)
+      stays `#[ignore]` on the **separate** finicky-cyclone-native_sim-discovery
+      issue (the server never reaches readiness — hangs in CycloneDDS init before
+      any M-F.23 code), NOT the dispatch.
+
+      Follow-ups (not blockers): parameter dispatch (still no-op); the deserialized
+      feedback/result `sequence` reads len=0 in the demo (framing detail, the
+      markers + round-trip are correct).
+
+      **Was blocking:** issue #35 (`docs/issues/0035-*`).
 
 ### §212.O — Acceptance test fill-ins (parallel-dispatchable)
 

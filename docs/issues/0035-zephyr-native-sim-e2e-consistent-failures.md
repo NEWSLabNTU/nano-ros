@@ -183,25 +183,36 @@ exiting). Fix: emit `Waiting for messages` from the macro after `register_node`,
 `Publishing messages` / `Published: <n>` from the Rust talker's `on_tick` (mirroring the
 listener's existing `Received:`). Now **passes**.
 
-**(b) Rust service + action — `test_zephyr_rust_service_e2e`, `test_zephyr_action_e2e`
-(zenoh), `test_zephyr_dds_rs_action_e2e` (cyclone) — feature gap, not a bug.**
-The single-node `nros::zephyr_component_main!` path builds `ExecutorNodeRuntime`, whose
-`run_ticks` hardwires `UnsupportedClients`/`UnsupportedActions` and whose `create_entity`
-**no-ops** service/action registration (`packages/core/nros/src/node_runtime.rs` — "dispatch
-lands in M.5.a.4"). So the entire service + action seam (client AND server) is unbuilt on
-the single-node embedded path — only pub/sub/timer work. The client never sends a
-request/goal, so "got no reply" is correct. NOTE: the orchestration `GenClientDispatch`
-codegen (phase-212 M-F.4.a) is a **different path** (multi-component Entry) and does **not**
-cover these single-node examples. Implementing this is a sized wave, scoped in phase-212 as
-**M-F.23** (register clients+servers on the executor, track handles per `ComponentCell`,
-server-side request/goal dispatch on tick, `RuntimeClientDispatch`/`RuntimeActions` with the
-`*mut Executor` borrow). The three tests are gated with `#[ignore]` (reasons reference the
-stub); re-enable when M-F.23 lands.
+**(b) Rust service + action — `test_zephyr_rust_service_e2e` + `test_zephyr_action_e2e`
+(zenoh) — FIXED by implementing phase-212 M-F.23.**
+These failed because the single-node `nros::zephyr_component_main!` path builds
+`ExecutorNodeRuntime`, whose `run_ticks` hardwired `UnsupportedClients`/`UnsupportedActions`
+and whose `create_entity` **no-op'd** service/action registration — so the entire
+service + action seam (client AND server) was unbuilt on the single-node embedded path
+(only pub/sub/timer worked). The orchestration `GenClientDispatch` codegen (M-F.4.a) is a
+**different** path (multi-component Entry) that doesn't cover these single-node examples.
+M-F.23 implements the seam in `ExecutorNodeRuntime`: `create_entity` registers
+service-server/client + action-server/client on the executor with C-ABI trampolines into
+`on_callback`; `RuntimeClientDispatch`/`RuntimeActions` back `TickCtx` over a `*mut Executor`
+(client `call_raw`/`send_goal_raw` + rclcpp-style `get_result`, server complete/feedback). New
+declarative `create_action_client_with_callbacks_for_name` binds result+feedback callbacks.
+**Both pass** end-to-end on native_sim (service `Response: sum=3`; action goal-accept →
+feedback → `Result:` → finished). Examples emit the canonical harness markers
+(`Response: sum=`, `Goal accepted`, `Feedback #`, `Result:`, `Action client finished`).
+
+**(c) `test_zephyr_dds_rs_action_e2e` (cyclone) — still `#[ignore]`, separate root cause.**
+With M-F.23 landed the action *dispatch* is proven (the zenoh twin + service pass with the
+same examples), but the CYCLONE server never reaches readiness on native_sim — it hangs in
+CycloneDDS init/discovery right after "Network ready", before `zephyr_component_main!` prints
+"Waiting for messages". That is the finicky-cyclone-native_sim-discovery issue this doc
+flagged up front (NSOS multicast / `IP_ADD_MEMBERSHIP`, unicast Peers, mutex-pool sizing),
+NOT the dispatch.
 
 ### Status
 
-9 XRCE (clock) + 1 zenoh pub/sub (markers) = **10/13 resolved**; the remaining 3 are gated
-on the unimplemented Rust client/action dispatch (nros-cli M-F.4.a), not a native_sim bug.
+9 XRCE (clock) + 1 zenoh pub/sub (markers) + 2 rust service/action (M-F.23) =
+**12/13 resolved**. The last one (cyclone rust action) is gated on a separate
+cyclone-native_sim-discovery issue, not the action dispatch.
 
 **Reproduce (minimal):**
 ```sh

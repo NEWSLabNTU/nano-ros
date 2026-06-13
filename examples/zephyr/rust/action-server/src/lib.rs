@@ -46,6 +46,10 @@ impl ExecutableNode for FibonacciServer {
                     .message::<FibonacciGoal>()
                     .map(|g| g.order >= 0)
                     .unwrap_or(false);
+                if accept {
+                    // Harness marker: server_received_goal keys off "Goal accepted".
+                    log::info!("Goal accepted");
+                }
                 let _ = ctx.set_goal_response(if accept {
                     GoalResponse::AcceptAndExecute
                 } else {

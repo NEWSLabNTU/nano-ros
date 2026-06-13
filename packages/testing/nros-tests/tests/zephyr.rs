@@ -772,12 +772,6 @@ fn test_zephyr_action_client_smoke() {
 /// Requires:
 /// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
 /// - Both examples built with their specific TAP interface configs
-// issue #35: the Rust action CLIENT dispatch is an in-tree stub
-// (`UnsupportedClients::send_goal_raw` -> `NodeDeclError::Runtime`, see
-// examples/zephyr/rust/action-client/src/lib.rs) until the single-node
-// ExecutorNodeRuntime dispatch lands (phase-212 M-F.23) — so the client never sends a goal
-// and this e2e cannot pass yet. Not a transport/runtime bug.
-#[ignore = "rust action client dispatch unimplemented (UnsupportedClients stub, single-node ExecutorNodeRuntime — phase-212 M-F.23); issue #35"]
 #[test]
 fn test_zephyr_action_e2e() {
     if !require_zephyr() {
@@ -824,8 +818,11 @@ fn test_zephyr_action_e2e() {
     // ~30 s, right on the prior cutoff. Root-cause investigation
     // (zenoh-pico declare-flush behaviour under Z_FEATURE_INTEREST=1)
     // remains open as a follow-up.
-    let server_ready = server.wait_for_pattern("Action server ready", Duration::from_secs(60));
-    if !server_ready.contains("Action server ready") {
+    // M-F.23: the single-node `zephyr_component_main!` macro emits the
+    // canonical "Waiting for messages" readiness marker for every node
+    // (pub/sub/service/action), so key readiness off that.
+    let server_ready = server.wait_for_pattern("Waiting for messages", Duration::from_secs(60));
+    if !server_ready.contains("Waiting for messages") {
         panic!(
             "Zephyr action server didn't reach readiness within 60 s.\nOutput:\n{}",
             server_ready
@@ -869,7 +866,7 @@ fn test_zephyr_action_e2e() {
 
     // Check server status
     let server_connected =
-        server_output.contains("Session opened") || server_output.contains("Action server ready");
+        server_output.contains("Session opened") || server_output.contains("Waiting for messages");
     let server_created_queryables =
         server_output.contains("Queryable") || server_output.contains("ready");
     let server_received_goal = server_output.contains("Received goal")
@@ -878,7 +875,7 @@ fn test_zephyr_action_e2e() {
 
     // Check client status
     let client_connected =
-        client_output.contains("Session opened") || client_output.contains("Action client ready");
+        client_output.contains("Session opened") || client_output.contains("Waiting for messages");
     let _client_subscribed = client_output.contains("Feedback subscriber ready")
         || client_output.contains("Subscriber created");
     let client_got_feedback =
@@ -1703,10 +1700,15 @@ fn test_zephyr_dds_cpp_action_e2e() {
     }
 }
 
-// issue #35: same root as test_zephyr_action_e2e — the Rust action client
-// dispatch is the in-tree `UnsupportedClients` stub (single-node runtime, phase-212 M-F.23), so the
-// client never sends a goal. Cyclone backend, same feature gap. Not a bug.
-#[ignore = "rust action client dispatch unimplemented (UnsupportedClients stub, single-node ExecutorNodeRuntime — phase-212 M-F.23); issue #35"]
+// issue #35: the M-F.23 action dispatch is done (the zenoh twin
+// `test_zephyr_action_e2e` + the service e2e pass with these same examples), but
+// the CYCLONE server never reaches readiness on native_sim — it hangs in
+// CycloneDDS init/discovery after "Network ready", before
+// `zephyr_component_main!` prints "Waiting for messages". That is the separate
+// finicky-cyclone-native_sim-discovery issue the original #35 flagged (NSOS
+// multicast / IP_ADD_MEMBERSHIP, unicast Peers, mutex-pool sizing), NOT the
+// action dispatch. Re-enable once cyclone native_sim discovery closes.
+#[ignore = "cyclone native_sim DDS discovery hangs at init (separate from the M-F.23 action dispatch, which the zenoh twin verifies); issue #35"]
 #[test]
 fn test_zephyr_dds_rs_action_e2e() {
     if !require_zephyr() {
@@ -1722,9 +1724,10 @@ fn test_zephyr_dds_rs_action_e2e() {
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start rs/dds action server");
-    let server_ready =
-        server.wait_for_pattern("Action server ready: /fibonacci", Duration::from_secs(30));
-    if !server_ready.contains("Action server ready: /fibonacci") {
+    // M-F.23: `zephyr_component_main!` emits "Waiting for messages" as the
+    // universal readiness marker.
+    let server_ready = server.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
+    if !server_ready.contains("Waiting for messages") {
         panic!(
             "Zephyr Rust Cyclone action server didn't reach readiness.\nOutput:\n{}",
             server_ready
@@ -1749,7 +1752,7 @@ fn test_zephyr_dds_rs_action_e2e() {
         client_output
     );
 
-    let server_received_goal = server_output.contains("Goal request");
+    let server_received_goal = server_output.contains("Goal accepted");
     let client_completed =
         client_output.contains("Action client finished") && client_output.contains("Result:");
     if !(server_received_goal && client_completed) {
@@ -2823,12 +2826,6 @@ fn test_zephyr_xrce_c_action_e2e() {
 // =============================================================================
 
 /// Zephyr Rust zenoh service server ↔ client.
-// issue #35: the Rust service CLIENT dispatch is an in-tree stub
-// (`UnsupportedClients` -> `NodeDeclError::Runtime`, see
-// examples/zephyr/rust/service-client/src/lib.rs `tick`) until the single-node
-// ExecutorNodeRuntime dispatch lands (phase-212 M-F.23) — so the client never sends a request
-// ("got no reply" is correct). Not a transport/runtime bug.
-#[ignore = "rust service client dispatch unimplemented (UnsupportedClients stub, single-node ExecutorNodeRuntime — phase-212 M-F.23); issue #35"]
 #[test]
 fn test_zephyr_rust_service_e2e() {
     if !require_zephyr() {

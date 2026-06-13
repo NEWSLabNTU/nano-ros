@@ -62,12 +62,13 @@
 //! the live executor delivers callbacks; the bound
 //! [`ExecutableNode::on_callback`] body runs with a
 //! [`CallbackCtx`] backed by the per-component publisher resolver.
-//! Service servers / clients, action servers / clients, and
-//! parameters land in M.5.a.4 — `create_entity` accepts the metadata
-//! (so component registration succeeds) but the corresponding
-//! callbacks aren't fired. Action goal completion + feedback (the
-//! [`TickCtx`] surface) is stubbed via [`UnsupportedActions`] until a
-//! follow-up wave wires the tick-time action borrow.
+//! Service servers / clients and action servers / clients wire
+//! end-to-end too (Phase 212.M-F.23): `create_entity` registers them on
+//! the executor with C-ABI trampolines that route inbound requests /
+//! goals into the component's `on_callback`, and the tick-time client /
+//! action surface ([`TickCtx`]) is backed by `RuntimeClientDispatch` /
+//! `RuntimeActions` over the live executor. Parameters are still a
+//! follow-up (registration succeeds; param callbacks don't fire yet).
 
 #![cfg(feature = "rmw-cffi")]
 
@@ -214,6 +215,16 @@ impl ComponentSlot for BspDispatchSlot {
 struct ComponentCell {
     slot: RefCell<Box<dyn ComponentSlot>>,
     publishers: RefCell<Vec<(String, EmbeddedRawPublisher)>>,
+    // Phase 212.M-F.23 — declarative service/action CLIENT + action-SERVER
+    // handles, keyed by stable entity id, resolved during tick dispatch.
+    // Mirror of the orchestration `GenClientDispatch`/`GenActionExec` arrays,
+    // but built at registration time on the single-node runtime. Service- and
+    // action-SERVER request/goal dispatch is owned by the executor (the
+    // trampolines registered in `create_entity`); only the action-server
+    // handle is kept here so the tick can complete goals / publish feedback.
+    service_clients: RefCell<Vec<(String, crate::HandleId)>>,
+    action_clients: RefCell<Vec<(String, usize)>>,
+    action_servers: RefCell<Vec<(String, crate::ActionServerRawHandle)>>,
     callback_dispatches: AtomicUsize,
     message_dispatches: AtomicUsize,
 }
@@ -246,59 +257,10 @@ impl PublisherResolver for CellResolver<'_> {
     }
 }
 
-/// Tick-side `ActionExecutor` stub. Phase 212.M.5.a.2 lands the
-/// pub/sub/timer wiring; action goal completion + feedback pubs need
-/// the executor borrowed tick-side — left for the M.5.a.4 follow-up
-/// so the M.5.a.3 BSP baker can land without depending on it.
-struct UnsupportedActions;
-
-impl ActionExecutor for UnsupportedActions {
-    fn complete_goal_raw(
-        &mut self,
-        _action_entity: &str,
-        _goal_id: &GoalId,
-        _status: GoalStatus,
-        _result: &[u8],
-    ) -> NodeResult<()> {
-        Err(NodeDeclError::Runtime)
-    }
-    fn publish_feedback_raw(
-        &mut self,
-        _action_entity: &str,
-        _goal_id: &GoalId,
-        _feedback: &[u8],
-    ) -> NodeResult<()> {
-        Err(NodeDeclError::Runtime)
-    }
-    fn for_each_active_goal(
-        &self,
-        _action_entity: &str,
-        _visit: &mut dyn FnMut(&GoalId, GoalStatus),
-    ) {
-    }
-}
-
-/// Tick-side `ClientDispatch` stub (Phase 212.M-F.4). Mirrors the
-/// `UnsupportedActions` shape — every method returns
-/// `NodeDeclError::Runtime`. Real client-side dispatch is wired by the
-/// codegen-emitted `GenClientDispatch` impl (nros-cli) which resolves
-/// service / action-client handles on the live executor. The in-tree
-/// BSP runtime keeps this stub until the codegen plumbing reaches it.
-struct UnsupportedClients;
-
-impl ClientDispatch for UnsupportedClients {
-    fn call_raw(
-        &mut self,
-        _service_entity: &str,
-        _request_cdr: &[u8],
-        _response_buf: &mut [u8],
-    ) -> NodeResult<usize> {
-        Err(NodeDeclError::Runtime)
-    }
-    fn send_goal_raw(&mut self, _action_entity: &str, _goal_cdr: &[u8]) -> NodeResult<GoalId> {
-        Err(NodeDeclError::Runtime)
-    }
-}
+// Phase 212.M-F.23 — the `UnsupportedActions` / `UnsupportedClients` tick-side
+// stubs are retired. Real service/action client + action-server dispatch on the
+// single-node runtime lives in `RuntimeClientDispatch` / `RuntimeActions`
+// (below), wired into `run_ticks`.
 
 // =============================================================================
 // ExecutorNodeRuntime
@@ -370,6 +332,9 @@ impl ExecutorNodeRuntime {
                 _phantom: PhantomData,
             })),
             publishers: RefCell::new(Vec::new()),
+            service_clients: RefCell::new(Vec::new()),
+            action_clients: RefCell::new(Vec::new()),
+            action_servers: RefCell::new(Vec::new()),
             callback_dispatches: AtomicUsize::new(0),
             message_dispatches: AtomicUsize::new(0),
         });
@@ -418,6 +383,9 @@ impl ExecutorNodeRuntime {
                 tick: tick_fn,
             })),
             publishers: RefCell::new(Vec::new()),
+            service_clients: RefCell::new(Vec::new()),
+            action_clients: RefCell::new(Vec::new()),
+            action_servers: RefCell::new(Vec::new()),
             callback_dispatches: AtomicUsize::new(0),
             message_dispatches: AtomicUsize::new(0),
         });
@@ -509,15 +477,27 @@ impl ExecutorNodeRuntime {
 
     fn run_ticks(&mut self) {
         // Per-component tick — each component's resolver is its own cell.
-        // Actions are stubbed (M.5.a.2 ships pub/sub/timer; action goal
-        // completion is a follow-up that needs the executor borrowed
-        // tick-side).
+        // Phase 212.M-F.23: the tick reaches the executor (service-client
+        // call_raw poll, action-server complete/feedback) through a raw
+        // pointer so `&self.components` and `&mut self.executor` (disjoint
+        // fields) can be live at once.
+        let exec_ptr: *mut Executor = &mut self.executor;
         for cell in &self.components {
             let resolver = CellResolver {
                 cell: cell.as_ref(),
             };
-            let mut actions = UnsupportedActions;
-            let mut clients = UnsupportedClients;
+            let service_clients = cell.service_clients.borrow();
+            let action_clients = cell.action_clients.borrow();
+            let action_servers = cell.action_servers.borrow();
+            let mut actions = RuntimeActions {
+                executor: exec_ptr,
+                handles: &action_servers,
+            };
+            let mut clients = RuntimeClientDispatch {
+                executor: exec_ptr,
+                services: &service_clients,
+                actions: &action_clients,
+            };
             let mut ctx = TickCtx::new(&resolver, &mut actions, &mut clients);
             if let Ok(mut slot) = cell.slot.try_borrow_mut() {
                 slot.tick(&mut ctx);
@@ -700,15 +680,145 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .map_err(|_| NodeDeclError::Runtime)?;
                 Ok(())
             }
-            EntityKind::ServiceServer
-            | EntityKind::ServiceClient
-            | EntityKind::ActionServer
-            | EntityKind::ActionClient
-            | EntityKind::Parameter => {
-                // M.5.a.2 ships pub / sub / timer wiring. Service / action /
-                // parameter dispatch lands in M.5.a.4 — until then registration
-                // succeeds (metadata is valid) and the callbacks simply never
-                // fire. See the module-level "Coverage today" note.
+            // Phase 212.M-F.23 — service / action client + server dispatch on
+            // the single-node runtime. The executor-level `register_*_on`
+            // calls add an arena dispatch entry, so inbound requests / goals
+            // are serviced inside `spin_once`; the leaked `*Ctx` trampoline
+            // contexts bridge back into the component's `on_callback`. Client
+            // handles are stashed in the cell for the tick-side dispatch
+            // (`RuntimeClientDispatch` / `RuntimeActions` in `run_ticks`).
+            EntityKind::ServiceServer => {
+                let cb_id = metadata
+                    .callback_id
+                    .as_ref()
+                    .ok_or(NodeDeclError::Runtime)?;
+                let ctx = Box::into_raw(Box::new(ServiceServerCtx {
+                    cell: self.cell.clone(),
+                    callback_id: String::from(cb_id.as_str()),
+                })) as *mut core::ffi::c_void;
+                self.executor
+                    .register_service_raw_sized_on::<1024, 1024>(
+                        node,
+                        metadata.source_name.as_str(),
+                        metadata.type_name,
+                        metadata.type_hash,
+                        crate::QosSettings::services_default(),
+                        service_server_trampoline,
+                        ctx,
+                    )
+                    .map_err(|_| NodeDeclError::Runtime)?;
+                Ok(())
+            }
+            EntityKind::ServiceClient => {
+                let hid = self
+                    .executor
+                    .register_service_client_raw_sized_on::<1024>(
+                        node,
+                        metadata.source_name.as_str(),
+                        metadata.type_name,
+                        metadata.type_hash,
+                        crate::QosSettings::services_default(),
+                        None,
+                        core::ptr::null_mut(),
+                    )
+                    .map_err(|_| NodeDeclError::Runtime)?;
+                self.cell
+                    .service_clients
+                    .borrow_mut()
+                    .push((String::from(metadata.id.as_str()), hid));
+                Ok(())
+            }
+            EntityKind::ActionServer => {
+                let goal_cb = metadata
+                    .callback_id
+                    .as_ref()
+                    .ok_or(NodeDeclError::Runtime)?;
+                let cancel_cb = metadata
+                    .action_cancel_callback_id
+                    .as_ref()
+                    .ok_or(NodeDeclError::Runtime)?;
+                let accepted_cb = metadata
+                    .action_accepted_callback_id
+                    .as_ref()
+                    .map(|c| String::from(c.as_str()));
+                let ctx = Box::into_raw(Box::new(ActionServerCtx {
+                    cell: self.cell.clone(),
+                    goal_callback_id: String::from(goal_cb.as_str()),
+                    cancel_callback_id: String::from(cancel_cb.as_str()),
+                    accepted_callback_id: accepted_cb,
+                })) as *mut core::ffi::c_void;
+                let handle = self
+                    .executor
+                    .register_action_server_raw_sized::<1024, 1024, 1024, 4>(
+                        crate::RawActionServerSpec {
+                            node_id: Some(node),
+                            action_name: metadata.source_name.as_str(),
+                            type_name: metadata.type_name,
+                            type_hash: metadata.type_hash,
+                            qos: crate::QosSettings::services_default(),
+                            goal_callback: action_goal_trampoline,
+                            cancel_callback: action_cancel_trampoline,
+                            accepted_callback: Some(action_accepted_trampoline),
+                            context: ctx,
+                        },
+                    )
+                    .map_err(|_| NodeDeclError::Runtime)?;
+                self.cell
+                    .action_servers
+                    .borrow_mut()
+                    .push((String::from(metadata.id.as_str()), handle));
+                Ok(())
+            }
+            EntityKind::ActionClient => {
+                // A bound `callback_id` (set by
+                // `create_action_client_with_callbacks_for_name`) delivers the
+                // terminal goal result to the component via `on_callback`; the
+                // optional `action_accepted_callback_id` slot carries the
+                // feedback callback (reused — unused on a client). The executor
+                // auto-drives accept → feedback → result during spin and invokes
+                // these trampolines. No callbacks → send-goal only.
+                let (result_callback, feedback_callback, ctx) = match metadata.callback_id.as_ref()
+                {
+                    Some(result_cb) => {
+                        let feedback_cb = metadata
+                            .action_accepted_callback_id
+                            .as_ref()
+                            .map(|c| String::from(c.as_str()));
+                        let ctx = Box::into_raw(Box::new(ActionClientCtx {
+                            cell: self.cell.clone(),
+                            result_callback_id: String::from(result_cb.as_str()),
+                            feedback_callback_id: feedback_cb.clone(),
+                        })) as *mut core::ffi::c_void;
+                        let fb = feedback_cb.map(|_| action_feedback_trampoline as _);
+                        (Some(action_result_trampoline as _), fb, ctx)
+                    }
+                    None => (None, None, core::ptr::null_mut()),
+                };
+                let handle = self
+                    .executor
+                    .register_action_client_raw_sized::<1024, 1024, 1024>(
+                        crate::RawActionClientSpec {
+                            node_id: Some(node),
+                            action_name: metadata.source_name.as_str(),
+                            type_name: metadata.type_name,
+                            type_hash: metadata.type_hash,
+                            goal_response_callback: None,
+                            feedback_callback,
+                            result_callback,
+                            context: ctx,
+                        },
+                    )
+                    .map_err(|_| NodeDeclError::Runtime)?;
+                self.cell
+                    .action_clients
+                    .borrow_mut()
+                    .push((String::from(metadata.id.as_str()), handle.entry_index()));
+                Ok(())
+            }
+            EntityKind::Parameter => {
+                // Parameter dispatch is still a follow-up (separate from the
+                // service/action seam landed in M-F.23). Registration succeeds;
+                // the param callbacks don't fire yet.
                 Ok(())
             }
         }
@@ -741,6 +851,287 @@ fn dispatch_into_cell(cell: &Arc<ComponentCell>, cb_id: &str, payload: &[u8]) {
     // callbacks run sequentially under the single-threaded executor.
     if let Ok(mut slot) = cell.slot.try_borrow_mut() {
         slot.dispatch(cb_id, &mut ctx);
+    }
+}
+
+// =============================================================================
+// Phase 212.M-F.23 — service / action SERVER trampolines + tick-side client /
+// action dispatch.
+//
+// The executor's raw service/action-server registration takes C-ABI fn
+// pointers, so the runtime leaks a `*Ctx` (lives for the runtime's lifetime,
+// like the executor) holding the owning `ComponentCell` + the declared
+// callback ids. Each trampoline rebuilds a `CallbackCtx` and routes into the
+// component's `on_callback`, exactly as the orchestration codegen's
+// `svc_tramp_*` / `goal_tramp_*` do for the Entry path.
+// =============================================================================
+
+/// Leaked context for a service-server arena callback.
+struct ServiceServerCtx {
+    cell: Arc<ComponentCell>,
+    callback_id: String,
+}
+
+/// Leaked context for an action-server arena callback (goal + cancel + the
+/// optional accepted hook all share one).
+struct ActionServerCtx {
+    cell: Arc<ComponentCell>,
+    goal_callback_id: String,
+    cancel_callback_id: String,
+    accepted_callback_id: Option<String>,
+}
+
+/// Leaked context for an action-CLIENT result + feedback callbacks.
+struct ActionClientCtx {
+    cell: Arc<ComponentCell>,
+    result_callback_id: String,
+    feedback_callback_id: Option<String>,
+}
+
+/// Action-client result callback: the executor's spin auto-drives the goal to
+/// completion and hands the terminal result CDR here; route it into the
+/// component's `on_callback` (read with `CallbackCtx::message`).
+unsafe extern "C" fn action_result_trampoline(
+    _goal_id: *const GoalId,
+    _status: GoalStatus,
+    result_data: *const u8,
+    result_len: usize,
+    ctx: *mut core::ffi::c_void,
+) {
+    let actx = unsafe { &*(ctx as *const ActionClientCtx) };
+    let result_slice = unsafe { core::slice::from_raw_parts(result_data, result_len) };
+    dispatch_into_cell(&actx.cell, &actx.result_callback_id, result_slice);
+}
+
+/// Action-client feedback callback: route each feedback CDR into the
+/// component's `on_callback` under the bound feedback callback id.
+unsafe extern "C" fn action_feedback_trampoline(
+    _goal_id: *const GoalId,
+    feedback_data: *const u8,
+    feedback_len: usize,
+    ctx: *mut core::ffi::c_void,
+) {
+    let actx = unsafe { &*(ctx as *const ActionClientCtx) };
+    let Some(cb_id) = actx.feedback_callback_id.as_ref() else {
+        return;
+    };
+    let feedback_slice = unsafe { core::slice::from_raw_parts(feedback_data, feedback_len) };
+    dispatch_into_cell(&actx.cell, cb_id, feedback_slice);
+}
+
+/// Service-server request callback: deserialize-side runs in the component's
+/// `on_callback` via `CallbackCtx::with_reply`; the executor sends the reply
+/// from the bytes written into `resp`.
+unsafe extern "C" fn service_server_trampoline(
+    req: *const u8,
+    req_len: usize,
+    resp: *mut u8,
+    resp_cap: usize,
+    resp_len: *mut usize,
+    ctx: *mut core::ffi::c_void,
+) -> bool {
+    let sctx = unsafe { &*(ctx as *const ServiceServerCtx) };
+    let req_slice = unsafe { core::slice::from_raw_parts(req, req_len) };
+    let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp, resp_cap) };
+    let mut written = 0usize;
+    let resolver = CellResolver {
+        cell: sctx.cell.as_ref(),
+    };
+    let mut cb = CallbackCtx::with_reply(req_slice, &resolver, resp_slice, &mut written);
+    if let Ok(mut slot) = sctx.cell.slot.try_borrow_mut() {
+        slot.dispatch(&sctx.callback_id, &mut cb);
+    }
+    unsafe { *resp_len = written };
+    true
+}
+
+/// Action-server goal callback → component `on_callback` with a goal decision.
+unsafe extern "C" fn action_goal_trampoline(
+    _goal_id: *const GoalId,
+    goal_data: *const u8,
+    goal_len: usize,
+    ctx: *mut core::ffi::c_void,
+) -> crate::GoalResponse {
+    let actx = unsafe { &*(ctx as *const ActionServerCtx) };
+    let goal_slice = unsafe { core::slice::from_raw_parts(goal_data, goal_len) };
+    let mut resp = crate::GoalResponse::Reject;
+    let resolver = CellResolver {
+        cell: actx.cell.as_ref(),
+    };
+    let mut cb = CallbackCtx::with_goal_decision(goal_slice, &resolver, &mut resp);
+    if let Ok(mut slot) = actx.cell.slot.try_borrow_mut() {
+        slot.dispatch(&actx.goal_callback_id, &mut cb);
+    }
+    resp
+}
+
+/// Action-server cancel callback → component `on_callback` with a cancel
+/// decision. The cancel callback has no goal payload.
+unsafe extern "C" fn action_cancel_trampoline(
+    _goal_id: *const GoalId,
+    _status: GoalStatus,
+    ctx: *mut core::ffi::c_void,
+) -> crate::CancelResponse {
+    let actx = unsafe { &*(ctx as *const ActionServerCtx) };
+    let mut resp = crate::CancelResponse::Rejected;
+    let resolver = CellResolver {
+        cell: actx.cell.as_ref(),
+    };
+    let mut cb = CallbackCtx::with_cancel_decision(&[], &resolver, &mut resp);
+    if let Ok(mut slot) = actx.cell.slot.try_borrow_mut() {
+        slot.dispatch(&actx.cancel_callback_id, &mut cb);
+    }
+    resp
+}
+
+/// Action-server accepted hook → component `on_callback` (no decision, no
+/// payload). No-op when the component didn't declare an accepted callback.
+unsafe extern "C" fn action_accepted_trampoline(
+    _goal_id: *const GoalId,
+    ctx: *mut core::ffi::c_void,
+) {
+    let actx = unsafe { &*(ctx as *const ActionServerCtx) };
+    let Some(cb_id) = actx.accepted_callback_id.as_ref() else {
+        return;
+    };
+    dispatch_into_cell(&actx.cell, cb_id, &[]);
+}
+
+/// Tick-side service/action CLIENT dispatch — the single-node runtime's mirror
+/// of the orchestration `GenClientDispatch`. Resolves the per-component client
+/// handle arrays + a `*mut Executor` (the tick borrows `&components` while
+/// needing `&mut executor`, so the executor is reached through a raw pointer,
+/// reborrowed `&mut` per call; no aliasing — `executor` and `components` are
+/// disjoint fields).
+struct RuntimeClientDispatch<'a> {
+    executor: *mut Executor,
+    services: &'a [(String, crate::HandleId)],
+    actions: &'a [(String, usize)],
+}
+
+impl RuntimeClientDispatch<'_> {
+    fn service(&self, entity: &str) -> NodeResult<crate::HandleId> {
+        self.services
+            .iter()
+            .find(|(e, _)| e == entity)
+            .map(|(_, h)| *h)
+            .ok_or(NodeDeclError::Runtime)
+    }
+
+    fn action_entry(&self, entity: &str) -> NodeResult<usize> {
+        self.actions
+            .iter()
+            .find(|(e, _)| e == entity)
+            .map(|(_, i)| *i)
+            .ok_or(NodeDeclError::Runtime)
+    }
+}
+
+impl ClientDispatch for RuntimeClientDispatch<'_> {
+    fn call_raw(
+        &mut self,
+        service_entity: &str,
+        request_cdr: &[u8],
+        response_buf: &mut [u8],
+    ) -> NodeResult<usize> {
+        use crate::ServiceClientTrait;
+        let hid = self.service(service_entity)?;
+        {
+            let executor = unsafe { &mut *self.executor };
+            let entry = unsafe { executor.service_client_entry_mut(hid.0) }
+                .ok_or(NodeDeclError::Runtime)?;
+            entry
+                .handle
+                .send_request_raw(request_cdr)
+                .map_err(|_| NodeDeclError::Runtime)?;
+        }
+        // Bounded wait — caps total time so the tick loop stays responsive.
+        for _ in 0..200 {
+            let executor = unsafe { &mut *self.executor };
+            executor.spin_once(core::time::Duration::from_millis(10));
+            let entry = unsafe { executor.service_client_entry_mut(hid.0) }
+                .ok_or(NodeDeclError::Runtime)?;
+            match entry.handle.try_recv_reply_raw(response_buf) {
+                Ok(Some(len)) => return Ok(len),
+                Ok(None) => continue,
+                Err(_) => return Err(NodeDeclError::Runtime),
+            }
+        }
+        Err(NodeDeclError::Runtime)
+    }
+
+    fn send_goal_raw(&mut self, action_entity: &str, goal_cdr: &[u8]) -> NodeResult<GoalId> {
+        let entry_index = self.action_entry(action_entity)?;
+        let executor = unsafe { &mut *self.executor };
+        let core = unsafe { executor.action_client_core_mut(entry_index) }
+            .ok_or(NodeDeclError::Runtime)?;
+        let goal_id = core
+            .send_goal_raw(goal_cdr)
+            .map_err(|_| NodeDeclError::Runtime)?;
+        // rclcpp-style: request the result immediately. The server queues the
+        // get_result request until the goal terminates, then replies — the
+        // executor's spin auto-delivers it to the bound result callback (the
+        // executor never auto-sends this request, so the declarative client
+        // must). Best-effort: a transport hiccup just means no result callback.
+        let _ = core.send_get_result_request(&goal_id);
+        Ok(goal_id)
+    }
+}
+
+/// Tick-side action-SERVER execution — mirror of `GenActionExec`. Lets a
+/// component complete goals / publish feedback / enumerate active goals from
+/// its `tick` via `TickCtx`.
+struct RuntimeActions<'a> {
+    executor: *mut Executor,
+    handles: &'a [(String, crate::ActionServerRawHandle)],
+}
+
+impl RuntimeActions<'_> {
+    fn handle(&self, entity: &str) -> NodeResult<crate::ActionServerRawHandle> {
+        self.handles
+            .iter()
+            .find(|(e, _)| e == entity)
+            .map(|(_, h)| *h)
+            .ok_or(NodeDeclError::Runtime)
+    }
+}
+
+impl ActionExecutor for RuntimeActions<'_> {
+    fn complete_goal_raw(
+        &mut self,
+        action_entity: &str,
+        goal_id: &GoalId,
+        status: GoalStatus,
+        result: &[u8],
+    ) -> NodeResult<()> {
+        let handle = self.handle(action_entity)?;
+        let executor = unsafe { &mut *self.executor };
+        handle.complete_goal_raw(executor, goal_id, status, result);
+        Ok(())
+    }
+
+    fn publish_feedback_raw(
+        &mut self,
+        action_entity: &str,
+        goal_id: &GoalId,
+        feedback: &[u8],
+    ) -> NodeResult<()> {
+        let handle = self.handle(action_entity)?;
+        let executor = unsafe { &mut *self.executor };
+        handle
+            .publish_feedback_raw(executor, goal_id, feedback)
+            .map_err(|_| NodeDeclError::Runtime)
+    }
+
+    fn for_each_active_goal(
+        &self,
+        action_entity: &str,
+        visit: &mut dyn FnMut(&GoalId, GoalStatus),
+    ) {
+        if let Ok(handle) = self.handle(action_entity) {
+            let executor = unsafe { &*self.executor };
+            handle.for_each_active_goal(executor, |g| visit(&g.goal_id, g.status));
+        }
     }
 }
 
