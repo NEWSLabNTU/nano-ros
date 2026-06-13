@@ -37,19 +37,12 @@ else
     echo "activate.sh: /opt/ros/humble/setup.bash not found — ROS-dependent recipes will fail" >&2
 fi
 
-# `nros` CLI resolution (Phase 218 monorepo merge):
-#   1. packages/cli/target/release/nros — per-checkout binary, built by
-#      `just setup-cli`. PREFERRED. Each nano-ros worktree carries its
-#      own CLI, no global PATH skew across trees.
-#   2. ~/.nros/bin/nros — transitional fallback for users mid-migration
-#      from the pre-218 `scripts/install-nros.sh` curl install. Will be
-#      removed once every active branch lands on 218.
-# Order matters: each `export PATH="X:$PATH"` prepends X to the LEFT,
-# so the LAST export wins on a shell PATH search. To make (1) win,
-# (2) is exported FIRST, then (1) is exported LAST.
-if [ -x "${NROS_HOME:-$HOME/.nros}/bin/nros" ]; then
-    export PATH="${NROS_HOME:-$HOME/.nros}/bin:$PATH"
-fi
+# `nros` CLI resolution: the in-tree per-checkout binary at
+# `packages/cli/target/release/nros`, built by `just setup-cli`. Each
+# nano-ros worktree carries its own CLI — no global PATH skew across
+# trees. This is the sole source: the pre-218 `~/.nros/bin/nros` curl
+# install (`scripts/install-nros.sh`) is retired, and the standalone
+# `NEWSLabNTU/nros-cli` repo was merged in-tree at `packages/cli/`.
 if [ -x "$_nros_root/packages/cli/target/release/nros" ]; then
     export PATH="$_nros_root/packages/cli/target/release:$PATH"
 elif [ -z "${NROS_QUIET_ACTIVATE:-}" ] && ! command -v nros >/dev/null 2>&1; then

@@ -40,12 +40,7 @@ shared_node_pkg = { path = "../src/shared_node_pkg", features = ["freertos"] }
 [build-dependencies]
 # Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from
 # `launch/system.launch.xml`. Shared by BOTH Entry pkgs at the SAME
-# git rev — the byte-identical OUT_DIR/run_plan.rs assertion depends
-# on that.
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
-
-# Phase 212.O.3 — offline-friendly path-override (mirrors the sibling
-# posix_entry Cargo.toml — must be the same nros-build source so the
-# byte-identical OUT_DIR/run_plan.rs assertion holds).
-[patch."https://github.com/NEWSLabNTU/nros-cli.git"]
-nros-build = { path = "@NROS_CLI_ROOT@/nros-build" }
+# source (mirrors the sibling posix_entry Cargo.toml) — the
+# byte-identical OUT_DIR/run_plan.rs assertion depends on that. In-tree
+# CLI (post-Phase-218 `packages/cli/`); archived git dep retired.
+nros-build = { path = "@NANO_ROS_ROOT@/packages/cli/nros-build" }

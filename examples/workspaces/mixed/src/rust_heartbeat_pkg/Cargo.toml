@@ -23,9 +23,6 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
     "ros-humble",
 ] }
 
-[patch."https://github.com/NEWSLabNTU/nros-cli.git"]
-nros-build = { path = "../../../../../packages/cli/nros-build" }
-
 [workspace]
 
 [patch.crates-io]

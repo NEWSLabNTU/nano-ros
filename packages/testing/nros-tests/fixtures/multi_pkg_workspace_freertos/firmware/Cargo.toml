@@ -45,5 +45,6 @@ listener_pkg = { path = "../src/listener_pkg" }
 
 [build-dependencies]
 # Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from the
-# launch file + workspace cargo-metadata.
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
+# launch file + workspace cargo-metadata. In-tree CLI (post-Phase-218
+# `packages/cli/`); the archived `NEWSLabNTU/nros-cli` git dep is retired.
+nros-build = { path = "@NANO_ROS_ROOT@/packages/cli/nros-build" }

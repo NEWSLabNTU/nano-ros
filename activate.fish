@@ -26,13 +26,9 @@ else if test -f /opt/ros/humble/setup.bash
     echo "or use a bash subshell for ROS-dependent commands." >&2
 end
 
-# `nros` CLI resolution (Phase 218 monorepo merge). Order matches
-# `activate.sh`: ~/.nros/bin FIRST, per-checkout LAST so the
-# per-checkout binary wins on PATH searches.
-set -l _nros_home_bin (set -q NROS_HOME; and echo $NROS_HOME/bin; or echo $HOME/.nros/bin)
-if test -x $_nros_home_bin/nros
-    set -gx PATH $_nros_home_bin $PATH
-end
+# `nros` CLI resolution: the in-tree per-checkout binary (mirror of
+# `activate.sh`). The pre-218 `~/.nros/bin/nros` curl install is
+# retired; `packages/cli/target/release/nros` is the sole source.
 if test -x $_nros_root/packages/cli/target/release/nros
     set -gx PATH $_nros_root/packages/cli/target/release $PATH
 else if not set -q NROS_QUIET_ACTIVATE; and not command -v nros >/dev/null 2>&1

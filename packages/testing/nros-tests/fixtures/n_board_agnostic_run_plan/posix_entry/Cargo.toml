@@ -35,16 +35,7 @@ shared_node_pkg = { path = "../src/shared_node_pkg", features = ["posix"] }
 [build-dependencies]
 # Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from
 # `launch/system.launch.xml`. Shared by BOTH Entry pkgs at the SAME
-# git rev — the byte-identical OUT_DIR/run_plan.rs assertion depends
-# on that.
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
-
-# Phase 212.O.3 — offline-friendly path-override. When `NROS_CLI_ROOT`
-# env var (or default `<nano-ros>/../nros-cli`) points at a local
-# nros-cli checkout, the test-harness rewrites `@NROS_CLI_ROOT@` to
-# the absolute path and the patch redirects `nros-build` to that
-# source. When the local path doesn't exist, the placeholder is left
-# intact + the patch block is malformed (cargo skips it cleanly), so
-# the `git = …` dep above wins as before.
-[patch."https://github.com/NEWSLabNTU/nros-cli.git"]
-nros-build = { path = "@NROS_CLI_ROOT@/nros-build" }
+# source — the byte-identical OUT_DIR/run_plan.rs assertion depends on
+# that. In-tree CLI (post-Phase-218 `packages/cli/`); the archived
+# `NEWSLabNTU/nros-cli` git dep + `@NROS_CLI_ROOT@` patch are retired.
+nros-build = { path = "@NANO_ROS_ROOT@/packages/cli/nros-build" }

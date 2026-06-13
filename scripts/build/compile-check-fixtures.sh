@@ -107,11 +107,6 @@ stage_tree() {
     # placeholder is a no-op, not an error.
     find "$staged" -type f -exec grep -lZ '@NANO_ROS_ROOT@' {} + 2>/dev/null \
         | xargs -0 -r sed -i "s#@NANO_ROS_ROOT@#$repo_root#g" || true
-    # `@NROS_CLI_ROOT@` → the in-tree CLI dir (post-Phase-218 `packages/cli/`); its
-    # `@NROS_CLI_ROOT@/nros-build` patch path resolves the standalone nros-build
-    # crate. Harmless for fixtures that don't use it (no match → `|| true`).
-    find "$staged" -type f -exec grep -lZ '@NROS_CLI_ROOT@' {} + 2>/dev/null \
-        | xargs -0 -r sed -i "s#@NROS_CLI_ROOT@#$repo_root/packages/cli#g" || true
     post_stage "$id" "$staged"
 }
 

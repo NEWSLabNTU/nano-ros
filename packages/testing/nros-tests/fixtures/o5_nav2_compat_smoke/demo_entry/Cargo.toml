@@ -53,15 +53,7 @@ primary_node = { path = "../src/primary_node" }
 secondary_node = { path = "../src/secondary_node" }
 
 [build-dependencies]
-# Phase 212.N.4 codegen library. The git dep matches the H.3 fixture's
-# shape — the standalone `nros-build` crate is not vendored into the
-# nano-ros tree.
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
-
-# Phase 212.O.5 — offline-friendly path-override. Test-harness
-# rewrites `@NROS_CLI_ROOT@` to the local nros-cli checkout (env var
-# or `<nano-ros>/../nros-cli` default). When the path doesn't exist,
-# the placeholder stays + the patch block is malformed (cargo skips
-# cleanly) + the `git = …` dep wins.
-[patch."https://github.com/NEWSLabNTU/nros-cli.git"]
-nros-build = { path = "@NROS_CLI_ROOT@/nros-build" }
+# Phase 212.N.4 codegen library — in-tree CLI (post-Phase-218
+# `packages/cli/`); the archived `NEWSLabNTU/nros-cli` git dep +
+# `@NROS_CLI_ROOT@` patch are retired.
+nros-build = { path = "@NANO_ROS_ROOT@/packages/cli/nros-build" }
