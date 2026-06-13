@@ -204,19 +204,19 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
     `workspaces/rust/src/*_entry` already uses `nros::main!()` from prior waves).
   - The C/C++ workspace siblings (`pkg_c_talker`/`pkg_cpp_listener`/consumer.cpp)
     were outside the bullet's named scope (analogous to C2). Leaks P1/P7.
-- [→] **C5 — BLOCKED on an stm32f4 BoardEntry enabler (2026-06-14).** Investigated
-  (no edits; toolchain present — `thumbv7em-none-eabihf` builds the group — so this
-  is architectural, not env). The legacy `talker/` uses `nros-board-stm32f4` (the
-  working bare-metal direct-exec ethernet/smoltcp/zenoh board), which has **no
-  `BoardEntry` impl / no deploy key** — so `nros::main!()` can't route to it. The
-  only registered stm32f4 deploy keys (`rtic-stm32f4`/`embassy-stm32f4`) point at
-  boards whose `init_hardware` is `todo!()` (skeletons); repointing `talker/` there
-  would duplicate `talker-rtic`/`talker-embassy` AND discard the only working
-  stm32f4 ethernet bring-up — coverage loss, not cleanup. Needs the stm32f4 sibling
-  of D1's `nros-board-mps2-an385` work: a `BoardEntry` (behind `board-entry`) on
-  `nros-board-stm32f4` + a `stm32f4` bare-metal deploy key in `board_path_for` /
-  `is_baremetal_cortexm_deploy` (uses E5 `run_with_deploy` for net/locator). Then
-  C5 is a trivial entry-shape swap. Leaks P2/P3/P5/P6.
+- [x] **C5 — DONE (2026-06-14): built the stm32f4 BoardEntry enabler + migrated the
+  talker.** Enabler (mirrors D1's `nros-board-mps2-an385`): `nros-board-stm32f4`
+  gained `src/entry.rs` (`nros_platform::BoardEntry for Stm32F4` — inline reset-thread
+  boot → executor → spin) behind a new `board-entry` feature + `Stm32F4` re-export;
+  `nros-macros` registered deploy key `"stm32f4"` (`board_path_for` +
+  `is_baremetal_cortexm_deploy` + csv). Cleanup: `examples/stm32f4/rust/talker`
+  legacy `#[entry]`/`run(Config,closure)`/explicit-executor/`register()`/hardcoded
+  `Config::nucleo_f429zi()` → 6-line defmt `nros::main!()` entry + net via
+  `[package.metadata.nros.deploy.stm32f4]`; node logic → new sibling
+  `talker_node_pkg` (pkg name `talker_pkg`; sibling dir avoids clobbering the
+  Phase-216 `stm32f4_talker_pkg` that talker-rtic/-embassy consume). P2/P3/P5/P6
+  cleared; node-lib `#![no_std]` = accepted minor. Verified: `stm32f4-bsp-talker`
+  builds clean for `thumbv7em-none-eabihf` (the stm32f4 CI gate; no QEMU). (`ddffaaa7d`)
 
 ---
 
