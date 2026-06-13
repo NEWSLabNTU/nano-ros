@@ -70,17 +70,16 @@ fn main() -> ! {
             if let Ok(Some(goal_id)) = server.try_accept_goal(|_id, goal: &FibonacciGoal| {
                 info!("Received goal request: order={}", goal.order);
                 GoalResponse::AcceptAndExecute
-            }) {
-                if let Some(ag) = server.get_goal(&goal_id) {
-                    let order = ag.goal.order;
-                    server.set_goal_status(&goal_id, GoalStatus::Executing);
-                    let _ = tracked.push(Tracked {
-                        id: goal_id,
-                        order,
-                        seq: heapless::Vec::new(),
-                    });
-                    info!("Goal accepted (concurrent): {goal_id}");
-                }
+            }) && let Some(ag) = server.get_goal(&goal_id)
+            {
+                let order = ag.goal.order;
+                server.set_goal_status(&goal_id, GoalStatus::Executing);
+                let _ = tracked.push(Tracked {
+                    id: goal_id,
+                    order,
+                    seq: heapless::Vec::new(),
+                });
+                info!("Goal accepted (concurrent): {goal_id}");
             }
 
             // Advance every tracked goal one Fibonacci step.

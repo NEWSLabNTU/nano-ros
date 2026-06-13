@@ -9,11 +9,14 @@
 
 use core::{
     fmt::Arguments,
-    mem::MaybeUninit,
     sync::atomic::{AtomicBool, Ordering},
 };
+// Only the synthetic-callback E2E path uses these.
+#[cfg(feature = "e2e-synthetic-callback")]
+use core::mem::MaybeUninit;
 
 use heapless::spsc::{Consumer, Producer, Queue};
+#[cfg(feature = "e2e-synthetic-callback")]
 use nros::PublisherResolver;
 use nros_platform::{
     BoardExit, BoardInit, BoardPrint, DispatchStrategy, NodeDispatchFn, NodeDispatchRuntime,
@@ -239,6 +242,8 @@ fn init_with_config(config: nros_board_mps2_an385::Config) -> (::nros::Executor,
     let (producer, consumer) = take_dispatch_queue()
         .expect("RticMps2An385::init_hardware: dispatch queue already claimed");
     stash_dispatch_consumer(consumer);
+    // `mut` is only needed by the synthetic-callback enqueue below.
+    #[cfg_attr(not(feature = "e2e-synthetic-callback"), allow(unused_mut))]
     let mut runtime = RticRuntime::with_producer(producer);
 
     #[cfg(feature = "e2e-synthetic-callback")]

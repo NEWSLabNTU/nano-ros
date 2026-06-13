@@ -49,11 +49,11 @@ impl ExecutableNode for ListenerNode {
     fn init() -> Self::State {}
 
     fn on_callback(_state: &mut (), callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "on_message" {
-            if let Ok(msg) = ctx.message::<Int32>() {
-                // Preserve the old example's per-message marker exactly.
-                nros_info!(&LOGGER, "Received: {}", msg.data);
-            }
+        if callback.as_str() == "on_message"
+            && let Ok(msg) = ctx.message::<Int32>()
+        {
+            // Preserve the old example's per-message marker exactly.
+            nros_info!(&LOGGER, "Received: {}", msg.data);
         }
     }
 
