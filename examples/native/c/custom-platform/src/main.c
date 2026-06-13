@@ -165,7 +165,9 @@ static void demo_platform_time(void) {
 
     // Sleep for 100ms using platform sleep
     printf("Sleeping for 100ms...\n");
-    // Note: On real bare-metal, this would call nros_platform_sleep_ns()
+    // The portable way is the canonical platform ABI: nros_platform_sleep_ms(100)
+    // (see src/platform_impl.c). Use nanosleep here to keep this demo TU free of
+    // the platform header.
     struct timespec ts = {0, 100000000}; // 100ms
     nanosleep(&ts, NULL);
 
