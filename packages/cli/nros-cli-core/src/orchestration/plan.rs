@@ -170,6 +170,12 @@ pub struct PlanInstance {
     pub nodes: Vec<PlanNode>,
     pub callbacks: Vec<PlanCallback>,
     pub parameters: Vec<PlanParameter>,
+    /// Phase 211.H — per-topic QoS overrides lowered from
+    /// `qos_overrides.<topic>.<role>.<policy>` launch params. Split out of
+    /// `parameters` by the planner. Additive: `#[serde(default)]` +
+    /// `skip_serializing_if` so plans written before 211.H round-trip unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub qos_overrides: Vec<QosOverride>,
     pub sched_bindings: Vec<PlanSchedBinding>,
     pub trace: InstanceTrace,
 }
@@ -467,6 +473,24 @@ pub struct PlanLifecycle {
 pub struct PlanParameter {
     pub node: String,
     pub name: String,
+    pub value: super::schema::ParameterValue,
+    pub source: ParameterSource,
+}
+
+/// Phase 211.H — a per-topic QoS override, lowered from a ROS 2
+/// `qos_overrides.<topic>.<role>.<policy>` launch parameter. ROS expresses
+/// these as specially-named `<param>`s; the planner splits them out of the
+/// generic `parameters` table into this typed list so the codegen can emit the
+/// matching `QosSettings` on the publisher/subscriber for `<topic>` instead of
+/// the API default. `role` is `"publisher"` / `"subscription"`; `policy` is
+/// `reliability` / `durability` / `history` / `depth` (others pass through for
+/// forward-compat). One entry per `(topic, role, policy)`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QosOverride {
+    pub topic: String,
+    pub role: String,
+    pub policy: String,
     pub value: super::schema::ParameterValue,
     pub source: ParameterSource,
 }

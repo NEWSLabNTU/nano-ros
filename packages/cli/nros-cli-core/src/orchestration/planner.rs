@@ -909,6 +909,15 @@ fn schema_instance(instance: &Value, declared: &BTreeMap<String, Value>) -> Valu
             .expect("schema_instance produces object")
             .insert("container_id".to_string(), json!(parent_id));
     }
+    // Phase 211.H — `qos_overrides` is `skip_serializing_if = "Vec::is_empty"`
+    // on the schema struct, so only emit it when the launch carried
+    // `qos_overrides.*` params; plans without them stay byte-compatible.
+    let qos_overrides = schema_qos_overrides(instance.get("parameters"));
+    if !qos_overrides.is_empty() {
+        out.as_object_mut()
+            .expect("schema_instance produces object")
+            .insert("qos_overrides".to_string(), json!(qos_overrides));
+    }
     out
 }
 
@@ -1456,12 +1465,21 @@ fn schema_qos(value: Option<&Value>) -> Value {
     })
 }
 
+/// Phase 211.H — the launch-parameter prefix ROS 2 uses to carry per-topic QoS
+/// overrides (`qos_overrides.<topic>.<role>.<policy>`). These are split out of
+/// the generic `parameters` table into `schema_qos_overrides`.
+const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
+
 fn schema_parameters(default_node_id: &str, value: Option<&Value>) -> Vec<Value> {
     let Some(Value::Object(map)) = value else {
         return Vec::new();
     };
     map.iter()
-        .filter(|(name, _)| name.as_str() != "parameter_files")
+        // `parameter_files` is metadata, not a param; `qos_overrides.*` are
+        // lowered separately into the typed `qos_overrides` block (211.H).
+        .filter(|(name, _)| {
+            name.as_str() != "parameter_files" && !name.starts_with(QOS_OVERRIDE_PREFIX)
+        })
         .map(|(name, value)| {
             json!({
                 "node": default_node_id,
@@ -1474,6 +1492,53 @@ fn schema_parameters(default_node_id: &str, value: Option<&Value>) -> Vec<Value>
             })
         })
         .collect()
+}
+
+/// Phase 211.H — lower `qos_overrides.<topic>.<role>.<policy>` launch params
+/// into typed `{topic, role, policy, value}` entries. The param name carries
+/// dots as separators but the topic itself contains `/` (not `.`), so the
+/// trailing two dot-segments are `<role>.<policy>` and everything before them
+/// is the topic — `rsplitn(3, '.')` recovers all three. Names that don't carry
+/// both a role and a policy after the prefix are skipped (malformed → no
+/// override rather than a panic).
+fn schema_qos_overrides(value: Option<&Value>) -> Vec<Value> {
+    let Some(Value::Object(map)) = value else {
+        return Vec::new();
+    };
+    let mut out: Vec<Value> = map
+        .iter()
+        .filter_map(|(name, value)| {
+            let rest = name.strip_prefix(QOS_OVERRIDE_PREFIX)?;
+            // rsplitn(3, '.') → [policy, role, topic]
+            let mut parts = rest.rsplitn(3, '.');
+            let policy = parts.next()?;
+            let role = parts.next()?;
+            let topic = parts.next()?;
+            if topic.is_empty() || role.is_empty() || policy.is_empty() {
+                return None;
+            }
+            Some(json!({
+                "topic": topic,
+                "role": role,
+                "policy": policy,
+                "value": schema_parameter_value(value),
+                "source": { "kind": "launch", "artifact": "launch" },
+            }))
+        })
+        .collect();
+    // Deterministic order (BTreeMap source is already sorted, but the
+    // topic/role/policy decomposition can reorder) for byte-stable plans.
+    out.sort_by(|a, b| {
+        let key = |v: &Value| {
+            (
+                v["topic"].as_str().unwrap_or("").to_string(),
+                v["role"].as_str().unwrap_or("").to_string(),
+                v["policy"].as_str().unwrap_or("").to_string(),
+            )
+        };
+        key(a).cmp(&key(b))
+    });
+    out
 }
 
 fn schema_parameter_value(value: &Value) -> Value {
@@ -3797,6 +3862,53 @@ topics:
         assert_plan_parameter(&instances[0], "rate_hz", json!(20));
         assert_plan_parameter(&instances[1], "rate_hz", json!(30));
         assert_plan_parameter(&instances[0], "frame", json!("map"));
+    }
+
+    /// Phase 211.H — `qos_overrides.<topic>.<role>.<policy>` launch params are
+    /// split out of the generic `parameters` table into the typed
+    /// `qos_overrides` block, and the topic (which contains `/`, not `.`) is
+    /// recovered intact from the dotted param name.
+    #[test]
+    fn qos_overrides_split_from_parameters_and_decompose() {
+        let params = json!({
+            "rate_hz": 10,
+            "qos_overrides./chatter.publisher.reliability": "reliable",
+            "qos_overrides./chatter.publisher.depth": 5,
+            "qos_overrides./scan/points.subscription.durability": "transient_local",
+            "parameter_files": "ignored.yaml"
+        });
+
+        // Generic params: only the non-qos, non-metadata one survives.
+        let plain = schema_parameters("node_x", Some(&params));
+        let names: Vec<&str> = plain
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, vec!["rate_hz"], "qos_overrides leaked into parameters");
+
+        // QoS overrides: decomposed + topic with `/` preserved, sorted.
+        let qos = schema_qos_overrides(Some(&params));
+        assert_eq!(qos.len(), 3, "expected 3 qos overrides, got {qos:?}");
+
+        // Sorted by (topic, role, policy): /chatter.publisher.depth first.
+        assert_eq!(qos[0]["topic"], "/chatter");
+        assert_eq!(qos[0]["role"], "publisher");
+        assert_eq!(qos[0]["policy"], "depth");
+        assert_eq!(qos[0]["value"], json!(5));
+
+        assert_eq!(qos[1]["topic"], "/chatter");
+        assert_eq!(qos[1]["policy"], "reliability");
+        assert_eq!(qos[1]["value"], json!("reliable"));
+
+        // Multi-segment topic `/scan/points` recovered intact.
+        assert_eq!(qos[2]["topic"], "/scan/points");
+        assert_eq!(qos[2]["role"], "subscription");
+        assert_eq!(qos[2]["policy"], "durability");
+        assert_eq!(qos[2]["value"], json!("transient_local"));
+
+        // Malformed (no role/policy) → skipped, not panicked.
+        let bad = json!({ "qos_overrides./only_topic": "x" });
+        assert!(schema_qos_overrides(Some(&bad)).is_empty());
     }
 
     #[test]
