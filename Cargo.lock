@@ -2094,6 +2094,7 @@ dependencies = [
  "critical-section",
  "nros",
  "nros-build-helpers",
+ "nros-c",
  "nros-log",
  "nros-node",
  "nros-platform",
