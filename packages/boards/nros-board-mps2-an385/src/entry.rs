@@ -118,6 +118,19 @@ where
     // closure. Nodes still `register_logger(&LOGGER)` in their `register()`.
     nros_log::init(nros_log::sinks::default());
 
+    // Phase 248 C5a (#60 T4) — the board owns RMW selection: register the linked
+    // zenoh backend into the CFFI vtable here, before `Executor::open`.
+    // Bare-metal (`target_os = "none"`) is linkme-blind + runs no `.init_array`,
+    // so the auto-register section is a no-op; this explicit, idempotent call is
+    // the registration path (mirrors `nros-board-rtic-mps2-an385::init_with_config`).
+    // Gated on the board's own `rmw-zenoh` feature so DDS-/XRCE-only builds drop it.
+    #[cfg(feature = "rmw-zenoh")]
+    if let Err(err) = nros_rmw_zenoh::register() {
+        Mps2An385::println(format_args!(""));
+        Mps2An385::println(format_args!("zenoh RMW register failed: {err:?}"));
+        Mps2An385::exit_failure();
+    }
+
     // Locator + domain come from the board Config (deploy overlay or default),
     // NOT env vars — bare-metal libc has no host `getenv` trampoline on QEMU.
     let exec_cfg = ExecutorConfig::new(cfg.zenoh_locator)

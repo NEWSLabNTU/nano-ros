@@ -120,6 +120,18 @@ where
                 ctx.config.zenoh_lease_stack_bytes,
             );
         }
+
+        // Phase 248 C5a (#60 T4) — board-owned RMW selection. Register the
+        // linked zenoh backend before the user closure opens an executor.
+        // FreeRTOS is `target_os = "none"` (linkme no-op, no `.init_array`), so
+        // this explicit idempotent call replaces the prior reliance on
+        // `nros::__register_linked_rmw()` via `nros/rmw-zenoh`.
+        if let Err(err) = ::nros_rmw_zenoh::register() {
+            B::println(format_args!(
+                "nros: zenoh RMW backend register failed: {:?}",
+                err
+            ));
+        }
     }
 
     unsafe {

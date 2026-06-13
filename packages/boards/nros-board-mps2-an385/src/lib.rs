@@ -44,6 +44,20 @@ mod node;
 #[cfg(feature = "xrce-transport")]
 pub mod xrce_transport;
 
+// Phase 248 C5a (#60 T4) — the board owns XRCE backend linking. Force-link the
+// `nros-rmw-xrce-cffi` backend rlib so its `RMW_INIT_ENTRIES` self-register
+// section survives stable-Rust rlib pruning and reaches the binary, WITHOUT a
+// consumer naming the backend. Mirrors `__FORCE_LINK_XRCE` in `nros/src/lib.rs`
+// (referencing `register` keeps both the symbol and its linker section alive).
+// On bare-metal (`target_os = "none"`) the section walker is a no-op, so the XRCE
+// example still drives the explicit registration; this guarantees the rlib +
+// custom-transport ops are not pruned first. Inert unless `xrce-transport` is on.
+#[cfg(feature = "xrce-transport")]
+#[doc(hidden)]
+#[used]
+pub static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
+    nros_rmw_xrce_cffi::register;
+
 // Re-export entry macro
 pub use cortex_m_rt::entry;
 

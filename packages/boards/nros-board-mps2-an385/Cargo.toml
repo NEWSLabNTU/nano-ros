@@ -22,6 +22,15 @@ nros-platform-api = { path = "../../core/nros-platform-api" }
 # Phase 129.D — `zpico-platform-shim` retired. zenoh-pico `z_*`
 # symbols come from `zpico-sys`'s default-on `platform-aliases`
 # alias TU when `rmw-zenoh` (or `serial`) is active.
+# Phase 248 C5a (#60 T4) — the BOARD is the RMW selection point: depend on the
+# concrete zenoh backend directly (optional, behind `rmw-zenoh`) so the board
+# OWNS linking + registering it, instead of a pure marker that needs a consumer
+# to bring the backend. Bare-metal (`target_os = "none"`) is linkme-blind, so the
+# board registers it explicitly in `entry::boot` (mirrors `nros-board-rtic-mps2-an385`).
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-bare-metal",
+    "ros-humble",
+], optional = true }
 
 # smoltcp network provider (ethernet only)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
@@ -75,11 +84,13 @@ panic-semihosting = "0.6"
 # Default keeps the historic zenoh-pico wiring active. DDS-only
 # downstream crates use `default-features = false, features = ["ethernet"]`.
 default = ["ethernet", "rmw-zenoh"]
-# Phase 129.D — `rmw-zenoh` is a pure marker. The zenoh-pico
-# `z_*` / `_z_*` symbols come from `zpico-sys`'s default-on
-# `platform-aliases` C TU, which the consumer pulls in
-# transitively via `nros-rmw-zenoh`.
-rmw-zenoh = []
+# Phase 248 C5a (#60 T4) — board-owned RMW selection: link the concrete
+# `nros-rmw-zenoh` backend directly (was a pure marker `[]`) so the board owns
+# linking the zenoh-pico transport + the CFFI bridge. The board registers it in
+# `entry::boot` before `Executor::open` (bare-metal is linkme-blind). The
+# zenoh-pico `z_*` / `_z_*` symbols still come from `zpico-sys`'s default-on
+# `platform-aliases` C TU, now pulled via the board's own `nros-rmw-zenoh` dep.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
 # Phase 244.D1 enabler — opt into the `nros_platform::BoardEntry` impl so
 # `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Pulls the
 # `nros` umbrella (executor + node-runtime). Off by default: legacy

@@ -35,6 +35,16 @@ nros-platform = { path = "../../core/nros-platform", default-features = false }
 # linked by the per-board crate (`nros-board-mps2-an385-freertos`,
 # etc.) so `Executor::open` resolves a backend at boot.
 nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos"] }
+# Phase 248 C5a (#60 T4) — the BOARD is the RMW selection point. Depend on the
+# concrete zenoh backend directly (optional, behind `rmw-zenoh`) instead of
+# forwarding `nros/rmw-zenoh`, and register it explicitly in the boot path
+# (`freertos_boot_bringup` / `app_task_entry`). FreeRTOS is `target_os = "none"`
+# (linkme-blind + no `.init_array` walk), so the gated `register()` call — not a
+# `#[used]` static — is the correct mechanism (mirrors `nros-board-nuttx`).
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-freertos",
+    "ros-humble",
+], optional = true }
 
 [build-dependencies]
 # 152.1.B.4 — generic build.rs compiles FreeRTOS kernel + lwIP +
@@ -56,13 +66,17 @@ reference-mps2 = ["dep:nros-board-mps2-an385-freertos"]
 # task priorities from `Config`. DDS-only builds leave it
 # off and reach the linker without the FFI call.
 #
-# Issue #48 — also enable `nros/rmw-zenoh` so the Rust CFFI backend
-# crate `nros-rmw-zenoh` (the bridge that registers the zenoh-pico
-# vtable into `nros-rmw-cffi`) is actually linked. Without it the
-# firmware links only the generic vtable shim + the zenoh-pico C
-# transport (`zpico-sys`), no backend registers, and `Executor::open`
-# fails with `Transport(ConnectionFailed)` (resolve_backend →
-# NoBackend). The `nros::main!()` OwnedSpin branch calls
-# `__register_linked_rmw()` on `target_os = "none"` to register it
-# (linkme is a no-op there).
-rmw-zenoh = ["nros/rmw-zenoh"]
+# Issue #48 (historical) — the Rust CFFI backend crate `nros-rmw-zenoh`
+# (the bridge that registers the zenoh-pico vtable into `nros-rmw-cffi`)
+# must be linked. Without it the firmware links only the generic vtable
+# shim + the zenoh-pico C transport (`zpico-sys`), no backend registers,
+# and `Executor::open` fails with `Transport(ConnectionFailed)`
+# (resolve_backend → NoBackend). It used to be pulled via `nros/rmw-zenoh`;
+# Phase 248 C5a links it directly (see below).
+#
+# Phase 248 C5a (#60 T4) — board-owned RMW selection: link the concrete
+# `nros-rmw-zenoh` backend directly (was `nros/rmw-zenoh`) and register it in
+# the boot path (`freertos_boot_bringup` / `app_task_entry`) so the board no
+# longer relies on `nros::__register_linked_rmw()` (`nros/rmw-zenoh`). Lets the
+# board link+register zenoh WITHOUT forwarding the umbrella feature.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
