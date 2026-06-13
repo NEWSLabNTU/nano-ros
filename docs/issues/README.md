@@ -50,6 +50,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 41 | suite-wide compile-in-tests antipattern — convert to build-stage fixtures | tech-debt | testing | [0041-compile-in-tests-suite-wide.md](0041-compile-in-tests-suite-wide.md) |
 | 44 | esp-idf platform.c build fails — `_heap_start`/`_heap_end` undeclared | bug | esp32 | [0044-esp-idf-platform-c-heap-symbols-undeclared.md](0044-esp-idf-platform-c-heap-symbols-undeclared.md) |
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
+| 48 | NuttX Test/e2e — typed-carrier link drops the platform port (undefined `nros_platform_*`) | bug | boards | [0048-nuttx-typed-carrier-link-drops-platform-port.md](0048-nuttx-typed-carrier-link-drops-platform-port.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the
