@@ -229,10 +229,13 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
     `ACTIVE_RMW_NAME` log literal (→ generic startup log), and the talker's per-RMW
     spin fork (xrce manual sleep/publish/spin_once loop → unified `register_timer`
     + `spin_blocking`, matching the listener which already used `spin_blocking` on
-    every RMW). Build-verified across **zenoh + xrce + cyclonedds** (both). Runtime
-    zenoh roundtrip blocked locally by a pre-existing Rust-zenoh-pico native-connect
-    issue (same as the bridge; C zenoh-pico connects) → validated via
-    `host-integration-tests` CI.
+    every RMW). Build-verified across **zenoh + xrce + cyclonedds** (both).
+    **Runtime LOCALLY VALIDATED (2026-06-14):** talker→listener roundtrip 8/8
+    over **XRCE** (MicroXRCEAgent; the changed unified-spin path) AND **zenoh**
+    (zenohd) — both with the generic "nros Native Talker" D3 banner. (host-integration
+    CI couldn't be used — chronically red, see [issue 0057](../issues/0057-host-integration-tests-red-oom-and-skip-gating.md);
+    the earlier "zenoh connect-fail" was an artifact of running a stale
+    xrce-built binary against zenohd, not a real issue.)
   - **NOT moved to framework:** the no-backend `compile_error!` guard — relocating
     to `nros` would over-generalize (nros is used without these 3 backends — uorb /
     rmw-cffi-only), so the example guard was deleted (invalid no-backend builds
