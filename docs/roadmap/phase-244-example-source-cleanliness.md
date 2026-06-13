@@ -37,37 +37,59 @@ node-lib `#![no_std]` only (cleared once E4 lands).
 
 ## Wave 0 — Framework enablers (parallel; land before their dependents)
 
-Each enabler is one framework crate; verify-then-build. The `Blocks` column lists
-the Wave-1/2 clusters gated on it.
+Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
+(5-agent fan-out); outcomes below.**
 
-- [ ] **E1 — RTIC entry macro.** Confirm whether `nros::main!()` already owns the
-  RTIC `#[rtic::app(device, dispatchers)]` + monotonic + WFI-idle (the clean
-  `stm32f4/rust/*-rtic` + `native/rust/*-rtic` suggest it does). If yes →
-  document + D1 just migrates. If the baremetal RTIC variants need a distinct
-  device/dispatcher surface, add `nros_rtic_app!()` (or extend `nros::main!()`)
-  in `nros-macros`. **Blocks:** D1.
-- [ ] **E2 — custom-transport callback library.** Extract the
-  `cb_open/close/write/read` + `set_custom_transport` FFI shim into a reusable
-  crate (e.g. `packages/drivers/nros-transport-callback` or an examples support
-  lib) so an example plugs in a named transport, not raw callbacks. **Blocks:** D4.
-- [ ] **E3 — action helper-type auto-registration.** Make the RosAction trait
-  bridge / codegen auto-register the implicit action types (`CancelGoal`,
-  `GoalStatusArray`, …) so examples drop the explicit
-  `nros_rmw_cyclonedds::register::<…>()` / `nros_action_type_t{}` literals.
-  Crate: `nros-node` / codegen. **Blocks:** D3 (action), C1 (riscv64-threadx C
-  action leg).
-- [ ] **E4 — macro-injected `#![no_std]`.** Confirm `nros::node!()` / `nros::main!()`
-  inject `#![no_std]` (so node/component libs can drop it). The std-agnostic
-  `workspaces/.../mixed_rust_heartbeat_pkg` shows the target. If the macro can't
-  inject a crate-level attr, document the minimal residual (lib keeps `#![no_std]`
-  = the accepted `minor`). Crate: `nros-macros`. **Blocks:** the P2 hoist in every
-  cluster (downgrades them from residual-minor to clean).
-- [ ] **E5 — deploy-config net/locator threading (generalize #48).** Confirm
-  `[package.metadata.nros.deploy.<target>]` `ip`/`gateway`/`locator` thread into the
-  firmware `Config` on every networked platform (landed for FreeRTOS via
-  `run_with_deploy`, #48). Extend to bare-metal / esp32 / threadx-linux board
-  crates so examples drop hardcoded `Config{mac,ip,…}` / `const LOCATOR`. Crate:
-  `nros-macros` + board crates. **Blocks:** D1, D2, D6 (the P6 legs).
+- [x] **E1 — RTIC entry macro. EXISTS → confirm-document.** `nros::main!()` already
+  owns the RTIC scaffold: `#[rtic::app(device, dispatchers)]` emission
+  (`nros-macros/src/main_macro.rs:1066`), board→device/dispatcher lookup
+  `rtic_board_spec_for()` (`:1701`), `#[init]` → `RticBoardEntry::init_hardware`
+  (`:1091`), `__nros_run` spin+dispatch task (`:1162`), custom-tasks support
+  (`:1043`); `nros-board-rtic-stm32f4` impls `RticBoardEntry` (`:385`). Monotonic
+  + WFI-idle are intentionally board/user-delegated. **No build needed — D1 just
+  migrates the baremetal RTIC variants to bare `nros::main!()`.** **Blocks:** D1.
+- [ ] **E2 — custom-transport callback library. PARTIAL → build.** The vtable
+  framework exists (`nros-rmw/src/custom_transport.rs` `NrosTransportOps` +
+  `set_custom_transport`; C ABI `nros-rmw-cffi/include/nros/rmw_transport.h`), but
+  there is **no reusable factory** — the 3 examples open-code ring-buffer loopback /
+  TCP-bridge / callbacks. Build `packages/drivers/nros-transport-callbacks`:
+  `loopback_transport_ops(capacity)` + `tcp_transport_ops(target)` factories (+ C
+  mirrors) over the existing vtable, so examples replace 50+ lines with one call.
+  **Blocks:** D4.
+- [ ] **E3 — action helper-type auto-registration. MISSING → build (codegen, NOT
+  nros-node consts).** Correction to the initial plan: `nros-node` is a core crate
+  and **cannot name** `action_msgs::srv::CancelGoal{Request,Response}` /
+  `action_msgs::msg::GoalStatusArray` (those are generated msg crates). The 8
+  auto-registered types are `RosAction` **associated** types (`A::Goal`, …,
+  `nros-node/src/executor/action.rs:159`); the 3 missing ones are fixed ROS-2
+  protocol types the example currently registers by hand
+  (`native/rust/action-server/src/main.rs:34`). Correct fix: add a default-no-op
+  `fn register_protocol_types() -> Result<(),_>` to the `RosAction` trait
+  (`nros-core/src/action.rs:53`), have `rosidl-codegen`
+  (`packages/cli/rosidl-codegen/src/generator/mod.rs`) emit its body (registering
+  the 3 action_msgs types from the generated action crate, which DOES dep
+  action_msgs), call `A::register_protocol_types()` in the server+client register
+  sites, then regenerate the bundled action interfaces. (A codegen change — its own
+  careful pass.) **Blocks:** D3 (action leg), C1 (riscv64-threadx C action leg).
+- [x] **E4 — macro-injected `#![no_std]`. IMPOSSIBLE → confirm-document.**
+  Proc-macros expand at the invocation point and **cannot inject crate-level inner
+  attributes** (`#![no_std]` must precede all items) — confirmed by the explicit
+  note in `nros-macros/src/main_macro.rs:1039`. So a node/component **lib that
+  targets no_std must keep its own `#![no_std]`**; this is architecturally correct,
+  not a leak to fix. **P2 is re-scoped:** node-lib `#![no_std]` is the **accepted
+  residual `minor`** (NOT downgraded to clean). Clusters only hoist `#![no_std]`
+  out of crates that don't need it (host-buildable libs / the std-agnostic pattern
+  of `workspaces/.../mixed_rust_heartbeat_pkg`). **No build.**
+- [ ] **E5 — deploy-config net/locator threading. PARTIAL → build (2 board
+  overrides).** The mechanism is **generic** and exists: the macro reads
+  `[deploy.<board>]` (`main_macro.rs:1415`) → `DeployOverlay`
+  (`nros-platform/src/board/entry.rs:28`) → `BoardEntry::run_with_deploy`
+  (default body `:81`); FreeRTOS overrides it (`nros-board-mps2-an385-freertos`
+  `config_with_overlay`). **Gap:** `nros-board-esp32-qemu` + `nros-board-threadx-linux`
+  have `BoardEntry` but no `run_with_deploy` override → ignore the overlay. Build:
+  add ~15-line `run_with_deploy` overrides (copy the FreeRTOS `config_with_overlay`
+  shape) to those two board crates. **Blocks:** D2 (esp32), D6 (threadx-linux net).
+  (Bare-metal mps2-an385 net threading folds into D1.)
 
 ---
 

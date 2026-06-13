@@ -150,6 +150,46 @@ impl nros_platform::BoardEntry for ThreadxLinux {
         let cfg = Config::default();
         nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(cfg, setup)
     }
+
+    /// Issue #48 cause 1 / Phase 244 E5 — apply the `nros::main!()` deploy overlay
+    /// (`[package.metadata.nros.deploy.threadx-linux]`: locator / ip / gateway /
+    /// netmask / domain_id) onto `Config::default()` before boot, so the firmware
+    /// dials the deploy-named endpoint instead of the inert compiled-in default.
+    /// Fields the deploy block omits keep the board default. (NSOS routes through
+    /// the host kernel, so `locator`/`domain_id` are the load-bearing fields here.)
+    fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        crate::node::register_log_writer_public();
+        nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(
+            config_with_overlay(deploy),
+            setup,
+        )
+    }
+}
+
+/// Phase 244 E5 — overlay the `nros::main!()` deploy block onto `Config::default()`.
+/// Fields the deploy block omits keep the board default.
+fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
+    let mut config = Config::default();
+    if let Some(loc) = deploy.locator {
+        config.zenoh_locator = loc;
+    }
+    if let Some(ip) = deploy.ip {
+        config.ip = ip;
+    }
+    if let Some(gw) = deploy.gateway {
+        config.gateway = gw;
+    }
+    if let Some(nm) = deploy.netmask {
+        config.netmask = nm;
+    }
+    if let Some(d) = deploy.domain_id {
+        config.domain_id = d;
+    }
+    config
 }
 
 unsafe fn libc_exit(code: i32) -> ! {

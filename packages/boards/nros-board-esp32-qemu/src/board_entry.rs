@@ -102,19 +102,59 @@ impl BoardEntry for Esp32QemuEntry {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        // Build the board Config. MAC / IP / gateway are board-internal
-        // smoltcp knobs (slirp 10.0.2.0/24, talker IP 10.0.2.50) baked
-        // verbatim from the single-node esp32 example; locator + domain
-        // are the compile-time-overridable consts above.
-        let config = Config {
+        Self::run_with_config(Self::default_config(), setup)
+    }
+
+    /// Phase 244 E5 / issue #48 — overlay the `nros::main!()` deploy block
+    /// (`[package.metadata.nros.deploy.esp32-qemu]`: locator / ip / gateway /
+    /// domain_id) onto the board default before boot, so the firmware dials the
+    /// deploy-named endpoint instead of the inert compiled-in default. Fields the
+    /// deploy block omits keep the board default. (`netmask` maps to the board's
+    /// CIDR `prefix`, left at default; the smoltcp `mac_addr` stays board-internal.)
+    fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        let mut config = Self::default_config();
+        if let Some(loc) = deploy.locator {
+            config.zenoh_locator = loc;
+        }
+        if let Some(ip) = deploy.ip {
+            config.ip = ip;
+        }
+        if let Some(gw) = deploy.gateway {
+            config.gateway = gw;
+        }
+        if let Some(d) = deploy.domain_id {
+            config.domain_id = d;
+        }
+        Self::run_with_config(config, setup)
+    }
+}
+
+impl Esp32QemuEntry {
+    /// Board default `Config`: MAC / IP / gateway are board-internal smoltcp
+    /// knobs (slirp 10.0.2.0/24, talker IP 10.0.2.50) baked verbatim from the
+    /// single-node esp32 example; locator + domain are the compile-time-
+    /// overridable consts above.
+    fn default_config() -> Config {
+        Config {
             mac_addr: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
             ip: [10, 0, 2, 50],
             prefix: 24,
             gateway: [10, 0, 2, 2],
             zenoh_locator: LOCATOR,
             domain_id: DOMAIN_ID,
-        };
+        }
+    }
 
+    /// Shared boot body for [`BoardEntry::run`] + [`BoardEntry::run_with_deploy`].
+    fn run_with_config<F, E>(config: Config, setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
         // Bring up ESP32-C3 peripherals + heap + RNG + OpenETH/smoltcp
         // transport, then route nros log records to the console.
         crate::node::init_hardware(&config);
