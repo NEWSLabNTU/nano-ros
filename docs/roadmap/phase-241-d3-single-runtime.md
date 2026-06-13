@@ -214,13 +214,74 @@ rewire (W4), and the per-cell validation (W7) gates merge.
 - **Acceptance:** the `cpp_parameters` e2e test passes (was failing on undefined
   gated symbols); no regression in the other native examples.
 
-### W11 — workspace-component cffi dup (pending)
-- A workspace example links the umbrella AND a per-component staticlib, both bundling
-  `nros-rmw-cffi` → `nros_rmw_cffi_set_custom_transport` duplicate. The single-runtime
-  invariant (one Rust staticlib per binary) breaks when the workspace generator emits
-  per-component archives alongside the umbrella.
-- **Acceptance:** workspace example links with zero cffi dups under GNU-ld without
-  `--allow-multiple-definition`.
+### W11 — workspace Rust-component cffi dup (CONFIRMED real, 2026-06-14)
+- **Trigger:** a `LANGUAGE RUST` node component (`nano_ros_node_register`) is compiled
+  to its own staticlib (`librust_heartbeat_pkg.a`) that depends on `nros` with
+  `rmw-cffi` → it bundles a SECOND copy of `nros-rmw-cffi`'s `#[no_mangle]` C ABI
+  (`REGISTRY`, `nros_rmw_cffi_{lookup,register,register_named,registered_names,
+  set_custom_transport}`). The entry binary links that staticlib AND the umbrella
+  (`libnros_cpp.a`), which carries the same symbols → GNU-ld `multiple definition`.
+  Reproduced: `examples/workspaces/mixed` (c + cpp + rust nodes) fails to link.
+- **Was masked** by `--allow-multiple-definition` before single-runtime removed it. NOT
+  benign: two `REGISTRY` statics = split registry → backend registered in one, looked
+  up in the other → runtime miss (the exact stateful-REGISTRY hazard W1 closed).
+- **Scope:** only the cffi `#[no_mangle]` C ABI conflicts. std/compiler_builtins are
+  weak-symbols and ld dedups them; the backend lives only in the umbrella. So the fix
+  is narrow — keep the cffi C ABI defined in exactly one archive (the umbrella).
+- **Fix options considered:** (B) externalize the component's cffi as `extern` imports —
+  surgical but revives the W1-deleted provider split and leaves a fragile weak-dedup std
+  seam; (C) scoped `--allow-multiple-definition` — rejected, split-REGISTRY runtime bug.
+- **DECISION (2026-06-14): Option D — per-entry runtime staticlib.** The honest
+  completion of single-runtime: ONE Rust staticlib per binary, zero residual duplication,
+  and Rust nodes get the same "just a library" UX as C/C++ nodes (no per-node cargo
+  feature boilerplate).
+
+#### W11 design — per-entry runtime staticlib (Option D)
+- **Seam (unchanged):** `nros::node!()` emits `#[no_mangle] extern "C"
+  __nros_component_<pkg>_register`. The CLI-generated C++ `main` already calls that symbol
+  for every node (C/C++/Rust alike). **So `nros codegen entry` does NOT change** — only
+  the link wiring does.
+- **Runtime crate:** for an entry whose deployed node set contains ≥1 Rust node,
+  `nano_ros_entry` synthesizes (at configure time, `file(WRITE)`) a crate
+  `<build>/<entry>_runtime/`:
+  - `Cargo.toml`: `[lib] crate-type=["staticlib"]`; deps = `nros-cpp` (umbrella, as rlib)
+    with the workspace's `<backend>`+`<platform>`+`ros-*` features, plus one `path` dep per
+    Rust node (rlib). Carries `[workspace]` + the nros-managed `[patch.crates-io]` block
+    (copied from the workspace, same as node crates).
+  - `src/lib.rs`: `pub use nros_cpp::*;` + a `#[used]` anchor on nros-cpp's exported
+    `FORCE_LINK_ANCHOR` (re-pulls the C ABI + backend past staticlib DCE) + one `#[used]`
+    anchor per Rust node's `__nros_component_<pkg>_register` (keeps each node's register
+    symbol). Anchors are required because a `#[used]` living in a dependency rlib is DCE'd
+    from the final staticlib root (same rule as W3's nros-c→nros-cpp anchor, generalized
+    one level: nros-cpp→runtime).
+- **Synthesis site: CMake `nano_ros_entry`** (not the CLI). All inputs are already in
+  scope there — `NANO_ROS_RMW`/`NANO_ROS_PLATFORM` cache vars, `nros-metadata.json` (Rust
+  node `pkg_dir`s + sanitized syms), the on-disk patch block — and the
+  `corrosion_import_crate` + `target_link_libraries` it feeds live in the same function.
+  The CLI has no backend/platform notion; pushing synthesis there would add new CLI flags
+  and split one logical step across two layers.
+- **cmake wiring changes:**
+  - `nano_ros_node_register(LANGUAGE RUST)`: stop `corrosion_import_crate(…staticlib)`;
+    only record the node in metadata (pkg_dir + sanitized sym). No per-node archive.
+  - `nano_ros_entry`: if any deployed node is Rust → write + `corrosion_import_crate` the
+    `<entry>_runtime` staticlib and link THAT instead of `NanoRos::NanoRosCpp`. Else:
+    current path unchanged. (C entries with Rust nodes use `nros-c` in place of `nros-cpp`.)
+  - `nros-cpp`: expose one `pub` `FORCE_LINK_ANCHOR` (C-surface + backend) so the runtime
+    root can re-anchor it. Small, mirrors the existing private `_KEEP_C_SURFACE`.
+- **Scope / blast radius:** ONLY Rust-node-bearing workspaces take the new path. Pure-C /
+  pure-C++ workspaces, templates, and all single-crate examples are untouched (already
+  green). C/C++ component libs are unchanged — their undefined C-ABI refs resolve from the
+  runtime staticlib exactly as they did from the umbrella.
+- **Work sub-items:**
+  - W11.1 — `nros-cpp` `pub FORCE_LINK_ANCHOR` (C-surface + backend).
+  - W11.2 — `nano_ros_node_register(LANGUAGE RUST)`: metadata-only, drop the staticlib import.
+  - W11.3 — `nano_ros_entry`: detect Rust nodes; synthesize + import + link `<entry>_runtime`.
+  - W11.4 — validation: `examples/workspaces/{c,cpp,mixed}` + templates rebuild 0-dup;
+    mixed heartbeat node registers + ticks at runtime; re-confirm the 6 cross cells
+    unaffected.
+- **Acceptance:** `examples/workspaces/mixed` links with zero cffi dups under GNU-ld
+  without `--allow-multiple-definition`; the Rust heartbeat node registers and ticks
+  (one shared REGISTRY); c/cpp workspaces stay green.
 
 ### W12 — embedded no_std umbrella: panic/allocator dedup (resolved 2026-06-14)
 - `nros-cpp` now bundles `nros-c` as a hard dep. On a no_std target each crate that

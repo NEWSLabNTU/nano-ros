@@ -10,7 +10,12 @@
 #[used]
 static FORCE_LINK: unsafe extern "C" fn() = auto_register;
 
-unsafe extern "C" fn auto_register() {
+// `pub` (W11, Option D) so the umbrella root can re-export it as
+// `nros_cpp_auto_register_backend`: a per-entry `<entry>_runtime` staticlib bundles
+// nros-cpp as a dep rlib, where this module's `.init_array` ctor below is DCE'd — the
+// runtime root re-installs its own ctor pointing here. Within nros-cpp-as-root it stays
+// the bundled backend's force-link + auto-register entry.
+pub unsafe extern "C" fn auto_register() {
     #[cfg(feature = "rmw-zenoh-cffi")]
     {
         let _ = nros_rmw_zenoh::register();
