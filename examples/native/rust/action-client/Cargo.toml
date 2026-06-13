@@ -25,10 +25,14 @@ rmw-cyclonedds = [
     # umbrella + `nros-node::__FORCE_LINK_CYCLONEDDS_SYS` keep the `-sys`
     # rlib alive for us now).
     "nros/rmw-cyclonedds",
-    # Phase 244 E3 — forward to the generated action crate; its
-    # `RosAction::register_protocol_types` registers the `action_msgs` protocol
-    # types under cyclonedds (replaces the former dep:* + main.rs block).
-    "example_interfaces/rmw-cyclonedds",
+    # NOTE: generated message/interface bindings are RMW-AGNOSTIC by design
+    # (RFC-0031 — RMW is a declared selection lowered to a feature on `nros`,
+    # never on the binding crate). A `example_interfaces/rmw-cyclonedds` forward
+    # is therefore invalid; the `action_msgs` protocol-type registration the
+    # Phase 244 E3 binding feature carried needs a proper agnostic home (the
+    # cyclonedds backend auto-registering the fixed action protocol types, or an
+    # example-side `#[cfg(feature = "rmw-cyclonedds")]` block) — tracked as an E3
+    # follow-up.
 ]
 rmw-xrce = ["nros/rmw-xrce"]
 
