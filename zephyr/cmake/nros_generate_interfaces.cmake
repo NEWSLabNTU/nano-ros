@@ -48,6 +48,11 @@ Prerequisites:
 
 #]=======================================================================]
 
+# Phase 246 — shared codegen helpers (lib.rs assembly, rs-closure collect/export)
+# from the repo's `cmake/` dir (this file lives at `zephyr/cmake/`). include_guard'd
+# in the core, so a build that also pulls the canonical generator is fine.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCodegenCore.cmake")
+
 # =========================================================================
 # Locate nros-codegen (once per configure)
 # =========================================================================
@@ -387,28 +392,15 @@ function(nros_generate_interfaces target)
     # this set the cross-package FFI include!() chain was empty and
     # every consumer that referenced a type from a sibling package
     # failed to compile.
-    # Build the TRANSITIVE closure (own files + every dep's closure)
-    # so a downstream consumer pulling THIS target as a dep gets every
-    # nested type. Mirrors the canonical resolver in
-    # cmake/NanoRosGenerateInterfaces.cmake (Phase 210.E.3.c).
-    set(_rs_closure "${_generated_rs_files}")
-    foreach(_dep ${_ARG_DEPENDENCIES})
-      if(DEFINED ${_dep}_GENERATED_RS_FILES)
-        list(APPEND _rs_closure ${${_dep}_GENERATED_RS_FILES})
-      elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-        list(APPEND _rs_closure $CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-      endif()
-    endforeach()
-    if(_rs_closure)
-      list(REMOVE_DUPLICATES _rs_closure)
-    endif()
+    # Build the TRANSITIVE closure (own files + every dep's closure), de-duped,
+    # via the shared core (Phase 246 — identical computation to the canonical
+    # generator). The PARENT_SCOPE export stays here (helper PARENT_SCOPE only
+    # reaches this generator, not the user — see NanoRosCodegenCore.cmake).
+    _nros_collect_rs_closure(_rs_closure
+      DEPS ${_ARG_DEPENDENCIES}
+      OWN ${_generated_rs_files})
     set(${target}_GENERATED_RS_FILES "${_rs_closure}" PARENT_SCOPE)
-
-    # Stash in INTERNAL CACHE so downstream consumers via the smart
-    # Find-stub fast-return path (or another nros_generate_interfaces
-    # call in a sibling scope) can read the closure.
-    set(_NROS_PKG_${target}_GENERATED_RS_FILES "${_rs_closure}"
-        CACHE INTERNAL "nros cached GENERATED_RS_FILES closure for ${target}" FORCE)
+    _nros_export_rs_closure(${target} "${_rs_closure}")
 
     if(NOT _generated_headers)
       message(FATAL_ERROR
@@ -522,48 +514,18 @@ panic = \"abort\"
 ")
       endif()
 
-      # Generate lib.rs with include!() for cross-package FFI references.
-      # Using include!() instead of mod keeps all types in the same scope,
-      # so cross-package type references resolve correctly.
-      set(NROS_CPP_FFI_INCLUDES "")
-
-      # Collect the dependency FFI .rs files (each dep's variable already
-      # holds ITS transitive closure) plus our own, de-dup, then include!()
-      # each so all cross-package types share one flat scope. De-dup is
-      # REQUIRED: a diamond dependency (e.g. tier4_debug_msgs DEPENDENCIES
-      # builtin_interfaces std_msgs, where std_msgs's closure already
-      # re-contains builtin_interfaces) would otherwise include!() the same
-      # _ffi.rs twice → Rust E0428 "defined multiple times". The canonical
-      # cmake/NanoRosGenerateInterfaces.cmake does the same via _ffi_rs_all.
-      #
-      # Phase 210.E.3.c — same CACHE-fallback: multi-level dep chains
-      # generated via the smart Find-stub recursion land their FFI .rs
-      # closure in `_NROS_PKG_<pkg>_GENERATED_RS_FILES` (INTERNAL CACHE).
-      # Read from cache when the regular var isn't in this scope.
-      set(_ffi_rs_all "")
-      foreach(_dep ${_ARG_DEPENDENCIES})
-        if(DEFINED ${_dep}_GENERATED_RS_FILES)
-          list(APPEND _ffi_rs_all ${${_dep}_GENERATED_RS_FILES})
-        elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-          list(APPEND _ffi_rs_all $CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-        endif()
-      endforeach()
-      list(APPEND _ffi_rs_all ${_generated_rs_files})
-      if(_ffi_rs_all)
-        list(REMOVE_DUPLICATES _ffi_rs_all)
-      endif()
-      foreach(_rs_file ${_ffi_rs_all})
-        get_filename_component(_rs_name "${_rs_file}" NAME)
-        if(NOT _rs_name STREQUAL "mod.rs")
-          string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")
-        endif()
-      endforeach()
-
-      configure_file(
-        "${_template_dir}/ffi_lib_rs.in"
-        "${_ffi_crate_src}/lib.rs"
-        @ONLY
-      )
+      # Generate lib.rs: the de-duplicated dep closure + own files, each
+      # include!()d into one flat module scope. De-dup + emission live in the
+      # shared core (Phase 246). The Zephyr path uses ABSOLUTE include paths
+      # (its crate dir + generated outputs co-resolve in one binary tree).
+      _nros_collect_rs_closure(_ffi_rs_all
+        DEPS ${_ARG_DEPENDENCIES}
+        OWN ${_generated_rs_files})
+      _nros_write_ffi_lib_rs(
+        CRATE_SRC "${_ffi_crate_src}"
+        TEMPLATE "${_template_dir}/ffi_lib_rs.in"
+        RS_FILES ${_ffi_rs_all}
+        PATH_MODE absolute)
 
       # Tier-2/3 embedded targets (e.g. armv7a-none-eabi for cortex_a9)
       # need rustup to know which toolchain + target combo to use. The

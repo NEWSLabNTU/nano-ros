@@ -61,6 +61,10 @@ endif()
 set(_NANO_ROS_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
     "Directory containing NanoRosGenerateInterfaces.cmake's template files")
 
+# Phase 246 — shared codegen helpers (lib.rs assembly, rs-closure collect/export)
+# used by both this generator and the Zephyr-module sibling. include_guard'd.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+
 # =========================================================================
 # Locate the nros-codegen tool
 # =========================================================================
@@ -554,58 +558,19 @@ function(nros_generate_interfaces target)
         @ONLY
       )
 
-      # Generate lib.rs with include!() for cross-package FFI references.
-      # Using include!() instead of mod keeps all types in the same scope,
-      # so cross-package type references (e.g. builtin_interfaces_msg_time_t
-      # used in std_msgs) resolve correctly.
-      #
-      # The static boilerplate lives in ffi_lib_rs.in (configure_file with @ONLY).
-      # Only the dynamic include!() list is assembled here — paths never contain
-      # semicolons, so no CMake list-escaping issues arise.
-      set(NROS_CPP_FFI_INCLUDES "")
-
-      # Collect the dependency FFI .rs files (each dep's variable already holds
-      # ITS transitive closure) plus our own, de-dup, then include!() each so all
-      # cross-package types — direct AND transitive (e.g. example_interfaces ->
-      # action_msgs -> unique_identifier_msgs) — share one flat scope. De-dup is
-      # required: a diamond dependency would otherwise be include!()d twice
-      # (duplicate-definition error). Order is irrelevant — include!() drops the
-      # items into one module and Rust allows forward references within it.
-      set(_ffi_rs_all "")
-      foreach(_dep ${_ARG_DEPENDENCIES})
-        if(DEFINED ${_dep}_GENERATED_RS_FILES)
-          list(APPEND _ffi_rs_all ${${_dep}_GENERATED_RS_FILES})
-        elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-          # Phase 210.E.3.a — fall back to the CACHE stash. nros_generate_
-          # interfaces's PARENT_SCOPE re-export only reaches ONE level up;
-          # multi-level chains (smart Find-stub → action-auto-closure
-          # nested call) need to read the cache to see deps that were
-          # generated in a sibling call tree.
-          list(APPEND _ffi_rs_all $CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-        endif()
-      endforeach()
-      list(APPEND _ffi_rs_all ${_generated_rs_files})
-      if(_ffi_rs_all)
-        list(REMOVE_DUPLICATES _ffi_rs_all)
-      endif()
-      # Phase 214.B.1 — emit include!() paths RELATIVE to the lib.rs
-      # location, not absolute. Same rationale as the SERDES_DIR fix
-      # above: absolute paths broke clean clones + CI on different
-      # paths.
-      foreach(_rs_file ${_ffi_rs_all})
-        # Skip mod.rs — we use include!() instead
-        get_filename_component(_rs_name "${_rs_file}" NAME)
-        if(NOT _rs_name STREQUAL "mod.rs")
-          file(RELATIVE_PATH _rs_rel "${_ffi_crate_src}" "${_rs_file}")
-          string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_rel}\");\n")
-        endif()
-      endforeach()
-
-      configure_file(
-        "${_NANO_ROS_CMAKE_DIR}/ffi_lib_rs.in"
-        "${_ffi_crate_src}/lib.rs"
-        @ONLY
-      )
+      # Generate lib.rs with include!() for cross-package FFI references — the
+      # de-duplicated dep closure + own files, each include!()d so all
+      # cross-package types share one flat module scope. De-dup + relative-path
+      # emission live in the shared core (Phase 246; was copy-pasted, drifted in
+      # issue 0052 + Phase 214.B.1).
+      _nros_collect_rs_closure(_ffi_rs_all
+        DEPS ${_ARG_DEPENDENCIES}
+        OWN ${_generated_rs_files})
+      _nros_write_ffi_lib_rs(
+        CRATE_SRC "${_ffi_crate_src}"
+        TEMPLATE "${_NANO_ROS_CMAKE_DIR}/ffi_lib_rs.in"
+        RS_FILES ${_ffi_rs_all}
+        PATH_MODE relative)
 
       # For Tier 3 targets (e.g. armv7a-nuttx-eabi), generate a .cargo/config.toml
       # with build-std=core and use nightly toolchain.
@@ -929,44 +894,18 @@ function(nros_generate_interfaces target)
   set(${target}_LIBRARIES "${_lib_target}" PARENT_SCOPE)
   set(${target}_GENERATED_HEADERS "${_generated_headers}" PARENT_SCOPE)
   set(${target}_GENERATED_SOURCES "${_generated_sources}" PARENT_SCOPE)
-  # Carry the TRANSITIVE closure of generated FFI .rs files: this package's own
-  # plus every dependency's (each dep's variable already holds *its* transitive
-  # closure). A consumer include!()s a direct dependency's list and must also get
-  # that dep's nested cross-package types (e.g. example_interfaces -> action_msgs
-  # -> unique_identifier_msgs); without the closure the deeper types are absent
-  # and the FFI glue fails to compile (E0425). De-dup so a diamond dependency
-  # isn't carried twice.
-  set(_rs_closure "${_generated_rs_files}")
-  foreach(_dep ${_ARG_DEPENDENCIES})
-    if(DEFINED ${_dep}_GENERATED_RS_FILES)
-      list(APPEND _rs_closure ${${_dep}_GENERATED_RS_FILES})
-    elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-      # Phase 210.E.3.a — same cache fallback as the FFI-include builder
-      # above. A dep generated in a sibling call tree (e.g. the smart
-      # Find-stub triggered builtin_interfaces from inside std_msgs's
-      # find_package recursion) lands its closure ONLY in the cache;
-      # without this elseif, our PARENT_SCOPE re-export would lose the
-      # transitive chain and a downstream consumer (example_interfaces
-      # → action_msgs → builtin_interfaces) would compile against an
-      # incomplete include!() list.
-      list(APPEND _rs_closure $CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-    endif()
-  endforeach()
-  if(_rs_closure)
-    list(REMOVE_DUPLICATES _rs_closure)
-  endif()
+  # Carry the TRANSITIVE closure of generated FFI .rs files (own + every dep's,
+  # de-duped) so a consumer that include!()s a direct dep also gets its nested
+  # cross-package types. Computation + dedup live in the shared core (Phase 246).
+  # The PARENT_SCOPE export must stay HERE (a helper function's PARENT_SCOPE
+  # reaches only the helper's caller, not the user) — see NanoRosCodegenCore.cmake.
+  _nros_collect_rs_closure(_rs_closure
+    DEPS ${_ARG_DEPENDENCIES}
+    OWN ${_generated_rs_files})
   set(${target}_GENERATED_RS_FILES "${_rs_closure}" PARENT_SCOPE)
-
-  # Phase 210 — stash the closure vars as INTERNAL CACHE so a downstream
-  # find_package(<target>) fast-return path (the smart Find-stub) re-exports
-  # them to its caller's scope. CMake function PARENT_SCOPE only propagates
-  # ONE level; without the cache, a multi-level chain like
-  #   workspace umbrella → add_subdirectory(extra_msgs) → find_package(local_msgs)
-  # loses local_msgs's `_GENERATED_RS_FILES` because local_msgs was generated
-  # directly by rosidl_generate_interfaces() (no smart-stub hop) so the
-  # smart stub's own re-export branch never ran.
-  set(_NROS_PKG_${target}_GENERATED_RS_FILES "${_rs_closure}"
-      CACHE INTERNAL "nros cached GENERATED_RS_FILES closure for ${target}" FORCE)
+  # INTERNAL CACHE stash for multi-level scope chains where PARENT_SCOPE (one
+  # level) doesn't reach a sibling-call-tree consumer (Phase 210.E.3).
+  _nros_export_rs_closure(${target} "${_rs_closure}")
   set(_NROS_PKG_${target}_GENERATED_HEADERS "${_generated_headers}"
       CACHE INTERNAL "nros cached GENERATED_HEADERS for ${target}" FORCE)
   set(_NROS_PKG_${target}_GENERATED_SOURCES "${_generated_sources}"
