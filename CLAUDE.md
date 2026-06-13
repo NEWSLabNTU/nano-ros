@@ -31,6 +31,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | C/C++ integration shape | AGENTS.md “C/C++ Integration” + RFC-0018/0019 + [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) |
 | User-facing workflow | [book/src/](book/src/) (`just book`) |
 | Phase history / current work items | [docs/roadmap/](docs/roadmap/) (active) + `archived/` |
+| Periodic tech-debt / antipattern / UX audit | [docs/development/codebase-audit-checklist.md](docs/development/codebase-audit-checklist.md) |
 
 ## Naming
 - **nano-ros** — project name (prose, docs)
