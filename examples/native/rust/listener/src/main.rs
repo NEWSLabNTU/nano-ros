@@ -26,30 +26,11 @@ use log::{error, info};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-cyclonedds",
-    feature = "rmw-xrce"
-)))]
-compile_error!(
-    "examples/native/rust/listener requires exactly one of \
-     `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce` to be enabled.",
-);
-
-// Phase 227.3 (unified RMW) — no explicit `register()` calls. The selected
-// backend (build feature → `nros` umbrella) self-registers through the cffi
-// vtable, kept in the link graph by `nros`'s `#[used] __FORCE_LINK_*` statics
-// and fired inside `nros::init` by the walker. (Bare-metal keeps `register()`.)
-
-const ACTIVE_RMW_NAME: &str = if cfg!(feature = "rmw-zenoh") {
-    "Zenoh"
-} else if cfg!(feature = "rmw-cyclonedds") {
-    "CycloneDDS"
-} else if cfg!(feature = "rmw-xrce") {
-    "XRCE-DDS"
-} else {
-    "(none)"
-};
+// Phase 244 D3 — RMW selection is build/config, not source: the backend is
+// chosen by the mutually-exclusive `rmw-{zenoh,cyclonedds,xrce}` Cargo features
+// (default `rmw-zenoh`) and self-registers via the `nros` umbrella's
+// `#[used] __FORCE_LINK_*` statics + the cffi walker in `nros::init`. No
+// `register()` call and no RMW name baked into the source.
 
 /// Safety-e2e listener (zenoh-specific): validates CRC + tracks seq gaps.
 #[cfg(feature = "safety-e2e")]
@@ -95,7 +76,7 @@ fn main() {
 #[cfg(not(feature = "safety-e2e"))]
 fn main() {
     env_logger::init();
-    info!("nros Native Listener ({} Transport)", ACTIVE_RMW_NAME);
+    info!("nros Native Listener");
     info!("==========================================");
 
     // Phase 212.L.5 Pattern 2 — launch-aware init.

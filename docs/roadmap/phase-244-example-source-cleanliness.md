@@ -221,7 +221,24 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   `use esp_backtrace as _;`/`esp_app_desc!()` (`:22,27`), `nros_rmw_zenoh::register()`
   (`:71`), hardcoded MAC/IP + `esp_println` + smoltcp diagnostics (`:32,36,55`).
   Network → deploy metadata (E5); logging → agnostic `nros::log!`.
-- [ ] **D3 — native Rust RMW guards + action types. Needs E3.** Remove the
+- [~] **D3 — DONE pending CI (2026-06-13). Needs E3 (landed).**
+  - **action leg** — folded into E3d: action-server/client manual
+    `#[cfg(rmw-cyclonedds)]` registration blocks + `dep:*` removed; the framework
+    (`RosAction::register_protocol_types`) auto-registers.
+  - **talker + listener** — removed the `compile_error!` RMW guard, the
+    `ACTIVE_RMW_NAME` log literal (→ generic startup log), and the talker's per-RMW
+    spin fork (xrce manual sleep/publish/spin_once loop → unified `register_timer`
+    + `spin_blocking`, matching the listener which already used `spin_blocking` on
+    every RMW). Build-verified across **zenoh + xrce + cyclonedds** (both). Runtime
+    zenoh roundtrip blocked locally by a pre-existing Rust-zenoh-pico native-connect
+    issue (same as the bridge; C zenoh-pico connects) → validated via
+    `host-integration-tests` CI.
+  - **NOT moved to framework:** the no-backend `compile_error!` guard — relocating
+    to `nros` would over-generalize (nros is used without these 3 backends — uorb /
+    rmw-cffi-only), so the example guard was deleted (invalid no-backend builds
+    still fail, just less prettily). Accepted.
+  Leaks P4/P10. (native C/C++ already clean.) Original D3 plan:
+- [ ] **D3 (orig) — native Rust RMW guards + action types. Needs E3.** Remove the
   `compile_error!` RMW guards + `ACTIVE_RMW_NAME` + per-RMW `main()` forks
   (`talker/src/main.rs:32,51,104`; `listener/src/main.rs:29,44,55`) — the guard
   belongs in the framework crate; example calls `nros::init()` unconditionally.

@@ -27,40 +27,15 @@ use log::{error, info};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-// Phase 118 — RMW selection is build-time via the mutually exclusive
-// `rmw-{zenoh,cyclonedds,xrce}` features.
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-cyclonedds",
-    feature = "rmw-xrce"
-)))]
-compile_error!(
-    "examples/native/rust/talker requires exactly one of \
-     `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce` to be enabled. \
-     The default feature set picks `rmw-zenoh`; pass \
-     `--no-default-features --features rmw-X` to switch.",
-);
-
-// Phase 227.3 (unified RMW) — no explicit `register()` calls. The RMW is
-// declared via the build feature (`rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds`),
-// which routes through the `nros` umbrella; `nros`'s `#[used] __FORCE_LINK_*`
-// statics keep the selected backend's `RMW_INIT_ENTRIES` self-register section
-// in the link graph, and it fires inside `nros::init` via the cffi-rmw walker.
-// (Bare-metal targets, where linkme is unsupported, still call `register()`.)
-
-const ACTIVE_RMW_NAME: &str = if cfg!(feature = "rmw-zenoh") {
-    "Zenoh"
-} else if cfg!(feature = "rmw-cyclonedds") {
-    "CycloneDDS"
-} else if cfg!(feature = "rmw-xrce") {
-    "XRCE-DDS"
-} else {
-    "(none)"
-};
+// Phase 244 D3 — RMW selection is build/config, not source: the backend is
+// chosen by the mutually-exclusive `rmw-{zenoh,cyclonedds,xrce}` Cargo features
+// (default `rmw-zenoh`) and self-registers via the `nros` umbrella's
+// `#[used] __FORCE_LINK_*` statics + the cffi walker in `nros::init`. No
+// `register()` call, no RMW name baked into the source, no per-RMW `main` fork.
 
 fn main() {
     env_logger::init();
-    info!("nros Native Talker ({} Transport)", ACTIVE_RMW_NAME);
+    info!("nros Native Talker");
     info!("=========================================");
 
     // Phase 212.L.5 Pattern 2 — launch-aware init. Picks up
@@ -101,39 +76,20 @@ fn main() {
     #[cfg(not(feature = "param-services"))]
     let counter_start = 0i32;
 
-    #[cfg(feature = "rmw-xrce")]
-    {
-        let mut count: i32 = counter_start;
-        info!("Publishing Int32 messages every 1s...");
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(1000));
+    let mut count: i32 = counter_start;
+    executor
+        .register_timer(nros::TimerDuration::from_millis(1000), move || {
             let msg = Int32 { data: count };
             match publisher.publish(&msg) {
                 Ok(()) => info!("Published: {}", count),
                 Err(e) => error!("Publish error: {:?}", e),
             }
             count = count.wrapping_add(1);
-            let _ = executor.spin_once(core::time::Duration::from_millis(10));
-        }
-    }
+        })
+        .expect("Failed to register publish timer");
+    info!("Publishing Int32 messages every 1s...");
 
-    #[cfg(not(feature = "rmw-xrce"))]
-    {
-        let mut count: i32 = counter_start;
-        executor
-            .register_timer(nros::TimerDuration::from_millis(1000), move || {
-                let msg = Int32 { data: count };
-                match publisher.publish(&msg) {
-                    Ok(()) => info!("Published: {}", count),
-                    Err(e) => error!("Publish error: {:?}", e),
-                }
-                count = count.wrapping_add(1);
-            })
-            .expect("Failed to register publish timer");
-        info!("Publishing Int32 messages every 1s...");
-
-        executor
-            .spin_blocking(SpinOptions::default())
-            .expect("spin_blocking error");
-    }
+    executor
+        .spin_blocking(SpinOptions::default())
+        .expect("spin_blocking error");
 }
