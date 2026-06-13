@@ -222,6 +222,22 @@ class Node {
     /// Returns `nullptr` on an uninitialized node.
     const nros_cpp_node_t* ffi_handle() const { return initialized_ ? &handle_ : nullptr; }
 
+    /// Phase 211.H (issue #52) — install the per-topic QoS override table the
+    /// deploy plan lowered from `qos_overrides.<topic>.<role>.<policy>` launch
+    /// params. Every publisher/subscription created on this node afterwards
+    /// folds the matching `(topic, role)` entries into its QoS before the
+    /// backend-compat check — the C++ mirror of Rust's
+    /// `NodeHandle::set_qos_overrides`. Call once, before creating entities (a
+    /// generated/hand-written entry does this before `configure(node)`).
+    ///
+    /// `overrides` must outlive the node (e.g. a `static` array in the entry).
+    /// Pass `len == 0` to clear. No-op on an uninitialized node.
+    void set_qos_overrides(const nros_cpp_qos_override_t* overrides, size_t len) {
+        if (initialized_) {
+            ::nros_cpp_node_set_qos_overrides(&handle_, overrides, len);
+        }
+    }
+
     /// Phase 240.5 (RFC-0043) — the opaque executor handle this node was opened
     /// against (from `nros_cpp_init`). The component layer needs it for the raw
     /// FFI that is executor- rather than node-scoped (action server register /

@@ -187,3 +187,192 @@ impl nros_qos_t {
         }
     }
 }
+
+/// Phase 211.H (issue #52) — one per-topic QoS override, the C-ABI mirror of
+/// Rust's `nros_rmw::QosOverride`. The deploy plan lowers a
+/// `qos_overrides.<topic>.<role>.<policy>` launch param into a `&'static`
+/// array of these, which the entry installs on the node via
+/// [`nros_node_set_qos_overrides`](crate::node::nros_node_set_qos_overrides);
+/// the node folds the matching entries into each entity's QoS at
+/// `create_publisher` / `create_subscription` time (setup-time, before the
+/// backend-compat check — no silent downgrade).
+///
+/// Plain scalar fields only (no `#[repr(C)]` enums) so the C++/cbindgen header
+/// is trivially stable and there is no short-enum ABI mirror to keep in sync.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_qos_override_t {
+    /// Resolved (remapped) topic the override targets, NUL-terminated UTF-8
+    /// (e.g. `"/chatter"`). Matched exactly against the entity's topic.
+    pub topic: *const core::ffi::c_char,
+    /// `0` = publisher, `1` = subscription. Other values never match.
+    pub role: u8,
+    /// `0` = reliability, `1` = durability, `2` = history, `3` = depth.
+    pub policy: u8,
+    /// Policy-specific value: reliability `0`=best_effort/`1`=reliable;
+    /// durability `0`=volatile/`1`=transient_local; history
+    /// `0`=keep_last/`1`=keep_all; depth = the KeepLast depth.
+    pub value: u32,
+}
+
+/// Role tag for [`apply_qos_overrides`]: `0` = publisher, `1` = subscription
+/// (matches [`nros_qos_override_t::role`]).
+pub(crate) const QOS_OVERRIDE_ROLE_PUBLISHER: u8 = 0;
+pub(crate) const QOS_OVERRIDE_ROLE_SUBSCRIPTION: u8 = 1;
+
+/// Fold any overrides matching `(topic, role)` into `qos`, returning the
+/// overridden profile. Mirrors `nros_rmw::QosSettings::apply_overrides`: a
+/// single linear scan, last-write-wins on a duplicate `(topic, role, policy)`,
+/// no alloc. `overrides` may be null (`len == 0` ⇒ no-op).
+///
+/// # Safety
+/// `overrides` must be null or point to `len` valid `nros_qos_override_t`, each
+/// with a `topic` that is null or a valid NUL-terminated UTF-8 C string for the
+/// duration of the call.
+pub(crate) unsafe fn apply_qos_overrides(
+    mut qos: nros_node::QosSettings,
+    overrides: *const nros_qos_override_t,
+    len: usize,
+    topic: &str,
+    role: u8,
+) -> nros_node::QosSettings {
+    use nros_node::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
+
+    if overrides.is_null() || len == 0 {
+        return qos;
+    }
+    let table = unsafe { core::slice::from_raw_parts(overrides, len) };
+    for ovr in table {
+        if ovr.role != role || ovr.topic.is_null() {
+            continue;
+        }
+        let ovr_topic = match unsafe { core::ffi::CStr::from_ptr(ovr.topic) }.to_str() {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if ovr_topic != topic {
+            continue;
+        }
+        match ovr.policy {
+            0 => {
+                qos.reliability = if ovr.value == 0 {
+                    QosReliabilityPolicy::BestEffort
+                } else {
+                    QosReliabilityPolicy::Reliable
+                }
+            }
+            1 => {
+                qos.durability = if ovr.value == 0 {
+                    QosDurabilityPolicy::Volatile
+                } else {
+                    QosDurabilityPolicy::TransientLocal
+                }
+            }
+            2 => {
+                qos.history = if ovr.value == 0 {
+                    QosHistoryPolicy::KeepLast
+                } else {
+                    QosHistoryPolicy::KeepAll
+                }
+            }
+            3 => qos.depth = ovr.value,
+            _ => {}
+        }
+    }
+    qos
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nros_node::{QosDurabilityPolicy, QosReliabilityPolicy};
+
+    #[test]
+    fn apply_qos_overrides_matches_topic_and_role() {
+        // best_effort reliability on /chatter for the publisher role.
+        let ovr = [nros_qos_override_t {
+            topic: c"/chatter".as_ptr(),
+            role: QOS_OVERRIDE_ROLE_PUBLISHER,
+            policy: 0, // reliability
+            value: 0,  // best_effort
+        }];
+        let base = nros_node::QosSettings::default(); // Reliable
+
+        // Matching (topic, role) → overridden.
+        let got = unsafe {
+            apply_qos_overrides(
+                base,
+                ovr.as_ptr(),
+                ovr.len(),
+                "/chatter",
+                QOS_OVERRIDE_ROLE_PUBLISHER,
+            )
+        };
+        assert_eq!(got.reliability, QosReliabilityPolicy::BestEffort);
+
+        // Wrong role → untouched.
+        let got = unsafe {
+            apply_qos_overrides(
+                base,
+                ovr.as_ptr(),
+                ovr.len(),
+                "/chatter",
+                QOS_OVERRIDE_ROLE_SUBSCRIPTION,
+            )
+        };
+        assert_eq!(got.reliability, QosReliabilityPolicy::Reliable);
+
+        // Wrong topic → untouched.
+        let got = unsafe {
+            apply_qos_overrides(
+                base,
+                ovr.as_ptr(),
+                ovr.len(),
+                "/other",
+                QOS_OVERRIDE_ROLE_PUBLISHER,
+            )
+        };
+        assert_eq!(got.reliability, QosReliabilityPolicy::Reliable);
+
+        // Null / empty table → no-op.
+        let got = unsafe {
+            apply_qos_overrides(
+                base,
+                core::ptr::null(),
+                0,
+                "/chatter",
+                QOS_OVERRIDE_ROLE_PUBLISHER,
+            )
+        };
+        assert_eq!(got.reliability, QosReliabilityPolicy::Reliable);
+    }
+
+    #[test]
+    fn apply_qos_overrides_durability_and_depth() {
+        let ovr = [
+            nros_qos_override_t {
+                topic: c"/t".as_ptr(),
+                role: QOS_OVERRIDE_ROLE_SUBSCRIPTION,
+                policy: 1, // durability
+                value: 1,  // transient_local
+            },
+            nros_qos_override_t {
+                topic: c"/t".as_ptr(),
+                role: QOS_OVERRIDE_ROLE_SUBSCRIPTION,
+                policy: 3, // depth
+                value: 42,
+            },
+        ];
+        let got = unsafe {
+            apply_qos_overrides(
+                nros_node::QosSettings::default(),
+                ovr.as_ptr(),
+                ovr.len(),
+                "/t",
+                QOS_OVERRIDE_ROLE_SUBSCRIPTION,
+            )
+        };
+        assert_eq!(got.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(got.depth, 42);
+    }
+}

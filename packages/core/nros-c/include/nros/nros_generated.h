@@ -1101,6 +1101,41 @@ typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
                                        void *context);
 
 /**
+ * Phase 211.H (issue #52) — one per-topic QoS override, the C-ABI mirror of
+ * Rust's `nros_rmw::QosOverride`. The deploy plan lowers a
+ * `qos_overrides.<topic>.<role>.<policy>` launch param into a `&'static`
+ * array of these, which the entry installs on the node via
+ * [`nros_node_set_qos_overrides`](crate::node::nros_node_set_qos_overrides);
+ * the node folds the matching entries into each entity's QoS at
+ * `create_publisher` / `create_subscription` time (setup-time, before the
+ * backend-compat check — no silent downgrade).
+ *
+ * Plain scalar fields only (no `#[repr(C)]` enums) so the C++/cbindgen header
+ * is trivially stable and there is no short-enum ABI mirror to keep in sync.
+ */
+typedef struct nros_qos_override_t {
+  /**
+   * Resolved (remapped) topic the override targets, NUL-terminated UTF-8
+   * (e.g. `"/chatter"`). Matched exactly against the entity's topic.
+   */
+  const char *topic;
+  /**
+   * `0` = publisher, `1` = subscription. Other values never match.
+   */
+  uint8_t role;
+  /**
+   * `0` = reliability, `1` = durability, `2` = history, `3` = depth.
+   */
+  uint8_t policy;
+  /**
+   * Policy-specific value: reliability `0`=best_effort/`1`=reliable;
+   * durability `0`=volatile/`1`=transient_local; history
+   * `0`=keep_last/`1`=keep_all; depth = the KeepLast depth.
+   */
+  uint32_t value;
+} nros_qos_override_t;
+
+/**
  * Node structure.
  *
  * Represents a ROS 2 node with a name and namespace.
@@ -1171,6 +1206,16 @@ typedef struct nros_node_t {
    * (`nros_node_init` / `nros_node_init_ex`).
    */
   const struct nros_executor_t *executor;
+  /**
+   * Pointer to a `&'static`-lifetime array of [`nros_qos_override_t`], or
+   * null. The caller (a generated entry / a hand-written app) owns the
+   * storage for the node's lifetime.
+   */
+  const struct nros_qos_override_t *qos_overrides;
+  /**
+   * Number of entries in `qos_overrides`. 0 = none.
+   */
+  size_t qos_overrides_len;
 } nros_node_t;
 
 /**
@@ -4371,6 +4416,29 @@ NROS_PUBLIC
 nros_ret_t nros_executor_lifecycle_register_on_error(struct nros_executor_t *executor,
                                                      struct Option_LifecycleCallbackFnCtx cb,
                                                      void *context);
+
+/**
+ * Install the per-topic QoS override table the deploy plan lowered from
+ * `qos_overrides.<topic>.<role>.<policy>` launch params (issue #52). Every
+ * entity created on `node` afterwards folds the matching `(topic, role)`
+ * entries into its QoS before the backend-compat check — the C/C++ mirror of
+ * Rust's `NodeHandle::set_qos_overrides`. Call once, after `nros_node_init*`
+ * and before creating publishers/subscriptions (a generated entry does this
+ * before `configure(node)`).
+ *
+ * `overrides` must outlive the node (a `static` array in the generated entry).
+ * Pass `len == 0` (or a null `overrides`) to clear.
+ *
+ * # Safety
+ * * `node` must point to an initialised `nros_node_t`.
+ * * `overrides` must be null or point to `len` valid `nros_qos_override_t`
+ *   (each `topic` a valid NUL-terminated UTF-8 C string), living at least as
+ *   long as the node.
+ */
+NROS_PUBLIC
+nros_ret_t nros_node_set_qos_overrides(struct nros_node_t *node,
+                                       const struct nros_qos_override_t *overrides,
+                                       size_t len);
 
 /**
  * Get a zero-initialised `nros_node_options_t`.

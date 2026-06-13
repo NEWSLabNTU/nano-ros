@@ -79,7 +79,17 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
         _ => topic_info,
     };
 
-    let qos_settings = qos.to_qos_settings();
+    // Phase 211.H (issue #52) — fold any plan qos_overrides for this topic +
+    // publisher role, mirroring Rust's `create_publisher_with_qos`.
+    let qos_settings = unsafe {
+        crate::apply_qos_overrides(
+            qos.to_qos_settings(),
+            node_ref.qos_overrides,
+            node_ref.qos_overrides_len,
+            topic_str,
+            crate::NROS_CPP_QOS_OVERRIDE_ROLE_PUBLISHER,
+        )
+    };
 
     // Phase 104.C.9.b — route through the Node's session when the
     // Node was bound to a non-primary RMW backend via

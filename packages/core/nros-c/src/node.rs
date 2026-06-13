@@ -78,6 +78,19 @@ pub struct nros_node_t {
     /// support-based dispatch. NULL = legacy single-Node path
     /// (`nros_node_init` / `nros_node_init_ex`).
     pub executor: *const crate::executor::nros_executor_t,
+
+    // Phase 211.H (issue #52) — per-topic QoS overrides the deploy plan
+    // lowered from `qos_overrides.<topic>.<role>.<policy>` launch params.
+    // Set by `nros_node_set_qos_overrides`; folded into each entity's QoS at
+    // `create_publisher` / `create_subscription` time. Appended at the END of
+    // the struct so existing field offsets (hence the C ABI) are unchanged;
+    // `null` / `0` means "no overrides" (the legacy behaviour).
+    /// Pointer to a `&'static`-lifetime array of [`nros_qos_override_t`], or
+    /// null. The caller (a generated entry / a hand-written app) owns the
+    /// storage for the node's lifetime.
+    pub qos_overrides: *const crate::qos::nros_qos_override_t,
+    /// Number of entries in `qos_overrides`. 0 = none.
+    pub qos_overrides_len: usize,
 }
 
 impl Default for nros_node_t {
@@ -96,8 +109,40 @@ impl Default for nros_node_t {
             _reserved: [0u8; 3],
             node_id: 0,
             executor: ptr::null(),
+            qos_overrides: ptr::null(),
+            qos_overrides_len: 0,
         }
     }
+}
+
+/// Install the per-topic QoS override table the deploy plan lowered from
+/// `qos_overrides.<topic>.<role>.<policy>` launch params (issue #52). Every
+/// entity created on `node` afterwards folds the matching `(topic, role)`
+/// entries into its QoS before the backend-compat check — the C/C++ mirror of
+/// Rust's `NodeHandle::set_qos_overrides`. Call once, after `nros_node_init*`
+/// and before creating publishers/subscriptions (a generated entry does this
+/// before `configure(node)`).
+///
+/// `overrides` must outlive the node (a `static` array in the generated entry).
+/// Pass `len == 0` (or a null `overrides`) to clear.
+///
+/// # Safety
+/// * `node` must point to an initialised `nros_node_t`.
+/// * `overrides` must be null or point to `len` valid `nros_qos_override_t`
+///   (each `topic` a valid NUL-terminated UTF-8 C string), living at least as
+///   long as the node.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_node_set_qos_overrides(
+    node: *mut nros_node_t,
+    overrides: *const crate::qos::nros_qos_override_t,
+    len: usize,
+) -> nros_ret_t {
+    let Some(node) = (unsafe { node.as_mut() }) else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+    node.qos_overrides = overrides;
+    node.qos_overrides_len = len;
+    NROS_RET_OK
 }
 
 /// Phase 104.C.8 — extended node-creation options.

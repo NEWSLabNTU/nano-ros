@@ -261,6 +261,17 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
 
+        // Phase 211.H (issue #52) — fold any plan qos_overrides for this
+        // topic + publisher role into the profile before create, mirroring
+        // Rust's `NodeHandle::create_publisher_with_qos`.
+        let _qos_settings = crate::qos::apply_qos_overrides(
+            _qos_settings,
+            node_ref.qos_overrides,
+            node_ref.qos_overrides_len,
+            topic_str,
+            crate::qos::QOS_OVERRIDE_ROLE_PUBLISHER,
+        );
+
         // Create publisher — write handle directly into inline opaque storage
         match session.create_publisher(&topic_info, _qos_settings) {
             Ok(pub_handle) => {

@@ -488,7 +488,16 @@ pub unsafe extern "C" fn nros_subscription_init_polling_with_qos(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
 
-        let qos_settings = subscription_mut.qos.to_qos_settings();
+        // Phase 211.H (issue #52) — fold any plan qos_overrides for this
+        // topic + subscription role into the profile before create, mirroring
+        // Rust's `NodeHandle::create_subscription_with_qos`.
+        let qos_settings = crate::qos::apply_qos_overrides(
+            subscription_mut.qos.to_qos_settings(),
+            node_ref.qos_overrides,
+            node_ref.qos_overrides_len,
+            topic_str,
+            crate::qos::QOS_OVERRIDE_ROLE_SUBSCRIPTION,
+        );
         match session.create_subscriber(&topic_info, qos_settings) {
             Ok(handle) => {
                 let raw = nros_node::RawSubscription::<{ crate::config::MESSAGE_BUFFER_SIZE }>::new(

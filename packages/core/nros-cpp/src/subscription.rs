@@ -77,7 +77,17 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
         _ => topic_info,
     };
 
-    let qos_settings = qos.to_qos_settings();
+    // Phase 211.H (issue #52) — fold any plan qos_overrides for this topic +
+    // subscription role, mirroring Rust's `create_subscription_with_qos`.
+    let qos_settings = unsafe {
+        crate::apply_qos_overrides(
+            qos.to_qos_settings(),
+            node_ref.qos_overrides,
+            node_ref.qos_overrides_len,
+            topic_str,
+            crate::NROS_CPP_QOS_OVERRIDE_ROLE_SUBSCRIPTION,
+        )
+    };
 
     // Phase 104.C.9.b — when the Node was created via
     // `nros_cpp_node_create_ex` (multi-RMW path), `node.node_id != 0`

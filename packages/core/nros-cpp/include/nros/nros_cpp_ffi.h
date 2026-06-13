@@ -162,6 +162,82 @@ typedef enum nros_cpp_qos_liveliness_t {
 typedef int nros_cpp_ret_t;
 
 /**
+ * Phase 211.H (issue #52) — one per-topic QoS override, the C++-FFI mirror of
+ * Rust's `nros_rmw::QosOverride` (and nros-c's `nros_qos_override_t`). The
+ * deploy plan lowers a `qos_overrides.<topic>.<role>.<policy>` launch param
+ * into a `&'static` array of these, which the entry installs on the node via
+ * [`nros_cpp_node_set_qos_overrides`]; the node folds matching `(topic, role)`
+ * entries into each entity's QoS at create time, before the backend-compat
+ * check. Plain scalar fields only (no `#[repr(C)]` enums) → trivially stable
+ * cbindgen output.
+ */
+typedef struct nros_cpp_qos_override_t {
+  /**
+   * Resolved (remapped) topic, NUL-terminated UTF-8 (e.g. `"/chatter"`).
+   */
+  const char *topic;
+  /**
+   * `0` = publisher, `1` = subscription.
+   */
+  uint8_t role;
+  /**
+   * `0` = reliability, `1` = durability, `2` = history, `3` = depth.
+   */
+  uint8_t policy;
+  /**
+   * Policy-specific value: reliability `0`=best_effort/`1`=reliable;
+   * durability `0`=volatile/`1`=transient_local; history
+   * `0`=keep_last/`1`=keep_all; depth = the KeepLast depth.
+   */
+  uint32_t value;
+} nros_cpp_qos_override_t;
+
+/**
+ * Opaque node handle.
+ *
+ * A node is a lightweight view into the executor: it borrows the
+ * executor for its lifetime. The C++ FFI stores the executor pointer
+ * plus the node name/namespace and re-creates the borrow when needed.
+ */
+typedef struct nros_cpp_node_t {
+  /**
+   * Pointer to the parent executor handle (not owned).
+   */
+  void *executor;
+  /**
+   * Node name (null-terminated, max 64 bytes including null).
+   */
+  uint8_t name[NROS_CPP_NAME_LEN];
+  /**
+   * Node namespace (null-terminated, max 64 bytes including null).
+   */
+  uint8_t namespace_[NROS_CPP_NAMESPACE_LEN];
+  /**
+   * Phase 104.C.9.b — opaque NodeId returned by
+   * `Executor::node_builder(...).build()`. `0` = primary Node
+   * (legacy single-Session creation path); non-zero values route
+   * publisher / subscription / service creation through the
+   * per-Node session resolved via
+   * `Executor::node_session_mut(NodeId)`.
+   */
+  uint8_t node_id;
+  /**
+   * Reserved for future use; pad to next u64 boundary.
+   */
+  uint8_t _reserved[NROS_CPP_NODE_RESERVED];
+  /**
+   * Pointer to a `&'static`-lifetime array of [`nros_cpp_qos_override_t`], or
+   * null. The generated/hand-written entry owns the storage for the node's
+   * lifetime.
+   */
+  const struct nros_cpp_qos_override_t *qos_overrides;
+  /**
+   * Number of entries in `qos_overrides`. 0 = none.
+   */
+  size_t qos_overrides_len;
+} nros_cpp_node_t;
+
+/**
  * Phase 104.C.9 — extended node-creation options (C++ FFI).
  *
  * Mirrors `nros_node_options_t` in nros-c (Phase 104.C.8) — same field
@@ -208,41 +284,6 @@ typedef struct nros_cpp_node_options_t {
    */
   uint8_t _reserved[3];
 } nros_cpp_node_options_t;
-
-/**
- * Opaque node handle.
- *
- * A node is a lightweight view into the executor: it borrows the
- * executor for its lifetime. The C++ FFI stores the executor pointer
- * plus the node name/namespace and re-creates the borrow when needed.
- */
-typedef struct nros_cpp_node_t {
-  /**
-   * Pointer to the parent executor handle (not owned).
-   */
-  void *executor;
-  /**
-   * Node name (null-terminated, max 64 bytes including null).
-   */
-  uint8_t name[NROS_CPP_NAME_LEN];
-  /**
-   * Node namespace (null-terminated, max 64 bytes including null).
-   */
-  uint8_t namespace_[NROS_CPP_NAMESPACE_LEN];
-  /**
-   * Phase 104.C.9.b — opaque NodeId returned by
-   * `Executor::node_builder(...).build()`. `0` = primary Node
-   * (legacy single-Session creation path); non-zero values route
-   * publisher / subscription / service creation through the
-   * per-Node session resolved via
-   * `Executor::node_session_mut(NodeId)`.
-   */
-  uint8_t node_id;
-  /**
-   * Reserved for future use; pad to next u64 boundary.
-   */
-  uint8_t _reserved[NROS_CPP_NODE_RESERVED];
-} nros_cpp_node_t;
 
 /**
  * `nros::SchedContext` mirror passed to
@@ -461,6 +502,20 @@ nros_cpp_ret_t nros_cpp_init(const char *locator,
  * `storage` must point to a live `CppContext` written by `nros_cpp_init()`, or NULL (no-op).
  */
 nros_cpp_ret_t nros_cpp_fini(void *storage);
+
+/**
+ * Install the per-topic QoS override table on `node` (issue #52). Every entity
+ * created afterwards folds the matching `(topic, role)` entries into its QoS —
+ * the C++ mirror of Rust's `NodeHandle::set_qos_overrides`. `overrides` must
+ * outlive the node. `len == 0` (or null) clears.
+ *
+ * # Safety
+ * `node` must point to an initialised `nros_cpp_node_t`; `overrides` null or
+ * `len` valid entries living at least as long as the node.
+ */
+nros_cpp_ret_t nros_cpp_node_set_qos_overrides(struct nros_cpp_node_t *node,
+                                               const struct nros_cpp_qos_override_t *overrides,
+                                               size_t len);
 
 /**
  * Phase 104.C.9 — zero-initialised `nros_cpp_node_options_t`.

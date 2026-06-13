@@ -34,3 +34,31 @@ component's topics, an FFI `nros_cpp_node_set_qos_overrides`, and call it before
 `configure(node)`. Add a C++ analogue of `qos_overrides_runtime_delivery`.
 Split out of Phase 211 (substantially complete + archived); owned by the
 242/244 emit work.
+
+## Progress — runtime FFI slice LANDED (2026-06-14)
+
+The collision-free runtime plumbing is in (the part that does NOT touch the
+242/244 `emit_cpp` hot zone). A C++ (or C) entry that calls
+`set_qos_overrides` before creating entities now honors launch overrides:
+
+- **nros-cpp** (the C++ wrapper backing): `nros_cpp_qos_override_t` struct +
+  `nros_cpp_node_set_qos_overrides` FFI + `apply_qos_overrides` folded into
+  `nros_cpp_publisher_create` / `nros_cpp_subscription_create`; C++
+  `Node::set_qos_overrides(const nros_cpp_qos_override_t*, size_t)` wrapper
+  (`ComponentNode` reaches it via `node()`). cbindgen header regenerated.
+- **nros-c** (rclc-style C API, parity bonus — same gap): `nros_qos_override_t`
+  + `nros_node_set_qos_overrides` + apply in `nros_publisher_init` /
+  `nros_subscription_init`.
+- Both apply paths unit-tested (`apply_qos_overrides_*` in each crate); struct
+  fields appended at the END of the node structs (additive — existing C/C++ ABI
+  offsets unchanged).
+
+**Remaining (still deferred behind 242/244 emit):**
+1. **`emit_cpp` auto-bake** — emit the static `nros_cpp_qos_override_t[]` per
+   node + the `set_qos_overrides` call before `configure(node)`, threading
+   qos_overrides through the entry codegen model (entry `PlanNode` carries no
+   qos_overrides yet). This is the hot-zone part.
+2. **C++ runtime-delivery e2e** — a cmake C++ entry fixture that calls
+   `set_qos_overrides` + delivers cross-process (the C++ analogue of
+   `qos_overrides_runtime_delivery`). Rides on (1)'s emit or a hand-written
+   fixture.
