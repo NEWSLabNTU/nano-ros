@@ -33,6 +33,22 @@
 
 #include <nros/platform.h>
 
+/* Issue #44 — on esp-idf (riscv), `freertos/config/riscv/include/freertos/
+ * FreeRTOSConfig_arch.h` defines
+ *     #define configTOTAL_HEAP_SIZE ( &_heap_end - &_heap_start )
+ * using the linker heap-region symbols but does NOT declare them; esp-idf's own
+ * build pulls a prior header that does. This TU includes <FreeRTOS.h> directly
+ * (no esp-idf system headers), so the symbols are undeclared and the *compile*
+ * fails. Declare them ahead of the FreeRTOS include with the SAME type esp-idf
+ * uses (`extern int`, e.g. `components/heap/port/esp32c3/memory_layout.c`), so
+ * `&_heap_end - &_heap_start` is a well-formed `int*` pointer subtraction and the
+ * declaration can't clash with esp-idf's. Gated to `ESP_PLATFORM` (esp-idf's
+ * compiler define) so no other FreeRTOS port is touched. */
+#if defined(ESP_PLATFORM)
+extern int _heap_start;
+extern int _heap_end;
+#endif
+
 #include <FreeRTOS.h>
 #include <task.h>
 #include <semphr.h>

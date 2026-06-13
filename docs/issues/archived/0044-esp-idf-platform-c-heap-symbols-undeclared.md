@@ -1,11 +1,37 @@
 ---
 id: 44
 title: esp-idf build of nros-platform-freertos/platform.c fails — `_heap_start`/`_heap_end` undeclared
-status: open
+status: resolved
 type: bug
 area: esp32
 related: [issue-0041]
 ---
+
+## Resolution
+
+`platform.c` includes `<FreeRTOS.h>` directly. On esp-idf riscv that pulls
+`FreeRTOSConfig_arch.h`, whose `#define configTOTAL_HEAP_SIZE ( &_heap_end -
+&_heap_start )` references the linker heap symbols — which esp-idf declares (as
+`extern int`, e.g. `components/heap/port/esp32c3/memory_layout.c`) only via a
+header this TU never includes. Fix: declare them in `platform.c` ahead of the
+FreeRTOS include, with the **same `extern int` type** (so the
+`&_heap_end - &_heap_start` pointer subtraction is well-formed and can't clash
+with esp-idf's own declaration), gated to `ESP_PLATFORM` so no other FreeRTOS
+port is affected:
+
+```c
+#if defined(ESP_PLATFORM)
+extern int _heap_start;
+extern int _heap_end;
+#endif
+#include <FreeRTOS.h>
+```
+
+**Verified:** `idf.py build` for esp32c3 now compiles
+`nros_platform_freertos/.../platform.c.obj` (previously the FAILED target). The
+non-esp freertos cross build is unaffected (the decls are `ESP_PLATFORM`-gated).
+
+## Original report
 
 Building any esp-idf example/fixture (`idf.py build` for esp32c3) fails compiling
 `packages/core/nros-platform-freertos/src/platform.c` against esp-idf's FreeRTOS
