@@ -41,5 +41,13 @@ target_link_libraries(riscv64_threadx_cpp_talker_talker_component
 
 nano_ros_deploy(TARGET riscv64-qemu RMW ${NROS_RMW} DOMAIN_ID 0)
 
+# CycloneDDS needs the per-app descriptor registration (register_Int32_0, from the
+# idlc type support) hooked into the weak nros_rmw_cyclonedds_register_app_descriptors
+# so the typed Publisher<Int32> can publish. zenoh ignores it. Added onto the
+# carrier-built firmware ELF (`${PROJECT_NAME}`), mirroring the C talker.
+if(NROS_RMW STREQUAL "cyclonedds")
+    target_sources(${PROJECT_NAME} PRIVATE src/cyclonedds_app.c)
+endif()
+
 # RMW backend (zenoh or cyclonedds) onto the carrier-built firmware ELF.
 nano_ros_link_rmw(${PROJECT_NAME} RMW "${NROS_RMW}")

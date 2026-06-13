@@ -203,8 +203,18 @@ ThreadX baker is removed only **after** its last consumer moves off it (W3).
   **Both firmwares cross-build**: zenoh + CycloneDDS (the cyclone variant keeps its
   `src/cyclonedds_app.c` descriptor-registration TU, added via `target_sources`
   when `NROS_RMW==cyclonedds`).
-- [ ] **W2.3** QEMU boot-gate for the four firmwares (env-limited — the standing
-  QEMU/zenohd caveat); + hand phase-245 the proven template for Wave-2 C\*/X\*.
+- [x] **W2.3** QEMU boot-gate — **all four riscv64 firmwares boot + publish real
+  `on_tick` callbacks** under `qemu-system-riscv64 -M virt` (nros-pinned QEMU 11.0,
+  prereqs via `nros setup qemu-riscv64-threadx`): cpp/zenoh + c/zenoh publish
+  `Published: N` against a host zenohd on `tcp/10.0.2.2:7553` (slirp); cpp/cyclone +
+  c/cyclone publish standalone on CycloneDDS domain 62. Boot reaches ThreadX + NetX
+  + virtio + app thread → carrier `app_main` → `ThreadxBoard::run_components` →
+  real-executor spin. **Caught + fixed a real bug:** the cpp CycloneDDS talker
+  published 0 — the typed `Publisher<Int32>` needs `register_Int32_0` registered via
+  the weak `nros_rmw_cyclonedds_register_app_descriptors` hook, which only the C
+  talker's `cyclonedds_app.c` overrode; added the same descriptor TU to the cpp
+  talker (conditional on cyclonedds) → cpp/cyclone now publishes 24. phase-245
+  T-c/T-cpp template handed off (done).
 
 ### W3 — retire the legacy baker (gradual; last, after consumers move off)
 - [x] **W3.1** Inventoried `NanoRosThreadxSystemCodegen.cmake` consumers — bigger
