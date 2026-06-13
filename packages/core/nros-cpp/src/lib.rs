@@ -199,6 +199,15 @@ use core::ffi::{c_char, c_int, c_void};
 #[cfg(any(feature = "rmw-zenoh-cffi", feature = "rmw-xrce-cffi"))]
 mod rmw_backend;
 
+// Phase 241.D3-rev — pull nros-c's FULL `#[no_mangle]` C surface into libnros_cpp.a.
+// nros-cpp bundles nros-c as an rlib and links only libnros_cpp.a, so rustc DCEs any
+// C entry point the C++ FFI itself never references (e.g. nros_param_server_fini) —
+// yet a C++ binary may call it via the C ABI. nros-c's own `#[used]` anchor is DCE'd
+// as a dependency; referencing it from THIS staticlib root keeps it + the entry
+// points it names.
+#[used]
+static _KEEP_C_SURFACE: &[unsafe extern "C" fn()] = &nros_c::c_surface_anchor::C_SURFACE_ANCHOR;
+
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
 #[cfg(feature = "rmw-cffi")]
 mod guard_condition;
