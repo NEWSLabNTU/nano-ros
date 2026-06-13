@@ -104,6 +104,52 @@ pub struct Plan {
     pub launch_file: PathBuf,
 }
 
+impl Plan {
+    /// Phase 211.F — partition a multi-host launch for a single target host.
+    ///
+    /// Returns a copy of the plan keeping only the nodes that belong on host
+    /// `host`: those whose `<node machine="…">` equals `host`, plus every
+    /// **unhosted** node (`host == None`) — an unhosted node is shared / runs
+    /// everywhere (matches ROS 2, where a node without `machine=` runs on the
+    /// local host). The multi-host deploy bakes one entry per host from these
+    /// partitions, each deployed to that host's `[deploy.<id>]` target. A
+    /// single-host launch (no `machine=` anywhere) is unaffected — every node
+    /// is unhosted, so `for_host` returns all of them for any host.
+    #[must_use]
+    pub fn for_host(&self, host: &str) -> Plan {
+        Plan {
+            board: self.board.clone(),
+            nodes: self
+                .nodes
+                .iter()
+                .filter(|n| match &n.host {
+                    Some(h) => h == host,
+                    None => true,
+                })
+                .cloned()
+                .collect(),
+            depfile_paths: self.depfile_paths.clone(),
+            bringup: self.bringup.clone(),
+            launch_file: self.launch_file.clone(),
+        }
+    }
+
+    /// Phase 211.F — the distinct target hosts named across the plan's nodes
+    /// (the `machine=` set), sorted + deduped. Empty for a single-host launch.
+    /// The multi-host deploy bakes one entry per entry in this set.
+    #[must_use]
+    pub fn hosts(&self) -> Vec<String> {
+        let mut hs: Vec<String> = self
+            .nodes
+            .iter()
+            .filter_map(|n| n.host.clone())
+            .collect();
+        hs.sort();
+        hs.dedup();
+        hs
+    }
+}
+
 /// One Node-pkg invocation in launch order.
 ///
 /// `pkg` is the cargo-style pkg name (sanitised via [`sanitize_pkg`]
@@ -139,6 +185,11 @@ pub struct PlanNode {
     /// `nros::init` (the ctor owns the node); a `"configure"` node keeps the
     /// 240.x static-construct-then-`configure(node)` path.
     pub shape: Option<String>,
+    /// Phase 211.F — `<node machine="…">` target host (multi-host launch).
+    /// `None` for single-host / unhosted nodes. [`Plan::for_host`] partitions a
+    /// multi-host launch into per-host bakes: an entry for host `H` keeps nodes
+    /// whose `host == Some(H)` plus all unhosted (`None`) nodes.
+    pub host: Option<String>,
 }
 
 impl PlanNode {
@@ -248,6 +299,7 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             class_header: None,
             lang: None,
             shape: None,
+            host: n.machine.clone(),
         });
     };
     for n in &desc.nodes {
@@ -353,9 +405,54 @@ mod tests {
             class_header: None,
             lang: None,
             shape: None,
+            host: None,
         };
         assert_eq!(n.register_symbol(), "__nros_component_talker_pkg_register");
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");
+    }
+
+    /// Phase 211.F — `Plan::for_host` keeps a host's own nodes + all unhosted
+    /// (shared) nodes; `hosts()` returns the distinct `machine=` set.
+    #[test]
+    fn plan_for_host_partitions_by_machine() {
+        let node = |pkg: &str, host: Option<&str>| PlanNode {
+            pkg: pkg.into(),
+            exec: pkg.into(),
+            name: None,
+            namespace: None,
+            class_name: None,
+            class_header: None,
+            lang: None,
+            shape: None,
+            host: host.map(str::to_string),
+        };
+        let plan = Plan {
+            board: "native".into(),
+            nodes: vec![
+                node("sim", Some("workstation")),
+                node("ctrl", Some("jetson")),
+                node("shared", None),
+            ],
+            depfile_paths: vec![],
+            bringup: "demo".into(),
+            launch_file: std::path::PathBuf::from("/tmp/x.launch.xml"),
+        };
+
+        assert_eq!(plan.hosts(), vec!["jetson".to_string(), "workstation".to_string()]);
+
+        // workstation entry: its own node + the shared (unhosted) one.
+        let ws = plan.for_host("workstation");
+        let ws_pkgs: Vec<&str> = ws.nodes.iter().map(|n| n.pkg.as_str()).collect();
+        assert_eq!(ws_pkgs, vec!["sim", "shared"]);
+
+        // jetson entry: its own node + shared.
+        let jetson = plan.for_host("jetson");
+        let jetson_pkgs: Vec<&str> = jetson.nodes.iter().map(|n| n.pkg.as_str()).collect();
+        assert_eq!(jetson_pkgs, vec!["ctrl", "shared"]);
+
+        // An unknown host still gets the shared nodes (never empty for a launch
+        // with shared nodes).
+        assert_eq!(plan.for_host("nope").nodes.len(), 1);
     }
 
     #[test]

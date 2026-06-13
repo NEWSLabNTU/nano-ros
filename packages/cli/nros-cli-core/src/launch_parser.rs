@@ -72,6 +72,10 @@ pub struct NodeSpec {
     pub exec: String,
     pub name: Option<String>,
     pub namespace: Option<String>,
+    /// Phase 211.F — `<node machine="…">` target host (ROS 2 multi-host launch).
+    /// `None` for single-host launches. Used to partition a multi-host launch
+    /// into per-host entry bakes (`Plan::for_host`).
+    pub machine: Option<String>,
     pub params: Vec<ParamSpec>,
     pub remaps: Vec<RemapSpec>,
 }
@@ -340,6 +344,7 @@ fn handle_start(
                 exec,
                 name: attrs.get("name").cloned(),
                 namespace: attrs.get("namespace").cloned(),
+                machine: attrs.get("machine").cloned(),
                 params: Vec::new(),
                 remaps: Vec::new(),
             };

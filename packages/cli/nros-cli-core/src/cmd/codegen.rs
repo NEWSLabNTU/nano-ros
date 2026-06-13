@@ -119,6 +119,14 @@ pub struct EntryArgs {
     #[arg(long)]
     pub metadata: Option<PathBuf>,
 
+    /// Phase 211.F — multi-host partition. When set, emit the entry for target
+    /// host `<id>` only: keep nodes whose `<node machine="…">` equals `<id>`
+    /// plus all unhosted (shared) nodes; drop other hosts' nodes. A multi-host
+    /// launch bakes one entry per host (`nros codegen entry --host <id>` per
+    /// `[deploy.<id>]` target). Omitted ⇒ all nodes (single-host / unfiltered).
+    #[arg(long)]
+    pub host: Option<String>,
+
     /// Optional `.d`-style depfile path. Populated with every file the
     /// CLI read; consumed by cmake `CMAKE_CONFIGURE_DEPENDS` /
     /// build.rs `cargo:rerun-if-changed=` plumbing.
@@ -220,6 +228,19 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         arg_overrides,
     };
     let mut plan = entry_codegen::plan_from_launch(input)?;
+
+    // Phase 211.F — partition for a single target host when `--host` is given.
+    if let Some(host) = args.host.as_deref() {
+        plan = plan.for_host(host);
+        if plan.nodes.is_empty() {
+            bail!(
+                "no nodes for host `{host}` in launch `{}` — check `<node machine=…>` \
+                 values (an unhosted node would have been kept, so the launch has \
+                 neither a node for this host nor any shared node)",
+                plan.launch_file.display()
+            );
+        }
+    }
 
     let src = if args.typed {
         if lang != entry_codegen::Lang::Cpp {

@@ -393,6 +393,7 @@ mod tests {
                     class_header: None,
                     lang: None,
                     shape: None,
+                    host: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),
@@ -418,6 +419,7 @@ mod tests {
                     class_header: Some((*header).into()),
                     lang: Some("cpp".into()),
                     shape: Some("configure".into()),
+                    host: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),
