@@ -49,6 +49,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 35 | zephyr native_sim e2e fail consistently (XRCE-heavy) — not load flakes | bug        | zephyr | [0035-zephyr-native-sim-e2e-consistent-failures.md](0035-zephyr-native-sim-e2e-consistent-failures.md) |
 | 41 | suite-wide compile-in-tests antipattern — convert to build-stage fixtures | tech-debt | testing | [0041-compile-in-tests-suite-wide.md](0041-compile-in-tests-suite-wide.md) |
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
+| 49 | example source leaks platform/RMW selection + low-level boilerplate (audit: 81/200 major) | tech-debt | examples | [0049-example-source-platform-rmw-leakage.md](0049-example-source-platform-rmw-leakage.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the
