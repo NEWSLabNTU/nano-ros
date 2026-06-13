@@ -56,21 +56,41 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   `loopback_transport_ops(capacity)` + `tcp_transport_ops(target)` factories (+ C
   mirrors) over the existing vtable, so examples replace 50+ lines with one call.
   **Blocks:** D4.
-- [ ] **E3 — action helper-type auto-registration. MISSING → build (codegen, NOT
-  nros-node consts).** Correction to the initial plan: `nros-node` is a core crate
-  and **cannot name** `action_msgs::srv::CancelGoal{Request,Response}` /
-  `action_msgs::msg::GoalStatusArray` (those are generated msg crates). The 8
-  auto-registered types are `RosAction` **associated** types (`A::Goal`, …,
-  `nros-node/src/executor/action.rs:159`); the 3 missing ones are fixed ROS-2
-  protocol types the example currently registers by hand
-  (`native/rust/action-server/src/main.rs:34`). Correct fix: add a default-no-op
-  `fn register_protocol_types() -> Result<(),_>` to the `RosAction` trait
-  (`nros-core/src/action.rs:53`), have `rosidl-codegen`
-  (`packages/cli/rosidl-codegen/src/generator/mod.rs`) emit its body (registering
-  the 3 action_msgs types from the generated action crate, which DOES dep
-  action_msgs), call `A::register_protocol_types()` in the server+client register
-  sites, then regenerate the bundled action interfaces. (A codegen change — its own
-  careful pass.) **Blocks:** D3 (action leg), C1 (riscv64-threadx C action leg).
+- [ ] **E3 — action protocol-type auto-registration. MISSING → build (codegen +
+  regen; design-complete, needs a clean build env).** Implementation-ready plan
+  (verified 2026-06-13). The example hand-registers 3 **fixed** ROS-2 action-
+  protocol types before `create_action_server/client`
+  (`native/rust/action-server/src/main.rs:42`): `#[cfg(feature="rmw-cyclonedds")]
+  nros_rmw_cyclonedds::register::<action_msgs::srv::CancelGoal{Request,Response}>()`
+  + `::<action_msgs::msg::GoalStatusArray>()`. The framework auto-registers the **8
+  `RosAction` associated** types generically
+  (`register_type::<A::Goal>()` …, `nros-node/src/executor/action.rs:159`) but not
+  these 3. **Verified blockers:** (a) `nros-node` is core — it cannot name
+  `action_msgs`; (b) `register_type` returns `nros-node::NodeError`, which the
+  trait (in `nros-core`) cannot name; (c) the **generated action crate does NOT
+  currently dep `action_msgs`** (its 8 envelopes are locally generated —
+  `examples/.../generated/example_interfaces/src/action/fibonacci.rs:454`).
+  **Method (non-breaking; preferred over adding required assoc types, which would
+  break every existing `impl RosAction` until atomic regen):**
+  - **E3a** `nros-core`: add `fn register_protocol_types() -> Result<(), ()> {
+    Ok(()) }` (default no-op) to `RosAction` (`nros-core/src/action.rs:53`).
+  - **E3b** `nros-node`: call `A::register_protocol_types().map_err(|()| <a
+    NodeError variant>)?` in `register_action_server_sized` +
+    `register_action_client_sized` (+ the `Node::create_action_*_sized` paths),
+    right after the 8 `register_type` calls.
+  - **E3c** `rosidl-codegen`: in the action template (`generator/action.rs:358`
+    render), emit a `register_protocol_types` override whose body (under
+    `cfg(feature="rmw-cyclonedds")`) registers the 3 `action_msgs` types; and have
+    codegen ADD `action_msgs` + optional `nros-rmw-cyclonedds` to the generated
+    action crate's `Cargo.toml` emission.
+  - **E3d** regen the bundled action interfaces + example `generated/` dirs; build
+    the native action server+client examples; then delete the manual
+    `#[cfg(feature="rmw-cyclonedds")] { … }` blocks from the examples (folds in the
+    D3 action leg) and confirm they still register via the trait.
+  Why deferred from this session: E3c/E3d is a codegen change + interface regen that
+  needs building all action crates across platforms to verify — the verification
+  this session's env could not run reliably (0-byte nextest, cross-toolchain).
+  **Blocks:** D3 (action leg), C1 (riscv64-threadx C action leg).
 - [x] **E4 — macro-injected `#![no_std]`. IMPOSSIBLE → confirm-document.**
   Proc-macros expand at the invocation point and **cannot inject crate-level inner
   attributes** (`#![no_std]` must precede all items) — confirmed by the explicit
