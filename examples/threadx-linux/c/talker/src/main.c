@@ -1,79 +1,12 @@
-/// @file main.c
-/// @brief ThreadX Linux C talker — publishes std_msgs/Int32 on /chatter
+/* ThreadX Linux C talker — entry point (Phase 244 D6).
+ *
+ * The synthesised `nros_system_main()` (from `nros_threadx_codegen_system`)
+ * owns the per-component spawn, executor init, and spin loop; this thin C
+ * `main` just calls it. Mirrors the threadx-linux C++ entry shape.
+ */
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+extern int nros_system_main(void);
 
-#include <nros/app_main.h>
-#include <nros/check.h>
-#include <nros/executor.h>
-#include <nros/init.h>
-#include <nros/node.h>
-#include <nros/publisher.h>
-
-#include "std_msgs.h"
-
-// ----------------------------------------------------------------------------
-// Application state
-// ----------------------------------------------------------------------------
-
-static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_publisher_t publisher;
-    nros_executor_t executor;
-} app;
-
-// ----------------------------------------------------------------------------
-// Main
-// ----------------------------------------------------------------------------
-
-int nros_app_main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-
-    printf("nros C Talker (ThreadX Linux)\n");
-
-    memset(&app, 0, sizeof(app));
-
-    const char *locator = getenv("NROS_LOCATOR");
-    if (!locator) {
-        locator = "tcp/127.0.0.1:7555"; /* fixture default — threadx-linux talker port */
-    }
-    uint8_t domain_id = 0;
-    const char *domain_str = getenv("ROS_DOMAIN_ID");
-    if (domain_str) {
-        domain_id = (uint8_t)atoi(domain_str);
-    }
-
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
-    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_talker", "/"), 1);
-    NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
-                                   std_msgs_msg_int32_get_type_support(), "/chatter"), 1);
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    printf("Publisher created for topic: /chatter\n");
-
-    std_msgs_msg_int32 message;
-    std_msgs_msg_int32_init(&message);
-
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 100; j++) {
-            nros_executor_spin_some(&app.executor, 10000000ULL);
-        }
-
-        message.data = i;
-        NROS_SOFTCHECK(std_msgs_msg_int32_publish(&app.publisher, &message));
-        printf("Published: %d\n", message.data);
-    }
-
-    printf("\nDone publishing 10 messages.\n");
-
-    nros_executor_fini(&app.executor);
-    nros_publisher_fini(&app.publisher);
-    nros_node_fini(&app.node);
-    nros_support_fini(&app.support);
+int main(void) {
+    return nros_system_main();
 }
-
-NROS_APP_MAIN_REGISTER_VOID()

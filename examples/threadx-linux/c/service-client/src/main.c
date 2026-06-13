@@ -1,119 +1,12 @@
-/// @file main.c
-/// @brief ThreadX Linux C service client — calls AddTwoInts on /add_two_ints
+/* ThreadX Linux C service client — entry point (Phase 244 D6).
+ *
+ * The synthesised `nros_system_main()` (from `nros_threadx_codegen_system`)
+ * owns the per-component spawn, executor init, and spin loop; this thin C
+ * `main` just calls it. Mirrors the threadx-linux C++ entry shape.
+ */
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+extern int nros_system_main(void);
 
-#include <nros/app_main.h>
-#include <nros/check.h>
-#include <nros/client.h>
-#include <nros/executor.h>
-#include <nros/init.h>
-#include <nros/node.h>
-
-#include "example_interfaces.h"
-
-// ----------------------------------------------------------------------------
-// Application state
-// ----------------------------------------------------------------------------
-
-static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_client_t client;
-    nros_executor_t executor;
-} app;
-
-// ----------------------------------------------------------------------------
-// Main
-// ----------------------------------------------------------------------------
-
-int nros_app_main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-
-    printf("nros C Service Client (ThreadX Linux)\n");
-
-    memset(&app, 0, sizeof(app));
-
-    nros_service_type_t add_two_ints_type = {
-        .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
-        .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
-    };
-
-    const char *locator = getenv("NROS_LOCATOR");
-    if (!locator) {
-        locator = "tcp/127.0.0.1:7565"; /* fixture default — threadx-linux service port */
-    }
-    uint8_t domain_id = 0;
-    const char *domain_str = getenv("ROS_DOMAIN_ID");
-    if (domain_str) {
-        domain_id = (uint8_t)atoi(domain_str);
-    }
-
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
-    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_client", "/"), 1);
-    NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
-    nros_ret_t ret = NROS_RET_OK;
-
-    printf("Service client ready for /add_two_ints\n");
-
-    struct { int64_t a; int64_t b; } test_cases[] = {
-        {5, 3}, {10, 20}, {100, 200}, {-5, 10}
-    };
-    int num_cases = (int)(sizeof(test_cases) / sizeof(test_cases[0]));
-
-    int success_count = 0;
-
-    for (int i = 0; i < num_cases; i++) {
-        example_interfaces_srv_add_two_ints_request request;
-        example_interfaces_srv_add_two_ints_request_init(&request);
-        request.a = test_cases[i].a;
-        request.b = test_cases[i].b;
-
-        uint8_t req_buf[256];
-        int32_t req_len = example_interfaces_srv_add_two_ints_request_serialize(
-                &request, req_buf, sizeof(req_buf));
-        if (req_len < 0) {
-            printf("Failed to serialize request\n");
-            continue;
-        }
-        size_t req_size = (size_t)req_len;
-
-        uint8_t resp_buf[256];
-        size_t resp_len = 0;
-        ret = nros_client_call(&app.client, req_buf, req_size,
-                               resp_buf, sizeof(resp_buf), &resp_len);
-
-        if (ret == NROS_RET_OK) {
-            example_interfaces_srv_add_two_ints_response response;
-            if (example_interfaces_srv_add_two_ints_response_deserialize(
-                    &response, resp_buf, resp_len) == 0) {
-                printf("Response: %lld + %lld = %lld\n",
-                       (long long)request.a, (long long)request.b,
-                       (long long)response.sum);
-                if (response.sum == request.a + request.b) {
-                    success_count++;
-                }
-            }
-        } else if (ret == NROS_RET_TIMEOUT) {
-            printf("Call [%d]: Timeout\n", i + 1);
-        } else {
-            printf("Call [%d]: Failed with error %d\n", i + 1, ret);
-        }
-    }
-
-    printf("%d/%d calls succeeded\n", success_count, num_cases);
-    printf("All service calls completed.\n");
-
-    nros_executor_fini(&app.executor);
-    nros_client_fini(&app.client);
-    nros_node_fini(&app.node);
-    nros_support_fini(&app.support);
+int main(void) {
+    return nros_system_main();
 }
-
-NROS_APP_MAIN_REGISTER_VOID()
