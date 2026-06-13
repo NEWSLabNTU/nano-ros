@@ -2704,6 +2704,46 @@ struct CallbackRegistrations {
     no_std_tick_idxs: Vec<usize>,
 }
 
+/// Phase 211.H — build the `QosSettings` expression for a generated
+/// subscription, baking the plan's `qos_overrides` for `(topic, subscription)`
+/// at GENERATION time. Generated entities go through the executor's
+/// `register_subscription_*` path (not `NodeHandle::create_*`), which doesn't
+/// consult the runtime override table — so the merge is done here in codegen.
+/// Component-created entities (typed entry) use the runtime table instead. The
+/// base matches the historical generated default (`default().keep_last(1)`);
+/// each matching override appends the corresponding builder call. Unknown
+/// policy/value pairs are skipped (forward-compat), never emitted as junk.
+fn render_sub_qos_expr(instance: &PlanInstance, topic: &str) -> String {
+    let mut expr = String::from("nros::QosSettings::default().keep_last(1)");
+    for ovr in &instance.qos_overrides {
+        if ovr.topic != topic || ovr.role != "subscription" {
+            continue;
+        }
+        match (ovr.policy.as_str(), &ovr.value) {
+            ("reliability", ParameterValue::String(s)) if s == "reliable" => {
+                expr.push_str(".reliable()")
+            }
+            ("reliability", ParameterValue::String(s)) if s == "best_effort" => {
+                expr.push_str(".best_effort()")
+            }
+            ("durability", ParameterValue::String(s)) if s == "volatile" => {
+                expr.push_str(".volatile()")
+            }
+            ("durability", ParameterValue::String(s)) if s == "transient_local" => {
+                expr.push_str(".transient_local()")
+            }
+            ("history", ParameterValue::String(s)) if s == "keep_all" => {
+                expr.push_str(".keep_all()")
+            }
+            ("depth", ParameterValue::Integer(n)) if *n >= 0 => {
+                expr.push_str(&format!(".keep_last({n})"));
+            }
+            _ => {}
+        }
+    }
+    expr
+}
+
 fn render_callback_registrations(plan: &NrosPlan) -> CallbackRegistrations {
     let mut out = Vec::new();
     let mut module_items: Vec<String> = Vec::new();
@@ -2781,6 +2821,7 @@ fn render_callback_registrations(plan: &NrosPlan) -> CallbackRegistrations {
                             resolved_name,
                             &interface_type_name(interface),
                             &interface_type_hash(interface),
+                            instance,
                         );
                     } else if let Some(comp_path) = &comp_path {
                         emit_executable_subscription(
@@ -2801,8 +2842,10 @@ fn render_callback_registrations(plan: &NrosPlan) -> CallbackRegistrations {
                         out.push(format!(
                             "    let node_handle_{callback_index} = executor.node_id_by_name(node_{callback_index}.node_name, node_{callback_index}.namespace).ok_or(nros::NodeError::InvalidSchedContextBinding)?;\n"
                         ));
+                        // Phase 211.H — bake qos_overrides for this topic+subscription.
+                        let qos_expr = render_sub_qos_expr(instance, resolved_name);
                         out.push(format!(
-                            "    let handle_{callback_index} = executor.node_mut(node_handle_{callback_index}).subscription({topic:?}).generic({type_name:?}, {type_hash:?}).qos(nros::QosSettings::default().keep_last(1)).rx_buffer::<1024>().build(|_data: &[u8]| {{}})?;\n",
+                            "    let handle_{callback_index} = executor.node_mut(node_handle_{callback_index}).subscription({topic:?}).generic({type_name:?}, {type_hash:?}).qos({qos_expr}).rx_buffer::<1024>().build(|_data: &[u8]| {{}})?;\n",
                             topic = resolved_name,
                             type_name = interface_type_name(interface),
                             type_hash = interface_type_hash(interface),
@@ -3365,8 +3408,10 @@ fn emit_executable_subscription(
         "    let subnh_{idx} = executor.node_id_by_name(subnode_{idx}.node_name, subnode_{idx}.namespace).ok_or(nros::NodeError::InvalidSchedContextBinding)?;\n"
     ));
     emit_executable_prelude(out, idx, comp_path, instance, true);
+    // Phase 211.H — bake the plan's qos_overrides for this topic+subscription.
+    let qos_expr = render_sub_qos_expr(instance, topic);
     out.push(format!(
-        "    let handle_{idx} = executor.node_mut(subnh_{idx}).subscription({topic:?}).generic({type_name:?}, {type_hash:?}).qos(nros::QosSettings::default().keep_last(1)).rx_buffer::<1024>().build(move |data: &[u8]| {{\n"
+        "    let handle_{idx} = executor.node_mut(subnh_{idx}).subscription({topic:?}).generic({type_name:?}, {type_hash:?}).qos({qos_expr}).rx_buffer::<1024>().build(move |data: &[u8]| {{\n"
     ));
     out.push(format!(
         "        let mut cb_ctx = nros::CallbackCtx::new(data, &resolver{idx});\n"
@@ -3426,6 +3471,7 @@ fn emit_shared_subscription(
     topic: &str,
     type_name: &str,
     type_hash: &str,
+    instance: &PlanInstance,
 ) {
     out.push(format!(
         "    let subnode_{idx} = NODES.iter().find(|node| node.node_id == {node_id:?}).ok_or(nros::NodeError::InvalidSchedContextBinding)?;\n"
@@ -3439,8 +3485,10 @@ fn emit_shared_subscription(
     out.push(format!(
         "    let resolver_cb{idx} = ::std::rc::Rc::clone(&resolver_i{inst});\n"
     ));
+    // Phase 211.H — bake the plan's qos_overrides for this topic+subscription.
+    let qos_expr = render_sub_qos_expr(instance, topic);
     out.push(format!(
-        "    let handle_{idx} = executor.node_mut(subnh_{idx}).subscription({topic:?}).generic({type_name:?}, {type_hash:?}).qos(nros::QosSettings::default().keep_last(1)).rx_buffer::<1024>().build(move |data: &[u8]| {{\n"
+        "    let handle_{idx} = executor.node_mut(subnh_{idx}).subscription({topic:?}).generic({type_name:?}, {type_hash:?}).qos({qos_expr}).rx_buffer::<1024>().build(move |data: &[u8]| {{\n"
     ));
     out.push(format!(
         "        let mut cb_ctx = nros::CallbackCtx::new(data, resolver_cb{idx}.as_ref());\n"
@@ -4072,6 +4120,52 @@ mod net_fragment_tests {
         build.transports = transports;
         build.workspace_root = Some(test_workspace_root());
         build
+    }
+
+    /// Phase 211.H — the generated subscription QoS expr bakes the plan's
+    /// qos_overrides for the matching topic+subscription, and ignores
+    /// publisher-side / other-topic overrides.
+    #[test]
+    fn render_sub_qos_expr_bakes_matching_overrides() {
+        let inst: PlanInstance = serde_json::from_value(serde_json::json!({
+            "id": "demo.sub.0",
+            "component": "demo::sub",
+            "package": "demo",
+            "executable": "sub",
+            "launch_name": "/sub",
+            "namespace": "/",
+            "remaps": [],
+            "nodes": [],
+            "callbacks": [],
+            "parameters": [],
+            "sched_bindings": [],
+            "trace": { "launch_record_entity": "record://x", "source_metadata": "" },
+            "qos_overrides": [
+                { "topic": "/chatter", "role": "subscription", "policy": "reliability",
+                  "value": "best_effort", "source": {"kind": "launch", "artifact": "launch"} },
+                { "topic": "/chatter", "role": "subscription", "policy": "depth",
+                  "value": 5, "source": {"kind": "launch", "artifact": "launch"} },
+                { "topic": "/chatter", "role": "publisher", "policy": "reliability",
+                  "value": "reliable", "source": {"kind": "launch", "artifact": "launch"} },
+                { "topic": "/other", "role": "subscription", "policy": "durability",
+                  "value": "transient_local", "source": {"kind": "launch", "artifact": "launch"} }
+            ]
+        }))
+        .unwrap();
+
+        // Matching topic+subscription → best_effort + depth(5); publisher and
+        // /other overrides excluded.
+        let expr = render_sub_qos_expr(&inst, "/chatter");
+        assert_eq!(
+            expr,
+            "nros::QosSettings::default().keep_last(1).best_effort().keep_last(5)"
+        );
+
+        // A topic with no overrides → the base default expr unchanged.
+        assert_eq!(
+            render_sub_qos_expr(&inst, "/untouched"),
+            "nros::QosSettings::default().keep_last(1)"
+        );
     }
 
     #[test]
