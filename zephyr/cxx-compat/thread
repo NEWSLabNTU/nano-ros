@@ -2,7 +2,10 @@
 // Provides `std::this_thread::sleep_for(chrono::duration)` —
 // the only API surface Cyclone DDS service.cpp uses today.
 // Forwards to Zephyr's `k_sleep`. No `std::thread` class.
-#ifndef NROS_ZEPHYR_CXX_COMPAT_THREAD
+// Defer to the toolchain's real <thread> when reachable; else the minimal shim.
+#if defined(__has_include_next) && __has_include_next(<thread>)
+#  include_next <thread>
+#elif !defined(NROS_ZEPHYR_CXX_COMPAT_THREAD)
 #define NROS_ZEPHYR_CXX_COMPAT_THREAD
 
 #include <chrono>

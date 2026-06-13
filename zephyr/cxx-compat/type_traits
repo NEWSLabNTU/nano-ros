@@ -9,7 +9,10 @@
 // those (+ the `integral_constant` base) with a version-portable SFINAE
 // `is_convertible` (no GCC `__is_convertible` builtin dependency). Mirrors the
 // threadx-qemu-riscv64 board shim.
-#ifndef NROS_ZEPHYR_CXX_COMPAT_TYPE_TRAITS
+// Defer to the toolchain's real <type_traits> when reachable; else the minimal shim.
+#if defined(__has_include_next) && __has_include_next(<type_traits>)
+#  include_next <type_traits>
+#elif !defined(NROS_ZEPHYR_CXX_COMPAT_TYPE_TRAITS)
 #define NROS_ZEPHYR_CXX_COMPAT_TYPE_TRAITS
 
 namespace std {

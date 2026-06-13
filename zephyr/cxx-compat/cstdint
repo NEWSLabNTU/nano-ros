@@ -1,5 +1,8 @@
 // C++ compat for Zephyr picolibc targets without full libc++ headers.
-#ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDINT
+// Defer to the toolchain's real <cstdint> when reachable; else the shim.
+#if defined(__has_include_next) && __has_include_next(<cstdint>)
+#  include_next <cstdint>
+#elif !defined(NROS_ZEPHYR_CXX_COMPAT_CSTDINT)
 #define NROS_ZEPHYR_CXX_COMPAT_CSTDINT
 #include <stdint.h>
 

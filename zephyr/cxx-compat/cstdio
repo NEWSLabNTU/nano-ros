@@ -1,5 +1,8 @@
 // C++ compat for Zephyr picolibc targets without full libc++ headers.
-#ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDIO
+// Defer to the toolchain's real <cstdio> when reachable; else the shim.
+#if defined(__has_include_next) && __has_include_next(<cstdio>)
+#  include_next <cstdio>
+#elif !defined(NROS_ZEPHYR_CXX_COMPAT_CSTDIO)
 #define NROS_ZEPHYR_CXX_COMPAT_CSTDIO
 #include <stdio.h>
 

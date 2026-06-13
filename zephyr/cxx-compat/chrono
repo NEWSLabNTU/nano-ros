@@ -6,7 +6,10 @@
 // Runtime semantics: `steady_clock::now()` returns Zephyr's
 // monotonic kernel time via `k_uptime_ticks()`. Resolution =
 // `CONFIG_SYS_CLOCK_TICKS_PER_SEC`.
-#ifndef NROS_ZEPHYR_CXX_COMPAT_CHRONO
+// Defer to the toolchain's real <chrono> when reachable; else the minimal shim.
+#if defined(__has_include_next) && __has_include_next(<chrono>)
+#  include_next <chrono>
+#elif !defined(NROS_ZEPHYR_CXX_COMPAT_CHRONO)
 #define NROS_ZEPHYR_CXX_COMPAT_CHRONO
 
 #include <stdint.h>

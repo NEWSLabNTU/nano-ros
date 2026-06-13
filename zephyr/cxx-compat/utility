@@ -1,4 +1,7 @@
-#ifndef NROS_ZEPHYR_CXX_COMPAT_UTILITY
+// Defer to the toolchain's real <utility> when reachable; else the minimal shim.
+#if defined(__has_include_next) && __has_include_next(<utility>)
+#  include_next <utility>
+#elif !defined(NROS_ZEPHYR_CXX_COMPAT_UTILITY)
 #define NROS_ZEPHYR_CXX_COMPAT_UTILITY
 
 namespace std {

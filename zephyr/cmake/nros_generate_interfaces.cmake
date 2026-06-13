@@ -527,29 +527,32 @@ panic = \"abort\"
       # so cross-package type references resolve correctly.
       set(NROS_CPP_FFI_INCLUDES "")
 
-      # include!() dependency FFI .rs files (so their types are in scope).
-      # Phase 210.E.3.c — same CACHE-fallback as the canonical
-      # cmake/NanoRosGenerateInterfaces.cmake: multi-level dep chains
+      # Collect the dependency FFI .rs files (each dep's variable already
+      # holds ITS transitive closure) plus our own, de-dup, then include!()
+      # each so all cross-package types share one flat scope. De-dup is
+      # REQUIRED: a diamond dependency (e.g. tier4_debug_msgs DEPENDENCIES
+      # builtin_interfaces std_msgs, where std_msgs's closure already
+      # re-contains builtin_interfaces) would otherwise include!() the same
+      # _ffi.rs twice → Rust E0428 "defined multiple times". The canonical
+      # cmake/NanoRosGenerateInterfaces.cmake does the same via _ffi_rs_all.
+      #
+      # Phase 210.E.3.c — same CACHE-fallback: multi-level dep chains
       # generated via the smart Find-stub recursion land their FFI .rs
       # closure in `_NROS_PKG_<pkg>_GENERATED_RS_FILES` (INTERNAL CACHE).
       # Read from cache when the regular var isn't in this scope.
+      set(_ffi_rs_all "")
       foreach(_dep ${_ARG_DEPENDENCIES})
-        set(_dep_rs "")
         if(DEFINED ${_dep}_GENERATED_RS_FILES)
-          set(_dep_rs "${${_dep}_GENERATED_RS_FILES}")
+          list(APPEND _ffi_rs_all ${${_dep}_GENERATED_RS_FILES})
         elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
-          set(_dep_rs "$CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES}")
+          list(APPEND _ffi_rs_all $CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
         endif()
-        foreach(_rs_file ${_dep_rs})
-          get_filename_component(_rs_name "${_rs_file}" NAME)
-          if(NOT _rs_name STREQUAL "mod.rs")
-            string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")
-          endif()
-        endforeach()
       endforeach()
-
-      # include!() own FFI .rs files
-      foreach(_rs_file ${_generated_rs_files})
+      list(APPEND _ffi_rs_all ${_generated_rs_files})
+      if(_ffi_rs_all)
+        list(REMOVE_DUPLICATES _ffi_rs_all)
+      endif()
+      foreach(_rs_file ${_ffi_rs_all})
         get_filename_component(_rs_name "${_rs_file}" NAME)
         if(NOT _rs_name STREQUAL "mod.rs")
           string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")

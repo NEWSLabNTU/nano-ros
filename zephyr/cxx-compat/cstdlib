@@ -1,8 +1,23 @@
-// C++ compat for Zephyr picolibc targets without full libc++ headers.
-#ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDLIB
-#define NROS_ZEPHYR_CXX_COMPAT_CSTDLIB
-#include <stdlib.h>
-
+// C++ compat for Zephyr targets without full libstdc++ headers.
+//
+// Defer to the toolchain's real <cstdlib> when one is reachable on the
+// include path (e.g. aarch64-zephyr-elf ships a complete libstdc++ at
+// `c++/<ver>/cstdlib`). Only when no real header exists (Zephyr's minimal
+// libcpp / picolibc-only native_sim) do we fall back to the stripped shim
+// below. This avoids SHADOWING the real header: under picolibc the C names
+// land in `namespace std` (via `_HAVE_STD_CXX` in <stdlib.h>), so the
+// fallback's `using ::abort;` would fail with "'abort' has not been declared
+// in '::'" — and the minimal shim would also starve C++ TUs (e.g. vendored
+// Autoware) of the full <cstdlib> surface.
+//
+// The fallback body is guarded; the `#include_next` is not, so it chains
+// correctly even when cxx-compat is on the include path more than once.
+#if defined(__has_include_next) && __has_include_next(<cstdlib>)
+#  include_next <cstdlib>
+#else
+#  ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDLIB
+#  define NROS_ZEPHYR_CXX_COMPAT_CSTDLIB
+#    include <stdlib.h>
 namespace std {
 using ::abort;
 using ::abs;
@@ -34,4 +49,5 @@ using ::strtoll;
 using ::strtoul;
 using ::strtoull;
 }
+#  endif
 #endif

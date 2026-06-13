@@ -409,6 +409,16 @@ class ParameterServer {
     Result get_impl(const char* name, double& out) const {
         return Result(nros_param_get_double(&server_, name, &out));
     }
+    /* int reads go through the int64_t slot, then narrow — symmetric with the
+       int declare_impl/set_impl above (rclcpp nodes declare_parameter<int>). */
+    Result get_impl(const char* name, int& out) const {
+        int64_t v = 0;
+        Result r(nros_param_get_integer(&server_, name, &v));
+        if (r.ok()) {
+            out = static_cast<int>(v);
+        }
+        return r;
+    }
 
     Result set_impl(const char* name, bool v) {
         return Result(nros_param_set_bool(&server_, name, v));
