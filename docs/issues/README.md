@@ -49,6 +49,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
 | 49 | example source leaks platform/RMW selection + low-level boilerplate (audit: 81/200 major) | tech-debt | examples | [0049-example-source-platform-rmw-leakage.md](0049-example-source-platform-rmw-leakage.md) |
 | 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
+| 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#35** —
 the 13 zephyr native_sim e2e failures were four distinct root causes, not load
