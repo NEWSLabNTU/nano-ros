@@ -2932,9 +2932,13 @@ canonical-shape regression test can run green tree-wide:
       `linkme`-blind targets and `Executor::open` returned `ConnectionFailed` (the
       "cyclone native_sim hang" was an early Err return — issue #35 §(c)).
 
-      Follow-ups (not blockers): parameter dispatch (still no-op); the deserialized
-      feedback/result `sequence` reads len=0 in the demo (framing detail, the
-      markers + round-trip are correct).
+      Follow-up wave 1 (DONE 2026-06-13): the action feedback/result `sequence`
+      deserialized to len 0 — `TickCtx::publish_feedback`/`complete_goal` serialized
+      header-less but the consumer (`CallbackCtx::message`) + the executor envelope
+      expect a CDR-LE encapsulation header. Fixed to `CdrWriter::new_with_header`;
+      now reads len 3 (`[0,1,1]`).
+
+      Remaining follow-up (not a blocker): parameter dispatch (still no-op).
 
       **Was blocking:** issue #35 (`docs/issues/0035-*`).
 

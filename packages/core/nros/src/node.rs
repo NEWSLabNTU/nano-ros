@@ -1955,10 +1955,16 @@ impl<'a> TickCtx<'a> {
         status: GoalStatus,
         result: &R,
     ) -> NodeResult<()> {
-        // Header-less inner CDR: the executor's `complete_goal_raw` frames the
-        // outer envelope (matches the typed `ActionServerHandle::complete_goal`).
+        // CDR-LE encapsulation header included: the executor's `complete_goal_raw`
+        // frames only the outer envelope ([header][goal_id]) + this payload
+        // verbatim — it does NOT add an inner header — and the consumer reads the
+        // result via `CallbackCtx::message` (`CdrReader::new_with_header`), as do
+        // the C++/ffi clients. Without the header the reader eats the first data
+        // word (e.g. a sequence length) → empty/garbage payload (issue #35 M-F.23
+        // follow-up: action result `sequence` deserialized to len 0).
         let mut buf = [0u8; N];
-        let mut writer = crate::CdrWriter::new(&mut buf);
+        let mut writer =
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| NodeDeclError::Runtime)?;
         result
             .serialize(&mut writer)
             .map_err(|_| NodeDeclError::Runtime)?;
@@ -2013,10 +2019,13 @@ impl<'a> TickCtx<'a> {
         goal_id: &GoalId,
         feedback: &F,
     ) -> NodeResult<()> {
-        // Header-less inner CDR: the executor's `publish_feedback_raw` frames the
-        // outer envelope (matches the typed `ActionServerHandle::publish_feedback`).
+        // CDR-LE encapsulation header included — see `complete_goal` above. The
+        // executor frames the outer [header][goal_id] envelope only; the consumer
+        // reads feedback via `CallbackCtx::message` (`new_with_header`), so the
+        // payload itself must carry the header (issue #35 M-F.23 follow-up).
         let mut buf = [0u8; N];
-        let mut writer = crate::CdrWriter::new(&mut buf);
+        let mut writer =
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| NodeDeclError::Runtime)?;
         feedback
             .serialize(&mut writer)
             .map_err(|_| NodeDeclError::Runtime)?;
