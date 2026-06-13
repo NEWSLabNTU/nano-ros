@@ -2,19 +2,15 @@
 //!
 //! Declarative: node + action client.
 //!
-//! Phase 212.M-F.4.b transcription: one-shot `send_goal` on the first
-//! `tick` call (after registration completes). Feedback + result
-//! callbacks land via `on_callback` once codegen wires the feedback-
-//! stream + result-subscriber + `GoalStatusArray` topics through to
-//! dispatch. The in-tree `UnsupportedClients` stub returns
-//! `NodeDeclError::Runtime` from `send_goal_raw` until the M-F.4.a
-//! `GenClientDispatch` reaches the installed nros-cli.
+//! One-shot `send_goal` on the first `tick`; the terminal result is delivered
+//! to `on_callback("on_result")` (phase-212 M-F.23 wires the single-node
+//! runtime's action-client result dispatch).
 
 #![no_std]
 
 extern crate zephyr;
 
-use example_interfaces::action::{Fibonacci, FibonacciGoal};
+use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
     Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
@@ -26,7 +22,11 @@ impl Node for FibonacciClient {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("fibonacci_action_client"))?;
-        let _client = node.create_action_client_for_name::<Fibonacci>("/fibonacci")?;
+        let _client = node.create_action_client_with_callbacks_for_name::<Fibonacci>(
+            "/fibonacci",
+            "on_result",
+            "on_feedback",
+        )?;
         Ok(())
     }
 }
@@ -43,11 +43,27 @@ impl ExecutableNode for FibonacciClient {
         State { sent: false }
     }
 
-    fn on_callback(_state: &mut Self::State, _callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
-        // Feedback / result callbacks land here once codegen wires the
-        // `GoalStatusArray` + feedback-stream + result-future
-        // subscribers. The id-driven dispatch is the M-F.4.a + N
-        // runtime plumbing; this body is the seam.
+    fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+        match callback.as_str() {
+            "on_feedback" => {
+                let len = ctx
+                    .message::<FibonacciFeedback>()
+                    .map(|f| f.sequence.len())
+                    .unwrap_or(0);
+                // Harness marker: client_got_feedback keys off "Feedback #".
+                log::info!("Feedback #: sequence len={}", len);
+            }
+            "on_result" => {
+                let n = ctx
+                    .message::<FibonacciResult>()
+                    .map(|r| r.sequence.len())
+                    .unwrap_or(0);
+                // Harness markers: "Action client finished" + "Result:".
+                log::info!("Result: sequence len={}", n);
+                log::info!("Action client finished");
+            }
+            _ => {}
+        }
     }
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
@@ -60,6 +76,7 @@ impl ExecutableNode for FibonacciClient {
             .is_ok()
         {
             state.sent = true;
+            log::info!("Action client sent goal");
         }
     }
 }

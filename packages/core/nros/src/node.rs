@@ -1370,6 +1370,42 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         self.create_action_client::<A>(EntityId::new(name), name)
     }
 
+    /// Declare an action client that delivers the goal RESULT + FEEDBACK to
+    /// named callbacks (Phase 212.M-F.23). `name` is the stable entity ID. The
+    /// executor auto-drives accept → feedback stream → result during spin and
+    /// dispatches `ExecutableNode::on_callback` with `result_callback_name`
+    /// (payload = result CDR) on completion, and with `feedback_callback_name`
+    /// (payload = feedback CDR) per feedback message. Read either with
+    /// `CallbackCtx::message::<A::Result>()` / `::<A::Feedback>()`. Without
+    /// these the client can only `send_goal`; result + feedback are dropped.
+    ///
+    /// (Layout note: the action-client variant reuses the server-side
+    /// `action_accepted_callback_id` metadata slot for the feedback callback —
+    /// that field is unused on a client, so no new schema field is needed.)
+    #[track_caller]
+    pub fn create_action_client_with_callbacks_for_name<'entity, A: RosAction>(
+        &mut self,
+        name: &'entity str,
+        result_callback_name: &str,
+        feedback_callback_name: &str,
+    ) -> NodeResult<NodeActionClient<'entity, A>> {
+        let mut metadata = entity_metadata(EntityMetadataSpec {
+            id: EntityId::new(name),
+            node_id: self.id,
+            kind: EntityKind::ActionClient,
+            source_name: name,
+            type_name: A::ACTION_NAME,
+            type_hash: A::ACTION_HASH,
+            qos: QosSettings::default(),
+        })?;
+        metadata.callback_id = Some(copy_str(result_callback_name)?);
+        metadata.action_accepted_callback_id = Some(copy_str(feedback_callback_name)?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
+        self.declare_entity(metadata)?;
+        Ok(NodeActionClient::new(EntityId::new(name)))
+    }
+
     /// Declare a parameter. Stable parameter ID is required.
     #[track_caller]
     #[doc(hidden)]
