@@ -12,12 +12,16 @@ per-RTOS sub-headers (A)**. Ends the split-brain where POSIX/native resolve A
 (direct-libc heap, ns-clock, per-platform atomics) while Zephyr/xrce/zpico resolve
 api (alloc funnel, ms/us-clock).
 
-**Status.** In progress on branch `phase-243-platform-abi-unification` (2026-06-12).
-Waves 243.1/.2/.3/.5 landed; e2e green on **5/6 cells** (qemu, esp32, freertos,
-threadx_linux, threadx_riscv64 — qemu confirmed green on re-run after an infra
-flake killed its first Build mid-run). **nuttx is red from the pre-existing `240.6` regression** (undefined
-Rust `nros_platform_*` link symbols — confirmed identical on clean main), NOT this
-phase. Three en-route fixes (each its own commit):
+**Status.** **LANDED on main (2026-06-13 reconciliation):** `nros-c/include/nros/
+platform.h` + its per-RTOS sub-headers are deleted on main (`git ls-files | grep -c
+nros-c/include/nros/platform` = 0) — the one canonical `<nros/platform.h>` is in
+`nros-platform-api`. Waves 243.1/.2/.3/.5 landed; e2e was green on **5/6 cells**
+(qemu, esp32, freertos, threadx_linux, threadx_riscv64). **nuttx red is the
+pre-existing `240.6` regression** (undefined Rust `nros_platform_*` link symbols —
+identical on clean main), NOT this phase. **243.6 B.4 confirmed (2026-06-13):**
+`c_stub_platform.rs` compiles clean on main → the canonical-header ↔
+`nros-platform-cffi/src/lib.rs` parity guard is intact post-collapse.
+Three en-route fixes landed (each its own commit):
 - `zpico.c` `_freertos_printk`: arch-guard the ARM semihosting asm (`__arm__`/
   `__thumb__`) so the freertos-config TU survives a host compile.
 - api capability block: grant `HAS_MALLOC` for **all non-bare-metal** (matches A's
@@ -101,16 +105,21 @@ Ordered so the gate guards from W1, A's consumers are migrated before A is delet
 - **Acceptance:** cyclonedds + nros-cpp compile (host + a zephyr/threadx cell).
 
 ### 243.4 — delete the now-orphaned ns-clock / atomics impl defs
-- [ ] Delete the `nros_platform_time_ns`/`sleep_ns` strong defs:
-      `zephyr/nros_platform_zephyr_shims.c:290,295`;
-      `nros-board-mps2-an385-freertos/startup.c:575,580`;
-      `nros-board-threadx-qemu-riscv64/startup.c:49,54`;
-      `examples/native/c/custom-platform/src/platform_impl.c:49,82`.
-- [ ] Delete those files' `atomic_store_bool`/`load_bool` strong defs (now generic
-      header-inline): boards `startup.c` + the custom-platform example. (Keep their
-      `clock_us`/`alloc`/etc. — those are the api surface the ports still implement.)
-- **Acceptance:** each board + the example still builds (their builds resolve api,
-      which now carries the atomics inline + the clock the wrappers use).
+- [x] **Boards/shims done (on main).** The `nros_platform_time_ns`/`sleep_ns` +
+      `atomic_store_bool`/`load_bool` strong defs are gone from the zephyr shim,
+      `nros-board-mps2-an385-freertos/startup.c`, and
+      `nros-board-threadx-qemu-riscv64/startup.c` — repo-wide the only remaining
+      real defs of these symbols are api's canonical `static inline` atomics
+      (`nros-platform-api/include/nros/platform.h`) + the custom-platform example.
+- [ ] **Residual: the `custom-platform` example is stale doc-debt, not a quick
+      delete.** `examples/native/c/custom-platform/src/platform_impl.c` implements
+      *only* the four now-dead/header-inline functions (`time_ns`, `sleep_ns`,
+      `atomic_{store,load}_bool`) — it teaches a retired ABI. The current
+      custom-platform surface is ~40 functions (`clock_us`, `alloc`/`realloc`/
+      `dealloc`, `sleep_*`, `yield`, `random_fill`, the task/mutex/condvar/wake
+      API). The example needs a **re-author to the current ABI** (or a redesign /
+      retirement decision), not just a def deletion. Not CI-gated; tracked here.
+- **Acceptance:** each board builds against api (atomics inline + clock wrappers).
 
 ### 243.5 — retire A + repoint the include order
 - [ ] Delete `nros-c/include/nros/platform.h` and `nros-c/include/nros/platform/
@@ -126,9 +135,9 @@ Ordered so the gate guards from W1, A's consumers are migrated before A is delet
       `<nros/platform.h>` consumer resolves the one canonical api header.
 
 ### 243.6 — parity + full validation
-- [ ] **B.4:** confirm `c_stub_platform.rs` still gates the canonical header ↔
-      `nros-platform-cffi/src/lib.rs` (the atomics are inline → not mirrored; the
-      rest is unchanged).
+- [x] **B.4 (confirmed 2026-06-13):** `c_stub_platform.rs` compiles clean on main,
+      so it still gates the canonical header ↔ `nros-platform-cffi/src/lib.rs` (the
+      atomics are inline → not mirrored; the rest is unchanged).
 - [ ] Branch + `run_e2e` dispatch: all per-platform cells green (the POSIX-funnel +
       atomics + clock change touches every platform). Accept the pre-existing nuttx
       `240.6` red as out-of-scope (cross-ref).
