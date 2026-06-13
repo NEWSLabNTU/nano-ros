@@ -3911,6 +3911,104 @@ topics:
         assert!(schema_qos_overrides(Some(&bad)).is_empty());
     }
 
+    /// Phase 211.H — end-to-end planner: a launch `<param qos_overrides…>` (as
+    /// the parser records it) flows through `plan_system` into the typed
+    /// `instances[*].qos_overrides` block, decomposed + split from `parameters`.
+    #[test]
+    fn plan_system_lowers_qos_overrides() {
+        let root = temp_workspace("nros-plan-qos-overrides");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("package.xml"),
+            r#"<package format="3"><name>system_pkg</name><version>0.1.0</version></package>"#,
+        )
+        .unwrap();
+        let launch = root.join("system.launch.xml");
+        fs::write(&launch, "<launch />").unwrap();
+        let record = root.join("record.json");
+        fs::write(
+            &record,
+            r#"{
+  "node": [
+    {
+      "package": "demo_pkg",
+      "executable": "talker",
+      "name": "talker_a",
+      "namespace": "/robot_a",
+      "remaps": [],
+      "params": [
+        {"name": "rate_hz", "value": "20"},
+        {"name": "qos_overrides./chatter.publisher.reliability", "value": "best_effort"},
+        {"name": "qos_overrides./chatter.publisher.depth", "value": "5"}
+      ]
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+        let metadata = root.join("talker.metadata.json");
+        fs::write(
+            &metadata,
+            r#"{
+  "version": 1, "package": "demo_pkg", "component": "talker", "language": "rust",
+  "executable": "talker", "exported_symbol": "nros_component_talker",
+  "nodes": [{
+    "id": "node_talker",
+    "unresolved_name": {"value": "talker", "kind": "relative"},
+    "namespace": null,
+    "publishers": [{
+      "id": "pub_chatter",
+      "unresolved_topic": {"value": "chatter", "kind": "relative"},
+      "interface": {"package": "std_msgs", "name": "msg/String", "kind": "message"},
+      "qos": null
+    }],
+    "subscribers": [], "timers": [], "services": [], "actions": []
+  }],
+  "callbacks": [],
+  "parameters": [],
+  "trace": {"generator": "nros-metadata-rust", "package_manifest": "package.xml", "source_artifacts": ["src/talker.rs"]}
+}"#,
+        )
+        .unwrap();
+
+        let output = plan_system(PlanOptions {
+            system_pkg: "system_pkg".to_string(),
+            workspace_root: root.clone(),
+            launch_file: launch,
+            record_file: Some(record),
+            out_root: root.join("build/system_pkg/nros"),
+            metadata_files: vec![metadata],
+            manifest_files: vec![],
+            nros_toml_files: vec![],
+            launch_args: vec![],
+        })
+        .unwrap();
+        let plan: Value =
+            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
+        // Round-trips through the typed schema (validates the additive field).
+        serde_json::from_value::<NrosPlan>(plan.clone()).unwrap();
+
+        let inst = &plan["instances"][0];
+        // The qos params are SPLIT OUT of `parameters` (only rate_hz remains).
+        let pnames: Vec<&str> = inst["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(pnames, vec!["rate_hz"], "qos param leaked into parameters");
+
+        // ... and lowered into the typed qos_overrides block, decomposed.
+        let qos = inst["qos_overrides"].as_array().expect("qos_overrides block");
+        assert_eq!(qos.len(), 2, "got {qos:?}");
+        // Sorted (topic, role, policy): depth before reliability.
+        assert_eq!(qos[0]["topic"], "/chatter");
+        assert_eq!(qos[0]["role"], "publisher");
+        assert_eq!(qos[0]["policy"], "depth");
+        assert_eq!(qos[1]["policy"], "reliability");
+        assert_eq!(qos[1]["value"], json!("best_effort"));
+    }
+
     #[test]
     fn plan_system_generates_ids_from_declaration_slots() {
         let root = temp_workspace("nros-plan-generated-slot-ids");
