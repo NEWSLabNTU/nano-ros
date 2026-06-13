@@ -10,7 +10,11 @@ logic into one shared `cmake/NanoRosCodegenCore.cmake` that both include. Keep
 two thin entry points (their deployment models genuinely differ); kill the
 recurring "fix it in one, forget the other" bug class.
 
-**Status.** In progress (2026-06-13). Design approved (Option A). **246.1 DONE +
+**Status.** COMPLETE (2026-06-13). 246.1–246.3 extracted to
+`cmake/NanoRosCodegenCore.cmake` + validated (native canonical + ASI FVP zephyr
+both build clean each wave). 246.2b (codegen-tool + interface-file resolvers) and
+246.4 (link wiring) intentionally NOT unified — documented divergences, not gaps
+(see the waves below). Original detail follows. **246.1 DONE +
 verified** — `cmake/NanoRosCodegenCore.cmake` holds `_nros_collect_rs_closure`,
 `_nros_export_rs_closure`, `_nros_write_ffi_lib_rs`; both generators call them for
 lib.rs assembly + closure compute/export. Validated: native C++ listener
@@ -126,8 +130,26 @@ a follow-up wave** — not wave 1; document the shared invariant first.
   literal name, firing the branch with an empty value (`--target` / `-Z
   build-std=` with no value → cargo error). `if(_A_<K>)` derefs + treats
   unset/empty as false.
-- **246.4 (follow-up) — link wiring.** Unify the FFI-link approach behind one
-  helper, carefully; or converge both on whole-archive. Separate review.
+- **246.4 — link wiring. ANALYZED → intentionally NOT unified.** The two link
+  blocks solve OPPOSITE ld-order problems for DIFFERENT target models:
+  - Canonical: the nros-cpp runtime (`NanoRos::NanoRosCpp`, defining
+    `nros_cpp_publish_raw`) must come AFTER the ffi `.a` → solved by
+    `INTERFACE_LINK_LIBRARIES` topological ordering on a per-package INTERFACE
+    library that the consumer links.
+  - Zephyr: the ffi `.a` must come AFTER the app/component objects (whose inline
+    msg-header fns call ffi `deserialize/publish`) → solved by `--whole-archive`
+    onto the `app` target (issue 0056).
+
+  A shared helper would be over-parameterized boilerplate-wrapping of ~4 lines
+  AND would touch the exact code that produced issue 0056 — risk ≫ value. Kept
+  separate, with the divergence documented in BOTH generators. The only change
+  made: dropped the Zephyr IMPORTED `<pkg>_cpp_ffi` target, which became
+  vestigial after 0056 switched to raw-path whole-archive (nothing link-listed
+  it; only its `_build` custom target was used).
+
+  Shared invariant (documented in both): the per-package ffi `.a` symbols must
+  co-resolve with their callers at final link — each path enforces it in the
+  way that fits its target model.
 
 **Validation gates (every wave):**
 1. A native C++ example builds (canonical path) — e.g. `examples/native/cpp/listener`.

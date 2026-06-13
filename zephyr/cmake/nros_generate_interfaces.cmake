@@ -500,14 +500,8 @@ targets = [\"${NROS_RUST_TARGET}\"]
         VERBATIM
       )
 
-      set(_ffi_target_name "${target}_cpp_ffi")
-      add_custom_target(${_ffi_target_name}_build DEPENDS "${_ffi_lib}")
-
-      add_library(${_ffi_target_name} STATIC IMPORTED GLOBAL)
-      set_target_properties(${_ffi_target_name} PROPERTIES
-        IMPORTED_LOCATION "${_ffi_lib}"
-      )
-      add_dependencies(${_ffi_target_name} ${_ffi_target_name}_build)
+      # Custom target carrying the .a build edge for `app`.
+      add_custom_target(${target}_cpp_ffi_build DEPENDS "${_ffi_lib}")
 
       # Link FFI staticlib to app, WHOLE-ARCHIVED. The generated message C++
       # headers call these `nros_cpp_{serialize,deserialize,publish}_*` FFI
@@ -517,13 +511,19 @@ targets = [\"${NROS_RUST_TARGET}\"]
       # discards `.a` members whose symbols aren't yet referenced, so a plain
       # link drops them → "undefined reference to nros_cpp_deserialize_*". The
       # FFI glue is small (per-message ser/de/publish), so whole-archiving is
-      # the order-independent fix. CMake 3.24's $<LINK_LIBRARY:WHOLE_ARCHIVE>
-      # isn't available on the Zephyr-pinned CMake (3.22) — use raw flags and
-      # keep an explicit build-order dependency on app (the imported target is
-      # not link-listed, so add_dependencies carries the .a build edge).
+      # the order-independent fix (issue 0056). CMake 3.24's
+      # $<LINK_LIBRARY:WHOLE_ARCHIVE> isn't available on the Zephyr-pinned CMake
+      # (3.22) — use raw flags and an explicit build-order dependency on `app`.
+      #
+      # Phase 246.4 — the link wiring is intentionally NOT shared with the
+      # canonical generator: it solves the OPPOSITE ld-order problem (there, the
+      # nros-cpp runtime must follow the ffi lib; here, the ffi lib must follow
+      # the app/component objects) for a different target model (Zephyr `app` vs
+      # a per-package INTERFACE library). The IMPORTED-target dance the canonical
+      # path needs is dead weight here, so the FFI lib is linked by raw path.
       target_link_libraries(app PRIVATE
         "-Wl,--whole-archive" "${_ffi_lib}" "-Wl,--no-whole-archive")
-      add_dependencies(app ${_ffi_target_name}_build)
+      add_dependencies(app ${target}_cpp_ffi_build)
     endif()
 
   else()

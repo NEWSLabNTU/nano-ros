@@ -539,7 +539,9 @@ function(nros_generate_interfaces target)
       # Phase 150.B — record the ffi_lib → NanoRos::NanoRosCpp link
       # dependency explicitly so CMake's topological sort places
       # libnros_cpp.a AFTER the per-package ffi staticlib in the
-      # final link line. Without this, both libs land as sibling
+      # final link line. (Phase 246.4: this INTERFACE-library ordering is
+      # intentionally NOT shared with the Zephyr generator's whole-archive-onto-
+      # `app` approach — opposite ld-order direction + different target model.) Without this, both libs land as sibling
       # INTERFACE deps of `${_lib_target}` with no recorded ordering;
       # CMake picks declaration order (libnros_cpp.a first), GNU ld
       # processes left→right and discards `nros_cpp_publish_raw` from
