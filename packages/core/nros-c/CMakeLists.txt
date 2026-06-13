@@ -41,8 +41,13 @@ endif()
 # nros-c still builds with `rmw-cffi` so umbrella Rust API
 # surfaces compile; registry stays empty until explicit
 # register() fires.
+# Phase 241.D3-rev — single-runtime umbrella: bundle the selected Rust backend into
+# libnros_c.a so it is the ONE Rust staticlib a C binary links. cyclonedds is a
+# separate C++ lib (linked by the root), so the umbrella carries only the cffi shim.
 if(NANO_ROS_RMW STREQUAL "zenoh")
     set(_rmw_features cffi-zenoh-cffi)
+elseif(NANO_ROS_RMW STREQUAL "xrce")
+    set(_rmw_features cffi-xrce-c)
 else()
     set(_rmw_features rmw-cffi)
 endif()

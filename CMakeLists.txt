@@ -126,6 +126,14 @@ if(NOT TARGET NanoRos)
     # NuttX cross builds where the FFI crate's cargo build supplies
     # nros-c via its own dependency closure.
     if(TARGET nros_c-static)
+        # Phase 241.D3-rev — the C umbrella is the ONLY Rust staticlib on a C link
+        # line ⇒ `std` once ⇒ no `--allow-multiple-definition`. Linked NORMALLY (not
+        # whole-archive): whole-archiving a Rust staticlib force-includes its
+        # `compiler-builtins` intrinsics (`__popcountdi2`, `__mulsc3`, …) which then
+        # collide with the system `libgcc.a` — a dup the old flag used to mask. The C
+        # surface is pulled lazily by the binary's own references, and the backend is
+        # force-registered by the NanoRosLink.cmake `nros_app_register_backends()`
+        # stub (it calls `nros_rmw_<x>_register`, defined in this umbrella).
         target_link_libraries(NanoRos INTERFACE nros_c-static)
     else()
         # NuttX (and any future tier-3 cross build) — staticlibs come
@@ -206,85 +214,13 @@ endif()
 # `cmake/rmw/nano-ros-rmw-<rmw>.cmake` modules land in Phase 138 once
 # the per-platform layout (138 / 139) is in place.
 # ---------------------------------------------------------------------------
-if(NANO_ROS_RMW STREQUAL "zenoh")
-    # NuttX (and any future tier-3 target) — the FFI crate bundles
-    # nros-rmw-zenoh via cargo with `-Z build-std`, so the Corrosion-
-    # built `libnros_rmw_zenoh_staticlib.a` at the cmake level is both
-    # redundant and impossible (Corrosion would invoke `cargo build`
-    # against a tier-3 triple without the per-example `.cargo/config.toml`
-    # that supplies build-std). Skip the staticlib add_subdirectory for
-    # those platforms; `nros_board_link_app()` (board overlay) drives
-    # the cargo build that produces the final ELF.
-    if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")
-        add_subdirectory(packages/zpico/nros-rmw-zenoh-staticlib)
-        # `nros_rmw_zenoh_staticlib-static` is the Corrosion-emitted target
-        # from the staticlib sub-project. Whole-archive wrap so the
-        # auto-register .init_array ctor (phase 104.A) survives dead-strip.
-        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
-           OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
-            # RFC-0042 D3 — `--allow-multiple-definition` dropped (cffi is now
-            # single-definition via the provider archive) AND `--whole-archive`
-            # replaced by `-u` forcing of the backend register entry: whole-archive
-            # also dragged the rmw staticlib's core/std COMDAT closure in, which
-            # collided with the consumers' copies (the other half of what the flag
-            # masked). Forcing only `nros_rmw_zenoh_register` lazy-links the rest.
-            target_link_libraries(NanoRos INTERFACE
-                "-Wl,-u,nros_rmw_zenoh_register"
-                nros_rmw_zenoh_staticlib-static)
-        elseif(APPLE)
-            target_link_libraries(NanoRos INTERFACE
-                "-Wl,-force_load,$<TARGET_FILE:nros_rmw_zenoh_staticlib-static>"
-                "-Wl,--allow-multiple-definition")
-        else()
-            target_link_libraries(NanoRos INTERFACE nros_rmw_zenoh_staticlib-static)
-        endif()
-    endif()
-elseif(NANO_ROS_RMW STREQUAL "xrce")
-    # Phase 160.L — XRCE via `nros-rmw-xrce-cffi-staticlib` (the
-    # standalone staticlib sibling that wraps the Rust C-FFI shim
-    # `nros-rmw-xrce-cffi`). The wrapper exists because Corrosion's
-    # `CRATE_TYPES staticlib` flag FILTERS — it does not FORCE the
-    # crate-type emit. Putting `staticlib` directly on the cffi crate's
-    # `[lib].crate-type` made Cargo resolve a `panic_handler` at
-    # compile time on Zephyr / FreeRTOS no_std cross builds where the
-    # example's panic source isn't visible (Phase 154's note). The
-    # wrapper sibling carries the staticlib crate-type so the cffi
-    # crate can stay rlib-only.
-    set(_xrce_features linkme-register)
-    if(NANO_ROS_PLATFORM STREQUAL "posix")
-        list(APPEND _xrce_features std)
-    endif()
-    # Phase 212.M.7 — ESP-IDF integration links the staticlib into the
-    # C `app_main.c` binary which carries no Rust-side panic_handler.
-    # Opt the staticlib's `panic-halt` strategy in so compile-time
-    # panic resolution succeeds. Other RTOS targets supply panic from
-    # the top-level Rust binary and keep the staticlib lean.
-    if(NANO_ROS_PLATFORM STREQUAL "esp_idf")
-        list(APPEND _xrce_features panic-halt)
-    endif()
-    corrosion_import_crate(
-        MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
-        CRATES        nros-rmw-xrce-cffi-staticlib
-        CRATE_TYPES   staticlib
-        NO_DEFAULT_FEATURES
-        FEATURES      ${_xrce_features}
-        LOCKED
-    )
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
-       OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
-        # RFC-0042 D3 — same as the zenoh arm: cffi single-def via the provider +
-        # `-u` register-force instead of whole-archive, so no flag is needed.
-        target_link_libraries(NanoRos INTERFACE
-            "-Wl,-u,nros_rmw_xrce_register"
-            nros_rmw_xrce_cffi_staticlib-static)
-    elseif(APPLE)
-        # Untouched on macOS (no run_e2e cell to validate `-u`/force_load here).
-        target_link_libraries(NanoRos INTERFACE
-            "-Wl,-force_load,$<TARGET_FILE:nros_rmw_xrce_cffi_staticlib-static>"
-            "-Wl,--allow-multiple-definition")
-    else()
-        target_link_libraries(NanoRos INTERFACE nros_rmw_xrce_cffi_staticlib-static)
-    endif()
+if(NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce")
+    # Phase 241.D3-rev — the zenoh / xrce Rust backend is now BUNDLED into the
+    # umbrella staticlib (`libnros_c.a` / `libnros_cpp.a`, built with the
+    # `cffi-zenoh-cffi` / `cffi-xrce-c` feature in their CMakeLists) and force-linked
+    # + auto-registered by the umbrella's `rmw_backend` `.init_array` ctor. The
+    # standalone `nros-rmw-{zenoh,xrce}-cffi-staticlib` archives + the `-u` register
+    # forcing are retired — there is no separate backend archive to link.
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # Phase 144.fix — Cyclone DDS is a standalone C++ CMake project
     # (NOT a Rust crate via corrosion). It builds a libnros_rmw_cyclonedds.a
@@ -340,6 +276,33 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
         if(NOT APPLE
            AND NOT (DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx"))
             target_link_libraries(NanoRos INTERFACE stdc++)
+        endif()
+        # Phase 241.D3-rev — the C++ umbrella (NanoRosCpp = nros-cpp-headers) no longer
+        # links NanoRos (the C umbrella), so it must pull the Cyclone C++ backend lib +
+        # libddsc itself. Cyclone is C/C++ (no Rust std closure), so whole-archive is
+        # safe here. libstdc++ is wired for ALL languages incl. C (per design: Cyclone
+        # needs the C++ runtime even in a C binary).
+        if(TARGET nros-cpp-headers)
+            add_dependencies(nros-cpp-headers nros_rmw_cyclonedds)
+            if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
+               OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
+                if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)
+                    target_link_libraries(nros-cpp-headers INTERFACE
+                        "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive")
+                else()
+                    target_link_libraries(nros-cpp-headers INTERFACE
+                        "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive")
+                endif()
+            elseif(APPLE)
+                target_link_libraries(nros-cpp-headers INTERFACE
+                    "-Wl,-force_load,$<TARGET_FILE:nros_rmw_cyclonedds>")
+            else()
+                target_link_libraries(nros-cpp-headers INTERFACE nros_rmw_cyclonedds)
+            endif()
+            if(NOT APPLE
+               AND NOT (DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx"))
+                target_link_libraries(nros-cpp-headers INTERFACE stdc++)
+            endif()
         endif()
     endif()
 else()

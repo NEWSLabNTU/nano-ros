@@ -29,7 +29,16 @@ if(NOT (NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce"
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
         "(expected: zenoh, xrce, cyclonedds, uorb, or none)")
 endif()
-set(_rmw_features rmw-cffi)
+# Phase 241.D3-rev — single-runtime umbrella: bundle the selected Rust backend into
+# libnros_cpp.a (the ONE Rust staticlib a C++ binary links). cyclonedds is a separate
+# C++ lib (linked by the root), so the umbrella carries only the cffi shim.
+if(NANO_ROS_RMW STREQUAL "zenoh")
+    set(_rmw_features rmw-zenoh-cffi)
+elseif(NANO_ROS_RMW STREQUAL "xrce")
+    set(_rmw_features rmw-xrce-cffi)
+else()
+    set(_rmw_features rmw-cffi)
+endif()
 
 # ---- Map platform to Cargo features ----
 if(NANO_ROS_PLATFORM STREQUAL "posix")
@@ -115,25 +124,30 @@ if(TARGET cargo-build_nros_cpp)
         $<BUILD_INTERFACE:${_nros_cpp_intree_include_dir}>)
 endif()
 
-# Link against the FFI static library
+# Phase 241.D3-rev — the C++ umbrella (bundles nros-c + the backend) is the ONLY
+# Rust staticlib on a C++ link line ⇒ `std` once ⇒ no `--allow-multiple-definition`.
+# Linked NORMALLY (not whole-archive): whole-archiving a Rust staticlib drags its
+# compiler-builtins intrinsics into a collision with the system libgcc. The surface
+# is pulled lazily; the backend registers via the NanoRosLink.cmake stub.
 target_link_libraries(nros-cpp-headers INTERFACE nros_cpp-static)
-# Phase 144 — pull NanoRos::NanoRos into nros-cpp-headers transitively
-# so consumers linking NanoRos::NanoRosCpp also get the C-side headers
-# (`<nros/app_main.h>` etc.) reachable. Matches the legacy
-# `NanoRosCppTargets.cmake` shape (`INTERFACE_LINK_LIBRARIES
-# NanoRos::NanoRosCppLib NanoRos::NanoRos`). The root `CMakeLists.txt`
-# declares `NanoRos::NanoRos` AFTER add_subdirectory'ing this file
-# (it's the umbrella that wires in nros-c + the platform shim +
-# the RMW staticlib), so we register the link via a deferred call
-# rooted in the nano-ros root directory.
-# 192.3: target the nano-ros root via NANO_ROS_ROOT_DIR (set by the root
-# CMakeLists) instead of a `../../..` walk-up. Fall back to the relative path
-# only when nros-cpp is configured standalone (no umbrella root sets the var).
+
+# Phase 241.D3-rev — pull NanoRos's C-side HEADERS + platform-compile-def + platform
+# shim, but NOT its `nros_c-static` ARCHIVE: a C++ binary links ONLY libnros_cpp.a
+# (already bundling nros-c). Linking the C archive too would put a SECOND Rust
+# staticlib (a second `std`) on the line — the exact duplicate this phase removes.
+# Deferred to the root dir where NanoRos + NanoRos::Platform are declared (after this
+# add_subdirectory). 192.3: root via NANO_ROS_ROOT_DIR; relative fallback standalone.
 if(NOT DEFINED NANO_ROS_ROOT_DIR)
     set(NANO_ROS_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/../../..")
 endif()
 cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
-    target_link_libraries nros-cpp-headers INTERFACE NanoRos::NanoRos)
+    target_include_directories nros-cpp-headers INTERFACE
+    "$<TARGET_PROPERTY:NanoRos,INTERFACE_INCLUDE_DIRECTORIES>")
+cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
+    target_compile_definitions nros-cpp-headers INTERFACE
+    "$<TARGET_PROPERTY:NanoRos,INTERFACE_COMPILE_DEFINITIONS>")
+cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
+    target_link_libraries nros-cpp-headers INTERFACE NanoRos::Platform)
 
 # Phase 117.8: when the consumer asks for the Cyclone DDS RMW backend,
 # pull in the standalone `nros-rmw-cyclonedds` library + Cyclone DDS
