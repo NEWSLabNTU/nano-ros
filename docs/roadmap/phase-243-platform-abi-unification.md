@@ -13,9 +13,9 @@ per-RTOS sub-headers (A)**. Ends the split-brain where POSIX/native resolve A
 api (alloc funnel, ms/us-clock).
 
 **Status.** In progress on branch `phase-243-platform-abi-unification` (2026-06-12).
-Waves 243.1/.2/.3/.5 landed; e2e green on **5/6 cells** (esp32, freertos,
-threadx_linux, threadx_riscv64; qemu was an infra flake — runner killed mid-Build,
-re-running). **nuttx is red from the pre-existing `240.6` regression** (undefined
+Waves 243.1/.2/.3/.5 landed; e2e green on **5/6 cells** (qemu, esp32, freertos,
+threadx_linux, threadx_riscv64 — qemu confirmed green on re-run after an infra
+flake killed its first Build mid-run). **nuttx is red from the pre-existing `240.6` regression** (undefined
 Rust `nros_platform_*` link symbols — confirmed identical on clean main), NOT this
 phase. Three en-route fixes (each its own commit):
 - `zpico.c` `_freertos_printk`: arch-guard the ARM semihosting asm (`__arm__`/
