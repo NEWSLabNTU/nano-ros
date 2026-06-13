@@ -278,6 +278,17 @@ Steps (each a commit; CI between the riskier ones):
       threadx-riscv64 `-D` is generated from board.toml, not hand-set.
 
 ### 241.D — Deterministic linking (RFC-0042 D3)
+> **In progress on branch `issue-42-d3-link-determinism`.** Slice 1 (the
+> duplicate-symbol validator below) landed there; the rest needs a `run_e2e`
+> dispatch (every platform's link). **Characterized (2026-06-13):**
+> `--allow-multiple-definition` on the threadx/freertos C++ staticlib link masks
+> **239 duplicate defined-globals** between `libnros_c.a` and
+> `libnros_rmw_zenoh_staticlib.a` — ALL from the shared Rust dependency closure
+> (nros-core/serdes/rmw/rmw-cffi, log, core, alloc, heapless, hash32, byteorder)
+> + the `nros_rmw_cffi_*` C shim. ZERO application/message/transport dups. So the
+> flag masks only legitimate self-contained-staticlib bundling; removing it
+> (slice 2) means deduping that closure (single shared rlib / one staticlib /
+> `-Bsymbolic`), a contained change once the validator guards it.
 - [ ] One registration path: codegen emits the explicit backend-register table,
       used on all platforms; retire the linkme-vs-weak split as a *contract*
       (Q4 lean: explicit table everywhere).
@@ -286,10 +297,20 @@ Steps (each a commit; CI between the riskier ones):
       consume it (Q2 lean: codegen produces, two consumers).
 - [ ] Remove `--allow-multiple-definition` and the per-combo `-u <symbol>`
       injections (#20); the manifest makes extraction deterministic.
-- [ ] Link-closure validator: every symbol the FFI glue references must be
-      satisfied by a manifest entry — fail at generation, not at `ld`.
+- [~] **Link-closure / duplicate-symbol validator — slice 1 landed.**
+      `staticlib_duplicate_symbols.rs`: dumps the duplicate defined-globals
+      between `libnros_c.a` and the RMW staticlib (via `llvm-nm`), attributes each
+      to its embedded v0 crate-id(s), and FAILS on any duplicate from a crate
+      outside the shared-dependency closure — i.e. a real ODR violation
+      `--allow-multiple-definition` would silently mask. Additive (no link change);
+      it turns the blind flag into a scoped, asserted reconciliation, the
+      precondition for removing it. Consumes a prebuilt cpp staticlib fixture's
+      archives (skips when absent); wiring it to a dedicated build-fixture +
+      extending to the full link-closure (every FFI-referenced symbol provided by
+      exactly one archive) is the next step.
 - **Acceptance:** the #20 `-u` special-case is gone and threadx-linux+Cyclone
-      still links; removing `--allow-multiple-definition` surfaces no real dup;
+      still links; removing `--allow-multiple-definition` surfaces no real dup
+      (the validator already proves the masked set is shared-dep-only);
       a deliberately-dropped lib fails the validator, not `ld`.
 
 ### 241.E — Cleanup + docs
