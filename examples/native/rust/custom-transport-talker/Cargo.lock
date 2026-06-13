@@ -816,6 +816,7 @@ dependencies = [
  "nros-log",
  "nros-platform-cffi",
  "nros-rmw",
+ "nros-transport-callbacks",
  "std_msgs",
 ]
 
@@ -919,6 +920,7 @@ name = "nros-macros"
 version = "0.5.0"
 dependencies = [
  "nros-build",
+ "nros-orchestration-ir",
  "proc-macro2",
  "quote",
  "syn",
@@ -947,6 +949,14 @@ dependencies = [
  "nros-serdes",
  "portable-atomic",
  "portable-atomic-util",
+]
+
+[[package]]
+name = "nros-orchestration-ir"
+version = "0.5.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1044,6 +1054,13 @@ dependencies = [
  "nros-platform-api",
  "portable-atomic",
  "smoltcp",
+]
+
+[[package]]
+name = "nros-transport-callbacks"
+version = "0.5.0"
+dependencies = [
+ "nros-rmw",
 ]
 
 [[package]]
@@ -1443,7 +1460,7 @@ dependencies = [
 
 [[package]]
 name = "std_msgs"
-version = "4.9.1"
+version = "4.9.0"
 dependencies = [
  "builtin_interfaces",
  "heapless",
