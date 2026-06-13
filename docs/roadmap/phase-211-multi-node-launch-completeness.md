@@ -412,11 +412,21 @@ superproject), and the planner lowers it into `host_id`.
       `plan_for_host_partitions_by_machine`. In-tree codegen path only — the
       `nros::main!()` macro (git-pinned nros-build) gets `--host` parity when
       that distribution lands.
-- [ ] **Fixture + e2e** — single-machine *simulated* multi-host: bake two
-      per-host entries from one 2-`machine` launch, run as two processes (the
-      proven `deployed_native_system_e2e` cross-process pattern ×2), assert
-      cross-host delivery. The mechanism (above) + cross-process delivery
-      (211.A) are both proven; this is the two-entry runtime demonstration.
+- [x] **Bake-partition e2e — LANDED.** `multihost_partition_bake` drives
+      `nros codegen entry --lang rust --host {robot1,robot2}` over
+      `examples/workspaces/rust` + `demo_bringup/launch/multihost.launch.xml`
+      (talker `machine=robot1`, listener `machine=robot2`) and asserts each
+      host's emitted entry registers ONLY its node (robot1 → talker, robot2 →
+      listener). Seals the full CLI pipeline (launch `machine=` parse →
+      `PlanNode.host` → `for_host` → emit). Cross-host *delivery* is already
+      proven by `deployed_native_system_e2e` (cross-process pub→sub).
+- [→] **Full 2-process runtime multi-host** — DEFERRED on the macro gap: a
+      runnable per-host entry needs `nros::main!(launch=…, host=…)`, but the
+      `main!()` macro has no `--host` (only the CLI `nros codegen entry` does).
+      Building two runnable per-host entries needs either macro `--host` parity
+      or a build.rs that shells `nros codegen entry --host`. The two halves
+      (bake-partition + cross-process delivery) are independently proven, so
+      this is a runtime-assembly demonstration, not a capability gap.
 - [ ] **`nros.toml` host targets (optional)** — model each host as a
       `[deploy.<id>]` target so a multi-host system maps `--host` bakes onto
       deploy targets via `scaffold_deploy`. Convenience over the bare
