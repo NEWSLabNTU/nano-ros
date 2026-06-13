@@ -374,19 +374,37 @@ the key: `nros-platform-cffi` **never defines** `nros_platform_*` inline — it 
 **declares** them (`unsafe extern "C" {}`) and ships `nros_platform_export_*!`
 **macros**; exactly ONE port crate (`nros-platform-posix`) *invokes* the macro, so
 the definition is emitted in exactly one archive and everyone else references it
-undefined. Mirror this for rmw-cffi:
-  - `nros-rmw-cffi`: move `REGISTRY` + the six C exports out of the always-compiled
-    body into an `nros_rmw_cffi_export!{}` macro; keep an `unsafe extern "C" {}`
-    declaration block for them. The crate's own Rust API (`resolve_backend`,
-    `CffiRmw`, the registry accessors) references the **declared** `REGISTRY`, so in
-    a consumer it resolves to the single external instance.
-  - Exactly ONE provider invokes `nros_rmw_cffi_export!{}` → defines the 7 symbols
-    in one archive. Natural home: `nros-c` (always linked, the "core"); or a tiny
-    dedicated `nros-rmw-cffi-provider` staticlib mirroring `nros-platform-posix`.
+undefined. Mirror this for rmw-cffi — concrete implementation:
+  - **`nros-rmw-cffi` becomes def-less.** Replace `#[unsafe(no_mangle)] pub static
+    REGISTRY = Registry::new()` with an **`unsafe extern "C" { pub static REGISTRY:
+    Registry; }`** declaration. The seven `#[unsafe(no_mangle)]` fns
+    (`nros_rmw_cffi_register{,_named}`, `_lookup`, `_registered_names`,
+    `_set_custom_transport`, `_walk_init_section`) keep their bodies but as plain
+    `pub fn …_impl(…)` (NOT `no_mangle`); they + the in-crate Rust API
+    (`resolve_backend`, `default_vtable`, `backend_registered`, `get_vtable`) all
+    reference the **extern** `REGISTRY`. So the cffi rlib, bundled in every consumer,
+    carries ZERO strong `#[no_mangle]` defs — only undefined refs.
+  - **`nros_rmw_cffi_export!{}` macro = thin wrappers** (small, not a 200-line
+    code-move): it emits `#[unsafe(no_mangle)] pub static REGISTRY: $crate::Registry
+    = $crate::Registry::new();` + one `#[unsafe(no_mangle)] pub … fn
+    nros_rmw_cffi_<x>(…) { $crate::<x>_impl(…) }` wrapper per export. The logic
+    stays in `$crate`; only the strong symbol + a one-line delegation live in the
+    macro.
+  - **Provider = a NEW dedicated `nros-rmw-cffi-provider` staticlib crate**, NOT
+    nros-c. *Why not nros-c:* `libnros_c.a` AND `libnros_cpp.a` both bundle the cffi
+    rlib independently (verified: both define `nros_rmw_cffi_register_named`), and
+    nros-cpp deps nros-rmw-cffi directly — so any crate that gets bundled into >1
+    archive (nros-c, nros-cpp) can't host the macro without re-duplicating. The
+    provider must be its own archive linked exactly once — precisely the
+    `nros-platform-posix` shape. The provider crate's `lib.rs` is one line:
+    `nros_rmw_cffi::nros_rmw_cffi_export!{}`.
+  - **cmake:** add the provider archive to `NanoRos` (mirror the
+    `NrosPlatformPosix` link) so every final link pulls it exactly once, then drop
+    `--allow-multiple-definition` (root `CMakeLists.txt` zenoh/xrce/cyclone arms +
+    the secondary `nros-c/cmake/NanoRosLink.cmake` site). The NuttX/ESP cargo-FFI
+    path links the provider via a normal cargo dep on the FFI crate.
   - nros-cpp + the RMW backends keep using the cffi **Rust API unchanged** — they
-    just no longer emit the 7 strong defs (only the provider does).
-  - Then drop `--allow-multiple-definition` (root `CMakeLists.txt` zenoh/xrce/
-    cyclone arms + the secondary `nros-c/cmake/NanoRosLink.cmake` site).
+    just no longer emit the strong defs (only the provider does).
 
 **Why the macro, not a `provide` cargo feature — the unification trap.** A
 positive `provide`/`define-c-abi` *feature* on `nros-rmw-cffi` would be **unified
@@ -402,13 +420,12 @@ export macro) + one provider call site + the cmake flag-line removals. The cffi
 was overscoped; only `REGISTRY` + the 6 C fns move, and the Rust API already goes
 through `REGISTRY` which simply becomes an external symbol).
 
-**Open questions for the implementation run.** (a) provider = nros-c vs a dedicated
-`nros-rmw-cffi-provider` archive (nros-c is simpler; the dedicated archive matches
-the platform layout and is cleaner for the NuttX/ESP cargo-FFI path — decide by
-checking every link includes exactly one provider); (b) does any consumer's Rust
-API CALL the C-export fns (vs operating on `REGISTRY` directly)? if so those calls
-resolve to the provider's defs (fine) — confirm no consumer needs the fn bodies
-locally; (c) the threadx board + zpico `--allow-multiple-definition` are a
+**Open questions for the implementation run.** (a) *Resolved* — provider is a
+dedicated `nros-rmw-cffi-provider` archive (nros-c/nros-cpp are both multi-archive,
+so neither can host the macro). (b) The Rust API operates on `REGISTRY` directly
+(via `default_vtable`/`resolve_backend`), NOT through the C-export fns, so making
+`REGISTRY` extern is enough; the C fns are only for C callers and live solely in
+the provider. (c) the threadx board + zpico `--allow-multiple-definition` are a
 DIFFERENT class (intentional startup.c memset/memcpy overrides) — leave them; (d)
 validate across every linker (lld/arm/riscv) + bare-metal-explicit-register vs
 posix `.init_array` register paths via `run_e2e`. The `staticlib_duplicate_symbols`
