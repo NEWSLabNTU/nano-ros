@@ -46,6 +46,11 @@ platform-threadx = [
 platform-bare-metal = ["dep:panic-halt"]
 
 [dependencies]
-nros-rmw-cffi = { workspace = true, default-features = false }
+# `external-registry` always on: this archive's `nros_rmw_cffi_export!{}` emits the
+# ONE `#[no_mangle] REGISTRY` definition, so its bundled cffi rlib must reference
+# (not re-define) it — else the provider archive would carry two `REGISTRY` symbols.
+# The provider is only ever the definer in a multi-archive C/C++ link, never part of
+# a pure-Rust self-define link, so enabling it unconditionally here is safe.
+nros-rmw-cffi = { workspace = true, default-features = false, features = ["external-registry"] }
 nros-platform = { workspace = true, default-features = false, optional = true }
 panic-halt = { workspace = true, optional = true }

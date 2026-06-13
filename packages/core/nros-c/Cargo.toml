@@ -29,6 +29,14 @@ alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 # specific RMW.
 rmw-cffi = ["nros/rmw-cffi"]
 
+# RFC-0042 D3 / phase-241.D slice 4 — reference the cffi `REGISTRY` as an undefined
+# external so the `nros-rmw-cffi-provider` archive is the sole definer of it in the
+# non-NuttX C/C++ multi-archive link. The root `CMakeLists.txt` turns this on for
+# `nros_c-static` (and the sibling staticlibs) only when the provider is built;
+# pure-Rust / NuttX leave it off and self-define one copy. Lets that link drop
+# `--allow-multiple-definition`.
+external-registry = ["nros/external-registry"]
+
 # Phase 124.A — opt in to the zero-copy publisher loan / subscriber
 # borrow surface (`nros_publisher_loan` / `_commit` / `_discard` /
 # `nros_subscription_borrow` / `_release`). Threads the

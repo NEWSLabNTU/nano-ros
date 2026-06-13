@@ -23,6 +23,11 @@ default = ["linkme-register"]
 # duplicating linkme's DUPCHECK static in a multi-archive C-binary
 # link (the canonical `libnros_rmw_zenoh.a` + `libnros_c.a` case).
 linkme-register = ["nros-rmw-cffi/linkme-register"]
+# RFC-0042 D3 / phase-241.D slice 4 — forwards to `nros-rmw-cffi/external-registry`
+# so this backend's copy of the cffi rlib references `REGISTRY` as an undefined
+# external instead of defining a duplicate. Threaded up from
+# `nros-rmw-zenoh-staticlib` by the cmake link; off in the pure-Rust path.
+external-registry = ["nros-rmw-cffi/external-registry"]
 # Phase 129.C.3.a — `nros-platform/platform-<rtos>` forwards
 # dropped. Phase 129.D retired `zpico-platform-shim`, which was
 # the only consumer that needed `ConcretePlatform`. The two

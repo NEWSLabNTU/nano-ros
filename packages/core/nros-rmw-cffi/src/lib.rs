@@ -959,25 +959,52 @@ impl Registry {
 // SAFETY: see `Registry` doc-comment on the mutation protocol.
 unsafe impl Sync for Registry {}
 
-// RFC-0042 D3 / phase-241.D slice 4 — `REGISTRY` is now DEFINED in exactly one
-// archive (the `nros-rmw-cffi-provider` crate via `nros_rmw_cffi_export!{}`) and
-// referenced here as an external symbol. Previously every staticlib that bundled
-// this rlib (`libnros_c.a`, `libnros_cpp.a`, each RMW staticlib) emitted its own
-// strong `#[no_mangle] REGISTRY`, reconciled only by `--allow-multiple-definition`
-// (a blind ODR mask). The provider defines it once; the cffi Rust API + the C
-// exports (now Rust-mangled, with the `#[no_mangle]` C entry points emitted by the
-// same macro) all reach the single instance through [`registry()`].
-// `Registry` is not `#[repr(C)]`, but both the declaration here and the
-// definition (the provider crate's `nros_rmw_cffi_export!{}`) are Rust with the
-// identical type, so the layout matches — the C ABI lint is spurious here.
+// RFC-0042 D3 / phase-241.D slice 4 — where `REGISTRY` is DEFINED depends on how
+// this rlib is being linked, gated by the `external-registry` feature:
+//
+//   * DEFAULT (feature off) — a single-cargo-link target: pure-Rust firmware, the
+//     NuttX build-std ELF, the duplicate-symbol host harness's negative arm. Here
+//     this rlib is bundled into exactly ONE final archive, so it DEFINES `REGISTRY`
+//     itself (`#[no_mangle]`, one copy). No provider archive is present or needed.
+//
+//   * `external-registry` (feature on) — the non-NuttX C/C++ multi-archive cmake
+//     link, where `libnros_c.a`, `libnros_cpp.a`, and each RMW staticlib would each
+//     emit their own strong `#[no_mangle] REGISTRY` (the duplicate the old
+//     `--allow-multiple-definition` blindly masked). Every such consumer turns this
+//     feature on so they reference `REGISTRY` as an undefined external; the
+//     dedicated `nros-rmw-cffi-provider` archive (`nros_rmw_cffi_export!{}`) DEFINES
+//     it exactly once. That single definition is what lets the C/C++ link drop the
+//     blind ODR mask.
+//
+// Either way the cffi Rust API + the C exports reach the live registry through
+// [`registry()`]. `Registry` is not `#[repr(C)]`, but the extern declaration and
+// the provider's definition are both Rust with the identical type, so the layout
+// matches — the C ABI lint is spurious here.
+#[cfg(not(feature = "external-registry"))]
+#[unsafe(no_mangle)]
+static REGISTRY: Registry = Registry::new();
+
+#[cfg(feature = "external-registry")]
 #[allow(improper_ctypes)]
 unsafe extern "C" {
     static REGISTRY: Registry;
 }
 
-/// The single process-wide backend registry. The storage lives in the
-/// `nros-rmw-cffi-provider` archive (one definition by construction); this
-/// returns a `'static` reference to it.
+/// The single process-wide backend registry. In the default build the storage is
+/// defined directly above; under `external-registry` it lives in the
+/// `nros-rmw-cffi-provider` archive (one definition by construction). Either way
+/// this returns a `'static` reference to the one live instance.
+///
+/// Two cfg'd definitions rather than one body with a cfg'd block: a plain static
+/// needs no `unsafe` to reference but the extern one does, and attributes on bare
+/// expressions are unstable — so the safe/unsafe split lives at the fn level.
+#[cfg(not(feature = "external-registry"))]
+#[inline]
+fn registry() -> &'static Registry {
+    &REGISTRY
+}
+
+#[cfg(feature = "external-registry")]
 #[inline]
 fn registry() -> &'static Registry {
     // SAFETY: `REGISTRY` is defined exactly once by the provider crate's
