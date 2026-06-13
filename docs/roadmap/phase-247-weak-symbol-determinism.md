@@ -31,39 +31,66 @@ reduction fix-ups.
 
 ---
 
-## W1 — Image-level weak-symbol checker
+## W1 — Image-level weak-symbol checker (script-based)
 
 The source gate proves "no new unaudited weak *site*"; it does NOT prove the
 weak default is actually **strong-overridden in the final link** on each
 platform — the real failure mode (a board forgets the override / `--gc-sections`
-drops the strong def → the weak no-op silently wins). Add a per-artifact gate.
+drops the strong def → the weak no-op silently wins). Add a per-artifact gate,
+**driven by a shell script over `nm`** (preferred over a Rust test — buildless,
+trivially CI-wireable, mirrors the `scripts/check-*.sh` gate family).
 
-- **W1.1** — A checker that, for each prebuilt fixture artifact (the
-  `build/fixtures-cargo/<platform>` ELFs + the staticlibs the dup-symbol gate
-  already covers), runs `llvm-nm` and, per the allowlist's classification:
-  - **override-default** symbols MUST resolve to a **strong** (`T`/`D`, not
-    `W`/`V`) definition in the final image (the weak no-op was overridden);
-  - **optional-hook** symbols MAY remain weak (the no-op is the intended
-    fallback) — but are *reported* so an unexpected strong/weak flip is visible;
-  - any weak symbol in the image **not** in the allowlist fails (mirrors the
-    source gate at the binary layer).
-  Robust to `--gc-sections` / `--whole-archive`: assert against the *linked
-  image*, not the input archives.
-- **W1.2** — Reuse the `llvm-nm` + allowlist shape from the existing
-  duplicate-symbol gate (the issue references `staticlib_duplicate_symbols.rs`;
-  locate the current equivalent — symbol-gate tests live in
-  `nros-tests/tests/{workspace_shadowing,zpico_build_matrix,cyclonedds_descriptors}.rs`).
-  Share one allowlist source-of-truth between the source gate (W-existing) and
-  the image gate (avoid divergence).
-- **W1.3** — Per-platform: at minimum native + the cross targets whose board C
-  stubs carry the weak surface (freertos/mps2-an385, threadx-linux,
-  threadx-qemu-riscv64, px4/uorb). Gate on the prebuilt fixture; skip (not fail)
-  when an artifact is absent, matching the build-stage-fixture pattern (no
-  compilation inside tests).
+### Validated method (probed 2026-06-13 on real artifacts)
 
-**Acceptance.** For each covered artifact, every override-default weak symbol is
-confirmed strong-overridden; an injected regression (delete a board's strong
-override) makes the gate fail.
+- **Tooling: one cross-arch tool — `llvm-nm`.** Confirmed it reads the
+  `thumbv7m-none-eabi` FreeRTOS ELF identically to `arm-none-eabi-nm`
+  (`nros_board_register_netif → T`, `nros_board_poll_netif → T`). The script
+  takes `NM=${NM:-llvm-nm}` so a platform can override (e.g. a sysroot `nm`).
+- **Check FINAL LINKED IMAGES, not `.a` archives.** An input staticlib
+  *legitimately* holds the weak default as `W` (confirmed:
+  `libzpico_platform_aliases.a` → `_z_open_serial_* = W`, `smoltcp_init = W`) —
+  the override happens at the final link. So the gate runs on executables / `.elf`
+  firmware, never `.a`.
+- **`--gc-sections` semantics — the rule per override-default symbol:**
+  - **absent** from the image → fine (unused here; gc'd).
+  - present as **strong** (`nm` type `T`/`t`/`D`/`d`/`R`/`B`/`b`) → correct (the
+    override won).
+  - present as **weak** (`W`/`V`/`w`/`v`) → **FAIL** — the strong override was
+    dropped, the no-op silently won.
+  Proven: in `freertos_rs_talker_entry` (final ELF) both board-netif hooks are
+  `T`; in the staticlib they are `W`. A deleted board override would surface the
+  symbol as `W` in the ELF → caught.
+
+### Work
+
+- **W1.1** — `scripts/check-weak-symbols-image.sh <artifact>`: `nm` the artifact,
+  parse `<addr> <type> <name>`, and for each **override-default** symbol in the
+  shared allowlist apply the rule above; **optional-hook** symbols may stay weak
+  but are *reported*; any **owned-prefix** weak symbol (`nros_`, `nros_board_`,
+  `nros_orb_`, `_z_`, `smoltcp_`, `_tx_`) present-as-weak that is NOT an
+  allowlisted optional-hook fails (mirrors the source gate at the binary layer).
+  Toolchain weaks (`__cxa_*`, `__gnu_Unwind_*`, FreeRTOS `vPort*`) are excluded by
+  the owned-prefix filter.
+- **W1.2** — Artifact coverage map (symbol → the image(s) that should link it
+  strongly), since `--gc-sections` means each symbol only appears where used:
+  - board netif/stack hooks → freertos / threadx firmware ELFs
+    (`examples/qemu-arm-freertos/.../target/.../*entry`, threadx fixtures);
+  - `nros_app_register_backends` → the **cmake C/C++ app** images (the
+    `cpp_robot_entry` / `pure_c_workspace` cmake fixtures — NOT the Rust
+    bare-metal ELFs, which never link the C register dance);
+  - `_z_*_serial_*` / `smoltcp_*` → a **serial** example final ELF
+    (serial-talker/listener once Phase 244.D1 Wave D lands them);
+  - `nros_orb_*` → a px4/uorb link.
+  Gate on the **prebuilt fixture**; skip (not fail) when the artifact is absent
+  (build-stage-fixture pattern — no compilation in the check).
+- **W1.3** — Share ONE allowlist source-of-truth with the source gate
+  (`weak_symbol_audit.rs`). Options: emit the allowlist to a generated data file
+  the shell script reads, or have the script parse the `ALLOWLIST` const. Avoid
+  two drifting copies.
+
+**Acceptance.** For each covered prebuilt artifact, every override-default weak
+symbol is confirmed strong (or absent); an injected regression (delete a board's
+strong override) makes the script exit non-zero.
 
 ## W2 — Gate in `just check`
 
