@@ -115,12 +115,14 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
 
 ## Wave 1 — Independent group cleanups (parallel; existing macro layer only)
 
-- [ ] **C1 — qemu-riscv64-threadx (20 ex, all major).** The dirtiest group.
-  Migrate every Rust/C/C++ example to `nros::main!()` / generated
-  `nros_system_main()` / `NROS_NODE_REGISTER`; delete `Executor::open` /
-  `nros_support_init`+`nros_executor_init` + spin loops (e.g.
-  `rust/talker/src/lib.rs:49,60`, `c/talker/src/main.c:46,57`,
-  `cpp/talker/src/main.cpp:19-30`). Leaks P1/P2/P3 (+P10 action leg → E3).
+- [→] **C1 — qemu-riscv64-threadx (20 ex, all major) — RE-SCOPED to
+  [phase-245](phase-245-riscv64-threadx-example-port.md).** Investigation showed
+  this is not a delete-the-wiring cleanup but a **re-architecture**: each example
+  is a single dual-entry crate (`main()` pure-cargo + `app_main()` CMake/Cyclone)
+  sharing a manual `run_app` (open `Executor` + create entities + spin) — porting
+  it to the clean threadx-linux Node+Entry+baker shape, across both build paths, is
+  ~10× the other Wave-1 clusters. Carved into its own phase (245); the
+  per-(lang,role) work clusters + waves live there.
 - [ ] **C2 — zephyr C/C++ 168.4 (~13 major).** Collapse the per-RMW `#if
   defined(CONFIG_NROS_RMW_*)` forks (`cpp/talker/src/main.cpp:37`,
   `c/talker/src/main.c:44`); remove `<zephyr/kernel.h>`/`<nros/platform_zephyr.h>`

@@ -4,7 +4,7 @@ title: Example source leaks platform/RMW selection + low-level boilerplate — s
 status: open
 type: tech-debt
 area: examples
-related: [phase-244, rfc-0024, rfc-0032]
+related: [phase-244, phase-245, rfc-0024, rfc-0032]
 ---
 
 ## The bar
@@ -63,6 +63,8 @@ bridges; `serial-talker` env-var config; rclcpp-compat ROS 2 idioms.
 ## Cleanup
 
 Work items + parallel clusters + wave ordering →
-[phase-244](../roadmap/phase-244-example-source-cleanliness.md). Closes when every
-example is `clean` or `minor` (residual `minor` = node-lib `#![no_std]` only, once
-P2's macro-injection lands).
+[phase-244](../roadmap/phase-244-example-source-cleanliness.md). The dirtiest
+group (qemu-riscv64-threadx, cluster C1) is a re-architecture carved into
+[phase-245](../roadmap/phase-245-riscv64-threadx-example-port.md). Closes when
+every example is `clean` or `minor` (residual `minor` = node-lib `#![no_std]`,
+the E4-confirmed accepted minor — proc-macros cannot inject crate-level attrs).
