@@ -67,6 +67,14 @@ struct MainArgs {
     /// `args = [("k", "v"), ...]`. Forwarded to the launch parser as
     /// argument overrides.
     args: Vec<(String, String)>,
+    /// Phase 211.F — `host = "<id>"`: multi-host partition. When set, keep only
+    /// launch nodes whose `<node machine="…">` equals `<id>` plus all unhosted
+    /// (shared) nodes — mirrors `nros codegen entry --host` / `Plan::for_host`.
+    /// `None` = single-host / unfiltered (every node). A per-host Entry pkg
+    /// passes its target host so a multi-host launch bakes one runnable entry
+    /// per host (CLI/macro parity, now that nros-macros builds against the
+    /// in-tree nros-cli-core carrying `NodeSpec.machine`).
+    host: Option<String>,
     /// Phase 216.B.4 — `custom_tasks = [adc_sample, ui_redraw]`. Each
     /// ident becomes an extra `#[task]` trampoline inside the
     /// generated `mod __nros_app` body when the dispatched framework
@@ -121,6 +129,18 @@ impl Parse for MainArgs {
                     };
                     out.launch = Some(s);
                 }
+                "host" => {
+                    let s = match value {
+                        KvValue::Str(s) => s,
+                        _ => {
+                            return Err(syn::Error::new(
+                                key.span(),
+                                "`host = ` takes a string literal (the target machine id)",
+                            ));
+                        }
+                    };
+                    out.host = Some(s.value());
+                }
                 "args" => {
                     let list = match value {
                         KvValue::Args(pairs) => pairs,
@@ -155,7 +175,7 @@ impl Parse for MainArgs {
                         key.span(),
                         format!(
                             "unknown `nros::main!` argument `{other}` \
-                             (expected one of: board, launch, args, custom_tasks)"
+                             (expected one of: board, launch, host, args, custom_tasks)"
                         ),
                     ));
                 }
@@ -479,6 +499,29 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             for g in &desc.groups {
                 for n in &g.nodes {
                     node_specs.push(n.clone());
+                }
+            }
+
+            // Phase 211.F — multi-host partition: when `host = "<id>"` is set,
+            // keep only this host's nodes (`<node machine="<id>">`) + all
+            // unhosted (shared) nodes. Mirrors `nros codegen entry --host` /
+            // `Plan::for_host`, giving the macro path parity so a per-host Entry
+            // pkg (`nros::main!(launch = …, host = "<id>")`) bakes a runnable
+            // single-host slice of a multi-host launch.
+            if let Some(host) = args.host.as_deref() {
+                node_specs.retain(|n| match &n.machine {
+                    Some(m) => m == host,
+                    None => true,
+                });
+                if node_specs.is_empty() {
+                    return Err(syn::Error::new(
+                        launch_lit.span(),
+                        format!(
+                            "nros::main!(host = {host:?}): no nodes for this host in `{}` \
+                             (no `<node machine={host:?}>` and no unhosted/shared node)",
+                            launch_path.display()
+                        ),
+                    ));
                 }
             }
 
