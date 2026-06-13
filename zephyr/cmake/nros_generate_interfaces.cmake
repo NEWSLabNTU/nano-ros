@@ -620,8 +620,21 @@ targets = [\"${NROS_RUST_TARGET}\"]
       )
       add_dependencies(${_ffi_target_name} ${_ffi_target_name}_build)
 
-      # Link FFI staticlib to app
-      target_link_libraries(app PRIVATE ${_ffi_target_name})
+      # Link FFI staticlib to app, WHOLE-ARCHIVED. The generated message C++
+      # headers call these `nros_cpp_{serialize,deserialize,publish}_*` FFI
+      # symbols from inline functions compiled into the app objects AND into
+      # any component library (nano_ros_node_register) — all of which may sit
+      # AFTER this `.a` on the final link line. GNU ld processes left→right and
+      # discards `.a` members whose symbols aren't yet referenced, so a plain
+      # link drops them → "undefined reference to nros_cpp_deserialize_*". The
+      # FFI glue is small (per-message ser/de/publish), so whole-archiving is
+      # the order-independent fix. CMake 3.24's $<LINK_LIBRARY:WHOLE_ARCHIVE>
+      # isn't available on the Zephyr-pinned CMake (3.22) — use raw flags and
+      # keep an explicit build-order dependency on app (the imported target is
+      # not link-listed, so add_dependencies carries the .a build edge).
+      target_link_libraries(app PRIVATE
+        "-Wl,--whole-archive" "${_ffi_lib}" "-Wl,--no-whole-archive")
+      add_dependencies(app ${_ffi_target_name}_build)
     endif()
 
   else()
