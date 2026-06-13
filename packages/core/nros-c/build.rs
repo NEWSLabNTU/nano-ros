@@ -55,7 +55,15 @@ fn generate_c_surface_anchor() {
                     has_cfg = true;
                 }
                 if let Some(idx) = t.find("extern \"C\" fn ") {
-                    if has_no_mangle && !has_cfg {
+                    // Only anchor TOP-LEVEL (column-0) entry points. A `#[cfg(...)]`
+                    // gate often sits on the ENCLOSING module/block (e.g.
+                    // `#[cfg(feature = "param-services")] mod … { … pub extern "C" fn
+                    // … }`), not the fn's own attribute block — so an indented fn may
+                    // be feature-gated even when `has_cfg` is false. Anchoring such a
+                    // symbol when its feature is off creates an undefined reference.
+                    // The ungated C surface is declared at column 0; require that.
+                    let indented = line.starts_with(' ') || line.starts_with('\t');
+                    if has_no_mangle && !has_cfg && !indented {
                         let rest = &t[idx + "extern \"C\" fn ".len()..];
                         let name: String = rest
                             .chars()
