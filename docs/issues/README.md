@@ -46,12 +46,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| 35 | zephyr native_sim e2e fail consistently (XRCE-heavy) — not load flakes | bug        | zephyr | [0035-zephyr-native-sim-e2e-consistent-failures.md](0035-zephyr-native-sim-e2e-consistent-failures.md) |
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
 | 49 | example source leaks platform/RMW selection + low-level boilerplate (audit: 81/200 major) | tech-debt | examples | [0049-example-source-platform-rmw-leakage.md](0049-example-source-platform-rmw-leakage.md) |
 | 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
 
-Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#35** —
+the 13 zephyr native_sim e2e failures were four distinct root causes, not load
+flakes: 9 XRCE (`xrce_session_drive_io` looped on the wall-clock stub
+`nros_platform_time_now_ms` returning 0 → switched to monotonic
+`nros_platform_clock_ms`), 1 zenoh pubsub (test/example readiness markers), 2
+rust service/action (the single-node `ExecutorNodeRuntime` had no service/action
+dispatch → Phase 212.M-F.23), 1 cyclonedds (`__register_linked_rmw()` had no
+`rmw-cyclonedds` branch → `Executor::open` returned `NoBackend` on linkme-blind
+targets). 13/13 green. See `archived/0035-*`.
+
+Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the
 3-arg `init` overload); **#40** — C++ action callback truncated result (a symptom
 of #39 + a latent result offset 8→5); **#43** — C++ action server empty result
