@@ -25,6 +25,9 @@ default = []
 # forwards link-custom + force-links the backend (no project dep, no register()).
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "rmw-zenoh", "ros-humble", "link-custom"] }
 nros-rmw = { path = "../../../../packages/core/nros-rmw", default-features = false, features = ["std"] }
+# Phase 244 E2 — reusable custom-transport callback factories (TCP bridge,
+# loopback). Replaces the open-coded TcpBridge + FFI callbacks in src/main.rs.
+nros-transport-callbacks = { path = "../../../../packages/drivers/nros-transport-callbacks" }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's
