@@ -111,14 +111,16 @@ Ordered so the gate guards from W1, A's consumers are migrated before A is delet
       `nros-board-threadx-qemu-riscv64/startup.c` — repo-wide the only remaining
       real defs of these symbols are api's canonical `static inline` atomics
       (`nros-platform-api/include/nros/platform.h`) + the custom-platform example.
-- [ ] **Residual: the `custom-platform` example is stale doc-debt, not a quick
-      delete.** `examples/native/c/custom-platform/src/platform_impl.c` implements
-      *only* the four now-dead/header-inline functions (`time_ns`, `sleep_ns`,
-      `atomic_{store,load}_bool`) — it teaches a retired ABI. The current
-      custom-platform surface is ~40 functions (`clock_us`, `alloc`/`realloc`/
-      `dealloc`, `sleep_*`, `yield`, `random_fill`, the task/mutex/condvar/wake
-      API). The example needs a **re-author to the current ABI** (or a redesign /
-      retirement decision), not just a def deletion. Not CI-gated; tracked here.
+- [x] **Residual resolved (`71595eba1`).** `examples/native/c/custom-platform/`
+      `src/platform_impl.c` re-authored from the four retired functions to the
+      full current canonical ABI (~50 `extern` symbols: clock, alloc + heap
+      stats, sleep/yield, random, wall-clock, tasks, mutex + recursive, condvar,
+      wake, critical section, logging), POSIX-backed with per-section bare-metal
+      notes; `malloc`/`free` + atomic-bool left to the header inlines. It can't
+      link into `baremetal_demo` (would duplicate the linked POSIX port), so
+      CMake compiles it stand-alone into a `baremetal_platform_ref` lib for
+      compile coverage. README + main.c comment updated. Verified: ref lib
+      compiles clean (53 `nros_platform_*` syms); demo still builds + connects.
 - **Acceptance:** each board builds against api (atomics inline + clock wrappers).
 
 ### 243.5 — retire A + repoint the include order
