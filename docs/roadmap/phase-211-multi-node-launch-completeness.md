@@ -374,13 +374,23 @@ ROS 2 launches with `<node machine="robot">` route the node to a remote
 host. nano-ros today plans one host at a time. A real production launch
 (simulator on workstation + autopilot on Jetson) needs this.
 
-**STILL RELEVANT — re-scoped onto the current design (2026-06-13).** No
+**STILL RELEVANT — re-scoped (2026-06-13); BLOCKED on a parser gap.** No
 `nros deploy` verb, so the runtime split is per-host `[deploy.<id>]` targets +
 the board build, not a `deploy --all-hosts` flag.
 
+> **BLOCKER (2026-06-13):** the earlier draft assumed `play_launch_parser`
+> records the `<node machine="…">` attr. It does NOT (verified — `machine` in
+> the parser is only `importlib.machinery`). The planner has nothing to lower.
+> 211.F is therefore gated on a `play_launch_parser` (vendored fork) change to
+> surface `machine=` on its node records FIRST — a fork edit + the
+> fork-push workflow (maintainer pushes), then the planner `host_id` slice
+> below. Sequence behind that parser change.
+
+- [ ] **Parser (prerequisite):** `play_launch_parser` records `<node machine>`
+      on its node entity (vendored-fork change).
 - [ ] **Schema** — extend `nros-plan.json` `instances[*]` with an optional
-      `host_id` (additive, `skip_serializing_if`), parsed from the launch
-      `machine="…"` attr `play_launch_parser` already records.
+      `host_id` (additive, `skip_serializing_if`), lowered from the parser's
+      recorded `machine`.
 - [ ] **`nros.toml` host targets** — model each host as a `[deploy.<id>]` target
       (the existing SSOT table — kind `self`/vendor, board, ssh/target override)
       rather than a new `[host.<id>]` block; a multi-host system maps its
