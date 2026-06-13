@@ -36,5 +36,11 @@ nano_ros_node_register(
 
 nano_ros_deploy(TARGET riscv64-qemu RMW ${NROS_RMW} DOMAIN_ID 0)
 
+# CycloneDDS needs the per-app Fibonacci descriptor registration (register_* from the
+# idlc type support) hooked into nros_rmw_cyclonedds_register_app_descriptors.
+if(NROS_RMW STREQUAL "cyclonedds")
+    target_sources(${PROJECT_NAME} PRIVATE src/cyclonedds_app.c)
+endif()
+
 # RMW backend (zenoh or cyclonedds) onto the carrier-built firmware ELF.
 nano_ros_link_rmw(${PROJECT_NAME} RMW "${NROS_RMW}")

@@ -3,10 +3,11 @@
  */
 void qemu_riscv64_threadx_service_server_cyclonedds_link_anchor(void) {}
 
-/* `example_interfaces/AddTwoInts.srv` lowers to one IDL stem (`AddTwoInts`)
- * carrying two types — the Request (idx 0) and Response (idx 1). idlc + the
- * NrosRmwCycloneddsTypeSupport.cmake per-type register TUs emit
- * `register_<stem>_<idx>`. */
+/* CycloneDDS app-descriptor registration (phase-245 W2 cyclone tail).
+ * Strong-overrides the weak nros_rmw_cyclonedds_register_app_descriptors
+ * (packages/dds/nros-rmw-cyclonedds/src/vtable.cpp) so the AddTwoInts type is
+ * registered with CycloneDDS before publish/subscribe. register_* come from the
+ * idlc-generated *__cyclonedds_ts (linked via nano_ros_link_rmw cyclonedds). */
 extern void register_AddTwoInts_0(void);
 extern void register_AddTwoInts_1(void);
 
