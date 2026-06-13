@@ -30,4 +30,15 @@ nros-board-posix = { version = "0.5.0", path = "../nros-board-posix" }
 # Zenoh is the default native RMW; Entry pkgs that want a different
 # backend can depend on `nros-board-posix` directly + pull their own
 # `nros-rmw-*` crate.
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["platform-posix"] }
+# Phase 248 C1 (#60 T4) — optional behind the `rmw-zenoh` feature so the
+# board can build DDS-/XRCE-only. Default-on (existing native examples
+# assume zenoh) but droppable via `default-features = false`.
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["platform-posix"], optional = true }
+
+[features]
+# Default keeps the historic native zenoh wiring active so existing
+# Entry pkgs / examples resolve a backend on first `Executor::open`.
+# Droppable: DDS-/XRCE-only consumers build with
+# `default-features = false` and bring their own `nros-rmw-*` backend.
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]

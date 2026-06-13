@@ -223,6 +223,10 @@ fn qemu_config_with_overlay(
 fn init_with_config(config: nros_board_mps2_an385::Config) -> (::nros::Executor, RticRuntime) {
     nros_board_mps2_an385::init_hardware(&config);
 
+    // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
+    // feature so the board can build DDS-/XRCE-only; another `nros-rmw-*`
+    // crate then registers the linked backend.
+    #[cfg(feature = "rmw-zenoh")]
     match nros_rmw_zenoh::register() {
         Ok(()) => {}
         Err(_) => {

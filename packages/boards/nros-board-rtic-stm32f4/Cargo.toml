@@ -64,8 +64,9 @@ nros = { path = "../../core/nros", default-features = false, features = ["alloc"
 # pre-migration talker-rtic example called `nros_rmw_zenoh::register()`
 # explicitly before `Executor::open` (bare-metal targets don't walk
 # `.init_array`); the board crate now wraps that call inside
-# `init_hardware`.
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
+# `init_hardware`. Phase 248 C1 (#60 T4) — optional behind `rmw-zenoh`
+# so the board can build DDS-/XRCE-only. Default-on (examples assume zenoh).
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"], optional = true }
 
 # Cortex-M runtime — Pac/Core associated types live in user space
 # but the board crate provides them concretely.
@@ -97,8 +98,9 @@ heapless = "0.8"
 
 [features]
 default = ["stm32f429", "ethernet", "rmw-zenoh"]
-# `rmw-zenoh` is a pure marker (cargo selects the backend at link time).
-rmw-zenoh = []
+# Phase 248 C1 — pulls the optional concrete zenoh backend; droppable so
+# the board can link a DDS/XRCE backend instead.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
 # Ethernet transport flag. The actual MAC / smoltcp bringup body
 # lives in 216.B.3's `init_hardware` body — today the feature gates
 # only the optional dep so cross-compile resolves cleanly.

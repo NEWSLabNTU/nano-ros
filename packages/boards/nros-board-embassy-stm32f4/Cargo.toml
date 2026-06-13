@@ -53,8 +53,9 @@ nros = { path = "../../core/nros", default-features = false, features = ["alloc"
 # call `nros_rmw_zenoh::register()` explicitly before `Executor::open`
 # (bare-metal targets don't walk `.init_array`); the board crate now
 # wraps that call inside `init_hardware`. Mirrors the sibling RTIC
-# board crate (Phase 216.B.2 follow-up).
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
+# board crate (Phase 216.B.2 follow-up). Phase 248 C1 (#60 T4) — optional
+# behind `rmw-zenoh` so the board can build DDS-/XRCE-only. Default-on.
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"], optional = true }
 
 # Logging
 defmt = "0.3"
@@ -65,7 +66,9 @@ defmt = "0.3"
 # marker so downstream feature selection stays uniform across the board
 # family.
 default = ["rmw-zenoh"]
-rmw-zenoh = []
+# Phase 248 C1 — pulls the optional concrete zenoh backend; droppable so
+# the board can link a DDS/XRCE backend instead.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
 
 # Phase 216.C.2 follow-up — empty `[workspace]` table makes this crate a
 # standalone workspace root, mirroring `nros-board-rtic-stm32f4` (216.B.2).

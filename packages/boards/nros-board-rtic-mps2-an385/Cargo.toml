@@ -20,7 +20,9 @@ framework = "rtic"
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385", "global-allocator", "critical-section"] }
 nros-board-mps2-an385 = { path = "../nros-board-mps2-an385" }
 nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
+# Phase 248 C1 (#60 T4) — optional behind `rmw-zenoh` so the board can
+# build DDS-/XRCE-only. Default-on (existing examples assume zenoh).
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "ros-humble"], optional = true }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 cortex-m-semihosting = "0.5"
@@ -30,7 +32,9 @@ heapless = "0.8"
 
 [features]
 default = ["ethernet", "rmw-zenoh"]
-rmw-zenoh = []
+# Phase 248 C1 — pulls the optional concrete zenoh backend; droppable so
+# the board can link a DDS/XRCE backend instead.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
 ethernet = ["nros-board-mps2-an385/ethernet"]
 e2e-synthetic-callback = []
 

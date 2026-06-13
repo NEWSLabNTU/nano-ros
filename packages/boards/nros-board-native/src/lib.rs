@@ -44,6 +44,10 @@
 // (the rest of the crate never names a zenoh symbol), and
 // `Executor::open` (now invoked inside `PosixBoard::run`) finds no
 // backend on first call.
+// Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh` feature
+// so the board can build DDS-/XRCE-only (a different `nros-rmw-*` crate
+// then provides the linked backend).
+#[cfg(feature = "rmw-zenoh")]
 extern crate nros_rmw_zenoh as _;
 
 use nros_board_posix::PosixBoard;

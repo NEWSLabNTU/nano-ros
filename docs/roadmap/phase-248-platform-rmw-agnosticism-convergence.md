@@ -55,17 +55,14 @@ back; nightly `cargo +nightly fmt`; restore incidental cbindgen/Cargo.lock churn
 nros-board-rtic-stm32f4,nros-board-embassy-stm32f4}/Cargo.toml`.
 **Blocked-until:** none (Wave 1).
 
-- [ ] Each of the 4 boards deps `nros-rmw-zenoh` UNCONDITIONALLY. Make it
-      optional behind an `rmw-zenoh` feature (mirror the sibling pattern in
-      `nros-board-mps2-an385` / `-stm32f4` / `-nuttx` / `-esp32-qemu`, where the
-      backend is optional + the board can build DDS-/XRCE-only).
-- [ ] Default-on `rmw-zenoh` is acceptable IF a board's existing examples assume
-      it — but the feature must be droppable. Verify each board still builds with
-      and without the feature.
-- **Acceptance:** `cargo build -p <board>` (default) + `--no-default-features`
-  (or `--features` minus rmw-zenoh) both succeed for all 4; no unconditional
-  concrete-RMW dep remains. Grep clean: `git grep -L 'optional = true' …` shows
-  no unconditional `nros-rmw-zenoh` in these 4.
+- [x] **DONE.** All 4 boards' `nros-rmw-zenoh` dep is now `optional = true`,
+      wired into a default-on `rmw-zenoh` feature (`["dep:nros-rmw-zenoh"]`); the
+      src `register()`/`extern crate` references are `#[cfg(feature="rmw-zenoh")]`-
+      gated. The per-dep `features=[platform-*, ros-humble]` activate only with
+      the optional dep.
+- **Acceptance:** DONE — all 4 build default + no-zenoh; with the feature off,
+  `nros-rmw-zenoh` is NOT compiled (verified via cargo-metadata + artifact
+  inspection on the cross targets). All 4 deps `optional = true`.
 
 ## C2 — nros-node: RMW + platform decoupling (#60 T1 + T3-node)
 

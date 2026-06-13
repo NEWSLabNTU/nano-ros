@@ -482,6 +482,9 @@ impl RticBoardEntry for RticStm32F4 {
         // is idempotent w.r.t. double-register (returns
         // `Err(AlreadyRegistered)`); we panic on any other error
         // so a probe-attached run surfaces the failure loudly.
+        // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
+        // feature so the board can build DDS-/XRCE-only.
+        #[cfg(feature = "rmw-zenoh")]
         match nros_rmw_zenoh::register() {
             Ok(()) => {}
             Err(e) => {
