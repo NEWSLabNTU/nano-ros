@@ -63,45 +63,14 @@ FetchContent_MakeAvailable(Corrosion)
 # `../../..` to reach it (e.g. nros-cpp's deferred NanoRos::NanoRos link).
 set(NANO_ROS_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")
-    # RFC-0042 D3 / phase-241.D slice 4 — this branch builds the multi-archive
-    # C/C++ link (the provider + `libnros_c.a`/`libnros_cpp.a` + the RMW staticlib).
-    # Turn the `external-registry` feature ON for every cffi-bundling consumer so the
-    # cffi `REGISTRY` + C ABI entry points are referenced as undefined externals and
-    # the provider archive becomes their sole definer. Read by the sub-CMakeLists
-    # (`nros-c`, `nros-cpp`, the zenoh staticlib) and the root xrce arm below. NuttX
-    # skips this whole branch (single build-std cargo ELF, no provider), so the
-    # feature stays off there and cffi self-defines its one copy.
-    set(NROS_CFFI_EXTERNAL_REGISTRY ON)
-
+    # Phase 241.D3-rev — single-runtime model: the umbrella FFI staticlib
+    # (`libnros_c.a` for C, `libnros_cpp.a` for C++) bundles the selected RMW backend
+    # as an rlib dep, so each binary links exactly ONE Rust staticlib (one `std`).
+    # No provider archive, no `external-registry` feature — the cffi `REGISTRY` + C
+    # entry points are defined once in the single archive.
     add_subdirectory(packages/core/nros-rmw-cffi)
     add_subdirectory(packages/core/nros-c)
     add_subdirectory(packages/core/nros-cpp)
-
-    # The single `nros-rmw-cffi` provider archive. Under `external-registry` the cffi
-    # rlib is def-less (its `REGISTRY` + C ABI entry points become undefined refs), so
-    # `libnros_c.a`/`libnros_cpp.a`/the RMW staticlib emit no duplicate strong defs;
-    # this archive emits them exactly once via `nros_rmw_cffi_export!{}` (its own cffi
-    # dep pins `external-registry` so the macro is the lone definer). Linked LAST
-    # (after the whole-archive RMW + the platform shim) so its back-references resolve
-    # under single-pass ld — the same trailing-archive discipline `NanoRos::Platform`
-    # uses. This is what lets the RMW link drop `--allow-multiple-definition` (the
-    # blind ODR mask).
-    set(_cffi_provider_features "")
-    if(NANO_ROS_PLATFORM STREQUAL "posix")
-        set(_cffi_provider_features platform-posix)
-    elseif(NANO_ROS_PLATFORM MATCHES "freertos" OR NANO_ROS_PLATFORM STREQUAL "esp_idf")
-        set(_cffi_provider_features platform-freertos)
-    elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
-        set(_cffi_provider_features platform-threadx)
-    endif()
-    corrosion_import_crate(
-        MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
-        CRATES        nros-rmw-cffi-provider
-        CRATE_TYPES   staticlib
-        NO_DEFAULT_FEATURES
-        FEATURES      ${_cffi_provider_features}
-        LOCKED
-    )
 endif()
 
 # ---------------------------------------------------------------------------
@@ -293,11 +262,6 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     if(NANO_ROS_PLATFORM STREQUAL "esp_idf")
         list(APPEND _xrce_features panic-halt)
     endif()
-    # RFC-0042 D3 / phase-241.D slice 4 — reference the cffi `REGISTRY` (the provider
-    # archive is its sole definer) so this staticlib emits no duplicate def.
-    if(NROS_CFFI_EXTERNAL_REGISTRY)
-        list(APPEND _xrce_features external-registry)
-    endif()
     corrosion_import_crate(
         MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
         CRATES        nros-rmw-xrce-cffi-staticlib
@@ -394,14 +358,6 @@ endif()
 # ---------------------------------------------------------------------------
 if(TARGET NanoRos AND TARGET NanoRos::Platform)
     target_link_libraries(NanoRos INTERFACE NanoRos::Platform)
-endif()
-
-# RFC-0042 D3 — link the cffi provider archive LAST (after the platform shim),
-# lazy, so single-pass ld pulls just its needed objects (REGISTRY + the C entry
-# points back-referenced by the whole-archive'd RMW + the consumers) without
-# dragging its dependency closure (which the consumers already provide).
-if(TARGET NanoRos AND TARGET nros_rmw_cffi_provider-static)
-    target_link_libraries(NanoRos INTERFACE nros_rmw_cffi_provider-static)
 endif()
 
 # ---------------------------------------------------------------------------

@@ -49,12 +49,6 @@ alloc = [
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
-# RFC-0042 D3 / phase-241.D slice 4 — thread `nros-rmw-cffi/external-registry`
-# through. Turned on only by the C/C++ FFI staticlibs (`nros-c`/`nros-cpp`) for the
-# non-NuttX multi-archive cmake link so the cffi `REGISTRY` is referenced as an
-# undefined external (the provider archive is the sole definer). Off for pure-Rust
-# firmware, which self-defines its one copy.
-external-registry = ["nros-rmw-cffi?/external-registry"]
 # Phase 128.C.3 — `rmw-{zenoh,xrce,dds,cyclonedds}-cffi` features
 # deleted. Selection lives entirely in the manifest: depend on
 # `nros-rmw-<name>` directly and the `RMW_INIT_ENTRIES` walker

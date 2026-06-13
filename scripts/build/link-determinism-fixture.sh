@@ -21,19 +21,13 @@ echo "== link-determinism fixture: host staticlib pair =="
 rm -rf "$out_dir"
 mkdir -p "$out_dir"
 
-# `crate-type = ["staticlib"]`; `platform-posix` is the host port. The RFC-0042
-# D3 slice-4 provider archive (defines the cffi C ABI once) builds too. The
-# `external-registry` feature mirrors the non-NuttX cmake C/C++ link: `nros-c` +
-# the RMW staticlib reference `REGISTRY` as an undefined external so the provider
-# archive is its lone definer (the provider pins the feature via its cffi dep).
+# Phase 241.D3-rev — single-runtime model: the C umbrella `libnros_c.a` bundles the
+# zenoh backend (rlib dep) into ONE archive, so a host C binary links a single Rust
+# staticlib with one `std` + one `REGISTRY` — no `--allow-multiple-definition`.
 ( cd "$repo_root" \
-    && cargo build -p nros-c --features platform-posix,external-registry \
-    && cargo build -p nros-rmw-zenoh-staticlib --features platform-posix,external-registry \
-    && cargo build -p nros-rmw-cffi-provider --features platform-posix )
+    && cargo build -p nros-c --features platform-posix,rmw-zenoh )
 
 cp "$repo_root/target/debug/libnros_c.a" "$out_dir/"
-cp "$repo_root/target/debug/libnros_rmw_zenoh_staticlib.a" "$out_dir/"
-cp "$repo_root/target/debug/libnros_rmw_cffi_provider.a" "$out_dir/"
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "$out_dir/.compile-ok"
-echo "   built $out_dir/{libnros_c.a,libnros_rmw_zenoh_staticlib.a,libnros_rmw_cffi_provider.a}"
+echo "   built $out_dir/libnros_c.a"

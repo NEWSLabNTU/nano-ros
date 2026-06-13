@@ -26,13 +26,6 @@ std = [
 ]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
-# RFC-0042 D3 / phase-241.D slice 4 — reference the cffi `REGISTRY` as an undefined
-# external so the `nros-rmw-cffi-provider` archive is the sole definer of it in the
-# non-NuttX C/C++ multi-archive link. The root `CMakeLists.txt` turns this on for
-# `nros_cpp-static` (and the sibling staticlibs) only when the provider is built;
-# pure-Rust / NuttX leave it off and self-define one copy.
-external-registry = ["nros/external-registry"]
-
 # RMW backend (select via cargo dep, not feature) — every backend
 # ships as a cffi shim that installs a C vtable into
 # `nros-rmw-cffi`'s runtime registry via the `RMW_INIT_ENTRIES`

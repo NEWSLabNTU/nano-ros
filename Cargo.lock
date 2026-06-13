@@ -2323,15 +2323,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-rmw-cffi-provider"
-version = "0.5.0"
-dependencies = [
- "nros-platform",
- "nros-rmw-cffi",
- "panic-halt",
-]
-
-[[package]]
 name = "nros-rmw-cyclonedds"
 version = "0.5.0"
 dependencies = [

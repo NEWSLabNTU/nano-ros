@@ -25,10 +25,6 @@ crate-type = ["staticlib"]
 
 [features]
 default = []
-# RFC-0042 D3 / phase-241.D slice 4 — forwards `external-registry` down to the cffi
-# rlib so this staticlib references `REGISTRY` (the provider archive defines it once
-# for the C/C++ link). Passed by the root `CMakeLists.txt` zenoh arm.
-external-registry = ["nros-rmw-zenoh/external-registry"]
 std = ["nros-rmw-zenoh/std"]
 platform-posix = ["nros-rmw-zenoh/platform-posix", "nros-rmw-zenoh/std"]
 platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
