@@ -63,7 +63,7 @@ nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = 
 # Phase 141.C — `wake-latency-probe` feature pulls in
 # `wake_probe::{parse_csv, percentile_ns}` for the
 # `wake_latency_cortex_m3` host runner.
-nros-node = { path = "../../core/nros-node", features = ["std", "rmw-cffi", "platform-posix", "ros-humble", "wake-latency-probe"], optional = true }
+nros-node = { path = "../../core/nros-node", features = ["std", "rmw-cffi", "ros-humble", "wake-latency-probe"], optional = true }
 
 # Phase 124.A.8.b — zenoh-pico backend (lending feature on) for the
 # loan E2E test. Optional so the default test build doesn't pull

@@ -178,6 +178,18 @@ pub static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError>
 pub static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
     nros_rmw_xrce_cffi::register;
 
+// Phase 248 (C5) — force-link the cyclonedds backend `-sys` rlib so its
+// `RMW_INIT_ENTRIES` self-register section survives rlib pruning. Previously
+// this `#[used]` keep-alive lived in `nros-node` (`__FORCE_LINK_CYCLONEDDS_SYS`);
+// C2 made `nros-node` RMW-agnostic (dropped the concrete cyclonedds dep), so the
+// keep-alive moves here to the umbrella, mirroring the zenoh/xrce ones above.
+// Inert unless `rmw-cyclonedds` selects the backend.
+#[cfg(feature = "rmw-cyclonedds")]
+#[doc(hidden)]
+#[used]
+pub static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
+    nros_rmw_cyclonedds_sys::register;
+
 // Phase 225.P — explicitly register the linked RMW backend(s) into the CFFI
 // vtable. On targets `linkme` supports (linux/macos/windows/…) the
 // `RMW_INIT_ENTRIES` section auto-registers and this is redundant (but safe —

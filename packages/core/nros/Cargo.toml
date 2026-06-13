@@ -114,7 +114,6 @@ lending = ["rmw-cffi", "nros-rmw-cffi/lending"]
 # `nros-rmw-<name>` dep with the matching `platform-*` feature.
 platform-posix = [
     "nros-platform/platform-posix",
-    "nros-node/platform-posix",
     "platform-udp",
     # Phase 227.3 (unified RMW) — forward to the zenoh backend's posix C port
     # when linked (inert via `?` otherwise).
@@ -122,15 +121,12 @@ platform-posix = [
 ]
 platform-zephyr = [
     "nros-platform/platform-zephyr",
-    "nros-node/platform-zephyr",
     "platform-udp",
 ]
 platform-bare-metal = [
-    "nros-node/platform-bare-metal",
 ]
 platform-freertos = [
     "nros-platform/platform-freertos",
-    "nros-node/platform-freertos",
     "platform-udp",
     # Issue #48 — forward to the zenoh backend's FreeRTOS C port when
     # linked (inert via `?` otherwise), parity with the NuttX row below.
@@ -140,7 +136,6 @@ platform-freertos = [
 ]
 platform-nuttx = [
     "nros-platform/platform-nuttx",
-    "nros-node/platform-nuttx",
     "platform-udp",
     # Phase 227.3 (unified RMW) — forward to the zenoh backend's NuttX C
     # port when linked (inert via `?` otherwise). Without this, zpico-sys
@@ -153,7 +148,6 @@ platform-nuttx = [
 ]
 platform-threadx = [
     "nros-platform/platform-threadx",
-    "nros-node/platform-threadx",
     "platform-udp",
 ]
 platform-cffi = ["nros-platform/platform-cffi"]
@@ -162,7 +156,6 @@ platform-cffi = ["nros-platform/platform-cffi"]
 # layer).
 platform-orin-spe = [
     "nros-platform/platform-orin-spe",
-    "nros-node/platform-orin-spe",
 ]
 
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` deleted on
@@ -175,7 +168,7 @@ link-tls = ["nros-rmw-zenoh?/link-tls"]
 link-custom = ["nros-rmw-zenoh?/link-custom"]
 
 # XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features).
-platform-udp = ["nros-node/platform-udp"]
+platform-udp = []
 # XRCE transport refinements (legacy aliases).
 xrce-udp = ["platform-posix", "platform-udp"]
 xrce-serial = ["nros-platform/platform-posix", "nros-node/posix-serial"]

@@ -117,14 +117,6 @@ log = ["dep:log"]
 # 248 sequences C5 after C2; this agent is scoped out of the `nros`
 # umbrella). Only the 8 features `nros` actually forwards are kept;
 # `platform-cffi` was dropped (no consumer).
-platform-posix = []
-platform-zephyr = []
-platform-bare-metal = []
-platform-freertos = []
-platform-nuttx = []
-platform-threadx = []
-platform-orin-spe = []
-platform-udp = []
 
 # E2E safety protocol (CRC-32 + sequence tracking).
 safety-e2e = ["nros-rmw/safety-e2e"]
