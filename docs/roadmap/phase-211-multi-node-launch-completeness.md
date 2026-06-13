@@ -409,9 +409,14 @@ superproject), and the planner lowers it into `host_id`.
       (`Plan::hosts()` = the `machine=` set); `nros codegen entry --host <id>`
       bakes the per-host entry (errors if a host names no nodes + no shared
       exist). Single-host launches unaffected (all nodes unhosted → kept). Unit:
-      `plan_for_host_partitions_by_machine`. In-tree codegen path only — the
-      `nros::main!()` macro (git-pinned nros-build) gets `--host` parity when
-      that distribution lands.
+      `plan_for_host_partitions_by_machine`.
+- [x] **Macro `--host` parity — LANDED (`a84b42d03`, 2026-06-13).**
+      `nros::main!(launch=…, host="<id>")` mirrors `Plan::for_host`:
+      `MainArgs.host` + `node_specs.retain(machine == host || None)` (errors if
+      the host names no nodes). Unblocked by the in-tree nros-cli migration
+      (`0be1dc478`) — `nros-macros` now path-deps `packages/cli/nros-build`
+      (was archived git `NEWSLabNTU/nros-cli` 0.3.7, no `NodeSpec.machine`), so
+      the macro compiles against the same `machine` field the CLI uses.
 - [x] **Bake-partition e2e — LANDED.** `multihost_partition_bake` drives
       `nros codegen entry --lang rust --host {robot1,robot2}` over
       `examples/workspaces/rust` + `demo_bringup/launch/multihost.launch.xml`
@@ -420,23 +425,15 @@ superproject), and the planner lowers it into `host_id`.
       listener). Seals the full CLI pipeline (launch `machine=` parse →
       `PlanNode.host` → `for_host` → emit). Cross-host *delivery* is already
       proven by `deployed_native_system_e2e` (cross-process pub→sub).
-- [→] **Full 2-process runtime multi-host** — DEFERRED on a DISTRIBUTION wall
-      (investigated 2026-06-13). The macro `host` filter is a ~20-line change
-      (`MainArgs.host` + `node_specs.retain(machine == host || None)`, mirroring
-      `Plan::for_host`) — written + reverted because it **can't compile**:
-      `nros-macros` git-deps `nros-cli-core` **0.3.7 from the archived/read-only
-      `NEWSLabNTU/nros-cli` repo**, which lacks `NodeSpec.machine`; the in-tree
-      `packages/cli` `nros-cli-core` (0.5.0, where `machine` lives) is NOT
-      consumed by the root workspace (no git-dep `[patch]`, and 0.3.7↔0.5.0 have
-      diverged). So macro `--host` is gated on the bigger build-architecture
-      task: migrate `nros-macros`' `nros-build`/`nros-cli-core` dep from the
-      archived git to in-tree `packages/cli` (tree-wide, API-divergence risk
-      across every consumer + the example workspaces' own git pins — maintainer
-      territory). Until then, per-host runnable entries go via a build.rs that
-      shells the in-tree `nros codegen entry --host` (the CLI path, which works).
-      The two halves (bake-partition + cross-process delivery) are independently
-      proven, so this is a runtime-assembly + distribution step, not a
-      capability gap.
+- [→] **Full 2-process runtime multi-host** — the only remaining 211.F item.
+      Both halves are proven independently: per-host partition bake (CLI +
+      macro, above) and cross-process pub→sub delivery
+      (`deployed_native_system_e2e`). The DISTRIBUTION wall that blocked macro
+      `--host` is RESOLVED (in-tree nros-cli migration, `0be1dc478`). What's
+      left is the runtime-ASSEMBLY step: bake two per-host entries, boot both as
+      separate processes, assert the cross-host topic flows — plus the
+      `nros.toml` host-target plumbing below to map `host_id` partitions onto
+      `[deploy.<id>]`. Runtime assembly, not a capability gap.
 - [ ] **`nros.toml` host targets (optional)** — model each host as a
       `[deploy.<id>]` target so a multi-host system maps `--host` bakes onto
       deploy targets via `scaffold_deploy`. Convenience over the bare
