@@ -30,7 +30,12 @@ unsafe extern "C" fn auto_register() {
 // still guarantees the symbols are present for it (or for a manual call).
 #[used]
 #[cfg_attr(
-    any(target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "none"),
+    any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "freebsd",
+        target_os = "none"
+    ),
     unsafe(link_section = ".init_array")
 )]
 #[cfg_attr(target_os = "macos", unsafe(link_section = "__DATA,__mod_init_func"))]

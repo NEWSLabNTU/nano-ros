@@ -163,7 +163,10 @@ include!(concat!(env!("OUT_DIR"), "/cpp_surface_anchor.rs"));
 // staticlib root pulls its register closure into the archive. Empty with no cffi backend.
 #[cfg(any(feature = "rmw-zenoh-cffi", feature = "rmw-xrce-cffi"))]
 const _BACKEND_ANCHOR: &[unsafe extern "C" fn()] = &[rmw_backend::auto_register];
-#[cfg(all(feature = "rmw-cffi", not(any(feature = "rmw-zenoh-cffi", feature = "rmw-xrce-cffi"))))]
+#[cfg(all(
+    feature = "rmw-cffi",
+    not(any(feature = "rmw-zenoh-cffi", feature = "rmw-xrce-cffi"))
+))]
 const _BACKEND_ANCHOR: &[unsafe extern "C" fn()] = &[];
 
 /// Phase 241 W11 (Option D) — combined force-link anchor for a downstream staticlib root
