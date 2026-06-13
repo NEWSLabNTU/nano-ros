@@ -278,9 +278,12 @@ Steps (each a commit; CI between the riskier ones):
       threadx-riscv64 `-D` is generated from board.toml, not hand-set.
 
 ### 241.D — Deterministic linking (RFC-0042 D3)
-> **In progress on branch `issue-42-d3-link-determinism`.** Slice 1 (the
-> duplicate-symbol validator below) landed there; the rest needs a `run_e2e`
-> dispatch (every platform's link). **Characterized (2026-06-13):**
+> **In progress on branch `issue-42-d3-link-determinism`.** Slices 1–4 landed +
+> **host-validated**: the duplicate-symbol gate (1–2), the `-u` strategy (3), and
+> the cffi single-definition provider + flag removal (4). The native cpp+c talkers
+> link with NO `--allow-multiple-definition` / `--whole-archive` and the cpp talker
+> RUNS + publishes (single `REGISTRY`, auto-register fires). Cross + macOS + the
+> threadx/freertos early-return + xrce/cyclone runtime need the `run_e2e` dispatch. **Characterized (2026-06-13):**
 > `--allow-multiple-definition` on the threadx/freertos C++ staticlib link masks
 > **239 duplicate defined-globals** between `libnros_c.a` and
 > `libnros_rmw_zenoh_staticlib.a` — ALL from the shared Rust dependency closure
