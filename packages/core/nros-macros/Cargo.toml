@@ -25,15 +25,14 @@ proc-macro2 = { workspace = true }
 #     (`[package.metadata.nros.entry] deploy = "<board>"`) and the
 #     bringup pkg's `system.toml` (`[system] default_launch = "..."`).
 #   * `nros-build` for the shared workspace pkg-index walk + ROS 2
-#     launch.xml parser landed in N.10 + N.11. Originally a git dep on
-#     the standalone nros-cli repo; post-Phase-218 that repo is archived
-#     (CLI merged in-tree at `packages/cli/`). The git dep below still
-#     resolves (archived repos remain readable) but should migrate to a
-#     `path = "../../cli/..."` once the workspace shape is sorted.
-#     Proc-macro crates can carry arbitrary deps because they run at
-#     the consumer's compile time on the host.
+#     launch.xml parser landed in N.10 + N.11. The standalone nros-cli repo
+#     was merged in-tree at `packages/cli/` (post-Phase-218); this is the
+#     in-tree path dep (the archived git dep is retired — always use in-tree).
+#     The path crosses into the `packages/cli/` sub-workspace, which is fine:
+#     a path dep groups by lockfile, not dep visibility. Proc-macro crates can
+#     carry arbitrary deps because they run at the consumer's compile time.
 toml = "0.8"
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
+nros-build = { path = "../../cli/nros-build" }
 # Phase 228.G — shared per-tier schema + resolver. Same crate the CLI's
 # codegen-system uses, so the macro's compile-time tier resolution can't drift
 # from the bake path (RFC-0032 §6). Proc-macro deps are host-only.

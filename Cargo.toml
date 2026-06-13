@@ -61,11 +61,11 @@ members = [
     # the `cmake` build-script crate. Provides libddsc + idlc to
     # downstream crates via the `DEP_DDSC_*` metadata exports.
     "packages/dds/cyclonedds-sys",
-    # Phase 212.K.3 — pure-Rust port of
-    # `scripts/cyclonedds/msg_to_cyclone_idl.py`. Lands ahead of the
-    # Cyclone wrapper sys crate (212.K.2) so that path stays
-    # pure-cargo (no python build-dep).
-    "packages/codegen/nros-msg-to-idl",
+    # Phase 212.K.3 — pure-Rust `msg→IDL` port. The standalone copy under
+    # `packages/codegen/` (a leftover of the retired out-of-tree nros-cli)
+    # was removed; the canonical crate now lives in-tree at
+    # `packages/cli/nros-msg-to-idl` (the merged CLI sub-workspace), consumed
+    # by `nros-cli-core` / `cargo-nano-ros` for `nros codegen cyclonedds-descriptors`.
     # Phase 169.4 — retired Rust DDS crates deleted.
     # Integration tests
     "packages/testing/nros-tests",

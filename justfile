@@ -1102,7 +1102,6 @@ build-workspace-embedded:
         --exclude nros-rmw-xrce-cffi-staticlib \
         --exclude nros-build-paths \
         --exclude xrce-sys \
-        --exclude nros-msg-to-idl \
         --exclude nros-orchestration-ir \
         --exclude nros-board-native \
         --exclude nros-board-posix \
@@ -1164,7 +1163,6 @@ check-workspace-embedded:
         --exclude nros-rmw-xrce-cffi-staticlib \
         --exclude nros-build-paths \
         --exclude xrce-sys \
-        --exclude nros-msg-to-idl \
         --exclude nros-orchestration-ir \
         --exclude nros-board-native \
         --exclude nros-board-posix \
