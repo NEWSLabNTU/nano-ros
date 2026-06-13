@@ -105,24 +105,25 @@ trivially CI-wireable, mirrors the `scripts/check-*.sh` gate family).
 symbol is confirmed strong (or absent); an injected regression (delete a board's
 strong override) makes the script exit non-zero.
 
-## W2 — Gate in `just check`
+## W2 — Gate in `just check` — DONE (2026-06-13)
 
-The source gate currently only runs under `cargo nextest`. Wire a fast weak-symbol
-check into the `just check` aggregate (justfile:281), matching the existing
-`check-*` sub-recipe pattern (`[private] check-…: @bash scripts/check-….sh`).
+- **W2.1 — DONE.** `scripts/check-weak-symbols.sh` — buildless source-level scan
+  (`find` + `grep -c`), sub-second. Reads the single source-of-truth allowlist
+  `scripts/weak-symbols-allowlist.txt` (path → expected weak-decl count +
+  classification). Fails on a new unaudited weak site, a drifted count, or a
+  stale entry.
+- **W2.1 — single source of truth.** Both gates now read
+  `scripts/weak-symbols-allowlist.txt`: the shell gate (W2) and the Rust gate
+  `weak_symbol_audit.rs` (which dropped its inline const for `load_allowlist`).
+  No two copies to drift.
+- **W2.2 — DONE.** `check-weak-symbols` added to the `check:` aggregate
+  (justfile) + a `[private] check-weak-symbols` recipe.
+- **W2.3 — DONE.** The image gate (W1) stays out of the fast `check` — it's the
+  standalone `just check-weak-symbols-image` (needs prebuilt fixtures), for
+  `test-all` / per-platform CI.
 
-- **W2.1** — `scripts/check-weak-symbols.sh` — the source-level scan (port the
-  `weak_symbol_audit.rs` logic, or have the script invoke that single nextest
-  test). Buildless + fast so it fits the `just check` budget (the other
-  `check-*` gates are sub-second shell scripts). Single allowlist source of
-  truth shared with the Rust gate.
-- **W2.2** — add `check-weak-symbols` to the `check:` dependency list.
-- **W2.3** — the image-level gate (W1) stays under `test` (it needs prebuilt
-  fixtures), wired into `just test-all` / the per-platform `ci` lanes, not the
-  fast `just check`.
-
-**Acceptance.** `just check` fails on an unaudited / drifted weak site; a new
-weak symbol added without allowlisting is caught pre-merge without a full build.
+**Acceptance MET.** `just check` now fails on an unaudited / drifted weak site;
+a new weak symbol added without allowlisting is caught pre-merge with no build.
 
 ## W3 — Reduction (fix-up work)
 

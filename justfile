@@ -283,6 +283,7 @@ check: \
     check-nros-log-riscv32 \
     check-platform-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc \
+    check-weak-symbols \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
 
@@ -315,6 +316,15 @@ check-board-manifest-drift:
 [private]
 check-no-direct-kernel-alloc:
     @bash scripts/check-no-direct-kernel-alloc.sh
+
+# Phase 247 W2 (issue 0050) — fast source-level weak-symbol gate: fail when an
+# owned C/C++/asm file outside the audited allowlist
+# (scripts/weak-symbols-allowlist.txt, shared with weak_symbol_audit.rs)
+# introduces a weak symbol, or a listed file's count drifts. Buildless + fast.
+# The deeper image gate is `just check-weak-symbols-image` (needs fixtures).
+[private]
+check-weak-symbols:
+    @bash scripts/check-weak-symbols.sh
 
 # Phase 176.3 — verify the orchestration generator's PlatformProfile
 # board-crate references match the actual board crates (existence +
