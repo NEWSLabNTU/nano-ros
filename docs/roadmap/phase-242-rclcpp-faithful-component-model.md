@@ -10,11 +10,13 @@ blocked ASI's vendored Autoware `Controller` from migrating onto RFC-0043's
 sequences (`std::vector<double>`), (3) ctor-wired IS-A-node lifetime on the entry
 executor.
 
-**Status.** Accepted (2026-06-13 — [RFC-0044](../design/0044-rclcpp-faithful-component-model.md)
-adoption decision; all 5 open Qs resolved). 242.3 (parameter sequences) DONE;
-242.1/242.2/242.4 pending; 242.5 (ASI) gated on a Zephyr-SDK + FVP host. Driven
-by ASI phase-2.C — the reference consumer whose real rclcpp-shaped node surfaced
-the gap. Amends RFC-0043 Q1.
+**Status.** In progress (2026-06-13). **242.1–242.4 + 242.7 DONE + verified**
+(the rclcpp-faithful `ComponentNode` + typed member callbacks + `Seq` parameter
+storage + construct-with-handle codegen/carriers + the value-returning parameter
+facade). **242.5 (ASI migration) is the remaining consumer proof** — node-side
+maps 1:1; runtime FVP smoke (242.5.2) gated on a Zephyr-SDK + FVP host. 242.6
+(Rust parity) deferred. Driven by ASI phase-2.C — the reference consumer whose
+real rclcpp-shaped node surfaced every gap. Amends RFC-0043 Q1.
 
 **Priority.** P1 — the only path to ASI 2.C (a real Autoware node through the
 generated Entry on FVP) and to the stated "follow rclcpp composable-node
@@ -159,7 +161,7 @@ parameter methods, and `ParameterServer`'s API is `Result`-returning +
 RFC-0044's "ctor works ~unchanged, no control-math rewrite" promise depends on
 this facade; without it the controller cannot construct the MPC/PID.
 
-- [ ] **242.7.1** Add a value-returning, rclcpp-faithful parameter API **on
+- [x] **242.7.1** Add a value-returning, rclcpp-faithful parameter API **on
       `ComponentNode`** (backed internally by an owned `ParameterServer`):
       `template<typename T> T declare_parameter(const char*/std::string name,
       const T& default_value = T{})`, `template<typename T> T
@@ -167,7 +169,7 @@ this facade; without it the controller cannot construct the MPC/PID.
       reconciliation: a failed declare/get sets the component `ok()`-flag and
       returns the default (consistent with 242.4's Q2). Scalars route to the
       existing `ParameterServer` scalar store.
-- [ ] **242.7.2** `std::vector<double>` (and the other `Seq` element types)
+- [x] **242.7.2** `std::vector<double>` (and the other `Seq` element types)
       under `NROS_CPP_STD` **without** a caller-supplied compile-time capacity —
       `declare_parameter<std::vector<double>>(name, {…})` compiles unchanged.
       Back it by a default-capacity `Seq<T, NROS_PARAM_SEQ_DEFAULT_CAP>` (the MPC

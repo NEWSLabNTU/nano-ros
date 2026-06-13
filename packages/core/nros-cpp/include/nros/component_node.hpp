@@ -64,14 +64,34 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <new> // placement new for the NROS_COMPONENT factory
+#include <new>          // placement new for the NROS_COMPONENT factory
+#include <type_traits> // enable_if / is_std_vector split for the param facade (C++14 freestanding subset)
 
 #include "nros/component.hpp" // bind_subscription / bind_timer (the no-alloc trampolines)
 #include "nros/node.hpp"
+#include "nros/parameter.hpp" // ParameterServer backing the value-returning facade (242.7)
 #include "nros/publisher.hpp"
 #include "nros/qos.hpp"
 #include "nros/result.hpp"
 #include "nros/timer.hpp"
+
+// Phase 242.7 (RFC-0044) — sizing for the per-node `ParameterServer` backing the
+// rclcpp-faithful value-returning parameter facade. Overridable per build with a
+// `#define` before including this header. Defaults cover a real controller node
+// (ASI's MPC/PID declares ~150 scalar params + a few `std::vector<double>`
+// weight matrices); the storage is fixed-capacity (no heap).
+#ifndef NROS_COMPONENT_MAX_PARAMS
+#define NROS_COMPONENT_MAX_PARAMS 256 // scalar parameter slots
+#endif
+#ifndef NROS_COMPONENT_MAX_SEQ_PARAMS
+#define NROS_COMPONENT_MAX_SEQ_PARAMS 8 // sequence (vector) parameter slots
+#endif
+#ifndef NROS_COMPONENT_SEQ_POOL_BYTES
+#define NROS_COMPONENT_SEQ_POOL_BYTES 4096 // inline byte pool for all sequence elements
+#endif
+#ifndef NROS_PARAM_SEQ_DEFAULT_CAP
+#define NROS_PARAM_SEQ_DEFAULT_CAP 64 // per-vector element capacity when the caller gives no N
+#endif
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio> // fprintf — boot-failure diagnostic (hosted only)
@@ -122,6 +142,16 @@ inline void report_component_failure(const char* node_name, const char* what, in
     (void)code;
 #endif
 }
+
+// Phase 242.7 — split the value-returning `declare_parameter`/`get_parameter`
+// facade between scalar `T` (→ ParameterServer scalar store) and a
+// `std::vector<T>` (→ a default-capacity `Seq`). `<type_traits>` is in the C++14
+// freestanding subset; the `std::vector` specialization is hosted-only.
+template <typename T> struct cn_is_std_vector : ::std::false_type {};
+#ifdef NROS_CPP_STD
+template <typename T, typename A>
+struct cn_is_std_vector<::std::vector<T, A>> : ::std::true_type {};
+#endif
 
 } // namespace detail
 
@@ -256,6 +286,82 @@ class ComponentNode {
         ++timer_count_;
     }
 
+    // -- Parameters (RFC-0044 / 242.7 — value-returning rclcpp facade) -----
+    //
+    // rclcpp shape: `T declare_parameter<T>(name, default)` / `T
+    // get_parameter<T>(name)` / `bool has_parameter(name)`, backed by the owned
+    // `params_` ParameterServer. No-exceptions reconciliation: a failed
+    // declare/get sets the `ok()`-flag (boot-fatal, checked post-construct) and
+    // returns the default. Scalars route to the scalar store; `std::vector<T>`
+    // (hosted) routes to a default-capacity `Seq` so the vendored
+    // `declare_parameter<std::vector<double>>(name, {…})` compiles unchanged.
+
+    /// Declare + read back a **scalar** parameter, rclcpp value-returning shape.
+    template <typename T,
+              typename = typename ::std::enable_if<!detail::cn_is_std_vector<T>::value>::type>
+    T declare_parameter(const char* name, T default_value = T{}) {
+        Result r = params_.template declare_parameter<T>(name, default_value);
+        if (!r.ok()) {
+            set_error("declare_parameter", r.raw());
+            return default_value;
+        }
+        T out{};
+        r = params_.template get_parameter<T>(name, out);
+        if (!r.ok()) {
+            set_error("declare_parameter(read-back)", r.raw());
+            return default_value;
+        }
+        return out;
+    }
+
+    /// Read a **scalar** parameter by value (rclcpp shape). Returns `T{}` if
+    /// absent — the vendored callers always `declare` before `get`.
+    template <typename T,
+              typename = typename ::std::enable_if<!detail::cn_is_std_vector<T>::value>::type>
+    T get_parameter(const char* name) const {
+        T out{};
+        (void)params_.template get_parameter<T>(name, out);
+        return out;
+    }
+
+    bool has_parameter(const char* name) const { return params_.has_parameter(name); }
+
+#ifdef NROS_CPP_STD
+    /// Declare + read back a **`std::vector<T>`** parameter (hosted). Backed by a
+    /// default-capacity `Seq<T, NROS_PARAM_SEQ_DEFAULT_CAP>` — the caller supplies
+    /// no `N`, matching the vendored `declare_parameter<std::vector<double>>`.
+    template <typename V,
+              typename = typename ::std::enable_if<detail::cn_is_std_vector<V>::value>::type,
+              typename = void>
+    V declare_parameter(const char* name, const V& default_value = V{}) {
+        using Elem = typename V::value_type;
+        Result r = params_.template declare_parameter<Elem, NROS_PARAM_SEQ_DEFAULT_CAP>(
+            name, default_value);
+        if (!r.ok()) {
+            set_error("declare_parameter(vector)", r.raw());
+            return default_value;
+        }
+        V out;
+        r = params_.template get_parameter<Elem>(name, out);
+        if (!r.ok()) {
+            set_error("declare_parameter(vector read-back)", r.raw());
+            return default_value;
+        }
+        return out;
+    }
+
+    /// Read a **`std::vector<T>`** parameter by value (hosted).
+    template <typename V,
+              typename = typename ::std::enable_if<detail::cn_is_std_vector<V>::value>::type,
+              typename = void>
+    V get_parameter(const char* name) const {
+        using Elem = typename V::value_type;
+        V out;
+        (void)params_.template get_parameter<Elem>(name, out);
+        return out;
+    }
+#endif // NROS_CPP_STD
+
   protected:
     ComponentNode(const ComponentNode&) = delete;
     ComponentNode& operator=(const ComponentNode&) = delete;
@@ -276,6 +382,11 @@ class ComponentNode {
     Node node_;
     Timer timers_[NROS_COMPONENT_MAX_TIMERS];
     size_t timer_count_ = 0;
+    // 242.7 — backs the value-returning parameter facade. Fixed-capacity, no heap;
+    // sized by the NROS_COMPONENT_MAX_{PARAMS,SEQ_PARAMS} / SEQ_POOL_BYTES knobs.
+    ParameterServer<NROS_COMPONENT_MAX_PARAMS, NROS_COMPONENT_MAX_SEQ_PARAMS,
+                    NROS_COMPONENT_SEQ_POOL_BYTES>
+        params_;
     bool ok_ = true;
     const char* error_what_ = nullptr;
     int32_t error_code_ = 0;
