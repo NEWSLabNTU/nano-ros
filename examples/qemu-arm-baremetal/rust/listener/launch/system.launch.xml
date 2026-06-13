@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!-- Empty launch placeholder (Form-1 self-bringup).
+
+     The single node is resolved from this Entry pkg's own re-exported
+     `register` (src/lib.rs -> listener_pkg). A populated <launch> is exercised
+     by the multi-node fixtures, not this BoardEntry boot smoke. -->
+<launch>
+</launch>
