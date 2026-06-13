@@ -128,10 +128,13 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   `k_sleep(...)` (`main.cpp:73`), per-app executor init
   (`c/listener/src/main.c:78`). Target shape = `zephyr/cpp/talker-typed` (clean).
   Leaks P4/P7/P1.
-- [ ] **C3 — qemu-arm-freertos Rust host_shim (6 major).** Move the
-  `#[cfg(any(target_os="linux",target_os="macos"))] mod host_shim { #[panic_handler]
-  … GlobalAlloc … }` block (`talker/src/lib.rs:23`) into a board/compat crate; drop
-  `#![no_std]` (`lib.rs:11`, pending E4). Leaks P5/P2.
+- [x] **C3 — qemu-arm-freertos Rust host_shim (6 major) — DONE 2026-06-13.** The
+  `#[cfg(host)] mod host_shim { #[panic_handler] + GlobalAlloc }` block existed only
+  because the Component was `crate-type = ["rlib","staticlib"]` (a no_std staticlib
+  needs both on host). #45 already dropped it to `["rlib"]`, so the shim is **dead**
+  — deleted from all 6 libs (no compat crate needed). `#![no_std]` stays (E4:
+  accepted residual minor). Verified: `freertos_rs_talker_entry` release rebuilds
+  clean. The 6 examples go major → minor. Leak P5 cleared.
 - [ ] **C4 — workspaces entries + templates Pattern-A + zephyr-byo.** Lift
   `ExecutorConfig`/`Executor::open` from `templates/.../local-msg-package/.../main.rs:36,40`
   + `multi-package-workspace/.../main.rs:15`; remove `zephyr-byo/app/src/main.c:10,14,39`
