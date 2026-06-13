@@ -399,10 +399,14 @@ superproject), and the planner lowers it into `host_id`.
       `skip_serializing_if`); `build_node_instance` forwards the record's
       `machine`, `schema_instance` lowers it onto `host_id`
       (`plan_system_lowers_machine_to_host_id`). Single-host plans byte-compat.
-- [ ] **`nros.toml` host targets** — model each host as a `[deploy.<id>]` target
-      (the existing SSOT table — kind `self`/vendor, board, ssh/target override)
-      rather than a new `[host.<id>]` block; a multi-host system maps its
-      `host_id` partitions onto these deploy targets. Reuse `scaffold_deploy`.
+- [ ] **`system.toml` `[deploy.<id>]` host targets** — model each host as a
+      `[deploy.<id>]` target in the bringup pkg's `system.toml` (the existing
+      SSOT table per RFC-0004 §4 — kind `self`/vendor, board, ssh/target
+      override) rather than a new `[host.<id>]` block; a multi-host system maps
+      its `host_id` partitions onto these deploy targets. Reuse `scaffold_deploy`.
+      NOTE: NOT `nros.toml` — RFC-0004 rejects a workspace-root `nros.toml`
+      (`NrosTomlNotSupported`); `nros.toml` is only the embedded single-node
+      direct-mode runtime file. Deploy targets live in `system.toml`.
 - [x] **Per-host bake — LANDED (`e7e9cbfff`).** The entry codegen partitions by
       host: `launch_parser::NodeSpec.machine` → `entry::PlanNode.host`;
       `Plan::for_host(id)` keeps host `id`'s nodes + all unhosted (shared) nodes
@@ -432,12 +436,12 @@ superproject), and the planner lowers it into `host_id`.
       `--host` is RESOLVED (in-tree nros-cli migration, `0be1dc478`). What's
       left is the runtime-ASSEMBLY step: bake two per-host entries, boot both as
       separate processes, assert the cross-host topic flows — plus the
-      `nros.toml` host-target plumbing below to map `host_id` partitions onto
-      `[deploy.<id>]`. Runtime assembly, not a capability gap.
-- [ ] **`nros.toml` host targets (optional)** — model each host as a
-      `[deploy.<id>]` target so a multi-host system maps `--host` bakes onto
-      deploy targets via `scaffold_deploy`. Convenience over the bare
-      `--host` codegen.
+      `system.toml` `[deploy.<id>]` host-target plumbing below to map `host_id`
+      partitions onto deploy targets. Runtime assembly, not a capability gap.
+- [ ] **`system.toml` `[deploy.<id>]` host targets (optional)** — model each
+      host as a `[deploy.<id>]` target in `system.toml` so a multi-host system
+      maps `--host` bakes onto deploy targets via `scaffold_deploy`. Convenience
+      over the bare `--host` codegen. (NOT `nros.toml` — see RFC-0004 §4.)
 - **Files (landed):** `nros-cli-core/{launch_parser,codegen/entry/{mod,emit_*},
   cmd/codegen}.rs`. nano-ros runtime side: nothing new — cross-process works.
 
