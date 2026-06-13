@@ -283,6 +283,12 @@ int nros_app_main(int argc, char** argv) {
     }
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
+    // Fetch the node's logger so NROS_LOG_* in the timer callback emits.
+    // Without this g_logger stays NULL and every log call silently drops
+    // (the timer still fires and publishing still succeeds — the messages
+    // just never print). See the logging example's `nros_node_get_logger`.
+    g_logger = nros_node_get_logger(&app.node);
+
     // Initialize publisher
     app.publisher = nros_publisher_get_zero_initialized();
     ret = nros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type,
