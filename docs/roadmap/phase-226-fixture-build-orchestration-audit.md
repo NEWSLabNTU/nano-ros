@@ -1848,13 +1848,30 @@ Acceptance:
 ### 226.F — Validation
 
 - [ ] Capture representative timings for direct platform fixture builds:
-      native, qemu, zephyr, freertos, nuttx.
+      native, qemu, zephyr, freertos, nuttx. — **BLOCKED on this host (disk).**
+      A timed `just native build-fixtures` (NROS_BUILD_JOBS=8) was aborted at
+      25 min having consumed ~52 GiB of per-RMW-variant cargo target dirs across
+      examples/workspaces (build/ itself stayed <1 GiB) and was still
+      incomplete; killed to protect the host partition (3.4T/3.6T used). See
+      `tmp/phase226/results.md` (2026-06-13). Needs a dedicated CI runner with
+      ≥200 GiB scratch.
 - [ ] Capture representative `just build-test-fixtures` timing through
-      both the jobserver path and the direct fallback path.
+      both the jobserver path and the direct fallback path. — **BLOCKED on this
+      host:** native alone exceeds the disk budget, so the all-platform matrix
+      (every platform's cargo targets at once) cannot be built clean in one pass
+      here. The finding: on a bounded-disk host the matrix MUST be built
+      per-platform with `cargo clean`/prune between platforms, which serializes
+      the wall-clock the campaign meant to characterize — run it on the CI
+      runner.
 - [ ] Check CPU utilization under `NROS_BUILD_JOBS=8` and a high-core
-      default run.
-- [ ] Verify runtime suites still consume the same fixture paths after
-      scheduler and build-cache changes.
+      default run. — deferred with the above (needs the full build to run).
+- [x] Verify runtime suites still consume the same fixture paths after
+      scheduler and build-cache changes. — **VERIFIED (2026-06-13).** The
+      issue-0041 fixture conversions were each built + their consuming tests run
+      green this session (o3/o4/o5 compile-check, threadx_bringup[_rv64] cmake,
+      west_bringup_zephyr/board_import west, zephyr_self_pkg bakes, esp_idf ELFs)
+      — runtime suites consume the same fixture paths post-conversion. Details in
+      `tmp/phase226/results.md`.
 
 Validation scope:
 
