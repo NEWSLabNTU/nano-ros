@@ -476,25 +476,20 @@ targets = [\"${NROS_RUST_TARGET}\"]
       endif()
 
       # Build the FFI staticlib
-      set(_cargo_ffi_args build
-        --manifest-path "${_ffi_crate_dir}/Cargo.toml"
-        --target-dir "${_ffi_target_dir}"
-      )
-      if(_nros_cargo_profile STREQUAL "dev")
-      elseif(_nros_cargo_profile STREQUAL "release")
-        list(APPEND _cargo_ffi_args --release)
-      else()
-        list(APPEND _cargo_ffi_args --profile ${_nros_cargo_profile})
+      # Assemble cargo args via the shared core (Phase 246.3). Tier-2/3 embedded
+      # triples ship no precompiled std → build core+alloc from rust-src (inline
+      # -Z, not a .cargo/config.toml). Toolchain pin lives in rust-toolchain.toml
+      # written above. NROS_RUST_TARGET empty → host build (no --target/build-std).
+      set(_zephyr_build_std "")
+      if(NROS_RUST_TARGET MATCHES "^(armv7a|thumbv|riscv32)")
+        set(_zephyr_build_std "core,alloc,compiler_builtins")
       endif()
-
-      if(NROS_RUST_TARGET)
-        list(APPEND _cargo_ffi_args --target ${NROS_RUST_TARGET})
-        # Tier-2/3 embedded targets: build core + alloc from rust-src
-        # since precompiled std isn't shipped for these triples.
-        if(NROS_RUST_TARGET MATCHES "^(armv7a|thumbv|riscv32)")
-          list(APPEND _cargo_ffi_args -Z "build-std=core,alloc,compiler_builtins")
-        endif()
-      endif()
+      _nros_ffi_cargo_args(_cargo_ffi_args
+        MANIFEST "${_ffi_crate_dir}/Cargo.toml"
+        TARGET_DIR "${_ffi_target_dir}"
+        PROFILE "${_nros_cargo_profile}"
+        RUST_TARGET "${NROS_RUST_TARGET}"
+        BUILD_STD "${_zephyr_build_std}")
 
       add_custom_command(
         OUTPUT "${_ffi_lib}"

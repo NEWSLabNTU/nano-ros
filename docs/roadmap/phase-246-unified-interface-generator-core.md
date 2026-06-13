@@ -17,7 +17,10 @@ lib.rs assembly + closure compute/export. Validated: native C++ listener
 (canonical, deduped lib.rs) + ASI FVP (`zephyr.elf`) both build clean. **246.2
 DONE + verified** — args-JSON writer + output-prediction extracted to the core;
 both generators call them; native `cpp_listener` + ASI `zephyr.elf` rebuild clean.
-246.2b (codegen-tool + interface-file resolvers) deferred; 246.3–246.4 pending.
+246.2b (codegen-tool + interface-file resolvers) deferred. **246.3 DONE +
+verified** — `_nros_ffi_cargo_args` extracted (truthiness-guarded profile/target/
+build-std); both generators call it; native `cpp_listener` + ASI `zephyr.elf`
+rebuild clean. 246.4 (link wiring) pending.
 
 **Priority.** P2 — tech-debt, but high-leverage: the same conceptual code drifted
 **three times** during the ASI Zephyr-3.7 bring-up alone, each a separate
@@ -115,7 +118,14 @@ a follow-up wave** — not wave 1; document the shared invariant first.
     bundled-prefix tier (`_NANO_ROS_PREFIX`, absent in the zephyr tree) — both
     are smaller + more divergent, so the dedup-vs-risk ratio is worse than 246.1
     / the two blocks above.
-- **246.3 — cargo invocation.** `_nros_ffi_cargo_args`.
+- **246.3 — cargo invocation.** `_nros_ffi_cargo_args` (build skeleton + profile
+  / `--target` / `-Z build-std` conditionals). DONE. Toolchain pinning
+  (`+<tc>` prefix + `.cargo/config.toml` canonical; `rust-toolchain.toml` zephyr)
+  stays per-generator. Guard on truthiness, not `STREQUAL ""` — an omitted
+  one-value keyword leaves `_A_<K>` unset and `STREQUAL ""` then compares the
+  literal name, firing the branch with an empty value (`--target` / `-Z
+  build-std=` with no value → cargo error). `if(_A_<K>)` derefs + treats
+  unset/empty as false.
 - **246.4 (follow-up) — link wiring.** Unify the FFI-link approach behind one
   helper, carefully; or converge both on whole-archive. Separate review.
 

@@ -442,10 +442,10 @@ function(nros_generate_interfaces target)
       # Cross-compilation: when Rust_CARGO_TARGET is set (e.g. by a CMake
       # toolchain file), pass --target to cargo and adjust the output path.
       if(DEFINED Rust_CARGO_TARGET)
-        set(_ffi_cargo_target_flag "--target" "${Rust_CARGO_TARGET}")
+        set(_ffi_rust_target "${Rust_CARGO_TARGET}")
         set(_ffi_lib "${_ffi_target_dir}/${Rust_CARGO_TARGET}/release/libnano_ros_cpp_ffi_${target}.a")
       else()
-        set(_ffi_cargo_target_flag "")
+        set(_ffi_rust_target "")
         set(_ffi_lib "${_ffi_target_dir}/release/libnano_ros_cpp_ffi_${target}.a")
       endif()
 
@@ -495,15 +495,24 @@ function(nros_generate_interfaces target)
         # Rust_TOOLCHAIN). Generic `+nightly` resolves to an UNinstalled
         # `nightly-x86_64-unknown-linux-gnu` → rustlib src/Cargo.lock missing.
         set(_ffi_cargo_prefix "+${Rust_TOOLCHAIN}")
-        # With .cargo/config.toml, --target is set there; don't pass it again
-        set(_ffi_cargo_target_flag "")
+        # With .cargo/config.toml, --target is set there; don't pass it again.
+        set(_ffi_rust_target "")
       endif()
+
+      # Assemble cargo args via the shared core (Phase 246.3). Canonical always
+      # builds --release; build-std for nuttx comes from .cargo/config.toml above
+      # (not an inline -Z), so no BUILD_STD here. The `+<toolchain>` prefix stays
+      # separate (prepended in the COMMAND).
+      _nros_ffi_cargo_args(_ffi_cargo_args
+        MANIFEST "${_ffi_crate_dir}/Cargo.toml"
+        TARGET_DIR "${_ffi_target_dir}"
+        PROFILE release
+        RUST_TARGET "${_ffi_rust_target}")
 
       # Build the FFI staticlib after codegen runs
       add_custom_command(
         OUTPUT "${_ffi_lib}"
-        COMMAND cargo ${_ffi_cargo_prefix} build --release --manifest-path "${_ffi_crate_dir}/Cargo.toml"
-                --target-dir "${_ffi_target_dir}" ${_ffi_cargo_target_flag}
+        COMMAND cargo ${_ffi_cargo_prefix} ${_ffi_cargo_args}
         DEPENDS ${_generated_rs_files} "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
         WORKING_DIRECTORY "${_ffi_crate_dir}"
         COMMENT "Building Rust FFI glue for ${target} C++ bindings"

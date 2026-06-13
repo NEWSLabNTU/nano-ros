@@ -204,3 +204,40 @@ function(_nros_predict_generated_outputs _hdr_var _src_var _rs_var)
     set(${_src_var} "${_sources}" PARENT_SCOPE)
     set(${_rs_var} "${_rs}" PARENT_SCOPE)
 endfunction()
+
+# _nros_ffi_cargo_args(<out_var> MANIFEST <path> TARGET_DIR <path> PROFILE <name>
+#     [RUST_TARGET <triple>] [BUILD_STD <comma-list>])
+#
+# Assemble the `cargo <args>` for building an FFI staticlib crate (everything
+# AFTER the optional `+<toolchain>` prefix, which the caller prepends). Shared
+# skeleton: `build --manifest-path … --target-dir …` plus, conditionally:
+#   PROFILE     `dev` → no flag (cargo's default debug); `release` → --release;
+#               anything else (e.g. nros-fast-release) → --profile <name>.
+#   RUST_TARGET non-empty → --target <triple>.
+#   BUILD_STD   non-empty → -Z build-std=<comma-list> (tier-2/3 embedded triples
+#               that ship no precompiled std).
+# Toolchain pinning differs per consumer (canonical `+<tc>` prefix + .cargo/
+# config.toml; zephyr rust-toolchain.toml), so it stays in each generator.
+function(_nros_ffi_cargo_args _out)
+    cmake_parse_arguments(_A "" "MANIFEST;TARGET_DIR;PROFILE;RUST_TARGET;BUILD_STD" "" ${ARGN})
+    set(_args build --manifest-path "${_A_MANIFEST}" --target-dir "${_A_TARGET_DIR}")
+    if(_A_PROFILE STREQUAL "dev")
+        # cargo's default profile — no flag
+    elseif(_A_PROFILE STREQUAL "release")
+        list(APPEND _args --release)
+    elseif(_A_PROFILE)
+        list(APPEND _args --profile ${_A_PROFILE})
+    endif()
+    # Truthiness guards (not `STREQUAL ""`): an omitted/empty one-value keyword
+    # leaves _A_<K> UNDEFINED, and `_A_K STREQUAL ""` would then compare the
+    # literal string "_A_K" (auto-deref of an unset var is the name) → non-empty
+    # → branch fires with an empty value, emitting a bare `--target` / `-Z
+    # build-std=`. `if(_A_K)` derefs and treats unset/empty as false.
+    if(_A_RUST_TARGET)
+        list(APPEND _args --target ${_A_RUST_TARGET})
+    endif()
+    if(_A_BUILD_STD)
+        list(APPEND _args -Z "build-std=${_A_BUILD_STD}")
+    endif()
+    set(${_out} "${_args}" PARENT_SCOPE)
+endfunction()
