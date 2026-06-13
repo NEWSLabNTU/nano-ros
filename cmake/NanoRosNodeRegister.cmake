@@ -382,7 +382,7 @@ function(nano_ros_node_register)
     # zephyr per `app` (it owns the one `int main`). Multi-node Zephyr uses the
     # `nros codegen entry --typed` multi-node emitter (one entry constructs all
     # nodes) — out of scope here.
-    if(_nrc_lang STREQUAL "CPP"
+    if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND "zephyr" IN_LIST _NRC_DEPLOY
        AND NANO_ROS_PLATFORM STREQUAL "zephyr"
        AND TARGET app
@@ -394,13 +394,26 @@ function(nano_ros_node_register)
                 "declarative-register entry is not generated on Zephyr.")
         endif()
         set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
-        set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
-        set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
-        set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         set(_zephyr_entry_src "${CMAKE_CURRENT_BINARY_DIR}/nros-entry/zephyr_entry_main.cpp")
-        configure_file(
-            "${_NROS_NODE_REGISTER_DIR}/templates/zephyr_entry_main_typed.cpp.in"
-            "${_zephyr_entry_src}" @ONLY)
+        if(_nrc_lang STREQUAL "CPP")
+            set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
+            set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
+            set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/zephyr_entry_main_typed.cpp.in"
+                "${_zephyr_entry_src}" @ONLY)
+        else()
+            # Phase 244.C2 — Zephyr C typed carrier (mirrors the NuttX C path).
+            # The entry TU is C++ but constructs the C component via its
+            # `__nros_c_component_<pkg>_*` factory/configure seam
+            # (NROS_C_COMPONENT); `NROS_ENTRY_PKG_SYM` is the sanitized pkg name
+            # the C source was compiled with.
+            string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+            set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/zephyr_entry_main_c_typed.cpp.in"
+                "${_zephyr_entry_src}" @ONLY)
+        endif()
         # Idempotency marker — guard one entry TU per Node pkg (re-runnable
         # configure). PROJECT_NAME is the Node pkg (its own project()), so the
         # marker is per-pkg, not per-app.

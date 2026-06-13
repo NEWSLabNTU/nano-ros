@@ -973,6 +973,20 @@ class NativeBoard {
 ///     auto-brings-up networking);
 ///   * the spin loop yields cooperatively each tick (`entry_tick_yield`
 ///     → `k_yield()`).
+// Phase 244.C2 enabler — compile-time connect locator for Zephyr (+ NuttX,
+// which reuses this macro). Defaults to the Kconfig `CONFIG_NROS_ZENOH_LOCATOR`
+// when the board sets one (the e2e gate threads
+// `CONFIG_NROS_ZENOH_LOCATOR=tcp/127.0.0.1:<port>` per fixture), else `""`
+// (backend discovery — the in-tree FVP Cyclone path). The typed carrier may
+// also bake a literal by defining `NROS_ENTRY_LOCATOR` before this header.
+#ifndef NROS_ENTRY_LOCATOR
+#if defined(CONFIG_NROS_ZENOH_LOCATOR)
+#define NROS_ENTRY_LOCATOR CONFIG_NROS_ZENOH_LOCATOR
+#else
+#define NROS_ENTRY_LOCATOR ""
+#endif
+#endif
+
 class ZephyrBoard {
   public:
     /// Compile-time domain id (CLAUDE.md embedded rule — NOT a runtime
@@ -989,16 +1003,16 @@ class ZephyrBoard {
 #endif
 #endif
 
-    /// Run the Entry-pkg lifecycle on a Zephyr board. Same shape +
-    /// contract as `NativeBoard::run`, with the embedded lifecycle.
-    template <typename Lambda> static int32_t run(Lambda&& register_fn) {
+    /// Run the Entry-pkg lifecycle on a Zephyr board with an explicit connect
+    /// `locator` (Phase 244.C2 — mirrors `NuttxBoard::run`). `locator == ""`
+    /// falls back to backend discovery. The zenoh e2e gate needs the dial
+    /// (`CONFIG_NROS_ZENOH_LOCATOR`); Cyclone/peer-discovery keeps `""`.
+    template <typename Lambda> static int32_t run(const char* locator, Lambda&& register_fn) {
         // Block for network readiness BEFORE init so the RMW backend has a
         // routable interface to bind (weak no-op by default).
         nros_board_network_wait();
 
-        // Compile-time domain id + default locator ("" → backend discovery
-        // default, as the in-tree FVP Cyclone example uses).
-        nros::Result r = nros::init("", static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
         if (!r.ok()) {
             return static_cast<int32_t>(r.raw());
         }
@@ -1015,10 +1029,17 @@ class ZephyrBoard {
         return static_cast<int32_t>(spin_r.raw());
     }
 
-    /// Phase 240.2 (RFC-0043) — real-executor entry (Zephyr lifecycle).
-    template <typename Setup> static int32_t run_components(Setup&& setup) {
+    /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`
+    /// (default `CONFIG_NROS_ZENOH_LOCATOR` if set, else `""`).
+    template <typename Lambda> static int32_t run(Lambda&& register_fn) {
+        return run(NROS_ENTRY_LOCATOR, static_cast<Lambda&&>(register_fn));
+    }
+
+    /// Phase 240.2 (RFC-0043) — real-executor entry (Zephyr lifecycle), explicit
+    /// connect locator (Phase 244.C2). `setup` constructs + `configure`s nodes.
+    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
         nros_board_network_wait();
-        nros::Result r = nros::init("", static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -1028,6 +1049,11 @@ class ZephyrBoard {
         int32_t sc = detail::component_spin_loop();
         nros::shutdown();
         return sc;
+    }
+
+    /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
+    template <typename Setup> static int32_t run_components(Setup&& setup) {
+        return run_components(NROS_ENTRY_LOCATOR, static_cast<Setup&&>(setup));
     }
 };
 
