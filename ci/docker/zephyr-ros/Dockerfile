@@ -31,7 +31,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake ninja-build device-tree-compiler gperf aria2 \
         git curl ca-certificates zstd xz-utils file wget \
         python3 python3-pip python3-venv build-essential \
+        ros-humble-example-interfaces \
     && rm -rf /var/lib/apt/lists/*
+# `ros-humble-example-interfaces` (issue #59): NOT in `ros:humble-ros-base`
+# (only common_interfaces/action_msgs/unique_identifier_msgs are), but the
+# rust service/action examples (AddTwoInts srv, Fibonacci action) depend on it.
+# `nros ws sync` reads its .srv/.action defs from /opt/ros/humble/share to
+# codegen `generated/example_interfaces`; without the pkg it silently skips
+# codegen and cargo then fails `no matching package named example_interfaces`.
+# Mirrors ci/docker/ci-base/Dockerfile (which is also FROM ros:humble-ros-base).
 
 # Zephyr SDK — pinned, with the CMake package registered (`-c`) IN the image so
 # `find_package(Zephyr-sdk)` resolves without a per-run setup step. (A file-only

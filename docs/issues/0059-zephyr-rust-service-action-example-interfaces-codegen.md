@@ -38,28 +38,49 @@ FAILED: .../librustapp.a  (recipe `build-one` failed with exit code 1)
   `package.name` ≠ `example_interfaces` so the patch fails to match the
   crates-io name.
 
-## Likely cause (to confirm)
+## Root cause — CONFIRMED
 
-The "generating Rust interface crates" step refreshed the patch block but did
-not actually emit the `generated/example_interfaces` crate dir — only
-builtin/std crates are generated, and external `example_interfaces` (srv +
-action types) is skipped/failing silently. Needs local repro of
-`just zephyr build-one rust/service-server zenoh` (or the underlying
-`nros generate-rust` + `nros ws sync`) to confirm whether the crate dir is
-missing vs misnamed.
+The Zephyr CI image `ci/docker/zephyr-ros/Dockerfile` is `FROM
+ros:humble-ros-base` and its apt block installs **no ROS interface packages**.
+`ros:humble-ros-base` ships `std_msgs` / `builtin_interfaces` / `action_msgs` /
+`unique_identifier_msgs` but **not `example_interfaces`** (that's a separate
+demos/tutorials dep). `nros ws sync` codegen reads each declared interface
+pkg's `.msg`/`.srv`/`.action` from `/opt/ros/humble/share/<pkg>`
+(`NROS_EXAMPLE_INTERFACES_DIR`); when the dir is absent it **silently skips**
+that crate's codegen, yet still refreshes the `[patch.crates-io]` block to point
+`example_interfaces = { path = "generated/example_interfaces" }` at a dir that
+was never created. cargo (offline, no registry index in the no_std build) then
+can't satisfy `example_interfaces = "*"` from the dangling patch →
+`no matching package named example_interfaces found`.
+
+Confirmed two ways:
+- talker/listener depend only on `std_msgs` (present in ros-base) → codegen
+  succeeds → green; service/action depend on `example_interfaces` → skipped →
+  red. Exactly the observed split.
+- Local `nros ws sync examples/zephyr/rust/service-server` (full ROS install)
+  emits all four crates incl. correctly-named `example_interfaces` → the
+  mechanism is sound; only the CI pkg is missing.
+- CI log shows `ws sync: refreshed [patch.crates-io] block` + `done` but **none**
+  of the per-crate `ws sync: codegen <pkg>` lines a full sync prints.
+- `ci/docker/ci-base/Dockerfile` (also FROM ros-base) already installs
+  `ros-humble-example-interfaces`; `zephyr-ros` simply forgot it.
 
 Note: the **native** rust action/service examples were fixed in phase-244 E3
 (example_interfaces feature forwarding + `rmw-cyclonedds` wiring). The Zephyr
-variants were not part of that change and regress here independently.
+variants regress here for an unrelated reason (the missing CI pkg).
 
-## Fix direction
+## Fix
 
-Make the Zephyr per-example interface-crate generation emit
-`generated/example_interfaces` (and its action-side transitive deps
-`action_msgs`, `unique_identifier_msgs`) before `ws sync` rewrites the patch
-block, with the crate `package.name` matching the crates-io name the patch
-targets. Fail loudly if a declared `<depend>`/`build_depend` interface pkg
-produces no generated crate (silent skip is what hid this).
+1. **(done, in this commit)** Add `ros-humble-example-interfaces` to
+   `ci/docker/zephyr-ros/Dockerfile`'s apt block. **Requires republishing the
+   image** (`.github/workflows/build-zephyr-ci-image.yml` → a new
+   `humble-sdk<ver>` tag) + bumping the tag the lane pulls — a maintainer step
+   (registry push). The lane stays red until the new image lands.
+2. **(follow-up)** Make `nros ws sync` **fail loudly** when a declared
+   `<depend>`/`build_depend` interface pkg has no resolvable source dir, instead
+   of silently skipping codegen and emitting a dangling `[patch]` entry. The
+   silent skip is what let a missing CI pkg masquerade as a codegen bug.
 
-Cannot validate locally yet (no Zephyr SDK in sandbox). Found 2026-06-13 while
-triaging the chronically-red zephyr-dual-line lane.
+Found 2026-06-13 while triaging the chronically-red zephyr-dual-line lane;
+root-caused 2026-06-14 (no Zephyr SDK needed — repro'd the codegen step
+standalone with `nros ws sync`).
