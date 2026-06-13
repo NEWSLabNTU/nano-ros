@@ -16,11 +16,34 @@ project(nros-platform-zephyr
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Canonical nros platform C ABI headers (`nros/platform.h`, `platform_timer.h`,
+# `platform_net.h`). phase-243 consolidated them under `nros-platform-api/include`
+# (they previously lived under `nros-platform-cffi/include`). Resolve the in-tree
+# path; a downstream superbuild may override via -DNROS_PLATFORM_CFFI_INCLUDE.
+get_filename_component(_nros_platform_api_include
+    "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-api/include" ABSOLUTE)
 if(NOT DEFINED NROS_PLATFORM_CFFI_INCLUDE)
-    get_filename_component(NROS_PLATFORM_CFFI_INCLUDE
-        "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-api/include" ABSOLUTE)
-    set(NROS_PLATFORM_CFFI_INCLUDE "${NROS_PLATFORM_CFFI_INCLUDE}"
-        CACHE PATH "Path to nros-platform-cffi include directory")
+    set(NROS_PLATFORM_CFFI_INCLUDE "${_nros_platform_api_include}"
+        CACHE PATH "Path to the nros platform C ABI headers (contains nros/platform.h)")
+endif()
+# Self-heal a STALE cache: a build dir configured before phase-243 pins the old
+# header-less `nros-platform-cffi/include` path, and `set(... CACHE ...)` above
+# cannot overwrite an existing cache entry — so the stale value survives a
+# reconfigure and surfaces as a confusing `nros/platform.h: No such file` deep in
+# the C compile. If the resolved path lacks the canonical header, FORCE it back to
+# the in-tree location.
+if(NOT EXISTS "${NROS_PLATFORM_CFFI_INCLUDE}/nros/platform.h")
+    message(WARNING
+        "NROS_PLATFORM_CFFI_INCLUDE='${NROS_PLATFORM_CFFI_INCLUDE}' has no nros/platform.h "
+        "(stale pre-phase-243 cache?); healing to '${_nros_platform_api_include}'.")
+    set(NROS_PLATFORM_CFFI_INCLUDE "${_nros_platform_api_include}"
+        CACHE PATH "Path to the nros platform C ABI headers (contains nros/platform.h)" FORCE)
+endif()
+if(NOT EXISTS "${NROS_PLATFORM_CFFI_INCLUDE}/nros/platform.h")
+    message(FATAL_ERROR
+        "Cannot find <nros/platform.h> under NROS_PLATFORM_CFFI_INCLUDE="
+        "'${NROS_PLATFORM_CFFI_INCLUDE}'. Pass -DNROS_PLATFORM_CFFI_INCLUDE=<path to "
+        "packages/core/nros-platform-api/include>.")
 endif()
 
 # Inside a Zephyr build the `zephyr` INTERFACE target is auto-present.
