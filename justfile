@@ -323,6 +323,15 @@ check-no-direct-kernel-alloc:
 check-profile-board-mirror:
     @bash scripts/check-profile-board-mirror.sh
 
+# Phase 247 W1 (issue 0050) — image-level weak-symbol gate: assert each
+# override-default weak symbol is STRONG-overridden in the final linked images
+# (firmware ELFs / executables), not silently left weak. Needs prebuilt
+# fixtures (skips covered classes whose artifacts are absent) — NOT in the fast
+# `check` aggregate; run after the fixture build / in the per-platform CI lanes.
+# The fast source-level half is `weak_symbol_audit.rs` (in `just test`).
+check-weak-symbols-image:
+    @bash scripts/check-weak-symbols-image.sh
+
 # Phase 118.I.5 — keep collapsed examples from regrowing a retired RMW
 # directory axis without an explicit documented carve-out.
 [private]

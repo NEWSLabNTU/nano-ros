@@ -63,7 +63,20 @@ trivially CI-wireable, mirrors the `scripts/check-*.sh` gate family).
 
 ### Work
 
-- **W1.1** — `scripts/check-weak-symbols-image.sh <artifact>`: `nm` the artifact,
+- **W1.1 — DONE (2026-06-13).** `scripts/check-weak-symbols-image.sh` +
+  `just check-weak-symbols-image`. Coverage map (artifact `find` base + name-glob
+  → override-default symbols that must be strong there); `nm` each final image
+  (`.a`/`.o`/`.rlib` skipped); strong→ok, weak→FAIL, absent→WARN; skips covered
+  classes whose artifacts aren't prebuilt. Validated: 10 checks across 3 real
+  final images green — FreeRTOS `freertos_rs_talker_entry`
+  (`nros_board_{register,poll}_netif` = `T`) + the serial ELFs
+  (`_z_*_serial_*` = `T`, the same symbols that are `W` in
+  `libzpico_platform_aliases.a` — proving the override lands at final link).
+  Negative path confirmed: pointing the classifier at the staticlib's `W`
+  `_z_open_serial_from_dev` trips FAIL. Remaining seed rows (cmake C/C++ images
+  for `nros_app_register_backends`, threadx/px4) activate when those fixtures
+  build.
+- **W1.1 (design, for reference)** — `scripts/check-weak-symbols-image.sh <artifact>`: `nm` the artifact,
   parse `<addr> <type> <name>`, and for each **override-default** symbol in the
   shared allowlist apply the rule above; **optional-hook** symbols may stay weak
   but are *reported*; any **owned-prefix** weak symbol (`nros_`, `nros_board_`,
