@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-# Phase 244 D6 — declarative Node pkg; class prefix must equal PROJECT_NAME (L.4).
+# Phase 212.L Component pkg — class prefix must equal PROJECT_NAME (L.4).
 project(threadx_c_talker VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
@@ -13,29 +13,22 @@ set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD    threadx-linux)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-# Phase 244 D6 — Component pkg shape (mirrors threadx-linux/cpp/talker):
-#   1. Register this pkg as a C Node (STATIC component lib).
-#   2. Synthesise the ThreadX system_main (this pkg IS its own bringup).
-#   3. Build the executable + link the synthesised system + platform.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
-# Message deps resolved from the sibling package.xml SSoT (issue #11).
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+# Phase 246 (RFC-0043) — TYPED carrier: the bootable ELF constructs the C Talker
+# component + `talker_configure(node, executor)` creates a raw publisher + a timer
+# publishing a CDR-encoded Int32 counter. Raw publish carries the DDS-mangled
+# keyexpr verbatim, so no generated message sources are needed. No manual
+# support/executor init, no spin loop, no per-example main.c.
 nano_ros_node_register(
     NAME     talker
     CLASS    threadx_c_talker::Talker
     LANGUAGE C
+    TYPED
     SOURCES  src/Talker.c
     DEPLOY   threadx-linux)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosThreadxSystemCodegen.cmake")
-nros_threadx_codegen_system(
-    SYSTEM         .
-    WORKSPACE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+nano_ros_deploy(TARGET threadx-linux RMW ${NROS_RMW} DOMAIN_ID 0)
 
-add_executable(threadx_c_talker src/main.c)
-target_link_libraries(threadx_c_talker PRIVATE
-    threadx_c_talker_talker_component
-    std_msgs__nano_ros_c)
-nros_threadx_link_app(threadx_c_talker)
-nano_ros_link_rmw(threadx_c_talker RMW "${NROS_RMW}")
+# RMW backend onto the carrier-built ELF (`${PROJECT_NAME}`).
+nano_ros_link_rmw(${PROJECT_NAME} RMW "${NROS_RMW}")

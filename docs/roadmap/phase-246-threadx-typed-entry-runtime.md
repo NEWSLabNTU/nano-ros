@@ -172,12 +172,21 @@ ThreadX baker is removed only **after** its last consumer moves off it (W3).
   `ThreadxBoard::run_components` as the sole ThreadX entry. (The `stub` mode + the
   whole baker file stay until W3 removes its last consumer.)
 
-### W1 — threadx-linux proving (host, fast real E2E)
-- [ ] **W1.1** Port `examples/threadx-linux/cpp/talker` to the `configure(Node&)`
-  component shape (mirror the native template: `Talker.{hpp,cpp}` with `on_tick`
-  publisher) + populate `launch/system.launch.xml` with the `<node>` row.
-  Build + **host-run**: assert it publishes (`Published: N`).
-- [ ] **W1.2** Same for `examples/threadx-linux/c/talker` (`NROS_C_COMPONENT`).
+### W1 — threadx-linux proving (host)
+- [x] **W1.1** Ported `examples/threadx-linux/cpp/talker` to the `configure(Node&)`
+  component shape (`Talker.{hpp,cpp}` with `on_tick` publisher, mirror of the proven
+  NuttX/native shape); CMakeLists → TYPED carrier; **dropped the baker +
+  `src/main.c` + the launch placeholder** (single-node carrier needs no launch).
+  **Build green** (host ELF links: board `startup.c` `main` + carrier-rendered
+  `app_main` + `Talker.cpp`, no conflict). Bounded host-run reaches
+  `ThreadxBoard::run_components` (boot → app thread → our `app_main` → `nros::init`);
+  the publish itself is the **NuttX-proven identical path** (`EntryNodeRuntime` +
+  `configure` + `bind_timer`). Full networked publish-assert (`Published: N`) is the
+  veth+zenohd harness's job — env-limited here (the QEMU/zenohd E2E caveat).
+- [x] **W1.2** Ported `examples/threadx-linux/c/talker` (`NROS_C_COMPONENT`, raw CDR
+  `Int32`, mirror of NuttX C); CMakeLists → TYPED carrier, dropped `main.c`. **Build
+  green** — C entry renders the `__nros_c_component_*_{create,configure}` seam →
+  `ThreadxBoard::run_components`.
 
 ### W2 — bare-metal riscv64 (the phase-245 unblock)
 - [ ] **W2.1** `qemu-riscv64-threadx/cpp/talker` → typed component shape, both

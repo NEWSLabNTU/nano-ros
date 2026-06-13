@@ -1,34 +1,27 @@
 /// @file Talker.cpp
-/// @brief C++ Talker component — Phase 212.L Component pkg.
-///
-/// Publishes `std_msgs/Int32` on `/chatter`. The generated runtime
-/// (emitted by `nros codegen-system` via the H.4 ThreadX adapter) owns
-/// init / executor / spin; this file declares the component class +
-/// exports the register trampoline via `NROS_NODE_REGISTER`.
+/// @brief ThreadX-Linux C++ talker — typed component (RFC-0043). Real `on_tick`
+///        body bound by identity; no string callback name, no interpreter.
 
-#include <cstdint>
+#include "Talker.hpp"
 
-#include <nros/nros.hpp>
-#include <nros/node_pkg.hpp>
-#include "std_msgs.hpp"
+#include <cstdio>
 
 namespace threadx_linux_cpp_talker {
 
-class Talker {
-  public:
-    static nros::Result register_node(nros::NodeContext& context) {
-        nros::DeclaredNode node;
-        nros::NodeOptions options;
-        options.name = "talker";
-        options.namespace_ = "/";
-        nros::Result rc = context.create_node(node, options);
-        if (!rc.ok()) return rc;
-
-        nros::DeclaredEntity pub;
-        return node.create_publisher(pub, "/chatter", "std_msgs/msg/Int32");
+void Talker::on_tick() {
+    std_msgs::msg::Int32 m;
+    m.data = count_++;
+    if (pub_.publish(m).ok()) {
+        std::printf("Published: %d\n", m.data);
     }
-};
+}
+
+::nros::Result Talker::configure(::nros::Node& node) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    ::nros::Result r = node.create_publisher(pub_, "/chatter");
+    if (!r.ok()) return r;
+    // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
+    return ::nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 500, this);
+}
 
 } // namespace threadx_linux_cpp_talker
-
-NROS_NODE_REGISTER(threadx_linux_cpp_talker::Talker, "threadx_linux_cpp_talker::Talker");

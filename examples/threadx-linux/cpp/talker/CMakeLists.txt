@@ -15,34 +15,29 @@ set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD threadx-linux)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-# Phase 212.L.9 + H.4 — Component pkg shape:
-#   1. Register this pkg as a C++ Component (STATIC lib).
-#   2. Synthesise the ThreadX system_main (self-bringup: this pkg IS
-#      its own bringup; `nros plan` reads system.toml in this dir).
-#   3. Build the executable + link the synthesised system + platform.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 
-# Message deps resolved from the sibling package.xml SSoT (issue #11) —
-# mirrors the native + FreeRTOS C++ shape. `nros_find_interfaces` reads
-# package.xml's `<depend>std_msgs</depend>`, generates the C++ bindings,
-# and registers `std_msgs__nano_ros_cpp` in this dir's
-# NROS_GENERATED_INTERFACE_LIBS so `nano_ros_node_register` auto-links it
-# onto the component (Phase 220.G.2).
+# Typed Publisher<Int32> needs the std_msgs C++ binding. The carrier auto-links
+# the generated interface lib (Phase 220.G.2).
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+
+# Phase 246 (RFC-0043) — TYPED carrier: the bootable ELF constructs the typed
+# Talker component + `configure(node)` creates a typed publisher + binds the real
+# `on_tick` timer (publishes an Int32 counter) on the executor. No baker, no
+# `nros_system_main` stub, no per-example `main.c`.
 nano_ros_node_register(
-    NAME    talker
-    CLASS   threadx_linux_cpp_talker::Talker
-    SOURCES src/Talker.cpp
-    DEPLOY  threadx-linux)
+    NAME      talker
+    CLASS     threadx_linux_cpp_talker::Talker
+    LANGUAGE  CPP
+    HEADER    Talker.hpp
+    TYPED
+    SOURCES   src/Talker.cpp
+    DEPLOY    threadx-linux)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosThreadxSystemCodegen.cmake")
-nros_threadx_codegen_system(
-    SYSTEM         .
-    WORKSPACE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(threadx_linux_cpp_talker_talker_component
+    PUBLIC std_msgs__nano_ros_cpp)
 
-add_executable(threadx_cpp_talker src/main.c)
-target_link_libraries(threadx_cpp_talker PRIVATE
-    threadx_linux_cpp_talker_talker_component
-    std_msgs__nano_ros_cpp)
-nros_threadx_link_app(threadx_cpp_talker)
-nano_ros_link_rmw(threadx_cpp_talker RMW "${NROS_RMW}")
+nano_ros_deploy(TARGET threadx-linux RMW ${NROS_RMW} DOMAIN_ID 0)
+
+# RMW backend onto the carrier-built ELF (`${PROJECT_NAME}`).
+nano_ros_link_rmw(${PROJECT_NAME} RMW "${NROS_RMW}")
