@@ -210,6 +210,18 @@ function(nano_ros_node_register)
             if(_nrc_lang STREQUAL "C")
                 set_target_properties(${_lib} PROPERTIES LINKER_LANGUAGE C)
             endif()
+            # Phase 215.J / 242 — on Zephyr the component lib is a plain
+            # add_library(STATIC), so unlike the `find_package(Zephyr)`-owned
+            # `app` target it does NOT inherit Zephyr's compile context (the
+            # C++ standard from CONFIG_STD_CPP17, the zephyr + autogen include
+            # dirs, the CONFIG_* defines). Without it, C++ sources that compiled
+            # in a monolithic Zephyr app (e.g. ASI's vendored autoware libs)
+            # fail (default `-std` + missing zephyr headers). `zephyr_interface`
+            # is the INTERFACE target carrying exactly that build context; link
+            # it so the component sources compile identically to `app`.
+            if(TARGET zephyr_interface)
+                target_link_libraries(${_lib} PRIVATE zephyr_interface)
+            endif()
             if(_nrc_lang STREQUAL "C" AND TARGET NanoRos::NanoRos)
                 target_link_libraries(${_lib} PUBLIC NanoRos::NanoRos)
             elseif(TARGET NanoRos::NanoRosCpp)
