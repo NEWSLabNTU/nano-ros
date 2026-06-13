@@ -291,11 +291,13 @@ fn declared_serial_transport_selects_board_feature() {
     );
 
     let cargo_toml = fs::read_to_string(output_dir.join("Cargo.toml")).expect("read Cargo.toml");
+    // Phase 248 C5b — the declared RMW (`zenoh`) now lowers to the board's
+    // `rmw-zenoh` feature, appended after the transport feature.
     assert!(
         cargo_toml.contains(
-            "packages/boards/nros-board-mps2-an385\", default-features = false, features = [\"serial\"] }"
+            "packages/boards/nros-board-mps2-an385\", default-features = false, features = [\"serial\", \"rmw-zenoh\"] }"
         ),
-        "serial transport selects the board `serial` feature with defaults off:\n{cargo_toml}"
+        "serial transport selects the board `serial` feature with defaults off + the declared rmw feature:\n{cargo_toml}"
     );
 
     // Phase 173.5 — the transport `locator` becomes the generated
@@ -746,14 +748,23 @@ fn one_transport_line_change_reflows_only_the_board_feature() {
     let eth = gen_with_transport("reflow_ethernet", "ethernet");
     let ser = gen_with_transport("reflow_serial", "serial");
 
-    assert!(eth.contains("default-features = false, features = [\"ethernet\"]"));
-    assert!(ser.contains("default-features = false, features = [\"serial\"]"));
+    // Phase 248 C5b — the declared RMW (`zenoh`) lowers to the board's
+    // `rmw-zenoh` feature, appended after the transport feature (identical in
+    // both variants, so the only delta remains the transport token).
+    assert!(eth.contains("default-features = false, features = [\"ethernet\", \"rmw-zenoh\"]"));
+    assert!(ser.contains("default-features = false, features = [\"serial\", \"rmw-zenoh\"]"));
 
     // Everything except the board feature is identical: the diff is the
-    // single `["ethernet"]`/`["serial"]` token. Normalise that token and
-    // assert the rest matches — proving no other manifest edit is needed.
-    let eth_norm = eth.replace("[\"ethernet\"]", "[\"<transport>\"]");
-    let ser_norm = ser.replace("[\"serial\"]", "[\"<transport>\"]");
+    // single `["ethernet"]`/`["serial"]` transport token. Normalise that token
+    // and assert the rest matches — proving no other manifest edit is needed.
+    let eth_norm = eth.replace(
+        "[\"ethernet\", \"rmw-zenoh\"]",
+        "[\"<transport>\", \"rmw-zenoh\"]",
+    );
+    let ser_norm = ser.replace(
+        "[\"serial\", \"rmw-zenoh\"]",
+        "[\"<transport>\", \"rmw-zenoh\"]",
+    );
     assert_eq!(
         eth_norm, ser_norm,
         "ethernet vs serial manifests differ only in the transport feature"

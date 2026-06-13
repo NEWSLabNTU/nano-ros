@@ -568,8 +568,13 @@ fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> R
     let is_embedded = platform != "native";
 
     if is_embedded {
+        // Phase 248 C5b (RFC-0031) — the declared RMW lowers to the BOARD
+        // crate's `rmw-X` feature, NOT an `nros` feature: the board self-links +
+        // registers the concrete backend (C5a). `nros` stays RMW-agnostic. (The
+        // platform axis still rides `nros/platform-*` pending the platform-axis
+        // follow-up.)
         deps.push_str(&format!(
-            "nros = {{ version = \"*\", default-features = false, features = [\"{rmw_feature}\", \"platform-{platform}\", \"ros-humble\"] }}\n"
+            "nros = {{ version = \"*\", default-features = false, features = [\"platform-{platform}\", \"ros-humble\"] }}\n"
         ));
         let board_crate = match platform {
             "freertos" => "nros-board-mps2-an385-freertos",
@@ -577,11 +582,17 @@ fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> R
             "nuttx" => "nros-board-nuttx-qemu-arm",
             _ => "# TODO: add board crate for this platform",
         };
-        deps.push_str(&format!("{board_crate} = {{ version = \"*\" }}\n"));
+        deps.push_str(&format!(
+            "{board_crate} = {{ version = \"*\", features = [\"{rmw_feature}\"] }}\n"
+        ));
         deps.push_str("panic-semihosting = \"0.6\"\n");
     } else {
+        // Phase 248 C5b (RFC-0031) — native: the RMW lowers to the board crate's
+        // `rmw-X` feature (`nros-board-native`), not an `nros` feature; `nros`
+        // stays agnostic.
         deps.push_str(&format!(
-            "# nros = {{ version = \"*\", features = [\"std\", \"{rmw_feature}\", \"platform-posix\", \"ros-humble\"] }}\n"
+            "# nros = {{ version = \"*\", default-features = false, features = [\"std\", \"platform-posix\", \"ros-humble\"] }}\n\
+             # nros-board-native = {{ version = \"*\", features = [\"{rmw_feature}\"] }}\n"
         ));
     }
 

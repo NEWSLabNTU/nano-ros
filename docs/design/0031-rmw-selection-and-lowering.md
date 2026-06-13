@@ -45,14 +45,31 @@ inherit it. In-process multi-RMW exists only via an explicit `[[bridge]]`
 
 | Scope | User declares RMW in | Lowered by toolchain to |
 |---|---|---|
-| Workspace | `system.toml` `[system] rmw` (+ `[deploy.<t>] rmw` override) | Rust node pkg → cargo feature; C/C++ node pkg → `-DNANO_ROS_RMW`; C++ entry → CMake cache |
+| Workspace | `system.toml` `[system] rmw` (+ `[deploy.<t>] rmw` override) | Rust entry/node pkg → the **board crate's** `rmw-<x>` feature; C/C++ node pkg → `-DNANO_ROS_RMW`; C++ entry → CMake cache |
 | Single-node, with `system.toml` | `[system] rmw` | same lowering |
 | Single-node, no `system.toml` | CLI/build flag, else default | same lowering |
 
-The Rust `nros` `rmw-<x>` feature and the CMake `NANO_ROS_RMW` var are the
-**lowering targets** the toolchain sets (or a user sets manually as an override).
-They are documented as *the mechanism the build uses*, never as *the way you pick
-a backend*.
+The Rust **board-crate `rmw-<x>` feature** and the CMake `NANO_ROS_RMW` var are
+the **lowering targets** the toolchain sets (or a user sets manually as an
+override). They are documented as *the mechanism the build uses*, never as *the
+way you pick a backend*.
+
+**Phase 248 C5b amendment — board crate is the Rust lowering target.** Earlier
+the Rust lowering target was the `nros` umbrella's `rmw-<x>` feature. Under the
+RMW/platform-agnosticism convergence (issue #60 / phase-248), the `nros` umbrella
+is **agnostic** — it carries no concrete `rmw-*` features or backend deps. The
+**board crate becomes the RMW selection point**: it brings the concrete backend
+into the link graph and self-registers it via `RMW_INIT_ENTRIES` (proven in C5a;
+`nros-board-native` already works this way). Codegen therefore emits the entry's
+**board dep** `features = ["rmw-<x>"]` (e.g. `nros-board-native`,
+`nros-board-mps2-an385-freertos`), with the `nros` dep carrying only the
+`rmw-cffi` vtable. The lowered value table (`resolve_rmw`) is unchanged
+(`rmw-<x>` cargo feature, `<x>` CMake value, `<TOKEN>` C define); only *which
+crate's* feature it lands on moved (`nros` → board). Crate-less host boards
+(native/posix, zephyr — no `nros-board-*` crate in some workspaces) are a
+transitional exception: codegen still links their backend via the direct
+`nros-rmw-*` dep + an explicit `register()` until a board crate carries the
+feature.
 
 ### Precedence (highest wins)
 
@@ -76,7 +93,17 @@ C++/CMake backend. Cyclone selection always routes through the CMake/Corrosion
 build path (RFC-0005 / Phase 175), even for an otherwise-Rust binary. The
 *declaration* is identical (`rmw = "cyclonedds"`); only the lowering differs.
 
-### Consumer wiring (examples) — unified via the umbrella + facade force-link
+### Consumer wiring (examples) — board-owned force-link (C5b)
+
+> **Phase 248 C5b update.** The umbrella-feature force-link below is the
+> *pre-convergence* model. Under phase-248 the **board crate** owns the
+> force-link + self-register (its `rmw-<x>` feature pulls the backend and keeps
+> its `RMW_INIT_ENTRIES` section live), so codegen lowers to the board's
+> `rmw-<x>` feature and the `nros` umbrella stays agnostic. The mechanics are
+> otherwise identical (a `#[used]` `__FORCE_LINK_*` static referencing the
+> backend's `register`), just relocated `nros` → board. The text below is
+> retained for the transitional period while crate-less host boards still link
+> through the umbrella/direct-dep path.
 
 **All three backends route through the `nros` umbrella feature**
 (`rmw-<x> = ["nros/rmw-<x>"]`), with **no `register()` call in user `main.rs`**.
@@ -134,3 +161,13 @@ regression.
 
 - 2026-06 — created; resolves the feature-vs-dependency contradiction by making
   RMW a declared-and-lowered, per-deploy, language-agnostic selection.
+- 2026-06 (phase-248 C5b) — **Rust lowering target moved `nros` → board crate.**
+  Under the RMW/platform-agnosticism convergence (issue #60) the `nros` umbrella
+  is agnostic; the board crate is the RMW selection point (self-links +
+  registers the backend, C5a). Codegen (`cargo-nano-ros` scaffold +
+  `nros-cli-core` orchestration `generate`) now emits the entry's **board dep**
+  `features = ["rmw-<x>"]` instead of `nros = { features = ["rmw-<x>"] }`. The
+  `resolve_rmw` lowered-value table is unchanged; only the feature's host crate
+  moved. Crate-less host boards (native/posix, zephyr) remain a transitional
+  exception (direct `nros-rmw-*` dep + explicit `register()`). Platform-axis
+  lowering (`nros/platform-*`) is a tracked follow-up.
