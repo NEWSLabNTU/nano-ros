@@ -80,8 +80,13 @@
  * via the board.toml-derived `-DNROS_PLATFORM_HAS_MALLOC` (phase-241 C.2), so a
  * genuinely heap-less board still fails to compile a heap container (the #38
  * compile-gate). */
-#if defined(NROS_PLATFORM_POSIX) || defined(NROS_PLATFORM_ZEPHYR) \
-    || defined(NROS_PLATFORM_FREERTOS)
+/* Every hosted/RTOS platform has a heap (POSIX, Zephyr, FreeRTOS, ThreadX-linux,
+ * NuttX, and the default/unspecified case). This mirrors the retired nros-c
+ * dispatch, where any non-bare-metal platform fell through to `posix.h`'s
+ * unconditional malloc. Only bare-metal (incl. ThreadX-RV64 / ESP, which map to
+ * `NROS_PLATFORM_BAREMETAL`) withholds the heap and opts in via the
+ * board.toml-derived `-DNROS_PLATFORM_HAS_MALLOC` (phase-241 C.2 / the #38 gate). */
+#if !defined(NROS_PLATFORM_BAREMETAL)
 #  ifndef NROS_PLATFORM_HAS_MALLOC
 #    define NROS_PLATFORM_HAS_MALLOC
 #  endif
