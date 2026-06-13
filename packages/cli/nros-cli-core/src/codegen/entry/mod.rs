@@ -150,6 +150,58 @@ impl Plan {
     }
 }
 
+/// Phase 211.H (issue #52) — one per-topic QoS override on a node, decomposed
+/// from a `qos_overrides.<topic>.<role>.<policy>` launch param. The typed C++
+/// entry emitter (`emit_cpp`) bakes these into a static `nros_cpp_qos_override_t[]`
+/// + a `node.set_qos_overrides(...)` call before `configure(node)`, so the
+/// node's entities honour the override at create time. Fields are the raw
+/// decomposed strings; the emitter maps them to the C-ABI `{role, policy, value}`
+/// scalar codes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QosOverrideSpec {
+    /// Resolved topic (e.g. `"/chatter"`).
+    pub topic: String,
+    /// `"publisher"` or `"subscription"`.
+    pub role: String,
+    /// `"reliability"` / `"durability"` / `"history"` / `"depth"`.
+    pub policy: String,
+    /// Raw launch value (e.g. `"best_effort"`, `"transient_local"`, `"5"`).
+    pub value: String,
+}
+
+/// Decompose a node's launch params into [`QosOverrideSpec`]s. Mirrors the
+/// planner's `schema_qos_overrides`: a param named
+/// `qos_overrides.<topic>.<role>.<policy>` splits via `rsplitn(3, '.')` (so a
+/// `/`-bearing topic survives), and the result is sorted `(topic, role, policy)`
+/// for byte-stable codegen. Non-matching params are ignored.
+fn qos_overrides_from_params(params: &[crate::launch_parser::ParamSpec]) -> Vec<QosOverrideSpec> {
+    const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
+    let mut out: Vec<QosOverrideSpec> = params
+        .iter()
+        .filter_map(|p| {
+            let rest = p.name.strip_prefix(QOS_OVERRIDE_PREFIX)?;
+            // rsplitn(3, '.') → [policy, role, topic]
+            let mut parts = rest.rsplitn(3, '.');
+            let policy = parts.next()?;
+            let role = parts.next()?;
+            let topic = parts.next()?;
+            if topic.is_empty() || role.is_empty() || policy.is_empty() {
+                return None;
+            }
+            Some(QosOverrideSpec {
+                topic: topic.to_string(),
+                role: role.to_string(),
+                policy: policy.to_string(),
+                value: p.value.clone(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        (&a.topic, &a.role, &a.policy).cmp(&(&b.topic, &b.role, &b.policy))
+    });
+    out
+}
+
 /// One Node-pkg invocation in launch order.
 ///
 /// `pkg` is the cargo-style pkg name (sanitised via [`sanitize_pkg`]
@@ -190,6 +242,11 @@ pub struct PlanNode {
     /// multi-host launch into per-host bakes: an entry for host `H` keeps nodes
     /// whose `host == Some(H)` plus all unhosted (`None`) nodes.
     pub host: Option<String>,
+    /// Phase 211.H (issue #52) — per-topic QoS overrides decomposed from this
+    /// node's `qos_overrides.<topic>.<role>.<policy>` launch params. Empty when
+    /// none. The typed C++ entry emitter bakes them into a
+    /// `node.set_qos_overrides(...)` call before `configure(node)`.
+    pub qos_overrides: Vec<QosOverrideSpec>,
 }
 
 impl PlanNode {
@@ -300,6 +357,7 @@ pub fn plan_from_launch(input: PlanInput<'_>) -> Result<Plan> {
             lang: None,
             shape: None,
             host: n.machine.clone(),
+            qos_overrides: qos_overrides_from_params(&n.params),
         });
     };
     for n in &desc.nodes {
@@ -406,6 +464,7 @@ mod tests {
             lang: None,
             shape: None,
             host: None,
+            qos_overrides: Vec::new(),
         };
         assert_eq!(n.register_symbol(), "__nros_component_talker_pkg_register");
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");
@@ -425,6 +484,7 @@ mod tests {
             lang: None,
             shape: None,
             host: host.map(str::to_string),
+            qos_overrides: Vec::new(),
         };
         let plan = Plan {
             board: "native".into(),
@@ -453,6 +513,36 @@ mod tests {
         // An unknown host still gets the shared nodes (never empty for a launch
         // with shared nodes).
         assert_eq!(plan.for_host("nope").nodes.len(), 1);
+    }
+
+    /// Phase 211.H (issue #52) — `qos_overrides.<topic>.<role>.<policy>` params
+    /// decompose into sorted `QosOverrideSpec`s; non-matching params are ignored.
+    #[test]
+    fn qos_overrides_decompose_from_params() {
+        use crate::launch_parser::ParamSpec;
+        let params = vec![
+            ParamSpec {
+                name: "qos_overrides./chatter.publisher.reliability".into(),
+                value: "best_effort".into(),
+            },
+            ParamSpec {
+                name: "use_sim_time".into(),
+                value: "true".into(),
+            },
+            ParamSpec {
+                name: "qos_overrides./chatter.subscription.durability".into(),
+                value: "transient_local".into(),
+            },
+        ];
+        let got = qos_overrides_from_params(&params);
+        assert_eq!(got.len(), 2);
+        // sorted (topic, role, policy): publisher before subscription.
+        assert_eq!(got[0].role, "publisher");
+        assert_eq!(got[0].policy, "reliability");
+        assert_eq!(got[0].topic, "/chatter");
+        assert_eq!(got[0].value, "best_effort");
+        assert_eq!(got[1].role, "subscription");
+        assert_eq!(got[1].policy, "durability");
     }
 
     #[test]

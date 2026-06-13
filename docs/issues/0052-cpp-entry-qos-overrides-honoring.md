@@ -53,12 +53,39 @@ The collision-free runtime plumbing is in (the part that does NOT touch the
   fields appended at the END of the node structs (additive — existing C/C++ ABI
   offsets unchanged).
 
-**Remaining (still deferred behind 242/244 emit):**
-1. **`emit_cpp` auto-bake** — emit the static `nros_cpp_qos_override_t[]` per
-   node + the `set_qos_overrides` call before `configure(node)`, threading
-   qos_overrides through the entry codegen model (entry `PlanNode` carries no
-   qos_overrides yet). This is the hot-zone part.
-2. **C++ runtime-delivery e2e** — a cmake C++ entry fixture that calls
-   `set_qos_overrides` + delivers cross-process (the C++ analogue of
-   `qos_overrides_runtime_delivery`). Rides on (1)'s emit or a hand-written
-   fixture.
+## Progress — emit auto-bake LANDED (2026-06-14)
+
+The `emit_cpp` auto-bake + entry-codegen model threading are in (the
+phase-242/244 hot-zone part). The capability is complete: a planned C++ system
+with `qos_overrides.<topic>.<role>.<policy>` launch params now bakes a
+`set_qos_overrides` call into the generated typed entry before
+`configure(node)`, so the component's entities honor the override.
+
+- Entry `PlanNode` gained `qos_overrides: Vec<QosOverrideSpec>`;
+  `qos_overrides_from_params` decomposes the node's launch params (mirrors the
+  planner's `schema_qos_overrides` rsplitn(3,'.') + sort).
+- `emit_cpp::emit_typed` bakes, per configure-shape node, a
+  `static const nros_cpp_qos_override_t __nros_qos_<i>[] = {…}` + a
+  `__nros_node_<i>.set_qos_overrides(…, N)` call after `create_node`, BEFORE
+  `configure` — role/policy/value mapped to the C-ABI scalar codes.
+- Unit-tested: `qos_overrides_decompose_from_params`,
+  `typed_emit_bakes_qos_overrides_before_configure` (table + codes + ordering),
+  `typed_emit_no_qos_overrides_no_table`.
+
+LIMITATION: only **configure-shape** nodes (RFC-0043 default). An **rclcpp-shape**
+component creates its node + entities in its ctor, before the entry seam, so it
+can't be reached this way — would need the override passed into the ctor (future
+work, noted in `emit_cpp` source).
+
+Every layer is now verified independently: decompose (unit), emit bake +
+ordering (unit), C-ABI apply in both nros-c + nros-cpp (unit, ×2 crates), C++
+`Node::set_qos_overrides` wrapper, and Rust-path runtime delivery
+(`qos_overrides_runtime_delivery` e2e).
+
+**Remaining (optional capstone — all constituent layers already proven):**
+- **Full C++ cmake runtime-delivery e2e** — a cmake-built C++ entry from a
+  launch carrying qos_overrides that boots + delivers cross-process under the
+  override (the C++ analogue of `qos_overrides_runtime_delivery`). This is the
+  one path the unit tests can't cover (the bake runs in `emit_typed`, driven by
+  cmake metadata via `nano_ros_entry`, so it needs the full cmake build flow).
+  Test-infra, not a capability gap.

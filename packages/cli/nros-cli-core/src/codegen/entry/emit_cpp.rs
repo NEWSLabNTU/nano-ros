@@ -28,7 +28,58 @@
 
 use std::fmt::Write;
 
-use super::{Plan, sanitize_pkg};
+use super::{Plan, QosOverrideSpec, sanitize_pkg};
+
+/// Phase 211.H (issue #52) — map a decomposed [`QosOverrideSpec`] to the C-ABI
+/// `(role, policy, value)` scalar codes the `nros_cpp_qos_override_t` struct
+/// uses. Returns `None` for an unrecognised role/policy (skipped — never baked
+/// as a silent wrong override).
+fn qos_override_codes(o: &QosOverrideSpec) -> Option<(u8, u8, u32)> {
+    let role = match o.role.as_str() {
+        "publisher" => 0u8,
+        "subscription" => 1u8,
+        _ => return None,
+    };
+    let v = o.value.trim();
+    let (policy, value) = match o.policy.as_str() {
+        "reliability" => (0u8, if v == "best_effort" { 0 } else { 1 }),
+        "durability" => (1u8, if v == "transient_local" { 1 } else { 0 }),
+        "history" => (2u8, if v == "keep_all" { 1 } else { 0 }),
+        "depth" => (3u8, v.parse::<u32>().ok()?),
+        _ => return None,
+    };
+    Some((role, policy, value))
+}
+
+/// Emit a `static const nros_cpp_qos_override_t __nros_qos_<i>[] = {…};` + the
+/// `__nros_node_<i>.set_qos_overrides(…)` call for node `i`. No-op when the node
+/// has no (recognised) overrides.
+fn emit_qos_overrides(out: &mut String, i: usize, overrides: &[QosOverrideSpec]) {
+    let coded: Vec<(&QosOverrideSpec, (u8, u8, u32))> = overrides
+        .iter()
+        .filter_map(|o| qos_override_codes(o).map(|c| (o, c)))
+        .collect();
+    if coded.is_empty() {
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "        static const ::nros_cpp_qos_override_t __nros_qos_{i}[] = {{"
+    );
+    for (o, (role, policy, value)) in &coded {
+        let topic = o.topic.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = writeln!(
+            out,
+            "            {{ \"{topic}\", {role}, {policy}, {value} }},"
+        );
+    }
+    out.push_str("        };\n");
+    let _ = writeln!(
+        out,
+        "        __nros_node_{i}.set_qos_overrides(__nros_qos_{i}, {});",
+        coded.len()
+    );
+}
 
 /// Emit the generated C++ TU as a `String`.
 ///
@@ -327,6 +378,13 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 "        ::nros::Result r = ::nros::create_node(__nros_node_{i}, \"{name_lit}\");"
             );
             out.push_str("        if (!r.ok()) return static_cast<int32_t>(r.raw());\n");
+            // Phase 211.H (issue #52) — install the plan's per-topic QoS
+            // overrides on the node BEFORE `configure`, so the entities the
+            // component creates fold them in (mirrors Rust's
+            // `NodeHandle::set_qos_overrides`). Configure-shape nodes only — an
+            // rclcpp-shape component creates its node + entities in its ctor,
+            // before this seam, so it can't be reached here.
+            emit_qos_overrides(&mut out, i, &n.qos_overrides);
             if is_c_node(n) {
                 let pkg = sanitize_pkg(&n.pkg);
                 let _ = writeln!(
@@ -394,6 +452,7 @@ mod tests {
                     lang: None,
                     shape: None,
                     host: None,
+                    qos_overrides: Vec::new(),
                 })
                 .collect(),
             depfile_paths: Vec::new(),
@@ -420,6 +479,7 @@ mod tests {
                     lang: Some("cpp".into()),
                     shape: Some("configure".into()),
                     host: None,
+                    qos_overrides: Vec::new(),
                 })
                 .collect(),
             depfile_paths: Vec::new(),
@@ -476,6 +536,61 @@ mod tests {
         // configure shape: no construct-with-handle artifacts.
         assert!(!src.contains("global_handle()"));
         assert!(!src.contains("__nros_comp_buf_"));
+    }
+
+    /// Phase 211.H (issue #52) — a configure-shape node carrying qos_overrides
+    /// emits the static `nros_cpp_qos_override_t[]` table + a `set_qos_overrides`
+    /// call BEFORE `configure`, with the role/policy/value mapped to C-ABI codes.
+    #[test]
+    fn typed_emit_bakes_qos_overrides_before_configure() {
+        let mut plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+        plan.nodes[0].qos_overrides = vec![
+            QosOverrideSpec {
+                topic: "/chatter".into(),
+                role: "publisher".into(),
+                policy: "reliability".into(),
+                value: "best_effort".into(),
+            },
+            QosOverrideSpec {
+                topic: "/chatter".into(),
+                role: "subscription".into(),
+                policy: "durability".into(),
+                value: "transient_local".into(),
+            },
+        ];
+        let src = emit_typed(&plan).expect("typed emit ok");
+
+        // Static table with the two overrides, C-ABI codes:
+        //   publisher(0)/reliability(0)/best_effort(0); subscription(1)/durability(1)/transient_local(1)
+        assert!(src.contains("static const ::nros_cpp_qos_override_t __nros_qos_0[] = {"));
+        assert!(src.contains("{ \"/chatter\", 0, 0, 0 }"));
+        assert!(src.contains("{ \"/chatter\", 1, 1, 1 }"));
+        // Installed on the node, and BEFORE configure.
+        assert!(src.contains("__nros_node_0.set_qos_overrides(__nros_qos_0, 2)"));
+        let set_at = src.find("set_qos_overrides").unwrap();
+        let cfg_at = src.find("__nros_comp_0.configure(__nros_node_0)").unwrap();
+        assert!(set_at < cfg_at, "set_qos_overrides must precede configure");
+    }
+
+    /// A node with no qos_overrides emits no table / set call.
+    #[test]
+    fn typed_emit_no_qos_overrides_no_table() {
+        let plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+        let src = emit_typed(&plan).expect("typed emit ok");
+        assert!(!src.contains("nros_cpp_qos_override_t"));
+        assert!(!src.contains("set_qos_overrides"));
     }
 
     #[test]

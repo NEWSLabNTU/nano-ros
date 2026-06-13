@@ -120,6 +120,7 @@ mod tests {
                     lang: None,
                     shape: None,
                     host: None,
+                    qos_overrides: Vec::new(),
                 })
                 .collect(),
             depfile_paths: Vec::new(),
