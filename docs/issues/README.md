@@ -53,6 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
 | 58 | Zephyr C++ examples fail — `<initializer_list>` missing under minimal libcpp (regression from 242.3) | bug | c-api | [0058-zephyr-cpp-examples-initializer-list-libcpp.md](0058-zephyr-cpp-examples-initializer-list-libcpp.md) |
 | 59 | Zephyr rust service/action examples — generated `example_interfaces` crate not resolvable | bug | codegen | [0059-zephyr-rust-service-action-example-interfaces-codegen.md](0059-zephyr-rust-service-action-example-interfaces-codegen.md) |
+| 60 | platform/RMW-agnosticism audit — core + user libs leak platform-*/rmw-* features + concrete-backend deps | tech-debt | architecture | [0060-platform-rmw-agnosticism-audit.md](0060-platform-rmw-agnosticism-audit.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#35** —
 the 13 zephyr native_sim e2e failures were four distinct root causes, not load
