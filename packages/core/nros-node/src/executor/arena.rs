@@ -1405,10 +1405,10 @@ where
     let mut uuid = [0u8; 16];
     uuid.copy_from_slice(&data[4..20]);
     let goal_id = nros_core::GoalId { uuid };
-    if let Ok(mut reader) = CdrReader::new_with_header(&data[offset..]) {
-        if let Ok(fb) = A::Feedback::deserialize(&mut reader) {
-            on_feedback(&goal_id, &fb);
-        }
+    if let Ok(mut reader) = CdrReader::new_with_header(&data[offset..])
+        && let Ok(fb) = A::Feedback::deserialize(&mut reader)
+    {
+        on_feedback(&goal_id, &fb);
     }
 }
 
@@ -1514,10 +1514,9 @@ where
             let goal_id = goal_id_from_counter(core.goal_counter);
             if let Ok(mut reader) =
                 CdrReader::new_with_header(&core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len])
+                && let Ok(res) = A::Result::deserialize(&mut reader)
             {
-                if let Ok(res) = A::Result::deserialize(&mut reader) {
-                    on_result(&goal_id, status, &res);
-                }
+                on_result(&goal_id, status, &res);
             }
         }
         did_work = true;
