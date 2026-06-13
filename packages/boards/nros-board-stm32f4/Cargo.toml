@@ -14,6 +14,13 @@ nros-board-common = { path = "../nros-board-common", default-features = false }
 # Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
 nros-platform-stm32f4 = { path = "../../platforms/nros-platform-stm32f4" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-stm32f4", "global-allocator", "critical-section"] }
+# Phase 244.C5 enabler — `nros_platform::BoardEntry` (src/entry.rs) needs the
+# executor + node-runtime stack. Optional: only the `board-entry` feature
+# (new-style `nros::main!()` Entry pkgs) pulls the `nros` umbrella; legacy
+# `run(Config, closure)` examples keep their lean dep set. RMW-agnostic — the
+# linked backend self-registers via the macro's `__register_linked_rmw()`.
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal"], optional = true }
+nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
 # Phase 129.D — `zpico-platform-shim` retired. zenoh-pico `z_*`
 # symbols come from `zpico-sys`'s default-on `platform-aliases`
 # C TU when `rmw-zenoh` is active.
@@ -52,6 +59,11 @@ defmt = "0.3"
 default = ["stm32f429", "ethernet", "rmw-zenoh"]
 # Phase 129.D — `rmw-zenoh` is a pure marker now.
 rmw-zenoh = []
+# Phase 244.C5 enabler — opt into the `nros_platform::BoardEntry` impl so
+# `nros::main!(deploy = "stm32f4")` can drive this board. Pulls the `nros`
+# umbrella (executor + node-runtime). Off by default: legacy
+# `run(Config, closure)` examples don't need it.
+board-entry = ["dep:nros", "dep:nros-log"]
 # Ethernet transport via STM32 MAC + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:stm32-eth", "dep:smoltcp"]
 # Serial transport via USART

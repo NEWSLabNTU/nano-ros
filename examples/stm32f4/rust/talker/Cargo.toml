@@ -3,56 +3,57 @@ name = "stm32f4-bsp-talker"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Simplified nros talker example for STM32F4 using BSP"
+description = "Simplified nros talker example for STM32F4 (nros::main!() BoardEntry shape)"
 
 [[bin]]
 name = "stm32f4-bsp-talker"
-path = "src/main.rs"
+test = false
+bench = false
 
-# Phase 212.L.2 — Application pkg shape. Single-board bare-metal
-# binary; deploy target matches the platform path it lives under.
-[package.metadata.nros.application]
-deploy = ["stm32f4"]
+# Entry-pkg lib companion: `nros::main!()` Form-1 self-bringup emits
+# `::stm32f4_bsp_talker::register(runtime)`, which this lib re-exports from the
+# sibling `talker_pkg` Node pkg (see src/lib.rs).
+[lib]
+crate-type = ["rlib"]
+
+[package.metadata.nros.entry]
+deploy = "stm32f4"
+
+# Net config the legacy `Config::nucleo_f429zi()` literal hardcoded.
+# `nros::main!()` bakes these into a `DeployOverlay` and `BoardEntry::
+# run_with_deploy` overlays them onto the board boot Config. `netmask` replaces
+# the old `prefix = 24`.
+[package.metadata.nros.deploy.stm32f4]
+locator = "tcp/192.168.1.1:7447"
+ip = "192.168.1.10"
+gateway = "192.168.1.1"
+netmask = "255.255.255.0"
 
 [dependencies]
-# Platform crate handles all hardware setup
-nros-board-stm32f4 = { path = "../../../../packages/boards/nros-board-stm32f4" }
-# Phase 88.16.F — user diagnostics route through `nros-log`.
-# `nros-platform-stm32f4`'s `PlatformLog` impl forwards every
-# record to `defmt::{trace,debug,info,warn,error}!`, so existing
-# `defmt_rtt` / `probe-rs attach` workflows keep working.
-nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
-
-# nros Executor API
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+# Phase 244.C5 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
+# impl so `nros::main!(deploy = "stm32f4")` can drive this board. Keeps the
+# board crate's existing ethernet + rmw-zenoh defaults.
+nros-board-stm32f4 = { path = "../../../../packages/boards/nros-board-stm32f4", features = ["stm32f429", "ethernet", "rmw-zenoh", "board-entry"], default-features = false }
+# Linked RMW backend (force-linked; self-registers via the macro's
+# `__register_linked_rmw()` on `target_os = "none"`).
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+# Node pkg holding the agnostic talker logic. Package name is `talker_pkg`
+# (dir `talker_node_pkg` to avoid colliding with the Phase-216
+# `stm32f4_talker_pkg` consumed by talker-rtic / talker-embassy).
+talker_pkg = { path = "../talker_node_pkg" }
 
-# Generated message types (from package.xml via nros generate-rust)
-std_msgs = { version = "*", default-features = false }
+# Bare-metal Cortex-M entry: `nros::main!()` emits `#[cortex_m_rt::entry]` for
+# the `stm32f4` deploy; the reset trampoline halts via `cortex_m::asm`.
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
 
-# Panic handler (default: defmt-printing). The `minimal` feature swaps in
-# panic-halt (no message formatting) — see [features].
-panic-probe = { version = "0.3", features = ["print-defmt"], optional = true }
-panic-halt = { version = "0.2", optional = true }
-
-# Logging. defmt + its global logger (defmt-rtt) are unconditional: the board
-# crate (`nros_board_common::board_init`) logs via defmt and needs the
-# `#[defmt::global_logger]`, so they stay linked even in the minimal build.
+# Logging + panic. defmt + its global logger (defmt-rtt) are unconditional: the
+# board crate logs via defmt and needs the `#[defmt::global_logger]`. The panic
+# handler prints through defmt.
 defmt = "0.3"
 defmt-rtt = "0.4"
-
-[features]
-default = ["stm32f429", "diagnostics"]
-stm32f429 = ["nros-board-stm32f4/stm32f429"]
-stm32f407 = ["nros-board-stm32f4/stm32f407"]
-# Default diagnostics: defmt-printing panic + nros-log app diagnostics on.
-diagnostics = ["dep:panic-probe"]
-# Phase 204.4 — minimal-panic / no-fmt size build: panic-halt (no panic message
-# formatting) + nros-log compiled off (`max-level-off`), so the panic-message +
-# nros-log `core::fmt`/`Debug` machinery is dead-stripped. (defmt stays — the
-# board crate needs it.) Build with
-# `--no-default-features --features stm32f429,minimal`.
-minimal = ["dep:panic-halt", "nros-log/max-level-off"]
+panic-probe = { version = "0.3", features = ["print-defmt"] }
 
 [profile.release]
 codegen-units = 1
@@ -65,9 +66,7 @@ overflow-checks = false
 
 # Phase 204.3 — size-critical build: `cargo build --profile size`. Same
 # aggressive cross-crate inlining (lto=fat, codegen-units=1) as release but
-# opt-level "z" (size) instead of 3 (speed) + stripped (no on-target debuginfo).
-# panic is already abort on the thumbv7em target. Quantified z-vs-3 in
-# docs/roadmap/phase-204-embedded-binary-size.md (204.3).
+# opt-level "s" (size) instead of 3 (speed) + stripped (no on-target debuginfo).
 [profile.size]
 inherits = "release"
 opt-level = "s"
@@ -90,10 +89,13 @@ opt-level = 1
 
 [patch.crates-io]
 # === BEGIN nros-managed [patch.crates-io] ===
-# Auto-generated by `nros ws sync`. Do not edit between
-# the BEGIN/END markers — re-run sync instead.
-builtin_interfaces = { path = "generated/builtin_interfaces" }
-std_msgs = { path = "generated/std_msgs" }
+# Auto-generated by `nros ws sync`. Do not edit between the BEGIN/END markers —
+# re-run sync instead. The firmware build root resolves the generated message
+# crates pulled in transitively via `talker_pkg`; `[patch]` only applies from
+# the workspace root being built, so the entries live here as well as in the
+# Node pkg.
+builtin_interfaces = { path = "../talker_node_pkg/generated/builtin_interfaces" }
+std_msgs = { path = "../talker_node_pkg/generated/std_msgs" }
 nros-core = { path = "../../../../packages/core/nros-core" }
 nros-serdes = { path = "../../../../packages/core/nros-serdes" }
 # === END nros-managed [patch.crates-io] ===

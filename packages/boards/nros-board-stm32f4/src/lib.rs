@@ -29,6 +29,12 @@ mod error;
 pub mod network;
 mod node;
 
+// Phase 244.C5 enabler — `nros_platform::BoardEntry` for `nros::main!()`.
+// Behind a feature so legacy `run(Config, closure)` consumers don't pull the
+// `nros` umbrella (executor + node-runtime). Mirrors mps2-an385's D1 shim.
+#[cfg(feature = "board-entry")]
+mod entry;
+
 // Re-export entry macro
 pub use cortex_m_rt::entry;
 
@@ -40,7 +46,7 @@ pub use nros_platform_stm32f4;
 
 // Re-export main types
 pub use config::Config;
-pub use node::{init_hardware, run};
+pub use node::{Stm32F4, init_hardware, run};
 pub use nros_platform::BoardConfig;
 pub use nros_platform_stm32f4::timing::{CycleCounter, MonotonicClock};
 

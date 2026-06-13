@@ -1760,6 +1760,12 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
         // drives boot → executor → spin inline on the reset thread. Distinct
         // from `rtic-mps2-an385`, which routes through the RTIC framework emit.
         "qemu-mps2-an385" | "mps2-an385" => "::nros_board_mps2_an385::Mps2An385",
+        // Phase 244.C5 — pure bare-metal (no-RTOS) STM32F4 direct-exec board.
+        // Same shape as `mps2-an385`: the board ZST impls `nros_platform::BoardEntry`
+        // (behind its `board-entry` feature) + a `#[cortex_m_rt::entry]` reset emit
+        // (`is_baremetal_cortexm_deploy`). Distinct from `rtic-stm32f4` /
+        // `embassy-stm32f4`, which route through their framework emit shapes.
+        "stm32f4" => "::nros_board_stm32f4::Stm32F4",
         // Phase 216.C.3 — Embassy + STM32F4 framework-owned-spin board.
         // Same dispatch story as `rtic-stm32f4`: the board ZST impls
         // `EmbassyBoardEntry` (not `BoardEntry`); the macro routes
@@ -1773,7 +1779,7 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
 
 fn known_boards_csv() -> &'static str {
     "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, esp32-qemu, zephyr, \
-     rtic-stm32f4, rtic-mps2-an385, qemu-mps2-an385, embassy-stm32f4"
+     rtic-stm32f4, rtic-mps2-an385, qemu-mps2-an385, stm32f4, embassy-stm32f4"
 }
 
 /// Phase 244.D1 — does this deploy key name a pure bare-metal Cortex-M
@@ -1783,7 +1789,7 @@ fn known_boards_csv() -> &'static str {
 /// macro keys the entry-emit shape off this. RTIC bare-metal boards are NOT
 /// here: they route through the RTIC framework, which owns its own entry.
 fn is_baremetal_cortexm_deploy(deploy: Option<&str>) -> bool {
-    matches!(deploy, Some("qemu-mps2-an385" | "mps2-an385"))
+    matches!(deploy, Some("qemu-mps2-an385" | "mps2-an385" | "stm32f4"))
 }
 
 struct RticBoardSpec {
