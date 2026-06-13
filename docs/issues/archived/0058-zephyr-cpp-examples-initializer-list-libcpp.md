@@ -1,7 +1,7 @@
 ---
 id: 58
 title: Zephyr C++ examples fail to build — `<initializer_list>` unavailable under minimal libcpp (regression from 242.3)
-status: open
+status: resolved
 type: bug
 area: c-api
 related: [phase-242, phase-244]
@@ -72,18 +72,19 @@ same content/pattern as the existing
 No host-libc bleed: the C platform TUs keep compiling against minimal
 libcpp/picolibc.
 
-**Verified locally** (Zephyr 3.7 native_sim, host toolchain — provisioned via
+**Verified locally on BOTH lines** (native_sim, host toolchain — provisioned via
 `just zephyr setup --skip-sdk`, native_sim uses host gcc so the multi-GB SDK is
-unnecessary; `ZEPHYR_TOOLCHAIN_VARIANT=host`): `cpp/talker` and `cpp/listener`
-both build to `zephyr.elf`; `platform.c` compiles clean. The `cxx-compat` dir is
-on the include path for both Zephyr lines, so 4.4 is CI-gated by the dual-line
-lane.
+unnecessary; `ZEPHYR_TOOLCHAIN_VARIANT=host`): Zephyr 3.7 **and** 4.4 each build
+`cpp/talker` + `cpp/listener` to `zephyr.elf` (EXIT=0); `platform.c` compiles
+clean (minimal libcpp preserved, no host-glibc bleed). Marked resolved on that
+basis — the build path used (`just zephyr build-one … zenoh`) is exactly the
+dual-line lane's; the lane will re-confirm in-CI on its next run.
 
 ### Rejected (attempt 1, reverted)
 `CONFIG_REQUIRES_FULL_LIBCPP=y` resolved the header but bled host glibc into
 `platform.c` (`timer_t`/`CLOCK_MONOTONIC` clash — #42 class), breaking every cpp
 example. Reverted in the follow-up commit; see the section above.
 
-Found 2026-06-13; root-caused + fixed 2026-06-14. Cross-ref #42. Status flips to
-`resolved` once the dual-line lane confirms 4.4 green (the lane is also gated on
-#59's image republish for the rust service/action cells).
+Found 2026-06-13; root-caused + fixed + verified (both lines) 2026-06-14.
+Cross-ref #42. Note the dual-line lane's rust service/action cells stay red until
+#59's image republish — that's a separate cause, not this issue.
