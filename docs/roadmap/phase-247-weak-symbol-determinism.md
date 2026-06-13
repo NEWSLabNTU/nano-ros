@@ -125,6 +125,30 @@ strong override) makes the script exit non-zero.
 **Acceptance MET.** `just check` now fails on an unaudited / drifted weak site;
 a new weak symbol added without allowlisting is caught pre-merge with no build.
 
+## Project `just check` status (audit 2026-06-13)
+
+The phase-247 gates pass standalone (`just check-weak-symbols`,
+`just check-weak-symbols-image`, the `weak_symbol_audit` test). But `just check`
+as a whole currently **fails** before reaching them — `check-workspace`
+(`cargo clippy --workspace -D warnings`) aborts on pre-existing / concurrent
+lib-level clippy warnings that are **out of phase-247 scope** (owned by their
+phases / the parallel phase-244 effort). They must be cleared (by their owners)
+for the wired `check-weak-symbols` gate to run end-to-end under `just check`.
+Found:
+
+| file:line | lint | likely owner |
+| --- | --- | --- |
+| `nros-core/src/action.rs:97` | `result_unit_err` (`fn register_protocol_types() -> Result<(),()>`) | phase-244 E3 (action protocol-type auto-register) |
+| `nros-node/src/executor/arena.rs:1408,1515` | `collapsible_if` ×2 | nros-node |
+| `nros-macros/src/lib.rs:64` | `items_after_test_module` | nros-macros |
+| `nros/src/node.rs:2447` | `drop_non_drop` (`drop()` on a non-`Drop` value) | nros |
+| `nros-rmw-zenoh/src/shim/service.rs:982` | `useless_conversion` (`i64`) | nros-rmw-zenoh |
+
+(Test-target lints — `collapsible_if` / `doc_lazy_continuation` across
+`nros-tests/tests/*` — surface under `--all-targets` but are not gated by
+`check-workspace`'s lib/bin clippy scope.) Phase-247 introduced none of these;
+the one phase-247 nit (`&PathBuf`→`&Path` in `weak_symbol_audit.rs`) is fixed.
+
 ## W3 — Reduction (fix-up work)
 
 Replace weak defaults that exist only to dodge a link-order problem (not a

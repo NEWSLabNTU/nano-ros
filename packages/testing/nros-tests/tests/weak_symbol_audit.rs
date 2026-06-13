@@ -25,7 +25,7 @@
 //! defaults to define-once / explicit-registration (RFC-0042 D3). The
 //! allowlist below is the audit those phases build on.
 
-use std::{fs, path::PathBuf};
+use std::{fs, path::{Path, PathBuf}};
 
 use nros_tests::project_root;
 
@@ -39,7 +39,7 @@ const ALLOWLIST_FILE: &str = "scripts/weak-symbols-allowlist.txt";
 /// Parse `scripts/weak-symbols-allowlist.txt` → `path → expected-count`. Lines
 /// are `<count> <repo-relative-path>  # classification`; `#` comments + blanks
 /// are skipped.
-fn load_allowlist(root: &PathBuf) -> std::collections::HashMap<String, usize> {
+fn load_allowlist(root: &Path) -> std::collections::HashMap<String, usize> {
     let raw = fs::read_to_string(root.join(ALLOWLIST_FILE))
         .unwrap_or_else(|e| panic!("read {ALLOWLIST_FILE}: {e}"));
     let mut map = std::collections::HashMap::new();
@@ -62,7 +62,7 @@ fn load_allowlist(root: &PathBuf) -> std::collections::HashMap<String, usize> {
 
 /// Recursively collect owned C/C++/asm sources under `packages/`, skipping
 /// vendored / build / generated trees.
-fn owned_sources(root: &PathBuf) -> Vec<PathBuf> {
+fn owned_sources(root: &Path) -> Vec<PathBuf> {
     fn skip_dir(name: &str) -> bool {
         matches!(
             name,
