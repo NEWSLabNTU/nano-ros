@@ -1,0 +1,70 @@
+/// @file ServiceServer.c
+/// @brief QEMU RISC-V ThreadX C AddTwoInts service server — typed component (RFC-0043).
+///
+/// `server_configure` binds `handle_add` (by identity) as a raw callback-style
+/// service on `/add_two_ints`; the handler decodes the CDR request (int64 a, b)
+/// and writes the CDR reply (int64 sum). No interpreter, no callback name.
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+
+#include <nros/component.h>
+
+typedef struct {
+    int served;
+} add_server_t;
+
+static int64_t read_i64_le(const uint8_t* p) {
+    uint64_t v = 0;
+    int i;
+    for (i = 0; i < 8; ++i) {
+        v |= (uint64_t)p[i] << (8 * i);
+    }
+    return (int64_t)v;
+}
+
+static void write_i64_le(uint8_t* p, int64_t x) {
+    uint64_t v = (uint64_t)x;
+    int i;
+    for (i = 0; i < 8; ++i) {
+        p[i] = (uint8_t)(v >> (8 * i));
+    }
+}
+
+static bool handle_add(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
+                       size_t* resp_len, void* ctx) {
+    add_server_t* self = (add_server_t*)ctx;
+    /* Request CDR: 4-byte encap header, then int64 a (off 4), int64 b (off 12). */
+    if (req_len < 20 || resp_cap < 12) {
+        return false;
+    }
+    int64_t a = read_i64_le(req + 4);
+    int64_t b = read_i64_le(req + 12);
+    int64_t sum = a + b;
+    resp[0] = req[0];
+    resp[1] = req[1];
+    resp[2] = req[2];
+    resp[3] = req[3];
+    write_i64_le(resp + 4, sum);
+    *resp_len = 12;
+    self->served++;
+    printf("Serving: %lld + %lld = %lld\n", (long long)a, (long long)b, (long long)sum);
+    return true;
+}
+
+static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
+                                   add_server_t* self) {
+    (void)executor; /* node-scoped service; executor unused */
+    size_t handle;
+    int32_t rc =
+        nros_cpp_service_server_register(node, "/add_two_ints", "example_interfaces/srv/AddTwoInts",
+                                         "", nros_c_qos_default(), handle_add, self,
+                                         /*sched_context=*/0, &handle);
+    if (rc == 0) {
+        printf("Waiting for requests\n");
+    }
+    return rc;
+}
+
+NROS_C_COMPONENT(add_server_t, server_configure)

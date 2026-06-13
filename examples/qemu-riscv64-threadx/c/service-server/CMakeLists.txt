@@ -1,22 +1,39 @@
 cmake_minimum_required(VERSION 3.22)
+# Phase 212.L Component pkg — class prefix must equal PROJECT_NAME (L.4).
 project(riscv64_threadx_c_service_server VERSION 0.1.0 LANGUAGES C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Phase 144.7 — consume nano-ros via add_subdirectory(<repo-root>).
 set(NANO_ROS_PLATFORM threadx)
 set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
+    "Active RMW (zenoh|cyclonedds) — selects the backend linked into this example.")
 set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD    riscv64-qemu)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-# Message deps resolved from the sibling package.xml SSoT (issue #11).
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
+
+# Generated C interface (idlc type support is selected by NROS_RMW for cyclone).
 nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
-add_executable(riscv64_threadx_c_service_server src/main.c)
-target_link_libraries(riscv64_threadx_c_service_server PRIVATE
-    example_interfaces__nano_ros_c
-    NanoRos::NanoRos)
-nros_platform_link_app(riscv64_threadx_c_service_server)
-nano_ros_link_rmw(riscv64_threadx_c_service_server RMW "${NROS_RMW}")
+# Phase 246 (RFC-0043) — TYPED carrier: the bare-metal riscv64 firmware
+# constructs the C ServiceServer component + `server_configure(node, executor)`
+# registers a raw callback-style service on `/add_two_ints`. The board startup.c
+# dispatches to the carrier-emitted `app_main`. No manual support/executor init,
+# no spin loop, no per-example `main.c`.
+nano_ros_node_register(
+    NAME     service_server
+    CLASS    riscv64_threadx_c_service_server::ServiceServer
+    LANGUAGE C
+    TYPED
+    SOURCES  src/ServiceServer.c
+    DEPLOY   riscv64-qemu)
+
+nano_ros_deploy(TARGET riscv64-qemu RMW ${NROS_RMW} DOMAIN_ID 0)
+
+# RMW backend (zenoh or cyclonedds) onto the carrier-built firmware ELF.
+nano_ros_link_rmw(${PROJECT_NAME} RMW "${NROS_RMW}")

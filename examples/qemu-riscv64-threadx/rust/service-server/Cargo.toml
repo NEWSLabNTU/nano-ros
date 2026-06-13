@@ -11,25 +11,44 @@ name = "qemu-riscv64-threadx-service-server"
 test = false
 bench = false
 
+# Phase 175.B — the CycloneDDS ThreadX path is CMake-driven because
+# the backend is C++ plus cmake-time idlc descriptors. The `rlib`
+# keeps the existing pure-cargo binary path intact; the `staticlib`
+# exposes `app_main` for the C startup used by CMake.
+[lib]
+name = "qemu_riscv64_threadx_service_server"
+crate-type = ["staticlib", "rlib"]
+path = "src/lib.rs"
+
 [features]
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "dep:nros-platform-critical-section", "nros/alloc"]
 
+# Phase 245 — app-node shape. `nros::main!()` (src/main.rs) reads
+# `[package.metadata.nros.entry] deploy = "threadx-qemu-riscv64"` (the macro maps
+# it to `nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64`) and runs this
+# crate's `register` (from `src/lib.rs`'s `nros::node!()`).
+[package.metadata.nros.entry]
+deploy = "threadx-qemu-riscv64"
 
-# Phase 212.L.2 — Application pkg shape. Single-board
-# embedded binary; deploy target matches the platform path.
-[package.metadata.nros.application]
-deploy = ["qemu-riscv64-threadx"]
+# Deploy overlay (Phase 245 B0) — locator / domain thread into the board `Config`
+# via `BoardEntry::run_with_deploy`. CycloneDDS ignores the locator (no router).
+[package.metadata.nros.deploy.threadx-qemu-riscv64]
+board = "threadx-qemu-riscv64"
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:7463"
 
 [dependencies]
 nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }
-
+nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
 example_interfaces = { version = "*", default-features = false }
 
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"], optional = true }
-
-
+nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
+nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section", optional = true }
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

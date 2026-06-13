@@ -1,89 +1,14 @@
-//! ThreadX QEMU RISC-V Action Client
+//! ThreadX QEMU RISC-V Action Client — app-node entry (Phase 245).
 //!
-//! Sends a `example_interfaces/Fibonacci` goal to `/fibonacci`.
+//! Collapses to `nros::main!()`: the macro reads
+//! `[package.metadata.nros.entry] deploy = "threadx-qemu-riscv64"`, resolves the
+//! board (`nros-board-threadx-qemu-riscv64`), and emits the `target_os = "none"`
+//! boot scaffold that runs this crate's `register` (from `lib.rs`'s
+//! `nros::node!(FibonacciClient)`). The board owns executor open + RMW + spin;
+//! the deploy overlay threads the locator/domain. The CycloneDDS/CMake path uses
+//! `lib.rs::app_main` instead.
 
 #![no_std]
 #![no_main]
 
-use example_interfaces::action::{Fibonacci, FibonacciGoal};
-use nros::prelude::*;
-use nros_board_threadx_qemu_riscv64::{Config, println, run};
-#[cfg(not(feature = "rmw-zenoh"))]
-compile_error!("this example requires `rmw-zenoh`");
-
-fn register_rmw() -> Result<(), &'static str> {
-    nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")
-}
-
-
-/// Locator override (`NROS_LOCATOR`) baked at build time; `no_std` so the
-/// runtime `env::var` path is unavailable. Default targets the QEMU
-/// host-loopback zenohd at fixture port 7473.
-const LOCATOR: &str = match option_env!("NROS_LOCATOR") {
-    Some(v) => v,
-    None => "tcp/10.0.2.2:7473",
-};
-
-// TODO(213.E): plumb a build-time override for `domain_id` (Kconfig-style)
-// alongside the locator. Low priority — fixtures rarely vary the domain.
-const DOMAIN_ID: u32 = 0;
-
-#[unsafe(no_mangle)]
-extern "C" fn main() -> ! {
-    run(Config { zenoh_locator: LOCATOR, domain_id: DOMAIN_ID, ..Default::default() }, |config| {
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("fibonacci_action_client");
-        // Phase 104.A — bare-metal callers explicitly register the RMW
-        // backend before `Executor::open`. POSIX hosts auto-register via
-        // `.init_array`; this target doesn't walk that section.
-        register_rmw().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config)?;
-        let mut node = executor.create_node("fibonacci_action_client")?;
-
-        let mut client = node.create_action_client::<Fibonacci>("/fibonacci")?;
-        println!("Action client ready for /fibonacci");
-
-        // Wait for server to be available
-        for _ in 0..500 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-        }
-
-        let goal = FibonacciGoal { order: 5 };
-        println!("Sending goal: order={}", goal.order);
-
-        let (goal_id, mut promise) = client.send_goal(&goal)?;
-
-        // Poll for goal acceptance
-        let mut accepted = false;
-        for _ in 0..5000 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-            if let Some(result) = promise.try_recv()? {
-                accepted = result;
-                break;
-            }
-        }
-
-        if !accepted {
-            println!("Goal was rejected or timed out");
-            return Ok(());
-        }
-        println!("Goal accepted: {:?}", goal_id);
-
-        // Poll for result
-        println!("Requesting result...");
-        let mut result_promise = client.get_result(&goal_id)?;
-        for _ in 0..10000u32 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-            if let Some((status, result)) = result_promise.try_recv()? {
-                println!("Result status: {:?}", status);
-                println!("Fibonacci sequence: {:?}", result.sequence);
-                println!("Action completed successfully.");
-                return Ok(());
-            }
-        }
-
-        println!("Timeout waiting for result.");
-        Ok::<(), NodeError>(())
-    })
-}
+nros::main!();

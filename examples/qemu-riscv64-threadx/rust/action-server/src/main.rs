@@ -1,125 +1,14 @@
-//! ThreadX QEMU RISC-V Action Server (callback model)
+//! ThreadX QEMU RISC-V Action Server — app-node entry (Phase 245).
 //!
-//! Phase 120.3 isolation test: handles `example_interfaces/Fibonacci`
-//! goals on `/fibonacci` via `Executor::register_action_server` (arena +
-//! callback model) instead of `Node::create_action_server` (manual-
-//! poll). Mirrors the structure of the C/C++ examples to determine
-//! whether the manual-poll path is what triggers the rv64 post-
-//! handshake crash.
+//! Collapses to `nros::main!()`: the macro reads
+//! `[package.metadata.nros.entry] deploy = "threadx-qemu-riscv64"`, resolves the
+//! board (`nros-board-threadx-qemu-riscv64`), and emits the `target_os = "none"`
+//! boot scaffold that runs this crate's `register` (from `lib.rs`'s
+//! `nros::node!(FibonacciServer)`). The board owns executor open + RMW + spin;
+//! the deploy overlay threads the locator/domain. The CycloneDDS/CMake path uses
+//! `lib.rs::app_main` instead.
 
 #![no_std]
 #![no_main]
 
-use example_interfaces::action::{
-    Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult,
-};
-use nros::prelude::*;
-use nros::{CancelResponse, GoalResponse, GoalStatus};
-use nros_board_threadx_qemu_riscv64::{Config, println, run};
-#[cfg(not(feature = "rmw-zenoh"))]
-compile_error!("this example requires `rmw-zenoh`");
-
-fn register_rmw() -> Result<(), &'static str> {
-    nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")
-}
-
-
-/// Locator override (`NROS_LOCATOR`) baked at build time; `no_std` so the
-/// runtime `env::var` path is unavailable. Default targets the QEMU
-/// host-loopback zenohd at fixture port 7473.
-const LOCATOR: &str = match option_env!("NROS_LOCATOR") {
-    Some(v) => v,
-    None => "tcp/10.0.2.2:7473",
-};
-
-// TODO(213.E): plumb a build-time override for `domain_id` (Kconfig-style)
-// alongside the locator. Low priority — fixtures rarely vary the domain.
-const DOMAIN_ID: u32 = 0;
-
-#[unsafe(no_mangle)]
-extern "C" fn main() -> ! {
-    run(Config { zenoh_locator: LOCATOR, domain_id: DOMAIN_ID, ..Default::default() }, |config| {
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("fibonacci_action_server");
-        // Phase 104.A — bare-metal callers explicitly register the RMW
-        // backend before `Executor::open`. POSIX hosts auto-register via
-        // `.init_array`; this target doesn't walk that section.
-        register_rmw().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config)?;
-        // Note: callback-model register_action_server is on Executor, not Node.
-        // The example doesn't need a Node handle — keep `_node` alive for
-        // the executor's reference into session state.
-        let _node = executor.create_node("fibonacci_action_server")?;
-
-        let handle = executor.register_action_server::<Fibonacci, _, _>(
-            "/fibonacci",
-            |_goal_id, goal: &FibonacciGoal| {
-                println!("Goal request: order={}", goal.order);
-                if goal.order >= 0 {
-                    GoalResponse::AcceptAndExecute
-                } else {
-                    GoalResponse::Reject
-                }
-            },
-            |_goal_id, _status| CancelResponse::Ok,
-        )?;
-        println!("Action server ready on /fibonacci");
-        println!("Waiting for goals...");
-
-        let mut goals_handled = 0u32;
-
-        for _ in 0..100000u32 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-
-            // Drive any accepted goals one step per outer iteration.
-            // Collect the goal_id + current sequence length first so we
-            // don't hold a borrow on the executor while mutating.
-            let mut pending: heapless::Vec<(nros::GoalId, i32, usize), 4> =
-                heapless::Vec::new();
-            handle.for_each_active_goal(&executor, |g| {
-                if g.status == GoalStatus::Accepted || g.status == GoalStatus::Executing {
-                    let _ = pending.push((g.goal_id, g.goal.order, 0));
-                }
-            });
-            // (the active-goal iteration doesn't expose feedback sequence
-            // state directly — for this isolation test we just publish
-            // the full sequence once and complete the goal immediately.)
-            for (goal_id, order, _) in pending {
-                handle.set_goal_status(&mut executor, &goal_id, GoalStatus::Executing);
-
-                let mut sequence: heapless::Vec<i32, 64> = heapless::Vec::new();
-                for i in 0..=order {
-                    let next_val = if i == 0 {
-                        0
-                    } else if i == 1 {
-                        1
-                    } else {
-                        let len = sequence.len();
-                        sequence[len - 1] + sequence[len - 2]
-                    };
-                    let _ = sequence.push(next_val);
-                    let feedback = FibonacciFeedback { sequence: sequence.clone() };
-                    let _ = handle.publish_feedback(&mut executor, &goal_id, &feedback);
-                }
-
-                let result = FibonacciResult { sequence };
-                println!("Goal completed: id={:?}", goal_id);
-                handle.complete_goal(&mut executor, &goal_id, GoalStatus::Succeeded, result);
-
-                goals_handled += 1;
-                if goals_handled >= 1 {
-                    // Spin a bit to serve get_result queries before shutting down.
-                    for _ in 0..2000 {
-                        executor.spin_once(core::time::Duration::from_millis(10));
-                    }
-                    println!("Server shutting down.");
-                    return Ok(());
-                }
-            }
-        }
-
-        println!("Server timeout.");
-        Ok::<(), NodeError>(())
-    })
-}
+nros::main!();
