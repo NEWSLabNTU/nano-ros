@@ -63,17 +63,34 @@ src), P3 (`register_rmw()`), P4 (`compile_error!` RMW guard + cfg forks), P6
    board change. The deploy overlay (`run_with_deploy`, phase-244 E5) is NOT yet on
    this board — add it here for the P6 locator/domain de-hardcode (mirror the
    threadx-linux E5 override).
-2. **Two build paths must both keep working.** The pure-cargo zenoh path (board
-   `run`) and the CMake/Cyclone path. threadx-linux proves both coexist on the
-   clean shape; replicate its CMake structure (per-role `CMakeLists.txt` that bakes
-   `nros_system_main` + Corrosion-imports the Node staticlib) rather than the
-   current per-example `cyclonedds_app.c` + `app_main`.
-3. **bare-metal vs host deltas** (the only things that differ from threadx-linux):
+2. **Two build paths must both keep working — and the cyclone path has NO clean
+   template (verified 2026-06-13).** The pure-cargo zenoh path (board `run` /
+   `nros::main!()`) mirrors threadx-linux directly. BUT threadx-linux rust examples
+   have **no per-example `CMakeLists.txt`** — its cyclone path runs through the
+   separate **host-linked** `multi_pkg_workspace_threadx` baker fixture
+   (`threadx_corrosion_bringup`), not per-example firmware. riscv64-threadx is
+   **bare-metal**, so its cyclone path is a per-example firmware build
+   (`cyclonedds_app.c` + `corrosion_import_crate` + `add_executable` +
+   `nano_ros_link_rmw`) with its own riscv64 startup — there is no host template to
+   copy. **So the genuinely novel design work of this phase is the bare-metal
+   riscv64 cyclone baked-entry:** bake `nros_system_main` for `target_os = "none"`
+   riscv64 (mirroring the threadx baker's per-component register emission +
+   Corrosion-import of the Node staticlib), fold the riscv64 reset/startup that
+   `cyclonedds_app.c` currently provides into the board / baked entry, and keep the
+   `CMakeLists.txt` linking it. This is the load-bearing sub-problem; the Node+Entry
+   split + zenoh path is the easy half.
+3. **Not host-checkable — verify via the firmware build.** The board crate's
+   `build.rs` compiles ThreadX riscv64 assembly (`tx_thread_*.S`) via
+   `riscv64-unknown-elf-gcc`, so `cargo check` on the host target fails in cc-rs
+   (unrelated to the Rust source). B0 + every cluster must be verified through the
+   actual riscv64 firmware build (cmake + Corrosion + the riscv64imac target), not
+   host `cargo check`.
+4. **bare-metal vs host deltas** (the only things that differ from threadx-linux):
    linker script / reset entry (the board/`nros::main!()` `target_os = "none"` arm
    already emits `extern "C" fn main`), no host `getenv` (locator comes from the
    deploy overlay, not `option_env!`/`getenv`), and the riscv64 startup that
    `cyclonedds_app.c` currently provides → fold into the board / baked entry.
-4. **Reference, don't reinvent.** For each `<role>` and lang, the corresponding
+5. **Reference, don't reinvent.** For each `<role>` and lang, the corresponding
    `examples/threadx-linux/<lang>/<role>{,_entry}` is the template; the port is
    mostly "make the riscv64 example look like its threadx-linux sibling, swap the
    deploy target + linker/startup."
@@ -86,7 +103,7 @@ Each `(lang, role)` is one example dir → file-disjoint → safe to parallelize
 board-overlay enabler precedes the cargo-path de-hardcode.
 
 ### Wave 0 — board enabler
-- [ ] **B0 — `run_with_deploy` on `nros-board-threadx-qemu-riscv64`.** Add the E5
+- [x] **B0 — `run_with_deploy` on `nros-board-threadx-qemu-riscv64`.** Add the E5
   override (copy the threadx-linux `config_with_overlay`) so the Entry pkgs' deploy
   metadata threads locator/domain into `Config`. Blocks the P6 leg of every cluster.
 

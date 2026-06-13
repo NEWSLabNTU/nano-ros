@@ -191,6 +191,44 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
         let cfg = Config::default();
         nros_board_threadx::run_entry::<ThreadxQemuRiscv64, Config, F, E>(cfg, setup)
     }
+
+    /// Phase 245 B0 / issue #48 — apply the `nros::main!()` deploy overlay
+    /// (`[package.metadata.nros.deploy.threadx-qemu-riscv64]`: locator / ip /
+    /// gateway / netmask / domain_id) onto `Config::default()` before boot, so the
+    /// Entry pkg's deploy metadata stops being inert. Fields the deploy block omits
+    /// keep the board default.
+    fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        nros_board_threadx::run_entry::<ThreadxQemuRiscv64, Config, F, E>(
+            config_with_overlay(deploy),
+            setup,
+        )
+    }
+}
+
+/// Phase 245 B0 — overlay the `nros::main!()` deploy block onto `Config::default()`.
+/// Fields the deploy block omits keep the board default.
+fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
+    let mut config = Config::default();
+    if let Some(loc) = deploy.locator {
+        config.zenoh_locator = loc;
+    }
+    if let Some(ip) = deploy.ip {
+        config.ip = ip;
+    }
+    if let Some(gw) = deploy.gateway {
+        config.gateway = gw;
+    }
+    if let Some(nm) = deploy.netmask {
+        config.netmask = nm;
+    }
+    if let Some(d) = deploy.domain_id {
+        config.domain_id = d;
+    }
+    config
 }
 
 /// Print to QEMU UART console.
