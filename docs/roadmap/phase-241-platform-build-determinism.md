@@ -35,25 +35,33 @@ Each wave is independently revertible.
 ### 241.A — Merge-time compile gate (RFC-0042 D4) — FIRST
 Two tiers, by what a cell needs to compile:
 
-- [x] **Host tier (landed).** `packages/testing/nros-tests/tests/platform_header_matrix.rs`
+- [x] **Host tier (landed; all platforms — extended 2026-06-13).**
+      `packages/testing/nros-tests/tests/platform_header_matrix.rs`
       + `.github/workflows/platform-header-gate.yml`: drives host `g++`/`cc` over
-      the real `<nros/platform.h>` + the nros-cpp heap containers for the
-      host-compilable cells (POSIX, bare-metal), asserting positive AND negative
-      outcomes — bare-metal **without** `NROS_PLATFORM_HAS_MALLOC` MUST fail to
-      compile the heap containers, **with** it MUST succeed (the #38 mechanism,
-      both directions). Cheap (no SDK, no cross target, ~seconds); mirrors the
-      `core-libs` lane; PR-gated on the platform headers + `nros-board.toml` + the
-      test. This is the safety net that guards the D1/D2/D3 migration churn.
-- [ ] **Cross tier (later).** The two-libc-set class (#27/#36) needs the cross
-      toolchain + RTOS sysroot + `#include_next`, so it can't run host-cheap.
-      Options: (a) provision just the cross toolchain + a minimal vendored RTOS
-      header stub to reproduce the clash without a full export, or (b) compile the
-      RTOS cpp examples on the PR path (heavier; needs the export). Until then the
-      cross class stays covered by the e2e `build-fixtures` lane (Phase 240).
+      the real `<nros/platform.h>` + the nros-cpp heap containers, asserting
+      positive AND negative outcomes — bare-metal **without**
+      `NROS_PLATFORM_HAS_MALLOC` MUST fail to compile the heap containers, **with**
+      it MUST succeed (the #38 mechanism, both directions). **Originally scoped to
+      POSIX + bare-metal** (the per-platform nros-c sub-headers pulled the RTOS
+      sysroot). After the D1 collapse (241.B / 243.B.5) `<nros/platform.h>` is the
+      ONE self-contained `nros-platform-api` header — no RTOS include — so the
+      heap-container compile is host-cheap for **every** platform. Extended to add
+      one heap cell per RTOS target (FreeRTOS/Zephyr/ThreadX/NuttX/ESP), closing
+      the #42 root-cause-#5 gap ("FreeRTOS/Zephyr/ESP+C++ had no isolated compile
+      test"). Cheap (no SDK, no cross target, ~seconds); mirrors the `core-libs`
+      lane; PR-gated on the platform headers + `nros-board.toml` + the test.
+- [ ] **Cross tier (later) — narrowed.** Only the two-libc-set class (#27/#36)
+      remains cross-only: it bites the platform **`.c` TUs** (`#include_next`
+      reaching the wrong libc), not the self-contained header above, so it still
+      needs the cross toolchain + RTOS sysroot. Options: (a) provision the cross
+      toolchain + a minimal vendored RTOS header stub to reproduce the clash, or
+      (b) compile the RTOS cpp examples on the PR path (heavier; needs the export).
+      Until then the `.c`-TU class stays covered by the e2e `build-fixtures` lane
+      (Phase 240).
 - **Acceptance (host tier):** ✅ a PR that reintroduces the #38-class capability
       breakage goes red on the gate, not green-then-red-in-e2e. Verified locally:
-      the 5-cell matrix passes, the bare-metal-no-malloc negative cell fails to
-      compile as required.
+      the 10-cell matrix passes (POSIX + bare-metal + one heap cell per RTOS
+      target), the bare-metal-no-malloc negative cell fails to compile as required.
 
 ### 241.B — Collapse to one canonical interface (RFC-0042 D1)
 

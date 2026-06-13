@@ -74,13 +74,22 @@ path) broken. There is no shared "RTOS-libc-wins" precedence helper.
 
 ### 5. No merge-time compile gate for platform × language
 
+> **Largely addressed (2026-06-13).** The 241.A host gate
+> (`platform_header_matrix.rs`) now drives one heap-using cpp TU **per platform
+> target** (POSIX, bare-metal, FreeRTOS, Zephyr, ThreadX, NuttX, ESP) on every PR.
+> Enabled by the D1 collapse: `<nros/platform.h>` is now the one self-contained
+> `nros-platform-api` header (no RTOS sysroot include), so the heap-container
+> compile is host-cheap for all platforms — it no longer needs the cross toolchain.
+> The remaining off-PR class is only the two-libc-set `.c`-TU clash (#27/#36),
+> which still needs the cross sysroot (241.A "cross tier").
+
 The cpp heap containers (`HeapString`/`HeapSequence`, pulled in by every generated
-message type) compile **only as a side-effect of the full on-demand e2e build**.
-Bare-metal+C++, Zephyr+C++, FreeRTOS+C++, ESP+C++ have **no isolated compile
-test**. So a broken combo is invisible on PR CI and surfaces days later in a
-`run_e2e` dispatch (which is exactly how #36/#38 were found, during phase-240).
-That latency is why it reads as "recurs whenever someone edits": the edit lands
-green, the breakage is off the merge path.
+message type) used to compile **only as a side-effect of the full on-demand e2e
+build**. Bare-metal+C++, Zephyr+C++, FreeRTOS+C++, ESP+C++ had **no isolated
+compile test**. So a broken combo was invisible on PR CI and surfaced days later
+in a `run_e2e` dispatch (which is exactly how #36/#38 were found, during
+phase-240). That latency is why it read as "recurs whenever someone edits": the
+edit lands green, the breakage is off the merge path.
 
 ## Fix directions (structural, in leverage order)
 

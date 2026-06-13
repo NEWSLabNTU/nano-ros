@@ -8,20 +8,31 @@
 //! for the platform×capability combinations that are host-compilable, asserting
 //! both positive AND negative outcomes.
 //!
-//! Scope (host tier). Only POSIX and bare-metal headers parse without an RTOS
-//! sysroot; FreeRTOS/Zephyr/NuttX/ThreadX headers `#include <FreeRTOS.h>` /
-//! `<zephyr/...>` / `tx_api.h` and need the cross toolchain + export, so they
-//! stay on the e2e lane. This tier still catches:
+//! Scope (host tier). Since the RFC-0042 D1 collapse (phase-241.B / 243.B.5),
+//! `<nros/platform.h>` resolves to the ONE self-contained canonical header in
+//! `nros-platform-api` — it pulls **no** RTOS sysroot header (`<FreeRTOS.h>` /
+//! `<zephyr/...>` / `tx_api.h` live only in the retired per-platform nros-c
+//! sub-headers). So the heap-container compile — pure C++ over the canonical
+//! malloc/free + capability macros — is host-cheap for **every** platform target,
+//! not just POSIX/bare-metal. This gate drives one heap-using cpp TU per platform
+//! (RFC-0042 D4's "one per platform target") and catches:
 //!   * #38-class capability gating — bare-metal WITHOUT `NROS_PLATFORM_HAS_MALLOC`
 //!     MUST fail to compile the heap containers (no `nros_platform_malloc`), WITH
 //!     it MUST succeed. Both directions are asserted, so a regression in either
 //!     the gate or the fix is caught.
+//!   * the per-platform heap-capability contract — every non-bare-metal target
+//!     (POSIX + the RTOSes FreeRTOS/Zephyr/ThreadX/NuttX/ESP) is heap-capable by
+//!     default, so the containers MUST compile. A future capability special-case
+//!     that wrongly withholds malloc for one platform (the #42 root-cause #5 gap:
+//!     "FreeRTOS/Zephyr/ESP+C++ had no isolated compile test") now goes red here
+//!     on the PR, not days later in an e2e dispatch.
 //!   * the RFC-0042 D1/D2/D3 migration churn — collapsing to one canonical
 //!     header, single-sourcing the malloc/free shim, and capability-driven
 //!     lowering all edit these headers; this gate fails loudly if any of them
 //!     drops or duplicates the canonical surface.
-//! The two-libc-set class (#27/#36) is cross-only (needs the RTOS sysroot +
-//! `#include_next`); it is NOT covered here — see the e2e build-fixtures lane.
+//! The two-libc-set class (#27/#36) is still cross-only (it needs the RTOS
+//! sysroot + `#include_next`, which only bites the platform .c TUs, not the
+//! self-contained header here) — see the e2e build-fixtures lane.
 
 use std::{path::PathBuf, process::Command};
 
@@ -141,6 +152,49 @@ const CELLS: &[Cell] = &[
         lang: Lang::Cpp,
         defines: &["NROS_PLATFORM_BAREMETAL"],
         src: CORE_PROBE,
+        expect_pass: true,
+    },
+    // #42 root-cause #5 — the RTOS platforms (FreeRTOS/Zephyr/ThreadX/NuttX/ESP)
+    // had no isolated platform×C++ compile test; they were exercised only by the
+    // on-demand e2e lane. Post-D1-collapse the canonical header is self-contained,
+    // so each is host-compilable: every non-bare-metal target is heap-capable by
+    // default (`#if !defined(NROS_PLATFORM_BAREMETAL)` → `NROS_PLATFORM_HAS_MALLOC`
+    // in the canonical header), so the heap containers MUST compile. These lock
+    // that contract per platform: a future capability special-case that drops the
+    // canonical malloc/free for one of them goes red here on the PR.
+    Cell {
+        name: "freertos/cpp/heap",
+        lang: Lang::Cpp,
+        defines: &["NROS_PLATFORM_FREERTOS"],
+        src: HEAP_PROBE,
+        expect_pass: true,
+    },
+    Cell {
+        name: "zephyr/cpp/heap",
+        lang: Lang::Cpp,
+        defines: &["NROS_PLATFORM_ZEPHYR"],
+        src: HEAP_PROBE,
+        expect_pass: true,
+    },
+    Cell {
+        name: "threadx/cpp/heap",
+        lang: Lang::Cpp,
+        defines: &["NROS_PLATFORM_THREADX"],
+        src: HEAP_PROBE,
+        expect_pass: true,
+    },
+    Cell {
+        name: "nuttx/cpp/heap",
+        lang: Lang::Cpp,
+        defines: &["NROS_PLATFORM_NUTTX"],
+        src: HEAP_PROBE,
+        expect_pass: true,
+    },
+    Cell {
+        name: "esp/cpp/heap",
+        lang: Lang::Cpp,
+        defines: &["NROS_PLATFORM_ESP"],
+        src: HEAP_PROBE,
         expect_pass: true,
     },
 ];
