@@ -21,17 +21,43 @@ publish = false
 # docs/roadmap/phase-123-build-and-api-revision.md about
 # publishing only nros-core.
 
+# Phase 244.C4 — single-pkg clean shape. `src/lib.rs` is the agnostic Node
+# (`nros::node!(Talker)` emits `register`); `src/main.rs` is the Entry
+# (`nros::main!()` Form-1 self-bringup links the sibling lib's `register`).
+# The native board's `BoardEntry` owns executor / RMW / spin.
+[lib]
+name = "pkg_rust_publisher"
+path = "src/lib.rs"
+
 [[bin]]
 name = "pkg_rust_publisher"
 path = "src/main.rs"
 
+# Entry pkg deploy key — `nros::main!()` maps "native" →
+# `nros_board_native::NativeBoard` + the host emit shape.
+[package.metadata.nros.entry]
+deploy = "native"
+
+[package.metadata.nros.node]
+class = "pkg_rust_publisher::Talker"
+name = "talker"
+default_namespace = "/"
+
+# Deploy-target overlay (network endpoint + domain). The native board's
+# force-linked zenoh backend connects to this locator.
+[package.metadata.nros.deploy.native]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/127.0.0.1:7447"
+
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "ros-humble"] }
+# Board crate — hosted Linux/macOS native board. Supplies the
+# `NativeBoard` ZST the macro resolves; force-links the zenoh RMW.
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+# nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Node API.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-posix", "ros-humble"] }
 std_msgs = { path = "generated/std_msgs" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
-log = "0.4"
-env_logger = "0.11"
 
 [patch.crates-io]
 # === BEGIN nros-managed [patch.crates-io] ===
