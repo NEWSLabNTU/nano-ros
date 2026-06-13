@@ -1,0 +1,48 @@
+[package]
+name = "qemu-baremetal-main-e2e"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 244.D1 — bare-metal nros::main!() BoardEntry E2E fixture for QEMU MPS2-AN385"
+
+[[bin]]
+name = "qemu-baremetal-main-e2e"
+test = false
+bench = false
+
+# Entry-pkg lib companion: `nros::main!()` Form-1 self-bringup emits
+# `::qemu_baremetal_main_e2e::register(runtime)`, which this lib re-exports from
+# the sibling Node pkg (see src/lib.rs).
+[lib]
+crate-type = ["rlib"]
+
+[package.metadata.nros.entry]
+deploy = "qemu-mps2-an385"
+
+[dependencies]
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+# Phase 244.D1 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
+# impl so `nros::main!(deploy = "qemu-mps2-an385")` can drive this board.
+nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385", features = ["board-entry"] }
+# Linked RMW backend (force-linked; self-registers via the macro's
+# `__register_linked_rmw()` on `target_os = "none"`).
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+qemu_baremetal_e2e_pkg = { path = "../qemu_baremetal_e2e_pkg" }
+
+# Bare-metal Cortex-M entry: `nros::main!()` emits `#[cortex_m_rt::entry]` for
+# the `qemu-mps2-an385` deploy; the reset trampoline halts via `cortex_m::asm`.
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = "s"
+overflow-checks = false
+
+[workspace]

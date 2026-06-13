@@ -1576,6 +1576,14 @@ pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Phase 244.D1 — resolve the prebuilt bare-metal `nros::main!()` BoardEntry
+/// E2E fixture (`qemu-baremetal-main-e2e`) from the shared qemu-arm-baremetal
+/// fixture target dir. No caching needed — it only stats a path. Absent →
+/// `BuildFailed` (the test skips, prompting `just qemu-baremetal build-fixtures`).
+pub fn qemu_baremetal_main_e2e_binary() -> TestResult<PathBuf> {
+    require_qemu_baremetal_fixture("qemu-baremetal-main-e2e")
+}
+
 // Phase 169.4 — bare-metal DDS fixture builders deleted with the
 // Rust DDS examples (Phase 169.2).
 /// rstest fixture that provides the qemu-bsp-talker binary path
