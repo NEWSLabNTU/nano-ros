@@ -350,46 +350,69 @@ separate `libnros_platform_<plat>.a`. The rmw-cffi split is the missing analogue
 (the `NanoRosLink.cmake` header even predicts it: "once the RMW-cffi canonical-ABI
 binary split lands, the bodies swap to linking three separate archives").
 
-**Option 1 — binary split (mirror the platform split).** Make `nros-rmw-cffi` a
-single dedicated archive; nros-c / nros-cpp / the backends reference its C ABI as
-undefined instead of bundling the rlib. *Pro:* the "right" architecture, one
-instance by construction, matches the platform precedent. *Con:* large blast
-radius — nros-c/nros-cpp use the cffi **Rust** API (`resolve_backend`, `CffiRmw`,
-`BackendResolution`), which can't be referenced undefined across a staticlib
-boundary; every such call site must move to the C ABI. A multi-crate refactor.
+**What actually collides (narrowed).** Under `--whole-archive` only the **strong**
+symbols collide; the Rust-mangled cffi/closure symbols are `linkonce`/COMDAT and
+dedup themselves. The strong colliders are exactly nros-rmw-cffi's
+`#[unsafe(no_mangle)]` set: `REGISTRY` (the stateful registry static, `lib.rs:976`)
++ the six C exports (`nros_rmw_cffi_register{,_named}`, `_lookup`,
+`_registered_names`, `_walk_init_section`, `_set_custom_transport`). So the fix
+only needs **those ~7 symbols defined once**, not a whole-crate refactor.
 
-**Option 2 — weaken the cffi exports (recommended).** Make the six C exports +
-`REGISTRY` **weak** in the staticlibs. Multiple weak defs do not error; the linker
-keeps exactly one, and every consumer resolves to that one — single `REGISTRY`
-preserved. *Pro:* tiny, localized, no API/refactor. *Con:* `#[linkage = "weak"]`
-is unstable and the toolchain is **stable** (`rust-toolchain.toml`), so it cannot
-be a source attribute — implement as a post-build **`llvm-objcopy
---weaken-symbol`** step on each staticlib (`llvm-tools` is in the toolchain;
-`llvm-objcopy` is target-agnostic, so it covers the cross archives too).
+**Rejected — weak symbols.** Weakening the 7 (e.g. `llvm-objcopy --weaken-symbol`)
+links clean with one `REGISTRY` in a host probe, but weak linkage is **ordering-
+/GC-/ODR-fragile** (which weak def wins depends on archive order + `--gc-sections`;
+a future change can silently flip the chosen `REGISTRY`). Not used.
 
-**Host validation (Option 2, proven 2026-06-13).** On the real native cpp talker
-archives: `llvm-objcopy --weaken-symbol={the 6 exports, REGISTRY}` applied to
-`libnros_cpp.a` + the RMW staticlib (leaving `libnros_c.a` authoritative), then
-`cc main c.a cpp.a -Wl,--whole-archive rmw.a -Wl,--no-whole-archive` (the real
-whole-archive shape, **no `--allow-multiple-definition`**) → links clean (exit 0,
-0 multiple-def) with **exactly one `REGISTRY`**. So weakening dedups the strong
-cffi exports while keeping the whole-archive register-ctor inclusion and the
-single registry.
+**Rejected — localize / `--exclude-libs`.** Making the cffi symbols file-local in
+all-but-one archive **splits `REGISTRY`**: each archive's localized code binds to
+its own copy → the backend registers into a different registry than
+`Executor::open` reads → #48 `NoBackend`. Unsafe.
 
-**Recommendation.** Ship **Option 2** as slice 4: a build step that weakens the
-cffi symbol set in every staticlib bundling `nros-rmw-cffi`, then drop the
-`--allow-multiple-definition` lines (root `CMakeLists.txt` zenoh/xrce/cyclone
-arms + the secondary `nros-c/cmake/NanoRosLink.cmake` site). Keep Option 1 (the
-clean split) as a later architectural follow-up if a deeper decoupling is wanted.
-**Open design questions for the implementation run:** (a) where to wire the
-objcopy — a corrosion `POST_BUILD` on each `*-static` target vs a wrapper around
-the staticlib emit; (b) weaken-all vs keep-one-authoritative (weaken-all is
-simpler and still yields one instance); (c) the threadx board + zpico
-`--allow-multiple-definition` uses are a *different* class (intentional
-startup.c memset/memcpy overrides) — leave them; (d) validate across every
-platform's linker (lld/arm/riscv) + the bare-metal explicit-register and posix
-`.init_array` paths via `run_e2e`. The `staticlib_duplicate_symbols` gate guards
-that no NEW non-cffi strong dup sneaks in while this lands.
+**Recommended — define-once via the platform-cffi export-macro pattern.** The
+*platform*-cffi split already solves this exact shape, and the way it does it is
+the key: `nros-platform-cffi` **never defines** `nros_platform_*` inline — it only
+**declares** them (`unsafe extern "C" {}`) and ships `nros_platform_export_*!`
+**macros**; exactly ONE port crate (`nros-platform-posix`) *invokes* the macro, so
+the definition is emitted in exactly one archive and everyone else references it
+undefined. Mirror this for rmw-cffi:
+  - `nros-rmw-cffi`: move `REGISTRY` + the six C exports out of the always-compiled
+    body into an `nros_rmw_cffi_export!{}` macro; keep an `unsafe extern "C" {}`
+    declaration block for them. The crate's own Rust API (`resolve_backend`,
+    `CffiRmw`, the registry accessors) references the **declared** `REGISTRY`, so in
+    a consumer it resolves to the single external instance.
+  - Exactly ONE provider invokes `nros_rmw_cffi_export!{}` → defines the 7 symbols
+    in one archive. Natural home: `nros-c` (always linked, the "core"); or a tiny
+    dedicated `nros-rmw-cffi-provider` staticlib mirroring `nros-platform-posix`.
+  - nros-cpp + the RMW backends keep using the cffi **Rust API unchanged** — they
+    just no longer emit the 7 strong defs (only the provider does).
+  - Then drop `--allow-multiple-definition` (root `CMakeLists.txt` zenoh/xrce/
+    cyclone arms + the secondary `nros-c/cmake/NanoRosLink.cmake` site).
+
+**Why the macro, not a `provide` cargo feature — the unification trap.** A
+positive `provide`/`define-c-abi` *feature* on `nros-rmw-cffi` would be **unified
+ON across the whole graph** by cargo (if nros-c turns it on, every nros-rmw-cffi
+instance gets it) → the defs reappear in every archive → back to the dup. A macro
+*invocation* is a per-crate source item, not a feature, so only the crate that
+writes the call emits the defs. This is precisely why the platform split uses an
+export macro, and why slice 4 must too.
+
+**Blast radius.** Bounded to `nros-rmw-cffi` (the 7 symbols → extern decls + one
+export macro) + one provider call site + the cmake flag-line removals. The cffi
+**Rust API and the backends are untouched** (no C-ABI refactor — the earlier fear
+was overscoped; only `REGISTRY` + the 6 C fns move, and the Rust API already goes
+through `REGISTRY` which simply becomes an external symbol).
+
+**Open questions for the implementation run.** (a) provider = nros-c vs a dedicated
+`nros-rmw-cffi-provider` archive (nros-c is simpler; the dedicated archive matches
+the platform layout and is cleaner for the NuttX/ESP cargo-FFI path — decide by
+checking every link includes exactly one provider); (b) does any consumer's Rust
+API CALL the C-export fns (vs operating on `REGISTRY` directly)? if so those calls
+resolve to the provider's defs (fine) — confirm no consumer needs the fn bodies
+locally; (c) the threadx board + zpico `--allow-multiple-definition` are a
+DIFFERENT class (intentional startup.c memset/memcpy overrides) — leave them; (d)
+validate across every linker (lld/arm/riscv) + bare-metal-explicit-register vs
+posix `.init_array` register paths via `run_e2e`. The `staticlib_duplicate_symbols`
+gate guards that no new strong dup sneaks in while this lands.
 - [~] **Link-closure / duplicate-symbol validator — slices 1+2 landed.**
       `staticlib_duplicate_symbols.rs`: dumps the duplicate defined-globals
       between `libnros_c.a` and the RMW staticlib (via `llvm-nm`), attributes each
