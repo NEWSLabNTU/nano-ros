@@ -78,3 +78,31 @@ fn multihost_launch_bakes_per_host_entries() {
         "robot2 entry wrongly includes talker (machine=robot1):\n{robot2}"
     );
 }
+
+/// Phase 211.F — the bringup `system.toml` declares a `[deploy.<id>]` target
+/// (RFC-0004 §4 home — NOT a root `nros.toml`, see issue #51) for each host the
+/// multi-host launch bakes. The deploy-target id == the launch `machine=` id, so
+/// `nros codegen entry --host <id>` maps onto `[deploy.<id>]` by name. This ties
+/// the per-host bake (above) to the per-host deploy SSOT.
+#[test]
+fn multihost_deploy_targets_match_baked_hosts() {
+    let system_toml = nros_tests::project_root()
+        .join("examples/workspaces/rust/src/demo_bringup/system.toml");
+    let raw = std::fs::read_to_string(&system_toml)
+        .unwrap_or_else(|e| panic!("read {}: {e}", system_toml.display()));
+
+    // The hosts the multi-host launch partitions into (mirrors the bake above).
+    for host in ["robot1", "robot2"] {
+        assert!(
+            raw.contains(&format!("[deploy.{host}]")),
+            "system.toml has no `[deploy.{host}]` target for the multi-host launch \
+             machine `{host}` — per-host bake (`--host {host}`) has no deploy SSOT \
+             to map onto:\n{raw}"
+        );
+    }
+    // Both per-host targets point at the multi-host launch.
+    assert!(
+        raw.matches("multihost.launch.xml").count() >= 2,
+        "per-host `[deploy.robotN]` targets must bind to multihost.launch.xml:\n{raw}"
+    );
+}

@@ -23,3 +23,20 @@ name = "listener"
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
+
+# Phase 211.F — per-host deploy targets for the multi-host launch
+# (`launch/multihost.launch.xml`: talker on robot1, listener on robot2). The
+# target id matches the launch `<node machine="…">` id, so each maps onto its
+# host's bake: `nros codegen entry --host robot1` (or
+# `nros::main!(launch="demo_bringup:multihost.launch.xml", host="robot1")`)
+# builds robot1's binary, deployed via `[deploy.robot1]`. (RFC-0004 §4 home;
+# NOT a root nros.toml — see issue #51.)
+[deploy.robot1]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+launch = "multihost.launch.xml"
+
+[deploy.robot2]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+launch = "multihost.launch.xml"
