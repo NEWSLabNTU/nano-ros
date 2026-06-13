@@ -49,7 +49,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 35 | zephyr native_sim e2e fail consistently (XRCE-heavy) — not load flakes | bug        | zephyr | [0035-zephyr-native-sim-e2e-consistent-failures.md](0035-zephyr-native-sim-e2e-consistent-failures.md) |
 | 41 | suite-wide compile-in-tests antipattern — convert to build-stage fixtures | tech-debt | testing | [0041-compile-in-tests-suite-wide.md](0041-compile-in-tests-suite-wide.md) |
 | 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
-| 48 | NuttX Test/e2e — typed-carrier link drops the platform port (undefined `nros_platform_*`) | bug | boards | [0048-nuttx-typed-carrier-link-drops-platform-port.md](0048-nuttx-typed-carrier-link-drops-platform-port.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the
@@ -68,6 +67,18 @@ locator/ip/gateway was inert (`Config::default()` `192.0.3.x`). Fixed by linking
 `BoardEntry::run_with_deploy` + `DeployOverlay`; `freertos_run_plan_runtime` now
 asserts the connected run. See `archived/0039-*`, `archived/0040-*`,
 `archived/0043-*`, `archived/0045-*`, `archived/0046-*`, `archived/0048-*`.
+
+Recently resolved (Phase 243): **#48 (nuttx)** — the NuttX link dropped the whole
+`nros_platform_*` ABI (undefined refs from `libnros_rmw_zenoh` / `libzpico_sys`).
+Root cause was NOT the typed carrier (original diagnosis corrected): the board
+crate's `cc` platform-port build emitted the default `static=` (`+bundle`), folding
+the port into `libnros_board_nuttx_qemu_arm.rlib`, which precedes the referencers on
+the link line ⇒ single-pass `ld` drops it. Fixed in `nuttx_platform_build.rs` with
+`cargo_metadata(false)` + a hand-emitted
+`static:-bundle,+whole-archive=nros_platform_nuttx` (trailing, order-independent).
+See `archived/0048-nuttx-typed-carrier-link-drops-platform-port.md`. (Note: id 48
+is shared with the earlier resolved FreeRTOS-slirp issue — a pre-existing numbering
+collision.)
 
 Recently resolved (Phase 240.5): **#47** — C/C++ action client now callback-based
 (`nros::bind_action_client` = `set_callbacks` + a poll-timer pump per RFC-0041);

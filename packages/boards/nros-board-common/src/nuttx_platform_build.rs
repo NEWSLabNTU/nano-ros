@@ -49,6 +49,15 @@ pub fn run_platform() {
         .collect();
 
     let mut platform = cc::Build::new();
+    // Emit the link directives by hand (below) instead of letting cc emit the
+    // default `cargo:rustc-link-lib=static=nros_platform_nuttx` — that default
+    // is `+bundle`, which folds the platform objects INTO the consuming crate's
+    // rlib (`libnros_board_nuttx_qemu_arm.rlib`). On the final link line that
+    // rlib precedes the `nros_platform_*` REFERENCERS (`libnros_rmw_zenoh`,
+    // `libzpico_sys`), so GNU ld's single archive pass drops the platform
+    // members (nothing references them yet) and the referencers then fail with
+    // `undefined reference to nros_platform_*`. See issue-0048.
+    platform.cargo_metadata(false);
     platform.compiler(&nuttx_cross);
     for f in &cflags {
         platform.flag(f);
@@ -65,7 +74,15 @@ pub fn run_platform() {
     platform.file(platform_src.join("net.c"));
     platform.compile("nros_platform_nuttx");
 
-    println!("cargo:rustc-link-lib=static=nros_platform_nuttx");
+    // `-bundle` keeps the port a standalone `lib*.a` (cc wrote it to OUT_DIR)
+    // and emits a trailing `-l` at the FINAL binary link — AFTER every rlib,
+    // so the referencers' `nros_platform_*` undefineds resolve. `+whole-archive`
+    // pulls the whole port (platform.c + net.c) regardless of which members are
+    // referenced, making the link order-independent (RFC-0042 D3). cc's auto
+    // search-path is suppressed too, so re-emit OUT_DIR as the search dir.
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts");
+    println!("cargo:rustc-link-search=native={out_dir}");
+    println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_platform_nuttx");
     println!("cargo:rerun-if-changed={}", platform_src.display());
     println!("cargo:rerun-if-env-changed=NUTTX_DIR");
     println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
