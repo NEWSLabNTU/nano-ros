@@ -11,14 +11,17 @@
 //! ```
 
 use core::time::Duration;
-use std::cell::Cell;
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use log::{error, info};
 use nros::prelude::*;
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds", feature = "rmw-xrce")))]
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-cyclonedds",
+    feature = "rmw-xrce"
+)))]
 compile_error!("this example requires exactly one of `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce`",);
 
 fn run() -> i32 {

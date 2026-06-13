@@ -19,6 +19,10 @@ allowed_roots=(
   # Phase 118.H carve-outs.
   "examples/px4/cpp/uorb"
   "examples/px4/rust/uorb"
+  # PX4 SITL XRCE companion — the transport is intrinsic to the example (the
+  # px4-xrce-companion bridges PX4 uORB ↔ micro-XRCE-DDS), same carve-out
+  # rationale as the px4/uorb pair above.
+  "examples/px4/rust/xrce"
 
   # One-board Zephyr CycloneDDS reference, documented in CLAUDE.md.
   # Both languages carve out — the rust sibling was missed when the cpp one
