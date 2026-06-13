@@ -32,7 +32,13 @@ extern void nros_threadx_set_config(
     const uint8_t *mac,
     const char *interface_name);
 
-int main(void)
+/* Phase 241.D3-rev — `main` is WEAK so a component example that ships its own
+ * entrypoint (`src/main.c::main` → `nros_system_main()`, the Phase 212.L component
+ * model) overrides this board default instead of colliding with it. Examples that
+ * do NOT provide their own `main` fall back to this board entry (network config +
+ * `tx_kernel_enter`). Resolves the `multiple definition of 'main'` that surfaced
+ * once the single-runtime fix removed the earlier EMPTY_PANIC link failure. */
+__attribute__((weak)) int main(void)
 {
     /* Line-buffer stdout so printf output is visible to test harnesses
      * that pipe stdout (otherwise it would be fully buffered and only
