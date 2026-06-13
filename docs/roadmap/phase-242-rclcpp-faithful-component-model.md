@@ -144,6 +144,40 @@ construct path.
 
 **Files.** (external) `autoware-safety-island/actuation_module/`.
 
+### 242.7 — Value-returning rclcpp parameter facade on the node (gates 242.5)
+
+Filed 2026-06-13 — the **third** ASI-consumer-surfaced gap (after 240.8 carrier
++ the RFC-0044 component model). 242.1 gave the entity/callback half
+(`ComponentNode`) and 242.3 the storage half (`ParameterServer` + `Seq<T,N>`),
+but **nothing joins them on the node**: `ComponentNode`/`Node` expose **zero**
+parameter methods, and `ParameterServer`'s API is `Result`-returning +
+`Seq<T,N>` compile-time-capacity. ASI's vendored MPC/PID couple to the node
+**only** through the rclcpp-shaped, **value-returning** surface
+(`node.declare_parameter<T>(name, default) -> T`, `get_parameter<T> -> T`,
+`has_parameter`) — **151 call sites**, 4 of them
+`declare_parameter<std::vector<double>>(name, {…})` with no compile-time `N`.
+RFC-0044's "ctor works ~unchanged, no control-math rewrite" promise depends on
+this facade; without it the controller cannot construct the MPC/PID.
+
+- [ ] **242.7.1** Add a value-returning, rclcpp-faithful parameter API **on
+      `ComponentNode`** (backed internally by an owned `ParameterServer`):
+      `template<typename T> T declare_parameter(const char*/std::string name,
+      const T& default_value = T{})`, `template<typename T> T
+      get_parameter(name) const`, `bool has_parameter(name) const`. No-exceptions
+      reconciliation: a failed declare/get sets the component `ok()`-flag and
+      returns the default (consistent with 242.4's Q2). Scalars route to the
+      existing `ParameterServer` scalar store.
+- [ ] **242.7.2** `std::vector<double>` (and the other `Seq` element types)
+      under `NROS_CPP_STD` **without** a caller-supplied compile-time capacity —
+      `declare_parameter<std::vector<double>>(name, {…})` compiles unchanged.
+      Back it by a default-capacity `Seq<T, NROS_PARAM_SEQ_DEFAULT_CAP>` (the MPC
+      weight matrices are small + fixed); over-capacity sets `ok()`-flag.
+      **Open:** default capacity value + whether `ComponentNode` carries its own
+      `ParameterServer<Cap>` sizing knobs.
+
+**Files.** `packages/core/nros-cpp/include/nros/component_node.hpp`,
+`parameter.hpp`. Consumer proof: ASI 242.5.
+
 ### 242.6 — Rust parity (deferred)
 
 - [ ] **242.6.1** Decide whether Rust's `ExecutableNode` adopts an IS-A-node
