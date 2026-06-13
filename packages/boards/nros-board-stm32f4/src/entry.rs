@@ -96,6 +96,18 @@ where
     // already; this only wires the dispatcher to the default sinks).
     nros_log::init(nros_log::sinks::default());
 
+    // Phase 248 C5a (#60 T4) — the board owns RMW selection: register the linked
+    // zenoh backend into the CFFI vtable before `Executor::open`. Bare-metal
+    // (`target_os = "none"`) is linkme-blind + runs no `.init_array`, so the
+    // auto-register section is a no-op; this explicit, idempotent call is the
+    // registration path (mirrors `nros-board-rtic-stm32f4::init_hardware`). Gated
+    // on the board's own `rmw-zenoh` so DDS-/serial-only builds drop it.
+    #[cfg(feature = "rmw-zenoh")]
+    if let Err(err) = nros_rmw_zenoh::register() {
+        Stm32F4::println(format_args!("zenoh RMW register failed: {err:?}"));
+        Stm32F4::exit_failure();
+    }
+
     // Locator + domain come from the board Config (deploy overlay or default),
     // NOT env vars — bare-metal libc has no host `getenv` on the target.
     let exec_cfg = ExecutorConfig::new(cfg.zenoh_locator)

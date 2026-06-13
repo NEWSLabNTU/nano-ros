@@ -22,6 +22,16 @@ nros-platform = { path = "../../core/nros-platform", default-features = false, f
     "platform-esp32s3",
 ] }
 nros-platform-api = { path = "../../core/nros-platform-api" }
+# Phase 248 C5a (#60 T4) — the BOARD is the RMW selection point: depend on the
+# concrete zenoh backend directly (optional, behind `rmw-zenoh`) so the board
+# OWNS linking + registering it, instead of a pure marker that relied on a
+# consumer to pull the backend. Xtensa bare-metal (`target_os = "none"`) is
+# linkme-blind, so the board registers it explicitly in `Esp32S3::init_hardware`
+# (mirrors `nros-board-esp32-qemu`).
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
+    "platform-bare-metal",
+    "ros-humble",
+], optional = true }
 
 # ESP32-S3 (Xtensa) HAL and support crates.
 esp-hal = { version = "~1.0.0", features = ["esp32s3", "unstable"] }
@@ -41,8 +51,11 @@ portable-atomic = { version = "1", default-features = false, features = [
 
 [features]
 default = ["serial", "rmw-zenoh"]
-# Phase 129.D — `rmw-zenoh` is a pure marker; symbols come from
-# `zpico-sys`'s default-on `platform-aliases` C TU via `nros-rmw-zenoh`.
-rmw-zenoh = []
+# Phase 248 C5a (#60 T4) — board-owned RMW selection: link the concrete
+# `nros-rmw-zenoh` backend directly (was a pure marker `[]`). The board registers
+# it in `Esp32S3::init_hardware` (linkme-blind Xtensa). zenoh-pico `z_*` symbols
+# still come from `zpico-sys`'s `platform-aliases` C TU, now pulled via the
+# board's own `nros-rmw-zenoh` dep.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
 # Serial transport via zenoh-pico built-in serial (no extra deps).
 serial = []

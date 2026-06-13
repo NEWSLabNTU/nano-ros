@@ -162,6 +162,10 @@ impl Esp32QemuEntry {
 
         // Bare-metal targets do not walk `.init_array`, so register the
         // RMW backend explicitly before `Executor::open` (Phase 104.A).
+        // Phase 248 C5a (#60 T4) — gate on the board's own `rmw-zenoh` feature
+        // (the `nros-rmw-zenoh` dep is optional) so a DDS-/serial-only build can
+        // drop the backend; the board owns this selection point.
+        #[cfg(feature = "rmw-zenoh")]
         nros_rmw_zenoh::register().expect("Failed to register RMW backend");
 
         // Open the executor + wrap it in the dispatch runtime. Locator /

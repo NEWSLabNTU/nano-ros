@@ -242,6 +242,21 @@ where
                 config.zenoh_lease_stack_bytes,
             );
         }
+
+        // Phase 248 C5a (#60 T4) — the board owns RMW selection. Register the
+        // linked zenoh backend into the CFFI vtable here, before any
+        // `Executor::open` (`app_task_entry_runtime` + `app_task_entry_tiers`
+        // both bring up through this fn). FreeRTOS is `target_os = "none"`
+        // (linkme is a no-op + the flat image runs no `.init_array`), so without
+        // this explicit, idempotent call `resolve_backend` finds no transport and
+        // `Executor::open` fails with `Transport(ConnectionFailed)`. Replaces the
+        // prior reliance on `nros::__register_linked_rmw()` via `nros/rmw-zenoh`.
+        if let Err(err) = ::nros_rmw_zenoh::register() {
+            B::println(format_args!(
+                "nros: zenoh RMW backend register failed: {:?}",
+                err
+            ));
+        }
     }
 
     unsafe {

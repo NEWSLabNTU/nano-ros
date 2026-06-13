@@ -17,6 +17,16 @@ pub fn init_hardware() {
     // C ABI provider gets pulled into the final link map even when LTO
     // is on. (Phase 121.3 — formerly via `nros-platform-zephyr`.)
     let _ = nros_platform::NET_SOCKET_SIZE;
+
+    // Phase 248 C5a (#60 T4) — the board owns RMW registration. Register the
+    // linked Cyclone DDS backend into the CFFI vtable before the app closure
+    // opens a session. Zephyr (`target_os = "none"`) is linkme-blind + runs no
+    // `.init_array` walk, so the auto-register section is a no-op; this explicit,
+    // idempotent call is the registration path (mirrors `nros::__register_linked_rmw`).
+    // The C++ `nros_rmw_cyclonedds_register` symbol it calls is CMake-provided.
+    // Gated on the board's own `rmw-cyclonedds` feature.
+    #[cfg(feature = "rmw-cyclonedds")]
+    let _ = nros_rmw_cyclonedds_sys::register();
 }
 
 /// Run the user closure once hardware + network are initialised. The

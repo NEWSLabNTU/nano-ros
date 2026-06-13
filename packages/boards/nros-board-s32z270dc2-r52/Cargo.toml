@@ -16,15 +16,28 @@ default = ["ethernet"]
 # net_eth_nxp_s32 driver.
 ethernet = []
 # RMW backend selection. Cyclone is the Phase-117 default for this
-# board (Autoware safety-island stack); actual backend is wired at
-# the CMake level (`-DNANO_ROS_RMW=cyclonedds`).
-rmw-cyclonedds = []
+# board (Autoware safety-island stack); the C++ libddsc +
+# `nros_rmw_cyclonedds_register` symbol are wired at the CMake level
+# (`-DNANO_ROS_RMW=cyclonedds`).
+# Phase 248 C5a (#60 T4) — the BOARD owns RMW selection: pull the
+# `nros-rmw-cyclonedds-sys` Rust glue so the board force-links + registers the
+# backend (`__FORCE_LINK_CYCLONEDDS_SYS` + `init_hardware` register) instead of
+# relying on a consumer's `nros/rmw-cyclonedds`. `default-features = false` drops
+# the `vendored` in-tree C++ build (Zephyr's CMake provides libddsc).
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
 # Phase 128.C.3 — `nros/rmw-zenoh` was never a real feature on the
-# umbrella; selection lives entirely in the manifest via a direct
-# `nros-rmw-zenoh` dep. Kept as no-op marker for consumers.
+# umbrella. Phase 248 C5a — NOT converted to a `dep:nros-rmw-zenoh` here: the
+# zenoh backend pulls a NON-optional `zpico-sys`, whose Zephyr build would
+# compile zenoh-pico in-tree and clash with the Zephyr CMake module on this
+# cyclone-default board. Stays a no-op marker (does NOT forward `nros/rmw-zenoh`,
+# so the C5c gate holds); zenoh on Zephyr is wired via CMake, not a Rust dep.
 rmw-zenoh      = []
 
 [dependencies]
 nros = { path = "../../core/nros", default-features = false, features = ["platform-zephyr"] }
 # Phase 121.3 — C-port-canonical platform. See sibling fvp-aemv8r-smp board.
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-zephyr"] }
+# Phase 248 C5a (#60 T4) — board-owned Cyclone DDS linking. `default-features =
+# false` drops `vendored` (no in-tree libddsc/cc build) + `linkme-register`
+# (Zephyr is linkme-blind); the board registers explicitly in `init_hardware`.
+nros-rmw-cyclonedds-sys = { path = "../../dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }

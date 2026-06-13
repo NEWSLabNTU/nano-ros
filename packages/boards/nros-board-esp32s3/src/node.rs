@@ -74,6 +74,17 @@ impl nros_board_common::BoardInit for Esp32S3 {
     fn init_hardware(cfg: &Config) {
         init_hardware(cfg);
         register_log_writer();
+
+        // Phase 248 C5a (#60 T4) — the board owns RMW selection: register the
+        // linked zenoh backend into the CFFI vtable here, before the user closure
+        // opens an executor. Xtensa bare-metal (`target_os = "none"`) is
+        // linkme-blind + runs no `.init_array`, so the auto-register section is a
+        // no-op; this explicit, idempotent call is the registration path (mirrors
+        // `nros-board-esp32-qemu`). Gated on the board's own `rmw-zenoh` feature.
+        #[cfg(feature = "rmw-zenoh")]
+        if let Err(err) = nros_rmw_zenoh::register() {
+            esp_println::println!("zenoh RMW register failed: {:?}", err);
+        }
     }
 }
 
