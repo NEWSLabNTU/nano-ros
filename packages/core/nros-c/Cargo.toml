@@ -71,23 +71,40 @@ cffi-zenoh-cffi = ["rmw-cffi"]
 xrce-udp = ["nros/xrce-udp"]
 xrce-serial = ["nros/xrce-serial"]
 
+# Functional capability — install the Rust `#[global_allocator]` routing
+# through the platform vtable (`nros_platform_alloc`/`_dealloc`). Phase 248:
+# replaces the per-platform `#[global_allocator]` cfg in lib.rs so the crate
+# stays platform-agnostic. Enabled by RTOS ports whose kernel owns the
+# unified heap and that don't bring an external allocator (zephyr-lang-rust
+# etc.); the concrete allocator lives behind the vtable. Mirrors
+# nros-platform's `global-allocator`.
+global-allocator = ["alloc"]
+
+# Functional capability — register the `critical_section::Impl` backed by
+# the platform vtable (`nros_platform_critical_section_{acquire,release}`).
+# Phase 248: replaces the `platform-zephyr` cfg on the critical-section
+# block. Mirrors nros-platform's `critical-section`.
+critical-section = ["dep:critical-section"]
+
 # Platform backends (select one — orthogonal to RMW and ROS version).
-# Embedded platforms imply `alloc` so the per-platform
-# `#[global_allocator]` modules in lib.rs compile without the build
-# script having to remember to pass `,alloc` alongside
-# `platform-<rtos>`.
+# Embedded platforms imply `alloc`; ports that own the unified kernel heap
+# also enable `global-allocator` (and, where DDS/portable-atomic need it,
+# `critical-section`) so the agnostic blocks in lib.rs compile without the
+# build script passing them explicitly.
 platform-posix = [
     "nros/platform-posix",
     "nros-rmw-zenoh?/platform-posix",
 ]
 platform-zephyr = [
     "alloc",
+    "global-allocator",
+    "critical-section",
     "nros/platform-zephyr",
-    "dep:critical-section",
     "nros-rmw-zenoh?/platform-zephyr",
 ]
 platform-freertos = [
     "alloc",
+    "global-allocator",
     "nros/platform-freertos",
     "nros-rmw-zenoh?/platform-freertos",
 ]
@@ -98,6 +115,7 @@ platform-nuttx = [
 ]
 platform-threadx = [
     "alloc",
+    "global-allocator",
     "nros/platform-threadx",
     "nros-rmw-zenoh?/platform-threadx",
 ]

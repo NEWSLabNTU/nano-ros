@@ -730,17 +730,9 @@ extern void *nros_platform_alloc(size_t size);
 
 extern void nros_platform_dealloc(void *ptr);
 
-extern void *nros_platform_alloc(size_t size);
+extern uint32_t nros_platform_critical_section_acquire(void);
 
-extern void nros_platform_dealloc(void *ptr);
-
-extern uint32_t nros_zephyr_irq_lock(void);
-
-extern void nros_zephyr_irq_unlock(uint32_t key);
-
-extern void *nros_platform_alloc(size_t size);
-
-extern void nros_platform_dealloc(void *ptr);
+extern void nros_platform_critical_section_release(uint32_t token);
 
 /**
  * Create a guard condition and register it with the executor.

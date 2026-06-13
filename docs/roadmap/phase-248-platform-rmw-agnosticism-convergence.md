@@ -98,11 +98,14 @@ generic hook), and any new vtable op added to `nros-platform-api`/`-cffi`.
 **Owns:** `packages/core/nros-c/` + `packages/core/nros-cpp/` (all).
 **Blocked-until:** phase-1 none (Wave 1); phase-2 after **C5**.
 
-- [ ] **Phase 1 (Wave 1) — platform impls behind the vtable.** Remove the
-      `#[cfg(feature="platform-{freertos,zephyr,threadx}")]` `#[global_allocator]`
-      + critical-section blocks from `nros-c/src/lib.rs`; route alloc/critical-
-      section through the platform vtable (`nros_platform_*` FFI). Same audit pass
-      on `nros-cpp/src`.
+- [x] **Phase 1 (Wave 1) — platform impls behind the vtable. DONE.** Collapsed
+      the per-platform `#[global_allocator]` modules into one `platform_alloc`
+      gated `global-allocator` (routes through `nros_platform_alloc/_dealloc`);
+      rewrote the zephyr-only critical-section to `platform_critical_section`
+      gated `critical-section` (calls `nros_platform_critical_section_acquire/
+      _release`); extracted the no_std panic handler. Same on `nros-cpp/src`. No
+      `#[cfg(feature="platform-*")]` left in either src; no new platform-api op
+      needed (vtable ops already existed). nros-c tests 71 pass; both build green.
 - [ ] **Phase 2 (Wave 2, after C5) — retire features.** Drop `platform-*` +
       concrete-`rmw-*` features + optional concrete-backend deps
       (`nros-rmw-zenoh`, `nros-rmw-xrce-cffi`) from `nros-c`/`nros-cpp/Cargo.toml`;
