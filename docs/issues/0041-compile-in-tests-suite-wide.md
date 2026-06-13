@@ -129,10 +129,26 @@ the override.
 `nextest.toml` override now holds ONLY the two NEGATIVE cases
 (`native_orchestration_misuse`, `native_main_macro_misuse` — compile-FAIL /
 rebuild-tracking, can't be prebuilt → permanent documented exceptions). Every
-positive compile-in-test is a build-stage fixture. Residual: Wave C/D
-(zephyr/esp) are converted to the west-/idf-fixture mechanisms but SDK-gated
-(no zephyr/esp-idf entry in `nros-sdk-index.toml` → not host-provisionable here),
-plus `zephyr_self_pkg` (generates its app in-test) still deferred.
+positive compile-in-test is a build-stage fixture.
+
+**Wave C/D host-provision wiring FIXED (2026-06-13):** the zephyr west /
+esp-idf fixtures were already converted to the `west-`/`idf-fixture`
+mechanisms but had skipped on hosts that *had* the SDKs, because the build
+scripts couldn't discover them. `west-fixtures.sh` now resolves `ZEPHYR_BASE`
+via the same workspace ladder the `just zephyr` recipes use (in-repo →
+sibling `../nano-ros-workspace`), `zephyr-ci.just` passes its resolved
+workspace through, and `idf-fixtures.sh` auto-discovers the in-repo
+`esp-idf-workspace/esp-idf`. Verified on a provisioned host: west builds
+`west_bringup_zephyr` (native_sim) + `west_board_import` (FVP); idf builds the
+3 esp32c3 ELFs (issue 0044 resolved → clean compile). All Wave C/D
+fixture-consuming tests pass (`cli_bringup_zephyr` boots native_sim,
+`board_import`, `cli_bringup_esp_idf`, `esp32_idf_{talker,listener}_builds`).
+The west/idf builds are heavy + SDK-gated, so they live in the
+`just zephyr build-fixtures` / `just esp32 build-fixtures` lanes (not the
+native `compile-check-fixtures.sh` sweep); the tests `[SKIPPED]`/deselect when
+the SDK is absent. Residual: `zephyr_self_pkg` (generates its app in-test) is
+still deferred — its conversion needs the generated app promoted to a fixture
+template first.
 
 **Wave C — zephyr** (west; heavy, gate on SDK): `phase212_h1_zephyr`,
 `phase212_mf3_zephyr_self_pkg`, `integration_zephyr`.
