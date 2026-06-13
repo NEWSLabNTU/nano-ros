@@ -70,6 +70,13 @@ BUILD_FIXTURES=(
     # macro's package.xml pkg-index discovered `demo_bringup` (no Cargo.toml).
     # The test inspects the prebuilt node_{a,b,c} rlibs (pkg_index.rs).
     "o4_pkg_index:packages/testing/nros-tests/fixtures/o4_pkg_index_workspace"
+    # issue-0041 — O.5 nav2-style launch.xml compat: build the Entry pkg's build.rs
+    # (drives `nros_build::generate_run_plan` via play_launch_parser) → emits
+    # run_plan.rs; the test inspects it (nav2_compat.rs). `demo_entry` is EXCLUDED
+    # from the fixture root workspace, so build via its own subdir manifest (3rd
+    # field). Needs play_launch_parser on PATH at build time (else build.rs writes
+    # the Placeholder stub → the test skips).
+    "o5_nav2_compat:packages/testing/nros-tests/fixtures/o5_nav2_compat_smoke:demo_entry"
     "orch_tiers_single:packages/testing/nros-tests/fixtures/orchestration_tiers_native"
 )
 
@@ -86,6 +93,11 @@ stage_tree() {
     # `path =` deps resolve (mirrors the staging the test used to do inline).
     find "$staged" -type f -exec grep -lZ '@NANO_ROS_ROOT@' {} + 2>/dev/null \
         | xargs -0 -r sed -i "s#@NANO_ROS_ROOT@#$repo_root#g"
+    # `@NROS_CLI_ROOT@` → the in-tree CLI dir (post-Phase-218 `packages/cli/`); its
+    # `@NROS_CLI_ROOT@/nros-build` patch path resolves the standalone nros-build
+    # crate. Harmless for fixtures that don't use it (no match).
+    find "$staged" -type f -exec grep -lZ '@NROS_CLI_ROOT@' {} + 2>/dev/null \
+        | xargs -0 -r sed -i "s#@NROS_CLI_ROOT@#$repo_root/packages/cli#g"
     post_stage "$id" "$staged"
 }
 
@@ -101,14 +113,16 @@ stage_and_check() {
 }
 
 stage_and_build() {
-    local id="$1" src="$2"
+    local id="$1" src="$2" manifest_dir="${3:-.}"
     local staged="$out_root/$id"
     echo "== build-fixture: $id =="
     stage_tree "$id" "$src" "$staged"
     rm -f "$staged/.compile-ok"
-    ( cd "$staged" && cargo build -p demo_entry --manifest-path Cargo.toml )
+    # `manifest_dir` (3rd `id:src:dir` field) builds a member that lives in a
+    # subdir excluded from the root workspace (e.g. O.5's `demo_entry/`).
+    ( cd "$staged" && cargo build -p demo_entry --manifest-path "$manifest_dir/Cargo.toml" )
     date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
-    echo "   built $staged/target/debug/demo_entry"
+    echo "   built $staged/$manifest_dir/target/debug/demo_entry"
 }
 
 # cmake fixtures (id : template-dir relative to repo). Configure + build a C/C++
@@ -205,7 +219,8 @@ for entry in "${COMPILE_CHECK_FIXTURES[@]}"; do
     stage_and_check "${entry%%:*}" "${entry#*:}"
 done
 for entry in "${BUILD_FIXTURES[@]}"; do
-    stage_and_build "${entry%%:*}" "${entry#*:}"
+    IFS=':' read -r bf_id bf_src bf_mdir <<< "$entry"
+    stage_and_build "$bf_id" "$bf_src" "${bf_mdir:-.}"
 done
 for entry in "${CROSS_BUILD_FIXTURES[@]}"; do
     IFS=':' read -r cb_id cb_src cb_sub cb_pkg cb_tgt <<< "$entry"

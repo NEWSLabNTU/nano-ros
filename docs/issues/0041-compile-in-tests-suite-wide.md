@@ -62,8 +62,16 @@ they're added to the slow-compile `nextest.toml` override as STOPGAP exceptions
 moves the compile to the build stage; `pkg_index.rs` now `require_compile_check`s
 the stamp (build succeeded = package.xml pkg-index resolved `demo_bringup`) +
 inspects the prebuilt `node_{a,b,c}` rlibs — runs in ~0s, no runtime compile.
-Removed `binary(pkg_index)` from the slow-compile override. (`board_agnostic_run_plan`
-O.3 + `nav2_compat` O.5 + `threadx_corrosion_bringup` H.4 remain STOPGAP.)
+Removed `binary(pkg_index)` from the slow-compile override. **`nav2_compat` (O.5)
+CONVERTED (2026-06-13):** the `o5_nav2_compat` BUILD_FIXTURE builds the Entry pkg's
+`build.rs` (drives `generate_run_plan` via `play_launch_parser`) → `run_plan.rs` +
+`nros-plan.json`; `nav2_compat.rs` inspects the prebuilt codegen (register calls +
+`<arg>`/`<remap>`/`<include>` evidence), Placeholder-stub → skip. Required two
+`stage_and_build` upgrades: an optional **manifest-subdir** 3rd `id:src:dir` field
+(`demo_entry` is excluded from the fixture root workspace) + a **`@NROS_CLI_ROOT@`**
+placeholder rewrite (→ `packages/cli`, the in-tree nros-build crate). Removed
+`binary(nav2_compat)` from the override. (`board_agnostic_run_plan` O.3 +
+`threadx_corrosion_bringup` H.4 remain STOPGAP.)
 `freertos_run_plan_runtime` (O.1) stays `#[ignore]`d on issue 0045 (FreeRTOS
 Entry-pkg `staticlib` panic-handler link path — NOT a compile-in-test concern).
 `phase212_diagnostic_verbatim` (rustc + cmake verbatim-error checks) and
