@@ -51,6 +51,17 @@ for entry in "${IDF_FIXTURES[@]}"; do
     # Rewrite @NANO_ROS_ROOT@ (h5's esp_idf_app/CMakeLists uses it; examples don't).
     find "$staged" -type f -exec grep -lZ '@NANO_ROS_ROOT@' {} + 2>/dev/null \
         | xargs -0 -r sed -i "s#@NANO_ROS_ROOT@#$repo_root#g"
+    # Issue #44 follow-up — the esp *examples* reference the in-tree workspace
+    # crates with parent-relative path deps (`path = "../../../../packages/..."`)
+    # sized for their real location under `examples/`. Copied to a different depth
+    # under `build/idf-fixtures/<id>/`, those `../` chains escape the repo and
+    # cargo fails (`failed to read /home/aeon/repos/packages/...`). Rewrite any
+    # `path = "(../)+packages/..."` to the absolute repo root so the staged tree's
+    # location no longer matters. Internal relative deps (e.g. a generated crate's
+    # `path = "../builtin_interfaces"`) lack the `packages/` anchor and are left
+    # untouched, as are the `@NANO_ROS_ROOT@` fixture templates.
+    find "$staged" -name Cargo.toml -print0 2>/dev/null \
+        | xargs -0 -r sed -E -i "s#path = \"(\.\./)+packages/#path = \"$repo_root/packages/#g"
     rm -f "$staged/.compile-ok"
     (
         cd "$staged/$subdir"
