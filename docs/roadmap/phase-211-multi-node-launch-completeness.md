@@ -436,20 +436,42 @@ and an argument `qos_overrides_file`. The nano-ros planner doesn't
 surface these to the runtime — a user porting an existing launch can't
 override QoS per-topic.
 
-**STILL RELEVANT — no coverage today (2026-06-13); self-contained, validatable
-in-tree.** Unaffected by the deploy-verb drift (planner field + runtime QoS slot).
+**LANDED (2026-06-13) for the native path; rclcpp-faithful + RT-safe.** Design:
+plan = authority, applied transparently — the user's `create_publisher(topic)`
+is unchanged (matches rclcpp/rclrs/rclc); the override SOURCE is the deploy plan,
+baked by codegen / consulted from an immutable `&'static` table — no runtime
+param search, no alloc (RT-safe, setup-time). Two honoring paths because
+generated entities and component-created entities take different create paths:
 
-- [ ] **Planner:** parse `qos_overrides.<topic>.<role>.<setting>`
-      parameter prefixes into a `qos_overrides` per-entity block on
-      `nros-plan.json`; thread it through the typed-entry emit so each
-      pub/sub binding carries its override.
-- [ ] **Runtime:** `nros-node` honours the override when constructing the
-      publisher / subscriber (today QoS is the Rust-API default).
-- [ ] **Fixture + e2e** — run with default QoS (best-effort) +
-      qos_overrides file (reliable) → assert reliable counters increment
-      in the rmw layer.
-- **Files:** `nros-cli` planner + `packages/core/nros-node/src/qos.rs`
-  (or wherever the qos override slot already lives — Phase 193).
+- [x] **Planner (wave1, `5f0f5eaff`):** `schema_qos_overrides` lowers
+      `qos_overrides.<topic>.<role>.<policy>` params into a typed
+      `PlanInstance.qos_overrides` block (split from `parameters`, dotted name
+      decomposed via `rsplitn(3,'.')` so the `/`-bearing topic survives, sorted).
+- [x] **Runtime (wave2, `abc6760cf`):** `nros-rmw` `QosOverride` typed value +
+      `QosSettings::apply_overrides`; `NodeHandle` carries
+      `qos_overrides: &'static [QosOverride]` + `set_qos_overrides`, merged in
+      `create_{publisher,subscription}_with_qos` BEFORE `validate_against` (no
+      silent downgrade). Serves COMPONENT-created entities (typed entry calls
+      `set_qos_overrides` before `configure`).
+- [x] **Codegen-bake (wave3a, `36082e8c8`):** generated subscriptions go through
+      the executor `register_subscription_*` path (not `NodeHandle`), so
+      `render_sub_qos_expr` bakes the merged QoS literal at GENERATION time
+      onto all three generated-sub emit sites.
+- [x] **Plan→plan e2e (wave4, `1476d53fc`):** `plan_system_lowers_qos_overrides`
+      proves the real launch-param→`nros-plan.json` path + full schema round-trip.
+- [→] **Typed C++ entry honoring (wave3b) — DEFERRED.** Emitting the static
+      `QosOverride[]` table + a `nros_cpp_node_set_qos_overrides` FFI + the
+      `set_qos_overrides` call in `emit_cpp` is the embedded/C++ extension. It
+      touches `emit_cpp.rs` + `component_node.hpp` — the maintainer's hot
+      phase-242/244 emit territory (collision risk) — and the only thing that
+      exercises it (runtime delivery counters) rides on the deferred deploy
+      second-stage. Sequence it after the 242/244 emit work settles.
+- [→] **Runtime delivery e2e — DEFERRED with 211.A's deploy second-stage**
+      (deploy a binary, count reliable vs best-effort samples in the rmw layer;
+      needs a compilable native system + run). The native chain above is fully
+      unit/integration-tested short of the live deploy.
+- **Files (landed):** `nros-cli-core/orchestration/{plan,planner,generate}.rs`,
+  `nros-rmw/src/traits.rs`, `nros-node/src/executor/node.rs`, `nros/src/lib.rs`.
 
 ### 211.I — Mixed-RMW discovery + bridge fixture
 
