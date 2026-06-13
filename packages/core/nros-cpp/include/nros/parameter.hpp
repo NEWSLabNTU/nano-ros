@@ -52,6 +52,7 @@
 #include "nros/result.hpp"
 
 #ifdef NROS_CPP_STD
+#include <string>
 #include <vector>
 #endif
 
@@ -424,6 +425,28 @@ class ParameterServer {
     Result set_impl(const char* name, int v) {
         return Result(nros_param_set_integer(&server_, name, static_cast<int64_t>(v)));
     }
+
+#ifdef NROS_CPP_STD
+    /* 242.7 (fifth wall) — scalar std::string-VALUE params. 242.7 added
+       std::string-keyed names + std::vector values; rclcpp also declares
+       std::string *values* (ASI's MPC: declare_parameter<std::string>(name,
+       "mpc") for the controller-mode / solver-type / slope-source knobs). Copy
+       through the existing const char* string slot (128 bytes). */
+    Result declare_impl(const char* name, const ::std::string& v) {
+        return declare_impl(name, v.c_str());
+    }
+    Result set_impl(const char* name, const ::std::string& v) {
+        return set_impl(name, v.c_str());
+    }
+    Result get_impl(const char* name, ::std::string& out) const {
+        char buf[128];
+        Result r(nros_param_get_string(&server_, name, buf, sizeof(buf)));
+        if (r.ok()) {
+            out.assign(buf);
+        }
+        return r;
+    }
+#endif // NROS_CPP_STD
 
     /* -------- sequence parameter storage (C++-local) -------- */
 
