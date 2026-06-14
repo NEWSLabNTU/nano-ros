@@ -5,6 +5,7 @@ status: resolved
 type: bug
 area: build
 related: [issue-0062, phase-241, phase-248, phase-249]
+resolved_in: de85cadc2
 ---
 
 ## Symptom
