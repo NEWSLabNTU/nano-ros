@@ -1,37 +1,18 @@
 /*
- * Phase 104.B.6 — weak default of `nros_app_register_backends`.
+ * Phase 249 P4a (issue 0050 W3.1) — the weak default of
+ * `nros_app_register_backends` was REMOVED. C/C++ registration is now the single
+ * generated STRONG def emitted by `nano_ros_link_rmw()` — universal for every
+ * C/C++ app via `nros_platform_link_app` (phase-249 P2b) — which calls each
+ * linked backend's `nros_rmw_<x>_register`. With no weak fallback, a target that
+ * fails to emit the strong def is a LINK ERROR (undefined `nros_app_register_
+ * backends`), not a silent no-op that opens the session with no backend (the
+ * #48-class hazard). `nros_support_init` still calls the symbol unconditionally.
  *
- * nros-c's `nros_support_init` calls this symbol unconditionally.
- * Two paths resolve it:
- *
- *   (1) POSIX / macOS / Windows host builds: the .init_array ctor
- *       inside each backend's wrapper staticlib has already
- *       registered the backend before main(). The weak default
- *       below fires as a no-op. Idempotent.
- *
- *   (2) Bare-metal targets whose startup doesn't walk .init_array:
- *       CMake's `nano_ros_link_rmw(target NAME <rmw>)` writes a
- *       stub C file into the user's target that provides a STRONG
- *       def of `nros_app_register_backends`, calling each linked
- *       backend's `nros_rmw_<x>_register` fn. The strong def
- *       overrides this weak one.
- *
- * Either path produces a registered backend before
- * `nros_support_init` opens the session.
- */
-
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__((weak))
-#endif
-void nros_app_register_backends(void) {
-    /* Intentionally empty — bare-metal stub overrides via strong def. */
-}
-
-/*
- * Workspace test / metadata builds can link nros-c without selecting a
- * platform crate. nros-log's default sink still references the platform log
- * ABI, so provide weak no-op fallbacks for that no-platform link path. Real
- * platform crates export strong definitions and override these.
+ * This file now only carries the no-platform log-ABI weak fallbacks below:
+ * workspace test / metadata builds can link nros-c without selecting a platform
+ * crate; nros-log's default sink references the platform log ABI, so these weak
+ * no-ops satisfy that no-platform link path. Real platform crates export strong
+ * definitions and override them.
  */
 
 #include <stdint.h>

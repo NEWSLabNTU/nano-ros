@@ -46,9 +46,9 @@ COVERAGE=(
     # FreeRTOS firmware: the board supplies strong netif hooks (LAN9118/lwIP).
     "examples/qemu-arm-freertos/rust|freertos_rs_*entry|nros_board_register_netif nros_board_poll_netif"
     "build/fixtures-cargo/qemu-arm-freertos|freertos_rs_*entry|nros_board_register_netif nros_board_poll_netif"
-    # cmake C/C++ app images: the cmake-generated strong nros_app_register_backends.
-    "build/cmake-fixtures|cpp_robot_entry|nros_app_register_backends"
-    "build/cmake-fixtures|c_mixed_workspace*|nros_app_register_backends"
+    # (phase-249 P4a removed the weak nros_app_register_backends default — it is now
+    #  a generated strong def or a link error, never a weak-overridable symbol, so
+    #  it left this image gate.)
     # Serial example ELFs (Phase 244.D1 Wave D): board serial aliases.
     "examples/qemu-arm-baremetal/rust|qemu-serial-talker|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
     "examples/qemu-arm-baremetal/rust|qemu-serial-listener|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"

@@ -23,8 +23,7 @@
 # token is invisible to them. optional-hook lines carry no token (the weak
 # no-op is a valid runtime — nothing to assert in an image).
 
-3  packages/core/nros-c/c-stubs/weak_register_backends.c        # override-default [img: nros_app_register_backends]: cmake strong nros_app_register_backends; no-op log_{write,flush} fallbacks
-1  packages/core/nros-cpp/c-stubs/weak_register_backends.c      # override-default [img: nros_app_register_backends]: cmake strong nros_app_register_backends (cpp-only links)
+2  packages/core/nros-c/c-stubs/weak_register_backends.c        # optional-hook: no-platform weak log_{write,flush} fallbacks. (The weak nros_app_register_backends default was REMOVED — phase-249 P4a / issue 0050 W3.1; the cmake nano_ros_link_rmw strong stub is now the sole def, missing => link error.)
 1  packages/core/nros-cpp/include/nros/main.hpp                 # optional-hook: nros_board_network_wait weak no-op; board overrides with a real link-up wait
 7  packages/boards/nros-board-common/c/threadx_hooks.c          # override-default [img: nros_board_app_stack_size nros_board_app_priority nros_board_init_eth]: overlay strong stack_size/priority (W3.2 weak getters, not data) /init_eth/app_main; optional-hook log/rng_seed
 2  packages/boards/nros-board-freertos/c/network_glue.c         # override-default [img: nros_board_register_netif nros_board_poll_netif]: board (LAN9118) strong register_netif/poll_netif; weak = no-Ethernet fallback
