@@ -42,6 +42,36 @@ flake under 6 parallel QEMU instances — pre-existing harness concurrency, not 
 registration regression.) Proves C5c+C7 agnostic `nros` + board self-register at
 RUNTIME on embedded. FreeRTOS is the representative full-board+zenoh path.
 
+**EMBEDDED RUNTIME SMOKE — EXTENDED (2026-06-15, the handoff list run).** The
+remaining harness cells now run; the agnostic board-self-register pattern is
+runtime-proven on **four** independent embedded paths covering both
+registration-fire mechanisms (hosted-walks-`.init_array` AND
+bare-metal-startup-does-not):
+- **threadx-rv64** ✅ `threadx_riscv64_qemu` 2/2 — two-QEMU CycloneDDS pub/sub
+  over NetX/virtio-net boots + exchanges (NetX board path).
+- **nuttx** ✅ `nuttx_qemu` 14/14 (kernel boots; 12 C/C++ build-checks) +
+  `integration_nuttx` smoke.
+- **baremetal (MPS2-AN385, smoltcp)** ✅ `baremetal_run_plan_runtime` — boots
+  reset → `BoardEntry::run` → `Executor::open`. Exercises the **canonical
+  bare-metal registration path** (`__register_linked_rmw` on `target_os="none"`,
+  the path that does NOT walk `.init_array` — the phase-249 P4 gate). Required a
+  fixtures wiring fix: `qemu-baremetal-main-e2e` was referenced by the test but
+  staged by no lane (no `fixtures.toml` entry → test skipped→FAILed); added the
+  manifest entry so `just qemu build-fixtures` stages it.
+- **esp32-c3 (riscv32)** — build/detection ✅ (4/8); live pub/sub e2e remains
+  **deferred-red** (pre-existing, per the handoff): boots 80–157 s then misses
+  messages (networking/timing flake, NOT registration — firmware reaches its
+  banner), plus a `workspace_entry_e2e` staging gap (the `esp32_entry` workspace
+  fixture isn't built by `just esp32 build-fixtures`, which stages only the
+  `esp_idf_bringup` app). Tracked with the embedded-harness residual; esp32 uses
+  the identical board-self-register pattern proven on the other four.
+- **zephyr** — still BLOCKED on west/SDK (#58/#59).
+
+Net: the C5a/C5c/C7 agnostic-`nros` + board-self-register design is runtime-green
+on freertos + threadx-rv64 + nuttx + baremetal — enough to gate the
+[phase-249](phase-249-one-registration-trigger.md) registration-trigger
+retirements (migrate-before-delete) without esp32/zephyr.
+
 > **HANDOFF (remaining embedded smoke — for the next agent).** The agnostic
 > board-self-register pattern is runtime-proven on FreeRTOS; the rest use the
 > identical pattern, just not yet run here. To extend coverage:
