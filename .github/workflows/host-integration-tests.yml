@@ -185,6 +185,13 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_LTO: "off"
           RUSTFLAGS: "-C debuginfo=0"
+          # Issue #57 Cause-1: the fixture builder fans out NROS_BUILD_JOBS
+          # (default 8) cargo frontends, each spawning its own rustc jobs — on the
+          # 2-vCPU / 7 GB runner that OOM-kills rustc mid-compile (SIGSEGV/SIGILL/
+          # SIGABRT) and silently leaves fixtures partial → downstream FAILs. Cap to
+          # 2 frontends × 2 jobs (≤4 concurrent rustc).
+          NROS_BUILD_JOBS: "2"
+          CARGO_BUILD_JOBS: "2"
         run: |
           source /opt/ros/humble/setup.bash
           mkdir -p build/ci-logs
@@ -197,6 +204,9 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_LTO: "off"
           RUSTFLAGS: "-C debuginfo=0"
+          # Issue #57 Cause-1 — see "Build rust core fixtures".
+          NROS_BUILD_JOBS: "2"
+          CARGO_BUILD_JOBS: "2"
         run: |
           source /opt/ros/humble/setup.bash
           just native build-workspace-fixtures > build/ci-logs/workspace.log 2>&1 \
@@ -229,6 +239,9 @@ jobs:
         # debuginfo=0 come from the job-level CI-build env.
         env:
           NROS_FIXTURES_OPTIONAL: "1"
+          # Issue #57 Cause-1: cap the nextest compile's rustc fan-out too — the
+          # nros-tests integration binaries pull the same heavy codegen deps.
+          CARGO_BUILD_JOBS: "2"
         run: |
           source /opt/ros/humble/setup.bash
           mkdir -p build/ci-logs
