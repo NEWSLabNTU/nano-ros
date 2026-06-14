@@ -236,13 +236,27 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
 
 ## Wave 2 — Enabler-dependent cleanups (parallel; after Wave 0)
 
-- [ ] **D1 — qemu-arm-baremetal Rust (13/15 major). Needs E1, E4, E5.** Route every
-  variant through `nros::main!()` (+ the E1 RTIC surface). Remove `#![no_std]`/
-  `#![no_main]` (`talker/src/main.rs:13-14`), `use panic_semihosting as _;`
-  (`:19`), `nros_rmw_zenoh::register()` (`:61`), hardcoded `Config{mac,ip}` +
-  `const LOCATOR` (`:31,40` → deploy metadata via E5), and the RTIC plumbing
-  (`talker-rtic/src/main.rs:47,70,72,78`). `phase216` pair is the in-group
-  reference. Leaks P2/P3/P5/P6/P8.
+- [~] **D1 — PARTIAL (2026-06-14). pub/sub (8) + action/service RTIC (4) DONE;
+  serial/xrce (3) enabler-gated.** The pub/sub variants (talker/listener ± rtic ±
+  mixed + the e2e fixtures) were migrated in prior waves (`phase216` pair = the
+  in-group reference). 2026-06-14: the 4 hand-written `#[rtic::app]` action/service
+  examples (action-server/client, service-server/client) → entry + `*_rtic_pkg`
+  node split: 4-line `nros::main!()` + `[package.metadata.nros.entry]
+  deploy="rtic-mps2-an385" node_pkgs=[…]` + per-example deploy overlay; declarative
+  `ExecutableNode` action/service logic mirroring the proven
+  `qemu-riscv64-threadx/rust/<role>` refs (example_interfaces via `nros ws sync`).
+  Proves the baremetal-RTIC + declarative-action/service path (no such example
+  existed before). All 4 build clean for `thumbv7m-none-eabi` locally. (`4e01e29d0`)
+  - **serial-talker / serial-listener / talker-xrce — ENABLER-GATED (deferred).**
+    These use a custom transport (serial UART / XRCE-over-UART) installed before
+    executor open via the imperative `run(Config, closure)` shape. The
+    `nros::main!()` flow can't express them: (1) `DeployOverlayLit` carries only
+    `locator/ip/gateway/netmask/domain_id` — no transport-kind / serial selector;
+    (2) `BoardEntry::run_with_deploy` has no pre-`Executor::open` hook to call
+    `set_custom_transport_ops` / pick `Config::serial_default()`. Needs a Wave-0
+    enabler (deploy transport field + a board pre-register transport hook + macro
+    plumbing) before migration — tracked as a D1 follow-up. Leaks P2/P3 remain on
+    these 3 only.
 - [~] **D2 — PARTIAL (2026-06-13). qemu-esp32-baremetal talker+listener migrated +
   compiled** (nros::main!() Node+Entry; net/domain → deploy metadata; compiles
   riscv32imc build-std). **esp32/rust left** (ESP-IDF staticlib stubs — no leaks,
