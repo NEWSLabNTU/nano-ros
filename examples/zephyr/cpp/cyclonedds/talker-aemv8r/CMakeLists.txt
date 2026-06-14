@@ -11,7 +11,24 @@ project(nros_zephyr_aemv8r_cyclonedds_talker LANGUAGES CXX)
 
 # Generate C++ message bindings for the Int32 type used by the talker.
 # `nros_generate_interfaces()` is provided by the nros Zephyr module
-# (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y).
+# (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y). KEEP this (not the rclcpp-compat
+# `find_package` + explicit `NROS_CYCLONE_*` descriptor block the native_sim
+# reference uses) — it already emits the Cyclone C descriptor for this FVP build
+# path, and `build-fvp-aemv8r-cyclonedds` does not export `NROS_CYCLONE_*`.
 nros_generate_interfaces(std_msgs LANGUAGE CPP)
 
-target_sources(app PRIVATE src/main.cpp)
+# phase-244.C2.1 — typed carrier. Instead of an imperative `main.cpp`, the node is
+# a stateful component (`Talker::configure(node)`); the Zephyr typed carrier
+# generates the entry (`nano_ros_node_register(TYPED … DEPLOY zephyr)` →
+# ZephyrBoard::run_components) and target_sources/links it into the global `app`.
+set(NANO_ROS_PLATFORM zephyr)
+include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+
+nano_ros_node_register(
+    NAME      talker
+    CLASS     nros_zephyr_aemv8r_cyclonedds_talker::Talker
+    LANGUAGE  CPP
+    HEADER    Talker.hpp
+    TYPED
+    SOURCES   src/Talker.cpp
+    DEPLOY    zephyr)
