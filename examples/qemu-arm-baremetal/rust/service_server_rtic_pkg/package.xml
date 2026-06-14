@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>qemu_rtic_service_server</name>
+  <name>service_server_rtic_pkg</name>
   <version>0.1.0</version>
-  <description>RTIC service server example for nros on QEMU MPS2-AN385</description>
+  <description>Node package for the QEMU RTIC service server example (example_interfaces/AddTwoInts on /add_two_ints)</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>MIT OR Apache-2.0</license>
   <depend>example_interfaces</depend>
