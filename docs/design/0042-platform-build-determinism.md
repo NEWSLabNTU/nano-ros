@@ -211,6 +211,13 @@ whole-archive manifest. Detail + work items: `docs/roadmap/phase-241-d3-single-r
   the **Zephyr** build (`zephyr/CMakeLists.txt`) links the cargo-built staticlib
   directly (its own west link model, not the cmake umbrella), and the archive-symbol
   / header-parity tests consume them.
+- **Remaining D3 goals (bullets 1+2) — [issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md).**
+  Single-runtime delivers bullet 3 (no dup). The *one registration path* (bullet 1
+  — stub + linkme + ctor still coexist) and the *generated link manifest* (bullet 2
+  — the RMW dispatch table, incl. Cyclone's `+libstdc++`, is still hand-prose) ride
+  on this foundation: emit the dispatch table as data from `resolve_rmw`, and delete
+  the weak `nros_app_register_backends` once the W11 ctor guarantees registration
+  (closes [issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md) W3.1).
 
 ### D4 — Merge-time compile + link gate
 

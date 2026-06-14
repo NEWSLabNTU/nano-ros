@@ -278,6 +278,19 @@ Steps (each a commit; CI between the riskier ones):
       threadx-riscv64 `-D` is generated from board.toml, not hand-set.
 
 ### 241.D — Deterministic linking (RFC-0042 D3)
+
+> **CURRENT DESIGN (2026-06-14): single shared runtime → [phase-241-d3-single-runtime](phase-241-d3-single-runtime.md).**
+> One Rust staticlib per binary (the umbrella) ⇒ `std`/`compiler-builtins`
+> monomorphized once ⇒ `--allow-multiple-definition` removable for real. This
+> model **subsumes slice 4** below (the dedicated `nros-rmw-cffi-provider` +
+> `external-registry` feature are *retired* — one archive ⇒ one `REGISTRY`, plain
+> `#[no_mangle]`). The slice-4 design text below is kept for history but is
+> **superseded** by the single-runtime doc. D3 bullet 3 (no dup) lands there;
+> **bullets 1+2 (one registration path, generated link manifest) + issue 0050
+> W3.1 (delete the weak `nros_app_register_backends`) are tracked by
+> [issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md)**,
+> riding on the single-runtime foundation.
+
 > **In progress on branch `issue-42-d3-link-determinism`. Slice 4 complete +
 > validated.** The **C/C++ multi-archive path** (D3's actual target) is fixed: native
 > cpp+c examples link with NO `--allow-multiple-definition` / `--whole-archive`, the

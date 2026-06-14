@@ -81,8 +81,12 @@ unstable). Keep it that way.
   validated on real RISC-V (strong override wins, no const-fold). Remaining
   override-defaults re-audited as capability-conditional (keep). The
   `nros_app_register_backends` register-stub dance is the one pure link-order
-  dodge and is scoped to RFC-0042 D3 (unlanded), kept audited by both gates
-  until then. → see [phase-247](../roadmap/phase-247-weak-symbol-determinism.md).
+  dodge; it is retired by the D3 **single-runtime** model
+  ([phase-241-d3-single-runtime](../roadmap/phase-241-d3-single-runtime.md)) — once
+  its W11 `.init_array` ctor guarantees registration, the stub + weak default are
+  deleted ([issue 0062](0062-d3-completion-one-registration-path-and-link-manifest.md)
+  R2). Kept audited by both gates until then. → see
+  [phase-247](../roadmap/phase-247-weak-symbol-determinism.md).
 
 ## Scope for the worker
 

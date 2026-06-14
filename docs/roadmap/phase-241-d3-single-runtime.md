@@ -320,3 +320,24 @@ Rust node).
 - **SDK-matrix decoupling** may still want standalone backend staticlibs — confirm
   before deleting those crates.
 - **High blast radius on the link path** — validate per-cell incrementally.
+
+## W13 — D3 bullet-1/2 completion + 0050 W3.1 (tracked by issue 0062)
+
+Single-runtime delivers D3 bullet 3 (the dup). Bullets 1+2 and issue 0050 W3.1
+remain — captured in [issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md),
+to land **on top of** this model (not a competing design). Summary so the seam is
+visible from here:
+
+- **R1 — dispatch table → generated data (bullet 2).** Emit `backend → {rlib dep,
+  extra link libs}` from `resolve_rmw()` (the RFC-0031 SSoT), consumed by both the
+  W11 synthesized `nros_ws_runtime/Cargo.toml` features and the cmake link extras
+  (the Cyclone `+libstdc++ even for C` locked choice becomes one generated entry).
+- **R2 — close 0050 W3.1 via the W11 ctor.** Once the synthesized-runtime
+  `.init_array` ctor (`nros_cpp_auto_register_backend`) guarantees registration,
+  the cmake `nros_app_register_backends` stub + the weak default in
+  `weak_register_backends.c` are redundant → delete → #48 weak-no-op hazard gone.
+  The phase-247 image gate asserts the symbol resolves strong, guarding it.
+- **R3 — one trigger (bullet 1, directional).** Fold stub + linkme into the ctor
+  anchor; extend the per-configure synthesis to the single-example Entry pkg (the
+  once-per-binary owner). Deferred per-entry risk noted in W11 — this is the
+  follow-on layer.
