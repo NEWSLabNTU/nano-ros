@@ -12,8 +12,10 @@ per-RTOS sub-headers (A)**. Ends the split-brain where POSIX/native resolve A
 (direct-libc heap, ns-clock, per-platform atomics) while Zephyr/xrce/zpico resolve
 api (alloc funnel, ms/us-clock).
 
-**Status.** **LANDED on main (2026-06-13 reconciliation):** `nros-c/include/nros/
-platform.h` + its per-RTOS sub-headers are deleted on main (`git ls-files | grep -c
+**Status.** **ARCHIVED 2026-06-15 — DONE** (one residual: the coordinated full
+`run_e2e`, deferred — see 243.6). **LANDED on main (2026-06-13 reconciliation):**
+`nros-c/include/nros/platform.h` + its per-RTOS sub-headers are deleted on main
+(`git ls-files | grep -c
 nros-c/include/nros/platform` = 0) — the one canonical `<nros/platform.h>` is in
 `nros-platform-api`. Waves 243.1/.2/.3/.5 landed; e2e was green on **5/6 cells**
 (qemu, esp32, freertos, threadx_linux, threadx_riscv64). **nuttx red is the
@@ -140,11 +142,14 @@ Ordered so the gate guards from W1, A's consumers are migrated before A is delet
 - [x] **B.4 (confirmed 2026-06-13):** `c_stub_platform.rs` compiles clean on main,
       so it still gates the canonical header ↔ `nros-platform-cffi/src/lib.rs` (the
       atomics are inline → not mirrored; the rest is unchanged).
-- [ ] Branch + `run_e2e` dispatch: all per-platform cells green (the POSIX-funnel +
+- [~] Branch + `run_e2e` dispatch: all per-platform cells green (the POSIX-funnel +
       atomics + clock change touches every platform). Accept the pre-existing nuttx
-      `240.6` red as out-of-scope (cross-ref).
-- **Acceptance:** gate + parity + e2e green (nuttx modulo 240.6); RFC-0042 D1 flips
-      toward `Stable` (one `<nros/platform.h>`).
+      `240.6` red as out-of-scope (cross-ref). **DEFERRED** — folded into the single
+      coordinated full `run_e2e` taken once the active build/registration phases
+      (241.D/phase-249, #57) settle, rather than a 243-only dispatch (the code
+      already landed 5/6 green; a fresh full run validates the integrated tree).
+- **Acceptance:** gate + parity LANDED; e2e green is the deferred coordinated run;
+      RFC-0042 D1 flips to `Stable` (one `<nros/platform.h>`) — done in 241.E.
 
 ## Risks / notes
 

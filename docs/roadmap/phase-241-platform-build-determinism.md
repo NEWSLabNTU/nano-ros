@@ -11,7 +11,7 @@ convention-enforced. Cross-refs the systemic review in [issue 0042].
 
 **Status.** In progress (2026-06-12 → ongoing). **241.A (gate)** + **241.C
 (capability SSoT)** LANDED; **241.B (one canonical header)** LANDED — B.3 (the ABI
-unification) was carved to [phase-243](phase-243-platform-abi-unification.md),
+unification) was carved to [phase-243](archived/phase-243-platform-abi-unification.md),
 which LANDED on main (the legacy `nros-c` `<nros/platform.h>` is deleted). **241.D
 (deterministic linking, RFC-0042 D3)** is the remaining open pillar: its current
 design is the single shared runtime
@@ -187,7 +187,7 @@ Steps (each a commit; CI between the riskier ones):
 > delivered the concrete win (the cffi duplicate is gone, one fewer `platform.h`).
 
 - [x] **B.3 — unify A's surface into api, then retire A. DONE via
-      [phase-243](phase-243-platform-abi-unification.md) (LANDED on main).** Grew
+      [phase-243](archived/phase-243-platform-abi-unification.md) (LANDED on main).** Grew
       from "delete the duplicate" into a real ABI unification (A was a *live*
       complementary surface) → carved to phase-243 (6 waves). api gained generic
       `__atomic` atomics; the Rust `platform.rs` wrappers re-point to
