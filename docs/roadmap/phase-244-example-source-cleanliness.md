@@ -325,6 +325,50 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
 
 ---
 
+- [ ] **C2.1 — zephyr/cpp/cyclonedds/talker-aemv8r straggler. IN PROGRESS
+  (2026-06-15).** The #0049 re-audit (below) found one genuine major C2 missed: the
+  FVP AEMv8-R Cortex-A/R cyclonedds demo (`examples/zephyr/cpp/cyclonedds/talker-aemv8r`),
+  a legacy Phase-117 imperative `main.cpp` (`nros::init` + `create_node` + manual
+  `while(true)`/`k_sleep` + `<zephyr/kernel.h>` — P1+P7). It was outside C2's
+  native_sim set (its own `cyclonedds/` subdir, FVP-only board). Migrate to the typed
+  carrier mirroring `zephyr/cpp/talker`: `main.cpp` → `Talker.{hpp,cpp}`
+  `configure(Node&)` (typed `Publisher<Int32>` + `bind_timer`, 1 Hz) +
+  `nano_ros_node_register(TYPED … DEPLOY zephyr)`. **Keep the existing
+  `nros_generate_interfaces(std_msgs LANGUAGE CPP)`** — it already produces the
+  Cyclone C descriptor for this build path; do NOT switch to the reference's
+  `find_package`+explicit-`NROS_CYCLONE_*` block (the `build-fvp-aemv8r-cyclonedds`
+  recipe doesn't export those env vars). **Verification gap:** builds only on the ARM
+  FVP simulator (`just zephyr build-fvp-aemv8r-cyclonedds`, licensed, not in
+  local/CI env) — unverifiable locally; relies on the FVP CI cell (cf. D6's "verify
+  on CI" caveat). Maintainer decision (2026-06-15): migrate now, CI-gated.
+
+---
+
+## Re-audit (2026-06-15, 9-agent fan-out over all example/template source)
+
+Re-ran the issue-0049 rubric with the 2026-06 rescopes (native board-less
+`Executor::open` accepted; force-link `#[used] static = register` = accepted
+link-force, not P3; cargo `rmw-*` feature = RFC-0031 lowering target; node-lib
+`#![no_std]` = accepted `minor`/E4; deploy-metadata/env locators accepted).
+
+**Result — `0 blocking major`** except the single C2.1 straggler (being migrated):
+- native+px4 51 clean · qemu-arm-baremetal 30 clean · qemu-arm-freertos 24 clean ·
+  nuttx (arm+riscv) clean · threadx-linux 12 clean + 12 minor (node-lib `#![no_std]`)
+  · zephyr+esp32+stm32f4 44 clean (+1 major = C2.1) · templates 12 clean ·
+  workspaces 34 clean + 2 minor.
+- **Accepted-residual (not a blocker):** `bridges/tt-zenoh-to-xrce`
+  (`register()`+`.rmw()` are functional for a 2-RMW-in-one-binary bridge — D5).
+- **phase-245 carve-out (not 244):** `qemu-riscv64-threadx` 6 rust major (tracked in
+  phase-245; C uses `NROS_C_COMPONENT`, cpp typed — both clean).
+- **Corrected agent false-positives:** qemu-arm-freertos's 18 "undocumented locator"
+  → CLEAN (locator in `nano_ros_deploy(LOCATOR)`/Cargo.toml `[deploy]` IS the correct
+  P6 destination, not a code leak).
+
+Residual `minor` = node-lib `#![no_std]` only (E4: proc-macros can't inject
+crate-level attrs — architecturally correct, not downgradable to clean).
+
+---
+
 ## Wave 2 — Enabler-dependent cleanups (parallel; after Wave 0)
 
 - [x] **D1 — DONE 15/15 (2026-06-14). pub/sub (8) + action/service RTIC (4) +

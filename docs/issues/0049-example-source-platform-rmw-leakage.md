@@ -78,3 +78,21 @@ group (qemu-riscv64-threadx, cluster C1) is a re-architecture carved into
 [phase-245](../roadmap/phase-245-riscv64-threadx-example-port.md). Closes when
 every example is `clean` or `minor` (residual `minor` = node-lib `#![no_std]`,
 the E4-confirmed accepted minor — proc-macros cannot inject crate-level attrs).
+
+## Re-audit (2026-06-15) — 0 blocking major
+
+Full re-run (9-agent fan-out) over all example/template source with the 2026-06
+rescopes (native board-less `Executor::open` accepted; force-link `#[used] static =
+register` = accepted link-force, NOT P3; cargo `rmw-*` feature = RFC-0031 lowering
+target; node-lib `#![no_std]` = accepted `minor`/E4; deploy-metadata/env locators
+accepted). Detail + per-group tallies → phase-244 "Re-audit (2026-06-15)".
+
+- **`0 blocking major`.** The only genuine straggler — `zephyr/cpp/cyclonedds/
+  talker-aemv8r` (legacy Phase-117 imperative, missed by C2) — was migrated to the
+  typed carrier (phase-244 C2.1); its FVP build is CI-gated (not locally verifiable).
+- Accepted-residual (not a leak): `bridges/tt-zenoh-to-xrce` (2-RMW bridge —
+  `register()`+`.rmw()` functional, D5).
+- `qemu-riscv64-threadx` rust majors are carved to **phase-245**, not this issue.
+- Residual `minor` = node-lib `#![no_std]` only (E4 accepted).
+
+**Ready to resolve** once the C2.1 FVP cell + D6 `threadx_linux` cell go green on CI.
