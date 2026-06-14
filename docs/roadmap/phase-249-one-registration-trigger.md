@@ -99,9 +99,28 @@ proven).
   *before* the macro) — not a P1 regression; tracked under phase-248's deferred FreeRTOS
   smoke.
 - **P2 — C/C++ generated strong def.** Emit `nros_app_register_backends` as a generated
-  STRONG def from the manifest (CLI codegen or a generated TU the cmake compiles),
-  replacing the per-target `nano_ros_link_rmw` stub. **Gate:** native C/C++ + FreeRTOS +
-  ThreadX + NuttX C/C++ e2e; the image gate stays green.
+  STRONG def from the manifest, universally + manifest-driven.
+
+  **Landscape audit (2026-06-14) — the strong def is INCONSISTENT across platforms:**
+  | platform | strong `nros_app_register_backends`? | how C/C++ registers |
+  | --- | --- | --- |
+  | posix | ✅ auto | `nano-ros-posix.cmake:93` → `nano_ros_link_rmw(target)` |
+  | threadx | ✅ per-example | each `examples/*/threadx*/…/CMakeLists.txt:47` calls `nano_ros_link_rmw` |
+  | freertos | ❌ weak no-op | relies on backend `.init_array` ctors |
+  | esp_idf | ❌ weak no-op | relies on `.init_array` ctors |
+  | nuttx | ❌ weak no-op | Rust FFI crate drags the staticlib; C/C++ would fall back |
+  | zephyr | ❌ (platform link empty) | explicit via the typed carrier / `nros_cpp_init` (ctors `#ifndef __ZEPHYR__`) |
+  | bare-metal | ❌ weak no-op | **the canonical gap — `.init_array` unreliable** |
+
+  **P2 work:** (a) **manifest-drive** `nano_ros_link_rmw` — source the `nros_rmw_<x>_register`
+  set + the cyclonedds `NROS_RMW_NEEDS_CXX_LINKER` / `EXTRA_LINK_LIBS` from the R1
+  `nros_rmw_dispatch` (SSoT) instead of ad-hoc cmake; (b) make the strong-def generation
+  **universal** — every C/C++ app target gets it (move the auto-call into the shared
+  `nros_platform_link_app` / entry path, not per-platform/per-example), so no C/C++ binary
+  depends on `.init_array`. **Gate:** native C/C++ + ThreadX C/C++ e2e (have harnesses);
+  build-check freertos/nuttx/esp/zephyr C/C++ (runtime smoke deferred with phase-248's
+  embedded-harness residual); image gate green. **(a) is the contained, validatable slice
+  landed first; (b) the universal rollout rides the embedded e2e harness.**
 - **P3 — drop the `.init_array` ctors.** With P1+P2 guaranteeing the explicit call, the
   ctors are redundant. Remove them from `nros-c`/`nros-cpp` `rmw_backend` + the W11 synth
   anchor (keep the `FORCE_LINK` that pulls the backend closure, now referenced by the

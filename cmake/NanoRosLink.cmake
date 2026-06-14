@@ -30,6 +30,11 @@
 #   ``NANO_ROS_RMW``. Multiple invocations accumulate (e.g. a bridge
 #   node registering zenoh + xrce).
 
+# Phase 249 P2(a) — the generated RMW dispatch (`nros_rmw_dispatch(<rmw>)`), the SSoT
+# for per-backend link data incl. `NROS_RMW_NEEDS_CXX_LINKER`. Generated from
+# cargo-nano-ros `resolve_rmw()` (W13/R1), drift-guarded.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
+
 function(_nano_ros_resolve_choice OUT_VAR KIND REQUESTED FALLBACK_LIST)
     if(REQUESTED)
         set(${OUT_VAR} "${REQUESTED}" PARENT_SCOPE)
@@ -106,15 +111,18 @@ function(nano_ros_link_rmw TARGET)
     file(WRITE "${_stub_path}" "${_stub_content}")
     target_sources(${TARGET} PRIVATE "${_stub_path}")
 
-    # Phase 177.27 — the cyclonedds backend is C++ (operator new/delete,
-    # std::nothrow in publisher/subscriber/sertype_min). When a C executable
-    # links it, CMake's link-language propagation from the C++ static lib can
-    # be lost — the backend is pulled in transitively (and whole-archived for
-    # the register TU) rather than by target name — so the C linker driver is
-    # selected and fails on unresolved C++ runtime symbols. Force the C++
-    # linker driver so libstdc++ is linked. Idempotent / harmless for C++ apps
-    # (already CXX) and for hosts where propagation already works.
-    if("cyclonedds" IN_LIST _existing_rmws)
-        set_target_properties(${TARGET} PROPERTIES LINKER_LANGUAGE CXX)
-    endif()
+    # Phase 177.27 / 249 P2(a) — some backends need the C++ linker driver on the
+    # final line (libstdc++): cyclonedds's wrapper is C++ (operator new/delete,
+    # std::nothrow), and when a C executable links it CMake's link-language
+    # propagation can be lost (transitive pull / whole-archive) → the C driver is
+    # picked and fails on unresolved C++ runtime symbols. WHICH backends need this
+    # is now sourced from the R1 dispatch manifest (`NROS_RMW_NEEDS_CXX_LINKER`),
+    # not a hardcoded `cyclonedds` literal — one SSoT. Idempotent / harmless for
+    # C++ apps (already CXX) and hosts where propagation already works.
+    foreach(_rmw_name IN LISTS _existing_rmws)
+        nros_rmw_dispatch("${_rmw_name}")
+        if(NROS_RMW_NEEDS_CXX_LINKER)
+            set_target_properties(${TARGET} PROPERTIES LINKER_LANGUAGE CXX)
+        endif()
+    endforeach()
 endfunction()
