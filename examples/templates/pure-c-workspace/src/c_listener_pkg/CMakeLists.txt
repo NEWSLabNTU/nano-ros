@@ -14,11 +14,14 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 247 (RFC-0043) — typed C component. The raw subscription matches the
-# DDS-mangled keyexpr verbatim, so no generated std_msgs C binding is needed.
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
+
 nano_ros_node_register(
     NAME     listener
     CLASS    c_listener_pkg::Listener
     LANGUAGE C
     SOURCES  src/Listener.c
     DEPLOY   native)
+
+target_link_libraries(c_listener_pkg_listener_component
+    PUBLIC std_msgs__nano_ros_c)
