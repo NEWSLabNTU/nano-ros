@@ -12,7 +12,7 @@ name = "xrce-large-msg-test"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi" }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-

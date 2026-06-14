@@ -16,7 +16,7 @@ name = "rtic-action-client"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 # Phase 227.3 (unified RMW) — zenoh routes through the `nros` umbrella feature
 # (`rmw-zenoh` above); `nros` forwards the backend features + force-links it
 # (`__FORCE_LINK_ZENOH`), so no project-level `nros-rmw-zenoh` dep and no

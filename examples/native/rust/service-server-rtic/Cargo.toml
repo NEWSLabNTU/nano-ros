@@ -16,7 +16,7 @@ name = "rtic-service-server"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 # Phase 227.3 (unified RMW) — zenoh routes through the `nros` umbrella feature
 # (`rmw-zenoh` above); `nros` force-links the backend (`__FORCE_LINK_ZENOH`), so
 # no project-level `nros-rmw-zenoh` dep and no `register()` call in `main.rs`.

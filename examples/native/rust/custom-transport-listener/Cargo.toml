@@ -21,7 +21,7 @@ default = []
 # Phase 115.L.5-custom-transport — see talker for migration notes.
 # Phase 227.3 (unified RMW) — zenoh + custom link via the umbrella (no project
 # dep, no register()).
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 nros-rmw = { path = "../../../../packages/core/nros-rmw", default-features = false, features = ["std"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-

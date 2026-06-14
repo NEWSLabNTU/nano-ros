@@ -29,7 +29,7 @@ netmask = "255.255.255.0"
 
 [dependencies]
 # nros Executor API + bare-metal platform glue.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # RTIC board entry: brings up hardware + network, opens the executor, builds the
 # RTIC dispatch runtime consumed by the generated `#[rtic::app]`.
 nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385" }

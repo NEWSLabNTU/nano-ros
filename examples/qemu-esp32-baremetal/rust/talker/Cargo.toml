@@ -46,7 +46,7 @@ locator = "tcp/10.0.2.2:7454"
 nros-board-esp32-qemu = { path = "../../../../packages/boards/nros-board-esp32-qemu" }
 
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Executor API.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Generated message types (from package.xml via nros generate-rust)
 std_msgs = { version = "*", default-features = false }

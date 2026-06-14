@@ -19,7 +19,7 @@ default = ["rmw-xrce"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
 nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
 px4_msgs = { version = "*", default-features = false, features = ["std"] }

@@ -31,7 +31,7 @@ locator = "serial/UART_0#baudrate=115200"
 domain_id = 0
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Board built with the serial UART link (no ethernet).
 nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385", default-features = false, features = ["board-entry", "serial", "rmw-zenoh"] }
 # Linked RMW backend (force-linked; self-registers via the macro's

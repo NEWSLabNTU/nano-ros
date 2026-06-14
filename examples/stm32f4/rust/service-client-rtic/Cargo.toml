@@ -30,7 +30,7 @@ node_pkgs = ["stm32f4_service_client_pkg"]
 # hand-rolled `#[rtic::app] mod app` stack (rtic, rtic-monotonics,
 # stm32f4xx-hal, nros-rmw-zenoh, example_interfaces, cortex-m) is
 # dropped — the macro emit + the board crate own those.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 216.B.2 board crate — supplies the `RticStm32F4` ZST the
 # macro-generated body delegates init to via
 # `RticBoardEntry::init_hardware`. Today the bringup body is

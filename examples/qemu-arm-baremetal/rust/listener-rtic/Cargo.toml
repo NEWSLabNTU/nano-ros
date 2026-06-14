@@ -29,7 +29,7 @@ netmask = "255.255.255.0"
 
 [dependencies]
 # nros declarative-node + main! API.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # RTIC board entry (RticBoardEntry) for QEMU MPS2-AN385.
 nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385" }
 # RMW backend — bare-metal callers link it explicitly so the boot scaffold

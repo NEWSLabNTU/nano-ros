@@ -27,7 +27,7 @@ node_pkgs = ["stm32f4_talker_pkg"]
 # `__nros_dispatch_task` `#[embassy_executor::task]` sidekicks via the
 # C.3 routing branch, so this Entry pkg only needs `nros` + the
 # board crate + the talker Node pkg.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 216.C.2 board crate — supplies the `EmbassyStm32F4` ZST the
 # macro-generated body delegates init to via
 # `EmbassyBoardEntry::init_hardware`. Today the bringup body is

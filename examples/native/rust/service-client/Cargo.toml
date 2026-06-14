@@ -25,7 +25,7 @@ rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]  # Phase 214.S.4.b — strict 1
 rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
 # Phase 248 C6d — board-LESS APP owns its backend dep directly. The `nros`
 # umbrella no longer carries `rmw-*` (that edge blocked C5c), so the app links
