@@ -18,5 +18,6 @@ nano_ros_entry(
     NAME    robot_entry
     SOURCES src/main.cpp
     BOARD   native
+    TYPED
     LAUNCH  "demo_bringup:system.launch.xml"
     DEPLOY  native)

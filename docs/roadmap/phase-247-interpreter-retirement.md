@@ -33,39 +33,45 @@ boot. Migrated to the typed carrier (`nano_ros_node_register(TYPED)` cpp/c,
 (ThreadX + riscv64-threadx + threadx-linux app-nodes were done earlier in
 phase-245/246.)
 
-### Stage 2 — workspace examples → multi-node typed entry — **TODO (test-coupled)**
+### Stage 2 — workspace examples → multi-node typed entry — **IN PROGRESS**
 Multi-node workspaces (Node libs + Entry pkg + `<launch>`). Migrate via the typed
-multi-node entry (`nros codegen entry --typed` over a populated `<launch>`;
-per-Node `configure(Node&)`). The proven reference is
-`examples/templates/multi-node-workspace-cpp-typed`.
+multi-node entry (`nano_ros_entry(... TYPED)` → `nros codegen entry --typed`;
+per-Node `configure(Node&)` for C++, `NROS_C_COMPONENT` for C). The proven
+reference is `examples/templates/multi-node-workspace-cpp-typed`.
 
-**Important (mapped 2026-06-14): Stage-2 is interwoven with the legacy-emit
-retirement + the test suite — it is NOT a standalone example edit.**
-`examples/templates/multi-node-workspace-cpp` (declarative) is the regression
-fixture for the **legacy** `emit_cpp::emit` path:
-- `packages/testing/nros-tests/tests/cpp_multi_node_entry.rs` builds it (via the
-  `cpp_robot_entry` cmake fixture, `compile-check-fixtures.sh:146`) and asserts the
-  **legacy** generated TU `robot_entry_nros_main_generated.cpp` (register-symbol
-  calls into the interpreter) — this test must move to the typed shape or be
-  retired with the legacy emit.
-- `packages/cli/nros-cli-core/tests/entry_typed_plan.rs` reads its
-  `src/demo_bringup/launch/system.launch.xml` for the **typed** plan test (lenient:
-  skips if the template is absent).
-- `packages/testing/nros-tests/tests/cpp_entry_runtime.rs` runs its Entry binary.
+**Map (2026-06-14), refined.** The dispatch is in `cmd/codegen.rs:245`: `--typed`
+→ `emit_cpp::emit_typed` (C++ only; `bail!("--typed is C++ only")`), else the
+legacy `emit_cpp::emit` / `emit_c::emit`. Crucially **`emit_cpp::emit_typed`
+already handles C *nodes*** (the `__nros_c_component_<pkg>_{create,configure}`
+seam) — so a workspace whose **Entry is C++** migrates with NO framework change,
+even with C Node pkgs. Only a workspace whose **Entry itself is C**
+(`--lang c --typed`) is blocked — `emit_c::emit_typed` does not exist. So:
 
-So Stage-2 + the legacy-emit deletion (Stage-3) must land in lockstep:
-- [ ] `multi-node-workspace-cpp` → migrate its Node pkgs to `configure(Node&)` +
-  populated `<launch>` (match `-typed`), OR delete it and re-point the 3 tests +
-  the `cpp_robot_entry` fixture at `-typed` (then drop the legacy
-  `robot_entry_nros_main_generated.cpp` assertions). Decide once Stage-3's legacy
-  `emit_cpp::emit`/`emit_c::emit` removal is staged.
-- [ ] `examples/templates/pure-c-workspace` — no typed sibling → migrate.
-- [ ] `examples/templates/c-and-cpp-mixed-workspace` — migrate.
-- [ ] `examples/workspaces/{c,cpp,mixed}` — fixture-generating workspaces → migrate
-  (update `build-workspace-fixtures`/`build-workspace-codegen`).
+- [x] **`c-and-cpp-mixed-workspace`** — Entry is C++ → unblocked. Migrated:
+  `cpp_listener_pkg` → `include/cpp_listener_pkg/Listener.hpp` + `configure(Node&)`
+  raw sub; `c_talker_pkg` → `NROS_C_COMPONENT` raw publisher; `robot_entry` →
+  `nano_ros_entry(TYPED)`. Fixture `c_mixed_workspace`; test
+  `c_mixed_workspace.rs` only asserts the linked `robot_entry` binary (no legacy
+  shape) → typed-compatible. **(build-verifying.)**
+- [ ] **`multi-node-workspace-cpp`** (pure C++) — `emit_cpp::emit_typed` ready; the
+  `-typed` sibling + `cpp_multi_node_entry_typed.rs` + `cpp_robot_entry_typed`
+  fixture already exist in parallel. Migration = make this template *be* the typed
+  form (adopt `-typed`), drop the legacy `cpp_robot_entry` fixture +
+  `cpp_multi_node_entry.rs` (asserts the legacy `robot_entry_nros_main_generated.cpp`)
+  + `cpp_entry_runtime.rs` (runs the legacy Entry binary). Lands with Stage-3.
+- [ ] **`pure-c-workspace`** + **`examples/workspaces/c`** — Entry is C
+  (`NROS_MAIN_C`, `nano_ros_entry LANG c`) → **needs new framework**:
+  `emit_c::emit_typed` + a C `run_components` ABI (`nros_board_native_run_components`)
+  + cmake `nano_ros_entry(TYPED LANG c)` (today gated to cpp,
+  `NanoRosEntry.cmake:118`). This is the one genuine W0 in Stage-2 and the only
+  gate on deleting `emit_c::emit`. Fixtures `pure_c_workspace` (+ its
+  `c_mixed_workspace.rs` test) only assert the linked binary → typed-compatible
+  once the framework lands.
+- [ ] **`examples/workspaces/{cpp,mixed}`** — fixture-generating; cpp unblocked,
+  mixed unblocked (C++ entry); flip with the above.
 
-Because these flip the legacy-emit regression tests, Stage-2 needs the test suite
-green to verify — best done as one focused pass with Stage-3, not piecemeal.
+So the legacy `emit_cpp::emit` deletion is clean (typed cpp path already parallel);
+the legacy `emit_c::emit` deletion is gated on the `emit_c::emit_typed` W0.
 
 ### Stage 3 — the deletion — **TODO (after Stage 2)**
 - [ ] Delete `EntryNodeRuntime` + `detail::entry_*` synthesis helpers from `main.hpp`.
