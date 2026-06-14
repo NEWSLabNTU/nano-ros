@@ -41,6 +41,17 @@ builds with `DEPLOY` now optional). Template typed-migration is deferred to the
 templates only AFTER 244.C4's `_NROS_NODE_REGISTER_DIR` workspace-context bug is
 fixed and the workspace-vs-carrier model for posix multi-node is settled.
 
+> **UPDATE (2026-06-14, `dfbdbd1ff`): both 244.C4 collision causes fixed —
+> template migration UNBLOCKED.** (1) The native branch no longer FATALs on a
+> non-TYPED posix node — `_NRC_TYPED` now gates the branch, so a posix node that
+> propagates `nano_ros_workspace(PLATFORM posix)` to its subdirs without TYPED
+> falls through (no-op) instead of `:546` aborting. (2) The carrier
+> `configure_file` uses `CMAKE_CURRENT_FUNCTION_LIST_DIR` (not the
+> workspace-empty `_NROS_NODE_REGISTER_DIR`), so the template path resolves in the
+> workspace-subdir context. Verified: `pkg_c_talker` TYPED reaches "Generating
+> done"; `pure-c-workspace` legacy no longer FATALs. phase-247 can re-apply the
+> `pure-c-workspace` + `c-and-cpp-mixed-workspace` typed migration.
+
 Remaining phase-247 work (unblocked): the lockstep `multi-node-workspace-cpp`
 legacy-fixture retirement with Stage-3 (cpp-only path, no posix-carrier collision).
 
