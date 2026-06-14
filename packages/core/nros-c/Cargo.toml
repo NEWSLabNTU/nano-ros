@@ -103,32 +103,36 @@ critical-section = ["dep:critical-section"]
 # also enable `global-allocator` (and, where DDS/portable-atomic need it,
 # `critical-section`) so the agnostic blocks in lib.rs compile without the
 # build script passing them explicitly.
+# Phase 248 C5c — route the platform impl through a DIRECT `nros-platform`
+# dep, NOT the now-agnostic `nros` umbrella (`nros` no longer carries
+# `platform-*`). nros-c is the C/C++ staticlib root: it brings the bundled
+# backend (D3) + the platform-cffi symbols via `nros-platform/platform-X`.
 platform-posix = [
-    "nros/platform-posix",
+    "nros-platform/platform-posix",
     "nros-rmw-zenoh?/platform-posix",
 ]
 platform-zephyr = [
     "alloc",
     "global-allocator",
     "critical-section",
-    "nros/platform-zephyr",
+    "nros-platform/platform-zephyr",
     "nros-rmw-zenoh?/platform-zephyr",
 ]
 platform-freertos = [
     "alloc",
     "global-allocator",
-    "nros/platform-freertos",
+    "nros-platform/platform-freertos",
     "nros-rmw-zenoh?/platform-freertos",
 ]
 platform-nuttx = [
     "alloc",
-    "nros/platform-nuttx",
+    "nros-platform/platform-nuttx",
     "nros-rmw-zenoh?/platform-nuttx",
 ]
 platform-threadx = [
     "alloc",
     "global-allocator",
-    "nros/platform-threadx",
+    "nros-platform/platform-threadx",
     "nros-rmw-zenoh?/platform-threadx",
 ]
 
@@ -163,6 +167,9 @@ nros = { version = "0.5.0", path = "../nros", default-features = false }
 nros-node.workspace = true
 nros-rmw.workspace = true
 nros-core.workspace = true
+# Phase 248 C5c — platform impl + the `nros_platform_*` cffi symbols come from
+# here (via the `platform-X` features above), not the agnostic `nros` umbrella.
+nros-platform = { workspace = true, default-features = false }
 # Phase 88.12 — `nros_node_get_logger` returns a `&'static nros_log::Logger`
 # resolved via the facade's intern table.
 nros-log = { workspace = true }

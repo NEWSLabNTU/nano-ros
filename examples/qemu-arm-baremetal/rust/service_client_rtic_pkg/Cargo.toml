@@ -11,7 +11,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 # nros declarative-node API (RMW-agnostic application logic).
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Generated interface types (from package.xml via nros ws sync).
 example_interfaces = { version = "*", default-features = false }
 
