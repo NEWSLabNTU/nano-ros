@@ -155,26 +155,69 @@ Replace weak defaults that exist only to dodge a link-order problem (not a
 genuine optional hook) with a define-once / explicit-registration structure
 (RFC-0042 D3 pattern). Prioritise the highest-fragility sites:
 
-- **W3.1** — `nros_app_register_backends` weak/strong dance
-  (`nros-c`/`nros-cpp` `c-stubs/weak_register_backends.c` ↔ the cmake-generated
-  strong stub). This is the #48-class hazard. Evaluate the RFC-0042 D3
-  define-once export-macro shape; if adopted, drop the weak default.
-- **W3.2** — the 155.A-class const-weak constants in `threadx_hooks.c`
-  (`nros_board_app_stack_size`/`_priority`) — a weak *data* symbol that the
-  compiler can inline at the use site before the strong override is seen. Prefer
-  a getter hook or an explicit board-supplied config struct over a weak `const`.
-- **W3.3** — re-audit each remaining override-default: if the strong def is
-  *guaranteed* (always linked), the weak default is dead weight + a footgun —
-  drop it and let the missing-symbol link error speak. Keep weak only for
-  genuinely-optional hooks (no-op IS a valid runtime).
-- Each W3 change: update both gates' allowlist; the image gate (W1) proves the
-  replacement still resolves correctly on every platform.
+- **W3.1 — DEFERRED to RFC-0042 D3.** `nros_app_register_backends` weak/strong
+  dance (`nros-c`/`nros-cpp` `c-stubs/weak_register_backends.c` ↔ the
+  cmake-generated strong stub). This is the lone *pure* link-order dodge among
+  the owned weak defaults (#48-class). Removing it == adopting D3's "one
+  registration path" (codegen emits the explicit `nros_rmw_<x>_register()` table
+  used on *all* platforms; the `linkme`-vs-weak split goes away). That is a
+  build-tooling + codegen change owned by RFC-0042 D3 (unlanded), not a
+  point-edit landable here. Tracked there; the source + image gates keep it
+  audited until D3 lands.
+- **W3.2 — DONE (2026-06-13).** The 155.A-class const-weak constants in
+  `threadx_hooks.c` (`nros_board_app_stack_size`/`_priority`) — a weak *data*
+  symbol gcc could fold at the use site before the strong override was seen
+  (155.A worked around it by dropping `const`, but a weak-data symbol relying on
+  link resolution is still the footgun). **Converted to weak getter *functions***
+  (`uint32_t nros_board_app_stack_size(void)` …), matching the sibling
+  `nros_board_*` weak hooks in the same file; the RISC-V overlay's strong *data*
+  override became a strong *function*. A weak function cannot be const-folded
+  across a TU boundary, so the override deterministically wins and the `drop
+  const` workaround is no longer load-bearing. Allowlist count unchanged (7;
+  1:1 data→fn). **Validated end-to-end with the real `riscv64-unknown-elf`
+  toolchain:** `threadx_hooks.o` emits the getters as `W` and `tx_application_
+  define` references them via `R_RISCV_CALL` relocs (a real call, *not* a folded
+  constant); a strong-override `.o` emits them `T`; the link resolves to the
+  strong defs and `objdump` shows `lui a0,0x80` (= 512 KB) at the call, *not* the
+  weak 64 KB default. Both source gates green. Full board-file compile is
+  covered by the `threadx-riscv64` fixture build (CI / on-demand).
+- **W3.3 — DONE (re-audit, 2026-06-13).** Re-audited every remaining
+  override-default for "is the strong def *guaranteed* (always linked) → drop the
+  weak and let the link error speak". Conclusion: **all remaining ones are
+  legitimately *conditional*** — their strong def is gated on a board/build
+  *capability*, so the weak no-op is a valid feature-absent runtime, not dead
+  weight:
+  - `network_glue.c` `register_netif`/`poll_netif` — strong only on an Ethernet
+    board (LAN9118); weak = no-Ethernet build. Keep.
+  - `platform_aliases.c` `_z_*_serial_*` / `smoltcp_{init,cleanup}` — strong only
+    when serial / smoltcp is present. Keep.
+  - `threadx_hooks.c` `init_eth` (strong on both threadx overlays, but a
+    board-less generic threadx link legitimately wants the no-network no-op),
+    `log`/`compute_rng_seed` (optional diagnostic/seed hooks). Keep.
+  - `tx_initialize_low_level.S` — strong only on the RISC-V port; the Linux
+    overlay uses ThreadX's generic. Conditional. Keep.
+  - `callback_default.cpp` `nros_orb_*` — strong only when the px4 glue links;
+    weak `-1` is the graceful "no callback" path. Keep.
+  None are a const-data hazard (all weak *functions* / asm post-W3.2), and none
+  is a pure link-order dodge — that was only W3.1 (register-backends) + W3.2
+  (now fixed). So the allowlist does not shrink further this phase; what remains
+  is genuine optional-hooks + capability-conditional override-defaults.
+- Each landed W3 change updates both gates' allowlist; the image gate (W1) proves
+  the replacement still resolves correctly on every platform that builds it.
 
-**Acceptance.** The register-backends dance + the const-weak constants no longer
-rely on weak resolution; the allowlist shrinks to genuine optional-hooks +
-unavoidable override-defaults; both gates green.
+**Acceptance.** The const-weak constants (W3.2) no longer rely on weak *data*
+resolution — validated at the link layer on RISC-V. The remaining override-
+defaults are confirmed capability-conditional (W3.3). The one pure link-order
+dodge (register-backends, W3.1) is scoped to RFC-0042 D3, kept audited by both
+gates until then.
 
 ## Phase close
 
 Issue 0050 → resolved: audit complete, source + image gates green and wired
-(`just check` + per-platform CI), fragile weak defaults reduced. Archive 0050.
+(`just check` + per-platform CI), fragile weak defaults reduced — the const-data
+footgun (W3.2) eliminated and the remaining override-defaults confirmed
+capability-conditional (W3.3). Carve-out: the one pure link-order dodge
+(`nros_app_register_backends`, W3.1) is scoped to RFC-0042 D3 and stays audited
+by both gates until D3 lands — its reduction is tracked there, not a 0050
+blocker. Archive 0050 once the W1.2 image-coverage seed rows light up on their
+platforms' CI.

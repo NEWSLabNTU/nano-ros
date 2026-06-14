@@ -17,7 +17,7 @@
 3  packages/core/nros-c/c-stubs/weak_register_backends.c        # override-default: cmake strong nros_app_register_backends; no-op log_{write,flush} fallbacks
 1  packages/core/nros-cpp/c-stubs/weak_register_backends.c      # override-default: cmake strong nros_app_register_backends (cpp-only links)
 1  packages/core/nros-cpp/include/nros/main.hpp                 # optional-hook: nros_board_network_wait weak no-op; board overrides with a real link-up wait
-7  packages/boards/nros-board-common/c/threadx_hooks.c          # override-default: overlay strong stack_size/priority/init_eth/app_main; optional-hook log/rng_seed (155.A const-weak fixed)
+7  packages/boards/nros-board-common/c/threadx_hooks.c          # override-default: overlay strong stack_size/priority (W3.2 weak getters, not data) /init_eth/app_main; optional-hook log/rng_seed
 2  packages/boards/nros-board-freertos/c/network_glue.c         # override-default: board (LAN9118) strong register_netif/poll_netif; weak = no-Ethernet fallback
 1  packages/boards/nros-board-threadx-qemu-riscv64/c/tx_initialize_low_level.S  # override-default: board strong _tx_initialize_low_level
 8  packages/core/nros-platform-threadx/src/platform.c           # optional-hook: weak libc stubs (open/close/read/write/lseek/pipe/stdin) until backend supplies real

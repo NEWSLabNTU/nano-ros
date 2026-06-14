@@ -30,8 +30,9 @@
  *     derives a seed from its config IP/MAC (no shared cfg
  *     storage here since the Config shapes diverge).
  *
- * Overlays override the stack-size + priority constants via weak
- * `const` globals; defaults match the Linux overlay.
+ * Overlays override the stack-size + priority via weak getter
+ * functions (`nros_board_app_stack_size`/`_priority`); the weak
+ * defaults match the Linux overlay (Phase 247 W3.2).
  */
 
 #include <stdint.h>
@@ -43,25 +44,27 @@
 /* ---- Sizing constants ---- */
 #define BYTE_POOL_SIZE          (4 * 1024 * 1024)
 
-/* ---- Overlay-tunable parameters (weak — overlay strong-overrides) ----
+/* ---- Overlay-tunable parameters (weak getters — overlay strong-overrides) ----
  *
- * Phase 155.A — `const` qualifier dropped. With weak `const
- * uint32_t x = …`, gcc treats the read as a compile-time
- * constant (inlines the weak value at the use site below) so
- * the strong-override in a sibling TU never wins at link time.
- * Without `const`, the symbol stays a regular load against the
- * storage cell the linker picks — strong-override wins.
+ * Phase 247 W3.2 (#50) — these are weak GETTER FUNCTIONS, not weak data.
  *
- * Manifested on RISC-V: the board's
- * `nros_board_app_stack_size = 512 * 1024` override was
- * silently dropped; `tx_thread_create` got the 64 KB weak
- * default. Rust `Executor::open` stack frame exceeded 64 KB,
- * sp underflowed past byte_pool storage into `.text` at
- * `CffiSession::open_with_vtable+128`, and the next register
- * save (`sd s7, 88(sp)`) corrupted the code there → illegal-
- * instruction trap on next fetch. */
-__attribute__((weak)) uint32_t nros_board_app_stack_size = 64 * 1024;
-__attribute__((weak)) uint32_t nros_board_app_priority = 4;
+ * History: they were weak `const uint32_t` globals; gcc folded the weak
+ * value (64 KB) at the use site as a compile-time constant, so a sibling
+ * TU's strong override never won at link time. Phase 155.A worked around
+ * that by dropping `const` (a plain weak load honours the linker-chosen
+ * cell) — but a weak *data* symbol relying on link resolution is still the
+ * #50-class footgun. A weak *function* cannot be const-folded across a TU
+ * boundary (no LTO here; and a weak fn is never inlined past a possible
+ * strong override), so the override deterministically wins. Same
+ * override-default shape as the `nros_board_*` weak hooks below.
+ *
+ * The original failure (kept for the record): on RISC-V the board's
+ * 512 KB stack override was dropped, `tx_thread_create` got the 64 KB
+ * default, Rust `Executor::open`'s frame overran it, sp underflowed past
+ * byte_pool storage into `.text` at `CffiSession::open_with_vtable+128`,
+ * the next `sd s7, 88(sp)` corrupted that code → illegal-instruction trap. */
+__attribute__((weak)) uint32_t nros_board_app_stack_size(void) { return 64 * 1024; }
+__attribute__((weak)) uint32_t nros_board_app_priority(void) { return 4; }
 
 /* ---- Weak hooks the overlay implements ---- */
 __attribute__((weak)) void nros_board_log(const char *s) { (void)s; }
@@ -159,6 +162,8 @@ void tx_application_define(void *first_unused_memory)
 {
     UINT status;
     UCHAR *pointer;
+    uint32_t stack_size;
+    uint32_t priority;
 
     (void)first_unused_memory;
 
@@ -192,10 +197,13 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
 
-    /* Create application thread */
+    /* Create application thread. Resolve the overlay-tunable size/priority
+     * via the weak getters once (the overlay strong-overrides the fns). */
+    stack_size = nros_board_app_stack_size();
+    priority   = nros_board_app_priority();
     nros_board_log("[app_define] Creating app thread...\n");
     status = tx_byte_allocate(&byte_pool, (VOID **)&pointer,
-                               nros_board_app_stack_size, TX_NO_WAIT);
+                               stack_size, TX_NO_WAIT);
     if (status != TX_SUCCESS) {
         nros_board_log("ERROR: app thread stack alloc failed\n");
         return;
@@ -203,9 +211,9 @@ void tx_application_define(void *first_unused_memory)
 
     status = tx_thread_create(&app_thread, "nros_app",
                                app_thread_entry, 0,
-                               pointer, nros_board_app_stack_size,
-                               nros_board_app_priority,
-                               nros_board_app_priority,
+                               pointer, stack_size,
+                               priority,
+                               priority,
                                TX_NO_TIME_SLICE, TX_AUTO_START);
     if (status != TX_SUCCESS) {
         nros_board_log("ERROR: app thread create failed\n");
