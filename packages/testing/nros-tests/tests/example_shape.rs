@@ -366,6 +366,18 @@ fn every_example_leaf_has_package_xml() {
         if dir.join("system.toml").is_file() {
             return;
         }
+        // Phase 244 (D1/C5 entry+node-pkg shape) — an entry-only carrier crate
+        // (`[package.metadata.nros.entry]`, node logic + interface deps in a
+        // sibling node pkg) carries no `package.xml`: the node pkg is the
+        // interface SSoT. Exempt it. A self-pkg crate that ALSO declares
+        // `[…node]`/`[…application]` still needs its own `package.xml`.
+        if has_cargo {
+            if let Ok(cls) = parse_cargo_toml(&dir.join("Cargo.toml")) {
+                if cls.is_entry && !cls.is_component && !cls.is_application {
+                    return;
+                }
+            }
+        }
         if !dir.join("package.xml").is_file() {
             missing.push(rel);
         }
