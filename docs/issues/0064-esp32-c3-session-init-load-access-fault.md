@@ -17,13 +17,24 @@ listener now connects + subscribes with **zero** Load-access-faults across full
 192 s runs (was faulting every run).
 
 **Newly exposed residual (was masked by the crash):** the esp32 firmware now hits a
-heap OOM during session setup — `memory allocation of 8 bytes failed` (alloc error
-handler), so the talker publishes 0. Prime suspect: the retry path leaks — each
-`zpico_init_with_config` runs `z_config_default(&g_config)` **without freeing** the
-previous attempt's `_z_str_clone` allocations, so a few failed-open retries exhaust
-the esp32 heap. Candidate fixes: free/clear `g_config` before re-defaulting on
-retry; or reduce retry churn; or bump the esp32 heap. Tracked here (issue stays
-`open` until esp32 live e2e is green).
+heap OOM during the talker's session setup — `memory allocation of N bytes failed`
+fired by the **Rust** global allocator (`alloc.rs`, the esp-alloc 96 KB heap;
+`node.rs` `heap_allocator!(size: 96 * 1024)` on the non-`dds-heap` path). The
+**listener connects + subscribes fine** (no OOM); only the talker OOMs — so it is
+talker-setup or retry-churn dependent, not a flat sizing miss.
+
+`z_open` consumes `g_config` via `z_config_move` each attempt, so g_config is NOT
+the leak; the exhausted heap is the **Rust** 96 KB one, not zenoh-pico's 32 KB
+`z_malloc` FreeListHeap.
+
+**Can't just grow the heap:** bumping 96 KB → 128 KB fails to link —
+`.bss will not fit in region 'DRAM': overflowed by ~14 KB`. esp32-c3 DRAM is already
+near-full at 96 KB. So the OOM must be fixed by **reducing** allocation (find the
+talker-path / per-retry allocator churn and trim it, or shrink another DRAM
+consumer to free heap room), not by enlarging the heap.
+
+Issue stays `open`: the Load-access-fault (the original title) is fixed; this OOM is
+the remaining blocker to a green esp32 live e2e.
 
 ## Symptom
 
