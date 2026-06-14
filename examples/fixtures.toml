@@ -723,7 +723,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/talker"
 no_default_features = true
-features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
@@ -732,7 +731,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/listener"
 no_default_features = true
-features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
@@ -741,7 +739,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/service-server"
 no_default_features = true
-features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
@@ -750,7 +747,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/service-client"
 no_default_features = true
-features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
@@ -759,7 +755,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/action-server"
 no_default_features = true
-features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
@@ -768,7 +763,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-arm-freertos/rust/action-client"
 no_default_features = true
-features = ["rmw-zenoh"]
 target_dir = "target-zenoh"
 
 [[fixture]]
