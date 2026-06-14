@@ -40,9 +40,28 @@ self-registers its RMW (C5a, no `nros` force-link), `Executor::open` connects to
 slirp zenohd, and reaches `Application setup complete`. (6/6 pass run serially; 2
 flake under 6 parallel QEMU instances — pre-existing harness concurrency, not a
 registration regression.) Proves C5c+C7 agnostic `nros` + board self-register at
-RUNTIME on embedded. **Residual:** Zephyr smoke still blocked (needs west, #58/#59);
-baremetal/threadx/nuttx/esp32 use the identical board-self-register pattern (not
-separately run here — FreeRTOS is the representative full-board+zenoh path).
+RUNTIME on embedded. FreeRTOS is the representative full-board+zenoh path.
+
+> **HANDOFF (remaining embedded smoke — for the next agent).** The agnostic
+> board-self-register pattern is runtime-proven on FreeRTOS; the rest use the
+> identical pattern, just not yet run here. To extend coverage:
+> 1. **Provision the patched QEMU once:** `just qemu setup-qemu` (prebuilt fetch,
+>    fast) → `build/qemu/bin/qemu-system-arm`. Export `QEMU_SYSTEM_ARM` to it for
+>    the tests. (riscv64/xtensa QEMU + arm-none-eabi-gcc are already on PATH.)
+> 2. **Baremetal (smoltcp, MPS2-AN385):** needs the compile-check fixture staged
+>    — `just build-test-fixtures` (stages `qemu-baremetal-main-e2e` +
+>    `freertos_firmware` `.compile-ok` stamps; heavier than `just qemu build`).
+>    Then `cargo test -p nros-tests --test baremetal_run_plan_runtime --
+>    --test-threads=1` (serial — the harness flakes N QEMU instances in parallel).
+> 3. **threadx (riscv64):** `cargo test -p nros-tests --test threadx_riscv64_qemu`
+>    (+ stage its fixture). **nuttx:** `--test nuttx_qemu` / `integration_nuttx`.
+>    **esp32:** `--test esp32_emulator` (qemu-system-xtensa). Each: build the
+>    board-driven entry, boot, assert it self-registers + reaches setup-complete.
+> 4. **Zephyr:** BLOCKED on west/SDK (#58/#59) — also closes the C7 runtime gate
+>    (the `zephyr_component_main!` `rust_main` wiring is cargo-check-only today).
+> 5. **Harness flake (optional):** the `*_run_plan_runtime` tests starve under
+>    parallel QEMU — a per-test serialization or QEMU-instance cap would let them
+>    run multi-threaded. Pre-existing, not an agnosticism issue.
 
 > **Cross-phase note (2026-06-14).** C5a's "boards self-link + register their RMW"
 > (the app-owned force-link + explicit register) is the bare-metal half of the ONE
