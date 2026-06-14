@@ -25,11 +25,15 @@ use futures::StreamExt;
 use nros::prelude::*;
 use nros_log::{Logger, nros_error, nros_info, nros_warn};
 
-// Phase 248 C6d — board-LESS APP owns + force-links its selected backend rlib.
-// The `nros` umbrella no longer carries `rmw-*`, so its `__FORCE_LINK_*` statics
-// are inert here; this `#[used]` static keeps the backend rlib (and its linkme
-// `RMW_INIT_ENTRIES` self-register section) in the link graph so the backend
-// auto-registers on POSIX. Mirrors `packages/core/nros/src/lib.rs`.
+// RMW selection is build/config, never application logic (RFC-0031): the backend
+// is the one `nros-rmw-*` optional dep activated by the config-lowered
+// `rmw-{zenoh,xrce,cyclonedds}` feature. The `#[used]` static(s) below are a pure
+// LINK-FORCE — they reference the backend's `register` symbol so the rlib's
+// linkme `RMW_INIT_ENTRIES` self-register section is pulled into the link graph
+// (rlib archive linking drops unreferenced objects, so this reference is
+// required, NOT a `register()` call). The cffi walker in `nros::init` then
+// discovers + registers the backend. Accepted link-force pattern (cf.
+// `extern crate nros_platform_cffi as _`), not an RMW leak.
 #[cfg(feature = "rmw-zenoh")]
 #[used]
 static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
@@ -47,24 +51,6 @@ static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::
 static LOGGER: Logger = Logger::new("action-client-async");
 
 extern crate nros_platform_cffi as _;
-
-// Phase 118 — RMW selection is build-time via the mutually exclusive
-// `rmw-{zenoh,cyclonedds,xrce}` features.
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-cyclonedds",
-    feature = "rmw-xrce"
-)))]
-compile_error!(
-    "action-client-async requires exactly one of `rmw-zenoh`, \
-     `rmw-cyclonedds`, or `rmw-xrce` to be enabled.",
-);
-
-// Phase 227.3 (unified RMW) — no explicit `register()` calls. The RMW is
-// declared via the build feature (`rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds`),
-// which routes through the `nros` umbrella; `nros`'s `#[used] __FORCE_LINK_*`
-// statics keep the selected backend's self-register section in the link graph,
-// and it fires inside `nros::init` via the cffi-rmw walker.
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
