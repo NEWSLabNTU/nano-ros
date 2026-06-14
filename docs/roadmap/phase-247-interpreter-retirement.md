@@ -9,6 +9,9 @@ non-typed `emit_cpp::emit` / `emit_c::emit` entry codegen. Gated on **every**
 declarative example migrating to the real-callback typed path first.
 
 **Status.** In progress (2026-06-14). Stage-1 (app-nodes) **done + pushed**.
+Stage-2: `c-and-cpp-mixed-workspace` + `examples/workspaces/cpp` **done + pushed**;
+remaining gated on two additive framework W0s (typed C entry; typed Rust-node-in-
+C++-entry) + the lockstep `multi-node-workspace-cpp` deletion (Stage-3).
 
 ---
 
@@ -47,31 +50,43 @@ seam) — so a workspace whose **Entry is C++** migrates with NO framework chang
 even with C Node pkgs. Only a workspace whose **Entry itself is C**
 (`--lang c --typed`) is blocked — `emit_c::emit_typed` does not exist. So:
 
-- [x] **`c-and-cpp-mixed-workspace`** — Entry is C++ → unblocked. Migrated:
-  `cpp_listener_pkg` → `include/cpp_listener_pkg/Listener.hpp` + `configure(Node&)`
-  raw sub; `c_talker_pkg` → `NROS_C_COMPONENT` raw publisher; `robot_entry` →
-  `nano_ros_entry(TYPED)`. Fixture `c_mixed_workspace`; test
-  `c_mixed_workspace.rs` only asserts the linked `robot_entry` binary (no legacy
-  shape) → typed-compatible. **(build-verifying.)**
+- [x] **`c-and-cpp-mixed-workspace`** — Entry is C++ → unblocked. **DONE**
+  (`79d33412c`): `cpp_listener_pkg` → `include/cpp_listener_pkg/Listener.hpp` +
+  `configure(Node&)` raw sub; `c_talker_pkg` → `NROS_C_COMPONENT` raw publisher;
+  `robot_entry` → `nano_ros_entry(TYPED)`. Verified: typed TU (C++ listener
+  `.configure()`, C talker via the C seam), full build links
+  (`__nros_c_component_c_talker_pkg_*` defined). Test `c_mixed_workspace.rs`
+  asserts only the linked binary → green.
+- [x] **`examples/workspaces/cpp`** (pure C++) — **DONE** (`18809bad2`):
+  talker/listener → `configure(Node&)` (bind_timer + Publisher<Int32> /
+  bind_subscription_raw); `native_entry` → `nano_ros_entry(TYPED)`. Verified:
+  typed TU, links, runtime binary enters the native spin loop
+  (`cmake_cpp_workspace_entry_starts_prebuilt_runtime`).
 - [ ] **`multi-node-workspace-cpp`** (pure C++) — `emit_cpp::emit_typed` ready; the
   `-typed` sibling + `cpp_multi_node_entry_typed.rs` + `cpp_robot_entry_typed`
   fixture already exist in parallel. Migration = make this template *be* the typed
   form (adopt `-typed`), drop the legacy `cpp_robot_entry` fixture +
   `cpp_multi_node_entry.rs` (asserts the legacy `robot_entry_nros_main_generated.cpp`)
   + `cpp_entry_runtime.rs` (runs the legacy Entry binary). Lands with Stage-3.
-- [ ] **`pure-c-workspace`** + **`examples/workspaces/c`** — Entry is C
-  (`NROS_MAIN_C`, `nano_ros_entry LANG c`) → **needs new framework**:
-  `emit_c::emit_typed` + a C `run_components` ABI (`nros_board_native_run_components`)
-  + cmake `nano_ros_entry(TYPED LANG c)` (today gated to cpp,
-  `NanoRosEntry.cmake:118`). This is the one genuine W0 in Stage-2 and the only
-  gate on deleting `emit_c::emit`. Fixtures `pure_c_workspace` (+ its
-  `c_mixed_workspace.rs` test) only assert the linked binary → typed-compatible
-  once the framework lands.
-- [ ] **`examples/workspaces/{cpp,mixed}`** — fixture-generating; cpp unblocked,
-  mixed unblocked (C++ entry); flip with the above.
 
-So the legacy `emit_cpp::emit` deletion is clean (typed cpp path already parallel);
-the legacy `emit_c::emit` deletion is gated on the `emit_c::emit_typed` W0.
+**Two framework W0s gate the rest** (each purely additive — no deletion):
+- [ ] **W0-A — typed C entry** for **`pure-c-workspace`** + **`examples/workspaces/c`**.
+  Entry is C (`NROS_MAIN_C`, `nano_ros_entry LANG c`). Needs `emit_c::emit_typed`
+  + a C `run_components` ABI (`nros_board_native_run_components`) + cmake
+  `nano_ros_entry(TYPED LANG c)` (today gated to cpp, `NanoRosEntry.cmake:118`).
+  The only gate on deleting `emit_c::emit`. Fixtures `pure_c_workspace` /
+  `c_mixed_workspace.rs` assert only the linked binary → compatible once it lands.
+- [ ] **W0-B — typed Rust node in a C++ entry** for **`examples/workspaces/mixed`**
+  (`c_talker` + `cpp_listener` + `rust_heartbeat_pkg`). `emit_cpp::emit_typed` has
+  no `lang == "rust"` branch (only `c` / `cpp`; else → C++ class), so a Rust node
+  is mis-emitted as a C++ class. The legacy path routes it via the
+  `__nros_component_rust_heartbeat_pkg_register` symbol the Rust node exports. Needs
+  a `lang == "rust"` branch in `emit_cpp::emit_typed` routing to a Rust component
+  seam (or its `register` symbol). Gates the workspaces/mixed runtime fixture.
+
+So the legacy `emit_cpp::emit` deletion is clean for the **pure-C++** path (typed
+cpp already parallel); but the **C** path (W0-A) and the **Rust-in-cpp-entry** path
+(W0-B) each need additive framework before their legacy emit can go.
 
 ### Stage 3 — the deletion — **TODO (after Stage 2)**
 - [ ] Delete `EntryNodeRuntime` + `detail::entry_*` synthesis helpers from `main.hpp`.
