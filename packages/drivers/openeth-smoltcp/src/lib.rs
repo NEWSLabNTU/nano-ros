@@ -121,6 +121,31 @@ impl OpenEth {
         }
     }
 
+    /// Construct an `OpenEth` **in place** at `dst`, without ever materialising
+    /// the (~11 KB) struct as a by-value return.
+    ///
+    /// `OpenEth` is large (`tx_buf` + `rx_bufs[RX_BD_COUNT]` + `rx_frame` ≈ 11 KB).
+    /// Returning it by value from [`OpenEth::new`] forces an ~11 KB temporary on
+    /// the caller's stack, which on a small bare-metal stack (e.g. esp32-c3's
+    /// ~18 KB) overflows into adjacent `.bss` and silently corrupts whatever
+    /// lives there — observed wiping the global allocator's metadata and the
+    /// zenoh connect locator (nano-ros issue #64). Initialising directly into
+    /// the final static storage avoids the temporary entirely. All buffers are
+    /// zero, so a `write_bytes` zero-fill + the few scalar fields suffice.
+    ///
+    /// # Safety
+    /// - `dst` must be valid, aligned, and writable for `size_of::<OpenEth>()`.
+    /// - `config.base_addr` must point to valid OpenETH hardware registers.
+    /// - Only one driver instance should exist per hardware device.
+    pub unsafe fn new_in_place(dst: *mut OpenEth, config: Config) {
+        unsafe {
+            // Zero the whole struct (buffers + indices) without a stack temporary.
+            core::ptr::write_bytes(dst as *mut u8, 0, core::mem::size_of::<OpenEth>());
+            (*dst).base = config.base_addr;
+            (*dst).mac_addr = config.mac_addr;
+        }
+    }
+
     /// Initialize the hardware.
     ///
     /// This performs the full initialization sequence:

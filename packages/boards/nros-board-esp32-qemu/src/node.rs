@@ -85,9 +85,19 @@ fn init_ethernet(config: &Config) {
     // called after the struct has reached its final address. Calling init()
     // before the move left the descriptors pointing at stale stack memory,
     // causing QEMU to transmit all-zero frames.
-    let eth_value = unsafe { OpenEth::new(openeth_config) };
-    unsafe { ETH_DEVICE.write(eth_value) };
-    let eth = unsafe { ETH_DEVICE.assume_init_mut() };
+    //
+    // Issue #64 — use `new_in_place` rather than `OpenEth::new(...)` +
+    // `ETH_DEVICE.write(...)`: the by-value `new` materialises an ~11 KB
+    // `OpenEth` (tx_buf + rx_bufs[4] + rx_frame) on the stack, which overflows
+    // the esp32-c3 ~18 KB stack into `.bss` and silently corrupts whatever lives
+    // there — it was wiping the esp-alloc heap metadata (Size 98304 → 0, then
+    // `memory allocation of N bytes failed`) and clobbering the zenoh connect
+    // locator (the 0xffffffff Load-access-fault). Constructing in place removes
+    // the temporary entirely.
+    let eth = unsafe {
+        OpenEth::new_in_place(ETH_DEVICE.as_mut_ptr(), openeth_config);
+        ETH_DEVICE.assume_init_mut()
+    };
     eth.init();
 
     let mac = eth.mac_address();
