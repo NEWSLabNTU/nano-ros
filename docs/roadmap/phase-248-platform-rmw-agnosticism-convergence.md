@@ -15,13 +15,21 @@ verified: umbrella builds zenoh+posix; nros-node 162+5 / nros-rmw 44 /
 cyclonedds 15 pass; native cross-process pub/sub e2e green). **Wave 2 IN
 PROGRESS (2026-06-14): C5b + C5-plat DONE (codegen lowers RMW+platform to the
 board); C6a/b/c DONE; C6-TAIL DONE — every hand-written consumer + the codegen
-is off `nros/{rmw,platform}-*`, all three repo-wide gates clean.** **C3.2
-(nros-c/nros-cpp full agnosticism) SUPERSEDED by 241.D3-rev** — the C/C++
-staticlib root bundles one board-selected backend (single-runtime umbrella); see
-the C3 section. What remains for the phase: **C5a per-board register** for the ~6
-linkme-blind boards, then **C5c** (the actual `nros`-feature drop — gated on C5a
-+ an embedded QEMU/Zephyr/FreeRTOS smoke, currently red #58/#59). Issue #61
-closed `wontfix` (premise void post-D3). See the C5c note below for the sequence.
+is off `nros/{rmw,platform}-*`, all three repo-wide gates clean. C5a DONE
+(`01e0ffc62` — all deploy boards self-link + register their RMW). C5c DONE
+(2026-06-14) — `nros` is RMW + platform AGNOSTIC: removed `rmw-{zenoh,xrce,
+cyclonedds}` + `platform-{posix,bare-metal,freertos,nuttx,threadx,cffi,orin-spe}`
++ the optional backend deps + the umbrella force-link statics; nros-c/nros-cpp
+route platform via a direct `nros-platform` dep (full-agnostic choice, preserving
+D3's single-runtime backend bundle).** **C3.2 SUPERSEDED by 241.D3-rev**; issue
+#61 closed `wontfix`. **Phase essentially complete** — validated: nros builds
+agnostic (std/no_std) + default, nros-c (zenoh single-runtime)/nros-cpp/native/
+px4-xrce build, nros-c 71 + cli generate 21 pass, nm proves the native binary
+self-registers zenoh (app-owned force-link, independent of nros); embedded path
+covered by C5a. **Residuals:** (1) `platform-zephyr` kept on nros — gates the
+Zephyr entry-point scaffolding (`zephyr_component_main!` + `platform::zephyr`);
+relocating it needs a green Zephyr build (#58/#59). (2) embedded QEMU/Zephyr/
+FreeRTOS runtime smoke deferred to a green harness.
 
 **Priority.** P2 — architectural hygiene; not blocking features, but every new
 platform/RMW today pays the leakage tax (feature matrices, concrete-backend
@@ -270,12 +278,21 @@ nros keeps its features for now):**
       section. Owns: nros-c + nros-cpp.
 
 **Wave 2c (cleanup — AFTER every consumer migrated):**
-- [ ] **C5c — Drop nros's `rmw-*`/`platform-*` features + concrete-backend deps.**
-      Once `git grep 'nros/\(rmw\|platform\)-'` is clean across examples/fixtures,
-      remove the features + the optional `nros-rmw-{zenoh,xrce}` /
-      `nros-rmw-cyclonedds-sys` deps + the moved force-link block from `nros`. nros
-      now consumes only `nros-rmw-cffi` + `nros-platform-cffi` vtables — fully
-      agnostic. Owns: `nros/`.
+- [x] **C5c — Drop nros's `rmw-*`/`platform-*` features + concrete-backend deps.
+      DONE (2026-06-14, `52a85d6ff`).** Removed `rmw-{zenoh,xrce,cyclonedds}` +
+      `platform-{posix,bare-metal,freertos,nuttx,threadx,cffi,orin-spe}` +
+      `platform-udp`/`xrce-udp`/`xrce-serial`/`link-tls`/`link-custom` features,
+      the optional `nros-rmw-{zenoh,xrce-cffi}` / `nros-rmw-cyclonedds-sys` deps,
+      the `?/` backend forwards, and the `__FORCE_LINK_*` statics +
+      `__register_linked_rmw` body from `nros`. nros now consumes only
+      `nros-rmw-cffi` + `nros-platform` vtable seams. **Full-agnostic path
+      (maintainer choice):** nros-c/nros-cpp route platform via a direct
+      `nros-platform[platform-X]` dep (not `nros/platform-X`), keeping D3's
+      single-runtime backend bundle. **Residual:** `platform-zephyr` stays on
+      nros gating the Zephyr entry-point scaffolding (relocation = Tier-3
+      follow-up, gated on a green Zephyr build #58/#59). Validated at build +
+      link-symbol + test level (native/C-C++/codegen); embedded via C5a. Owns:
+      `nros/` + `nros-c`/`nros-cpp` platform reroute.
       **C6-TAIL CONSUMER MIGRATION COMPLETE (2026-06-14) — gates now clean.**
       Every hand-written consumer + the codegen is off `nros/{rmw,platform}-*`:
       px4, zephyr rust + `zephyr_entry`, native/rust (board-less posix), px4,
