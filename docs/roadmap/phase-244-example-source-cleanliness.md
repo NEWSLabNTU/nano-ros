@@ -201,15 +201,19 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   — deleted from all 6 libs (no compat crate needed). `#![no_std]` stays (E4:
   accepted residual minor). Verified: `freertos_rs_talker_entry` release rebuilds
   clean. The 6 examples go major → minor. Leak P5 cleared.
-- [~] **C4 — PARTIAL (2026-06-14). Rust template entries DONE; zephyr-byo blocked.**
+- [x] **C4 — DONE (zephyr-byo 2026-06-14). Rust template entries + zephyr-byo migrated.**
   - **rust_consumer (local-msg-package) + pkg_rust_publisher (multi-package-workspace)**
     — DONE: hand-wired `ExecutorConfig`/`Executor::open`/spin → `nros::main!()` +
     declarative `nros::node!` lib; RMW/net → deploy metadata. Both **build native
     clean**. P1/P3 cleared. (`a73744d67`)
-  - **zephyr-byo (C) — blocked**, same enabler gap as C2: the only clean path is the
-    C++ TYPED carrier (no C Zephyr carrier exists) + locator threading. Force-
-    converting C→C++ unverified would change the starter's language + leave it
-    build-only (`locator=""`) — left as-is until the C2 enablers land.
+  - **zephyr-byo (C) — DONE (2026-06-14).** Unblocked once the C Zephyr carrier
+    landed (521719df1, via C2). The starter's imperative `nros_app_main`
+    (support/node/publisher init + while loop) → typed C component (Talker.c,
+    `NROS_C_COMPONENT(talker_t, talker_configure)`, raw pub + 1 Hz timer) +
+    `nano_ros_node_register(TYPED C)`; prj.conf +`CONFIG_NROS_CPP_API`/`STD_CPP14`.
+    Verified: builds to zephyr.elf via the module (`ZEPHYR_EXTRA_MODULES`) on 3.7
+    native_sim — confirms `NROS_REPO_DIR` + the typed carrier resolve in the
+    copy-out/module-consumer context. (`315e909eb`)
   - **"bare-metal-scaffolded workspaces entries" — none remained** (every
     `workspaces/rust/src/*_entry` already uses `nros::main!()` from prior waves).
   - The C/C++ workspace siblings (`pkg_c_talker`/`pkg_cpp_listener`/consumer.cpp)
