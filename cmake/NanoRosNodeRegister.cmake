@@ -531,6 +531,60 @@ function(nano_ros_node_register)
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 
+    # Phase 244.C4 (RFC-0043) — native (POSIX/host) typed-entry carrier. Mirrors
+    # the FreeRTOS self-executable branch above (add_executable + the generated
+    # entry + the component sources + nros_platform_link_app), but the host board
+    # resolves locator/domain from $NROS_LOCATOR / $ROS_DOMAIN_ID at runtime
+    # (`NativeBoard::run_components` -> `nros::init()`), so there is no baked
+    # locator and no FreeRTOS app-config TU. TYPED-only: the imperative native
+    # examples keep their hand-written `main` via `nano_ros_entry` (no codegen).
+    if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
+       AND NANO_ROS_PLATFORM STREQUAL "posix"
+       AND COMMAND nros_platform_link_app
+       AND NOT TARGET ${PROJECT_NAME})
+        if(NOT _NRC_TYPED)
+            message(FATAL_ERROR
+                "nano_ros_node_register(native): the typed-entry carrier requires "
+                "TYPED — the RFC-0043 real-callback component path. Imperative "
+                "native examples use a hand-written main via nano_ros_entry.")
+        endif()
+        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
+        set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
+        set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
+        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
+        set(_entry_src "${_entry_dir}/main.cpp")
+        if(_nrc_lang STREQUAL "CPP")
+            set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
+            set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/native_entry_main_typed.cpp.in"
+                "${_entry_src}" @ONLY)
+        else() # C
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/native_entry_main_c_typed.cpp.in"
+                "${_entry_src}" @ONLY)
+        endif()
+
+        add_executable(${PROJECT_NAME} "${_entry_src}" ${_NRC_SOURCES})
+        target_include_directories(${PROJECT_NAME} PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src")
+        target_compile_definitions(${PROJECT_NAME} PRIVATE
+            NROS_PKG_NAME=${_pkg_sym})
+        if(TARGET NanoRos::NanoRosCpp)
+            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRosCpp)
+        elseif(TARGET NanoRos::NanoRos)
+            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRos)
+        endif()
+        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
+        if(_nros_iface_libs)
+            list(REMOVE_DUPLICATES _nros_iface_libs)
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
+        endif()
+        nros_platform_link_app(${PROJECT_NAME})
+    endif()
+
     # Phase 240.8 (RFC-0043) — Zephyr typed-entry carrier. Unlike NuttX (a
     # standalone bootable ELF via add_executable + nros_platform_link_app), a
     # Zephyr app IS the find_package(Zephyr)-owned monolithic `app` target. The
