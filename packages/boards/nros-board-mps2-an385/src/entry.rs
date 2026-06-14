@@ -52,27 +52,46 @@ impl BoardExit for Mps2An385 {
 }
 
 /// Convert a dotted netmask (`255.255.255.0`) to a CIDR prefix length.
+#[cfg(feature = "ethernet")]
 fn mask_to_prefix(mask: [u8; 4]) -> u8 {
     mask.iter().map(|b| b.count_ones() as u8).sum()
 }
 
-/// Build the board boot [`Config`] from `Config::default()` (the per-feature
-/// ethernet/serial default), overlaying any `[package.metadata.nros.deploy.<board>]`
-/// fields the Entry pkg supplied (issue #48 cause 1). `None` fields keep the
-/// board default — the bare-metal net threading folded into D1.
+/// The board's boot [`Config`] before any deploy overlay. Ethernet is the
+/// default link; a board built `serial`-only (no `ethernet`) boots the UART
+/// link (`Config::serial_default`, locator `serial/UART_0#…`) — phase-244.D1
+/// serial deploys. Ethernet wins when both features are on (its `Config` has
+/// the full field set).
+#[cfg(feature = "ethernet")]
+fn base_config() -> Config {
+    Config::default()
+}
+#[cfg(all(feature = "serial", not(feature = "ethernet")))]
+fn base_config() -> Config {
+    Config::serial_default()
+}
+
+/// Build the board boot [`Config`] from the per-link base default, overlaying
+/// any `[package.metadata.nros.deploy.<board>]` fields the Entry pkg supplied
+/// (issue #48 cause 1). `None` fields keep the board default. The ip/gateway/
+/// netmask overlay is ethernet-only (the serial `Config` has no IP fields); the
+/// locator + domain overlay applies to both links.
 fn config_with_overlay(deploy: &DeployOverlay) -> Config {
-    let mut cfg = Config::default();
+    let mut cfg = base_config();
     if let Some(locator) = deploy.locator {
         cfg.zenoh_locator = locator;
     }
-    if let Some(ip) = deploy.ip {
-        cfg.ip = ip;
-    }
-    if let Some(gateway) = deploy.gateway {
-        cfg.gateway = gateway;
-    }
-    if let Some(netmask) = deploy.netmask {
-        cfg.prefix = mask_to_prefix(netmask);
+    #[cfg(feature = "ethernet")]
+    {
+        if let Some(ip) = deploy.ip {
+            cfg.ip = ip;
+        }
+        if let Some(gateway) = deploy.gateway {
+            cfg.gateway = gateway;
+        }
+        if let Some(netmask) = deploy.netmask {
+            cfg.prefix = mask_to_prefix(netmask);
+        }
     }
     if let Some(domain_id) = deploy.domain_id {
         cfg.domain_id = domain_id;
@@ -137,7 +156,7 @@ impl BoardEntry for Mps2An385 {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        boot(Config::default(), setup)
+        boot(base_config(), setup)
     }
 
     fn run_with_deploy<F, E>(deploy: &DeployOverlay, setup: F) -> Result<(), E>
