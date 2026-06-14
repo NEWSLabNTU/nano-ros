@@ -216,8 +216,16 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
     copy-out/module-consumer context. (`315e909eb`)
   - **"bare-metal-scaffolded workspaces entries" — none remained** (every
     `workspaces/rust/src/*_entry` already uses `nros::main!()` from prior waves).
-  - The C/C++ workspace siblings (`pkg_c_talker`/`pkg_cpp_listener`/consumer.cpp)
-    were outside the bullet's named scope (analogous to C2). Leaks P1/P7.
+  - **C/C++ workspace siblings — DONE (2026-06-14, `f6bffd68d`).** Built the
+    native (POSIX) typed-entry carrier (`cmake/templates/native_entry_main_typed.cpp.in`
+    + `native_entry_main_c_typed.cpp.in` → `NativeBoard::run_components`; a native
+    branch in `NanoRosNodeRegister.cmake`, NANO_ROS_PLATFORM=posix + TYPED). Migrated
+    `multi-package-workspace/src/{pkg_c_talker,pkg_cpp_listener}`: imperative
+    `nros_app_main` (support/node/publisher/executor init + manual spin) →
+    `NROS_C_COMPONENT` / `configure(node)` component + `nano_ros_node_register(TYPED
+    … DEPLOY native)`. Both build to native ELFs; P1/P7 cleared. The two
+    `consumer.cpp` (local-msg-package, workspace-shadowing) are standard `rclcpp`
+    apps — no nano-ros P1/P7 leaks, intentionally left as-is.
 - [x] **C5 — DONE (2026-06-14): built the stm32f4 BoardEntry enabler + migrated the
   talker.** Enabler (mirrors D1's `nros-board-mps2-an385`): `nros-board-stm32f4`
   gained `src/entry.rs` (`nros_platform::BoardEntry for Stm32F4` — inline reset-thread
