@@ -175,7 +175,7 @@ template <typename A> class ActionServer {
             return Result(ErrorCode::Error);
         }
         return Result(nros_cpp_action_server_publish_feedback(
-            storage_, executor_, reinterpret_cast<const uint8_t (*)[16]>(goal_id), buf, len));
+            storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, len));
     }
 
     /// Complete a goal with a result.
@@ -188,7 +188,7 @@ template <typename A> class ActionServer {
             return Result(ErrorCode::Error);
         }
         return Result(nros_cpp_action_server_complete_goal(
-            storage_, executor_, reinterpret_cast<const uint8_t (*)[16]>(goal_id), buf, len));
+            storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, len));
     }
 
     /// Iterate over every currently live goal and invoke `f(uuid, status)`.
@@ -211,7 +211,7 @@ template <typename A> class ActionServer {
         };
         Result ret(nros_cpp_action_server_for_each_active_goal(
             storage_, executor_,
-            reinterpret_cast<void (*)(const uint8_t (*)[16], int8_t, void*)>(+trampoline), this));
+            reinterpret_cast<void (*)(const uint8_t(*)[16], int8_t, void*)>(+trampoline), this));
         user_visitor_fn_ = nullptr; // one-shot — don't leak the function pointer between calls
         return ret;
     }

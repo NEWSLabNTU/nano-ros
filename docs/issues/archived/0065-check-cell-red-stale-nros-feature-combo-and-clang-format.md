@@ -1,11 +1,20 @@
 ---
 id: 65
 title: CI `check` cell red on main — stale `nros/platform-posix` feature combo (248-C5c fallout) + nros-cpp clang-format drift
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-248, issue-0064]
+resolved_in: 2026-06-15
 ---
+
+> **RESOLVED (2026-06-15).** A: dropped `platform-posix` from the two `nros`
+> feature combos at `justfile:1240-1243` (`nros` umbrella lost it in 248-C5c;
+> nros-c/nros-cpp keep it) — `just check-workspace-features` green. B: reformatted
+> 5 `nros-cpp/include/nros/*.hpp` (action_client/action_server/polling_action_client/
+> polling_action_server/tick_ctx) with the CI-pinned **clang-format 17.0.5**
+> (`check.yml:117`); the local v22 had masked the drift — `clang-format --dry-run
+> --Werror` clean across all headers. Both validated locally.
 
 ## Symptom
 

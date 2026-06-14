@@ -1237,10 +1237,14 @@ check-workspace-features:
     # Phase 128.C.3 — `nros/rmw-zenoh-cffi` feature deleted; the
     # umbrella now only carries `rmw-cffi`. Backend selection is
     # done by adding the matching `nros-rmw-<name>` dep.
-    @echo "  - nros: cffi + posix + humble"
-    cargo clippy --quiet -p nros --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
-    @echo "  - nros: cffi + posix + iron"
-    cargo clippy --quiet -p nros --no-default-features --features "std,rmw-cffi,platform-posix,ros-iron"
+    # Phase 248 C5c — the `nros` umbrella dropped its `platform-*` features
+    # (platform now comes from `nros-platform`/board/RMW crates, not the umbrella),
+    # so the combo lints `nros` without `platform-posix` (nros-c/nros-cpp still
+    # carry it — see the nros-c combo below).
+    @echo "  - nros: cffi + humble"
+    cargo clippy --quiet -p nros --no-default-features --features "std,rmw-cffi,ros-humble"
+    @echo "  - nros: cffi + iron"
+    cargo clippy --quiet -p nros --no-default-features --features "std,rmw-cffi,ros-iron"
     @echo "  - nros-c: zenoh-cffi + posix + humble"
     cargo clippy --quiet -p nros-c --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
     @echo "  - nros: cffi (no_std)"

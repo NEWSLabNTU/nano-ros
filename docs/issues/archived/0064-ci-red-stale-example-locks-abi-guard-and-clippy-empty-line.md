@@ -1,11 +1,19 @@
 ---
 id: 64
 title: CI red on main — stale example Cargo.locks (nros-core 0.1.0) trip the ABI guard + clippy empty-line-after-doc-comment in nros/lib.rs
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-244, issue-0057, issue-0062]
+resolved_in: 1193e26c7
 ---
+
+> **RESOLVED (2026-06-15, `1193e26c7`).** A: regenerated the 10 example Cargo.locks
+> pinning `nros-core 0.1.0` → `0.5.0` (6 qemu-arm-nuttx/rust + 4 stm32f4/rust *-rtic)
+> — validated by clean `just nuttx build-examples` + `stm32f4 build-fixtures`
+> (abi_guard no longer aborts). B: moved the Phase-248 C7 `//` note above the `///`
+> doc block in `nros/lib.rs` — `check-workspace-all` clippy clean. (The sibling
+> `check`-cell reds were split to [[0065-check-cell-red-stale-nros-feature-combo-and-clang-format]].)
 
 ## Symptom
 
