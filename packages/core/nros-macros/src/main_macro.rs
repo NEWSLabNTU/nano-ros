@@ -1066,7 +1066,14 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
-                <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run(
+                // Phase 244.D2 — `run_with_deploy` (not `run`) so the
+                // `[package.metadata.nros.deploy.<board>]` overlay (locator / ip /
+                // domain) reaches `BoardEntry::run_with_deploy`; with `run` the
+                // overlay was inert and both esp32 nodes used the board-default
+                // net. Boards without an override fall back to `run` via the
+                // default trait body, so non-overlay esp32 builds are unchanged.
+                <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run_with_deploy(
+                    &#deploy_overlay_ts,
                     |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                         -> ::core::result::Result<
                             (),
