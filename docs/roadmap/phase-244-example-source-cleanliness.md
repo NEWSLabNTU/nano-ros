@@ -171,19 +171,29 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   it to the clean threadx-linux Node+Entry+baker shape, across both build paths, is
   ~10× the other Wave-1 clusters. Carved into its own phase (245); the
   per-(lang,role) work clusters + waves live there.
-- [→] **C2 — BLOCKED on Zephyr framework enablers (2026-06-14); re-scope like C1.**
-  Investigated (no edits — a partial would break the e2e gate, unverifiable w/o the
-  Zephyr SDK). The clean shape is the C++ TYPED carrier (`zephyr/cpp/talker-typed`),
-  but two gaps outside `examples/` block it: (1) `ZephyrBoard::run_components`
-  (`nros-cpp/include/nros/main.hpp`) hardcodes `nros::init("", domain)` — no locator
-  / per-node session threading (NuttX has it; the e2e gate dials
-  `CONFIG_NROS_ZENOH_LOCATOR` + needs a distinct XRCE session), and (2) there is NO
-  Zephyr **C** typed carrier (`NanoRosNodeRegister.cmake` only emits the C++ Zephyr
-  entry + FATAL_ERRORs for C; only `zephyr_entry_main_typed.cpp.in` exists). Needs
-  Wave-0 enablers: a `run_components(locator,…)` overload + `NROS_ENTRY_LOCATOR`
-  threading (mirror NuttX), and a `zephyr_entry_main_c_typed` template + cmake
-  branch. Then the 12 examples migrate against the proven `qemu-arm-nuttx/cpp/*`
-  references. Leaks P4/P7/P1.
+- [x] **C2 — DONE (2026-06-14). All 12 zephyr cpp+c examples → typed carrier;
+  built to zephyr.elf on Zephyr 3.7 (native_sim, host toolchain) locally.** The
+  blocking Wave-0 enablers landed earlier (521719df1: `run_components(locator,…)` +
+  `NROS_ENTRY_LOCATOR` threading + the `zephyr_entry_main_c_typed` template + cmake
+  C branch). Migration (waves: listener → talker → service ×2 → action ×2, cpp+c):
+  imperative `main.{c,cpp}` → stateful component (cpp `<Class>.hpp/.cpp`
+  `configure(node)`; C `NROS_C_COMPONENT(<struct_t>,<configure_fn>)`) +
+  `nano_ros_node_register(TYPED …)`, mirroring the proven `qemu-arm-nuttx/<lang>/<role>`
+  typed refs. Framework + C-carrier fixes found while verifying:
+  - **TYPED component include path on Zephyr** (`NanoRosNodeRegister.cmake`): the
+    Zephyr `nros_generate_interfaces` adds generated msg includes to `app` PRIVATE,
+    not via the `NROS_GENERATED_INTERFACE_LIBS` interface-lib path native/nuttx use,
+    so the separate component lib missed `std_msgs.hpp` (`cpp/talker-typed`, the
+    240.8 reference, was latently broken — never in the CI matrix). Fix: mirror
+    `app`'s INCLUDE_DIRECTORIES onto the component lib.
+  - **C typed example prj.conf**: needs `CONFIG_NROS_CPP_API=y` + `CONFIG_STD_CPP14=y`
+    (the generated carrier entry is C++).
+  - cpp `::setvbuf` not `std::setvbuf` (picolibc `<cstdio>` global-only); C `CLASS`
+    must match the legacy `zenoh`-bearing `project()` name (L.4 prefix rule).
+  E2e markers preserved. Leaks P4/P7/P1 cleared. Dedupe follow-up: `cpp/talker-typed`
+  is now redundant with the typed `cpp/talker` (left in place; not in the matrix).
+  NB: the C/C++ service/action cells are NOT in the dual-line build matrix (only
+  cpp/c talker+listener + rust are) — local 3.7 build is their gate.
 - [x] **C3 — qemu-arm-freertos Rust host_shim (6 major) — DONE 2026-06-13.** The
   `#[cfg(host)] mod host_shim { #[panic_handler] + GlobalAlloc }` block existed only
   because the Component was `crate-type = ["rlib","staticlib"]` (a no_std staticlib
