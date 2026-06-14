@@ -18,9 +18,21 @@ domain_id = 0
 locator = "tcp/10.0.2.2:7451"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false }
-nros-board-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-board-mps2-an385-freertos" }
+# Phase 248 C6a (#60 T5) — agnostic `nros` (alloc + rmw-cffi vtable + ROS
+# edition). Platform (`platform-freertos`) AND the concrete zenoh backend now
+# come from the board crate's `rmw-zenoh` feature below; `nros` names neither.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+# Board crate is the RMW+platform selection point: `features = ["rmw-zenoh"]`
+# links+registers the zenoh backend (via `nros-board-freertos`'s direct
+# `nros-rmw-zenoh` dep + boot-path `register()`).
+nros-board-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-board-mps2-an385-freertos", features = ["rmw-zenoh"] }
+# Concrete platform impl (`nros_platform_*` symbols) — also pulled by the board;
+# kept explicit here for the link map. NOT the agnostic-forbidden `nros/platform-*`.
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
 panic-semihosting = "0.6"
-talker_pkg = { path = "../talker_pkg", default-features = false, features = ["freertos"] }
-listener_pkg = { path = "../listener_pkg", default-features = false, features = ["freertos"] }
+talker_pkg = { path = "../talker_pkg", default-features = false }
+listener_pkg = { path = "../listener_pkg", default-features = false }

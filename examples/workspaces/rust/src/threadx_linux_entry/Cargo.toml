@@ -18,8 +18,19 @@ domain_id = 0
 locator = "tcp/127.0.0.1:7455"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false }
+# Phase 248 C6a (#60 T5) — agnostic `nros`. ThreadX-Linux is a hosted std
+# simulation, so the ENTRY pins `std` (the contract's per-entry std/alloc
+# choice); the board brings `platform-threadx`. The concrete RMW (zenoh) is
+# linked through the ThreadX NetX-Duo C port (CMake), so — unlike the other
+# boards — there is no board `rmw-*` feature to set here.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "std",
+    "rmw-cffi",
+    "ros-humble",
+] }
 nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-threadx-linux" }
+# Concrete platform impl — also pulled by the board; kept explicit for the link
+# map. NOT the agnostic-forbidden `nros/platform-*`.
 nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
-talker_pkg = { path = "../talker_pkg", default-features = false, features = ["threadx-linux"] }
-listener_pkg = { path = "../listener_pkg", default-features = false, features = ["threadx-linux"] }
+talker_pkg = { path = "../talker_pkg", default-features = false }
+listener_pkg = { path = "../listener_pkg", default-features = false }

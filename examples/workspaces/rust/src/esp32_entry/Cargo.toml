@@ -40,19 +40,22 @@ domain_id = 0
 locator = "tcp/10.0.2.2:7454"
 
 [dependencies]
-# Single `nros` dep for the macro-emitted `::nros::…` paths. Features
-# unify with the Node pkgs' `esp32` feature (`platform-bare-metal`).
+# Phase 248 C6a (#60 T5) — agnostic `nros` (alloc + rmw-cffi vtable + ROS
+# edition). The old `platform-bare-metal` marker is an empty no-op feature; the
+# concrete platform (`platform-esp32-qemu`) AND the zenoh backend come from the
+# board crate. `nros` names neither rmw nor platform.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-bare-metal",
     "ros-humble",
 ] }
 
 # CI-runnable ESP32-C3 QEMU board crate — supplies `Esp32QemuEntry`
 # (real-runtime `BoardEntry`) + hardware/transport bringup + the
-# `esp_bootloader_esp_idf` re-export used for the app descriptor.
-nros-board-esp32-qemu = { path = "../../../../../packages/boards/nros-board-esp32-qemu" }
+# `esp_bootloader_esp_idf` re-export used for the app descriptor. It is the
+# RMW+platform selection point: `rmw-zenoh` (default-on) links+registers the
+# zenoh backend and brings `nros-platform/platform-esp32-qemu`.
+nros-board-esp32-qemu = { path = "../../../../../packages/boards/nros-board-esp32-qemu", features = ["rmw-zenoh"] }
 
 # Required for the `#[esp_hal::main]` proc-macro path the macro emits.
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
@@ -60,11 +63,10 @@ esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
 # Panic handler (required for no_std).
 esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
 
-# Node pkg rlibs — the launch XML names `talker` + `listener`, so the
-# macro emits `talker_pkg::register` + `listener_pkg::register`; the bin
-# must link both. Each selects the `esp32` platform feature.
-talker_pkg = { path = "../talker_pkg", default-features = false, features = ["esp32"] }
-listener_pkg = { path = "../listener_pkg", default-features = false, features = ["esp32"] }
+# Node pkg rlibs (platform/RMW-agnostic) — the launch XML names `talker` +
+# `listener`, so the macro emits both `register` calls; the bin links both.
+talker_pkg = { path = "../talker_pkg", default-features = false }
+listener_pkg = { path = "../listener_pkg", default-features = false }
 
 # Phase 204.11 — release profile matches the single-node esp32 example:
 # drop debug-assertions out of release, no debuginfo in the flashed

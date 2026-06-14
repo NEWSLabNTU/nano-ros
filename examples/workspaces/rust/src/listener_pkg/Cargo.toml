@@ -11,15 +11,10 @@ description = "Node pkg — subscribes to std_msgs/Int32 on /chatter."
 [lib]
 path = "src/lib.rs"
 
-[features]
-default = ["native"]
-native = ["nros/alloc", "nros/rmw-cffi", "nros/platform-posix", "nros/ros-humble"]
-freertos = ["nros/alloc", "nros/rmw-cffi", "nros/platform-freertos", "nros/ros-humble"]
-threadx-linux = ["nros/std", "nros/rmw-cffi", "nros/platform-threadx", "nros/ros-humble"]
-nuttx = ["nros/std", "nros/rmw-cffi", "nros/platform-nuttx", "nros/ros-humble"]
-zephyr = ["nros/alloc", "nros/rmw-cffi", "nros/platform-zephyr", "nros/ros-humble"]
-# ESP32-C3 / riscv32imc bare-metal — see talker_pkg for the rationale.
-esp32 = ["nros/alloc", "nros/rmw-cffi", "nros/platform-bare-metal", "nros/ros-humble"]
+# Phase 248 C6a (#60 T5) — Node pkgs are platform/RMW-AGNOSTIC. The old
+# `native/freertos/threadx-linux/nuttx/zephyr/esp32` matrix is gone: platform +
+# RMW flow from the BOARD crate the sibling Entry pkg deps. See talker_pkg for
+# the full rationale.
 
 [package.metadata.nros.node]
 class = "listener_pkg::Listener"
@@ -27,5 +22,11 @@ name = "listener"
 default_namespace = "/"
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false }
+# Single platform/RMW-agnostic `nros` dep — `alloc` baseline + the rmw-cffi
+# vtable seam only; the board crate links the concrete RMW backend.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
 std_msgs = { version = "*", default-features = false }

@@ -83,11 +83,15 @@ nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi",
 # XRCE locator built from Kconfig at runtime via heapless::String.
 heapless = { version = "0.8", optional = true }
 
-# Node pkg rlibs — the launch XML names `talker` + `listener`, so the
-# macro emits `talker_pkg::register` + `listener_pkg::register`; the
-# staticlib must link both. Each selects the `zephyr` platform feature.
-talker_pkg = { path = "../talker_pkg", default-features = false, features = ["zephyr"] }
-listener_pkg = { path = "../listener_pkg", default-features = false, features = ["zephyr"] }
+# Node pkg rlibs (platform/RMW-agnostic after Phase 248 C6a) — the launch XML
+# names `talker` + `listener`, so the macro emits both `register` calls; the
+# staticlib links both. `platform-zephyr` + the selected `rmw-*` come from THIS
+# entry's `nros` dep / feature matrix (the Zephyr board crate is NetworkWait-
+# only and carries no platform/rmw, so per the RFC-0031 C5b amendment Zephyr is
+# the documented transitional exception — codegen links the backend via the
+# entry's direct `nros-rmw-*` dep + explicit register, NOT a board feature).
+talker_pkg = { path = "../talker_pkg", default-features = false }
+listener_pkg = { path = "../listener_pkg", default-features = false }
 
 [build-dependencies]
 zephyr-build = "0.1.0"
