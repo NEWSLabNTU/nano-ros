@@ -27,7 +27,7 @@ crate-type = ["rlib"]
 [dependencies]
 # Phase 216.B.5 — single `nros` dep matches the locked `nros::main!()`
 # design (`book/src/internals/main-macro.md`).
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Phase 216.B.5 — reuse the sibling server pkg's `PlaceholderSrv` +
 # `PlaceholderInt32` so the wire shape (4-byte LE `i32`, Request ==

@@ -31,7 +31,7 @@ crate-type = ["rlib"]
 # so the example compiles without `nros ws sync` materialising
 # `generated/std_msgs/`. A follow-up to the B-wave migration adds the
 # real `std_msgs` dep once the trampoline-registration story lands.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Phase 216.B.5 — `defmt` used by the placeholder `on_callback` body
 # for the `info!("Received: ...")` log. Real flash brings up the RTT

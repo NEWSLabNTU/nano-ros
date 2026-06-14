@@ -10,7 +10,7 @@ description = "Node package for the Phase 244.D1 bare-metal nros::main!() BoardE
 crate-type = ["rlib"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Bare-metal MPS2-AN385 board — used only for `exit_success()` to signal the
 # E2E success path (QEMU semihosting exit). RMW-agnostic.
 nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }

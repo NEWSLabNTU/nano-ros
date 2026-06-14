@@ -10,7 +10,7 @@ description = "Node package for Phase 216.B QEMU RTIC generated-entry E2E fixtur
 crate-type = ["rlib"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }
 
 [package.metadata.nros.node]

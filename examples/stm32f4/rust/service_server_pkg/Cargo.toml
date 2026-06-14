@@ -26,7 +26,7 @@ crate-type = ["rlib"]
 # B-wave migration adds the real `example_interfaces` dep (and the
 # matching `[package.metadata.ament]` depend rows) once the
 # trampoline-registration story lands.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Phase 216.B.5 — `defmt` used by the placeholder `on_callback` body
 # for the `info!("Service request received")` log. Real flash brings
