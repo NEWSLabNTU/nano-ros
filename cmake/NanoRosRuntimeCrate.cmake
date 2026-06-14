@@ -124,20 +124,20 @@ function(nros_synth_runtime_umbrella)
             "    ${_sym}::__nros_component_${_sym}_register;\n")
     endforeach()
 
-    # ---- Backend auto-register ctor (zenoh / xrce honour .init_array; cyclone registers
-    #      via its own descriptor path, so skip the ctor there) ----
+    # ---- Backend force-link anchor (zenoh / xrce bundle a Rust rlib backend; cyclone is a
+    #      separate C++ lib with no Rust closure, so skip it) ----
+    # Phase 249 P3: this is a plain `#[used]` force-link anchor, NOT an `.init_array` ctor.
+    # It keeps the backend closure (incl. the `nros_rmw_<x>_register` C export) linked into
+    # the runtime staticlib past DCE; registration itself is the one explicit call — the
+    # generated strong `nros_app_register_backends()` (P2b) invokes `nros_rmw_<x>_register`.
     set(_backend_ctor "")
     if(_NRR_BACKEND STREQUAL "zenoh" OR _NRR_BACKEND STREQUAL "xrce")
         set(_backend_ctor
-"// Re-install the backend auto-register .init_array ctor at the staticlib root —
-// nros-cpp's own ctor is DCE'd as a dependency rlib. The C strong-stub
-// (nros_app_register_backends) remains the belt-and-suspenders fallback.
+"// Force-link the backend closure at the staticlib root (nros-cpp's own anchor is DCE'd
+// as a dependency rlib). NOT a ctor — the generated nros_app_register_backends() strong
+// def does the registration explicitly (phase-249 P3).
 #[used]
-#[cfg_attr(
-    any(target_os = \"linux\", target_os = \"android\", target_os = \"freebsd\", target_os = \"none\"),
-    unsafe(link_section = \".init_array\")
-)]
-static _KEEP_BACKEND_CTOR: unsafe extern \"C\" fn() = nros_cpp::nros_cpp_auto_register_backend;
+static _KEEP_BACKEND: unsafe extern \"C\" fn() = nros_cpp::nros_cpp_auto_register_backend;
 ")
     endif()
 

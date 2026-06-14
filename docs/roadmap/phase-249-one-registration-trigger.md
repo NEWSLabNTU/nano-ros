@@ -135,10 +135,23 @@ proven).
   freertos/nuttx/esp are build-check tier (additive/guarded, same proven pattern; runtime
   on their CI). *Optional cleanup (not blocking): drop the 31 now-redundant threadx
   per-example `nano_ros_link_rmw` calls.*
-- **P3 — drop the `.init_array` ctors.** With P1+P2 guaranteeing the explicit call, the
-  ctors are redundant. Remove them from `nros-c`/`nros-cpp` `rmw_backend` + the W11 synth
-  anchor (keep the `FORCE_LINK` that pulls the backend closure, now referenced by the
-  explicit call). **Gate:** hosted + workspace (mixed) + a bare-metal cell.
+- **P3 — drop the `.init_array` ctors. DONE (2026-06-15).** Removed
+  `AUTO_REGISTER_CTOR` from `nros-c`/`nros-cpp` `rmw_backend.rs` (kept `FORCE_LINK` +
+  the `pub auto_register` re-export — they keep the backend closure incl. the
+  `nros_rmw_<x>_register` C export, which the P2b strong stub now calls). In the W11
+  synth (`NanoRosRuntimeCrate.cmake`) the `_KEEP_BACKEND_CTOR` `.init_array` ctor became
+  a plain `#[used]` force-link anchor (`_KEEP_BACKEND`) — and is anyway redundant there,
+  since the synth's `_KEEP_SURFACE` (`nros_cpp::FORCE_LINK_ANCHOR`) already pulls the
+  backend closure. **Validated:** native C + C++ build/link clean (the stub resolves
+  `nros_rmw_zenoh_register` via FORCE_LINK with the ctor gone — the hosted gate);
+  threadx-linux C set links clean (embedded FORCE_LINK holds). workspace-mixed synth path
+  is reasoned-safe (redundant harmless anchor; the FORCE_LINK chain it rides was proven by
+  the green native C++ link) — full runtime is build-tier on `just build-test-fixtures` / CI.
+- **P4 — delete linkme slice + the weak no-op (closes R2 / issue 0050 W3.1).** Remove the
+  distributed slice + the weak `nros_app_register_backends`; a missing backend is now a
+  link error. **Gate:** full per-cell e2e (the W7 matrix) + `just check` + the weak-symbol
+  image gate; `examples/workspaces/mixed` + a pure-Rust + a C/C++ + an RTOS cell each
+  register + run.
 - **P4 — delete linkme slice + the weak no-op (closes R2 / issue 0050 W3.1).** Remove the
   distributed slice + the weak `nros_app_register_backends`; a missing backend is now a
   link error. **Gate:** full per-cell e2e (the W7 matrix) + `just check` + the weak-symbol

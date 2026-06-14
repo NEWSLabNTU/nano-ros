@@ -1,15 +1,21 @@
-//! Phase 241.D3-rev — single-runtime umbrella backend force-link + auto-register.
+//! Phase 241.D3-rev / 249 P3 — single-runtime umbrella backend force-link.
 //!
 //! `nros-c` is the staticlib root; an unreferenced backend rlib dependency would be
 //! dead-code-eliminated out of `libnros_c.a` entirely. This module references the
-//! selected backend's `register()` so its closure (the cffi vtable install + the
-//! transport, e.g. zenoh-pico) is pulled into the archive, and installs an
-//! `.init_array` ctor so the backend registers before `main` — the same idiom the
-//! retired `nros-rmw-{zenoh,xrce}-cffi-staticlib` wrappers used, now folded in.
+//! selected backend's `register()` via a `#[used]` anchor so its closure (the cffi
+//! vtable install + the transport, e.g. zenoh-pico) — and the backend's
+//! `#[no_mangle]` C export `nros_rmw_<x>_register` — are pulled into the archive.
+//!
+//! Phase 249 P3: the `.init_array` auto-register ctor is **retired**. Registration
+//! is now the one universal explicit call — the generated strong
+//! `nros_app_register_backends()` (P2b, every C/C++ app via the shared link path)
+//! invokes `nros_rmw_<x>_register()` directly. The ctor was the fragile path
+//! (`.init_array` is not walked on bare-metal/RTOS — the #48 hazard). `FORCE_LINK`
+//! stays: it keeps that C export present for the explicit call to resolve.
 
-/// Register the linked backend. Referenced by the `.init_array` ctor (hosted) and
-/// kept via `#[used]` so the backend closure survives DCE on every target — even
-/// bare-metal ELF where the board startup, not the loader, walks `.init_array`.
+/// Force-link anchor: keeps the linked backend's closure (incl. its `#[no_mangle]`
+/// `nros_rmw_<x>_register` C export) in `libnros_c.a` past DCE, so the generated
+/// `nros_app_register_backends()` strong def can call it on every target.
 #[used]
 static FORCE_LINK: unsafe extern "C" fn() = auto_register;
 
@@ -23,20 +29,3 @@ unsafe extern "C" fn auto_register() {
         let _ = nros_rmw_xrce_cffi::register();
     }
 }
-
-// Hosted ELF / Mach-O: the loader walks the init section before `main`, so the
-// backend self-registers with no board cooperation. Bare-metal (`target_os =
-// "none"`) relies on the board startup walking `.init_array`; `FORCE_LINK` above
-// still guarantees the symbols are present for it (or for a manual call).
-#[used]
-#[cfg_attr(
-    any(
-        target_os = "linux",
-        target_os = "android",
-        target_os = "freebsd",
-        target_os = "none"
-    ),
-    unsafe(link_section = ".init_array")
-)]
-#[cfg_attr(target_os = "macos", unsafe(link_section = "__DATA,__mod_init_func"))]
-static AUTO_REGISTER_CTOR: unsafe extern "C" fn() = auto_register;
