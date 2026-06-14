@@ -16,29 +16,24 @@ deploy = ["native"]
 [features]
 # Phase 118 — RMW selected at build time via mutually exclusive features.
 default = ["rmw-zenoh"]
-# Phase 227.3 (unified RMW) — zenoh/xrce route through the `nros` umbrella
-# feature; `nros` forwards the backend features + force-links it, so no
-# project-level backend dep and no `register()` call in `main.rs`.
-rmw-zenoh = ["nros/rmw-zenoh"]
-rmw-cyclonedds = [
-    # Phase 214.S.4.b — collapsed `dep:nros-rmw-cyclonedds-sys` out (the
-    # umbrella + `nros-node::__FORCE_LINK_CYCLONEDDS_SYS` keep the `-sys`
-    # rlib alive for us now).
-    "nros/rmw-cyclonedds",
-    # NOTE: generated message/interface bindings are RMW-AGNOSTIC by design
-    # (RFC-0031 — RMW is a declared selection lowered to a feature on `nros`,
-    # never on the binding crate). A `example_interfaces/rmw-cyclonedds` forward
-    # is therefore invalid; the `action_msgs` protocol-type registration the
-    # Phase 244 E3 binding feature carried needs a proper agnostic home (the
-    # cyclonedds backend auto-registering the fixed action protocol types, or an
-    # example-side `#[cfg(feature = "rmw-cyclonedds")]` block) — tracked as an E3
-    # follow-up.
-]
-rmw-xrce = ["nros/rmw-xrce"]
+# Phase 248 C6d — each `rmw-*` activates the app-owned optional backend
+# dep (board-LESS app owns its backend); drops the `nros/rmw-*` umbrella
+# edge that blocked C5c. Backend self-registers on POSIX via its linkme
+# section, kept live by the `#[used]` force-link static in `main.rs`.
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
+rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 
 [dependencies]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+# Phase 248 C6d — board-LESS APP owns its backend dep directly. The `nros`
+# umbrella no longer carries `rmw-*` (that edge blocked C5c), so the app links
+# the concrete backend + force-links its rlib in `main.rs` for POSIX
+# self-registration (linkme `RMW_INIT_ENTRIES`).
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["std", "platform-posix", "ros-humble", "linkme-register"], optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", optional = true }
+nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std", "linkme-register"], optional = true }
 example_interfaces = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"

@@ -16,7 +16,7 @@ name = "rtic-service-client"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble", "rmw-zenoh"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 # Phase 227.3 (unified RMW) — zenoh routes through the `nros` umbrella feature
 # (`rmw-zenoh` above); `nros` force-links the backend (`__FORCE_LINK_ZENOH`), so
 # no project-level `nros-rmw-zenoh` dep and no `register()` call in `main.rs`.
@@ -25,6 +25,11 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+# Phase 248 C6d — board-LESS APP owns its backend dep directly. The `nros`
+# umbrella no longer carries `rmw-*` (that edge blocked C5c), so the app links
+# the concrete backend + force-links its rlib in `main.rs` for POSIX
+# self-registration (linkme `RMW_INIT_ENTRIES`).
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["std", "platform-posix", "ros-humble", "linkme-register"] }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { path = "../../../../packages/core/nros-log" }
 example_interfaces = { version = "*", default-features = false }
