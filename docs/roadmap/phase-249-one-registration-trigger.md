@@ -60,10 +60,16 @@ Per language:
   emitted once from the manifest (the backend's `nros_rmw_<x>_register`), replacing both
   the weak no-op and the ad-hoc per-target cmake stub. One def, always strong, on every
   platform.
-- **Rust.** The `nros::main!()` macro and the board `entry.rs` emit one explicit
-  `nros_rmw_<backend>_register()` (the backend the board/deploy selected — known via the
-  manifest / the board's `rmw-<x>` feature), replacing the linkme-slice walk in
-  `__register_linked_rmw`.
+- **Rust.** The **board boot owns the register call** — the board (selected via the
+  Entry pkg's `deploy`) calls its linked `nros_rmw_<x>::register()`, gated on the board's
+  own `rmw-<x>` feature, **on every OS** (bare-metal = P1; hosted = P3.5 below — the
+  earlier impl left the hosted emit `#[cfg(target_os="none")]`-gated, deferring hosted to
+  linkme). Not the `nros::main!()` macro and not user code: registration is framework-side
+  in the board crate. **User code stays the ROS composable-node shape with ZERO
+  registration boilerplate** — no `#[used]` force-link statics, no `linkme-register`
+  feature, no `register()` call (design principle, user 2026-06-14). The Pattern-2
+  `init_with_launch_auto` native examples (which carry the force-link block) migrate to the
+  declarative Node + `nros::main!()` Entry shape, which *removes* that boilerplate.
 
 Net: a missing registration is a **link error** (undefined `nros_rmw_<x>_register`), never
 a silent `NoBackend`. The phase-247 weak-symbol **image gate** asserts the register symbol
@@ -147,12 +153,22 @@ proven).
   threadx-linux C set links clean (embedded FORCE_LINK holds). workspace-mixed synth path
   is reasoned-safe (redundant harmless anchor; the FORCE_LINK chain it rides was proven by
   the green native C++ link) — full runtime is build-tier on `just build-test-fixtures` / CI.
-- **P4 — delete linkme slice + the weak no-op (closes R2 / issue 0050 W3.1).** Remove the
-  distributed slice + the weak `nros_app_register_backends`; a missing backend is now a
-  link error. **Gate:** full per-cell e2e (the W7 matrix) + `just check` + the weak-symbol
-  image gate; `examples/workspaces/mixed` + a pure-Rust + a C/C++ + an RTOS cell each
-  register + run.
-- **P4 — delete linkme slice + the weak no-op (closes R2 / issue 0050 W3.1).** Remove the
+- **P3.5 — hosted-Rust explicit register (board boot). NEW — the P4 precondition.**
+  P1 wired the board-boot `nros_rmw_<x>::register()` only for `target_os="none"`; the
+  hosted emit was *removed* (main_macro.rs:859 / `nros::main!`) and hosted Rust still
+  registers via the linkme walk. So linkme cannot be deleted yet. Fix (design (a),
+  confirmed 2026-06-14): the board's boot calls its linked `nros_rmw_<x>::register()` on
+  **hosted too** (un-gate from `target_os="none"`), gated on the board's `rmw-<x>` feature
+  — `NativeBoard`/`PosixBoard::run`, mirroring the bare-metal path. The `#[used]`
+  force-link static folds into the call. **User code stays the composable-node shape with
+  zero registration boilerplate**: migrate the Pattern-2 `init_with_launch_auto` native
+  examples (talker/listener/service/action) to the declarative Node + `nros::main!()`
+  Entry shape, dropping their `#[used] __FORCE_LINK_*` block + the `linkme-register`
+  feature. **Gate:** native Rust pub/sub + service + action e2e register + run with linkme
+  still present (belt) but the board call doing the work (suspenders); `nros::main!` hosted
+  binary registers without the linkme walk. Then P4 can delete linkme.
+- **P4 — delete linkme slice + the weak no-op (closes R2 / issue 0050 W3.1).**
+  **Precondition: P3.5 (every hosted Rust binary registers via the board call).** Remove the
   distributed slice + the weak `nros_app_register_backends`; a missing backend is now a
   link error. **Gate:** full per-cell e2e (the W7 matrix) + `just check` + the weak-symbol
   image gate; `examples/workspaces/mixed` + a pure-Rust + a C/C++ + an RTOS cell each

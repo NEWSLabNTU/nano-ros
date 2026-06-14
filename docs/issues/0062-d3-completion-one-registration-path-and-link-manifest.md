@@ -79,19 +79,23 @@ registration that lets the weak default die — apply directly.)
   [phase-249](../roadmap/phase-249-one-registration-trigger.md).** Audit (2026-06-14)
   corrected the original framing: the ctor anchor is NOT the natural single trigger —
   `.init_array` isn't walked on all bare-metal, and linkme is RTOS-blind. The only
-  universal mechanism is the **explicit generated `nros_rmw_<backend>_register()` call**
-  (C/C++: generated strong `nros_app_register_backends`; Rust: `main!`/board-entry from
-  the R1 manifest). Phased P1–P4 (migrate before delete), per-platform e2e gated; **P4 is
-  R2** (deletes the weak default + stub). See phase-249 for the full plan.
+  universal mechanism is the **explicit `nros_rmw_<backend>_register()` call**
+  (C/C++: generated strong `nros_app_register_backends` via the cmake stub; Rust: the
+  **board boot** calls its linked backend's `register()` on every OS — bare-metal P1 +
+  hosted P3.5 un-gates `target_os="none"` — NOT user code, NOT the `main!` macro). User
+  code stays the composable-node shape with zero registration boilerplate. Phased P1–P4
+  (migrate before delete), per-platform e2e gated; **P4 is R2** (deletes the weak default;
+  the cmake stub stays as the sole C/C++ def). See phase-249 for the full plan.
 
 ## Acceptance
 
 - The RMW backend's rlib dep + extra link libs are emitted once from
   `resolve_rmw` and consumed by both the synthesized runtime crate and cmake
   (no hand-maintained dispatch prose) — R1.
-- The weak `nros_app_register_backends` default + the cmake stub are deleted; a
-  missing registration is a link error, not a silent no-op; the weak-symbol gates
-  green — R2, closes [issue 0050](0050-weak-symbol-audit-and-checkers.md) W3.1.
+- The weak `nros_app_register_backends` default is deleted (the cmake stub becomes the
+  sole C/C++ def — no weak fallback); the linkme registration path is removed; a missing
+  registration is a link error, not a silent no-op; the weak-symbol gates green — R2,
+  closes [issue 0050](0050-weak-symbol-audit-and-checkers.md) W3.1.
 - (Stretch) one registration trigger across C/C++ + pure-Rust + embedded — R3.
 
 ## References
