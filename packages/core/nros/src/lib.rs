@@ -129,14 +129,12 @@ extern crate self as nros;
 //   * C/C++ staticlib — `nros-c`/`nros-cpp` bundle one backend (D3) and anchor
 //     `nros-platform` themselves.
 
-// Phase 225.P / 248 C5c — kept as a no-op so the `nros::main!` framework's call
-// site still compiles. Backend registration no longer routes through `nros`
-// (which has no backend dep): on `linkme`-supported targets the `RMW_INIT_ENTRIES`
-// section auto-registers; on `linkme`-blind targets (`target_os="none"` Zephyr
-// native_sim / bare-metal, NuttX, ESP-IDF) the BOARD crate's boot path performs
-// the explicit `register()` (C5a — every deploy board self-links its RMW).
-#[doc(hidden)]
-pub fn __register_linked_rmw() {}
+// Phase 249 P1 — `__register_linked_rmw()` (a Phase 248 C5c no-op kept only so the
+// `nros::main!` framework's call sites compiled) is REMOVED along with those call
+// sites. Backend registration never routed through the backend-agnostic `nros` crate:
+// hosted auto-registers via the `RMW_INIT_ENTRIES` walk at `Executor::open`; embedded
+// boards perform the explicit `<backend>::register()` in their boot path (C5a). One
+// Rust trigger = the board/app explicit register (phase-249).
 
 pub mod dispatch_tag;
 pub mod guide;
@@ -256,12 +254,11 @@ macro_rules! zephyr_component_main {
                 zephyr::set_logger().ok();
             }
             let _ = $crate::platform::zephyr::wait_for_network(2000);
-            // Register the linked RMW backend. On Zephyr (`target_os =
-            // "none"`) `linkme` is a no-op and the image does not run the
-            // `.init_array` auto-register fallback, so without this the
-            // CFFI vtable has no transport and `Executor::open` fails with
-            // `Transport(ConnectionFailed)`.
-            $crate::__register_linked_rmw();
+            // Phase 249 P1 — RMW register is board/platform-owned (Phase 248 C5a);
+            // the backend-agnostic `nros` crate cannot register (no backend dep), so
+            // the former no-op `$crate::__register_linked_rmw()` emit is removed. The
+            // Zephyr entry's explicit backend register lands via the board/platform
+            // boot path (verify under the phase-249 Zephyr e2e gate).
             // Locator: `default_const()` = EMPTY locator → zenoh-pico
             // multicast scouting, which native_sim NSOS can't satisfy.
             // Bake `NROS_LOCATOR` at compile time (the example `build.rs`

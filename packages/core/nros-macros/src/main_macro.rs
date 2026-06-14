@@ -843,17 +843,6 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
-                // Issue #48 — on bare-metal / RTOS targets (`target_os =
-                // "none"`: FreeRTOS, bare Cortex-M) `linkme` is a no-op and
-                // the image does not run the `.init_array` auto-register
-                // fallback, so the linked RMW backend is never contributed
-                // to the CFFI vtable and the board's `Executor::open` fails
-                // with `Transport(ConnectionFailed)` (resolve_backend →
-                // NoBackend). Register it explicitly before the board opens
-                // the executor — mirrors the Zephyr branch and
-                // `zephyr_component_main!`. Hosted targets auto-register via
-                // linkme / `.init_array`, so the call is gated to
-                // `target_os = "none"`.
                 // Phase 244.D1 — install a board custom transport (e.g. the
                 // XRCE-over-UART vtable) selected by `deploy.transport`, BEFORE
                 // the RMW registers. XRCE's `set_custom_transport_ops` must
@@ -863,8 +852,12 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::setup_transport(
                     &#deploy_overlay_ts,
                 );
-                #[cfg(target_os = "none")]
-                ::nros::__register_linked_rmw();
+                // Phase 249 P1 — the RMW backend register is OWNED BY THE BOARD
+                // (Phase 248 C5a: each board's boot path calls its linked
+                // `nros_rmw_<x>::register()`, gated on the board's `rmw-<x>` feature),
+                // ordered after `setup_transport` inside the board's `run`. The former
+                // `#[cfg(target_os="none")] ::nros::__register_linked_rmw()` emit here
+                // was a no-op vestige of the retired linkme-walk path — removed.
                 #entry_call
             }
 
@@ -977,13 +970,9 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // the native_sim final link fails with undefined references.)
                 let _ = ::nros::platform::zephyr::wait_for_network(2000);
 
-                // Register the linked RMW backend into the CFFI vtable. On
-                // the Zephyr native_sim target (`x86_64-unknown-none`,
-                // `target_os = "none"`) `linkme` is a no-op and the image
-                // does not run the `.init_array` auto-register fallback, so
-                // without this the vtable has no transport and
-                // `Executor::open` fails with `Transport(ConnectionFailed)`.
-                ::nros::__register_linked_rmw();
+                // Phase 249 P1 — RMW register is board-owned (Phase 248 C5a); the
+                // backend-agnostic `nros` crate cannot register (no backend dep), so
+                // the former no-op `::nros::__register_linked_rmw()` emit is removed.
 
                 // Open the executor + wrap it in the dispatch runtime, then
                 // register each launch-named Node pkg through a `RuntimeCtx`

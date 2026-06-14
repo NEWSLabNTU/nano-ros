@@ -85,10 +85,19 @@ Order minimises blast radius: migrate each path to the explicit call **before** 
 its old trigger, so every intermediate state still registers (belt kept until suspenders
 proven).
 
-- **P1 — Rust path to explicit call.** `nros::main!()` + board `entry.rs` emit one
-  explicit `nros_rmw_<backend>_register()` from the selected backend; keep linkme as the
-  fallback for now. **Gate:** native Rust + FreeRTOS + ThreadX-rv64 Rust e2e register +
-  run (the linkme-blind RTOS path now has the explicit call; hosted unchanged).
+- **P1 — Rust path to explicit call. DONE (2026-06-14).** Most of P1 was already
+  delivered by **phase-248 C5a**: every deploy board's boot path calls its linked
+  `nros_rmw_<x>::register()` (gated on the board's `rmw-<x>` feature) — the explicit
+  Rust trigger. The board-agnostic `nros` crate *cannot* register (no backend dep), so
+  P1's residual was removing the dead `nros::__register_linked_rmw()` no-op (a Phase-248
+  C5c stub kept only so the `main!` call sites compiled) + its three emits (`main!`
+  macro ×2, the Zephyr `*_component_main!` macro). The linkme **walk** (`Executor::open`)
+  stays as the hosted/cyclonedds fallback (retired in P4). **Gate:** native Rust +
+  ThreadX-rv64 Rust fixtures build clean (same `main!`+board path). FreeRTOS Rust is
+  blocked by a *pre-existing* phase-248 residual (the fixture build passes `--features
+  rmw-zenoh` to examples that relocated it to the board → cargo feature-resolution error
+  *before* the macro) — not a P1 regression; tracked under phase-248's deferred FreeRTOS
+  smoke.
 - **P2 — C/C++ generated strong def.** Emit `nros_app_register_backends` as a generated
   STRONG def from the manifest (CLI codegen or a generated TU the cmake compiles),
   replacing the per-target `nano_ros_link_rmw` stub. **Gate:** native C/C++ + FreeRTOS +
