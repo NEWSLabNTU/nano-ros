@@ -332,17 +332,43 @@ impl Context {
         mode: &[u8],
         properties: &[zpico_sys::zpico_property_t],
     ) -> Result<Self> {
-        let locator_ptr = match locator {
-            Some(loc) => loc.as_ptr().cast(),
-            None => core::ptr::null(),
-        };
-        let props_ptr = if properties.is_empty() {
-            core::ptr::null()
-        } else {
-            properties.as_ptr()
-        };
+        // Issue #64 — stage the locator into a fixed-address static instead of
+        // passing a captured `&[u8]`. On esp32-c3 a failed first `zpico_open()`
+        // is retryable; during the `connect_backoff_ms` → `z_sleep_ms` network
+        // poll, a wild write on the OpenETH poll/DMA path overwrites the retry
+        // closure's *captured* locator pointer field with `0xffffffff`, so the
+        // 2nd `zpico_init_with_config` faults in `_z_str_clone(0xffffffff)`. The
+        // `.bss` static lives outside the clobbered frame and its address is a
+        // link constant (recomputed each attempt, never stored in a corruptible
+        // stack slot). zpico is single-session/global already, so a static
+        // connect buffer matches the existing design. `mode` is a `'static`
+        // flash pointer and `properties` is empty on embedded, so both survive
+        // as-is; only the DRAM-backed locator needs staging.
+        const LOC_CAP: usize = 256;
+        static mut LOC_BUF: [u8; LOC_CAP] = [0; LOC_CAP];
+        static mut LOC_VALID: bool = false;
+        match locator {
+            Some(loc) if loc.len() <= LOC_CAP => unsafe {
+                core::ptr::copy_nonoverlapping(loc.as_ptr(), (&raw mut LOC_BUF) as *mut u8, loc.len());
+                LOC_VALID = true;
+            },
+            Some(_) => return Err(ZpicoError::Config),
+            None => unsafe { LOC_VALID = false },
+        }
         ffi_guard(|| {
             Self::connect_with_retry(|| {
+                // Read the locator from its constant static address (not a
+                // captured pointer) so the retry survives the backoff clobber.
+                let locator_ptr: *const core::ffi::c_char = if unsafe { LOC_VALID } {
+                    (&raw const LOC_BUF) as *const core::ffi::c_char
+                } else {
+                    core::ptr::null()
+                };
+                let props_ptr = if properties.is_empty() {
+                    core::ptr::null()
+                } else {
+                    properties.as_ptr()
+                };
                 let ret = unsafe {
                     zpico_init_with_config(
                         locator_ptr,

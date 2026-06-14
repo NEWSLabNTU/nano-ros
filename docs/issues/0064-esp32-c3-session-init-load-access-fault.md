@@ -7,6 +7,24 @@ area: platform
 related: [phase-248, phase-249]
 ---
 
+## UPDATE 2026-06-15 — the Load-access-fault is FIXED; a separate heap OOM remains
+
+The `0xffffffff` Load-access-fault is **resolved**: `Context::with_config` now
+stages the locator into a fixed-address `.bss` static and the retry closure reads
+its **link-constant address** each attempt, instead of a captured `&[u8]` whose
+pointer field was overwritten by the backoff-poll wild write. Verified: the esp32
+listener now connects + subscribes with **zero** Load-access-faults across full
+192 s runs (was faulting every run).
+
+**Newly exposed residual (was masked by the crash):** the esp32 firmware now hits a
+heap OOM during session setup — `memory allocation of 8 bytes failed` (alloc error
+handler), so the talker publishes 0. Prime suspect: the retry path leaks — each
+`zpico_init_with_config` runs `z_config_default(&g_config)` **without freeing** the
+previous attempt's `_z_str_clone` allocations, so a few failed-open retries exhaust
+the esp32 heap. Candidate fixes: free/clear `g_config` before re-defaulting on
+retry; or reduce retry churn; or bump the esp32 heap. Tracked here (issue stays
+`open` until esp32 live e2e is green).
+
 ## Symptom
 
 The networked `esp32_emulator` live tests are red:
@@ -54,22 +72,58 @@ esp32 session-init path, NOT networking.
   0x3fcc9a4c); the ~4.2 KB `SmoltcpSession::new` frame (key_bufs/val_bufs 2×256×8) is
   large but the fault signature is a bad pointer *value*, not a stack-guard hit.
 
-## Open leads
+## ROOT CAUSE PINNED (2026-06-15, esp_rom_printf instrumentation)
 
-- `connect_with_retry` re-invoking `zpico_init_with_config` over shared globals
-  (re-entrancy / partial-init state).
-- esp32 heap corruption from `z_malloc` in the config-clone path (`_z_str_clone`).
-- The intermittency suggests an uninitialised value or a race with the zenoh-pico
-  read/lease tasks.
+Instrumented `zpico_init_with_config` with `esp_rom_printf` (the ROM UART printer —
+no libc, gated `#if defined(__riscv) && __riscv_xlen == 32`), logging each insert's
+value pointer. The trace at the fault:
+
+```
+ZDBG enter mode=0x3c001cdb locator=0x3fcbd00c nprops=0 props=0x0   <- attempt 1: OK, init succeeds
+ZDBG mode=0x3c001cdb  zid=0x3fcbcf38  locator=0x3fcbd00c          <- all inserts valid
+ZDBG enter mode=0x3c001cdb locator=0xffffffff nprops=0 props=0xffffffff  <- attempt 2 (retry)
+ZDBG locator=0xffffffff
+Exception 'Load access fault' mtval=0xffffffff                    <- _z_str_clone(0xffffffff)
+```
+
+So:
+
+1. **It is the retry path.** `Context::with_config` wraps `zpico_init_with_config` +
+   `zpico_open` in `connect_with_retry` (zpico.rs). Attempt 1's `init` succeeds with a
+   valid locator; `zpico_open` **fails** (retryable — transient connect) → 300 ms
+   `connect_backoff_ms` → attempt 2 re-invokes `init` — now with `locator=0xffffffff`.
+2. **The corrupted thing is the closure's captured pointer, not the buffer.** On
+   attempt 2 the *argument* `locator` is `0xffffffff`. `mode` (a `'static` **flash**
+   pointer `0x3c001cdb`) survives; `props` (recomputable from `is_empty()`) survives;
+   only the **locator's captured `&[u8]` fat-pointer field** is overwritten — a
+   targeted ~4-byte wild write to one slot in `connect_with_retry`'s frame.
+3. **Single-threaded** — the esp32-c3 board uses the poll/`spin_once` cooperative
+   model (`smoltcp_network_poll`, no zenoh-pico read/lease tasks; the earlier
+   "race with read/lease tasks" lead is ruled out). The clobber window is
+   `connect_backoff_ms` → `z_sleep_ms`, which drives the **network poll** (OpenETH
+   RX/TX + the `before_poll` RXEN toggle) during the backoff. A wild write on that
+   poll/DMA path lands on the locator's captured pointer slot.
+4. The locator buffer lives at `0x3fcbd00c` — **below** `_stack_end` (0x3fcc9a4c),
+   i.e. lower DRAM, not the main stack.
+
+**Tried + INSUFFICIENT:** recomputing `locator_ptr`/`props_ptr` *inside* the retry
+closure (instead of capturing precomputed thin pointers). It fixed `props`
+(0xffffffff→null) but NOT `locator` — the captured `locator: Option<&[u8]>` ref is
+*itself* corrupted, so re-deriving `loc.as_ptr()` still yields 0xffffffff.
 
 ## Next step
 
-Pin *which* insert's value is `0xffffffff` (mode / auto `session_zid` / a property /
-the locator). esp32 bare-metal has **no libc `printf`** (a C-printf probe fails to
-link — the firmware prints via Rust `esp_println`), so instrument via either a
-printf-free guard returning distinct error codes per insert site, or **gdb on the
-QEMU gdbstub** (`-S -gdb tcp::1234`, `riscv32` gdb, break in `_z_str_clone` /
-`_zp_config_insert`, inspect the arg). Then fix the corruption source.
+The fix must make the locator survive the backoff clobber. Options:
+- **Memory watchpoint** on the locator's captured-pointer slot to catch the exact
+  wild write (the definitive next move) — needs gdb. **The QEMU gdbstub is currently
+  unusable in this CI sandbox:** every `qemu-system-riscv32 … -S -gdb tcp::1234`
+  (and `-gdb unix:`) is `SIGTERM`'d within ~1 s by the harness (plain QEMU runs
+  fine). Run the watchpoint on a workstation without that restriction.
+- **Static-stage** the locator (+ properties) into fixed-address storage the retry
+  closure reads, instead of a captured stack/DRAM `&[u8]` (immune to the capture
+  clobber). Risk: `static mut` thread-safety + it is a shared (all-platform) shim.
+- **Find + fix the wild write** on the `z_sleep_ms`/poll/OpenETH path (the real bug —
+  something writes `0xffffffff` to a DRAM slot during the backoff poll).
 
 ## Fixed alongside (this issue's commit `651f7f579`)
 
