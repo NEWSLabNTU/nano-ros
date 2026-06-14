@@ -51,7 +51,7 @@ nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", fe
 # the concrete backend + force-links its rlib in `main.rs` for POSIX
 # self-registration (linkme `RMW_INIT_ENTRIES`).
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["std", "platform-posix", "ros-humble", "linkme-register"], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std", "linkme-register"], optional = true }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"

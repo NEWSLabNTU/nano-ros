@@ -54,6 +54,16 @@ linkme-register = ["nros-rmw-cffi/linkme-register"]
 # `staticlib` (hosted POSIX builds). Embedded consumers keep the
 # default no_std build.
 std = []
+# Phase 249 — re-anchor the posix C platform port into the link graph for
+# native cyclone consumers. Mirrors `nros-rmw-zenoh`'s `platform-posix`:
+# the `#[used] __FORCE_LINK_PLATFORM_CFFI` static (src/lib.rs) pulls
+# `nros-platform`'s `__FORCE_LINK_CFFI`, which retains
+# `libnros_platform_posix.a` so `nros_node`'s `nros_platform_wake_*`
+# symbols resolve. Cyclone (unlike zenoh) does NOT dep `nros-platform` in
+# its register path, so without this the cffi rlib is DCE'd and the native
+# link fails (issue 0063). Embedded (Zephyr/ThreadX) consumers get the wake
+# symbols from their own platform port and keep this OFF.
+platform-posix = ["dep:nros-platform", "nros-platform/platform-posix"]
 # Phase 212.K.2 — compile the C++ backend
 # (`packages/dds/nros-rmw-cyclonedds/src/*.cpp`) + the bundled
 # `rmw_dds_common_graph` descriptor as part of this crate's build,
@@ -74,6 +84,10 @@ linkme = { version = "0.3", default-features = false }
 # never `use` anything from its lib.rs. Declared as a regular dep so
 # that Cargo passes `DEP_DDSC_*` env vars into our `build.rs`.
 cyclonedds-sys = { version = "0.5.0", path = "../cyclonedds-sys", optional = true }
+# Phase 249 — only pulled in by the `platform-posix` feature (native). The
+# `__FORCE_LINK_PLATFORM_CFFI` re-anchor in src/lib.rs references its
+# `__FORCE_LINK_CFFI` to keep `libnros_platform_posix.a` in the link graph.
+nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, optional = true }
 
 [build-dependencies]
 cc = { version = "1.0", optional = true }

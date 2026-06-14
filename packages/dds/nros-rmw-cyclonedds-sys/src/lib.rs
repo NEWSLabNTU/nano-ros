@@ -40,6 +40,22 @@
 #[cfg(feature = "vendored")]
 extern crate cyclonedds_sys as _;
 
+// Phase 249 — re-anchor the posix C platform port. Mirrors
+// `nros-rmw-zenoh::__FORCE_LINK_PLATFORM_CFFI`: `nros_node` references
+// `nros_platform_wake_*`, provided by `libnros_platform_posix.a` (built by
+// `nros-platform-cffi[posix-c-port]`). That archive is pulled by
+// `nros_platform::__FORCE_LINK_CFFI`, but the `#[used]` static lives in the
+// `nros-platform` rlib and is DCE'd from a binary root unless re-anchored.
+// Cyclone's register path (unlike zenoh's) has no `nros-platform` dep, so
+// native cyclone binaries lost the wake symbols (issue 0063). This `#[used]`
+// re-anchor, gated on the native-only `platform-posix` feature, restores it.
+// Embedded consumers keep the feature OFF and source the wake symbols from
+// their own platform port.
+#[cfg(feature = "platform-posix")]
+#[doc(hidden)]
+#[used]
+pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_LINK_CFFI;
+
 use core::ffi::c_int;
 
 unsafe extern "C" {
