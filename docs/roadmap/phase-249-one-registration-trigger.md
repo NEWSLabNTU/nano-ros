@@ -173,12 +173,34 @@ proven).
   delegating to `PosixBoard` — on every OS, the same call bare-metal P1 uses without
   linkme. Validated: board + entry-poc (declarative native) build clean, entry-poc runs
   identically (no regression; `Executor::open` reaches a backend → `ConnectionFailed` not
-  `NoBackend`). **P3.5b remaining:** (i) extend `NativeBoard` to own xrce/cyclonedds (only
-  `rmw-zenoh` today); (ii) migrate the Pattern-2 `init_with_launch_auto` native examples
-  (talker/listener/service/action) to the declarative Node + `nros::main!()` shape so they
-  route through the board boot (Pattern-2 bypasses it). **P4 note (found 2026-06-15):**
-  `linkme-register` is default-on and pulled via *multiple* dep paths — P4 must drop the
-  feature everywhere + the macro invocations, not one dep.
+  `NoBackend`). **P4 note (found 2026-06-15):** `linkme-register` is default-on and pulled
+  via *multiple* dep paths — P4 must drop the feature everywhere + the macro invocations,
+  not one dep.
+
+  **P3.5b — board multi-backend + example migration. In progress (2026-06-15).**
+  - Board: `NativeBoard` extended to own zenoh + xrce + cyclonedds (DONE).
+  - Examples: the 6 Pattern-2 `init_with_launch_auto` native examples
+    (talker/listener/service-{client,server}/action-{client,server}) migrated to the
+    declarative Node + `nros::main!()` shape (a workflow, all 6 build). Each = a Node pkg
+    (`<name>_pkg`, composable `impl Node + ExecutableNode`, no registration boilerplate) +
+    an Entry pkg (`nros::main!()`, `deploy=native`). The `#[used] __FORCE_LINK_*` block +
+    `linkme-register` are gone; the board boot registers.
+  - **Integration (full, user chose A):**
+    - **RMW variants:** the migration dropped the example `rmw-*` features; re-add them as
+      **board-forwarding** features on each Entry (`rmw-<x> = ["nros-board-native/rmw-<x>"]`,
+      `default-features = false` on the board dep) so the `fixtures.toml` RMW-variant rows +
+      the `target-<rmw>/` resolvers keep working.
+    - **safety-e2e / param-services / link-tls / zero-copy → DEFERRED to
+      [phase-250](phase-250-safety-params-feature-dimension.md)** (a declared, config-driven
+      lang-agnostic feature dimension, not per-example Cargo gates). Interim: remove those
+      `fixtures.toml` variant rows; `skip!` `params.rs` + `safety_e2e.rs` (+ tls/zero-copy
+      e2e) pointing at phase-250.
+    - **Resolvers / consuming tests:** the `build_native_*` resolvers in
+      `nros-tests/.../binaries/mod.rs` are *path-getters* over the manifest-built fixtures
+      (no compile; `_features` ignored) — bin names preserved (`talker`, …) so paths still
+      resolve; verify the non-safety/param consumers (executor / multi_node / actions / qos /
+      nano2nano / rmw_interop) e2e against the migrated bins. The fixture build materialises
+      the Node pkg `generated/` via the `fixtures-build.sh` node-pkg ws-sync pre-pass.
 - **P4 — delete linkme slice + the weak no-op (closes R2 / issue 0050 W3.1).**
   **Precondition: P3.5 (every hosted Rust binary registers via the board call).** Remove the
   distributed slice + the weak `nros_app_register_backends`; a missing backend is now a
