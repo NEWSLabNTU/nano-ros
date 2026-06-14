@@ -60,6 +60,16 @@ esp32 bare-metal) that never adopted it.
 `NROS_APP_MAIN_REGISTER_POSIX()` (standard C entry macro); `build.rs` linker/Kconfig
 bridges; `serial-talker` env-var config; rclcpp-compat ROS 2 idioms.
 
+**P1 rescope — native (posix) board-less `Executor::open` is ACCEPTED (decided
+2026-06-15).** Native single-node examples are board-less by design (phase-248 C6d,
+no `nros-board-*` crate, not a workspace); the maintainer blesses board-less +
+`Executor::open` as the intended native shape, NOT a P1 leak. The genuine native
+leak is **RMW-selection-via-cargo-feature** (the `#[used] __FORCE_LINK_*` ladder +
+`#[cfg(feature="rmw-*")]` + raw `--features` selection) — cleaned by the **Shape B**
+config-lowering model (RMW declared in `[deploy.native] rmw`, feature is the lowering
+target per [RFC-0031](../design/0031-rmw-selection-and-lowering.md)). See phase-244
+"Native (posix) board-less RMW model" + cluster D7 / enabler E6.
+
 ## Cleanup
 
 Work items + parallel clusters + wave ordering →
