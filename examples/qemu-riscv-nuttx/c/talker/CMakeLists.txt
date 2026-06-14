@@ -14,19 +14,18 @@ set(NANO_ROS_BOARD    nuttx-qemu-riscv)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
-# Message deps resolved from the sibling package.xml SSoT (issue #11)
-# instead of a hardcoded interface-file list.
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
-# Phase 212.L.9 — declarative Component pkg shape. No add_executable
-# here, no `main()`; the generated runtime (emitted by `nros codegen-
-# system` via the integrations/nuttx H.2 adapter shim) owns the entry
-# point, executor init, and the spin loop.
+# Phase 240.6 (RFC-0043) — TYPED carrier: the bootable ELF constructs the C
+# Talker component + `talker_configure(node, executor)` creates a raw publisher +
+# a timer publishing a CDR-encoded Int32 counter. The raw publish carries the
+# DDS-mangled keyexpr verbatim, so no generated message sources are needed.
 nano_ros_node_register(
-    NAME    talker
-    CLASS   nuttx_riscv_c_talker::Talker
-    SOURCES src/Talker.c ${std_msgs_GENERATED_SOURCES}
-    DEPLOY  nuttx)
+    NAME     talker
+    CLASS    nuttx_riscv_c_talker::Talker
+    LANGUAGE C
+    TYPED
+    SOURCES  src/Talker.c
+    DEPLOY   nuttx)
 
 # Per-target deploy config (Phase 212.L.8).
 nano_ros_deploy(
