@@ -9,7 +9,17 @@ clashes #27/#36/#38, ld single-pass undefined-symbol races #20, silent capabilit
 mismatches) by making the build contract *structural* instead of
 convention-enforced. Cross-refs the systemic review in [issue 0042].
 
-**Status.** Planned (2026-06-12).
+**Status.** In progress (2026-06-12 → ongoing). **241.A (gate)** + **241.C
+(capability SSoT)** LANDED; **241.B (one canonical header)** LANDED — B.3 (the ABI
+unification) was carved to [phase-243](phase-243-platform-abi-unification.md),
+which LANDED on main (the legacy `nros-c` `<nros/platform.h>` is deleted). **241.D
+(deterministic linking, RFC-0042 D3)** is the remaining open pillar: its current
+design is the single shared runtime
+([phase-241-d3-single-runtime](phase-241-d3-single-runtime.md)) + the one
+registration trigger ([phase-249](phase-249-one-registration-trigger.md) / issue
+#62) — the original slice-4 `nros-rmw-cffi-provider`/`external-registry` dedup is
+**retired** (verified: no provider crate, no `external-registry` feature on main).
+241.E (RFC flips + #42 close) follows D.
 
 **Priority.** P2 — no product capability is blocked, but this class of bug recurs
 on nearly every board/example/platform-header edit, and each instance currently
@@ -176,19 +186,17 @@ Steps (each a commit; CI between the riskier ones):
 > **Recommendation:** treat B.3–B.5 as a separate scoped effort; B.2 already
 > delivered the concrete win (the cffi duplicate is gone, one fewer `platform.h`).
 
-- [ ] **B.3 — unify A's surface into api, then retire A.** Grew from "delete the
-      duplicate" into a real ABI unification (A is a *live* complementary surface,
-      not legacy) → **carved out as its own phase doc:
-      [phase-243](phase-243-platform-abi-unification.md)** (6 waves, exact file:line
-      work items + acceptance). Summary: api gains a generic `__atomic` atomics
-      inline; the Rust `platform.rs` wrappers re-point to `core::sync::atomic` +
-      `clock_us` (collapsing ~20 call sites into one edit); `time_ns`/`sleep_ns` and
-      the dead typed-mutex are dropped; POSIX heap funnels through
-      `nros_platform_alloc`; A + its 4 sub-headers are deleted and the `nros-c`
-      INTERFACE include order flips to api-first. ABI change, every platform — gate +
-      parity + full `run_e2e` on a branch.
-- [ ] **B.4** — parity assert: extend `c_stub_platform.rs` (or add one) to cover
-      the unified canonical header ↔ `lib.rs` once B.3 lands.
+- [x] **B.3 — unify A's surface into api, then retire A. DONE via
+      [phase-243](phase-243-platform-abi-unification.md) (LANDED on main).** Grew
+      from "delete the duplicate" into a real ABI unification (A was a *live*
+      complementary surface) → carved to phase-243 (6 waves). api gained generic
+      `__atomic` atomics; the Rust `platform.rs` wrappers re-point to
+      `core::sync::atomic` + `clock_us`; `time_ns`/`sleep_ns` + the dead typed-mutex
+      dropped; POSIX heap funnels through `nros_platform_alloc`; the legacy `nros-c`
+      `<nros/platform.h>` + its 4 sub-headers are deleted (`git ls-files` = 0).
+- [x] **B.4 — parity assert. DONE (243.6).** `c_stub_platform.rs` compiles clean
+      on main → the canonical header ↔ `nros-platform-cffi/src/lib.rs` parity guard
+      is intact post-collapse (atomics inline → not mirrored; rest unchanged).
 - [x] **B.5 — repoint the 241.A gate at the canonical header (landed).**
       `platform_header_matrix.rs` lists `nros-platform-api/include` as the first
       `-I` (243.B.5), so `<nros/platform.h>` resolves to the canonical header; the
@@ -291,59 +299,16 @@ Steps (each a commit; CI between the riskier ones):
 > [issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md)**,
 > riding on the single-runtime foundation.
 
-> **In progress on branch `issue-42-d3-link-determinism`. Slice 4 complete +
-> validated.** The **C/C++ multi-archive path** (D3's actual target) is fixed: native
-> cpp+c examples link with NO `--allow-multiple-definition` / `--whole-archive`, the
-> cpp talker RUNS + publishes (single `REGISTRY`, auto-register fires), and `just
-> native build-cpp` links clean.
->
-> **Slice-4 regression FIXED via feature-gating the `REGISTRY` def (2026-06-13).**
-> The first slice-4 cut made `nros-rmw-cffi` reference `REGISTRY` as an extern
-> *unconditionally*, which broke the **pure-Rust firmware path** (`just
-> threadx_riscv64 build-fixtures` → `rust-lld: undefined symbol: REGISTRY`): those
-> bins link via **cargo, not cmake**, so they never pull the
-> `nros-rmw-cffi-provider` archive — and that path never had the multi-archive dup
-> problem (one cffi rlib instance) so it should self-define. **Fix:** a new
-> `external-registry` cargo feature on `nros-rmw-cffi` gates the `REGISTRY` storage —
-> *off* by default → the rlib `#[no_mangle]`-DEFINES its one copy (pure-Rust firmware,
-> the NuttX build-std ELF, the dup-symbol negative harness); *on* → it references
-> `REGISTRY` as an undefined extern (the provider archive is the sole definer). The
-> non-NuttX C/C++ cmake link turns the feature on for every cffi-bundling consumer
-> via a passthrough chain (`nros-c`/`nros-cpp` → `nros` → `nros-rmw-cffi`; the
-> zenoh/xrce staticlibs → their rmw rlib → `nros-rmw-cffi`; the provider pins it on
-> its own cffi dep so `nros_rmw_cffi_export!{}`'s macro def is the lone `REGISTRY`),
-> driven by the root `CMakeLists.txt` `NROS_CFFI_EXTERNAL_REGISTRY` guard (set only in
-> the non-NuttX branch where the provider is built). **No board-crate changes** — the
-> earlier "force-link the provider from ~6 board crates" plan was abandoned in favour
-> of this single feature knob (no `#[used]`/`extern crate` hacks, no RTOS allocator
-> clash from a provider dep on the boards).
->
-> **Validated (2026-06-13):** cffi compiles both feature states; `nm` shows default
-> `B REGISTRY` (defined) / `external-registry` `U REGISTRY` (ref) / provider exactly
-> one `B`; the host dup-symbol fixture links the 3-archive pair with a *single*
-> defined `REGISTRY` (`nros-c.a` + zenoh-staticlib.a contribute 0, provider 1);
-> `staticlib_duplicate_symbols` 2/2 pass; `just native build-cpp` GREEN; `just
-> threadx_riscv64 build-fixtures` pure-Rust bins link (REGISTRY error gone).
->
-> **Separate, pre-existing threadx-riscv64 C-fixture bug surfaced** (now that the
-> build progresses past the fixed pure-Rust link): `fixture-0005`
-> (`threadx-riscv64-c-zenoh`) fails compiling `nros-platform-threadx/src/{timer,net}.c`
-> with `fatal error: nros/platform_{timer,net}.h: No such file or directory` — the
-> threadx example/board cmake passes `NROS_PLATFORM_CFFI_INCLUDE=…/nros-platform-cffi/
-> include`, but phase-243 moved those canonical headers to `nros-platform-api/include`.
-> Independent of slice 4 (no cffi/feature/link involvement); track + fix separately.
->
-> **Characterized (2026-06-13):**
-> `--allow-multiple-definition` on the threadx/freertos C++ staticlib link masks
-> **239 duplicate defined-globals** between `libnros_c.a` and
-> `libnros_rmw_zenoh_staticlib.a` — ALL from the shared Rust dependency closure
-> (nros-core/serdes/rmw/rmw-cffi, log, core, alloc, heapless, hash32, byteorder)
-> + the `nros_rmw_cffi_*` C shim. ZERO application/message/transport dups. So the
-> flag masks only legitimate self-contained-staticlib bundling — but note the
-> `nros_rmw_cffi_*` C exports are STRONG (`#[no_mangle]`), so removing the flag is
-> NOT a contained change: it needs `nros-rmw-cffi` deduped to a single archive
-> (see the "Remove `--allow-multiple-definition`" item below for the blocker found
-> when the `-u` cmake edit was tried).
+> **History (slice-4, 2026-06-13 — RETIRED).** An interim slice-4 cut introduced
+> a dedicated `nros-rmw-cffi-provider` archive + an `external-registry` cargo
+> feature to define `REGISTRY` once across the C/C++ multi-archive link. It was
+> validated, then **superseded by the single-runtime model** (one Rust staticlib
+> per binary ⇒ one `REGISTRY` with plain `#[no_mangle]`, no provider/feature). On
+> main today there is **no `nros-rmw-cffi-provider` crate and no `external-registry`
+> feature**. The dedup motivation + the detailed slice-4 design are preserved in
+> git history; the current target is
+> [phase-241-d3-single-runtime](phase-241-d3-single-runtime.md) +
+> [phase-249](phase-249-one-registration-trigger.md).
 - [ ] One registration path: codegen emits the explicit backend-register table,
       used on all platforms; retire the linkme-vs-weak split as a *contract*
       (Q4 lean: explicit table everywhere). **DESIGNED →
@@ -354,139 +319,20 @@ Steps (each a commit; CI between the riskier ones):
       in `resolve_rmw()` → generated `cmake/NanoRosRmwDispatch.cmake`, drift-guarded;
       the W11 synth consumes it). The whole-archive set + archive *order* part is
       still open (rides phase-249 / the NanoRosLink rework).
-- [ ] Remove `--allow-multiple-definition` — **strategy partly proven, real
-      blocker found (slice 3+4 investigation, 2026-06-13).**
-      - The COMDAT/weak duplicates (generics, weak compiler-rt) are NOT the
-        problem: a **C-only** link of the 2 archives (`libnros_c.a` +
-        `libnros_rmw_zenoh_staticlib.a`) forced via `-u nros_rmw_zenoh_register`,
-        lazy (no `--whole-archive`), links with **no** flag — register included,
-        single `REGISTRY`. Guarded by
-        `host_pair_links_via_u_force_without_allow_multiple_definition`. (The flag
-        was historically needed because the real cmake link **whole-archives** the
-        backend to keep its `.init_array` register ctor; `--whole-archive` drags in
-        every member → the closure's strong defs collide → reproduced as 2462
-        multiple-def errors. `-u` keeps the ctor object without that.)
-      - **BUT the real C++ link has THREE archives** — `libnros_c.a` +
-        `libnros_cpp.a` + the RMW staticlib — and all three statically bundle
-        `nros-rmw-cffi`, whose C exports (`nros_rmw_cffi_register_named`,
-        `nros_rmw_cffi_set_custom_transport`, …) are **STRONG** (`#[no_mangle]`),
-        not COMDAT. Converting the root `CMakeLists.txt` zenoh link to `-u` (drop
-        whole-archive + flag) was tried and **fails the native cpp link**:
-        `multiple definition of nros_rmw_cffi_set_custom_transport` (libnros_cpp.a
-        vs the RMW staticlib). So lazy linking does NOT dedup these — the flag is
-        load-bearing for the strong cffi C exports.
-      - **Therefore slice 4 (drop the flag) REQUIRES the dedup first:**
-        `nros-rmw-cffi` must be defined in exactly ONE archive, not bundled into
-        each staticlib (`nros-c`, `nros-cpp`, the RMW staticlib). Options: a single
-        shared `nros-rmw-cffi` archive the others reference as undefined (hard with
-        Rust `crate-type=["staticlib"]`, which always bundles its closure), or
-        localising the cffi exports in all-but-one archive via `objcopy
-        --localize-symbol` (UNSAFE for the stateful `REGISTRY` — would split the
-        registry → #48 `NoBackend`), or collapsing nros-c+nros-cpp+RMW into one
-        staticlib. This is the architectural core of D3 and needs its own design +
-        run_e2e. The cmake `-u` edit was reverted (it broke the cpp link); the
-        validator + the C-only host proof stand as the guardrails for it.
-        **See "Slice 4 design" below.**
-
-#### 241.D slice 4 — the `nros-rmw-cffi` dedup design (2026-06-13)
-
-**Problem (precise).** The same `nros-rmw-cffi` rlib is statically bundled into
-three archives that all reach the final link: `libnros_c.a`, `libnros_cpp.a`, the
-RMW staticlib (`libnros_rmw_zenoh_staticlib.a` / xrce). Its C exports
-(`nros_rmw_cffi_register{,_named}`, `_lookup`, `_registered_names`,
-`_walk_init_section`, `_set_custom_transport`) and the registry static `REGISTRY`
-are **strong** (`#[unsafe(no_mangle)]`, `lib.rs:976/1196/…`). Three strong
-definitions → `--allow-multiple-definition` is the only thing letting the link
-proceed. Invariant: **`REGISTRY` must resolve to exactly ONE runtime instance** —
-the backend registers into it and `Executor::open` reads it; two instances =
-`NoBackend` (#48 class).
-
-**Precedent.** The *platform*-cffi split is already done: `libnros_c.a` references
-`nros_platform_*` as **undefined** (`U nros_platform_log_write`), supplied by a
-separate `libnros_platform_<plat>.a`. The rmw-cffi split is the missing analogue
-(the `NanoRosLink.cmake` header even predicts it: "once the RMW-cffi canonical-ABI
-binary split lands, the bodies swap to linking three separate archives").
-
-**What actually collides (narrowed).** Under `--whole-archive` only the **strong**
-symbols collide; the Rust-mangled cffi/closure symbols are `linkonce`/COMDAT and
-dedup themselves. The strong colliders are exactly nros-rmw-cffi's
-`#[unsafe(no_mangle)]` set: `REGISTRY` (the stateful registry static, `lib.rs:976`)
-+ the six C exports (`nros_rmw_cffi_register{,_named}`, `_lookup`,
-`_registered_names`, `_walk_init_section`, `_set_custom_transport`). So the fix
-only needs **those ~7 symbols defined once**, not a whole-crate refactor.
-
-**Rejected — weak symbols.** Weakening the 7 (e.g. `llvm-objcopy --weaken-symbol`)
-links clean with one `REGISTRY` in a host probe, but weak linkage is **ordering-
-/GC-/ODR-fragile** (which weak def wins depends on archive order + `--gc-sections`;
-a future change can silently flip the chosen `REGISTRY`). Not used.
-
-**Rejected — localize / `--exclude-libs`.** Making the cffi symbols file-local in
-all-but-one archive **splits `REGISTRY`**: each archive's localized code binds to
-its own copy → the backend registers into a different registry than
-`Executor::open` reads → #48 `NoBackend`. Unsafe.
-
-**Recommended — define-once via the platform-cffi export-macro pattern.** The
-*platform*-cffi split already solves this exact shape, and the way it does it is
-the key: `nros-platform-cffi` **never defines** `nros_platform_*` inline — it only
-**declares** them (`unsafe extern "C" {}`) and ships `nros_platform_export_*!`
-**macros**; exactly ONE port crate (`nros-platform-posix`) *invokes* the macro, so
-the definition is emitted in exactly one archive and everyone else references it
-undefined. Mirror this for rmw-cffi — concrete implementation:
-  - **`nros-rmw-cffi` becomes def-less.** Replace `#[unsafe(no_mangle)] pub static
-    REGISTRY = Registry::new()` with an **`unsafe extern "C" { pub static REGISTRY:
-    Registry; }`** declaration. The seven `#[unsafe(no_mangle)]` fns
-    (`nros_rmw_cffi_register{,_named}`, `_lookup`, `_registered_names`,
-    `_set_custom_transport`, `_walk_init_section`) keep their bodies but as plain
-    `pub fn …_impl(…)` (NOT `no_mangle`); they + the in-crate Rust API
-    (`resolve_backend`, `default_vtable`, `backend_registered`, `get_vtable`) all
-    reference the **extern** `REGISTRY`. So the cffi rlib, bundled in every consumer,
-    carries ZERO strong `#[no_mangle]` defs — only undefined refs.
-  - **`nros_rmw_cffi_export!{}` macro = thin wrappers** (small, not a 200-line
-    code-move): it emits `#[unsafe(no_mangle)] pub static REGISTRY: $crate::Registry
-    = $crate::Registry::new();` + one `#[unsafe(no_mangle)] pub … fn
-    nros_rmw_cffi_<x>(…) { $crate::<x>_impl(…) }` wrapper per export. The logic
-    stays in `$crate`; only the strong symbol + a one-line delegation live in the
-    macro.
-  - **Provider = a NEW dedicated `nros-rmw-cffi-provider` staticlib crate**, NOT
-    nros-c. *Why not nros-c:* `libnros_c.a` AND `libnros_cpp.a` both bundle the cffi
-    rlib independently (verified: both define `nros_rmw_cffi_register_named`), and
-    nros-cpp deps nros-rmw-cffi directly — so any crate that gets bundled into >1
-    archive (nros-c, nros-cpp) can't host the macro without re-duplicating. The
-    provider must be its own archive linked exactly once — precisely the
-    `nros-platform-posix` shape. The provider crate's `lib.rs` is one line:
-    `nros_rmw_cffi::nros_rmw_cffi_export!{}`.
-  - **cmake:** add the provider archive to `NanoRos` (mirror the
-    `NrosPlatformPosix` link) so every final link pulls it exactly once, then drop
-    `--allow-multiple-definition` (root `CMakeLists.txt` zenoh/xrce/cyclone arms +
-    the secondary `nros-c/cmake/NanoRosLink.cmake` site). The NuttX/ESP cargo-FFI
-    path links the provider via a normal cargo dep on the FFI crate.
-  - nros-cpp + the RMW backends keep using the cffi **Rust API unchanged** — they
-    just no longer emit the strong defs (only the provider does).
-
-**Why the macro, not a `provide` cargo feature — the unification trap.** A
-positive `provide`/`define-c-abi` *feature* on `nros-rmw-cffi` would be **unified
-ON across the whole graph** by cargo (if nros-c turns it on, every nros-rmw-cffi
-instance gets it) → the defs reappear in every archive → back to the dup. A macro
-*invocation* is a per-crate source item, not a feature, so only the crate that
-writes the call emits the defs. This is precisely why the platform split uses an
-export macro, and why slice 4 must too.
-
-**Blast radius.** Bounded to `nros-rmw-cffi` (the 7 symbols → extern decls + one
-export macro) + one provider call site + the cmake flag-line removals. The cffi
-**Rust API and the backends are untouched** (no C-ABI refactor — the earlier fear
-was overscoped; only `REGISTRY` + the 6 C fns move, and the Rust API already goes
-through `REGISTRY` which simply becomes an external symbol).
-
-**Open questions for the implementation run.** (a) *Resolved* — provider is a
-dedicated `nros-rmw-cffi-provider` archive (nros-c/nros-cpp are both multi-archive,
-so neither can host the macro). (b) The Rust API operates on `REGISTRY` directly
-(via `default_vtable`/`resolve_backend`), NOT through the C-export fns, so making
-`REGISTRY` extern is enough; the C fns are only for C callers and live solely in
-the provider. (c) the threadx board + zpico `--allow-multiple-definition` are a
-DIFFERENT class (intentional startup.c memset/memcpy overrides) — leave them; (d)
-validate across every linker (lld/arm/riscv) + bare-metal-explicit-register vs
-posix `.init_array` register paths via `run_e2e`. The `staticlib_duplicate_symbols`
-gate guards that no new strong dup sneaks in while this lands.
+- [ ] **Remove `--allow-multiple-definition` — rides single-runtime.** The flag
+      currently masks legitimate shared-dependency-closure dups (validated: 239
+      dups between `libnros_c.a` and the RMW staticlib, ALL from the shared Rust
+      closure + the `nros_rmw_cffi_*` C shim — ZERO app/message/transport dups;
+      see the validator below). The original slice-3/4 plan (dedup
+      `nros-rmw-cffi`'s 7 strong `#[no_mangle]` symbols — `REGISTRY` + the six C
+      exports — into ONE archive via a dedicated `nros-rmw-cffi-provider` +
+      `nros_rmw_cffi_export!{}` macro, mirroring the platform-cffi split) is
+      **SUPERSEDED**: the single shared runtime
+      ([phase-241-d3-single-runtime](phase-241-d3-single-runtime.md)) collapses to
+      one Rust staticlib per binary, so `REGISTRY` + the cffi C exports are defined
+      once with plain `#[no_mangle]` — no provider/feature, flag removable
+      directly. Flag removal lands with phase-249's NanoRosLink rework. (The full
+      retired slice-4 dedup design is preserved in git history.)
 - [~] **Link-closure / duplicate-symbol validator — slices 1+2 landed.**
       `staticlib_duplicate_symbols.rs`: dumps the duplicate defined-globals
       between `libnros_c.a` and the RMW staticlib (via `llvm-nm`), attributes each
@@ -510,9 +356,12 @@ gate guards that no new strong dup sneaks in while this lands.
 
 ### 241.E — Cleanup + docs
 - [ ] Flip RFC-0042 sections to `Stable` as each pillar lands (drift rule:
-      update ARCHITECTURE.md in the same commit).
+      update ARCHITECTURE.md in the same commit). D1 (one header, via phase-243),
+      D2 (capability SSoT), D4 (gate) are landed → flippable now; D3 (linking)
+      flips when phase-249 lands.
 - [ ] Resolve issue 0042 when D1–D4 acceptances pass; cross-link #27/#36/#38/#20
-      as the motivating instances.
+      as the motivating instances. **D1/D2/D4 landed; only D3 (= phase-249 /
+      issue #62) is pending — #42 closes when phase-249 lands.**
 - [ ] Update the C/C++ integration docs (RFC-0018/0019, c-api-cmake.md) to point
       at the capability block + manifest.
 
