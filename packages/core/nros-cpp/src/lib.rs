@@ -30,8 +30,10 @@ extern crate std;
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
 
-#[cfg(feature = "rmw-xrce-cffi")]
-extern crate nros_rmw_xrce_cffi;
+// Phase 248 (C3.2) — the `rmw-xrce-cffi` `extern crate nros_rmw_xrce_cffi`
+// is RETIRED with its feature. nros-cpp no longer pulls a concrete backend
+// into `libnros_cpp.a`'s Rust graph; the backend's `nros_rmw_<x>_register`
+// C symbol resolves at the final link step (board / Zephyr staticlib).
 
 // Opt-in RTOS heap-usage tracking (issue #6). A single shared `HeapStats`
 // counter instruments whichever RTOS global allocator is active (exactly one
@@ -196,16 +198,11 @@ mod platform_critical_section {
 
 use core::ffi::{c_char, c_int, c_void};
 
-// Phase 161 — mirror nros-c's Phase 134.fix. Declaring
-// `nros_rmw_zenoh_register` as a plain `extern "C"` symbol keeps the
-// public surface (downstream C/C++ glue may resolve this) without
-// pulling `nros-rmw-zenoh` into `libnros_cpp.a`'s Rust dep graph. The
-// linker resolves the symbol at the C-binary link step from
-// `libnros_rmw_zenoh.a` (the standalone staticlib).
-#[cfg(feature = "rmw-zenoh-cffi")]
-unsafe extern "C" {
-    pub fn nros_rmw_zenoh_register() -> i32;
-}
+// Phase 248 (C3.2) — the `rmw-zenoh-cffi`-gated `extern "C" {
+// nros_rmw_zenoh_register }` forward-declaration is RETIRED with its
+// feature. The backend's register symbol resolves at the final C-binary
+// link step from `libnros_rmw_zenoh.a` (the standalone staticlib emitted
+// by the board / `nano_ros_link_rmw()`); nros-cpp does not declare it.
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
 #[cfg(feature = "rmw-cffi")]
@@ -507,10 +504,13 @@ pub unsafe extern "C" fn nros_cpp_init(
     unsafe {
         nros_app_register_backends();
     }
-    #[cfg(feature = "rmw-xrce-cffi")]
-    {
-        let _ = nros_rmw_xrce_cffi::register();
-    }
+    // Phase 248 (C3.2) — the `rmw-xrce-cffi`-gated
+    // `nros_rmw_xrce_cffi::register()` fallback is removed. The XRCE
+    // backend (like every other) is registered via the CMake-emitted /
+    // Zephyr strong stub that `nros_app_register_backends()` invokes
+    // above, resolving `nros_rmw_xrce_register()` from the standalone
+    // `libnros_rmw_xrce_cffi_staticlib.a`; no concrete dep is pulled into
+    // `libnros_cpp.a`'s Rust graph.
     // Phase 161 — drop the redundant `nros_rmw_zenoh::register()` call;
     // `nros_app_register_backends()` above already calls
     // `nros_rmw_zenoh_register()` via the CMake-emitted strong stub

@@ -34,20 +34,14 @@ extern crate std;
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
 
-#[cfg(feature = "cffi-xrce-c")]
-extern crate nros_rmw_xrce_cffi as _;
-
-// Phase 134.fix — declare `nros_rmw_zenoh_register` as a plain
-// `extern "C"` symbol. Linker resolves it at the C-binary link
-// step from `libnros_rmw_zenoh.a`. Pre-134 the `pub use` pulled
-// `nros-rmw-zenoh` (and its full dep closure, including a second
-// zenoh-pico C build) into `libnros_c.a`; the resulting dual
-// instantiation produced runtime FFI-layout mismatches even when
-// the linker reconciled the public no_mangle entry points.
-#[cfg(feature = "cffi-zenoh-cffi")]
-unsafe extern "C" {
-    pub fn nros_rmw_zenoh_register() -> i32;
-}
+// Phase 248 (C3.2) — the `cffi-xrce-c` `extern crate nros_rmw_xrce_cffi`
+// and the `cffi-zenoh-cffi` `extern "C" { nros_rmw_zenoh_register }`
+// forward-declaration are RETIRED along with their features. nros-c no
+// longer pulls any concrete backend into `libnros_c.a`'s Rust graph: the
+// `nros_rmw_<x>_register` C symbol is resolved at the final link step from
+// the standalone `libnros_rmw_<x>.a` (board / `nano_ros_link_rmw()` on
+// hosted targets; a sibling `nros-rmw-<x>-cffi-staticlib` cargo build on
+// Zephyr's in-tree path).
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

@@ -31,36 +31,41 @@ if(NOT (NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce"
 endif()
 set(_rmw_features rmw-cffi)
 
-# ---- Map platform to Cargo features ----
+# ---- Map platform to functional capability features ----
+# Phase 248 (C3.2) — no `platform-*` feature is passed to nros-cpp. no_std
+# ports (FreeRTOS / ThreadX RV64 / ESP-IDF) that own the kernel heap take
+# `global-allocator` (the vtable-routed Rust `#[global_allocator]`); std
+# ports use the system allocator. The concrete platform impl is linked via
+# the board crate. Mirrors nros-c's CMakeLists.
 if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_platform_features std platform-posix)
+    set(_platform_features std)
 elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
        OR NANO_ROS_PLATFORM STREQUAL "freertos")
     # Phase 138 canonical "freertos" accepted alongside legacy
     # "freertos_armcm3"; Phase 138 collapsed board into NANO_ROS_BOARD.
-    set(_platform_features alloc panic-halt platform-freertos)
+    set(_platform_features alloc panic-halt global-allocator)
 elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
        OR NANO_ROS_PLATFORM STREQUAL "nuttx")
     # Phase 138 canonical "nuttx" accepted alongside legacy
     # "nuttx_armv7a"; Phase 138 collapsed board into NANO_ROS_BOARD.
-    set(_platform_features std platform-nuttx)
+    set(_platform_features std)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
-    set(_platform_features std platform-threadx)
+    set(_platform_features std)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
-    set(_platform_features alloc panic-halt platform-threadx)
+    set(_platform_features alloc panic-halt global-allocator)
 elseif(NANO_ROS_PLATFORM STREQUAL "esp_idf")
     # ESP-IDF: Espressif's FreeRTOS port. Same feature set as the
     # canonical no_std FreeRTOS build (nros-c CMakeLists mirrors this).
-    set(_platform_features alloc panic-halt platform-freertos)
+    set(_platform_features alloc panic-halt global-allocator)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
     # Phase 138 canonical "threadx" — board axis disambiguates the
     # std-vs-no_std split (Linux sim has a host libc; RV64 QEMU is
     # bare-metal). Required for `add_subdirectory(<nano-ros-root>)`
     # consumers per Phase 144.7-8.
     if(NANO_ROS_BOARD STREQUAL "threadx-linux")
-        set(_platform_features std platform-threadx)
+        set(_platform_features std)
     elseif(NANO_ROS_BOARD STREQUAL "riscv64-qemu")
-        set(_platform_features alloc panic-halt platform-threadx)
+        set(_platform_features alloc panic-halt global-allocator)
     else()
         message(FATAL_ERROR
             "NANO_ROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "

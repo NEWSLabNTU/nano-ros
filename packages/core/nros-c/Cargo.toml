@@ -35,39 +35,21 @@ rmw-cffi = ["nros/rmw-cffi"]
 # `nros-rmw-cffi/lending` cargo bound through.
 lending = ["rmw-cffi", "nros/lending"]
 
-# Phase 123.A.11 — `cffi-xrce-c` / `cffi-dds-cffi` / `cffi-zenoh-cffi`
-# DELETED. They previously selected which `extern fn
-# nros_rmw_<x>_register()` call site got compiled into
-# `nros_support_init`. The auto-register pattern in each backend's
-# wrapper staticlib makes nros-c truly RMW-agnostic — one
-# `libnros_c.a` per target triple covers every backend.
-#
-# Compatibility shims: keep the feature names accepted so downstream
-# CMake glue that still passes them doesn't error. `cffi-xrce-c` also
-# links the C XRCE backend for Zephyr's in-tree staticlib path, where
-# downstream `nano_ros_link_rmw()` is not involved.
-cffi-xrce-c = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
-cffi-dds-cffi = ["rmw-cffi"]
-# Phase 134.fix — drop `dep:nros-rmw-zenoh`. Pulling the rlib bundled
-# a duplicate copy of nros-rmw-zenoh's entire dependency closure
-# (including a second zenoh-pico C build) into `libnros_c.a`. With
-# `--allow-multiple-definition` the linker reconciles same-named
-# symbols (`nros_rmw_zenoh_register`, `nros_rmw_cffi_register_named`,
-# etc.) but each rlib instance keeps its own private VTABLE static
-# pointing at its own trampolines wired to its own zenoh-pico
-# variant. Whichever side the linker picks for the public no_mangle
-# entry points may reference the OTHER side's zenoh-pico structs
-# through the FFI boundary, producing layout / size mismatches at
-# runtime. The `nros_rmw_zenoh_register` C symbol is now resolved
-# at the C-binary link step exclusively from `libnros_rmw_zenoh.a`
-# (the standalone staticlib), via the `extern "C"` declaration in
-# `src/lib.rs`.
-cffi-zenoh-cffi = ["rmw-cffi"]
+# Phase 248 (C3.2) — the concrete-RMW shim features (`cffi-xrce-c` /
+# `cffi-zenoh-cffi` / `cffi-dds-cffi`) and the optional concrete-backend
+# deps (`nros-rmw-zenoh`, `nros-rmw-xrce-cffi`) are RETIRED. nros-c is
+# now RMW-agnostic at the Cargo level: it carries ONLY the generic
+# `rmw-cffi` vtable. The concrete backend is brought into the link graph
+# by the BOARD the C entry links (cmake `nano_ros_entry` + `NANO_ROS_RMW`
+# → `nano_ros_link_rmw()` pulls the matching standalone
+# `libnros_rmw_<x>.a`), or — for Zephyr's in-tree staticlib path — by a
+# sibling `nros-rmw-<x>-cffi-staticlib` cargo build whose
+# `nros_rmw_<x>_register` C symbol resolves at the final link step. One
+# `libnros_c.a` per target triple covers every backend. See ARCHITECTURE
+# §2 "Agnosticism contract" + issue #60.
 
-# Zenoh transport refinements (require rmw-zenoh-cffi)
-# Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.
-
-# XRCE transport refinements (require rmw-xrce-cffi)
+# XRCE transport refinements (functional — select the XRCE transport
+# build of the linked backend; not an RMW-backend selector).
 xrce-udp = ["nros/xrce-udp"]
 xrce-serial = ["nros/xrce-serial"]
 
@@ -86,39 +68,16 @@ global-allocator = ["alloc"]
 # block. Mirrors nros-platform's `critical-section`.
 critical-section = ["dep:critical-section"]
 
-# Platform backends (select one — orthogonal to RMW and ROS version).
-# Embedded platforms imply `alloc`; ports that own the unified kernel heap
-# also enable `global-allocator` (and, where DDS/portable-atomic need it,
-# `critical-section`) so the agnostic blocks in lib.rs compile without the
-# build script passing them explicitly.
-platform-posix = [
-    "nros/platform-posix",
-    "nros-rmw-zenoh?/platform-posix",
-]
-platform-zephyr = [
-    "alloc",
-    "global-allocator",
-    "critical-section",
-    "nros/platform-zephyr",
-    "nros-rmw-zenoh?/platform-zephyr",
-]
-platform-freertos = [
-    "alloc",
-    "global-allocator",
-    "nros/platform-freertos",
-    "nros-rmw-zenoh?/platform-freertos",
-]
-platform-nuttx = [
-    "alloc",
-    "nros/platform-nuttx",
-    "nros-rmw-zenoh?/platform-nuttx",
-]
-platform-threadx = [
-    "alloc",
-    "global-allocator",
-    "nros/platform-threadx",
-    "nros-rmw-zenoh?/platform-threadx",
-]
+# Phase 248 (C3.2) — the `platform-{posix,zephyr,freertos,nuttx,threadx}`
+# feature DECLARATIONS are RETIRED. nros-c is platform-agnostic: its src
+# reaches the platform exclusively through the `nros-platform-cffi` vtable
+# (alloc / critical-section / wake), with NO `#[cfg(feature="platform-*")]`
+# branches (C3.1). The concrete platform impl is brought into the link
+# graph by the BOARD the C entry links (cmake), not a feature on nros-c.
+# The capability features the legacy platform-* forwarded — `alloc`,
+# `global-allocator`, `critical-section` — are now enabled DIRECTLY by
+# whoever needs the no_std staticlib (the board/cmake link or Zephyr's
+# in-tree build path). See ARCHITECTURE §2 "Agnosticism contract".
 
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = ["nros/ros-humble"]
@@ -154,8 +113,9 @@ nros-core.workspace = true
 # Phase 88.12 — `nros_node_get_logger` returns a `&'static nros_log::Logger`
 # resolved via the facade's intern table.
 nros-log = { workspace = true }
-nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
-nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
+# Phase 248 (C3.2) — `nros-rmw-zenoh` / `nros-rmw-xrce-cffi` concrete-backend
+# deps removed. nros-c is RMW-agnostic; the concrete backend is linked by the
+# board / Zephyr staticlib path, not pulled into `libnros_c.a`'s Rust graph.
 # Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.
 zpico-alloc = { path = "../../zpico/zpico-alloc", optional = true, default-features = false }
 paste = "1"
@@ -190,6 +150,19 @@ nros-build-helpers = { workspace = true }
 # Phase 77.25: same reason as nros-cpp — force nros to compile before
 # this build.rs runs so the size probe has a rlib to read.
 nros = { version = "0.5.0", path = "../nros", default-features = false }
+
+# Phase 248 (C3.2) — with `platform-*` retired, nros-c no longer self-pulls a
+# platform backend, so its native unit tests (which drive the executor →
+# `nros_platform_wake_*` / alloc vtable) have no `nros_platform_*` symbol
+# provider. Link the POSIX C port (`nros-platform-posix/src/platform.c`) for
+# host test binaries via `nros-platform-cffi[posix-c-port]`. Mirrors
+# nros-node's host-gated test-dep pattern. Target-gated to
+# `cfg(not(target_os = "none"))` so the `posix-c-port` (+ `cc`) closure never
+# leaks into embedded (`target_os = "none"`) feature unification — keeping the
+# production graph platform-agnostic.
+[target.'cfg(not(target_os = "none"))'.dev-dependencies]
+nros-platform-cffi = { version = "0.5.0", path = "../nros-platform-cffi", default-features = false, features = ["posix-c-port"] }
+nros-platform = { workspace = true, default-features = false, features = ["platform-posix"] }
 
 [package.metadata.docs.rs]
 all-features = true

@@ -2500,8 +2500,6 @@ extern const struct nros_qos_t NROS_QOS_SERVICES;
  */
 extern const uint32_t NROS_TRANSPORT_OPS_ABI_VERSION_V1;
 
-extern int32_t nros_rmw_zenoh_register(void);
-
 extern size_t nros_platform_heap_used_bytes(void);
 
 extern size_t nros_platform_heap_total_bytes(void);

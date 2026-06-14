@@ -463,8 +463,6 @@ extern "C" {
  */
 extern const uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
 
-extern int32_t nros_rmw_zenoh_register(void);
-
 /**
  * Initialize an nros executor session.
  *

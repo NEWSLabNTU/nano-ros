@@ -14,13 +14,13 @@ if(NOT DEFINED NANO_ROS_PLATFORM)
     set(NANO_ROS_PLATFORM "posix")
 endif()
 
-# Phase 123.A.11 — nros-c is RMW-agnostic at the Cargo level. The
-# `cffi-{xrce,dds,zenoh}-*` features still exist as no-op aliases
-# of `rmw-cffi` (Cargo backwards compat) but choosing a backend
-# happens at LINK time via `find_package(NrosRmw<X>)` +
-# `nano_ros_link_rmw`. Each backend's `.init_array` ctor (phase
-# 104.A) registers it before `main()`; nros-c itself stays
-# unchanged across all RMW selections.
+# Phase 248 (C3.2) — nros-c is RMW- AND platform-agnostic at the Cargo
+# level: it carries only the generic `rmw-cffi` vtable + functional
+# capability features. The `cffi-*` RMW-shim and `platform-*` features are
+# RETIRED. Choosing a backend happens at LINK time via
+# `find_package(NrosRmw<X>)` + `nano_ros_link_rmw`; the platform impl
+# comes from the board crate. This block maps `NANO_ROS_RMW` /
+# `NANO_ROS_PLATFORM` to the surviving functional features only.
 #
 # The `NANO_ROS_RMW` value still drives downstream linkage
 # (NanoRosCTargets.cmake pulls the right standalone archive) +
@@ -35,28 +35,30 @@ if(NOT (NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce"
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
         "(expected: zenoh, xrce, cyclonedds, uorb, or none)")
 endif()
-# Phase 156 — `NANO_ROS_RMW=none` = bridge / multi-backend
-# escape hatch. Root CMake skips RMW auto-pull; consumer pulls
-# its own staticlibs + calls explicit `nros_rmw_<x>_register()`.
-# nros-c still builds with `rmw-cffi` so umbrella Rust API
-# surfaces compile; registry stays empty until explicit
-# register() fires.
-if(NANO_ROS_RMW STREQUAL "zenoh")
-    set(_rmw_features cffi-zenoh-cffi)
-else()
-    set(_rmw_features rmw-cffi)
-endif()
+# Phase 248 (C3.2) — every RMW value maps to the generic `rmw-cffi`
+# vtable; the concrete backend is linked at the C-binary step
+# (`nano_ros_link_rmw()` pulls `libnros_rmw_<x>.a`). `NANO_ROS_RMW=none`
+# (bridge / multi-backend) is identical at the nros-c Cargo layer —
+# the registry stays empty until an explicit `nros_rmw_<x>_register()`
+# fires.
+set(_rmw_features rmw-cffi)
 
-# ---- Map platform to Cargo features ----
+# ---- Map platform to functional capability features ----
+# Phase 248 (C3.2) — no `platform-*` feature is passed to nros-c. no_std
+# ports (FreeRTOS / ThreadX RV64 / ESP-IDF) that own the kernel heap take
+# `global-allocator` (installs the Rust `#[global_allocator]` routing
+# through the platform vtable); std ports use the system allocator. The
+# concrete platform impl is linked via the board crate.
 if(NANO_ROS_PLATFORM STREQUAL "posix")
-    set(_platform_features std platform-posix)
+    set(_platform_features std)
 elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
        OR NANO_ROS_PLATFORM STREQUAL "freertos")
     # FreeRTOS bare-metal: no std, alloc for internal Rust collections,
-    # panic-halt for a minimal panic handler, link-tls/link-custom for zenoh-pico.
+    # panic-halt for a minimal panic handler, global-allocator for the
+    # vtable-routed Rust heap.
     # Phase 138 canonical "freertos" accepted alongside legacy
     # "freertos_armcm3" (Phase 138 collapsed board into NANO_ROS_BOARD).
-    set(_platform_features alloc panic-halt platform-freertos)
+    set(_platform_features alloc panic-halt global-allocator)
 elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
        OR NANO_ROS_PLATFORM STREQUAL "nuttx")
     # NuttX provides a POSIX-like libc, so std is available.
@@ -65,27 +67,27 @@ elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
     # directly (just nuttx build) until this is upstreamed.
     # Phase 138 canonical "nuttx" accepted alongside legacy
     # "nuttx_armv7a" (Phase 138 collapsed board into NANO_ROS_BOARD).
-    set(_platform_features std platform-nuttx)
+    set(_platform_features std)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     # ThreadX Linux sim: host compiler, std available, ThreadX + NetX Duo via system libs.
-    set(_platform_features std platform-threadx)
+    set(_platform_features std)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
     # ThreadX on RISC-V 64 (QEMU virt): no std, alloc for internal collections.
-    set(_platform_features alloc panic-halt platform-threadx)
+    set(_platform_features alloc panic-halt global-allocator)
 elseif(NANO_ROS_PLATFORM STREQUAL "esp_idf")
     # ESP-IDF: Espressif's FreeRTOS port (xtensa-esp* / riscv32-esp*).
     # IDF supplies its own libc + alloc, but nros-c stays no_std + alloc
     # to keep the Rust staticlib portable across xtensa / riscv32-esp.
-    set(_platform_features alloc panic-halt platform-freertos)
+    set(_platform_features alloc panic-halt global-allocator)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
     # Phase 138 canonical "threadx" — board axis disambiguates the
     # std-vs-no_std split (Linux sim has a host libc; RV64 QEMU is
     # bare-metal). Required for `add_subdirectory(<nano-ros-root>)`
     # consumers per Phase 144.7-8.
     if(NANO_ROS_BOARD STREQUAL "threadx-linux")
-        set(_platform_features std platform-threadx)
+        set(_platform_features std)
     elseif(NANO_ROS_BOARD STREQUAL "riscv64-qemu")
-        set(_platform_features alloc panic-halt platform-threadx)
+        set(_platform_features alloc panic-halt global-allocator)
     else()
         message(FATAL_ERROR
             "NANO_ROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "

@@ -31,36 +31,25 @@ alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 # `nros-rmw-cffi`'s runtime registry via the `RMW_INIT_ENTRIES`
 # linker section.
 rmw-cffi = ["nros/rmw-cffi"]
-# Phase 128.C.3 — `rmw-{zenoh,xrce,dds}-cffi` features kept here
-# because each one is the only way to pull the matching `dep:nros-rmw-*`
-# optional dep into `nros-cpp`'s graph. The features no longer reach
-# `nros/rmw-*-cffi` (those were deleted); they just toggle
-# `rmw-cffi` plus the per-backend optional dep.
-rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
-# Phase 169.4 — generic DDS CFFI feature removed; the DDS path goes
-# through Cyclone (Phase 169.5 shim).
-# Phase 161 — mirror nros-c's Phase 134.fix: drop `dep:nros-rmw-zenoh`.
-# Pulling the rlib bundled a duplicate copy of nros-rmw-zenoh's entire
-# dependency closure (including a second zenoh-pico C build) into
-# `libnros_cpp.a`. Whichever side the linker picks for the public
-# no_mangle entry points may reference the OTHER side's zenoh-pico
-# structs through the FFI boundary, producing runtime layout / size
-# mismatches that surface as `nros::init -> -100 TransportError` on
-# the FreeRTOS C++ E2E tests (Phase 161 root cause). The
-# `nros_rmw_zenoh_register` C symbol is resolved at the C-binary link
-# step exclusively from `libnros_rmw_zenoh.a` (the standalone
-# staticlib emitted by `nano_ros_link_rmw(... RMW zenoh)`).
-rmw-zenoh-cffi = ["rmw-cffi"]
+# Phase 248 (C3.2) — the concrete-RMW shim features (`rmw-xrce-cffi` /
+# `rmw-zenoh-cffi`) and the optional concrete-backend deps
+# (`nros-rmw-xrce-cffi`, `nros-rmw-zenoh`) are RETIRED. nros-cpp is now
+# RMW-agnostic at the Cargo level: it carries ONLY the generic `rmw-cffi`
+# vtable. The concrete backend is brought into the link graph by the BOARD
+# the C++ entry links (cmake `nano_ros_entry` + `NANO_ROS_RMW` →
+# `nano_ros_link_rmw()` pulls the matching standalone `libnros_rmw_<x>.a`),
+# or — for Zephyr's in-tree staticlib path — by a sibling
+# `nros-rmw-<x>-cffi-staticlib` cargo build whose `nros_rmw_<x>_register`
+# C symbol resolves at the final link step. See ARCHITECTURE §2
+# "Agnosticism contract" + issue #60.
 
 # Phase 124.A — zero-copy publisher/subscriber loan ABI exposed
 # through the C++ FFI (`nros_cpp_publisher_loan` / `_commit` /
 # `_discard`, `nros_cpp_subscription_borrow` / `_release`).
 lending = ["rmw-cffi", "nros/lending"]
 
-# Zenoh transport refinements (require rmw-zenoh-cffi)
-# Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.
-
-# XRCE transport refinements (require rmw-xrce-cffi)
+# XRCE transport refinements (functional — select the XRCE transport
+# build of the linked backend; not an RMW-backend selector).
 xrce-udp = ["nros/xrce-udp"]
 xrce-serial = ["nros/xrce-serial"]
 
@@ -79,50 +68,20 @@ global-allocator = ["alloc"]
 # block. Mirrors nros-platform's `critical-section`.
 critical-section = ["dep:critical-section"]
 
-# Platform backends (select one — orthogonal to RMW and ROS version).
-# Embedded platforms imply `alloc` (so the C++ FFI layer's `extern crate
-# alloc` compiles); ports that own the unified kernel heap also enable
-# `global-allocator` (and, where DDS/portable-atomic need it,
-# `critical-section`) so the agnostic blocks in lib.rs compile without the
-# build script passing them explicitly.
-platform-posix = [
-    "nros/platform-posix",
-    "nros-rmw-zenoh?/platform-posix",
-]
-platform-zephyr = [
-    "alloc",
-    "global-allocator",
-    "critical-section",
-    "nros/platform-zephyr",
-    "nros-rmw-zenoh?/platform-zephyr",
-]
-platform-freertos = [
-    "alloc",
-    "global-allocator",
-    "nros/platform-freertos",
-    "nros-rmw-zenoh?/platform-freertos",
-]
-platform-nuttx = [
-    "alloc",
-    "nros/platform-nuttx",
-    "nros-rmw-zenoh?/platform-nuttx",
-]
-platform-threadx = [
-    "alloc",
-    "global-allocator",
-    "nros/platform-threadx",
-    "nros-rmw-zenoh?/platform-threadx",
-]
+# Phase 248 (C3.2) — the `platform-{posix,zephyr,freertos,nuttx,threadx}`
+# feature DECLARATIONS are RETIRED. nros-cpp is platform-agnostic: its src
+# reaches the platform exclusively through the `nros-platform-cffi` vtable
+# (alloc / critical-section / wake), with NO `#[cfg(feature="platform-*")]`
+# branches (C3.1). The concrete platform impl is brought into the link
+# graph by the BOARD the C++ entry links (cmake), not a feature on
+# nros-cpp. The capability features the legacy platform-* forwarded —
+# `alloc`, `global-allocator`, `critical-section` — are now enabled
+# DIRECTLY by whoever needs the no_std staticlib (the board/cmake link or
+# Zephyr's in-tree build path). See ARCHITECTURE §2 "Agnosticism contract".
 
 # ROS edition (orthogonal to RMW and platform)
-ros-humble = [
-    "nros/ros-humble",
-    "nros-rmw-zenoh?/ros-humble",
-]
-ros-iron = [
-    "nros/ros-iron",
-    "nros-rmw-zenoh?/ros-iron",
-]
+ros-humble = ["nros/ros-humble"]
+ros-iron = ["nros/ros-iron"]
 
 # Bare-metal panic handler (enables building staticlib without std)
 panic-halt = ["dep:panic-halt"]
@@ -143,9 +102,9 @@ nros-node.workspace = true
 nros-log = { workspace = true }
 nros-platform = { workspace = true, default-features = false }
 nros-rmw = { version = "0.5.0", path = "../nros-rmw", default-features = false }
-nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
-# Phase 169.4 — DDS retired. Dep removed.
-nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
+# Phase 248 (C3.2) — `nros-rmw-xrce-cffi` / `nros-rmw-zenoh` concrete-backend
+# deps removed. nros-cpp is RMW-agnostic; the concrete backend is linked by the
+# board / Zephyr staticlib path, not pulled into `libnros_cpp.a`'s Rust graph.
 # Opt-in RTOS heap-usage counter (HeapStats), gated by `alloc-stats`.
 zpico-alloc = { path = "../../zpico/zpico-alloc", optional = true, default-features = false }
 panic-halt = { version = "1", optional = true }
