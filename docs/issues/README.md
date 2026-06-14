@@ -51,6 +51,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 49 | example source leaks platform/RMW selection + low-level boilerplate (audit: 81/200 major) | tech-debt | examples | [0049-example-source-platform-rmw-leakage.md](0049-example-source-platform-rmw-leakage.md) |
 | 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
 | 51 | check-example-matrix flags examples/px4/rust/xrce — px4 transport carve-out missed when the XRCE e2e landed | tech-debt | build | [0051-check-example-matrix-px4-xrce-carveout-missed.md](0051-check-example-matrix-px4-xrce-carveout-missed.md) |
+| 52 | check-cpp freestanding probe — missing nros-platform-api include + main.hpp hosted std::printf | tech-debt | build | [0052-check-cpp-freestanding-probe-platform-api-and-main-hosted.md](0052-check-cpp-freestanding-probe-platform-api-and-main-hosted.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (Phase 239):
 **#39** — C++ `init_with_launch_auto` null-locator env-fallback (fixed in the
