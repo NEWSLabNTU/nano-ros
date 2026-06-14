@@ -89,6 +89,35 @@ pub use nros_platform_api::*;
 pub static __FORCE_LINK_CFFI: extern "C" fn() = nros_platform_cffi::_nros_force_link_cffi;
 
 // ============================================================================
+// Phase 248 C7 — Zephyr platform helper (relocated from `nros::platform::zephyr`)
+// ============================================================================
+/// Zephyr-specific platform helpers.
+///
+/// On Zephyr's `native_sim`, the default network interface is assigned an IPv4
+/// address at boot, but the underlying TAP link reports `net_if_is_up() == false`
+/// for ~100–200 ms until the host side is ready. Opening a zenoh session before
+/// that returns `TransportError::ConnectionFailed`. Call [`zephyr::wait_network`]
+/// before `Executor::open`. Mirrors the `nros_platform_zephyr_wait_network()` C
+/// helper the C/C++ examples use; the symbol is RMW-independent (defined in
+/// `nros-platform-zephyr`, compiled in every RMW build). Equivalent to
+/// `nros-board-zephyr`'s `ZephyrBoard::wait_link_up`.
+#[cfg(feature = "platform-zephyr")]
+pub mod zephyr {
+    unsafe extern "C" {
+        fn nros_platform_zephyr_wait_network(timeout_ms: i32) -> i32;
+    }
+
+    /// Block until the default Zephyr network interface is operational, or the
+    /// timeout expires. `Ok(())` on link-up, `Err(())` on timeout.
+    pub fn wait_network(timeout_ms: i32) -> Result<(), ()> {
+        // SAFETY: `nros_platform_zephyr_wait_network` has no preconditions beyond
+        // being called from a Zephyr thread context — always true in a Zephyr app.
+        let ret = unsafe { nros_platform_zephyr_wait_network(timeout_ms) };
+        if ret == 0 { Ok(()) } else { Err(()) }
+    }
+}
+
+// ============================================================================
 // Phase 71.27 — opt-in `#[global_allocator]`
 // ============================================================================
 //

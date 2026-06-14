@@ -253,7 +253,8 @@ macro_rules! zephyr_component_main {
             unsafe {
                 zephyr::set_logger().ok();
             }
-            let _ = $crate::platform::zephyr::wait_for_network(2000);
+            // Phase 248 C7 step 1 — relocated helper (was `$crate::platform::zephyr`).
+            let _ = ::nros_platform::zephyr::wait_network(2000);
             // Phase 249 P1 — RMW register is board/platform-owned (Phase 248 C5a);
             // the backend-agnostic `nros` crate cannot register (no backend dep), so
             // the former no-op `$crate::__register_linked_rmw()` emit is removed. The
@@ -374,50 +375,11 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 ///
 /// The `Rmw*` type aliases resolve to whichever backend is active at compile time,
 /// providing a backend-agnostic way to reference concrete transport types.
-/// Platform-specific helpers.
-///
-/// Each submodule is gated on the matching `platform-*` feature and exposes
-/// thin wrappers for init hooks that users must call before opening an
-/// `Executor` (gated on any `rmw-*` feature). Other platforms either don't
-/// need these (POSIX) or provide
-/// them through their board crate (FreeRTOS, NuttX, ThreadX, bare-metal).
-pub mod platform {
-    /// Zephyr-specific init helpers.
-    ///
-    /// On Zephyr's `native_sim`, the default network interface is assigned
-    /// an IPv4 address at boot (via `NET_CONFIG_NEED_IPV4`), but the
-    /// underlying TAP link reports `net_if_is_up() == false` for ~100–200
-    /// ms until the host side is fully ready. Opening a zenoh session
-    /// before that returns `TransportError::ConnectionFailed`.
-    ///
-    /// Call [`wait_for_network`] as the first line of `rust_main()`. It
-    /// mirrors the `nros_platform_zephyr_wait_network()` call the C/C++
-    /// examples make before `nros::init()`.
-    ///
-    /// The symbol is RMW-independent (defined in `nros-platform-zephyr`,
-    /// compiled in every RMW build — Phase 200.1). Before the relocate it
-    /// was `zpico_zephyr_wait_network`, defined only in the zenoh CMake
-    /// branch, so a `rmw-cyclonedds` Zephyr build link-failed here.
-    #[cfg(feature = "platform-zephyr")]
-    pub mod zephyr {
-        unsafe extern "C" {
-            fn nros_platform_zephyr_wait_network(timeout_ms: i32) -> i32;
-        }
-
-        /// Block until the default Zephyr network interface is operational,
-        /// or the timeout expires.
-        ///
-        /// Returns `Ok(())` if the interface came up, or `Err(())` on
-        /// timeout. Matches the C helper's semantics.
-        pub fn wait_for_network(timeout_ms: i32) -> Result<(), ()> {
-            // SAFETY: nros_platform_zephyr_wait_network has no preconditions
-            // beyond being called from a Zephyr thread context — which is
-            // always true in a Zephyr app where `platform-zephyr` is active.
-            let ret = unsafe { nros_platform_zephyr_wait_network(timeout_ms) };
-            if ret == 0 { Ok(()) } else { Err(()) }
-        }
-    }
-}
+// Phase 248 C7 step 1 — the `nros::platform::zephyr` module (the
+// `wait_for_network` FFI wrapper) RELOCATED to `nros-platform`
+// (`nros_platform::zephyr::wait_network`); callers reference it via
+// `::nros_platform::zephyr::wait_network`. nros no longer hosts a platform
+// helper module. (The `zephyr_component_main!` macro relocation is C7 step 2.)
 
 pub mod internals {
     // ── Backend-agnostic type aliases ────────────────────────────────────

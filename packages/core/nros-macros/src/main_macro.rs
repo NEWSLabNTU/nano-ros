@@ -961,14 +961,14 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
-                // Carrier / link-up gate. Use the same
-                // `platform::zephyr::wait_for_network` wrapper the
-                // single-node `nros::zephyr_component_main!` uses — it
-                // exposes a real linkable symbol. (`ZephyrBoard::wait_link_up`
-                // calls Zephyr's `net_if_is_up` / `k_msleep`, which are
-                // `static inline` header functions with no link symbol, so
-                // the native_sim final link fails with undefined references.)
-                let _ = ::nros::platform::zephyr::wait_for_network(2000);
+                // Carrier / link-up gate. Use the `nros_platform::zephyr::
+                // wait_network` C-symbol wrapper (Phase 248 C7 step 1 — relocated
+                // from `nros::platform::zephyr`) — it exposes a real linkable
+                // symbol. (`ZephyrBoard::wait_link_up` calls Zephyr's
+                // `net_if_is_up` / `k_msleep`, which are `static inline` header
+                // functions with no link symbol, so the native_sim final link
+                // fails with undefined references.)
+                let _ = ::nros_platform::zephyr::wait_network(2000);
 
                 // Phase 249 P1 — RMW register is board-owned (Phase 248 C5a); the
                 // backend-agnostic `nros` crate cannot register (no backend dep), so
