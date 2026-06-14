@@ -65,6 +65,40 @@ binaries, 7.0 MB → 2.6 MB) and **both PASS**. Confirmed **stale fixtures, NOT 
 regression**. These tests are not exercised by the light CI lane anyway (extras
 absent → `[SKIPPED]`).
 
+## Full-lane local triage (2026-06-15)
+
+Ran the real `just test-integration` recipe with ROS2 Humble sourced + fresh
+fixtures: **387 run, 96 real (non-`[SKIPPED]`) failures** after
+`_rewrite-skipped-junit`. This is far more than the 2 residuals — but the bulk is
+NOT CI-relevant. Breakdown:
+
+- **~51 are QEMU/Zephyr e2e** (`rtos_e2e`, `zephyr`, `phase_118_collapse`):
+  local-only artifacts. This box HAS `qemu-system-arm` but the firmware fixtures
+  weren't built, so the tests pass the QEMU guard then fail on the absent image.
+  On CI the runner has no QEMU → they `skip!` at the guard. **Latent bug surfaced:**
+  the `test-integration` exclude lists *umbrella* groups (`group(=qemu-freertos)`,
+  `group(=qemu-zephyr)`) but nextest assigns these tests to *granular* sub-groups
+  (`qemu-freertos-pubsub`, `qemu-zephyr-pubsub-rust`, … — first-match-wins,
+  `.config/nextest.toml:317+`), so the exclude never removes them. Masked on CI
+  (no QEMU). Fix = exclude the e2e *binaries* (`binary(rtos_e2e)`/`binary(zephyr)`/…)
+  or add every granular group to the exclude.
+- **~45 are non-QEMU**, almost all env/fixture/CLI-coupled, not logic bugs:
+  - `workspace_lints_check` (5/5, instant) — invoke the `nros check` CLI; behavior
+    coupled to the phase-248/249 CLI churn.
+  - `workspace_metadata` / `orchestration_*` / `migrate_workspace` / `bringup_scaffold`
+    — workspace-codegen fixtures + orchestration tooling.
+  - `cyclonedds_*` / `px4_xrce` / `*_ros2_interop` / `demo_nodes_cpp_interop` — need
+    a live ROS 2 graph / PX4 tree / cyclone extras.
+  - `native_api` (5) — remaining cyclone/callback fixture variants.
+  - `legacy_files_forbidden` / `examples_canonical_shape` PASS → the reverted
+    legacy templates did NOT break the tree lints.
+
+**Conclusion:** the chronic CI red is **Cause-1 (OOM)** — fixed. The rest is a broad,
+multi-subsystem triage that is NOT faithfully reproducible locally (CI lacks QEMU
++ has its own fixture/tool matrix) and overlaps the phase-248/249 CLI/workspace
+churn. Triage it from the *actual CI run's* failures once the OOM cap lands green,
+not from this box's env-mismatched numbers.
+
 ## Impact
 
 The lane cannot gate native-rust/C/C++ example changes (e.g. phase-244 D3's
@@ -83,6 +117,14 @@ done locally meanwhile.
    raw nextest count.
 3. Residual 2 `native_api` C++-server interop failures — **confirmed stale
    fixtures** (fresh rebuild → both pass). No regression; no separate issue needed.
+4. **Exclude leak — DONE**: added `binary(rtos_e2e)` / `binary(zephyr)` /
+   `binary(phase_118_collapse)` to the `test-integration` exclude (both the run and
+   `_count-real-failures`), so the QEMU/Zephyr e2e tests can't leak past the
+   umbrella-`group()` exclusion onto a QEMU-equipped runner. (No-op on CI today —
+   CI has no QEMU — but makes the lane deterministic + removes the local noise.)
+5. The broad non-QEMU residue (see "Full-lane local triage") is env/fixture/CLI-
+   coupled + overlaps phase-248/249 churn; triage it from the actual CI run's
+   failures once the cap lands green, not from this env-mismatched box.
 
 **Remaining gate:** confirm the lane greens on the next CI run with the Cause-1 cap
 (CI-side, not locally reproducible). Resolve this issue once that lands green.

@@ -419,7 +419,13 @@ test-integration verbose="": build-zenohd
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop))'
+    # Issue #57: exclude the QEMU/Zephyr e2e binaries by binary() too — nextest
+    # assigns rtos_e2e/zephyr tests to GRANULAR sub-groups (qemu-freertos-pubsub,
+    # qemu-zephyr-pubsub-rust, … first-match-wins, .config/nextest.toml), so the
+    # umbrella group() exclusions never match them; phase_118_collapse has no group
+    # at all. On a runner WITH qemu-system-arm + no prebuilt firmware they hard-fail
+    # instead of skipping. All three binaries are entirely QEMU/Zephyr e2e.
+    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop) or binary(rtos_e2e) or binary(zephyr) or binary(phase_118_collapse))'
     args=(-p nros-tests --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -591,7 +597,13 @@ test verbose="": build-zenohd
     junit="$(nros_nextest_junit_path)"
     set +e
     failed=0
-    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop))'
+    # Issue #57: exclude the QEMU/Zephyr e2e binaries by binary() too — nextest
+    # assigns rtos_e2e/zephyr tests to GRANULAR sub-groups (qemu-freertos-pubsub,
+    # qemu-zephyr-pubsub-rust, … first-match-wins, .config/nextest.toml), so the
+    # umbrella group() exclusions never match them; phase_118_collapse has no group
+    # at all. On a runner WITH qemu-system-arm + no prebuilt firmware they hard-fail
+    # instead of skipping. All three binaries are entirely QEMU/Zephyr e2e.
+    exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop) or binary(rtos_e2e) or binary(zephyr) or binary(phase_118_collapse))'
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}" -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
