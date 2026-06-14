@@ -269,12 +269,15 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
 - [~] **D2 — PARTIAL (2026-06-13). qemu-esp32-baremetal talker+listener migrated +
   compiled** (nros::main!() Node+Entry; net/domain → deploy metadata; compiles
   riscv32imc build-std). **esp32/rust left** (ESP-IDF staticlib stubs — no leaks,
-  already minor; cleaning needs the deferred Wi-Fi+pubsub integration). **Known-inert
-  follow-up:** the `Framework::Esp32` macro branch (`main_macro.rs:988`) calls
-  `BoardEntry::run`, not `run_with_deploy`, so the deploy overlay is not threaded yet
-  (both nodes use the board-default IP) — a 1-line macro switch (mirror the
-  `None=>run_with_deploy` branch) lands it; deferred (esp32 e2e unverifiable in this
-  env, CI-cell-gated). Pending CI esp32-cell verification (branch phase-244-wave2).
+  already minor; cleaning needs the deferred Wi-Fi+pubsub integration). **Macro
+  switch DONE (2026-06-14, `2dad47487`):** the `Framework::Esp32` branch now calls
+  `BoardEntry::run_with_deploy(&overlay, …)` (was `run`), mirroring the other
+  frameworks, so the deploy overlay is threaded at the framework layer. NB this is
+  a no-op until two deferred pieces land: (1) `nros-board-esp32` overriding
+  `run_with_deploy` (it only impls `run`), and (2) the real esp32 executor path —
+  `nros-board-bare-metal::run_entry` still uses the `NullNodeRuntime` placeholder
+  (212.N.4/N.5). Board-side overlay consumption lands with that executor work.
+  nros-macros compiles clean; esp32 e2e is CI-cell-gated.
   Original D2 plan:
 - [ ] **D2 (orig) — esp32 (esp32/rust 2 + qemu-esp32-baremetal 2, densest). Needs E4, E5.**
   Strip `#![no_std]`/`#![no_main]`/`#[entry]` (`talker/src/main.rs:19-20`),
