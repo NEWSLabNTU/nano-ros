@@ -52,6 +52,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 53 | mixed-RMW bridge has no stock-cyclonedds variant + no gateway book recipe (211.I) | tech-debt | testing | [0053-cyclonedds-bridge-variant-and-gateway-recipe.md](0053-cyclonedds-bridge-variant-and-gateway-recipe.md) |
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
 | 60 | platform/RMW-agnosticism audit — core + user libs leak platform-*/rmw-* features + concrete-backend deps | tech-debt | architecture | [0060-platform-rmw-agnosticism-audit.md](0060-platform-rmw-agnosticism-audit.md) |
+| 61 | zephyr/CMakeLists.txt passes removed nros-c/nros-cpp features (phase-248 C3.2 downstream) | bug | zephyr | [0061-zephyr-cmake-nros-c-cpp-feature-remediation.md](0061-zephyr-cmake-nros-c-cpp-feature-remediation.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#35** —
 the 13 zephyr native_sim e2e failures were four distinct root causes, not load
