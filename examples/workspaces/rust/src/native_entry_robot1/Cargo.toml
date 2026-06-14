@@ -19,12 +19,12 @@ path = "src/main.rs"
 deploy = "native"
 
 [dependencies]
+# Phase 248 C6a (#60 T5) — agnostic `nros`; the board brings RMW+platform.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-posix",
     "ros-humble",
 ] }
-nros-board-native = { path = "../../../../../packages/boards/nros-board-native" }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
 # robot1 hosts only the talker, so the macro emits `talker_pkg::register`.
-talker_pkg = { path = "../talker_pkg", default-features = false, features = ["native"] }
+talker_pkg = { path = "../talker_pkg", default-features = false }
