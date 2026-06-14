@@ -59,6 +59,17 @@ never edits a `platform-*`/`rmw-*` cargo feature on their node package. (Converg
 contract is tracked by issue #60 / phase-248; a `just`-level grep guard over core/user-lib
 `Cargo.toml`s can enforce it once converged.)
 
+**Known residual — `nros/platform-zephyr` (phase-248 C7, 2026-06-14).** After C5c the `nros`
+umbrella is feature-agnostic EXCEPT for one residual: `platform-zephyr`, which gates nros's Zephyr
+**entry-point scaffolding** — the single-node self-bringup macro `zephyr_component_main!` and the
+`platform::zephyr::wait_for_network` FFI wrapper (a dup of `ZephyrBoard::wait_link_up`). The target
+end-state (phase-248 **C7**): the platform helper moves to `nros-platform`, the entry codegen
+consolidates into `nros-macros` (the `nros::main!` family, gated on `target_os` cfg — where the
+zephyr `rust_main` entry already partly lives) and/or `nros-board-zephyr` (board-owns-bringup, like
+FreeRTOS/NuttX), and the `platform-zephyr` feature is deleted so nros/lib.rs holds ZERO zephyr code.
+Blocked on a green Zephyr build (#58/#59) for runtime validation — until C7 lands this is the one
+sanctioned exception to the contract; **do not "fix" it ad-hoc — coordinate via C7.**
+
 → RFC-0005 (rmw-layer-design), RFC-0006 (portable-rmw-platform-interface), RFC-0031 (RMW
 selection & lowering), RFC-0004 (config home), issue #60 / phase-248 (agnosticism convergence).
 
