@@ -58,7 +58,7 @@ nros-board-stm32f4 = { path = "../nros-board-stm32f4" }
 # converges on a single feature unification. `alloc` is required
 # because `rmw-cffi` pulls in code paths that need a global
 # allocator (provided by `nros-platform` here).
-nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Phase 216.B.2 follow-up — bare-metal RMW backend registration. The
 # pre-migration talker-rtic example called `nros_rmw_zenoh::register()`

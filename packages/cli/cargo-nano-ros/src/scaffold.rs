@@ -568,14 +568,13 @@ fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> R
     let is_embedded = platform != "native";
 
     if is_embedded {
-        // Phase 248 C5b (RFC-0031) — the declared RMW lowers to the BOARD
-        // crate's `rmw-X` feature, NOT an `nros` feature: the board self-links +
-        // registers the concrete backend (C5a). `nros` stays RMW-agnostic. (The
-        // platform axis still rides `nros/platform-*` pending the platform-axis
-        // follow-up.)
-        deps.push_str(&format!(
-            "nros = {{ version = \"*\", default-features = false, features = [\"platform-{platform}\", \"ros-humble\"] }}\n"
-        ));
+        // Phase 248 C5b + C5c-platform (RFC-0031) — BOTH axes lower to the BOARD
+        // crate (the board dep below carries `rmw-X` and brings the concrete
+        // `nros-platform/platform-X` impl), so the umbrella `nros` dep stays
+        // agnostic — no `platform-*`/`rmw-*`, vtable-only.
+        deps.push_str(
+            "nros = { version = \"*\", default-features = false, features = [\"ros-humble\"] }\n",
+        );
         let board_crate = match platform {
             "freertos" => "nros-board-mps2-an385-freertos",
             "baremetal" => "nros-board-mps2-an385",
@@ -587,11 +586,11 @@ fn scaffold_rust(name: &str, platform: &str, rmw_feature: &str, dir: &Path) -> R
         ));
         deps.push_str("panic-semihosting = \"0.6\"\n");
     } else {
-        // Phase 248 C5b (RFC-0031) — native: the RMW lowers to the board crate's
-        // `rmw-X` feature (`nros-board-native`), not an `nros` feature; `nros`
-        // stays agnostic.
+        // Phase 248 C5b + C5c-platform (RFC-0031) — native: both axes lower to
+        // `nros-board-native` (its `rmw-X` feature self-links the backend, and it
+        // brings `nros-platform/platform-posix`); `nros` stays agnostic.
         deps.push_str(&format!(
-            "# nros = {{ version = \"*\", default-features = false, features = [\"std\", \"platform-posix\", \"ros-humble\"] }}\n\
+            "# nros = {{ version = \"*\", default-features = false, features = [\"std\", \"ros-humble\"] }}\n\
              # nros-board-native = {{ version = \"*\", features = [\"{rmw_feature}\"] }}\n"
         ));
     }

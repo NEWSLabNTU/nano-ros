@@ -1664,7 +1664,17 @@ fn generated_default_features(
     // carry only their own alias (`platform-esp32-qemu` /
     // `platform-stm32`), NOT the `platform-bare-metal` alias.
     if let Some(p) = profile(build) {
-        features.push(format!("nros/{}", p.platform_feature));
+        // Phase 248 C5c-platform (RFC-0031 platform amendment) — board-driven
+        // platform selection. When the entry depends on a board crate, that
+        // crate already brings the concrete `nros-platform/platform-X` impl
+        // into the link graph (mirrors C5a/C5b for the RMW axis), so the
+        // umbrella `nros` dep stays platform-agnostic — it carries only the
+        // `platform-cffi`/`rmw-cffi` vtable. Only crate-less host boards
+        // (posix / zephyr / orin-spe), which have no board crate to carry the
+        // platform, still lower `nros/platform-X` here.
+        if p.board_crate.is_none() {
+            features.push(format!("nros/{}", p.platform_feature));
+        }
         for alias in &p.local_aliases {
             features.push(alias.to_string());
         }

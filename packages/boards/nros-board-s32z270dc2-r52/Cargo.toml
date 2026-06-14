@@ -34,7 +34,10 @@ rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
 rmw-zenoh      = []
 
 [dependencies]
-nros = { path = "../../core/nros", default-features = false, features = ["platform-zephyr"] }
+# Phase 248 C5c-platform (#60 T3, RFC-0031 platform amendment) — board-driven
+# platform selection: the concrete `platform-zephyr` impl comes from this
+# crate's direct `nros-platform` dep below; umbrella `nros` stays agnostic.
+nros = { path = "../../core/nros", default-features = false }
 # Phase 121.3 — C-port-canonical platform. See sibling fvp-aemv8r-smp board.
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-zephyr"] }
 # Phase 248 C5a (#60 T4) — board-owned Cyclone DDS linking. `default-features =

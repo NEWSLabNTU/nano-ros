@@ -19,7 +19,7 @@ nros-platform = { path = "../../core/nros-platform", default-features = false, f
 # (new-style `nros::main!()` Entry pkgs) pulls the `nros` umbrella; legacy
 # `run(Config, closure)` examples keep their lean dep set. RMW-agnostic — the
 # linked backend self-registers via the macro's `__register_linked_rmw()`.
-nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal"], optional = true }
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi"], optional = true }
 nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
 # Phase 129.D — `zpico-platform-shim` retired. zenoh-pico `z_*`
 # symbols come from `zpico-sys`'s default-on `platform-aliases`

@@ -23,7 +23,13 @@ publish = false
 # so its feature flags drop out of the unified set.
 [target.'cfg(not(target_os = "none"))'.dependencies]
 # Trait surface (BoardEntry, BoardInit, BoardPrint, BoardExit, RuntimeCtx).
-nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
+# Phase 248 C5c-platform (#60 T3, RFC-0031 platform amendment) — the POSIX
+# family driver now brings the concrete `platform-posix` impl DIRECTLY (pulls
+# `nros-platform-cffi` + the `posix-c-port` link directive + emits the
+# `__FORCE_LINK_CFFI` anchor that keeps `libnros_platform_posix.a` in the link).
+# This is the board-driven platform-selection point, mirroring C5a's RMW gate:
+# the umbrella `nros` dep below stays platform-agnostic (no `platform-posix`).
+nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, features = ["std", "platform-posix"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `BoardEntry::run` installs a live component runtime sink on the
 # `RuntimeCtx` before invoking the user `setup` closure. `rmw-cffi`
@@ -31,4 +37,4 @@ nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-
 # (`nros-rmw-zenoh`, `nros-rmw-cyclonedds`, ...) must be linked by
 # the Entry pkg or a per-board shim crate so `Executor::open`
 # resolves a backend at boot.
-nros = { version = "0.5.0", path = "../../core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { version = "0.5.0", path = "../../core/nros", default-features = false, features = ["std", "rmw-cffi"] }

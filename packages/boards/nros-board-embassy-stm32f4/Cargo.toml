@@ -46,7 +46,7 @@ embassy-time = { version = "0.4", features = ["tick-hz-1_000"] }
 # because `rmw-cffi` pulls in code paths that need a global allocator
 # (provided by `nros-platform` here). Mirrors the sibling RTIC board
 # crate's `nros` dep shape (Phase 216.B.2 follow-up).
-nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Phase 216.C.2 follow-up — bare-metal RMW backend registration. The
 # pre-migration talker-embassy example targeted Pattern A which would
