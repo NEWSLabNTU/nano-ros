@@ -1,11 +1,36 @@
 ---
 id: 60
 title: Platform/RMW-agnosticism audit — core + user libs leak platform-*/rmw-* features + concrete-backend deps
-status: open
+status: resolved
+resolved_in: phase-248
 type: tech-debt
 area: architecture
-related: [rfc-0004, rfc-0031, rfc-0005, rfc-0006, rfc-0035, issue-0049, phase-248]
+related: [rfc-0004, rfc-0031, rfc-0005, rfc-0006, rfc-0035, phase-248, phase-249, issue-0049, issue-0061]
 ---
+
+## Resolution (2026-06-15) — phase-248 converged all four fix-path tiers
+
+The whole fix path landed via [phase-248](../roadmap/phase-248-platform-rmw-agnosticism-convergence.md):
+- **T1** (cyclone descriptor seam) — C2: generic vtable hook in `nros-rmw`
+  (`type_descriptor.rs`); `nros-node` dropped the unconditional `nros-rmw-cyclonedds[-sys]` dep.
+- **T3** (platform cfg → vtable) — C2 (nros-node wake/alloc/spin select at runtime),
+  C3.1 (nros-c/nros-cpp allocators/critical-section behind the platform vtable), C5c + C7
+  (`nros` platform cfg + the last `platform-zephyr` feature gone).
+- **T4** (boards' concrete RMW optional) — C1.
+- **T2 + T5** (retire `platform-*`/`rmw-*` features + concrete-backend deps) — C5c (`nros`
+  carries ZERO `platform-*` and no concrete-`rmw-*` features/deps; only the `rmw-cffi`/
+  `nros-platform` vtable seams), C6/C6-tail (every example/fixture + codegen off
+  `nros/{rmw,platform}-*`), C3.2-reconciled-with-241.D3 (the C/C++ staticlib root bundles
+  ONE board-selected backend by design — issue #61 `wontfix`). Selection is board + config
+  driven (RFC-0031 lowering, C5b/C5-plat).
+- Stale "Phase 104.A removed" comments corrected.
+
+Validated: `nros` builds agnostic (std/no_std) + default; native nm-proves app-owned
+self-register; **embedded runtime smoke green on freertos + threadx-rv64 + nuttx + baremetal**
+(esp32 build-ok/live-pubsub deferred-red, zephyr blocked #58/#59 — both runtime, not code).
+Remaining agnosticism work is the SOURCE layer ([issue #49](0049-example-source-platform-rmw-leakage.md))
+and the registration-trigger unification ([phase-249](../roadmap/phase-249-one-registration-trigger.md)
+/ [issue #62](0062-d3-completion-one-registration-path-and-link-manifest.md)) — separate efforts.
 
 > **Convergence plan:** [phase-248](../roadmap/phase-248-platform-rmw-agnosticism-convergence.md)
 > groups the fix into 6 crate-owned clusters across 3 dependency waves (Wave 1:

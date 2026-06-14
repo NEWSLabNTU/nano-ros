@@ -51,11 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
 | 53 | mixed-RMW bridge has no stock-cyclonedds variant + no gateway book recipe (211.I) | tech-debt | testing | [0053-cyclonedds-bridge-variant-and-gateway-recipe.md](0053-cyclonedds-bridge-variant-and-gateway-recipe.md) |
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
-| 60 | platform/RMW-agnosticism audit — core + user libs leak platform-*/rmw-* features + concrete-backend deps | tech-debt | architecture | [0060-platform-rmw-agnosticism-audit.md](0060-platform-rmw-agnosticism-audit.md) |
-| 61 | zephyr/CMakeLists.txt passes removed nros-c/nros-cpp features (phase-248 C3.2 downstream) | bug | zephyr | [0061-zephyr-cmake-nros-c-cpp-feature-remediation.md](0061-zephyr-cmake-nros-c-cpp-feature-remediation.md) |
 | 62 | D3 completion — one registration path + generated link-manifest + weak-default deletion (rides single-runtime) | tech-debt | build | [0062-d3-completion-one-registration-path-and-link-manifest.md](0062-d3-completion-one-registration-path-and-link-manifest.md) |
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#63** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#60** —
+platform/RMW-agnosticism audit closed by phase-248 (all four fix-path tiers
+converged: cyclone vtable seam, platform cfg → vtable, boards' concrete RMW
+optional, `platform-*`/`rmw-*` features retired from `nros`/`nros-c`/`nros-cpp` +
+every example/fixture/codegen; embedded runtime-green on freertos/threadx-rv64/
+nuttx/baremetal). The SOURCE-layer sibling **#49** + the registration-trigger
+**#62**/phase-249 remain. **#61** — zephyr cmake feature remediation closed
+`wontfix` (premise void: C3.2 was superseded by 241.D3, so the features remain on
+`main`). See `archived/0060-*`, `archived/0061-*`. **#63** —
 native Rust cyclonedds binaries dropped the posix platform C port (undefined
 `nros_platform_wake_*`): `nros-rmw-cyclonedds-sys` had no `nros-platform` dep, so
 nothing re-anchored the cffi rlib's `#[used]` force-link static (zenoh anchors it,
