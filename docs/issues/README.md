@@ -54,6 +54,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 60 | platform/RMW-agnosticism audit — core + user libs leak platform-*/rmw-* features + concrete-backend deps | tech-debt | architecture | [0060-platform-rmw-agnosticism-audit.md](0060-platform-rmw-agnosticism-audit.md) |
 | 61 | zephyr/CMakeLists.txt passes removed nros-c/nros-cpp features (phase-248 C3.2 downstream) | bug | zephyr | [0061-zephyr-cmake-nros-c-cpp-feature-remediation.md](0061-zephyr-cmake-nros-c-cpp-feature-remediation.md) |
 | 62 | D3 completion — one registration path + generated link-manifest + weak-default deletion (rides single-runtime) | tech-debt | build | [0062-d3-completion-one-registration-path-and-link-manifest.md](0062-d3-completion-one-registration-path-and-link-manifest.md) |
+| 64 | CI red on main — stale example Cargo.locks (nros-core 0.1.0) trip ABI guard + clippy empty-line in nros/lib.rs | bug | build | [0064-ci-red-stale-example-locks-abi-guard-and-clippy-empty-line.md](0064-ci-red-stale-example-locks-abi-guard-and-clippy-empty-line.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#63** —
 native Rust cyclonedds binaries dropped the posix platform C port (undefined
