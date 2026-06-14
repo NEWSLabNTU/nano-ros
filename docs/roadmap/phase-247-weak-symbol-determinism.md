@@ -73,9 +73,10 @@ trivially CI-wireable, mirrors the `scripts/check-*.sh` gate family).
   (`_z_*_serial_*` = `T`, the same symbols that are `W` in
   `libzpico_platform_aliases.a` — proving the override lands at final link).
   Negative path confirmed: pointing the classifier at the staticlib's `W`
-  `_z_open_serial_from_dev` trips FAIL. Remaining seed rows (cmake C/C++ images
-  for `nros_app_register_backends`, threadx/px4) activate when those fixtures
-  build.
+  `_z_open_serial_from_dev` trips FAIL. (Coverage map completed in W1.2 below —
+  the **threadx RISC-V64** rows are live now; the freertos / cmake-C++ / serial /
+  smoltcp rows skip until their fixtures are prebuilt on CI; px4-uorb has no image
+  yet. No further W1.1 work — the rows light up passively as fixtures build.)
 - **W1.1 (design, for reference)** — `scripts/check-weak-symbols-image.sh <artifact>`: `nm` the artifact,
   parse `<addr> <type> <name>`, and for each **override-default** symbol in the
   shared allowlist apply the rule above; **optional-hook** symbols may stay weak
@@ -143,29 +144,28 @@ the allowlist SSoT (cross-check + negative-path proof); an injected regression
 **Acceptance MET.** `just check` now fails on an unaudited / drifted weak site;
 a new weak symbol added without allowlisting is caught pre-merge with no build.
 
-## Project `just check` status (audit 2026-06-13)
+## Project `just check` status — RESOLVED (2026-06-14)
 
 The phase-247 gates pass standalone (`just check-weak-symbols`,
-`just check-weak-symbols-image`, the `weak_symbol_audit` test). But `just check`
-as a whole currently **fails** before reaching them — `check-workspace`
-(`cargo clippy --workspace -D warnings`) aborts on pre-existing / concurrent
-lib-level clippy warnings that are **out of phase-247 scope** (owned by their
-phases / the parallel phase-244 effort). They must be cleared (by their owners)
-for the wired `check-weak-symbols` gate to run end-to-end under `just check`.
-Found:
+`just check-weak-symbols-image`, the `weak_symbol_audit` test). The lib-level
+clippy blockers that previously made `check-workspace` abort *before* reaching
+the wired `check-weak-symbols` gate have all been **cleared** — the exact
+`check-workspace` recipe now exits 0 with **zero warnings**, so the gate runs
+end-to-end under `just check`. The blockers (fixed this session, all out of
+phase-247 scope):
 
-| file:line | lint | likely owner |
+| file | lint | status |
 | --- | --- | --- |
-| `nros-core/src/action.rs:97` | `result_unit_err` (`fn register_protocol_types() -> Result<(),()>`) | phase-244 E3 (action protocol-type auto-register) |
-| `nros-node/src/executor/arena.rs:1408,1515` | `collapsible_if` ×2 | nros-node |
-| `nros-macros/src/lib.rs:64` | `items_after_test_module` | nros-macros |
-| `nros/src/node.rs:2447` | `drop_non_drop` (`drop()` on a non-`Drop` value) | nros |
-| `nros-rmw-zenoh/src/shim/service.rs:982` | `useless_conversion` (`i64`) | nros-rmw-zenoh |
+| `nros-core/src/action.rs` `register_protocol_types` | `result_unit_err` | fixed (`#[allow]`) |
+| `nros-node/src/executor/arena.rs` | `collapsible_if` ×2 | fixed (let-chains) |
+| `nros-macros/src/lib.rs` | `items_after_test_module` | fixed (test mod → EOF) |
+| `nros/src/node.rs` | `drop_non_drop` | fixed (`let _ =`) |
+| `nros-rmw-zenoh/src/shim/service.rs` | `useless_conversion` | fixed (dropped `.into()`) |
 
-(Test-target lints — `collapsible_if` / `doc_lazy_continuation` across
-`nros-tests/tests/*` — surface under `--all-targets` but are not gated by
-`check-workspace`'s lib/bin clippy scope.) Phase-247 introduced none of these;
-the one phase-247 nit (`&PathBuf`→`&Path` in `weak_symbol_audit.rs`) is fixed.
+(Test-target lints across `nros-tests/tests/*` surface only under `--all-targets`,
+not in `check-workspace`'s lib/bin scope.) Phase-247 introduced none of these; its
+own nit (`&PathBuf`→`&Path` in `weak_symbol_audit.rs`) is fixed. Verified:
+`cargo clippy --quiet --workspace --no-default-features` (the recipe) → exit 0.
 
 ## W3 — Reduction (fix-up work)
 
