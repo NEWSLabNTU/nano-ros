@@ -55,7 +55,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 61 | zephyr/CMakeLists.txt passes removed nros-c/nros-cpp features (phase-248 C3.2 downstream) | bug | zephyr | [0061-zephyr-cmake-nros-c-cpp-feature-remediation.md](0061-zephyr-cmake-nros-c-cpp-feature-remediation.md) |
 | 62 | D3 completion — one registration path + generated link-manifest + weak-default deletion (rides single-runtime) | tech-debt | build | [0062-d3-completion-one-registration-path-and-link-manifest.md](0062-d3-completion-one-registration-path-and-link-manifest.md) |
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#35** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#63** —
+native Rust cyclonedds binaries dropped the posix platform C port (undefined
+`nros_platform_wake_*`): `nros-rmw-cyclonedds-sys` had no `nros-platform` dep, so
+nothing re-anchored the cffi rlib's `#[used]` force-link static (zenoh anchors it,
+cyclone didn't) → the posix C port was DCE'd. Fixed by mirroring zenoh's
+`platform-posix` feature + `__FORCE_LINK_PLATFORM_CFFI` static on the sys crate
+(`de85cadc2`). Verified 2026-06-15: native cyclone Rust talker links clean. See
+`archived/0063-*`. **#35** —
 the 13 zephyr native_sim e2e failures were four distinct root causes, not load
 flakes: 9 XRCE (`xrce_session_drive_io` looped on the wall-clock stub
 `nros_platform_time_now_ms` returning 0 → switched to monotonic
