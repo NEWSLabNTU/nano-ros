@@ -22,12 +22,17 @@ path = "src/main.rs"
 # Phase 227.3 (unified RMW) — xrce via the umbrella; `nros` force-links the
 # backend (no project dep, no register()). Serial routes by the `serial://`
 # locator, not a feature.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble", "rmw-xrce"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
 nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+# Phase 248 C6d — board-LESS APP owns its backend dep directly. The `nros`
+# umbrella no longer carries `rmw-*` (that edge blocked C5c), so the app links
+# the concrete backend + force-links its rlib in `main.rs` for POSIX
+# self-registration (linkme `RMW_INIT_ENTRIES`).
+nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std", "linkme-register"] }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { path = "../../../../packages/core/nros-log" }
 std_msgs = { version = "*", default-features = false }

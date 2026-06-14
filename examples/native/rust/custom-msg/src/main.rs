@@ -31,6 +31,24 @@ use heapless::String as HString;
 use nros::{CdrReader, CdrWriter, DeserError, Deserialize, RosMessage, SerError, Serialize};
 use nros_log::{Logger, nros_info};
 
+// Phase 248 C6d — board-LESS APP owns + force-links its selected backend rlib.
+// The `nros` umbrella no longer carries `rmw-*`, so its `__FORCE_LINK_*` statics
+// are inert here; this `#[used]` static keeps the backend rlib (and its linkme
+// `RMW_INIT_ENTRIES` self-register section) in the link graph so the backend
+// auto-registers on POSIX. Mirrors `packages/core/nros/src/lib.rs`.
+#[cfg(feature = "rmw-zenoh")]
+#[used]
+static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
+    nros_rmw_zenoh::register;
+#[cfg(feature = "rmw-xrce")]
+#[used]
+static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
+    nros_rmw_xrce_cffi::register;
+#[cfg(feature = "rmw-cyclonedds")]
+#[used]
+static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
+    nros_rmw_cyclonedds_sys::register;
+
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("custom-msg");
 
