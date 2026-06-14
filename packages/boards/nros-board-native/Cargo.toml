@@ -34,11 +34,19 @@ nros-board-posix = { version = "0.5.0", path = "../nros-board-posix" }
 # board can build DDS-/XRCE-only. Default-on (existing native examples
 # assume zenoh) but droppable via `default-features = false`.
 nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["platform-posix"], optional = true }
+# Phase 249 P3.5b — the board owns all three native backends so a declarative
+# Entry pkg can select any RMW via the board's `rmw-<x>` feature and the board
+# boot calls its `register()` (no app-side backend ownership). The board's
+# explicit call replaces the linkme walk, so these omit `linkme-register`.
+nros-rmw-xrce-cffi = { path = "../../xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
 
 [features]
 # Default keeps the historic native zenoh wiring active so existing
 # Entry pkgs / examples resolve a backend on first `Executor::open`.
 # Droppable: DDS-/XRCE-only consumers build with
-# `default-features = false` and bring their own `nros-rmw-*` backend.
+# `default-features = false` and select `rmw-xrce` / `rmw-cyclonedds`.
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]

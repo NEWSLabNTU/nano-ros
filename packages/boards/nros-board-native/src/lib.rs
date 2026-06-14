@@ -103,6 +103,14 @@ fn register_backend() {
     {
         let _ = nros_rmw_zenoh::register();
     }
+    #[cfg(feature = "rmw-xrce")]
+    {
+        let _ = nros_rmw_xrce_cffi::register();
+    }
+    #[cfg(feature = "rmw-cyclonedds")]
+    {
+        let _ = nros_rmw_cyclonedds_sys::register();
+    }
 }
 
 impl BoardEntry for NativeBoard {
