@@ -75,12 +75,14 @@ registration that lets the weak default die — apply directly.)
   **image gate** (`scripts/check-weak-symbols-image.sh`) already asserts the
   registration symbol resolves strong, so it guards the deletion.
 
-- **R3 — fold the triggers into one (finishes bullet 1, directional).** The
-  synthesized-runtime ctor anchor is the natural *single* registration trigger;
-  the stub + linkme fold into it. Extending the W11 per-configure synthesis to
-  the single-example **Entry pkg** (the once-per-binary owner, RFC-0024) unifies
-  the last path. The D3-rev effort deferred per-entry as risky; this is the
-  follow-on layer, not urgent.
+- **R3 — fold the triggers into one (finishes bullet 1).** **Designed →
+  [phase-249](../roadmap/phase-249-one-registration-trigger.md).** Audit (2026-06-14)
+  corrected the original framing: the ctor anchor is NOT the natural single trigger —
+  `.init_array` isn't walked on all bare-metal, and linkme is RTOS-blind. The only
+  universal mechanism is the **explicit generated `nros_rmw_<backend>_register()` call**
+  (C/C++: generated strong `nros_app_register_backends`; Rust: `main!`/board-entry from
+  the R1 manifest). Phased P1–P4 (migrate before delete), per-platform e2e gated; **P4 is
+  R2** (deletes the weak default + stub). See phase-249 for the full plan.
 
 ## Acceptance
 

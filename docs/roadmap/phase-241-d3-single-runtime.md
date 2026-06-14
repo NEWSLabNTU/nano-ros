@@ -360,7 +360,10 @@ visible from here:
   one-trigger restructure first: a single *guaranteed* registration (drop the
   unconditional call OR a strong ctor everywhere incl. bare-metal startup) before the
   weak default + stub can die. The phase-247 image gate will catch a regression.
-- **R3 — one trigger (bullet 1, directional).** Fold stub + linkme into the ctor
-  anchor; extend the per-configure synthesis to the single-example Entry pkg (the
-  once-per-binary owner). Deferred per-entry risk noted in W11 — this is the
-  follow-on layer, and **R2 rides it** (see above).
+- **R3 — one trigger (bullet 1). Designed → [phase-249](phase-249-one-registration-trigger.md).**
+  Four belt-and-suspenders triggers (linkme slice / `.init_array` ctor / explicit call /
+  board entry) exist because none is universal; the explicit generated call is the only
+  one that fires on every target. R3 makes it THE trigger (C/C++: a generated strong
+  `nros_app_register_backends`; Rust: `main!`/board-entry explicit register from the R1
+  manifest), retiring linkme + the ctors + the weak default. Phased P1–P4 (migrate before
+  delete), per-platform e2e gated; **P4 closes R2** (the weak-default + stub deletion).
