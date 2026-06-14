@@ -35,6 +35,59 @@ node-lib `#![no_std]` only (cleared once E4 lands).
 
 ---
 
+## Native (posix) board-less RMW model — Shape B (decided 2026-06-15)
+
+The native/rust examples are the last large `major` group (~16 multi-RMW pub/sub/
+service/action + lifecycle + custom-msg). They are **board-less by design**
+(phase-248 C6d): no `nros-board-*` crate, not in a workspace, the app calls
+`Executor::open` directly. The maintainer **blesses board-less + `Executor::open`
+for native single-node apps** — it is the intended shape, NOT a P1 leak. What the
+0049 audit actually flags here is **RMW-selection-via-cargo-feature**, which
+[RFC-0031](../design/0031-rmw-selection-and-lowering.md):19-22 forbids: *"the cargo
+feature is the lowering target, not the user-facing knob"* and :14 mandates
+*"exactly one RMW backend per binary"*.
+
+**Decided shape (B): config selects, cargo feature is the lowering target, app
+source carries neither.**
+
+- **Knob = config.** `[package.metadata.nros.deploy.native] rmw = "zenoh"` is the
+  selection point. `nros build` lowers it → `cargo build --no-default-features
+  --features rmw-<x>`. Test variants (talker-zenoh/xrce/cyclonedds) come from
+  overriding the **config knob** per variant — NOT raw `--features` in
+  `fixtures.toml`.
+- **Cargo.toml keeps the 3 `nros-rmw-*` deps `optional = true`** + the `rmw-{zenoh,
+  xrce,cyclonedds}` features as **lowering targets** (this IS the RFC-0031 model —
+  the *feature*, not the *dep*, is the non-user knob). `default = ["rmw-zenoh"]` is
+  the bare-`cargo build` fallback; `nros build` overrides it. (Model B′ — zero rmw
+  deps via a generated dep-block + rmw registry — deferred; needs Cargo.toml codegen.)
+- **App `main.rs` carries no RMW glue.** The `#[used] static __FORCE_LINK_{ZENOH,
+  XRCE,CYCLONEDDS}` ladder + `#[cfg(feature="rmw-*")]` arms are **deleted** — each
+  `nros-rmw-*` backend self-anchors via its own `linkme` distributed-slice + the
+  `__FORCE_LINK_PLATFORM_CFFI` chain (`nros-rmw-zenoh/src/lib.rs:62`); phase-248 C5c
+  already removed `nros`'s umbrella statics. The single config-selected backend
+  links + self-registers; `Executor::open` resolves the unique backend.
+- **One meaningful init line** (not two): collapse the redundant
+  `init_with_launch_auto()` **and** `ExecutorConfig::from_env()` (both read the same
+  env) into `let ctx = nros::init()?; Executor::open(&ctx.config("<name>"))?` — the
+  `rclcpp::init` analog that also carries the future `--ros-args`/launch overlay
+  (`init.rs:194` TODOs). Rest of `main` is plain ROS code.
+
+Target native `main.rs`:
+```rust
+fn main() {
+    let ctx = nros::init().unwrap();                 // rclcpp::init analog + launch overlay hook
+    let mut exec = Executor::open(&ctx.config("talker")).unwrap();
+    let node = exec.create_node("talker", "/").unwrap();
+    let publisher = node.create_publisher::<Int32>("chatter").unwrap();
+    // user spin loop — no force-link, no #[cfg(rmw-*)], no register()
+}
+```
+
+**Rejected:** Shape A (link all 3 + `NROS_RMW` runtime select) — violates RFC-0031
+"one backend per binary" + untested cyclonedds C++ tri-link.
+
+---
+
 ## Wave 0 — Framework enablers (parallel; land before their dependents)
 
 Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
@@ -158,6 +211,19 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   add ~15-line `run_with_deploy` overrides (copy the FreeRTOS `config_with_overlay`
   shape) to those two board crates. **Blocks:** D2 (esp32), D6 (threadx-linux net).
   (Bare-metal mps2-an385 net threading folds into D1.)
+
+- [ ] **E6 — standalone native `deploy.native.rmw` → cargo `--features` lowering.
+  BUILD (`packages/cli/nros-cli-core`).** Today the config→feature lowering
+  (`board_rmw_features()`, `generate.rs:1436`; `rmw_resolver`) runs **only in the
+  WORKSPACE codegen path**; a STANDALONE native example has no
+  `deploy.native.rmw`→`--features` lowering (`rust_consumer`'s `rmw="zenoh"` is
+  informational only, and `fixtures.toml` hand-passes raw `--features`). Build the
+  standalone lowering so `nros build` (and the fixtures builder) reads
+  `[package.metadata.nros.deploy.native] rmw` for a single-package native example and
+  emits `cargo build --no-default-features --features rmw-<x>` (reuse `rmw_resolver`
+  + the `rmw-<x>` naming `board_rmw_features` already maps). Acceptance: a native
+  example with only `rmw="xrce"` in deploy metadata (no `--features` flag) builds the
+  xrce variant; default-fallback `cargo build` still yields zenoh. **Blocks:** D7.
 
 ---
 
@@ -396,6 +462,36 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   (`c/talker/src/main.c:51,61`) into the generated runtime; move `tcp/127.0.0.1:PORT`
   defaults (`c/talker/src/main.c:41`, `c/service-client/src/main.c:46`) to deploy
   metadata (E5). (threadx-linux C++ 12/12 + Rust entries already clean/minor.)
+
+- [ ] **D7 — native/rust board-less → Shape B (RMW-in-config). Needs E6.** The last
+  large `major` group: ~16 `examples/native/rust/*` still on
+  `Executor::open` + `#[used] __FORCE_LINK_*` ladder + `#[cfg(feature="rmw-*")]` +
+  raw-`--features` selection. Migrate each remaining-`major` native example to the
+  **Shape B** design (see "Native (posix) board-less RMW model" above): board-less +
+  `Executor::open` STAYS; delete the force-link ladder + rmw `#[cfg]` arms (backends
+  self-anchor); collapse `init_with_launch_auto()`+`from_env()` →
+  `nros::init()?` + `Executor::open(&ctx.config(name))`; add `[…deploy.native] rmw`
+  config; `fixtures.toml` rows select RMW via E6 config-lowering, not raw `--features`.
+  Cargo.toml keeps the 3 `nros-rmw-*` deps `optional` + lowering features +
+  `default=["rmw-zenoh"]`.
+  - **In scope (multi-RMW pub/sub/service/action/misc):** talker, listener,
+    custom-msg, service-{server,client,client-callback}, action-{server,client},
+    lifecycle-node. (D3/E3 already cleared the RMW *guards* + action-type
+    registration in talker/listener/action-*; D7 removes the remaining force-link +
+    feature-selection leak.)
+  - **xrce-only:** serial-{talker,listener} → `rmw="xrce"` in config (single
+    variant); same force-link/cfg removal.
+  - **Fold-in:** custom-transport-{talker,listener} (D4 cleared the transport glue;
+    confirm the force-link ladder is also gone post-Shape-B).
+  - **Confirm-or-defer (gated):** service-client-async, action-client-async,
+    lifecycle-node async legs, and the native `*-rtic` set — re-run the rubric; if a
+    framework gap blocks Shape B (async/RTIC entry path), record it as a gated
+    residual rather than forcing the migration.
+  - **px4 Rust (`minor`)** — manual executor; D5 cleared the C stub. px4 Rust stays
+    `minor` (no SITL to verify a deeper lift); confirm no `major` leak remains.
+  Acceptance: `just native build-fixtures` green incl. xrce + cyclonedds variants of
+  talker/listener (maintainer ask); 0049 rubric over `examples/native/rust/*` → 0
+  `major` (board-less `Executor::open` = accepted, not P1).
 
 ---
 
