@@ -88,4 +88,10 @@ function(nros_platform_link_app target)
     if(TARGET nros_platform_esp_idf_iface)
         target_link_libraries(${target} PRIVATE nros_platform_esp_idf_iface)
     endif()
+    # Phase 249 P2b — generated STRONG `nros_app_register_backends` for every
+    # C/C++ app (manifest-driven), replacing the weak no-op fallback ESP-IDF
+    # C/C++ relied on via `.init_array` ctors. Idempotent.
+    if(COMMAND nano_ros_link_rmw)
+        nano_ros_link_rmw(${target})
+    endif()
 endfunction()

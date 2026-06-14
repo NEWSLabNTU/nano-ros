@@ -192,6 +192,15 @@ function(nros_platform_link_app target)
             "nros_platform_link_app: '${target}' is not a CMake target.")
     endif()
 
+    # Phase 249 P2b — generated STRONG `nros_app_register_backends` for every
+    # C/C++ app (manifest-driven). On NuttX the backend is already whole-archived
+    # (phase-243 #48 fix) so `nros_rmw_<x>_register` resolves; this makes the
+    # explicit call universal rather than relying on the weak no-op fallback.
+    # Idempotent. (Build-check tier — NuttX single-pass ld validated on its CI.)
+    if(COMMAND nano_ros_link_rmw)
+        nano_ros_link_rmw(${target})
+    endif()
+
     if(COMMAND nros_board_link_app)
         nros_board_link_app(${target})
     else()

@@ -121,6 +121,20 @@ proven).
   build-check freertos/nuttx/esp/zephyr C/C++ (runtime smoke deferred with phase-248's
   embedded-harness residual); image gate green. **(a) is the contained, validatable slice
   landed first; (b) the universal rollout rides the embedded e2e harness.**
+
+  **P2a — DONE (2026-06-14).** `nano_ros_link_rmw` sources `NROS_RMW_NEEDS_CXX_LINKER`
+  from the R1 `nros_rmw_dispatch` manifest (commit 8fc4e8695).
+  **P2b — DONE (2026-06-15).** Moved the strong-def auto-call into the shared
+  `nros_platform_link_app` for **threadx, freertos, esp_idf, nuttx** (posix already had
+  it; baremetal has no C/C++ targets + omits the helper; zephyr's link_app is empty by
+  design). `nano_ros_link_rmw` is idempotent (accumulates `_NANO_ROS_LINKED_RMWS`,
+  dedups), so the universal call coexists with the 31 threadx per-example explicit calls
+  with no double-define. **Validated:** the threadx-linux **C** zenoh set (6 examples)
+  builds + links clean — exit 0, zero `multiple definition`, the generated
+  `nros_app_register_backends.c` stub compiled into each. native (posix) path unchanged.
+  freertos/nuttx/esp are build-check tier (additive/guarded, same proven pattern; runtime
+  on their CI). *Optional cleanup (not blocking): drop the 31 now-redundant threadx
+  per-example `nano_ros_link_rmw` calls.*
 - **P3 — drop the `.init_array` ctors.** With P1+P2 guaranteeing the explicit call, the
   ctors are redundant. Remove them from `nros-c`/`nros-cpp` `rmw_backend` + the W11 synth
   anchor (keep the `FORCE_LINK` that pulls the backend closure, now referenced by the

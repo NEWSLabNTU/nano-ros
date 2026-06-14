@@ -313,6 +313,15 @@ function(nros_platform_link_app target)
         target_link_libraries(${target} PRIVATE threadx_platform)
     endif()
 
+    # Phase 249 P2b — every C/C++ app target gets the generated STRONG
+    # `nros_app_register_backends` (manifest-driven), not the weak no-op. Moved
+    # here (the shared link path) from the per-example CMakeLists so registration
+    # is universal, not per-platform/per-example. Idempotent — harmless if an
+    # example also calls it explicitly.
+    if(COMMAND nano_ros_link_rmw)
+        nano_ros_link_rmw(${target})
+    endif()
+
     # Issue #20 — threadx-linux C++ + CycloneDDS: resolve the cyclone
     # backend's back-reference to `nros_rmw_cffi_register_named`.
     #

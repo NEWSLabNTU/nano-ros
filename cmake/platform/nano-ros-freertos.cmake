@@ -215,6 +215,13 @@ function(nros_platform_link_app target)
         target_link_libraries(${target} PRIVATE freertos_platform)
     endif()
 
+    # Phase 249 P2b — generated STRONG `nros_app_register_backends` for every
+    # C/C++ app (manifest-driven), replacing the weak no-op fallback FreeRTOS
+    # C/C++ relied on via `.init_array` ctors. Idempotent.
+    if(COMMAND nano_ros_link_rmw)
+        nano_ros_link_rmw(${target})
+    endif()
+
     # Delegate any further board-specific fixup (linker script,
     # `-nostartfiles`, `--specs=nosys.specs`, etc.) to the overlay.
     if(COMMAND nros_board_link_app)
