@@ -1,19 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
-# nros Zephyr Talker (C) — Phase 168.4 collapsed shape.
+# nros Zephyr Talker (C) — TYPED component (RFC-0043 / phase-244.C2).
 #
-# Multi-RMW C example. Selection via prj-<rmw>.conf overlay:
-#   west build -b native_sim/native/64 -d build-c-talker-<rmw> \
-#     examples/zephyr/c/talker -- -DCONF_FILE="prj.conf;prj-<rmw>.conf"
+# Instead of a hand-written imperative `main.c`, the node is a stateful C
+# component (`NROS_C_COMPONENT(talker_t, talker_configure)`); the Zephyr typed
+# carrier (`zephyr_entry_main_c_typed.cpp.in`) generates the entry + composes it
+# into `app`. The raw publisher carries the type name as a string, so no
+# generated message headers are needed.
 
 cmake_minimum_required(VERSION 3.20.0)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_talker_c)
-
-# package.xml SSoT (issue #11): resolve + generate the transitive interface
-# closure declared in package.xml (<depend>std_msgs</depend>), emitting C
-# bindings into the Zephyr `app` target. Same line a native C example uses.
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 # Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
 # each message type (the backend's `find_descriptor` looks it up by
@@ -35,4 +32,17 @@ if(CONFIG_NROS_RMW_CYCLONEDDS)
     target_sources(app PRIVATE ${_nros_cyc_types})
 endif()
 
-target_sources(app PRIVATE src/main.c)
+# The Zephyr typed carrier branch (LANGUAGE C) configure_files
+# `zephyr_entry_main_c_typed.cpp.in` + compiles src/Talker.c with
+# -DNROS_PKG_NAME=<pkg sym> so its NROS_C_COMPONENT seam links against the
+# generated entry, all into the global `app`. No second executable.
+set(NANO_ROS_PLATFORM zephyr)
+include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+
+nano_ros_node_register(
+    NAME      talker
+    CLASS     nros_zephyr_talker_c::Talker
+    LANGUAGE  C
+    TYPED
+    SOURCES   src/Talker.c
+    DEPLOY    zephyr)

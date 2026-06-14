@@ -266,6 +266,21 @@ function(nano_ros_node_register)
                 list(REMOVE_DUPLICATES _nros_iface_libs)
                 target_link_libraries(${_lib} PUBLIC ${_nros_iface_libs})
             endif()
+            # Phase 244.C2 — on Zephyr the generated message include dirs
+            # (std_msgs.hpp, example_interfaces, …) are added by the Zephyr
+            # `nros_generate_interfaces` directly to `app` PRIVATE
+            # (zephyr/cmake/nros_generate_interfaces.cmake:290), NOT via the
+            # NROS_GENERATED_INTERFACE_LIBS interface-lib path that native/nuttx
+            # use. This component lib is a SEPARATE add_library (not `app`), so it
+            # never sees those headers and a TYPED component that #includes a
+            # generated msg header fails (`std_msgs.hpp: No such file`). Mirror
+            # `app`'s full include set onto it — it compiles the same TUs `app`
+            # would. Genexpr → captured at generate time, so it picks up includes
+            # `find_package(<msg pkg>)` adds to `app` after this point too.
+            if(NANO_ROS_PLATFORM STREQUAL "zephyr" AND TARGET app)
+                target_include_directories(${_lib} PRIVATE
+                    $<TARGET_PROPERTY:app,INCLUDE_DIRECTORIES>)
+            endif()
         endif()
     endif()
 
