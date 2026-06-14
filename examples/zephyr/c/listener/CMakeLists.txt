@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-# nros Zephyr Listener Example (C)
+# nros Zephyr Listener Example (C) — TYPED component (RFC-0043 / phase-244.C2).
+#
+# Instead of a hand-written imperative `main.c`, the node is a stateful C
+# component (`NROS_C_COMPONENT(listener_t, listener_configure)`); the Zephyr typed
+# carrier (`zephyr_entry_main_c_typed.cpp.in`, a C++ entry that drives the C
+# component's `__nros_c_component_<pkg>_{create,configure}` seam) generates the
+# entry + composes it into the Zephyr `app`. The raw subscription carries the
+# type name as a string, so no generated message headers are needed.
 
 cmake_minimum_required(VERSION 3.20.0)
 
@@ -8,10 +15,6 @@ project(nros_zephyr_listener_c)
 
 # nros module (CONFIG_NROS=y, CONFIG_NROS_C_API=y) provides zenoh shim,
 # platform support, and the nros-c library automatically.
-
-# package.xml SSoT (issue #11): resolve + generate the transitive interface
-# closure declared in package.xml (<depend>std_msgs</depend>) into `app`.
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
 # Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
 # each message type (the backend's `find_descriptor` looks it up by
@@ -30,4 +33,17 @@ if(CONFIG_NROS_RMW_CYCLONEDDS)
     target_sources(app PRIVATE ${_nros_cyc_types})
 endif()
 
-target_sources(app PRIVATE src/main.c)
+# The Zephyr typed carrier branch (LANGUAGE C) configure_files
+# `zephyr_entry_main_c_typed.cpp.in` + compiles src/Listener.c with
+# -DNROS_PKG_NAME=<pkg sym> so its NROS_C_COMPONENT factory/configure seam links
+# against the generated entry, all into the global `app`. No second executable.
+set(NANO_ROS_PLATFORM zephyr)
+include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+
+nano_ros_node_register(
+    NAME      listener
+    CLASS     nros_zephyr_listener_c::Listener
+    LANGUAGE  C
+    TYPED
+    SOURCES   src/Listener.c
+    DEPLOY    zephyr)
