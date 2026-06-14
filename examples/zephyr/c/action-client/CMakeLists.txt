@@ -17,4 +17,17 @@ if(CONFIG_NROS_RMW_CYCLONEDDS)
     nros_zephyr_add_cyclonedds_action_descriptors(app)
 endif()
 
-target_sources(app PRIVATE src/main.c)
+# TYPED component (RFC-0043 / phase-244.C2). The Zephyr typed carrier branch
+# (LANGUAGE C) configure_files `zephyr_entry_main_c_typed.cpp.in` (a C++ entry
+# that drives the C component's NROS_C_COMPONENT factory/configure seam) +
+# compiles src/FibonacciClient.c into the global `app`. No hand-written main.c.
+set(NANO_ROS_PLATFORM zephyr)
+include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+
+nano_ros_node_register(
+    NAME      action_client
+    CLASS     nros_zephyr_zenoh_action_client_c::FibonacciClient
+    LANGUAGE  C
+    TYPED
+    SOURCES   src/FibonacciClient.c
+    DEPLOY    zephyr)

@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-# nros Zephyr Service Server Example (C, Zenoh)
+# nros Zephyr Service Server Example (C) — TYPED component (RFC-0043 / phase-244.C2).
+#
+# Instead of a hand-written imperative `main.c`, the node is a stateful C
+# component (`NROS_C_COMPONENT(add_server_t, server_configure)`); the Zephyr typed
+# carrier (`zephyr_entry_main_c_typed.cpp.in`, a C++ entry that drives the C
+# component's `__nros_c_component_<pkg>_{create,configure}` seam) generates the
+# entry + composes it into the Zephyr `app`. The raw service register carries the
+# type name as a string, but a C service still needs the generated
+# example_interfaces C structs + Cyclone descriptors (below) for the backend.
 
 cmake_minimum_required(VERSION 3.20.0)
 
@@ -22,4 +30,17 @@ if(CONFIG_NROS_RMW_CYCLONEDDS)
     target_sources(app PRIVATE ${_nros_cyc_types})
 endif()
 
-target_sources(app PRIVATE src/main.c)
+# The Zephyr typed carrier branch (LANGUAGE C) configure_files
+# `zephyr_entry_main_c_typed.cpp.in` + compiles src/AddTwoIntsServer.c with
+# -DNROS_PKG_NAME=<pkg sym> so its NROS_C_COMPONENT factory/configure seam links
+# against the generated entry, all into the global `app`. No second executable.
+set(NANO_ROS_PLATFORM zephyr)
+include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
+
+nano_ros_node_register(
+    NAME      service_server
+    CLASS     nros_zephyr_zenoh_service_server_c::AddTwoIntsServer
+    LANGUAGE  C
+    TYPED
+    SOURCES   src/AddTwoIntsServer.c
+    DEPLOY    zephyr)
