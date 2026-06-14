@@ -9,11 +9,17 @@ does NOT redesign — the target is already RFC-0004 (config) + RFC-0031 (RMW
 selection) + the platform vtable (`nros-platform-api`/`-cffi`) + the RMW vtable
 (`nros-rmw-cffi`).
 
-**Status.** Proposed 2026-06-14. Implements issue #60. **Wave 1 COMPLETE
-(2026-06-14): C1 (boards), C2 (nros-node), C3.1 (nros-c/nros-cpp), C4 (docs)
-all landed + integration-verified** (umbrella builds zenoh+posix; nros-node
-162+5 / nros-rmw 44 / cyclonedds 15 pass; native cross-process pub/sub e2e green
-after rebuild — validated C2's runtime wake-probe). Next: C5 keystone (Wave 2).
+**Status.** Proposed 2026-06-14. Implements issue #60. **Wave 1 COMPLETE**
+(C1 boards, C2 nros-node, C3.1 nros-c/nros-cpp, C4 docs — landed + integration-
+verified: umbrella builds zenoh+posix; nros-node 162+5 / nros-rmw 44 /
+cyclonedds 15 pass; native cross-process pub/sub e2e green). **Wave 2 IN
+PROGRESS (2026-06-14): C5b + C5-plat DONE (codegen lowers RMW+platform to the
+board); C6a/b/c + C3.2 DONE; C6-TAIL DONE — every hand-written consumer + the
+codegen is off `nros/{rmw,platform}-*`, all three repo-wide gates clean.** What
+remains for the phase: **C5a per-board register** for the ~6 linkme-blind boards,
+then **C5c** (the actual `nros`-feature drop — gated on C5a + an embedded
+QEMU/Zephyr/FreeRTOS smoke, currently red #58/#59), plus issue #61. See the C5c
+note below for the exact sequence.
 
 **Priority.** P2 — architectural hygiene; not blocking features, but every new
 platform/RMW today pays the leakage tax (feature matrices, concrete-backend
@@ -256,18 +262,45 @@ nros keeps its features for now):**
       `nros-rmw-cyclonedds-sys` deps + the moved force-link block from `nros`. nros
       now consumes only `nros-rmw-cffi` + `nros-platform-cffi` vtables — fully
       agnostic. Owns: `nros/`.
-      **BLOCKED — larger example tail than first scoped (2026-06-14 grep).** C5c
-      can't drop the features until ~90 remaining `nros/{rmw,platform}-*` consumer
-      edges migrate — C6a/b/c covered workspaces/{rust,c,cpp,mixed} + the
-      baremetal/stm32 node pkgs only. Still to migrate to board-driven:
-      `examples/native/rust/*` (~39, the single-binary apps — they DO forward
-      `nros/rmw-*`, so they block C5c despite being the #60 "apps" exception),
-      `examples/{zephyr,threadx-linux,qemu-arm-freertos}/rust/*` (~54),
-      `examples/px4/*`, the `zephyr_entry` transitional exception, and the
-      `n_board_agnostic_run_plan` fixtures. Plus issue #61 (zephyr cmake). This is
-      a multi-cluster example sweep (C6-tail) before C5c — sequence: C6-tail →
-      C5c. Each app/example: dep its board with `features=["rmw-X"]`, drop
-      `nros/rmw-*`/`platform-*` (board brings both).
+      **C6-TAIL CONSUMER MIGRATION COMPLETE (2026-06-14) — gates now clean.**
+      Every hand-written consumer + the codegen is off `nros/{rmw,platform}-*`:
+      px4, zephyr rust + `zephyr_entry`, native/rust (board-less posix), px4,
+      baremetal (inert `platform-bare-metal` dropped), nuttx + riscv64-threadx
+      (re-homed to a direct `nros-platform[platform-X]` dep), nros-bench,
+      nros-tests bins + harness, the bridge demo, templates, and the fixtures
+      (multi_pkg_workspace_freertos / orchestration_tiers_freertos libs,
+      one_dep_component_pkg, n_board_agnostic posix_entry/freertos_entry +
+      shared_node_pkg), and book/rustdoc-driver. The CODEGEN
+      (`generated_default_features` + `render_platform_dependencies`) no longer
+      lowers the platform axis onto `nros` (commit `refactor(codegen): C5c`).
+      All three gates clean repo-wide: (1) `git grep 'nros/\(rmw\|platform\)-'`
+      (excl `rmw-cffi`/comments) empty; (2) no `platform-*` on any `nros` dep
+      line; (3) no concrete `rmw-*` on any `nros` dep line. The pattern per
+      consumer class: board-less posix app keeps `nros-platform-cffi[posix-c-port]`
+      (symbol source) + app-owned `nros-rmw-*` dep + force-link; RTOS standalone
+      re-homes to `nros-platform[platform-X]`; libs just drop the feature (the
+      entry/firmware brings platform); board-backed entries get platform+rmw from
+      the board crate.
+
+      **C5c (the actual nros-feature DROP) now blocked ONLY on C5a per-board
+      register, NOT on consumer edges.** Dropping `nros`'s `rmw-{zenoh,xrce,
+      cyclonedds}` features + concrete deps empties `__register_linked_rmw()`
+      (`nros/src/lib.rs`) — the registration path the `nros::main!` macro calls
+      for **linkme-blind targets** (Zephyr native_sim `target_os="none"`,
+      bare-metal, NuttX, ESP-IDF). The pure-marker boards (`mps2-an385`,
+      `stm32f4`, `freertos`, `esp32s3`, `fvp-aemv8r-smp`, `s32z270dc2-r52`) still
+      RELY on `nros::__register_linked_rmw()` → `nros_rmw_zenoh::register()` (their
+      Cargo/src comments say so). C5a's per-board work (board owns the optional
+      `nros-rmw-*` dep + a `#[cfg(rmw-X)]` boot-path `register()`) must land FIRST,
+      else the drop silently breaks embedded backend registration
+      (`Executor::open` → `Transport(ConnectionFailed)`) — and that can only be
+      validated on the QEMU/Zephyr/FreeRTOS harness (currently red, #58/#59).
+      So the final drop = **C5a-boards (the ~6 linkme-blind boards) → remove
+      nros's `rmw-*`/`platform-*` features + the `__FORCE_LINK_{ZENOH,XRCE,
+      CYCLONEDDS_SYS}` statics + the `__register_linked_rmw` body + the platform
+      mutual-exclusion `compile_error!` + the `platform-posix` cfg force-link from
+      `nros/src/lib.rs` → embedded smoke on the harness.** Plus issue #61 (zephyr
+      cmake). NOT a consumer sweep anymore.
 
 **Parallel dispatch:** Wave 2a = C5a ‖ C5b (boards vs cli — disjoint). Wave 2b =
 C6a ‖ C6b ‖ C6c ‖ C3.2 (disjoint example groups + crates). Wave 2c = C5c (solo,
