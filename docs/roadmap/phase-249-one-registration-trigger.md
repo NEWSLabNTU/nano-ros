@@ -167,6 +167,18 @@ proven).
   feature. **Gate:** native Rust pub/sub + service + action e2e register + run with linkme
   still present (belt) but the board call doing the work (suspenders); `nros::main!` hosted
   binary registers without the linkme walk. Then P4 can delete linkme.
+
+  **P3.5a — board enabler DONE (2026-06-15).** `NativeBoard::{run,run_tiers}` call a
+  feature-gated `register_backend()` (the linked `nros_rmw_<x>::register()`) before
+  delegating to `PosixBoard` — on every OS, the same call bare-metal P1 uses without
+  linkme. Validated: board + entry-poc (declarative native) build clean, entry-poc runs
+  identically (no regression; `Executor::open` reaches a backend → `ConnectionFailed` not
+  `NoBackend`). **P3.5b remaining:** (i) extend `NativeBoard` to own xrce/cyclonedds (only
+  `rmw-zenoh` today); (ii) migrate the Pattern-2 `init_with_launch_auto` native examples
+  (talker/listener/service/action) to the declarative Node + `nros::main!()` shape so they
+  route through the board boot (Pattern-2 bypasses it). **P4 note (found 2026-06-15):**
+  `linkme-register` is default-on and pulled via *multiple* dep paths — P4 must drop the
+  feature everywhere + the macro invocations, not one dep.
 - **P4 — delete linkme slice + the weak no-op (closes R2 / issue 0050 W3.1).**
   **Precondition: P3.5 (every hosted Rust binary registers via the board call).** Remove the
   distributed slice + the weak `nros_app_register_backends`; a missing backend is now a

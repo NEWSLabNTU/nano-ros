@@ -89,16 +89,34 @@ impl BoardExit for NativeBoard {
     }
 }
 
+/// Phase 249 P3.5 — the board owns the RMW registration on EVERY OS (hosted
+/// included), not just `target_os="none"`. Calling the linked backend's
+/// `register()` explicitly before the executor opens is the one universal
+/// trigger; it replaces the hosted reliance on the linkme `.init_array` walk
+/// (retired in P4) and lets the weak `nros_app_register_backends` default die.
+/// Gated on the board's own `rmw-<x>` feature; the call also force-links the
+/// backend (strictly stronger than the `#[used] __FORCE_LINK_*` static). Inert
+/// when no backend feature is selected.
+#[inline]
+fn register_backend() {
+    #[cfg(feature = "rmw-zenoh")]
+    {
+        let _ = nros_rmw_zenoh::register();
+    }
+}
+
 impl BoardEntry for NativeBoard {
     /// One-line delegation to the POSIX family driver. The lifecycle
     /// (`init_hardware` → build `RuntimeCtx` → invoke `setup` →
-    /// `exit_*`) lives in `PosixBoard::run`; see the docs there.
+    /// `exit_*`) lives in `PosixBoard::run`; see the docs there. Phase 249
+    /// P3.5: the board registers its linked backend first (all OSes).
     #[inline]
     fn run<F, E>(setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        register_backend();
         <PosixBoard as BoardEntry>::run::<F, E>(setup)
     }
 }
@@ -118,6 +136,8 @@ impl NativeBoard {
         F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E> + Sync,
         E: core::fmt::Debug,
     {
+        // Phase 249 P3.5 — register the linked backend before the tiers open.
+        register_backend();
         // Issue #48 — hosted boards take their locator from the environment, so
         // the deploy overlay is a no-op; forwarded for signature parity.
         PosixBoard::run_tiers::<F, E>(deploy, tiers, setup)
