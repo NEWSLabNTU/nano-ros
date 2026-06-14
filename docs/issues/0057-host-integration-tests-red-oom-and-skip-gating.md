@@ -55,16 +55,15 @@ fixtures → the binary then *exists* (so `require_prebuilt_binary` returns Ok, 
 skip) → it crashes/misbehaves at runtime → a genuine non-`[SKIPPED]` FAIL. Cap the
 build jobs (Cause 1) and the lane stops manufacturing those.
 
-### Residual: 2 genuine non-`[SKIPPED]` failures (stale fixtures, not lane-gating)
+### Residual: 2 genuine failures were STALE FIXTURES (confirmed 2026-06-15)
 `test_cpp_rust_service_interop` (`native_api.rs:1241`, "0 responses from C++
 server") and `test_action_callback_interop_c_client_cpp_server` (`:850`, no "Goal
-accepted!") FAIL even in isolation — both **C++ server ↔ non-C++ client**.
-Same-language and C-server↔rust-client pass. The local C/C++ fixtures are
-**2026-06-12**, older than the phase-248 C5c nros-cpp "RMW/platform-agnostic"
-churn (`dda517c0f` …) → likely **stale fixtures**, not a live regression. These
-tests are NOT exercised by the light CI lane anyway (extras absent → `[SKIPPED]`).
-Confirm via a fresh `build-fixture-extras` rebuild; if they still fail fresh, it's
-a real C++-server cross-language regression to file separately.
+accepted!") FAILed even in isolation — both **C++ server ↔ non-C++ client**, with
+local C/C++ fixtures dated **2026-06-12** (pre-phase-248-C5c). **Rebuilt the C/C++
+fixtures fresh against current nros-cpp** (the C5c agnosticism churn even shrank the
+binaries, 7.0 MB → 2.6 MB) and **both PASS**. Confirmed **stale fixtures, NOT a
+regression**. These tests are not exercised by the light CI lane anyway (extras
+absent → `[SKIPPED]`).
 
 ## Impact
 
@@ -74,11 +73,16 @@ done locally meanwhile.
 
 ## Direction
 
-1. **Land the Cause-1 OOM cap (`fix-host-integration-oom`)** — this is the actual
-   lane-red driver (corrupt fixtures → runtime FAILs that aren't `[SKIPPED]`).
+1. **Cause-1 OOM cap — DONE** (`fix-host-integration-oom` never merged; reapplied
+   to current main): `NROS_BUILD_JOBS=2` × `CARGO_BUILD_JOBS=2` on both
+   fixture-build steps + `CARGO_BUILD_JOBS=2` on the nextest compile in
+   `host-integration-tests.yml`. This is the actual lane-red driver (corrupt
+   fixtures → runtime FAILs that aren't `[SKIPPED]`).
 2. ~~Audit skip-gating bypass~~ — **not needed** (re-diagnosed above): skip routing
    + `_rewrite-skipped-junit`/`_count-real-failures` already work; the "195" was the
    raw nextest count.
-3. Confirm the 2 residual `native_api` C++-server interop failures are stale
-   fixtures (fresh `build-fixture-extras` rebuild). If real, file a separate
-   C++-server cross-language regression issue.
+3. Residual 2 `native_api` C++-server interop failures — **confirmed stale
+   fixtures** (fresh rebuild → both pass). No regression; no separate issue needed.
+
+**Remaining gate:** confirm the lane greens on the next CI run with the Cause-1 cap
+(CI-side, not locally reproducible). Resolve this issue once that lands green.
