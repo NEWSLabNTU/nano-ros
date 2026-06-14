@@ -236,27 +236,31 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
 
 ## Wave 2 — Enabler-dependent cleanups (parallel; after Wave 0)
 
-- [~] **D1 — PARTIAL (2026-06-14). pub/sub (8) + action/service RTIC (4) DONE;
-  serial/xrce (3) enabler-gated.** The pub/sub variants (talker/listener ± rtic ±
-  mixed + the e2e fixtures) were migrated in prior waves (`phase216` pair = the
-  in-group reference). 2026-06-14: the 4 hand-written `#[rtic::app]` action/service
-  examples (action-server/client, service-server/client) → entry + `*_rtic_pkg`
-  node split: 4-line `nros::main!()` + `[package.metadata.nros.entry]
-  deploy="rtic-mps2-an385" node_pkgs=[…]` + per-example deploy overlay; declarative
-  `ExecutableNode` action/service logic mirroring the proven
-  `qemu-riscv64-threadx/rust/<role>` refs (example_interfaces via `nros ws sync`).
-  Proves the baremetal-RTIC + declarative-action/service path (no such example
-  existed before). All 4 build clean for `thumbv7m-none-eabi` locally. (`4e01e29d0`)
-  - **serial-talker / serial-listener / talker-xrce — ENABLER-GATED (deferred).**
-    These use a custom transport (serial UART / XRCE-over-UART) installed before
-    executor open via the imperative `run(Config, closure)` shape. The
-    `nros::main!()` flow can't express them: (1) `DeployOverlayLit` carries only
-    `locator/ip/gateway/netmask/domain_id` — no transport-kind / serial selector;
-    (2) `BoardEntry::run_with_deploy` has no pre-`Executor::open` hook to call
-    `set_custom_transport_ops` / pick `Config::serial_default()`. Needs a Wave-0
-    enabler (deploy transport field + a board pre-register transport hook + macro
-    plumbing) before migration — tracked as a D1 follow-up. Leaks P2/P3 remain on
-    these 3 only.
+- [~] **D1 — 14/15 DONE (2026-06-14). pub/sub (8) + action/service RTIC (4) +
+  serial (2); only talker-xrce (1) enabler-gated.** The pub/sub variants
+  (talker/listener ± rtic ± mixed + the e2e fixtures) were migrated in prior waves
+  (`phase216` pair = the in-group reference). 2026-06-14:
+  - **action/service RTIC (4): DONE.** action-server/client + service-server/client
+    → entry + `*_rtic_pkg` node split: 4-line `nros::main!()` + `[…entry]
+    deploy="rtic-mps2-an385" node_pkgs=[…]` + per-example deploy overlay; declarative
+    `ExecutableNode` logic mirroring the proven `qemu-riscv64-threadx/rust/<role>`
+    refs (example_interfaces via `nros ws sync`). Proves the baremetal-RTIC +
+    declarative-action/service path (no such example existed before). (`4e01e29d0`)
+  - **serial-talker / serial-listener (2): DONE.** Enabler: made the
+    `nros-board-mps2-an385` BoardEntry boot link-aware — `base_config()` +
+    `config_with_overlay` cfg-select `Config::serial_default()` when the board is
+    built `serial` (not `ethernet`); ip/gateway/netmask overlay gated
+    `#[cfg(feature="ethernet")]`. A serial deploy = the board built `serial` + a
+    `[…deploy.qemu-mps2-an385]` UART locator (no new crate/key). Examples →
+    Form-1 self-bringup (`[lib]` re-exports `serial_*_pkg::register`) + `nros::main!()`
+    + declarative node pkg. Both build `thumbv7m`; ethernet talker still builds
+    (cfg-neutral). (`55e8ad254`)
+  - **talker-xrce (1): ENABLER-GATED (deferred).** XRCE installs a custom-transport
+    vtable (`set_custom_transport_ops`) that MUST precede RMW register, but the
+    macro emits `__register_linked_rmw()` *before* `BoardEntry::run`, so there's no
+    seam to install the vtable first. Needs a pre-register transport hook in the
+    macro/board boot path (the deploy overlay could carry `transport="xrce"`).
+    Tracked as a D1 follow-up; leak P2/P3 remains on this one only.
 - [~] **D2 — PARTIAL (2026-06-13). qemu-esp32-baremetal talker+listener migrated +
   compiled** (nros::main!() Node+Entry; net/domain → deploy metadata; compiles
   riscv32imc build-std). **esp32/rust left** (ESP-IDF staticlib stubs — no leaks,
