@@ -1,13 +1,32 @@
 ---
 id: 61
 title: zephyr/CMakeLists.txt passes removed nros-c/nros-cpp features (phase-248 C3.2 downstream)
-status: open
+status: wontfix
 type: bug
 area: zephyr
-related: [phase-248, issue-0060, issue-0058, issue-0059]
+related: [phase-248, issue-0060, issue-0058, issue-0059, phase-241]
 ---
 
-## The break
+## Resolution (2026-06-14) — premise void, C3.2 superseded by 241.D3
+
+This issue assumed phase-248 **C3.2** (`d44a555c1`) had REMOVED the
+`platform-*` / `cffi-{zenoh-cffi,xrce-c}` / `rmw-{zenoh,xrce}` cargo features
+from `nros-c`/`nros-cpp`. That commit was **dropped during the rebase onto a
+main that had meanwhile landed Phase 241.D3-rev** (single-runtime umbrella):
+D3 deliberately RE-COUPLES `nros-c`/`nros-cpp` to one board-selected backend
+rlib (`rmw-zenoh = ["rmw-cffi", "dep:nros-rmw-zenoh"]` + `src/rmw_backend.rs`
+force-link) to eliminate the multi-staticlib double-cffi-instance hazard
+(`libnros_c.a` + `libnros_rmw_zenoh.a` each bundling a crate-hash-distinct
+zenoh-pico). The C/C++ staticlib ROOT is the sanctioned place to bundle the
+backend; the `platform-*`/`rmw-*` features on `nros-c`/`nros-cpp` are the
+**board-driven selectors** for that bundled backend, not user leakage — so
+they REMAIN on `main`. `zephyr/CMakeLists.txt` therefore still passes features
+that still exist → no cargo-feature-resolution break. Closing `wontfix`.
+(The platform-agnostic `src/lib.rs` — no `#[cfg(feature="platform-*")]` — that
+C3.2's Phase-1 delivered is independently present on `main` via D3's
+`global-allocator`/`critical-section` vtable routing, so that half stands.)
+
+## The break (original report — no longer applies, see Resolution above)
 
 Phase-248 C3.2 (`d44a555c1`) made `nros-c`/`nros-cpp` RMW/platform-agnostic —
 removed their `platform-zephyr`, `cffi-{zenoh-cffi,xrce-c}`,

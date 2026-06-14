@@ -14,12 +14,14 @@ selection) + the platform vtable (`nros-platform-api`/`-cffi`) + the RMW vtable
 verified: umbrella builds zenoh+posix; nros-node 162+5 / nros-rmw 44 /
 cyclonedds 15 pass; native cross-process pub/sub e2e green). **Wave 2 IN
 PROGRESS (2026-06-14): C5b + C5-plat DONE (codegen lowers RMW+platform to the
-board); C6a/b/c + C3.2 DONE; C6-TAIL DONE — every hand-written consumer + the
-codegen is off `nros/{rmw,platform}-*`, all three repo-wide gates clean.** What
-remains for the phase: **C5a per-board register** for the ~6 linkme-blind boards,
-then **C5c** (the actual `nros`-feature drop — gated on C5a + an embedded
-QEMU/Zephyr/FreeRTOS smoke, currently red #58/#59), plus issue #61. See the C5c
-note below for the exact sequence.
+board); C6a/b/c DONE; C6-TAIL DONE — every hand-written consumer + the codegen
+is off `nros/{rmw,platform}-*`, all three repo-wide gates clean.** **C3.2
+(nros-c/nros-cpp full agnosticism) SUPERSEDED by 241.D3-rev** — the C/C++
+staticlib root bundles one board-selected backend (single-runtime umbrella); see
+the C3 section. What remains for the phase: **C5a per-board register** for the ~6
+linkme-blind boards, then **C5c** (the actual `nros`-feature drop — gated on C5a
++ an embedded QEMU/Zephyr/FreeRTOS smoke, currently red #58/#59). Issue #61
+closed `wontfix` (premise void post-D3). See the C5c note below for the sequence.
 
 **Priority.** P2 — architectural hygiene; not blocking features, but every new
 platform/RMW today pays the leakage tax (feature matrices, concrete-backend
@@ -124,13 +126,23 @@ generic hook), and any new vtable op added to `nros-platform-api`/`-cffi`.
       _release`); extracted the no_std panic handler. Same on `nros-cpp/src`. No
       `#[cfg(feature="platform-*")]` left in either src; no new platform-api op
       needed (vtable ops already existed). nros-c tests 71 pass; both build green.
-- [x] **Phase 2 — retire features. DONE (2026-06-14).** `nros-c`/`nros-cpp`
-      dropped all `platform-*` + concrete-`rmw-*` features + concrete-backend
-      deps; functional-only. grep clean; builds + 71 tests pass. Their corrosion
-      CMakeLists map platform → capability features. **Downstream break tracked
-      as issue #61:** `zephyr/CMakeLists.txt` still passes the removed features
-      (needs the feature-string swap + an XRCE staticlib block; requires a
-      west/QEMU build to validate — Zephyr already red #58/#59).
+- [~] **Phase 2 — retire features. SUPERSEDED by 241.D3-rev (2026-06-14).**
+      C3.2 (`d44a555c1`) dropped `nros-c`/`nros-cpp`'s `platform-*` +
+      concrete-`rmw-*` features + backend deps to make them fully agnostic. It
+      was **DROPPED during the rebase onto a main that had landed Phase
+      241.D3-rev** (single-runtime umbrella), which deliberately RE-COUPLES the
+      C/C++ libs to ONE board-selected backend rlib (`rmw-zenoh = ["rmw-cffi",
+      "dep:nros-rmw-zenoh"]` + `src/rmw_backend.rs` force-link) to kill the
+      multi-staticlib double-cffi-instance hazard. **Reconciliation:** the C/C++
+      **staticlib root** is the sanctioned place to bundle the backend (one
+      `libnros_c.a` = C ABI + cffi + backend → one `std`/`REGISTRY`/zenoh-pico);
+      its `platform-*`/`rmw-*` features are the **board-driven selectors** for
+      that bundled backend (the #60 staticlib-root exception), NOT user leakage.
+      Phase-1's agnostic `src/lib.rs` (no `platform-*` cfg) STANDS — D3 carries
+      it via the `global-allocator`/`critical-section` vtable routing. Net: the
+      C/C++ libs follow D3 on `main`; only the umbrella `nros` + the example/
+      codegen layer (C5/C6) go feature-agnostic. **Issue #61 closed `wontfix`**
+      (its premise — features removed — is void; they remain on `main`).
 
   *(superseded checklist item kept for history:)*
 - [ ] **Phase 2 (Wave 2, after C5) — retire features.** Drop `platform-*` +
@@ -252,8 +264,10 @@ nros keeps its features for now):**
 - [ ] **C6b — Migrate C/C++/mixed workspace examples** (drop `DEPLOY native` +
       CMake rmw/platform pins → board/config). (#60 T5)
 - [ ] **C6c — Migrate embedded examples** (qemu-*/stm32f4 node pkgs). (#60 T5)
-- [ ] **C3.2 — Retire nros-c/nros-cpp features** (their C/C++ selection now flows
-      from board/CMake, not `nros/platform-*`). Owns: nros-c + nros-cpp.
+- [~] **C3.2 — Retire nros-c/nros-cpp features. SUPERSEDED by 241.D3-rev** — the
+      C/C++ staticlib root bundles one board-selected backend (single-runtime
+      umbrella), so it keeps its `platform-*`/`rmw-*` selectors. See the C3
+      section. Owns: nros-c + nros-cpp.
 
 **Wave 2c (cleanup — AFTER every consumer migrated):**
 - [ ] **C5c — Drop nros's `rmw-*`/`platform-*` features + concrete-backend deps.**
