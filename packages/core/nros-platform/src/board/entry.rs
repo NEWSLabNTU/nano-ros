@@ -52,6 +52,11 @@ pub struct DeployOverlay {
     pub netmask: Option<[u8; 4]>,
     /// `domain_id = 0` — ROS 2 domain. `None` → keep the board default.
     pub domain_id: Option<u32>,
+    /// `transport = "xrce"` — select a board custom transport that must be
+    /// installed BEFORE the linked RMW registers (e.g. an XRCE-over-UART vtable).
+    /// `None` → the board's default transport. Honored by
+    /// [`BoardEntry::setup_transport`] (phase-244.D1).
+    pub transport: Option<&'static str>,
 }
 
 /// Per-board boot driver.
@@ -94,4 +99,14 @@ pub trait BoardEntry: super::Board {
     {
         Self::run(setup)
     }
+
+    /// Install a board custom transport selected by `deploy.transport`, BEFORE
+    /// the linked RMW registers (phase-244.D1). `nros::main!()` calls this on
+    /// `target_os = "none"` immediately before `__register_linked_rmw()` — the
+    /// ordering an XRCE-over-UART vtable needs (`set_custom_transport_ops` must
+    /// precede `register`). The default body is a no-op (the board's built-in
+    /// transport needs no pre-register install); boards with a feature-gated
+    /// custom transport (e.g. mps2-an385 `xrce-transport`) override it. Failures
+    /// are the board's to handle (it owns `exit_failure`).
+    fn setup_transport(_deploy: &DeployOverlay) {}
 }

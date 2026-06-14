@@ -854,6 +854,15 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // `zephyr_component_main!`. Hosted targets auto-register via
                 // linkme / `.init_array`, so the call is gated to
                 // `target_os = "none"`.
+                // Phase 244.D1 — install a board custom transport (e.g. the
+                // XRCE-over-UART vtable) selected by `deploy.transport`, BEFORE
+                // the RMW registers. XRCE's `set_custom_transport_ops` must
+                // precede `register`; the default `setup_transport` is a no-op so
+                // every other board/deploy is byte-identical.
+                #[cfg(target_os = "none")]
+                <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::setup_transport(
+                    &#deploy_overlay_ts,
+                );
                 #[cfg(target_os = "none")]
                 ::nros::__register_linked_rmw();
                 #entry_call
@@ -1500,6 +1509,7 @@ struct DeployOverlayLit {
     gateway: Option<[u8; 4]>,
     netmask: Option<[u8; 4]>,
     domain_id: Option<u32>,
+    transport: Option<String>,
 }
 
 /// Parse a dotted IPv4 string (`"10.0.2.15"`) into 4 octets. Returns `None`
@@ -1559,6 +1569,10 @@ fn read_deploy_overlay(cargo_toml: &Path, board_key: &str) -> DeployOverlayLit {
             .get("domain_id")
             .and_then(|x| x.as_integer())
             .and_then(|i| u32::try_from(i).ok()),
+        transport: block
+            .get("transport")
+            .and_then(|x| x.as_str())
+            .map(str::to_string),
     }
 }
 
@@ -1582,6 +1596,10 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
         Some(d) => quote! { ::core::option::Option::Some(#d) },
         None => quote! { ::core::option::Option::None },
     };
+    let transport = match &lit.transport {
+        Some(s) => quote! { ::core::option::Option::Some(#s) },
+        None => quote! { ::core::option::Option::None },
+    };
     quote! {
         ::nros::__macro_support::nros_platform::DeployOverlay {
             locator: #locator,
@@ -1589,6 +1607,7 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
             gateway: #gateway,
             netmask: #netmask,
             domain_id: #domain_id,
+            transport: #transport,
         }
     }
 }

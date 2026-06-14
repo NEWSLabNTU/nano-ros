@@ -166,4 +166,26 @@ impl BoardEntry for Mps2An385 {
     {
         boot(config_with_overlay(deploy), setup)
     }
+
+    /// Phase-244.D1 — install the XRCE-over-UART custom transport when the
+    /// deploy overlay requests `transport = "xrce"`. `nros::main!()` calls this
+    /// immediately before `__register_linked_rmw()`, so the vtable is in place
+    /// before the XRCE backend registers (the ordering `set_custom_transport_ops`
+    /// requires). Wraps the board's shared CMSDK UART0 (`framing = true` selects
+    /// XRCE HDLC framing for the byte-stream link). No-op without the
+    /// `xrce-transport` feature or for any other `transport` value.
+    fn setup_transport(deploy: &DeployOverlay) {
+        #[cfg(feature = "xrce-transport")]
+        if deploy.transport == Some("xrce") {
+            let ops = crate::xrce_transport::xrce_transport_ops();
+            // SAFETY: `ops`' fn pointers are static; XRCE's custom-transport
+            // contract (no concurrent read/write, no ISR invocation) is met by
+            // the single-threaded bare-metal executor.
+            if unsafe { nros_rmw_xrce_cffi::set_custom_transport_ops(&ops, true) }.is_err() {
+                Mps2An385::println(format_args!("XRCE custom transport install failed"));
+                Mps2An385::exit_failure();
+            }
+        }
+        let _ = deploy;
+    }
 }
