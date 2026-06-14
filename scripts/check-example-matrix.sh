@@ -16,15 +16,11 @@ allowed_roots=(
   "examples/qemu-esp32-baremetal/rust/zenoh"
   "examples/stm32f4/rust/zenoh"
 
-  # Phase 118.H carve-outs. px4's sub-dir axis is the transport integration
-  # CASE (uORB vs XRCE — PX4's two native messaging surfaces), not the retired
-  # per-RMW layout, so these legitimately keep a `<name>` matching an RMW token.
-  # `examples/px4/rust/xrce` (the PX4 SITL XRCE e2e, commit 1031f07e4) was missed
-  # when it landed — see docs/issues/0051. Add a cpp/xrce line if/when that case
-  # lands.
-  "examples/px4/cpp/uorb"
-  "examples/px4/rust/uorb"
-  "examples/px4/rust/xrce"
+  # px4 (Phase 118.H) is exempted STRUCTURALLY in is_allowed(), not per-case —
+  # see docs/issues/archived/0051. px4 is the one platform whose `examples/px4/<lang>/<name>`
+  # sub-dir axis is a transport integration CASE (uORB vs XRCE — PX4's two native
+  # messaging surfaces), not the retired per-RMW layout. New px4 transport cases
+  # therefore need NO carve-out line here.
 
   # One-board Zephyr CycloneDDS reference, documented in CLAUDE.md.
   # Both languages carve out — the rust sibling was missed when the cpp one
@@ -35,6 +31,13 @@ allowed_roots=(
 
 is_allowed() {
   local path="$1"
+  # px4 transport-axis exemption (issue #51): `examples/px4/<lang>/<transport>`
+  # (uORB / XRCE) is px4's legitimate integration-case axis, not the retired
+  # per-RMW layout — exempt the whole platform so new transport cases need no
+  # per-case carve-out line.
+  if [[ "$path" == examples/px4/* ]]; then
+    return 0
+  fi
   local allowed
   for allowed in "${allowed_roots[@]}"; do
     if [[ "$path" == "$allowed" ]]; then

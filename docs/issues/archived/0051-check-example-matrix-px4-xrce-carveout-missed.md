@@ -1,10 +1,11 @@
 ---
 id: 51
 title: check-example-matrix flags examples/px4/rust/xrce — px4 transport carve-out missed when the XRCE e2e landed
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [phase-241]
+resolved_in: Phase 241 W11 follow-up
 ---
 
 ## Why
@@ -49,6 +50,9 @@ platform whose sub-dir axis is legitimately a transport case, not an RMW.
 
 ## Status
 
-Carve-out added 2026-06-14 — see the `scripts/check-example-matrix.sh` change in
-the same series. The structural special-case (px4 transport axis) remains open as
-tech-debt.
+RESOLVED. Two steps: (1) the immediate carve-out line `examples/px4/rust/xrce`
+(2026-06-14); (2) the structural fix — `is_allowed()` in
+`scripts/check-example-matrix.sh` now exempts the whole `examples/px4/*` platform
+(px4's `<lang>/<transport>` sub-dir axis is a legitimate uORB/XRCE integration
+case, not the retired per-RMW layout), so the three per-case px4 carve-out lines
+are removed and future px4 transport cases need none. `check-example-matrix` green.

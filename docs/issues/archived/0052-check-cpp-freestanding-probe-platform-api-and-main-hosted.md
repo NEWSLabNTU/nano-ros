@@ -1,10 +1,11 @@
 ---
 id: 52
 title: check-cpp freestanding C++ probe — missing nros-platform-api include + main.hpp uses hosted std::printf under -ffreestanding
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [phase-241, issue-0051]
+resolved_in: Phase 241 W11 follow-up
 ---
 
 ## Why
@@ -49,5 +50,9 @@ NOT surface in this probe (the C++ headers don't pull posix.h here).
 
 ## Status
 
-Fixed 2026-06-14 — `justfile` `check-cpp` recipe (platform-api `-I` + hosted
-main.hpp probe). check-cpp passes.
+RESOLVED. The active failures are fixed in the `justfile` `check-cpp` recipe
+(platform-api `-I` + hosted main.hpp probe); check-cpp passes. The "out of scope /
+harder" `_Atomic` sibling is now MOOT: phase-248's platform-vtable refactor
+(`df324f542` C3 / `6ddba94e0` C2) removed the `nros-c platform/posix.h` header that
+used C11 `_Atomic`/`atomic_load_explicit` — no platform header carries `_Atomic`
+anymore, so there is nothing left to fail the g++ umbrella-header check.
