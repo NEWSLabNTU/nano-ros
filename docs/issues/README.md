@@ -52,6 +52,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 53 | mixed-RMW bridge has no stock-cyclonedds variant + no gateway book recipe (211.I) | tech-debt | testing | [0053-cyclonedds-bridge-variant-and-gateway-recipe.md](0053-cyclonedds-bridge-variant-and-gateway-recipe.md) |
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
 | 62 | D3 completion — one registration path + generated link-manifest + weak-default deletion (rides single-runtime) | tech-debt | build | [0062-d3-completion-one-registration-path-and-link-manifest.md](0062-d3-completion-one-registration-path-and-link-manifest.md) |
+| 64 | CI red on main — stale example Cargo.locks (nros-core 0.1.0) trip ABI guard + clippy empty-line in nros/lib.rs | bug | build | [0064-ci-red-stale-example-locks-abi-guard-and-clippy-empty-line.md](0064-ci-red-stale-example-locks-abi-guard-and-clippy-empty-line.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#60** —
 platform/RMW-agnosticism audit closed by phase-248 (all four fix-path tiers
