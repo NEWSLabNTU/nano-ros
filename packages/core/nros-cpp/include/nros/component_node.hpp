@@ -64,7 +64,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <new>          // placement new for the NROS_COMPONENT factory
+#include <new>         // placement new for the NROS_COMPONENT factory
 #include <type_traits> // enable_if / is_std_vector split for the param facade (C++14 freestanding subset)
 
 #include "nros/component.hpp" // bind_subscription / bind_timer (the no-alloc trampolines)
@@ -255,8 +255,7 @@ class ComponentNode {
     ///
     /// Call as `create_timer<Self, &Self::tick>(period_ms)`, or use
     /// `NROS_CREATE_TIMER(period_ms, tick)` inside the derived ctor.
-    template <class C, void (C::*Method)()>
-    void create_timer(uint64_t period_ms) {
+    template <class C, void (C::*Method)()> void create_timer(uint64_t period_ms) {
         if (timer_count_ >= NROS_COMPONENT_MAX_TIMERS) {
             set_error("create_timer (timer pool exhausted)", -1);
             return;
@@ -435,15 +434,15 @@ template <class T> struct strip_ref<T&> {
 /// `topic`. Derives `Self` from `this` so only the message type, method, and
 /// topic are spelled.
 #define NROS_SUBSCRIBE(Msg, method, topic)                                                         \
-    this->template create_subscription<                                                            \
-        Msg, ::nros::detail::strip_ref<decltype(*this)>::type,                                     \
-        &::nros::detail::strip_ref<decltype(*this)>::type::method>((topic))
+    this->template create_subscription<Msg, ::nros::detail::strip_ref<decltype(*this)>::type,      \
+                                       &::nros::detail::strip_ref<decltype(*this)>::type::method>( \
+        (topic))
 
 /// Inside a `ComponentNode` ctor: create a repeating timer calling
 /// `void Self::method()` every `period_ms`. Derives `Self` from `this`.
 #define NROS_CREATE_TIMER(period_ms, method)                                                       \
     this->template create_timer<::nros::detail::strip_ref<decltype(*this)>::type,                  \
-                                &::nros::detail::strip_ref<decltype(*this)>::type::method>(         \
+                                &::nros::detail::strip_ref<decltype(*this)>::type::method>(        \
         (period_ms))
 
 // -- NROS_COMPONENT(Class) ---------------------------------------------------

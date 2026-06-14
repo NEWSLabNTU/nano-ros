@@ -92,16 +92,17 @@ impl NodeWake {
         // capacity in bytes is `u64s * 8 >= size`; the data
         // pointer inherits 8-byte alignment from `Vec<u64>`'s
         // allocator request.
-        let raw = alloc::boxed::Box::into_raw(boxed) as *mut [u8];
+        // Take the data pointer as a THIN `*mut u8` (not `as *mut [u8]`, which
+        // would keep the `u64s` element count for a u8 slice — wrong length, and
+        // trips `clippy::cast_slice_different_sizes`). The fat slice is rebuilt
+        // below with the correct byte length.
+        let raw = alloc::boxed::Box::into_raw(boxed) as *mut u8;
         // SAFETY: `raw` came from `Box::<[u64]>::into_raw`; we
         // re-box as `Box<[u8]>` with the same total byte length.
         // The allocator only cares about the total size + the
         // pointer originally returned, both preserved.
         let storage: alloc::boxed::Box<[u8]> = unsafe {
-            alloc::boxed::Box::from_raw(core::ptr::slice_from_raw_parts_mut(
-                raw as *mut u8,
-                u64s * 8,
-            ))
+            alloc::boxed::Box::from_raw(core::ptr::slice_from_raw_parts_mut(raw, u64s * 8))
         };
         let ptr = storage.as_ptr() as *mut c_void;
         // SAFETY: `ptr` references at least `size` bytes aligned

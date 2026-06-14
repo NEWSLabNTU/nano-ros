@@ -72,7 +72,7 @@ uint64_t nros_platform_clock_ms(void) {
     if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
         return 0;
     }
-    return (uint64_t) ts.tv_sec * 1000ULL + (uint64_t) ts.tv_nsec / 1000000ULL;
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
 }
 
 uint64_t nros_platform_clock_us(void) {
@@ -80,7 +80,7 @@ uint64_t nros_platform_clock_us(void) {
     if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
         return 0;
     }
-    return (uint64_t) ts.tv_sec * 1000000ULL + (uint64_t) ts.tv_nsec / 1000ULL;
+    return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
 }
 
 /* ============================================================================
@@ -93,14 +93,14 @@ uint64_t nros_platform_clock_us(void) {
  * link failure.
  * ==========================================================================*/
 
-void *nros_platform_alloc(size_t size) {
+void* nros_platform_alloc(size_t size) {
     if (size == 0) {
         return NULL;
     }
     return malloc(size);
 }
 
-void *nros_platform_realloc(void *ptr, size_t size) {
+void* nros_platform_realloc(void* ptr, size_t size) {
     if (size == 0) {
         free(ptr);
         return NULL;
@@ -108,7 +108,7 @@ void *nros_platform_realloc(void *ptr, size_t size) {
     return realloc(ptr, size);
 }
 
-void nros_platform_dealloc(void *ptr) {
+void nros_platform_dealloc(void* ptr) {
     free(ptr);
 }
 
@@ -119,15 +119,19 @@ void nros_platform_dealloc(void *ptr) {
 #include <malloc.h>
 size_t nros_platform_heap_used_bytes(void) {
     struct mallinfo2 mi = mallinfo2();
-    return (size_t) mi.uordblks;
+    return (size_t)mi.uordblks;
 }
 size_t nros_platform_heap_total_bytes(void) {
     struct mallinfo2 mi = mallinfo2();
-    return (size_t) (mi.arena + mi.hblkhd);
+    return (size_t)(mi.arena + mi.hblkhd);
 }
 #else
-size_t nros_platform_heap_used_bytes(void) { return 0u; }
-size_t nros_platform_heap_total_bytes(void) { return 0u; }
+size_t nros_platform_heap_used_bytes(void) {
+    return 0u;
+}
+size_t nros_platform_heap_total_bytes(void) {
+    return 0u;
+}
 #endif
 
 /* ============================================================================
@@ -142,8 +146,8 @@ size_t nros_platform_heap_total_bytes(void) { return 0u; }
 
 void nros_platform_sleep_us(size_t us) {
     struct timespec ts = {
-        .tv_sec  = (time_t) (us / 1000000),
-        .tv_nsec = (long)   ((us % 1000000) * 1000),
+        .tv_sec = (time_t)(us / 1000000),
+        .tv_nsec = (long)((us % 1000000) * 1000),
     };
     while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {
         /* resume with the remaining time written back into ts */
@@ -188,13 +192,21 @@ static uint64_t rng_next(void) {
     return x;
 }
 
-uint8_t  nros_platform_random_u8(void)  { return (uint8_t)  rng_next(); }
-uint16_t nros_platform_random_u16(void) { return (uint16_t) rng_next(); }
-uint32_t nros_platform_random_u32(void) { return (uint32_t) rng_next(); }
-uint64_t nros_platform_random_u64(void) { return rng_next(); }
+uint8_t nros_platform_random_u8(void) {
+    return (uint8_t)rng_next();
+}
+uint16_t nros_platform_random_u16(void) {
+    return (uint16_t)rng_next();
+}
+uint32_t nros_platform_random_u32(void) {
+    return (uint32_t)rng_next();
+}
+uint64_t nros_platform_random_u64(void) {
+    return rng_next();
+}
 
-void nros_platform_random_fill(void *buf, size_t len) {
-    uint8_t *p = (uint8_t *) buf;
+void nros_platform_random_fill(void* buf, size_t len) {
+    uint8_t* p = (uint8_t*)buf;
     while (len >= 8) {
         uint64_t v = rng_next();
         memcpy(p, &v, 8);
@@ -218,7 +230,7 @@ uint64_t nros_platform_time_now_ms(void) {
     if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
         return 0;
     }
-    return (uint64_t) ts.tv_sec * 1000ULL + (uint64_t) ts.tv_nsec / 1000000ULL;
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
 }
 
 uint32_t nros_platform_time_since_epoch_secs(void) {
@@ -226,7 +238,7 @@ uint32_t nros_platform_time_since_epoch_secs(void) {
     if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
         return 0;
     }
-    return (uint32_t) ts.tv_sec;
+    return (uint32_t)ts.tv_sec;
 }
 
 uint32_t nros_platform_time_since_epoch_nanos(void) {
@@ -234,7 +246,7 @@ uint32_t nros_platform_time_since_epoch_nanos(void) {
     if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
         return 0;
     }
-    return (uint32_t) ts.tv_nsec;
+    return (uint32_t)ts.tv_nsec;
 }
 
 /* ============================================================================
@@ -247,42 +259,41 @@ uint32_t nros_platform_time_since_epoch_nanos(void) {
  * loop.
  * ==========================================================================*/
 
-int8_t nros_platform_task_init(void *task, void *attr,
-                               void *(*entry)(void *), void *arg) {
-    (void) attr;
+int8_t nros_platform_task_init(void* task, void* attr, void* (*entry)(void*), void* arg) {
+    (void)attr;
     if (task == NULL || entry == NULL) {
         return -1;
     }
-    return pthread_create((pthread_t *) task, NULL, entry, arg) == 0 ? 0 : -1;
+    return pthread_create((pthread_t*)task, NULL, entry, arg) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_task_join(void *task) {
+int8_t nros_platform_task_join(void* task) {
     if (task == NULL) {
         return -1;
     }
-    return pthread_join(*(pthread_t *) task, NULL) == 0 ? 0 : -1;
+    return pthread_join(*(pthread_t*)task, NULL) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_task_detach(void *task) {
+int8_t nros_platform_task_detach(void* task) {
     if (task == NULL) {
         return -1;
     }
-    return pthread_detach(*(pthread_t *) task) == 0 ? 0 : -1;
+    return pthread_detach(*(pthread_t*)task) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_task_cancel(void *task) {
+int8_t nros_platform_task_cancel(void* task) {
     if (task == NULL) {
         return -1;
     }
-    return pthread_cancel(*(pthread_t *) task) == 0 ? 0 : -1;
+    return pthread_cancel(*(pthread_t*)task) == 0 ? 0 : -1;
 }
 
 void nros_platform_task_exit(void) {
     pthread_exit(NULL);
 }
 
-void nros_platform_task_free(void **task) {
-    (void) task;  /* storage is caller-owned — nothing to free */
+void nros_platform_task_free(void** task) {
+    (void)task; /* storage is caller-owned — nothing to free */
 }
 
 /* ============================================================================
@@ -292,37 +303,37 @@ void nros_platform_task_free(void **task) {
  * critical region, or a simple test-and-set spinlock.
  * ==========================================================================*/
 
-int8_t nros_platform_mutex_init(void *m) {
-    return (m && pthread_mutex_init((pthread_mutex_t *) m, NULL) == 0) ? 0 : -1;
+int8_t nros_platform_mutex_init(void* m) {
+    return (m && pthread_mutex_init((pthread_mutex_t*)m, NULL) == 0) ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_drop(void *m) {
-    return (m && pthread_mutex_destroy((pthread_mutex_t *) m) == 0) ? 0 : -1;
+int8_t nros_platform_mutex_drop(void* m) {
+    return (m && pthread_mutex_destroy((pthread_mutex_t*)m) == 0) ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_lock(void *m) {
-    return (m && pthread_mutex_lock((pthread_mutex_t *) m) == 0) ? 0 : -1;
+int8_t nros_platform_mutex_lock(void* m) {
+    return (m && pthread_mutex_lock((pthread_mutex_t*)m) == 0) ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_try_lock(void *m) {
+int8_t nros_platform_mutex_try_lock(void* m) {
     if (m == NULL) {
         return -1;
     }
-    int r = pthread_mutex_trylock((pthread_mutex_t *) m);
-    if (r == 0)     return 0;  /* acquired */
-    if (r == EBUSY) return 1;  /* held by someone else */
+    int r = pthread_mutex_trylock((pthread_mutex_t*)m);
+    if (r == 0) return 0;     /* acquired */
+    if (r == EBUSY) return 1; /* held by someone else */
     return -1;
 }
 
-int8_t nros_platform_mutex_unlock(void *m) {
-    return (m && pthread_mutex_unlock((pthread_mutex_t *) m) == 0) ? 0 : -1;
+int8_t nros_platform_mutex_unlock(void* m) {
+    return (m && pthread_mutex_unlock((pthread_mutex_t*)m) == 0) ? 0 : -1;
 }
 
 /* ============================================================================
  * Recursive mutex (same-thread re-entry; required by zenoh-pico)
  * ==========================================================================*/
 
-int8_t nros_platform_mutex_rec_init(void *m) {
+int8_t nros_platform_mutex_rec_init(void* m) {
     if (m == NULL) {
         return -1;
     }
@@ -331,37 +342,45 @@ int8_t nros_platform_mutex_rec_init(void *m) {
         return -1;
     }
     int8_t rc = -1;
-    if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE) == 0
-        && pthread_mutex_init((pthread_mutex_t *) m, &attr) == 0) {
+    if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE) == 0 &&
+        pthread_mutex_init((pthread_mutex_t*)m, &attr) == 0) {
         rc = 0;
     }
     pthread_mutexattr_destroy(&attr);
     return rc;
 }
 
-int8_t nros_platform_mutex_rec_drop(void *m)     { return nros_platform_mutex_drop(m); }
-int8_t nros_platform_mutex_rec_lock(void *m)     { return nros_platform_mutex_lock(m); }
-int8_t nros_platform_mutex_rec_try_lock(void *m) { return nros_platform_mutex_try_lock(m); }
-int8_t nros_platform_mutex_rec_unlock(void *m)   { return nros_platform_mutex_unlock(m); }
+int8_t nros_platform_mutex_rec_drop(void* m) {
+    return nros_platform_mutex_drop(m);
+}
+int8_t nros_platform_mutex_rec_lock(void* m) {
+    return nros_platform_mutex_lock(m);
+}
+int8_t nros_platform_mutex_rec_try_lock(void* m) {
+    return nros_platform_mutex_try_lock(m);
+}
+int8_t nros_platform_mutex_rec_unlock(void* m) {
+    return nros_platform_mutex_unlock(m);
+}
 
 /* ============================================================================
  * Condition variables (storage = pthread_cond_t)
  * ==========================================================================*/
 
-int8_t nros_platform_condvar_init(void *cv) {
-    return (cv && pthread_cond_init((pthread_cond_t *) cv, NULL) == 0) ? 0 : -1;
+int8_t nros_platform_condvar_init(void* cv) {
+    return (cv && pthread_cond_init((pthread_cond_t*)cv, NULL) == 0) ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_drop(void *cv) {
-    return (cv && pthread_cond_destroy((pthread_cond_t *) cv) == 0) ? 0 : -1;
+int8_t nros_platform_condvar_drop(void* cv) {
+    return (cv && pthread_cond_destroy((pthread_cond_t*)cv) == 0) ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_signal(void *cv) {
-    return (cv && pthread_cond_signal((pthread_cond_t *) cv) == 0) ? 0 : -1;
+int8_t nros_platform_condvar_signal(void* cv) {
+    return (cv && pthread_cond_signal((pthread_cond_t*)cv) == 0) ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_signal_all(void *cv) {
-    return (cv && pthread_cond_broadcast((pthread_cond_t *) cv) == 0) ? 0 : -1;
+int8_t nros_platform_condvar_signal_all(void* cv) {
+    return (cv && pthread_cond_broadcast((pthread_cond_t*)cv) == 0) ? 0 : -1;
 }
 
 /* ISR-safe signal. pthread_cond_signal is NOT async-signal-safe, so a real
@@ -370,18 +389,18 @@ int8_t nros_platform_condvar_signal_all(void *cv) {
  * bare-metal Cortex-M does an atomic flag store + __SEV(). For this reference
  * we alias to the thread-context signal (safe from any non-signal-handler
  * thread). */
-int8_t nros_platform_condvar_signal_from_isr(void *cv) {
+int8_t nros_platform_condvar_signal_from_isr(void* cv) {
     return nros_platform_condvar_signal(cv);
 }
 
-int8_t nros_platform_condvar_wait(void *cv, void *m) {
+int8_t nros_platform_condvar_wait(void* cv, void* m) {
     if (cv == NULL || m == NULL) {
         return -1;
     }
-    return pthread_cond_wait((pthread_cond_t *) cv, (pthread_mutex_t *) m) == 0 ? 0 : -1;
+    return pthread_cond_wait((pthread_cond_t*)cv, (pthread_mutex_t*)m) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime) {
+int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime) {
     if (cv == NULL || m == NULL) {
         return -1;
     }
@@ -395,14 +414,14 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime) {
     if (clock_gettime(CLOCK_REALTIME, &deadline) != 0) {
         return -1;
     }
-    deadline.tv_sec  += (time_t) (rel_ms / 1000);
-    deadline.tv_nsec += (long)   ((rel_ms % 1000) * 1000000);
+    deadline.tv_sec += (time_t)(rel_ms / 1000);
+    deadline.tv_nsec += (long)((rel_ms % 1000) * 1000000);
     if (deadline.tv_nsec >= 1000000000L) {
-        deadline.tv_sec  += 1;
+        deadline.tv_sec += 1;
         deadline.tv_nsec -= 1000000000L;
     }
-    int r = pthread_cond_timedwait((pthread_cond_t *) cv, (pthread_mutex_t *) m, &deadline);
-    if (r == 0)         return 0;
+    int r = pthread_cond_timedwait((pthread_cond_t*)cv, (pthread_mutex_t*)m, &deadline);
+    if (r == 0) return 0;
     if (r == ETIMEDOUT) return 1;
     return -1;
 }
@@ -422,21 +441,21 @@ typedef struct {
     sem_t sem;
 } nros_wake_t;
 
-int8_t nros_platform_wake_init(void *w) {
+int8_t nros_platform_wake_init(void* w) {
     if (w == NULL) {
         return -1;
     }
-    return sem_init(&((nros_wake_t *) w)->sem, 0, 0) == 0 ? 0 : -1;
+    return sem_init(&((nros_wake_t*)w)->sem, 0, 0) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_wake_drop(void *w) {
+int8_t nros_platform_wake_drop(void* w) {
     if (w == NULL) {
         return 0;
     }
-    return sem_destroy(&((nros_wake_t *) w)->sem) == 0 ? 0 : -1;
+    return sem_destroy(&((nros_wake_t*)w)->sem) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
+int8_t nros_platform_wake_wait_ms(void* w, uint32_t timeout_ms) {
     if (w == NULL) {
         return -1;
     }
@@ -444,43 +463,47 @@ int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
     if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
         return -1;
     }
-    uint64_t add_ns = (uint64_t) timeout_ms * 1000000ULL;
-    ts.tv_sec  += (time_t) (add_ns / 1000000000ULL);
-    ts.tv_nsec += (long)   (add_ns % 1000000000ULL);
+    uint64_t add_ns = (uint64_t)timeout_ms * 1000000ULL;
+    ts.tv_sec += (time_t)(add_ns / 1000000000ULL);
+    ts.tv_nsec += (long)(add_ns % 1000000000ULL);
     if (ts.tv_nsec >= 1000000000L) {
-        ts.tv_sec  += 1;
+        ts.tv_sec += 1;
         ts.tv_nsec -= 1000000000L;
     }
-    while (sem_timedwait(&((nros_wake_t *) w)->sem, &ts) != 0) {
+    while (sem_timedwait(&((nros_wake_t*)w)->sem, &ts) != 0) {
         if (errno == ETIMEDOUT) return 1;
-        if (errno == EINTR)     continue;
+        if (errno == EINTR) continue;
         return -1;
     }
     return 0;
 }
 
-int8_t nros_platform_wake_signal(void *w) {
+int8_t nros_platform_wake_signal(void* w) {
     if (w == NULL) {
         return -1;
     }
     /* Coalesce so the binary semaphore never exceeds 1. */
     int val = 0;
-    if (sem_getvalue(&((nros_wake_t *) w)->sem, &val) != 0) {
+    if (sem_getvalue(&((nros_wake_t*)w)->sem, &val) != 0) {
         return -1;
     }
     if (val > 0) {
         return 0;
     }
-    return sem_post(&((nros_wake_t *) w)->sem) == 0 ? 0 : -1;
+    return sem_post(&((nros_wake_t*)w)->sem) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_wake_signal_from_isr(void *w) {
+int8_t nros_platform_wake_signal_from_isr(void* w) {
     /* Hosted POSIX: ISR semantics not meaningful — alias to signal. */
     return nros_platform_wake_signal(w);
 }
 
-size_t nros_platform_wake_storage_size(void)  { return sizeof(nros_wake_t); }
-size_t nros_platform_wake_storage_align(void) { return _Alignof(nros_wake_t); }
+size_t nros_platform_wake_storage_size(void) {
+    return sizeof(nros_wake_t);
+}
+size_t nros_platform_wake_storage_align(void) {
+    return _Alignof(nros_wake_t);
+}
 
 /* ============================================================================
  * Critical section (Phase 121.9)
@@ -501,7 +524,7 @@ size_t nros_platform_wake_storage_align(void) { return _Alignof(nros_wake_t); }
  * ==========================================================================*/
 
 static pthread_mutex_t s_cs_mutex;
-static pthread_once_t  s_cs_once = PTHREAD_ONCE_INIT;
+static pthread_once_t s_cs_once = PTHREAD_ONCE_INIT;
 
 static void cs_init(void) {
     pthread_mutexattr_t attr;
@@ -518,7 +541,7 @@ uint32_t nros_platform_critical_section_acquire(void) {
 }
 
 void nros_platform_critical_section_release(uint32_t token) {
-    (void) token;
+    (void)token;
     pthread_mutex_unlock(&s_cs_mutex);
 }
 
@@ -532,35 +555,39 @@ void nros_platform_critical_section_release(uint32_t token) {
  * direct-writer POSIX port).
  * ==========================================================================*/
 
-static const char *severity_label(uint8_t s) {
+static const char* severity_label(uint8_t s) {
     switch (s) {
-    case 0: return "TRACE";
-    case 1: return "DEBUG";
-    case 2: return "INFO";
-    case 3: return "WARN";
-    case 4: return "ERROR";
-    case 5: return "FATAL";
-    default: return "?";
+    case 0:
+        return "TRACE";
+    case 1:
+        return "DEBUG";
+    case 2:
+        return "INFO";
+    case 3:
+        return "WARN";
+    case 4:
+        return "ERROR";
+    case 5:
+        return "FATAL";
+    default:
+        return "?";
     }
 }
 
 static pthread_mutex_t s_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void nros_platform_log_write(uint8_t severity,
-                             const uint8_t *name_ptr, uintptr_t name_len,
-                             const uint8_t *msg_ptr,  uintptr_t msg_len) {
+void nros_platform_log_write(uint8_t severity, const uint8_t* name_ptr, uintptr_t name_len,
+                             const uint8_t* msg_ptr, uintptr_t msg_len) {
     if (msg_ptr == NULL && msg_len > 0) {
         return;
     }
-    const char *label = severity_label(severity);
+    const char* label = severity_label(severity);
     pthread_mutex_lock(&s_log_mutex);
     if (name_ptr != NULL && name_len > 0) {
-        fprintf(stderr, "[%s] %.*s: %.*s\n", label,
-                (int) name_len, (const char *) name_ptr,
-                (int) msg_len,  (const char *) msg_ptr);
+        fprintf(stderr, "[%s] %.*s: %.*s\n", label, (int)name_len, (const char*)name_ptr,
+                (int)msg_len, (const char*)msg_ptr);
     } else {
-        fprintf(stderr, "[%s] %.*s\n", label,
-                (int) msg_len, (const char *) msg_ptr);
+        fprintf(stderr, "[%s] %.*s\n", label, (int)msg_len, (const char*)msg_ptr);
     }
     pthread_mutex_unlock(&s_log_mutex);
 }

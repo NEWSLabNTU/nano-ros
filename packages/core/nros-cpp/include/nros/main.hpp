@@ -1104,8 +1104,7 @@ class NuttxBoard {
         nros_board_network_wait();
 
 #ifdef NROS_NUTTX_ENTRY_DEBUG
-        ::printf("[nuttx-cpp] run: locator=%s domain=%d\n", locator,
-                      (int)NROS_ENTRY_DOMAIN_ID);
+        ::printf("[nuttx-cpp] run: locator=%s domain=%d\n", locator, (int)NROS_ENTRY_DOMAIN_ID);
 #endif
         // Compile-time domain id. `NROS_ENTRY_DOMAIN_ID` resolves from
         // `CONFIG_NROS_DOMAIN_ID` (else 0) — same macro ZephyrBoard uses.

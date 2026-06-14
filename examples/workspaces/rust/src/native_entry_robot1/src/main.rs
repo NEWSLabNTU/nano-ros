@@ -7,4 +7,7 @@
 //! `native_entry_robot2` bakes `robot2` (the listener); booting both as two
 //! processes is the multi-host runtime topology.
 
-nros::main!(launch = "demo_bringup:multihost.launch.xml", host = "robot1");
+nros::main!(
+    launch = "demo_bringup:multihost.launch.xml",
+    host = "robot1"
+);

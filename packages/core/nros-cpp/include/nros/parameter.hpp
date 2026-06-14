@@ -445,9 +445,7 @@ class ParameterServer {
     Result declare_impl(const char* name, const ::std::string& v) {
         return declare_impl(name, v.c_str());
     }
-    Result set_impl(const char* name, const ::std::string& v) {
-        return set_impl(name, v.c_str());
-    }
+    Result set_impl(const char* name, const ::std::string& v) { return set_impl(name, v.c_str()); }
     Result get_impl(const char* name, ::std::string& out) const {
         char buf[128];
         Result r(nros_param_get_string(&server_, name, buf, sizeof(buf)));

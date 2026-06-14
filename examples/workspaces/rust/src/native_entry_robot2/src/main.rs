@@ -7,4 +7,7 @@
 //! (the talker) as a second process to exercise the multi-host topology — the
 //! listener receives the talker's `/chatter` cross-process through `zenohd`.
 
-nros::main!(launch = "demo_bringup:multihost.launch.xml", host = "robot2");
+nros::main!(
+    launch = "demo_bringup:multihost.launch.xml",
+    host = "robot2"
+);

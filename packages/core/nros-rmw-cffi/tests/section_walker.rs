@@ -3,6 +3,14 @@
 //! Integration test (own binary) so the registry `static` and the
 //! walker's `WALKED` flag start fresh.
 //!
+//! Requires `linkme-register` (default-on): the test registers via
+//! `#[distributed_slice(RMW_INIT_ENTRIES)]`, which only exists when the
+//! `linkme_backed` module is compiled. Under `--no-default-features` that
+//! module is the empty stub and `RMW_INIT_ENTRIES` is a plain static, so the
+//! test cannot compile — gate the whole binary on the feature (phase-248 gated
+//! the slice but not this test).
+#![cfg(feature = "linkme-register")]
+//!
 //! The test installs two `RmwInitEntry` function pointers into
 //! `.nros_rmw_init` via the same `#[link_section]` mechanism backends
 //! use. The walker should discover both, call each once, and the
