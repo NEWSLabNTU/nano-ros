@@ -7,6 +7,22 @@ area: build
 related: [issue-0042, issue-0050, phase-241, phase-247]
 ---
 
+## Progress (2026-06-14)
+
+- **R1 — DONE.** Dispatch is data on `RmwDispatch` (`resolve_rmw()`), rendered to
+  `cmake/NanoRosRmwDispatch.cmake` (`nros_rmw_dispatch`), drift-guarded by
+  `rmw_cmake_dispatch_is_current`. The W11 synth (`NanoRosRuntimeCrate.cmake`) pulls its
+  cffi feature from it; the hardcoded backend→feature map is gone. The platform-specific
+  cyclonedds *link wiring* stays in cmake (keys off the manifest's `NROS_RMW_NEEDS_CXX_LINKER`
+  / `EXTRA_LINK_LIBS` when `NanoRosLink.cmake` is reworked under R2/R3).
+- **R2 — BLOCKED on R3, NOT a plain deletion.** Audit: the weak default and the cmake
+  stub are BOTH load-bearing — hosted needs the weak no-op to satisfy `nros_support_init`'s
+  *unconditional* call (the `.init_array` ctor does the real registration); bare-metal
+  startup does NOT walk `.init_array`, so the cmake strong stub is the *only* registration
+  path there. Deleting either breaks a path. R2 must follow the R3 one-trigger restructure
+  (a single guaranteed registration) before the weak default + stub can die. Also: preserve
+  the `nros_platform_log_{write,flush}` weak fallbacks living in the same TU.
+
 ## Why
 
 RFC-0042 §D3 has four goals. The **single shared runtime** model

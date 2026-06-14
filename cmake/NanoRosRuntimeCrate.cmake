@@ -23,20 +23,13 @@ if(DEFINED _NROS_RUNTIME_CRATE_INCLUDED)
 endif()
 set(_NROS_RUNTIME_CRATE_INCLUDED TRUE)
 
-# Map BACKEND -> nros-cpp cffi feature.
-function(_nros_runtime_backend_feature backend out_var)
-    if(backend STREQUAL "zenoh")
-        set(${out_var} "rmw-zenoh-cffi" PARENT_SCOPE)
-    elseif(backend STREQUAL "xrce")
-        set(${out_var} "rmw-xrce-cffi" PARENT_SCOPE)
-    elseif(backend STREQUAL "cyclonedds")
-        set(${out_var} "rmw-cyclonedds-cffi" PARENT_SCOPE)
-    else()
-        message(FATAL_ERROR
-            "nros_synth_runtime_umbrella: unknown BACKEND '${backend}' "
-            "(expected zenoh, xrce, or cyclonedds).")
-    endif()
-endfunction()
+# Phase 241 W13/R1 — the BACKEND → {cffi feature, rlib, extra link libs, needs-cxx}
+# dispatch is GENERATED from cargo-nano-ros `resolve_rmw()` (the RFC-0031 SSoT) into
+# `NanoRosRmwDispatch.cmake` (drift-guarded by `rmw_cmake_dispatch_is_current`). The
+# former hardcoded `_nros_runtime_backend_feature` map is replaced by the generated
+# `nros_rmw_dispatch(<rmw>)` so the synthesized runtime crate's cffi feature can never
+# drift from the Rust SSoT / the cmake link extras.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 
 # Map PLATFORM -> (nros-cpp platform feature ; std|alloc tier). Hosted workspaces only —
 # the runtime umbrella is a host/native-style staticlib (Corrosion). Embedded boards bake
@@ -96,7 +89,9 @@ function(nros_synth_runtime_umbrella)
         message(FATAL_ERROR "nros_synth_runtime_umbrella: NANO_ROS_ROOT not set.")
     endif()
 
-    _nros_runtime_backend_feature("${_NRR_BACKEND}" _backend_feat)
+    # W13/R1 — pull the cffi feature from the generated dispatch (SSoT: resolve_rmw).
+    nros_rmw_dispatch("${_NRR_BACKEND}")
+    set(_backend_feat "${NROS_RMW_UMBRELLA_CFFI_FEATURE}")
     _nros_runtime_platform_features("${_NRR_PLATFORM}" _plat_feats)
     set(_cpp_features "ros-humble" "${_backend_feat}" ${_plat_feats})
 

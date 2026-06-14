@@ -79,11 +79,24 @@ hazard cannot occur — there is one cffi instance, one backend closure.
 
 ### RMW backend dispatch
 
-| Backend | In the umbrella | Extra link |
-| --- | --- | --- |
-| zenoh     | `nros-rmw-zenoh` rlib dep (force-linked) | — |
-| xrce      | `nros-rmw-xrce-cffi` rlib dep (force-linked) | — |
-| cyclonedds| nothing (C++ lib linked separately) | `libnros_rmw_cyclonedds` + `libddsc` + **libstdc++** (incl. C) |
+**W13/R1 — this table is now GENERATED, not hand-maintained.** The per-backend dispatch
+(umbrella cffi feature, rlib dep, extra link libs, needs-C++-linker) is data on
+`RmwDispatch` in `cargo-nano-ros`'s `resolve_rmw()` (the RFC-0031 SSoT), rendered to
+`cmake/NanoRosRmwDispatch.cmake` (the `nros_rmw_dispatch(<rmw>)` function) and
+drift-guarded by the `rmw_cmake_dispatch_is_current` test. The W11 synthesized
+`nros_ws_runtime` crate pulls its nros-cpp cffi feature from `nros_rmw_dispatch` (no more
+hardcoded map in `NanoRosRuntimeCrate.cmake`). The table below mirrors that generated data:
+
+| Backend | umbrella cffi feature | rlib dep | extra link |
+| --- | --- | --- | --- |
+| zenoh     | `rmw-zenoh-cffi` | `nros-rmw-zenoh` (force-linked) | — |
+| xrce      | `rmw-xrce-cffi` | `nros-rmw-xrce-cffi` (force-linked) | — |
+| cyclonedds| `rmw-cyclonedds-cffi` | none (C++ lib linked separately) | `nros_rmw_cyclonedds` + `ddsc` + **stdc++** (incl. C; needs-cxx) |
+
+The cmake **link wiring** for cyclonedds (whole-archive, the `NROS_RMW_CYCLONEDDS_DDSC_LIBRARY`
+path, the per-OS `force_load`/`--whole-archive` flags) stays platform-specific in the root
+`CMakeLists.txt` / `NanoRosLink.cmake`; fully keying those off the manifest rides the R2/R3
+registration-path rework (which reworks `NanoRosLink.cmake` anyway).
 
 Embedded firmware (threadx/freertos/nuttx) already links a single cargo unit — unaffected.
 
@@ -328,16 +341,26 @@ remain — captured in [issue 0062](../issues/0062-d3-completion-one-registratio
 to land **on top of** this model (not a competing design). Summary so the seam is
 visible from here:
 
-- **R1 — dispatch table → generated data (bullet 2).** Emit `backend → {rlib dep,
-  extra link libs}` from `resolve_rmw()` (the RFC-0031 SSoT), consumed by both the
-  W11 synthesized `nros_ws_runtime/Cargo.toml` features and the cmake link extras
-  (the Cyclone `+libstdc++ even for C` locked choice becomes one generated entry).
-- **R2 — close 0050 W3.1 via the W11 ctor.** Once the synthesized-runtime
-  `.init_array` ctor (`nros_cpp_auto_register_backend`) guarantees registration,
-  the cmake `nros_app_register_backends` stub + the weak default in
-  `weak_register_backends.c` are redundant → delete → #48 weak-no-op hazard gone.
-  The phase-247 image gate asserts the symbol resolves strong, guarding it.
+- **R1 — dispatch table → generated data (bullet 2). DONE (2026-06-14).** The
+  per-backend dispatch is data on `RmwDispatch` in `resolve_rmw()` (the RFC-0031 SSoT),
+  rendered to `cmake/NanoRosRmwDispatch.cmake` (`nros_rmw_dispatch(<rmw>)`) and
+  drift-guarded by `rmw_cmake_dispatch_is_current`. `NanoRosRuntimeCrate.cmake` (the W11
+  synth) pulls its cffi feature from it — the hardcoded `_nros_runtime_backend_feature`
+  map is gone. The cmake cyclonedds **link wiring** (whole-archive / `force_load` /
+  `NROS_RMW_CYCLONEDDS_DDSC_LIBRARY` path) stays platform-specific; the manifest carries
+  the data (`NROS_RMW_NEEDS_CXX_LINKER` / `EXTRA_LINK_LIBS`) for it to key off when
+  `NanoRosLink.cmake` is reworked under R2/R3. See [RMW backend dispatch](#rmw-backend-dispatch).
+- **R2 — close 0050 W3.1. BLOCKED on R3 — NOT a plain deletion (audited 2026-06-14).**
+  The weak default and the cmake stub are BOTH load-bearing: hosted needs the weak no-op
+  to satisfy `nros_support_init`'s *unconditional* `nros_app_register_backends()` call
+  (the `.init_array` ctor does the real registration); **bare-metal startup does NOT walk
+  `.init_array`** (`weak_register_backends.c`'s own comment + memory
+  `freertos-entry-rmw-backend-link-register`), so the cmake strong stub is the *only*
+  registration path there. Deleting either breaks a path. R2 therefore requires the R3
+  one-trigger restructure first: a single *guaranteed* registration (drop the
+  unconditional call OR a strong ctor everywhere incl. bare-metal startup) before the
+  weak default + stub can die. The phase-247 image gate will catch a regression.
 - **R3 — one trigger (bullet 1, directional).** Fold stub + linkme into the ctor
   anchor; extend the per-configure synthesis to the single-example Entry pkg (the
   once-per-binary owner). Deferred per-entry risk noted in W11 — this is the
-  follow-on layer.
+  follow-on layer, and **R2 rides it** (see above).
