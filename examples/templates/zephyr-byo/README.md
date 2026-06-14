@@ -15,9 +15,9 @@ to *your* workspace by `nros setup` / `west patch`, never shipped pre-applied.
 nano-ros-app/            # this repo (the west manifest repo)
 ├── west.yml             # pins Zephyr (v3.7.0) + imports nano-ros
 └── app/                 # the application
-    ├── CMakeLists.txt   # find_package(Zephyr) + nros_generate_interfaces()
+    ├── CMakeLists.txt   # find_package(Zephyr) + nano_ros_node_register(TYPED C)
     ├── prj.conf         # CONFIG_NROS=y + zenoh RMW
-    └── src/main.c       # std_msgs/Int32 talker on /chatter
+    └── src/Talker.c     # std_msgs/Int32 talker on /chatter (typed C component)
 ```
 After `west update` the workspace gains `zephyr/` and `modules/nano-ros/`
 siblings — Zephyr's standard layout.
