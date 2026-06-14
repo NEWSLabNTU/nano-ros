@@ -21,20 +21,23 @@ crate-type = ["rlib", "staticlib"]
 
 [features]
 default = ["rmw-zenoh"]
-rmw-zenoh = ["nros/rmw-zenoh", "dep:nros-rmw-zenoh"]
-rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys"]
-rmw-xrce  = ["nros/rmw-xrce", "dep:nros-rmw-xrce-cffi", "dep:heapless"]
+# Phase 248 C6g — RMW is selected by config and the Zephyr board's CMake C-port
+# (zenoh-pico Zephyr module / Cyclone CMake) links the concrete backend, NOT a
+# Rust `nros rmw-*` dep. These rows are now inert build-target markers, kept so
+# the Zephyr `CMakeLists.txt` EXTRA_CARGO_ARGS `--features rmw-<x>` still
+# resolves; they no longer forward `nros rmw-*`. (#60 T5)
+rmw-zenoh = []
+rmw-cyclonedds = []
+rmw-xrce = []
 
 [dependencies]
 zephyr = "0.1.0"
 log = "0.4"
 
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "platform-zephyr"] }
-
-nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-zephyr", "ros-humble"], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
-heapless = { version = "0.8", optional = true }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+# Concrete platform vtable — the Zephyr board/CMake also links it; kept explicit
+# for the Rust link map. NOT the agnostic-forbidden `nros platform-*`.
+nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }
 
 std_msgs = { version = "*", default-features = false }
 

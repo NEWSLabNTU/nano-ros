@@ -35,9 +35,14 @@ crate-type = ["staticlib", "rlib"]
 
 [features]
 default = ["rmw-zenoh"]
-rmw-zenoh = ["nros/rmw-zenoh", "dep:nros-rmw-zenoh"]
-rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys"]
-rmw-xrce = ["nros/rmw-xrce", "dep:nros-rmw-xrce-cffi", "dep:heapless"]
+# Phase 248 C6g — RMW is selected by config and the Zephyr board's CMake C-port
+# (zenoh-pico Zephyr module / Cyclone CMake) links the concrete backend, NOT a
+# Rust `nros rmw-*` dep. These rows are now inert build-target markers, kept so
+# the Zephyr `CMakeLists.txt` EXTRA_CARGO_ARGS `--features rmw-<x>` still
+# resolves; they no longer forward `nros rmw-*`. (#60 T5)
+rmw-zenoh = []
+rmw-cyclonedds = []
+rmw-xrce = []
 
 # Entry pkg metadata — `deploy = "zephyr"` routes the `nros::main!()`
 # proc-macro onto the `Framework::Zephyr` emit branch and feeds
@@ -58,12 +63,14 @@ exec_depend = ["talker_pkg", "listener_pkg", "demo_bringup"]
 zephyr = "0.1.0"
 log = "0.4"
 
-# Single `nros` dep — `platform-zephyr` + `alloc` (no `std`; Zephyr is
-# a `no_std` target). RMW backend wired per build via the features above.
+# Agnostic `nros` dep — `alloc` (no `std`; Zephyr is a `no_std` target) +
+# `rmw-cffi` vtable + ROS edition. Phase 248 C6g: the concrete RMW backend is
+# linked by the Zephyr board's CMake C-port (zenoh-pico Zephyr module / Cyclone
+# CMake / Micro-XRCE) selected from `CONFIG_NROS_RMW_<X>`, NOT a Rust
+# `nros rmw-*` or `nros platform-*` feature.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-zephyr",
     "ros-humble",
 ] }
 
@@ -71,17 +78,9 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
 # the macro uses it for the carrier gate only, NOT BoardEntry).
 nros-board-zephyr = { path = "../../../../../packages/boards/nros-board-zephyr" }
 
-# Optional RMW backends — exactly one enabled per build (Kconfig overlay
-# drives the feature selection).
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = [
-    "platform-zephyr",
-    "ros-humble",
-], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
-
-# XRCE locator built from Kconfig at runtime via heapless::String.
-heapless = { version = "0.8", optional = true }
+# Concrete platform vtable — the Zephyr board/CMake also links it; kept explicit
+# for the Rust link map. NOT the agnostic-forbidden `nros platform-*`.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }
 
 # Node pkg rlibs (platform/RMW-agnostic after Phase 248 C6a) — the launch XML
 # names `talker` + `listener`, so the macro emits both `register` calls; the

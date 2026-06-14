@@ -26,18 +26,21 @@ crate-type = ["rlib", "staticlib"]
 
 [features]
 default = ["rmw-cyclonedds"]
-rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys"]
+# Phase 248 C6g — RMW is selected by config and the FVP board's CMake glue
+# (Cyclone DDS Zephyr module, `CONFIG_NROS_RMW_CYCLONEDDS=y`) links the concrete
+# backend, NOT a Rust `nros rmw-*` dep. This row is now an inert build-target
+# marker, kept so EXTRA_CARGO_ARGS `--features rmw-cyclonedds` still resolves;
+# it no longer forwards `nros rmw-*`. (#60 T5)
+rmw-cyclonedds = []
 
 [dependencies]
 zephyr = "0.1.0"
 log = "0.4"
 
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "platform-zephyr"] }
-
-# Cyclone DDS register-shim — pulls in the C++ backend's
-# `nros_rmw_cyclonedds_register` entry via the zephyr/CMakeLists.txt
-# glue (CONFIG_NROS_RMW_CYCLONEDDS=y from the board crate's default RMW).
-nros-rmw-cyclonedds-sys = { path = "../../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+# Concrete platform vtable — the Zephyr board/CMake also links it; kept explicit
+# for the Rust link map. NOT the agnostic-forbidden `nros platform-*`.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-zephyr"] }
 
 std_msgs = { version = "*", default-features = false }
 
