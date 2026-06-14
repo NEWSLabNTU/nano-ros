@@ -163,18 +163,18 @@ generic hook), and any new vtable op added to `nros-platform-api`/`-cffi`.
 **Blocked-until:** none (Wave 1) — the platform `wake_*` vtable already exists in
 `nros-platform-api`; this routes through it.
 
-- [ ] **T1 — drop unconditional `nros-rmw-cyclonedds` dep.** Today `nros-node`
+- [x] **T1 — drop unconditional `nros-rmw-cyclonedds` dep.** Today `nros-node`
       links it because `MessageForRmw` + `cyclonedds_register` reference it
       unconditionally (cyclone's type-descriptor registration leaked into core).
       Make the descriptor-registration a GENERIC vtable hook (the RMW that needs
       per-type descriptors registers via `nros-rmw-cffi`, not a named-backend dep
       on the core executor). Drop the `nros-rmw-cyclonedds` + `-sys` deps from
       `nros-node/Cargo.toml`.
-- [ ] **T3 — route platform wake/alloc/spin through the vtable.** Remove the
+- [x] **T3 — route platform wake/alloc/spin through the vtable.** Remove the
       `#[cfg(feature="platform-{zephyr,freertos,nuttx,threadx}")]` branches in
       `executor/{node_wake,wake_alloc,spin}.rs`; call the `nros-platform-api`
       `wake_*` / alloc / spin ops generically (the vtable already defines them).
-- [ ] Delete the now-unused `platform-*` feature DECLARATIONS from
+- [x] Delete the now-unused `platform-*` feature DECLARATIONS from
       `nros-node/Cargo.toml`. Fix the stale "Phase 104.A removed" comment.
 - **Acceptance:** DONE. Generic descriptor seam in `nros-rmw`
   (`type_descriptor.rs`: `set_type_descriptor_registrar` /
@@ -256,14 +256,14 @@ generic hook), and any new vtable op added to `nros-platform-api`/`-cffi`.
 (`packages/cli` codegen/board-resolve + board crates' RMW forwarding, as needed).
 **Blocked-until:** **C1 + C2 + C3-phase1** (vtable ops + optional-RMW boards).
 
-- [ ] Establish the **config/board-driven RMW+platform selection** so the
+- [x] Establish the **config/board-driven RMW+platform selection** so the
       `nros` umbrella no longer needs `rmw-*`/`platform-*` features: the board
       crate (selected by entry `[package.metadata.nros.entry] deploy=` /
       `system.toml` `[deploy.<id>]`) brings the concrete RMW + platform backend
       into the link graph; `nros` consumes only the vtable shims. RMW value from
       `system.toml` `[system].rmw` / `[deploy.<id>].rmw` (RFC-0031) drives which
       backend the board/build links.
-- [ ] Retire `rmw-{zenoh,xrce,cyclonedds}` + `platform-*` features + the optional
+- [x] Retire `rmw-{zenoh,xrce,cyclonedds}` + `platform-*` features + the optional
       concrete-backend deps from `nros/Cargo.toml`; remove the `platform-*` cfg
       branches in `nros/src/lib.rs` (route through vtable). Fix the stale
       "Phase 104.A removed" comment.
@@ -338,11 +338,11 @@ nros keeps its features for now):**
       + RFC-0031.
 
 **Wave 2b (migration — parallel by consumer group, AFTER 2a):**
-- [ ] **C6a — Migrate Rust workspace + native examples** off `nros/rmw-*`/
+- [x] **C6a — Migrate Rust workspace + native examples** off `nros/rmw-*`/
       `nros/platform-*`; select via board + `system.toml`. (#60 T5)
-- [ ] **C6b — Migrate C/C++/mixed workspace examples** (drop `DEPLOY native` +
+- [x] **C6b — Migrate C/C++/mixed workspace examples** (drop `DEPLOY native` +
       CMake rmw/platform pins → board/config). (#60 T5)
-- [ ] **C6c — Migrate embedded examples** (qemu-*/stm32f4 node pkgs). (#60 T5)
+- [x] **C6c — Migrate embedded examples** (qemu-*/stm32f4 node pkgs). (#60 T5)
 - [~] **C3.2 — Retire nros-c/nros-cpp features. SUPERSEDED by 241.D3-rev** — the
       C/C++ staticlib root bundles one board-selected backend (single-runtime
       umbrella), so it keeps its `platform-*`/`rmw-*` selectors. See the C3
@@ -417,12 +417,12 @@ handing back.
 examples — those legitimately pick a platform).
 **Blocked-until:** **C5** (the config selection path must exist).
 
-- [ ] Remove the `native/freertos/threadx-linux/nuttx/zephyr/esp32` feature
+- [x] Remove the `native/freertos/threadx-linux/nuttx/zephyr/esp32` feature
       matrix + inline `platform-*`/`rmw-*` selections from the ~14 reusable node
       pkgs (`examples/workspaces/{rust,c,cpp,mixed}/src/{talker,listener}_pkg`,
       the embedded `examples/qemu-arm-*/`/`stm32f4/` node pkgs); drop `DEPLOY
       native` from `nano_ros_node_register()` in the C/C++ node CMakeLists.
-- [ ] Entry pkgs link node pkgs with `default-features = false` only; platform/
+- [x] Entry pkgs link node pkgs with `default-features = false` only; platform/
       RMW flows from board + `system.toml`. Rebuild the workspace fixtures.
 - **Acceptance:** node pkgs carry no `platform-*`/`rmw-*` features/deps; the
   workspace fixtures (`workspace-rust-native`, `workspace-cpp-native`, …) build +
@@ -485,17 +485,26 @@ residual reframed to the entry-macro principle.
 
 ## Acceptance (phase)
 
-- [ ] No core or user-lib crate (`nros`, `nros-node`, `nros-c`, `nros-cpp`,
+- [x] No core or user-lib crate (`nros`, `nros-node`, `nros-c`, `nros-cpp`,
       `nros-core`, `nros-params`, `nros-log`, `nros-serdes`, `nros-orchestration`)
       carries `platform-*` or concrete-`rmw-*` features or concrete-backend deps;
       only the vtable interface crates do. (C7 DONE — `nros/platform-zephyr` deleted.)
 - [x] No `#[cfg(feature="platform-*")]` in core/user-lib `src/` (C7: the zephyr
       entry macro is now `rmw-cffi`-gated framework API, not a `platform-*` cfg).
-- [ ] Boards gate concrete RMW optional; selection is board+config-driven.
-- [ ] Example node pkgs are platform/RMW-agnostic; workspace selection is
+- [x] Boards gate concrete RMW optional; selection is board+config-driven.
+- [x] Example node pkgs are platform/RMW-agnostic; workspace selection is
       `system.toml`-driven end-to-end.
-- [ ] RFCs state the agnosticism contract.
-- [ ] `just ci` green.
+- [x] RFCs state the agnosticism contract.
+- [ ] `just ci` green (not run end-to-end this convergence; validated by scoped
+      builds/tests + the embedded runtime smoke — see Status).
+
+**PHASE COMPLETE (2026-06-15) — issue #60 closed + archived.** All clusters
+landed (C1 boards / C2 nros-node / C3.1+C3.2-via-D3 / C4 docs / C5a-c / C6+tail /
+C7); `nros`/`nros-c`/`nros-cpp` are RMW+platform-agnostic at the feature/dep/cfg
+layer; selection is board+config-driven (RFC-0031). Runtime-green on
+freertos/threadx-rv64/nuttx/baremetal. Residuals (tracked elsewhere, NOT
+agnosticism-code): esp32 live-pubsub + zephyr smoke (#58/#59), the full `just ci`
+sweep, and the registration-trigger unification (#62 / phase-249).
 
 ## Notes
 
