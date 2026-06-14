@@ -21,7 +21,7 @@ crate-type = ["rlib"]
 deploy = "qemu-mps2-an385"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 244.D1 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
 # impl so `nros::main!(deploy = "qemu-mps2-an385")` can drive this board.
 nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385", features = ["board-entry"] }

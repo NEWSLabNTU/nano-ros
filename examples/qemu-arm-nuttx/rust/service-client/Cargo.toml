@@ -10,7 +10,8 @@ description = "NuttX QEMU ARM AddTwoInts service client — Phase 212.L Componen
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-nuttx", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-nuttx"] }
 example_interfaces = { version = "*", default-features = false }
 
 [package.metadata.nros.node]

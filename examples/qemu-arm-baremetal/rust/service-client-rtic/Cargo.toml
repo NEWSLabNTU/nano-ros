@@ -24,7 +24,7 @@ nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an
 mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }
 
 # nros Executor API
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "ros-humble"] }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
 # trace. Remove after the gap is closed.
 

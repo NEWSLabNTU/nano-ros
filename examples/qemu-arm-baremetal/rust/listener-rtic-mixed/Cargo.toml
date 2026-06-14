@@ -30,7 +30,7 @@ domain_id = 0
 
 [dependencies]
 # nros Executor API — ffi-sync enables critical_section guards around FFI calls.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble", "ffi-sync"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "ffi-sync"] }
 
 # RTIC board Entry (RticBoardEntry) — owns the `#[rtic::app]` boot scaffold.
 nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385" }

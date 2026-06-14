@@ -26,7 +26,7 @@ nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an
 nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
 
 # nros Executor API (no link-tcp/link-udp — serial link comes from zpico-serial)
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "ros-humble"] }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
 
 # Generated message types (from package.xml via nros generate-rust)

@@ -30,7 +30,7 @@ nros-log = { path = "../../../../packages/core/nros-log", default-features = fal
 
 # nros Executor API (rmw-cffi-lean — pub-only, sub trampolines stay stubbed
 # at the cffi VTABLE level, see Phase 204.1.L). No link-tcp/link-udp — serial.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "ros-humble"] }
 
 # XRCE backend (Rust cffi shim around `nros-rmw-xrce`'s C library). Carries
 # `nros_rmw_xrce_register()` + the Phase 207.1 `set_custom_transport_ops`

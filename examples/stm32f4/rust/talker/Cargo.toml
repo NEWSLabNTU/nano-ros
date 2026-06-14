@@ -30,7 +30,7 @@ gateway = "192.168.1.1"
 netmask = "255.255.255.0"
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Phase 244.C5 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
 # impl so `nros::main!(deploy = "stm32f4")` can drive this board. Keeps the
 # board crate's existing ethernet + rmw-zenoh defaults.

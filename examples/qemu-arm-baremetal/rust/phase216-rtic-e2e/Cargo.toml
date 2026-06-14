@@ -16,7 +16,7 @@ deploy = "rtic-mps2-an385"
 node_pkgs = ["phase216_rtic_e2e_pkg"]
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 nros-board-rtic-mps2-an385 = { path = "../../../../packages/boards/nros-board-rtic-mps2-an385", features = ["e2e-synthetic-callback"] }
 phase216_rtic_e2e_pkg = { path = "../phase216_rtic_e2e_pkg" }
 mps2-an385-pac = { path = "../../../../packages/boards/mps2-an385-pac" }
