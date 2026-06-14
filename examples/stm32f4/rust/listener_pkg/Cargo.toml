@@ -26,7 +26,7 @@ crate-type = ["rlib"]
 # `generated/std_msgs/`. A follow-up to the C-wave migration adds the
 # real `std_msgs` dep (and the matching `[package.metadata.ament]`
 # depend rows) once the trampoline-registration story lands.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Phase 216.C.5 — `embassy-executor` brings in the `Spawner` type the
 # `ListenerState::spawner` field holds. The "spawn-from-sync escape"

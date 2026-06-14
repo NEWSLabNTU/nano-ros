@@ -37,7 +37,7 @@ crate-type = ["rlib"]
 # real `example_interfaces` dep (and the matching
 # `[package.metadata.ament]` depend rows) once the trampoline-
 # registration story lands.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Phase 216.B.5 — reuse the `PlaceholderAct` from the sibling
 # `action_server_pkg` so the client + server wire shapes stay aligned
@@ -45,7 +45,8 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # lands (follow-up B wave), both pkgs flip together. The dep also
 # pulls the same minimal compile surface the server pkg uses
 # (`nros` default-features = false + `alloc`/`rmw-cffi`/
-# `platform-bare-metal`/`ros-humble`).
+# `ros-humble`; the platform comes from the board the Entry pkg links,
+# Phase 248 C6c).
 stm32f4_action_server_pkg = { path = "../action_server_pkg" }
 
 # Phase 216.B.5 — `defmt` used by `register()` for the placeholder

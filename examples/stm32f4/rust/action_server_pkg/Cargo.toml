@@ -30,7 +30,7 @@ crate-type = ["rlib"]
 # A follow-up to the B-wave migration adds the real `example_interfaces`
 # dep (and the matching `[package.metadata.ament]` depend rows) once the
 # trampoline-registration story lands.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 
 # Phase 216.B.5 — unlike `listener_pkg`, this Node pkg does NOT depend
 # on `embassy-executor`. The RTIC Entry pkg's macro emit hands the

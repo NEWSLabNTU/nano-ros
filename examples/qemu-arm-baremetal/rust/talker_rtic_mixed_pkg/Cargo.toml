@@ -11,7 +11,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 # nros declarative-node API (RMW-agnostic application logic).
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board BoardEntry boot scaffold — this pkg only registers its Logger handle.
 nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
