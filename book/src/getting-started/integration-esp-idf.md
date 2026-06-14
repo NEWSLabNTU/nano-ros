@@ -137,7 +137,7 @@ all start the counter at 0 (Phase 208.D.9). If no `Published:` line:
 
 A complete reference app showing Wi-Fi + zenoh wiring on top of the
 component is not in-tree yet; the bare-metal
-[`examples/esp32/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32/rust/talker)
+[`examples/qemu-esp32-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-esp32-baremetal/rust/talker)
 is the closest worked example.
 
 ## Next

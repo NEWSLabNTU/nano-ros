@@ -26,9 +26,6 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 #[cfg(feature = "platform-stm32f4")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
-#[cfg(feature = "platform-esp32")]
-pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
-
 #[cfg(feature = "platform-esp32-qemu")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 

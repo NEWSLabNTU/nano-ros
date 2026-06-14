@@ -28,9 +28,9 @@
 //! table, the following sub-trees are deliberately skipped (with a
 //! `[SKIPPED]` reason so CI is auditable):
 //!
-//! * `examples/esp32/` and `examples/qemu-esp32-baremetal/` —
-//!   M.7 BLOCKED (ESP-IDF). M.7 fix landed at `e4204459a` (Arc swap)
-//!   but the sweep itself hasn't migrated the examples yet.
+//! * `examples/qemu-esp32-baremetal/` — M.7 BLOCKED (ESP-IDF). M.7
+//!   fix landed at `e4204459a` (Arc swap) but the sweep itself hasn't
+//!   migrated the example yet.
 //! * `examples/qemu-arm-baremetal/` — bare-metal Cortex-M3, not in
 //!   the M sweep table.
 //! * `examples/qemu-riscv64-threadx/` — M.6 covered `threadx-linux/`
@@ -162,10 +162,6 @@ const UNMIGRATED_LEAF_SUFFIXES: &[&str] = &[
 /// Trees explicitly NOT migrated; included here for documentation +
 /// to give a precise `[SKIPPED]` message.
 const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
-    (
-        "examples/esp32/",
-        "M.7 BLOCKED — ESP-IDF sweep not yet executed",
-    ),
     (
         "examples/qemu-esp32-baremetal/",
         "M.7 territory — ESP32 bare-metal, not in M sweep table",

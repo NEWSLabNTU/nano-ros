@@ -283,15 +283,19 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
   overlay end-to-end — the talker/listener now bind their DISTINCT overlay IPs
   (`10.0.2.50` / `.51`) instead of colliding on the board-default (the D2-partial
   bug). esp32 e2e is the platform-ci esp32 cell (workflow_dispatch run_e2e).
-  **Deferred — `nros-board-esp32` (WiFi hardware) only:** a *separate* board that
-  still impls only `BoardEntry::run` via `nros-board-bare-metal::run_entry`'s
-  `NullNodeRuntime` placeholder. Porting the mps2-an385 `boot()` pattern (real
-  executor) into it is feasible (~200 LoC; the working bringup already lives in the
-  legacy `node::run`), but UNVERIFIABLE here — no esp toolchain locally, no QEMU for
-  the WiFi board (qemu-esp32 is a distinct OpenETH board), no hardware e2e, and
-  `esp_wifi` (closed IDF) HAL is not stable for the bare-metal path. The
-  `examples/esp32/rust/*` are ESP-IDF staticlib stubs gated on the same. Left as
-  hardware-gated deferred work (issue-class: do not land blind).
+  **DROPPED — `nros-board-esp32` (WiFi hardware) + `examples/esp32/`:** ESP32 WiFi
+  cannot be emulated (Espressif QEMU models no WiFi radio/PHY — that's exactly why
+  the CI-runnable board uses OpenETH), so the WiFi path was hardware-only,
+  untestable in any emulator/CI, forever. Per maintainer decision (2026-06-14) it
+  was removed rather than carried as permanently-unverifiable deferred work:
+  deleted `packages/boards/nros-board-esp32`, `packages/platforms/nros-platform-esp32`,
+  `examples/esp32/`, the `esp32_idf_{talker,listener}_builds.rs` tests; removed the
+  `nros-platform` `platform-esp32` feature, the `"esp32"` board map (`board_path_for`
+  / `emit_rust` / `known_boards_csv` / `nros new`), the sdk-index `[board.esp32]`,
+  and all dangling fixtures/scripts/CI-glob/book refs. KEPT the QEMU OpenETH path
+  (`nros-board-esp32-qemu`, `examples/qemu-esp32-baremetal`) and the separate
+  generic `nros-platform-esp-idf` C-port platform (FreeRTOS+lwIP, QEMU-bootable —
+  not WiFi). Both workspaces stay `cargo metadata`-clean; no dangling refs.
   Original D2 plan:
 - [ ] **D2 (orig) — esp32 (esp32/rust 2 + qemu-esp32-baremetal 2, densest). Needs E4, E5.**
   Strip `#![no_std]`/`#![no_main]`/`#[entry]` (`talker/src/main.rs:19-20`),

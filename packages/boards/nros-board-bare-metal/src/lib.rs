@@ -82,7 +82,7 @@
 //! hosted unit tests of the family driver remain possible).
 //!
 //! Phase 212.N.7 migrates the existing direct-exec boards
-//! (`nros-board-mps2-an385`, `nros-board-stm32f4`, `nros-board-esp32`)
+//! (`nros-board-mps2-an385`, `nros-board-stm32f4`, `nros-board-esp32-qemu`)
 //! off the legacy driver and onto this crate.
 
 // `BoardEntry` is imported only so intra-doc links in this crate

@@ -460,18 +460,6 @@ def prerequisite_rows():
             "notes": "ESP32-C3 qemu/image packaging prerequisites for qemu-esp32 fixture tests",
         },
         {
-            "id": "esp32-manifest-env-preflight",
-            "platform": "esp32",
-            "kind": "preflight",
-            "lang": "rust",
-            "role": "nightly-build-std-env",
-            "dir": "examples/esp32/rust",
-            "build_root": "$RUSTUP_HOME/toolchains",
-            "scheduler": "just esp32 build-examples / just native build-examples",
-            "shared_mutation": "$RUSTUP_HOME/toolchains",
-            "notes": "manifest leaves require nightly RUSTUP_TOOLCHAIN plus SSID/PASSWORD env defaults",
-        },
-        {
             "id": "zephyr-sdk-prereq",
             "platform": "zephyr",
             "kind": "sdk-prereq",

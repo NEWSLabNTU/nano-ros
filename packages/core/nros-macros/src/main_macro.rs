@@ -1758,13 +1758,13 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
             "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
         }
         "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
-        "esp32" => "::nros_board_esp32::Esp32C3",
         // Phase 225.O — CI-runnable ESP32-C3 QEMU (OpenETH) board. esp32
         // is its own framework (esp-riscv-rt's `_start` requires the
         // esp-hal entry registration), routed via `framework_for` to the
         // `Framework::Esp32` emit shape (`#[esp_hal::main]`). The board
-        // ZST impls the real-runtime `BoardEntry`. Distinct from the
-        // WiFi `"esp32"` board above, which is `NullNodeRuntime`-only.
+        // ZST impls the real-runtime `BoardEntry`. (The WiFi-only `"esp32"`
+        // board was dropped 2026-06-14 — untestable in any emulator, see
+        // phase-244 D2.)
         "esp32-qemu" | "qemu-esp32-baremetal" => "::nros_board_esp32_qemu::Esp32QemuEntry",
         // Phase 225.P — Zephyr is its own framework (RTOS owns `main`).
         // `ZephyrBoard` impls `NetworkWait` only (NOT `BoardEntry`); the
@@ -1804,7 +1804,7 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
 }
 
 fn known_boards_csv() -> &'static str {
-    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32, esp32-qemu, zephyr, \
+    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, esp32-qemu, zephyr, \
      rtic-stm32f4, rtic-mps2-an385, qemu-mps2-an385, stm32f4, embassy-stm32f4"
 }
 

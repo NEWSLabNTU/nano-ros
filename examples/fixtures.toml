@@ -1661,26 +1661,13 @@ dir = "examples/qemu-riscv64-threadx/cpp/listener"
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
 
 # ===========================================================================
-# esp32 / qemu-esp32-baremetal — Rust (ESP32-C3, riscv32imc-unknown-none-elf).
-# Built with the workspace nightly (rust-src + build-std) — NOT xtensa/espup;
-# the recipe injects RUSTUP_TOOLCHAIN + SSID/PASSWORD (platform env). Plain
-# default builds; each example's .cargo/config.toml selects the riscv target.
-# skip_probe = true: the test-all staleness probe runs the default (stable)
-# toolchain and can't supply this nightly, so it would rebuild every preflight
-# (toolchain thrash). The build recipe + cargo incremental still self-heal.
+# qemu-esp32-baremetal — Rust (ESP32-C3, riscv32imc-unknown-none-elf).
+# Built with the workspace nightly (rust-src + build-std) — NOT xtensa/espup.
+# Plain default builds; each example's .cargo/config.toml selects the riscv
+# target. skip_probe = true: the test-all staleness probe runs the default
+# (stable) toolchain and can't supply this nightly, so it would rebuild every
+# preflight (toolchain thrash). The build recipe + cargo incremental self-heal.
 # ===========================================================================
-
-[[fixture]]
-platform = "esp32"
-lang = "rust"
-dir = "examples/esp32/rust/talker"
-skip_probe = true
-
-[[fixture]]
-platform = "esp32"
-lang = "rust"
-dir = "examples/esp32/rust/listener"
-skip_probe = true
 
 [[fixture]]
 id = "qemu-esp32-baremetal-talker"

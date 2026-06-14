@@ -1,9 +1,9 @@
 # ESP32 (esp-hal, bare-metal Rust)
 
-Single-node starter on ESP32-C3 / ESP32-S3 using the bare-metal
-`esp-hal` Rust path — no ESP-IDF. For the ESP-IDF component path
-(C / C++ apps), see [ESP32 (ESP-IDF
-component)](./integration-esp-idf.md).
+Single-node starter on ESP32-C3 using the bare-metal `esp-hal` Rust
+path — no ESP-IDF — running under the Espressif QEMU fork (OpenETH
+ethernet). For the ESP-IDF component path (C / C++ apps), see
+[ESP32 (ESP-IDF component)](./integration-esp-idf.md).
 
 > **Prereqs.** `nros setup esp32` is the single command that
 > prepares your machine. It fetches a prebuilt esp-hal toolchain and
@@ -44,8 +44,7 @@ rustup target add riscv32imc-unknown-none-elf      # ESP32-C3
 
 Each example is a standalone Cargo package targeting
 `riscv32imc-unknown-none-elf` (ESP32-C3). The board crate
-(`nros-board-esp32` or `nros-board-esp32-qemu`) wraps the wifi /
-esp-hal init.
+(`nros-board-esp32-qemu`) wraps the OpenETH / esp-hal init.
 
 > **ESP32-S3 (Xtensa) is NOT supported today.** The tutorial targets
 > the RISC-V ESP32-C3 only. Xtensa targets do not ship via `rustup`
@@ -53,11 +52,10 @@ esp-hal init.
 > board crate is RISC-V only; this gap is tracked separately.
 
 ```text
-examples/esp32/rust/talker/
+examples/qemu-esp32-baremetal/rust/talker/
 ├── Cargo.toml
 ├── .cargo/config.toml         # target = riscv32imc-unknown-none-elf
-│                              # runner = espflash flash --monitor
-├── nros.toml                  # wifi credentials + zenoh locator
+├── nros.toml                  # ethernet transport + zenoh locator
 ├── package.xml
 ├── generated/                 # codegen output — build.rs runs
 │                              #   `nros generate-rust` on first
@@ -65,35 +63,10 @@ examples/esp32/rust/talker/
 └── src/main.rs                # esp-hal init → nros_app_main
 ```
 
-The `Cargo.toml` pulls `nros-board-esp32` (real hardware) or
-`nros-board-esp32-qemu` (QEMU ESP32 / ESP32-C3 fork).
-
 ## Configure
 
-`nros.toml` carries the transport stack. Verbatim from the in-tree
-[`examples/esp32/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/esp32/rust/talker/nros.toml):
-
-```toml
-# nano-ros config (direct mode). See
-# docs/design/0004-configuration-and-transports.md.
-
-[node]
-domain_id = 0
-
-[[transport]]
-kind    = "wifi"
-ssid     = "MyNetwork"
-password = "secret"
-locator = "tcp/192.168.1.1:7447"
-```
-
-Wi-Fi credentials can also be supplied via `SSID=… PASSWORD=…`
-environment variables on the build command — preferred for real
-networks since the file ships in git history.
-
-For QEMU ESP32 (no real wifi) the example tree at
-`examples/qemu-esp32-baremetal/` uses an ethernet transport via
-`nros-board-esp32-qemu`. Verbatim from
+`nros.toml` carries the transport stack. The QEMU ESP32 board uses an
+ethernet transport via `nros-board-esp32-qemu`. Verbatim from
 [`examples/qemu-esp32-baremetal/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-esp32-baremetal/rust/talker/nros.toml):
 
 ```toml
@@ -114,15 +87,10 @@ locator = "tcp/10.0.2.2:7454"
 ## Build
 
 ```bash
-# Real hardware (ESP32-C3) — the example's build.rs invokes
-# `nros generate-rust` automatically, so the `generated/` dir
-# populates on first build (gitignored, not pre-committed):
-cd examples/esp32/rust/talker
-cargo build --release
-
-# QEMU ESP32 (qemu-system-riscv32). `just esp32 build` builds the
-# real-hardware example fixtures; `just esp32 build-qemu` (which
-# `just esp32 talker` depends on) is the QEMU-board variant:
+# QEMU ESP32 (qemu-system-riscv32). `just esp32 build-qemu` (which
+# `just esp32 talker` depends on) builds the QEMU-board variant; the
+# example's build.rs invokes `nros generate-rust` automatically, so
+# the `generated/` dir populates on first build (gitignored).
 just esp32 build-qemu
 ```
 
@@ -140,17 +108,6 @@ just esp32 talker
 #   Published: 1
 #   ...
 
-# Real hardware. Make sure a `zenohd` on the host is reachable from
-# the Wi-Fi locator in `nros.toml`, then:
-cd examples/esp32/rust/talker
-cargo run --release        # invokes `espflash flash --monitor`
-# Expected serial output:
-#   ESP32-C3 booting...
-#   Wifi connected: 192.168.1.42
-#   Published: 0
-#   Published: 1
-#   ...
-
 # Verify from stock ROS 2 on the same network:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
@@ -160,35 +117,29 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
-**Readiness signal.** Real hardware: after `espflash flash --monitor`,
-expect the Wi-Fi connect line + `Published: 0` within 10 seconds.
-QEMU ESP32: ~15 seconds **after** a warm cache — the `just esp32
-talker` recipe re-runs `build-qemu` every invocation, so a first /
-cold run adds ~25 s of build time on top. If no `Published:` line:
+**Readiness signal.** QEMU ESP32: ~15 seconds **after** a warm cache —
+the `just esp32 talker` recipe re-runs `build-qemu` every invocation,
+so a first / cold run adds ~25 s of build time on top. If no
+`Published:` line:
 
-1. Wi-Fi credentials wrong → `Wifi connect failed` in serial log.
-2. Wrong locator → talker logs `zenoh open failed` and retries.
-   Confirm `zenohd` is reachable on the host IP from the board's
-   subnet.
-3. Confirm `.cargo/config.toml` target is
+1. Wrong locator → talker logs `zenoh open failed` and retries.
+   Confirm `zenohd` is reachable on the host IP (`10.0.2.2:7454`).
+2. Confirm `.cargo/config.toml` target is
    `riscv32imc-unknown-none-elf` (ESP32-C3). The tutorial does not
    support ESP32-S3 (Xtensa) yet.
-4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source
 
-- esp-hal Rust:
-  [`examples/esp32/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32/rust/talker)
 - QEMU ESP32 talker:
   [`examples/qemu-esp32-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-esp32-baremetal/rust/talker)
-- Board crates:
-  [`packages/boards/nros-board-esp32/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32),
+- Board crate:
   [`packages/boards/nros-board-esp32-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32-qemu)
 
 ## Next
 
 - Subscriber + service + action peer directories under the same
-  `examples/esp32/rust/`.
+  `examples/qemu-esp32-baremetal/rust/`.
 - ESP-IDF component path for C / C++ apps:
   [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
 - ESP32-S3 (Xtensa) — not supported today. The Xtensa toolchain

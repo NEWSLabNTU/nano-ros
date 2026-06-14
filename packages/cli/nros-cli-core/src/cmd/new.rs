@@ -61,7 +61,7 @@ pub struct Args {
     pub no_readme: bool,
 
     /// Target platform (required in project mode)
-    #[arg(long, value_parser = ["native", "freertos", "nuttx", "threadx", "zephyr", "esp32", "posix", "baremetal"])]
+    #[arg(long, value_parser = ["native", "freertos", "nuttx", "threadx", "zephyr", "posix", "baremetal"])]
     pub platform: Option<String>,
 
     /// RMW backend

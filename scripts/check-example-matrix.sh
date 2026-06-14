@@ -9,7 +9,6 @@ rmw_names='^(zenoh|xrce|dds|cyclonedds|uorb)$'
 allowed_roots=(
   # Phase 118.G is still in flight and owns the remaining bare-metal
   # Rust legacy roots.
-  "examples/esp32/rust/zenoh"
   "examples/qemu-arm-baremetal/rust/dds"
   "examples/qemu-arm-baremetal/rust/zenoh"
   "examples/qemu-esp32-baremetal/rust/dds"

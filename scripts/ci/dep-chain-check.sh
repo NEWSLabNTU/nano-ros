@@ -62,7 +62,6 @@ NROS="$(cd "$(dirname "$NROS")" && pwd)/$(basename "$NROS")"
 CELLS=(
     "native:zenoh"
     "native:xrce"
-    "esp32:zenoh"
     "qemu-arm-baremetal:zenoh"
     "qemu-arm-freertos:zenoh"
     "qemu-arm-nuttx:zenoh"

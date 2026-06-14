@@ -362,10 +362,8 @@ exclude = [
     "packages/boards/nros-board-mps2-an385",
     "packages/platforms/nros-platform-mps2-an385",
     "packages/platforms/nros-platform-stm32f4",
-    "packages/platforms/nros-platform-esp32",
     "packages/platforms/nros-platform-esp32-qemu",
     "packages/platforms/nros-platform-esp32s3",
-    "packages/boards/nros-board-esp32",
     "packages/boards/nros-board-esp32-qemu",
     "packages/boards/nros-board-esp32s3",
     "packages/boards/nros-board-embassy-stm32f4",
@@ -438,8 +436,6 @@ exclude = [
     "packages/drivers/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)
     "packages/testing/nros-smoke/esp32-hello-world",
-    "examples/esp32/rust/talker",
-    "examples/esp32/rust/listener",
     "examples/qemu-esp32-baremetal/rust/talker",
     "examples/qemu-esp32-baremetal/rust/listener",
     # Phase 169.2 — qemu-esp32-baremetal rust/dds deleted.

@@ -87,7 +87,7 @@ u64 smoltcp_clock_now_ms(void);
 |----------|-------------|------|
 | MPS2-AN385 | CMSDK APB Timer0 (25 MHz) | `nros-platform-mps2-an385/src/clock.rs` |
 | STM32F4 | ARM DWT cycle counter | `nros-platform-stm32f4/src/clock.rs` |
-| ESP32-C3 | `esp_hal::time::Instant` | `nros-platform-esp32/src/clock.rs` |
+| ESP32-C3 (QEMU) | `esp_hal::time::Instant` | `nros-platform-esp32-qemu/src/clock.rs` |
 | FreeRTOS | `xTaskGetTickCount()` | Use OS tick directly |
 | NuttX | `clock_gettime(CLOCK_MONOTONIC)` | POSIX API |
 

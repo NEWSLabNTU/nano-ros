@@ -79,7 +79,7 @@ jobs:
             nuttx: [ *core, 'examples/qemu-arm-nuttx/**', 'packages/boards/nros-board-nuttx*/**' ]
             threadx_linux: [ *core, 'examples/threadx-linux/**', 'packages/boards/nros-board-threadx-linux/**' ]
             threadx_riscv64: [ *core, 'examples/qemu-riscv64-threadx/**', 'packages/boards/nros-board-threadx-qemu-riscv64/**' ]
-            esp32: [ *core, 'examples/esp32/**', 'examples/qemu-esp32-baremetal/**', 'packages/boards/nros-board-esp32*/**' ]
+            esp32: [ *core, 'examples/qemu-esp32-baremetal/**', 'packages/boards/nros-board-esp32-qemu/**', 'packages/platforms/nros-platform-esp32-qemu/**' ]
       - id: set
         env:
           QEMU: ${{ steps.f.outputs.qemu }}

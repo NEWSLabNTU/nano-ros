@@ -59,7 +59,6 @@ cffi-export = [
     # `nano_ros_link_platform`).
     "nros-platform-mps2-an385?/cffi-export",
     "nros-platform-stm32f4?/cffi-export",
-    "nros-platform-esp32?/cffi-export",
     "nros-platform-esp32-qemu?/cffi-export",
     "nros-platform-esp32s3?/cffi-export",
 ]
@@ -78,11 +77,6 @@ platform-stm32f4 = [
     "dep:nros-platform-stm32f4",
     "dep:nros-platform-cffi",
     "nros-platform-stm32f4/cffi-export",
-]
-platform-esp32 = [
-    "dep:nros-platform-esp32",
-    "dep:nros-platform-cffi",
-    "nros-platform-esp32/cffi-export",
 ]
 platform-esp32-qemu = [
     "dep:nros-platform-esp32-qemu",
@@ -174,7 +168,6 @@ nros-platform-api = { version = "0.5.0", path = "../nros-platform-api" }
 nros-platform-cffi = { version = "0.5.0", path = "../nros-platform-cffi", optional = true }
 nros-platform-mps2-an385 = { version = "0.5.0", path = "../../platforms/nros-platform-mps2-an385", optional = true }
 nros-platform-stm32f4 = { version = "0.4.0", path = "../../platforms/nros-platform-stm32f4", optional = true }
-nros-platform-esp32 = { version = "0.4.0", path = "../../platforms/nros-platform-esp32", optional = true }
 nros-platform-esp32-qemu = { version = "0.4.0", path = "../../platforms/nros-platform-esp32-qemu", optional = true }
 nros-platform-esp32s3 = { version = "0.4.0", path = "../../platforms/nros-platform-esp32s3", optional = true }
 # Phase 121.3.deprecate-rust-remove — nros-platform-{freertos,nuttx,

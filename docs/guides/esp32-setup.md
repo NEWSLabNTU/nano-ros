@@ -66,27 +66,9 @@ sudo udevadm trigger
 
 ## Quick Start
 
-### Build Hello World
-
-```bash
-cd examples/esp32/hello-world
-cargo +nightly build --release
-```
-
-### Flash to Device
-
-Connect the ESP32-C3 board via USB, then:
-
-```bash
-cd examples/esp32/hello-world
-cargo +nightly run --release
-```
-
-This builds, flashes, and opens the serial monitor (`espflash flash --monitor` is configured as the cargo runner).
-
 ### Build zenoh-pico for RISC-V
 
-Required for networked nros examples (WiFi + zenoh):
+Required for networked nros examples (zenoh):
 
 ```bash
 just build-zenoh-pico-riscv
@@ -96,26 +78,17 @@ Output: `build/esp32-zenoh-pico/libzenohpico.a`
 
 ## Project Structure
 
-ESP32 support spans three directories:
+ESP32-C3 QEMU (OpenETH) support spans these directories:
 
 ```
 packages/boards/
-├── nros-board-esp32/            # WiFi BSP crate (esp-radio + smoltcp)
-└── nros-board-esp32-qemu/       # QEMU BSP crate (OpenETH + smoltcp, no WiFi deps)
+└── nros-board-esp32-qemu/       # QEMU BSP crate (OpenETH + smoltcp)
 
 packages/drivers/
 └── openeth-smoltcp/       # OpenCores Ethernet MAC driver for smoltcp
 
 packages/zpico/
-├── zpico-platform-esp32/      # WiFi FFI symbols (z_random, z_clock, etc.)
 └── zpico-platform-esp32-qemu/ # QEMU FFI symbols
-
-examples/esp32/rust/
-├── zenoh/
-│   ├── talker/            # WiFi publisher (nros-board-esp32 BSP)
-│   └── listener/          # WiFi subscriber (nros-board-esp32 BSP)
-└── standalone/
-    └── hello-world/       # Minimal UART print (no nros deps)
 
 examples/qemu-esp32-baremetal/rust/
 ├── talker/                # QEMU publisher (nros-board-esp32-qemu BSP)
@@ -155,7 +128,7 @@ build-std = ["core"]
 
 Key points:
 - `build-std = ["core"]` requires nightly Rust
-- Add `"alloc"` to `build-std` if heap allocation is needed (WiFi examples)
+- Add `"alloc"` to `build-std` if heap allocation is needed (networked examples)
 - `-Tlinkall.x` is the RISC-V linker script from `esp-riscv-rt`
 
 ## QEMU ESP32-C3 Testing
@@ -215,67 +188,6 @@ Tests include boot verification, ESP32-to-ESP32 pub/sub, and ESP32-to-native int
 - Uses `-icount 3` for instruction timing (simulates 125MHz)
 - Must use zenohd from submodule (`just build-zenohd`) — system zenohd may be incompatible
 - Each QEMU peer uses a separate TAP device (`tap-qemu0`, `tap-qemu1`)
-
-## WiFi BSP Examples
-
-The WiFi examples use the `nros-board-esp32` BSP crate, which handles WiFi initialization, DHCP, and zenoh session setup.
-
-### Build
-
-WiFi credentials are passed as environment variables:
-
-```bash
-SSID=MyNetwork PASSWORD=secret just build-examples-esp32
-```
-
-### Flash and Monitor
-
-Connect the ESP32-C3 board via USB, then flash:
-
-```bash
-cd examples/esp32/rust/talker
-espflash flash --monitor target/riscv32imc-unknown-none-elf/release/esp32-bsp-talker
-```
-
-### BSP API
-
-The `nros-board-esp32` crate provides `run_node()` for a minimal setup:
-
-```rust
-use nros_board_esp32::prelude::*;
-
-run_node(
-    WifiConfig::new("MyNetwork", "password123"),
-    |node| {
-        let publisher = node.create_publisher("demo/esp32")?;
-        loop {
-            node.spin_once(1000);
-            publisher.publish(&data)?;
-        }
-    },
-)
-```
-
-For advanced configuration (static IP, custom zenoh locator):
-
-```rust
-run_node_with_config(
-    WifiConfig::new("MyNetwork", "password123"),
-    NodeConfig::new()
-        .zenoh_locator("tcp/192.168.1.1:7447")
-        .node_name("esp32_sensor")
-        .ip_mode(IpMode::Dhcp),
-    |node| { /* ... */ },
-)
-```
-
-See `packages/boards/nros-board-esp32/` for full API documentation.
-
-### Requirements
-
-- Physical ESP32-C3 board (WiFi testing is not available in QEMU)
-- WiFi network reachable by both ESP32 and the zenohd router host
-- zenohd running on a host the ESP32 can reach over WiFi
 
 ## Troubleshooting
 

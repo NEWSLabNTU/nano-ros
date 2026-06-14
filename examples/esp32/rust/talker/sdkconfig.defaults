@@ -1,8 +1,0 @@
-# Phase 212.M.7 — ESP-IDF talker sdkconfig defaults.
-#
-# Mirrors the H.5 fixture's nano-ros Kconfig wiring. Adjust
-# CONFIG_NROS_DOMAIN_ID + CONFIG_NROS_RMW per deployment.
-CONFIG_NROS_BRINGUP_NAME="esp32_bsp_talker"
-CONFIG_NROS_DOMAIN_ID=0
-CONFIG_NROS_RMW_XRCE=y
-CONFIG_NROS_ROS_EDITION="humble"

@@ -896,7 +896,7 @@ mod tests {
         SdkIndex::parse(
             "[board.qemu-arm-freertos]\npackages=[\"arm-none-eabi-gcc\",\"qemu\",\"freertos-kernel\",\"lwip\"]\n\
              [board.qemu-riscv64-threadx]\npackages=[\"riscv-none-elf-gcc\",\"qemu\",\"threadx\"]\n\
-             [board.esp32]\narch=\"riscv32\"\npackages=[]\n\
+             [board.qemu-esp32-baremetal]\narch=\"riscv32\"\npackages=[]\n\
              [board.native]\npackages=[\"zenohd\"]\n\
              [board.orin-spe]\npackages=[\"arm-none-eabi-gcc\",\"nv-spe-fsp\"]\n",
         )
@@ -915,8 +915,8 @@ mod tests {
             tx.contains(&"riscv-none-elf-gcc") && tx.contains(&"qemu") && tx.contains(&"threadx")
         );
 
-        // ESP32-C3: declared arch riscv32, no index host-tool (rustup target).
-        assert!(resolve_packages(&idx, "esp32").unwrap().is_empty());
+        // ESP32-C3 QEMU: declared arch riscv32, no index host-tool (rustup target).
+        assert!(resolve_packages(&idx, "qemu-esp32-baremetal").unwrap().is_empty());
         assert_eq!(resolve_packages(&idx, "native").unwrap(), vec!["zenohd"]);
         let orin = resolve_packages(&idx, "orin-spe").unwrap();
         assert!(orin.contains(&"arm-none-eabi-gcc") && orin.contains(&"nv-spe-fsp"));

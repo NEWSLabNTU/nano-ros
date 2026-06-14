@@ -12,13 +12,11 @@ default:
 # example's cargo build; no standalone library build step is needed
 # or wired up anywhere in the project.
 #
-# Phase 213.A.4 — this recipe covers BOTH ESP32 boards:
-#   * `[board.esp32]` (real hardware; ESP32-C3 RISC-V)
-#   * `[board.qemu-esp32-baremetal]` (Espressif QEMU fork, esp32c3 machine)
-# Both have `packages = []` in the index — the riscv32 target comes from
-# `just workspace rust-targets` (rustup), and the QEMU fork is the
-# source-built `[tool.esp32-qemu]`. There is no `just qemu-esp32-baremetal
-# setup` sibling; this recipe is the single entry point for both.
+# Phase 213.A.4 — this recipe provisions the `[board.qemu-esp32-baremetal]`
+# board (Espressif QEMU fork, esp32c3 machine). It has `packages = []` in
+# the index — the riscv32 target comes from `just workspace rust-targets`
+# (rustup), and the QEMU fork is the source-built `[tool.esp32-qemu]`. There
+# is no `just qemu-esp32-baremetal setup` sibling; this recipe is the entry point.
 [group("setup")]
 setup:
     #!/usr/bin/env bash
@@ -157,11 +155,11 @@ build-logging-smoke:
 [group("full-matrix")]
 build-fixtures: build-qemu build-logging-smoke
     #!/usr/bin/env bash
-    # esp-idf build-stage fixtures (issue 0041): build the idf.py ELFs the
-    # esp32_idf_* / cli_bringup_esp_idf tests consume, so they don't run idf.py
-    # at test time. Self-gates on idf.py/IDF env; non-fatal (a failed build —
-    # e.g. issue 0044's _heap symbols — leaves no stamp, and the test skips per
-    # tier). Slow (~7 min/ELF), so scoped to this esp lane, not build-test-fixtures.
+    # esp-idf build-stage fixtures (issue 0041): build the idf.py ELF the
+    # cli_bringup_esp_idf test consumes, so it doesn't run idf.py at test time.
+    # Self-gates on idf.py/IDF env; non-fatal (a failed build leaves no stamp,
+    # and the test skips per tier). Slow (~7 min/ELF), so scoped to this esp
+    # lane, not build-test-fixtures.
     bash scripts/build/idf-fixtures.sh || true
     echo "ESP32 fixtures built."
 
@@ -225,7 +223,6 @@ ci: doctor test
 clean:
     #!/usr/bin/env bash
     for ex in talker listener; do
-        rm -rf "examples/esp32/rust/$ex/target"
         rm -rf "examples/qemu-esp32-baremetal/rust/$ex/target"
     done
     rm -rf build/esp32-qemu build/esp32-zenoh-pico

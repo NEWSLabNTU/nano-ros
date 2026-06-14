@@ -30,7 +30,7 @@ nros_platform_cffi::nros_platform_export_net!(Esp32S3Platform);
 
 // Phase 110.E.b — `PlatformTimer` dispatches through the
 // per-board periodic-timer hook in `sporadic_timer`. Identical
-// shape to the `nros-platform-esp32` sibling.
+// shape to the `nros-platform-esp32-qemu` sibling.
 impl nros_platform_api::PlatformTimer for Esp32S3Platform {
     type TimerHandle = TimerHandleStub;
 
@@ -58,7 +58,7 @@ unsafe impl Sync for TimerHandleStub {}
 nros_platform_cffi::nros_platform_export_timer!(Esp32S3Platform);
 
 // Phase 88 — `PlatformLog` for ESP32-C3 QEMU bare-metal. Same
-// fn-ptr shape as `nros-platform-esp32`: board crate (or QEMU test
+// fn-ptr shape as `nros-platform-esp32-qemu`: board crate (or QEMU test
 // harness) registers a writer at startup. No writer = no-op.
 mod log_slot {
     use core::sync::atomic::{AtomicUsize, Ordering};

@@ -16,10 +16,8 @@ them.
 | STMicro      | Pixhawk 6X / 6C      | STM32H753          | Cortex-M7F | NuttX (PX4)   | Ready    | `integrations/px4/module-template/`                                |
 | Nordic       | nRF52840-DK          | Cortex-M4F         | Armv7E-M   | Zephyr        | Untested | Zephyr starter — supply `-b nrf52840dk_nrf52840`                  |
 | Nordic       | nRF5340-DK           | Cortex-M33 (dual)  | Armv8-M    | Zephyr        | Untested | Zephyr starter — supply `-b nrf5340dk_nrf5340_cpuapp`             |
-| Espressif    | ESP32-DevKitC        | Xtensa LX6 (240 MHz) | Xtensa   | bare / ESP-IDF | Ready   | `packages/boards/nros-board-esp32/` (needs Xtensa toolchain)       |
-| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | bare / ESP-IDF | Tested  | `examples/esp32/rust/`, `integrations/nano-ros/`              |
-| Espressif    | ESP32-C6-DevKit      | RISC-V             | RISC-V     | bare / ESP-IDF | Untested | Same path as C3; Wi-Fi 6 driver via esp-hal                       |
-| Espressif    | ESP32-S3-DevKit      | Xtensa LX7 (dual)  | Xtensa     | bare / ESP-IDF | Ready    | `nros-board-esp32` (Xtensa); RISC-V QEMU sibling in CI            |
+| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | bare / ESP-IDF | Tested  | `examples/qemu-esp32-baremetal/rust/`, `integrations/nano-ros/` |
+| Espressif    | ESP32-C6-DevKit      | RISC-V             | RISC-V     | ESP-IDF        | Untested | Same ESP-IDF path as C3                                            |
 | NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr        | Untested | Zephyr `-b lpcxpresso55s69_cpu0`                                  |
 | NXP          | MIMXRT1170-EVK       | Cortex-M7 + M4     | Armv7-M    | FreeRTOS / Zephyr | Untested | FreeRTOS starter + vendor BSP                                  |
 | TI           | LP-CC1352P7          | Cortex-M4F         | Armv7E-M   | FreeRTOS / TI-RTOS | Untested | FreeRTOS starter + TI driver overlay                         |

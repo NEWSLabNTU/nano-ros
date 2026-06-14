@@ -42,8 +42,6 @@ fi
 
 # id : src-rel : subdir (idf.py runs here, '.' = staged root) : elf-name : target
 IDF_FIXTURES=(
-    "esp_idf_talker:examples/esp32/rust/talker:.:esp32_bsp_talker:esp32c3"
-    "esp_idf_listener:examples/esp32/rust/listener:.:esp32_bsp_listener:esp32c3"
     "esp_idf_bringup:packages/testing/nros-tests/fixtures/multi_pkg_workspace_esp_idf:esp_idf_app:multi_pkg_workspace_esp_idf:esp32c3"
 )
 

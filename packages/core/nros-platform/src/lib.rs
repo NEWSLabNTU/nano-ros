@@ -63,7 +63,6 @@ pub use resolve::{NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_S
     feature = "platform-cffi",
     feature = "platform-mps2-an385",
     feature = "platform-stm32f4",
-    feature = "platform-esp32",
     feature = "platform-esp32-qemu",
     feature = "platform-nuttx",
     feature = "platform-freertos",

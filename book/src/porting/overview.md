@@ -85,7 +85,7 @@ These serve as reference when writing a new port.
 | `nros-platform-zephyr` | Zephyr | Zephyr POSIX | Zephyr sockets |
 | `nros-platform-mps2-an385` | Cortex-M3 bare-metal | Single-threaded | smoltcp |
 | `nros-platform-stm32f4` | STM32F4 bare-metal | Single-threaded | smoltcp |
-| `nros-platform-esp32` | ESP32 bare-metal | Single-threaded | smoltcp + WiFi |
+| `nros-platform-esp32-qemu` | ESP32-C3 (QEMU) bare-metal | Single-threaded | smoltcp + OpenETH |
 
 ## Further reading
 

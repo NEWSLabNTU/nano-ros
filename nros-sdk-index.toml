@@ -469,13 +469,6 @@ platform = "threadx"
 # runs on the host; the zenoh daemon comes from rmw.zenoh
 packages = ["threadx", "threadx-netxduo"]
 
-[board.esp32]
-arch = "riscv32" # ESP32-C3; riscv32imc rustup target + build-std (no external gcc)
-platform = "bare-metal"
-# Rust target via `just workspace rust-targets`; the ESP32 emulator is the
-# source-built [tool.esp32-qemu] (`just esp32 setup` → nros setup --tool, Phase 197.3).
-packages = []
-
 [board.qemu-esp32-baremetal]
 arch = "riscv32"
 platform = "bare-metal"

@@ -1,6 +1,6 @@
 //! Phase 110.E.b — periodic-callback hook for ESP32-C3 QEMU
 //! sporadic-server budget refill. Same shape as the
-//! `nros-platform-esp32` sibling; the QEMU board reuses the same
+//! `nros-platform-esp32-qemu` sibling; the QEMU board reuses the same
 //! ESP-HAL timer surfaces, so the hook contract is identical. See
 //! the esp32 module for usage docs.
 

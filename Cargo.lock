@@ -2199,7 +2199,6 @@ version = "0.5.0"
 dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
- "nros-platform-esp32",
  "nros-platform-esp32-qemu",
  "nros-platform-esp32s3",
  "nros-platform-mps2-an385",
@@ -2225,18 +2224,6 @@ name = "nros-platform-critical-section"
 version = "0.5.0"
 dependencies = [
  "critical-section",
-]
-
-[[package]]
-name = "nros-platform-esp32"
-version = "0.4.0"
-dependencies = [
- "esp-hal",
- "nros-baremetal-common",
- "nros-platform-api",
- "nros-platform-cffi",
- "nros-smoltcp",
- "zpico-alloc",
 ]
 
 [[package]]

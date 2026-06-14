@@ -82,9 +82,8 @@ When a project grows beyond one node, continue with
 |---------------------------|---------------|-----------------|-----------|---------------------------------------------------|---------------|
 | ARM MPS2-AN385 (QEMU)     | Cortex-M3     | FreeRTOS / bare | Rust C C++ ¹ | `examples/qemu-arm-{freertos,baremetal}/`         | Verified      |
 | ST STM32F4-Discovery      | Cortex-M4F    | FreeRTOS / bare | Rust ²    | board crate `nros-board-stm32f4`                  | Verified      |
-| Espressif ESP32-C3        | RISC-V (RV32) | bare / ESP-IDF  | Rust C C++ | `examples/esp32/rust/`, `integrations/nano-ros/`   | Verified      |
-| Espressif ESP32-S3        | Xtensa        | bare / ESP-IDF  | Rust ³    | board crate `nros-board-esp32` (Xtensa toolchain) | Ready         |
-| Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/esp32-qemu/`                            | Verified      |
+| Espressif ESP32-C3        | RISC-V (RV32) | ESP-IDF         | Rust C C++ | `integrations/nano-ros/`                          | Verified      |
+| Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/qemu-esp32-baremetal/`                  | Verified      |
 | QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C    | `examples/threadx-riscv64/`                       | Verified      |
 | Linux host                | x86-64 / aarch64 | ThreadX sim  | Rust C    | `examples/threadx-linux/`                         | Verified      |
 | QEMU Cortex-A9 / virt     | Cortex-A9     | NuttX / Zephyr  | Rust C C++ | `examples/nuttx/`, Zephyr `samples/`              | Verified      |
