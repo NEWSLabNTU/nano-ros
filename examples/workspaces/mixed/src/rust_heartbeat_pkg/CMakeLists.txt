@@ -15,5 +15,4 @@ nano_ros_node_register(
     NAME     heartbeat
     CLASS    rust_heartbeat_pkg::Heartbeat
     LANGUAGE RUST
-    SOURCES  Cargo.toml
-    DEPLOY   native)
+    SOURCES  Cargo.toml)

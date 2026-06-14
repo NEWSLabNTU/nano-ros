@@ -96,7 +96,14 @@ endfunction()
 
 function(nano_ros_node_register)
     cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE" "SOURCES;DEPLOY" ${ARGN})
-    foreach(_req NAME CLASS SOURCES DEPLOY)
+    # Phase 248 C6b (#60 T5) — DEPLOY is OPTIONAL on a Node pkg. A reusable Node
+    # pkg must NOT name a deploy target; the Entry pkg (`nano_ros_entry(... DEPLOY
+    # …)`) + the bringup `system.toml` select RMW/platform/deploy. Embedded Node
+    # pkgs that drive a single-node carrier (NuttX/ThreadX/Zephyr branches below)
+    # still pass `DEPLOY <rtos>` — those branches gate on `<rtos> IN_LIST
+    # _NRC_DEPLOY`, so absence is a no-op (the metadata `deploy` array is empty
+    # and the Entry/system.toml is the selection point).
+    foreach(_req NAME CLASS SOURCES)
         if(NOT _NRC_${_req})
             message(FATAL_ERROR
                 "nano_ros_node_register: ${_req} required")
