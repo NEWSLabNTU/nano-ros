@@ -274,18 +274,24 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
     locator="custom://uart"`, board built `xrce-transport`, nros `rmw-xrce`. Builds
     `thumbv7m`; serial/rtic/ethernet unaffected (macro/struct change no-op for them).
     XRCE runtime e2e is CI/manual-gated. (`41d43aea7`)
-- [~] **D2 — PARTIAL (2026-06-13). qemu-esp32-baremetal talker+listener migrated +
-  compiled** (nros::main!() Node+Entry; net/domain → deploy metadata; compiles
-  riscv32imc build-std). **esp32/rust left** (ESP-IDF staticlib stubs — no leaks,
-  already minor; cleaning needs the deferred Wi-Fi+pubsub integration). **Macro
-  switch DONE (2026-06-14, `2dad47487`):** the `Framework::Esp32` branch now calls
-  `BoardEntry::run_with_deploy(&overlay, …)` (was `run`), mirroring the other
-  frameworks, so the deploy overlay is threaded at the framework layer. NB this is
-  a no-op until two deferred pieces land: (1) `nros-board-esp32` overriding
-  `run_with_deploy` (it only impls `run`), and (2) the real esp32 executor path —
-  `nros-board-bare-metal::run_entry` still uses the `NullNodeRuntime` placeholder
-  (212.N.4/N.5). Board-side overlay consumption lands with that executor work.
-  nros-macros compiles clean; esp32 e2e is CI-cell-gated.
+- [~] **D2 — qemu-esp32 DONE; esp32/rust (WiFi hw) deferred.** qemu-esp32-baremetal
+  talker+listener migrated to nros::main!() Node+Entry; net/domain → deploy metadata.
+  **Macro switch DONE (2026-06-14, `2dad47487`):** the `Framework::Esp32` branch now
+  calls `BoardEntry::run_with_deploy(&overlay, …)` (was `run`). This is NOT inert for
+  qemu-esp32: `nros-board-esp32-qemu` (OpenETH, phase-225.O) already implements
+  `run_with_deploy` + a real `ExecutorNodeRuntime`, so the switch lands the deploy
+  overlay end-to-end — the talker/listener now bind their DISTINCT overlay IPs
+  (`10.0.2.50` / `.51`) instead of colliding on the board-default (the D2-partial
+  bug). esp32 e2e is the platform-ci esp32 cell (workflow_dispatch run_e2e).
+  **Deferred — `nros-board-esp32` (WiFi hardware) only:** a *separate* board that
+  still impls only `BoardEntry::run` via `nros-board-bare-metal::run_entry`'s
+  `NullNodeRuntime` placeholder. Porting the mps2-an385 `boot()` pattern (real
+  executor) into it is feasible (~200 LoC; the working bringup already lives in the
+  legacy `node::run`), but UNVERIFIABLE here — no esp toolchain locally, no QEMU for
+  the WiFi board (qemu-esp32 is a distinct OpenETH board), no hardware e2e, and
+  `esp_wifi` (closed IDF) HAL is not stable for the bare-metal path. The
+  `examples/esp32/rust/*` are ESP-IDF staticlib stubs gated on the same. Left as
+  hardware-gated deferred work (issue-class: do not land blind).
   Original D2 plan:
 - [ ] **D2 (orig) — esp32 (esp32/rust 2 + qemu-esp32-baremetal 2, densest). Needs E4, E5.**
   Strip `#![no_std]`/`#![no_main]`/`#[entry]` (`talker/src/main.rs:19-20`),
