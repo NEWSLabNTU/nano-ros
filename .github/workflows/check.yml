@@ -193,6 +193,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo test -p nros-tests --test platform_header_matrix
 
+      # Cross-tier of the platform gate (241.A) — the two-libc-set class (#27/#36)
+      # the host matrix cannot see. Drives the cross arm-none-eabi-g++ over a
+      # self-contained RTOS-header stub, asserting the RTOS-sysroot include
+      # precedence still clears the div_t clash. Self-skips if the cross toolchain
+      # is absent or its newlib does not exhibit the clash.
+      - name: cross libc-precedence gate
+        if: ${{ !cancelled() }}
+        run: cargo test -p nros-tests --test cross_libc_precedence_gate
+
       # Link-determinism gate (RFC-0042 D3 / 241.D) — build the host staticlib
       # pair, then assert the duplicate symbols `--allow-multiple-definition`
       # masks are ONLY the shared Rust dependency closure (no application ODR

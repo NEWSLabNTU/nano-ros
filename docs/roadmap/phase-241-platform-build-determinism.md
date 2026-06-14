@@ -60,14 +60,20 @@ Two tiers, by what a cell needs to compile:
       the #42 root-cause-#5 gap ("FreeRTOS/Zephyr/ESP+C++ had no isolated compile
       test"). Cheap (no SDK, no cross target, ~seconds); mirrors the `core-libs`
       lane; PR-gated on the platform headers + `nros-board.toml` + the test.
-- [ ] **Cross tier (later) — narrowed.** Only the two-libc-set class (#27/#36)
-      remains cross-only: it bites the platform **`.c` TUs** (`#include_next`
-      reaching the wrong libc), not the self-contained header above, so it still
-      needs the cross toolchain + RTOS sysroot. Options: (a) provision the cross
-      toolchain + a minimal vendored RTOS header stub to reproduce the clash, or
-      (b) compile the RTOS cpp examples on the PR path (heavier; needs the export).
-      Until then the `.c`-TU class stays covered by the e2e `build-fixtures` lane
-      (Phase 240).
+- [x] **Cross tier — DONE (2026-06-15, option (a)).** The two-libc-set class
+      (#27/#36) — a platform `.c`/`.cpp` TU pulling the cross newlib `<stdlib.h>`
+      AND the RTOS `<stdlib.h>` with incompatible `div_t` shapes — is now PR-gated
+      by `cross_libc_precedence_gate.rs` + a **minimal self-contained RTOS-header
+      stub** (`tests/fixtures/cross_libc_precedence/`, no RTOS submodule). It drives
+      the cross `arm-none-eabi-g++` over the probe: a **relative, version-robust**
+      assertion — if the broken precedence (RTOS sysroot not winning `<cstdlib>`)
+      does NOT clash on this toolchain it skips (class not reproducible), else the
+      RTOS-`include/cxx`-first fix MUST clear it (else the include-precedence wiring
+      regressed → #27/#36 back). Verified locally against the provisioned
+      `arm-none-eabi-gcc 13.2-nros1`: broken → the exact `conflicting declaration
+      '…div_t'`; fixed → clean. Wired into `check.yml` after the host matrix
+      (self-skips when the cross toolchain is absent). The e2e `build-fixtures`
+      lane still covers the full RTOS compile as belt-and-braces.
 - **Acceptance (host tier):** ✅ a PR that reintroduces the #38-class capability
       breakage goes red on the gate, not green-then-red-in-e2e. Verified locally:
       the 10-cell matrix passes (POSIX + bare-metal + one heap cell per RTOS

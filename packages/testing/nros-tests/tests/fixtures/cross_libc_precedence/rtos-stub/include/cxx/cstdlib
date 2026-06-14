@@ -1,0 +1,11 @@
+// Minimal RTOS cxx wrapper for the phase-241.A cross gate (mirrors
+// third-party/nuttx/nuttx/include/cxx/cstdlib). The #27/#36 FIX prepends the
+// RTOS `include/cxx` dir so a C++ TU's `<cstdlib>` resolves HERE — which pulls
+// only the RTOS `<stdlib.h>` (one div_t) — instead of libstdc++'s `<cstdlib>`,
+// whose `#include_next <stdlib.h>` would reach the cross newlib and add a second,
+// conflicting div_t. With this header winning, there is exactly one div_t → the
+// clash cannot occur. The gate asserts that this precedence is in effect.
+#ifndef NROS_GATE_RTOS_STUB_CSTDLIB
+#define NROS_GATE_RTOS_STUB_CSTDLIB
+#include <stdlib.h>
+#endif // NROS_GATE_RTOS_STUB_CSTDLIB
