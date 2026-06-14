@@ -352,6 +352,47 @@ check JOBS="75%":
                        -not -path '*/qemu-riscv64-threadx/*' \
                        -not -path '*/px4/*' | sort > "$toml_list"
 
+    # Phase 244.D1/C5 — Node+Entry split codegen pre-pass. Split examples keep
+    # their generated msg crates in a gitignored `generated/` that only
+    # `nros ws sync` materialises: the Node pkg (`[package.metadata.nros.node]`)
+    # owns it, and the sibling Entry pkg's [patch.crates-io] resolves it. clippy
+    # (cross via the Entry's `.cargo/config` target, or host for the Node lib)
+    # can't resolve those crates until they exist on disk, so sync every Node pkg
+    # before the fan-out. Mirrors the `scripts/build/fixtures-build.sh` pre-pass;
+    # `nros ws sync` is idempotent. Only requires `nros` on PATH when split Node
+    # pkgs are actually present.
+    node_pkgs="$(mktemp "${TMPDIR:-/tmp}/nros_node_pkgs.XXXXXX")"
+    trap 'rm -f "$toml_list" "$node_pkgs"' EXIT
+    find examples -mindepth 4 -name Cargo.toml \
+                       -not -path '*/target/*' -not -path '*/generated/*' \
+                       -not -path '*/build/*' -not -path '*/build-*/*' \
+        | while IFS= read -r node_toml; do
+            node_dir="$(dirname "$node_toml")"
+            # A Node pkg only needs ws sync when it actually declares msg deps
+            # via a package.xml. Node-shaped pkgs without one (e.g. e2e harness
+            # pkgs that carry `[package.metadata.nros.node]` but no `<depend>`s)
+            # have nothing to materialise and would error `ws sync` (ws.rs:273),
+            # aborting this recipe under `set -e`.
+            [ -f "$node_dir/package.xml" ] || continue
+            # `if` (not `&&`): a bare `grep -q … && printf` statement returns
+            # non-zero for every non-node Cargo.toml, which aborts this `find |
+            # while` subshell under the recipe's `set -e`.
+            if grep -q '^\[package\.metadata\.nros\.node\]' "$node_toml"; then
+                printf '%s\n' "$node_dir"
+            fi
+        done > "$node_pkgs"
+    if [ -s "$node_pkgs" ]; then
+        if ! command -v nros >/dev/null 2>&1; then
+            echo "native check: split Node pkgs present but 'nros' not on PATH" >&2
+            echo "  run 'source ./activate.sh' (sweep contract) before 'just check'." >&2
+            exit 1
+        fi
+        export NROS_REPO_DIR="$PWD"
+        while IFS= read -r node_dir; do
+            nros ws sync "$node_dir" >/dev/null
+        done < "$node_pkgs"
+    fi
+
     check_one() {
         local toml="$1"
         local dir="$(dirname "$toml")"

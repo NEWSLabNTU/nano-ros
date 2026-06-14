@@ -236,5 +236,25 @@ else
         ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args $tdir_flag --quiet )
     }
     export -f nros_fixture_build_one
+    # Phase 244.D1/C5 — Node+Entry split codegen pre-pass. The manifest builds
+    # the Entry pkg (`nros::main!()`, NO package.xml), whose [patch.crates-io]
+    # resolves the generated msg crates from a sibling Node pkg's gitignored
+    # `generated/`. The Node pkg (has package.xml + `[package.metadata.nros.node]`)
+    # is NOT a manifest build row, so the per-row codegen in
+    # `nros_fixture_build_one` (gated on `$dir/package.xml`) never reaches it —
+    # leaving `generated/` absent on a fresh checkout and the Entry build failing
+    # to resolve the patch path. Pre-sync every Node pkg in this platform's
+    # example tree, once, in the parent before the build fans out. Idempotent;
+    # ws sync only materialises crates (no compile), so syncing a Node pkg whose
+    # Entry is filtered out (--id / --core-only / rmw) is harmless.
+    while IFS= read -r pkgxml; do
+        pkgdir="$(dirname "$pkgxml")"
+        [ -f "$pkgdir/Cargo.toml" ] || continue
+        grep -q '^\[package\.metadata\.nros\.node\]' "$pkgdir/Cargo.toml" || continue
+        echo "  → (node-pkg codegen) $pkgdir"
+        NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$pkgdir"
+        NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws sync "$pkgdir" >/dev/null
+        NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$pkgdir"
+    done < <(find "examples/$platform" -name package.xml -type f 2>/dev/null)
     run nros_fixture_build_one
 fi
