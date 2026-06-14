@@ -139,13 +139,36 @@ fn require_esp32_networked() -> bool {
 ///
 /// Both connect to zenohd via slirp gateway 10.0.2.2:7448 → host localhost:7448.
 ///
-/// TODO(phase-89.4-followup): firmware reaches TCP-SYN and slirp replies with
-/// SYN-ACK, but the ESP32 side's smoltcp never emits the final ACK, so the
-/// handshake stalls and zpico returns `Transport(ConnectionFailed)`. The
-/// DMA-buffer lifetime bug in the OpenETH driver (`init()` must run after
-/// the `OpenEth` struct reaches its final storage) was fixed in this phase;
-/// the remaining stall is a deeper RX/TX coordination issue in the bare-metal
-/// OpenETH smoltcp integration.
+/// KNOWN-RED (re-diagnosed 2026-06-15). The old "OpenETH smoltcp never emits
+/// the final ACK / handshake stalls" note is STALE: the listener now reaches
+/// `Waiting for messages...` (Executor::open + subscribe succeed), so the TCP
+/// handshake + zenoh session open work. The real failure is a firmware CPU
+/// exception during session init, decoded from the QEMU backtrace:
+///
+///   Exception 'Load access fault' mtval=0xffffffff
+///     libc_stubs::strlen                       (a load off a 0xffffffff ptr)
+///     <- zenoh-pico _z_str_size / _z_str_clone  (string.c:165/189)
+///     <- _zp_config_insert                      (config.c:36)
+///     <- zpico_init_with_config                 (zpico.c:833)
+///     <- nros_rmw_zenoh::zpico::Context::with_config (zpico.rs:347)
+///
+/// i.e. a config-string `value` handed to zenoh-pico's config intmap is a
+/// garbage pointer (0xffffffff). Intermittent (the node sometimes connects),
+/// esp32-c3 only — the identical `with_config` path is green on
+/// freertos/threadx/native — so it is memory corruption local to the
+/// bare-metal session-init path, NOT a networking/OpenETH RX-TX issue.
+///
+/// Not yet root-caused (needs instrumented QEMU runs, ~250 s each). Ruled out
+/// so far: stale global `g_config` (zpico.c re-runs `z_config_default` per
+/// call); a non-NUL-terminated locator/property value (all are NUL-terminated
+/// stack buffers in `SmoltcpSession::new`); a too-small main stack (~18 KB:
+/// `_stack_start` 0x3fcce400 − `_stack_end` 0x3fcc9a4c — the ~4.2 KB
+/// `SmoltcpSession::new` frame, key_bufs/val_bufs 2×256×8, is large but the
+/// fault is a deref of an all-ones *pointer value*, not a run-off-into-guard).
+/// Open leads: the `connect_with_retry` closure re-invoking
+/// `zpico_init_with_config` (re-entrancy over shared globals), or esp32 heap
+/// corruption from `z_malloc` in the config-clone path. Tracked as the esp32
+/// embedded-harness residual.
 
 #[test]
 fn test_esp32_talker_listener_e2e() {

@@ -152,6 +152,13 @@ build-logging-smoke:
 [group("full-matrix")]
 build-fixtures: build-qemu build-logging-smoke
     #!/usr/bin/env bash
+    set -e
+    # The ESP32-C3 QEMU workspace Entry (`esp32_entry`) that
+    # `test_esp32_workspace_entry_e2e` consumes via
+    # `get_prebuilt_esp32_qemu_workspace_entry`. Previously only `build-examples`
+    # built it, but the test's skip message (correctly) points users to
+    # `build-fixtures` — so this lane must stage it too. Idempotent + cached.
+    bash scripts/build/workspace-fixtures-build.sh esp32 rust
     # esp-idf build-stage fixtures (issue 0041): build the idf.py ELF the
     # cli_bringup_esp_idf test consumes, so it doesn't run idf.py at test time.
     # Self-gates on idf.py/IDF env; non-fatal (a failed build leaves no stamp,
