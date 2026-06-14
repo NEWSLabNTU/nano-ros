@@ -11,13 +11,15 @@ set(NANO_ROS_BOARD    mps2-an385-freertos)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
+# Phase 240.6 (RFC-0043) — TYPED carrier: poll-style C action client component.
 nano_ros_node_register(
-    NAME    action_client
-    CLASS   freertos_c_action_client::FibonacciClient
-    SOURCES src/FibonacciClient.c ${example_interfaces_GENERATED_SOURCES}
-    DEPLOY  freertos)
+    NAME     action_client
+    CLASS    freertos_c_action_client::FibonacciClient
+    LANGUAGE C
+    TYPED
+    SOURCES  src/FibonacciClient.c
+    DEPLOY   freertos)
 
 nano_ros_deploy(
     TARGET     freertos
