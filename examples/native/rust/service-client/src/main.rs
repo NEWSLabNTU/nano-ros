@@ -14,11 +14,15 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use log::{error, info};
 use nros::prelude::*;
 
-// Phase 248 C6d — board-LESS APP owns + force-links its selected backend rlib.
-// The `nros` umbrella no longer carries `rmw-*`, so its `__FORCE_LINK_*` statics
-// are inert here; this `#[used]` static keeps the backend rlib (and its linkme
-// `RMW_INIT_ENTRIES` self-register section) in the link graph so the backend
-// auto-registers on POSIX. Mirrors `packages/core/nros/src/lib.rs`.
+// RMW selection is build/config, never application logic (RFC-0031): the backend
+// is the one `nros-rmw-*` optional dep activated by the config-lowered
+// `rmw-{zenoh,xrce,cyclonedds}` feature. The `#[used]` static(s) below are a pure
+// LINK-FORCE — they reference the backend's `register` symbol so the rlib's
+// linkme `RMW_INIT_ENTRIES` self-register section is pulled into the link graph
+// (rlib archive linking drops unreferenced objects, so this reference is
+// required, NOT a `register()` call). The cffi walker in `nros::init` then
+// discovers + registers the backend. Accepted link-force pattern (cf.
+// `extern crate nros_platform_cffi as _`), not an RMW leak.
 #[cfg(feature = "rmw-zenoh")]
 #[used]
 static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
@@ -31,15 +35,6 @@ static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> 
 #[used]
 static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
     nros_rmw_cyclonedds_sys::register;
-
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-cyclonedds",
-    feature = "rmw-xrce"
-)))]
-compile_error!("this example requires exactly one of `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce`",);
-
-// Phase 227.3 (unified RMW) — backend self-registers via nros's __FORCE_LINK_* + the cffi walker; no register() call.
 
 /// Service-client body — call `AddTwoInts` a few times. A failed
 /// `call()` clears the in-flight flag (`reset_in_flight`) and continues

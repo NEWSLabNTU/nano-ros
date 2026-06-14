@@ -27,11 +27,16 @@ use log::{error, info};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-// Phase 248 C6d — board-LESS APP owns + force-links its selected backend rlib.
-// The `nros` umbrella no longer carries `rmw-*`, so its `__FORCE_LINK_*` statics
-// are inert here; this `#[used]` static keeps the backend rlib (and its linkme
-// `RMW_INIT_ENTRIES` self-register section) in the link graph so the backend
-// auto-registers on POSIX. Mirrors `packages/core/nros/src/lib.rs`.
+// RMW selection is build/config, never application logic (RFC-0031): the backend
+// is the one `nros-rmw-*` optional dep activated by the config-lowered
+// `rmw-{zenoh,xrce,cyclonedds}` feature (default `rmw-zenoh`). The `#[used]`
+// static below is a pure LINK-FORCE — it references the backend's `register`
+// symbol so the rlib's linkme `RMW_INIT_ENTRIES` self-register section is pulled
+// into the link graph (rlib archive linking drops unreferenced objects, so this
+// reference is required, NOT a `register()` call). The cffi walker in
+// `nros::init` then discovers + registers the backend. This is the accepted
+// link-force pattern (cf. `extern crate nros_platform_cffi as _`), not an RMW
+// leak: no `register()` call, no `.rmw("name")`, no per-RMW `main` fork.
 #[cfg(feature = "rmw-zenoh")]
 #[used]
 static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
@@ -44,12 +49,6 @@ static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> 
 #[used]
 static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
     nros_rmw_cyclonedds_sys::register;
-
-// Phase 244 D3 — RMW selection is build/config, not source: the backend is
-// chosen by the mutually-exclusive `rmw-{zenoh,cyclonedds,xrce}` Cargo features
-// (default `rmw-zenoh`) and self-registers via the `nros` umbrella's
-// `#[used] __FORCE_LINK_*` statics + the cffi walker in `nros::init`. No
-// `register()` call, no RMW name baked into the source, no per-RMW `main` fork.
 
 fn main() {
     env_logger::init();
