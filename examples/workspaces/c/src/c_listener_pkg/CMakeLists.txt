@@ -20,8 +20,7 @@ nano_ros_node_register(
     NAME     listener
     CLASS    c_listener_pkg::Listener
     LANGUAGE C
-    SOURCES  src/Listener.c
-    DEPLOY   native)
+    SOURCES  src/Listener.c)
 
 target_link_libraries(c_listener_pkg_listener_component
     PUBLIC std_msgs__nano_ros_c)

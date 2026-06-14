@@ -20,8 +20,7 @@ nano_ros_node_register(
     NAME     talker
     CLASS    c_talker_pkg::Talker
     LANGUAGE C
-    SOURCES  src/Talker.c
-    DEPLOY   native)
+    SOURCES  src/Talker.c)
 
 target_link_libraries(c_talker_pkg_talker_component
     PUBLIC std_msgs__nano_ros_c)

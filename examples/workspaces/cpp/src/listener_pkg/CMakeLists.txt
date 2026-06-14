@@ -26,8 +26,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 nano_ros_node_register(
     NAME    listener
     CLASS   listener_pkg::Listener
-    SOURCES src/Listener.cpp
-    DEPLOY  native)
+    SOURCES src/Listener.cpp)
 
 # `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
 # carrying generated headers' include dirs. Entry pkg auto-links; Node

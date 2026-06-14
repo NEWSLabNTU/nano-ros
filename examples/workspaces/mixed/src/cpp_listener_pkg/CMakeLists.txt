@@ -19,8 +19,7 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 nano_ros_node_register(
     NAME    listener
     CLASS   cpp_listener_pkg::Listener
-    SOURCES src/Listener.cpp
-    DEPLOY  native)
+    SOURCES src/Listener.cpp)
 
 target_link_libraries(cpp_listener_pkg_listener_component
     PUBLIC std_msgs__nano_ros_cpp)

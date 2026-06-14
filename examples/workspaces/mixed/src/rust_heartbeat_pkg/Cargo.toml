@@ -14,12 +14,16 @@ class = "rust_heartbeat_pkg::Heartbeat"
 name = "heartbeat"
 default_namespace = "/"
 
+# Agnostic Node pkg dep — no `platform-*` / concrete `rmw-*`. The RMW +
+# platform selection flows from the Entry pkg's board + `system.toml`
+# `[system].rmw` (RFC-0004/0031, phase-248 C6b); the node lib carries
+# only functional features (`std`/`alloc`, the `rmw-cffi` vtable, ROS
+# edition).
 [dependencies]
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "std",
     "rmw-cffi",
-    "platform-posix",
     "ros-humble",
 ] }
 
