@@ -80,8 +80,12 @@ cffi-dds-cffi = ["rmw-cyclonedds"]
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.
 
 # XRCE transport refinements (require rmw-xrce-cffi)
-xrce-udp = ["nros/xrce-udp"]
-xrce-serial = ["nros/xrce-serial"]
+# Phase 248 C5c — `nros`'s vestigial `xrce-udp`/`xrce-serial` aliases (chained
+# to inert/platform features) were removed; these stay as inert markers for
+# downstream cmake glue that may still pass the names. The XRCE transport mode
+# is selected by the linked backend + board, not these.
+xrce-udp = []
+xrce-serial = ["nros-node/posix-serial"]
 
 # Functional capability — install the Rust `#[global_allocator]` routing
 # through the platform vtable (`nros_platform_alloc`/`_dealloc`). Phase 248:

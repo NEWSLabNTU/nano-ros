@@ -48,26 +48,24 @@
 //!
 //! ## Transport Backends
 //!
-//! The transport backend is selected at compile time via feature flags:
-//!
-//! - `rmw-zenoh` → zenoh-pico transport
-//! - `rmw-xrce` → XRCE-DDS transport
-//!
-//! The concrete session type is resolved automatically. Advanced users
-//! who need it can access it via `nros::internals::RmwSession`.
+//! Phase 248 C5c — `nros` is RMW- and platform-AGNOSTIC. It carries only the
+//! `rmw-cffi` vtable; the concrete backend (zenoh / xrce / cyclonedds) enters
+//! the link graph via the board crate (embedded), the board-less app's own
+//! `nros-rmw-*` dep (native), or the `nros-c`/`nros-cpp` staticlib root (D3),
+//! and self-registers through the `RMW_INIT_ENTRIES` walker at `Executor::open`.
+//! The concrete session type is resolved automatically; advanced users can
+//! access it via `nros::internals::RmwSession`.
 //!
 //! ## Crate Features
 //!
-//! Three orthogonal feature axes:
-//!
-//! **RMW backend** (select one):
-//! - `rmw-zenoh` - zenoh-pico transport backend
-//! - `rmw-xrce` - XRCE-DDS transport backend
-//!
-//! **Platform** (select one):
-//! - `platform-posix` - Desktop/Linux
-//! - `platform-zephyr` - Zephyr RTOS
-//! - `platform-bare-metal` - Bare-metal targets
+//! `nros` exposes only FUNCTIONAL features — `std`/`alloc`, the `rmw-cffi`
+//! vtable, `lending`, `bridge`/`config`, `param-services`,
+//! `lifecycle-services`, `safety-e2e`, `stream`, `ffi-sync`, and the ROS
+//! edition (`ros-humble`/`ros-iron`). There are NO `platform-*` or concrete
+//! `rmw-*` selector features (one residual: `platform-zephyr`, which gates the
+//! Zephyr entry-point scaffolding pending its relocation — see Cargo.toml).
+//! Platform + RMW are selected by the board / staticlib root via dependencies,
+//! not `nros` features.
 //!
 //! **ROS version** (select one):
 //! - `ros-humble` - ROS 2 Humble
@@ -93,33 +91,13 @@
 #![no_std]
 
 // ── Feature validation (mutual exclusivity) ─────────────────────────────
-// At most one RMW backend. Today only `rmw-cffi` is exposed at this layer;
-// the cffi shim further selects between `rmw-{zenoh,xrce,dds}-cffi` /
-// cyclonedds at the C ABI level.
-
-// At most one platform.
-#[cfg(any(
-    all(feature = "platform-posix", feature = "platform-zephyr"),
-    all(feature = "platform-posix", feature = "platform-bare-metal"),
-    all(feature = "platform-posix", feature = "platform-freertos"),
-    all(feature = "platform-posix", feature = "platform-nuttx"),
-    all(feature = "platform-posix", feature = "platform-threadx"),
-    all(feature = "platform-zephyr", feature = "platform-bare-metal"),
-    all(feature = "platform-zephyr", feature = "platform-freertos"),
-    all(feature = "platform-zephyr", feature = "platform-nuttx"),
-    all(feature = "platform-zephyr", feature = "platform-threadx"),
-    all(feature = "platform-bare-metal", feature = "platform-freertos"),
-    all(feature = "platform-bare-metal", feature = "platform-nuttx"),
-    all(feature = "platform-bare-metal", feature = "platform-threadx"),
-    all(feature = "platform-freertos", feature = "platform-nuttx"),
-    all(feature = "platform-freertos", feature = "platform-threadx"),
-    all(feature = "platform-nuttx", feature = "platform-threadx"),
-))]
-compile_error!(
-    "Platform features are mutually exclusive — select at most one of: \
-     `platform-posix`, `platform-zephyr`, `platform-bare-metal`, \
-     `platform-freertos`, `platform-nuttx`, `platform-threadx`."
-);
+// Phase 248 C5c — `nros` no longer carries the mutually-exclusive `platform-*`
+// selector features (only the `platform-zephyr` scaffolding residual remains),
+// so the platform mutual-exclusion `compile_error!` is gone. The platform is
+// selected by the board / staticlib root via an `nros-platform` dep, and
+// nros-node picks the kernel primitive at runtime (C2 wake-probe).
+// Only `rmw-cffi` is exposed at this layer; the cffi shim selects the
+// concrete backend at the C ABI level via the `RMW_INIT_ENTRIES` walker.
 
 // At most one ROS edition.
 #[cfg(all(feature = "ros-humble", feature = "ros-iron"))]
@@ -139,84 +117,26 @@ extern crate alloc;
 #[cfg(test)]
 extern crate self as nros;
 
-// Link-graph anchor — relays an in-rlib `#[used]` static down to the
-// `_nros_force_link_cffi` symbol that lives in `nros-platform-cffi`,
-// keeping the cffi rlib (and its build.rs-emitted
-// `libnros_platform_posix.a` link directive) in every binary's link
-// graph. Without this chain, rustc elides cffi (no Rust-level usage
-// in user code — trait impls are inlined into callers) and every
-// `nros_platform_*` C symbol resolves nowhere at link time.
-// Anchored in `nros` so the chain works for any RMW backend
-// (zenoh / xrce / dds / cyclonedds) — they all funnel through `nros`.
-#[cfg(feature = "platform-posix")]
-#[doc(hidden)]
-#[used]
-pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_LINK_CFFI;
+// Phase 248 C5c — the umbrella's force-link statics
+// (`__FORCE_LINK_{PLATFORM_CFFI,ZENOH,XRCE,CYCLONEDDS_SYS}`) are REMOVED along
+// with `nros`'s concrete-backend deps. `nros` no longer references any concrete
+// RMW or platform crate, so it has nothing to force-link. Registration + the
+// `nros_platform_*` link anchor now live with whoever owns the concrete crate:
+//   * embedded   — the BOARD crate force-links its backend + calls
+//     `<backend>::register()` in its boot path (C5a);
+//   * board-less native — the APP owns `nros-rmw-*` + a `#[used]` force-link in
+//     its `main.rs`, and `nros-platform-cffi[posix-c-port]` anchors the C symbols;
+//   * C/C++ staticlib — `nros-c`/`nros-cpp` bundle one backend (D3) and anchor
+//     `nros-platform` themselves.
 
-// Phase 227.3 (unified RMW) — force-link the zenoh backend rlib so its
-// `RMW_INIT_ENTRIES` self-register section survives stable-Rust rlib pruning,
-// retiring the explicit `nros_rmw_zenoh::register()` call from user `main.rs`.
-// Mirrors `__FORCE_LINK_CYCLONEDDS_SYS` (nros-node) + `__FORCE_LINK_PLATFORM_CFFI`
-// above. Cycle-free: the backend crate does not depend on `nros`. Phase 227.3(B)
-// — the zenoh backend's `register` is now platform-agnostic (the Rust shim
-// compiles without any `platform-*` feature, routing through zpico-sys's generic
-// C port), so this gate drops the platform umbrella and keys only on `rmw-zenoh`.
-// Inert unless `rmw-zenoh` selects the backend.
-#[cfg(feature = "rmw-zenoh")]
+// Phase 225.P / 248 C5c — kept as a no-op so the `nros::main!` framework's call
+// site still compiles. Backend registration no longer routes through `nros`
+// (which has no backend dep): on `linkme`-supported targets the `RMW_INIT_ENTRIES`
+// section auto-registers; on `linkme`-blind targets (`target_os="none"` Zephyr
+// native_sim / bare-metal, NuttX, ESP-IDF) the BOARD crate's boot path performs
+// the explicit `register()` (C5a — every deploy board self-links its RMW).
 #[doc(hidden)]
-#[used]
-pub static __FORCE_LINK_ZENOH: fn() -> Result<(), nros_rmw_zenoh::RegisterError> =
-    nros_rmw_zenoh::register;
-
-// Phase 227.3 (unified RMW) — same force-link for the xrce backend. Phase
-// 227.3(B) — `nros_rmw_xrce_cffi::register` is platform-agnostic (never gated on
-// a `platform-*` feature), so this keys only on `rmw-xrce`. Inert unless
-// `rmw-xrce` selects the backend.
-#[cfg(feature = "rmw-xrce")]
-#[doc(hidden)]
-#[used]
-pub static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
-    nros_rmw_xrce_cffi::register;
-
-// Phase 248 (C5) — force-link the cyclonedds backend `-sys` rlib so its
-// `RMW_INIT_ENTRIES` self-register section survives rlib pruning. Previously
-// this `#[used]` keep-alive lived in `nros-node` (`__FORCE_LINK_CYCLONEDDS_SYS`);
-// C2 made `nros-node` RMW-agnostic (dropped the concrete cyclonedds dep), so the
-// keep-alive moves here to the umbrella, mirroring the zenoh/xrce ones above.
-// Inert unless `rmw-cyclonedds` selects the backend.
-#[cfg(feature = "rmw-cyclonedds")]
-#[doc(hidden)]
-#[used]
-pub static __FORCE_LINK_CYCLONEDDS_SYS: fn() -> Result<(), nros_rmw_cyclonedds_sys::RegisterError> =
-    nros_rmw_cyclonedds_sys::register;
-
-// Phase 225.P — explicitly register the linked RMW backend(s) into the CFFI
-// vtable. On targets `linkme` supports (linux/macos/windows/…) the
-// `RMW_INIT_ENTRIES` section auto-registers and this is redundant (but safe —
-// `register()` is idempotent). On targets `linkme` does NOT recognise
-// (`target_os = "none"` for Zephyr native_sim / bare-metal, `"nuttx"`,
-// `"espidf"`, …) the section walker is a no-op AND the standalone image may
-// not run the `.init_array` fallback, so the backend is never registered and
-// `Executor::open` fails with `Transport(ConnectionFailed)`. The
-// `nros::main!` framework branches for those targets call this before
-// `Executor::open`. Feature-dispatched, so the umbrella stays RMW-agnostic.
-#[doc(hidden)]
-pub fn __register_linked_rmw() {
-    #[cfg(feature = "rmw-zenoh")]
-    let _ = nros_rmw_zenoh::register();
-    #[cfg(feature = "rmw-xrce")]
-    let _ = nros_rmw_xrce_cffi::register();
-    // issue #35 / phase-243 — the Cyclone backend needs the same explicit
-    // register on `linkme`-blind targets (Zephyr native_sim `target_os="none"`,
-    // bare-metal, NuttX, ESP-IDF). Its `.nros_rmw_init` section entry is forced
-    // into the link (`__FORCE_LINK_CYCLONEDDS_SYS`) but the section walker is a
-    // no-op there and the C++ `.init_array` ctor is `#ifndef __ZEPHYR__`, so
-    // without this call the backend is never registered and `Executor::open`
-    // returns `ConnectionFailed` (the Rust `zephyr_component_main!` then exits
-    // before printing readiness — the native_sim cyclone "hang").
-    #[cfg(feature = "rmw-cyclonedds")]
-    let _ = nros_rmw_cyclonedds_sys::register();
-}
+pub fn __register_linked_rmw() {}
 
 pub mod dispatch_tag;
 pub mod guide;

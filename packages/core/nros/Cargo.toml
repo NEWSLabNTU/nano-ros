@@ -32,11 +32,6 @@ std = [
     "nros-rmw/std",
     "nros-params/std",
     "nros-serdes/std",
-    # Phase 227.3 (unified RMW) — forward std to a linked backend so the umbrella
-    # `nros = { features = ["rmw-zenoh", "std", …] }` fully wires it. The `?`
-    # makes each inert unless that optional backend is selected (bridge-safe).
-    "nros-rmw-zenoh?/std",
-    "nros-rmw-xrce-cffi?/std",
 ]
 alloc = [
     "nros-core/alloc",
@@ -56,40 +51,14 @@ rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 # `target_link_libraries(... NanoRos::Rmw::<name>)`. `rmw-cffi` is
 # the only Rust feature that still gates the vtable runtime.
 
-# Phase 214.S.3 — collapse to 1-style entry shape matching zenoh +
-# xrce. Activates the cyclonedds backend by pulling `dep:nros-rmw-
-# cyclonedds-sys` (the C++ register shim, default-vendored as of
-# 214.S.1) AND flipping `nros-node`'s private `__cyclonedds-link`
-# feature so its build script sees `DEP_CYCLONEDDS_PRESENT=1` and
-# emits `cfg(rmw_cyclonedds_present)`. That cfg flips the K.7.6.b
-# `cyclonedds_register::register_type::<M>()` hook on in every typed
-# creator (`create_publisher`, `create_subscription`, `create_client`,
-# `create_service`, `create_action_*`), routing through the runtime
-# descriptor builder that the C++ bridge reads in `dds_create_topic`.
-# Two-entry only because cargo's `links =` env-var hand-off does not
-# propagate transitively — see `packages/core/nros-node/Cargo.toml`
-# and `packages/core/nros-node/build.rs` for the auto-detect path.
-rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys", "nros-node/__cyclonedds-link"]
-
-# Phase 214.S.5.c.4 — parity rows for `rmw-zenoh` + `rmw-xrce`,
-# mirroring the cyclonedds shape above. Each pulls the matching
-# backend crate as an optional dep. `cargo build --features
-# rmw-zenoh` on a Component pkg's `nros` dep transitively pulls
-# `nros-rmw-zenoh` into the link graph; the cffi-vtable walker
-# (`RMW_INIT_ENTRIES`) discovers it at `Executor::open`. Used by
-# `just freertos build-examples` / `just threadx_linux build-examples`
-# which invoke `cargo build --features rmw-zenoh` (or `rmw-xrce`)
-# to exercise the alternative-backend build path.
-# Phase 227.3 follow-up — forward `linkme-register` to the backend so its
-# `nros_rmw_register_backend!` macro actually emits the `RMW_INIT_ENTRIES`
-# linkme entry the walker discovers at `Executor::open`. `nros` pulls the
-# backend with `default-features = false` (linkme-register is a default
-# feature of the backend), so without this `?/` forward the entry is never
-# emitted and a pure-cargo binary opens with no registered backend
-# (`Transport(ConnectionFailed)`). The static-lib / CMake path is unaffected
-# (it auto-registers via `.init_array`).
-rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-rmw-zenoh?/linkme-register"]
-rmw-xrce  = ["dep:nros-rmw-xrce-cffi", "nros-rmw-xrce-cffi?/linkme-register"]
+# Phase 248 C5c — the concrete-backend selector features
+# (`rmw-{zenoh,xrce,cyclonedds}`) + their optional `nros-rmw-*` deps are
+# REMOVED. `nros` is fully RMW-agnostic: it consumes only the `rmw-cffi`
+# vtable (above). The concrete backend is brought into the link graph by the
+# BOARD crate (embedded — self-links + registers via its boot path, C5a) or by
+# the board-less APP/staticlib root (native posix app owns `nros-rmw-*` +
+# force-link; `nros-c`/`nros-cpp` bundle one backend, D3). Selection lowers to
+# the board feature (RFC-0031, codegen C5b), not an `nros` feature.
 
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix.
@@ -107,79 +76,31 @@ config = ["bridge", "nros-bridge/config"]
 # come into scope.
 lending = ["rmw-cffi", "nros-rmw-cffi/lending"]
 
-# Platform (select one). Phase 104.A — formerly forwarded
-# `platform-*` features to the active RMW backend's matching feature
-# via `?/`. With the optional concrete-RMW deps removed from this
-# crate, those forwarding clauses are gone. Callers wire their own
-# `nros-rmw-<name>` dep with the matching `platform-*` feature.
-platform-posix = [
-    "nros-platform/platform-posix",
-    "platform-udp",
-    # Phase 227.3 (unified RMW) — forward to the zenoh backend's posix C port
-    # when linked (inert via `?` otherwise).
-    "nros-rmw-zenoh?/platform-posix",
-]
-platform-zephyr = [
-    "nros-platform/platform-zephyr",
-    "platform-udp",
-]
-platform-bare-metal = [
-]
-platform-freertos = [
-    "nros-platform/platform-freertos",
-    "platform-udp",
-    # Issue #48 — forward to the zenoh backend's FreeRTOS C port when
-    # linked (inert via `?` otherwise), parity with the NuttX row below.
-    # Ensures `zpico-sys` compiles zenoh-pico with the FreeRTOS platform
-    # manifest under the unified-RMW link path.
-    "nros-rmw-zenoh?/platform-freertos",
-]
-platform-nuttx = [
-    "nros-platform/platform-nuttx",
-    "platform-udp",
-    # Phase 227.3 (unified RMW) — forward to the zenoh backend's NuttX C
-    # port when linked (inert via `?` otherwise). Without this, zpico-sys
-    # compiles zenoh-pico WITHOUT `ZENOH_NUTTX`, so the NuttX setsockopt
-    # guards in `src/system/unix/network.c` (skip SO_LINGER / fix
-    # TCP_NODELAY) stay off — the SO_LINGER setsockopt then fails on NuttX
-    # (no `CONFIG_NET_SOLINGER`) and `_z_open_tcp` returns
-    # `Transport(ConnectionFailed)` before the connect succeeds.
-    "nros-rmw-zenoh?/platform-nuttx",
-]
-platform-threadx = [
-    "nros-platform/platform-threadx",
-    "platform-udp",
-]
-platform-cffi = ["nros-platform/platform-cffi"]
-# Phase 11 — AGX Orin SPE (Cortex-R5F + NVIDIA FreeRTOS FSP).
-# IVC-only transport; no `platform-udp` (no Ethernet, no UDP socket
-# layer).
-platform-orin-spe = [
-    "nros-platform/platform-orin-spe",
-]
-
-# Phase 128.E.1 — `link-tcp` / `link-udp-unicast` deleted on
-# `nros-rmw-zenoh` (always-on in vendor build). The umbrella
-# crate's inert markers go with them. `link-tls` / `link-custom`
-# stay — both have real build-host gates.
-# Phase 227.3 (unified RMW) — TLS link is zenoh-pico-specific; forward when linked.
-link-tls = ["nros-rmw-zenoh?/link-tls"]
-# Phase 227.3 (unified RMW) — custom link is zenoh-pico-specific; forward when linked.
-link-custom = ["nros-rmw-zenoh?/link-custom"]
-
-# XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features).
-platform-udp = []
-# XRCE transport refinements (legacy aliases).
-xrce-udp = ["platform-posix", "platform-udp"]
-xrce-serial = ["nros-platform/platform-posix", "nros-node/posix-serial"]
+# Phase 248 C5c — the platform-impl selector features (`platform-posix`,
+# `-bare-metal`, `-freertos`, `-nuttx`, `-threadx`, `-cffi`, `-orin-spe`),
+# `platform-udp`, the `xrce-udp`/`xrce-serial` legacy aliases, and the
+# zenoh-specific `link-tls`/`link-custom` forwards are REMOVED. `nros` is
+# platform-agnostic: nros-node selects the kernel primitive at runtime (C2
+# wake-probe), and the `nros_platform_*` symbols come from whoever links the
+# binary — the board crate (embedded), `nros-platform-cffi[posix-c-port]`
+# (board-less native), or the CMake C-port (zephyr). Platform lowers to a
+# dependency (`nros-platform[platform-X]` on the board/staticlib root), not an
+# `nros` feature (RFC-0031 platform amendment, C5-plat). zenoh link tuning
+# (`link-tls`/`link-custom`) is set on the consumer's own `nros-rmw-zenoh` dep.
+#
+# RESIDUAL (Tier-3, follow-up): `platform-zephyr` is KEPT — it gates `nros`'s
+# Zephyr entry-point scaffolding (the `zephyr_component_main!` macro +
+# `platform::zephyr` module), which is zephyr-coupled code that still lives in
+# the umbrella. Relocating it to the platform/board layer (so `nros` carries NO
+# `platform-*`) is a separate refactor that needs a green Zephyr build to
+# validate (blocked on #58/#59). It forwards only to `nros-platform/platform-zephyr`.
+platform-zephyr = ["nros-platform/platform-zephyr"]
 
 # E2E safety protocol (CRC-32 + sequence tracking).
 safety-e2e = [
     "nros-node/safety-e2e",
     "nros-rmw/safety-e2e",
     "nros-rmw-cffi?/safety-e2e",
-    # Phase 227.3 (unified RMW) — forward to the zenoh backend when linked.
-    "nros-rmw-zenoh?/safety-e2e",
 ]
 
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API).
@@ -198,9 +119,8 @@ param-services = ["nros-node/param-services"]
 lifecycle-services = ["nros-node/lifecycle-services"]
 
 # ROS edition feature flags.
-# Phase 227.3 (unified RMW) — forward the ROS edition to the zenoh backend.
-ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh?/ros-humble"]
-ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron"]
+ros-humble = ["nros-node/ros-humble"]
+ros-iron = ["nros-node/ros-iron"]
 
 [dependencies]
 # Core functionality (default-features = false for no_std support).
@@ -209,22 +129,11 @@ nros-macros = { version = "0.5.0", path = "../nros-macros" }
 nros-node = { version = "0.5.0", path = "../nros-node", default-features = false }
 nros-rmw = { version = "0.5.0", path = "../nros-rmw", default-features = false }
 nros-rmw-cffi = { version = "0.5.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
-# Phase 214.S.3 — pulled in by the `rmw-cyclonedds` umbrella feature.
-# Defaults left ON so the `vendored` feature (214.S.1, now part of the
-# default set) compiles the C++ backend end-to-end with no boilerplate
-# at the example dep-site. External consumers that supply the symbols
-# from CMake / Zephyr opt out via `default-features = false` at the
-# umbrella's `[dependencies]` entry on their side.
-nros-rmw-cyclonedds-sys = { workspace = true, optional = true }
-# Phase 214.S.5.c.4 — pulled in by the `rmw-zenoh` / `rmw-xrce`
-# umbrella features. Both are header-only at link-time (vtable
-# registration happens via the `RMW_INIT_ENTRIES` walker); the
-# concrete crate just needs to be in the link graph for the
-# walker to discover its constructor section. `default-features`
-# kept off so the umbrella user picks transport links via the
-# concrete crate's own feature surface.
-nros-rmw-zenoh = { version = "0.5.0", path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
-nros-rmw-xrce-cffi = { version = "0.5.0", path = "../../xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
+# Phase 248 C5c — the optional concrete-backend deps (`nros-rmw-zenoh`,
+# `nros-rmw-xrce-cffi`, `nros-rmw-cyclonedds-sys`) are REMOVED. `nros` consumes
+# only the generic `nros-rmw-cffi` vtable; the concrete backend enters the link
+# graph via the board crate (embedded) or the board-less app / `nros-c`/`nros-cpp`
+# staticlib root that owns it directly.
 # Phase 128.G — bridge surface (manifest-driven multi-RMW). Optional;
 # only pulled in when the umbrella's `bridge` or `config` feature is
 # enabled.

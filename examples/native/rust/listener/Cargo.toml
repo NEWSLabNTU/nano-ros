@@ -28,7 +28,7 @@ rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 # Zenoh-specific feature carry-overs (forwarded to the backend by `nros`).
 safety-e2e         = ["nros/safety-e2e"]
 unstable-zenoh-api = ["nros/unstable-zenoh-api"]
-link-tls           = ["nros/link-tls"]
+link-tls           = ["nros-rmw-zenoh?/link-tls"]
 
 [dependencies]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }

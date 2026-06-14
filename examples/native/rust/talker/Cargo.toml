@@ -37,7 +37,7 @@ rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 # `rmw-xrce`.
 safety-e2e     = ["nros/safety-e2e"]
 param-services = ["nros/param-services"]
-link-tls       = ["nros/link-tls"]
+link-tls       = ["nros-rmw-zenoh?/link-tls"]
 
 [dependencies]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }

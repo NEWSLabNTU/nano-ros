@@ -59,8 +59,10 @@ lifecycle-services = ["rmw-cffi", "nros-c/lifecycle-services"]
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.
 
 # XRCE transport refinements (require rmw-xrce-cffi)
-xrce-udp = ["nros/xrce-udp"]
-xrce-serial = ["nros/xrce-serial"]
+# Phase 248 C5c — inert markers (nros's vestigial aliases removed); forward to
+# nros-c's equivalents so downstream cmake passing the names still resolves.
+xrce-udp = ["nros-c/xrce-udp"]
+xrce-serial = ["nros-c/xrce-serial"]
 
 # Functional capability — install the Rust `#[global_allocator]` routing
 # through the platform vtable (`nros_platform_alloc`/`_dealloc`). Phase 248:
