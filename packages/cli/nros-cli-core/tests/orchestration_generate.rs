@@ -83,9 +83,13 @@ fn generated_package_writes_manifest_build_script_and_main() {
     assert!(cargo_toml.contains("name = \"nros-generated-test\""));
     // Phase 126.M4 — per-RMW `rmw-*-cffi` feature names dropped (Phase
     // 128.C); generator now emits a single `nros/rmw-cffi` umbrella.
-    assert!(cargo_toml.contains(
-        "default = [\"std\", \"nros/platform-posix\", \"nros/rmw-cffi\", \"nros-orchestration/rmw-cffi\"]"
-    ));
+    // Phase 248 C5c — the `nros` umbrella is platform-agnostic: no
+    // `nros/platform-posix` feature. Posix `nros_platform_*` symbols come
+    // from the `nros-platform-cffi[posix-c-port]` dep (asserted below).
+    assert!(
+        cargo_toml
+            .contains("default = [\"std\", \"nros/rmw-cffi\", \"nros-orchestration/rmw-cffi\"]")
+    );
     // Phase 195.C — `nros_path` is now the real workspace (so board descriptors
     // resolve), so match the dep-path suffix rather than a fixed prefix.
     assert!(cargo_toml.contains("nros = { path = \""));
@@ -254,9 +258,16 @@ fn generated_package_features_follow_rtos_plan() {
     );
     let cargo_toml = fs::read_to_string(output_dir.join("Cargo.toml")).expect("read Cargo.toml");
 
+    // Phase 248 C5c — the `nros` umbrella is platform-agnostic: the default
+    // set keeps only the local `platform-zephyr` alias (gating the generated
+    // pkg's platform deps/cfg) + the rmw-cffi vtable; `nros/platform-zephyr`
+    // is gone. The concrete platform now comes from a direct `nros-platform`
+    // dep (asserted below).
     assert!(cargo_toml.contains(
-        "default = [\"nros/platform-zephyr\", \"platform-zephyr\", \"nros/rmw-cffi\", \"nros-orchestration/rmw-cffi\"]"
+        "default = [\"platform-zephyr\", \"nros/rmw-cffi\", \"nros-orchestration/rmw-cffi\"]"
     ));
+    assert!(cargo_toml.contains("nros-platform = { path = \""));
+    assert!(cargo_toml.contains("packages/core/nros-platform\", default-features = false, features = [\"platform-zephyr\"] }"));
     assert!(!cargo_toml.contains("\"std\""));
     assert!(!cargo_toml.contains("platform-posix"));
     assert!(!cargo_toml.contains("nros-platform-cffi"));

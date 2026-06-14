@@ -1513,7 +1513,16 @@ fn render_platform_dependencies(options: &GenerateOptions, plan: &NrosPlan) -> S
         ),
         // zephyr-lang-rust integration: the `zephyr` crate (logger, kconfig,
         // POSIX shims). Kernel / RMW / nros C runtime link at the CMake layer.
-        PlatformKind::Zephyr => "zephyr = \"0.1.0\"\nlog = \"0.4\"\n".to_string(),
+        // Phase 248 C5c — crate-less zephyr has no board crate to carry the
+        // platform, so it brings `nros-platform[platform-zephyr]` directly
+        // (resolves `ConcretePlatform`/the cffi link anchor); the `nros`
+        // umbrella stays platform-agnostic.
+        PlatformKind::Zephyr => format!(
+            "zephyr = \"0.1.0\"\nlog = \"0.4\"\n\
+             nros-platform = {{ path = \"{}\", default-features = false, features = [\"{}\"] }}\n",
+            path_for_template(&workspace.join("packages/core/nros-platform")),
+            p.platform_feature,
+        ),
         _ => String::new(),
     };
     format!("{board_line}{extra}")
@@ -1664,17 +1673,18 @@ fn generated_default_features(
     // carry only their own alias (`platform-esp32-qemu` /
     // `platform-stm32`), NOT the `platform-bare-metal` alias.
     if let Some(p) = profile(build) {
-        // Phase 248 C5c-platform (RFC-0031 platform amendment) — board-driven
-        // platform selection. When the entry depends on a board crate, that
-        // crate already brings the concrete `nros-platform/platform-X` impl
-        // into the link graph (mirrors C5a/C5b for the RMW axis), so the
-        // umbrella `nros` dep stays platform-agnostic — it carries only the
-        // `platform-cffi`/`rmw-cffi` vtable. Only crate-less host boards
-        // (posix / zephyr / orin-spe), which have no board crate to carry the
-        // platform, still lower `nros/platform-X` here.
-        if p.board_crate.is_none() {
-            features.push(format!("nros/{}", p.platform_feature));
-        }
+        // Phase 248 C5c — the `nros` umbrella is fully platform-AGNOSTIC: it
+        // carries only the `platform-cffi`/`rmw-cffi` vtable, never a
+        // `platform-X` feature. Concrete platform selection lowers to a
+        // dependency, not an `nros` feature:
+        //   * board-backed entries  → the board crate brings
+        //     `nros-platform/platform-X` (C5a/C5b);
+        //   * crate-less posix      → `nros-platform-cffi[posix-c-port]`
+        //     (emitted by `render_platform_dependencies`) supplies the
+        //     `nros_platform_*` symbols; nros-node selects the impl at runtime;
+        //   * crate-less zephyr/orin → a direct `nros-platform[platform-X]`
+        //     dep (also emitted by `render_platform_dependencies`).
+        // So nothing pushes `nros/platform-X` here anymore.
         for alias in &p.local_aliases {
             features.push(alias.to_string());
         }
