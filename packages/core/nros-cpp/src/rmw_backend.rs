@@ -10,11 +10,19 @@
 #[used]
 static FORCE_LINK: unsafe extern "C" fn() = auto_register;
 
-// `pub` (W11, Option D) so the umbrella root can re-export it as
-// `nros_cpp_auto_register_backend`: a per-entry `<entry>_runtime` staticlib bundles
-// nros-cpp as a dep rlib, where this module's `.init_array` ctor below is DCE'd — the
-// runtime root re-installs its own ctor pointing here. Within nros-cpp-as-root it stays
-// the bundled backend's force-link + auto-register entry.
+/// Force-link + auto-register the selected cffi backend before `main`.
+///
+/// `pub` (W11, Option D) so the umbrella root can re-export it as
+/// `nros_cpp_auto_register_backend`: a per-entry `<entry>_runtime` staticlib bundles
+/// nros-cpp as a dep rlib, where this module's `.init_array` ctor below is DCE'd — the
+/// runtime root re-installs its own ctor pointing here. Within nros-cpp-as-root it stays
+/// the bundled backend's force-link + auto-register entry.
+///
+/// # Safety
+/// Takes no arguments and dereferences no pointers — the `unsafe` marker only reflects its
+/// `extern "C"` ABI / `.init_array` ctor role. Safe to call any number of times; the
+/// backend `register()` it forwards to is idempotent. Intended to run exactly once, before
+/// `main`, via the `.init_array` slot (or the `nros_app_register_backends` C stub).
 pub unsafe extern "C" fn auto_register() {
     #[cfg(feature = "rmw-zenoh-cffi")]
     {
