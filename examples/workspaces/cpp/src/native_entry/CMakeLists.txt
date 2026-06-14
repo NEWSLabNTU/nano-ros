@@ -21,11 +21,14 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-# Phase 219.D — Entry pkg authored as a single `main.cpp` carrying the
-# declarative `NROS_MAIN(...)` macro; cmake fn drives codegen.
+# Phase 247 (RFC-0043) — TYPED Entry. `nano_ros_entry(TYPED)` shells
+# `nros codegen entry --lang cpp --typed`, routing each launch node to the real
+# executor via its component object (construct + `configure(node)`) instead of
+# the legacy `__nros_component_<pkg>_register` interpreter call.
 nano_ros_entry(
     NAME    native_entry
     SOURCES src/main.cpp
     BOARD   native
+    TYPED
     LAUNCH  "demo_bringup:system.launch.xml"
     DEPLOY  native)
