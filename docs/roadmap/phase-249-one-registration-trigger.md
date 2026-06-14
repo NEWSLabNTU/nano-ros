@@ -177,36 +177,35 @@ proven).
   via *multiple* dep paths — P4 must drop the feature everywhere + the macro invocations,
   not one dep.
 
-  **P3.5b — board multi-backend + example migration. In progress (2026-06-15).**
-  - Board: `NativeBoard` extended to own zenoh + xrce + cyclonedds (DONE).
-  - Examples: the 6 Pattern-2 `init_with_launch_auto` native examples
-    (talker/listener/service-{client,server}/action-{client,server}) migrated to the
-    declarative Node + `nros::main!()` shape (a workflow, all 6 build). Each = a Node pkg
-    (`<name>_pkg`, composable `impl Node + ExecutableNode`, no registration boilerplate) +
-    an Entry pkg (`nros::main!()`, `deploy=native`). The `#[used] __FORCE_LINK_*` block +
-    `linkme-register` are gone; the board boot registers.
-  - **Integration (full, user chose A):**
-    - **RMW variants:** the migration dropped the example `rmw-*` features; re-add them as
-      **board-forwarding** features on each Entry (`rmw-<x> = ["nros-board-native/rmw-<x>"]`,
-      `default-features = false` on the board dep) so the `fixtures.toml` RMW-variant rows +
-      the `target-<rmw>/` resolvers keep working.
-    - **safety-e2e / param-services / link-tls / zero-copy → DEFERRED to
-      [phase-250](phase-250-safety-params-feature-dimension.md)** (a declared, config-driven
-      lang-agnostic feature dimension, not per-example Cargo gates). Interim: remove those
-      `fixtures.toml` variant rows; `skip!` `params.rs` + `safety_e2e.rs` (+ tls/zero-copy
-      e2e) pointing at phase-250.
-    - **Resolvers / consuming tests:** the `build_native_*` resolvers in
-      `nros-tests/.../binaries/mod.rs` are *path-getters* over the manifest-built fixtures
-      (no compile; `_features` ignored) — bin names preserved (`talker`, …) so paths still
-      resolve; verify the non-safety/param consumers (executor / multi_node / actions / qos /
-      nano2nano / rmw_interop) e2e against the migrated bins. The fixture build materialises
-      the Node pkg `generated/` via the `fixtures-build.sh` node-pkg ws-sync pre-pass.
-- **P4 — delete linkme slice + the weak no-op (closes R2 / issue 0050 W3.1).**
-  **Precondition: P3.5 (every hosted Rust binary registers via the board call).** Remove the
-  distributed slice + the weak `nros_app_register_backends`; a missing backend is now a
-  link error. **Gate:** full per-cell e2e (the W7 matrix) + `just check` + the weak-symbol
-  image gate; `examples/workspaces/mixed` + a pure-Rust + a C/C++ + an RTOS cell each
-  register + run.
+  **P3.5b — example migration: WITHDRAWN (conflicts with phase-244 D7, 2026-06-15).**
+  The board pieces stand: `NativeBoard` extended to own zenoh/xrce/cyclonedds + the P3.5a
+  board-boot register — both harmless-additive (pushed). The *example migration* (the 6
+  native Pattern-2 examples → declarative Node + `nros::main!()`, board-owned register, no
+  force-link) was built + **runtime-validated** (talker→listener `message_callbacks=5`
+  over zenoh, board-owned registration) but **discarded**: phase-244 **D7** (`833979e59`)
+  landed a contrary, empirically-verified decision — native rust keeps **Shape B**
+  (Pattern-2 + the `#[used] __FORCE_LINK_*` ladder; D7's commit verified that *removing*
+  the ladder breaks registration because linkme needs it). So native rust deliberately
+  stays linkme-based, and the declarative migration contradicts it. The migration files
+  (`<name>_pkg` dirs) are kept untracked/recoverable should the **P4b ↔ D7** fork (below)
+  resolve toward the board-owned direction. *(safety-e2e / param-services / link-tls /
+  zero-copy → a config-driven dimension regardless: [phase-250](phase-250-safety-params-feature-dimension.md).)*
+- **P4a — delete the C/C++ weak `nros_app_register_backends`. DONE (2026-06-15).**
+  The cmake `nano_ros_link_rmw` strong stub (P2b) is now the sole def; a missing one is a
+  **link error**, not a silent no-op (the #48-class hazard). C/C++-only — independent of
+  native-Rust linkme (which D7 keeps), so it lands cleanly. **Closes
+  [issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md) W3.1 / R2.** Validated:
+  `just native build-c` + `build-cpp` link clean (no undefined symbol, no multiple-def);
+  source + image + rust weak gates green.
+- **P4b — delete the linkme slice (D3 bullet-1: one registration path for Rust). DEFERRED —
+  conflicts with phase-244 D7.** D7 keeps native rust on linkme (Shape B); deleting the
+  slice strands it (`NoBackend`). Reconcile first (the P4b ↔ D7 fork): (i) native adopts an
+  explicit register (board-owned — the withdrawn P3.5b direction; overrides D7's empirical
+  "force-link accepted"), or (ii) linkme survives as the hosted-Rust impl detail — which
+  **RFC-0042 D3 explicitly permits** (*"the distributed-slice may remain an implementation
+  detail of the generator's hosted path"*), so "one registration path" is already satisfied
+  for C/C++ + embedded without deleting hosted-Rust linkme. **Gate (when unblocked):** full
+  per-cell e2e + `just check` + the weak-symbol image gate.
 
 ## Acceptance
 

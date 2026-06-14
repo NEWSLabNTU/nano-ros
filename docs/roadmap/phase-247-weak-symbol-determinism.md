@@ -173,18 +173,18 @@ Replace weak defaults that exist only to dodge a link-order problem (not a
 genuine optional hook) with a define-once / explicit-registration structure
 (RFC-0042 D3 pattern). Prioritise the highest-fragility sites:
 
-- **W3.1 — DEFERRED to [phase-249](phase-249-one-registration-trigger.md) (issue 0062 R2/P4).**
-  `nros_app_register_backends` weak/strong dance (`nros-c`/`nros-cpp`
-  `c-stubs/weak_register_backends.c` ↔ the cmake-generated strong stub). The lone *pure*
-  link-order dodge among the owned weak defaults (#48-class). **Retirement mechanism
-  corrected (2026-06-14):** NOT the W11 `.init_array` ctor (audit found the ctor is not
-  universal — bare-metal startup doesn't walk `.init_array`, linkme is RTOS-blind), but
-  the **explicit generated `nros_rmw_<backend>_register()` call** of RFC-0042 §D3 bullet 1
-  / phase-249. Once `nros_app_register_backends` is a generated STRONG def from the R1
-  dispatch manifest (uniform on every platform), the weak no-op + the ad-hoc cmake stub
-  are redundant and get deleted (phase-249 P4 = issue 0062 R2). A build-tooling change,
-  not a point-edit landable here; this image gate guards the deletion (it already asserts
-  the registration symbol resolves strong).
+- **W3.1 — RESOLVED (2026-06-15, [phase-249](phase-249-one-registration-trigger.md) P4a).**
+  The weak `nros_app_register_backends` default (`nros-c`/`nros-cpp`
+  `c-stubs/weak_register_backends.c`) is **deleted**: C/C++ registration is the cmake
+  `nano_ros_link_rmw` generated STRONG def (universal per `nros_platform_link_app`,
+  phase-249 P2b), so a missing strong def is a **link error**, not the silent no-op
+  #48-class hazard. This image gate guarded it (the symbol was asserted strong in cmake
+  images, then left the coverage map — it is now generated-strong or link-error, never
+  weak). Validated: native C + C++ link clean; source/image/rust weak gates green.
+  C/C++-only — the *linkme* registration path (native Rust) stays per
+  [phase-244 D7](phase-244-example-source-cleanliness.md) Shape B; its deletion ("one
+  registration path" for Rust) is phase-249 **P4b**, deferred (P4b ↔ D7 fork; RFC-0042 D3
+  already permits linkme to remain the hosted-Rust impl detail).
 - **W3.2 — DONE (2026-06-13).** The 155.A-class const-weak constants in
   `threadx_hooks.c` (`nros_board_app_stack_size`/`_priority`) — a weak *data*
   symbol gcc could fold at the use site before the strong override was seen

@@ -76,16 +76,21 @@ unstable). Keep it that way.
   allowlist was corrected.
 - **Gate wiring — DONE (W2).** Source gate in `just check`; image gate standalone
   for per-platform CI with a static SSoT cross-check that runs anywhere.
-- **Reduction — DONE for the landable scope (W3).** 155.A-class const-weak
+- **Reduction — DONE (W3).** 155.A-class const-weak
   (`nros_board_app_stack_size`/`_priority`) converted to weak getter functions,
   validated on real RISC-V (strong override wins, no const-fold). Remaining
-  override-defaults re-audited as capability-conditional (keep). The
-  `nros_app_register_backends` register-stub dance is the one pure link-order
-  dodge; it is retired by the D3 **single-runtime** model
-  ([phase-241-d3-single-runtime](../roadmap/phase-241-d3-single-runtime.md)) — once
-  its W11 `.init_array` ctor guarantees registration, the stub + weak default are
-  deleted ([issue 0062](0062-d3-completion-one-registration-path-and-link-manifest.md)
-  R2). Kept audited by both gates until then. → see
+  override-defaults re-audited as capability-conditional (keep).
+- **W3.1 — RESOLVED (2026-06-15, phase-249 P4a).** The weak `nros_app_register_backends`
+  default (nros-c + nros-cpp) is **deleted**: C/C++ registration is the cmake
+  `nano_ros_link_rmw` generated STRONG def (universal per `nros_platform_link_app`,
+  phase-249 P2b), so a missing strong def is a **link error**, not a silent no-op (the
+  #48-class hazard is gone). Validated: native C + C++ link clean; the weak source/image/
+  rust gates green; the symbol left the image-gate coverage (generated-strong or
+  link-error, never weak). This is C/C++-only — independent of native-Rust **linkme**,
+  which [phase-244 D7](../roadmap/phase-244-example-source-cleanliness.md) keeps as the
+  accepted Shape-B path; the *linkme* deletion ("one registration path" for Rust) is
+  [phase-249](../roadmap/phase-249-one-registration-trigger.md) **P4b**, deferred pending
+  the P4b ↔ D7 reconciliation (issue 0062 R2/R3). → see
   [phase-247](../roadmap/phase-247-weak-symbol-determinism.md).
 
 ## Scope for the worker
