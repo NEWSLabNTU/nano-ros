@@ -509,8 +509,13 @@ fn generated_package_wires_freertos_entry() {
     );
 
     let cargo_toml = fs::read_to_string(output_dir.join("Cargo.toml")).expect("read Cargo.toml");
+    // Phase 248 C5c-platform — board-driven platform selection: the entry deps
+    // the `nros-board-mps2-an385-freertos` crate, which brings
+    // `nros-platform/platform-freertos` directly, so the umbrella `nros` dep no
+    // longer carries `nros/platform-freertos`. The `platform-freertos` local
+    // alias (the generated entry pkg's own feature) stays.
     assert!(cargo_toml.contains(
-        "default = [\"nros/platform-freertos\", \"platform-freertos\", \"nros/rmw-cffi\", \"nros-orchestration/rmw-cffi\"]"
+        "default = [\"platform-freertos\", \"nros/rmw-cffi\", \"nros-orchestration/rmw-cffi\"]"
     ));
     assert!(cargo_toml.contains("nros-board-mps2-an385-freertos"));
     assert!(cargo_toml.contains("panic-semihosting"));

@@ -27,10 +27,12 @@ nros-platform-api = { path = "../../core/nros-platform-api" }
 # single-node esp32 example's `nros` + `nros-rmw-zenoh` deps; both are
 # gated behind the default `rmw-zenoh` feature so a serial-only / no-RMW
 # build of this board crate stays lean.
+# Phase 248 C5c-platform — board-driven platform: the concrete impl comes from
+# the direct `nros-platform` dep (`platform-esp32-qemu`) above; the umbrella
+# `nros` dep stays platform-agnostic (no `platform-bare-metal` marker).
 nros = { path = "../../core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-bare-metal",
     "ros-humble",
 ], optional = true }
 nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [

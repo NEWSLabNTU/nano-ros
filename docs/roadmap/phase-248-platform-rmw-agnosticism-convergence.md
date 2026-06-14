@@ -220,8 +220,11 @@ nros keeps its features for now):**
       only the `rmw-cffi` vtable. RFC-0031 amended (board = Rust lowering target).
       Tests green: nros-cli-core lib 376, orchestration_generate 21,
       cargo-nano-ros 46. **Follow-ups (→ C5c):** (1) PLATFORM-axis lowering
-      (`nros/platform-*` → board) still pending — more entangled (default-features
-      + per-platform jinja aliases). (2) Crate-less native/posix + zephyr
+      (`nros/platform-*` → board) — **DONE (C5-plat, 2026-06-14):** boards bring
+      `nros-platform { features=["platform-<rtos>"] }` directly (no board forwards
+      `nros/platform-*`), codegen drops `nros/platform-X` for board-backed
+      entries; RFC-0031 amended for both axes. cli 376+21+46 still pass.
+      (2) Crate-less native/posix + zephyr
       orchestration still link via a direct `nros-rmw-*` path dep + explicit
       `register()` in `render_backend_register_fn` (no `nros-board-*` crate to
       carry the feature) — moving them needs `nros-board-native` in the board

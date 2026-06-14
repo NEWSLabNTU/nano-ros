@@ -67,7 +67,7 @@ mps2-an385-pac = { path = "../mps2-an385-pac", optional = true }
 # (new-style `nros::main!()` Entry pkgs) pulls the `nros` umbrella; legacy
 # `run(Config, closure)` examples keep their lean dep set. RMW-agnostic — the
 # linked backend self-registers via the macro's `__register_linked_rmw()`.
-nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal"], optional = true }
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi"], optional = true }
 # Phase 244.D1 — agnostic logging dispatcher installed by `BoardEntry::boot`
 # so declarative nodes can `nros_info!` without a per-example boot closure.
 nros-log = { path = "../../core/nros-log", default-features = false, optional = true }

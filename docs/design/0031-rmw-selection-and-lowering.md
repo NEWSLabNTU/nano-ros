@@ -134,6 +134,42 @@ the umbrella with no `register()` (both reach the transport layer = the backend
 self-registered); the old explicit-register build fails identically → no
 regression.
 
+### Amendment (Phase 248 C5) — the board crate is the lowering target
+
+Phase 248 (issue #60) moves the **lowering target off the `nros` umbrella and
+onto the board crate**, for both the RMW and the platform axis, so the umbrella
+stays fully agnostic (it carries only the `rmw-cffi` + `platform-cffi` vtable
+shims, never a concrete `rmw-*` / `platform-*` feature or backend/platform dep).
+
+- **RMW axis (C5a/C5b).** The board crate brings the concrete backend into the
+  link graph (an optional `nros-rmw-<x>` dep behind the board's own `rmw-<x>`
+  feature, plus the backend force-link static) and selects the backend's
+  per-platform C port on that dep line (`nros-rmw-zenoh { features =
+  ["platform-<rtos>"] }`). Codegen lowers `system.toml` `[system].rmw` /
+  `[deploy.<t>].rmw` to the **board-dep** `rmw-<x>` feature, not `nros/rmw-<x>`.
+
+- **Platform axis (C5c).** The board crate brings the concrete platform impl
+  DIRECTLY — it deps `nros-platform { features = ["platform-<rtos>"] }` (which
+  pulls the `nros-platform-cffi` dispatch types + the matching C-port link
+  directive and emits the `__FORCE_LINK_CFFI` anchor), rather than activating
+  `nros/platform-<rtos>` through its `nros` umbrella dep. The board is therefore
+  the single platform-selection point. Codegen no longer emits
+  `nros/platform-<x>` in a generated entry's default features when the entry
+  deps a board crate; the board carries the platform.
+
+The CMake `-DNANO_ROS_RMW` / C lowering path is unchanged (the C symbols already
+come from the board / CMake layer). After every consumer migrates, the `nros`
+umbrella drops its `rmw-*` / `platform-*` features and the optional concrete
+deps entirely (phase-248 C5c).
+
+**Crate-less host boards** (`posix` / `zephyr` / `orin-spe`, which have no
+board crate in the CLI board descriptor) are the residual exception: their
+generated entries still lower `nros/platform-<x>` until they gain a board crate
+or a direct `nros-platform` dep. Tracked by phase-248 (C6 / C5c).
+
+This SUPERSEDES the earlier escape hatch in ARCHITECTURE §2 that named the `nros`
+umbrella as a permissible lowering target — the board crate is now that target.
+
 ## Alternatives considered
 
 - **Cargo feature as the canonical knob.** Rejected: Rust-only; cannot express
@@ -161,13 +197,13 @@ regression.
 
 - 2026-06 — created; resolves the feature-vs-dependency contradiction by making
   RMW a declared-and-lowered, per-deploy, language-agnostic selection.
-- 2026-06 (phase-248 C5b) — **Rust lowering target moved `nros` → board crate.**
-  Under the RMW/platform-agnosticism convergence (issue #60) the `nros` umbrella
-  is agnostic; the board crate is the RMW selection point (self-links +
-  registers the backend, C5a). Codegen (`cargo-nano-ros` scaffold +
-  `nros-cli-core` orchestration `generate`) now emits the entry's **board dep**
-  `features = ["rmw-<x>"]` instead of `nros = { features = ["rmw-<x>"] }`. The
-  `resolve_rmw` lowered-value table is unchanged; only the feature's host crate
-  moved. Crate-less host boards (native/posix, zephyr) remain a transitional
-  exception (direct `nros-rmw-*` dep + explicit `register()`). Platform-axis
-  lowering (`nros/platform-*`) is a tracked follow-up.
+- 2026-06 (phase-248 C5) — **Rust lowering target moved `nros` → board crate, both
+  axes.** The `nros` umbrella is agnostic (vtable-only); the board crate is the
+  selection point for RMW (self-links + registers the backend, C5a/C5b) AND
+  platform (direct `nros-platform { features = ["platform-<rtos>"] }` dep,
+  C5-platform). Codegen (`cargo-nano-ros` scaffold + `nros-cli-core` orchestration
+  `generate`) emits the entry's **board dep** `features = ["rmw-<x>"]` and no
+  longer emits `nros/rmw-<x>` or `nros/platform-<y>` for board-backed entries.
+  `resolve_rmw`'s lowered-value table is unchanged; only the feature's host crate
+  moved. Crate-less host boards (native/posix, zephyr, orin-spe) remain a
+  transitional exception — resolved in C5c after C6 consumer migration.

@@ -26,7 +26,12 @@ nros-board-common = { path = "../nros-board-common", default-features = false }
 nros-board-mps2-an385-freertos = { path = "../nros-board-mps2-an385-freertos", default-features = false, optional = true }
 # Phase 173.5 — `TransportConfig` trait the generator writes nros.toml
 # `[[transport]]` IP into. Trait-only; no_std, default-features off.
-nros-platform = { path = "../../core/nros-platform", default-features = false }
+# Phase 248 C5c-platform (#60 T3, RFC-0031 platform amendment) — the FreeRTOS
+# family driver brings the `platform-freertos` impl DIRECTLY (pulls
+# `nros-platform-cffi`; the canonical `nros_platform_*` C symbols come from the
+# FreeRTOS C port compiled by the per-board overlay's `build.rs`). Board-driven
+# platform selection: the umbrella `nros` dep below stays platform-agnostic.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # the app task inside `run_entry` installs a live component runtime
 # sink on `RuntimeCtx` before invoking the user `setup` closure +
@@ -34,7 +39,9 @@ nros-platform = { path = "../../core/nros-platform", default-features = false }
 # registry; the actual RMW backend (`nros-rmw-zenoh`, ...) must be
 # linked by the per-board crate (`nros-board-mps2-an385-freertos`,
 # etc.) so `Executor::open` resolves a backend at boot.
-nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos"] }
+# Phase 248 C5c-platform — `nros` stays platform-agnostic; `platform-freertos`
+# comes from this crate's direct `nros-platform` dep.
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 # Phase 248 C5a (#60 T4) — the BOARD is the RMW selection point. Depend on the
 # concrete zenoh backend directly (optional, behind `rmw-zenoh`) instead of
 # forwarding `nros/rmw-zenoh`, and register it explicitly in the boot path

@@ -36,7 +36,11 @@ rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
 rmw-zenoh      = []
 
 [dependencies]
-nros = { path = "../../core/nros", default-features = false, features = ["platform-zephyr"] }
+# Phase 248 C5c-platform (#60 T3, RFC-0031 platform amendment) — board-driven
+# platform selection: the concrete `platform-zephyr` impl comes from this
+# crate's direct `nros-platform` dep below, so the umbrella `nros` dep stays
+# platform-agnostic (no `platform-zephyr`).
+nros = { path = "../../core/nros", default-features = false }
 # Phase 248 C5a (#60 T4) — board-owned Cyclone DDS linking. `default-features =
 # false` drops `vendored` (no in-tree libddsc/cc build) + `linkme-register`
 # (Zephyr is linkme-blind); the board registers explicitly in `init_hardware`.

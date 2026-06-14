@@ -24,9 +24,13 @@ name = "nros_board_threadx"
 nros-board-common = { path = "../nros-board-common", default-features = false }
 # 212.N.2 — new `BoardInit` / `BoardPrint` / `BoardExit` / `RuntimeCtx`
 # trait set in `nros_platform::board` the additive `run_entry` is
-# generic over. `nros-platform` is `no_std` + the `board` module has
-# no feature gates, so no platform-* feature is enabled here.
-nros-platform = { path = "../../core/nros-platform", default-features = false }
+# generic over.
+# Phase 248 C5c-platform (#60 T3, RFC-0031 platform amendment) — the ThreadX
+# family driver brings the `platform-threadx` impl DIRECTLY (pulls
+# `nros-platform-cffi`; the canonical `nros_platform_*` C symbols come from the
+# ThreadX C port compiled by this crate's `build.rs`). Board-driven platform
+# selection: the umbrella `nros` dep below stays platform-agnostic.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-threadx"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # the app thread inside `run_entry` installs a live component runtime
 # sink on `RuntimeCtx` before invoking the user `setup` closure +
@@ -34,7 +38,7 @@ nros-platform = { path = "../../core/nros-platform", default-features = false }
 # registry; the actual RMW backend (`nros-rmw-zenoh`, ...) must be
 # linked by the per-board overlay so `Executor::open` resolves a
 # backend at boot.
-nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-threadx"] }
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 nros-board-threadx-linux = { path = "../nros-board-threadx-linux", optional = true }
 nros-board-threadx-qemu-riscv64 = { path = "../nros-board-threadx-qemu-riscv64", optional = true }
 

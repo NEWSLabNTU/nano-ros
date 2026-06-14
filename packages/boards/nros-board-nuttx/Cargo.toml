@@ -41,7 +41,12 @@ nros-board-common = { path = "../nros-board-common" }
 # `default-features = false` + explicit `["std"]` keeps the family
 # driver from inheriting a `platform-*` selection — the Entry pkg
 # pins the concrete platform.
-nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
+# Phase 248 C5c-platform (#60 T3, RFC-0031 platform amendment) — the NuttX
+# family driver brings the `platform-nuttx` impl DIRECTLY (pulls
+# `nros-platform-cffi`; the canonical `nros_platform_*` C symbols come from the
+# NuttX-built C port at `packages/core/nros-platform-nuttx/`). Board-driven
+# platform selection: the umbrella `nros` dep below stays platform-agnostic.
+nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-features = false, features = ["std", "platform-nuttx"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `run_entry` installs a live component runtime sink on `RuntimeCtx`
 # before invoking the user `setup` closure + spins forever
@@ -49,7 +54,7 @@ nros-platform = { version = "0.5.0", path = "../../core/nros-platform", default-
 # (`nros-rmw-zenoh`, ...) must be linked by the per-board overlay
 # (`nros-board-nuttx-qemu-arm`, ...) so `Executor::open` resolves a
 # backend at boot.
-nros = { path = "../../core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-nuttx"] }
+nros = { path = "../../core/nros", default-features = false, features = ["std", "rmw-cffi"] }
 nros-board-nuttx-qemu-arm = { path = "../nros-board-nuttx-qemu-arm", optional = true }
 # Phase 225.O — explicit RMW backend registration on NuttX. The unified-RMW
 # `nros_rmw_register_backend!` macro is a NO-OP on NuttX (linkme has no
