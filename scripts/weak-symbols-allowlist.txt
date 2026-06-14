@@ -13,14 +13,23 @@
 # Classification: override-default = a strong def is guaranteed elsewhere
 # (board / app / cmake stub); optional-hook = the weak no-op IS the intended
 # fallback.
+#
+# Image gate (scripts/check-weak-symbols-image.sh) SSoT: an override-default
+# line carries an `[img: <sym> <sym> …]` token naming the exact symbols whose
+# strong override must win in a FINAL linked image. That gate cross-checks its
+# coverage map against this set: every covered symbol must be declared here,
+# and a declared symbol with no coverage row yet is reported (not silently
+# dropped). Both source-level gates take only the text before `#`, so the
+# token is invisible to them. optional-hook lines carry no token (the weak
+# no-op is a valid runtime — nothing to assert in an image).
 
-3  packages/core/nros-c/c-stubs/weak_register_backends.c        # override-default: cmake strong nros_app_register_backends; no-op log_{write,flush} fallbacks
-1  packages/core/nros-cpp/c-stubs/weak_register_backends.c      # override-default: cmake strong nros_app_register_backends (cpp-only links)
+3  packages/core/nros-c/c-stubs/weak_register_backends.c        # override-default [img: nros_app_register_backends]: cmake strong nros_app_register_backends; no-op log_{write,flush} fallbacks
+1  packages/core/nros-cpp/c-stubs/weak_register_backends.c      # override-default [img: nros_app_register_backends]: cmake strong nros_app_register_backends (cpp-only links)
 1  packages/core/nros-cpp/include/nros/main.hpp                 # optional-hook: nros_board_network_wait weak no-op; board overrides with a real link-up wait
-7  packages/boards/nros-board-common/c/threadx_hooks.c          # override-default: overlay strong stack_size/priority (W3.2 weak getters, not data) /init_eth/app_main; optional-hook log/rng_seed
-2  packages/boards/nros-board-freertos/c/network_glue.c         # override-default: board (LAN9118) strong register_netif/poll_netif; weak = no-Ethernet fallback
-1  packages/boards/nros-board-threadx-qemu-riscv64/c/tx_initialize_low_level.S  # override-default: board strong _tx_initialize_low_level
+7  packages/boards/nros-board-common/c/threadx_hooks.c          # override-default [img: nros_board_app_stack_size nros_board_app_priority nros_board_init_eth]: overlay strong stack_size/priority (W3.2 weak getters, not data) /init_eth/app_main; optional-hook log/rng_seed
+2  packages/boards/nros-board-freertos/c/network_glue.c         # override-default [img: nros_board_register_netif nros_board_poll_netif]: board (LAN9118) strong register_netif/poll_netif; weak = no-Ethernet fallback
+1  packages/boards/nros-board-threadx-qemu-riscv64/c/tx_initialize_low_level.S  # optional-hook: board's REAL low-level init, defined `.global .weak` as the SOLE def (build.rs excludes the port's copy) so a downstream app MAY override; it stays weak in the final image — no strong override is expected, so it is NOT image-checked. (Re-audited W1.2: the prior "board strong" label was wrong — image gate caught it.)
 8  packages/core/nros-platform-threadx/src/platform.c           # optional-hook: weak libc stubs (open/close/read/write/lseek/pipe/stdin) until backend supplies real
 1  packages/dds/nros-rmw-cyclonedds/src/vtable.cpp              # optional-hook: nros_rmw_cyclonedds_register_app_descriptors weak no-op; app overrides
-2  packages/px4/nros-rmw-uorb/src/callback_default.cpp          # override-default: px4_callback_glue.cpp strong nros_orb_{register,unregister}_callback; weak returns -1
-9  packages/zpico/zpico-sys/c/zpico/platform_aliases.c          # override-default: board strong _z_*_serial_* + smoltcp_{init,cleanup}; weak stubs satisfy link when serial/smoltcp absent
+2  packages/px4/nros-rmw-uorb/src/callback_default.cpp          # override-default [img: nros_orb_register_callback nros_orb_unregister_callback]: px4_callback_glue.cpp strong nros_orb_{register,unregister}_callback; weak returns -1
+9  packages/zpico/zpico-sys/c/zpico/platform_aliases.c          # override-default [img: _z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal smoltcp_init smoltcp_cleanup]: board strong _z_*_serial_* + smoltcp_{init,cleanup}; weak stubs satisfy link when serial/smoltcp absent

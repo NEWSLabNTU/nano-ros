@@ -49,9 +49,26 @@ COVERAGE=(
     # cmake C/C++ app images: the cmake-generated strong nros_app_register_backends.
     "build/cmake-fixtures|cpp_robot_entry|nros_app_register_backends"
     "build/cmake-fixtures|c_mixed_workspace*|nros_app_register_backends"
-    # Serial example ELFs (Phase 244.D1 Wave D): board serial aliases + smoltcp.
+    # Serial example ELFs (Phase 244.D1 Wave D): board serial aliases.
     "examples/qemu-arm-baremetal/rust|qemu-serial-talker|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
     "examples/qemu-arm-baremetal/rust|qemu-serial-listener|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
+    # Bare-metal smoltcp net ELFs (MPS2-AN385 LAN9118): the `nros-smoltcp`
+    # driver supplies strong `smoltcp_{init,cleanup}` (weak stubs in
+    # zpico platform_aliases.c when smoltcp is absent).
+    "examples/qemu-arm-baremetal/rust|qemu-bsp-talker|smoltcp_init smoltcp_cleanup"
+    "examples/qemu-arm-baremetal/rust|qemu-bsp-listener|smoltcp_init smoltcp_cleanup"
+    # ThreadX RISC-V64 firmware ELFs: the board overlay supplies a strong
+    # `nros_board_init_eth` (NetX bring-up) and — phase-247 W3.2 — the app
+    # stack/priority *getters*. A dropped override surfaces the symbol as weak
+    # here: this row is the on-platform guard for the 155.A class (a 64 KB-default
+    # stack overflow). (`_tx_initialize_low_level` is deliberately NOT here — it
+    # is a weak SOLE def the board ships as overridable; see the allowlist.)
+    "examples/qemu-riscv64-threadx/rust|qemu-riscv64-threadx-talker|nros_board_init_eth nros_board_app_stack_size nros_board_app_priority"
+    "examples/qemu-riscv64-threadx/rust|qemu-riscv64-threadx-listener|nros_board_init_eth nros_board_app_stack_size nros_board_app_priority"
+    # PENDING (no image target yet): px4 uorb `nros_orb_{register,unregister}_callback`
+    # — strong in px4_callback_glue.cpp, but no Cargo.toml currently links
+    # `nros-rmw-uorb` into an example/fixture, so there is no final image to nm.
+    # Add a row here once a px4 uorb example ships (see phase-247 W1.2).
 )
 
 # A "strong" nm type letter: text/data/rodata/bss, upper (global) or lower (local).
@@ -93,6 +110,42 @@ check_artifact() {
     done
 }
 
+# --- W1.3 SSoT cross-check: COVERAGE symbols vs the allowlist `[img:]` set ----
+# The allowlist (scripts/weak-symbols-allowlist.txt) is the authority for WHICH
+# override-default symbols are image-checkable; COVERAGE only maps them to the
+# images that should link them strongly. Enforce: every COVERAGE symbol is
+# declared `[img:]` there (a typo / un-audited symbol → FAIL), and report any
+# declared symbol that has no coverage row yet (no silent gap). Runs even when
+# no prebuilt images exist — it is a static consistency check.
+allowlist="$repo_root/scripts/weak-symbols-allowlist.txt"
+declare -A img_allow=()
+if [ -f "$allowlist" ]; then
+    while IFS= read -r toks; do
+        for s in $toks; do img_allow["$s"]=1; done
+    done < <(grep -E '^[0-9]' "$allowlist" | sed -n 's/.*\[img:\([^]]*\)\].*/\1/p')
+fi
+declare -A cov_syms=()
+for row in "${COVERAGE[@]}"; do
+    IFS='|' read -r _cb _cg csyms <<<"$row"
+    for s in $csyms; do cov_syms["$s"]=1; done
+done
+ssot_fail=0
+if [ "${#img_allow[@]}" -eq 0 ]; then
+    echo "weak-image: WARN — no \`[img:]\` symbols parsed from the allowlist (SSoT check skipped)." >&2
+else
+    for s in "${!cov_syms[@]}"; do
+        if [ -z "${img_allow[$s]:-}" ]; then
+            echo "  FAIL  coverage symbol '$s' not declared [img:] in the allowlist (drift)" >&2
+            ssot_fail=$((ssot_fail + 1))
+        fi
+    done
+    for s in "${!img_allow[@]}"; do
+        if [ -z "${cov_syms[$s]:-}" ]; then
+            echo "  note  allowlisted override-default '$s' has no image-gate coverage row yet"
+        fi
+    done
+fi
+
 any_artifact=0
 for row in "${COVERAGE[@]}"; do
     IFS='|' read -r base glob syms <<<"$row"
@@ -108,8 +161,12 @@ for row in "${COVERAGE[@]}"; do
 done
 
 echo
+if [ "$ssot_fail" -gt 0 ]; then
+    echo "weak-image: FAILED — coverage map drifted from the allowlist SSoT ($ssot_fail symbol(s), issue 0050 W1.3)." >&2
+    exit 1
+fi
 if [ "$any_artifact" = 0 ]; then
-    echo "weak-image: no covered prebuilt images found — run the fixture build first (skipping)."
+    echo "weak-image: SSoT check passed; no covered prebuilt images found — run the fixture build first (image checks skipped)."
     exit 0
 fi
 echo "weak-image: checked=$checked fail=$fails warn=$warns"

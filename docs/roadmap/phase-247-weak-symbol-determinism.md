@@ -84,26 +84,44 @@ trivially CI-wireable, mirrors the `scripts/check-*.sh` gate family).
   allowlisted optional-hook fails (mirrors the source gate at the binary layer).
   Toolchain weaks (`__cxa_*`, `__gnu_Unwind_*`, FreeRTOS `vPort*`) are excluded by
   the owned-prefix filter.
-- **W1.2** — Artifact coverage map (symbol → the image(s) that should link it
-  strongly), since `--gc-sections` means each symbol only appears where used:
-  - board netif/stack hooks → freertos / threadx firmware ELFs
-    (`examples/qemu-arm-freertos/.../target/.../*entry`, threadx fixtures);
-  - `nros_app_register_backends` → the **cmake C/C++ app** images (the
-    `cpp_robot_entry` / `pure_c_workspace` cmake fixtures — NOT the Rust
-    bare-metal ELFs, which never link the C register dance);
-  - `_z_*_serial_*` / `smoltcp_*` → a **serial** example final ELF
-    (serial-talker/listener once Phase 244.D1 Wave D lands them);
-  - `nros_orb_*` → a px4/uorb link.
-  Gate on the **prebuilt fixture**; skip (not fail) when the artifact is absent
-  (build-stage-fixture pattern — no compilation in the check).
-- **W1.3** — Share ONE allowlist source-of-truth with the source gate
-  (`weak_symbol_audit.rs`). Options: emit the allowlist to a generated data file
-  the shell script reads, or have the script parse the `ALLOWLIST` const. Avoid
-  two drifting copies.
+- **W1.2 — DONE (2026-06-14).** Completed the coverage map so every
+  image-checkable override-default class has a row (skip-until-built; no
+  compile in the check):
+  - board netif hooks → freertos firmware ELFs (`freertos_rs_*entry`);
+  - `nros_app_register_backends` → the cmake C/C++ app images
+    (`cpp_robot_entry` / `c_mixed_workspace`);
+  - `_z_*_serial_*` → the serial example ELFs (`qemu-serial-{talker,listener}`);
+  - `smoltcp_{init,cleanup}` → the bare-metal net ELFs (`qemu-bsp-{talker,listener}`,
+    strong def from the `nros-smoltcp` driver);
+  - `nros_board_init_eth` + **W3.2** `nros_board_app_stack_size/_priority` →
+    the **threadx RISC-V64** firmware ELFs (`qemu-riscv64-threadx-{talker,listener}`)
+    — this row is the on-platform guard for the 155.A class.
+  - `nros_orb_*` → **pending**: no Cargo.toml currently links `nros-rmw-uorb`
+    into an example, so there is no final image to nm; the gate self-reports it
+    as a declared-but-uncovered symbol (no silent gap). Add a row when a px4
+    uorb example ships.
+  **Finding (the gate earned its keep): `_tx_initialize_low_level` was
+  mis-classified** as "board strong". The board `.S` actually defines it
+  `.global .weak` as the *sole* def (build.rs excludes the port copy) — it
+  legitimately stays weak in the image. The image gate flagged the contradiction
+  (`WEAK in <elf> — strong override DROPPED`); re-audited to **optional-hook**
+  (overridable sole def, not image-checked). Validated against the prebuilt
+  threadx ELFs: `nros_board_init_eth`/`app_stack_size`/`app_priority` all confirm
+  strong.
+- **W1.3 — DONE (2026-06-14).** Single source of truth without a risky format
+  change: each override-default allowlist line carries an `[img: <sym> …]` token
+  (the exact image-checkable symbols); both source gates already take only the
+  text before `#`, so the token is invisible to them. The image gate parses the
+  `[img:]` set and **cross-checks its coverage map against it**: a COVERAGE
+  symbol not declared `[img:]` fails (drift), and a declared symbol with no
+  coverage row is reported. Runs even with no prebuilt images (static check).
+  Negative path proven: an injected undeclared COVERAGE symbol exits non-zero.
 
-**Acceptance.** For each covered prebuilt artifact, every override-default weak
-symbol is confirmed strong (or absent); an injected regression (delete a board's
-strong override) makes the script exit non-zero.
+**Acceptance MET.** For each covered prebuilt artifact, every override-default
+weak symbol is confirmed strong (or absent); the coverage map cannot drift from
+the allowlist SSoT (cross-check + negative-path proof); an injected regression
+(a weak override-default in a final image) makes the script exit non-zero
+(proven live — it caught the `_tx_initialize_low_level` mis-classification).
 
 ## W2 — Gate in `just check` — DONE (2026-06-13)
 
@@ -213,11 +231,16 @@ gates until then.
 
 ## Phase close
 
-Issue 0050 → resolved: audit complete, source + image gates green and wired
-(`just check` + per-platform CI), fragile weak defaults reduced — the const-data
-footgun (W3.2) eliminated and the remaining override-defaults confirmed
-capability-conditional (W3.3). Carve-out: the one pure link-order dodge
-(`nros_app_register_backends`, W3.1) is scoped to RFC-0042 D3 and stays audited
-by both gates until D3 lands — its reduction is tracked there, not a 0050
-blocker. Archive 0050 once the W1.2 image-coverage seed rows light up on their
-platforms' CI.
+Issue 0050 → resolved: audit complete; source gate + image gate both green and
+wired (source gate in `just check`; image gate standalone for per-platform CI,
+with a static SSoT cross-check that runs anywhere). Fragile weak defaults
+reduced — the const-data footgun (W3.2) eliminated, validated on real RISC-V;
+the remaining override-defaults confirmed capability-conditional (W3.3); the
+coverage map completed and de-drifted against the allowlist SSoT (W1.2/W1.3),
+which already caught and corrected a `_tx_initialize_low_level` mis-class.
+Carve-out: the one pure link-order dodge (`nros_app_register_backends`, W3.1) is
+scoped to RFC-0042 D3 and stays audited by both gates until D3 lands — tracked
+there, not a 0050 blocker. The cross-platform image rows (freertos / cmake C++ /
+serial / px4-uorb) activate as those fixtures build on their CI; the gate
+self-reports any still-uncovered declared symbol, so coverage gaps are visible,
+not silent. Archive 0050 on the next cut.
