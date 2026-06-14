@@ -1330,11 +1330,22 @@ check-cpp:
         # clang-format check above still covers it; the freestanding
         # C++14 probe stays opt-out until 209 lands its API touch-ups.
         case "$hdr" in *rclcpp_compat.hpp) continue ;; esac
-        c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti \
+        # issue #52 — `main.hpp` is the HOSTED entry runtime (NativeBoard / NuttX):
+        # its rtos_e2e readiness/sample banners call `::std::printf`, which
+        # `-ffreestanding` is not required to expose from `<cstdio>` (only the global
+        # `printf`). Probe it hosted so it keeps full syntax coverage; every other
+        # header stays freestanding.
+        free="-ffreestanding"
+        case "$hdr" in *main.hpp) free="" ;; esac
+        # issue #52 — `nros-platform-api/include` carries `<nros/platform.h>`, pulled
+        # by `heap_sequence.hpp` (Phase 229.5); without it the probe fails
+        # `fatal error: nros/platform.h: No such file or directory`.
+        c++ -fsyntax-only -std=c++14 $free -fno-exceptions -fno-rtti \
             -Itarget/nros-cpp-generated \
             -Itarget/nros-c-generated \
             -Ipackages/core/nros-cpp/include \
             -Ipackages/core/nros-c/include \
+            -Ipackages/core/nros-platform-api/include \
             -include "$hdr" -x c++ /dev/null
     done
     echo "  - nros-cpp clippy (zenoh-cffi + posix + humble)"
