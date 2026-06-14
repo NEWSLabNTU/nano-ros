@@ -1,25 +1,57 @@
+/// Talker — typed C component (RFC-0043, phase-247).
+///
+/// `talker_configure` creates a raw publisher on `/chatter` + a timer that
+/// publishes a CDR-encoded Int32 counter each tick. The keyexpr is the
+/// DDS-mangled `std_msgs::msg::dds_::Int32_` — the same one the C listener's raw
+/// sub matches. The raw publish carries the wire bytes verbatim, so no generated
+/// message sources are needed. Replaces the legacy `register_talker` +
+/// record_callback_effect declarative seam. The Entry pkg's typed carrier (a C++
+/// TU driving NativeBoard::run_components) constructs this component via the
+/// __nros_c_component_c_talker_pkg_{create,configure} seam.
+
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
-#include <nros/node_pkg.h>
-#include "std_msgs.h"
+#include <nros/component.h>
 
-static nros_ret_t register_talker(nros_node_context_t* ctx) {
-    nros_node_pkg_options_t opts = nros_node_pkg_options("talker");
-    nros_declared_node_t node;
-    nros_ret_t r = nros_declared_node_init_with_options(ctx, &opts, &node);
-    if (r != NROS_RET_OK) return r;
+typedef struct {
+    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    int32_t count;
+} talker_t;
 
-    nros_declared_entity_t pub;
-    r = nros_declared_node_create_publisher_for_name(&node, &pub, "/chatter", "std_msgs/msg/Int32",
-                                                     "");
-    if (r != NROS_RET_OK) return r;
-
-    nros_declared_entity_t timer;
-    r = nros_declared_node_create_timer_for_period(&node, &timer, "1000");
-    if (r != NROS_RET_OK) return r;
-
-    return nros_declared_entity_record_callback_effect(ctx, &timer, NROS_NODE_CALLBACK_PUBLISHES,
-                                                       &pub);
+static void write_u32_le(uint8_t* p, uint32_t v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
 }
 
-NROS_NODE_REGISTER(register_talker);
+static void on_tick(void* ctx) {
+    talker_t* self = (talker_t*)ctx;
+    /* std_msgs/Int32 CDR: 4-byte encapsulation header (CDR_LE) + int32 data. */
+    uint8_t buf[8];
+    buf[0] = 0x00;
+    buf[1] = 0x01;
+    buf[2] = 0x00;
+    buf[3] = 0x00;
+    write_u32_le(buf + 4, (uint32_t)self->count);
+    if (nros_cpp_publish_raw(self->pub, buf, sizeof(buf)) == 0) {
+        printf("Published: %d\n", (int)self->count);
+    }
+    self->count++;
+}
+
+static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    self->count = 0;
+    int32_t rc = nros_cpp_publisher_create(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
+                                           nros_c_qos_default(), self->pub);
+    if (rc != 0) {
+        return rc;
+    }
+    size_t timer_handle;
+    return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
+}
+
+NROS_C_COMPONENT(talker_t, talker_configure)

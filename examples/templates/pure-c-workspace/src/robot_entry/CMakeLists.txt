@@ -14,10 +14,15 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
+# Phase 247 (RFC-0043) — TYPED Entry. The node pkgs are pure C
+# (NROS_C_COMPONENT), but the typed carrier entry TU is C++ by design
+# (NativeBoard::run_components is C++; it constructs each C node via the
+# __nros_c_component_<pkg>_{create,configure} seam). So this is LANG cpp (the
+# default) + TYPED, not LANG c — matching every typed C carrier in the tree.
 nano_ros_entry(
     NAME    robot_entry
-    SOURCES src/main.c
+    SOURCES src/main.cpp
     BOARD   native
+    TYPED
     LAUNCH  "demo_bringup:system.launch.xml"
-    LANG    c
     DEPLOY  native)
