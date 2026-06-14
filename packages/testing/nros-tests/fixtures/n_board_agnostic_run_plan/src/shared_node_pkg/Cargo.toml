@@ -38,5 +38,9 @@ nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, 
 # Default-empty — pkg cannot build by itself. Each Entry pkg picks
 # exactly ONE of these via its own path-dep.
 default = []
-posix = ["nros/std", "nros/platform-posix"]
-freertos = ["nros/platform-freertos"]
+# Phase 248 C5c — the Component pkg is fully platform-AGNOSTIC: each Entry
+# pkg brings its platform via a direct `nros-platform { features=["platform-X"] }`
+# dep, so these gates no longer forward `nros/platform-*` (retired from nros).
+# `posix` keeps `nros/std` (a functional axis); `freertos` is now inert.
+posix = ["nros/std"]
+freertos = []

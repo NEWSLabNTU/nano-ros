@@ -123,7 +123,9 @@ trigger-test = [
 component-runtime-test = [
     "trigger-test",
     "nros/rmw-cffi",
-    "nros/platform-posix",
+    # Phase 248 C5c — platform symbols come from the directly-pulled
+    # `nros-platform` (below), not the retired `nros/platform-posix` forward.
+    "nros-platform/platform-posix",
     # Phase 212.M-F.23 Wave 2 — declarative parameter dispatch. Lets the
     # component_dispatch param test reach `Executor::declare_parameter` /
     # `get_parameter` / `params()` (all `#[cfg(param-services)]`) so it can

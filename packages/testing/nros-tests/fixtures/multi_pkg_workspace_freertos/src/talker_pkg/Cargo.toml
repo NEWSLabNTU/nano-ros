@@ -20,4 +20,4 @@ path = "src/lib.rs"
 # through `::nros::__macro_support::nros_platform::*`, so a Component
 # pkg only needs `nros` as a dep. The N.7 step-3.4 era `nros-platform`
 # dep is gone (M-F.13 closed that UX gap).
-nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos", "ros-humble"] }
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }

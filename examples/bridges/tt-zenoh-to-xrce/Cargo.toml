@@ -15,7 +15,10 @@ path = "src/main.rs"
 # non-overlapping windows of a 10 ms major frame, exercising
 # `apply_time_triggered_schedule` + per-handle TT window gating
 # from Phase 110.G.
-nros = { path = "../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { path = "../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi"] }
+# Phase 248 C5c — posix `nros_platform_*` symbols via a direct `nros-platform`
+# dep (pulls `nros-platform-cffi[posix-c-port]`); retires the `nros/platform-posix` forward.
+nros-platform = { path = "../../../packages/core/nros-platform", default-features = false, features = ["platform-posix"] }
 nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 nros-rmw-xrce-cffi = { path = "../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"] }
 log = "0.4"

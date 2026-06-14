@@ -33,4 +33,4 @@ path = "src/lib.rs"
 # (Phase 212.M-F.13 path (b)) keeps one-dep Component pkgs working.
 # Native `platform-posix` so the fixture can build on a stock host
 # toolchain (the test runs `cargo check` without cross-compiling).
-nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-posix", "ros-humble"] }
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
