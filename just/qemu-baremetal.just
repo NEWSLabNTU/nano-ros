@@ -69,19 +69,30 @@ build:
     # emit `[PREREQ]` + exit 0 if missing.
     nros_require_ws_sync "$nros_cli"
     echo "Building QEMU ARM examples..."
-    for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort); do
+    _qemu_tomls="$(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
+                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort)"
+    # Phase 244.D1 — TWO passes. The entry+node-pkg split (an Entry crate whose
+    # `[patch.crates-io]` points at a SIBLING `../<pkg>/generated/*`) means the
+    # entry's `cargo build` needs the node pkg's `generated/` to already exist.
+    # `find | sort` lists the entry (`foo-rtic`) BEFORE its pkg (`foo_rtic_pkg`,
+    # `-` < `_`), so a single sync-then-build loop builds the entry before the
+    # pkg is codegen'd and cargo fails to read the dangling patch path. Pass 1
+    # codegens every package.xml-bearing node pkg; pass 2 then builds every crate.
+    # (Examples that path-dep generated message crates — std_msgs/example_interfaces/
+    # action_msgs via the gitignored `generated/` dirs — resolve their patch only
+    # after pass 1.)
+    for toml in $_qemu_tomls; do
         dir="$(dirname "$toml")"
-        echo "  build $dir"
-        # Examples that path-dep generated message crates (example_interfaces /
-        # std_msgs, wired via [patch.crates-io] -> generated/ in .cargo/config.toml)
-        # need codegen before cargo can resolve the patch path. Mirrors
-        # build-fixtures; the gitignored generated/ dirs come from package.xml.
         if [ -f "$dir/package.xml" ]; then
+            echo "  ws sync $dir"
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
             NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
+    done
+    for toml in $_qemu_tomls; do
+        dir="$(dirname "$toml")"
+        echo "  build $dir"
         (cd "$dir" && cargo build $cargo_profile_args)
     done
     # Phase 131.B — bench/test-fixture binaries that used to live under
