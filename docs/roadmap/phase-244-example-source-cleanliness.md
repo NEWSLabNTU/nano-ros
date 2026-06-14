@@ -236,8 +236,8 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
 
 ## Wave 2 — Enabler-dependent cleanups (parallel; after Wave 0)
 
-- [~] **D1 — 14/15 DONE (2026-06-14). pub/sub (8) + action/service RTIC (4) +
-  serial (2); only talker-xrce (1) enabler-gated.** The pub/sub variants
+- [x] **D1 — DONE 15/15 (2026-06-14). pub/sub (8) + action/service RTIC (4) +
+  serial (2) + talker-xrce (1).** The pub/sub variants
   (talker/listener ± rtic ± mixed + the e2e fixtures) were migrated in prior waves
   (`phase216` pair = the in-group reference). 2026-06-14:
   - **action/service RTIC (4): DONE.** action-server/client + service-server/client
@@ -255,12 +255,17 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
     Form-1 self-bringup (`[lib]` re-exports `serial_*_pkg::register`) + `nros::main!()`
     + declarative node pkg. Both build `thumbv7m`; ethernet talker still builds
     (cfg-neutral). (`55e8ad254`)
-  - **talker-xrce (1): ENABLER-GATED (deferred).** XRCE installs a custom-transport
-    vtable (`set_custom_transport_ops`) that MUST precede RMW register, but the
-    macro emits `__register_linked_rmw()` *before* `BoardEntry::run`, so there's no
-    seam to install the vtable first. Needs a pre-register transport hook in the
-    macro/board boot path (the deploy overlay could carry `transport="xrce"`).
-    Tracked as a D1 follow-up; leak P2/P3 remains on this one only.
+  - **talker-xrce (1): DONE.** Built the pre-register custom-transport enabler:
+    `DeployOverlay` gained `transport: Option<&'static str>` +
+    `BoardEntry::setup_transport(&deploy)` (default no-op); the macro emits
+    `<board>::setup_transport(&overlay)` on `target_os="none"` immediately BEFORE
+    `__register_linked_rmw()` (the ordering `set_custom_transport_ops` needs); the
+    mps2-an385 board overrides it (under `xrce-transport`) to install the
+    XRCE-over-UART vtable when `transport="xrce"`. Example → Form-1 self-bringup +
+    `nros::main!()` + declarative `xrce_talker_pkg`; `[…deploy] transport="xrce"
+    locator="custom://uart"`, board built `xrce-transport`, nros `rmw-xrce`. Builds
+    `thumbv7m`; serial/rtic/ethernet unaffected (macro/struct change no-op for them).
+    XRCE runtime e2e is CI/manual-gated. (`41d43aea7`)
 - [~] **D2 — PARTIAL (2026-06-13). qemu-esp32-baremetal talker+listener migrated +
   compiled** (nros::main!() Node+Entry; net/domain → deploy metadata; compiles
   riscv32imc build-std). **esp32/rust left** (ESP-IDF staticlib stubs — no leaks,
