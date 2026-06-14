@@ -536,33 +536,39 @@ function(nano_ros_node_register)
     # entry + the component sources + nros_platform_link_app), but the host board
     # resolves locator/domain from $NROS_LOCATOR / $ROS_DOMAIN_ID at runtime
     # (`NativeBoard::run_components` -> `nros::init()`), so there is no baked
-    # locator and no FreeRTOS app-config TU. TYPED-only: the imperative native
-    # examples keep their hand-written `main` via `nano_ros_entry` (no codegen).
+    # locator and no FreeRTOS app-config TU.
+    #
+    # TYPED gates the branch (not a FATAL): native supports BOTH the typed carrier
+    # AND the imperative hand-written `main` via `nano_ros_entry`. A non-TYPED
+    # posix node pkg (declarative / Component-only, e.g. a workspace node compiled
+    # only into its component lib above) must fall through here — FATALing would
+    # break every non-TYPED posix `nano_ros_node_register` (the 244.C4-collision
+    # the phase-247 template sweep hit).
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND NANO_ROS_PLATFORM STREQUAL "posix"
+       AND _NRC_TYPED
        AND COMMAND nros_platform_link_app
        AND NOT TARGET ${PROJECT_NAME})
-        if(NOT _NRC_TYPED)
-            message(FATAL_ERROR
-                "nano_ros_node_register(native): the typed-entry carrier requires "
-                "TYPED — the RFC-0043 real-callback component path. Imperative "
-                "native examples use a hand-written main via nano_ros_entry.")
-        endif()
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
         set(_entry_src "${_entry_dir}/main.cpp")
+        # `CMAKE_CURRENT_FUNCTION_LIST_DIR` (CMake ≥3.17) resolves to THIS module's
+        # dir regardless of include context — unlike the captured
+        # `_NROS_NODE_REGISTER_DIR`, which is empty when the module is reached
+        # through a workspace add_subdirectory chain (the 244.C4 workspace-subdir
+        # bug: `configure_file` resolved a bogus `/templates/...` root path).
         if(_nrc_lang STREQUAL "CPP")
             set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
             set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
             configure_file(
-                "${_NROS_NODE_REGISTER_DIR}/templates/native_entry_main_typed.cpp.in"
+                "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/native_entry_main_typed.cpp.in"
                 "${_entry_src}" @ONLY)
         else() # C
             configure_file(
-                "${_NROS_NODE_REGISTER_DIR}/templates/native_entry_main_c_typed.cpp.in"
+                "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/native_entry_main_c_typed.cpp.in"
                 "${_entry_src}" @ONLY)
         endif()
 
