@@ -523,5 +523,6 @@ gate guards that no new strong dup sneaks in while this lands.
   and validate each platform's e2e (the Phase 240 `run_e2e` dispatch) after.
 - 241.B's header collapse touches every platform header; the parity check + the
   241.A gate are the guard rails.
-- Keep RFC-0034 (allocator funnel) and RFC-0035 (vtable slots) invariant — this
-  phase changes *wiring*, not those ABIs.
+- Keep RFC-0034 (Platform Layer Split & System-ABI Ownership — allocator funnel is
+  its first service) and RFC-0035 (RMW vtable ABI — frozen slot table) invariant —
+  this phase changes *wiring*, not those ABIs.

@@ -75,20 +75,20 @@ sites at once.
 Ordered so the gate guards from W1, A's consumers are migrated before A is deleted
 (W5), and the ABI change is validated end-to-end (W6). Each wave is revertible.
 
-### 243.1 — api gains generic atomics (+ unblock the gate)
-- [ ] Add to `nros-platform-api/include/nros/platform.h`: `static inline
+### 243.1 — api gains generic atomics (+ unblock the gate) (LANDED on main)
+- [x] Add to `nros-platform-api/include/nros/platform.h`: `static inline
       nros_platform_atomic_store_bool(bool*, bool)` = `__atomic_store_n(ptr, v,
       __ATOMIC_RELEASE)`; `…load_bool(const bool*)` = `__atomic_load_n(ptr,
       __ATOMIC_ACQUIRE)`. One impl — valid on every target nros-c builds (1-byte
       bool, no CAS; riscv32imc never builds nros-c). Header-only inline (no Rust
       mirror entry needed).
-- [ ] **B.5:** `platform_header_matrix.rs` — add `nros-platform-api/include` as the
+- [x] **B.5:** `platform_header_matrix.rs` — add `nros-platform-api/include` as the
       first `-I`; the `core-no-malloc` (atomics) cell now passes against api.
 - **Acceptance:** the 241.A gate is green resolving the api header (atomics + the
       #38 cells).
 
-### 243.2 — migrate the Rust platform wrappers off A (one file)
-- [ ] `nros-c/src/platform.rs`: in the no_std path, reimplement `get_time_ns()` over
+### 243.2 — migrate the Rust platform wrappers off A (one file) (LANDED on main)
+- [x] `nros-c/src/platform.rs`: in the no_std path, reimplement `get_time_ns()` over
       `nros_platform_clock_us() * 1000` and `sleep_ns(ns)` over
       `nros_platform_sleep_us(ns / 1000)`; reimplement `atomic_store_bool`/
       `atomic_load_bool` over `core::sync::atomic::AtomicBool`. Remove the
@@ -98,8 +98,8 @@ Ordered so the gate guards from W1, A's consumers are migrated before A is delet
 - **Acceptance:** `cargo check -p nros-c --no-default-features` on the core-libs
       bare targets (thumbv7m, riscv32imc) passes; no reference to the A externs.
 
-### 243.3 — migrate the C++ self-externs to api's clock
-- [ ] `nros-rmw-cyclonedds/src/internal.hpp:27,63` + `nros-cpp/src/lib.rs:1251-1254`:
+### 243.3 — migrate the C++ self-externs to api's clock (LANDED on main)
+- [x] `nros-rmw-cyclonedds/src/internal.hpp:27,63` + `nros-cpp/src/lib.rs:1251-1254`:
       replace the self-declared `extern "C" nros_platform_time_ns` (used as
       `… / 1e6` → ms) with `nros_platform_clock_ms()` directly.
 - **Acceptance:** cyclonedds + nros-cpp compile (host + a zephyr/threadx cell).
@@ -123,14 +123,14 @@ Ordered so the gate guards from W1, A's consumers are migrated before A is delet
       compiles clean (53 `nros_platform_*` syms); demo still builds + connects.
 - **Acceptance:** each board builds against api (atomics inline + clock wrappers).
 
-### 243.5 — retire A + repoint the include order
-- [ ] Delete `nros-c/include/nros/platform.h` and `nros-c/include/nros/platform/
+### 243.5 — retire A + repoint the include order (LANDED on main)
+- [x] Delete `nros-c/include/nros/platform.h` and `nros-c/include/nros/platform/
       {posix,zephyr,freertos,baremetal}.h`.
-- [ ] Repoint include order so POSIX/native resolve api (not the deleted A):
+- [x] Repoint include order so POSIX/native resolve api (not the deleted A):
       `nros-c/CMakeLists.txt:134-137` (the `nros_c-static` INTERFACE) + the
       top-level `NanoRos` interface (`CMakeLists.txt:131-134`) must list
       `nros-platform-api/include` **first**.
-- [ ] POSIX malloc/free now funnels through `nros_platform_alloc` (the posix port
+- [x] POSIX malloc/free now funnels through `nros_platform_alloc` (the posix port
       provides it — `nros-platform-posix/src/platform.c:53,68`), ending the
       direct-libc divergence (RFC-0034 D6).
 - **Acceptance:** `git ls-files | grep -c nros-c/include/nros/platform` = 0; every
@@ -158,5 +158,6 @@ Ordered so the gate guards from W1, A's consumers are migrated before A is delet
 - **Ordering.** W1 before everything (gate guard); A deleted LAST (W5), after every
   consumer is migrated (W2-W4). W2 is the linchpin — the wrapper layer collapses
   ~20 call sites into one edit.
-- Keep RFC-0034 (allocator funnel) + RFC-0035 (vtable ABI) invariant — this changes
+- Keep RFC-0034 (Platform Layer Split & System-ABI Ownership — the allocator
+  funnel is its first service) + RFC-0035 (RMW vtable ABI) invariant — this changes
   the *platform header surface*, not those ABIs.
