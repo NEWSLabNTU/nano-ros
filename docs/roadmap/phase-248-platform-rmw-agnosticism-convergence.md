@@ -31,6 +31,15 @@ Zephyr entry-point scaffolding (`zephyr_component_main!` + `platform::zephyr`);
 relocating it needs a green Zephyr build (#58/#59). (2) embedded QEMU/Zephyr/
 FreeRTOS runtime smoke deferred to a green harness.
 
+> **Cross-phase note (2026-06-14).** C5a's "boards self-link + register their RMW"
+> (the app-owned force-link + explicit register) is the bare-metal half of the ONE
+> registration trigger that **[phase-249](phase-249-one-registration-trigger.md)**
+> (RFC-0042 §D3 bullet 1 / phase-241 W13/R3) is unifying across C/C++ + pure-Rust +
+> embedded: one explicit `nros_rmw_<backend>_register()` call from the R1 dispatch
+> manifest, retiring the linkme slice + `.init_array` ctors + the weak
+> `nros_app_register_backends` default. Board `entry.rs` register sites are
+> phase-249 P1's surface — do not re-introduce a linkme/ctor registration path.
+
 **Priority.** P2 — architectural hygiene; not blocking features, but every new
 platform/RMW today pays the leakage tax (feature matrices, concrete-backend
 deps in core).

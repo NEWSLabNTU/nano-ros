@@ -173,18 +173,18 @@ Replace weak defaults that exist only to dodge a link-order problem (not a
 genuine optional hook) with a define-once / explicit-registration structure
 (RFC-0042 D3 pattern). Prioritise the highest-fragility sites:
 
-- **W3.1 — DEFERRED to [issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md) R2
-  (rides the D3 single-runtime model).** `nros_app_register_backends` weak/strong
-  dance (`nros-c`/`nros-cpp` `c-stubs/weak_register_backends.c` ↔ the
-  cmake-generated strong stub). The lone *pure* link-order dodge among the owned
-  weak defaults (#48-class). The mechanism that retires it is **not** a generated
-  table but the D3 single-runtime
-  ([phase-241-d3-single-runtime](phase-241-d3-single-runtime.md)) W11 ctor: once
-  the synthesized-runtime `.init_array` anchor (`nros_cpp_auto_register_backend`)
-  *guarantees* registration, the cmake stub + the weak default are redundant and
-  get deleted (issue 0062 R2). A build-tooling change, not a point-edit landable
-  here; the source + image gates keep it audited until then (the image gate
-  already asserts the registration symbol resolves strong).
+- **W3.1 — DEFERRED to [phase-249](phase-249-one-registration-trigger.md) (issue 0062 R2/P4).**
+  `nros_app_register_backends` weak/strong dance (`nros-c`/`nros-cpp`
+  `c-stubs/weak_register_backends.c` ↔ the cmake-generated strong stub). The lone *pure*
+  link-order dodge among the owned weak defaults (#48-class). **Retirement mechanism
+  corrected (2026-06-14):** NOT the W11 `.init_array` ctor (audit found the ctor is not
+  universal — bare-metal startup doesn't walk `.init_array`, linkme is RTOS-blind), but
+  the **explicit generated `nros_rmw_<backend>_register()` call** of RFC-0042 §D3 bullet 1
+  / phase-249. Once `nros_app_register_backends` is a generated STRONG def from the R1
+  dispatch manifest (uniform on every platform), the weak no-op + the ad-hoc cmake stub
+  are redundant and get deleted (phase-249 P4 = issue 0062 R2). A build-tooling change,
+  not a point-edit landable here; this image gate guards the deletion (it already asserts
+  the registration symbol resolves strong).
 - **W3.2 — DONE (2026-06-13).** The 155.A-class const-weak constants in
   `threadx_hooks.c` (`nros_board_app_stack_size`/`_priority`) — a weak *data*
   symbol gcc could fold at the use site before the strong override was seen

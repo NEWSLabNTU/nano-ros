@@ -346,10 +346,14 @@ Steps (each a commit; CI between the riskier ones):
 > when the `-u` cmake edit was tried).
 - [ ] One registration path: codegen emits the explicit backend-register table,
       used on all platforms; retire the linkme-vs-weak split as a *contract*
-      (Q4 lean: explicit table everywhere).
-- [ ] Generated link manifest: whole-archive set + archive order (platform shim
-      after RMW, msg libs before FFI glue) emitted as data; cmake + build.rs
-      consume it (Q2 lean: codegen produces, two consumers).
+      (Q4 lean: explicit table everywhere). **DESIGNED →
+      [phase-249](phase-249-one-registration-trigger.md)** (phase-241 W13/R3): the
+      uniform explicit `nros_rmw_<backend>_register()` call from the R1 manifest;
+      phased P1–P4, P4 deletes the weak default (issue 0062 R2 / 0050 W3.1).
+- [x] Generated link manifest (the dispatch half): **DONE — W13/R1** (`RmwDispatch`
+      in `resolve_rmw()` → generated `cmake/NanoRosRmwDispatch.cmake`, drift-guarded;
+      the W11 synth consumes it). The whole-archive set + archive *order* part is
+      still open (rides phase-249 / the NanoRosLink rework).
 - [ ] Remove `--allow-multiple-definition` — **strategy partly proven, real
       blocker found (slice 3+4 investigation, 2026-06-13).**
       - The COMDAT/weak duplicates (generics, weak compiler-rt) are NOT the

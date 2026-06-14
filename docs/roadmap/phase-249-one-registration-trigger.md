@@ -28,13 +28,30 @@ missing strong def silently degrades to the no-op.
 
 ## Decision — the one trigger is the explicit generated call
 
+This is the faithful implementation of **RFC-0042 §D3 bullet 1**, which already specifies
+it: *"Codegen emits an explicit backend-register table for the binary (the set of
+`nros_rmw_<x>_register()` to call), used on all platforms — hosted included. The
+linkme-vs-weak split is removed … the distributed-slice may remain an implementation
+detail of the generator's hosted path but is no longer a second contract. Bare-metal and
+hosted register identically."* (Issue 0062's earlier "fold into the `.init_array` ctor"
+framing was a deviation — the ctor is not universal — now corrected back to the RFC.)
+
 Mechanisms 1, 2, 4 each fail on some target; only **the explicit call (3) is universal**
 (no linker-section / ctor walking to skip per-platform). W13/R1 already made the SSoT
-(`resolve_rmw()` / `RmwDispatch`) know `backend → register fn`. So:
+(`resolve_rmw()` / `RmwDispatch`) know `backend → register fn` — the "register table" the
+RFC names. So:
 
 > **Registration is exactly one explicit `nros_rmw_<backend>_register()` call per binary,
-> generated from the R1 dispatch manifest. linkme, the `.init_array` ctors, and the weak
-> default are retired.**
+> generated from the R1 dispatch manifest, identical on every platform. The `.init_array`
+> ctors and the weak default are retired; linkme stops being a registration contract.**
+
+**On linkme.** The RFC permits the distributed slice to *remain* as a hosted-only
+implementation detail. Phase-249 instead uses the **uniform explicit call on hosted too**
+(not a hosted linkme branch): one code path, no per-platform impl split, and — decisively
+— it is the uniform explicit call that lets the weak `nros_app_register_backends` default
+die (P4/R2). A hosted-only linkme impl would keep the weak/strong split alive on hosted.
+The `RmwInitEntry` *type* + an empty slice may stay if an out-of-tree consumer needs them;
+only the registration *role* is retired.
 
 Per language:
 
