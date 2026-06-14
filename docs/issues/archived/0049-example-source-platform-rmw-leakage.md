@@ -1,11 +1,20 @@
 ---
 id: 49
 title: Example source leaks platform/RMW selection + low-level boilerplate — should be agnostic application logic only
-status: open
+status: resolved
 type: tech-debt
 area: examples
 related: [phase-244, phase-245, rfc-0024, rfc-0032]
+resolved_in: phase-244 (1193e26c7)
 ---
+
+> **RESOLVED (2026-06-15) by phase-244.** Re-audit (9-agent fan-out over all
+> example/template source, with the 2026-06 rescopes) → **0 blocking major**.
+> The sole straggler `zephyr/cpp/cyclonedds/talker-aemv8r` migrated to the typed
+> carrier (C2.1); native/rust cleaned to Shape B (D7). Residual `minor` = node-lib
+> `#![no_std]` only (E4 accepted, architectural). `qemu-riscv64-threadx` re-architecture
+> carved to phase-245; `bridges/tt-zenoh-to-xrce` accepted-residual (D5). See the
+> archived phase-244 doc. (The 2026-06 rescope detail below remains the rubric of record.)
 
 ## The bar
 

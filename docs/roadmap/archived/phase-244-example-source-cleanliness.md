@@ -325,8 +325,11 @@ Each enabler is one framework crate; verify-then-build. **Verified 2026-06-13
 
 ---
 
-- [ ] **C2.1 — zephyr/cpp/cyclonedds/talker-aemv8r straggler. IN PROGRESS
-  (2026-06-15).** The #0049 re-audit (below) found one genuine major C2 missed: the
+- [x] **C2.1 — zephyr/cpp/cyclonedds/talker-aemv8r straggler. DONE (2026-06-15,
+  `d43da840b`).** Migrated to the typed carrier (`Talker.{hpp,cpp}` `configure(Node&)`
+  + `nano_ros_node_register(TYPED … DEPLOY zephyr)`, kept `nros_generate_interfaces`);
+  legacy `main.cpp` deleted. FVP build CI/manual-gated (no local ARM-FVP). The #0049
+  re-audit (below) found one genuine major C2 missed: the
   FVP AEMv8-R Cortex-A/R cyclonedds demo (`examples/zephyr/cpp/cyclonedds/talker-aemv8r`),
   a legacy Phase-117 imperative `main.cpp` (`nros::init` + `create_node` + manual
   `while(true)`/`k_sleep` + `<zephyr/kernel.h>` — P1+P7). It was outside C2's
@@ -551,12 +554,21 @@ crate-level attrs — architecturally correct, not downgradable to clean).
 
 ---
 
-## Acceptance (phase close)
+## Acceptance (phase close) — MET (2026-06-15)
 
-- Issue-0049 rubric re-run over all 200 pkgs → 0 `major`; every residual `minor` is
-  node-lib `#![no_std]` only (and 0 of those once E4 lands).
-- Each platform's `just <plat> build-fixtures` + E2E gate green after its cluster.
-- Reference-clean examples unchanged; the audit's "not a leak" list (link-forcing
-  `extern crate … as _`, `NROS_APP_MAIN_REGISTER_POSIX`, `build.rs` bridges,
-  rclcpp-compat idioms) is preserved.
-- Update issue 0049 → `resolved`; archive this phase doc.
+- [x] Issue-0049 rubric re-run (9-agent fan-out, all example/template source) → **0
+  blocking major** (see "Re-audit (2026-06-15)"). The sole straggler talker-aemv8r
+  migrated (C2.1). Residual `minor` = node-lib `#![no_std]` only (E4 accepted).
+- [x] Touched platforms validated: D7 native (`build-fixture-rust`), #64-A
+  qemu-arm-nuttx (`build-examples`) + stm32f4 (`build-fixtures`), `check-workspace-all`
+  — all green locally (2026-06-15). zephyr typed path green on CI zephyr-dual-line.
+- [x] Reference-clean examples unchanged; the "not a leak" list (link-forcing
+  `extern crate … as _` / `#[used] static = register`, `NROS_APP_MAIN_REGISTER_POSIX`,
+  `build.rs` bridges, rclcpp-compat idioms) preserved + extended (native board-less
+  `Executor::open` + force-link ladder accepted, RFC-0031 feature = lowering target).
+- [x] Issue-0049 → `resolved` (archived); this phase doc archived.
+
+**Out-of-scope verification deferred (not 244 code):** C2.1 FVP build (manual
+ARM-FVP lane); a fully-green main `check` cell is blocked by two pre-existing
+non-244 reds tracked in **[issue 0065](../../issues/0065-check-cell-red-stale-nros-feature-combo-and-clang-format.md)**
+(stale `nros/platform-posix` feature combo + nros-cpp clang-format drift).
