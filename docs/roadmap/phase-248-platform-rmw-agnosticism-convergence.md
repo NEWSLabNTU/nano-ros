@@ -118,6 +118,15 @@ generic hook), and any new vtable op added to `nros-platform-api`/`-cffi`.
       _release`); extracted the no_std panic handler. Same on `nros-cpp/src`. No
       `#[cfg(feature="platform-*")]` left in either src; no new platform-api op
       needed (vtable ops already existed). nros-c tests 71 pass; both build green.
+- [x] **Phase 2 — retire features. DONE (2026-06-14).** `nros-c`/`nros-cpp`
+      dropped all `platform-*` + concrete-`rmw-*` features + concrete-backend
+      deps; functional-only. grep clean; builds + 71 tests pass. Their corrosion
+      CMakeLists map platform → capability features. **Downstream break tracked
+      as issue #61:** `zephyr/CMakeLists.txt` still passes the removed features
+      (needs the feature-string swap + an XRCE staticlib block; requires a
+      west/QEMU build to validate — Zephyr already red #58/#59).
+
+  *(superseded checklist item kept for history:)*
 - [ ] **Phase 2 (Wave 2, after C5) — retire features.** Drop `platform-*` +
       concrete-`rmw-*` features + optional concrete-backend deps
       (`nros-rmw-zenoh`, `nros-rmw-xrce-cffi`) from `nros-c`/`nros-cpp/Cargo.toml`;
@@ -247,6 +256,18 @@ nros keeps its features for now):**
       `nros-rmw-cyclonedds-sys` deps + the moved force-link block from `nros`. nros
       now consumes only `nros-rmw-cffi` + `nros-platform-cffi` vtables — fully
       agnostic. Owns: `nros/`.
+      **BLOCKED — larger example tail than first scoped (2026-06-14 grep).** C5c
+      can't drop the features until ~90 remaining `nros/{rmw,platform}-*` consumer
+      edges migrate — C6a/b/c covered workspaces/{rust,c,cpp,mixed} + the
+      baremetal/stm32 node pkgs only. Still to migrate to board-driven:
+      `examples/native/rust/*` (~39, the single-binary apps — they DO forward
+      `nros/rmw-*`, so they block C5c despite being the #60 "apps" exception),
+      `examples/{zephyr,threadx-linux,qemu-arm-freertos}/rust/*` (~54),
+      `examples/px4/*`, the `zephyr_entry` transitional exception, and the
+      `n_board_agnostic_run_plan` fixtures. Plus issue #61 (zephyr cmake). This is
+      a multi-cluster example sweep (C6-tail) before C5c — sequence: C6-tail →
+      C5c. Each app/example: dep its board with `features=["rmw-X"]`, drop
+      `nros/rmw-*`/`platform-*` (board brings both).
 
 **Parallel dispatch:** Wave 2a = C5a ‖ C5b (boards vs cli — disjoint). Wave 2b =
 C6a ‖ C6b ‖ C6c ‖ C3.2 (disjoint example groups + crates). Wave 2c = C5c (solo,
