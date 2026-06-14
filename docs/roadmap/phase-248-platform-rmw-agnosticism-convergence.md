@@ -30,8 +30,19 @@ covered by C5a. **C7 DONE (Method A, 2026-06-14): `platform-zephyr` DELETED** �
 `nros` now carries ZERO `platform-*` features. The Zephyr entry macro
 `zephyr_component_main!` stays in `nros` as framework API (re-gated `rmw-cffi`-only,
 same category as `nros::main!`); the `wait_network` helper moved to `nros-platform`
-(step 1). **Residual:** embedded QEMU/Zephyr/FreeRTOS runtime smoke deferred to a
-green harness (#58/#59) — all C7 changes are cargo-check-validated only.
+(step 1). **EMBEDDED RUNTIME SMOKE — FreeRTOS GREEN (2026-06-15).** `just freertos
+build-examples` cross-builds + links the board-driven firmware on thumbv7m (after
+fixing a C6f gap: `examples/fixtures.toml` still passed `features=["rmw-zenoh"]` to
+the now-board-driven freertos rust components — `10bd115b0`). On the patched
+qemu-system-arm 11.0.0 (`just qemu setup-qemu`), `freertos_run_plan_runtime` boots
+all 6 entries (talker/listener/services/actions) through `BoardEntry::run` — each
+self-registers its RMW (C5a, no `nros` force-link), `Executor::open` connects to the
+slirp zenohd, and reaches `Application setup complete`. (6/6 pass run serially; 2
+flake under 6 parallel QEMU instances — pre-existing harness concurrency, not a
+registration regression.) Proves C5c+C7 agnostic `nros` + board self-register at
+RUNTIME on embedded. **Residual:** Zephyr smoke still blocked (needs west, #58/#59);
+baremetal/threadx/nuttx/esp32 use the identical board-self-register pattern (not
+separately run here — FreeRTOS is the representative full-board+zenoh path).
 
 > **Cross-phase note (2026-06-14).** C5a's "boards self-link + register their RMW"
 > (the app-owned force-link + explicit register) is the bare-metal half of the ONE
