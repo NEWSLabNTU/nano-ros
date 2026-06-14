@@ -26,7 +26,7 @@ setup:
     # resolves. The esp32 board has no toolchain package (build-std), so this is
     # the source set.
     source scripts/build/cargo.sh
-    "$(nros_cli_bin)" setup esp32
+    "$(nros_cli_bin)" setup qemu-esp32-baremetal
     # Probe for the `esp32c3` machine model, not the binary's mere existence —
     # the ESP32 e2e TESTS need Espressif's QEMU fork (stock qemu-system-riscv32
     # only knows `virt`). Build does NOT need it, so provision best-effort: the
@@ -81,14 +81,11 @@ build: build-examples
 build-examples:
     #!/usr/bin/env bash
     set -e
-    # Phase 181.4.h — esp32 rust examples build from the SSOT manifest
-    # (examples/fixtures.toml). ESP32-C3 targets riscv32imc-unknown-none-elf via
-    # each example's .cargo/config.toml; the nightly toolchain + rust-src +
-    # build-std come from the workspace (NOT xtensa/espup). RUSTUP_TOOLCHAIN +
-    # SSID/PASSWORD are platform env, injected here for the shared builder.
+    # Phase 244.D2 — the WiFi-only plain esp32 fixtures (talker/listener) were
+    # dropped (WiFi un-emulable). The only `platform = "esp32"` fixture left is the
+    # ESP32-C3 QEMU (OpenETH) workspace Entry, built by the workspace lane below;
+    # `fixtures-build.sh esp32 rust` would now select zero plain fixtures.
     echo "Building ESP32 examples (from examples/fixtures.toml)..."
-    RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
-        bash scripts/build/fixtures-build.sh esp32 rust
     # Phase 225.O — ESP32-C3 QEMU workspace Entry (Node + Bringup + Entry
     # pkgs) through the documented workspace workflow (`nros ws sync`,
     # `nros codegen-system`, then cargo). Mirrors the freertos /
