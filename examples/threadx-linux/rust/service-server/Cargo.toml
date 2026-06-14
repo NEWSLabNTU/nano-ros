@@ -10,22 +10,18 @@ description = "ThreadX Linux service server — Phase 212.L Component pkg"
 crate-type = ["rlib", "staticlib"]
 
 [features]
-# Phase 214.S.5 — `rmw-cyclonedds` parity row. The default deploy rmw is
-# still selected via `[package.metadata.nros.deploy.<rtos>].rmw`; this
-# row gives users `cargo build --features rmw-cyclonedds` as an
-# alternative build target without changing the default. 1-entry shape
-# mirrors S.4 (umbrella pulls the backend transitively).
-# Phase 214.S.5.c — `rmw-zenoh` + `rmw-xrce` parity rows. Same shape
-# as the cyclonedds row above; gives users `cargo build --features
-# rmw-zenoh` / `--features rmw-xrce` alternative build targets without
-# changing the default deploy rmw. Required by `just freertos
-# build-examples` which invokes `cargo build --features rmw-zenoh`.
-rmw-zenoh = ["nros/rmw-zenoh"]
-rmw-xrce  = ["nros/rmw-xrce"]
-rmw-cyclonedds = ["nros/rmw-cyclonedds"]
+# Phase 248 C6e — RMW is selected by config (`[package.metadata.nros.deploy.*].rmw`)
+# and the concrete backend is linked by the board's C port (NetX-Duo BSD / zpico-sys
+# C TU), NOT a Rust `nros/rmw-*` dep. These rows are now inert build-target markers
+# (same pattern as `nros-board-{mps2-an385,stm32f4,esp32s3}`), kept so existing
+# `cargo build --no-default-features --features rmw-zenoh` invocations
+# (examples/fixtures.toml) still resolve; they no longer forward `nros/rmw-*`. (#60 T5)
+rmw-zenoh = []
+rmw-xrce = []
+rmw-cyclonedds = []
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-threadx", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
 # Phase 212.N.7 step-2 — Entry-pkg-callable `pub fn register(runtime: &mut RuntimeCtx)` wrapper.
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
 example_interfaces = { version = "*", default-features = false }
