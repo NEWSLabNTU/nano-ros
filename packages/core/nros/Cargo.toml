@@ -88,14 +88,12 @@ lending = ["rmw-cffi", "nros-rmw-cffi/lending"]
 # `nros` feature (RFC-0031 platform amendment, C5-plat). zenoh link tuning
 # (`link-tls`/`link-custom`) is set on the consumer's own `nros-rmw-zenoh` dep.
 #
-# RESIDUAL (Tier-3) — tracked by phase-248 **C7** (relocate the Zephyr entry
-# scaffolding out of `nros`). `platform-zephyr` is KEPT only to gate `nros`'s
-# Zephyr entry-point scaffolding (the `zephyr_component_main!` macro +
-# `platform::zephyr` module). Target: move the helper to `nros-platform`, the
-# entry codegen to `nros-macros`/`nros-board-zephyr`, then DELETE this feature.
-# Blocked on a green Zephyr build (#58/#59). DO NOT remove/rewire ad-hoc —
-# coordinate via phase-248 C7 (see docs/roadmap + ARCHITECTURE §2 residual note).
-platform-zephyr = ["nros-platform/platform-zephyr"]
+# Phase 248 C7 (Method A) — `platform-zephyr` DELETED: it was the last
+# `platform-*` feature, kept only to gate the `zephyr_component_main!` entry
+# macro. That macro is now gated on `rmw-cffi` (framework entry codegen, like
+# `nros::main!`); the Zephyr platform impl + the `wait_network` helper come from
+# `nros-platform[platform-zephyr]` (a dep the Zephyr consumer enables), not an
+# `nros` feature. `nros` now carries ZERO `platform-*` features.
 
 # E2E safety protocol (CRC-32 + sequence tracking).
 safety-e2e = [

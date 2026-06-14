@@ -26,10 +26,12 @@ D3's single-runtime backend bundle).** **C3.2 SUPERSEDED by 241.D3-rev**; issue
 agnostic (std/no_std) + default, nros-c (zenoh single-runtime)/nros-cpp/native/
 px4-xrce build, nros-c 71 + cli generate 21 pass, nm proves the native binary
 self-registers zenoh (app-owned force-link, independent of nros); embedded path
-covered by C5a. **Residuals:** (1) `platform-zephyr` kept on nros — gates the
-Zephyr entry-point scaffolding (`zephyr_component_main!` + `platform::zephyr`);
-relocating it needs a green Zephyr build (#58/#59). (2) embedded QEMU/Zephyr/
-FreeRTOS runtime smoke deferred to a green harness.
+covered by C5a. **C7 DONE (Method A, 2026-06-14): `platform-zephyr` DELETED** —
+`nros` now carries ZERO `platform-*` features. The Zephyr entry macro
+`zephyr_component_main!` stays in `nros` as framework API (re-gated `rmw-cffi`-only,
+same category as `nros::main!`); the `wait_network` helper moved to `nros-platform`
+(step 1). **Residual:** embedded QEMU/Zephyr/FreeRTOS runtime smoke deferred to a
+green harness (#58/#59) — all C7 changes are cargo-check-validated only.
 
 > **Cross-phase note (2026-06-14).** C5a's "boards self-link + register their RMW"
 > (the app-owned force-link + explicit register) is the bare-metal half of the ONE
@@ -380,54 +382,55 @@ feature), `packages/core/nros-macros/src/main_macro.rs` (the `nros::main!` zephy
 Zephyr / `examples/zephyr` / the zephyr build concurrently, sync with C7 — it
 rewrites the Zephyr entry path.**
 
-**Status.** PLANNED 2026-06-14 (the C5c `platform-zephyr` residual). The maintainer
-chose to *document the target first*; implementation pending (method confirmation +
-a green Zephyr build).
+**Status.** DONE 2026-06-14 (Method A). `nros` now carries ZERO `platform-*`
+features. Cargo-check validated; runtime gated on a green Zephyr build (#58/#59).
 
-**Why.** C5c left `nros/platform-zephyr` as the lone `platform-*` feature — it gates
-nros's Zephyr entry scaffolding. The Agnosticism contract (ARCHITECTURE §2) wants
-ZERO platform code in `nros`. Mapped surfaces:
-- `zephyr_component_main!(Node)` — single-node self-bringup macro, in `nros/lib.rs`,
-  gated `platform-zephyr`; used by the 8 standalone `examples/zephyr/rust/*`.
-- `nros::main!` zephyr branch → `rust_main` — workspace/multi-node entry, already in
-  `nros-macros` gated on `target_os` cfg (NOT a feature) — appropriate for the entry
-  macro; used by `zephyr_entry`.
-- `platform::zephyr::wait_for_network` — FFI wrapper over the C symbol
-  `nros_platform_zephyr_wait_network`; a dup of `ZephyrBoard::wait_link_up`. Called by
-  BOTH the macro and the `nros::main!` zephyr branch.
+**Method chosen — A (entry macro stays in `nros` as framework API; delete the
+feature).** Two alternatives were explored and rejected:
+- *Fold into `nros::main!`* (one uniform entry macro) — IMPRACTICAL: `zephyr_component_main!`
+  is a `macro_rules!` that can't move into the `main!` **proc-macro** crate, and the zephyr
+  examples are **lib-only `staticlib`** crates (`rustapp`, no bin) that don't fit `main!`'s
+  bin-based Form-1 (which registers via `<pkg>::register` and emits `fn main`). Would need new
+  proc-macro work, unvalidatable, for 8 zephyr-only examples.
+- *Move macro → `nros-board-zephyr`* (board-owns-bringup) — REJECTED on UX + maintainability:
+  it leaks `nros_board_zephyr::` into user source (issue #49-class coupling; native examples
+  never name their board in source), fragments the zephyr entry across 3 crates, and forces a
+  board crate to dep the full `nros` umbrella.
+- **A (chosen):** the real #60 violation is the `platform-zephyr` *feature* (a platform
+  selector on `nros`), NOT the entry macro. Entry macros are framework API — `nros::main!`
+  already emits the Zephyr `rust_main` from `nros-macros`. So: keep `zephyr_component_main!`
+  in `nros`, re-gate it `rmw-cffi`-only, and DELETE the feature. Zero UX change
+  (`nros::zephyr_component_main!`), no fragmentation, no proc-macro risk.
 
-**Target (clean end-state).**
-1. **Move the platform helper** `wait_for_network` → `nros-platform` (`nros_platform::zephyr`)
-   or fold onto `ZephyrBoard::wait_link_up`; delete `nros::platform::zephyr`; repoint the
-   `nros::main!` branch (`::nros::platform::zephyr::…` → `::nros_platform::…`). Low-risk,
-   unambiguously correct (platform helper in the platform crate). **Stageable alone.**
-2. **Consolidate the single-node entry macro** out of `nros/lib.rs` — fold
-   `zephyr_component_main!` into the `nros::main!` family in `nros-macros` (gated on
-   `target_os` cfg, not a feature) so authors write the same `nros::main!(Node)` on
-   zephyr as everywhere else (best UX), or move it to `nros-board-zephyr`
-   (board-owns-bringup). Update the 8 examples + `zephyr/CMakeLists.txt` `_nros_features`
-   (drop `platform-zephyr`).
-3. **Delete `nros/platform-zephyr`** → `nros/lib.rs` holds zero zephyr code; the
-   agnosticism contract has no residual.
+**What landed.**
+- **Step 1** (`f4197f1f5`): `wait_for_network` → `nros_platform::zephyr::wait_network`
+  (C-symbol wrapper; NOT `ZephyrBoard::wait_link_up`, whose `net_if_is_up`/`k_msleep` are
+  static-inline headers → native_sim undefined refs); deleted `nros::platform::zephyr`;
+  repointed all 3 callers (macro, `nros::main!` branch, codegen).
+- **Step 2** (Method A): `zephyr_component_main!` gate `all(rmw-cffi, platform-zephyr)` →
+  `rmw-cffi` only (also FIXES its post-C6g availability — examples enable `rmw-cffi`, not the
+  dropped `platform-zephyr` forward); **deleted `nros/platform-zephyr`**. The Zephyr platform
+  impl + `wait_network` come from `nros-platform[platform-zephyr]` (a dep the examples already
+  enable). No example `Cargo.toml`/`src` change needed; the `zephyr/CMakeLists.txt`
+  `platform-zephyr` strings target `nros-c`/`nros-cpp` (which keep the feature, D3) — untouched.
 
-**Validation gap.** Cargo-check-only here — Zephyr is RED (#58/#59), so the macro's
-`rust_main` wiring + the cmake feature swap can't be `west`/QEMU-validated. Sequence:
-land step 1 (safe) now if approved; gate step 2 on a green Zephyr build (couples with
-#58/#59/#61). **Method (fold-into-`main!` vs board-crate vs feature-rename) — confirm
-with maintainer before step 2.**
+**Validation.** Cargo-check: `nros` builds default + agnostic + no_std; no lingering
+`platform-zephyr` in the `nros` crate; ARCHITECTURE §2 reframed (entry macros = framework API,
+not platform-impl). Runtime (the `rust_main` wiring on `west`/QEMU) is gated on Zephyr going
+green (#58/#59/#61).
 
-**Acceptance.** No `platform-*` feature or `#[cfg(feature="platform-*")]` in
-`nros/{Cargo.toml,src}`; the agnosticism-contract residual note in ARCHITECTURE §2 is
-removed; Zephyr examples + `zephyr_entry` build (when the harness is green).
+**Acceptance — MET.** No `platform-*` feature in `nros/Cargo.toml`; no
+`#[cfg(feature="platform-*")]` in `nros/src` (the macro is `rmw-cffi`-gated); ARCHITECTURE §2
+residual reframed to the entry-macro principle.
 
 ## Acceptance (phase)
 
 - [ ] No core or user-lib crate (`nros`, `nros-node`, `nros-c`, `nros-cpp`,
       `nros-core`, `nros-params`, `nros-log`, `nros-serdes`, `nros-orchestration`)
       carries `platform-*` or concrete-`rmw-*` features or concrete-backend deps;
-      only the vtable interface crates do (residual: `nros/platform-zephyr` until C7).
-- [ ] No `#[cfg(feature="platform-*")]` in core/user-lib `src/` (residual:
-      `nros/src/lib.rs` zephyr scaffolding behind `platform-zephyr` until **C7**).
+      only the vtable interface crates do. (C7 DONE — `nros/platform-zephyr` deleted.)
+- [x] No `#[cfg(feature="platform-*")]` in core/user-lib `src/` (C7: the zephyr
+      entry macro is now `rmw-cffi`-gated framework API, not a `platform-*` cfg).
 - [ ] Boards gate concrete RMW optional; selection is board+config-driven.
 - [ ] Example node pkgs are platform/RMW-agnostic; workspace selection is
       `system.toml`-driven end-to-end.

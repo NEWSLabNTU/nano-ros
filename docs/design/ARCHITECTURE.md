@@ -59,16 +59,21 @@ never edits a `platform-*`/`rmw-*` cargo feature on their node package. (Converg
 contract is tracked by issue #60 / phase-248; a `just`-level grep guard over core/user-lib
 `Cargo.toml`s can enforce it once converged.)
 
-**Known residual — `nros/platform-zephyr` (phase-248 C7, 2026-06-14).** After C5c the `nros`
-umbrella is feature-agnostic EXCEPT for one residual: `platform-zephyr`, which gates nros's Zephyr
-**entry-point scaffolding** — the single-node self-bringup macro `zephyr_component_main!` and the
-`platform::zephyr::wait_for_network` FFI wrapper (a dup of `ZephyrBoard::wait_link_up`). The target
-end-state (phase-248 **C7**): the platform helper moves to `nros-platform`, the entry codegen
-consolidates into `nros-macros` (the `nros::main!` family, gated on `target_os` cfg — where the
-zephyr `rust_main` entry already partly lives) and/or `nros-board-zephyr` (board-owns-bringup, like
-FreeRTOS/NuttX), and the `platform-zephyr` feature is deleted so nros/lib.rs holds ZERO zephyr code.
-Blocked on a green Zephyr build (#58/#59) for runtime validation — until C7 lands this is the one
-sanctioned exception to the contract; **do not "fix" it ad-hoc — coordinate via C7.**
+**Entry macros are framework API, not platform-impl (phase-248 C7, RESOLVED 2026-06-14).** `nros`
+carries NO `platform-*` feature — `platform-zephyr` was the last one and is now deleted (C7). One
+nuance the contract should make explicit: **entry macros that emit per-target boot code are
+framework API and legitimately live in `nros`/`nros-macros`**, NOT platform-impl. `nros::main!`
+(nros-macros) already emits the Zephyr `rust_main` entry, gated on the `Framework` enum resolved
+from board/deploy metadata (not a feature); the single-node `nros::zephyr_component_main!` macro
+(nros/lib.rs) is the same category, gated only on `rmw-cffi` (it needs `Executor`). The platform
+*impl* they call — `nros_platform::zephyr::wait_network` — lives in `nros-platform`, and the
+concrete platform/RMW still enter via deps, not `nros` features. So the "no platform code in core
+src" rule means no platform-IMPL (`#[cfg(platform-*)]` wake/alloc/socket branches), which `nros`
+has none of. (Long-term ideal — fold the single-node zephyr entry into `nros::main!` for one
+uniform entry macro — is impractical today: `zephyr_component_main!` is a `macro_rules!` that
+can't move into the `main!` proc-macro crate, and zephyr examples are lib-only `staticlib` crates
+that don't fit `main!`'s bin-based Form-1. Tracked as a future entry-macro unification, not a
+blocker.)
 
 → RFC-0005 (rmw-layer-design), RFC-0006 (portable-rmw-platform-interface), RFC-0031 (RMW
 selection & lowering), RFC-0004 (config home), issue #60 / phase-248 (agnosticism convergence).

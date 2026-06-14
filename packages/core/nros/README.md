@@ -1,14 +1,17 @@
 # nros
 
-The unified [nano-ros](https://github.com/NEWSLabNTU/nano-ros) facade crate. Re-exports `nros-core`, `nros-node`, `nros-rmw`, `nros-serdes`, `nros-platform`, and the RMW backend selected by feature flag (`rmw-zenoh`, `rmw-xrce`, `rmw-cyclonedds`).
+The unified [nano-ros](https://github.com/NEWSLabNTU/nano-ros) facade crate. Re-exports `nros-core`, `nros-node`, `nros-rmw`, `nros-serdes`, `nros-platform`, and reaches the RMW backend + platform purely through the vtable seams (`nros-rmw-cffi` / `nros-platform-cffi`).
 
 This is the entry point for application code. See the [book](https://github.com/NEWSLabNTU/nano-ros/tree/main/book) and the [examples directory](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples).
 
 ## Features
 
+Phase 248 — `nros` is RMW- and platform-AGNOSTIC: it carries only FUNCTIONAL features. The concrete RMW backend + platform enter the link graph via the board crate, the board-less app's own `nros-rmw-*` dep, or the `nros-c`/`nros-cpp` staticlib root — never an `nros` feature.
+
 - `std` / `alloc` / `no-std`
-- RMW backends: `rmw-zenoh`, `rmw-xrce`, `rmw-xrce-cffi`, `rmw-cyclonedds`
-- Platforms: `platform-posix`, `platform-nuttx`, `platform-freertos`, `platform-threadx`, `platform-zephyr`
+- `rmw-cffi` (the RMW vtable runtime — the only RMW feature)
+- `lending`, `bridge` / `config`, `param-services`, `lifecycle-services`, `safety-e2e`, `stream`, `ffi-sync`
+- ROS edition: `ros-humble` / `ros-iron`
 
 ## License
 

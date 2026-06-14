@@ -62,10 +62,10 @@
 //! vtable, `lending`, `bridge`/`config`, `param-services`,
 //! `lifecycle-services`, `safety-e2e`, `stream`, `ffi-sync`, and the ROS
 //! edition (`ros-humble`/`ros-iron`). There are NO `platform-*` or concrete
-//! `rmw-*` selector features (one residual: `platform-zephyr`, which gates the
-//! Zephyr entry-point scaffolding pending its relocation — see Cargo.toml).
-//! Platform + RMW are selected by the board / staticlib root via dependencies,
-//! not `nros` features.
+//! `rmw-*` selector features (Phase 248 C7). Platform + RMW are selected by the
+//! board / staticlib root via dependencies, not `nros` features. The
+//! `zephyr_component_main!` entry macro is gated only on `rmw-cffi` (it's
+//! framework entry codegen, like `nros::main!`), not a platform feature.
 //!
 //! **ROS version** (select one):
 //! - `ros-humble` - ROS 2 Humble
@@ -91,11 +91,10 @@
 #![no_std]
 
 // ── Feature validation (mutual exclusivity) ─────────────────────────────
-// Phase 248 C5c — `nros` no longer carries the mutually-exclusive `platform-*`
-// selector features (only the `platform-zephyr` scaffolding residual remains),
-// so the platform mutual-exclusion `compile_error!` is gone. The platform is
-// selected by the board / staticlib root via an `nros-platform` dep, and
-// nros-node picks the kernel primitive at runtime (C2 wake-probe).
+// Phase 248 C5c/C7 — `nros` carries NO `platform-*` selector features, so the
+// platform mutual-exclusion `compile_error!` is gone. The platform is selected
+// by the board / staticlib root via an `nros-platform` dep, and nros-node picks
+// the kernel primitive at runtime (C2 wake-probe).
 // Only `rmw-cffi` is exposed at this layer; the cffi shim selects the
 // concrete backend at the C ABI level via the `RMW_INIT_ENTRIES` walker.
 
@@ -244,7 +243,13 @@ pub use nros_macros::main;
 /// The macro is intended for `rust_cargo_application()` apps whose crate
 /// already invokes `nros::node!()`. It opens a Zephyr executor, registers
 /// the supplied component through [`ExecutorNodeRuntime`], and spins forever.
-#[cfg(all(feature = "rmw-cffi", feature = "platform-zephyr"))]
+// Phase 248 C7 (Method A) — gated on `rmw-cffi` only (needs `Executor`), NOT a
+// `platform-*` feature. This is a framework ENTRY macro (same category as
+// `nros::main!`'s zephyr `rust_main` codegen) — `#[macro_export]` so it emits
+// nothing unless a Zephyr example invokes it; the body's `::zephyr::*` /
+// `::nros_platform::zephyr::wait_network` resolve only in that zephyr-build
+// context (the example deps the `zephyr` crate + `nros-platform[platform-zephyr]`).
+#[cfg(feature = "rmw-cffi")]
 #[macro_export]
 macro_rules! zephyr_component_main {
     ($node:ty) => {
