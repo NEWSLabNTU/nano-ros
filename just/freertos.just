@@ -294,7 +294,7 @@ trace example="talker":
     fi
 
     echo "=== Building $EXAMPLE with tracing ==="
-    (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh)
+    (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build --release --target-dir target-zenoh)
 
     # Find the binary name from Cargo.toml
     BINARY=$(grep '^name = ' "$EXAMPLE_DIR/Cargo.toml" | head -1 | sed 's/name = "\(.*\)"/\1/')
@@ -364,7 +364,7 @@ _run-qemu example binary:
     #!/usr/bin/env bash
     set -e
     cd "examples/qemu-arm-freertos/rust/{{example}}" && \
-        cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh
+        cargo build --release --target-dir target-zenoh
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
