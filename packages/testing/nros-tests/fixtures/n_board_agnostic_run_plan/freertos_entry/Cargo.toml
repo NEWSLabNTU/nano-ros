@@ -32,7 +32,7 @@ panic-semihosting = { version = "0.6", features = ["exit"] }
 # typed `&mut ::nros::Executor`, so the Entry pkg depends on `nros`
 # directly — same platform features the Component pkg forwards (no
 # `std` on `thumbv7m-none-eabi`).
-nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "platform-freertos"] }
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Component pkg under test — enable the `freertos` feature gate so
 # its `nros` dep links the FreeRTOS platform backend.
 shared_node_pkg = { path = "../src/shared_node_pkg", features = ["freertos"] }

@@ -14,4 +14,4 @@ default_namespace = "/"
 callback_groups = [{ id = "ctrl", tier = "high" }]
 
 [dependencies]
-nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos", "ros-humble"] }
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }

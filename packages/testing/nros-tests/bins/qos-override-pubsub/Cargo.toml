@@ -13,7 +13,10 @@ name = "qos-override-pubsub"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { path = "../../../../core/nros", default-features = false, features = ["std", "rmw-cffi"] }
+# Phase 248 C5c — posix `nros_platform_*` symbols via a direct `nros-platform`
+# dep (pulls `nros-platform-cffi[posix-c-port]`); retires the `nros/platform-posix` forward.
+nros-platform = { path = "../../../../core/nros-platform", default-features = false, features = ["platform-posix"] }
 nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 log = "0.4"
 env_logger = "0.11"
