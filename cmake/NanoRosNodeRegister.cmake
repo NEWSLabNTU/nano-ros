@@ -447,6 +447,90 @@ function(nano_ros_node_register)
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 
+    # Phase 240.6 (RFC-0043) — FreeRTOS typed-entry carrier. Mirrors the NuttX /
+    # ThreadX branches above (NANO_ROS_PLATFORM freertos, QEMU MPS2-AN385 + lwIP):
+    # synthesise a single-node C++ entry TU that routes the component to the real
+    # executor via `FreertosBoard::run_components` (construct `CLASS` +
+    # `configure(node)`), then delegate to `nros_platform_link_app` for the
+    # kernel/lwIP/netif/startup link. The board's `startup.c` `_start` spawns the
+    # app task + starts the scheduler; that task's `app_task_entry` brings up the
+    # network + poll/zenoh tasks, then dispatches to the entry's `app_main`, so the
+    # typed entry's `NROS_APP_MAIN_REGISTER_VOID()` symbol is the boot target —
+    # same shape as the NuttX carrier (network is up by the time `app_main` runs).
+    #
+    # Unlike the Rust FreeRTOS path (which links the board crate's build.rs-emitted
+    # NROS_APP_CONFIG), the cmake C/C++ carrier does not pull the Rust board crate,
+    # so it generates the NROS_APP_CONFIG TU that startup.c reads (network +
+    # scheduling) from `templates/freertos_app_config.c.in`.
+    #
+    # TYPED-only: the legacy declarative-register / NULL-context baker entry is
+    # retired on FreeRTOS (phase-240.6). Both C and C++.
+    if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
+       AND NANO_ROS_PLATFORM STREQUAL "freertos"
+       AND COMMAND nros_platform_link_app
+       AND NOT TARGET ${PROJECT_NAME})
+        if(NOT _NRC_TYPED)
+            message(FATAL_ERROR
+                "nano_ros_node_register: the FreeRTOS carrier requires TYPED — "
+                "the RFC-0043 real-callback component path. The legacy "
+                "declarative-register / NULL-context baker entry is retired on "
+                "FreeRTOS (phase-240.6).")
+        endif()
+        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
+        # Baked connect locator. QEMU slirp routes the guest to the host zenoh
+        # router at `10.0.2.2:<port>`. Override with `-DNROS_FREERTOS_LOCATOR=…`;
+        # the default 7447 matches the qemu-arm-freertos example deploy + the
+        # rtos_e2e harness's manual `zenohd` default.
+        if(NOT DEFINED NROS_FREERTOS_LOCATOR)
+            set(NROS_FREERTOS_LOCATOR "tcp/10.0.2.2:7447")
+        endif()
+        set(NROS_ENTRY_LOCATOR "${NROS_FREERTOS_LOCATOR}")
+        set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
+        set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
+        set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
+        set(_entry_src "${_entry_dir}/main.cpp")
+        if(_nrc_lang STREQUAL "CPP")
+            set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
+            set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/freertos_entry_main_typed.cpp.in"
+                "${_entry_src}" @ONLY)
+        else() # C
+            configure_file(
+                "${_NROS_NODE_REGISTER_DIR}/templates/freertos_entry_main_c_typed.cpp.in"
+                "${_entry_src}" @ONLY)
+        endif()
+
+        # NROS_APP_CONFIG definition TU (network + scheduling) for startup.c.
+        # `.zenoh.locator` is cosmetic on the typed path; bake the entry locator
+        # for consistency and a domain id of 0 (the deploy DOMAIN_ID default —
+        # the typed path's runtime domain is the compile-time NROS_ENTRY_DOMAIN_ID).
+        set(NROS_ENTRY_APP_DOMAIN_ID 0)
+        set(_appcfg_src "${_entry_dir}/nros_app_config_def.c")
+        configure_file(
+            "${_NROS_NODE_REGISTER_DIR}/templates/freertos_app_config.c.in"
+            "${_appcfg_src}" @ONLY)
+
+        add_executable(${PROJECT_NAME} "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
+        target_include_directories(${PROJECT_NAME} PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src")
+        target_compile_definitions(${PROJECT_NAME} PRIVATE
+            NROS_PKG_NAME=${_pkg_sym})
+        if(TARGET NanoRos::NanoRosCpp)
+            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRosCpp)
+        elseif(TARGET NanoRos::NanoRos)
+            target_link_libraries(${PROJECT_NAME} PRIVATE NanoRos::NanoRos)
+        endif()
+        get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
+        if(_nros_iface_libs)
+            list(REMOVE_DUPLICATES _nros_iface_libs)
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
+        endif()
+        nros_platform_link_app(${PROJECT_NAME})
+    endif()
+
     # Phase 240.8 (RFC-0043) — Zephyr typed-entry carrier. Unlike NuttX (a
     # standalone bootable ELF via add_executable + nros_platform_link_app), a
     # Zephyr app IS the find_package(Zephyr)-owned monolithic `app` target. The

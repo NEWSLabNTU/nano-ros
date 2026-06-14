@@ -1202,6 +1202,50 @@ class ThreadxBoard {
     }
 };
 
+/// Phase 240.6 (RFC-0043) — FreeRTOS board adapter (C/C++ declarative
+/// components on the QEMU MPS2-AN385 + lwIP stack), routing the typed entry to
+/// the real executor.
+///
+/// Lifecycle-identical to [`NuttxBoard`]: by the time this runs we are
+/// **already inside the FreeRTOS application task** (the board's C `startup.c`
+/// `_start` spawned the `app` task + called `vTaskStartScheduler()`, and that
+/// task's `app_task_entry` brought up LAN9118 + lwIP, the network poll task, the
+/// log writer, and the zenoh-pico read/lease task config BEFORE dispatching to
+/// the typed entry's `app_main`). So the network is up and the kernel is
+/// running — `run_components` MUST NOT enter the kernel. It brings the nros
+/// runtime online and spins the real executor: `network_wait` (weak no-op — the
+/// startup task already waited on the netif) → `nros::init` → `setup` (constructs
+/// the component + `configure(node)` binds real callbacks) →
+/// `detail::component_spin_loop` → `shutdown`.
+///
+/// Domain id is `NROS_ENTRY_DOMAIN_ID` (embedded: compile-time, never env —
+/// CLAUDE.md). The connect locator is baked into the generated entry TU by the
+/// carrier (QEMU slirp guest dials the host zenoh router at `tcp/10.0.2.2:<port>`).
+/// TYPED-only: the retired synthesizing-interpreter `run(register_fn)` overload
+/// is not provided (RFC-0043 §Retirement), matching [`ThreadxBoard`].
+class FreertosBoard {
+  public:
+    /// RFC-0043 real-executor entry (FreeRTOS lifecycle, explicit locator).
+    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+        nros_board_network_wait();
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        if (!r.ok()) return static_cast<int32_t>(r.raw());
+        int32_t rc = setup();
+        if (rc != 0) {
+            nros::shutdown();
+            return rc;
+        }
+        int32_t sc = detail::component_spin_loop();
+        nros::shutdown();
+        return sc;
+    }
+
+    /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
+    template <typename Setup> static int32_t run_components(Setup&& setup) {
+        return run_components(NROS_ENTRY_LOCATOR, static_cast<Setup&&>(setup));
+    }
+};
+
 } // namespace board
 } // namespace nros
 

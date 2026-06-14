@@ -14,18 +14,26 @@ set(NANO_ROS_BOARD    mps2-an385-freertos)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
+
+# Typed Publisher<Int32> needs the std_msgs C++ binding (Int32 struct +
+# TYPE_NAME/ffi_publish). The carrier auto-links the generated interface lib.
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
-# Phase 212.L.9 — declarative Component pkg shape. No add_executable
-# here, no `main()`; the BSP-generated runtime (M.5.a.3+4) owns the
-# entry point, executor init, and the spin loop.
+# Phase 240.6 (RFC-0043) — TYPED carrier: the bootable ELF constructs the typed
+# Talker component + `configure(node)` creates a typed publisher + binds the
+# real `on_tick` timer (publishes an Int32 counter) on the executor.
 nano_ros_node_register(
-    NAME    talker
-    CLASS   freertos_cpp_talker::Talker
-    SOURCES src/Talker.cpp ${std_msgs_GENERATED_SOURCES}
-    DEPLOY  freertos)
+    NAME      talker
+    CLASS     freertos_cpp_talker::Talker
+    LANGUAGE  CPP
+    HEADER    Talker.hpp
+    TYPED
+    SOURCES   src/Talker.cpp
+    DEPLOY    freertos)
 
-# Per-target deploy config (Phase 212.L.8).
+target_link_libraries(freertos_cpp_talker_talker_component
+    PUBLIC std_msgs__nano_ros_cpp)
+
 nano_ros_deploy(
     TARGET     freertos
     RMW        ${NROS_RMW}
