@@ -159,6 +159,29 @@ The example's own `CMakeLists.txt` add_subdirectory's nano-ros; the
 Corrosion target tree under `build/talker/cargo/` holds the
 per-build staticlib (`libnros_c.a`, `libnros_rmw_zenoh_staticlib.a`, …).
 
+## Board capabilities & deterministic build (RFC-0042)
+
+The C/C++ build contract is **structural**, not convention-enforced — see
+[RFC-0042](../design/0042-platform-build-determinism.md). Three pieces a board /
+integrator interacts with:
+
+- **One canonical `<nros/platform.h>`** (owned by `nros-platform-api`). There is
+  exactly one header by that include name — no `-I`/`-isystem` ordering decides
+  which ABI you get. It declares the full `nros_platform_*` C ABI (clock, alloc,
+  sleep, tasks, sync, log, …) plus the capability macros below.
+- **`[board.capabilities]` in `nros-board.toml`** is the single source of truth for
+  a board's `heap` / `atomics` / `threads`. `cmake/NanoRosCapabilities.cmake`
+  (`nros_board_capability_defines(<board_dir> OUT)`) reads it and emits the matching
+  `-DNROS_PLATFORM_HAS_MALLOC` / `_ATOMICS` / `_MUTEX` — you do NOT hand-set these
+  per build. A heap-capable bare-metal board declares `heap = true`; without it the
+  generated-message **heap containers fail to *compile*** (a clear error), not link
+  silently — the #38 gate. Declare capabilities once, in the board toml.
+- **RMW backend link is manifest-driven.** `resolve_rmw()` emits
+  `cmake/NanoRosRmwDispatch.cmake` (drift-guarded): the backend rlib + any extra
+  link libs (e.g. Cyclone's `+libddsc +libstdc++`) come from that generated
+  manifest, not hand-maintained cmake conditionals. Select the backend with
+  `-DNROS_RMW=<zenoh|xrce|cyclonedds>`; the manifest supplies the rest.
+
 ## Zephyr Integration
 
 **RMW backend selection** in `prj.conf`:

@@ -3,8 +3,9 @@ rfc: 0042
 title: "Platform & build determinism — one canonical interface, capability-driven config, deterministic linking"
 status: Draft
 since: 2026-06
-last-reviewed: 2026-06
-implements-tracked-by: [phase-241-platform-build-determinism, phase-243-platform-abi-unification]
+last-reviewed: 2026-06-15
+status-note: "D1/D2/D4 STABLE (landed); D3 IN PROGRESS (single-runtime stable, registration trigger = phase-249/#62). Flips to Stable when D3 lands."
+implements-tracked-by: [phase-241-platform-build-determinism, archived/phase-243-platform-abi-unification]
 supersedes: []
 superseded-by: null
 ---
@@ -92,6 +93,10 @@ upheld by comments and per-combination workarounds:
 
 ### D1 — One canonical platform interface
 
+> **Status: STABLE (landed 2026-06-13).** One canonical `<nros/platform.h>` owned
+> by `nros-platform-api`; the legacy `nros-c` header + its per-RTOS sub-headers are
+> deleted on main. Delivered by phase-241.B + phase-243 (archived).
+
 > **Direction (corrected after the wave-B investigation, 2026-06-12).** There are
 > today **two** files named `nros/platform.h` sharing the include guard
 > `NROS_PLATFORM_H`, so they can never coexist in a TU — whichever is first on the
@@ -139,6 +144,11 @@ upheld by comments and per-combination workarounds:
 
 ### D2 — Capability-driven configuration (single source of truth)
 
+> **Status: STABLE (landed 2026-06-13).** `[board.capabilities]` (heap/atomics/
+> threads) is the SSoT; `cmake/NanoRosCapabilities.cmake` lowers it to the
+> `-DNROS_PLATFORM_HAS_*` defines; a merge-gate lint requires every in-tree board
+> to declare it. Delivered by phase-241.C.
+
 - `nros-board.toml` gains a `[board.capabilities]` block — the SSoT:
   ```toml
   [board.capabilities]
@@ -158,6 +168,11 @@ upheld by comments and per-combination workarounds:
   re-declaring it.
 
 ### D3 — Deterministic linking
+
+> **Status: IN PROGRESS.** The single-shared-runtime foundation (bullet 3, no dup)
+> is Stable (see "D3 implementation" below); the remaining bullets 1+2 (one
+> registration path + generated link manifest) are tracked by
+> [phase-249](../roadmap/phase-249-one-registration-trigger.md) / [issue 0062].
 
 - **One registration path.** Codegen emits an explicit backend-register table for
   the binary (the set of `nros_rmw_<x>_register()` to call), used on *all*
@@ -220,6 +235,12 @@ whole-archive manifest. Detail + work items: `docs/roadmap/phase-241-d3-single-r
   (closes [issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md) W3.1).
 
 ### D4 — Merge-time compile + link gate
+
+> **Status: STABLE (host tier landed 2026-06-13).** The platform×language compile
+> gate (`platform_header_matrix.rs` + `platform-header-gate.yml`) is a hard PR gate
+> across all platform targets; the dup-symbol validator (`staticlib_duplicate_
+> symbols`) is wired into `check.yml`. Residual: the cross-toolchain `.c`-TU tier
+> (#27/#36) stays e2e-covered (phase-241.A cross tier). Delivered by phase-241.A.
 
 - A platform × language matrix runs on **every PR** (not just on-demand e2e):
   cross-`check`/compile one representative TU per cell that exercises the

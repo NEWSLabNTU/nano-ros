@@ -355,15 +355,18 @@ Steps (each a commit; CI between the riskier ones):
       a deliberately-dropped lib fails the validator, not `ld`.
 
 ### 241.E — Cleanup + docs
-- [ ] Flip RFC-0042 sections to `Stable` as each pillar lands (drift rule:
-      update ARCHITECTURE.md in the same commit). D1 (one header, via phase-243),
-      D2 (capability SSoT), D4 (gate) are landed → flippable now; D3 (linking)
-      flips when phase-249 lands.
+- [~] Flip RFC-0042 sections to `Stable` as each pillar lands. **D1/D2/D4 →
+      STABLE** (per-pillar status banners added to RFC-0042 + a `status-note` on the
+      frontmatter); **D3 stays IN PROGRESS** (single-runtime stable, registration
+      trigger = phase-249/#62) — the RFC flips fully Stable when phase-249 lands.
 - [ ] Resolve issue 0042 when D1–D4 acceptances pass; cross-link #27/#36/#38/#20
       as the motivating instances. **D1/D2/D4 landed; only D3 (= phase-249 /
       issue #62) is pending — #42 closes when phase-249 lands.**
-- [ ] Update the C/C++ integration docs (RFC-0018/0019, c-api-cmake.md) to point
-      at the capability block + manifest.
+- [x] Update the C/C++ integration docs to point at the capability block +
+      manifest. **DONE:** `c-api-cmake.md` gained a "Board capabilities &
+      deterministic build" section (one canonical `<nros/platform.h>`,
+      `[board.capabilities]` → `-DNROS_PLATFORM_HAS_*`, manifest-driven RMW link);
+      RFC-0018/0019 cross-ref it.
 
 ## Risks / notes
 

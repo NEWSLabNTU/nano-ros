@@ -15,6 +15,13 @@ superseded-by: null
 **Date:** 2026-05-13.
 **Owner:** Phase 122 (Unify C / C++ / Rust API code paths).
 
+> **Build/link contract.** The C ABI nros-c wraps resolves through one canonical
+> `<nros/platform.h>` (`nros-platform-api`); board capabilities + the RMW backend
+> link are config/manifest-driven — see
+> [RFC-0042](0042-platform-build-determinism.md) +
+> [c-api-cmake.md](../reference/c-api-cmake.md) "Board capabilities & deterministic
+> build".
+
 ## Why this exists
 
 Phase 122 establishes the rule: **the Rust API is the source of truth.

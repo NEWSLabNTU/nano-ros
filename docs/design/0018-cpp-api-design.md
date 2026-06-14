@@ -912,6 +912,11 @@ packages/core/nros-cpp/
 
 ## References
 
+- Build/link determinism for C/C++ (one canonical `<nros/platform.h>`, board
+  `[board.capabilities]` → `-DNROS_PLATFORM_HAS_*`, manifest-driven RMW link):
+  [RFC-0042](0042-platform-build-determinism.md) +
+  [c-api-cmake.md](../reference/c-api-cmake.md) "Board capabilities & deterministic
+  build".
 - rclcpp API: https://docs.ros.org/en/rolling/p/rclcpp/
 - rclcpp_action API: https://docs.ros.org/en/rolling/p/rclcpp_action/
 - Existing nros Rust API: `packages/core/nros-node/src/executor/`
