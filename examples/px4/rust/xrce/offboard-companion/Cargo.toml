@@ -17,10 +17,13 @@ deploy = ["px4"]
 [features]
 # XRCE-DDS only — this is the companion path (peer of PX4's uxrce_dds_client).
 default = ["rmw-xrce"]
-rmw-xrce = ["nros/rmw-xrce"]
+# Phase 248 C6 — the board-less companion app owns its backend dep; the umbrella
+# `nros` stays RMW-agnostic. `main.rs` force-links the backend's self-register.
+rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 
 [dependencies]
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
+nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
 nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
 
 # Generated CDR `px4_msgs::msg::*` (from the PX4 `.msg` tree via

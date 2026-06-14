@@ -35,6 +35,14 @@ use px4_msgs::msg::VehicleOdometry;
 
 extern crate nros_platform_cffi as _;
 
+// Phase 248 C6 — force-link the xrce backend (board-less app owns it; no
+// `nros/rmw-xrce`). Inert unless `rmw-xrce` selects it.
+#[cfg(feature = "rmw-xrce")]
+#[doc(hidden)]
+#[used]
+static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterError> =
+    nros_rmw_xrce_cffi::register;
+
 fn main() {
     env_logger::init();
 

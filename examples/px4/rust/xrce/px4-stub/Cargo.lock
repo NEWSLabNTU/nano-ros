@@ -218,8 +218,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-nano-ros"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "cargo_metadata",
  "clap",
@@ -376,12 +375,6 @@ checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
 ]
-
-[[package]]
-name = "critical-section"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
 name = "crossbeam-deque"
@@ -886,15 +879,12 @@ dependencies = [
 
 [[package]]
 name = "nros-build"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "eyre",
  "nros-cli-core",
- "quick-xml",
  "serde",
  "serde_json",
- "walkdir",
 ]
 
 [[package]]
@@ -903,8 +893,7 @@ version = "0.5.0"
 
 [[package]]
 name = "nros-cli-core"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "cargo-nano-ros",
  "cargo_metadata",
@@ -912,15 +901,19 @@ dependencies = [
  "eyre",
  "libc",
  "nros-msg-to-idl",
+ "nros-orchestration-ir",
  "pathdiff",
+ "quick-xml",
  "ros-launch-manifest-types",
  "rosidl-bindgen",
  "rosidl-codegen",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
  "toml 0.8.23",
  "toml_edit",
+ "walkdir",
 ]
 
 [[package]]
@@ -954,8 +947,7 @@ dependencies = [
 
 [[package]]
 name = "nros-msg-to-idl"
-version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 
 [[package]]
 name = "nros-node"
@@ -970,7 +962,6 @@ dependencies = [
  "nros-platform-api",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-cyclonedds",
  "nros-serdes",
  "portable-atomic",
  "portable-atomic-util",
@@ -1018,6 +1009,7 @@ dependencies = [
  "heapless",
  "log",
  "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -1028,16 +1020,6 @@ dependencies = [
  "linkme",
  "nros-rmw",
  "portable-atomic",
-]
-
-[[package]]
-name = "nros-rmw-cyclonedds"
-version = "0.5.0"
-dependencies = [
- "critical-section",
- "heapless",
- "nros-serdes",
- "spin",
 ]
 
 [[package]]
@@ -1210,6 +1192,7 @@ dependencies = [
  "log",
  "nros",
  "nros-platform-cffi",
+ "nros-rmw-xrce-cffi",
  "px4_msgs",
 ]
 
@@ -1315,7 +1298,6 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "serde",
  "serde_json",
@@ -1325,8 +1307,7 @@ dependencies = [
 
 [[package]]
 name = "rosidl-bindgen"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "askama",
  "clap",
@@ -1339,19 +1320,18 @@ dependencies = [
 
 [[package]]
 name = "rosidl-codegen"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "askama",
  "rosidl-parser",
  "serde",
  "thiserror 1.0.69",
+ "toml 0.8.23",
 ]
 
 [[package]]
 name = "rosidl-parser"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "chumsky",
  "logos",
@@ -1493,12 +1473,6 @@ dependencies = [
  "heapless",
  "managed",
 ]
-
-[[package]]
-name = "spin"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
 name = "stable_deref_trait"
