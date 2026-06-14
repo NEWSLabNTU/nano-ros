@@ -41,7 +41,12 @@ freertos_rs_talker = { path = "../talker" }
 nros = { path = "../../../../packages/core/nros", default-features = false }
 # Phase 212.N.3 tier-1 per-board shim. `Mps2An385::run` provides the
 # `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.
-nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }
+# Phase 248 C6f (#60 T5) — the BOARD is the RMW+platform selection point:
+# `features = ["rmw-zenoh"]` links+registers the zenoh-pico C backend (via
+# `nros-board-freertos`'s `nros-rmw-zenoh` dep + boot-path `register()`) AND
+# brings `nros-platform/platform-freertos`. The sibling node pkg + this Entry's
+# `nros` dep name neither `rmw-*` nor `platform-*`.
+nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos", features = ["rmw-zenoh"] }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, …
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
 # NOTE: sibling Component pkg dep deliberately NOT listed in step-2.

@@ -9,23 +9,17 @@ description = "FreeRTOS QEMU MPS2-AN385 listener — Phase 212.L Component pkg"
 [lib]
 crate-type = ["rlib"]
 
-[features]
-# Phase 214.S.5 — `rmw-cyclonedds` parity row. The default deploy rmw is
-# still selected via `[package.metadata.nros.deploy.<rtos>].rmw`; this
-# row gives users `cargo build --features rmw-cyclonedds` as an
-# alternative build target without changing the default. 1-entry shape
-# mirrors S.4 (umbrella pulls the backend transitively).
-# Phase 214.S.5.c — `rmw-zenoh` + `rmw-xrce` parity rows. Same shape
-# as the cyclonedds row above; gives users `cargo build --features
-# rmw-zenoh` / `--features rmw-xrce` alternative build targets without
-# changing the default deploy rmw. Required by `just freertos
-# build-examples` which invokes `cargo build --features rmw-zenoh`.
-rmw-zenoh = ["nros/rmw-zenoh"]
-rmw-xrce  = ["nros/rmw-xrce"]
-rmw-cyclonedds = ["nros/rmw-cyclonedds"]
+# Phase 248 C6f (#60 T5) — Node pkg is platform/RMW-AGNOSTIC. The old
+# `rmw-zenoh`/`rmw-xrce`/`rmw-cyclonedds` parity rows (which forwarded
+# `nros/rmw-*`) are gone, as is `nros/platform-freertos`: platform + the
+# concrete RMW backend now flow from the BOARD crate the sibling firmware Entry
+# pkg deps (`nros-board-mps2-an385-freertos` built with `rmw-zenoh`
+# self-links+registers the zenoh-pico C backend AND brings
+# `nros-platform/platform-freertos`). This lib carries only the functional
+# `nros` features below (alloc + the rmw-cffi vtable seam + ROS edition).
 
 [dependencies]
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
 
 [package.metadata.nros.node]
