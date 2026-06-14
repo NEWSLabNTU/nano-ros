@@ -52,23 +52,37 @@ unstable). Keep it that way.
   symbols; vendored zenoh-pico / mbedtls excluded). Inventory + classification
   live in the allowlist of the new gate (below). Override-defaults:
   `nros_app_register_backends` (cmake strong stub), `nros_board_*` overlay
-  constants + `nros_board_register_netif`/`poll_netif` + `_tx_initialize_low_level`,
-  the `_z_*_serial_*` / `smoltcp_*` aliases, `nros_orb_{register,unregister}_callback`
-  (px4 glue). Optional-hooks: `nros_board_log`/`compute_rng_seed`,
+  constants + `nros_board_register_netif`/`poll_netif`, the `_z_*_serial_*` /
+  `smoltcp_*` aliases, `nros_orb_{register,unregister}_callback` (px4 glue).
+  Optional-hooks: `nros_board_log`/`compute_rng_seed`,
   `nros_rmw_cyclonedds_register_app_descriptors`, the threadx libc stubs,
-  `nros_board_network_wait`.
+  `nros_board_network_wait`, and `_tx_initialize_low_level` (a `.weak` sole def
+  the board ships as overridable — re-classified during W1.2, see Progress).
 - **Checker (scope 2) — source-level DONE.**
   `packages/testing/nros-tests/tests/weak_symbol_audit.rs::owned_weak_symbols_are_audited`
   scans owned C/C++/asm and fails when a non-allowlisted file introduces a weak
   symbol, or an allowlisted file's weak-decl count drifts (forcing re-audit).
   Fast, no builds, platform-independent — catches the "new unaudited weak site
   slips in" failure mode at merge time.
-- **Remaining:** the per-platform *final-image* checker (assert each
-  override-default is actually strong-overridden in the linked artifact, robust
-  to `--gc-sections`/`--whole-archive` — needs `llvm-nm` over per-platform
-  fixtures); and the reduction of fragile weak defaults to define-once /
-  explicit-registration (RFC-0042 D3), prioritising the `nros_app_register_backends`
-  / register-stub dance and the 155.A-class const-weak hazards.
+- **Image checker (scope 2, final-image) — DONE (phase-247 W1).**
+  `scripts/check-weak-symbols-image.sh` + `just check-weak-symbols-image`: `nm`
+  each final image, assert every `[img:]`-declared override-default resolves
+  strong (weak→FAIL, absent→WARN), robust to `--gc-sections` (archives skipped).
+  Coverage map complete (freertos / cmake / serial / smoltcp / threadx; px4-uorb
+  pending an image) and cross-checked against the allowlist SSoT so it can't
+  drift. It already caught a real mis-class: `_tx_initialize_low_level` is a
+  `.global .weak` **sole** def (board's real low-level init, overridable) — it is
+  an **optional-hook**, not the override-default this survey first guessed; the
+  allowlist was corrected.
+- **Gate wiring — DONE (W2).** Source gate in `just check`; image gate standalone
+  for per-platform CI with a static SSoT cross-check that runs anywhere.
+- **Reduction — DONE for the landable scope (W3).** 155.A-class const-weak
+  (`nros_board_app_stack_size`/`_priority`) converted to weak getter functions,
+  validated on real RISC-V (strong override wins, no const-fold). Remaining
+  override-defaults re-audited as capability-conditional (keep). The
+  `nros_app_register_backends` register-stub dance is the one pure link-order
+  dodge and is scoped to RFC-0042 D3 (unlanded), kept audited by both gates
+  until then. → see [phase-247](../roadmap/phase-247-weak-symbol-determinism.md).
 
 ## Scope for the worker
 
