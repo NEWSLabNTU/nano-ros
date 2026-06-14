@@ -77,6 +77,23 @@ the 248/249 churn; orthogonal to A.
   (or convert the trailing `//` note so it doesn't separate the `///` block from
   the item), restoring `check` green.
 
+## Fix landed (2026-06-15, branch `phase-244-native-shape-b`)
+
+- **B (clippy):** moved the Phase-248 C7 `//` note ABOVE the `///` doc block at
+  `nros/src/lib.rs` so the doc comment is adjacent to `pub mod internals` (no
+  intervening plain comment + blank line). `cargo clippy -p nros
+  --no-default-features` clean.
+- **A (stale locks):** regenerated all 10 example Cargo.locks that pinned
+  `nros-core 0.1.0` → `0.5.0` (6× `examples/qemu-arm-nuttx/rust/*`, 4×
+  `examples/stm32f4/rust/*-rtic`) via `nros ws sync` + `cargo generate-lockfile`.
+  The two action/service rtic examples also picked up the E3 managed-block
+  `nros-rmw-cyclonedds` `[patch.crates-io]` entry their regenerated lock now
+  references. Swept the full `examples/**/Cargo.lock` set — these 10 were the only
+  `0.1.0` stragglers.
+
+Status flips to `resolved` once `check` + the `platform`/qemu-arm-nuttx cell are
+green on `main` post-merge.
+
 ## Notes
 
 Neither red is caused by phase-244 example-source cleanup; both are version-bump

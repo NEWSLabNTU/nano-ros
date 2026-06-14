@@ -372,6 +372,12 @@ pub mod qos {
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 
+// Phase 248 C7 step 1 — the `nros::platform::zephyr` module (the
+// `wait_for_network` FFI wrapper) RELOCATED to `nros-platform`
+// (`nros_platform::zephyr::wait_network`); callers reference it via
+// `::nros_platform::zephyr::wait_network`. nros no longer hosts a platform
+// helper module. (The `zephyr_component_main!` macro relocation is C7 step 2.)
+//
 /// Backend-specific internal types.
 ///
 /// These types are implementation details of the transport backends.
@@ -380,12 +386,6 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 ///
 /// The `Rmw*` type aliases resolve to whichever backend is active at compile time,
 /// providing a backend-agnostic way to reference concrete transport types.
-// Phase 248 C7 step 1 — the `nros::platform::zephyr` module (the
-// `wait_for_network` FFI wrapper) RELOCATED to `nros-platform`
-// (`nros_platform::zephyr::wait_network`); callers reference it via
-// `::nros_platform::zephyr::wait_network`. nros no longer hosts a platform
-// helper module. (The `zephyr_component_main!` macro relocation is C7 step 2.)
-
 pub mod internals {
     // ── Backend-agnostic type aliases ────────────────────────────────────
     // These resolve to the concrete types of the active RMW backend.
