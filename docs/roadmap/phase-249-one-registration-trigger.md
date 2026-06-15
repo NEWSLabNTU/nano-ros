@@ -1,8 +1,13 @@
 # Phase 249 — one RMW registration trigger (RFC-0042 §D3 bullet 1)
 
-Status: **Design — approved 2026-06-14** · Implements RFC-0042 §D3 bullet 1 ·
-Phase-241 W13/R3 · Tracked by [issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md)
-· Unblocks R2 (the weak-default + stub deletion that closes [issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md) W3.1).
+Status: **DONE (2026-06-15)** · Implements RFC-0042 §D3 bullet 1 (mechanism: the
+`.init_array` ctor — RFC-0042 §D3.3) · Phase-241 W13/R3 · Tracked by
+[issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md).
+**Delivered:** P1 (Rust board explicit), P2a/P2b (C/C++ cmake strong stub, universal),
+P3 (drop ctors), **P4a** (delete the weak `nros_app_register_backends` → closes
+[issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md) W3.1), **P4b** (consolidate
+registration onto the `.init_array` ctor; **linkme deleted**). P3.5 (board-owned native
+register / declarative migration) was withdrawn — phase-244 D7 kept native rust on Shape B.
 
 Single-runtime (phase-241 W1–W12) delivered D3 bullet 3 (the std/cffi dup) and W13/R1
 delivered bullet 2 (the generated dispatch manifest). This phase delivers **bullet 1 —
@@ -26,15 +31,27 @@ cmake `nano_ros_link_rmw()` generates a **strong** override per linked backend (
 real registration on RTOS C/C++). This is the #48-class hazard (issue 0050 W3.1): a
 missing strong def silently degrades to the no-op.
 
-## Decision — the one trigger is the explicit generated call
+## Decision — SUPERSEDED: the one trigger is the `.init_array` ctor (final, 2026-06-15)
 
-This is the faithful implementation of **RFC-0042 §D3 bullet 1**, which already specifies
-it: *"Codegen emits an explicit backend-register table for the binary (the set of
-`nros_rmw_<x>_register()` to call), used on all platforms — hosted included. The
+> **FINAL DECISION (RFC-0042 §D3.3): the registration trigger is the `.init_array`
+> ctor on hosted (Rust + C/C++) + the explicit board call on embedded — implemented in
+> **P4b** below (linkme deleted).** The "explicit generated call on every platform"
+> design in this section is **superseded** — it was the mid-session exploration. It
+> assumed native rust could carry an explicit/board-owned register, but **phase-244 D7
+> closed native rust on Shape B** (Pattern-2 + `#[used]` force-link, *no* `register()`
+> call in app source — verified empirically). The ctor honours D7 (no app-source call;
+> the force-link anchor keeps the loader-fired ctor linked) *and* still deletes linkme.
+> The §D3.3 rationale (linkme vs ctor UX + maintainability) settled it. The text below
+> is kept for history; read **P4b** + RFC-0042 §D3.3 for the implemented design.
+
+This was the faithful implementation of **RFC-0042 §D3 bullet 1**, which originally
+specified it: *"Codegen emits an explicit backend-register table for the binary (the set
+of `nros_rmw_<x>_register()` to call), used on all platforms — hosted included. The
 linkme-vs-weak split is removed … the distributed-slice may remain an implementation
 detail of the generator's hosted path but is no longer a second contract. Bare-metal and
 hosted register identically."* (Issue 0062's earlier "fold into the `.init_array` ctor"
-framing was a deviation — the ctor is not universal — now corrected back to the RFC.)
+framing was a deviation — *then re-adopted as the final answer once D7 closed native rust
+on Shape B; §D3.3 amends the RFC bullet to the ctor.*)
 
 Mechanisms 1, 2, 4 each fail on some target; only **the explicit call (3) is universal**
 (no linker-section / ctor walking to skip per-platform). W13/R1 already made the SSoT
