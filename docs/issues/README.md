@@ -44,14 +44,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-| id | title                                                                 | type | area | file |
-|----|-----------------------------------------------------------------------|------|------|------|
-| 71 | native C/C++ workspace Entry fails on CI — two bundled `std` (libnros_cpp.a + per-package FFI staticlib) collide on `rust_begin_unwind` | bug | cmake | [0071-cpp-workspace-multi-std-staticlib-dup.md](0071-cpp-workspace-multi-std-staticlib-dup.md) |
+_None currently open._
 
-Surfaced by the CI reorg (making `just check` the fast-gate SSoT exposed
-`check.yml` red); see `docs/development/ci-workflow-reorg.md`.
-
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#70** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#71** —
+native cpp/mixed workspace Entry link failed on CI only: `libnros_cpp.a` + the
+per-package FFI staticlib are two Rust staticlibs each bundling `std` →
+duplicate `rust_begin_unwind`. Root cause = `host-integration-tests.yml`'s
+`CARGO_PROFILE_RELEASE_LTO=off` overriding the FFI crate's `lto=true` (the
+`panic=abort` crate relies on fat LTO to DCE-strip the redundant unwinding std;
+`off`/`thin` retain it). Fixed by dropping the override on the workspace-fixtures
+step (rust-core keeps it — binaries, no dup); CI-confirmed real failures 4→1. See
+`archived/0071-*`. **#70** —
 staticlib link-determinism gate red: the test expected the pre-D3 2-archive pair,
 but #62/phase-249 landed the single-runtime model (one `libnros_c.a`, zenoh
 bundled). Rewrote `staticlib_duplicate_symbols.rs` for the single archive — links

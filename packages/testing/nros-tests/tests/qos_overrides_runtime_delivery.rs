@@ -90,7 +90,11 @@ fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
         )
         .expect("subscriber did not log the BestEffort override on its live entity");
     listener
-        .wait_for_output_pattern("Waiting for", Duration::from_secs(4))
+        // The zenoh-pico subscription declaration between the `qos effective`
+        // log and `Waiting for` can take several seconds on the loaded 2-vCPU CI
+        // runner (passes in ~2 s locally). 4 s was too tight — it timed out on
+        // host-integration. Match the other waits' headroom (issue #57 triage).
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(12))
         .expect("subscriber did not become ready");
 
     let mut talker = ManagedProcess::spawn_command(
