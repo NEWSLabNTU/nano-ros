@@ -1,6 +1,6 @@
 # Phase 251 — passive build-profile analyzer (`nros-build-profile`)
 
-Status: **Implemented (2026-06-16)** — P1–P4 landed; crate at
+Status: **Archived (2026-06-16)** — done; analyzer in `packages/testing/nros-build-profile`. — P1–P4 landed; crate at
 `packages/testing/nros-build-profile`, driven by `just profile`. · Design:
 `docs/superpowers/specs/2026-06-16-build-profiling-design.md` · Audit:
 `docs/development/build-ux-audit.md`
