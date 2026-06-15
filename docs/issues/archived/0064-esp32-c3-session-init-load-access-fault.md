@@ -1,11 +1,36 @@
 ---
 id: 64
 title: esp32-c3 QEMU — Load-access-fault (mtval=0xffffffff) in zenoh-pico config init crashes session bring-up
-status: open
+status: resolved
 type: bug
 area: platform
 related: [phase-248, phase-249]
 ---
+
+## RESOLVED 2026-06-15 — heap 48 KB → 16 KB; talker+listener e2e GREEN
+
+Final fix in the stack-budget hardening pass: **shrink the esp-alloc Rust heap 48 KB
+→ 16 KB** (`nros-board-esp32-qemu/src/node.rs`). The measured Rust-heap live peak is
+≈20 B (zenoh-pico runs its own 32 KB `z_malloc` FreeListHeap), so 16 KB stays >100× the
+peak while freeing 32 KB of DRAM to the stack. Since `link.x`'s `.stack` fills DRAM from
+end-of-`.bss` to the top, that grows the stack ≈66 KB → ≈98 KB — finally deep enough for
+the nros + zenoh-pico connect/spin/dispatch/poll chain. The 48 KB instruction-fault on the
+first timer fire (corrupted closure fn-ptr near `_stack_end`) was the last stack-depth
+overflow; 16 KB clears it.
+
+Verified:
+- **Talker alone vs zenohd:** boots, connects, publishes `/chatter` steadily
+  (`Published: 0 … 994+`), 0 faults / 0 OOM / 0 panic, logger routes every line.
+- **Two-node e2e GREEN:** `cargo nextest run -p nros-tests --test esp32_emulator
+  test_esp32_talker_listener_e2e` → `PASS [109.081s]` (talker publishes, listener
+  receives, `received_count ≥ 1`).
+
+Full fix chain that landed this: OpenEth `new_in_place` (no 11 KB by-value stack temp) +
+locator `.bss`-static staging + `CONFIG_PROPERTY_SIZE` 256→64 (no_std) + esp-println
+`log::Log` logger + the heap 96→48→16 KB rebalance. Root class across all symptoms
+(Load-access-fault / OOM-wipe / instruction-fault) was a single one: the ~18 KB stack,
+starved by an oversized `.bss` heap array, overflowing into `.bss` along the deep connect
+path. The executor timer-dispatch was healthy throughout.
 
 ## UPDATE 2026-06-15 — the Load-access-fault is FIXED; a separate heap OOM remains
 

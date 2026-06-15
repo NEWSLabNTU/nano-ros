@@ -235,17 +235,23 @@ pub fn init_hardware(config: &Config) {
     esp_println::println!("Initializing ESP32-C3...");
     let _peripherals = esp_hal::init(esp_hal::Config::default());
 
-    // Step 2: Set up heap allocator. For zenoh / non-DDS builds,
-    // esp-alloc carves 96 KB out of DRAM at runtime; zenoh-pico +
-    // nros publisher/subscriber setup can exceed the previous 64 KB
-    // carve-out after session open. For DDS builds the example crate
-    // enables `nros-platform/global-allocator`, which registers a
-    // 256 KB static `FreeListHeap` instead — calling
+    // Step 2: Set up heap allocator. For zenoh / non-DDS builds, esp-alloc
+    // carves the Rust global heap out of DRAM at runtime. Keep this SMALL:
+    // `link.x`'s `.stack` region fills DRAM from end-of-`.bss` up to the top,
+    // so every KB given to this `.bss` heap array is a KB stolen from the
+    // stack. zenoh-pico runs its own 32 KB `FreeListHeap` for `z_malloc`, so
+    // the Rust heap barely sees use (≈20 B live after `Executor::open`); the
+    // nros + zenoh-pico spin/poll path, by contrast, drives a deep call stack.
+    // At 48 KB heap the first timer fire faulted with a corrupted closure
+    // fn-ptr near `_stack_end` (stack-depth overflow into `.bss`); shrinking
+    // the heap to 16 KB grows the stack to ≈98 KB and clears it (issue #64).
+    // For DDS builds the example crate enables `nros-platform/global-allocator`,
+    // which registers a 256 KB static `FreeListHeap` instead — calling
     // `esp_alloc::heap_allocator!` on top of that produces the
     // "the `#[global_allocator]` in nros_platform conflicts with
     // global allocator in: esp_alloc" link error (Phase 101.7).
     #[cfg(not(feature = "dds-heap"))]
-    esp_alloc::heap_allocator!(size: 48 * 1024);
+    esp_alloc::heap_allocator!(size: 16 * 1024);
 
     // Step 3: Register the monotonic clock with the shared busy-wait sleep
     // loop in `nros-baremetal-common`. Without this, `sleep_ms` silently

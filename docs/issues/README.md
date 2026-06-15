@@ -71,7 +71,13 @@ the doc comment (validated via nuttx/stm32f4 builds + `check-workspace-all`).
 **#65** — `check` cell red from a stale `nros/platform-posix` feature combo
 (`justfile`, 248-C5c fallout) + nros-cpp clang-format drift; fixed by dropping the
 removed feature and reformatting 5 headers with the CI-pinned clang-format 17.0.5.
-See `archived/0066-*`, `archived/0065-*`.
+See `archived/0066-*`, `archived/0065-*`. **#64** — esp32-c3 QEMU session-init
+crashes (Load-access-fault → OOM-wipe → first-timer-fire instruction-fault): one
+root class — the ~18 KB stack, starved by an oversized `.bss` esp-alloc heap,
+overflowing into `.bss` along the deep zenoh-pico connect/spin path. Fixed by
+OpenEth `new_in_place` (no 11 KB stack temp) + locator `.bss`-static + no_std
+`CONFIG_PROPERTY_SIZE` 256→64 + esp-println `log::Log` logger + heap 96→48→16 KB
+(stack ≈98 KB). Two-node `esp32_emulator` e2e GREEN. See `archived/0064-*`.
 
 Recently resolved (phase-244):
 **#49** — example source platform/RMW leakage: re-audit (all example/template
