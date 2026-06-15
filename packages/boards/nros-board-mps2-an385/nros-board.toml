@@ -10,6 +10,8 @@ link_kind = "none"
 entry_kind = "board-run"
 net_stack = "nanoros-owned"
 board_crate = "nros-board-mps2-an385"
+# Phase 252 (issue 0072) — forwards [safety] to its zenoh backend.
+capability_features = ["safety-e2e"]
 cargo_config = '''
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"

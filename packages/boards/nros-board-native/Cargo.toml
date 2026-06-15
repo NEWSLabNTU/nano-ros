@@ -49,4 +49,10 @@ nros-rmw-cyclonedds-sys = { path = "../../dds/nros-rmw-cyclonedds-sys", features
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
+# Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh backend's
+# safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh. native is
+# board-less for orchestration (the posix descriptor lowers via the direct backend
+# dep), but a hand-written entry deps this crate directly — and it host-validates the
+# board forwarding pattern the embedded boards use.
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]

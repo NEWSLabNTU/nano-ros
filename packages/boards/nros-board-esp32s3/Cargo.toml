@@ -57,5 +57,8 @@ default = ["serial", "rmw-zenoh"]
 # still come from `zpico-sys`'s `platform-aliases` C TU, now pulled via the
 # board's own `nros-rmw-zenoh` dep.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh backend's
+# safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh.
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # Serial transport via zenoh-pico built-in serial (no extra deps).
 serial = []

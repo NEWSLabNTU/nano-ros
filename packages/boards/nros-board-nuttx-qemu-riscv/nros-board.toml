@@ -13,6 +13,8 @@ link_kind = "nuttx-staging"
 entry_kind = "board-run"
 net_stack = "rtos-owned"
 board_crate = "nros-board-nuttx-qemu-riscv"
+# Phase 252 (issue 0072) — forwards [safety] through the nuttx family to zenoh.
+capability_features = ["safety-e2e"]
 cargo_config = '''
 [build]
 target = "riscv32imac-unknown-nuttx-elf"

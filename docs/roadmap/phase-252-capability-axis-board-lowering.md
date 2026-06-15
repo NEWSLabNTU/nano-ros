@@ -1,6 +1,6 @@
 # Phase 252 — declared capability/feature axes: board-crate lowering + registry
 
-Status: **Planned (2026-06-16)** · Implements
+Status: **COMPLETE (Waves 1–4, 2026-06-16; Wave 5 filed as issue 0073)** · Implements
 [RFC-0031 § "Generalization (Phase 250 / issue 0072)"](../design/0031-rmw-selection-and-lowering.md)
 · Closes the board-path remainder of [issue 0072](../issues/0072-safety-e2e-backend-feature-not-lowered.md)
 · Follows [phase-250](phase-250-safety-params-feature-dimension.md) (the `[safety]` /
@@ -64,19 +64,39 @@ error (no blind 14-board edit).
   done). **The board-dep path is embedded-only** (stm32 / esp32 / freertos / threadx / nuttx /
   rtic) — none host-buildable here, so per-board edits are validated by the descriptor-resolve
   + the gate unit test, not an embedded build.
-- **Wave 4 — per-board `safety-e2e` feature.** Worked example **DONE: `nros-board-stm32f4`** —
-  `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]` (zenoh dep is `optional`, so `?` fits) +
-  `capability_features = ["safety-e2e"]` on both its descriptor entries. Validated by
-  `stm32f4_advertises_safety_capability_feature` (real-catalog resolve). **Remaining
-  (mechanical tail, per-board):** apply the same two edits to the other embedded boards that
-  pull `nros-rmw-zenoh` — esp32{-qemu,s3}, freertos/mps2-an385{,-freertos}, nuttx-qemu-{arm,riscv},
-  threadx-{linux,qemu-riscv64}, rtic-{stm32f4,mps2-an385}, fvp-aemv8r-smp, s32z270dc2-r52 —
-  each verifying its own zenoh wiring (optional → `?/safety-e2e`; family crates forward to
-  their overlay; xrce/cyclone-only → `safety-e2e = []`). Unbuildable locally; land per-board
-  reviewed against that board's deps.
-- **Wave 5 — C/C++ path.** Separate issue: a CMake/C `#define NROS_SYSTEM_SAFETY_E2E` (the
-  registry's `cmake_token` / `c_define` slots, mirroring `-DNANO_ROS_RMW`) + a zpico-C safety
-  gate. Scoped + filed, not built here.
+- **Wave 4 — per-board `safety-e2e` feature — DONE (2026-06-16).** Every embedded descriptor
+  `board_crate` that lowers a backend now forwards `[safety]` to its zenoh backend +
+  advertises it:
+  - **Direct-zenoh** (`safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]`): `nros-board-stm32f4`,
+    `-esp32-qemu`, `-esp32s3`, `-mps2-an385`.
+  - **Family crates** (own forwarding, re-exported by overlays): `nros-board-freertos`,
+    `nros-board-nuttx` → `["nros-rmw-zenoh?/safety-e2e"]`.
+  - **Family-forwarders** (overlay → family, non-optional dep, no `?`):
+    `nros-board-mps2-an385-freertos` → `["nros-board-freertos/safety-e2e"]`;
+    `nros-board-nuttx-qemu-{arm,riscv}` → `["nros-board-nuttx/safety-e2e"]`.
+  - **Descriptor advertisement** (`capability_features = ["safety-e2e"]`): stm32f4, esp32-qemu,
+    esp32s3, mps2-an385, mps2-an385-freertos, nuttx-qemu-{arm,riscv}.
+  - **`nros-board-native`** also carries the feature (host crate) — `cargo check -p
+    nros-board-native --features safety-e2e` **compiles**, host-validating the exact forwarding
+    pattern the embedded boards use.
+  - **Skipped:** `threadx-{linux,qemu-riscv64}` expose no `rmw-zenoh` board feature (non-standard
+    backend wiring) → not advertised, so the gate skips + warns (safe). The non-descriptor
+    crates (`rtic-*`, `embassy-*`, `fvp-aemv8r-smp`, `s32z270dc2-r52`) are not orchestration
+    `board_crate`s — the axis never reaches them via codegen; a hand-written entry enables the
+    feature directly if needed.
+
+  Embedded board crates are cross-toolchain (unbuildable here); validated by descriptor-resolve
+  (`stm32f4_advertises_safety_capability_feature`), the gate unit test, all forwarding targets
+  shown to exist, `?`-vs-direct matched to each dep's optionality, and the host `nros-board-native`
+  check.
+- **Wave 5 — C/C++ path — FILED (not built).** Tracked as
+  [issue 0073](../issues/0073-safety-e2e-c-cpp-cmake-path-missing.md): a CMake/C
+  `#define NROS_SYSTEM_SAFETY_E2E` (the registry's `cmake_token` / `c_define` slots, mirroring
+  `-DNANO_ROS_RMW`) + a zpico-C safety gate. Deeper, separate.
+
+**Phase 252 — COMPLETE** (Waves 1–4; Wave 5 filed as issue 0073). The Rust capability-axis
+lowering (entry + native backend + board) is done; the embedded board path is no longer the
+open remainder of issue 0072.
 
 ## Acceptance
 

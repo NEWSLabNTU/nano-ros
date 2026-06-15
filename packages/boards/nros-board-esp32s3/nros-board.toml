@@ -11,6 +11,8 @@ entry_kind = "board-run"
 net_stack = "nanoros-owned"
 chip = "esp32s3"
 board_crate = "nros-board-esp32s3"
+# Phase 252 (issue 0072) — forwards [safety] to its zenoh backend.
+capability_features = ["safety-e2e"]
 cargo_config = '''
 [build]
 target = "xtensa-esp32s3-none-elf"

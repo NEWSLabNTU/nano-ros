@@ -87,3 +87,7 @@ reference-mps2 = ["dep:nros-board-mps2-an385-freertos"]
 # longer relies on `nros::__register_linked_rmw()` (`nros/rmw-zenoh`). Lets the
 # board link+register zenoh WITHOUT forwarding the umbrella feature.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh backend's
+# safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh. Re-exported
+# by the per-board overlay (nros-board-mps2-an385-freertos) the descriptor names.
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]

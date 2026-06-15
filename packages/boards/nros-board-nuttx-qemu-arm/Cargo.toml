@@ -45,6 +45,10 @@ nros-board-nuttx = { path = "../nros-board-nuttx" }
 # Forward to the generic NuttX board's explicit zenoh-backend registration
 # (its `run_entry` calls `nros_rmw_zenoh::register()` under this feature).
 rmw-zenoh = ["nros-board-nuttx/rmw-zenoh"]
+# Phase 252 (issue 0072) — forward a declared [safety] axis through the nuttx family
+# crate to the zenoh backend's safety-e2e (CRC attach/validate). The descriptor
+# (`nros-board-nuttx-qemu-arm`) advertises this via capability_features.
+safety-e2e = ["nros-board-nuttx/safety-e2e"]
 
 [build-dependencies]
 # 194.3c.2 — the NuttX platform-port compile moved to the shared

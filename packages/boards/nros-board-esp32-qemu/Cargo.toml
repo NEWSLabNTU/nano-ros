@@ -79,6 +79,9 @@ default = ["ethernet", "rmw-zenoh"]
 # shim deps (`nros` + `nros-rmw-zenoh`) so the workspace Entry macro
 # can open an executor and register the launch node set.
 rmw-zenoh = ["dep:nros", "dep:nros-rmw-zenoh"]
+# Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh
+# backend's safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh.
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # Ethernet transport via OpenETH + smoltcp
 ethernet = ["dep:nros-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp"]
 # Serial transport via zenoh-pico built-in serial (no additional deps)

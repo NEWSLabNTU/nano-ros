@@ -74,3 +74,7 @@ default = []
 reference-qemu-arm = ["dep:nros-board-nuttx-qemu-arm"]
 # Link + explicitly register the zenoh RMW backend in `run_entry`.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh backend's
+# safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh. Re-exported
+# by the per-board overlays (nros-board-nuttx-qemu-{arm,riscv}) the descriptor names.
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]

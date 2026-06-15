@@ -91,6 +91,9 @@ default = ["ethernet", "rmw-zenoh"]
 # zenoh-pico `z_*` / `_z_*` symbols still come from `zpico-sys`'s default-on
 # `platform-aliases` C TU, now pulled via the board's own `nros-rmw-zenoh` dep.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh backend's
+# safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh.
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # Phase 244.D1 enabler — opt into the `nros_platform::BoardEntry` impl so
 # `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Pulls the
 # `nros` umbrella (executor + node-runtime). Off by default: legacy
