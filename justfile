@@ -2144,6 +2144,18 @@ doctor tier="":
     else
         echo "  [MISSING] nros CLI — run: just setup-cli"
     fi
+    # Compiler cache. `RUSTC_WRAPPER` above auto-uses sccache when it's on PATH,
+    # which roughly halves clean/CI rebuilds (measured ~46%, see
+    # docs/development/build-ux-audit.md). Surface its absence so it's a known
+    # choice, not a silent slowdown. Host C builds (e.g. the zenoh-pico compile)
+    # additionally need `CC`/`CXX="sccache cc"` — opt-in, since it only wraps
+    # host compiles (cross toolchains set their compiler explicitly).
+    if command -v sccache >/dev/null 2>&1; then
+        echo "  [OK] sccache: $(sccache --version 2>/dev/null | head -1) — rustc caching on"
+    else
+        echo "  [INFO] sccache not found — builds are uncached (RUSTC_WRAPPER empty);"
+        echo "         installing it ~halves clean rebuilds. See docs/development/build-ux-audit.md"
+    fi
     just _orchestrate doctor "$chosen_tier"
 
 # Internal: walk every module in `tier` calling the requested recipe
