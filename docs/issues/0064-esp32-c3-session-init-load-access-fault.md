@@ -110,6 +110,42 @@ zpico FreeListHeap or OpenEth's 4-slot rx ring — to grow the esp-alloc heap). 
 tuning effort on a DRAM-constrained target; the crash/OOM-wipe class is fixed, this is the
 residual sizing wall.
 
+## UPDATE 2026-06-15 (heap-budget tuning) — it's NOT a heap budget; it's stack budget
+
+`esp_alloc::HEAP.used()` measured **20 bytes** after `Executor::open` — the Rust heap is
+barely touched (zenoh uses its own 32 KB `z_malloc` heap). The OOM was a heap *wipe*, not a
+budget miss: `HMEM` showed `used=0 free=0` after `Executor::open`, i.e. the EspHeap metadata
+gets clobbered **again** during `Executor::open` (after the OpenEth fix stopped the init-time
+wipe). The clobber is `SmoltcpSession::new`'s ~4 KB `key_bufs`/`val_bufs` stack frame +
+the deep zenoh-pico C connect chain overflowing the ~18 KB stack into `.bss`.
+
+Key insight from the linker `stack.x`: **the stack is whatever DRAM is left after `.bss`**
+(`.stack` fills RWDATA from end-of-bss to top). So the **96 KB esp-alloc heap array starves
+the stack to ~18 KB.** Rebalancing — **heap 96 KB → 48 KB frees 48 KB → stack grows to
+~66 KB** — let the talker **register fully and reach the spin loop** (verified, no OOM).
+
+Landed three real fixes from this pass:
+1. **heap 96 KB → 48 KB** (`nros-board-esp32-qemu/src/node.rs`) — frees DRAM so the stack
+   grows; the Rust heap stays >2× the measured peak.
+2. **`CONFIG_PROPERTY_SIZE` 256 → 64 for no_std** (`nros-rmw-zenoh/src/shim/mod.rs`) — the
+   256 is for std TLS cert paths; no_std esp32 carries only small values. Cuts the
+   `SmoltcpSession::new` stack frame ~3 KB.
+3. **esp-println `log::Log` logger** (`init_logger` in `register_log_writer`, + the
+   `log-04` esp-println feature) — esp32 `log::info!` was **completely unrouted** (no
+   `log::Log` installed → every record silently dropped; verified `log::error!` now prints).
+   Required for the examples' `Published:`/`Received:` lines.
+
+**Still red — a deeper pervasive stack corruption.** With the above, the talker registers +
+the logger routes, but the timer's first fire (~1 s into the spin loop) jumps to a stack
+address — `Exception 'Instruction access fault' mepc=0x3fcbda50` — i.e. the timer
+**dispatch works** (reaches `(entry.callback)()` in `timer_try_process`) but the callback
+closure's storage is corrupted. The esp32-c3 stack is still too shallow for the deep
+nros + zenoh-pico spin/dispatch/poll paths even at ~66 KB; the exact symptom (no-fire / OOM
+/ instruction-fault) shifts with the build layout — classic stack overflow. **Next: a
+systematic stack-budget hardening pass** — trim the big frames along the connect/spin/poll
+chain (and/or grow the stack further by shrinking the 32 KB zpico heap + the 48 KB esp-alloc
+heap once their real peaks are measured). The executor timer-dispatch itself is healthy.
+
 ## Symptom
 
 The networked `esp32_emulator` live tests are red:

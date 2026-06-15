@@ -245,7 +245,7 @@ pub fn init_hardware(config: &Config) {
     // "the `#[global_allocator]` in nros_platform conflicts with
     // global allocator in: esp_alloc" link error (Phase 101.7).
     #[cfg(not(feature = "dds-heap"))]
-    esp_alloc::heap_allocator!(size: 96 * 1024);
+    esp_alloc::heap_allocator!(size: 48 * 1024);
 
     // Step 3: Register the monotonic clock with the shared busy-wait sleep
     // loop in `nros-baremetal-common`. Without this, `sleep_ms` silently
@@ -375,4 +375,10 @@ pub(crate) fn register_log_writer() {
         }
     }
     nros_platform_esp32_qemu::register_log_writer(Some(writer));
+    // Issue #64 — also install a `log::Log` for the `log` crate facade so the
+    // examples' `log::info!("Published:/Received:")` (and nros's framework
+    // `::log::info!`) route to the console. Without it the `log` crate has no
+    // logger installed and silently drops every record. esp-println's logger
+    // writes straight to the same console as the platform writer above.
+    esp_println::logger::init_logger(log::LevelFilter::Info);
 }

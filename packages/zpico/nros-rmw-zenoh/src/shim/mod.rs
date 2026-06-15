@@ -106,8 +106,16 @@ const GID_PRNG_MULTIPLIER: u64 = 0x517cc1b727220a95;
 pub(crate) const LOCATOR_BUFFER_SIZE: usize = 128;
 
 /// Property key/value buffer size for session configuration.
-/// Must be large enough for file paths (TLS certificates, etc.).
+/// std builds must hold file paths (TLS certificate paths, etc.) → 256.
+/// no_std / bare-metal builds (e.g. esp32-c3, 18 KB stack) carry only small
+/// property values (scouting/listen/zid) and have no TLS; the full 256 ×
+/// `MAX_SESSION_PROPERTIES` × 2 (key+val) = 4 KB stack frame in
+/// `SmoltcpSession::new` overflows the small stack into `.bss` (issue #64), so
+/// shrink it there. 64 covers every embedded property value.
+#[cfg(feature = "std")]
 pub(crate) const CONFIG_PROPERTY_SIZE: usize = 256;
+#[cfg(not(feature = "std"))]
+pub(crate) const CONFIG_PROPERTY_SIZE: usize = 64;
 
 /// Maximum number of session configuration properties.
 pub(crate) const MAX_SESSION_PROPERTIES: usize = 8;
