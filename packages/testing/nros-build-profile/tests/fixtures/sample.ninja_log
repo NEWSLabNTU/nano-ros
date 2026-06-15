@@ -1,0 +1,8 @@
+# ninja log v6
+0	18100	1700000000	zephyr/zenoh-pico/zenoh_pico_net.c.o	a1
+18100	19200	1700000001	zephyr/app/main.c.o	b2
+19200	20300	1700000002	zephyr/app/talker.c.o	c3
+20300	21100	1700000003	libzenoh_pico.a	d4
+21100	21900	1700000004	zephyr/zephyr.elf	e5
+this row has no tabs and must be skipped
+22000	21000	1700000005	bad/end_before_start.o	f6

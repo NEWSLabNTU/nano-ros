@@ -2007,6 +2007,15 @@ name = "nros-build-paths"
 version = "0.5.0"
 
 [[package]]
+name = "nros-build-profile"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nros-builtin-interfaces"
 version = "0.5.0"
 dependencies = [

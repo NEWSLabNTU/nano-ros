@@ -1,0 +1,22 @@
+[package]
+name        = "nros-build-profile"
+version.workspace = true
+edition     = "2024"
+publish     = false
+description = "Passive, read-only build profiler: parses native build-timing artifacts (ninja .ninja_log, cargo --timings) into a normalized cross-backend profile (phase-251)."
+license     = "MIT OR Apache-2.0"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "nros-build-profile"
+path = "src/bin/nros-build-profile.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+
+[lints]
+workspace = true

@@ -138,6 +138,9 @@ members = [
     "packages/boards/nros-board-posix",
     # Phase 212.N.3 — tier-1 per-board shim plugging `nros-board-posix`.
     "packages/boards/nros-board-native",
+    # Phase 251 — passive build-profile analyzer (host tool; parses
+    # .ninja_log + cargo --timings into a normalized cross-backend profile).
+    "packages/testing/nros-build-profile",
 ]
 
 # Excluded from workspace — standalone packages and third-party forks
