@@ -197,19 +197,20 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
     //   [N] Received: data=M [SAFETY] INTEGRITY seq_gap=0 dup=false crc=<ok|FAIL|n-a>
     // The `INTEGRITY` token is printed exactly when `ctx.integrity()` is `Some` — the
     // proof the declarative `.safety()` opt-in surfaced the status over a real transport.
-    // (The `crc=` verdict is the rmw layer's and is environment/build-dependent — it is
-    // `n-a` under a plain local debug build for the imperative path too — so the
-    // assertion targets the integrity SURFACE, not the CRC sub-field, and only requires
-    // the absence of an actual `FAIL`.)
+    // `crc=ok` is the validated CRC-32 (publisher attaches, subscriber recomputes); it
+    // requires the zenoh backend's own `safety-e2e` feature on BOTH ends (the talker
+    // fixture + this bin enable `nros-rmw-zenoh?/safety-e2e` — `nros/safety-e2e` alone
+    // does not reach the backend).
     let output = listener
-        .wait_for_output_count("[SAFETY] INTEGRITY", 3, Duration::from_secs(30))
-        .expect("declarative safety listener did not surface 3 IntegrityStatus reads");
+        .wait_for_output_count("crc=ok", 3, Duration::from_secs(30))
+        .expect("declarative safety listener did not validate 3 CRCs");
 
     let surfaced = output.matches("[SAFETY] INTEGRITY").count();
     let absent = output.matches("NO-INTEGRITY").count();
+    let crc_ok = output.matches("crc=ok").count();
     let crc_fail = output.matches("crc=FAIL").count();
     eprintln!(
-        "declarative safety: {surfaced} integrity-surfaced, {absent} absent, {crc_fail} crc-fail"
+        "declarative safety: {surfaced} integrity-surfaced, {absent} absent, {crc_ok} crc-ok, {crc_fail} crc-fail"
     );
 
     assert!(
@@ -220,10 +221,11 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
         absent, 0,
         "A .safety() subscription must always surface integrity (never None). Output:\n{output}"
     );
-    assert_eq!(
-        crc_fail, 0,
-        "Expected no CRC validation failures. Output:\n{output}"
+    assert!(
+        crc_ok >= 3,
+        "Expected >=3 validated CRCs (crc=ok), got {crc_ok}. Output:\n{output}"
     );
+    assert_eq!(crc_fail, 0, "Expected no CRC failures. Output:\n{output}");
     assert!(
         output.matches("seq_gap=0").count() >= 3,
         "Expected sequential gap=0 from the validator. Output:\n{output}"

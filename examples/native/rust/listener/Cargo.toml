@@ -25,8 +25,11 @@ rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 
-# Zenoh-specific feature carry-overs (forwarded to the backend by `nros`).
-safety-e2e         = ["nros/safety-e2e"]
+# Zenoh-specific feature carry-overs. NOTE: `nros/safety-e2e` does NOT forward to
+# the zenoh backend — the CRC attach/validate lives behind `nros-rmw-zenoh`'s own
+# `safety-e2e`, so enable it directly (optional → only on the rmw-zenoh path), else
+# `crc_valid` is always None on the wire.
+safety-e2e         = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 unstable-zenoh-api = ["nros/unstable-zenoh-api"]
 link-tls           = ["nros-rmw-zenoh?/link-tls"]
 

@@ -35,7 +35,10 @@ rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 # advertises only `rmw-*` for each example; downstream tooling
 # should not combine zenoh-specific gates with `rmw-cyclonedds` /
 # `rmw-xrce`.
-safety-e2e     = ["nros/safety-e2e"]
+# The CRC attach lives behind the zenoh backend's OWN safety-e2e feature;
+# `nros/safety-e2e` does not forward to it, so enable it directly (optional, so it
+# only applies on the rmw-zenoh path — cyclone/xrce carry no zenoh CRC gate).
+safety-e2e     = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 param-services = ["nros/param-services"]
 link-tls       = ["nros-rmw-zenoh?/link-tls"]
 

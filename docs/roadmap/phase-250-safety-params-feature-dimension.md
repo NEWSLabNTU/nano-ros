@@ -179,12 +179,16 @@ they belong with the transport/RMW declared axis, not params/safety.
   `test_declarative_safety_listener_receives_integrity` (`tests/safety_e2e.rs`) runs it as a
   cross-process subscriber against the imperative safety talker over zenohd and asserts the
   declarative `.safety()` path surfaces `IntegrityStatus` (the `[SAFETY] INTEGRITY` token =
-  `ctx.integrity() == Some`, `seq_gap=0`, no CRC `FAIL`). Verified locally green
-  (`3 integrity-surfaced, 0 absent, 0 crc-fail`). Note: the `crc=` sub-verdict is the rmw
-  layer's and is environment/build-dependent (`n-a` under a plain local debug build for the
-  **imperative** path too), so the assertion targets the integrity *surface* — the thing
-  this phase added — not the CRC sub-field. The native imperative fixtures + tests are
-  untouched (augment, not replace).
+  `ctx.integrity() == Some`, `seq_gap=0`) and **validates real CRC-32** (`crc=ok` ≥ 3, no
+  `FAIL`). Verified locally green (`3 integrity-surfaced, 0 absent, 3 crc-ok, 0 crc-fail`).
+
+  **Root-cause fix (pre-existing bug, surfaced here):** `crc_valid` was `None` because the
+  CRC attach (publisher) + validate (subscriber) live behind the **zenoh backend's own**
+  `safety-e2e` (`nros-rmw-zenoh`), and `nros/safety-e2e` does **not** forward to it. The
+  `examples/native/rust/{talker,listener}` safety features (and this fixture) now enable
+  `nros-rmw-zenoh?/safety-e2e` directly. This affected the imperative safety path too — the
+  existing `test_safety_e2e_talker_listener` `crc=ok` assertion could not pass over zenoh
+  before. → tracked for the orchestration path in [issue 0072](../issues/0072-safety-e2e-backend-feature-not-lowered.md).
 
   **Phase 250 — COMPLETE** (Waves 1, 2a, 2b, 3, 5; Wave 4 deleted).
 

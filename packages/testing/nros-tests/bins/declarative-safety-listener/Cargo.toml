@@ -24,6 +24,10 @@ nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", default-features =
     "std",
     "platform-posix",
     "ros-humble",
+    # The CRC attach (publisher) + validate (subscriber) live behind the
+    # BACKEND's own safety-e2e feature; `nros/safety-e2e` does not forward to it,
+    # so it must be enabled directly or `ctx.integrity().crc_valid` is always None.
+    "safety-e2e",
 ] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
