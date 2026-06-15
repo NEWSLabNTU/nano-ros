@@ -46,14 +46,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type | area | file |
 |----|-----------------------------------------------------------------------|------|------|------|
-| 69 | dep-chain gate red — stm32f4 / qemu-arm-baremetal talkers dropped the rmw-zenoh feature | bug | ci | [0069-dep-chain-gate-rmw-zenoh-feature-drift.md](0069-dep-chain-gate-rmw-zenoh-feature-drift.md) |
-| 70 | staticlib duplicate-symbol gate red — both link-determinism tests fail on main | bug | build | [0070-staticlib-duplicate-symbols-gate-red.md](0070-staticlib-duplicate-symbols-gate-red.md) |
+| 70 | staticlib duplicate-symbol gate red — test stale vs 241.D3-rev single-runtime (do with #62) | bug | build | [0070-staticlib-duplicate-symbols-gate-red.md](0070-staticlib-duplicate-symbols-gate-red.md) |
 | 71 | native C/C++ workspace Entry fails on CI — two bundled `std` (libnros_cpp.a + per-package FFI staticlib) collide on `rust_begin_unwind` | bug | cmake | [0071-cpp-workspace-multi-std-staticlib-dup.md](0071-cpp-workspace-multi-std-staticlib-dup.md) |
 
-Both surfaced by the CI reorg (making `just check` the fast-gate SSoT exposed that
-`check.yml` is chronically red); see `docs/development/ci-workflow-reorg.md`.
+Surfaced by the CI reorg (making `just check` the fast-gate SSoT exposed
+`check.yml` red); see `docs/development/ci-workflow-reorg.md`. **#70** is a
+test-vs-architecture mismatch entangled with **#62** (single-runtime D3
+completion) — the link-determinism test must be rewritten for the single-archive
+model as part of #62, not standalone.
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#68** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#69** —
+dep-chain gate red: `dep-chain-check.sh` (1) feature-detected via a loose
+substring grep that matched a dependency's requested `rmw-zenoh` feature, and
+(2) ran `nros generate-rust` on package.xml-less board-driven talkers. Fixed →
+own-feature detect (python) + package.xml-gated codegen; 9/9 cells pass. See
+`archived/0069-*`. **#68** —
 CycloneDDS ROS 2 action interop "Goal was rejected": an incomplete Phase-233.6
 migration left `service.cpp::split_wire_header` re-inserting a `uint32(16)`
 goal_id length prefix on the SendGoal/GetResult request receive path, which a real

@@ -1,11 +1,27 @@
 ---
 id: 69
 title: dep-chain gate red — stm32f4 / qemu-arm-baremetal talkers dropped the rmw-zenoh feature
-status: open
+status: resolved
 type: bug
 area: ci
 related: [phase-244]
+resolved_in: "scripts/ci/dep-chain-check.sh — own-feature detect + package.xml-gated codegen"
 ---
+
+> **RESOLVED (2026-06-16).** Two bugs in `scripts/ci/dep-chain-check.sh`, both
+> hit by the board-driven baremetal talkers (post-C6 they carry NO `rmw-*`
+> feature — the board crate selects the backend):
+> 1. The per-cell feature detect was a substring grep over the whole
+>    `cargo metadata` JSON, which also matched a DEPENDENCY's requested features
+>    (`nros-board-stm32f4 { features=["rmw-zenoh"] }`) → it wrongly passed
+>    `--features rmw-zenoh` to an example whose OWN feature table is empty →
+>    "does not contain this feature: rmw-zenoh". Fixed: check the package's own
+>    `features` table via `python3` (`json.load(...)['packages'][0]['features']`).
+> 2. Step-2 codegen ran `nros generate-rust` unconditionally, but those talkers
+>    ship no `package.xml` (no generated interfaces) → "Failed to read
+>    package.xml". Fixed: skip codegen when `$ex/package.xml` is absent.
+>
+> Validated: `just check-dep-chain` → **9 passed, 0 failed (of 9 cells)**.
 
 ## Symptom
 

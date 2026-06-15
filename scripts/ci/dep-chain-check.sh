@@ -99,7 +99,12 @@ for cell in "${CELLS[@]}"; do
             cell_ok=0
         fi
 
-        # 2. codegen the example's interface crates.
+        # 2. codegen the example's interface crates — only when the example
+        #    declares ROS msg deps (has a package.xml). Board-driven baremetal
+        #    talkers (stm32f4 / qemu-arm-baremetal) publish without generated
+        #    interfaces, so they ship no package.xml and `nros generate-rust`
+        #    would fail "Failed to read package.xml" — there is nothing to
+        #    generate, so skip codegen for them (#69).
         #    NROS_SKIP_VERSION_CHECK=1: this lane validates dep-chain *resolution*
         #    only (no compile, no runtime), so the abi_guard's stale-standalone-
         #    lockfile mismatch is a false positive here — known-issue #12: the
@@ -107,7 +112,9 @@ for cell in "${CELLS[@]}"; do
         #    0.1.0->0.5.0 bump never propagated to standalone locks), tripping the
         #    guard even though the real source tree is 0.5.0. Bypass so codegen
         #    emits generated/ for the cargo-tree step.
-        if ( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" generate-rust >/dev/null 2>&1 ); then
+        if [ ! -f "$ex/package.xml" ]; then
+            echo "  [ok] no package.xml — no generated interfaces, codegen skipped"
+        elif ( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" generate-rust >/dev/null 2>&1 ); then
             : # generated/ now present
         else
             echo "  [FAIL] nros generate-rust (codegen — ROS sourced? msg deps resolvable?)"
@@ -116,11 +123,17 @@ for cell in "${CELLS[@]}"; do
 
         # 3. crate/feature/target dep chain — resolution only (no compile).
         #    Run from the example dir so its .cargo/config.toml patch + target apply.
-        #    RMW-selectable examples expose `rmw-<rmw>`; others hardcode the
-        #    backend (resolve with default features then).
+        #    RMW-selectable examples expose their OWN `rmw-<rmw>` feature; board-
+        #    driven ones (post-C6: no `rmw-*` on the example, the board crate
+        #    selects the backend) resolve with default features.
+        #    Match the package's OWN feature table only — a substring grep over the
+        #    whole metadata also hits a DEP's requested features
+        #    (e.g. `nros-board-* { features=["rmw-zenoh"] }`), which made
+        #    board-driven cells (stm32f4 / qemu-arm-baremetal) wrongly pass
+        #    `--features rmw-zenoh` and fail "does not contain this feature" (#69).
         feat_args=()
         if ( cd "$ex" && cargo metadata --no-deps --format-version 1 2>/dev/null \
-                | grep -q "\"rmw-${rmw}\"" ); then
+                | python3 -c "import json,sys; sys.exit(0 if 'rmw-${rmw}' in (json.load(sys.stdin)['packages'] or [{}])[0].get('features',{}) else 1)" ); then
             feat_args=(--no-default-features --features "rmw-${rmw}")
         fi
         if ( cd "$ex" && cargo tree "${feat_args[@]}" -e no-dev >/dev/null 2>&1 ); then

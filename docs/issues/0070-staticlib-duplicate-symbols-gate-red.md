@@ -7,6 +7,36 @@ area: build
 related: [issue-0062, phase-241, phase-249]
 ---
 
+## Root cause (diagnosed 2026-06-16) — test stale vs 241.D3-rev single-runtime
+
+Not a real link regression: both tests `skip!` (→ panic → `cargo test` counts it
+FAILED, so `check.yml`/`just check-staticlib-symbols` go red) because the staticlib
+**pair they expect no longer exists**.
+
+`scripts/build/link-determinism-fixture.sh` was updated for the **241.D3-rev
+single-runtime** model — it now builds ONE archive,
+`build/link-determinism/libnros_c.a` (with `--features platform-posix,rmw-zenoh`,
+so the zenoh backend is bundled INTO `libnros_c.a`), and no longer produces
+`libnros_rmw_zenoh_staticlib.a`. But `staticlib_duplicate_symbols.rs` still:
+- `find_archive_pair` looks for the `(libnros_c.a, libnros_rmw_zenoh_staticlib.a)`
+  **pair** → not found → both tests skip.
+- its premise (diff duplicate symbols ACROSS the pair; prove the C-only pair links
+  with `-u` WITHOUT `--allow-multiple-definition`) assumes the pre-single-runtime
+  2-archive link.
+
+Under single-runtime the backend is bundled into `libnros_c.a`, so "duplicate
+symbols across a pair" is moot, and **whether `--allow-multiple-definition` is
+removable IS the open question owned by [#62](0062-d3-completion-one-registration-path-and-link-manifest.md)
+(D3 completion, R2/R3)**. Rewriting the test now would pre-judge #62's outcome.
+
+## Direction — do this WITH #62 (not standalone)
+
+Rewrite `staticlib_duplicate_symbols.rs` for the single-runtime model as part of
+#62: assert the single `libnros_c.a` links standalone with `-u
+nros_rmw_zenoh_register`, exactly ONE `REGISTRY`, no `--allow-multiple-definition`
+(the D3 goal). Drop the obsolete 2-archive dup-diff. Until #62 lands the final
+link model, the gate stays red on this skip; tracked here + cross-linked from #62.
+
 ## Symptom
 
 `cargo test -p nros-tests --test staticlib_duplicate_symbols` (the `check.yml`
