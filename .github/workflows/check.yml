@@ -94,13 +94,19 @@ jobs:
       - name: Install clang-format (pinned via pypi wheel)
         run: pip install --no-cache-dir "clang-format==17.0.5"
 
-      # The build tier's host clippy exercises every build.rs (zenoh-pico / mbedtls
-      # / micro-{cdr,xrce} / cyclonedds), so those sources must be present — only
-      # for the full (non-push) run; the fast tier is buildless.
-      - name: Provision workspace sources via nros (build tier only)
+      # px4-rs is the one source the ROOT workspace path-deps (px4-sitl-tests, the
+      # cargo load gate) — needed for any `cargo tree`/metadata to RESOLVE, so the
+      # fast tier's feature-unification gate needs it too. Cheap; provision always.
+      - name: Provision px4-rs source (workspace resolution)
+        run: nros setup --source px4-rs
+
+      # The build tier's host clippy additionally exercises every build.rs
+      # (zenoh-pico / mbedtls / micro-{cdr,xrce} / cyclonedds), so those heavier
+      # sources are provisioned only for the full (non-push) run.
+      - name: Provision build-tier sources via nros (non-push)
         if: ${{ github.event_name != 'push' }}
         run: |
-          nros setup --source px4-rs --source zenoh-pico --source mbedtls \
+          nros setup --source zenoh-pico --source mbedtls \
                      --source micro-cdr --source micro-xrce-dds-client \
                      --source cyclonedds-src
 
