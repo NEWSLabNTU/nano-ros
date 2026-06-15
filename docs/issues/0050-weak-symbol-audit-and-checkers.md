@@ -116,7 +116,7 @@ unstable). Keep it that way.
 
 ## References
 
-- RFC-0042 / [phase-241](../roadmap/phase-241-platform-build-determinism.md) D3
+- RFC-0042 / [phase-241](../roadmap/archived/phase-241-platform-build-determinism.md) D3
   (deterministic linking) — the slice-4 design rejected weak for exactly this
   fragility and chose a define-once export macro; the same reasoning motivates
   auditing the existing weak surface.

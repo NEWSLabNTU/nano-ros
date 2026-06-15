@@ -1,6 +1,6 @@
 # Phase 241 — Platform & build determinism
 
-**Implements.** [RFC-0042](../design/0042-platform-build-determinism.md) — one
+**Implements.** [RFC-0042](../../design/0042-platform-build-determinism.md) — one
 canonical platform interface, capability-driven config, deterministic linking,
 merge-time gate.
 
@@ -12,10 +12,10 @@ convention-enforced. Cross-refs the systemic review in [issue 0042].
 **Status.** **CLOSED 2026-06-15.** Three of four pillars landed: **241.A** (gate —
 host + cross tier) + **241.C** (capability SSoT, incl. C.2b freertos+zephyr) +
 **241.B** (one canonical header — B.3 carved to
-[phase-243](archived/phase-243-platform-abi-unification.md), LANDED + archived).
+[phase-243](phase-243-platform-abi-unification.md), LANDED + archived).
 The remaining pillar **241.D (deterministic linking, RFC-0042 D3)** + the
 D3-dependent **241.E** flips (RFC-0042 fully-`Stable`, #42 close) **MOVED to
-[phase-249](phase-249-one-registration-trigger.md)** — they ride its one-trigger +
+[phase-249](../phase-249-one-registration-trigger.md)** — they ride its one-trigger +
 single-runtime foundation (see phase-249 Acceptance → "Inherited from phase-241").
 The slice-4 `nros-rmw-cffi-provider`/`external-registry` dedup is **retired**
 (superseded by single-runtime). This phase owns no further open work.
@@ -23,7 +23,7 @@ The slice-4 `nros-rmw-cffi-provider`/`external-registry` dedup is **retired**
 **Priority.** P2 — no product capability is blocked, but this class of bug recurs
 on nearly every board/example/platform-header edit, and each instance currently
 surfaces only in an on-demand e2e build (days late). Continuation of the
-[Phase 240](archived/phase-240-ci-disk-and-build-optimization.md) honest-e2e work
+[Phase 240](phase-240-ci-disk-and-build-optimization.md) honest-e2e work
 that exposed the pattern.
 
 **Depends on.** RFC-0042; the Phase 195.C board-descriptor mechanism (capability
@@ -192,7 +192,7 @@ Steps (each a commit; CI between the riskier ones):
 > delivered the concrete win (the cffi duplicate is gone, one fewer `platform.h`).
 
 - [x] **B.3 — unify A's surface into api, then retire A. DONE via
-      [phase-243](archived/phase-243-platform-abi-unification.md) (LANDED on main).** Grew
+      [phase-243](phase-243-platform-abi-unification.md) (LANDED on main).** Grew
       from "delete the duplicate" into a real ABI unification (A was a *live*
       complementary surface) → carved to phase-243 (6 waves). api gained generic
       `__atomic` atomics; the Rust `platform.rs` wrappers re-point to
@@ -301,14 +301,14 @@ Steps (each a commit; CI between the riskier ones):
 
 ### 241.D — Deterministic linking (RFC-0042 D3) — MOVED → phase-249
 
-> **MOVED to [phase-249](phase-249-one-registration-trigger.md) (2026-06-15).** All
+> **MOVED to [phase-249](../phase-249-one-registration-trigger.md) (2026-06-15).** All
 > remaining D3 work (the one registration trigger, removing
 > `--allow-multiple-definition`, the full link-closure validator) rides phase-249's
 > single-trigger + single-runtime foundation and is tracked there (Acceptance →
 > "Inherited from phase-241"). The text below is kept for context; the open items
 > are phase-249's.
 
-> **CURRENT DESIGN (2026-06-14): single shared runtime → [phase-241-d3-single-runtime](phase-241-d3-single-runtime.md).**
+> **CURRENT DESIGN (2026-06-14): single shared runtime → [phase-241-d3-single-runtime](../phase-241-d3-single-runtime.md).**
 > One Rust staticlib per binary (the umbrella) ⇒ `std`/`compiler-builtins`
 > monomorphized once ⇒ `--allow-multiple-definition` removable for real. This
 > model **subsumes slice 4** below (the dedicated `nros-rmw-cffi-provider` +
@@ -317,7 +317,7 @@ Steps (each a commit; CI between the riskier ones):
 > **superseded** by the single-runtime doc. D3 bullet 3 (no dup) lands there;
 > **bullets 1+2 (one registration path, generated link manifest) + issue 0050
 > W3.1 (delete the weak `nros_app_register_backends`) are tracked by
-> [issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md)**,
+> [issue 0062](../../issues/0062-d3-completion-one-registration-path-and-link-manifest.md)**,
 > riding on the single-runtime foundation.
 
 > **History (slice-4, 2026-06-13 — RETIRED).** An interim slice-4 cut introduced
@@ -328,12 +328,12 @@ Steps (each a commit; CI between the riskier ones):
 > main today there is **no `nros-rmw-cffi-provider` crate and no `external-registry`
 > feature**. The dedup motivation + the detailed slice-4 design are preserved in
 > git history; the current target is
-> [phase-241-d3-single-runtime](phase-241-d3-single-runtime.md) +
-> [phase-249](phase-249-one-registration-trigger.md).
+> [phase-241-d3-single-runtime](../phase-241-d3-single-runtime.md) +
+> [phase-249](../phase-249-one-registration-trigger.md).
 - [ ] One registration path: codegen emits the explicit backend-register table,
       used on all platforms; retire the linkme-vs-weak split as a *contract*
       (Q4 lean: explicit table everywhere). **DESIGNED →
-      [phase-249](phase-249-one-registration-trigger.md)** (phase-241 W13/R3): the
+      [phase-249](../phase-249-one-registration-trigger.md)** (phase-241 W13/R3): the
       uniform explicit `nros_rmw_<backend>_register()` call from the R1 manifest;
       phased P1–P4, P4 deletes the weak default (issue 0062 R2 / 0050 W3.1).
 - [x] Generated link manifest (the dispatch half): **DONE — W13/R1** (`RmwDispatch`
@@ -349,7 +349,7 @@ Steps (each a commit; CI between the riskier ones):
       exports — into ONE archive via a dedicated `nros-rmw-cffi-provider` +
       `nros_rmw_cffi_export!{}` macro, mirroring the platform-cffi split) is
       **SUPERSEDED**: the single shared runtime
-      ([phase-241-d3-single-runtime](phase-241-d3-single-runtime.md)) collapses to
+      ([phase-241-d3-single-runtime](../phase-241-d3-single-runtime.md)) collapses to
       one Rust staticlib per binary, so `REGISTRY` + the cffi C exports are defined
       once with plain `#[no_mangle]` — no provider/feature, flag removable
       directly. Flag removal lands with phase-249's NanoRosLink rework. (The full

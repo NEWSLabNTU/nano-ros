@@ -1,7 +1,7 @@
 # Phase 247 — Weak-symbol determinism: image-level checker, CI gating, reduction
 
 **Implements.** [issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md).
-**Related.** RFC-0042 / [phase-241](phase-241-platform-build-determinism.md) D3
+**Related.** RFC-0042 / [phase-241](archived/phase-241-platform-build-determinism.md) D3
 (deterministic linking — rejected weak for the `nros-rmw-cffi` dedup in favour
 of a define-once export macro); [issue 0042](../issues/0042-platform-header-architecture-fragility-libc-std-clashes.md).
 
