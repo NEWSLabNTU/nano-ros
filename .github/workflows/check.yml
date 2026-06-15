@@ -80,20 +80,14 @@ jobs:
       - name: Install clang-format (pinned via pypi wheel)
         run: pip install --no-cache-dir "clang-format==17.0.5"
 
-      # px4-rs is the one source the ROOT workspace path-deps (px4-sitl-tests, the
-      # cargo load gate) — needed for any `cargo tree`/metadata to RESOLVE, so the
-      # fast tier's feature-unification gate needs it. It's a git submodule
-      # (`nros setup --source px4-rs` just inits it), so init it directly — no nros
-      # CLI build required, keeping the push lane fast.
-      - name: Provision px4-rs source (workspace resolution)
-        run: git submodule update --init --depth 1 third-party/px4/px4-rs
-
-      # ----- CLI + heavy sources: build tier (non-push) only -----
-      # The fast tier is buildless and needs no nros CLI (its only CLI-touching
-      # gates — board-manifest-drift, profile-board-mirror — skip gracefully when
-      # the CLI is absent). Skipping the ~min CLI build on push keeps the per-push
-      # lane ~1-2 min so it completes under the rapid push cadence. The build tier
-      # (PR/nightly) needs the CLI (codegen for clippy) + every build.rs source.
+      # ----- CLI + sources: build tier (non-push) only -----
+      # check-fast is BUILDLESS *and* SOURCE-FREE (no cargo build/clippy/test, no
+      # `cargo tree`/metadata) — its only CLI-touching gates (board-manifest-drift,
+      # profile-board-mirror) skip gracefully when the CLI is absent. So the push
+      # lane needs neither the nros CLI nor any provisioned source: ~1 min, survives
+      # the rapid push cadence. The build tier (PR/nightly) needs the CLI (codegen
+      # for clippy) + every `-sys` source submodule (zenoh-pico/mbedtls/micro/
+      # cyclonedds + px4-rs) so its clippy/cargo-tree gates resolve + compile.
       - name: Cache CLI build (build tier)
         if: ${{ github.event_name != 'push' }}
         uses: actions/cache@v4
@@ -110,13 +104,13 @@ jobs:
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" setup \
-            --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
             --source micro-xrce-dds-client --source cyclonedds-src
 
       # ----- fast tier (every event) -----
-      # `just check-fast` is the BUILDLESS gate set (fmt/clang-format/ABI/manifest/
-      # convention/cargo-tree). Finishes in seconds, so a direct push to main gets a
-      # gate that completes under the rapid multi-agent push cadence.
+      # `just check-fast` is the buildless + source-free gate set
+      # (fmt/clang-format/ABI/manifest/convention). Finishes in ~1 min, so a direct
+      # push to main gets a gate that completes under the rapid multi-agent cadence.
       - name: just check-fast
         run: just check-fast
 

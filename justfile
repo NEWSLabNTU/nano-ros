@@ -330,27 +330,32 @@ profile dir="." flags="":
 check: check-fast check-build
     @echo "All checks passed!"
 
-# Fast tier — BUILDLESS gates only (fmt/clang-format AST checks, ABI/board mirrors,
-# manifest + convention scripts, cargo-tree feature-unification). No cargo
-# build/clippy/test, so it finishes in well under a minute and survives the
-# per-push cadence. This is the per-push CI gate (`check.yml`).
+# Fast tier — BUILDLESS, SOURCE-FREE gates only (fmt/clang-format AST checks,
+# ABI/board mirrors, manifest + convention scripts). No cargo build/clippy/test
+# AND no `cargo tree`/metadata (which would need the workspace — i.e. every `-sys`
+# source submodule — to resolve). So it needs neither the nros CLI nor any
+# provisioned source, finishes in ~1 min, and survives the per-push cadence. This
+# is the per-push CI gate (`check.yml`).
 [group("main")]
 check-fast: \
     check-platform-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-weak-symbols \
-    check-version-lockstep check-example-fmt check-embedded-feature-unification \
+    check-version-lockstep check-example-fmt \
     check-codegen-invocation check-string-conventions \
     check-c check-cpp check-python
     @echo "Fast checks passed!"
 
-# Build tier — the gates that COMPILE (workspace + embedded clippy, feature combos,
-# riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain codegen,
-# the example-matrix clippy). Minutes; runs on PR + nightly (`check.yml` non-push),
-# not on every direct push to main.
+# Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
+# embedded clippy, feature combos, riscv32 no_std, nros-tests source gates,
+# staticlib link-proof, dep-chain codegen, the example-matrix clippy, and the
+# embedded feature-unification `cargo tree` — which needs every `-sys` source
+# submodule present to resolve). Minutes + source/CLI prereqs; runs on PR + nightly
+# (`check.yml` non-push), not on every direct push to main.
 [group("main")]
 check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-dep-chain \
+    check-embedded-feature-unification \
     native::check
     @echo "Build checks passed!"
 
