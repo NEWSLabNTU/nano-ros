@@ -1,11 +1,35 @@
 ---
 id: 57
 title: host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression
-status: open
+status: resolved
 type: bug
 area: testing
-related: [phase-244]
+related: [phase-244, phase-248, phase-249, issue-0067]
+resolved_in: "Cause-1 OOM cap + fa2ecb60a residue triage + 2026-06-15 local lane validation"
 ---
+
+> **RESOLVED (2026-06-15).** The chronic red was **Cause-1 (fixture-build OOM)**
+> — capped (`NROS_BUILD_JOBS=2 × CARGO_BUILD_JOBS=2` on both build steps + the
+> nextest compile). The post-cap residue (11 real failures from phase-248/249
+> churn) was fixed in `fa2ecb60a`; the exclude-leak (granular QEMU sub-groups) was
+> closed by adding `binary(rtos_e2e|zephyr|phase_118_collapse)` to the
+> `test-integration` exclude.
+>
+> **Local lane validation (2026-06-15)** — the CI lane can't complete under the
+> current multi-agent main-push cadence (`cancel-in-progress: true` cancels every
+> ~45-min run within ~10 min), so validated locally by mirroring it
+> (`build-fixture-rust-core` + `build-workspace-fixtures` + `NROS_FIXTURES_OPTIONAL=1
+> just test-integration`): builds green; **0 real failures in the CI-equivalent set**
+> (72 `[SKIPPED]` reclassified). The only 5 real failures are **CycloneDDS extras
+> tests CI does not build** (`build-fixture-extras` skipped on the light lane) → they
+> `skip!` on CI, so NOT this lane's red. They are a distinct rust-typed-cyclone-
+> publisher regression tracked as
+> [issue 0067](0067-rust-typed-cyclonedds-publisher-creation-fails.md).
+>
+> Note: a clean CI green is structurally unreachable under the current per-push
+> trigger + `cancel-in-progress` while agents push to `main` every ~10 min — a
+> CI-policy tuning matter (cadence / concurrency), not a code defect; left to the
+> maintainer. Lane correctness validated locally above.
 
 `host-integration-tests.yml` (the native `nros-tests` integration lane on
 `ubuntu-22.04`, 2 vCPU / 7 GB) is effectively red — green only flakily. Two

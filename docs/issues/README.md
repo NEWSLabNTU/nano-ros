@@ -46,9 +46,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
+| 67 | Rust typed CycloneDDS publisher creation fails (PublisherCreationFailed) — native rust cyclone + ros2 action interop | bug | rmw | [0067-rust-typed-cyclonedds-publisher-creation-fails.md](0067-rust-typed-cyclonedds-publisher-creation-fails.md) |
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#50** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#57** —
+host-integration chronically red: Cause-1 fixture-build OOM (capped
+`NROS_BUILD_JOBS=2×CARGO_BUILD_JOBS=2`) + post-cap residue triage (`fa2ecb60a`) +
+QEMU/Zephyr exclude-leak fix. Validated locally (CI can't complete under the
+multi-agent main-push cadence): builds green, 0 real failures in the
+CI-equivalent set; the 5 cyclone-extras failures are CI-skipped and split out as
+**#67** (rust typed cyclone publisher regression). See `archived/0057-*`. **#50** —
 weak-symbol audit + checkers: SSoT allowlist + source gate
 (`weak_symbol_audit.rs`) + final-image gate (`check-weak-symbols-image.sh`);
 W3.1 weak-default deletion (phase-249 P4a); 155.A const-weak → weak getters.
