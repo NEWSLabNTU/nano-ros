@@ -7,6 +7,40 @@ area: cmake
 related: [issue-0057, phase-248, phase-249]
 ---
 
+## ROOT CAUSE FOUND + FIXED (2026-06-15) — `CARGO_PROFILE_RELEASE_LTO=off`
+
+**It is the workflow's `CARGO_PROFILE_RELEASE_LTO: "off"` env, not the CI image.**
+`host-integration-tests.yml`'s two fixture-build steps set
+`CARGO_PROFILE_RELEASE_LTO=off` (a disk/speed trim, scoped to the steps). That env
+**overrides the generated FFI crate's `[profile.release] lto = true`** — and the FFI
+crate sets `lto = true` *precisely* so fat LTO DCE-strips its redundant unwinding
+`std` (incl. the global `rust_begin_unwind`) that it never calls (it is
+`panic="abort"`). With LTO forced off, that `std` panic runtime is retained →
+collides with `libnros_cpp.a`'s copy → `multiple definition`. The earlier "not
+reproducible locally" was simply because dev/container builds used the FFI crate's
+own `lto=true`.
+
+**Reproduced + bisected locally** (build the FFI crate, `nm | grep rust_begin_unwind`):
+
+| `CARGO_PROFILE_RELEASE_LTO` | `rust_begin_unwind` |
+|---|---|
+| `true` (FFI's own profile, dev default) | 0 (stripped) |
+| `thin` | 1 (retained — thin LTO does NOT strip it) |
+| `off` (CI) | 1 (retained → the dup) |
+
+**Fix:** drop `CARGO_PROFILE_RELEASE_LTO: "off"` from the **Build workspace
+fixtures** step (kept on **Build rust core fixtures** — those are Rust *binaries*,
+one `std`, no dup). **Validated:** a clean `workspace-fixtures-build.sh native
+{cpp,mixed}` under the exact CI env minus the override (`RUSTFLAGS=-C debuginfo=0`,
+`NROS_BUILD_JOBS=2`, `CARGO_BUILD_JOBS=2`) links both `native_entry` binaries.
+Confirm on the next CI run, then archive.
+
+Long-term hardening (optional, lto-independent): fold the FFI interface crates into
+a single `std`-bearing staticlib (see "Direction" below) so correctness no longer
+relies on fat-LTO DCE. The original investigation that led here follows.
+
+---
+
 The native **C++** and **mixed C/C++/Rust** example-workspace Entry pkgs
 (`examples/workspaces/{cpp,mixed}/src/native_entry`) fail to link **on CI**
 (`host-integration-tests`, ubuntu-22.04). Surfaced 2026-06-15 while triaging

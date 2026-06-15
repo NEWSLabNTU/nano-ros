@@ -196,7 +196,15 @@ jobs:
 
       - name: Build workspace fixtures
         env:
-          CARGO_PROFILE_RELEASE_LTO: "off"
+          # NB (issue #71): do NOT add `CARGO_PROFILE_RELEASE_LTO: "off"` here.
+          # The native C++/mixed workspace Entry links the C++ umbrella
+          # (libnros_cpp.a) AND the per-package FFI staticlib — two Rust staticlibs
+          # that each bundle `std`. The FFI crate sets `lto = true` precisely so
+          # fat LTO DCE-strips its redundant unwinding `std` (incl.
+          # `rust_begin_unwind`); forcing LTO off keeps it → `multiple definition`
+          # at link. (Verified: lto=off → symbol present, lto=true → stripped;
+          # thin LTO does NOT strip it.) The rust-core step's `lto=off` is safe —
+          # those are Rust *binaries* (one std, no dup); this step is not.
           RUSTFLAGS: "-C debuginfo=0"
           # Issue #57 Cause-1 — see "Build rust core fixtures".
           NROS_BUILD_JOBS: "2"
