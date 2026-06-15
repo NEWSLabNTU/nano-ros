@@ -1,7 +1,15 @@
-# Phase 250 — safety + params as a config-driven, language-agnostic feature dimension
+# Phase 250 — safety + params as declared, system-wide capability toggles
 
-Status: **Planned (2026-06-15)** · Related: RFC-0031 (declared selection → lowered
-build feature), RFC-0024 (declarative Node/Entry).
+Status: **In progress (Waves 1–3 done, 2026-06-16)** · Related: RFC-0031 (declared
+selection → lowered build feature), RFC-0024 (declarative Node/Entry).
+
+> **Model (settled 2026-06-16):** `safety` and `params` are **system-wide capability
+> toggles** that lower to `nros` build features (`nros/safety-e2e`, `nros/param-services`),
+> mirroring RMW selection. The user writes **normal ROS code** — `declare_parameter`,
+> and optionally `.safety()`/`ctx.integrity()` to inspect integrity. There is **no**
+> config→node behavior injection, per-node config, node-body codegen, or topic list. See
+> "Design" below; the earlier "config-driven, no source edit" framing was wrong and is
+> corrected there.
 
 ## Why
 
@@ -37,89 +45,63 @@ Current state:
 So phase-250 is a **greenfield conversion** of working feature-gated examples, not a
 restore of something removed.
 
-## Design — two separable layers
+## Design — system-wide capability toggles, not per-node config injection (corrected 2026-06-16)
 
-The feature gate today does **two** things, and only one is a clean config-lowering:
+An earlier draft of this phase chased "config injects behavior into the node, no source
+edit" — a runtime config→node overlay (declare params from config, flip `.safety()` on
+named topics). The maintainer corrected the model, and it is both simpler and already
+mostly built:
 
-### Layer 1 — capability compilation (easy; mirrors RMW)
+**Both axes are system-wide capability toggles (build features). The user writes normal
+ROS code.** There is no config→node behavior injection, no per-node config, no node-body
+codegen, no topic list, no declarative migration. Concretely:
 
-Declared `params` / `safety` → lower to a build feature, exactly as RMW lowers
-`[system].rmw` → the board crate's `rmw-<x>` feature. **Simpler than RMW:** these are
-RMW-agnostic `nros` capabilities, so they lower straight to the entry/component pkg's
-`nros = { features = [...] }` dep — no board-crate indirection. Add a
-`nros_capability_features()` beside `board_rmw_features()`
-(`packages/cli/nros-cli-core/src/orchestration/generate.rs`). This is what gives embedded
-its cost-gate: the safety arena entries + CRC and the param-service handlers are compiled
-in **only when selected**, so it must stay a **compile** dimension (not a runtime
-always-on toggle — code size matters on no_std).
+- **safety-e2e is system-wide, not per-node.** It is an end-to-end integrity protocol —
+  publishers attach CRC + sequence, subscribers validate — so it is meaningful only when
+  the *system* runs it; enabling it on one node alone is pointless. It is therefore a
+  **system-wide build feature** (`nros/safety-e2e`), exactly what a declared `[safety]`
+  axis lowers to. A node that wants to *inspect* the per-message status uses the optional
+  `.safety()` / `ctx.integrity()` surface (like `message_info`) — that surfaces the status,
+  it does not gate validation. No topic list, no overlay.
 
-### Layer 2 — application wiring (hard; needs declarative nodes)
+- **params are normal ROS code; the axis toggles the external server.** The user writes
+  standard `declare_parameter` / `get_parameter` in node source. The declarative runtime
+  **already** lazily registers the 6 ROS 2 parameter services (get/set/list/describe/…) on
+  the first declared parameter (`node_runtime.rs` `EntityKind::Parameter`, gated
+  `param-services`). So the `[param_services]` axis only toggles whether that **external
+  query/update server** is compiled in — it does not inject parameter values. Values come
+  from code, as in standard ROS.
 
-The gate also **swaps the example's own source**. `listener/src/main.rs:54-139` is **two
-whole `main()` bodies** (`#[cfg(safety-e2e)]` vs `not`) with *different callbacks*; talker
-has `#[cfg]` blocks that call `register_parameter_services()` + `declare_parameter()`. A
-config flag **cannot inject those calls into hand-written imperative `main()`** — it can
-only pick a prewritten `#[cfg]` branch. To reach "user enables in config, **no source
-edit**", the node must be **declarative**: its behavior expressed as a spec that codegen
-lowers into the generated entrypoint (the `declare_parameter` API at
-`packages/core/nros/src/node.rs:1412`; the `.safety()` / `.message_info()` builders at
-`packages/core/nros-node/src/executor/node.rs:1748-1773`).
+So the lowering is the whole job: a declared axis → the `nros` build feature on the entry,
+mirroring RMW (RFC-0031). It stays a **compile** dimension (embedded pays the safety
+arena/CRC and param-service code only when selected). The capability is then used by normal
+node code — `declare_parameter` (params) and, optionally, `.safety()`/`ctx.integrity()`
+(safety inspection).
 
-**Consequence (corrected 2026-06-15 after the D7 re-examination): the declarative target
-already exists; the real gap is the declarative *API surface*, not a migration.**
-phase-244 **D7 blessed the board-less imperative `Executor::open` shape for the native
-single-file `examples/native/rust/{talker,listener}`** as the *intended* native shape (not
-a leak) and deliberately did **not** migrate them — P3.5b was withdrawn for re-migrating
-them against that decision. Meanwhile declarative talker/listener **already exist**:
-`examples/workspaces/rust/{talker_pkg,listener_pkg,native_entry}` (+ `demo_bringup/system.toml`)
-and the esp32 single-pkg pair, across 8 platforms on `nros::main!()` + `Node`/`ExecutableNode`.
-So the Layer-2 prerequisite is **not** "migrate the native examples" (forbidden by D7) — it is
-**extending the declarative `Node`/`NodeContext` API** to expose params + safety, which it does
-not today: `NodeContext::create_subscription_for_callback_name()` yields only basic subscriptions,
-and `declare_parameter` / `.safety()` / `.message_info()` are **imperative-`Executor`-only**
-(`packages/core/nros/src/node.rs:1412`, `packages/core/nros-node/src/executor/node.rs:1748-1773`).
-The native imperative examples keep their `#[cfg]` Cargo features as the D7-blessed imperative
-idiom — phase-250 does not touch them.
+**Why the old "no source edit / config-driven behavior" framing was wrong:** it assumed a
+config→node-behavior wire (overlay or node-body codegen) that does not exist and that this
+model does not need. The node is hand-written; the axis governs the *build*, not the node's
+logic. The per-topic-safety / topic-capture concern dissolves: topics are already harvested
+at build time (`MetadataRecorder` → `to_source_metadata_json`), and system-wide safety needs
+no topic list at all.
 
-## Per-axis tractability
-
-- **params — fully config-expressible.** A declared default-param set (e.g.
-  `start_value = 42`) → codegen emits `declare_parameter` + `register_parameter_services`;
-  the node body reads the value via the runtime API. Clean.
-- **safety — only partially.** The `.safety()` builder wiring (enable integrity on
-  subscription X) is config-expressible, but the **integrity callback carries app logic**
-  (what to do on a gap/dup) — pure config can't express arbitrary bodies. Scope safety to
-  "wire the builder + a `Node`-trait hook (e.g. `on_integrity(status)`)", **not** "generate
-  arbitrary callbacks".
-- **link-tls / unstable-zenoh-api — out of scope here.** These are **transport / RMW-backend**
-  features (`nros-rmw-zenoh?/link-tls`; zero-copy `nros/unstable-zenoh-api`), not node
-  capabilities. They belong with the transport/RMW declared axis. Keep them as transport-config
-  knobs; do **not** fold them into params/safety.
+**Out of scope:** `link-tls` / `unstable-zenoh-api` (zero-copy) are **transport / RMW-backend**
+features (`nros-rmw-zenoh?/link-tls`; `nros/unstable-zenoh-api`), not node capabilities —
+they belong with the transport/RMW declared axis, not params/safety.
 
 ## Scope
 
-1. **Correct premise — DONE (this doc).** The "removed, restore" framing is replaced with
-   the greenfield-conversion framing above; the D7 re-examination further replaces the
-   "migrate the native examples" prerequisite with "extend the declarative API surface".
-2. **Declared axis + lowering (Layer 1).** A declared `[safety]` / `[params]` knob lowers to
-   the entry's `nros` dep feature, beside the existing `[param_persistence]`/`[lifecycle]`
-   paths in `generated_default_features()`. (Safety half **DONE** — Wave 1.)
-3. **Extend the declarative `Node`/`NodeContext` API (Layer 2 prereq).** Add params + safety
-   to the declarative path that today only the imperative `Executor` carries: a
-   `declare_parameter`-equivalent usable from `Node::register()`, and an integrity-status
-   surface on `create_subscription_for_callback_name()` (the `.safety()` analog) feeding a
-   `Node`-trait hook. This is core `nros-node` API work — **not** example migration (the
-   declarative talker/listener already exist; the native imperative ones are D7-blessed).
-4. **Codegen wiring (Layer 2).** Lower declared `[params]` (the default param set) +
-   `[safety]` into the generated declarative node via the new API.
-5. **Target a declarative example.** Add the config-driven safety/params variant on the
-   **already-declarative** `examples/workspaces/rust/` (or esp32) talker/listener — never the
-   D7-blessed native imperative pair.
-6. **Fixtures.** Add **on/off** variants of the declarative example. The native imperative
-   per-feature rows (`fixtures.toml`) stay as-is (they exercise the imperative API, which D7
-   keeps); this **augments**, it does not replace them.
-7. **Tests.** Add declarative on/off coverage; `params.rs` / `safety_e2e.rs` / `zero_copy.rs`
-   stay pointed at the imperative fixtures (the imperative API still ships). Augment, not repoint.
+1. **Correct premise + model — DONE (this doc).** System-wide capability toggles + normal
+   user code; no config→node injection.
+2. **`[safety]` axis → `nros/safety-e2e` — DONE (Wave 1).** System-wide build feature.
+3. **`.safety()` / `ctx.integrity()` inspection surface on the declarative node — DONE
+   (Wave 2a/2b).** Optional; a node reads per-message integrity in its callback.
+4. **`[param_services]` axis → `nros/param-services` — DONE (Wave 3).** Toggles the external
+   param server; node params are declared in normal code (runtime auto-registers the services).
+5. **Validation example + fixtures — Wave 5.** A declarative `examples/workspaces/rust/`
+   build with the axes on/off + a transport e2e proving safety surfaces `ctx.integrity()` and
+   the param server answers. The native imperative examples + their fixtures/tests stay as-is
+   (the imperative API ships under D7) — this **augments**.
 
 ## Waves
 
@@ -172,32 +154,47 @@ idiom — phase-250 does not touch them.
   `CallbackCtx::new_with_integrity`, else the basic path. Test:
   `safety_opt_in_records_metadata_flag`. The full transport e2e (publish → validated recv →
   `ctx.integrity()` in a real spin) lands with the declarative fixture in Wave 5.
-- **Wave 3 (planned)** — params lowering + codegen: a plain declare-only `[params]` axis
-  (distinct from the existing `[param_persistence]`) → `declare_parameter` +
-  `register_parameter_services` in the generated declarative node.
-- **Wave 4 (planned)** — safety codegen (Layer 2): lower the Wave-1 `[safety]` flag into the
-  new declarative `.safety()` wiring + the `on_integrity` hook.
-- **Wave 5 (planned)** — add on/off fixtures for the declarative `examples/workspaces/rust/`
-  talker/listener + declarative tests. The native imperative fixtures + `params.rs` /
-  `safety_e2e.rs` / `zero_copy.rs` stay (the imperative API ships under D7). Augment, not replace.
+- **Wave 3 — `[param_services]` axis → `nros/param-services` — DONE (2026-06-16).** The
+  param SERVER toggle, mirroring Wave 1. `collect_param_services()` (planner) reads the
+  `[param_services]` overlay block (last-wins; `enabled = false` disables) →
+  `NrosPlan.param_services: Option<PlanParamServices>` → `generated_default_features` pushes
+  `nros/param-services` when `param_persistence || param_services`. The user writes normal
+  `declare_parameter`/`get_parameter`; the declarative runtime already auto-registers the 6
+  param services on the first declared parameter (`node_runtime` `EntityKind::Parameter`).
+  Tests: `collect_param_services_reads_block`, `param_services_axis_lowers_to_nros_feature`.
+
+  **Schema (`[param_services]`, an nros.toml / `[package.metadata.nros]` overlay block):**
+  ```toml
+  [param_services]
+  enabled = true   # optional, default true; false drops the external param server
+  ```
+
+- **~~Wave 4 — safety codegen~~ — DELETED (2026-06-16).** It assumed config lowering into a
+  generated node body. Under the corrected model safety is a system-wide build feature
+  (Wave 1) used by normal node code via `.safety()` (Wave 2) — there is nothing to generate.
+- **Wave 5 (planned)** — a declarative `examples/workspaces/rust/` build with the axes on/off
+  + a transport e2e: safety surfaces `ctx.integrity()`, the param server answers an external
+  get/set. The native imperative fixtures + `params.rs` / `safety_e2e.rs` / `zero_copy.rs`
+  stay (the imperative API ships under D7). Augment, not replace.
 
 ## Acceptance
 
-- A user enables params / safety via config (no source edit); the build lowers it to the
-  `nros` feature; the declarative example gains the behavior.
-- `fixtures.toml` builds the example with the dimension on + off; `params.rs` /
-  `safety_e2e.rs` pass against the respective fixtures.
-- Embedded targets pay the safety/param code-size cost **only** when the axis is selected
-  (verified: the capability stays a compile feature, not a runtime always-on path).
+- A declared `[safety]` axis lowers to `nros/safety-e2e` system-wide; `[param_services]`
+  lowers to `nros/param-services` — both mirroring the RMW lowering, omitted when absent
+  (byte-identical plans). **DONE** (Waves 1, 3).
+- A declarative node reads per-message integrity via `.safety()` / `ctx.integrity()`, and
+  declares parameters in normal code with the external server auto-registered when the axis
+  is on. **DONE** (Waves 2, 3 + existing runtime).
+- Embedded targets pay the safety/param code size **only** when the axis is selected (a
+  compile dimension, not a runtime always-on path). **Held** — both lower to build features.
+- Wave 5: a declarative example builds with the axes on + off and a transport e2e proves
+  `ctx.integrity()` is surfaced and the param server answers. **Pending.**
 
 ## Risks
 
-- **Declarative API surface is the real cost.** Layer 2 needs new params + safety surface on
-  the declarative `Node`/`NodeContext` path (today imperative-`Executor`-only). This is core
-  `nros-node` API design, not example edits — the bulk of the remaining work. Layer 1 (the
-  lowering) stands alone meanwhile but only "compiles the capability in".
 - **Two API shapes coexist by design.** The imperative `Executor` (D7-blessed, native) and the
-  declarative `Node` path both carry params/safety after this phase; the config-driven story
-  is the declarative path only. Don't conflate them or try to delete the imperative surface.
-- **Safety callback is not pure config.** The `on_integrity` hook keeps app logic in source;
-  config only toggles whether it is wired. Don't over-promise "fully declarative safety".
+  declarative `Node` path both expose safety/params; that is intended, not a conflict. Don't
+  try to delete the imperative surface.
+- **System-wide, not selective.** safety-e2e is all-or-nothing across the system (end-to-end
+  protocol). There is deliberately no per-node / per-topic safety knob; don't add one without
+  a concrete need (it would reintroduce the topic-capture / overlay complexity this model avoids).
