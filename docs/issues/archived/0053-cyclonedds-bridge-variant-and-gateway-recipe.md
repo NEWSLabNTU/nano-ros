@@ -1,11 +1,24 @@
 ---
 id: 53
 title: Mixed-RMW bridge has no stock-cyclonedds variant + no "cross-RMW gateway" book recipe (211.I)
-status: open
+status: resolved
 type: tech-debt
 area: testing
 related: [phase-211, phase-128, phase-129]
+resolved_in: 18959e488, 1ea911cf2
 ---
+
+> **RESOLVED (2026-06-15).** Both 211.I pieces shipped. **Piece 2 (book gateway
+> recipe):** `book/src/user-guide/cross-backend-bridges.md` (mental model, build
+> knobs, `NROS_RMW`, coverage matrix) + a concrete `tt-zenoh-to-cyclonedds` shipped
+> section. **Piece 1 (stock-cyclonedds variant):** `examples/bridges/tt-zenoh-to-cyclonedds`
+> (TT-scheduled zenoh→Cyclone gateway, `18959e488`) + a minimal Int32 e2e fixture
+> `bins/bridge-zenoh-to-cyclonedds-fwd` + `tests/bridge_zenoh_to_cyclonedds.rs`
+> (`1ea911cf2`). The cyclonedds crux — raw publish needs a registered
+> `dds_topic_descriptor_t` — is handled by staging the schema via
+> `nros_rmw::register_type_descriptor` (NUL-terminated key) before `create_publisher_raw`.
+> Verified: builds against vendored CycloneDDS 0.10.5; full path forwards 8/8 live
+> samples zenoh→cyclonedds.
 
 ## Gap
 

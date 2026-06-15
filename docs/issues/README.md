@@ -47,7 +47,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
 | 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
-| 53 | mixed-RMW bridge has no stock-cyclonedds variant + no gateway book recipe (211.I) | tech-debt | testing | [0053-cyclonedds-bridge-variant-and-gateway-recipe.md](0053-cyclonedds-bridge-variant-and-gateway-recipe.md) |
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
 | 62 | D3 completion — one registration path + generated link-manifest + weak-default deletion (rides single-runtime) | tech-debt | build | [0062-d3-completion-one-registration-path-and-link-manifest.md](0062-d3-completion-one-registration-path-and-link-manifest.md) |
 
@@ -57,7 +56,12 @@ merge-gated (host `platform_header_matrix` + the new cross `cross_libc_precedenc
 gate + the zephyr prj.conf gate; one canonical `<nros/platform.h>`; capability
 SSoT). Decoupled from the linking class (#20/#62/phase-249). Fully closed — the
 "centralise the libc-precedence helper" direction (C) was dropped as a non-goal
-(the two-set clash is NuttX-only, one gated site). See `archived/0042-*`.
+(the two-set clash is NuttX-only, one gated site). See `archived/0042-*`. **#53** —
+mixed-RMW bridge stock-cyclonedds variant + cross-RMW gateway book recipe (211.I):
+shipped `examples/bridges/tt-zenoh-to-cyclonedds` + an Int32 e2e
+(`bridge_zenoh_to_cyclonedds`, forwards 8/8 live samples) + the
+`cross-backend-bridges.md` recipe; raw publish stages the Cyclone descriptor via
+`register_type_descriptor`. See `archived/0053-*`.
 
 Recently resolved (CI infra,
 2026-06-15): **#66** (renumbered from 64 — collided with the open esp32 #64) —
