@@ -75,17 +75,19 @@ registration that lets the weak default die — apply directly.)
   **image gate** (`scripts/check-weak-symbols-image.sh`) already asserts the
   registration symbol resolves strong, so it guards the deletion.
 
-- **R3 — fold the triggers into one (finishes bullet 1).** **Designed →
-  [phase-249](../roadmap/phase-249-one-registration-trigger.md).** Audit (2026-06-14)
-  corrected the original framing: the ctor anchor is NOT the natural single trigger —
-  `.init_array` isn't walked on all bare-metal, and linkme is RTOS-blind. The only
-  universal mechanism is the **explicit `nros_rmw_<backend>_register()` call**
-  (C/C++: generated strong `nros_app_register_backends` via the cmake stub; Rust: the
-  **board boot** calls its linked backend's `register()` on every OS — bare-metal P1 +
-  hosted P3.5 un-gates `target_os="none"` — NOT user code, NOT the `main!` macro). User
-  code stays the composable-node shape with zero registration boilerplate. Phased P1–P4
-  (migrate before delete), per-platform e2e gated; **P4 is R2** (deletes the weak default;
-  the cmake stub stays as the sole C/C++ def). See phase-249 for the full plan.
+- **R3 — consolidate the triggers (bullet 1). Mechanism SETTLED 2026-06-15: the
+  `.init_array` ctor** (RFC-0042 §D3.3 / [phase-249](../roadmap/phase-249-one-registration-trigger.md)
+  P4b). History: the original "fold into the W11 ctor" framing was corrected (2026-06-14)
+  to an "explicit generated call" — but phase-244 D7 then **closed native rust on Shape B**
+  (force-link + linkme; *no* `register()` call in app source, verified empirically). So the
+  explicit-call/board-owned direction (the withdrawn P3.5b) is off the table for native.
+  The settled answer keeps D7 and still drops linkme: the three self-register mechanisms
+  collapse to **two** — **hosted** (Rust + C/C++) = the backend's `.init_array` ctor (loader
+  fires it before `main`; the Shape-B `#[used] __FORCE_LINK_*` anchor keeps it linked);
+  **embedded** = the explicit board call (P1). linkme deleted; the cmake stub stays for
+  C/C++-via-cmake. **R2 is done** (phase-249 P4a — the weak default deleted, closes
+  [issue 0050](0050-weak-symbol-audit-and-checkers.md) W3.1). See phase-249 P4b for the
+  staged plan + RFC-0042 §D3.3 for the linkme-vs-ctor rationale.
 
 ## Acceptance
 

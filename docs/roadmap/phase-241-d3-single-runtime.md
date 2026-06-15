@@ -328,8 +328,14 @@ Rust node).
 
 - **Force-linking the backend** from an rlib dep — proven idiom, low risk.
 - **C++ needing C symbols** — the 285-symbol anchor; mechanical but verbose.
-- **linkme vs ctor auto-register** — with one instance the DUPCHECK collision that
-  drove the ctor workaround is gone; can likely re-enable plain linkme-register.
+- **linkme vs ctor auto-register — RESOLVED toward the ctor (2026-06-15, RFC-0042 §D3.3).**
+  Single-runtime removed the multi-archive DUPCHECK that made the `.init_array` ctor
+  unsafe. The earlier lean here ("re-enable plain linkme-register") is **reversed**: the
+  registration trigger consolidates **on the ctor** and **linkme is deleted** (drops the
+  external dep + the 12-OS allow-list + the DUPCHECK feature + the lazy walk). This phase's
+  single-`REGISTRY` instance (the cffi C-ABI dedup) is *independent of the trigger* and
+  **stands** — it is precisely what makes the ctor safe everywhere. Trigger work →
+  [phase-249](one-registration-trigger.md) P4b.
 - **SDK-matrix decoupling** may still want standalone backend staticlibs — confirm
   before deleting those crates.
 - **High blast radius on the link path** — validate per-cell incrementally.

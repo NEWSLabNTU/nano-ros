@@ -170,16 +170,22 @@ upheld by comments and per-combination workarounds:
 ### D3 — Deterministic linking
 
 > **Status: IN PROGRESS.** The single-shared-runtime foundation (bullet 3, no dup)
-> is Stable (see "D3 implementation" below); the remaining bullets 1+2 (one
-> registration path + generated link manifest) are tracked by
+> is Stable (see "D3 implementation" below); the registration-trigger consolidation
+> (bullet 1, see **§D3.3** below — the `.init_array` ctor decision) + the generated
+> link manifest (bullet 2) are tracked by
 > [phase-249](../roadmap/phase-249-one-registration-trigger.md) / [issue 0062].
 
-- **One registration path.** Codegen emits an explicit backend-register table for
-  the binary (the set of `nros_rmw_<x>_register()` to call), used on *all*
-  platforms — hosted included. The `linkme`-vs-weak split is removed; the
-  distributed-slice may remain an *implementation detail* of the generator's
-  hosted path but is no longer a second contract. Bare-metal and hosted register
-  identically.
+- **One registration trigger.** *(Mechanism settled 2026-06-15 — see §D3.3.)* The
+  three coexisting self-register mechanisms (linkme distributed-slice, `.init_array`
+  ctor, explicit call) collapse to **two**: the backend self-registers via an
+  **`.init_array` ctor** on **hosted** (Rust + C/C++ — the loader fires it before
+  `main`), and via an **explicit `nros_rmw_<x>::register()` call** on **embedded**
+  (RTOS / bare-metal, where `.init_array` is not reliably walked). **`linkme` is
+  deleted** — the earlier "codegen emits an explicit backend-register *table* on all
+  platforms" framing is superseded by the ctor (the table is not needed; the ctor +
+  the cmake stub are the triggers). `--allow-multiple-definition` and the
+  `linkme-register` DUPCHECK feature are gone (single-runtime removed the multi-archive
+  dup that made the ctor unsafe — which is *why* the ctor is now safe everywhere).
 - **Generated link manifest.** The codegen/cmake glue emits the deterministic
   link line for the binary: which archives are whole-archived, and the archive
   order that satisfies ld single-pass (platform shim after RMW, message libs
@@ -227,12 +233,52 @@ whole-archive manifest. Detail + work items: `docs/roadmap/phase-241-d3-single-r
   directly (its own west link model, not the cmake umbrella), and the archive-symbol
   / header-parity tests consume them.
 - **Remaining D3 goals (bullets 1+2) — [issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md).**
-  Single-runtime delivers bullet 3 (no dup). The *one registration path* (bullet 1
-  — stub + linkme + ctor still coexist) and the *generated link manifest* (bullet 2
-  — the RMW dispatch table, incl. Cyclone's `+libstdc++`, is still hand-prose) ride
-  on this foundation: emit the dispatch table as data from `resolve_rmw`, and delete
-  the weak `nros_app_register_backends` once the W11 ctor guarantees registration
-  (closes [issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md) W3.1).
+  Single-runtime delivers bullet 3 (no dup). Bullet 1 (one registration trigger) is
+  settled as the `.init_array` ctor — see §D3.3. Bullet 2 (generated link manifest —
+  the RMW dispatch table, incl. Cyclone's `+libstdc++`) rides on this foundation
+  (emit it as data from `resolve_rmw`). The weak `nros_app_register_backends` default
+  is already deleted (phase-249 P4a, closes
+  [issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md) W3.1).
+
+#### D3.3 — Registration trigger: the `.init_array` ctor (decision 2026-06-15)
+
+Bullet 1 ("one registration path") is **mechanism-settled**: the backend's
+self-register is an **`.init_array` ctor**, not the `linkme` distributed-slice and
+not a codegen-emitted explicit table.
+
+- **Why ctor over linkme (UX + maintainability).** linkme is an external crate that
+  centralises the section discipline, but its cost accreted: a 12-OS allow-list
+  duplicated ×3 (each new hosted OS must be vetted + added; Phase 142 had to *drop*
+  `target_os="none"` because cortex-m's link script lacks the `__start_/__stop_`
+  anchors and the slice iterator **hung**), a `linkme-register` feature to suppress
+  the multi-archive **DUPCHECK** collision (Phase 134.fix), the `linkm2_` section-name
+  coupling + Mach-O/COFF variants, and a lazy runtime walk. The `.init_array` ctor is
+  the std crt mechanism: **no external dep, no DUPCHECK** (independent ctors, idempotent
+  `register`), **no per-OS allow-list** (hosted vs `target_os="none"`), broader hosted
+  coverage. Single-runtime (bullet 3) eliminated the multi-archive dup that made the
+  ctor unsafe — which is *why* the ctor is now safe everywhere — so consolidating **on**
+  the ctor (and deleting linkme), rather than re-enabling linkme, is the cleaner end.
+
+- **The two triggers (D7-compatible).** **Hosted** (Rust + C/C++): the backend ships an
+  `.init_array` ctor (Rust `#[used] link_section=".init_array"` / `__DATA,__mod_init_func`;
+  C `__attribute__((constructor))`), emitted by the `nros_rmw_register_backend!` (Rust)
+  and `NROS_RMW_REGISTER_BACKEND` (C) macros, gated `not(target_os="none")`. The native
+  app keeps its `#[used] __FORCE_LINK_*` anchor (phase-244 D7 "Shape B" — no `register()`
+  call in app source; the anchor keeps the backend closure + its ctor past DCE). The
+  loader fires the ctor before `main`, so no runtime walk is needed.
+  **Embedded** (RTOS / bare-metal, `target_os="none"` + nuttx/zephyr/esp): the ctor is a
+  no-op (`.init_array` not reliably walked); the board / typed carrier calls
+  `nros_rmw_<x>::register()` **explicitly** (phase-249 P1). The cmake `nano_ros_link_rmw`
+  strong stub stays as the deterministic C/C++-via-cmake trigger (phase-249 P2b/P4a).
+
+- **Deleted by this decision.** the `linkme` crate dep + the `linkme-register` feature
+  (cffi + the backend crates + passthroughs); the `RMW_INIT_ENTRIES` distributed-slice +
+  the no-op stub + the 12-OS allow-list (×3); `nros_rmw_cffi_walk_init_section` + its 3
+  call sites (`Executor::open` / `open_multi` / `nros::init`). **Kept:** the
+  `#[used] __FORCE_LINK_*` anchors, the embedded explicit calls, the cmake stub.
+
+- **Implemented by [phase-249](../roadmap/phase-249-one-registration-trigger.md) P4b**
+  (which redefines from "delete linkme → explicit table" to "consolidate to ctor").
 
 ### D4 — Merge-time compile + link gate
 

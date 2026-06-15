@@ -197,15 +197,32 @@ proven).
   [issue 0050](../issues/0050-weak-symbol-audit-and-checkers.md) W3.1 / R2.** Validated:
   `just native build-c` + `build-cpp` link clean (no undefined symbol, no multiple-def);
   source + image + rust weak gates green.
-- **P4b — delete the linkme slice (D3 bullet-1: one registration path for Rust). DEFERRED —
-  conflicts with phase-244 D7.** D7 keeps native rust on linkme (Shape B); deleting the
-  slice strands it (`NoBackend`). Reconcile first (the P4b ↔ D7 fork): (i) native adopts an
-  explicit register (board-owned — the withdrawn P3.5b direction; overrides D7's empirical
-  "force-link accepted"), or (ii) linkme survives as the hosted-Rust impl detail — which
-  **RFC-0042 D3 explicitly permits** (*"the distributed-slice may remain an implementation
-  detail of the generator's hosted path"*), so "one registration path" is already satisfied
-  for C/C++ + embedded without deleting hosted-Rust linkme. **Gate (when unblocked):** full
-  per-cell e2e + `just check` + the weak-symbol image gate.
+- **P4b — consolidate registration onto the `.init_array` ctor (delete linkme).
+  REDEFINED 2026-06-15 (decision: RFC-0042 §D3.3).** *(Was "delete linkme → explicit
+  table"; the explicit table is dropped — the ctor is the trigger.)* The three
+  self-register mechanisms collapse to **two**: hosted (Rust + C/C++) = the backend's
+  `.init_array` ctor (loader fires it before `main`; the D7 Shape-B `#[used]
+  __FORCE_LINK_*` anchor keeps it linked — **no app-source `register()` call, D7
+  honoured**); embedded = the explicit board call (P1). **linkme is deleted.** Rationale
+  (linkme vs ctor UX + maintainability) + the full design → RFC-0042 §D3.3. Staged:
+  - **P4b.1 — Rust macro → ctor.** `nros_rmw_register_backend!` (`nros-rmw-cffi/src/section.rs`)
+    emits a `#[used] link_section=".init_array"` (+ macos `__DATA,__mod_init_func`) ctor,
+    gated `not(target_os="none")`; delete the `RMW_INIT_ENTRIES` slice + stub + the 12-OS
+    allow-list + `nros_rmw_cffi_walk_init_section` + its 3 call sites (`Executor::open` /
+    `open_multi` / `nros::init`). Model: the existing `nros-rmw-zenoh-staticlib` ctor.
+    **Gate:** native Rust pub/sub e2e registers (ctor fires) + a bare-metal cell (board
+    explicit unaffected).
+  - **P4b.2 — C macro → ctor.** `NROS_RMW_REGISTER_BACKEND` (`rmw_vtable.h`) →
+    `__attribute__((constructor))` (model: cyclonedds `vtable.cpp:198`). **Gate:** native
+    C/C++ e2e.
+  - **P4b.3 — drop the dep + feature.** Remove the `linkme` dep + the `linkme-register`
+    feature from `nros-rmw-cffi` + the backend crates + passthroughs; delete the now-
+    redundant `*-staticlib` ctors (the macro provides it). **Gate:** `just check` + the
+    cross-platform fixture builds.
+  - **P4b.4 — docs:** RFC-0042 §D3.3 (done), this bullet, [phase-241](phase-241-d3-single-runtime.md)
+    reconcile, [issue 0062](../issues/0062-d3-completion-one-registration-path-and-link-manifest.md) R3.
+  **Keep throughout:** the `#[used] __FORCE_LINK_*` anchors, the embedded explicit calls,
+  the cmake `nano_ros_link_rmw` stub (P2b/P4a).
 
 ## Acceptance
 
