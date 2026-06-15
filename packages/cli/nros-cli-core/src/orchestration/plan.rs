@@ -43,6 +43,14 @@ pub struct NrosPlan {
     /// Omitted from output when absent so plans stay byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub param_persistence: Option<PlanParamPersistence>,
+    /// Phase 250 (Wave 1) — E2E message-integrity (CRC + sequence gap/dup)
+    /// capability. A declared `[safety]` block lowers this on; the generated
+    /// entry then carries the `nros/safety-e2e` umbrella feature so the
+    /// capability is compiled in (a *compile* dimension — embedded only pays
+    /// the arena/CRC code size when selected). Additive; absent ⇒ no safety,
+    /// omitted from output so plans stay byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub safety: Option<PlanSafety>,
     /// Phase 172 — in-binary bridges: gateways that forward declared topics
     /// between the sessions in each bridge's `connect` list. The generator
     /// resolves each topic's type from `interfaces` and emits raw sub→pub
@@ -94,6 +102,23 @@ pub struct PlanBridgeEndpoint {
 pub struct PlanParamPersistence {
     pub backend: String,
     pub path: String,
+}
+
+/// Phase 250 (Wave 1) — declared E2E-safety capability. `crc` selects whether
+/// the CRC-32 check is wired in addition to sequence gap/dup tracking (default
+/// true). Presence of the plan field is the enable signal; the `crc` flag is
+/// carried for the Layer-2 codegen wave (which lowers it into the generated
+/// node's `.safety()` subscriptions). Today only the presence matters — it
+/// lowers to the `nros/safety-e2e` umbrella feature.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanSafety {
+    #[serde(default = "default_true")]
+    pub crc: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Phase 172.I — one named shared-memory region. `bytes` sizes a

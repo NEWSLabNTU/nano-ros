@@ -103,6 +103,39 @@ trait so behavior is a spec, not forked source.
 7. **Tests.** Repoint `params.rs` / `safety_e2e.rs` (and the zero-copy test if folded) at
    the on/off fixtures. (They are already active — this is a repoint, not an un-skip.)
 
+## Waves
+
+- **Wave 1 — safety lowering (Layer 1) — DONE (2026-06-15).** A declared `[safety]`
+  overlay block lowers to the `nros/safety-e2e` umbrella feature on the generated entry,
+  mirroring the existing `[param_persistence] → nros/param-services` and
+  `[lifecycle] → nros/lifecycle-services` paths in `generated_default_features()`
+  (`packages/cli/nros-cli-core/src/orchestration/generate.rs`). Wiring:
+  `collect_safety()` (planner) reads the block (last-overlay-wins; `enabled = false`
+  disables; `crc` defaults true) → `NrosPlan.safety: Option<PlanSafety>` (additive,
+  skip-when-absent → byte-identical plans) → `generated_default_features(.., safety, ..)`
+  pushes `nros/safety-e2e`. Tests: `collect_safety_reads_block_with_defaults` (planner),
+  `safety_axis_lowers_to_nros_feature` (generate). `params` is **not** in Wave 1 — it
+  already has a lowering path via `[param_persistence]`; a plain `[params]` (declare-only,
+  no persistence) axis lands with the Layer-2 codegen wave. Layer 1 alone is not yet
+  observable end-to-end (the imperative examples gate on their *own* Cargo feature, a
+  different namespace) — it is the foundation the later waves consume.
+
+  **Schema (`[safety]`, an nros.toml / `[package.metadata.nros]` overlay block):**
+  ```toml
+  [safety]
+  enabled = true   # optional, default true; false drops the capability
+  crc     = true   # optional, default true; CRC-32 check alongside seq gap/dup tracking
+  ```
+
+- **Wave 2 (planned)** — declarative-node migration of talker/listener (re-scoped P3.5b;
+  re-examine phase-244 D7, which predates the P4b linkme deletion).
+- **Wave 3 (planned)** — params codegen (Layer 2): `[params]` declare-set →
+  `declare_parameter` + `register_parameter_services` in the generated node.
+- **Wave 4 (planned)** — safety codegen (Layer 2): `.safety()` wiring + a `Node`-trait
+  `on_integrity` hook from the declared flag.
+- **Wave 5 (planned)** — fixtures on/off + repoint `params.rs`/`safety_e2e.rs`/`zero_copy.rs`;
+  remove the per-example Cargo feature gates.
+
 ## Acceptance
 
 - A user enables params / safety via config (no source edit); the build lowers it to the

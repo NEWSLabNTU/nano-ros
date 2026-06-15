@@ -180,6 +180,7 @@ fn render_cargo_toml(options: &GenerateOptions, plan: &NrosPlan) -> String {
                 &plan.build,
                 plan.lifecycle.is_some(),
                 plan.param_persistence.is_some(),
+                plan.safety.is_some(),
                 !plan.bridges.is_empty(),
             )),
         )
@@ -1642,6 +1643,7 @@ fn generated_default_features(
     build: &PlanBuildOptions,
     managed_lifecycle: bool,
     param_persistence: bool,
+    safety: bool,
     has_bridges: bool,
 ) -> Vec<String> {
     let mut features = Vec::new();
@@ -1664,6 +1666,14 @@ fn generated_default_features(
     // the services, and attaches the persistence backend.
     if param_persistence {
         features.push("nros/param-services".to_string());
+    }
+    // Phase 250 (Wave 1) — a declared `[safety]` block compiles the E2E
+    // message-integrity capability (CRC + sequence gap/dup) into the generated
+    // entry via the `nros/safety-e2e` umbrella feature. Kept a compile feature
+    // (not a runtime always-on path) so embedded only pays the arena/CRC code
+    // size when the axis is selected.
+    if safety {
+        features.push("nros/safety-e2e".to_string());
     }
     // Phase 173.2 — `nros/<feature>` + the per-platform local aliases
     // (which gate the platform-specific Cargo deps + cfg) both come from
@@ -4616,6 +4626,7 @@ mod net_fragment_tests {
             false,
             false,
             false,
+            false,
         );
         assert!(
             !feats.iter().any(|f| f == "nros/param-services"),
@@ -4648,10 +4659,28 @@ mod net_fragment_tests {
         );
         assert!(out.contains("nros::ParameterValue::Integer(i)"), "{out}");
 
-        let feats = generated_default_features(&plan.build, false, true, false);
+        let feats = generated_default_features(&plan.build, false, true, false, false);
         assert!(
             feats.iter().any(|f| f == "nros/param-services"),
             "{feats:?}"
+        );
+    }
+
+    #[test]
+    fn safety_axis_lowers_to_nros_feature() {
+        // Phase 250 Wave 1 — a declared `[safety]` block (plan.safety = Some)
+        // pulls `nros/safety-e2e`; absent ⇒ it must not, keeping non-safety
+        // plans byte-identical.
+        let plan = plan_with_param_persistence(None);
+        let off = generated_default_features(&plan.build, false, false, false, false);
+        assert!(
+            !off.iter().any(|f| f == "nros/safety-e2e"),
+            "safety off must not pull the feature: {off:?}"
+        );
+        let on = generated_default_features(&plan.build, false, false, true, false);
+        assert!(
+            on.iter().any(|f| f == "nros/safety-e2e"),
+            "safety on must pull the feature: {on:?}"
         );
     }
 

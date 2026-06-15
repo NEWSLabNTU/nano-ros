@@ -737,6 +737,11 @@ fn schema_plan_json(
     if let Some(pp) = collect_param_persistence(overlays) {
         obj.insert("param_persistence".to_string(), pp);
     }
+    // Phase 250 (Wave 1) — optional E2E-safety capability, before `build`
+    // (NrosPlan field order); absent ⇒ omitted, plan stays byte-identical.
+    if let Some(safety) = collect_safety(overlays) {
+        obj.insert("safety".to_string(), safety);
+    }
     // Phase 211.E — `<executable>` spawn entries. Skip-when-empty so plans
     // without any `<executable>` stay byte-identical to pre-211.E.
     if !executables.is_empty() {
@@ -1094,6 +1099,30 @@ fn collect_param_persistence(overlays: &[Value]) -> Option<Value> {
             let path = table.get("path").and_then(Value::as_str).unwrap_or("");
             if !path.is_empty() {
                 out = Some(json!({ "backend": backend, "path": path }));
+            }
+        }
+    }
+    out
+}
+
+/// Phase 250 (Wave 1) — read the nros.toml `[safety]` block (last overlay
+/// wins). Returns `{ "crc": <bool> }` when the block is present and not
+/// explicitly disabled (`enabled = false`); `None` keeps the binary free of the
+/// E2E-safety capability. `crc` defaults to true. The presence of the result is
+/// the enable signal the generator lowers to `nros/safety-e2e`.
+fn collect_safety(overlays: &[Value]) -> Option<Value> {
+    let mut out = None;
+    for overlay in overlays {
+        if let Some(table) = overlay.get("safety").and_then(Value::as_object) {
+            let enabled = table
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            if enabled {
+                let crc = table.get("crc").and_then(Value::as_bool).unwrap_or(true);
+                out = Some(json!({ "crc": crc }));
+            } else {
+                out = None;
             }
         }
     }
@@ -5423,6 +5452,30 @@ topics:
         ])
         .unwrap();
         assert_eq!(pp["path"], json!("/b"));
+    }
+
+    /// Phase 250 Wave 1 — `[safety]` collection: presence enables (crc default
+    /// true), `enabled = false` disables (last-wins), `crc = false` round-trips.
+    #[test]
+    fn collect_safety_reads_block_with_defaults() {
+        // No [safety] → no capability.
+        assert!(collect_safety(&[json!({})]).is_none());
+        // Bare [safety] table → enabled, crc defaults true.
+        let s = collect_safety(&[json!({ "safety": {} })]).unwrap();
+        assert_eq!(s["crc"], json!(true));
+        // Explicit crc = false round-trips.
+        let s = collect_safety(&[json!({ "safety": { "crc": false } })]).unwrap();
+        assert_eq!(s["crc"], json!(false));
+        // enabled = false disables even when a table is present.
+        assert!(collect_safety(&[json!({ "safety": { "enabled": false } })]).is_none());
+        // Last overlay wins: a later disable clears an earlier enable.
+        assert!(
+            collect_safety(&[
+                json!({ "safety": { "crc": true } }),
+                json!({ "safety": { "enabled": false } }),
+            ])
+            .is_none()
+        );
     }
 
     #[test]
