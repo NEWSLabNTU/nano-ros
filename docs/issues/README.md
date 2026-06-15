@@ -47,6 +47,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | id | title                                                                 | type | area | file |
 |----|-----------------------------------------------------------------------|------|------|------|
 | 71 | native C/C++ workspace Entry fails on CI — two bundled `std` (libnros_cpp.a + per-package FFI staticlib) collide on `rust_begin_unwind` | bug | cmake | [0071-cpp-workspace-multi-std-staticlib-dup.md](0071-cpp-workspace-multi-std-staticlib-dup.md) |
+| 74 | provision sccache in the SDK tier so the compiler cache is on by default (~46% faster clean rebuilds; wiring already exists) | enhancement | build | [0074-provision-sccache-in-sdk-tier.md](0074-provision-sccache-in-sdk-tier.md) |
 
 Surfaced by the CI reorg (making `just check` the fast-gate SSoT exposed
 `check.yml` red); see `docs/development/ci-workflow-reorg.md`.
