@@ -47,15 +47,19 @@ on:
       - "rustfmt.toml"
       - "nros-sdk-index.toml"
       - ".github/workflows/check.yml"
+  # Nightly runs the FULL gate (fast + build tier) even on a direct-push-to-main
+  # workflow where PRs are rare — so the compile gates get a daily signal.
+  schedule:
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: check-${{ github.ref }}
+  group: check-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
   check:
-    name: check (just check + no_std)
+    name: check (fast on push; full on PR/nightly)
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -87,31 +91,39 @@ jobs:
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
-      # The host clippy pass exercises every build.rs (zenoh-pico / mbedtls /
-      # micro-{cdr,xrce} / cyclonedds), so those sources must be present.
-      - name: Provision workspace sources via nros
+      - name: Install clang-format (pinned via pypi wheel)
+        run: pip install --no-cache-dir "clang-format==17.0.5"
+
+      # The build tier's host clippy exercises every build.rs (zenoh-pico / mbedtls
+      # / micro-{cdr,xrce} / cyclonedds), so those sources must be present — only
+      # for the full (non-push) run; the fast tier is buildless.
+      - name: Provision workspace sources via nros (build tier only)
+        if: ${{ github.event_name != 'push' }}
         run: |
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \
                      --source micro-cdr --source micro-xrce-dds-client \
                      --source cyclonedds-src
 
-      - name: Install clang-format (pinned via pypi wheel)
-        run: pip install --no-cache-dir "clang-format==17.0.5"
+      # ----- fast tier (every event) -----
+      # `just check-fast` is the BUILDLESS gate set (fmt/clang-format/ABI/manifest/
+      # convention/cargo-tree). Finishes in seconds, so a direct push to main gets a
+      # gate that completes under the rapid multi-agent push cadence.
+      - name: just check-fast
+        run: just check-fast
 
-      # ----- gates (the `just check` aggregate is the SSoT) -----
-      # `just check` chains every fmt/clippy/ABI/source/dep-chain/staticlib gate
-      # (check-dep-chain sources ROS from the container itself). `just check-no-std`
-      # is the former ci.yml no_std core matrix (loops thumbv7m + riscv32imc).
-      - name: just check
-        run: just check
-
-      - name: just check-no-std
-        if: ${{ !cancelled() }}
-        run: just check-no-std
+      # ----- build tier (PR + nightly + dispatch, NOT per-push) -----
+      # The compile gates (workspace/example clippy, feature combos, riscv32 no_std,
+      # nros-tests source gates, staticlib link-proof, dep-chain) take minutes and
+      # would be cancelled on every push. `just check` = check-fast + check-build.
+      - name: just check-build + no_std
+        if: ${{ github.event_name != 'push' && !cancelled() }}
+        run: |
+          just check-build
+          just check-no-std
 
       # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
-      # Phase 104.A migration completes. Advisory only.
+      # Phase 104.A migration completes. Advisory only. (Build tier, non-push.)
       - name: just check-decoupling (advisory until Phase 104.A)
-        if: ${{ !cancelled() }}
+        if: ${{ github.event_name != 'push' && !cancelled() }}
         continue-on-error: true
         run: just check-decoupling

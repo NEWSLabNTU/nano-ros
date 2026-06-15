@@ -16,9 +16,19 @@ landed `52de496b2`. Applied since:
   `cancel-in-progress` only on PR so a started nightly always completes (the #57
   cadence fix). A direct push to `main` now triggers ONLY the fast `check` lane.
 
-Remaining: fix #69/#70 (gate content) so `check` greens; optionally rename/merge
-files into the tier names below (cosmetic — the triggers already implement the
-tiers). The original target/migration sections are kept below for reference.
+- **Fast-lane split** — `just check` = `check-fast` (BUILDLESS: fmt/clang-format/
+  ABI/manifest/convention/cargo-tree, ~1 min) + `check-build` (the compile gates:
+  workspace/example clippy, feature combos, riscv32 no_std, source gates, staticlib
+  link-proof, dep-chain, ~10 min). `check.yml`: per-**push** runs only
+  `check-fast` (completes under the rapid multi-agent push cadence; the full ~10-min
+  lane was being cancelled every ~2-3 min); **PR + nightly + dispatch** run the full
+  `check` + `check-no-std`. `just ci-fast` → `check-fast check-no-std`.
+- #69/#70 fixed (dep-chain own-feature detect + package.xml gate; staticlib test
+  re-pointed to the single archive). check gates green.
+
+Remaining (optional): merge/rename files into the tier names below (cosmetic — the
+triggers already implement the tiers). The original target/migration sections are
+kept below for reference.
 
 Goals (from the request):
 1. Every CI task runnable locally via a convenient named `just` recipe.

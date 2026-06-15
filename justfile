@@ -321,19 +321,38 @@ profile dir="." flags="":
 # deliberately restored (Phase 214.S / 227.3) as the unified RMW-selection model.
 # The recipe stays runnable (`just check-decoupling`) for anyone revisiting the
 # bridge-decoupling track, but it must not fail the green `check` gate.
+# Full static gate = the fast (buildless) tier + the build tier. `just check`
+# runs both (local default + the PR/nightly CI lane). The per-push CI lane runs
+# only `check-fast` so it completes under a rapid push cadence (the build tier's
+# workspace/example clippy + nros-tests/staticlib compiles are minutes; cancelled
+# repeatedly otherwise). See docs/development/ci-workflow-reorg.md.
 [group("main")]
-check: \
-    check-workspace-all check-workspace-features \
-    check-nros-log-riscv32 \
-    check-platform-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
-    check-no-direct-kernel-alloc \
-    check-no-allow-multiple-def \
-    check-weak-symbols \
-    check-version-lockstep check-source-gates \
-    check-example-fmt check-staticlib-symbols check-embedded-feature-unification \
-    check-codegen-invocation check-string-conventions check-dep-chain \
-    native::check check-c check-cpp check-python
+check: check-fast check-build
     @echo "All checks passed!"
+
+# Fast tier — BUILDLESS gates only (fmt/clang-format AST checks, ABI/board mirrors,
+# manifest + convention scripts, cargo-tree feature-unification). No cargo
+# build/clippy/test, so it finishes in well under a minute and survives the
+# per-push cadence. This is the per-push CI gate (`check.yml`).
+[group("main")]
+check-fast: \
+    check-platform-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
+    check-no-direct-kernel-alloc check-no-allow-multiple-def check-weak-symbols \
+    check-version-lockstep check-example-fmt check-embedded-feature-unification \
+    check-codegen-invocation check-string-conventions \
+    check-c check-cpp check-python
+    @echo "Fast checks passed!"
+
+# Build tier — the gates that COMPILE (workspace + embedded clippy, feature combos,
+# riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain codegen,
+# the example-matrix clippy). Minutes; runs on PR + nightly (`check.yml` non-push),
+# not on every direct push to main.
+[group("main")]
+check-build: \
+    check-workspace-all check-workspace-features check-nros-log-riscv32 \
+    check-source-gates check-staticlib-symbols check-dep-chain \
+    native::check
+    @echo "Build checks passed!"
 
 # Phase: crate-version lockstep — every workspace crate shares the release
 # version (the bump script edits them atomically). Mirrors the `check.yml`
@@ -1268,7 +1287,7 @@ acceptance: setup-cli
 #   just acceptance        (builds the CLI + a scaffolded project)
 # The full heavy lane stays `just ci` / `just test-all`.
 [group("ci")]
-ci-fast: check check-no-std
+ci-fast: check-fast check-no-std
     @echo "ci-fast passed!"
 
 # Cyclone DDS module CI step. Best-effort: skips cleanly when the
