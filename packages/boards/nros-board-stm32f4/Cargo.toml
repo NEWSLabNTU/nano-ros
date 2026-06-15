@@ -71,6 +71,11 @@ default = ["stm32f429", "ethernet", "rmw-zenoh"]
 # zenoh-pico `z_*` symbols still come from `zpico-sys`'s `platform-aliases` C TU,
 # now pulled via the board's own `nros-rmw-zenoh` dep.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 252 (issue 0072) — forward a declared `[safety]` axis to the zenoh
+# backend's own `safety-e2e` (the CRC attach/validate); `?` keeps it inert when
+# the board isn't built with rmw-zenoh. Codegen emits this only because the board
+# descriptor advertises `capability_features = ["safety-e2e"]`.
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # Phase 244.C5 enabler — opt into the `nros_platform::BoardEntry` impl so
 # `nros::main!(deploy = "stm32f4")` can drive this board. Pulls the `nros`
 # umbrella (executor + node-runtime). Off by default: legacy

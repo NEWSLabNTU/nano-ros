@@ -46,22 +46,34 @@ error (no blind 14-board edit).
   behaviour change (the existing `safety_axis_lowers_to_nros_feature`,
   `param_services_axis_lowers_to_nros_feature`, `safety_axis_reaches_zenoh_backend_feature`
   tests stay green = byte-identical output). Registry tests in `capability_resolver`.
-- **Wave 2 — descriptor capability advertisement.** Add a `supported_capabilities` (or
-  `[board.capability_features]`) field to the board descriptor + parse from `nros-board.toml`.
-  A board lists the capability features it forwards (e.g. `["safety-e2e"]`). Absent ⇒ none.
-- **Wave 3 — board-feature threading (generate.rs).** In `render_platform_dependencies`,
-  beside `board_rmw_features`, build a `capability_feats` list from `plan.safety` (via the
-  registry) and append to the board dep's feature list — **only** for capabilities the
-  descriptor advertises; else skip + `log::warn!` ("board X doesn't support safety-e2e").
-  Unit tests: advertised board → feature emitted; unadvertised → skipped + warned; off →
-  byte-identical.
-- **Wave 4 — per-board `safety-e2e` feature.** Add `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]`
-  (or the board's own backend forwarding) + the descriptor advertisement, **one board at a
-  time**, each reviewed against its own deps. Start `nros-board-native` (host-buildable +
-  testable — wire an orchestration `[safety]` native-board build into an e2e). Then the
-  embedded boards (freertos, stm32, threadx-family→overlay, nuttx, esp32, rtic, …) as their
-  toolchains allow; family crates forward to their overlay, xrce/cyclone-only boards declare
-  `safety-e2e = []` (inert).
+- **Wave 2 — descriptor capability advertisement — DONE (2026-06-16).**
+  `BoardDescriptor.capability_features: Vec<String>` (`board_descriptor.rs`), parsed from
+  `nros-board.toml` (`#[serde(default)]`). A board lists the capability features it forwards
+  (e.g. `["safety-e2e"]`); absent ⇒ none.
+- **Wave 3 — board-feature threading (generate.rs) — DONE (2026-06-16).** In
+  `render_platform_dependencies`, beside `board_rmw_features`, `board_capability_features(plan, &p)`
+  builds the list from `plan.safety` via the registry and appends to the board dep's feature
+  list (both the RtosOwned and normal branches) — **only** for capabilities the descriptor
+  advertises; else skip + `eprintln!` warn ("board X does not declare 'safety-e2e' …"). Tests:
+  `board_capability_features_gated_on_advertisement` (advertised → emitted; unadvertised →
+  skipped; off → empty/byte-identical).
+
+  **Correction:** the earlier "start with `nros-board-native`" premise was wrong — `native` /
+  `posix` is **board-less** (`packages/boards/posix/nros-board.toml`, no `board_crate`), so
+  native orchestration already lowers through the direct-backend path (issue-0072 native fix,
+  done). **The board-dep path is embedded-only** (stm32 / esp32 / freertos / threadx / nuttx /
+  rtic) — none host-buildable here, so per-board edits are validated by the descriptor-resolve
+  + the gate unit test, not an embedded build.
+- **Wave 4 — per-board `safety-e2e` feature.** Worked example **DONE: `nros-board-stm32f4`** —
+  `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]` (zenoh dep is `optional`, so `?` fits) +
+  `capability_features = ["safety-e2e"]` on both its descriptor entries. Validated by
+  `stm32f4_advertises_safety_capability_feature` (real-catalog resolve). **Remaining
+  (mechanical tail, per-board):** apply the same two edits to the other embedded boards that
+  pull `nros-rmw-zenoh` — esp32{-qemu,s3}, freertos/mps2-an385{,-freertos}, nuttx-qemu-{arm,riscv},
+  threadx-{linux,qemu-riscv64}, rtic-{stm32f4,mps2-an385}, fvp-aemv8r-smp, s32z270dc2-r52 —
+  each verifying its own zenoh wiring (optional → `?/safety-e2e`; family crates forward to
+  their overlay; xrce/cyclone-only → `safety-e2e = []`). Unbuildable locally; land per-board
+  reviewed against that board's deps.
 - **Wave 5 — C/C++ path.** Separate issue: a CMake/C `#define NROS_SYSTEM_SAFETY_E2E` (the
   registry's `cmake_token` / `c_define` slots, mirroring `-DNANO_ROS_RMW`) + a zpico-C safety
   gate. Scoped + filed, not built here.

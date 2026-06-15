@@ -180,6 +180,14 @@ pub struct BoardDescriptor {
     /// Extra features to enable on the board crate dependency.
     #[serde(default)]
     pub board_features: Vec<String>,
+    /// Phase 252 — the capability-axis features this board crate forwards to its
+    /// backend (e.g. `["safety-e2e"]` → the board's `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]`).
+    /// A declared `[safety]` axis lowers to the board feature only when the board
+    /// advertises it here; otherwise codegen skips it + warns (so a board without
+    /// the feature is never a Cargo error). Empty ⇒ the board carries no capability
+    /// forwarding yet. → RFC-0031 § "Generalization", issue 0072.
+    #[serde(default)]
+    pub capability_features: Vec<String>,
     /// Verbatim `.cargo/config.toml` body, with `${workspace}` placeholders for
     /// any layout path. `None` for boards that need no config (posix/zephyr/…).
     #[serde(default)]
@@ -389,6 +397,27 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
     /// defaults. All boards declare today; this catches a future board that
     /// omits the block (which would silently inherit a possibly-wrong heap/
     /// threads default — the issue-0038 footgun).
+    /// Phase 252 (issue 0072) — the stm32f4 descriptor advertises the `safety-e2e`
+    /// capability feature (the worked-example board), so codegen lowers `[safety]`
+    /// to its board `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]` forwarding.
+    #[test]
+    fn stm32f4_advertises_safety_capability_feature() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let cat = BoardCatalog::load(&root).expect("load real board catalog");
+        let d = cat
+            .resolve("stm32f4", "thumbv7em-none-eabihf")
+            .expect("stm32f4 descriptor");
+        assert!(
+            d.capability_features.iter().any(|f| f == "safety-e2e"),
+            "stm32f4 must advertise safety-e2e; got {:?}",
+            d.capability_features
+        );
+    }
+
     #[test]
     fn every_in_tree_board_declares_capabilities() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -538,6 +567,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             board_crate: None,
             crate_path: None,
             board_features: vec![],
+            capability_features: vec![],
             cargo_config: Some("inc = \"${workspace}/third-party/x\"".into()),
             entry: None,
             target_contains: None,
@@ -564,6 +594,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             board_crate: None,
             crate_path: None,
             board_features: vec![],
+            capability_features: vec![],
             cargo_config: None,
             entry: None,
             target_contains: None,

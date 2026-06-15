@@ -1439,6 +1439,34 @@ fn board_rmw_features(build: &PlanBuildOptions) -> Vec<String> {
     rmw_set(build).iter().map(|r| format!("rmw-{r}")).collect()
 }
 
+/// Phase 252 (issue 0072) — the capability-axis features that lower to the BOARD
+/// crate's forwarding feature (target 3 of the RFC-0031 capability generalization).
+/// A declared `[safety]` axis lowers to the board's `safety-e2e` feature only when
+/// the board advertises support (`capability_features` in its descriptor); a board
+/// that does not is **skipped + warned**, never a Cargo error. Empty when no
+/// capability axis is declared (byte-identical to pre-252).
+fn board_capability_features(
+    plan: &NrosPlan,
+    board: &crate::orchestration::board_descriptor::BoardDescriptor,
+) -> Vec<String> {
+    let mut feats = Vec::new();
+    if plan.safety.is_some()
+        && let Some(bf) = crate::orchestration::capability("safety").and_then(|c| c.backend_feature)
+    {
+        if board.capability_features.iter().any(|f| f == bf) {
+            feats.push(bf.to_string());
+        } else {
+            eprintln!(
+                "warning: board {:?} does not declare the '{bf}' capability feature; \
+                 [safety] enables the validation surface but NOT backend CRC on this \
+                 board (issue 0072)",
+                board.names
+            );
+        }
+    }
+    feats
+}
+
 fn render_platform_dependencies(options: &GenerateOptions, plan: &NrosPlan) -> String {
     let Some(workspace) = workspace_from_nros_path(&options.nros_path) else {
         return String::new();
@@ -1461,6 +1489,9 @@ fn render_platform_dependencies(options: &GenerateOptions, plan: &NrosPlan) -> S
     // in `register_backends()` (board-driven lowering for them is a follow-up —
     // see the C5b notes / RFC-0031).
     let rmw_feats = board_rmw_features(&plan.build);
+    // Phase 252 (issue 0072) — capability axes (`[safety]`) lower to the board
+    // crate's forwarding feature, gated on the board advertising support.
+    let cap_feats = board_capability_features(plan, &p);
     let board_line = match (p.board_crate.as_deref(), p.crate_path_rel()) {
         (Some(name), Some(rel)) => {
             let path = path_for_template(&workspace.join(rel));
@@ -1468,16 +1499,20 @@ fn render_platform_dependencies(options: &GenerateOptions, plan: &NrosPlan) -> S
                 // RtosOwned (NuttX): transports go to the RTOS defconfig (no
                 // transport-feature merge), but the board still selects + links
                 // the RMW backend via its `rmw-X` feature.
-                if rmw_feats.is_empty() {
+                let mut feats = rmw_feats.clone();
+                feats.extend(cap_feats.iter().cloned());
+                if feats.is_empty() {
                     format!("{name} = {{ path = \"{path}\" }}\n")
                 } else {
                     format!(
                         "{name} = {{ path = \"{path}\", features = {} }}\n",
-                        toml_string_array(&rmw_feats)
+                        toml_string_array(&feats)
                     )
                 }
             } else {
-                let feats: Vec<&str> = p.board_features.iter().map(String::as_str).collect();
+                let mut base: Vec<String> = p.board_features.clone();
+                base.extend(cap_feats.iter().cloned());
+                let feats: Vec<&str> = base.iter().map(String::as_str).collect();
                 board_dep(name, &path, &feats, &rmw_feats, &plan.build)
             }
         }
@@ -4723,6 +4758,51 @@ mod net_fragment_tests {
             on.iter().any(|f| f == "nros/safety-e2e"),
             "safety on must pull the feature: {on:?}"
         );
+    }
+
+    fn board_with_caps(caps: &[&str]) -> crate::orchestration::board_descriptor::BoardDescriptor {
+        use crate::orchestration::board_descriptor::*;
+        BoardDescriptor {
+            names: vec!["fake-board".into()],
+            platform: PlatformKind::Freertos,
+            target: None,
+            toolchain: Toolchain::Stable,
+            platform_feature: "platform-freertos".into(),
+            local_aliases: vec![],
+            link_kind: LinkKind::None,
+            entry_kind: EntryKind::BoardRun,
+            net_stack: NetStack::NanorosOwned,
+            chip: None,
+            board_crate: Some("nros-board-fake".into()),
+            crate_path: None,
+            board_features: vec![],
+            capability_features: caps.iter().map(|s| s.to_string()).collect(),
+            cargo_config: None,
+            entry: None,
+            target_contains: None,
+            capabilities: None,
+        }
+    }
+
+    #[test]
+    fn board_capability_features_gated_on_advertisement() {
+        // Phase 252 / issue 0072 — `[safety]` lowers to the board feature ONLY when
+        // the board advertises `safety-e2e`; else skip (warn), never a Cargo error.
+        let mut plan = plan_with_param_persistence(None);
+
+        // No [safety] → nothing, regardless of advertisement.
+        plan.safety = None;
+        assert!(board_capability_features(&plan, &board_with_caps(&["safety-e2e"])).is_empty());
+
+        // [safety] + board advertises → board feature emitted.
+        plan.safety = Some(crate::orchestration::plan::PlanSafety { crc: true });
+        assert_eq!(
+            board_capability_features(&plan, &board_with_caps(&["safety-e2e"])),
+            vec!["safety-e2e".to_string()]
+        );
+
+        // [safety] + board does NOT advertise → skipped (no Cargo error).
+        assert!(board_capability_features(&plan, &board_with_caps(&[])).is_empty());
     }
 
     #[test]

@@ -13,6 +13,8 @@ net_stack = "nanoros-owned"
 chip = "stm32f429"
 board_crate = "nros-board-stm32f4"
 board_features = ["stm32f429"]
+# Phase 252 (issue 0072) — this board forwards `[safety]` to its zenoh backend.
+capability_features = ["safety-e2e"]
 cargo_config = '''
 [build]
 target = "thumbv7em-none-eabihf"
@@ -48,6 +50,7 @@ net_stack = "nanoros-owned"
 chip = "stm32f407"
 board_crate = "nros-board-stm32f4"
 board_features = ["stm32f407"]
+capability_features = ["safety-e2e"]
 cargo_config = '''
 [build]
 target = "thumbv7em-none-eabihf"
