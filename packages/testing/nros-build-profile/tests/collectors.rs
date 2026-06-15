@@ -79,6 +79,34 @@ fn ninja_collapses_multi_output_edges() {
 }
 
 #[test]
+fn ninja_classifies_untokenized_cargo_output_as_compile() {
+    // Issue #73: a cargo edge whose output stamp has no cargo[-_]build token —
+    // nuttx's `cargo-target/<triple>/release/nros-nuttx-ffi`. Must land in
+    // compile (the Rust FFI build), not "other".
+    let text = "# ninja log v6\n\
+        0\t31436\t0\tcargo-target/armv7a-nuttx-eabihf/release/nros-nuttx-ffi\tabc\n\
+        0\t1000\t0\tfoo/x86_64-unknown-linux-gnu/release/some_bin\tdef\n\
+        0\t500\t0\tbuild/release/plain_c_app\tghi\n";
+    let c = ninja::parse(text);
+
+    let ffi = c.units.iter().find(|u| u.name == "nros-nuttx-ffi").unwrap();
+    assert_eq!(ffi.kind, Kind::Compile, "cargo-target path → compile");
+    assert!((ffi.dur_s - 31.436).abs() < 1e-6);
+
+    // triple/release binary also recognised
+    let triple = c.units.iter().find(|u| u.name == "some_bin").unwrap();
+    assert_eq!(triple.kind, Kind::Compile);
+
+    // but a plain build/release/app (no triple dir) is NOT misread as cargo
+    let plain = c.units.iter().find(|u| u.name == "plain_c_app").unwrap();
+    assert_eq!(
+        plain.kind,
+        Kind::Other,
+        "no false positive on non-triple release"
+    );
+}
+
+#[test]
 fn cargo_timings_parses_unit_data() {
     let c = cargo::parse(&fixture("cargo-timing.html"));
 

@@ -155,15 +155,36 @@ fn classify_edge(outputs: &[String]) -> (Kind, String) {
     (kind, basename(pick))
 }
 
-/// A corrosion/cargo edge: a cargo-build stamp target or a Rust artifact.
-/// Corrosion uses both `<crate>_cargo_build` (Zephyr) and `_cargo-build_<crate>`
-/// (native cmake) naming, so match either separator.
+/// A corrosion/cargo edge — detected by name token OR output path.
+///
+/// Name tokens cover the corrosion stamp conventions (`<crate>_cargo_build` on
+/// Zephyr, `_cargo-build_<crate>` on native cmake). But some targets carry no
+/// token (nuttx's `nros-nuttx-ffi`), so we also recognise a cargo **output
+/// path** — a `cargo-target/` dir, or a `<target-triple>/release|debug/` binary
+/// (issue #73). That keeps the dominant Rust FFI build in `compile`, not `other`.
 fn is_rust_build(output: &str) -> bool {
     let base = Path::new(output)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(output);
-    base.contains("cargo_build") || base.contains("cargo-build") || base.ends_with(".rlib")
+    if base.contains("cargo_build") || base.contains("cargo-build") || base.ends_with(".rlib") {
+        return true;
+    }
+    looks_like_cargo_output(output)
+}
+
+/// `true` when the path is a cargo build artifact: under a `cargo-target/` dir,
+/// or a `release`/`debug` profile dir immediately under a target-triple dir
+/// (e.g. `…/armv7a-nuttx-eabihf/release/nros-nuttx-ffi`). The triple test
+/// (≥ 2 dashes) avoids matching a plain `build/release/app` C output.
+fn looks_like_cargo_output(output: &str) -> bool {
+    let comps: Vec<&str> = output.split('/').filter(|c| !c.is_empty()).collect();
+    if comps.contains(&"cargo-target") {
+        return true;
+    }
+    comps
+        .windows(2)
+        .any(|w| matches!(w[1], "release" | "debug") && w[0].matches('-').count() >= 2)
 }
 
 /// Stage implied by a single output's extension.

@@ -1,11 +1,24 @@
 ---
 id: 73
 title: build-profile mislabels some corrosion Rust edges as "other" (nuttx nros-nuttx-ffi)
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-251]
+resolved_in: phase-251
 ---
+
+## Resolution
+
+Fixed by detecting cargo builds via output **path**, not just name token:
+`is_rust_build()` now also returns true for a `cargo-target/` directory or a
+`<target-triple>/release|debug/` binary (the triple test = ≥ 2 dashes in the
+parent component, which avoids matching a plain `build/release/app` C output).
+nuttx's `cargo-target/armv7a-nuttx-eabihf/release/nros-nuttx-ffi` (31.4 s) now
+lands in **compile**. Verified on the real build: `compile 100%` (was
+`compile 4% / other 72%`); `other` dropped to 1.5 s. Locked with
+`ninja_classifies_untokenized_cargo_output_as_compile` (incl. a non-triple
+false-positive guard). `packages/testing/nros-build-profile/src/collect/ninja.rs`.
 
 ## Problem
 

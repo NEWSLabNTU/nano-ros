@@ -47,7 +47,6 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | id | title                                                                 | type | area | file |
 |----|-----------------------------------------------------------------------|------|------|------|
 | 71 | native C/C++ workspace Entry fails on CI — two bundled `std` (libnros_cpp.a + per-package FFI staticlib) collide on `rust_begin_unwind` | bug | cmake | [0071-cpp-workspace-multi-std-staticlib-dup.md](0071-cpp-workspace-multi-std-staticlib-dup.md) |
-| 73 | build-profile mislabels some corrosion Rust edges as "other" (nuttx `nros-nuttx-ffi`) — stage % misleading | bug | build | [0073-build-profile-ninja-rust-edge-misclassified-other.md](0073-build-profile-ninja-rust-edge-misclassified-other.md) |
 
 Surfaced by the CI reorg (making `just check` the fast-gate SSoT exposed
 `check.yml` red); see `docs/development/ci-workflow-reorg.md`.
