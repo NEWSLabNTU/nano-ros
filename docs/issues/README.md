@@ -48,6 +48,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 |----|-----------------------------------------------------------------------|------|------|------|
 | 69 | dep-chain gate red — stm32f4 / qemu-arm-baremetal talkers dropped the rmw-zenoh feature | bug | ci | [0069-dep-chain-gate-rmw-zenoh-feature-drift.md](0069-dep-chain-gate-rmw-zenoh-feature-drift.md) |
 | 70 | staticlib duplicate-symbol gate red — both link-determinism tests fail on main | bug | build | [0070-staticlib-duplicate-symbols-gate-red.md](0070-staticlib-duplicate-symbols-gate-red.md) |
+| 71 | native C/C++ workspace Entry fails on CI — two bundled `std` (libnros_cpp.a + per-package FFI staticlib) collide on `rust_begin_unwind` | bug | cmake | [0071-cpp-workspace-multi-std-staticlib-dup.md](0071-cpp-workspace-multi-std-staticlib-dup.md) |
 
 Both surfaced by the CI reorg (making `just check` the fast-gate SSoT exposed that
 `check.yml` is chronically red); see `docs/development/ci-workflow-reorg.md`.
