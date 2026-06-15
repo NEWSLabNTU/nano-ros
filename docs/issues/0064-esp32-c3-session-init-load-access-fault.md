@@ -74,9 +74,41 @@ the **Rust bare-metal executor timer-dispatch**, not the clock:
 
 These are deep executor-runtime gaps on the esp32 bare-metal Rust path, which was never
 runtime-verified (the green freertos/threadx cells checked boot/setup, or used C
-examples with explicit publish loops — not the Rust timer-driven dispatch). Next:
-trace the executor timer wheel (`nros-node executor/spin.rs`) against `clock_us` on
-this path, and the ~6 s `spin_once` block. Separate from the (fixed) crash/OOM.
+examples with explicit publish loops — not the Rust timer-driven dispatch).
+
+## FINAL ROOT CAUSE 2026-06-15 — NOT an executor bug; the talker OOM-panics in register
+
+The "timer never fires / spin_once hangs" conclusion above is **superseded**. Traced with
+atomic debug counters (esp32 `log::info` does NOT route — the framework "Waiting for
+messages" never prints either — so log probes were useless; counters are the only reliable
+signal). The two-node e2e only surfaces the **listener** QEMU output, which registers one
+subscription + spins fine — **the executor timer-dispatch path is healthy**. Running the
+**talker alone** in QEMU against a zenohd shows it connects, then **panics with a heap OOM
+during `register()`** — decoded backtrace:
+
+```
+ExecutorNodeRuntime::register_dispatch_slot (node_runtime.rs:400)
+  -> Talker::register (talker/src/lib.rs:29 — the create_timer line)
+  -> DeclaredNode::declare_entity (node.rs:893)
+  -> ExecutorSink::create_entity (node_runtime.rs)
+  -> alloc::raw_vec::handle_error  (a Vec grow)
+  panicked at alloc.rs:573 — "memory allocation of N bytes failed"
+```
+
+The talker registers the **publisher** OK, then the **timer's** `create_entity` Vec-grow
+exhausts the Rust 96 KB esp-alloc heap — already mostly consumed by `Executor::open`'s
+zenoh-session setup. The talker never reaches the spin loop, so its 1 Hz timer never fires.
+(The listener's single subscription just fits + spins, which is why the e2e's listener-side
+output looked healthy and the earlier "setup complete" was the listener.)
+
+Same Rust-heap-vs-full-DRAM budget wall: the OpenEth in-place fix stopped the heap *wipe*
+(Size 98304 holds), but 96 KB is genuinely too small for the talker's session + publisher +
+timer registration, and DRAM is full so the heap can't grow (bumping → `.bss overflows
+DRAM`). **Fix = reduce Rust-heap allocation on the esp32 path** (the session/keyexpr/RX
+buffers consumed during `Executor::open`, and/or free a DRAM consumer — e.g. the 32 KB
+zpico FreeListHeap or OpenEth's 4-slot rx ring — to grow the esp-alloc heap). A heap-budget
+tuning effort on a DRAM-constrained target; the crash/OOM-wipe class is fixed, this is the
+residual sizing wall.
 
 ## Symptom
 
