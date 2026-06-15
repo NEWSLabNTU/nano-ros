@@ -18,7 +18,7 @@ default = ["rmw-zenoh"]
 # edge that blocked C5c. Backend self-registers on POSIX via its `.init_array`
 # ctor (loader-fired before main), kept live by the `#[used]` force-link static in `main.rs`.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]  # Phase 214.S.4.b — strict 1-entry parity
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys"]  # Phase 214.S.4.b — strict 1-entry parity
 rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
 
 [dependencies]

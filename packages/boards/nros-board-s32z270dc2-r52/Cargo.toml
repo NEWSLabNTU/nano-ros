@@ -24,7 +24,7 @@ ethernet = []
 # backend (`__FORCE_LINK_CYCLONEDDS_SYS` + `init_hardware` register) instead of
 # relying on a consumer's `nros/rmw-cyclonedds`. `default-features = false` drops
 # the `vendored` in-tree C++ build (Zephyr's CMake provides libddsc).
-rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys"]
 # Phase 128.C.3 — `nros/rmw-zenoh` was never a real feature on the
 # umbrella. Phase 248 C5a — NOT converted to a `dep:nros-rmw-zenoh` here: the
 # zenoh backend pulls a NON-optional `zpico-sys`, whose Zephyr build would

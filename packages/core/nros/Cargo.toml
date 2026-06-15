@@ -60,6 +60,19 @@ rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 # force-link; `nros-c`/`nros-cpp` bundle one backend, D3). Selection lowers to
 # the board feature (RFC-0031, codegen C5b), not an `nros` feature.
 
+# Phase 248-C2 follow-up (issue #67) — CycloneDDS descriptor-hook MARKER.
+# Cyclone resolves topic-type descriptors via a RUNTIME registry, so the typed
+# creators must build `M`'s descriptor before `dds_create_topic`. nros-node
+# compiles that hook in ONLY under `cfg(rmw_cyclonedds_present)`, emitted from the
+# private `nros-node/__cyclonedds-link` marker. A native RUST app that links the
+# Cyclone backend (`dep:nros-rmw-cyclonedds-sys`, app-owned) MUST also enable this
+# or `create_publisher::<M>` hits `PublisherCreationFailed` (the descriptor is
+# never registered). This forwards ONLY the cfg marker — it pulls NO concrete-RMW
+# dependency, so it does NOT reintroduce the phase-248-C5c concrete-backend
+# coupling (the backend dep stays app-owned). C/C++ use the static
+# `descriptors.cpp` table and never need this.
+rmw-cyclonedds = ["nros-node/__cyclonedds-link"]
+
 # Phase 99: backend native slot lending. See nros-node's rmw-lending
 # feature for backend support matrix.
 rmw-lending = ["nros-node/rmw-lending"]

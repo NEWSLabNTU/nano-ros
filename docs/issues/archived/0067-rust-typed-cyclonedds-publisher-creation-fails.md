@@ -1,11 +1,41 @@
 ---
 id: 67
-title: Rust typed CycloneDDS publisher creation fails (PublisherCreationFailed) — native rust cyclone talker/listener + ros2 action interop
-status: open
+title: Rust typed CycloneDDS publisher creation fails (PublisherCreationFailed) — native rust cyclone talker/listener
+status: resolved
 type: bug
 area: rmw
-related: [phase-248, phase-249, issue-0057]
+related: [phase-248, phase-249, issue-0057, issue-0068]
+resolved_in: "2026-06-15 — re-expose nros/rmw-cyclonedds descriptor-hook marker + fix example/board manifests"
 ---
+
+> **RESOLVED (2026-06-15).** Root cause: phase-248 C5c removed the `nros/rmw-cyclonedds`
+> feature, which was the **only** activator of `nros-node/__cyclonedds-link` →
+> `cfg(rmw_cyclonedds_present)`. With it gone, `cyclonedds_register::register_type::<M>`
+> compiled to a no-op for every rust app → the Int32 descriptor was never built via
+> the runtime seam → the C++ `dds_create_topic` had no descriptor → `PublisherCreationFailed`.
+> (phase-248 correctly removed the concrete-backend *dep*, but orphaned the functional
+> *cfg marker* the typed-descriptor hook needs — they are distinct.)
+>
+> **Fix:** re-expose a **marker-only** `rmw-cyclonedds = ["nros-node/__cyclonedds-link"]`
+> on `nros` (NO concrete-RMW dep — the backend stays app-owned via
+> `dep:nros-rmw-cyclonedds-sys`, so phase-248 agnosticism holds), and point the
+> affected manifests' `rmw-cyclonedds` feature at it (`["nros/rmw-cyclonedds",
+> "dep:nros-rmw-cyclonedds-sys"]`): 12 native rust examples + 2 boards
+> (fvp-aemv8r-smp, s32z270dc2-r52). `custom-msg` reverted — its hand-written
+> `SensorReading` doesn't impl `nros_serdes::schema::Message` (the bound
+> `rmw_cyclonedds_present` adds), and typed cyclone is a non-goal for it (its cyclone
+> variant is never built as a fixture). nros-board-native has no `nros` dep to forward
+> through; an app on it enables `nros/rmw-cyclonedds` on its own `nros` dep.
+>
+> **Validated locally:** the rust cyclone talker now publishes (C listener receives
+> 5/5); the 4 `native_api` cyclone talker↔listener tests (C+Cpp) PASS; all 12 typed
+> cyclone examples compile under the new `M: Message` bound; the default (zenoh) build
+> + `nros --features rmw-cyclonedds` check are clean.
+>
+> The 5th failure originally lumped here — `test_cyclonedds_action_nano_server_ros2_client`
+> ("Goal was rejected") — was MIS-ATTRIBUTED: it is the **C** action server + ROS 2
+> path (static `descriptors.cpp`, not the rust seam), a separate regression split out
+> to [issue 0068](0068-cyclonedds-ros2-action-goal-rejected.md).
 
 ## Symptom
 

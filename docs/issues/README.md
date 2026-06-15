@@ -46,9 +46,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| 67 | Rust typed CycloneDDS publisher creation fails (PublisherCreationFailed) — native rust cyclone + ros2 action interop | bug | rmw | [0067-rust-typed-cyclonedds-publisher-creation-fails.md](0067-rust-typed-cyclonedds-publisher-creation-fails.md) |
+| 68 | CycloneDDS ROS2 action interop — nano C action server rejects the ROS2 client goal ("Goal was rejected") | bug | rmw | [0068-cyclonedds-ros2-action-goal-rejected.md](0068-cyclonedds-ros2-action-goal-rejected.md) |
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#57** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#67** —
+rust typed CycloneDDS publisher `PublisherCreationFailed`: phase-248 C5c removed
+the `nros/rmw-cyclonedds` feature that was the sole activator of
+`nros-node/__cyclonedds-link` → `cfg(rmw_cyclonedds_present)`, so `register_type::<M>`
+no-op'd and the descriptor was never built. Fixed by re-exposing a marker-only
+`nros/rmw-cyclonedds` (no concrete dep) + pointing 12 examples + 2 boards at it
+(`custom-msg` excepted — hand-written msg, no `Message` impl). Validated: rust
+cyclone talker publishes, 4 `native_api` cyclone tests pass. The action-interop
+"Goal rejected" was mis-bundled → split to **#68**. See `archived/0067-*`. **#57** —
 host-integration chronically red: Cause-1 fixture-build OOM (capped
 `NROS_BUILD_JOBS=2×CARGO_BUILD_JOBS=2`) + post-cap residue triage (`fa2ecb60a`) +
 QEMU/Zephyr exclude-leak fix. Validated locally (CI can't complete under the
