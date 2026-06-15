@@ -12,3 +12,20 @@ pub mod collect;
 pub mod diagnostics;
 pub mod model;
 pub mod normalize;
+pub mod report;
+
+use std::path::Path;
+
+/// Run both collectors over `dir` and fold them into a normalized profile.
+/// Returns `None` when no timing artifacts were found at all (so the caller can
+/// emit an actionable "nothing to profile" message instead of an empty table).
+pub fn analyze(dir: &Path) -> Option<model::BuildProfile> {
+    let collected: Vec<collect::Collected> = [collect::ninja::collect(dir), collect::cargo::collect(dir)]
+        .into_iter()
+        .filter(|c| !c.is_empty())
+        .collect();
+    if collected.is_empty() {
+        return None;
+    }
+    Some(normalize::normalize(collected))
+}
