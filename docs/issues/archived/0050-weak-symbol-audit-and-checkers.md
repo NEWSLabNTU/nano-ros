@@ -1,11 +1,31 @@
 ---
 id: 50
 title: Audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR)
-status: open
+status: resolved
 type: tech-debt
 area: build
-related: [issue-0042, phase-241, phase-247]
+related: [issue-0042, phase-241, phase-247, phase-249, issue-0062]
+resolved_in: "phase-247 (gates) + phase-249 P4a (W3.1) + 2026-06-15 (smoltcp re-audit + gate green)"
 ---
+
+> **RESOLVED (2026-06-15).** All three scopes shipped and both gates are green.
+> - **Audit + checkers + reduction** — done (see Progress): the SSoT allowlist
+>   `scripts/weak-symbols-allowlist.txt`, the source gate (`scripts/check-weak-symbols.sh`
+>   + `weak_symbol_audit.rs::owned_weak_symbols_are_audited`), and the final-image
+>   gate (`scripts/check-weak-symbols-image.sh`, phase-247 W1). 155.A const-weak
+>   reduced to weak getters.
+> - **W3.1** — the weak `nros_app_register_backends` default deleted (phase-249 P4a);
+>   a missing registration is a link error, never a silent no-op.
+> - **Final close (2026-06-15):** the image gate caught two real items, both now
+>   fixed: (1) the #62 stub rename (`weak_register_backends.c` →
+>   `weak_platform_log_stubs.c`, + the nros-cpp stub gaining log fallbacks) left the
+>   allowlist stale → updated both entries; (2) `smoltcp_init`/`smoltcp_cleanup` were
+>   mis-classified as override-default, but no strong def exists — they are legacy
+>   no-op stubs the post-Phase-80 path no longer overrides (real bring-up is
+>   `nros_smoltcp` + the board `define_network_state!` macro). Re-audited to
+>   optional-hook (allowlist + image-gate coverage), exactly the `_tx_initialize_low_level`
+>   correction class. Now: source gate 11 files OK, image gate checked=20 fail=0,
+>   `weak_symbol_audit` rust test passes.
 
 ## Why
 

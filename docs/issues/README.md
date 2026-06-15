@@ -46,10 +46,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#62** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#50** —
+weak-symbol audit + checkers: SSoT allowlist + source gate
+(`weak_symbol_audit.rs`) + final-image gate (`check-weak-symbols-image.sh`);
+W3.1 weak-default deletion (phase-249 P4a); 155.A const-weak → weak getters.
+Final close re-audited `smoltcp_init/cleanup` to optional-hook (legacy no-op
+stubs; real bring-up is `nros_smoltcp` + `define_network_state!` — no strong def
+exists) and fixed the #62 stub-rename allowlist drift. Gates green: source 11
+files OK, image checked=20 fail=0. See `archived/0050-*`. **#62** —
 D3 completion: R1 (dispatch → generated `NanoRosRmwDispatch.cmake` from
 `resolve_rmw`, drift-guarded, consumed by the synth-runtime crate + top-level
 link), R2 (weak `nros_app_register_backends` default deleted → missing

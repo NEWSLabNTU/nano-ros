@@ -52,11 +52,13 @@ COVERAGE=(
     # Serial example ELFs (Phase 244.D1 Wave D): board serial aliases.
     "examples/qemu-arm-baremetal/rust|qemu-serial-talker|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
     "examples/qemu-arm-baremetal/rust|qemu-serial-listener|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
-    # Bare-metal smoltcp net ELFs (MPS2-AN385 LAN9118): the `nros-smoltcp`
-    # driver supplies strong `smoltcp_{init,cleanup}` (weak stubs in
-    # zpico platform_aliases.c when smoltcp is absent).
-    "examples/qemu-arm-baremetal/rust|qemu-bsp-talker|smoltcp_init smoltcp_cleanup"
-    "examples/qemu-arm-baremetal/rust|qemu-bsp-listener|smoltcp_init smoltcp_cleanup"
+    # (smoltcp_init/smoltcp_cleanup are NOT image-checked: re-audited 2026-06-15
+    #  to optional-hook. They are legacy no-op stubs the post-Phase-80 path no
+    #  longer overrides — real bring-up is `nros_smoltcp` + the board
+    #  `define_network_state!` macro; the unprefixed symbols are never given a
+    #  strong def, so they correctly stay weak in qemu-bsp-talker/listener. The
+    #  image gate caught the stale "board strong smoltcp_{init,cleanup}" claim,
+    #  same class as _tx_initialize_low_level. See the allowlist.)
     # ThreadX RISC-V64 firmware ELFs: the board overlay supplies a strong
     # `nros_board_init_eth` (NetX bring-up) and — phase-247 W3.2 — the app
     # stack/priority *getters*. A dropped override surfaces the symbol as weak
