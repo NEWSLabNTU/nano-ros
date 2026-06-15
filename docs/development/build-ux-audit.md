@@ -107,21 +107,27 @@ cold builds) on `examples/native/rust/talker`. The repo wires a compiler cache o
 **never** sets `CC=ccache` for the C side. On this host **sccache is not installed** and
 `CC` is unwrapped → out of the box, clean builds cache nothing.
 
-| build (`cargo clean` each time) | total | codegen stage |
-| --- | --- | --- |
-| **cold** (no cache) | 30.4 s | 21.8 s (72 %) — the `zpico-sys` zenoh-pico C compile |
-| **ccache-warm** (`CC="ccache cc"`, 133/133 C hits) | 19.9 s | **4.0 s** |
+| build (`cargo clean` each time) | total | codegen stage | cache |
+| --- | --- | --- | --- |
+| **cold** (no cache) | 30.4 s | 21.8 s (72 %) — `zpico-sys` zenoh-pico C compile | — |
+| **ccache-warm** (`CC="ccache cc"`) | 19.9 s | 4.0 s | 133/133 C hits |
+| **sccache-warm** (`RUSTC_WRAPPER=sccache` + `CC="sccache cc"`) | **16.3 s** | 5.8 s | 271/272 hits (132 C + 139 Rust), 99.6 % |
 
-**ccache alone cut a clean rebuild ~33 % (30.4 → 20 s)** by caching the zenoh-pico C
-build (the `zpico-sys` build script, the single biggest unit), which is cache-stable
-across builds. The remaining 20 s is rustc dep compilation (`nros-cli-core` 7.7 s, `syn`
-3 s, `zerocopy` 3.3 s …) — **not** cached here because sccache is absent; `RUSTC_WRAPPER=
-sccache` would cut most of that too.
+**ccache (C only) cut a clean rebuild ~33 %; sccache (rustc + C) cut it ~46 %** (30.4 →
+16.3 s). sccache wins more because one wrapper caches *both* the zenoh-pico C build and
+the rustc dep compiles (`syn`, `zerocopy`, the `nros-*` crates). The zenoh-pico C compile
+(`zpico-sys`, the single biggest cold unit at ~17 s) is cache-stable and goes to ~0 either
+way.
 
 Takeaways:
-- Two standard caches roughly halve clean/CI build time, but **neither is enabled by
-  default**: sccache isn't installed, and the C build is never `ccache`-wrapped.
-- sccache (rustc) and ccache (C) are complementary — the zenoh-pico C compile is invisible
-  to `RUSTC_WRAPPER`, so wiring `CC`/`CXX=ccache` is a separate, additive lever.
-- Cheapest action: provision sccache via the SDK tier and set `CC`/`CXX=ccache` in the
+- A compiler cache roughly halves clean/CI build time, but **none is enabled by default**:
+  sccache wasn't installed (justfile's `RUSTC_WRAPPER := sccache` fell back to empty), and
+  the C build is never `CC`-wrapped.
+- One wrapper covers both languages — `RUSTC_WRAPPER=sccache` + `CC`/`CXX="sccache cc"` is
+  simpler than running sccache for Rust and ccache for C separately.
+- **After caching, the bottleneck shifts to build-script *execution*** — nano-ros's own
+  codegen tooling (`nros-cli-core`, `rosidl-codegen`, `zpico-sys` build-script *run*, not
+  its C compiles) — which a compiler cache cannot touch. Next lever after caching would be
+  codegen-output caching / fewer codegen re-runs, not faster compilation.
+- Action: provision sccache via the SDK tier and export the wrapper + `CC`/`CXX` in the
   build env so fresh checkouts / CI / config-switches stop paying the full cold cost.
