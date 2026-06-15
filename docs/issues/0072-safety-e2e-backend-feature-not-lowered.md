@@ -68,6 +68,18 @@ The declared `[safety]` axis lowers to `nros/safety-e2e` on the generated entry
    enables the validation *surface* (the `ctx.integrity()` API, sequence tracking) but not
    the CRC sub-field over zenoh. Native + hand-written examples are unaffected (fixed above).
 
+## Planned resolution (direction, 2026-06-16)
+
+Generalize beyond a per-capability passthrough: **let users declare backend/crate features
+in config and lower them to build features, exactly like RMW selection** (RFC-0031). A
+declared feature set (`safety`, `param_services`, and future axes) flows through the same
+machinery that lowers `[system].rmw` → the board crate's `rmw-<x>` feature — so the board
+path gets the backend's `safety-e2e` for free, without a bespoke per-board passthrough, and
+the phase-250 axes (`[safety]` / `[param_services]`) become instances of one declared-
+feature → lowered-build-feature mechanism. This subsumes both the native threading already
+landed and the open board path. Track the design with RFC-0031 (RMW selection & lowering)
+as the precedent.
+
 ## Also consider
 
 - Other backends (cyclonedds, xrce) — do they carry a `safety-e2e` CRC path? If not, the
