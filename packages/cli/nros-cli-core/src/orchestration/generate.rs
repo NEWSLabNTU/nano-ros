@@ -1563,17 +1563,22 @@ fn rmw_set(build: &PlanBuildOptions) -> Vec<&'static str> {
 }
 
 /// Cargo dep line(s) for one canonical RMW backend.
-fn render_one_backend(workspace: &Path, build: &PlanBuildOptions, rmw: &str) -> String {
+fn render_one_backend(
+    workspace: &Path,
+    build: &PlanBuildOptions,
+    rmw: &str,
+    safety: bool,
+) -> String {
     match rmw {
         "zenoh" => format!(
             "nros-rmw-zenoh = {{ path = \"{}\", default-features = false, features = {} }}\n",
             path_for_template(&workspace.join("packages/zpico/nros-rmw-zenoh")),
-            toml_string_array(&backend_features(build, "zenoh")),
+            toml_string_array(&backend_features(build, "zenoh", safety)),
         ),
         "xrce" => format!(
             "nros-rmw-xrce-cffi = {{ path = \"{}\", default-features = false, features = {} }}\n",
             path_for_template(&workspace.join("packages/xrce/nros-rmw-xrce-cffi")),
-            toml_string_array(&backend_features(build, "xrce")),
+            toml_string_array(&backend_features(build, "xrce", safety)),
         ),
         // Phase 169 (nano-ros 2026-05-19) — dust-dds retired; the
         // generic "dds" / "rmw-dds" / "rmw-dds-cffi" tokens are no
@@ -1596,9 +1601,10 @@ fn render_backend_dependencies(options: &GenerateOptions, plan: &NrosPlan) -> St
     // Phase 173.5 — emit a dep for every RMW the transports bind to
     // (bridge mode links 2+). Single-RMW (or no `[[transport]]`) emits
     // exactly one, byte-identical to before.
+    let safety = plan.safety.is_some();
     rmw_set(&plan.build)
         .iter()
-        .map(|rmw| render_one_backend(&workspace, &plan.build, rmw))
+        .map(|rmw| render_one_backend(&workspace, &plan.build, rmw, safety))
         .collect()
 }
 
@@ -1610,7 +1616,7 @@ fn workspace_from_nros_path(nros_path: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-fn backend_features(build: &PlanBuildOptions, backend: &str) -> Vec<String> {
+fn backend_features(build: &PlanBuildOptions, backend: &str, safety: bool) -> Vec<String> {
     let mut features = Vec::new();
     if uses_std(build) {
         features.push("std".to_string());
@@ -1623,7 +1629,15 @@ fn backend_features(build: &PlanBuildOptions, backend: &str) -> Vec<String> {
     // compiles those transports; locator picks at runtime"). nros-rmw-zenoh
     // now only exposes `link-tls` + `link-custom`. Plain TCP/UDP is
     // unconditional — no per-backend feature needed.
-    let _ = backend;
+    //
+    // Phase 250 (issue 0072) — a declared `[safety]` axis must reach the
+    // BACKEND's own `safety-e2e` (the CRC attach on publish + validate on
+    // receive live there), not just `nros/safety-e2e` on the entry — Cargo
+    // features don't propagate upward. Only zenoh carries the CRC path today;
+    // xrce / cyclonedds have no `safety-e2e` feature, so the axis no-ops there.
+    if safety && backend == "zenoh" {
+        features.push("safety-e2e".to_string());
+    }
     features
 }
 
@@ -4690,6 +4704,35 @@ mod net_fragment_tests {
         assert!(
             on.iter().any(|f| f == "nros/safety-e2e"),
             "safety on must pull the feature: {on:?}"
+        );
+    }
+
+    #[test]
+    fn safety_axis_reaches_zenoh_backend_feature() {
+        // Issue 0072 — a declared `[safety]` must also enable the BACKEND's own
+        // safety-e2e (the CRC path), not just `nros/safety-e2e`. Native board-less
+        // builds carry a direct `nros-rmw-zenoh` dep via `backend_features`.
+        let build = plan_with_param_persistence(None).build;
+        // Safety on → zenoh dep carries safety-e2e.
+        assert!(
+            backend_features(&build, "zenoh", true)
+                .iter()
+                .any(|f| f == "safety-e2e"),
+            "zenoh backend must carry safety-e2e when [safety] is declared"
+        );
+        // Safety off → it must not (byte-identical to pre-0072).
+        assert!(
+            !backend_features(&build, "zenoh", false)
+                .iter()
+                .any(|f| f == "safety-e2e"),
+            "safety off must not pull the backend feature"
+        );
+        // xrce has no safety-e2e CRC path → never pulled, even with safety on.
+        assert!(
+            !backend_features(&build, "xrce", true)
+                .iter()
+                .any(|f| f == "safety-e2e"),
+            "xrce has no safety-e2e feature; the axis no-ops there"
         );
     }
 

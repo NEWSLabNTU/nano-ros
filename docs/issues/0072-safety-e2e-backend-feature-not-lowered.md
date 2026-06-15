@@ -44,24 +44,29 @@ directly (optional, so it only applies on the rmw-zenoh path):
 
 Verified: `crc=ok` end-to-end (`tests/safety_e2e.rs::test_declarative_safety_listener_receives_integrity`).
 
-## Open — the orchestration lowering (phase-250 Wave 1) has the same gap
+## Orchestration lowering (phase-250 Wave 1) — native DONE, board path open
 
 The declared `[safety]` axis lowers to `nros/safety-e2e` on the generated entry
-(`generated_default_features`, `generate.rs`), but **not** to the backend's `safety-e2e`.
-So an orchestration-built `[safety]` system still gets `crc_valid: None`. Completing it is
-two paths:
+(`generated_default_features`, `generate.rs`), but originally **not** to the backend's
+`safety-e2e`. Two paths:
 
-1. **Native / board-less** — thread `plan.safety` into `backend_features()` /
-   `render_one_backend()` (`generate.rs:1564,1613`) so the direct `nros-rmw-<x>` dep carries
-   `safety-e2e`.
-2. **Board-backed (embedded)** — the backend is pulled by the board crate's `rmw-<x>`
-   feature; the board crate (e.g. `nros-board-native`) needs a `safety-e2e` passthrough
-   feature (`nros-rmw-zenoh?/safety-e2e`) that the generated entry enables when `[safety]`
-   is declared. This is the RFC-0031 board-as-RMW-selection-point analog for the safety
-   capability.
+1. **Native / board-less — DONE (2026-06-16).** `render_backend_dependencies` threads
+   `plan.safety.is_some()` → `render_one_backend` → `backend_features(build, backend,
+   safety)`, which pushes `safety-e2e` onto the direct `nros-rmw-zenoh` dep (only zenoh —
+   xrce/cyclonedds have no `safety-e2e` feature, so the axis no-ops there). Test:
+   `generate::…::safety_axis_reaches_zenoh_backend_feature`.
 
-Until then, orchestration `[safety]` enables the validation *surface* (the
-`ctx.integrity()` API, sequence tracking) but not the CRC sub-field over zenoh.
+2. **Board-backed (embedded) — OPEN.** The backend is pulled by the board crate's `rmw-<x>`
+   feature, so the board crate needs a `safety-e2e` passthrough that the generated entry
+   enables when `[safety]` is declared (the RFC-0031 board-as-RMW-selection-point analog).
+   **Not done here, deliberately:** 14 board crates pull `nros-rmw-zenoh` and they wire it
+   **heterogeneously** — some `optional = true` (→ `nros-rmw-zenoh?/safety-e2e`), some
+   direct (→ `nros-rmw-zenoh/safety-e2e`), some feature-gated behind their own `rmw-zenoh`.
+   A uniform passthrough does not fit, and none are buildable without their cross-toolchains,
+   so a blind 14-crate edit can't be validated. Needs per-board care + an embedded
+   safety-e2e validation path. Until then, orchestration `[safety]` on an **embedded** board
+   enables the validation *surface* (the `ctx.integrity()` API, sequence tracking) but not
+   the CRC sub-field over zenoh. Native + hand-written examples are unaffected (fixed above).
 
 ## Also consider
 
