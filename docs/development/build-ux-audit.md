@@ -98,3 +98,30 @@ Two collectors (`ninja_log`, `cargo_timings`), a normalizer to a single `BuildPr
 a small data-driven diagnostics layer (cold-C-build, shared-crate-recompiled-N×,
 isolated-`target/`, job-count-vs-RAM), and a reporter (terminal table + `--deep`
 drill-down + `--json`). Design: the companion spec. Work items + acceptance: phase-251.
+
+## Measured: the caching win (2026-06-15)
+
+Used the shipped analyzer to quantify the dominant finding (Rust→C-FFI / zenoh-pico
+cold builds) on `examples/native/rust/talker`. The repo wires a compiler cache only
+*if present* (`RUSTC_WRAPPER := sccache` in the justfile, falling back to empty), and
+**never** sets `CC=ccache` for the C side. On this host **sccache is not installed** and
+`CC` is unwrapped → out of the box, clean builds cache nothing.
+
+| build (`cargo clean` each time) | total | codegen stage |
+| --- | --- | --- |
+| **cold** (no cache) | 30.4 s | 21.8 s (72 %) — the `zpico-sys` zenoh-pico C compile |
+| **ccache-warm** (`CC="ccache cc"`, 133/133 C hits) | 19.9 s | **4.0 s** |
+
+**ccache alone cut a clean rebuild ~33 % (30.4 → 20 s)** by caching the zenoh-pico C
+build (the `zpico-sys` build script, the single biggest unit), which is cache-stable
+across builds. The remaining 20 s is rustc dep compilation (`nros-cli-core` 7.7 s, `syn`
+3 s, `zerocopy` 3.3 s …) — **not** cached here because sccache is absent; `RUSTC_WRAPPER=
+sccache` would cut most of that too.
+
+Takeaways:
+- Two standard caches roughly halve clean/CI build time, but **neither is enabled by
+  default**: sccache isn't installed, and the C build is never `ccache`-wrapped.
+- sccache (rustc) and ccache (C) are complementary — the zenoh-pico C compile is invisible
+  to `RUSTC_WRAPPER`, so wiring `CC`/`CXX=ccache` is a separate, additive lever.
+- Cheapest action: provision sccache via the SDK tier and set `CC`/`CXX=ccache` in the
+  build env so fresh checkouts / CI / config-switches stop paying the full cold cost.
