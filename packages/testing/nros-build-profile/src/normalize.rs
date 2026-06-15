@@ -5,8 +5,10 @@
 //! total *work* (sum of unit durations), so the percentages sum to 100 even when
 //! the build ran units in parallel (where work-sum exceeds the wall span).
 
-use crate::collect::Collected;
-use crate::model::{Backend, BuildProfile, Kind, Stage, Unit};
+use crate::{
+    collect::Collected,
+    model::{Backend, BuildProfile, Kind, Stage, Unit},
+};
 
 /// Combine one or more collector outputs into a normalized profile.
 pub fn normalize(collected: Vec<Collected>) -> BuildProfile {
@@ -67,16 +69,23 @@ fn span(c: &Collected) -> f64 {
 /// identified backend, falling back to a guess from the unit shape.
 fn resolve_backend(backends: &[Backend], units: &[Unit]) -> Backend {
     let has_cargo = backends.contains(&Backend::Cargo);
-    let has_ninja = backends
-        .iter()
-        .any(|b| matches!(b, Backend::Ninja | Backend::NinjaWest | Backend::NinjaCmake | Backend::NinjaIdf));
+    let has_ninja = backends.iter().any(|b| {
+        matches!(
+            b,
+            Backend::Ninja | Backend::NinjaWest | Backend::NinjaCmake | Backend::NinjaIdf
+        )
+    });
     match (has_cargo, has_ninja) {
         (true, true) => Backend::Mixed,
         _ => backends
             .iter()
             .copied()
             .next()
-            .unwrap_or(if units.is_empty() { Backend::Ninja } else { Backend::Cargo }),
+            .unwrap_or(if units.is_empty() {
+                Backend::Ninja
+            } else {
+                Backend::Cargo
+            }),
     }
 }
 

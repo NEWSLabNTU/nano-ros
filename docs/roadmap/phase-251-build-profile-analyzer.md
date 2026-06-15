@@ -1,7 +1,9 @@
 # Phase 251 — passive build-profile analyzer (`nros-build-profile`)
 
-Status: **Planned (2026-06-16)** · Design: `docs/superpowers/specs/2026-06-16-build-profiling-design.md`
-· Audit: `docs/development/build-ux-audit.md`
+Status: **Implemented (2026-06-16)** — P1–P4 landed; crate at
+`packages/testing/nros-build-profile`, driven by `just profile`. · Design:
+`docs/superpowers/specs/2026-06-16-build-profiling-design.md` · Audit:
+`docs/development/build-ux-audit.md`
 
 ## Why
 
@@ -64,19 +66,26 @@ New host crate `packages/testing/nros-build-profile/` (main workspace, lib + thi
 - W3.4 Reporter golden test.
 
 ### P4 — just integration + docs
-- W4.1 `just profile <dir> [--deep]` recipe (analysis-only) + `NROS_PROFILE=1` `--timings`
-  injection in the relevant in-repo build recipes.
-- W4.2 Integration test: `just profile` against a prebuilt example fixture dir.
-- W4.3 Book page (`book/src/`) — "profiling your build" with the three usage flows.
-- W4.4 CLAUDE.md pitfall/pointer line + cross-links from the audit/spec.
+- W4.1 `just profile <dir> [flags]` recipe (analysis-only; builds the analyzer bin,
+  runs it against an already-built dir). **Done.** The `NROS_PROFILE=1` `--timings`
+  injection into platform build recipes was **dropped** as scope: it would touch many
+  recipes and pushes build orchestration into `just`, against the lean external-dep
+  stance. Instead the cargo `--timings` opt-in is **documented** (one flag the user
+  adds to their normal `cargo build`), and the analyzer degrades to a coarse table +
+  a one-line hint when it is absent.
+- W4.2 Integration test (`tests/integration.rs`): `analyze()` against staged
+  prebuilt-artifact dirs — exercises real `.ninja_log` / cargo-timings discovery. **Done.**
+- W4.3 Book page `book/src/user-guide/build-profiling.md` (+ SUMMARY entry) — the three
+  usage flows. **Done.**
+- W4.4 CLAUDE.md "Where things live" pointer row. **Done.**
 
 ## Acceptance
 
 - `just profile examples/zephyr/rust/talker` (after a `west build`) prints a stage table
   with codegen/compile/link percentages and at least one hint, sourced from `.ninja_log`,
   with **no rebuild**.
-- `NROS_PROFILE=1 just native build talker` then `just profile … --deep` shows a per-crate
-  cargo-timings drill-down.
+- `cd examples/native/rust/talker && cargo build --timings` then `just profile … --deep`
+  shows a per-crate cargo-timings drill-down.
 - `--json` emits a `nros-build-profile.json` a CI step can diff across commits.
 - A cargo build **without** `--timings` still produces a coarse table and a one-line hint
   to enable deep data (no failure).

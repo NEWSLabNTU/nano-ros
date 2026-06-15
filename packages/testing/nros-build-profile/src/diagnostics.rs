@@ -55,10 +55,7 @@ pub fn run(profile: &BuildProfile, ctx: &Context) -> Vec<String> {
 
 /// Headline: the single slowest unit and its share of its stage.
 fn dominant_unit(p: &BuildProfile) -> Option<String> {
-    let slowest = p
-        .units
-        .iter()
-        .max_by(|a, b| a.dur_s.total_cmp(&b.dur_s))?;
+    let slowest = p.units.iter().max_by(|a, b| a.dur_s.total_cmp(&b.dur_s))?;
     if slowest.dur_s <= 0.0 {
         return None;
     }
@@ -140,7 +137,9 @@ fn job_count_vs_ram(ctx: &Context) -> Option<String> {
             "jobs={jobs} on {gib:.1} GiB = {per_job:.1} GiB/job \u{2014} OOM risk (issue #57); lower NROS_BUILD_JOBS"
         ))
     } else {
-        Some(format!("jobs={jobs} within RAM budget ({per_job:.1} GiB/job)"))
+        Some(format!(
+            "jobs={jobs} within RAM budget ({per_job:.1} GiB/job)"
+        ))
     }
 }
 

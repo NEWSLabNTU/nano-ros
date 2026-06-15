@@ -8,12 +8,17 @@
 //!
 //! DIR defaults to the current directory.
 
-use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::{
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
-use nros_build_profile::diagnostics::{self, Context};
-use nros_build_profile::report::{self, Opts};
-use nros_build_profile::{analyze, model::BuildProfile};
+use nros_build_profile::{
+    analyze,
+    diagnostics::{self, Context},
+    model::BuildProfile,
+    report::{self, Opts},
+};
 
 struct Args {
     dir: PathBuf,

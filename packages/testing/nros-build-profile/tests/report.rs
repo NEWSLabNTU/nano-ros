@@ -1,8 +1,10 @@
 //! Golden reporter tests — fixed `BuildProfile` values render to exact text
 //! (phase-251 P3, W3.4). Deterministic widths/rounding make this stable.
 
-use nros_build_profile::model::{Backend, BuildProfile, Kind, Stage, Unit};
-use nros_build_profile::report::{self, Opts};
+use nros_build_profile::{
+    model::{Backend, BuildProfile, Kind, Stage, Unit},
+    report::{self, Opts},
+};
 
 fn unit(name: &str, kind: Kind, dur_s: f64, is_native: bool) -> Unit {
     Unit {

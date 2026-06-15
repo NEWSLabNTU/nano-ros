@@ -301,6 +301,19 @@ _cmake-cargo-stale-guard build_dir:
 format: format-workspace native::format format-c format-cpp format-python
     @echo "All formatting completed!"
 
+# Profile a project's build — passive, read-only (phase-251). Parses the timing
+# artifacts a normal build already emitted under DIR (build*/.ninja_log for
+# west/cmake/idf; target*/cargo-timings/ for cargo) into a stage table. It never
+# builds. For per-crate cargo detail, build with `cargo build --timings` first.
+#   just profile examples/zephyr/rust/talker
+#   just profile examples/native/rust/talker --deep
+# The analyzer bin is also runnable standalone for external copy-out projects:
+#   ./target/debug/nros-build-profile <dir> --deep
+[group("main")]
+profile dir="." flags="":
+    @cargo build -q -p nros-build-profile --bin nros-build-profile
+    @"{{justfile_directory()}}/target/debug/nros-build-profile" {{dir}} {{flags}}
+
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
 # `check-decoupling` is intentionally NOT in this gate: it guards the Phase-104.A
 # "no concrete backend/platform refs in nros/nros-node" goal, which RFC-0031

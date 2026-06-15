@@ -44,6 +44,7 @@
 - [Message Generation](./user-guide/message-generation.md)
 - [Configuration](./user-guide/configuration.md)
 - [Logging](./user-guide/logging.md)
+- [Profiling Your Build](./user-guide/build-profiling.md)
 - [Deployment Workflow](./user-guide/deployment.md)
 - [ROS 2 Interoperability](./getting-started/ros2-interop.md)
 - [Choosing an RMW Backend](./user-guide/rmw-backends.md)

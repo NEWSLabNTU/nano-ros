@@ -5,11 +5,12 @@
 //! `start_ms  end_ms  mtime  output  command_hash`. Duration is `end - start`
 //! in milliseconds; `start_ms` is relative to the build's first edge.
 
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
-use crate::collect::Collected;
-use crate::model::{Backend, Kind, RawUnit};
+use crate::{
+    collect::Collected,
+    model::{Backend, Kind, RawUnit},
+};
 
 /// Discover and parse the newest `.ninja_log` under `dir` (searches `dir` and
 /// any `build*/` subdirectory, one level deep).
@@ -53,11 +54,9 @@ fn find_ninja_log(dir: &Path) -> Option<std::path::PathBuf> {
             }
         }
     }
-    candidates.into_iter().max_by_key(|p| {
-        std::fs::metadata(p)
-            .and_then(|m| m.modified())
-            .ok()
-    })
+    candidates
+        .into_iter()
+        .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
 }
 
 /// Parse `.ninja_log` text. Last row per output wins (handles rebuild rows).

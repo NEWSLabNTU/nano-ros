@@ -47,7 +47,11 @@ pub fn render(p: &BuildProfile, hints: &[String], opts: Opts) -> String {
 }
 
 fn render_header(p: &BuildProfile) -> String {
-    format!("Backend: {:<16} Total: {:.1}s\n", p.backend.label(), p.total_s)
+    format!(
+        "Backend: {:<16} Total: {:.1}s\n",
+        p.backend.label(),
+        p.total_s
+    )
 }
 
 fn render_table(p: &BuildProfile) -> String {
@@ -78,7 +82,12 @@ fn render_deep(p: &BuildProfile, top_n: usize) -> String {
     for u in &units[..shown] {
         let bar_len = ((u.dur_s / max) * 8.0).round() as usize;
         let bar = "#".repeat(bar_len.max(if u.dur_s > 0.0 { 1 } else { 0 }));
-        s.push_str(&format!("  {:<18} {:>7} {}\n", u.name, format!("{:.1}s", u.dur_s), bar));
+        s.push_str(&format!(
+            "  {:<18} {:>7} {}\n",
+            u.name,
+            format!("{:.1}s", u.dur_s),
+            bar
+        ));
     }
     if units.len() > shown {
         let rest: f64 = units[shown..].iter().map(|u| u.dur_s).sum();

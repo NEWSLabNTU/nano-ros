@@ -20,10 +20,11 @@ use std::path::Path;
 /// Returns `None` when no timing artifacts were found at all (so the caller can
 /// emit an actionable "nothing to profile" message instead of an empty table).
 pub fn analyze(dir: &Path) -> Option<model::BuildProfile> {
-    let collected: Vec<collect::Collected> = [collect::ninja::collect(dir), collect::cargo::collect(dir)]
-        .into_iter()
-        .filter(|c| !c.is_empty())
-        .collect();
+    let collected: Vec<collect::Collected> =
+        [collect::ninja::collect(dir), collect::cargo::collect(dir)]
+            .into_iter()
+            .filter(|c| !c.is_empty())
+            .collect();
     if collected.is_empty() {
         return None;
     }

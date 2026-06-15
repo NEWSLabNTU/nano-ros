@@ -2,8 +2,10 @@
 //! No build is run — the fixtures are hand-authored to mirror real
 //! `.ninja_log` / cargo-timings output (phase-251 P1, W1.4).
 
-use nros_build_profile::collect::{cargo, ninja};
-use nros_build_profile::model::Kind;
+use nros_build_profile::{
+    collect::{cargo, ninja},
+    model::Kind,
+};
 
 fn fixture(name: &str) -> String {
     let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -35,7 +37,11 @@ fn ninja_log_parses_units_and_skips_malformed() {
     let elf = c.units.iter().find(|u| u.name == "zephyr.elf").unwrap();
     assert_eq!(elf.kind, Kind::Link);
 
-    let archive = c.units.iter().find(|u| u.name == "libzenoh_pico.a").unwrap();
+    let archive = c
+        .units
+        .iter()
+        .find(|u| u.name == "libzenoh_pico.a")
+        .unwrap();
     assert_eq!(archive.kind, Kind::Link);
 
     // Compile-stage sum: 18.1 + 1.1 + 1.1 = 20.3

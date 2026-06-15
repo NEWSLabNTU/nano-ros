@@ -9,8 +9,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::collect::Collected;
-use crate::model::{Kind, RawUnit};
+use crate::{
+    collect::Collected,
+    model::{Kind, RawUnit},
+};
 
 /// One record from the `UNIT_DATA` array (tolerant — extra fields ignored,
 /// missing ones defaulted).
