@@ -317,6 +317,15 @@ platform = "native"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/qos-override-pubsub"
 
+# Phase 250 Wave 5 — declarative (Node + .safety()) listener that surfaces
+# ctx.integrity(). Cross-process subscriber for tests/safety_e2e.rs::
+# test_declarative_safety_listener_receives_integrity (paired with the safety
+# talker). safety-e2e is a non-optional dep feature of the bin, so no row flag.
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/declarative-safety-listener"
+
 # Phase 211 acceptance — nano-ros raw std_msgs/String subscriber for interop
 # against a stock `ros2 run demo_nodes_cpp talker`. Consumed by
 # tests/demo_nodes_cpp_interop.rs (gated on ros2 + rmw_zenoh_cpp).

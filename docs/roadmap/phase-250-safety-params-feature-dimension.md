@@ -1,6 +1,6 @@
 # Phase 250 — safety + params as declared, system-wide capability toggles
 
-Status: **In progress (Waves 1–3 done, 2026-06-16)** · Related: RFC-0031 (declared
+Status: **COMPLETE (Waves 1, 2a, 2b, 3, 5; Wave 4 deleted — 2026-06-16)** · Related: RFC-0031 (declared
 selection → lowered build feature), RFC-0024 (declarative Node/Entry).
 
 > **Model (settled 2026-06-16):** `safety` and `params` are **system-wide capability
@@ -172,10 +172,21 @@ they belong with the transport/RMW declared axis, not params/safety.
 - **~~Wave 4 — safety codegen~~ — DELETED (2026-06-16).** It assumed config lowering into a
   generated node body. Under the corrected model safety is a system-wide build feature
   (Wave 1) used by normal node code via `.safety()` (Wave 2) — there is nothing to generate.
-- **Wave 5 (planned)** — a declarative `examples/workspaces/rust/` build with the axes on/off
-  + a transport e2e: safety surfaces `ctx.integrity()`, the param server answers an external
-  get/set. The native imperative fixtures + `params.rs` / `safety_e2e.rs` / `zero_copy.rs`
-  stay (the imperative API ships under D7). Augment, not replace.
+- **Wave 5 — declarative safety transport e2e — DONE (2026-06-16).** New fixture
+  `packages/testing/nros-tests/bins/declarative-safety-listener`: a board-less declarative
+  node (`Node` + `ExecutorNodeRuntime::from_executor`) whose subscription opts in via
+  `create_subscription_for_callback_name_with_safety` and reads `ctx.integrity()`. The test
+  `test_declarative_safety_listener_receives_integrity` (`tests/safety_e2e.rs`) runs it as a
+  cross-process subscriber against the imperative safety talker over zenohd and asserts the
+  declarative `.safety()` path surfaces `IntegrityStatus` (the `[SAFETY] INTEGRITY` token =
+  `ctx.integrity() == Some`, `seq_gap=0`, no CRC `FAIL`). Verified locally green
+  (`3 integrity-surfaced, 0 absent, 0 crc-fail`). Note: the `crc=` sub-verdict is the rmw
+  layer's and is environment/build-dependent (`n-a` under a plain local debug build for the
+  **imperative** path too), so the assertion targets the integrity *surface* — the thing
+  this phase added — not the CRC sub-field. The native imperative fixtures + tests are
+  untouched (augment, not replace).
+
+  **Phase 250 — COMPLETE** (Waves 1, 2a, 2b, 3, 5; Wave 4 deleted).
 
 ## Acceptance
 

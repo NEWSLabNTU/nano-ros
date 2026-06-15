@@ -53,6 +53,10 @@ static NATIVE_BRIDGE_ZENOH_CYCLONEDDS_BINARY: OnceCell<PathBuf> = OnceCell::new(
 /// fixture (`packages/testing/nros-tests/bins/qos-override-pubsub`).
 static NATIVE_QOS_OVERRIDE_PUBSUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Phase 250 Wave 5 — cached path to the `declarative-safety-listener` fixture
+/// (`packages/testing/nros-tests/bins/declarative-safety-listener`).
+static NATIVE_DECLARATIVE_SAFETY_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Phase 211 acceptance — cached path to the `ros2-string-interop` fixture
 /// (`packages/testing/nros-tests/bins/ros2-string-interop`).
 static NATIVE_ROS2_STRING_INTEROP_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1219,6 +1223,23 @@ pub fn build_qos_override_pubsub() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/qos-override-pubsub");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/qos-override-pubsub"));
+            require_prebuilt_binary(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 250 Wave 5 — resolve the prebuilt `declarative-safety-listener` fixture
+/// (`packages/testing/nros-tests/bins/declarative-safety-listener`). A
+/// declarative (`Node` + `.safety()`) subscriber that surfaces `ctx.integrity()`;
+/// paired with the safety talker in `tests/safety_e2e.rs`. Own Cargo workspace;
+/// the test skips cleanly when the binary is missing.
+pub fn build_native_declarative_safety_listener() -> TestResult<&'static Path> {
+    NATIVE_DECLARATIVE_SAFETY_LISTENER_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/declarative-safety-listener");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/declarative-safety-listener"));
             require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())
