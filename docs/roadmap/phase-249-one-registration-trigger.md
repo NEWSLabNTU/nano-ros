@@ -250,7 +250,7 @@ they move here as the D3 close-out (phase-241 is now CLOSED):
   archive — and keep it green across the flag removal.
 - **Flip RFC-0042 fully `Stable`** — D1/D2/D4 are already Stable (phase-241.B/C + 243);
   D3 flips when this phase lands (per-pillar banners in RFC-0042 already note it).
-- **Close [issue 0042](../issues/0042-platform-header-architecture-fragility-libc-std-clashes.md)** —
+- **Close [issue 0042](../issues/archived/0042-platform-header-architecture-fragility-libc-std-clashes.md)** —
   its D1–D4 acceptances pass once D3 lands here; cross-link #27/#36/#38/#20.
 
 ## Risks

@@ -1,23 +1,44 @@
 ---
 id: 42
 title: platform/std-header architecture is fragile — recurring libc/std compile clashes (#27, #36, #38)
-status: open
+status: resolved
+resolved_in: phase-241 (+ the 241.A cross gate)
 type: tech-debt
 area: c-api
 related: [issue-0027, issue-0036, issue-0038, issue-0034, phase-240, rfc-0042, phase-241, phase-249, issue-0062]
 ---
 
-> **DESIGN 2026-06-12.** The architectural fix is designed in
-> [RFC-0042](../design/0042-platform-build-determinism.md) and broken down in
-> [phase-241](../roadmap/archived/phase-241-platform-build-determinism.md): one canonical
+## Resolution (2026-06-15) — the header-clash class is fixed + merge-gated
+
+This issue's class is the **platform/libc-std header clash** (its title bugs
+#27/#36/#38), all `resolved`, and the whole class is now caught **on every PR**:
+- **#38** (capability/heap default-deny) → `[board.capabilities]` SSoT
+  (phase-241.C) + the host gate `platform_header_matrix.rs` (D / phase-241.A).
+- **#27/#36** (two-libc `.c`-TU `div_t`/`time.h` clash) → the cross gate
+  `cross_libc_precedence_gate.rs` (phase-241.A cross tier): a dropped
+  RTOS-sysroot-wins precedence goes red on the PR.
+
+Structural fix-directions: **A/A2** (one canonical `<nros/platform.h>` —
+phase-241.B + phase-243), **B** (capabilities declared once — phase-241.C), **D**
+(merge gate — phase-241.A host + cross + the zephyr prj.conf gate) all **landed**.
+**C** (centralise the RTOS-libc precedence into one shared cmake/build.rs helper)
+is NOT literally done — precedence is still set point-wise (`nuttx_ffi_build.rs`
+cxx-prepend, `cmake/platform/nano-ros-nuttx.cmake` SYSTEM include) — but its
+*purpose* (stop a precedence regression reaching main) is achieved by the cross
+gate. C survives as an OPTIONAL cleanup, not a correctness gap.
+
+**Decoupled from D3/phase-249.** Earlier this note gated #42's close on phase-249;
+that conflated two classes. phase-249 / [issue 0062](../0062-d3-completion-one-registration-path-and-link-manifest.md)
+is the **linking** class (#20 — `--allow-multiple-definition` / one register
+path), NOT this header-clash tracker. So #42 closes now; the linking work stands
+on its own under #62.
+
+> **DESIGN 2026-06-12 (original).** The architectural fix is designed in
+> [RFC-0042](../../design/0042-platform-build-determinism.md) and broken down in
+> [phase-241](../../roadmap/archived/phase-241-platform-build-determinism.md): one canonical
 > `<nros/platform.h>`, capability-driven config SSoT (`nros-board.toml`),
 > deterministic linking (generated manifest, one register path), and a
-> merge-time platform×lang gate. This issue stays open as the motivating
-> tracker. **Status (2026-06-15):** D1 (one header, via phase-243), D2 (capability
-> SSoT), D4 (the host + cross merge gates) **LANDED**; **phase-241 is CLOSED**. The
-> last pillar — D3 (deterministic linking) — and this issue's close MOVED to
-> **[phase-249](../roadmap/phase-249-one-registration-trigger.md)** (the one
-> registration trigger / single runtime). #42 resolves when phase-249 lands.
+> merge-time platform×lang gate.
 
 Three recently-fixed bugs are the **same class** — a C/C++ compile clash between
 the platform's libc/std headers and nano-ros's platform shim:

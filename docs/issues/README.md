@@ -46,13 +46,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type        | area   | file |
 |----|-----------------------------------------------------------------------|-------------|--------|------|
-| 42 | platform/std-header architecture fragile — recurring libc/std clashes (#27/#36/#38) | tech-debt | c-api | [0042-platform-header-architecture-fragility-libc-std-clashes.md](0042-platform-header-architecture-fragility-libc-std-clashes.md) |
 | 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
 | 53 | mixed-RMW bridge has no stock-cyclonedds variant + no gateway book recipe (211.I) | tech-debt | testing | [0053-cyclonedds-bridge-variant-and-gateway-recipe.md](0053-cyclonedds-bridge-variant-and-gateway-recipe.md) |
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
 | 62 | D3 completion — one registration path + generated link-manifest + weak-default deletion (rides single-runtime) | tech-debt | build | [0062-d3-completion-one-registration-path-and-link-manifest.md](0062-d3-completion-one-registration-path-and-link-manifest.md) |
 
-Resolved issues live in [`archived/`](archived/). Recently resolved (CI infra,
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#42** —
+platform/std-header fragility (libc/std clashes #27/#36/#38): the class is fixed +
+merge-gated (host `platform_header_matrix` + the new cross `cross_libc_precedence`
+gate + the zephyr prj.conf gate; one canonical `<nros/platform.h>`; capability
+SSoT). Decoupled from the linking class (#20/#62/phase-249). One optional cleanup
+left: centralise the RTOS-libc precedence helper (C). See `archived/0042-*`.
+
+Recently resolved (CI infra,
 2026-06-15): **#66** (renumbered from 64 — collided with the open esp32 #64) —
 stale example Cargo.locks (`nros-core 0.1.0`) tripped the ABI guard + a clippy
 empty-line in `nros/lib.rs`; fixed by regenerating 10 locks → 0.5.0 and reordering
