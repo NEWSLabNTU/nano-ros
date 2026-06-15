@@ -349,7 +349,11 @@ impl Context {
         static mut LOC_VALID: bool = false;
         match locator {
             Some(loc) if loc.len() <= LOC_CAP => unsafe {
-                core::ptr::copy_nonoverlapping(loc.as_ptr(), (&raw mut LOC_BUF) as *mut u8, loc.len());
+                core::ptr::copy_nonoverlapping(
+                    loc.as_ptr(),
+                    (&raw mut LOC_BUF) as *mut u8,
+                    loc.len(),
+                );
                 LOC_VALID = true;
             },
             Some(_) => return Err(ZpicoError::Config),
