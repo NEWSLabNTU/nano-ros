@@ -1,5 +1,5 @@
 [package]
-name = "esp32-qemu-listener"
+name = "esp32_qemu_listener"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -14,7 +14,7 @@ description = "Simple QEMU OpenETH subscriber example using nros-board-esp32-qem
 name = "esp32_qemu_listener"
 
 [[bin]]
-name = "esp32-qemu-listener"
+name = "esp32_qemu_listener"
 path = "src/main.rs"
 test = false
 bench = false

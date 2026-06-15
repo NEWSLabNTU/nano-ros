@@ -1,5 +1,5 @@
 [package]
-name = "esp32-qemu-talker"
+name = "esp32_qemu_talker"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -14,7 +14,7 @@ description = "Simple QEMU OpenETH publisher example using nros-board-esp32-qemu
 name = "esp32_qemu_talker"
 
 [[bin]]
-name = "esp32-qemu-talker"
+name = "esp32_qemu_talker"
 path = "src/main.rs"
 test = false
 bench = false
