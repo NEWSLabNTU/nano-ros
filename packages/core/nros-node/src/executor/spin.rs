@@ -70,19 +70,18 @@ impl Executor {
     pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
         use nros_rmw::Rmw;
 
-        // Phase 128.A.3 — manifest-driven backend selection.
+        // Phase 128.A.3 / 249 P4b.1 — manifest-driven backend selection.
         //
-        // 1. Walk `.nros_rmw_init` so every linked backend's ctor has
-        //    fired. Idempotent — subsequent `open` calls are no-ops.
-        // 2. Consult `$NROS_RMW` (when std/env is available) for
+        // Every linked backend self-registered via its `.init_array`
+        // ctor before `main` (RFC-0042 §D3.3), so the registry is
+        // already populated — no runtime section walk.
+        //
+        // 1. Consult `$NROS_RMW` (when std/env is available) for
         //    explicit override, mirroring ROS 2's `RMW_IMPLEMENTATION`.
-        // 3. With no selector, pick the unique registered backend.
+        // 2. With no selector, pick the unique registered backend.
         //    Zero registered → `NoBackend`; more than one →
         //    `Ambiguous` (user must set `$NROS_RMW` or use
         //    `Executor::open_multi`).
-        unsafe {
-            nros_rmw_cffi::nros_rmw_cffi_walk_init_section();
-        }
         let selector = read_rmw_selector_env();
         // `as_deref()` on `Option<Vec<u8>>` yields `Option<&[u8]>`;
         // on the no_std `Option<&'static [u8]>` variant it's a
@@ -148,11 +147,8 @@ impl Executor {
     /// `$NROS_RMW` env is ignored: bridge mode wants explicit names.
     #[cfg(feature = "rmw-cffi")]
     pub fn open_multi(specs: &[SessionSpec<'_>]) -> Result<Self, NodeError> {
-        // Walk the section once so backend ctors fire (idempotent).
-        unsafe {
-            nros_rmw_cffi::nros_rmw_cffi_walk_init_section();
-        }
-
+        // Phase 249 P4b.1 — backends self-registered via their
+        // `.init_array` ctor before `main`; no runtime section walk.
         let primary = specs
             .first()
             .ok_or(NodeError::Transport(TransportError::ConnectionFailed))?;

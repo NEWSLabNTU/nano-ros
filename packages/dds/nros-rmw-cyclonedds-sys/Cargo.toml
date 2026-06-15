@@ -47,9 +47,7 @@ test = false
 # the zenoh + xrce backends, which always vendor their underlying
 # libraries. Existing CMake / Zephyr consumers that supply the same
 # symbols externally must opt out via `default-features = false`.
-default = ["linkme-register", "vendored"]
-# Phase 128.B.3 — see nros-rmw-xrce-cffi for the same feature.
-linkme-register = ["nros-rmw-cffi/linkme-register"]
+default = ["vendored"]
 # Phase 144.3 — toggled on when emitting this crate as a top-level
 # `staticlib` (hosted POSIX builds). Embedded consumers keep the
 # default no_std build.
@@ -79,7 +77,6 @@ nros-rmw-cffi = { version = "0.5.0", path = "../../core/nros-rmw-cffi", default-
 # Phase 248 (C2) — Rust descriptor shim; backend init installs its
 # per-type descriptor registrar into the generic `nros_rmw` seam.
 nros-rmw-cyclonedds = { version = "0.5.0", path = "../nros-rmw-cyclonedds", default-features = false }
-linkme = { version = "0.3", default-features = false }
 # Phase 212.K.2 — `cyclonedds-sys` is a build-only path provider; we
 # never `use` anything from its lib.rs. Declared as a regular dep so
 # that Cargo passes `DEP_DDSC_*` env vars into our `build.rs`.

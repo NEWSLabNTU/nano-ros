@@ -40,14 +40,9 @@ pub mod rust_adapter;
 #[cfg(feature = "alloc")]
 pub use rust_adapter::{RustBackend, RustBackendAdapter};
 
-// Phase 128.A — linker-section registry discovery.
+// Phase 249 P4b.1 — `.init_array` ctor self-registration
+// (`nros_rmw_register_backend!` macro lives here).
 pub mod section;
-pub use section::{RMW_INIT_ENTRIES, RmwInitEntry, nros_rmw_cffi_walk_init_section};
-
-// Re-exported for the `nros_rmw_register_backend!` macro so backend
-// crates don't need a direct `linkme` dep.
-#[doc(hidden)]
-pub use linkme;
 
 // ============================================================================
 // Phase 102.1 — `nros_rmw_ret_t` named return codes

@@ -433,12 +433,9 @@ pub mod internals {
     ) -> Result<RmwSession, nros_rmw::TransportError> {
         use nros_rmw::Rmw;
 
-        // Phase 128.A — walk the RMW init section so every linked
-        // backend's ctor has fired. Idempotent; safe on every entry
-        // into the runtime.
-        unsafe {
-            nros_rmw_cffi::nros_rmw_cffi_walk_init_section();
-        }
+        // Phase 249 P4b.1 — every linked backend self-registered via
+        // its `.init_array` ctor before `main` (RFC-0042 §D3.3); no
+        // runtime section walk.
 
         let config = nros_rmw::RmwConfig {
             locator,

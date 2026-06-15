@@ -149,12 +149,13 @@ mod cffi_register {
         }
     }
 
-    // Phase 128.B.1 / 128.H.2 — `RMW_INIT_ENTRIES` self-registration
-    // via the `nros_rmw_register_backend!` macro. Macro expands to a
-    // linkme distributed-slice entry on supported targets and to
-    // nothing on RTOS targets `linkme` doesn't recognise (NuttX,
-    // Zephyr, ESP-IDF, …). On those targets the explicit
-    // `register()` call in main is the only registration path.
+    // Phase 249 P4b — hosted self-registration via the
+    // `nros_rmw_register_backend!` macro. The macro expands to a
+    // `#[used]` `.init_array` ctor on hosted targets
+    // (`not(target_os = "none")`) and to nothing on embedded
+    // (`target_os = "none"`: NuttX, Zephyr, ESP-IDF, bare-metal). On
+    // those targets the explicit `register()` call from the board /
+    // carrier is the only registration path.
     nros_rmw_cffi::nros_rmw_register_backend! {
         fn() {
             let _ = nros_rmw_zenoh_register();

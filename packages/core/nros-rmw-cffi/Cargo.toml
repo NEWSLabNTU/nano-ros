@@ -19,13 +19,6 @@ name = "nros_rmw_cffi"
 [dependencies]
 nros-rmw = { workspace = true, default-features = false }
 portable-atomic = { version = "1", default-features = false }
-# Phase 128.A — cross-platform linker-section anchoring. Replaces the
-# hand-rolled `__start_/__stop_*` symbol pair + linker-script fragment
-# with a maintained crate that handles ELF, Mach-O, COFF, and the
-# `--gc-sections` / `start-stop-gc` interaction transparently. Backends
-# emit one `#[distributed_slice(RMW_INIT_ENTRIES)]` entry; the walker
-# iterates the slice on first `Executor::open`.
-linkme = { version = "0.3", default-features = false }
 
 [build-dependencies]
 # Phase 115.G.4 — compiles the second-language smoke-test stubs in
@@ -36,25 +29,10 @@ linkme = { version = "0.3", default-features = false }
 cc = "1"
 
 [features]
-default = ["linkme-register"]
+default = []
 std = ["nros-rmw/std"]
 alloc = ["nros-rmw/alloc"]
 safety-e2e = ["nros-rmw/safety-e2e"]
-# Phase 134.fix — gates the `RMW_INIT_ENTRIES` distributed_slice
-# DEFINITION + the `nros_rmw_register_backend!` macro's linkme
-# expansion. Default-on so the existing Rust-binary auto-register
-# path keeps working. Turn it OFF on staticlib targets linked next
-# to another archive that already carries the linkme machinery (the
-# canonical case: `libnros_rmw_zenoh.a` linked alongside
-# `libnros_c.a`). Without the gate, the C-binary link of both
-# archives panics at runtime with
-# `duplicate #[distributed_slice] with name "RMW_INIT_ENTRIES"` —
-# two crate-hash-distinct rlib instances each install a DUPCHECK
-# static in the same linker section; linkme walks on first slice
-# access and detects the collision. The opt-out archive must
-# register via `.init_array` instead (see
-# `nros-rmw-zenoh-staticlib/src/lib.rs`).
-linkme-register = []
 # Phase 124.A — enables `CffiPublisher: SlotLending` +
 # `CffiSubscriber: SlotBorrowing`. The vtable carries the slots either
 # way; this feature gates the Rust trait impls so the trait surface

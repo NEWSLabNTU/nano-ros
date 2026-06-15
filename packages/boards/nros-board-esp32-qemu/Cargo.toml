@@ -36,7 +36,6 @@ nros = { path = "../../core/nros", default-features = false, features = [
     "ros-humble",
 ], optional = true }
 nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = [
-    "linkme-register",
     "platform-bare-metal",
     "ros-humble",
 ], optional = true }

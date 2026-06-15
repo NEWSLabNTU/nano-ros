@@ -29,8 +29,8 @@ nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", fe
 # Phase 248 C6d — board-LESS APP owns its backend dep directly. The `nros`
 # umbrella no longer carries `rmw-*` (that edge blocked C5c), so the app links
 # the concrete backend + force-links its rlib in `main.rs` for POSIX
-# self-registration (linkme `RMW_INIT_ENTRIES`).
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["std", "platform-posix", "ros-humble", "linkme-register"] }
+# self-registration (`.init_array` ctor, loader-fired before main).
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["std", "platform-posix", "ros-humble"] }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { path = "../../../../packages/core/nros-log" }
 example_interfaces = { version = "*", default-features = false }

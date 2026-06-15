@@ -454,10 +454,10 @@ size_t nros_rmw_cffi_registered_names(const char **buf, size_t cap);
  *  should not call this themselves. */
 size_t nros_rmw_cffi_walk_init_section(void);
 
-/** Phase 128.A — convenience macro for static-library backends. Place
- *  in exactly one TU per backend to emit the function-pointer entry
- *  the walker discovers. `REGISTER_FN` is a no-arg `void` function
- *  that calls `nros_rmw_cffi_register_named` for the backend.
+/** Phase 249 P4b.2 — convenience macro for static-library backends.
+ *  Place in exactly one TU per backend to self-register the backend
+ *  on library load. `REGISTER_FN` is a no-arg function that calls
+ *  `nros_rmw_cffi_register_named` for the backend.
  *
  *  Example:
  *      static void zenoh_register(void) {
@@ -465,29 +465,36 @@ size_t nros_rmw_cffi_walk_init_section(void);
  *      }
  *      NROS_RMW_REGISTER_BACKEND(zenoh_register)
  *
- *  The section name (`linkm2_RMW_INIT_ENTRIES` on ELF,
- *  `__DATA,__linkme_RMW_INIT_ENTRIES` on Mach-O) matches the layout
- *  the [`linkme`] crate uses for the Rust-side
- *  `nros_rmw_cffi::RMW_INIT_ENTRIES` distributed slice. Static-lib
- *  backends linked with `--whole-archive` end up in the same section
- *  the runtime walker iterates.
+ *  HOSTED (Rust + C/C++ on a hosted loader): the macro expands to an
+ *  `.init_array` constructor (`__attribute__((constructor))`) that the
+ *  loader fires before `main()` — hence before `nros_support_init` /
+ *  `nros::init` — calling `REGISTER_FN`. The `--whole-archive` link
+ *  keeps this object's `.init_array` slot. `nros_rmw_cffi_register_named`
+ *  is idempotent (same-name overwrite), so re-registration is harmless.
+ *  This consolidates the former `linkme` section walk onto the ctor
+ *  (RFC-0042 §D3.3; the `linkme` distributed slice / section walker is
+ *  deleted).
  *
- *  Anchor + content sections are split by linkme:
- *    `linkme_*`   — start/stop encapsulation (length == 0)
- *    `linkm2_*`   — actual array of function pointers
+ *  EMBEDDED (bare-metal / RTOS: Zephyr, NuttX, esp-idf, VxWorks): the
+ *  loader does not run `.init_array` constructors on the startup path,
+ *  so the macro expands to nothing. Registration is wired explicitly
+ *  by the board / typed carrier via an explicit `nros_rmw_<x>_register()`
+ *  call (phase-249 P1). For C/C++-via-cmake the `nano_ros_link_rmw`
+ *  strong stub is the primary registration trigger (P2b/P4a); this
+ *  hosted ctor is belt-and-suspenders.
  *
- *  The variable is decorated with `__attribute__((used))` so
- *  dead-strip / `--gc-sections` keeps it; the section name is
- *  reserved for linkme's array, so the linker accumulates every entry
- *  into a single contiguous region the walker can iterate. */
-#if defined(__APPLE__)
+ *  Gating mirrors the cyclonedds vtable.cpp constructor (off the RTOS
+ *  targets) and requires GCC/Clang constructor-attribute support. */
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__ZEPHYR__) &&       \
+    !defined(__NuttX__) && !defined(ESP_PLATFORM) && !defined(__VXWORKS__)
 #define NROS_RMW_REGISTER_BACKEND(REGISTER_FN)                                 \
-    __attribute__((used, section("__DATA,__linkme_RMW_INIT_ENTRIES")))         \
-    static void (*nros_rmw_init_entry_##REGISTER_FN)(void) = (REGISTER_FN);
+    __attribute__((constructor)) static void nros_rmw_ctor_##REGISTER_FN(      \
+        void) {                                                                \
+        (void) REGISTER_FN();                                                  \
+    }
 #else
-#define NROS_RMW_REGISTER_BACKEND(REGISTER_FN)                                 \
-    __attribute__((used, section("linkm2_RMW_INIT_ENTRIES")))                  \
-    static void (*nros_rmw_init_entry_##REGISTER_FN)(void) = (REGISTER_FN);
+/* Embedded / unsupported toolchain: board calls nros_rmw_<x>_register(). */
+#define NROS_RMW_REGISTER_BACKEND(REGISTER_FN)
 #endif
 
 #ifdef __cplusplus

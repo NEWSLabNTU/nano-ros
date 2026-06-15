@@ -14,15 +14,7 @@ keywords = ["ros2", "zenoh", "rmw", "embedded", "no-std"]
 categories = ["embedded", "no-std", "network-programming"]
 
 [features]
-default = ["linkme-register"]
-# Phase 134.fix — forwards to `nros-rmw-cffi/linkme-register`. Gates
-# the `nros_rmw_register_backend!` macro's linkme expansion inside
-# this crate (cfg evaluates in the calling crate's feature set, so
-# the bit must live here too). Default-on for normal Rust-binary
-# auto-register. Off when the consuming staticlib opts out to avoid
-# duplicating linkme's DUPCHECK static in a multi-archive C-binary
-# link (the canonical `libnros_rmw_zenoh.a` + `libnros_c.a` case).
-linkme-register = ["nros-rmw-cffi/linkme-register"]
+default = []
 # Phase 129.C.3.a — `nros-platform/platform-<rtos>` forwards
 # dropped. Phase 129.D retired `zpico-platform-shim`, which was
 # the only consumer that needed `ConcretePlatform`. The two
@@ -98,8 +90,6 @@ nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features =
 # `RustBackendAdapter` requires `nros-rmw-cffi`'s `alloc` feature
 # unconditionally (it boxes every entity handle).
 nros-rmw-cffi = { version = "0.5.0", path = "../../core/nros-rmw-cffi", default-features = false, features = ["alloc"] }
-# Phase 128.B.1 — `#[distributed_slice]` for the RMW init section.
-linkme = { version = "0.3", default-features = false }
 nros-core = { workspace = true, default-features = false }
 # Phase 108.C.zenoh.{2,3} — needs `<P as PlatformClock>::clock_ms()`
 # for deadline / lifespan emulation. The façade crate gates the
