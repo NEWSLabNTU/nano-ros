@@ -1,10 +1,22 @@
 # Phase 251 — eliminate `--allow-multiple-definition`
 
-Status: **In progress** · Implements RFC-0042 §D3 ("no papering-over" / deterministic
-linking). Related: [#70](../issues/0070-staticlib-duplicate-symbols-gate-red.md),
+Status: **DONE (2026-06-16)** · Implements RFC-0042 §D3 ("no papering-over" /
+deterministic linking). Related:
+[#70](../issues/archived/0070-staticlib-duplicate-symbols-gate-red.md),
 [#71](../issues/0071-cpp-workspace-multi-std-staticlib-dup.md),
 [#62](../issues/archived/0062-d3-completion-one-registration-path-and-link-manifest.md),
 [phase-241](phase-241-d3-single-runtime.md).
+
+> **OUTCOME.** Zero `--allow-multiple-definition` in the build system; the gate
+> enforces it (empty allowlist). Waves: **W0** gate + audited allowlist (wired into
+> `just check`); **W1** riscv64 board flag removed — `just threadx_riscv64 build`
+> links clean (strong board mem over weak compiler_builtins, no flag); **W2** APPLE
+> cyclonedds flag removed (force_load mirrors the flag-free Linux whole-archive;
+> reasoned, no macOS runner to run-validate); **W3** the #70 link-determinism test
+> rewritten for the single archive (one `libnros_c.a` links with `-u`, no flag, one
+> `REGISTRY`) — `just check-staticlib-symbols` green, #70 resolved. The cpp-workspace
+> multi-`std` case (**#71**, open) is a link *failure* being fixed without the flag,
+> not a flag use — independent.
 
 > **Invariant (goal):** ZERO `--allow-multiple-definition` in the nano-ros build
 > system. A duplicate *defined* symbol at link is a **build error** — the safe
