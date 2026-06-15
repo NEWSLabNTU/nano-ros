@@ -1,5 +1,5 @@
 ---
-id: 64
+id: 66
 title: CI red on main — stale example Cargo.locks (nros-core 0.1.0) trip the ABI guard + clippy empty-line-after-doc-comment in nros/lib.rs
 status: resolved
 type: bug
@@ -8,6 +8,13 @@ related: [phase-244, issue-0057, issue-0062]
 resolved_in: 1193e26c7
 ---
 
+> **RENUMBERED 64 → 66 (2026-06-15).** A concurrent agent independently created a
+> different issue 0064 (esp32-c3 QEMU load-access-fault, still open). This resolved
+> CI-infra issue (created first) was moved to the next free id 66 to break the
+> collision; the open esp32 issue keeps 0064 to stay consistent with its active
+> commit refs. NOTE: this issue's own merged commits (`1193e26c7`, `8999a4520`,
+> `cf0e69485`) say "#64"/"#0064" — those historical refs mean THIS issue (now 0066).
+>
 > **RESOLVED (2026-06-15, `1193e26c7`).** A: regenerated the 10 example Cargo.locks
 > pinning `nros-core 0.1.0` → `0.5.0` (6 qemu-arm-nuttx/rust + 4 stm32f4/rust *-rtic)
 > — validated by clean `just nuttx build-examples` + `stm32f4 build-fixtures`

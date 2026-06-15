@@ -4,7 +4,7 @@ title: CI `check` cell red on main — stale `nros/platform-posix` feature combo
 status: resolved
 type: bug
 area: build
-related: [phase-248, issue-0064]
+related: [phase-248, issue-0066]
 resolved_in: 2026-06-15
 ---
 
@@ -38,7 +38,7 @@ packages/core/nros-cpp/include/nros/action_client.hpp:108:80: error: code should
   ... :125:64, :166:57, :194:53  (reinterpret_cast<uint8_t (*)[16]>(goal_id) lines)
 ```
 
-(`check-workspace-all` — clippy + nightly fmt — is green after issue-0064's
+(`check-workspace-all` — clippy + nightly fmt — is green after issue-0066's
 `nros/lib.rs` empty-line fix.)
 
 ## Root cause
@@ -75,6 +75,6 @@ before phase-244 merged (e.g. run on `feat(249 P3)`).
 
 ## Notes
 
-Sibling of [issue 0064](0064-ci-red-stale-example-locks-abi-guard-and-clippy-empty-line.md)
+Sibling of [issue 0066](0066-ci-red-stale-example-locks-abi-guard-and-clippy-empty-line.md)
 (other CI reds from the 0.5.0 bump / 248-249 churn). Close when the `check` cell
 is green on `main`.

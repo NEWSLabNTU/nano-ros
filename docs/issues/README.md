@@ -53,13 +53,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 | 62 | D3 completion — one registration path + generated link-manifest + weak-default deletion (rides single-runtime) | tech-debt | build | [0062-d3-completion-one-registration-path-and-link-manifest.md](0062-d3-completion-one-registration-path-and-link-manifest.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved (CI infra,
-2026-06-15): **#64** — stale example Cargo.locks (`nros-core 0.1.0`) tripped the ABI
-guard + a clippy empty-line in `nros/lib.rs`; fixed by regenerating 10 locks → 0.5.0
-and reordering the doc comment (validated via nuttx/stm32f4 builds + `check-workspace-all`).
+2026-06-15): **#66** (renumbered from 64 — collided with the open esp32 #64) —
+stale example Cargo.locks (`nros-core 0.1.0`) tripped the ABI guard + a clippy
+empty-line in `nros/lib.rs`; fixed by regenerating 10 locks → 0.5.0 and reordering
+the doc comment (validated via nuttx/stm32f4 builds + `check-workspace-all`).
 **#65** — `check` cell red from a stale `nros/platform-posix` feature combo
 (`justfile`, 248-C5c fallout) + nros-cpp clang-format drift; fixed by dropping the
 removed feature and reformatting 5 headers with the CI-pinned clang-format 17.0.5.
-See `archived/0064-*`, `archived/0065-*`.
+See `archived/0066-*`, `archived/0065-*`.
 
 Recently resolved (phase-244):
 **#49** — example source platform/RMW leakage: re-audit (all example/template
