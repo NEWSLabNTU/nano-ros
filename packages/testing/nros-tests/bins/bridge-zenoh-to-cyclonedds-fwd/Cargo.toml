@@ -1,0 +1,27 @@
+[package]
+name = "bridge-zenoh-to-cyclonedds-fwd"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "bridge-zenoh-to-cyclonedds-fwd"
+path = "src/main.rs"
+
+[dependencies]
+# Issue #53 — minimal zenoh→Cyclone DDS bridge fixture (Int32, no TT), the
+# stock-cyclonedds sibling of `bridge-zenoh-to-xrce-fwd`. Forwards bytes from a
+# zenoh `/chatter` raw subscription onto a Cyclone DDS raw publisher. Cyclone
+# resolves a raw topic by a registered `dds_topic_descriptor_t`, so the Int32
+# schema is staged via `nros_rmw::register_type_descriptor` first.
+nros = { path = "../../../../core/nros", default-features = false, features = ["std", "rmw-cffi"] }
+nros-platform = { path = "../../../../core/nros-platform", default-features = false, features = ["platform-posix"] }
+nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
+nros-rmw-cyclonedds-sys = { path = "../../../../dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"] }
+nros-rmw = { path = "../../../../core/nros-rmw", default-features = false, features = ["std"] }
+nros-serdes = { path = "../../../../core/nros-serdes", default-features = false, features = ["std"] }
+log = "0.4"
+env_logger = "0.11"
+
+[workspace]

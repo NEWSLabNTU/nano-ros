@@ -45,6 +45,10 @@ static NATIVE_CT_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// the mixed-RMW bridge e2e (Phase 110.G.bridge example reused as fixture).
 static NATIVE_BRIDGE_TT_ZENOH_XRCE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Issue #53 — cached path to the `bridge-zenoh-to-cyclonedds-fwd` fixture
+/// (the stock-cyclonedds sibling of `bridge-zenoh-to-xrce-fwd`).
+static NATIVE_BRIDGE_ZENOH_CYCLONEDDS_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Phase 211.H — cached path to the `qos-override-pubsub` runtime-delivery
 /// fixture (`packages/testing/nros-tests/bins/qos-override-pubsub`).
 static NATIVE_QOS_OVERRIDE_PUBSUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1179,6 +1183,25 @@ pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
             let dir = root.join("packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd");
             let profile = cargo_target_profile_dir();
             let binary = dir.join(format!("target/{profile}/bridge-zenoh-to-xrce-fwd"));
+            require_prebuilt_binary(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Issue #53 — resolve the prebuilt `bridge-zenoh-to-cyclonedds-fwd` fixture
+/// (`packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd`). Used by
+/// `tests/bridge_zenoh_to_cyclonedds.rs` to forward zenoh `/chatter` samples onto
+/// a Cyclone DDS egress session. The stock-cyclonedds sibling of
+/// [`build_bridge_zenoh_to_xrce_fwd`]; links the vendored CycloneDDS and stages
+/// the `std_msgs/Int32` descriptor before raw publish. Its own Cargo workspace;
+/// the test skips cleanly when the binary is missing.
+pub fn build_bridge_zenoh_to_cyclonedds_fwd() -> TestResult<&'static Path> {
+    NATIVE_BRIDGE_ZENOH_CYCLONEDDS_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/bridge-zenoh-to-cyclonedds-fwd"));
             require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())
