@@ -153,10 +153,22 @@ idiom — phase-250 does not touch them.
   P4b-independent and **stands**. So the planned "declarative migration" wave is **dropped**:
   the declarative talker/listener already exist (`examples/workspaces/rust/`, esp32), and the
   real Layer-2 prerequisite is extending the declarative Node API (next).
-- **Wave 2 (planned, revised)** — extend the declarative `Node`/`NodeContext` API: a
-  `declare_parameter`-equivalent callable from `Node::register()`, and an integrity-status
-  surface on `create_subscription_for_callback_name()` (the `.safety()` analog) → a
-  `Node`-trait `on_integrity` hook. Core `nros-node` work, not example migration.
+- **Wave 2a — declarative E2E-safety surface (mechanism + API) — DONE (2026-06-15).**
+  Shape A (chosen): `IntegrityStatus` rides the existing callback alongside the message,
+  mirroring the imperative `FnMut(&M, &IntegrityStatus)`. Landed (all gated `safety-e2e`,
+  zero-cost off):
+  - `nros-node` arena `SubBufferedRawSafetyEntry` — the type-erased analog of
+    `SubSafetyEntry`; the validator lives in the `RmwSubscriber`, so `try_recv_validated`
+    yields `(len, IntegrityStatus)` with no typed `M` (the declarative path is generic).
+  - `register_subscription_buffered_raw_safety_on` + `create_generic_subscription_with_integrity`
+    (the declarative analog of `.typed::<M>().safety()`).
+  - `nros` `CallbackCtx`: gated `integrity` field + `new_with_integrity()` + `integrity()`
+    accessor (`None` for timers/services/non-safety subs). Test: `callback_ctx_integrity_surface`.
+- **Wave 2b (planned)** — the declarative opt-in + runtime branch: an `EntityMetadata.safety`
+  flag set by a `.safety()` opt-in in `Node::register()`, and the `node_runtime`
+  `EntityKind::Subscription` arm branching on it to call
+  `create_generic_subscription_with_integrity` + a `dispatch_into_cell_with_integrity` that
+  builds the ctx via `CallbackCtx::new_with_integrity`. Plus a native e2e fixture test.
 - **Wave 3 (planned)** — params lowering + codegen: a plain declare-only `[params]` axis
   (distinct from the existing `[param_persistence]`) → `declare_parameter` +
   `register_parameter_services` in the generated declarative node.
