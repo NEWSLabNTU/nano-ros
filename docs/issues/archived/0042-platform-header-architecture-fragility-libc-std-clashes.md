@@ -22,10 +22,18 @@ Structural fix-directions: **A/A2** (one canonical `<nros/platform.h>` —
 phase-241.B + phase-243), **B** (capabilities declared once — phase-241.C), **D**
 (merge gate — phase-241.A host + cross + the zephyr prj.conf gate) all **landed**.
 **C** (centralise the RTOS-libc precedence into one shared cmake/build.rs helper)
-is NOT literally done — precedence is still set point-wise (`nuttx_ffi_build.rs`
-cxx-prepend, `cmake/platform/nano-ros-nuttx.cmake` SYSTEM include) — but its
-*purpose* (stop a precedence regression reaching main) is achieved by the cross
-gate. C survives as an OPTIONAL cleanup, not a correctness gap.
+is **DROPPED as a non-goal** (study 2026-06-15). The two-libc-set clash is
+**NuttX-only** — NuttX uniquely ships its own libc alongside the cross
+toolchain's newlib. Every other platform avoids it: ThreadX *selects* picolibc as
+the sole libc (`--specs=picolibc.specs`, no second set), FreeRTOS/bare-metal use
+the toolchain's single libc, ESP-IDF/Zephyr own includes via idf/west, POSIX is
+host. The live precedence is therefore **one block** in
+`nros-board-common/src/nuttx_ffi_build.rs` (prepend `NUTTX_DIR/include/cxx`); the
+NuttX *cmake* precedence was already retired on the cross path (the FFI crate owns
+it). So "a shared helper across platforms/entrypoints" would consolidate a single
+site — no consolidation, and the regression it guards against already reds on the
+PR via `cross_libc_precedence_gate`. Keeping the precedence where it's needed
+(one commented NuttX site) + the gate is the correct end state.
 
 **Decoupled from D3/phase-249.** Earlier this note gated #42's close on phase-249;
 that conflated two classes. phase-249 / [issue 0062](../0062-d3-completion-one-registration-path-and-link-manifest.md)

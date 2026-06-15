@@ -55,8 +55,9 @@ Resolved issues live in [`archived/`](archived/). Recently resolved: **#42** —
 platform/std-header fragility (libc/std clashes #27/#36/#38): the class is fixed +
 merge-gated (host `platform_header_matrix` + the new cross `cross_libc_precedence`
 gate + the zephyr prj.conf gate; one canonical `<nros/platform.h>`; capability
-SSoT). Decoupled from the linking class (#20/#62/phase-249). One optional cleanup
-left: centralise the RTOS-libc precedence helper (C). See `archived/0042-*`.
+SSoT). Decoupled from the linking class (#20/#62/phase-249). Fully closed — the
+"centralise the libc-precedence helper" direction (C) was dropped as a non-goal
+(the two-set clash is NuttX-only, one gated site). See `archived/0042-*`.
 
 Recently resolved (CI infra,
 2026-06-15): **#66** (renumbered from 64 — collided with the open esp32 #64) —
