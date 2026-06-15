@@ -88,6 +88,21 @@ git = "https://github.com/eclipse-zenoh/zenoh"
 ref = "1.7.2"
 install = "cargo install --path zenohd --root {prefix} --locked"
 
+# sccache — shared compiler cache (issue #74). The justfile already wires
+# `RUSTC_WRAPPER := sccache` (and the zephyr fixture build uses it as a CMake
+# COMPILER_LAUNCHER) when it is on PATH, so provisioning it halves clean / CI
+# rebuilds (measured ~46% host, ~22% embedded — docs/development/build-ux-audit.md).
+# Source-only for now: `dist.<host>` is left out until a prebuilt asset is seeded
+# on NEWSLabNTU/nano-ros-sdk, so `nros setup --tool sccache` falls back to the
+# source recipe (`cargo install sccache`).
+[tool.sccache]
+version = "0.8.2-nros1"
+upstream = "0.8.2" # = source.ref (mozilla/sccache release tag, without the `v`)
+[tool.sccache.source]
+git = "https://github.com/mozilla/sccache"
+ref = "v0.8.2"
+install = "cargo install --path . --root {prefix} --locked"
+
 [tool.openocd]
 version = "0.12.0-nros1"
 upstream = "v0.12.0" # upstream tag (SSOT — build script no longer hand-derives)

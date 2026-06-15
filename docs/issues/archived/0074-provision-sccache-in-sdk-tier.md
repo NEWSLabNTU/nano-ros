@@ -1,11 +1,39 @@
 ---
 id: 74
 title: provision sccache in the SDK tier so the compiler cache is on by default
-status: open
+status: resolved
 type: enhancement
 area: build
 related: [phase-251, rfc-0014]
+resolved_in: phase-251
 ---
+
+## Resolution
+
+Provisioned sccache through the SDK system (source-build path):
+
+- **`nros-sdk-index.toml`** — added `[tool.sccache]` + `[tool.sccache.source]`
+  (`cargo install` from `mozilla/sccache` `v0.8.2`). Source-only: `dist.<host>` left
+  out until a prebuilt asset is seeded on `nano-ros-sdk`, so `nros setup --tool sccache`
+  falls back to the source recipe (verified: `--dry-run` resolves
+  `→ ~/.nros/sdk/sccache/0.8.2-nros1`).
+- **`activate.sh` + `activate.fish`** — the SDK-store PATH loop now also adds a bin dir
+  holding `sccache` (verified: with `~/.local/bin` removed, a staged store sccache
+  resolves on PATH after `source ./activate.sh`).
+- **`just workspace install-sccache`** — added + chained into `just workspace setup` (the
+  `base` tier). Delegates to `nros setup --tool sccache`; skips when sccache is already on
+  PATH; non-fatal on source-build failure (sccache only speeds builds).
+- `just doctor` already reports `[OK] sccache` / the absence hint (phase-251 follow-up).
+
+Once on PATH, the justfile's `RUSTC_WRAPPER` (rustc) and the zephyr fixture's
+`CMAKE_{C,CXX}_COMPILER_LAUNCHER=sccache` (the safe per-build C cache, already wired in
+`scripts/build/zephyr-fixture-leaves.sh`) both light up automatically — ~46 % host /
+~22 % embedded faster clean rebuilds.
+
+**Residual (not blocking, optional):** seed a prebuilt `dist.<host>` asset on
+`NEWSLabNTU/nano-ros-sdk` so first setup downloads instead of source-building; and the
+host-only `CC`/`CXX="sccache cc"` knob (native cmake/cargo C builds) left as a documented
+opt-in given the cross-`CC` risk. Neither is required for the cache to be on by default.
 
 ## Problem
 

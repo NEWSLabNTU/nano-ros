@@ -80,8 +80,12 @@ if [ -d "$_nros_sdk" ]; then
     for _nros_tcbin in "$_nros_sdk"/*/*/bin "$_nros_sdk"/*/bin; do
         [ -d "$_nros_tcbin" ] || continue
         # Cross-gcc toolchains, plus build host tools the RTOS `make` invokes by
-        # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c).
-        if ls "$_nros_tcbin"/*-gcc >/dev/null 2>&1 || [ -x "$_nros_tcbin/genromfs" ]; then
+        # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c),
+        # and sccache (issue #74) — the justfile's `RUSTC_WRAPPER` + the zephyr
+        # fixture CMake launcher auto-use it once it's on PATH.
+        if ls "$_nros_tcbin"/*-gcc >/dev/null 2>&1 \
+            || [ -x "$_nros_tcbin/genromfs" ] \
+            || [ -x "$_nros_tcbin/sccache" ]; then
             export PATH="$_nros_tcbin:$PATH"
         fi
     done

@@ -63,6 +63,7 @@ setup:
     @just workspace rust-targets
     @just workspace cargo-tools
     @just workspace build-codegen
+    @just workspace install-sccache
 
 # Verify the host `nros` build tool resolves (the message/IDL codegen used by
 # `nros generate-*`, the cmake `nano_ros_generate_interfaces()` path, and the
@@ -215,6 +216,30 @@ install-play-launch-parser:
     echo "$want" > "$stamp"
     echo "[play_launch_parser] installed $want at $prefix"
     echo "[play_launch_parser] ensure $prefix/bin is on PATH (direnv .envrc does this)."
+
+# Install sccache (shared compiler cache) into the SDK store via the index
+# (issue #74). The justfile's `RUSTC_WRAPPER` + the zephyr fixture CMake launcher
+# auto-use it once on PATH (activate.{sh,fish} adds the store bin) — ~46% faster
+# host / ~22% embedded clean rebuilds (docs/development/build-ux-audit.md).
+# Non-fatal: sccache only speeds builds, so a failed source build warns rather
+# than aborting setup. Skipped when sccache is already on PATH.
+[group("setup")]
+install-sccache:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    if command -v sccache >/dev/null 2>&1; then
+        echo "[sccache] already on PATH ($(command -v sccache)) — skipping"
+        exit 0
+    fi
+    source scripts/build/cargo.sh
+    nros_bin="$(nros_cli_bin 2>/dev/null || true)"
+    if [ -z "${nros_bin:-}" ]; then
+        echo "[sccache] nros CLI not built yet — run 'just setup-cli', then 'just workspace install-sccache'"
+        exit 0
+    fi
+    echo "[sccache] provisioning via 'nros setup --tool sccache' (source build, one-time)..."
+    "$nros_bin" setup --tool sccache \
+        || echo "[sccache] provisioning failed (optional cache) — install manually for faster builds"
 
 # Diagnose workspace install status (read-only).
 # Returns exit 1 if anything is missing.

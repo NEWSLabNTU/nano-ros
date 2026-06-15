@@ -56,8 +56,10 @@ set -l _nros_sdk (set -q NROS_HOME; and echo $NROS_HOME/sdk; or echo $HOME/.nros
 if test -d $_nros_sdk
     for _nros_tcbin in $_nros_sdk/*/*/bin $_nros_sdk/*/bin
         # Cross-gcc toolchains, plus build host tools the RTOS `make` invokes by
-        # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c).
-        if test -d $_nros_tcbin; and begin; count $_nros_tcbin/*-gcc >/dev/null 2>&1; or test -x $_nros_tcbin/genromfs; end
+        # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c),
+        # and sccache (issue #74) — RUSTC_WRAPPER + the zephyr CMake launcher
+        # auto-use it once on PATH.
+        if test -d $_nros_tcbin; and begin; count $_nros_tcbin/*-gcc >/dev/null 2>&1; or test -x $_nros_tcbin/genromfs; or test -x $_nros_tcbin/sccache; end
             set -gx PATH $_nros_tcbin $PATH
         end
     end
