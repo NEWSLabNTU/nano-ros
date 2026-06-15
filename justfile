@@ -1023,6 +1023,101 @@ rust-rtos-link-check:
 ci: check rust-rtos-link-check test-all cyclonedds-ci
     @echo "CI passed!"
 
+# =============================================================================
+# CI reorg (step A) — local mirrors of the standalone CI workflows + a fast lane.
+# Goal: every CI job is runnable locally by a named recipe. These wrap the jobs
+# whose workflow yml previously carried only raw-shell steps. The heavy lane stays
+# `just ci` / `just test-all`; this is the fast per-push tier.
+# =============================================================================
+
+# no_std core-crate compile check across the embedded targets `ci.yml` gates
+# (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.
+[group("main")]
+check-no-std:
+    #!/usr/bin/env bash
+    set -e
+    crates=(-p nros-core -p nros-log -p nros-serdes -p nros-params \
+        -p nros-platform-api -p nros-platform-cffi -p nros-platform-critical-section -p nros-rmw)
+    for target in thumbv7m-none-eabi riscv32imc-unknown-none-elf; do
+        echo "== check-no-std: $target =="
+        rustup target add "$target" >/dev/null 2>&1 || true
+        # nros-rmw-cffi needs ptr atomics — only checked on the Cortex-M target
+        # (riscv32imc lacks them; mirror of ci.yml's per-target crate set).
+        extra=()
+        [ "$target" = "thumbv7m-none-eabi" ] && extra=(-p nros-rmw-cffi)
+        cargo check "${crates[@]}" "${extra[@]}" --no-default-features --target "$target"
+    done
+    echo "check-no-std OK."
+
+# Verify nros-sdk-index.toml + the QEMU configure flags
+# (.github/workflows/sdk-index-gate.yml). Buildless + fast.
+[group("main")]
+check-sdk-index:
+    python3 scripts/sdk/verify-index.py nros-sdk-index.toml
+    ./scripts/sdk/check-qemu-configure.sh
+
+# Scaffold-journey: a `nros new` project resolves end-to-end via the generated
+# `[patch.crates-io]` path block (.github/workflows/scaffold-journey.yml).
+[group("main")]
+scaffold-journey: setup-cli
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    NROS="$(nros_cli_bin)" scripts/ci/scaffold-journey-check.sh
+
+# colcon-parity: the `local-msg-package` template must also build under stock
+# colcon (.github/workflows/colcon-parity.yml). Needs ROS 2 + colcon on the host;
+# skips cleanly when colcon is absent.
+[group("main")]
+colcon-parity:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v colcon >/dev/null 2>&1; then
+        echo "[SKIPPED] colcon not found (apt install python3-colcon-common-extensions)"
+        exit 0
+    fi
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash
+    cd examples/templates/local-msg-package
+    # CI builds from a fresh checkout; locally, wipe colcon + per-pkg cargo
+    # artifacts first so a stale generated msg crate (e.g. a pre-codegen-bump
+    # sensor_msgs lacking RosMessage) can't produce a false failure.
+    rm -rf build install log src/*/target src/*/generated
+    colcon build --base-paths src --merge-install --event-handlers console_direct+
+    test -x install/lib/consumer/consumer || { echo "consumer binary not produced"; exit 1; }
+    file install/lib/consumer/consumer
+
+# acceptance (local, from-source): scaffold + build + run a fresh project with the
+# in-tree nros CLI. Local mirror of .github/workflows/nros-acceptance.yml (which
+# instead fetches the prebuilt release binary on a bare runner — that fresh-machine
+# path stays CI-only). Work dir under tmp/ (gitignored).
+[group("main")]
+acceptance: setup-cli
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    repo="$(pwd)"
+    nros="$(nros_cli_bin)"
+    work="$repo/tmp/acceptance"
+    rm -rf "$work"; mkdir -p "$work"; cd "$work"
+    NROS_REPO_DIR="$repo" "$nros" new accept_app --platform native --lang rust --use-case talker
+    cd accept_app
+    NROS_REPO_DIR="$repo" "$nros" ws sync . >/dev/null 2>&1 || true
+    NROS_REPO_DIR="$repo" "$nros" build
+    timeout 10 target/debug/accept_app 2>&1 | grep -q "accept_app"
+    echo "acceptance OK."
+
+# Fast per-push CI gate: the dependency-free lint/check lane — no heavy builds,
+# fixtures, QEMU, network, or ROS install. Runs anywhere. The heavier per-job
+# mirrors are separate recipes you invoke when their prereqs are present:
+#   just check-sdk-index   (network — downloads + sha256-checks SDK release assets)
+#   just scaffold-journey  (builds the CLI + a scaffolded project)
+#   just colcon-parity     (needs ROS 2 + colcon on the host)
+#   just acceptance        (builds the CLI + a scaffolded project)
+# The full heavy lane stays `just ci` / `just test-all`.
+[group("main")]
+ci-fast: check check-no-std
+    @echo "ci-fast passed!"
+
 # Cyclone DDS module CI step. Best-effort: skips cleanly when the
 # pinned Cyclone submodule hasn't been initialised (typical for
 # contributors not touching Phase 117). The `cyclonedds::ci` recipe
