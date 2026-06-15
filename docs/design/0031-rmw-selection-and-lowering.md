@@ -170,6 +170,71 @@ or a direct `nros-platform` dep. Tracked by phase-248 (C6 / C5c).
 This SUPERSEDES the earlier escape hatch in ARCHITECTURE §2 that named the `nros`
 umbrella as a permissible lowering target — the board crate is now that target.
 
+### Generalization (Phase 250 / issue 0072) — declared capability/feature axes
+
+RMW and platform are the first two **declared-selection → lowered-build-feature**
+axes. The same machinery generalizes to **capability/feature axes** the user toggles
+in config — `safety` (E2E message integrity), `param_services` (the external param
+server), `link-tls`, and future ones. The forward-reference at the top of this section
+(`nros`'s `safety-e2e` / `link-tls` features forward to the backend via `?/`) is the
+first hint; this makes it the model.
+
+**Same three lowering targets as RMW** (a declared axis lowers to all that apply):
+
+1. **Entry `nros` feature** — `[safety] → nros/safety-e2e`, `[param_services] →
+   nros/param-services` (`generated_default_features`, phase-250 Waves 1/3). This
+   compiles the *surface* (the `ctx.integrity()` API, the param-service handlers) in.
+2. **Direct backend dep** (board-less native) — the declared axis also enables the
+   BACKEND's own feature, because the capability's wire behaviour lives there, not in
+   the umbrella, and Cargo features do not propagate upward. `[safety]` →
+   `nros-rmw-zenoh { features = ["safety-e2e"] }` (the CRC attach/validate). Threaded
+   through `backend_features(build, backend, safety)` (issue 0072, native done). Only
+   backends that declare the feature get it (zenoh; xrce/cyclonedds have no
+   `safety-e2e`, so the axis no-ops there).
+3. **Board crate feature** (board-backed / embedded) — the board is the selection
+   point (C5b), so the declared axis lowers to a board-crate feature that forwards to
+   the board's own backend: `[safety]` → board `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]`.
+   Each board owns its forwarding (heterogeneous: most carry `nros-rmw-zenoh` optional
+   behind `rmw-zenoh`, so `?/safety-e2e` fits; family crates like `nros-board-threadx`
+   forward to their overlay; xrce/cyclone-only boards declare `safety-e2e = []`,
+   inert). **OPEN** — tracked by [issue 0072](../issues/0072-safety-e2e-backend-feature-not-lowered.md).
+
+**Capability registry (the SSoT, parallels `resolve_rmw`).** Replace the ad-hoc
+`if safety && backend == "zenoh"` checks with one table:
+```rust
+struct ResolvedCapability {
+    declared: &str,               // "safety"
+    nros_feature: &str,           // "safety-e2e"          (entry umbrella, target 1)
+    board_feature: &str,          // "safety-e2e"          (board crate, target 3)
+    backends_supporting: &[&str], // ["zenoh"]             (target 2; others no-op)
+    cmake_token: Option<&str>,    // C/C++ — None today
+    c_define: Option<&str>,       // C/C++ — None today
+}
+fn resolve_capability(axis: &str) -> Result<ResolvedCapability, UnknownCapability>;
+```
+The entry-feature, backend-dep, and board-feature lowering all read this table.
+
+**Descriptor gating (avoid build errors).** Emitting a board `safety-e2e` feature for
+a board that does not declare one is a Cargo error. So the board descriptor
+(`board_descriptor.rs`, already carrying `board_features` + the RFC-0042 `[board.capabilities]`)
+advertises which capability features the board supports; codegen emits the board
+feature only when advertised, else **skips + warns**. This keeps the per-board change
+local + reviewable (each board's forwarding matches its own deps) rather than a fragile
+global edit, and is the validatable gate.
+
+**C/C++/CMake.** `safety-e2e` is **Rust-only** today (zero `NROS_SAFETY` in C/CMake;
+the CRC machinery is feature-gated inside the zpico Rust shim). A C/C++ embedded build
+linking the zenoh backend does not validate CRC. Extending the axis to C/C++ needs a
+CMake/C `#define` (the `resolve_capability.cmake_token` / `.c_define` slots, mirroring
+`resolve_rmw`'s `-DNANO_ROS_RMW` + `NROS_SYSTEM_RMW_<TOK>`) plus a zpico-C safety gate —
+a deeper, separate gap.
+
+**Status:** targets 1 (entry) + 2 (native backend) landed (phase-250 + issue-0072
+native); target 3 (board) + the registry refactor + the C/C++ path are tracked in
+issue 0072. The config surface stays the typed `[safety]` / `[param_services]` blocks
+(they validate + carry defaults); a generic declared-feature list is a possible future
+sugar over the same registry.
+
 ## Alternatives considered
 
 - **Cargo feature as the canonical knob.** Rejected: Rust-only; cannot express
@@ -207,3 +272,10 @@ umbrella as a permissible lowering target — the board crate is now that target
   `resolve_rmw`'s lowered-value table is unchanged; only the feature's host crate
   moved. Crate-less host boards (native/posix, zephyr, orin-spe) remain a
   transitional exception — resolved in C5c after C6 consumer migration.
+- 2026-06 (phase-250 / issue 0072) — **generalized the declared-selection → lowered-
+  build-feature pattern to capability/feature axes** (`safety`, `param_services`,
+  link-tls, future), reusing the board-as-selection-point model. Three lowering
+  targets (entry `nros` feature, direct backend dep, board-crate feature) + a
+  `resolve_capability` registry SSoT + descriptor gating. Targets 1–2 landed; the
+  board target + registry refactor + C/C++ path tracked in issue 0072. See
+  "Generalization (Phase 250 / issue 0072)" above.

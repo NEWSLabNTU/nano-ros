@@ -68,17 +68,34 @@ The declared `[safety]` axis lowers to `nros/safety-e2e` on the generated entry
    enables the validation *surface* (the `ctx.integrity()` API, sequence tracking) but not
    the CRC sub-field over zenoh. Native + hand-written examples are unaffected (fixed above).
 
-## Planned resolution (direction, 2026-06-16)
+## Planned resolution (design recorded 2026-06-16)
 
-Generalize beyond a per-capability passthrough: **let users declare backend/crate features
-in config and lower them to build features, exactly like RMW selection** (RFC-0031). A
-declared feature set (`safety`, `param_services`, and future axes) flows through the same
-machinery that lowers `[system].rmw` → the board crate's `rmw-<x>` feature — so the board
-path gets the backend's `safety-e2e` for free, without a bespoke per-board passthrough, and
-the phase-250 axes (`[safety]` / `[param_services]`) become instances of one declared-
-feature → lowered-build-feature mechanism. This subsumes both the native threading already
-landed and the open board path. Track the design with RFC-0031 (RMW selection & lowering)
-as the precedent.
+Generalize beyond a per-capability passthrough: **declared capability/feature axes lower to
+build features exactly like RMW selection.** Design recorded in
+[RFC-0031 § "Generalization (Phase 250 / issue 0072)"](../design/0031-rmw-selection-and-lowering.md).
+Summary:
+
+- **Three lowering targets** (mirroring RMW): entry `nros/<feat>` (done), direct backend dep
+  for board-less native (done), and the **board-crate feature** for board-backed/embedded
+  (this issue's remainder).
+- **Board-crate feature convention:** each board forwards a `safety-e2e` feature to its own
+  backend — `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]` for boards with an optional zenoh
+  dep; family crates (e.g. `nros-board-threadx`) forward to their overlay; xrce/cyclone-only
+  boards declare `safety-e2e = []` (inert). Per-board + correct-by-construction.
+- **Capability registry** (`resolve_capability`, parallels `resolve_rmw`) is the SSoT mapping
+  an axis → its `nros` feature + board feature + supporting backends (+ future CMake/C
+  tokens). The native + entry lowering refactor to read it (no behaviour change).
+- **Descriptor gating:** the board descriptor advertises supported capability features;
+  codegen emits the board feature only when advertised, else skips + warns — so a board
+  without the feature never produces a Cargo error (no blind 14-board edit).
+- **C/C++:** `safety-e2e` is Rust-only today (no `NROS_SAFETY` define); the C/C++ embedded
+  path is a deeper, separate gap (CMake/C define + zpico-C safety gate).
+
+**Build order (when greenlit):** (1) `resolve_capability` registry + refactor the existing
+native/entry lowering onto it; (2) descriptor `supported_capabilities` field + parse from
+`nros-board.toml`; (3) generate.rs board-feature threading, gated on the descriptor; (4)
+per-board `safety-e2e` feature, one board at a time (start `nros-board-native` — host-
+buildable + testable), each reviewed against its own deps; (5) C/C++ as its own issue.
 
 ## Also consider
 
