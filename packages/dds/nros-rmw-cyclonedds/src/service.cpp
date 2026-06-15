@@ -403,18 +403,10 @@ int32_t take_fibonacci_get_result_response_wire(const void* sample,
     return static_cast<int32_t>(total);
 }
 
-bool insert_goal_id_len_at(uint8_t* buf, size_t len, size_t cap, size_t len_off, size_t* out_len) {
-    if (buf == nullptr || out_len == nullptr || len_off > len || len + kCdrLenPrefix > cap) {
-        return false;
-    }
-    std::memmove(buf + len_off + kCdrLenPrefix, buf + len_off, len - len_off);
-    buf[len_off] = kGoalUuidLen;
-    buf[len_off + 1] = 0;
-    buf[len_off + 2] = 0;
-    buf[len_off + 3] = 0;
-    *out_len = len + kCdrLenPrefix;
-    return true;
-}
+// (Issue #68) `insert_goal_id_len_at` was removed: it re-inserted a pre-233.6
+// `uint32(16)` goal_id length prefix on the service-request receive path, which a
+// real `rcl_action` peer never sends and the post-233.6 action core no longer
+// reads. See `split_wire_header`.
 
 // Construct the wire CDR for a typed struct that has the 16-byte
 // request_header inlined at offset 0. Inputs:
@@ -461,14 +453,17 @@ int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
     std::memcpy(user_out, wire_cdr, kEncapLen);
     // User fields.
     std::memcpy(user_out + kEncapLen, wire_cdr + kEncapLen + kHeaderBytes, user_len - kEncapLen);
-    if (type_ends_with(payload_desc, "_SendGoal_Request_") ||
-        type_ends_with(payload_desc, "_GetResult_Request_")) {
-        size_t adjusted = 0;
-        if (!insert_goal_id_len_at(user_out, user_len, user_cap, kEncapLen, &adjusted)) {
-            return NROS_RMW_RET_BUFFER_TOO_SMALL;
-        }
-        user_len = adjusted;
-    }
+    // Phase 233.6 completion (issue #68) — do NOT re-insert a goal_id `uint32(16)`
+    // length prefix here. ROS 2 `rcl_action` (over rmw_cyclonedds_cpp) serialises
+    // the SendGoal/GetResult request's `goal_id` as a fixed `uint8[16]` array — no
+    // length prefix — and the nano action core now reads it that way too
+    // (`action_core::read_goal_id`, post-233.6). The old `insert_goal_id_len_at`
+    // call mirrored the pre-233.6 prefixed framing; 233.6 dropped the subscriber.cpp
+    // insert mirror but missed THIS service-request site, so a real rcl_action client's
+    // goal arrived with a spurious `10 00 00 00` before the UUID → `order` read 4 bytes
+    // early → "Goal was rejected" (order garbage). The wire payload already matches the
+    // bare-array form after the request-header strip above; pass it through unchanged.
+    (void) payload_desc;
     return static_cast<int32_t>(user_len);
 }
 

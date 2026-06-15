@@ -1,11 +1,38 @@
 ---
 id: 68
 title: CycloneDDS ROS2 action interop — nano C action server rejects the ROS2 client goal ("Goal was rejected")
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [phase-248, phase-249, issue-0067]
+resolved_in: "2026-06-15 — remove the stale goal_id len-prefix insert in service.cpp split_wire_header (233.6 completion)"
 ---
+
+> **RESOLVED (2026-06-15).** Root cause: an incomplete Phase-233.6 migration.
+> 233.6 switched the action core to read/write `goal_id` as a bare `uint8[16]`
+> (no `uint32(16)` length prefix) and dropped the `subscriber.cpp` insert mirror —
+> but **missed** the service-request receive path. `service.cpp::split_wire_header`
+> still called `insert_goal_id_len_at(...)` unconditionally for `_SendGoal_Request_`
+> / `_GetResult_Request_`, re-inserting a `10 00 00 00` prefix before the UUID. A
+> real `rcl_action` (rmw_cyclonedds_cpp) client sends the bare array, so after the
+> 16-byte request-header strip the payload already matched — the insert shifted
+> `order` 4 bytes (read the UUID tail as `order` → out-of-range → "Goal was
+> rejected").
+>
+> Captured the wire bytes to confirm: `00 01 00 00 | 10 00 00 00 | <16-byte uuid> |
+> 05 00 00 00` — the `10 00 00 00` is the spurious prefix; the uuid matched the
+> client's reported goal ID and `order=5` sat right after it.
+>
+> **Fix:** drop the `insert_goal_id_len_at` call in `split_wire_header` (pass the
+> stripped payload through unchanged) and delete the now-unused helper. The send
+> path was already bare-correct (the framework writes no prefix post-233.6, so the
+> mirror `strip_goal_id_len_at` on send is a no-op). Symmetric on both sides now:
+> nano↔nano and nano↔rcl agree on the bare `uint8[16]` goal_id.
+>
+> **Validated:** `cyclonedds_ros2_interop` 5/5 PASS (incl.
+> `test_cyclonedds_action_nano_server_ros2_client`); manual repro shows the server
+> accepts `order=5`, executes, succeeds, and the stock `ros2 action send_goal
+> --feedback` client gets feedback + the Fibonacci result.
 
 ## Symptom
 

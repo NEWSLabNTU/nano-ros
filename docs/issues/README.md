@@ -44,11 +44,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-| id | title                                                                 | type        | area   | file |
-|----|-----------------------------------------------------------------------|-------------|--------|------|
-| 68 | CycloneDDS ROS2 action interop — nano C action server rejects the ROS2 client goal ("Goal was rejected") | bug | rmw | [0068-cyclonedds-ros2-action-goal-rejected.md](0068-cyclonedds-ros2-action-goal-rejected.md) |
+_None currently open._
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#67** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#68** —
+CycloneDDS ROS 2 action interop "Goal was rejected": an incomplete Phase-233.6
+migration left `service.cpp::split_wire_header` re-inserting a `uint32(16)`
+goal_id length prefix on the SendGoal/GetResult request receive path, which a real
+`rcl_action` client never sends and the post-233.6 action core no longer reads →
+`order` read 4 bytes early → out-of-range reject. Fixed by dropping the
+`insert_goal_id_len_at` call (+ deleting the dead helper); `cyclonedds_ros2_interop`
+5/5 PASS. See `archived/0068-*`. **#67** —
 rust typed CycloneDDS publisher `PublisherCreationFailed`: phase-248 C5c removed
 the `nros/rmw-cyclonedds` feature that was the sole activator of
 `nros-node/__cyclonedds-link` → `cfg(rmw_cyclonedds_present)`, so `register_type::<M>`
