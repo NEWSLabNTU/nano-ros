@@ -1,0 +1,5 @@
+# ninja log v6
+0	20100	1700000000	cargo/build/libnros_c.a	deadbeef
+0	20100	1700000000	cargo/build/nros_c_cargo_build	deadbeef
+0	20100	1700000000	cargo/include/nros_generated.h	deadbeef
+20100	21000	1700000001	zephyr/zephyr.elf	cafef00d

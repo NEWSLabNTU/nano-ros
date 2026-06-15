@@ -93,6 +93,26 @@ New host crate `packages/testing/nros-build-profile/` (main workspace, lib + thi
   integration consumes a prebuilt example).
 - `nros` gains **no** build/test verb; the crate is independent of the `nros` CLI surface.
 
+## Real-data validation (2026-06-15)
+
+Ran the analyzer against live build artifacts (not just fixtures):
+
+- **Real Zephyr `west` build** (`build/phase212-mf3-zephyr-rust/.ninja_log`): driver
+  detection correct (`ninja (west)`). **Found + fixed a correctness bug:** a ninja edge
+  with multiple outputs writes one `.ninja_log` line per output, all sharing
+  `(start, end, cmdhash)`; the first cut counted each line → a corrosion cargo edge
+  (`.a` + stamp + generated `.h`) was counted 3–4×, inflating totals (stage sums ≈ 210 s
+  vs a 35 s build). Fixed by keying units on the **edge** `(start, end, cmdhash)` and
+  classifying from the union of its outputs (a `*_cargo_build`/`.rlib` edge → compile,
+  not link; generated headers → codegen). Post-fix stage sums (~40 s) track the wall
+  span (~35 s). Locked with the `multi_output_edge.ninja_log` fixture + test.
+- **Real cargo `--timings`** (`examples/native/rust/talker`): total 32.8 s matched
+  cargo's own "Finished in 32.81 s"; the `zpico-sys` build script (zenoh-pico C compile,
+  16.8 s) correctly attributed to codegen and flagged as the dominant unit; `thiserror
+  compiled 6×` surfaced the isolated-`target/` rebuild. No fixes needed.
+
+Both backends now verified on live artifacts. The validation gap is closed.
+
 ## Out of scope (deferred)
 
 ETA/prediction, historical trend DB, web UI, sccache-stats integration (hint only),

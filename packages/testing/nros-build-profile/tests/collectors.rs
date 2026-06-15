@@ -55,6 +55,30 @@ fn ninja_log_parses_units_and_skips_malformed() {
 }
 
 #[test]
+fn ninja_collapses_multi_output_edges() {
+    // One edge (same start/end/cmdhash) emits 3 outputs — a corrosion cargo
+    // build's .a + stamp + generated header. It must count ONCE (20.1s), not 3×,
+    // and be attributed to compile (the Rust build), not link.
+    let c = ninja::parse(&fixture("multi_output_edge.ninja_log"));
+    assert_eq!(c.units.len(), 2, "2 edges, not 4 output lines");
+
+    let rust = c
+        .units
+        .iter()
+        .find(|u| u.kind == Kind::Compile)
+        .expect("rust-build edge attributed to compile");
+    assert!(
+        (rust.dur_s - 20.1).abs() < 1e-6,
+        "counted once: {}",
+        rust.dur_s
+    );
+    assert_eq!(rust.name, "nros_c_cargo_build");
+
+    let elf = c.units.iter().find(|u| u.name == "zephyr.elf").unwrap();
+    assert_eq!(elf.kind, Kind::Link);
+}
+
+#[test]
 fn cargo_timings_parses_unit_data() {
     let c = cargo::parse(&fixture("cargo-timing.html"));
 

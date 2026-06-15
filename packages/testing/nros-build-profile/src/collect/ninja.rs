@@ -59,10 +59,17 @@ fn find_ninja_log(dir: &Path) -> Option<std::path::PathBuf> {
         .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
 }
 
-/// Parse `.ninja_log` text. Last row per output wins (handles rebuild rows).
+/// Parse `.ninja_log` text into one unit **per edge**.
+///
+/// A single ninja edge with multiple outputs writes one log line per output,
+/// all sharing the same `(start, end, command_hash)`. Counting each line would
+/// multiply the edge's time by its output count (a corrosion cargo edge emits a
+/// `.a` + a stamp + generated headers — 4 lines, one 20 s build). We key by
+/// `(start, end, cmdhash)` so each edge is counted once, and classify the edge
+/// from the union of its outputs. Last write per edge key wins (rebuild rows).
 pub fn parse(text: &str) -> Collected {
-    // output -> (start_ms, end_ms); BTreeMap for deterministic ordering.
-    let mut rows: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    // edge key (start_ms, end_ms, cmdhash) -> outputs of that edge.
+    let mut edges: BTreeMap<(u64, u64, String), Vec<String>> = BTreeMap::new();
     let mut notes = Vec::new();
     let mut skipped = 0usize;
 
@@ -74,9 +81,13 @@ pub fn parse(text: &str) -> Collected {
         let mut f = line.split('\t');
         match (f.next(), f.next(), f.next(), f.next()) {
             (Some(start), Some(end), Some(_mtime), Some(output)) => {
+                let cmdhash = f.next().unwrap_or("").to_string();
                 match (start.parse::<u64>(), end.parse::<u64>()) {
                     (Ok(s), Ok(e)) if e >= s => {
-                        rows.insert(output.to_string(), (s, e));
+                        edges
+                            .entry((s, e, cmdhash))
+                            .or_default()
+                            .push(output.to_string());
                     }
                     _ => skipped += 1,
                 }
@@ -88,12 +99,12 @@ pub fn parse(text: &str) -> Collected {
         notes.push(format!("ninja: skipped {skipped} malformed row(s)"));
     }
 
-    let units = rows
+    let units = edges
         .into_iter()
-        .map(|(output, (s, e))| {
-            let kind = classify(&output);
+        .map(|((s, e, _hash), outputs)| {
+            let (kind, name) = classify_edge(&outputs);
             RawUnit {
-                name: basename(&output),
+                name,
                 kind,
                 dur_s: (e - s) as f64 / 1000.0,
                 start_s: s as f64 / 1000.0,
@@ -110,8 +121,45 @@ pub fn parse(text: &str) -> Collected {
     }
 }
 
-/// Classify a ninja output path into a stage by extension.
-fn classify(output: &str) -> Kind {
+/// Classify a whole ninja edge from the union of its outputs, and pick a
+/// representative name. A Rust/corrosion build (a `*_cargo_build` stamp or an
+/// `.rlib`) is attributed to **compile** even though it also emits a `.a`, so
+/// the long cargo time isn't mislabeled as link.
+fn classify_edge(outputs: &[String]) -> (Kind, String) {
+    let kind = if outputs.iter().any(|o| is_rust_build(o)) {
+        Kind::Compile
+    } else if outputs.iter().any(|o| ext_kind(o) == Kind::Link) {
+        Kind::Link
+    } else if outputs.iter().any(|o| ext_kind(o) == Kind::Compile) {
+        Kind::Compile
+    } else if outputs.iter().any(|o| ext_kind(o) == Kind::Codegen) {
+        Kind::Codegen
+    } else {
+        Kind::Other
+    };
+    // Name from the most informative output: a real artifact for link/compile,
+    // else the first output's basename.
+    let pick = outputs
+        .iter()
+        .find(|o| ext_kind(o) == kind)
+        .or_else(|| outputs.iter().find(|o| is_rust_build(o)))
+        .or_else(|| outputs.first())
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    (kind, basename(pick))
+}
+
+/// A corrosion/cargo edge: a `*_cargo_build` stamp target or a Rust artifact.
+fn is_rust_build(output: &str) -> bool {
+    let base = Path::new(output)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(output);
+    base.contains("cargo_build") || base.ends_with(".rlib")
+}
+
+/// Stage implied by a single output's extension.
+fn ext_kind(output: &str) -> Kind {
     let ext = Path::new(output)
         .extension()
         .and_then(|e| e.to_str())
@@ -120,6 +168,8 @@ fn classify(output: &str) -> Kind {
     match ext.as_str() {
         "o" | "obj" | "lo" => Kind::Compile,
         "a" | "lib" | "elf" | "so" | "dll" | "dylib" | "bin" | "hex" | "out" | "axf" => Kind::Link,
+        // Generated headers / sources are codegen artifacts.
+        "h" | "hpp" | "hh" | "hxx" => Kind::Codegen,
         _ => Kind::Other,
     }
 }
