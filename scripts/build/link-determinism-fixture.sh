@@ -2,15 +2,15 @@
 # Phase 241.D / RFC-0042 D3 — build-stage fixture for the staticlib
 # duplicate-symbol validator (`staticlib_duplicate_symbols.rs`).
 #
-# Produces the `(libnros_c.a, libnros_rmw_zenoh_staticlib.a)` pair the validator
-# consumes, so it is a HARD PR gate (not skip-if-no-prebuilt-example). Built for
-# the HOST with `platform-posix` — the duplicate set the validator checks is the
-# shared Rust dependency closure, which is target-agnostic, so the host pair is a
-# faithful + always-reproducible proxy for the cross C++ staticlib link that
-# carries `--allow-multiple-definition`. No SDK / cross toolchain needed.
+# Phase 241.D3-rev / phase-249 single-runtime: produces the ONE archive the
+# validator consumes — `build/link-determinism/libnros_c.a` with the zenoh backend
+# bundled in — so it is a HARD PR gate (not skip-if-no-prebuilt-example). Built for
+# the HOST with `platform-posix`; the link closure is target-agnostic, so the host
+# archive is a faithful + always-reproducible proxy for the cross C++ staticlib
+# link. The validator asserts it links with `-u nros_rmw_zenoh_register` and NO
+# `--allow-multiple-definition`. No SDK / cross toolchain needed.
 #
-# Output: build/link-determinism/{libnros_c.a,libnros_rmw_zenoh_staticlib.a}
-# + a `.compile-ok` stamp the test gates on.
+# Output: build/link-determinism/libnros_c.a + a `.compile-ok` stamp.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

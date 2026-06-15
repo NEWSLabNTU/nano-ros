@@ -1,11 +1,25 @@
 ---
 id: 70
 title: staticlib duplicate-symbol gate red — both link-determinism tests fail on main
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0062, phase-241, phase-249]
+resolved_in: phase-249 / #62 single-runtime
 ---
+
+> **RESOLVED (2026-06-16).** #62/phase-249 settled the 241.D3-rev single-runtime
+> link model, so the test was rewritten for the single archive (the rewrite was
+> blocked on #62's outcome — now landed). `staticlib_duplicate_symbols.rs`:
+> dropped the obsolete 2-archive dup-diff (moot — one archive) + the
+> `host_pair_links…` 2-archive proof; replaced with
+> `single_archive_links_via_u_force_without_allow_multiple_definition` — asserts
+> the single `build/link-determinism/libnros_c.a` (zenoh bundled) links a host
+> binary with `-u nros_rmw_zenoh_register` and **NO `--allow-multiple-definition`**,
+> register entry pulled, exactly ONE `REGISTRY`. `nm` helper now prefers `llvm-nm`,
+> falls back to GNU `nm`. Fixture header comment corrected (one archive, not a
+> pair). Verified: fixture builds `libnros_c.a` (zenoh bundled); the test passes
+> (links clean, 1 REGISTRY) — `check.yml` link-determinism gate green.
 
 ## Root cause (diagnosed 2026-06-16) — test stale vs 241.D3-rev single-runtime
 

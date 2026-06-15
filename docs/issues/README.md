@@ -46,16 +46,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 | id | title                                                                 | type | area | file |
 |----|-----------------------------------------------------------------------|------|------|------|
-| 70 | staticlib duplicate-symbol gate red — test stale vs 241.D3-rev single-runtime (do with #62) | bug | build | [0070-staticlib-duplicate-symbols-gate-red.md](0070-staticlib-duplicate-symbols-gate-red.md) |
 | 71 | native C/C++ workspace Entry fails on CI — two bundled `std` (libnros_cpp.a + per-package FFI staticlib) collide on `rust_begin_unwind` | bug | cmake | [0071-cpp-workspace-multi-std-staticlib-dup.md](0071-cpp-workspace-multi-std-staticlib-dup.md) |
 
 Surfaced by the CI reorg (making `just check` the fast-gate SSoT exposed
-`check.yml` red); see `docs/development/ci-workflow-reorg.md`. **#70** is a
-test-vs-architecture mismatch entangled with **#62** (single-runtime D3
-completion) — the link-determinism test must be rewritten for the single-archive
-model as part of #62, not standalone.
+`check.yml` red); see `docs/development/ci-workflow-reorg.md`.
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#69** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#70** —
+staticlib link-determinism gate red: the test expected the pre-D3 2-archive pair,
+but #62/phase-249 landed the single-runtime model (one `libnros_c.a`, zenoh
+bundled). Rewrote `staticlib_duplicate_symbols.rs` for the single archive — links
+with `-u nros_rmw_zenoh_register`, NO `--allow-multiple-definition`, one `REGISTRY`;
+dropped the obsolete 2-archive dup-diff. See `archived/0070-*`. **#69** —
 dep-chain gate red: `dep-chain-check.sh` (1) feature-detected via a loose
 substring grep that matched a dependency's requested `rmw-zenoh` feature, and
 (2) ran `nros generate-rust` on package.xml-less board-driven talkers. Fixed →
