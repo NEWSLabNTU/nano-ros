@@ -57,6 +57,35 @@ fn cross_gxx() -> Option<PathBuf> {
     None
 }
 
+/// Does this cross g++ ship a usable libstdc++ (the C++ standard headers the
+/// probe pulls)? Some bare-metal `arm-none-eabi` toolchains provision only the
+/// newlib C library — no `<type_traits>`/`<cstdlib>`. That is an unsuitable
+/// toolchain for this gate (an unmet precondition), NOT the #27/#36 clash, so
+/// the caller must `skip!` rather than report a false `div_t`-gate failure.
+fn cxx_stdlib_available(gxx: &PathBuf) -> bool {
+    use std::io::Write;
+    let Ok(dir) = tempfile::tempdir() else {
+        return false;
+    };
+    let src = dir.path().join("cap.cpp");
+    let Ok(mut f) = std::fs::File::create(&src) else {
+        return false;
+    };
+    if f.write_all(b"#include <type_traits>\n#include <cstdlib>\nint main(){return 0;}\n")
+        .is_err()
+    {
+        return false;
+    }
+    Command::new(gxx)
+        .args(["-std=c++17", "-fno-exceptions", "-c"])
+        .arg(&src)
+        .arg("-o")
+        .arg("/dev/null")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Compile the probe. `rtos_cxx_first` = the #27/#36 fix (RTOS `include/cxx`
 /// prepended so `<cstdlib>` resolves to the RTOS wrapper). Returns (ok, output).
 fn compile(gxx: &PathBuf, rtos_cxx_first: bool) -> (bool, String) {
@@ -85,6 +114,17 @@ fn cross_libc_two_set_precedence_holds() {
              (the #27/#36 two-libc gate needs the cross newlib)"
         );
     };
+
+    // 0. Toolchain capability: the probe needs libstdc++ (`<type_traits>` /
+    //    `<cstdlib>`). A C-only newlib cross can't compile it — that is an
+    //    unmet precondition, not the #27/#36 clash. Skip rather than false-fail.
+    if !cxx_stdlib_available(&gxx) {
+        nros_tests::skip!(
+            "cross toolchain ({}) has no usable libstdc++ (`<type_traits>`/`<cstdlib>` \
+             absent) — the #27/#36 two-libc gate needs a C++-capable newlib cross",
+            gxx.display()
+        );
+    }
 
     // 1. Broken precedence (RTOS sysroot reachable but not winning <cstdlib>).
     let (broken_ok, broken_log) = compile(&gxx, false);

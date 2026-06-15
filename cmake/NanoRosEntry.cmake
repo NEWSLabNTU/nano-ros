@@ -184,6 +184,25 @@ function(nano_ros_entry)
         include("${_link_libs_cmake}")
     endif()
 
+    # Phase 249 P4a (issue #57) — wire the strong `nros_app_register_backends()`
+    # for native (POSIX/host) C/C++ entries. `nros_cpp_init` / `nros_support_init`
+    # call that symbol unconditionally, and P4a removed its weak default — the only
+    # def is the one `nano_ros_link_rmw()` (via `nros_platform_link_app`) generates.
+    # The `nano_ros_node_register` native carrier (244.C4) calls it, but the
+    # LAUNCH-based `nano_ros_entry` path created the exe here, so that carrier's
+    # `NOT TARGET` guard skips it — leaving a workspace native C/C++ Entry with an
+    # undefined `nros_app_register_backends` at link (the cpp/mixed workspace fixture
+    # link failure). The Rust workspace Entry is cargo-built (linkme, no
+    # `nros_cpp_init`) so it is exempt; embedded Entries take the board link path.
+    # `nano_ros_link_rmw` is idempotent (single accumulated stub), so this is safe
+    # even when a node-register call also wired the same target.
+    if(TARGET ${_NRA_NAME}
+       AND NANO_ROS_PLATFORM STREQUAL "posix"
+       AND COMMAND nros_platform_link_app
+       AND ("native" IN_LIST _NRA_DEPLOY))
+        nros_platform_link_app(${_NRA_NAME})
+    endif()
+
     # Phase 212.N.6 — stash the BOARD selection on the target so the
     # later N.4 / N.5 codegen planner can read it. Empty when caller
     # didn't pass BOARD.

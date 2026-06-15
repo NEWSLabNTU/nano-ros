@@ -16,9 +16,10 @@ name = "talker"
 default_namespace = "/"
 
 [dependencies]
+# Phase 248 C5c — node pkgs are platform/RMW-agnostic; `platform-posix`
+# was removed from `nros`. Platform + backend come from the entry/board.
 nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-posix",
     "ros-humble",
 ] }

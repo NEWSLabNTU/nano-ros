@@ -155,7 +155,9 @@ fn cargo_nros_binary_absent() {
 #[test]
 fn phase_doc_non_goals_lists_emit() {
     let root = nros_tests::project_root();
-    let doc = root.join("docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md");
+    // Phase 212 completed → archived. The §Non-Goals lock travels with it.
+    let doc =
+        root.join("docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md");
     let body = std::fs::read_to_string(&doc).expect("read phase 212 doc");
     let (_, after) = body
         .split_once("## Non-Goals")

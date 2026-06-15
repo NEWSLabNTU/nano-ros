@@ -34,7 +34,6 @@ deploy = "native"
 nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-posix",
     "ros-humble",
 ] }
 # Phase 212.N.3 tier-1 per-board shim — `NativeBoard::run` provides the

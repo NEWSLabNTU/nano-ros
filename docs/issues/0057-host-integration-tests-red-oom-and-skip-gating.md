@@ -126,5 +126,42 @@ done locally meanwhile.
    coupled + overlaps phase-248/249 churn; triage it from the actual CI run's
    failures once the cap lands green, not from this env-mismatched box.
 
-**Remaining gate:** confirm the lane greens on the next CI run with the Cause-1 cap
-(CI-side, not locally reproducible). Resolve this issue once that lands green.
+## Cause-1 cap CONFIRMED + post-cap residue triaged & fixed (2026-06-15)
+
+CI run `27525622918` (host-integration-tests, capped) **confirmed Cause-1 dead**: both
+`Build rust core fixtures` and `Build workspace fixtures` ran to completion — no OOM,
+no SIGSEGV/SIGILL/SIGABRT. The lane then failed `just test-integration` with
+`_count-real-failures` = **11 real (non-`[SKIPPED]`) failures** (139 `[SKIPPED]`
+correctly rewritten to `<skipped>` — skip-gating works, per Cause-2). Those 11 were
+the actual post-cap residue. Triaged from the run's junit artifact → **5 root causes,
+all fixed and validated locally**:
+
+- **A — `cargo` resolution: `nros` feature `platform-posix` removed (phase-248 C5c)**
+  (5 failures: `native_main_macro_misuse` ×4, `native_orchestration_misuse` ×1). The
+  `n9_workspace` / `orchestration_tiers_native` / `o4` / `o5` fixtures + the
+  `multi-node-workspace` template still requested the deleted `platform-posix` feature
+  on the `nros` umbrella. Dropped it (15 manifests); `nros` is platform-agnostic now —
+  platform comes from the board / `nros-platform-cffi`. Validated: misuse tests pass.
+- **B — `cross_libc_precedence_gate`** (1): CI's `arm-none-eabi-g++` lacked libstdc++
+  (`<type_traits>` absent) → the probe hard-failed instead of modelling the `div_t`
+  clash. Added a `cxx_stdlib_available()` capability gate → `skip!` on a C-only cross
+  (unmet precondition), not a false FAIL.
+- **C — `non_goals_grep`** (1): read a hardcoded `docs/roadmap/phase-212-…md`; phase 212
+  was archived. Pointed at `docs/roadmap/archived/`.
+- **D — `workspace_metadata` cpp/mixed Entry not prebuilt** (3): phase-249 P4a removed
+  the weak `nros_app_register_backends` default, but the LAUNCH-based `nano_ros_entry`
+  (cmake) never wired the strong stub for native C/C++ entries (the 244.C4
+  node-register carrier does, but its `NOT TARGET` guard skips the already-created
+  entry). Fix: `nano_ros_entry` calls `nros_platform_link_app` for native C/C++.
+  Unmasked a second latent bug — mixed (C+C+++**Rust**) workspaces double-link nros-c
+  (standalone `libnros_c.a` + the runtime umbrella) → `multiple definition` of
+  `nros_rmw_cffi_*` / `nros_rmw_<x>_register`. Fix: `nros_synth_runtime_umbrella` also
+  repoints the C umbrella (`NanoRos`) `nros_c-static` → `nros_ws_runtime-static`
+  (preserving its INTERFACE include dirs), mirroring the nros-cpp-headers swap.
+  Validated: c/cpp/mixed workspaces all link; all 7 `workspace_metadata` tests pass.
+- **E — `examples_canonical_shape`** (1): the §212.L.4 esp32-baremetal class/pkg-name
+  mismatch — already fixed by the local (unpushed) commit `fix(#57): esp32-baremetal
+  rust examples`; the failing CI run predated it. No-op once pushed.
+
+**Remaining gate:** push + confirm the next CI run greens with all of the above. The OOM
+cap is proven; the 11 real failures are fixed locally. Resolve once CI lands green.

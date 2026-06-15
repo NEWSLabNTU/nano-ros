@@ -217,6 +217,35 @@ ${_anchor_lines}")
             "nros_ws_runtime (nros-cpp + ${_rust_dirs}).")
     endif()
 
+    # ---- Issue #57 — mixed (C + C++ + Rust) workspaces ALSO link the C umbrella
+    #      (`NanoRos::NanoRos` == the `NanoRos` INTERFACE target == `nros_c-static`),
+    #      because the C Node pkgs link it. The runtime staticlib already bundles
+    #      nros-c (via nros-cpp's dep) and re-pulls its full C ABI past DCE (the
+    #      anchor above), so leaving `nros_c-static` separately linked double-defines
+    #      nros-rmw-cffi's `REGISTRY` / `nros_rmw_cffi_*` / `nros_rmw_<x>_register`
+    #      (link-time `multiple definition`). Repoint the C umbrella at the runtime
+    #      staticlib too, mirroring the nros-cpp-headers swap, so nros-c resolves
+    #      from the single umbrella archive. No-op for pure-C++/Rust workspaces (no
+    #      `nros_c-static` in the interface list). ----
+    if(TARGET NanoRos)
+        get_target_property(_clinks NanoRos INTERFACE_LINK_LIBRARIES)
+        if(_clinks AND ("nros_c-static" IN_LIST _clinks))
+            # Preserve nros_c-static's INTERFACE include dirs (the per-build variant
+            # header path + public `include/`, carrying `nros/types.h` etc.) directly
+            # on NanoRos BEFORE dropping it from the link list — the runtime staticlib
+            # does not re-export them, and the C Node interface headers `#include` them.
+            if(TARGET nros_c-static)
+                get_target_property(_cinc nros_c-static INTERFACE_INCLUDE_DIRECTORIES)
+                if(_cinc)
+                    target_include_directories(NanoRos INTERFACE ${_cinc})
+                endif()
+            endif()
+            list(TRANSFORM _clinks REPLACE "^nros_c-static$" "nros_ws_runtime-static")
+            set_target_properties(NanoRos PROPERTIES
+                INTERFACE_LINK_LIBRARIES "${_clinks}")
+        endif()
+    endif()
+
     # The per-build variant headers (`nros_cpp_config_generated.h` / `nros_config_generated.h`,
     # the *_OPAQUE_U64S / *_SIZE macros a C++ entry TU needs) are mirrored into
     # nros-cpp-headers' INTERFACE include dir by `cargo-build_nros_cpp`'s POST_BUILD

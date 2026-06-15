@@ -20,7 +20,6 @@ default_namespace = "/"
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-posix",
     "ros-humble",
 ] }
 std_msgs = { version = "*", default-features = false }

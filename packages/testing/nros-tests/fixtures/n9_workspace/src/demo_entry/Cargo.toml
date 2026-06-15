@@ -21,10 +21,12 @@ path = "src/lib.rs"
 # DELIBERATE single-dep on `nros`. The `nros::main!()` macro emit
 # must resolve `BoardEntry` / `RuntimeCtx` / `RuntimeError` through
 # `nros::__macro_support::nros_platform`.
+# Phase 248 C5c — `nros` is platform-agnostic; the `platform-posix`
+# feature was removed. The native board crate below brings the platform
+# (+ a backend) into the graph; the macro round-trip only `cargo check`s.
 nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-posix",
     "ros-humble",
 ] }
 # Board crate — supplies the `NativeBoard` ZST referenced by the

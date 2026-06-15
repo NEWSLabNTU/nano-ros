@@ -23,7 +23,6 @@ deploy = "native"
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-posix",
     "ros-humble",
 ] }
 # Board crate — supplies the `NativeBoard` ZST the macro-emitted

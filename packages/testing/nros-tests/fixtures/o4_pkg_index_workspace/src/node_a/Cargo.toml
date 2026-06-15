@@ -16,6 +16,5 @@ default_namespace = "/"
 nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "platform-posix",
     "ros-humble",
 ] }
