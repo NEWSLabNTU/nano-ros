@@ -327,6 +327,7 @@ check: \
     check-nros-log-riscv32 \
     check-platform-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc \
+    check-no-allow-multiple-def \
     check-weak-symbols \
     check-version-lockstep check-source-gates \
     check-example-fmt check-staticlib-symbols check-embedded-feature-unification \
@@ -460,6 +461,14 @@ check-board-manifest-drift:
 [private]
 check-no-direct-kernel-alloc:
     @bash scripts/check-no-direct-kernel-alloc.sh
+
+# Phase 251 — forbid `--allow-multiple-definition` in the build system (it lets
+# two same-named-but-different functions coexist → wrong-copy hazard). Fails on
+# any non-allowlisted real use; allowlist (scripts/allow-multiple-def-allowlist.txt)
+# carries the audited exceptions, target empty. Buildless.
+[private]
+check-no-allow-multiple-def:
+    @bash scripts/check-no-allow-multiple-def.sh
 
 # Phase 247 W2 (issue 0050) — fast source-level weak-symbol gate: fail when an
 # owned C/C++/asm file outside the audited allowlist
