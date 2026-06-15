@@ -49,8 +49,14 @@ ALLOW_RE='(packages/core/nros-platform-[^/]+/|packages/platforms/[^/]+/)'
 TASK_NET_ALLOW_RE='(packages/boards/nros-board-common/c/threadx_hooks\.c|packages/boards/nros-board-threadx-qemu-riscv64/c/board_threadx_qemu_riscv64\.c)'
 TASK_NET_SYM_RE='\b(tx_byte_allocate|tx_byte_release)\b'
 
-# Out-of-scope trees: vendored submodules + build output. Not nros source.
-EXCLUDE_RE='(zpico-sys/zenoh-pico/|zpico-sys/mbedtls/|/target/|/out/|\.lock$|\.ld$)'
+# Out-of-scope trees: vendored submodules + build output + the test harness.
+# The gate enforces the RFC-0034 allocation funnel on nros's SHIPPING crates
+# (core / rmw shims / lang wrappers / boards); `packages/testing/` is test
+# infrastructure, not a crate that allocates through the ABI — and it legitimately
+# NAMES the kernel symbols in prose (e.g. `zephyr_prjconf_requirements.rs` has
+# `why: "zenoh-pico needs a heap (k_malloc) …"`), which the symbol regex would
+# otherwise match as a false bypass.
+EXCLUDE_RE='(zpico-sys/zenoh-pico/|zpico-sys/mbedtls/|packages/testing/|/target/|/out/|\.lock$|\.ld$)'
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"

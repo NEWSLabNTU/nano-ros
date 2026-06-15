@@ -73,6 +73,37 @@ mod orin_spe 'just/orin-spe.just'
 mod cyclonedds 'just/cyclonedds.just'
 mod platformio 'just/platformio.just'
 
+# =============================================================================
+# Recipe organization (convention — keep new recipes consistent)
+# =============================================================================
+# Two axes:
+#   * `mod <name>`  — namespaced platform/tool recipes: `just <name> <verb>`
+#                     (native/zephyr/freertos/… build|test|build-fixtures|setup).
+#   * `[group(...)]` — display category for ROOT recipes in `just --list`.
+#
+# Group taxonomy (root recipes):
+#   main          headline dev loop: build, build-examples, check, format, test,
+#                 test-unit, test-integration, doc.
+#   ci            CI lanes + the local mirror of every standalone CI job — one
+#                 recipe per workflow so CI yml is a thin `just <recipe>` caller:
+#                 ci, ci-fast, check-no-std, check-sdk-index, scaffold-journey,
+#                 colcon-parity, acceptance.  (See docs/development/ci-workflow-reorg.md.)
+#   full-matrix   heavy build/test sweeps: build-all, build-test-fixtures, test-all.
+#   verification  Kani/Verus formal verification.
+#   docs          rust/C/C++/mdBook doc builds.
+#   setup         provisioning entry points.
+#   maintenance   clean/regenerate/version-bump.
+#   debug         building blocks + diagnostics not part of the daily loop.
+#
+# Naming + visibility conventions:
+#   * `check-*`  static/precondition gate; the individual gates are `[private]`
+#               building blocks that the `check` aggregate chains. A gate that is
+#               ALSO a useful standalone task (e.g. `check-no-std`) goes in `ci`.
+#   * `test-*`   test runners.   `build-*` builds.   `ci` / `ci-fast` lane aggregates.
+#   * Adding a CI job ⇒ add a matching recipe here (group `ci`) + call it from the
+#     workflow yml. `just check` must stay a SUPERSET of the fast-gate workflow.
+# =============================================================================
+
 [group("main")]
 default:
     @just --list
@@ -284,8 +315,30 @@ check: \
     check-platform-abi-mirror check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc \
     check-weak-symbols \
+    check-version-lockstep check-source-gates \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
+
+# Phase: crate-version lockstep — every workspace crate shares the release
+# version (the bump script edits them atomically). Mirrors the `check.yml`
+# version-lockstep step so `just check` ⊇ the CI fast gate (single source of
+# truth). Buildless.
+[private]
+check-version-lockstep:
+    @./scripts/check-version-lockstep.sh
+
+# Compile-time SOURCE/precondition gates that ship as `nros-tests` test binaries
+# (header-ABI mirror, two-libc precedence, zephyr prj.conf requirements). These
+# are the `cargo test -p nros-tests --test …` steps `check.yml` runs inline;
+# wrapped here so `just check` runs the identical set. Compiles nros-tests, so
+# slower than the buildless gates but still a static/precondition check.
+[private]
+check-source-gates:
+    #!/usr/bin/env bash
+    set -e
+    cargo test -p nros-tests --test platform_header_matrix
+    cargo test -p nros-tests --test cross_libc_precedence_gate
+    cargo test -p nros-tests --test zephyr_prjconf_requirements
 
 # Phase 121.4.b — verify <nros/platform.h> matches the Rust extern block
 # and the `nros_platform_export_*!` macro emissions in nros-platform-cffi.
@@ -1019,7 +1072,7 @@ rust-rtos-link-check:
 # `rmw_cyclonedds_cpp`). Phase 146.3 adds the `rust-rtos-link-check`
 # gate ahead of `test-all` so the embedded-RTOS link-symbol
 # regression class surfaces immediately on `just ci`.
-[group("full-matrix")]
+[group("ci")]
 ci: check rust-rtos-link-check test-all cyclonedds-ci
     @echo "CI passed!"
 
@@ -1032,7 +1085,7 @@ ci: check rust-rtos-link-check test-all cyclonedds-ci
 
 # no_std core-crate compile check across the embedded targets `ci.yml` gates
 # (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.
-[group("main")]
+[group("ci")]
 check-no-std:
     #!/usr/bin/env bash
     set -e
@@ -1051,14 +1104,14 @@ check-no-std:
 
 # Verify nros-sdk-index.toml + the QEMU configure flags
 # (.github/workflows/sdk-index-gate.yml). Buildless + fast.
-[group("main")]
+[group("ci")]
 check-sdk-index:
     python3 scripts/sdk/verify-index.py nros-sdk-index.toml
     ./scripts/sdk/check-qemu-configure.sh
 
 # Scaffold-journey: a `nros new` project resolves end-to-end via the generated
 # `[patch.crates-io]` path block (.github/workflows/scaffold-journey.yml).
-[group("main")]
+[group("ci")]
 scaffold-journey: setup-cli
     #!/usr/bin/env bash
     set -e
@@ -1068,7 +1121,7 @@ scaffold-journey: setup-cli
 # colcon-parity: the `local-msg-package` template must also build under stock
 # colcon (.github/workflows/colcon-parity.yml). Needs ROS 2 + colcon on the host;
 # skips cleanly when colcon is absent.
-[group("main")]
+[group("ci")]
 colcon-parity:
     #!/usr/bin/env bash
     set -e
@@ -1090,7 +1143,7 @@ colcon-parity:
 # in-tree nros CLI. Local mirror of .github/workflows/nros-acceptance.yml (which
 # instead fetches the prebuilt release binary on a bare runner — that fresh-machine
 # path stays CI-only). Work dir under tmp/ (gitignored).
-[group("main")]
+[group("ci")]
 acceptance: setup-cli
     #!/usr/bin/env bash
     set -e
@@ -1114,7 +1167,7 @@ acceptance: setup-cli
 #   just colcon-parity     (needs ROS 2 + colcon on the host)
 #   just acceptance        (builds the CLI + a scaffolded project)
 # The full heavy lane stays `just ci` / `just test-all`.
-[group("main")]
+[group("ci")]
 ci-fast: check check-no-std
     @echo "ci-fast passed!"
 
