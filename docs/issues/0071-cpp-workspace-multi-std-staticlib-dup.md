@@ -70,11 +70,34 @@ Investigated and **ruled out**:
   confirming it is built `panic="abort"`.)
 
 **Still open:** why CI's `panic="abort" lto=true` FFI staticlib *retains* a global
-`rust_begin_unwind` and the dev box's does not. Candidates: an LTO/DCE difference
-(local LTO internalises/strips the unwinding handler the abort staticlib never
-calls; CI keeps it), the `nros-serdes` path-dep building differently under the CI
-corrosion/jobserver path, or `-Cdefault-linker-libraries=yes`. **A CI-side repro is
-required** — without it no fix can be validated before pushing.
+`rust_begin_unwind` and every standalone build strips it.
+
+### Repro matrix (2026-06-15) — narrowed to the CI image
+
+Built the generated FFI crate (`cargo build --release`, profile honored) and `nm`'d
+the staticlib in three environments — all produce **0** `rust_begin_unwind`:
+
+| env | rustc | ld | `rust_begin_unwind` |
+|-----|-------|----|--------|
+| dev host (newer kernel) | 1.96.0 `ac68faa20` | GNU ld 2.38 | 0 |
+| `ros:humble-ros-base-jammy` (ubuntu 22.04 = CI base OS) | 1.96.0 `ac68faa20` | GNU ld 2.38 | 0 |
+| full local cmake/corrosion workspace build (`workspace-fixtures-build.sh native cpp`) | same | same | links clean |
+
+So **toolchain, OS, binutils, the `[profile] panic="abort"+lto`, and the corrosion
+cmake path are all RULED OUT** — every reproduction outside CI honors the abort
+profile and DCE-strips the unwinding handler. The symbol only appears in the
+**`ghcr.io/newslabntu/nano-ros-ci:humble`** CI container, whose build environment
+(a cargo config / env var / corrosion or rust setup that drops the FFI crate's
+`[profile.release]` → `panic="unwind"`, no LTO) is the remaining variable. That
+image is **private** (ghcr `unauthorized` without creds), so it could not be pulled
+to reproduce.
+
+**Unblock:** pull `nano-ros-ci:humble` (needs `docker login ghcr.io`) and inside it
+`cargo build --release` the FFI crate + `nm | grep rust_begin_unwind`, OR add a
+one-shot CI step that `nm`s the FFI staticlib. Confirm it built `panic="unwind"`
+there; the fix then is to force the panic strategy / single-`std` explicitly in the
+corrosion build command (env-independent), not via the per-crate `[profile]`. No
+fix can be validated until this image is reproducible.
 
 ## Direction (do NOT use `--allow-multiple-definition`)
 
