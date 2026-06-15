@@ -9,17 +9,16 @@ clashes #27/#36/#38, ld single-pass undefined-symbol races #20, silent capabilit
 mismatches) by making the build contract *structural* instead of
 convention-enforced. Cross-refs the systemic review in [issue 0042].
 
-**Status.** In progress (2026-06-12 → ongoing). **241.A (gate)** + **241.C
-(capability SSoT)** LANDED; **241.B (one canonical header)** LANDED — B.3 (the ABI
-unification) was carved to [phase-243](archived/phase-243-platform-abi-unification.md),
-which LANDED on main (the legacy `nros-c` `<nros/platform.h>` is deleted). **241.D
-(deterministic linking, RFC-0042 D3)** is the remaining open pillar: its current
-design is the single shared runtime
-([phase-241-d3-single-runtime](phase-241-d3-single-runtime.md)) + the one
-registration trigger ([phase-249](phase-249-one-registration-trigger.md) / issue
-#62) — the original slice-4 `nros-rmw-cffi-provider`/`external-registry` dedup is
-**retired** (verified: no provider crate, no `external-registry` feature on main).
-241.E (RFC flips + #42 close) follows D.
+**Status.** **CLOSED 2026-06-15.** Three of four pillars landed: **241.A** (gate —
+host + cross tier) + **241.C** (capability SSoT, incl. C.2b freertos+zephyr) +
+**241.B** (one canonical header — B.3 carved to
+[phase-243](archived/phase-243-platform-abi-unification.md), LANDED + archived).
+The remaining pillar **241.D (deterministic linking, RFC-0042 D3)** + the
+D3-dependent **241.E** flips (RFC-0042 fully-`Stable`, #42 close) **MOVED to
+[phase-249](phase-249-one-registration-trigger.md)** — they ride its one-trigger +
+single-runtime foundation (see phase-249 Acceptance → "Inherited from phase-241").
+The slice-4 `nros-rmw-cffi-provider`/`external-registry` dedup is **retired**
+(superseded by single-runtime). This phase owns no further open work.
 
 **Priority.** P2 — no product capability is blocked, but this class of bug recurs
 on nearly every board/example/platform-header edit, and each instance currently
@@ -300,7 +299,14 @@ Steps (each a commit; CI between the riskier ones):
       changes the build everywhere; no capability named in >1 site; the
       threadx-riscv64 `-D` is generated from board.toml, not hand-set.
 
-### 241.D — Deterministic linking (RFC-0042 D3)
+### 241.D — Deterministic linking (RFC-0042 D3) — MOVED → phase-249
+
+> **MOVED to [phase-249](phase-249-one-registration-trigger.md) (2026-06-15).** All
+> remaining D3 work (the one registration trigger, removing
+> `--allow-multiple-definition`, the full link-closure validator) rides phase-249's
+> single-trigger + single-runtime foundation and is tracked there (Acceptance →
+> "Inherited from phase-241"). The text below is kept for context; the open items
+> are phase-249's.
 
 > **CURRENT DESIGN (2026-06-14): single shared runtime → [phase-241-d3-single-runtime](phase-241-d3-single-runtime.md).**
 > One Rust staticlib per binary (the umbrella) ⇒ `std`/`compiler-builtins`
@@ -370,13 +376,11 @@ Steps (each a commit; CI between the riskier ones):
       a deliberately-dropped lib fails the validator, not `ld`.
 
 ### 241.E — Cleanup + docs
-- [~] Flip RFC-0042 sections to `Stable` as each pillar lands. **D1/D2/D4 →
-      STABLE** (per-pillar status banners added to RFC-0042 + a `status-note` on the
-      frontmatter); **D3 stays IN PROGRESS** (single-runtime stable, registration
-      trigger = phase-249/#62) — the RFC flips fully Stable when phase-249 lands.
-- [ ] Resolve issue 0042 when D1–D4 acceptances pass; cross-link #27/#36/#38/#20
-      as the motivating instances. **D1/D2/D4 landed; only D3 (= phase-249 /
-      issue #62) is pending — #42 closes when phase-249 lands.**
+- [x] **Flip RFC-0042 sections to `Stable` — D1/D2/D4 DONE** (per-pillar status
+      banners + a `status-note` on the frontmatter). The **fully-Stable flip (D3)
+      MOVED → phase-249** (fires when it lands).
+- [x] **MOVED → phase-249: resolve issue 0042.** D1/D2/D4 landed; #42 closes when
+      D3 (= phase-249 / issue #62) lands — tracked in phase-249's inherited tail.
 - [x] Update the C/C++ integration docs to point at the capability block +
       manifest. **DONE:** `c-api-cmake.md` gained a "Board capabilities &
       deterministic build" section (one canonical `<nros/platform.h>`,

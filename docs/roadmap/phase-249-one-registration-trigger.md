@@ -234,6 +234,25 @@ proven).
 - The full per-cell e2e matrix (W7) is green: every platform × language registers the
   backend and runs (no `NoBackend`).
 
+### Inherited from phase-241 (D3-completion tail, moved here 2026-06-15)
+
+phase-241 closed with its A/B/C pillars landed; the remaining **D3 (deterministic
+linking)** items all ride this phase's single-trigger + single-runtime foundation, so
+they move here as the D3 close-out (phase-241 is now CLOSED):
+
+- **Remove `--allow-multiple-definition`** from the C/C++ link (root `CMakeLists.txt`
+  zenoh/xrce/cyclone arms + `nros-c/cmake/NanoRosLink.cmake`). Single-runtime made the
+  masked dups shared-closure-only; once P4b's ctor is the lone registration def, the flag
+  is removable. (Leave the threadx/zpico startup `--allow-multiple-definition` — different
+  class: intentional `startup.c` memset/memcpy overrides.)
+- **Extend the link-closure validator** (`staticlib_duplicate_symbols`, slices 1+2 landed
+  in 241.D) to the full closure — every FFI-referenced symbol provided by exactly one
+  archive — and keep it green across the flag removal.
+- **Flip RFC-0042 fully `Stable`** — D1/D2/D4 are already Stable (phase-241.B/C + 243);
+  D3 flips when this phase lands (per-pillar banners in RFC-0042 already note it).
+- **Close [issue 0042](../issues/0042-platform-header-architecture-fragility-libc-std-clashes.md)** —
+  its D1–D4 acceptances pass once D3 lands here; cross-link #27/#36/#38/#20.
+
 ## Risks
 
 - **Silent `NoBackend` on a missed platform.** Mitigation: migrate-before-delete (P1–P3

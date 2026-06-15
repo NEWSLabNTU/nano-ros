@@ -13,7 +13,11 @@ related: [issue-0027, issue-0036, issue-0038, issue-0034, phase-240, rfc-0042, p
 > `<nros/platform.h>`, capability-driven config SSoT (`nros-board.toml`),
 > deterministic linking (generated manifest, one register path), and a
 > merge-time platform×lang gate. This issue stays open as the motivating
-> tracker; it resolves when phase-241's D1–D4 acceptances pass.
+> tracker. **Status (2026-06-15):** D1 (one header, via phase-243), D2 (capability
+> SSoT), D4 (the host + cross merge gates) **LANDED**; **phase-241 is CLOSED**. The
+> last pillar — D3 (deterministic linking) — and this issue's close MOVED to
+> **[phase-249](../roadmap/phase-249-one-registration-trigger.md)** (the one
+> registration trigger / single runtime). #42 resolves when phase-249 lands.
 
 Three recently-fixed bugs are the **same class** — a C/C++ compile clash between
 the platform's libc/std headers and nano-ros's platform shim:
