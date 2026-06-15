@@ -1631,12 +1631,20 @@ fn backend_features(build: &PlanBuildOptions, backend: &str, safety: bool) -> Ve
     // unconditional — no per-backend feature needed.
     //
     // Phase 250 (issue 0072) — a declared `[safety]` axis must reach the
-    // BACKEND's own `safety-e2e` (the CRC attach on publish + validate on
-    // receive live there), not just `nros/safety-e2e` on the entry — Cargo
-    // features don't propagate upward. Only zenoh carries the CRC path today;
-    // xrce / cyclonedds have no `safety-e2e` feature, so the axis no-ops there.
-    if safety && backend == "zenoh" {
-        features.push("safety-e2e".to_string());
+    // BACKEND's own feature (the CRC attach on publish + validate on receive live
+    // there), not just `nros/safety-e2e` on the entry — Cargo features don't
+    // propagate upward. The capability registry (phase-252) is the SSoT for the
+    // feature name + which backends carry it (zenoh today; xrce / cyclonedds have
+    // no such feature, so the axis no-ops there).
+    if safety {
+        let cap = crate::orchestration::capability("safety").expect("safety capability");
+        if cap.backend_supports(backend) {
+            features.push(
+                cap.backend_feature
+                    .expect("safety backend feature")
+                    .to_string(),
+            );
+        }
     }
     features
 }
@@ -1686,16 +1694,26 @@ fn generated_default_features(
     //     SERVER on its own (no persistence). The user writes normal ROS
     //     `declare_parameter`/`get_parameter` in node source; this axis only
     //     toggles whether the external query/update services are compiled in.
+    // The `nros/<feat>` umbrella-feature name comes from the capability registry
+    // (phase-252 — the lowering SSoT, so RMW + the capability axes share one
+    // table). `[param_persistence]` also pulls the param server (it additionally
+    // attaches a store).
     if param_persistence || param_services {
-        features.push("nros/param-services".to_string());
+        let feat = crate::orchestration::capability("param_services")
+            .expect("param_services capability")
+            .nros_feature;
+        features.push(format!("nros/{feat}"));
     }
     // Phase 250 (Wave 1) — a declared `[safety]` block compiles the E2E
     // message-integrity capability (CRC + sequence gap/dup) into the generated
-    // entry via the `nros/safety-e2e` umbrella feature. Kept a compile feature
+    // entry via its `nros/<feat>` umbrella feature. Kept a compile feature
     // (not a runtime always-on path) so embedded only pays the arena/CRC code
     // size when the axis is selected.
     if safety {
-        features.push("nros/safety-e2e".to_string());
+        let feat = crate::orchestration::capability("safety")
+            .expect("safety capability")
+            .nros_feature;
+        features.push(format!("nros/{feat}"));
     }
     // Phase 173.2 — `nros/<feature>` + the per-platform local aliases
     // (which gate the platform-specific Cargo deps + cfg) both come from

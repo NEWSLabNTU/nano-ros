@@ -27,6 +27,8 @@ pub mod tier_resolver;
 pub mod workspace;
 
 pub use cargo_nano_ros::{
+    capability_resolver,
+    capability_resolver::{Capability, capability},
     rmw_resolver,
     rmw_resolver::{ResolvedRmw, UnknownRmw, resolve_rmw},
 };

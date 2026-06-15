@@ -38,12 +38,14 @@ error (no blind 14-board edit).
 
 ## Waves
 
-- **Wave 1 — capability registry (`resolve_capability`).** Add the SSoT mapping a declared
-  axis → `{ nros_feature, board_feature, backends_supporting, cmake_token?, c_define? }`,
-  parallel to `resolve_rmw`. Refactor the existing native + entry lowering (the ad-hoc
-  `if safety && backend == "zenoh"` in `backend_features`, and the `generated_default_features`
-  safety/param pushes) to read it — **no behaviour change**, byte-identical generated output.
-  Unit tests assert the table + that the refactor preserves output.
+- **Wave 1 — capability registry — DONE (2026-06-16).** `cargo-nano-ros`
+  `capability_resolver` (beside `rmw_resolver`): a `Capability { declared, nros_feature,
+  backend_feature, backends_supporting }` table + `capability(axis)` lookup, re-exported via
+  `nros-cli-core` orchestration. The entry lowering (`generated_default_features`) and the
+  native backend lowering (`backend_features`) now read it instead of hardcoded strings — no
+  behaviour change (the existing `safety_axis_lowers_to_nros_feature`,
+  `param_services_axis_lowers_to_nros_feature`, `safety_axis_reaches_zenoh_backend_feature`
+  tests stay green = byte-identical output). Registry tests in `capability_resolver`.
 - **Wave 2 — descriptor capability advertisement.** Add a `supported_capabilities` (or
   `[board.capability_features]`) field to the board descriptor + parse from `nros-board.toml`.
   A board lists the capability features it forwards (e.g. `["safety-e2e"]`). Absent ⇒ none.

@@ -34,6 +34,7 @@
 
 pub mod ament_installer;
 pub mod cache;
+pub mod capability_resolver;
 pub mod config_patcher;
 // Phase 212.K.7.1 — `cyclonedds_emit` (msg-crate-side cyclonedds
 // feature + descriptor build.rs) is retired. Generated msg crates are
