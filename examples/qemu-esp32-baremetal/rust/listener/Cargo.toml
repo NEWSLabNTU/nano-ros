@@ -51,6 +51,10 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # Generated message types (from package.xml via nros generate-rust)
 std_msgs = { version = "*", default-features = false }
 
+# Per-message log lines (Published:/Received:) routed to the console by the
+# board log writer; the esp32 e2e harness waits on them.
+log = { version = "0.4", default-features = false }
+
 # Required for the `#[esp_hal::main]` boot symbol the macro emits.
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
 

@@ -36,6 +36,48 @@ consumer to free heap room), not by enlarging the heap.
 Issue stays `open`: the Load-access-fault (the original title) is fixed; this OOM is
 the remaining blocker to a green esp32 live e2e.
 
+## UPDATE 2026-06-15 (later) — OOM root-caused + FIXED; remaining is timer-dispatch
+
+The OOM was NOT a sizing/leak issue. `esp_alloc::HEAP.stats()` instrumentation showed
+the 96 KB region is added (`Size: 98304`) right after `heap_allocator!`, then wiped to
+`Size: 0` **across the `OpenEth::new(...)` call** in `init_ethernet`. ROOT CAUSE:
+`OpenEth::new()` returns an ~11 KB struct by value (tx_buf + rx_bufs[4] + rx_frame);
+the caller materialises it as an 11 KB **stack temporary** on the ~18 KB esp32-c3
+stack, which **overflows into `.bss`** and silently corrupts whatever lives there —
+here the esp-alloc heap metadata, and (during connect) the zenoh locator pointer. So
+the 0xffffffff Load-access-fault AND the heap OOM are the SAME bug: an 11 KB stack
+overflow.
+
+**FIXED (`OpenEth::new_in_place`)**: construct the driver directly in its static
+storage (write_bytes zero-fill + two scalar fields), no by-value temporary. Verified:
+the esp32 talker now boots fully — 0 faults, 0 OOM — and reaches `Application setup
+complete — entering spin loop` (previously crashed/OOM'd before that). (The earlier
+locator `.bss`-static workaround is now redundant given this root-cause fix; can be
+reverted in a follow-up to keep the shared shim clean.)
+
+**Remaining blocker — the Rust 1 Hz timer never fires.** With the firmware healthy,
+the talker spins but `on_tick` never runs (0 `Published:` even after adding the log
+line; the node pkgs were also silent — added `log::info!("Published:/Received:")` to
+the talker/listener so the e2e has observable lines). Timers fire via
+`executor.spin_once`, which needs `clock_us` (esp-hal `Instant::now()` / esp32-c3
+SystemTimer) to advance. **Prime suspect: the esp32c3 QEMU fork's SystemTimer does
+not advance** — RULED OUT. A `clock_us` log in the spin loop showed the clock advances
+normally (`clock_us` 2.0s → 4.0s → 6.0s across spins 200/400/600). So the failure is in
+the **Rust bare-metal executor timer-dispatch**, not the clock:
+
+1. The 1 Hz timer **never fires** — 0 `on_tick` dispatches in the first 6 s (≈6 expected),
+   so `executor.spin_once` is not dispatching the registered 1000 ms timer despite the
+   clock advancing. (The timer is declared via `create_timer_for_callback_name` in the
+   talker `register()`.)
+2. `spin_once` then **hangs at ~6 s** (the CDBG trace stops at spin 600; each `spin_once(10)`
+   takes ~10 ms, so the loop blocked indefinitely after ~600 iterations).
+
+These are deep executor-runtime gaps on the esp32 bare-metal Rust path, which was never
+runtime-verified (the green freertos/threadx cells checked boot/setup, or used C
+examples with explicit publish loops — not the Rust timer-driven dispatch). Next:
+trace the executor timer wheel (`nros-node executor/spin.rs`) against `clock_us` on
+this path, and the ~6 s `spin_once` block. Separate from the (fixed) crash/OOM.
+
 ## Symptom
 
 The networked `esp32_emulator` live tests are red:

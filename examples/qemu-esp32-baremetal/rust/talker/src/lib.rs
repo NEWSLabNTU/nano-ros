@@ -45,6 +45,10 @@ impl ExecutableNode for Talker {
         if callback.as_str() == "on_tick" {
             let msg = Int32 { data: *state };
             let _ = ctx.publish_to_topic::<Int32, 64>("/chatter", &msg);
+            // Observable per-publish line (routed to the console by the board's
+            // log writer) — the e2e harness waits for `Published:` to confirm the
+            // 1 Hz timer fired + the session published. Mirrors native examples.
+            log::info!("Published: {}", *state);
             *state = state.wrapping_add(1);
         }
     }

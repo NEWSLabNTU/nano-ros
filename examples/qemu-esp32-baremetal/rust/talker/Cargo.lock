@@ -265,8 +265,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-nano-ros"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "cargo_metadata",
  "clap",
@@ -973,6 +972,7 @@ version = "0.1.0"
 dependencies = [
  "esp-backtrace",
  "esp-hal",
+ "log",
  "nros",
  "nros-board-esp32-qemu",
  "std_msgs",
@@ -1511,7 +1511,6 @@ dependencies = [
  "nros-platform",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-zenoh",
  "nros-serdes",
  "paste",
  "portable-atomic",
@@ -1555,15 +1554,12 @@ dependencies = [
 
 [[package]]
 name = "nros-build"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "eyre",
  "nros-cli-core",
- "quick-xml",
  "serde",
  "serde_json",
- "walkdir",
 ]
 
 [[package]]
@@ -1572,8 +1568,7 @@ version = "0.5.0"
 
 [[package]]
 name = "nros-cli-core"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "cargo-nano-ros",
  "cargo_metadata",
@@ -1581,15 +1576,19 @@ dependencies = [
  "eyre",
  "libc",
  "nros-msg-to-idl",
+ "nros-orchestration-ir",
  "pathdiff",
+ "quick-xml",
  "ros-launch-manifest-types",
  "rosidl-bindgen",
  "rosidl-codegen",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
  "toml 0.8.23",
  "toml_edit 0.22.27",
+ "walkdir",
 ]
 
 [[package]]
@@ -1623,8 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "nros-msg-to-idl"
-version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 
 [[package]]
 name = "nros-node"
@@ -1638,7 +1636,6 @@ dependencies = [
  "nros-platform-api",
  "nros-rmw",
  "nros-rmw-cffi",
- "nros-rmw-cyclonedds",
  "nros-serdes",
  "portable-atomic",
  "portable-atomic-util",
@@ -1697,6 +1694,7 @@ version = "0.5.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -1707,16 +1705,6 @@ dependencies = [
  "linkme",
  "nros-rmw",
  "portable-atomic",
-]
-
-[[package]]
-name = "nros-rmw-cyclonedds"
-version = "0.5.0"
-dependencies = [
- "critical-section",
- "heapless 0.8.0",
- "nros-serdes",
- "spin",
 ]
 
 [[package]]
@@ -2041,7 +2029,6 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.1.0"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
 dependencies = [
  "serde",
  "serde_json",
@@ -2051,8 +2038,7 @@ dependencies = [
 
 [[package]]
 name = "rosidl-bindgen"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "askama",
  "clap",
@@ -2065,19 +2051,18 @@ dependencies = [
 
 [[package]]
 name = "rosidl-codegen"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "askama",
  "rosidl-parser",
  "serde",
  "thiserror 1.0.69",
+ "toml 0.8.23",
 ]
 
 [[package]]
 name = "rosidl-parser"
-version = "0.3.7"
-source = "git+https://github.com/NEWSLabNTU/nros-cli.git?branch=main#6ae5b013c8b43c32983a0024814dca55fbd9fd8a"
+version = "0.5.0"
 dependencies = [
  "chumsky",
  "logos",
@@ -2255,12 +2240,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0f368519fc6c85fc1afdb769fb5a51123f6158013e143656e25a3485a0d401c"
 
 [[package]]
-name = "spin"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
-
-[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2281,7 +2260,7 @@ dependencies = [
 
 [[package]]
 name = "std_msgs"
-version = "4.9.0"
+version = "4.9.1"
 dependencies = [
  "builtin_interfaces",
  "heapless 0.8.0",

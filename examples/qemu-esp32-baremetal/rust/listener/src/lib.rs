@@ -39,6 +39,9 @@ impl ExecutableNode for Listener {
         if callback.as_str() == "on_chatter" {
             if let Ok(msg) = ctx.message::<Int32>() {
                 *state = msg.data;
+                // Observable per-receive line (routed to the console by the
+                // board's log writer) — the e2e harness asserts on `Received:`.
+                log::info!("Received: {}", msg.data);
             }
         }
     }
