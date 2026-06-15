@@ -241,10 +241,38 @@ NROS_XRCE_LOCATOR=udp/127.0.0.1:8888 \
     cargo run -p native-rs-bridge-tt-zenoh-to-xrce
 ```
 
-The same `node_builder(...).rmw(...)` pattern composes any pair
-of the surviving backends — swap the egress to
-`.rmw("cyclonedds")` (selected C++-side via
-`-DNANO_ROS_RMW=cyclonedds`) for a Zenoh → Cyclone DDS gateway.
+### `examples/bridges/tt-zenoh-to-cyclonedds/`
+
+The stock-Cyclone-DDS sibling: same TT schedule, but the egress is
+`.rmw("cyclonedds")`, forwarding onto the DDS databus where a stock
+`rmw_cyclonedds_cpp` (e.g. an Autoware listener) or another nano-ros cyclonedds
+node receives the samples. **One structural difference** from the XRCE variant:
+Cyclone rejects a raw publisher whose topic type has no registered
+`dds_topic_descriptor_t`, so the egress type's schema is staged **before** the
+raw publisher is created —
+
+```rust
+// The Cyclone backend installs the registrar during its register():
+nros_rmw_cyclonedds_sys::register()?;
+// Stage std_msgs/msg/String's schema (NUL-terminated key — it is handed
+// straight to Cyclone's C descriptor table):
+nros_rmw::register_type_descriptor(
+    "std_msgs/msg/String\0",
+    &[nros_serdes::schema::Field { name: "data\0", ty: FieldType::String, offset: 0 }],
+)?;
+let pub_out = node_out.create_publisher_raw("/chatter", "std_msgs/msg/String", hash)?;
+```
+
+XRCE registers lazily from name+hash; Cyclone needs the descriptor up front. The
+backend links the vendored CycloneDDS (no `-DNANO_ROS_RMW` needed for the Rust
+binary — the `nros-rmw-cyclonedds-sys` dep is the selection).
+
+```sh
+zenohd --listen tcp/127.0.0.1:7447 &
+ROS_DOMAIN_ID=0 cargo run -p native-rs-bridge-tt-zenoh-to-cyclonedds
+# subscribe on Cyclone DDS /chatter (stock ROS 2 or a nano-ros cyclone node on
+# the same ROS_DOMAIN_ID) and publish on zenoh /chatter to see bridged samples.
+```
 
 ## Coverage matrix
 

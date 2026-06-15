@@ -1,0 +1,36 @@
+[package]
+name = "native-rs-bridge-tt-zenoh-to-cyclonedds"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "tt-zenoh-to-cyclonedds"
+path = "src/main.rs"
+
+[dependencies]
+# Issue #53 — stock-cyclonedds bridge variant. Mirror of
+# `tt-zenoh-to-xrce`: ingress (zenoh subscriber) + egress (Cyclone DDS raw
+# publisher) fire in non-overlapping windows of a 10 ms major frame
+# (`apply_time_triggered_schedule` + per-handle TT gating, Phase 110.G). The
+# only structural difference from the XRCE variant: Cyclone resolves a topic by
+# a registered `dds_topic_descriptor_t`, so the egress type's schema is staged
+# via `nros_rmw::register_type_descriptor` BEFORE creating the raw publisher
+# (XRCE registers lazily from name+hash; Cyclone is stricter).
+nros = { path = "../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi"] }
+# posix `nros_platform_*` symbols via a direct `nros-platform` dep
+# (pulls `nros-platform-cffi[posix-c-port]`).
+nros-platform = { path = "../../../packages/core/nros-platform", default-features = false, features = ["platform-posix"] }
+nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
+# Cyclone DDS backend (vendored C++ CycloneDDS 0.10.5, built by build.rs). Its
+# `register()` installs the type-descriptor registrar into the `nros_rmw` seam.
+nros-rmw-cyclonedds-sys = { path = "../../../packages/dds/nros-rmw-cyclonedds-sys", features = ["platform-posix"] }
+# The backend-agnostic type-descriptor seam + the schema `Field`/`FieldType`
+# used to stage the egress type (not re-exported from the `nros` umbrella).
+nros-rmw = { path = "../../../packages/core/nros-rmw", default-features = false, features = ["std"] }
+nros-serdes = { path = "../../../packages/core/nros-serdes", default-features = false, features = ["std"] }
+log = "0.4"
+env_logger = "0.11"
+
+[workspace]
