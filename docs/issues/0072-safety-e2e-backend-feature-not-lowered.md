@@ -4,7 +4,7 @@ title: safety-e2e CRC dead over zenoh — nros/safety-e2e doesn't reach the back
 status: open
 type: bug
 area: build
-related: [phase-250]
+related: [phase-250, phase-252, rfc-0031]
 ---
 
 ## Symptom
