@@ -57,6 +57,15 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
       green. Needs a quiet window or a manual `workflow_dispatch`; locally validated
       (`just check-fast` green ~67 s).
 
+### Done since
+- **Push lane de-coupled from the CLI build.** `check-fast` needs no nros CLI (its
+  only CLI-touching gates — board-manifest-drift, profile-board-mirror — skip
+  gracefully when absent). The push tier now provisions px4-rs via `git submodule
+  update --init` (it's a submodule; cargo-tree needs it) and SKIPS the ~min CLI
+  build + heavy-source provisioning (build tier / non-push only). Push lane ≈
+  checkout + clang-format + submodule + `check-fast` ≈ 1-2 min — completes under
+  the rapid push cadence (was ~4-5 min, cancelled).
+
 ## Acceptance
 
 - A direct push to `main` triggers only fast lanes (`check-fast`, + the

@@ -77,7 +77,25 @@ jobs:
         uses: actions/checkout@v4
 
       # ----- shared setup -----
-      - name: Cache CLI build
+      - name: Install clang-format (pinned via pypi wheel)
+        run: pip install --no-cache-dir "clang-format==17.0.5"
+
+      # px4-rs is the one source the ROOT workspace path-deps (px4-sitl-tests, the
+      # cargo load gate) — needed for any `cargo tree`/metadata to RESOLVE, so the
+      # fast tier's feature-unification gate needs it. It's a git submodule
+      # (`nros setup --source px4-rs` just inits it), so init it directly — no nros
+      # CLI build required, keeping the push lane fast.
+      - name: Provision px4-rs source (workspace resolution)
+        run: git submodule update --init --depth 1 third-party/px4/px4-rs
+
+      # ----- CLI + heavy sources: build tier (non-push) only -----
+      # The fast tier is buildless and needs no nros CLI (its only CLI-touching
+      # gates — board-manifest-drift, profile-board-mirror — skip gracefully when
+      # the CLI is absent). Skipping the ~min CLI build on push keeps the per-push
+      # lane ~1-2 min so it completes under the rapid push cadence. The build tier
+      # (PR/nightly) needs the CLI (codegen for clippy) + every build.rs source.
+      - name: Cache CLI build (build tier)
+        if: ${{ github.event_name != 'push' }}
         uses: actions/cache@v4
         with:
           path: packages/cli/target
@@ -85,30 +103,15 @@ jobs:
           restore-keys: |
             nros-cli-${{ runner.os }}-
 
-      - name: Build nros CLI from packages/cli/
+      - name: Build nros CLI + provision build-tier sources (non-push)
+        if: ${{ github.event_name != 'push' }}
         run: |
           git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
-
-      - name: Install clang-format (pinned via pypi wheel)
-        run: pip install --no-cache-dir "clang-format==17.0.5"
-
-      # px4-rs is the one source the ROOT workspace path-deps (px4-sitl-tests, the
-      # cargo load gate) — needed for any `cargo tree`/metadata to RESOLVE, so the
-      # fast tier's feature-unification gate needs it too. Cheap; provision always.
-      - name: Provision px4-rs source (workspace resolution)
-        run: nros setup --source px4-rs
-
-      # The build tier's host clippy additionally exercises every build.rs
-      # (zenoh-pico / mbedtls / micro-{cdr,xrce} / cyclonedds), so those heavier
-      # sources are provisioned only for the full (non-push) run.
-      - name: Provision build-tier sources via nros (non-push)
-        if: ${{ github.event_name != 'push' }}
-        run: |
-          nros setup --source zenoh-pico --source mbedtls \
-                     --source micro-cdr --source micro-xrce-dds-client \
-                     --source cyclonedds-src
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" setup \
+            --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
 
       # ----- fast tier (every event) -----
       # `just check-fast` is the BUILDLESS gate set (fmt/clang-format/ABI/manifest/
