@@ -316,6 +316,8 @@ check: \
     check-no-direct-kernel-alloc \
     check-weak-symbols \
     check-version-lockstep check-source-gates \
+    check-example-fmt check-staticlib-symbols check-embedded-feature-unification \
+    check-codegen-invocation check-string-conventions check-dep-chain \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
 
@@ -339,6 +341,82 @@ check-source-gates:
     cargo test -p nros-tests --test platform_header_matrix
     cargo test -p nros-tests --test cross_libc_precedence_gate
     cargo test -p nros-tests --test zephyr_prjconf_requirements
+
+# Per-example `cargo +nightly fmt --check` (AST-only, no codegen/deps). The
+# `check.yml` per-example-fmt step as a recipe (SSoT).
+[private]
+check-example-fmt:
+    #!/usr/bin/env bash
+    set -e
+    find examples -mindepth 4 -name Cargo.toml \
+        -not -path '*/target/*' -not -path '*/generated/*' \
+        -not -path '*/build/*' -not -path '*/build-*/*' \
+        -not -path '*/install/*' -not -path '*/log/*' \
+        -not -path '*/zephyr/*' -not -path '*/multi-package-workspace/*' \
+        -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
+        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
+        -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' \
+        -not -path '*/px4/*' | sort | while read -r toml; do
+        dir="$(dirname "$toml")"
+        echo "  fmt $dir"
+        ( cd "$dir" && cargo "+{{NIGHTLY}}" fmt --check )
+    done
+
+# Link-determinism gate (RFC-0042 D3) — build the host staticlib pair, then assert
+# the `--allow-multiple-definition` masked dups are ONLY the shared Rust dep
+# closure (no app ODR violation). The `check.yml` staticlib step (SSoT).
+[private]
+check-staticlib-symbols:
+    #!/usr/bin/env bash
+    set -e
+    bash scripts/build/link-determinism-fixture.sh
+    cargo test -p nros-tests --test staticlib_duplicate_symbols
+
+# Embedded feature-unification guard — no `feature "std"` activation path may
+# reach an embedded target's production-link view. The `check.yml` step (SSoT).
+[private]
+check-embedded-feature-unification:
+    #!/usr/bin/env bash
+    set -e
+    tree=$(cargo tree -p nros-serdes --edges=normal,build \
+        --target thumbv7em-none-eabihf --no-default-features --workspace 2>&1)
+    if echo "$tree" | grep -q 'feature "std"'; then
+        echo "feature std activation paths under embedded target:" >&2
+        echo "$tree" | grep -B2 'feature "std"' | head -50 >&2
+        echo "Move the offending dep under [target.'cfg(not(target_os = \"none\"))'.dependencies]." >&2
+        exit 1
+    fi
+    echo "no feature std paths under embedded target."
+
+# Canonical `nros codegen` invocation-shape guard. The `check.yml` step (SSoT).
+[private]
+check-codegen-invocation:
+    @scripts/ci/codegen-invocation-check.sh
+
+# String-convention guards (forbidden org / retired-tool refs in user surfaces).
+# The `check.yml` step (SSoT).
+[private]
+check-string-conventions:
+    @scripts/ci/string-conventions-check.sh
+
+# Per-platform (board, rmw) dependency-chain resolution — proves each cell's dep
+# chain resolves (nros setup --dry-run + codegen + cargo tree, no compile). The
+# `check.yml` step (SSoT). Needs ROS 2 sourced (for std_msgs .msg defs) + the
+# nros CLI; SKIPS cleanly when ROS isn't sourced so `just check` still runs
+# everywhere (CI sources ROS).
+[private]
+check-dep-chain:
+    #!/usr/bin/env bash
+    set -e
+    if [ -z "${AMENT_PREFIX_PATH:-}" ]; then
+        if [ -f /opt/ros/humble/setup.bash ]; then
+            source /opt/ros/humble/setup.bash
+        else
+            echo "[SKIPPED] dep-chain: ROS 2 not sourced (AMENT_PREFIX_PATH unset)"; exit 0
+        fi
+    fi
+    source scripts/build/cargo.sh
+    NROS="$(nros_cli_bin)" scripts/ci/dep-chain-check.sh
 
 # Phase 121.4.b — verify <nros/platform.h> matches the Rust extern block
 # and the `nros_platform_export_*!` macro emissions in nros-platform-cffi.
