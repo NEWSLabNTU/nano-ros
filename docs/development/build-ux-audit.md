@@ -131,3 +131,22 @@ Takeaways:
   codegen-output caching / fewer codegen re-runs, not faster compilation.
 - Action: provision sccache via the SDK tier and export the wrapper + `CC`/`CXX` in the
   build env so fresh checkouts / CI / config-switches stop paying the full cold cost.
+  Filed as issue #74.
+
+### Embedded (esp32-c3, `cargo` + build-std, cross)
+
+Same experiment on `examples/qemu-esp32-baremetal/rust/talker` (riscv32imc, build-std
+core/alloc):
+
+| build (`cargo clean` each) | total | cache |
+| --- | --- | --- |
+| **cold** (no cache) | 30.7 s | — |
+| **sccache-warm** (`RUSTC_WRAPPER=sccache`) | **24.0 s** | 245 Rust hits, 9 misses |
+
+Only **~22 %** here vs ~46 % on host, and the gap is instructive: `RUSTC_WRAPPER` caches
+**rustc only**, so the cross **zenoh-pico C build** (compiled for riscv32 via the `cc`
+crate) stays uncached and remains a large fixed cost. On embedded the C side is the bigger
+share, but it is exactly where `CC`-wrapping is risky (cross toolchain) — so the safe
+rustc cache yields a smaller embedded win. Caching the cross C compile (a per-target
+`CC_<triple>="ccache …"`) is the additional embedded lever, to be done carefully per
+target rather than via a global `CC`.
