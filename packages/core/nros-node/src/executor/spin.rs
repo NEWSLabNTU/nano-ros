@@ -2514,6 +2514,81 @@ impl Executor {
         Ok(HandleId(slot))
     }
 
+    /// Phase 250 (Wave 2) — register a generic (type-erased) raw subscription
+    /// that surfaces E2E [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC +
+    /// sequence gap/dup) alongside the raw CDR bytes
+    /// (`FnMut(&[u8], &IntegrityStatus)`). The type-erased analog of
+    /// [`register_subscription_with_safety_sized_inner`]: the validator lives in
+    /// the `RmwSubscriber` (`try_recv_validated`), so the subscriber is created
+    /// plainly and no `register_type::<M>()` is needed (the declarative `Node`
+    /// path is generic). Used by the declarative runtime's `.safety()` opt-in.
+    #[cfg(feature = "safety-e2e")]
+    pub fn register_subscription_buffered_raw_safety_on<F, const RX_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&[u8], &nros_rmw::IntegrityStatus) + 'static,
+    {
+        use super::arena::{
+            SubBufferedRawSafetyEntry, sub_buffered_raw_safety_has_data,
+            sub_buffered_raw_safety_try_process,
+        };
+        type Entry<F, const N: usize> = SubBufferedRawSafetyEntry<F, N>;
+
+        let slot = self.next_entry_slot()?;
+        let (node_name, ns, session_idx) = {
+            let r = self
+                .nodes
+                .get(node_id.index())
+                .ok_or(NodeError::InvalidSchedContextBinding)?;
+            (r.name.clone(), r.namespace.clone(), r.session_idx)
+        };
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscriber(&topic, qos)
+                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+        };
+
+        let offset = self.arena_alloc::<Entry<F, RX_BUF>>()?;
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<F, RX_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer: [0u8; RX_BUF],
+                    callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_buffered_raw_safety_try_process::<F, RX_BUF>,
+            has_data: sub_buffered_raw_safety_has_data::<F, RX_BUF>,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<Entry<F, RX_BUF>>,
+        });
+        self.apply_node_default_sched(slot, Some(node_id));
+        Ok(HandleId(slot))
+    }
+
     /// Register a raw byte-shaped callback against a pre-built
     /// `RmwSubscriber` handle.
     ///

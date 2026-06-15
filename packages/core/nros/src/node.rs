@@ -1640,6 +1640,13 @@ pub struct CallbackCtx<'a> {
     publishers: &'a dyn PublisherResolver,
     reply: Option<ReplySink<'a>>,
     decision: Option<DecisionSink<'a>>,
+    /// Phase 250 (Wave 2) — E2E message-integrity status for a subscription that
+    /// opted in via `.safety()`; `None` for every other callback (timers,
+    /// services, non-safety subscriptions). Read with
+    /// [`integrity`](Self::integrity). Gated with the capability so it is
+    /// zero-cost when `safety-e2e` is off.
+    #[cfg(feature = "safety-e2e")]
+    integrity: Option<&'a crate::IntegrityStatus>,
 }
 
 impl<'a> CallbackCtx<'a> {
@@ -1651,6 +1658,28 @@ impl<'a> CallbackCtx<'a> {
             publishers,
             reply: None,
             decision: None,
+            #[cfg(feature = "safety-e2e")]
+            integrity: None,
+        }
+    }
+
+    /// Phase 250 (Wave 2) — build a subscription context carrying E2E
+    /// [`IntegrityStatus`](crate::IntegrityStatus) (the declarative `.safety()`
+    /// path). The body reads both the message ([`message`](Self::message)) and
+    /// the status ([`integrity`](Self::integrity)) in one callback, mirroring the
+    /// imperative `FnMut(&M, &IntegrityStatus)` shape.
+    #[cfg(feature = "safety-e2e")]
+    pub fn new_with_integrity(
+        payload: &'a [u8],
+        publishers: &'a dyn PublisherResolver,
+        integrity: &'a crate::IntegrityStatus,
+    ) -> Self {
+        Self {
+            payload,
+            publishers,
+            reply: None,
+            decision: None,
+            integrity: Some(integrity),
         }
     }
 
@@ -1672,6 +1701,8 @@ impl<'a> CallbackCtx<'a> {
                 written: reply_written,
             }),
             decision: None,
+            #[cfg(feature = "safety-e2e")]
+            integrity: None,
         }
     }
 
@@ -1688,6 +1719,8 @@ impl<'a> CallbackCtx<'a> {
             publishers,
             reply: None,
             decision: Some(DecisionSink::Goal(out)),
+            #[cfg(feature = "safety-e2e")]
+            integrity: None,
         }
     }
 
@@ -1703,6 +1736,8 @@ impl<'a> CallbackCtx<'a> {
             publishers,
             reply: None,
             decision: Some(DecisionSink::Cancel(out)),
+            #[cfg(feature = "safety-e2e")]
+            integrity: None,
         }
     }
 
@@ -1757,6 +1792,16 @@ impl<'a> CallbackCtx<'a> {
     /// Raw CDR payload of the triggering message / request. Empty for timers.
     pub fn payload(&self) -> &[u8] {
         self.payload
+    }
+
+    /// Phase 250 (Wave 2) — E2E message-integrity status (CRC + sequence gap/dup)
+    /// for this dispatch. `Some` only when the firing subscription opted in via
+    /// `.safety()`; `None` for timers, services, and non-safety subscriptions.
+    /// Read it alongside [`message`](Self::message) — the status describes the
+    /// message you just received.
+    #[cfg(feature = "safety-e2e")]
+    pub fn integrity(&self) -> Option<&crate::IntegrityStatus> {
+        self.integrity
     }
 
     /// Deserialize the triggering payload as `M` (subscription / service-request
@@ -2901,6 +2946,37 @@ mod tests {
         // A reply-less ctx (timer / subscription) rejects a reply.
         let mut ctx2 = CallbackCtx::new(&[], &resolver);
         assert!(ctx2.reply_raw(&[1, 2, 3]).is_err());
+    }
+
+    // Phase 250 Wave 2 — the declarative `.safety()` surface: a normal ctx has
+    // no integrity status; one built with `new_with_integrity` exposes it, read
+    // alongside the message in the same callback (Shape A).
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn callback_ctx_integrity_surface() {
+        struct NoopResolver;
+        impl PublisherResolver for NoopResolver {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> NodeResult<()> {
+                Ok(())
+            }
+        }
+        let resolver = NoopResolver;
+
+        // Non-safety dispatch (timer / plain sub) → None.
+        let ctx = CallbackCtx::new(&[], &resolver);
+        assert!(ctx.integrity().is_none());
+
+        // Safety dispatch → the status rides alongside the payload.
+        let status = crate::IntegrityStatus {
+            gap: 2,
+            duplicate: false,
+            crc_valid: Some(true),
+        };
+        let ctx = CallbackCtx::new_with_integrity(&[], &resolver, &status);
+        let got = ctx.integrity().expect("safety ctx carries status");
+        assert_eq!(got.gap, 2);
+        assert!(!got.duplicate);
+        assert_eq!(got.crc_valid, Some(true));
     }
 
     // W.5.3 — an action goal / cancel body sets its accept/reject decision

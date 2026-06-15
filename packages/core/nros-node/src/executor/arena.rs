@@ -725,6 +725,58 @@ pub(crate) unsafe fn sub_buffered_raw_info_c_has_data<const RX_BUF: usize>(ptr: 
     entry.handle.has_data()
 }
 
+/// Phase 250 (Wave 2) — generic (type-erased) raw buffered subscription that
+/// surfaces E2E [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC + sequence
+/// gap/dup) alongside the raw CDR bytes (`FnMut(&[u8], &IntegrityStatus)`).
+///
+/// The type-erased analog of [`SubSafetyEntry`]: the validator lives in the
+/// `RmwSubscriber` and `try_recv_validated` produces the status, so no typed
+/// `M` is needed (the declarative `Node` path is generic). Flat inline payload
+/// buffer; one sample per dispatch.
+#[cfg(feature = "safety-e2e")]
+#[repr(C)]
+pub(crate) struct SubBufferedRawSafetyEntry<F, const RX_BUF: usize> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: [u8; RX_BUF],
+    pub(crate) callback: F,
+}
+
+/// Dispatch for the generic raw safety subscription: validate-receive into the
+/// buffer, then pass the raw slice + status to the callback.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubBufferedRawSafetyEntry<F, RX_BUF>`.
+#[cfg(feature = "safety-e2e")]
+pub(crate) unsafe fn sub_buffered_raw_safety_try_process<F, const RX_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    F: FnMut(&[u8], &nros_rmw::IntegrityStatus),
+{
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyEntry<F, RX_BUF>) };
+    match entry.handle.try_recv_validated(&mut entry.buffer) {
+        Ok(Some((len, status))) => {
+            (entry.callback)(&entry.buffer[..len], &status);
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => Err(TransportError::DeserializationError),
+    }
+}
+
+/// Readiness check for the generic raw safety subscription.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubBufferedRawSafetyEntry<F, RX_BUF>`.
+#[cfg(feature = "safety-e2e")]
+pub(crate) unsafe fn sub_buffered_raw_safety_has_data<F, const RX_BUF: usize>(
+    ptr: *const u8,
+) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawSafetyEntry<F, RX_BUF>) };
+    entry.handle.has_data()
+}
+
 /// Buffered subscription entry for C-style raw callbacks (function pointer + context).
 ///
 /// Same as `SubBufferedRawEntry` but uses `RawSubscriptionCallback` instead of

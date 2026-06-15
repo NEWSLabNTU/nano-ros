@@ -1480,6 +1480,34 @@ impl<'e> NodeCtx<'e> {
             )
     }
 
+    /// Phase 250 (Wave 2) — generic (type-erased) subscription that surfaces E2E
+    /// [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC + sequence gap/dup) to
+    /// the callback (`FnMut(&[u8], &IntegrityStatus)`). The declarative-`Node`
+    /// analog of the typed `.typed::<M>().safety()` builder: the validator lives
+    /// in the `RmwSubscriber`, so the raw bytes + status arrive together without
+    /// a typed `M`. Wired by the declarative runtime's `.safety()` opt-in.
+    #[cfg(feature = "safety-e2e")]
+    pub fn create_generic_subscription_with_integrity<F>(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        type_hash: &str,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut(&[u8], &nros_rmw::IntegrityStatus) + 'static,
+    {
+        self.executor
+            .register_subscription_buffered_raw_safety_on::<F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+                self.node_id,
+                topic,
+                type_name,
+                type_hash,
+                QosSettings::default(),
+                callback,
+            )
+    }
+
     /// Convenient borrowed (zero-copy) subscription (Phase 229.6, issue 0007 /
     /// RFC-0033 `borrowed` mode).
     ///
