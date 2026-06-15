@@ -65,10 +65,21 @@ lowers into the generated entrypoint (the `declare_parameter` API at
 `packages/core/nros/src/node.rs:1412`; the `.safety()` / `.message_info()` builders at
 `packages/core/nros-node/src/executor/node.rs:1748-1773`).
 
-**Consequence: phase-250 ⊇ the declarative-node migration** (the withdrawn P3.5b payload,
-re-scoped). The lowering (Layer 1) is the easy RMW-mirror; the real cost is migrating
-talker/listener off imperative `#[cfg]`-forked mains onto `nros::main!()` + the `Node`
-trait so behavior is a spec, not forked source.
+**Consequence (corrected 2026-06-15 after the D7 re-examination): the declarative target
+already exists; the real gap is the declarative *API surface*, not a migration.**
+phase-244 **D7 blessed the board-less imperative `Executor::open` shape for the native
+single-file `examples/native/rust/{talker,listener}`** as the *intended* native shape (not
+a leak) and deliberately did **not** migrate them — P3.5b was withdrawn for re-migrating
+them against that decision. Meanwhile declarative talker/listener **already exist**:
+`examples/workspaces/rust/{talker_pkg,listener_pkg,native_entry}` (+ `demo_bringup/system.toml`)
+and the esp32 single-pkg pair, across 8 platforms on `nros::main!()` + `Node`/`ExecutableNode`.
+So the Layer-2 prerequisite is **not** "migrate the native examples" (forbidden by D7) — it is
+**extending the declarative `Node`/`NodeContext` API** to expose params + safety, which it does
+not today: `NodeContext::create_subscription_for_callback_name()` yields only basic subscriptions,
+and `declare_parameter` / `.safety()` / `.message_info()` are **imperative-`Executor`-only**
+(`packages/core/nros/src/node.rs:1412`, `packages/core/nros-node/src/executor/node.rs:1748-1773`).
+The native imperative examples keep their `#[cfg]` Cargo features as the D7-blessed imperative
+idiom — phase-250 does not touch them.
 
 ## Per-axis tractability
 
@@ -88,20 +99,27 @@ trait so behavior is a spec, not forked source.
 ## Scope
 
 1. **Correct premise — DONE (this doc).** The "removed, restore" framing is replaced with
-   the greenfield-conversion framing above.
-2. **Declarative-node migration (prereq).** Migrate `examples/native/rust/{talker,listener}`
-   to `nros::main!()` + the `Node` trait so callbacks/params are a spec, not `#[cfg]`-forked
-   `main()`s. (Re-scopes the withdrawn P3.5b — see RFC-0024.)
-3. **Declared axis (Layer 1).** Add a `[package.metadata.nros.*]` / `system.toml` knob for
-   `params` (+ default parameter set) and `safety` (CRC/seq integrity), language-agnostic.
-4. **Lowering (Layer 1).** `nros_capability_features()` maps the declared axis → the
-   entry/component `nros` dep feature(s), mirroring `board_rmw_features()`.
-5. **Codegen wiring (Layer 2).** Generate `declare_parameter` (from the param set) +
-   `.safety()` wiring (from the flag + a `Node`-trait hook) into the declarative node.
-6. **Fixtures.** Replace the per-feature variant rows (`fixtures.toml:370-412`) with
-   **on/off** variants of the ONE declarative example.
-7. **Tests.** Repoint `params.rs` / `safety_e2e.rs` (and the zero-copy test if folded) at
-   the on/off fixtures. (They are already active — this is a repoint, not an un-skip.)
+   the greenfield-conversion framing above; the D7 re-examination further replaces the
+   "migrate the native examples" prerequisite with "extend the declarative API surface".
+2. **Declared axis + lowering (Layer 1).** A declared `[safety]` / `[params]` knob lowers to
+   the entry's `nros` dep feature, beside the existing `[param_persistence]`/`[lifecycle]`
+   paths in `generated_default_features()`. (Safety half **DONE** — Wave 1.)
+3. **Extend the declarative `Node`/`NodeContext` API (Layer 2 prereq).** Add params + safety
+   to the declarative path that today only the imperative `Executor` carries: a
+   `declare_parameter`-equivalent usable from `Node::register()`, and an integrity-status
+   surface on `create_subscription_for_callback_name()` (the `.safety()` analog) feeding a
+   `Node`-trait hook. This is core `nros-node` API work — **not** example migration (the
+   declarative talker/listener already exist; the native imperative ones are D7-blessed).
+4. **Codegen wiring (Layer 2).** Lower declared `[params]` (the default param set) +
+   `[safety]` into the generated declarative node via the new API.
+5. **Target a declarative example.** Add the config-driven safety/params variant on the
+   **already-declarative** `examples/workspaces/rust/` (or esp32) talker/listener — never the
+   D7-blessed native imperative pair.
+6. **Fixtures.** Add **on/off** variants of the declarative example. The native imperative
+   per-feature rows (`fixtures.toml`) stay as-is (they exercise the imperative API, which D7
+   keeps); this **augments**, it does not replace them.
+7. **Tests.** Add declarative on/off coverage; `params.rs` / `safety_e2e.rs` / `zero_copy.rs`
+   stay pointed at the imperative fixtures (the imperative API still ships). Augment, not repoint.
 
 ## Waves
 
@@ -127,14 +145,26 @@ trait so behavior is a spec, not forked source.
   crc     = true   # optional, default true; CRC-32 check alongside seq gap/dup tracking
   ```
 
-- **Wave 2 (planned)** — declarative-node migration of talker/listener (re-scoped P3.5b;
-  re-examine phase-244 D7, which predates the P4b linkme deletion).
-- **Wave 3 (planned)** — params codegen (Layer 2): `[params]` declare-set →
-  `declare_parameter` + `register_parameter_services` in the generated node.
-- **Wave 4 (planned)** — safety codegen (Layer 2): `.safety()` wiring + a `Node`-trait
-  `on_integrity` hook from the declared flag.
-- **Wave 5 (planned)** — fixtures on/off + repoint `params.rs`/`safety_e2e.rs`/`zero_copy.rs`;
-  remove the per-example Cargo feature gates.
+- **D7 re-examination — DONE (2026-06-15).** phase-244 D7's Shape-B *mechanism prose* is
+  stale post-P4b (it cites the linkme `RMW_INIT_ENTRIES` section; P4b replaced it with the
+  `.init_array` ctor — the `#[used] __FORCE_LINK_*` static now anchors the ctor object, same
+  DCE role, still not a `register()` call). But D7's **substantive** decision — the native
+  single-file talker/listener stay imperative `Executor::open`, do **not** migrate — is
+  P4b-independent and **stands**. So the planned "declarative migration" wave is **dropped**:
+  the declarative talker/listener already exist (`examples/workspaces/rust/`, esp32), and the
+  real Layer-2 prerequisite is extending the declarative Node API (next).
+- **Wave 2 (planned, revised)** — extend the declarative `Node`/`NodeContext` API: a
+  `declare_parameter`-equivalent callable from `Node::register()`, and an integrity-status
+  surface on `create_subscription_for_callback_name()` (the `.safety()` analog) → a
+  `Node`-trait `on_integrity` hook. Core `nros-node` work, not example migration.
+- **Wave 3 (planned)** — params lowering + codegen: a plain declare-only `[params]` axis
+  (distinct from the existing `[param_persistence]`) → `declare_parameter` +
+  `register_parameter_services` in the generated declarative node.
+- **Wave 4 (planned)** — safety codegen (Layer 2): lower the Wave-1 `[safety]` flag into the
+  new declarative `.safety()` wiring + the `on_integrity` hook.
+- **Wave 5 (planned)** — add on/off fixtures for the declarative `examples/workspaces/rust/`
+  talker/listener + declarative tests. The native imperative fixtures + `params.rs` /
+  `safety_e2e.rs` / `zero_copy.rs` stay (the imperative API ships under D7). Augment, not replace.
 
 ## Acceptance
 
@@ -147,8 +177,12 @@ trait so behavior is a spec, not forked source.
 
 ## Risks
 
-- **Coupling to the declarative migration.** Layer 2 cannot land before talker/listener are
-  declarative; if that migration slips, Layer 1 (the lowering) can still land standalone but
-  delivers only "capability compiled in", not "no source edit".
+- **Declarative API surface is the real cost.** Layer 2 needs new params + safety surface on
+  the declarative `Node`/`NodeContext` path (today imperative-`Executor`-only). This is core
+  `nros-node` API design, not example edits — the bulk of the remaining work. Layer 1 (the
+  lowering) stands alone meanwhile but only "compiles the capability in".
+- **Two API shapes coexist by design.** The imperative `Executor` (D7-blessed, native) and the
+  declarative `Node` path both carry params/safety after this phase; the config-driven story
+  is the declarative path only. Don't conflate them or try to delete the imperative surface.
 - **Safety callback is not pure config.** The `on_integrity` hook keeps app logic in source;
   config only toggles whether it is wired. Don't over-promise "fully declarative safety".
