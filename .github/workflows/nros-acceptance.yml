@@ -26,15 +26,19 @@ name: nros acceptance (fresh machine)
 
 on:
   workflow_dispatch:
+  # CI reorg: this validates a FIXED prebuilt release artifact, which a main-branch
+  # push does not change — so it runs on RELEASE TAGS (the thing it tests) + nightly
+  # (catches release-binary rot vs a moving toolchain) + on-demand. It no longer
+  # fires on every main push: those re-tested the same binary and, with
+  # `cancel-in-progress` off, queued up runner time for no new signal.
   push:
-    # Both branch + tag pushes trigger. Pre-first-tag the branch-push run
-    # gracefully no-ops via the `has_release` skip in the job below.
-    # NB: `paths` filter is intentionally omitted — when `tags:` is set,
-    # `paths:` is evaluated against the diff at the tag's HEAD, which is
-    # empty for tags made on existing commits, so the path filter would
-    # silently suppress every release-tag run.
-    branches: [main]
     tags: ["nros-v*"]
+  schedule:
+    - cron: "0 6 * * *"
+
+concurrency:
+  group: nros-acceptance-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
 
 jobs:
   fresh-machine:
