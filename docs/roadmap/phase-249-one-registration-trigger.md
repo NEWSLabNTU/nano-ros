@@ -257,18 +257,24 @@ phase-241 closed with its A/B/C pillars landed; the remaining **D3 (deterministi
 linking)** items all ride this phase's single-trigger + single-runtime foundation, so
 they move here as the D3 close-out (phase-241 is now CLOSED):
 
-- **Remove `--allow-multiple-definition`** from the C/C++ link (root `CMakeLists.txt`
-  zenoh/xrce/cyclone arms + `nros-c/cmake/NanoRosLink.cmake`). Single-runtime made the
-  masked dups shared-closure-only; once P4b's ctor is the lone registration def, the flag
-  is removable. (Leave the threadx/zpico startup `--allow-multiple-definition` — different
-  class: intentional `startup.c` memset/memcpy overrides.)
-- **Extend the link-closure validator** (`staticlib_duplicate_symbols`, slices 1+2 landed
-  in 241.D) to the full closure — every FFI-referenced symbol provided by exactly one
-  archive — and keep it green across the flag removal.
-- **Flip RFC-0042 fully `Stable`** — D1/D2/D4 are already Stable (phase-241.B/C + 243);
-  D3 flips when this phase lands (per-pillar banners in RFC-0042 already note it).
-- **Close [issue 0042](../issues/archived/0042-platform-header-architecture-fragility-libc-std-clashes.md)** —
-  its D1–D4 acceptances pass once D3 lands here; cross-link #27/#36/#38/#20.
+- **Remove `--allow-multiple-definition` — DONE on Linux/BSD (2026-06-15).** Single-runtime
+  + P4b's ctor (the lone registration def) made it removable; the C/C++ link
+  (`CMakeLists.txt` Linux/BSD/Generic cyclone arm + `nros-c/cmake/NanoRosLink.cmake`) no
+  longer passes it — confirmed by the P4a/P4b native C + C++ builds linking clean without
+  it. **Residual:** the macOS cyclonedds branch (`CMakeLists.txt:264`, `-force_load` + flag)
+  — removable in principle but needs a **macOS run** to validate; FOLLOW-UP. (The
+  threadx/zpico startup `--allow-multiple-definition` stays — intentional `startup.c`
+  memset/memcpy overrides, different class.)
+- **Extend the link-closure validator — FOLLOW-UP (hardening).** `staticlib_duplicate_symbols`
+  (slices 1+2 landed) gates the ODR-dup hazard today. Extending it to the full closure
+  (every FFI-referenced symbol provided by *exactly one* archive — i.e. also catch an
+  *undefined* in-closure ref, modulo legit external/libc refs) is a nuanced test addition
+  (false-positive-prone — distinguishing in-closure refs from external) and is hardening,
+  not a Stable-blocker. Tracked as a follow-up.
+- **Flip RFC-0042 `Stable` — DONE (2026-06-15).** All four pillars landed; the RFC
+  `status:` + the D3 banner are flipped to Stable (residual hardening above noted, non-blocking).
+- **Close [issue 0042](../issues/archived/0042-platform-header-architecture-fragility-libc-std-clashes.md)
+  — DONE (already archived).** Its D1–D4 acceptances pass with D3 landed.
 
 ## Risks
 

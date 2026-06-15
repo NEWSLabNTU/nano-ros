@@ -1,11 +1,11 @@
 ---
 rfc: 0042
 title: "Platform & build determinism — one canonical interface, capability-driven config, deterministic linking"
-status: Draft
+status: Stable
 since: 2026-06
 last-reviewed: 2026-06-15
-status-note: "D1/D2/D4 STABLE (landed); D3 IN PROGRESS (single-runtime stable, registration trigger = phase-249/#62). Flips to Stable when D3 lands."
-implements-tracked-by: [phase-241-platform-build-determinism, archived/phase-243-platform-abi-unification]
+status-note: "STABLE (2026-06-15). D1/D2/D4 landed (phase-241.B/C, phase-243); D3 landed (single-runtime + the .init_array registration ctor, phase-249 P4b; --allow-multiple-definition removed on the C/C++ link for Linux/BSD). Residual hardening tracked in phase-249: the full link-closure validator extension + the macOS cyclonedds --allow-multiple-definition (needs a macOS run) — neither blocks Stable (the dup-symbol gate already guards the ODR hazard)."
+implements-tracked-by: [archived/phase-241-platform-build-determinism, archived/phase-243-platform-abi-unification, phase-249-one-registration-trigger]
 supersedes: []
 superseded-by: null
 ---
@@ -169,11 +169,12 @@ upheld by comments and per-combination workarounds:
 
 ### D3 — Deterministic linking
 
-> **Status: IN PROGRESS.** The single-shared-runtime foundation (bullet 3, no dup)
-> is Stable (see "D3 implementation" below); the registration-trigger consolidation
-> (bullet 1, see **§D3.3** below — the `.init_array` ctor decision) + the generated
-> link manifest (bullet 2) are tracked by
-> [phase-249](../roadmap/phase-249-one-registration-trigger.md) / [issue 0062].
+> **Status: STABLE (2026-06-15).** Bullet 3 (single-shared-runtime, no dup) landed;
+> bullet 1 (registration trigger = the `.init_array` ctor — **§D3.3**) landed in
+> [phase-249](../roadmap/phase-249-one-registration-trigger.md) P4b (linkme deleted);
+> `--allow-multiple-definition` removed on the C/C++ link (Linux/BSD). Residual
+> hardening (the full link-closure validator extension + the macOS cyclonedds flag)
+> is tracked in phase-249 — neither blocks Stable (the dup-symbol gate guards ODR).
 
 - **One registration trigger.** *(Mechanism settled 2026-06-15 — see §D3.3.)* The
   three coexisting self-register mechanisms (linkme distributed-slice, `.init_array`
