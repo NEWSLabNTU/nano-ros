@@ -9,4 +9,6 @@
 //! Design: `docs/superpowers/specs/2026-06-16-build-profiling-design.md`.
 
 pub mod collect;
+pub mod diagnostics;
 pub mod model;
+pub mod normalize;
