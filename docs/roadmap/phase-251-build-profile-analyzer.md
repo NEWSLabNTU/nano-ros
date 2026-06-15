@@ -111,7 +111,24 @@ Ran the analyzer against live build artifacts (not just fixtures):
   16.8 s) correctly attributed to codegen and flagged as the dominant unit; `thiserror
   compiled 6×` surfaced the isolated-`target/` rebuild. No fixes needed.
 
-Both backends now verified on live artifacts. The validation gap is closed.
+- **Real esp-idf (`idf.py`) + plain `cmake`** (`tests/esp-idf-smoke/build`,
+  `examples/native/cpp/talker/build-zenoh`): `NinjaIdf` + `NinjaCmake` detection correct.
+  Three more issues found + fixed:
+  1. **Stale accumulated rows** — `.ninja_log` is append-only across builds, so an output
+     rebuilt in N sessions has N rows. The edge-keying lost the old per-output dedup,
+     double-counting (`_cargo-build_nros_cpp` appeared as 87 s + 17 s). Restored a
+     latest-row-per-output pass before edge collapse → cmake total 139 s → 87 s.
+  2. **`is_rust_build` missed the hyphen form** — native corrosion emits
+     `_cargo-build_<crate>` (hyphen), not `<crate>_cargo_build` (underscore), so those
+     edges fell into "other" (91 % of the cmake build!). Now matches either separator →
+     correctly attributed to compile; "other" 158.8 s → 0.4 s.
+  3. **Stage = CPU-time, not wall** — esp-idf showed compile 134 s under a 9 s wall (sum
+     of parallel `-j` edges). Stages now report the **merged-interval wall** of their
+     units (compile 4.4 s within the 9.2 s wall), so a stage never exceeds the build.
+  Locked with `parallel_stage_uses_merged_wall_not_sum`.
+
+All four ninja drivers (west/idf/cmake/generic) + cargo verified on live artifacts.
+The validation gap is closed.
 
 ## Out of scope (deferred)
 

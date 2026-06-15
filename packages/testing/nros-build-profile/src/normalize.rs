@@ -1,9 +1,12 @@
 //! Normalizer — fold collector outputs into one [`BuildProfile`].
 //!
 //! Durations are real seconds. `total_s` is the wall-clock **span** (last end
-//! minus first start) summed per backend; `Stage::pct` is each stage's share of
-//! total *work* (sum of unit durations), so the percentages sum to 100 even when
-//! the build ran units in parallel (where work-sum exceeds the wall span).
+//! minus first start) summed per backend. Each `Stage::dur_s` is that stage's
+//! **wall** time — the merged length of its units' time intervals, not a sum of
+//! overlapping parallel edges — so a stage never exceeds the build's wall span
+//! (a naive sum would report compile > total on any `-j` build). `Stage::pct` is
+//! that wall share of `total_s`; with concurrent stages the percentages can sum
+//! to slightly over 100 (stages that genuinely overlapped in time).
 
 use crate::{
     collect::Collected,
@@ -12,7 +15,7 @@ use crate::{
 
 /// Combine one or more collector outputs into a normalized profile.
 pub fn normalize(collected: Vec<Collected>) -> BuildProfile {
-    let mut units: Vec<Unit> = Vec::new();
+    let mut raw: Vec<crate::model::RawUnit> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
     let mut total_s = 0.0f64;
     let mut deep = false;
@@ -27,18 +30,20 @@ pub fn normalize(collected: Vec<Collected>) -> BuildProfile {
         notes.extend(c.notes.iter().cloned());
     }
     for c in collected {
-        for u in c.units {
-            units.push(Unit {
-                name: u.name,
-                kind: u.kind,
-                dur_s: u.dur_s,
-                is_native: u.is_native,
-            });
-        }
+        raw.extend(c.units);
     }
 
+    let stages = build_stages(&raw, total_s);
+    let units: Vec<Unit> = raw
+        .into_iter()
+        .map(|u| Unit {
+            name: u.name,
+            kind: u.kind,
+            dur_s: u.dur_s,
+            is_native: u.is_native,
+        })
+        .collect();
     let backend = resolve_backend(&backends, &units);
-    let stages = build_stages(&units);
 
     BuildProfile {
         backend,
@@ -89,20 +94,33 @@ fn resolve_backend(backends: &[Backend], units: &[Unit]) -> Backend {
     }
 }
 
-/// Aggregate units into per-stage durations + share-of-work percentages.
-fn build_stages(units: &[Unit]) -> Vec<Stage> {
-    let work: f64 = units.iter().map(|u| u.dur_s).sum();
+/// Aggregate units into per-stage **wall** durations (merged-interval length,
+/// not a sum of overlapping parallel edges) + percentage of the total wall span.
+///
+/// Summing raw durations would report a stage longer than the whole build on any
+/// parallel (`-j`) build — e.g. esp-idf compile = 134 s of CPU across a 9 s wall.
+/// Merging each stage's `[start, start+dur]` intervals gives the real wall time
+/// that stage occupied, so stage durations stay within the build's wall span.
+fn build_stages(units: &[crate::model::RawUnit], total_s: f64) -> Vec<Stage> {
     let mut stages = Vec::new();
     for kind in Kind::ORDER {
-        let dur: f64 = units
+        let mut intervals: Vec<(f64, f64)> = units
             .iter()
             .filter(|u| u.kind == kind)
-            .map(|u| u.dur_s)
-            .sum();
+            .map(|u| (u.start_s, u.start_s + u.dur_s))
+            .collect();
+        if intervals.is_empty() {
+            continue;
+        }
+        let dur = merged_len(&mut intervals);
         if dur <= 0.0 {
             continue;
         }
-        let pct = if work > 0.0 { dur / work * 100.0 } else { 0.0 };
+        let pct = if total_s > 0.0 {
+            dur / total_s * 100.0
+        } else {
+            0.0
+        };
         stages.push(Stage {
             name: kind.name(),
             dur_s: dur,
@@ -110,6 +128,30 @@ fn build_stages(units: &[Unit]) -> Vec<Stage> {
         });
     }
     stages
+}
+
+/// Total length covered by a set of intervals after merging overlaps.
+fn merged_len(intervals: &mut [(f64, f64)]) -> f64 {
+    intervals.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut total = 0.0;
+    let mut cur: Option<(f64, f64)> = None;
+    for &(s, e) in intervals.iter() {
+        match cur {
+            None => cur = Some((s, e)),
+            Some((cs, ce)) => {
+                if s <= ce {
+                    cur = Some((cs, ce.max(e)));
+                } else {
+                    total += ce - cs;
+                    cur = Some((s, e));
+                }
+            }
+        }
+    }
+    if let Some((cs, ce)) = cur {
+        total += ce - cs;
+    }
+    total
 }
 
 #[cfg(test)]
@@ -152,6 +194,30 @@ mod tests {
 
         let link = p.stages.iter().find(|s| s.name == "link").unwrap();
         assert!((link.dur_s - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn parallel_stage_uses_merged_wall_not_sum() {
+        // Three compiles overlapping in [0,5] on a parallel build: raw sum = 12s
+        // but wall = 5s. The stage must report the 5s wall, not 12s.
+        let c = Collected {
+            units: vec![
+                raw("a.o", Kind::Compile, 0.0, 5.0),
+                raw("b.o", Kind::Compile, 1.0, 4.0),
+                raw("c.o", Kind::Compile, 2.0, 3.0),
+            ],
+            backend: Some(Backend::NinjaIdf),
+            deep: true,
+            notes: vec![],
+        };
+        let p = normalize(vec![c]);
+        let compile = p.stages.iter().find(|s| s.name == "compile").unwrap();
+        assert!(
+            (compile.dur_s - 5.0).abs() < 1e-6,
+            "wall not sum: {}",
+            compile.dur_s
+        );
+        assert!(compile.dur_s <= p.total_s + 1e-9, "stage within wall");
     }
 
     #[test]

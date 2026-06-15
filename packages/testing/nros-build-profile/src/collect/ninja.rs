@@ -68,8 +68,10 @@ fn find_ninja_log(dir: &Path) -> Option<std::path::PathBuf> {
 /// `(start, end, cmdhash)` so each edge is counted once, and classify the edge
 /// from the union of its outputs. Last write per edge key wins (rebuild rows).
 pub fn parse(text: &str) -> Collected {
-    // edge key (start_ms, end_ms, cmdhash) -> outputs of that edge.
-    let mut edges: BTreeMap<(u64, u64, String), Vec<String>> = BTreeMap::new();
+    // Pass 1: latest row per output. `.ninja_log` is append-only across builds,
+    // so an output rebuilt in N sessions has N rows; the last (chronological)
+    // line is the freshest. Overwriting keeps it and drops stale prior rows.
+    let mut latest: BTreeMap<String, (u64, u64, String)> = BTreeMap::new();
     let mut notes = Vec::new();
     let mut skipped = 0usize;
 
@@ -84,10 +86,7 @@ pub fn parse(text: &str) -> Collected {
                 let cmdhash = f.next().unwrap_or("").to_string();
                 match (start.parse::<u64>(), end.parse::<u64>()) {
                     (Ok(s), Ok(e)) if e >= s => {
-                        edges
-                            .entry((s, e, cmdhash))
-                            .or_default()
-                            .push(output.to_string());
+                        latest.insert(output.to_string(), (s, e, cmdhash));
                     }
                     _ => skipped += 1,
                 }
@@ -97,6 +96,13 @@ pub fn parse(text: &str) -> Collected {
     }
     if skipped > 0 {
         notes.push(format!("ninja: skipped {skipped} malformed row(s)"));
+    }
+
+    // Pass 2: collapse the latest rows into edges. One edge's outputs share the
+    // same (start, end, cmdhash), so this counts each edge once.
+    let mut edges: BTreeMap<(u64, u64, String), Vec<String>> = BTreeMap::new();
+    for (output, key) in latest {
+        edges.entry(key).or_default().push(output);
     }
 
     let units = edges
@@ -149,13 +155,15 @@ fn classify_edge(outputs: &[String]) -> (Kind, String) {
     (kind, basename(pick))
 }
 
-/// A corrosion/cargo edge: a `*_cargo_build` stamp target or a Rust artifact.
+/// A corrosion/cargo edge: a cargo-build stamp target or a Rust artifact.
+/// Corrosion uses both `<crate>_cargo_build` (Zephyr) and `_cargo-build_<crate>`
+/// (native cmake) naming, so match either separator.
 fn is_rust_build(output: &str) -> bool {
     let base = Path::new(output)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(output);
-    base.contains("cargo_build") || base.ends_with(".rlib")
+    base.contains("cargo_build") || base.contains("cargo-build") || base.ends_with(".rlib")
 }
 
 /// Stage implied by a single output's extension.
