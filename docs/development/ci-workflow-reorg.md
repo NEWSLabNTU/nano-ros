@@ -1,8 +1,24 @@
 # CI workflow reorg — plan (review draft)
 
-Status: **DRAFT for review** (Step B). Step A (local `just` mirrors of every CI
-job + `ci-fast`) landed in `52de496b2`. This doc proposes the workflow-side
-reorg; nothing here is applied yet.
+Status: **IN PROGRESS.** Step A (local `just` mirrors of every CI job + `ci-fast`)
+landed `52de496b2`. Applied since:
+- **SSoT** — `just check` now chains every `check.yml` gate (alloc-gate scoped to
+  shipping crates; `check-version-lockstep` + `check-source-gates` + the 6 wrapped
+  inline gates), so the fast-gate workflow is a thin `just check` caller
+  (`60bba9b12`, `3d4705681`). This surfaced **#69** (dep-chain feature drift) +
+  **#70** (staticlib) — pre-existing reds on `check.yml`, now tracked.
+- **Workflows retiered IN PLACE** (lower-churn than file-merging into the names
+  below; same goals): `check.yml` thinned to `just check` + `just check-no-std`
+  (+ advisory `just check-decoupling`); `ci.yml` deleted (folded as
+  `just check-no-std`); the heavy/medium lanes (`host-integration-tests`,
+  `host-unit-tests`, `platform-ci`, `zephyr-dual-line`) moved OFF per-push →
+  `pull_request` (path-scoped) + nightly `schedule` + `workflow_dispatch`, with
+  `cancel-in-progress` only on PR so a started nightly always completes (the #57
+  cadence fix). A direct push to `main` now triggers ONLY the fast `check` lane.
+
+Remaining: fix #69/#70 (gate content) so `check` greens; optionally rename/merge
+files into the tier names below (cosmetic — the triggers already implement the
+tiers). The original target/migration sections are kept below for reference.
 
 Goals (from the request):
 1. Every CI task runnable locally via a convenient named `just` recipe.

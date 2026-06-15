@@ -15,18 +15,10 @@
 # index-driven source submodules, and the manifest-pinned `west update`.
 name: Zephyr dual-line
 
+# CI reorg: heavy lane (10 examples x 2 Zephyr lines). PR (path-scoped) + nightly
+# + on-demand, NOT every direct push to main (same cadence-cancellation reasoning
+# as host-integration-tests). `cancel-in-progress: false` so a started run finishes.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "examples/zephyr/**"
-      - "packages/**"
-      - "cmake/**"
-      - "zephyr/**"
-      - "scripts/zephyr/**"
-      - "just/zephyr.just"
-      - "ci/docker/zephyr-ros/**"
-      - ".github/workflows/zephyr-dual-line.yml"
   pull_request:
     branches: [main]
     paths:
@@ -38,11 +30,13 @@ on:
       - "just/zephyr.just"
       - "ci/docker/zephyr-ros/**"
       - ".github/workflows/zephyr-dual-line.yml"
+  schedule:
+    - cron: "0 5 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: zephyr-dual-line-${{ github.ref }}
-  cancel-in-progress: true
+  group: zephyr-dual-line-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
 
 # packages: read — pull the GHCR CI image (private to the org by default).
 permissions:

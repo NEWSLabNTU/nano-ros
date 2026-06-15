@@ -23,10 +23,11 @@
 #     build-coverage and main confirms runtime.
 name: platform-ci
 
+# CI reorg: heavy per-platform matrix. PR (path-scoped, changed-platforms only via
+# the `changes` job) + nightly (all platforms, e2e) + on-demand. NOT on every direct
+# push to main — a 6-platform matrix per push is the load explosion the reorg
+# removes; nightly exercises the full sweep, PRs cover the platforms they touch.
 on:
-  push:
-    branches: [main]
-    paths: ["packages/**", "examples/**", "just/**", "justfile", "cmake/**", "nros-sdk-index.toml", ".github/workflows/platform-ci.yml"]
   pull_request:
     branches: [main]
     paths: ["packages/**", "examples/**", "just/**", "justfile", "cmake/**", "nros-sdk-index.toml", ".github/workflows/platform-ci.yml"]
@@ -36,20 +37,17 @@ on:
         description: "Run the QEMU test/e2e step (not just build)"
         type: boolean
         default: true
-  # Nightly QEMU e2e across all platforms (Phase 196.9). push/PR stay build-only
-  # (fast); the heavier per-platform runtime is exercised once a day on `main`.
-  # Residual e2e failures are triaged in Phase 203 (precondition-skips +
-  # timing-sensitive runtime items, cross-ref archived Phase 200 / 177.2) — the
-  # nightly surfaces drift without blocking pushes.
+  # Nightly QEMU e2e across all platforms (Phase 196.9). Residual e2e failures are
+  # triaged in Phase 203; the nightly surfaces drift without blocking pushes.
   schedule:
     - cron: "0 7 * * *"   # 07:00 UTC daily
 
 concurrency:
-  # Separate push/PR from workflow_dispatch so a build-only push run doesn't cancel
-  # an in-flight on-demand e2e dispatch (they serve different purposes and the e2e
-  # run is long). Within each (ref, event) a newer run still supersedes the older.
+  # Separate PR / dispatch / schedule so they don't cancel each other; within each
+  # (ref, event) a newer run supersedes the older on PR, but nightly/dispatch runs
+  # complete (cancel-in-progress: false) so the long e2e sweep isn't truncated.
   group: platform-ci-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Per-platform path filter → a JSON list of platforms to run. On a PR, only the

@@ -1,17 +1,15 @@
-# Unified check lane — collapses the former per-gate workflows (lint,
-# platform-header-gate, dep-chain, embedded-feature-unification,
-# codegen-convention, string-conventions) into ONE workflow that provisions the
-# shared setup (nano-ros-ci container + nros CLI + workspace sources) ONCE and
-# runs every static gate as its own step. Each gate is `if: ${{ !cancelled() }}`
-# so a single failure (e.g. fmt) does NOT mask the others — every gate runs and
-# every failure surfaces, the property the old split-into-jobs `lint` lane had.
+# Fast gate — fmt + clippy + every structural/source gate + the no_std core check.
 #
-# Mirrors local `just check*`: the rust/format/abi gates ARE the `just check-*`
-# recipes (single source of truth). NOT folded here: the heavy test/build lanes
-# (host-integration-tests, host-unit-tests, platform-ci, zephyr-dual-line,
-# nros-acceptance, colcon-parity, scaffold-journey), the no_std matrix (ci.yml),
-# image builds, deploy/release, and `sdk-index-gate` (a PR-only release-asset
-# verification on a pinned python, not a code check).
+# Thin wrapper (CI reorg): the gate set is the `just check` aggregate (single
+# source of truth — see docs/development/ci-workflow-reorg.md and the recipe-org
+# block in the justfile). Adding a gate = add a `check-*` recipe to `just check`;
+# this workflow does not enumerate gates. Folds the former `ci.yml` (no_std core)
+# in as `just check-no-std`.
+#
+# NOT folded here: the heavy test/build lanes (host-unit-tests, host-integration-
+# tests, platform-ci, zephyr-dual-line — see nightly.yml), the small env-specific
+# lanes (sdk-index-gate, scaffold-journey, colcon-parity), image builds, and
+# deploy/release.
 name: check
 
 on:
@@ -57,15 +55,11 @@ concurrency:
 
 jobs:
   check:
-    name: check (fmt + clippy + structural gates)
+    name: check (just check + no_std)
     runs-on: ubuntu-22.04
     permissions:
       contents: read
       packages: read
-    # nano-ros-ci bakes ROS 2 Humble (AMENT) + rustup + cross targets + host
-    # g++/cc/clang + just + python3. One image, one checkout, one CLI build for
-    # all gates (vs. the former 6 workflows each pulling the image + rebuilding
-    # the CLI).
     container:
       image: ghcr.io/newslabntu/nano-ros-ci:humble
       credentials:
@@ -78,8 +72,8 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      # ----- shared setup (runs once for all gates) -----
-      - name: Cache CLI build (Phase 218)
+      # ----- shared setup -----
+      - name: Cache CLI build
         uses: actions/cache@v4
         with:
           path: packages/cli/target
@@ -87,176 +81,37 @@ jobs:
           restore-keys: |
             nros-cli-${{ runner.os }}-
 
-      - name: Build nros CLI from packages/cli/ (Phase 218)
+      - name: Build nros CLI from packages/cli/
         run: |
-          # CLI sub-workspace path-deps `ros-launch-manifest-types` from the
-          # nested submodule. actions/checkout default-skips submodules; init
-          # only the CLI-side one (cheap; ~50KB).
           git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
-      # The root workspace path-deps px4-sitl-tests (cargo load gate); the *-sys
-      # crates compile zenoh-pico / mbedtls / micro-{cdr,xrce-dds-client} /
-      # cyclonedds C sources (the host clippy pass exercises every build.rs, so
-      # cyclonedds-src must be present — the host pass, unlike embedded clippy,
-      # builds cyclonedds-sys).
+      # The host clippy pass exercises every build.rs (zenoh-pico / mbedtls /
+      # micro-{cdr,xrce} / cyclonedds), so those sources must be present.
       - name: Provision workspace sources via nros
         run: |
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \
                      --source micro-cdr --source micro-xrce-dds-client \
                      --source cyclonedds-src
 
-      - name: Add thumbv7em-none-eabihf rustup target
-        run: rustup target add thumbv7em-none-eabihf
-
       - name: Install clang-format (pinned via pypi wheel)
-        # Ubuntu 22.04 apt clang-format is v14; developers run v17 (the pinned
-        # PyPI wheel). Different majors format differently — install the same
-        # wheel everyone uses locally.
         run: pip install --no-cache-dir "clang-format==17.0.5"
 
-      # ----- gates (each runs even if a prior gate failed) -----
-      - name: just check-workspace-all (host + embedded clippy + nightly fmt)
-        if: ${{ !cancelled() }}
-        run: just check-workspace-all
+      # ----- gates (the `just check` aggregate is the SSoT) -----
+      # `just check` chains every fmt/clippy/ABI/source/dep-chain/staticlib gate
+      # (check-dep-chain sources ROS from the container itself). `just check-no-std`
+      # is the former ci.yml no_std core matrix (loops thumbv7m + riscv32imc).
+      - name: just check
+        run: just check
 
-      - name: just check-workspace-features
+      - name: just check-no-std
         if: ${{ !cancelled() }}
-        run: just check-workspace-features
+        run: just check-no-std
 
-      - name: just check-nros-log-riscv32
-        if: ${{ !cancelled() }}
-        run: just check-nros-log-riscv32
-
-      # check-decoupling is an EXPECTED-TO-FAIL aspirational guard until the
-      # Phase 104.A umbrella-decoupling migration completes. Advisory only.
+      # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
+      # Phase 104.A migration completes. Advisory only.
       - name: just check-decoupling (advisory until Phase 104.A)
         if: ${{ !cancelled() }}
         continue-on-error: true
         run: just check-decoupling
-
-      - name: check-version-lockstep (Phase 218.J)
-        if: ${{ !cancelled() }}
-        run: ./scripts/check-version-lockstep.sh
-
-      - name: just check-platform-abi-mirror
-        if: ${{ !cancelled() }}
-        run: just check-platform-abi-mirror
-
-      - name: just check-board-abi-mirror
-        if: ${{ !cancelled() }}
-        run: just check-board-abi-mirror
-
-      - name: just check-profile-board-mirror
-        if: ${{ !cancelled() }}
-        run: just check-profile-board-mirror
-
-      - name: just check-example-matrix
-        if: ${{ !cancelled() }}
-        run: just check-example-matrix
-
-      # Per-example `cargo fmt --check` — AST-only, needs no codegen/deps.
-      - name: per-example cargo +nightly fmt --check
-        if: ${{ !cancelled() }}
-        run: |
-          set -e
-          NIGHTLY="$(cat tools/rust-toolchain.toml 2>/dev/null | awk -F'"' '/^channel/ {print $2}')"
-          NIGHTLY="${NIGHTLY:-nightly}"
-          find examples -mindepth 4 -name Cargo.toml \
-              -not -path '*/target/*' -not -path '*/generated/*' \
-              -not -path '*/build/*' -not -path '*/build-*/*' \
-              -not -path '*/zephyr/*' \
-              -not -path '*/multi-package-workspace/*' \
-              -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
-              -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
-              -not -path '*/threadx-linux/*' \
-              -not -path '*/qemu-riscv64-threadx/*' \
-              -not -path '*/px4/*' | sort | while read -r toml; do
-              dir="$(dirname "$toml")"
-              echo "  fmt $dir"
-              ( cd "$dir" && cargo "+$NIGHTLY" fmt --check )
-          done
-
-      - name: just check-c (clang-format nros-c + native C examples)
-        if: ${{ !cancelled() }}
-        run: just check-c
-
-      - name: just check-cpp (clang-format nros-cpp + native C++ examples)
-        if: ${{ !cancelled() }}
-        run: just check-cpp
-
-      # Platform-header compile gate (was platform-header-gate.yml) — drives host
-      # g++/cc over <nros/platform.h> + the nros-cpp heap containers for the
-      # host-compilable platform×capability cells (the #27/#36/#38 class).
-      - name: platform-header compile matrix
-        if: ${{ !cancelled() }}
-        run: cargo test -p nros-tests --test platform_header_matrix
-
-      # Cross-tier of the platform gate (241.A) — the two-libc-set class (#27/#36)
-      # the host matrix cannot see. Drives the cross arm-none-eabi-g++ over a
-      # self-contained RTOS-header stub, asserting the RTOS-sysroot include
-      # precedence still clears the div_t clash. Self-skips if the cross toolchain
-      # is absent or its newlib does not exhibit the clash.
-      - name: cross libc-precedence gate
-        if: ${{ !cancelled() }}
-        run: cargo test -p nros-tests --test cross_libc_precedence_gate
-
-      # Zephyr capability-config gate (241.C.2b) — host string-parse of every
-      # zephyr `prj-<rmw>.conf` asserting it provides the Kconfig the backend
-      # needs (heap pool + the zenoh-pico pthread-mutex/cond minimums — the -80
-      # footgun). No west/SDK; runs regardless of the Zephyr CI being red.
-      - name: zephyr prj.conf requirements gate
-        if: ${{ !cancelled() }}
-        run: cargo test -p nros-tests --test zephyr_prjconf_requirements
-
-      # Link-determinism gate (RFC-0042 D3 / 241.D) — build the host staticlib
-      # pair, then assert the duplicate symbols `--allow-multiple-definition`
-      # masks are ONLY the shared Rust dependency closure (no application ODR
-      # violation). Host-cheap; the dup set is target-agnostic.
-      - name: staticlib duplicate-symbol validator
-        if: ${{ !cancelled() }}
-        run: |
-          bash scripts/build/link-determinism-fixture.sh
-          cargo test -p nros-tests --test staticlib_duplicate_symbols
-
-      # Per-platform dependency-chain resolution (was dep-chain.yml) — proves the
-      # (board, rmw) dep chain resolves (nros setup --dry-run + codegen + cargo
-      # tree), no compile.
-      - name: per-platform dep-chain check
-        if: ${{ !cancelled() }}
-        run: |
-          source /opt/ros/humble/setup.bash
-          NROS="$GITHUB_WORKSPACE/packages/cli/target/release/nros" scripts/ci/dep-chain-check.sh
-
-      # Embedded feature-unification guard (was embedded-feature-unification.yml)
-      # — no `feature "std"` path may reach an embedded target's production-link
-      # view.
-      - name: embedded feature-unification guard
-        if: ${{ !cancelled() }}
-        run: |
-          set -euo pipefail
-          tree=$(cargo tree -p nros-serdes --edges=normal,build \
-            --target thumbv7em-none-eabihf --no-default-features \
-            --workspace 2>&1)
-          if echo "$tree" | grep -q 'feature "std"'; then
-            echo "Phase 214.F.3 — feature std activation paths under embedded target:"
-            echo "$tree" | grep -B 2 'feature "std"' | head -50
-            echo ""
-            echo "A workspace member added a [dependencies]/[dev-dependencies] row"
-            echo "that pulls a std-activating crate without target-gating. Move it"
-            echo "under [target.'cfg(not(target_os = \"none\"))'.dependencies]."
-            exit 1
-          fi
-          echo "Phase 214.F.3 — no feature std paths under embedded target."
-
-      # Canonical `nros codegen` invocation shape (was codegen-convention.yml).
-      - name: codegen invocation convention
-        if: ${{ !cancelled() }}
-        run: scripts/ci/codegen-invocation-check.sh
-
-      # String-convention guards (was string-conventions.yml) — forbidden org /
-      # retired-tool references in user-facing surfaces.
-      - name: string-convention guards
-        if: ${{ !cancelled() }}
-        run: scripts/ci/string-conventions-check.sh

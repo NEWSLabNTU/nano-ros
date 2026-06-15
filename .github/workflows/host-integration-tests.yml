@@ -33,20 +33,12 @@
 # 212.N.10), or the launch parser would all land green.
 name: host integration-tests
 
+# CI reorg: heavy lane (~45-90 min). Runs on PR (path-scoped), nightly, and
+# on-demand — NOT on every direct push to main. Under the multi-agent main-push
+# cadence a per-push run was cancelled by the next push within ~10 min and never
+# completed (issue #57 root); nightly + PR runs finish because nothing cancels
+# them. `cancel-in-progress: false` so a started run always completes.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/**"
-      - "examples/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "justfile"
-      - "just/**"
-      - "cmake/**"
-      - "zephyr/cmake/**"
-      - "nros-sdk-index.toml"
-      - ".github/workflows/host-integration-tests.yml"
   pull_request:
     branches: [main]
     paths:
@@ -60,11 +52,13 @@ on:
       - "zephyr/cmake/**"
       - "nros-sdk-index.toml"
       - ".github/workflows/host-integration-tests.yml"
+  schedule:
+    - cron: "0 4 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: host-integration-tests-${{ github.ref }}
-  cancel-in-progress: true
+  group: host-integration-tests-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
 
 jobs:
   test-integration:

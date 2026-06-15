@@ -12,15 +12,10 @@
 # one source the root workspace path-deps (load gate), provisioned via nros.
 name: host unit-tests
 
+# CI reorg: medium lane (~15-30 min, `just test-unit`). PR (path-scoped) + nightly
+# + on-demand — not every direct push to main, so a push triggers only the fast
+# `check` lane. cancel-in-progress only on PR (a started nightly completes).
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/**"  # incl. packages/cli/** — Phase 218 CLI is built in-tree
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "justfile"
-      - ".github/workflows/host-unit-tests.yml"
   pull_request:
     branches: [main]
     paths:
@@ -29,11 +24,13 @@ on:
       - "Cargo.lock"
       - "justfile"
       - ".github/workflows/host-unit-tests.yml"
+  schedule:
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: host-unit-tests-${{ github.ref }}
-  cancel-in-progress: true
+  group: host-unit-tests-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test-unit:

@@ -44,7 +44,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-_None currently open._
+| id | title                                                                 | type | area | file |
+|----|-----------------------------------------------------------------------|------|------|------|
+| 69 | dep-chain gate red — stm32f4 / qemu-arm-baremetal talkers dropped the rmw-zenoh feature | bug | ci | [0069-dep-chain-gate-rmw-zenoh-feature-drift.md](0069-dep-chain-gate-rmw-zenoh-feature-drift.md) |
+| 70 | staticlib duplicate-symbol gate red — both link-determinism tests fail on main | bug | build | [0070-staticlib-duplicate-symbols-gate-red.md](0070-staticlib-duplicate-symbols-gate-red.md) |
+
+Both surfaced by the CI reorg (making `just check` the fast-gate SSoT exposed that
+`check.yml` is chronically red); see `docs/development/ci-workflow-reorg.md`.
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#68** —
 CycloneDDS ROS 2 action interop "Goal was rejected": an incomplete Phase-233.6
