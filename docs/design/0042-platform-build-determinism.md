@@ -4,7 +4,7 @@ title: "Platform & build determinism — one canonical interface, capability-dri
 status: Stable
 since: 2026-06
 last-reviewed: 2026-06-15
-status-note: "STABLE (2026-06-15). D1/D2/D4 landed (phase-241.B/C, phase-243); D3 landed (single-runtime + the .init_array registration ctor, phase-249 P4b; --allow-multiple-definition removed on the C/C++ link for Linux/BSD). Residual hardening tracked in phase-249: the full link-closure validator extension + the macOS cyclonedds --allow-multiple-definition (needs a macOS run) — neither blocks Stable (the dup-symbol gate already guards the ODR hazard)."
+status-note: "STABLE (2026-06-15). D1/D2/D4 landed (phase-241.B/C, phase-243); D3 landed (single-runtime + the .init_array registration ctor, phase-249 P4b; --allow-multiple-definition removed on the C/C++ link for Linux/BSD). Residual tracked in phase-249: the macOS cyclonedds --allow-multiple-definition (needs a macOS run). The full link-closure validator extension is won't-do — subsumed by the linker once the flag is gone, infeasible at archive level (single-runtime = one archive). Neither blocks Stable (the dup-symbol gate already guards the ODR hazard)."
 implements-tracked-by: [archived/phase-241-platform-build-determinism, archived/phase-243-platform-abi-unification, phase-249-one-registration-trigger]
 supersedes: []
 superseded-by: null
@@ -172,9 +172,12 @@ upheld by comments and per-combination workarounds:
 > **Status: STABLE (2026-06-15).** Bullet 3 (single-shared-runtime, no dup) landed;
 > bullet 1 (registration trigger = the `.init_array` ctor — **§D3.3**) landed in
 > [phase-249](../roadmap/phase-249-one-registration-trigger.md) P4b (linkme deleted);
-> `--allow-multiple-definition` removed on the C/C++ link (Linux/BSD). Residual
-> hardening (the full link-closure validator extension + the macOS cyclonedds flag)
-> is tracked in phase-249 — neither blocks Stable (the dup-symbol gate guards ODR).
+> `--allow-multiple-definition` removed on the C/C++ link (Linux/BSD). Residual:
+> the macOS cyclonedds flag (needs a macOS run) is tracked in phase-249. The full
+> link-closure validator extension is **won't-do** — subsumed by the linker once the
+> flag is gone (undefined owned ref → link error; dup → multiple-definition error),
+> and infeasible at archive level (single-runtime = one archive; ~737 legit undefined
+> owned refs). Neither blocks Stable (the dup-symbol gate guards ODR).
 
 - **One registration trigger.** *(Mechanism settled 2026-06-15 — see §D3.3.)* The
   three coexisting self-register mechanisms (linkme distributed-slice, `.init_array`
@@ -196,10 +199,13 @@ upheld by comments and per-combination workarounds:
   `-u <symbol>` injections (e.g. #20) are removed; the manifest's ordering +
   whole-archive set make extraction deterministic, so duplicate/undefined symbols
   surface as real errors, not silently-resolved ones.
-- **Link-closure validator.** The FFI-libs closure (today `APP_FFI_LIBS_FILE`,
-  pre-computed by cmake with no transitive check) gains a validation pass: every
-  symbol referenced by the Rust/C++ FFI glue must be satisfied by a manifest
-  entry, failing the build at generation time rather than at `ld`.
+- **Link-closure validator — folded into the linker (2026-06-15).** The original
+  goal: a generation-time pass asserting every FFI-glue-referenced symbol is satisfied
+  by exactly one manifest entry. Once `--allow-multiple-definition` is gone, `ld` itself
+  *is* that pass — an undefined owned ref fails the link, a real duplicate is a
+  multiple-definition error. A separate archive-level check is infeasible (single-runtime
+  bundles to one `libnros_c.a` carrying ~737 legit undefined owned refs that resolve at
+  the final link). The cheaper pre-link ODR signal stays as `staticlib_duplicate_symbols`.
 - The unified allocator (RFC-0034) and vtable ABI (RFC-0035) are unchanged; D3
   only makes their *linkage* deterministic.
 

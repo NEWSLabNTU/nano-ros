@@ -265,12 +265,23 @@ they move here as the D3 close-out (phase-241 is now CLOSED):
   — removable in principle but needs a **macOS run** to validate; FOLLOW-UP. (The
   threadx/zpico startup `--allow-multiple-definition` stays — intentional `startup.c`
   memset/memcpy overrides, different class.)
-- **Extend the link-closure validator — FOLLOW-UP (hardening).** `staticlib_duplicate_symbols`
-  (slices 1+2 landed) gates the ODR-dup hazard today. Extending it to the full closure
-  (every FFI-referenced symbol provided by *exactly one* archive — i.e. also catch an
-  *undefined* in-closure ref, modulo legit external/libc refs) is a nuanced test addition
-  (false-positive-prone — distinguishing in-closure refs from external) and is hardening,
-  not a Stable-blocker. Tracked as a follow-up.
+- **Extend the link-closure validator — WON'T-DO / subsumed by the linker (2026-06-15).**
+  Originally lean: extend `staticlib_duplicate_symbols` to the full closure (every
+  FFI-referenced symbol provided by *exactly one* archive, also catching an *undefined*
+  in-closure ref). Investigated empirically and dropped — the premise no longer holds:
+  - **The two-archive pair is gone.** The validator assumes a `(libnros_c.a, rmw-staticlib)`
+    pair; single-runtime (D3) bundles cffi + backend into ONE `libnros_c.a`, so the fixture
+    yields one archive and `find_archive_pair` returns None — a closure test on the pair only
+    `skip!`s.
+  - **Archive-level closure is infeasible.** `nm libnros_c.a` carries **737 legitimate
+    undefined owned refs** (`nros_cdr_*`, `nros_clock_*`, `nros_log_*`, `nros_param_*`, …):
+    an archive is a library; undefined refs are expected and resolved at the final link.
+    There is no clean signal to allowlist against.
+  - **The linker is already the closure + dup gate.** Removing `--allow-multiple-definition`
+    (above) makes `ld` enforce it on every build: an undefined owned ref → **link error**;
+    a real duplicate → **multiple-definition error**, no longer masked. Strictly stronger
+    than an archive-`nm` heuristic, and free. The ODR-dup gate (`staticlib_duplicate_symbols`
+    slices 1+2) stays for its cheaper pre-link signal.
 - **Flip RFC-0042 `Stable` — DONE (2026-06-15).** All four pillars landed; the RFC
   `status:` + the D3 banner are flipped to Stable (residual hardening above noted, non-blocking).
 - **Close [issue 0042](../issues/archived/0042-platform-header-architecture-fragility-libc-std-clashes.md)
