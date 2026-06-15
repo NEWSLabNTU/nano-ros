@@ -43,6 +43,16 @@ pub struct NrosPlan {
     /// Omitted from output when absent so plans stay byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub param_persistence: Option<PlanParamPersistence>,
+    /// Phase 250 (Wave 3) — the ROS 2 parameter SERVER (the 6 get/set/list/
+    /// describe services) for external query/update, WITHOUT persistence. The
+    /// user writes normal `declare_parameter`/`get_parameter` in node source; a
+    /// declared `[param_services]` axis lowers this on so the generated entry
+    /// carries `nros/param-services` and the runtime registers the services on
+    /// the first declared parameter. Distinct from `param_persistence` (which
+    /// also pulls the feature but additionally attaches a backing store).
+    /// Additive; absent ⇒ no server, omitted so plans stay byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub param_services: Option<PlanParamServices>,
     /// Phase 250 (Wave 1) — E2E message-integrity (CRC + sequence gap/dup)
     /// capability. A declared `[safety]` block lowers this on; the generated
     /// entry then carries the `nros/safety-e2e` umbrella feature so the
@@ -103,6 +113,13 @@ pub struct PlanParamPersistence {
     pub backend: String,
     pub path: String,
 }
+
+/// Phase 250 (Wave 3) — the declared parameter-server capability. A pure
+/// on/off toggle (its presence is the enable signal); no sub-config, since the
+/// parameters themselves are declared in normal node source, not config.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanParamServices {}
 
 /// Phase 250 (Wave 1) — declared E2E-safety capability. `crc` selects whether
 /// the CRC-32 check is wired in addition to sequence gap/dup tracking (default

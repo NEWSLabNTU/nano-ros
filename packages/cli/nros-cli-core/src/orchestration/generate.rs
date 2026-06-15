@@ -180,6 +180,7 @@ fn render_cargo_toml(options: &GenerateOptions, plan: &NrosPlan) -> String {
                 &plan.build,
                 plan.lifecycle.is_some(),
                 plan.param_persistence.is_some(),
+                plan.param_services.is_some(),
                 plan.safety.is_some(),
                 !plan.bridges.is_empty(),
             )),
@@ -1643,6 +1644,7 @@ fn generated_default_features(
     build: &PlanBuildOptions,
     managed_lifecycle: bool,
     param_persistence: bool,
+    param_services: bool,
     safety: bool,
     has_bridges: bool,
 ) -> Vec<String> {
@@ -1661,10 +1663,16 @@ fn generated_default_features(
     if managed_lifecycle {
         features.push("nros/lifecycle-services".to_string());
     }
-    // Phase 172.H — a `[param_persistence]` plan needs the parameter services
-    // (`nros/param-services`); the generated runtime declares params, registers
-    // the services, and attaches the persistence backend.
-    if param_persistence {
+    // Parameter services (`nros/param-services`) — the declarative runtime
+    // lazily registers the 6 ROS 2 param services on the first `declare_parameter`
+    // (node_runtime `EntityKind::Parameter`), so external tools can query/update
+    // a node's parameters. Pulled by either:
+    //   * Phase 172.H — a `[param_persistence]` plan (also attaches the store), or
+    //   * Phase 250 (Wave 3) — a declared `[param_services]` axis: the param
+    //     SERVER on its own (no persistence). The user writes normal ROS
+    //     `declare_parameter`/`get_parameter` in node source; this axis only
+    //     toggles whether the external query/update services are compiled in.
+    if param_persistence || param_services {
         features.push("nros/param-services".to_string());
     }
     // Phase 250 (Wave 1) — a declared `[safety]` block compiles the E2E
@@ -4627,6 +4635,7 @@ mod net_fragment_tests {
             false,
             false,
             false,
+            false,
         );
         assert!(
             !feats.iter().any(|f| f == "nros/param-services"),
@@ -4659,7 +4668,7 @@ mod net_fragment_tests {
         );
         assert!(out.contains("nros::ParameterValue::Integer(i)"), "{out}");
 
-        let feats = generated_default_features(&plan.build, false, true, false, false);
+        let feats = generated_default_features(&plan.build, false, true, false, false, false);
         assert!(
             feats.iter().any(|f| f == "nros/param-services"),
             "{feats:?}"
@@ -4672,15 +4681,35 @@ mod net_fragment_tests {
         // pulls `nros/safety-e2e`; absent ⇒ it must not, keeping non-safety
         // plans byte-identical.
         let plan = plan_with_param_persistence(None);
-        let off = generated_default_features(&plan.build, false, false, false, false);
+        let off = generated_default_features(&plan.build, false, false, false, false, false);
         assert!(
             !off.iter().any(|f| f == "nros/safety-e2e"),
             "safety off must not pull the feature: {off:?}"
         );
-        let on = generated_default_features(&plan.build, false, false, true, false);
+        let on = generated_default_features(&plan.build, false, false, false, true, false);
         assert!(
             on.iter().any(|f| f == "nros/safety-e2e"),
             "safety on must pull the feature: {on:?}"
+        );
+    }
+
+    #[test]
+    fn param_services_axis_lowers_to_nros_feature() {
+        // Phase 250 Wave 3 — a declared `[param_services]` axis (plan.param_services
+        // = Some) pulls `nros/param-services` on its own (no persistence); absent ⇒
+        // it must not (unless `[param_persistence]` does), keeping plans byte-identical.
+        let plan = plan_with_param_persistence(None);
+        // param_persistence=false, param_services=false → no feature.
+        let off = generated_default_features(&plan.build, false, false, false, false, false);
+        assert!(
+            !off.iter().any(|f| f == "nros/param-services"),
+            "param-services off must not pull the feature: {off:?}"
+        );
+        // param_persistence=false, param_services=true → feature pulled.
+        let on = generated_default_features(&plan.build, false, false, true, false, false);
+        assert!(
+            on.iter().any(|f| f == "nros/param-services"),
+            "param-services on must pull the feature: {on:?}"
         );
     }
 

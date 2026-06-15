@@ -737,6 +737,11 @@ fn schema_plan_json(
     if let Some(pp) = collect_param_persistence(overlays) {
         obj.insert("param_persistence".to_string(), pp);
     }
+    // Phase 250 (Wave 3) — optional parameter-server capability, before `build`
+    // (NrosPlan field order); absent ⇒ omitted, plan stays byte-identical.
+    if let Some(ps) = collect_param_services(overlays) {
+        obj.insert("param_services".to_string(), ps);
+    }
     // Phase 250 (Wave 1) — optional E2E-safety capability, before `build`
     // (NrosPlan field order); absent ⇒ omitted, plan stays byte-identical.
     if let Some(safety) = collect_safety(overlays) {
@@ -1100,6 +1105,25 @@ fn collect_param_persistence(overlays: &[Value]) -> Option<Value> {
             if !path.is_empty() {
                 out = Some(json!({ "backend": backend, "path": path }));
             }
+        }
+    }
+    out
+}
+
+/// Phase 250 (Wave 3) — read the nros.toml `[param_services]` block (last
+/// overlay wins). Returns `{}` when present and not disabled (`enabled = false`);
+/// `None` keeps the binary free of the parameter SERVER. The presence is the
+/// enable signal the generator lowers to `nros/param-services` (the runtime then
+/// registers the 6 ROS 2 param services on the first declared parameter).
+fn collect_param_services(overlays: &[Value]) -> Option<Value> {
+    let mut out = None;
+    for overlay in overlays {
+        if let Some(table) = overlay.get("param_services").and_then(Value::as_object) {
+            let enabled = table
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            out = if enabled { Some(json!({})) } else { None };
         }
     }
     out
@@ -5452,6 +5476,25 @@ topics:
         ])
         .unwrap();
         assert_eq!(pp["path"], json!("/b"));
+    }
+
+    /// Phase 250 Wave 3 — `[param_services]` collection: presence enables,
+    /// `enabled = false` disables (last-wins).
+    #[test]
+    fn collect_param_services_reads_block() {
+        assert!(collect_param_services(&[json!({})]).is_none());
+        assert!(collect_param_services(&[json!({ "param_services": {} })]).is_some());
+        assert!(
+            collect_param_services(&[json!({ "param_services": { "enabled": false } })]).is_none()
+        );
+        // Last overlay wins: a later disable clears an earlier enable.
+        assert!(
+            collect_param_services(&[
+                json!({ "param_services": {} }),
+                json!({ "param_services": { "enabled": false } }),
+            ])
+            .is_none()
+        );
     }
 
     /// Phase 250 Wave 1 — `[safety]` collection: presence enables (crc default
