@@ -111,6 +111,23 @@ if(NANO_ROS_PLATFORM STREQUAL "posix")
     list(APPEND _features param-services lifecycle-services)
 endif()
 
+# Phase 252 / issue 0073 — E2E message-integrity (CRC + seq gap/dup). Lowers a
+# declared [safety] axis to the nros-c `safety-e2e` feature, which forwards to the
+# zenoh backend's own safety-e2e (the CRC attach/validate) and surfaces
+# nros_subscription_try_recv_validated + nros_integrity_status_t. zenoh-only (the
+# only backend with the CRC path). Codegen sets NANO_ROS_SAFETY_E2E=ON for a
+# `[safety]` system; default OFF keeps it a compile dimension.
+option(NANO_ROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
+if(NANO_ROS_SAFETY_E2E)
+    if(NANO_ROS_RMW STREQUAL "zenoh")
+        list(APPEND _features safety-e2e)
+    else()
+        message(WARNING
+            "NANO_ROS_SAFETY_E2E=ON ignored: only the zenoh RMW carries the CRC "
+            "path (got NANO_ROS_RMW=${NANO_ROS_RMW}).")
+    endif()
+endif()
+
 # ---- Build nros-c via Corrosion ----
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"

@@ -2379,6 +2379,27 @@ typedef struct nros_subscription_options_t {
 } nros_subscription_options_t;
 
 /**
+ * Phase 252 / issue 0073 — E2E message-integrity status surfaced to the C/C++
+ * receive path ([`nros_subscription_try_recv_validated`]). The C analog of the
+ * Rust `IntegrityStatus` / `CallbackCtx::integrity()`.
+ */
+typedef struct nros_integrity_status_t {
+  /**
+   * Sequence-number gap since the previous in-order message (0 = none).
+   */
+  int64_t gap;
+  /**
+   * `true` if this sample's sequence number was already seen (a duplicate).
+   */
+  bool duplicate;
+  /**
+   * CRC verdict: `1` = valid, `0` = mismatch (corruption), `-1` = no CRC on the
+   * wire (the publisher was built without `safety-e2e`).
+   */
+  int8_t crc_valid;
+} nros_integrity_status_t;
+
+/**
  * Success
  */
 #define NROS_RET_OK 0
@@ -5628,6 +5649,34 @@ NROS_PUBLIC
 int32_t nros_subscription_try_recv_raw(struct nros_subscription_t *subscription,
                                        uint8_t *buf,
                                        size_t buf_len);
+
+/**
+ * Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E
+ * integrity status (CRC + sequence gap/dup) of the received sample. The
+ * safety-e2e analog of [`nros_subscription_try_recv_raw`]: it requests
+ * validation on the backend (the zenoh shim recomputes + compares the CRC
+ * attachment and tracks the sequence) and writes the verdict to `*out_status`.
+ *
+ * Requires the build to enable `safety-e2e` on both ends (the zenoh backend's
+ * own feature, lowered from a declared `[safety]` axis); otherwise `crc_valid`
+ * reports `-1` (no CRC on the wire).
+ *
+ * # Returns
+ * * `>= 0` — number of bytes copied into `buf` (0 = no data available)
+ * * `NROS_RET_INVALID_ARGUMENT` if `subscription`/`buf` is NULL
+ * * `NROS_RET_BAD_SEQUENCE` if the subscription is not in POLLING state
+ * * `NROS_RET_ERROR` on transport failure
+ *
+ * # Safety
+ * * `subscription` must be a valid POLLING subscription
+ * * `buf` must point to writable memory of at least `buf_len` bytes
+ * * `out_status`, if non-NULL, must point to a writable `nros_integrity_status_t`
+ */
+NROS_PUBLIC
+int32_t nros_subscription_try_recv_validated(struct nros_subscription_t *subscription,
+                                             uint8_t *buf,
+                                             size_t buf_len,
+                                             struct nros_integrity_status_t *out_status);
 
 /**
  * Phase 124.A.6 — borrow a read-only view of the next available message

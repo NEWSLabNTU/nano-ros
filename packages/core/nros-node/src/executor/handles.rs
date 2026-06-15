@@ -1339,6 +1339,22 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
     }
 
+    /// Phase 252 / issue 0073 — raw receive that also returns the E2E
+    /// [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC + sequence gap/dup) for
+    /// the C/C++ `nros_subscription_try_recv_validated` path. The validator lives
+    /// in the backend handle (`try_recv_validated`), so no typed message is needed;
+    /// the payload lives in [`buffer`](Self::buffer). `crc_valid == None` when the
+    /// wire sample carried no CRC (e.g. a publisher built without `safety-e2e`).
+    #[cfg(feature = "safety-e2e")]
+    pub fn try_recv_validated(
+        &mut self,
+    ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, NodeError> {
+        use nros_rmw::Subscriber;
+        self.handle
+            .try_recv_validated(&mut self.buffer)
+            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+    }
+
     /// Phase 124.D.1 — burst-take. Drain up to `max_msgs` queued
     /// samples into the caller-supplied contiguous block in one
     /// call, with the i-th sample at

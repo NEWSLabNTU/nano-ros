@@ -7,6 +7,23 @@ area: build
 related: [issue-0072, phase-252, rfc-0031]
 ---
 
+> **Core capability landed (2026-06-16).** The C/C++ API can now validate CRC:
+> - `nros-c` `safety-e2e` feature → forwards to the zenoh backend's `safety-e2e`
+>   (`["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]`).
+> - `NANO_ROS_SAFETY_E2E` CMake option (zenoh-only; warns otherwise) → appends the feature.
+> - **C ABI:** `nros_integrity_status_t { i64 gap; bool duplicate; i8 crc_valid }` +
+>   `nros_subscription_try_recv_validated(sub, buf, len, *out_status)` (subscription.rs),
+>   backed by `RawSubscription::try_recv_validated` (nros-node handles.rs). cbindgen emits
+>   both into `nros_generated.h`; symbol exported in the safety-built `libnros_c.a` (verified
+>   by `nm`). Both feature states compile.
+>
+> **Remaining (follow-up):** (1) config-driven auto-lowering — `[safety]` →
+> `-DNANO_ROS_SAFETY_E2E` + a `#define NROS_SYSTEM_SAFETY_E2E` in `system_config.h` (needs a
+> `[system].safety` bridge, since phase-250's `[safety]` is an nros.toml overlay block, not
+> `SystemHeader`); (2) a C++ `subscription.hpp` `.take_validated()` wrapper; (3) a native-C
+> transport e2e (C safety listener vs the safety talker over zenohd — the gold-standard proof,
+> needs a CMake C fixture); (4) cyclonedds has no safety path at all (document/gate).
+
 ## Why
 
 The `safety-e2e` capability axis (E2E message integrity — CRC-32 attach on publish +
