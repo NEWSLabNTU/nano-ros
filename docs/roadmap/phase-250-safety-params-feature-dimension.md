@@ -164,11 +164,14 @@ idiom — phase-250 does not touch them.
     (the declarative analog of `.typed::<M>().safety()`).
   - `nros` `CallbackCtx`: gated `integrity` field + `new_with_integrity()` + `integrity()`
     accessor (`None` for timers/services/non-safety subs). Test: `callback_ctx_integrity_surface`.
-- **Wave 2b (planned)** — the declarative opt-in + runtime branch: an `EntityMetadata.safety`
-  flag set by a `.safety()` opt-in in `Node::register()`, and the `node_runtime`
-  `EntityKind::Subscription` arm branching on it to call
-  `create_generic_subscription_with_integrity` + a `dispatch_into_cell_with_integrity` that
-  builds the ctx via `CallbackCtx::new_with_integrity`. Plus a native e2e fixture test.
+- **Wave 2b — declarative `.safety()` opt-in + runtime branch — DONE (2026-06-15).**
+  `EntityMetadata.safety` (ungated flag; the reading branch is gated) set by
+  `NodeContext::create_subscription_for_callback_name_with_safety`; the `node_runtime`
+  `EntityKind::Subscription` arm branches on it (under `safety-e2e`) to
+  `create_generic_subscription_with_integrity` + `dispatch_into_cell_with_integrity` →
+  `CallbackCtx::new_with_integrity`, else the basic path. Test:
+  `safety_opt_in_records_metadata_flag`. The full transport e2e (publish → validated recv →
+  `ctx.integrity()` in a real spin) lands with the declarative fixture in Wave 5.
 - **Wave 3 (planned)** — params lowering + codegen: a plain declare-only `[params]` axis
   (distinct from the existing `[param_persistence]`) → `declare_parameter` +
   `register_parameter_services` in the generated declarative node.
