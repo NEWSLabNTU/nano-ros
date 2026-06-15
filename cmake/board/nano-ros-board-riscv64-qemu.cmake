@@ -259,14 +259,18 @@ if(NOT TARGET threadx_glue)
 endif()
 
 if(NOT TARGET threadx_platform)
+    # phase-251 W1 — `--allow-multiple-definition` removed. The only dup it masked
+    # was the board's STRONG `memset/memcpy/memmove` (startup.c byte loops, dodging
+    # compiler_builtins' TLS-sensitive variants) vs compiler_builtins' WEAK ones;
+    # strong-over-weak resolves with no flag. A duplicate defined symbol is now a
+    # link error (the wrong-copy hazard the flag hid).
     nros_threadx_compose_platform(
         COMPONENTS    threadx_glue
                       virtio_net_netx
                       netxduo
                       threadx_kernel
         LINK_LIBS     c "${NROS_THREADX_LIBGCC_PATH}"
-        LINK_OPTIONS  --allow-multiple-definition
-                      -L${NROS_THREADX_PICOLIBC_LIB_DIR}
+        LINK_OPTIONS  -L${NROS_THREADX_PICOLIBC_LIB_DIR}
         DEFINES       NROS_PLATFORM_BAREMETAL)
 endif()
 
@@ -428,8 +432,9 @@ set(NROS_THREADX_EXTRA_DEFINES
 # keeps the app entry symbol live; `--undefined=memset/memcpy/memmove`
 # pulls in the board's strong memset/memcpy/memmove overrides
 # (startup.c provides byte-loop versions to dodge Rust
-# compiler_builtins' TLS-sensitive variants). `--allow-multiple-definition`
-# is on threadx_platform's INTERFACE already.
+# compiler_builtins' TLS-sensitive variants). The board defs are STRONG and
+# compiler_builtins' are WEAK, so they resolve with no `--allow-multiple-definition`
+# (phase-251 W1 removed it from threadx_platform's INTERFACE).
 # ---------------------------------------------------------------------------
 function(nros_board_link_app target)
     if(NOT TARGET ${target})

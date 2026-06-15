@@ -11,5 +11,6 @@
 # Only ACTUAL link-flag uses count (a comment that merely names the flag does not).
 # Drift fails the gate: a new unlisted use, or a listed file that no longer uses it.
 
-CMakeLists.txt                                   # APPLE cyclonedds force_load tail — phase-251 W2 (#70); drop or macOS-gate
-cmake/board/nano-ros-board-riscv64-qemu.cmake    # threadx-riscv64 strong/weak mem override — phase-251 W1 (#70); drop after relink
+# (empty — phase-251 W1 + W2 removed both uses: threadx-riscv64 board (strong/weak
+#  mem override, relink-validated) and APPLE cyclonedds force_load tail. The
+#  invariant is now fully enforced: ANY `--allow-multiple-definition` fails the gate.)

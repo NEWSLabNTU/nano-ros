@@ -259,9 +259,15 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
                     "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive")
             endif()
         elseif(APPLE)
+            # phase-251 W2 — `--allow-multiple-definition` removed. `-force_load`
+            # is macOS's whole-archive equivalent; the Linux path above whole-archives
+            # the same C/C++ cyclone (no Rust core/std closure to collide) WITHOUT the
+            # flag, so macOS doesn't need it either — it was a defensive leftover. If a
+            # real macOS dup ever surfaces it now ERRORS (the wrong-copy hazard the flag
+            # hid) instead of silently picking a copy. (No macOS CI runner — reasoned
+            # from the flag-free Linux path, not run-validated here.)
             target_link_libraries(NanoRos INTERFACE
-                "-Wl,-force_load,$<TARGET_FILE:nros_rmw_cyclonedds>"
-                "-Wl,--allow-multiple-definition")
+                "-Wl,-force_load,$<TARGET_FILE:nros_rmw_cyclonedds>")
         else()
             target_link_libraries(NanoRos INTERFACE nros_rmw_cyclonedds)
         endif()
