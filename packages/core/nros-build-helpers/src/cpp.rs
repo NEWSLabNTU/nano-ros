@@ -26,9 +26,11 @@ pub fn run() {
     generate_config(&out_dir, &manifest_dir, &probed);
     generate_header(&manifest_dir);
 
+    // Weak fallbacks for the platform log ABI (mirrors nros-c). The weak default
+    // of `nros_app_register_backends` was removed in phase-249 P4a.
     compile_c_stub(
         &manifest_dir,
-        "c-stubs/weak_register_backends.c",
+        "c-stubs/weak_platform_log_stubs.c",
         None,
         "nros_cpp_weak_stubs",
         true,

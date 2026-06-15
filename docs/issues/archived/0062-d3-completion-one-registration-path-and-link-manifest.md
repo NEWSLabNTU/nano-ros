@@ -1,11 +1,37 @@
 ---
 id: 62
 title: D3 completion — one registration path + generated link-manifest + weak-default deletion (rides single-runtime)
-status: open
+status: resolved
 type: tech-debt
 area: build
-related: [issue-0042, issue-0050, phase-241, phase-247]
+related: [issue-0042, issue-0050, phase-241, phase-247, phase-249]
+resolved_in: "phase-249 (R2/R3) + R1 dispatch + 2026-06-15 cleanup tail"
 ---
+
+> **RESOLVED (2026-06-15).** All three R-items landed.
+> - **R1 (dispatch → generated data) — DONE.** `resolve_rmw()` emits
+>   `cmake/NanoRosRmwDispatch.cmake` (`nros_rmw_dispatch(<rmw>)` → `RLIB_DEP` /
+>   `EXTRA_LINK_LIBS` / `NEEDS_CXX_LINKER` / `UMBRELLA_CFFI_FEATURE`), drift-guarded
+>   by `rmw_cmake_dispatch_is_current` (green). Consumed by the two places that need
+>   the raw link-lib list: `NanoRosRuntimeCrate.cmake:93` (synth-crate cffi feature)
+>   and top-level `cmake/NanoRosLink.cmake:123` (`NEEDS_CXX_LINKER`). The legacy
+>   per-target `nano_ros_link_rmw` path links the exported `NrosRmw<X>::` package
+>   target, whose transitive deps carry the cyclone `ddsc`/`stdc++` wiring — cmake-
+>   native encapsulation, not hand-maintained dispatch prose.
+> - **R2 (delete weak `nros_app_register_backends`) — DONE** (phase-249 P4a). The
+>   stub TUs no longer define it; a missing registration is a LINK ERROR. Closes
+>   [issue 0050](0050-weak-symbol-audit-and-checkers.md) W3.1.
+> - **R3 (consolidate triggers) — DONE** (phase-249 P4b). linkme deleted; two
+>   mechanisms remain by design — hosted `.init_array` ctor + embedded explicit
+>   board call.
+> - **Cleanup tail (2026-06-15):** renamed the misnamed `weak_register_backends.c`
+>   → `weak_platform_log_stubs.c` (it carries only `nros_platform_log_*` weak
+>   fallbacks now) in nros-c + nros-cpp + their build helpers; scrubbed stale
+>   "weak no-op" comments in `nros-c/cmake/NanoRosLink.cmake` + `c.rs`. Validated:
+>   nros-c/nros-cpp build, `cpp_listener` (cyclone, legacy link path) links + runs
+>   clean, drift guard green. (Aside: the phase-247 weak-image gate flags
+>   `smoltcp_init/cleanup` left weak in stale prebuilt baremetal talker/listener
+>   images — a separate #50-class fixture-staleness item, not this issue.)
 
 ## Progress (2026-06-14)
 

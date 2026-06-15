@@ -48,9 +48,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 |----|-----------------------------------------------------------------------|-------------|--------|------|
 | 50 | audit existing weak symbols + add checkers — weak linkage is bug-prone (ordering/GC/ODR) | tech-debt | build | [0050-weak-symbol-audit-and-checkers.md](0050-weak-symbol-audit-and-checkers.md) |
 | 57 | host-integration-tests chronically red — fixture-build OOM + light-tier skip-gating regression | bug | testing | [0057-host-integration-tests-red-oom-and-skip-gating.md](0057-host-integration-tests-red-oom-and-skip-gating.md) |
-| 62 | D3 completion — one registration path + generated link-manifest + weak-default deletion (rides single-runtime) | tech-debt | build | [0062-d3-completion-one-registration-path-and-link-manifest.md](0062-d3-completion-one-registration-path-and-link-manifest.md) |
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#42** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#62** —
+D3 completion: R1 (dispatch → generated `NanoRosRmwDispatch.cmake` from
+`resolve_rmw`, drift-guarded, consumed by the synth-runtime crate + top-level
+link), R2 (weak `nros_app_register_backends` default deleted → missing
+registration is a link error; closes #50 W3.1), R3 (triggers consolidated to
+hosted `.init_array` ctor + embedded board call; linkme deleted) — all via
+phase-249 + a cleanup tail (renamed the misnamed `weak_register_backends.c` →
+`weak_platform_log_stubs.c`, scrubbed stale weak-no-op comments). Validated:
+nros-c/nros-cpp build, cyclone `cpp_listener` links+runs, drift guard green. See
+`archived/0062-*`. **#42** —
 platform/std-header fragility (libc/std clashes #27/#36/#38): the class is fixed +
 merge-gated (host `platform_header_matrix` + the new cross `cross_libc_precedence`
 gate + the zephyr prj.conf gate; one canonical `<nros/platform.h>`; capability

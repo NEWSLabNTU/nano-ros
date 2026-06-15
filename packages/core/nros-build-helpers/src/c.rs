@@ -28,14 +28,15 @@ pub fn run() {
     generate_config(&out_dir, &manifest_dir, &probed);
     generate_header(&manifest_dir);
 
-    // Phase 104.B.6 — weak default of `nros_app_register_backends`.
-    // POSIX hosts let the backend's .init_array ctor run first; this
-    // weak default fires as a no-op. Bare-metal targets where
-    // CMake's `nano_ros_link_rmw` emits a strong stub get the
-    // strong def at final link.
+    // Weak fallbacks for the platform log ABI (`nros_platform_log_*`), for
+    // no-platform link paths (workspace test / metadata builds). A real platform
+    // crate overrides them with strong defs. (The weak default of
+    // `nros_app_register_backends` that once lived here was removed in
+    // phase-249 P4a — registration is now the cmake strong stub from
+    // `nano_ros_link_rmw`, a link error if absent.)
     compile_c_stub(
         &manifest_dir,
-        "c-stubs/weak_register_backends.c",
+        "c-stubs/weak_platform_log_stubs.c",
         None,
         "nros_c_weak_stubs",
         true,
