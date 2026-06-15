@@ -202,6 +202,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo test -p nros-tests --test cross_libc_precedence_gate
 
+      # Zephyr capability-config gate (241.C.2b) — host string-parse of every
+      # zephyr `prj-<rmw>.conf` asserting it provides the Kconfig the backend
+      # needs (heap pool + the zenoh-pico pthread-mutex/cond minimums — the -80
+      # footgun). No west/SDK; runs regardless of the Zephyr CI being red.
+      - name: zephyr prj.conf requirements gate
+        if: ${{ !cancelled() }}
+        run: cargo test -p nros-tests --test zephyr_prjconf_requirements
+
       # Link-determinism gate (RFC-0042 D3 / 241.D) — build the host staticlib
       # pair, then assert the duplicate symbols `--allow-multiple-definition`
       # masks are ONLY the shared Rust dependency closure (no application ODR

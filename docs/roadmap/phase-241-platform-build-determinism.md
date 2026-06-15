@@ -260,14 +260,23 @@ Steps (each a commit; CI between the riskier ones):
       heap=false → none) + a full local `threadx_riscv64 build-fixture-extras`
       builds all 6 zenoh cpp fixtures clean off the *derived* `-D`. The cargo side
       needs no capability lowering — `platform-*` already implies `alloc`.
-- [~] **C.2b — RTOS-config agreement check (freertos landed; zephyr deferred).**
-      `freertos_capabilities_agree_with_freertosconfig` (in `board_descriptor.rs`)
-      cross-checks every FreeRTOS board that co-locates `config/FreeRTOSConfig.h`:
-      `configSUPPORT_DYNAMIC_ALLOCATION` ↔ `[board.capabilities] heap`,
-      `configUSE_MUTEXES` ↔ `threads` — a merge-gate guard catching the #38-class
-      drift (board.toml claims a capability the RTOS config disabled). Zephyr's
-      heap/mutex live in per-app Kconfig (`prj.conf`), not a board-local file, so
-      they stay config-derived (lower priority — those paths work today).
+- [x] **C.2b — RTOS-config agreement check. DONE (freertos + zephyr).**
+      *FreeRTOS:* `freertos_capabilities_agree_with_freertosconfig`
+      (`board_descriptor.rs`) cross-checks every FreeRTOS board that co-locates
+      `config/FreeRTOSConfig.h`: `configSUPPORT_DYNAMIC_ALLOCATION` ↔
+      `[board.capabilities] heap`, `configUSE_MUTEXES` ↔ `threads`.
+      *Zephyr (2026-06-15):* Zephyr doesn't fit the board.toml↔config model (no
+      `nros-board.toml` descriptor — deploy picks a *west board name*; capability
+      lives in per-example, per-RMW `prj-<rmw>.conf`), so "agreement" is
+      reinterpreted as a **requirements lint**: `zephyr_prjconf_requirements.rs`
+      host-parses every `examples/zephyr/**/prj-<rmw>.conf` (+ `zephyr_entry`,
+      merging base `prj.conf`) and asserts it provides the Kconfig the backend
+      needs — heap pool for all; `POSIX_API` + `MAX_PTHREAD_{MUTEX≥8,COND≥6}` for
+      zenoh (the documented `-80`-at-`Executor::open` footgun); `POSIX_API` for
+      cyclone. A single `REQUIREMENTS` table is the SSoT; host-only (no west/SDK →
+      runs even with Zephyr CI red #58/#59). Green baseline (61 example×RMW configs
+      pass); teeth verified (MUTEX=5 → red with the `-80` explanation). Both gates
+      wired into `check.yml`.
 - [x] **C.3 — reassessed: resolved by design, no risky churn.** The original
       "retire all per-RTOS self-`#define`s" would *break* every platform whose
       C/C++ build doesn't yet receive the capability `-D` (C.2 wired only the
