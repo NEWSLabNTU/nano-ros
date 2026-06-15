@@ -293,6 +293,14 @@ pub struct EntityMetadata {
     pub parameter_type: Option<ParameterType>,
     pub parameter_default: Option<ParameterDefault>,
     pub parameter_read_only: bool,
+    /// Phase 250 (Wave 2b) — a subscription that opted into E2E message-integrity
+    /// validation (`.safety()`): the runtime registers it via
+    /// `create_generic_subscription_with_integrity` and surfaces
+    /// [`IntegrityStatus`](crate::IntegrityStatus) through `CallbackCtx::integrity()`.
+    /// Ungated (a plain flag) — only the runtime branch that reads it is gated on
+    /// `safety-e2e`, so when the capability is off the flag is simply ignored
+    /// (the subscription registers as a basic one). `false` for every other entity.
+    pub safety: bool,
     pub source: SourceLocationMetadata,
 }
 
@@ -943,6 +951,7 @@ pub(crate) fn entity_metadata(
         parameter_type: None,
         parameter_default: None,
         parameter_read_only: false,
+        safety: false,
         source: SourceLocationMetadata::empty(),
     })
 }

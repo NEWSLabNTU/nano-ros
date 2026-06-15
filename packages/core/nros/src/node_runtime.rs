@@ -649,6 +649,27 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .ok_or(NodeDeclError::Runtime)?;
                 let cb_id_owned = String::from(cb_id.as_str());
                 let cell = self.cell.clone();
+                // Phase 250 (Wave 2b) — a `.safety()` subscription registers via
+                // the integrity-aware generic path so `CallbackCtx::integrity()`
+                // surfaces CRC + sequence gap/dup. Gated: when `safety-e2e` is off
+                // the flag is ignored and the basic path below runs.
+                #[cfg(feature = "safety-e2e")]
+                if metadata.safety {
+                    let cell_s = self.cell.clone();
+                    let cb_s = cb_id_owned.clone();
+                    self.executor
+                        .node_mut(node)
+                        .create_generic_subscription_with_integrity(
+                            metadata.source_name.as_str(),
+                            metadata.type_name,
+                            metadata.type_hash,
+                            move |payload: &[u8], status: &nros_node::IntegrityStatus| {
+                                dispatch_into_cell_with_integrity(&cell_s, &cb_s, payload, status);
+                            },
+                        )
+                        .map_err(|_| NodeDeclError::Runtime)?;
+                    return Ok(());
+                }
                 self.executor
                     .node_mut(node)
                     .create_generic_subscription(
@@ -897,6 +918,29 @@ fn dispatch_into_cell(cell: &Arc<ComponentCell>, cb_id: &str, payload: &[u8]) {
     // tick hook on the same cell, etc.) we drop this dispatch. In
     // practice `try_borrow_mut` succeeds because subscription / timer
     // callbacks run sequentially under the single-threaded executor.
+    if let Ok(mut slot) = cell.slot.try_borrow_mut() {
+        slot.dispatch(cb_id, &mut ctx);
+    }
+}
+
+/// Phase 250 (Wave 2b) — dispatch a `.safety()` subscription message into the
+/// component's `on_callback` with its E2E [`IntegrityStatus`] attached, read via
+/// `CallbackCtx::integrity()`. The integrity-aware twin of [`dispatch_into_cell`].
+#[cfg(feature = "safety-e2e")]
+fn dispatch_into_cell_with_integrity(
+    cell: &Arc<ComponentCell>,
+    cb_id: &str,
+    payload: &[u8],
+    status: &nros_node::IntegrityStatus,
+) {
+    cell.callback_dispatches.fetch_add(1, Ordering::Relaxed);
+    if !payload.is_empty() {
+        cell.message_dispatches.fetch_add(1, Ordering::Relaxed);
+    }
+    let resolver = CellResolver {
+        cell: cell.as_ref(),
+    };
+    let mut ctx = CallbackCtx::new_with_integrity(payload, &resolver, status);
     if let Ok(mut slot) = cell.slot.try_borrow_mut() {
         slot.dispatch(cb_id, &mut ctx);
     }

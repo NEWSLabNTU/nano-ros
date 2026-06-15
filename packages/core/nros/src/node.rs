@@ -991,6 +991,40 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         self.create_subscription_for_callback::<M>(CallbackId::new(callback_name), topic)
     }
 
+    /// Phase 250 (Wave 2b) — declare a subscription with E2E message-integrity
+    /// validation enabled (the declarative `.safety()` opt-in). Identical to
+    /// [`create_subscription_for_callback_name`](Self::create_subscription_for_callback_name)
+    /// but flags the entity so the runtime registers it via
+    /// `create_generic_subscription_with_integrity`; the callback then reads
+    /// [`CallbackCtx::integrity`](CallbackCtx::integrity) alongside the message.
+    /// The config-driven `[safety]` axis (Wave 4 codegen) emits this call; it is
+    /// also usable by hand. Ungated — when `safety-e2e` is off the flag is simply
+    /// ignored and the subscription registers as a basic one.
+    #[track_caller]
+    pub fn create_subscription_for_callback_name_with_safety<'callback, M: RosMessage>(
+        &mut self,
+        callback_name: &'callback str,
+        topic: &str,
+    ) -> NodeResult<NodeSubscription<'callback, M>> {
+        let callback_id = CallbackId::new(callback_name);
+        let id = EntityId::new(callback_id.as_str());
+        let mut metadata = entity_metadata(EntityMetadataSpec {
+            id,
+            node_id: self.id,
+            kind: EntityKind::Subscription,
+            source_name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: M::TYPE_HASH,
+            qos: QosSettings::default(),
+        })?;
+        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
+        metadata.safety = true;
+        self.declare_entity(metadata)?;
+        Ok(NodeSubscription::new(id))
+    }
+
     /// Declare a subscription with explicit QoS, using `callback_id` as the stable entity ID.
     #[track_caller]
     #[doc(hidden)]
@@ -2390,6 +2424,36 @@ mod tests {
             Some("on_cmd")
         );
         assert_eq!(recorder.callback_effects().len(), 2);
+    }
+
+    // Phase 250 Wave 2b — the declarative `.safety()` opt-in records the
+    // `EntityMetadata.safety` flag so the runtime registers the integrity-aware
+    // subscription. A plain subscription stays `safety == false`.
+    struct SafetyComponent;
+    impl Node for SafetyComponent {
+        const NAME: &'static str = "safety_component";
+        fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
+            let mut node =
+                context.create_node_with_id(NodeId::new("node"), NodeOptions::new("listener"))?;
+            let _plain = node.create_subscription_for_callback_name::<TestMsg>("on_plain", "/a")?;
+            let _safe =
+                node.create_subscription_for_callback_name_with_safety::<TestMsg>("on_safe", "/b")?;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn safety_opt_in_records_metadata_flag() {
+        let mut recorder = MetadataRecorder::<2, 8, 4>::new();
+        record_node_metadata::<SafetyComponent>(&mut recorder).unwrap();
+        let ents = recorder.entities();
+        assert_eq!(ents.len(), 2);
+        // Plain subscription on /a — no safety.
+        assert_eq!(ents[0].source_name.as_str(), "/a");
+        assert!(!ents[0].safety, "plain sub must not be flagged");
+        // `.safety()` subscription on /b — flagged.
+        assert_eq!(ents[1].source_name.as_str(), "/b");
+        assert!(ents[1].safety, "safety sub must be flagged");
     }
 
     struct GroupedComponent;
