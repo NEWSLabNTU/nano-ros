@@ -97,6 +97,37 @@ jobs:
           restore-keys: |
             nros-cli-${{ runner.os }}-
 
+      # Cache the build-tier sources keyed on the recorded submodule SHAs
+      # (`git ls-tree HEAD`) → auto-invalidates on a pin bump, no manual rebuild
+      # (the image-baking hazard the reorg rejected). EXACT KEY ONLY: `nros setup`
+      # skips a present dest (idempotent), so a stale restore would not be
+      # refreshed → a pin bump must MISS + refetch. Shares the `nros-src-` key
+      # space with host-unit-tests (identical 6-source set → identical key).
+      - name: Compute source-pin cache key (build tier)
+        if: ${{ github.event_name != 'push' }}
+        run: |
+          git ls-tree HEAD \
+            third-party/px4/px4-rs \
+            packages/zpico/zpico-sys/zenoh-pico \
+            packages/zpico/zpico-sys/mbedtls \
+            packages/xrce/xrce-sys/micro-cdr \
+            packages/xrce/xrce-sys/micro-xrce-dds-client \
+            third-party/dds/cyclonedds \
+            | tee .ci-source-pins
+
+      - name: Cache provisioned sources (build tier, auto-invalidate on pin bump)
+        if: ${{ github.event_name != 'push' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            third-party/px4/px4-rs
+            packages/zpico/zpico-sys/zenoh-pico
+            packages/zpico/zpico-sys/mbedtls
+            packages/xrce/xrce-sys/micro-cdr
+            packages/xrce/xrce-sys/micro-xrce-dds-client
+            third-party/dds/cyclonedds
+          key: nros-src-${{ runner.os }}-${{ hashFiles('.ci-source-pins') }}
+
       - name: Build nros CLI + provision build-tier sources (non-push)
         if: ${{ github.event_name != 'push' }}
         run: |

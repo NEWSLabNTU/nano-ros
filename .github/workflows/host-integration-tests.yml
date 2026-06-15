@@ -109,6 +109,37 @@ jobs:
       # mbedtls / micro-{cdr,xrce-dds-client} / cyclonedds-src into the
       # workspace. Without these the `cargo metadata` step the
       # `test-integration` recipe drives panics out.
+      #
+      # Cache the provisioned working trees keyed on the recorded submodule SHAs
+      # (`git ls-tree HEAD`) — auto-invalidates on a pin bump, no manual rebuild.
+      # EXACT KEY ONLY: `nros setup` skips a present dest (idempotent), so a stale
+      # restore would not be refreshed → a pin bump must MISS + refetch. See
+      # host-unit-tests.yml for the full rationale. (+ nuttx-libc vs host-unit.)
+      - name: Compute source-pin cache key
+        run: |
+          git ls-tree HEAD \
+            third-party/px4/px4-rs \
+            packages/zpico/zpico-sys/zenoh-pico \
+            packages/zpico/zpico-sys/mbedtls \
+            packages/xrce/xrce-sys/micro-cdr \
+            packages/xrce/xrce-sys/micro-xrce-dds-client \
+            third-party/dds/cyclonedds \
+            third-party/nuttx/libc \
+            | tee .ci-source-pins
+
+      - name: Cache provisioned sources (auto-invalidate on pin bump)
+        uses: actions/cache@v4
+        with:
+          path: |
+            third-party/px4/px4-rs
+            packages/zpico/zpico-sys/zenoh-pico
+            packages/zpico/zpico-sys/mbedtls
+            packages/xrce/xrce-sys/micro-cdr
+            packages/xrce/xrce-sys/micro-xrce-dds-client
+            third-party/dds/cyclonedds
+            third-party/nuttx/libc
+          key: nros-src-${{ runner.os }}-${{ hashFiles('.ci-source-pins') }}
+
       - name: Provision workspace sources via nros
         run: |
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \

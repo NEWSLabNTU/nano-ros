@@ -89,6 +89,39 @@ jobs:
       #     submodule not initialised?" otherwise).
       # All are compiled by `test-unit`'s workspace build (the `-cffi` shims that
       # need the same sources are excluded, but `*-sys` are not).
+      #
+      # Source provisioning is the slow part of this lane (`nros setup --source`
+      # git-fetches + checks out each submodule). Cache the provisioned working
+      # trees keyed on the SUPERPROJECT'S RECORDED SUBMODULE SHAS
+      # (`git ls-tree HEAD <paths>`), so the key auto-invalidates the instant a
+      # pin bumps — no manual rebuild, no staleness (the image-baking hazard the
+      # CI reorg rejected). EXACT KEY ONLY (no restore-keys): `nros setup` leaves
+      # a present, non-empty dest untouched (idempotent skip — sdk_store.rs), so a
+      # partial/stale restore would NOT be refreshed → a pin bump must MISS and
+      # let nros fetch the correct pin. A miss costs one fetch; steady state hits.
+      - name: Compute source-pin cache key
+        run: |
+          git ls-tree HEAD \
+            third-party/px4/px4-rs \
+            packages/zpico/zpico-sys/zenoh-pico \
+            packages/zpico/zpico-sys/mbedtls \
+            packages/xrce/xrce-sys/micro-cdr \
+            packages/xrce/xrce-sys/micro-xrce-dds-client \
+            third-party/dds/cyclonedds \
+            | tee .ci-source-pins
+
+      - name: Cache provisioned sources (auto-invalidate on pin bump)
+        uses: actions/cache@v4
+        with:
+          path: |
+            third-party/px4/px4-rs
+            packages/zpico/zpico-sys/zenoh-pico
+            packages/zpico/zpico-sys/mbedtls
+            packages/xrce/xrce-sys/micro-cdr
+            packages/xrce/xrce-sys/micro-xrce-dds-client
+            third-party/dds/cyclonedds
+          key: nros-src-${{ runner.os }}-${{ hashFiles('.ci-source-pins') }}
+
       - name: Provision workspace sources via nros
         run: |
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \

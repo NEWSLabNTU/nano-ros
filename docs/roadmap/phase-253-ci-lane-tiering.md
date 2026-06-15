@@ -66,6 +66,30 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
   checkout + clang-format + submodule + `check-fast` ≈ 1-2 min — completes under
   the rapid push cadence (was ~4-5 min, cancelled).
 
+- **Prereq prep cached, not image-baked.** The user flagged `nros setup --source`
+  (git-fetch + checkout of each `-sys` submodule) as the slow part of the build
+  lanes and asked about baking prereqs into the CI image. Image-baking was
+  REJECTED: a CLI or prereq-config change forces a manual image rebuild + carries
+  a staleness hazard (a build runs against whatever the image last baked). Chosen
+  instead — two auto-invalidating `actions/cache`s, keyed so a change forces a miss
+  with no manual step:
+  - **CLI binary cache** (already in place): `nros-cli-${{ runner.os }}-${{
+    hashFiles('packages/cli/Cargo.lock','packages/cli/**/Cargo.toml',
+    'packages/cli/**/*.rs') }}`, shared identically across check / host-unit /
+    host-integration / platform-ci. Has `restore-keys` (cargo tolerates a warm
+    non-exact target → sub-30s relink).
+  - **Provisioned-source cache** (new): keyed on the SUPERPROJECT'S RECORDED
+    SUBMODULE SHAS — a step runs `git ls-tree HEAD <source paths>` into
+    `.ci-source-pins`, the cache keys on `hashFiles('.ci-source-pins')`. The key
+    auto-invalidates the instant a pin bumps; identical source SETS across lanes
+    hash to the same key and share the archive. Key: `nros-src-${{ runner.os }}-
+    <pin-hash>`. **EXACT KEY ONLY — no `restore-keys`**: `nros setup` leaves a
+    present, non-empty dest untouched (idempotent skip, sdk_store.rs), so a
+    partial/stale restore would NOT be refreshed; a pin bump must MISS so nros
+    fetches the correct pin. A miss costs one fetch; steady state hits. Wired into
+    host-unit (6 sources), host-integration (6 + nuttx-libc), platform-ci (px4-rs
+    + nuttx-libc), and check.yml build tier (6, non-push).
+
 ## Acceptance
 
 - A direct push to `main` triggers only fast lanes (`check-fast`, + the
