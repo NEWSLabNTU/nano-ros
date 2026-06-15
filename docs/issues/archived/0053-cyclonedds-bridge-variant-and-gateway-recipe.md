@@ -19,6 +19,35 @@ resolved_in: 18959e488, 1ea911cf2
 > `nros_rmw::register_type_descriptor` (NUL-terminated key) before `create_publisher_raw`.
 > Verified: builds against vendored CycloneDDS 0.10.5; full path forwards 8/8 live
 > samples zenoh→cyclonedds.
+>
+> **Follow-up (same day) — receiver-asserting "both A and B", a real egress bug,
+> + build wiring.** The base `test_zenoh_to_cyclonedds_bridge_e2e` asserts only the
+> bridge's own `forwarded` log (egress `dds_write` accepted, no subscriber) — which
+> masked a real bug: **no cyclone subscriber actually received the bridged samples.**
+> Two receiver variants now close the loop end-to-end and caught it: **A**
+> (`…_bridge_to_nano_listener`, always-on) receives on the in-tree
+> `native/c/listener` cyclone fixture — no ROS 2 needed; composes with
+> `cyclonedds_ros2_interop.rs` for full zenoh→stock coverage. **B**
+> (`…_bridge_ros2`, env-gated) receives on stock `ros2 topic echo` over
+> `rmw_cyclonedds_cpp`.
+>
+> **Root cause (fixed):** the egress is an EXTRA session, and
+> `node_record.rs::resolve_session_slot` opens it with `self.domain_id.unwrap_or(0)`
+> — `cfg.domain_id` only sets the *primary* (zenoh) session. The bridge never
+> threaded the domain onto the egress `node_builder`, so the cyclone participant
+> opened on domain 0 and a listener on any other `ROS_DOMAIN_ID` never matched.
+> Fixed by `.domain_id(domain_id)` on the egress builder in BOTH the fixture and
+> `examples/bridges/tt-zenoh-to-cyclonedds` (whose comment already claimed a
+> domain-scoped egress it did not implement). Verified: 7/7 samples reach the nano
+> cyclone listener on a PID-unique domain; path B reaches stock `ros2 topic echo`.
+> (Aside: typed `create_publisher::<Int32>` is NOT viable in the cffi multi-RMW
+> bridge — `PublisherCreationFailed`, the typed-descriptor hook is only wired via
+> `nros/rmw-cyclonedds` — so the raw `register_type_descriptor` + `publish_raw`
+> path the variant uses is the correct one; the bug was the domain, not raw-vs-typed.)
+>
+> Also wired `bridge-zenoh-to-cyclonedds-fwd` into `examples/fixtures.toml` (native
+> rust row) so `build-test-fixtures` builds it and the gate runs in CI instead of
+> skip-only.
 
 ## Gap
 

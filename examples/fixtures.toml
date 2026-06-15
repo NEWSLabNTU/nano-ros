@@ -325,6 +325,18 @@ platform = "native"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/ros2-string-interop"
 
+# Issue #53 — mixed-RMW gateway bridge (stock-cyclonedds variant). Links
+# nros-rmw-zenoh + nros-rmw-cyclonedds-sys (the sanctioned multi-RMW binary),
+# forwards zenoh /chatter Int32 onto a Cyclone DDS egress (descriptor staged via
+# register_type_descriptor → raw publish). No package.xml (no codegen), so the
+# loop cargo-builds it directly. Consumed by tests/bridge_zenoh_to_cyclonedds.rs
+# (base forward-log check + path A in-tree cyclone listener + path B ros2 echo).
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd"
+
 [[fixture]]
 platform = "native"
 lang = "rust"

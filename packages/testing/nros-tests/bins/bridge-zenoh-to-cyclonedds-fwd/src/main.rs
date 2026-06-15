@@ -65,6 +65,11 @@ fn main() {
     let node_out = exec
         .node_builder("egress")
         .rmw("cyclonedds")
+        // The egress is an EXTRA session — `cfg.domain_id` only sets the primary
+        // (zenoh) session. Thread the domain here or the cyclone participant opens
+        // on domain 0 (`resolve_session_slot`'s `domain_id.unwrap_or(0)`), so a
+        // listener on any other `ROS_DOMAIN_ID` never matches.
+        .domain_id(domain_id)
         .build()
         .expect("egress Node (cyclonedds session open)");
     info!("Nodes built: ingress (zenoh), egress (cyclonedds @ domain {domain_id})");

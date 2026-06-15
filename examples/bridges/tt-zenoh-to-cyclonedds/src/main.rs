@@ -107,10 +107,14 @@ fn main() {
         .build()
         .expect("ingress Node");
     // Egress on Cyclone DDS — a second session on `domain_id` (DDS discovery,
-    // no locator string).
+    // no locator string). `cfg.domain_id` only sets the primary (zenoh) session;
+    // the egress is an EXTRA session, so thread the domain here or the cyclone
+    // participant opens on domain 0 and a listener on any other ROS_DOMAIN_ID
+    // never matches.
     let node_out = exec
         .node_builder("egress")
         .rmw("cyclonedds")
+        .domain_id(domain_id)
         .build()
         .expect("egress Node (cyclonedds session open)");
     info!("Nodes built: ingress (zenoh), egress (cyclonedds @ domain {domain_id})");
