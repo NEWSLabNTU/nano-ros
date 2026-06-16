@@ -16,12 +16,13 @@ related: [issue-0072, phase-252, rfc-0031]
 > crc-fail`. cyclonedds/XRCE have no CRC path → the option warns + is ignored (documented in
 > `cyclonedds-known-limitations.md`).
 >
-> **Config knob = the CMake flag.** Unlike the Rust path (the `[safety]` axis auto-lowers in
-> orchestration codegen), the C/C++ build is **user-CMake-driven** — `NANO_ROS_SAFETY_E2E` is
-> the user-facing knob, exactly as `NROS_RMW` is for RMW selection (orchestration does not pass
-> `-DNANO_ROS_RMW` either). A `#define NROS_SYSTEM_SAFETY_E2E` in `system_config.h` for app
-> conditional-compile (needs a `[system].safety` schema field) is a minor optional follow-up,
-> not a blocker — the capability works without it.
+> **Config knob = the CMake flag.** The C/C++ build is user-CMake-driven —
+> `NANO_ROS_SAFETY_E2E` is the user-facing knob, as `NROS_RMW` is for RMW selection.
+>
+> **The `#define NROS_SYSTEM_SAFETY_E2E` follow-up — DONE (phase-254).** `[safety]` is now a
+> typed `system.toml` field read by BOTH codegen paths; the bake (`render_system_config_h`)
+> emits `#define NROS_SYSTEM_SAFETY_E2E` (+ `NROS_SYSTEM_PARAM_SERVICES`) for C/C++
+> conditional compile. No nothing-left here.
 
 > **Core capability landed (2026-06-16).** The C/C++ API can now validate CRC:
 > - `nros-c` `safety-e2e` feature → forwards to the zenoh backend's `safety-e2e`

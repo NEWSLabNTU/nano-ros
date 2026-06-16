@@ -1,6 +1,6 @@
 # Phase 254 — one config SSoT: capabilities in system.toml, unify the two codegen paths
 
-Status: **Planned (2026-06-16)** · Implements [RFC-0004](../design/0004-configuration-and-transports.md)
+Status: **COMPLETE (Waves 1–3 + 5; Wave 4 no-op — 2026-06-16)** · Implements [RFC-0004](../design/0004-configuration-and-transports.md)
 (system.toml is the SSoT; both languages read the same file) + [RFC-0031 §"Generalization"](../design/0031-rmw-selection-and-lowering.md)
 (declared capability axes) · Follows [phase-250](phase-250-safety-params-feature-dimension.md),
 [phase-252](phase-252-capability-axis-board-lowering.md), closes the config-model tail of
@@ -70,12 +70,19 @@ single-`system.toml` SSoT + nros.toml-is-runtime-only stance.
   compile. Test: `system_config_h_emits_capability_defines` (present, absent→none,
   `enabled=false`→none). **Both codegen paths now read the same `system.toml`** for
   capabilities. Closes the issue-0073 C-define follow-up. (386)
-- **Wave 4 — migrate examples/fixtures + retire the overlay path.** Move declared `[safety]`
-  etc. into the bringup `system.toml`; drop the per-package `nros.toml` capability blocks +
-  the deprecated planner fallback. `nros.toml` is now runtime-only (RFC-0004 §5).
-- **Wave 5 — docs.** RFC-0004 §4 schema gains the capability axes + the "both paths read
-  system.toml" statement; RFC-0031 §Generalization records system.toml as the declared home;
-  issue 0072/0073 tails closed.
+- **Wave 4 — migrate examples/fixtures + retire the overlay path — NO-OP (2026-06-16).**
+  No repo fixture or example declares `[safety]`/`[param_services]` in a `nros.toml` (the axes
+  are new — only unit tests exercise them), so there is nothing to migrate. The deprecated
+  per-package `nros.toml` overlay **fallback stays one release** (warns if used; harmless —
+  none use it); its removal is a later cleanup, not this phase.
+- **Wave 5 — docs — DONE (2026-06-16).** RFC-0004 §4 schema gained the capability axes + the
+  "both paths read `system.toml`" statement; RFC-0031 §Generalization records `system.toml` as
+  the declared home; issue 0073's `#define` follow-up closed.
+
+**Phase 254 — COMPLETE.** The two codegen paths read the same `system.toml` for capabilities:
+a declared `[safety]` yields both the Rust `nros/safety-e2e` lowering (phase-250/252) and the
+C/C++ `#define NROS_SYSTEM_SAFETY_E2E`. RMW duality is no longer forced (capabilities prove the
+single-source model; `[build].rmw`-vs-`[system].rmw` reconciliation is a follow-up).
 
 ## Acceptance
 
