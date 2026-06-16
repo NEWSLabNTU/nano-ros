@@ -271,3 +271,13 @@ message types the participant will publish or subscribe to.
 See section 212.K.7 of
 `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
 for the full design + work-item ledger.
+
+## No E2E message-integrity (safety-e2e / CRC)
+
+The `safety-e2e` capability (CRC attach on publish + validate on receive, surfaced via
+`ctx.integrity()` / `nros_subscription_try_recv_validated`) is **zenoh-only**. The CRC
+machinery lives in the zenoh shim's wire attachment (`nros-rmw-zenoh`); CycloneDDS (and
+XRCE) carry no `safety-e2e` feature, so a declared `[safety]` axis no-ops on them. The
+`NANO_ROS_SAFETY_E2E=ON` CMake option **warns and is ignored** when `NANO_ROS_RMW` is not
+`zenoh`. Adding a CycloneDDS integrity path (a DDS-side CRC + a C surface) is unscoped —
+see [issue 0073](../issues/0073-safety-e2e-c-cpp-cmake-path-missing.md).
