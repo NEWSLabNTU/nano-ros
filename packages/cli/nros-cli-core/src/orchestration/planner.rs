@@ -95,6 +95,9 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     if let Some(system_toml) = workspace.package_nros_toml(&options.system_pkg) {
         nros_toml.push(system_toml);
     }
+    // Phase 254 — capture the bringup's typed `system.toml` path here (workspace in
+    // scope) so the capability axes can read the SSoT later.
+    let system_toml_path = workspace.package_system_toml(&options.system_pkg);
     let overlays = load_toml_values(&unique_paths(nros_toml))?;
 
     let (instances, executables, mut diagnostics) =
@@ -148,6 +151,7 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
         &executables,
         &metadata,
         &overlays,
+        system_toml_path.as_deref(),
         build_json,
     );
 
@@ -673,6 +677,7 @@ fn schema_plan_json(
     executables: &[Value],
     metadata: &[JsonArtifact],
     overlays: &[Value],
+    system_toml: Option<&Path>,
     build: Value,
 ) -> Value {
     let components = schema_components(metadata);
@@ -737,14 +742,47 @@ fn schema_plan_json(
     if let Some(pp) = collect_param_persistence(overlays) {
         obj.insert("param_persistence".to_string(), pp);
     }
-    // Phase 250 (Wave 3) — optional parameter-server capability, before `build`
-    // (NrosPlan field order); absent ⇒ omitted, plan stays byte-identical.
-    if let Some(ps) = collect_param_services(overlays) {
+    // Phase 254 — capability axes ([param_services], [safety]) prefer the typed
+    // `system.toml` (the SSoT both codegen paths read); the per-package `nros.toml`
+    // overlay block is a DEPRECATED fallback (warns), kept one release for migration.
+    let system_caps = system_toml
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
+
+    // Phase 250 (Wave 3) — parameter-server capability, before `build` (NrosPlan
+    // field order); absent ⇒ omitted, plan stays byte-identical.
+    let param_services = system_caps
+        .as_ref()
+        .and_then(|s| s.param_services.as_ref())
+        .filter(|p| p.enabled)
+        .map(|_| json!({}))
+        .or_else(|| {
+            collect_param_services(overlays).inspect(|_| {
+                eprintln!(
+                    "warning: [param_services] in nros.toml is deprecated (phase-254); \
+                     declare it in the bringup system.toml"
+                );
+            })
+        });
+    if let Some(ps) = param_services {
         obj.insert("param_services".to_string(), ps);
     }
-    // Phase 250 (Wave 1) — optional E2E-safety capability, before `build`
-    // (NrosPlan field order); absent ⇒ omitted, plan stays byte-identical.
-    if let Some(safety) = collect_safety(overlays) {
+    // Phase 250 (Wave 1) — E2E-safety capability, before `build` (NrosPlan field
+    // order); absent ⇒ omitted, plan stays byte-identical.
+    let safety = system_caps
+        .as_ref()
+        .and_then(|s| s.safety.as_ref())
+        .filter(|s| s.enabled)
+        .map(|s| json!({ "crc": s.crc }))
+        .or_else(|| {
+            collect_safety(overlays).inspect(|_| {
+                eprintln!(
+                    "warning: [safety] in nros.toml is deprecated (phase-254); \
+                     declare it in the bringup system.toml"
+                );
+            })
+        });
+    if let Some(safety) = safety {
         obj.insert("safety".to_string(), safety);
     }
     // Phase 211.E — `<executable>` spawn entries. Skip-when-empty so plans
@@ -3539,6 +3577,70 @@ mod tests {
         assert_eq!(instances.len(), 2);
         assert_eq!(instances[0]["id"], "demo_pkg.talker.0");
         assert_eq!(instances[1]["id"], "demo_pkg.talker.1");
+    }
+
+    /// Phase 254 — a `[safety]` capability declared in the bringup `system.toml`
+    /// (the SSoT, not a per-package `nros.toml` overlay) lands in `plan.safety`.
+    /// Uses a pre-built record (no launch parsing) so it runs in the default suite.
+    #[test]
+    fn plan_system_reads_safety_from_system_toml() {
+        let root = temp_workspace("nros-plan-system-toml-safety");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("package.xml"),
+            r#"<package format="3"><name>system_pkg</name><version>0.1.0</version></package>"#,
+        )
+        .unwrap();
+        // The capability SSoT — typed system.toml, NOT nros.toml.
+        fs::write(
+            root.join("system.toml"),
+            "[system]\nname=\"system_pkg\"\nrmw=\"zenoh\"\ndomain_id=0\n[safety]\ncrc=true\n",
+        )
+        .unwrap();
+        let launch = root.join("system.launch.xml");
+        fs::write(&launch, "<launch />").unwrap();
+        let record = root.join("record.json");
+        fs::write(
+            &record,
+            r#"{ "node": [ { "package": "demo_pkg", "executable": "talker", "name": "worker", "namespace": "/" } ] }"#,
+        )
+        .unwrap();
+        let metadata = root.join("talker.metadata.json");
+        fs::write(
+            &metadata,
+            r#"{
+  "version": 1, "package": "demo_pkg", "component": "talker", "language": "rust",
+  "executable": "talker", "exported_symbol": "nros_component_talker",
+  "nodes": [{
+    "id": "node_talker", "unresolved_name": {"value": "talker", "kind": "relative"},
+    "namespace": null, "publishers": [], "subscribers": [], "timers": [], "services": [], "actions": []
+  }],
+  "callbacks": [], "parameters": [],
+  "trace": {"generator": "test", "package_manifest": "package.xml", "source_artifacts": []}
+}"#,
+        )
+        .unwrap();
+
+        let output = plan_system(PlanOptions {
+            system_pkg: "system_pkg".to_string(),
+            workspace_root: root.clone(),
+            launch_file: launch,
+            record_file: Some(record),
+            out_root: root.join("build/system_pkg/nros"),
+            metadata_files: vec![metadata],
+            manifest_files: vec![],
+            nros_toml_files: vec![],
+            launch_args: vec![],
+        })
+        .unwrap();
+        let plan: Value =
+            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
+        serde_json::from_value::<NrosPlan>(plan.clone()).unwrap();
+        assert_eq!(
+            plan["safety"]["crc"],
+            serde_json::Value::Bool(true),
+            "system.toml [safety] must land in plan.safety; got {plan:?}"
+        );
     }
 
     #[cfg(feature = "play-launch-parser")]

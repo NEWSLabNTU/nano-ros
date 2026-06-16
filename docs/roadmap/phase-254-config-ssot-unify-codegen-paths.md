@@ -56,10 +56,13 @@ single-`system.toml` SSoT + nros.toml-is-runtime-only stance.
   skip-when-absent → byte-identical). Test: `parses_system_toml_capability_axes` (parse,
   defaults, `enabled = false` opt-out, round-trip, absent→None). No behaviour change yet
   (parsed, not yet consumed). cli suite green (384).
-- **Wave 2 — planner reads capabilities from `system.toml`.** `plan.safety` /
-  `plan.param_services` derive from the typed `SystemToml`. Keep the per-package `nros.toml`
-  overlay as a **deprecated fallback** (warn) for one release so existing fixtures don't break.
-  Tests: a `[safety]` in `system.toml` → `plan.safety` Some; byte-identical plans otherwise.
+- **Wave 2 — planner reads capabilities from `system.toml` — DONE (2026-06-16).**
+  `Package.system_toml` + `Workspace::package_system_toml` (discovery); `schema_plan_json`
+  parses the bringup's typed `SystemToml` and derives `plan.safety` / `plan.param_services`
+  from `[safety]` / `[param_services]`, **preferring** it over the per-package `nros.toml`
+  overlay block — which is now a **deprecated fallback** (`eprintln!` warn) kept one release
+  for migration. Test: `plan_system_reads_safety_from_system_toml` (system.toml `[safety]` →
+  `plan.safety.crc`). Existing fixtures stay green via the fallback (385).
 - **Wave 3 — bake emits the capability defines.** `render_system_config_h` emits
   `#define NROS_SYSTEM_SAFETY_E2E` (+ param-services) from the `system.toml` capability fields.
   Generate-snapshot tests. Closes the issue-0073 C-define follow-up.

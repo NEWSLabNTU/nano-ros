@@ -77,6 +77,9 @@ pub struct Package {
     pub root: PathBuf,
     pub package_xml: PathBuf,
     pub nros_toml: Option<PathBuf>,
+    /// Phase 254 — the package's `system.toml` (bringup pkg), the typed
+    /// capability/topology SSoT (RFC-0004). `None` for non-bringup packages.
+    pub system_toml: Option<PathBuf>,
     pub launch_files: Vec<PathBuf>,
     pub manifest_files: Vec<PathBuf>,
     pub metadata_files: Vec<PathBuf>,
@@ -254,6 +257,15 @@ impl Workspace {
             .and_then(|pkg| pkg.nros_toml.clone())
     }
 
+    /// Phase 254 — the package's `system.toml` path (the bringup pkg's typed
+    /// capability/topology SSoT). `None` if the package has none.
+    pub fn package_system_toml(&self, package: &str) -> Option<PathBuf> {
+        self.packages
+            .iter()
+            .find(|pkg| pkg.name == package)
+            .and_then(|pkg| pkg.system_toml.clone())
+    }
+
     /// Iterate every component declaration in the workspace — folded
     /// `nros.toml` `[component]` tables (W.1) and legacy standalone
     /// `component_nros.toml` / `nros/components/*.toml` files — as
@@ -397,6 +409,12 @@ fn discover_package(root: &Path) -> Result<Package> {
             .join("nros.toml")
             .is_file()
             .then(|| root.join("nros.toml")),
+        // Phase 254 — the bringup package's `system.toml` (the capability/topology
+        // SSoT both codegen paths read).
+        system_toml: root
+            .join("system.toml")
+            .is_file()
+            .then(|| root.join("system.toml")),
         launch_files: collect_files(
             root,
             &["launch"],
