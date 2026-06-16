@@ -50,9 +50,12 @@ single-`system.toml` SSoT + nros.toml-is-runtime-only stance.
 
 ## Waves
 
-- **Wave 1 — typed capability schema in `SystemToml`.** Add `[safety]` / `[param_services]`
-  (and reconcile RMW) as typed fields on `SystemToml`/`SystemHeader` (`deny_unknown_fields`
-  still strict). Round-trip + parse tests. No behaviour change yet (fields parsed, unused).
+- **Wave 1 — typed capability schema in `SystemToml` — DONE (2026-06-16).**
+  `SystemToml.safety: Option<SystemSafety { enabled, crc }>` + `param_services:
+  Option<SystemParamServices { enabled }>` (both `deny_unknown_fields`, defaults true,
+  skip-when-absent → byte-identical). Test: `parses_system_toml_capability_axes` (parse,
+  defaults, `enabled = false` opt-out, round-trip, absent→None). No behaviour change yet
+  (parsed, not yet consumed). cli suite green (384).
 - **Wave 2 — planner reads capabilities from `system.toml`.** `plan.safety` /
   `plan.param_services` derive from the typed `SystemToml`. Keep the per-package `nros.toml`
   overlay as a **deprecated fallback** (warn) for one release so existing fixtures don't break.

@@ -447,6 +447,39 @@ pub struct SystemToml {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub node_overrides: Vec<NodeOverride>,
+    /// Phase 254 — declared capability axes (RFC-0031 §Generalization), the
+    /// single typed home read by BOTH codegen paths (the Rust planner + the
+    /// C/C++ bake). Supersedes the transitional per-package `nros.toml`
+    /// capability overlays. `[safety]` — E2E message-integrity (CRC).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub safety: Option<SystemSafety>,
+    /// Phase 254 — `[param_services]`: the external ROS 2 parameter server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub param_services: Option<SystemParamServices>,
+}
+
+/// Phase 254 — `[safety]` in `system.toml`: E2E message-integrity (CRC + sequence
+/// gap/dup). Mirrors the `PlanSafety` shape; `enabled = false` opts out even when
+/// the block is present.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemSafety {
+    #[serde(default = "default_true_cap")]
+    pub enabled: bool,
+    #[serde(default = "default_true_cap")]
+    pub crc: bool,
+}
+
+/// Phase 254 — `[param_services]` in `system.toml`: the external parameter server.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemParamServices {
+    #[serde(default = "default_true_cap")]
+    pub enabled: bool,
+}
+
+fn default_true_cap() -> bool {
+    true
 }
 
 /// `[[shared_state]]` — a named cross-node shared region (RFC-0015 §8).
@@ -913,6 +946,47 @@ to = "zenoh:default"
         let reserialized = toml::to_string(&v1).expect("serialize");
         let v2: SystemToml = toml::from_str(&reserialized).expect("reparse");
         assert_eq!(v1, v2);
+    }
+
+    /// Phase 254 — `[safety]` / `[param_services]` capability axes parse as typed
+    /// `system.toml` tables (the single home both codegen paths read), with
+    /// defaults + round-trip. Absent ⇒ `None` (byte-identical to pre-254).
+    #[test]
+    fn parses_system_toml_capability_axes() {
+        let raw = r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[safety]
+crc = false
+
+[param_services]
+"#;
+        let v: SystemToml = toml::from_str(raw).expect("parse system.toml with capabilities");
+        let safety = v.safety.as_ref().expect("[safety] present");
+        assert!(safety.enabled, "enabled defaults true");
+        assert!(!safety.crc, "crc = false round-trips");
+        let ps = v.param_services.as_ref().expect("[param_services] present");
+        assert!(ps.enabled, "enabled defaults true");
+
+        // Round-trip.
+        let v2: SystemToml =
+            toml::from_str(&toml::to_string(&v).expect("serialize")).expect("reparse");
+        assert_eq!(v, v2);
+
+        // Absent → None.
+        let bare: SystemToml =
+            toml::from_str("[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n").expect("bare");
+        assert!(bare.safety.is_none() && bare.param_services.is_none());
+
+        // enabled = false opts out.
+        let off: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[safety]\nenabled=false\n",
+        )
+        .expect("parse");
+        assert!(!off.safety.as_ref().unwrap().enabled);
     }
 
     /// Minimal `<bringup>/system.toml` — only `[system]` + one

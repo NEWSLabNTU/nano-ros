@@ -508,6 +508,8 @@ fn build_system_toml(plan: &MigrationPlan) -> SystemToml {
         tiers: std::collections::BTreeMap::new(),
         shared_state: Vec::new(),
         node_overrides: Vec::new(),
+        safety: None,
+        param_services: None,
     }
 }
 
