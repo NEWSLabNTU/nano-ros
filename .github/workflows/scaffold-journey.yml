@@ -58,13 +58,16 @@ jobs:
           restore-keys: |
             nros-cli-${{ runner.os }}-
 
-      - name: Build nros CLI from packages/cli/ (Phase 218)
-        run: |
-          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+      # `just scaffold-journey`'s `setup-cli` prereq does the `cargo build`, but
+      # not this nested submodule init — the CLI sub-workspace path-deps
+      # ros-launch-manifest-types from it. Init it before the recipe (cheap; ~50KB).
+      - name: Init CLI launch-manifest submodule
+        run: git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
 
-      - name: Scaffold-journey check
+      # CI = thin `just` caller (SSoT — phase-253). `setup-cli` reuses the cached
+      # packages/cli/target (sub-30s relink on a warm hit); the recipe resolves the
+      # per-checkout `nros` via nros_cli_bin() + runs scaffold-journey-check.sh.
+      - name: just scaffold-journey
         run: |
           source /opt/ros/humble/setup.bash
-          NROS="$GITHUB_WORKSPACE/packages/cli/target/release/nros" \
-            scripts/ci/scaffold-journey-check.sh
+          just scaffold-journey

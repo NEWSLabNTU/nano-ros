@@ -47,9 +47,6 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
 
 ## Remaining (non-blocking)
 
-- [ ] **Thin scaffold-journey + colcon-parity** to call `just scaffold-journey` /
-      `just colcon-parity` (they still inline the scripts). Path-scoped → no cadence
-      issue; pure SSoT consistency.
 - [ ] **Optional file rename/merge** into tier names (`pr-checks`/`host-tests`/
       `nightly`/…). The triggers already implement the tiers, so functionally moot.
 - [ ] **CI validation** — confirm on a real run that per-push `check-fast`
@@ -89,6 +86,13 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
     fetches the correct pin. A miss costs one fetch; steady state hits. Wired into
     host-unit (6 sources), host-integration (6 + nuttx-libc), platform-ci (px4-rs
     + nuttx-libc), and check.yml build tier (6, non-push).
+
+- **scaffold-journey + colcon-parity thinned to `just` callers.**
+  scaffold-journey.yml: `just scaffold-journey` (its `setup-cli` prereq reuses the
+  cached `packages/cli/target`; the lane keeps only the ros-launch-manifest
+  submodule init + ROS source). colcon-parity.yml: installs `just` (no base image
+  on that lane) then `just colcon-parity`. Both lanes now run the SAME recipe a
+  developer runs — no inline-script drift. Path-scoped, so no cadence concern.
 
 ## Acceptance
 

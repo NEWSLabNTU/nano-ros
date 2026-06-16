@@ -60,28 +60,15 @@ jobs:
             ros-humble-ament-cmake \
             ros-humble-ament-cmake-auto
 
-      - name: colcon build the fixture
-        run: |
-          set -e
-          source /opt/ros/humble/setup.bash
-          cd examples/templates/local-msg-package
-          # `--base-paths src`: scan ONLY src/ (local_msgs → extra_msgs → consumer,
-          # topo-ordered). Without it, colcon's pure-CMake discovery also picks up
-          # the top-level `local_msg_package_fixture` CMakeLists — the *nano-ros*
-          # umbrella (`add_subdirectory(<repo>)` + `nros_workspace_interfaces()`),
-          # which needs the `nros` codegen tool and is NOT a colcon-parity target.
-          # That umbrella is the nano-ros build path; colcon parity is src/ only.
-          colcon build --base-paths src --merge-install --event-handlers console_direct+
-          ls install/
+      # No base image on this lane → install `just` so CI calls the SAME recipe a
+      # developer runs (SSoT — phase-253). Official prebuilt installer; the lane
+      # already uses sudo+curl for the ROS apt repo.
+      - name: Install just
+        run: curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | sudo bash -s -- --to /usr/local/bin
 
-      - name: Verify the consumer binary was produced
-        run: |
-          set -e
-          cd examples/templates/local-msg-package
-          # colcon installs binaries under install/lib/<pkg>/ (merge-install layout
-          # puts it under install/lib/consumer/).
-          test -x install/lib/consumer/consumer \
-            || { echo "consumer binary not produced under install/lib/consumer/"; \
-                 find install -name consumer -type f; exit 1; }
-          file install/lib/consumer/consumer
-          echo "colcon-parity OK — same src/ builds under both nano-ros AND colcon."
+      # `just colcon-parity` sources ROS, scans ONLY src/ (`--base-paths src`:
+      # local_msgs → extra_msgs → consumer, skipping the top-level nano-ros umbrella
+      # CMakeLists that needs the `nros` codegen tool), builds, and asserts the
+      # consumer binary — the same parity check, no inline drift.
+      - name: just colcon-parity
+        run: just colcon-parity
