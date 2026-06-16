@@ -111,6 +111,13 @@ for C/C++. The legacy per-package `nros.toml` **capability-overlay** read (Phase
 is retired by phase-254: `nros.toml` is the embedded direct-mode runtime file only (§5),
 not a build-capability overlay.
 
+The same single-source rule applies to **RMW** (phase-255): `[system].rmw` +
+`[deploy.<t>].rmw` is the one declared home — both the Rust board-feature lowering and the
+C/C++ `#define NROS_SYSTEM_RMW_<TOKEN>` resolve from it (via `resolve_system_rmw`, RFC-0031
+precedence `--rmw` > `[deploy]` > `[system]` > `zenoh`). The legacy `[build].rmw` /
+`[[transport]].rmw` `nros.toml` overlay is a deprecated fallback; a binary's multi-RMW link
+set comes from `[[bridge]]` here, not the overlay.
+
 ## 5. `nros.toml` — embedded direct-mode runtime config
 
 A hand-written single-node embedded app reads its `nros.toml` via the board

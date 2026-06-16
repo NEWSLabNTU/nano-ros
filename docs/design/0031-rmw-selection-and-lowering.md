@@ -78,6 +78,17 @@ feature.
 3. `system.toml` `[system] rmw`.
 4. Default — `zenoh`.
 
+> **Status (2026-06-17) — single source, both paths (phase-255).** This precedence was
+> historically only partly wired: the C/C++ bake read `[system].rmw`, but the Rust build path
+> read a SEPARATE `[build].rmw` per-package `nros.toml` overlay (→ the board crate's `rmw-<x>`
+> feature), `[deploy.<t>].rmw` was declared-but-unused, and there was no `--rmw` flag — a
+> decoupled "RMW duality." [phase-255](../roadmap/phase-255-rmw-config-unify.md) collapses this:
+> a single `resolve_system_rmw(system.toml, target, --rmw)` applies the precedence above, read
+> by BOTH the planner (board feature) and the bake (C define). `[system].rmw` + `[deploy.<t>].rmw`
+> is the one declared home (RFC-0004); the `[build].rmw`/`[[transport]].rmw` `nros.toml` overlay
+> becomes a deprecated fallback, and a binary's multi-RMW link set comes from `[[bridge]]`
+> (topology, in `system.toml`), not the build overlay.
+
 ### Common runtime
 
 `nros` is always built with `rmw-cffi`, so `ConcreteSession = CffiSession`. The
