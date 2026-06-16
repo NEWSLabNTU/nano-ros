@@ -86,12 +86,30 @@ name  = "talker"
 kind   = "self"
 target = "x86_64-unknown-linux-gnu"
 # rmw  = "cyclonedds"        # optional per-deploy override of [system].rmw
+
+# Declared capability axes (RFC-0031 §Generalization; phase-250/252/254). Typed,
+# system-wide, optional. Lower to build features (and, for the C/C++ bake, a
+# `#define`) — declared ONCE here, read by BOTH codegen paths.
+[safety]                     # E2E message-integrity (CRC + seq gap/dup), zenoh
+enabled = true               # optional, default true
+crc     = true               # optional, default true
+[param_services]             # the external ROS 2 parameter server
+enabled = true               # optional, default true
 ```
 
 Launch files (`launch/*.launch.xml`) use the ROS 2 launch XML schema verbatim
 (stock nav2/Autoware syntax) and are resolved at build time. Multi-node
 RT/scheduling exposure in `system.toml` is **not yet designed** (open; tracked
 by phase-227 / Phase 212.M).
+
+**One SSoT, both codegen paths (phase-254).** `system.toml` is read by BOTH the Rust
+orchestration (`planner` → `NrosPlan` → `generate`) and the C/C++ bake
+(`codegen_system` → `system_config.h`). The capability axes above are typed here so
+`deny_unknown_fields` accepts them and the bake sees them — a declared `[safety]`
+yields both the Rust `nros/safety-e2e` lowering AND `#define NROS_SYSTEM_SAFETY_E2E`
+for C/C++. The legacy per-package `nros.toml` **capability-overlay** read (Phase-172)
+is retired by phase-254: `nros.toml` is the embedded direct-mode runtime file only (§5),
+not a build-capability overlay.
 
 ## 5. `nros.toml` — embedded direct-mode runtime config
 

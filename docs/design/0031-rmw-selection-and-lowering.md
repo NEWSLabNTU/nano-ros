@@ -230,10 +230,19 @@ CMake/C `#define` (the `resolve_capability.cmake_token` / `.c_define` slots, mir
 a deeper, separate gap.
 
 **Status:** targets 1 (entry) + 2 (native backend) landed (phase-250 + issue-0072
-native); target 3 (board) + the registry refactor + the C/C++ path are tracked in
-issue 0072. The config surface stays the typed `[safety]` / `[param_services]` blocks
+native); target 3 (board) + the registry landed in phase-252; the C/C++ ABI landed in
+issue 0073. The config surface stays the typed `[safety]` / `[param_services]` blocks
 (they validate + carry defaults); a generic declared-feature list is a possible future
 sugar over the same registry.
+
+**Declared home — `system.toml`, both paths (phase-254).** A capability axis is declared
+ONCE in the bringup `system.toml` (typed, beside `[system].rmw`), read by BOTH the Rust
+orchestration (`planner` → `NrosPlan` → `generate`) and the C/C++ bake (`codegen_system`
+→ `system_config.h`). This supersedes the transitional per-package `nros.toml`
+capability-overlay read (Phase-172): per RFC-0004 §5 `nros.toml` is the embedded
+direct-mode runtime file only. The single source means a declared `[safety]` lowers to
+the Rust `nros/safety-e2e` feature (targets 1-3) AND the C/C++ `#define NROS_SYSTEM_SAFETY_E2E`
+— no per-language config divergence, and no RMW-style double declaration.
 
 ## Alternatives considered
 
