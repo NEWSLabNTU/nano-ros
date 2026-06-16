@@ -44,11 +44,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-| id | title                                                                 | type | area | file |
-|----|-----------------------------------------------------------------------|------|------|------|
-| 75 | best_effort QoS subscription declaration hangs on CI (host-integration) — passes locally | bug | rmw | [0075-qos-best-effort-subscription-hangs-on-ci.md](0075-qos-best-effort-subscription-hangs-on-ci.md) |
+_None currently open._
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#71** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#75** —
+`qos_overrides` best_effort test failed on CI only (looked like a subscriber hang):
+actually a test-harness output-consume race — `wait_for_output_pattern` returns its
+whole read buffer on match, so the first of two sequential waits ate the later
+`Waiting for` line when the listener's logs coalesced into one `read()` (deterministic
+on CI's buffering, split locally). Fixed by one wait for `Waiting for` + asserting the
+earlier `qos effective` line in the same buffer. host-integration 11→4→1→0. See
+`archived/0075-*`. **#71** —
 native cpp/mixed workspace Entry link failed on CI only: `libnros_cpp.a` + the
 per-package FFI staticlib are two Rust staticlibs each bundling `std` →
 duplicate `rust_begin_unwind`. Root cause = `host-integration-tests.yml`'s

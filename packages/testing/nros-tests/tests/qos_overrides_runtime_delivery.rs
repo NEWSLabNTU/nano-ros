@@ -83,19 +83,22 @@ fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
         "qos-listener",
     )
     .expect("spawn listener");
-    listener
-        .wait_for_output_pattern(
-            "qos effective: role=Subscription reliability=BestEffort",
-            Duration::from_secs(8),
-        )
-        .expect("subscriber did not log the BestEffort override on its live entity");
-    listener
-        // The zenoh-pico subscription declaration between the `qos effective`
-        // log and `Waiting for` can take several seconds on the loaded 2-vCPU CI
-        // runner (passes in ~2 s locally). 4 s was too tight — it timed out on
-        // host-integration. Match the other waits' headroom (issue #57 triage).
+    // Issue #75 — wait for the LAST readiness marker (`Waiting for`) in ONE call,
+    // then assert the earlier `qos effective` line is in the SAME accumulated
+    // buffer. Two sequential `wait_for_output_pattern` calls were racy: the call
+    // returns its whole read buffer on match, so when the listener prints
+    // `qos effective` / `subscription created` / `Waiting for` in quick succession
+    // a single `read()` pulls all three into the first wait's (discarded) buffer —
+    // the second wait then never sees the already-consumed `Waiting for` and times
+    // out. That coalescing is deterministic on the CI runner (passed locally only
+    // because the reads happened to split), which is why it read as a "hang".
+    let ready = listener
         .wait_for_output_pattern("Waiting for", Duration::from_secs(12))
         .expect("subscriber did not become ready");
+    assert!(
+        ready.contains("qos effective: role=Subscription reliability=BestEffort"),
+        "subscriber did not log the BestEffort override on its live entity:\n{ready}"
+    );
 
     let mut talker = ManagedProcess::spawn_command(
         qos_cmd(&bin, "talker", &locator, Some("reliability=best_effort")),
