@@ -90,6 +90,20 @@ if(NANO_ROS_PLATFORM STREQUAL "posix")
     list(APPEND _cpp_features param-services lifecycle-services)
 endif()
 
+# Phase 252 / issue 0073 — E2E message-integrity (CRC) for the C++ API. Mirrors
+# nros-c's NANO_ROS_SAFETY_E2E: zenoh-only (the CRC path); surfaces
+# nros_cpp_subscription_try_recv_validated. Codegen sets it for a `[safety]` system.
+option(NANO_ROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
+if(NANO_ROS_SAFETY_E2E)
+    if(NANO_ROS_RMW STREQUAL "zenoh")
+        list(APPEND _cpp_features safety-e2e)
+    else()
+        message(WARNING
+            "NANO_ROS_SAFETY_E2E=ON ignored: only the zenoh RMW carries the CRC "
+            "path (got NANO_ROS_RMW=${NANO_ROS_RMW}).")
+    endif()
+endif()
+
 # ---- Build nros-cpp via Corrosion ----
 corrosion_import_crate(
     MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"

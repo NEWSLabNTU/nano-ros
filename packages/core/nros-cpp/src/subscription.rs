@@ -355,6 +355,80 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw(
     }
 }
 
+/// Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
+/// path ([`nros_cpp_subscription_try_recv_validated`]). The C++ analog of the
+/// Rust `IntegrityStatus` / `nros_integrity_status_t`.
+#[cfg(feature = "safety-e2e")]
+#[repr(C)]
+pub struct nros_cpp_integrity_status_t {
+    /// Sequence-number gap since the previous in-order message (0 = none).
+    pub gap: i64,
+    /// `true` if this sample's sequence number was already seen (a duplicate).
+    pub duplicate: bool,
+    /// CRC verdict: `1` = valid, `0` = mismatch, `-1` = no CRC on the wire.
+    pub crc_valid: i8,
+}
+
+/// Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E integrity
+/// status (CRC + sequence gap/dup). The safety-e2e analog of
+/// [`nros_cpp_subscription_try_recv_raw`]; the backend recomputes + compares the
+/// CRC attachment and tracks the sequence. Requires `safety-e2e` on both ends
+/// (else `crc_valid` reports `-1`).
+///
+/// # Safety
+/// `storage` must be a valid subscription storage. `out_data` must point to
+/// `out_capacity` writable bytes. `out_len` must be valid. `out_status`, if
+/// non-NULL, must point to a writable `nros_cpp_integrity_status_t`.
+#[cfg(feature = "safety-e2e")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_try_recv_validated(
+    storage: *mut c_void,
+    out_data: *mut u8,
+    out_capacity: usize,
+    out_len: *mut usize,
+    out_status: *mut nros_cpp_integrity_status_t,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || out_data.is_null() || out_len.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let sub = unsafe { &mut *(storage as *mut nros::internals::RmwSubscriber) };
+    let out_slice = unsafe { core::slice::from_raw_parts_mut(out_data, out_capacity) };
+
+    match sub.try_recv_validated(out_slice) {
+        Ok(Some((len, status))) => {
+            unsafe {
+                *out_len = len;
+                if !out_status.is_null() {
+                    *out_status = nros_cpp_integrity_status_t {
+                        gap: status.gap,
+                        duplicate: status.duplicate,
+                        crc_valid: match status.crc_valid {
+                            Some(true) => 1,
+                            Some(false) => 0,
+                            None => -1,
+                        },
+                    };
+                }
+            }
+            NROS_CPP_RET_OK
+        }
+        Ok(None) => {
+            unsafe {
+                *out_len = 0;
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(TransportError::BufferTooSmall | TransportError::MessageTooLarge) => {
+            unsafe {
+                *out_len = 0;
+            }
+            NROS_CPP_RET_FULL
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 /// Phase 189.M3.4b — try to receive raw CDR data **plus the sample's wire
 /// attachment** (non-blocking). The C++ poll-side analog of the Rust
 /// `node.subscription(t).generic(..).message_info()` builder: writes the

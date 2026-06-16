@@ -105,6 +105,33 @@ template <typename M> class Subscription {
         return Result::success();
     }
 
+    /// Issue 0073 — try_recv that ALSO returns the E2E message-integrity status
+    /// (CRC + sequence gap/dup) of the received sample. The safety-e2e analog of
+    /// @ref try_recv: the backend recomputes + compares the CRC the publisher
+    /// attached and tracks the sequence, writing the verdict to @p status.
+    ///
+    /// Requires the build to enable `safety-e2e` on both ends (the zenoh backend's
+    /// own feature, lowered from a declared `[safety]` axis); a binary built
+    /// without it cannot link this (the FFI symbol is gated). With it, but against
+    /// a publisher built without safety, `status.crc_valid` reports `-1`.
+    ///
+    /// @param msg     Output message struct (filled on success).
+    /// @param status  Receives `{ gap, duplicate, crc_valid }` (crc_valid:
+    ///                1=valid, 0=mismatch, -1=no CRC on the wire).
+    /// @return Result::success() on a received+deserialized message; TryAgain if
+    ///         none available; NotInitialized / Error otherwise.
+    Result try_recv_validated(M& msg, nros_cpp_integrity_status_t& status) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        uint8_t buf[M::SERIALIZED_SIZE_MAX];
+        size_t len = 0;
+        nros_cpp_ret_t ret =
+            nros_cpp_subscription_try_recv_validated(storage_, buf, sizeof(buf), &len, &status);
+        if (ret != 0) return Result(ret);
+        if (len == 0) return Result(ErrorCode::TryAgain);
+        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(ErrorCode::Error);
+        return Result::success();
+    }
+
     /// Try to receive raw CDR data (non-blocking).
     ///
     /// Sets `out_len` to the number of bytes received (0 if no data).

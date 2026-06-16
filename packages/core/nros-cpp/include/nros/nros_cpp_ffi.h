@@ -359,6 +359,26 @@ typedef void (*nros_cpp_publisher_count_cb_t)(void *storage,
                                               struct nros_cpp_pub_count_status_t status,
                                               void *user_context);
 
+/**
+ * Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
+ * path ([`nros_cpp_subscription_try_recv_validated`]). The C++ analog of the
+ * Rust `IntegrityStatus` / `nros_integrity_status_t`.
+ */
+typedef struct nros_cpp_integrity_status_t {
+  /**
+   * Sequence-number gap since the previous in-order message (0 = none).
+   */
+  int64_t gap;
+  /**
+   * `true` if this sample's sequence number was already seen (a duplicate).
+   */
+  bool duplicate;
+  /**
+   * CRC verdict: `1` = valid, `0` = mismatch, `-1` = no CRC on the wire.
+   */
+  int8_t crc_valid;
+} nros_cpp_integrity_status_t;
+
 typedef struct nros_cpp_liveliness_changed_status_t {
   uint16_t alive_count;
   uint16_t not_alive_count;
@@ -1097,6 +1117,24 @@ nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void *storage,
                                                   uint8_t *out_data,
                                                   size_t out_capacity,
                                                   size_t *out_len);
+
+/**
+ * Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E integrity
+ * status (CRC + sequence gap/dup). The safety-e2e analog of
+ * [`nros_cpp_subscription_try_recv_raw`]; the backend recomputes + compares the
+ * CRC attachment and tracks the sequence. Requires `safety-e2e` on both ends
+ * (else `crc_valid` reports `-1`).
+ *
+ * # Safety
+ * `storage` must be a valid subscription storage. `out_data` must point to
+ * `out_capacity` writable bytes. `out_len` must be valid. `out_status`, if
+ * non-NULL, must point to a writable `nros_cpp_integrity_status_t`.
+ */
+nros_cpp_ret_t nros_cpp_subscription_try_recv_validated(void *storage,
+                                                        uint8_t *out_data,
+                                                        size_t out_capacity,
+                                                        size_t *out_len,
+                                                        struct nros_cpp_integrity_status_t *out_status);
 
 /**
  * Phase 189.M3.4b — try to receive raw CDR data **plus the sample's wire

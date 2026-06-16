@@ -34,6 +34,11 @@ alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc", "nros-c/alloc"]
 # (its `rmw_backend` ctor does the auto-register); `nros-cpp` no longer pulls a
 # backend rlib directly. Reverts Phase 161's drop, mirroring nros-c's W2.
 rmw-cffi = ["nros/rmw-cffi", "nros-c/rmw-cffi"]
+
+# Phase 252 / issue 0073 — E2E message-integrity (CRC) for the C++ API. Forwards
+# to nros + nros-c + the zenoh backend's safety-e2e, and surfaces
+# nros_cpp_integrity_status_t + nros_cpp_subscription_try_recv_validated.
+safety-e2e = ["nros/safety-e2e", "nros-c/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 # The backend is also a DIRECT dep here (`dep:`) so nros-cpp's own `rmw_backend`
 # module can force-link it: nros-cpp is the staticlib root, and a `#[used]` anchor
 # living in the `nros-c` dependency is DCE'd before nros-cpp's archive is emitted.

@@ -23,12 +23,18 @@ related: [issue-0072, phase-252, rfc-0031]
 > zenohd). Verified green: **`c safety: 3 crc-ok, 0 crc-fail`** — the C API validates the
 > publisher's CRC end-to-end.
 >
+> **C++ path — DONE (2026-06-16).** `nros_cpp_integrity_status_t` +
+> `nros_cpp_subscription_try_recv_validated` (nros-cpp subscription.rs, gated safety-e2e) →
+> cbindgen into `nros_cpp_ffi.h` (symbol exported in the safety-built `libnros_cpp.a`, `nm`);
+> `Subscription<M>::try_recv_validated(msg, status)` wrapper in `subscription.hpp`; nros-cpp
+> `safety-e2e` feature + `NANO_ROS_SAFETY_E2E` CMake option (mirrors nros-c). Both feature
+> states compile. (Underlying validation proven by the C transport e2e — the C++ ABI calls
+> the same `RmwSubscriber::try_recv_validated`; no separate C++ e2e added.)
+>
 > **Remaining (follow-up):** (1) config-driven auto-lowering — `[safety]` →
 > `-DNANO_ROS_SAFETY_E2E` + a `#define NROS_SYSTEM_SAFETY_E2E` in `system_config.h` (needs a
 > `[system].safety` bridge, since phase-250's `[safety]` is an nros.toml overlay block, not
-> `SystemHeader`); (2) a C++ path — `nros_cpp_subscription_try_recv_validated` (the nros-cpp
-> ABI is separate from nros-c) + a `subscription.hpp` `.take_validated()` wrapper; (3)
-> cyclonedds has no safety path at all (document/gate).
+> `SystemHeader`); (2) cyclonedds has no safety path at all (document/gate).
 
 ## Why
 
