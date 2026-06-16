@@ -17,12 +17,18 @@ related: [issue-0072, phase-252, rfc-0031]
 >   both into `nros_generated.h`; symbol exported in the safety-built `libnros_c.a` (verified
 >   by `nm`). Both feature states compile.
 >
+> **C transport e2e — DONE (2026-06-16).** `examples/native/c/safety-listener` (polls
+> `nros_subscription_try_recv_validated`, CMakeLists forces `NANO_ROS_SAFETY_E2E=ON`) +
+> `tests/safety_e2e.rs::test_c_safety_listener_validates_crc` (vs the safety talker over
+> zenohd). Verified green: **`c safety: 3 crc-ok, 0 crc-fail`** — the C API validates the
+> publisher's CRC end-to-end.
+>
 > **Remaining (follow-up):** (1) config-driven auto-lowering — `[safety]` →
 > `-DNANO_ROS_SAFETY_E2E` + a `#define NROS_SYSTEM_SAFETY_E2E` in `system_config.h` (needs a
 > `[system].safety` bridge, since phase-250's `[safety]` is an nros.toml overlay block, not
-> `SystemHeader`); (2) a C++ `subscription.hpp` `.take_validated()` wrapper; (3) a native-C
-> transport e2e (C safety listener vs the safety talker over zenohd — the gold-standard proof,
-> needs a CMake C fixture); (4) cyclonedds has no safety path at all (document/gate).
+> `SystemHeader`); (2) a C++ path — `nros_cpp_subscription_try_recv_validated` (the nros-cpp
+> ABI is separate from nros-c) + a `subscription.hpp` `.take_validated()` wrapper; (3)
+> cyclonedds has no safety path at all (document/gate).
 
 ## Why
 

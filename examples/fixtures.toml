@@ -1016,6 +1016,16 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/listener"
 
+# Issue 0073 — C E2E-safety listener (polls nros_subscription_try_recv_validated).
+# Its CMakeLists forces NANO_ROS_SAFETY_E2E=ON, so the harness build (zenoh only —
+# the CRC path) needs no extra flag. Consumed by tests/safety_e2e.rs::
+# test_c_safety_listener_validates_crc (paired with the safety talker).
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/safety-listener"
+
 [[fixture]]
 platform = "native"
 lang = "c"
