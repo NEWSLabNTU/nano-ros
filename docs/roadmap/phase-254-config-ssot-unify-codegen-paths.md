@@ -63,9 +63,13 @@ single-`system.toml` SSoT + nros.toml-is-runtime-only stance.
   overlay block — which is now a **deprecated fallback** (`eprintln!` warn) kept one release
   for migration. Test: `plan_system_reads_safety_from_system_toml` (system.toml `[safety]` →
   `plan.safety.crc`). Existing fixtures stay green via the fallback (385).
-- **Wave 3 — bake emits the capability defines.** `render_system_config_h` emits
-  `#define NROS_SYSTEM_SAFETY_E2E` (+ param-services) from the `system.toml` capability fields.
-  Generate-snapshot tests. Closes the issue-0073 C-define follow-up.
+- **Wave 3 — bake emits the capability defines — DONE (2026-06-16).**
+  `render_system_config_h` emits `#define NROS_SYSTEM_SAFETY_E2E` +
+  `#define NROS_SYSTEM_PARAM_SERVICES` from the typed `system.toml` `[safety]` /
+  `[param_services]` (the analog of `NROS_SYSTEM_RMW_<TOKEN>`), for C/C++ conditional
+  compile. Test: `system_config_h_emits_capability_defines` (present, absent→none,
+  `enabled=false`→none). **Both codegen paths now read the same `system.toml`** for
+  capabilities. Closes the issue-0073 C-define follow-up. (386)
 - **Wave 4 — migrate examples/fixtures + retire the overlay path.** Move declared `[safety]`
   etc. into the bringup `system.toml`; drop the per-package `nros.toml` capability blocks +
   the deprecated planner fallback. `nros.toml` is now runtime-only (RFC-0004 §5).

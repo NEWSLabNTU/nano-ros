@@ -492,6 +492,18 @@ fn render_system_config_h(sys: &SystemToml) -> String {
             c_escape(loc)
         ));
     }
+    // Phase 254 — declared capability axes (RFC-0031 §Generalization). The bake
+    // and the Rust planner now read the SAME `system.toml`, so a `[safety]` here
+    // yields both the Rust `nros/safety-e2e` lowering AND this `#define` for C/C++
+    // conditional compilation (the analog of `NROS_SYSTEM_RMW_<TOKEN>`). The build
+    // feature is still selected by the CMake `NANO_ROS_SAFETY_E2E` flag; this
+    // macro only INFORMS app source.
+    if sys.safety.as_ref().is_some_and(|s| s.enabled) {
+        out.push_str("#define NROS_SYSTEM_SAFETY_E2E\n");
+    }
+    if sys.param_services.as_ref().is_some_and(|p| p.enabled) {
+        out.push_str("#define NROS_SYSTEM_PARAM_SERVICES\n");
+    }
     out.push_str(&format!(
         "#define NROS_SYSTEM_COMPONENT_COUNT {}\n",
         sys.components.len()
@@ -1736,6 +1748,34 @@ name = "talker"
 "#,
         )
         .unwrap();
+    }
+
+    /// Phase 254 — `[safety]` / `[param_services]` declared in `system.toml` (the
+    /// SSoT both codegen paths read) emit C `#define`s for conditional compile,
+    /// the analog of `NROS_SYSTEM_RMW_<TOKEN>`. Absent ⇒ no define.
+    #[test]
+    fn system_config_h_emits_capability_defines() {
+        let sys: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[safety]\ncrc=true\n[param_services]\n",
+        )
+        .unwrap();
+        let h = render_system_config_h(&sys);
+        assert!(h.contains("#define NROS_SYSTEM_SAFETY_E2E\n"), "{h}");
+        assert!(h.contains("#define NROS_SYSTEM_PARAM_SERVICES\n"), "{h}");
+
+        // Absent → no capability defines (byte-identical to pre-254).
+        let bare: SystemToml =
+            toml::from_str("[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n").unwrap();
+        let hb = render_system_config_h(&bare);
+        assert!(!hb.contains("NROS_SYSTEM_SAFETY_E2E"));
+        assert!(!hb.contains("NROS_SYSTEM_PARAM_SERVICES"));
+
+        // enabled = false → no define.
+        let off: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[safety]\nenabled=false\n",
+        )
+        .unwrap();
+        assert!(!render_system_config_h(&off).contains("NROS_SYSTEM_SAFETY_E2E"));
     }
 
     /// 212.E.T1 — fixture bringup w/ 2 Rust components produces the expected
