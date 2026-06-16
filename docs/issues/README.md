@@ -44,7 +44,9 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-_None currently open._
+| id | title                                                                 | type | area | file |
+|----|-----------------------------------------------------------------------|------|------|------|
+| 75 | best_effort QoS subscription declaration hangs on CI (host-integration) — passes locally | bug | rmw | [0075-qos-best-effort-subscription-hangs-on-ci.md](0075-qos-best-effort-subscription-hangs-on-ci.md) |
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#71** —
 native cpp/mixed workspace Entry link failed on CI only: `libnros_cpp.a` + the
