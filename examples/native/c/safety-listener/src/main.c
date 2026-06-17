@@ -47,7 +47,8 @@ int nros_app_main(int argc, char** argv) {
 
     // Polling-mode subscription — the validated receive path is poll-only.
     NROS_CHECK_RET(nros_subscription_init_polling(&app.subscription, &app.node,
-                                                  std_msgs_msg_int32_get_type_support(), "/chatter"),
+                                                  std_msgs_msg_int32_get_type_support(),
+                                                  "/chatter"),
                    1);
     printf("Waiting for Int32 messages on /chatter...\n");
 
@@ -55,15 +56,16 @@ int nros_app_main(int argc, char** argv) {
     int count = 0;
     for (;;) {
         nros_integrity_status_t status;
-        int32_t n = nros_subscription_try_recv_validated(&app.subscription, buf, sizeof(buf), &status);
+        int32_t n =
+            nros_subscription_try_recv_validated(&app.subscription, buf, sizeof(buf), &status);
         if (n > 0) {
             std_msgs_msg_int32 msg;
             std_msgs_msg_int32_init(&msg);
             if (std_msgs_msg_int32_deserialize(&msg, buf, (size_t)n) == 0) {
                 count++;
                 const char* crc = status.crc_valid == 1   ? "ok"
-                                  : status.crc_valid == 0  ? "FAIL"
-                                                           : "n-a";
+                                  : status.crc_valid == 0 ? "FAIL"
+                                                          : "n-a";
                 printf("[%d] Received: data=%d [SAFETY] INTEGRITY gap=%lld dup=%d crc=%s\n", count,
                        msg.data, (long long)status.gap, (int)status.duplicate, crc);
             }
