@@ -69,10 +69,14 @@ already exists in `system.toml` for the bake but the planner ignores it).
 
 ## Waves
 
-- **Wave 0 — provenance primitive.** `load_toml_values` → returns source-tagged values
-  (`Vec<(PathBuf, Value)>` or a `SourcedValue` wrapper); `schema_build_json` / each `collect_*`
-  records which file each value came from. No behaviour change — sets up Waves 1-5's warnings +
-  the two infra commands. Unit-test the tagging.
+- **Wave 0 — provenance primitive — DONE (2026-06-17).** Added `SourcedToml { path, value }` +
+  `load_sourced_toml_values` (parse keeping file attribution) + `last_block_source(sourced,
+  block)` (the file that last declared a top-level block — last-wins, matching the overlay merge)
+  in `params.rs`. `load_toml_values` is now the path-dropping projection of the sourced loader, so
+  every existing `&[Value]` consumer is untouched (no behaviour change, no wide re-typing). This
+  is the primitive Waves 1-5 use to NAME the offending file in deprecation warnings and Waves 6-7
+  use for `config show` provenance / `check`'s legacy flag. Test:
+  `sourced_toml_tracks_provenance_per_block`. cli suite green.
 - **Wave 1 — `[lifecycle]` → typed.** Add `lifecycle: Option<SystemLifecycle>` to `SystemToml`;
   `collect_lifecycle` prefers it, warns on overlay (the phase-254 pattern). Test parse +
   precedence.

@@ -1,7 +1,7 @@
 //! Parameter precedence helpers.
 
 use serde_json::{Map, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct ParameterInputs<'a> {
@@ -45,15 +45,51 @@ pub fn effective_parameters(inputs: ParameterInputs<'_>) -> Value {
     Value::Object(out)
 }
 
-pub fn load_toml_values(paths: &[PathBuf]) -> eyre::Result<Vec<Value>> {
+/// Phase 256 Wave 0 — a parsed `nros.toml` overlay paired with the file it came
+/// from. The provenance primitive the config-SSoT endgame needs: it lets the
+/// per-block deprecation warnings (Waves 1-5) NAME the offending file, and powers
+/// `nros config show` provenance + `nros check`'s legacy-overlay flag (Waves 6-7).
+#[derive(Debug, Clone)]
+pub struct SourcedToml {
+    pub path: PathBuf,
+    pub value: Value,
+}
+
+/// Parse each `nros.toml` path into a [`SourcedToml`], preserving file
+/// attribution. Same parse as [`load_toml_values`] — that fn is now a thin
+/// projection of this (drops the path).
+pub fn load_sourced_toml_values(paths: &[PathBuf]) -> eyre::Result<Vec<SourcedToml>> {
     paths
         .iter()
         .map(|path| {
             let raw = std::fs::read_to_string(path)?;
             let value: toml::Value = toml::from_str(&raw)?;
-            Ok(serde_json::to_value(value)?)
+            Ok(SourcedToml {
+                path: path.clone(),
+                value: serde_json::to_value(value)?,
+            })
         })
         .collect()
+}
+
+pub fn load_toml_values(paths: &[PathBuf]) -> eyre::Result<Vec<Value>> {
+    Ok(load_sourced_toml_values(paths)?
+        .into_iter()
+        .map(|s| s.value)
+        .collect())
+}
+
+/// The file that **last** declared top-level `block` across the sourced overlays,
+/// or `None` if no overlay carries it. Last-wins matches the overlay merge
+/// semantics (`schema_build_json` / `collect_*` all let later overlays override
+/// earlier), so this is the file whose value actually reached the plan — the one
+/// a deprecation warning or provenance column should name.
+pub fn last_block_source<'a>(sourced: &'a [SourcedToml], block: &str) -> Option<&'a Path> {
+    sourced
+        .iter()
+        .rev()
+        .find(|s| s.value.get(block).is_some())
+        .map(|s| s.path.as_path())
 }
 
 fn merge_source_parameter_array(out: &mut Map<String, Value>, value: Option<&Value>) {
@@ -113,5 +149,38 @@ mod tests {
         });
         assert_eq!(value["rate"], 20);
         assert_eq!(value["frame"], "map");
+    }
+
+    /// Phase 256 Wave 0 — the sourced loader keeps file attribution, and
+    /// `last_block_source` returns the LAST overlay declaring a block (last-wins,
+    /// matching the merge), or `None` when no overlay carries it.
+    #[test]
+    fn sourced_toml_tracks_provenance_per_block() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.toml");
+        let b = dir.path().join("b.toml");
+        std::fs::write(
+            &a,
+            "[lifecycle]\nautostart=\"all\"\n[build]\nrmw=\"zenoh\"\n",
+        )
+        .unwrap();
+        std::fs::write(&b, "[build]\nrmw=\"cyclonedds\"\n").unwrap();
+
+        let sourced = load_sourced_toml_values(&[a.clone(), b.clone()]).unwrap();
+        assert_eq!(sourced.len(), 2);
+        assert_eq!(sourced[0].path, a);
+        assert_eq!(sourced[0].value["lifecycle"]["autostart"], "all");
+
+        // `[build]` last-declared in b; `[lifecycle]` only in a.
+        assert_eq!(last_block_source(&sourced, "build"), Some(b.as_path()));
+        assert_eq!(last_block_source(&sourced, "lifecycle"), Some(a.as_path()));
+        assert_eq!(last_block_source(&sourced, "nonexistent"), None);
+
+        // `load_toml_values` is the path-dropping projection of the same parse.
+        let plain = load_toml_values(&[a, b]).unwrap();
+        assert_eq!(
+            plain,
+            sourced.into_iter().map(|s| s.value).collect::<Vec<_>>()
+        );
     }
 }
