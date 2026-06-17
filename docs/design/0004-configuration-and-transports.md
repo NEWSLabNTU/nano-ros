@@ -17,9 +17,16 @@ superseded-by: null
 > Cargo-style walk-up resolution — is **superseded**. A workspace-root
 > `nros.toml` is now **rejected by the CLI** (`NrosTomlNotSupported`; run
 > `nros migrate workspace`). Workspace/system config lives in `Cargo.toml`
-> metadata + a language-agnostic `system.toml`; `nros.toml` survives only as the
-> optional embedded *direct-mode runtime* file (the transport schema below).
-> RMW selection has its own home — see RFC-0031.
+> metadata + a language-agnostic `system.toml`. RMW selection has its own home —
+> see RFC-0031.
+>
+> **Grounded-reality update (2026-06).** A sweep of `examples/**` found **0
+> `nros.toml` and 0 nano-ros `config.toml` files**: both legacy config files are
+> fully unused. The embedded direct-mode runtime role `nros.toml` was meant to keep
+> (§5-§7) **never landed** — embedded net/RT config lives in
+> `[package.metadata.nros.deploy.<t>]` (`DeployOverlay`) + board features + Kconfig.
+> `nros.toml` is therefore legacy in full and retired as a file (phase-256), not
+> narrowed. See §3 "Config in practice".
 
 ## 1. Unifying principle
 
@@ -48,9 +55,11 @@ file on the trivial "hello world" case.
 
 ## 3. Config homes by language × scale
 
-`nros.toml` = embedded **direct-mode runtime file only** (§6). A workspace-root
-`nros.toml` is rejected. `config.toml` (`[network]`/`[zenoh]`/`[scheduling]`) is
-retired (§8).
+A workspace-root `nros.toml` is rejected. `config.toml`
+(`[network]`/`[zenoh]`/`[scheduling]`) is retired (§8). The per-package `nros.toml`
+file is **legacy in full** — both its Phase-172 build-overlay misuse (§3.1) and its
+intended §5 embedded-runtime role are unused in practice (see "Config in practice"
+below); it is slated for complete retirement (phase-256).
 
 | | Single-node | Workspace |
 |---|---|---|
@@ -65,8 +74,30 @@ Ownership:
 | node identity (class, name, namespace) | `[package.metadata.nros.node]` / `nano_ros_node_register(...)` |
 | entry / boot / deploy target | `[package.metadata.nros.entry]` (+ `[..deploy.<t>]`) / `nano_ros_entry(...)` |
 | system topology, components, launches, deploy, **rmw**, **domain** | `system.toml` (bringup pkg; or optional single-node) |
-| embedded direct-mode runtime (transports, RT) | `nros.toml` (board parses at boot) |
+| **embedded runtime net/RT (single-node)** | **`[package.metadata.nros.deploy.<t>]` → `DeployOverlay`** (Rust) / `nano_ros_deploy(...)` (C/C++) + board-crate features + Kconfig |
 | ROS identity + msg `<depend>` (codegen) | `package.xml` (both languages, both scales) |
+
+### Config in practice (verified 2026-06)
+
+A sweep of `examples/**` grounds the table above and corrects the §5-§7 schemas
+below (which describe an `nros.toml` home that **never materialized**):
+
+- **`config.toml`: 0 nano-ros files.** Fully retired (§8). (The `.cargo/config.toml`
+  files in examples are Cargo's own, unrelated.)
+- **`nros.toml`: 0 files.** No example declares one — not as overlay, not as
+  embedded-runtime. The §5/§6/§7 `[node]`/`[[transport]]`/`[node.rt]` schemas are
+  **design that did not land as a file surface.**
+- **Embedded net/RT config lives in `[package.metadata.nros.deploy.<t>]`.** E.g.
+  `examples/stm32f4/rust/talker` declares `locator`/`ip`/`gateway`/`netmask` there;
+  `nros::main!()` bakes them into a `DeployOverlay` that `BoardEntry::run_with_deploy`
+  applies onto the board boot `Config`. RT/stack/heap come from board-crate Cargo
+  features + (Zephyr) `prj*.conf` Kconfig. There is **no `[[transport]]` file block**
+  in any example — the per-app physical link is a set of `deploy` fields.
+
+The implication: **transport/network is part of the `deploy` class, not its own
+file surface**; the `[[transport]]` schema (§6) survives only as the design for
+*explicit multi-session / cross-RMW topology* (still read by the planner overlay +
+`validate_transports`), not as the embedded single-app net home.
 
 ### 3.1 Single source of truth — no cross-file overlay merge
 
@@ -86,12 +117,16 @@ rung a known file — auditable, unlike an arbitrary-file overlay.
 **Legacy — the Phase-172 per-package `nros.toml` build/capability overlay.** The orchestration
 planner historically *also* read a per-package `nros.toml` as a build overlay
 (`[build]`/`[safety]`/`[param_services]`/`[lifecycle]`/`[param_persistence]`/`[[transport]]`/`[[shared_state]]`).
-That **contradicts this section + the table** (where `nros.toml` is the embedded-runtime file
-only) and is exactly the action-at-a-distance hazard above. It is **deprecated and being
-retired**: phase-254 moved `[safety]`/`[param_services]` to typed `system.toml` (the others
-follow — issue 0076 §A; RMW in phase-255). During retirement the overlay is a **fallback that
-warns**; after it, the *same-name* collision is gone — `nros.toml` serves only its §6
-embedded-runtime role.
+That **contradicts this section + the table** and is exactly the action-at-a-distance hazard
+above. It is **deprecated and being retired**: phase-254 moved `[safety]`/`[param_services]` to
+typed `system.toml`, phase-255 RMW, phase-256 `[lifecycle]`/`[param_persistence]` (the rest
+follow — issue 0076 §A). During retirement the overlay is a **fallback that warns** (surfaced by
+`nros check`); after it, the *same-name* collision is gone.
+
+**`nros.toml` is then empty of any role** — the §5 embedded-runtime job it was *supposed* to keep
+also never landed (no example ships one; embedded net/RT is `[package.metadata.nros.deploy.<t>]`
++ board features + Kconfig — see "Config in practice"). So phase-256 retires the **file**, not
+just the overlay blocks: there is no surviving role to preserve.
 
 **Auditability (issue 0076).** Two guards make the SSoT legible:
 - `nros config show` — prints the **resolved effective config** for a system + **per-value
@@ -152,19 +187,47 @@ overlay is now a **deprecated fallback that warns** (no fixture declares it), re
 next release; a binary's multi-RMW link set comes from `[[bridge]]` here (`bridged_rmws()` →
 `PlanBuildOptions::bridged_rmws` → `rmw_set`), not the overlay.
 
-## 5. `nros.toml` — embedded direct-mode runtime config
+## 5. `nros.toml` — embedded direct-mode runtime config *(superseded — never landed)*
 
-A hand-written single-node embedded app reads its `nros.toml` via the board
-`Config::from_toml` (compile-baked with `include_str!` on embedded;
-filesystem/env on hosted). No launch file, no planner, no generated `main()` —
-the `examples/**` copy-out templates use this ("boilerplate IS lesson"). It
-carries `[node]`, `[[transport]]`, and `[node.rt]` only. It is **not** a
-workspace manifest and **not** read by `nros plan`/`check`/`codegen-system`.
+> **Status (2026-06): legacy, slated for removal.** This section described the
+> intended embedded home — a hand-written single-node app reading `nros.toml` via
+> `Config::from_toml` (compile-baked `include_str!`), carrying `[node]` /
+> `[[transport]]` / `[node.rt]`. **It never materialized: 0 examples ship an
+> `nros.toml`.** The job it was meant to do is done by
+> `[package.metadata.nros.deploy.<t>]` → `DeployOverlay` (baked by `nros::main!()`,
+> applied via `BoardEntry::run_with_deploy`) for net config, and board-crate Cargo
+> features + Kconfig for RT/stack. The only `nros.toml` reads that ever existed are
+> the deprecated Phase-172 planner overlay (§3.1, being retired). phase-256 removes
+> the file outright — see "Config in practice" (§3).
 
-## 6. Transports — top-level, decoupled, `id`-addressable
+The deploy-overlay shape that replaced it (the real embedded-runtime home):
 
-A **transport** is a physical link + the RMW session that rides it, declared at
-top level in `nros.toml`, independent of nodes:
+```toml
+# <app>/Cargo.toml — single-node embedded app
+[package.metadata.nros.entry]
+deploy = "stm32f4"
+
+[package.metadata.nros.deploy.stm32f4]   # net config → DeployOverlay → board Config
+locator = "tcp/192.168.1.1:7447"
+ip      = "192.168.1.10"
+gateway = "192.168.1.1"
+netmask = "255.255.255.0"
+```
+
+## 6. Transports — the multi-session / cross-RMW topology schema
+
+> **Scope (2026-06).** This schema is the design for **explicit multi-session and
+> cross-RMW topology** (cases A-D below) — read by the planner overlay +
+> `PlanBuildOptions::validate_transports`. It is **not** the embedded single-app net
+> home: that is the `deploy` class (§3, "Config in practice"), where one app's
+> physical link is a flat set of `[..deploy.<t>]` fields (`ip`/`gateway`/`netmask`/
+> `locator`), not a `[[transport]]` file block (no example declares one). A future
+> tidy folds the genuinely-needed multi-session topology under `system.toml`
+> (alongside `[[domain]]`/`[[bridge]]`); the `nros.toml` `[[transport]]` file is part
+> of the retired surface.
+
+A **transport** is a physical link + the RMW session that rides it (historically
+declared at top level in `nros.toml`), independent of nodes:
 
 ```toml
 [[transport]]
@@ -222,10 +285,16 @@ exactly one transport: 0 transports → board default + the single linked RMW
 the `default = true` one). In-process multi-RMW is the explicit `[[bridge]]`
 path (RFC-0009).
 
-## 7. Scheduling / RT — `[node.rt]`
+## 7. Scheduling / RT — `[node.rt]` *(nros.toml form unused)*
 
-Scheduling is a node-level block in `nros.toml` (it replaced `config.toml
-[scheduling]`):
+> **In practice (2026-06).** Single-node RT/stack/priority is set via **board-crate
+> Cargo features + Kconfig** (`prj*.conf` on Zephyr), not an `nros.toml [node.rt]`
+> block (0 examples). Multi-node RT is `system.toml` `[tiers.<name>.<rtos>]` +
+> `[[node_overrides]]` (below). The `[node.rt]` schema here is retained as the
+> conceptual node-RT model; the `nros.toml` file carrying it is part of the retired
+> surface.
+
+The intended node-level block (it replaced `config.toml [scheduling]`):
 
 ```toml
 [node.rt]
@@ -250,15 +319,33 @@ lowered to a cargo feature or `-DNANO_ROS_RMW`, per-deploy scope) is owned by
 **RFC-0031**, not this RFC.
 
 `config.toml` (`[network]`/`[zenoh]`/`[scheduling]`) is **retired** (Phase
-172.K.6); its fields moved to `nros.toml` (`[node]` / `[[transport]]` /
-`[node.rt]`).
+172.K.6) — **0 nano-ros `config.toml` files remain in `examples/**`** (verified
+2026-06). Its fields' real home is the `deploy` class (net) + board features /
+Kconfig (RT), not the `nros.toml` blocks the original retirement named (those
+blocks also never landed — §5). The `nros config show --config <path>` legacy
+reader serves a file no example ships; it is scrubbed with the file retirement.
 
-## 9. Gaps (tracked by phase-227)
+## 9. Gaps & the config tidy (phase-227 / phase-256)
 
 - Implicit single-node `system.toml` synthesis + the optional single-node read path.
 - `nano_ros_application()` CMake function for C/C++ single-node parity.
 - Per-component RT/scheduling exposure in multi-node `system.toml`.
 - Book sync: `user-guide/configuration.md` still documents the Phase 172.K model.
+
+**Config tidy (phase-256), from the 2026-06 grounded sweep:** the live config
+taxonomy is **four surfaces** — `[package.metadata.nros.*]` (Rust) / `nano_ros_*`
+(C/C++) for node + deploy, `system.toml` for the multi-node system, `package.xml`
+for ROS identity, launch XML for topology — plus Kconfig for the embedded build.
+`config.toml` and `nros.toml` are **both fully legacy** (0 example files). The tidy:
+(1) finish migrating the deprecated `nros.toml` overlay blocks to typed `system.toml`
+(W1/W2 done: `[lifecycle]`/`[param_persistence]`); (2) **retire the `nros.toml` file
+entirely** (no surviving role); (3) scrub the `config.toml` reader; (4) treat
+transport/network as part of the **`deploy` class**, not a separate file surface;
+(5) make the `deploy`-class precedence (`[..deploy.<t>]` projection vs `system.toml
+[deploy.<t>]`) explicit. Option *scope* classes: **node** (identity/params/remaps/qos/
+callback-groups), **system** (topology/capabilities/tiers/shared-state — agnostic),
+**deploy** (target/board/build-tuning + net + rmw/domain/locator overrides),
+**build/capability** (lowered, not authored).
 
 ## See also
 
@@ -268,6 +355,13 @@ lowered to a cargo feature or `-DNANO_ROS_RMW`, per-deploy scope) is owned by
 
 ## Changelog
 
+- 2026-06 (grounded-reality revision) — A sweep of `examples/**` (0 `config.toml`,
+  0 `nros.toml`) showed `nros.toml`'s §5 embedded-runtime role never landed: embedded
+  net/RT lives in `[package.metadata.nros.deploy.<t>]` → `DeployOverlay` + board
+  features + Kconfig. Corrected §3 (ownership + "Config in practice"), §5/§6/§7
+  (marked the `nros.toml` schemas as design-that-didn't-land), §8 (config.toml reader
+  scrub), §9 (the phase-256 config tidy + scope-class taxonomy). `nros.toml` is now
+  legacy in full and retired as a file, not just its overlay blocks.
 - 2026-06 — Revised to the unified Phase 212 model: workspace-root `nros.toml`
   rejected; config homes are Cargo/CMake metadata + universal-optional
   `system.toml`; `nros.toml` narrowed to embedded direct-mode runtime; RMW

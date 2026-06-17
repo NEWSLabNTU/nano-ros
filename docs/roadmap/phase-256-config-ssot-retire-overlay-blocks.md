@@ -1,9 +1,23 @@
-# Phase 256 — Config SSoT endgame: retire the remaining `nros.toml` overlay blocks
+# Phase 256 — Config taxonomy tidy: retire the legacy config files, ground the option classes
 
-Status: **Design (2026-06-17)** · Implements [RFC-0004 §3.1](../design/0004-configuration-and-transports.md)
-SSoT-per-concern · Follows [phase-254](phase-254-config-ssot-unify-codegen-paths.md) (capabilities)
+Status: **Design (2026-06-17, re-scoped 2026-06-17)** · Implements
+[RFC-0004 §3.1 + §9 tidy](../design/0004-configuration-and-transports.md) SSoT-per-concern ·
+Follows [phase-254](phase-254-config-ssot-unify-codegen-paths.md) (capabilities)
 + [phase-255](phase-255-rmw-config-unify.md) (RMW) · Closes the bulk of
 [issue 0076 §A](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md).
+
+> **RE-SCOPED 2026-06-17 (grounded sweep).** Originally "retire the remaining `nros.toml`
+> overlay blocks." A sweep of `examples/**` found **0 `nros.toml` and 0 nano-ros `config.toml`
+> files** — both legacy config files are fully unused, and `nros.toml`'s intended §5
+> embedded-runtime role **never landed** (embedded net/RT lives in
+> `[package.metadata.nros.deploy.<t>]` → `DeployOverlay` + board features + Kconfig). So the
+> scope widens from "shrink `nros.toml` to its §5 role" to **"retire the `nros.toml` file
+> entirely + the `config.toml` reader, and ground the live option taxonomy"** (RFC-0004 rewritten
+> to match). The **live taxonomy is four surfaces**: `[package.metadata.nros.*]` / `nano_ros_*`
+> (node + deploy), `system.toml` (multi-node system), `package.xml`, launch XML — plus Kconfig for
+> the embedded build. **Scope classes:** node / system (agnostic) / deploy (per-target, incl. net
+> + rmw/domain/locator overrides) / build+capability (lowered, not authored). The overlay-block
+> migration (W1/W2) still happens — it's the mechanism for emptying `nros.toml` before deletion.
 
 ## Why — the same duality, five more times
 
@@ -18,8 +32,10 @@ duality: a concern declared in **two decoupled places** read by **two codegen pa
 Every remaining config concern still has this split. The overlay path is the
 **action-at-a-distance hazard** RFC-0004 §3.1 forbids (a value in some package's `nros.toml`
 silently changes the system build). This phase migrates the rest to typed `system.toml`,
-makes the overlay a deprecated warn-fallback, then removes it — after which `nros.toml`
-reverts to its RFC-0004 §5 embedded-runtime-only role and the same-name collision is gone.
+makes the overlay a deprecated warn-fallback, then removes it. **Per the re-scope above, after
+emptying the overlay there is no surviving `nros.toml` role to preserve** — the file is removed
+outright (the §5 embedded-runtime job was taken over by deploy metadata), and the `config.toml`
+reader is scrubbed alongside.
 
 ## The five remaining blocks (mapped)
 
@@ -132,20 +148,27 @@ already exists in `system.toml` for the bake but the planner ignores it).
   + `[workspace.metadata.nros]` Cargo-native projection **explicit and non-silent**: when a
   `system.toml` exists for the same scope it is authoritative (RFC-0004 §3.1 ladder: flag >
   `system.toml` > native projection > default), surfaced by `config show`, not an overlay merge.
-- **Wave 9 — migrate fixtures + docs + retire.** Move every remaining `nros.toml` overlay block
-  to `system.toml`; RFC-0004 §4 records each typed field; remove the overlay readers after the
-  release (warn-fallbacks become hard errors), collapsing the `nros.toml` same-name collision.
+- **Wave 9 — retire the legacy files (re-scoped).** Once every overlay block is migrated
+  (W1-W5), the overlay readers go from warn-fallback → removed. Then, per the grounded re-scope:
+  **(a) delete the `nros.toml` file support outright** — `package_nros_toml` / `load_toml_values`
+  overlay path / the `nros.toml`-next-to-`system.toml` discovery — there is no surviving role
+  (the §5 embedded-runtime job is deploy metadata). **(b) Scrub the `config.toml` reader**
+  (`nros config show --config` / `nros config check --config`) — serves a file no example ships.
+  **(c) Fold transport/network into the `deploy` class** — drop the phantom `[[transport]]` file
+  home; the genuinely-needed multi-session topology lives under `system.toml` (with
+  `[[domain]]`/`[[bridge]]`). RFC-0004 records the four-surface taxonomy (done in the re-scope).
 
 ## Acceptance
 
-- Each of the five blocks declared **once** in `system.toml` (typed); both the planner and the
-  bake resolve it from there. The per-package `nros.toml` overlay is a warn-fallback, then gone.
-- `nros config show <system>` prints the resolved config with a provenance column (source file
-  per value).
-- `nros check` warns on any overlay-sourced value with a removal date.
+- Each migrated block declared **once** in `system.toml` (typed); both the planner and the bake
+  resolve it from there. The per-package `nros.toml` overlay is a warn-fallback, then **the file
+  support is removed entirely** (not narrowed).
+- `nros config show --system <pkg>` prints the resolved config with a provenance column. ✓ (W6)
+- `nros check` warns on any overlay-sourced value, naming the file. ✓ (W7)
 - Generated output byte-identical for a system whose overlay values already equal the resolved
   `system.toml` values (the migration is value-preserving).
-- `nros.toml` carries only the RFC-0004 §5 embedded direct-mode runtime sections.
+- **0 references to `nros.toml` and the legacy `config.toml` reader remain** — the live config
+  surfaces are exactly the four in RFC-0004 §9 + Kconfig.
 
 ## Risks / decisions
 
@@ -153,10 +176,13 @@ already exists in `system.toml` for the bake but the planner ignores it).
   (period/budget/deadline) are not 1:1. If the runtime still consumes the timing fields, extend
   `TierDef`; if they were vestigial, drop them. Pin this against RFC-0015 §4.2 + the executor's
   actual scheduling inputs before coding.
-- **Wave 3 transport home.** `[[transport]]` could stay a `[deploy.<t>]` sub-array or be a
-  top-level `system.toml` table. RFC-0004 §6 already documents transports at top level →
-  top-level is the consistent choice; per-deploy transport sets are a `deploy.<t>.transports`
-  follow-up if needed.
+- **Transport home — RESOLVED by the grounded sweep.** `[[transport]]` is NOT a separate file
+  surface: 0 examples declare one, and embedded net config is expressed as `[..deploy.<t>]` fields
+  (`ip`/`gateway`/`netmask`/`locator`). So transport/network is part of the **`deploy` class**
+  (W3). The `[[transport]]` *schema* survives only for explicit multi-session / cross-RMW topology
+  (planner overlay + `validate_transports`), and that genuinely-needed bit lives under
+  `system.toml` next to `[[domain]]`/`[[bridge]]` — not a `nros.toml` file block. (RFC-0004 §6
+  updated.)
 - **Scope.** Large. The mechanical waves (0-2, 5) are low-risk and land first; Waves 3-4 carry
   the design weight; 6-8 are the audit surface; 9 is the cleanup. Each wave is independently
   landable and value-positive (one more concern leaves the overlay).
