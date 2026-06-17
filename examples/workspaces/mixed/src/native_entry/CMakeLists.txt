@@ -19,4 +19,5 @@ nano_ros_entry(
     SOURCES src/main.cpp
     BOARD   native
     LAUNCH  "demo_bringup:system.launch.xml"
+    TYPED
     DEPLOY  native)

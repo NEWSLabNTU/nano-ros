@@ -226,9 +226,38 @@ pub use dispatch_tag::{ActionTag, ServiceTag, SubscriptionTag};
 pub use node_runtime::nros_run_components;
 #[cfg(feature = "rmw-cffi")]
 pub use node_runtime::{
-    ExecutorError, ExecutorNodeRuntime, NodeDispatchFn, NodeInitFn, NodeRegisterFn, NodeTickFn,
+    ExecutorError,
+    ExecutorNodeRuntime,
+    NodeDispatchFn,
+    NodeInitFn,
+    NodeRegisterFn,
+    NodeTickFn,
     RegisteredNode,
+    // Phase 257 (W0-B) — the uniform cross-language component-install seam backing
+    // `__nros_component_<pkg>_install` (nros::node!): register an ExecutableNode on the
+    // shared executor a foreign typed entry hands in. (`register_node_borrowed` stays
+    // crate-internal — it returns the private `ComponentCell`.)
+    install_node_typed,
 };
+
+/// Phase 257 (W0-B) — `install_node_typed` stub for builds without the cffi runtime.
+/// The typed-entry install seam needs the `rmw-cffi` executor; a `nros::node!()` pkg
+/// compiled without `rmw-cffi` still emits `__nros_component_<pkg>_install` (the macro
+/// can't see the umbrella's feature), so this stub keeps it linkable — it returns `-1`
+/// (no real executor to install on). The real impl is `node_runtime::install_node_typed`.
+///
+/// # Safety
+/// Signature parity with the real impl; the stub dereferences nothing.
+#[cfg(not(feature = "rmw-cffi"))]
+#[doc(hidden)]
+pub unsafe fn install_node_typed<C: node::ExecutableNode + 'static>(
+    _executor: *mut core::ffi::c_void,
+) -> i32
+where
+    C::State: 'static,
+{
+    -1
+}
 // Phase 212.N.12 — canonical `nros::node!()` macro. Replaces the legacy
 // `nros::node!()` macro (retired in the N.12 hard rename — both the
 // proc-macro forwarder and the Cargo metadata key are gone).

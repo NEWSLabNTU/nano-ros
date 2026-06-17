@@ -235,7 +235,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 n.pkg, n.exec
             ));
         }
-        if !is_c_node(n) && n.class_header.is_none() {
+        if !is_c_node(n) && !is_rust_node(n) && n.class_header.is_none() {
             return Err(format!(
                 "typed entry emit: C++ node pkg `{}` exec `{}` is missing class_header \
                  — the typed Entry needs the component's class header (cmake metadata)",
@@ -277,7 +277,9 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     // carry no header — their factory/configure are extern "C" decls below.
     let mut seen_headers: Vec<&str> = Vec::new();
     for n in &plan.nodes {
-        if is_c_node(n) {
+        // C nodes carry no header; Rust nodes (phase-257) self-create with no C++
+        // class — both skip the include (their seams are extern "C" decls below).
+        if is_c_node(n) || is_rust_node(n) {
             continue;
         }
         let h = n.class_header.as_deref().unwrap();
@@ -328,8 +330,45 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     //  - rclcpp (RFC-0044) C++ node: NO separate `Node` — the component OWNS its
     //    node, constructed from the executor handle. An aligned arena slot holds
     //    the component; it is placement-new'd in setup *after* `nros::init`.
+    // Phase 257 (W0-B) — forward-declare the uniform install seam for each unique
+    // Rust pkg. The Rust node self-creates its node on the shared executor; the entry
+    // hands it `::nros::global_handle()` (= `*mut Executor`).
+    let mut seen_rust_pkgs: Vec<String> = Vec::new();
+    let mut wrote_rust_extern = false;
+    for n in &plan.nodes {
+        if !is_rust_node(n) {
+            continue;
+        }
+        let pkg = sanitize_pkg(&n.pkg);
+        if seen_rust_pkgs.contains(&pkg) {
+            continue;
+        }
+        if !wrote_rust_extern {
+            out.push_str(
+                "\n// Rust component install seam (nros::node!); the Rust node\n\
+                 // self-creates its node on the shared executor handle (phase-257).\n",
+            );
+            out.push_str("extern \"C\" {\n");
+            wrote_rust_extern = true;
+        }
+        let _ = writeln!(
+            out,
+            "    int32_t __nros_component_{pkg}_install(const void* node, void* executor, void* self);"
+        );
+        seen_rust_pkgs.push(pkg);
+    }
+    if wrote_rust_extern {
+        out.push_str("}\n");
+    }
+    out.push('\n');
+
     out.push_str("// Static per-node storage (outlives the spin loop; no heap).\n");
     for (i, n) in plan.nodes.iter().enumerate() {
+        if is_rust_node(n) {
+            // Phase 257 (W0-B) — Rust node self-creates its node + owns its state on
+            // the shared executor (D7 Option C); no entry-side `Node`/component object.
+            continue;
+        }
         if is_rclcpp_node(n) {
             let cls = n.class_name.as_deref().unwrap();
             let _ = writeln!(
@@ -354,7 +393,22 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         let node_name = n.name.as_deref().unwrap_or(&n.exec);
         let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
         let _ = writeln!(out, "    {{");
-        if is_rclcpp_node(n) {
+        if is_rust_node(n) {
+            // Phase 257 (W0-B) — install the Rust node onto the shared executor via the
+            // uniform seam. It self-creates its node (its `Node::NAME`) + owns its state
+            // (D7 Option C): no entry-side `create_node`, no qos-override. `global_handle()`
+            // is the `*mut Executor` the Rust `_install` registers against.
+            let pkg = sanitize_pkg(&n.pkg);
+            out.push_str("        void* __exec = ::nros::global_handle();\n");
+            out.push_str(
+                "        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);\n",
+            );
+            let _ = writeln!(
+                out,
+                "        int32_t crc = __nros_component_{pkg}_install(nullptr, __exec, nullptr);"
+            );
+            out.push_str("        if (crc != 0) return crc;\n");
+        } else if is_rclcpp_node(n) {
             // rclcpp shape (RFC-0044): placement-new the component with the live
             // executor node handle — the ctor creates the node + entities. The
             // component owns its node, so no separate `create_node`/`configure`.
@@ -425,6 +479,14 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
 /// A `lang == "c"` node is built via the C factory/configure seam (no C++ class).
 fn is_c_node(n: &super::PlanNode) -> bool {
     n.lang.as_deref() == Some("c")
+}
+
+/// Phase 257 (W0-B) — a `lang == "rust"` node is installed via the uniform
+/// `__nros_component_<pkg>_install` seam onto the shared executor; it self-creates
+/// its node (no entry-created `::nros::Node`, no C++ class, no qos-override — D7
+/// Option C).
+fn is_rust_node(n: &super::PlanNode) -> bool {
+    n.lang.as_deref() == Some("rust")
 }
 
 /// Phase 242.4 (RFC-0044) — an rclcpp-shape (IS-A-node, construct-with-handle)

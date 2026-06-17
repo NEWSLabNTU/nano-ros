@@ -260,6 +260,8 @@ fn node_impl(input: TokenStream) -> TokenStream {
     // can resolve the symbol from `CARGO_PKG_NAME` directly.
     let dispatch_fn_name = quote::format_ident!("__nros_node_{}_dispatch_strategy", pkg_sym);
     let component_register_fn_name = quote::format_ident!("__nros_component_{}_register", pkg_sym);
+    // Phase 257 (W0-B / D6) — the uniform cross-language install seam.
+    let component_install_fn_name = quote::format_ident!("__nros_component_{}_install", pkg_sym);
     let component_present_name = quote::format_ident!("__NROS_NODE_PKG_{}_EXPORT_PRESENT", pkg_sym);
     let component_class_name = quote::format_ident!("__nros_component_{}_class_name", pkg_sym);
     let node_class_leaf = node_ty
@@ -340,6 +342,23 @@ fn node_impl(input: TokenStream) -> TokenStream {
             context: *mut ::core::ffi::c_void,
         ) -> i32 {
             ::nros::__register_node_cxx_abi::<#node_ty>(context)
+        }
+
+        // Phase 257 (W0-B / D6) — the uniform cross-language component-install seam.
+        // A typed Entry of ANY language calls
+        // `__nros_component_<pkg>_install(node, executor, self)` to install this Node
+        // onto the shared `Executor` it hands in (`executor` = the entry's
+        // `nros::global_handle()` / a node's `executor_handle()` = `*mut Executor`).
+        // For a Rust node `_node`/`_self` are unused — it self-creates its node (its
+        // `Node::NAME`) on the shared executor (phase-257 D7 Option C). Returns 0 on
+        // success, nonzero on a registration error (or -1 without the cffi runtime).
+        #[unsafe(no_mangle)]
+        pub extern "C" fn #component_install_fn_name(
+            _node: *const ::core::ffi::c_void,
+            executor: *mut ::core::ffi::c_void,
+            _self: *mut ::core::ffi::c_void,
+        ) -> i32 {
+            unsafe { ::nros::install_node_typed::<#node_ty>(executor) }
         }
 
         #[unsafe(no_mangle)]

@@ -231,7 +231,11 @@ function(nano_ros_node_register)
             # add_library; without the same dependency its TUs can compile
             # before the headers exist (clean-build race) and pick up the
             # in-tree stub header, which #errors. Order it after the generators.
-            foreach(_nrc_gen_dep nros_cpp_cargo_build nros_c_cargo_build)
+            # (Target names are `cargo-build_nros_{cpp,c}` — the corrosion cargo
+            # targets that run the POST_BUILD header mirror; the pre-257 names
+            # `nros_{cpp,c}_cargo_build` never matched, so the dep was silently
+            # skipped and a clean build of a typed-C component picked up the stub.)
+            foreach(_nrc_gen_dep cargo-build_nros_cpp cargo-build_nros_c)
                 if(TARGET ${_nrc_gen_dep})
                     add_dependencies(${_lib} ${_nrc_gen_dep})
                 endif()

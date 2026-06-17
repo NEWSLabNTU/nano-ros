@@ -1259,6 +1259,77 @@ pub type NodeDispatchFn =
 /// `*mut ()` provenance contract as [`NodeDispatchFn`].
 pub type NodeTickFn = unsafe fn(state: *mut (), ctx: &mut TickCtx<'_>);
 
+/// Phase 257 (W0-B) — register an [`ExecutableNode`] `C` against a **borrowed**
+/// executor (the shared cffi `Executor` a foreign-language typed entry hands in via
+/// its `nros::global_handle()` / `Node::executor_handle()`), returning the live
+/// [`ComponentCell`].
+///
+/// Unlike [`ExecutorNodeRuntime::register_node`] this owns neither the executor nor a
+/// components list: the executor's per-entity callbacks hold `Arc<ComponentCell>`
+/// clones (see [`ExecutorSink`]), so the cell stays alive for the executor's lifetime
+/// via dispatch alone — the caller may drop the returned cell (pub/sub/timer nodes, the
+/// W0-B target) or stash it to drive `tick` (service-client/action nodes; phase-257 D2).
+/// The node self-creates its node (its `Node::NAME`) on the shared executor (phase-257
+/// D7 Option C — Rust nodes in a foreign entry self-name, no entry-side qos-override).
+fn register_node_borrowed<C: ExecutableNode + 'static>(
+    executor: &mut Executor,
+) -> NodeResult<Arc<ComponentCell>>
+where
+    C::State: 'static,
+{
+    let cell = Arc::new(ComponentCell {
+        slot: RefCell::new(Box::new(TypedSlot::<C> {
+            state: C::init(),
+            _phantom: PhantomData,
+        })),
+        publishers: RefCell::new(Vec::new()),
+        service_clients: RefCell::new(Vec::new()),
+        action_clients: RefCell::new(Vec::new()),
+        action_servers: RefCell::new(Vec::new()),
+        callback_dispatches: AtomicUsize::new(0),
+        message_dispatches: AtomicUsize::new(0),
+    });
+    let mut sink = ExecutorSink {
+        executor,
+        cell: cell.clone(),
+        nodes: Vec::new(),
+    };
+    let sink_dyn: &mut dyn NodeRuntime = &mut sink;
+    let mut context = NodeContext::new(C::NAME, sink_dyn);
+    C::register(&mut context)?;
+    Ok(cell)
+}
+
+/// Phase 257 (W0-B) — C-ABI typed component install. Recovers the shared `Executor`
+/// from the foreign typed entry's handle (`global_handle()` / `Node::executor_handle()`
+/// = the `_opaque` `*mut Executor`; cf. nros-c `get_executor_from_ptr`) and registers
+/// `C` on it via [`register_node_borrowed`]. The component's `ComponentCell` is kept
+/// alive by the executor's own callback `Arc` clones (phase-257 D1), so this drops the
+/// returned cell. Returns `0` on success, `-1` on a null handle or a registration error.
+///
+/// This backs the `__nros_component_<pkg>_install(node, executor, self)` symbol
+/// `nros::node!()` emits — the uniform cross-language install seam (phase-257 D6).
+///
+/// # Safety
+/// `executor` must be the live `*mut Executor` handle a typed entry passes (its
+/// `nros::global_handle()` / a node's `executor_handle()`), valid for the call.
+pub unsafe fn install_node_typed<C: ExecutableNode + 'static>(
+    executor: *mut core::ffi::c_void,
+) -> i32
+where
+    C::State: 'static,
+{
+    if executor.is_null() {
+        return -1;
+    }
+    // SAFETY: per the fn contract, `executor` is the live `*mut Executor` handle.
+    let exec: &mut Executor = unsafe { &mut *(executor as *mut Executor) };
+    match register_node_borrowed::<C>(exec) {
+        Ok(_cell) => 0,
+        Err(_) => -1,
+    }
+}
+
 /// BSP shim — register every component against `runtime`, then spin
 /// until halt. The Phase 212.M.5.a.3 baker's `system_main.rs` collects
 /// the per-pkg `_register` / `_init` / `_dispatch` / `_tick` fn

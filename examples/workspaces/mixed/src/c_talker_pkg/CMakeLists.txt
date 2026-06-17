@@ -14,13 +14,11 @@ if(NOT COMMAND nano_ros_workspace_pkg_guard)
 endif()
 nano_ros_workspace_pkg_guard()
 
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
-
+# Typed component (RFC-0043): raw `/chatter` publisher carries the type name as
+# a string, so no generated C bindings are needed.
 nano_ros_node_register(
     NAME     talker
     CLASS    c_talker_pkg::Talker
     LANGUAGE C
+    TYPED
     SOURCES  src/Talker.c)
-
-target_link_libraries(c_talker_pkg_talker_component
-    PUBLIC std_msgs__nano_ros_c)
