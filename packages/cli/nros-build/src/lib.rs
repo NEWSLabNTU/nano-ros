@@ -175,6 +175,9 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         manifest_files: Vec::new(),
         nros_toml_files: Vec::new(),
         launch_args: Vec::new(),
+        // Phase 255 — RMW resolved from the bringup's `system.toml`; build.rs has
+        // no `--rmw` override.
+        rmw: None,
     };
     let planning = plan_system(plan_options).context("nros-build: planner failed")?;
     println!(

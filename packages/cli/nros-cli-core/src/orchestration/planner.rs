@@ -28,6 +28,11 @@ pub struct PlanOptions {
     pub manifest_files: Vec<PathBuf>,
     pub nros_toml_files: Vec<PathBuf>,
     pub launch_args: Vec<String>,
+    /// Phase 255 Wave 4 — `--rmw` override, the top of the precedence ladder
+    /// (`--rmw` > `[deploy.<t>].rmw` > `[system].rmw` > `zenoh`). Sets
+    /// `plan.build.rmw` regardless of `system.toml`. `None` ⇒ resolve from
+    /// `system.toml`.
+    pub rmw: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -133,7 +138,11 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     // profile / `[[transport]]`) from the nros.toml overlays, then
     // validate the transport semantics with a clear error before the
     // plan is written.
-    let build_json = schema_build_json(&overlays, system_toml_path.as_deref());
+    let build_json = schema_build_json(
+        &overlays,
+        system_toml_path.as_deref(),
+        options.rmw.as_deref(),
+    );
     let build: PlanBuildOptions = serde_json::from_value(build_json.clone())
         .wrap_err("invalid [build] / [[transport]] section in nros.toml")?;
     let transport_problems = build.validate_transports();
@@ -807,7 +816,11 @@ fn schema_plan_json(
 /// fields; TOML `[[transport]]` (array key `transport`) → the
 /// `transports` field. Unknown keys are caught downstream by
 /// `PlanBuildOptions`'s `deny_unknown_fields`.
-fn schema_build_json(overlays: &[Value], system_toml: Option<&Path>) -> Value {
+fn schema_build_json(
+    overlays: &[Value],
+    system_toml: Option<&Path>,
+    cli_rmw: Option<&str>,
+) -> Value {
     let mut build = json!({
         "target": "x86_64-unknown-linux-gnu",
         "board": "native",
@@ -839,20 +852,25 @@ fn schema_build_json(overlays: &[Value], system_toml: Option<&Path>) -> Value {
         }
     }
     // Phase 255 — `[system].rmw` (resolved) is the SSoT and wins over the
-    // DEPRECATED `[build].rmw` overlay. `[deploy.<t>].rmw` / `--rmw` plumb in once
-    // the planner is target-aware (issue 0076 §A); today both paths resolve to
-    // `[system].rmw` with no target, unifying them.
-    if let Some(sys) = system_toml
+    // DEPRECATED `[build].rmw` overlay; `--rmw` (Wave 4) tops the ladder.
+    // `[deploy.<t>].rmw` plumbs in once the planner is target-aware (issue 0076
+    // §A); today both paths resolve to `[system].rmw` with no target, unifying
+    // them. With no system.toml, `--rmw` alone still drives the plan.
+    let sys = system_toml
         .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok())
-    {
+        .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
+    let resolved_rmw = match &sys {
+        Some(s) => Some(s.resolved_rmw(None, cli_rmw)),
+        None => cli_rmw.map(str::to_string),
+    };
+    if let Some(rmw) = resolved_rmw {
         if overlay_had_rmw {
             eprintln!(
                 "warning: [build].rmw in nros.toml is deprecated (phase-255); declare rmw in \
-                 the bringup system.toml ([system].rmw / [deploy.<t>].rmw)"
+                 the bringup system.toml ([system].rmw / [deploy.<t>].rmw) or pass --rmw"
             );
         }
-        obj.insert("rmw".to_string(), json!(sys.resolved_rmw(None, None)));
+        obj.insert("rmw".to_string(), json!(rmw));
     }
     build
 }
@@ -3494,7 +3512,7 @@ mod tests {
     fn schema_build_json_defaults_when_no_overlay() {
         // No `[build]` / `[[transport]]` ⇒ pre-173.5 defaults, empty
         // transports — keeps existing plans byte-identical.
-        let build = schema_build_json(&[], None);
+        let build = schema_build_json(&[], None, None);
         assert_eq!(build["board"], "native");
         assert_eq!(build["rmw"], "zenoh");
         assert_eq!(build["target"], "x86_64-unknown-linux-gnu");
@@ -3514,7 +3532,7 @@ mod tests {
                 { "kind": "serial", "device": "UART0", "baudrate": 115200, "rmw": "cyclonedds" }
             ]
         });
-        let build = schema_build_json(std::slice::from_ref(&overlay), None);
+        let build = schema_build_json(std::slice::from_ref(&overlay), None, None);
         assert_eq!(build["board"], "baremetal");
         assert_eq!(build["target"], "thumbv7m-none-eabi");
         let typed: PlanBuildOptions = serde_json::from_value(build).unwrap();
@@ -3529,7 +3547,7 @@ mod tests {
         let first = json!({ "build": { "board": "native" } });
         let second =
             json!({ "build": { "board": "freertos" }, "transport": [ { "kind": "ethernet" } ] });
-        let build = schema_build_json(&[first, second], None);
+        let build = schema_build_json(&[first, second], None, None);
         assert_eq!(build["board"], "freertos");
         assert_eq!(build["transports"].as_array().unwrap().len(), 1);
     }
@@ -3547,15 +3565,38 @@ mod tests {
         .unwrap();
         let overlay = json!({ "build": { "rmw": "zenoh" } });
 
-        let build = schema_build_json(std::slice::from_ref(&overlay), Some(&st));
+        let build = schema_build_json(std::slice::from_ref(&overlay), Some(&st), None);
         assert_eq!(
             build["rmw"], "cyclonedds",
             "[system].rmw must win over [build].rmw"
         );
 
         // No system.toml → the [build].rmw overlay drives (deprecated fallback).
-        let fallback = schema_build_json(std::slice::from_ref(&overlay), None);
+        let fallback = schema_build_json(std::slice::from_ref(&overlay), None, None);
         assert_eq!(fallback["rmw"], "zenoh");
+    }
+
+    /// Phase 255 Wave 4 — `--rmw` tops the precedence ladder, beating both
+    /// `[system].rmw` and the `[build].rmw` overlay; it also drives the plan with
+    /// no system.toml at all.
+    #[test]
+    fn schema_build_json_cli_rmw_tops_the_ladder() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"cyclonedds\"\ndomain_id=0\n",
+        )
+        .unwrap();
+        let overlay = json!({ "build": { "rmw": "zenoh" } });
+
+        // --rmw xrce beats system.toml's cyclonedds and the overlay's zenoh.
+        let build = schema_build_json(std::slice::from_ref(&overlay), Some(&st), Some("xrce"));
+        assert_eq!(build["rmw"], "xrce");
+
+        // --rmw with no system.toml still drives (top rung, overlay ignored).
+        let bare = schema_build_json(std::slice::from_ref(&overlay), None, Some("xrce"));
+        assert_eq!(bare["rmw"], "xrce");
     }
 
     #[cfg(feature = "play-launch-parser")]
@@ -3612,6 +3653,7 @@ mod tests {
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -3675,6 +3717,7 @@ mod tests {
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -3762,6 +3805,7 @@ topics:
             manifest_files: vec![manifest],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -3854,6 +3898,7 @@ topics:
             manifest_files: vec![manifest],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap_err()
         .to_string();
@@ -4051,6 +4096,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -4195,6 +4241,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -4287,6 +4334,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -4516,6 +4564,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -4630,6 +4679,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -4729,6 +4779,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let raw = fs::read_to_string(output.plan_path).unwrap();
@@ -4792,6 +4843,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -4875,6 +4927,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let raw = fs::read_to_string(output.plan_path).unwrap();
@@ -4952,6 +5005,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan: Value =
@@ -5153,6 +5207,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
     }
 
@@ -5184,6 +5239,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
     }
 
@@ -5265,6 +5321,7 @@ topics:
             manifest_files: vec![],
             nros_toml_files: vec![],
             launch_args: vec![],
+            rmw: None,
         })
         .unwrap();
         let plan = serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();

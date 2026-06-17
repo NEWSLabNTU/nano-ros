@@ -87,8 +87,13 @@ config show` surfacing the resolved value's provenance (issue 0076 §A).
   `[system].rmw`. The selected `--target` (already threaded into `emit_bake_tree`) is the deploy
   key. Test: `system_config_h_rmw_honours_deploy_override` (deploy override wins for the target;
   `[system].rmw` default with no target). cli suite green (389).
-- **Wave 4 — `--rmw` CLI flag.** Add to `nros plan` / `nros codegen-system` `Args`; top of the
-  precedence. Threaded into `resolve_system_rmw`.
+- **Wave 4 — `--rmw` CLI flag — DONE (2026-06-17).** Added `--rmw <x>` to both `nros plan`
+  (`PlanOptions::rmw` → `schema_build_json(.., cli_rmw)`) and `nros codegen-system`
+  (`emit_bake_tree(.., cli_rmw)` → `render_system_config_h(sys, target, cli_rmw)`). It is the TOP
+  of the ladder — `resolved_rmw(target, Some(cli))` returns `cli` regardless of `system.toml`;
+  with no `system.toml` the plan still honours `--rmw`. Tests:
+  `schema_build_json_cli_rmw_tops_the_ladder`, `system_config_h_rmw_honours_deploy_override`
+  (extended with the `--rmw` rung). cli suite green (390).
 - **Wave 5 — multi-RMW via `[[bridge]]`.** The build links the union of the bridge endpoints'
   RMWs from `system.toml`; deprecate the `[[transport]].rmw` overlay multi-RMW path.
 - **Wave 6 — migrate fixtures + docs.** Move `[build].rmw` declarations to `system.toml`

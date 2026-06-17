@@ -66,6 +66,12 @@ pub struct Args {
     #[arg(long = "nros-toml")]
     pub nros_toml: Vec<PathBuf>,
 
+    /// Phase 255 Wave 4 — RMW override, the TOP of the precedence ladder
+    /// (`--rmw` > `[deploy.<t>].rmw` > `[system].rmw` > `zenoh`). Sets
+    /// `plan.build.rmw` regardless of `system.toml` / the `[build].rmw` overlay.
+    #[arg(long = "rmw")]
+    pub rmw: Option<String>,
+
     /// Launch arguments forwarded as name:=value or name=value
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub launch_args: Vec<String>,
@@ -146,6 +152,7 @@ pub fn run(args: Args) -> Result<()> {
         manifest_files: args.manifests,
         nros_toml_files: args.nros_toml,
         launch_args: args.launch_args,
+        rmw: args.rmw,
     })?;
 
     // `_materialised` keeps the synthesised temp file alive through
