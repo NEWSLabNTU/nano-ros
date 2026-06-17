@@ -1,5 +1,5 @@
 //! Phase 216.A.4 — tag types Node authors hold on `Self::State` to
-//! match against incoming [`Callback`](crate::Callback) in
+//! match against incoming [`Callback`] in
 //! [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
 //!
 //! Each tag is an opaque newtype around a `&'static str` (the stable
@@ -14,7 +14,7 @@
 //! - [`Into<CallbackId<'static>>`] — convert a tag into a borrowable
 //!   `CallbackId` when handing off to the runtime.
 //! - [`PartialEq<Callback<'_>>`](crate::Callback) — match directly against the
-//!   [`Callback`](crate::Callback) delivered to
+//!   [`Callback`] delivered to
 //!   [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback):
 //!
 //!   ```ignore

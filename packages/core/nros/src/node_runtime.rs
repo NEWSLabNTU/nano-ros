@@ -1246,7 +1246,7 @@ pub type NodeInitFn = fn() -> *mut ();
 /// Phase 212.M.5.a.4 — type of the `extern "Rust"` `_dispatch` fn the
 /// macro emits per component. Carries the internal callback ID to the
 /// generated wrapper, which converts it to product-facing
-/// [`Callback`](crate::Callback) before calling `ExecutableNode::on_callback`.
+/// [`Callback`] before calling `ExecutableNode::on_callback`.
 ///
 /// `unsafe`: the `*mut ()` MUST be a value previously returned by the
 /// matching [`NodeInitFn`] and not freed; the BSP holds both in a
