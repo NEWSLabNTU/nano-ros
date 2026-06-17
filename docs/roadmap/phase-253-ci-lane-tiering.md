@@ -76,17 +76,20 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
     'packages/cli/**/*.rs') }}`, shared identically across check / host-unit /
     host-integration / platform-ci. Has `restore-keys` (cargo tolerates a warm
     non-exact target → sub-30s relink).
-  - **Provisioned-source cache** (new): keyed on the SUPERPROJECT'S RECORDED
-    SUBMODULE SHAS — a step runs `git ls-tree HEAD <source paths>` into
-    `.ci-source-pins`, the cache keys on `hashFiles('.ci-source-pins')`. The key
-    auto-invalidates the instant a pin bumps; identical source SETS across lanes
-    hash to the same key and share the archive. Key: `nros-src-${{ runner.os }}-
-    <pin-hash>`. **EXACT KEY ONLY — no `restore-keys`**: `nros setup` leaves a
-    present, non-empty dest untouched (idempotent skip, sdk_store.rs), so a
-    partial/stale restore would NOT be refreshed; a pin bump must MISS so nros
-    fetches the correct pin. A miss costs one fetch; steady state hits. Wired into
-    host-unit (6 sources), host-integration (6 + nuttx-libc), platform-ci (px4-rs
-    + nuttx-libc), and check.yml build tier (6, non-push).
+  - **Provisioned-source cache** — ATTEMPTED, then REVERTED (validation found it
+    breaks provisioning). Design was: key on the recorded submodule SHAs
+    (`git ls-tree HEAD <paths>` → `.ci-source-pins`), exact-key-only so a pin bump
+    misses + refetches. The pin-key/staleness logic was sound, but the structure
+    is not: `nros setup --source` provisions via git submodules, and `actions/cache`
+    archives only the source WORKING TREE — not its `.git/modules/<path>` git-dir.
+    On a cache HIT the restored dir has a dangling `.git` gitlink, so nros's
+    `git -C <dir> fetch <sha>` fails with `fatal: not a git repository:
+    …/.git/modules/…` (seen on the first host-tests dispatch). Exact-key prevents
+    *stale* content but not this *structural* breakage — any hit poisons the dir.
+    Reverted from all 4 lanes; only the CLI-binary cache (a plain target dir, no
+    submodule) remains. **To reintroduce safely:** add `.git/modules/<path>` to each
+    cache `path:` alongside the source dir so the gitlink resolves on restore (then
+    nros idempotent-skips) — untested; revisit deliberately, not under push churn.
 
 - **scaffold-journey + colcon-parity thinned to `just` callers.**
   scaffold-journey.yml: `just scaffold-journey` (its `setup-cli` prereq reuses the

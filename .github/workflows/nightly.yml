@@ -157,25 +157,6 @@ jobs:
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
-      # Cache the two `nros setup --source` working trees this lane provisions
-      # (px4-rs + nuttx-libc). Keyed on the recorded submodule SHAs → auto-
-      # invalidates on a pin bump. EXACT KEY ONLY (no restore-keys): `nros setup`
-      # skips a present dest, so a stale restore would not be refreshed → a pin
-      # bump must MISS + refetch. (The heavy per-platform `just <plat> setup`
-      # kernels/SDKs are not cached here — only the explicit shared source set.)
-      - name: Compute source-pin cache key
-        run: |
-          git ls-tree HEAD third-party/px4/px4-rs third-party/nuttx/libc \
-            | tee .ci-source-pins
-
-      - name: Cache provisioned sources (auto-invalidate on pin bump)
-        uses: actions/cache@v4
-        with:
-          path: |
-            third-party/px4/px4-rs
-            third-party/nuttx/libc
-          key: nros-src-${{ runner.os }}-${{ hashFiles('.ci-source-pins') }}
-
       - name: just ${{ matrix.plat }} setup
         run: just ${{ matrix.plat }} setup
 
