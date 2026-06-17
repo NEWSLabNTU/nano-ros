@@ -1,4 +1,10 @@
-# Phase 247 — retire the C++ `EntryNodeRuntime` interpreter (RFC-0043 §Retirement / 240.6)
+# Phase 257 — retire the C++ `EntryNodeRuntime` interpreter (RFC-0043 §Retirement / 240.6)
+
+> **Renumbered 247 → 257 (2026-06-18).** This doc collided with
+> `phase-247-weak-symbol-determinism` (both id 247). The weak-symbol phase keeps 247
+> (it was filed first + is cross-referenced); this one moves to the next free id 257.
+> Self-references below updated; earlier commit messages may say "phase-247" meaning
+> this interpreter-retirement work (now 257).
 
 **Implements.** [RFC-0043](../design/0043-entry-real-callback-binding.md)
 §Retirement — delete the synthesizing C++ `EntryNodeRuntime` interpreter
@@ -13,7 +19,7 @@ Stage-2: `examples/workspaces/cpp` migrated (typed entry, `18809bad2`).
 
 **Collision (2026-06-14) — Stage-2 template migration PAUSED.** Two parallel
 workers are restructuring this exact area, and `examples/workspaces/*` is THEIR
-scope, not phase-247's:
+scope, not phase-257's:
 - `f6bffd68d` **244.C4** added a native typed-entry **carrier** branch
   (`NanoRosNodeRegister.cmake:541`): a posix node pkg with `nano_ros_node_register(
   TYPED … DEPLOY native)` builds its own bootable native ELF. It FATALs (`:546`)
@@ -23,7 +29,7 @@ scope, not phase-247's:
   selection point). The worker built these via the `build-workspace-fixtures`
   recipe and verified them.
 
-This broke the phase-247 **template** migrations I'd pushed: the `pure_c_workspace`
+This broke the phase-257 **template** migrations I'd pushed: the `pure_c_workspace`
 + `c_mixed_workspace` **compile-check** fixtures build via `cmake -S <template>`,
 under which the workspace-root `nano_ros_workspace(PLATFORM posix)` propagates to
 node subdirs → 244.C4's `:541` fires → demands `TYPED` on the node register. Adding
@@ -34,10 +40,10 @@ but `_NROS_NODE_REGISTER_DIR` is **empty** in the workspace-subdir context →
 without fixing the worker's (actively-churning) cmake.
 
 **Action: reverted** the `pure-c-workspace` + `c-and-cpp-mixed-workspace`
-**template** migrations to their pre-247 legacy state (which 248 confirmed still
+**template** migrations to their pre-257 legacy state (which 248 confirmed still
 builds with `DEPLOY` now optional). Template typed-migration is deferred to the
 244.C4/248 follow-up sweep the workers already planned (they noted
-`examples/templates/*` is out of 248's scope). phase-247 should resume on
+`examples/templates/*` is out of 248's scope). phase-257 should resume on
 templates only AFTER 244.C4's `_NROS_NODE_REGISTER_DIR` workspace-context bug is
 fixed and the workspace-vs-carrier model for posix multi-node is settled.
 
@@ -49,10 +55,10 @@ fixed and the workspace-vs-carrier model for posix multi-node is settled.
 > `configure_file` uses `CMAKE_CURRENT_FUNCTION_LIST_DIR` (not the
 > workspace-empty `_NROS_NODE_REGISTER_DIR`), so the template path resolves in the
 > workspace-subdir context. Verified: `pkg_c_talker` TYPED reaches "Generating
-> done"; `pure-c-workspace` legacy no longer FATALs. phase-247 can re-apply the
+> done"; `pure-c-workspace` legacy no longer FATALs. phase-257 can re-apply the
 > `pure-c-workspace` + `c-and-cpp-mixed-workspace` typed migration.
 
-Remaining phase-247 work (unblocked): the lockstep `multi-node-workspace-cpp`
+Remaining phase-257 work (unblocked): the lockstep `multi-node-workspace-cpp`
 legacy-fixture retirement with Stage-3 (cpp-only path, no posix-carrier collision).
 
 ---
