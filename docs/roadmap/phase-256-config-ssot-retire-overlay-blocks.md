@@ -135,17 +135,20 @@ already exists in `system.toml` for the bake but the planner ignores it).
   so no fixtures to migrate — the work is the `TierDef` extension + a `resolve_tiers`→`PlanSchedContext`
   lowering. `TierDef` lives in `nros-orchestration-ir` (shared with the `nros::main!()` macro), so
   the field add touches that crate.
-- **Wave 5 — `[[shared_state]]` → typed `SharedStateDecl`. RECONCILIATION (like W4).**
-  **Discovered 2026-06-17: not mechanical.** The overlay `[[shared_state]]` is `{id, bytes}` — a
-  RAW byte region the runtime allocates flat. The typed `SharedStateDecl` is
-  `{name, schema, storage, sync, fields, read, write}` — a STRUCTURED region (RFC-0015 §8) the
-  bake lowers to a generated struct with typed accessors, letting the **compiler** size it. There
-  is no existing byte-size computation to reuse, and computing `bytes` from `SharedStateField`
-  types by hand (size + alignment/padding) has memory-corruption stakes. So W5 is a model
-  decision, not a port: either (a) the planner emits typed regions and `PlanSharedRegion` grows
-  the typed shape (preferred — the raw `{id,bytes}` is the legacy path the RFC-0015 model
-  supersedes), or (b) a sound `fields → bytes` lowering is specified. Pin against RFC-0015 §8 +
-  the runtime's shared-region ABI before coding — same caution as W4.
+- **Wave 5 — `[[shared_state]]` → DROPPED. DECISION: remove the feature, scoped out (2026-06-18).**
+  shared_state is a raw in-process shared-memory primitive — **not a ROS concept.** nano-ros is an
+  RT *ROS* client (graph = nodes + pub/sub + services + actions + params + lifecycle); ROS 2's own
+  answer for fast co-located comms is **intra-process zero-copy pub/sub** (loaned messages), which
+  is in-paradigm. The exploration also showed inlining struct layouts in `system.toml` doesn't
+  scale (types belong in code) — but moving the type to code (M1 cbindgen / M2 interface type) only
+  underlined that the whole mechanism sits outside ROS. **Zero real users** — only the
+  `shared_state_xlang` test fixture; no example/board/port adopts it. So instead of migrating it
+  into the typed config, the feature is **removed**: RFC-0015 §8 deprecated; the schema
+  (`SharedStateDecl`/`SharedStateField`), the planner path (`collect_shared_state` →
+  `PlanSharedRegion` → `render_shared_state`), the bake codegen (`emit_shared_state_*`), the runtime
+  `SharedRegion`/`LockedSharedRegion`, and the fixture all come out — tracked by **issue 0079**.
+  Bonus: removes the `sync = "tier_aware"` coupling to W4's tiers. (The raw `{id,bytes}` overlay
+  path also dies with W9's `nros.toml` deletion regardless.)
 - **Wave 6 — `nros config show` — DONE (2026-06-17).** Added `nros config show --system <pkg>`
   (+ `--workspace`): prints the **resolved effective config** for a bringup system (rmw / domain /
   locator + the safety / param_services / lifecycle / param_persistence axes) with a **provenance

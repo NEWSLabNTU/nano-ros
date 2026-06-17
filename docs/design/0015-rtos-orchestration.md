@@ -436,6 +436,18 @@ Single-tier codegen output ≡ hand-written single-`main` shape (modulo formatti
 
 ## 8. Cross-language node state & cross-node context
 
+> **DEPRECATED / REMOVED (2026-06-18) — out of scope.** The **cross-node shared
+> state** mechanism below (`[[shared_state]]` → codegen'd `nros_shared_context` +
+> accessors) is being **removed** (issue 0079). It is a raw in-process
+> shared-memory primitive, **not a ROS concept**; nano-ros is an RT *ROS* client
+> (graph = nodes + pub/sub + services + actions + params + lifecycle). ROS 2's
+> in-paradigm answer for fast co-located comms is **intra-process zero-copy
+> pub/sub** (loaned messages). Zero real users adopted `[[shared_state]]` (only a
+> test fixture). The **per-node state** model (§8.2 first paragraph) stays — it is
+> just ordinary node-owned state, no cross-language/cross-node sharing. Only the
+> cross-node `[[shared_state]]` block, its schema, codegen, and runtime regions
+> are removed.
+
 ### 8.1 Constraints
 
 - Nodes may be written in **Rust, C, or C++** (nano-ros ships all three APIs).
