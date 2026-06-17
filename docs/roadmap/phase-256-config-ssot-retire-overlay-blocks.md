@@ -77,9 +77,11 @@ already exists in `system.toml` for the bake but the planner ignores it).
   is the primitive Waves 1-5 use to NAME the offending file in deprecation warnings and Waves 6-7
   use for `config show` provenance / `check`'s legacy flag. Test:
   `sourced_toml_tracks_provenance_per_block`. cli suite green.
-- **Wave 1 — `[lifecycle]` → typed.** Add `lifecycle: Option<SystemLifecycle>` to `SystemToml`;
-  `collect_lifecycle` prefers it, warns on overlay (the phase-254 pattern). Test parse +
-  precedence.
+- **Wave 1 — `[lifecycle]` → typed — DONE (2026-06-17).** Added `SystemLifecycle { autostart }`
+  + `lifecycle: Option<SystemLifecycle>` on `SystemToml`. `schema_plan_json` now prefers the typed
+  `[lifecycle]` (reusing the shared `system_caps` parse), falling back to `collect_lifecycle` (the
+  `nros.toml` overlay) with a deprecation warn — the phase-254 pattern. Test:
+  `plan_system_reads_lifecycle_from_system_toml`. cli suite green (395).
 - **Wave 2 — `[param_persistence]` → typed.** Same shape: `param_persistence:
   Option<SystemParamPersistence>` on `SystemToml`; `collect_param_persistence` prefers it.
 - **Wave 3 — `[build]` rest → `[deploy.<t>]`.** Extend `DeployTarget` with `profile`/`optimize`/

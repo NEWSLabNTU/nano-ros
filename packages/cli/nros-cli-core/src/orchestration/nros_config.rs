@@ -627,6 +627,7 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         node_overrides: Vec::new(),
         safety: None,
         param_services: None,
+        lifecycle: None,
     };
 
     BringupPackageEntry {

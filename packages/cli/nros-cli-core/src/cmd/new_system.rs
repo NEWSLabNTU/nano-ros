@@ -360,6 +360,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         node_overrides: Vec::new(),
         safety: None,
         param_services: None,
+        lifecycle: None,
     };
 
     let body = toml::to_string_pretty(&model).wrap_err("serialize generated system.toml")?;

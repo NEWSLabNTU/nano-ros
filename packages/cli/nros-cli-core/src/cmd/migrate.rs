@@ -512,6 +512,7 @@ fn build_system_toml(plan: &MigrationPlan) -> SystemToml {
         node_overrides: Vec::new(),
         safety: None,
         param_services: None,
+        lifecycle: None,
     }
 }
 

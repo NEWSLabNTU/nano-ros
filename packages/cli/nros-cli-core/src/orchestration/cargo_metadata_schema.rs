@@ -456,6 +456,26 @@ pub struct SystemToml {
     /// Phase 254 — `[param_services]`: the external ROS 2 parameter server.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub param_services: Option<SystemParamServices>,
+    /// Phase 256 Wave 1 — `[lifecycle]`: the managed-node boot autostart state,
+    /// the typed home superseding the per-package `nros.toml` `[lifecycle]`
+    /// overlay. Read by the planner (`PlanLifecycle`). Absent ⇒ no lifecycle
+    /// block (node stays a plain node).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<SystemLifecycle>,
+}
+
+/// Phase 256 Wave 1 — `[lifecycle]` in `system.toml`. `autostart` ∈
+/// `none` | `configure` | `active` (the `LifecycleAutostart` plan enum);
+/// defaults to `none` (services registered, externally driven).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemLifecycle {
+    #[serde(default = "default_autostart")]
+    pub autostart: String,
+}
+
+fn default_autostart() -> String {
+    "none".to_string()
 }
 
 /// Phase 254 — `[safety]` in `system.toml`: E2E message-integrity (CRC + sequence

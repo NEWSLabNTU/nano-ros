@@ -737,7 +737,29 @@ fn schema_plan_json(
     // match the NrosPlan field order) only when nros.toml declares [lifecycle];
     // a non-lifecycle plan stays byte-identical to pre-172.A.
     let obj = plan.as_object_mut().expect("plan is an object");
-    if let Some(lifecycle) = collect_lifecycle(overlays) {
+    // Phase 254/256 — typed `system.toml` is the SSoT both codegen paths read;
+    // the per-package `nros.toml` overlay blocks are DEPRECATED fallbacks (warn),
+    // kept one release for migration. Parsed once, reused for every block below.
+    let system_caps = system_toml
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
+
+    // Phase 172.A / 256 Wave 1 — optional lifecycle block, before `build` (NrosPlan
+    // field order); absent ⇒ omitted, plan byte-identical to pre-172.A. Typed
+    // `[lifecycle]` wins; the `nros.toml` overlay is the deprecated fallback.
+    let lifecycle = system_caps
+        .as_ref()
+        .and_then(|s| s.lifecycle.as_ref())
+        .map(|lc| json!({ "autostart": lc.autostart }))
+        .or_else(|| {
+            collect_lifecycle(overlays).inspect(|_| {
+                eprintln!(
+                    "warning: [lifecycle] in nros.toml is deprecated (phase-256); \
+                     declare it in the bringup system.toml"
+                );
+            })
+        });
+    if let Some(lifecycle) = lifecycle {
         obj.insert("lifecycle".to_string(), lifecycle);
     }
     // Phase 172.I — optional shared-state regions, before `build` (NrosPlan
@@ -751,12 +773,6 @@ fn schema_plan_json(
     if let Some(pp) = collect_param_persistence(overlays) {
         obj.insert("param_persistence".to_string(), pp);
     }
-    // Phase 254 — capability axes ([param_services], [safety]) prefer the typed
-    // `system.toml` (the SSoT both codegen paths read); the per-package `nros.toml`
-    // overlay block is a DEPRECATED fallback (warns), kept one release for migration.
-    let system_caps = system_toml
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
 
     // Phase 250 (Wave 3) — parameter-server capability, before `build` (NrosPlan
     // field order); absent ⇒ omitted, plan stays byte-identical.
@@ -3760,6 +3776,69 @@ mod tests {
             plan["safety"]["crc"],
             serde_json::Value::Bool(true),
             "system.toml [safety] must land in plan.safety; got {plan:?}"
+        );
+    }
+
+    /// Phase 256 Wave 1 — `[lifecycle]` declared in the bringup `system.toml` (the
+    /// SSoT) lands in `plan.lifecycle`, the typed path superseding the `nros.toml`
+    /// overlay. Pre-built record, runs in the default suite.
+    #[test]
+    fn plan_system_reads_lifecycle_from_system_toml() {
+        let root = temp_workspace("nros-plan-system-toml-lifecycle");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("package.xml"),
+            r#"<package format="3"><name>system_pkg</name><version>0.1.0</version></package>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("system.toml"),
+            "[system]\nname=\"system_pkg\"\nrmw=\"zenoh\"\ndomain_id=0\n[lifecycle]\nautostart=\"active\"\n",
+        )
+        .unwrap();
+        let launch = root.join("system.launch.xml");
+        fs::write(&launch, "<launch />").unwrap();
+        let record = root.join("record.json");
+        fs::write(
+            &record,
+            r#"{ "node": [ { "package": "demo_pkg", "executable": "talker", "name": "worker", "namespace": "/" } ] }"#,
+        )
+        .unwrap();
+        let metadata = root.join("talker.metadata.json");
+        fs::write(
+            &metadata,
+            r#"{
+  "version": 1, "package": "demo_pkg", "component": "talker", "language": "rust",
+  "executable": "talker", "exported_symbol": "nros_component_talker",
+  "nodes": [{
+    "id": "node_talker", "unresolved_name": {"value": "talker", "kind": "relative"},
+    "namespace": null, "publishers": [], "subscribers": [], "timers": [], "services": [], "actions": []
+  }],
+  "callbacks": [], "parameters": [],
+  "trace": {"generator": "test", "package_manifest": "package.xml", "source_artifacts": []}
+}"#,
+        )
+        .unwrap();
+
+        let output = plan_system(PlanOptions {
+            system_pkg: "system_pkg".to_string(),
+            workspace_root: root.clone(),
+            launch_file: launch,
+            record_file: Some(record),
+            out_root: root.join("build/system_pkg/nros"),
+            metadata_files: vec![metadata],
+            manifest_files: vec![],
+            nros_toml_files: vec![],
+            launch_args: vec![],
+            rmw: None,
+        })
+        .unwrap();
+        let plan: Value =
+            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
+        serde_json::from_value::<NrosPlan>(plan.clone()).unwrap();
+        assert_eq!(
+            plan["lifecycle"]["autostart"], "active",
+            "system.toml [lifecycle] must land in plan.lifecycle; got {plan:?}"
         );
     }
 
