@@ -130,13 +130,20 @@ even with C Node pkgs. Only a workspace whose **Entry itself is C**
   `nano_ros_entry(TYPED LANG c)` (today gated to cpp, `NanoRosEntry.cmake:118`).
   The only gate on deleting `emit_c::emit`. Fixtures `pure_c_workspace` /
   `c_mixed_workspace.rs` assert only the linked binary → compatible once it lands.
-- [ ] **W0-B — typed Rust node in a C++ entry** for **`examples/workspaces/mixed`**
-  (`c_talker` + `cpp_listener` + `rust_heartbeat_pkg`). `emit_cpp::emit_typed` has
-  no `lang == "rust"` branch (only `c` / `cpp`; else → C++ class), so a Rust node
-  is mis-emitted as a C++ class. The legacy path routes it via the
-  `__nros_component_rust_heartbeat_pkg_register` symbol the Rust node exports. Needs
-  a `lang == "rust"` branch in `emit_cpp::emit_typed` routing to a Rust component
-  seam (or its `register` symbol). Gates the workspaces/mixed runtime fixture.
+- [x] **W0-B — typed Rust node in a C++ entry** for **`examples/workspaces/mixed`**
+  (`c_talker` + `cpp_listener` + `rust_heartbeat_pkg`). **DONE (2026-06-18, `d258833bf`).**
+  `nros::node!` now emits `__nros_component_<pkg>_install(node, executor, self)`
+  (D7 Option C: the Rust node self-creates its node + owns its state on the shared
+  executor handle, ignoring entry-side node/qos); `emit_cpp::emit_typed` gained a
+  `lang == "rust"` branch that forward-declares the seam, skips entry-side
+  Node/class storage + the class-header `#include`, and hands it
+  `::nros::global_handle()`. `nros::install_node_typed::<C>` registers an
+  `ExecutableNode` against the borrowed `*mut Executor`. Mixed adopts the typed
+  entry (c_talker → `NROS_C_COMPONENT`; cpp_listener → `configure(Node&)`); builds
+  green, binary carries all three seams, runtime publishes on the shared executor.
+  Also fixed a latent cmake ordering bug (component lib used stale generator target
+  names `nros_{cpp,c}_cargo_build` → clean typed-C builds raced the
+  `nros_config_generated.h` mirror; now `cargo-build_nros_{cpp,c}`).
 
 So the legacy `emit_cpp::emit` deletion is clean for the **pure-C++** path (typed
 cpp already parallel); but the **C** path (W0-A) and the **Rust-in-cpp-entry** path
