@@ -616,6 +616,10 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
                 profile: None,
                 optimize: None,
                 features: Vec::new(),
+                // Phase 256 W8 — carry the Cargo-native deploy domain/locator
+                // projection into the synthesized DeployTarget (RFC-0004 §3.1).
+                domain_id: dt.domain_id,
+                locator: dt.locator.clone(),
             },
         );
     }

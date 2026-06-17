@@ -342,6 +342,8 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             profile: None,
             optimize: None,
             features: Vec::new(),
+            domain_id: None,
+            locator: None,
         },
     );
 

@@ -357,6 +357,15 @@ fn convert_deploy(
                     .collect()
             })
             .unwrap_or_default(),
+        // Phase 256 W8 — migrate per-deploy domain/locator overrides.
+        domain_id: tbl
+            .get("domain_id")
+            .and_then(|v| v.as_integer())
+            .map(|n| n as u32),
+        locator: tbl
+            .get("locator")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
     })
 }
 

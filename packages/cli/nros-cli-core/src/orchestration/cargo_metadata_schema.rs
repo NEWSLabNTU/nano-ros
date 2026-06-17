@@ -542,6 +542,25 @@ impl SystemToml {
         None
     }
 
+    /// Phase 256 Wave 8 — the ROS domain id for `target`: `[deploy.<target>].domain_id`
+    /// overrides `[system].domain_id`. The RFC-0004 §3.1 ladder for `domain_id`
+    /// (CLI flag is a future rung). Both codegen paths resolve through this.
+    pub fn resolved_domain_id(&self, target: Option<&str>) -> u32 {
+        target
+            .and_then(|t| self.deploy.get(t))
+            .and_then(|dt| dt.domain_id)
+            .unwrap_or(self.system.domain_id)
+    }
+
+    /// Phase 256 Wave 8 — the locator for `target`: `[deploy.<target>].locator`
+    /// overrides `[system].locator` (`None` when neither sets it).
+    pub fn resolved_locator(&self, target: Option<&str>) -> Option<String> {
+        target
+            .and_then(|t| self.deploy.get(t))
+            .and_then(|dt| dt.locator.clone())
+            .or_else(|| self.system.locator.clone())
+    }
+
     /// Phase 255 — the RMW backend name for `target`, applying the RFC-0031
     /// precedence (highest wins): the CLI `--rmw` flag, then `[deploy.<target>].rmw`,
     /// then `[system].rmw`, then the `"zenoh"` default. Both codegen paths (the
@@ -739,6 +758,14 @@ pub struct DeployTarget {
     /// Extra cargo features for this target's generated build.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
+    /// Phase 256 Wave 8 — per-deploy override of `[system].domain_id` (RFC-0004
+    /// §3.1 ladder, like `rmw`). Resolved via [`SystemToml::resolved_domain_id`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain_id: Option<u32>,
+    /// Phase 256 Wave 8 — per-deploy override of `[system].locator`. Resolved via
+    /// [`SystemToml::resolved_locator`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locator: Option<String>,
 }
 
 /// `[[domain]]` row.
@@ -1228,6 +1255,33 @@ kind = "qemu"
         )
         .unwrap();
         assert_eq!(sole.resolve_target(None).as_deref(), Some("only"));
+    }
+
+    /// Phase 256 Wave 8 — `[deploy.<t>].domain_id`/`.locator` override the
+    /// `[system]` defaults for that target; absent → the system value.
+    #[test]
+    fn resolved_domain_and_locator_honour_deploy_override() {
+        let sys: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/sys:7447\"\n\
+             [deploy.robot]\nkind=\"flash\"\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n\
+             [deploy.native]\nkind=\"self\"\n",
+        )
+        .unwrap();
+
+        // robot overrides both.
+        assert_eq!(sys.resolved_domain_id(Some("robot")), 7);
+        assert_eq!(
+            sys.resolved_locator(Some("robot")).as_deref(),
+            Some("tcp/robot:7450")
+        );
+        // native overrides neither → [system] defaults.
+        assert_eq!(sys.resolved_domain_id(Some("native")), 0);
+        assert_eq!(
+            sys.resolved_locator(Some("native")).as_deref(),
+            Some("tcp/sys:7447")
+        );
+        // no target → [system] defaults.
+        assert_eq!(sys.resolved_domain_id(None), 0);
     }
 
     /// Minimal `<bringup>/system.toml` — only `[system]` + one

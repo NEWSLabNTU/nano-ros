@@ -477,9 +477,12 @@ fn render_system_config_h(sys: &SystemToml, target: Option<&str>, cli_rmw: Optio
         "#define NROS_SYSTEM_NAME \"{}\"\n",
         c_escape(&sys.system.name)
     ));
+    // Phase 256 Wave 8 — domain/locator resolve through the SSoT precedence too
+    // (`[deploy.<target>].domain_id`/`.locator` override `[system]`), so the C
+    // define matches the build for a given `--target`.
     out.push_str(&format!(
         "#define NROS_SYSTEM_DOMAIN_ID {}u\n",
-        sys.system.domain_id
+        sys.resolved_domain_id(target)
     ));
     // Phase 255 — RMW resolves through the SSoT precedence ladder
     // (`[deploy.<target>].rmw` → `[system].rmw` → `zenoh`), the SAME
@@ -496,7 +499,7 @@ fn render_system_config_h(sys: &SystemToml, target: Option<&str>, cli_rmw: Optio
         .map(|r| r.c_define_token.to_string())
         .unwrap_or_else(|_| rmw.to_ascii_uppercase().replace('-', "_"));
     out.push_str(&format!("#define NROS_SYSTEM_RMW_{rmw_token}\n"));
-    if let Some(loc) = &sys.system.locator {
+    if let Some(loc) = &sys.resolved_locator(target) {
         out.push_str(&format!(
             "#define NROS_SYSTEM_LOCATOR \"{}\"\n",
             c_escape(loc)
@@ -946,12 +949,15 @@ fn render_plan_json(
     let multi_tier = !tier_table.is_single_tier();
     let shared_state: Vec<PlanSharedStateDoc> = shared_state_docs(bringup, multi_tier);
 
+    // Phase 256 Wave 8 — resolve domain/locator for the selected target (deploy
+    // override → system default), matching the C-define bake.
+    let resolved_locator = bringup.system.resolved_locator(target);
     let doc = PlanDoc {
         bringup: &bringup.name,
         system: &bringup.system.system.name,
         rmw: &bringup.system.system.rmw,
-        domain_id: bringup.system.system.domain_id,
-        locator: bringup.system.system.locator.as_deref(),
+        domain_id: bringup.system.resolved_domain_id(target),
+        locator: resolved_locator.as_deref(),
         target,
         launch_file: launch_file.as_deref(),
         components,
@@ -1818,6 +1824,33 @@ name = "talker"
         let hc = render_system_config_h(&sys, Some("native"), Some("xrce"));
         assert!(hc.contains("#define NROS_SYSTEM_RMW \"xrce\"\n"), "{hc}");
         assert!(hc.contains("#define NROS_SYSTEM_RMW_XRCE\n"), "{hc}");
+    }
+
+    /// Phase 256 Wave 8 — the C `#define NROS_SYSTEM_DOMAIN_ID` / `_LOCATOR`
+    /// resolve through the deploy override too, matching the build for a target.
+    #[test]
+    fn system_config_h_domain_locator_honour_deploy_override() {
+        let sys: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/sys:7447\"\n\
+             [deploy.robot]\nkind=\"flash\"\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n",
+        )
+        .unwrap();
+
+        // `--target robot` → both overrides land in the defines.
+        let h = render_system_config_h(&sys, Some("robot"), None);
+        assert!(h.contains("#define NROS_SYSTEM_DOMAIN_ID 7u\n"), "{h}");
+        assert!(
+            h.contains("#define NROS_SYSTEM_LOCATOR \"tcp/robot:7450\"\n"),
+            "{h}"
+        );
+
+        // No target → `[system]` defaults.
+        let hd = render_system_config_h(&sys, None, None);
+        assert!(hd.contains("#define NROS_SYSTEM_DOMAIN_ID 0u\n"), "{hd}");
+        assert!(
+            hd.contains("#define NROS_SYSTEM_LOCATOR \"tcp/sys:7447\"\n"),
+            "{hd}"
+        );
     }
 
     /// 212.E.T1 — fixture bringup w/ 2 Rust components produces the expected

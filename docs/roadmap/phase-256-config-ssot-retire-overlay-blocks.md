@@ -152,10 +152,17 @@ already exists in `system.toml` for the bake but the planner ignores it).
   after the next release). Non-fatal (audit guard, not a hard error). Uses the Wave-0
   `last_block_source` primitive. Test: `legacy_overlay_audit_names_deprecated_blocks`. cli suite
   green (399).
-- **Wave 8 — deploy-metadata precedence (leakage).** Make the `[package.metadata.nros.deploy.<t>]`
-  + `[workspace.metadata.nros]` Cargo-native projection **explicit and non-silent**: when a
-  `system.toml` exists for the same scope it is authoritative (RFC-0004 §3.1 ladder: flag >
-  `system.toml` > native projection > default), surfaced by `config show`, not an overlay merge.
+- **Wave 8 — `domain_id`/`locator` per-deploy override — DONE (2026-06-18).** Added
+  `domain_id`/`locator` to `DeployTarget` + `SystemToml::resolved_domain_id(target)` /
+  `resolved_locator(target)` (the RFC-0004 §3.1 ladder, like `resolved_rmw`). The C bake
+  (`render_system_config_h` → `#define NROS_SYSTEM_DOMAIN_ID`/`_LOCATOR`) and the vendor-hint
+  `render_plan_json` both resolve through them for the selected `--target`, so the deploy override
+  reaches the defines (was silently the `[system]` value). The Cargo-native projection
+  (`[package.metadata.nros.deploy.<t>].domain_id`/`.locator`) now flows into the synthesized
+  `DeployTarget` (`nros_config`), `migrate` carries the legacy fields. Tests:
+  `resolved_domain_and_locator_honour_deploy_override`,
+  `system_config_h_domain_locator_honour_deploy_override`. cli suite green (404). (The full
+  precedence-vs-Cargo-projection surfacing in `config show` rides on W6's provenance — a small tail.)
 - **Wave 9 — retire the legacy files (re-scoped).** Once every overlay block is migrated
   (W1-W5), the overlay readers go from warn-fallback → removed. Then, per the grounded re-scope:
   **(a) delete the `nros.toml` file support outright** — `package_nros_toml` / `load_toml_values`
