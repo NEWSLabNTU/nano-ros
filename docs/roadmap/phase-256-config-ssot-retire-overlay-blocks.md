@@ -120,10 +120,21 @@ already exists in `system.toml` for the bake but the planner ignores it).
   Test: `schema_build_json_reads_build_tuning_from_deploy`. cli suite green (402). **Follow-up:**
   the `[build.cargo]` / `[build.cc]` per-layer tables + compile `cfg` (toml::Value, not Eq) are not
   yet on `DeployTarget` — a small W3 tail when a fixture needs them.
-- **Wave 4 — `[[scheduling.contexts]]` → `[tiers]`.** Planner derives `PlanSchedContext` from
-  `ResolvedTierTable` (the bake's input); overlay `scheduling.contexts` becomes a warn-fallback.
-  Resolve the tier-vs-context field mapping (decision 2). Highest design risk — do it after the
-  mechanical waves.
+- **Wave 4 — `[[scheduling.contexts]]` → `[tiers]`. DECISION: A (tiers absorb the EDF fields),
+  locked 2026-06-18.** Grounded finding: tier and context are the **same concern, split** — a
+  callback `group` binds to BOTH (`schema_callbacks` → context id; node `callback_groups` → tier),
+  and the context's RT-policy fields (`class`/`period`/`budget`/`deadline`/`deadline_policy`/`core`)
+  are **emitted into the runtime `SchedContextSpec`** by `render_sched_context`, so they are NOT
+  vestigial and cannot be dropped. The tier model has none of them. **Decision A:** extend `TierDef`
+  with the RTOS-agnostic policy fields (flat: `class`/`period_us`/`budget_us`/`deadline_us`/
+  `deadline_policy`/`core`), keeping per-RTOS `priority`/`stack_bytes` in `TierRtosSpec` (already
+  there). The planner derives `PlanSchedContext` from the resolved tier; the overlay
+  `[[scheduling.contexts]]` becomes a warn-fallback. (Rejected B = two tables: both bind the same
+  `group` → collision. C = same fields under a `[tiers.<n>.rt]` sub-table — equivalent capability,
+  not chosen for the extra nesting.) **Greenfield:** 0 examples declare `[[scheduling.contexts]]`,
+  so no fixtures to migrate — the work is the `TierDef` extension + a `resolve_tiers`→`PlanSchedContext`
+  lowering. `TierDef` lives in `nros-orchestration-ir` (shared with the `nros::main!()` macro), so
+  the field add touches that crate.
 - **Wave 5 — `[[shared_state]]` → typed `SharedStateDecl`. RECONCILIATION (like W4).**
   **Discovered 2026-06-17: not mechanical.** The overlay `[[shared_state]]` is `{id, bytes}` — a
   RAW byte region the runtime allocates flat. The typed `SharedStateDecl` is
