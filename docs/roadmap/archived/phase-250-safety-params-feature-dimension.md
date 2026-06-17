@@ -203,7 +203,9 @@ they belong with the transport/RMW declared axis, not params/safety.
 - Embedded targets pay the safety/param code size **only** when the axis is selected (a
   compile dimension, not a runtime always-on path). **Held** — both lower to build features.
 - Wave 5: a declarative example builds with the axes on + off and a transport e2e proves
-  `ctx.integrity()` is surfaced and the param server answers. **Pending.**
+  `ctx.integrity()` is surfaced and the param server answers. **DONE** (2026-06-16) —
+  `declarative-safety-listener` fixture + `test_declarative_safety_listener_receives_integrity`
+  (green: integrity surfaced, `crc=ok`); see the Wave 5 entry above.
 
 ## Risks
 
