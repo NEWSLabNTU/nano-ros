@@ -182,15 +182,25 @@ already exists in `system.toml` for the bake but the planner ignores it).
   `resolved_domain_and_locator_honour_deploy_override`,
   `system_config_h_domain_locator_honour_deploy_override`. cli suite green (404). (The full
   precedence-vs-Cargo-projection surfacing in `config show` rides on W6's provenance — a small tail.)
-- **Wave 9 — retire the legacy files (re-scoped).** Once every overlay block is migrated
-  (W1-W5), the overlay readers go from warn-fallback → removed. Then, per the grounded re-scope:
-  **(a) delete the `nros.toml` file support outright** — `package_nros_toml` / `load_toml_values`
-  overlay path / the `nros.toml`-next-to-`system.toml` discovery — there is no surviving role
-  (the §5 embedded-runtime job is deploy metadata). **(b) Scrub the `config.toml` reader**
-  (`nros config show --config` / `nros config check --config`) — serves a file no example ships.
-  **(c) Fold transport/network into the `deploy` class** — drop the phantom `[[transport]]` file
-  home; the genuinely-needed multi-session topology lives under `system.toml` (with
-  `[[domain]]`/`[[bridge]]`). RFC-0004 records the four-surface taxonomy (done in the re-scope).
+- **Wave 9 — retire the legacy files. SCOPE: orchestration only (decision b, 2026-06-18).** W9
+  covers the two **orchestration** surfaces; the embedded board parser is a separate issue:
+  - **① `nros.toml` overlay (CLI planner)** — once every block is migrated/disabled/removed (W1-W5),
+    delete the overlay reading: `package_nros_toml`, `load_toml_values` overlay path, the
+    `collect_*` warn-fallbacks (lifecycle/safety/param_services), the `nros.toml`-next-to-`system.toml`
+    discovery. Typed `system.toml` becomes the ONLY source. Adjust the W7 audit message
+    ("`nros.toml` unsupported, remove" — not "migrate blocks"). Keep `nros migrate` (pre-212 →
+    system.toml is still useful).
+  - **② `config.toml` CLI reader** — remove the `nros config show/check --config <path>`
+    subcommands (0 example files) + the `book/src/reference/cli.md` section.
+  - **③ Board-crate `Config::from_toml` → SEPARATE (issue 0081).** The 10+ board crates'
+    `from_toml(include_str!("config.toml"))` parsers are dead legacy (superseded by `DeployOverlay`),
+    but they are **embedded-runtime, a different layer** — not the orchestration config tidy. The
+    `Config` struct + `DeployOverlay` path STAY (that's how embedded config works now); only the
+    dead `from_toml` parser is removed, in its own embedded-cleanup sweep, so W9 doesn't balloon
+    into a board-crate sweep.
+  - **Transport/network** was already folded into the `deploy` class (the phantom `[[transport]]`
+    file home dropped; multi-session topology lives in `system.toml` next to `[[domain]]`/`[[bridge]]`).
+    RFC-0004 records the four-surface taxonomy (done in the re-scope).
 
 ## Acceptance
 
