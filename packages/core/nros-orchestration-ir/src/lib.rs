@@ -193,8 +193,7 @@ pub enum TierResolveError {
     UnknownOverrideNode { node: String },
     #[error(
         "node `{node}` has callback groups in different tiers (`{tier_a}` and `{tier_b}`); v1 \
-         pins a whole node to one tier — put its groups in the same tier or move shared data to \
-         `[[shared_state]]`"
+         pins a whole node to one tier — put its groups in the same tier"
     )]
     NodeSpansTiers {
         node: String,
@@ -264,8 +263,7 @@ pub fn resolve_tiers(
 
     // v1 node-pinned-to-tier rule (RFC-0015): every callback group of a node
     // must resolve to the SAME tier, so one node = one task = one (unlocked)
-    // State. Cross-tier sharing is the `[[shared_state]]` mechanism, not a
-    // node's own state. (v2 with the multi-task state-sync machinery relaxes.)
+    // State. (v2 with the multi-task state-sync machinery relaxes this.)
     let mut node_tier: BTreeMap<&str, &str> = BTreeMap::new();
     for (tier, members) in &members_by_tier {
         for (node, _group) in members {
