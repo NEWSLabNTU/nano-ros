@@ -84,7 +84,9 @@ boot. Migrated to the typed carrier (`nano_ros_node_register(TYPED)` cpp/c,
 (ThreadX + riscv64-threadx + threadx-linux app-nodes were done earlier in
 phase-245/246.)
 
-### Stage 2 — workspace examples → multi-node typed entry — **IN PROGRESS**
+### Stage 2 — workspace examples → multi-node typed entry — **DONE (2026-06-18)**
+All workspace examples migrated to the typed entry (W0-A + W0-B landed); both
+framework W0s are in. Stage-3 deletion is now unblocked for every language.
 Multi-node workspaces (Node libs + Entry pkg + `<launch>`). Migrate via the typed
 multi-node entry (`nano_ros_entry(... TYPED)` → `nros codegen entry --typed`;
 per-Node `configure(Node&)` for C++, `NROS_C_COMPONENT` for C). The proven
@@ -123,13 +125,17 @@ even with C Node pkgs. Only a workspace whose **Entry itself is C**
   the typed `robot_entry` (component `configure()` + `NativeBoard::run_components`, no
   interpreter). Pure-C++ Stage-3 deletion is now unblocked.
 
-**Two framework W0s gate the rest** (each purely additive — no deletion):
-- [ ] **W0-A — typed C entry** for **`pure-c-workspace`** + **`examples/workspaces/c`**.
-  Entry is C (`NROS_MAIN_C`, `nano_ros_entry LANG c`). Needs `emit_c::emit_typed`
-  + a C `run_components` ABI (`nros_board_native_run_components`) + cmake
-  `nano_ros_entry(TYPED LANG c)` (today gated to cpp, `NanoRosEntry.cmake:118`).
-  The only gate on deleting `emit_c::emit`. Fixtures `pure_c_workspace` /
-  `c_mixed_workspace.rs` assert only the linked binary → compatible once it lands.
+**Two framework W0s gated the rest** (each purely additive — no deletion). **Both
+landed 2026-06-18; Stage-3 deletion is now unblocked for every language.**
+- [x] **W0-A — typed C entry** for **`examples/workspaces/c`**. **DONE (2026-06-18,
+  `8699c0dd2`).** Added the C-ABI `nros_board_native_run_components` (nros-cpp Rust
+  extern "C": init → setup(executor) → spin → fini — the real-executor lifecycle the
+  legacy no-op `nros_board_native_run` never had) + `emit_c::emit_typed` (pure-C
+  `main.c` driving each node's `__nros_c_component_<pkg>_{create,configure}` seam) +
+  ungated cmake `nano_ros_entry(TYPED LANG c)`. A TYPED C entry/component links
+  NanoRosCpp (the `nros_cpp_*` seam home, which bundles nros-c's C ABI). `examples/
+  workspaces/c` adopts it (c_talker/c_listener → `NROS_C_COMPONENT`); builds green,
+  runtime publishes on the real executor. Gate on deleting `emit_c::emit` is now lifted.
 - [x] **W0-B — typed Rust node in a C++ entry** for **`examples/workspaces/mixed`**
   (`c_talker` + `cpp_listener` + `rust_heartbeat_pkg`). **DONE (2026-06-18, `d258833bf`).**
   `nros::node!` now emits `__nros_component_<pkg>_install(node, executor, self)`
