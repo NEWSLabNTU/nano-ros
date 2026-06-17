@@ -69,6 +69,10 @@ default = ["rmw-zenoh"]
 # Phase 248 C1 — pulls the optional concrete zenoh backend; droppable so
 # the board can link a DDS/XRCE backend instead.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 252 / issue 0072 — forward the `[safety]` capability axis to the zenoh
+# backend's own `safety-e2e` (CRC attach/validate), so a safety build reaches the
+# wire path. Inert when zenoh is dropped (`?`).
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 
 # Phase 216.C.2 follow-up — empty `[workspace]` table makes this crate a
 # standalone workspace root, mirroring `nros-board-rtic-stm32f4` (216.B.2).

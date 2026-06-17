@@ -7,6 +7,30 @@ area: build
 related: [phase-250, phase-252, rfc-0031, issue-0073]
 ---
 
+> **RESOLVED (verified + completed 2026-06-17).** All three lowering targets land
+> the backend `safety-e2e` (RFC-0031 generalization, Phase 252):
+> 1. **Entry** `nros/safety-e2e` — `generated_default_features` (Wave 1).
+> 2. **Board-less native** — direct `nros-rmw-zenoh` dep carries it via
+>    `backend_features` (test `safety_axis_reaches_zenoh_backend_feature`).
+> 3. **Board-backed** — `capability_resolver::CAPABILITIES` + `board_capability_features`
+>    emit the board crate's `safety-e2e` forwarding feature when the board's
+>    `nros-board.toml` advertises it (`capability_features`); unsupported boards warn,
+>    never error (test `board_capability_features_gated_on_advertisement`).
+>
+> Every catalog board with a zenoh path advertises + forwards `safety-e2e`
+> (`every_in_tree_board_declares_capabilities` green). **This pass** added the
+> forwarding feature to the last 3 zenoh boards that lacked it
+> (`nros-board-{embassy-stm32f4,rtic-mps2-an385,rtic-stm32f4}`:
+> `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]`) so the family is uniform — closing
+> the "14 board crates wire it heterogeneously, some lack it" concern below.
+> Verified: 7/7 capability/safety orchestration tests pass; native + declarative
+> transport e2e green (`crc=ok`, phase-250 Wave 5); the 3 board manifests resolve.
+>
+> **Residual (optional follow-up, non-blocking):** an embedded *runtime* e2e (CRC
+> over zenoh on an mps2-an385 QEMU safety build). The lowering is unit-tested and the
+> CRC wire code is shared with the native path (already e2e-green), so this is
+> extra-confidence, not a correctness gap.
+
 > **RESOLVED (2026-06-16).** All three Rust lowering targets land: entry `nros/safety-e2e`
 > (phase-250), the direct backend dep for board-less native (this issue, native fix), and the
 > board-crate feature for board-backed/embedded (phase-252 — registry + descriptor gate + every

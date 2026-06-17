@@ -46,7 +46,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 _None currently open._
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#75** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#72** —
+safety-e2e CRC dead over zenoh (`nros/safety-e2e` didn't reach the backend's
+`safety-e2e`): fixed via the RFC-0031 capability-axis generalization (Phase 252) —
+`[safety]` lowers to the entry umbrella, the board-less native backend dep, AND the
+board crate's `safety-e2e` forwarding feature (gated on the board's `nros-board.toml`
+`capability_features`). This pass added the forwarding feature to the last 3 zenoh
+boards lacking it (embassy-stm32f4, rtic-mps2-an385, rtic-stm32f4) so the family is
+uniform; 7/7 capability tests + native/declarative `crc=ok` e2e green. Residual:
+optional embedded runtime e2e. See `archived/0072-*`. **#75** —
 `qos_overrides` best_effort test failed on CI only (looked like a subscriber hang):
 actually a test-harness output-consume race — `wait_for_output_pattern` returns its
 whole read buffer on match, so the first of two sequential waits ate the later

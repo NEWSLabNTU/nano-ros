@@ -101,6 +101,9 @@ default = ["stm32f429", "ethernet", "rmw-zenoh"]
 # Phase 248 C1 — pulls the optional concrete zenoh backend; droppable so
 # the board can link a DDS/XRCE backend instead.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 252 / issue 0072 — forward `[safety]` to the zenoh backend's safety-e2e
+# (CRC); inert when zenoh is dropped (`?`).
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # Ethernet transport flag. The actual MAC / smoltcp bringup body
 # lives in 216.B.3's `init_hardware` body — today the feature gates
 # only the optional dep so cross-compile resolves cleanly.

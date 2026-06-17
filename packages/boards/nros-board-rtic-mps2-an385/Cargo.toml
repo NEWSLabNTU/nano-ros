@@ -35,6 +35,9 @@ default = ["ethernet", "rmw-zenoh"]
 # Phase 248 C1 — pulls the optional concrete zenoh backend; droppable so
 # the board can link a DDS/XRCE backend instead.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# Phase 252 / issue 0072 — forward `[safety]` to the zenoh backend's safety-e2e
+# (CRC); inert when zenoh is dropped (`?`).
+safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 ethernet = ["nros-board-mps2-an385/ethernet"]
 e2e-synthetic-callback = []
 
