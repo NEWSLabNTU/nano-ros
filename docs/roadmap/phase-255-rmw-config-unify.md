@@ -1,6 +1,6 @@
 # Phase 255 — RMW selection: one config source, both codegen paths
 
-Status: **Design (2026-06-17)** · Implements [RFC-0031](../design/0031-rmw-selection-and-lowering.md)
+Status: **Complete (2026-06-17)** — all 6 waves landed · Implements [RFC-0031](../design/0031-rmw-selection-and-lowering.md)
 precedence + [RFC-0004](../design/0004-configuration-and-transports.md) SSoT · Follows
 [phase-254](phase-254-config-ssot-unify-codegen-paths.md) (which unified the *capability* axes;
 this does RMW) · Tracked by [issue 0076 §A](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md).
@@ -103,9 +103,13 @@ config show` surfacing the resolved value's provenance (issue 0076 §A).
   `schema_build_json_emits_bridged_rmws_from_system_toml`, `rmw_set_unions_bridged_rmws`. cli suite
   green (393). The `[[transport]].rmw` overlay multi-RMW path stays *readable* during the
   transition (Wave 6 retires it); `[[bridge]]` is now the authoritative SSoT for multi-RMW.
-- **Wave 6 — migrate fixtures + docs.** Move `[build].rmw` declarations to `system.toml`
-  `[system].rmw`/`[deploy]`; RFC-0004 §4 + RFC-0031 §4.3 record the implemented precedence +
-  single source; retire the `[build].rmw` overlay after the release.
+- **Wave 6 — migrate fixtures + docs — DONE (2026-06-17).** Fixture sweep found **no fixture
+  declares a `[build].rmw` / `[[transport]].rmw` overlay** — the only divergent case,
+  `multi_pkg_workspace_esp_idf`, already used `[system].rmw = "xrce"` (Wave 2 made the planner
+  honour it), so the migration is a no-op. RFC-0031 §Precedence + RFC-0004 §4 updated from
+  forward-looking to **LANDED**, naming the real API (`SystemToml::resolved_rmw` /
+  `bridged_rmws`) and recording the precedence + single source. The `[build].rmw` overlay stays a
+  deprecated warn-fallback (`schema_build_json`), retired after the next release.
 
 ## Acceptance
 
