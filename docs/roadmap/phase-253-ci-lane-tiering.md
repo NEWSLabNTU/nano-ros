@@ -50,10 +50,18 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
 
 ## Remaining (non-blocking)
 
-- [ ] **CI validation** — confirm on a real run that per-push `check-fast`
-      completes + the nightly lanes (host-integration / platform-ci / zephyr) run
-      green. Needs a quiet window or a manual `workflow_dispatch`; locally validated
-      (`just check-fast` green ~67 s).
+- [x] **CI validation** — done via `workflow_dispatch` on all 6 tier files (2026-06-17).
+      Merge STRUCTURE confirmed correct: `changes` path-gate routes the narrow jobs
+      right; build-tier skip-on-push works; per-cron `github.event.schedule` guard +
+      job-level concurrency function; every job runs in the right order. Lane results:
+      **docs ✓** (full rustdoc), **host-tests unit ✓**, **nightly platform matrix
+      freertos/threadx_linux/esp32 ✓ + zephyr 3.7 cells ✓**. Validation also CAUGHT
+      the provisioned-source-cache bug (reverted — see "Done since"). Residual reds
+      are pre-existing parallel-wave CONTENT debt, not the merge: pr-checks
+      `check-build`/`check-no-std` (a #73 safety-talker compile error + a no_std
+      `can't find crate for std` regression — the old `check` lane was already red on
+      these) and one `zephyr 4.4 / cpp/listener` dual-line build cell. Those belong to
+      the 254/255/#73 authors.
 
 ### Done since
 - **Push lane de-coupled from the CLI build.** `check-fast` needs no nros CLI (its
