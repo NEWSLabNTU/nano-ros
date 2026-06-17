@@ -81,9 +81,12 @@ config show` surfacing the resolved value's provenance (issue 0076 §A).
   `[build].rmw`, so the plan defaulted to `zenoh` (≠ the C bake's xrce); now the plan resolves to
   `xrce`. cli suite green (388). (The esp_idf *bringup* test needs a prebuilt fixture — a
   pre-existing env precondition, unrelated.)
-- **Wave 3 — bake reads it.** `render_system_config_h` resolves through the same
-  `resolve_system_rmw` (honouring `[deploy.<t>].rmw`, not just `[system].rmw`), so the C define
-  matches the build for a given target.
+- **Wave 3 — bake reads it — DONE (2026-06-17).** `render_system_config_h(sys, target)` resolves
+  RMW through `SystemToml::resolved_rmw(target, None)` — the SAME helper the planner uses — so the
+  C `#define NROS_SYSTEM_RMW` / `NROS_SYSTEM_RMW_<TOKEN>` honour `[deploy.<target>].rmw`, not just
+  `[system].rmw`. The selected `--target` (already threaded into `emit_bake_tree`) is the deploy
+  key. Test: `system_config_h_rmw_honours_deploy_override` (deploy override wins for the target;
+  `[system].rmw` default with no target). cli suite green (389).
 - **Wave 4 — `--rmw` CLI flag.** Add to `nros plan` / `nros codegen-system` `Args`; top of the
   precedence. Threaded into `resolve_system_rmw`.
 - **Wave 5 — multi-RMW via `[[bridge]]`.** The build links the union of the bridge endpoints'
