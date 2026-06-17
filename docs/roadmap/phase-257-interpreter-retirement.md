@@ -335,7 +335,42 @@ PRE-IMPL CHECK in D5.**
   `__nros_component_<pkg>_register` (descriptor seam) is retired with the interpreter in
   Stage 3.
 
-**Net: ALL design questions resolved (D1–D6), code-grounded — no residual.** The cffi
+- **D7 — Rust node ownership / naming / qos in a foreign (non-Rust) entry. OPEN —
+  BLOCKER surfaced 2026-06-18 during W0-B impl-prep; needs a decision before coding.**
+  The typed entry creates ONE `::nros::Node` per launch `<node>` (launch name + per-topic
+  qos-overrides applied to it) and C/C++ components bind their entities **on that given
+  node** (`configure(__nros_node_i)` / `__nros_c_component_*_configure(node, …)`,
+  emit_cpp.rs:378-408). But a Rust node's `register(&mut NodeContext)` **self-creates** its
+  node with a hardcoded name — `ctx.create_node(NodeOptions::new("heartbeat"))` (= the
+  node's own `Node::NAME`; see `examples/workspaces/mixed/.../rust_heartbeat_pkg/src/lib.rs`)
+  — and `ExecutorSink::create_node` (node_runtime.rs:599) builds a fresh node from it. So
+  for a Rust node in a C++/C entry: (a) the entry's pre-created node is unused; (b) the
+  entry's qos-overrides never reach the Rust entities; (c) the Rust node's name is its
+  `NAME`, not the launch `<node>` name (they coincide in the mixed workspace but it is not
+  enforced). Options:
+  - **A — uniform (bind on the given node).** Make the Rust register run against the
+    entry's existing node (NodeContext adopts a provided node handle + name + qos). Rust
+    becomes identical to C/C++ (entry owns the node, qos works). Cost: `NodeContext` /
+    `register` / `nros::node!` must support "register onto a provided node" (today
+    `create_node` always builds one) — touches the rust runtime + macro.
+  - **B — Rust self-owns; thread name+qos through the seam.** `_install` passes the launch
+    name + qos into the register so it self-creates correctly; entry skips its own
+    `create_node` for rust. Localized, keeps the rust model. Cost: extend the seam +
+    register to accept name+qos.
+  - **C — scope-cut + documented constraint.** W0-B supports Rust nodes that self-name
+    (`Node::NAME` must equal the launch `<node>` name) and carry NO entry-side
+    qos-override (a documented rust-in-foreign-entry limitation). Minimal — works for the
+    mixed workspace today (heartbeat: name matches, no qos). Defer A/B until a rust node
+    needs entry qos. Risk: a silent qos/name mismatch for future rust nodes (mitigate
+    with an `nros check` warning).
+
+  **Recommendation: C now** (unblocks W0-B + the interpreter deletion for the mixed
+  workspace) **with A as the principled follow-up** (full uniformity). Awaiting decision.
+
+**Net: D1–D6 resolved; D7 (rust node model in a foreign entry) is an OPEN blocker — see
+above.** Earlier "no residual" was premature: the executor-sharing questions resolved
+cleanly, but the per-node ownership/naming/qos reconciliation for a Rust node hosted in a
+non-Rust entry is a real design choice, surfaced only when wiring the actual call. The cffi
 executor handle is a shared `nros_node::Executor` (D5), so the seam is `_install(node,
 executor, self)` where each language registers on that one executor; Rust state stays
 alive via the executor's own callback `Arc` clones (D1); ticks (only for
