@@ -152,6 +152,125 @@ cpp already parallel); but the **C** path (W0-A) and the **Rust-in-cpp-entry** p
 - [ ] Build-sweep the migrated examples to confirm nothing references the deleted
   symbols.
 
+## Design exploration (2026-06-18) — unified cross-language component-install seam
+
+W0-A (typed C entry) and W0-B (Rust node in a C++ entry) are not two ad-hoc patches;
+they are one missing abstraction: **a single language-agnostic C-ABI for "install a
+node's entities + dispatch into the shared executor", consumed by one entry
+`run_components` regardless of the entry's or the node's language.** Designing that
+once subsumes both W0s and makes the 3×3 (entry-lang × node-lang) matrix collapse to
+3 thin per-language adapters + one runtime.
+
+### The substrate is already unified
+
+Every typed entry, in every language, drives the **same** real executor — an opaque
+`nros-rmw-cffi` executor handle. The current typed C++ entry already proves this: its
+generated TU hands each component
+`__nros_node_{i}.executor_handle()` (a `void*` cffi handle) + `__nros_node_{i}.ffi_handle()`
+(a `nros_cpp_node_t*`). So C/C++/Rust nodes installed against the same handle land in
+the same executor; `spin_once` dispatches all of them. **Nothing about the executor
+needs unifying** — only the *install seam* differs per language today:
+
+| node lang | install seam today | dispatch |
+| --- | --- | --- |
+| **C** | `__nros_c_component_<pkg>_configure(node, executor, self)` (+ `_create`) | trampolines bound on the node (identity) |
+| **C++** | `self->configure(::nros::Node&)` (object method) | member-fn trampolines (identity) |
+| **Rust** | `register(&mut NodeContext)` + `init`/`dispatch`/`tick` fn-ptrs → `ExecutorNodeRuntime::register_dispatch_slot` | `dispatch_fn(state, cb_id, ctx)` (name/id demux) |
+
+The C seam is **already** the target shape: `(node, executor, self) -> int32_t`. C++ is
+that minus the free-function wrapper; Rust is that plus an opaque `state` and an
+id-demuxed dispatch instead of identity trampolines — but both ultimately register
+per-entity callbacks into the one executor.
+
+### Proposed canonical seam
+
+One extern-C install function per Node pkg, identical signature across languages:
+
+```c
+// "construct + install this pkg's node into the executor"; returns nros_ret_t.
+int32_t __nros_component_<pkg>_install(const nros_cpp_node_t* node,
+                                       void* executor,
+                                       void* self /* nullable */);
+```
+
+- **C** — rename/alias the existing `__nros_c_component_<pkg>_configure` (already this
+  signature). `_create` supplies `self`.
+- **C++** — the `NROS_C_COMPONENT`/typed-component macro emits a free-fn
+  `__nros_component_<pkg>_install` that does `static <Class> obj; obj.configure(Node(node))`
+  (the class object is the `self`; identity trampolines bind as today).
+- **Rust** — `nros::node!` emits `__nros_component_<pkg>_install` that runs the
+  `register_dispatch_slot` body against the **handed-in** executor handle (not a
+  Rust-owned `ExecutorNodeRuntime`): `init()` → boxed `state` (stashed in the executor's
+  component arena, keyed by node), `register(NodeContext over (node, executor))` declares
+  entities whose executor callback is a thunk to `dispatch_fn(state, cb_id)`. The 4
+  fn-ptrs stay as the macro's internals; `_install` is the uniform façade.
+
+### One `run_components`, any entry language
+
+The entry (C / C++ / Rust) becomes a thin loop with **no per-node-language knowledge**:
+
+```
+exec = open_executor(config)
+for each launch node i (pkg, name, namespace, qos):
+    node_i = create_node(exec, name, namespace)
+    apply_qos_overrides(node_i, ...)        // already baked by emit
+    __nros_component_<pkg_i>_install(node_i, exec, self_i)   // uniform call
+spin_once-loop(exec)                          // dispatches identity + id-demux alike
+shutdown(exec)
+```
+
+Codegen (`emit_cpp::emit_typed` / a new shared emitter) emits the **same** install-call
+list for all three node languages — the `lang == c|cpp|rust` branches collapse to "emit
+`__nros_component_<pkg>_install(...)`", differing only in the forward-declaration
+(extern "C") and whether a `self`/`_create` is needed. **W0-B falls out for free** (a
+Rust node is just another `_install` call); **W0-A** becomes "emit the same loop from a
+C `main` (`NROS_MAIN_C`) calling a C `run_components` over the install list" — no new
+`emit_c::emit_typed` synthesis logic, just the C entry shell.
+
+### Why this is the right cut
+
+- **Deletes, not adds, a dimension.** The interpreter (`EntryNodeRuntime`) existed to
+  *synthesize* behaviour from descriptors precisely because there was no uniform install
+  seam. With one, Stage-3's deletion is unconditional for every language — the legacy
+  `emit_cpp::emit`/`emit_c::emit` + the descriptor `NodeContext` seam all go.
+- **Entry-language ⟂ node-language.** A C entry can host a Rust node and vice versa,
+  because the seam is C-ABI + the executor is shared. The 3×3 matrix becomes 3 adapters.
+- **No new runtime.** `ExecutorNodeRuntime` (Rust) and the C++ executor wrapper both
+  already operate on the cffi handle; `_install` just lets each register against a handle
+  it was *given* rather than one it *owns*.
+
+### Open questions / risks (to settle before W0 impl)
+
+1. **Rust `state` ownership.** Today `ExecutorNodeRuntime` owns the component arena; under
+   the handed-handle model the executor (cffi) must own/stash the boxed Rust `state` +
+   the dispatch thunk for the node's lifetime. Either extend the cffi executor with a
+   per-node opaque-component slot, or keep a thin Rust-side registry keyed by the cffi
+   executor handle (simpler; what `register_dispatch_slot` already does — just stop
+   requiring it to *own* the `Executor`).
+2. **Drop order / lifetime.** identity (C/C++) self lifetime vs Rust boxed state — the
+   entry/arena must outlive `spin`. The current typed C++ TU uses `static` storage; the
+   uniform loop keeps that.
+3. **`self` for C++/Rust.** C uses `_create`→`self`; C++ uses a `static` object; Rust a
+   boxed state. The seam takes `void* self` (nullable) — each adapter decides.
+4. **QoS-override bake** already runs before `configure`; keep it before `_install`.
+
+### Incremental path (so it lands safely)
+
+1. Land the **Rust `_install` façade** in `nros::node!` (additive; the 4 fn-ptrs stay) +
+   make `ExecutorNodeRuntime` able to register against a borrowed handle. Unit-test the
+   Rust `_install` against a live executor.
+2. `emit_cpp::emit_typed`: add the `lang == "rust"` branch emitting `_install` — **W0-B
+   done**, validated on `examples/workspaces/mixed`.
+3. Add the C++ `_install` free-fn wrapper + switch the C/C++ branches to the uniform
+   `_install` call (behaviour-identical to today's `configure`).
+4. The C entry shell (`NROS_MAIN_C` → C `run_components` over the install list) + cmake
+   `nano_ros_entry(TYPED LANG c)` — **W0-A done**, validated on `pure-c-workspace` +
+   `examples/workspaces/c`.
+5. Stage-3 deletion (now unconditional).
+
+This keeps each step additive + independently validated, with the interpreter deletion
+as the final, now-unblocked-for-all-languages step.
+
 ## Acceptance
 - No example/template uses `NROS_NODE_REGISTER` / `record_callback_effect` /
   `nros_declared_node_*` / the string-descriptor `NodeContext` seam.
