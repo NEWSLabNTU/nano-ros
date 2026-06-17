@@ -136,10 +136,25 @@ already exists in `system.toml` for the bake but the planner ignores it).
   there). The planner derives `PlanSchedContext` from the resolved tier; the overlay
   `[[scheduling.contexts]]` becomes a warn-fallback. (Rejected B = two tables: both bind the same
   `group` → collision. C = same fields under a `[tiers.<n>.rt]` sub-table — equivalent capability,
-  not chosen for the extra nesting.) **Greenfield:** 0 examples declare `[[scheduling.contexts]]`,
-  so no fixtures to migrate — the work is the `TierDef` extension + a `resolve_tiers`→`PlanSchedContext`
-  lowering. `TierDef` lives in `nros-orchestration-ir` (shared with the `nros::main!()` macro), so
-  the field add touches that crate.
+  not chosen for the extra nesting.) **Greenfield:** 0 examples declare `[[scheduling.contexts]]`.
+
+  - **W4.1 — `TierDef` + `ResolvedTier` absorb the EDF fields — DONE (2026-06-18).** Added
+    `class`/`period_us`/`budget_us`/`deadline_us`/`deadline_policy`/`core` to `TierDef`
+    (`nros-orchestration-ir`); `resolve_tiers` carries them onto `ResolvedTier`. All optional →
+    plain priority tiers byte-identical. Test: `tier_carries_rt_policy_fields`.
+  - **W4.2 — planner derives `PlanSchedContext` from tiers — BLOCKED (2026-06-18).** Architectural,
+    not mechanical: `resolve_tiers` needs the node-declared `callback_groups` (`group → tier`), which
+    live in Cargo `[package.metadata.nros.node].callback_groups` → `NrosConfig`. **Only the bake
+    (`codegen_system`) loads `NrosConfig`.** The planner builds `Workspace::discover` and works from
+    prebuilt source-metadata JSON, which carries **no** `callback_groups`, and the planner
+    deliberately **does not shell `cargo metadata`** (it consumes prebuilt artifacts). So the planner
+    cannot map a callback's `group` to a tier. Resolving needs a design call (issue 0082): (a) thread
+    `callback_groups` into the planner via the **build-stage source metadata** (the codegen emits it
+    into the per-node JSON the planner already reads — keeps the planner cargo-free); (b) let
+    `plan_system` load `NrosConfig` (introduces a `cargo metadata` shell in the planner — against its
+    current design); or (c) unify Rust scheduling codegen through the bake so the tier table feeds
+    both languages (bigger refactor). **Pending that decision; phase-256 continues with the other
+    waves.**
 - **Wave 5 — `[[shared_state]]` → DROPPED. DECISION: remove the feature, scoped out (2026-06-18).**
   shared_state is a raw in-process shared-memory primitive — **not a ROS concept.** nano-ros is an
   RT *ROS* client (graph = nodes + pub/sub + services + actions + params + lifecycle); ROS 2's own
