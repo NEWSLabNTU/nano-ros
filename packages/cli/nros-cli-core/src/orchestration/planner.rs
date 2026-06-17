@@ -872,6 +872,15 @@ fn schema_build_json(
         }
         obj.insert("rmw".to_string(), json!(rmw));
     }
+    // Phase 255 Wave 5 — cross-RMW `[[bridge]]`s make a single binary link the
+    // union of every bridged `[[domain]]`'s RMW. Record that link set so
+    // `rmw_set` (board-feature lowering) pulls in the extra backends. No
+    // bridges ⇒ no field ⇒ byte-identical single-RMW build.
+    if let Some(s) = &sys
+        && !s.bridges.is_empty()
+    {
+        obj.insert("bridged_rmws".to_string(), json!(s.bridged_rmws()));
+    }
     build
 }
 
@@ -3597,6 +3606,30 @@ mod tests {
         // --rmw with no system.toml still drives (top rung, overlay ignored).
         let bare = schema_build_json(std::slice::from_ref(&overlay), None, Some("xrce"));
         assert_eq!(bare["rmw"], "xrce");
+    }
+
+    /// Phase 255 Wave 5 — cross-RMW `[[bridge]]`s in system.toml surface as the
+    /// plan's `bridged_rmws` link set; a bridge-free system emits no field.
+    #[test]
+    fn schema_build_json_emits_bridged_rmws_from_system_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [[domain]]\nname=\"default\"\nrmw=\"zenoh\"\nid=0\n\
+             [[bridge]]\nname=\"b\"\nfrom=\"cyclonedds:default\"\nto=\"zenoh:default\"\n",
+        )
+        .unwrap();
+
+        let build = schema_build_json(&[], Some(&st), None);
+        assert_eq!(build["bridged_rmws"], json!(["zenoh", "cyclonedds"]));
+
+        // No bridges → no `bridged_rmws` field (single-RMW build byte-identical).
+        let st2 = dir.path().join("plain.toml");
+        std::fs::write(&st2, "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n").unwrap();
+        let plain = schema_build_json(&[], Some(&st2), None);
+        assert!(plain.get("bridged_rmws").is_none());
     }
 
     #[cfg(feature = "play-launch-parser")]

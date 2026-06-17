@@ -1578,7 +1578,7 @@ fn normalize_rmw(rmw: &str) -> Option<&'static str> {
 /// just `build.rmw` — so single-RMW builds are byte-identical.
 fn rmw_set(build: &PlanBuildOptions) -> Vec<&'static str> {
     let mut set: Vec<&'static str> = Vec::new();
-    let raw: Vec<&str> = if build.transports.is_empty() {
+    let mut raw: Vec<&str> = if build.transports.is_empty() {
         vec![build.rmw.as_str()]
     } else {
         build
@@ -1587,6 +1587,10 @@ fn rmw_set(build: &PlanBuildOptions) -> Vec<&'static str> {
             .map(|t| t.rmw.as_deref().unwrap_or(build.rmw.as_str()))
             .collect()
     };
+    // Phase 255 Wave 5 — fold in the cross-RMW `[[bridge]]` link set
+    // (`system.toml`), the SSoT replacement for the `[[transport]].rmw` overlay
+    // multi-RMW path. Empty ⇒ no change ⇒ single-RMW build byte-identical.
+    raw.extend(build.bridged_rmws.iter().map(String::as_str));
     for r in raw {
         if let Some(n) = normalize_rmw(r)
             && !set.contains(&n)
@@ -4343,6 +4347,24 @@ mod net_fragment_tests {
         // Unknown intent is inert (no profile), not an error.
         b.optimize = Some("bogus".to_string());
         assert_eq!(render_profile_section(&b), "");
+    }
+
+    /// Phase 255 Wave 5 — `rmw_set` folds the `bridged_rmws` link set (from a
+    /// cross-RMW `[[bridge]]`) into the board-feature set, deduped against the
+    /// single `build.rmw`. Empty `bridged_rmws` ⇒ single-RMW set unchanged.
+    #[test]
+    fn rmw_set_unions_bridged_rmws() {
+        let mut b = build_with(vec![]);
+        // Single-RMW build, no bridges → just `build.rmw`.
+        assert_eq!(rmw_set(&b), vec!["zenoh"]);
+
+        // A cross-RMW bridge adds cyclonedds; zenoh stays deduped.
+        b.bridged_rmws = vec!["zenoh".to_string(), "cyclonedds".to_string()];
+        assert_eq!(rmw_set(&b), vec!["zenoh", "cyclonedds"]);
+        assert_eq!(
+            board_rmw_features(&b),
+            vec!["rmw-zenoh".to_string(), "rmw-cyclonedds".to_string()]
+        );
     }
 
     #[test]

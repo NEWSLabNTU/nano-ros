@@ -504,6 +504,48 @@ impl SystemToml {
             self.system.rmw.clone()
         }
     }
+
+    /// Phase 255 Wave 5 — the multi-RMW link set a single binary needs when it
+    /// hosts cross-RMW `[[bridge]]`s. A single binary must link the **union** of
+    /// every bridged session's RMW so it can speak both sides. Returned in
+    /// declaration order, deduped, and always seeded with the system default
+    /// (`resolved_rmw(None, None)`) so the local side links too.
+    ///
+    /// Each `[[bridge]]` names two endpoints (`from`/`to`). An endpoint is an
+    /// `<rmw>:<domain>` session selector (e.g. `cyclone:default`) — the RMW is
+    /// the prefix before `:`. A bare endpoint with no `:` is read as a
+    /// `[[domain]]` name and resolved to that domain's `rmw`. Unresolvable bare
+    /// endpoints are skipped (the `nros check` provenance pass flags them; issue
+    /// 0076 §A).
+    ///
+    /// Empty `[[bridge]]` set ⇒ a single-element vec (just the default) ⇒ the
+    /// build is byte-identical to a non-bridged single-RMW system.
+    pub fn bridged_rmws(&self) -> Vec<String> {
+        let mut set: Vec<String> = vec![self.resolved_rmw(None, None)];
+        let domain_rmw = |name: &str| -> Option<String> {
+            self.domains
+                .iter()
+                .find(|d| d.name == name)
+                .map(|d| d.rmw.clone())
+        };
+        for bridge in &self.bridges {
+            for endpoint in [&bridge.from, &bridge.to] {
+                // `<rmw>:<domain>` → the RMW is the prefix; a bare name is a
+                // `[[domain]]` reference resolved to its `rmw`.
+                let rmw = match endpoint.split_once(':') {
+                    Some((rmw, _domain)) => Some(rmw.to_string()),
+                    None => domain_rmw(endpoint),
+                };
+                if let Some(rmw) = rmw
+                    && !rmw.is_empty()
+                    && !set.contains(&rmw)
+                {
+                    set.push(rmw);
+                }
+            }
+        }
+        set
+    }
 }
 
 /// `[[shared_state]]` — a named cross-node shared region (RFC-0015 §8).
@@ -975,6 +1017,37 @@ to = "zenoh:default"
         let reserialized = toml::to_string(&v1).expect("serialize");
         let v2: SystemToml = toml::from_str(&reserialized).expect("reparse");
         assert_eq!(v1, v2);
+    }
+
+    /// Phase 255 Wave 5 — `bridged_rmws` returns the union of the system default
+    /// plus every cross-RMW `[[bridge]]` endpoint's RMW (the `<rmw>:<domain>`
+    /// prefix, or a bare `[[domain]]` name resolved to its rmw). No bridges ⇒
+    /// just the default (single-RMW, byte-identical build).
+    #[test]
+    fn bridged_rmws_unions_bridge_endpoints() {
+        // `<rmw>:<domain>` selectors — the prefix is the RMW.
+        let prefixed: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [[domain]]\nname=\"default\"\nrmw=\"zenoh\"\nid=0\n\
+             [[bridge]]\nname=\"b\"\nfrom=\"cyclonedds:default\"\nto=\"zenoh:default\"\n",
+        )
+        .unwrap();
+        assert_eq!(prefixed.bridged_rmws(), vec!["zenoh", "cyclonedds"]);
+
+        // Bare endpoint names resolve through `[[domain]]`.
+        let by_domain: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [[domain]]\nname=\"cloud\"\nrmw=\"cyclonedds\"\nid=1\n\
+             [[bridge]]\nname=\"b\"\nfrom=\"cloud\"\nto=\"local\"\n",
+        )
+        .unwrap();
+        // `cloud` → cyclonedds; `local` is undeclared → skipped.
+        assert_eq!(by_domain.bridged_rmws(), vec!["zenoh", "cyclonedds"]);
+
+        // No bridges ⇒ just the system default.
+        let plain: SystemToml =
+            toml::from_str("[system]\nname=\"d\"\nrmw=\"xrce\"\ndomain_id=0\n").unwrap();
+        assert_eq!(plain.bridged_rmws(), vec!["xrce"]);
     }
 
     /// Phase 254 — `[safety]` / `[param_services]` capability axes parse as typed

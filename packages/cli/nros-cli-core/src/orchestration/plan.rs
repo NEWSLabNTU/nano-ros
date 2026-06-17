@@ -700,6 +700,14 @@ pub struct PlanBuildOptions {
     /// builds) round-trip without an empty `"transports": []`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub transports: Vec<PlanTransport>,
+    /// Phase 255 Wave 5 — the extra RMW backends a single binary links to host
+    /// cross-RMW `[[bridge]]`s (the union of every bridged `[[domain]]`'s RMW,
+    /// from `system.toml`). Empty ⇒ single-RMW build (just `rmw`), byte-identical
+    /// to pre-255. Supersedes the `[[transport]].rmw` overlay multi-RMW path —
+    /// bridges are topology and belong in `system.toml`, read by both codegen
+    /// paths. `rmw_set` unions this with `rmw` / `[[transport]].rmw`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bridged_rmws: Vec<String>,
     /// Phase 204.15 — coherent size/speed *intent* (`size` | `speed` |
     /// `balanced` | `debug`). The generated package build fans it out to RUSTFLAGS (`-C
     /// opt-level/lto/codegen-units/strip`) on top of the cargo profile, so one

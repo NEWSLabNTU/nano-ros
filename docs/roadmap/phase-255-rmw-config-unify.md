@@ -94,8 +94,15 @@ config show` surfacing the resolved value's provenance (issue 0076 §A).
   with no `system.toml` the plan still honours `--rmw`. Tests:
   `schema_build_json_cli_rmw_tops_the_ladder`, `system_config_h_rmw_honours_deploy_override`
   (extended with the `--rmw` rung). cli suite green (390).
-- **Wave 5 — multi-RMW via `[[bridge]]`.** The build links the union of the bridge endpoints'
-  RMWs from `system.toml`; deprecate the `[[transport]].rmw` overlay multi-RMW path.
+- **Wave 5 — multi-RMW via `[[bridge]]` — DONE (2026-06-17).** `SystemToml::bridged_rmws()`
+  returns the union of the system default plus every cross-RMW `[[bridge]]` endpoint's RMW (the
+  `<rmw>:<domain>` prefix, or a bare `[[domain]]` name → its `rmw`). `schema_build_json` records it
+  as the plan's `PlanBuildOptions::bridged_rmws` (skip-when-empty → single-RMW builds
+  byte-identical), and `rmw_set` (board-feature lowering) folds it into the linked backend set
+  alongside `build.rmw` / `[[transport]].rmw`. Tests: `bridged_rmws_unions_bridge_endpoints`,
+  `schema_build_json_emits_bridged_rmws_from_system_toml`, `rmw_set_unions_bridged_rmws`. cli suite
+  green (393). The `[[transport]].rmw` overlay multi-RMW path stays *readable* during the
+  transition (Wave 6 retires it); `[[bridge]]` is now the authoritative SSoT for multi-RMW.
 - **Wave 6 — migrate fixtures + docs.** Move `[build].rmw` declarations to `system.toml`
   `[system].rmw`/`[deploy]`; RFC-0004 §4 + RFC-0031 §4.3 record the implemented precedence +
   single source; retire the `[build].rmw` overlay after the release.
