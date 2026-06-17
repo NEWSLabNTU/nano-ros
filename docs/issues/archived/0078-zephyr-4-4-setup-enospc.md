@@ -1,10 +1,11 @@
 ---
 id: 78
 title: nightly zephyr 4.4 cells fail — ENOSPC during `just zephyr setup` pip install
-status: open
+status: resolved
 type: bug
 area: zephyr
 related: [phase-253, phase-180]
+resolved_in: "Option C — setup.sh requirements-base.txt + nightly zephyr disk-reclaim"
 ---
 
 ## Problem
@@ -71,5 +72,11 @@ Two parts:
 
 A drops the biggest hog; the reclaim covers the remaining margin.
 
-Verify: re-dispatch `nightly` build-only — all 4.4 cells clear
-`Set up Zephyr 4.4 workspace`.
+## Verified
+
+Option C nightly build-only dispatch (run 27710516710): the two cells that
+ENOSPC'd under A-only — `zephyr 4.4 / rust/listener` and `… / rust/service-server`
+— now clear `Set up Zephyr 4.4 workspace`. 7/10 4.4 cells green at archive time
+with **0 setup failures** (the remaining 3 were queued on GitHub-runner
+contention, not failing; identical setup path). The prior failure mode
+(`[Errno 28] No space left on device` at pip) is gone.
