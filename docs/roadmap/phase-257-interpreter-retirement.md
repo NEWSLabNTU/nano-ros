@@ -364,13 +364,18 @@ PRE-IMPL CHECK in D5.**
     needs entry qos. Risk: a silent qos/name mismatch for future rust nodes (mitigate
     with an `nros check` warning).
 
-  **Recommendation: C now** (unblocks W0-B + the interpreter deletion for the mixed
-  workspace) **with A as the principled follow-up** (full uniformity). Awaiting decision.
+  **DECIDED (2026-06-18): Option C now + A as a follow-up.** W0-B ships the scope-cut —
+  Rust nodes in a foreign entry self-name (`Node::NAME` must equal the launch `<node>`
+  name) + carry no entry-side qos-override; documented limitation + (follow-up) an
+  `nros check` warning when a rust node has a launch qos-override or a name mismatch.
+  Option A (uniform bind-on-given-node) is the principled follow-up once a rust node
+  needs entry qos.
 
-**Net: D1–D6 resolved; D7 (rust node model in a foreign entry) is an OPEN blocker — see
-above.** Earlier "no residual" was premature: the executor-sharing questions resolved
-cleanly, but the per-node ownership/naming/qos reconciliation for a Rust node hosted in a
-non-Rust entry is a real design choice, surfaced only when wiring the actual call. The cffi
+**Net: D1–D7 resolved (D7 = Option C).** Executor-sharing (D1/D5) + the rust node model
+in a foreign entry (D7, scope-cut) settled. Implementation proceeds: W0-B = a rust
+`_install` that self-creates its node on the shared executor (entry skips `create_node`
+for rust) + the `emit_cpp::emit_typed` `lang=="rust"` branch, validated on
+`examples/workspaces/mixed`; A-uniformity + the `nros check` guard are follow-ups. The cffi
 executor handle is a shared `nros_node::Executor` (D5), so the seam is `_install(node,
 executor, self)` where each language registers on that one executor; Rust state stays
 alive via the executor's own callback `Arc` clones (D1); ticks (only for
