@@ -137,11 +137,9 @@ function(nano_ros_entry)
         # metadata for each node's C++ class + header. C++ only; the metadata
         # must already list every component, so the node pkgs' add_subdirectory
         # has to precede the entry's (it links them anyway).
-        if(_NRA_TYPED AND NOT _NRA_LANG STREQUAL "cpp")
-            message(FATAL_ERROR
-                "nano_ros_entry(TYPED): only LANG cpp supports the typed "
-                "executor Entry (got LANG '${_NRA_LANG}').")
-        endif()
+        # Phase 257 (W0-A) — TYPED now supports LANG c too: the generated C TU
+        # routes each node to the real executor via its `NROS_C_COMPONENT`
+        # factory/configure seam + `nros_board_native_run_components`.
         _nros_entry_invoke_codegen(
             NAME      "${_NRA_NAME}"
             LANG      "${_NRA_LANG}"
@@ -161,7 +159,11 @@ function(nano_ros_entry)
 
     if(NOT TARGET ${_NRA_NAME})
         add_executable(${_NRA_NAME} ${_sources_for_exe})
-        if(_lang_tag STREQUAL "c" AND TARGET NanoRos::NanoRos)
+        # Phase 257 (W0-A) — a TYPED C entry drives the `nros_cpp_*` runtime
+        # (`nros_board_native_run_components`, `nros_cpp_node_create`), which lives
+        # in the C++ umbrella, so it links NanoRosCpp like a C++ entry — NOT the
+        # C-only NanoRos. A legacy (non-typed) C entry keeps NanoRos.
+        if(_lang_tag STREQUAL "c" AND NOT _NRA_TYPED AND TARGET NanoRos::NanoRos)
             target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRos)
         elseif(TARGET NanoRos::NanoRosCpp)
             target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRosCpp)

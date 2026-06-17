@@ -544,6 +544,91 @@ pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
     NROS_CPP_RET_OK
 }
 
+/// Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle: the C-ABI sibling of
+/// the header-only C++ `nros::board::NativeBoard::run_components`. The generated
+/// pure-C entry (`nros codegen entry --lang c --typed`) calls this from `main`,
+/// handing it a `setup` callback that creates each node and `configure`s its
+/// component on the executor.
+///
+/// Lifecycle: `init` → `setup(executor)` → spin → `fini`. The executor lives in
+/// this frame's storage for the whole run (no global state, no `Node::global_storage`
+/// — `setup` receives the handle directly). `init`'s locator / domain come from
+/// `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` (same env overlay the C++ `nros::init()`
+/// applies). The spin loop mirrors `detail::component_spin_loop`: run until killed,
+/// or for `$NROS_ENTRY_SPIN_MS` ms when set (the bounded external-observer test path).
+///
+/// # Safety
+/// `setup` must be a valid function pointer; it is invoked once with the executor
+/// handle (a `*mut CppContext`) before the spin loop.
+#[cfg(all(feature = "rmw-cffi", feature = "std"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_board_native_run_components(
+    setup: Option<unsafe extern "C" fn(executor: *mut c_void) -> i32>,
+) -> i32 {
+    let setup = match setup {
+        Some(f) => f,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT as i32,
+    };
+
+    // Env overlay (mirrors the C++ `nros::init()` hosted fallback).
+    let locator = std::env::var("NROS_LOCATOR")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .and_then(|s| std::ffi::CString::new(s).ok());
+    let domain_id: u8 = std::env::var("ROS_DOMAIN_ID")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|&d| d <= 232)
+        .unwrap_or(0) as u8;
+    let name = c"nros_c_entry";
+
+    // Executor storage lives for the whole run (init writes a CppContext here).
+    let mut storage = core::mem::MaybeUninit::<CppContext>::uninit();
+    let sptr = storage.as_mut_ptr() as *mut c_void;
+    let locator_ptr = locator.as_ref().map_or(core::ptr::null(), |c| c.as_ptr());
+    let rc = unsafe {
+        nros_cpp_init(
+            locator_ptr,
+            domain_id,
+            name.as_ptr(),
+            core::ptr::null(),
+            sptr,
+        )
+    };
+    if rc != NROS_CPP_RET_OK {
+        return rc as i32;
+    }
+
+    let setup_rc = unsafe { setup(sptr) };
+    if setup_rc != 0 {
+        unsafe { nros_cpp_fini(sptr) };
+        return setup_rc;
+    }
+
+    let bound_ms: u64 = std::env::var("NROS_ENTRY_SPIN_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let start_ns = nros_cpp_time_ns();
+    let mut ret = 0;
+    loop {
+        let last = unsafe { nros_cpp_spin_once(sptr, 10) };
+        if last != NROS_CPP_RET_OK {
+            ret = last as i32;
+            break;
+        }
+        if bound_ms != 0 {
+            let elapsed_ms = (nros_cpp_time_ns() - start_ns) / 1_000_000;
+            if elapsed_ms >= bound_ms {
+                break;
+            }
+        }
+    }
+
+    unsafe { nros_cpp_fini(sptr) };
+    ret
+}
+
 // ============================================================================
 // Node
 // ============================================================================

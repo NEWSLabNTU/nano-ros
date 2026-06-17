@@ -243,15 +243,24 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     }
 
     let src = if args.typed {
-        if lang != entry_codegen::Lang::Cpp {
-            bail!("--typed is C++ only (got --lang {})", args.lang);
+        if lang != entry_codegen::Lang::Cpp && lang != entry_codegen::Lang::C {
+            bail!(
+                "--typed supports --lang cpp or c (got --lang {})",
+                args.lang
+            );
         }
         let Some(meta_path) = args.metadata.as_ref() else {
             bail!("--typed requires --metadata <nros-metadata.json>");
         };
         let index = entry_codegen::metadata::ComponentIndex::load(meta_path)?;
         entry_codegen::metadata::enrich_plan(&mut plan, &index)?;
-        entry_codegen::emit_cpp::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
+        match lang {
+            entry_codegen::Lang::C => {
+                entry_codegen::emit_c::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
+            }
+            // Cpp (C and Cpp are the only langs that reach here).
+            _ => entry_codegen::emit_cpp::emit_typed(&plan).map_err(|e| eyre!("{e}"))?,
+        }
     } else {
         match lang {
             entry_codegen::Lang::Rust => entry_codegen::emit_rust::emit(&plan),

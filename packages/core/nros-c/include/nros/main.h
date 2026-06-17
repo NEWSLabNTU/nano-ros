@@ -46,6 +46,16 @@ extern "C" {
  */
 NROS_PUBLIC int nros_board_native_run(nros_node_register_fn entry);
 
+/* Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle. The C-ABI sibling of
+ * the C++ `NativeBoard::run_components`; the generated typed C TU (emitted by
+ * `nros codegen entry --lang c --typed`) calls this from `main`. `setup` is
+ * invoked once after `init`, with the executor handle, to create each node and
+ * `configure` its component on the real executor; then this pumps the executor
+ * (init → setup → spin → shutdown). Returns 0 on graceful exit, else the first
+ * non-zero `setup` / spin code. Defined in nros-cpp (the typed runtime). */
+typedef int32_t (*nros_c_entry_setup_fn)(void* executor);
+NROS_PUBLIC int32_t nros_board_native_run_components(nros_c_entry_setup_fn setup);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

@@ -20,4 +20,5 @@ nano_ros_entry(
     BOARD   native
     LAUNCH  "demo_bringup:system.launch.xml"
     LANG    c
+    TYPED
     DEPLOY  native)

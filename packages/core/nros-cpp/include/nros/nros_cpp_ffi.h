@@ -522,6 +522,26 @@ nros_cpp_ret_t nros_cpp_init(const char *locator,
 nros_cpp_ret_t nros_cpp_fini(void *storage);
 
 /**
+ * Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle: the C-ABI sibling of
+ * the header-only C++ `nros::board::NativeBoard::run_components`. The generated
+ * pure-C entry (`nros codegen entry --lang c --typed`) calls this from `main`,
+ * handing it a `setup` callback that creates each node and `configure`s its
+ * component on the executor.
+ *
+ * Lifecycle: `init` → `setup(executor)` → spin → `fini`. The executor lives in
+ * this frame's storage for the whole run (no global state, no `Node::global_storage`
+ * — `setup` receives the handle directly). `init`'s locator / domain come from
+ * `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` (same env overlay the C++ `nros::init()`
+ * applies). The spin loop mirrors `detail::component_spin_loop`: run until killed,
+ * or for `$NROS_ENTRY_SPIN_MS` ms when set (the bounded external-observer test path).
+ *
+ * # Safety
+ * `setup` must be a valid function pointer; it is invoked once with the executor
+ * handle (a `*mut CppContext`) before the spin loop.
+ */
+int32_t nros_board_native_run_components(int32_t (*setup)(void *executor));
+
+/**
  * Install the per-topic QoS override table on `node` (issue #52). Every entity
  * created afterwards folds the matching `(topic, role)` entries into its QoS —
  * the C++ mirror of Rust's `NodeHandle::set_qos_overrides`. `overrides` must

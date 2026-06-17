@@ -240,7 +240,13 @@ function(nano_ros_node_register)
                     add_dependencies(${_lib} ${_nrc_gen_dep})
                 endif()
             endforeach()
-            if(_nrc_lang STREQUAL "C" AND TARGET NanoRos::NanoRos)
+            # Phase 257 (W0-A) — a TYPED C component (`NROS_C_COMPONENT`) calls the
+            # `nros_cpp_*` seam (publisher/subscription/timer), which lives in the
+            # C++ umbrella (nros-cpp), so it links NanoRosCpp like a C++ component —
+            # NOT the C-only NanoRos. (A legacy declarative C node keeps NanoRos.)
+            # The umbrella bundles nros-c's C ABI, so `nros_*` C calls still resolve,
+            # and only ONE Rust staticlib is linked (no double `std`/REGISTRY).
+            if(_nrc_lang STREQUAL "C" AND NOT _NRC_TYPED AND TARGET NanoRos::NanoRos)
                 target_link_libraries(${_lib} PUBLIC NanoRos::NanoRos)
             elseif(TARGET NanoRos::NanoRosCpp)
                 target_link_libraries(${_lib} PUBLIC NanoRos::NanoRosCpp)
