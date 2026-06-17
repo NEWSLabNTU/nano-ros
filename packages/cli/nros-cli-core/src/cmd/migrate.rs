@@ -513,6 +513,7 @@ fn build_system_toml(plan: &MigrationPlan) -> SystemToml {
         safety: None,
         param_services: None,
         lifecycle: None,
+        param_persistence: None,
     }
 }
 

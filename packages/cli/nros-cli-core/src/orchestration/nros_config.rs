@@ -628,6 +628,7 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         safety: None,
         param_services: None,
         lifecycle: None,
+        param_persistence: None,
     };
 
     BringupPackageEntry {

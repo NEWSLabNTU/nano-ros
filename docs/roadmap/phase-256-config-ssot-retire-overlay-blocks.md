@@ -82,8 +82,11 @@ already exists in `system.toml` for the bake but the planner ignores it).
   `[lifecycle]` (reusing the shared `system_caps` parse), falling back to `collect_lifecycle` (the
   `nros.toml` overlay) with a deprecation warn — the phase-254 pattern. Test:
   `plan_system_reads_lifecycle_from_system_toml`. cli suite green (395).
-- **Wave 2 — `[param_persistence]` → typed.** Same shape: `param_persistence:
-  Option<SystemParamPersistence>` on `SystemToml`; `collect_param_persistence` prefers it.
+- **Wave 2 — `[param_persistence]` → typed — DONE (2026-06-17).** Added
+  `SystemParamPersistence { backend, path }` + `param_persistence: Option<…>` on `SystemToml`.
+  `schema_plan_json` prefers the typed block (empty `path` ⇒ no persistence), falling back to the
+  `nros.toml` overlay with a deprecation warn. Test:
+  `plan_system_reads_param_persistence_from_system_toml`. cli suite green (396).
 - **Wave 3 — `[build]` rest → `[deploy.<t>]`.** Extend `DeployTarget` with `profile`/`optimize`/
   `cargo`/`cc`/`features`; move `[[transport]]` to a top-level typed `system.toml` table.
   `schema_build_json` resolves the build shape from the selected deploy target, preferring it
