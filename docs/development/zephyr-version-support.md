@@ -80,8 +80,8 @@ Each line's patch sequence lives in `scripts/zephyr/patches/<line>.sh`
    the native_sim / NSOS / CycloneDDS patches still un-upstreamed for that line
    (each idempotent; `cd`s to repo root; takes the workspace arg). **No edit to
    the `setup` recipe** — the dispatcher picks it up by name.
-5. **Add a CI line.** Extend `.github/workflows/zephyr-dual-line.yml` (or its
-   successor) with the new line.
+5. **Add a CI line.** Extend the Zephyr jobs in `.github/workflows/nightly.yml`
+   with the new line.
 6. **Provision sources via `nros`.** `just zephyr setup` provisions
    `zenoh-pico` / `cyclonedds-src` / `px4-rs` via `nros setup --source`
    (index-driven; the canonical path — no hand `git submodule update`).

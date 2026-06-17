@@ -1,0 +1,275 @@
+# Host-test tier (CI reorg / phase-253) — the host-side regression net.
+#
+# Folds the two host suites into one tier file (separate jobs, separate
+# concurrency so the cheap unit lane can cancel-on-PR while the heavy
+# integration lane always completes):
+#   - unit        : `just test-unit` — workspace unit tests
+#                   (`cargo nextest --workspace --exclude nros-tests`).
+#   - integration : `just test-integration` — the nros-tests crate (QEMU/Zephyr/
+#                   ROS-interop groups excluded), the scaffold/launch/codegen net.
+#
+# Medium/heavy lanes: PR (path-scoped) + nightly + on-demand — NOT every direct
+# push to main (a per-push run was cancelled by the next push within ~10 min and
+# never completed; #57 root). See docs/development/ci-workflow-reorg.md.
+name: host-tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "justfile"
+      - "just/**"
+      - "cmake/**"
+      - "zephyr/cmake/**"
+      - "nros-sdk-index.toml"
+      - ".github/workflows/host-tests.yml"
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  # ----- workspace unit tests (cheap; cancel-on-PR) -----
+  unit:
+    name: workspace unit tests
+    runs-on: ubuntu-22.04
+    # Per-job concurrency: the cheap unit lane supersedes its older PR run; the
+    # heavy integration lane below uses its own group (cancel: false).
+    concurrency:
+      group: host-tests-unit-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        run: |
+          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      # Source provisioning is the slow part of this lane (`nros setup --source`
+      # git-fetches + checks out each submodule). Cache the provisioned working
+      # trees keyed on the recorded submodule SHAs (`git ls-tree HEAD`) → the key
+      # auto-invalidates the instant a pin bumps. EXACT KEY ONLY (no restore-keys):
+      # `nros setup` leaves a present, non-empty dest untouched (idempotent skip —
+      # sdk_store.rs), so a partial/stale restore would NOT be refreshed → a pin
+      # bump must MISS + refetch. A miss costs one fetch; steady state hits.
+      - name: Compute source-pin cache key
+        run: |
+          git ls-tree HEAD \
+            third-party/px4/px4-rs \
+            packages/zpico/zpico-sys/zenoh-pico \
+            packages/zpico/zpico-sys/mbedtls \
+            packages/xrce/xrce-sys/micro-cdr \
+            packages/xrce/xrce-sys/micro-xrce-dds-client \
+            third-party/dds/cyclonedds \
+            | tee .ci-source-pins
+
+      - name: Cache provisioned sources (auto-invalidate on pin bump)
+        uses: actions/cache@v4
+        with:
+          path: |
+            third-party/px4/px4-rs
+            packages/zpico/zpico-sys/zenoh-pico
+            packages/zpico/zpico-sys/mbedtls
+            packages/xrce/xrce-sys/micro-cdr
+            packages/xrce/xrce-sys/micro-xrce-dds-client
+            third-party/dds/cyclonedds
+          key: nros-src-${{ runner.os }}-${{ hashFiles('.ci-source-pins') }}
+
+      - name: Provision workspace sources via nros
+        run: |
+          nros setup --source px4-rs --source zenoh-pico --source mbedtls \
+                     --source micro-cdr --source micro-xrce-dds-client \
+                     --source cyclonedds-src
+
+      # The workspace unit suite includes nros-rmw-zenoh's `status_events_matrix`,
+      # which opens a client-mode session against a local zenohd. Provision the
+      # prebuilt router so the test runs here instead of panicking on a missing bin.
+      - name: Provision zenohd
+        run: just zenohd setup
+
+      - name: just test-unit
+        run: just test-unit
+
+  # ----- nros-tests integration (heavy; always completes) -----
+  integration:
+    name: nros-tests integration (host)
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: host-tests-integration-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        run: |
+          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      # Cache the provisioned working trees keyed on the recorded submodule SHAs.
+      # EXACT KEY ONLY (no restore-keys) — see the `unit` job for the rationale.
+      # (+ nuttx-libc vs the unit set.)
+      - name: Compute source-pin cache key
+        run: |
+          git ls-tree HEAD \
+            third-party/px4/px4-rs \
+            packages/zpico/zpico-sys/zenoh-pico \
+            packages/zpico/zpico-sys/mbedtls \
+            packages/xrce/xrce-sys/micro-cdr \
+            packages/xrce/xrce-sys/micro-xrce-dds-client \
+            third-party/dds/cyclonedds \
+            third-party/nuttx/libc \
+            | tee .ci-source-pins
+
+      - name: Cache provisioned sources (auto-invalidate on pin bump)
+        uses: actions/cache@v4
+        with:
+          path: |
+            third-party/px4/px4-rs
+            packages/zpico/zpico-sys/zenoh-pico
+            packages/zpico/zpico-sys/mbedtls
+            packages/xrce/xrce-sys/micro-cdr
+            packages/xrce/xrce-sys/micro-xrce-dds-client
+            third-party/dds/cyclonedds
+            third-party/nuttx/libc
+          key: nros-src-${{ runner.os }}-${{ hashFiles('.ci-source-pins') }}
+
+      - name: Provision workspace sources via nros
+        run: |
+          nros setup --source px4-rs --source zenoh-pico --source mbedtls \
+                     --source micro-cdr --source micro-xrce-dds-client \
+                     --source cyclonedds-src --source nuttx-libc
+
+      # `test-integration` spawns zenohd to back the Phase 211/212 host tests.
+      - name: Provision zenohd
+        run: just zenohd setup
+
+      # Test prerequisites the way a user gets them — via `nros setup` (#25): the
+      # patched qemu-system-arm (build/qemu/), the prebuilt Micro-XRCE-DDS Agent
+      # (nros store), and play_launch_parser (launch-graph tool; best-effort).
+      - name: Provision QEMU + XRCE agent + play_launch_parser (nros setup --tool)
+        run: |
+          nros setup --tool qemu --prefix "$GITHUB_WORKSPACE/build/qemu" --index nros-sdk-index.toml
+          nros setup --tool xrce-agent --index nros-sdk-index.toml
+          nros setup --tool play_launch_parser --index nros-sdk-index.toml \
+            || echo "play_launch_parser unavailable — workspace-entry fixtures [SKIPPED]"
+          plp_bin="$(dirname "$(find "$HOME/.nros/sdk/play_launch_parser" -type f -name play_launch_parser -path '*/bin/*' 2>/dev/null | head -1)")"
+          [ -n "$plp_bin" ] && echo "$plp_bin" >> "$GITHUB_PATH" || true
+
+      # The native integration tests spawn PREBUILT example binaries via
+      # `require_prebuilt_binary`. Stage them by building the fixtures the way a
+      # user does. Issue #29 — split into per-stage steps with `df` checkpoints
+      # (a build that fills the shared ~146 GB disk kills the agent + discards the
+      # step's log); `build-fixture-rust-core` only (+17 GB), extras (~52 GB) NOT
+      # run (would starve test-integration → ENOSPC). CI-build env scoped to the
+      # fixture steps only (never the job — test-integration asserts on symbols).
+      - name: Build rust core fixtures
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "off"
+          RUSTFLAGS: "-C debuginfo=0"
+          # Issue #57 Cause-1: cap the fixture builder's rustc fan-out — the
+          # 2-vCPU / 7 GB runner OOM-kills rustc mid-compile otherwise.
+          NROS_BUILD_JOBS: "2"
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          source /opt/ros/humble/setup.bash
+          mkdir -p build/ci-logs
+          echo "before:"; df -h / | tail -1
+          just native build-fixture-rust-core > build/ci-logs/rust-core.log 2>&1 \
+            || { echo "::group::rust-core FAILED tail"; tail -120 build/ci-logs/rust-core.log; echo "::endgroup::"; echo "rust-core partial — [SKIPPED]"; }
+          echo "after rust-core ($(wc -l < build/ci-logs/rust-core.log) lines suppressed):"; df -h / | tail -1
+
+      - name: Build workspace fixtures
+        env:
+          # NB (issue #71): do NOT add `CARGO_PROFILE_RELEASE_LTO: "off"` here. The
+          # native C++/mixed workspace Entry links two Rust staticlibs that each
+          # bundle `std`; the FFI crate's `lto = true` DCE-strips the redundant
+          # `rust_begin_unwind`. Forcing LTO off keeps it → `multiple definition`.
+          RUSTFLAGS: "-C debuginfo=0"
+          NROS_BUILD_JOBS: "2"
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          source /opt/ros/humble/setup.bash
+          just native build-workspace-fixtures > build/ci-logs/workspace.log 2>&1 \
+            || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; echo "workspace partial — [SKIPPED]"; }
+          echo "after workspace ($(wc -l < build/ci-logs/workspace.log) lines suppressed):"; df -h / | tail -1
+
+      - name: just test-integration
+        env:
+          NROS_FIXTURES_OPTIONAL: "1"
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          source /opt/ros/humble/setup.bash
+          mkdir -p build/ci-logs
+          set +e
+          just test-integration > build/ci-logs/test-integration.log 2>&1
+          rc=$?
+          set -e
+          echo "::group::test-integration output (tail)"; tail -200 build/ci-logs/test-integration.log; echo "::endgroup::"
+          exit $rc
+
+      - name: Report skipped fixtures (post-run)
+        if: always()
+        run: |
+          if [ -f target/nextest/default/junit.xml ]; then
+            echo "::group::skipped fixtures"
+            grep -E '<skipped|\[SKIPPED\]' target/nextest/default/junit.xml \
+              | head -100 || echo "(no skips recorded)"
+            echo "::endgroup::"
+          else
+            echo "(no junit.xml — test-integration may have failed before any test ran)"
+          fi
+
+      - name: Upload nextest JUnit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-integration-tests-junit
+          path: target/nextest/default/junit.xml
+          if-no-files-found: ignore
+          retention-days: 7

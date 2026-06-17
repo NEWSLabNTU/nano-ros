@@ -1,4 +1,4 @@
-name: Deploy Book
+name: docs
 
 on:
   push:
@@ -19,7 +19,7 @@ on:
       - "book/rustdoc-driver/**"
       - "packages/zpico/nros-rmw-zenoh/src/**"
       - "packages/xrce/nros-rmw-xrce/src/**"
-      - ".github/workflows/deploy-book.yml"
+      - ".github/workflows/docs.yml"
 
   workflow_dispatch:
 

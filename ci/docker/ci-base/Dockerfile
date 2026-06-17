@@ -12,7 +12,7 @@
 # tests` run their cells in this image — no per-cell `setup-ros` / apt / tool
 # installs, and the AMENT/ROS gap that fails `nros generate-rust` is closed.
 #
-# Build/publish via .github/workflows/build-ci-base-image.yml →
+# Build/publish via the `ci-base` job in .github/workflows/images.yml →
 #   ghcr.io/newslabntu/nano-ros-ci:humble  (tag = ROS distro; bump = new tag)
 FROM ros:humble-ros-base
 

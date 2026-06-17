@@ -1227,14 +1227,14 @@ check-no-std:
     echo "check-no-std OK."
 
 # Verify nros-sdk-index.toml + the QEMU configure flags
-# (.github/workflows/sdk-index-gate.yml). Buildless + fast.
+# (the `sdk-index` job in .github/workflows/pr-checks.yml). Buildless + fast.
 [group("ci")]
 check-sdk-index:
     python3 scripts/sdk/verify-index.py nros-sdk-index.toml
     ./scripts/sdk/check-qemu-configure.sh
 
 # Scaffold-journey: a `nros new` project resolves end-to-end via the generated
-# `[patch.crates-io]` path block (.github/workflows/scaffold-journey.yml).
+# `[patch.crates-io]` path block (the `scaffold-journey` job in pr-checks.yml).
 [group("ci")]
 scaffold-journey: setup-cli
     #!/usr/bin/env bash
@@ -1243,7 +1243,7 @@ scaffold-journey: setup-cli
     NROS="$(nros_cli_bin)" scripts/ci/scaffold-journey-check.sh
 
 # colcon-parity: the `local-msg-package` template must also build under stock
-# colcon (.github/workflows/colcon-parity.yml). Needs ROS 2 + colcon on the host;
+# colcon (the `colcon-parity` job in pr-checks.yml). Needs ROS 2 + colcon on the host;
 # skips cleanly when colcon is absent.
 [group("ci")]
 colcon-parity:
@@ -1264,7 +1264,7 @@ colcon-parity:
     file install/lib/consumer/consumer
 
 # acceptance (local, from-source): scaffold + build + run a fresh project with the
-# in-tree nros CLI. Local mirror of .github/workflows/nros-acceptance.yml (which
+# in-tree nros CLI. Local mirror of the `fresh-machine` job in release.yml (which
 # instead fetches the prebuilt release binary on a bare runner — that fresh-machine
 # path stays CI-only). Work dir under tmp/ (gitignored).
 [group("ci")]

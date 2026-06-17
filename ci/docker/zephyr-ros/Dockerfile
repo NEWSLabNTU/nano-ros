@@ -8,7 +8,7 @@
 # version-pinned, fetched per-run via install.sh). See
 # docs/development/ci-conventions.md + the zephyr image design (Phase 196.3).
 #
-# Build/publish via .github/workflows/build-zephyr-ci-image.yml →
+# Build/publish via the `zephyr` job in .github/workflows/images.yml →
 #   ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk<ver>-r<N>
 # Tag encodes the inputs (ROS distro + SDK version) + a `-rN` content revision;
 # bump `-rN` when the Dockerfile content changes without an SDK/distro bump.

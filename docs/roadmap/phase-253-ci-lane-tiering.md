@@ -1,6 +1,6 @@
 # Phase 253 — CI lane tiering + local-runnable jobs
 
-Status: **In progress (substance done; cosmetic + CI-validation remaining)** ·
+Status: **In progress (substance + file-merge done; CI-validation remaining)** ·
 Design: [docs/development/ci-workflow-reorg.md](../development/ci-workflow-reorg.md).
 Related: #57 (the cadence-cancellation root), #69/#70/#73 (gate-content reds the
 SSoT exposed), phase-251 (`--allow-multiple-definition` gate).
@@ -12,22 +12,25 @@ SSoT exposed), phase-251 (`--allow-multiple-definition` gate).
 > push to `main` now triggers ONLY the fast buildless gate; everything heavier runs
 > on PR + nightly with `cancel-in-progress` only on PR (a started nightly finishes).
 
-## Lane inventory (current)
+## Lane inventory (6 tier files)
 
-| workflow | tier / trigger | local recipe | cancel-in-progress |
+13 workflows → **6 tier-named files**, one job per former lane. Triggers + job-level
+concurrency implement the tiers; a `changes` (dorny/paths-filter) job path-gates the
+narrow jobs so each runs only when its paths move (on a PR); push/schedule/dispatch
+run all of a file's jobs.
+
+| file | jobs (← former workflow) | trigger | concurrency |
 | --- | --- | --- | --- |
-| **check** | push → `check-fast` (buildless ~1 min); PR + nightly + dispatch → full `check` + `check-no-std` | `just check-fast` / `just check` | true |
-| host-unit-tests | PR + nightly + dispatch | `just test-unit` | PR only |
-| host-integration-tests | PR + nightly + dispatch | `just test-integration` (+ fixture builds) | false |
-| platform-ci | PR (changed-platform) + nightly + dispatch | `just <plat> setup/build/test` | PR only |
-| zephyr-dual-line | PR (zephyr paths) + nightly + dispatch | `just zephyr build-one/ci-both/check-copy-out` | false |
-| sdk-index-gate | PR (sdk paths) + dispatch | `just check-sdk-index` | true |
-| scaffold-journey | push + PR (cli paths) | `just scaffold-journey` | true |
-| colcon-parity | push + PR (template path) | `just colcon-parity` | true |
-| nros-acceptance | release tags `nros-v*` + nightly + dispatch | `just acceptance` (local from-source) | false |
-| deploy-book | push (book/api paths) | `just doc` / `just book` (build part) | false (publish: don't interrupt git-push) |
-| release-nros-cli | tags `nros-v*` + dispatch | `cargo build --release --bin nros` | — |
-| build-ci-base-image / build-zephyr-ci-image | push (ci/docker paths) | — (CI-only image push) | false |
+| **pr-checks.yml** | `check` (← check; push=`check-fast`, PR/nightly=`check`+no-std), `scaffold-journey`, `colcon-parity`, `sdk-index` | push + PR + nightly(0 2) + dispatch | workflow, cancel ✓ |
+| **host-tests.yml** | `unit` (← host-unit), `integration` (← host-integration) | PR + nightly(0 3) + dispatch | per-job (unit cancel-on-PR; integration ✗) |
+| **nightly.yml** | `platform` (← platform-ci, cron 0 7), `zephyr-example-matrix`/`zephyr-dual-line-summary`/`zephyr-copy-out` (← zephyr-dual-line, cron 0 5) | PR + 2 crons + dispatch | per-job (platform cancel-on-PR; zephyr ✗); `github.event.schedule` routes each cron to its job set |
+| **release.yml** | `build`/`release` (← release-nros-cli, tag/dispatch), `fresh-machine` (← nros-acceptance, tag+nightly 0 6+dispatch) | tags `nros-v*` + cron(0 6) + dispatch | per-job (acceptance ✗) |
+| **images.yml** | `ci-base`/`zephyr` (← build-ci-base-image / build-zephyr-ci-image) | push (ci/docker paths) + dispatch | per-job, ✗ |
+| **docs.yml** | `deploy` (← deploy-book) | push (book/api paths) + dispatch | `deploy-book`, ✗ |
+
+Local recipes unchanged: `just check-fast`/`check`, `test-unit`, `test-integration`,
+`<plat> setup/build/test`, `zephyr build-one/ci-both/check-copy-out`, `check-sdk-index`,
+`scaffold-journey`, `colcon-parity`, `acceptance`, `doc`/`book`.
 
 `just check` = `check-fast` (buildless: fmt/clang-format/ABI/manifest/convention/
 cargo-tree/example-fmt) + `check-build` (compile: workspace+example clippy, feature
@@ -47,8 +50,6 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
 
 ## Remaining (non-blocking)
 
-- [ ] **Optional file rename/merge** into tier names (`pr-checks`/`host-tests`/
-      `nightly`/…). The triggers already implement the tiers, so functionally moot.
 - [ ] **CI validation** — confirm on a real run that per-push `check-fast`
       completes + the nightly lanes (host-integration / platform-ci / zephyr) run
       green. Needs a quiet window or a manual `workflow_dispatch`; locally validated
@@ -93,6 +94,22 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
   submodule init + ROS source). colcon-parity.yml: installs `just` (no base image
   on that lane) then `just colcon-parity`. Both lanes now run the SAME recipe a
   developer runs — no inline-script drift. Path-scoped, so no cadence concern.
+
+- **13 workflows merged into 6 tier files.** check + scaffold-journey + colcon-parity
+  + sdk-index-gate → **pr-checks.yml** (a `changes` paths-filter gates the 3 narrow
+  jobs; `check` always runs); host-unit + host-integration → **host-tests.yml**
+  (job-level concurrency keeps unit cancel-on-PR + integration always-completes);
+  platform-ci + zephyr-dual-line → **nightly.yml** (two crons, a
+  `github.event.schedule` guard routes 0 7→platform / 0 5→zephyr); release-nros-cli
+  + nros-acceptance → **release.yml** (`fresh-machine` `needs: release` so a tag
+  build's assets exist before acceptance fetches them; `always()`+result-guard lets
+  the nightly cron run acceptance standalone); the two image builds → **images.yml**
+  (`changes`-gated, job-level env per image); deploy-book → **docs.yml** (`git mv`,
+  history-preserved). No branch-protection required-checks reference the old job
+  names (verified — none configured), so the rename breaks nothing. README CI badge
+  (was pointing at the deleted `ci.yml`) + all active filename refs (justfile,
+  Dockerfiles, AGENTS.md, versioning.md, zephyr-version-support.md) repointed;
+  archived phase docs left as historical record. `actionlint` clean.
 
 ## Acceptance
 

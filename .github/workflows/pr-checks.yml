@@ -1,0 +1,299 @@
+# PR-check tier (CI reorg / phase-253) — the fast, per-push + PR gate set.
+#
+# Folds four formerly-separate lanes into one tier file. CI yml = thin
+# `just <recipe>` callers (single source of truth — docs/development/
+# ci-workflow-reorg.md + the recipe-org block in the justfile). A `changes`
+# path-filter job gates the narrow lanes so they only run when their paths move
+# (on a PR); on push/schedule/dispatch every job runs.
+#
+#   - check          : `just check-fast` (push) / `just check` + check-no-std
+#                      (PR/nightly). The buildless gate survives the rapid push
+#                      cadence; the compile tier runs on PR + nightly only.
+#   - scaffold-journey : `just scaffold-journey` (RFC-0040 resolve-only journey).
+#   - colcon-parity  : `just colcon-parity` (local-msg-package builds under colcon).
+#   - sdk-index      : verify-index.py + qemu-configure drift (sdk-index bumps).
+#
+# NOT folded here: the heavy test/build lanes (host-tests, nightly), release,
+# images, docs.
+name: pr-checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "justfile"
+      - "just/**"
+      - "scripts/**"
+      - "ci/nano-ros-sdk/**"
+      - "**/*.cmake"
+      - "**/CMakeLists.txt"
+      - "**/*.just"
+      - ".clang-format"
+      - "rustfmt.toml"
+      - "nros-sdk-index.toml"
+      - ".gitmodules"
+      - ".github/workflows/pr-checks.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "justfile"
+      - "just/**"
+      - "scripts/**"
+      - "ci/nano-ros-sdk/**"
+      - "**/*.cmake"
+      - "**/CMakeLists.txt"
+      - "**/*.just"
+      - ".clang-format"
+      - "rustfmt.toml"
+      - "nros-sdk-index.toml"
+      - ".gitmodules"
+      - ".github/workflows/pr-checks.yml"
+  # Nightly runs the FULL gate (fast + build tier) even on a direct-push-to-main
+  # workflow where PRs are rare — so the compile gates get a daily signal.
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: pr-checks-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  # Path-gate the narrow lanes: on a PR each runs only if its paths moved; on
+  # push/schedule/dispatch the per-job `if` falls through to run them all.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      scaffold: ${{ steps.f.outputs.scaffold }}
+      colcon: ${{ steps.f.outputs.colcon }}
+      sdk_index: ${{ steps.f.outputs.sdk_index }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            scaffold:
+              - 'packages/cli/**'
+              - 'nros-sdk-index.toml'
+              - 'scripts/ci/scaffold-journey-check.sh'
+            colcon:
+              - 'examples/templates/local-msg-package/**'
+            sdk_index:
+              - 'nros-sdk-index.toml'
+              - '.gitmodules'
+              - 'scripts/sdk/verify-index.py'
+              - 'scripts/sdk/check-qemu-configure.sh'
+              - 'ci/nano-ros-sdk/scripts/build-qemu.sh'
+
+  # ----- fast gate (always) -----
+  check:
+    name: check (fast on push; full on PR/nightly)
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # ----- shared setup -----
+      - name: Install clang-format (pinned via pypi wheel)
+        run: pip install --no-cache-dir "clang-format==17.0.5"
+
+      # ----- CLI + sources: build tier (non-push) only -----
+      # check-fast is BUILDLESS *and* SOURCE-FREE (no cargo build/clippy/test, no
+      # `cargo tree`/metadata) — its only CLI-touching gates (board-manifest-drift,
+      # profile-board-mirror) skip gracefully when the CLI is absent. So the push
+      # lane needs neither the nros CLI nor any provisioned source: ~1 min, survives
+      # the rapid push cadence. The build tier (PR/nightly) needs the CLI (codegen
+      # for clippy) + every `-sys` source submodule (zenoh-pico/mbedtls/micro/
+      # cyclonedds + px4-rs) so its clippy/cargo-tree gates resolve + compile.
+      - name: Cache CLI build (build tier)
+        if: ${{ github.event_name != 'push' }}
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      # Cache the build-tier sources keyed on the recorded submodule SHAs
+      # (`git ls-tree HEAD`) → auto-invalidates on a pin bump, no manual rebuild
+      # (the image-baking hazard the reorg rejected). EXACT KEY ONLY: `nros setup`
+      # skips a present dest (idempotent), so a stale restore would not be
+      # refreshed → a pin bump must MISS + refetch. Shares the `nros-src-` key
+      # space with host-tests (identical 6-source set → identical key).
+      - name: Compute source-pin cache key (build tier)
+        if: ${{ github.event_name != 'push' }}
+        run: |
+          git ls-tree HEAD \
+            third-party/px4/px4-rs \
+            packages/zpico/zpico-sys/zenoh-pico \
+            packages/zpico/zpico-sys/mbedtls \
+            packages/xrce/xrce-sys/micro-cdr \
+            packages/xrce/xrce-sys/micro-xrce-dds-client \
+            third-party/dds/cyclonedds \
+            | tee .ci-source-pins
+
+      - name: Cache provisioned sources (build tier, auto-invalidate on pin bump)
+        if: ${{ github.event_name != 'push' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            third-party/px4/px4-rs
+            packages/zpico/zpico-sys/zenoh-pico
+            packages/zpico/zpico-sys/mbedtls
+            packages/xrce/xrce-sys/micro-cdr
+            packages/xrce/xrce-sys/micro-xrce-dds-client
+            third-party/dds/cyclonedds
+          key: nros-src-${{ runner.os }}-${{ hashFiles('.ci-source-pins') }}
+
+      - name: Build nros CLI + provision build-tier sources (non-push)
+        if: ${{ github.event_name != 'push' }}
+        run: |
+          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      # ----- fast tier (every event) -----
+      - name: just check-fast
+        run: just check-fast
+
+      # ----- build tier (PR + nightly + dispatch, NOT per-push) -----
+      - name: just check-build + no_std
+        if: ${{ github.event_name != 'push' && !cancelled() }}
+        run: |
+          just check-build
+          just check-no-std
+
+      # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
+      # Phase 104.A migration completes. Advisory only. (Build tier, non-push.)
+      - name: just check-decoupling (advisory until Phase 104.A)
+        if: ${{ github.event_name != 'push' && !cancelled() }}
+        continue-on-error: true
+        run: just check-decoupling
+
+  # ----- scaffold-journey (RFC-0040 resolve-only) -----
+  scaffold-journey:
+    name: nros new -> ws sync -> resolve
+    needs: changes
+    if: ${{ needs.changes.outputs.scaffold == 'true' || github.event_name != 'pull_request' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      # `just scaffold-journey`'s `setup-cli` prereq does the `cargo build`, but
+      # not this nested submodule init — the CLI sub-workspace path-deps
+      # ros-launch-manifest-types from it. Init it before the recipe (cheap; ~50KB).
+      - name: Init CLI launch-manifest submodule
+        run: git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+
+      - name: just scaffold-journey
+        run: |
+          source /opt/ros/humble/setup.bash
+          just scaffold-journey
+
+  # ----- colcon-parity (bare ubuntu — no base image) -----
+  colcon-parity:
+    name: colcon build examples/templates/local-msg-package/src/
+    needs: changes
+    if: ${{ needs.changes.outputs.colcon == 'true' || github.event_name != 'pull_request' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false  # fixture is self-contained; no nano-ros submodules needed
+
+      - name: Add ROS 2 apt repo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl gnupg lsb-release
+          sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" \
+            | sudo tee /etc/apt/sources.list.d/ros2.list >/dev/null
+
+      - name: Install ROS 2 Humble msg deps + colcon
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-colcon-common-extensions \
+            ros-humble-ros-base \
+            ros-humble-rclcpp \
+            ros-humble-std-msgs \
+            ros-humble-geometry-msgs \
+            ros-humble-sensor-msgs \
+            ros-humble-rosidl-default-generators \
+            ros-humble-rosidl-default-runtime \
+            ros-humble-ament-cmake \
+            ros-humble-ament-cmake-auto
+
+      # No base image on this lane → install `just` so CI calls the SAME recipe a
+      # developer runs (SSoT — phase-253). Official prebuilt installer; the lane
+      # already uses sudo+curl for the ROS apt repo.
+      - name: Install just
+        run: curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | sudo bash -s -- --to /usr/local/bin
+
+      # `just colcon-parity` sources ROS, scans ONLY src/ (`--base-paths src`:
+      # local_msgs → extra_msgs → consumer, skipping the top-level nano-ros umbrella
+      # CMakeLists that needs the `nros` codegen tool), builds, and asserts the
+      # consumer binary — the same parity check, no inline drift.
+      - name: just colcon-parity
+        run: just colcon-parity
+
+  # ----- sdk-index gate (verify prebuilt assets resolve + hash) -----
+  sdk-index:
+    name: verify nros-sdk-index assets
+    needs: changes
+    if: ${{ needs.changes.outputs.sdk_index == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify prebuilt assets resolve + hash
+        run: python3 scripts/sdk/verify-index.py nros-sdk-index.toml
+      # Phase 191.3 — the index source-build flags and the prebuilt build script
+      # must not drift (else prebuilt != source-built).
+      - name: Check qemu configure flags match (index vs build script)
+        run: ./scripts/sdk/check-qemu-configure.sh

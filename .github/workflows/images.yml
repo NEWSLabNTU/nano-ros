@@ -1,0 +1,110 @@
+# Image tier (CI reorg / phase-253) — build + publish the CI container images.
+#
+# Folds the two image-build lanes into one tier file; a `changes` path-filter
+# gates each job so only the image whose Dockerfile moved rebuilds (image builds
+# are expensive):
+#   - ci-base : ROS 2 Humble + host tools, the base `container:` for the check /
+#               host-tests / platform lanes. See ci/docker/ci-base/Dockerfile.
+#   - zephyr  : ci-base + the Zephyr SDK layer, the `container:` for the nightly
+#               Zephyr jobs. See ci/docker/zephyr-ros/Dockerfile.
+#
+# GHCR repo names must be lowercase; the owner (NEWSLabNTU) is mixed-case.
+name: images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ci/docker/ci-base/**"
+      - "ci/docker/zephyr-ros/**"
+      - ".github/workflows/images.yml"
+  workflow_dispatch:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ci_base: ${{ steps.f.outputs.ci_base }}
+      zephyr: ${{ steps.f.outputs.zephyr }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            ci_base:
+              - 'ci/docker/ci-base/**'
+            zephyr:
+              - 'ci/docker/zephyr-ros/**'
+
+  ci-base:
+    name: build + push ci-base image
+    needs: changes
+    if: ${{ needs.changes.outputs.ci_base == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: images-ci-base
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Tag = ROS distro (bump when the baked toolset changes, in lockstep with
+      # the consuming lanes' `container:`).
+      IMAGE: ghcr.io/newslabntu/nano-ros-ci
+      TAG: humble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: ci/docker/ci-base
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  zephyr:
+    name: build + push zephyr-ci image
+    needs: changes
+    if: ${{ needs.changes.outputs.zephyr == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: images-zephyr
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Tag encodes ROS distro + SDK version + `-rN` content revision — bump the
+      # SDK/distro part when either changes, `-rN` when the Dockerfile changes
+      # without an SDK/distro bump. Keep in lockstep with the Dockerfile ARG + the
+      # nightly Zephyr `container:`. r2 (#59): added ros-humble-example-interfaces.
+      IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
+      TAG: humble-sdk0.17.4-r2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: ci/docker/zephyr-ros
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

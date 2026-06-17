@@ -79,10 +79,10 @@ just release-bump 0.4.1                # sed both files + lockstep check
 git diff Cargo.toml packages/cli/Cargo.toml
 git commit -am 'release: nros-v0.4.1'
 git tag nros-v0.4.1
-git push origin main nros-v0.4.1       # triggers release-nros-cli.yml
+git push origin main nros-v0.4.1       # triggers release.yml
 ```
 
-The CI lane (`release-nros-cli.yml`) builds the CLI for four target
+The CI lane (`release.yml`) builds the CLI for four target
 triples (linux+macos × x86_64+aarch64) and attaches the tarballs to
 the GitHub release that the tag created.
 
@@ -129,4 +129,4 @@ was chosen so that:
 - ABI guard impl: `packages/cli/nros-cli-core/src/abi_guard.rs`
 - Lockstep check: `scripts/check-version-lockstep.sh`
 - Bump recipe: `just release-bump` in the root `justfile`
-- Release workflow: `.github/workflows/release-nros-cli.yml`
+- Release workflow: `.github/workflows/release.yml`

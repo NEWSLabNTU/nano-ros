@@ -1,0 +1,419 @@
+# Nightly tier (CI reorg / phase-253) — the heavy per-platform + Zephyr sweeps.
+#
+# Folds the two heaviest lanes into one tier file. They keep SEPARATE nightly
+# crons and SEPARATE job-level concurrency, so a `github.event.schedule` guard
+# routes each cron to its own job set (the 07:00 platform sweep does not drag in
+# the Zephyr jobs, and vice-versa):
+#   - platform : per-platform setup/build/test matrix (`just <plat> …`).
+#                cron 0 7. e2e on schedule / dispatch-with-run_e2e.
+#   - zephyr   : dual-line (3.7 + 4.4) example builds + copy-out check
+#                (`just zephyr build-one/ci-both/check-copy-out`). cron 0 5.
+#
+# PR (path-scoped, per-platform / zephyr-paths) + nightly + on-demand — NOT every
+# direct push to main (the 6-platform × 2-line load is the cadence explosion the
+# reorg removes; #57). `cancel-in-progress` only on PR. See
+# docs/development/ci-workflow-reorg.md.
+name: nightly
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "just/**"
+      - "justfile"
+      - "cmake/**"
+      - "zephyr/**"
+      - "scripts/zephyr/**"
+      - "nros-sdk-index.toml"
+      - "ci/docker/zephyr-ros/**"
+      - ".github/workflows/nightly.yml"
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: "Run the QEMU test/e2e step (not just build)"
+        type: boolean
+        default: true
+  schedule:
+    - cron: "0 5 * * *"   # Zephyr dual-line
+    - cron: "0 7 * * *"   # per-platform sweep (QEMU e2e)
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  # Zephyr jobs build only the zenoh examples — skip the heavy Micro-XRCE-DDS
+  # Agent (Fast-DDS superbuild) `just zephyr setup` builds for XRCE runtime tests.
+  NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
+
+jobs:
+  # Per-platform path filter → a JSON list of platforms + a zephyr flag. On a PR,
+  # only the platforms / lines whose code (or the shared core) changed; on
+  # main/dispatch/schedule, all (the per-job `github.event.schedule` guard then
+  # routes each cron to its own job set).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.set.outputs.platforms }}
+      zephyr: ${{ steps.set.outputs.zephyr }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            core: &core
+              - 'packages/core/**'
+              - 'packages/zpico/**'
+              - 'just/**'
+              - 'justfile'
+              - 'cmake/**'
+              - 'nros-sdk-index.toml'
+            qemu: [ *core, 'examples/qemu-arm-baremetal/**', 'packages/boards/nros-board-mps2-an385*/**' ]
+            freertos: [ *core, 'examples/qemu-arm-freertos/**', 'packages/boards/nros-board-freertos/**', 'packages/boards/nros-board-mps2-an385-freertos/**' ]
+            nuttx: [ *core, 'examples/qemu-arm-nuttx/**', 'packages/boards/nros-board-nuttx*/**' ]
+            threadx_linux: [ *core, 'examples/threadx-linux/**', 'packages/boards/nros-board-threadx-linux/**' ]
+            threadx_riscv64: [ *core, 'examples/qemu-riscv64-threadx/**', 'packages/boards/nros-board-threadx-qemu-riscv64/**' ]
+            esp32: [ *core, 'examples/qemu-esp32-baremetal/**', 'packages/boards/nros-board-esp32-qemu/**', 'packages/platforms/nros-platform-esp32-qemu/**' ]
+            zephyr:
+              - 'examples/zephyr/**'
+              - 'packages/**'
+              - 'cmake/**'
+              - 'zephyr/**'
+              - 'scripts/zephyr/**'
+              - 'just/zephyr.just'
+              - 'ci/docker/zephyr-ros/**'
+      - id: set
+        env:
+          QEMU: ${{ steps.f.outputs.qemu }}
+          FREERTOS: ${{ steps.f.outputs.freertos }}
+          NUTTX: ${{ steps.f.outputs.nuttx }}
+          THREADX_LINUX: ${{ steps.f.outputs.threadx_linux }}
+          THREADX_RISCV64: ${{ steps.f.outputs.threadx_riscv64 }}
+          ESP32: ${{ steps.f.outputs.esp32 }}
+          ZEPHYR: ${{ steps.f.outputs.zephyr }}
+        run: |
+          set -euo pipefail
+          all="qemu freertos nuttx threadx_linux threadx_riscv64 esp32"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            sel="$all"
+            zephyr="true"
+          else
+            sel=""
+            [ "$QEMU" = "true" ]            && sel="$sel qemu";            true
+            [ "$FREERTOS" = "true" ]        && sel="$sel freertos";        true
+            [ "$NUTTX" = "true" ]           && sel="$sel nuttx";           true
+            [ "$THREADX_LINUX" = "true" ]   && sel="$sel threadx_linux";   true
+            [ "$THREADX_RISCV64" = "true" ] && sel="$sel threadx_riscv64"; true
+            [ "$ESP32" = "true" ]           && sel="$sel esp32";           true
+            zephyr="$ZEPHYR"
+          fi
+          json=$(printf '%s\n' $sel | jq -R . | jq -cs .)
+          echo "platforms=$json" >> "$GITHUB_OUTPUT"
+          echo "zephyr=$zephyr" >> "$GITHUB_OUTPUT"
+          echo "selected platforms: $json ; zephyr: $zephyr"
+
+  # ===== per-platform sweep (cron 0 7) ==================================
+  platform:
+    needs: changes
+    # The 05:00 cron is Zephyr-only; the 07:00 cron + PR/dispatch run platforms.
+    if: ${{ needs.changes.outputs.platforms != '[]' && (github.event_name != 'schedule' || github.event.schedule == '0 7 * * *') }}
+    name: ${{ matrix.plat }}
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: nightly-platform-${{ matrix.plat }}-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        plat: ${{ fromJSON(needs.changes.outputs.platforms) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        run: |
+          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      # Cache the two `nros setup --source` working trees this lane provisions
+      # (px4-rs + nuttx-libc). Keyed on the recorded submodule SHAs → auto-
+      # invalidates on a pin bump. EXACT KEY ONLY (no restore-keys): `nros setup`
+      # skips a present dest, so a stale restore would not be refreshed → a pin
+      # bump must MISS + refetch. (The heavy per-platform `just <plat> setup`
+      # kernels/SDKs are not cached here — only the explicit shared source set.)
+      - name: Compute source-pin cache key
+        run: |
+          git ls-tree HEAD third-party/px4/px4-rs third-party/nuttx/libc \
+            | tee .ci-source-pins
+
+      - name: Cache provisioned sources (auto-invalidate on pin bump)
+        uses: actions/cache@v4
+        with:
+          path: |
+            third-party/px4/px4-rs
+            third-party/nuttx/libc
+          key: nros-src-${{ runner.os }}-${{ hashFiles('.ci-source-pins') }}
+
+      - name: just ${{ matrix.plat }} setup
+        run: just ${{ matrix.plat }} setup
+
+      # issue-0037 — the e2e fixture build shells out to `play_launch_parser`, a
+      # separate binary the in-tree `cargo build --bin nros` does NOT produce.
+      # Provision it + point nros at it via NROS_PLAY_LAUNCH_PARSER (env, not PATH:
+      # later `source ./setup.bash` strips ~/.nros/sdk/* from PATH). e2e-only.
+      - name: Provision play_launch_parser (launch-manifest fixtures, #37)
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e) }}
+        run: |
+          just workspace install-play-launch-parser
+          echo "NROS_PLAY_LAUNCH_PARSER=$HOME/.nros/sdk/play_launch_parser/bin/play_launch_parser" >> "$GITHUB_ENV"
+
+      # Container-job host-disk headroom before the heavy SDK+cargo build (the
+      # freertos/zephyr cells exhaust the ~14 GB runner). cargo/SDK caches stay.
+      - name: Reclaim disk before build (container headroom)
+        run: |
+          echo "before:"; df -h / | tail -1
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
+      - name: Build (${{ matrix.plat }})
+        run: |
+          source ./setup.bash
+          source /opt/ros/humble/setup.bash
+          # The workspace .cargo/config.toml patches `libc` to the NuttX fork (#18)
+          # at workspace level, so EVERY cell's Entry build needs third-party/
+          # nuttx/libc; px4-rs too (workspace-load). Provision via the SDK index.
+          nros setup --source px4-rs --source nuttx-libc
+          # Disk lever: push/PR get the lighter `build-examples` smoke; the heavy
+          # `build-all` fixtures matrix (what QEMU e2e consumes) only on schedule /
+          # dispatch-with-run_e2e.
+          if [ "${{ github.event_name }}" = "schedule" ] || \
+             { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_e2e }}" = "true" ]; }; then
+            just ${{ matrix.plat }} build-all || just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
+          else
+            just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
+          fi
+
+      - name: Test / e2e (${{ matrix.plat }})
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e) }}
+        run: |
+          source ./setup.bash
+          source /opt/ros/humble/setup.bash
+          # `_nextest-platform` runs `cargo metadata` over the nros-tests
+          # workspace → the px4-sitl-tests path dep must exist; nuttx-libc backs
+          # the workspace Entry build. Provision both (same as host-tests).
+          nros setup --source px4-rs --source nuttx-libc
+          just ${{ matrix.plat }} test
+
+  # ===== Zephyr dual-line (cron 0 5) ====================================
+  zephyr-example-matrix:
+    needs: changes
+    if: ${{ needs.changes.outputs.zephyr == 'true' && (github.event_name != 'schedule' || github.event.schedule == '0 5 * * *') }}
+    name: zephyr ${{ matrix.line }} / ${{ matrix.example }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: nightly-zephyr-matrix-${{ matrix.line }}-${{ matrix.example }}-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    container:
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        line: ["3.7", "4.4"]
+        example:
+          - c/talker
+          - c/listener
+          - cpp/talker
+          - cpp/listener
+          - rust/talker
+          - rust/listener
+          - rust/service-client
+          - rust/service-server
+          - rust/action-client
+          - rust/action-server
+    env:
+      NROS_ZEPHYR_VERSION: ${{ matrix.line }}
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        run: |
+          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision Zephyr sources via nros
+        run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
+
+      # The image registered the SDK CMake package as root; the container runs
+      # with HOME=/github/home → re-register for this HOME (4.4's FindZephyr-sdk
+      # needs the user CMake-package registry).
+      - name: Register the baked Zephyr SDK for this HOME
+        run: /opt/zephyr-sdk/setup.sh -c
+
+      # The image bakes bin/cargo-clippy from a non-rustup-owner layer; `rustup
+      # target add` trips on the clippy-preview conflict. Delete the orphan files
+      # then re-install clippy on every toolchain.
+      - name: Unblock rustup clippy-preview conflict
+        run: |
+          rustup_home="$(rustup show home 2>/dev/null || echo "$HOME/.rustup")"
+          find "$rustup_home/toolchains" -maxdepth 3 -type f \
+              \( -name cargo-clippy -o -name clippy-driver \) -delete 2>/dev/null || true
+          rustup toolchain list 2>/dev/null | awk '{print $1}' | while read -r tc; do
+              [ -z "$tc" ] && continue
+              echo "  installing clippy on $tc"
+              rustup component add clippy --toolchain "$tc" \
+                  || echo "  (clippy add failed for $tc — non-fatal)"
+          done
+
+      - name: Set up Zephyr ${{ matrix.line }} workspace
+        run: just zephyr setup --skip-sdk
+
+      # zephyr-sys' build.rs runs bindgen over Zephyr headers — needs libclang.so
+      # AND clang's resource-dir headers. Rust cells only (C/C++ cells skip).
+      - name: Install clang + libclang for bindgen
+        if: startsWith(matrix.example, 'rust/')
+        run: |
+          apt-get update -q
+          apt-get install -y --no-install-recommends clang libclang-dev
+
+      - name: Build zephyr/${{ matrix.example }} (zenoh) on ${{ matrix.line }}
+        run: source /opt/ros/humble/setup.bash && just zephyr build-one "${{ matrix.example }}" zenoh
+
+  zephyr-dual-line-summary:
+    needs: changes
+    if: ${{ needs.changes.outputs.zephyr == 'true' && (github.event_name != 'schedule' || github.event.schedule == '0 5 * * *') }}
+    name: zephyr ci-both (3.7 + 4.4)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: nightly-zephyr-summary-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    container:
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        run: |
+          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision Zephyr sources via nros
+        run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
+
+      - name: Register the baked Zephyr SDK for this HOME
+        run: /opt/zephyr-sdk/setup.sh -c
+
+      - name: rustup set profile minimal (avoid clippy-preview conflict)
+        run: rustup set profile minimal
+
+      - name: Set up Zephyr 3.7 workspace
+        run: NROS_ZEPHYR_VERSION=3.7 just zephyr setup --skip-sdk
+
+      - name: Set up Zephyr 4.4 workspace
+        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
+
+      - name: Dual-line build (c/talker zenoh)
+        run: source /opt/ros/humble/setup.bash && just zephyr ci-both c/talker zenoh
+
+  zephyr-copy-out:
+    needs: changes
+    if: ${{ needs.changes.outputs.zephyr == 'true' && (github.event_name != 'schedule' || github.event.schedule == '0 5 * * *') }}
+    name: zephyr copy-out check (4.4)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: nightly-zephyr-copyout-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    container:
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Cache CLI build (Phase 218)
+        uses: actions/cache@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        run: |
+          git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision Zephyr sources via nros
+        run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
+
+      - name: Register the baked Zephyr SDK for this HOME
+        run: /opt/zephyr-sdk/setup.sh -c
+
+      - name: rustup set profile minimal (avoid clippy-preview conflict)
+        run: rustup set profile minimal
+
+      - name: Set up Zephyr 4.4 workspace
+        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
+
+      - name: Copy-out build check
+        run: source /opt/ros/humble/setup.bash && just zephyr check-copy-out c/talker zenoh

@@ -26,9 +26,12 @@ landed `52de496b2`. Applied since:
 - #69/#70 fixed (dep-chain own-feature detect + package.xml gate; staticlib test
   re-pointed to the single archive). check gates green.
 
-Remaining (optional): merge/rename files into the tier names below (cosmetic — the
-triggers already implement the tiers). The original target/migration sections are
-kept below for reference.
+**File-merge landed** (phase-253): the 13 workflows are now the 6 tier files in the
+target table below — pr-checks / host-tests / nightly / release / images / docs.
+Path-gating via a `changes` (dorny/paths-filter) job + job-level concurrency preserve
+every former lane's trigger/cancel semantics; no branch-protection check references
+the old job names (none configured). The original target/migration sections below
+are kept for reference.
 
 Goals (from the request):
 1. Every CI task runnable locally via a convenient named `just` recipe.

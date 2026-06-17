@@ -114,7 +114,7 @@ separate `NEWSLabNTU/nano-ros-sdk` repo's Releases (referenced by URL, not a sub
   the `third-party/qemu` submodule build. `just <tool> build` still source-builds for devs.
 - ESP32 = **ESP32-C3 (RISC-V)** (`riscv32imc-unknown-none-elf` via rustup + build-std, espflash,
   Espressif `qemu-system-riscv32` fork). Needs no index host-tool.
-- CI gate: `.github/workflows/sdk-index-gate.yml` sha256-verifies any index `dist` change. Bump a
+- CI gate: the `sdk-index` job in `.github/workflows/pr-checks.yml` sha256-verifies any index `dist` change. Bump a
   tool's `-nros<N>` suffix when rebuilding the same upstream version with different config.
 
 ## C/C++ Integration Shape

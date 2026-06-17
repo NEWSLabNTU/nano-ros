@@ -1,6 +1,6 @@
 # nano-ros
 
-[![CI](https://github.com/NEWSLabNTU/nano-ros/actions/workflows/ci.yml/badge.svg)](https://github.com/NEWSLabNTU/nano-ros/actions/workflows/ci.yml)
+[![CI](https://github.com/NEWSLabNTU/nano-ros/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/NEWSLabNTU/nano-ros/actions/workflows/pr-checks.yml)
 [![Book](https://img.shields.io/badge/docs-book-blue)](https://newslabntu.github.io/nano-ros-book/)
 ![no_std](https://img.shields.io/badge/no__std-yes-success)
 ![Rust](https://img.shields.io/badge/rust-edition%202024-orange)
