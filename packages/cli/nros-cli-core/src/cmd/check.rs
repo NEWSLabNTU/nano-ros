@@ -27,7 +27,6 @@ use std::path::{Path, PathBuf};
 const LEGACY_OVERLAY_BLOCKS: &[&str] = &[
     "build",
     "lifecycle",
-    "param_persistence",
     "param_services",
     "safety",
     "scheduling",

@@ -774,26 +774,11 @@ fn schema_plan_json(
     if !shared_state.is_empty() {
         obj.insert("shared_state".to_string(), json!(shared_state));
     }
-    // Phase 172.H / 256 Wave 2 — optional parameter-override persistence, before
-    // `build` (NrosPlan field order); absent ⇒ omitted, plan byte-identical.
-    // Typed `[param_persistence]` wins; the `nros.toml` overlay is the deprecated
-    // fallback. An empty `path` means no persistence (omit the block).
-    let param_persistence = system_caps
-        .as_ref()
-        .and_then(|s| s.param_persistence.as_ref())
-        .filter(|pp| !pp.path.is_empty())
-        .map(|pp| json!({ "backend": pp.backend, "path": pp.path }))
-        .or_else(|| {
-            collect_param_persistence(overlays).inspect(|_| {
-                eprintln!(
-                    "warning: [param_persistence] in nros.toml is deprecated (phase-256); \
-                     declare it in the bringup system.toml"
-                );
-            })
-        });
-    if let Some(pp) = param_persistence {
-        obj.insert("param_persistence".to_string(), pp);
-    }
+    // Phase 256 — `[param_persistence]` is DISABLED at the config surface: the
+    // feature is incomplete (only the hosted `file` backend exists; the embedded
+    // flash/NVS `ParamStore` backends are unbuilt — issue 0080). No config source
+    // emits it to the plan, so `apply_param_persistence` stays a no-op. The runtime
+    // `ParamStore` seam + the codegen path are kept dormant for re-enable.
 
     // Phase 250 (Wave 3) — parameter-server capability, before `build` (NrosPlan
     // field order); absent ⇒ omitted, plan stays byte-identical.
@@ -1245,28 +1230,6 @@ fn collect_lifecycle(overlays: &[Value]) -> Option<Value> {
                 .and_then(Value::as_str)
                 .unwrap_or("none");
             out = Some(json!({ "autostart": autostart }));
-        }
-    }
-    out
-}
-
-/// Phase 172.H — read the nros.toml `[param_persistence]` block (last overlay
-/// wins). Returns `{ "backend": <kind>, "path": <loc> }` when a non-empty
-/// `path` is present (`backend` defaults to `"file"`); `None` keeps the binary
-/// free of parameter services. An unknown backend passes through and is the
-/// generator's concern.
-fn collect_param_persistence(overlays: &[Value]) -> Option<Value> {
-    let mut out = None;
-    for overlay in overlays {
-        if let Some(table) = overlay.get("param_persistence").and_then(Value::as_object) {
-            let backend = table
-                .get("backend")
-                .and_then(Value::as_str)
-                .unwrap_or("file");
-            let path = table.get("path").and_then(Value::as_str).unwrap_or("");
-            if !path.is_empty() {
-                out = Some(json!({ "backend": backend, "path": path }));
-            }
         }
     }
     out
@@ -3986,71 +3949,6 @@ mod tests {
         );
     }
 
-    /// Phase 256 Wave 2 — `[param_persistence]` declared in the bringup
-    /// `system.toml` (the SSoT) lands in `plan.param_persistence`, the typed path
-    /// superseding the `nros.toml` overlay. Pre-built record, default suite.
-    #[test]
-    fn plan_system_reads_param_persistence_from_system_toml() {
-        let root = temp_workspace("nros-plan-system-toml-param-persist");
-        fs::create_dir_all(&root).unwrap();
-        fs::write(
-            root.join("package.xml"),
-            r#"<package format="3"><name>system_pkg</name><version>0.1.0</version></package>"#,
-        )
-        .unwrap();
-        fs::write(
-            root.join("system.toml"),
-            "[system]\nname=\"system_pkg\"\nrmw=\"zenoh\"\ndomain_id=0\n[param_persistence]\npath=\"/data/params.toml\"\n",
-        )
-        .unwrap();
-        let launch = root.join("system.launch.xml");
-        fs::write(&launch, "<launch />").unwrap();
-        let record = root.join("record.json");
-        fs::write(
-            &record,
-            r#"{ "node": [ { "package": "demo_pkg", "executable": "talker", "name": "worker", "namespace": "/" } ] }"#,
-        )
-        .unwrap();
-        let metadata = root.join("talker.metadata.json");
-        fs::write(
-            &metadata,
-            r#"{
-  "version": 1, "package": "demo_pkg", "component": "talker", "language": "rust",
-  "executable": "talker", "exported_symbol": "nros_component_talker",
-  "nodes": [{
-    "id": "node_talker", "unresolved_name": {"value": "talker", "kind": "relative"},
-    "namespace": null, "publishers": [], "subscribers": [], "timers": [], "services": [], "actions": []
-  }],
-  "callbacks": [], "parameters": [],
-  "trace": {"generator": "test", "package_manifest": "package.xml", "source_artifacts": []}
-}"#,
-        )
-        .unwrap();
-
-        let output = plan_system(PlanOptions {
-            system_pkg: "system_pkg".to_string(),
-            workspace_root: root.clone(),
-            launch_file: launch,
-            record_file: Some(record),
-            out_root: root.join("build/system_pkg/nros"),
-            metadata_files: vec![metadata],
-            manifest_files: vec![],
-            nros_toml_files: vec![],
-            launch_args: vec![],
-            rmw: None,
-            target: None,
-        })
-        .unwrap();
-        let plan: Value =
-            serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
-        serde_json::from_value::<NrosPlan>(plan.clone()).unwrap();
-        assert_eq!(plan["param_persistence"]["backend"], "file", "{plan:?}");
-        assert_eq!(
-            plan["param_persistence"]["path"], "/data/params.toml",
-            "system.toml [param_persistence] must land in the plan; got {plan:?}"
-        );
-    }
-
     #[cfg(feature = "play-launch-parser")]
     #[test]
     fn plan_system_resolves_private_remap_and_matches_manifest() {
@@ -5988,32 +5886,6 @@ topics:
         ])
         .unwrap();
         assert_eq!(lc["autostart"], json!("active"));
-    }
-
-    /// Verifies parameter-persistence collection reads block defaults with last-wins semantics.
-    #[test]
-    fn collect_param_persistence_with_defaults() {
-        // No [param_persistence] → no persistence.
-        assert!(collect_param_persistence(&[json!({})]).is_none());
-        // Empty / missing path → dropped (nothing to persist to).
-        assert!(
-            collect_param_persistence(&[json!({ "param_persistence": { "backend": "file" } })])
-                .is_none()
-        );
-        // backend defaults to "file".
-        let pp = collect_param_persistence(&[json!({
-            "param_persistence": { "path": "/var/lib/nros/params" }
-        })])
-        .unwrap();
-        assert_eq!(pp["backend"], json!("file"));
-        assert_eq!(pp["path"], json!("/var/lib/nros/params"));
-        // Last overlay wins.
-        let pp = collect_param_persistence(&[
-            json!({ "param_persistence": { "path": "/a" } }),
-            json!({ "param_persistence": { "backend": "file", "path": "/b" } }),
-        ])
-        .unwrap();
-        assert_eq!(pp["path"], json!("/b"));
     }
 
     /// Phase 250 Wave 3 — `[param_services]` collection: presence enables,

@@ -98,11 +98,16 @@ already exists in `system.toml` for the bake but the planner ignores it).
   `[lifecycle]` (reusing the shared `system_caps` parse), falling back to `collect_lifecycle` (the
   `nros.toml` overlay) with a deprecation warn — the phase-254 pattern. Test:
   `plan_system_reads_lifecycle_from_system_toml`. cli suite green (395).
-- **Wave 2 — `[param_persistence]` → typed — DONE (2026-06-17).** Added
-  `SystemParamPersistence { backend, path }` + `param_persistence: Option<…>` on `SystemToml`.
-  `schema_plan_json` prefers the typed block (empty `path` ⇒ no persistence), falling back to the
-  `nros.toml` overlay with a deprecation warn. Test:
-  `plan_system_reads_param_persistence_from_system_toml`. cli suite green (396).
+- **Wave 2 — `[param_persistence]` → typed, then DISABLED (2026-06-18).** Originally landed the
+  typed `SystemParamPersistence` (W2). On the scope review the feature was **disabled at the config
+  surface** — it is in scope (the durable half of `param_services`: the embedded analog of
+  `ros2 param dump` + launch-yaml reload) but **incomplete** (only the hosted `file` `ParamStore`
+  backend; the embedded flash/NVS backends are unbuilt) with **0 real users**. So rather than ship
+  a half-working option: the typed `SystemParamPersistence` field is **removed** (`system.toml`
+  now rejects `[param_persistence]` via `deny_unknown_fields`), the planner stops emitting it
+  (`collect_param_persistence` removed → `apply_param_persistence` no-ops), and it is dropped from
+  the audit block lists. The `ParamStore` design + runtime seam (`nros-params`) + codegen path are
+  **kept dormant** for re-enable. Tracked + re-enable criteria in **issue 0080**.
 - **Wave 3a — planner target-awareness — DONE (2026-06-18).** The shared prerequisite for W3 +
   W8: `SystemToml::resolve_target(cli)` (`--target` → `[system].default_target` → sole
   `[deploy.<t>]` → `None`) + `PlanOptions::target` + `nros plan --target`, threaded into

@@ -30,9 +30,10 @@ pattern as phase-254/255). The block map (reader fn + typed-field status per con
   (target/board/profile/optimize/cargo/cc/features/`[[transport]]`), `[lifecycle]`,
   `[param_persistence]`, `[[scheduling.contexts]]`, `[[shared_state]]`. Each moves to a typed
   `system.toml` field/table; the overlay read becomes a **warning fallback**, then is removed.
-  **phase-256 Waves 1-4** (`lifecycle`/`param_persistence` = clean adds, DONE; `build` rest →
-  `[deploy.<t>]`, DONE; `scheduling` → `[tiers]` SSoT = W4, decision A). **`[[shared_state]]` is
-  NOT migrated — the feature is removed (out of ROS scope, issue 0079).**
+  **phase-256 Waves 1-4** (`lifecycle` DONE; `build` rest → `[deploy.<t>]`, DONE; `scheduling` →
+  `[tiers]` SSoT = W4, decision A). **`[param_persistence]` DISABLED** — in scope but incomplete,
+  no embedded `ParamStore` backends (issue 0080). **`[[shared_state]]` REMOVED** — out of ROS scope
+  (issue 0079).
 - [ ] **`nros config show`** — print the **resolved effective config** for a system + **per-value
   provenance** (which file each value came from). The audit backstop for SSoT (RFC-0004 §3.1).
   Today's `nros config` reads the retired pre-212 `config.toml`; this is the new-model command.

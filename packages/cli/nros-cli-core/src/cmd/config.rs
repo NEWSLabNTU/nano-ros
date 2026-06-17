@@ -168,15 +168,6 @@ fn render_resolved(workspace: &Path, system: &str) -> Result<String> {
             .unwrap_or_else(|| "(absent)".to_string()),
         cap_source(sys.lifecycle.is_some()),
     );
-    line(
-        &mut out,
-        "param_persistence",
-        &sys.param_persistence
-            .as_ref()
-            .map(|p| format!("{} @ {}", p.backend, p.path))
-            .unwrap_or_else(|| "(absent)".to_string()),
-        cap_source(sys.param_persistence.is_some()),
-    );
 
     // Legacy overlay audit — a per-package `nros.toml` sitting next to the bringup
     // `system.toml` is the deprecated action-at-a-distance path (RFC-0004 §3.1).
@@ -191,7 +182,6 @@ fn render_resolved(workspace: &Path, system: &str) -> Result<String> {
         let blocks = [
             "build",
             "lifecycle",
-            "param_persistence",
             "param_services",
             "safety",
             "scheduling",

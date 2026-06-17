@@ -462,26 +462,12 @@ pub struct SystemToml {
     /// block (node stays a plain node).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lifecycle: Option<SystemLifecycle>,
-    /// Phase 256 Wave 2 — `[param_persistence]`: where the runtime persists
-    /// parameter overrides set after boot. Typed home superseding the per-package
-    /// `nros.toml` `[param_persistence]` overlay. Absent ⇒ no persistence.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub param_persistence: Option<SystemParamPersistence>,
-}
-
-/// Phase 256 Wave 2 — `[param_persistence]` in `system.toml`. `backend` selects
-/// the store kind (only `"file"` today); `path` is its location (required —
-/// an empty path means no persistence, so omit the block instead).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SystemParamPersistence {
-    #[serde(default = "default_param_persistence_backend")]
-    pub backend: String,
-    pub path: String,
-}
-
-fn default_param_persistence_backend() -> String {
-    "file".to_string()
+    // Phase 256 — `[param_persistence]` is DISABLED at the config surface: the
+    // feature is incomplete (only the hosted `file` `ParamStore` backend exists;
+    // the embedded flash/NVS backends are unbuilt — issue 0080). The typed field
+    // is intentionally absent, so `deny_unknown_fields` REJECTS a
+    // `[param_persistence]` block until the backends land. The runtime `ParamStore`
+    // seam (`nros-params`) + the codegen path are kept dormant for re-enable.
 }
 
 /// Phase 256 Wave 1 — `[lifecycle]` in `system.toml`. `autostart` ∈

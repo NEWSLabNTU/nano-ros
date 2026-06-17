@@ -338,12 +338,14 @@ taxonomy is **four surfaces** — `[package.metadata.nros.*]` (Rust) / `nano_ros
 for ROS identity, launch XML for topology — plus Kconfig for the embedded build.
 `config.toml` and `nros.toml` are **both fully legacy** (0 example files). The tidy:
 (1) finish migrating the deprecated `nros.toml` overlay blocks to typed `system.toml`
-(W1/W2 done: `[lifecycle]`/`[param_persistence]`); (2) **retire the `nros.toml` file
-entirely** (no surviving role); (3) scrub the `config.toml` reader; (4) treat
-transport/network as part of the **`deploy` class**, not a separate file surface;
+(`[lifecycle]` done; `[param_persistence]` **disabled** — in scope but incomplete, no
+embedded `ParamStore` backends, issue 0080; `[[shared_state]]` **removed** — out of ROS
+scope, issue 0079; `[[scheduling.contexts]]` → `[tiers]`, decision A); (2) **retire the
+`nros.toml` file entirely** (no surviving role); (3) scrub the `config.toml` reader;
+(4) treat transport/network as part of the **`deploy` class**, not a separate file surface;
 (5) make the `deploy`-class precedence (`[..deploy.<t>]` projection vs `system.toml
 [deploy.<t>]`) explicit. Option *scope* classes: **node** (identity/params/remaps/qos/
-callback-groups), **system** (topology/capabilities/tiers/shared-state — agnostic),
+callback-groups), **system** (topology/capabilities/tiers — agnostic),
 **deploy** (target/board/build-tuning + net + rmw/domain/locator overrides),
 **build/capability** (lowered, not authored).
 
