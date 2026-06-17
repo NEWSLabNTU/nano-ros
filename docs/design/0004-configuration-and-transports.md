@@ -68,6 +68,38 @@ Ownership:
 | embedded direct-mode runtime (transports, RT) | `nros.toml` (board parses at boot) |
 | ROS identity + msg `<depend>` (codegen) | `package.xml` (both languages, both scales) |
 
+### 3.1 Single source of truth — no cross-file overlay merge
+
+Each concern has **exactly one home** (the table above). nano-ros is **SSoT-per-concern,
+not an overlay system**: a value is never silently *merged* across several files for the same
+concern. To know a system, read its `system.toml`; to know a node, read its package metadata.
+This is deliberate — an overlay system (config blended from N files, last-wins) is
+**action-at-a-distance**: a value set in some package's file changes the build with no local
+sign, and "what is the effective config?" needs N files reconciled in your head.
+
+**Resolution, where a concern has both a native-idiom projection and a `system.toml`,** is a
+**fixed, short precedence ladder** (not an open merge): explicit CLI/build flag
+(`--rmw` / `-DNANO_ROS_*`) > `system.toml` (`[deploy.<t>]` > `[system]`) > the per-package
+native projection (`[package.metadata.nros.*]` / CMake) > built-in default. One ladder, each
+rung a known file — auditable, unlike an arbitrary-file overlay.
+
+**Legacy — the Phase-172 per-package `nros.toml` build/capability overlay.** The orchestration
+planner historically *also* read a per-package `nros.toml` as a build overlay
+(`[build]`/`[safety]`/`[param_services]`/`[lifecycle]`/`[param_persistence]`/`[[transport]]`/`[[shared_state]]`).
+That **contradicts this section + the table** (where `nros.toml` is the embedded-runtime file
+only) and is exactly the action-at-a-distance hazard above. It is **deprecated and being
+retired**: phase-254 moved `[safety]`/`[param_services]` to typed `system.toml` (the others
+follow — issue 0076 §A; RMW in phase-255). During retirement the overlay is a **fallback that
+warns**; after it, the *same-name* collision is gone — `nros.toml` serves only its §6
+embedded-runtime role.
+
+**Auditability (issue 0076).** Two guards make the SSoT legible:
+- `nros config show` — prints the **resolved effective config** for a system + **per-value
+  provenance** (which file each value came from). The plan's `trace` records file-level source
+  today; this surfaces it per value.
+- `nros check` — **flags any value still sourced from a legacy `nros.toml` overlay** (with a
+  removal date), so the action-at-a-distance is visible before it bites.
+
 ## 4. `system.toml` schema
 
 ```toml

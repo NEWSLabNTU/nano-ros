@@ -13,10 +13,33 @@ The safety-e2e capability arc (phase-250 → crc fix → phase-252 → issue-007
 landed the capability + the config-SSoT unification for capabilities. This tracks the
 remaining tails, grouped, so they don't scatter.
 
-## A. Config SSoT consolidation (RFC-0004 endgame)
+## A. Config SSoT consolidation (RFC-0004 §3.1 endgame)
 
-phase-254 unified the **capability** axes (`[safety]`, `[param_services]`) onto `system.toml`,
-read by both codegen paths. The same model should cover the rest:
+**Design decision (2026-06-17): nano-ros is SSoT-per-concern, NOT an overlay system**
+(RFC-0004 §3.1). The legacy Phase-172 per-package `nros.toml` build/capability overlay is
+action-at-a-distance (a value set in some package's file silently changes the build) and
+contradicts RFC-0004 (`nros.toml` is the embedded-runtime file only). It is being **retired**,
+not merely supplemented. phase-254 did the capability axes; the rest of §A finishes it.
+
+- [ ] **Retire ALL legacy `nros.toml` build-overlay blocks → `system.toml` (typed).** Not just
+  `[safety]`/`[param_services]` (done, phase-254): also `[build]` (target/board/profile/`[[transport]]`),
+  `[lifecycle]`, `[param_persistence]`, `[[scheduling]]`, `[[shared_state]]`. Each moves to a
+  typed `system.toml` field/table; the overlay read becomes a **warning fallback**, then is
+  removed. After removal the `nros.toml` same-name collision (build-overlay vs §6 embedded-runtime)
+  is gone.
+- [ ] **`nros config show`** — print the **resolved effective config** for a system + **per-value
+  provenance** (which file each value came from). The audit backstop for SSoT (RFC-0004 §3.1).
+  Today's `nros config` reads the retired pre-212 `config.toml`; this is the new-model command.
+- [ ] **`nros check` flags legacy-overlay-sourced values** — any value still coming from a
+  per-package `nros.toml` overlay surfaces a warning + removal date (the action-at-a-distance
+  guard). Extends `check`'s current plan/schema validation.
+- [ ] **Deploy-metadata precedence (leakage).** `[package.metadata.nros.deploy.<t>]` (`rmw`,
+  `domain_id`, `locator`) + `[workspace.metadata.nros]` (`rmw_override`, `domain_id_override`)
+  are the **single-node Cargo-native projection**. When a `system.toml` exists for the same
+  scope it is authoritative (the RFC-0004 §3.1 ladder: flag > `system.toml` > native projection
+  > default) — make this explicit + non-silent, not an overlay merge.
+
+The original capability/RMW items (now under the §3.1 umbrella):
 
 - [ ] **RMW duality → one SSoT — `[system].rmw` / `[deploy.<t>].rmw`.** Today `[build].rmw`
   (per-package `nros.toml` overlay → board crate `rmw-<x>` feature) and `[system].rmw`

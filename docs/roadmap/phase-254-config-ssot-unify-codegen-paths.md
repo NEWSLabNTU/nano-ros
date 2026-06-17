@@ -73,8 +73,11 @@ single-`system.toml` SSoT + nros.toml-is-runtime-only stance.
 - **Wave 4 — migrate examples/fixtures + retire the overlay path — NO-OP (2026-06-16).**
   No repo fixture or example declares `[safety]`/`[param_services]` in a `nros.toml` (the axes
   are new — only unit tests exercise them), so there is nothing to migrate. The deprecated
-  per-package `nros.toml` overlay **fallback stays one release** (warns if used; harmless —
-  none use it); its removal is a later cleanup, not this phase.
+  per-package `nros.toml` overlay fallback warns if used (harmless — none use it). Per the
+  later **SSoT-not-overlay decision** (RFC-0004 §3.1, 2026-06-17), it is to be **retired** (not
+  kept), guarded by the `nros check` overlay-flag + `nros config show` provenance — tracked in
+  [issue 0076 §A](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md) alongside the
+  remaining overlay blocks ([build]/[lifecycle]/[param_persistence]/scheduling/shared_state).
 - **Wave 5 — docs — DONE (2026-06-16).** RFC-0004 §4 schema gained the capability axes + the
   "both paths read `system.toml`" statement; RFC-0031 §Generalization records `system.toml` as
   the declared home; issue 0073's `#define` follow-up closed.

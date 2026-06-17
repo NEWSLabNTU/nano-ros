@@ -57,9 +57,12 @@ value / C define token).
 endpoints. This replaces the build-overlay `[[transport]].rmw` multi-RMW path — bridges are
 topology, so they belong in `system.toml`, read by both paths.
 
-**Deprecated:** `[build].rmw` / `[[transport]].rmw` in `nros.toml` become a **fallback that
-warns** (mirrors phase-254's capability fallback), kept one release for migration. `nros.toml`
-reverts to the RFC-0004 §5 embedded-runtime role.
+**Deprecated, then retired (RFC-0004 §3.1 — SSoT, not overlay).** `[build].rmw` /
+`[[transport]].rmw` in `nros.toml` become a **fallback that warns**, then are removed — the
+config model is SSoT-per-concern, and a per-package `nros.toml` overlay setting system RMW is
+the action-at-a-distance hazard §3.1 forbids. `nros.toml` reverts to the §6 embedded-runtime
+role only. The retirement is guarded by `nros check` flagging any overlay-sourced RMW + `nros
+config show` surfacing the resolved value's provenance (issue 0076 §A).
 
 ## Waves
 
