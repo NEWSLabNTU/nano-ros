@@ -2,7 +2,7 @@
 <package format="3">
   <name>demo_bringup</name>
   <version>0.1.0</version>
-  <description>Bringup pkg — launch topology + per-target deploy config for the demo system.</description>
+  <description>Bringup pkg — launch topology + deploy config for the typed demo system.</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
   <exec_depend>talker_pkg</exec_depend>

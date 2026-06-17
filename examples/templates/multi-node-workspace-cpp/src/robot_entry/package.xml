@@ -2,7 +2,7 @@
 <package format="3">
   <name>robot_entry</name>
   <version>0.1.0</version>
-  <description>Entry pkg — boots the demo topology against the native board (C++ variant).</description>
+  <description>Entry pkg — boots the typed demo topology on the native executor (RFC-0043).</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
   <exec_depend>talker_pkg</exec_depend>

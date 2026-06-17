@@ -5,9 +5,6 @@ project(talker_pkg VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Phase 219.I — workspace builds inherit the helpers via the parent
-# root; standalone solo builds (this dir) bootstrap via the include
-# below. Same shape `nros new --component --lang cpp` emits.
 if(NOT COMMAND nano_ros_workspace_pkg_guard)
     if(NOT NANO_ROS_ROOT)
         message(FATAL_ERROR
@@ -20,18 +17,18 @@ nano_ros_workspace_pkg_guard()
 
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
-# Phase 212.L.9 — declarative Node pkg shape. No add_executable, no
-# `main()`; the linked Entry pkg's BSP-generated runtime (post-219.D)
-# owns the entry point, executor init, and the spin loop.
+# Phase 240.2b — typed component. CLASS + (derived) HEADER are recorded in
+# the cmake metadata so the typed Entry can `#include "talker_pkg/Talker.hpp"`
+# and construct `talker_pkg::Talker`. The header lives at
+# `include/talker_pkg/Talker.hpp` (the component lib's PUBLIC include dir), so
+# the convention-derived `class_header` (`talker_pkg/Talker.hpp`) resolves for
+# the Entry pkg via the auto-linked component lib.
 nano_ros_node_register(
-    NAME    talker
-    CLASS   talker_pkg::Talker
-    SOURCES src/Talker.cpp
-    DEPLOY  native)
+    NAME      talker
+    CLASS     talker_pkg::Talker
+    LANGUAGE  CPP
+    SOURCES   src/Talker.cpp
+    DEPLOY    native)
 
-# `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
-# carrying generated headers' include dirs. Entry pkg auto-links; Node
-# pkg does not (Phase 219 review Gap 4 — pending 219.J auto-link from
-# launch metadata).
 target_link_libraries(talker_pkg_talker_component
     PUBLIC std_msgs__nano_ros_cpp)

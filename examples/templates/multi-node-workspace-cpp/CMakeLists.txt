@@ -1,15 +1,19 @@
 cmake_minimum_required(VERSION 3.22)
 project(multi_node_workspace_cpp LANGUAGES C CXX)
 
-# Phase 219.I — workspace-root single call. Replaces the per-subdir
-# `add_subdirectory(<nano-ros>)` + `include(NanoRosNodeRegister.cmake)`
-# boilerplate the pre-219 multi-pkg examples carried; each subdir below
-# uses `nano_ros_workspace_pkg_guard()` to inherit the helpers without
-# re-importing nano-ros (the cmake equivalent of cargo `[workspace]`
-# discipline).
+# Phase 240.2b (RFC-0043) / phase-257 — the C++ multi-node workspace. The Node
+# pkgs are stateful component objects (`Result configure(nros::Node&)` binding
+# real member callbacks by identity — no callback names, no synthesizing
+# interpreter), and the Entry pkg's `nano_ros_entry(... TYPED)` routes each launch
+# node — this typed form is now canonical (phase-257 retired the legacy non-typed
+# `EntryNodeRuntime` interpreter entry that this template previously demonstrated)
+# to the REAL executor (`Board::run_components`). See RFC-0043 + phase-240.
 #
-# Standalone solo build of any subdir:
-#     cmake -S src/talker_pkg -B build -DNANO_ROS_ROOT=/path/to/nano-ros
+# SUBDIRS order matters here: the Node pkgs must be processed before the
+# Entry pkg so `${CMAKE_BINARY_DIR}/nros-metadata.json` already lists every
+# component (class + header) when the typed codegen runs at the entry's
+# configure time. (The entry links the component libs anyway.)
+#
 # Workspace build (from this dir):
 #     cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros && cmake --build build
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
@@ -21,9 +25,4 @@ nano_ros_workspace(
     SUBDIRS  src/talker_pkg
              src/listener_pkg
              src/robot_entry
-    # Phase 219.D — `src/robot_entry/CMakeLists.txt` calls
-    # `nano_ros_entry(LAUNCH "demo_bringup:system.launch.xml")`. The
-    # cmake fn shells `nros codegen entry --lang cpp` at configure
-    # time, emits the canonical `int main()` body into the build dir,
-    # and auto-links the matching `<pkg>_<exec>_component` static libs.
 )

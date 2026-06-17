@@ -121,6 +121,11 @@ wave lands).
         (`NanoRosEntry.cmake`). Node pkgs' `add_subdirectory` must precede the entry
         (metadata must list every component; the entry links them anyway).
   - **240.2b-E2E — typed example + TU generation DONE 2026-06-12**:
+    > Note (phase-257, 2026-06-18): the `-typed` artifacts named below were promoted
+    > to canonical when phase-257 retired the legacy non-typed entry —
+    > `multi-node-workspace-cpp-typed/` → `multi-node-workspace-cpp/`,
+    > `cpp_robot_entry_typed` fixture → `cpp_robot_entry`,
+    > `cpp_multi_node_entry_typed.rs` → `cpp_multi_node_entry.rs`.
     - [x] `examples/templates/multi-node-workspace-cpp-typed/` — talker/listener
           components expose `Result configure(nros::Node&)` (binding member
           callbacks by identity via `component.hpp`) + headers at

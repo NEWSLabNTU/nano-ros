@@ -1,16 +1,16 @@
-// Entry pkg — boots the `demo_bringup` topology against the native
-// board.
+// Entry pkg — boots the `demo_bringup` topology against the native board,
+// the TYPED way (RFC-0043).
 //
-// Phase 219.D body collapses to one declarative line. The cmake fn
-// `nano_ros_entry(LAUNCH "demo_bringup:system.launch.xml")` drives
-// `nros codegen entry --lang cpp` at configure time, emits the real
-// `int main()` body into `${CMAKE_CURRENT_BINARY_DIR}/robot_entry_nros_main_generated.cpp`,
-// and auto-links the matching `<pkg>_<exec>_component` static libs
-// (Phase 219.J).
+// `nano_ros_entry(... TYPED LAUNCH "demo_bringup:system.launch.xml")` drives
+// `nros codegen entry --lang cpp --typed --metadata …` at configure time. The
+// generated TU constructs each launch node's C++ component object, calls
+// `configure(node)` (binds the real member callbacks by identity), and hands
+// the setup fn to `NativeBoard::run_components` (init → setup → spin_once loop
+// → shutdown) — the REAL executor, no synthesizing interpreter.
 //
-// The `NROS_MAIN(...)` macro here expands to nothing functional — it's
-// a doc / IDE hint that mirrors the Rust `nros::main!(launch = "…")`
-// shape; the cmake fn is what actually generates code.
+// `NROS_MAIN(...)` here expands to nothing functional (a doc / IDE hint that
+// mirrors the Rust `nros::main!(launch = "…")` shape); the cmake fn generates
+// the actual `int main()`.
 
 #include <nros/main.hpp>
 

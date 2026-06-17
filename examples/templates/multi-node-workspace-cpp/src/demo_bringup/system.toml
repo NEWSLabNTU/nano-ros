@@ -1,8 +1,5 @@
 # Bringup pkg system descriptor — declarative topology + per-target
-# deploy config. No Cargo.toml / CMakeLists.txt / src/ lives here.
-#
-# `default_launch` is the launch file `nros::main!(launch = "demo_bringup")`
-# (or `nros plan demo_bringup` with no explicit file) picks by default.
+# deploy config (typed variant; RFC-0043).
 
 [system]
 name = "demo"

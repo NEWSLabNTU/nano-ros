@@ -143,12 +143,12 @@ stage_and_build() {
 # step shells the `nros` CLI; the build is skipped (no stamp → test skips/fails
 # per tier) when cmake or a `codegen entry`-capable `nros` is unavailable.
 CMAKE_FIXTURES=(
+    # Phase 257 — the C++ multi-node entry, now TYPED-only (the legacy non-typed
+    # interpreter entry was retired): `nano_ros_entry(... TYPED)` shells `nros codegen
+    # entry --typed --metadata`, the generated TU constructs each component + calls
+    # `configure(node)` + `NativeBoard::run_components` (no register-symbol, no
+    # interpreter). The test inspects that shape.
     "cpp_robot_entry:examples/templates/multi-node-workspace-cpp"
-    # Phase 240.2b — the TYPED multi-node entry: `nano_ros_entry(... TYPED)` shells
-    # `nros codegen entry --typed --metadata`, the generated TU constructs each
-    # component + calls `configure(node)` + `NativeBoard::run_components` (no
-    # register-symbol, no interpreter). The test inspects that shape.
-    "cpp_robot_entry_typed:examples/templates/multi-node-workspace-cpp-typed"
     "c_mixed_workspace:examples/templates/c-and-cpp-mixed-workspace"
     "pure_c_workspace:examples/templates/pure-c-workspace"
     # workspace-over-AMENT shadowing: the build links the workspace `std_msgs`

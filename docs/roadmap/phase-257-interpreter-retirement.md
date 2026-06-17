@@ -110,12 +110,18 @@ even with C Node pkgs. Only a workspace whose **Entry itself is C**
   bind_subscription_raw); `native_entry` → `nano_ros_entry(TYPED)`. Verified:
   typed TU, links, runtime binary enters the native spin loop
   (`cmake_cpp_workspace_entry_starts_prebuilt_runtime`).
-- [ ] **`multi-node-workspace-cpp`** (pure C++) — `emit_cpp::emit_typed` ready; the
-  `-typed` sibling + `cpp_multi_node_entry_typed.rs` + `cpp_robot_entry_typed`
-  fixture already exist in parallel. Migration = make this template *be* the typed
-  form (adopt `-typed`), drop the legacy `cpp_robot_entry` fixture +
-  `cpp_multi_node_entry.rs` (asserts the legacy `robot_entry_nros_main_generated.cpp`)
-  + `cpp_entry_runtime.rs` (runs the legacy Entry binary). Lands with Stage-3.
+- [x] **`multi-node-workspace-cpp`** (pure C++) — **DONE (2026-06-18).** Adopted the
+  typed form as canonical: deleted the legacy non-typed template, `git mv`'d
+  `multi-node-workspace-cpp-typed` → `multi-node-workspace-cpp` (project renamed
+  `multi_node_workspace_cpp`), folded the `cpp_robot_entry_typed` compile-check
+  fixture into `cpp_robot_entry` (now builds the typed template) + dropped the legacy
+  `cpp_robot_entry` template entry, renamed `cpp_multi_node_entry_typed.rs` →
+  `cpp_multi_node_entry.rs` (the typed-shape inspector is now THE cpp multi-node test;
+  fixture ref repointed), and **deleted** the legacy `cpp_multi_node_entry.rs` (asserted
+  `robot_entry_nros_main_generated.cpp` interpreter shape) + `cpp_entry_runtime.rs` (ran
+  the legacy Entry binary). Verified: the canonical template cmake-configures + builds
+  the typed `robot_entry` (component `configure()` + `NativeBoard::run_components`, no
+  interpreter). Pure-C++ Stage-3 deletion is now unblocked.
 
 **Two framework W0s gate the rest** (each purely additive — no deletion):
 - [ ] **W0-A — typed C entry** for **`pure-c-workspace`** + **`examples/workspaces/c`**.

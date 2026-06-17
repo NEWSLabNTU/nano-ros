@@ -2,7 +2,7 @@
 <package format="3">
   <name>listener_pkg</name>
   <version>0.1.0</version>
-  <description>C++ Node pkg — subscribes std_msgs/Int32 on /chatter.</description>
+  <description>C++ typed component — raw zero-copy subscription on /chatter via a member callback.</description>
   <maintainer email="TODO@todo.com">TODO</maintainer>
   <license>Apache-2.0</license>
   <depend>std_msgs</depend>
