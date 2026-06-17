@@ -133,7 +133,7 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     // profile / `[[transport]]`) from the nros.toml overlays, then
     // validate the transport semantics with a clear error before the
     // plan is written.
-    let build_json = schema_build_json(&overlays);
+    let build_json = schema_build_json(&overlays, system_toml_path.as_deref());
     let build: PlanBuildOptions = serde_json::from_value(build_json.clone())
         .wrap_err("invalid [build] / [[transport]] section in nros.toml")?;
     let transport_problems = build.validate_transports();
@@ -807,7 +807,7 @@ fn schema_plan_json(
 /// fields; TOML `[[transport]]` (array key `transport`) → the
 /// `transports` field. Unknown keys are caught downstream by
 /// `PlanBuildOptions`'s `deny_unknown_fields`.
-fn schema_build_json(overlays: &[Value]) -> Value {
+fn schema_build_json(overlays: &[Value], system_toml: Option<&Path>) -> Value {
     let mut build = json!({
         "target": "x86_64-unknown-linux-gnu",
         "board": "native",
@@ -818,8 +818,12 @@ fn schema_build_json(overlays: &[Value]) -> Value {
         "transports": [],
     });
     let obj = build.as_object_mut().expect("build is an object");
+    let mut overlay_had_rmw = false;
     for overlay in overlays {
         if let Some(Value::Object(b)) = overlay.get("build") {
+            if b.contains_key("rmw") {
+                overlay_had_rmw = true;
+            }
             for key in [
                 "target", "board", "rmw", "profile", "features", "cfg", "optimize", "cargo", "cc",
             ] {
@@ -833,6 +837,22 @@ fn schema_build_json(overlays: &[Value]) -> Value {
         if let Some(transports) = overlay.get("transport") {
             obj.insert("transports".to_string(), transports.clone());
         }
+    }
+    // Phase 255 — `[system].rmw` (resolved) is the SSoT and wins over the
+    // DEPRECATED `[build].rmw` overlay. `[deploy.<t>].rmw` / `--rmw` plumb in once
+    // the planner is target-aware (issue 0076 §A); today both paths resolve to
+    // `[system].rmw` with no target, unifying them.
+    if let Some(sys) = system_toml
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok())
+    {
+        if overlay_had_rmw {
+            eprintln!(
+                "warning: [build].rmw in nros.toml is deprecated (phase-255); declare rmw in \
+                 the bringup system.toml ([system].rmw / [deploy.<t>].rmw)"
+            );
+        }
+        obj.insert("rmw".to_string(), json!(sys.resolved_rmw(None, None)));
     }
     build
 }
@@ -3474,7 +3494,7 @@ mod tests {
     fn schema_build_json_defaults_when_no_overlay() {
         // No `[build]` / `[[transport]]` ⇒ pre-173.5 defaults, empty
         // transports — keeps existing plans byte-identical.
-        let build = schema_build_json(&[]);
+        let build = schema_build_json(&[], None);
         assert_eq!(build["board"], "native");
         assert_eq!(build["rmw"], "zenoh");
         assert_eq!(build["target"], "x86_64-unknown-linux-gnu");
@@ -3494,7 +3514,7 @@ mod tests {
                 { "kind": "serial", "device": "UART0", "baudrate": 115200, "rmw": "cyclonedds" }
             ]
         });
-        let build = schema_build_json(std::slice::from_ref(&overlay));
+        let build = schema_build_json(std::slice::from_ref(&overlay), None);
         assert_eq!(build["board"], "baremetal");
         assert_eq!(build["target"], "thumbv7m-none-eabi");
         let typed: PlanBuildOptions = serde_json::from_value(build).unwrap();
@@ -3509,9 +3529,33 @@ mod tests {
         let first = json!({ "build": { "board": "native" } });
         let second =
             json!({ "build": { "board": "freertos" }, "transport": [ { "kind": "ethernet" } ] });
-        let build = schema_build_json(&[first, second]);
+        let build = schema_build_json(&[first, second], None);
         assert_eq!(build["board"], "freertos");
         assert_eq!(build["transports"].as_array().unwrap().len(), 1);
+    }
+
+    /// Phase 255 — `[system].rmw` (the SSoT) wins over the deprecated `[build].rmw`
+    /// overlay; with no system.toml the overlay still drives (fallback).
+    #[test]
+    fn schema_build_json_system_toml_rmw_wins_over_build_overlay() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"cyclonedds\"\ndomain_id=0\n",
+        )
+        .unwrap();
+        let overlay = json!({ "build": { "rmw": "zenoh" } });
+
+        let build = schema_build_json(std::slice::from_ref(&overlay), Some(&st));
+        assert_eq!(
+            build["rmw"], "cyclonedds",
+            "[system].rmw must win over [build].rmw"
+        );
+
+        // No system.toml → the [build].rmw overlay drives (deprecated fallback).
+        let fallback = schema_build_json(std::slice::from_ref(&overlay), None);
+        assert_eq!(fallback["rmw"], "zenoh");
     }
 
     #[cfg(feature = "play-launch-parser")]

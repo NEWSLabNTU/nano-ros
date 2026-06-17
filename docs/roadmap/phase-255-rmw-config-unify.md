@@ -72,10 +72,15 @@ config show` surfacing the resolved value's provenance (issue 0076 §A).
   Cargo-native projection (`[package.metadata.nros.deploy.<t>].rmw`) flows into the synthesized
   `DeployTarget` (`nros_config.rs`). Test: `resolved_rmw_precedence_ladder` (each rung). No
   behaviour change yet (helper unused until Waves 2-3). cli suite green (387).
-- **Wave 2 — planner reads it.** `schema_build_json` / `plan.build.rmw` derive from
-  `resolve_system_rmw` (the bringup `system.toml` + selected target), preferring it over the
-  `[build].rmw` overlay (deprecated fallback, warns). So the board `rmw-<x>` feature lowering is
-  driven by `[system].rmw`/`[deploy].rmw`. Byte-identical for plans that already match.
+- **Wave 2 — planner reads it — DONE (2026-06-17).** `schema_build_json(overlays, system_toml)`
+  sets `plan.build.rmw` from `SystemToml::resolved_rmw(None, None)` (= `[system].rmw` today; the
+  planner is target-agnostic, so `[deploy.<t>].rmw`/`--rmw` plumb in with target-awareness —
+  issue 0076 §A), **preferring** it over the `[build].rmw` overlay (deprecated, warns). Test:
+  `schema_build_json_system_toml_rmw_wins_over_build_overlay`. **This already fixes a live
+  duality bug:** `multi_pkg_workspace_esp_idf/system.toml` declares `rmw = "xrce"` but had no
+  `[build].rmw`, so the plan defaulted to `zenoh` (≠ the C bake's xrce); now the plan resolves to
+  `xrce`. cli suite green (388). (The esp_idf *bringup* test needs a prebuilt fixture — a
+  pre-existing env precondition, unrelated.)
 - **Wave 3 — bake reads it.** `render_system_config_h` resolves through the same
   `resolve_system_rmw` (honouring `[deploy.<t>].rmw`, not just `[system].rmw`), so the C define
   matches the build for a given target.
