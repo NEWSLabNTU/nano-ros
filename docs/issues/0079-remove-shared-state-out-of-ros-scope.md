@@ -1,7 +1,7 @@
 ---
 id: 79
 title: Remove shared_state — raw in-process shared memory is out of nano-ros (RT ROS) scope
-status: open
+status: resolved
 type: tech-debt
 area: orchestration
 related: [phase-256, rfc-0015, phase-228]

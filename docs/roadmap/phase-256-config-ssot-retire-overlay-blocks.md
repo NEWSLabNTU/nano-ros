@@ -168,7 +168,10 @@ already exists in `system.toml` for the bake but the planner ignores it).
   `PlanSharedRegion` → `render_shared_state`), the bake codegen (`emit_shared_state_*`), the runtime
   `SharedRegion`/`LockedSharedRegion`, and the fixture all come out — tracked by **issue 0079**.
   Bonus: removes the `sync = "tier_aware"` coupling to W4's tiers. (The raw `{id,bytes}` overlay
-  path also dies with W9's `nros.toml` deletion regardless.)
+  path also dies with W9's `nros.toml` deletion regardless.) **DONE (2026-06-18)** — removed across
+  schema / planner / plan / generate / bake / runtime (`nros-orchestration` `SharedRegion` +
+  `critical-section` dep) / fixture / CLI surface; `system.toml` now rejects `[[shared_state]]`.
+  Issue 0079 resolved. cli + IR + runtime suites green.
 - **Wave 6 — `nros config show` — DONE (2026-06-17).** Added `nros config show --system <pkg>`
   (+ `--workspace`): prints the **resolved effective config** for a bringup system (rmw / domain /
   locator + the safety / param_services / lifecycle / param_persistence axes) with a **provenance
