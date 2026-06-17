@@ -2162,7 +2162,6 @@ dependencies = [
 name = "nros-orchestration"
 version = "0.5.0"
 dependencies = [
- "critical-section",
  "nros-node",
 ]
 
