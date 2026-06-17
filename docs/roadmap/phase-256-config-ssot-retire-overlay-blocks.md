@@ -111,9 +111,15 @@ already exists in `system.toml` for the bake but the planner ignores it).
   the typed shape (preferred — the raw `{id,bytes}` is the legacy path the RFC-0015 model
   supersedes), or (b) a sound `fields → bytes` lowering is specified. Pin against RFC-0015 §8 +
   the runtime's shared-region ABI before coding — same caution as W4.
-- **Wave 6 — `nros config show`.** New-model command: print the **resolved effective config**
-  for a system + **per-value provenance** (which file each value came from), using Wave 0's
-  tagging. Replaces the retired pre-212 `config.toml` reader (`cmd/config.rs`).
+- **Wave 6 — `nros config show` — DONE (2026-06-17).** Added `nros config show --system <pkg>`
+  (+ `--workspace`): prints the **resolved effective config** for a bringup system (rmw / domain /
+  locator + the safety / param_services / lifecycle / param_persistence axes) with a **provenance
+  column** (`system.toml [section]` vs built-in `default`), and flags any sibling `nros.toml`
+  legacy overlay by NAME + the blocks it still carries (the Wave-0 `last_block_source` primitive,
+  end-to-end). The legacy `config.toml` surface (88 embedded examples + book) is untouched when
+  `--system` is absent. Rendered via a testable `render_resolved` (returns `String`). Tests:
+  `render_resolved_shows_provenance_and_flags_legacy_overlay`, `render_resolved_errors_on_unknown_system`.
+  cli suite green (398).
 - **Wave 7 — `nros check` legacy-overlay flag.** `nros check` flags any value still sourced from
   a per-package `nros.toml` overlay (Wave 0 provenance) + prints the removal date — the
   action-at-a-distance guard. Extends `check`'s current plan/schema validation (`check_plan_file`,
