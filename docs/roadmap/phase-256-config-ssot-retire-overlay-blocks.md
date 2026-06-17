@@ -87,17 +87,30 @@ already exists in `system.toml` for the bake but the planner ignores it).
   `schema_plan_json` prefers the typed block (empty `path` ⇒ no persistence), falling back to the
   `nros.toml` overlay with a deprecation warn. Test:
   `plan_system_reads_param_persistence_from_system_toml`. cli suite green (396).
-- **Wave 3 — `[build]` rest → `[deploy.<t>]`.** Extend `DeployTarget` with `profile`/`optimize`/
-  `cargo`/`cc`/`features`; move `[[transport]]` to a top-level typed `system.toml` table.
-  `schema_build_json` resolves the build shape from the selected deploy target, preferring it
-  over the `[build]` overlay (warns). The single biggest fixture-migration surface — sweep
-  `nros.toml` `[build]`/`[[transport]]` users.
+- **Wave 3 — `[build]` rest → `[deploy.<t>]`. PREREQUISITE: planner target-awareness.** Extend
+  `DeployTarget` with `profile`/`optimize`/`cargo`/`cc`/`features`; move `[[transport]]` to a
+  top-level typed `system.toml` table. `schema_build_json` resolves the build shape from the
+  *selected* deploy target — but the planner is **target-agnostic today** (`schema_build_json`
+  takes no target; phase-255 resolved `[deploy.<t>].rmw` only at `target = None`, i.e. never per
+  deploy — issue 0076 §A). So W3 must FIRST give the planner a `--target` / `default_target` key
+  (the machinery **shared with Wave 8**, deploy-metadata precedence). Biggest fixture-migration
+  surface. **Discovered 2026-06-17: do W3 + W8 together (shared target-awareness), after the
+  additive audit waves.**
 - **Wave 4 — `[[scheduling.contexts]]` → `[tiers]`.** Planner derives `PlanSchedContext` from
   `ResolvedTierTable` (the bake's input); overlay `scheduling.contexts` becomes a warn-fallback.
   Resolve the tier-vs-context field mapping (decision 2). Highest design risk — do it after the
   mechanical waves.
-- **Wave 5 — `[[shared_state]]` → typed `SharedStateDecl`.** Planner lowers `SharedStateDecl` →
-  `PlanSharedRegion` (schema-driven size); stop reading the raw `{id,bytes}` overlay.
+- **Wave 5 — `[[shared_state]]` → typed `SharedStateDecl`. RECONCILIATION (like W4).**
+  **Discovered 2026-06-17: not mechanical.** The overlay `[[shared_state]]` is `{id, bytes}` — a
+  RAW byte region the runtime allocates flat. The typed `SharedStateDecl` is
+  `{name, schema, storage, sync, fields, read, write}` — a STRUCTURED region (RFC-0015 §8) the
+  bake lowers to a generated struct with typed accessors, letting the **compiler** size it. There
+  is no existing byte-size computation to reuse, and computing `bytes` from `SharedStateField`
+  types by hand (size + alignment/padding) has memory-corruption stakes. So W5 is a model
+  decision, not a port: either (a) the planner emits typed regions and `PlanSharedRegion` grows
+  the typed shape (preferred — the raw `{id,bytes}` is the legacy path the RFC-0015 model
+  supersedes), or (b) a sound `fields → bytes` lowering is specified. Pin against RFC-0015 §8 +
+  the runtime's shared-region ABI before coding — same caution as W4.
 - **Wave 6 — `nros config show`.** New-model command: print the **resolved effective config**
   for a system + **per-value provenance** (which file each value came from), using Wave 0's
   tagging. Replaces the retired pre-212 `config.toml` reader (`cmd/config.rs`).
