@@ -52,13 +52,24 @@ The nano-ros zephyr flows are QEMU **build-only** (`west build`):
 devicetree) is sufficient; the extras (flashing/twister/compliance) are never
 exercised.
 
-## Fix (Option A — base-only requirements)
+## Fix (Option C — base-only requirements + disk-reclaim)
 
-`setup.sh` now installs `requirements-base.txt` (falling back to the full file
-only if base is absent, for older trees) instead of the full `requirements.txt`.
-Drops `spsdk-mcu-link` + the rest of the unused extras → no ENOSPC, smaller +
-faster setup, uniform across 3.7/4.4. Build-only contract: a future flow needing
-twister/sign installs its own pip deps.
+Two parts:
 
-Verify: re-dispatch `nightly` build-only and confirm the 4.4 cells clear
-`Set up Zephyr 4.4 workspace` and reach `build-one`.
+1. **base-only requirements** (`setup.sh`): install `requirements-base.txt`
+   (fallback to full only if base absent) instead of the full `requirements.txt`.
+   Drops `spsdk-mcu-link` + the unused extras/run-test/compliance sets.
+
+2. **disk-reclaim** (nightly.yml, 3 zephyr jobs): the first dispatch showed A
+   alone took 7/9 4.4 cells green but 2 still tipped (`Free space left: 78 MB`
+   → `[Errno 28]`) — Zephyr **4.4's own `requirements-base.txt` still lists
+   `reuse` + compliance deps** (line 27: `reuse>=6.0.0` → Jinja2/click/
+   license-expression/python-debian/python-magic/tomlkit), so base isn't lean
+   on 4.4 and the ~14 GB disk stays borderline. Added a reclaim step before
+   `just zephyr setup` (apt clean + drop `/usr/share/{doc,man,locale}` +
+   `~/.cache/pip`; the baked SDK stays) — mirrors the `platform` job.
+
+A drops the biggest hog; the reclaim covers the remaining margin.
+
+Verify: re-dispatch `nightly` build-only — all 4.4 cells clear
+`Set up Zephyr 4.4 workspace`.

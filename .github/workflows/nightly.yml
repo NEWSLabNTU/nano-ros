@@ -269,6 +269,20 @@ jobs:
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
 
+      # Issue 0078 — container host-disk headroom before `just zephyr setup`
+      # (west update + pip). Option A (requirements-base.txt only) dropped
+      # spsdk-mcu-link, but 4.4's base.txt still pulls `reuse` + compliance deps
+      # and the ~14 GB disk is borderline — some cells tip at pip (78 MB free).
+      # Reclaim the image's static bloat + pip cache (the baked Zephyr SDK stays —
+      # the build needs it). Mirrors the `platform` job's reclaim.
+      - name: Reclaim disk before Zephyr setup (#0078 headroom)
+        run: |
+          echo "before:"; df -h / | tail -1
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
+          rm -rf "$HOME/.cache/pip" 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
       # The image bakes bin/cargo-clippy from a non-rustup-owner layer; `rustup
       # target add` trips on the clippy-preview conflict. Delete the orphan files
       # then re-install clippy on every toolchain.
@@ -338,6 +352,20 @@ jobs:
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
 
+      # Issue 0078 — container host-disk headroom before `just zephyr setup`
+      # (west update + pip). Option A (requirements-base.txt only) dropped
+      # spsdk-mcu-link, but 4.4's base.txt still pulls `reuse` + compliance deps
+      # and the ~14 GB disk is borderline — some cells tip at pip (78 MB free).
+      # Reclaim the image's static bloat + pip cache (the baked Zephyr SDK stays —
+      # the build needs it). Mirrors the `platform` job's reclaim.
+      - name: Reclaim disk before Zephyr setup (#0078 headroom)
+        run: |
+          echo "before:"; df -h / | tail -1
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
+          rm -rf "$HOME/.cache/pip" 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
       - name: rustup set profile minimal (avoid clippy-preview conflict)
         run: rustup set profile minimal
 
@@ -389,6 +417,20 @@ jobs:
 
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
+
+      # Issue 0078 — container host-disk headroom before `just zephyr setup`
+      # (west update + pip). Option A (requirements-base.txt only) dropped
+      # spsdk-mcu-link, but 4.4's base.txt still pulls `reuse` + compliance deps
+      # and the ~14 GB disk is borderline — some cells tip at pip (78 MB free).
+      # Reclaim the image's static bloat + pip cache (the baked Zephyr SDK stays —
+      # the build needs it). Mirrors the `platform` job's reclaim.
+      - name: Reclaim disk before Zephyr setup (#0078 headroom)
+        run: |
+          echo "before:"; df -h / | tail -1
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
+          rm -rf "$HOME/.cache/pip" 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
 
       - name: rustup set profile minimal (avoid clippy-preview conflict)
         run: rustup set profile minimal
