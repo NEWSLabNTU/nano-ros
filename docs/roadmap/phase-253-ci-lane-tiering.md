@@ -60,8 +60,11 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
       are pre-existing parallel-wave CONTENT debt, not the merge: pr-checks
       `check-build`/`check-no-std` (a #73 safety-talker compile error + a no_std
       `can't find crate for std` regression — the old `check` lane was already red on
-      these) and one `zephyr 4.4 / cpp/listener` dual-line build cell. Those belong to
-      the 254/255/#73 authors.
+      these) and the `zephyr 4.4` setup cells. CI-caught reds now filed as issues:
+      **0077** (check-no-std: serde_core pulls std on thumbv7em) + **0078** (nightly
+      zephyr 4.4 setup ENOSPC). The trivial ones were fixed inline (safety_e2e.rs
+      rustfmt; safety-listener.c clang-format; 3× redundant rustdoc link targets;
+      docs lane ros-launch-manifest submodule init).
 
 ### Done since
 - **Push lane de-coupled from the CLI build.** `check-fast` needs no nros CLI (its

@@ -267,7 +267,9 @@ fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
         .expect("C safety listener did not start");
 
     let mut talker_cmd = Command::new(talker);
-    talker_cmd.env("NROS_LOCATOR", &locator).env("RUST_LOG", "info");
+    talker_cmd
+        .env("NROS_LOCATOR", &locator)
+        .env("RUST_LOG", "info");
     let _talker = ManagedProcess::spawn_command(talker_cmd, "safety-talker")
         .expect("Failed to start safety talker");
 
