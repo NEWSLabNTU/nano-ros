@@ -111,15 +111,15 @@ already exists in `system.toml` for the bake but the planner ignores it).
   W2 stub resolved at `target = None`, so it never did). Tests: `resolve_target_precedence`,
   `schema_build_json_resolves_per_deploy_rmw_via_target`. cli suite green (401). Unblocks W3 (build
   tuning) + W8 (domain/locator precedence), which now just add more `resolve_target`-keyed fields.
-- **Wave 3 — `[build]` rest → `[deploy.<t>]`. PREREQUISITE: planner target-awareness (W3a ✓).** Extend
-  `DeployTarget` with `profile`/`optimize`/`cargo`/`cc`/`features`; move `[[transport]]` to a
-  top-level typed `system.toml` table. `schema_build_json` resolves the build shape from the
-  *selected* deploy target — but the planner is **target-agnostic today** (`schema_build_json`
-  takes no target; phase-255 resolved `[deploy.<t>].rmw` only at `target = None`, i.e. never per
-  deploy — issue 0076 §A). So W3 must FIRST give the planner a `--target` / `default_target` key
-  (the machinery **shared with Wave 8**, deploy-metadata precedence). Biggest fixture-migration
-  surface. **Discovered 2026-06-17: do W3 + W8 together (shared target-awareness), after the
-  additive audit waves.**
+- **Wave 3 — `[build]` tuning → `[deploy.<t>]` — DONE (2026-06-18).** Added `profile` / `optimize`
+  / `features` to `DeployTarget` (the Eq-clean scalars); `schema_build_json` reads them from the
+  W3a-selected deploy target into `plan.build`, preferring over the DEPRECATED `[build]` overlay
+  (warns). `migrate` carries the legacy block's tuning over. **No fixture declared `[build]`
+  tuning** (verified — the `[build]` hits are board descriptors), so the migration is value-neutral;
+  the point is to give per-target build tuning a typed home before the overlay is deleted (W9).
+  Test: `schema_build_json_reads_build_tuning_from_deploy`. cli suite green (402). **Follow-up:**
+  the `[build.cargo]` / `[build.cc]` per-layer tables + compile `cfg` (toml::Value, not Eq) are not
+  yet on `DeployTarget` — a small W3 tail when a fixture needs them.
 - **Wave 4 — `[[scheduling.contexts]]` → `[tiers]`.** Planner derives `PlanSchedContext` from
   `ResolvedTierTable` (the bake's input); overlay `scheduling.contexts` becomes a warn-fallback.
   Resolve the tier-vs-context field mapping (decision 2). Highest design risk — do it after the

@@ -339,6 +339,9 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             board: None,
             framework: None,
             rmw: None,
+            profile: None,
+            optimize: None,
+            features: Vec::new(),
         },
     );
 

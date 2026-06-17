@@ -339,6 +339,24 @@ fn convert_deploy(
             .map(str::to_string),
         // Phase 255 — migrate a per-deploy rmw override if the legacy block had one.
         rmw: tbl.get("rmw").and_then(|v| v.as_str()).map(str::to_string),
+        // Phase 256 W3 — migrate per-target build tuning from the legacy block.
+        profile: tbl
+            .get("profile")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        optimize: tbl
+            .get("optimize")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        features: tbl
+            .get("features")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
     })
 }
 

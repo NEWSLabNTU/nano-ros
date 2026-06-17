@@ -725,6 +725,20 @@ pub struct DeployTarget {
     /// Resolved via [`SystemToml::resolved_rmw`]; both codegen paths read it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rmw: Option<String>,
+    /// Phase 256 Wave 3 — per-target build tuning, the typed home superseding the
+    /// deprecated `nros.toml` `[build]` overlay. Build tuning is per-deploy (size
+    /// on embedded, debug on native), so it lives in the deploy block. The
+    /// planner resolves these for the selected target (`resolve_target`) into the
+    /// plan's `PlanBuildOptions`. (The `[build.cargo]` / `[build.cc]` per-layer
+    /// tables + compile `cfg` are a follow-up — Eq-clean scalars first.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    /// Coherent size/speed intent (`size`|`speed`|`balanced`|`debug`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub optimize: Option<String>,
+    /// Extra cargo features for this target's generated build.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<String>,
 }
 
 /// `[[domain]]` row.

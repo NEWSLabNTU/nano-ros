@@ -870,10 +870,17 @@ fn schema_build_json(
     });
     let obj = build.as_object_mut().expect("build is an object");
     let mut overlay_had_rmw = false;
+    let mut overlay_had_tuning = false;
     for overlay in overlays {
         if let Some(Value::Object(b)) = overlay.get("build") {
             if b.contains_key("rmw") {
                 overlay_had_rmw = true;
+            }
+            if ["profile", "optimize", "features"]
+                .iter()
+                .any(|k| b.contains_key(*k))
+            {
+                overlay_had_tuning = true;
             }
             for key in [
                 "target", "board", "rmw", "profile", "features", "cfg", "optimize", "cargo", "cc",
@@ -899,11 +906,10 @@ fn schema_build_json(
     let sys = system_toml
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
+    // The selected deploy target (phase-256 W3a): shared by RMW + build-tuning.
+    let selected_target = sys.as_ref().and_then(|s| s.resolve_target(cli_target));
     let resolved_rmw = match &sys {
-        Some(s) => {
-            let target = s.resolve_target(cli_target);
-            Some(s.resolved_rmw(target.as_deref(), cli_rmw))
-        }
+        Some(s) => Some(s.resolved_rmw(selected_target.as_deref(), cli_rmw)),
         None => cli_rmw.map(str::to_string),
     };
     if let Some(rmw) = resolved_rmw {
@@ -914,6 +920,34 @@ fn schema_build_json(
             );
         }
         obj.insert("rmw".to_string(), json!(rmw));
+    }
+    // Phase 256 Wave 3 — per-target build tuning from the selected `[deploy.<t>]`
+    // (profile / optimize / features) wins over the DEPRECATED `[build]` overlay.
+    // Build tuning is per-deploy (size on embedded, debug on native), so its home
+    // is the deploy block. cargo/cc tables + compile cfg are a follow-up.
+    if let Some(dt) = selected_target
+        .as_deref()
+        .and_then(|t| sys.as_ref().and_then(|s| s.deploy.get(t)))
+    {
+        let mut deploy_set_tuning = false;
+        if let Some(p) = &dt.profile {
+            obj.insert("profile".to_string(), json!(p));
+            deploy_set_tuning = true;
+        }
+        if let Some(o) = &dt.optimize {
+            obj.insert("optimize".to_string(), json!(o));
+            deploy_set_tuning = true;
+        }
+        if !dt.features.is_empty() {
+            obj.insert("features".to_string(), json!(dt.features));
+            deploy_set_tuning = true;
+        }
+        if deploy_set_tuning && overlay_had_tuning {
+            eprintln!(
+                "warning: [build] profile/optimize/features in nros.toml is deprecated \
+                 (phase-256); declare them in the bringup system.toml [deploy.<t>]"
+            );
+        }
     }
     // Phase 255 Wave 5 — cross-RMW `[[bridge]]`s make a single binary link the
     // union of every bridged `[[domain]]`'s RMW. Record that link set so
@@ -3723,6 +3757,36 @@ mod tests {
             schema_build_json(&[], Some(&st2), None, Some("b"))["rmw"],
             "zenoh"
         );
+    }
+
+    /// Phase 256 Wave 3 — per-target build tuning (profile / optimize / features)
+    /// from the selected `[deploy.<t>]` reaches `plan.build`; absent fields keep
+    /// the pre-256 defaults.
+    #[test]
+    fn schema_build_json_reads_build_tuning_from_deploy() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\ndefault_target=\"embedded\"\n\
+             [deploy.embedded]\nkind=\"flash\"\nprofile=\"release\"\noptimize=\"size\"\n\
+             features=[\"a\",\"b\"]\n\
+             [deploy.native]\nkind=\"self\"\n",
+        )
+        .unwrap();
+
+        // default_target = embedded → its tuning lands.
+        let emb = schema_build_json(&[], Some(&st), None, None);
+        assert_eq!(emb["profile"], "release");
+        assert_eq!(emb["optimize"], "size");
+        assert_eq!(emb["features"], json!(["a", "b"]));
+
+        // --target native → no tuning declared → pre-256 defaults (profile=debug,
+        // no optimize, empty features).
+        let nat = schema_build_json(&[], Some(&st), None, Some("native"));
+        assert_eq!(nat["profile"], "debug");
+        assert!(nat.get("optimize").is_none());
+        assert_eq!(nat["features"], json!([]));
     }
 
     #[cfg(feature = "play-launch-parser")]

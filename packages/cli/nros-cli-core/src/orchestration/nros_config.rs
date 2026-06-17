@@ -612,6 +612,10 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
                 // Phase 255 — carry the Cargo-native `[..deploy.<t>].rmw` projection
                 // into the synthesized system DeployTarget (RFC-0004 §3.1 ladder).
                 rmw: dt.rmw.clone(),
+                // Phase 256 W3 — build tuning has no Cargo-native projection yet.
+                profile: None,
+                optimize: None,
+                features: Vec::new(),
             },
         );
     }
