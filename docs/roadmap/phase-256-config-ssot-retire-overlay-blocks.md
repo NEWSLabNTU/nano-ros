@@ -120,10 +120,14 @@ already exists in `system.toml` for the bake but the planner ignores it).
   `--system` is absent. Rendered via a testable `render_resolved` (returns `String`). Tests:
   `render_resolved_shows_provenance_and_flags_legacy_overlay`, `render_resolved_errors_on_unknown_system`.
   cli suite green (398).
-- **Wave 7 — `nros check` legacy-overlay flag.** `nros check` flags any value still sourced from
-  a per-package `nros.toml` overlay (Wave 0 provenance) + prints the removal date — the
-  action-at-a-distance guard. Extends `check`'s current plan/schema validation (`check_plan_file`,
-  `collect_plan_warnings`).
+- **Wave 7 — `nros check` legacy-overlay audit — DONE (2026-06-17).** `nros check` now audits the
+  `nros.toml` sitting next to a checked `system.toml` (the system.toml check path AND the
+  `--bringup` / cwd-bringup auto-detect paths) for any still-declared legacy block
+  (`build`/`lifecycle`/`param_persistence`/`param_services`/`safety`/`scheduling`/`shared_state`),
+  emitting one warning per block — naming the file + the migration target (RFC-0004 §3.1, removed
+  after the next release). Non-fatal (audit guard, not a hard error). Uses the Wave-0
+  `last_block_source` primitive. Test: `legacy_overlay_audit_names_deprecated_blocks`. cli suite
+  green (399).
 - **Wave 8 — deploy-metadata precedence (leakage).** Make the `[package.metadata.nros.deploy.<t>]`
   + `[workspace.metadata.nros]` Cargo-native projection **explicit and non-silent**: when a
   `system.toml` exists for the same scope it is authoritative (RFC-0004 §3.1 ladder: flag >

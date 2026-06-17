@@ -8,11 +8,56 @@ use crate::{
         check_workspace::check_workspace,
         emit_package_xml::{DriftStatus, check_drift},
     },
-    orchestration::{cargo_metadata_schema::SystemToml, planner::check_plan_file},
+    orchestration::{
+        cargo_metadata_schema::SystemToml,
+        params::{last_block_source, load_sourced_toml_values},
+        planner::check_plan_file,
+    },
 };
 use clap::Args as ClapArgs;
 use eyre::{Result, WrapErr};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// Phase 256 Wave 7 — the deprecated per-package `nros.toml` overlay blocks the
+/// config-SSoT endgame is retiring (RFC-0004 §3.1). A value still sourced from
+/// any of these is action-at-a-distance — `nros check` warns + names the file so
+/// the migration target is visible. (Capabilities/RMW already moved in
+/// phase-254/255; lifecycle/param_persistence in phase-256 W1/W2; build/scheduling/
+/// shared_state are the remaining waves — all warn here until removed.)
+const LEGACY_OVERLAY_BLOCKS: &[&str] = &[
+    "build",
+    "lifecycle",
+    "param_persistence",
+    "param_services",
+    "safety",
+    "scheduling",
+    "shared_state",
+];
+
+/// Scan the `nros.toml` sitting next to `system_toml_path` (the bringup overlay)
+/// for any still-declared legacy block. Returns one warning per present block,
+/// naming the file. Empty when there is no overlay or it carries none.
+fn legacy_overlay_warnings(system_toml_path: &Path) -> Result<Vec<String>> {
+    let Some(overlay) = system_toml_path
+        .parent()
+        .map(|dir| dir.join("nros.toml"))
+        .filter(|p| p.is_file())
+    else {
+        return Ok(Vec::new());
+    };
+    let sourced = load_sourced_toml_values(std::slice::from_ref(&overlay))?;
+    let mut warnings = Vec::new();
+    for block in LEGACY_OVERLAY_BLOCKS {
+        if last_block_source(&sourced, block).is_some() {
+            warnings.push(format!(
+                "[{block}] is sourced from the deprecated overlay {} — migrate it into the \
+                 bringup system.toml (RFC-0004 §3.1; removed after the next release)",
+                overlay.display()
+            ));
+        }
+    }
+    Ok(warnings)
+}
 
 #[derive(Debug, Default, ClapArgs)]
 pub struct Args {
@@ -65,6 +110,9 @@ pub fn run(args: Args) -> Result<()> {
     // path and runs the pure-declarative lint.
     if args.bringup {
         lint_bringup(&args.plan)?;
+        for w in &legacy_overlay_warnings(&args.plan.join("system.toml"))? {
+            eprintln!("nros check: warning: {w}");
+        }
         eprintln!(
             "nros check: ok (bringup pkg {} is pure declarative)",
             args.plan.display()
@@ -83,6 +131,9 @@ pub fn run(args: Args) -> Result<()> {
         if let Ok(cwd) = std::env::current_dir() {
             if cwd.join("package.xml").is_file() && cwd.join("system.toml").is_file() {
                 lint_bringup(&cwd)?;
+                for w in &legacy_overlay_warnings(&cwd.join("system.toml"))? {
+                    eprintln!("nros check: warning: {w}");
+                }
                 eprintln!(
                     "nros check: ok (bringup pkg {} is pure declarative)",
                     cwd.display()
@@ -124,11 +175,19 @@ pub fn run(args: Args) -> Result<()> {
             std::fs::read_to_string(&path).wrap_err_with(|| format!("read {}", path.display()))?;
         let sys: SystemToml =
             toml::from_str(&raw).wrap_err_with(|| format!("parse {}", path.display()))?;
+        // Phase 256 Wave 7 — audit the sibling `nros.toml` for deprecated overlay
+        // blocks (the action-at-a-distance guard). Non-fatal: warn + name the file.
+        let overlay_warnings = legacy_overlay_warnings(&path)?;
+        for w in &overlay_warnings {
+            eprintln!("nros check: warning: {w}");
+        }
         eprintln!(
-            "nros check: ok (system '{}', {} component(s), {} deploy target(s), {})",
+            "nros check: ok (system '{}', {} component(s), {} deploy target(s), {} overlay \
+             warning(s), {})",
             sys.system.name,
             sys.components.len(),
             sys.deploy.len(),
+            overlay_warnings.len(),
             path.display()
         );
         return Ok(());
@@ -185,6 +244,36 @@ target = \"x86_64-unknown-linux-gnu\"
             ..Default::default()
         })
         .expect("valid system.toml passes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Phase 256 Wave 7 — the overlay audit names every deprecated block a
+    /// sibling `nros.toml` still carries; no overlay ⇒ no warnings.
+    #[test]
+    fn legacy_overlay_audit_names_deprecated_blocks() {
+        let dir = scratch("nros-check-legacy-overlay");
+        let system_toml = dir.join("system.toml");
+        std::fs::write(&system_toml, SYSTEM_TOML).unwrap();
+
+        // No sibling nros.toml → clean.
+        assert!(legacy_overlay_warnings(&system_toml).unwrap().is_empty());
+
+        // Sibling overlay with two deprecated blocks → one warning each, named.
+        std::fs::write(
+            dir.join("nros.toml"),
+            "[build]\nprofile=\"release\"\n[lifecycle]\nautostart=\"active\"\n",
+        )
+        .unwrap();
+        let warns = legacy_overlay_warnings(&system_toml).unwrap();
+        assert_eq!(warns.len(), 2, "{warns:?}");
+        assert!(warns.iter().any(|w| w.contains("[build]")), "{warns:?}");
+        assert!(warns.iter().any(|w| w.contains("[lifecycle]")), "{warns:?}");
+        assert!(
+            warns
+                .iter()
+                .all(|w| w.contains("nros.toml") && w.contains("RFC-0004")),
+            "each warning names the file + the SSoT rule: {warns:?}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
