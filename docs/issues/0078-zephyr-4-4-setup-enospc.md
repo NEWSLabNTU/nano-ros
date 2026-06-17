@@ -37,12 +37,28 @@ cells pass; only 4.4 cells trip it.
   (checkout / CLI build / source provisioning / SDK register / clippy unblock)
   succeeds; the 3.7 cells run the identical structure green.
 
-## Direction
+## Root cause (investigated 2026-06-18)
 
-Add a disk-reclaim step to the nightly Zephyr jobs BEFORE
-`just zephyr setup` — mirror the `platform` job's "Reclaim disk before build"
-(`apt-get clean` + `rm -rf /var/lib/apt/lists/* /usr/share/{doc,man,locale}`).
-Alternatively prune the 4.4 west import set / skip the `spsdk-*` flashing tools
-the nano-ros examples don't need (a west manifest `import` filter), or set
-`PIP_NO_BUILD_ISOLATION`/a tmp on a larger mount. Confirm by re-dispatching
-`nightly` build-only and checking the 4.4 cells reach `build-one`.
+`scripts/zephyr/setup.sh` (line ~433) installed the FULL
+`zephyr/scripts/requirements.txt`, which `-r`s Zephyr's
+extras/run-test/compliance sub-requirements. On the 4.4 line the extras set
+pulls `spsdk-mcu-link` (NXP MCU flash/sign tooling; heavy crypto +
+build-isolation deps) — its pip build fills the ~14 GB container → ENOSPC. 3.7's
+older requirements.txt has no spsdk, so 3.7 cells pass. No version branching: a
+single unconditional `pip install -r requirements.txt` for both lines.
+
+The nano-ros zephyr flows are QEMU **build-only** (`west build`):
+`requirements-base.txt` (pyelftools/packaging/pykwalify/anytree/intelhex/
+devicetree) is sufficient; the extras (flashing/twister/compliance) are never
+exercised.
+
+## Fix (Option A — base-only requirements)
+
+`setup.sh` now installs `requirements-base.txt` (falling back to the full file
+only if base is absent, for older trees) instead of the full `requirements.txt`.
+Drops `spsdk-mcu-link` + the rest of the unused extras → no ENOSPC, smaller +
+faster setup, uniform across 3.7/4.4. Build-only contract: a future flow needing
+twister/sign installs its own pip deps.
+
+Verify: re-dispatch `nightly` build-only and confirm the 4.4 cells clear
+`Set up Zephyr 4.4 workspace` and reach `build-one`.

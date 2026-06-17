@@ -428,9 +428,23 @@ fi
 log_info "Applying Rust cargo-features pass-through patch..."
 bash "$NANO_ROS_ROOT/scripts/zephyr/cargo-features-patch.sh" "$WORKSPACE_DIR"
 
-# Install Zephyr Python dependencies
-log_info "Installing Zephyr Python dependencies..."
-pip3 install --user -r "$WORKSPACE_DIR/zephyr/scripts/requirements.txt"
+# Install Zephyr Python dependencies.
+#
+# Issue 0078 — install ONLY requirements-base.txt, not the full requirements.txt.
+# The nano-ros zephyr flows are QEMU build-only (`west build`); base.txt has
+# everything `west build` needs (pyelftools/packaging/pykwalify/anytree/intelhex/
+# devicetree). The full requirements.txt also `-r`s the extras/run-test/compliance
+# sets, which on the 4.4 line pull `spsdk-mcu-link` (NXP flash/sign tooling, heavy
+# crypto build deps) — never used here, and large enough to ENOSPC the ~14 GB CI
+# container. Fall back to the full file only if base.txt is absent (older trees).
+log_info "Installing Zephyr Python dependencies (build-only: requirements-base.txt)..."
+REQ_BASE="$WORKSPACE_DIR/zephyr/scripts/requirements-base.txt"
+if [ -f "$REQ_BASE" ]; then
+    pip3 install --user -r "$REQ_BASE"
+else
+    log_info "requirements-base.txt absent — falling back to full requirements.txt"
+    pip3 install --user -r "$WORKSPACE_DIR/zephyr/scripts/requirements.txt"
+fi
 
 # Create environment script
 create_env_script
