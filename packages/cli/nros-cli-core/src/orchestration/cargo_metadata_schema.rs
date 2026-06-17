@@ -482,6 +482,30 @@ fn default_true_cap() -> bool {
     true
 }
 
+impl SystemToml {
+    /// Phase 255 — the RMW backend name for `target`, applying the RFC-0031
+    /// precedence (highest wins): the CLI `--rmw` flag, then `[deploy.<target>].rmw`,
+    /// then `[system].rmw`, then the `"zenoh"` default. Both codegen paths (the
+    /// planner's board-feature lowering + the bake's C `#define`) resolve through
+    /// this single helper so a given target gets exactly one RMW — no duality.
+    pub fn resolved_rmw(&self, target: Option<&str>, cli: Option<&str>) -> String {
+        if let Some(c) = cli {
+            return c.to_string();
+        }
+        if let Some(t) = target
+            && let Some(dt) = self.deploy.get(t)
+            && let Some(r) = &dt.rmw
+        {
+            return r.clone();
+        }
+        if self.system.rmw.is_empty() {
+            "zenoh".to_string()
+        } else {
+            self.system.rmw.clone()
+        }
+    }
+}
+
 /// `[[shared_state]]` — a named cross-node shared region (RFC-0015 §8).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -595,6 +619,11 @@ pub struct DeployTarget {
     /// didn't know the field).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub framework: Option<String>,
+    /// Phase 255 — per-deploy RMW override of `[system].rmw` (RFC-0031
+    /// precedence: `--rmw` > `[deploy.<t>].rmw` > `[system].rmw` > `zenoh`).
+    /// Resolved via [`SystemToml::resolved_rmw`]; both codegen paths read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rmw: Option<String>,
 }
 
 /// `[[domain]]` row.
@@ -987,6 +1016,42 @@ crc = false
         )
         .expect("parse");
         assert!(!off.safety.as_ref().unwrap().enabled);
+    }
+
+    /// Phase 255 — `resolved_rmw` applies the RFC-0031 precedence:
+    /// `--rmw` > `[deploy.<t>].rmw` > `[system].rmw` > `zenoh`.
+    #[test]
+    fn resolved_rmw_precedence_ladder() {
+        let sys: SystemToml = toml::from_str(
+            r#"
+[system]
+name = "d"
+rmw = "zenoh"
+domain_id = 0
+
+[deploy.native]
+rmw = "cyclonedds"
+
+[deploy.qemu]
+kind = "qemu"
+"#,
+        )
+        .unwrap();
+
+        // CLI flag wins over everything.
+        assert_eq!(sys.resolved_rmw(Some("native"), Some("xrce")), "xrce");
+        // [deploy.<t>].rmw overrides [system].rmw.
+        assert_eq!(sys.resolved_rmw(Some("native"), None), "cyclonedds");
+        // deploy block without rmw → falls to [system].rmw.
+        assert_eq!(sys.resolved_rmw(Some("qemu"), None), "zenoh");
+        // unknown / no target → [system].rmw.
+        assert_eq!(sys.resolved_rmw(Some("nope"), None), "zenoh");
+        assert_eq!(sys.resolved_rmw(None, None), "zenoh");
+
+        // Empty [system].rmw → the built-in "zenoh" default.
+        let bare: SystemToml =
+            toml::from_str("[system]\nname=\"d\"\nrmw=\"\"\ndomain_id=0\n").unwrap();
+        assert_eq!(bare.resolved_rmw(None, None), "zenoh");
     }
 
     /// Minimal `<bringup>/system.toml` — only `[system]` + one

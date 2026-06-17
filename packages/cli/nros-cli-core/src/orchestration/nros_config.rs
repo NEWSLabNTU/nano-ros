@@ -609,6 +609,9 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
                 launch: None,
                 board: dt.board.clone(),
                 framework: None,
+                // Phase 255 — carry the Cargo-native `[..deploy.<t>].rmw` projection
+                // into the synthesized system DeployTarget (RFC-0004 §3.1 ladder).
+                rmw: dt.rmw.clone(),
             },
         );
     }

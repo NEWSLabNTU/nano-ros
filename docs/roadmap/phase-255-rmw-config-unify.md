@@ -66,9 +66,12 @@ config show` surfacing the resolved value's provenance (issue 0076 §A).
 
 ## Waves
 
-- **Wave 1 — `resolve_system_rmw(system_toml, target, cli_flag)`** — one helper that applies the
-  precedence (CLI → `[deploy.<t>].rmw` → `[system].rmw` → `zenoh`) over the typed `SystemToml`.
-  Unit tests for each precedence rung. No behaviour change yet.
+- **Wave 1 — `SystemToml::resolved_rmw(target, cli)` — DONE (2026-06-17).** Added `rmw:
+  Option<String>` to `DeployTarget` (system.toml `[deploy.<t>]` had none) + the `resolved_rmw`
+  helper applying the precedence (CLI → `[deploy.<t>].rmw` → `[system].rmw` → `zenoh`). The
+  Cargo-native projection (`[package.metadata.nros.deploy.<t>].rmw`) flows into the synthesized
+  `DeployTarget` (`nros_config.rs`). Test: `resolved_rmw_precedence_ladder` (each rung). No
+  behaviour change yet (helper unused until Waves 2-3). cli suite green (387).
 - **Wave 2 — planner reads it.** `schema_build_json` / `plan.build.rmw` derive from
   `resolve_system_rmw` (the bringup `system.toml` + selected target), preferring it over the
   `[build].rmw` overlay (deprecated fallback, warns). So the board `rmw-<x>` feature lowering is

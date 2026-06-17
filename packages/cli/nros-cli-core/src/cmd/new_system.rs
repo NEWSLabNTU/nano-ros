@@ -338,6 +338,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             launch: None,
             board: None,
             framework: None,
+            rmw: None,
         },
     );
 

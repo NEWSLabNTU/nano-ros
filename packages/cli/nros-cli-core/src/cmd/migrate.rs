@@ -337,6 +337,8 @@ fn convert_deploy(
             .get("framework")
             .and_then(|v| v.as_str())
             .map(str::to_string),
+        // Phase 255 — migrate a per-deploy rmw override if the legacy block had one.
+        rmw: tbl.get("rmw").and_then(|v| v.as_str()).map(str::to_string),
     })
 }
 
