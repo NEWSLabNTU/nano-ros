@@ -36,6 +36,30 @@ use thiserror::Error;
 pub struct TierDef {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spin_period_us: Option<u64>,
+    // Phase 256 W4 (decision A) — the RTOS-AGNOSTIC real-time policy a callback
+    // group runs under (absorbed from the retired `[[scheduling.contexts]]`
+    // overlay). Per-RTOS placement (priority/stack) stays in the `<rtos>`
+    // sub-tables; these describe HOW it is scheduled, identically on every RTOS.
+    // All optional → a plain priority tier (today's shape) is byte-identical.
+    /// Scheduling class: `"event_driven"` (default) | `"periodic"` |
+    /// `"time_triggered"` | `"sporadic"`. Maps to `SchedClass` in the plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<String>,
+    /// Callback period (µs) for `periodic` / `time_triggered`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period_us: Option<u64>,
+    /// Execution-time budget (µs) — EDF/sporadic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_us: Option<u64>,
+    /// Relative deadline (µs) — EDF.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_us: Option<u64>,
+    /// On deadline miss: `"ignore"` (default) | `"log"` | `"abort"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_policy: Option<String>,
+    /// CPU core to pin the tier task to (SMP); `None` ⇒ unpinned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub core: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub freertos: Option<TierRtosSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -125,6 +149,15 @@ pub struct ResolvedTier {
     pub spin_period_us: Option<u64>,
     pub preempt_threshold: Option<i64>,
     pub sched_class: Option<String>,
+    // Phase 256 W4 — the RTOS-agnostic real-time policy (from `TierDef`), carried
+    // through so the planner can lower a tier to a `PlanSchedContext` (the home the
+    // retired `[[scheduling.contexts]]` overlay used to fill).
+    pub class: Option<String>,
+    pub period_us: Option<u64>,
+    pub budget_us: Option<u64>,
+    pub deadline_us: Option<u64>,
+    pub deadline_policy: Option<String>,
+    pub core: Option<u32>,
     /// `(node_name, callback_group_id)` pairs assigned to this tier, sorted.
     pub members: Vec<(String, String)>,
 }
@@ -283,6 +316,12 @@ pub fn resolve_tiers(
             spin_period_us: def.spin_period_us,
             preempt_threshold: spec.preempt_threshold,
             sched_class: spec.sched_class.clone(),
+            class: def.class.clone(),
+            period_us: def.period_us,
+            budget_us: def.budget_us,
+            deadline_us: def.deadline_us,
+            deadline_policy: def.deadline_policy.clone(),
+            core: def.core,
             members,
         });
     }
@@ -301,6 +340,12 @@ fn default_tier(members: Vec<(String, String)>) -> ResolvedTier {
         spin_period_us: None,
         preempt_threshold: None,
         sched_class: None,
+        class: None,
+        period_us: None,
+        budget_us: None,
+        deadline_us: None,
+        deadline_policy: None,
+        core: None,
         members,
     }
 }
@@ -332,6 +377,45 @@ mod tests {
             }),
             ..Default::default()
         }
+    }
+
+    /// Phase 256 W4 (decision A) — a `[tiers.<name>]` carrying the RTOS-agnostic
+    /// real-time policy parses, and `resolve_tiers` carries those fields onto the
+    /// `ResolvedTier` (the data the planner lowers to a `PlanSchedContext`).
+    #[test]
+    fn tier_carries_rt_policy_fields() {
+        let def = TierDef {
+            spin_period_us: Some(1000),
+            class: Some("time_triggered".to_string()),
+            period_us: Some(20000),
+            budget_us: Some(5000),
+            deadline_us: Some(18000),
+            deadline_policy: Some("abort".to_string()),
+            core: Some(1),
+            posix: Some(TierRtosSpec {
+                priority: 80,
+                stack_bytes: Some(8192),
+                preempt_threshold: None,
+                sched_class: None,
+            }),
+            ..Default::default()
+        };
+
+        let mut tiers = BTreeMap::new();
+        tiers.insert("control".to_string(), def);
+        let mut cbgs = BTreeMap::new();
+        cbgs.insert("control_node".to_string(), vec![cbg("loop", "control")]);
+        let table = resolve_tiers(&tiers, &[], &names(&["control_node"]), &cbgs, "posix").unwrap();
+
+        let t = &table.tiers[0];
+        assert_eq!(t.name, "control");
+        assert_eq!(t.priority, 80); // per-RTOS placement
+        assert_eq!(t.class.as_deref(), Some("time_triggered")); // agnostic policy
+        assert_eq!(t.period_us, Some(20000));
+        assert_eq!(t.budget_us, Some(5000));
+        assert_eq!(t.deadline_us, Some(18000));
+        assert_eq!(t.deadline_policy.as_deref(), Some("abort"));
+        assert_eq!(t.core, Some(1));
     }
 
     #[test]
