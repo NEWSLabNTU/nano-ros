@@ -72,6 +72,12 @@ pub struct Args {
     #[arg(long = "rmw")]
     pub rmw: Option<String>,
 
+    /// Phase 256 — select the `[deploy.<t>]` the planner resolves per-target
+    /// values against (RMW override, build tuning, domain/locator). Omitted →
+    /// `[system].default_target` → the sole `[deploy.<t>]` → target-agnostic.
+    #[arg(long = "target")]
+    pub target: Option<String>,
+
     /// Launch arguments forwarded as name:=value or name=value
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub launch_args: Vec<String>,
@@ -153,6 +159,7 @@ pub fn run(args: Args) -> Result<()> {
         nros_toml_files: args.nros_toml,
         launch_args: args.launch_args,
         rmw: args.rmw,
+        target: args.target,
     })?;
 
     // `_materialised` keeps the synthesised temp file alive through

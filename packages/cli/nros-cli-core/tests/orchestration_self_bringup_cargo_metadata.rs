@@ -144,6 +144,7 @@ fn plan_system_succeeds_with_cargo_metadata_alpha_bridge() {
         nros_toml_files: Vec::new(),
         launch_args: Vec::new(),
         rmw: None,
+        target: None,
     })
     .expect("plan_system configures against cargo-metadata-only workspace");
 
@@ -261,6 +262,7 @@ domain_id = 0
         nros_toml_files: Vec::new(),
         launch_args: Vec::new(),
         rmw: None,
+        target: None,
     })
     .expect_err("plan_system rejects pkg with no metadata source");
     let msg = format!("{err:#}");

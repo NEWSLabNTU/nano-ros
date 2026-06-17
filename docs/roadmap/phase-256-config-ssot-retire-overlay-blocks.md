@@ -103,7 +103,15 @@ already exists in `system.toml` for the bake but the planner ignores it).
   `schema_plan_json` prefers the typed block (empty `path` ⇒ no persistence), falling back to the
   `nros.toml` overlay with a deprecation warn. Test:
   `plan_system_reads_param_persistence_from_system_toml`. cli suite green (396).
-- **Wave 3 — `[build]` rest → `[deploy.<t>]`. PREREQUISITE: planner target-awareness.** Extend
+- **Wave 3a — planner target-awareness — DONE (2026-06-18).** The shared prerequisite for W3 +
+  W8: `SystemToml::resolve_target(cli)` (`--target` → `[system].default_target` → sole
+  `[deploy.<t>]` → `None`) + `PlanOptions::target` + `nros plan --target`, threaded into
+  `schema_build_json(.., cli_target)`. **First consumer: per-deploy RMW** — `resolved_rmw` is now
+  called with the resolved target, so `[deploy.<t>].rmw` finally reaches the plan (the phase-255
+  W2 stub resolved at `target = None`, so it never did). Tests: `resolve_target_precedence`,
+  `schema_build_json_resolves_per_deploy_rmw_via_target`. cli suite green (401). Unblocks W3 (build
+  tuning) + W8 (domain/locator precedence), which now just add more `resolve_target`-keyed fields.
+- **Wave 3 — `[build]` rest → `[deploy.<t>]`. PREREQUISITE: planner target-awareness (W3a ✓).** Extend
   `DeployTarget` with `profile`/`optimize`/`cargo`/`cc`/`features`; move `[[transport]]` to a
   top-level typed `system.toml` table. `schema_build_json` resolves the build shape from the
   *selected* deploy target — but the planner is **target-agnostic today** (`schema_build_json`

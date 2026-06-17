@@ -523,6 +523,25 @@ fn default_true_cap() -> bool {
 }
 
 impl SystemToml {
+    /// Phase 256 — the deploy target a target-agnostic caller (the planner) should
+    /// resolve per-target values against, when no explicit target was selected:
+    /// `cli` (a `--target` flag) → `[system].default_target` → the sole
+    /// `[deploy.<t>]` key when exactly one is declared → `None`. This is the
+    /// shared "which deploy am I?" key the per-target classes (RMW override,
+    /// build tuning, domain/locator override) resolve through.
+    pub fn resolve_target(&self, cli: Option<&str>) -> Option<String> {
+        if let Some(c) = cli {
+            return Some(c.to_string());
+        }
+        if let Some(t) = &self.system.default_target {
+            return Some(t.clone());
+        }
+        if self.deploy.len() == 1 {
+            return self.deploy.keys().next().cloned();
+        }
+        None
+    }
+
     /// Phase 255 — the RMW backend name for `target`, applying the RFC-0031
     /// precedence (highest wins): the CLI `--rmw` flag, then `[deploy.<target>].rmw`,
     /// then `[system].rmw`, then the `"zenoh"` default. Both codegen paths (the
@@ -1165,6 +1184,36 @@ kind = "qemu"
         let bare: SystemToml =
             toml::from_str("[system]\nname=\"d\"\nrmw=\"\"\ndomain_id=0\n").unwrap();
         assert_eq!(bare.resolved_rmw(None, None), "zenoh");
+    }
+
+    /// Phase 256 — `resolve_target`: `--target` → `[system].default_target` →
+    /// the sole `[deploy.<t>]` → `None`.
+    #[test]
+    fn resolve_target_precedence() {
+        // CLI flag wins.
+        let two: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\ndefault_target=\"native\"\n\
+             [deploy.native]\nkind=\"self\"\n[deploy.qemu]\nkind=\"qemu\"\n",
+        )
+        .unwrap();
+        assert_eq!(two.resolve_target(Some("qemu")).as_deref(), Some("qemu"));
+        // No flag → default_target.
+        assert_eq!(two.resolve_target(None).as_deref(), Some("native"));
+
+        // No default_target, two deploys → ambiguous → None.
+        let ambiguous: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [deploy.a]\nkind=\"self\"\n[deploy.b]\nkind=\"self\"\n",
+        )
+        .unwrap();
+        assert_eq!(ambiguous.resolve_target(None), None);
+
+        // No default_target, sole deploy → that one.
+        let sole: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[deploy.only]\nkind=\"self\"\n",
+        )
+        .unwrap();
+        assert_eq!(sole.resolve_target(None).as_deref(), Some("only"));
     }
 
     /// Minimal `<bringup>/system.toml` — only `[system]` + one

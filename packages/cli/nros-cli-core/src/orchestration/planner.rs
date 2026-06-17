@@ -33,6 +33,11 @@ pub struct PlanOptions {
     /// `plan.build.rmw` regardless of `system.toml`. `None` ⇒ resolve from
     /// `system.toml`.
     pub rmw: Option<String>,
+    /// Phase 256 — `--target` selects the `[deploy.<t>]` the planner resolves
+    /// per-target values against (RMW override, and later build tuning / domain /
+    /// locator). `None` ⇒ `[system].default_target` → the sole `[deploy.<t>]` →
+    /// target-agnostic. See `SystemToml::resolve_target`.
+    pub target: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -142,6 +147,7 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
         &overlays,
         system_toml_path.as_deref(),
         options.rmw.as_deref(),
+        options.target.as_deref(),
     );
     let build: PlanBuildOptions = serde_json::from_value(build_json.clone())
         .wrap_err("invalid [build] / [[transport]] section in nros.toml")?;
@@ -851,6 +857,7 @@ fn schema_build_json(
     overlays: &[Value],
     system_toml: Option<&Path>,
     cli_rmw: Option<&str>,
+    cli_target: Option<&str>,
 ) -> Value {
     let mut build = json!({
         "target": "x86_64-unknown-linux-gnu",
@@ -882,16 +889,21 @@ fn schema_build_json(
             obj.insert("transports".to_string(), transports.clone());
         }
     }
-    // Phase 255 — `[system].rmw` (resolved) is the SSoT and wins over the
-    // DEPRECATED `[build].rmw` overlay; `--rmw` (Wave 4) tops the ladder.
-    // `[deploy.<t>].rmw` plumbs in once the planner is target-aware (issue 0076
-    // §A); today both paths resolve to `[system].rmw` with no target, unifying
-    // them. With no system.toml, `--rmw` alone still drives the plan.
+    // Phase 255/256 — `[system].rmw` (resolved) is the SSoT and wins over the
+    // DEPRECATED `[build].rmw` overlay; `--rmw` tops the ladder. Phase 256 makes
+    // the planner target-aware: it resolves the selected deploy target
+    // (`--target` → `[system].default_target` → sole `[deploy.<t>]`) and feeds it
+    // to `resolved_rmw`, so `[deploy.<t>].rmw` finally reaches the plan (the
+    // phase-255 stub resolved at target=None). With no system.toml, `--rmw` alone
+    // still drives the plan.
     let sys = system_toml
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
     let resolved_rmw = match &sys {
-        Some(s) => Some(s.resolved_rmw(None, cli_rmw)),
+        Some(s) => {
+            let target = s.resolve_target(cli_target);
+            Some(s.resolved_rmw(target.as_deref(), cli_rmw))
+        }
         None => cli_rmw.map(str::to_string),
     };
     if let Some(rmw) = resolved_rmw {
@@ -3552,7 +3564,7 @@ mod tests {
     fn schema_build_json_defaults_when_no_overlay() {
         // No `[build]` / `[[transport]]` ⇒ pre-173.5 defaults, empty
         // transports — keeps existing plans byte-identical.
-        let build = schema_build_json(&[], None, None);
+        let build = schema_build_json(&[], None, None, None);
         assert_eq!(build["board"], "native");
         assert_eq!(build["rmw"], "zenoh");
         assert_eq!(build["target"], "x86_64-unknown-linux-gnu");
@@ -3572,7 +3584,7 @@ mod tests {
                 { "kind": "serial", "device": "UART0", "baudrate": 115200, "rmw": "cyclonedds" }
             ]
         });
-        let build = schema_build_json(std::slice::from_ref(&overlay), None, None);
+        let build = schema_build_json(std::slice::from_ref(&overlay), None, None, None);
         assert_eq!(build["board"], "baremetal");
         assert_eq!(build["target"], "thumbv7m-none-eabi");
         let typed: PlanBuildOptions = serde_json::from_value(build).unwrap();
@@ -3587,7 +3599,7 @@ mod tests {
         let first = json!({ "build": { "board": "native" } });
         let second =
             json!({ "build": { "board": "freertos" }, "transport": [ { "kind": "ethernet" } ] });
-        let build = schema_build_json(&[first, second], None, None);
+        let build = schema_build_json(&[first, second], None, None, None);
         assert_eq!(build["board"], "freertos");
         assert_eq!(build["transports"].as_array().unwrap().len(), 1);
     }
@@ -3605,14 +3617,14 @@ mod tests {
         .unwrap();
         let overlay = json!({ "build": { "rmw": "zenoh" } });
 
-        let build = schema_build_json(std::slice::from_ref(&overlay), Some(&st), None);
+        let build = schema_build_json(std::slice::from_ref(&overlay), Some(&st), None, None);
         assert_eq!(
             build["rmw"], "cyclonedds",
             "[system].rmw must win over [build].rmw"
         );
 
         // No system.toml → the [build].rmw overlay drives (deprecated fallback).
-        let fallback = schema_build_json(std::slice::from_ref(&overlay), None, None);
+        let fallback = schema_build_json(std::slice::from_ref(&overlay), None, None, None);
         assert_eq!(fallback["rmw"], "zenoh");
     }
 
@@ -3631,11 +3643,16 @@ mod tests {
         let overlay = json!({ "build": { "rmw": "zenoh" } });
 
         // --rmw xrce beats system.toml's cyclonedds and the overlay's zenoh.
-        let build = schema_build_json(std::slice::from_ref(&overlay), Some(&st), Some("xrce"));
+        let build = schema_build_json(
+            std::slice::from_ref(&overlay),
+            Some(&st),
+            Some("xrce"),
+            None,
+        );
         assert_eq!(build["rmw"], "xrce");
 
         // --rmw with no system.toml still drives (top rung, overlay ignored).
-        let bare = schema_build_json(std::slice::from_ref(&overlay), None, Some("xrce"));
+        let bare = schema_build_json(std::slice::from_ref(&overlay), None, Some("xrce"), None);
         assert_eq!(bare["rmw"], "xrce");
     }
 
@@ -3653,14 +3670,59 @@ mod tests {
         )
         .unwrap();
 
-        let build = schema_build_json(&[], Some(&st), None);
+        let build = schema_build_json(&[], Some(&st), None, None);
         assert_eq!(build["bridged_rmws"], json!(["zenoh", "cyclonedds"]));
 
         // No bridges → no `bridged_rmws` field (single-RMW build byte-identical).
         let st2 = dir.path().join("plain.toml");
         std::fs::write(&st2, "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n").unwrap();
-        let plain = schema_build_json(&[], Some(&st2), None);
+        let plain = schema_build_json(&[], Some(&st2), None, None);
         assert!(plain.get("bridged_rmws").is_none());
+    }
+
+    /// Phase 256 — planner target-awareness: `[deploy.<t>].rmw` now reaches the
+    /// plan (the phase-255 stub resolved at target=None, so it never did). The
+    /// selected target comes from `--target`, else `default_target`, else the
+    /// sole deploy.
+    #[test]
+    fn schema_build_json_resolves_per_deploy_rmw_via_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [deploy.qemu]\nkind=\"qemu\"\nrmw=\"cyclonedds\"\n",
+        )
+        .unwrap();
+
+        // --target qemu → the deploy override reaches the plan.
+        let picked = schema_build_json(&[], Some(&st), None, Some("qemu"));
+        assert_eq!(picked["rmw"], "cyclonedds");
+
+        // No target, no default_target, sole deploy → resolve_target picks it.
+        let sole = schema_build_json(&[], Some(&st), None, None);
+        assert_eq!(
+            sole["rmw"], "cyclonedds",
+            "sole deploy is the selected target"
+        );
+
+        // default_target drives when set + no --target.
+        let st2 = dir.path().join("two.toml");
+        std::fs::write(
+            &st2,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\ndefault_target=\"a\"\n\
+             [deploy.a]\nkind=\"self\"\nrmw=\"xrce\"\n[deploy.b]\nkind=\"self\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            schema_build_json(&[], Some(&st2), None, None)["rmw"],
+            "xrce"
+        );
+        // --target b → b has no rmw → falls to [system].rmw.
+        assert_eq!(
+            schema_build_json(&[], Some(&st2), None, Some("b"))["rmw"],
+            "zenoh"
+        );
     }
 
     #[cfg(feature = "play-launch-parser")]
@@ -3718,6 +3780,7 @@ mod tests {
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -3782,6 +3845,7 @@ mod tests {
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -3846,6 +3910,7 @@ mod tests {
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -3909,6 +3974,7 @@ mod tests {
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -3997,6 +4063,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -4090,6 +4157,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap_err()
         .to_string();
@@ -4288,6 +4356,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -4433,6 +4502,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -4526,6 +4596,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -4756,6 +4827,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -4871,6 +4943,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -4971,6 +5044,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let raw = fs::read_to_string(output.plan_path).unwrap();
@@ -5035,6 +5109,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -5119,6 +5194,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let raw = fs::read_to_string(output.plan_path).unwrap();
@@ -5197,6 +5273,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan: Value =
@@ -5399,6 +5476,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
     }
 
@@ -5431,6 +5509,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
     }
 
@@ -5513,6 +5592,7 @@ topics:
             nros_toml_files: vec![],
             launch_args: vec![],
             rmw: None,
+            target: None,
         })
         .unwrap();
         let plan = serde_json::from_str(&fs::read_to_string(output.plan_path).unwrap()).unwrap();
