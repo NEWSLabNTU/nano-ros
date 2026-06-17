@@ -631,7 +631,6 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         domains: Vec::new(),
         bridges: Vec::new(),
         tiers: std::collections::BTreeMap::new(),
-        shared_state: Vec::new(),
         node_overrides: Vec::new(),
         safety: None,
         param_services: None,

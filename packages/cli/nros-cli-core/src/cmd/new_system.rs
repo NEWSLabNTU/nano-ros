@@ -361,7 +361,6 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         domains: Vec::new(),
         bridges: Vec::new(),
         tiers: std::collections::BTreeMap::new(),
-        shared_state: Vec::new(),
         node_overrides: Vec::new(),
         safety: None,
         param_services: None,

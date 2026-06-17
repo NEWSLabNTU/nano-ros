@@ -37,7 +37,7 @@ use clap::{Args as ClapArgs, ValueEnum};
 use eyre::{Context, Result, bail};
 use serde::Serialize;
 
-use std::{collections::BTreeMap, fmt::Write as _};
+use std::collections::BTreeMap;
 
 use crate::orchestration::{
     cargo_metadata_schema::{CallbackGroupDecl, SystemComponentEntry, SystemToml},
@@ -423,24 +423,6 @@ fn emit_bake_tree(
         )?,
     )?;
 
-    // Phase 228.D.2 — emit the Rust shared-state accessor module when the system
-    // declares `[[shared_state]]`. Cross-tier regions (`sync = mutex`) get a
-    // `LockedSharedRegion`; single-tier stay lock-free. No regions → remove any
-    // stale file (idempotency).
-    let shared_docs = shared_state_docs(bringup, !tier_table.is_single_tier());
-    let shared_rs = bake_dir.join("nros_shared_state.rs");
-    let shared_h = bake_dir.join("nros_shared_context.h");
-    if shared_docs.is_empty() {
-        for stale in [&shared_rs, &shared_h] {
-            if stale.exists() {
-                let _ = fs::remove_file(stale);
-            }
-        }
-    } else {
-        write_if_changed(&shared_rs, &emit_shared_state_rust(&shared_docs))?;
-        write_if_changed(&shared_h, &emit_shared_state_c_header(&shared_docs))?;
-    }
-
     Ok(())
 }
 
@@ -621,10 +603,6 @@ struct PlanDoc<'a> {
     /// degenerate case so the bake output stays byte-identical to pre-228.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tiers: Vec<PlanTierDoc<'a>>,
-    /// Phase 228.D — resolved `[[shared_state]]` regions. Omitted when the
-    /// system declares none, so the bake output stays byte-identical.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    shared_state: Vec<PlanSharedStateDoc<'a>>,
 }
 
 #[derive(Serialize)]
@@ -642,244 +620,6 @@ struct PlanTierDoc<'a> {
 struct PlanTierMember<'a> {
     node: &'a str,
     group: &'a str,
-}
-
-#[derive(Serialize)]
-struct PlanSharedStateDoc<'a> {
-    name: &'a str,
-    /// Generated struct type name — `schema` override or PascalCase of `name`.
-    schema: String,
-    storage: &'a str,
-    /// Concrete sync policy. `tier_aware` resolves to `mutex` when the system
-    /// is multi-tier (cross-task contention) and `none` when single-tier.
-    sync: &'a str,
-    fields: Vec<PlanSharedField<'a>>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    read: Vec<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    write: Vec<&'a str>,
-}
-
-#[derive(Serialize)]
-struct PlanSharedField<'a> {
-    name: &'a str,
-    r#type: &'a str,
-}
-
-/// Resolve the `tier_aware` sentinel to a concrete sync policy: cross-tier
-/// access contends across RTOS tasks → `mutex`; single-tier runs on one task
-/// → `none`. Any explicit policy (`mutex` / `critical_section` / `none`) is
-/// passed through unchanged.
-fn resolve_shared_sync(decl_sync: &str, multi_tier: bool) -> &str {
-    match decl_sync {
-        "tier_aware" => {
-            if multi_tier {
-                "mutex"
-            } else {
-                "none"
-            }
-        }
-        other => other,
-    }
-}
-
-/// PascalCase a `[[shared_state]].name` into a default generated struct name
-/// (`vehicle_state` → `VehicleState`). Used when no `schema` override is given.
-fn default_shared_schema(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    let mut upper = true;
-    for c in name.chars() {
-        if c == '_' || c == '-' {
-            upper = true;
-        } else if upper {
-            out.extend(c.to_uppercase());
-            upper = false;
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-/// Snake-case identifier for a `[[shared_state]]` name (used for the accessor fn
-/// prefix): non-alphanumerics → `_`, ASCII-lowercased.
-fn shared_state_ident(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    for c in name.chars() {
-        if c.is_ascii_alphanumeric() {
-            out.extend(c.to_ascii_lowercase().to_string().chars());
-        } else {
-            out.push('_');
-        }
-    }
-    out
-}
-
-/// Resolve the system's `[[shared_state]]` declarations into the baked doc form
-/// (schema name + sync policy lowered by tier multiplicity). Shared by the
-/// `nros-plan.json` bake (228.D) and the Rust accessor emit (228.D.2).
-fn shared_state_docs<'a>(
-    bringup: &'a BringupPackageEntry,
-    multi_tier: bool,
-) -> Vec<PlanSharedStateDoc<'a>> {
-    bringup
-        .system
-        .shared_state
-        .iter()
-        .map(|s| PlanSharedStateDoc {
-            name: &s.name,
-            schema: s
-                .schema
-                .clone()
-                .unwrap_or_else(|| default_shared_schema(&s.name)),
-            storage: &s.storage,
-            sync: resolve_shared_sync(&s.sync, multi_tier),
-            fields: s
-                .fields
-                .iter()
-                .map(|f| PlanSharedField {
-                    name: &f.name,
-                    r#type: &f.r#type,
-                })
-                .collect(),
-            read: s.read.iter().map(String::as_str).collect(),
-            write: s.write.iter().map(String::as_str).collect(),
-        })
-        .collect()
-}
-
-/// Phase 228.D.2 — emit the Rust shared-state accessor module from the resolved
-/// `[[shared_state]]` regions (RFC-0015 §8). Per region: a `#[repr(C)]` struct
-/// from the typed fields, a `static` backing store (`LockedSharedRegion` when
-/// the resolved sync is `mutex`/`critical_section` — cross-tier — else the
-/// lock-free `SharedRegion`), and `_get` / `_set` / `_modify` accessors that
-/// view the struct over the region's bytes. The C/C++ `nros_shared_context`
-/// wrappers mirror this (later); the struct is `#[repr(C)]` so the ABI matches.
-fn emit_shared_state_rust(regions: &[PlanSharedStateDoc<'_>]) -> String {
-    let mut out = String::new();
-    out.push_str(
-        "// Generated by `nros codegen-system` — DO NOT EDIT.\n\
-         // Phase 228.D.2 shared-state accessors (RFC-0015 §8).\n\
-         #![allow(dead_code)]\n\n",
-    );
-    for r in regions {
-        let schema = &r.schema;
-        let ident = shared_state_ident(r.name);
-        let upper = ident.to_ascii_uppercase();
-        let locked = matches!(r.sync, "mutex" | "critical_section");
-        let region_ty = if locked {
-            "::nros_orchestration::LockedSharedRegion"
-        } else {
-            "::nros_orchestration::SharedRegion"
-        };
-
-        // `#[repr(C)]` typed view.
-        let _ = writeln!(
-            out,
-            "#[repr(C)]\n#[derive(Clone, Copy)]\npub struct {schema} {{"
-        );
-        for f in &r.fields {
-            let _ = writeln!(out, "    pub {}: {},", f.name, f.r#type);
-        }
-        out.push_str("}\n\n");
-
-        // Backing store sized to the struct + the three accessors.
-        let _ = writeln!(
-            out,
-            "const {upper}_SIZE: usize = ::core::mem::size_of::<{schema}>();\n\
-             pub static {upper}: {region_ty}<{upper}_SIZE> = {region_ty}::new();\n"
-        );
-        let _ = writeln!(
-            out,
-            "pub fn {ident}_get() -> {schema} {{\n    \
-                 {upper}.with(|b| unsafe {{ ::core::ptr::read_unaligned(b.as_ptr() as *const {schema}) }})\n}}\n\
-             pub fn {ident}_set(v: &{schema}) {{\n    \
-                 {upper}.with(|b| unsafe {{ ::core::ptr::write_unaligned(b.as_mut_ptr() as *mut {schema}, *v) }})\n}}\n\
-             pub fn {ident}_modify(f: impl ::core::ops::FnOnce(&mut {schema})) {{\n    \
-                 {upper}.with(|b| {{\n        \
-                     let mut v = unsafe {{ ::core::ptr::read_unaligned(b.as_ptr() as *const {schema}) }};\n        \
-                     f(&mut v);\n        \
-                     unsafe {{ ::core::ptr::write_unaligned(b.as_mut_ptr() as *mut {schema}, v) }};\n    \
-                 }})\n}}\n"
-        );
-
-        // C-ABI exports (one definition; the C/C++ `nros_shared_context.h`
-        // declares these). `#[unsafe(no_mangle)]` matches the edition-2024
-        // consumer that `include!`s this module.
-        let _ = writeln!(
-            out,
-            "#[unsafe(no_mangle)]\n\
-             pub extern \"C\" fn nros_{ident}_get(out: *mut {schema}) {{\n    \
-                 if out.is_null() {{ return; }}\n    \
-                 unsafe {{ *out = {ident}_get() }}\n}}\n\
-             #[unsafe(no_mangle)]\n\
-             pub extern \"C\" fn nros_{ident}_set(v: *const {schema}) {{\n    \
-                 if v.is_null() {{ return; }}\n    \
-                 {ident}_set(unsafe {{ &*v }})\n}}\n\
-             #[unsafe(no_mangle)]\n\
-             pub extern \"C\" fn nros_{ident}_modify(\n    \
-                 f: extern \"C\" fn(*mut {schema}, *mut ::core::ffi::c_void),\n    \
-                 ctx: *mut ::core::ffi::c_void,\n\
-             ) {{\n    \
-                 {ident}_modify(|s| f(s as *mut {schema}, ctx))\n}}\n"
-        );
-    }
-    out
-}
-
-/// Map a Rust primitive field type to its C stdint equivalent. Unknown types
-/// pass through verbatim (assumed to be a C-nameable type already).
-fn rust_type_to_c(t: &str) -> &str {
-    match t {
-        "f32" => "float",
-        "f64" => "double",
-        "u8" => "uint8_t",
-        "u16" => "uint16_t",
-        "u32" => "uint32_t",
-        "u64" => "uint64_t",
-        "i8" => "int8_t",
-        "i16" => "int16_t",
-        "i32" => "int32_t",
-        "i64" => "int64_t",
-        "usize" => "size_t",
-        "isize" => "ptrdiff_t",
-        "bool" => "bool",
-        other => other,
-    }
-}
-
-/// Phase 228.D.2 — emit the C/C++ `nros_shared_context.h` from the resolved
-/// `[[shared_state]]` regions: the `#[repr(C)]`-matching struct + the C-ABI
-/// accessor declarations (implemented by the Rust exports in
-/// [`emit_shared_state_rust`]). `extern "C"`-guarded, so C and C++ both consume
-/// it. (`sync` doesn't appear here — the lock lives behind the Rust
-/// implementation; the ABI is the same either way.)
-fn emit_shared_state_c_header(regions: &[PlanSharedStateDoc<'_>]) -> String {
-    let mut out = String::new();
-    out.push_str(
-        "/* Generated by `nros codegen-system` — DO NOT EDIT. */\n\
-         /* Phase 228.D.2 shared-state accessors (RFC-0015 §8). */\n\
-         #ifndef NROS_SHARED_CONTEXT_H\n#define NROS_SHARED_CONTEXT_H\n\n\
-         #include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n\n\
-         #ifdef __cplusplus\nextern \"C\" {\n#endif\n\n",
-    );
-    for r in regions {
-        let schema = &r.schema;
-        let ident = shared_state_ident(r.name);
-        let _ = writeln!(out, "typedef struct {schema} {{");
-        for f in &r.fields {
-            let _ = writeln!(out, "    {} {};", rust_type_to_c(f.r#type), f.name);
-        }
-        let _ = writeln!(out, "}} {schema};\n");
-        let _ = writeln!(
-            out,
-            "void nros_{ident}_get({schema} *out);\n\
-             void nros_{ident}_set(const {schema} *v);\n\
-             void nros_{ident}_modify(void (*fn)({schema} *, void *), void *ctx);\n"
-        );
-    }
-    out.push_str("#ifdef __cplusplus\n}\n#endif\n\n#endif /* NROS_SHARED_CONTEXT_H */\n");
-    out
 }
 
 fn render_plan_json(
@@ -944,11 +684,6 @@ fn render_plan_json(
             .collect()
     };
 
-    // Phase 228.D — resolve `[[shared_state]]` regions. `tier_aware` sync
-    // lowers to `mutex`/`none` by tier multiplicity. Empty → omitted.
-    let multi_tier = !tier_table.is_single_tier();
-    let shared_state: Vec<PlanSharedStateDoc> = shared_state_docs(bringup, multi_tier);
-
     // Phase 256 Wave 8 — resolve domain/locator for the selected target (deploy
     // override → system default), matching the C-define bake.
     let resolved_locator = bringup.system.resolved_locator(target);
@@ -962,7 +697,6 @@ fn render_plan_json(
         launch_file: launch_file.as_deref(),
         components,
         tiers,
-        shared_state,
     };
     let mut s = serde_json::to_string_pretty(&doc).context("serialize plan json")?;
     s.push('\n');
@@ -1540,12 +1274,6 @@ stack_bytes = 8192
 [tiers.low.posix]
 priority = 10
 
-[[shared_state]]
-name = "vehicle_state"
-read = ["telem"]
-write = ["ctrl"]
-fields = [ { name = "speed", type = "f32" }, { name = "heading", type = "f32" } ]
-
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
@@ -1582,141 +1310,6 @@ launch = "system.launch.xml"
         let hi = plan.find("\"high\"").unwrap();
         let lo = plan.find("\"low\"").unwrap();
         assert!(hi < lo, "high tier must precede low (priority order)");
-
-        // Phase 228.D — shared-state region resolved + baked. Multi-tier →
-        // `tier_aware` lowers to `mutex`; schema derived to PascalCase.
-        assert!(plan.contains("\"shared_state\""), "plan: {plan}");
-        assert!(plan.contains("\"name\": \"vehicle_state\""), "plan: {plan}");
-        assert!(
-            plan.contains("\"schema\": \"VehicleState\""),
-            "plan: {plan}"
-        );
-        assert!(plan.contains("\"sync\": \"mutex\""), "plan: {plan}");
-        assert!(plan.contains("\"storage\": \"static\""), "plan: {plan}");
-        assert!(plan.contains("\"speed\""), "plan: {plan}");
-
-        // Phase 228.D.2 — the bake also emits the typed Rust accessor module;
-        // cross-tier (`mutex`) → LockedSharedRegion + repr(C) struct + accessors.
-        let shared_rs = fs::read_to_string(out.join("nros-system/nros_shared_state.rs")).unwrap();
-        assert!(shared_rs.contains("#[repr(C)]"), "shared_rs:\n{shared_rs}");
-        assert!(
-            shared_rs.contains("pub struct VehicleState {"),
-            "shared_rs:\n{shared_rs}"
-        );
-        assert!(
-            shared_rs.contains("pub speed: f32,"),
-            "shared_rs:\n{shared_rs}"
-        );
-        assert!(
-            shared_rs
-                .contains("pub static VEHICLE_STATE: ::nros_orchestration::LockedSharedRegion<"),
-            "shared_rs:\n{shared_rs}"
-        );
-        assert!(
-            shared_rs.contains("pub fn vehicle_state_modify("),
-            "shared_rs:\n{shared_rs}"
-        );
-    }
-
-    #[test]
-    fn resolve_shared_sync_lowers_tier_aware() {
-        // tier_aware contends across tasks only when multi-tier.
-        assert_eq!(resolve_shared_sync("tier_aware", true), "mutex");
-        assert_eq!(resolve_shared_sync("tier_aware", false), "none");
-        // Explicit policies pass through unchanged.
-        assert_eq!(resolve_shared_sync("mutex", false), "mutex");
-        assert_eq!(
-            resolve_shared_sync("critical_section", true),
-            "critical_section"
-        );
-        assert_eq!(resolve_shared_sync("none", true), "none");
-    }
-
-    #[test]
-    fn emit_shared_state_rust_typed_accessors() {
-        let regions = vec![
-            PlanSharedStateDoc {
-                name: "vehicle_state",
-                schema: "VehicleState".to_string(),
-                storage: "static",
-                sync: "mutex", // multi-tier → LockedSharedRegion
-                fields: vec![
-                    PlanSharedField {
-                        name: "speed",
-                        r#type: "f32",
-                    },
-                    PlanSharedField {
-                        name: "heading",
-                        r#type: "f32",
-                    },
-                ],
-                read: vec![],
-                write: vec![],
-            },
-            PlanSharedStateDoc {
-                name: "imu_cal",
-                schema: "ImuCal".to_string(),
-                storage: "static",
-                sync: "none", // single-tier → lock-free SharedRegion
-                fields: vec![PlanSharedField {
-                    name: "bias",
-                    r#type: "i32",
-                }],
-                read: vec![],
-                write: vec![],
-            },
-        ];
-        let src = emit_shared_state_rust(&regions);
-        // Typed `#[repr(C)]` struct + fields.
-        assert!(src.contains("#[repr(C)]"), "src:\n{src}");
-        assert!(src.contains("pub struct VehicleState {"), "src:\n{src}");
-        assert!(src.contains("pub speed: f32,"), "src:\n{src}");
-        // mutex region → LockedSharedRegion; none → lock-free SharedRegion.
-        assert!(
-            src.contains("pub static VEHICLE_STATE: ::nros_orchestration::LockedSharedRegion<"),
-            "src:\n{src}"
-        );
-        assert!(
-            src.contains("pub static IMU_CAL: ::nros_orchestration::SharedRegion<"),
-            "src:\n{src}"
-        );
-        // get / set / modify accessors.
-        assert!(
-            src.contains("pub fn vehicle_state_get() -> VehicleState"),
-            "src:\n{src}"
-        );
-        assert!(
-            src.contains("pub fn vehicle_state_set(v: &VehicleState)"),
-            "src:\n{src}"
-        );
-        assert!(src.contains("pub fn vehicle_state_modify("), "src:\n{src}");
-        // C-ABI exports for the C/C++ surface.
-        assert!(
-            src.contains("pub extern \"C\" fn nros_vehicle_state_get(out: *mut VehicleState)"),
-            "src:\n{src}"
-        );
-        assert!(src.contains("#[unsafe(no_mangle)]"), "src:\n{src}");
-
-        // C header mirrors the repr(C) struct + the accessor decls.
-        let h = emit_shared_state_c_header(&regions);
-        assert!(h.contains("#ifndef NROS_SHARED_CONTEXT_H"), "h:\n{h}");
-        assert!(h.contains("typedef struct VehicleState {"), "h:\n{h}");
-        assert!(h.contains("float speed;"), "h:\n{h}");
-        assert!(h.contains("int32_t bias;"), "h:\n{h}");
-        assert!(
-            h.contains(
-                "void nros_vehicle_state_modify(void (*fn)(VehicleState *, void *), void *ctx);"
-            ),
-            "h:\n{h}"
-        );
-        assert!(h.contains("extern \"C\""), "h:\n{h}");
-    }
-
-    #[test]
-    fn default_shared_schema_pascal_cases() {
-        assert_eq!(default_shared_schema("vehicle_state"), "VehicleState");
-        assert_eq!(default_shared_schema("imu"), "Imu");
-        assert_eq!(default_shared_schema("two-word-name"), "TwoWordName");
     }
 
     /// Workspace whose components live in non-Rust (C/C++) packages — i.e.

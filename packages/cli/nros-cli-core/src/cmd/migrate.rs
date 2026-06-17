@@ -535,7 +535,6 @@ fn build_system_toml(plan: &MigrationPlan) -> SystemToml {
         domains: plan.domains.clone(),
         bridges: plan.bridges.clone(),
         tiers: std::collections::BTreeMap::new(),
-        shared_state: Vec::new(),
         node_overrides: Vec::new(),
         safety: None,
         param_services: None,

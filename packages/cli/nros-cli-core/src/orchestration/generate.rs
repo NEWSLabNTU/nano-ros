@@ -1956,7 +1956,6 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
     out.push_str("use nros_orchestration::{CallbackHandleTable, ComponentSpec, InstanceSpec, ParameterSpec, ParameterValue};\n");
     out.push_str("#[allow(unused_imports)]\n");
     out.push_str("use nros_orchestration::{DeadlinePolicySpec, PrioritySpec};\n\n");
-    render_shared_state(&mut out, plan);
     out.push_str(&format!(
         "pub const CALLBACK_COUNT: usize = {callback_count};\n"
     ));
@@ -2691,29 +2690,6 @@ fn render_param_persistence_fn(out: &mut String, plan: &NrosPlan) {
         }
     }
     out.push_str("}\n\n");
-}
-
-/// Phase 172.I — emit a `static SHARED_<ID>: SharedRegion<bytes>` per
-/// `nros.toml` `[[shared_state]]` region; co-located components access it as
-/// `nros_generated::SHARED_<ID>`. Empty ⇒ emits nothing (byte-identical).
-fn render_shared_state(out: &mut String, plan: &NrosPlan) {
-    if plan.shared_state.is_empty() {
-        return;
-    }
-    out.push_str("#[allow(unused_imports)]\nuse nros_orchestration::SharedRegion;\n");
-    for region in &plan.shared_state {
-        let ident: String = region
-            .id
-            .to_uppercase()
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-            .collect();
-        out.push_str(&format!(
-            "/// Shared region `{}` ({} bytes) — Phase 172.I.\n\
-             pub static SHARED_{ident}: SharedRegion<{}> = SharedRegion::new();\n\n",
-            region.id, region.bytes, region.bytes
-        ));
-    }
 }
 
 fn render_components(out: &mut String, plan: &NrosPlan) {
@@ -4545,60 +4521,6 @@ mod net_fragment_tests {
     #[test]
     fn zephyr_fragment_empty_without_transport() {
         assert!(zephyr_net_fragment(&build_with(vec![])).is_empty());
-    }
-
-    fn plan_with_shared_state(regions: serde_json::Value) -> NrosPlan {
-        use crate::orchestration::schema::PLAN_VERSION;
-        serde_json::from_value(serde_json::json!({
-            "version": PLAN_VERSION,
-            "system": "demo",
-            "trace": {
-                "system_config": "nros.toml",
-                "launch_record": "r.json",
-                "generated_by": "test"
-            },
-            "components": [],
-            "instances": [],
-            "interfaces": [],
-            "sched_contexts": [],
-            "shared_state": regions,
-            "build": {
-                "target": "x", "board": "native", "rmw": "zenoh",
-                "profile": "release", "features": [], "cfg": {}
-            }
-        }))
-        .expect("plan parses")
-    }
-
-    #[test]
-    fn shared_state_renders_static_regions() {
-        // Phase 172.I — each region → a `SharedRegion<bytes>` static, id
-        // uppercased + non-alphanumeric folded to `_`.
-        let plan = plan_with_shared_state(serde_json::json!([
-            { "id": "blackboard", "bytes": 256 },
-            { "id": "imu-cal", "bytes": 32 }
-        ]));
-        let mut out = String::new();
-        render_shared_state(&mut out, &plan);
-        assert!(
-            out.contains("use nros_orchestration::SharedRegion;"),
-            "{out}"
-        );
-        assert!(
-            out.contains("pub static SHARED_BLACKBOARD: SharedRegion<256> = SharedRegion::new();"),
-            "{out}"
-        );
-        assert!(
-            out.contains("pub static SHARED_IMU_CAL: SharedRegion<32> = SharedRegion::new();"),
-            "{out}"
-        );
-    }
-
-    #[test]
-    fn shared_state_empty_renders_nothing() {
-        let mut out = String::new();
-        render_shared_state(&mut out, &plan_with_shared_state(serde_json::json!([])));
-        assert!(out.is_empty(), "{out}");
     }
 
     fn plan_with_param_persistence(pp: Option<serde_json::Value>) -> NrosPlan {

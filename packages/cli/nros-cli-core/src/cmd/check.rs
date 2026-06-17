@@ -30,7 +30,6 @@ const LEGACY_OVERLAY_BLOCKS: &[&str] = &[
     "param_services",
     "safety",
     "scheduling",
-    "shared_state",
 ];
 
 /// Scan the `nros.toml` sitting next to `system_toml_path` (the bringup overlay)

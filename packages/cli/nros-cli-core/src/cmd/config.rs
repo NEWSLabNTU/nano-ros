@@ -185,7 +185,6 @@ fn render_resolved(workspace: &Path, system: &str) -> Result<String> {
             "param_services",
             "safety",
             "scheduling",
-            "shared_state",
         ];
         let present: Vec<&str> = blocks
             .iter()

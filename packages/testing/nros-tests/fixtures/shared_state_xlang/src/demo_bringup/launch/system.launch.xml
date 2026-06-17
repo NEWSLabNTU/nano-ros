@@ -1,4 +1,0 @@
-<launch>
-  <node pkg="ctrl_pkg" exec="control_node" name="control_node"/>
-  <node pkg="telem_pkg" exec="telem_node" name="telem_node"/>
-</launch>

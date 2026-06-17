@@ -432,13 +432,6 @@ pub struct SystemToml {
     /// reference to per-RTOS task knobs. Empty → the single-tier degenerate case.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tiers: BTreeMap<String, TierDef>,
-    /// Phase 228.A — `[[shared_state]]` cross-node shared regions.
-    #[serde(
-        default,
-        rename = "shared_state",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub shared_state: Vec<SharedStateDecl>,
     /// Phase 228.A — `[[node_overrides]]` deployment-time tier reassignment of a
     /// node's callback groups (RFC-0015 §4.2), without touching the node package.
     #[serde(
@@ -610,43 +603,6 @@ impl SystemToml {
         }
         set
     }
-}
-
-/// `[[shared_state]]` — a named cross-node shared region (RFC-0015 §8).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SharedStateDecl {
-    pub name: String,
-    /// Generated struct type name; absent → derived from `name`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub schema: Option<String>,
-    /// `"static"` (default) or `"heap"`.
-    #[serde(default = "default_storage")]
-    pub storage: String,
-    /// `"tier_aware"` (default), `"mutex"`, `"critical_section"`, or `"none"`.
-    #[serde(default = "default_sync")]
-    pub sync: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub fields: Vec<SharedStateField>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub read: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub write: Vec<String>,
-}
-
-/// One typed field of a `[[shared_state]]` region.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SharedStateField {
-    pub name: String,
-    pub r#type: String,
-}
-
-fn default_storage() -> String {
-    "static".to_string()
-}
-fn default_sync() -> String {
-    "tier_aware".to_string()
 }
 
 /// `[system]` table inside `<bringup>/system.toml`.
@@ -1294,13 +1250,12 @@ name = "talker"
         assert!(v.bridges.is_empty());
         // Phase 228.A — tier surface defaults empty (backward compat).
         assert!(v.tiers.is_empty());
-        assert!(v.shared_state.is_empty());
         assert!(v.node_overrides.is_empty());
     }
 
     #[test]
-    fn system_toml_parses_tiers_shared_state_overrides() {
-        // Phase 228.A (RFC-0015 §4.2) — tier + shared-state + override schema.
+    fn system_toml_parses_tiers_and_overrides() {
+        // Phase 228.A (RFC-0015 §4.2) — tier + override schema.
         let raw = r#"
 [system]
 name = "demo"
@@ -1325,16 +1280,6 @@ sched_class = "SCHED_FIFO"
 
 [tiers.low.freertos]
 priority = 1
-
-[[shared_state]]
-name = "safety_island"
-schema = "SafetyIsland"
-read = ["control_node"]
-write = ["sensing_node"]
-fields = [
-  { name = "velocity", type = "f32" },
-  { name = "mrm_state", type = "u8" },
-]
 
 [[node_overrides]]
 name = "control_node"
@@ -1361,13 +1306,6 @@ callback_groups = [{ id = "telemetry", tier = "low" }]
                 .priority,
             1
         );
-
-        let ss = &v.shared_state[0];
-        assert_eq!(ss.name, "safety_island");
-        assert_eq!(ss.storage, "static"); // default
-        assert_eq!(ss.sync, "tier_aware"); // default
-        assert_eq!(ss.fields.len(), 2);
-        assert_eq!(ss.fields[0].r#type, "f32");
 
         let ov = &v.node_overrides[0];
         assert_eq!(ov.name, "control_node");
