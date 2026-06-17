@@ -271,6 +271,81 @@ C `main` (`NROS_MAIN_C`) calling a C `run_components` over the install list" —
 This keeps each step additive + independently validated, with the interpreter deletion
 as the final, now-unblocked-for-all-languages step.
 
+### Decisions (2026-06-18) — open questions resolved (code-grounded)
+
+Investigated the runtime internals (`nros/src/node_runtime.rs`,
+`nros-node/src/executor/spin.rs`); the open questions are now settled. **Implementation
+is gated on this whole subsection being decided — it now is, except the single
+PRE-IMPL CHECK in D5.**
+
+- **D1 — Rust state ownership: register directly on the shared `Executor` behind the
+  handle; no registry, no ownership transfer. DECIDED (refined by D5).** The
+  `void* executor` handle IS a live `nros_node::Executor` (see D5), so Rust `_install`
+  recovers `&mut Executor` from it and registers the node's entities against that **same**
+  instance — there is no separate Rust executor to reconcile. Component state lives in an
+  `Arc<ComponentCell>`; the executor's per-entity callbacks own clones of it
+  (`ExecutorSink`, node_runtime.rs:651/658 `self.cell.clone()` moved into the callback),
+  so the cell stays alive for the executor's lifetime **with no external owner**. The
+  needed new code is a thin `register_borrowed(&mut Executor, register_fn, init_fn,
+  dispatch_fn, tick_fn)` — the body of `register_dispatch_slot` (node_runtime.rs:371)
+  operating on a borrowed `&mut Executor` instead of an owned `ExecutorNodeRuntime`.
+  Reuses `ComponentCell` / `ExecutorSink` / `NodeContext` verbatim; **no cffi ABI
+  extension, no global registry, no `ExecutorNodeRuntime` ownership.**
+
+- **D2 — tick pumping: NOT needed for pub/sub/timer (W0-B); a scoped extension for
+  service-client/action Rust nodes. DECIDED.** `run_ticks` (node_runtime.rs:478) iterates
+  `components` per spin ONLY to poll service-client `call_raw` + complete/feedback action
+  servers; pub/sub/timer nodes tick to a no-op. So **W0-B (the mixed workspace:
+  `rust_heartbeat_pkg` = timer publisher) needs no tick pump** — dispatch via the
+  Arc-owned callbacks suffices, and the registry just keeps the cells alive for the
+  executor's lifetime. A Rust node with a service-client/action *inside a non-Rust entry*
+  needs its ticks pumped: store its `Arc<ComponentCell>` in a tick-list **on
+  `nros_executor_t`** (nros-c/executor.rs:165) and run those ticks inside that struct's
+  existing `spin_once` (executor.rs:1629) — which the entry already pumps every loop. So
+  the entry needs NO extra call; the shared executor drives Rust-node ticks alongside
+  C/C++ dispatch. **Clearly-scoped follow-up after W0-B, not a W0-B blocker.** (Rust
+  ENTRIES already pump via `ExecutorNodeRuntime::spin`; C/C++ node ticks ride the same
+  `spin_once` — unchanged.)
+
+- **D3 — `self` semantics: `void* self` is the identity-node object; null/ignored for
+  register-style nodes. DECIDED.** C passes its `_create()` object; C++ passes its
+  `static <Class>` object; Rust ignores `self` (it builds + owns `State` via `init()` in
+  the registry `ComponentCell`). The seam stays uniform; each adapter interprets `self`.
+
+- **D4 — lifetime/teardown. DECIDED (refined by D5).** Identity (C/C++) `self` lives in
+  TU `static` storage (unchanged, outlives spin). Rust state (`Arc<ComponentCell>`) is
+  kept alive by the shared executor's callback clones (D1) and freed when that executor
+  drops — i.e. tied to the entry's `nros_executor_t` lifetime. **No separate
+  shutdown C-ABI** (the executor already owns the keep-alive). The tick-list case (D2)
+  frees with `nros_executor_t`.
+
+- **D5 — handle-type match: RESOLVED (positively).** The `void* executor` the entry
+  passes is a `*mut nros_executor_t` whose `_opaque` holds a live **`nros_node::Executor`**
+  — `CExecutor` is literally `type CExecutor = nros_node::Executor` (nros-c/executor.rs:41),
+  built by `CExecutor::from_session_ptr` (executor.rs:279) and recovered by
+  `get_executor_from_ptr(ptr) -> &mut CExecutor` (executor.rs:69; cast also at
+  node.rs:602 / timer.rs:175). So C/C++/Rust install seams operate on **one shared Rust
+  `Executor`** — Rust `_install` calls `get_executor_from_ptr` and registers on it. No
+  handle conversion, no borrowed-session juggling. (The earlier `from_session_ptr`
+  borrowed-session worry is moot — the handle is already the Executor.)
+
+- **D6 — naming. DECIDED.** Canonical seam: `__nros_component_<pkg>_install(node,
+  executor, self) -> int32_t`. The existing `__nros_c_component_<pkg>_configure` is
+  aliased/renamed to it (C); `nros::node!` + the C++ component macro emit it. The legacy
+  `__nros_component_<pkg>_register` (descriptor seam) is retired with the interpreter in
+  Stage 3.
+
+**Net: ALL design questions resolved (D1–D6), code-grounded — no residual.** The cffi
+executor handle is a shared `nros_node::Executor` (D5), so the seam is `_install(node,
+executor, self)` where each language registers on that one executor; Rust state stays
+alive via the executor's own callback `Arc` clones (D1); ticks (only for
+service-client/action Rust nodes) ride the executor's existing `spin_once` via a tick-list
+on `nros_executor_t` (D2). New code is small + additive: a `register_borrowed(&mut
+Executor, …)` helper + the three `_install` adapters + the codegen emitting one uniform
+call. Implementation proceeds per the 5-step path. **Step-1 scope (W0-B):** `register_borrowed`
++ Rust `_install` + the `emit_cpp::emit_typed` `lang=="rust"` branch, validated on
+`examples/workspaces/mixed` (timer-pub node → no tick-list needed yet).
+
 ## Acceptance
 - No example/template uses `NROS_NODE_REGISTER` / `record_callback_effect` /
   `nros_declared_node_*` / the string-descriptor `NodeContext` seam.
