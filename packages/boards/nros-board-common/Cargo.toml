@@ -35,9 +35,13 @@ cc = { version = "1.0", optional = true }
 nros-build-paths = { path = "../../core/nros-build-paths", optional = true }
 
 [features]
-# `BoardInit` trait is always available (no deps). Build-script
-# helpers gated behind the matching feature.
-default = ["build-helpers"]
+# `BoardInit` trait is always available (no deps) and no_std. This crate is
+# `categories = ["no-std"]`, so the DEFAULT is no_std: NO build-helpers, no
+# serde/toml/cc. Consumers that need the manifest parser / policy / source
+# helpers from a `build.rs` opt in explicitly with `features = ["build-helpers"]`
+# on their `[build-dependencies]` edge — so a forgotten flag fails toward no_std
+# instead of silently pulling `std` into an embedded build (issue 0077).
+default = []
 
 # Pull the manifest parser + link-feature policy + ThreadX
 # source helpers. Pulls serde + toml + cc transitively. Required

@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 cbindgen = "0.29"
 cc = "1.0"
-nros-board-common = { path = "../../boards/nros-board-common" }
+nros-board-common = { path = "../../boards/nros-board-common", features = ["build-helpers"] }
 nros-build-paths = { path = "../../core/nros-build-paths" }
 pkg-config = "0.3"
 

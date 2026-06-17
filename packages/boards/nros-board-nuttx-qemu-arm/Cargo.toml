@@ -54,4 +54,4 @@ safety-e2e = ["nros-board-nuttx/safety-e2e"]
 # 194.3c.2 — the NuttX platform-port compile moved to the shared
 # nros-board-common build helper (pulls cc + repo-path resolution via its
 # build-helpers feature); the board no longer drives cc-rs directly.
-nros-board-common = { path = "../nros-board-common" }
+nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }

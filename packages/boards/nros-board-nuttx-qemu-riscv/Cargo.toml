@@ -37,4 +37,4 @@ safety-e2e = ["nros-board-nuttx/safety-e2e"]
 [build-dependencies]
 # 194.3c.2 — shared NuttX platform-port build helper (riscv env set by the FFI
 # subcrate's .cargo/config.toml reaches this board build.rs too).
-nros-board-common = { path = "../nros-board-common" }
+nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }

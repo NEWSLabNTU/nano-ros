@@ -23,7 +23,7 @@ nros-rmw-zenoh = { path = "../../../zpico/nros-rmw-zenoh", features = ["platform
 
 [build-dependencies]
 # NuttX FFI build helper (run_nuttx) + repo path resolution.
-nros-board-common = { path = "../../nros-board-common" }
+nros-board-common = { path = "../../nros-board-common", features = ["build-helpers"] }
 
 [profile.release]
 opt-level = "s"

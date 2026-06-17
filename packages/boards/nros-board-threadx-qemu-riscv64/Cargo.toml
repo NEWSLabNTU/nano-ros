@@ -27,7 +27,7 @@ nros-board-threadx = { path = "../nros-board-threadx", default-features = false 
 [build-dependencies]
 cc = "1"
 # Phase 152.2.B — shared ThreadX kernel + port source helpers.
-nros-board-common = { path = "../nros-board-common" }
+nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
 
 [features]
 default = []
