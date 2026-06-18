@@ -60,19 +60,23 @@ The shared registration core `register_node::<C>(&mut dyn NodeRuntime)` + `Execu
 
 ---
 
-## Track 1 — delete the dead C-ABI `_register` seam (low risk)
+## Track 1 — delete the dead C-ABI `_register` seam — **DONE (2026-06-18)**
 
-- [ ] `nros::node!`: drop the `__nros_component_<pkg>_register` emission (keep
-  `_install`, `register`, `register_dispatch`, the dispatch trampolines).
-- [ ] nros: delete `__register_node_cxx_abi` + `CxxNodeContextRuntime` + the
-  `NROS_CXX_RET_*` glue they own (`node.rs:640–782`).
-- [ ] Retarget the mixed `nros_ws_runtime` generator's `#[used]` anchor
-  `_register` → `_install` (in the CLI runtime-crate generator) — must land with
-  the deletion or the anchor dangles.
-- [ ] Verify zero live callers (the C++ emit rust-branch already emits `_install`).
-- [ ] Build-verify: native workspaces c/cpp/mixed + the rust workspace.
+- [x] **w1** (`f91066b16`) — retarget the `nros_ws_runtime` `#[used]` anchor
+  `_register` → `_install` (`NanoRosRuntimeCrate.cmake`; 3-arg signature). Landed
+  first so the anchor never dangles.
+- [x] **w2** (`d1ccf6fd4`) — `nros::node!` drops the `__nros_component_<pkg>_register`
+  emission; nros deletes `__register_node_cxx_abi` + `CxxNodeContextRuntime` + the
+  Cxx* repr(C) declarative mirrors + `CStrBuf` + `map_cxx_ret` + `NROS_CXX_RET_*`
+  (node.rs) + the re-export (lib.rs). Shared `register_node::<C>` core stays.
+- [x] **w3** — verified: mixed workspace (Rust node in a C++ typed entry) builds +
+  links green; the Rust node exports `__nros_component_<pkg>_install` only,
+  `_register` gone (`nm`). cargo check (nros + nros-macros) green.
 
-Symmetric with the C/C++ seam deletion; verifiable in isolation.
+Note (tidy follow-up, not blocking): `PlanNode::register_symbol()`
+(`codegen/entry/mod.rs`) + the `codegen-system` `system_main.c` baker still build a
+`*_register` *string* — dead post-257 legacy (they emit a string, don't link the
+deleted Rust symbol); sweep when touching that path.
 
 ## Track 2 — unify Rust owned-spin onto `install` (design 2a: executor-owned ticks)
 
