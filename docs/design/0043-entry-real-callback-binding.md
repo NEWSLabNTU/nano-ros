@@ -225,6 +225,54 @@ entry, so the C path inherits the executor route unchanged.
   synthesized counter / `a+b` / fixed result were stand-ins for exactly the
   logic this RFC binds.
 
+**C/C++ retirement done — phase-257 (2026-06-18).** Interpreter (`EntryNodeRuntime`)
++ legacy emit + the C/C++ declarative seam (`DeclaredNode`/`record_callback_effect`/
+`node_pkg.{h,hpp}` declarative API) all deleted; every C/C++ entry is typed
+(`configure(Node&)` / `NROS_C_COMPONENT` + `run_components`). The cross-language
+component-install seam is `__nros_component_<pkg>_install(node, executor, self)`
+(W0-B / D6).
+
+#### Rust retirement (planned — phase-258)
+
+Two distinct mechanisms remain on the Rust side (there is **no** Rust interpreter —
+Rust always bound real callbacks):
+
+- **(Track 1) The C-ABI `_register` foreign-entry seam** — `nros::node!` emits
+  `__nros_component_<pkg>_register` → `__register_node_cxx_abi::<C>` →
+  `CxxNodeContextRuntime` (drove the now-deleted C++ `NodeContextOps`). **Dead
+  after phase-257** (C++ typed entries call `_install`; the only residual reference
+  is a `#[used]` anchor in the generated mixed `nros_ws_runtime`). **Delete it**
+  (+ retarget that anchor `_register` → `_install`). The shared
+  `register_node::<C>(&mut dyn NodeRuntime)` core stays.
+
+- **(Track 2) The owned-spin Rust entry's opaque-fn-ptr bridge** — `node!`'s
+  `register(runtime: &mut RuntimeCtx)` wrapper transmutes four typed fns to
+  `nros-platform`'s opaque `NodeRegisterFn`/… and calls `register_dispatch_slot_dyn`
+  → `ExecutorNodeRuntime::register_dispatch_slot` (a type-erased `BspDispatchSlot`,
+  but real-callback-binding via `ExecutorSink`). `emit_rust::emit` + `nros::main!`
+  owned-spin + the Zephyr entry use it. **Not interpreter cruft — it's the boundary
+  crossing**: a direct typed `register_node::<C>()` lives on the concrete
+  `ExecutorNodeRuntime` (in `nros`), unreachable across the `nros-platform`
+  `RuntimeCtx` boundary except as a pointer.
+
+  The pointer that *does* cross is the W0-B seam `install_node_typed(executor: *mut
+  c_void)`. **Decision: unify owned-spin onto `install` (design 2a)** — make
+  `install_node_typed` the single complete component seam for C / C++ / **and Rust
+  owned-spin**, which requires closing **D2**: move the component tick-list out of
+  `ExecutorNodeRuntime` into the `Executor` so `install` enrolls each cell and
+  `executor.spin_once` ticks it (today `install` drops the cell → no `tick` →
+  service-client/action nodes don't poll; `register_dispatch_slot` ticks via its
+  `components` list). This retires `register()` + `register_dispatch_slot_dyn` +
+  the `RuntimeCtx` dispatch machinery for owned-spin, and `ExecutorNodeRuntime`
+  collapses to a thin wrapper (or goes away). **Rejected 2b** (Rust entry owns
+  `ExecutorNodeRuntime` directly, bypassing the platform Board): lower-risk but
+  leaves D2 unsolved (C++ still can't tick action nodes) and forks the board model.
+
+  **Out of scope:** RTIC/Embassy *framework* dispatch (`register_dispatch` +
+  `__nros_node_<pkg>_on_callback`) — the framework owns dispatch (not `spin_once`),
+  genuinely needs name-keyed slots; stays. (Resolves Q10: Rust owned-spin → the
+  `install` seam; framework dispatch stays name-dispatched.)
+
 ## Alternatives considered
 
 - **B — Real callbacks across the type-erased ABI.** Keep the declarative
@@ -279,15 +327,14 @@ entry, so the C path inherits the executor route unchanged.
 9. **C++ borrowed-typed surface.** The zero-copy *typed* flavor (`const M<'a>&`
    via `DeserializeBorrowed`) is Rust-executor reality but may lack a C++
    wrapper; the spike only exercised raw bytes. Confirm or scope it out of v1.
-10. **Rust Entry no-naming parity + framework dispatch.** The Rust `nros::node!()`
-    declarative macro names callbacks (`on_callback` + `"on_tick"`) and emits the
-    extern-`"C"` `__nros_node_<pkg>_on_callback` trampoline used by RTIC/Embassy
-    *framework* dispatch (interrupt-driven, not `spin_once`). This RFC's
-    no-naming closure binding is `spin_once`-model. Decide: does Rust's Entry
-    path also move to closure-binding (no-naming parity), and does the C++ side
-    ever need the name-dispatched trampoline for a future C++ RTIC/Embassy, or is
-    `spin_once`-only acceptable for C++ v1 (the spike's model)? Likely
-    `spin_once`-only for C++ now; Rust parity is a separate decision.
+10. **Rust Entry no-naming parity + framework dispatch.** **RESOLVED (phase-258
+    design):** the Rust **owned-spin** Entry moves onto the `install_node_typed`
+    seam (§Retirement → Rust retirement, design 2a) — same `spin_once` model + the
+    same cross-language `install` seam as C/C++. **Framework dispatch (RTIC/Embassy)
+    stays** name-dispatched via `register_dispatch` + the
+    `__nros_node_<pkg>_on_callback` trampoline — the framework owns dispatch
+    (interrupt-driven), not `spin_once`, so it genuinely needs name-keyed slots.
+    C++ remains `spin_once`-only (no C++ RTIC/Embassy planned).
 
 ## Changelog
 
@@ -333,3 +380,10 @@ entry, so the C path inherits the executor route unchanged.
   user-scheduling opt-in, not an RMW requirement. Recorded the C/C++ action-client
   arena-dispatch impl gap → issue-0047; the migrated NuttX action/service *client*
   examples (phase-240.5) used the poll path and should move to callbacks.
+- 2026-06-18 — **C/C++ retirement landed (phase-257).** Interpreter + legacy emit
+  + the C/C++ declarative seam deleted; cross-language seam unified on
+  `__nros_component_<pkg>_install`. Added §Retirement → "Rust retirement" (Track 1:
+  delete the dead C-ABI `_register` seam; Track 2/2a: unify Rust owned-spin onto
+  `install_node_typed` + an executor-owned tick-list closing D2); **resolved Q10**
+  (Rust owned-spin → install seam; framework dispatch stays name-dispatched).
+  Tracked by phase-258.
