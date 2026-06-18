@@ -606,6 +606,16 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
         Self::spin_once(self, Duration::from_millis(timeout_ms.into())).map_err(|_| ())
     }
 
+    fn executor_handle(&mut self) -> *mut core::ffi::c_void {
+        // Phase 258 (Track 2, 2a) — hand the owned-spin entry a raw pointer to
+        // the executor this runtime owns, so a Node pkg's `register(runtime)`
+        // can install through `nros::install_node_typed` (same seam as the
+        // C/C++ typed entries). The pointer is valid for the runtime's life
+        // (the executor is an inline field); the install call uses it only
+        // during registration, before any concurrent spin.
+        &mut self.executor as *mut Executor as *mut core::ffi::c_void
+    }
+
     fn observed_callback_counts(&self) -> (usize, usize) {
         self.components
             .iter()

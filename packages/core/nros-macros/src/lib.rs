@@ -460,72 +460,35 @@ fn node_impl(input: TokenStream) -> TokenStream {
             executor.register_dispatch_slot(state_ptr, #on_callback_fn_name)
         }
 
+        /// Phase 258 (Track 2, 2a) — owned-spin entry registration. The
+        /// codegen-emitted `run_plan(runtime)` body + `nros::main!`
+        /// owned-spin loop call `<pkg>::register(runtime)?` once per Node.
+        ///
+        /// This now installs through the **uniform `install` seam** — the
+        /// same `nros::install_node_typed` path the C / C++ typed entries
+        /// use — via a raw `*mut Executor` the runtime sink exposes
+        /// (`executor_handle()`), replacing the legacy opaque four-fn-ptr
+        /// `register_dispatch_slot_dyn` bridge. The installed component
+        /// enrolls in the executor's tick registry, so service-client /
+        /// action poll nodes tick (phase-257 D2 closed for owned-spin too).
+        ///
+        /// References `::nros::install_node_typed` → `::nros::Executor`,
+        /// gated on `rmw-cffi` inside `nros`; the Node pkg must depend on
+        /// `nros` with `rmw-cffi` (every owned-spin example pkg does). A
+        /// null handle (a sink with no live executor) maps to
+        /// `RuntimeError::NodeRegister`.
         pub fn register(
             runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
         ) -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError> {
-            // Phase 212.N.7 step-6 — local typed fn items, no
-            // `extern "Rust"` / no `#[unsafe(no_mangle)]`. The
-            // Entry-pkg path resolves them via the wrapper's
-            // `fn` coercion + transmute instead of a mangled
-            // global symbol.
-            fn r(ctx: &mut ::nros::NodeContext<'_>) -> ::nros::NodeResult<()> {
-                <#node_ty as ::nros::Node>::register(ctx)
+            let executor = runtime.runtime.executor_handle();
+            // SAFETY: `executor` is the runtime sink's live `*mut Executor`
+            // (or null, which `install_node_typed` rejects as an error).
+            match unsafe { ::nros::install_node_typed::<#node_ty>(executor) } {
+                0 => ::core::result::Result::Ok(()),
+                _ => ::core::result::Result::Err(
+                    ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister(#pkg_name_lit),
+                ),
             }
-            fn i() -> *mut () {
-                let state: <#node_ty as ::nros::ExecutableNode>::State =
-                    <#node_ty as ::nros::ExecutableNode>::init();
-                ::nros::__private_node_state_into_raw::<#node_ty>(state)
-            }
-            unsafe fn d(
-                state: *mut (),
-                callback: ::nros::CallbackId<'_>,
-                ctx: &mut ::nros::CallbackCtx<'_>,
-            ) {
-                // SAFETY: `state` came from `i()` and is the only
-                // pointer to this `State`; the runtime never dispatches
-                // concurrently against the same slot.
-                let s = unsafe {
-                    &mut *(state as *mut <#node_ty as ::nros::ExecutableNode>::State)
-                };
-                <#node_ty as ::nros::ExecutableNode>::on_callback(
-                    s,
-                    ::nros::Callback::__from_id(callback),
-                    ctx,
-                );
-            }
-            unsafe fn t(state: *mut (), ctx: &mut ::nros::TickCtx<'_>) {
-                // SAFETY: same provenance as `d()`.
-                let s = unsafe {
-                    &mut *(state as *mut <#node_ty as ::nros::ExecutableNode>::State)
-                };
-                <#node_ty as ::nros::ExecutableNode>::tick(s, ctx);
-            }
-
-            let register_opaque: ::nros::__macro_support::nros_platform::NodeRegisterFn = unsafe {
-                ::core::mem::transmute(
-                    r as fn(&mut ::nros::NodeContext<'_>) -> ::nros::NodeResult<()>,
-                )
-            };
-            let init_opaque: ::nros::__macro_support::nros_platform::NodeInitFn =
-                unsafe { ::core::mem::transmute(i as fn() -> *mut ()) };
-            let dispatch_opaque: ::nros::__macro_support::nros_platform::NodeDispatchFn = unsafe {
-                ::core::mem::transmute(
-                    d as unsafe fn(*mut (), ::nros::CallbackId<'_>, &mut ::nros::CallbackCtx<'_>),
-                )
-            };
-            let tick_opaque: ::nros::__macro_support::nros_platform::NodeTickFn = unsafe {
-                ::core::mem::transmute(t as unsafe fn(*mut (), &mut ::nros::TickCtx<'_>))
-            };
-            runtime
-                .runtime
-                .register_dispatch_slot_dyn(
-                    register_opaque,
-                    init_opaque,
-                    dispatch_opaque,
-                    tick_opaque,
-                    #pkg_name_lit,
-                )
-                .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister(#pkg_name_lit))
         }
     };
 

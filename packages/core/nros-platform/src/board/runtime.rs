@@ -148,6 +148,21 @@ pub trait NodeDispatchRuntime {
     #[allow(clippy::result_unit_err)]
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()>;
 
+    /// Phase 258 (Track 2, 2a) — raw `*mut Executor` (as `void*`) for the
+    /// owned-spin entry, so a Node pkg's `register(runtime)` wrapper can call
+    /// the uniform `__nros_component_<pkg>_install(.., executor, ..)` seam
+    /// (`nros::install_node_typed`) instead of the opaque-fn-ptr
+    /// [`register_dispatch_slot_dyn`] bridge. A pointer crosses the
+    /// `nros-platform` → `nros` layering wall cleanly (the concrete
+    /// `ExecutorNodeRuntime` lives in `nros`; this trait can't name it).
+    ///
+    /// Default `null` — sinks without a live executor (e.g.
+    /// [`NullNodeRuntime`], framework-dispatch-only runtimes) report no
+    /// handle; the install path treats null as a registration error.
+    fn executor_handle(&mut self) -> *mut core::ffi::c_void {
+        core::ptr::null_mut()
+    }
+
     /// Observability counters from hosted/runtime tests.
     ///
     /// Returns `(all_callbacks, message_callbacks)`. Implementations
