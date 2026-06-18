@@ -8,11 +8,14 @@
 
 **Implements.** [RFC-0043](../design/0043-entry-real-callback-binding.md)
 §Retirement — delete the synthesizing C++ `EntryNodeRuntime` interpreter
-(`nros-cpp/main.hpp`, ~577 lines) + the `DeclaredNode` / `DeclaredCallback` /
-`record_callback_effect` string-descriptor `NodeContextOps` seam
-(`nros-c/include/nros/node_pkg.h`, `nros-cpp/.../node_pkg.hpp`) + the legacy
-non-typed `emit_cpp::emit` / `emit_c::emit` entry codegen. Gated on **every**
-declarative example migrating to the real-callback typed path first.
+(`nros-cpp/main.hpp`, ~577 lines) + the legacy non-typed `emit_cpp::emit` /
+`emit_c::emit` entry codegen **(both done — Stage-3a)**, then excise the
+`DeclaredNode` / `DeclaredCallback` / `record_callback_effect` string-descriptor
+`NodeContextOps` seam — delete `declared_node.hpp` and **refactor in place** (not
+delete) the umbrella headers `nros-c/include/nros/node_pkg.h` +
+`nros-cpp/.../node_pkg.hpp` **(Stage-3b — see below)**. Gated on **every**
+declarative example migrating to the real-callback typed path first (done — only the
+scaffolder + a few tests still emit/assert the seam).
 
 **Status.** In progress (2026-06-14). Stage-1 (app-nodes) **done + pushed**.
 Stage-2: `examples/workspaces/cpp` migrated (typed entry, `18809bad2`).
@@ -169,17 +172,78 @@ cpp already parallel); but the **C** path (W0-A) and the **Rust-in-cpp-entry** p
   `c-and-cpp-mixed-workspace`) to the typed entry.
 - [x] Build-swept: native workspaces c/cpp/mixed + cmake fixtures cpp_robot_entry /
   c_mixed_workspace / pure_c_workspace all green with the interpreter gone.
-- [ ] **Stage-3b (deferred)** — retire the declarative
-  `DeclaredNode`/`DeclaredCallback`/`record_callback_effect`/`NodeEntityDescriptor`
-  `NodeContextOps` seam + `declared_node.hpp` from `node_pkg.{h,hpp}`. **Entangled**:
-  `node_pkg.{h,hpp}` is `#include`d by the core public headers (`nros.hpp`, `node.hpp`,
-  `main.hpp`, `nros.h`, `main.h`), so these types must be excised per-symbol with
-  care, not file-deleted. They are currently **dead but compiling**.
+- [ ] **Stage-3b — retire the declarative seam.** Re-scoped below (design 2026-06-18).
 - [ ] Owed: a full `just ci` pass (the host's flaky rustc blocked it; the targeted
-  fixture sweep above covers the Stage-3 blast radius).
+  fixture sweep above covers the Stage-3a blast radius).
 - [ ] Pre-existing/unrelated: the `shadowing` ament/rclcpp fixture fails to link
   (`nros_app_register_backends`) — a phase-249 P4a RMW-wiring gap for a pure-rclcpp
   consumer that transitively links a nano-ros msg binding; not touched by Stage-3.
+
+### Stage 3b — retire the declarative seam — **design re-explored 2026-06-18**
+
+Goal: delete the string-descriptor declarative node-registration API now that the
+interpreter that consumed it is gone (3a). The seam:
+- **C++** — `declared_node.hpp` (`NodeEntityKind`, `CallbackEffectKind`,
+  `NodeOptions`, `NodeEntityDescriptor`, `DeclaredEntity`, `DeclaredCallback`,
+  `DeclaredNode`) + `node_pkg.hpp`'s `NodeContext`/`NodeContextOps`/`NodeRegisterFn`
+  + all `DeclaredNode::create_*` inline bodies + the `NROS_NODE_REGISTER`/
+  `NROS_NODE` macros.
+- **C** — `node_pkg.h`'s `nros_node_context_t`/`_ops_t`, `nros_declared_node_t`,
+  `nros_declared_*` fns, `nros_node_entity_*`, `NROS_NODE_REGISTER`/`NROS_COMPONENT`.
+
+**Re-scoping findings (corrects the earlier "delete node_pkg.{h,hpp}" note):**
+- `node_pkg.hpp` / `node_pkg.h` are **umbrella public headers** (`nros.hpp`/`nros.h`
+  pull them; `main.h` declares `nros_board_native_run_components` there). They must be
+  **refactored in place** — excise the declarative machinery, keep the file — NOT
+  file-deleted. `declared_node.hpp` *can* be deleted outright (only `node_pkg.hpp`
+  includes it). `main.hpp`'s `node_pkg.hpp` include is now likely **vestigial**
+  (only comments referenced EntryNodeRuntime) — confirm + drop during impl.
+- **No shipped example uses the seam** — every example/template is on the typed path
+  (`configure(Node&)` / `NROS_C_COMPONENT` / `nros::node!`+install). The only live
+  consumers are the **scaffolder** and a few **tests**.
+- **Rust is out of scope.** `__register_node_cxx_abi` / the `__nros_component_<pkg>_register`
+  descriptor path is the **Rust entry's** register seam (`emit_rust::emit` is
+  register-based — there is no `emit_rust::emit_typed`), orthogonal to the C/C++
+  declarative seam. `ExecutableNode` + `install_node_typed` (W0-B) stay. Retiring the
+  Rust register path is a *separate* future item, only meaningful once a typed Rust
+  entry emitter exists.
+- Build artifacts (`*/nros_components.cmake` under `build*/`) are gitignored — ignore.
+
+**Open question to settle in impl (W4):** `declared_node_typed_helpers.cpp` exercises
+`create_publisher<M>(DeclaredEntity& out, …)` overloads that the fixture calls "the
+current typed API" yet that take declarative `DeclaredEntity&`/`DeclaredCallback&`
+out-params. Decide code-grounded whether those overloads are part of the seam (delete
+with it + drop the fixture) or a genuinely-kept typed surface (then `DeclaredEntity`/
+`DeclaredCallback` survive and only the interpreter-facing bits go).
+
+**Work items (migrate-first, then delete; each gated on a build):**
+- [ ] **W1 — scaffolder.** `scaffold.rs` `scaffold_component_cpp()` / `scaffold_component_c()`
+  emit legacy declarative node pkgs (`register_node(NodeContext&)` + `nros_declared_*`
+  + `NROS_NODE_REGISTER`). Decide: rewrite them to emit typed components
+  (`configure(::nros::Node&)` / `NROS_C_COMPONENT`, mirroring `examples/workspaces/{cpp,c}`),
+  or drop C/C++ component scaffolding (error → "use typed"). Keep the typed/direct-mode
+  paths (`scaffold_package`, `scaffold_rust`, planned-mode Rust component) untouched.
+- [ ] **W2 — scaffold tests.** Rewrite `cargo-nano-ros/tests/integration_tests.rs`
+  (`scaffold_component_c_emits_node_pkg_shape` asserts `NROS_NODE_REGISTER`) to the W1 output.
+- [ ] **W3 — cmake-fn tests.** `nros-tests/tests/cmake_node_register_misuse.rs` asserts
+  the legacy declarative `CLASS::register_node` validation + `nano_ros_application`
+  embedded-deploy rejection. Rewrite to a typed stub or delete the legacy-only cases.
+  (`nano_ros_node_register` the cmake fn STAYS — typed nodes use it; only its
+  declarative-specific validation, if any, is in scope.)
+- [ ] **W4 — settle the `DeclaredEntity`/`DeclaredCallback` typed-overload question**
+  (above), then accordingly keep or delete those types + `declared_node_typed_helpers.cpp`.
+- [ ] **W5 — C++ excise.** Per W4: refactor `node_pkg.hpp` (drop `NodeContext`/
+  `NodeContextOps`/`NodeRegisterFn` + interpreter-facing `DeclaredNode` bodies + the
+  `NROS_NODE_REGISTER`/`NROS_NODE` macros); delete `declared_node.hpp` (+ its include);
+  drop the now-vestigial `node_pkg.hpp` include from `main.hpp` if confirmed unused.
+- [ ] **W6 — C excise.** Refactor `node_pkg.h` (drop the declarative types/fns/macros);
+  keep `nros_board_native_run_components` + whatever typed C needs. Confirm `main.h` /
+  `nros.h` still compile.
+- [ ] **W7 — verify.** Full builds (native c/cpp/mixed workspaces + compile-check
+  templates + a representative embedded carrier) + `cargo test` for cli/testing. On the
+  flaky-rustc host, loop past SIGSEGV/ICE (cargo resumes) as 3a did.
+- [ ] **W8 — docs.** Note `nros new` C/C++ component scaffold change; prune CLAUDE.md /
+  guide refs to the declarative `register_node` shape.
 
 ## Design exploration (2026-06-18) — unified cross-language component-install seam
 
