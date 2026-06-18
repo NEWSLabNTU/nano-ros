@@ -64,13 +64,36 @@ coverage (a `examples/native/cpp/safety-listener` + a `cpp safety: N crc-ok` ass
 - **Acceptance:** decide yes/no; if yes, a green C++ CRC e2e fixture; if no, record
   the rationale (C ABI parity) and close.
 
-### W4 — generic declared-feature config sugar
-A `features = [...]` list over the `resolve_capability` registry
+### W4 — generic declared-feature config: a MULTI-LANGUAGE registry generalization
+A `features = [...]` list over the `Capability` registry
 (cargo-nano-ros/src/capability_resolver.rs) — a generic surface for declaring
-capability axes, of which `safety-e2e` is the first concrete one (RFC-0031
-§Generalization future note). Lets future axes lower without per-axis plumbing.
-- **Acceptance:** a system declaring `features = ["safety-e2e"]` lowers identically
-  to the typed `[safety]` field; the registry drives both.
+capability axes (`safety-e2e` is the first concrete one; RFC-0031 §Generalization).
+
+**Not a Rust-only sugar.** `system.toml` is the language-neutral SSoT (read by both
+the Rust planner AND the C/C++ bake), but the registry it lowers through is
+**Rust-specific today** — `Capability` carries only cargo-feature slots
+(`nros_feature`, `backend_feature`); the C/C++ `#define` lowering is **hardcoded
+per-axis** in `render_system_config_h` (`if sys.safety → #define
+NROS_SYSTEM_SAFETY_E2E`, `if sys.param_services → …`), and the struct doc reserves
+`c_define` / `cmake_token` for "a future wave." So a naive `features=[...]` over the
+current registry would generalize only the Rust path.
+
+The correct W4 generalizes BOTH languages through one registry:
+1. Add `c_define` (+ `cmake_token`) fields to `Capability`, populating the reserved
+   slots (e.g. safety → `c_define = "NROS_SYSTEM_SAFETY_E2E"`).
+2. Make `render_system_config_h` ITERATE the declared axes and emit each
+   `c_define` generically — replacing the hardcoded `if sys.safety` /
+   `if sys.param_services` branches.
+3. Drive the Rust cargo-feature lowering (generate.rs `backend_features` /
+   `board_capability_features`) off the same registry rows.
+
+One `Capability{}` row → lowers to Rust cargo features AND the C/C++
+`#define`/CMake token. That is the language-neutral extension point (and a strict
+superset of the "Rust sugar" framing).
+- **Acceptance:** adding a `Capability{}` row makes a declared axis lower to BOTH
+  the Rust features AND the C/C++ `#define` with NO per-axis Rust/bake edits;
+  `features = ["safety-e2e"]` lowers identically to the typed `[safety]` block on
+  every language.
 
 ## Notes
 Each W is independent. **W2** (loud no-CRC gate) is the lowest-risk, highest-signal

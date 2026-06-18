@@ -80,9 +80,13 @@ wiring, W2 loud no-CRC gate, W3 optional C++ e2e, W4 declared-feature sugar).
   when `[safety]` is declared on a non-CRC resolved RMW (`collect_plan_warnings`).
 - [x] **C++ safety transport e2e** — DONE (phase-259 W3). `examples/native/cpp/safety-listener/`
   + `test_cpp_safety_listener_validates_crc` (green: `cpp safety: 3 crc-ok, 0 crc-fail`).
-- [ ] **Generic declared-feature config sugar** — a `features = [...]` list over the
-  `resolve_capability` registry (RFC-0031 §Generalization future note). **DEFERRED** (phase-259
-  W4, YAGNI — only one axis exists today; revisit when a 2nd lands).
+- [ ] **Generic declared-feature config — MULTI-LANGUAGE registry generalization** — a
+  `features = [...]` list over the `Capability` registry. NOT a Rust-only sugar: the registry is
+  Rust-specific today (cargo-feature slots only; the C/C++ `#define` lowering is hardcoded per-axis
+  in `render_system_config_h`, with `c_define`/`cmake_token` reserved). The real W4 adds the
+  reserved C/C++ slots + makes the bake iterate them, so one `Capability{}` row lowers to Rust
+  features AND the C/C++ `#define`/CMake token. **DEFERRED** (phase-259 W4, YAGNI — only one
+  concrete axis today; revisit when a 2nd lands). Detail: phase-259.
 
 ## C. Older residuals (pre-arc, still open)
 
