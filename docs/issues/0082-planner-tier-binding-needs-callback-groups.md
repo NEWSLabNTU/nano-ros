@@ -1,7 +1,7 @@
 ---
 id: 82
 title: Planner can't lower tiers to PlanSchedContext — lacks node callback_groups (W4.2 blocker)
-status: open
+status: resolved
 type: design
 area: orchestration
 related: [phase-256, rfc-0015, issue-0076]

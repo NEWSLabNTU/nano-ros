@@ -158,7 +158,13 @@ already exists in `system.toml` for the bake but the planner ignores it).
     owning scheduling. `generate_package` loads `NrosConfig` (`component_workspace`) → `resolve_tiers`
     → a **direct, µs-lossless `ResolvedTier → SchedContextSpec`** emit (NOT via the ms-based
     `PlanSchedContext`), binding callbacks by `(component, group) → tier`. Bake unchanged. Drift
-    bounded by the shared `resolve_tiers`. Ready to implement.
+    bounded by the shared `resolve_tiers`. **DONE (2026-06-18).** W4.2a relocated the shared tier
+    helpers + the direct `render_sched_context_from_tier`; W4.2b wired `generate_package` (resolve
+    `[tiers]` → precompute µs-lossless contexts + bindings into the `plan.build.tier_sched` skip
+    field → `render_generated_tables` emits from it; no-tier plans byte-identical). Rust (generate)
+    + C (bake) now both lower scheduling from `system.toml [tiers]` via one `resolve_tiers` — the
+    duality is gone. Issue 0082 resolved. The planner's overlay `sched_contexts` emit is the only
+    residue → retires with `nros.toml` (W9).
 - **Wave 5 — `[[shared_state]]` → DROPPED. DECISION: remove the feature, scoped out (2026-06-18).**
   shared_state is a raw in-process shared-memory primitive — **not a ROS concept.** nano-ros is an
   RT *ROS* client (graph = nodes + pub/sub + services + actions + params + lifecycle); ROS 2's own
