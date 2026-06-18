@@ -1,6 +1,6 @@
 # Phase 253 — CI lane tiering + local-runnable jobs
 
-Status: **In progress (substance + file-merge done; CI-validation remaining)** ·
+Status: **Done** (13→6 tier files, SSoT recipes, bounded per-push, CI-validated) ·
 Design: [docs/development/ci-workflow-reorg.md](../development/ci-workflow-reorg.md).
 Related: #57 (the cadence-cancellation root), #69/#70/#73 (gate-content reds the
 SSoT exposed), phase-251 (`--allow-multiple-definition` gate).
