@@ -766,14 +766,58 @@ mod component_scaffold {
         let dir = tmp.path().join("c-talker");
         let cmake = fs::read_to_string(dir.join("CMakeLists.txt")).unwrap();
         assert!(cmake.contains("project(c_talker VERSION 0.1.0 LANGUAGES C CXX)"));
-        assert!(cmake.contains("nros_find_interfaces(LANGUAGE C SKIP_INSTALL)"));
+        // Typed C component (RFC-0043): raw publisher, no generated bindings.
         assert!(cmake.contains("LANGUAGE C"));
+        assert!(cmake.contains("TYPED"));
         assert!(cmake.contains("CLASS    c_talker::Talker"));
 
         let source = fs::read_to_string(dir.join("src/Talker.c")).unwrap();
-        assert!(source.contains("static nros_ret_t register_talker"));
-        assert!(source.contains("NROS_NODE_REGISTER(register_talker);"));
-        assert!(source.contains("NROS_NODE_ENTITY_PUBLISHER"));
+        assert!(source.contains("NROS_C_COMPONENT(c_talker_t, talker_configure)"));
+        assert!(source.contains("nros_cpp_publisher_create("));
+        assert!(source.contains("nros_cpp_timer_create("));
+        assert!(
+            !source.contains("NROS_NODE_REGISTER"),
+            "typed C scaffold must not emit the legacy declarative seam:\n{source}"
+        );
+        assert!(dir.join("package.xml").is_file());
+    }
+
+    #[test]
+    fn scaffold_component_cpp_emits_typed_component() {
+        let _g = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+        let result = scaffold_component(&ComponentScaffoldConfig {
+            name: "cpp-talker".to_string(),
+            use_case: "talker".to_string(),
+            lang: "cpp".to_string(),
+            force: false,
+        });
+        std::env::set_current_dir(&prev).unwrap();
+        result.expect("scaffold_component cpp");
+
+        let dir = tmp.path().join("cpp-talker");
+        let cmake = fs::read_to_string(dir.join("CMakeLists.txt")).unwrap();
+        assert!(cmake.contains("CLASS   cpp_talker::Talker"));
+        assert!(cmake.contains("std_msgs__nano_ros_cpp"));
+
+        // Header at include/<pkg>/<Class>.hpp (typed Entry includes it by that path).
+        let hpp = fs::read_to_string(dir.join("include/cpp_talker/Talker.hpp")).unwrap();
+        assert!(hpp.contains("::nros::Result configure(::nros::Node& node);"));
+        assert!(hpp.contains("#include <nros/component.hpp>"));
+        assert!(
+            !hpp.contains("register_node") && !hpp.contains("NodeContext"),
+            "typed C++ scaffold header must not carry the declarative seam:\n{hpp}"
+        );
+
+        let cpp = fs::read_to_string(dir.join("src/Talker.cpp")).unwrap();
+        assert!(cpp.contains("::nros::Result Talker::configure(::nros::Node& node)"));
+        assert!(cpp.contains("bind_timer<Talker, &Talker::on_tick>"));
+        assert!(
+            !cpp.contains("NROS_NODE_REGISTER") && !cpp.contains("DeclaredNode"),
+            "typed C++ scaffold body must not carry the declarative seam:\n{cpp}"
+        );
         assert!(dir.join("package.xml").is_file());
     }
 }

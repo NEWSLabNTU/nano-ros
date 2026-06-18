@@ -97,10 +97,10 @@ pub struct ComponentScaffoldConfig {
     /// diversification is TODO — today every flavor emits the publisher+timer
     /// shape, named after the flavor.
     pub use_case: String,
-    /// Source language. `rust` lands the historical Phase 172 W.3 shape;
-    /// `c` / `cpp` land the Phase 212.L.9 Node pkg shape with
-    /// `nano_ros_workspace_pkg_guard()` + `nano_ros_node_register()` +
-    /// `NROS_NODE_REGISTER()`.
+    /// Source language. `rust` lands the planned-mode `nros::Component` shape;
+    /// `c` / `cpp` land the typed component shape (RFC-0043):
+    /// `nano_ros_workspace_pkg_guard()` + `nano_ros_node_register()` + a
+    /// `configure(::nros::Node&)` (C++) / `NROS_C_COMPONENT` (C) seam.
     pub lang: String,
     pub force: bool,
 }
@@ -274,13 +274,13 @@ source_metadata = "metadata/{module}.json"
     Ok(())
 }
 
-/// Scaffold a **C++ Node pkg** — Phase 219.M. Mirrors the Rust path but
-/// emits the §212.L.9 cmake-fn surface (`nano_ros_node_register`) and a
-/// `<UserClass>::register_node()` declarative body in the
-/// `<pkg>::` namespace per §212.L.4 (class prefix must equal
-/// `PROJECT_NAME`). The cmake glue injects `NROS_PKG_NAME` per Phase
-/// 212.M.5.a.1 so the `NROS_NODE_REGISTER` macro lands the per-pkg
-/// mangled register symbol.
+/// Scaffold a **C++ Node pkg** — typed component (RFC-0043). Emits the
+/// §212.L.9 cmake-fn surface (`nano_ros_node_register`) and a
+/// `<UserClass>::configure(::nros::Node&)` real-callback body in the
+/// `<pkg>::` namespace per §212.L.4 (class prefix must equal `PROJECT_NAME`).
+/// `configure` creates a `Publisher` + binds a member timer callback by
+/// identity (no string descriptor, no interpreter) — the typed Entry
+/// constructs the object + calls `configure(node)` on the real executor.
 fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
     let dir = PathBuf::from(&cfg.name);
     if dir.exists() {
@@ -292,7 +292,10 @@ fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
         }
         fs::remove_dir_all(&dir)?;
     }
+    // Header lives at `include/<pkg>/<Class>.hpp` so the typed Entry can
+    // `#include "<pkg>/<Class>.hpp"` (nano_ros_node_register adds `include/`).
     fs::create_dir_all(dir.join("src"))?;
+    fs::create_dir_all(dir.join("include").join(&cfg.name.replace('-', "_")))?;
 
     // Pkg name → namespace + class. `my-talker` → ns `my_talker`, class
     // `Talker` (PascalCase of use_case). §212.L.4 class prefix must equal
@@ -330,9 +333,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 {bootstrap}
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
-# Phase 212.L.9 — declarative Node pkg shape. No add_executable, no
-# `main()`; the linked Entry pkg's BSP-generated runtime owns the entry
-# point, executor init, and the spin loop.
+# Typed component (RFC-0043). No add_executable, no `main()`; the linked
+# Entry pkg's typed runtime constructs this class + calls `configure(node)`
+# on the real executor. `DEPLOY native` also builds a standalone runnable
+# single-node ELF via the typed native carrier.
 nano_ros_node_register(
     NAME    {node_name}
     CLASS   {pkg_sym}::{class_name}
@@ -340,11 +344,8 @@ nano_ros_node_register(
     DEPLOY  native)
 
 # `nros_find_interfaces` declares an INTERFACE lib per dep
-# (`std_msgs__nano_ros_cpp` etc.) that carries the generated headers'
-# include dirs + the FFI-glue link. The Entry pkg's `nano_ros_entry`
-# auto-links them; the Node pkg's `nano_ros_node_register` does not
-# (Phase 219 review Gap 4 — pending 219.J auto-link from metadata).
-# Until 219.J lands, link the deps your `#include`s pull in:
+# (`std_msgs__nano_ros_cpp` etc.) carrying the generated headers' include
+# dirs + FFI-glue link. The typed `Publisher<Int32>` needs them.
 target_link_libraries({pkg_sym}_{node_name}_component
     PUBLIC std_msgs__nano_ros_cpp)
 "#,
@@ -355,59 +356,69 @@ target_link_libraries({pkg_sym}_{node_name}_component
     let class_hpp = format!(
         r#"#pragma once
 
-#include <nros/node_pkg.hpp>
+#include <nros/component.hpp>
+#include <nros/nros.hpp>
+
+#include "std_msgs.hpp"
 
 namespace {pkg_sym} {{
 
-/// Declarative Node — `register_node()` describes the entities the host
-/// runtime will instantiate. No `main()`, no executor, no spin loop;
-/// those live in the linked Entry pkg.
+/// {class_name} — a typed component (RFC-0043). `configure` creates a
+/// publisher on `/chatter` and binds the member `on_tick` (by identity, no
+/// name) as a 1 Hz timer callback that publishes a real counter. The typed
+/// Entry constructs this object + calls `configure(node)`; the executor
+/// dispatches `on_tick` during `spin_once`.
 class {class_name} {{
+    ::nros::Publisher<std_msgs::msg::Int32> pub_;
+    ::nros::Timer timer_;
+    int count_ = 0;
+
+    void on_tick(); // real body; bound via &{class_name}::on_tick (no name)
+
   public:
-    static ::nros::Result register_node(::nros::NodeContext& ctx);
+    ::nros::Result configure(::nros::Node& node);
 }};
 
 }} // namespace {pkg_sym}
 "#,
     );
-    fs::write(dir.join(format!("src/{class_name}.hpp")), class_hpp)?;
+    fs::write(
+        dir.join("include")
+            .join(&pkg_sym)
+            .join(format!("{class_name}.hpp")),
+        class_hpp,
+    )?;
 
     let class_cpp = format!(
         r#"// Generated by `nros new {name} --component --lang cpp`.
 //
-// Describe one Node + one Publisher + one 1 Hz Timer. The host Entry pkg
-// instantiates each entity via the planner's wiring; the timer fires
-// `on_tick`, which publishes to `/chatter`.
+// Typed component (RFC-0043). `configure` creates a `Publisher<Int32>` on
+// `/chatter` + binds the member `on_tick` by identity as a 1 Hz timer; the
+// callback publishes a real counter. No string descriptor, no interpreter.
 
-#include "{class_name}.hpp"
-#include "std_msgs.hpp"
+#include "{pkg_sym}/{class_name}.hpp"
+
+#include <cstdio>
 
 namespace {pkg_sym} {{
 
-::nros::Result {class_name}::register_node(::nros::NodeContext& ctx) {{
-    ::nros::DeclaredNode node;
-    auto opts = ::nros::NodeOptions::make("{node_name}");
-    auto r = ctx.create_node(node, opts);
-    if (!r.ok()) return r;
+void {class_name}::on_tick() {{
+    std_msgs::msg::Int32 m;
+    m.data = count_++;
+    if (pub_.publish(m).ok()) {{
+        std::printf("Published: %d\n", m.data);
+    }}
+}}
 
-    ::nros::DeclaredEntity pub;
-    r = node.create_publisher(pub, "/chatter", "std_msgs/msg/Int32");
+::nros::Result {class_name}::configure(::nros::Node& node) {{
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    ::nros::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
-
-    ::nros::DeclaredCallback on_tick;
-    r = node.declare_callback(on_tick, "on_tick");
-    if (!r.ok()) return r;
-
-    ::nros::DeclaredEntity timer;
-    r = node.create_timer(timer, "1000", on_tick);
-    if (!r.ok()) return r;
-
-    return ctx.record_callback_effect(on_tick, ::nros::CallbackEffectKind::Publishes, pub);
+    // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
+    return ::nros::bind_timer<{class_name}, &{class_name}::on_tick>(node, timer_, 1000, this);
 }}
 
 }} // namespace {pkg_sym}
-
-NROS_NODE_REGISTER({pkg_sym}::{class_name}, "{pkg_sym}::{class_name}");
 "#,
         name = cfg.name,
     );
@@ -416,7 +427,7 @@ NROS_NODE_REGISTER({pkg_sym}::{class_name}, "{pkg_sym}::{class_name}");
     println!("✓ Created nano-ros C++ Node pkg '{}'", cfg.name);
     println!("  Class     : {pkg_sym}::{class_name}");
     println!("  Node      : {node_name}");
-    println!("  Kind      : declarative Node pkg (Phase 212.L.9)");
+    println!("  Kind      : typed component (RFC-0043)");
     println!();
     println!("Next steps:");
     println!("  cd {}", cfg.name);
@@ -430,9 +441,11 @@ NROS_NODE_REGISTER({pkg_sym}::{class_name}, "{pkg_sym}::{class_name}");
     Ok(())
 }
 
-/// Scaffold a **C Node pkg** — Phase 223. Same declarative Node-pkg
-/// shape as the C++ scaffold, but with a free `register_<node>()`
-/// function exported by `NROS_NODE_REGISTER(register_fn)`.
+/// Scaffold a **C Node pkg** — typed component (RFC-0043). Emits a
+/// `NROS_C_COMPONENT(<state>, <configure>)` factory/configure seam: a raw
+/// `/chatter` publisher + 1 Hz timer that publishes a CDR-encoded Int32. The
+/// typed Entry's `__nros_c_component_<pkg>_{create,configure}` calls run it on
+/// the real executor — no declarative descriptor, no interpreter.
 fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
     let dir = PathBuf::from(&cfg.name);
     if dir.exists() {
@@ -449,7 +462,8 @@ fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
     let pkg_sym = cfg.name.replace('-', "_");
     let class_name = use_case_to_pascal(&cfg.use_case);
     let node_name = &cfg.use_case;
-    let register_fn = format!("register_{node_name}");
+    let state_ty = format!("{pkg_sym}_t");
+    let configure_fn = format!("{node_name}_configure");
 
     let package_xml = format!(
         r#"<?xml version="1.0"?>
@@ -459,7 +473,6 @@ fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <description>{name} — nano-ros C Node pkg.</description>
   <maintainer email="TODO@todo.com">TODO</maintainer>
   <license>Apache-2.0</license>
-  <depend>std_msgs</depend>
   <export>
     <build_type>cmake</build_type>
   </export>
@@ -478,19 +491,16 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 {bootstrap}
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
-
-# Phase 212.L.9 / 223.A — declarative C Node pkg shape. No
-# add_executable, no `main()`; a C++ or Rust Entry pkg hosts it.
+# Typed C component (RFC-0043). The raw `/chatter` publisher carries the type
+# name as a string, so no generated C bindings are needed. `DEPLOY native`
+# also builds a standalone runnable single-node ELF via the typed C carrier.
 nano_ros_node_register(
     NAME     {node_name}
     CLASS    {pkg_sym}::{class_name}
     LANGUAGE C
+    TYPED
     SOURCES  src/{class_name}.c
     DEPLOY   native)
-
-target_link_libraries({pkg_sym}_{node_name}_component
-    PUBLIC std_msgs__nano_ros_c)
 "#,
         bootstrap = NROS_BOOTSTRAP_BLOCK,
     );
@@ -499,35 +509,56 @@ target_link_libraries({pkg_sym}_{node_name}_component
     let source = format!(
         r#"// Generated by `nros new {name} --component --lang c`.
 //
-// Describe one Node + one Publisher + one 1 Hz Timer. A C++ or Rust
-// Entry pkg links this static lib and calls the exported
-// `__nros_component_{pkg_sym}_register` trampoline.
+// Typed C component (RFC-0043). `{configure_fn}` creates a raw `/chatter`
+// publisher + a 1 Hz timer publishing a CDR-encoded Int32 counter.
+// `NROS_C_COMPONENT` emits the C-ABI factory/configure the typed Entry calls;
+// it runs on the real executor — no declarative descriptor, no interpreter.
 
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
-#include <nros/node_pkg.h>
-#include "std_msgs.h"
+#include <nros/component.h>
 
-static nros_ret_t {register_fn}(nros_node_context_t* ctx) {{
-    nros_node_pkg_options_t opts = nros_node_pkg_options("{node_name}");
-    nros_declared_node_t node;
-    nros_ret_t r = nros_declared_node_init_with_options(ctx, &opts, &node);
-    if (r != NROS_RET_OK) return r;
+typedef struct {{
+    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    int32_t count;
+}} {state_ty};
 
-    nros_declared_entity_t pub;
-    r = nros_declared_node_create_publisher_for_name(&node, &pub, "/chatter",
-                                                     "std_msgs/msg/Int32", "");
-    if (r != NROS_RET_OK) return r;
-
-    nros_declared_entity_t timer;
-    r = nros_declared_node_create_timer_for_period(&node, &timer, "1000");
-    if (r != NROS_RET_OK) return r;
-
-    return nros_declared_entity_record_callback_effect(ctx, &timer, NROS_NODE_CALLBACK_PUBLISHES,
-                                                       &pub);
+static void write_u32_le(uint8_t* p, uint32_t v) {{
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
 }}
 
-NROS_NODE_REGISTER({register_fn});
+static void on_tick(void* ctx) {{
+    {state_ty}* self = ({state_ty}*)ctx;
+    /* std_msgs/Int32 CDR: 4-byte encapsulation header (CDR_LE) + int32 data. */
+    uint8_t buf[8];
+    buf[0] = 0x00;
+    buf[1] = 0x01;
+    buf[2] = 0x00;
+    buf[3] = 0x00;
+    write_u32_le(buf + 4, (uint32_t)self->count);
+    if (nros_cpp_publish_raw(self->pub, buf, sizeof(buf)) == 0) {{
+        printf("Published: %d\n", (int)self->count);
+    }}
+    self->count++;
+}}
+
+static nros_ret_t {configure_fn}(const nros_cpp_node_t* node, void* executor, {state_ty}* self) {{
+    self->count = 0;
+    int32_t rc = nros_cpp_publisher_create(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
+                                           nros_c_qos_default(), self->pub);
+    if (rc != 0) {{
+        return rc;
+    }}
+    size_t timer_handle;
+    return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
+}}
+
+NROS_C_COMPONENT({state_ty}, {configure_fn})
 "#,
         name = cfg.name,
     );
@@ -536,7 +567,7 @@ NROS_NODE_REGISTER({register_fn});
     println!("✓ Created nano-ros C Node pkg '{}'", cfg.name);
     println!("  Class     : {pkg_sym}::{class_name}");
     println!("  Node      : {node_name}");
-    println!("  Kind      : declarative Node pkg (Phase 223)");
+    println!("  Kind      : typed component (RFC-0043)");
     println!();
     println!("Next steps:");
     println!("  cd {}", cfg.name);
