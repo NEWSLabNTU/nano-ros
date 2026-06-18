@@ -93,8 +93,28 @@ units are an overlay-model legacy being dropped — don't re-inherit them.
 4. **Planner** — drop the overlay `sched_contexts` emission; `plan.sched_contexts`
    retires with the `nros.toml` overlay (W9).
 
+## Implementation map (W4.2b, explored 2026-06-18)
+
+- **Precompute, render stays infallible.** `render_generated_tables(plan) -> String`
+  (infallible, 3 callers incl. 2 tests). The tier renderer is fallible (validates
+  class/policy), so resolve + render + bind in `generate_package` (already `Result`),
+  store on `plan.build`, render just reads it — no fallibility ripple / test churn.
+- **Threading:** `#[serde(skip)] pub tier_sched: Option<TierSched>` on
+  `PlanBuildOptions` (like `workspace_root`); `TierSched { contexts: Vec<String>,
+  bindings: Vec<(usize, usize)> }` (rendered context literals + callback→ctx-index).
+- **Gate:** tier path only when `bringup.system.tiers` is non-empty; else the
+  existing `plan.sched_contexts` path stays byte-identical.
+- **Binding:** mirror `collect_callback_bindings` — iterate `plan.instances →
+  callbacks` (callback_index++), look up the tier by `(instance.component,
+  callback.group)` in the inverted `ResolvedTier.members`, emit `tier_index + 1`
+  (slot 0 = default). `PlanInstance.component == [[component]].name` (planner-validated).
+
+Change list: (1) `plan.rs` `TierSched` + skip field; (2) `generate_package` resolve
++ precompute → `plan.build.tier_sched`; (3) `render_generated_tables` reads it when
+`Some`; (4) drop the W4.2a `#[allow(dead_code)]`.
+
 ## State
 
-- W4.1 (TierDef/ResolvedTier EDF fields) is landed + enum-doc fixed.
-- Decision (c) locked, design explored + folded here; ready to implement. The
-  overlay `[[scheduling.contexts]]` (0 users) retires with `nros.toml` (W9).
+- W4.1 (EDF fields) + W4.2a (shared helpers + direct renderer) landed.
+- W4.2b ready to implement per the map. The overlay `[[scheduling.contexts]]`
+  (0 users) retires with `nros.toml` (W9).
