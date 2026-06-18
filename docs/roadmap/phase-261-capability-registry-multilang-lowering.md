@@ -48,10 +48,20 @@ axes — regression-locked by the existing `render_system_config_h` tests
 absent-when-disabled). A new C/C++ axis now costs one `Capability{}` row + the
 typed enabled-field, no edit in the bake.
 
-### W3 — registry-drive the Rust feature lowering
-Confirm `generate.rs` (`backend_features`, `board_capability_features`, the entry
-`nros/<feature>`) reads everything from the registry rows (already mostly true);
-remove any residual per-axis literals.
+### W3 — registry-drive the Rust feature lowering — DONE (2026-06-18)
+Audited `generate.rs`: the capability feature *strings* already all come from the
+registry (`capability(x).nros_feature` / `.backend_feature`) — no hardcoded
+`"safety-e2e"` / `"param-services"` literals in the production path (only in tests).
+Generalized `board_capability_features` to loop `CAPABILITIES` (push each enabled
+axis's `backend_feature` when the board advertises it) instead of a hardcoded
+`safety` branch; added `NrosPlan::capability_enabled(declared)` (mirrors
+`SystemToml`'s). Byte-identical today (safety is the only backend-feature axis).
+**Left per-axis by design:** the entry-umbrella emission in
+`generated_default_features` (a registry loop would flip feature order vs the bake —
+bake emits safety-first, the entry param_services-first — breaking byte-identity; and
+`param_services` has a dual trigger `param_persistence || param_services`) and
+`backend_features(…, safety: bool)` (the bool is threaded from callers). These fully
+generalize in W4 alongside the `features = [...]` surface.
 
 ### W4 — the `features = [...]` surface
 Add a generic `features: Vec<String>` to `system.toml` / `SystemToml`. Each entry

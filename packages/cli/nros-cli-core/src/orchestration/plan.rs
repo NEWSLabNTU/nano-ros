@@ -76,6 +76,22 @@ pub struct NrosPlan {
     pub build: PlanBuildOptions,
 }
 
+impl NrosPlan {
+    /// Phase 261 — is the declared capability axis (`capability_resolver::Capability
+    /// .declared`, e.g. `"safety"` / `"param_services"`) enabled in this plan? The
+    /// planner only emits a capability block when its axis is enabled, so presence
+    /// of the typed field IS the enabled state. Mirrors `SystemToml::capability_enabled`
+    /// so `generate` can registry-loop the Rust feature lowering instead of hardcoding
+    /// per-axis keys. Unknown axis ⇒ `false`.
+    pub fn capability_enabled(&self, declared: &str) -> bool {
+        match declared {
+            "safety" => self.safety.is_some(),
+            "param_services" => self.param_services.is_some(),
+            _ => false,
+        }
+    }
+}
+
 /// Phase 172 — a topic-forwarding gateway: relay the `topics` (raw CDR) between
 /// the sessions named in `connect` (≥2). Mirrors the root `[[bridge]]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

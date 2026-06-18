@@ -1466,12 +1466,18 @@ fn board_capability_features(
     plan: &NrosPlan,
     board: &crate::orchestration::board_descriptor::BoardDescriptor,
 ) -> Vec<String> {
+    // Phase 261 W3 — registry-driven: loop the capability rows and push each
+    // enabled axis's `backend_feature` when the board advertises it, instead of a
+    // hardcoded `safety` branch. Byte-identical today (safety is the only axis with
+    // a backend feature); a future backend-bearing axis is picked up for free.
     let mut feats = Vec::new();
-    if plan.safety.is_some()
-        && let Some(bf) = crate::orchestration::capability("safety").and_then(|c| c.backend_feature)
-        && board.capability_features.iter().any(|f| f == bf)
-    {
-        feats.push(bf.to_string());
+    for cap in crate::orchestration::capability_resolver::CAPABILITIES {
+        if plan.capability_enabled(cap.declared)
+            && let Some(bf) = cap.backend_feature
+            && board.capability_features.iter().any(|f| f == bf)
+        {
+            feats.push(bf.to_string());
+        }
     }
     feats
 }
