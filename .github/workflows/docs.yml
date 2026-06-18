@@ -41,14 +41,9 @@ jobs:
         # temporarily point at fork-only commits while development branches are
         # being synchronized. Recursive checkout makes an otherwise unrelated
         # book deploy fail before docs build starts.
-
-      # The book rustdoc-driver path-deps `nros`, which (post-218 cli-in-tree)
-      # pulls `nros-cli-core` → the nested `ros-launch-manifest-types` submodule.
-      # The selective checkout above skips submodules, so `cargo doc` fails to
-      # load that source. Init only this one CLI-side submodule (cheap; ~50KB) —
-      # same as every CLI-building lane.
-      - name: Init CLI launch-manifest submodule
-        run: git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+        # phase-262: the rustdoc-driver no longer pulls nros-cli-core (nros-macros
+        # now deps the nros-pkg-index / nros-launch-parser leaf crates, not the
+        # whole CLI), so no ros-launch-manifest submodule init is needed here.
 
       - name: Install mdbook
         uses: peaceiris/actions-mdbook@v2

@@ -1,6 +1,6 @@
 # Phase 262 — decouple nros-macros from nros-cli-core (leaf-crate extraction)
 
-Status: **Planned (2026-06-18)** · Resolves
+Status: **Done (2026-06-18, W1-W5)** · Resolves
 [issue 0083](../issues/0083-nros-macros-build-deps-on-cli-core.md) · Removes the
 build-coupling root behind the phase-253 docs/check-c lane breakages.
 
@@ -70,7 +70,15 @@ nros-macros Cargo.toml: dropped `nros-build`; added `nros-pkg-index` +
 **Verified:** `cargo tree -p nros-c` now shows NO nros-cli-core / nros-build /
 ros-launch-manifest-types — only the two leaf crates. nros-macros builds.
 
-### W5 — remove the CI submodule-init workarounds
+### W5 — remove the CI submodule-init workarounds — DONE (2026-06-18)
+Removed the `docs.yml` "Init CLI launch-manifest submodule" step — `cargo tree
+--manifest-path book/rustdoc-driver` now shows no nros-cli-core /
+ros-launch-manifest-types (the rustdoc-driver builds `nros` → leaf crates). The
+pr-checks build-tier init STAYS (the actual `nros` CLI build needs nros-cli-core →
+the submodule). check-c (check-build) builds nros-c which is now decoupled, and the
+build-tier CLI build inits the submodule anyway — no change needed there.
+
+Original W5 plan below.
 With the macro path submodule-free, the `ros-launch-manifest` `git submodule
 update --init` steps added for the coupling can go:
 - `docs.yml` "Init CLI launch-manifest submodule" (book rustdoc-driver builds nros).

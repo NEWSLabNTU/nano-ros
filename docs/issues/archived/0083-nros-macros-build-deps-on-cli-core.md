@@ -1,9 +1,10 @@
 ---
 id: 83
 title: nros-macros (proc-macro) build-depends on nros-cli-core — every nros build pulls the whole CLI
-status: open
+status: resolved
 type: tech-debt
 area: build
+resolved_in: "phase-262 (leaf-crate extraction: nros-pkg-index + nros-launch-parser)"
 related: [phase-253, phase-256]
 ---
 
