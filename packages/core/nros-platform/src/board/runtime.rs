@@ -53,36 +53,12 @@ pub struct SignaledCallback<'a> {
     pub ctx_ptr: *mut core::ffi::c_void,
 }
 
-/// Per-Node pkg `register` fn pointer (Phase 212.N.7 step-3.1).
-///
-/// Real signature lives in `nros::NodeRegisterFn` (see
-/// `packages/core/nros/src/component_runtime.rs`). The platform
-/// layer treats it as an opaque pointer so `nros-platform` does not
-/// need to depend on `nros` (that would invert the dep graph). The
-/// `ExecutorNodeRuntime` impl in `nros` `transmute`s back to
-/// the typed signature at the FFI boundary.
-///
-/// `extern "Rust" fn()` is the smallest concrete `fn` type
-/// (zero-arg, no return). Coercing the real typed fn pointer to
-/// this anchor requires `core::mem::transmute` — non-`as`. The
-/// macro emit (Phase 212.N.7 step-3.4) carries the transmute so
-/// individual Node pkgs never spell it.
-pub type NodeRegisterFn = extern "Rust" fn();
-
-/// Per-Node pkg `init` fn pointer (Phase 212.N.7 step-3.1).
-///
-/// See [`NodeRegisterFn`] for the opaque-pointer rationale.
-pub type NodeInitFn = extern "Rust" fn();
-
-/// Per-Node pkg `dispatch` fn pointer (Phase 212.N.7 step-3.1).
-///
-/// See [`NodeRegisterFn`] for the opaque-pointer rationale.
-pub type NodeDispatchFn = extern "Rust" fn();
-
-/// Per-Node pkg `tick` fn pointer (Phase 212.N.7 step-3.1).
-///
-/// See [`NodeRegisterFn`] for the opaque-pointer rationale.
-pub type NodeTickFn = extern "Rust" fn();
+// Phase 258 (Track 2, w5) — the opaque per-Node `extern "Rust" fn()` aliases
+// (`NodeRegisterFn` / `NodeInitFn` / `NodeDispatchFn` / `NodeTickFn`) are gone.
+// They anchored the retired `register_dispatch_slot_dyn` four-fn-ptr bridge
+// (owned-spin declarative register), which the install seam replaced — Rust
+// owned-spin now registers via `RuntimeCtx::runtime.executor_handle()` +
+// `nros::install_node_typed` like the C/C++ typed entries.
 
 /// Node runtime sink the codegen-emitted `run_plan(runtime)`
 /// body talks to (Phase 212.N.7 step-3.1).
@@ -92,15 +68,6 @@ pub type NodeTickFn = extern "Rust" fn();
 /// `BoardEntry::run` installs it on the per-boot
 /// [`RuntimeCtx::runtime`] slot before invoking the user `setup`
 /// closure.
-///
-/// The fn-pointer parameters are the opaque
-/// [`NodeRegisterFn`] / [`NodeInitFn`] /
-/// [`NodeDispatchFn`] / [`NodeTickFn`] aliases — the
-/// real-typed counterparts live in `nros`. The implementor
-/// `mem::transmute`s back at the call site (see
-/// `impl nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime`
-/// in `packages/core/nros/src/component_runtime.rs`).
-///
 ///
 /// Phase 214.K.1 — renamed from `NodeRuntime` to disambiguate from
 /// the user-facing `nros::NodeRuntime` metadata-sink trait in
@@ -112,28 +79,6 @@ pub type NodeTickFn = extern "Rust" fn();
 /// `#[deprecated]` `pub use NodeDispatchRuntime as NodeRuntime;`
 /// re-export sits at the crate module level for one release cycle.
 pub trait NodeDispatchRuntime {
-    /// Register a single Node pkg by its four `extern "Rust"` fn
-    /// pointers + a static name for diagnostics. Returns `Err(())`
-    /// when the executor rejects the registration (no detail surfaces
-    /// across the trait — Node pkgs map this back to
-    /// [`RuntimeError::NodeRegister`] with the pkg name).
-    ///
-    /// `Result<_, ()>` is deliberate: the sole caller (the
-    /// `nros::node!` macro expansion in `nros-macros`) discards the
-    /// unit error and substitutes the static pkg name via
-    /// `RuntimeError::NodeRegister(pkg)`. A bespoke error enum would
-    /// add a one-shot variant nothing else consumes — `#[allow]`
-    /// instead.
-    #[allow(clippy::result_unit_err)]
-    fn register_dispatch_slot_dyn(
-        &mut self,
-        register: NodeRegisterFn,
-        init: NodeInitFn,
-        dispatch: NodeDispatchFn,
-        tick: NodeTickFn,
-        name: &'static str,
-    ) -> Result<(), ()>;
-
     /// Drive the underlying executor for at most `timeout_ms`
     /// milliseconds. `Ok(())` on a clean spin (including timeout);
     /// `Err(())` if the executor surfaces a spin error.
@@ -151,8 +96,8 @@ pub trait NodeDispatchRuntime {
     /// Phase 258 (Track 2, 2a) — raw `*mut Executor` (as `void*`) for the
     /// owned-spin entry, so a Node pkg's `register(runtime)` wrapper can call
     /// the uniform `__nros_component_<pkg>_install(.., executor, ..)` seam
-    /// (`nros::install_node_typed`) instead of the opaque-fn-ptr
-    /// [`register_dispatch_slot_dyn`] bridge. A pointer crosses the
+    /// (`nros::install_node_typed`) instead of the retired opaque-fn-ptr
+    /// `register_dispatch_slot_dyn` bridge. A pointer crosses the
     /// `nros-platform` → `nros` layering wall cleanly (the concrete
     /// `ExecutorNodeRuntime` lives in `nros`; this trait can't name it).
     ///
@@ -201,17 +146,6 @@ pub trait NodeDispatchRuntime {
 pub struct NullNodeRuntime;
 
 impl NodeDispatchRuntime for NullNodeRuntime {
-    fn register_dispatch_slot_dyn(
-        &mut self,
-        _register: NodeRegisterFn,
-        _init: NodeInitFn,
-        _dispatch: NodeDispatchFn,
-        _tick: NodeTickFn,
-        _name: &'static str,
-    ) -> Result<(), ()> {
-        Err(())
-    }
-
     fn spin_once(&mut self, _timeout_ms: u32) -> Result<(), ()> {
         Err(())
     }
@@ -237,9 +171,9 @@ pub struct RuntimeCtx<'a> {
     /// Node runtime sink. `BoardEntry::run` populates this with
     /// the live `ExecutorNodeRuntime`-backed impl before invoking
     /// the user `setup` closure. The codegen-emitted
-    /// `run_plan(runtime)` body calls
-    /// `runtime.runtime.register_dispatch_slot_dyn(...)` once per
-    /// Node pkg.
+    /// `run_plan(runtime)` body calls `<pkg>::register(runtime)` once per Node
+    /// pkg, which installs through `runtime.executor_handle()` +
+    /// `nros::install_node_typed` (Phase 258, Track 2).
     ///
     /// Defaults to a [`NullNodeRuntime`] when the context is
     /// built via [`RuntimeCtx::with_runtime`]. That sink errors

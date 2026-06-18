@@ -127,10 +127,7 @@ mod tests {
     //! the trait surface accepting a real-shaped board type without
     //! any extra bounds creep.
     use super::*;
-    use crate::board::{
-        BoardExit, BoardInit, BoardPrint, NodeDispatchFn, NodeDispatchRuntime, NodeInitFn,
-        NodeRegisterFn, NodeTickFn,
-    };
+    use crate::board::{BoardExit, BoardInit, BoardPrint, NodeDispatchRuntime};
 
     struct DummyPac;
     struct DummyCore;
@@ -156,17 +153,6 @@ mod tests {
     }
 
     impl NodeDispatchRuntime for DummyRuntime {
-        fn register_dispatch_slot_dyn(
-            &mut self,
-            _register: NodeRegisterFn,
-            _init: NodeInitFn,
-            _dispatch: NodeDispatchFn,
-            _tick: NodeTickFn,
-            _name: &'static str,
-        ) -> Result<(), ()> {
-            Err(())
-        }
-
         fn spin_once(&mut self, _timeout_ms: u32) -> Result<(), ()> {
             Err(())
         }

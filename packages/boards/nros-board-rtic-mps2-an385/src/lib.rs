@@ -19,8 +19,8 @@ use heapless::spsc::{Consumer, Producer, Queue};
 #[cfg(feature = "e2e-synthetic-callback")]
 use nros::PublisherResolver;
 use nros_platform::{
-    BoardExit, BoardInit, BoardPrint, DispatchStrategy, NodeDispatchFn, NodeDispatchRuntime,
-    NodeInitFn, NodeRegisterFn, NodeTickFn, RticBoardEntry, SignaledCallback,
+    BoardExit, BoardInit, BoardPrint, DispatchStrategy, NodeDispatchRuntime, RticBoardEntry,
+    SignaledCallback,
 };
 
 pub use cortex_m_rt::entry;
@@ -110,17 +110,6 @@ impl Default for RticRuntime {
 }
 
 impl NodeDispatchRuntime for RticRuntime {
-    fn register_dispatch_slot_dyn(
-        &mut self,
-        _register: NodeRegisterFn,
-        _init: NodeInitFn,
-        _dispatch: NodeDispatchFn,
-        _tick: NodeTickFn,
-        _name: &'static str,
-    ) -> Result<(), ()> {
-        Err(())
-    }
-
     fn spin_once(&mut self, _timeout_ms: u32) -> Result<(), ()> {
         Err(())
     }

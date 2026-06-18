@@ -58,10 +58,10 @@
 //! - `embassy_stm32::Config::default()` picks HSI / no PLL; a
 //!   future follow-up bumps to HSE → PLL 180 MHz to match the
 //!   sibling direct-exec `nros-board-stm32f4` (168 MHz).
-//! - [`EmbassyRuntime::register_dispatch_slot_dyn`] +
-//!   [`EmbassyRuntime::spin_once`] still return `Err(())`. The
-//!   proc-macro emit (216.C.3) wraps an `ExecutorNodeRuntime`-style
-//!   sink and forwards through.
+//! - [`EmbassyRuntime::spin_once`] returns `Err(())` — Embassy owns the
+//!   spin loop via a framework-spawned task, not this sink. (Phase 258
+//!   Track 2 retired the `register_dispatch_slot_dyn` registration bridge;
+//!   owned-spin registration is via the `install_node_typed` seam.)
 //!
 //! ## Layering note
 //!
@@ -93,8 +93,8 @@ use embassy_sync::{
 };
 
 use nros_platform::{
-    BoardExit, BoardInit, BoardPrint, DispatchStrategy, EmbassyBoardEntry, NodeDispatchFn,
-    NodeDispatchRuntime, NodeInitFn, NodeRegisterFn, NodeTickFn, SignaledCallback,
+    BoardExit, BoardInit, BoardPrint, DispatchStrategy, EmbassyBoardEntry, NodeDispatchRuntime,
+    SignaledCallback,
 };
 
 /// Channel depth used by [`EmbassyRuntime`]. Mirrors
@@ -341,21 +341,6 @@ impl Default for EmbassyRuntime {
 }
 
 impl NodeDispatchRuntime for EmbassyRuntime {
-    fn register_dispatch_slot_dyn(
-        &mut self,
-        _register: NodeRegisterFn,
-        _init: NodeInitFn,
-        _dispatch: NodeDispatchFn,
-        _tick: NodeTickFn,
-        _name: &'static str,
-    ) -> Result<(), ()> {
-        // Phase 216.C.2 follow-up — wrap an `ExecutorNodeRuntime`-style
-        // sink (lives in `nros::component_runtime`) and forward through.
-        // Skeleton: surface unwired by returning `Err(())` so callers
-        // fail loudly rather than silently succeed.
-        Err(())
-    }
-
     fn spin_once(&mut self, _timeout_ms: u32) -> Result<(), ()> {
         // Phase 216.C.2 follow-up — when DispatchStrategy::Deferred is
         // active, `spin_once` typically yields (Embassy owns the

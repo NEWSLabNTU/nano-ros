@@ -64,10 +64,10 @@
 //!
 //! ## Still `todo!()`
 //!
-//! - [`NodeDispatchRuntime::register_dispatch_slot_dyn`] +
-//!   [`NodeDispatchRuntime::spin_once`] — they return `Err(())`
-//!   today. The proc-macro emit (216.B.3) wraps an
-//!   `ExecutorNodeRuntime`-style sink and forwards through; spin is
+//! - [`NodeDispatchRuntime::spin_once`] — returns `Err(())`
+//!   today. (Phase 258 Track 2 retired the `register_dispatch_slot_dyn`
+//!   registration bridge; owned-spin registration is via the
+//!   `install_node_typed` seam.) Spin is
 //!   driven by a framework-spawned RTIC software task pulling from
 //!   the [`take_dispatch_queue`] consumer half, not from this
 //!   trait method.
@@ -109,8 +109,8 @@ use core::{
 
 use heapless::spsc::{Consumer, Producer, Queue};
 use nros_platform::{
-    BoardExit, BoardInit, BoardPrint, DispatchStrategy, NodeDispatchFn, NodeDispatchRuntime,
-    NodeInitFn, NodeRegisterFn, NodeTickFn, RticBoardEntry, SignaledCallback,
+    BoardExit, BoardInit, BoardPrint, DispatchStrategy, NodeDispatchRuntime, RticBoardEntry,
+    SignaledCallback,
 };
 
 // Re-export the cortex-m / cortex-m-rt entry attribute + defmt
@@ -633,23 +633,6 @@ impl Default for RticRuntime {
 }
 
 impl NodeDispatchRuntime for RticRuntime {
-    fn register_dispatch_slot_dyn(
-        &mut self,
-        _register: NodeRegisterFn,
-        _init: NodeInitFn,
-        _dispatch: NodeDispatchFn,
-        _tick: NodeTickFn,
-        _name: &'static str,
-    ) -> Result<(), ()> {
-        // Phase 216.B.2 follow-up — wrap an `ExecutorNodeRuntime`-style
-        // sink (lives in `nros::component_runtime`) and forward
-        // through. Skeleton: surface unwired by returning `Err(())`
-        // so callers fail loudly rather than silently succeed.
-        // Mirrors `EmbassyRuntime::register_dispatch_slot_dyn`'s
-        // skeleton behavior (Phase 216.C.2 follow-up).
-        Err(())
-    }
-
     fn spin_once(&mut self, _timeout_ms: u32) -> Result<(), ()> {
         // RTIC owns the spin loop via a framework-generated
         // software task (`__nros_spin`); the board-side runtime

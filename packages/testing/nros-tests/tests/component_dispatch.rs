@@ -1,18 +1,17 @@
-//! Phase 212.M.5.a.4 / N.7 — component dispatch path integration.
+//! Phase 212.N.7 / 258 — component dispatch path integration.
 //!
-//! Originally the test exercised the BSP-baker fn-pointer ABI: the
-//! `nros::node!()` macro emitted four `__nros_component_<pkg>_*`
-//! externs and the test called `register_dispatch_slot(...)` with those
-//! symbols directly. Phase 212.N.7 step-6 dropped the global symbols —
-//! the macro now emits ONE public item, `pub fn register(runtime)`, and
-//! the four typed fns live as local items inside it. The
-//! Node-pkg-facing entry point is `<pkg>::register(&mut RuntimeCtx)`.
+//! The Node-pkg-facing owned-spin entry point is `<pkg>::register(&mut
+//! RuntimeCtx)`, emitted by `nros::node!()`. Phase 258 (Track 2) routed that
+//! wrapper through the uniform `install_node_typed` seam: it reads the executor
+//! handle from `RuntimeCtx::runtime.executor_handle()` and enrolls the
+//! component into the executor's tick registry (the same seam the C/C++ typed
+//! entries use), replacing the retired four-fn-ptr `register_dispatch_slot_dyn`
+//! bridge.
 //!
-//! This rewrite preserves the original coverage (callback fires + the
-//! publisher resolver routes the dispatched publish) by going through
-//! the new path: build a real `ExecutorNodeRuntime`, wrap it in a
-//! `RuntimeCtx`, invoke the macro-emitted `register(runtime)` wrapper,
-//! then spin. Same end-state asserts as before.
+//! This test covers that path end-to-end (callback fires + the publisher
+//! resolver routes the dispatched publish): build a real `ExecutorNodeRuntime`,
+//! wrap it in a `RuntimeCtx`, invoke the macro-emitted `register(runtime)`
+//! wrapper, then spin.
 
 #![cfg(feature = "component-runtime-test")]
 
@@ -124,19 +123,18 @@ fn dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
     let executor = Executor::open(&cfg).expect("Executor::open failed");
     let mut runtime = ExecutorNodeRuntime::from_executor(executor);
 
-    // Phase 212.N.7 — register through the new `pub fn register(runtime)`
-    // wrapper emitted by `nros::node!(Talker)`. The wrapper
-    // transmutes the four typed local fns to the platform-layer opaque
-    // aliases and forwards to `ExecutorNodeRuntime::register_dispatch_slot_dyn`
-    // (the impl in `component_runtime.rs` transmutes them back). Same
-    // dispatch path the previous test exercised via the four globally
-    // mangled symbols — now via the wrapper-emitted local fns.
+    // Phase 258 (Track 2) — register through the `pub fn register(runtime)`
+    // wrapper emitted by `nros::node!(Talker)`. The wrapper now installs via
+    // the uniform `install_node_typed` seam: it pulls the executor handle from
+    // `RuntimeCtx::runtime.executor_handle()` and enrolls the component into
+    // the EXECUTOR's component-tick registry (not the runtime's `components`
+    // Vec). So the slot count lives on the executor, not `component_count()`.
     {
         let mut ctx = RuntimeCtx::with_runtime(&mut runtime);
         talker_register(&mut ctx).expect("component register");
     }
 
-    assert_eq!(runtime.component_count(), 1);
+    assert_eq!(runtime.executor().component_slot_count(), 1);
 
     // Spin for ~300 ms. The 50 ms-period timer must fire ≥ 2× and the
     // dispatched body must run.

@@ -70,8 +70,7 @@ pub use network::NetworkWait;
 pub use print::BoardPrint;
 pub use rtic_entry::RticBoardEntry;
 pub use runtime::{
-    NodeDispatchFn, NodeDispatchRuntime, NodeInitFn, NodeRegisterFn, NodeTickFn, NullNodeRuntime,
-    RuntimeCtx, RuntimeError, SignaledCallback,
+    NodeDispatchRuntime, NullNodeRuntime, RuntimeCtx, RuntimeError, SignaledCallback,
 };
 pub use tier::{TierSpec, freertos_priority_for, posix_nice_for, threadx_priority_for};
 

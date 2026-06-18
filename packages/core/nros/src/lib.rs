@@ -222,16 +222,10 @@ pub use node_metadata::{CallbackId, EntityId, NodeId};
 // and match against the `Callback<'_>` delivered to
 // `ExecutableNode::on_callback`.
 pub use dispatch_tag::{ActionTag, ServiceTag, SubscriptionTag};
-#[cfg(all(feature = "rmw-cffi", feature = "std"))]
-pub use node_runtime::nros_run_components;
 #[cfg(feature = "rmw-cffi")]
 pub use node_runtime::{
     ExecutorError,
     ExecutorNodeRuntime,
-    NodeDispatchFn,
-    NodeInitFn,
-    NodeRegisterFn,
-    NodeTickFn,
     RegisteredNode,
     // Phase 257 (W0-B) — the uniform cross-language component-install seam backing
     // `__nros_component_<pkg>_install` (nros::node!): register an ExecutableNode on the
