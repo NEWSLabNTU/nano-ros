@@ -342,7 +342,7 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-weak-symbols \
     check-version-lockstep check-example-fmt \
     check-codegen-invocation check-string-conventions \
-    check-c check-cpp check-python
+    check-c-fmt check-cpp-fmt check-python
     @echo "Fast checks passed!"
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
@@ -356,6 +356,7 @@ check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-dep-chain \
     check-embedded-feature-unification \
+    check-c check-cpp \
     native::check
     @echo "Build checks passed!"
 
@@ -1565,18 +1566,29 @@ format-cpp:
 format-python:
     @echo "No in-tree Python package to format (nros-cli owns the colcon extension)."
 
-# Check C code: formatting + nros-c umbrella header syntax
+# Check C formatting only (clang-format) — BUILDLESS, source-free → push lane.
 [private]
-check-c:
+check-c-fmt:
     #!/usr/bin/env bash
     set -e
-    echo "Checking C code..."
+    echo "Checking C formatting..."
     echo "  - clang-format (nros-c headers)"
     find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 clang-format --dry-run --Werror
     echo "  - clang-format (zpico C)"
     clang-format --dry-run --Werror packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
     echo "  - clang-format (C examples)"
     find examples/native/c -name '*.c' -not -path '*/build/*' -not -path '*/build-*/*' -print0 | xargs -0 clang-format --dry-run --Werror
+    echo "C formatting OK."
+
+# Check C code: formatting + nros-c umbrella header syntax. COMPILES nros-c
+# (→ nros-macros → nros-build → nros-cli-core → the ros-launch-manifest submodule;
+# issue 0083) to emit the OPAQUE_U64S macro header, so it needs sources/CLI
+# submodule → build tier (check-build), NOT the source-free push lane.
+[private]
+check-c: check-c-fmt
+    #!/usr/bin/env bash
+    set -e
+    echo "Checking C code (build + syntax)..."
     echo "  - syntax (nros-c umbrella header)"
     # The per-variant `<nros/nros_config_generated.h>` (defining the
     # OPAQUE_U64S macros referenced by `<nros/nros_generated.h>`) is
@@ -1593,14 +1605,25 @@ check-c:
         -x c /dev/null
     echo "All C checks passed!"
 
-# Check C++ headers: formatting + freestanding syntax + nros-cpp clippy
+# Check C++ formatting only (clang-format) — BUILDLESS, source-free → push lane.
 [private]
-check-cpp:
+check-cpp-fmt:
     #!/usr/bin/env bash
     set -e
-    echo "Checking C++ headers..."
+    echo "Checking C++ formatting..."
     echo "  - clang-format"
     clang-format --dry-run --Werror packages/core/nros-cpp/include/nros/*.hpp
+    echo "C++ formatting OK."
+
+# Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The
+# clippy (rmw-zenoh-cffi) + syntax probe COMPILE nros-cpp/nros-c (zpico-sys pulls
+# the zenoh-pico source submodule) → source-dependent → build tier (check-build),
+# NOT the source-free push lane.
+[private]
+check-cpp: check-cpp-fmt
+    #!/usr/bin/env bash
+    set -e
+    echo "Checking C++ headers (build + syntax + clippy)..."
     echo "  - freestanding syntax (c++14)"
     # parameter.hpp re-exposes the C-side `nros_param_*` API from
     # nros-c, so the syntax probe needs nros-c on the include path too.

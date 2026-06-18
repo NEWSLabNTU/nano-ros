@@ -46,5 +46,8 @@ expand from in-tree schema/types only, not the orchestration CLI. Then a plain
 `cargo build -p nros-c` (and the docs/check-c lanes) need no CLI submodule.
 
 Until then: lanes that build `nros`/`nros-c` must `git submodule update --init
-packages/cli/third-party/ros-launch-manifest` first (done in `docs.yml` and the
-`check` job of `pr-checks.yml`).
+packages/cli/third-party/ros-launch-manifest` first (done in `docs.yml`, and in
+`pr-checks.yml`'s build tier which provisions the CLI + sources). The push lane
+avoids the problem entirely — `check-fast` runs only the buildless `check-c-fmt`/
+`check-cpp-fmt` (clang-format); the compile gates `check-c`/`check-cpp` live in
+`check-build` (PR/nightly), where the submodule + zenoh-pico source are present.
