@@ -37,11 +37,16 @@ struct; populated the existing rows (`safety` → `NROS_SYSTEM_SAFETY_E2E` /
 token). Pure data, no behaviour change. Tests lock the slots + assert every
 `c_define` is `NROS_SYSTEM_`-prefixed (so the W2 loop stays byte-identical).
 
-### W2 — registry-drive the C/C++ bake
-Replace the hardcoded `if sys.safety` / `if sys.param_services` branches in
-`render_system_config_h` with a loop over the declared axes that emits each row's
-`c_define`. Byte-identical output for today's two axes (regression-locked by the
-existing codegen_system tests).
+### W2 — registry-drive the C/C++ bake — DONE (2026-06-18)
+Replaced the hardcoded `if sys.safety` / `if sys.param_services` branches in
+`render_system_config_h` with a loop over `capability_resolver::CAPABILITIES`
+(declaration order) emitting each enabled axis's `c_define`. Added
+`SystemToml::capability_enabled(declared)` mapping the registry's language-neutral
+axis name onto the typed `[block] enabled` field. Byte-identical for today's two
+axes — regression-locked by the existing `render_system_config_h` tests
+(`NROS_SYSTEM_SAFETY_E2E` / `NROS_SYSTEM_PARAM_SERVICES` emit-when-enabled /
+absent-when-disabled). A new C/C++ axis now costs one `Capability{}` row + the
+typed enabled-field, no edit in the bake.
 
 ### W3 — registry-drive the Rust feature lowering
 Confirm `generate.rs` (`backend_features`, `board_capability_features`, the entry

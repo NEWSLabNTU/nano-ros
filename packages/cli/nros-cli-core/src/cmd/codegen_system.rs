@@ -37,6 +37,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::orchestration::{
+    capability_resolver,
     cargo_metadata_schema::{SystemComponentEntry, SystemToml},
     launch_synth::{LaunchInput, resolve_launch},
     nros_config::{BringupPackageEntry, NrosConfig},
@@ -487,17 +488,21 @@ fn render_system_config_h(sys: &SystemToml, target: Option<&str>, cli_rmw: Optio
             c_escape(loc)
         ));
     }
-    // Phase 254 — declared capability axes (RFC-0031 §Generalization). The bake
-    // and the Rust planner now read the SAME `system.toml`, so a `[safety]` here
-    // yields both the Rust `nros/safety-e2e` lowering AND this `#define` for C/C++
-    // conditional compilation (the analog of `NROS_SYSTEM_RMW_<TOKEN>`). The build
-    // feature is still selected by the CMake `NANO_ROS_SAFETY_E2E` flag; this
-    // macro only INFORMS app source.
-    if sys.safety.as_ref().is_some_and(|s| s.enabled) {
-        out.push_str("#define NROS_SYSTEM_SAFETY_E2E\n");
-    }
-    if sys.param_services.as_ref().is_some_and(|p| p.enabled) {
-        out.push_str("#define NROS_SYSTEM_PARAM_SERVICES\n");
+    // Phase 254/261 — declared capability axes (RFC-0031 §Generalization). The bake
+    // and the Rust planner read the SAME `system.toml`, so an enabled axis (e.g.
+    // `[safety]`) yields both the Rust `nros/<feat>` lowering AND a `#define` for
+    // C/C++ conditional compilation (the analog of `NROS_SYSTEM_RMW_<TOKEN>`). The
+    // build feature is still selected by the CMake `*_token` flag; this macro only
+    // INFORMS app source. Phase 261 W2 — registry-driven: loop the capability rows
+    // in declaration order and emit each enabled axis's `c_define`, replacing the
+    // hardcoded per-axis branches (a new axis costs one `Capability{}` row, no edit
+    // here). Byte-identical for today's two axes (safety, param_services).
+    for cap in capability_resolver::CAPABILITIES {
+        if let Some(def) = cap.c_define
+            && sys.capability_enabled(cap.declared)
+        {
+            out.push_str(&format!("#define {def}\n"));
+        }
     }
     out.push_str(&format!(
         "#define NROS_SYSTEM_COMPONENT_COUNT {}\n",

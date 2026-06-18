@@ -502,6 +502,20 @@ fn default_true_cap() -> bool {
 }
 
 impl SystemToml {
+    /// Phase 261 — is the declared capability axis (`capability_resolver::Capability
+    /// .declared`, e.g. `"safety"` / `"param_services"`) enabled in this system?
+    /// Maps the registry's language-neutral axis name onto the typed `[block]
+    /// enabled` field, so the bake/generate can drive the C/C++ `#define` + Rust
+    /// feature lowering from a registry loop instead of hardcoded per-axis branches.
+    /// Unknown axis ⇒ `false`.
+    pub fn capability_enabled(&self, declared: &str) -> bool {
+        match declared {
+            "safety" => self.safety.as_ref().is_some_and(|s| s.enabled),
+            "param_services" => self.param_services.as_ref().is_some_and(|p| p.enabled),
+            _ => false,
+        }
+    }
+
     /// Phase 256 — the deploy target a target-agnostic caller (the planner) should
     /// resolve per-target values against, when no explicit target was selected:
     /// `cli` (a `--target` flag) → `[system].default_target` → the sole
