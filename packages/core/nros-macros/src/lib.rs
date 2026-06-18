@@ -336,6 +336,11 @@ fn node_impl(input: TokenStream) -> TokenStream {
         // For a Rust node `_node`/`_self` are unused — it self-creates its node (its
         // `Node::NAME`) on the shared executor (phase-257 D7 Option C). Returns 0 on
         // success, nonzero on a registration error (or -1 without the cffi runtime).
+        // `not_unsafe_ptr_arg_deref`: this is a C-ABI export — the raw-ptr
+        // params are mandatory (the foreign typed entry hands in the executor
+        // handle) and the body is `unsafe`. The deref-safety contract lives on
+        // `install_node_typed`'s caller (the entry), not this thin trampoline.
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
         #[unsafe(no_mangle)]
         pub extern "C" fn #component_install_fn_name(
             _node: *const ::core::ffi::c_void,

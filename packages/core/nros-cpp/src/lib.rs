@@ -567,7 +567,7 @@ pub unsafe extern "C" fn nros_board_native_run_components(
 ) -> i32 {
     let setup = match setup {
         Some(f) => f,
-        None => return NROS_CPP_RET_INVALID_ARGUMENT as i32,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
     // Env overlay (mirrors the C++ `nros::init()` hosted fallback).
