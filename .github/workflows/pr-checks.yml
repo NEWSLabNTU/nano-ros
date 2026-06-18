@@ -144,6 +144,17 @@ jobs:
             --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
             --source micro-xrce-dds-client --source cyclonedds-src
 
+      # `check-fast`'s `check-c` builds nros-c to emit the `*_OPAQUE_U64S` macro
+      # header (target/nros-c-generated/). nros-c → nros-macros (proc-macro) →
+      # nros-build → nros-cli-core → the nested `ros-launch-manifest` submodule, so
+      # the build needs it checked out — even on the otherwise source-free push
+      # lane. Without it the nros-c build fails (silently, behind check-c's
+      # `|| true`), the macro header isn't generated, and check-c's syntax probe
+      # hits `'EXECUTOR_OPAQUE_U64S' undeclared`. Init it (cheap; ~50KB). The deep
+      # proc-macro→CLI coupling itself is tracked in issue 0083.
+      - name: Init CLI launch-manifest submodule (check-c nros-c build)
+        run: git submodule update --init --recursive --depth 1 packages/cli/third-party/ros-launch-manifest
+
       # ----- fast tier (every event) -----
       - name: just check-fast
         run: just check-fast
