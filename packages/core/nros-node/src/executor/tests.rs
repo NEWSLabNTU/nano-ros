@@ -2687,7 +2687,7 @@ fn test_action_client_callbacks_fire_at_spin() {
         let mut w = CdrWriter::new_with_header(&mut b).unwrap();
         w.write_i32(v).unwrap();
         let n = w.position();
-        drop(w);
+        let _ = w; // release the &mut b borrow so b can be returned (avoids clippy::drop_non_drop)
         (b, n)
     }
     fn buf256(src: &[u8]) -> ([u8; 256], usize) {
@@ -2785,7 +2785,7 @@ fn test_action_client_feedback_burst_buffered() {
         let mut w = CdrWriter::new_with_header(&mut b).unwrap();
         w.write_i32(v).unwrap();
         let n = w.position();
-        drop(w);
+        let _ = w; // release the &mut b borrow so b can be returned (avoids clippy::drop_non_drop)
         (b, n)
     }
 

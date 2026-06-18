@@ -1178,8 +1178,10 @@ rust-rtos-link-check:
     echo "== Phase 146.3 — embedded-RTOS Rust link check =="
     if command -v arm-none-eabi-gcc >/dev/null; then
         echo "  freertos talker:"
-        ( cd examples/qemu-arm-freertos/rust/talker && \
-            cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
+        # #60 T5: the freertos talker Node pkg is platform/RMW-agnostic now —
+        # the `rmw-zenoh` parity feature was removed (RMW flows from the board
+        # crate). Build with default features, mirroring the nuttx talker below.
+        ( cd examples/qemu-arm-freertos/rust/talker && cargo build $cargo_profile_args ) >/dev/null
         echo "  nuttx talker:"
         ( cd examples/qemu-arm-nuttx/rust/talker && cargo build $cargo_profile_args ) >/dev/null
     else
@@ -1400,6 +1402,7 @@ build-workspace-embedded:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
+        --exclude nros-build-profile \
         --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-rmw-xrce-cffi \
@@ -1461,6 +1464,7 @@ check-workspace-embedded:
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
+        --exclude nros-build-profile \
         --exclude nros-build-helpers \
         --exclude nros-zpico-build \
         --exclude nros-rmw-xrce-cffi \
