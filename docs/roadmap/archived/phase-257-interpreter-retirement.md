@@ -17,8 +17,12 @@ delete) the umbrella headers `nros-c/include/nros/node_pkg.h` +
 declarative example migrating to the real-callback typed path first (done — only the
 scaffolder + a few tests still emit/assert the seam).
 
-**Status.** In progress (2026-06-14). Stage-1 (app-nodes) **done + pushed**.
-Stage-2: `examples/workspaces/cpp` migrated (typed entry, `18809bad2`).
+**Status. COMPLETE (2026-06-18).** Stage-1 (app-nodes), Stage-2 (W0-A typed C
+entry + W0-B unified Rust install seam), Stage-3a (interpreter + legacy emit
+deleted), Stage-3b (declarative seam excised; scaffolder/tests/docs on the typed
+path) all landed. The `shadowing` P4a link gap fixed in passing. Out of scope:
+the orthogonal Rust register-path retirement (future, needs a typed Rust entry
+emitter first).
 
 **Collision (2026-06-14) — Stage-2 template migration PAUSED.** Two parallel
 workers are restructuring this exact area, and `examples/workspaces/*` is THEIR
@@ -233,14 +237,22 @@ drift test + compile-check entry removed).
 - [x] **W7 — verify.** Native workspaces c/cpp/mixed all build green with the seam gone
   (they compile `nros.hpp`/`main.hpp` sans `node_pkg.hpp` + the refactored `node_pkg.h`).
   Compile-check templates re-running past host glibc/rustc flakiness.
-- [ ] **W8 — docs (book migration).** 8 book pages still teach the retired declarative
-  `register_node`/`NodeContext`/`nros_declared_*` shape (heaviest:
-  `getting-started/workspace-cpp.md`, 6 hits with code blocks; also
-  `workspace-node-pkgs.md`, `workspace-mixed-language.md`, `porting-a-cpp-node.md`,
-  `user-guide/component-and-entry-pkg.md`, `internals/dispatch-strategy.md`,
-  `user-guide/{rtic,embassy}-integration.md`). Rewrite to the typed `configure(Node&)` /
-  `NROS_C_COMPONENT` shape (mirror `examples/workspaces/{cpp,c}`). CLAUDE.md is clean.
-  Sizeable user-facing pass — best done against a `just book` build.
+- [x] **W8 — docs (book migration)** (`5bd926f73`). Rewrote the C/C++ Node-pkg
+  tutorials to the typed `configure(Node&)` / `NROS_C_COMPONENT` shape:
+  `getting-started/workspace-cpp.md`, `workspace-mixed-language.md`,
+  `user-guide/component-and-entry-pkg.md`. The `register(&mut NodeContext)` pages
+  (`workspace-node-pkgs`, `internals/dispatch-strategy`, `user-guide/{rtic,embassy}-
+  integration`) are the **live Rust** `nros::node!` register path — out of scope;
+  `porting-a-cpp-node.md`'s `RCLCPP_COMPONENTS_REGISTER_NODE` is the rclcpp
+  source-compat mapping (valid). CLAUDE.md was already clean.
+
+**Stage-3b COMPLETE (2026-06-18).** The C++ `EntryNodeRuntime` interpreter (3a) +
+its entire C/C++ declarative registration seam (3b) are retired: `declared_node.hpp`
++ `node_pkg.hpp` deleted, `node_pkg.h` reduced to the shared `nros_ret_t`/`NROS_RET_*`
+surface, scaffolder + tests + docs on the typed path. Also fixed the pre-existing
+`shadowing` P4a link gap (`17ffbb7fa`). **Phase-257 is done** — only the orthogonal
+Rust register-path retirement (future, gated on a typed Rust entry emitter) is noted
+as out of scope.
 
 ## Design exploration (2026-06-18) — unified cross-language component-install seam
 
