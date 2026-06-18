@@ -196,11 +196,11 @@ pub use node::NodeExecutorRuntime;
 // sweep — the helper had no live callers after the BSP baker + macro
 // extern emit were deleted.)
 pub use node::{
-    __register_node_cxx_abi, ActionExecutor, Callback, CallbackCtx, CallbackEffects,
-    ClientDispatch, DeclaredNode, DeclaredNodeRuntime, ExecutableNode, MISSING_NODE_EXPORT_ERROR,
-    Node, NodeActionClient, NodeActionServer, NodeContext, NodeDeclError, NodeOptions,
-    NodeParameter, NodePublisher, NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient,
-    NodeServiceServer, NodeSubscription, NodeTimer, PublisherResolver, RuntimeNodeRecord, TickCtx,
+    ActionExecutor, Callback, CallbackCtx, CallbackEffects, ClientDispatch, DeclaredNode,
+    DeclaredNodeRuntime, ExecutableNode, MISSING_NODE_EXPORT_ERROR, Node, NodeActionClient,
+    NodeActionServer, NodeContext, NodeDeclError, NodeOptions, NodeParameter, NodePublisher,
+    NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient, NodeServiceServer,
+    NodeSubscription, NodeTimer, PublisherResolver, RuntimeNodeRecord, TickCtx,
     record_node_metadata, register_node,
 };
 // Phase 212.M.5.a.4 — internal helper consumed by `nros::node!()`

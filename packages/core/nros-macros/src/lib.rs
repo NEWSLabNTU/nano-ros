@@ -259,7 +259,6 @@ fn node_impl(input: TokenStream) -> TokenStream {
     // so out-of-tree tools (`nros check`, RTIC/Embassy dispatch tasks)
     // can resolve the symbol from `CARGO_PKG_NAME` directly.
     let dispatch_fn_name = quote::format_ident!("__nros_node_{}_dispatch_strategy", pkg_sym);
-    let component_register_fn_name = quote::format_ident!("__nros_component_{}_register", pkg_sym);
     // Phase 257 (W0-B / D6) — the uniform cross-language install seam.
     let component_install_fn_name = quote::format_ident!("__nros_component_{}_install", pkg_sym);
     let component_present_name = quote::format_ident!("__NROS_NODE_PKG_{}_EXPORT_PRESENT", pkg_sym);
@@ -328,21 +327,6 @@ fn node_impl(input: TokenStream) -> TokenStream {
         // a single `nros` dep in their `Cargo.toml`. The
         // `__macro_support` module is a `#[doc(hidden)]` re-export
         // alias maintained by `packages/core/nros/src/lib.rs`.
-
-        // Phase 216.A.5 — ABI export of the Node's `DispatchStrategy`
-        // discriminant (`#[repr(u8)]`, so `as u8` is a no-op cast).
-        // `nros check` reads this out-of-tree (objdump / `dlsym`) to
-        // validate the board-side dispatch path matches what the Node
-        // declared via `Node::DISPATCH`; the RTIC (Phase 216.B.3) /
-        // Embassy (Phase 216.C.3) dispatch tasks consume it from a
-        // separate compilation unit. Kept above `register()` so the
-        // file-order reads "ABI export → register".
-        #[unsafe(no_mangle)]
-        pub extern "C" fn #component_register_fn_name(
-            context: *mut ::core::ffi::c_void,
-        ) -> i32 {
-            ::nros::__register_node_cxx_abi::<#node_ty>(context)
-        }
 
         // Phase 257 (W0-B / D6) — the uniform cross-language component-install seam.
         // A typed Entry of ANY language calls
