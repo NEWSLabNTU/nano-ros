@@ -483,27 +483,71 @@ impl ExecutorNodeRuntime {
         // fields) can be live at once.
         let exec_ptr: *mut Executor = &mut self.executor;
         for cell in &self.components {
-            let resolver = CellResolver {
-                cell: cell.as_ref(),
-            };
-            let service_clients = cell.service_clients.borrow();
-            let action_clients = cell.action_clients.borrow();
-            let action_servers = cell.action_servers.borrow();
-            let mut actions = RuntimeActions {
-                executor: exec_ptr,
-                handles: &action_servers,
-            };
-            let mut clients = RuntimeClientDispatch {
-                executor: exec_ptr,
-                services: &service_clients,
-                actions: &action_clients,
-            };
-            let mut ctx = TickCtx::new(&resolver, &mut actions, &mut clients);
-            if let Ok(mut slot) = cell.slot.try_borrow_mut() {
-                slot.tick(&mut ctx);
-            }
+            tick_one_cell(cell.as_ref(), exec_ptr);
         }
     }
+}
+
+/// Phase 258 (Track 2, 2a) — drive one component cell's `tick` against the
+/// executor. The single source of truth for the per-component tick body,
+/// shared by [`ExecutorNodeRuntime::run_ticks`] (the owned-runtime path) and
+/// the executor-enrolled [`component_tick_trampoline`] (the `install` path).
+///
+/// `exec_ptr` is reached through a raw `*mut Executor` so the caller can hold
+/// the component (`&ComponentCell`) and the executor live at once — they are
+/// disjoint, and `RuntimeActions` / `RuntimeClientDispatch` reborrow `&mut`
+/// per call (see their docs).
+fn tick_one_cell(cell: &ComponentCell, exec_ptr: *mut Executor) {
+    let resolver = CellResolver { cell };
+    let service_clients = cell.service_clients.borrow();
+    let action_clients = cell.action_clients.borrow();
+    let action_servers = cell.action_servers.borrow();
+    let mut actions = RuntimeActions {
+        executor: exec_ptr,
+        handles: &action_servers,
+    };
+    let mut clients = RuntimeClientDispatch {
+        executor: exec_ptr,
+        services: &service_clients,
+        actions: &action_clients,
+    };
+    let mut ctx = TickCtx::new(&resolver, &mut actions, &mut clients);
+    if let Ok(mut slot) = cell.slot.try_borrow_mut() {
+        slot.tick(&mut ctx);
+    }
+}
+
+/// Phase 258 (Track 2, 2a) — executor `ComponentSlot.tick` trampoline. Casts
+/// the enrolled state back to the component cell + `exec_ctx` back to the
+/// executor and drives one tick. The layering-clean `extern "C"` shim the
+/// `nros-node` [`Executor`] calls each `spin_once` (it can't name `nros`'s
+/// [`ComponentCell`] — see [`register_node_borrowed`]'s enroll).
+///
+/// # Safety
+/// `state` must be the leaked `Arc<ComponentCell>` enrolled via
+/// [`Executor::enroll_component`] from [`register_node_borrowed`] (borrowed
+/// here, **not** consumed); `exec_ctx` must be the live `*mut Executor` the
+/// executor passes itself.
+unsafe extern "C" fn component_tick_trampoline(
+    state: *mut core::ffi::c_void,
+    exec_ctx: *mut core::ffi::c_void,
+) {
+    // SAFETY: `state` is a live, leaked `Arc<ComponentCell>` ptr (kept alive
+    // until `component_drop_trampoline`); borrow it without taking ownership.
+    let cell = unsafe { &*(state as *const ComponentCell) };
+    tick_one_cell(cell, exec_ctx as *mut Executor);
+}
+
+/// Phase 258 (Track 2, 2a) — executor `ComponentSlot.drop` trampoline.
+/// Reconstitutes + drops the leaked `Arc<ComponentCell>` enrolled by
+/// [`register_node_borrowed`]. Run exactly once on `Executor::drop`.
+///
+/// # Safety
+/// `state` must be the leaked `Arc<ComponentCell>` enrolled via
+/// [`Executor::enroll_component`], not yet reclaimed.
+unsafe extern "C" fn component_drop_trampoline(state: *mut core::ffi::c_void) {
+    // SAFETY: reclaim the one leaked Arc clone the enroll handed the executor.
+    drop(unsafe { Arc::from_raw(state as *const ComponentCell) });
 }
 
 // =============================================================================
@@ -1290,13 +1334,36 @@ where
         message_dispatches: AtomicUsize::new(0),
     });
     let mut sink = ExecutorSink {
-        executor,
+        // Reborrow so `executor` stays usable for `enroll_component` after the
+        // sink (which holds `&mut Executor`) is dropped below.
+        executor: &mut *executor,
         cell: cell.clone(),
         nodes: Vec::new(),
     };
     let sink_dyn: &mut dyn NodeRuntime = &mut sink;
     let mut context = NodeContext::new(C::NAME, sink_dyn);
     C::register(&mut context)?;
+
+    // Phase 258 (Track 2, 2a) — enroll the cell in the executor's component
+    // tick registry so `install`'d nodes tick (closes phase-257 D2: poll-only
+    // service-client/action nodes have no callbacks keeping the cell alive AND
+    // never ran `tick`). Leak one `Arc` clone for the executor to own; it runs
+    // `tick` each `spin_once` and drops the clone on `Executor::drop`. Harmless
+    // for pub/sub/timer-only nodes — their tick body is a no-op. Registry-full
+    // (`MAX_NODES`) reclaims the clone and proceeds without a tick slot.
+    let raw = Arc::into_raw(cell.clone()) as *mut core::ffi::c_void;
+    // SAFETY: `raw` is a freshly-leaked `Arc<ComponentCell>`; the trampolines
+    // match its provenance (borrow on tick, reclaim on drop).
+    if unsafe {
+        executor.enroll_component(raw, component_tick_trampoline, component_drop_trampoline)
+    }
+    .is_err()
+    {
+        // SAFETY: enroll rejected the slot, so the executor never took `raw`;
+        // reclaim the leaked clone here to avoid a permanent leak.
+        drop(unsafe { Arc::from_raw(raw as *const ComponentCell) });
+    }
+
     Ok(cell)
 }
 
