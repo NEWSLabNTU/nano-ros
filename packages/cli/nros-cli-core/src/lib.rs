@@ -14,7 +14,11 @@ pub mod cmd;
 pub mod codegen;
 pub mod launch_parser;
 pub mod orchestration;
-pub mod pkg_index;
+// phase-262 W1 — `pkg_index` extracted to the `nros-pkg-index` leaf crate so the
+// nros-macros proc-macro path doesn't pull all of nros-cli-core. Re-exported here
+// so every `nros_cli_core::pkg_index::*` consumer (+ `crate::pkg_index` internal
+// refs, e.g. launch_parser) is unchanged.
+pub use nros_pkg_index as pkg_index;
 
 use eyre::Result;
 

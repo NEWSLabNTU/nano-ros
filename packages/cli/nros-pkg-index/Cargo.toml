@@ -1,0 +1,18 @@
+[package]
+name = "nros-pkg-index"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Workspace package-index walk for nano-ros (package.xml discovery). Leaf crate extracted from nros-cli-core (phase-262) so the nros-macros proc-macro path does not pull the whole CLI."
+
+[lib]
+name = "nros_pkg_index"
+
+[dependencies]
+eyre = "0.6"
+quick-xml = "0.37"
+serde = { workspace = true }
+serde_json = { workspace = true }
+walkdir = "2.0"

@@ -845,6 +845,7 @@ dependencies = [
  "libc",
  "nros-msg-to-idl",
  "nros-orchestration-ir",
+ "nros-pkg-index",
  "pathdiff",
  "quick-xml",
  "ros-launch-manifest-types",
@@ -869,6 +870,17 @@ version = "0.5.0"
 dependencies = [
  "serde",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "nros-pkg-index"
+version = "0.5.0"
+dependencies = [
+ "eyre",
+ "quick-xml",
+ "serde",
+ "serde_json",
+ "walkdir",
 ]
 
 [[package]]

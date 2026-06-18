@@ -37,10 +37,12 @@ module the macro needs touches it. No feature-gating required.
 
 ## Work items
 
-### W1 — `nros-pkg-index` leaf crate
-New crate (`packages/cli/nros-pkg-index/`) ← `nros-cli-core/src/pkg_index.rs`
-verbatim. Deps: eyre, quick_xml, serde, walkdir. Move the `pkg_index` unit tests
-with it.
+### W1 — `nros-pkg-index` leaf crate — DONE (2026-06-18)
+New crate `packages/cli/nros-pkg-index/` ← `pkg_index.rs` (git mv). Deps: eyre,
+quick-xml, serde, **serde_json** (used full-path for the index cache), walkdir.
+nros-cli-core re-exports it (`pub use nros_pkg_index as pkg_index`) — consumers +
+`crate::pkg_index` internal refs (launch_parser) unchanged. Verified: leaf +
+nros-cli-core + nros-build compile; nros-build's 8 `pkg_index` tests green.
 
 ### W2 — `nros-launch-parser` leaf crate
 New crate (`packages/cli/nros-launch-parser/`) ← `launch_parser.rs`. Deps: eyre,
