@@ -16,11 +16,13 @@ use super::{
     board_descriptor::{
         BoardCatalog, BoardDescriptor, EntryKind, LinkKind, NetStack, PlatformKind, Toolchain,
     },
+    nros_config::NrosConfig,
     plan::{
         LifecycleAutostart, PlanBuildOptions, PlanCargoOverrides, PlanEntity, PlanInstance,
-        PlanSchedContext, TransportKind,
+        PlanSchedContext, TierSched, TransportKind,
     },
     schema::{DeadlinePolicy, ParameterValue, SchedClass},
+    tier_resolver::{collect_callback_groups, derive_target_rtos, resolve_system_tiers},
 };
 
 const CARGO_TEMPLATE: &str = include_str!("../../templates/orchestration/Cargo.toml.jinja");
@@ -61,6 +63,12 @@ pub fn generate_package(options: &GenerateOptions) -> Result<GeneratedPackage> {
     // descriptors from `<workspace>/packages/boards/*/nros-board.toml`. Not
     // part of the plan wire format (a `#[serde(skip)]` field).
     plan.build.workspace_root = workspace_from_nros_path(&options.nros_path);
+    // Phase 256 W4.2 — resolve scheduling TIERS here (decision c): the bake and
+    // generate both lower from `system.toml [tiers]` via the shared `resolve_tiers`,
+    // so Rust + C schedule identically. When the bringup declares tiers, emit
+    // `SCHED_CONTEXTS` from them (µs-lossless) instead of the dying overlay
+    // `plan.sched_contexts`. No tiers ⇒ `None` ⇒ the legacy path (byte-identical).
+    plan.build.tier_sched = resolve_tier_sched(&plan, options)?;
     // Phase 172 — fail fast with a clear message if a `[[bridge]]` forwards an
     // undeclared topic or names an unopened session, before emitting code.
     validate_bridges(&plan)?;
@@ -1941,7 +1949,15 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
         .iter()
         .map(|instance| instance.nodes.len())
         .sum::<usize>();
-    let max_sched_contexts = plan.sched_contexts.len() + 1;
+    // Phase 256 W4.2 — scheduling source: the generate-time tier resolution when
+    // the bringup declares `[tiers]`, else the legacy `plan.sched_contexts`.
+    let sched_count = plan
+        .build
+        .tier_sched
+        .as_ref()
+        .map(|t| t.contexts.len())
+        .unwrap_or(plan.sched_contexts.len());
+    let max_sched_contexts = sched_count + 1;
     let max_parameters = plan
         .instances
         .iter()
@@ -1960,8 +1976,7 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
         "pub const CALLBACK_COUNT: usize = {callback_count};\n"
     ));
     out.push_str(&format!(
-        "pub const SCHED_CONTEXT_COUNT: usize = {};\n\n",
-        plan.sched_contexts.len()
+        "pub const SCHED_CONTEXT_COUNT: usize = {sched_count};\n\n"
     ));
     // Phase 173.5 — the locator from the first `[[transport]]` that
     // declares one. The board entry prefers it over the board
@@ -2046,14 +2061,27 @@ fn render_generated_tables(plan: &NrosPlan) -> String {
     render_nodes(&mut out, plan);
     render_parameters(&mut out, plan);
     out.push_str(&format!(
-        "pub static SCHED_CONTEXTS: [SchedContextSpec; {}] = [\n",
-        plan.sched_contexts.len()
+        "pub static SCHED_CONTEXTS: [SchedContextSpec; {sched_count}] = [\n"
     ));
-    for sc in &plan.sched_contexts {
-        out.push_str(&render_sched_context(sc));
+    // Phase 256 W4.2 — tier-resolved contexts (precomputed in generate_package)
+    // when declared; else the legacy overlay-derived `plan.sched_contexts`.
+    match plan.build.tier_sched.as_ref() {
+        Some(tier) => {
+            for ctx in &tier.contexts {
+                out.push_str(ctx);
+            }
+        }
+        None => {
+            for sc in &plan.sched_contexts {
+                out.push_str(&render_sched_context(sc));
+            }
+        }
     }
     out.push_str("];\n\n");
-    let bindings = collect_callback_bindings(plan);
+    let bindings = match plan.build.tier_sched.as_ref() {
+        Some(tier) => tier.bindings.clone(),
+        None => collect_callback_bindings(plan),
+    };
     out.push_str(&format!(
         "pub static CALLBACK_BINDINGS: [CallbackBindingSpec; {}] = [\n",
         bindings.len()
@@ -4090,10 +4118,6 @@ fn render_sched_context(sc: &PlanSchedContext) -> String {
 // the ms-based `PlanSchedContext` so µs precision is preserved and the i64→u8 /
 // double-enum conversions collapse to one each.
 
-// NOTE: `#[allow(dead_code)]` is INTERIM — these are wired into `generate_package`
-// in the next W4.2 step (load NrosConfig → resolve_tiers → emit from tiers); the
-// unit test exercises them meanwhile.
-#[allow(dead_code)]
 type ResolvedTier = crate::orchestration::tier_resolver::ResolvedTier;
 
 /// `[tiers.<n>].class` string → the plan `SchedClass`. `None` ⇒ `RealTime` (a
@@ -4112,7 +4136,6 @@ fn tier_sched_class(class: Option<&str>) -> Result<SchedClass> {
     }
 }
 
-#[allow(dead_code)]
 /// `[tiers.<n>].deadline_policy` string → the plan `DeadlinePolicy`. `None` ⇒
 /// `Ignore`. Unknown → a clear error.
 fn tier_deadline_policy(policy: Option<&str>) -> Result<DeadlinePolicy> {
@@ -4128,7 +4151,6 @@ fn tier_deadline_policy(policy: Option<&str>) -> Result<DeadlinePolicy> {
     }
 }
 
-#[allow(dead_code)]
 /// `Option<u64>` µs → the literal a `SchedContextSpec` `Option<u32>` field wants,
 /// **without** the ms round-trip `option_ms_to_us` does (tiers are already µs).
 fn option_u64_us(value: Option<u64>) -> String {
@@ -4138,7 +4160,6 @@ fn option_u64_us(value: Option<u64>) -> String {
     }
 }
 
-#[allow(dead_code)]
 /// Emit a `SchedContextSpec` literal directly from a `ResolvedTier` (W4.2). The
 /// RTOS numeric `priority: i64` clamps to `os_pri: u8` (Zephyr negative coop
 /// priorities are the bake/C path, not generate's Rust runtime) and buckets the
@@ -4163,6 +4184,64 @@ fn render_sched_context_from_tier(t: &ResolvedTier) -> Result<String> {
         dp = deadline_policy(&policy),
         tt = tt_duration,
     ))
+}
+
+/// Phase 256 W4.2 — resolve `system.toml [tiers]` into the generate-time
+/// `TierSched` (decision c). Loads `NrosConfig` from the component workspace,
+/// finds the bringup by `plan.system`, and — only when `[tiers]` is declared —
+/// resolves + renders the tiers (µs-direct) and binds each callback by
+/// `(instance.component, group)`. `None` ⇒ no tiers / no workspace ⇒ the legacy
+/// `plan.sched_contexts` path stays byte-identical.
+fn resolve_tier_sched(plan: &NrosPlan, options: &GenerateOptions) -> Result<Option<TierSched>> {
+    let Some(ws) = options.component_workspace.as_deref() else {
+        return Ok(None);
+    };
+    let cfg = NrosConfig::from_workspace(ws)
+        .wrap_err_with(|| format!("load workspace at {} for tier resolution", ws.display()))?;
+    let Some(bringup) = cfg.bringup_packages.get(&plan.system) else {
+        return Ok(None);
+    };
+    let system = &bringup.system;
+    if system.tiers.is_empty() {
+        return Ok(None); // No tiers → legacy path.
+    }
+
+    let callback_groups = collect_callback_groups(&cfg, &system.components);
+    let target_rtos = derive_target_rtos(system, Some(plan.build.target.as_str()));
+    let table = resolve_system_tiers(system, &callback_groups, &target_rtos)
+        .wrap_err("resolve [tiers] for scheduling")?;
+
+    // Rendered SchedContextSpec literal per tier (validates class/deadline_policy).
+    let contexts = table
+        .tiers
+        .iter()
+        .map(render_sched_context_from_tier)
+        .collect::<Result<Vec<_>>>()?;
+
+    // `(node, group) → tier index` (slot 0 is the default fallback, so +1).
+    let mut tier_of: std::collections::HashMap<(&str, &str), usize> =
+        std::collections::HashMap::new();
+    for (idx, tier) in table.tiers.iter().enumerate() {
+        for (node, group) in &tier.members {
+            tier_of.insert((node.as_str(), group.as_str()), idx + 1);
+        }
+    }
+
+    // Bind callbacks in the SAME order `collect_callback_bindings` uses.
+    let mut bindings = Vec::new();
+    let mut callback_index = 0usize;
+    for instance in &plan.instances {
+        for callback in &instance.callbacks {
+            let ctx_index = tier_of
+                .get(&(instance.component.as_str(), callback.group.as_str()))
+                .copied()
+                .unwrap_or(0);
+            bindings.push((callback_index, ctx_index));
+            callback_index += 1;
+        }
+    }
+
+    Ok(Some(TierSched { contexts, bindings }))
 }
 
 fn collect_callback_bindings(plan: &NrosPlan) -> Vec<(usize, usize)> {
@@ -5064,6 +5143,49 @@ mod net_fragment_tests {
         assert!(
             tables.contains("nros::SessionSpec::new(\"zenoh\", \"tcp/b:7447\").domain_id(5)"),
             "domain-5 transport emits .domain_id(5):\n{tables}"
+        );
+    }
+
+    /// Phase 256 W4.2 — when `plan.build.tier_sched` is set (the bringup declared
+    /// `[tiers]`, resolved in `generate_package`), `render_generated_tables` emits
+    /// `SCHED_CONTEXTS` + `CALLBACK_BINDINGS` from it, NOT from the overlay
+    /// `plan.sched_contexts`. (The resolve/precompute is covered by
+    /// `render_sched_context_from_tier_is_us_native` + the e2e fixtures.)
+    #[test]
+    fn render_tables_uses_tier_sched_when_present() {
+        use crate::orchestration::{plan::TierSched, schema::PLAN_VERSION};
+        let mut plan: NrosPlan = serde_json::from_value(serde_json::json!({
+            "version": PLAN_VERSION, "system": "s",
+            "trace": { "system_config": "nros.toml", "launch_record": "r", "generated_by": "t" },
+            "components": [], "instances": [], "interfaces": [],
+            "sched_contexts": [ { "id": "default_executor", "executor": "single_threaded",
+                "class": "best_effort", "deadline_policy": "ignore" } ],
+            "build": { "target": "x", "board": "native", "rmw": "zenoh",
+                "profile": "release", "features": [], "cfg": {} }
+        }))
+        .expect("plan parses");
+        plan.build.tier_sched = Some(TierSched {
+            contexts: vec![
+                "    SchedContextSpec { id: \"control\", os_pri: 80 },\n".to_string(),
+                "    SchedContextSpec { id: \"telemetry\", os_pri: 10 },\n".to_string(),
+            ],
+            bindings: vec![(0, 1), (1, 2)],
+        });
+
+        let tables = render_generated_tables(&plan);
+        // Count + array come from the tier table, not the single overlay context.
+        assert!(
+            tables.contains("pub const SCHED_CONTEXT_COUNT: usize = 2;"),
+            "{tables}"
+        );
+        assert!(tables.contains("id: \"control\", os_pri: 80"), "{tables}");
+        assert!(tables.contains("id: \"telemetry\", os_pri: 10"), "{tables}");
+        // The overlay default_executor must NOT leak in.
+        assert!(!tables.contains("default_executor"), "{tables}");
+        // Bindings come from the tier table.
+        assert!(
+            tables.contains("callback_index: 0, sched_context_index: 1"),
+            "{tables}"
         );
     }
 
