@@ -688,36 +688,18 @@ fn schema_plan_json(
     build: Value,
 ) -> Value {
     let components = schema_components(metadata);
-    // Phase 256 W4.2 — the planner emits no scheduling tiers; tiers resolve in the
+    // Phase 256 W4.2 — the planner emits no scheduling tiers: tiers resolve in the
     // codegen tools (`generate`/`bake`) from `system.toml` + node `callback_groups`,
-    // which the language-agnostic planner can't see. The plan carries only the
-    // implicit `default_executor` fallback below; every callback binds to it.
-    let declared_contexts: Vec<Value> = Vec::new();
-    let declared_by_id: BTreeMap<String, Value> = BTreeMap::new();
+    // which the language-agnostic planner can't see. The plan carries exactly the
+    // implicit `default_executor`; every callback binds to it.
     let plan_instances = instances
         .iter()
-        .map(|instance| schema_instance(instance, &declared_by_id))
+        .map(schema_instance)
         .collect::<Vec<_>>();
     let interfaces = schema_interfaces(&plan_instances);
     let callback_chains = infer_callback_chains(&plan_instances);
     let callback_groups = infer_callback_groups(&plan_instances, &callback_chains);
-
-    // Emit the declared tiers; append the implicit `default_executor` when it is
-    // the catch-all for any unbound callback (or when no tiers were declared, so
-    // single-tier plans stay byte-identical to pre-172.G).
-    let uses_default = plan_instances.iter().any(|inst| {
-        inst.get("callbacks")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .any(|cb| cb.get("sched_context").and_then(Value::as_str) == Some("default_executor"))
-    });
-    let mut sched_contexts = declared_contexts;
-    if (sched_contexts.is_empty() || uses_default)
-        && !declared_by_id.contains_key("default_executor")
-    {
-        sched_contexts.push(default_sched_context());
-    }
+    let sched_contexts = vec![default_sched_context()];
 
     let mut plan = json!({
         "version": 2,
@@ -905,7 +887,7 @@ fn schema_components(metadata: &[JsonArtifact]) -> Vec<Value> {
         .collect()
 }
 
-fn schema_instance(instance: &Value, declared: &BTreeMap<String, Value>) -> Value {
+fn schema_instance(instance: &Value) -> Value {
     let id = instance
         .get("id")
         .and_then(Value::as_str)
@@ -942,10 +924,10 @@ fn schema_instance(instance: &Value, declared: &BTreeMap<String, Value>) -> Valu
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let callbacks = schema_callbacks(id, instance.get("callbacks"), declared);
+    let callbacks = schema_callbacks(id, instance.get("callbacks"));
     let callback_lookup = CallbackIdLookup::from_callbacks(&callbacks);
     let nodes = schema_nodes(id, &source_nodes, &raw_entities, &callback_lookup);
-    let sched_bindings = schema_sched_bindings(&callbacks, declared);
+    let sched_bindings = schema_sched_bindings(&callbacks);
     let default_node_id = source_nodes
         .first()
         .map(|node| schema_node_id(id, node))
@@ -1080,41 +1062,7 @@ fn default_sched_context() -> Value {
     })
 }
 
-/// Phase 172.G — normalise one `[[scheduling.contexts]]`-shaped entry into a
-/// plan `sched_context` value, filling every optional key so the result
-/// round-trips through `PlanSchedContext` (which requires all keys present).
-/// Test-only since phase-256 W9: the `nros.toml` reader that fed it
-/// (`collect_sched_contexts`) is retired (tiers now resolve in the codegen
-/// tools), but it still builds declared-tier fixtures for the binding tests.
-#[cfg(test)]
-fn normalize_sched_context(ctx: &Value) -> Value {
-    let str_or = |key: &str, default: &str| {
-        ctx.get(key)
-            .and_then(Value::as_str)
-            .unwrap_or(default)
-            .to_string()
-    };
-    let val_or_null = |key: &str| ctx.get(key).cloned().unwrap_or(Value::Null);
-    json!({
-        "id": str_or("id", ""),
-        "executor": str_or("executor", "single_threaded"),
-        "class": str_or("class", "best_effort"),
-        "priority": val_or_null("priority"),
-        "period_ms": val_or_null("period_ms"),
-        "budget_ms": val_or_null("budget_ms"),
-        "deadline_ms": val_or_null("deadline_ms"),
-        "deadline_policy": str_or("deadline_policy", "ignore"),
-        "stack_size": val_or_null("stack_size"),
-        "core": val_or_null("core"),
-        "task": val_or_null("task"),
-    })
-}
-
-fn schema_callbacks(
-    instance_id: &str,
-    value: Option<&Value>,
-    declared: &BTreeMap<String, Value>,
-) -> Vec<Value> {
+fn schema_callbacks(instance_id: &str, value: Option<&Value>) -> Vec<Value> {
     let Some(Value::Array(callbacks)) = value else {
         return Vec::new();
     };
@@ -1132,23 +1080,19 @@ fn schema_callbacks(
                     "column": null,
                 })
             });
-            // Phase 172.G — a callback's `group` names its scheduling tier
-            // ("group name = tier id"). Bind to the declared context of that
-            // name when one exists; otherwise fall back to `default_executor`.
+            // Phase 256 W4.2 — the planner no longer binds groups to tiers; every
+            // callback runs on the implicit `default_executor`. The `group` name is
+            // preserved for the codegen tools, which resolve tiers from `system.toml`
+            // + node `callback_groups`.
             let group = callback
                 .get("group")
                 .and_then(Value::as_str)
                 .unwrap_or("default");
-            let sched_context = if declared.contains_key(group) {
-                group
-            } else {
-                "default_executor"
-            };
             let mut out = json!({
                 "id": schema_callback_id(instance_id, callback, source_callback),
                 "source_callback": source_callback,
                 "group": group,
-                "sched_context": sched_context,
+                "sched_context": "default_executor",
                 "source": source,
             });
             copy_json_field(&mut out, callback, "declaration_slot");
@@ -1193,12 +1137,11 @@ impl CallbackIdLookup {
     }
 }
 
-/// Phase 172.G — one `sched_binding` per callback, binding it to the tier its
-/// `group` resolved to in [`schema_callbacks`]. A binding onto a declared
-/// nros.toml tier carries that tier's priority + `source: "nros.toml"`; the
-/// `default_executor` fall-back keeps the pre-172.G `priority: null` +
-/// `source: "source_metadata"` so single-tier plans stay byte-identical.
-fn schema_sched_bindings(callbacks: &[Value], declared: &BTreeMap<String, Value>) -> Vec<Value> {
+/// Phase 256 W4.2 — one `sched_binding` per callback. The planner emits no tiers,
+/// so every callback binds to the implicit `default_executor` with the pre-172.G
+/// `priority: null` + `source: "source_metadata"` shape. The codegen tools rewrite
+/// these bindings when they resolve tiers from `system.toml`.
+fn schema_sched_bindings(callbacks: &[Value]) -> Vec<Value> {
     callbacks
         .iter()
         .filter_map(|callback| {
@@ -1207,20 +1150,12 @@ fn schema_sched_bindings(callbacks: &[Value], declared: &BTreeMap<String, Value>
                 .get("sched_context")
                 .and_then(Value::as_str)
                 .unwrap_or("default_executor");
-            match declared.get(context) {
-                Some(ctx) => Some(json!({
-                    "callback": id,
-                    "context": context,
-                    "priority": ctx.get("priority").cloned().unwrap_or(Value::Null),
-                    "source": "nros.toml",
-                })),
-                None => Some(json!({
-                    "callback": id,
-                    "context": context,
-                    "priority": null,
-                    "source": "source_metadata",
-                })),
-            }
+            Some(json!({
+                "callback": id,
+                "context": context,
+                "priority": null,
+                "source": "source_metadata",
+            }))
         })
         .collect()
 }
@@ -5524,45 +5459,27 @@ topics:
         assert_eq!(re["callbacks"], json!(["c/work"]));
     }
 
+    /// Phase 256 W4.2 — the planner emits no tiers: every callback runs on the
+    /// implicit `default_executor`, with the `group` name preserved for the codegen
+    /// tools. The `sched_binding` carries the pre-172.G null-priority /
+    /// source_metadata fallback shape (the codegen tools rewrite it on tier resolve).
     #[test]
-    fn schema_callbacks_binds_group_to_declared_tier() {
-        let declared: std::collections::BTreeMap<String, Value> = [(
-            "io".to_string(),
-            normalize_sched_context(&json!({ "id": "io", "priority": 10 })),
-        )]
-        .into_iter()
-        .collect();
+    fn schema_callbacks_and_bindings_default_to_implicit_executor() {
         let callbacks = json!([
             { "id": "cb_io",   "group": "io" },
             { "id": "cb_main", "group": "main" },
         ]);
-        let out = schema_callbacks("inst", Some(&callbacks), &declared);
-        // group "io" matches a declared tier → bound there.
-        assert_eq!(out[0]["sched_context"], json!("io"));
-        // group "main" has no tier → falls back to default_executor.
+        let out = schema_callbacks("inst", Some(&callbacks));
+        // Group name preserved, but every callback binds to default_executor.
+        assert_eq!(out[0]["group"], json!("io"));
+        assert_eq!(out[0]["sched_context"], json!("default_executor"));
         assert_eq!(out[1]["sched_context"], json!("default_executor"));
-    }
 
-    #[test]
-    fn schema_sched_bindings_tags_declared_tier_vs_fallback() {
-        let declared: std::collections::BTreeMap<String, Value> = [(
-            "io".to_string(),
-            normalize_sched_context(&json!({ "id": "io", "priority": 10 })),
-        )]
-        .into_iter()
-        .collect();
-        let callbacks = vec![
-            json!({ "id": "inst/cb_io",   "sched_context": "io" }),
-            json!({ "id": "inst/cb_main", "sched_context": "default_executor" }),
-        ];
-        let bindings = schema_sched_bindings(&callbacks, &declared);
-        // Bound to a declared tier: carries its priority + nros.toml source.
-        assert_eq!(bindings[0]["context"], json!("io"));
-        assert_eq!(bindings[0]["priority"], json!(10));
-        assert_eq!(bindings[0]["source"], json!("nros.toml"));
-        // Fallback: pre-172.G null priority + source_metadata (byte-compat).
-        assert_eq!(bindings[1]["context"], json!("default_executor"));
-        assert_eq!(bindings[1]["priority"], json!(null));
-        assert_eq!(bindings[1]["source"], json!("source_metadata"));
+        let bindings = schema_sched_bindings(&out);
+        for b in &bindings {
+            assert_eq!(b["context"], json!("default_executor"));
+            assert_eq!(b["priority"], json!(null));
+            assert_eq!(b["source"], json!("source_metadata"));
+        }
     }
 }

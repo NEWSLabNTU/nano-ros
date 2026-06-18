@@ -163,8 +163,15 @@ already exists in `system.toml` for the bake but the planner ignores it).
     `[tiers]` → precompute µs-lossless contexts + bindings into the `plan.build.tier_sched` skip
     field → `render_generated_tables` emits from it; no-tier plans byte-identical). Rust (generate)
     + C (bake) now both lower scheduling from `system.toml [tiers]` via one `resolve_tiers` — the
-    duality is gone. Issue 0082 resolved. The planner's overlay `sched_contexts` emit is the only
-    residue → retires with `nros.toml` (W9).
+    duality is gone. Issue 0082 resolved.
+  - **W4.2-tail — planner scheduling fully retired — DONE (2026-06-18).** After W9 emptied the
+    overlay, the planner's declared-tier binding mechanism was dead-in-production (the `declared`
+    map was always empty). Removed it: `schema_callbacks`/`schema_sched_bindings`/`schema_instance`
+    drop the `declared: &BTreeMap` param; the planner now emits exactly the implicit
+    `default_executor` (every callback binds to it; `group` name preserved for the codegen tools),
+    with the pre-172.G null-priority / `source_metadata` binding shape. Deleted the two declared-tier
+    binding tests + `normalize_sched_context` (their last user). Output byte-identical (the removed
+    branches were already unreachable). The planner no longer owns scheduling at all.
 - **Wave 5 — `[[shared_state]]` → DROPPED. DECISION: remove the feature, scoped out (2026-06-18).**
   shared_state is a raw in-process shared-memory primitive — **not a ROS concept.** nano-ros is an
   RT *ROS* client (graph = nodes + pub/sub + services + actions + params + lifecycle); ROS 2's own
