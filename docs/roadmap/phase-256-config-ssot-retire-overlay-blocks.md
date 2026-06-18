@@ -212,8 +212,15 @@ already exists in `system.toml` for the bake but the planner ignores it).
   precedence-vs-Cargo-projection surfacing in `config show` rides on W6's provenance — a small tail.)
 - **Wave 9 — retire the legacy files. SCOPE: orchestration only (decision b, 2026-06-18).** W9
   covers the two **orchestration** surfaces; the embedded board parser is a separate issue:
-  - **① `nros.toml` overlay (CLI planner) — PARTIALLY BLOCKED (explored 2026-06-18).** A code map
-    found the overlay split into two kinds. **Removable now (vestigial, typed home exists):** the
+  - **① `nros.toml` overlay (CLI planner) — CONFIG SUPPORT REMOVED (2026-06-18).** The planner no
+    longer reads `nros.toml` as a config overlay: dropped the bringup auto-discovery
+    (`package_nros_toml` push) + the per-package parameter overlay; `overlays` is now always empty
+    (`--nros-toml`/`nros_toml_files` no longer feed it); the trace `system_config` points at
+    `system.toml`. Every plan is byte-identical (0 `nros.toml` files). **Dead-code tidy remaining**
+    (no behaviour, low value): delete the now-dead `--nros-toml` flag + `PlanOptions::nros_toml_files`
+    + `Workspace::package_nros_toml` + `Package::nros_toml` + the no-op overlay readers
+    (`schema_build_json`'s `[build]` loop, `collect_sched_contexts`, `effective_parameters`'s overlay
+    arm). — Earlier-explored split, now resolved: **Removable now (vestigial, typed home exists):** the
     capability/lifecycle/scheduling fallbacks — `collect_lifecycle` / `collect_safety` /
     `collect_param_services` (all typed in `system.toml`) and `collect_sched_contexts` (the W4.2 tier
     path superseded it; the planner's `plan.sched_contexts` is now only the no-tier default that
