@@ -6,6 +6,7 @@ members = [
     "rosidl-bindgen",
     "cargo-nano-ros",
     "nros-pkg-index",
+    "nros-launch-parser",
     "nros-cli-core",
     "nros-cli",
     "nros-msg-to-idl",

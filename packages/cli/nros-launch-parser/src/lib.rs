@@ -35,7 +35,7 @@ use quick_xml::{
     reader::Reader,
 };
 
-use crate::pkg_index::PkgIndex;
+use nros_pkg_index::PkgIndex;
 
 /// Maximum `<include>` recursion depth. Cap matches design-doc §11.5
 /// guidance — deep stacks of launch files are a smell, and unbounded

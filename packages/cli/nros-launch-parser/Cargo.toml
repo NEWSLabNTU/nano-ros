@@ -1,0 +1,16 @@
+[package]
+name = "nros-launch-parser"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ROS 2 launch.xml parser for nano-ros. Leaf crate extracted from nros-cli-core (phase-262) — depends only on nros-pkg-index, NOT the launch-manifest submodule, so the nros-macros proc-macro path stays light."
+
+[lib]
+name = "nros_launch_parser"
+
+[dependencies]
+eyre = "0.6"
+quick-xml = "0.37"
+nros-pkg-index = { path = "../nros-pkg-index" }

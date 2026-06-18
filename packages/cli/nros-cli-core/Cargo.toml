@@ -26,8 +26,10 @@ release = []
 [dependencies]
 clap = { workspace = true }
 eyre = "0.6"
-# phase-262 W1 — pkg_index extracted here; re-exported as `pkg_index`.
+# phase-262 W1/W2 — pkg_index + launch_parser extracted to leaf crates;
+# re-exported as `pkg_index` / `launch_parser`.
 nros-pkg-index = { path = "../nros-pkg-index" }
+nros-launch-parser = { path = "../nros-launch-parser" }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

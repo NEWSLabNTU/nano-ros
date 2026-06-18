@@ -44,9 +44,12 @@ nros-cli-core re-exports it (`pub use nros_pkg_index as pkg_index`) — consumer
 `crate::pkg_index` internal refs (launch_parser) unchanged. Verified: leaf +
 nros-cli-core + nros-build compile; nros-build's 8 `pkg_index` tests green.
 
-### W2 — `nros-launch-parser` leaf crate
-New crate (`packages/cli/nros-launch-parser/`) ← `launch_parser.rs`. Deps: eyre,
-quick_xml, `nros-pkg-index`. Move `nros-build/tests/launch_parser.rs` coverage.
+### W2 — `nros-launch-parser` leaf crate — DONE (2026-06-18)
+New crate `packages/cli/nros-launch-parser/` ← `launch_parser.rs` (git mv). Deps:
+eyre, quick-xml, nros-pkg-index (rewrote `crate::pkg_index::PkgIndex` →
+`nros_pkg_index::PkgIndex`). nros-cli-core re-exports it (`pub use
+nros_launch_parser as launch_parser`). Verified: leaf + nros-cli-core + nros-build
+compile; nros-build's 10 `launch_parser` tests green. (No serde/ln_types — clean.)
 
 ### W3 — rewire nros-cli-core (keep consumers byte-stable)
 Delete the two modules from nros-cli-core; depend on the two leaf crates;

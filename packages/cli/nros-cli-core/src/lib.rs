@@ -12,7 +12,10 @@ pub mod cmd;
 // (via `nros-build`'s re-export), and any future C/C++ tooling all
 // dispatch through one implementation.
 pub mod codegen;
-pub mod launch_parser;
+// phase-262 W2 — `launch_parser` extracted to the `nros-launch-parser` leaf crate
+// (depends only on nros-pkg-index, not the launch-manifest submodule). Re-exported
+// so `nros_cli_core::launch_parser::*` consumers are unchanged.
+pub use nros_launch_parser as launch_parser;
 pub mod orchestration;
 // phase-262 W1 — `pkg_index` extracted to the `nros-pkg-index` leaf crate so the
 // nros-macros proc-macro path doesn't pull all of nros-cli-core. Re-exported here
