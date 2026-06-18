@@ -37,7 +37,23 @@ The **posix** port correctly does NOT redefine `ddsrt_setsockreuse` (it relies o
 generic `sockets.c`) — the ThreadX port is the buggy one. Same `--allow-multiple-definition`
 removal (phase-251) that exposed 0084 exposes this.
 
-## Fix
+## Fix prepared (2026-06-18) — awaiting fork push + superproject bump
+
+Done in the cyclonedds submodule on branch **`nano-ros`** (commit `1ca48131`):
+removed the redundant `ddsrt_setsockreuse` from `sockets/threadx/socket.c`
+(replaced with a comment pointing at the generic `sockets.c`). Verified the
+generic `sockets.c:445` provides it (SO_REUSEPORT → SO_REUSEADDR fallback; NetX has
+no SO_REUSEPORT → SO_REUSEADDR, identical to the removed port code);
+`ddsrt/CMakeLists.txt` compiles `sockets.c` unconditionally + the threadx port
+under `WITH_THREADX` → collision gone with the port copy removed.
+
+**Per the vendored-fork workflow, the agent did NOT push the fork.** Remaining
+(maintainer): push `origin/nano-ros` (NEWSLabNTU/cyclonedds) → then bump the
+superproject submodule pointer to `1ca48131`. Runtime build-verify
+(`just threadx_riscv64 build-fixture-extras`) is maintainer/CI-side (riscv64 cross
+toolchain).
+
+## Fix (original analysis)
 
 Remove the redundant `ddsrt_setsockreuse` definition from the ThreadX port
 (`sockets/threadx/socket.c`); the generic `sockets.c` one (which calls
