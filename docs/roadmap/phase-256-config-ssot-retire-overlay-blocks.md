@@ -221,10 +221,17 @@ already exists in `system.toml` for the bake but the planner ignores it).
     `Workspace::package_nros_toml` + write-only `Package::nros_toml` (+ ~18 planner/test literals);
     also dropped the two `orchestration_cli` integration tests that asserted the removed
     `nros.toml`→planner overlay (tier binding + lifecycle) — both capabilities keep `system.toml`
-    SSoT coverage (`plan_system_reads_lifecycle_from_system_toml`; codegen tier tests). **Cosmetic
-    internal residue deferred** (no behaviour): the no-op overlay readers still threaded on the
-    always-empty `overlays` local (`schema_build_json`'s `[build]` loop, `collect_sched_contexts`,
-    `effective_parameters`'s overlay arm) retire in a later reader-cleanup sweep. — Earlier-explored split, now resolved: **Removable now (vestigial, typed home exists):** the
+    SSoT coverage (`plan_system_reads_lifecycle_from_system_toml`; codegen tier tests). **Internal
+    reader sweep DONE (2026-06-18):** removed the always-empty `overlays` local + the whole
+    `overlays: &[Value]` threading (`plan_system` → `build_instances` → `PlanCtx` → `schema_plan_json`
+    / `schema_build_json`); deleted the dead readers — `collect_sched_contexts` (+ its test),
+    `schema_build_json`'s `[build]`/`[[transport]]` overlay loop + the three `overlay_had_*`
+    deprecation-warn branches, and `effective_parameters`'s `package_nros` + `overlays` merge arms
+    (+ the `ParameterInputs` fields). `schema_plan_json` now seeds empty tier tables (the implicit
+    `default_executor` fallback is the only tier the planner emits — tiers resolve in the codegen
+    tools per W4.2). `normalize_sched_context` is now `#[cfg(test)]` (only the binding-test fixtures
+    use it). −274 lines in `planner.rs`; the declared-tier *binding* mechanism
+    (`schema_callbacks`/`schema_sched_bindings`) stays — fully retiring it is the larger W4.2 cleanup. — Earlier-explored split, now resolved: **Removable now (vestigial, typed home exists):** the
     capability/lifecycle/scheduling fallbacks — `collect_lifecycle` / `collect_safety` /
     `collect_param_services` (all typed in `system.toml`) and `collect_sched_contexts` (the W4.2 tier
     path superseded it; the planner's `plan.sched_contexts` is now only the no-tier default that

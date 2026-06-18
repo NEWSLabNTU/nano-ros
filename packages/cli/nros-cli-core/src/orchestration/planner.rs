@@ -101,16 +101,12 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
         .collect::<Result<Vec<_>>>()?;
 
     // Phase 256 W9 — the `nros.toml` overlay is RETIRED. The bringup's `nros.toml`
-    // is no longer auto-discovered; the typed `system.toml` is the only config
-    // source (capabilities/rmw/build-shape/tiers all resolve from it). `overlays`
-    // is therefore always empty — the remaining overlay-reading helpers
-    // (`schema_build_json`'s `[build]` loop, `collect_sched_contexts`,
-    // `effective_parameters`) no-op on it and retire with the reader cleanup.
+    // is no longer auto-discovered or read; the typed `system.toml` is the only
+    // config source (capabilities / rmw / build-shape / tiers all resolve from it).
     let system_toml_path = workspace.package_system_toml(&options.system_pkg);
-    let overlays: Vec<Value> = Vec::new();
 
     let (instances, executables, mut diagnostics) =
-        build_instances(&record, &metadata, &overlays, &record_path);
+        build_instances(&record, &metadata, &record_path);
     diagnostics.extend(check_effective_graph_node_names(&instances, &record_path));
     diagnostics.extend(check_manifest_endpoints(
         &instances,
@@ -138,22 +134,21 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
         ));
     }
 
-    // Phase 173.5 — derive the `build` block (board / target / rmw /
-    // profile / `[[transport]]`) from the nros.toml overlays, then
-    // validate the transport semantics with a clear error before the
-    // plan is written.
+    // Phase 173.5 / 256 — derive the `build` block (board / target / rmw / profile /
+    // `[[transport]]`) from the typed `system.toml` (the selected `[deploy.<t>]`) +
+    // `--rmw`/`--target`, then validate the transport semantics with a clear error
+    // before the plan is written.
     let build_json = schema_build_json(
-        &overlays,
         system_toml_path.as_deref(),
         options.rmw.as_deref(),
         options.target.as_deref(),
     );
     let build: PlanBuildOptions = serde_json::from_value(build_json.clone())
-        .wrap_err("invalid [build] / [[transport]] section in nros.toml")?;
+        .wrap_err("invalid [build] / [[transport]] section in system.toml")?;
     let transport_problems = build.validate_transports();
     if !transport_problems.is_empty() {
         return Err(eyre!(
-            "invalid [[transport]] config in nros.toml: {}",
+            "invalid [[transport]] config in system.toml: {}",
             transport_problems.join("; ")
         ));
     }
@@ -164,7 +159,6 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
         &instances,
         &executables,
         &metadata,
-        &overlays,
         system_toml_path.as_deref(),
         build_json,
     );
@@ -690,14 +684,16 @@ fn schema_plan_json(
     instances: &[Value],
     executables: &[Value],
     metadata: &[JsonArtifact],
-    overlays: &[Value],
     system_toml: Option<&Path>,
     build: Value,
 ) -> Value {
     let components = schema_components(metadata);
-    // Phase 172.G — scheduling tiers come from nros.toml `[[scheduling.contexts]]`
-    // (author-declared, not inferred); callbacks bind to them by `group` name.
-    let (declared_contexts, declared_by_id) = collect_sched_contexts(overlays);
+    // Phase 256 W4.2 — the planner emits no scheduling tiers; tiers resolve in the
+    // codegen tools (`generate`/`bake`) from `system.toml` + node `callback_groups`,
+    // which the language-agnostic planner can't see. The plan carries only the
+    // implicit `default_executor` fallback below; every callback binds to it.
+    let declared_contexts: Vec<Value> = Vec::new();
+    let declared_by_id: BTreeMap<String, Value> = BTreeMap::new();
     let plan_instances = instances
         .iter()
         .map(|instance| schema_instance(instance, &declared_by_id))
@@ -808,7 +804,6 @@ fn schema_plan_json(
 /// `transports` field. Unknown keys are caught downstream by
 /// `PlanBuildOptions`'s `deny_unknown_fields`.
 fn schema_build_json(
-    overlays: &[Value],
     system_toml: Option<&Path>,
     cli_rmw: Option<&str>,
     cli_target: Option<&str>,
@@ -823,44 +818,12 @@ fn schema_build_json(
         "transports": [],
     });
     let obj = build.as_object_mut().expect("build is an object");
-    let mut overlay_had_rmw = false;
-    let mut overlay_had_tuning = false;
-    let mut overlay_had_build_shape = false;
-    for overlay in overlays {
-        if let Some(Value::Object(b)) = overlay.get("build") {
-            if b.contains_key("rmw") {
-                overlay_had_rmw = true;
-            }
-            if ["profile", "optimize", "features"]
-                .iter()
-                .any(|k| b.contains_key(*k))
-            {
-                overlay_had_tuning = true;
-            }
-            if ["target", "board"].iter().any(|k| b.contains_key(*k)) {
-                overlay_had_build_shape = true;
-            }
-            for key in [
-                "target", "board", "rmw", "profile", "features", "cfg", "optimize", "cargo", "cc",
-            ] {
-                if let Some(v) = b.get(key) {
-                    obj.insert(key.to_string(), v.clone());
-                }
-            }
-        }
-        // `[[transport]]` in nros.toml deserialises to the array-valued
-        // key `transport`; the plan field is `transports`.
-        if let Some(transports) = overlay.get("transport") {
-            obj.insert("transports".to_string(), transports.clone());
-        }
-    }
-    // Phase 255/256 — `[system].rmw` (resolved) is the SSoT and wins over the
-    // DEPRECATED `[build].rmw` overlay; `--rmw` tops the ladder. Phase 256 makes
-    // the planner target-aware: it resolves the selected deploy target
-    // (`--target` → `[system].default_target` → sole `[deploy.<t>]`) and feeds it
-    // to `resolved_rmw`, so `[deploy.<t>].rmw` finally reaches the plan (the
-    // phase-255 stub resolved at target=None). With no system.toml, `--rmw` alone
-    // still drives the plan.
+    // Phase 255/256 — `[system].rmw` (resolved) is the SSoT; `--rmw` tops the
+    // ladder. Phase 256 makes the planner target-aware: it resolves the selected
+    // deploy target (`--target` → `[system].default_target` → sole `[deploy.<t>]`)
+    // and feeds it to `resolved_rmw`, so `[deploy.<t>].rmw` finally reaches the plan
+    // (the phase-255 stub resolved at target=None). With no system.toml, `--rmw`
+    // alone still drives the plan.
     let sys = system_toml
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
@@ -871,52 +834,32 @@ fn schema_build_json(
         None => cli_rmw.map(str::to_string),
     };
     if let Some(rmw) = resolved_rmw {
-        if overlay_had_rmw {
-            eprintln!(
-                "warning: [build].rmw in nros.toml is deprecated (phase-255); declare rmw in \
-                 the bringup system.toml ([system].rmw / [deploy.<t>].rmw) or pass --rmw"
-            );
-        }
         obj.insert("rmw".to_string(), json!(rmw));
     }
     // Phase 256 Wave 3 / W3-tail — the build shape from the selected `[deploy.<t>]`
-    // (target / board / profile / optimize / features) wins over the DEPRECATED
-    // `[build]` overlay. Build shape is per-deploy (a system targets native AND an
-    // MCU from one `system.toml`), so its home is the deploy block. `target`/`board`
-    // drive the codegen board-crate + entry-kind selection (the bake's `--target`
-    // overrides the cargo `--target` at build time, but `generate` must pick the
-    // right board from the plan). cargo/cc tables + compile `cfg` are still
-    // overlay-only (0 users) and die with the `nros.toml` overlay removal.
+    // (target / board / profile / optimize / features) drives the plan. Build shape
+    // is per-deploy (a system targets native AND an MCU from one `system.toml`), so
+    // its home is the deploy block. `target`/`board` drive the codegen board-crate +
+    // entry-kind selection (the bake's `--target` overrides the cargo `--target` at
+    // build time, but `generate` must pick the right board from the plan).
     if let Some(dt) = selected_target
         .as_deref()
         .and_then(|t| sys.as_ref().and_then(|s| s.deploy.get(t)))
     {
-        let mut deploy_set = false;
         if let Some(t) = &dt.target {
             obj.insert("target".to_string(), json!(t));
-            deploy_set = true;
         }
         if let Some(b) = &dt.board {
             obj.insert("board".to_string(), json!(b));
-            deploy_set = true;
         }
         if let Some(p) = &dt.profile {
             obj.insert("profile".to_string(), json!(p));
-            deploy_set = true;
         }
         if let Some(o) = &dt.optimize {
             obj.insert("optimize".to_string(), json!(o));
-            deploy_set = true;
         }
         if !dt.features.is_empty() {
             obj.insert("features".to_string(), json!(dt.features));
-            deploy_set = true;
-        }
-        if deploy_set && (overlay_had_tuning || overlay_had_build_shape) {
-            eprintln!(
-                "warning: [build] target/board/profile/optimize/features in nros.toml is \
-                 deprecated (phase-256); declare them in the bringup system.toml [deploy.<t>]"
-            );
         }
     }
     // Phase 255 Wave 5 — cross-RMW `[[bridge]]`s make a single binary link the
@@ -1137,12 +1080,13 @@ fn default_sched_context() -> Value {
     })
 }
 
-/// Phase 172.G — normalise one nros.toml `[[scheduling.contexts]]` entry into a
+/// Phase 172.G — normalise one `[[scheduling.contexts]]`-shaped entry into a
 /// plan `sched_context` value, filling every optional key so the result
 /// round-trips through `PlanSchedContext` (which requires all keys present).
-/// The TOML field names + value encodings already match the plan schema
-/// (`config::SchedContextConfig` mirrors `PlanSchedContext`), so this only
-/// supplies defaults for absent keys.
+/// Test-only since phase-256 W9: the `nros.toml` reader that fed it
+/// (`collect_sched_contexts`) is retired (tiers now resolve in the codegen
+/// tools), but it still builds declared-tier fixtures for the binding tests.
+#[cfg(test)]
 fn normalize_sched_context(ctx: &Value) -> Value {
     let str_or = |key: &str, default: &str| {
         ctx.get(key)
@@ -1164,40 +1108,6 @@ fn normalize_sched_context(ctx: &Value) -> Value {
         "core": val_or_null("core"),
         "task": val_or_null("task"),
     })
-}
-
-/// Phase 172.G — collect the declared scheduling tiers from the nros.toml
-/// overlays. Each `[[scheduling.contexts]]` becomes a plan `sched_context`,
-/// keyed by id (declaration order preserved; a later overlay redeclaring an id
-/// overrides the earlier one — last-wins, mirroring `schema_build_json`).
-/// Returns the ordered context values plus an id→context map for binding
-/// lookups.
-fn collect_sched_contexts(overlays: &[Value]) -> (Vec<Value>, BTreeMap<String, Value>) {
-    let mut order: Vec<String> = Vec::new();
-    let mut by_id: BTreeMap<String, Value> = BTreeMap::new();
-    for overlay in overlays {
-        let Some(contexts) = overlay
-            .get("scheduling")
-            .and_then(|s| s.get("contexts"))
-            .and_then(Value::as_array)
-        else {
-            continue;
-        };
-        for ctx in contexts {
-            let Some(id) = ctx.get("id").and_then(Value::as_str) else {
-                continue;
-            };
-            if id.is_empty() {
-                continue;
-            }
-            if !by_id.contains_key(id) {
-                order.push(id.to_string());
-            }
-            by_id.insert(id.to_string(), normalize_sched_context(ctx));
-        }
-    }
-    let contexts = order.iter().map(|id| by_id[id].clone()).collect();
-    (contexts, by_id)
 }
 
 fn schema_callbacks(
@@ -1943,7 +1853,6 @@ fn infer_callback_groups(instances: &[Value], chains: &[Value]) -> Vec<Value> {
 fn build_instances(
     record: &Value,
     metadata: &[JsonArtifact],
-    overlays: &[Value],
     record_path: &Path,
 ) -> (Vec<Value>, Vec<Value>, Vec<Value>) {
     let mut counts = HashMap::<(String, String), usize>::new();
@@ -1989,7 +1898,6 @@ fn build_instances(
             },
             &mut PlanCtx {
                 metadata,
-                overlays,
                 record_path,
                 counts: &mut counts,
                 diagnostics: &mut diagnostics,
@@ -2043,7 +1951,6 @@ fn build_instances(
             },
             &mut PlanCtx {
                 metadata,
-                overlays,
                 record_path,
                 counts: &mut counts,
                 diagnostics: &mut diagnostics,
@@ -2090,7 +1997,6 @@ fn build_instances(
             },
             &mut PlanCtx {
                 metadata,
-                overlays,
                 record_path,
                 counts: &mut counts,
                 diagnostics: &mut diagnostics,
@@ -2165,7 +2071,6 @@ struct NodeInstanceSpec<'a> {
 /// instance indices and [`diagnostics`](Self::diagnostics)).
 struct PlanCtx<'a> {
     metadata: &'a [JsonArtifact],
-    overlays: &'a [Value],
     record_path: &'a Path,
     counts: &'a mut HashMap<(String, String), usize>,
     diagnostics: &'a mut Vec<Value>,
@@ -2187,7 +2092,6 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
         machine,
     } = spec;
     let metadata = ctx.metadata;
-    let overlays = ctx.overlays;
     let record_path = ctx.record_path;
 
     let index = next_instance_index(ctx.counts, package, executable);
@@ -2239,10 +2143,8 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
     // come from source metadata / launch / param files / Cargo metadata only.
     let parameters = effective_parameters(ParameterInputs {
         source_metadata: source_metadata.map(|artifact| &artifact.value),
-        package_nros: None,
         launch_params: params,
         param_files,
-        overlays,
     });
     let entities = source_metadata
         .map(|artifact| {
@@ -3453,10 +3355,10 @@ mod tests {
     }
 
     #[test]
-    fn schema_build_json_defaults_when_no_overlay() {
-        // No `[build]` / `[[transport]]` ⇒ pre-173.5 defaults, empty
-        // transports — keeps existing plans byte-identical.
-        let build = schema_build_json(&[], None, None, None);
+    fn schema_build_json_defaults() {
+        // No system.toml ⇒ pre-173.5 defaults, empty transports — keeps existing
+        // plans byte-identical.
+        let build = schema_build_json(None, None, None);
         assert_eq!(build["board"], "native");
         assert_eq!(build["rmw"], "zenoh");
         assert_eq!(build["target"], "x86_64-unknown-linux-gnu");
@@ -3465,64 +3367,8 @@ mod tests {
         serde_json::from_value::<PlanBuildOptions>(build).unwrap();
     }
 
-    #[test]
-    fn schema_build_json_reads_build_and_transports_from_overlay() {
-        // Simulates an nros.toml parsed to JSON: `[build]` table +
-        // `[[transport]]` (array key `transport`).
-        let overlay = json!({
-            "build": { "board": "baremetal", "target": "thumbv7m-none-eabi", "rmw": "zenoh" },
-            "transport": [
-                { "kind": "ethernet", "ip": "10.0.2.50/24", "rmw": "zenoh", "locator": "tcp/10.0.2.2:7447" },
-                { "kind": "serial", "device": "UART0", "baudrate": 115200, "rmw": "cyclonedds" }
-            ]
-        });
-        let build = schema_build_json(std::slice::from_ref(&overlay), None, None, None);
-        assert_eq!(build["board"], "baremetal");
-        assert_eq!(build["target"], "thumbv7m-none-eabi");
-        let typed: PlanBuildOptions = serde_json::from_value(build).unwrap();
-        assert!(typed.is_bridge());
-        assert_eq!(typed.transports[0].ip.as_deref(), Some("10.0.2.50/24"));
-        assert_eq!(typed.transports[1].baudrate, Some(115200));
-        assert!(typed.validate_transports().is_empty());
-    }
-
-    #[test]
-    fn schema_build_json_later_overlay_overrides_earlier() {
-        let first = json!({ "build": { "board": "native" } });
-        let second =
-            json!({ "build": { "board": "freertos" }, "transport": [ { "kind": "ethernet" } ] });
-        let build = schema_build_json(&[first, second], None, None, None);
-        assert_eq!(build["board"], "freertos");
-        assert_eq!(build["transports"].as_array().unwrap().len(), 1);
-    }
-
-    /// Phase 255 — `[system].rmw` (the SSoT) wins over the deprecated `[build].rmw`
-    /// overlay; with no system.toml the overlay still drives (fallback).
-    #[test]
-    fn schema_build_json_system_toml_rmw_wins_over_build_overlay() {
-        let dir = tempfile::tempdir().unwrap();
-        let st = dir.path().join("system.toml");
-        std::fs::write(
-            &st,
-            "[system]\nname=\"d\"\nrmw=\"cyclonedds\"\ndomain_id=0\n",
-        )
-        .unwrap();
-        let overlay = json!({ "build": { "rmw": "zenoh" } });
-
-        let build = schema_build_json(std::slice::from_ref(&overlay), Some(&st), None, None);
-        assert_eq!(
-            build["rmw"], "cyclonedds",
-            "[system].rmw must win over [build].rmw"
-        );
-
-        // No system.toml → the [build].rmw overlay drives (deprecated fallback).
-        let fallback = schema_build_json(std::slice::from_ref(&overlay), None, None, None);
-        assert_eq!(fallback["rmw"], "zenoh");
-    }
-
-    /// Phase 255 Wave 4 — `--rmw` tops the precedence ladder, beating both
-    /// `[system].rmw` and the `[build].rmw` overlay; it also drives the plan with
-    /// no system.toml at all.
+    /// Phase 255 Wave 4 — `--rmw` tops the precedence ladder, beating
+    /// `[system].rmw`; it also drives the plan with no system.toml at all.
     #[test]
     fn schema_build_json_cli_rmw_tops_the_ladder() {
         let dir = tempfile::tempdir().unwrap();
@@ -3532,19 +3378,13 @@ mod tests {
             "[system]\nname=\"d\"\nrmw=\"cyclonedds\"\ndomain_id=0\n",
         )
         .unwrap();
-        let overlay = json!({ "build": { "rmw": "zenoh" } });
 
-        // --rmw xrce beats system.toml's cyclonedds and the overlay's zenoh.
-        let build = schema_build_json(
-            std::slice::from_ref(&overlay),
-            Some(&st),
-            Some("xrce"),
-            None,
-        );
+        // --rmw xrce beats system.toml's cyclonedds.
+        let build = schema_build_json(Some(&st), Some("xrce"), None);
         assert_eq!(build["rmw"], "xrce");
 
-        // --rmw with no system.toml still drives (top rung, overlay ignored).
-        let bare = schema_build_json(std::slice::from_ref(&overlay), None, Some("xrce"), None);
+        // --rmw with no system.toml still drives (top rung).
+        let bare = schema_build_json(None, Some("xrce"), None);
         assert_eq!(bare["rmw"], "xrce");
     }
 
@@ -3562,13 +3402,13 @@ mod tests {
         )
         .unwrap();
 
-        let build = schema_build_json(&[], Some(&st), None, None);
+        let build = schema_build_json(Some(&st), None, None);
         assert_eq!(build["bridged_rmws"], json!(["zenoh", "cyclonedds"]));
 
         // No bridges → no `bridged_rmws` field (single-RMW build byte-identical).
         let st2 = dir.path().join("plain.toml");
         std::fs::write(&st2, "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n").unwrap();
-        let plain = schema_build_json(&[], Some(&st2), None, None);
+        let plain = schema_build_json(Some(&st2), None, None);
         assert!(plain.get("bridged_rmws").is_none());
     }
 
@@ -3588,11 +3428,11 @@ mod tests {
         .unwrap();
 
         // --target qemu → the deploy override reaches the plan.
-        let picked = schema_build_json(&[], Some(&st), None, Some("qemu"));
+        let picked = schema_build_json(Some(&st), None, Some("qemu"));
         assert_eq!(picked["rmw"], "cyclonedds");
 
         // No target, no default_target, sole deploy → resolve_target picks it.
-        let sole = schema_build_json(&[], Some(&st), None, None);
+        let sole = schema_build_json(Some(&st), None, None);
         assert_eq!(
             sole["rmw"], "cyclonedds",
             "sole deploy is the selected target"
@@ -3607,12 +3447,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            schema_build_json(&[], Some(&st2), None, None)["rmw"],
+            schema_build_json(Some(&st2), None, None)["rmw"],
             "xrce"
         );
         // --target b → b has no rmw → falls to [system].rmw.
         assert_eq!(
-            schema_build_json(&[], Some(&st2), None, Some("b"))["rmw"],
+            schema_build_json(Some(&st2), None, Some("b"))["rmw"],
             "zenoh"
         );
     }
@@ -3634,7 +3474,7 @@ mod tests {
         .unwrap();
 
         // default_target = embedded → its build shape (W3-tail: target/board) + tuning land.
-        let emb = schema_build_json(&[], Some(&st), None, None);
+        let emb = schema_build_json(Some(&st), None, None);
         assert_eq!(emb["target"], "thumbv7m-none-eabi");
         assert_eq!(emb["board"], "stm32f4");
         assert_eq!(emb["profile"], "release");
@@ -3643,7 +3483,7 @@ mod tests {
 
         // --target native → nothing declared → pre-256 defaults (native / x86_64 /
         // debug, no optimize, empty features).
-        let nat = schema_build_json(&[], Some(&st), None, Some("native"));
+        let nat = schema_build_json(Some(&st), None, Some("native"));
         assert_eq!(nat["target"], "x86_64-unknown-linux-gnu");
         assert_eq!(nat["board"], "native");
         assert_eq!(nat["profile"], "debug");
@@ -5682,31 +5522,6 @@ topics:
             .expect("a reentrant singleton group");
         assert_eq!(re["id"], json!("group/c/work"));
         assert_eq!(re["callbacks"], json!(["c/work"]));
-    }
-
-    #[test]
-    fn collect_sched_contexts_reads_dedups_and_normalizes_tiers() {
-        let overlays = vec![
-            json!({ "scheduling": { "contexts": [
-                { "id": "io", "class": "real_time", "priority": 10, "period_ms": 20 },
-            ]}}),
-            json!({ "scheduling": { "contexts": [
-                { "id": "io", "class": "real_time", "priority": 99 }, // last-wins override
-                { "id": "bg", "class": "best_effort" },
-            ]}}),
-        ];
-        let (contexts, by_id) = collect_sched_contexts(&overlays);
-        // Declaration order preserved: io (first declared), then bg.
-        assert_eq!(contexts.len(), 2);
-        assert_eq!(contexts[0]["id"], json!("io"));
-        assert_eq!(contexts[1]["id"], json!("bg"));
-        // Later overlay overrides the earlier `io`.
-        assert_eq!(by_id["io"]["priority"], json!(99));
-        // Absent keys normalised to defaults / null so the value round-trips.
-        assert_eq!(contexts[1]["executor"], json!("single_threaded"));
-        assert_eq!(contexts[1]["deadline_policy"], json!("ignore"));
-        assert_eq!(contexts[1]["priority"], json!(null));
-        assert_eq!(contexts[1]["period_ms"], json!(null));
     }
 
     #[test]

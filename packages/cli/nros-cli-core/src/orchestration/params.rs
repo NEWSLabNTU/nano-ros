@@ -6,10 +6,8 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub struct ParameterInputs<'a> {
     pub source_metadata: Option<&'a Value>,
-    pub package_nros: Option<&'a Value>,
     pub launch_params: &'a [(String, String)],
     pub param_files: &'a [String],
-    pub overlays: &'a [Value],
 }
 
 pub fn effective_parameters(inputs: ParameterInputs<'_>) -> Value {
@@ -19,9 +17,6 @@ pub fn effective_parameters(inputs: ParameterInputs<'_>) -> Value {
         merge_object(&mut out, metadata.pointer("/parameters/defaults"));
         merge_source_parameter_array(&mut out, metadata.get("parameters"));
         merge_object(&mut out, metadata.get("parameters"));
-    }
-    if let Some(package_nros) = inputs.package_nros {
-        merge_object(&mut out, package_nros.get("parameters"));
     }
     if !inputs.param_files.is_empty() {
         out.insert(
@@ -37,10 +32,6 @@ pub fn effective_parameters(inputs: ParameterInputs<'_>) -> Value {
     }
     for (key, value) in inputs.launch_params {
         out.insert(key.clone(), parse_scalar(value));
-    }
-    for overlay in inputs.overlays {
-        merge_object(&mut out, overlay.get("parameters"));
-        merge_object(&mut out, overlay.pointer("/overlays/parameters"));
     }
     Value::Object(out)
 }
@@ -142,10 +133,8 @@ mod tests {
         let launch = vec![("rate".to_string(), "20".to_string())];
         let value = effective_parameters(ParameterInputs {
             source_metadata: Some(&source),
-            package_nros: None,
             launch_params: &launch,
             param_files: &[],
-            overlays: &[],
         });
         assert_eq!(value["rate"], 20);
         assert_eq!(value["frame"], "map");
