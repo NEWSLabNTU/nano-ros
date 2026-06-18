@@ -39,11 +39,15 @@ nros-c → nros → nros-macros (proc-macro)
 
 ## Direction
 
-Decouple the proc-macro from the CLI: move whatever `nros-macros`/`nros-build`
-needs out of `nros-cli-core` into a small, dependency-light crate (or feature-
-gate the CLI pull so it is off for the proc-macro path). The proc-macro should
-expand from in-tree schema/types only, not the orchestration CLI. Then a plain
-`cargo build -p nros-c` (and the docs/check-c lanes) need no CLI submodule.
+**Filed as [phase-262](../roadmap/phase-262-decouple-macros-from-cli-core.md)**
+(design explored 2026-06-18). The macro uses only two self-contained nros-cli-core
+modules — `pkg_index` + `launch_parser` — and NEITHER touches
+`ros-launch-manifest-types` (that's incidental, via `orchestration/manifest.rs`).
+Extract both into leaf crates (`nros-pkg-index`, `nros-launch-parser`); nros-cli-core
+re-exports them (consumers unchanged); nros-macros depends on the leaves directly +
+drops `nros-build`. App / nros-c builds then compile neither nros-cli-core nor the
+submodule — no feature-gating needed. Removes the docs/check-c submodule-init
+workarounds.
 
 Until then: lanes that build `nros`/`nros-c` must `git submodule update --init
 packages/cli/third-party/ros-launch-manifest` first (done in `docs.yml`, and in
