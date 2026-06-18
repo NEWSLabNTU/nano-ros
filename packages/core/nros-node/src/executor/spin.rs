@@ -697,6 +697,56 @@ pub struct DispatchSlot {
 unsafe impl Send for DispatchSlot {}
 unsafe impl Sync for DispatchSlot {}
 
+/// Phase 258 (Track 2, 2a) — executor-owned component tick slot.
+///
+/// The layering-clean half of the W0-B `install` seam's tick fix
+/// (phase-257 D2). A `nros`-layer `install`/`register_node_borrowed`
+/// builds an `Arc<ComponentCell>` (the typed/poll-driven component
+/// state) and enrolls it here via [`Executor::enroll_component`]; the
+/// executor then drives `tick` on every enrolled slot at the tail of
+/// each [`spin_once`](Executor::spin_once) — so `install`'d nodes
+/// (C, C++, **and Rust owned-spin**) tick, closing the
+/// service-client/action poll gap that the callback-`Arc`-only
+/// lifetime left open.
+///
+/// Like [`DispatchSlot`] the executor only sees raw pointers + `extern
+/// "C"` fn pointers (no `nros` dep — `nros-node` is the lower layer):
+///
+/// * `state` — a *leaked* `Arc<ComponentCell>` (via `Arc::into_raw`),
+///   re-borrowed by the `nros`-side `tick`/`drop` fns. Unlike a
+///   pub/sub/timer component (kept alive by the executor's per-entity
+///   callback `Arc` clones), a poll-only component has no callbacks, so
+///   the slot must own a clone of the cell — hence the paired `drop`.
+/// * `tick` — `nros`-side `extern "C"` fn that casts `state` back to
+///   `&ComponentCell`, casts `exec_ctx` back to `*mut Executor`, and
+///   runs that one cell's tick (mirrors `ExecutorNodeRuntime::run_ticks`).
+/// * `drop` — `nros`-side `extern "C"` fn run on `Executor::drop` that
+///   reconstitutes + drops the leaked `Arc`, so the executor owns the
+///   cell's lifetime.
+///
+/// Kept a SEPARATE registry from [`DispatchSlot`] on purpose: framework
+/// dispatch (RTIC / Embassy) is interrupt-driven, name-keyed, and has no
+/// tick/own concern — mixing the two risks that path.
+#[derive(Clone, Copy)]
+pub struct ComponentSlot {
+    /// Leaked `Arc<ComponentCell>` (opaque to the executor). Owned by
+    /// this slot — dropped via `drop` on `Executor::drop`.
+    pub state: *mut core::ffi::c_void,
+    /// `nros`-side tick trampoline: `(state, exec_ctx)` where `exec_ctx`
+    /// is `*mut Executor`. Drives one component's `tick`.
+    pub tick: unsafe extern "C" fn(state: *mut core::ffi::c_void, exec_ctx: *mut core::ffi::c_void),
+    /// `nros`-side drop trampoline: reconstitutes + drops the leaked
+    /// `Arc<ComponentCell>` at `state`. Run once on `Executor::drop`.
+    pub drop: unsafe extern "C" fn(state: *mut core::ffi::c_void),
+}
+
+// SAFETY: same story as `DispatchSlot` — two raw pointers + two extern
+// "C" fn pointers. The `state` pointer's Send/Sync matches the owning
+// `Executor` (`unsafe impl Send for Executor`); the fn pointers are
+// Send/Sync by definition.
+unsafe impl Send for ComponentSlot {}
+unsafe impl Sync for ComponentSlot {}
+
 pub struct Executor {
     pub(crate) session: SessionStore,
     pub(crate) arena: [MaybeUninit<u8>; crate::config::ARENA_SIZE],
@@ -780,6 +830,14 @@ pub struct Executor {
     /// The fallback shape avoids the `linkme` hazard on bare-metal
     /// Cortex-M / RISC-V (see `DispatchSlot` doc).
     pub(crate) dispatch_slots: heapless::Vec<DispatchSlot, { crate::config::MAX_NODES }>,
+    /// Phase 258 (Track 2, 2a) — executor-owned component tick registry.
+    /// Enrolled by [`Executor::enroll_component`] (from `nros`'s
+    /// `install`/`register_node_borrowed`); each slot's `tick` runs at the
+    /// tail of [`spin_once`](Self::spin_once); each slot's `drop` runs on
+    /// `Executor::drop`. Bounded `MAX_NODES` (matches `dispatch_slots` /
+    /// `nodes`). See [`ComponentSlot`] for why it's separate from
+    /// `dispatch_slots`.
+    pub(crate) component_slots: heapless::Vec<ComponentSlot, { crate::config::MAX_NODES }>,
     /// Phase 104.C.3 — extra sessions opened by `node_builder.rmw()`
     /// calls that named a backend different from the Executor's
     /// primary session. Indexed by `NodeRecord.session_idx`
@@ -947,6 +1005,7 @@ impl Executor {
             active_groups: None,
             nodes: heapless::Vec::new(),
             dispatch_slots: heapless::Vec::new(),
+            component_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
             primary_rmw_name: heapless::String::new(),
             primary_locator: heapless::String::new(),
@@ -1043,6 +1102,7 @@ impl Executor {
             active_groups: None,
             nodes: heapless::Vec::new(),
             dispatch_slots: heapless::Vec::new(),
+            component_slots: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
             primary_rmw_name: heapless::String::new(),
             primary_locator: heapless::String::new(),
@@ -1941,6 +2001,43 @@ impl Executor {
     /// Diagnostic / test surface.
     pub fn dispatch_slot_count(&self) -> usize {
         self.dispatch_slots.len()
+    }
+
+    /// Phase 258 (Track 2, 2a) — enroll a component into the executor-owned
+    /// tick registry. Called by `nros`'s `install`/`register_node_borrowed`
+    /// after it builds the `Arc<ComponentCell>`: `state` is the leaked
+    /// `Arc<ComponentCell>` (the slot takes ownership), `tick`/`drop` are the
+    /// `nros`-side trampolines (see [`ComponentSlot`]). The slot's `tick`
+    /// runs at the tail of every [`spin_once`](Self::spin_once); its `drop`
+    /// runs once on `Executor::drop`.
+    ///
+    /// Returns `Err(())` when the registry is full (`MAX_NODES` — raise via
+    /// `NROS_EXECUTOR_MAX_NODES` at build time). On error the caller still
+    /// owns `state` (the slot was not stored) and must drop it.
+    ///
+    /// # Safety
+    /// `state` must be a `*mut` produced by leaking the component cell the
+    /// `tick`/`drop` trampolines expect (an `Arc<ComponentCell>` via
+    /// `Arc::into_raw` in the canonical `nros` caller), and must remain valid
+    /// until the matching `drop` runs. `tick` must be safe to invoke with
+    /// `(state, exec_ctx = *mut Executor)` each spin; `drop` must be safe to
+    /// invoke exactly once with `state`.
+    #[allow(clippy::result_unit_err)]
+    pub unsafe fn enroll_component(
+        &mut self,
+        state: *mut core::ffi::c_void,
+        tick: unsafe extern "C" fn(*mut core::ffi::c_void, *mut core::ffi::c_void),
+        drop: unsafe extern "C" fn(*mut core::ffi::c_void),
+    ) -> Result<(), ()> {
+        self.component_slots
+            .push(ComponentSlot { state, tick, drop })
+            .map_err(|_| ())
+    }
+
+    /// Phase 258 (Track 2, 2a) — current enrolled component-slot count.
+    /// Diagnostic / test surface.
+    pub fn component_slot_count(&self) -> usize {
+        self.component_slots.len()
     }
 
     /// Phase 216 final dispatch hook — stable entry point the
@@ -4456,6 +4553,28 @@ impl Executor {
             }
         }
 
+        // Phase 258 (Track 2, 2a) — executor-owned component tick pass.
+        // Mirrors `ExecutorNodeRuntime::run_ticks`: after the transport +
+        // callbacks have been pumped, drive each enrolled component's `tick`
+        // (service-client/action poll, etc.). `exec_ctx` hands the component
+        // the whole executor as a raw `*mut Executor` so its tick can
+        // reborrow it (the same disjoint-field raw-ptr pattern run_ticks
+        // uses). Index-iterate over `Copy` slots so no borrow of
+        // `self.component_slots` is held while `tick` runs (which aliases
+        // `self` through `exec_ctx`).
+        let exec_ctx = self as *mut Executor as *mut core::ffi::c_void;
+        let slot_count = self.component_slots.len();
+        for i in 0..slot_count {
+            let slot = self.component_slots[i];
+            // SAFETY: `slot.state` is the leaked cell the matching `tick`
+            // expects (enrolled via `enroll_component`); `exec_ctx` is a live
+            // `*mut Executor` for `self`. The slot was copied out, so no
+            // borrow of `component_slots` is outstanding during the call.
+            unsafe {
+                (slot.tick)(slot.state, exec_ctx);
+            }
+        }
+
         result
     }
 
@@ -5444,6 +5563,19 @@ impl Drop for OsPriorityWorker {
 
 impl Drop for Executor {
     fn drop(&mut self) {
+        // Phase 258 (Track 2, 2a) — release executor-owned component cells
+        // first (before the arena entries), so a component's `drop`
+        // trampoline can still touch its own (cell-owned) state. Each slot
+        // owns a leaked `Arc<ComponentCell>`; its `drop` reconstitutes +
+        // drops that Arc exactly once.
+        for slot in self.component_slots.iter() {
+            // SAFETY: `slot.state` is the leaked cell enrolled via
+            // `enroll_component`; `slot.drop` is its matching trampoline, run
+            // exactly once here (slots are not removed before Drop).
+            unsafe {
+                (slot.drop)(slot.state);
+            }
+        }
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
         for meta in self.entries.iter().flatten() {
             // SAFETY: each entry was written by `ptr::write` in `add_*` and
