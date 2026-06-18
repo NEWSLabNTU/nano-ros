@@ -30,11 +30,12 @@ the C/C++ bake), but the registry it lowers through is **Rust-specific today**:
 
 ## Work items
 
-### W1 — extend `Capability` with the reserved language slots
-Add `c_define: Option<&'static str>` (+ `cmake_token: Option<&'static str>`) to the
-struct; populate for the existing rows (`safety` → `NROS_SYSTEM_SAFETY_E2E` /
+### W1 — extend `Capability` with the reserved language slots — DONE (2026-06-18)
+Added `c_define: Option<&'static str>` + `cmake_token: Option<&'static str>` to the
+struct; populated the existing rows (`safety` → `NROS_SYSTEM_SAFETY_E2E` /
 `NANO_ROS_SAFETY_E2E`; `param_services` → `NROS_SYSTEM_PARAM_SERVICES`, no cmake
-token). Pure data; no behaviour change yet.
+token). Pure data, no behaviour change. Tests lock the slots + assert every
+`c_define` is `NROS_SYSTEM_`-prefixed (so the W2 loop stays byte-identical).
 
 ### W2 — registry-drive the C/C++ bake
 Replace the hardcoded `if sys.safety` / `if sys.param_services` branches in

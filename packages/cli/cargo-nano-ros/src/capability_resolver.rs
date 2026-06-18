@@ -16,9 +16,10 @@
 //! the orchestration `generate` in `nros-cli-core` share one mapping — mirroring
 //! `rmw_resolver`.
 //!
-//! C/C++ (`cmake_token` / `c_define`) is reserved for a future wave — `safety-e2e`
-//! is Rust-only today (the CRC machinery is feature-gated inside the zpico Rust
-//! shim; no `NROS_SAFETY` define exists).
+//! Phase 261 W1 — the registry now also carries the **C/C++** lowering slots
+//! (`c_define`, `cmake_token`), so one `Capability{}` row drives both the Rust
+//! cargo features AND the C/C++ `#define` / CMake token. The bake's per-axis
+//! hardcoded `#define`s become a registry loop (W2).
 
 /// A declared capability axis lowered to its Rust build-feature targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,17 @@ pub struct Capability {
     /// emitted only for these; others (no such feature) no-op. Empty when
     /// `backend_feature` is `None`.
     pub backends_supporting: &'static [&'static str],
+    /// Phase 261 — the C/C++ preprocessor macro the bake emits into
+    /// `system_config.h` when the axis is enabled, e.g.
+    /// `"NROS_SYSTEM_SAFETY_E2E"` (the analog of `NROS_SYSTEM_RMW_<TOKEN>`).
+    /// `None` ⇒ the axis informs no C/C++ source (Rust-only). Drives the W2
+    /// registry loop that replaced the hardcoded per-axis `#define`s.
+    pub c_define: Option<&'static str>,
+    /// Phase 261 — the CMake build-knob token for the axis, e.g.
+    /// `"NANO_ROS_SAFETY_E2E"` (the analog of `NANO_ROS_RMW`). `None` ⇒ no CMake
+    /// knob (the macro is informational only). Threaded into the C/C++ codegen by
+    /// W5 when populated.
+    pub cmake_token: Option<&'static str>,
 }
 
 impl Capability {
@@ -58,6 +70,8 @@ pub const CAPABILITIES: &[Capability] = &[
         nros_feature: "safety-e2e",
         backend_feature: Some("safety-e2e"),
         backends_supporting: &["zenoh"],
+        c_define: Some("NROS_SYSTEM_SAFETY_E2E"),
+        cmake_token: Some("NANO_ROS_SAFETY_E2E"),
     },
     // The external ROS 2 parameter SERVER. Entry-umbrella-only — the runtime
     // registers the services; there is no backend wire feature.
@@ -66,6 +80,8 @@ pub const CAPABILITIES: &[Capability] = &[
         nros_feature: "param-services",
         backend_feature: None,
         backends_supporting: &[],
+        c_define: Some("NROS_SYSTEM_PARAM_SERVICES"),
+        cmake_token: None,
     },
 ];
 
@@ -87,6 +103,9 @@ mod tests {
         // xrce / cyclonedds have no CRC path → no backend feature.
         assert!(!c.backend_supports("xrce"));
         assert!(!c.backend_supports("cyclonedds"));
+        // Phase 261 W1 — C/C++ lowering slots.
+        assert_eq!(c.c_define, Some("NROS_SYSTEM_SAFETY_E2E"));
+        assert_eq!(c.cmake_token, Some("NANO_ROS_SAFETY_E2E"));
     }
 
     #[test]
@@ -95,10 +114,29 @@ mod tests {
         assert_eq!(c.nros_feature, "param-services");
         assert_eq!(c.backend_feature, None);
         assert!(!c.backend_supports("zenoh"));
+        // Phase 261 W1 — informational `#define`, no CMake knob.
+        assert_eq!(c.c_define, Some("NROS_SYSTEM_PARAM_SERVICES"));
+        assert_eq!(c.cmake_token, None);
     }
 
     #[test]
     fn unknown_axis_is_none() {
         assert!(capability("nope").is_none());
+    }
+
+    /// Phase 261 W1 — every registry row that carries a `c_define` uses the
+    /// `NROS_SYSTEM_`-prefixed macro the bake emits, so the W2 registry loop stays
+    /// byte-identical to the hardcoded `#define`s.
+    #[test]
+    fn c_defines_use_the_nros_system_prefix() {
+        for c in CAPABILITIES {
+            if let Some(def) = c.c_define {
+                assert!(
+                    def.starts_with("NROS_SYSTEM_"),
+                    "{} c_define `{def}` must be NROS_SYSTEM_-prefixed",
+                    c.declared
+                );
+            }
+        }
     }
 }
