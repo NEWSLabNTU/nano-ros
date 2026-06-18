@@ -17,17 +17,10 @@ use nros_log::{
 
 static LOGGER: Logger = Logger::new("smoke");
 
-const CONFIG: &str = "\
-[node]\n\
-domain_id = 0\n\
-\n\
-[[transport]]\n\
-kind = \"ethernet\"\n\
-ip = \"10.0.2.40/24\"\n\
-mac = \"52:54:00:12:34:99\"\n\
-gateway = \"10.0.2.2\"\n\
-locator = \"tcp/10.0.2.2:7453\"\n\
-";
+// Network config lives in a sibling `config.toml`, compile-baked here
+// (RFC-0004: config in a file, not hardcoded in code). `from_toml` applies the
+// build-time `NROS_DOMAIN_ID` override for per-fixture domain isolation.
+const CONFIG: &str = include_str!("../config.toml");
 
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {

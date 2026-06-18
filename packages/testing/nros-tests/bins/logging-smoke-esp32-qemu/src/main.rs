@@ -22,17 +22,10 @@ nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
 static LOGGER: Logger = Logger::new("smoke");
 
-const CONFIG: &str = "\
-[node]\n\
-domain_id = 0\n\
-\n\
-[[transport]]\n\
-kind = \"ethernet\"\n\
-ip = \"10.0.2.50/24\"\n\
-mac = \"02:00:00:00:00:99\"\n\
-gateway = \"10.0.2.2\"\n\
-locator = \"tcp/10.0.2.2:7454\"\n\
-";
+// Network config lives in a sibling `config.toml`, compile-baked here
+// (RFC-0004: config in a file, not hardcoded in code). `from_toml` applies the
+// build-time `NROS_DOMAIN_ID` override for per-fixture domain isolation.
+const CONFIG: &str = include_str!("../config.toml");
 
 #[entry]
 fn main() -> ! {

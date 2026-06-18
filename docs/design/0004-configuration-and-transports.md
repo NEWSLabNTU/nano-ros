@@ -21,12 +21,18 @@ superseded-by: null
 > see RFC-0031.
 >
 > **Grounded-reality update (2026-06).** A sweep of `examples/**` found **0
-> `nros.toml` and 0 nano-ros `config.toml` files**: both legacy config files are
-> fully unused. The embedded direct-mode runtime role `nros.toml` was meant to keep
-> (§5-§7) **never landed** — embedded net/RT config lives in
-> `[package.metadata.nros.deploy.<t>]` (`DeployOverlay`) + board features + Kconfig.
-> `nros.toml` is therefore legacy in full and retired as a file (phase-256), not
-> narrowed. See §3 "Config in practice".
+> `nros.toml` files** — the workspace-root / overlay `nros.toml` is legacy in full
+> and retired (phase-256). The bulk of embedded net/RT config lives in
+> `[package.metadata.nros.deploy.<t>]` (`DeployOverlay`) + board features + Kconfig,
+> baked by the `nros::main!()` codegen pipeline. See §3 "Config in practice".
+>
+> **Standalone `config.toml` is a SUPPORTED file path (2026-06, issue 0081 wontfix).**
+> Hand-written `no_std` embedded apps/fixtures that bypass the `nros::main!()` /
+> `DeployOverlay` codegen read a dedicated `config.toml` (`[node]` / `[[transport]]` /
+> `[node.rt]`) at compile time via `include_str!("../config.toml")` →
+> `Config::from_toml`. This keeps board net config **in a file, not hardcoded in
+> Rust** — the maintainer's standing principle. The `logging-smoke-*` fixtures use it.
+> Only the OLD `config.toml [network]/[zenoh]/[scheduling]` schema is retired (§8).
 
 ## 1. Unifying principle
 
@@ -74,7 +80,7 @@ Ownership:
 | node identity (class, name, namespace) | `[package.metadata.nros.node]` / `nano_ros_node_register(...)` |
 | entry / boot / deploy target | `[package.metadata.nros.entry]` (+ `[..deploy.<t>]`) / `nano_ros_entry(...)` |
 | system topology, components, launches, deploy, **rmw**, **domain** | `system.toml` (bringup pkg; or optional single-node) |
-| **embedded runtime net/RT (single-node)** | **`[package.metadata.nros.deploy.<t>]` → `DeployOverlay`** (Rust) / `nano_ros_deploy(...)` (C/C++) + board-crate features + Kconfig |
+| **embedded runtime net/RT (single-node)** | **`[package.metadata.nros.deploy.<t>]` → `DeployOverlay`** (codegen apps, Rust) / `nano_ros_deploy(...)` (C/C++) + board-crate features + Kconfig; **or a standalone `config.toml` → `Config::from_toml`** (hand-written `no_std` apps that bypass codegen — §5) |
 | ROS identity + msg `<depend>` (codegen) | `package.xml` (both languages, both scales) |
 
 ### Config in practice (verified 2026-06)
@@ -82,11 +88,17 @@ Ownership:
 A sweep of `examples/**` grounds the table above and corrects the §5-§7 schemas
 below (which describe an `nros.toml` home that **never materialized**):
 
-- **`config.toml`: 0 nano-ros files.** Fully retired (§8). (The `.cargo/config.toml`
-  files in examples are Cargo's own, unrelated.)
-- **`nros.toml`: 0 files.** No example declares one — not as overlay, not as
-  embedded-runtime. The §5/§6/§7 `[node]`/`[[transport]]`/`[node.rt]` schemas are
-  **design that did not land as a file surface.**
+- **`config.toml`: 0 *example* files, but a SUPPORTED file path.** The old
+  `[network]/[zenoh]/[scheduling]` schema is retired (§8); the direct-mode
+  `[node]`/`[[transport]]`/`[node.rt]` `config.toml` read via `Config::from_toml`
+  (`include_str!`) is a kept standalone-file home for hand-written `no_std` apps that
+  bypass the codegen pipeline (§5). The `logging-smoke-{esp32-qemu,freertos-mps2,
+  threadx-riscv64}` test fixtures ship one. (The `.cargo/config.toml` files in
+  examples are Cargo's own, unrelated.)
+- **`nros.toml`: 0 files, retired.** No example declares one — not as overlay, not as
+  embedded-runtime. Its `[node]`/`[[transport]]`/`[node.rt]` direct-mode schema did
+  land — but as a standalone **`config.toml`** (above) parsed by the same
+  `Config::from_toml`, not as an `nros.toml` file.
 - **Embedded net/RT config lives in `[package.metadata.nros.deploy.<t>]`.** E.g.
   `examples/stm32f4/rust/talker` declares `locator`/`ip`/`gateway`/`netmask` there;
   `nros::main!()` bakes them into a `DeployOverlay` that `BoardEntry::run_with_deploy`
@@ -187,18 +199,23 @@ overlay is now a **deprecated fallback that warns** (no fixture declares it), re
 next release; a binary's multi-RMW link set comes from `[[bridge]]` here (`bridged_rmws()` →
 `PlanBuildOptions::bridged_rmws` → `rmw_set`), not the overlay.
 
-## 5. `nros.toml` — embedded direct-mode runtime config *(superseded — never landed)*
+## 5. Standalone `config.toml` — embedded direct-mode runtime config *(supported, file-based)*
 
-> **Status (2026-06): legacy, slated for removal.** This section described the
-> intended embedded home — a hand-written single-node app reading `nros.toml` via
-> `Config::from_toml` (compile-baked `include_str!`), carrying `[node]` /
-> `[[transport]]` / `[node.rt]`. **It never materialized: 0 examples ship an
-> `nros.toml`.** The job it was meant to do is done by
-> `[package.metadata.nros.deploy.<t>]` → `DeployOverlay` (baked by `nros::main!()`,
-> applied via `BoardEntry::run_with_deploy`) for net config, and board-crate Cargo
-> features + Kconfig for RT/stack. The only `nros.toml` reads that ever existed are
-> the deprecated Phase-172 planner overlay (§3.1, being retired). phase-256 removes
-> the file outright — see "Config in practice" (§3).
+> **Status (2026-06): supported as a file, not via `nros.toml`.** This section
+> describes the embedded home for **hand-written `no_std` single-node apps that bypass
+> the `nros::main!()` codegen** — a `config.toml` read at compile time via
+> `Config::from_toml(include_str!("../config.toml"))`, carrying `[node]` /
+> `[[transport]]` / `[node.rt]`. The original design filed this under `nros.toml`;
+> **`nros.toml` never materialized (0 files) and is retired**, but the direct-mode
+> schema itself is alive — parsed from a standalone **`config.toml`** by every board
+> crate's `Config::from_toml`. This keeps net config **in a file, not hardcoded in
+> Rust builder calls** (maintainer principle; issue 0081 wontfix). The
+> `logging-smoke-*` test fixtures use exactly this path.
+>
+> For apps that DO go through `nros::main!()`, the codegen route is preferred:
+> `[package.metadata.nros.deploy.<t>]` → `DeployOverlay` (applied via
+> `BoardEntry::run_with_deploy`) for net config, board-crate Cargo features + Kconfig
+> for RT/stack. Both file homes are supported; pick by whether the app uses codegen.
 
 The deploy-overlay shape that replaced it (the real embedded-runtime home):
 
@@ -318,12 +335,16 @@ RMW backend selection (declared in `system.toml` / deploy override / flag, then
 lowered to a cargo feature or `-DNANO_ROS_RMW`, per-deploy scope) is owned by
 **RFC-0031**, not this RFC.
 
-`config.toml` (`[network]`/`[zenoh]`/`[scheduling]`) is **retired** (Phase
-172.K.6) — **0 nano-ros `config.toml` files remain in `examples/**`** (verified
-2026-06). Its fields' real home is the `deploy` class (net) + board features /
-Kconfig (RT), not the `nros.toml` blocks the original retirement named (those
-blocks also never landed — §5). The `nros config show --config <path>` legacy
-reader serves a file no example ships; it is scrubbed with the file retirement.
+The **old** `config.toml` schema (`[network]`/`[zenoh]`/`[scheduling]`) is **retired**
+(Phase 172.K.6) — superseded by the `deploy` class (net) + board features / Kconfig
+(RT). The `nros config show --config <path>` legacy reader for it is scrubbed.
+
+The **direct-mode** `config.toml` (`[node]`/`[[transport]]`/`[node.rt]`, parsed by
+`Config::from_toml`) is **NOT retired** — it is the supported standalone-file home for
+hand-written `no_std` apps that bypass the `nros::main!()` codegen (§5; issue 0081
+wontfix). 0 examples ship one, but the `logging-smoke-*` fixtures do, and the board
+crates keep `Config::from_toml`. The maintainer principle — net config belongs in a
+file, not hardcoded in Rust — keeps this path first-class alongside `DeployOverlay`.
 
 ## 9. Gaps & the config tidy (phase-227 / phase-256)
 
@@ -357,6 +378,14 @@ callback-groups), **system** (topology/capabilities/tiers — agnostic),
 
 ## Changelog
 
+- 2026-06 (config.toml kept as a file path; issue 0081 wontfix) — Reversed the
+  "config.toml fully retired" stance. The OLD `[network]/[zenoh]/[scheduling]` schema
+  stays retired, but the direct-mode `config.toml` (`[node]`/`[[transport]]`/`[node.rt]`)
+  read via `Config::from_toml(include_str!())` is a **supported standalone-file home**
+  for hand-written `no_std` apps that bypass the `nros::main!()` codegen — net config in
+  a file, not hardcoded in Rust (maintainer principle). The 3 `logging-smoke-*` fixtures
+  moved their inline `const CONFIG` into sibling `config.toml` files. Updated the header
+  note, §3 table + "Config in practice", §5 (renamed to standalone `config.toml`), §8.
 - 2026-06 (grounded-reality revision) — A sweep of `examples/**` (0 `config.toml`,
   0 `nros.toml`) showed `nros.toml`'s §5 embedded-runtime role never landed: embedded
   net/RT lives in `[package.metadata.nros.deploy.<t>]` → `DeployOverlay` + board

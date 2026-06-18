@@ -24,19 +24,10 @@ extern crate nros_platform as _;
 
 static LOGGER: Logger = Logger::new("smoke");
 
-// Minimal direct-mode nros.toml (Phase 172.K). Slirp NAT default network on
-// QEMU MPS2-AN385.
-const CONFIG: &str = "\
-[node]\n\
-domain_id = 0\n\
-\n\
-[[transport]]\n\
-kind = \"ethernet\"\n\
-ip = \"10.0.2.99/24\"\n\
-mac = \"02:00:00:00:00:99\"\n\
-gateway = \"10.0.2.2\"\n\
-locator = \"tcp/10.0.2.2:7451\"\n\
-";
+// Network config lives in a sibling `config.toml`, compile-baked here
+// (RFC-0004: config in a file, not hardcoded in code). `from_toml` applies the
+// build-time `NROS_DOMAIN_ID` override for per-fixture domain isolation.
+const CONFIG: &str = include_str!("../config.toml");
 
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {

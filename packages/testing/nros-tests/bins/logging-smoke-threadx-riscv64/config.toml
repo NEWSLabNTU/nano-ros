@@ -1,0 +1,12 @@
+# ThreadX RISC-V QEMU logging-smoke network config (Slirp NAT default).
+# Read at compile time via `include_str!("../config.toml")` →
+# `Config::from_toml` (RFC-0004: config in a file, not hardcoded in code).
+[node]
+domain_id = 0
+
+[[transport]]
+kind = "ethernet"
+ip = "10.0.2.40/24"
+mac = "52:54:00:12:34:99"
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:7453"
