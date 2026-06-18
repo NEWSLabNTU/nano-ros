@@ -90,7 +90,6 @@ inline void entry_tick_yield() {
 #endif
 }
 
-
 /// Phase 240.2 (RFC-0043) — the **real-executor** spin loop, shared by every
 /// Board's `run_components`. Unlike `EntryNodeRuntime::spin`, it runs NO
 /// synthesizing interpreter: the user's components already registered their real
@@ -120,7 +119,6 @@ inline int32_t component_spin_loop() {
     }
     return 0;
 }
-
 
 } // namespace detail
 
