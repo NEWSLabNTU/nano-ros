@@ -3,7 +3,7 @@
 use super::{
     manifest::{ManifestArtifact, endpoint_requirements, load_manifest},
     names,
-    params::{ParameterInputs, effective_parameters, load_toml_values},
+    params::{ParameterInputs, effective_parameters},
     plan::{NrosPlan, PlanBuildOptions, PlanEntity},
     schema::InterfaceRef,
     workspace::{Workspace, unique_paths},
@@ -101,17 +101,17 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
         .map(|path| load_manifest(path))
         .collect::<Result<Vec<_>>>()?;
 
-    let mut nros_toml = options.nros_toml_files.clone();
-    if let Some(system_toml) = workspace.package_nros_toml(&options.system_pkg) {
-        nros_toml.push(system_toml);
-    }
-    // Phase 254 — capture the bringup's typed `system.toml` path here (workspace in
-    // scope) so the capability axes can read the SSoT later.
+    // Phase 256 W9 — the `nros.toml` overlay is RETIRED. The bringup's `nros.toml`
+    // is no longer auto-discovered; the typed `system.toml` is the only config
+    // source (capabilities/rmw/build-shape/tiers all resolve from it). `overlays`
+    // is therefore always empty — the remaining overlay-reading helpers
+    // (`schema_build_json`'s `[build]` loop, `collect_sched_contexts`,
+    // `effective_parameters`) no-op on it and retire with the reader cleanup.
     let system_toml_path = workspace.package_system_toml(&options.system_pkg);
-    let overlays = load_toml_values(&unique_paths(nros_toml))?;
+    let overlays: Vec<Value> = Vec::new();
 
     let (instances, executables, mut diagnostics) =
-        build_instances(&record, &metadata, &workspace, &overlays, &record_path);
+        build_instances(&record, &metadata, &overlays, &record_path);
     diagnostics.extend(check_effective_graph_node_names(&instances, &record_path));
     diagnostics.extend(check_manifest_endpoints(
         &instances,
@@ -728,7 +728,7 @@ fn schema_plan_json(
         "version": 2,
         "system": options.system_pkg,
         "trace": {
-            "system_config": options.nros_toml_files.first().map(|p| p.display().to_string()).unwrap_or_else(|| "nros.toml".to_string()),
+            "system_config": system_toml.map(|p| p.display().to_string()).unwrap_or_else(|| "system.toml".to_string()),
             "launch_record": record_path.display().to_string(),
             "generated_by": "nros plan",
         },
@@ -1944,7 +1944,6 @@ fn infer_callback_groups(instances: &[Value], chains: &[Value]) -> Vec<Value> {
 fn build_instances(
     record: &Value,
     metadata: &[JsonArtifact],
-    workspace: &Workspace,
     overlays: &[Value],
     record_path: &Path,
 ) -> (Vec<Value>, Vec<Value>, Vec<Value>) {
@@ -1991,7 +1990,6 @@ fn build_instances(
             },
             &mut PlanCtx {
                 metadata,
-                workspace,
                 overlays,
                 record_path,
                 counts: &mut counts,
@@ -2046,7 +2044,6 @@ fn build_instances(
             },
             &mut PlanCtx {
                 metadata,
-                workspace,
                 overlays,
                 record_path,
                 counts: &mut counts,
@@ -2094,7 +2091,6 @@ fn build_instances(
             },
             &mut PlanCtx {
                 metadata,
-                workspace,
                 overlays,
                 record_path,
                 counts: &mut counts,
@@ -2170,7 +2166,6 @@ struct NodeInstanceSpec<'a> {
 /// instance indices and [`diagnostics`](Self::diagnostics)).
 struct PlanCtx<'a> {
     metadata: &'a [JsonArtifact],
-    workspace: &'a Workspace,
     overlays: &'a [Value],
     record_path: &'a Path,
     counts: &'a mut HashMap<(String, String), usize>,
@@ -2193,7 +2188,6 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
         machine,
     } = spec;
     let metadata = ctx.metadata;
-    let workspace = ctx.workspace;
     let overlays = ctx.overlays;
     let record_path = ctx.record_path;
 
@@ -2242,13 +2236,11 @@ fn build_node_instance(spec: NodeInstanceSpec<'_>, ctx: &mut PlanCtx<'_>) -> Val
         ));
     }
 
-    let package_nros = workspace
-        .package_nros_toml(package)
-        .and_then(|path| load_toml_values(&[path]).ok())
-        .and_then(|mut values| values.pop());
+    // Phase 256 W9 — per-package `nros.toml` parameter overlays retired; parameters
+    // come from source metadata / launch / param files / Cargo metadata only.
     let parameters = effective_parameters(ParameterInputs {
         source_metadata: source_metadata.map(|artifact| &artifact.value),
-        package_nros: package_nros.as_ref(),
+        package_nros: None,
         launch_params: params,
         param_files,
         overlays,
