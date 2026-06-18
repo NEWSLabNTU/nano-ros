@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(consumer LANGUAGES CXX)
+# C enabled alongside CXX: the umbrella wires `nano_ros_link_rmw(consumer)` (this
+# exe links nano-ros's cpp std_msgs binding → libnros_cpp.a → the RMW-backend
+# registration stub, a generated `.c`). nros-cpp itself is C++; the stub is C.
+project(consumer LANGUAGES C CXX)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)

@@ -52,3 +52,15 @@ nros_workspace_interfaces()
 
 # 5) Consumer.
 add_subdirectory(src/consumer)
+
+# 6) The consumer's `find_package(std_msgs)` resolves to THIS workspace's
+#    `std_msgs`, which the umbrella builds as a nano-ros cpp FFI binding —
+#    so the consumer exe links `libnros_cpp.a`. nros-cpp's runtime references
+#    the RMW-backend registration stub `nros_app_register_backends()`, whose
+#    sole (strong) def is emitted by `nano_ros_link_rmw` (phase-249 P4a removed
+#    the weak default → absence is a link error). Wire it on the consumer here,
+#    in the umbrella (the only nano-ros-specific file), so
+#    `src/consumer/CMakeLists.txt` stays verbatim-rclcpp.
+if(COMMAND nano_ros_link_rmw AND TARGET consumer)
+    nano_ros_link_rmw(consumer)
+endif()
