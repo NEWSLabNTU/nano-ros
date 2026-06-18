@@ -41,34 +41,57 @@ nano_ros_workspace(
 
 ## C Node pkg
 
-A C Node pkg is declarative: it has no `main()`. It exports a package-
-mangled register symbol via `NROS_NODE_REGISTER(register_fn)`.
+A C Node pkg is a **typed component** (RFC-0043): no `main()`. It defines a
+state struct + a `configure(node, executor, self)` function and exports the
+C-ABI factory/configure seam via `NROS_C_COMPONENT(StateT, configure_fn)` — the
+typed Entry creates the node and runs `configure` on the real executor.
 
 ```cmake
-nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
-
+# Raw `/chatter` publisher carries the type name as a string → no generated C
+# bindings needed (so no nros_find_interfaces for this pkg).
 nano_ros_node_register(
     NAME     talker
     CLASS    c_talker_pkg::Talker
     LANGUAGE C
+    TYPED
     SOURCES  src/Talker.c
     DEPLOY   native)
 ```
 
 ```c
-#include <nros/node_pkg.h>
+#include <stdint.h>
+#include <nros/component.h>
 
-static nros_ret_t register_talker(nros_node_context_t* ctx) {
-    /* declare node entities here */
-    return NROS_RET_OK;
+typedef struct {
+    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    int32_t count;
+} c_talker_pkg_t;
+
+static void on_tick(void* ctx) {
+    c_talker_pkg_t* self = (c_talker_pkg_t*)ctx;
+    uint8_t buf[8] = {0x00, 0x01, 0x00, 0x00};  /* CDR_LE header + LE int32 */
+    buf[4] = (uint8_t)self->count;
+    (void)nros_cpp_publish_raw(self->pub, buf, sizeof(buf));
+    self->count++;
 }
 
-NROS_NODE_REGISTER(register_talker);
+static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor,
+                                   c_talker_pkg_t* self) {
+    self->count = 0;
+    int32_t rc = nros_cpp_publisher_create(node, "/chatter",
+        "std_msgs::msg::dds_::Int32_", "", nros_c_qos_default(), self->pub);
+    if (rc != 0) return rc;
+    size_t timer;
+    return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer);
+}
+
+NROS_C_COMPONENT(c_talker_pkg_t, talker_configure)
 ```
 
-`nano_ros_node_register()` injects `NROS_PKG_NAME` and
-`NROS_NODE_CLASS_NAME`, so the C object exports the same register,
-presence, and class-name symbols as the C++ Node-pkg macro.
+`nano_ros_node_register(... LANGUAGE C TYPED ...)` injects `NROS_PKG_NAME`, so
+`NROS_C_COMPONENT` exports the `__nros_c_component_<pkg>_{create,configure}`
+seam the typed Entry calls — interoperable with C++ `configure(Node&)` and Rust
+`nros::node!` components in one launch graph.
 
 ## Entry pkg
 

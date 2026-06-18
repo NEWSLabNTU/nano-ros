@@ -16,7 +16,7 @@ changes language-side is the cmake-fn / macro surface.
 
 | Role | Rust | C / C++ |
 |---|---|---|
-| **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` declaring `register_node(NodeContext&)` + `NROS_NODE_REGISTER(<pkg>::<Class>, "…")`; `CMakeLists.txt` calling `nano_ros_node_register(NAME … CLASS … SOURCES … DEPLOY native)` |
+| **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` with a `configure(::nros::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_node_register(NAME … CLASS … SOURCES …)` |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
 | **Entry pkg** | `src/main.rs` with `nros::main!(launch = "demo_bringup:system.launch.xml")` | `src/main.cpp` with `NROS_MAIN(nros::board::NativeBoard, "demo_bringup:system.launch.xml")`; `CMakeLists.txt` calling `nano_ros_entry(NAME … LAUNCH "demo_bringup:system.launch.xml" DEPLOY native)` |
 | **Workspace root** | `Cargo.toml [workspace] members = […]` | `CMakeLists.txt` calling `nano_ros_workspace(BACKEND zenoh PLATFORM posix SUBDIRS src/talker_pkg src/listener_pkg src/native_entry)` |
@@ -95,8 +95,11 @@ workspace; the per-pkg CMakeLists doesn't change between modes.
 
 ## Node pkg
 
-Declarative — no `main()`. The pkg ships a class whose `register_node()`
-describes the entities the planned host runtime will instantiate:
+A **typed component** (RFC-0043) — no `main()`. The pkg ships a class with a
+`configure(::nros::Node&)` method that creates real entities (a `Publisher`, a
+`Timer`) and binds member callbacks **by identity** (member-fn-pointer template
+param, no string callback name, no interpreter). The Entry pkg constructs the
+object and calls `configure(node)`; the executor dispatches the callbacks.
 
 ```cmake
 # src/talker_pkg/CMakeLists.txt
@@ -108,45 +111,69 @@ nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 nano_ros_node_register(
     NAME    talker
     CLASS   talker_pkg::Talker     # §212.L.4 — class prefix must equal PROJECT_NAME
-    SOURCES src/Talker.cpp
-    DEPLOY  native)
+    SOURCES src/Talker.cpp)
+
+target_link_libraries(talker_pkg_talker_component PUBLIC std_msgs__nano_ros_cpp)
 ```
 
 ```cpp
-// src/talker_pkg/src/Talker.cpp
-#include "Talker.hpp"
+// src/talker_pkg/include/talker_pkg/Talker.hpp
+#pragma once
+#include <nros/component.hpp>
+#include <nros/nros.hpp>
 #include "std_msgs.hpp"
 
 namespace talker_pkg {
 
-::nros::Result Talker::register_node(::nros::NodeContext& ctx) {
-    ::nros::DeclaredNode node;
-    auto r = ctx.create_node(node, "node",
-        ::nros::NodeOptions::make("talker"));
+class Talker {
+    ::nros::Publisher<std_msgs::msg::Int32> pub_;
+    ::nros::Timer timer_;
+    int count_ = 0;
+
+    void on_tick();  // real body; bound via &Talker::on_tick (no name)
+
+  public:
+    ::nros::Result configure(::nros::Node& node);
+};
+
+}  // namespace talker_pkg
+```
+
+```cpp
+// src/talker_pkg/src/Talker.cpp
+#include "talker_pkg/Talker.hpp"
+
+namespace talker_pkg {
+
+void Talker::on_tick() {
+    std_msgs::msg::Int32 m;
+    m.data = count_++;
+    (void)pub_.publish(m);
+}
+
+::nros::Result Talker::configure(::nros::Node& node) {
+    ::nros::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
-    // … declare publisher, timer, callbacks …
-    return ctx.record_callback_effect(
-        "on_tick", ::nros::CallbackEffectKind::Publishes, "pub_chatter");
+    // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
+    return ::nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 1000, this);
 }
 
 }  // namespace talker_pkg
-
-NROS_NODE_REGISTER(talker_pkg::Talker, "talker_pkg::Talker");
 ```
 
-The macro at TU end lands the per-pkg mangled `__nros_component_talker_pkg_register`
-symbol (Phase 212.M.5.a.1) — the same ABI the Rust `nros::node!(Talker)`
-macro emits, so a C++ Node pkg drops into a Rust Entry pkg's launch
-graph and vice-versa.
+The Entry pkg constructs `Talker` in static storage and calls `configure(node)`
+on the real executor — the same component model the Rust `nros::node!(Talker)` +
+the C `NROS_C_COMPONENT` paths use, so C++, C, and Rust Node pkgs interoperate in
+one launch graph.
 
-The current compatibility scaffold for a C++ Node pkg is:
+Scaffold a C++ Node pkg with:
 
 ```bash
 $ nros new --component my-talker --lang cpp --use-case talker
 ✓ Created nano-ros C++ Node pkg 'my-talker'
   Class     : my_talker::Talker
   Node      : talker
-  Kind      : declarative Node pkg (Phase 212.L.9)
+  Kind      : typed component (RFC-0043)
 ```
 
 ## Bringup pkg
@@ -183,12 +210,13 @@ nano_ros_entry(
     DEPLOY  native)
 ```
 
-At configure time the cmake fn shells `nros codegen entry --lang cpp`,
-emits `${CMAKE_BINARY_DIR}/nros_main_generated.cpp` (the canonical
-`int main()` body that calls every `__nros_component_<pkg>_register`
-in launch order), appends it to the target's sources, and auto-links
-every `<pkg>_<exec>_component` static lib the launch XML named
-(Phase 219.J). The user's `main.cpp` is a single declarative line:
+At configure time the cmake fn shells `nros codegen entry --lang cpp --typed`,
+emits `${CMAKE_BINARY_DIR}/native_entry_nros_main_generated.cpp` (the canonical
+`int main()` body that constructs each launch node's component + calls
+`configure(node)` on the real executor via `NativeBoard::run_components`),
+appends it to the target's sources, and auto-links every
+`<pkg>_<exec>_component` static lib the launch XML named (Phase 219.J). The
+user's `main.cpp` is a single declarative line:
 
 ```cpp
 // src/native_entry/src/main.cpp
@@ -231,7 +259,7 @@ launch.xml / `package.xml` / Node pkg edit re-runs codegen.
 
 | Concern | Lives in |
 |---|---|
-| Node entity declarations | Node pkg `register_node()` |
+| Node entities + real callbacks | Node pkg `configure(::nros::Node&)` |
 | Topology + launch args + per-target deploy | Bringup pkg `system.toml` + `launch/*.launch.xml` |
 | `int main()` + executor init + spin | Generated TU emitted by the Entry pkg's cmake fn |
 | Board + RMW selection | Entry pkg's `nano_ros_entry(BOARD …)` arg |
