@@ -91,12 +91,58 @@ thread. Findings from the W5 exploration:
   `NANO_ROS_RMW` analog is per-package; capabilities live in `system.toml` (the
   bake) → architectural mismatch.
 
-**Design when picked up:** the bake emits `nros-system/system_config.cmake` —
-`set(<cmake_token> ON CACHE BOOL "" FORCE)` for each enabled axis whose row has a
-`cmake_token` — and every C/C++ bringup `include()`s it BEFORE
-`add_subdirectory(nros-cpp)` (so the option is set before nros-cpp reads it). Loop
-`CAPABILITIES` + `SystemToml::capability_enabled`, mirroring the W2 `#define` loop.
-Touches the C/C++ build templates (`scaffold.rs`) + examples.
+#### W5 design (explored 2026-06-19)
+
+**The crux is ordering, not the token.** `packages/core/nros-cpp/CMakeLists.txt`
+declares `option(NANO_ROS_SAFETY_E2E "…" OFF)` and reads it **at
+`add_subdirectory` time**. A C/C++ example flips a build knob by `set(...)`
+*before* pulling nano-ros in:
+
+```cmake
+set(NANO_ROS_RMW zenoh)                 # BEFORE — root CMake L22 default; example overrides
+add_subdirectory(<nano-ros-root> nano_ros)   # nros-cpp option() evaluates HERE (root L73)
+nano_ros_node_register(...)             # AFTER
+nano_ros_deploy(TARGET … RMW … DOMAIN_ID …)  # AFTER — emits deploy-metadata JSON
+```
+
+So the capability knob **cannot** ride `nano_ros_deploy` (it runs after
+`add_subdirectory` — too late for `option()`). It must be set in the same
+pre-`add_subdirectory` slot as `NANO_ROS_RMW`. Three pieces:
+
+**1. C/C++ declaration surface — `set(NANO_ROS_FEATURES "safety;…")` before
+`add_subdirectory`.** The native-idiom projection (RFC-0004) of `system.toml`
+`features = ["safety"]`, symmetric with the hand-written `set(NANO_ROS_RMW …)`.
+Hand-written for single-node C/C++ apps (no `system.toml`/bake); **bake-emitted**
+for multi-component systems (below).
+
+**2. declared→`cmake_token` map — extend `cmake/NanoRosCapabilities.cmake`.** Add
+`nros_lower_system_features(<features-list>)` that maps each declared axis to its
+`cmake_token` and `set(<token> ON CACHE BOOL "" FORCE)`. The Rust `Capability`
+registry stays the SSoT; the CMake map is a thin mirror. Precedent: that same
+module already hardcodes the board-cap map (`heap → NROS_PLATFORM_HAS_MALLOC`,
+direct `file(STRINGS)` read, no generator/committed fragment). **Drift guard:** a
+Rust test asserts the registry's `(declared, cmake_token)` pairs equal the CMake
+module's map (parse the `.cmake`), so the two can't skew. (Alternative considered:
+*generate* the `.cmake` from the registry — rejected for this scale; it adds a
+build-time codegen step + committed artifact against the module's established
+"no generator" ethos, for a 1–2 entry map. Revisit if the map grows large.)
+
+**3. Lowering call site — root `CMakeLists.txt`, right after the `NANO_ROS_RMW`
+block (≈L22, before `add_subdirectory(packages/core/nros-cpp)` L73):**
+`nros_lower_system_features("${NANO_ROS_FEATURES}")`. nros-cpp's `option()` then
+observes the forced cache value.
+
+**Multi-component systems (the bake path):** `codegen_system` emits
+`nros-system/system_config.cmake` — `set(NANO_ROS_FEATURES "<enabled axes>")` (or
+the tokens directly) computed by looping `CAPABILITIES` + `capability_enabled`,
+mirroring the W2 `#define` loop — and the generated/scaffolded C/C++ bringup
+`include()`s it before `add_subdirectory`. Single SSoT (`system.toml`) → both the
+`#define` (source) and the cache option (build).
+
+**Touch list:** `cmake/NanoRosCapabilities.cmake` (+ root `CMakeLists.txt` call),
+`scaffold.rs` (bringup template `include()` + the `NANO_ROS_FEATURES` doc line),
+`codegen_system.rs` (emit `system_config.cmake`), a drift-guard test, and one
+worked C/C++ fixture enabling `safety` to prove the path end-to-end.
 
 **Deferred because:** `safety` is the only `cmake_token` (zenoh-only CRC) and **0**
 examples enable it — the per-axis CMake-knob plumbing cost doesn't repeat yet (the
