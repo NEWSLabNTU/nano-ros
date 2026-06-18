@@ -153,9 +153,12 @@ already exists in `system.toml` for the bake but the planner ignores it).
     into the per-node JSON the planner already reads — keeps the planner cargo-free); (b) let
     `plan_system` load `NrosConfig` (introduces a `cargo metadata` shell in the planner — against its
     current design); or (c) unify Rust scheduling codegen through the bake so the tier table feeds
-    both languages (bigger refactor). **DECISION: (c), locked 2026-06-18** — resolve tiers in the
-    codegen tools (`generate` Rust, bake C); planner stops owning scheduling. Drift mitigated by the
-    shared `resolve_tiers` + a shared `ResolvedTier → PlanSchedContext` mapping. Plan in issue 0082.
+    both languages (bigger refactor). **DECISION: (c), locked 2026-06-18; design explored + folded
+    into issue 0082.** Resolve tiers in the codegen tools (`generate` Rust, bake C); planner stops
+    owning scheduling. `generate_package` loads `NrosConfig` (`component_workspace`) → `resolve_tiers`
+    → a **direct, µs-lossless `ResolvedTier → SchedContextSpec`** emit (NOT via the ms-based
+    `PlanSchedContext`), binding callbacks by `(component, group) → tier`. Bake unchanged. Drift
+    bounded by the shared `resolve_tiers`. Ready to implement.
 - **Wave 5 — `[[shared_state]]` → DROPPED. DECISION: remove the feature, scoped out (2026-06-18).**
   shared_state is a raw in-process shared-memory primitive — **not a ROS concept.** nano-ros is an
   RT *ROS* client (graph = nodes + pub/sub + services + actions + params + lifecycle); ROS 2's own

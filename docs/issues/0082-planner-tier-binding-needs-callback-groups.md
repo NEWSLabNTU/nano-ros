@@ -50,21 +50,51 @@ UX/maintainability trade accepted: tier errors surface at the codegen stage (per
 language) rather than once at `nros plan`; consistency relies on both tools feeding
 `resolve_tiers` the same inputs (target RTOS + `NrosConfig` callback_groups).
 
-## Implementation plan (c)
+## Design (explored 2026-06-18) — direct, lossless mapping
 
-1. **Shared mapping** — `ResolvedTier → PlanSchedContext` helper (priority `i64→u8`,
-   `period_us`/`budget_us`/`deadline_us` carry, `class`/`deadline_policy` string →
-   enum). Lives where both codegen tools reach it.
-2. **`generate_package`** — load `NrosConfig` via `component_workspace`,
-   `collect_callback_groups`, `resolve_tiers` → map → `SchedContextSpec`; bind
-   callbacks by `(node, group)` → tier; replaces the plan's overlay `sched_contexts`.
-3. **Bake** — already resolves tiers; align it to the shared mapping where it lowers
-   to C (no behaviour change for the existing tier path).
+The integration was mapped against the real code. Findings:
+
+- **`generate_package` has the inputs.** `GenerateOptions.component_workspace` →
+  `NrosConfig::from_workspace` gives the bringup `[tiers]`/`[[node_overrides]]`/
+  `[[component]]` + each component pkg's `callback_groups` — the *same* inputs the
+  bake feeds `resolve_tiers`. So generate can resolve tiers itself.
+- **`resolve_tiers` is reused as-is** (shared in `nros-orchestration-ir`); both bake
+  and generate feed it the same `(tiers, node_overrides, component_names,
+  callback_groups, target_rtos)` → drift bounded to one shared resolver.
+- **Binding is feasible.** `collect_callback_groups` keys by the system
+  `[[component]].name` (the instance name), so `ResolvedTier.members` are
+  `(component-instance-name, group)`. A plan callback carries `group`, and its
+  `PlanInstance` carries `component` → generate matches `(instance.component,
+  callback.group) → tier`. (Confirm `PlanInstance.component == [[component]].name`
+  in code.)
+
+**Mapping decision — DIRECT `ResolvedTier → SchedContextSpec`, not via
+`PlanSchedContext`.** `ResolvedTier` is **µs-native**, `SchedContextSpec` (runtime)
+is **µs**, but `PlanSchedContext` is **ms** — routing through it round-trips
+µs→ms→µs (**loses sub-ms**), forces `priority: i64 → Option<u8>`, and double
+enum-maps (`SchedClass`≠`SchedClassSpec`, `DeadlinePolicy`≠`DeadlinePolicySpec`).
+A **direct** tier→`SchedContextSpec` emitter is µs-lossless, clamps `i64`→`os_pri:
+u8` once, and enum-maps straight to the runtime spec. The `PlanSchedContext` ms
+units are an overlay-model legacy being dropped — don't re-inherit them.
+
+- `priority: i64 → os_pri: u8` — clamp `[0,255]` + warn out-of-range. Zephyr
+  negative coop priorities are the **bake/C** concern, not generate's Rust path.
+- `class` string → `SchedClassSpec`, `deadline_policy` string → `DeadlinePolicySpec`
+  — validated, clear error on unknown (the W4.1 doc lists the real variants).
+
+## Implementation plan (c, direct mapping)
+
+1. **`generate_package`** — load `NrosConfig` (component_workspace) → bringup tiers +
+   `collect_callback_groups` → `resolve_tiers` → `ResolvedTierTable`.
+2. **Direct `ResolvedTier → SchedContextSpec` emitter** (µs-native) + the
+   `(component, group) → tier` callback binding; replaces the `plan.sched_contexts`
+   read. `PlanSchedContext` / the planner sched path go vestigial.
+3. **Bake** — unchanged (already resolves tiers from the same inputs).
 4. **Planner** — drop the overlay `sched_contexts` emission; `plan.sched_contexts`
-   goes vestigial (kept empty for transition, removed with the overlay in W9).
+   retires with the `nros.toml` overlay (W9).
 
 ## State
 
-- W4.1 (TierDef/ResolvedTier EDF fields) is landed.
-- Decision (c) locked; implementation per the plan above. The overlay
-  `[[scheduling.contexts]]` (0 users) retires with the `nros.toml` file (W9).
+- W4.1 (TierDef/ResolvedTier EDF fields) is landed + enum-doc fixed.
+- Decision (c) locked, design explored + folded here; ready to implement. The
+  overlay `[[scheduling.contexts]]` (0 users) retires with `nros.toml` (W9).
