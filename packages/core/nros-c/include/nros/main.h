@@ -33,19 +33,6 @@
 extern "C" {
 #endif
 
-/* Phase 219.C — Native (POSIX) board adapter for C-language Entry pkgs.
- *
- * Wraps the same init/spin/shutdown lifecycle the C++ `NativeBoard::run`
- * adapter owns. `entry` is invoked once with a recording NodeContext
- * before the spin loop starts; the function returns the first non-zero
- * code from `entry` or from the spin loop, or 0 on graceful shutdown.
- *
- * The Native NodeContext runtime that turns recorded entities into
- * running publishers/subscriptions is **NOT** supplied today
- * (see `<nros/main.hpp>` for the parity caveat).
- */
-NROS_PUBLIC int nros_board_native_run(nros_node_register_fn entry);
-
 /* Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle. The C-ABI sibling of
  * the C++ `NativeBoard::run_components`; the generated typed C TU (emitted by
  * `nros codegen entry --lang c --typed`) calls this from `main`. `setup` is

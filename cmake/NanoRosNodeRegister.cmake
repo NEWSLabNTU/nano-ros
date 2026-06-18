@@ -360,9 +360,13 @@ function(nano_ros_node_register)
                     "LANGUAGE C or CPP (got '${_nrc_lang}').")
             endif()
         else()
-            configure_file(
-                "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main.cpp.in"
-                "${_entry_src}" @ONLY)
+            # Phase 257 (Stage-3) — the non-TYPED NuttX carrier drove the retired
+            # `EntryNodeRuntime` interpreter (`NuttxBoard::run`); it is gone. Every
+            # NuttX Node pkg is now TYPED (`NROS_C_COMPONENT` / `configure`).
+            message(FATAL_ERROR
+                "nano_ros_node_register: the non-typed NuttX carrier is retired "
+                "(phase-257). Pass `TYPED` (LANGUAGE C or CPP) for the real-executor "
+                "carrier.")
         endif()
 
         # Carrier executable named after the pkg so the ELF lands at

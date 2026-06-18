@@ -312,14 +312,6 @@ pub fn write_header_to_corrosion(filename: &str, contents: &str) {
     std::fs::write(&dest, contents).expect("write corrosion header");
 }
 
-pub fn host_os() -> bool {
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    matches!(
-        target_os.as_str(),
-        "linux" | "macos" | "freebsd" | "openbsd" | "netbsd"
-    )
-}
-
 pub fn env_usize(name: &str, default: usize) -> usize {
     println!("cargo:rerun-if-env-changed={name}");
     env::var(name)

@@ -264,8 +264,14 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     } else {
         match lang {
             entry_codegen::Lang::Rust => entry_codegen::emit_rust::emit(&plan),
-            entry_codegen::Lang::Cpp => entry_codegen::emit_cpp::emit(&plan),
-            entry_codegen::Lang::C => entry_codegen::emit_c::emit(&plan),
+            // Phase 257 (Stage-3) — the non-typed C/C++ entry (the synthesizing
+            // `EntryNodeRuntime` interpreter) is retired; every C/C++ entry is now
+            // typed (`--typed`, real executor). Rust entries stay register-based.
+            entry_codegen::Lang::Cpp | entry_codegen::Lang::C => bail!(
+                "non-typed --lang {} entry is retired (phase-257): pass `TYPED` to \
+                 nano_ros_entry (→ `--typed`) for the real-executor entry",
+                args.lang
+            ),
         }
     };
 

@@ -19,9 +19,9 @@
 //!     arg_overrides: vec![],
 //! })?;
 //! let src = match lang {
-//!     Lang::Rust => emit_rust::emit(&plan),
-//!     Lang::Cpp  => emit_cpp::emit(&plan),
-//!     Lang::C    => emit_c::emit(&plan),
+//!     Lang::Rust => emit_rust::emit(&plan),               // register-based
+//!     Lang::Cpp  => emit_cpp::emit_typed(&plan)?,         // typed (RFC-0043)
+//!     Lang::C    => emit_c::emit_typed(&plan)?,           // typed (phase-257)
 //! };
 //! ```
 //!
@@ -139,11 +139,7 @@ impl Plan {
     /// The multi-host deploy bakes one entry per entry in this set.
     #[must_use]
     pub fn hosts(&self) -> Vec<String> {
-        let mut hs: Vec<String> = self
-            .nodes
-            .iter()
-            .filter_map(|n| n.host.clone())
-            .collect();
+        let mut hs: Vec<String> = self.nodes.iter().filter_map(|n| n.host.clone()).collect();
         hs.sort();
         hs.dedup();
         hs
@@ -196,9 +192,7 @@ fn qos_overrides_from_params(params: &[crate::launch_parser::ParamSpec]) -> Vec<
             })
         })
         .collect();
-    out.sort_by(|a, b| {
-        (&a.topic, &a.role, &a.policy).cmp(&(&b.topic, &b.role, &b.policy))
-    });
+    out.sort_by(|a, b| (&a.topic, &a.role, &a.policy).cmp(&(&b.topic, &b.role, &b.policy)));
     out
 }
 
@@ -498,7 +492,10 @@ mod tests {
             launch_file: std::path::PathBuf::from("/tmp/x.launch.xml"),
         };
 
-        assert_eq!(plan.hosts(), vec!["jetson".to_string(), "workstation".to_string()]);
+        assert_eq!(
+            plan.hosts(),
+            vec!["jetson".to_string(), "workstation".to_string()]
+        );
 
         // workstation entry: its own node + the shared (unhosted) one.
         let ws = plan.for_host("workstation");

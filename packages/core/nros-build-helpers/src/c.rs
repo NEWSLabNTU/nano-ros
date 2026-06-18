@@ -53,21 +53,10 @@ pub fn run() {
         true,
     );
 
-    // Phase 219.C — `nros_board_native_run` C-FFI Board adapter for
-    // Entry-pkg generated `main.c` TUs (the C counterpart of the C++
-    // `nros::board::NativeBoard::run` adapter in `<nros/main.hpp>`).
-    // Host-only — the body uses POSIX `signal`/`nanosleep`. Bare-metal
-    // and Zephyr cross builds skip this TU so they aren't forced to
-    // resolve those symbols against a libc they don't carry.
-    if crate::shared::host_os() {
-        compile_c_stub(
-            &manifest_dir,
-            "c-stubs/main_board.c",
-            Some(&manifest_dir.join("include")),
-            "nros_c_main_board",
-            false,
-        );
-    }
+    // Phase 257 (Stage-3) — the legacy `nros_board_native_run` C-FFI adapter
+    // (a no-op sleep-spin with no executor, for the retired declarative entry)
+    // is deleted. The typed C entry uses `nros_board_native_run_components`
+    // (defined in nros-cpp), driving the real executor.
 
     // Re-run if source files change (for library rebuild + header regen)
     println!("cargo:rerun-if-changed=src/");
