@@ -6,7 +6,7 @@
 //! - Backward compatibility (safety publisher → standard listener)
 
 use nros_tests::fixtures::{
-    ManagedProcess, Rmw, ZenohRouter, build_native_c_example_rmw,
+    ManagedProcess, Rmw, ZenohRouter, build_native_c_example_rmw, build_native_cpp_example_rmw,
     build_native_declarative_safety_listener, build_native_listener, build_native_listener_safety,
     build_native_talker_safety, require_zenohd, zenohd_unique,
 };
@@ -283,6 +283,55 @@ fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
     assert!(
         crc_ok >= 3,
         "Expected >=3 validated CRCs from the C API, got {crc_ok}. Output:\n{output}"
+    );
+    assert_eq!(crc_fail, 0, "Expected no CRC failures. Output:\n{output}");
+}
+
+/// Phase-259 W3 (issue 0073/0076 §B) — the C++ analog of the C safety e2e. The
+/// C++ ABI (`Subscription::try_recv_validated`) calls the same backend
+/// `RmwSubscriber::try_recv_validated`; this gives the C++ surface its own
+/// regression coverage. The C++ listener logs `[SAFETY] INTEGRITY ... crc=ok`.
+#[rstest]
+fn test_cpp_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
+    use std::process::Command;
+
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    let listener =
+        match build_native_cpp_example_rmw("safety-listener", "cpp_safety_listener", Rmw::Zenoh) {
+            Ok(p) => p,
+            Err(e) => nros_tests::skip!("cpp safety-listener fixture not built: {e}"),
+        };
+    let talker = build_native_talker_safety().expect("Failed to build safety talker");
+    let locator = zenohd_unique.locator();
+
+    let mut listener_cmd = Command::new(&listener);
+    listener_cmd.env("NROS_LOCATOR", &locator);
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "cpp-safety-listener")
+        .expect("Failed to start C++ safety listener");
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
+        .expect("C++ safety listener did not start");
+
+    let mut talker_cmd = Command::new(talker);
+    talker_cmd
+        .env("NROS_LOCATOR", &locator)
+        .env("RUST_LOG", "info");
+    let _talker = ManagedProcess::spawn_command(talker_cmd, "safety-talker")
+        .expect("Failed to start safety talker");
+
+    let output = listener
+        .wait_for_output_count("crc=ok", 3, Duration::from_secs(30))
+        .expect("C++ safety listener did not validate 3 CRCs");
+
+    let crc_ok = output.matches("crc=ok").count();
+    let crc_fail = output.matches("crc=FAIL").count();
+    eprintln!("cpp safety: {crc_ok} crc-ok, {crc_fail} crc-fail");
+    assert!(
+        crc_ok >= 3,
+        "Expected >=3 validated CRCs from the C++ API, got {crc_ok}. Output:\n{output}"
     );
     assert_eq!(crc_fail, 0, "Expected no CRC failures. Output:\n{output}");
 }

@@ -40,7 +40,13 @@ the rmw / dep-chain gate pattern (issue 0072 note).
 - **Acceptance:** declaring `[safety]` on a cyclonedds/xrce system surfaces a
   warning at plan/check time; documented as unsupported.
 
-### W3 — C++ safety transport e2e (optional CI coverage)
+### W3 — C++ safety transport e2e — DONE (2026-06-18)
+**Landed:** `examples/native/cpp/safety-listener/` (CMakeLists forces
+`NANO_ROS_SAFETY_E2E=ON`; main.cpp polls `Subscription::try_recv_validated`),
+registered in `fixtures.toml` (native/cpp/zenoh), + `safety_e2e.rs::
+test_cpp_safety_listener_validates_crc`. Verified locally: fixture builds clean,
+e2e green — **`cpp safety: 3 crc-ok, 0 crc-fail`** (parity with the C path).
+
 The native-C transport e2e (`tests/safety_e2e.rs::test_c_safety_listener_validates_crc`,
 green: `c safety: 3 crc-ok, 0 crc-fail`) proves the validation path; the C++ ABI
 calls the same `RmwSubscriber::try_recv_validated`, so no separate C++ e2e was
