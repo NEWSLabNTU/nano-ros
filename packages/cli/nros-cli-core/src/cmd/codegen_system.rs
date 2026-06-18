@@ -38,7 +38,7 @@ use std::collections::BTreeMap;
 
 use crate::orchestration::{
     capability_resolver,
-    cargo_metadata_schema::{SystemComponentEntry, SystemToml},
+    cargo_metadata_schema::{SystemComponentEntry, SystemToml, validate_and_warn_capabilities},
     launch_synth::{LaunchInput, resolve_launch},
     nros_config::{BringupPackageEntry, NrosConfig},
     tier_resolver::{
@@ -111,6 +111,11 @@ pub fn run(args: Args) -> Result<()> {
         .with_context(|| format!("load workspace at {}", workspace.display()))?;
 
     let bringup = resolve_bringup(&cfg, args.bringup.as_deref())?;
+
+    // Phase 261 W4 — validate `[system].features` (typo guard) + warn on the
+    // deprecated typed capability blocks. Same checks in the planner so both
+    // codegen paths agree.
+    validate_and_warn_capabilities(&bringup.system)?;
 
     let out_dir = args
         .out
@@ -1285,6 +1290,48 @@ name = "talker"
         )
         .unwrap();
         assert!(!render_system_config_h(&off, None, None).contains("NROS_SYSTEM_SAFETY_E2E"));
+    }
+
+    /// Phase 261 W4 — `[system].features = [...]` lowers identically to the typed
+    /// block on the C/C++ bake: `features = ["safety", "param_services"]` emits the
+    /// same `#define`s as the `[safety]` / `[param_services]` blocks.
+    #[test]
+    fn system_config_h_features_list_equivalent_to_typed_blocks() {
+        let via_features: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nfeatures=[\"safety\",\"param_services\"]\n",
+        )
+        .unwrap();
+        let via_typed: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[safety]\n[param_services]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            render_system_config_h(&via_features, None, None),
+            render_system_config_h(&via_typed, None, None),
+            "features=[...] must lower byte-identically to the typed blocks"
+        );
+        assert!(
+            render_system_config_h(&via_features, None, None)
+                .contains("#define NROS_SYSTEM_SAFETY_E2E\n")
+        );
+    }
+
+    /// Phase 261 W4 — an unknown `[system].features` entry is a hard error (typo
+    /// guard); a known entry validates.
+    #[test]
+    fn unknown_feature_is_rejected() {
+        let bad: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nfeatures=[\"saftey\"]\n",
+        )
+        .unwrap();
+        let err = validate_and_warn_capabilities(&bad).unwrap_err().to_string();
+        assert!(err.contains("saftey"), "{err}");
+
+        let ok: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nfeatures=[\"safety\"]\n",
+        )
+        .unwrap();
+        assert!(validate_and_warn_capabilities(&ok).is_ok());
     }
 
     /// Phase 255 Wave 3 — the C `#define NROS_SYSTEM_RMW*` resolves through the

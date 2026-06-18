@@ -355,6 +355,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             locator: None,
             default_launch: Some("system.launch.xml".to_string()),
             default_target: Some("native".to_string()),
+            features: Vec::new(),
         },
         components: entries,
         deploy,

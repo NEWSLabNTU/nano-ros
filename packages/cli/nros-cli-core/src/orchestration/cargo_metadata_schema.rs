@@ -501,6 +501,32 @@ fn default_true_cap() -> bool {
     true
 }
 
+/// Phase 261 W4 — shared capability validation for both codegen paths (planner +
+/// bake): reject an unknown `[system].features` entry (typo guard, hard error) and
+/// warn once per deprecated typed capability block (`[safety]` / `[param_services]`),
+/// steering authors to `features = [...]`.
+pub fn validate_and_warn_capabilities(sys: &SystemToml) -> eyre::Result<()> {
+    let unknown = sys.unknown_features();
+    if !unknown.is_empty() {
+        let known: Vec<&str> = cargo_nano_ros::capability_resolver::CAPABILITIES
+            .iter()
+            .map(|c| c.declared)
+            .collect();
+        eyre::bail!(
+            "unknown capability in [system].features: {} (known axes: {})",
+            unknown.join(", "),
+            known.join(", ")
+        );
+    }
+    for blk in sys.deprecated_typed_capability_blocks() {
+        eprintln!(
+            "warning: the typed `[{blk}]` block is deprecated (phase-261); declare \
+             `features = [\"{blk}\"]` under `[system]` instead"
+        );
+    }
+    Ok(())
+}
+
 impl SystemToml {
     /// Phase 261 — is the declared capability axis (`capability_resolver::Capability
     /// .declared`, e.g. `"safety"` / `"param_services"`) enabled in this system?
@@ -509,11 +535,43 @@ impl SystemToml {
     /// feature lowering from a registry loop instead of hardcoded per-axis branches.
     /// Unknown axis ⇒ `false`.
     pub fn capability_enabled(&self, declared: &str) -> bool {
+        // Phase 261 W4 — the generic `[system].features = [...]` surface enables an
+        // axis by declared name, equivalently to the typed `[<name>] enabled = true`
+        // block. Either source flips the axis on.
+        if self.system.features.iter().any(|f| f == declared) {
+            return true;
+        }
         match declared {
             "safety" => self.safety.as_ref().is_some_and(|s| s.enabled),
             "param_services" => self.param_services.as_ref().is_some_and(|p| p.enabled),
             _ => false,
         }
+    }
+
+    /// Phase 261 W4 — validate `[system].features`: every entry must name a known
+    /// capability axis (`capability_resolver::capability`), else a hard error (typo
+    /// guard). Returns the unknown names; empty ⇒ all valid.
+    pub fn unknown_features(&self) -> Vec<String> {
+        self.system
+            .features
+            .iter()
+            .filter(|f| cargo_nano_ros::capability_resolver::capability(f).is_none())
+            .cloned()
+            .collect()
+    }
+
+    /// Phase 261 W4 — the typed capability blocks (`[safety]`, `[param_services]`)
+    /// present in this system. Deprecated in favour of `[system].features = [...]`;
+    /// callers warn so authors migrate. Returns the declared axis names.
+    pub fn deprecated_typed_capability_blocks(&self) -> Vec<&'static str> {
+        let mut blocks = Vec::new();
+        if self.safety.is_some() {
+            blocks.push("safety");
+        }
+        if self.param_services.is_some() {
+            blocks.push("param_services");
+        }
+        blocks
     }
 
     /// Phase 256 — the deploy target a target-agnostic caller (the planner) should
@@ -642,6 +700,14 @@ pub struct SystemHeader {
     /// the first deploy entry in declaration / sorted order. Phase 212.J.2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_target: Option<String>,
+    /// Phase 261 W4 — generic capability axes by declared name, e.g.
+    /// `features = ["safety", "param_services"]`. Each entry must resolve via
+    /// `capability_resolver::capability(name)` (unknown ⇒ hard error, typo guard);
+    /// it lowers identically to the typed `[<name>] enabled = true` block on every
+    /// language. The thin user surface that replaces the per-axis typed blocks (now
+    /// deprecated). Absent ⇒ empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<String>,
 }
 
 /// `[[component]]` row.

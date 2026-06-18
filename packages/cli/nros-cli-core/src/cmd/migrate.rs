@@ -271,6 +271,7 @@ fn build_plan(ws: &Path, bringup_override: Option<&str>) -> Result<MigrationPlan
         locator: legacy.system.locator,
         default_launch: None,
         default_target: None,
+        features: Vec::new(),
     };
 
     let mut steps = vec![Step::WriteSystemToml, Step::WriteBringupPackageXml];

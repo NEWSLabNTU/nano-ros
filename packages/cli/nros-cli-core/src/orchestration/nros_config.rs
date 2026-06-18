@@ -556,6 +556,7 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         locator: first_deploy.locator.clone(),
         default_launch: None,
         default_target: None,
+        features: Vec::new(),
     };
 
     // Component rows. The `node` spelling (Phase 212.N.12 rename) is

@@ -105,6 +105,16 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     // config source (capabilities / rmw / build-shape / tiers all resolve from it).
     let system_toml_path = workspace.package_system_toml(&options.system_pkg);
 
+    // Phase 261 W4 — validate `[system].features` (typo guard) + warn on deprecated
+    // typed capability blocks, the same checks the bake runs. Lenient parse mirrors
+    // `schema_plan_json`'s read (a malformed system.toml is handled downstream).
+    if let Some(p) = &system_toml_path
+        && let Ok(raw) = std::fs::read_to_string(p)
+        && let Ok(sys) = toml::from_str::<super::cargo_metadata_schema::SystemToml>(&raw)
+    {
+        super::cargo_metadata_schema::validate_and_warn_capabilities(&sys)?;
+    }
+
     let (instances, executables, mut diagnostics) =
         build_instances(&record, &metadata, &record_path);
     diagnostics.extend(check_effective_graph_node_names(&instances, &record_path));
@@ -763,25 +773,32 @@ fn schema_plan_json(
     // emits it to the plan, so `apply_param_persistence` stays a no-op. The runtime
     // `ParamStore` seam + the codegen path are kept dormant for re-enable.
 
-    // Phase 250 (Wave 3) — parameter-server capability, before `build` (NrosPlan
-    // field order); absent ⇒ omitted, plan stays byte-identical.
-    let param_services = system_caps
+    // Phase 250/261 — parameter-server capability, before `build` (NrosPlan
+    // field order); absent ⇒ omitted, plan stays byte-identical. The axis is on
+    // when the typed `[param_services]` block OR `[system].features` enables it
+    // (W4: `capability_enabled` unifies both); the entry-umbrella-only axis carries
+    // no fields.
+    if system_caps
         .as_ref()
-        .and_then(|s| s.param_services.as_ref())
-        .filter(|p| p.enabled)
-        .map(|_| json!({}));
-    if let Some(ps) = param_services {
-        obj.insert("param_services".to_string(), ps);
+        .is_some_and(|s| s.capability_enabled("param_services"))
+    {
+        obj.insert("param_services".to_string(), json!({}));
     }
-    // Phase 250 (Wave 1) — E2E-safety capability, before `build` (NrosPlan field
-    // order); absent ⇒ omitted, plan stays byte-identical.
-    let safety = system_caps
+    // Phase 250/261 (Wave 1 / W4) — E2E-safety capability, before `build` (NrosPlan
+    // field order); absent ⇒ omitted, plan stays byte-identical. On via the typed
+    // `[safety]` block OR `[system].features`; `crc` comes from the typed block when
+    // present, else the default (`true`) — so `features = ["safety"]` ≡ `[safety]
+    // enabled = true`.
+    if system_caps
         .as_ref()
-        .and_then(|s| s.safety.as_ref())
-        .filter(|s| s.enabled)
-        .map(|s| json!({ "crc": s.crc }));
-    if let Some(safety) = safety {
-        obj.insert("safety".to_string(), safety);
+        .is_some_and(|s| s.capability_enabled("safety"))
+    {
+        let crc = system_caps
+            .as_ref()
+            .and_then(|s| s.safety.as_ref())
+            .map(|s| s.crc)
+            .unwrap_or(true);
+        obj.insert("safety".to_string(), json!({ "crc": crc }));
     }
     // Phase 211.E — `<executable>` spawn entries. Skip-when-empty so plans
     // without any `<executable>` stay byte-identical to pre-211.E.

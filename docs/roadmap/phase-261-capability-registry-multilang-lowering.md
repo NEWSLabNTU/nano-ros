@@ -1,6 +1,7 @@
 # Phase 261 — capability registry: multi-language lowering + `features = [...]`
 
-Status: **Planned (2026-06-18)** · Implements
+Status: **W1–W4 done (2026-06-18); W5 (cmake_token threading) optional/pending** ·
+Implements
 [issue 0076 §B-W4](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md) (spun
 out of [phase-259](archived/phase-259-safety-e2e-tails.md), where it was scoped) ·
 RFC-0031 §Generalization.
@@ -63,12 +64,20 @@ bake emits safety-first, the entry param_services-first — breaking byte-identi
 `backend_features(…, safety: bool)` (the bool is threaded from callers). These fully
 generalize in W4 alongside the `features = [...]` surface.
 
-### W4 — the `features = [...]` surface
-Add a generic `features: Vec<String>` to `system.toml` / `SystemToml`. Each entry
-resolves via `capability(name)`; an unknown name is a hard error (typo guard). It
-lowers identically to the typed block — `features = ["safety-e2e"]` ≡
-`[safety] enabled = true` — on every language. Keep the typed blocks as
-sugar-over-the-same-registry (or deprecate them in a later wave; decide in W4).
+### W4 — the `features = [...]` surface — DONE (2026-06-18)
+Added `[system].features: Vec<String>` (on `SystemHeader`). Each entry is a declared
+axis name (`capability(name)`); an unknown name is a hard error via
+`validate_and_warn_capabilities` (typo guard, run by BOTH the bake and the planner).
+`SystemToml::capability_enabled` + `NrosPlan::capability_enabled` now treat the
+features list and the typed block equivalently, so `features = ["safety"]` ≡
+`[safety] enabled = true` lowers byte-identically on both languages (C/C++ `#define`
+via the W2 loop; the planner emits `plan.safety {crc:true-default}` / `param_services`
+from the unified enabled-check). **DECISION (locked W4): deprecate the typed blocks.**
+`validate_and_warn_capabilities` warns on any `[safety]` / `[param_services]` block,
+steering authors to `features = [...]`; the typed blocks still work (removal is a
+later wave). Tests: `features=[...]` ≡ typed blocks on the bake; unknown-feature
+rejected. (Existing examples using the typed blocks now emit the deprecation warn —
+a later cleanup wave migrates them to `features=[...]`.)
 
 ### W5 — cmake_token threading (optional)
 If `cmake_token` is populated, thread it into the C/C++ codegen as a
