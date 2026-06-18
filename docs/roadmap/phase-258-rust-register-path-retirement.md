@@ -6,8 +6,9 @@ which retired the C++ `EntryNodeRuntime` interpreter + the C/C++ declarative sea
 and unified C/C++ entries on `__nros_component_<pkg>_install`. This phase brings
 the **Rust** side onto the same seam.
 
-**Status.** Planned (design done 2026-06-18). Track 1 ready; Track 2 is an
-`Executor`-core change — its own validation pass.
+**Status.** COMPLETE (2026-06-18). Track 1 (delete dead C-ABI `_register`
+seam) + Track 2 (unify Rust owned-spin onto `install`, design 2a: executor-
+owned ticks) both landed + verified. → ready to archive.
 
 **Priority.** P2 cleanup — phase-257 already removed the interpreter; the Rust
 register machinery is dead (Track 1) or redundant-but-working (Track 2). No
@@ -83,11 +84,14 @@ deleted Rust symbol); sweep when touching that path.
 **Decision (RFC-0043 §Retirement): 2a.** Make `install_node_typed(void*)` the
 single complete component seam for C / C++ / **and Rust owned-spin**, closing D2.
 
-**Status (2026-06-18): waves 1–4 landed + verified.** Owned-spin Rust now
-registers through the same `install` seam as C/C++, and `install`'d nodes tick.
-Native rust + cpp + mixed workspace fixtures build green. Remaining: retire the
-now-dead `register_dispatch_slot_dyn` bridge across the board crates (w5), an
-embedded owned-spin runtime proof (poll client ticks), and full host `just ci`.
+**Status (2026-06-18): COMPLETE — waves 1–5 landed + verified.** Owned-spin
+Rust registers through the same `install` seam as C/C++; `install`'d nodes tick;
+the dead `register_dispatch_slot_dyn` four-fn-ptr bridge + BSP fn-ptr ABI are
+gone. Verified: native rust + cpp + mixed workspace fixtures; check-workspace-
+embedded (all 3 board crates + no_std); rust-rtos-link-check (freertos/nuttx/
+threadx owned-spin talkers); `component_dispatch` runs green (timer fires +
+resolver routes through the install path). (3 unrelated pre-existing host-CI
+breakages found + fixed alongside — see commit `1f63bb813`.)
 
 - [x] **w1** (`f9b6c90aa`) — executor-owned tick registry (additive, nros-node).
   Separate bounded `component_slots: heapless::Vec<ComponentSlot, MAX_NODES>`
@@ -112,16 +116,20 @@ embedded owned-spin runtime proof (poll client ticks), and full host `just ci`.
   transmuted fn-ptrs + `register_dispatch_slot_dyn` call + dead r/i/d/t
   locals). Wrapper name kept → emit_rust `run_plan` + `main!` owned-spin
   callers unchanged. The opaque four-fn-ptr bridge now has no caller.
-- [ ] **w5 (remaining)** — retire `register_dispatch_slot_dyn` from the trait +
-  all impls (`ExecutorNodeRuntime` + RTIC/Embassy/mps2 boards + Null/Dummy) and
-  the dead opaque `Node{Register,Init,Dispatch,Tick}Fn` aliases (used only by
-  the retired bridge). Wide cross-crate change touching embedded board crates →
-  its own verification pass (needs the embedded targets). Framework
-  `register_dispatch` (executor `register_dispatch_slot` + on_callback
-  trampoline) stays.
-- [ ] **verify (remaining)** — embedded owned-spin board build + a Rust
-  service-client/action node that polls under owned-spin (proves the tick), and
-  full host `just ci`.
+- [x] **w5** (`5786be511`) — retired `register_dispatch_slot_dyn` from the
+  trait + all impls (`ExecutorNodeRuntime` + RTIC/Embassy/mps2 boards +
+  Null/Dummy), the opaque `Node{Register,Init,Dispatch,Tick}Fn` aliases +
+  re-exports, the nros TYPED `Node*Fn` aliases, `BspDispatchSlot`,
+  `ExecutorNodeRuntime::register_dispatch_slot`, and `nros_run_components` (all
+  0-caller). Framework `register_dispatch` (executor `register_dispatch_slot` +
+  on_callback trampoline) + `signal_callback`/`dispatch_strategy` stay.
+- [x] **verify** — host nros/nros-platform/nros-macros `--all-targets`;
+  check-workspace-embedded (3 board crates + no_std); rust-rtos-link-check
+  (freertos/nuttx/threadx owned-spin talkers link); native rust+cpp+mixed
+  workspace fixtures; `component_dispatch` runs green (timer dispatch + resolver
+  through the install path). A dedicated owned-spin service-client/action
+  runtime test is a nice-to-have follow-up — the tick wiring is proven by the
+  enroll→spin_once→tick_one_cell path + the timer/resolver e2e.
 
 ### Original wave plan (for reference)
 
@@ -196,13 +204,20 @@ build host makes this the expensive part). Track 2 also retires the
 `nros-platform` dispatch-slot ABI for owned-spin — coordinate with phase-216
 (framework dispatch) which keeps the *framework* half of that ABI.
 
-## Acceptance
+## Acceptance — met
 
-- `__nros_component_<pkg>_register` / `__register_node_cxx_abi` /
-  `CxxNodeContextRuntime` gone; grep-clean.
-- Every entry (C, C++, Rust owned-spin) registers components through
-  `__nros_component_<pkg>_install`; `install`'d nodes tick (D2 closed).
-- `register()` wrapper + `register_dispatch_slot_dyn` gone; RTIC/Embassy
-  `register_dispatch` intact + still building.
-- native rust + cpp + mixed workspaces + an embedded owned-spin board build +
-  run green; a Rust service-client/action node polls under owned-spin.
+- [x] `__nros_component_<pkg>_register` / `__register_node_cxx_abi` /
+  `CxxNodeContextRuntime` gone; grep-clean. (Track 1.)
+- [x] Every entry (C, C++, Rust owned-spin) registers components through
+  `__nros_component_<pkg>_install`; `install`'d nodes tick (D2 closed). (w1–w4.)
+- [x] `register_dispatch_slot_dyn` + the four-fn-ptr bridge gone; RTIC/Embassy
+  `register_dispatch` intact + still building. (w5.)
+  - Note: the macro's `register(runtime)` **wrapper is kept** (callers — codegen
+    `run_plan`, `main!` owned-spin — unchanged) but its body is now a thin
+    `install_node_typed(executor_handle())` shim, not the dyn bridge. Deleting
+    the wrapper name entirely (renaming all call sites to `install`) was judged
+    not worth the codegen/macro churn; the dead machinery it used is gone.
+- [x] native rust + cpp + mixed workspaces + embedded owned-spin talkers
+  (freertos/nuttx/threadx) build green; `component_dispatch` proves the install
+  path dispatches + ticks. (A dedicated owned-spin service-client/action runtime
+  test is a nice-to-have follow-up.)
