@@ -826,6 +826,7 @@ fn schema_build_json(
     let obj = build.as_object_mut().expect("build is an object");
     let mut overlay_had_rmw = false;
     let mut overlay_had_tuning = false;
+    let mut overlay_had_build_shape = false;
     for overlay in overlays {
         if let Some(Value::Object(b)) = overlay.get("build") {
             if b.contains_key("rmw") {
@@ -836,6 +837,9 @@ fn schema_build_json(
                 .any(|k| b.contains_key(*k))
             {
                 overlay_had_tuning = true;
+            }
+            if ["target", "board"].iter().any(|k| b.contains_key(*k)) {
+                overlay_had_build_shape = true;
             }
             for key in [
                 "target", "board", "rmw", "profile", "features", "cfg", "optimize", "cargo", "cc",
@@ -876,31 +880,43 @@ fn schema_build_json(
         }
         obj.insert("rmw".to_string(), json!(rmw));
     }
-    // Phase 256 Wave 3 — per-target build tuning from the selected `[deploy.<t>]`
-    // (profile / optimize / features) wins over the DEPRECATED `[build]` overlay.
-    // Build tuning is per-deploy (size on embedded, debug on native), so its home
-    // is the deploy block. cargo/cc tables + compile cfg are a follow-up.
+    // Phase 256 Wave 3 / W3-tail — the build shape from the selected `[deploy.<t>]`
+    // (target / board / profile / optimize / features) wins over the DEPRECATED
+    // `[build]` overlay. Build shape is per-deploy (a system targets native AND an
+    // MCU from one `system.toml`), so its home is the deploy block. `target`/`board`
+    // drive the codegen board-crate + entry-kind selection (the bake's `--target`
+    // overrides the cargo `--target` at build time, but `generate` must pick the
+    // right board from the plan). cargo/cc tables + compile `cfg` are still
+    // overlay-only (0 users) and die with the `nros.toml` overlay removal.
     if let Some(dt) = selected_target
         .as_deref()
         .and_then(|t| sys.as_ref().and_then(|s| s.deploy.get(t)))
     {
-        let mut deploy_set_tuning = false;
+        let mut deploy_set = false;
+        if let Some(t) = &dt.target {
+            obj.insert("target".to_string(), json!(t));
+            deploy_set = true;
+        }
+        if let Some(b) = &dt.board {
+            obj.insert("board".to_string(), json!(b));
+            deploy_set = true;
+        }
         if let Some(p) = &dt.profile {
             obj.insert("profile".to_string(), json!(p));
-            deploy_set_tuning = true;
+            deploy_set = true;
         }
         if let Some(o) = &dt.optimize {
             obj.insert("optimize".to_string(), json!(o));
-            deploy_set_tuning = true;
+            deploy_set = true;
         }
         if !dt.features.is_empty() {
             obj.insert("features".to_string(), json!(dt.features));
-            deploy_set_tuning = true;
+            deploy_set = true;
         }
-        if deploy_set_tuning && overlay_had_tuning {
+        if deploy_set && (overlay_had_tuning || overlay_had_build_shape) {
             eprintln!(
-                "warning: [build] profile/optimize/features in nros.toml is deprecated \
-                 (phase-256); declare them in the bringup system.toml [deploy.<t>]"
+                "warning: [build] target/board/profile/optimize/features in nros.toml is \
+                 deprecated (phase-256); declare them in the bringup system.toml [deploy.<t>]"
             );
         }
     }
@@ -3620,21 +3636,25 @@ mod tests {
         std::fs::write(
             &st,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\ndefault_target=\"embedded\"\n\
-             [deploy.embedded]\nkind=\"flash\"\nprofile=\"release\"\noptimize=\"size\"\n\
-             features=[\"a\",\"b\"]\n\
+             [deploy.embedded]\nkind=\"flash\"\ntarget=\"thumbv7m-none-eabi\"\nboard=\"stm32f4\"\n\
+             profile=\"release\"\noptimize=\"size\"\nfeatures=[\"a\",\"b\"]\n\
              [deploy.native]\nkind=\"self\"\n",
         )
         .unwrap();
 
-        // default_target = embedded → its tuning lands.
+        // default_target = embedded → its build shape (W3-tail: target/board) + tuning land.
         let emb = schema_build_json(&[], Some(&st), None, None);
+        assert_eq!(emb["target"], "thumbv7m-none-eabi");
+        assert_eq!(emb["board"], "stm32f4");
         assert_eq!(emb["profile"], "release");
         assert_eq!(emb["optimize"], "size");
         assert_eq!(emb["features"], json!(["a", "b"]));
 
-        // --target native → no tuning declared → pre-256 defaults (profile=debug,
-        // no optimize, empty features).
+        // --target native → nothing declared → pre-256 defaults (native / x86_64 /
+        // debug, no optimize, empty features).
         let nat = schema_build_json(&[], Some(&st), None, Some("native"));
+        assert_eq!(nat["target"], "x86_64-unknown-linux-gnu");
+        assert_eq!(nat["board"], "native");
         assert_eq!(nat["profile"], "debug");
         assert!(nat.get("optimize").is_none());
         assert_eq!(nat["features"], json!([]));
