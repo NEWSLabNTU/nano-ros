@@ -4084,6 +4084,87 @@ fn render_sched_context(sc: &PlanSchedContext) -> String {
     )
 }
 
+// ── Phase 256 W4.2 — direct, µs-lossless tier → SchedContextSpec lowering ──
+// `nros generate` resolves scheduling TIERS itself (decision c, issue 0082) and
+// emits the runtime `SchedContextSpec` straight from a `ResolvedTier` — bypassing
+// the ms-based `PlanSchedContext` so µs precision is preserved and the i64→u8 /
+// double-enum conversions collapse to one each.
+
+// NOTE: `#[allow(dead_code)]` is INTERIM — these are wired into `generate_package`
+// in the next W4.2 step (load NrosConfig → resolve_tiers → emit from tiers); the
+// unit test exercises them meanwhile.
+#[allow(dead_code)]
+type ResolvedTier = crate::orchestration::tier_resolver::ResolvedTier;
+
+/// `[tiers.<n>].class` string → the plan `SchedClass`. `None` ⇒ `RealTime` (a
+/// plain priority tier). Unknown → a clear error (validated at codegen).
+#[allow(dead_code)]
+fn tier_sched_class(class: Option<&str>) -> Result<SchedClass> {
+    match class {
+        None | Some("real_time") => Ok(SchedClass::RealTime),
+        Some("best_effort") => Ok(SchedClass::BestEffort),
+        Some("time_triggered") => Ok(SchedClass::TimeTriggered),
+        Some("interrupt") => Ok(SchedClass::Interrupt),
+        Some(other) => bail!(
+            "[tiers.<name>].class: unknown scheduling class {other:?} \
+             (expected best_effort | real_time | time_triggered | interrupt)"
+        ),
+    }
+}
+
+#[allow(dead_code)]
+/// `[tiers.<n>].deadline_policy` string → the plan `DeadlinePolicy`. `None` ⇒
+/// `Ignore`. Unknown → a clear error.
+fn tier_deadline_policy(policy: Option<&str>) -> Result<DeadlinePolicy> {
+    match policy {
+        None | Some("ignore") => Ok(DeadlinePolicy::Ignore),
+        Some("warn") => Ok(DeadlinePolicy::Warn),
+        Some("skip") => Ok(DeadlinePolicy::Skip),
+        Some("fault") => Ok(DeadlinePolicy::Fault),
+        Some(other) => bail!(
+            "[tiers.<name>].deadline_policy: unknown {other:?} \
+             (expected ignore | warn | skip | fault)"
+        ),
+    }
+}
+
+#[allow(dead_code)]
+/// `Option<u64>` µs → the literal a `SchedContextSpec` `Option<u32>` field wants,
+/// **without** the ms round-trip `option_ms_to_us` does (tiers are already µs).
+fn option_u64_us(value: Option<u64>) -> String {
+    match value.and_then(|us| u32::try_from(us).ok()) {
+        Some(us) => format!("Some({us})"),
+        None => "None".to_string(),
+    }
+}
+
+#[allow(dead_code)]
+/// Emit a `SchedContextSpec` literal directly from a `ResolvedTier` (W4.2). The
+/// RTOS numeric `priority: i64` clamps to `os_pri: u8` (Zephyr negative coop
+/// priorities are the bake/C path, not generate's Rust runtime) and buckets the
+/// `PrioritySpec`; the EDF fields carry µs-for-µs.
+fn render_sched_context_from_tier(t: &ResolvedTier) -> Result<String> {
+    let class = tier_sched_class(t.class.as_deref())?;
+    let policy = tier_deadline_policy(t.deadline_policy.as_deref())?;
+    let os_pri: u8 = t.priority.clamp(0, u8::MAX as i64) as u8;
+    let tt_duration = if matches!(class, SchedClass::TimeTriggered) {
+        option_u64_us(t.period_us)
+    } else {
+        "None".to_string()
+    };
+    Ok(format!(
+        "    SchedContextSpec {{ id: {id:?}, class: SchedClassSpec::{class}, priority: PrioritySpec::{prio}, period_us: {period}, budget_us: {budget}, deadline_us: {deadline}, deadline_policy: DeadlinePolicySpec::{dp}, os_pri: {os_pri}, tt_window_offset_us: None, tt_window_duration_us: {tt} }},\n",
+        id = t.name,
+        class = sched_class(&class),
+        prio = priority(Some(os_pri)),
+        period = option_u64_us(t.period_us),
+        budget = option_u64_us(t.budget_us),
+        deadline = option_u64_us(t.deadline_us),
+        dp = deadline_policy(&policy),
+        tt = tt_duration,
+    ))
+}
+
 fn collect_callback_bindings(plan: &NrosPlan) -> Vec<(usize, usize)> {
     let mut bindings = Vec::new();
     let mut callback_index = 0usize;
@@ -4239,6 +4320,48 @@ fn stable_plan_id(plan: &NrosPlan) -> u32 {
 mod net_fragment_tests {
     use super::*;
     use crate::orchestration::plan::PlanTransport;
+
+    /// Phase 256 W4.2 — the direct `ResolvedTier → SchedContextSpec` lowering is
+    /// µs-native (no ms round-trip), clamps `priority: i64 → os_pri: u8` + buckets
+    /// the `PrioritySpec`, and maps `class`/`deadline_policy` strings to the runtime
+    /// enums. Time-triggered carries the period into the TT window.
+    #[test]
+    fn render_sched_context_from_tier_is_us_native() {
+        let tier = ResolvedTier {
+            name: "control".to_string(),
+            priority: 80,
+            stack_bytes: Some(8192),
+            spin_period_us: Some(1000),
+            preempt_threshold: None,
+            sched_class: None,
+            class: Some("time_triggered".to_string()),
+            period_us: Some(20_000),
+            budget_us: Some(5_000),
+            deadline_us: Some(18_000),
+            deadline_policy: Some("fault".to_string()),
+            core: Some(1),
+            members: vec![("control_node".to_string(), "loop".to_string())],
+        };
+        let s = render_sched_context_from_tier(&tier).unwrap();
+        assert!(s.contains("id: \"control\""), "{s}");
+        // time_triggered → Fifo class; µs carried directly (NOT ÷1000 then ×1000).
+        assert!(s.contains("class: SchedClassSpec::Fifo"), "{s}");
+        assert!(s.contains("period_us: Some(20000)"), "{s}");
+        assert!(s.contains("budget_us: Some(5000)"), "{s}");
+        assert!(s.contains("deadline_us: Some(18000)"), "{s}");
+        // priority 80 → os_pri 80, Normal bucket (64..=191).
+        assert!(s.contains("os_pri: 80"), "{s}");
+        assert!(s.contains("priority: PrioritySpec::Normal"), "{s}");
+        // tt window duration = period for time_triggered.
+        assert!(s.contains("tt_window_duration_us: Some(20000)"), "{s}");
+
+        // Unknown class → a clear error, not a silent default.
+        let bad = ResolvedTier {
+            class: Some("bogus".to_string()),
+            ..tier
+        };
+        assert!(render_sched_context_from_tier(&bad).is_err());
+    }
 
     /// Workspace root for tests — a hermetic fixture workspace bundled in the
     /// crate (Phase 195.C). It carries `packages/boards/*/nros-board.toml` so

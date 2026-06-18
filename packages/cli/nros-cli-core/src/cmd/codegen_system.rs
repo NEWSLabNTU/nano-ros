@@ -40,10 +40,12 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::orchestration::{
-    cargo_metadata_schema::{CallbackGroupDecl, SystemComponentEntry, SystemToml},
+    cargo_metadata_schema::{SystemComponentEntry, SystemToml},
     launch_synth::{LaunchInput, resolve_launch},
     nros_config::{BringupPackageEntry, NrosConfig},
-    tier_resolver::{ResolvedTierTable, TierResolveError, resolve_tiers},
+    tier_resolver::{
+        ResolvedTierTable, collect_callback_groups, derive_target_rtos, resolve_system_tiers,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -701,79 +703,6 @@ fn render_plan_json(
     let mut s = serde_json::to_string_pretty(&doc).context("serialize plan json")?;
     s.push('\n');
     Ok(s)
-}
-
-/// Adapt a full [`SystemToml`] to the decomposed [`resolve_tiers`] signature
-/// (Phase 228.E): the resolver moved to the shared `nros-orchestration-ir`
-/// crate and takes only the tier-relevant pieces, so the CLI hands it the
-/// `[tiers.*]` table, `[[node_overrides]]`, and the component instance names.
-fn resolve_system_tiers(
-    system: &SystemToml,
-    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
-    target_rtos: &str,
-) -> Result<ResolvedTierTable, TierResolveError> {
-    let component_names: std::collections::BTreeSet<&str> =
-        system.components.iter().map(|c| c.name.as_str()).collect();
-    resolve_tiers(
-        &system.tiers,
-        &system.node_overrides,
-        &component_names,
-        callback_groups,
-        target_rtos,
-    )
-}
-
-/// Build the `node instance name → declared callback groups` map for the
-/// system from the loaded component-package metadata (Phase 228.B).
-fn collect_callback_groups(
-    cfg: &NrosConfig,
-    components: &[SystemComponentEntry],
-) -> BTreeMap<String, Vec<CallbackGroupDecl>> {
-    let mut map = BTreeMap::new();
-    for c in components {
-        let Some(pkg) = cfg.component_packages.get(&c.pkg) else {
-            continue;
-        };
-        // Single-node pkg → node_or_component; multi-node pkg → match by name/class.
-        let groups = pkg
-            .nros
-            .node_or_component()
-            .filter(|m| !m.callback_groups.is_empty())
-            .map(|m| m.callback_groups.clone())
-            .or_else(|| {
-                pkg.nros
-                    .nodes_or_components()
-                    .values()
-                    .find(|m| {
-                        m.name.as_deref() == Some(c.name.as_str())
-                            || m.class.as_deref() == Some(c.class.as_str())
-                    })
-                    .map(|m| m.callback_groups.clone())
-            })
-            .unwrap_or_default();
-        if !groups.is_empty() {
-            map.insert(c.name.clone(), groups);
-        }
-    }
-    map
-}
-
-/// Best-effort RTOS name for tier resolution from the deploy target. Defaults to
-/// `posix` (native); embedded targets refine this when the per-tier emission
-/// lands (Phase 228 Wave 2/3). The degenerate tier table does not depend on it.
-fn derive_target_rtos(system: &SystemToml, target: Option<&str>) -> String {
-    target
-        .and_then(|t| system.deploy.get(t))
-        .and_then(|d| d.board.as_deref().or(d.kind.as_deref()))
-        .map(|hint| {
-            for rtos in ["freertos", "zephyr", "threadx", "nuttx"] {
-                if hint.contains(rtos) {
-                    return rtos.to_string();
-                }
-            }
-            "posix".to_string()
-        })
-        .unwrap_or_else(|| "posix".to_string())
 }
 
 // ---------------------------------------------------------------------------
