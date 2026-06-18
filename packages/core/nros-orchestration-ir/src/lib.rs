@@ -41,8 +41,9 @@ pub struct TierDef {
     // overlay). Per-RTOS placement (priority/stack) stays in the `<rtos>`
     // sub-tables; these describe HOW it is scheduled, identically on every RTOS.
     // All optional → a plain priority tier (today's shape) is byte-identical.
-    /// Scheduling class: `"event_driven"` (default) | `"periodic"` |
-    /// `"time_triggered"` | `"sporadic"`. Maps to `SchedClass` in the plan.
+    /// Scheduling class — the plan's `SchedClass` (snake_case): `"best_effort"` |
+    /// `"real_time"` (default for a priority tier) | `"time_triggered"` |
+    /// `"interrupt"`. The W4.2 codegen lowering validates + maps it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class: Option<String>,
     /// Callback period (µs) for `periodic` / `time_triggered`.
@@ -54,7 +55,8 @@ pub struct TierDef {
     /// Relative deadline (µs) — EDF.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline_us: Option<u64>,
-    /// On deadline miss: `"ignore"` (default) | `"log"` | `"abort"`.
+    /// On deadline miss — the plan's `DeadlinePolicy` (snake_case): `"ignore"`
+    /// (default) | `"warn"` | `"skip"` | `"fault"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline_policy: Option<String>,
     /// CPU core to pin the tier task to (SMP); `None` ⇒ unpinned.
@@ -388,7 +390,7 @@ mod tests {
             period_us: Some(20000),
             budget_us: Some(5000),
             deadline_us: Some(18000),
-            deadline_policy: Some("abort".to_string()),
+            deadline_policy: Some("fault".to_string()),
             core: Some(1),
             posix: Some(TierRtosSpec {
                 priority: 80,
@@ -412,7 +414,7 @@ mod tests {
         assert_eq!(t.period_us, Some(20000));
         assert_eq!(t.budget_us, Some(5000));
         assert_eq!(t.deadline_us, Some(18000));
-        assert_eq!(t.deadline_policy.as_deref(), Some("abort"));
+        assert_eq!(t.deadline_policy.as_deref(), Some("fault"));
         assert_eq!(t.core, Some(1));
     }
 
