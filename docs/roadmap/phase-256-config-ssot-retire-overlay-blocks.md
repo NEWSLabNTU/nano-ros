@@ -246,16 +246,15 @@ already exists in `system.toml` for the bake but the planner ignores it).
     drive scheduling via W4.2; params come from launch/source-metadata/Cargo). Removing the overlay
     LOAD (`package_nros_toml` + the discovery + `--nros-toml`, 0 users) makes `overlays` always
     empty, so those reads become no-ops and the file support can be deleted outright. That deletion
-    is the final mechanical step (no decisions). Adjust the W7 audit message ("`nros.toml`
-    unsupported, remove" — not "migrate blocks"). Keep `nros migrate` (does NOT use the overlay). Adjust the W7 audit message ("`nros.toml` unsupported, remove"
-    — not "migrate blocks"). Keep `nros migrate` (does NOT use the overlay machinery).
-    **VESTIGIAL PART DONE (2026-06-18):** dropped the `.or_else(collect_*)` fallbacks +
-    `collect_lifecycle`/`collect_safety`/`collect_param_services` + tests — system.toml is the only
-    source for those three now. **Still blocked:** `collect_sched_contexts` (entangled with the
-    callback binding) + the `[build]` board/target/cfg/cargo/cc + `[[transport]]` + param-overlay
-    reads — those need the W3-tail (deploy `board`/`target`/`cfg`/`cargo`/`cc` → plan, confirmed
-    overlay-only with no `deploy→plan` path; + a `system.toml` transport model) before
-    `package_nros_toml`/`load_toml_values`/`--nros-toml` (0 users) can go.
+    is the final mechanical step (no decisions). Keep `nros migrate` (does NOT use the overlay
+    machinery). **W7 audit message ADJUSTED (2026-06-18):** `nros check` + `nros config show` now
+    say the overlay is UNSUPPORTED/IGNORED and to delete the file (not "deprecated, migrate after
+    next release") — the planner no longer reads it. **VESTIGIAL + READER SWEEP DONE
+    (2026-06-18):** dropped the `.or_else(collect_*)` fallbacks +
+    `collect_lifecycle`/`collect_safety`/`collect_param_services`, then the full overlay reader
+    plumbing — `collect_sched_contexts`, the `[build]`/`[[transport]]` overlay loop, the
+    param-overlay merge, and the `overlays` threading itself (see the input-surface + reader-sweep
+    commits above). system.toml is the only source now; 0 `nros.toml` reads remain.
   - **② `config.toml` CLI reader — DONE (2026-06-18).** Removed the `--config <path>` reader: the
     `nros config check` subcommand + `ShowArgs.config`/`CheckArgs` + `load()` + the config.toml
     branch of `show`. `nros config show [--system <pkg>]` is the resolved-`system.toml` view only;

@@ -162,13 +162,14 @@ fn render_resolved(workspace: &Path, system: &str) -> Result<String> {
             let _ = writeln!(out);
             let _ = writeln!(
                 out,
-                "# DEPRECATED overlay (phase-256): {} declares [{}]",
+                "# IGNORED overlay (phase-256): {} declares [{}]",
                 overlay_path.display(),
                 present.join("], [")
             );
             let _ = writeln!(
                 out,
-                "#   migrate these into the bringup system.toml (RFC-0004 §3.1)."
+                "#   the nros.toml overlay is retired (unread); declare these in the bringup \
+                 system.toml and delete the file (RFC-0004 §3.1)."
             );
         }
     }
@@ -232,9 +233,9 @@ mod tests {
             out.contains("param_services") && out.contains("(absent)"),
             "{out}"
         );
-        // The deprecated overlay is named with the block it carries.
+        // The ignored overlay is named with the block it carries.
         assert!(
-            out.contains("DEPRECATED overlay") && out.contains("[build]"),
+            out.contains("IGNORED overlay") && out.contains("[build]"),
             "must flag the legacy nros.toml [build] overlay: {out}"
         );
     }

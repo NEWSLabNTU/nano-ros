@@ -18,12 +18,10 @@ use clap::Args as ClapArgs;
 use eyre::{Result, WrapErr};
 use std::path::{Path, PathBuf};
 
-/// Phase 256 Wave 7 — the deprecated per-package `nros.toml` overlay blocks the
-/// config-SSoT endgame is retiring (RFC-0004 §3.1). A value still sourced from
-/// any of these is action-at-a-distance — `nros check` warns + names the file so
-/// the migration target is visible. (Capabilities/RMW already moved in
-/// phase-254/255; lifecycle/param_persistence in phase-256 W1/W2; build/scheduling/
-/// shared_state are the remaining waves — all warn here until removed.)
+/// Phase 256 Wave 7 — the per-package `nros.toml` overlay is RETIRED (W9): the
+/// planner no longer reads ANY of these blocks (RFC-0004 §3.1). `nros check`
+/// warns + names the file so a still-present block — now silently ignored — is
+/// caught and removed, with the typed `system.toml` home pointed at.
 const LEGACY_OVERLAY_BLOCKS: &[&str] = &[
     "build",
     "lifecycle",
@@ -48,8 +46,8 @@ fn legacy_overlay_warnings(system_toml_path: &Path) -> Result<Vec<String>> {
     for block in LEGACY_OVERLAY_BLOCKS {
         if last_block_source(&sourced, block).is_some() {
             warnings.push(format!(
-                "[{block}] is sourced from the deprecated overlay {} — migrate it into the \
-                 bringup system.toml (RFC-0004 §3.1; removed after the next release)",
+                "[{block}] in {} is UNSUPPORTED and ignored — the nros.toml overlay is retired; \
+                 declare it in the bringup system.toml and delete this file (RFC-0004 §3.1)",
                 overlay.display()
             ));
         }
