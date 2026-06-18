@@ -24,11 +24,12 @@ fn stage(cmake_body: &str, project_name: &str) -> (tempfile::TempDir, PathBuf, P
         "int phase212_l9_stub() { return 0; }\n",
     )
     .unwrap();
+    // Plain C stub — these tests FATAL at configure (CLASS mismatch / embedded
+    // DEPLOY) before any compile, so the source body is irrelevant; keep it free
+    // of the retired declarative seam (phase-257 Stage-3b).
     fs::write(
         root.join("src/dummy.c"),
-        "#include <nros/node_pkg.h>\n\
-         static nros_ret_t register_talker(nros_node_context_t* ctx) { (void)ctx; return NROS_RET_OK; }\n\
-         NROS_NODE_REGISTER(register_talker);\n",
+        "int phase212_l9_stub_c(void) { return 0; }\n",
     )
     .unwrap();
     let cml = format!(

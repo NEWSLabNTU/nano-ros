@@ -128,10 +128,10 @@ fn assert_snippet_compiled(id: &str) {
     }
 }
 
-#[test]
-fn declared_node_typed_helpers_compile() {
-    assert_snippet_compiled("declared_node_typed_helpers");
-}
+// Phase-257 Stage-3b — the `declared_node_typed_helpers` snippet exercised the
+// retired declarative seam (`DeclaredNode`/`DeclaredEntity`/`DeclaredCallback`);
+// removed with the seam. The typed surface is guarded by the component examples
+// (`configure(Node&)` + `Publisher<M>` + `bind_timer`).
 
 #[test]
 fn rclcpp_node_options_and_component_factory_compile() {

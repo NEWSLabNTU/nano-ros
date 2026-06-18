@@ -38,7 +38,6 @@
 #define NROS_CPP_MAIN_HPP
 
 #include "nros/nros.hpp"
-#include "nros/node_pkg.hpp"
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio>  // printf — Phase 238.B listener readiness / received-sample lines

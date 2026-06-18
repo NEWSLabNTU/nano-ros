@@ -259,7 +259,6 @@ done
 # proof the public C++ API headers type-check. Stamped into build/compile-check
 # (same resolver as the cargo compile-checks).
 CXX_SYNTAX_FIXTURES=(
-    "declared_node_typed_helpers"
     "rclcpp_node_options"
 )
 snippet_dir="$repo_root/packages/testing/nros-tests/fixtures/cpp_compat_snippets"
