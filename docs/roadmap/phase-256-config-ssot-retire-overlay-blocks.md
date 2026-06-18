@@ -218,14 +218,18 @@ already exists in `system.toml` for the bake but the planner ignores it).
     `collect_param_services` (all typed in `system.toml`) and `collect_sched_contexts` (the W4.2 tier
     path superseded it; the planner's `plan.sched_contexts` is now only the no-tier default that
     `generate` falls back to). Removing these + their deprecation warns makes `system.toml`/tiers the
-    only source — 0 `nros.toml` files exist, so byte-neutral. **BLOCKED (no `system.toml` home yet):**
-    `schema_build_json` still reads `[build]` `board`/`target`/`cfg`/`cargo`/`cc` + `[[transport]]`
-    from the overlay, and `params.rs` merges overlay `parameters`. W3 moved only `rmw` +
-    `profile`/`optimize`/`features` to `[deploy.<t>]`; `board`/`target`/`cfg`/`cargo`/`cc` + a
-    transport model + the param-overlay source still need a typed home before `package_nros_toml` /
-    `load_toml_values` / the discovery can be **fully** deleted. So full `nros.toml` file removal is a
-    W3-tail follow-up (deploy `board`/`target`/`cfg`/`cargo`/`cc` + a `system.toml` transport model)
-    — tracked as the remaining W9①. Adjust the W7 audit message ("`nros.toml` unsupported, remove"
+    only source — 0 `nros.toml` files exist, so byte-neutral. **W3-tail.1 DONE (2026-06-18):**
+    `schema_build_json` now reads `target`/`board` from the selected `[deploy.<t>]` (joining
+    `rmw`/`profile`/`optimize`/`features`) — the last *real* concern the `[build]` overlay carried
+    (it drives `generate`'s board-crate + entry-kind pick; the build-time `--target` already came
+    from `options.target`). **Full `nros.toml` deletion is now UNBLOCKED:** the remaining overlay
+    reads — `[build]` `cfg`/`cargo`/`cc`, `[[transport]]`, the `params.rs` overlay-parameter merge,
+    and `collect_sched_contexts` — are all **0-user dead reads** (0 `nros.toml` files; tiers now
+    drive scheduling via W4.2; params come from launch/source-metadata/Cargo). Removing the overlay
+    LOAD (`package_nros_toml` + the discovery + `--nros-toml`, 0 users) makes `overlays` always
+    empty, so those reads become no-ops and the file support can be deleted outright. That deletion
+    is the final mechanical step (no decisions). Adjust the W7 audit message ("`nros.toml`
+    unsupported, remove" — not "migrate blocks"). Keep `nros migrate` (does NOT use the overlay). Adjust the W7 audit message ("`nros.toml` unsupported, remove"
     — not "migrate blocks"). Keep `nros migrate` (does NOT use the overlay machinery).
     **VESTIGIAL PART DONE (2026-06-18):** dropped the `.or_else(collect_*)` fallbacks +
     `collect_lifecycle`/`collect_safety`/`collect_param_services` + tests — system.toml is the only
