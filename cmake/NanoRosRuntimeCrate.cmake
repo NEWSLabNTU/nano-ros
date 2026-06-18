@@ -112,16 +112,18 @@ function(nros_synth_runtime_umbrella)
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _sym "${_crate}")
         string(APPEND _dep_lines
             "${_crate} = { path = \"${_dir}\" }\n")
-        # Reference the node's register fn by its RUST CRATE PATH (not an `extern \"C\"`
+        # Reference the node's typed install fn by its RUST CRATE PATH (not an `extern \"C\"`
         # import). The `nros::node!()` macro emits it as `#[no_mangle] pub extern \"C\" fn
-        # __nros_component_<sym>_register`; an extern import would only add an undefined ref
-        # (the node rlib's object is never pulled), whereas naming the crate item forces its
-        # codegen unit — incl. the no_mangle symbol — into this staticlib root. `<sym>` is
+        # __nros_component_<sym>_install(node, executor, self)` (phase-257 W0-B — the uniform
+        # cross-language component-install seam); an extern import would only add an undefined
+        # ref (the node rlib's object is never pulled), whereas naming the crate item forces
+        # its codegen unit — incl. the no_mangle symbol — into this staticlib root. `<sym>` is
         # the dash→underscore crate ident, identical to the macro's symbol sanitisation.
+        # (Phase-258 Track 1 — anchors `_install`, not the retired `_register` seam.)
         string(APPEND _anchor_lines
             "#[used]\n"
-            "static _KEEP_NODE_${_sym}: unsafe extern \"C\" fn(*mut core::ffi::c_void) -> i32 =\n"
-            "    ${_sym}::__nros_component_${_sym}_register;\n")
+            "static _KEEP_NODE_${_sym}: unsafe extern \"C\" fn(*const core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void) -> i32 =\n"
+            "    ${_sym}::__nros_component_${_sym}_install;\n")
     endforeach()
 
     # ---- Backend force-link anchor (zenoh / xrce bundle a Rust rlib backend; cyclone is a
