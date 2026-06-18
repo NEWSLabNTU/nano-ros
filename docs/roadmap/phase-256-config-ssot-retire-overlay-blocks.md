@@ -212,12 +212,21 @@ already exists in `system.toml` for the bake but the planner ignores it).
   precedence-vs-Cargo-projection surfacing in `config show` rides on W6's provenance — a small tail.)
 - **Wave 9 — retire the legacy files. SCOPE: orchestration only (decision b, 2026-06-18).** W9
   covers the two **orchestration** surfaces; the embedded board parser is a separate issue:
-  - **① `nros.toml` overlay (CLI planner)** — once every block is migrated/disabled/removed (W1-W5),
-    delete the overlay reading: `package_nros_toml`, `load_toml_values` overlay path, the
-    `collect_*` warn-fallbacks (lifecycle/safety/param_services), the `nros.toml`-next-to-`system.toml`
-    discovery. Typed `system.toml` becomes the ONLY source. Adjust the W7 audit message
-    ("`nros.toml` unsupported, remove" — not "migrate blocks"). Keep `nros migrate` (pre-212 →
-    system.toml is still useful).
+  - **① `nros.toml` overlay (CLI planner) — PARTIALLY BLOCKED (explored 2026-06-18).** A code map
+    found the overlay split into two kinds. **Removable now (vestigial, typed home exists):** the
+    capability/lifecycle/scheduling fallbacks — `collect_lifecycle` / `collect_safety` /
+    `collect_param_services` (all typed in `system.toml`) and `collect_sched_contexts` (the W4.2 tier
+    path superseded it; the planner's `plan.sched_contexts` is now only the no-tier default that
+    `generate` falls back to). Removing these + their deprecation warns makes `system.toml`/tiers the
+    only source — 0 `nros.toml` files exist, so byte-neutral. **BLOCKED (no `system.toml` home yet):**
+    `schema_build_json` still reads `[build]` `board`/`target`/`cfg`/`cargo`/`cc` + `[[transport]]`
+    from the overlay, and `params.rs` merges overlay `parameters`. W3 moved only `rmw` +
+    `profile`/`optimize`/`features` to `[deploy.<t>]`; `board`/`target`/`cfg`/`cargo`/`cc` + a
+    transport model + the param-overlay source still need a typed home before `package_nros_toml` /
+    `load_toml_values` / the discovery can be **fully** deleted. So full `nros.toml` file removal is a
+    W3-tail follow-up (deploy `board`/`target`/`cfg`/`cargo`/`cc` + a `system.toml` transport model)
+    — tracked as the remaining W9①. Adjust the W7 audit message ("`nros.toml` unsupported, remove"
+    — not "migrate blocks"). Keep `nros migrate` (does NOT use the overlay machinery).
   - **② `config.toml` CLI reader** — remove the `nros config show/check --config <path>`
     subcommands (0 example files) + the `book/src/reference/cli.md` section.
   - **③ Board-crate `Config::from_toml` → SEPARATE (issue 0081).** The 10+ board crates'
