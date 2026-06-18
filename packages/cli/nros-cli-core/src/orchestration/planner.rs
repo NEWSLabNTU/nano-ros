@@ -750,21 +750,13 @@ fn schema_plan_json(
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
 
-    // Phase 172.A / 256 Wave 1 — optional lifecycle block, before `build` (NrosPlan
-    // field order); absent ⇒ omitted, plan byte-identical to pre-172.A. Typed
-    // `[lifecycle]` wins; the `nros.toml` overlay is the deprecated fallback.
+    // Phase 172.A / 256 — optional lifecycle block, before `build` (NrosPlan field
+    // order); absent ⇒ omitted. Typed `system.toml [lifecycle]` is the only source
+    // (W9 dropped the deprecated `nros.toml` overlay fallback).
     let lifecycle = system_caps
         .as_ref()
         .and_then(|s| s.lifecycle.as_ref())
-        .map(|lc| json!({ "autostart": lc.autostart }))
-        .or_else(|| {
-            collect_lifecycle(overlays).inspect(|_| {
-                eprintln!(
-                    "warning: [lifecycle] in nros.toml is deprecated (phase-256); \
-                     declare it in the bringup system.toml"
-                );
-            })
-        });
+        .map(|lc| json!({ "autostart": lc.autostart }));
     if let Some(lifecycle) = lifecycle {
         obj.insert("lifecycle".to_string(), lifecycle);
     }
@@ -780,15 +772,7 @@ fn schema_plan_json(
         .as_ref()
         .and_then(|s| s.param_services.as_ref())
         .filter(|p| p.enabled)
-        .map(|_| json!({}))
-        .or_else(|| {
-            collect_param_services(overlays).inspect(|_| {
-                eprintln!(
-                    "warning: [param_services] in nros.toml is deprecated (phase-254); \
-                     declare it in the bringup system.toml"
-                );
-            })
-        });
+        .map(|_| json!({}));
     if let Some(ps) = param_services {
         obj.insert("param_services".to_string(), ps);
     }
@@ -798,15 +782,7 @@ fn schema_plan_json(
         .as_ref()
         .and_then(|s| s.safety.as_ref())
         .filter(|s| s.enabled)
-        .map(|s| json!({ "crc": s.crc }))
-        .or_else(|| {
-            collect_safety(overlays).inspect(|_| {
-                eprintln!(
-                    "warning: [safety] in nros.toml is deprecated (phase-254); \
-                     declare it in the bringup system.toml"
-                );
-            })
-        });
+        .map(|s| json!({ "crc": s.crc }));
     if let Some(safety) = safety {
         obj.insert("safety".to_string(), safety);
     }
@@ -1207,69 +1183,6 @@ fn collect_sched_contexts(overlays: &[Value]) -> (Vec<Value>, BTreeMap<String, V
     }
     let contexts = order.iter().map(|id| by_id[id].clone()).collect();
     (contexts, by_id)
-}
-
-/// Phase 172.A — read the nros.toml `[lifecycle]` block (last overlay wins).
-/// Returns the plan lifecycle value `{ "autostart": <policy> }` when the block
-/// is present; `None` keeps the binary's node a plain (unmanaged) node. The
-/// `autostart` policy defaults to `none` (register services, stay
-/// `Unconfigured`) when the key is omitted; an unknown value passes through and
-/// is rejected by `nros check` (NrosPlan parse).
-fn collect_lifecycle(overlays: &[Value]) -> Option<Value> {
-    let mut out = None;
-    for overlay in overlays {
-        if let Some(lc) = overlay.get("lifecycle") {
-            let autostart = lc
-                .get("autostart")
-                .and_then(Value::as_str)
-                .unwrap_or("none");
-            out = Some(json!({ "autostart": autostart }));
-        }
-    }
-    out
-}
-
-/// Phase 250 (Wave 3) — read the nros.toml `[param_services]` block (last
-/// overlay wins). Returns `{}` when present and not disabled (`enabled = false`);
-/// `None` keeps the binary free of the parameter SERVER. The presence is the
-/// enable signal the generator lowers to `nros/param-services` (the runtime then
-/// registers the 6 ROS 2 param services on the first declared parameter).
-fn collect_param_services(overlays: &[Value]) -> Option<Value> {
-    let mut out = None;
-    for overlay in overlays {
-        if let Some(table) = overlay.get("param_services").and_then(Value::as_object) {
-            let enabled = table
-                .get("enabled")
-                .and_then(Value::as_bool)
-                .unwrap_or(true);
-            out = if enabled { Some(json!({})) } else { None };
-        }
-    }
-    out
-}
-
-/// Phase 250 (Wave 1) — read the nros.toml `[safety]` block (last overlay
-/// wins). Returns `{ "crc": <bool> }` when the block is present and not
-/// explicitly disabled (`enabled = false`); `None` keeps the binary free of the
-/// E2E-safety capability. `crc` defaults to true. The presence of the result is
-/// the enable signal the generator lowers to `nros/safety-e2e`.
-fn collect_safety(overlays: &[Value]) -> Option<Value> {
-    let mut out = None;
-    for overlay in overlays {
-        if let Some(table) = overlay.get("safety").and_then(Value::as_object) {
-            let enabled = table
-                .get("enabled")
-                .and_then(Value::as_bool)
-                .unwrap_or(true);
-            if enabled {
-                let crc = table.get("crc").and_then(Value::as_bool).unwrap_or(true);
-                out = Some(json!({ "crc": crc }));
-            } else {
-                out = None;
-            }
-        }
-    }
-    out
 }
 
 fn schema_callbacks(
@@ -5842,67 +5755,5 @@ topics:
         assert_eq!(bindings[1]["context"], json!("default_executor"));
         assert_eq!(bindings[1]["priority"], json!(null));
         assert_eq!(bindings[1]["source"], json!("source_metadata"));
-    }
-
-    #[test]
-    fn collect_lifecycle_reads_block_defaults_and_last_wins() {
-        // No [lifecycle] → unmanaged.
-        assert!(collect_lifecycle(&[json!({})]).is_none());
-        // [lifecycle] with autostart.
-        let lc = collect_lifecycle(&[json!({ "lifecycle": { "autostart": "active" } })]).unwrap();
-        assert_eq!(lc["autostart"], json!("active"));
-        // [lifecycle] without autostart → defaults to "none" (managed, externally driven).
-        let lc = collect_lifecycle(&[json!({ "lifecycle": {} })]).unwrap();
-        assert_eq!(lc["autostart"], json!("none"));
-        // Last overlay wins.
-        let lc = collect_lifecycle(&[
-            json!({ "lifecycle": { "autostart": "configure" } }),
-            json!({ "lifecycle": { "autostart": "active" } }),
-        ])
-        .unwrap();
-        assert_eq!(lc["autostart"], json!("active"));
-    }
-
-    /// Phase 250 Wave 3 — `[param_services]` collection: presence enables,
-    /// `enabled = false` disables (last-wins).
-    #[test]
-    fn collect_param_services_reads_block() {
-        assert!(collect_param_services(&[json!({})]).is_none());
-        assert!(collect_param_services(&[json!({ "param_services": {} })]).is_some());
-        assert!(
-            collect_param_services(&[json!({ "param_services": { "enabled": false } })]).is_none()
-        );
-        // Last overlay wins: a later disable clears an earlier enable.
-        assert!(
-            collect_param_services(&[
-                json!({ "param_services": {} }),
-                json!({ "param_services": { "enabled": false } }),
-            ])
-            .is_none()
-        );
-    }
-
-    /// Phase 250 Wave 1 — `[safety]` collection: presence enables (crc default
-    /// true), `enabled = false` disables (last-wins), `crc = false` round-trips.
-    #[test]
-    fn collect_safety_reads_block_with_defaults() {
-        // No [safety] → no capability.
-        assert!(collect_safety(&[json!({})]).is_none());
-        // Bare [safety] table → enabled, crc defaults true.
-        let s = collect_safety(&[json!({ "safety": {} })]).unwrap();
-        assert_eq!(s["crc"], json!(true));
-        // Explicit crc = false round-trips.
-        let s = collect_safety(&[json!({ "safety": { "crc": false } })]).unwrap();
-        assert_eq!(s["crc"], json!(false));
-        // enabled = false disables even when a table is present.
-        assert!(collect_safety(&[json!({ "safety": { "enabled": false } })]).is_none());
-        // Last overlay wins: a later disable clears an earlier enable.
-        assert!(
-            collect_safety(&[
-                json!({ "safety": { "crc": true } }),
-                json!({ "safety": { "enabled": false } }),
-            ])
-            .is_none()
-        );
     }
 }
