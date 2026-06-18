@@ -88,6 +88,33 @@ single complete component seam for C / C++ / **and Rust owned-spin**, closing D2
   `install_node_typed`/`register_node_borrowed` enrolls each `ComponentCell`;
   `Executor::spin_once` runs `tick` on the enrolled cells. Now `install`'d nodes
   (C, C++, Rust) tick — fixes the C++ D2 gap too.
+
+  **Code-grounded mechanism (mapped 2026-06-18).** The `Executor`
+  (`nros-node/src/executor/spin.rs:700`) already owns a bounded framework-dispatch
+  registry `dispatch_slots: heapless::Vec<DispatchSlot, MAX_NODES>` where
+  `DispatchSlot { state: *mut c_void, on_callback: extern "C" fn(...) }` (raw ptr +
+  fn-ptr — layering-clean, no `nros` dep). 2a extends this model:
+  - Add a **tick** fn-ptr to the slot (e.g. `tick: Option<extern "C" fn(state: *mut
+    c_void, exec_ctx: *mut c_void)>`) and a **`spin_once` tick pass** (after dispatch,
+    mirroring `ExecutorNodeRuntime::run_ticks`; mind the self-borrow — `mem::take` the
+    slot vec or index-iterate so `tick(state, &mut self)` doesn't alias `self.slots`).
+  - **Ownership of poll-only cells** (no callbacks → not kept alive by W0-B's callback
+    `Arc` clones): the slot must own the cell. `DispatchSlot.state` is already a *leaked*
+    raw ptr (`__private_node_state_into_raw`); add a paired **`drop: extern "C" fn(*mut
+    c_void)`** run on `Executor::drop` so the executor owns the cell's lifetime.
+  - `nros`'s `install_node_typed`/`register_node_borrowed` enroll the slot
+    (`state` = the leaked `ComponentCell`/state, `tick`/`drop` = `nros` fns that cast +
+    drive `ComponentCell::tick` / drop). `ExecutorNodeRuntime.{components,run_ticks}`
+    then delegate to (or are replaced by) the executor registry.
+  - Construction sites: `Executor::from_session` (spin.rs:924) + `from_session_ptr`
+    (1045) init the new field; `impl Drop for Executor` (5445) runs the slot drops.
+
+  **Open choice (settle before coding):** extend the existing `DispatchSlot` with
+  `tick`+`drop` (one registry, reused by framework + components) **vs** a separate
+  `component_slots` registry (keeps framework dispatch untouched). Leaning separate
+  registry — framework `DispatchSlot` is interrupt-dispatch (no tick/own); mixing
+  concerns risks the RTIC/Embassy path. Also: bounded `heapless::Vec<_, MAX_NODES>`
+  (matches `dispatch_slots`) vs `alloc::Vec` (nros-node has `alloc`) — lean bounded.
 - [ ] **node!**: emit an ergonomic Rust `install(exec: *mut c_void) -> i32`
   (or reuse `__nros_component_<pkg>_install`) — already present from W0-B.
 - [ ] **Board boundary**: expose the executor handle (`*mut Executor` as `void*`)
