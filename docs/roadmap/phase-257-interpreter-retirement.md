@@ -155,15 +155,31 @@ So the legacy `emit_cpp::emit` deletion is clean for the **pure-C++** path (type
 cpp already parallel); but the **C** path (W0-A) and the **Rust-in-cpp-entry** path
 (W0-B) each need additive framework before their legacy emit can go.
 
-### Stage 3 — the deletion — **TODO (after Stage 2)**
-- [ ] Delete `EntryNodeRuntime` + `detail::entry_*` synthesis helpers from `main.hpp`.
-- [ ] Retire `DeclaredNode`/`DeclaredCallback`/`record_callback_effect`/the
-  `NodeEntityDescriptor` `NodeContextOps` seam from `node_pkg.{h,hpp}`.
-- [ ] Drop the legacy `emit_cpp::emit`/`emit_c::emit` non-typed entry codegen
-  (make `--typed` the only C++/C entry path); prune the dispatch in `codegen.rs`.
-- [ ] Remove any carrier non-typed branches left after Stage 1/2.
-- [ ] Build-sweep the migrated examples to confirm nothing references the deleted
-  symbols.
+### Stage 3 — the deletion — **3a DONE (2026-06-18, `33d364f80`); 3b deferred**
+- [x] Delete `EntryNodeRuntime` + `detail::entry_*` synthesis helpers from `main.hpp`
+  (kept the typed `run_components`/`component_spin_loop`/`entry_parse_u32`/
+  `entry_tick_yield`; deleted the legacy `Board::run(register_fn)` overloads).
+- [x] Drop the legacy `emit_cpp::emit`/`emit_c::emit` non-typed entry codegen —
+  `codegen.rs` bails for a non-typed C/C++ entry (Rust stays register-based).
+- [x] Delete the no-op C board stub (`nros_board_native_run` / `c-stubs/main_board.c`
+  + its build-helpers compile + `main.h` decl + the unused `host_os()`), and the
+  non-typed NuttX carrier template (`nuttx_entry_main.cpp.in`); `nano_ros_node_register`
+  errors on a non-typed NuttX carrier.
+- [x] Migrated the last two non-typed-LAUNCH templates (`pure-c-workspace`,
+  `c-and-cpp-mixed-workspace`) to the typed entry.
+- [x] Build-swept: native workspaces c/cpp/mixed + cmake fixtures cpp_robot_entry /
+  c_mixed_workspace / pure_c_workspace all green with the interpreter gone.
+- [ ] **Stage-3b (deferred)** — retire the declarative
+  `DeclaredNode`/`DeclaredCallback`/`record_callback_effect`/`NodeEntityDescriptor`
+  `NodeContextOps` seam + `declared_node.hpp` from `node_pkg.{h,hpp}`. **Entangled**:
+  `node_pkg.{h,hpp}` is `#include`d by the core public headers (`nros.hpp`, `node.hpp`,
+  `main.hpp`, `nros.h`, `main.h`), so these types must be excised per-symbol with
+  care, not file-deleted. They are currently **dead but compiling**.
+- [ ] Owed: a full `just ci` pass (the host's flaky rustc blocked it; the targeted
+  fixture sweep above covers the Stage-3 blast radius).
+- [ ] Pre-existing/unrelated: the `shadowing` ament/rclcpp fixture fails to link
+  (`nros_app_register_backends`) — a phase-249 P4a RMW-wiring gap for a pure-rclcpp
+  consumer that transitively links a nano-ros msg binding; not touched by Stage-3.
 
 ## Design exploration (2026-06-18) — unified cross-language component-install seam
 
