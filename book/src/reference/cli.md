@@ -133,27 +133,21 @@ Run after `nros plan` to inspect the resolved component graph, topic
 wiring, parameter bindings, and SchedContext assignments before
 committing to a platform build.
 
-### `nros config show [--config <path>]` / `nros config check [--config <path>]`
+### `nros config show --system <pkg> [--workspace <dir>]`
 
-`show` parses the project's `nros.toml` (and any Kconfig overlay
-on Zephyr) and pretty-prints it, plus reports any `ROS_DOMAIN_ID`
-env override.
+Prints the **resolved effective config** for a bringup system (`rmw`,
+`domain_id`, `locator`, and the `safety` / `param_services` / `lifecycle`
+capability axes) with a **per-value provenance column** — `system.toml
+[section]` vs the built-in `default`. If a legacy per-package `nros.toml`
+overlay still declares any of those blocks, it is flagged DEPRECATED by
+name (RFC-0004 §3.1). Omit the `<pkg>` value to default to the workspace's
+`default_system` (or the sole bringup); `--workspace` defaults to the cwd.
+The `nros check` command surfaces the same overlay warnings when validating
+a `system.toml`.
 
-`check` validates `nros.toml` syntactically and warns when the
-locator or domain are missing. Exits non-zero on warnings.
-
-#### `nros config show --system <pkg> [--workspace <dir>]`
-
-The new-model resolved view: prints the **effective config** for a
-bringup system (`rmw`, `domain_id`, `locator`, and the `safety` /
-`param_services` / `lifecycle` / `param_persistence` capability axes)
-with a **per-value provenance column** — `system.toml [section]` vs the
-built-in `default`. If a legacy per-package `nros.toml` overlay still
-declares any of those blocks, it is flagged DEPRECATED by name so the
-migration target into `system.toml` is visible (RFC-0004 §3.1). Omit the
-`<pkg>` value to default to the workspace's `default_system` (or the sole
-bringup). `--workspace` defaults to the cwd. The `nros check` command
-surfaces the same overlay warnings when validating a `system.toml`.
+> The legacy `nros config show/check --config <path>` reader for `config.toml`
+> was removed (phase-256): `config.toml` is retired (RFC-0004 §8) and no example
+> ships one. Embedded runtime config lives in `[package.metadata.nros.deploy.<t>]`.
 
 ### `nros ws <subcommand>`
 

@@ -1,85 +1,52 @@
-//! `nros config show` / `nros config check` — Phase 111.A.6.
+//! `nros config show --system <pkg>` — print the resolved effective config for a
+//! bringup system (its typed `system.toml`) with per-value provenance.
 //!
-//! v1 surface: parse the project's `config.toml`, surface key sections
-//! (zenoh, network, wifi, priority, stack) plus the active Cargo
-//! features, and merge the `ROS_DOMAIN_ID` environment override.
-//!
-//! Kconfig (Zephyr) values + the auto-generated `nros_app_config.h`
-//! struct land with Phase 112.D — until then `--zephyr` falls back to
-//! a "not yet" message.
+//! Phase 256 W9: the legacy `config.toml` reader (`--config <path>` on `show` /
+//! `check`) is removed — `config.toml` is retired (RFC-0004 §8) and 0 examples
+//! ship one. Embedded runtime config lives in `[package.metadata.nros.deploy.<t>]`.
 
 use crate::orchestration::{
     cargo_metadata_schema::SystemToml, nros_config::NrosConfig, params::load_sourced_toml_values,
 };
 use clap::{Args as ClapArgs, Subcommand};
 use eyre::{Result, WrapErr, eyre};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Subcommand)]
 pub enum Args {
-    /// Print the resolved configuration (config.toml merged with env
-    /// overrides + active Cargo features)
+    /// Print the resolved effective config for a bringup system (from its typed
+    /// `system.toml`) with per-value provenance.
     Show(ShowArgs),
-    /// Validate config.toml syntactically and warn on missing common
-    /// keys (zenoh.locator, zenoh.domain_id, wifi.{ssid,password})
-    Check(CheckArgs),
 }
 
 #[derive(Debug, ClapArgs)]
 pub struct ShowArgs {
-    /// Path to config.toml (default: ./config.toml)
-    #[arg(long, default_value = "config.toml")]
-    pub config: PathBuf,
-
-    /// Phase 256 Wave 6 — new-model view: print the **resolved effective config**
-    /// for `<system>` (a bringup pkg) with **per-value provenance** (which file
-    /// each value came from). When set, `--config` is ignored. Omit to default to
-    /// the workspace's `default_system` (or the sole bringup).
+    /// Phase 256 — the bringup pkg to resolve. Omit (or pass with no value) to
+    /// default to the workspace's `default_system` (or the sole bringup).
     #[arg(long = "system", num_args = 0..=1, default_missing_value = "")]
     pub system: Option<String>,
 
-    /// Phase 256 Wave 6 — workspace root for `--system` resolution (default: cwd).
+    /// Workspace root for resolution (default: cwd).
     #[arg(long)]
     pub workspace: Option<PathBuf>,
-}
-
-#[derive(Debug, ClapArgs)]
-pub struct CheckArgs {
-    /// Path to config.toml (default: ./config.toml)
-    #[arg(long, default_value = "config.toml")]
-    pub config: PathBuf,
 }
 
 pub fn run(args: Args) -> Result<()> {
     match args {
         Args::Show(args) => show(args),
-        Args::Check(args) => check(args),
     }
 }
 
+// Phase 256 W9 — the legacy `config.toml` reader (`--config <path>` on `show`/`check`)
+// is removed: `config.toml` is retired (RFC-0004 §8) and 0 examples ship one. `nros
+// config show` is now the resolved-`system.toml` view only.
 fn show(args: ShowArgs) -> Result<()> {
-    // Phase 256 Wave 6 — `--system` switches to the new-model resolved view; the
-    // legacy `config.toml` surface (used by the embedded examples) is unchanged
-    // when `--system` is absent.
-    if let Some(system) = args.system.as_deref() {
-        let workspace = match args.workspace {
-            Some(w) => w,
-            None => std::env::current_dir().wrap_err("resolve cwd")?,
-        };
-        print!("{}", render_resolved(&workspace, system)?);
-        return Ok(());
-    }
-
-    let cfg = load(&args.config)?;
-    println!("# config.toml ({})", args.config.display());
-    println!("{}", toml::to_string_pretty(&cfg)?);
-
-    if let Ok(domain_id) = std::env::var("ROS_DOMAIN_ID") {
-        println!("# Environment override: ROS_DOMAIN_ID = {domain_id}");
-    }
+    let workspace = match args.workspace {
+        Some(w) => w,
+        None => std::env::current_dir().wrap_err("resolve cwd")?,
+    };
+    let system = args.system.as_deref().unwrap_or("");
+    print!("{}", render_resolved(&workspace, system)?);
     Ok(())
 }
 
@@ -226,48 +193,10 @@ fn line(out: &mut String, key: &str, value: &str, source: &str) {
     let _ = writeln!(out, "{key:<18} = {value:<28} # {source}");
 }
 
-fn check(args: CheckArgs) -> Result<()> {
-    let cfg = load(&args.config)?;
-    let mut warnings: Vec<String> = Vec::new();
-
-    let zenoh = cfg.get("zenoh").and_then(|v| v.as_table());
-    match zenoh {
-        Some(t) => {
-            if !t.contains_key("locator") {
-                warnings.push("zenoh.locator missing".into());
-            }
-            if !t.contains_key("domain_id") {
-                warnings.push("zenoh.domain_id missing (defaults to 0)".into());
-            }
-        }
-        None => warnings.push("[zenoh] section missing".into()),
-    }
-
-    if warnings.is_empty() {
-        println!("✓ {} OK", args.config.display());
-        Ok(())
-    } else {
-        for w in &warnings {
-            eprintln!("warning: {w}");
-        }
-        Err(eyre!(
-            "{} has {} warning(s)",
-            args.config.display(),
-            warnings.len()
-        ))
-    }
-}
-
-fn load(path: &Path) -> Result<toml::Value> {
-    let raw =
-        fs::read_to_string(path).wrap_err_with(|| format!("failed to read {}", path.display()))?;
-    toml::from_str::<toml::Value>(&raw)
-        .wrap_err_with(|| format!("invalid TOML in {}", path.display()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     /// Phase 256 Wave 6 — `render_resolved` prints the resolved SSoT config from
     /// the typed `system.toml` with per-value provenance, and flags a sibling
