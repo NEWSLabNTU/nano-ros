@@ -1,6 +1,6 @@
 # Phase 261 — capability registry: multi-language lowering + `features = [...]`
 
-Status: **W1–W4 done (2026-06-18); W5 (cmake_token threading) optional/pending** ·
+Status: **Done — W1–W4 (2026-06-18); W5 DEFERRED (YAGNI, 2026-06-19)** ·
 Implements
 [issue 0076 §B-W4](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md) (spun
 out of [phase-259](archived/phase-259-safety-e2e-tails.md), where it was scoped) ·
@@ -79,10 +79,30 @@ later wave). Tests: `features=[...]` ≡ typed blocks on the bake; unknown-featu
 rejected. (Existing examples using the typed blocks now emit the deprecation warn —
 a later cleanup wave migrates them to `features=[...]`.)
 
-### W5 — cmake_token threading (optional)
-If `cmake_token` is populated, thread it into the C/C++ codegen as a
-`-D<token>=ON` analog to `NANO_ROS_RMW`/`NANO_ROS_SAFETY_E2E`, so a declared axis
-also flips the CMake build knob (not just the informational `#define`).
+### W5 — cmake_token threading — DEFERRED (2026-06-19, YAGNI)
+**No clean injection point exists**, so this is a new mechanism, not a one-line
+thread. Findings from the W5 exploration:
+- The bake emits `.h` / `.c` / `.toml` / `.json` — **no CMake**. `system_config.h`
+  informs C *source*, but the `NANO_ROS_SAFETY_E2E` CMake **option** (default `OFF`
+  in `packages/core/nros-cpp/CMakeLists.txt`) must be flipped at *configure* time.
+- C/C++ build knobs come from scaffold-baked `set(NANO_ROS_RMW …)` (package-level,
+  `scaffold.rs`), fixture `cmake_defs` (`examples/fixtures.toml`), or manual `-D`.
+  None auto-flips a **system-level** capability from the declared axis. The
+  `NANO_ROS_RMW` analog is per-package; capabilities live in `system.toml` (the
+  bake) → architectural mismatch.
+
+**Design when picked up:** the bake emits `nros-system/system_config.cmake` —
+`set(<cmake_token> ON CACHE BOOL "" FORCE)` for each enabled axis whose row has a
+`cmake_token` — and every C/C++ bringup `include()`s it BEFORE
+`add_subdirectory(nros-cpp)` (so the option is set before nros-cpp reads it). Loop
+`CAPABILITIES` + `SystemToml::capability_enabled`, mirroring the W2 `#define` loop.
+Touches the C/C++ build templates (`scaffold.rs`) + examples.
+
+**Deferred because:** `safety` is the only `cmake_token` (zenoh-only CRC) and **0**
+examples enable it — the per-axis CMake-knob plumbing cost doesn't repeat yet (the
+phase's own YAGNI gate: build it when a **2nd** `cmake_token` axis or a concrete
+C/C++ safety build lands). The registry slot (W1) is already populated, so adding
+W5 later is purely the bake-emit + include wiring.
 
 ## Acceptance
 - Adding a `Capability{}` row makes a declared axis lower to BOTH the Rust features
