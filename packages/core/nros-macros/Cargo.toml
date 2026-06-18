@@ -24,15 +24,18 @@ proc-macro2 = { workspace = true }
 #   * `toml` to parse the Entry pkg's `Cargo.toml`
 #     (`[package.metadata.nros.entry] deploy = "<board>"`) and the
 #     bringup pkg's `system.toml` (`[system] default_launch = "..."`).
-#   * `nros-build` for the shared workspace pkg-index walk + ROS 2
-#     launch.xml parser landed in N.10 + N.11. The standalone nros-cli repo
-#     was merged in-tree at `packages/cli/` (post-Phase-218); this is the
-#     in-tree path dep (the archived git dep is retired — always use in-tree).
-#     The path crosses into the `packages/cli/` sub-workspace, which is fine:
-#     a path dep groups by lockfile, not dep visibility. Proc-macro crates can
-#     carry arbitrary deps because they run at the consumer's compile time.
+#   * the workspace pkg-index walk (`nros-pkg-index`) + ROS 2 launch.xml parser
+#     (`nros-launch-parser`) — the two leaf crates the macro needs. phase-262
+#     (issue 0083): the macro used to dep `nros-build`, which pulls ALL of
+#     nros-cli-core (planner/codegen/orchestration + the ros-launch-manifest
+#     submodule) just for these two self-contained modules. Depending on the
+#     leaves directly drops the whole CLI from every nros/nros-c/app build. The
+#     paths cross into the `packages/cli/` sub-workspace — fine: a path dep groups
+#     by lockfile, not visibility, and proc-macro deps are host-only at the
+#     consumer's compile time.
 toml = "0.8"
-nros-build = { path = "../../cli/nros-build" }
+nros-pkg-index = { path = "../../cli/nros-pkg-index" }
+nros-launch-parser = { path = "../../cli/nros-launch-parser" }
 # Phase 228.G — shared per-tier schema + resolver. Same crate the CLI's
 # codegen-system uses, so the macro's compile-time tier resolution can't drift
 # from the bake path (RFC-0032 §6). Proc-macro deps are host-only.

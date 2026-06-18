@@ -405,7 +405,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Some(launch_lit) => {
             let launch_value = launch_lit.value();
             // Walk the workspace from the Entry pkg's manifest dir.
-            let workspace_root = nros_build::pkg_index::detect_workspace_root(&manifest_dir)
+            let workspace_root = nros_pkg_index::detect_workspace_root(&manifest_dir)
                 .map_err(|e| {
                     syn::Error::new(
                         launch_lit.span(),
@@ -413,7 +413,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     )
                 })?;
             let pkg_index =
-                nros_build::pkg_index::build_pkg_index(&workspace_root).map_err(|e| {
+                nros_pkg_index::build_pkg_index(&workspace_root).map_err(|e| {
                     syn::Error::new(
                         launch_lit.span(),
                         format!("nros::main!: build_pkg_index: {e}"),
@@ -475,7 +475,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
             // Parse the launch file via N.11.
             let arg_overrides: Vec<(String, String)> = args.args.clone();
-            let desc = nros_build::launch_parser::parse_launch_file(
+            let desc = nros_launch_parser::parse_launch_file(
                 &launch_path,
                 &pkg_index,
                 &arg_overrides,

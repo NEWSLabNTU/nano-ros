@@ -51,7 +51,11 @@ eyre, quick-xml, nros-pkg-index (rewrote `crate::pkg_index::PkgIndex` →
 nros_launch_parser as launch_parser`). Verified: leaf + nros-cli-core + nros-build
 compile; nros-build's 10 `launch_parser` tests green. (No serde/ln_types — clean.)
 
-### W3 — rewire nros-cli-core (keep consumers byte-stable)
+### W3 — rewire nros-cli-core (keep consumers byte-stable) — DONE (W1/W2)
+Done incrementally in W1+W2: nros-cli-core deletes both modules, deps the two leaf
+crates, re-exports `pub use nros_pkg_index as pkg_index` + `…nros_launch_parser as
+launch_parser`. Keeps `ros-launch-manifest-types` (manifest.rs uses it). All
+nros-cli-core + nros-build consumers/tests unchanged + green.
 Delete the two modules from nros-cli-core; depend on the two leaf crates;
 re-export `pub use nros_pkg_index as pkg_index;` + `pub use nros_launch_parser as
 launch_parser;`. Every existing `nros_cli_core::{pkg_index,launch_parser}` user
@@ -59,11 +63,12 @@ launch_parser;`. Every existing `nros_cli_core::{pkg_index,launch_parser}` user
 KEEPS `ros-launch-manifest-types` (manifest.rs still uses it — the CLI legitimately
 needs it).
 
-### W4 — swap nros-macros off nros-build
-`packages/core/nros-macros/Cargo.toml`: drop `nros-build`; add `nros-pkg-index` +
-`nros-launch-parser` path deps. In `main_macro.rs`: `nros_build::pkg_index::*` →
-`nros_pkg_index::*`, `nros_build::launch_parser::*` → `nros_launch_parser::*`.
-(The other `nros-build` use — none beyond these two — confirmed.)
+### W4 — swap nros-macros off nros-build — DONE (2026-06-18)
+nros-macros Cargo.toml: dropped `nros-build`; added `nros-pkg-index` +
+`nros-launch-parser`. main_macro.rs: `nros_build::pkg_index::*` → `nros_pkg_index::*`,
+`nros_build::launch_parser::*` → `nros_launch_parser::*` (the only three uses).
+**Verified:** `cargo tree -p nros-c` now shows NO nros-cli-core / nros-build /
+ros-launch-manifest-types — only the two leaf crates. nros-macros builds.
 
 ### W5 — remove the CI submodule-init workarounds
 With the macro path submodule-free, the `ros-launch-manifest` `git submodule
