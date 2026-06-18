@@ -1,11 +1,23 @@
 ---
 id: 85
 title: threadx-riscv64 cyclonedds C fixtures fail to link — duplicate `ddsrt_setsockreuse`
-status: open
+status: resolved
 type: bug
 area: threadx
 related: [phase-186, phase-251, issue-0084]
+resolved_in: "cyclonedds fork nano-ros @ 6eb92277; superproject pointer bump"
 ---
+
+## Resolution (2026-06-18)
+
+Removed the duplicate `ddsrt_setsockreuse` from the CycloneDDS fork's ThreadX
+ddsrt port (`src/ddsrt/src/sockets/threadx/socket.c`); the generic
+`ddsrt/src/sockets.c` definition serves it (SO_REUSEADDR fallback on NetX BSD,
+same as the posix port). Landed on the fork `nano-ros` branch
+(NEWSLabNTU/cyclonedds @ `6eb92277`) + superproject submodule-pointer bump.
+Verified: `just threadx_riscv64 build-fixture-extras` builds the full set — zenoh
++ cyclonedds C fixtures + the Rust logging-smoke fixture all link.
+
 
 ## Problem
 
