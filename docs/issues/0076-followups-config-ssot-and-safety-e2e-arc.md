@@ -21,11 +21,14 @@ action-at-a-distance (a value set in some package's file silently changes the bu
 contradicts RFC-0004 (`nros.toml` is the embedded-runtime file only). It is being **retired**,
 not merely supplemented. phase-254 did the capability axes; the rest of §A finishes it.
 
-**All five items below are now designed + waved in
+**§A is COMPLETE (2026-06-18) via
 [phase-256](../roadmap/phase-256-config-ssot-retire-overlay-blocks.md)** (the §3.1 endgame, same
-pattern as phase-254/255). The block map (reader fn + typed-field status per concern) lives there.
+pattern as phase-254/255) — all waves W0-W9 DONE. The block map (reader fn + typed-field status per
+concern) lives there. Two sub-concerns spun out: `[param_persistence]` disabled pending embedded
+backends (issue 0080), `[[shared_state]]` removed as out-of-scope (issue 0079). Remaining 0076
+work = §B (safety-e2e tails) + §C (residuals).
 
-- [ ] **Retire ALL legacy `nros.toml` build-overlay blocks → `system.toml` (typed).** Not just
+- [x] **Retire ALL legacy `nros.toml` build-overlay blocks → `system.toml` (typed).** DONE — phase-256 W1-9 (a sweep found 0 `nros.toml`/`config.toml` files in `examples/**`; both legacy files retired). Not just
   `[safety]`/`[param_services]` (done, phase-254) and `rmw` (done, phase-255): also `[build]` rest
   (target/board/profile/optimize/cargo/cc/features/`[[transport]]`), `[lifecycle]`,
   `[param_persistence]`, `[[scheduling.contexts]]`, `[[shared_state]]`. Each moves to a typed
@@ -34,14 +37,14 @@ pattern as phase-254/255). The block map (reader fn + typed-field status per con
   `[tiers]` SSoT = W4, decision A). **`[param_persistence]` DISABLED** — in scope but incomplete,
   no embedded `ParamStore` backends (issue 0080). **`[[shared_state]]` REMOVED** — out of ROS scope
   (issue 0079).
-- [ ] **`nros config show`** — print the **resolved effective config** for a system + **per-value
+- [x] **`nros config show`** — DONE — phase-256 W6 (`nros config show --system <pkg>`, `cmd/config.rs`). print the **resolved effective config** for a system + **per-value
   provenance** (which file each value came from). The audit backstop for SSoT (RFC-0004 §3.1).
   Today's `nros config` reads the retired pre-212 `config.toml`; this is the new-model command.
   **phase-256 Wave 6** (needs the Wave 0 provenance primitive — `load_toml_values` source-tagging).
-- [ ] **`nros check` flags legacy-overlay-sourced values** — any value still coming from a
+- [x] **`nros check` flags legacy-overlay-sourced values** — DONE — phase-256 W7 (`legacy_warnings` in `cmd/check.rs`). any value still coming from a
   per-package `nros.toml` overlay surfaces a warning + removal date (the action-at-a-distance
   guard). Extends `check`'s current plan/schema validation. **phase-256 Wave 7.**
-- [ ] **Deploy-metadata precedence (leakage).** `[package.metadata.nros.deploy.<t>]` (`rmw`,
+- [x] **Deploy-metadata precedence (leakage).** DONE — phase-256 W8 (per-deploy `domain_id`/`locator` override, explicit ladder). `[package.metadata.nros.deploy.<t>]` (`rmw`,
   `domain_id`, `locator`) + `[workspace.metadata.nros]` (`rmw_override`, `domain_id_override`)
   are the **single-node Cargo-native projection**. When a `system.toml` exists for the same
   scope it is authoritative (the RFC-0004 §3.1 ladder: flag > `system.toml` > native projection
@@ -56,10 +59,10 @@ The original capability/RMW items (now under the §3.1 umbrella):
   `resolved_rmw`; per-deploy override of `[system].rmw`).
 - [x] **`--rmw` CLI flag** — **DONE — phase-255 Wave 4** (`nros plan` + `nros codegen-system`;
   top of the precedence ladder).
-- [ ] **Migrate the other overlay blocks to typed `system.toml`** — `[build]` rest, `[lifecycle]`,
-  `[param_persistence]`, `[[scheduling.contexts]]`, `[[shared_state]]`. The full RFC-0004
-  endgame; **phase-256** (designed), same pattern as phase-254/255.
-- [ ] **Retire the deprecated per-package `nros.toml` capability/RMW-overlay fallback** — kept
+- [x] **Migrate the other overlay blocks to typed `system.toml`** — DONE — phase-256 (`[build]` rest
+  → `[deploy.<t>]`, `[lifecycle]`, `[[scheduling.contexts]]` → `[tiers]`; `[param_persistence]`
+  disabled → 0080; `[[shared_state]]` removed → 0079).
+- [x] **Retire the deprecated per-package `nros.toml` capability/RMW-overlay fallback** — DONE — phase-256 W9 (orchestration scope; 0 `nros.toml` files exist). kept
   one release by phase-254 Wave 2 + phase-255 (warns). Remove once nothing uses it (RFC-0004 §5:
   `nros.toml` is the embedded direct-mode runtime file only). **phase-256 Wave 9.**
 
