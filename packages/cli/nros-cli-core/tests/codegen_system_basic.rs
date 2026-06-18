@@ -140,8 +140,8 @@ fn args(ws: &Path, out: &Path) -> Args {
     }
 }
 
-/// 212.E spec test — FreeRTOS thumbv7m bake produces baked headers
-/// (`system_config.h` + `system_main.c`) under `<out>/nros-system/`.
+/// 212.E spec test — FreeRTOS thumbv7m bake produces the baked header
+/// (`system_config.h`) under `<out>/nros-system/`.
 /// The target string is recorded into `nros-plan.json`.
 #[test]
 fn codegen_system_emits_baked_headers_for_freertos_qemu() {
@@ -161,10 +161,9 @@ fn codegen_system_emits_baked_headers_for_freertos_qemu() {
     assert!(header.contains("#define NROS_SYSTEM_LOCATOR \"tcp/127.0.0.1:7447\""));
     assert!(header.contains("#define NROS_SYSTEM_COMPONENT_COUNT 2"));
 
-    let main_c = fs::read_to_string(bake.join("system_main.c")).unwrap();
-    assert!(main_c.contains("extern int nros_component_talker_register(void);"));
-    assert!(main_c.contains("extern int nros_component_listener_register(void);"));
-    assert!(main_c.contains("nros_system_spin();"));
+    // Phase 258 (Track 2, follow-up): the retired system_main.c C-baker is no
+    // longer emitted.
+    assert!(!bake.join("system_main.c").exists());
 
     let plan = fs::read_to_string(bake.join("nros-plan.json")).unwrap();
     assert!(plan.contains("\"target\": \"thumbv7m-none-eabi\""));
@@ -246,15 +245,10 @@ fn codegen_system_idempotent_on_unchanged_input() {
     codegen_system::run(args(&dir, &out)).expect("first run");
 
     let bake = out.join("nros-system");
-    let snap: Vec<(String, Vec<u8>)> = [
-        "system_config.h",
-        "system_main.c",
-        "Cargo.toml",
-        "nros-plan.json",
-    ]
-    .iter()
-    .map(|f| (f.to_string(), fs::read(bake.join(f)).expect("read")))
-    .collect();
+    let snap: Vec<(String, Vec<u8>)> = ["system_config.h", "Cargo.toml", "nros-plan.json"]
+        .iter()
+        .map(|f| (f.to_string(), fs::read(bake.join(f)).expect("read")))
+        .collect();
 
     codegen_system::run(args(&dir, &out)).expect("second run");
 

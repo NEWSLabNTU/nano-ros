@@ -244,11 +244,10 @@ pub struct PlanNode {
 }
 
 impl PlanNode {
-    /// Per-pkg mangled register symbol per Phase 212.M.5.a.1:
-    /// `__nros_component_<sanitised_pkg>_register`.
-    pub fn register_symbol(&self) -> String {
-        format!("__nros_component_{}_register", sanitize_pkg(&self.pkg))
-    }
+    // Phase 258 (Track 2, follow-up) — `register_symbol()` (the dead
+    // `__nros_component_<pkg>_register` mangled-symbol string) is gone. The
+    // post-257 entries link `__nros_component_<pkg>_install`, not `_register`;
+    // nothing consumed this string.
 
     /// Cmake target name for the static lib the Node pkg's
     /// `nano_ros_node_register()` produces:
@@ -447,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn register_symbol_uses_mangled_pkg() {
+    fn cmake_link_target_uses_mangled_pkg() {
         let n = PlanNode {
             pkg: "talker-pkg".into(),
             exec: "talker".into(),
@@ -460,7 +459,6 @@ mod tests {
             host: None,
             qos_overrides: Vec::new(),
         };
-        assert_eq!(n.register_symbol(), "__nros_component_talker_pkg_register");
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");
     }
 
