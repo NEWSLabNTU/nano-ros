@@ -71,17 +71,18 @@ The original capability/RMW items (now under the §3.1 umbrella):
 **Processed in [phase-259](../roadmap/phase-259-safety-e2e-tails.md)** (W1 threadx
 wiring, W2 loud no-CRC gate, W3 optional C++ e2e, W4 declared-feature sugar).
 
-- [ ] **threadx boards safety wiring** — `nros-board-threadx-{linux,qemu-riscv64}` expose no
-  `rmw-zenoh` board feature (non-standard backend wiring), so `[safety]` is not advertised; the
-  descriptor gate skips + warns. Needs threadx's backend wiring understood before forwarding
-  (phase-252 Wave 4 skip).
-- [ ] **cyclonedds / xrce have no safety-e2e CRC path** — the axis no-ops there (documented in
-  `cyclonedds-known-limitations.md`). A DDS-side CRC + C surface is unscoped (issue 0073).
-- [ ] **C++ safety transport e2e** — the C transport e2e proves the validation; the C++ ABI
-  calls the same `RmwSubscriber::try_recv_validated`, so no separate C++ e2e was added. Add one
-  if the C++ path needs independent CI coverage (issue 0073).
+- [x] **threadx boards safety wiring** — DONE (phase-259 W1). threadx is app-level RMW; the
+  backend dep (`render_backend_dependencies` → `nros-rmw-zenoh[safety-e2e]`) carries the CRC
+  regardless of board advertisement, so threadx+zenoh+`[safety]` forwards. Removed the false
+  board-level "NOT backend CRC" warning; W2 is the accurate (resolved-RMW) signal.
+- [x] **cyclonedds / xrce have no safety-e2e CRC path** — DONE (phase-259 W2). The axis no-ops
+  there (documented in `cyclonedds-known-limitations.md`) AND now warns loudly at plan/check time
+  when `[safety]` is declared on a non-CRC resolved RMW (`collect_plan_warnings`).
+- [x] **C++ safety transport e2e** — DONE (phase-259 W3). `examples/native/cpp/safety-listener/`
+  + `test_cpp_safety_listener_validates_crc` (green: `cpp safety: 3 crc-ok, 0 crc-fail`).
 - [ ] **Generic declared-feature config sugar** — a `features = [...]` list over the
-  `resolve_capability` registry (RFC-0031 §Generalization future note).
+  `resolve_capability` registry (RFC-0031 §Generalization future note). **DEFERRED** (phase-259
+  W4, YAGNI — only one axis exists today; revisit when a 2nd lands).
 
 ## C. Older residuals (pre-arc, still open)
 

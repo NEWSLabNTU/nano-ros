@@ -1449,10 +1449,19 @@ fn board_rmw_features(build: &PlanBuildOptions) -> Vec<String> {
 
 /// Phase 252 (issue 0072) — the capability-axis features that lower to the BOARD
 /// crate's forwarding feature (target 3 of the RFC-0031 capability generalization).
-/// A declared `[safety]` axis lowers to the board's `safety-e2e` feature only when
-/// the board advertises support (`capability_features` in its descriptor); a board
-/// that does not is **skipped + warned**, never a Cargo error. Empty when no
-/// capability axis is declared (byte-identical to pre-252).
+/// A declared `[safety]` axis adds the board's `safety-e2e` feature when the board
+/// advertises support (`capability_features` in its descriptor); a board that does
+/// not simply omits it — never a Cargo error.
+///
+/// phase-259 W1 (issue 0076 §B): a board NOT advertising the feature is NOT a
+/// missing-CRC condition. `render_backend_dependencies` ALWAYS emits the resolved
+/// RMW's backend dep with `safety-e2e` when the backend carries it (zenoh —
+/// `backend_features`), so the CRC compiles regardless of board advertisement
+/// (this is how the app-level-RMW boards — native, threadx — get it). The board
+/// feature is only an additional board-level forwarding path. The accurate
+/// "[safety] but the resolved RMW has no CRC path" warning is W2's, keyed on the
+/// RESOLVED RMW (`collect_plan_warnings`), not the board — so this no longer warns
+/// (the old board-level warning was a false negative for threadx/native).
 fn board_capability_features(
     plan: &NrosPlan,
     board: &crate::orchestration::board_descriptor::BoardDescriptor,
@@ -1460,17 +1469,9 @@ fn board_capability_features(
     let mut feats = Vec::new();
     if plan.safety.is_some()
         && let Some(bf) = crate::orchestration::capability("safety").and_then(|c| c.backend_feature)
+        && board.capability_features.iter().any(|f| f == bf)
     {
-        if board.capability_features.iter().any(|f| f == bf) {
-            feats.push(bf.to_string());
-        } else {
-            eprintln!(
-                "warning: board {:?} does not declare the '{bf}' capability feature; \
-                 [safety] enables the validation surface but NOT backend CRC on this \
-                 board (issue 0072)",
-                board.names
-            );
-        }
+        feats.push(bf.to_string());
     }
     feats
 }

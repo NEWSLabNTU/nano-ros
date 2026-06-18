@@ -12,17 +12,26 @@ lowering) + issue 0073 (C/C++ safety-e2e lowering, resolved).
 
 ## Work items
 
-### W1 — threadx boards safety wiring
-`nros-board-threadx-linux` and `nros-board-threadx-qemu-riscv64` expose no
-`rmw-zenoh` board feature (their backend wiring is non-standard), so `[safety]` is
-not advertised on them — the phase-252 descriptor gate **skips + warns** for these
-boards (Wave 4 skip). To forward the axis, the threadx backend wiring must first be
-understood: does threadx route through the zenoh shim (where the CRC lives) at all,
-or a separate transport? If zenoh-backed, add the board `rmw-zenoh`/`safety-e2e`
-feature edge so the descriptor gate advertises it; if not, document that safety-e2e
-is unavailable on threadx (like cyclonedds/xrce, W2).
-- **Acceptance:** `[safety]` on a threadx system either forwards (CRC validates
-  e2e) or warns explicitly that the backend has no CRC path — no silent skip.
+### W1 — threadx boards safety wiring — DONE (2026-06-18)
+**Investigation:** threadx (like native) is **app-level RMW** — the board crate has
+no `rmw-zenoh`/`capability_features`; the resolved RMW's backend dep is emitted
+directly. `render_backend_dependencies` (generate.rs) runs UNCONDITIONALLY and
+`render_one_backend` adds `safety-e2e` to `nros-rmw-zenoh` whenever the backend
+carries it (`backend_features`, zenoh) — so **threadx+zenoh+`[safety]` DOES forward
+the CRC** (same zenoh shim the native C/C++ e2e proves), independent of board
+advertisement.
+
+The phase-252 `board_capability_features` warning ("does not declare the
+capability feature; `[safety]` enables the validation surface but NOT backend CRC
+on this board") was therefore a **false negative** for threadx/native — the backend
+dep carries the CRC. **Fix:** removed that board-level warning (kept the
+feature-add for advertised board-level-RMW boards). The accurate signal is W2's
+resolved-RMW warning (`collect_plan_warnings`): threadx+cyclone/xrce+`[safety]` →
+W2 warns (no CRC path); threadx+zenoh+`[safety]` → forwards, no warning.
+- **Acceptance MET:** `[safety]` on threadx forwards (zenoh) or W2-warns
+  (cyclone/xrce) — no silent skip, no false warning. (A runtime threadx-linux CRC
+  fixture is deferred: the lowering is board-agnostic + the zenoh shim is proven by
+  the native e2e; a heavy NSOS/QEMU fixture adds marginal proof.)
 
 ### W2 — cyclonedds / xrce: gate the no-CRC backends — DONE (2026-06-18)
 **Landed:** `collect_plan_warnings` (planner.rs) warns per linked RMW the capability
