@@ -1,7 +1,7 @@
 # Native POSIX
 
 Use the native POSIX target for first experiments, CI smoke tests, and
-ROS 2 interoperability checks on Linux or macOS. It uses OS sockets,
+ROS 2 interoperability checks on Linux or *BSD. It uses OS sockets,
 the host process environment, and the same source checkout layout as the
 embedded targets.
 
@@ -11,7 +11,7 @@ embedded targets.
   subscriber.
 - You are validating message generation, CMake integration, or ROS 2
   interop before moving to an RTOS.
-- Your deployment target is Linux, macOS, or an embedded Linux system.
+- Your deployment target is Linux, *BSD, or an embedded Linux system.
 
 ## Setup
 

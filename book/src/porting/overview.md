@@ -78,7 +78,7 @@ These serve as reference when writing a new port.
 
 | Platform crate | Target | Threading | Networking |
 |---|---|---|---|
-| `nros-platform-posix` | Linux, macOS | pthreads | libc BSD sockets |
+| `nros-platform-posix` | Linux, *BSD | pthreads | libc BSD sockets |
 | `nros-platform-freertos` | FreeRTOS | FreeRTOS tasks | lwIP |
 | `nros-platform-nuttx` | NuttX | pthreads | POSIX sockets |
 | `nros-platform-threadx` | ThreadX | ThreadX threads | NetX Duo |

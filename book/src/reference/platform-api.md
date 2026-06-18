@@ -36,7 +36,7 @@ copy.
 
 | Crate | Target | Source |
 |---|---|---|
-| `nros-platform-posix` | Linux / macOS | [packages/core/nros-platform-posix](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-posix) |
+| `nros-platform-posix` | Linux / *BSD | [packages/core/nros-platform-posix](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-posix) |
 | `nros-platform-nuttx` | NuttX RTOS | [packages/core/nros-platform-nuttx](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-nuttx) |
 | `nros-platform-freertos` | FreeRTOS | [packages/core/nros-platform-freertos](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-freertos) |
 | `nros-platform-threadx` | Azure RTOS / ThreadX | [packages/core/nros-platform-threadx](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-platform-threadx) |

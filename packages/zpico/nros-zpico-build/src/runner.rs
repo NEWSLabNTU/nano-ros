@@ -187,7 +187,7 @@ pub fn run() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let auto_posix = matches!(
         target_os.as_str(),
-        "linux" | "macos" | "freebsd" | "netbsd" | "openbsd" | "android"
+        "linux" | "freebsd" | "netbsd" | "openbsd" | "android"
     );
     let any_explicit = use_posix
         || use_zephyr
@@ -366,7 +366,7 @@ pub fn run() {
             zenoh_pico_src.join("include")
         };
         if !use_system {
-            if target.contains("linux") || target.contains("darwin") || target.contains("macos") {
+            if target.contains("linux") {
                 println!("cargo:rustc-link-lib=pthread");
             } else if target.contains("windows") {
                 println!("cargo:rustc-link-lib=ws2_32");
@@ -821,8 +821,6 @@ fn probe_net_type_sizes(
         let target = env::var("TARGET").unwrap_or_default();
         if target.contains("linux") {
             build.define("ZENOH_LINUX", None);
-        } else if target.contains("darwin") || target.contains("macos") {
-            build.define("ZENOH_MACOS", None);
         }
     }
 
@@ -1005,7 +1003,7 @@ fn use_system_zenoh_pico() -> PathBuf {
     );
     println!("cargo:rustc-link-lib=static=zenohpico");
     let target = env::var("TARGET").unwrap_or_default();
-    if target.contains("linux") || target.contains("darwin") || target.contains("macos") {
+    if target.contains("linux") {
         println!("cargo:rustc-link-lib=pthread");
     } else if target.contains("windows") {
         println!("cargo:rustc-link-lib=ws2_32");
@@ -1053,8 +1051,6 @@ fn build_c_shim(
     if use_posix {
         #[cfg(target_os = "linux")]
         build.define("ZENOH_LINUX", None);
-        #[cfg(target_os = "macos")]
-        build.define("ZENOH_MACOS", None);
     } else if use_bare_metal {
         let platform_dir = c_dir.join("platform");
 

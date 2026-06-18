@@ -27,7 +27,6 @@ them.
 | Arm FVP      | `Base_RevC AEMv8R` (SMP) | Cortex-A SMP   | Armv8-R    | Zephyr 3.7    | Tested (build); license-gated runtime | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-aemv8r{,-cyclonedds}` + `run-fvp-aemv8r{,-cyclonedds}` |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |
 | Linux host   | (native)             | x86-64 / aarch64    | x86 / Arm  | POSIX         | Tested   | `examples/native/`                                                  |
-| Apple Silicon| (native)             | aarch64             | Armv8.5-A  | POSIX (macOS) | Ready    | `examples/native/` (no QEMU step required)                          |
 
 ## How to add a new board
 

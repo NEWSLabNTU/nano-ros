@@ -280,7 +280,7 @@ nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-bare-metal
 
 ## Runtime environment (POSIX only)
 
-On Linux/macOS, `ExecutorConfig::from_env()` reads at process start (embedded
+On Linux/*BSD, `ExecutorConfig::from_env()` reads at process start (embedded
 targets bake `nros.toml` instead):
 
 | Variable | Description | Default |

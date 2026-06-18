@@ -31,7 +31,7 @@ The platform feature selects which OS primitives (threading, mutexes, clock, sle
 
 | Feature              | Target                        | Threading         | Network          |
 |----------------------|-------------------------------|-------------------|------------------|
-| `platform-posix`     | Linux, macOS                  | pthreads          | BSD sockets      |
+| `platform-posix`     | Linux, *BSD                   | pthreads          | BSD sockets      |
 | `platform-zephyr`    | Zephyr RTOS                   | k_thread_create   | Zephyr sockets   |
 | `platform-bare-metal`| Cortex-M, RISC-V, ESP32       | Single-threaded   | smoltcp          |
 | `platform-freertos`  | FreeRTOS                      | xTaskCreate       | lwIP             |

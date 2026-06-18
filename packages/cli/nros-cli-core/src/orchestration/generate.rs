@@ -1816,10 +1816,9 @@ fn uses_std(build: &PlanBuildOptions) -> bool {
     ) {
         return false;
     }
+    // macOS dropped (phase-260) — no darwin/apple hosted target.
     matches!(build.board.as_str(), "native" | "posix")
         || build.target.contains("linux")
-        || build.target.contains("darwin")
-        || build.target.contains("apple")
         || build.target.contains("windows")
         || build.target.contains("freebsd")
 }

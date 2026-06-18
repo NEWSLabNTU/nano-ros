@@ -1,6 +1,6 @@
 # Phase 260 — drop macOS host support
 
-Status: **In progress (2026-06-18)** · Closes the §C macOS item of
+Status: **Done (2026-06-18, W1-W5)** · Closes the §C macOS item of
 [issue 0076](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md).
 
 > **Decision (2026-06-18).** nano-ros drops **macOS** as a supported host platform.
@@ -27,12 +27,12 @@ Status: **In progress (2026-06-18)** · Closes the §C macOS item of
   is the keeper) and the `NOT APPLE` guards on the `stdc++` propagation (simplify to
   the threadx guard only). **DONE** (this phase). Also sweep `cmake/*.cmake` +
   `cmake/platform/nano-ros-posix.cmake` for residual APPLE/Darwin handling.
-- [ ] **W3 — Rust: remove macos cfg.** `nros-rmw-cffi/src/section.rs` (macho
+- [x] **W3 — Rust: remove macos cfg.** `nros-rmw-cffi/src/section.rs` (macho
   `__DATA,__mod_init_func` ctor branch), `nros-cli-core` planner.rs/generate.rs
   (`build.target.contains("apple"/"darwin")` target routing — make an apple target
   an explicit "unsupported host" error, not a silent route), `nros-zpico-build/
   src/runner.rs` (`#[cfg(target_os = "macos")]`).
-- [ ] **W4 — Docs: stop advertising macOS.** ~10 book files
+- [x] **W4 — Docs: stop advertising macOS.** ~10 book files
   (`introduction.md`, `concepts/platform-model.md`, `porting/overview.md`,
   `platform-guides/native-posix.md`, `reference/{supported-boards,platform-api}.md`,
   `user-guide/configuration.md`, `internals/rmw-backends.md`, …) list "Linux / macOS"

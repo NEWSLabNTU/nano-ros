@@ -159,7 +159,7 @@ See the [Role reference](../user-guide/component-and-entry-pkg.md) for the Entry
 
 The family crate is where the `BoardEntry::run` *body* actually lives. Tier-1 families targeted by Phase 212.N.2:
 
-- `nros-board-posix` — native host (Linux / macOS / *BSD); `init_transport`/`wait_link_up` no-ops.
+- `nros-board-posix` — native host (Linux / *BSD); `init_transport`/`wait_link_up` no-ops.
 - `nros-board-freertos` — FreeRTOS-Kernel + lwIP; `run` spawns the executor task, hands DHCP to lwIP's hook.
 - `nros-board-threadx` — ThreadX + NetX BSD; same shape over NetX.
 - `nros-board-nuttx` — NuttX POSIX layer; `init_transport` shells `ifup`-style logic.

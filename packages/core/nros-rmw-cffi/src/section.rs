@@ -5,8 +5,7 @@
 //!
 //! - **Hosted (Rust + C/C++):** the backend emits a `#[used]` ctor
 //!   function pointer into the platform loader's pre-`main` init
-//!   section (`.init_array` on ELF, `__DATA,__mod_init_func` on
-//!   Mach-O). The loader fires every ctor before `main`, so each
+//!   section (`.init_array` on ELF). The loader fires every ctor before `main`, so each
 //!   backend's [`crate::nros_rmw_cffi_register_named`] call has already
 //!   run by the time the runtime opens a session. No runtime walk, no
 //!   `linkme` distributed slice.
@@ -40,8 +39,7 @@
 ///
 /// On hosted targets (`not(target_os = "none")`) it expands to a
 /// `#[used]` ctor function pointer landed in the loader's pre-`main`
-/// init section (`.init_array` on ELF, `__DATA,__mod_init_func` on
-/// Mach-O). The loader invokes the ctor before `main`; the ctor body is
+/// init section (`.init_array` on ELF). The loader invokes the ctor before `main`; the ctor body is
 /// `$body`, which calls the backend's `register()`. On embedded
 /// (`target_os = "none"`) it expands to nothing — the board calls
 /// `register()` explicitly.
@@ -66,25 +64,9 @@ macro_rules! nros_rmw_register_backend {
             // The loader walks this section before transferring control
             // to `main`, invoking every fn pointer found there.
             // `#[used]` keeps the symbol against `--gc-sections`.
+            // macOS/Apple dropped (phase-260) — ELF `.init_array` only.
             #[used]
-            #[cfg_attr(
-                not(any(
-                    target_os = "macos",
-                    target_os = "ios",
-                    target_os = "tvos",
-                    target_os = "watchos",
-                )),
-                unsafe(link_section = ".init_array")
-            )]
-            #[cfg_attr(
-                any(
-                    target_os = "macos",
-                    target_os = "ios",
-                    target_os = "tvos",
-                    target_os = "watchos",
-                ),
-                unsafe(link_section = "__DATA,__mod_init_func")
-            )]
+            #[unsafe(link_section = ".init_array")]
             static __NROS_RMW_BACKEND_AUTO_REGISTER_CTOR: unsafe extern "C" fn() =
                 __nros_rmw_backend_auto_register;
         };

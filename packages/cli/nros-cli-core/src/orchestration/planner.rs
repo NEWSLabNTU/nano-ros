@@ -233,10 +233,9 @@ fn linked_rmw_set(build: &PlanBuildOptions) -> std::collections::BTreeSet<&str> 
 /// Whether the build target is a hosted (OS-backed) target — where linking
 /// multiple RMW backends into one process is routine.
 fn plan_target_is_hosted(build: &PlanBuildOptions) -> bool {
+    // macOS dropped (phase-260) — no darwin/apple hosted target.
     matches!(build.board.as_str(), "native" | "posix")
         || build.target.contains("linux")
-        || build.target.contains("darwin")
-        || build.target.contains("apple")
         || build.target.contains("windows")
 }
 
