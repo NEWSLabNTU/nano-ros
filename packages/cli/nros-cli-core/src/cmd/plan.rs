@@ -62,10 +62,6 @@ pub struct Args {
     #[arg(long = "manifest")]
     pub manifests: Vec<PathBuf>,
 
-    /// nano-ros deployment overlay TOML
-    #[arg(long = "nros-toml")]
-    pub nros_toml: Vec<PathBuf>,
-
     /// Phase 255 Wave 4 — RMW override, the TOP of the precedence ladder
     /// (`--rmw` > `[deploy.<t>].rmw` > `[system].rmw` > `zenoh`). Sets
     /// `plan.build.rmw` regardless of `system.toml` / the `[build].rmw` overlay.
@@ -156,7 +152,6 @@ pub fn run(args: Args) -> Result<()> {
         out_root,
         metadata_files: args.metadata,
         manifest_files: args.manifests,
-        nros_toml_files: args.nros_toml,
         launch_args: args.launch_args,
         rmw: args.rmw,
         target: args.target,

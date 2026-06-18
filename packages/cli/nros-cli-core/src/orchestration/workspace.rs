@@ -76,7 +76,6 @@ pub struct Package {
     pub name: String,
     pub root: PathBuf,
     pub package_xml: PathBuf,
-    pub nros_toml: Option<PathBuf>,
     /// Phase 254 — the package's `system.toml` (bringup pkg), the typed
     /// capability/topology SSoT (RFC-0004). `None` for non-bringup packages.
     pub system_toml: Option<PathBuf>,
@@ -250,13 +249,6 @@ impl Workspace {
         )
     }
 
-    pub fn package_nros_toml(&self, package: &str) -> Option<PathBuf> {
-        self.packages
-            .iter()
-            .find(|pkg| pkg.name == package)
-            .and_then(|pkg| pkg.nros_toml.clone())
-    }
-
     /// Phase 254 — the package's `system.toml` path (the bringup pkg's typed
     /// capability/topology SSoT). `None` if the package has none.
     pub fn package_system_toml(&self, package: &str) -> Option<PathBuf> {
@@ -405,10 +397,6 @@ fn discover_package(root: &Path) -> Result<Package> {
         name: parsed.name,
         root: root.to_path_buf(),
         package_xml,
-        nros_toml: root
-            .join("nros.toml")
-            .is_file()
-            .then(|| root.join("nros.toml")),
         // Phase 254 — the bringup package's `system.toml` (the capability/topology
         // SSoT both codegen paths read).
         system_toml: root

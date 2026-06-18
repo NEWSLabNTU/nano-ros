@@ -48,8 +48,9 @@ fn fixture_workspace_plans_checks_and_builds_generated_package() {
         out_dir: Some(out_dir.clone()),
         metadata: Vec::new(),
         manifests: vec![demo_pkg.join("manifest/system.launch.yaml")],
-        nros_toml: Vec::new(),
         launch_args: Vec::new(),
+        rmw: None,
+        target: None,
     })
     .expect("plan command parses launch and writes checked artifacts");
 

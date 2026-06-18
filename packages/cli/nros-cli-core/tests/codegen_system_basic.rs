@@ -136,6 +136,7 @@ fn args(ws: &Path, out: &Path) -> Args {
         ahead_of_vendor: None,
         file: None,
         exec: None,
+        rmw: None,
     }
 }
 
