@@ -212,6 +212,27 @@ fn collect_plan_warnings(plan: &NrosPlan) -> Vec<String> {
             rmws.iter().copied().collect::<Vec<_>>().join(", "),
         ));
     }
+    // phase-259 W2 (issue 0076 §B) — the safety-e2e CRC path lives only in the
+    // backends the capability registry lists (zenoh today). On any other resolved
+    // RMW the axis silently no-ops (the backend feature is never added) — so a
+    // declared `[safety]` leaves the validation surface present but DEAD. Make it
+    // loud: warn per linked RMW the registry doesn't support. SSoT = the registry,
+    // no hardcoded backend list.
+    if plan.safety.is_some()
+        && let Some(cap) = crate::orchestration::capability("safety")
+    {
+        for rmw in &rmws {
+            if !cap.backend_supports(rmw) {
+                warnings.push(format!(
+                    "[safety] is declared but the resolved RMW `{rmw}` has no E2E \
+                     integrity (CRC) path; the axis no-ops on this backend (only {} \
+                     carries CRC). The validation surface compiles but is dead — \
+                     switch the RMW or drop [safety].",
+                    cap.backends_supporting.join("/"),
+                ));
+            }
+        }
+    }
     warnings
 }
 
@@ -3877,6 +3898,49 @@ topics:
             "{:?}",
             embedded_single.messages
         );
+    }
+
+    #[test]
+    fn safety_warns_on_non_crc_rmw() {
+        // phase-259 W2 (issue 0076 §B) — `[safety]` on a backend the capability
+        // registry doesn't list (cyclonedds/xrce) silently no-ops the CRC; warn.
+        let root = temp_workspace("nros-safety-no-crc-warn");
+        fs::create_dir_all(&root).unwrap();
+        let plan = |rmw: &str, safety: bool| -> Value {
+            let mut v = json!({
+                "version": 2, "system": "s",
+                "trace": { "system_config": "nros.toml", "launch_record": "r", "generated_by": "t" },
+                "components": [], "instances": [], "interfaces": [], "sched_contexts": [],
+                "build": {
+                    "target": "x86_64-unknown-linux-gnu", "board": "native", "rmw": rmw,
+                    "profile": "release", "features": [], "cfg": {}, "transports": []
+                }
+            });
+            if safety {
+                v["safety"] = json!({ "crc": true });
+            }
+            v
+        };
+        let check = |value: Value, name: &str| -> CheckReport {
+            let path = root.join(name);
+            fs::write(&path, serde_json::to_string_pretty(&value).unwrap()).unwrap();
+            check_plan_file(&path).unwrap()
+        };
+
+        // [safety] + cyclonedds → dead CRC → warn.
+        let cyc = check(plan("cyclonedds", true), "safety-cyclone.json");
+        assert_eq!(cyc.warnings, 1, "{:?}", cyc.messages);
+        assert!(
+            cyc.messages[0].contains("[safety]") && cyc.messages[0].contains("CRC"),
+            "{:?}",
+            cyc.messages
+        );
+        // [safety] + xrce → dead CRC → warn.
+        assert_eq!(check(plan("xrce", true), "safety-xrce.json").warnings, 1);
+        // [safety] + zenoh → CRC carried → no warn.
+        assert_eq!(check(plan("zenoh", true), "safety-zenoh.json").warnings, 0);
+        // no [safety] + cyclonedds → nothing to warn about.
+        assert_eq!(check(plan("cyclonedds", false), "no-safety-cyclone.json").warnings, 0);
     }
 
     #[cfg(feature = "play-launch-parser")]

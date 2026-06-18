@@ -24,7 +24,13 @@ is unavailable on threadx (like cyclonedds/xrce, W2).
 - **Acceptance:** `[safety]` on a threadx system either forwards (CRC validates
   e2e) or warns explicitly that the backend has no CRC path — no silent skip.
 
-### W2 — cyclonedds / xrce: gate the no-CRC backends
+### W2 — cyclonedds / xrce: gate the no-CRC backends — DONE (2026-06-18)
+**Landed:** `collect_plan_warnings` (planner.rs) warns per linked RMW the capability
+registry doesn't list when `[safety]` is declared — SSoT = the registry
+(`capability("safety").backend_supports`), no hardcoded list. Surfaces via
+`check_plan_file` → `nros check`. Test: `safety_warns_on_non_crc_rmw` (cyclone/xrce
+warn, zenoh + no-safety silent).
+
 The CRC machinery lives in the **zenoh** shim only. cyclonedds and xrce have no
 safety-e2e path; the axis no-ops there. Already documented in
 `docs/reference/cyclonedds-known-limitations.md`. Tail: make the no-op **loud** —
