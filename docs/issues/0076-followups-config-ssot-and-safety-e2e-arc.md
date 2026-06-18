@@ -68,8 +68,11 @@ The original capability/RMW items (now under the §3.1 umbrella):
 
 ## B. safety-e2e tails
 
-**Processed in [phase-259](../roadmap/phase-259-safety-e2e-tails.md)** (W1 threadx
-wiring, W2 loud no-CRC gate, W3 optional C++ e2e, W4 declared-feature sugar).
+**W1-W3 done in [phase-259](../roadmap/archived/phase-259-safety-e2e-tails.md)**
+(threadx false-warning removed, loud no-CRC gate, C++ e2e). **W4** (declared-feature
+multi-language sugar) spun out to
+[phase-261](../roadmap/phase-261-capability-registry-multilang-lowering.md),
+deferred.
 
 - [x] **threadx boards safety wiring** — DONE (phase-259 W1). threadx is app-level RMW; the
   backend dep (`render_backend_dependencies` → `nros-rmw-zenoh[safety-e2e]`) carries the CRC
@@ -85,8 +88,9 @@ wiring, W2 loud no-CRC gate, W3 optional C++ e2e, W4 declared-feature sugar).
   Rust-specific today (cargo-feature slots only; the C/C++ `#define` lowering is hardcoded per-axis
   in `render_system_config_h`, with `c_define`/`cmake_token` reserved). The real W4 adds the
   reserved C/C++ slots + makes the bake iterate them, so one `Capability{}` row lowers to Rust
-  features AND the C/C++ `#define`/CMake token. **DEFERRED** (phase-259 W4, YAGNI — only one
-  concrete axis today; revisit when a 2nd lands). Detail: phase-259.
+  features AND the C/C++ `#define`/CMake token. **DEFERRED** (YAGNI — only one concrete axis
+  today; revisit when a 2nd lands). Filed as its own phase:
+  [phase-261](../roadmap/phase-261-capability-registry-multilang-lowering.md).
 
 ## C. Older residuals (pre-arc, still open)
 

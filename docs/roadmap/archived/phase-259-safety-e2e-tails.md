@@ -1,9 +1,15 @@
 # Phase 259 — safety-e2e capability tails
 
-Status: **Planned (2026-06-18)** · Implements the §B tail of
+Status: **Done (2026-06-18, W1-W3)** · Implements the §B tail of
 [issue 0076](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md) ·
 Follows [phase-252](phase-252-capability-axis-board-lowering.md) (capability board
 lowering) + issue 0073 (C/C++ safety-e2e lowering, resolved).
+
+> **W1-W3 landed; W4 spun out.** W1 (threadx false-warning removed), W2 (loud
+> no-CRC gate), W3 (C++ e2e fixture) are done. W4 (declared-feature sugar) turned
+> out to be a non-trivial **multi-language capability-registry generalization** —
+> moved to its own [phase-261](phase-261-capability-registry-multilang-lowering.md)
+> and deferred (YAGNI while only `safety` exercises the path).
 
 > **Context.** The safety-e2e axis (CRC-32 attach on publish + validate on receive)
 > is landed + proven on the zenoh backend for Rust **and** C/C++ (issue 0073). What
