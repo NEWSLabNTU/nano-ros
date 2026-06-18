@@ -41,11 +41,8 @@ if(TARGET nros_platform_posix)
 endif()
 # POSIX host-system libs. Matches the legacy install-time NanoRos::NanoRos
 # behaviour from NanoRosCTargets.cmake.
-if(UNIX AND NOT APPLE)
+if(UNIX)
     target_link_libraries(nros_platform_posix_iface INTERFACE pthread dl m)
-elseif(APPLE)
-    target_link_libraries(nros_platform_posix_iface INTERFACE
-        pthread dl m "-framework Security" "-framework CoreFoundation")
 endif()
 
 # Canonical platform-shim alias (Phase 138 §A contract).

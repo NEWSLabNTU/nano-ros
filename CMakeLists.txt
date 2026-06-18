@@ -258,16 +258,6 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
                 target_link_libraries(NanoRos INTERFACE
                     "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive")
             endif()
-        elseif(APPLE)
-            # phase-251 W2 — `--allow-multiple-definition` removed. `-force_load`
-            # is macOS's whole-archive equivalent; the Linux path above whole-archives
-            # the same C/C++ cyclone (no Rust core/std closure to collide) WITHOUT the
-            # flag, so macOS doesn't need it either — it was a defensive leftover. If a
-            # real macOS dup ever surfaces it now ERRORS (the wrong-copy hazard the flag
-            # hid) instead of silently picking a copy. (No macOS CI runner — reasoned
-            # from the flag-free Linux path, not run-validated here.)
-            target_link_libraries(NanoRos INTERFACE
-                "-Wl,-force_load,$<TARGET_FILE:nros_rmw_cyclonedds>")
         else()
             target_link_libraries(NanoRos INTERFACE nros_rmw_cyclonedds)
         endif()
@@ -279,8 +269,7 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
         # `std::nothrow`. Propagate the C++ stdlib through the INTERFACE
         # so any C consumer resolves them. Harmless for C++ apps (the
         # C++ driver already links it).
-        if(NOT APPLE
-           AND NOT (DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx"))
+        if(NOT (DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx"))
             target_link_libraries(NanoRos INTERFACE stdc++)
         endif()
         # Phase 241.D3-rev — the C++ umbrella (NanoRosCpp = nros-cpp-headers) no longer
@@ -299,14 +288,10 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
                     target_link_libraries(nros-cpp-headers INTERFACE
                         "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive")
                 endif()
-            elseif(APPLE)
-                target_link_libraries(nros-cpp-headers INTERFACE
-                    "-Wl,-force_load,$<TARGET_FILE:nros_rmw_cyclonedds>")
             else()
                 target_link_libraries(nros-cpp-headers INTERFACE nros_rmw_cyclonedds)
             endif()
-            if(NOT APPLE
-               AND NOT (DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx"))
+            if(NOT (DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx"))
                 target_link_libraries(nros-cpp-headers INTERFACE stdc++)
             endif()
         endif()

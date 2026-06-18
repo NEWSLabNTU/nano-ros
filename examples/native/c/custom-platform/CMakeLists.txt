@@ -38,10 +38,8 @@ target_compile_options(baremetal_platform_ref PRIVATE
     -Wall -Wextra -Wpedantic)
 
 # Platform-specific libraries not covered by NanoRos::NanoRos.
-if(UNIX AND NOT APPLE)
+if(UNIX)
     target_link_libraries(baremetal_demo PRIVATE rt)
-elseif(APPLE)
-    target_link_libraries(baremetal_demo PRIVATE "-framework CoreFoundation")
 endif()
 
 target_compile_options(baremetal_demo PRIVATE

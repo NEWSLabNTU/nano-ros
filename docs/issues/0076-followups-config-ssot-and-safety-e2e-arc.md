@@ -68,6 +68,9 @@ The original capability/RMW items (now under the §3.1 umbrella):
 
 ## B. safety-e2e tails
 
+**Processed in [phase-259](../roadmap/phase-259-safety-e2e-tails.md)** (W1 threadx
+wiring, W2 loud no-CRC gate, W3 optional C++ e2e, W4 declared-feature sugar).
+
 - [ ] **threadx boards safety wiring** — `nros-board-threadx-{linux,qemu-riscv64}` expose no
   `rmw-zenoh` board feature (non-standard backend wiring), so `[safety]` is not advertised; the
   descriptor gate skips + warns. Needs threadx's backend wiring understood before forwarding
@@ -82,9 +85,12 @@ The original capability/RMW items (now under the §3.1 umbrella):
 
 ## C. Older residuals (pre-arc, still open)
 
-- [ ] **macOS cyclonedds `--allow-multiple-definition` removal** — phase-249 D3 tail; the macOS
-  cyclonedds branch (`CMakeLists.txt`, `-force_load` + flag) needs a macOS run to validate
-  removal. Issue 0072 (resolved) notes the Linux/BSD removal landed.
+- [x] **macOS cyclonedds `--allow-multiple-definition` removal** — RESOLVED by **dropping macOS
+  support** ([phase-260](../roadmap/phase-260-drop-macos-support.md)). The macOS `elseif(APPLE)`
+  `-force_load` cyclone branches (+ the `NOT APPLE` stdc++ guards, the posix/custom-platform APPLE
+  link branches, and the release darwin targets) are removed — no macOS = nothing to validate, the
+  unvalidatable branch is gone rather than pending a runner. (W3 rust-cfg / W4 doc sweep tracked in
+  phase-260.)
 - [x] **Issue 0050 (weak-symbol audit)** — DONE — already resolved + archived
   (`archived/0050-*`; phase-247 gates + phase-249 P4a + 2026-06-15 re-audit). Gates live:
   `check-weak-symbols` (in check-fast) + `check-weak-symbols-image`.

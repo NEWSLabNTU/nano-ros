@@ -39,6 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # macOS dropped (phase-260) — Linux hosts only.
         include:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-22.04
@@ -46,12 +47,6 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-22.04
             cross: true
-          - target: x86_64-apple-darwin
-            runner: macos-13
-            cross: false
-          - target: aarch64-apple-darwin
-            runner: macos-14
-            cross: false
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
