@@ -7,12 +7,12 @@
 
 #include <stdint.h>
 
-/* Stub FILE for stderr — picolibc's __assert_func writes to stderr */
-struct __sFILE {
-    int _unused;
-};
-static struct __sFILE _stderr_file;
-struct __sFILE *const stderr = &_stderr_file;
+/* `stderr` (and `stdout`) is defined once, canonically, in the board's
+ * `startup.c` — a real picolibc `FILE` routed to UART, linked into every app.
+ * Do NOT redefine it here: a second global `stderr` collides at link time once
+ * `syscalls.o` is pulled for its other stubs (issue 0084 — `rust-lld: duplicate
+ * symbol: stderr`, after phase-251 dropped `--allow-multiple-definition`).
+ * picolibc's `__assert_func` writes to startup.c's UART `stderr`. */
 
 /* _exit: halt the processor */
 void _exit(int status)

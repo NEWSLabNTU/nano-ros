@@ -1,11 +1,26 @@
 ---
 id: 84
 title: threadx-riscv64 C fixtures fail to link — duplicate symbol `stderr`
-status: open
+status: resolved
 type: bug
 area: threadx
 related: [phase-251]
+resolved_in: "removed the redundant stderr stub from threadx-riscv64 syscalls.c"
 ---
+
+## Resolution (2026-06-18)
+
+Removed the stub `stderr` (+ the bogus `struct __sFILE`) from
+`packages/boards/nros-board-threadx-qemu-riscv64/c/syscalls.c`. `startup.c`'s
+UART-backed `stderr` is now the single definition. Verified: the zenoh C
+fixtures + Rust `logging-smoke` link clean (`duplicate symbol: stderr` gone).
+
+**A second, independent latent dup is now exposed** in the cyclonedds C
+fixtures — `duplicate symbol: ddsrt_setsockreuse` (the vendored Cyclone fork's
+ThreadX ddsrt port redefines a fn the generic `sockets.c` already provides).
+Tracked separately in **issue 0085**; `build-fixture-extras` still fails the
+cyclonedds batch until that lands.
+
 
 ## Problem
 
