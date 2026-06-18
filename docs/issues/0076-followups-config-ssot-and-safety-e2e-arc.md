@@ -85,7 +85,9 @@ The original capability/RMW items (now under the §3.1 umbrella):
 - [ ] **macOS cyclonedds `--allow-multiple-definition` removal** — phase-249 D3 tail; the macOS
   cyclonedds branch (`CMakeLists.txt`, `-force_load` + flag) needs a macOS run to validate
   removal. Issue 0072 (resolved) notes the Linux/BSD removal landed.
-- [ ] **Issue 0050 (weak-symbol audit)** — archive on the next cut (its W-items landed).
+- [x] **Issue 0050 (weak-symbol audit)** — DONE — already resolved + archived
+  (`archived/0050-*`; phase-247 gates + phase-249 P4a + 2026-06-15 re-audit). Gates live:
+  `check-weak-symbols` (in check-fast) + `check-weak-symbols-image`.
 
 ## Notes
 
