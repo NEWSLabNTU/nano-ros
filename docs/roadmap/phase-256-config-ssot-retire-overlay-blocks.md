@@ -227,8 +227,17 @@ already exists in `system.toml` for the bake but the planner ignores it).
     W3-tail follow-up (deploy `board`/`target`/`cfg`/`cargo`/`cc` + a `system.toml` transport model)
     — tracked as the remaining W9①. Adjust the W7 audit message ("`nros.toml` unsupported, remove"
     — not "migrate blocks"). Keep `nros migrate` (does NOT use the overlay machinery).
-  - **② `config.toml` CLI reader** — remove the `nros config show/check --config <path>`
-    subcommands (0 example files) + the `book/src/reference/cli.md` section.
+    **VESTIGIAL PART DONE (2026-06-18):** dropped the `.or_else(collect_*)` fallbacks +
+    `collect_lifecycle`/`collect_safety`/`collect_param_services` + tests — system.toml is the only
+    source for those three now. **Still blocked:** `collect_sched_contexts` (entangled with the
+    callback binding) + the `[build]` board/target/cfg/cargo/cc + `[[transport]]` + param-overlay
+    reads — those need the W3-tail (deploy `board`/`target`/`cfg`/`cargo`/`cc` → plan, confirmed
+    overlay-only with no `deploy→plan` path; + a `system.toml` transport model) before
+    `package_nros_toml`/`load_toml_values`/`--nros-toml` (0 users) can go.
+  - **② `config.toml` CLI reader — DONE (2026-06-18).** Removed the `--config <path>` reader: the
+    `nros config check` subcommand + `ShowArgs.config`/`CheckArgs` + `load()` + the config.toml
+    branch of `show`. `nros config show [--system <pkg>]` is the resolved-`system.toml` view only;
+    `book/src/reference/cli.md` updated.
   - **③ Board-crate `Config::from_toml` → SEPARATE (issue 0081).** The 10+ board crates'
     `from_toml(include_str!("config.toml"))` parsers are dead legacy (superseded by `DeployOverlay`),
     but they are **embedded-runtime, a different layer** — not the orchestration config tidy. The
