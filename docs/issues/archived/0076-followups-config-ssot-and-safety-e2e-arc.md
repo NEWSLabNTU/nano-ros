@@ -1,11 +1,26 @@
 ---
 id: 76
 title: Follow-up tracker — config SSoT consolidation + safety-e2e capability arc
-status: open
+status: resolved
 type: tracking
 area: build
-related: [phase-250, phase-252, phase-254, phase-255, phase-256, issue-0072, issue-0073, rfc-0004, rfc-0031]
+related: [phase-250, phase-252, phase-254, phase-255, phase-256, phase-259, phase-260, phase-261, issue-0072, issue-0073, rfc-0004, rfc-0031]
+resolved_in: "§A phase-254/255/256 · §B phase-259 (W4→phase-261) · §C phase-260 (macOS drop) + 0050 archived"
 ---
+
+## Resolution (2026-06-18) — all arcs landed; one deferred future-note
+
+- **§A config-SSoT** — DONE (phase-254 capabilities, phase-255 RMW, phase-256
+  W0-W9: lifecycle/build/scheduling → typed `system.toml`, `nros config show`,
+  `nros check` overlay audit, legacy-file retirement). param_persistence → 0080,
+  shared_state → 0079.
+- **§B safety-e2e tails** — DONE (phase-259: threadx false-warning removed, loud
+  no-CRC gate, C++ e2e). W4 (declared-feature multi-language sugar) spun to
+  **phase-261**, deferred (YAGNI — one axis).
+- **§C residuals** — macOS dropped (**phase-260**), 0050 archived.
+
+No actionable open work remains; the lone tail (phase-261 W4) is independently
+tracked + intentionally deferred. Archived.
 
 ## Why
 
