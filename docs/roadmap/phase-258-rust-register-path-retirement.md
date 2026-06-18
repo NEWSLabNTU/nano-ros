@@ -83,7 +83,49 @@ deleted Rust symbol); sweep when touching that path.
 **Decision (RFC-0043 §Retirement): 2a.** Make `install_node_typed(void*)` the
 single complete component seam for C / C++ / **and Rust owned-spin**, closing D2.
 
-- [ ] **D2 — executor-owned tick-list.** Move the component tick-list out of
+**Status (2026-06-18): waves 1–4 landed + verified.** Owned-spin Rust now
+registers through the same `install` seam as C/C++, and `install`'d nodes tick.
+Native rust + cpp + mixed workspace fixtures build green. Remaining: retire the
+now-dead `register_dispatch_slot_dyn` bridge across the board crates (w5), an
+embedded owned-spin runtime proof (poll client ticks), and full host `just ci`.
+
+- [x] **w1** (`f9b6c90aa`) — executor-owned tick registry (additive, nros-node).
+  Separate bounded `component_slots: heapless::Vec<ComponentSlot, MAX_NODES>`
+  (`ComponentSlot { state, tick, drop }` — raw ptr + two extern "C" fn ptrs,
+  no `nros` dep). `enroll_component` + `component_slot_count`; `spin_once` tail
+  tick pass (index-iterate `Copy` slots, `exec_ctx = *mut Executor`);
+  `Executor::drop` runs each slot's `drop`. Init at both constructors. Kept
+  separate from `DispatchSlot` (framework dispatch untouched). `cargo check
+  -p nros-node` green.
+- [x] **w2** (`a1f902a36`) — nros enrolls install'd cells. `tick_one_cell`
+  extracts the per-component tick body (shared by `run_ticks` + the new
+  trampoline); `component_tick_trampoline` / `component_drop_trampoline` are
+  the layering-clean extern "C" shims; `register_node_borrowed` leaks one
+  `Arc<ComponentCell>` clone + enrolls it (reborrows `&mut Executor` into the
+  sink so it stays usable). No double-tick (owned/BSP in
+  `ExecutorNodeRuntime.components`; install'd in `Executor.component_slots`).
+- [x] **w3** (`fb51ddeb8`) — board boundary: `NodeDispatchRuntime::
+  executor_handle() -> *mut c_void` (default null); impl on
+  `ExecutorNodeRuntime` returns `&mut self.executor` as void*.
+- [x] **w4** (`fb51ddeb8`) — `nros::node!`'s `register(runtime)` wrapper body
+  now calls `install_node_typed::<NodeTy>(executor_handle())` (removed the four
+  transmuted fn-ptrs + `register_dispatch_slot_dyn` call + dead r/i/d/t
+  locals). Wrapper name kept → emit_rust `run_plan` + `main!` owned-spin
+  callers unchanged. The opaque four-fn-ptr bridge now has no caller.
+- [ ] **w5 (remaining)** — retire `register_dispatch_slot_dyn` from the trait +
+  all impls (`ExecutorNodeRuntime` + RTIC/Embassy/mps2 boards + Null/Dummy) and
+  the dead opaque `Node{Register,Init,Dispatch,Tick}Fn` aliases (used only by
+  the retired bridge). Wide cross-crate change touching embedded board crates →
+  its own verification pass (needs the embedded targets). Framework
+  `register_dispatch` (executor `register_dispatch_slot` + on_callback
+  trampoline) stays.
+- [ ] **verify (remaining)** — embedded owned-spin board build + a Rust
+  service-client/action node that polls under owned-spin (proves the tick), and
+  full host `just ci`.
+
+### Original wave plan (for reference)
+
+- [x] **D2 — executor-owned tick-list.** Move the component tick-list out of
   `ExecutorNodeRuntime` into the `Executor` (or an executor-attached registry):
   `install_node_typed`/`register_node_borrowed` enrolls each `ComponentCell`;
   `Executor::spin_once` runs `tick` on the enrolled cells. Now `install`'d nodes
