@@ -1,0 +1,28 @@
+# phase-263 B1 — E2E-safety showcase bringup.
+#
+# `[system].features = ["safety"]` is the declarative axis (phase-261 W4): it
+# lowers to the Rust `safety-e2e` backend feature (CRC attach on publish + validate
+# on receive) AND, for C/C++, the `NANO_ROS_SAFETY_E2E` CMake knob (phase-261 W5).
+# The Entry pkg forwards `safe_listener_pkg/safety-e2e` so the integrity read is in
+# scope. Zenoh only (the CRC path).
+
+[system]
+name = "safety_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+features = ["safety"]
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[[component]]
+pkg = "safe_listener_pkg"
+class = "safe_listener_pkg::SafeListener"
+name = "safe_listener"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

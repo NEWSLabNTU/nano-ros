@@ -1,0 +1,22 @@
+[package]
+name = "talker_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — publishes std_msgs/Int32 on /chatter (CRC attached by the safety backend)."
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "talker_pkg::Talker"
+name = "talker"
+default_namespace = "/"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+std_msgs = { version = "*", default-features = false }

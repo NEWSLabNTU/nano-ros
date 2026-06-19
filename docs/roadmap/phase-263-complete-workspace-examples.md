@@ -97,9 +97,18 @@ default. Sequence so each wave is shippable on its own.
 ### Track B — Advanced workspaces (new, single-purpose, separate dirs)
 Each is a minimal product-shaped workspace demonstrating ONE differentiator end-to-end.
 
-- **B1 — `ws-safety-<lang>`:** E2E CRC. `features = ["safety"]` (phase-261 W4/W5 wired
-  it for all languages); a talker + a validating listener (`try_recv_validated`).
-  Builds on the `examples/native/{c,cpp}/safety-listener` + the phase-261 surface.
+- **B1 — `ws-safety-<lang>`. RUST DONE (2026-06-20).** New `examples/workspaces/
+  ws-safety-rust`: `talker_pkg` (publishes /chatter — CRC attached by the backend) +
+  `safe_listener_pkg` (declares `create_subscription_for_callback_name_with_safety`,
+  reads `CallbackCtx::integrity()` under `#[cfg(feature = "safety-e2e")]`). `system.toml`
+  declares `features = ["safety"]`; the plain-cargo `native_entry` wires the
+  `safety-e2e` features explicitly (`nros-board-native/safety-e2e` → backend CRC;
+  `safe_listener_pkg/safety-e2e` → `nros/safety-e2e`, cargo-unified). `cargo build -p
+  native_entry` links clean (38.7s). **First WORKSPACE demo of the E2E-safety
+  differentiator.** Remaining: runtime e2e test (Track D — corrupt a frame, assert the
+  fault counter); project to C/C++ (the `NANO_ROS_SAFETY_E2E` knob is wired by
+  phase-261 W5). Note: a bake build derives the `safety-e2e` features from `system.toml`
+  automatically (phase-261 W3); the hand-cargo entry sets them explicitly.
 - **B2 — `ws-realtime-<lang>`:** scheduling tiers (RFC-0015) — `[tiers.*]` + node
   `callback_groups` + `[[node_overrides]]`, on a multi-tier executor (freertos/threadx).
 - **B3 — `ws-bridge`:** cross-RMW gateway (zenoh ↔ xrce/cyclonedds), from

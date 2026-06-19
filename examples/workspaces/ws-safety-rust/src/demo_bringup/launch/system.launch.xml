@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- phase-263 B1 — talker (CRC-attached by the safety backend) + safe_listener
+     (safety subscription, reads integrity). -->
+<launch>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+  <node pkg="safe_listener_pkg" exec="safe_listener" name="safe_listener"/>
+</launch>

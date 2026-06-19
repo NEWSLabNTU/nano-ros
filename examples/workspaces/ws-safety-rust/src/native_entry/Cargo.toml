@@ -1,0 +1,35 @@
+[package]
+name = "native_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the E2E-safety showcase on the native board."
+
+[[bin]]
+name = "native_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+# phase-263 B1 — `safety-e2e` on the board forwards to the zenoh backend's CRC
+# attach/validate (`nros-rmw-zenoh/safety-e2e`); the demo declares
+# `features=["safety"]` in system.toml. (For a bake build, `nros codegen-system`
+# lowers that automatically — phase-261 W3; here the plain-cargo entry sets it
+# explicitly.)
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = [
+    "rmw-zenoh",
+    "safety-e2e",
+] }
+talker_pkg = { path = "../talker_pkg", default-features = false }
+# `safe_listener_pkg/safety-e2e` forwards `nros/safety-e2e`, putting
+# `CallbackCtx::integrity()` in scope; cargo unifies `nros` across the graph.
+safe_listener_pkg = { path = "../safe_listener_pkg", default-features = false, features = [
+    "safety-e2e",
+] }
