@@ -4,8 +4,13 @@ title: Declarative Node-pkg API gaps block several phase-263 workspace feature d
 status: open
 type: enhancement
 area: core
-related: [phase-263, rfc-0024, rfc-0044]
+related: [phase-263, phase-264, rfc-0024, rfc-0044]
 ---
+
+> **Resolution tracked by [phase-264](../roadmap/phase-264-mature-nros-main-capability-wiring.md)**
+> (2026-06-20) — mature `nros::main!` to wire the full `system.toml` capability set
+> (lifecycle W2, log-init W3, parameters W4; the cargo-feature-flow mechanism W1). The
+> "root pattern" section below is the phase-264 motivation.
 
 ## Problem
 
