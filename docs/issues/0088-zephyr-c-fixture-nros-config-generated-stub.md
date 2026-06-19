@@ -39,25 +39,42 @@ command **mirrors** it to the in-tree include dir
 `#include <nros/nros_config_generated.h>`. The C example TU must see the
 generated header, not the committed stub.
 
-## Likely cause
+## Root cause (refined 2026-06-19, after installing clang)
 
-The Zephyr C example build resolves `<nros/nros_config_generated.h>` to the
-in-tree **stub** dir, and either (a) the mirror custom command hasn't run before
-the app TU compiles (missing target ordering / dependency edge in the Zephyr
-`add_subdirectory` flow), or (b) the Zephyr build-dir layout puts the corrosion
-build dir's generated header somewhere not on the app's include path. The cargo
-build of `nros-c` succeeds (build.rs runs), so the header IS produced — it just
-isn't on the C app's include path at TU-compile time.
+Two layers — one was a clang-prereq symptom, one is the real bug:
+
+1. **(was)** With libclang's builtin headers missing, `nros-c`'s build.rs bindgen
+   failed (`stddef.h not found`) → `nros_config_generated.h` was never produced →
+   *every* C fixture saw the stub. **Fixed by installing `clang`** (the doctor
+   `apt-packages` prereq now covers it, commit `5cd7359e1`). Post-clang: all Rust
+   fixtures + most C fixtures build, `stddef.h` errors = 0.
+
+2. **(real bug, remains)** The in-tree header mirror is a `POST_BUILD` custom
+   command on `cargo-build_nros_c` (`packages/core/nros-c/CMakeLists.txt:154-161`):
+   it `copy_if_different`s `${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h` →
+   `${_nros_c_intree_include_dir}/nros/nros_config_generated.h`. But the **C app TU
+   has no dependency edge on that mirrored byproduct**, so the app object
+   (`AddTwoIntsServer.c.obj`) can be scheduled *before* the POST_BUILD mirror runs
+   and reads the committed **stub** header. Order-dependent / intermittent: in one
+   serial `just zephyr build-fixtures` run `build-c-{listener,talker}` won the order
+   and passed, while `build-c-service-server` lost and failed with the stub
+   (`SESSION_OPAQUE_U64S undeclared`, etc.).
+
+## Fix direction
+
+Give the mirrored header a real producer→consumer edge so no C TU compiles before
+it exists: e.g. an `add_custom_command(OUTPUT …)` + `add_custom_target` for the
+mirror that the C-consumer targets `add_dependencies` on (or `target_sources` the
+generated header), instead of a `POST_BUILD` side effect with only `BYPRODUCTS`.
 
 ## Scope / repro caveats
 
 Observed via `just zephyr build-fixtures` on the **4.4 host-gcc** line
 (`NROS_ZEPHYR_VERSION=4.4`, `ZEPHYR_TOOLCHAIN_VARIANT=host`) while validating
 host-runnable zephyr (see [[0087-zephyr-3.7-native-sim-requires-sdk]] /
-[[0086-zephyr-fixture-rustup-target-race]]). Not yet confirmed whether the
-SDK-provisioned CI path (`/opt/zephyr-sdk`, dual 3.7+4.4 in `nightly.yml`) hits
-the same ordering — CI may sequence the mirror differently or the Rust fixtures
-(which DON'T include the C header) mask it. Confirm on CI + on 3.7 before fixing.
+[[0086-zephyr-fixture-rustup-target-race]]). The ordering bug is generic to the
+`nros-c` in-tree mirror, not zephyr-specific; CI's SDK path or different build
+orders may mask it. The dep-edge fix is the durable resolution.
 
 ## Impact
 
