@@ -82,7 +82,17 @@ a later cleanup wave migrates them to `features=[...]`.)
 ### W5 — cmake_token threading — IN PROGRESS (2026-06-19)
 
 Sub-waves: **W5.1** CMake map + drift test — DONE · **W5.2** root call site — DONE ·
-**W5.3** bake emits `system_config.cmake` · **W5.4** worked C/C++ `safety` fixture.
+**W5.3** bake emits `system_config.cmake` — DONE · **W5.4** worked C/C++ `safety`
+fixture (+ per-platform `include()`).
+
+**W5.3 — DONE (2026-06-19).** `codegen_system` now emits
+`nros-system/system_config.cmake` next to `system_config.h`: `render_system_config_cmake`
+loops the registry + `capability_enabled` (mirroring the W2 `#define` loop) and emits
+`set(NANO_ROS_FEATURES "<enabled axes>" CACHE STRING "" FORCE)`. Always emitted (empty
+list when no axis) so includers never break; typed block ≡ `features=[...]`. A C/C++
+bringup `include()`s it before `add_subdirectory(<nano-ros>)`; the root
+`nros_lower_system_features` (W5.2) then lowers it. Per-platform inclusion + the
+end-to-end build proof are W5.4. Test: `system_config_cmake_emits_features`.
 
 **W5.2 — DONE (2026-06-19).** Root `CMakeLists.txt`: added the `NANO_ROS_FEATURES`
 cache var + `include(NanoRosCapabilities.cmake)` + `nros_lower_system_features(
