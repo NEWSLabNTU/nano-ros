@@ -29,6 +29,18 @@ set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
 set(NANO_ROS_ROS_EDITION "humble" CACHE STRING "ROS 2 edition: humble or iron")
 set_property(CACHE NANO_ROS_ROS_EDITION PROPERTY STRINGS humble iron)
 
+# phase-261 W5 — declared capability axes, the C/C++ projection of `system.toml`
+# `[system].features = [...]` (RFC-0004). A user sets this BEFORE pulling nano-ros
+# in (`set(NANO_ROS_FEATURES "safety")`), or the bake emits it into
+# `system_config.cmake`. `nros_lower_system_features` lowers each axis to its build
+# knob (e.g. `safety` → `NANO_ROS_SAFETY_E2E ON`) HERE, before the core libs'
+# `add_subdirectory` below evaluates the matching `option()` — so a declared axis
+# reaches the C/C++ build, not just the informational `system_config.h` `#define`.
+set(NANO_ROS_FEATURES "" CACHE STRING
+    "Declared nano-ros capability axes (e.g. safety) — C/C++ projection of system.toml [system].features")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCapabilities.cmake")
+nros_lower_system_features("${NANO_ROS_FEATURES}")
+
 # Phase 140 — CPack block removed alongside the install-local layout
 # (CPack only ever bundled the install tree). Source-distribution
 # consumers vendor the repo + run `add_subdirectory(nano-ros)` from

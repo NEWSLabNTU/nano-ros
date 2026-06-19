@@ -81,8 +81,16 @@ a later cleanup wave migrates them to `features=[...]`.)
 
 ### W5 — cmake_token threading — IN PROGRESS (2026-06-19)
 
-Sub-waves: **W5.1** CMake map + drift test — DONE · **W5.2** root call site ·
+Sub-waves: **W5.1** CMake map + drift test — DONE · **W5.2** root call site — DONE ·
 **W5.3** bake emits `system_config.cmake` · **W5.4** worked C/C++ `safety` fixture.
+
+**W5.2 — DONE (2026-06-19).** Root `CMakeLists.txt`: added the `NANO_ROS_FEATURES`
+cache var + `include(NanoRosCapabilities.cmake)` + `nros_lower_system_features(
+"${NANO_ROS_FEATURES}")` in the options block, BEFORE the core-lib
+`add_subdirectory(packages/core/nros-cpp)` whose `option(NANO_ROS_SAFETY_E2E OFF)`
+the lowering must precede (an `option()`/`set(CACHE)` without FORCE never overrides
+the pre-FORCE-set value). Empty default ⇒ no token set ⇒ byte-identical for
+non-capability builds. Full-configure integration proof lands with the W5.4 fixture.
 
 **W5.1 — DONE (2026-06-19).** Added `nros_lower_system_features(<features>)` to
 `cmake/NanoRosCapabilities.cmake`: maps each declared axis to its `cmake_token`
