@@ -1,15 +1,26 @@
 ---
 id: 88
 title: C consumer compiles against the nros_config_generated.h stub (per-build header not ordered/on the include path)
-status: open
+status: resolved
 type: bug
 area: cmake
-related: [phase-258, 0086, 0087]
+related: [phase-258, 0086, 0087, 0090]
+resolved_in: "nros-{c,cpp} OUTPUT-mirror + NanoRosNodeRegister deferred deps (0d59a4b00); Zephyr OBJECT_DEPENDS file edge (this commit). ThreadX residual tracked separately in 0090."
 ---
 
-## Resolution status (2026-06-19)
+## Resolution status (2026-06-20) — RESOLVED
 
-- **Native / cpp / mixed: FIXED** (commit pending) — the in-tree mirror in
+- **Zephyr: FIXED** — added a file-level `OBJECT_DEPENDS` on the
+  `nano_ros_node_register` consumer sources pointing at the per-build byproduct
+  header (`${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h`
+  + `nros_generated.h`), guarded to `NANO_ROS_PLATFORM STREQUAL "zephyr"`. The
+  Zephyr component lib is a plain `add_library` and the header is a BYPRODUCT of
+  an always-run `nros_{c,cpp}_cargo_build` target, so `add_dependencies` on the
+  cargo target proved unreliable across the configure-order / typed-C matrix; the
+  `OBJECT_DEPENDS` file edge is hard (the TU won't compile until the byproduct
+  exists) and target-name/order independent. Verified: ALL 12 Zephyr 4.4
+  example fixtures (every `build-{rs,c}-*-zenoh`) build clean, **0 stub hits**.
+- **Native / cpp / mixed: FIXED** (commit `0d59a4b00`) — the in-tree mirror in
   `packages/core/nros-{c,cpp}/CMakeLists.txt` is now a first-class `OUTPUT` +
   `nros_{c,cpp}_config_header` custom target, and `NanoRosNodeRegister.cmake`
   deps every `${_NRC_SOURCES}` consumer (component lib + carrier executables) on

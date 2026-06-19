@@ -221,6 +221,26 @@ function(nano_ros_node_register)
         set(_nrc_header "${_nrc_header}.hpp")
     endif()
 
+    # Issue 0088 (Zephyr path) — on Zephyr the per-build nros config headers are
+    # BYPRODUCTS of an always-run `nros_{c,cpp}_cargo_build` target
+    # (zephyr/cmake/nros_cargo_build.cmake), written into
+    # `${CMAKE_BINARY_DIR}/nros-rust/nros-{c,cpp}-generated`. The Zephyr component
+    # lib is a plain `add_library` that inherits the generated + stub include dirs
+    # (via `zephyr_include_directories`) but has no hard edge to the byproduct, so
+    # its TUs can compile before the cargo build writes the real header and pick up
+    # the in-tree stub (`#error "must be supplied per-build"`). `add_dependencies`
+    # on the cargo target proved insufficient across the configure-order / typed-C
+    # matrix; a file-level `OBJECT_DEPENDS` is a HARD Ninja edge — the TU won't
+    # compile until the byproduct exists — independent of target name / order.
+    # The C-variant header is a byproduct of EVERY nros Zephyr build (declared on
+    # nros-c, or on nros-cpp when nros-c isn't built separately), so listing it is
+    # always safe; depending on it also transitively orders after the same cargo
+    # target that writes the C++ variant, covering C / typed-C / C++ consumers.
+    if(NANO_ROS_PLATFORM STREQUAL "zephyr" AND _NRC_SOURCES)
+        set_source_files_properties(${_NRC_SOURCES} PROPERTIES OBJECT_DEPENDS
+            "${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h;${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_generated.h")
+    endif()
+
     set(_lib "${PROJECT_NAME}_${_NRC_NAME}_component")
     if(NOT TARGET ${_lib})
         # Phase 212.M.5.a.1 — package symbol used by C/C++ macros and
