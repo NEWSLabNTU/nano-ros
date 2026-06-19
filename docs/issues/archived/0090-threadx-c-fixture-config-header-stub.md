@@ -1,11 +1,31 @@
 ---
 id: 90
 title: ThreadX-linux C fixture compiles against the nros_config_generated.h stub (0088 residual on the threadx header path)
-status: open
+status: resolved
 type: bug
 area: cmake
 related: [0088, phase-258]
+resolved_in: "nros-{c,cpp} global mirror-header export + NanoRosNodeRegister threadx OBJECT_DEPENDS"
 ---
+
+## Resolved (2026-06-20)
+
+Mirror of the 0088 zephyr fix, on the threadx (Corrosion-mirror) header path:
+- `packages/core/nros-c/CMakeLists.txt` + `nros-cpp/CMakeLists.txt` export the
+  absolute mirror-header path as a GLOBAL property (`NROS_C_CONFIG_HEADER_FILE` /
+  `NROS_CPP_CONFIG_HEADER_FILE` = `${nros-c/cpp-build}/include/nros/
+  nros_config_generated.h`).
+- `cmake/NanoRosNodeRegister.cmake` threadx carrier: in addition to the helper's
+  target-level `add_dependencies`, sets a HARD file-level `OBJECT_DEPENDS` on those
+  globals for `${_NRC_SOURCES}` — so the carrier's C/C++ TUs cannot compile until the
+  per-build header is mirrored (the target dep alone raced the compile under the
+  threadx link shape → it read the in-tree stub → `*_OPAQUE_U64S undeclared`).
+
+**Verified:** `just threadx_linux build-fixture-extras` green — the C talker
+(`examples/threadx-linux/c/talker`, cyclonedds) compiles + links clean
+(`[379/379] Linking threadx_c_talker`), no stub OPAQUE_U64S error. The
+qemu-riscv64-threadx path shares the same `NANO_ROS_PLATFORM threadx` carrier branch
+→ same edge (CI-confirmable).
 
 ## Symptom (2026-06-19)
 

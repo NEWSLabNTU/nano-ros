@@ -157,6 +157,10 @@ if(TARGET cargo-build_nros_cpp)
         DEPENDS "${_nros_cpp_gen_cpp_header}" "${_nros_cpp_gen_c_header}")
     target_include_directories(nros-cpp-headers BEFORE INTERFACE
         $<BUILD_INTERFACE:${_nros_cpp_intree_include_dir}>)
+    # Issue 0090 — export the absolute mirror-header paths (see nros-c/CMakeLists)
+    # for a FILE-level OBJECT_DEPENDS on the threadx carrier's C++ TUs.
+    set_property(GLOBAL PROPERTY NROS_CPP_CONFIG_HEADER_FILE
+        "${_nros_cpp_gen_c_header};${_nros_cpp_gen_cpp_header}")
 endif()
 
 # Phase 241.D3-rev — the C++ umbrella (bundles nros-c + the backend) is the ONLY

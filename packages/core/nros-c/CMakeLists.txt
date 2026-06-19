@@ -170,6 +170,12 @@ add_custom_command(
     VERBATIM
 )
 add_custom_target(nros_c_config_header DEPENDS "${_nros_c_gen_config_header}")
+# Issue 0090 — export the absolute mirror-header path so NanoRosNodeRegister can set
+# a FILE-level OBJECT_DEPENDS on it. The threadx carrier's link-time
+# `add_dependencies(<carrier> nros_c_config_header)` does not stop a TU from
+# compiling before the per-build header is mirrored (it then reads the in-tree stub
+# → `*_OPAQUE_U64S undeclared`); a per-source OBJECT_DEPENDS is the hard edge.
+set_property(GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE "${_nros_c_gen_config_header}")
 if(TARGET nros_c-static)
     target_include_directories(nros_c-static INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/../nros-platform-api/include"
