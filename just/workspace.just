@@ -261,6 +261,11 @@ doctor:
     check command -v socat               || apt_missing+=(socat)
     check command -v riscv64-unknown-elf-gcc || apt_missing+=(gcc-riscv64-unknown-elf)
     [ -f /usr/include/mbedtls/ssl.h ] || apt_missing+=(libmbedtls-dev)
+    # clang builtin headers — bindgen (zephyr-sys + other `*-sys` crates) needs
+    # the compiler resource headers (`stddef.h`) shipped by libclang-common;
+    # without them bindgen aborts "stddef.h file not found" (Zephyr Rust fixture
+    # builds). The `clang` apt package pulls the matching libclang-common-*-dev.
+    ls /usr/lib/llvm-*/lib/clang/*/include/stddef.h >/dev/null 2>&1 || apt_missing+=(clang)
     if [ ${#apt_missing[@]} -eq 0 ]; then
         echo "  [OK] apt-packages"
     else
@@ -519,6 +524,12 @@ apt-packages:
         printf "  %-40s %s\n" "libmbedtls-dev" "[already installed]"
     else
         pkgs+=(libmbedtls-dev)
+    fi
+    # clang builtin headers (bindgen / zephyr-sys — see doctor note above)
+    if ls /usr/lib/llvm-*/lib/clang/*/include/stddef.h >/dev/null 2>&1; then
+        printf "  %-40s %s\n" "clang (libclang headers)" "[already installed]"
+    else
+        pkgs+=(clang)
     fi
     # picolibc: check via sysroot
     picolibc_found=false
