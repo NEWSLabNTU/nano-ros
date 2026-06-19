@@ -68,8 +68,21 @@ Per language, add the everyday-ROS feature node-pkgs and a `showcase` launch tha
 composes them; keep `system.launch.xml` (talker+listener) as the untouched minimal
 default. Sequence so each wave is shippable on its own.
 
-- **A1 — services.** `service_server_pkg` + `service_client_pkg` (AddTwoInts via
-  `example_interfaces`), wired into `showcase.launch.xml` + `system.toml` components.
+- **A1 — services. RUST DONE (2026-06-19).** Added `service_server_pkg`
+  (`AddServer` — declarative `create_service_server_for_name::<AddTwoInts>` +
+  `ctx.message`/`ctx.reply` in `on_callback`) + `service_client_pkg` (`AddClient` —
+  `create_service_client_for_name` + a 1 Hz timer that arms a flag in `on_callback`,
+  with the blocking `ctx.call_for_name` + `/sum` publish in the per-spin `tick(TickCtx)`
+  hook). Added `showcase.launch.xml` (talker+listener+add_server+add_client) +
+  `native_showcase_entry` (boots it); the minimal `system.launch.xml`/`native_entry`
+  stay the quickstart. system.toml gains the two components; root `Cargo.toml` the
+  members. **First workspace example to exercise the declarative service server AND
+  client** — `cargo build -p native_showcase_entry` links clean (the macro emits all
+  four `register` calls from the showcase launch). **Finding:** the client path needs
+  the `tick(TickCtx)` surface (calls/publish), distinct from `on_callback(CallbackCtx)`
+  — undocumented + unexercised before this; worth a book note (tracked for A-docs).
+  **Remaining:** runtime e2e test (Track D — assert `/sum` carries server-computed
+  sums); project to C / C++ / mixed.
   Port from `examples/native/{rust,c,cpp}/service-*`.
 - **A2 — parameters.** `param_pkg` (declare/get/set; enable `[param_services]` /
   `features=["param_services"]` so external get/set works). Port from

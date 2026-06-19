@@ -1,0 +1,26 @@
+[package]
+name = "service_server_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — serves example_interfaces/AddTwoInts on /add_two_ints."
+
+# Node pkg shape — lib only. `nros::node!()` exports the register / init /
+# dispatch trampolines; the sibling Entry pkg brings up the executor + spin.
+[lib]
+path = "src/lib.rs"
+
+# Platform/RMW-agnostic Node pkg (Phase 248 C6a). Platform + RMW flow from the
+# board crate the Entry pkg deps; this lib names neither.
+[package.metadata.nros.node]
+class = "service_server_pkg::AddServer"
+name = "add_server"
+default_namespace = "/"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+example_interfaces = { version = "*", default-features = false }

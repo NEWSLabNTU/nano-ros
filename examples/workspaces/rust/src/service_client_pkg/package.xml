@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>service_client_pkg</name>
+  <version>0.1.0</version>
+  <description>Node pkg — calls AddTwoInts on /add_two_ints, publishes the sum on /sum.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>example_interfaces</depend>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

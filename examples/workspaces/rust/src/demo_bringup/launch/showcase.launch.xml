@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- phase-263 — feature-showcase launch: the minimal talker/listener plus the
+     service round-trip (add_client calls add_server, republishes the sum on
+     /sum). Boot it with the `native_showcase_entry` pkg, or
+     `nros::main!(launch = "demo_bringup:showcase.launch.xml")`. The default
+     `system.launch.xml` stays the minimal talker+listener quickstart. -->
+<launch>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+  <node pkg="listener_pkg" exec="listener" name="listener"/>
+  <node pkg="service_server_pkg" exec="add_server" name="add_server"/>
+  <node pkg="service_client_pkg" exec="add_client" name="add_client"/>
+</launch>

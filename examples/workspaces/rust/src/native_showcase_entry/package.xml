@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>native_showcase_entry</name>
+  <version>0.1.0</version>
+  <description>Entry pkg — boots the feature-showcase topology on the native board.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>talker_pkg</exec_depend>
+  <exec_depend>listener_pkg</exec_depend>
+  <exec_depend>service_server_pkg</exec_depend>
+  <exec_depend>service_client_pkg</exec_depend>
+  <exec_depend>demo_bringup</exec_depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

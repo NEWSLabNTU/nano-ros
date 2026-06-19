@@ -1,0 +1,30 @@
+[package]
+name = "native_showcase_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the feature-showcase topology on the native board."
+
+[[bin]]
+name = "native_showcase_entry"
+path = "src/main.rs"
+
+# phase-263 — the showcase Entry: `nros::main!(launch = "demo_bringup:showcase
+# .launch.xml")` emits one `<node_pkg>::register` per `<node>` in the showcase
+# launch (talker + listener + add_server + add_client), so the bin links all four
+# Node pkg rlibs. The minimal `native_entry` (system.launch.xml) stays the
+# quickstart; this one is the full feature tour.
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
+talker_pkg = { path = "../talker_pkg", default-features = false }
+listener_pkg = { path = "../listener_pkg", default-features = false }
+service_server_pkg = { path = "../service_server_pkg", default-features = false }
+service_client_pkg = { path = "../service_client_pkg", default-features = false }
