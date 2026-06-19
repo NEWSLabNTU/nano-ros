@@ -1,11 +1,39 @@
 ---
 id: 88
-title: Zephyr C fixture compiles against the nros_config_generated.h stub (per-build header not on the C app include path)
+title: C consumer compiles against the nros_config_generated.h stub (per-build header not ordered/on the include path)
 status: open
 type: bug
-area: zephyr
+area: cmake
 related: [phase-258, 0086, 0087]
 ---
+
+## Resolution status (2026-06-19)
+
+- **Native / cpp / mixed: FIXED** (commit pending) — the in-tree mirror in
+  `packages/core/nros-{c,cpp}/CMakeLists.txt` is now a first-class `OUTPUT` +
+  `nros_{c,cpp}_config_header` custom target, and `NanoRosNodeRegister.cmake`
+  deps every `${_NRC_SOURCES}` consumer (component lib + carrier executables) on
+  the header generators via a DEFERRED `add_dependencies` (so the edge applies
+  even when the consumer is configured before the generator subdir). Verified:
+  native cpp + mixed workspace fixtures build clean, repeatedly.
+- **Zephyr: NOT fixed — separate, deeper integration race (see below).** Kept
+  open, area reassigned `cmake`/zephyr.
+
+## Zephyr residual (the hard part)
+
+On Zephyr the per-build header is wired differently: `zephyr/CMakeLists.txt`
+builds nros-c/nros-cpp via its own `nros_cargo_build` macro (targets
+`nros_{c,cpp}_cargo_build`, NOT Corrosion's `cargo-build_nros_{c,cpp}`) and adds
+the generated dir + the source stub dir via `zephyr_include_directories(...)`,
+which applies to `app` / zephyr_library targets — **but a `nano_ros_node_register`
+component is a plain `add_library`, so it does NOT inherit that include wiring**.
+Its `<nros/nros_config_generated.h>` resolves through whatever it links, and it
+races the generator (`add_dependencies` on `nros_c_cargo_build` — now added — was
+insufficient; the include-dir wiring itself is the gap). Compounding: the 4.4
+host-gcc line also hits an unrelated `zephyr/sys/util_internal_is_eq.h` macro
+parser error (host gcc vs Zephyr 4.4 headers) and the rustup-target race
+([[0086-zephyr-fixture-rustup-target-race]]). Zephyr host fixtures need their own
+pass; the native fix here does not close them.
 
 ## Symptom (2026-06-19)
 

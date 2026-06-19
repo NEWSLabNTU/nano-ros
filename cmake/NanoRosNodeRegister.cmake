@@ -52,6 +52,49 @@ set(_NROS_NODE_REGISTER_INCLUDED TRUE)
 # this captured path to find `templates/nuttx_entry_main.cpp.in`.
 set(_NROS_NODE_REGISTER_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
+# Issue 0088 — order any target whose TUs `#include <nros/nros_config_generated.h>`
+# (or the C++ variant) AFTER the per-build header generators. The headers are
+# produced by the nros-c / nros-cpp corrosion builds and mirrored into the in-tree
+# `include/nros/` dir by the `nros_{c,cpp}_config_header` custom targets (OUTPUT
+# edges, not POST_BUILD side effects). Depending only on `cargo-build_nros_{c,cpp}`
+# is NOT enough: that orders against the cargo primary output, so a consumer TU can
+# still compile before the mirror copy runs and pick up the in-tree stub header.
+#
+# The wiring is DEFERRED to end-of-configure: under `add_subdirectory(<repo-root>)`
+# (Zephyr / examples) the consumer's `nano_ros_node_register()` often runs BEFORE
+# the nros-c / nros-cpp subdirs are added, so the generator targets don't exist yet
+# and an immediate `add_dependencies` would silently no-op (the `if(TARGET)` guard
+# skips) — leaving the race in place (pass/fail purely by build order). A deferred
+# call (`cmake_language(DEFER)` at the top-level dir) runs after every subdir is
+# processed, when all targets exist, so the edge is always applied.
+function(_nros_node_register_apply_config_header_deps _tgt)
+    if(NOT TARGET ${_tgt})
+        return()
+    endif()
+    # Two header-generation flavours, depending on the consuming build:
+    #  * Native / examples (add_subdirectory(<repo-root>) → Corrosion): the
+    #    `cargo-build_nros_{c,cpp}` cargo targets + the `nros_{c,cpp}_config_header`
+    #    OUTPUT-mirror targets (packages/core/nros-{c,cpp}/CMakeLists.txt).
+    #  * Zephyr (`zephyr/CMakeLists.txt` → `nros_cargo_build`): the
+    #    `nros_{c,cpp}_cargo_build` targets, which emit the per-build header into
+    #    `${CMAKE_BINARY_DIR}/nros-rust/nros-{c,cpp}-generated`. `app` already
+    #    depends on these, but a `nano_ros_node_register` component lib is a
+    #    SEPARATE target and otherwise races them → in-tree stub (issue 0088).
+    # Guarded by `if(TARGET)`, so each flavour contributes only where it exists.
+    foreach(_dep cargo-build_nros_cpp cargo-build_nros_c
+                 nros_cpp_config_header nros_c_config_header
+                 nros_cpp_cargo_build nros_c_cargo_build)
+        if(TARGET ${_dep})
+            add_dependencies(${_tgt} ${_dep})
+        endif()
+    endforeach()
+endfunction()
+
+function(_nros_node_register_config_header_deps _tgt)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+        CALL _nros_node_register_apply_config_header_deps "${_tgt}")
+endfunction()
+
 define_property(GLOBAL PROPERTY NROS_COMPONENTS_JSON
     BRIEF_DOCS "Accumulated component JSON fragments"
     FULL_DOCS  "Phase 212.L.9 — appended by nano_ros_node_register().")
@@ -232,14 +275,10 @@ function(nano_ros_node_register)
             # before the headers exist (clean-build race) and pick up the
             # in-tree stub header, which #errors. Order it after the generators.
             # (Target names are `cargo-build_nros_{cpp,c}` — the corrosion cargo
-            # targets that run the POST_BUILD header mirror; the pre-257 names
-            # `nros_{cpp,c}_cargo_build` never matched, so the dep was silently
-            # skipped and a clean build of a typed-C component picked up the stub.)
-            foreach(_nrc_gen_dep cargo-build_nros_cpp cargo-build_nros_c)
-                if(TARGET ${_nrc_gen_dep})
-                    add_dependencies(${_lib} ${_nrc_gen_dep})
-                endif()
-            endforeach()
+            # targets; the pre-257 names `nros_{cpp,c}_cargo_build` never matched.
+            # Issue 0088: also depend on the `nros_{c,cpp}_config_header` mirror
+            # targets — the cargo dep alone races the POST_BUILD-era copy.)
+            _nros_node_register_config_header_deps(${_lib})
             # Phase 257 (W0-A) — a TYPED C component (`NROS_C_COMPONENT`) calls the
             # `nros_cpp_*` seam (publisher/subscription/timer), which lives in the
             # C++ umbrella (nros-cpp), so it links NanoRosCpp like a C++ component —
@@ -391,6 +430,10 @@ function(nano_ros_node_register)
             list(REMOVE_DUPLICATES _nros_iface_libs)
             target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
         endif()
+        # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
+        # that include <nros/nros_config_generated.h>); order them after the header
+        # mirror targets so they never pick up the in-tree stub.
+        _nros_node_register_config_header_deps(${PROJECT_NAME})
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 
@@ -458,6 +501,10 @@ function(nano_ros_node_register)
             list(REMOVE_DUPLICATES _nros_iface_libs)
             target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
         endif()
+        # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
+        # that include <nros/nros_config_generated.h>); order them after the header
+        # mirror targets so they never pick up the in-tree stub.
+        _nros_node_register_config_header_deps(${PROJECT_NAME})
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 
@@ -542,6 +589,10 @@ function(nano_ros_node_register)
             list(REMOVE_DUPLICATES _nros_iface_libs)
             target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
         endif()
+        # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
+        # that include <nros/nros_config_generated.h>); order them after the header
+        # mirror targets so they never pick up the in-tree stub.
+        _nros_node_register_config_header_deps(${PROJECT_NAME})
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 
@@ -602,6 +653,10 @@ function(nano_ros_node_register)
             list(REMOVE_DUPLICATES _nros_iface_libs)
             target_link_libraries(${PROJECT_NAME} PRIVATE ${_nros_iface_libs})
         endif()
+        # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
+        # that include <nros/nros_config_generated.h>); order them after the header
+        # mirror targets so they never pick up the in-tree stub.
+        _nros_node_register_config_header_deps(${PROJECT_NAME})
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 

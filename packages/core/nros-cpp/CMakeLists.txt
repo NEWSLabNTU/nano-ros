@@ -133,27 +133,28 @@ target_include_directories(nros-cpp-headers INTERFACE
 set(_nros_cpp_intree_include_dir "${CMAKE_CURRENT_BINARY_DIR}/include")
 file(MAKE_DIRECTORY "${_nros_cpp_intree_include_dir}/nros")
 if(TARGET cargo-build_nros_cpp)
-    add_custom_command(TARGET cargo-build_nros_cpp POST_BUILD
+    # Issue 0088 — first-class OUTPUT + custom target instead of a POST_BUILD side
+    # effect (see the matching comment in packages/core/nros-c/CMakeLists.txt). The
+    # POST_BUILD `BYPRODUCTS` gave consumers no real edge to the mirrored headers, so
+    # a consumer TU could compile before the copy ran and pick up the in-tree stub.
+    # `cargo-build_nros_cpp` emits BOTH the C++ variant header AND (since the C++
+    # umbrella bundles nros-c, Phase 241.D3-rev) the C variant header into this dir.
+    set(_nros_cpp_gen_cpp_header "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h")
+    set(_nros_cpp_gen_c_header "${_nros_cpp_intree_include_dir}/nros/nros_config_generated.h")
+    add_custom_command(
+        OUTPUT "${_nros_cpp_gen_cpp_header}" "${_nros_cpp_gen_c_header}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
-            "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
-        # Phase 241.D3-rev — ALSO mirror the C variant header. The C++ umbrella now
-        # bundles nros-c, so nros-cpp's own corrosion build emits the C
-        # `nros_config_generated.h` (the *_OPAQUE_U64S sizes) into this binary dir.
-        # A C++ TU `#include <nros/...>` needs it, but cpp_talker links
-        # nros-cpp-headers (NOT nros_c-static), so it has no build-order dependency on
-        # nros-c's own mirror and would race to nros-c's stub header. Mirroring it
-        # here — under the same POST_BUILD on cargo-build_nros_cpp, into the dir added
-        # `BEFORE INTERFACE` below — makes it both present and ordered ahead of the stub.
+            "${_nros_cpp_gen_cpp_header}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
-            "${_nros_cpp_intree_include_dir}/nros/nros_config_generated.h"
-        BYPRODUCTS
-            "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
-            "${_nros_cpp_intree_include_dir}/nros/nros_config_generated.h"
+            "${_nros_cpp_gen_c_header}"
+        DEPENDS cargo-build_nros_cpp
         COMMENT "nros-cpp: mirroring nros_{,cpp_}config_generated.h for in-tree consumers"
         VERBATIM
     )
+    add_custom_target(nros_cpp_config_header
+        DEPENDS "${_nros_cpp_gen_cpp_header}" "${_nros_cpp_gen_c_header}")
     target_include_directories(nros-cpp-headers BEFORE INTERFACE
         $<BUILD_INTERFACE:${_nros_cpp_intree_include_dir}>)
 endif()

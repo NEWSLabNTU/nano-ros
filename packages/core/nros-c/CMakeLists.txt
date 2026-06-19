@@ -151,14 +151,25 @@ corrosion_import_crate(
 # install step.
 set(_nros_c_intree_include_dir "${CMAKE_CURRENT_BINARY_DIR}/include")
 file(MAKE_DIRECTORY "${_nros_c_intree_include_dir}/nros")
-add_custom_command(TARGET cargo-build_nros_c POST_BUILD
+# Issue 0088 — mirror as a first-class OUTPUT + custom target, NOT a POST_BUILD
+# side effect. A `POST_BUILD` on `cargo-build_nros_c` with only `BYPRODUCTS`
+# gives consumers no real Ninja edge to the mirrored file: `add_dependencies(
+# <consumer> cargo-build_nros_c)` orders against the cargo *primary output*, so a
+# consumer TU can compile before the POST_BUILD copy runs and pick up the in-tree
+# stub header (intermittent by build order). An `OUTPUT` command + a custom target
+# (`nros_c_config_header`) that consumers `add_dependencies` on is the proper
+# producer→consumer edge.
+set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/nros/nros_config_generated.h")
+add_custom_command(
+    OUTPUT "${_nros_c_gen_config_header}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
-        "${_nros_c_intree_include_dir}/nros/nros_config_generated.h"
-    BYPRODUCTS "${_nros_c_intree_include_dir}/nros/nros_config_generated.h"
+        "${_nros_c_gen_config_header}"
+    DEPENDS cargo-build_nros_c
     COMMENT "nros-c: mirroring nros_config_generated.h for in-tree consumers"
     VERBATIM
 )
+add_custom_target(nros_c_config_header DEPENDS "${_nros_c_gen_config_header}")
 if(TARGET nros_c-static)
     target_include_directories(nros_c-static INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/../nros-platform-api/include"
