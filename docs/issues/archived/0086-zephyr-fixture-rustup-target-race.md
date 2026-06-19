@@ -1,11 +1,26 @@
 ---
 id: 86
 title: Zephyr fixture build races on rustup component downloads (parallel west builds)
-status: open
+status: resolved
 type: bug
 area: zephyr
 related: [phase-258]
+resolved_in: "just/zephyr-ci.just build-fixtures — serial rust-std pre-add before the parallel fan-out"
 ---
+
+## Resolved (2026-06-20)
+
+Fix option 1 (the cleanest): `just/zephyr-ci.just` `build-fixtures` now pre-adds the
+rust-std targets the Zephyr fixtures span — `x86_64-unknown-none`,
+`armv7a-none-eabi`, `armv7a-none-eabihf` — **serially** (on the pinned nightly from
+`tools/rust-toolchain.toml`) right before the parallel west fan-out, but only when
+`jobs > 1` (serial builds don't race). Idempotent: an already-installed target is a
+no-op (`rustup target add` exits 0, "is up to date"); a fresh host downloads once,
+serially, so no two concurrent cargo→rustup invocations collide on
+`~/.rustup/downloads/<hash>.partial`. A genuine add failure (offline + missing) now
+fails loud. CI images that pre-bake the targets are unaffected. The
+parallel-race-repro is fresh-host / CI-side; the fix removes the concurrent
+first-fetch by construction.
 
 ## Symptom (2026-06-19)
 

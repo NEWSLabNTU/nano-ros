@@ -197,6 +197,26 @@ build-fixtures:
         echo "  fixture-filter: $fixture_filter"
     fi
 
+    # Issue 0086 — under the parallel west fan-out (jobs > 1), concurrent
+    # cargo → rustup component-ensure calls collide on the shared
+    # `~/.rustup/downloads/<hash>.partial` staging file ("could not rename …
+    # No such file"), which fails even ALREADY-installed targets' re-verification.
+    # Pre-add the rust-std targets the Zephyr fixtures span SERIALLY here, so no
+    # concurrent rustup fetch happens during the parallel stage. Idempotent
+    # (already-installed → no-op exit 0). A CI image that pre-bakes the targets
+    # never downloads; a fresh host downloads once, serially. Serial builds
+    # (jobs=1) don't race, so skip.
+    if [ "$jobs" -gt 1 ]; then
+        # The pinned nightly (the zephyr no_std builds' toolchain) — same source
+        # as the root justfile's NIGHTLY (not in this module's var scope).
+        _nightly="$(awk '/^channel/ {gsub(/"/,"",$3); print $3; exit}' "$nros_root/tools/rust-toolchain.toml")"
+        echo "  → pre-adding rust-std targets serially (issue 0086 rustup race guard, +$_nightly)"
+        for _tgt in x86_64-unknown-none armv7a-none-eabi armv7a-none-eabihf; do
+            rustup target add --toolchain "$_nightly" "$_tgt" \
+                || { echo "rustup target add $_tgt (+$_nightly) failed" >&2; exit 1; }
+        done
+    fi
+
     # Phase 225.P.6 — workspace-Entry (Approach A) prep. Provision the
     # workspace message bindings + system bringup glue from the workspace
     # ROOT (not the per-package `examples/zephyr/rust/*` loop above),
