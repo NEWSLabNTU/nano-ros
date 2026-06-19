@@ -4,12 +4,12 @@ project(cpp_safety_listener LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Issue 0073 / phase-259 W3 — build the nros-cpp umbrella + zenoh backend with the
-# E2E-safety CRC path. Forced ON for this example so it always carries the
-# validated-recv API (`Subscription::try_recv_validated`), regardless of the
-# harness default. (Orchestration lowers a declared [safety] axis to this option;
-# here it is fixed since the example exists to exercise it.)
-set(NANO_ROS_SAFETY_E2E ON CACHE BOOL "" FORCE)
+# Phase 261 W5 — declare the E2E-safety capability via the language-neutral
+# `NANO_ROS_FEATURES` surface (the C/C++ projection of `system.toml`
+# `[system].features = ["safety"]`). The root `nros_lower_system_features` lowers it
+# to `NANO_ROS_SAFETY_E2E=ON` before nros-cpp reads the option, building the zenoh
+# backend with the CRC + validated-recv API (`Subscription::try_recv_validated`).
+set(NANO_ROS_FEATURES "safety")
 
 # Phase 219.I — bootstrap nano-ros workspace helpers. Solo build walks up four
 # levels for the nano-ros root. RMW override: `-DNROS_RMW=<x>` (default zenoh —

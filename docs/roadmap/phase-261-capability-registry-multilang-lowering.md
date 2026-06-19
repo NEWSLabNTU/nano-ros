@@ -1,7 +1,7 @@
 # Phase 261 — capability registry: multi-language lowering + `features = [...]`
 
-Status: **W1–W4 done (2026-06-18); W5 in progress (2026-06-19)** ·
-Implements
+Status: **Done — W1–W5 (W1–W4 2026-06-18, W5 2026-06-19; one deferred bake-include
+gap noted in W5)** · Implements
 [issue 0076 §B-W4](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md) (spun
 out of [phase-259](archived/phase-259-safety-e2e-tails.md), where it was scoped) ·
 RFC-0031 §Generalization.
@@ -83,7 +83,25 @@ a later cleanup wave migrates them to `features=[...]`.)
 
 Sub-waves: **W5.1** CMake map + drift test — DONE · **W5.2** root call site — DONE ·
 **W5.3** bake emits `system_config.cmake` — DONE · **W5.4** worked C/C++ `safety`
-fixture (+ per-platform `include()`).
+fixture — DONE. **W5 DONE** (2026-06-19) for the hand-written surface; one honest
+gap below.
+
+**W5.4 — DONE (2026-06-19).** Converted the `examples/native/{c,cpp}/safety-listener`
+fixtures from the hand-set `set(NANO_ROS_SAFETY_E2E ON … FORCE)` knob to the
+declarative `set(NANO_ROS_FEATURES "safety")` surface. **Proven end-to-end:** the
+native-C build's `nros-c` cargo line carries `--features=…,safety-e2e` and the C ELF
+links clean; the C++ leg resolves `…,safety-e2e` on `nros-cpp` identically. So
+`NANO_ROS_FEATURES=safety` → root `nros_lower_system_features` → `NANO_ROS_SAFETY_E2E=ON`
+→ the backend's CRC feature, with no manual knob. Both still drive
+`tests/safety_e2e.rs` (CRC validation) unchanged.
+
+**Honest gap (deferred, no consumer):** the W5.3 bake-emitted `system_config.cmake`
+is written but **no bringup `include()`s it yet** — there is no multi-component
+**C/C++** baked system in-tree to wire it through (the baked C/C++ path is
+west/esp-idf-driven, per-platform). The hand-written `set(NANO_ROS_FEATURES …)`
+surface (the common single-app case) is complete + proven; wiring the bake-`include()`
+into a multi-component C/C++ bringup lands when such a system exists. The file is
+emitted now so that wiring is purely an `include()` then.
 
 **W5.3 — DONE (2026-06-19).** `codegen_system` now emits
 `nros-system/system_config.cmake` next to `system_config.h`: `render_system_config_cmake`

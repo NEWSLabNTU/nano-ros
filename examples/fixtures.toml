@@ -1027,8 +1027,9 @@ rmw = "zenoh"
 dir = "examples/native/c/safety-listener"
 
 # Issue 0073 / phase-259 W3 — C++ E2E-safety listener (polls
-# Subscription::try_recv_validated). CMakeLists forces NANO_ROS_SAFETY_E2E=ON
-# (zenoh only — the CRC path). Consumed by tests/safety_e2e.rs::
+# Subscription::try_recv_validated). CMakeLists declares `set(NANO_ROS_FEATURES
+# "safety")` (phase-261 W5 — lowers to NANO_ROS_SAFETY_E2E=ON; zenoh only, the CRC
+# path). Consumed by tests/safety_e2e.rs::
 # test_cpp_safety_listener_validates_crc (paired with the safety talker).
 [[fixture]]
 platform = "native"
