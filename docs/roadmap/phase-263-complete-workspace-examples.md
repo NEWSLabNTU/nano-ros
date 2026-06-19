@@ -126,7 +126,31 @@ A runtime e2e test per workspace + per feature, asserting behaviour (not just a 
   (no compile-in-test — prebuilt fixture, per AGENTS.md). C/C++/mixed currently have
   zero runtime tests; this is the biggest correctness win.
 
-## Sequencing
+## RE-SEQUENCE (2026-06-19) — declarative-API gaps found during A1/A2
+
+Implementing A1 (services) + starting A2 (parameters) surfaced that the **declarative
+Node-pkg API does not yet support several features** the plan assumed (issue **0089**):
+
+- **A2 (parameters): BLOCKED.** No runtime parameter-value read on
+  `CallbackCtx`/`TickCtx` — a Node-pkg can `declare_parameter` but not read its value.
+- **A1 for C/C++/mixed: degraded.** C/C++ service-in-component is raw-CDR only (no
+  typed `bind_service<C,&C::method>`); a faithful demo needs an API add.
+- **A1 service CLIENT (Rust): shipped but via the undocumented `tick(TickCtx)` surface**
+  (calls can't run in `on_callback`). A1 is the first to exercise it — needs a book note.
+
+These are real API-maturity gaps, not example bugs. Per the plan's guardrail ("don't
+fake the demo"), **re-sequence to the features the declarative API FULLY supports**,
+and gate the rest behind issue 0089:
+
+- **Do next (fully supported in the declarative shape):** A3 lifecycle, then the
+  Track-B differentiators that need no new node-API — **B1 safety** (phase-261 already
+  wired `features=["safety"]` end-to-end; `try_recv_validated` exists), **B2 tiers**
+  (system.toml `[tiers]` + `callback_groups`, no runtime API), A5 logging.
+- **Gated on 0089 (mature the API first):** A2 parameters; A1 C/C++/mixed (typed
+  service bind); A4 actions client side (same `tick` surface as services-client).
+- **A1 Rust services: DONE** (server + client both build; see A1 above).
+
+## Sequencing (original)
 
 A1 → A2 → A3 → A4 → A5 (starter, rust first as the reference, then c/cpp/mixed per
 wave), interleaving Track D tests as each feature lands. Track B advanced workspaces
