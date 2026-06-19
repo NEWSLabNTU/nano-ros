@@ -113,8 +113,16 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   fault counter); project to C/C++ (the `NANO_ROS_SAFETY_E2E` knob is wired by
   phase-261 W5). Note: a bake build derives the `safety-e2e` features from `system.toml`
   automatically (phase-261 W3); the hand-cargo entry sets them explicitly.
-- **B2 — `ws-realtime-<lang>`:** scheduling tiers (RFC-0015) — `[tiers.*]` + node
-  `callback_groups` + `[[node_overrides]]`, on a multi-tier executor (freertos/threadx).
+- **B2 — `ws-realtime-<lang>`. RUST DONE (2026-06-20).** New `examples/workspaces/
+  ws-realtime-rust`: a 10 ms control node on tier `high` + a 100 ms telemetry node on
+  tier `low`. Each Node pkg declares `callback_groups = [{ id, tier }]` in Cargo
+  metadata + `node.callback_group(id)` at runtime; `system.toml [tiers.high|low.posix]`
+  gives the priorities. **`nros::main!` reads both, resolves the 2-tier table, and emits
+  the multi-tier `run_tiers` entry** (RFC-0032 §5) — confirmed by `cargo build -p
+  native_entry` (14.5s). Unlike lifecycle, the macro DOES wire tiers
+  (`main_macro.rs` imports `resolve_tiers`). First WORKSPACE demo of deployment-time
+  real-time scheduling. Remaining: project to an RTOS deploy (freertos/threadx) where
+  priorities are real tasks; a runtime test.
 - **B3 — `ws-bridge`:** cross-RMW gateway (zenoh ↔ xrce/cyclonedds), from
   `examples/bridges/*`, but as a workspace bringup (`[[bridge]]` in system.toml).
 - **B4 — `ws-qos-<lang>`:** QoS overrides (reliability / durability / deadline) +

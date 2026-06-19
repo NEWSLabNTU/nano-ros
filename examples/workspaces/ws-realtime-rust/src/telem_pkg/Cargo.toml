@@ -1,0 +1,24 @@
+[package]
+name = "telem_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — telemetry on the low-priority tier (100 ms)."
+
+[lib]
+path = "src/lib.rs"
+
+# phase-263 B2 — telemetry runs on the `low` tier. Same group→tier metadata
+# pattern as ctrl_pkg; the two nodes resolve to two POSIX-priority tasks.
+[package.metadata.nros.node]
+class = "telem_pkg::Telem"
+name = "telem_node"
+default_namespace = "/"
+callback_groups = [{ id = "telem", tier = "low" }]
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }

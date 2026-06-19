@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>native_entry</name>
+  <version>0.1.0</version>
+  <description>Entry pkg — boots the 2-tier realtime system on the native board.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>ctrl_pkg</exec_depend>
+  <exec_depend>telem_pkg</exec_depend>
+  <exec_depend>demo_bringup</exec_depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

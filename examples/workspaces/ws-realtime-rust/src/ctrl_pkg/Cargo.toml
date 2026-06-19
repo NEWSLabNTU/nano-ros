@@ -1,0 +1,26 @@
+[package]
+name = "ctrl_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — control loop on the high-priority tier (10 ms)."
+
+[lib]
+path = "src/lib.rs"
+
+# phase-263 B2 — the control node declares its callback group + the tier it maps
+# to. `nros::main!()` reads `callback_groups` here (id → tier) + `system.toml
+# [tiers.<tier>]` to resolve the per-tier table and emit `run_tiers` (RFC-0015 /
+# RFC-0032). The runtime `node.callback_group("ctrl")` call labels the entities.
+[package.metadata.nros.node]
+class = "ctrl_pkg::Control"
+name = "control_node"
+default_namespace = "/"
+callback_groups = [{ id = "ctrl", tier = "high" }]
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }

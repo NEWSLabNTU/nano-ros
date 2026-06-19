@@ -1,0 +1,26 @@
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+
+# Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
+# the native deploy; priorities are raw POSIX (advisory on native).
+[tiers.high]
+spin_period_us = 1000
+[tiers.high.posix]
+priority = 80
+
+[tiers.low]
+spin_period_us = 10000
+[tiers.low.posix]
+priority = 10
