@@ -35,7 +35,19 @@ the demos would mislead, so they are blocked on these gaps.
    value at runtime. Grep confirms 0 runtime parameter reads in any declarative node
    (core, tests, examples). **Blocks phase-263 A2 (parameters).**
 
-3. **C/C++ service-in-component is raw-CDR only.** `nros-cpp` offers
+3. **Lifecycle (managed nodes) not wired for the plain-cargo workspace shape.**
+   `ExecutableNode` has no transition hooks (`on_configure`/`on_activate`/…), and
+   `nros-macros` (`nros::main!`) does **no** lifecycle handling — the five REP-2002
+   lifecycle services are registered only via `Executor::register_lifecycle_services()`
+   (the `[[bin]]` executor shape) or the `codegen-system` bake (`generate.rs` adds
+   `nros/lifecycle-services` from `plan.lifecycle`). So a `system.toml [lifecycle]`
+   block has no effect on a plain-cargo `nros::main!` Entry — the starter workspaces'
+   build mode. **Blocks phase-263 A3 (lifecycle) for the workspace (cargo) shape**;
+   it works in the bake/`[[bin]]` paths. Either teach `nros::main!` to honour
+   `[lifecycle]` (emit `register_lifecycle_services` + autostart), or document that
+   lifecycle requires the bake build.
+
+4. **C/C++ service-in-component is raw-CDR only.** `nros-cpp` offers
    `bind_service_raw<C, &C::method>` (manual request/response CDR + alignment) and a
    poll-style typed `Service<S>` (not executor-dispatched), but **no typed
    `bind_service<C, &C::method>`** for the `configure()` component shape. The C/C++

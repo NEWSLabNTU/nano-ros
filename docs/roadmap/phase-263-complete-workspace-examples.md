@@ -87,8 +87,12 @@ default. Sequence so each wave is shippable on its own.
 - **A2 — parameters.** `param_pkg` (declare/get/set; enable `[param_services]` /
   `features=["param_services"]` so external get/set works). Port from
   `examples/native/cpp/parameters`.
-- **A3 — lifecycle.** `lifecycle_pkg` (managed node; `[lifecycle] autostart`). Port
-  from `examples/native/rust/lifecycle-node`.
+- **A3 — lifecycle. GATED (2026-06-20, issue 0089 #3).** `nros::main!` does NOT wire
+  `[lifecycle]` and `ExecutableNode` has no transition hooks — lifecycle is
+  `register_lifecycle_services()`-only (the `[[bin]]`/bake paths), so a `[lifecycle]`
+  block has no effect on the starter workspaces' plain-cargo Entry. Needs the macro to
+  honour `[lifecycle]` (or a bake-built entry) before A3 lands. Port target stays
+  `examples/native/rust/lifecycle-node`.
 - **A4 — actions.** `action_server_pkg` + `action_client_pkg` (Fibonacci). Port from
   `examples/native/{rust,…}/action-*`.
 - **A5 — logging.** Add structured logging to one node per workspace (the `nros-log`
@@ -151,10 +155,11 @@ These are real API-maturity gaps, not example bugs. Per the plan's guardrail ("d
 fake the demo"), **re-sequence to the features the declarative API FULLY supports**,
 and gate the rest behind issue 0089:
 
-- **Do next (fully supported in the declarative shape):** A3 lifecycle, then the
-  Track-B differentiators that need no new node-API — **B1 safety** (phase-261 already
-  wired `features=["safety"]` end-to-end; `try_recv_validated` exists), **B2 tiers**
-  (system.toml `[tiers]` + `callback_groups`, no runtime API), A5 logging.
+- **Do next (fully supported in the declarative shape):** **B1 safety — DONE** (no
+  new node-API needed; `ws-safety-rust` ships). Then **B2 tiers** (system.toml
+  `[tiers]` + `callback_groups`, no runtime API) and **A5 logging** (the `nros-log`
+  facade). **A3 lifecycle is also GATED** (0089 #3 — the macro doesn't wire
+  `[lifecycle]` for the cargo shape).
 - **Gated on 0089 (mature the API first):** A2 parameters; A1 C/C++/mixed (typed
   service bind); A4 actions client side (same `tick` surface as services-client).
 - **A1 Rust services: DONE** (server + client both build; see A1 above).
