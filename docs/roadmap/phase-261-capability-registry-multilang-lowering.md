@@ -1,6 +1,6 @@
 # Phase 261 — capability registry: multi-language lowering + `features = [...]`
 
-Status: **Done — W1–W4 (2026-06-18); W5 DEFERRED (YAGNI, 2026-06-19)** ·
+Status: **W1–W4 done (2026-06-18); W5 in progress (2026-06-19)** ·
 Implements
 [issue 0076 §B-W4](../issues/0076-followups-config-ssot-and-safety-e2e-arc.md) (spun
 out of [phase-259](archived/phase-259-safety-e2e-tails.md), where it was scoped) ·
@@ -79,7 +79,24 @@ later wave). Tests: `features=[...]` ≡ typed blocks on the bake; unknown-featu
 rejected. (Existing examples using the typed blocks now emit the deprecation warn —
 a later cleanup wave migrates them to `features=[...]`.)
 
-### W5 — cmake_token threading — DEFERRED (2026-06-19, YAGNI)
+### W5 — cmake_token threading — IN PROGRESS (2026-06-19)
+
+Sub-waves: **W5.1** CMake map + drift test — DONE · **W5.2** root call site ·
+**W5.3** bake emits `system_config.cmake` · **W5.4** worked C/C++ `safety` fixture.
+
+**W5.1 — DONE (2026-06-19).** Added `nros_lower_system_features(<features>)` to
+`cmake/NanoRosCapabilities.cmake`: maps each declared axis to its `cmake_token`
+(`safety` → `set(NANO_ROS_SAFETY_E2E ON CACHE BOOL "" FORCE)`; `param_services`
+known-but-no-token; unknown ⇒ `FATAL_ERROR`, the CMake twin of
+`validate_and_warn_capabilities`). Drift guard: the Rust
+`cmake_capability_map_matches_registry` test asserts every registry row has a CMake
+arm + its `cmake_token` is the one the arm sets, so the hand-mirror can't skew from
+the SSoT. Verified the CMake parses + lowers (`cmake -P`: `safety` →
+`NANO_ROS_SAFETY_E2E=ON`; unknown → fatal).
+
+(Original deferral note retained below for context.)
+
+### W5 (was) — cmake_token threading — DEFERRED (2026-06-19, YAGNI)
 **No clean injection point exists**, so this is a new mechanism, not a one-line
 thread. Findings from the W5 exploration:
 - The bake emits `.h` / `.c` / `.toml` / `.json` — **no CMake**. `system_config.h`

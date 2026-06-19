@@ -139,4 +139,37 @@ mod tests {
             }
         }
     }
+
+    /// Phase 261 W5 — drift guard: `cmake/NanoRosCapabilities.cmake`
+    /// `nros_lower_system_features` is a hand-mirror of THIS registry (the SSoT).
+    /// Assert the CMake map can't skew from the registry: every axis has an arm,
+    /// and every `cmake_token` is the one the arm sets. Adding a registry row
+    /// without the matching CMake arm (or renaming a token) fails here.
+    #[test]
+    fn cmake_capability_map_matches_registry() {
+        // packages/cli/cargo-nano-ros → repo root is three levels up.
+        let cmake = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../cmake/NanoRosCapabilities.cmake");
+        let src = std::fs::read_to_string(&cmake)
+            .unwrap_or_else(|e| panic!("read {}: {e}", cmake.display()));
+        for c in CAPABILITIES {
+            // Every known axis must have a dispatch arm by declared name.
+            assert!(
+                src.contains(&format!("STREQUAL \"{}\"", c.declared)),
+                "NanoRosCapabilities.cmake has no `nros_lower_system_features` arm for \
+                 axis `{}` — add one (drift from the registry)",
+                c.declared
+            );
+            // An axis with a cmake_token must set exactly that token; one without
+            // must NOT set any `NANO_ROS_*` option for the axis.
+            match c.cmake_token {
+                Some(tok) => assert!(
+                    src.contains(&format!("set({tok} ON")),
+                    "axis `{}` cmake_token `{tok}` is not set in NanoRosCapabilities.cmake",
+                    c.declared
+                ),
+                None => {}
+            }
+        }
+    }
 }
