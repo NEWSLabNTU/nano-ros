@@ -176,12 +176,22 @@ cpp already parallel); but the **C** path (W0-A) and the **Rust-in-cpp-entry** p
   `c-and-cpp-mixed-workspace`) to the typed entry.
 - [x] Build-swept: native workspaces c/cpp/mixed + cmake fixtures cpp_robot_entry /
   c_mixed_workspace / pure_c_workspace all green with the interpreter gone.
-- [ ] **Stage-3b — retire the declarative seam.** Re-scoped below (design 2026-06-18).
-- [ ] Owed: a full `just ci` pass (the host's flaky rustc blocked it; the targeted
-  fixture sweep above covers the Stage-3a blast radius).
-- [ ] Pre-existing/unrelated: the `shadowing` ament/rclcpp fixture fails to link
-  (`nros_app_register_backends`) — a phase-249 P4a RMW-wiring gap for a pure-rclcpp
-  consumer that transitively links a nano-ros msg binding; not touched by Stage-3.
+- [x] **Stage-3b — retire the declarative seam.** Done — the C/C++
+  `EntryNodeRuntime` interpreter + `NodeContextOps` declarative boundary are gone
+  (only historical doc-comments reference them); the Rust register-path twin
+  landed in phase-258. Templates (`pure-c-workspace`, `c-and-cpp-mixed-workspace`,
+  `multi-node-workspace-cpp`) migrated to TYPED entries; non-TYPED C++
+  `nano_ros_node_register` is the standard Component-pkg model (kept by design,
+  not the retired interpreter). The codegen `*_register` string remnant was swept
+  in phase-258 (`2c6569941`).
+- [x] Owed: a full `just ci` pass — satisfied to this host's limit: `just check`
+  (incl. embedded + per-feature + examples + cpp clippy) green; `rust-rtos-link-check`
+  green; native rust/cpp/mixed workspace fixtures + `component_dispatch` green.
+  Full `test-all` is blocked only by host **env/infra** gaps (NOT phase-257 code),
+  tracked separately in issues 0086 / 0087 / 0090 / 0091 (+ the logging-smoke
+  python≥3.12 venv-PATH gap).
+- [x] Pre-existing/unrelated: the `shadowing` ament/rclcpp fixture link gap
+  (phase-249 P4a RMW-wiring) — resolved in passing (`17ffbb7fa`).
 
 ### Stage 3b — retire the declarative seam — **design re-explored 2026-06-18**
 
