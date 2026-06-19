@@ -93,6 +93,19 @@ pub trait NodeDispatchRuntime {
     #[allow(clippy::result_unit_err)]
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()>;
 
+    /// Phase 264 W2 — register the REP-2002 lifecycle services on the underlying
+    /// executor + drive boot autostart. `autostart`: 0 = none, 1 = configure,
+    /// 2 = configure+activate. Default no-op (non-executor runtimes, or `nros`
+    /// built without `lifecycle-services`); the `ExecutorNodeRuntime` impl in
+    /// `nros` does the real work behind that feature. `nros::main!` calls this
+    /// (via [`RuntimeCtx::apply_lifecycle`]) when `system.toml` declares
+    /// `[lifecycle]`, mirroring the bake's `generate.rs::render_lifecycle_fn`.
+    #[allow(clippy::result_unit_err)]
+    fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), ()> {
+        let _ = autostart;
+        Ok(())
+    }
+
     /// Phase 258 (Track 2, 2a) — raw `*mut Executor` (as `void*`) for the
     /// owned-spin entry, so a Node pkg's `register(runtime)` wrapper can call
     /// the uniform `__nros_component_<pkg>_install(.., executor, ..)` seam
@@ -224,6 +237,15 @@ impl<'a> RuntimeCtx<'a> {
             env,
             runtime,
         }
+    }
+
+    /// Phase 264 W2 — register lifecycle services + drive autostart on the runtime
+    /// sink (forwards to [`NodeDispatchRuntime::apply_lifecycle`]). `nros::main!`
+    /// emits this after the per-node `register` calls when `system.toml` declares
+    /// `[lifecycle]`. No-op unless `nros` is built with `lifecycle-services`.
+    #[allow(clippy::result_unit_err)]
+    pub fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), ()> {
+        self.runtime.apply_lifecycle(autostart)
     }
 
     /// Lookup a param by name; first match wins. Linear scan

@@ -77,6 +77,18 @@ transitions into the run closure, mirroring `generate.rs::render_lifecycle_fn` e
 Unblocks **phase-263 A3**. Test: a workspace fixture with `[lifecycle] autostart`
 builds + registers the 5 services.
 
+**W2 — IMPLEMENTED (2026-06-20).** Added: `NodeDispatchRuntime::apply_lifecycle(
+autostart: u8)` (nros-platform, default no-op) + `RuntimeCtx::apply_lifecycle` forward;
+`ExecutorNodeRuntime::apply_lifecycle` override (`nros`, `#[cfg(lifecycle-services)]` →
+`register_lifecycle_services()` + `trigger_transition(Configure[/Activate])`, mirroring
+`render_lifecycle_fn`); `nros::main!` reads `[lifecycle]` (`read_lifecycle_autostart`)
+and emits `runtime.apply_lifecycle(code)?` after the `register` calls at both the
+single-tier and `run_tiers` sites. Builds clean in the **default** profile
+(nros-platform / nros-macros / nros). **Feature-on verification BLOCKED by issue 0090**
+— `nros-node`'s `lifecycle-services` feature build is pre-existing broken (`unresolved
+import EmbeddedServiceServer`), so `nros/lifecycle-services` can't compile yet. Fix 0090,
+then verify A3 (a `[lifecycle] autostart` workspace registers the 5 services).
+
 ### W3 — log-sink init at boot
 A node's `nros_info!` needs a registered sink. The board is the only layer that knows
 its sink (native → stdout; embedded → its writer). Add a `BoardPrint`/`BoardEntry`

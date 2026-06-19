@@ -376,6 +376,8 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let mut node_groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
     let mut node_instances: Vec<String> = Vec::new();
     let mut resolved_tiers: Option<ResolvedTierTable> = None;
+    // Phase 264 W2 — `[lifecycle]` boot autostart from `system.toml` (launch arm only).
+    let mut lifecycle_code: Option<u8> = None;
 
     // --- Launch resolution → list of <pkg_ident> register calls ---
     let pkg_idents: Vec<Ident> = match &args.launch {
@@ -438,6 +440,17 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             let bringup_dir = pkg_index
                 .resolve_pkg(&bringup_name)
                 .map_err(|e| syn::Error::new(launch_lit.span(), format!("nros::main!: {e}")))?;
+
+            // Phase 264 W2 — read `[lifecycle]` so the macro can emit the REP-2002
+            // service registration + autostart (mirrors the bake). Unconditional
+            // (independent of the launch-file override below).
+            {
+                let st = bringup_dir.join("system.toml");
+                if st.exists() {
+                    tracked.push(st.clone());
+                    lifecycle_code = read_lifecycle_autostart(&st);
+                }
+            }
 
             // Resolve the launch file. If no override, consult
             // `system.toml::[system] default_launch` (default
@@ -659,6 +672,20 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // expansion time so the runtime body needs no extra import).
     let num_register_calls = register_calls.len();
 
+    // Phase 264 W2 — `[lifecycle]` wiring: when `system.toml` declares it, register
+    // the REP-2002 services + drive boot autostart right after the per-node
+    // `register` calls (the executor is built, the nodes are installed). No-op token
+    // stream when absent. `apply_lifecycle` is a no-op unless the Entry enabled
+    // `nros/lifecycle-services`, so this is inert without the feature.
+    let lifecycle_call: proc_macro2::TokenStream = match lifecycle_code {
+        Some(code) => quote! {
+            runtime.apply_lifecycle(#code).map_err(
+                |_| ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister("lifecycle"),
+            )?;
+        },
+        None => quote! {},
+    };
+
     // Phase 228.G (RFC-0032 §5) — the OwnedSpin entry call. Multi-tier
     // (`[tiers.*]` present, more than the synthesized `default` tier) emits
     // `<Board>::run_tiers(TIERS, register-only-closure)`; the board owns the
@@ -728,6 +755,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // Register-only: the board sets each tier's
                         // `active_groups` filter and owns the spin loop.
                         #( #register_calls )*
+                        #lifecycle_call
                         ::core::result::Result::Ok(())
                     },
                 )
@@ -749,6 +777,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     >
                 {
                     #( #register_calls )*
+                    #lifecycle_call
                     #[cfg(not(target_os = "none"))]
                     __nros_hosted_spin_if_requested(runtime)?;
                     ::core::result::Result::Ok(())
@@ -1618,6 +1647,24 @@ fn read_default_launch(system_toml: &Path) -> Result<Option<String>, String> {
         .and_then(|s| s.get("default_launch"))
         .and_then(|d| d.as_str())
         .map(str::to_string))
+}
+
+/// Phase 264 W2 — read `[lifecycle]` from `system.toml`. `None` ⇒ no block (the
+/// macro emits no lifecycle wiring). `Some(code)` ⇒ block present; `code` is the
+/// boot autostart (0 none, 1 configure, 2 active) the runtime applies after
+/// registering the REP-2002 services. Mirrors the bake's `[lifecycle]` handling.
+/// Best-effort: an unreadable / malformed system.toml yields `None` (the launch
+/// resolution above already surfaces real parse errors).
+fn read_lifecycle_autostart(system_toml: &Path) -> Option<u8> {
+    let raw = std::fs::read_to_string(system_toml).ok()?;
+    let v: toml::Value = toml::from_str(&raw).ok()?;
+    let lifecycle = v.get("lifecycle")?;
+    let code = match lifecycle.get("autostart").and_then(|a| a.as_str()) {
+        Some("active") => 2,
+        Some("configure") => 1,
+        _ => 0, // "none" or absent — services registered, no boot transition
+    };
+    Some(code)
 }
 
 // =============================================================================

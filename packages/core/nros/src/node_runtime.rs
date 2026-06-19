@@ -475,6 +475,30 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
         &mut self.executor as *mut Executor as *mut core::ffi::c_void
     }
 
+    // Phase 264 W2 — register the REP-2002 lifecycle services + drive boot
+    // autostart on the owned executor (mirrors `generate.rs::render_lifecycle_fn`).
+    // Only compiled with `lifecycle-services`; without it the trait default no-op
+    // applies, so a `[lifecycle]` block is silently inert (the Entry opts in by
+    // enabling `nros/lifecycle-services`). `nros::main!` calls this when
+    // `system.toml` declares `[lifecycle]`.
+    #[cfg(feature = "lifecycle-services")]
+    fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), ()> {
+        self.executor.register_lifecycle_services().map_err(|_| ())?;
+        if autostart >= 1
+            && let Some(sm) = self.executor.lifecycle_state_machine_mut()
+        {
+            // No transition callbacks registered → each transition takes the
+            // default-success path (REP-2002 skeleton), as the bake does.
+            unsafe {
+                let _ = sm.trigger_transition(crate::LifecycleTransition::Configure);
+                if autostart >= 2 {
+                    let _ = sm.trigger_transition(crate::LifecycleTransition::Activate);
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn observed_callback_counts(&self) -> (usize, usize) {
         self.components
             .iter()
