@@ -54,6 +54,31 @@ the demos would mislead, so they are blocked on these gaps.
    starter service demo would be hand-rolled CDR — fragile + unrepresentative.
    **Makes phase-263 A1 for C/C++/mixed low-quality without an API add.**
 
+5. **Logging sink not initialized by the workspace Entry.** A node logs via
+   `nros_info!(&LOGGER, …)`, but the one-time sink init (`nros_log::init(
+   sinks::default())`) is done only in the `[[bin]]` examples' `main`. Neither
+   `nros::main!` nor the board crate inits a sink, and a board-AGNOSTIC Node pkg
+   cannot pick the (board-specific) sink itself — so node logs go nowhere in the
+   workspace shape. **Blocks phase-263 A5 (logging).** Fix: the board/Entry inits a
+   default sink (native → stdout; embedded → its writer) at boot.
+
+## Root pattern (2026-06-20)
+
+`nros::main!` (the plain-cargo workspace Entry) is a **thin** macro: it parses the
+launch, emits one `register` per `<node>`, and **resolves `[tiers]`** (it imports
+`resolve_tiers`) — but it does **not** wire the other `system.toml`-declared runtime
+config: lifecycle, log-sink init, parameter values, or the param/safety *services*.
+Those are honoured only by the `codegen-system` **bake** (`generate.rs`) or the
+`[[bin]]` executor shape. So the starter/showcase workspaces (which build via
+`nros::main!`) can demo **pub/sub, timer, service server+client, scheduling tiers,
+and safety (CRC, via cargo features)** — but the rest need either the bake build or a
+matured macro.
+
+**High-leverage fix:** teach `nros::main!` to honour the full `system.toml` capability
+set it already partly reads (tiers) — lifecycle autostart + services, log-sink init,
+parameter binding — mirroring the bake's `generate.rs`. One change unblocks A2, A3,
+A5 (and the param/lifecycle halves of the showcase) at once.
+
 ## Direction
 
 Mature the declarative Node-pkg API so the workspace examples can demonstrate these

@@ -95,8 +95,10 @@ default. Sequence so each wave is shippable on its own.
   `examples/native/rust/lifecycle-node`.
 - **A4 — actions.** `action_server_pkg` + `action_client_pkg` (Fibonacci). Port from
   `examples/native/{rust,…}/action-*`.
-- **A5 — logging.** Add structured logging to one node per workspace (the `nros-log`
-  facade), documented in the README.
+- **A5 — logging. GATED (2026-06-20, issue 0089 #5).** A node logs via `nros_info!`,
+  but neither `nros::main!` nor the board inits the `nros-log` sink, and a
+  board-agnostic Node pkg can't pick the (board-specific) sink — so node logs go
+  nowhere in the workspace shape. Needs the board/Entry to init a default sink.
 
 ### Track B — Advanced workspaces (new, single-purpose, separate dirs)
 Each is a minimal product-shaped workspace demonstrating ONE differentiator end-to-end.
