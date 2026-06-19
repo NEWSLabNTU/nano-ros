@@ -60,7 +60,13 @@ for entry in "${WEST_FIXTURES[@]}"; do
     [ -n "$board" ] && args+=(-b "$board")
     args+=("$repo_root/$src/$subdir")
     [ -n "$extra" ] && args+=(-- "$extra")
-    if west "${args[@]}"; then
+    # issue #87 — native_sim builds with host gcc (no Zephyr SDK); board-keyed,
+    # so the FVP board_import entry (empty board → board.cmake) stays SDK-gated.
+    tc_env=()
+    case "$board" in
+        native_sim*) [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ] && tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=host) ;;
+    esac
+    if env "${tc_env[@]}" west "${args[@]}"; then
         date -u +%Y-%m-%dT%H:%M:%SZ > "$bld/.compile-ok"
         echo "   built $bld"
         n=$((n + 1))
@@ -91,7 +97,10 @@ for entry in "${SELF_PKG_FIXTURES[@]}"; do
     rm -rf "$bld"
     # The link failure is expected → don't let it abort the script (set -u only,
     # no -e, but be explicit). Inspect the bake afterward.
-    west build -b native_sim/native/64 -d "$bld" "$repo_root/$src/$subdir" \
+    # issue #87 — native_sim → host gcc toolchain (no Zephyr SDK download).
+    sp_tc_env=()
+    [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ] && sp_tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=host)
+    env "${sp_tc_env[@]}" west build -b native_sim/native/64 -d "$bld" "$repo_root/$src/$subdir" \
         -- -DCONF_FILE=prj.conf || true
     if [ -f "$bld/nros-system/system_main.c" ] && [ -f "$bld/nros-system/system_config.h" ]; then
         date -u +%Y-%m-%dT%H:%M:%SZ > "$bld/.compile-ok"

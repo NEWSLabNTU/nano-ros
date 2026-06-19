@@ -40,14 +40,17 @@ build-fixtures:
     export NROS_BUILTIN_INTERFACES_DIR="${NROS_BUILTIN_INTERFACES_DIR:-/opt/ros/humble/share/builtin_interfaces}"
     export NROS_UNIQUE_IDENTIFIER_MSGS_DIR="${NROS_UNIQUE_IDENTIFIER_MSGS_DIR:-/opt/ros/humble/share/unique_identifier_msgs}"
     export NROS_ACTION_MSGS_DIR="${NROS_ACTION_MSGS_DIR:-/opt/ros/humble/share/action_msgs}"
-    # Phase 180.A — 4.4 line: run west via the Python 3.12 venv + host
-    # toolchain, and skip the 3.7-only patch set. The proven 4.4 fixture
+    # Phase 180.A — 4.4 line: run west via the Python 3.12 venv (find_package
+    # Python3>=3.12) and skip the 3.7-only patch set. The proven 4.4 fixture
     # subset is zenoh native_sim, which needs none of these patches (NSOS
     # multicast/recvmsg re-anchors are Tasks 5-6, only the cyclonedds path).
+    # issue #87 — the host-toolchain export used to live here (version-keyed,
+    # so only 4.4). It is now set per-leaf in zephyr-fixture-run-one.sh, keyed
+    # on the native_sim BOARD, so 3.7's native_sim subset is SDK-free too while
+    # real embedded boards stay SDK-gated.
     venvbin="{{ZEPHYR_VENV_BIN}}"
     if [ -n "$venvbin" ]; then
         export PATH="$(realpath "$venvbin"):$PATH"
-        export ZEPHYR_TOOLCHAIN_VARIANT=host
     fi
     if [ "{{NROS_ZEPHYR_VERSION}}" != "4.4" ]; then
     # Apply Cortex-A9 patches (idempotent; required for the

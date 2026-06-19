@@ -36,9 +36,14 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     venvbin="{{ZEPHYR_VENV_BIN}}"
     west_cmd=(west)
     if [ -n "$venvbin" ]; then
-        export ZEPHYR_TOOLCHAIN_VARIANT=host
         west_cmd=("$(realpath "$venvbin")/python" -m west)
     fi
+    # issue #87 — host gcc toolchain for native_sim on ANY line (board-keyed,
+    # not version-keyed). Real boards leave the variant unset → SDK. The venv
+    # python switch above stays 4.4-specific (find_package Python3>=3.12).
+    case "{{board}}" in
+    native_sim*) export ZEPHYR_TOOLCHAIN_VARIANT="${ZEPHYR_TOOLCHAIN_VARIANT:-host}" ;;
+    esac
     # Host codegen tool — nros_generate_interfaces() needs it (version-independent).
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
@@ -189,6 +194,9 @@ build-logging-smoke:
         fi
     fi
     echo "  Building logging-smoke-zephyr-native-sim -> $BUILD_DIR"
+    # issue #87 — native_sim uses host gcc (no Zephyr SDK download). Board is
+    # always native_sim here; export host unless the caller overrode it.
+    export ZEPHYR_TOOLCHAIN_VARIANT="${ZEPHYR_TOOLCHAIN_VARIANT:-host}"
     cd "$WORKSPACE_ABS"
     west build -b native_sim/native/64 -d "$BUILD_DIR" -p auto \
         "$FIXTURE_SRC" \
