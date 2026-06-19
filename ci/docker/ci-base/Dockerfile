@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake ninja-build device-tree-compiler gperf \
         git curl ca-certificates zstd xz-utils file wget \
         python3 python3-pip python3-venv python3-tomli build-essential \
+        lld \
         gcc-arm-none-eabi gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf \
         kconfig-frontends socat parallel unzip flex bison \
         libslirp0 libpixman-1-0 \

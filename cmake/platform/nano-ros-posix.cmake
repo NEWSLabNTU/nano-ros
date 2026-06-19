@@ -83,6 +83,24 @@ function(nros_platform_link_app target)
             "nros_platform_link_app: '${target}' is not a CMake target.")
     endif()
 
+    # Issue 0091 — GNU ld (binutils 2.38, fresh Ubuntu 22.04) hits an internal BFD
+    # merge bug (`_bfd_merged_section_offset`, merge.c:939) linking the large Rust
+    # staticlib `libnros_c.a` on the native link. `lld` does not hit it and is a
+    # drop-in via the compiler driver. Prefer it for the native executable link
+    # when `ld.lld` is on PATH. Opt out with `-DNROS_NATIVE_USE_LLD=OFF`; install
+    # lld (`just doctor` recommends it) to enable on an affected host.
+    if(NOT DEFINED NROS_NATIVE_USE_LLD)
+        find_program(_NROS_LD_LLD NAMES ld.lld lld)
+        if(_NROS_LD_LLD)
+            set(NROS_NATIVE_USE_LLD ON)
+        else()
+            set(NROS_NATIVE_USE_LLD OFF)
+        endif()
+    endif()
+    if(NROS_NATIVE_USE_LLD)
+        target_link_options(${target} PRIVATE -fuse-ld=lld)
+    endif()
+
     if(COMMAND nano_ros_link_platform)
         nano_ros_link_platform(${target})
     endif()

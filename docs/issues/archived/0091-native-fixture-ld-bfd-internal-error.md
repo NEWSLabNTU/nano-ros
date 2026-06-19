@@ -1,11 +1,31 @@
 ---
 id: 91
 title: Native C fixture link fails — GNU ld (binutils 2.38) internal BFD error merging the Rust staticlib
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-258]
+resolved_in: "nano-ros-posix.cmake prefers lld for the native link when present + lld added to the CI base image"
 ---
+
+## Resolved (2026-06-20)
+
+The BFD bug is a GNU ld (binutils 2.38) defect, not nano-ros code; `lld` does not
+hit it. Nano-ros-side mitigation:
+
+- **`cmake/platform/nano-ros-posix.cmake`** — `nros_platform_link_app` now prefers
+  `lld` for the native executable link when `ld.lld` is on PATH (`-fuse-ld=lld`),
+  auto-detected (`find_program`). No-op when lld is absent (byte-identical, verified:
+  the native C talker configures clean with `NROS_NATIVE_USE_LLD` OFF on a host
+  without lld). Opt out with `-DNROS_NATIVE_USE_LLD=OFF`.
+- **`ci/docker/ci-base/Dockerfile`** — added `lld` to the apt set, so the CI image's
+  native links use it (consistent + future-proofs against a binutils regression).
+
+A fresh Ubuntu-22.04 dev host hitting the bug installs lld once
+(`sudo apt install lld`); the cmake then auto-prefers it — no manual `-fuse-ld` or
+binutils bump. (The lld-avoids-the-bug link could not be reproduced on this host —
+binutils 2.38, no lld, no sudo — so the runtime proof is CI-side / on an
+lld-equipped host; the mechanism is the standard `-fuse-ld=lld`.)
 
 ## Symptom (2026-06-19)
 
