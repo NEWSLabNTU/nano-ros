@@ -198,13 +198,56 @@ Sub-waves:
   larger change than W4b's registration+seed. W4b ships the full `ros2 param get/set`
   reconfig surface (store + services + CLI interop); W4c adds the in-node read.
 
-- **W4c — `CallbackCtx::parameter::<T>` in-node read (NOT STARTED).** Thread the
-  executor's volatile param store into the callback dispatch path so a node reads the
-  live (baked-or-reconfigured) value in `on_callback`/`tick` via
-  `ctx.parameter::<T>(name) -> Option<T>`. Requires carrying a param-store handle through
-  the leaked service/subscription trampolines + `dispatch_into_cell` into `CallbackCtx`
-  (today it holds only `payload` + a `PublisherResolver`). Test: `ros2 param set` changes
-  the value a running node reads via `ctx.parameter::<T>`.
+- **W4c — `CallbackCtx`/`TickCtx::parameter::<T>` in-node read (NOT STARTED — design
+  locked 2026-06-20).** Thread the executor's volatile param store into the dispatch
+  paths so a node reads the live (baked-or-reconfigured) value in `on_callback` **and**
+  `tick` via `ctx.parameter::<T>(name) -> Option<T>`.
+
+  **Read API (both ctxs):** `parameter<T: nros_params::ParameterVariant>(&self, name) ->
+  Option<T>` = `self.params.and_then(|s| s.get(name)).and_then(T::from_parameter_value)`.
+  `ParameterVariant` (bool/i64/f64/String) + `ParameterServer::get` already exist.
+
+  **Store reach — split by dispatch family (the design crux):**
+  - **TickCtx** — free: `tick_one_cell` (`node_runtime.rs:383`) already holds
+    `exec_ptr: *mut Executor` (the existing disjoint-borrow precedent), so
+    `(*exec_ptr).params()` flows straight in.
+  - **CallbackCtx** — the real work: the arena subscription/timer closures + the 6 leaked
+    service/action `*Ctx` trampolines capture only `Arc<ComponentCell>` — the executor is
+    **not** reachable when they fire (closure built at registration, invoked deep in
+    `arena.rs`). So the store must arrive via the cell. (NB: passing
+    `executor.params()` at the `dispatch_into_cell` *call site* does NOT work — the
+    closure has no `self`.)
+
+  **Mechanism (no emit reorder):**
+  1. `ComponentCell` gains `param_server: Cell<*const ParameterServer>` (cfg
+     `param-services`, null default) + `set_param_server`/`param_server` accessors.
+  2. `ExecutorNodeRuntime::apply_param_services` (W4b; runs after the registers) — after
+     `register_parameter_services` + seed, a **post-pass** sets the ptr on every
+     `self.components` cell, mirroring `run_ticks`: `let p = self.executor.params() as
+     *const _; for cell in &self.components { cell.set_param_server(p); }` (disjoint
+     `&self.components` / `&mut self.executor`; take address, drop borrow).
+  3. `dispatch_into_cell` + the 6 trampolines: after building `ctx`, if the cell ptr is
+     non-null, `ctx.set_param_server(Some(unsafe { &*ptr }))`.
+
+  **Borrow safety (justifies the `unsafe` deref):** single-threaded executor; within
+  `spin_once`, param-services mutate the server at `spin.rs:4143` (pre) and `:4531`
+  (post) with all dispatch *between* — no overlapping `&mut`/`&`. `Box<ParamState>` →
+  stable address; `ParameterServer` is a fixed `[Option<_>; MAX]` array → declare never
+  reallocs; ptr valid for the executor's life.
+
+  **Blast radius** (all cfg `param-services`): ComponentCell +1 field/+2 methods;
+  `apply_param_services` + post-pass; `CallbackCtx` +1 field (None in its 5 constructors)
+  + `set_param_server` + `parameter::<T>` (mirrors W4a `NodeContext::set_params`);
+  `dispatch_into_cell` + 6 trampolines +1 line each; `TickCtx` +1 field/method +
+  `tick_one_cell` wire.
+
+  **Scope decisions (2026-06-20):** implement on **both** `CallbackCtx` + `TickCtx`;
+  verify build-tier (expand) + a unit test (seed store → dispatch → assert
+  `ctx.parameter`) **and** a runtime E2E (`ros2 param set` → the running node observes the
+  new value via `ctx.parameter::<T>`). Extend `ws-params-rust`'s node to read
+  `ctx.parameter::<i64>("publish_period_ms")` in its callback. Known limitation
+  (unchanged): one param server, registered under the executor default node name —
+  multi-node per-node param scoping is out of scope.
 
 **No persistence layer** (W4 explicitly excludes flash/NVS — issue 0080). New API spans
 `nros-params` (activate the dormant volatile store) + `node`/`node_runtime`
