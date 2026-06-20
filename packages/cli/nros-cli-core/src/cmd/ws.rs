@@ -911,8 +911,7 @@ fn write_patch_block(
         .and_then(|s| s.to_str())
         .unwrap_or("Cargo.toml");
     let tmp = authority.with_file_name(format!(".{fname}.nros-sync-tmp.{}", std::process::id()));
-    std::fs::write(&tmp, new_body)
-        .wrap_err_with(|| format!("ws sync: write {}", tmp.display()))?;
+    std::fs::write(&tmp, new_body).wrap_err_with(|| format!("ws sync: write {}", tmp.display()))?;
     std::fs::rename(&tmp, authority).wrap_err_with(|| {
         format!(
             "ws sync: rename {} -> {}",
@@ -1002,10 +1001,35 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
 fn extract_consumer_registry_nros_deps(body: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut in_deps = false;
+    // Issue #94 case B — the explicit dotted dependency-table form
+    // `[dependencies.<name>]` (and `[target.<cfg>.dependencies.<name>]`)
+    // declares one dep whose `version` / `path` keys live on FOLLOWING
+    // lines. Track the pending managed crate name + whether we've seen a
+    // `version` key; flush it (registry-style → emit) on the next section
+    // header or EOF.
+    let mut explicit: Option<(String, bool)> = None;
+    fn flush(explicit: &mut Option<(String, bool)>, out: &mut Vec<String>) {
+        if let Some((name, true)) = explicit.take() {
+            out.push(name);
+        }
+    }
     for line in body.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            flush(&mut explicit, &mut out);
             in_deps = is_dependencies_table(trimmed);
+            explicit = explicit_dep_table_crate(trimmed)
+                .filter(|n| is_managed_runtime_crate_name(n))
+                .map(|n| (n, false));
+            continue;
+        }
+        // Inside an explicit `[dependencies.<name>]` table: only the
+        // `version` key matters (registry vs path-only). Other keys ignored.
+        if let Some((_, has_version)) = explicit.as_mut() {
+            let key = trimmed.split('=').next().map(str::trim).unwrap_or("");
+            if strip_toml_key_quotes(key) == "version" {
+                *has_version = true;
+            }
             continue;
         }
         if !in_deps {
@@ -1051,9 +1075,40 @@ fn extract_consumer_registry_nros_deps(body: &str) -> Vec<String> {
         }
         out.push(key.to_string());
     }
+    // Flush a trailing explicit `[dependencies.<name>]` table at EOF.
+    flush(&mut explicit, &mut out);
     out.sort();
     out.dedup();
     out
+}
+
+/// Issue #94 case B — if `header` is an explicit single-dependency table
+/// head (`[dependencies.<name>]`, `[dev-dependencies.<name>]`,
+/// `[build-dependencies.<name>]`, or the `[target.<cfg>.<kind>.<name>]`
+/// variants), return `<name>` (TOML quotes stripped). Returns `None` for a
+/// flat `[dependencies]` head — that shape is handled by the inline scanner.
+///
+/// Crate names cannot contain `.`, so the name is the final dotted segment;
+/// a quoted `cfg(...)` segment in the target form is skipped by anchoring on
+/// the `.<kind>.` separator.
+fn explicit_dep_table_crate(header: &str) -> Option<String> {
+    let inner = header.strip_prefix('[')?.strip_suffix(']')?.trim();
+    for kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        // Leading form: `dependencies.<name>`.
+        if let Some(rest) = inner.strip_prefix(&format!("{kind}.")) {
+            let name = strip_toml_key_quotes(rest.trim());
+            return (!name.is_empty()).then(|| name.to_string());
+        }
+        // Target form: `target.<cfg>.<kind>.<name>`.
+        if inner.starts_with("target.") {
+            let needle = format!(".{kind}.");
+            if let Some(pos) = inner.rfind(&needle) {
+                let name = strip_toml_key_quotes(inner[pos + needle.len()..].trim());
+                return (!name.is_empty()).then(|| name.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Match a line like `[dependencies]`, `[dev-dependencies]`,
@@ -1258,18 +1313,26 @@ fn splice_patch_block(body: &str, rendered: &RenderedBlock) -> String {
     out
 }
 
-/// Remove the contiguous BEGIN..END region from `body` (including both
+/// Remove EVERY contiguous BEGIN..END region from `body` (including both
 /// marker lines). Returns `body` unchanged if no markers found.
+///
+/// Issue #94 case C — a prior crash or concurrent writer can leave more
+/// than one managed block; strip them all so the next sync self-heals
+/// instead of indefinitely carrying a stale duplicate.
 fn strip_managed_block(body: &str) -> String {
-    let begin_idx = match body.find(BEGIN) {
-        Some(i) => i,
-        None => return body.to_string(),
-    };
+    let mut out = body.to_string();
+    while let Some(next) = strip_first_managed_block(&out) {
+        out = next;
+    }
+    out
+}
+
+/// Remove the FIRST BEGIN..END region from `body`. Returns `None` when no
+/// complete region is present (no BEGIN, or BEGIN without a following END).
+fn strip_first_managed_block(body: &str) -> Option<String> {
+    let begin_idx = body.find(BEGIN)?;
     let after_begin = begin_idx + BEGIN.len();
-    let end_rel = match body[after_begin..].find(END) {
-        Some(i) => i,
-        None => return body.to_string(),
-    };
+    let end_rel = body[after_begin..].find(END)?;
     let end_idx = after_begin + end_rel;
     let end_line_end = end_idx + END.len();
     // Consume the newline after END if present.
@@ -1286,7 +1349,27 @@ fn strip_managed_block(body: &str) -> String {
         out.pop();
     }
     out.push_str(&body[tail_start..]);
-    out
+    Some(out)
+}
+
+/// True iff `line` is a `[patch.crates-io]` table header, tolerating the
+/// TOML-equivalent quoted form `[patch."crates-io"]` (or single-quoted) and
+/// any trailing inline comment. Issue #94 case A — cargo/toml_edit and hand
+/// edits both occur, and the bare-`starts_with` match missed the quoted form,
+/// causing a duplicate header to be emitted (which cargo rejects).
+fn is_patch_crates_io_header(line: &str) -> bool {
+    let t = line.trim_start();
+    let Some(rest) = t.strip_prefix('[') else {
+        return false;
+    };
+    let Some(close) = rest.find(']') else {
+        return false;
+    };
+    let inner = &rest[..close];
+    let segs: Vec<&str> = inner.split('.').collect();
+    segs.len() == 2
+        && strip_toml_key_quotes(segs[0].trim()) == "patch"
+        && strip_toml_key_quotes(segs[1].trim()) == "crates-io"
 }
 
 /// Find a `[patch.crates-io]` table in `body`, split its rows into
@@ -1304,7 +1387,7 @@ fn extract_patch_table(body: &str, managed_names: &[String]) -> (String, Vec<Str
     let mut header_start: Option<usize> = None;
     let mut cursor = 0usize;
     for line in body.split_inclusive('\n') {
-        if line.trim_start().starts_with("[patch.crates-io]") {
+        if is_patch_crates_io_header(line) {
             header_start = Some(cursor);
             break;
         }
@@ -1331,7 +1414,7 @@ fn extract_patch_table(body: &str, managed_names: &[String]) -> (String, Vec<Str
     let mut table_end = body.len();
     for line in body[header_line_end..].split_inclusive('\n') {
         let trimmed = line.trim_start();
-        if trimmed.starts_with('[') && !trimmed.starts_with("[patch.crates-io]") {
+        if trimmed.starts_with('[') && !is_patch_crates_io_header(line) {
             // Next section starts here. Stop.
             table_end = body_cursor;
             break;
@@ -2089,5 +2172,102 @@ nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh" }
         );
         assert_eq!(preserved.len(), 1, "{:?}", preserved);
         assert!(preserved[0].contains("foo"));
+    }
+
+    /// Issue #94 case A — the TOML-equivalent quoted header
+    /// `[patch."crates-io"]` (emitted by toml_edit / hand-authored) must be
+    /// recognised as the patch table, so the splicer reuses it instead of
+    /// adding a second header.
+    #[test]
+    fn extract_table_handles_quoted_crates_io_header() {
+        let body = "[patch.\"crates-io\"]\nnros-core = { path = \"x\" }\nfoo = { path = \"y\" }\n";
+        let (out, preserved, had) = extract_patch_table(body, &["nros-core".to_string()]);
+        assert!(
+            had,
+            "quoted [patch.\"crates-io\"] header not detected:\n{out}"
+        );
+        assert!(
+            !out.contains("nros-core"),
+            "managed row under quoted header not evicted:\n{out}"
+        );
+        assert_eq!(preserved.len(), 1, "{preserved:?}");
+        assert!(preserved[0].contains("foo"));
+    }
+
+    /// Issue #94 case A — splicing into a manifest whose existing patch
+    /// table uses the quoted header form must leave exactly ONE patch
+    /// table (counting both bare + quoted forms). Otherwise cargo rejects
+    /// the duplicate `[patch.crates-io]`.
+    #[test]
+    fn splice_dedups_quoted_preexisting_header() {
+        let body = "\
+[package]
+name = \"d\"
+
+[patch.\"crates-io\"]
+builtin_interfaces = { path = \"generated/builtin_interfaces\" }
+nros-core = { path = \"../core/nros-core\" }
+";
+        let r = rendered(&["nros-core"]);
+        let out = splice_patch_block(body, &r);
+        let total = out
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                t.starts_with("[patch.crates-io]")
+                    || t.starts_with("[patch.\"crates-io\"]")
+                    || t.starts_with("[patch.'crates-io']")
+            })
+            .count();
+        assert_eq!(total, 1, "duplicate patch table for quoted form:\n{out}");
+        assert!(
+            out.contains("builtin_interfaces"),
+            "user row dropped:\n{out}"
+        );
+        assert!(
+            !out.contains("nros-core = { path = \"../core/nros-core\" }"),
+            "managed-duplicate user row not evicted:\n{out}"
+        );
+    }
+
+    /// Issue #94 case B — explicit dependency-table form
+    /// `[dependencies.<name>]` (and target-scoped variants) must be scanned:
+    /// a `version`-carrying entry needs a `[patch.crates-io]` path, a
+    /// path-only entry does not.
+    #[test]
+    fn extract_consumer_registry_deps_explicit_table_form() {
+        let body = r#"
+[dependencies]
+log = "0.4"
+
+[dependencies.nros]
+version = "*"
+default-features = false
+
+[dependencies.nros-rmw-zenoh]
+path = "../zpico/nros-rmw-zenoh"
+
+[target.'cfg(target_os = "linux")'.dependencies.nros-core]
+version = "*"
+"#;
+        let got = extract_consumer_registry_nros_deps(body);
+        // nros + nros-core carry a version → registry → patched.
+        // nros-rmw-zenoh is path-only → skipped.
+        assert_eq!(got, vec!["nros".to_string(), "nros-core".to_string()]);
+    }
+
+    /// Issue #94 case C — `strip_managed_block` removes EVERY managed
+    /// region, not just the first, so a doubled block (from a prior crash
+    /// or concurrent writer) is self-healed on the next sync.
+    #[test]
+    fn strip_managed_block_removes_all_blocks() {
+        let body = format!(
+            "[package]\nname = \"x\"\n\n{BEGIN}\nnros-core = {{ path = \"a\" }}\n{END}\n\n\
+             {BEGIN}\nnros-serdes = {{ path = \"b\" }}\n{END}\n"
+        );
+        let out = strip_managed_block(&body);
+        assert!(!out.contains(BEGIN), "leftover BEGIN marker:\n{out}");
+        assert!(!out.contains(END), "leftover END marker:\n{out}");
+        assert!(out.contains("name = \"x\""), "package head lost:\n{out}");
     }
 }

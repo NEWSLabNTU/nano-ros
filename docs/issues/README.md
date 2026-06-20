@@ -44,7 +44,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-_None currently open._
+- **#94** — [`nros ws sync` line-based TOML editor breaks on quoted patch header +
+  explicit dep-tables](0094-ws-sync-toml-line-scanner-fragility.md): the `[patch.crates-io]`
+  rewriter is a line scanner, not a TOML parser; it duplicates the table on the quoted
+  `[patch."crates-io"]` form (cargo hard-error) and silently drops patches for explicit
+  `[dependencies.<name>]` tables (`no matching package`). Hardening A/B/C in progress.
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#72** —
 safety-e2e CRC dead over zenoh (`nros/safety-e2e` didn't reach the backend's
