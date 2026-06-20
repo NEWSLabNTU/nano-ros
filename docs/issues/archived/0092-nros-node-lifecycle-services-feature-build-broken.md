@@ -1,11 +1,23 @@
 ---
 id: 92
 title: nros-node `lifecycle-services` needs an RMW backend (bare feature build fails)
-status: open
+status: resolved
 type: enhancement
 area: core
 related: [phase-264]
+resolved_in: "gate lifecycle_services + parameter_services modules on has_rmw (e129cb0da)"
 ---
+
+## Resolved (2026-06-20)
+
+Encoded the "needs an RMW backend" requirement in the cfg: the `lifecycle_services`
+and `parameter_services` modules (which build `executor::EmbeddedServiceServer`,
+itself `#[cfg(any(has_rmw, test))]`) are now gated
+`#[cfg(all(feature = "…-services", any(has_rmw, test)))]`. A bare
+`cargo build -p nros-node --features lifecycle-services` (no RMW) compiles clean
+(the module is correctly absent — service servers are meaningless without a
+backend); with an RMW (every shipping app/entry) the module is present + compiles;
+the `test` arm keeps it for test builds. Verified all three.
 
 ## Problem
 
