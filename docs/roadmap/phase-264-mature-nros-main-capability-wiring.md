@@ -135,6 +135,23 @@ W4b activate `ParamStore` + `CallbackCtx::parameter::<T>` + `[param_services]` (
 `node`/`node_runtime` + the macro), and is the natural stopping point when a session
 runs low; resume here.
 
+**DESIGN (maintainer, 2026-06-20) — three layers, baking-first:**
+1. **Initial values are COMPILE-BAKED.** `nros::main!` already reads the launch XML at
+   expansion time; it bakes each `<param name=… value=…/>` as the node's **initial**
+   parameter value (a compile-time constant in the generated entry), consistent with the
+   rest of the declarative model — NOT a runtime launch-string lookup. (So my earlier
+   "forward `RuntimeCtx::param` at runtime" framing is replaced by baking.)
+2. **Runtime reconfiguration is VOLATILE (RAM).** A param store seeded from the baked
+   initials; `declare_parameter` registers, `ctx.parameter::<T>` reads, and
+   `[param_services]` (`ros2 param set`) updates the RAM store — **values live until the
+   next boot**, no persistence.
+3. **Persistence is OUT OF SCOPE** — flash/NVS backing needs consistent storage (the
+   dormant `nros-params` `ParamStore` backends, **issue 0080**). Deferred.
+
+Revised sub-sequence: **W4a** macro bakes launch `<param>` values as initials +
+`ctx.parameter::<T>` reads the (RAM) store seeded from them; **W4b** `[param_services]`
+for runtime reconfig of the RAM store. No persistence layer.
+
 ## Sequencing
 W1 (feature mechanism) → W2 (lifecycle — smallest macro change) → W3 (log-init —
 board) → W4 (parameters — core API, largest). Each ships independently + reopens its
