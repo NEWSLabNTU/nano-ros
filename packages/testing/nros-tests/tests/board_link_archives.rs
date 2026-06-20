@@ -95,10 +95,8 @@ fn package_name(cargo_toml: &str) -> Option<String> {
         if in_package && trimmed.starts_with('[') {
             return None;
         }
-        if in_package {
-            if let Some(value) = quoted_value_after_key(trimmed, "name") {
-                return Some(value.to_string());
-            }
+        if in_package && let Some(value) = quoted_value_after_key(trimmed, "name") {
+            return Some(value.to_string());
         }
     }
     None

@@ -145,10 +145,14 @@ mod tests {
         fn exit_success() -> ! {
             // Test impl — never executed; the trait surface only
             // requires the signature.
-            loop {}
+            loop {
+                core::hint::spin_loop();
+            }
         }
         fn exit_failure() -> ! {
-            loop {}
+            loop {
+                core::hint::spin_loop();
+            }
         }
     }
 

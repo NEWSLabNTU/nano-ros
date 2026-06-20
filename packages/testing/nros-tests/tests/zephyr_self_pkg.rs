@@ -3,7 +3,7 @@
 //!
 //! The M-F.2 nros-cli planner accepts an L.7 self-pkg bringup: a single
 //! Node / Application Cargo pkg carrying `[package.metadata.nros.component]`
-//! + `[package.metadata.nros.deploy.zephyr]` (no sibling Path A
+//! plus `[package.metadata.nros.deploy.zephyr]` (no sibling Path A
 //! `system.toml`). The M-F.3 shim teaches
 //! `zephyr/cmake/nros_system_generate.cmake::_nros_system_resolve_bringup()`
 //! to accept that shape, invoked via either the self-pkg form

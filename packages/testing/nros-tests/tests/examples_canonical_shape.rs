@@ -129,20 +129,20 @@ fn check_pkg_dir(examples_root: &Path, pkg_dir: &Path, violations: &mut Vec<Viol
 
     // 2. Committed `metadata/*.json` build artifacts.
     let metadata_dir = pkg_dir.join("metadata");
-    if metadata_dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&metadata_dir) {
-            for e in entries.flatten() {
-                let p = e.path();
-                if p.extension().and_then(|s| s.to_str()) == Some("json") {
-                    violations.push(Violation {
-                        dir: rel.clone(),
-                        reason: format!(
-                            "committed build artifact `metadata/{}` (must not be \
+    if metadata_dir.is_dir()
+        && let Ok(entries) = fs::read_dir(&metadata_dir)
+    {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("json") {
+                violations.push(Violation {
+                    dir: rel.clone(),
+                    reason: format!(
+                        "committed build artifact `metadata/{}` (must not be \
                              tracked; lives in $OUT_DIR/nros-gen/ or target/nros-metadata/)",
-                            p.file_name().and_then(|s| s.to_str()).unwrap_or("?")
-                        ),
-                    });
-                }
+                        p.file_name().and_then(|s| s.to_str()).unwrap_or("?")
+                    ),
+                });
             }
         }
     }

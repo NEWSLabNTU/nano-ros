@@ -299,11 +299,11 @@ fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
         .map(str::to_owned);
 
     let mut deploy_targets = BTreeSet::new();
-    if let Some(deploy_tbl) = nros.and_then(|n| n.get("deploy")) {
-        if let Some(tbl) = deploy_tbl.as_table() {
-            for k in tbl.keys() {
-                deploy_targets.insert(k.clone());
-            }
+    if let Some(deploy_tbl) = nros.and_then(|n| n.get("deploy"))
+        && let Some(tbl) = deploy_tbl.as_table()
+    {
+        for k in tbl.keys() {
+            deploy_targets.insert(k.clone());
         }
     }
 
@@ -371,12 +371,13 @@ fn every_example_leaf_has_package_xml() {
         // sibling node pkg) carries no `package.xml`: the node pkg is the
         // interface SSoT. Exempt it. A self-pkg crate that ALSO declares
         // `[…node]`/`[…application]` still needs its own `package.xml`.
-        if has_cargo {
-            if let Ok(cls) = parse_cargo_toml(&dir.join("Cargo.toml")) {
-                if cls.is_entry && !cls.is_component && !cls.is_application {
-                    return;
-                }
-            }
+        if has_cargo
+            && let Ok(cls) = parse_cargo_toml(&dir.join("Cargo.toml"))
+            && cls.is_entry
+            && !cls.is_component
+            && !cls.is_application
+        {
+            return;
         }
         if !dir.join("package.xml").is_file() {
             missing.push(rel);
@@ -603,17 +604,17 @@ fn pre_212_files_forbidden_in_migrated_examples() {
         // never tracked next to a Cargo.toml. Aligns with sibling
         // `phase212_examples_canonical_shape` test's same check.
         let metadata_dir = dir.join("metadata");
-        if metadata_dir.is_dir() {
-            if let Ok(entries) = fs::read_dir(&metadata_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                        violations.push(format!(
-                            "{}/metadata/{} (build artifact must live in target/, not committed)",
-                            rel.to_string_lossy(),
-                            path.file_name().and_then(|n| n.to_str()).unwrap_or("?")
-                        ));
-                    }
+        if metadata_dir.is_dir()
+            && let Ok(entries) = fs::read_dir(&metadata_dir)
+        {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    violations.push(format!(
+                        "{}/metadata/{} (build artifact must live in target/, not committed)",
+                        rel.to_string_lossy(),
+                        path.file_name().and_then(|n| n.to_str()).unwrap_or("?")
+                    ));
                 }
             }
         }

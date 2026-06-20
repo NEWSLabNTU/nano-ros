@@ -114,10 +114,11 @@ fn collect_overlays(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
         let p = e.path();
         if p.is_dir() {
             collect_overlays(&p, out);
-        } else if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-            if name.starts_with("prj-") && name.ends_with(".conf") {
-                out.push(p);
-            }
+        } else if let Some(name) = p.file_name().and_then(|n| n.to_str())
+            && name.starts_with("prj-")
+            && name.ends_with(".conf")
+        {
+            out.push(p);
         }
     }
 }

@@ -30,6 +30,7 @@
 //!     header, single-sourcing the malloc/free shim, and capability-driven
 //!     lowering all edit these headers; this gate fails loudly if any of them
 //!     drops or duplicates the canonical surface.
+//!
 //! The two-libc-set class (#27/#36) is still cross-only (it needs the RTOS
 //! sysroot + `#include_next`, which only bites the platform .c TUs, not the
 //! self-contained header here) — see the e2e build-fixtures lane.

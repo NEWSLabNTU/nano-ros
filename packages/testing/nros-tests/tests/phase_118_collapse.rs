@@ -133,7 +133,7 @@ fn test_zephyr_rust_cyclonedds_pubsub_e2e() {
 
 /// Phase 11W.12 — same talker→listener discovery, C++ surface. The
 /// C++ cyclonedds overlay now matches the Rust one (16 MiB malloc arena
-/// + NSOS offload forcing) and the C++ CMake generates the Cyclone C
+/// plus NSOS offload forcing) and the C++ CMake generates the Cyclone C
 /// `dds_topic_descriptor_t` from std_msgs/Int32, so the C++ talker
 /// publishes and a C++ listener receives over SPDP multicast discovery.
 #[test]

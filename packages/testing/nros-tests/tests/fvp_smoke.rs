@@ -7,7 +7,7 @@
 //! ASI-shaped fixture at
 //! `packages/testing/nros-tests/fixtures/board_import_fvp/` — whose
 //! `CMakeLists.txt` carries ONLY `nano_ros_use_board(fvp-aemv8r-smp)`
-//! + `find_package(Zephyr)` + a trivial `printk` app. A green run
+//! with `find_package(Zephyr)` and a trivial `printk` app. A green run
 //! proves the single-call import path (`board.cmake` → `BOARD` /
 //! `EXTRA_CONF_FILE` / `DTC_OVERLAY_FILE` / `NANO_ROS_RMW` /
 //! `NROS_BOARD_RUNNER`) boots to the application on real FVP hardware.
@@ -77,10 +77,10 @@ fn resolve_zephyr_workspace(root: &Path) -> Option<PathBuf> {
         ]
     };
     for cand in candidates {
-        if let Ok(canon) = cand.canonicalize() {
-            if canon.join("zephyr").is_dir() {
-                return Some(canon);
-            }
+        if let Ok(canon) = cand.canonicalize()
+            && canon.join("zephyr").is_dir()
+        {
+            return Some(canon);
         }
     }
     None

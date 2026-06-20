@@ -47,10 +47,10 @@ fn workspace_root() -> PathBuf {
 /// / PATH (incl `packages/cli/target/release/` via `activate.sh`) /
 /// `~/.nros/bin` (transitional).
 fn require_codegen_or_skip() {
-    if let Some(p) = std::env::var_os("NROS_CLI") {
-        if Path::new(&p).is_file() {
-            return;
-        }
+    if let Some(p) = std::env::var_os("NROS_CLI")
+        && Path::new(&p).is_file()
+    {
+        return;
     }
     if Command::new("nros")
         .arg("--version")

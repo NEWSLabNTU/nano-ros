@@ -275,7 +275,7 @@ fn in_place_delivers_bytes_then_drains() {
     // The marshalled closure receives the canned bytes in place.
     let mut captured: Vec<u8> = Vec::new();
     let r = Subscriber::process_raw_in_place(&mut sub, |raw| captured.extend_from_slice(raw));
-    assert_eq!(r.unwrap(), true, "first take should process a message");
+    assert!(r.unwrap(), "first take should process a message");
     assert_eq!(
         captured, CANNED,
         "in-place bytes must match what the slot delivered"
@@ -284,11 +284,7 @@ fn in_place_delivers_bytes_then_drains() {
     // Second take: slot reports no-data → Ok(false), callback not invoked.
     let r2 =
         Subscriber::process_raw_in_place(&mut sub, |_| panic!("callback must not fire on no-data"));
-    assert_eq!(
-        r2.unwrap(),
-        false,
-        "drained subscriber should report no message"
-    );
+    assert!(!r2.unwrap(), "drained subscriber should report no message");
 }
 
 #[test]

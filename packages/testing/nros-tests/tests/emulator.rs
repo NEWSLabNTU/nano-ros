@@ -437,7 +437,7 @@ fn test_qemu_serial_pubsub_e2e() {
 /// Phase 207.4 — boot the bare-metal `talker-xrce` firmware in QEMU, run
 /// `MicroXRCEAgent serial` on the socat-paired PTY, assert the talker
 /// reaches `Published:` (proves the XRCE session opened against the agent
-/// + the publisher write succeeded — there's no `listener-xrce` shipped
+/// and the publisher write succeeded — there's no `listener-xrce` shipped
 /// today, so the agent-side accept is the closing edge).
 ///
 /// Architecture:

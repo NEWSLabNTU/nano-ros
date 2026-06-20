@@ -860,7 +860,7 @@ fn test_ros2_topic_hz_interop(zenohd_unique: ZenohRouter, talker_binary: PathBuf
                 .and_then(|(_, rest)| rest.split_whitespace().next())
                 .and_then(|tok| tok.parse::<f64>().ok())
         })
-        .last()
+        .next_back()
         .expect("no parseable 'average rate' value");
     assert!(
         (0.3..3.0).contains(&last_rate),

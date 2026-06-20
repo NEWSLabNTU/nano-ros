@@ -91,7 +91,7 @@ fn commands_block(help: &str) -> Vec<String> {
 /// Return the leading verb on a `Commands:` line (first whitespace-
 /// separated token of the trimmed line).
 fn line_verb(line: &str) -> &str {
-    line.trim().split_whitespace().next().unwrap_or("")
+    line.split_whitespace().next().unwrap_or("")
 }
 
 fn assert_verb_absent(verb: &str) {

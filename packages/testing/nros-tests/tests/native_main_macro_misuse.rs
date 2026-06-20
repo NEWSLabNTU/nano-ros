@@ -8,6 +8,7 @@
 //!     diagnostic — you can't prebuild a build that must fail;
 //!   * the rebuild case must run **two** checks across a file touch to prove the
 //!     macro's `include_bytes!` stamp forces a re-check.
+//!
 //! They `cargo check` a staged copy of the `n9_workspace` template directly.
 //! The `.config/nextest.toml` timeout-override keeps `native_main_macro_misuse`
 //! (a cold check exceeds the 60s default) — this binary is intentionally on

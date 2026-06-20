@@ -58,7 +58,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
 
     // Cross-process subscriber first, so its subscription is declared before
     // the deployed talker starts publishing.
-    let mut listener_cmd = Command::new(&listener_bin);
+    let mut listener_cmd = Command::new(listener_bin);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)

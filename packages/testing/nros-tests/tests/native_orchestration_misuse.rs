@@ -54,10 +54,10 @@ fn rewrite_placeholders(root: &Path, replacement: &str) -> std::io::Result<()> {
             for e in fs::read_dir(&p)? {
                 stack.push(e?.path());
             }
-        } else if let Ok(text) = fs::read_to_string(&p) {
-            if text.contains("@NANO_ROS_ROOT@") {
-                fs::write(&p, text.replace("@NANO_ROS_ROOT@", replacement))?;
-            }
+        } else if let Ok(text) = fs::read_to_string(&p)
+            && text.contains("@NANO_ROS_ROOT@")
+        {
+            fs::write(&p, text.replace("@NANO_ROS_ROOT@", replacement))?;
         }
     }
     Ok(())

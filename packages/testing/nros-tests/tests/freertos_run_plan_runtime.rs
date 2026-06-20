@@ -194,8 +194,8 @@ fn build_or_locate_entry_binary(dir: &Path, bin_name: &str) -> Result<PathBuf, S
 /// Shared boot+connected-run gate for any qemu-arm-freertos Entry pkg. All six
 /// share the `Mps2An385` board, `nros::main!()` self-bringup, the
 /// `tcp/10.0.2.2:7451` deploy locator + `10.0.2.15` deploy ip/gateway, and the
-/// release-profile build, so the #45 (panic/crate-type/linker) + #46 (stack/heap)
-/// + #48 (deploy-thread + zenoh-backend-link) fixes that unblocked the talker
+/// release-profile build, so the #45 (panic/crate-type/linker), #46 (stack/heap),
+/// and #48 (deploy-thread + zenoh-backend-link) fixes that unblocked the talker
 /// unblock the siblings; these prove it per pkg. Serialized via the
 /// `qemu-freertos-entry` nextest group (shared port 7451 + QEMU slirp).
 fn boot_and_connect(entry: &str, bin_name: &str) {

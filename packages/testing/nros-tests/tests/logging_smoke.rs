@@ -269,6 +269,7 @@ fn logging_smoke_zephyr_native_sim_emits_every_severity() {
         std::thread::sleep(Duration::from_millis(20));
     }
     let _ = child.kill();
+    let _ = child.wait();
 
     // The Zephyr LOG default filter drops DBG records below the
     // configured CONFIG_LOG_DEFAULT_LEVEL, so the platform impl's

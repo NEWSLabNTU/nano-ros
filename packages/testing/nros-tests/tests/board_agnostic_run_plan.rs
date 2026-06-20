@@ -7,7 +7,7 @@
 //!
 //! * `posix_entry/`     — `<PosixBoard as BoardEntry>::run` (host)
 //! * `freertos_entry/`  — `<Mps2An385 as BoardEntry>::run`
-//!                        (`thumbv7m-none-eabi`, QEMU MPS2-AN385)
+//!   (`thumbv7m-none-eabi`, QEMU MPS2-AN385)
 //!
 //! ## Two-legged proof
 //!

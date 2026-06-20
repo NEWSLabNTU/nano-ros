@@ -66,10 +66,10 @@ fn resolve_zephyr_workspace(root: &Path) -> Option<PathBuf> {
         ]
     };
     for cand in candidates {
-        if let Ok(canon) = cand.canonicalize() {
-            if canon.join("zephyr").is_dir() {
-                return Some(canon);
-            }
+        if let Ok(canon) = cand.canonicalize()
+            && canon.join("zephyr").is_dir()
+        {
+            return Some(canon);
         }
     }
     None
