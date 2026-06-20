@@ -122,6 +122,19 @@ the declared default), and bind declared parameters into that store from both
 W2 mechanism). Largest item (new core API + store plumbing). Unblocks **phase-263 A2**.
 Test: a node declares + reads a parameter; a launch override changes the value.
 
+**Scope refined (2026-06-20).** `NodeContext` (what a node's `register` receives) has
+**no** param accessor today — but `RuntimeCtx::param` already resolves launch params one
+layer out, so the smallest first step is **forwarding** `RuntimeCtx::param` →
+`NodeContext::param`, letting a node read launch params in `register()` and stash them on
+`State` (covers a useful slice of A2 with no store). The fuller path — typed
+`CallbackCtx::parameter::<T>` with declared-default fallback — needs the **`nros-params`
+`ParamStore`** (it exists but is **dormant**, issue 0080) activated + bound from
+`nros::main!`/`generate.rs`. Sub-sequence: W4a `NodeContext::param` forward (small) →
+W4b activate `ParamStore` + `CallbackCtx::parameter::<T>` + `[param_services]` (large).
+**W4 NOT STARTED** — it's the largest item (new core API across `nros-params` +
+`node`/`node_runtime` + the macro), and is the natural stopping point when a session
+runs low; resume here.
+
 ## Sequencing
 W1 (feature mechanism) → W2 (lifecycle — smallest macro change) → W3 (log-init —
 board) → W4 (parameters — core API, largest). Each ships independently + reopens its
