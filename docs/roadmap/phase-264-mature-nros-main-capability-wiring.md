@@ -102,6 +102,16 @@ embedded. `nros-board-native` delegates to `nros-board-posix`; the init lands in
 posix runtime. Unblocks **phase-263 A5**. Test: a node logging in a callback produces
 output under the native entry.
 
+**W3 DONE (2026-06-20).** `nros-board-posix` now deps `nros-log` and calls
+`nros_log::init(nros_log::sinks::default())` at the top of both `run` and `run_tiers`
+(idempotent), so the default platform sink (host → stdout/stderr) is live before the
+user closure — a Node pkg's `nros_info!` reaches output with no per-app init. Builds
+clean. Used `sinks::default()` (the existing `PlatformSink`) rather than a new board
+hook — simpler, and the posix `PlatformSink` already routes to the host. (Embedded
+boards keep their own writers; this lands only in the posix family driver, so no
+size-bound target is affected.) Unblocks phase-263 A5 (a logging node now produces
+output; the A5 workspace demo + runtime assert is the phase-263 deliverable).
+
 ### W4 — parameters: runtime value-read
 **Partial already exists (found 2026-06-20):** `RuntimeCtx::param(name) -> Option<&str>`
 (`runtime.rs:231`) lets a node read a LAUNCH param value at `register()` time. The gap

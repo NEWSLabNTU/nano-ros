@@ -158,6 +158,10 @@ impl BoardEntry for PosixBoard {
         E: core::fmt::Debug,
     {
         <Self as BoardInit>::init_hardware();
+        // Phase 264 W3 — wire the default log sink (host → stdout/stderr) so a Node
+        // pkg's `nros_info!` produces output without per-app `nros_log::init`.
+        // Idempotent (swaps the sink list atomically).
+        ::nros_log::init(::nros_log::sinks::default());
 
         // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
         // `ExecutorNodeRuntime` so the codegen-emitted
@@ -246,6 +250,8 @@ impl PosixBoard {
         // deploy overlay is ignored here (kept for signature parity with the
         // firmware boards' `run_tiers`).
         <Self as BoardInit>::init_hardware();
+        // Phase 264 W3 — default log sink at boot (see `run`).
+        ::nros_log::init(::nros_log::sinks::default());
 
         if tiers.is_empty() {
             <Self as BoardPrint>::println(format_args!(
