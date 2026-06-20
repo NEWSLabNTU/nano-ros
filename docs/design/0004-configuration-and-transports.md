@@ -370,6 +370,33 @@ callback-groups), **system** (topology/capabilities/tiers — agnostic),
 **deploy** (target/board/build-tuning + net + rmw/domain/locator overrides),
 **build/capability** (lowered, not authored).
 
+## 10. Runtime parameters (compile-baked initials + volatile reconfig)
+
+ROS 2 node parameters in nano-ros follow the project's compile-time baking model, in
+three layers (decided 2026-06-20; implemented by phase-264 W4):
+
+1. **Initial values are COMPILE-BAKED from the launch file.** The toolchain reads the
+   launch XML at build time (`nros::main!` for the cargo path, `generate.rs` for the
+   bake path) and bakes each `<param name="…" value="…"/>` as the declaring node's
+   **initial** parameter value — a compile-time constant in the generated entry, NOT a
+   runtime launch-string lookup. This mirrors how topology + capabilities are baked:
+   nothing about the launch file is parsed at runtime. Changing an initial value is a
+   rebuild, like any other declarative change.
+2. **Runtime reconfiguration is VOLATILE (RAM).** A node `declare_parameter`s its
+   parameters; a runtime store is seeded from the baked initials; the node reads the
+   current value with `ctx.parameter::<T>(name)`. When `[param_services]` is enabled the
+   standard ROS 2 parameter services (`ros2 param get/set`) read + update that store.
+   **Updates live only until the next boot** — there is no write-back to the launch file
+   or any non-volatile medium.
+3. **Persistence is OUT OF SCOPE.** Surviving a reboot needs a consistent non-volatile
+   store (flash / NVS) — a separate concern with its own failure/atomicity model, tracked
+   by the dormant `nros-params` `ParamStore` backends (**issue 0080**). nano-ros does not
+   persist parameter values today; a node always boots from its baked initials.
+
+So: **launch file → baked initial (compile time) → RAM value (boot) → live reconfig via
+param services (until reboot)**. The typed `[param_persistence]` config block stays
+disabled (RFC-0004 §3 / issue 0080) until the storage layer lands.
+
 ## See also
 
 - RFC-0031 (RMW selection & lowering), RFC-0024/0025 (multi-node workspace layout).

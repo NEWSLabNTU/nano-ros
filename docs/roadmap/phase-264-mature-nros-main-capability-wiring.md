@@ -112,45 +112,39 @@ boards keep their own writers; this lands only in the posix family driver, so no
 size-bound target is affected.) Unblocks phase-263 A5 (a logging node now produces
 output; the A5 workspace demo + runtime assert is the phase-263 deliverable).
 
-### W4 — parameters: runtime value-read
-**Partial already exists (found 2026-06-20):** `RuntimeCtx::param(name) -> Option<&str>`
-(`runtime.rs:231`) lets a node read a LAUNCH param value at `register()` time. The gap
-is the typed read in a CALLBACK: add `CallbackCtx`/`TickCtx` `parameter::<T>(name) ->
-Option<T>` backed by the runtime's resolved parameter store (launch/config value over
-the declared default), and bind declared parameters into that store from both
-`nros::main!` and `generate.rs`. Plus `[param_services]` registration (like lifecycle,
-W2 mechanism). Largest item (new core API + store plumbing). Unblocks **phase-263 A2**.
-Test: a node declares + reads a parameter; a launch override changes the value.
+### W4 — parameters (NOT STARTED — largest item; the resume point)
 
-**Scope refined (2026-06-20).** `NodeContext` (what a node's `register` receives) has
-**no** param accessor today — but `RuntimeCtx::param` already resolves launch params one
-layer out, so the smallest first step is **forwarding** `RuntimeCtx::param` →
-`NodeContext::param`, letting a node read launch params in `register()` and stash them on
-`State` (covers a useful slice of A2 with no store). The fuller path — typed
-`CallbackCtx::parameter::<T>` with declared-default fallback — needs the **`nros-params`
-`ParamStore`** (it exists but is **dormant**, issue 0080) activated + bound from
-`nros::main!`/`generate.rs`. Sub-sequence: W4a `NodeContext::param` forward (small) →
-W4b activate `ParamStore` + `CallbackCtx::parameter::<T>` + `[param_services]` (large).
-**W4 NOT STARTED** — it's the largest item (new core API across `nros-params` +
-`node`/`node_runtime` + the macro), and is the natural stopping point when a session
-runs low; resume here.
+Design SSoT: **RFC-0004 §10 (Runtime parameters)**. Summary (maintainer model, 2026-06-20):
 
-**DESIGN (maintainer, 2026-06-20) — three layers, baking-first:**
-1. **Initial values are COMPILE-BAKED.** `nros::main!` already reads the launch XML at
-   expansion time; it bakes each `<param name=… value=…/>` as the node's **initial**
-   parameter value (a compile-time constant in the generated entry), consistent with the
-   rest of the declarative model — NOT a runtime launch-string lookup. (So my earlier
-   "forward `RuntimeCtx::param` at runtime" framing is replaced by baking.)
+1. **Initial values are COMPILE-BAKED from the launch file.** `nros::main!` already reads
+   the launch XML at expansion time; it bakes each `<param name=… value=…/>` as the
+   node's **initial** parameter value (a compile-time constant in the generated entry),
+   consistent with the declarative baking model — NOT a runtime launch-string lookup.
 2. **Runtime reconfiguration is VOLATILE (RAM).** A param store seeded from the baked
-   initials; `declare_parameter` registers, `ctx.parameter::<T>` reads, and
-   `[param_services]` (`ros2 param set`) updates the RAM store — **values live until the
-   next boot**, no persistence.
+   initials; `declare_parameter` registers, `ctx.parameter::<T>(name)` reads, and
+   `[param_services]` (`ros2 param get/set`) updates the RAM store — **values live until
+   the next boot**.
 3. **Persistence is OUT OF SCOPE** — flash/NVS backing needs consistent storage (the
    dormant `nros-params` `ParamStore` backends, **issue 0080**). Deferred.
 
-Revised sub-sequence: **W4a** macro bakes launch `<param>` values as initials +
-`ctx.parameter::<T>` reads the (RAM) store seeded from them; **W4b** `[param_services]`
-for runtime reconfig of the RAM store. No persistence layer.
+Sub-waves:
+
+- **W4a — bake initials + typed read.** `nros::main!` (+ `generate.rs` for the bake
+  path) emits each declared parameter's baked initial value into the generated entry +
+  seeds a volatile param store; add `CallbackCtx`/`TickCtx::parameter::<T>(name) ->
+  Option<T>` reading that store (baked initial, until reconfigured). A node `declare`s a
+  parameter and reads its launch-set value in a callback. Unblocks the read half of
+  **phase-263 A2**. Test: a workspace node declares + reads a param; changing the launch
+  `<param value=…/>` changes the baked initial (rebuild) and the read value.
+- **W4b — `[param_services]` runtime reconfig.** Register the ROS 2 parameter services
+  (same W2 macro mechanism) so `ros2 param get/set` reads/updates the RAM store live
+  (until reboot). Unblocks the reconfig half of A2. Test: `ros2 param set` changes the
+  value a running node reads.
+
+**No persistence layer** (W4 explicitly excludes flash/NVS — issue 0080). New API spans
+`nros-params` (activate the dormant volatile store) + `node`/`node_runtime`
+(`CallbackCtx::parameter`) + the macro (bake + seed). Keep `generate.rs` and
+`main_macro.rs` aligned so the bake and cargo paths bake identically.
 
 ## Sequencing
 W1 (feature mechanism) → W2 (lifecycle — smallest macro change) → W3 (log-init —
