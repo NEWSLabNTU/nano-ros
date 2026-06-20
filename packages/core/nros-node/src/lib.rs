@@ -95,7 +95,14 @@ pub mod timer;
 #[cfg(all(test, not(feature = "rmw-cffi")))]
 pub(crate) mod mock;
 
-#[cfg(feature = "param-services")]
+// Issue 0092 — the service servers these modules build (`executor::
+// EmbeddedServiceServer`) only exist when an RMW backend is present
+// (`#[cfg(any(has_rmw, test))]` on `executor::handles`). Gate the modules on
+// `has_rmw` too — `--features {lifecycle,param}-services` with no RMW otherwise
+// fails to resolve `EmbeddedServiceServer`. Service servers are meaningless
+// without a backend; every shipping app/entry selects an RMW (→ has_rmw). The
+// `test` arm keeps the modules in test builds.
+#[cfg(all(feature = "param-services", any(has_rmw, test)))]
 pub mod parameter_services;
 
 // Re-export parameter types when param-services is enabled
@@ -104,7 +111,7 @@ pub use nros_params::{
     ParameterDescriptor, ParameterServer, ParameterType, ParameterValue, SetParameterResult,
 };
 
-#[cfg(feature = "lifecycle-services")]
+#[cfg(all(feature = "lifecycle-services", any(has_rmw, test)))]
 pub mod lifecycle_services;
 
 // Export standalone node (without transport)
