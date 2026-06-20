@@ -1,11 +1,24 @@
 ---
 id: 93
 title: Zephyr testing-bin fixtures (logging-smoke) fail configure — py3.12 venv not on PATH (Zephyr 4.4 needs Python >=3.12)
-status: open
+status: resolved
 type: bug
 area: zephyr
 related: [0087, phase-258]
+resolved_in: "build-logging-smoke (zephyr-dev.just) prepends ZEPHYR_VENV_BIN to PATH on 4.4"
 ---
+
+## Resolved (2026-06-20)
+
+`just/zephyr-dev.just` `build-logging-smoke` (the only testing-bin zephyr fixture,
+`logging-smoke-zephyr-native-sim`) now prepends the provisioned py3.12 venv to PATH
+before its `west build` — `venvbin="{{ZEPHYR_VENV_BIN}}"` (4.4 → `.venv312/bin`,
+empty on 3.7) + `export PATH="$(realpath "$venvbin"):$PATH"` — mirroring the
+example-fixture path (`zephyr-ci.just`). On 4.4 `west`/cmake then resolve the 3.12
+python so `find_package(Python3 3.12)` passes; on 3.7 the block is a no-op
+(byte-identical). Verified: justfile parses; 3.7 (default) no-op. The 4.4 runtime
+build-verify is CI / a 4.4-provisioned host (no `.venv312` on this host); the fix
+reuses the proven example-path mechanism.
 
 ## Symptom (2026-06-20)
 

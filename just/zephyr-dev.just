@@ -194,6 +194,14 @@ build-logging-smoke:
         fi
     fi
     echo "  Building logging-smoke-zephyr-native-sim -> $BUILD_DIR"
+    # issue 0093 — Zephyr 4.4's `find_package(Python3)` requires >=3.12. Prepend the
+    # provisioned py3.12 venv to PATH (empty on the 3.7 line) so `west`/cmake resolve
+    # the 3.12 python — same as the example-fixture path (zephyr-ci.just). Without it
+    # this testing-bin fixture configures with the system python (3.10) and 4.4 fails.
+    venvbin="{{ZEPHYR_VENV_BIN}}"
+    if [ -n "$venvbin" ]; then
+        export PATH="$(realpath "$venvbin"):$PATH"
+    fi
     # issue #87 — native_sim uses host gcc (no Zephyr SDK download). Board is
     # always native_sim here; export host unless the caller overrode it.
     export ZEPHYR_TOOLCHAIN_VARIANT="${ZEPHYR_TOOLCHAIN_VARIANT:-host}"
