@@ -232,6 +232,8 @@ pub use node_runtime::{
     // shared executor a foreign typed entry hands in. (`register_node_borrowed` stays
     // crate-internal — it returns the private `ComponentCell`.)
     install_node_typed,
+    // W4a — same seam, seeding the node's NodeContext with launch-baked `<param>` initials.
+    install_node_typed_with_params,
 };
 
 /// Phase 257 (W0-B) — `install_node_typed` stub for builds without the cffi runtime.
@@ -246,6 +248,23 @@ pub use node_runtime::{
 #[doc(hidden)]
 pub unsafe fn install_node_typed<C: node::ExecutableNode + 'static>(
     _executor: *mut core::ffi::c_void,
+) -> i32
+where
+    C::State: 'static,
+{
+    -1
+}
+
+/// W4a — `install_node_typed_with_params` stub for builds without the cffi runtime.
+/// Signature parity with `node_runtime::install_node_typed_with_params`; returns `-1`.
+///
+/// # Safety
+/// The stub dereferences nothing.
+#[cfg(not(feature = "rmw-cffi"))]
+#[doc(hidden)]
+pub unsafe fn install_node_typed_with_params<C: node::ExecutableNode + 'static>(
+    _executor: *mut core::ffi::c_void,
+    _params: &[(&str, &str)],
 ) -> i32
 where
     C::State: 'static,

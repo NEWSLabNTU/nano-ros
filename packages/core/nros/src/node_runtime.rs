@@ -483,7 +483,9 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     // `system.toml` declares `[lifecycle]`.
     #[cfg(feature = "lifecycle-services")]
     fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), ()> {
-        self.executor.register_lifecycle_services().map_err(|_| ())?;
+        self.executor
+            .register_lifecycle_services()
+            .map_err(|_| ())?;
         if autostart >= 1
             && let Some(sm) = self.executor.lifecycle_state_machine_mut()
         {
@@ -1182,8 +1184,9 @@ impl ActionExecutor for RuntimeActions<'_> {
 /// W0-B target) or stash it to drive `tick` (service-client/action nodes; phase-257 D2).
 /// The node self-creates its node (its `Node::NAME`) on the shared executor (phase-257
 /// D7 Option C — Rust nodes in a foreign entry self-name, no entry-side qos-override).
-fn register_node_borrowed<C: ExecutableNode + 'static>(
+fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
     executor: &mut Executor,
+    params: &'p [(&'p str, &'p str)],
 ) -> NodeResult<Arc<ComponentCell>>
 where
     C::State: 'static,
@@ -1209,6 +1212,9 @@ where
     };
     let sink_dyn: &mut dyn NodeRuntime = &mut sink;
     let mut context = NodeContext::new(C::NAME, sink_dyn);
+    // Phase 264 W4a — seed the baked launch-param initials so `register()` can read
+    // them via `NodeContext::param`.
+    context.set_params(params);
     C::register(&mut context)?;
 
     // Phase 258 (Track 2, 2a) — enroll the cell in the executor's component
@@ -1253,12 +1259,29 @@ pub unsafe fn install_node_typed<C: ExecutableNode + 'static>(
 where
     C::State: 'static,
 {
+    // SAFETY: forwarded per this fn's contract; no baked params.
+    unsafe { install_node_typed_with_params::<C>(executor, &[]) }
+}
+
+/// W4a — same as [`install_node_typed`] but seeds the node's [`NodeContext`] with the
+/// launch-baked `<param>` initial values, so a `register`/`init`-time `ctx.param(name)`
+/// observes the compile-time launch value (RFC-0004 §10). `params` must outlive the call.
+///
+/// # Safety
+/// `executor` must be the live `*mut Executor` handle a typed entry passes, valid for the call.
+pub unsafe fn install_node_typed_with_params<C: ExecutableNode + 'static>(
+    executor: *mut core::ffi::c_void,
+    params: &[(&str, &str)],
+) -> i32
+where
+    C::State: 'static,
+{
     if executor.is_null() {
         return -1;
     }
     // SAFETY: per the fn contract, `executor` is the live `*mut Executor` handle.
     let exec: &mut Executor = unsafe { &mut *(executor as *mut Executor) };
-    match register_node_borrowed::<C>(exec) {
+    match register_node_borrowed::<C>(exec, params) {
         Ok(_cell) => 0,
         Err(_) => -1,
     }

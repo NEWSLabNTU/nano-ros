@@ -1,0 +1,21 @@
+# phase-264 W4a (RFC-0004 §10) — parameterised-node showcase bringup.
+#
+# The launch `<param>` initials are COMPILE-BAKED by `nros::main!` and read at
+# `register` time via `ctx.param(...)` — no `[param_services]` here (runtime
+# `ros2 param set` reconfig is W4b; persistence is out of scope). No `[lifecycle]`
+# either: this is a plain (unmanaged) parameterised node.
+
+[system]
+name = "param_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "param_talker_pkg"
+class = "param_talker_pkg::ParamTalker"
+name = "param_talker"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

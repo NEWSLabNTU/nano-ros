@@ -496,6 +496,13 @@ pub type NodeExecutorRuntime<
 pub struct NodeContext<'a, R: NodeRuntime + ?Sized = dyn NodeRuntime + 'a> {
     component_name: &'static str,
     runtime: &'a mut R,
+    /// Phase 264 W4a — this node instance's parameters, the COMPILE-BAKED initial
+    /// values from the launch `<param name=… value=…/>` entries (`nros::main!`
+    /// bakes them + threads them through `install_node_typed_with_params`). Empty
+    /// for the metadata-recorder / no-launch paths. A node reads them in
+    /// `register()` via [`param`](Self::param) and stashes the typed value on its
+    /// `State` (RFC-0004 §10 — baked initials; runtime reconfig is W4b).
+    params: &'a [(&'a str, &'a str)],
 }
 
 impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
@@ -504,7 +511,24 @@ impl<'a, R: NodeRuntime + ?Sized> NodeContext<'a, R> {
         Self {
             component_name,
             runtime,
+            params: &[],
         }
+    }
+
+    /// Phase 264 W4a — seed this node instance's baked launch parameters (called by
+    /// `install_node_typed_with_params` before `Node::register`).
+    pub fn set_params(&mut self, params: &'a [(&'a str, &'a str)]) {
+        self.params = params;
+    }
+
+    /// Phase 264 W4a — the baked initial value of launch parameter `name`, or
+    /// `None` if the launch declared no `<param name="…"/>` for this node
+    /// instance. Read in `register()` and parse/stash on `State` (RFC-0004 §10).
+    pub fn param(&self, name: &str) -> Option<&'a str> {
+        self.params
+            .iter()
+            .find(|(k, _)| *k == name)
+            .map(|(_, v)| *v)
     }
 
     /// Source component name.

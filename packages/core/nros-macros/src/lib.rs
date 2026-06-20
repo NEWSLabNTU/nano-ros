@@ -487,8 +487,10 @@ fn node_impl(input: TokenStream) -> TokenStream {
         ) -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError> {
             let executor = runtime.runtime.executor_handle();
             // SAFETY: `executor` is the runtime sink's live `*mut Executor`
-            // (or null, which `install_node_typed` rejects as an error).
-            match unsafe { ::nros::install_node_typed::<#node_ty>(executor) } {
+            // (or null, which `install_node_typed_with_params` rejects as an error).
+            // W4a — `runtime.params` carries the launch-baked `<param>` initials so the
+            // node's `register`/`init` observes its compile-time launch values.
+            match unsafe { ::nros::install_node_typed_with_params::<#node_ty>(executor, runtime.params) } {
                 0 => ::core::result::Result::Ok(()),
                 _ => ::core::result::Result::Err(
                     ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister(#pkg_name_lit),

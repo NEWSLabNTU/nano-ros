@@ -112,7 +112,7 @@ boards keep their own writers; this lands only in the posix family driver, so no
 size-bound target is affected.) Unblocks phase-263 A5 (a logging node now produces
 output; the A5 workspace demo + runtime assert is the phase-263 deliverable).
 
-### W4 — parameters (NOT STARTED — largest item; the resume point)
+### W4 — parameters (W4a DONE 2026-06-20; W4b NOT STARTED — largest item)
 
 Design SSoT: **RFC-0004 §10 (Runtime parameters)**. Summary (maintainer model, 2026-06-20):
 
@@ -129,17 +129,50 @@ Design SSoT: **RFC-0004 §10 (Runtime parameters)**. Summary (maintainer model, 
 
 Sub-waves:
 
-- **W4a — bake initials + typed read.** `nros::main!` (+ `generate.rs` for the bake
-  path) emits each declared parameter's baked initial value into the generated entry +
-  seeds a volatile param store; add `CallbackCtx`/`TickCtx::parameter::<T>(name) ->
-  Option<T>` reading that store (baked initial, until reconfigured). A node `declare`s a
-  parameter and reads its launch-set value in a callback. Unblocks the read half of
-  **phase-263 A2**. Test: a workspace node declares + reads a param; changing the launch
-  `<param value=…/>` changes the baked initial (rebuild) and the read value.
-- **W4b — `[param_services]` runtime reconfig.** Register the ROS 2 parameter services
-  (same W2 macro mechanism) so `ros2 param get/set` reads/updates the RAM store live
-  (until reboot). Unblocks the reconfig half of A2. Test: `ros2 param set` changes the
-  value a running node reads.
+- **W4a — bake initials + register-time read. IMPLEMENTED + VERIFIED (2026-06-20).**
+  `nros::main!` now compile-bakes each launch `<param name=… value=…/>` into the
+  generated entry and seeds it into the node's `NodeContext` before the `register` call;
+  the node reads its launch-set value with `ctx.param(name) -> Option<&str>`. Test:
+  `examples/workspaces/ws-params-rust` — `ParamTalker::register` reads
+  `ctx.param("publish_period_ms")` and drives its publish-timer period from it;
+  `cargo build -p native_entry` links clean (~15s) and the nightly-expanded entry shows
+  `runtime.params = &[("publish_period_ms", "250")]; ::param_talker_pkg::register(runtime)?;`
+  — the launch value flows into the node with **no per-app glue and no extra `nros`
+  feature**. Closes the read half of **phase-263 A2** for the macro path.
+
+  **Implementation:**
+  - `node.rs` — `NodeContext` gained a `params: &[(&str,&str)]` field + `set_params` /
+    `param(name)`.
+  - `node_runtime.rs` — `register_node_borrowed` takes a `params` slice and calls
+    `context.set_params(params)` before `C::register`; new
+    `install_node_typed_with_params<C>(executor, params)` (the existing
+    `install_node_typed` forwards with `&[]`); stubs mirrored in `lib.rs`.
+  - `nros-macros` — the `nros::node!` `register` wrapper calls
+    `install_node_typed_with_params::<T>(executor, runtime.params)`; `main_macro.rs`
+    bakes per-node launch `<param>` as a promoted `&'static` slice and emits
+    `runtime.params = &[…];` before each `::<pkg>::register(runtime)?;` (reset to `&[]`
+    for nodes with none, so params never leak between registrations).
+  - `RuntimeCtx::params` (`nros-platform`) was already the carrier — no board change.
+
+  **Bake-path alignment (deliberate, recorded for W4b):** the `nros::main!` path reads
+  baked initials at register via the new `NodeContext::param`; the **bake** path
+  (`generate.rs::register_all` → `instantiate_components`) does **not** use this seam —
+  it has its own parameter system (`apply_param_persistence` + `[param_services]` +
+  `declare_parameter`, a runtime store). So the two paths bake initials by different
+  mechanisms today. They **converge in W4b**, where the macro path adopts the same
+  volatile `nros-params` store the bake uses (the `CallbackCtx::parameter::<T>` typed
+  read + `ros2 param set` reconfig). W4a deliberately ships the minimal register-time
+  string read first (no store), since reconfig — the only consumer that needs the store
+  — lands in W4b.
+- **W4b — volatile store + `[param_services]` runtime reconfig (NOT STARTED).** Seed a
+  volatile `nros-params` store from the W4a baked initials; add the typed read
+  `CallbackCtx`/`TickCtx::parameter::<T>(name) -> Option<T>` over that store; register the
+  ROS 2 parameter services (same W2 macro mechanism) so `ros2 param get/set`
+  reads/updates the store live (until reboot). **This is the bake/macro convergence
+  point** — the macro path adopts the same store the bake's `apply_param_persistence` /
+  `[param_services]` already drives, so both paths reach identical runtime param
+  behaviour. Unblocks the reconfig half of A2. Test: `ros2 param set` changes the value a
+  running node reads via `ctx.parameter::<T>`.
 
 **No persistence layer** (W4 explicitly excludes flash/NVS — issue 0080). New API spans
 `nros-params` (activate the dormant volatile store) + `node`/`node_runtime`

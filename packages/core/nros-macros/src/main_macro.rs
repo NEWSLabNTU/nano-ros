@@ -378,6 +378,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let mut resolved_tiers: Option<ResolvedTierTable> = None;
     // Phase 264 W2 — `[lifecycle]` boot autostart from `system.toml` (launch arm only).
     let mut lifecycle_code: Option<u8> = None;
+    // Phase 264 W4a — per-node launch `<param name=… value=…/>` initials, parallel to
+    // `pkg_idents` (launch arm only). Each entry is the baked `(name, value)` slice that
+    // seeds the node's `NodeContext::param` at register time (RFC-0004 §10). Empty in the
+    // self-bringup arm (no launch file → no `<param>`).
+    let mut node_param_bakes: Vec<Vec<(String, String)>> = Vec::new();
 
     // --- Launch resolution → list of <pkg_ident> register calls ---
     let pkg_idents: Vec<Ident> = match &args.launch {
@@ -407,20 +412,19 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Some(launch_lit) => {
             let launch_value = launch_lit.value();
             // Walk the workspace from the Entry pkg's manifest dir.
-            let workspace_root = nros_pkg_index::detect_workspace_root(&manifest_dir)
-                .map_err(|e| {
+            let workspace_root =
+                nros_pkg_index::detect_workspace_root(&manifest_dir).map_err(|e| {
                     syn::Error::new(
                         launch_lit.span(),
                         format!("nros::main!: detect_workspace_root: {e}"),
                     )
                 })?;
-            let pkg_index =
-                nros_pkg_index::build_pkg_index(&workspace_root).map_err(|e| {
-                    syn::Error::new(
-                        launch_lit.span(),
-                        format!("nros::main!: build_pkg_index: {e}"),
-                    )
-                })?;
+            let pkg_index = nros_pkg_index::build_pkg_index(&workspace_root).map_err(|e| {
+                syn::Error::new(
+                    launch_lit.span(),
+                    format!("nros::main!: build_pkg_index: {e}"),
+                )
+            })?;
             // Track every package.xml the index walked.
             for (_, pkg_dir) in pkg_index.pkgs() {
                 tracked.push(pkg_dir.join("package.xml"));
@@ -488,20 +492,17 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
             // Parse the launch file via N.11.
             let arg_overrides: Vec<(String, String)> = args.args.clone();
-            let desc = nros_launch_parser::parse_launch_file(
-                &launch_path,
-                &pkg_index,
-                &arg_overrides,
-            )
-            .map_err(|e| {
-                syn::Error::new(
-                    launch_lit.span(),
-                    format!(
-                        "nros::main!: parse launch file `{}`: {e}",
-                        launch_path.display()
-                    ),
-                )
-            })?;
+            let desc =
+                nros_launch_parser::parse_launch_file(&launch_path, &pkg_index, &arg_overrides)
+                    .map_err(|e| {
+                        syn::Error::new(
+                            launch_lit.span(),
+                            format!(
+                                "nros::main!: parse launch file `{}`: {e}",
+                                launch_path.display()
+                            ),
+                        )
+                    })?;
 
             // Walk every `<node>` (top-level + inside groups) and
             // resolve to its Rust crate ident.
@@ -566,6 +567,15 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 }
                 let crate_ident = pkg_to_crate_ident(&node.pkg);
                 idents.push(Ident::new(&crate_ident, Span::call_site()));
+
+                // Phase 264 W4a — bake this node's launch `<param>` initials (RFC-0004 §10).
+                // Parallel to `idents`: index i's params seed pkg `idents[i]`'s NodeContext.
+                node_param_bakes.push(
+                    node.params
+                        .iter()
+                        .map(|p| (p.name.clone(), p.value.clone()))
+                        .collect(),
+                );
 
                 // Phase 228.G — collect the node instance + its declared
                 // callback groups for tier resolution. The instance name keys
@@ -662,8 +672,21 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
     let register_calls: Vec<proc_macro2::TokenStream> = pkg_idents
         .iter()
-        .map(|ident| {
+        .enumerate()
+        .map(|(i, ident)| {
+            // Phase 264 W4a — set `runtime.params` to this node's baked launch `<param>`
+            // initials (a promoted `&'static` slice) before the register call, so the
+            // node's `register`/`init` observes its launch values via `ctx.param(name)`.
+            // Empty (self-bringup arm, or a node with no `<param>`) → reset to `&[]` so a
+            // prior node's params never leak into the next register.
+            let params = node_param_bakes.get(i).cloned().unwrap_or_default();
+            let param_lits = params.iter().map(|(name, value)| {
+                let n = LitStr::new(name, Span::call_site());
+                let v = LitStr::new(value, Span::call_site());
+                quote! { (#n, #v) }
+            });
             quote! {
+                runtime.params = &[ #( #param_lits ),* ];
                 ::#ident::register(runtime)?;
             }
         })

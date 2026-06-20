@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- phase-264 W4a (RFC-0004 §10) — a parameterised node. The `<param>` child is
+     COMPILE-BAKED by `nros::main!` into the generated entry and seeded into the
+     node's NodeContext; `ParamTalker::register` reads it via `ctx.param(...)` and
+     drives the publish-timer period from it. Change `value` here + rebuild → the
+     publish rate changes with no code edit. -->
+<launch>
+  <node pkg="param_talker_pkg" exec="param_talker" name="param_talker">
+    <param name="publish_period_ms" value="250"/>
+  </node>
+</launch>

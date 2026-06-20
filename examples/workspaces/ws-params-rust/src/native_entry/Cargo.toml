@@ -1,0 +1,25 @@
+[package]
+name = "native_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the parameterised system on the native board."
+
+[[bin]]
+name = "native_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+# phase-264 W4a — parameters need NO extra `nros` feature: `nros::main!` bakes the
+# launch `<param>` initials into the entry and `ctx.param(...)` reads them at register
+# time. (Runtime `ros2 param set` reconfig — W4b — will add `param-services`.)
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
+param_talker_pkg = { path = "../param_talker_pkg", default-features = false }

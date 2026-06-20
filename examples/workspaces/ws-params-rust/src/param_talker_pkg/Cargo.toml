@@ -1,0 +1,38 @@
+[package]
+name = "param_talker_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — publishes std_msgs/Int32 on /chatter, timer rate from a launch param."
+
+# Node pkg shape — lib only, no [[bin]], no main.rs. `nros::node!()`
+# exports the register / init / dispatch trampolines; the sibling
+# Entry pkgs bring up the executor + spin loop via `nros::main!()`.
+[lib]
+path = "src/lib.rs"
+
+# Phase 248 C6a (#60 T5) — Node pkgs are platform/RMW-AGNOSTIC. The old
+# `native/freertos/threadx-linux/nuttx/zephyr/esp32` matrix that selected
+# `nros/platform-*`+`nros/rmw-cffi` is gone: platform + RMW now flow from the
+# BOARD crate the sibling Entry pkg deps (a board built with `rmw-X`
+# self-links+registers the backend AND brings `nros-platform/platform-<rtos>`
+# via feature unification). This lib carries only the functional `nros`
+# features below (alloc + the rmw-cffi vtable + ROS edition); the Entry's `nros`
+# dep adds `std` for the hosted std targets (threadx-linux / nuttx).
+
+[package.metadata.nros.node]
+class = "param_talker_pkg::ParamTalker"
+name = "param_talker"
+default_namespace = "/"
+
+[dependencies]
+# Single platform/RMW-agnostic `nros` dep. `alloc` is the universal baseline
+# (works on the no_std targets; std targets get `std` from the Entry/board via
+# feature unification). `rmw-cffi` is the vtable seam only — the concrete RMW
+# backend is linked by the board crate, never named here.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+std_msgs = { version = "*", default-features = false }
