@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<!-- phase-263 A3 / phase-264 W2 — a managed (lifecycle) system: the runtime
+     registers the 5 REP-2002 lifecycle services and autostarts the node. -->
+<launch>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+</launch>

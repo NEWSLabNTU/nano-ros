@@ -1,0 +1,24 @@
+# phase-263 A3 / phase-264 W2 — managed-node (lifecycle) showcase bringup.
+#
+# `[lifecycle]` makes this a MANAGED system: `nros::main!` (phase-264 W2) registers
+# the 5 REP-2002 lifecycle services on the executor and drives the boot autostart
+# policy — here `active` (Configure → Activate). The Entry enables
+# `nros/lifecycle-services` so the registration compiles in.
+
+[system]
+name = "lifecycle_demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[lifecycle]
+autostart = "active"
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[deploy.native]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"

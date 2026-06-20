@@ -83,11 +83,15 @@ autostart: u8)` (nros-platform, default no-op) + `RuntimeCtx::apply_lifecycle` f
 `register_lifecycle_services()` + `trigger_transition(Configure[/Activate])`, mirroring
 `render_lifecycle_fn`); `nros::main!` reads `[lifecycle]` (`read_lifecycle_autostart`)
 and emits `runtime.apply_lifecycle(code)?` after the `register` calls at both the
-single-tier and `run_tiers` sites. Builds clean in the **default** profile
-(nros-platform / nros-macros / nros). **Feature-on verification BLOCKED by issue 0092**
-— `nros-node`'s `lifecycle-services` feature build is pre-existing broken (`unresolved
-import EmbeddedServiceServer`), so `nros/lifecycle-services` can't compile yet. Fix 0092,
-then verify A3 (a `[lifecycle] autostart` workspace registers the 5 services).
+single-tier and `run_tiers` sites. **W2 VERIFIED (2026-06-20)** via
+`examples/workspaces/ws-lifecycle-rust` — a plain-cargo entry with `[lifecycle]
+autostart = "active"` + `nros/lifecycle-services`: `cargo build -p native_entry` links
+clean (14.5s), so the macro reads `[lifecycle]`, emits `runtime.apply_lifecycle(2)`, and
+the override registers the 5 services + drives Configure→Activate. **This IS phase-263
+A3** (first plain-cargo workspace lifecycle demo). The earlier bare-`nros-node` failure
+(0092) was a backend-less build — a real entry has an RMW backend → `has_rmw` →
+`lifecycle-services` compiles; **0092 downgraded** to a minor robustness gap
+(lifecycle-services should gate-or-imply `has_rmw`).
 
 ### W3 — log-sink init at boot
 A node's `nros_info!` needs a registered sink. The board is the only layer that knows

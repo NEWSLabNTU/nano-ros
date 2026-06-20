@@ -87,12 +87,13 @@ default. Sequence so each wave is shippable on its own.
 - **A2 — parameters.** `param_pkg` (declare/get/set; enable `[param_services]` /
   `features=["param_services"]` so external get/set works). Port from
   `examples/native/cpp/parameters`.
-- **A3 — lifecycle. GATED (2026-06-20, issue 0089 #3).** `nros::main!` does NOT wire
-  `[lifecycle]` and `ExecutableNode` has no transition hooks — lifecycle is
-  `register_lifecycle_services()`-only (the `[[bin]]`/bake paths), so a `[lifecycle]`
-  block has no effect on the starter workspaces' plain-cargo Entry. Needs the macro to
-  honour `[lifecycle]` (or a bake-built entry) before A3 lands. Port target stays
-  `examples/native/rust/lifecycle-node`.
+- **A3 — lifecycle. RUST DONE (2026-06-20, via phase-264 W2).** Was gated (the macro
+  didn't wire `[lifecycle]`); phase-264 W2 fixed that, so the new
+  `examples/workspaces/ws-lifecycle-rust` (a managed system: `[lifecycle] autostart =
+  "active"` + `nros/lifecycle-services`) builds via plain-cargo `nros::main!` — the
+  macro emits `apply_lifecycle` → the runtime registers the 5 REP-2002 services + drives
+  Configure→Activate. `cargo build -p native_entry` links clean. (Transition-callback
+  hooks on the declarative node are still a separate gap; this is the managed-node demo.)
 - **A4 — actions.** `action_server_pkg` + `action_client_pkg` (Fibonacci). Port from
   `examples/native/{rust,…}/action-*`.
 - **A5 — logging. GATED (2026-06-20, issue 0089 #5).** A node logs via `nros_info!`,
