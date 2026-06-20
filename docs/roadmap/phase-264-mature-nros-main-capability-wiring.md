@@ -84,9 +84,9 @@ autostart: u8)` (nros-platform, default no-op) + `RuntimeCtx::apply_lifecycle` f
 `render_lifecycle_fn`); `nros::main!` reads `[lifecycle]` (`read_lifecycle_autostart`)
 and emits `runtime.apply_lifecycle(code)?` after the `register` calls at both the
 single-tier and `run_tiers` sites. Builds clean in the **default** profile
-(nros-platform / nros-macros / nros). **Feature-on verification BLOCKED by issue 0090**
+(nros-platform / nros-macros / nros). **Feature-on verification BLOCKED by issue 0092**
 — `nros-node`'s `lifecycle-services` feature build is pre-existing broken (`unresolved
-import EmbeddedServiceServer`), so `nros/lifecycle-services` can't compile yet. Fix 0090,
+import EmbeddedServiceServer`), so `nros/lifecycle-services` can't compile yet. Fix 0092,
 then verify A3 (a `[lifecycle] autostart` workspace registers the 5 services).
 
 ### W3 — log-sink init at boot
