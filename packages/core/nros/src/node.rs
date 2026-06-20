@@ -1416,6 +1416,12 @@ pub struct CallbackCtx<'a> {
     /// zero-cost when `safety-e2e` is off.
     #[cfg(feature = "safety-e2e")]
     integrity: Option<&'a crate::IntegrityStatus>,
+    /// Phase 264 W4c — the executor's volatile parameter store, threaded by the dispatch
+    /// site from the component cell (`None` until `[param_services]` registers the store).
+    /// Read with [`parameter`](Self::parameter). Gated so it is zero-cost when
+    /// `param-services` is off.
+    #[cfg(feature = "param-services")]
+    params: Option<&'a crate::ParameterServer>,
 }
 
 impl<'a> CallbackCtx<'a> {
@@ -1429,6 +1435,8 @@ impl<'a> CallbackCtx<'a> {
             decision: None,
             #[cfg(feature = "safety-e2e")]
             integrity: None,
+            #[cfg(feature = "param-services")]
+            params: None,
         }
     }
 
@@ -1449,6 +1457,8 @@ impl<'a> CallbackCtx<'a> {
             reply: None,
             decision: None,
             integrity: Some(integrity),
+            #[cfg(feature = "param-services")]
+            params: None,
         }
     }
 
@@ -1472,6 +1482,8 @@ impl<'a> CallbackCtx<'a> {
             decision: None,
             #[cfg(feature = "safety-e2e")]
             integrity: None,
+            #[cfg(feature = "param-services")]
+            params: None,
         }
     }
 
@@ -1490,6 +1502,8 @@ impl<'a> CallbackCtx<'a> {
             decision: Some(DecisionSink::Goal(out)),
             #[cfg(feature = "safety-e2e")]
             integrity: None,
+            #[cfg(feature = "param-services")]
+            params: None,
         }
     }
 
@@ -1507,7 +1521,28 @@ impl<'a> CallbackCtx<'a> {
             decision: Some(DecisionSink::Cancel(out)),
             #[cfg(feature = "safety-e2e")]
             integrity: None,
+            #[cfg(feature = "param-services")]
+            params: None,
         }
+    }
+
+    /// Phase 264 W4c — thread the executor's volatile parameter store into this context.
+    /// The dispatch site calls this after construction (the store reaches the callback via
+    /// the component cell, not the constructor args). No-op-equivalent when `None`.
+    #[cfg(feature = "param-services")]
+    pub fn set_param_server(&mut self, params: Option<&'a crate::ParameterServer>) {
+        self.params = params;
+    }
+
+    /// Phase 264 W4c — read this node's parameter `name` as `T`, or `None` if the
+    /// parameter is undeclared, the wrong type, or `[param_services]` is not enabled.
+    /// Returns the **live** value — the launch-baked initial, or whatever a `ros2 param
+    /// set` last wrote (RFC-0004 §10; values are volatile, lost at the next boot).
+    #[cfg(feature = "param-services")]
+    pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
+        self.params
+            .and_then(|server| server.get(name))
+            .and_then(T::from_parameter_value)
     }
 
     /// Set the action goal-callback's accept/reject decision (W.5.3). `Err` when
@@ -1709,6 +1744,11 @@ pub struct TickCtx<'a> {
     publishers: &'a dyn PublisherResolver,
     actions: &'a mut dyn ActionExecutor,
     clients: &'a mut dyn ClientDispatch,
+    /// Phase 264 W4c — the executor's volatile parameter store, threaded by the tick
+    /// driver (`tick_one_cell` already holds the executor). `None` until
+    /// `[param_services]` registers the store. Read with [`parameter`](Self::parameter).
+    #[cfg(feature = "param-services")]
+    params: Option<&'a crate::ParameterServer>,
 }
 
 impl<'a> TickCtx<'a> {
@@ -1722,7 +1762,26 @@ impl<'a> TickCtx<'a> {
             publishers,
             actions,
             clients,
+            #[cfg(feature = "param-services")]
+            params: None,
         }
+    }
+
+    /// Phase 264 W4c — thread the executor's volatile parameter store in (the tick
+    /// driver holds the executor directly). No-op-equivalent when `None`.
+    #[cfg(feature = "param-services")]
+    pub fn set_param_server(&mut self, params: Option<&'a crate::ParameterServer>) {
+        self.params = params;
+    }
+
+    /// Phase 264 W4c — read this node's parameter `name` as `T` during `tick`, or `None`
+    /// if undeclared, the wrong type, or `[param_services]` is off. Returns the live
+    /// value (baked initial or last `ros2 param set`; volatile — RFC-0004 §10).
+    #[cfg(feature = "param-services")]
+    pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
+        self.params
+            .and_then(|server| server.get(name))
+            .and_then(T::from_parameter_value)
     }
 
     /// Publish raw CDR bytes through the named publisher entity (immediate).
@@ -2745,6 +2804,36 @@ mod tests {
         // A reply-less ctx (timer / subscription) rejects a reply.
         let mut ctx2 = CallbackCtx::new(&[], &resolver);
         assert!(ctx2.reply_raw(&[1, 2, 3]).is_err());
+    }
+
+    // Phase 264 W4c — a callback reads the live parameter value through
+    // `CallbackCtx::parameter::<T>` once the dispatch site threads the store in.
+    #[cfg(feature = "param-services")]
+    #[test]
+    fn callback_ctx_reads_param() {
+        struct NoopResolver;
+        impl PublisherResolver for NoopResolver {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> NodeResult<()> {
+                Ok(())
+            }
+        }
+        let resolver = NoopResolver;
+
+        // No store threaded ⇒ every read is None (param-services off / not registered).
+        let ctx_none = CallbackCtx::new(&[], &resolver);
+        assert_eq!(ctx_none.parameter::<i64>("speed"), None);
+
+        // Seed a store with the typed value a `ros2 param set speed 7` would land on.
+        let mut server = crate::ParameterServer::new();
+        assert!(server.declare("speed", crate::ParameterValue::Integer(7)));
+
+        let mut ctx = CallbackCtx::new(&[], &resolver);
+        ctx.set_param_server(Some(&server));
+        assert_eq!(ctx.parameter::<i64>("speed"), Some(7));
+        // Wrong type ⇒ None, not a panic.
+        assert_eq!(ctx.parameter::<bool>("speed"), None);
+        // Undeclared ⇒ None.
+        assert_eq!(ctx.parameter::<i64>("missing"), None);
     }
 
     // Phase 250 Wave 2 — the declarative `.safety()` surface: a normal ctx has

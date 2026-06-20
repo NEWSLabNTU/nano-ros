@@ -112,7 +112,7 @@ boards keep their own writers; this lands only in the posix family driver, so no
 size-bound target is affected.) Unblocks phase-263 A5 (a logging node now produces
 output; the A5 workspace demo + runtime assert is the phase-263 deliverable).
 
-### W4 — parameters (W4a + W4b DONE 2026-06-20; W4c NOT STARTED — largest item)
+### W4 — parameters (W4a + W4b + W4c DONE 2026-06-20)
 
 Design SSoT: **RFC-0004 §10 (Runtime parameters)**. Summary (maintainer model, 2026-06-20):
 
@@ -198,10 +198,43 @@ Sub-waves:
   larger change than W4b's registration+seed. W4b ships the full `ros2 param get/set`
   reconfig surface (store + services + CLI interop); W4c adds the in-node read.
 
-- **W4c — `CallbackCtx`/`TickCtx::parameter::<T>` in-node read (NOT STARTED — design
-  locked 2026-06-20).** Thread the executor's volatile param store into the dispatch
-  paths so a node reads the live (baked-or-reconfigured) value in `on_callback` **and**
-  `tick` via `ctx.parameter::<T>(name) -> Option<T>`.
+- **W4c — `CallbackCtx`/`TickCtx::parameter::<T>` in-node read. IMPLEMENTED + VERIFIED
+  (2026-06-20).** A node reads the live (baked-or-reconfigured) value in `on_callback`
+  **and** `tick` via `ctx.parameter::<T>(name) -> Option<T>`. **Runtime-verified** over the
+  wire: `tests/param_live_read_e2e.rs` boots `ws-params-rust` + an nros subscriber and
+  asserts the node publishes `250` — the launch-baked initial read LIVE each tick via
+  `ctx.parameter::<i64>("publish_period_ms")` (passes in-env, nros↔nros). The `ros2 param
+  set publish_period_ms 500 → node publishes 500` reconfig path is
+  `tests/params.rs::test_ros2_param_set_reconfigures_live_read` (ROS 2 interop lane; skips
+  where the distro `rmw_zenoh_cpp` mismatches the pinned zenoh wire version — needs `just
+  rmw_zenoh setup`). Plus a unit test (`node.rs::callback_ctx_reads_param`).
+
+  **Implementation (as designed):**
+  - `ComponentCell` gained `param_server: Cell<*const ParameterServer>` (cfg
+    `param-services`) + accessor; `register_node_borrowed` / `register_node` capture the
+    store address on the cell after registration.
+  - `nros::main!` emits `apply_param_services` **before** the per-node registers (reorder
+    from W4b) so the store exists when each cell captures it.
+  - `dispatch_into_cell` + the safety-dispatch + the 3 with-reply/goal/cancel trampolines
+    thread `cell.param_server()` onto `CallbackCtx::set_param_server`; the action
+    result/feedback/accepted trampolines route through `dispatch_into_cell` already.
+  - `tick_one_cell` threads it onto `TickCtx` (via the cell, NOT `exec_ptr` — the store is
+    a separate `Box<ParamState>` allocation, so it can't alias the `&mut Executor` the
+    tick's client/action calls reborrow).
+  - `CallbackCtx`/`TickCtx` gained the `params` field + `set_param_server` +
+    `parameter::<T>` (reads `ParameterServer::get` → `ParameterVariant::from_parameter_value`).
+  - Test infra: `[[workspace_fixture]] workspace-rust-native-params` (cargo `nros::main!`
+    path — `workspace-fixtures-build.sh` now skips `codegen-system` when `codegen_out` is
+    absent) + `build_native_workspace_rust_params_entry()`.
+
+  **Borrow safety:** single-threaded executor; param services mutate the server only
+  before/after dispatch (`spin.rs:4143`/`:4531`), never during; `Box<ParamState>` keeps
+  the address stable; the server's fixed `[Option<_>; MAX]` array never reallocs on
+  declare. The `*const → &` deref in `ComponentCell::param_server` is sound under those
+  invariants.
+
+  ~~Thread the executor's volatile param store into the dispatch paths.~~ (Original
+  design below, kept for reference.)
 
   **Read API (both ctxs):** `parameter<T: nros_params::ParameterVariant>(&self, name) ->
   Option<T>` = `self.params.and_then(|s| s.get(name)).and_then(T::from_parameter_value)`.

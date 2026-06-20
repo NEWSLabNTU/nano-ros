@@ -804,9 +804,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     {
                         // Register-only: the board sets each tier's
                         // `active_groups` filter and owns the spin loop.
+                        // W4c — param services BEFORE the node registers, so the store
+                        // exists when each cell captures it (cell → `ctx.parameter`).
+                        #param_services_call
                         #( #register_calls )*
                         #lifecycle_call
-                        #param_services_call
                         ::core::result::Result::Ok(())
                     },
                 )
@@ -827,9 +829,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         ::nros::__macro_support::nros_platform::RuntimeError,
                     >
                 {
+                    // W4c — param services BEFORE the node registers, so the store
+                    // exists when each cell captures it (cell → `ctx.parameter`).
+                    #param_services_call
                     #( #register_calls )*
                     #lifecycle_call
-                    #param_services_call
                     #[cfg(not(target_os = "none"))]
                     __nros_hosted_spin_if_requested(runtime)?;
                     ::core::result::Result::Ok(())

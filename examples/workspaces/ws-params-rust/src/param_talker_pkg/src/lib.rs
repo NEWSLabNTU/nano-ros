@@ -1,13 +1,17 @@
 //! Param-talker Node pkg — publishes `std_msgs/Int32` on `/chatter`, timer rate
 //! configured by a launch parameter.
 //!
-//! phase-264 W4a (RFC-0004 §10) — the launch `<node>` carries a
+//! phase-264 W4 (RFC-0004 §10) — the launch `<node>` carries a
 //! `<param name="publish_period_ms" value="…"/>` child. `nros::main!`
 //! **compile-bakes** that value into the generated entry and seeds it into this
 //! node's `NodeContext`; `register()` reads it back with `ctx.param(name)` and drives
-//! the timer period from the baked launch value. Change the `<param value=…/>` in the
-//! launch file, rebuild, and the publish rate changes — no code edit. (Runtime
-//! reconfig via `ros2 param set` is W4b; persistence is out of scope.)
+//! the timer period from the baked launch value (W4a). `[param_services]` registers the
+//! ROS 2 param services + a volatile store seeded from the same initial (W4b), and the
+//! callback re-reads the **live** value each tick via `ctx.parameter::<i64>(name)` (W4c)
+//! and publishes it. So: change the `<param value=…/>` + rebuild → both the rate (baked)
+//! and the published value change; `ros2 param set publish_period_ms N` on the running
+//! node → the published value changes live (the baked timer rate does not — it is fixed
+//! at register). Reconfigured values are volatile (lost at the next boot).
 
 #![no_std]
 
@@ -54,7 +58,15 @@ impl ExecutableNode for ParamTalker {
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_tick" {
-            let msg = Int32 { data: *state };
+            // W4c — re-read the LIVE parameter value each tick. Boots at the baked
+            // launch initial; a `ros2 param set publish_period_ms N` changes what we
+            // publish here (the baked timer rate stays fixed). `-1` if param services
+            // are off / undeclared.
+            let live = ctx
+                .parameter::<i64>("publish_period_ms")
+                .map(|v| v as i32)
+                .unwrap_or(-1);
+            let msg = Int32 { data: live };
             let _ = ctx.publish_to_topic::<Int32, 8>("/chatter", &msg);
             *state = state.wrapping_add(1);
         }

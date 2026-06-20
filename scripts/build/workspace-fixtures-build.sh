@@ -64,10 +64,9 @@ build_workspace() {
         echo "workspace fixture '$id' dir does not exist: $dir" >&2
         return 2
     }
-    [ -n "$codegen_out" ] || {
-        echo "workspace fixture '$id' is missing codegen_out" >&2
-        return 2
-    }
+    # `codegen_out` is required for the BAKE path (`nros codegen-system`). A
+    # pure-cargo `nros::main!` entry bakes the system at proc-macro expansion
+    # time, so it has no codegen_out — skip the codegen-system step for those.
 
     echo "  -> $id ($lang) $dir"
     (
@@ -85,7 +84,7 @@ build_workspace() {
             echo "     removing incomplete CMake build dir: $build_subdir"
             rm -rf "$build_subdir"
         fi
-        mkdir -p "$(dirname "$codegen_out")"
+        [ -n "$codegen_out" ] && mkdir -p "$(dirname "$codegen_out")"
 
         echo "     nros ws sync"
         "$nros_cli" ws sync >/dev/null
@@ -97,8 +96,12 @@ build_workspace() {
         # and a no-op for non-NuttX workspace rows.
         NROS_REPO_DIR="$repo_root" nros_nuttx_libc_patch "$repo_root/$dir"
 
-        echo "     nros codegen-system --bringup $bringup --out $codegen_out"
-        "$nros_cli" codegen-system --bringup "$bringup" --out "$codegen_out" >/dev/null
+        # BAKE path only: a pure-cargo `nros::main!` entry (no codegen_out)
+        # bakes the system in the proc-macro, so it skips codegen-system.
+        if [ -n "$codegen_out" ]; then
+            echo "     nros codegen-system --bringup $bringup --out $codegen_out"
+            "$nros_cli" codegen-system --bringup "$bringup" --out "$codegen_out" >/dev/null
+        fi
 
         if [ "$lang" = "rust" ]; then
             local profile_args=("${cargo_profile_args[@]}")

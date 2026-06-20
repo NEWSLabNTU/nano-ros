@@ -70,6 +70,21 @@ entry = "native_entry"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures"
 
+# phase-264 W4c — the parameterised workspace, built via the pure-cargo `nros::main!`
+# path (NO codegen_out → the lane skips `codegen-system`; the proc-macro bakes the
+# system + the launch `<param>` initials). Consumed by tests/param_reconfig_e2e.rs:
+# boot the entry, `ros2 param set publish_period_ms N`, and assert the node's published
+# /chatter value follows — proving the in-callback `ctx.parameter::<T>` live read (W4c).
+[[workspace_fixture]]
+id = "workspace-rust-native-params"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-params-rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+target_dir = "target-fixtures"
+
 # Phase 211.F — per-host entries baked from `multihost.launch.xml` (talker on
 # robot1, listener on robot2). Same workspace + shared target-fixtures dir as
 # `workspace-rust-native`; consumed by tests/multihost_runtime_e2e.rs which

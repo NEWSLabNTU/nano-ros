@@ -397,15 +397,16 @@ So: **launch file → baked initial (compile time) → RAM value (boot) → live
 param services (until reboot)**. The typed `[param_persistence]` config block stays
 disabled (RFC-0004 §3 / issue 0080) until the storage layer lands.
 
-**Implementation status (2026-06-20).** For the `nros::main!` cargo path: baked-initial
-read at `register` time via `NodeContext::param` (W4a) and the `[param_services]`
-registration + volatile-store seeding behind `nros/param-services` (W4b) have landed; the
-*in-node* typed read `ctx.parameter::<T>(name)` in `on_callback`/`tick` is **W4c, pending**
-(the callback trampoline doesn't yet reach the executor's param store). The bake path
-(`generate.rs`) reaches the same `register_parameter_services()`/`declare_parameter()`
-executor seam — the two paths converge on one store. Until W4c, a cargo-path node consumes
-launch params at `register` (baked initial) rather than re-reading reconfigured values
-mid-callback.
+**Implementation status (2026-06-20).** For the `nros::main!` cargo path, all three
+layers have landed: baked-initial read at `register` time via `NodeContext::param` (W4a);
+`[param_services]` registration + volatile-store seeding behind `nros/param-services`
+(W4b); and the *in-node* live typed read `ctx.parameter::<T>(name)` in `on_callback` /
+`tick` (W4c — the executor's volatile store is threaded into `CallbackCtx`/`TickCtx` via
+the component cell). The bake path (`generate.rs`) reaches the same
+`register_parameter_services()`/`declare_parameter()` executor seam — the two paths
+converge on one store. Runtime-verified: a `param_talker` node publishes its launch-baked
+initial read live, and (with a wire-matched `rmw_zenoh_cpp`) a `ros2 param set` is observed
+on the next callback.
 
 ## See also
 

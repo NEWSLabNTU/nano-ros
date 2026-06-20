@@ -199,6 +199,9 @@ static C_XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native Rust workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Phase 264 W4c — cached path to the parameterised workspace Entry pkg binary.
+static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Phase 211.F — cached paths to the per-host workspace Entry pkg binaries.
 static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -612,6 +615,20 @@ pub fn build_native_workspace_rust_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry("workspace-rust-native", "rust", "native_entry")
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 264 W4c — the parameterised native Rust workspace Entry pkg fixture
+/// (`ws-params-rust`, built via the pure-cargo `nros::main!` path).
+pub fn build_native_workspace_rust_params_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-params",
+                "ws-params-rust",
+                "native_entry",
+            )
         })
         .map(|p| p.as_path())
 }

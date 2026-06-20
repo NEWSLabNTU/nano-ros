@@ -5,7 +5,8 @@
 //! Run with: `cargo nextest run -p nros-tests --test params`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_talker, require_ros2, require_zenohd, zenohd_unique,
+    ManagedProcess, ZenohRouter, build_native_listener, build_native_talker,
+    build_native_workspace_rust_params_entry, require_ros2, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
 use std::{process::Command, time::Duration};
@@ -396,4 +397,121 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
     );
 
     println!("SUCCESS: Parameter integer type works correctly");
+}
+
+// =============================================================================
+// Phase 264 W4c — in-callback live param read, reconfigured via `ros2 param set`
+// =============================================================================
+
+/// W4c — `ros2 param set publish_period_ms 500` updates the volatile store; the
+/// `param_talker` node's next callback reads the NEW value via `ctx.parameter::<i64>`
+/// and publishes it. A cross-process nros subscriber must then see `Received: 500`.
+///
+/// The in-env nros↔nros half (the node publishes the baked initial 250 via the live
+/// read) is `tests/param_live_read_e2e.rs`; this test adds the `ros2 param set` reconfig
+/// path. It needs a wire-matched `rmw_zenoh_cpp` (the pinned overlay — `just rmw_zenoh
+/// setup`); where ROS 2 can't discover the node (distro rmw_zenoh mismatching the pinned
+/// zenoh wire version) it `skip!`s.
+#[rstest]
+fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 not found");
+    }
+    let locator = zenohd_unique.locator();
+
+    // nros `/chatter` subscriber (prints `Received: <data>`).
+    let listener_bin = build_native_listener()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
+    let mut lis_cmd = Command::new(listener_bin);
+    lis_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client");
+    let mut listener = ManagedProcess::spawn_command(lis_cmd, "listener").expect("spawn listener");
+    listener
+        .wait_for_output_pattern("Listener", Duration::from_secs(8))
+        .expect("listener ready");
+
+    // The parameterised workspace entry (`ctx.parameter` live-read node).
+    let entry_bin = build_native_workspace_rust_params_entry()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|e| nros_tests::skip!("params workspace entry fixture not built: {e}"));
+    let mut entry_cmd = Command::new(entry_bin);
+    entry_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &locator)
+        .env("NROS_SESSION_MODE", "client")
+        .env("NROS_ENTRY_SPIN_MS", "25000")
+        .env("NROS_ENTRY_SPIN_STEP_MS", "10");
+    let mut entry =
+        ManagedProcess::spawn_command(entry_cmd, "param_talker").expect("spawn param_talker");
+
+    // Baked initial (250) must be on the wire first (node up + publishing live reads).
+    if listener
+        .wait_for_output_count("Received: 250", 2, Duration::from_secs(15))
+        .is_err()
+    {
+        entry.kill();
+        listener.kill();
+        panic!("node never published the baked initial (250) — cannot test reconfig");
+    }
+
+    // Discover the param node's FQN (skip if ROS 2 ↔ nros discovery is not wire-matched).
+    let node = {
+        let mut found = None;
+        for attempt in 1..=3 {
+            if let Ok(out) = nros_tests::ros2::ros2_node_list(&locator, "humble")
+                && let Some(line) = out.lines().find(|l| l.contains("param_talker"))
+            {
+                found = Some(line.trim().to_string());
+                break;
+            }
+            if attempt < 3 {
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        }
+        match found {
+            Some(n) => n,
+            None => {
+                entry.kill();
+                listener.kill();
+                nros_tests::skip!(
+                    "param_talker not discoverable via ros2 (wire-mismatched rmw_zenoh — \
+                     build the pinned overlay with `just rmw_zenoh setup`)"
+                );
+            }
+        }
+    };
+
+    let set_out =
+        nros_tests::ros2::ros2_param_set(&node, "publish_period_ms", "500", &locator, "humble")
+            .expect("ros2 param set");
+    assert!(
+        set_out.contains("Set parameter successful"),
+        "ros2 param set should succeed; output:\n{set_out}"
+    );
+
+    // The node's callback now reads 500 from the store and publishes it.
+    let out = listener
+        .wait_for_output_count("Received: 500", 2, Duration::from_secs(15))
+        .unwrap_or_else(|_| {
+            entry.kill();
+            listener.kill();
+            panic!(
+                "subscriber never saw the reconfigured value (500) after `ros2 param set` — \
+                 `ctx.parameter` did not observe the volatile-store update"
+            )
+        });
+
+    entry.kill();
+    listener.kill();
+
+    assert!(
+        nros_tests::count_pattern(&out, "Received: 500") >= 2,
+        "the live read should follow the reconfigured value"
+    );
 }

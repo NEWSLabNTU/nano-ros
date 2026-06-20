@@ -163,9 +163,34 @@ struct ComponentCell {
     action_servers: RefCell<Vec<(String, crate::ActionServerRawHandle)>>,
     callback_dispatches: AtomicUsize,
     message_dispatches: AtomicUsize,
+    // Phase 264 W4c — raw pointer to the executor's volatile parameter store, so a
+    // subscription/timer/service/action callback can read `ctx.parameter::<T>(name)`.
+    // The callback closures + leaked trampolines hold only an `Arc<ComponentCell>` (the
+    // executor is unreachable when they fire), so the store address is threaded HERE by
+    // `apply_param_services`' post-pass (mirrors the `run_ticks` disjoint borrow). Null
+    // until param services are registered. Stable for the executor's life: the server
+    // lives in a `Box<ParamState>` and is a fixed-size array (no realloc on declare).
+    #[cfg(feature = "param-services")]
+    param_server: core::cell::Cell<*const nros_params::ParameterServer>,
 }
 
 impl ComponentCell {
+    /// Phase 264 W4c — the executor's parameter store, or `None` until
+    /// `apply_param_services` threads it in. The deref is sound: single-threaded
+    /// executor, param services mutate the server only outside callback dispatch.
+    #[cfg(feature = "param-services")]
+    fn param_server(&self) -> Option<&nros_params::ParameterServer> {
+        let ptr = self.param_server.get();
+        if ptr.is_null() {
+            None
+        } else {
+            // SAFETY: `ptr` is the address of the executor's boxed `ParameterServer`
+            // (stable for the executor's life); param services mutate it before/after
+            // dispatch (`spin.rs` pre/post), never during, so no aliasing `&mut` is live.
+            Some(unsafe { &*ptr })
+        }
+    }
+
     fn lookup_publisher<R>(
         &self,
         entity_id: &str,
@@ -273,6 +298,9 @@ impl ExecutorNodeRuntime {
             action_servers: RefCell::new(Vec::new()),
             callback_dispatches: AtomicUsize::new(0),
             message_dispatches: AtomicUsize::new(0),
+            // W4c — set by `apply_param_services` once the store exists.
+            #[cfg(feature = "param-services")]
+            param_server: core::cell::Cell::new(core::ptr::null()),
         });
         let component_idx = self.components.len();
         self.components.push(cell.clone());
@@ -291,6 +319,14 @@ impl ExecutorNodeRuntime {
             self.components.pop();
         }
         result?;
+
+        // W4c — capture the executor's volatile param store on the cell (if param
+        // services were registered before this call) so the node's callbacks can read
+        // `ctx.parameter::<T>(name)`. Mirrors the install-seam path.
+        #[cfg(feature = "param-services")]
+        if let Some(server) = self.executor.params() {
+            cell.param_server.set(server as *const _);
+        }
 
         Ok(RegisteredNode {
             component_idx,
@@ -411,6 +447,11 @@ fn tick_one_cell(cell: &ComponentCell, exec_ptr: *mut Executor) {
         actions: &action_clients,
     };
     let mut ctx = TickCtx::new(&resolver, &mut actions, &mut clients);
+    // W4c — `tick` reads `ctx.parameter::<T>(name)` from the store via the cell pointer
+    // (the store is a separate `Box<ParamState>` allocation, so this does NOT alias the
+    // `&mut Executor` the action/client tick calls reborrow through `exec_ptr`).
+    #[cfg(feature = "param-services")]
+    ctx.set_param_server(cell.param_server());
     if let Ok(mut slot) = cell.slot.try_borrow_mut() {
         slot.tick(&mut ctx);
     }
@@ -509,6 +550,12 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     // `nros/param-services`). `nros::main!` calls this when `system.toml` declares
     // `[param_services]`. Reconfigured values (via `ros2 param set`) live in RAM until
     // the next boot — persistence is out of scope (issue 0080).
+    // W4c note: `nros::main!` emits this BEFORE the per-node `register` calls, so the
+    // store exists when each cell is created — `register_node_borrowed` / `register_node`
+    // then capture the (stable, boxed) `ParameterServer` address on the cell, letting a
+    // callback read `ctx.parameter::<T>(name)`. (The macro-path cells live in the
+    // executor's tick registry, not `self.components`, so a post-pass here wouldn't reach
+    // them — capture-at-registration does.)
     #[cfg(feature = "param-services")]
     fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), ()> {
         self.executor
@@ -896,6 +943,10 @@ fn dispatch_into_cell(cell: &Arc<ComponentCell>, cb_id: &str, payload: &[u8]) {
         cell: cell.as_ref(),
     };
     let mut ctx = CallbackCtx::new(payload, &resolver);
+    // W4c — let the callback read `ctx.parameter::<T>(name)` from the executor's store
+    // (threaded onto the cell by `apply_param_services`; `None` until then).
+    #[cfg(feature = "param-services")]
+    ctx.set_param_server(cell.param_server());
     // If the slot is already borrowed (a re-entrant publish from a
     // tick hook on the same cell, etc.) we drop this dispatch. In
     // practice `try_borrow_mut` succeeds because subscription / timer
@@ -923,6 +974,9 @@ fn dispatch_into_cell_with_integrity(
         cell: cell.as_ref(),
     };
     let mut ctx = CallbackCtx::new_with_integrity(payload, &resolver, status);
+    // W4c — param store for a `.safety()` subscription callback too.
+    #[cfg(feature = "param-services")]
+    ctx.set_param_server(cell.param_server());
     if let Ok(mut slot) = cell.slot.try_borrow_mut() {
         slot.dispatch(cb_id, &mut ctx);
     }
@@ -1012,6 +1066,9 @@ unsafe extern "C" fn service_server_trampoline(
         cell: sctx.cell.as_ref(),
     };
     let mut cb = CallbackCtx::with_reply(req_slice, &resolver, resp_slice, &mut written);
+    // W4c — service-server callback can read `ctx.parameter::<T>(name)` too.
+    #[cfg(feature = "param-services")]
+    cb.set_param_server(sctx.cell.param_server());
     if let Ok(mut slot) = sctx.cell.slot.try_borrow_mut() {
         slot.dispatch(&sctx.callback_id, &mut cb);
     }
@@ -1033,6 +1090,9 @@ unsafe extern "C" fn action_goal_trampoline(
         cell: actx.cell.as_ref(),
     };
     let mut cb = CallbackCtx::with_goal_decision(goal_slice, &resolver, &mut resp);
+    // W4c — action goal callback can read `ctx.parameter::<T>(name)` too.
+    #[cfg(feature = "param-services")]
+    cb.set_param_server(actx.cell.param_server());
     if let Ok(mut slot) = actx.cell.slot.try_borrow_mut() {
         slot.dispatch(&actx.goal_callback_id, &mut cb);
     }
@@ -1052,6 +1112,9 @@ unsafe extern "C" fn action_cancel_trampoline(
         cell: actx.cell.as_ref(),
     };
     let mut cb = CallbackCtx::with_cancel_decision(&[], &resolver, &mut resp);
+    // W4c — action cancel callback can read `ctx.parameter::<T>(name)` too.
+    #[cfg(feature = "param-services")]
+    cb.set_param_server(actx.cell.param_server());
     if let Ok(mut slot) = actx.cell.slot.try_borrow_mut() {
         slot.dispatch(&actx.cancel_callback_id, &mut cb);
     }
@@ -1245,6 +1308,9 @@ where
         action_servers: RefCell::new(Vec::new()),
         callback_dispatches: AtomicUsize::new(0),
         message_dispatches: AtomicUsize::new(0),
+        // W4c — set by `apply_param_services` once the store exists (it runs after this).
+        #[cfg(feature = "param-services")]
+        param_server: core::cell::Cell::new(core::ptr::null()),
     });
     let mut sink = ExecutorSink {
         // Reborrow so `executor` stays usable for `enroll_component` after the
@@ -1278,6 +1344,15 @@ where
         // SAFETY: enroll rejected the slot, so the executor never took `raw`;
         // reclaim the leaked clone here to avoid a permanent leak.
         drop(unsafe { Arc::from_raw(raw as *const ComponentCell) });
+    }
+
+    // W4c — capture the executor's volatile param store on the cell so this node's
+    // callbacks can read `ctx.parameter::<T>(name)`. Non-null only when `nros::main!`
+    // emitted `apply_param_services` BEFORE this register call (`[param_services]`
+    // declared); otherwise the store is absent and the field stays null.
+    #[cfg(feature = "param-services")]
+    if let Some(server) = executor.params() {
+        cell.param_server.set(server as *const _);
     }
 
     Ok(cell)

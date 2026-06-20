@@ -34,5 +34,9 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
     "alloc",
     "rmw-cffi",
     "ros-humble",
+    # W4c — `ctx.parameter::<T>(name)` (the live in-callback param read) is gated on
+    # `param-services`; the node declares it so it compiles standalone, not only when the
+    # Entry unifies the feature in.
+    "param-services",
 ] }
 std_msgs = { version = "*", default-features = false }
