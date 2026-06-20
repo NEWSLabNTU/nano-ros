@@ -39,7 +39,8 @@ impl Node for AddClient {
         let pub_sum = node.create_publisher_for_topic::<Int32>("/sum")?;
         let _timer =
             node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
-        node.callback_for_name("on_tick").publishes_entity(&pub_sum)?;
+        node.callback_for_name("on_tick")
+            .publishes_entity(&pub_sum)?;
         Ok(())
     }
 }
@@ -68,8 +69,8 @@ impl ExecutableNode for AddClient {
         state.pending = false;
         let req = AddTwoIntsRequest { a: state.a, b: 1 };
         // 24-byte request (two int64 + header), 16-byte response (one int64).
-        if let Ok(resp) =
-            ctx.call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 24, 16>("/add_two_ints", &req)
+        if let Ok(resp) = ctx
+            .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 24, 16>("/add_two_ints", &req)
         {
             let msg = Int32 {
                 data: resp.sum as i32,

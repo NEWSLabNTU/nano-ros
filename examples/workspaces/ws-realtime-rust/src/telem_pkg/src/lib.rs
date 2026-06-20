@@ -12,7 +12,8 @@ impl Node for Telem {
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("telem_node"))?;
         node.callback_group("telem")?;
-        let _t = node.create_timer_for_callback_name("on_telem", TimerDuration::from_millis(100))?;
+        let _t =
+            node.create_timer_for_callback_name("on_telem", TimerDuration::from_millis(100))?;
         Ok(())
     }
 }
