@@ -378,6 +378,9 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let mut resolved_tiers: Option<ResolvedTierTable> = None;
     // Phase 264 W2 — `[lifecycle]` boot autostart from `system.toml` (launch arm only).
     let mut lifecycle_code: Option<u8> = None;
+    // Phase 264 W4b — `[param_services]` declared in `system.toml` (launch arm only) →
+    // register the ROS 2 param services + seed the volatile store from the baked params.
+    let mut param_services_enabled = false;
     // Phase 264 W4a — per-node launch `<param name=… value=…/>` initials, parallel to
     // `pkg_idents` (launch arm only). Each entry is the baked `(name, value)` slice that
     // seeds the node's `NodeContext::param` at register time (RFC-0004 §10). Empty in the
@@ -447,12 +450,15 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
             // Phase 264 W2 — read `[lifecycle]` so the macro can emit the REP-2002
             // service registration + autostart (mirrors the bake). Unconditional
-            // (independent of the launch-file override below).
+            // (independent of the launch-file override below). Phase 264 W4b — also
+            // read `[param_services]` so the macro can emit the parameter-service
+            // registration + store seeding.
             {
                 let st = bringup_dir.join("system.toml");
                 if st.exists() {
                     tracked.push(st.clone());
                     lifecycle_code = read_lifecycle_autostart(&st);
+                    param_services_enabled = read_param_services_enabled(&st);
                 }
             }
 
@@ -709,6 +715,27 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         None => quote! {},
     };
 
+    // Phase 264 W4b — `[param_services]` wiring: when `system.toml` declares it, register
+    // the 6 ROS 2 parameter services + seed the volatile param store with the aggregate
+    // of every node's launch-baked `<param>` initials, right after the per-node `register`
+    // calls. No-op token stream when absent. `apply_param_services` is a no-op unless the
+    // Entry enabled `nros/param-services`, so this is inert without the feature. The seed
+    // values are the raw launch strings; the runtime infers each `ParameterValue` type.
+    let param_services_call: proc_macro2::TokenStream = if param_services_enabled {
+        let seed_lits = node_param_bakes.iter().flatten().map(|(name, value)| {
+            let n = LitStr::new(name, Span::call_site());
+            let v = LitStr::new(value, Span::call_site());
+            quote! { (#n, #v) }
+        });
+        quote! {
+            runtime.apply_param_services(&[ #( #seed_lits ),* ]).map_err(
+                |_| ::nros::__macro_support::nros_platform::RuntimeError::NodeRegister("param_services"),
+            )?;
+        }
+    } else {
+        quote! {}
+    };
+
     // Phase 228.G (RFC-0032 §5) — the OwnedSpin entry call. Multi-tier
     // (`[tiers.*]` present, more than the synthesized `default` tier) emits
     // `<Board>::run_tiers(TIERS, register-only-closure)`; the board owns the
@@ -779,6 +806,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // `active_groups` filter and owns the spin loop.
                         #( #register_calls )*
                         #lifecycle_call
+                        #param_services_call
                         ::core::result::Result::Ok(())
                     },
                 )
@@ -801,6 +829,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 {
                     #( #register_calls )*
                     #lifecycle_call
+                    #param_services_call
                     #[cfg(not(target_os = "none"))]
                     __nros_hosted_spin_if_requested(runtime)?;
                     ::core::result::Result::Ok(())
@@ -1688,6 +1717,20 @@ fn read_lifecycle_autostart(system_toml: &Path) -> Option<u8> {
         _ => 0, // "none" or absent — services registered, no boot transition
     };
     Some(code)
+}
+
+/// Phase 264 W4b — is `[param_services]` declared in `system.toml`? `true` ⇒ the macro
+/// emits the parameter-service registration + store seeding (mirrors the bake's
+/// `param_services` axis). Best-effort: an unreadable / malformed system.toml yields
+/// `false` (the launch resolution above already surfaces real parse errors).
+fn read_param_services_enabled(system_toml: &Path) -> bool {
+    let Ok(raw) = std::fs::read_to_string(system_toml) else {
+        return false;
+    };
+    let Ok(v) = toml::from_str::<toml::Value>(&raw) else {
+        return false;
+    };
+    v.get("param_services").is_some()
 }
 
 // =============================================================================

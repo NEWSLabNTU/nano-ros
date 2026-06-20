@@ -13,13 +13,16 @@ path = "src/main.rs"
 deploy = "native"
 
 [dependencies]
-# phase-264 W4a — parameters need NO extra `nros` feature: `nros::main!` bakes the
-# launch `<param>` initials into the entry and `ctx.param(...)` reads them at register
-# time. (Runtime `ros2 param set` reconfig — W4b — will add `param-services`.)
+# phase-264 W4a/W4b — `nros::main!` bakes the launch `<param>` initials into the entry
+# (`ctx.param(...)` reads them at register time, W4a). `[param_services]` in system.toml
+# makes the macro register the ROS 2 param services + seed the volatile store, so
+# `param-services` must be enabled for that registration to compile in (W4b — mirrors
+# the lifecycle-services opt-in; a bake build adds it automatically).
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble",
+    "param-services",
 ] }
 nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
 param_talker_pkg = { path = "../param_talker_pkg", default-features = false }

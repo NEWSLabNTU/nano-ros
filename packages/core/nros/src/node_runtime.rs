@@ -501,6 +501,26 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
         Ok(())
     }
 
+    // Phase 264 W4b — register the 6 ROS 2 parameter services on the owned executor
+    // + seed the volatile param store with the launch-baked `<param>` initials
+    // (mirrors `generate.rs::render_param_persistence_fn`, minus persistence). Only
+    // compiled with `param-services`; without it the trait default no-op applies, so a
+    // `[param_services]` block is silently inert (the Entry opts in by enabling
+    // `nros/param-services`). `nros::main!` calls this when `system.toml` declares
+    // `[param_services]`. Reconfigured values (via `ros2 param set`) live in RAM until
+    // the next boot — persistence is out of scope (issue 0080).
+    #[cfg(feature = "param-services")]
+    fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), ()> {
+        self.executor
+            .register_parameter_services()
+            .map_err(|_| ())?;
+        for (name, raw) in params {
+            self.executor
+                .declare_parameter(name, infer_param_value(raw));
+        }
+        Ok(())
+    }
+
     fn observed_callback_counts(&self) -> (usize, usize) {
         self.components
             .iter()
@@ -842,6 +862,29 @@ fn param_default_to_value(
             | ParameterDefault::StringArray,
         ) => ParameterValue::NotSet,
     }
+}
+
+/// Phase 264 W4b — infer a [`nros_params::ParameterValue`] from a raw launch
+/// `<param value=…/>` string. ROS 2 launch `<param>` values are untyped strings; the
+/// macro path has no per-param type attribute, so infer: `true`/`false` → `Bool`, an
+/// `i64` literal → `Integer`, an `f64` literal → `Double`, otherwise `String`. This
+/// mirrors the type a `ros2 param set` of the same literal would land on, so the baked
+/// initial and a CLI override agree on type.
+#[cfg(feature = "param-services")]
+fn infer_param_value(raw: &str) -> nros_params::ParameterValue {
+    use nros_params::ParameterValue;
+    match raw {
+        "true" => return ParameterValue::from_bool(true),
+        "false" => return ParameterValue::from_bool(false),
+        _ => {}
+    }
+    if let Ok(i) = raw.parse::<i64>() {
+        return ParameterValue::from_integer(i);
+    }
+    if let Ok(f) = raw.parse::<f64>() {
+        return ParameterValue::from_double(f);
+    }
+    ParameterValue::from_string(raw).unwrap_or(ParameterValue::NotSet)
 }
 
 fn dispatch_into_cell(cell: &Arc<ComponentCell>, cb_id: &str, payload: &[u8]) {

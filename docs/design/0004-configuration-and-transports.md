@@ -397,6 +397,16 @@ So: **launch file → baked initial (compile time) → RAM value (boot) → live
 param services (until reboot)**. The typed `[param_persistence]` config block stays
 disabled (RFC-0004 §3 / issue 0080) until the storage layer lands.
 
+**Implementation status (2026-06-20).** For the `nros::main!` cargo path: baked-initial
+read at `register` time via `NodeContext::param` (W4a) and the `[param_services]`
+registration + volatile-store seeding behind `nros/param-services` (W4b) have landed; the
+*in-node* typed read `ctx.parameter::<T>(name)` in `on_callback`/`tick` is **W4c, pending**
+(the callback trampoline doesn't yet reach the executor's param store). The bake path
+(`generate.rs`) reaches the same `register_parameter_services()`/`declare_parameter()`
+executor seam — the two paths converge on one store. Until W4c, a cargo-path node consumes
+launch params at `register` (baked initial) rather than re-reading reconfigured values
+mid-callback.
+
 ## See also
 
 - RFC-0031 (RMW selection & lowering), RFC-0024/0025 (multi-node workspace layout).

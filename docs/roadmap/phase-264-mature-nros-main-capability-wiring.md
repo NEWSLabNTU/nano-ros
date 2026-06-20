@@ -112,7 +112,7 @@ boards keep their own writers; this lands only in the posix family driver, so no
 size-bound target is affected.) Unblocks phase-263 A5 (a logging node now produces
 output; the A5 workspace demo + runtime assert is the phase-263 deliverable).
 
-### W4 — parameters (W4a DONE 2026-06-20; W4b NOT STARTED — largest item)
+### W4 — parameters (W4a + W4b DONE 2026-06-20; W4c NOT STARTED — largest item)
 
 Design SSoT: **RFC-0004 §10 (Runtime parameters)**. Summary (maintainer model, 2026-06-20):
 
@@ -164,15 +164,47 @@ Sub-waves:
   read + `ros2 param set` reconfig). W4a deliberately ships the minimal register-time
   string read first (no store), since reconfig — the only consumer that needs the store
   — lands in W4b.
-- **W4b — volatile store + `[param_services]` runtime reconfig (NOT STARTED).** Seed a
-  volatile `nros-params` store from the W4a baked initials; add the typed read
-  `CallbackCtx`/`TickCtx::parameter::<T>(name) -> Option<T>` over that store; register the
-  ROS 2 parameter services (same W2 macro mechanism) so `ros2 param get/set`
-  reads/updates the store live (until reboot). **This is the bake/macro convergence
-  point** — the macro path adopts the same store the bake's `apply_param_persistence` /
-  `[param_services]` already drives, so both paths reach identical runtime param
-  behaviour. Unblocks the reconfig half of A2. Test: `ros2 param set` changes the value a
-  running node reads via `ctx.parameter::<T>`.
+- **W4b — volatile store + `[param_services]` registration. IMPLEMENTED + VERIFIED
+  (2026-06-20).** `nros::main!` now reads `[param_services]` from `system.toml` and, when
+  present, emits `runtime.apply_param_services(&[…baked initials…])` after the per-node
+  `register` calls — registering the 6 ROS 2 parameter services on the executor and
+  seeding a volatile `nros-params` store from the aggregate launch `<param>` initials
+  (raw launch strings; the runtime infers each `ParameterValue` type). So `ros2 param
+  list/get/set` works against the running macro-path node; reconfigured values live in
+  RAM until the next boot. **This adopts the same `register_parameter_services()` +
+  `declare_parameter()` executor seam the bake's `apply_param_persistence` drives — the
+  bake/macro convergence point** (the macro path now reaches the store the bake already
+  used). Test: `examples/workspaces/ws-params-rust` declares `[param_services]` + enables
+  `nros/param-services`; `cargo build -p native_entry` links clean and the nightly-expanded
+  entry shows, after the register call:
+  `runtime.apply_param_services(&[("publish_period_ms", "250")]).map_err(…)?;`.
+
+  **Implementation (mirrors W2 lifecycle exactly):**
+  - `nros-platform` — `NodeDispatchRuntime::apply_param_services(params)` (default no-op)
+    + `RuntimeCtx::apply_param_services` forward.
+  - `nros` — `ExecutorNodeRuntime::apply_param_services` override (`#[cfg(param-services)]`)
+    → `register_parameter_services()` then `declare_parameter(name, infer_param_value(raw))`
+    per baked entry; `infer_param_value` maps `true`/`false`→Bool, `i64`→Integer,
+    `f64`→Double, else String (the type a `ros2 param set` of the same literal lands on).
+  - `nros-macros` — `read_param_services_enabled(system.toml)` (`[param_services]` present)
+    + a `param_services_call` token stream (aggregate of every node's baked `<param>`)
+    spliced after `#lifecycle_call` at both the `run` and `run_tiers` sites.
+
+  **Deferred to W4c** — the *in-node* typed read `CallbackCtx::parameter::<T>(name)`. The
+  callback trampoline (`dispatch_into_cell`, `node_runtime.rs`) holds only the
+  `ComponentCell` + payload — it has **no reach to the executor's `ParamState`** (the
+  store lives in the executor; the leaked `*Ctx` trampolines don't carry it). So a node
+  observing a `ros2 param set` mid-run needs the store threaded into `CallbackCtx`, a
+  larger change than W4b's registration+seed. W4b ships the full `ros2 param get/set`
+  reconfig surface (store + services + CLI interop); W4c adds the in-node read.
+
+- **W4c — `CallbackCtx::parameter::<T>` in-node read (NOT STARTED).** Thread the
+  executor's volatile param store into the callback dispatch path so a node reads the
+  live (baked-or-reconfigured) value in `on_callback`/`tick` via
+  `ctx.parameter::<T>(name) -> Option<T>`. Requires carrying a param-store handle through
+  the leaked service/subscription trampolines + `dispatch_into_cell` into `CallbackCtx`
+  (today it holds only `payload` + a `PublisherResolver`). Test: `ros2 param set` changes
+  the value a running node reads via `ctx.parameter::<T>`.
 
 **No persistence layer** (W4 explicitly excludes flash/NVS — issue 0080). New API spans
 `nros-params` (activate the dormant volatile store) + `node`/`node_runtime`

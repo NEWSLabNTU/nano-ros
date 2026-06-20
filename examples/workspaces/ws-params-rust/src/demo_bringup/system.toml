@@ -1,15 +1,21 @@
-# phase-264 W4a (RFC-0004 §10) — parameterised-node showcase bringup.
+# phase-264 W4a/W4b (RFC-0004 §10) — parameterised-node showcase bringup.
 #
 # The launch `<param>` initials are COMPILE-BAKED by `nros::main!` and read at
-# `register` time via `ctx.param(...)` — no `[param_services]` here (runtime
-# `ros2 param set` reconfig is W4b; persistence is out of scope). No `[lifecycle]`
-# either: this is a plain (unmanaged) parameterised node.
+# `register` time via `ctx.param(...)` (W4a). `[param_services]` (W4b) tells the macro
+# to also register the 6 ROS 2 parameter services + seed a volatile RAM store from the
+# baked initials, so `ros2 param list/get/set` works against the running node —
+# reconfigured values live until the next boot (persistence out of scope, issue 0080).
+# No `[lifecycle]`: this is a plain (unmanaged) parameterised node.
 
 [system]
 name = "param_demo"
 rmw = "zenoh"
 domain_id = 0
 default_launch = "system.launch.xml"
+
+# W4b — declare the ROS 2 parameter services (`ros2 param get/set`). Presence is the
+# switch; the Entry enables `nros/param-services` so the registration compiles in.
+[param_services]
 
 [[component]]
 pkg = "param_talker_pkg"

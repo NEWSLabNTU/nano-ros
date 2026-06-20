@@ -106,6 +106,23 @@ pub trait NodeDispatchRuntime {
         Ok(())
     }
 
+    /// Phase 264 W4b — register the 6 ROS 2 parameter services on the underlying
+    /// executor + seed a volatile RAM param store with the launch-baked `<param>`
+    /// initials (`params` is the aggregate `(name, value)` slice, value as the raw
+    /// launch string — the impl infers the `ParameterValue` type). After this,
+    /// `ros2 param list/get/set` works against the running node; reconfigured values
+    /// live in RAM until the next boot (RFC-0004 §10; persistence is out of scope,
+    /// issue 0080). Default no-op (non-executor runtimes, or `nros` built without
+    /// `param-services`); the `ExecutorNodeRuntime` impl in `nros` does the real work
+    /// behind that feature. `nros::main!` calls this (via
+    /// [`RuntimeCtx::apply_param_services`]) when `system.toml` declares
+    /// `[param_services]`, mirroring the bake's `generate.rs::render_param_persistence_fn`.
+    #[allow(clippy::result_unit_err)]
+    fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), ()> {
+        let _ = params;
+        Ok(())
+    }
+
     /// Phase 258 (Track 2, 2a) — raw `*mut Executor` (as `void*`) for the
     /// owned-spin entry, so a Node pkg's `register(runtime)` wrapper can call
     /// the uniform `__nros_component_<pkg>_install(.., executor, ..)` seam
@@ -246,6 +263,16 @@ impl<'a> RuntimeCtx<'a> {
     #[allow(clippy::result_unit_err)]
     pub fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), ()> {
         self.runtime.apply_lifecycle(autostart)
+    }
+
+    /// Phase 264 W4b — register the ROS 2 parameter services + seed the volatile
+    /// param store from the launch-baked `<param>` initials (forwards to
+    /// [`NodeDispatchRuntime::apply_param_services`]). `nros::main!` emits this after
+    /// the per-node `register` calls when `system.toml` declares `[param_services]`.
+    /// No-op unless `nros` is built with `param-services`.
+    #[allow(clippy::result_unit_err)]
+    pub fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), ()> {
+        self.runtime.apply_param_services(params)
     }
 
     /// Lookup a param by name; first match wins. Linear scan
