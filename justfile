@@ -1663,6 +1663,17 @@ check-cpp: check-cpp-fmt
             -Ipackages/core/nros-platform-api/include \
             -include "$hdr" -x c++ /dev/null
     done
+    # Issue 0089 gap-4 — typed-API INSTANTIATION probe (the header loop only
+    # parses templates). Compiles a TU that instantiates `nros::bind_service`
+    # against a generated-shape service type, so the template body is checked.
+    echo "  - typed bind_service instantiation (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/core/nros-cpp/include \
+        -Ipackages/core/nros-c/include \
+        -Ipackages/core/nros-platform-api/include \
+        packages/core/nros-cpp/tests/compile/bind_service.cpp
     echo "  - nros-cpp clippy (zenoh-cffi + posix + humble)"
     cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
     echo "All C++ checks passed!"

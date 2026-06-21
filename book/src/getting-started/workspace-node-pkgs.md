@@ -203,6 +203,63 @@ omitted.
 
 ---
 
+## Services & clients
+
+### Server (responds to requests)
+
+Declare the service in `Node::register` and handle requests in the node body.
+
+- **Rust** — declare a service edge in `register`; requests dispatch into
+  `ExecutableNode::on_callback` like any other callback (read the request and
+  write the reply through the `CallbackCtx`).
+- **C++/C** (the `configure(Node&)` component shape) — bind a **typed** member
+  with `nros::bind_service`:
+
+  ```cpp
+  // Response on_request(const Request&) — no hand-rolled CDR.
+  AddTwoInts::Response on_add(const AddTwoInts::Request& req) {
+      AddTwoInts::Response r; r.sum = req.a + req.b; return r;
+  }
+  ::nros::Result configure(::nros::Node& node) {
+      return ::nros::bind_service<AddTwoInts, MyServer, &MyServer::on_add>(
+          node, "/add_two_ints", this);   // service-type name from AddTwoInts::TYPE_NAME
+  }
+  ```
+
+  `bind_service` deserializes the request into the generated `Svc::Request`,
+  calls your typed member, and serializes the returned `Svc::Response` — no
+  manual byte offsets. (`bind_service_raw<&method>` is still available for the
+  rare hand-rolled case.)
+
+### Client (issues requests) — call from `tick`, not `on_callback`
+
+A node **cannot** make a blocking service/action client call from
+`on_callback`: that runs while the executor is mid-dispatch, so a blocking call
+would deadlock the spin. Client calls go on the **separate per-spin hook**
+`ExecutableNode::tick(&mut TickCtx)`, which the executor runs once per
+`spin_once` *between* callback dispatch:
+
+```rust
+fn on_callback(state: &mut State, cb: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+    // ...decide a request is needed; just arm a flag / stash args:
+    state.want_call = true;
+}
+
+fn tick(state: &mut State, ctx: &mut TickCtx<'_>) {
+    if state.want_call {
+        state.want_call = false;
+        let reply = ctx.call_for_name("add_two_ints", &request);  // blocking, safe here
+        // ...use reply
+    }
+}
+```
+
+The two-surface pattern (arm in `on_callback`, call in `tick`) is the supported
+way to drive a client from a declarative node. See
+`examples/workspaces/rust/.../service_client_pkg` for the reference.
+
+---
+
 ## Building
 
 From the workspace root, sync generated interfaces first, then let Cargo

@@ -1,16 +1,40 @@
 ---
 id: 89
 title: Declarative Node-pkg API gaps block several phase-263 workspace feature demos
-status: open
+status: resolved
 type: enhancement
 area: core
 related: [phase-263, phase-264, rfc-0024, rfc-0044]
+resolved_in: "phase-264 W2/W3/W4 (gaps 3/5/2); typed nros::bind_service in component.hpp + compile regression (gap 4); book Services-&-clients note in workspace-node-pkgs.md (gap 1)."
 ---
 
-> **Resolution tracked by [phase-264](../roadmap/phase-264-mature-nros-main-capability-wiring.md)**
-> (2026-06-20) — mature `nros::main!` to wire the full `system.toml` capability set
-> (lifecycle W2, log-init W3, parameters W4; the cargo-feature-flow mechanism W1). The
-> "root pattern" section below is the phase-264 motivation.
+## Resolution (2026-06-22) — RESOLVED
+
+All five API gaps closed:
+
+1. **Service/action client `tick(TickCtx)` surface** — documented: a new
+   "Services & clients" section in `book/src/getting-started/workspace-node-pkgs.md`
+   explains the two-surface pattern (arm in `on_callback`, issue the blocking call
+   in `ExecutableNode::tick` via `TickCtx`), with the A1 `service_client_pkg` as
+   reference.
+2. **Runtime parameter VALUE read** — phase-264 **W4** (`ctx.param` register-time
+   read + `CallbackCtx`/`TickCtx::parameter::<T>` live read + `[param_services]`
+   RAM store).
+3. **Lifecycle for the plain-cargo shape** — phase-264 **W2** (`nros::main!` reads
+   `[lifecycle]` → `apply_lifecycle` → REP-2002 services + autostart).
+4. **Typed C++ `bind_service`** — added `nros::bind_service<Svc, C, &C::on_request>`
+   to `packages/core/nros-cpp/include/nros/component.hpp` (typed request/response
+   via the generated bindings; `Svc::TYPE_NAME`; no hand-rolled CDR). Verified by a
+   compile-instantiation regression (`tests/compile/bind_service.cpp`, wired into
+   `just check-cpp`). The typed *client* is covered by the poll `Service<S>` + the
+   `tick(TickCtx)` surface (gap 1).
+5. **Logging sink init by the workspace Entry** — phase-264 **W3** (posix board
+   inits `nros_log::sinks::default()` at boot).
+
+> **Root-pattern resolution: [phase-264](../roadmap/phase-264-mature-nros-main-capability-wiring.md)**
+> (W1–W4 done 2026-06-20) — matured `nros::main!` to wire the full `system.toml`
+> capability set (lifecycle, log-init, parameters). The "root pattern" section
+> below is the phase-264 motivation.
 
 ## Problem
 

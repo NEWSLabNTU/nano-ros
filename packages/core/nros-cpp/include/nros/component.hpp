@@ -167,6 +167,41 @@ inline Result bind_service_raw(Node& node, const char* service, const char* type
         self, qos);
 }
 
+/// Bind a component **member**
+/// `Svc::Response C::on_request(const Svc::Request&)` as a **typed** service
+/// handler — the executor-dispatched, generated-binding twin of
+/// `bind_service_raw` (issue 0089 gap 4). The trampoline `ffi_deserialize`s the
+/// request wire bytes into a stack `Svc::Request`, calls the typed member, and
+/// `ffi_serialize`s the returned `Svc::Response` back into the reply buffer — no
+/// hand-rolled CDR/alignment in the component. `Svc` is the generated service
+/// type (`example_interfaces::srv::AddTwoInts`, exposing `Request` / `Response`
+/// / `TYPE_NAME`); the service-type name is taken from `Svc::TYPE_NAME`, so —
+/// unlike `bind_service_raw` — no `type_name` argument is needed.
+///
+/// C++14 note: `Svc`, `C`, and the member-pointer `Method` are template
+/// parameters (mirrors `bind_subscription<M, C, &C::m>`); the trampoline is a
+/// non-capturing lambda that decays to a function pointer — no heap, no
+/// `std::function`. A reply larger than `resp_cap`, or a malformed request,
+/// drops the reply (returns `false`).
+template <typename Svc, class C, typename Svc::Response (C::*Method)(const typename Svc::Request&)>
+inline Result bind_service(Node& node, const char* service, C* self,
+                           const QoS& qos = QoS::services()) {
+    return create_service_raw(
+        node, service, Svc::TYPE_NAME,
+        [](const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap, size_t* resp_len,
+           void* ctx) -> bool {
+            typename Svc::Request request{};
+            if (Svc::Request::ffi_deserialize(req, req_len, &request) != 0) return false;
+            typename Svc::Response response = (static_cast<C*>(ctx)->*Method)(request);
+            size_t written = 0;
+            if (Svc::Response::ffi_serialize(&response, resp, resp_cap, &written) != 0)
+                return false;
+            *resp_len = written;
+            return true;
+        },
+        self, qos);
+}
+
 /// Storage a component must own for a raw action server (8-aligned, lives for
 /// the app lifetime — the executor arena holds it). Declare one per action:
 /// `::nros::ActionServerStorage fib_storage_;` then pass `fib_storage_.bytes`.
