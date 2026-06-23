@@ -352,45 +352,39 @@ check JOBS="75%":
                        -not -path '*/qemu-riscv64-threadx/*' \
                        -not -path '*/px4/*' | sort > "$toml_list"
 
-    # Phase 244.D1/C5 — Node+Entry split codegen pre-pass. Split examples keep
-    # their generated msg crates in a gitignored `generated/` that only
-    # `nros ws sync` materialises: the Node pkg (`[package.metadata.nros.node]`)
-    # owns it, and the sibling Entry pkg's [patch.crates-io] resolves it. clippy
-    # (cross via the Entry's `.cargo/config` target, or host for the Node lib)
-    # can't resolve those crates until they exist on disk, so sync every Node pkg
-    # before the fan-out. Mirrors the `scripts/build/fixtures-build.sh` pre-pass;
-    # `nros ws sync` is idempotent. Only requires `nros` on PATH when split Node
-    # pkgs are actually present.
-    node_pkgs="$(mktemp "${TMPDIR:-/tmp}/nros_node_pkgs.XXXXXX")"
-    trap 'rm -f "$toml_list" "$node_pkgs"' EXIT
-    find examples -mindepth 4 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' \
-                       -not -path '*/build/*' -not -path '*/build-*/*' \
-        | while IFS= read -r node_toml; do
-            node_dir="$(dirname "$node_toml")"
-            # A Node pkg only needs ws sync when it actually declares msg deps
-            # via a package.xml. Node-shaped pkgs without one (e.g. e2e harness
-            # pkgs that carry `[package.metadata.nros.node]` but no `<depend>`s)
-            # have nothing to materialise and would error `ws sync` (ws.rs:273),
-            # aborting this recipe under `set -e`.
-            [ -f "$node_dir/package.xml" ] || continue
-            # `if` (not `&&`): a bare `grep -q … && printf` statement returns
-            # non-zero for every non-node Cargo.toml, which aborts this `find |
-            # while` subshell under the recipe's `set -e`.
-            if grep -q '^\[package\.metadata\.nros\.node\]' "$node_toml"; then
-                printf '%s\n' "$node_dir"
-            fi
-        done > "$node_pkgs"
-    if [ -s "$node_pkgs" ]; then
-        if ! command -v nros >/dev/null 2>&1; then
-            echo "native check: split Node pkgs present but 'nros' not on PATH" >&2
-            echo "  run 'source ./activate.sh' (sweep contract) before 'just check'." >&2
-            exit 1
+    # Message-bindings precondition gate (phase-264 W4c follow-up). Example msg
+    # crates (`generated/<msg>/`) are BUILD-TIME + ROS-version-dependent, so they
+    # are gitignored and materialised by `nros ws sync` / `just generate-bindings`
+    # (scripts/regenerate-bindings.sh) — NOT shipped in git. `just check` does NOT
+    # sync them: that would couple a pure static check to a live ROS environment and
+    # silently rewrite each example's Cargo.toml `[patch.crates-io]` block. Instead
+    # it GATES — any example the fan-out below will check whose `package.xml`
+    # declares a message `<depend>` but whose `generated/` is absent fails the
+    # precondition with one clear, actionable error rather than a cryptic per-example
+    # cargo "failed to read generated/<msg>/Cargo.toml" deep in the parallel output.
+    #
+    # The predicate is the dependency, NOT the pkg-metadata shape: every self-bringup
+    # `[package.metadata.nros.application]` example AND every split Node pkg is
+    # covered (the previous `[package.metadata.nros.node]`-only pre-pass silently
+    # skipped all `application` examples, so single-pkg examples relied on an
+    # undocumented "build-test-fixtures ran first" ordering — issue surfaced 2026-06).
+    missing="$(mktemp "${TMPDIR:-/tmp}/nros_missing_bindings.XXXXXX")"
+    trap 'rm -f "$toml_list" "$missing"' EXIT
+    while IFS= read -r toml; do
+        dir="$(dirname "$toml")"
+        [ -f "$dir/package.xml" ] || continue
+        grep -qE '<(depend|exec_depend|build_depend)>' "$dir/package.xml" || continue
+        if [ ! -d "$dir/generated" ] || [ -z "$(ls -A "$dir/generated" 2>/dev/null)" ]; then
+            printf '  %s\n' "$dir" >> "$missing"
         fi
-        export NROS_REPO_DIR="$PWD"
-        while IFS= read -r node_dir; do
-            nros ws sync "$node_dir" >/dev/null
-        done < "$node_pkgs"
+    done < "$toml_list"
+    if [ -s "$missing" ]; then
+        echo "native check: $(wc -l < "$missing" | tr -d ' ') example(s) are missing their generated message bindings:" >&2
+        cat "$missing" >&2
+        echo "" >&2
+        echo "  Bindings are build-time + ROS-version-dependent (gitignored, not shipped in git)." >&2
+        echo "  Run 'just generate-bindings' (or 'just build-test-fixtures') first, then re-run 'just check'." >&2
+        exit 1
     fi
 
     check_one() {
