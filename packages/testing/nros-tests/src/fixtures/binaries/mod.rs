@@ -206,6 +206,9 @@ static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::
 static NATIVE_WORKSPACE_RUST_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 B2 (Track D) — cached path to the real-time multi-tier workspace Entry.
+static NATIVE_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Phase 211.F — cached paths to the per-host workspace Entry pkg binaries.
 static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -661,6 +664,21 @@ pub fn build_native_workspace_rust_service_client_entry() -> TestResult<&'static
                 "workspace-rust-native-service-client",
                 "rust",
                 "native_service_client_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B2 (Track D) — the real-time 2-tier workspace Entry (cached). The
+/// `run_tiers` multi-tier entry schedules a high-tier `/ctrl` node (10 ms) and a
+/// low-tier `/telem` node (100 ms); `realtime_tiers_e2e` asserts both are scheduled.
+pub fn build_native_workspace_rust_realtime_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-realtime",
+                "ws-realtime-rust",
+                "native_entry",
             )
         })
         .map(|p| p.as_path())

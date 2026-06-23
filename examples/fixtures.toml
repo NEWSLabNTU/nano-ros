@@ -115,6 +115,23 @@ bringup = "src/demo_bringup"
 entry = "native_service_client_entry"
 target_dir = "target-fixtures"
 
+# phase-263 B2 (Track D) — the real-time multi-tier workspace. Pure-cargo
+# `nros::main!(launch = "demo_bringup")` resolves the 2-tier table ([tiers.high] +
+# [tiers.low]) and emits the multi-tier `run_tiers` entry. The high-tier control
+# node publishes `/ctrl` every 10 ms, the low-tier telemetry node `/telem` every
+# 100 ms. Consumed by tests/realtime_tiers_e2e.rs: subscribe both, assert the
+# high-tier publishes ~10× the low-tier (both tiers scheduled). 2 nodes × 1 timer =
+# 2 callback entries, under the default MAX_CBS (cf. issue 0095).
+[[workspace_fixture]]
+id = "workspace-rust-native-realtime"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-realtime-rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+target_dir = "target-fixtures"
+
 # Phase 211.F — per-host entries baked from `multihost.launch.xml` (talker on
 # robot1, listener on robot2). Same workspace + shared target-fixtures dir as
 # `workspace-rust-native`; consumed by tests/multihost_runtime_e2e.rs which

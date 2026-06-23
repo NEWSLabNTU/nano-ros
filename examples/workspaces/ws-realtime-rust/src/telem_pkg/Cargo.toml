@@ -22,3 +22,4 @@ nros = { path = "../../../../../packages/core/nros", default-features = false, f
     "rmw-cffi",
     "ros-humble",
 ] }
+std_msgs = { version = "*", default-features = false }
