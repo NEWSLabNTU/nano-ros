@@ -1,0 +1,153 @@
+# Phase 265 — `ws sync` writes `[patch.crates-io]` to `.cargo/config.toml` via toml_edit
+
+Status: **Planned (2026-06-23, rewritten)** · Resolves [issue 0094](../issues/0094-ws-sync-toml-line-scanner-fragility.md)
+· RFC-0023/0024 (binding layouts), RFC-0026 (workspace model).
+
+> **Goal.** Stop `nros ws sync` from editing a consumer `Cargo.toml`. It writes its
+> `[patch.crates-io]` into a **`.cargo/config.toml`** instead, using a format-preserving
+> `toml_edit` DOM (per-key `# nros-managed` marker). **Same authority/granularity as today** —
+> the two-layout model (shared root for Rust-only workspaces; per-Rust-member for mixed) is
+> **unchanged**. With no manifest edit left, issue 0094's whole A–F class is structurally
+> impossible.
+>
+> **Scope correction (2026-06-23):** an earlier draft proposed unifying every workspace onto
+> independent per-package topology (dropping the root cargo `[workspace]`). **Dropped** — it
+> contradicts the deliberate shared-workspace binding model just landed in `3f07dd9f7`
+> (RFC-0023/0024) and discards the clean shared layout that is natural + correct for Rust-only
+> workspaces. This phase changes only **where** (`.cargo/config.toml`) and **how** (toml_edit)
+> the patch is written — not topology, granularity, or the binding layout.
+
+## Why
+
+### 0094 — the writer is a line scanner
+`ws sync` rewrites the consumer `Cargo.toml`'s `[patch.crates-io]` with a line-based text
+scanner + a `BEGIN…END` managed-region marker (`packages/cli/nros-cli-core/src/cmd/ws.rs`:
+`render_patch_block` / `splice_patch_block` / `extract_patch_table` / `strip_managed_block` /
+`extract_consumer_registry_nros_deps`). TOML-equivalent shapes break it (0094 A–F). A/B/C were
+hardened in `68e167275`; the root cause — editing a hand-authored manifest with a non-parser —
+remains. The fix is to stop editing the manifest at all.
+
+### Topology follows language composition (the model to PRESERVE)
+Surveyed across `examples/workspaces/*`:
+- **Rust-only workspace** (`rust`, `ws-{lifecycle,params,realtime,safety}-rust`) — has a root
+  cargo `[workspace]`; **shared root `generated/`**; **one root `[patch.crates-io]`** for all
+  members. `ws sync` over the root.
+- **Has C/C++ members** (`mixed`, `c`, `cpp`) — **no** root cargo `[workspace]` (C/C++ aren't
+  cargo packages); **per-member `generated/`**; patch only in each **Rust** member (`mixed`'s
+  `rust_heartbeat_pkg`), per-member; C/C++ members need no cargo patch.
+- **Standalone** (`examples/<plat>/<lang>/…`) — per-pkg `generated/`, **hand-curated** per-pkg
+  patch, `nros generate-rust` (codegen only; never rewrites the patch). **Out of `ws sync`'s
+  patch-writer scope.**
+
+`ws sync`'s patch granularity is **already correct** — it mirrors the authority
+(`find_patch_authority`): root for Rust-only workspaces, per-Rust-member otherwise. This phase
+keeps that.
+
+### `.cargo/config.toml [patch]` works + needs no root manifest — proven
+- `paths` override is **out** (cargo docs: crates.io-published only; nros crates aren't).
+- `[patch.crates-io]` in `.cargo/config.toml` is stable (cargo 1.96; the repo already uses it
+  for the NuttX `libc` build-std patch) and **resolves unpublished `nros-core = "*"` with a
+  clean manifest** (empirical: present → resolve `rc=0`; removed → `no matching package`).
+- It is auto-discovered up the directory tree → plain `cargo build` works, with or without a
+  root Cargo.toml (proven: ancestor config patch applies to a package built beneath it). So it
+  fits **both** layouts — root config for the workspace, per-member config for mixed.
+
+## Decision
+1. `ws sync` writes `[patch.crates-io]` only into **`.cargo/config.toml`**, at the **authority
+   dir it already resolves** (root for Rust-only workspace; the Rust member dir for mixed).
+   Consumer `Cargo.toml` is **never** modified by sync.
+2. **All TOML editing via `toml_edit`** (format-preserving DOM) — both the config write and the
+   `Cargo.toml` dep-scan read. No line scanners.
+3. **No topology / binding-layout change.** Shared-vs-per-member, the `[workspace]` presence,
+   `generated/` placement — all unchanged. Standalone (`generate-rust`, hand-curated) untouched.
+
+## Design
+
+### Write — `.cargo/config.toml` DOM (replaces render/splice/strip)
+```rust
+let cfg = authority_dir.join(".cargo/config.toml");          // SAME authority as today
+let mut doc: DocumentMut = read_or_empty(&cfg).parse()?;
+let patch = doc["patch"]["crates-io"].or_insert(implicit_table());  // bare/quoted/dotted = one key
+patch.retain(|_, v| !decor_has_marker(v));                   // evict prior nros-managed
+for (name, rel) in managed_sorted {                          // generated crates + nros-core/serdes + 220.E/244-E3 extras
+    let mut it = InlineTable::new(); it.insert("path", rel.into());
+    let mut item = value(it); set_suffix_decor(&mut item, "  # nros-managed");
+    patch.insert(&name, item);
+}
+if patch.is_empty() { doc["patch"].as_table_mut().remove("crates-io"); }   // 0094 F
+write_atomic(&cfg, &doc.to_string());                                       // temp + rename (kept)
+```
+- **Per-key `# nros-managed` decor marker** = ownership (no region). The config table mixes
+  sync-owned patches with user content (`[target]`/`[env]`, the hand `libc` patch) — the marker
+  is what sync evicts/replaces; user keys + their decor are preserved. Sorted → diff-stable;
+  stale generated crates evicted by the marker.
+- Atomic temp + `rename` preserved. Create `.cargo/config.toml` (+ `.cargo/`) if absent.
+
+### Read — dep-scan via DOM
+`extract_consumer_registry_nros_deps` + `extract_cargo_path_deps` → walk `doc["dependencies"]` /
+`["dev-dependencies"]` / `["build-dependencies"]` / `["target"][cfg][kind]` as DOM tables;
+inline `name = {version=…}` and explicit `[dependencies.name]` collapse to one shape (0094 B
+gone). `package.xml` → codegen → generated-crate-names unchanged (separate XML path).
+
+### Managed-set + path policy — unchanged
+Three key sources (generated msg crates; minimum `nros-core`/`nros-serdes`; registry-style
+`nros-*`/`cyclonedds-sys` from consumer + generated `Cargo.toml`s) mapped via the static
+`nros_crate_path_lookup` table; paths via `pathdiff` from the config's package dir.
+
+### Why all 6 0094 cases die
+A (quoted) + B (dotted) → same DOM key. C (region) → no region. D (`"""`) → strings are nodes.
+E (path) → serializer escapes. F (empty) → `remove`.
+
+## Work items
+
+- **W1 — config writer (toml_edit) + tests.** New `write_patch_config` (DOM + per-key marker +
+  atomic write) behind the existing `write_patch_block` call site. Port the 18 `patch_block`
+  tests to assert observable output (one patch table; user keys incl. `libc`/`[target]`
+  preserved; managed evicted+reinserted; idempotent; stale-generated eviction). Add: quoted/
+  dotted equivalence, `"""`-immunity, empty-set removal.
+- **W2 — read-side DOM.** `extract_consumer_registry_nros_deps` + `extract_cargo_path_deps` →
+  `toml_edit`. Keep `package.xml` parsing.
+- **W3 — MIGRATE the in-tree workspace examples** (move each ws-sync-managed patch
+  Cargo.toml → `.cargo/config.toml`; strip the `BEGIN…END` block from the Cargo.toml; deps stay
+  `version = "*"`). One-time, via re-running the new `ws sync` per workspace, then committing:
+  - `examples/workspaces/rust/` — root patch → `rust/.cargo/config.toml` (merge with the existing
+    `[target]`/`[env]`/`libc` config); `src/zephyr_entry/` patch → `zephyr_entry/.cargo/config.toml`.
+  - `examples/workspaces/ws-lifecycle-rust/`, `ws-params-rust/`, `ws-realtime-rust/`,
+    `ws-safety-rust/` — root patch → `<ws>/.cargo/config.toml`.
+  - `examples/workspaces/mixed/src/rust_heartbeat_pkg/` — patch → that pkg's `.cargo/config.toml`.
+  - `c/`, `cpp/` — no Rust patch; nothing to migrate.
+  - Rebuild native + ≥1 embedded lane (freertos/threadx) per affected workspace to confirm
+    resolve; assert no `[patch.crates-io]` remains in any migrated `Cargo.toml`.
+- **W4 — delete dead scanners.** Remove `render_patch_block`, `splice_patch_block`,
+  `extract_patch_table`, `strip_managed_block`, `is_patch_crates_io_header`,
+  `strip_toml_key_quotes`, the `BEGIN/END` constants, `RenderedBlock`. Update `run_clean` /
+  `run_doctor` to read `.cargo/config.toml`. Update the scaffold/template generator + any docs
+  (book) that mention the BEGIN/END managed block.
+- **W5 (optional follow-up) — standalone consistency.** Move the hand-curated per-pkg patch in
+  `examples/<plat>/<lang>/*` from `Cargo.toml` → `.cargo/config.toml` for repo-wide consistency.
+  Lower priority (those are hand-maintained, not auto-rewritten, so no churn pressure); a
+  `generate-rust`-side helper (or a one-shot script) could do it. Sequence after W1–W4 prove the
+  config layout end-to-end.
+
+## Sequencing
+W1 (writer) → W2 (read DOM) → W3 (migrate + rebuild the workspace examples) → W4 (delete +
+docs). W5 optional. Each ships green `just check` + cli-core unit tests; W3 also rebuilds
+native + one embedded lane.
+
+## Acceptance
+- After a `ws sync`, **no consumer `Cargo.toml` is modified** (grep-clean); the managed patch
+  lives only in `.cargo/config.toml`.
+- All migrated workspace examples + standalone examples build (native + ≥1 embedded lane) with
+  the existing fixture lanes / plain `cargo build`.
+- 0094 A–F structurally impossible; issue 0094 resolved.
+- Topology + binding layout unchanged from `3f07dd9f7` (shared root for Rust-only workspaces;
+  per-Rust-member for mixed; standalone per-pkg).
+
+## Notes / risks
+- `toml_edit 0.22` already a `nros-cli-core` dep.
+- Blast radius: the canonical patch writer + a one-time migration across the 7 ws-sync-managed
+  example manifests (W3). Standalone migration (W5) is the larger, optional churn.
+- cargo "patch not used in the crate graph" warning doesn't apply to managed entries (they're
+  used) — unlike the intentional `libc` one.
+- Keep the static `nros_crate_path_lookup` table + the `package.xml`→codegen path as the SSoT
+  for the managed set; only the read/write *mechanism + target file* change.
