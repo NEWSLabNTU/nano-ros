@@ -59,7 +59,10 @@ keeps that.
 2. **All TOML editing via `toml_edit`** (format-preserving DOM) — both the config write and the
    `Cargo.toml` dep-scan read. No line scanners.
 3. **No topology / binding-layout change.** Shared-vs-per-member, the `[workspace]` presence,
-   `generated/` placement — all unchanged. Standalone (`generate-rust`, hand-curated) untouched.
+   `generated/` placement — all unchanged through W1–W4. Standalone stays `generate-rust` /
+   hand-curated for W1–W4; **W5 then unifies** standalone + workspace onto one command
+   (`ws sync`) + one managed patch model (`.cargo/config.toml`), once the toml_edit writer is
+   proven — superseding `3f07dd9f7`'s standalone routing. Binding layouts remain per-layout.
 
 ## Design
 
@@ -123,25 +126,45 @@ E (path) → serializer escapes. F (empty) → `remove`.
   `strip_toml_key_quotes`, the `BEGIN/END` constants, `RenderedBlock`. Update `run_clean` /
   `run_doctor` to read `.cargo/config.toml`. Update the scaffold/template generator + any docs
   (book) that mention the BEGIN/END managed block.
-- **W5 (optional follow-up) — standalone consistency.** Move the hand-curated per-pkg patch in
-  `examples/<plat>/<lang>/*` from `Cargo.toml` → `.cargo/config.toml` for repo-wide consistency.
-  Lower priority (those are hand-maintained, not auto-rewritten, so no churn pressure); a
-  `generate-rust`-side helper (or a one-shot script) could do it. Sequence after W1–W4 prove the
-  config layout end-to-end.
+- **W5 — unify the command + patch management (standalone ⇄ workspace).** Today standalone goes
+  through `nros generate-rust` (codegen only; hand-curated `Cargo.toml` patch) while workspaces go
+  through `nros ws sync` (codegen + managed patch) — a split `3f07dd9f7` made *because the patch
+  editor was fragile*. W1–W4 remove that fragility (toml_edit DOM into `.cargo/config.toml`), so
+  the split's rationale dissolves and leaving it produces **two patch models** (standalone hand
+  `Cargo.toml` vs workspace managed `.cargo/config.toml`). Unify:
+  - **`nros ws sync` becomes the single user-facing command for BOTH layouts.** It already has
+    `single_pkg_mode` (codegen + patch) — a superset of `generate-rust` — so a standalone pkg
+    syncs through it and gets its `.cargo/config.toml [patch.crates-io]` managed exactly like a
+    workspace member, at per-pkg granularity.
+  - **`nros generate-rust` stays the low-level codegen primitive** (`ws sync` calls it; available
+    for codegen-only needs — IDE/CI/debug — with no patch side effects).
+  - **Binding layouts unchanged** — `ws sync` single-pkg → per-pkg `generated/` (standalone);
+    workspace → shared root `generated/`. Only patch *management* becomes uniform.
+  - Re-point the orchestration (`scripts/build/regenerate-bindings.sh`) so standalone runs
+    `ws sync` (single-pkg) not `generate-rust`; migrate the hand-curated standalone patches
+    (`examples/<plat>/<lang>/*`) `Cargo.toml` → `.cargo/config.toml` via a one-time `ws sync`
+    pass. **Supersedes `3f07dd9f7`'s standalone routing** (safe now under toml_edit).
+  - End-state: every patch — standalone or workspace — lives in `.cargo/config.toml`, managed by
+    one command via one toml_edit writer. Large, repo-wide migration → its own verification pass;
+    sequence **after** W1–W4 prove the writer end-to-end.
 
 ## Sequencing
 W1 (writer) → W2 (read DOM) → W3 (migrate + rebuild the workspace examples) → W4 (delete +
-docs). W5 optional. Each ships green `just check` + cli-core unit tests; W3 also rebuilds
-native + one embedded lane.
+docs) → W5 (unify command + management; repo-wide standalone migration — own pass). 0094 is
+resolved at W4 (workspaces); W5 brings standalone into the same one-model end-state. Each ships
+green `just check` + cli-core unit tests; W3/W5 also rebuild native + ≥1 embedded lane.
 
 ## Acceptance
 - After a `ws sync`, **no consumer `Cargo.toml` is modified** (grep-clean); the managed patch
   lives only in `.cargo/config.toml`.
 - All migrated workspace examples + standalone examples build (native + ≥1 embedded lane) with
   the existing fixture lanes / plain `cargo build`.
-- 0094 A–F structurally impossible; issue 0094 resolved.
-- Topology + binding layout unchanged from `3f07dd9f7` (shared root for Rust-only workspaces;
-  per-Rust-member for mixed; standalone per-pkg).
+- 0094 A–F structurally impossible; issue 0094 resolved (at W4).
+- **W4:** binding layout unchanged from `3f07dd9f7` (shared root for Rust-only workspaces;
+  per-Rust-member for mixed; standalone per-pkg) — only the patch *file* + *editor* changed.
+- **W5:** one command (`ws sync`) + one patch model (`.cargo/config.toml`, toml_edit) for both
+  standalone and workspace; `generate-rust` is the codegen-only primitive; binding layouts still
+  per-layout.
 
 ## Notes / risks
 - `toml_edit 0.22` already a `nros-cli-core` dep.
