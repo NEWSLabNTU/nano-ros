@@ -132,17 +132,24 @@ E (path) → serializer escapes. F (empty) → `remove`.
   editor was fragile*. W1–W4 remove that fragility (toml_edit DOM into `.cargo/config.toml`), so
   the split's rationale dissolves and leaving it produces **two patch models** (standalone hand
   `Cargo.toml` vs workspace managed `.cargo/config.toml`). Unify:
-  - **`nros ws sync` becomes the single user-facing command for BOTH layouts.** It already has
+  - **Rename `nros ws sync` → `nros sync`.** Once it serves both layouts, the `ws`
+    (workspace) qualifier is wrong + cumbersome. `nros sync` = "sync generated bindings + the
+    cargo patch config to match the declared deps (`package.xml` / `Cargo.toml`)" — for a
+    standalone pkg **or** a workspace; it picks single-pkg vs colcon mode by layout (as
+    `run_sync` already does). Keep `nros ws sync` as a `#[command(hide=true)]` deprecated alias
+    for one release cycle (emit a one-line deprecation note); update `just`/scripts/book to
+    `nros sync`. (`nros setup` is taken — toolchain/SDK provisioning, RFC-0014 — so not that.)
+  - **`nros sync` is the single user-facing command for BOTH layouts.** It already has
     `single_pkg_mode` (codegen + patch) — a superset of `generate-rust` — so a standalone pkg
     syncs through it and gets its `.cargo/config.toml [patch.crates-io]` managed exactly like a
     workspace member, at per-pkg granularity.
-  - **`nros generate-rust` stays the low-level codegen primitive** (`ws sync` calls it; available
+  - **`nros generate-rust` stays the low-level codegen primitive** (`nros sync` calls it; available
     for codegen-only needs — IDE/CI/debug — with no patch side effects).
-  - **Binding layouts unchanged** — `ws sync` single-pkg → per-pkg `generated/` (standalone);
+  - **Binding layouts unchanged** — `nros sync` single-pkg → per-pkg `generated/` (standalone);
     workspace → shared root `generated/`. Only patch *management* becomes uniform.
   - Re-point the orchestration (`scripts/build/regenerate-bindings.sh`) so standalone runs
-    `ws sync` (single-pkg) not `generate-rust`; migrate the hand-curated standalone patches
-    (`examples/<plat>/<lang>/*`) `Cargo.toml` → `.cargo/config.toml` via a one-time `ws sync`
+    `nros sync` (single-pkg) not `generate-rust`; migrate the hand-curated standalone patches
+    (`examples/<plat>/<lang>/*`) `Cargo.toml` → `.cargo/config.toml` via a one-time `nros sync`
     pass. **Supersedes `3f07dd9f7`'s standalone routing** (safe now under toml_edit).
   - End-state: every patch — standalone or workspace — lives in `.cargo/config.toml`, managed by
     one command via one toml_edit writer. Large, repo-wide migration → its own verification pass;
