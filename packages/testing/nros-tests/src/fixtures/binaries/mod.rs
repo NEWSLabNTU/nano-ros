@@ -202,6 +202,10 @@ static NATIVE_WORKSPACE_RUST_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 264 W4c — cached path to the parameterised workspace Entry pkg binary.
 static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 A1 (Track D) — cached paths to the cross-process service entries.
+static NATIVE_WORKSPACE_RUST_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Phase 211.F — cached paths to the per-host workspace Entry pkg binaries.
 static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -628,6 +632,35 @@ pub fn build_native_workspace_rust_params_entry() -> TestResult<&'static Path> {
                 "workspace-rust-native-params",
                 "ws-params-rust",
                 "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A1 (Track D) — the server half of the cross-process AddTwoInts
+/// service demo (cached). Pure-cargo `nros::main!` booting `add_server` alone.
+pub fn build_native_workspace_rust_service_server_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_SERVICE_SERVER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-service-server",
+                "rust",
+                "native_service_server_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A1 (Track D) — the client half of the cross-process AddTwoInts
+/// service demo (cached). `add_client` calls the server entry and republishes
+/// the server-computed sum on /sum; `service_roundtrip_xprocess_e2e` asserts it.
+pub fn build_native_workspace_rust_service_client_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_SERVICE_CLIENT_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-service-client",
+                "rust",
+                "native_service_client_entry",
             )
         })
         .map(|p| p.as_path())

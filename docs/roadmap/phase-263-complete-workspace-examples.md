@@ -81,8 +81,25 @@ default. Sequence so each wave is shippable on its own.
   four `register` calls from the showcase launch). **Finding:** the client path needs
   the `tick(TickCtx)` surface (calls/publish), distinct from `on_callback(CallbackCtx)`
   — undocumented + unexercised before this; worth a book note (tracked for A-docs).
-  **Remaining:** runtime e2e test (Track D — assert `/sum` carries server-computed
-  sums); project to C / C++ / mixed.
+  **Runtime e2e DONE (2026-06-23, Track D)** — but cross-process, not in the combined
+  `native_showcase_entry`. Running the never-before-run showcase surfaced two bugs:
+  (1) the 4-node topology declares 5 callback entries, over the default
+  `NROS_EXECUTOR_MAX_CBS = 4`, and the overflow registers as an **opaque**
+  `NodeRegister("service_client_pkg")` (**issue 0095**); (2) more fundamentally, an
+  **in-process (same-executor) service server+client do not talk** — `add_server` never
+  receives `add_client`'s locally-issued query (bisected: `/chatter`✓, direct `/sum`
+  publish✓, `/srvhit` server-receipt✗) (**issue 0096**). So the service round-trip e2e
+  runs the server + client as **two processes** (the supported topology, mirroring the
+  imperative `native_api.rs::test_native_service_communication`): new
+  `native_service_server_entry` + `native_service_client_entry` (one-node
+  `service_server.launch.xml` / `service_client.launch.xml`), fixtures
+  `workspace-rust-native-service-{server,client}`, and
+  `tests/service_roundtrip_xprocess_e2e.rs` asserts a `/sum` subscriber sees the
+  server-computed sums `1,2,3` (PASS). The native listener gained an `NROS_SUB_TOPIC`
+  env override (default `/chatter`) so it can subscribe `/sum`. The combined
+  `native_showcase_entry` is left as-is (its in-process service nodes are non-functional
+  per 0096; documented, no fixture/test).
+  **Remaining:** project to C / C++ / mixed.
   Port from `examples/native/{rust,c,cpp}/service-*`.
 - **A2 — parameters. RUST DONE (2026-06-20/24, via phase-264 W4).** Was BLOCKED (no
   runtime parameter-VALUE read on `CallbackCtx`); phase-264 W4 added

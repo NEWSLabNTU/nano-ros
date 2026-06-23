@@ -106,9 +106,15 @@ fn main() {
         .node_builder("listener")
         .build()
         .expect("Failed to build node");
+    // Default `/chatter`; override with `NROS_SUB_TOPIC` so the same binary can
+    // subscribe to another Int32 topic (e.g. `/sum` for the service-showcase e2e).
+    let topic: &'static str = match std::env::var("NROS_SUB_TOPIC") {
+        Ok(t) if !t.is_empty() => Box::leak(t.into_boxed_str()),
+        _ => "/chatter",
+    };
     executor
         .node_mut(nid)
-        .subscription("/chatter")
+        .subscription(topic)
         .typed::<Int32>()
         .message_info()
         .build(move |msg, info| {
@@ -130,8 +136,8 @@ fn main() {
             }
         })
         .expect("Failed to add subscription");
-    info!("Subscriber created for topic: /chatter");
-    info!("Waiting for Int32 messages on /chatter...");
+    info!("Subscriber created for topic: {topic}");
+    info!("Waiting for Int32 messages on {topic}...");
 
     if let Err(e) = executor.spin_blocking(SpinOptions::default()) {
         error!("Spin error: {:?}", e);

@@ -44,7 +44,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-_None currently tracked here._
+- **#95** — [Executor `MAX_CBS` overflow → opaque `NodeRegister`, no per-entry sizing
+  knob](0095-executor-max-cbs-overflow-opaque-noderegister.md): a topology declaring more
+  callback entries than the build-time `NROS_EXECUTOR_MAX_CBS` (default 4) fails as an
+  opaque `NodeRegister("<pkg>")` with the underlying `BufferTooSmall` discarded; and the
+  workspace-global cargo `[env]` is the only lever to raise it (bloats lean embedded
+  entries). Found running the phase-263 A1 showcase.
+- **#96** — [In-process (same-executor) declarative service round-trip
+  broken](0096-in-process-same-executor-service-roundtrip-broken.md): a service server +
+  client on one `Executor`/session do not talk — the server never receives the
+  locally-issued query (bisected). Same-session pub/sub works. The phase-263 A1 service
+  demo is therefore cross-process (two entries).
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):

@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- phase-263 A1 (Track D) — the CLIENT half of the cross-process service
+     round-trip (issue 0096). Boots `add_client`, which calls `add_server` on
+     /add_two_ints each tick and republishes the server-computed sum on /sum.
+     Run in a separate process from `service_server.launch.xml`. Boot with the
+     `native_service_client_entry` pkg. -->
+<launch>
+  <node pkg="service_client_pkg" exec="add_client" name="add_client"/>
+</launch>

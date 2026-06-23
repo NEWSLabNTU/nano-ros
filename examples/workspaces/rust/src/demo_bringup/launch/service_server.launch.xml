@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- phase-263 A1 (Track D) — the SERVER half of the cross-process service
+     round-trip. In-process (same-executor) service server+client do not talk
+     (issue 0096), so the service demo is split into two entries: this one boots
+     `add_server` (the `AddTwoInts` server on /add_two_ints); the sibling
+     `service_client.launch.xml` boots `add_client` in a separate process. Boot
+     with the `native_service_server_entry` pkg. -->
+<launch>
+  <node pkg="service_server_pkg" exec="add_server" name="add_server"/>
+</launch>
