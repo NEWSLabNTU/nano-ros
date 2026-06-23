@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- phase-263 A4 (Track D) — the SERVER half of the cross-process Fibonacci action
+     demo. In-process node-to-node delivery does not happen (same zenoh session; issue
+     0096), so the action demo is split into two processes: this one boots the
+     Fibonacci action server on /fibonacci; the sibling `action_client.launch.xml`
+     boots the client. Boot with the `native_action_server_entry` pkg. -->
+<launch>
+  <node pkg="action_server_pkg" exec="fibonacci_action_server" name="fibonacci_action_server"/>
+</launch>

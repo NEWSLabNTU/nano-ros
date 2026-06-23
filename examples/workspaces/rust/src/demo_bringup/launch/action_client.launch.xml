@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- phase-263 A4 (Track D) — the CLIENT half of the cross-process Fibonacci action
+     demo (issue 0096). Boots the client, which sends a goal (order=10) to the
+     /fibonacci server and republishes the result's last sequence element on
+     /fib_result. Run in a separate process from `action_server.launch.xml`. Boot
+     with the `native_action_client_entry` pkg. -->
+<launch>
+  <node pkg="action_client_pkg" exec="fibonacci_action_client" name="fibonacci_action_client"/>
+</launch>

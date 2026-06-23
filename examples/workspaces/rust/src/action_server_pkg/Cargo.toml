@@ -1,0 +1,22 @@
+[package]
+name = "action_server_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — serves example_interfaces/action/Fibonacci on /fibonacci."
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "action_server_pkg::ActionServer"
+name = "fibonacci_action_server"
+default_namespace = "/"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+example_interfaces = { version = "*", default-features = false }

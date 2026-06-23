@@ -1,0 +1,23 @@
+[package]
+name = "action_client_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — Fibonacci action client; republishes the result on /fib_result."
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "action_client_pkg::ActionClient"
+name = "fibonacci_action_client"
+default_namespace = "/"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+example_interfaces = { version = "*", default-features = false }
+std_msgs = { version = "*", default-features = false }

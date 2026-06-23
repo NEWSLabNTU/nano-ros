@@ -206,6 +206,10 @@ static NATIVE_WORKSPACE_RUST_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::
 static NATIVE_WORKSPACE_RUST_SERVICE_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 A4 (Track D) — cached paths to the cross-process Fibonacci action entries.
+static NATIVE_WORKSPACE_RUST_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// phase-263 B2 (Track D) — cached path to the real-time multi-tier workspace Entry.
 static NATIVE_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -668,6 +672,35 @@ pub fn build_native_workspace_rust_service_client_entry() -> TestResult<&'static
                 "workspace-rust-native-service-client",
                 "rust",
                 "native_service_client_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A4 (Track D) — the server half of the cross-process Fibonacci action
+/// demo (cached). Accepts the goal and drives feedback + result via `tick`.
+pub fn build_native_workspace_rust_action_server_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_ACTION_SERVER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-action-server",
+                "rust",
+                "native_action_server_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A4 (Track D) — the client half of the cross-process Fibonacci action
+/// demo (cached). Sends a goal and republishes the result's last element on
+/// `/fib_result`, which `action_roundtrip_xprocess_e2e` asserts.
+pub fn build_native_workspace_rust_action_client_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_ACTION_CLIENT_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-action-client",
+                "rust",
+                "native_action_client_entry",
             )
         })
         .map(|p| p.as_path())

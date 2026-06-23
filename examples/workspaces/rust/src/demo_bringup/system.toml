@@ -34,6 +34,19 @@ pkg = "service_client_pkg"
 class = "service_client_pkg::AddClient"
 name = "add_client"
 
+# phase-263 A4 — Fibonacci action round-trip components. Run cross-process (issue
+# 0096): `native_action_server_entry` (server) + `native_action_client_entry` (client,
+# republishes the result's last sequence element on /fib_result).
+[[component]]
+pkg = "action_server_pkg"
+class = "action_server_pkg::ActionServer"
+name = "fibonacci_action_server"
+
+[[component]]
+pkg = "action_client_pkg"
+class = "action_client_pkg::ActionClient"
+name = "fibonacci_action_client"
+
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"

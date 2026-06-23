@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>action_server_pkg</name>
+  <version>0.1.0</version>
+  <description>Node pkg — serves example_interfaces/action/Fibonacci on /fibonacci.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>example_interfaces</depend>
+  <depend>action_msgs</depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

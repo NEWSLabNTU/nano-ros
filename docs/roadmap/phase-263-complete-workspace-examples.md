@@ -111,8 +111,21 @@ default. Sequence so each wave is shippable on its own.
   macro emits `apply_lifecycle` → the runtime registers the 5 REP-2002 services + drives
   Configure→Activate. `cargo build -p native_entry` links clean. (Transition-callback
   hooks on the declarative node are still a separate gap; this is the managed-node demo.)
-- **A4 — actions.** `action_server_pkg` + `action_client_pkg` (Fibonacci). Port from
-  `examples/native/{rust,…}/action-*`.
+- **A4 — actions. RUST DONE (2026-06-24, Track D) — cross-process.** New
+  `action_server_pkg` (declarative Fibonacci server on `/fibonacci`: accepts the goal in
+  `on_callback`, drives feedback + `complete_goal` in `tick`, mirroring the orchestration
+  test's `fib_server`) + `action_client_pkg` (declarative client via
+  `create_action_client_with_callbacks_for_name` — sends one goal `order=10` in `tick`,
+  and on the auto-delivered result `on_callback("cb_fib_result")` republishes the result's
+  last sequence element — 55 — on `/fib_result`). First WORKSPACE exercise of the
+  declarative action server AND client (the orchestration test used the imperative client
+  against a declarative server). Runs cross-process (issue 0096): new
+  `native_action_server_entry` + `native_action_client_entry` (one-node
+  `action_server.launch.xml` / `action_client.launch.xml`), fixtures
+  `workspace-rust-native-action-{server,client}`, and
+  `tests/action_roundtrip_xprocess_e2e.rs` asserts a `/fib_result` subscriber sees `55`
+  (PASS). Uses the workspace's generated `example_interfaces::action::Fibonacci`.
+  Remaining: project to C / C++ / mixed.
 - **A5 — logging. GATED (2026-06-20, issue 0089 #5).** A node logs via `nros_info!`,
   but neither `nros::main!` nor the board inits the `nros-log` sink, and a
   board-agnostic Node pkg can't pick the (board-specific) sink — so node logs go
