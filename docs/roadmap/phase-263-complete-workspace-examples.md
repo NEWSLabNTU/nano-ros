@@ -167,8 +167,16 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   the multi-tier `run_tiers` entry** (RFC-0032 §5) — confirmed by `cargo build -p
   native_entry` (14.5s). Unlike lifecycle, the macro DOES wire tiers
   (`main_macro.rs` imports `resolve_tiers`). First WORKSPACE demo of deployment-time
-  real-time scheduling. Remaining: project to an RTOS deploy (freertos/threadx) where
-  priorities are real tasks; a runtime test.
+  real-time scheduling. **Runtime e2e DONE (2026-06-23, Track D).** The two nodes were
+  pure timers ticking into a no-op `declarative_component!` default — nothing observable.
+  Extended each to PUBLISH a monotonic counter (control → `/ctrl` @10 ms, telem →
+  `/telem` @100 ms; added `std_msgs` `<depend>` + a real `ExecutableNode`, dropping the
+  empty `declarative_component!`). Fixture `workspace-rust-native-realtime` +
+  `tests/realtime_tiers_e2e.rs`: two `/ctrl`+`/telem` subscribers, anchor on the slow
+  tier (telem≥5), assert the high tier published ≥3× the low tier — proving `run_tiers`
+  scheduled **both** tiers at their declared cadences (PASS). (Tier *priority* preemption
+  is advisory on native; the rate assertion proves both tiers run.) Remaining: project to
+  an RTOS deploy (freertos/threadx) where priorities are real tasks.
 - **B3 — `ws-bridge`:** cross-RMW gateway (zenoh ↔ xrce/cyclonedds), from
   `examples/bridges/*`, but as a workspace bringup (`[[bridge]]` in system.toml).
 - **B4 — `ws-qos-<lang>`:** QoS overrides (reliability / durability / deadline) +
