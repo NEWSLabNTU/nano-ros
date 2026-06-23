@@ -1,0 +1,27 @@
+[package]
+name = "native_service_server_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "phase-263 A1 — server half of the cross-process AddTwoInts service demo."
+
+[[bin]]
+name = "native_service_server_entry"
+path = "src/main.rs"
+
+# phase-263 A1 (Track D) — the SERVER process of the cross-process service
+# round-trip. In-process service server+client do not talk (issue 0096), so the
+# demo runs the server and client as two entries. `nros::main!(launch =
+# "demo_bringup:service_server.launch.xml")` emits `service_server_pkg::register`
+# only. Pairs with `native_service_client_entry`.
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
+service_server_pkg = { path = "../service_server_pkg", default-features = false }

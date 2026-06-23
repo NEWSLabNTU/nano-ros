@@ -1,0 +1,27 @@
+[package]
+name = "native_service_client_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "phase-263 A1 — client half of the cross-process AddTwoInts service demo."
+
+[[bin]]
+name = "native_service_client_entry"
+path = "src/main.rs"
+
+# phase-263 A1 (Track D) — the CLIENT process of the cross-process service
+# round-trip. `nros::main!(launch = "demo_bringup:service_client.launch.xml")`
+# emits `service_client_pkg::register` only; `add_client` calls `add_server`
+# (in the sibling `native_service_server_entry` process) on /add_two_ints each
+# tick and republishes the server-computed sum on /sum (issue 0096).
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
+service_client_pkg = { path = "../service_client_pkg", default-features = false }

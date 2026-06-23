@@ -37,12 +37,12 @@ impl ExecutableNode for AddServer {
     fn init() -> Self::State {}
 
     fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "/add_two_ints" {
-            if let Ok(req) = ctx.message::<AddTwoIntsRequest>() {
-                let resp = AddTwoIntsResponse { sum: req.a + req.b };
-                // 16 bytes covers one int64 + CDR header.
-                let _ = ctx.reply::<AddTwoIntsResponse, 16>(&resp);
-            }
+        if callback.as_str() == "/add_two_ints"
+            && let Ok(req) = ctx.message::<AddTwoIntsRequest>()
+        {
+            let resp = AddTwoIntsResponse { sum: req.a + req.b };
+            // 16 bytes covers one int64 + CDR header.
+            let _ = ctx.reply::<AddTwoIntsResponse, 16>(&resp);
         }
     }
 }

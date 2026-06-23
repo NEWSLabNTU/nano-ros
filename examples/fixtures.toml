@@ -85,6 +85,36 @@ bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
 
+# phase-263 A1 (Track D) — the cross-process AddTwoInts service round-trip. In-process
+# (same-executor) service server+client do not talk (issue 0096), so the service demo is
+# split into two pure-cargo `nros::main!` entries booting one-node launches each:
+# `native_service_server_entry` (add_server on /add_two_ints) and
+# `native_service_client_entry` (add_client → calls add_server each tick, republishes the
+# server-computed sum on /sum). Each entry is under the default `MAX_CBS = 4` (server: 1
+# service; client: service-client + timer), so no `NROS_EXECUTOR_MAX_CBS` bump (cf. issue
+# 0095) and they share the default `target-fixtures`. Consumed by
+# tests/service_roundtrip_xprocess_e2e.rs: boot both + a /sum subscriber, assert the
+# server-computed sums 1,2,3.
+[[workspace_fixture]]
+id = "workspace-rust-native-service-server"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "native_service_server_entry"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-service-client"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "native_service_client_entry"
+target_dir = "target-fixtures"
+
 # Phase 211.F — per-host entries baked from `multihost.launch.xml` (talker on
 # robot1, listener on robot2). Same workspace + shared target-fixtures dir as
 # `workspace-rust-native`; consumed by tests/multihost_runtime_e2e.rs which
