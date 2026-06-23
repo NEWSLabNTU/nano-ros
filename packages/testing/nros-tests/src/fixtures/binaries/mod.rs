@@ -209,6 +209,10 @@ static NATIVE_WORKSPACE_RUST_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = On
 /// phase-263 B2 (Track D) — cached path to the real-time multi-tier workspace Entry.
 static NATIVE_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 B1 (Track D) — cached paths to the cross-process E2E-safety entries.
+static NATIVE_WORKSPACE_RUST_SAFETY_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Phase 211.F — cached paths to the per-host workspace Entry pkg binaries.
 static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -679,6 +683,35 @@ pub fn build_native_workspace_rust_realtime_entry() -> TestResult<&'static Path>
                 "workspace-rust-native-realtime",
                 "ws-realtime-rust",
                 "native_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B1 (Track D) — the talker half of the cross-process E2E-safety demo
+/// (cached). Bakes `safety-e2e`, so its /chatter publishes carry a backend CRC.
+pub fn build_native_workspace_rust_safety_talker_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_SAFETY_TALKER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-safety-talker",
+                "ws-safety-rust",
+                "native_safety_talker_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 B1 (Track D) — the listener half of the cross-process E2E-safety demo
+/// (cached). Validates the CRC and republishes the validated count on `/safe_ok`,
+/// which `safety_workspace_e2e` asserts.
+pub fn build_native_workspace_rust_safety_listener_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_SAFETY_LISTENER_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-safety-listener",
+                "ws-safety-rust",
+                "native_safety_listener_entry",
             )
         })
         .map(|p| p.as_path())

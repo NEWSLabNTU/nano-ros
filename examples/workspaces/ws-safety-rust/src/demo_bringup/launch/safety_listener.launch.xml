@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- phase-263 B1 (Track D) — the LISTENER half of the cross-process E2E-safety demo
+     (issue 0096). Boots `safe_listener`: a safety subscription that validates the
+     CRC on each /chatter message and republishes the running CRC-validated count on
+     /safe_ok. Run in a separate process from `safety_talker.launch.xml`. Boot with
+     the `native_safety_listener_entry` pkg. -->
+<launch>
+  <node pkg="safe_listener_pkg" exec="safe_listener" name="safe_listener"/>
+</launch>

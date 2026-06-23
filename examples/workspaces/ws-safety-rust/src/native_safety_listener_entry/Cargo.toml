@@ -1,0 +1,29 @@
+[package]
+name = "native_safety_listener_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "phase-263 B1 — listener half of the cross-process E2E-safety demo."
+
+[[bin]]
+name = "native_safety_listener_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = [
+    "rmw-zenoh",
+    "safety-e2e",
+] }
+# safe_listener_pkg/safety-e2e forwards nros/safety-e2e so CallbackCtx::integrity()
+# is in scope; the node validates the CRC and republishes the validated count on /safe_ok.
+safe_listener_pkg = { path = "../safe_listener_pkg", default-features = false, features = [
+    "safety-e2e",
+] }

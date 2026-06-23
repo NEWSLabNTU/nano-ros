@@ -16,6 +16,8 @@ members = [
     "src/talker_pkg",
     "src/safe_listener_pkg",
     "src/native_entry",
+    "src/native_safety_talker_entry",
+    "src/native_safety_listener_entry",
 ]
 # `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
 
