@@ -60,11 +60,14 @@ each re-sync keeps one stale block, eventually duplicating entries / headers.
 
 ## Fix direction
 
-A real `toml_edit`-based rewrite would eliminate all six at once and is the long-term
-target. This issue's immediate fix hardens the line scanner for A/B/C (the cases that
-actually break builds): normalize the patch-header match across bare/quoted forms,
-recognize explicit `[dependencies.<name>]` / `[target.*.dependencies.<name>]` tables,
-and strip **all** managed blocks. D/E/F left as documented low-risk follow-ups.
+A/B/C (the build-breaking cases) were hardened in `68e167275` (quoted/dotted header
+match, explicit dep-tables, strip-all-blocks) + tests. **The full resolution is
+[phase-265](../roadmap/phase-265-ws-sync-config-patch-unified-independent.md)**
+(2026-06-23): `ws sync` stops editing any consumer `Cargo.toml` — it writes
+`[patch.crates-io]` into a per-package **`.cargo/config.toml`** via a `toml_edit`
+format-preserving DOM (and unifies the workspace topology on independent Rust
+packages). With no manifest edit, the entire A–F class is structurally impossible.
+D/E/F remain only until phase-265 lands the DOM rewrite.
 
 ## Evidence
 
