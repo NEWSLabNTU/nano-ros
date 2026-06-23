@@ -139,10 +139,16 @@ default. Sequence so each wave is shippable on its own.
   app-node shape does not surface the goal payload at tick time, so the server emits a
   fixed-`ORDER = 10` sequence matching the client's goal rather than the per-goal requested
   order. Remaining: runtime e2e test (Track D); project to C/C++ + embedded entries (Track C).
-- **A5 — logging. GATED (2026-06-20, issue 0089 #5).** A node logs via `nros_info!`,
-  but neither `nros::main!` nor the board inits the `nros-log` sink, and a
-  board-agnostic Node pkg can't pick the (board-specific) sink — so node logs go
-  nowhere in the workspace shape. Needs the board/Entry to init a default sink.
+- **A5 — logging. RUST DONE (2026-06-24, Track D).** Was gated on the board not
+  initing a sink; **phase-264 W3 fixed that** (`nros-board-posix` calls
+  `nros_log::init(sinks::default())` at boot). So the ws-rust `talker_pkg` now logs
+  `"talker publishing chatter seq=<n>"` each tick via `nros_log::nros_info!(
+  &DEFAULT_LOGGER, …)` (added an `nros-log` dep), and booting the `native_entry`
+  shows the line on the entry's own stdout (`[INFO] nros: talker publishing …`) —
+  the chain board boot-time `init` → global sink → `DEFAULT_LOGGER.dispatch` → host
+  stdout. `tests/logging_workspace_e2e.rs` asserts ≥3 log lines on the entry stdout
+  (PASS). Logging is process-local (no subscriber, unlike pub/sub delivery — issue
+  0096). Remaining: project to C / C++ / mixed.
 
 ### Track B — Advanced workspaces (new, single-purpose, separate dirs)
 Each is a minimal product-shaped workspace demonstrating ONE differentiator end-to-end.
