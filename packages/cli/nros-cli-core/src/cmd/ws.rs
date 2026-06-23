@@ -1154,54 +1154,32 @@ fn nros_crate_subpath(name: &str) -> Option<String> {
     }
 }
 
-fn render_patch_block(
+/// Phase 265 (issue 0094) — the managed `(crate_name, relative_path)` patch entries
+/// for a consumer authority, in emit order (generated msg crates first, then the
+/// deduped + alphabetised runtime crates). Single source of the managed-set + path
+/// policy, shared by the legacy text `render_patch_block` and the toml_edit
+/// `write_patch_config`. Paths are relative to the authority's directory.
+fn render_managed_entries(
     authority: &Path,
     build_root: &Path,
     pkgs: &[String],
     nano_ros_path: Option<&Path>,
     extra_runtime_crates: &[String],
-) -> RenderedBlock {
+) -> Vec<(String, String)> {
     let authority_dir = authority.parent().unwrap();
-    let mut managed_names: Vec<String> = Vec::new();
-    let mut entries = String::new();
+    let mut out: Vec<(String, String)> = Vec::new();
 
     // 1) Generated msg crates (path = generated/<pkg>).
     for pkg in pkgs {
         let crate_root = build_root.join(pkg);
         let rel = pathdiff::diff_paths(&crate_root, authority_dir).unwrap_or(crate_root);
-        entries.push_str(&format!("{pkg} = {{ path = \"{}\" }}\n", rel.display()));
-        managed_names.push(pkg.clone());
+        out.push((pkg.clone(), rel.display().to_string()));
     }
 
-    // 2) Minimum runtime patches the GENERATED msg crates depend on.
-    //    Generated `<pkg>/Cargo.toml` carries `nros-core = "*"` +
-    //    `nros-serdes = "*"` (registry-style), so even when the user's
-    //    own Cargo.toml has direct path-deps for the larger nros-*
-    //    runtime (canonical 212 shape), the generated crates need
-    //    `[patch.crates-io]` entries for these two specific crates to
-    //    resolve.
-    //
-    // 3) Phase 220.E — additionally, every `nros-*` (or `nros` /
-    //    `cyclonedds-sys`) runtime crate the CONSUMER's own
-    //    `[dependencies]` references in registry-style (`version = "*"`)
-    //    needs a path-dep here too — otherwise cargo can't resolve them
-    //    (they aren't on crates.io). Without this, examples like
-    //    `examples/zephyr/rust/talker/` which declare
-    //    `nros = { version = "*", ... }` + `nros-rmw-zenoh = { version =
-    //    "*", ... }` would fail post-`ws sync` with `no matching package`.
-    //
-    //    The union of (220.E extras) + (the minimal `nros-core` +
-    //    `nros-serdes` for generated msg crates) is emitted in a single
-    //    deduped, alphabetical pass for deterministic diffs.
     if let Some(nrp) = nano_ros_path {
-        // Always include the minimum runtime patches the generated msg
-        // crates depend on, then union in the consumer-referenced extras.
         let mut wanted: Vec<String> = vec!["nros-core".to_string(), "nros-serdes".to_string()];
-        // Phase 244 E3 — the GENERATED crates can themselves carry registry-style
-        // runtime deps the consumer never names directly (an action crate deps
-        // `nros-rmw-cyclonedds` for `RosAction::register_protocol_types`). Scan
-        // each generated pkg's Cargo.toml so those get a `[patch.crates-io]` path
-        // too — otherwise cargo can't resolve them post-sync.
+        // Phase 244 E3 — scan each generated pkg's Cargo.toml for registry-style
+        // runtime deps the consumer never names directly.
         let mut gen_extras: Vec<String> = Vec::new();
         for pkg in pkgs {
             if let Ok(gen_body) = std::fs::read_to_string(build_root.join(pkg).join("Cargo.toml")) {
@@ -1214,18 +1192,12 @@ fn render_patch_block(
                     wanted.push(extra.clone());
                 }
             } else {
-                // Unknown nros-* / cyclonedds-sys variant — likely a
-                // third-party extension. Log + skip rather than fail;
-                // user can still hand-patch outside the managed block.
                 eprintln!(
                     "ws sync: unknown runtime crate `{extra}` referenced as registry dep; \
-                     no path mapping in the nros lookup table — skipping patch entry. \
-                     Add a manual `[patch.crates-io]` row above the BEGIN marker."
+                     no path mapping in the nros lookup table — skipping patch entry."
                 );
             }
         }
-        // Deterministic order — alphabetical keeps the diff stable across
-        // re-syncs and across consumers with different dep sets.
         wanted.sort();
         wanted.dedup();
         for cname in &wanted {
@@ -1235,28 +1207,144 @@ fn render_patch_block(
                 continue;
             }
             let rel = pathdiff::diff_paths(&crate_root, authority_dir).unwrap_or(crate_root);
-            entries.push_str(&format!("{cname} = {{ path = \"{}\" }}\n", rel.display()));
-            managed_names.push(cname.clone());
+            out.push((cname.clone(), rel.display().to_string()));
         }
     }
+    out
+}
 
+fn render_patch_block(
+    authority: &Path,
+    build_root: &Path,
+    pkgs: &[String],
+    nano_ros_path: Option<&Path>,
+    extra_runtime_crates: &[String],
+) -> RenderedBlock {
+    let entries = render_managed_entries(
+        authority,
+        build_root,
+        pkgs,
+        nano_ros_path,
+        extra_runtime_crates,
+    );
+    let managed_names: Vec<String> = entries.iter().map(|(n, _)| n.clone()).collect();
     let mut block = String::new();
     block.push_str(BEGIN);
     block.push('\n');
-    // No timestamp — deterministic output keeps the committed Cargo.toml
-    // diff-stable across re-syncs (only path entries change when the user
-    // adds/removes a msg pkg). For "when did sync last run" debugging,
-    // grep the generated/<pkg>/Cargo.toml mtime.
     block.push_str("# Auto-generated by `nros ws sync`. Do not edit between\n");
     block.push_str("# the BEGIN/END markers — re-run sync instead.\n");
-    block.push_str(&entries);
+    for (name, rel) in &entries {
+        block.push_str(&format!("{name} = {{ path = \"{rel}\" }}\n"));
+    }
     block.push_str(END);
     block.push('\n');
-
     RenderedBlock {
         managed_names,
         block,
     }
+}
+
+/// Phase 265 (issue 0094) — decor suffix tagging a sync-owned `[patch.crates-io]`
+/// entry in a `.cargo/config.toml`. Distinguishes managed entries from user keys
+/// (a hand `libc` patch, etc.) so re-sync evicts only its own.
+#[allow(dead_code)]
+const NROS_MANAGED_TAG: &str = "nros-managed";
+
+/// True if a `[patch.crates-io]` value carries the `# nros-managed` decor marker.
+#[allow(dead_code)]
+fn item_is_nros_managed(item: &toml_edit::Item) -> bool {
+    item.as_value()
+        .and_then(|v| v.decor().suffix())
+        .and_then(|s| s.as_str())
+        .map(|s| s.contains(NROS_MANAGED_TAG))
+        .unwrap_or(false)
+}
+
+/// Phase 265 (issue 0094) — write the managed `[patch.crates-io]` entries into
+/// `<authority_dir>/.cargo/config.toml` via a format-preserving `toml_edit` DOM
+/// (replacing the line-based `Cargo.toml` splice). Each managed entry is tagged
+/// with a `# nros-managed` decor suffix; on re-sync only tagged keys are evicted,
+/// so user content (a hand `libc` patch, `[target]`/`[env]` sections) is preserved.
+/// Atomic temp + rename. Creates `.cargo/config.toml` if absent; removes an emptied
+/// `[patch.crates-io]` / `[patch]` table.
+#[allow(dead_code)]
+fn write_patch_config(authority_dir: &Path, managed: &[(String, String)]) -> Result<()> {
+    let cfg_dir = authority_dir.join(".cargo");
+    let cfg = cfg_dir.join("config.toml");
+    let text = std::fs::read_to_string(&cfg).unwrap_or_default();
+    let out = render_patch_config(&text, managed)
+        .wrap_err_with(|| format!("ws sync: edit {}", cfg.display()))?;
+
+    // Atomic write (create `.cargo/` first).
+    std::fs::create_dir_all(&cfg_dir)
+        .wrap_err_with(|| format!("ws sync: mkdir {}", cfg_dir.display()))?;
+    let tmp = cfg.with_file_name(format!(".config.toml.nros-sync-tmp.{}", std::process::id()));
+    std::fs::write(&tmp, out).wrap_err_with(|| format!("ws sync: write {}", tmp.display()))?;
+    std::fs::rename(&tmp, &cfg)
+        .wrap_err_with(|| format!("ws sync: rename {} -> {}", tmp.display(), cfg.display()))?;
+    Ok(())
+}
+
+/// Pure DOM transform behind [`write_patch_config`]: given the existing
+/// `.cargo/config.toml` text (empty string if absent) + the managed entries, return
+/// the rewritten text with `[patch.crates-io]`'s nros-managed keys replaced. Format-
+/// preserving (`toml_edit`); user keys + `[target]`/`[env]` untouched. No fs — unit-
+/// testable like `splice_patch_block`.
+#[allow(dead_code)]
+fn render_patch_config(existing: &str, managed: &[(String, String)]) -> Result<String> {
+    use toml_edit::{DocumentMut, Item, Table, Value, value};
+
+    let mut doc: DocumentMut = existing.parse().wrap_err("parse .cargo/config.toml")?;
+
+    // Ensure [patch] then [patch.crates-io] tables exist.
+    let patch_item = doc
+        .as_table_mut()
+        .entry("patch")
+        .or_insert_with(|| Item::Table(Table::new()));
+    let patch_tbl = patch_item
+        .as_table_mut()
+        .ok_or_else(|| eyre!("ws sync: [patch] is not a table"))?;
+    patch_tbl.set_implicit(true);
+    let cio_item = patch_tbl
+        .entry("crates-io")
+        .or_insert_with(|| Item::Table(Table::new()));
+    let cio = cio_item
+        .as_table_mut()
+        .ok_or_else(|| eyre!("ws sync: [patch.crates-io] is not a table"))?;
+
+    // Evict prior nros-managed keys (preserve user keys + their decor).
+    let stale: Vec<String> = cio
+        .iter()
+        .filter(|(_, v)| item_is_nros_managed(v))
+        .map(|(k, _)| k.to_string())
+        .collect();
+    for k in stale {
+        cio.remove(&k);
+    }
+
+    // Insert the current managed set, alphabetised + deduped, each tagged.
+    let mut sorted: Vec<(String, String)> = managed.to_vec();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    sorted.dedup_by(|a, b| a.0 == b.0);
+    for (name, rel) in &sorted {
+        let mut it = toml_edit::InlineTable::new();
+        it.insert("path", Value::from(rel.as_str()));
+        let mut item = value(Value::InlineTable(it));
+        if let Some(v) = item.as_value_mut() {
+            v.decor_mut().set_suffix(format!("  # {NROS_MANAGED_TAG}"));
+        }
+        cio.insert(name, item);
+    }
+
+    // Drop emptied tables so an empty managed set leaves no bare header (0094 F).
+    if cio.is_empty() {
+        patch_tbl.remove("crates-io");
+    }
+    if patch_tbl.is_empty() {
+        doc.as_table_mut().remove("patch");
+    }
+
+    Ok(doc.to_string())
 }
 
 /// Splice the rendered BEGIN/END block into `body`, guaranteeing exactly one
@@ -2269,5 +2357,145 @@ version = "*"
         assert!(!out.contains(BEGIN), "leftover BEGIN marker:\n{out}");
         assert!(!out.contains(END), "leftover END marker:\n{out}");
         assert!(out.contains("name = \"x\""), "package head lost:\n{out}");
+    }
+
+    // --- phase-265: render_patch_config (.cargo/config.toml, toml_edit) ---
+
+    fn mng(items: &[(&str, &str)]) -> Vec<(String, String)> {
+        items
+            .iter()
+            .map(|(n, p)| (n.to_string(), p.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn config_writer_creates_table_with_markers() {
+        // Empty/absent config → one [patch.crates-io] with each managed key tagged.
+        let out = render_patch_config(
+            "",
+            &mng(&[
+                ("nros-core", "../nros-core"),
+                ("std_msgs", "generated/std_msgs"),
+            ]),
+        )
+        .unwrap();
+        let doc: toml_edit::DocumentMut = out.parse().unwrap();
+        let cio = doc["patch"]["crates-io"].as_table().unwrap();
+        assert_eq!(
+            cio.get("std_msgs").unwrap()["path"].as_str(),
+            Some("generated/std_msgs")
+        );
+        assert_eq!(
+            cio.get("nros-core").unwrap()["path"].as_str(),
+            Some("../nros-core")
+        );
+        assert!(
+            item_is_nros_managed(cio.get("nros-core").unwrap()),
+            "managed key not tagged:\n{out}"
+        );
+        // Alphabetised: nros-core before std_msgs.
+        let keys: Vec<&str> = cio.iter().map(|(k, _)| k).collect();
+        assert_eq!(keys, vec!["nros-core", "std_msgs"], "not sorted:\n{out}");
+    }
+
+    #[test]
+    fn config_writer_preserves_user_keys_and_sections() {
+        // A hand `libc` patch + a [target] section must survive; libc stays UNtagged.
+        let existing = "\
+[target.thumbv7m-none-eabi]\n\
+runner = \"qemu\"\n\n\
+[patch.crates-io]\n\
+libc = { path = \"../../third-party/nuttx/libc\" }\n";
+        let out = render_patch_config(existing, &mng(&[("nros-core", "../nros-core")])).unwrap();
+        let doc: toml_edit::DocumentMut = out.parse().unwrap();
+        assert!(doc.get("target").is_some(), "[target] lost:\n{out}");
+        let cio = doc["patch"]["crates-io"].as_table().unwrap();
+        assert!(cio.get("libc").is_some(), "user libc patch evicted:\n{out}");
+        assert!(
+            !item_is_nros_managed(cio.get("libc").unwrap()),
+            "user libc wrongly tagged:\n{out}"
+        );
+        assert!(
+            item_is_nros_managed(cio.get("nros-core").unwrap()),
+            "managed not tagged:\n{out}"
+        );
+    }
+
+    #[test]
+    fn config_writer_evicts_only_managed_on_resync() {
+        // First sync, then re-sync with a DIFFERENT managed set: old managed keys gone,
+        // a new one present, user key untouched.
+        let existing = "[patch.crates-io]\nlibc = { path = \"x\" }\n";
+        let s1 = render_patch_config(
+            existing,
+            &mng(&[
+                ("std_msgs", "generated/std_msgs"),
+                ("nros-core", "../nros-core"),
+            ]),
+        )
+        .unwrap();
+        // re-sync: std_msgs dropped (no longer generated), nros-serdes added.
+        let s2 = render_patch_config(
+            &s1,
+            &mng(&[
+                ("nros-core", "../nros-core"),
+                ("nros-serdes", "../nros-serdes"),
+            ]),
+        )
+        .unwrap();
+        let doc: toml_edit::DocumentMut = s2.parse().unwrap();
+        let cio = doc["patch"]["crates-io"].as_table().unwrap();
+        assert!(
+            cio.get("std_msgs").is_none(),
+            "stale managed std_msgs not evicted:\n{s2}"
+        );
+        assert!(
+            cio.get("nros-serdes").is_some(),
+            "new managed missing:\n{s2}"
+        );
+        assert!(
+            cio.get("libc").is_some(),
+            "user libc lost on re-sync:\n{s2}"
+        );
+    }
+
+    #[test]
+    fn config_writer_idempotent() {
+        let existing = "[patch.crates-io]\nlibc = { path = \"x\" }\n";
+        let m = mng(&[
+            ("nros-core", "../nros-core"),
+            ("std_msgs", "generated/std_msgs"),
+        ]);
+        let a = render_patch_config(existing, &m).unwrap();
+        let b = render_patch_config(&a, &m).unwrap();
+        assert_eq!(a, b, "re-render not idempotent:\n--a--\n{a}\n--b--\n{b}");
+    }
+
+    #[test]
+    fn config_writer_empty_managed_removes_table() {
+        // No managed entries + no user keys → [patch.crates-io] (and [patch]) removed (0094 F).
+        let out = render_patch_config(
+            "[patch.crates-io]\nnros-core = { path = \"x\" }  # nros-managed\n",
+            &[],
+        )
+        .unwrap();
+        assert!(
+            !out.contains("[patch"),
+            "empty managed left a patch table:\n{out}"
+        );
+    }
+
+    #[test]
+    fn config_writer_quoted_user_header_no_duplicate() {
+        // Pre-existing quoted [patch."crates-io"] + user key → still ONE table via DOM;
+        // managed merged in (0094 A immune by construction).
+        let existing = "[patch.\"crates-io\"]\nlibc = { path = \"x\" }\n";
+        let out = render_patch_config(existing, &mng(&[("nros-core", "../nros-core")])).unwrap();
+        let doc: toml_edit::DocumentMut = out.parse().unwrap(); // parses = no duplicate table
+        let cio = doc["patch"]["crates-io"].as_table().unwrap();
+        assert!(
+            cio.get("libc").is_some() && cio.get("nros-core").is_some(),
+            "merge failed:\n{out}"
+        );
     }
 }
