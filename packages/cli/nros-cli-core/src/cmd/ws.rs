@@ -999,135 +999,59 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
 /// Path-style deps (`path = "..."`) are intentionally skipped — the
 /// user already pinned a concrete location, no patch needed.
 fn extract_consumer_registry_nros_deps(body: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut in_deps = false;
-    // Issue #94 case B — the explicit dotted dependency-table form
-    // `[dependencies.<name>]` (and `[target.<cfg>.dependencies.<name>]`)
-    // declares one dep whose `version` / `path` keys live on FOLLOWING
-    // lines. Track the pending managed crate name + whether we've seen a
-    // `version` key; flush it (registry-style → emit) on the next section
-    // header or EOF.
-    let mut explicit: Option<(String, bool)> = None;
-    fn flush(explicit: &mut Option<(String, bool)>, out: &mut Vec<String>) {
-        if let Some((name, true)) = explicit.take() {
-            out.push(name);
+    use toml_edit::{DocumentMut, Item, Value};
+
+    // Phase 265 (W2) — toml_edit DOM walk. The inline `name = { version = … }`
+    // and explicit `[dependencies.<name>]` (dotted) forms collapse to the SAME
+    // DOM shape (a table-like dep item), so issue #94 case B disappears. A
+    // malformed manifest (won't parse) yields no extras — same as the old loose
+    // scanner finding nothing.
+    let doc: DocumentMut = match body.parse() {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+
+    // Registry-style iff a version is declared (bare string, or a table — inline
+    // or dotted — carrying a `version` key). A path-only table (canonical 212
+    // path-dep) is skipped; a `version` + `path` table counts (the version
+    // registers the dep in the crates.io namespace `[patch.crates-io]` operates on).
+    fn is_registry_style(item: &Item) -> bool {
+        match item {
+            Item::Value(Value::String(_)) => true,
+            Item::Value(Value::InlineTable(t)) => t.contains_key("version"),
+            Item::Table(t) => t.contains_key("version"),
+            _ => false,
         }
     }
-    for line in body.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            flush(&mut explicit, &mut out);
-            in_deps = is_dependencies_table(trimmed);
-            explicit = explicit_dep_table_crate(trimmed)
-                .filter(|n| is_managed_runtime_crate_name(n))
-                .map(|n| (n, false));
-            continue;
-        }
-        // Inside an explicit `[dependencies.<name>]` table: only the
-        // `version` key matters (registry vs path-only). Other keys ignored.
-        if let Some((_, has_version)) = explicit.as_mut() {
-            let key = trimmed.split('=').next().map(str::trim).unwrap_or("");
-            if strip_toml_key_quotes(key) == "version" {
-                *has_version = true;
+    fn scan_deps(deps: Option<&Item>, out: &mut Vec<String>) {
+        let Some(tbl) = deps.and_then(|i| i.as_table_like()) else {
+            return;
+        };
+        for (name, item) in tbl.iter() {
+            if is_managed_runtime_crate_name(name) && is_registry_style(item) {
+                out.push(name.to_string());
             }
-            continue;
         }
-        if !in_deps {
-            continue;
-        }
-        let Some(eq) = trimmed.find('=') else {
-            continue;
-        };
-        // Skip lines like `[foo` (table heads) or commented entries.
-        if trimmed.starts_with('#') {
-            continue;
-        }
-        let lhs = trimmed[..eq].trim();
-        // Strip optional TOML key quotes.
-        let key = strip_toml_key_quotes(lhs);
-        if !is_managed_runtime_crate_name(key) {
-            continue;
-        }
-        let rhs = trimmed[eq + 1..].trim_start();
-        // Two registry-style shapes accepted:
-        //   1. bare version string: `name = "*"` (or any "x.y.z")
-        //   2. inline table: `name = { version = "*", ... }`
-        //
-        // Path-style (`name = { path = "..." }` with NO `version` key)
-        // is skipped — user already pinned a path-dep, no patch needed.
-        //
-        // For (2) we require an explicit `version` key. A table that
-        // ONLY carries `path = ...` (the canonical 212-shape path-dep)
-        // is excluded. A table that carries BOTH `version` + `path`
-        // (the cargo-workspace shape used in some fixtures) is treated
-        // as registry-style because the version makes cargo register
-        // the dep in the resolver's registry namespace, which is the
-        // axis `[patch.crates-io]` operates on.
-        let is_registry = if rhs.starts_with('"') {
-            true
-        } else if rhs.starts_with('{') {
-            rhs.contains("version")
-        } else {
-            false
-        };
-        if !is_registry {
-            continue;
-        }
-        out.push(key.to_string());
     }
-    // Flush a trailing explicit `[dependencies.<name>]` table at EOF.
-    flush(&mut explicit, &mut out);
+
+    let mut out: Vec<String> = Vec::new();
+    let root = doc.as_table();
+    for kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        scan_deps(root.get(kind), &mut out);
+    }
+    // `[target.<cfg>.<kind>]` tables.
+    if let Some(target) = root.get("target").and_then(|i| i.as_table_like()) {
+        for (_cfg, cfg_item) in target.iter() {
+            if let Some(cfg_tbl) = cfg_item.as_table_like() {
+                for kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+                    scan_deps(cfg_tbl.get(kind), &mut out);
+                }
+            }
+        }
+    }
     out.sort();
     out.dedup();
     out
-}
-
-/// Issue #94 case B — if `header` is an explicit single-dependency table
-/// head (`[dependencies.<name>]`, `[dev-dependencies.<name>]`,
-/// `[build-dependencies.<name>]`, or the `[target.<cfg>.<kind>.<name>]`
-/// variants), return `<name>` (TOML quotes stripped). Returns `None` for a
-/// flat `[dependencies]` head — that shape is handled by the inline scanner.
-///
-/// Crate names cannot contain `.`, so the name is the final dotted segment;
-/// a quoted `cfg(...)` segment in the target form is skipped by anchoring on
-/// the `.<kind>.` separator.
-fn explicit_dep_table_crate(header: &str) -> Option<String> {
-    let inner = header.strip_prefix('[')?.strip_suffix(']')?.trim();
-    for kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
-        // Leading form: `dependencies.<name>`.
-        if let Some(rest) = inner.strip_prefix(&format!("{kind}.")) {
-            let name = strip_toml_key_quotes(rest.trim());
-            return (!name.is_empty()).then(|| name.to_string());
-        }
-        // Target form: `target.<cfg>.<kind>.<name>`.
-        if inner.starts_with("target.") {
-            let needle = format!(".{kind}.");
-            if let Some(pos) = inner.rfind(&needle) {
-                let name = strip_toml_key_quotes(inner[pos + needle.len()..].trim());
-                return (!name.is_empty()).then(|| name.to_string());
-            }
-        }
-    }
-    None
-}
-
-/// Match a line like `[dependencies]`, `[dev-dependencies]`,
-/// `[build-dependencies]`, or any `[target.<cfg>.dependencies]` /
-/// `[target.<cfg>.dev-dependencies]` /
-/// `[target.<cfg>.build-dependencies]` head.
-fn is_dependencies_table(trimmed: &str) -> bool {
-    let inner = trimmed
-        .strip_prefix('[')
-        .and_then(|s| s.strip_suffix(']'))
-        .unwrap_or(trimmed);
-    let inner = inner.trim();
-    matches!(
-        inner,
-        "dependencies" | "dev-dependencies" | "build-dependencies"
-    ) || (inner.starts_with("target.")
-        && (inner.ends_with(".dependencies")
-            || inner.ends_with(".dev-dependencies")
-            || inner.ends_with(".build-dependencies")))
 }
 
 /// True iff `name` is a crate the patch-block writer knows a workspace
