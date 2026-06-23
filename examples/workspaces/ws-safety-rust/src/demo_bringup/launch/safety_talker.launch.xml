@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- phase-263 B1 (Track D) — the TALKER half of the cross-process E2E-safety demo.
+     In-process node-to-node delivery does not happen (same zenoh session; issue
+     0096), so the safety demo is split into two processes: this one boots the
+     talker (its publishes carry a backend-attached CRC when the entry bakes
+     safety-e2e); the sibling `safety_listener.launch.xml` boots `safe_listener`.
+     Boot with the `native_safety_talker_entry` pkg. -->
+<launch>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+</launch>

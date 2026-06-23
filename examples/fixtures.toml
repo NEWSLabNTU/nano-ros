@@ -132,6 +132,34 @@ bringup = "src/demo_bringup"
 entry = "native_entry"
 target_dir = "target-fixtures"
 
+# phase-263 B1 (Track D) — the cross-process E2E-safety demo. In-process node-to-node
+# delivery does not happen (same zenoh session; issue 0096), so the talker and
+# safe_listener run as two processes. Both entries bake `safety-e2e`, so the zenoh
+# backend attaches a CRC on publish and the listener validates it on receive;
+# safe_listener republishes the running CRC-VALIDATED count on `/safe_ok`. Consumed by
+# tests/safety_workspace_e2e.rs: a `/safe_ok` subscriber asserts the count climbs —
+# proving the E2E CRC attach→validate→integrity-read path. Each entry is 1 node (under
+# the default MAX_CBS, issue 0095).
+[[workspace_fixture]]
+id = "workspace-rust-native-safety-talker"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-safety-rust"
+bringup = "src/demo_bringup"
+entry = "native_safety_talker_entry"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-safety-listener"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-safety-rust"
+bringup = "src/demo_bringup"
+entry = "native_safety_listener_entry"
+target_dir = "target-fixtures"
+
 # Phase 211.F — per-host entries baked from `multihost.launch.xml` (talker on
 # robot1, listener on robot2). Same workspace + shared target-fixtures dir as
 # `workspace-rust-native`; consumed by tests/multihost_runtime_e2e.rs which

@@ -155,10 +155,18 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   `safety-e2e` features explicitly (`nros-board-native/safety-e2e` → backend CRC;
   `safe_listener_pkg/safety-e2e` → `nros/safety-e2e`, cargo-unified). `cargo build -p
   native_entry` links clean (38.7s). **First WORKSPACE demo of the E2E-safety
-  differentiator.** Remaining: runtime e2e test (Track D — corrupt a frame, assert the
-  fault counter); project to C/C++ (the `NANO_ROS_SAFETY_E2E` knob is wired by
-  phase-261 W5). Note: a bake build derives the `safety-e2e` features from `system.toml`
-  automatically (phase-261 W3); the hand-cargo entry sets them explicitly.
+  differentiator.** **Runtime e2e DONE (2026-06-23, Track D)** — but cross-process: the
+  combined `native_entry` (talker + safe_listener in one process) can't deliver in-process
+  (issue 0096 — a same-session subscriber never receives the same-process publisher), so
+  the demo splits into `native_safety_talker_entry` + `native_safety_listener_entry`
+  (one-node `safety_talker.launch.xml` / `safety_listener.launch.xml`, both baking
+  `safety-e2e`). `safe_listener` republishes the running count of CRC-**valid** messages
+  on `/safe_ok`; fixtures `workspace-rust-native-safety-{talker,listener}` +
+  `tests/safety_workspace_e2e.rs` assert a `/safe_ok` subscriber sees the count climb —
+  proving the E2E CRC attach→validate→`integrity().is_valid()`→republish path (PASS).
+  Remaining: project to C/C++ (the `NANO_ROS_SAFETY_E2E` knob is wired by phase-261 W5).
+  Note: a bake build derives the `safety-e2e` features from `system.toml` automatically
+  (phase-261 W3); the hand-cargo entries set them explicitly.
 - **B2 — `ws-realtime-<lang>`. RUST DONE (2026-06-20).** New `examples/workspaces/
   ws-realtime-rust`: a 10 ms control node on tier `high` + a 100 ms telemetry node on
   tier `low`. Each Node pkg declares `callback_groups = [{ id, tier }]` in Cargo

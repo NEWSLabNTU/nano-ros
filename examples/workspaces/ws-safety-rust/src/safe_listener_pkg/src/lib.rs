@@ -31,6 +31,13 @@ impl Node for SafeListener {
         let mut node = ctx.create_node(NodeOptions::new("safe_listener"))?;
         let _sub = node
             .create_subscription_for_callback_name_with_safety::<Int32>("on_chatter", "/chatter")?;
+        // Track D — republish the count of CRC-VALIDATED messages on `/safe_ok`, so a
+        // cross-process subscriber can observe the E2E-safety path end-to-end (the
+        // count climbs only while integrity is valid). The publisher is declared
+        // unconditionally; the gated `on_callback` body decides what reaches it.
+        let pub_ok = node.create_publisher_for_topic::<Int32>("/safe_ok")?;
+        node.callback_for_name("on_chatter")
+            .publishes_entity(&pub_ok)?;
         Ok(())
     }
 }
@@ -50,10 +57,16 @@ impl ExecutableNode for SafeListener {
             // The integrity status describes the message just received; present
             // only when the safety axis is compiled in (the `.safety()` opt-in +
             // the `safety-e2e` build feature). A non-ok CRC / sequence gap / dup
-            // bumps the fault counter.
+            // bumps the fault counter; a valid one republishes the running count on
+            // `/safe_ok` so a subscriber can assert the E2E CRC-validate path works.
             #[cfg(feature = "safety-e2e")]
             if let Some(status) = ctx.integrity() {
-                if !status.is_valid() {
+                if status.is_valid() {
+                    let msg = Int32 {
+                        data: state.received as i32,
+                    };
+                    let _ = ctx.publish_to_topic::<Int32, 8>("/safe_ok", &msg);
+                } else {
                     state.integrity_faults = state.integrity_faults.wrapping_add(1);
                 }
             }

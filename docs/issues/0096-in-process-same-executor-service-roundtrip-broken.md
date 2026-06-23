@@ -1,6 +1,6 @@
 ---
 id: 96
-title: "In-process (same-executor) declarative service round-trip: server never receives the client's request"
+title: "In-process (same-executor) node-to-node delivery does not happen — pub/sub AND service"
 status: open
 type: bug
 area: core
@@ -9,12 +9,21 @@ related: [phase-263]
 
 ## Summary
 
-When a declarative service **server** and **client** are registered on the **same**
-`Executor` (same process, same RMW session) and the client issues a blocking
-`TickCtx::call_for_name` from its `tick`, the server **never receives the request** —
-its `on_callback` does not fire, no reply is produced, and the client's bounded wait
-times out. Same-session pub/sub on the same executor works fine; only the service
-query→queryable path fails in-process.
+When two nodes are registered on the **same** `Executor` (same process, same RMW
+session), one node does **not** receive what the other sends. This affects **both**:
+
+- **Service round-trip:** a client issuing a blocking `TickCtx::call_for_name` to a
+  same-process server — the server's `on_callback` never fires, no reply, the client's
+  bounded wait times out.
+- **Pub/sub:** a subscriber node never receives a same-process publisher node's
+  messages — its subscription `on_callback` never fires (verified separately: a plain
+  in-process subscriber on a topic the same entry publishes gets **zero** callbacks,
+  while an *external* process subscribed to the same topic receives normally).
+
+So it is **not** service-specific (an earlier draft of this issue wrongly said
+"same-session pub/sub works" — it does not). The root cause is intra-session delivery:
+zenoh does not, by default, loop a session's own publications back to that session's own
+subscribers/queryables, and the nodes of one `nros::main!` entry share one session.
 
 Discovered running the never-before-run phase-263 A1 feature-showcase entry
 (`examples/workspaces/rust`, `native_showcase_entry`), which boots `add_server` and
@@ -52,12 +61,15 @@ outer spin.
 
 ## Impact
 
-A single-process workspace cannot host both a service server and a client of that
-service. The phase-263 A1 combined showcase (`showcase.launch.xml`) therefore cannot
-demonstrate the service round-trip in one entry. Phase-263 A1's service Track-D demo is
-restructured to be **cross-process** (separate server + client entries) — the supported
-topology, matching the working imperative cross-process service test
-(`native_api.rs::test_native_service_communication`).
+A single-process workspace cannot host two nodes that talk to each other — neither a
+service server+client, nor a publisher+subscriber. This affects every single-entry
+multi-node demo whose nodes are meant to communicate: the phase-263 A1 combined showcase
+(`showcase.launch.xml`), the B1 safety workspace (talker → safe_listener), and the basic
+talker+listener quickstart entry (the internal listener never receives — only an external
+process does). The phase-263 A1 service and B1 safety Track-D demos are therefore
+**cross-process** (separate entries) — the supported topology, matching the working
+imperative cross-process tests (`native_api.rs::test_native_service_communication`,
+`safety_e2e.rs`).
 
 ## Repro
 

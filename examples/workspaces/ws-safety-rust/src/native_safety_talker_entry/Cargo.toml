@@ -1,0 +1,28 @@
+[package]
+name = "native_safety_talker_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "phase-263 B1 — talker half of the cross-process E2E-safety demo."
+
+[[bin]]
+name = "native_safety_talker_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+# safety-e2e on the board → the zenoh backend attaches a CRC on publish, so the
+# cross-process safe_listener can validate it (issue 0096: in-process delivery does
+# not happen, hence the split). Talker side only attaches; no integrity read needed.
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = [
+    "rmw-zenoh",
+    "safety-e2e",
+] }
+talker_pkg = { path = "../talker_pkg", default-features = false }

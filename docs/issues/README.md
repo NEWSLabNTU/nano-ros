@@ -50,11 +50,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   opaque `NodeRegister("<pkg>")` with the underlying `BufferTooSmall` discarded; and the
   workspace-global cargo `[env]` is the only lever to raise it (bloats lean embedded
   entries). Found running the phase-263 A1 showcase.
-- **#96** — [In-process (same-executor) declarative service round-trip
-  broken](0096-in-process-same-executor-service-roundtrip-broken.md): a service server +
-  client on one `Executor`/session do not talk — the server never receives the
-  locally-issued query (bisected). Same-session pub/sub works. The phase-263 A1 service
-  demo is therefore cross-process (two entries).
+- **#96** — [In-process (same-executor) node-to-node delivery does not happen — pub/sub
+  AND service](0096-in-process-same-executor-service-roundtrip-broken.md): two nodes on
+  one `Executor`/session do not talk — a same-process subscriber/queryable never receives
+  the same-process publisher/client (zenoh does not loop a session's own publications back
+  to itself). External processes receive normally. The phase-263 A1 service and B1 safety
+  demos are therefore cross-process (separate entries).
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):
