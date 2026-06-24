@@ -1,0 +1,18 @@
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+# phase-263 B6 — in-workspace custom-message showcase. `custom_msgs` (a real ROS
+# interface package living under src/) is codegen'd by `nros ws sync`; both nodes
+# below consume the generated `custom_msgs/Reading` type. The listener echoes the
+# decoded sequence on /reading_seq.
+[[component]]
+pkg = "reading_talker_pkg"
+class = "reading_talker_pkg::ReadingTalker"
+name = "reading_talker"
+
+[[component]]
+pkg = "reading_listener_pkg"
+class = "reading_listener_pkg::ReadingListener"
+name = "reading_listener"

@@ -1,0 +1,24 @@
+# phase-263 B6 — in-workspace custom-message (RFC-0023 codegen) showcase.
+#
+# `src/custom_msgs/` is a real ROS 2 interface package (package.xml +
+# msg/Reading.msg) that lives INSIDE this workspace. `nros ws sync` runs the
+# nano-ros codegen pipeline over it and emits a `generated/custom_msgs` Rust
+# crate; the two Node pkgs depend on `custom_msgs = "*"` (resolved via the
+# auto-managed [patch.crates-io] in .cargo/config.toml). The differentiator no
+# starter workspace shows: define your OWN .msg schema in-tree and use it through
+# the ordinary typed publish/subscribe path.
+#
+# `custom_msgs` is an interface package (no Cargo.toml) so it is NOT a cargo
+# member — the pkg-index walks its package.xml; codegen produces the crate.
+
+[workspace]
+resolver = "2"
+members = [
+    "src/reading_talker_pkg",
+    "src/reading_listener_pkg",
+    "src/native_entry",
+]
+# `demo_bringup` + `custom_msgs` are declarative (no Cargo.toml) and are NOT members.
+
+[workspace.metadata.nros]
+default_system = "demo_bringup"

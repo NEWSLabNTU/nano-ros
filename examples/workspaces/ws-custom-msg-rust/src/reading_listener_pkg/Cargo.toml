@@ -1,0 +1,23 @@
+[package]
+name = "reading_listener_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — subscribes custom_msgs/Reading on /reading, republishes the sequence on /reading_seq."
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "reading_listener_pkg::ReadingListener"
+name = "reading_listener"
+default_namespace = "/"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+custom_msgs = "*"
+std_msgs = { version = "*", default-features = false }

@@ -1,0 +1,23 @@
+[package]
+name = "native_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the custom-message showcase on the native board."
+
+[[bin]]
+name = "native_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
+reading_talker_pkg = { path = "../reading_talker_pkg", default-features = false }
+reading_listener_pkg = { path = "../reading_listener_pkg", default-features = false }

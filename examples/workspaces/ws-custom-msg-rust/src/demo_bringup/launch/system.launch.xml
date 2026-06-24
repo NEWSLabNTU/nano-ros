@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- phase-263 B6 — custom-message launch. The node `name`s must match the
+     system.toml `[[component]].name`s (RFC-0032 §7 instance identity). -->
+<launch>
+    <node pkg="reading_talker_pkg" exec="reading_talker" name="reading_talker"/>
+    <node pkg="reading_listener_pkg" exec="reading_listener" name="reading_listener"/>
+</launch>

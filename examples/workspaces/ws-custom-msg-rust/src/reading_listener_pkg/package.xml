@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>reading_listener_pkg</name>
+  <version>0.1.0</version>
+  <description>Node pkg — subscribes custom_msgs/Reading, republishes the sequence on /reading_seq.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>custom_msgs</depend>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>
