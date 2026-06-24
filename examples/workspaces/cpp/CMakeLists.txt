@@ -21,6 +21,8 @@ nano_ros_workspace(
     SUBDIRS  src/talker_pkg
              src/listener_pkg
              src/native_entry
+             src/native_entry_robot1
+             src/native_entry_robot2
     # Phase 219.D — `src/native_entry/CMakeLists.txt` calls
     # `nano_ros_entry(LAUNCH "demo_bringup:system.launch.xml")`. The
     # cmake fn shells `nros codegen entry --lang cpp` at configure

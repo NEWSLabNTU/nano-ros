@@ -219,7 +219,7 @@ Give the starter C/C++/mixed workspaces the embedded entries Rust already has
 (freertos / nuttx / zephyr / esp32 / threadx) + a `multihost.launch.xml` + robot1/2
 deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
 
-- **C1 — multihost (the cheap, native-verifiable half). C DONE (2026-06-25).**
+- **C1 — multihost (the cheap, native-verifiable half). C / C++ / mixed DONE (2026-06-25).**
   **Finding:** the C/C++ CMake path had **no host-partition support** — `nano_ros_entry`
   (and `NROS_MAIN_C`) took no host arg, so a C entry baked the *whole* launch, never a
   per-host subset. But `nros codegen entry --host <id>` already exists and is
@@ -233,7 +233,12 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
   `workspace-c-native-robot{1,2}` + `tests/c_multihost_e2e.rs` boot both as two processes
   and assert robot2 (listener-only host entry) receives robot1's `/chatter` (PASS). Also
   line-buffered the C listener's stdout (`setvbuf _IOLBF`) so piped output is observable
-  live. **C++ + mixed multihost follow next (same passthrough).**
+  live. **C++ + mixed followed the same passthrough:** `cpp_multihost_e2e.rs` (talker
+  robot1 → listener robot2) and `mixed_multihost_e2e.rs` (C talker + Rust heartbeat on
+  robot1, C++ listener on robot2 — a genuinely mixed-language two-host topology; partition
+  verified: robot1 TU = c_talker + rust_heartbeat, robot2 = cpp_listener) both PASS, with
+  fixtures `workspace-{cpp,mixed}-native-robot{1,2}`. So all three CMake workspaces now
+  reach Rust's multihost parity from the single `HOST` passthrough.
   Remaining: embedded entries (C2 — the harder, uncharted CMake half).
 
 ### Track D — Tests (close the C/C++/mixed gap)

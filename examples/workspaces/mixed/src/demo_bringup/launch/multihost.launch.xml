@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- phase-263 Track C — multi-host launch (mixed C/C++/Rust parity): the C talker and
+     Rust heartbeat run on `robot1`, the C++ listener on `robot2` (`<node machine="…">`).
+     The CMake `nano_ros_entry(HOST <id> …)` passthrough bakes `native_entry_robot1`
+     with talker+heartbeat (C + Rust) and `native_entry_robot2` with the listener (C++) —
+     a genuinely mixed-language multi-host topology. -->
+<launch>
+  <node pkg="c_talker_pkg" exec="talker" name="talker" machine="robot1"/>
+  <node pkg="rust_heartbeat_pkg" exec="heartbeat" name="heartbeat" machine="robot1"/>
+  <node pkg="cpp_listener_pkg" exec="listener" name="listener" machine="robot2"/>
+</launch>

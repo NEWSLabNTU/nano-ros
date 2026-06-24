@@ -11,4 +11,6 @@ nano_ros_workspace(
     SUBDIRS  src/c_talker_pkg
              src/cpp_listener_pkg
              src/rust_heartbeat_pkg
-             src/native_entry)
+             src/native_entry
+             src/native_entry_robot1
+             src/native_entry_robot2)

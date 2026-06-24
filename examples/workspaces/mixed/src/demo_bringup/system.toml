@@ -17,3 +17,17 @@ name = "listener"
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
+
+# phase-263 Track C — per-host deploy targets for the multi-host launch
+# (`launch/multihost.launch.xml`: C talker + Rust heartbeat on robot1, C++ listener on
+# robot2). `native_entry_robot{1,2}` bake each host's nodes via the
+# `nano_ros_entry(HOST <id> …)` codegen partition.
+[deploy.robot1]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+launch = "multihost.launch.xml"
+
+[deploy.robot2]
+kind = "self"
+target = "x86_64-unknown-linux-gnu"
+launch = "multihost.launch.xml"

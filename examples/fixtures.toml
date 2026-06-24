@@ -391,6 +391,30 @@ entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 Track C — per-host C++ entries for the multihost demo (HOST partition of
+# multihost.launch.xml). Consumed by tests/cpp_multihost_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-native-robot1"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "native_entry_robot1"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-robot2"
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "native_entry_robot2"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 [[workspace_fixture]]
 id = "workspace-mixed-native"
 platform = "native"
@@ -399,6 +423,31 @@ rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 entry = "native_entry"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+# phase-263 Track C — per-host mixed entries for the multihost demo. robot1 bakes the C
+# talker + Rust heartbeat, robot2 the C++ listener (HOST partition of
+# multihost.launch.xml). Consumed by tests/mixed_multihost_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-mixed-native-robot1"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/mixed"
+bringup = "src/demo_bringup"
+entry = "native_entry_robot1"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-mixed-native-robot2"
+platform = "native"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/mixed"
+bringup = "src/demo_bringup"
+entry = "native_entry_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 

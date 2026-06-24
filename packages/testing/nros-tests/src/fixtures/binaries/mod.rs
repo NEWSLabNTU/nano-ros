@@ -234,8 +234,16 @@ static NATIVE_WORKSPACE_C_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new
 /// Cached path to the native C++ workspace Entry pkg binary.
 static NATIVE_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 Track C — cached paths to the per-host C++ multihost entries.
+static NATIVE_WORKSPACE_CPP_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native mixed C/C++ workspace Entry pkg binary.
 static NATIVE_WORKSPACE_MIXED_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// phase-263 Track C — cached paths to the per-host mixed multihost entries.
+static NATIVE_WORKSPACE_MIXED_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_MIXED_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Build the qemu-test example and return its path
 ///
@@ -833,11 +841,55 @@ pub fn build_native_workspace_cpp_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// phase-263 Track C — the robot1 (talker) per-host C++ multihost entry (cached).
+pub fn build_native_workspace_cpp_entry_robot1() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_ENTRY_ROBOT1_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry("workspace-cpp-native-robot1", "cpp", "native_entry_robot1")
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 Track C — the robot2 (listener) per-host C++ multihost entry (cached).
+pub fn build_native_workspace_cpp_entry_robot2() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_ENTRY_ROBOT2_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry("workspace-cpp-native-robot2", "cpp", "native_entry_robot2")
+        })
+        .map(|p| p.as_path())
+}
+
 /// Native mixed C/C++ workspace Entry pkg fixture.
 pub fn build_native_workspace_mixed_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_MIXED_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry("workspace-mixed-native", "mixed", "native_entry")
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 Track C — the robot1 (C talker + Rust heartbeat) per-host mixed entry.
+pub fn build_native_workspace_mixed_entry_robot1() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_ENTRY_ROBOT1_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-mixed-native-robot1",
+                "mixed",
+                "native_entry_robot1",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 Track C — the robot2 (C++ listener) per-host mixed entry.
+pub fn build_native_workspace_mixed_entry_robot2() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_ENTRY_ROBOT2_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-mixed-native-robot2",
+                "mixed",
+                "native_entry_robot2",
+            )
         })
         .map(|p| p.as_path())
 }
