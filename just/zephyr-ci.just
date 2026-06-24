@@ -126,7 +126,7 @@ build-fixtures:
         if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ "$pkg" -nt "$stamp" ] || [ ! -d "$dir/generated" ]; then
             echo "    ws sync: $dir"
             mkdir -p "$dir/build"
-            NROS_REPO_DIR="$(pwd)" "$nros_cli" ws sync "$dir"
+            NROS_REPO_DIR="$(pwd)" "$nros_cli" sync "$dir"
             NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$dir"
             touch "$stamp"
         fi
@@ -230,7 +230,7 @@ build-fixtures:
     if [ -d examples/workspaces/rust/src/zephyr_entry ]; then
         echo "  → workspace-entry prep (nros ws sync + codegen-system)"
         ( cd examples/workspaces/rust
-          NROS_REPO_DIR="$nros_root" "$nros_cli" ws sync >/dev/null
+          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null
           NROS_REPO_DIR="$nros_root" "$nros_cli" codegen-system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
     fi
 

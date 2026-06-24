@@ -184,8 +184,8 @@ source ./activate.sh
 
 # Provision message bindings once. This is platform-agnostic workspace
 # provisioning (sibling to `west update` / `rosdep`), NOT a compile step —
-# the same `nros ws sync` output feeds every board and every RMW.
-nros ws sync
+# the same `nros sync` output feeds every board and every RMW.
+nros sync
 
 # west is the build verb. Choose the board with `-b`, and select the RMW with
 # the matching Kconfig overlay via -DCONF_FILE. The Entry source never changes.

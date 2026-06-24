@@ -178,7 +178,7 @@ build-fixture-rust:
               action-client custom-transport-talker custom-transport-listener; do
         dir="examples/native/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
-        NROS_REPO_DIR="$nros_repo_root" "$nros_cli" ws sync "$dir" >/dev/null
+        NROS_REPO_DIR="$nros_repo_root" "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh native rust
@@ -205,7 +205,7 @@ build-fixture-rust-core:
               action-client custom-transport-talker custom-transport-listener; do
         dir="examples/native/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
-        NROS_REPO_DIR="$nros_repo_root" "$nros_cli" ws sync "$dir" >/dev/null
+        NROS_REPO_DIR="$nros_repo_root" "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh native rust --core-only
@@ -248,7 +248,7 @@ build-fixture-extras:
                 # Phase 214.J.2 — also wipe `generated/` if trait surface
                 # has drifted since the previous sync.
                 NROS_REPO_DIR="$repo_root" nros_codegen_stamp_check_or_wipe "examples/$1"
-                NROS_REPO_DIR="$repo_root" "$nros_cli" ws sync "examples/$1" >/dev/null
+                NROS_REPO_DIR="$repo_root" "$nros_cli" sync "examples/$1" >/dev/null
                 NROS_REPO_DIR="$repo_root" nros_codegen_stamp_write "examples/$1" ;;
         esac
     }

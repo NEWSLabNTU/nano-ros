@@ -267,7 +267,7 @@ compile the Node pkgs and Entry pkg:
 
 ```bash
 # From examples/workspaces/rust/ (or your workspace root):
-nros ws sync
+nros sync
 nros codegen-system --bringup demo_bringup
 cargo build -p native_entry
 ```

@@ -149,26 +149,40 @@ a `system.toml`.
 > was removed (phase-256): `config.toml` is retired (RFC-0004 §8) and no example
 > ships one. Embedded runtime config lives in `[package.metadata.nros.deploy.<t>]`.
 
-### `nros ws <subcommand>`
+### `nros sync`
 
-Workspace-level message-package utilities. Manages codegen for
-`*.msg` packages in a colcon-style `src/` tree and keeps
-`[patch.crates-io]` blocks in sync across Rust consumers.
+Codegen all `*.msg` packages + write the `[patch.crates-io]` config to match
+the declared deps — for a **standalone package** or a **colcon-style workspace**
+(picks single-pkg vs workspace mode by layout). The patch lands in each Rust
+consumer's `.cargo/config.toml` (phase-265 W5; never edits `Cargo.toml`).
+Pre-cargo step; run once after editing `*.msg` files, then `cargo build` works.
 
 ```sh
 eval "$(nros ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
-nros ws sync            # run codegen for all msg pkgs + write [patch.crates-io]
+nros sync               # codegen msg pkgs + write [patch.crates-io] → .cargo/config.toml
+```
+
+`nros generate-rust` stays the low-level codegen-only primitive (no patch side
+effects). `nros ws sync` is a deprecated hidden alias for `nros sync` (one
+release cycle; emits a deprecation note).
+
+### `nros ws <subcommand>`
+
+Workspace-level message-package utilities (the `env` / `status` / `list` /
+`clean` / `doctor` helpers; `sync` was promoted to top-level `nros sync`).
+
+```sh
+eval "$(nros ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
 nros ws status          # freshness check (non-fatal): n up-to-date / n stale / n missing
 nros ws list            # list discovered msg + Rust-consumer pkgs
-nros ws clean           # remove generated/ + auto-managed patch blocks
+nros ws clean           # remove generated/ + auto-managed patch entries
 nros ws doctor          # lint workspace pkgs (package.xml markers, stale patches, …)
 ```
 
 | Subcommand | Description |
 |---|---|
 | `env` | Print shell export adding `<dir>` (default `./src`) to `NROS_INTERFACE_SEARCH_PATH` |
-| `sync` | Codegen workspace msg pkgs + write `[patch.crates-io]` into each Rust consumer's patch authority `.cargo/config.toml` (phase-265; never edits `Cargo.toml`). Pre-cargo step; run once after editing `*.msg` files |
-| `status` | Non-fatal freshness check — sibling of `sync --check` |
+| `status` | Non-fatal freshness check — sibling of `nros sync --check` |
 | `list` | List discovered msg + Rust-consumer pkgs (kind, name, dir per row) |
 | `clean` | Remove `generated/` + auto-managed `[patch.crates-io]` entries from each `.cargo/config.toml`; leaves user-written keys + sections alone |
 | `doctor` | Lint: warn on missing `<member_of_group> rosidl_interface_packages</member_of_group>`, malformed `package.xml`, missing nros-managed `[patch.crates-io]` entries in the authority `.cargo/config.toml` |

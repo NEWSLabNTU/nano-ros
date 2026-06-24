@@ -1281,7 +1281,7 @@ acceptance: setup-cli
     rm -rf "$work"; mkdir -p "$work"; cd "$work"
     NROS_REPO_DIR="$repo" "$nros" new accept_app --platform native --lang rust --use-case talker
     cd accept_app
-    NROS_REPO_DIR="$repo" "$nros" ws sync . >/dev/null 2>&1 || true
+    NROS_REPO_DIR="$repo" "$nros" sync . >/dev/null 2>&1 || true
     NROS_REPO_DIR="$repo" "$nros" build
     timeout 10 target/debug/accept_app 2>&1 | grep -q "accept_app"
     echo "acceptance OK."

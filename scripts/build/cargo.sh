@@ -173,22 +173,25 @@ nros_cargo_ensure_codegen_c() {
     nros_cargo_codegen_c_bin >/dev/null
 }
 
-# Phase 214.I.2 — probe whether the installed `nros` CLI exposes the `ws sync`
-# verb (added post-0.3.7 by Phase 210.D.1 / 210.E.3.d.native). The shipped
-# 0.3.7 release predates `ws sync`; without this guard every fixture-build
-# recipe cascades into a noisy `clap` "unrecognized subcommand 'ws'" stack.
+# Phase 214.I.2 — probe whether the installed `nros` CLI exposes the `sync`
+# verb (added post-0.3.7 by Phase 210.D.1 / 210.E.3.d.native; promoted from
+# `nros ws sync` to top-level `nros sync` by phase-265 W5). The shipped 0.3.7
+# release predates it; without this guard every fixture-build recipe cascades
+# into a noisy `clap` "unrecognized subcommand" stack.
 #
-# Returns 0 if `ws sync` is available, 1 otherwise. Argument: optional path
-# to the `nros` binary (defaults to `$(nros_cli_bin)`).
+# Returns 0 if `sync` is available, 1 otherwise. Argument: optional path
+# to the `nros` binary (defaults to `$(nros_cli_bin)`). Accepts either the
+# new top-level `nros sync` or the deprecated `nros ws sync` alias.
 nros_cli_ws_sync_available() {
     local bin="${1:-}"
     if [ -z "$bin" ]; then
         bin="$(nros_cli_bin 2>/dev/null)" || return 1
     fi
     [ -x "$bin" ] || return 1
-    # `nros help ws` exits non-zero on stock 0.3.7 (no such verb); the
-    # grep on the failure path returns 1 too, so the chained pipe is safe.
-    "$bin" help ws 2>/dev/null | grep -q '^[[:space:]]*sync\b'
+    # Top-level `nros sync` (phase-265) OR the hidden `ws sync` alias. The
+    # grep on a failure path returns 1 too, so the chained pipes are safe.
+    "$bin" help 2>/dev/null | grep -q '^[[:space:]]*sync\b' ||
+        "$bin" help ws 2>/dev/null | grep -q '^[[:space:]]*sync\b'
 }
 
 # Phase 214.I.2 — fail-loud guard. Call once at the top of any recipe /

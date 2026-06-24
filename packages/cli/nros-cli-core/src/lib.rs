@@ -34,6 +34,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::New(args) => cmd::new::run(args),
         cmd::Cmd::Generate(args) => cmd::generate::run(args),
         cmd::Cmd::GenerateRust(args) => cmd::generate::run_rust(args),
+        cmd::Cmd::Sync(args) => cmd::ws::run_sync(args),
         cmd::Cmd::GeneratePx4Msgs(args) => cmd::generate_px4::run(args),
         cmd::Cmd::Codegen(args) => cmd::codegen::run(args),
         cmd::Cmd::CodegenSystem(args) => cmd::codegen_system::run(args),

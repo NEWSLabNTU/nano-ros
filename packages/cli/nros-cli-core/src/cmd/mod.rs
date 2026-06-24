@@ -48,6 +48,14 @@ pub enum Cmd {
     #[command(name = "generate-rust")]
     GenerateRust(generate::RustArgs),
 
+    /// Sync generated msg bindings + the `[patch.crates-io]` config to the
+    /// declared deps (`package.xml` / `Cargo.toml`) — for a standalone pkg
+    /// or a workspace (picks single-pkg vs colcon mode by layout). Writes the
+    /// patch into each Rust consumer's `.cargo/config.toml` (never `Cargo.toml`).
+    /// Pre-cargo step; run after editing `*.msg` files. Phase-265 W5 — replaces
+    /// `nros ws sync`. (`nros generate-rust` stays the codegen-only primitive.)
+    Sync(ws::SyncArgs),
+
     /// Generate CDR `px4_msgs::msg::*` from a PX4-Autopilot `.msg` tree (no
     /// ament dep) for the XRCE companion path (Phase 233 / RFC-0039 Track B).
     #[command(name = "generate-px4-msgs")]

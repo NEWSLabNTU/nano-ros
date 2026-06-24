@@ -38,7 +38,7 @@ if grep -nE '(nros|nros-board[a-z0-9-]*)\s*=\s*\{[^}]*version\s*=\s*"0\.1"' "$pr
 fi
 
 echo "::group::nros ws sync (NROS_REPO_DIR=${REPO})"
-( cd "$proj" && NROS_REPO_DIR="$REPO" "$NROS" ws sync )
+( cd "$proj" && NROS_REPO_DIR="$REPO" "$NROS" sync )
 echo "::endgroup::"
 
 # The managed patch block must redirect both `nros` and the board crate to paths.

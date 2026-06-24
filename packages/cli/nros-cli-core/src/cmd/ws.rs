@@ -46,9 +46,10 @@ pub enum Sub {
     /// `NROS_INTERFACE_SEARCH_PATH`. `eval "$(nros ws env)"`.
     Env(EnvArgs),
 
-    /// Codegen workspace msg pkgs + write `[patch.crates-io]` block into
-    /// each Rust consumer's patch authority Cargo.toml. Pre-cargo step;
-    /// run once after editing `*.msg` files, then `cargo build` works.
+    /// DEPRECATED alias for `nros sync` (phase-265 W5). Kept for one release
+    /// cycle. Hidden from help; emits a one-line deprecation note then runs
+    /// the same codegen + `.cargo/config.toml` patch sync.
+    #[command(hide = true)]
     Sync(SyncArgs),
 
     /// List discovered msg + rust-consumer pkgs in the workspace (or
@@ -160,7 +161,10 @@ pub struct DoctorArgs {
 pub fn run(args: Args) -> Result<()> {
     match args.command {
         Sub::Env(a) => run_env(a),
-        Sub::Sync(a) => run_sync(a),
+        Sub::Sync(a) => {
+            eprintln!("note: `nros ws sync` is deprecated; use `nros sync` (phase-265).");
+            run_sync(a)
+        }
         Sub::List(a) => run_list(a),
         Sub::Status(a) => run_status(a),
         Sub::Clean(a) => run_clean(a),
@@ -256,7 +260,7 @@ struct WsPkg {
     is_patch_consumer: bool,
 }
 
-fn run_sync(args: SyncArgs) -> Result<()> {
+pub fn run_sync(args: SyncArgs) -> Result<()> {
     let ws_root: PathBuf = match args.workspace {
         Some(p) => {
             std::fs::canonicalize(&p).wrap_err_with(|| format!("ws sync: {}", p.display()))?

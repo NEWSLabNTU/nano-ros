@@ -71,7 +71,7 @@ for root in "${ws_roots[@]}"; do
         find "$root/src" -mindepth 2 -maxdepth 2 -type d -name generated -exec rm -rf {} + 2>/dev/null || true
     fi
     echo "  ws sync: ${root#"$PWD"/}"
-    "$NROS" ws sync "$root" >/dev/null
+    "$NROS" sync "$root" >/dev/null
 done
 
 # --- 2. standalone examples: per-package `generated/` (skip workspace members) ---

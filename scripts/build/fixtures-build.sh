@@ -221,7 +221,7 @@ else
             # has drifted since the previous `ws sync`. Prevents the
             # stale-3-type-action shape that Phase 214.J first surfaced.
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$dir"
-            NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws sync "$dir" >/dev/null
+            NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync "$dir" >/dev/null
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$dir"
             # Phase 214.M.2 — fix up the rendered `.cargo/config.toml`
             # for NuttX fixtures (no-op for other platforms).
@@ -253,7 +253,7 @@ else
         grep -q '^\[package\.metadata\.nros\.node\]' "$pkgdir/Cargo.toml" || continue
         echo "  → (node-pkg codegen) $pkgdir"
         NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$pkgdir"
-        NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws sync "$pkgdir" >/dev/null
+        NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync "$pkgdir" >/dev/null
         NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$pkgdir"
     done < <(find "examples/$platform" -name package.xml -type f 2>/dev/null)
     run nros_fixture_build_one

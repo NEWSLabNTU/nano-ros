@@ -202,7 +202,7 @@ build-fvp-aemv8r-cyclonedds-rust:
     source "$nros_root/scripts/build/codegen-stamp.sh"
     echo "  → ws sync: $src"
     NROS_REPO_DIR="$nros_root" nros_codegen_stamp_check_or_wipe "$src"
-    NROS_REPO_DIR="$nros_root" "$codegen_tool" ws sync "$src"
+    NROS_REPO_DIR="$nros_root" "$codegen_tool" sync "$src"
     NROS_REPO_DIR="$nros_root" nros_codegen_stamp_write "$src"
     # The build path uses /opt/ros/humble/share/std_msgs for the Cyclone
     # descriptor codegen (`nros_rmw_cyclonedds_generate_from_msg`); same

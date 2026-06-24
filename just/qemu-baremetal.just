@@ -86,7 +86,7 @@ build:
         if [ -f "$dir/package.xml" ]; then
             echo "  ws sync $dir"
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-            NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
+            NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
     done
@@ -110,7 +110,7 @@ build:
         # the generated/ [patch.crates-io] path.
         if [ -f "$dir/package.xml" ]; then
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-            NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
+            NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
         (cd "$dir" && cargo build $cargo_profile_args)

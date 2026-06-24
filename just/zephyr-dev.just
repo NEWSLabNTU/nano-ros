@@ -66,7 +66,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         # Phase 214.J.2 — wipe `generated/` on trait-surface drift before sync.
         source "$(pwd)/scripts/build/codegen-stamp.sh"
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_check_or_wipe "$src"
-        NROS_REPO_DIR="$(pwd)" "$codegen_tool" ws sync "$src"
+        NROS_REPO_DIR="$(pwd)" "$codegen_tool" sync "$src"
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$src"
         ;;
     esac

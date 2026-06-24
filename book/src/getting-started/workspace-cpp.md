@@ -20,7 +20,7 @@ changes language-side is the cmake-fn / macro surface.
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
 | **Entry pkg** | `src/main.rs` with `nros::main!(launch = "demo_bringup:system.launch.xml")` | `src/main.cpp` with `NROS_MAIN(nros::board::NativeBoard, "demo_bringup:system.launch.xml")`; `CMakeLists.txt` calling `nano_ros_entry(NAME … LAUNCH "demo_bringup:system.launch.xml" DEPLOY native)` |
 | **Workspace root** | `Cargo.toml [workspace] members = […]` | `CMakeLists.txt` calling `nano_ros_workspace(BACKEND zenoh PLATFORM posix SUBDIRS src/talker_pkg src/listener_pkg src/native_entry)` |
-| **Build** | `nros ws sync` + `cargo build -p native_entry` | `nros ws sync` + `cmake -S . -B build` + `cmake --build build` |
+| **Build** | `nros sync` + `cargo build -p native_entry` | `nros sync` + `cmake -S . -B build` + `cmake --build build` |
 | **Boot** | `cargo run -p native_entry` | `./build/.../native_entry` |
 
 The reference C++ workspace ships in-tree at
@@ -236,7 +236,7 @@ $ nros new my-entry --lang cpp --platform native
 ## Build + boot
 
 ```bash
-nros ws sync
+nros sync
 nros codegen-system --bringup demo_bringup
 cmake -S . -B build -DNANO_ROS_ROOT=<path-to-nano-ros>
 cmake --build build

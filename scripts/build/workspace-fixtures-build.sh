@@ -87,7 +87,7 @@ build_workspace() {
         [ -n "$codegen_out" ] && mkdir -p "$(dirname "$codegen_out")"
 
         echo "     nros ws sync"
-        "$nros_cli" ws sync >/dev/null
+        "$nros_cli" sync >/dev/null
 
         # Phase 225.O — `nros ws sync` strips the board-template
         # `[patch.crates-io] libc` from the rendered `.cargo/config.toml`,

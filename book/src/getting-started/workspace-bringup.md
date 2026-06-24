@@ -243,7 +243,7 @@ Both `nros check` forms pass for the canonical template at
 
 `examples/workspaces/rust/` is the canonical Rust 3-role workspace that pairs
 with this guide. Copy the whole directory out and rename the packages.
-`nros ws sync` materializes generated message crates, `nros codegen-system`
+`nros sync` materializes generated message crates, `nros codegen-system`
 bakes the Bringup package, and `cargo build -p native_entry` builds the Entry
 pkg.
 

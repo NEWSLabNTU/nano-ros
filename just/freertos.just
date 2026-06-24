@@ -88,7 +88,7 @@ build-examples:
         action-server_entry action-client_entry; do
         dir="examples/qemu-arm-freertos/rust/$example"
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-        NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
+        NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
     bash scripts/build/fixtures-build.sh freertos rust zenoh
