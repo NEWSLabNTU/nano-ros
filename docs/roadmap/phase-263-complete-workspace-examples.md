@@ -107,8 +107,21 @@ default. Sequence so each wave is shippable on its own.
   macro emits `apply_lifecycle` → the runtime registers the 5 REP-2002 services + drives
   Configure→Activate. `cargo build -p native_entry` links clean. (Transition-callback
   hooks on the declarative node are still a separate gap; this is the managed-node demo.)
-- **A4 — actions.** `action_server_pkg` + `action_client_pkg` (Fibonacci). Port from
-  `examples/native/{rust,…}/action-*`.
+- **A4 — actions. RUST DONE (2026-06-24).** Added `action_server_pkg` (declarative
+  `FibonacciServer`: `create_action_server_for_name_with_callbacks::<Fibonacci>`, goal/cancel
+  decisions in `on_callback`, feedback + `complete_goal` driven from `tick` via
+  `for_each_active_goal_for_name`) + `action_client_pkg` (declarative `FibonacciClient`:
+  `create_action_client_with_callbacks_for_name::<Fibonacci>`, one-shot `send_goal_for_name`
+  gated by a `sent` flag in `tick`, result/feedback in `on_callback`). Both ported from the
+  declarative `examples/qemu-arm-baremetal/rust/action_server_rtic_pkg` + `examples/zephyr/
+  rust/action-client` references. Wired into the showcase (workspace members, `system.toml`
+  components, `showcase.launch.xml` nodes, `native_showcase_entry` deps). Result is
+  republished on `/fib_result` (Int32) so it is observable on the wire — the workspace shape
+  inits no log sink yet (A5). `cargo build -p native_showcase_entry` links all six pkgs clean
+  (13.6s); both new pkgs clippy-clean. Known limitation (shared with the rtic reference): the
+  app-node shape does not surface the goal payload at tick time, so the server emits a
+  fixed-`ORDER = 10` sequence matching the client's goal rather than the per-goal requested
+  order. Remaining: runtime e2e test (Track D); project to C/C++ + embedded entries (Track C).
 - **A5 — logging. GATED (2026-06-20, issue 0089 #5).** A node logs via `nros_info!`,
   but neither `nros::main!` nor the board inits the `nros-log` sink, and a
   board-agnostic Node pkg can't pick the (board-specific) sink — so node logs go

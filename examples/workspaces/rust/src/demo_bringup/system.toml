@@ -34,6 +34,20 @@ pkg = "service_client_pkg"
 class = "service_client_pkg::AddClient"
 name = "add_client"
 
+# phase-263 A4 — action round-trip components. Like the service pair, only the
+# `showcase.launch.xml` runs them. `fibonacci_client` sends one goal to
+# `fibonacci_server` on /fibonacci and republishes the final number on
+# /fib_result.
+[[component]]
+pkg = "action_server_pkg"
+class = "action_server_pkg::FibonacciServer"
+name = "fibonacci_server"
+
+[[component]]
+pkg = "action_client_pkg"
+class = "action_client_pkg::FibonacciClient"
+name = "fibonacci_client"
+
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"

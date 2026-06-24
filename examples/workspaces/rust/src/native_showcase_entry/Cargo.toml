@@ -28,3 +28,5 @@ talker_pkg = { path = "../talker_pkg", default-features = false }
 listener_pkg = { path = "../listener_pkg", default-features = false }
 service_server_pkg = { path = "../service_server_pkg", default-features = false }
 service_client_pkg = { path = "../service_client_pkg", default-features = false }
+action_server_pkg = { path = "../action_server_pkg", default-features = false }
+action_client_pkg = { path = "../action_client_pkg", default-features = false }

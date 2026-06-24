@@ -16,6 +16,8 @@ members = [
     "src/listener_pkg",
     "src/service_server_pkg",
     "src/service_client_pkg",
+    "src/action_server_pkg",
+    "src/action_client_pkg",
     "src/native_entry",
     "src/native_showcase_entry",
     "src/native_entry_robot1",

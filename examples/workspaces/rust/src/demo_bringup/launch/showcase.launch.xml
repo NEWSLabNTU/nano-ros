@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
 <!-- phase-263 — feature-showcase launch: the minimal talker/listener plus the
      service round-trip (add_client calls add_server, republishes the sum on
-     /sum). Boot it with the `native_showcase_entry` pkg, or
+     /sum), and the action round-trip (fibonacci_client sends a goal to
+     fibonacci_server, republishes the final number on /fib_result). Boot it with the `native_showcase_entry` pkg, or
      `nros::main!(launch = "demo_bringup:showcase.launch.xml")`. The default
      `system.launch.xml` stays the minimal talker+listener quickstart. -->
 <launch>
@@ -9,4 +10,6 @@
   <node pkg="listener_pkg" exec="listener" name="listener"/>
   <node pkg="service_server_pkg" exec="add_server" name="add_server"/>
   <node pkg="service_client_pkg" exec="add_client" name="add_client"/>
+  <node pkg="action_server_pkg" exec="fibonacci_server" name="fibonacci_server"/>
+  <node pkg="action_client_pkg" exec="fibonacci_client" name="fibonacci_client"/>
 </launch>
