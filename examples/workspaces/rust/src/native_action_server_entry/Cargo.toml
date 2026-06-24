@@ -1,0 +1,22 @@
+[package]
+name = "native_action_server_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "phase-263 A4 — server half of the cross-process Fibonacci action demo."
+
+[[bin]]
+name = "native_action_server_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "native"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-board-native = { path = "../../../../../packages/boards/nros-board-native", features = ["rmw-zenoh"] }
+action_server_pkg = { path = "../action_server_pkg", default-features = false }

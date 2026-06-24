@@ -115,6 +115,33 @@ bringup = "src/demo_bringup"
 entry = "native_service_client_entry"
 target_dir = "target-fixtures"
 
+# phase-263 A4 (Track D) — the cross-process Fibonacci action round-trip. The combined
+# showcase wires fibonacci_server + fibonacci_client into one entry, but in-process
+# node-to-node delivery does not happen (issue 0096), so the runtime round-trip runs the
+# server and client as two pure-cargo `nros::main!` entries booting one-node launches:
+# `native_action_server_entry` (the /fibonacci server) + `native_action_client_entry`
+# (sends a goal, republishes the result's last sequence element — 55 — on /fib_result).
+# Consumed by tests/action_roundtrip_xprocess_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-rust-native-action-server"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "native_action_server_entry"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-action-client"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+entry = "native_action_client_entry"
+target_dir = "target-fixtures"
+
 # phase-263 B2 (Track D) — the real-time multi-tier workspace. Pure-cargo
 # `nros::main!(launch = "demo_bringup")` resolves the 2-tier table ([tiers.high] +
 # [tiers.low]) and emits the multi-tier `run_tiers` entry. The high-tier control

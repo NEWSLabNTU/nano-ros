@@ -146,7 +146,13 @@ default. Sequence so each wave is shippable on its own.
   (13.6s); both new pkgs clippy-clean. Known limitation (shared with the rtic reference): the
   app-node shape does not surface the goal payload at tick time, so the server emits a
   fixed-`ORDER = 10` sequence matching the client's goal rather than the per-goal requested
-  order. Remaining: runtime e2e test (Track D); project to C/C++ + embedded entries (Track C).
+  order. **Runtime e2e DONE (2026-06-24, Track D) — cross-process.** The combined showcase
+  boots the pair in one entry, but in-process node-to-node delivery does not happen (issue
+  0096), so the round-trip runs as two processes: new `native_action_server_entry` +
+  `native_action_client_entry` (one-node `action_server.launch.xml` /
+  `action_client.launch.xml`), fixtures `workspace-rust-native-action-{server,client}`, and
+  `tests/action_roundtrip_xprocess_e2e.rs` asserts a `/fib_result` subscriber sees the
+  result's last element `55` (PASS). Remaining: project to C/C++ + embedded entries (Track C).
 - **A5 — logging. RUST DONE (2026-06-24, Track D).** Was gated on the board not
   initing a sink; **phase-264 W3 fixed that** (`nros-board-posix` calls
   `nros_log::init(sinks::default())` at boot). So the ws-rust `talker_pkg` now logs
