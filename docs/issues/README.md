@@ -56,6 +56,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   the same-process publisher/client (zenoh does not loop a session's own publications back
   to itself). External processes receive normally. The phase-263 A1 service and B1 safety
   demos are therefore cross-process (separate entries).
+- **#97** — [`nros codegen entry` (C/C++) is native-only — no embedded board
+  runners](0097-codegen-entry-cpp-native-only-no-embedded-runners.md): the multi-node LAUNCH
+  entry emitter always emits `int main()` → `nros_board_native_run_components`, so a CMake
+  workspace Entry can't target an embedded board (links but SIGSEGVs under the RTOS startup).
+  The single-node `node_register` carrier emits board-correct shapes via per-platform templates;
+  the LAUNCH emitter needs the same. Blocks phase-263 C2 (embedded C/C++/mixed workspace
+  entries). Includes two ready-to-reapply cmake fixes found during the C2a spike.
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):

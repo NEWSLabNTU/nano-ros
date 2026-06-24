@@ -288,7 +288,57 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
   verified: robot1 TU = c_talker + rust_heartbeat, robot2 = cpp_listener) both PASS, with
   fixtures `workspace-{cpp,mixed}-native-robot{1,2}`. So all three CMake workspaces now
   reach Rust's multihost parity from the single `HOST` passthrough.
-  Remaining: embedded entries (C2 — the harder, uncharted CMake half).
+- **C2 — embedded entries (freertos / nuttx / zephyr / threadx; esp32 skipped). DESIGN
+  LOCKED (2026-06-25); C2a in progress.** Two-agent framework exploration found the
+  embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
+  just two gaps + wiring:
+  - **The embedded carrier mechanism already exists** in `nano_ros_node_register`
+    (`cmake/NanoRosNodeRegister.cmake` ThreadX 471–552 / FreeRTOS 572–640 / NuttX 374–458):
+    synthesize a carrier `add_executable`, link `NanoRos::NanoRosCpp`, then call
+    `nros_platform_link_app(target)` — which pulls the board's startup source, app_define,
+    linker script, kernel+netstack umbrella, and RMW stub. Platform/board overlays
+    (`cmake/{platform,board}/*.cmake`) + toolchain files (`cmake/toolchain/*`) all exist.
+  - **Gap 1 (the core change): `nano_ros_entry` has NO embedded link path.** Its
+    LAUNCH-codegen executable only calls `nros_platform_link_app` when
+    `NANO_ROS_PLATFORM == posix` (`NanoRosEntry.cmake:201–206`); embedded falls through
+    unlinked. Fix: call `nros_platform_link_app(${target})` for embedded platforms when a
+    board is loaded, mirroring `node_register`. ~10 lines.
+  - **Gap 2: the workspace root hardcodes `PLATFORM posix`.** Fix: accept
+    `-DNANO_ROS_PLATFORM` / `-DNANO_ROS_BOARD` cache overrides (default posix). The model
+    stays **one platform per configure** (a build dir per board) — exactly how the
+    standalone examples and the Rust per-fixture-row approach already work. **No
+    `nano_ros_use_board` (it's a phantom — referenced only in comments, never defined),
+    no per-entry multi-platform.**
+  - The rest is wiring (no R&D): embedded fixture rows (`platform` + `build_subdir` +
+    `cmake_defs` with toolchain + `NANO_ROS_PLATFORM`/`NANO_ROS_BOARD`; the cmake lane
+    already forwards `cmake_defs`), codegen `--board zephyr` (the unified embedded adapter,
+    RFC-0032 §8a), and `just/<platform>.just` hookup.
+  - **C2a SPIKE (2026-06-25) — found a THIRD gap; the build works but the runtime needs
+    codegen.** Implemented gaps 1+2 and threadx-linux C end-to-end: the entry **built and
+    linked** (the embedded link pass pulled in ThreadX startup + board TU + kernel/netstack;
+    the `_NRC_DEPLOY` node gate kept the workspace nodes component-only). Gap-2 turned out to
+    be a real bug vs the **documented contract** (`NanoRosNodeRegister.cmake:142–148` says the
+    embedded carrier branches gate on `<rtos> IN_LIST _NRC_DEPLOY` — but the threadx + freertos
+    branches were missing that gate; only nuttx had it). BUT the entry **segfaults at runtime**:
+    - **Gap 3 (the true blocker): `nros codegen entry` for C/C++ is native-only.** Its
+      `--help` says "Defaults to `native` — the only Entry-pkg target the C/C++ surface
+      supports today (Phase 212.L.2)". Even with `--board zephyr`, the generated TU emits
+      `int main()` → `nros_board_native_run_components` (the **native** runner), which clashes
+      with ThreadX's `startup.c` main + `tx_kernel_enter` / `app_main` contract → SIGSEGV. The
+      single-node `node_register` carrier emits the board-correct shape via a per-platform
+      TEMPLATE (`cmake/templates/threadx_entry_main_c_typed.cpp.in`), but the multi-node LAUNCH
+      codegen has **no embedded board runners** — it always emits the native runner.
+    - **Conclusion: C2 is gated on a CODEGEN feature** — teach the C/C++ `nros codegen entry`
+      emitter to produce per-board embedded runners (the app_main / board-run shape) for the
+      LAUNCH (multi-node) case, mirroring the node_register templates. This is Rust-CLI work,
+      not cmake. The two cmake fixes (entry embedded link + the node_register DEPLOY gate) are
+      correct and ready to reapply once the codegen lands. Filed as **issue 0097**.
+    - **Revised plan.** **C2-pre** (codegen): add embedded board runners to the C/C++ entry
+      emitter + the cmake reapply. Then **C2a** threadx-linux C (run-verifiable host sim) →
+      **C2b** freertos/nuttx (QEMU) → **C2c** C++ + mixed → **C2d** zephyr. The spike code was
+      reverted (non-functional until the codegen lands); the design + gap analysis are captured
+      here + in 0097. Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx
+      (arm-none-eabi/riscv), threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
 
 ### Track D — Tests (close the C/C++/mixed gap)
 A runtime e2e test per workspace + per feature, asserting behaviour (not just a build):
