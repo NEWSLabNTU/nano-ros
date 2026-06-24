@@ -1,0 +1,18 @@
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+# phase-263 B5 — advanced-launch showcase. The topology is expressed in the
+# launch XML (groups / includes / remaps / params / args), not flattened here;
+# these components name the pkg/class the launch `<node>`s resolve to.
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[[component]]
+pkg = "listener_pkg"
+class = "listener_pkg::Listener"
+name = "listener"

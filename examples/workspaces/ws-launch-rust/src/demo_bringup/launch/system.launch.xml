@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<!-- phase-263 B5 — advanced-launch showcase. Exercises the nano-ros launch v1
+     surface end-to-end: <arg> with defaults, $(var …) substitution, <group ns=…>
+     namespacing, <node> with child <param> + <remap>, and <include> of a
+     sub-launch with argument pass-through. The `nros::main!` macro resolves all
+     of this at build time and emits one register call per resolved node.
+
+     NOTE: `if=`/`unless=` conditionals and `$(env …)` are intentionally NOT used
+     here — v1 has no conditional attributes, and an unset `$(env)` is a
+     build-time error (the macro resolves substitutions at compile time). -->
+<launch>
+  <arg name="robot_ns" default="alpha"/>
+  <arg name="chatter_topic" default="chatter"/>
+
+  <!-- Namespace the talker under /$(var robot_ns); remap its relative `chatter`
+       publisher to $(var chatter_topic); pass a node parameter. -->
+  <group ns="$(var robot_ns)">
+    <node pkg="talker_pkg" exec="talker" name="talker">
+      <param name="rate_hz" value="1"/>
+      <remap from="chatter" to="$(var chatter_topic)"/>
+    </node>
+  </group>
+
+  <!-- Pull the listener in from a separate sub-launch, forwarding robot_ns. -->
+  <include file="sensors.launch.xml">
+    <arg name="robot_ns" value="$(var robot_ns)"/>
+  </include>
+</launch>

@@ -1,0 +1,21 @@
+# phase-263 B5 — advanced-launch (RFC-0032 launch v1) showcase workspace.
+#
+# The topology lives in the launch XML, not flattened in system.toml: the
+# `demo_bringup` bringup's `system.launch.xml` exercises <arg> defaults,
+# $(var …) substitution, <group ns=…> namespacing, child <param> + <remap> on a
+# <node>, and <include> of a sub-launch (`sensors.launch.xml`) with argument
+# pass-through. `nros::main!` resolves the whole tree at build time and emits one
+# register per resolved node. The differentiator no starter workspace shows:
+# real launch-file composition driving the planner end-to-end.
+
+[workspace]
+resolver = "2"
+members = [
+    "src/talker_pkg",
+    "src/listener_pkg",
+    "src/native_entry",
+]
+# `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
+
+[workspace.metadata.nros]
+default_system = "demo_bringup"

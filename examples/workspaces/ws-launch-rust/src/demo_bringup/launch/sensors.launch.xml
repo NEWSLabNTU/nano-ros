@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- phase-263 B5 — sub-launch pulled in by system.launch.xml via <include>.
+     Receives `robot_ns` from the parent (default `beta` when launched standalone)
+     and namespaces the listener under it. -->
+<launch>
+  <arg name="robot_ns" default="beta"/>
+
+  <group ns="$(var robot_ns)">
+    <node pkg="listener_pkg" exec="listener" name="listener"/>
+  </group>
+</launch>
