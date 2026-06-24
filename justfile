@@ -1990,7 +1990,17 @@ setup-cli:
             echo "[setup-cli]   (\`just doctor\` will FAIL until this is resolved.)" >&2
         fi
     }
-    if [ -x "$bin" ] && [ "$bin" -nt "$lock" ]; then
+    # Up-to-date iff the binary exists and NO cli SOURCE (Cargo.toml/lock or any
+    # `*.rs`) is newer than it. The old `bin -nt lock` guard only checked
+    # Cargo.lock, so a SOURCE-only change (e.g. a new subcommand, lock unchanged)
+    # was missed — setup-cli skipped the rebuild and handed back a stale binary
+    # (phase-265 `nros sync` was "unrecognized" until a manual `cargo build`).
+    # `target/`/`generated/` are pruned so the scan is fast; `-quit` stops at the
+    # first newer source.
+    stale_src="$(find "$root/packages/cli" \
+        \( -name target -o -name generated \) -prune -o \
+        \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) -newer "$bin" -print -quit 2>/dev/null)"
+    if [ -x "$bin" ] && [ -z "$stale_src" ]; then
         # Quiet on no-op — `just setup` invokes us unconditionally.
         warn_stale_shadow
         exit 0
