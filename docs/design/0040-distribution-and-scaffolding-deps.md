@@ -37,8 +37,9 @@ This collides with two scaffolding/convention sites that still assume crates.io:
   `--git` with `--path`.
 
 The examples already solve their half: `nros ws sync` (RFC-0023) writes a
-delimited `[patch.crates-io]` block redirecting `nros = "*"` (and the generated
-message crates) to path deps into the in-tree source. The gap is the
+`[patch.crates-io]` table into the authority's `.cargo/config.toml` (phase-265;
+was a delimited Cargo.toml block pre-265) redirecting `nros = "*"` (and the
+generated message crates) to path deps into the in-tree source. The gap is the
 **out-of-tree** project a user gets from `nros new` — it has no nano-ros source
 tree beside it, so the path-patch trick has nothing to point at until the user
 says where their nano-ros checkout lives.
@@ -63,8 +64,9 @@ RFCs 0024/0025, but the source-release **dependency convention** is unwritten.
 
 In-tree examples keep the existing model: declare `nros = "*"` (+ generated msg
 crates `"*"`) and let `nros ws sync` write the nros-managed `[patch.crates-io]`
-block with path deps into the source tree. Already shipped; this RFC only records
-it as the canonical in-tree shape. See RFC-0023 §`nros ws sync`.
+entries (in the authority's `.cargo/config.toml`, phase-265) with path deps into
+the source tree. Already shipped; this RFC only records it as the canonical
+in-tree shape. See RFC-0023 §`nros ws sync`.
 
 ### D3 — Out-of-tree projects (`nros new`) — the convention (decided 2026-06)
 
@@ -78,9 +80,9 @@ nros = { version = "*", default-features = false, features = ["<rmw>", "platform
 <board-crate> = "*"
 # msg crates (if any) are also "*" and emitted/redirected by `nros ws sync`.
 
-# `nros ws sync` writes/refreshes the nros-managed [patch.crates-io] block here
-# (path deps into the user's nano-ros checkout, NROS_REPO_DIR) — same delimited
-# BEGIN/END block as the examples (RFC-0023).
+# `nros ws sync` writes/refreshes the nros-managed [patch.crates-io] entries in
+# this project's .cargo/config.toml (path deps into the user's nano-ros checkout,
+# NROS_REPO_DIR) — same config-patch model as the examples (RFC-0023 + phase-265).
 ```
 
 The user runs, once, before the first build:

@@ -167,11 +167,11 @@ nros ws doctor          # lint workspace pkgs (package.xml markers, stale patche
 | Subcommand | Description |
 |---|---|
 | `env` | Print shell export adding `<dir>` (default `./src`) to `NROS_INTERFACE_SEARCH_PATH` |
-| `sync` | Codegen workspace msg pkgs + write `[patch.crates-io]` into each Rust consumer's patch authority `Cargo.toml`. Pre-cargo step; run once after editing `*.msg` files |
+| `sync` | Codegen workspace msg pkgs + write `[patch.crates-io]` into each Rust consumer's patch authority `.cargo/config.toml` (phase-265; never edits `Cargo.toml`). Pre-cargo step; run once after editing `*.msg` files |
 | `status` | Non-fatal freshness check — sibling of `sync --check` |
 | `list` | List discovered msg + Rust-consumer pkgs (kind, name, dir per row) |
-| `clean` | Remove `generated/` + auto-managed `[patch.crates-io]` blocks; leaves user-written sections alone |
-| `doctor` | Lint: warn on missing `<member_of_group> rosidl_interface_packages</member_of_group>`, malformed `package.xml`, stale patch blocks |
+| `clean` | Remove `generated/` + auto-managed `[patch.crates-io]` entries from each `.cargo/config.toml`; leaves user-written keys + sections alone |
+| `doctor` | Lint: warn on missing `<member_of_group> rosidl_interface_packages</member_of_group>`, malformed `package.xml`, missing nros-managed `[patch.crates-io]` entries in the authority `.cargo/config.toml` |
 
 ### `nros codegen-system [--bringup <pkg>] [--target <triple>] [--out <dir>] [--launch <file>] [--ahead-of-vendor <pio|px4>]`
 
