@@ -160,6 +160,22 @@ bringup = "src/demo_bringup"
 entry = "native_safety_listener_entry"
 target_dir = "target-fixtures"
 
+# phase-263 A3 (Track D) — the managed (lifecycle) workspace. `[lifecycle] autostart =
+# "active"` + the entry's `nros/lifecycle-services` feature; `nros::main!` registers the
+# 5 REP-2002 services and drives Configure→Activate at boot. Consumed by
+# tests/lifecycle_workspace_e2e.rs (ROS 2 interop lane): `ros2 lifecycle get` asserts the
+# managed node reached `active` via autostart, with no manual transition. Skips where the
+# distro `rmw_zenoh_cpp` is absent (needs `just rmw_zenoh setup`).
+[[workspace_fixture]]
+id = "workspace-rust-native-lifecycle"
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/ws-lifecycle-rust"
+bringup = "src/demo_bringup"
+entry = "native_entry"
+target_dir = "target-fixtures"
+
 # Phase 211.F — per-host entries baked from `multihost.launch.xml` (talker on
 # robot1, listener on robot2). Same workspace + shared target-fixtures dir as
 # `workspace-rust-native`; consumed by tests/multihost_runtime_e2e.rs which

@@ -124,6 +124,14 @@ default. Sequence so each wave is shippable on its own.
   macro emits `apply_lifecycle` → the runtime registers the 5 REP-2002 services + drives
   Configure→Activate. `cargo build -p native_entry` links clean. (Transition-callback
   hooks on the declarative node are still a separate gap; this is the managed-node demo.)
+  **Runtime e2e DONE (2026-06-24, Track D).** Fixture `workspace-rust-native-lifecycle`
+  + `tests/lifecycle_workspace_e2e.rs` (ROS 2 interop lane): boots the entry, discovers
+  the managed node via `ros2 lifecycle nodes`, and asserts `ros2 lifecycle get` reports
+  **`active`** — proving autostart drove Configure→Activate at boot with **no manual
+  transition** (the workspace's distinguishing behaviour vs the standalone
+  `ros2_lifecycle_interop` test). **Verified locally** (the `build/rmw_zenoh_ws` overlay
+  is present); skips (per the ROS 2 contract) where `rmw_zenoh_cpp` is absent.
+  Remaining: project to C / C++ / mixed.
 - **A4 — actions. RUST DONE (2026-06-24).** Added `action_server_pkg` (declarative
   `FibonacciServer`: `create_action_server_for_name_with_callbacks::<Fibonacci>`, goal/cancel
   decisions in `on_callback`, feedback + `complete_goal` driven from `tick` via
@@ -139,6 +147,7 @@ default. Sequence so each wave is shippable on its own.
   app-node shape does not surface the goal payload at tick time, so the server emits a
   fixed-`ORDER = 10` sequence matching the client's goal rather than the per-goal requested
   order. Remaining: runtime e2e test (Track D); project to C/C++ + embedded entries (Track C).
+>>>>>>> 7fb6b1fd3 (feat(263-A3): managed lifecycle autostart e2e (Track D))
 - **A5 — logging. RUST DONE (2026-06-24, Track D).** Was gated on the board not
   initing a sink; **phase-264 W3 fixed that** (`nros-board-posix` calls
   `nros_log::init(sinks::default())` at boot). So the ws-rust `talker_pkg` now logs
