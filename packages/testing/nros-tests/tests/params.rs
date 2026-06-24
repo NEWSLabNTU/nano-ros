@@ -461,14 +461,24 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     }
 
     // Discover the param node's FQN (skip if ROS 2 ↔ nros discovery is not wire-matched).
+    //
+    // The node is NOT named after the `system.toml` component (`param_talker`): the
+    // `nros::main!` runtime registers it under the executor default node name (`/node`)
+    // — the component `name` is not yet threaded into the ROS graph name (issue 0098).
+    // So match on the parameter the node exposes (`publish_period_ms`), not its name.
     let node = {
         let mut found = None;
-        for attempt in 1..=3 {
-            if let Ok(out) = nros_tests::ros2::ros2_node_list(&locator, "humble")
-                && let Some(line) = out.lines().find(|l| l.contains("param_talker"))
-            {
-                found = Some(line.trim().to_string());
-                break;
+        'outer: for attempt in 1..=3 {
+            if let Ok(list) = nros_tests::ros2::ros2_node_list(&locator, "humble") {
+                for candidate in list.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                    if let Ok(params) =
+                        nros_tests::ros2::ros2_param_list(candidate, &locator, "humble")
+                        && params.contains("publish_period_ms")
+                    {
+                        found = Some(candidate.to_string());
+                        break 'outer;
+                    }
+                }
             }
             if attempt < 3 {
                 std::thread::sleep(Duration::from_secs(1));
@@ -480,7 +490,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
                 entry.kill();
                 listener.kill();
                 nros_tests::skip!(
-                    "param_talker not discoverable via ros2 (wire-mismatched rmw_zenoh — \
+                    "param node not discoverable via ros2 (wire-mismatched rmw_zenoh — \
                      build the pinned overlay with `just rmw_zenoh setup`)"
                 );
             }

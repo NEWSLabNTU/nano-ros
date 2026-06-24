@@ -63,6 +63,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   The single-node `node_register` carrier emits board-correct shapes via per-platform templates;
   the LAUNCH emitter needs the same. Blocks phase-263 C2 (embedded C/C++/mixed workspace
   entries). Includes two ready-to-reapply cmake fixes found during the C2a spike.
+- **#98** — [`nros::main!` ignores `system.toml` component `name`, registers node as
+  `/node`](0098-nros-main-ignores-component-node-name.md): the macro hardcodes the node
+  name to the entry crate's `CARGO_PKG_NAME`, so `ros2 node list` shows `/node` not the
+  configured component name. Params/reconfig work end-to-end under the wrong name; the
+  phase-264 W4c interop test was reworked to discover the node by its `publish_period_ms`
+  param as a workaround. Surfaced from the phase-264 W4c known limitation.
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):
