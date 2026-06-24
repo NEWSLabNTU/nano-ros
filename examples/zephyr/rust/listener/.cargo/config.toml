@@ -2,3 +2,10 @@
 NROS_LOCAL_IPV4 = "127.0.0.10"
 NROS_LOCAL_IPV4_BYTES = "127,0,0,10"
 
+[patch.crates-io]
+builtin_interfaces = { path = "generated/builtin_interfaces" }  # nros-managed
+nros = { path = "../../../../packages/core/nros" }  # nros-managed
+nros-core = { path = "../../../../packages/core/nros-core" }  # nros-managed
+nros-serdes = { path = "../../../../packages/core/nros-serdes" }  # nros-managed
+std_msgs = { path = "generated/std_msgs" }  # nros-managed
+
