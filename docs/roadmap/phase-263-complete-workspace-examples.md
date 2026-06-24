@@ -84,9 +84,22 @@ default. Sequence so each wave is shippable on its own.
   **Remaining:** runtime e2e test (Track D — assert `/sum` carries server-computed
   sums); project to C / C++ / mixed.
   Port from `examples/native/{rust,c,cpp}/service-*`.
-- **A2 — parameters.** `param_pkg` (declare/get/set; enable `[param_services]` /
-  `features=["param_services"]` so external get/set works). Port from
-  `examples/native/cpp/parameters`.
+- **A2 — parameters. RUST DONE (2026-06-20/24, via phase-264 W4).** Was BLOCKED (no
+  runtime parameter-VALUE read on `CallbackCtx`); phase-264 W4 added
+  `CallbackCtx::parameter::<T>(name)` / `TickCtx::parameter` (the live read, gated on
+  `param-services`) + the launch-baked initial via `ctx.param`. The param demo landed
+  as the single-purpose workspace **`examples/workspaces/ws-params-rust`** (same
+  separate-`ws-<cap>` shape as A3 lifecycle / B1 safety — keeps the minimal starter
+  free of system-wide `[param_services]`): `param_talker_pkg` declares
+  `publish_period_ms` via the launch `<param>`, reads the LIVE value each tick with
+  `ctx.parameter::<i64>`, and publishes it; `system.toml` declares `[param_services]`,
+  the `native_entry` enables `nros/param-services`. **Tests:**
+  `tests/param_live_read_e2e.rs` (nros↔nros — a subscriber observes the baked initial
+  `250` on the wire, proving the W4c live-read chain) + `tests/params.rs` (the `ros2
+  param set` reconfig round-trip). Verified: the params entry builds clean (declare +
+  live-read node compiles + links); `param_live_read_e2e` compiles + is fixture-wired
+  (runtime green is CI-side, via the prebuilt+stamped workspace fixture). **Remaining:**
+  project to C / C++ / mixed (Track C/D).
 - **A3 — lifecycle. RUST DONE (2026-06-20, via phase-264 W2).** Was gated (the macro
   didn't wire `[lifecycle]`); phase-264 W2 fixed that, so the new
   `examples/workspaces/ws-lifecycle-rust` (a managed system: `[lifecycle] autostart =
@@ -155,8 +168,10 @@ A runtime e2e test per workspace + per feature, asserting behaviour (not just a 
 Implementing A1 (services) + starting A2 (parameters) surfaced that the **declarative
 Node-pkg API does not yet support several features** the plan assumed (issue **0089**):
 
-- **A2 (parameters): BLOCKED.** No runtime parameter-value read on
-  `CallbackCtx`/`TickCtx` — a Node-pkg can `declare_parameter` but not read its value.
+- **A2 (parameters): ~~BLOCKED~~ RESOLVED (phase-264 W4).** The missing runtime
+  parameter-value read on `CallbackCtx`/`TickCtx` landed as `ctx.parameter::<T>(name)`
+  (live, gated on `param-services`); the Rust param demo (`ws-params-rust`) + e2e are
+  done — see A2 above.
 - **A1 for C/C++/mixed: degraded.** C/C++ service-in-component is raw-CDR only (no
   typed `bind_service<C,&C::method>`); a faithful demo needs an API add.
 - **A1 service CLIENT (Rust): shipped but via the undocumented `tick(TickCtx)` surface**
