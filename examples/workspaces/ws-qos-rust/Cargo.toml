@@ -1,0 +1,21 @@
+# phase-263 B4 — QoS-override (RFC-0004 QoS) showcase workspace.
+#
+# A reliable + transient-local publisher (`reliable_talker_pkg`) and a subscriber
+# that declares the MATCHING profile (`qos_listener_pkg`). Both use the
+# declarative `*_with_qos` API (`create_publisher_for_topic_with_qos` /
+# `create_subscription_for_topic_with_qos`) — QoS is a per-entity contract set in
+# `register()`, and the endpoints connect only when their profiles match. The
+# nano-ros differentiator no starter workspace shows: explicit QoS selection
+# (reliability / durability / history) in a real Node pkg.
+
+[workspace]
+resolver = "2"
+members = [
+    "src/reliable_talker_pkg",
+    "src/qos_listener_pkg",
+    "src/native_entry",
+]
+# `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
+
+[workspace.metadata.nros]
+default_system = "demo_bringup"

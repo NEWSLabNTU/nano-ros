@@ -1,0 +1,18 @@
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+# phase-263 B4 — QoS-override showcase. The publisher and subscriber both declare
+# a non-default profile (reliable + transient-local + keep-last-10) in their
+# `register()` via the `*_with_qos` declarative API. QoS is a per-entity contract
+# here (set in code); the `qos_listener` republishes the receive count on /qos_ok.
+[[component]]
+pkg = "reliable_talker_pkg"
+class = "reliable_talker_pkg::ReliableTalker"
+name = "reliable_talker"
+
+[[component]]
+pkg = "qos_listener_pkg"
+class = "qos_listener_pkg::QosListener"
+name = "qos_listener"

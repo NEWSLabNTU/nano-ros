@@ -1,0 +1,25 @@
+[package]
+name = "qos_listener_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — subscribes /qos_chatter with matching reliable + transient-local QoS, republishes the count on /qos_ok."
+
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "qos_listener_pkg::QosListener"
+name = "qos_listener"
+default_namespace = "/"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
+std_msgs = { version = "*", default-features = false }
+# Re-uses the talker's `qos_profile()` so the two endpoints declare an identical
+# QoS contract (lib-only dep — no entities pulled in).
+reliable_talker_pkg = { path = "../reliable_talker_pkg", default-features = false }

@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>qos_listener_pkg</name>
+  <version>0.1.0</version>
+  <description>Node pkg — subscribes /qos_chatter with matching QoS, republishes the count on /qos_ok.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <depend>reliable_talker_pkg</depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- phase-263 B4 — QoS-override launch. The node `name`s must match the
+     system.toml `[[component]].name`s (RFC-0032 §7 instance identity). -->
+<launch>
+    <node pkg="reliable_talker_pkg" exec="reliable_talker" name="reliable_talker"/>
+    <node pkg="qos_listener_pkg" exec="qos_listener" name="qos_listener"/>
+</launch>
