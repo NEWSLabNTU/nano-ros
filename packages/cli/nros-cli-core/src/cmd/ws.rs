@@ -888,42 +888,105 @@ fn write_patch_block(
     nano_ros_path: Option<&Path>,
     extra_runtime_crates: &[String],
 ) -> Result<()> {
-    let body = std::fs::read_to_string(authority)
-        .wrap_err_with(|| format!("ws sync: read {}", authority.display()))?;
-    let rendered = render_patch_block(
+    let authority_dir = authority.parent().unwrap();
+    let entries = render_managed_entries(
         authority,
         build_root,
         pkgs,
         nano_ros_path,
         extra_runtime_crates,
     );
-    let new_body = splice_patch_block(&body, &rendered);
-    // Atomic write: render to a sibling temp file, then rename over `authority`.
-    // `std::fs::write` truncates-then-writes, so a concurrent reader (the native
-    // fixture build runs `ws sync` on the SAME example manifest for the zenoh / xrce
-    // / cyclonedds variants in parallel) can observe a half-written, truncated file
-    // and splice ITS patch block onto the fragment — corrupting the manifest down to
-    // a 9-line stub with no `[package]`. A rename is atomic on the same filesystem,
-    // so a reader always sees a complete file (old or new). The patch block is
-    // idempotent across RMW variants, so last-writer-wins is harmless.
-    let fname = authority
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("Cargo.toml");
-    let tmp = authority.with_file_name(format!(".{fname}.nros-sync-tmp.{}", std::process::id()));
-    std::fs::write(&tmp, new_body).wrap_err_with(|| format!("ws sync: write {}", tmp.display()))?;
-    std::fs::rename(&tmp, authority).wrap_err_with(|| {
-        format!(
-            "ws sync: rename {} -> {}",
-            tmp.display(),
-            authority.display()
-        )
-    })?;
+
+    // 1) Write the managed [patch.crates-io] into `<authority_dir>/.cargo/config.toml`
+    //    (phase-265: never the consumer Cargo.toml). Format-preserving toml_edit DOM.
+    write_patch_config(authority_dir, &entries)?;
+
+    // 2) Migrate: vacate any legacy nros-managed `[patch.crates-io]` block from the
+    //    consumer Cargo.toml (one-time; the patch now lives in config.toml). User
+    //    patch rows + the rest of the manifest are preserved. Atomic temp + rename
+    //    (the parallel-RMW-variant race the splice writer guarded still applies).
+    let body = std::fs::read_to_string(authority)
+        .wrap_err_with(|| format!("ws sync: read {}", authority.display()))?;
+    let migrated = strip_managed_patch_from_cargo(&body);
+    if migrated != body {
+        let fname = authority
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Cargo.toml");
+        let tmp =
+            authority.with_file_name(format!(".{fname}.nros-sync-tmp.{}", std::process::id()));
+        std::fs::write(&tmp, migrated)
+            .wrap_err_with(|| format!("ws sync: write {}", tmp.display()))?;
+        std::fs::rename(&tmp, authority).wrap_err_with(|| {
+            format!(
+                "ws sync: rename {} -> {}",
+                tmp.display(),
+                authority.display()
+            )
+        })?;
+    }
+
     println!(
-        "ws sync: refreshed [patch.crates-io] block in {}",
-        authority.display()
+        "ws sync: wrote [patch.crates-io] → {}",
+        authority_dir.join(".cargo/config.toml").display()
     );
     Ok(())
+}
+
+/// Phase 265 (W3) — migrate a consumer Cargo.toml off the legacy nros-managed
+/// `[patch.crates-io]` block (now that patches live in `.cargo/config.toml`).
+/// Text-level (NOT toml_edit) so the rest of the hand-authored manifest is byte-
+/// preserved: (1) remove every `BEGIN…END` managed region; (2) if a now-empty
+/// `[patch.crates-io]` header remains (nothing but blanks until the next section /
+/// EOF), drop the header + its trailing blanks too. User patch rows are kept.
+fn strip_managed_patch_from_cargo(body: &str) -> String {
+    let stripped = strip_managed_block(body);
+    drop_empty_patch_crates_io_header(&stripped)
+}
+
+/// Remove a `[patch.crates-io]` (bare or quoted) header that has no entries before
+/// the next `[section]` / EOF — only blank lines. Leaves a populated table intact.
+fn drop_empty_patch_crates_io_header(body: &str) -> String {
+    let lines: Vec<&str> = body.lines().collect();
+    let mut out: Vec<&str> = Vec::with_capacity(lines.len());
+    let mut i = 0usize;
+    while i < lines.len() {
+        if is_patch_crates_io_header(lines[i]) {
+            // Look ahead: is the table body empty (only blanks) until the next
+            // section header / EOF?
+            let mut j = i + 1;
+            let mut empty = true;
+            while j < lines.len() {
+                let t = lines[j].trim();
+                if t.is_empty() {
+                    j += 1;
+                    continue;
+                }
+                // Next table header → table ended; anything else → non-empty.
+                empty = t.starts_with('[');
+                break;
+            }
+            if empty {
+                // Skip the header + the run of blank lines after it; also drop one
+                // trailing blank separator already in `out` for a minimal diff.
+                if out.last().map(|l| l.trim().is_empty()).unwrap_or(false) {
+                    out.pop();
+                }
+                i += 1;
+                while i < lines.len() && lines[i].trim().is_empty() {
+                    i += 1;
+                }
+                continue;
+            }
+        }
+        out.push(lines[i]);
+        i += 1;
+    }
+    let mut s = out.join("\n");
+    if body.ends_with('\n') && !s.ends_with('\n') {
+        s.push('\n');
+    }
+    s
 }
 
 /// Output of `render_patch_block` — the managed entry text plus the set of
@@ -1137,6 +1200,7 @@ fn render_managed_entries(
     out
 }
 
+#[allow(dead_code)] // W4: deleted with the line-scanner patch path
 fn render_patch_block(
     authority: &Path,
     build_root: &Path,
@@ -1171,11 +1235,9 @@ fn render_patch_block(
 /// Phase 265 (issue 0094) — decor suffix tagging a sync-owned `[patch.crates-io]`
 /// entry in a `.cargo/config.toml`. Distinguishes managed entries from user keys
 /// (a hand `libc` patch, etc.) so re-sync evicts only its own.
-#[allow(dead_code)]
 const NROS_MANAGED_TAG: &str = "nros-managed";
 
 /// True if a `[patch.crates-io]` value carries the `# nros-managed` decor marker.
-#[allow(dead_code)]
 fn item_is_nros_managed(item: &toml_edit::Item) -> bool {
     item.as_value()
         .and_then(|v| v.decor().suffix())
@@ -1191,7 +1253,6 @@ fn item_is_nros_managed(item: &toml_edit::Item) -> bool {
 /// so user content (a hand `libc` patch, `[target]`/`[env]` sections) is preserved.
 /// Atomic temp + rename. Creates `.cargo/config.toml` if absent; removes an emptied
 /// `[patch.crates-io]` / `[patch]` table.
-#[allow(dead_code)]
 fn write_patch_config(authority_dir: &Path, managed: &[(String, String)]) -> Result<()> {
     let cfg_dir = authority_dir.join(".cargo");
     let cfg = cfg_dir.join("config.toml");
@@ -1214,7 +1275,6 @@ fn write_patch_config(authority_dir: &Path, managed: &[(String, String)]) -> Res
 /// the rewritten text with `[patch.crates-io]`'s nros-managed keys replaced. Format-
 /// preserving (`toml_edit`); user keys + `[target]`/`[env]` untouched. No fs — unit-
 /// testable like `splice_patch_block`.
-#[allow(dead_code)]
 fn render_patch_config(existing: &str, managed: &[(String, String)]) -> Result<String> {
     use toml_edit::{DocumentMut, Item, Table, Value, value};
 
@@ -1290,6 +1350,7 @@ fn render_patch_config(existing: &str, managed: &[(String, String)]) -> Result<S
 ///      followed by the user-preserved rows, followed by the BEGIN/END
 ///      block. If no `[patch.crates-io]` table existed previously, a fresh
 ///      header is emitted just above the BEGIN marker.
+#[allow(dead_code)] // W4
 fn splice_patch_block(body: &str, rendered: &RenderedBlock) -> String {
     // 1) Strip existing BEGIN/END region.
     let without_block = strip_managed_block(body);
@@ -1392,6 +1453,7 @@ fn is_patch_crates_io_header(line: &str) -> bool {
 /// rows — because users may have annotated their entries. Comment lines are
 /// kept attached to the next non-comment row when possible; standalone
 /// trailing comments are preserved as-is.
+#[allow(dead_code)] // W4
 fn extract_patch_table(body: &str, managed_names: &[String]) -> (String, Vec<String>, bool) {
     // Locate header line. Match any line whose trimmed text begins with
     // `[patch.crates-io]` — TOML allows whitespace before headers but we
@@ -2407,6 +2469,49 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
             !out.contains("[patch"),
             "empty managed left a patch table:\n{out}"
         );
+    }
+
+    #[test]
+    fn migrate_strips_managed_block_and_empty_header() {
+        // In-tree example shape: [patch.crates-io] holds ONLY the managed BEGIN/END
+        // block → migration removes the block AND the now-empty header.
+        let body = format!(
+            "[package]\nname = \"x\"\n\n[dependencies]\nnros = \"*\"\n\n[patch.crates-io]\n{BEGIN}\n\
+             # banner\nnros-core = {{ path = \"a\" }}\n{END}\n"
+        );
+        let out = strip_managed_patch_from_cargo(&body);
+        assert!(
+            !out.contains("[patch.crates-io]"),
+            "empty patch header left:\n{out}"
+        );
+        assert!(
+            !out.contains(BEGIN) && !out.contains(END),
+            "markers left:\n{out}"
+        );
+        assert!(
+            out.contains("name = \"x\"") && out.contains("nros = \"*\""),
+            "manifest body lost:\n{out}"
+        );
+    }
+
+    #[test]
+    fn migrate_keeps_user_patch_rows() {
+        // A user (non-managed) patch row alongside the managed block: keep the row +
+        // header, drop only the managed block.
+        let body = format!(
+            "[package]\nname = \"x\"\n\n[patch.crates-io]\nlibc = {{ path = \"z\" }}\n{BEGIN}\n\
+             nros-core = {{ path = \"a\" }}\n{END}\n"
+        );
+        let out = strip_managed_patch_from_cargo(&body);
+        assert!(
+            out.contains("[patch.crates-io]"),
+            "header wrongly dropped (had user row):\n{out}"
+        );
+        assert!(
+            out.contains("libc = { path = \"z\" }"),
+            "user row lost:\n{out}"
+        );
+        assert!(!out.contains(BEGIN), "managed block left:\n{out}");
     }
 
     #[test]
