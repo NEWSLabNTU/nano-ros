@@ -353,6 +353,33 @@ entry = "native_entry"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 Track C — per-host C entries for the multihost demo. `native_entry_robot1`
+# bakes the talker, `native_entry_robot2` the listener, via the `nano_ros_entry(HOST
+# <id> …)` codegen partition of `multihost.launch.xml` (C parity with the Rust
+# robot1/2 entries). Consumed by tests/c_multihost_e2e.rs (two processes, cross-host
+# /chatter delivery).
+[[workspace_fixture]]
+id = "workspace-c-native-robot1"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "native_entry_robot1"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-c-native-robot2"
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "native_entry_robot2"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build-workspace-fixtures"
+
 [[workspace_fixture]]
 id = "workspace-cpp-native"
 platform = "native"

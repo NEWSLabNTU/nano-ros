@@ -10,4 +10,6 @@ nano_ros_workspace(
     SYSTEM   demo_bringup
     SUBDIRS  src/c_talker_pkg
              src/c_listener_pkg
-             src/native_entry)
+             src/native_entry
+             src/native_entry_robot1
+             src/native_entry_robot2)

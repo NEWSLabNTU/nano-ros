@@ -47,7 +47,7 @@ function(nano_ros_entry)
     # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;LANG"
+        "NAME;BOARD;LAUNCH;LANG;HOST"
         "SOURCES;DEPLOY;ARGS"
         ${ARGN})
     foreach(_req NAME DEPLOY)
@@ -145,6 +145,7 @@ function(nano_ros_entry)
             LANG      "${_NRA_LANG}"
             LAUNCH    "${_NRA_LAUNCH}"
             BOARD     "${_NRA_BOARD}"
+            HOST      "${_NRA_HOST}"
             ARGS_LIST "${_NRA_ARGS}"
             TYPED     "${_NRA_TYPED}"
             OUT_VAR_GEN     _gen_tu
@@ -248,7 +249,7 @@ endfunction()
 function(_nros_entry_invoke_codegen)
     cmake_parse_arguments(_NRX
         ""
-        "NAME;LANG;LAUNCH;BOARD;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
+        "NAME;LANG;LAUNCH;BOARD;HOST;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
         "ARGS_LIST"
         ${ARGN})
 
@@ -320,6 +321,13 @@ function(_nros_entry_invoke_codegen)
         --emit-link-libs "${_NRX_NAME}=${_link_libs_path}")
     if(_NRX_BOARD)
         list(APPEND _cli_args --board "${_NRX_BOARD}")
+    endif()
+    # phase-263 Track C — multi-host partition: `--host <id>` keeps only the launch
+    # nodes whose `<node machine="…">` equals `<id>` (plus unhosted/shared), exactly
+    # like the Rust `nros::main!(host = …)` path. The codegen is lang-agnostic, so this
+    # gives C/C++ entries the same per-host bake the Rust workspace has.
+    if(_NRX_HOST)
+        list(APPEND _cli_args --host "${_NRX_HOST}")
     endif()
     # Phase 240.2b — typed executor Entry: pass the cmake metadata so the
     # codegen can map each launch `(pkg, exec)` to its C++ class + header.

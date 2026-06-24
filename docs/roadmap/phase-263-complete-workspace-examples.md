@@ -219,6 +219,23 @@ Give the starter C/C++/mixed workspaces the embedded entries Rust already has
 (freertos / nuttx / zephyr / esp32 / threadx) + a `multihost.launch.xml` + robot1/2
 deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
 
+- **C1 — multihost (the cheap, native-verifiable half). C DONE (2026-06-25).**
+  **Finding:** the C/C++ CMake path had **no host-partition support** — `nano_ros_entry`
+  (and `NROS_MAIN_C`) took no host arg, so a C entry baked the *whole* launch, never a
+  per-host subset. But `nros codegen entry --host <id>` already exists and is
+  **lang-agnostic** (filters `<node machine="…">`, emits C/C++/Rust identically), so the
+  gap was only a CMake passthrough. Added a `HOST` keyword to `nano_ros_entry` →
+  `_nros_entry_invoke_codegen` → `nros codegen entry --host` (`cmake/NanoRosEntry.cmake`).
+  Then authored the C workspace's `multihost.launch.xml` (talker `machine="robot1"`,
+  listener `machine="robot2"`) + `native_entry_robot1` (`HOST robot1`) +
+  `native_entry_robot2` (`HOST robot2`) + `[deploy.robot1/2]`. Verified the partition
+  (robot1 TU registers talker only, robot2 listener only) and runtime: fixtures
+  `workspace-c-native-robot{1,2}` + `tests/c_multihost_e2e.rs` boot both as two processes
+  and assert robot2 (listener-only host entry) receives robot1's `/chatter` (PASS). Also
+  line-buffered the C listener's stdout (`setvbuf _IOLBF`) so piped output is observable
+  live. **C++ + mixed multihost follow next (same passthrough).**
+  Remaining: embedded entries (C2 — the harder, uncharted CMake half).
+
 ### Track D — Tests (close the C/C++/mixed gap)
 A runtime e2e test per workspace + per feature, asserting behaviour (not just a build):
 - starter: service call returns, action goal completes, param get/set round-trips,

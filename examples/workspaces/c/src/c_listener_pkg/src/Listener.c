@@ -31,6 +31,9 @@ static void on_raw(const uint8_t* data, size_t len, void* ctx) {
 static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
                                      listener_t* self) {
     (void)executor; /* node-scoped sub; executor unused */
+    /* Line-buffer stdout so each `Received:` flushes immediately when piped (an
+     * external test reads the output live; glibc block-buffers a pipe otherwise). */
+    setvbuf(stdout, NULL, _IOLBF, 0);
     self->recv = 0;
     size_t handle;
     int32_t rc = nros_cpp_subscription_register(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",

@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>native_entry_robot1</name>
+  <version>0.1.0</version>
+  <description>phase-263 Track C — per-host C Entry for robot1 (talker) of the multihost demo.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>demo_bringup</exec_depend>
+  <exec_depend>c_talker_pkg</exec_depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
