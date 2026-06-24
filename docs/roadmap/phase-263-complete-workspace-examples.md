@@ -147,7 +147,6 @@ default. Sequence so each wave is shippable on its own.
   app-node shape does not surface the goal payload at tick time, so the server emits a
   fixed-`ORDER = 10` sequence matching the client's goal rather than the per-goal requested
   order. Remaining: runtime e2e test (Track D); project to C/C++ + embedded entries (Track C).
->>>>>>> 7fb6b1fd3 (feat(263-A3): managed lifecycle autostart e2e (Track D))
 - **A5 — logging. RUST DONE (2026-06-24, Track D).** Was gated on the board not
   initing a sink; **phase-264 W3 fixed that** (`nros-board-posix` calls
   `nros_log::init(sinks::default())` at boot). So the ws-rust `talker_pkg` now logs
