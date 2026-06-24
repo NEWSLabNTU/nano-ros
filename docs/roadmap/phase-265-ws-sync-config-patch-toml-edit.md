@@ -1,7 +1,30 @@
 # Phase 265 — `ws sync` writes `[patch.crates-io]` to `.cargo/config.toml` via toml_edit
 
-Status: **Planned (2026-06-23, rewritten)** · Resolves [issue 0094](../issues/0094-ws-sync-toml-line-scanner-fragility.md)
+Status: **In progress (2026-06-24)** — W1–W4 + W5a done; W5b partial (standalone
+example migration landed for the clean cases; embedded build sweep + classifier-edge
+packages remain). Issue 0094 resolved at W4. · Resolves
+[issue 0094](../issues/0094-ws-sync-toml-line-scanner-fragility.md)
 · RFC-0023/0024 (binding layouts), RFC-0026 (workspace model).
+
+> **Progress (2026-06-24).**
+> - **W1** `8a383bb80` — `write_patch_config`/`render_patch_config` (toml_edit DOM, per-key
+>   `# nros-managed` marker, atomic write) + ported tests.
+> - **W2** `aaba1a85f` — read-side (`extract_consumer_registry_nros_deps`) on toml_edit.
+> - **W3** `c29af6103` — migrated the 6 workspace examples (patch → root/per-member
+>   `.cargo/config.toml`); flipped `write_patch_block` live.
+> - **W4** `739e44da2` — deleted the dead Cargo.toml line-scanner
+>   (`render_patch_block`/`splice_patch_block`/`extract_patch_table`/`RenderedBlock` + tests);
+>   `run_clean`/`run_doctor` read `.cargo/config.toml`; book/RFC-0040 updated. **0094 A–F dead.**
+> - **W5a** `f03cb442d` — promoted `nros ws sync` → top-level **`nros sync`** (serves both
+>   layouts); `ws sync` kept as a hidden deprecated alias; `generate-rust` stays the codegen
+>   primitive; scripts/just/book + the `cargo.sh` capability probe re-pointed.
+> - **W5b** `432d136e3` — migrated 88 standalone example packages (Cargo.toml patch →
+>   `.cargo/config.toml`). Verified: native build, multi-lane `cargo metadata` resolve,
+>   idempotent re-sync. **Remaining tail:** full QEMU/SDK embedded build sweep, and ~19
+>   classifier-edge packages `nros sync` single-pkg does not yet treat as Rust consumers —
+>   Entry/Node-split firmware roots (baremetal, stm32f4), msg-defining-consumers
+>   (`native/custom-msg`), px4 xrce, msg-only (`zephyr talker-aemv8r`). These keep their hand
+>   Cargo.toml patch and still build.
 
 > **Goal.** Stop `nros ws sync` from editing a consumer `Cargo.toml`. It writes its
 > `[patch.crates-io]` into a **`.cargo/config.toml`** instead, using a format-preserving

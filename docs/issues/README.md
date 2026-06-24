@@ -44,13 +44,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-- **#94** — [`nros ws sync` line-based TOML editor breaks on quoted patch header +
-  explicit dep-tables](0094-ws-sync-toml-line-scanner-fragility.md): the `[patch.crates-io]`
-  rewriter is a line scanner, not a TOML parser; it duplicates the table on the quoted
-  `[patch."crates-io"]` form (cargo hard-error) and silently drops patches for explicit
-  `[dependencies.<name>]` tables (`no matching package`). Hardening A/B/C in progress.
+_None currently tracked here._
 
-Resolved issues live in [`archived/`](archived/). Recently resolved: **#72** —
+Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
+[`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):
+the `[patch.crates-io]` rewriter was a line scanner, not a TOML parser (duplicate table on
+the quoted `[patch."crates-io"]` form; dropped patches for explicit `[dependencies.<name>]`).
+Resolved at [phase-265](../roadmap/phase-265-ws-sync-config-patch-toml-edit.md) W4 — `nros sync`
+writes `[patch.crates-io]` to `.cargo/config.toml` via a `toml_edit` DOM, never editing a
+consumer `Cargo.toml`, so the entire A–F class is structurally impossible. Also: **#72** —
 safety-e2e CRC dead over zenoh (`nros/safety-e2e` didn't reach the backend's
 `safety-e2e`): fixed via the RFC-0031 capability-axis generalization (Phase 252) —
 `[safety]` lowers to the entry umbrella, the board-less native backend dep, AND the

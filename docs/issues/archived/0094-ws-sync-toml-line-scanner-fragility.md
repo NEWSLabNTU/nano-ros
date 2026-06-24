@@ -1,7 +1,7 @@
 ---
 id: 94
 title: "`nros ws sync` line-based TOML editor breaks on quoted patch header + explicit dep-tables"
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-210, phase-220, phase-244]
@@ -61,13 +61,16 @@ each re-sync keeps one stale block, eventually duplicating entries / headers.
 ## Fix direction
 
 A/B/C (the build-breaking cases) were hardened in `68e167275` (quoted/dotted header
-match, explicit dep-tables, strip-all-blocks) + tests. **The full resolution is
-[phase-265](../roadmap/phase-265-ws-sync-config-patch-unified-independent.md)**
-(2026-06-23): `ws sync` stops editing any consumer `Cargo.toml` — it writes
-`[patch.crates-io]` into a per-package **`.cargo/config.toml`** via a `toml_edit`
-format-preserving DOM (and unifies the workspace topology on independent Rust
-packages). With no manifest edit, the entire A–F class is structurally impossible.
-D/E/F remain only until phase-265 lands the DOM rewrite.
+match, explicit dep-tables, strip-all-blocks) + tests. **RESOLVED at
+[phase-265](../roadmap/phase-265-ws-sync-config-patch-toml-edit.md) W4**
+(`739e44da2`, 2026-06-24): `nros sync` (formerly `ws sync`) stops editing any
+consumer `Cargo.toml` — it writes `[patch.crates-io]` into the authority's
+**`.cargo/config.toml`** via a `toml_edit` format-preserving DOM (per-key
+`# nros-managed` marker). With no manifest edit left, the entire A–F class is
+structurally impossible; the line-scanner (`splice_patch_block` /
+`extract_patch_table` / `strip_toml_key_quotes`) was deleted in W4. Authority
+granularity is unchanged (shared root for Rust-only workspaces; per-Rust-member
+otherwise).
 
 ## Evidence
 
