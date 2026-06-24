@@ -213,6 +213,9 @@ static NATIVE_WORKSPACE_RUST_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = Onc
 /// phase-263 B2 (Track D) — cached path to the real-time multi-tier workspace Entry.
 static NATIVE_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 A3 (Track D) — cached path to the managed (lifecycle) workspace Entry.
+static NATIVE_WORKSPACE_RUST_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// phase-263 B1 (Track D) — cached paths to the cross-process E2E-safety entries.
 static NATIVE_WORKSPACE_RUST_SAFETY_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -701,6 +704,22 @@ pub fn build_native_workspace_rust_action_client_entry() -> TestResult<&'static 
                 "workspace-rust-native-action-client",
                 "rust",
                 "native_action_client_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 A3 (Track D) — the managed (lifecycle) workspace Entry (cached). The
+/// entry bakes `lifecycle-services` + declares `[lifecycle] autostart = "active"`, so
+/// `nros::main!` registers the 5 REP-2002 services and drives Configure→Activate at
+/// boot; `lifecycle_workspace_e2e` asserts the node reaches `active` via `ros2 lifecycle`.
+pub fn build_native_workspace_rust_lifecycle_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_LIFECYCLE_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-rust-native-lifecycle",
+                "ws-lifecycle-rust",
+                "native_entry",
             )
         })
         .map(|p| p.as_path())

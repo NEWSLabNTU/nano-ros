@@ -111,6 +111,14 @@ default. Sequence so each wave is shippable on its own.
   macro emits `apply_lifecycle` → the runtime registers the 5 REP-2002 services + drives
   Configure→Activate. `cargo build -p native_entry` links clean. (Transition-callback
   hooks on the declarative node are still a separate gap; this is the managed-node demo.)
+  **Runtime e2e DONE (2026-06-24, Track D).** Fixture `workspace-rust-native-lifecycle`
+  + `tests/lifecycle_workspace_e2e.rs` (ROS 2 interop lane): boots the entry, discovers
+  the managed node via `ros2 lifecycle nodes`, and asserts `ros2 lifecycle get` reports
+  **`active`** — proving autostart drove Configure→Activate at boot with **no manual
+  transition** (the workspace's distinguishing behaviour vs the standalone
+  `ros2_lifecycle_interop` test). **Verified locally** (the `build/rmw_zenoh_ws` overlay
+  is present); skips (per the ROS 2 contract) where `rmw_zenoh_cpp` is absent.
+  Remaining: project to C / C++ / mixed.
 - **A4 — actions. RUST DONE (2026-06-24, Track D) — cross-process.** New
   `action_server_pkg` (declarative Fibonacci server on `/fibonacci`: accepts the goal in
   `on_callback`, drives feedback + `complete_goal` in `tick`, mirroring the orchestration
