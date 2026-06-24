@@ -205,14 +205,63 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   scheduled **both** tiers at their declared cadences (PASS). (Tier *priority* preemption
   is advisory on native; the rate assertion proves both tiers run.) Remaining: project to
   an RTOS deploy (freertos/threadx) where priorities are real tasks.
-- **B3 — `ws-bridge`:** cross-RMW gateway (zenoh ↔ xrce/cyclonedds), from
-  `examples/bridges/*`, but as a workspace bringup (`[[bridge]]` in system.toml).
-- **B4 — `ws-qos-<lang>`:** QoS overrides (reliability / durability / deadline) +
-  status events (deadline-missed / liveliness), from the book's documented surface.
-- **B5 — `ws-launch`:** advanced launch — conditionals, includes, remaps, params, env
-  in the bringup XML; exercises the planner end-to-end.
-- **B6 — `ws-custom-msg-<lang>`:** an in-workspace `.msg`/`.srv` interface package
-  (`nros generate-rust` / `nros_generate_interfaces`), from `examples/native/rust/custom-msg`.
+- **B3 — `ws-bridge`. SCOPED — heavier bake-path wave (2026-06-25).** A
+  cross-RMW gateway (zenoh ↔ xrce/cyclonedds) declared via `[[bridge]]` in
+  system.toml. Declarative `[[bridge]]` **is implemented** — but in the CLI
+  **bake** path (`nros-cli-core/src/orchestration/`: the `bridge` Vec in
+  `cargo_metadata_schema.rs`, `build_executor_bridge` / `register_bridges` /
+  `validate_bridges` + bridge-origin encode/parse in `generate.rs`), **not** the
+  plain-cargo `nros::main!` macro that B1/B2/B4/B5/B6 all use (the macro emits no
+  bridge registration). So B3 cannot follow the `native_entry` + `nros::main!`
+  pattern of its Track-B siblings; it needs the bake shape (`nros bake` /
+  `nros codegen entry`) AND two RMW backends linked in one process — including the
+  **vendored C++ CycloneDDS** (`nros-rmw-cyclonedds-sys`, whose `build.rs`
+  compiles CycloneDDS 0.10.5) — plus the #53 multi-RMW egress-domain handling
+  (egress extra-session defaults to domain 0; must set `.domain_id()`). The
+  working imperative reference is `examples/bridges/tt-zenoh-to-{xrce,cyclonedds}`
+  (manual TT-scheduled ingress/egress, type-descriptor staging). Deferred as a
+  dedicated wave because of the bake-path + two-backend (C++) build infra, which
+  is out of scope for the macro-shaped batch.
+- **B4 — `ws-qos-rust`. RUST DONE (2026-06-25).** New `examples/workspaces/
+  ws-qos-rust`: `reliable_talker_pkg` publishes `std_msgs/Int32` on `/qos_chatter`
+  via `create_publisher_for_topic_with_qos` with an explicit profile
+  (`reliable() + transient_local() + depth(10)`); `qos_listener_pkg` subscribes
+  via `create_subscription_for_topic_with_qos` with the SAME profile (re-uses
+  `reliable_talker_pkg::qos_profile()`) and republishes the receive count on
+  `/qos_ok`. QoS is a per-entity code-level contract via the declarative
+  `*_with_qos` API — no system.toml QoS section (the planner's baked
+  `qos_overrides` `apply_overrides` table is a separate, more advanced path).
+  `cargo build -p native_entry` links both pkgs clean; both clippy-clean.
+  Remaining: status events (deadline-missed / liveliness) are not yet on the
+  declarative `CallbackCtx`; runtime e2e (Track D); project to C/C++/mixed.
+- **B5 — `ws-launch-rust`. RUST DONE (2026-06-25).** New `examples/workspaces/
+  ws-launch-rust`: the topology lives in launch XML. `system.launch.xml`
+  exercises the launch v1 surface — `<arg>` defaults, `$(var …)` substitution,
+  `<group ns=…>`, a `<node>` with child `<param>` + `<remap>`, and `<include>` of
+  `sensors.launch.xml` with `<arg value=>` pass-through. `nros::main!` resolves
+  the whole tree at build time and emits one register per resolved node; `cargo
+  build -p native_entry` links both (talker_pkg + listener_pkg, relative topic
+  names so ns/remap apply); both clippy-clean. `nros plan` writes record.json +
+  nros-plan.json (the launch record resolves `robot_ns=alpha` + the remap +
+  param). Scope: `if=`/`unless=` conditionals + `$(env …)` intentionally unused
+  (v1 has no conditionals; unset `$(env)` is a compile-time error). Lowering
+  `<group ns=…>` into the per-node namespace of the orchestration IR is not yet
+  wired (IR normalizes namespace to `/`) — a planner-maturity item; the workspace
+  demonstrates advanced-launch parse+resolve+build. Remaining: runtime e2e
+  (Track D); project to C/C++/mixed.
+- **B6 — `ws-custom-msg-rust`. RUST DONE (2026-06-25).** New `examples/workspaces/
+  ws-custom-msg-rust`: an in-workspace interface package `src/custom_msgs/`
+  (`package.xml` + CMakeLists + `msg/Reading.msg`: float64 temperature/humidity +
+  int32 sequence; no Cargo.toml). `nros ws sync` walks its `package.xml`, runs the
+  nano-ros codegen pipeline, and emits `generated/custom_msgs`. `reading_talker_pkg`
+  publishes `custom_msgs/Reading` on `/reading` via the typed
+  `create_publisher_for_topic::<Reading>` path; `reading_listener_pkg` decodes it
+  and echoes the sequence on `/reading_seq`. The generated `Reading` implements
+  `RosMessage`, so it flows through the ordinary typed path — only the schema is
+  yours. `cargo build -p native_entry` links both pkgs + the generated crate
+  clean; both clippy-clean. Mirrors `examples/templates/local-msg-package`'s
+  in-workspace interface shape. Remaining: runtime e2e (Track D); project to
+  C/C++/mixed (the `.msg` is already colcon-buildable).
 
 ### Track C — Platform parity (C / C++ / mixed)
 Give the starter C/C++/mixed workspaces the embedded entries Rust already has
