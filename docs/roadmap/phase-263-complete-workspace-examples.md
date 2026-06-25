@@ -205,8 +205,22 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   scheduled **both** tiers at their declared cadences (PASS). (Tier *priority* preemption
   is advisory on native; the rate assertion proves both tiers run.) Remaining: project to
   an RTOS deploy (freertos/threadx) where priorities are real tasks.
-- **B3 — `ws-bridge-rust`. DESIGNED (2026-06-25) — implementing.** A cross-RMW
-  gateway **zenoh ↔ cyclonedds** declared via `[[bridge]]` in system.toml. A
+- **B3 — `ws-bridge-rust`. PARTIAL (2026-06-25) — engine landed, bake-flow cascade
+  remains.** A cross-RMW gateway **zenoh ↔ cyclonedds** declared via `[[bridge]]`
+  in system.toml. **Landed this session:** (Step 1) the planner transform
+  (`system.{bridges,domains}` → `build.transports` + `plan.bridges`, issue #99
+  step 0) — `nros plan` on `ws-bridge-rust` emits a correct bridge plan; (cyclone
+  codegen) native Rust entries now link + register `nros-rmw-cyclonedds-sys`
+  (board-gated, no C/cpp regression, test
+  `cyclone_backend_dep_gated_on_native_board`); (workspace skeleton) `talker_pkg`
+  + bridge `system.toml` authored (talker builds). **Remaining (issue #99
+  cascade) — B3 is phase-sized:** (1) `cmd/codegen_system.rs::render_plan_json` is
+  a SECOND, thin plan emitter that doesn't carry the transform; (2) topic
+  resolution needs component metadata (a launch-only plan leaves `interfaces=[]`
+  → `topics=[]`); (3) no existing lane builds a pure-cargo BAKED Rust entry (Rust
+  workspaces build the `nros::main!` macro entry, which emits no bridge relay); (4)
+  per-type cyclone descriptor staging for non-baked types (`std_msgs/Int32` is
+  baked, so the demo type needs none). Each is its own gap; see issue #99. A
   3-explorer deep-dive (bake codegen + imperative ref/runtime + build infra)
   reframed B3: the build is **not** the blocker (plain `cargo build` links both
   backends; vendored C++ CycloneDDS is ~90s first build, sccache'd after; no

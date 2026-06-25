@@ -73,10 +73,49 @@ Add planner unit tests: a `[[bridge]]` + two `[[domain]]`s → `is_bridge()` tru
 `plan.bridges` populated, endpoints byte-match transports, topics resolved from
 interfaces.
 
+## Status (2026-06-25) — planner transform DONE; cascade of further gaps found
+
+**The planner transform above is DONE** (commit on phase-263 B3): `nros plan` now
+emits `build.transports` + `plan.bridges` for a `[[bridge]]` system (validated:
+`nros plan` on `examples/workspaces/ws-bridge-rust` produces both, endpoints
+byte-matching transports). **Also DONE:** native Rust bridge entries now link +
+register `nros-rmw-cyclonedds-sys` (gated on `board ∈ {native, posix}` so
+non-native/CMake builds stay byte-identical — `generate.rs render_one_backend` +
+`render_backend_register_fn`, test `cyclone_backend_dep_gated_on_native_board`).
+
+Driving a full `ws-bridge-rust` bake surfaced that the declarative bridge needs a
+**cascade** of further fixes, each its own gap (B3 is phase-sized, not one fix):
+
+1. **Second plan emitter — `cmd/codegen_system.rs::render_plan_json` (line 633).**
+   `nros codegen-system` (the bake) writes its OWN `nros-system/nros-plan.json`
+   via `render_plan_json`, NOT `planner::schema_plan_json` — so the bake tree's
+   plan has `bridged_rmws=null`, `transports=null`, `bridges=null` even though
+   `nros plan` populates them. The transform must also be applied here (or
+   codegen-system must route through `schema_plan_json`). This is the immediate
+   blocker for the bake→entry flow.
+2. **Topic resolution needs component metadata.** A launch-only `nros plan` leaves
+   `interfaces=[]`, so `forwarded_topics` returns `[]` (bridge forwards nothing).
+   The fixture/workspace lane collects component metadata (by building the node
+   pkgs → sidecar metadata) before planning; the standalone invocation does not.
+   The bridge build must collect metadata first so `/chatter` resolves.
+3. **Pure-Rust bridge entry build flow is uncharted.** Existing Rust workspaces
+   build the `nros::main!` macro entry (which emits NO bridge code); the bridge
+   needs the BAKED orchestration entry (`build_generated_package` →
+   `generate_package`, the path C/cpp use via CMake). No existing lane builds a
+   pure-cargo Rust *baked* entry — needs a workspace-fixture lane + the command
+   sequence (`codegen-system` → generate → `cargo build`).
+4. **Per-type cyclone descriptor staging (non-baked types).** `std_msgs/Int32` +
+   `rmw_dds_common_graph` are baked into `nros-rmw-cyclonedds-sys/build.rs`, so an
+   Int32 bridge needs none; other types need `nros codegen cyclonedds-descriptors`
+   wired into the generated relay (the generated `register_bridges` creates raw
+   pubs by name+hash only).
+
 ## Impact / consumers
 
-- **phase-263 B3** (`ws-bridge-rust`) is blocked on this — a declarative bridge
-  workspace cannot forward until the planner populates these fields.
+- **phase-263 B3** (`ws-bridge-rust`) is blocked on the cascade above — the
+  planner transform (step 0) is done; steps 1–4 remain. The workspace skeleton
+  (`talker_pkg` + `[[bridge]]` system.toml) is authored and `nros plan` produces a
+  correct bridge plan; the bake→entry→build flow is the remaining work.
 - Reference (imperative, working): `examples/bridges/tt-zenoh-to-{xrce,cyclonedds}`.
 - Related runtime gotchas already resolved: #53 (egress extra-session defaults to
   domain 0 — thread `.domain_id()`), #67 (typed-cyclone marker; multi-RMW uses

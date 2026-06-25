@@ -1,0 +1,34 @@
+[system]
+name = "bridge_demo"
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/127.0.0.1:7447"
+default_launch = "system.launch.xml"
+
+# phase-263 B3 — cross-RMW bridge showcase. The talker publishes /chatter on the
+# primary (zenoh) session; the [[bridge]] below forwards every declared topic
+# (here /chatter) zenoh→cyclonedds, so a stock rmw_cyclonedds_cpp peer
+# (`ros2 topic echo /chatter`) receives it. `nros codegen system` reads the
+# [[bridge]]/[[domain]] blocks and the (issue #99) planner emits the
+# build.transports + plan.bridges the relay codegen consumes.
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+# The two bridged sessions. Each `[[bridge]]` endpoint is an `<rmw>:<domain>`
+# selector resolved to these `[[domain]]` ids.
+[[domain]]
+name = "zen"
+rmw = "zenoh"
+id = 0
+
+[[domain]]
+name = "dds"
+rmw = "cyclonedds"
+id = 5
+
+[[bridge]]
+name = "gw"
+from = "zenoh:zen"
+to = "cyclonedds:dds"
