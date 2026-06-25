@@ -73,7 +73,12 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # test-all staleness probe). The remaining platforms have no manifest rows
     # for this broad find, or are built by their own platform recipes
     # (freertos/nuttx/threadx/zephyr/px4).
-    find examples -mindepth 4 -name Cargo.toml \
+    # PRUNE the huge build trees (`target/`/`build*/`/`_deps/`) so find does not
+    # descend into them (the vendored `_deps/` under cmake build dirs has thousands
+    # of files; `-not -path` alone only FILTERS, find still traverses). Selection
+    # filters stay as `-not -path` (small dirs, depth-independent).
+    find examples \( -name target -o -name build -o -name 'build-*' -o -name _deps \) -prune -o \
+                       -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
                        -not -path '*/_deps/*' -not -path '*/zephyr/*' \
@@ -82,7 +87,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
                        -not -path '*/qemu-riscv64-threadx/*' \
                        -not -path '*/qemu-arm-baremetal/*' -not -path '*/stm32f4/*' \
                        -not -path '*/esp32/*' -not -path '*/qemu-esp32-baremetal/*' \
-                       -not -path '*/px4/*' | sort > "$toml_list"
+                       -not -path '*/px4/*' -print | sort > "$toml_list"
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
     # are excluded from this find and built from the manifest below, so this
@@ -300,7 +305,8 @@ format:
     #!/usr/bin/env bash
     set -e
     echo "Formatting examples..."
-    find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
+    find examples \( -name target -o -name build -o -name 'build-*' -o -name _deps \) -prune -o \
+        -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
         -not -path '*/build/*' -not -path '*/build-*/*' \
         -not -path '*/generated/*' -not -path '*/zephyr/*' \
         -not -path '*/multi-package-workspace/*' \
@@ -337,7 +343,8 @@ check JOBS="75%":
     #     are cross-compiled (esp32/threadx/nuttx/freertos/zephyr) — e.g.
     #     `esp32_entry` configures `portable-atomic` single-core, which fails to
     #     compile for the host x86_64 target.
-    find examples -mindepth 4 -name Cargo.toml \
+    find examples \( -name target -o -name build -o -name 'build-*' -o -name _deps \) -prune -o \
+                       -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
                        -not -path '*/zephyr/*' \
@@ -350,7 +357,7 @@ check JOBS="75%":
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
                        -not -path '*/qemu-riscv64-threadx/*' \
-                       -not -path '*/px4/*' | sort > "$toml_list"
+                       -not -path '*/px4/*' -print | sort > "$toml_list"
 
     # Message-bindings precondition gate (phase-264 W4c follow-up). Example msg
     # crates (`generated/<msg>/`) are BUILD-TIME + ROS-version-dependent, so they
