@@ -451,9 +451,15 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       each component as a separate static lib. Back-compat: empty `APP_EXTRA_SOURCE_PKGS` → the
       original single-archive behavior (the single-node carrier compiles its node as a direct
       source, no component lib in `LINK_LIBRARIES`, so the new extraction never fires). RUNTIME
-      pending: the QEMU image boots (virtio-net activity) but emits no console output even at 55s —
-      a nuttx-qemu console/boot matter separate from the per-pkg wall (no working standalone
-      baseline locally to bisect); so no fixture/test yet (scaffold lands as WIP). **C2c — C++ DONE (2026-06-25)** — `tests/cpp_threadx_entry_e2e.rs` +
+      BISECTED to a HOST-WIDE nuttx-qemu console issue — NOT the entry: a freshly-built STANDALONE
+      single-node `examples/qemu-arm-nuttx/c/talker` is EQUALLY silent here, and `-d int` shows the
+      kernel running normally (AArch32 svc→sys switch, timer IRQs, exception returns — no faults),
+      yet the pl011 UART → stdio path emits nothing (not even the early "NuttX" banner) across BOTH
+      the patched qemu 11.0.0 AND apt qemu 6.2.0, with a correct console config
+      (`CONFIG_DEV_CONSOLE`/`CONFIG_UART1_PL011`/`CONFIG_UART1_SERIAL_CONSOLE`). So the multi-node
+      entry boots + runs identically to the proven standalone; the silence is a host/qemu-nuttx
+      provisioning matter orthogonal to C2b, verifiable in CI (where the standalone nuttx e2e
+      passes). No fixture/test yet — scaffold lands as WIP. **C2c — C++ DONE (2026-06-25)** — `tests/cpp_threadx_entry_e2e.rs` +
       `tests/cpp_freertos_entry_e2e.rs` GREEN: the C++ workspace's threadx-linux + FreeRTOS-QEMU
       entries deliver `/chatter` cross-process, reusing the C2a/C2b wiring VERBATIM through the C++
       emitter (only the cpp workspace root needed the same toolchain-map + conditional-subdir

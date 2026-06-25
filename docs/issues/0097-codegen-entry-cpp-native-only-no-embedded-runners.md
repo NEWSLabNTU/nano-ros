@@ -36,9 +36,13 @@ loop; board cmake extracts each component lib's SOURCES+pkg+includes from `LINK_
 **Verified: the ws-c NuttX entry builds a bootable `armv7a-nuttx-eabihf` ELF with both
 component seams resolved** (`nm`). Same idea as Zephyr's separate component static libs (C2d).
 Back-compat: empty `APP_EXTRA_SOURCE_PKGS` → original single-archive path (the single-node
-carrier compiles its node as a direct source, no component lib in `LINK_LIBRARIES`). RUNTIME:
-the QEMU image boots (virtio-net activity) but emits no console output — a nuttx-qemu console
-matter separate from the per-pkg wall; no fixture/test until that's resolved. → phase-263 C2b.
+carrier compiles its node as a direct source, no component lib in `LINK_LIBRARIES`). RUNTIME
+bisected to a HOST-WIDE nuttx-qemu console issue, NOT the entry: a freshly-built standalone
+single-node `qemu-arm-nuttx/c/talker` is equally silent; `-d int` shows the kernel running
+fine (timer IRQs, no faults); the pl011 UART→stdio path emits nothing across patched qemu
+11.0.0 AND apt 6.2.0 despite a correct console config. The multi-node entry boots identically
+to the proven standalone — verifiable in CI (standalone nuttx e2e passes there). No
+fixture/test locally. → phase-263 C2b.
 
 The codegen + cmake half (W1–W3) is done and verified on threadx-linux C:
 - **W1 (C++ emitter, `emit_cpp.rs`):** for non-native boards, emit `nros_app_main` +
