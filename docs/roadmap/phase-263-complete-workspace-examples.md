@@ -205,23 +205,41 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   scheduled **both** tiers at their declared cadences (PASS). (Tier *priority* preemption
   is advisory on native; the rate assertion proves both tiers run.) Remaining: project to
   an RTOS deploy (freertos/threadx) where priorities are real tasks.
-- **B3 — `ws-bridge`. SCOPED — heavier bake-path wave (2026-06-25).** A
-  cross-RMW gateway (zenoh ↔ xrce/cyclonedds) declared via `[[bridge]]` in
-  system.toml. Declarative `[[bridge]]` **is implemented** — but in the CLI
-  **bake** path (`nros-cli-core/src/orchestration/`: the `bridge` Vec in
-  `cargo_metadata_schema.rs`, `build_executor_bridge` / `register_bridges` /
-  `validate_bridges` + bridge-origin encode/parse in `generate.rs`), **not** the
-  plain-cargo `nros::main!` macro that B1/B2/B4/B5/B6 all use (the macro emits no
-  bridge registration). So B3 cannot follow the `native_entry` + `nros::main!`
-  pattern of its Track-B siblings; it needs the bake shape (`nros bake` /
-  `nros codegen entry`) AND two RMW backends linked in one process — including the
-  **vendored C++ CycloneDDS** (`nros-rmw-cyclonedds-sys`, whose `build.rs`
-  compiles CycloneDDS 0.10.5) — plus the #53 multi-RMW egress-domain handling
-  (egress extra-session defaults to domain 0; must set `.domain_id()`). The
-  working imperative reference is `examples/bridges/tt-zenoh-to-{xrce,cyclonedds}`
-  (manual TT-scheduled ingress/egress, type-descriptor staging). Deferred as a
-  dedicated wave because of the bake-path + two-backend (C++) build infra, which
-  is out of scope for the macro-shaped batch.
+- **B3 — `ws-bridge-rust`. DESIGNED (2026-06-25) — implementing.** A cross-RMW
+  gateway **zenoh ↔ cyclonedds** declared via `[[bridge]]` in system.toml. A
+  3-explorer deep-dive (bake codegen + imperative ref/runtime + build infra)
+  reframed B3: the build is **not** the blocker (plain `cargo build` links both
+  backends; vendored C++ CycloneDDS is ~90s first build, sccache'd after; no
+  runtime agent vs xrce's Micro-XRCE Agent), and the declarative path is
+  ~90% wired (schema `SystemBridgeEntry`, `PlanBridge`/`PlanTransport` IR,
+  `validate_bridges` + `render_register_bridges_fn` relay codegen, `nros-bridge`
+  echo codec, `open_multi` runtime — all code-complete + unit-tested per
+  RFC-0009). **The one real gap is in the planner** (issue **0099**): it emits
+  only `bridged_rmws` (the RMW name union) and leaves `plan.build.transports`
+  empty + `plan.bridges = []`, so `is_bridge()` is false and the relay codegen
+  (gated on `!plan.bridges.is_empty()`) never fires. **Decisions (locked):** close
+  the planner gap (make the declarative bridge real, not a build-only stub) +
+  zenoh↔cyclonedds (no-agent runtime, clean stock-ROS2 interop).
+  - **Step 1 (engine, issue 0099):** planner transform `system.{bridges,domains}`
+    → consistent `plan.build.transports` (one `PlanTransport{rmw,domain,locator}`
+    per endpoint, so `is_bridge()` + `SESSION_SPECS`/`open_multi` light up) +
+    `plan.bridges` (one `PlanBridge{name,connect:[from,to],topics}`, endpoints
+    byte-matching the transports for `bridge_endpoint_session_idx`; `topics` =
+    all declared interface topics, RFC-0009 resolve-from-interfaces) + planner
+    unit tests. Honor #53 (egress domain threaded) + #67 (multi-RMW uses raw +
+    `register_type_descriptor`, no `nros/rmw-cyclonedds` marker).
+  - **Step 2 (workspace):** `examples/workspaces/ws-bridge-rust` — a nano-ros
+    talker publishes `/chatter` on the zenoh session; `[[bridge]] gw
+    from="zenoh:…" to="cyclonedds:…"` forwards it; a stock `rmw_cyclonedds_cpp`
+    peer (`ros2 topic echo /chatter`) receives → proves cross-RMW forward + ROS2
+    interop. **Bake-shaped Entry** (`nros codegen system` → `nros generate-rust`),
+    NOT `nros::main!` — the one structural difference from the macro-shaped
+    Track-B siblings. Deps: `nros-rmw-zenoh` + `nros-rmw-cyclonedds-sys` +
+    `nros/bridge` + `platform-posix`.
+  - **Step 3 (runtime e2e, GATED):** zenohd + the bake'd entry + a live cyclone /
+    ROS2 subscriber; assert receipt. Gated on a live DDS peer — same gate as the
+    existing `bridge-zenoh-to-cyclonedds-fwd` fixture.
+  Working imperative reference: `examples/bridges/tt-zenoh-to-{xrce,cyclonedds}`.
 - **B4 — `ws-qos-rust`. RUST DONE (2026-06-25).** New `examples/workspaces/
   ws-qos-rust`: `reliable_talker_pkg` publishes `std_msgs/Int32` on `/qos_chatter`
   via `create_publisher_for_topic_with_qos` with an explicit profile

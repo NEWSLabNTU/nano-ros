@@ -70,6 +70,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   threaded via `DeployOverlay.node_name`, so `ros2 node list` shows `/param_talker`; the
   multi-node case (N components, one primary session) stays open. Surfaced from the
   phase-264 W4c known limitation.
+- **#99** — [declarative `[[bridge]]` does not
+  forward](0099-declarative-bridge-planner-population.md): the whole cross-RMW bridge pipeline
+  (schema, `PlanBridge`/`PlanTransport` IR, `validate_bridges` + relay codegen, `nros-bridge`
+  echo codec, `open_multi` runtime) is code-complete + unit-tested (RFC-0009), but the
+  **planner** never translates `system.toml`'s `[[bridge]]`/`[[domain]]` into
+  `plan.build.transports` + `plan.bridges` — it emits only `bridged_rmws`. So a bridged system
+  links both backends but `is_bridge()` is false and the relay codegen (gated on non-empty
+  `plan.bridges`) never fires. Bounded planner transform. Blocks phase-263 B3 (`ws-bridge-rust`).
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):
