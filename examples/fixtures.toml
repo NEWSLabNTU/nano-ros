@@ -380,6 +380,28 @@ entry = "native_entry_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 C2a (issue 0097) — the FIRST C/C++ workspace EMBEDDED entry:
+# `nano_ros_entry(BOARD threadx-linux LAUNCH …)` on the ThreadX-on-Linux host sim
+# (builds AND runs natively, no QEMU). Distinct `build_subdir` because a CMake
+# workspace builds ONE platform per configure (one board per CMakeCache); the
+# posix rows own `build-workspace-fixtures`. `cmake_defs` selects the platform +
+# board and bakes a loopback connect locator into the entry — the nsos-netx BSD
+# shim forwards `nx_bsd_connect` to a real host `connect()`, so the host sim
+# reaches `tcp/127.0.0.1:<port>` with NO veth bridge / root (unlike the 192.0.3.x
+# bridge the Rust threadx examples dial). No `codegen_out`: the entry's
+# `nano_ros_entry(LAUNCH)` configure shells the per-entry codegen itself.
+# Consumed by tests/c_threadx_entry_e2e.rs (cross-process /chatter delivery).
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux"
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "native_threadx_entry"
+build_subdir = "build-workspace-fixtures-threadx"
+cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:17553" }
+
 [[workspace_fixture]]
 id = "workspace-cpp-native"
 platform = "native"

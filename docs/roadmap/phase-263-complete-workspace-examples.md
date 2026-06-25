@@ -307,7 +307,8 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
   fixtures `workspace-{cpp,mixed}-native-robot{1,2}`. So all three CMake workspaces now
   reach Rust's multihost parity from the single `HOST` passthrough.
 - **C2 — embedded entries (freertos / nuttx / zephyr / threadx; esp32 skipped). DESIGN
-  LOCKED (2026-06-25); C2a in progress.** Two-agent framework exploration found the
+  LOCKED (2026-06-25); C2-pre + C2a (threadx-linux C) DONE + runtime-verified (2026-06-25);
+  C2b–d remain.** Two-agent framework exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
   just two gaps + wiring:
   - **The embedded carrier mechanism already exists** in `nano_ros_node_register`
@@ -355,16 +356,22 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       template files; the N-node setup body, board run-classes, app_main macro, and the
       single-node templates all already exist, so the fix is the OUTER wrapper only):**
 
-      **C2-pre — codegen + cmake (issue 0097). W1–W3 DONE + verified (2026-06-25); W4 partial.**
-      The ws-c ThreadX entry now BUILDS + LINKS + BOOTS the kernel and dispatches to the
-      generated `app_main` → `ThreadxBoard::run_components` — **no segfault** (the 0097 symptom
-      is gone; `nm` shows a strong `app_main`/`nros_app_main`). The codegen+cmake scaffold is
-      committed; the example entry source + ws-c root override land as WIP (no fixture/test until
-      W4's runtime works). **Two follow-ups gate W4 runtime delivery (both separate from the
-      codegen gap, tracked in 0097):** (1) threadx-linux host-sim runtime — `run_components`
-      returns with no nros/zenoh logs (`nros::init`/network over nsos-netx fails before the spin),
-      so `/chatter` is never published; (2) the nros-c/nros-cpp sizes-header **mirror** is stale
-      for a fresh embedded build dir (`*_OPAQUE_U64S undeclared`; a manual copy unblocks).
+      **C2-pre — codegen + cmake (issue 0097). W1–W4 DONE + runtime-verified (2026-06-25).**
+      The ws-c ThreadX entry BUILDS + LINKS + BOOTS the kernel, dispatches to the generated
+      `app_main` → `ThreadxBoard::run_components`, brings the nros runtime online over a baked
+      loopback locator, AND **delivers** `/chatter` cross-process to a native listener — the C2a
+      runtime e2e (`tests/c_threadx_entry_e2e.rs`) is GREEN on a single host with **no veth
+      bridge / no root**. Both prior "follow-ups" turned out to be two MORE pieces of carrier
+      wiring the LAUNCH path was missing (the LAUNCH path builds the exe itself, so the
+      `nano_ros_node_register` carrier's wiring never ran for it), now fixed in `nano_ros_entry`:
+      (1) **locator bake** — define `NROS_ENTRY_LOCATOR` on the embedded entry target
+      (`-DNROS_ENTRY_LOCATOR` cache > `LOCATOR` arg > per-board default; threadx-linux → loopback,
+      QEMU → slirp `10.0.2.2`); the locator-less `run_components` overload reads it, so `nros::init`
+      reaches a router (the nsos-netx POSIX-`connect()` shim dials loopback with no bridge). (2)
+      **sizes-header ordering** — the same `add_dependencies` + file-level `OBJECT_DEPENDS` on the
+      Corrosion mirror header the carrier uses, so a fresh embedded build dir compiles clean (no
+      manual copy). Fixture `workspace-c-threadx-linux` (own `build-subdir`, baked
+      `tcp/127.0.0.1:17553`) + the `just threadx-linux build-examples` C lane wire it in.
       - **W1 — C++ emitter embedded shape. DONE.** `emit_cpp.rs` (~383) already board-aware
         (`board_cpp_path()` → `ThreadxBoard`/…) but emits `int main(){ <Board>::run_components(
         &setup); }` for ALL boards → **double-mains** with the RTOS `startup.c`. For non-native:
@@ -383,16 +390,18 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
         C++). `node_register`: add the documented `AND _NRC_DEPLOY` gate to the threadx + freertos
         carrier branches (real bug — only nuttx had it). Workspace root: accept
         `-DNANO_ROS_PLATFORM`/`-DNANO_ROS_BOARD` overrides (one board per configure).
-      - **W4 — verify on threadx-linux C. PARTIAL.** native_threadx_entry builds + links + BOOTS
-        (no segfault — the codegen+cmake half is proven). Runtime DELIVERY pending the two 0097
-        follow-ups (threadx-linux host-sim init/network + the sizes-mirror). Once those land,
-        `c_threadx_workspace_e2e.rs` asserts `/chatter` delivery — the first runtime-verified C
-        embedded workspace entry — and a fixture row + the example wire in.
+      - **W4 — verify on threadx-linux C. DONE.** `native_threadx_entry` builds + links + boots +
+        **delivers**: `tests/c_threadx_entry_e2e.rs` asserts cross-process `/chatter` from the
+        embedded entry's talker to a separate native listener (≥3 received) — the first
+        runtime-verified C embedded workspace entry. Backed by the locator-bake + header-ordering
+        wiring in `nano_ros_entry` (the two ex-follow-ups) + the `workspace-c-threadx-linux`
+        fixture row.
 
-      **C2a — threadx-linux** C/C++/mixed (host sim, run-verifiable). **C2b — freertos + nuttx**
-      C (QEMU build + run). **C2c — C++ + mixed** across those boards. **C2d — zephyr** (west
-      lane, build). The C2a-spike code was reverted (non-functional until C2-pre lands); design +
-      gaps captured here + in 0097. Toolchains present locally: freertos (arm-none-eabi + qemu),
+      **C2a — threadx-linux** C (host sim, run-verifiable) **DONE 2026-06-25** —
+      `tests/c_threadx_entry_e2e.rs` GREEN; C++/mixed on threadx-linux follow the same path
+      (reuse the locator-bake + header-ordering wiring). **C2b — freertos + nuttx** C (QEMU build
+      + run). **C2c — C++ + mixed** across those boards. **C2d — zephyr** (west lane, build).
+      Design + gaps captured here + in 0097. Toolchains present locally: freertos (arm-none-eabi + qemu),
       nuttx (arm-none-eabi/riscv), threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
 
 ### Track D — Tests (close the C/C++/mixed gap)

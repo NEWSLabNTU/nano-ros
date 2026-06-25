@@ -1,15 +1,21 @@
 ---
 id: 97
 title: "`nros codegen entry` (C/C++) is native-only — no embedded board runners, blocking embedded workspace entries"
-status: open
+status: resolved
 type: enhancement
 area: codegen
 related: [phase-263, rfc-0043]
 ---
 
-## Status (2026-06-25) — codegen + cmake fix IMPLEMENTED + verified; two follow-ups remain
+## Status (2026-06-25) — RESOLVED: embedded entry path proven end-to-end on threadx-linux C
 
-The codegen + cmake half is **done and verified** on threadx-linux C:
+The embedded `nano_ros_entry(LAUNCH)` path now builds, boots, AND **delivers** — the C2a
+runtime e2e (`tests/c_threadx_entry_e2e.rs`) is GREEN: the threadx-linux host-sim entry's
+talker publishes `/chatter` to a separate native listener through a zenoh router (cross
+process per issue 0096), single host, **no veth bridge / no root**. Both follow-ups below
+are fixed.
+
+The codegen + cmake half (W1–W3) is done and verified on threadx-linux C:
 - **W1 (C++ emitter, `emit_cpp.rs`):** for non-native boards, emit `nros_app_main` +
   `NROS_APP_MAIN_REGISTER_VOID()` + `#include <nros/app_main.h>` (the locator-less
   `run_components` overload) instead of `int main` (`board_is_embedded()` helper).
@@ -26,16 +32,29 @@ dispatches to the generated `app_main` → `ThreadxBoard::run_components` — **
 (the original 0097 symptom is gone; the emitted shape is correct, `nm` shows a strong
 `app_main` + `nros_app_main`).
 
-**Two follow-ups gate C2a runtime verification (separate from the codegen gap):**
-1. **threadx-linux host-sim runtime delivery.** `ThreadxBoard::run_components` returns
-   immediately with NO nros/zenoh/node logs — `nros::init` (zenoh-pico over nsos-netx → host
-   sockets) or the multi-node setup fails before the spin loop, so `/chatter` is never
-   published. This is the threadx-linux host-sim network/init path, not the codegen.
-2. **nros-c/nros-cpp sizes-header mirror staleness.** A fresh embedded build dir leaves the
-   in-tree `nros_config_generated.h` / `nros_cpp_config_generated.h` stale
-   (`*_OPAQUE_U64S undeclared`); the build-dir headers are correct but the mirror to the
-   in-tree include dir doesn't fire (issue 0088's OBJECT_DEPENDS edge misses the embedded
-   consumers). A manual copy unblocks; needs a real mirror-ordering fix.
+**Two follow-ups (both FIXED in the C2a work — they were two MORE pieces of wiring the
+`nano_ros_entry` LAUNCH path was missing that the `nano_ros_node_register` carrier already
+had; root cause for both: the LAUNCH path builds the exe itself, so the carrier's wiring
+never ran for it):**
+1. **threadx-linux host-sim runtime delivery — FIXED (locator bake).** `run_components`
+   returned before the spin because the generated TU calls the locator-LESS
+   `<Board>::run_components(&setup)` overload, which reads the compile-time
+   `NROS_ENTRY_LOCATOR` macro — default `""` → backend discovery, which finds no router over
+   the nsos-netx POSIX-`connect()` shim, so `nros::init` fails. The carrier bakes the locator
+   via its `configure_file` template; the LAUNCH path did not. Fix: `nano_ros_entry` now
+   defines `NROS_ENTRY_LOCATOR` on the embedded entry target (precedence
+   `-DNROS_ENTRY_LOCATOR` cache > `LOCATOR` arg > per-board default; threadx-linux dials
+   loopback, QEMU boards dial slirp 10.0.2.2). With a baked `tcp/127.0.0.1:<port>` the host
+   sim connects + the talker publishes — not a network-stack bug.
+2. **nros-c/nros-cpp sizes-header mirror staleness — FIXED (OBJECT_DEPENDS ordering).** The
+   generated `.cpp` TU could compile BEFORE Corrosion mirrors the per-build
+   `nros_{,cpp_}config_generated.h` (the include DIR is on the lib's INTERFACE but gives no
+   build-order edge — issue 0088/0090), reading the in-tree stub (`*_OPAQUE_U64S
+   undeclared`). The carrier adds `add_dependencies` on the mirror targets + a file-level
+   `OBJECT_DEPENDS` on the mirrored header globals; the LAUNCH path did not. Fix:
+   `nano_ros_entry` now applies the same `_nros_node_register_config_header_deps` +
+   `OBJECT_DEPENDS` to its generated TU. A fresh embedded build dir now compiles clean — no
+   manual header copy.
 
 ## Summary
 

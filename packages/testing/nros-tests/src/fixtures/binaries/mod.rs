@@ -231,6 +231,10 @@ static NATIVE_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_ENTRY_ROBOT1_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_C_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 C2a — cached path to the threadx-linux C workspace EMBEDDED entry
+/// (`nano_ros_entry(BOARD threadx-linux …)`, the first embedded LAUNCH entry).
+static THREADX_LINUX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native C++ workspace Entry pkg binary.
 static NATIVE_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -508,11 +512,15 @@ fn workspace_example_dir(name: &str) -> TestResult<PathBuf> {
 
 fn current_workspace_fixture_record(fixture_id: &str) -> TestResult<String> {
     let root = project_root();
+    // No `--platform` filter: workspace cmake fixtures span platforms (native +
+    // the phase-263 C2a embedded threadx-linux row), and a cmake record is NOT
+    // platform-prefixed (only rust cargo records are), so listing all platforms and
+    // matching by the unique id prefix resolves any of them with a stable signature.
     let output = Command::new("python3")
         .arg(root.join("scripts/build/fixtures-manifest.py"))
         .arg("list-workspaces")
-        .arg("--platform")
-        .arg("native")
+        .arg("--id")
+        .arg(fixture_id)
         .current_dir(&root)
         .output()
         .map_err(|e| {
@@ -628,11 +636,29 @@ pub fn build_workspace_cmake_entry(
     workspace: &str,
     binary_name: &str,
 ) -> TestResult<PathBuf> {
+    build_workspace_cmake_entry_in(
+        fixture_id,
+        workspace,
+        "build-workspace-fixtures",
+        binary_name,
+    )
+}
+
+/// Like [`build_workspace_cmake_entry`] but for a fixture configured into a
+/// NON-default `build_subdir`. A CMake workspace builds as ONE platform per
+/// configure (one board per `CMakeCache.txt`), so an embedded fixture
+/// (phase-263 C2a — threadx-linux) cannot share the posix
+/// `build-workspace-fixtures` dir; its row sets a distinct `build_subdir` and
+/// this resolver consumes the prebuilt binary from there.
+pub fn build_workspace_cmake_entry_in(
+    fixture_id: &str,
+    workspace: &str,
+    build_subdir: &str,
+    binary_name: &str,
+) -> TestResult<PathBuf> {
     let example_dir = workspace_example_dir(workspace)?;
-    let build_dir = example_dir.join("build-workspace-fixtures");
-    let binary_path = example_dir.join(format!(
-        "build-workspace-fixtures/src/{binary_name}/{binary_name}"
-    ));
+    let build_dir = example_dir.join(build_subdir);
+    let binary_path = build_dir.join(format!("src/{binary_name}/{binary_name}"));
     require_prebuilt_workspace_binary(
         fixture_id,
         &binary_path,
@@ -828,6 +854,23 @@ pub fn build_native_workspace_c_entry_robot2() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_ENTRY_ROBOT2_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry("workspace-c-native-robot2", "c", "native_entry_robot2")
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 C2a — the threadx-linux C workspace EMBEDDED entry (cached). Built
+/// into its own `build-workspace-fixtures-threadx` dir (one board per configure)
+/// with a compile-time-baked `tcp/127.0.0.1:<port>` locator so the host-sim
+/// connects over the nsos POSIX-`connect()` shim with NO veth bridge / root.
+pub fn build_threadx_linux_workspace_c_entry() -> TestResult<&'static Path> {
+    THREADX_LINUX_WORKSPACE_C_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-c-threadx-linux",
+                "c",
+                "build-workspace-fixtures-threadx",
+                "native_threadx_entry",
+            )
         })
         .map(|p| p.as_path())
 }

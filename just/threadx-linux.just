@@ -56,6 +56,10 @@ build-examples:
     # Build options from the SSOT manifest (examples/fixtures.toml). Phase 181.4.f.
     bash scripts/build/fixtures-build.sh threadx-linux rust
     bash scripts/build/workspace-fixtures-build.sh threadx-linux rust
+    # phase-263 C2a — the embedded C workspace LAUNCH entry (issue 0097), consumed
+    # by tests/c_threadx_entry_e2e.rs. Builds into its own build-subdir (one board
+    # per CMake configure), so it never clashes with the posix workspace fixtures.
+    bash scripts/build/workspace-fixtures-build.sh threadx-linux c
     echo "ThreadX Linux examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

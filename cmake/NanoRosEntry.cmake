@@ -47,7 +47,7 @@ function(nano_ros_entry)
     # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;LANG;HOST"
+        "NAME;BOARD;LAUNCH;LANG;HOST;LOCATOR"
         "SOURCES;DEPLOY;ARGS"
         ${ARGN})
     foreach(_req NAME DEPLOY)
@@ -219,6 +219,67 @@ function(nano_ros_entry)
        AND DEFINED NANO_ROS_BOARD
        AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
         nros_platform_link_app(${_NRA_NAME})
+    endif()
+
+    # phase-263 C2a (issue 0097) — two wirings the embedded LAUNCH Entry needs that the
+    # `nano_ros_node_register` carrier already does, but the LAUNCH path (exe built HERE)
+    # was missing. Both gated identically to the link pass (embedded + active board in
+    # DEPLOY), so a posix configure / a non-matching board entry is untouched.
+    #
+    #  (1) Baked connect locator. The generated TU calls the locator-LESS
+    #      `<Board>::run_components(&setup)` overload, which reads the compile-time
+    #      `NROS_ENTRY_LOCATOR` macro. Its header default is "" → backend discovery, which
+    #      finds no router over the nsos POSIX-connect shim (threadx-linux host-sim) or
+    #      QEMU slirp, so `nros::init` fails and `run_components` returns before the spin
+    #      (no publish). Define the macro on the target. Precedence:
+    #      `-DNROS_ENTRY_LOCATOR=…` cache override > `LOCATOR` arg > per-board default
+    #      (threadx-linux dials the host loopback — nsos `connect()` reaches it with NO
+    #      veth bridge / root; QEMU boards dial the slirp host 10.0.2.2). The C2a /
+    #      rtos_e2e fixture threads the per-fixture port via the cache var, mirroring the
+    #      carrier's `-DNROS_THREADX_LOCATOR`.
+    #
+    #  (2) Header-mirror ordering. The generated `.cpp` TU includes
+    #      <nros/nros_{,cpp_}config_generated.h> (the *_OPAQUE_U64S sizes). On a FRESH
+    #      embedded build it can compile BEFORE Corrosion mirrors the per-build header,
+    #      reading the in-tree stub (`*_OPAQUE_U64S undeclared`) — issues 0088/0090. Add
+    #      the same edges the carrier uses: `add_dependencies` on the mirror targets + a
+    #      HARD file-level OBJECT_DEPENDS on the mirrored header(s).
+    if(TARGET ${_NRA_NAME}
+       AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
+       AND DEFINED NANO_ROS_BOARD
+       AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
+        # (1) locator
+        if(DEFINED NROS_ENTRY_LOCATOR)
+            set(_nra_locator "${NROS_ENTRY_LOCATOR}")
+        elseif(_NRA_LOCATOR)
+            set(_nra_locator "${_NRA_LOCATOR}")
+        elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
+            set(_nra_locator "tcp/127.0.0.1:7447")
+        else()
+            set(_nra_locator "tcp/10.0.2.2:7447")
+        endif()
+        target_compile_definitions(${_NRA_NAME} PRIVATE
+            "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
+
+        # (2) header-mirror ordering for the generated TU
+        if(_gen_tu)
+            if(COMMAND _nros_node_register_config_header_deps)
+                _nros_node_register_config_header_deps(${_NRA_NAME})
+            endif()
+            get_property(_nra_c_hdr   GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
+            get_property(_nra_cpp_hdr GLOBAL PROPERTY NROS_CPP_CONFIG_HEADER_FILE)
+            set(_nra_cfg_hdrs "")
+            if(_nra_c_hdr)
+                list(APPEND _nra_cfg_hdrs "${_nra_c_hdr}")
+            endif()
+            if(_nra_cpp_hdr)
+                list(APPEND _nra_cfg_hdrs "${_nra_cpp_hdr}")
+            endif()
+            if(_nra_cfg_hdrs)
+                set_source_files_properties("${_gen_tu}" PROPERTIES
+                    OBJECT_DEPENDS "${_nra_cfg_hdrs}")
+            endif()
+        endif()
     endif()
 
     # Phase 212.N.6 — stash the BOARD selection on the target so the
