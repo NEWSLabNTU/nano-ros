@@ -323,9 +323,9 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
 - **C2 — embedded entries (freertos / nuttx / zephyr / threadx; esp32 skipped). DESIGN
   LOCKED (2026-06-25). DONE + runtime-verified (2026-06-25): C2-pre, C2a (threadx-linux C),
   C2b-freertos (QEMU C), C2c-cpp (threadx-linux + freertos C++), C2c-mixed (threadx-linux
-  C+C++/Rust) — 6 GREEN e2e tests. BLOCKED: C2b-nuttx (per-`NROS_PKG_NAME` kernel-link wall),
-  C2c-mixed-freertos (std Rust node vs no_std target). REMAINS: C2d-zephyr (west lane,
-  build-only). See below.** Two-agent framework exploration found the
+  C+C++/Rust), C2d-zephyr C (native_sim, west lane) — 7 GREEN e2e tests. BLOCKED: C2b-nuttx
+  (per-`NROS_PKG_NAME` kernel-link wall), C2c-mixed-freertos (std Rust node vs no_std target).
+  See below.** Two-agent framework exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
   just two gaps + wiring:
   - **The embedded carrier mechanism already exists** in `nano_ros_node_register`
@@ -476,8 +476,13 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       cmake static lib (its own define), then links them. Verified on native_sim/native/64: the
       C workspace entry (talker + listener) boots `zephyr.exe` and delivers `/chatter`
       cross-process to a native listener over NSOS host sockets (5 sent / 5 received in 20s, no
-      bridge/root). REMAINS: the west-lane build fixture + automated e2e test (the cmake-lane
-      fixture mechanism doesn't cover west); C++/mixed zephyr reuse the same wiring. Design + gaps
+      bridge/root). The automated test landed: `tests/zephyr_entry_e2e.rs` (GREEN, 12.9s — the
+      first Zephyr *workspace-entry* runtime test; the Rust one was build-coverage only) +
+      `build_zephyr_workspace_c_entry()` resolver + a C workspace-entry record in
+      `zephyr-fixture-leaves.sh` under `--include-workspace-entry` (built by `just zephyr
+      build-fixtures`, distinct port 17831). **C2d-zephyr C: DONE.** C++/mixed zephyr reuse the
+      same wiring (C++ direct; mixed inherits the C2c-mixed-freertos no_std-Rust caveat on a real
+      board, but native_sim's host triple sidesteps it like threadx-linux did). Design + gaps
       captured here + in 0097.
       Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx (arm-none-eabi/riscv),
       threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
