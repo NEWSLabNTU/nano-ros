@@ -143,6 +143,18 @@ pub(crate) fn board_is_embedded(board: &str) -> bool {
     board_cpp_path(board) != "::nros::board::NativeBoard"
 }
 
+/// phase-263 C2d — Zephyr is the exception among embedded boards: the Zephyr kernel
+/// calls the application's `main()` DIRECTLY (there is no nano-ros `startup.c` owning
+/// `main`), so a Zephyr LAUNCH entry emits a plain `int main(void)` driving
+/// `ZephyrBoard::run_components` — NOT the `nros_app_main` + `NROS_APP_MAIN_REGISTER_VOID`
+/// shape the FreeRTOS/NuttX/ThreadX startup paths require. The entry TU is added to the
+/// Zephyr `app` target (`nano_ros_entry` zephyr branch), and the connect locator threads
+/// in via the compile-time `CONFIG_NROS_ZENOH_LOCATOR` Kconfig (read through the
+/// `NROS_ENTRY_LOCATOR` default in `<nros/main.hpp>`), not a baked `-D`.
+pub(crate) fn board_is_zephyr(board: &str) -> bool {
+    board_cpp_path(board) == "::nros::board::ZephyrBoard"
+}
+
 /// Phase 240.2 (RFC-0043) — **typed** entry emitter. Routes each launch node to
 /// the REAL executor via its component object, instead of the legacy type-erased
 /// `__nros_component_<pkg>_register` call into the synthesizing
@@ -195,8 +207,9 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     out.push_str("#include <nros/component.hpp>\n");
     out.push_str("#include <nros/main.hpp>\n");
     out.push_str("#include <nros/nros.hpp>\n");
-    // phase-263 C2 — embedded boots through the board's startup.c via `app_main`.
-    if board_is_embedded(&plan.board) {
+    // phase-263 C2 — embedded boots through the board's startup.c via `app_main`. Zephyr
+    // is exempt (the kernel calls `main()` directly — see `board_is_zephyr`).
+    if board_is_embedded(&plan.board) && !board_is_zephyr(&plan.board) {
         out.push_str("#include <nros/app_main.h>\n");
     }
     // Phase 242.4 (RFC-0044) — `nros::ComponentNode` / `NodeHandle` /
@@ -401,7 +414,17 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     out.push_str("    return 0;\n}\n\n");
 
     let board = board_cpp_path(&plan.board);
-    if board_is_embedded(&plan.board) {
+    if board_is_zephyr(&plan.board) {
+        // phase-263 C2d — Zephyr: the kernel calls `main(void)` directly (no startup.c
+        // app_main). The locator-less `run_components` overload reads the compile-time
+        // `CONFIG_NROS_ZENOH_LOCATOR` Kconfig via `NROS_ENTRY_LOCATOR` (`<nros/main.hpp>`).
+        out.push_str("int main(void) {\n");
+        let _ = writeln!(
+            out,
+            "    return static_cast<int>({board}::run_components(&__nros_entry_setup));"
+        );
+        out.push_str("}\n");
+    } else if board_is_embedded(&plan.board) {
         // phase-263 C2 — embedded: the board's `startup.c` owns `main` (kernel enter →
         // app thread) and calls `app_main`. The locator-less `run_components` overload
         // reads the compile-time `NROS_ENTRY_LOCATOR` macro (the board cmake bakes it).

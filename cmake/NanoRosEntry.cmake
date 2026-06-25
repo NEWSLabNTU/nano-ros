@@ -165,7 +165,45 @@ function(nano_ros_entry)
         set(_lang_tag "cpp")
     endif()
 
-    if(NOT TARGET ${_NRA_NAME})
+    # phase-263 C2d — Zephyr build model. Unlike FreeRTOS/NuttX/ThreadX (add_executable +
+    # `nros_platform_link_app`), a Zephyr app is the `app` target that the entry
+    # CMakeLists' `find_package(Zephyr)` created. `nano_ros_entry` is the C/C++ analog of
+    # zephyr-lang-rust's `rust_cargo_application()`: after find_package it wires the
+    # generated entry TU into `app`, rather than building its own executable.
+    set(_nra_is_zephyr FALSE)
+    if(NANO_ROS_PLATFORM STREQUAL "zephyr")
+        set(_nra_is_zephyr TRUE)
+    endif()
+
+    if(_nra_is_zephyr)
+        if(NOT TARGET app)
+            message(FATAL_ERROR
+                "nano_ros_entry(BOARD zephyr …): no Zephyr `app` target. A Zephyr workspace "
+                "entry CMakeLists must call `find_package(Zephyr REQUIRED HINTS "
+                "$ENV{ZEPHYR_BASE})` BEFORE project() so the `app` target exists.")
+        endif()
+        # The generated entry TU defines `int main(void)` (board_is_zephyr shape). It MUST
+        # go directly into `app`: Zephyr links `libapp.a` whole-archive (so `main` is pulled
+        # as a strong symbol, overriding Zephyr's weak default `main`), and the TU inherits
+        # `app`'s include set — incl. the per-build `<nros/nros_{,cpp_}config_generated.h>`
+        # storage-size headers the Zephyr module emits into
+        # `${CMAKE_BINARY_DIR}/nros-rust/nros-{c,cpp}-generated` via
+        # `zephyr_include_directories` — and `app`'s `nros_cpp_cargo_build` ordering, for
+        # free. (A separate static lib does NOT get whole-archived → `main` silently dropped.)
+        target_sources(app PRIVATE ${_sources_for_exe})
+        # The node component libs are linked by the sidecar (below) to ${_NRA_NAME}; carry
+        # them in a placeholder static lib (Zephyr needs a real target for the sidecar's
+        # `target_link_libraries`) and link it into `app`, so the component archives reach
+        # `app`'s final link and resolve the `__nros_c_component_*` seams the TU references.
+        set(_nra_app_stub "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_zephyr_components_stub.c")
+        if(NOT EXISTS "${_nra_app_stub}")
+            file(WRITE "${_nra_app_stub}"
+                "/* phase-263 C2d — placeholder so the auto-link sidecar has a real target;\n"
+                "   the node component libs link PRIVATE here and propagate to `app`. */\n")
+        endif()
+        add_library(${_NRA_NAME} STATIC "${_nra_app_stub}")
+        target_link_libraries(app PRIVATE ${_NRA_NAME})
+    elseif(NOT TARGET ${_NRA_NAME})
         add_executable(${_NRA_NAME} ${_sources_for_exe})
         # Phase 257 (W0-A) — a TYPED C entry drives the `nros_cpp_*` runtime
         # (`nros_board_native_run_components`, `nros_cpp_node_create`), which lives
@@ -222,6 +260,7 @@ function(nano_ros_entry)
     # `NANO_ROS_BOARD IN_LIST DEPLOY` so only the entry matching the active board links.
     if(TARGET ${_NRA_NAME}
        AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
+       AND NOT _nra_is_zephyr
        AND COMMAND nros_platform_link_app
        AND DEFINED NANO_ROS_BOARD
        AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
@@ -255,38 +294,44 @@ function(nano_ros_entry)
        AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
        AND DEFINED NANO_ROS_BOARD
        AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
-        # (1) locator
-        if(DEFINED NROS_ENTRY_LOCATOR)
-            set(_nra_locator "${NROS_ENTRY_LOCATOR}")
-        elseif(_NRA_LOCATOR)
-            set(_nra_locator "${_NRA_LOCATOR}")
-        elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
-            set(_nra_locator "tcp/127.0.0.1:7447")
-        else()
-            set(_nra_locator "tcp/10.0.2.2:7447")
-        endif()
-        target_compile_definitions(${_NRA_NAME} PRIVATE
-            "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
+        # (1) locator. phase-263 C2d — Zephyr is EXEMPT: its connect locator threads in
+        # via the compile-time `CONFIG_NROS_ZENOH_LOCATOR` Kconfig (read through the
+        # `NROS_ENTRY_LOCATOR` default in `<nros/main.hpp>`); a baked `-DNROS_ENTRY_LOCATOR`
+        # would OVERRIDE that Kconfig. The FreeRTOS `NROS_APP_CONFIG` TU is likewise
+        # board-startup-only, so both are skipped on Zephyr.
+        if(NOT _nra_is_zephyr)
+            if(DEFINED NROS_ENTRY_LOCATOR)
+                set(_nra_locator "${NROS_ENTRY_LOCATOR}")
+            elseif(_NRA_LOCATOR)
+                set(_nra_locator "${_NRA_LOCATOR}")
+            elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
+                set(_nra_locator "tcp/127.0.0.1:7447")
+            else()
+                set(_nra_locator "tcp/10.0.2.2:7447")
+            endif()
+            target_compile_definitions(${_NRA_NAME} PRIVATE
+                "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
 
-        # (1b) phase-263 C2b — FreeRTOS `NROS_APP_CONFIG` TU. The board's `startup.c`
-        # reads `NROS_APP_CONFIG` (LAN9118/lwIP bring-up + FreeRTOS task prio/stacks);
-        # unlike ThreadX (whose `nros_platform_link_app` bakes its own app config) the
-        # FreeRTOS platform link does NOT, so the `nano_ros_node_register` carrier
-        # generates it from `templates/freertos_app_config.c.in`. The LAUNCH path builds
-        # the exe here, so generate + attach the same TU (only LOCATOR + DOMAIN vary; the
-        # network/scheduling fields are board defaults). Mirrors NanoRosNodeRegister.cmake
-        # freertos branch; keep in sync.
-        if(NANO_ROS_PLATFORM STREQUAL "freertos")
-            set(NROS_ENTRY_LOCATOR "${_nra_locator}")
-            set(NROS_ENTRY_APP_DOMAIN_ID 0)
-            set(_nra_appcfg "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_nros_app_config_def.c")
-            configure_file(
-                "${_NROS_ENTRY_DIR}/templates/freertos_app_config.c.in"
-                "${_nra_appcfg}" @ONLY)
-            target_sources(${_NRA_NAME} PRIVATE "${_nra_appcfg}")
+            # (1b) phase-263 C2b — FreeRTOS `NROS_APP_CONFIG` TU. The board's `startup.c`
+            # reads `NROS_APP_CONFIG` (LAN9118/lwIP bring-up + FreeRTOS task prio/stacks);
+            # unlike ThreadX (whose `nros_platform_link_app` bakes its own app config) the
+            # FreeRTOS platform link does NOT, so the `nano_ros_node_register` carrier
+            # generates it from `templates/freertos_app_config.c.in`. The LAUNCH path builds
+            # the exe here, so generate + attach the same TU (only LOCATOR + DOMAIN vary; the
+            # network/scheduling fields are board defaults). Mirrors NanoRosNodeRegister.cmake
+            # freertos branch; keep in sync.
+            if(NANO_ROS_PLATFORM STREQUAL "freertos")
+                set(NROS_ENTRY_LOCATOR "${_nra_locator}")
+                set(NROS_ENTRY_APP_DOMAIN_ID 0)
+                set(_nra_appcfg "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_nros_app_config_def.c")
+                configure_file(
+                    "${_NROS_ENTRY_DIR}/templates/freertos_app_config.c.in"
+                    "${_nra_appcfg}" @ONLY)
+                target_sources(${_NRA_NAME} PRIVATE "${_nra_appcfg}")
+            endif()
         endif()
 
-        # (2) header-mirror ordering for the generated TU
+        # (2) header-mirror ordering for the generated TU (all embedded boards, incl. Zephyr)
         if(_gen_tu)
             if(COMMAND _nros_node_register_config_header_deps)
                 _nros_node_register_config_header_deps(${_NRA_NAME})

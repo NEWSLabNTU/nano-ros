@@ -460,8 +460,24 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       `x86_64`. Unblock needs the workspace's Rust node made `no_std` (nros `alloc`-only) AND the
       `nros_ws_runtime` umbrella selecting no_std features + the cross triple per active platform
       (it currently pins one feature set workspace-wide) — a standalone subproject; the same wall
-      hits FreeRTOS/NuttX *Rust* workspaces generally. **C2d — zephyr** (west lane, build-only — a
-      different build system from the cmake workspace-fixtures lane) remains. Design + gaps
+      hits FreeRTOS/NuttX *Rust* workspaces generally. **C2d — zephyr C: build + native_sim
+      runtime delivery PROVEN (2026-06-26), approach A.** The Zephyr build model is
+      fundamentally different (west lane, `find_package(Zephyr)` → monolithic `app` target, not
+      add_executable + nros_platform_link_app), so `nano_ros_entry` gained a zephyr branch — the
+      C/C++ analog of zephyr-lang-rust's `rust_cargo_application()`: it puts the generated entry
+      TU (an `int main(void)` driving `ZephyrBoard::run_components` — a THIRD codegen shape, since
+      Zephyr's kernel calls `main` directly, NOT the startup.c `nros_app_main` shape) into `app`
+      (whole-archived → strong `main`), and links the node component libs in via a placeholder
+      static lib the sidecar targets. The locator threads in via `CONFIG_NROS_ZENOH_LOCATOR`
+      Kconfig (no bake). The entry CMakeLists is itself a Zephyr app (`find_package(Zephyr)` +
+      `nano_ros_entry(BOARD zephyr …)`); it includes NanoRosEntry (NOT NanoRosWorkspace) to avoid
+      the corrosion nros build clashing with the Zephyr module. **Crucially the per-`NROS_PKG_NAME`
+      wall that blocked NuttX does NOT apply** — Zephyr compiles each node component as a separate
+      cmake static lib (its own define), then links them. Verified on native_sim/native/64: the
+      C workspace entry (talker + listener) boots `zephyr.exe` and delivers `/chatter`
+      cross-process to a native listener over NSOS host sockets (5 sent / 5 received in 20s, no
+      bridge/root). REMAINS: the west-lane build fixture + automated e2e test (the cmake-lane
+      fixture mechanism doesn't cover west); C++/mixed zephyr reuse the same wiring. Design + gaps
       captured here + in 0097.
       Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx (arm-none-eabi/riscv),
       threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
