@@ -333,12 +333,38 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       LAUNCH (multi-node) case, mirroring the node_register templates. This is Rust-CLI work,
       not cmake. The two cmake fixes (entry embedded link + the node_register DEPLOY gate) are
       correct and ready to reapply once the codegen lands. Filed as **issue 0097**.
-    - **Revised plan.** **C2-pre** (codegen): add embedded board runners to the C/C++ entry
-      emitter + the cmake reapply. Then **C2a** threadx-linux C (run-verifiable host sim) →
-      **C2b** freertos/nuttx (QEMU) → **C2c** C++ + mixed → **C2d** zephyr. The spike code was
-      reverted (non-functional until the codegen lands); the design + gap analysis are captured
-      here + in 0097. Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx
-      (arm-none-eabi/riscv), threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
+    - **Revised plan + work items (mapped 2026-06-25 — emitter is inline string builders, no
+      template files; the N-node setup body, board run-classes, app_main macro, and the
+      single-node templates all already exist, so the fix is the OUTER wrapper only):**
+
+      **C2-pre — codegen + cmake (issue 0097).** Gating; run-verifiable on threadx-linux (host).
+      - **W1 — C++ emitter embedded shape.** `emit_cpp.rs` (~383) already board-aware
+        (`board_cpp_path()` → `ThreadxBoard`/…) but emits `int main(){ <Board>::run_components(
+        &setup); }` for ALL boards → **double-mains** with the RTOS `startup.c`. For non-native:
+        emit `#include <nros/app_main.h>` + `extern "C" int nros_app_main(...){ return
+        <Board>::run_components(&__nros_entry_setup); }` + `NROS_APP_MAIN_REGISTER_VOID();` (the
+        locator-less overload reads the `NROS_ENTRY_LOCATOR` macro — no codegen-side locator).
+        Native keeps `int main`.
+      - **W2 — C emitter embedded shape.** `emit_c.rs` (~128) is native-only (hardcodes
+        `nros_board_native_run_components`, ignores `plan.board`). The board runners are C++ only,
+        so for non-native emit a **`.cpp`** TU with the W1 shape, invoking each node via its
+        existing `extern "C" __nros_c_component_<pkg>_create/configure` seam (exactly what
+        `cmake/templates/threadx_entry_main_c_typed.cpp.in` does). Native keeps pure-`.c`.
+      - **W3 — cmake reapply + board key.** `nano_ros_entry`: pass the **real** board key to
+        `--board` (not the `zephyr` auto-derive — boards differ in spin/init); add the embedded
+        `nros_platform_link_app` link pass; link `NanoRosCpp` for an embedded C entry (its TU is
+        C++). `node_register`: add the documented `AND _NRC_DEPLOY` gate to the threadx + freertos
+        carrier branches (real bug — only nuttx had it). Workspace root: accept
+        `-DNANO_ROS_PLATFORM`/`-DNANO_ROS_BOARD` overrides (one board per configure).
+      - **W4 — verify on threadx-linux C.** native_threadx_entry builds + RUNS (host sim);
+        `c_threadx_workspace_e2e.rs` asserts delivery — the first runtime-verified C embedded
+        workspace entry. Closes 0097.
+
+      **C2a — threadx-linux** C/C++/mixed (host sim, run-verifiable). **C2b — freertos + nuttx**
+      C (QEMU build + run). **C2c — C++ + mixed** across those boards. **C2d — zephyr** (west
+      lane, build). The C2a-spike code was reverted (non-functional until C2-pre lands); design +
+      gaps captured here + in 0097. Toolchains present locally: freertos (arm-none-eabi + qemu),
+      nuttx (arm-none-eabi/riscv), threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
 
 ### Track D — Tests (close the C/C++/mixed gap)
 A runtime e2e test per workspace + per feature, asserting behaviour (not just a build):

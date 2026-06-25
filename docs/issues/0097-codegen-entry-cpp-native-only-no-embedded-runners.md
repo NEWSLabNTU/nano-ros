@@ -41,15 +41,40 @@ The **multi-node** LAUNCH emitter (`nros codegen entry`) has no embedded board r
 always emits the native runner. So the two paths diverge: single-node embedded works,
 multi-node (workspace LAUNCH) embedded does not.
 
-## Fix direction
+## Fix direction (mapped 2026-06-25)
 
-Teach the C/C++ `nros codegen entry` emitter to produce **per-board embedded runners** for the
-LAUNCH case — the app_main / board-run shape the `node_register` templates already use, but for
-the N-node launch (register each `(pkg, exec)` component, then hand to the board runner inside
-the board's app entry). Either:
-- emit board-specific entry TUs keyed on `--board <rtos>` (reuse the existing template shapes), or
-- emit a board-agnostic `app_main` that the board `startup.c` calls (move the native-vs-board
-  selection to a single `nros_board_run_components` seam).
+The N-node `__nros_entry_setup` body is already board-agnostic and correct; only the **outer
+entry wrapper** is wrong for embedded. The board run-classes
+(`::nros::board::{Threadx,Freertos,Nuttx,Zephyr}Board::run_components`) already exist
+(`packages/core/nros-cpp/include/nros/main.hpp:213–395`), each with a locator-less overload that
+reads the compile-time `NROS_ENTRY_LOCATOR` macro — so **the codegen needs no locator**.
+
+The emitters are inline string builders (no template files):
+
+- **C++ — `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs` (~383).** Already
+  board-aware (`board_cpp_path()` maps `threadx-linux → ::nros::board::ThreadxBoard`, etc.) but
+  emits `int main(){ return <Board>::run_components(&__nros_entry_setup); }` for **all** boards.
+  For an RTOS that **double-mains** with the board `startup.c` (which owns `main` → kernel enter
+  → app thread). **Fix:** for non-native boards emit `#include <nros/app_main.h>` +
+  `extern "C" int nros_app_main(int,char**){ return <Board>::run_components(&__nros_entry_setup); }`
+  + `NROS_APP_MAIN_REGISTER_VOID();` (the same shape as the single-node templates). Native keeps
+  `int main`.
+- **C — `emit_c.rs` (~128).** Fully native-only: hardcodes `nros_board_native_run_components`
+  (a C symbol) and ignores `plan.board`. The embedded board runners are C++ only. **Fix:** for
+  non-native boards, emit a **C++ TU** (output extension `.cpp`) with the same `nros_app_main`
+  shape as C++, but invoke each component via its existing `extern "C"`
+  `__nros_c_component_<pkg>_create/configure` seam (exactly what
+  `cmake/templates/threadx_entry_main_c_typed.cpp.in` does — a C component with a C++ entry TU).
+  Native keeps the pure-`.c` shape.
+- **cmake (`NanoRosEntry.cmake`).** (1) `nano_ros_entry` must pass the **real** board key to
+  `--board` (so `board_cpp_path` selects `ThreadxBoard`, not the `zephyr` auto-derive — boards
+  differ in spin/init). (2) Reapply the C2a-spike fixes: the embedded `nros_platform_link_app`
+  pass + the `node_register` `DEPLOY` gate (above). (3) An embedded C entry links `NanoRosCpp`
+  (the entry TU is C++), like a TYPED-C native entry.
+
+So the whole fix is: per-board outer wrapper in both emitters + a `.c`→`.cpp` switch for embedded
+C + the cmake board-key/link reapply. The setup body, board run-classes, app_main macro, and
+templates all already exist.
 
 ## Adjacent finding (cmake side, ready to reapply)
 
