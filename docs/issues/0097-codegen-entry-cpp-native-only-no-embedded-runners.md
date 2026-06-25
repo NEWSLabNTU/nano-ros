@@ -7,6 +7,36 @@ area: codegen
 related: [phase-263, rfc-0043]
 ---
 
+## Status (2026-06-25) — codegen + cmake fix IMPLEMENTED + verified; two follow-ups remain
+
+The codegen + cmake half is **done and verified** on threadx-linux C:
+- **W1 (C++ emitter, `emit_cpp.rs`):** for non-native boards, emit `nros_app_main` +
+  `NROS_APP_MAIN_REGISTER_VOID()` + `#include <nros/app_main.h>` (the locator-less
+  `run_components` overload) instead of `int main` (`board_is_embedded()` helper).
+- **W2 (C emitter, `codegen.rs` dispatch):** route an embedded **C** entry through the C++
+  emitter (it produces a `.cpp` TU, calling each C node via its `extern "C"`
+  `__nros_c_component_*` seam). Native C keeps the pure-`.c` `nros_board_native_run_components`.
+- **W3 (cmake):** `nano_ros_entry` embedded `nros_platform_link_app` pass (gated
+  `NANO_ROS_BOARD IN_LIST DEPLOY`); `.c`→`.cpp` ext switch for embedded C; the
+  `node_register` threadx + freertos carrier `AND _NRC_DEPLOY` gate (the documented bug);
+  workspace-root `-DNANO_ROS_PLATFORM`/`-DNANO_ROS_BOARD` override.
+
+**Verified:** a ws-c ThreadX entry now BUILDS + LINKS + BOOTS the ThreadX kernel and
+dispatches to the generated `app_main` → `ThreadxBoard::run_components` — **no segfault**
+(the original 0097 symptom is gone; the emitted shape is correct, `nm` shows a strong
+`app_main` + `nros_app_main`).
+
+**Two follow-ups gate C2a runtime verification (separate from the codegen gap):**
+1. **threadx-linux host-sim runtime delivery.** `ThreadxBoard::run_components` returns
+   immediately with NO nros/zenoh/node logs — `nros::init` (zenoh-pico over nsos-netx → host
+   sockets) or the multi-node setup fails before the spin loop, so `/chatter` is never
+   published. This is the threadx-linux host-sim network/init path, not the codegen.
+2. **nros-c/nros-cpp sizes-header mirror staleness.** A fresh embedded build dir leaves the
+   in-tree `nros_config_generated.h` / `nros_cpp_config_generated.h` stale
+   (`*_OPAQUE_U64S undeclared`); the build-dir headers are correct but the mirror to the
+   in-tree include dir doesn't fire (issue 0088's OBJECT_DEPENDS edge misses the embedded
+   consumers). A manual copy unblocks; needs a real mirror-ordering fix.
+
 ## Summary
 
 The C/C++ entry emitter `nros codegen entry` only emits a **native** runner. Its `--board`

@@ -337,8 +337,17 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       template files; the N-node setup body, board run-classes, app_main macro, and the
       single-node templates all already exist, so the fix is the OUTER wrapper only):**
 
-      **C2-pre — codegen + cmake (issue 0097).** Gating; run-verifiable on threadx-linux (host).
-      - **W1 — C++ emitter embedded shape.** `emit_cpp.rs` (~383) already board-aware
+      **C2-pre — codegen + cmake (issue 0097). W1–W3 DONE + verified (2026-06-25); W4 partial.**
+      The ws-c ThreadX entry now BUILDS + LINKS + BOOTS the kernel and dispatches to the
+      generated `app_main` → `ThreadxBoard::run_components` — **no segfault** (the 0097 symptom
+      is gone; `nm` shows a strong `app_main`/`nros_app_main`). The codegen+cmake scaffold is
+      committed; the example entry source + ws-c root override land as WIP (no fixture/test until
+      W4's runtime works). **Two follow-ups gate W4 runtime delivery (both separate from the
+      codegen gap, tracked in 0097):** (1) threadx-linux host-sim runtime — `run_components`
+      returns with no nros/zenoh logs (`nros::init`/network over nsos-netx fails before the spin),
+      so `/chatter` is never published; (2) the nros-c/nros-cpp sizes-header **mirror** is stale
+      for a fresh embedded build dir (`*_OPAQUE_U64S undeclared`; a manual copy unblocks).
+      - **W1 — C++ emitter embedded shape. DONE.** `emit_cpp.rs` (~383) already board-aware
         (`board_cpp_path()` → `ThreadxBoard`/…) but emits `int main(){ <Board>::run_components(
         &setup); }` for ALL boards → **double-mains** with the RTOS `startup.c`. For non-native:
         emit `#include <nros/app_main.h>` + `extern "C" int nros_app_main(...){ return
@@ -356,9 +365,11 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
         C++). `node_register`: add the documented `AND _NRC_DEPLOY` gate to the threadx + freertos
         carrier branches (real bug — only nuttx had it). Workspace root: accept
         `-DNANO_ROS_PLATFORM`/`-DNANO_ROS_BOARD` overrides (one board per configure).
-      - **W4 — verify on threadx-linux C.** native_threadx_entry builds + RUNS (host sim);
-        `c_threadx_workspace_e2e.rs` asserts delivery — the first runtime-verified C embedded
-        workspace entry. Closes 0097.
+      - **W4 — verify on threadx-linux C. PARTIAL.** native_threadx_entry builds + links + BOOTS
+        (no segfault — the codegen+cmake half is proven). Runtime DELIVERY pending the two 0097
+        follow-ups (threadx-linux host-sim init/network + the sizes-mirror). Once those land,
+        `c_threadx_workspace_e2e.rs` asserts `/chatter` delivery — the first runtime-verified C
+        embedded workspace entry — and a fixture row + the example wire in.
 
       **C2a — threadx-linux** C/C++/mixed (host sim, run-verifiable). **C2b — freertos + nuttx**
       C (QEMU build + run). **C2c — C++ + mixed** across those boards. **C2d — zephyr** (west

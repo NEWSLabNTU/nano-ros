@@ -471,6 +471,7 @@ function(nano_ros_node_register)
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND NANO_ROS_PLATFORM STREQUAL "threadx"
        AND COMMAND nros_platform_link_app
+       AND _NRC_DEPLOY
        AND NOT TARGET ${PROJECT_NAME})
         if(NOT _NRC_TYPED)
             message(FATAL_ERROR
@@ -572,6 +573,7 @@ function(nano_ros_node_register)
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND NANO_ROS_PLATFORM STREQUAL "freertos"
        AND COMMAND nros_platform_link_app
+       AND _NRC_DEPLOY
        AND NOT TARGET ${PROJECT_NAME})
         if(NOT _NRC_TYPED)
             message(FATAL_ERROR

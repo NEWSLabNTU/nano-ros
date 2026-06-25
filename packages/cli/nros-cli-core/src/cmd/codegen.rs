@@ -255,10 +255,18 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         let index = entry_codegen::metadata::ComponentIndex::load(meta_path)?;
         entry_codegen::metadata::enrich_plan(&mut plan, &index)?;
         match lang {
-            entry_codegen::Lang::C => {
+            // phase-263 C2 (issue 0097) — the C emitter is native-only (it emits a
+            // pure-`.c` TU calling the C `nros_board_native_run_components`). The
+            // embedded board runners are C++ only (`ThreadxBoard::run_components`, …), so
+            // an embedded C entry routes through the C++ emitter (which produces a `.cpp`
+            // TU that invokes each C node via its `extern "C"` `__nros_c_component_*` seam
+            // — exactly the single-node `threadx_entry_main_c_typed.cpp.in` shape). The
+            // cmake side (`nano_ros_entry`) gives the `.out` a `.cpp` extension + links
+            // `NanoRosCpp` for an embedded C entry.
+            entry_codegen::Lang::C if !entry_codegen::emit_cpp::board_is_embedded(&plan.board) => {
                 entry_codegen::emit_c::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
             }
-            // Cpp (C and Cpp are the only langs that reach here).
+            // C++ entries, and embedded C entries (routed here for the C++ board runner).
             _ => entry_codegen::emit_cpp::emit_typed(&plan).map_err(|e| eyre!("{e}"))?,
         }
     } else {

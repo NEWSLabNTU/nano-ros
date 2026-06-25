@@ -127,6 +127,16 @@ fn board_cpp_path(board: &str) -> &str {
     }
 }
 
+/// phase-263 C2 (issue 0097) — does this board boot via the RTOS `startup.c`
+/// (`nros_app_main` + `NROS_APP_MAIN_REGISTER_VOID`) rather than a plain `int main`?
+/// Every non-native board does: the board's `startup.c` owns `main` (kernel enter →
+/// app thread) and dispatches to the entry's `app_main`, so the LAUNCH entry must NOT
+/// define `int main` (it would double-main / never run under the kernel). Native keeps
+/// the POSIX `int main`.
+pub(crate) fn board_is_embedded(board: &str) -> bool {
+    board_cpp_path(board) != "::nros::board::NativeBoard"
+}
+
 /// Phase 240.2 (RFC-0043) — **typed** entry emitter. Routes each launch node to
 /// the REAL executor via its component object, instead of the legacy type-erased
 /// `__nros_component_<pkg>_register` call into the synthesizing
@@ -179,6 +189,10 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     out.push_str("#include <nros/component.hpp>\n");
     out.push_str("#include <nros/main.hpp>\n");
     out.push_str("#include <nros/nros.hpp>\n");
+    // phase-263 C2 — embedded boots through the board's startup.c via `app_main`.
+    if board_is_embedded(&plan.board) {
+        out.push_str("#include <nros/app_main.h>\n");
+    }
     // Phase 242.4 (RFC-0044) — `nros::ComponentNode` / `NodeHandle` /
     // `detail::report_component_failure` for any rclcpp-shape (construct-with-
     // handle) node. Pulled in only when one is present.
@@ -381,12 +395,25 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     out.push_str("    return 0;\n}\n\n");
 
     let board = board_cpp_path(&plan.board);
-    out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
-    let _ = writeln!(
-        out,
-        "    return {board}::run_components(&__nros_entry_setup);"
-    );
-    out.push_str("}\n");
+    if board_is_embedded(&plan.board) {
+        // phase-263 C2 — embedded: the board's `startup.c` owns `main` (kernel enter →
+        // app thread) and calls `app_main`. The locator-less `run_components` overload
+        // reads the compile-time `NROS_ENTRY_LOCATOR` macro (the board cmake bakes it).
+        out.push_str("extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {\n");
+        let _ = writeln!(
+            out,
+            "    return {board}::run_components(&__nros_entry_setup);"
+        );
+        out.push_str("}\n\n");
+        out.push_str("NROS_APP_MAIN_REGISTER_VOID();\n");
+    } else {
+        out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
+        let _ = writeln!(
+            out,
+            "    return {board}::run_components(&__nros_entry_setup);"
+        );
+        out.push_str("}\n");
+    }
 
     Ok(out)
 }

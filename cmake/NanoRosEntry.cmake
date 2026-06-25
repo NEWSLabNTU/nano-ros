@@ -206,6 +206,21 @@ function(nano_ros_entry)
         nros_platform_link_app(${_NRA_NAME})
     endif()
 
+    # phase-263 C2 (issue 0097) — embedded LAUNCH Entry link pass. The standalone
+    # `nano_ros_node_register` carrier calls `nros_platform_link_app` for the embedded
+    # boards (startup source + app_define + linker script + kernel/netstack umbrella +
+    # RMW stub), but the LAUNCH path builds the exe HERE. The active platform module
+    # (selected by the workspace-root `NANO_ROS_PLATFORM` + `NANO_ROS_BOARD`) loaded the
+    # board overlay, so `nros_platform_link_app` does the correct per-board work. Gated on
+    # `NANO_ROS_BOARD IN_LIST DEPLOY` so only the entry matching the active board links.
+    if(TARGET ${_NRA_NAME}
+       AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
+       AND COMMAND nros_platform_link_app
+       AND DEFINED NANO_ROS_BOARD
+       AND ("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY))
+        nros_platform_link_app(${_NRA_NAME})
+    endif()
+
     # Phase 212.N.6 — stash the BOARD selection on the target so the
     # later N.4 / N.5 codegen planner can read it. Empty when caller
     # didn't pass BOARD.
@@ -295,7 +310,14 @@ function(_nros_entry_invoke_codegen)
         set(_ws_root "${CMAKE_SOURCE_DIR}")
     endif()
 
-    if(_NRX_LANG STREQUAL "c")
+    # phase-263 C2 (issue 0097) — an embedded C entry's generated TU is C++ (it drives
+    # the C++ board runner `ThreadxBoard::run_components`, calling each C node via its
+    # `extern "C"` seam), so emit `.cpp` even for `LANG c` on a non-posix configure. The
+    # codegen routes embedded-C through the C++ emitter to match. Native C stays `.c`.
+    if(_NRX_LANG STREQUAL "c" AND DEFINED NANO_ROS_PLATFORM
+       AND NOT NANO_ROS_PLATFORM STREQUAL "posix")
+        set(_ext "cpp")
+    elseif(_NRX_LANG STREQUAL "c")
         set(_ext "c")
     else()
         set(_ext "cpp")
