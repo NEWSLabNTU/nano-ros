@@ -107,6 +107,12 @@ fn board_cpp_path(board: &str) -> &str {
         // kernel boot; shares the EntryNodeRuntime via the `NuttxBoard`
         // lifecycle adapter.
         "nuttx" | "nuttx-qemu-arm" | "nuttx-qemu-riscv" => "::nros::board::NuttxBoard",
+        // Phase 240.6 / phase-263 C2b — embedded FreeRTOS (QEMU MPS2-AN385 + lwIP). The
+        // board's C `startup.c` spawns the app task + starts the scheduler, brings up the
+        // netif, and dispatches to the typed entry's `app_main`, so `FreertosBoard`'s
+        // `run_components` runs WITHOUT re-entering the kernel — same machinery as the
+        // ThreadX/NuttX adapters.
+        "freertos" | "mps2-an385-freertos" => "::nros::board::FreertosBoard",
         // Phase 246 — Azure RTOS ThreadX family (threadx-linux host sim +
         // bare-metal qemu-riscv64). The board's C `startup.c` enters the kernel
         // and dispatches to the typed entry's `app_main` inside the app thread, so

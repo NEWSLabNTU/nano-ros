@@ -235,6 +235,10 @@ static NATIVE_WORKSPACE_C_ENTRY_ROBOT2_BINARY: OnceCell<PathBuf> = OnceCell::new
 /// (`nano_ros_entry(BOARD threadx-linux …)`, the first embedded LAUNCH entry).
 static THREADX_LINUX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 C2b — cached path to the FreeRTOS (QEMU MPS2-AN385) C workspace embedded
+/// entry (`nano_ros_entry(BOARD mps2-an385-freertos …)`, the first QEMU-cross entry).
+static FREERTOS_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native C++ workspace Entry pkg binary.
 static NATIVE_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -870,6 +874,23 @@ pub fn build_threadx_linux_workspace_c_entry() -> TestResult<&'static Path> {
                 "c",
                 "build-workspace-fixtures-threadx",
                 "native_threadx_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 C2b — the FreeRTOS (QEMU MPS2-AN385) C workspace embedded entry (cached).
+/// Built into its own `build-workspace-fixtures-freertos` dir (one board per configure,
+/// cross-compiled thumbv7m via the workspace-root toolchain map) with a baked
+/// `tcp/192.0.3.1:<port>` locator the QEMU slirp guest dials.
+pub fn build_freertos_workspace_c_entry() -> TestResult<&'static Path> {
+    FREERTOS_WORKSPACE_C_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-c-freertos",
+                "c",
+                "build-workspace-fixtures-freertos",
+                "freertos_entry",
             )
         })
         .map(|p| p.as_path())

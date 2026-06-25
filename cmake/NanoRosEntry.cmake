@@ -37,6 +37,13 @@ if(DEFINED _NROS_ENTRY_INCLUDED)
 endif()
 set(_NROS_ENTRY_INCLUDED TRUE)
 
+# phase-263 C2b — capture this module's dir GLOBALLY (cache) so the `nano_ros_entry`
+# function can locate `cmake/templates/` no matter which subdirectory scope calls it.
+# `_NROS_NODE_REGISTER_DIR` is only set in scopes that `include()` NanoRosNodeRegister
+# directly (the standalone examples); a workspace entry pkg reaches us via the workspace
+# guard, so that var is empty there.
+set(_NROS_ENTRY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "nano_ros_entry module dir")
+
 # Pull in the shared metadata-emit helper + GLOBAL property
 # definitions. `NanoRosNodeRegister.cmake` is the SSoT for those
 # (it predates this module). The include is guarded inside that file,
@@ -260,6 +267,24 @@ function(nano_ros_entry)
         endif()
         target_compile_definitions(${_NRA_NAME} PRIVATE
             "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
+
+        # (1b) phase-263 C2b — FreeRTOS `NROS_APP_CONFIG` TU. The board's `startup.c`
+        # reads `NROS_APP_CONFIG` (LAN9118/lwIP bring-up + FreeRTOS task prio/stacks);
+        # unlike ThreadX (whose `nros_platform_link_app` bakes its own app config) the
+        # FreeRTOS platform link does NOT, so the `nano_ros_node_register` carrier
+        # generates it from `templates/freertos_app_config.c.in`. The LAUNCH path builds
+        # the exe here, so generate + attach the same TU (only LOCATOR + DOMAIN vary; the
+        # network/scheduling fields are board defaults). Mirrors NanoRosNodeRegister.cmake
+        # freertos branch; keep in sync.
+        if(NANO_ROS_PLATFORM STREQUAL "freertos")
+            set(NROS_ENTRY_LOCATOR "${_nra_locator}")
+            set(NROS_ENTRY_APP_DOMAIN_ID 0)
+            set(_nra_appcfg "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_nros_app_config_def.c")
+            configure_file(
+                "${_NROS_ENTRY_DIR}/templates/freertos_app_config.c.in"
+                "${_nra_appcfg}" @ONLY)
+            target_sources(${_NRA_NAME} PRIVATE "${_nra_appcfg}")
+        endif()
 
         # (2) header-mirror ordering for the generated TU
         if(_gen_tu)

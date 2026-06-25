@@ -307,8 +307,8 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
   fixtures `workspace-{cpp,mixed}-native-robot{1,2}`. So all three CMake workspaces now
   reach Rust's multihost parity from the single `HOST` passthrough.
 - **C2 — embedded entries (freertos / nuttx / zephyr / threadx; esp32 skipped). DESIGN
-  LOCKED (2026-06-25); C2-pre + C2a (threadx-linux C) DONE + runtime-verified (2026-06-25);
-  C2b–d remain.** Two-agent framework exploration found the
+  LOCKED (2026-06-25); C2-pre + C2a (threadx-linux C) + C2b-freertos (QEMU C) DONE +
+  runtime-verified (2026-06-25); C2b-nuttx + C2c/d remain.** Two-agent framework exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
   just two gaps + wiring:
   - **The embedded carrier mechanism already exists** in `nano_ros_node_register`
@@ -399,10 +399,23 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
 
       **C2a — threadx-linux** C (host sim, run-verifiable) **DONE 2026-06-25** —
       `tests/c_threadx_entry_e2e.rs` GREEN; C++/mixed on threadx-linux follow the same path
-      (reuse the locator-bake + header-ordering wiring). **C2b — freertos + nuttx** C (QEMU build
-      + run). **C2c — C++ + mixed** across those boards. **C2d — zephyr** (west lane, build).
-      Design + gaps captured here + in 0097. Toolchains present locally: freertos (arm-none-eabi + qemu),
-      nuttx (arm-none-eabi/riscv), threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
+      (reuse the locator-bake + header-ordering wiring). **C2b — freertos** C (QEMU build + run)
+      **DONE 2026-06-25** — `tests/c_freertos_entry_e2e.rs` GREEN: the first QEMU-cross embedded
+      workspace entry boots FreeRTOS on MPS2-AN385 + lwIP and delivers `/chatter` cross-process to
+      a native listener. Three new pieces beyond the C2a wiring: (i) `board_cpp_path` gained a
+      FreeRTOS arm (it fell through to `NativeBoard` → the codegen emitted the native runner, not
+      `FreertosBoard::run_components`); (ii) the FreeRTOS `NROS_APP_CONFIG` TU (startup.c's
+      network/scheduling) is generated in `nano_ros_entry` — ThreadX's `nros_platform_link_app`
+      bakes its own, FreeRTOS's does not (the carrier did it, the LAUNCH path now mirrors that);
+      (iii) the ws-c root maps the board → arm-none-eabi toolchain BEFORE `project()` (cross
+      boards need `CMAKE_TOOLCHAIN_FILE` at the first compiler probe). The firmware's static
+      `192.0.3.x` lwIP config drives a board-matching QEMU slirp net (`host=192.0.3.1`, a new
+      `QemuProcess::start_mps2_an385_freertos_slirp`) + a `tcp/192.0.3.1:<port>` baked locator — no
+      TAP/bridge/root. **C2b — nuttx** (QEMU, kernel-linked ELF — the bootable image links the
+      entry INTO the NuttX kernel, a distinct build model) remains. **C2c — C++ + mixed** across
+      those boards. **C2d — zephyr** (west lane, build). Design + gaps captured here + in 0097.
+      Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx (arm-none-eabi/riscv),
+      threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
 
 ### Track D — Tests (close the C/C++/mixed gap)
 A runtime e2e test per workspace + per feature, asserting behaviour (not just a build):

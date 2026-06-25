@@ -402,6 +402,25 @@ entry = "native_threadx_entry"
 build_subdir = "build-workspace-fixtures-threadx"
 cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:17553" }
 
+# phase-263 C2b (issue 0097) — the FIRST QEMU-cross embedded C workspace entry:
+# `nano_ros_entry(BOARD mps2-an385-freertos LAUNCH …)`, the FreeRTOS sibling to the C2a
+# threadx-linux host sim. The workspace root maps the board to its arm-none-eabi
+# toolchain (set before project()), so this row needs only platform/board + the baked
+# locator. The firmware uses a static 192.0.3.x lwIP config (no DHCP), so the test runs
+# QEMU slirp with a matching net (host=192.0.3.1) and the entry dials
+# `tcp/192.0.3.1:<port>`. Own build_subdir (one board per CMake configure). Consumed by
+# tests/c_freertos_entry_e2e.rs (cross-process /chatter from the QEMU guest).
+[[workspace_fixture]]
+id = "workspace-c-freertos"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "freertos_entry"
+build_subdir = "build-workspace-fixtures-freertos"
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17601" }
+
 [[workspace_fixture]]
 id = "workspace-cpp-native"
 platform = "native"

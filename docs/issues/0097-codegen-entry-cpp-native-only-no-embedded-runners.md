@@ -7,13 +7,19 @@ area: codegen
 related: [phase-263, rfc-0043]
 ---
 
-## Status (2026-06-25) — RESOLVED: embedded entry path proven end-to-end on threadx-linux C
+## Status (2026-06-25) — RESOLVED: embedded entry path proven end-to-end on threadx-linux + FreeRTOS C
 
-The embedded `nano_ros_entry(LAUNCH)` path now builds, boots, AND **delivers** — the C2a
-runtime e2e (`tests/c_threadx_entry_e2e.rs`) is GREEN: the threadx-linux host-sim entry's
-talker publishes `/chatter` to a separate native listener through a zenoh router (cross
-process per issue 0096), single host, **no veth bridge / no root**. Both follow-ups below
-are fixed.
+The embedded `nano_ros_entry(LAUNCH)` path now builds, boots, AND **delivers** on two boards:
+- **threadx-linux (host sim)** — `tests/c_threadx_entry_e2e.rs` GREEN (C2a).
+- **FreeRTOS (QEMU MPS2-AN385 + lwIP, cross-compiled)** — `tests/c_freertos_entry_e2e.rs`
+  GREEN (C2b): the firmware boots in QEMU and delivers `/chatter` cross-process to a native
+  listener via a host zenohd over a board-matching slirp net (no TAP/bridge/root).
+
+Both follow-ups below are fixed. FreeRTOS needed three more pieces (all generic, in this
+issue's spirit — the LAUNCH path replicating carrier wiring): a `board_cpp_path` FreeRTOS
+arm (else the codegen emitted the native runner), the `NROS_APP_CONFIG` TU generated in
+`nano_ros_entry` (ThreadX's `nros_platform_link_app` bakes its own; FreeRTOS's doesn't), and
+the ws-c root mapping the board → arm-none-eabi `CMAKE_TOOLCHAIN_FILE` before `project()`.
 
 The codegen + cmake half (W1–W3) is done and verified on threadx-linux C:
 - **W1 (C++ emitter, `emit_cpp.rs`):** for non-native boards, emit `nros_app_main` +

@@ -93,6 +93,9 @@ build-examples:
     done
     bash scripts/build/fixtures-build.sh freertos rust zenoh
     bash scripts/build/workspace-fixtures-build.sh freertos rust
+    # phase-263 C2b — the embedded C workspace LAUNCH entry (issue 0097), consumed by
+    # tests/c_freertos_entry_e2e.rs. Own build-subdir (one board per CMake configure).
+    bash scripts/build/workspace-fixtures-build.sh freertos c
     echo "FreeRTOS QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
