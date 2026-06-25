@@ -1638,6 +1638,21 @@ fn render_one_backend(
         // generic "dds" / "rmw-dds" / "rmw-dds-cffi" tokens are no
         // longer wired up. Cyclone is the DDS backend and is
         // selected via "cyclonedds" only (see nano-ros Phase 169.5).
+        //
+        // phase-263 B3 — cyclone has two link paths. A C/C++ workspace (or a
+        // Rust entry built UNDER CMake via corrosion, i.e. an embedded board)
+        // links the cyclone staticlib through the CMake glue
+        // (`corrosion_link_libraries`), so the generated cargo Cargo.toml leaves
+        // the DDS slot empty. A NATIVE Rust entry (the bridge workspace) is built
+        // by plain cargo with no CMake layer, so it must take
+        // `nros-rmw-cyclonedds-sys` as a cargo dep — its `build.rs` vendors +
+        // compiles the C++ backend. Gate on the native board so non-native /
+        // CMake builds stay byte-identical (no double-link).
+        "cyclonedds" if cyclone_links_via_cargo(build) => format!(
+            "nros-rmw-cyclonedds-sys = {{ path = \"{}\", features = {} }}\n",
+            path_for_template(&workspace.join("packages/dds/nros-rmw-cyclonedds-sys")),
+            toml_string_array(&backend_features(build, "cyclonedds", safety)),
+        ),
         "cyclonedds" => "# Cyclone DDS is a CMake/C++ project — no Rust shim crate.\n\
              # Consumers select it via NANO_ROS_RMW=cyclonedds at the CMake\n\
              # layer (nros-c / nros-cpp). The generated Cargo.toml leaves\n\
@@ -1646,6 +1661,13 @@ fn render_one_backend(
             .to_string(),
         _ => String::new(),
     }
+}
+
+/// phase-263 B3 — a native Rust entry (built by plain cargo, no CMake layer)
+/// must take `nros-rmw-cyclonedds-sys` as a cargo dep; a CMake / corrosion build
+/// links the cyclone staticlib itself. Native / posix boards are the cargo case.
+fn cyclone_links_via_cargo(build: &PlanBuildOptions) -> bool {
+    matches!(build.board.as_str(), "native" | "posix")
 }
 
 fn render_backend_dependencies(options: &GenerateOptions, plan: &NrosPlan) -> String {
@@ -2623,13 +2645,19 @@ fn render_backend_register_fn(out: &mut String, plan: &NrosPlan) {
     // Phase 173.5 — register every RMW the transports bind to (bridge
     // mode registers 2+ before `Executor::open_multi`). Single-RMW emits
     // one call, byte-identical.
+    let cyclone_cargo = cyclone_links_via_cargo(&plan.build);
     for rmw in rmw_set(&plan.build) {
         match rmw {
             "zenoh" => out.push_str("    let _ = nros_rmw_zenoh::register();\n"),
             "xrce" => out.push_str("    let _ = nros_rmw_xrce_cffi::register();\n"),
-            // Cyclone DDS is a CMake/C++ project with no Rust shim;
-            // registration happens through the C ABI at the CMake layer
-            // (NANO_ROS_RMW=cyclonedds). No Rust call emitted.
+            // phase-263 B3 — a NATIVE Rust entry takes `nros-rmw-cyclonedds-sys`
+            // as a cargo dep (see `render_one_backend`), so it registers the
+            // backend in-process here. A CMake/corrosion build registers cyclone
+            // through the C ABI at the CMake layer (NANO_ROS_RMW=cyclonedds), so
+            // no Rust call is emitted there (byte-identical to before).
+            "cyclonedds" if cyclone_cargo => {
+                out.push_str("    let _ = nros_rmw_cyclonedds_sys::register();\n")
+            }
             _ => {}
         }
     }
@@ -4549,6 +4577,39 @@ mod net_fragment_tests {
             board_rmw_features(&b),
             vec!["rmw-zenoh".to_string(), "rmw-cyclonedds".to_string()]
         );
+    }
+
+    /// phase-263 B3 — a NATIVE Rust bridge entry takes `nros-rmw-cyclonedds-sys`
+    /// as a cargo dep (no CMake layer to link the staticlib); a non-native /
+    /// CMake build keeps the empty-slot comment (cyclone linked by CMake glue).
+    #[test]
+    fn cyclone_backend_dep_gated_on_native_board() {
+        let ws = std::path::Path::new("/ws");
+        let mut b = build_with(vec![]);
+
+        // Native board → the cyclone-sys cargo dep is emitted.
+        b.board = "native".to_string();
+        let native = render_one_backend(ws, &b, "cyclonedds", false);
+        assert!(
+            native.contains("nros-rmw-cyclonedds-sys"),
+            "native bridge must dep cyclone-sys: {native}"
+        );
+
+        // Non-native (embedded / CMake-corrosion) → no cargo dep, the CMake
+        // comment stays (byte-identical to pre-B3, no double-link).
+        b.board = "zephyr".to_string();
+        let embedded = render_one_backend(ws, &b, "cyclonedds", false);
+        assert!(
+            !embedded.contains("nros-rmw-cyclonedds-sys"),
+            "embedded bridge must NOT dep cyclone-sys (CMake links it): {embedded}"
+        );
+        assert!(
+            embedded.contains("CMake"),
+            "embedded keeps the comment: {embedded}"
+        );
+
+        // zenoh is unaffected — still a cargo dep on every board.
+        assert!(render_one_backend(ws, &b, "zenoh", false).contains("nros-rmw-zenoh"));
     }
 
     #[test]
