@@ -1,0 +1,219 @@
+---
+rfc: 0045
+title: "Unified boot-config resolution across languages and platforms"
+status: Draft
+since: 2026-06
+last-reviewed: 2026-06
+implements-tracked-by: []
+supersedes: []
+superseded-by: null
+---
+
+# RFC-0045 — Unified boot-config resolution across languages and platforms
+
+## Summary
+
+A node's **boot config** — its ROS graph `node_name`, RMW `locator`, and `domain_id`
+(plus `namespace`) — is today assembled in three different places (Rust / C / C++) from
+four different sources (runtime env, baked `Config`, compile-time `option_env!`, or — on
+NuttX — nothing at all). The same `system.toml` / `[deploy.*]` / launch input therefore
+produces *different* runtime identity depending on target and language. Issue #98 (the node
+name shows `/node`/`/nros_app` instead of the launch-declared name) is one visible symptom;
+the C path doesn't even thread the user's node name (it sends a PID-based session name), and
+C++ defaults to `"nros_cpp"`.
+
+The fix is small in shape because the **sink is already unified**: all three languages funnel
+into one struct + function, `RmwConfig → CffiRmw::open → CffiSession::open`. What diverges is
+everything *above* the sink. This RFC defines a single **resolver** with one precedence rule
+that feeds that existing sink, reachable from all three languages, and a single **embedded
+bake site** designed so a future post-link config-patch tool (and, later, a build-time plan
+image) drop in without changing the resolver or its call-sites.
+
+This RFC is the design backing issue [#101](../issues/0101-board-boot-config-not-unified.md)
+(and the durable fix for [#98](../issues/0098-nros-main-ignores-component-node-name.md)). It
+extends RFC-0004 (the configuration model) on one axis: *how* the configured identity reaches
+the running session, uniformly.
+
+## Problem
+
+The boot-config assembly paths (verified 2026-06-26):
+
+| Lang | Builds `RmwConfig` at | Source of identity | `node_name` today |
+| --- | --- | --- | --- |
+| Rust | board → `ExecutorConfig` → `Executor::open` (`nros-node/.../spin.rs:101`) | board-dependent (4 mechanisms below) | hardcoded / env / `option_env!` |
+| C | `nros_support_init` → `open_session` (`nros/src/lib.rs:482`) | `nros_support_init(locator, domain)` params | **PID-based session name — user node name never flows** |
+| C++ | `nros_cpp_init` → `ExecutorConfig` (`nros-cpp/src/lib.rs:475`) | `NROS_ENTRY_*` macros / init params | defaults `"nros_cpp"` |
+
+The four Rust mechanisms (board audit): runtime `from_env` + `DeployOverlay` (POSIX/Native —
+the only ones that honor the launch name); baked `Config` with hardcoded `.node_name("nros_app")`
+(stm32f4, mps2 bare/FreeRTOS, threadx); compile-time `option_env!` (Zephyr, ESP32, RTIC,
+Embassy); and the trait-default drop on NuttX, which has no `run_with_deploy` override so the
+overlay (locator/domain/node_name) is silently inert.
+
+Consequences: `ros2 node list` is correct on 2 of ~10 boards; `[deploy.nuttx*]` is dead;
+locator/domain override mechanism is per-board lore; the C/C++ node name is wrong on every
+target. The orchestration IR already resolves the identity language-agnostically — only the
+*delivery to the session* is fragmented.
+
+The one thing already unified — the sink:
+
+```
+RmwConfig { locator, mode, domain_id, node_name, namespace, properties }
+    → CffiRmw::open(&cfg)        (nros-rmw-cffi/src/lib.rs:2957)
+    → CffiSession::open(locator, mode, domain_id, node_name)
+```
+
+## Design
+
+### Precedence model (A): env override on hosted, overlay as the source, compiled default last
+
+Per field, independently:
+
+```
+  env var (hosted only, when set)         e.g. NROS_LOCATOR / ROS_DOMAIN_ID / NROS_NODE_NAME
+        ↓  overrides
+  baked overlay  (system.toml / [deploy.*] / launch / Kconfig)
+        ↓  falls back to
+  board compiled default  ("nros_app", multicast/empty locator, domain 0)
+```
+
+Rationale (UX + maintainability):
+
+- **One mental model:** `system.toml`/launch is the source of truth; env tweaks it on native
+  for fast iteration and tests. Native and embedded behave identically for a given config.
+- **Smallest surface:** the env layer is a thin, std-gated, hosted-only wrapper that already
+  exists (`ExecutorConfig::from_env`); embedded just passes the baked overlay through. No
+  per-RTOS `getenv` shim (rejected alternative B-env), and no break of the native per-run
+  `NROS_LOCATOR` workflow that every native test + the zenohd harness relies on (rejected
+  alternative bake-only).
+
+### The resolver lives in `nros-node`, on `ExecutorConfig`, with plain-field input
+
+`nros-node` (home of `ExecutorConfig`) and `nros-platform` (home of `DeployOverlay`) do not
+depend on each other — they meet only through `nros-platform-api`. So the resolver takes a
+plain-field input, not the `DeployOverlay` type, sidestepping the cycle. Everyone already
+depends on `nros-node`.
+
+```rust
+// nros-node — the single precedence implementation
+pub struct BootConfig<'a> {          // session-identity subset; all optional = "unset"
+    pub node_name: Option<&'a str>,
+    pub locator:   Option<&'a str>,
+    pub domain_id: Option<u32>,
+    pub namespace: Option<&'a str>,
+}
+
+impl<'a> ExecutorConfig<'a> {
+    /// Resolve precedence-model-A into a ready ExecutorConfig.
+    /// `hosted_env = true` enables the env-override layer (std only); embedded passes false.
+    pub fn resolve(baked: BootConfig<'a>, hosted_env: bool) -> ExecutorConfig<'a> { /* … */ }
+}
+```
+
+Three thin call-sites map their source into `BootConfig`, then call `resolve`:
+
+- **Rust boards:** unpack `DeployOverlay { node_name, locator, domain_id }` → `BootConfig` →
+  `ExecutorConfig::resolve(.., hosted_env = is_hosted)`. One line per board, replacing the
+  current hardcoded `.node_name("nros_app")`. This is what makes #98 land on *every* board.
+  NuttX gains a `run_with_deploy` override (it has none today) so the overlay stops being
+  dropped.
+- **C** (`open_session`): build `BootConfig` from the support context + node identity →
+  `resolve` → existing `RmwConfig`. Fixes the PID-session-name defect (node name now flows).
+- **C++** (`nros_cpp_init`): build `BootConfig` from `NROS_ENTRY_*` / init params → `resolve`.
+  Fixes the `"nros_cpp"` default.
+
+`DeployOverlay` keeps its board-network fields (`ip`/`gateway`/`netmask`/`transport`) in
+`nros-platform`; only its session triple maps into `BootConfig` at the board boot site.
+
+### Single embedded bake site: `.nros_boot_config` (seed for the follow-on tracks)
+
+Embedded has no runtime env, so the baked overlay is authoritative there. Require that the
+baked config originate from **exactly one** well-defined, stable, `repr(C)` site:
+
+```rust
+#[repr(C)]
+pub struct BakedBootConfig {
+    magic: u32,            // 0x4E524243 "NRBC" — a post-link tool can locate it
+    version: u16,
+    set_flags: u16,        // one bit per field: baked-set vs use-default
+    domain_id: u32,
+    node_name: [u8; 64],   // NUL-padded, fixed-size — no pointers, patchable in place
+    locator:   [u8; 96],
+    namespace: [u8; 64],
+}
+
+#[no_mangle]
+#[link_section = ".nros_boot_config"]   // KEEP in linker script, #[used]
+pub static NROS_BOOT_CONFIG: BakedBootConfig = /* baked by nros::main! (Rust) or cmake (C/C++) */;
+```
+
+The resolver reads `NROS_BOOT_CONFIG` → `BootConfig` (Options derived from `set_flags`) →
+`resolve`. The struct is language-agnostic (C/C++ emit the same `__attribute__((section))`
+struct), so a single tool can later operate on the binary regardless of source language.
+
+Within the scope of this RFC the blob is just a baked const (rebuild to change). Making it a
+patchable static costs nothing extra now and unlocks the follow-on tracks below.
+
+## Why this shape (decisions recorded)
+
+- **Unify the source, not the sink** — the sink (`RmwConfig`/`CffiRmw::open`) is already
+  shared; rebuilding it would be wasted work. The defect is N source-assembly paths.
+- **Plain-field `BootConfig`** rather than moving `DeployOverlay` down a crate — avoids a
+  dependency cycle and moves no types.
+- **Precedence A** — only model that is simultaneously the simplest mental model and the
+  smallest code (reuses the existing hosted env path + existing overlay; touches embedded
+  boards once).
+- **One bake site** — turns "where does embedded config come from" from per-board lore into a
+  single inspectable symbol, and seeds the follow-on tracks at no extra cost.
+
+## Scope and non-goals
+
+**In scope (issue #101):** the resolver + precedence A in `nros-node`; the three call-site
+mappings (fixing the C/C++ node-name defects and #98 across all boards, incl. NuttX
+`run_with_deploy`); the single `.nros_boot_config` bake site; collapsing the two board-key
+maps (`main_macro::board_path_for` + `emit_rust::board_path_for`) into one; a decision on the
+near-dead `setup_transport` seam (keep + document, or remove).
+
+**Explicit non-goals (tracked separately):**
+- Runtime config from storage (NVS / flash sector) — couples to issue #80 (param persistence
+  backends, currently disabled). Deferred.
+- Per-node identity for multi-node-on-one-session (the multi-node half of #98) — needs a
+  session-per-node or graph-liveliness change; out of scope here.
+
+## Follow-on tracks (designed-for, not built here)
+
+The `.nros_boot_config` bake site is deliberately the **member 0 of a future baked image**, so
+two follow-ons are additive rather than rework:
+
+1. **Config patch tool (build-once, re-flash).** Turn the baked const into the patchable
+   static above and add `nros config patch <bin> --node-name … --locator … --domain …`:
+   scan for `magic`, rewrite the fixed-size fields, set `set_flags`, fix a CRC. ~100 LoC,
+   language-agnostic (operates on the binary). UX: flash a fleet with per-unit identity from
+   one firmware build — no recompile. The resolver and call-sites are unchanged.
+
+2. **Build-time plan image (the "build-time graph").** Extend `.nros_boot_config` to a
+   `.nros_plan_image` carrying config **+ node table + entity table** (topic/type/hash/qos/
+   callback/period), generated from the existing `MetadataRecorder` (`nros metadata` →
+   `source-metadata.json`). Boot reads entities from the image instead of running each node's
+   `register()`. Recorded constraints (from the runtime-vs-buildtime analysis): this is a
+   **size + verification** play, **not** a perf win — the RMW declaration (the slow part)
+   stays runtime and is irreducible; it must be **opt-in with a runtime-`register()`
+   fallback** for nodes that create entities dynamically/conditionally; and it is always
+   **generated**, never hand-maintained. This warrants its own RFC when undertaken; RFC-0045's
+   single-bake-site is its seed.
+
+## Migration / compatibility
+
+- Behavior-preserving on POSIX/Native (already model A). Behavior-changing on embedded only in
+  that the launch-declared `node_name` now appears (the intended #98 fix) and `[deploy.*]`
+  locator/domain become authoritative where they were inert (notably NuttX).
+- The native env workflow (`NROS_LOCATOR` per run, etc.) is preserved unchanged.
+- `BootConfig` + `ExecutorConfig::resolve` are additive; existing `ExecutorConfig::new/from_env`
+  builders stay (the resolver is implemented in terms of them).
+
+## Cross-references
+
+- RFC-0004 (configuration-and-transports) — the config model this extends on the delivery axis.
+- Issue #101 (boot config not unified) — tracked-by this RFC.
+- Issue #98 (component node name ignored) — resolved across all boards by this design.
+- Issue #80 (param persistence backends) — gates the deferred storage-backed override.

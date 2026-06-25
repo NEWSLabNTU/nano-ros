@@ -4,8 +4,13 @@ title: "Per-board boot config (node_name + locator + domain) resolves 4 differen
 status: open
 type: tech-debt
 area: core
-related: [phase-244, rfc-0004, rfc-0014]
+related: [phase-244, rfc-0004, rfc-0014, rfc-0045]
 ---
+
+> **Design: [RFC-0045](../design/0045-unified-boot-config-resolution.md)** (Draft, 2026-06-26)
+> — the unified resolver, precedence model A, `BootConfig`/`ExecutorConfig::resolve` placement,
+> and the `.nros_boot_config` single bake site. Read it for the rationale; this issue tracks the
+> work.
 
 ## Summary
 
