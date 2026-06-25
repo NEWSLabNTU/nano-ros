@@ -322,7 +322,8 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
   reach Rust's multihost parity from the single `HOST` passthrough.
 - **C2 — embedded entries (freertos / nuttx / zephyr / threadx; esp32 skipped). DESIGN
   LOCKED (2026-06-25); C2-pre + C2a (threadx-linux C) + C2b-freertos (QEMU C) DONE +
-  runtime-verified (2026-06-25); C2b-nuttx + C2c/d remain.** Two-agent framework exploration found the
+  runtime-verified (2026-06-25); C2b-nuttx BLOCKED (per-`NROS_PKG_NAME` kernel-link wall —
+  see below); C2c/d remain.** Two-agent framework exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
   just two gaps + wiring:
   - **The embedded carrier mechanism already exists** in `nano_ros_node_register`
@@ -425,9 +426,25 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       boards need `CMAKE_TOOLCHAIN_FILE` at the first compiler probe). The firmware's static
       `192.0.3.x` lwIP config drives a board-matching QEMU slirp net (`host=192.0.3.1`, a new
       `QemuProcess::start_mps2_an385_freertos_slirp`) + a `tcp/192.0.3.1:<port>` baked locator — no
-      TAP/bridge/root. **C2b — nuttx** (QEMU, kernel-linked ELF — the bootable image links the
-      entry INTO the NuttX kernel, a distinct build model) remains. **C2c — C++ + mixed** across
-      those boards. **C2d — zephyr** (west lane, build). Design + gaps captured here + in 0097.
+      TAP/bridge/root. **C2b — nuttx: BLOCKED (2026-06-25) — architectural, not a small gap.**
+      Diagnosed end-to-end: the NuttX image links the entry INTO the kernel via the cargo
+      `nros-nuttx-ffi` build, which compiles `APP_EXTRA_SOURCES` in ONE `cc-rs` invocation with a
+      SINGLE `APP_COMPILE_DEFS`. But `NROS_C_COMPONENT` names each component's `extern "C"` seam
+      `__nros_c_component_<NROS_PKG_NAME>_*` via `-DNROS_PKG_NAME=<pkg>` (component.h), so a
+      multi-node entry needs Talker.c compiled with `NROS_PKG_NAME=c_talker_pkg` AND Listener.c
+      with `=c_listener_pkg` — two different defines in one compile, impossible. The single-node
+      carrier sidesteps it (one node → one define); the Rust nuttx entry sidesteps it (linkme, no C
+      define). Pre-building the component libs HOST-side and linking them fails (`file format not
+      recognized` — the kernel link is `armv7a-nuttx-eabihf`). En route, two real fixes WERE found
+      (NUTTX_DIR/APPS_DIR must be CACHE-promoted so the entry's sibling subdir scope sees them; the
+      kernel link silently drops non-`_ffi_lib` LINK_INTERFACES) but they only expose the
+      per-`NROS_PKG_NAME` wall. **Unblock needs ONE of:** (a) per-file compile defines in the
+      `nros-nuttx-ffi` `cc-rs`/`build.rs` (compile each component source with its own
+      `NROS_PKG_NAME`), or (b) cross-compile the `<pkg>_component` libs for `armv7a-nuttx-eabihf`
+      (with their per-pkg define) and link the ARM archives — a workspace-wide cross-build change.
+      Either is a standalone subproject; the WIP scaffold was reverted (a non-building entry is a
+      landmine). **C2c — C++ + mixed** across the working boards (threadx-linux + freertos; reuse
+      the wiring). **C2d — zephyr** (west lane, build). Design + gaps captured here + in 0097.
       Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx (arm-none-eabi/riscv),
       threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
 

@@ -21,6 +21,19 @@ arm (else the codegen emitted the native runner), the `NROS_APP_CONFIG` TU gener
 `nano_ros_entry` (ThreadX's `nros_platform_link_app` bakes its own; FreeRTOS's doesn't), and
 the ws-c root mapping the board → arm-none-eabi `CMAKE_TOOLCHAIN_FILE` before `project()`.
 
+**NuttX multi-node C is BLOCKED (architectural, distinct from this issue's gaps).** The
+NuttX image links the entry INTO the kernel via the cargo `nros-nuttx-ffi` build, which
+compiles `APP_EXTRA_SOURCES` in ONE `cc-rs` invocation with a SINGLE `APP_COMPILE_DEFS`.
+`NROS_C_COMPONENT` names each seam `__nros_c_component_<NROS_PKG_NAME>_*` via
+`-DNROS_PKG_NAME=<pkg>` (component.h), so a multi-node entry needs each component source
+compiled with its OWN `NROS_PKG_NAME` — two different defines in one compile, impossible.
+The single-node carrier and the Rust entry (linkme) both sidestep it; host-prebuilt
+component libs can't be linked (kernel link is `armv7a-nuttx-eabihf`). Unblock needs per-file
+defines in `nros-nuttx-ffi` OR cross-building the `<pkg>_component` libs for the NuttX target.
+Two genuine fixes found en route (NUTTX_DIR/APPS_DIR CACHE promotion for the entry's sibling
+subdir scope; the kernel link silently drops non-`_ffi_lib` LINK_INTERFACES) were reverted
+with the WIP scaffold since they don't reach a buildable entry. → phase-263 C2b.
+
 The codegen + cmake half (W1–W3) is done and verified on threadx-linux C:
 - **W1 (C++ emitter, `emit_cpp.rs`):** for non-native boards, emit `nros_app_main` +
   `NROS_APP_MAIN_REGISTER_VOID()` + `#include <nros/app_main.h>` (the locator-less
