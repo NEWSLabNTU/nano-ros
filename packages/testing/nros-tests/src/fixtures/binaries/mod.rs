@@ -1408,6 +1408,15 @@ pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestR
     require_prebuilt_binary(&binary_path)
 }
 
+/// phase-263 C2d — the Zephyr (native_sim) C WORKSPACE embedded entry (talker + listener),
+/// built by the west lane (`zephyr-fixture-leaves.sh --include-workspace-entry`) into
+/// `<zephyr-build-root>/build-ws-c-entry-zenoh/zephyr/zephyr.exe`. The C/C++ sibling of the
+/// Rust workspace zephyr entry; consumed by `tests/zephyr_entry_e2e.rs`.
+pub fn build_zephyr_workspace_c_entry() -> TestResult<PathBuf> {
+    let binary_path = zephyr_build_root().join("build-ws-c-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary(&binary_path)
+}
+
 /// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,

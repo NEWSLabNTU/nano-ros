@@ -433,6 +433,53 @@ if [ "$include_workspace_entry" = "1" ]; then
             "$ws_zenoh_locator" "" "$ws_conf_files" "$ws_extra_cmake_defs" \
             "$ws_sig" "$ws_sig_file" 0 "$pristine"
     fi
+
+    # phase-263 C2d — the C WORKSPACE entry (Approach A). Same native_sim/NSOS west path as
+    # the Rust workspace entry above, but the Zephyr application dir is
+    # examples/workspaces/c/src/zephyr_entry (find_package(Zephyr) + nano_ros_entry(BOARD
+    # zephyr …) — the C/C++ analog of rust_cargo_application()). It dials a DISTINCT zenohd
+    # port (17831), so it does NOT serialize with the rust workspace/single-node pubsub
+    # fixtures. Consumed by tests/zephyr_entry_e2e.rs.
+    wsc_board="native_sim/native/64"
+    wsc_lang="c"
+    wsc_lang_tag="c"
+    wsc_role="entry"
+    wsc_rmw="zenoh"
+    wsc_build_name="build-ws-c-entry-zenoh"
+    wsc_build_dir="$build_root/$wsc_build_name"
+    wsc_src="workspaces/c/src/zephyr_entry"
+    wsc_src_dir="$nros_root/examples/$wsc_src"
+    wsc_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
+    wsc_zenoh_locator="tcp/127.0.0.1:17831"
+    wsc_id="zephyr/native_sim/native/64/workspace-entry-c"
+    wsc_target="fixture/zephyr/native_sim/native/64/workspace-entry-c"
+    wsc_filter_haystack="$wsc_board $wsc_build_name $wsc_src $wsc_conf_files $wsc_id"
+    if [ -z "$fixture_filter" ] || [[ "$wsc_filter_haystack" =~ $fixture_filter ]]; then
+        selected=$((selected + 1))
+        wsc_extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+        wsc_extra_cmake_defs="$wsc_extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$wsc_zenoh_locator\""
+        wsc_extra_cmake_defs="$wsc_extra_cmake_defs -DCONF_FILE=$wsc_conf_files"
+        wsc_sccache_launcher=0
+        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            wsc_sccache_launcher=1
+            wsc_extra_cmake_defs="$wsc_extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        fi
+        wsc_sig_file="$wsc_build_dir/.nros-zephyr-fixture.sig"
+        wsc_sig="$(printf '%s\n' \
+            "board=$wsc_board" \
+            "src=$wsc_src" \
+            "xrce_port=" \
+            "conf_files=$wsc_conf_files" \
+            "zenoh_locator=$wsc_zenoh_locator" \
+            "codegen_tool=$codegen_tool" \
+            "toolchain_cache_dir=$toolchain_cache_dir" \
+            "make=$make_bin" \
+            "sccache_launcher=$wsc_sccache_launcher")"
+        emit_record fixture "$wsc_id" "$wsc_target" "$wsc_board" "$wsc_lang" "$wsc_lang_tag" "$wsc_role" "$wsc_rmw" \
+            "$wsc_src" "$wsc_src_dir" "$wsc_build_name" "$wsc_build_dir" "$log_dir/${wsc_build_name}.log" "" \
+            "$wsc_zenoh_locator" "" "$wsc_conf_files" "$wsc_extra_cmake_defs" \
+            "$wsc_sig" "$wsc_sig_file" 0 "$pristine"
+    fi
 fi
 
 if [ "$selected" -eq 0 ]; then
