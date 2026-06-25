@@ -38,7 +38,10 @@ use super::runtime::RuntimeCtx;
 /// Boards whose `BoardEntry::run` ignores network/locator config (POSIX hosts,
 /// RTIC/Embassy MCUs that take their transport elsewhere) inherit the default
 /// [`BoardEntry::run_with_deploy`] body, which drops the overlay and calls
-/// [`BoardEntry::run`] — so adding fields here never touches those boards.
+/// [`BoardEntry::run`] — so adding a *network* field here never touches those
+/// boards. The exception is [`node_name`](DeployOverlay::node_name): hosted
+/// boards override `run_with_deploy` to apply it to the boot config (issue #98),
+/// since the ROS graph node name is a launch identity, not a network knob.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct DeployOverlay {
     /// `locator = "tcp/10.0.2.2:7451"` — the zenoh/RMW endpoint the firmware
@@ -57,6 +60,15 @@ pub struct DeployOverlay {
     /// `None` → the board's default transport. Honored by
     /// [`BoardEntry::setup_transport`] (phase-244.D1).
     pub transport: Option<&'static str>,
+    /// The ROS graph node name for the primary session, baked from the launch
+    /// file's single `<node name=…>` / `system.toml` `[[component]].name` (issue
+    /// #98). `None` → the board default (`from_env()`'s `"node"`). Only set by
+    /// `nros::main!` when the launch declares exactly one node — multiple nodes
+    /// share one primary session, so naming it after one component would be
+    /// wrong (per-node naming is the deferred multi-node piece). Applied to the
+    /// boot `ExecutorConfig` by the board, so unlike `locator` this IS honored on
+    /// hosted boards (locator stays env-driven; node name is a launch identity).
+    pub node_name: Option<&'static str>,
 }
 
 /// Per-board boot driver.

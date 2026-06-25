@@ -462,23 +462,21 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
 
     // Discover the param node's FQN (skip if ROS 2 ↔ nros discovery is not wire-matched).
     //
-    // The node is NOT named after the `system.toml` component (`param_talker`): the
-    // `nros::main!` runtime registers it under the executor default node name (`/node`)
-    // — the component `name` is not yet threaded into the ROS graph name (issue 0098).
-    // So match on the parameter the node exposes (`publish_period_ms`), not its name.
+    // The node IS named after the `system.toml` component: a single-node launch threads
+    // the component `name` (`param_talker`) into the primary session, so the ROS graph
+    // shows `/param_talker`, not the old executor default `/node` (issue 0098, fixed). We
+    // assert that name to keep the fix covered — a regression to `/node` fails discovery.
     let node = {
         let mut found = None;
-        'outer: for attempt in 1..=3 {
-            if let Ok(list) = nros_tests::ros2::ros2_node_list(&locator, "humble") {
-                for candidate in list.lines().map(str::trim).filter(|l| !l.is_empty()) {
-                    if let Ok(params) =
-                        nros_tests::ros2::ros2_param_list(candidate, &locator, "humble")
-                        && params.contains("publish_period_ms")
-                    {
-                        found = Some(candidate.to_string());
-                        break 'outer;
-                    }
-                }
+        for attempt in 1..=3 {
+            if let Ok(list) = nros_tests::ros2::ros2_node_list(&locator, "humble")
+                && let Some(line) = list
+                    .lines()
+                    .map(str::trim)
+                    .find(|l| l.ends_with("param_talker"))
+            {
+                found = Some(line.to_string());
+                break;
             }
             if attempt < 3 {
                 std::thread::sleep(Duration::from_secs(1));
@@ -490,7 +488,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
                 entry.kill();
                 listener.kill();
                 nros_tests::skip!(
-                    "param node not discoverable via ros2 (wire-mismatched rmw_zenoh — \
+                    "param_talker not discoverable via ros2 (wire-mismatched rmw_zenoh — \
                      build the pinned overlay with `just rmw_zenoh setup`)"
                 );
             }

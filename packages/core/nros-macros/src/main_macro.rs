@@ -746,10 +746,18 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `[package.metadata.nros.deploy.<board>]`. Only Form 1 (deploy key present)
     // has a board key to read; Form 2 (explicit `board = X`) gets an all-`None`
     // overlay, so `run_with_deploy` then behaves exactly like `run`.
-    let deploy_overlay_lit = match deploy_for_framework.as_deref() {
+    let mut deploy_overlay_lit = match deploy_for_framework.as_deref() {
         Some(board_key) => read_deploy_overlay(&manifest_dir.join("Cargo.toml"), board_key),
         None => DeployOverlayLit::default(),
     };
+    // Issue #98 — a single-node launch names the primary session (the ROS graph
+    // node name) after that node, instead of the board default `"node"`. With
+    // multiple nodes they share one primary session, so naming it after one would
+    // be wrong — per-node naming is the deferred multi-node piece, so leave the
+    // overlay name unset and the board keeps `"node"`.
+    if let [only] = node_instances.as_slice() {
+        deploy_overlay_lit.node_name = Some(only.clone());
+    }
     let deploy_overlay_ts = deploy_overlay_tokens(&deploy_overlay_lit);
 
     // Phase 244.D1 — `target_os = "none"` entry shape for the OwnedSpin
@@ -1591,6 +1599,11 @@ struct DeployOverlayLit {
     netmask: Option<[u8; 4]>,
     domain_id: Option<u32>,
     transport: Option<String>,
+    /// Issue #98 — the ROS graph node name for the primary session, set from the
+    /// launch file's single `<node name>` (only when the launch declares exactly
+    /// one node). NOT read from `[deploy.*]`: it is a launch identity, threaded
+    /// in by the caller after the launch is parsed.
+    node_name: Option<String>,
 }
 
 /// Parse a dotted IPv4 string (`"10.0.2.15"`) into 4 octets. Returns `None`
@@ -1654,6 +1667,9 @@ fn read_deploy_overlay(cargo_toml: &Path, board_key: &str) -> DeployOverlayLit {
             .get("transport")
             .and_then(|x| x.as_str())
             .map(str::to_string),
+        // Issue #98 — not a `[deploy.*]` key; the caller fills this from the
+        // parsed launch when it declares exactly one node.
+        node_name: None,
     }
 }
 
@@ -1681,6 +1697,10 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
         Some(s) => quote! { ::core::option::Option::Some(#s) },
         None => quote! { ::core::option::Option::None },
     };
+    let node_name = match &lit.node_name {
+        Some(s) => quote! { ::core::option::Option::Some(#s) },
+        None => quote! { ::core::option::Option::None },
+    };
     quote! {
         ::nros::__macro_support::nros_platform::DeployOverlay {
             locator: #locator,
@@ -1689,6 +1709,7 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
             netmask: #netmask,
             domain_id: #domain_id,
             transport: #transport,
+            node_name: #node_name,
         }
     }
 }

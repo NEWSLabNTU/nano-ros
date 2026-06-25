@@ -7,15 +7,39 @@ area: core
 related: [phase-264, rfc-0004]
 ---
 
+## Status (2026-06-25)
+
+**Single-node launch: RESOLVED.** A single-node launch now threads the component `name`
+into the primary session via `DeployOverlay.node_name`, so `ros2 node list` shows
+`/param_talker` (verified) instead of `/node`. The `ws-params-rust` interop test asserts
+the proper name. **Multi-node launch: still open** — N components share one primary session,
+so per-node graph naming + per-node param-store scoping remain the deferred piece (see Fix
+direction). This issue stays `open` until the multi-node case is addressed.
+
+Changed: `DeployOverlay.node_name` (`nros-platform`); `nros::main!` bakes it when the launch
+declares exactly one node (`nros-macros`); `PosixBoard`/`NativeBoard` apply it before
+`Executor::open` (`nros-board-posix`, `nros-board-native`).
+
 ## Summary
 
 A node booted via `nros::main!` registers in the ROS graph under the **executor default
 node name** (`node` → FQN `/node`), **not** the `name` declared for its `[[component]]`
-in `system.toml` (or the `<node name=…>` in the launch file). The macro hardcodes the
-node name to the **entry crate's** `CARGO_PKG_NAME`
-(`packages/core/nros-macros/src/main_macro.rs:1081`/`:1084`,
-`.node_name(::core::env!("CARGO_PKG_NAME"))`); the component `name` parsed from
-`system.toml` is never threaded into the runtime node name.
+in `system.toml` (or the `<node name=…>` in the launch file).
+
+**Root cause (corrected 2026-06-25).** The graph node name is the name of the **primary
+zenoh session**, which the board opens at `Executor::open` *before* the macro's register
+closure runs. On the hosted native path (`[deploy.native] kind="self"`), `NativeBoard::run`
+→ `PosixBoard::run` builds the config with `ExecutorConfig::from_env()`
+(`packages/boards/nros-board-posix/src/lib.rs:183`), and `from_env()` hardcodes
+`node_name: "node"` (`packages/core/nros-node/src/executor/types.rs:321`). The component
+`name` from `system.toml` *does* reach `ExecutorNodeRuntime::create_node` →
+`node_builder(name).build()`, but `build()` reuses the primary session (returns `NodeId(0)`)
+whenever the new node's rmw+locator match the primary
+(`packages/core/nros-node/src/executor/node_record.rs:228`), so the name is recorded but a
+session carrying it is never opened — the graph keeps the primary's `"node"`. (The
+`main_macro.rs:1081` `.node_name(CARGO_PKG_NAME)` originally cited here is the *OwnedSpin /
+native_sim* arm — a different, no_std path — not the hosted native board, so it is not the
+active cause for the `ws-params-rust` repro.)
 
 The W4c design note (phase-264) flagged this as a known limitation —
 "one param server, registered under the executor default node name; multi-node per-node
@@ -72,15 +96,32 @@ The parameter machinery (W4a/W4b/W4c) works end-to-end; only the **node name** i
 
 ## Fix direction
 
-Thread each `[[component]].name` from `system.toml` (and the launch `<node name>`) into
-the runtime node name the macro emits, instead of the entry crate `CARGO_PKG_NAME`. The
-single-component case is small (replace the `CARGO_PKG_NAME` node-name with the parsed
-component name in `main_macro.rs`). The multi-node / per-node param-store scoping case is
-the larger piece phase-264 W4c deferred and should be designed alongside (one param
-server today, keyed to the default node — per-node stores need the node→store mapping).
+The fix must name the **primary session** at open time, since that is what the ROS graph
+reports. Two scopes:
+
+**Single-component (the common showcase shape) — tractable.** Thread the lone
+`[[component]].name` into the board's `ExecutorConfig` before `Executor::open`. The
+existing macro→board boot channel is `DeployOverlay` (already carries
+locator/domain/transport). Plan:
+1. `DeployOverlay` += `node_name: Option<&'static str>`
+   (`packages/core/nros-platform/src/board/entry.rs`).
+2. `nros::main!` populates it from the single component name **only when the launch
+   declares exactly one node** (`main_macro.rs`, `deploy_overlay_tokens`).
+3. `PosixBoard::run` / `run_with_deploy` applies `overlay.node_name` onto
+   `ExecutorConfig::from_env()` via `.node_name(..)`
+   (`packages/boards/nros-board-posix/src/lib.rs`). NB: hosted boards currently treat the
+   overlay locator as a no-op (issue #48) — node_name would be the first overlay field they
+   *do* honor, which is correct (locator stays env-driven for dev; node name is a launch
+   identity).
+
+**Multi-component — the larger deferred piece (phase-264 W4c).** N components on one
+executor share ONE primary session = one graph node name; correct per-node naming needs a
+session (or graph liveliness token) per node, plus the per-node param-store scoping W4c
+deferred (one param server today, keyed to the default node). Design together.
 
 ## Evidence
 
 Found 2026-06-25 while running the phase-264 W4c interop test to close the verification
-gap; root-caused to `main_macro.rs:1081`. Runtime reconfig behaviour confirmed correct by
+gap; root-caused (corrected) to `PosixBoard::run`'s `from_env()` `node_name:"node"` +
+`node_record.rs:228` primary-session reuse. Runtime reconfig behaviour confirmed correct by
 manual `ros2 param set` → `Received: 500` over the wire.

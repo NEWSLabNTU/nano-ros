@@ -127,6 +127,21 @@ impl BoardEntry for NativeBoard {
         register_backend();
         <PosixBoard as BoardEntry>::run::<F, E>(setup)
     }
+
+    /// Issue #98 — forward to `PosixBoard::run_with_deploy` so the launch-baked
+    /// `deploy.node_name` reaches the boot config (a single-node launch names the
+    /// ROS graph node). The default trait body drops the overlay; without this
+    /// forward `nros::main!`'s `run_with_deploy(node_name=…)` would fall back to
+    /// `run` and the node would stay `/node`.
+    #[inline]
+    fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        register_backend();
+        <PosixBoard as BoardEntry>::run_with_deploy::<F, E>(deploy, setup)
+    }
 }
 
 impl NativeBoard {

@@ -157,6 +157,19 @@ impl BoardEntry for PosixBoard {
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        Self::run_with_deploy(&nros_platform::DeployOverlay::default(), setup)
+    }
+
+    /// Issue #98 — name the primary session (the ROS graph node name) from the
+    /// launch file's single `<node>` when `deploy.node_name` is set. Locator/IP
+    /// stay env-driven (issue #48); this override exists only to thread the node
+    /// name onto the boot `ExecutorConfig`. `run` forwards here with a default
+    /// (empty) overlay, so this is the single hosted boot body.
+    fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
         <Self as BoardInit>::init_hardware();
         // Phase 264 W3 — wire the default log sink (host → stdout/stderr) so a Node
         // pkg's `nros_info!` produces output without per-app `nros_log::init`.
@@ -180,7 +193,13 @@ impl BoardEntry for PosixBoard {
         // entry-poc) still reaches `exit_success()`, while a real
         // workload that tries to register components fails fast with
         // `RuntimeError::ComponentRegister` (no silent no-op).
-        let exec_cfg = ::nros::ExecutorConfig::from_env();
+        // Issue #98 — the env config names the primary session `"node"`; a
+        // single-node launch overrides it with the component name so the ROS
+        // graph (and `ros2 param …`) keys off the configured name, not `/node`.
+        let mut exec_cfg = ::nros::ExecutorConfig::from_env();
+        if let Some(name) = deploy.node_name {
+            exec_cfg = exec_cfg.node_name(name);
+        }
         let mut crt_real: Option<::nros::node_runtime::ExecutorNodeRuntime> =
             match ::nros::Executor::open(&exec_cfg) {
                 Ok(e) => Some(::nros::node_runtime::ExecutorNodeRuntime::from_executor(e)),
