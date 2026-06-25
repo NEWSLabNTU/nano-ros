@@ -1,12 +1,21 @@
 cmake_minimum_required(VERSION 3.22)
+
+# phase-263 C2c — a cross-compiled embedded board needs its CMAKE_TOOLCHAIN_FILE set
+# BEFORE project() (the first compiler probe). The workspace builds ONE board per
+# configure; map the board key to its toolchain here. Host-sim boards (threadx-linux) and
+# posix need none. Mirrors examples/workspaces/c/CMakeLists.txt.
+if(NOT CMAKE_TOOLCHAIN_FILE AND DEFINED NANO_ROS_BOARD)
+    get_filename_component(_nros_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+    if(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
+        set(CMAKE_TOOLCHAIN_FILE
+            "${_nros_root}/cmake/toolchain/arm-freertos-armcm3.cmake")
+    endif()
+endif()
+
 project(multi_node_workspace_cpp LANGUAGES C CXX)
 
-# Phase 219.I — workspace-root single call. Replaces the per-subdir
-# `add_subdirectory(<nano-ros>)` + `include(NanoRosNodeRegister.cmake)`
-# boilerplate the pre-219 multi-pkg examples carried; each subdir below
-# uses `nano_ros_workspace_pkg_guard()` to inherit the helpers without
-# re-importing nano-ros (the cmake equivalent of cargo `[workspace]`
-# discipline).
+# Phase 219.I — workspace-root single call. Each subdir uses
+# `nano_ros_workspace_pkg_guard()` to inherit the helpers without re-importing nano-ros.
 #
 # Standalone solo build of any subdir:
 #     cmake -S src/talker_pkg -B build -DNANO_ROS_ROOT=/path/to/nano-ros
@@ -14,19 +23,31 @@ project(multi_node_workspace_cpp LANGUAGES C CXX)
 #     cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros && cmake --build build
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/NanoRosWorkspace.cmake")
 
+# phase-263 C2c — the workspace builds as ONE platform per configure (like the C
+# workspace + the standalone embedded examples). Default posix (native); an embedded
+# fixture row passes `-DNANO_ROS_PLATFORM=<rtos> -DNANO_ROS_BOARD=<board>`. Only the
+# entries matching the active platform are added.
+if(NOT NANO_ROS_PLATFORM)
+    set(NANO_ROS_PLATFORM posix)
+endif()
+
+set(_ws_subdirs
+    src/talker_pkg
+    src/listener_pkg)
+
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    list(APPEND _ws_subdirs
+        src/native_entry
+        src/native_entry_robot1
+        src/native_entry_robot2)
+elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
+    list(APPEND _ws_subdirs src/threadx_entry)
+elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
+    list(APPEND _ws_subdirs src/freertos_entry)
+endif()
+
 nano_ros_workspace(
     BACKEND  zenoh
-    PLATFORM posix
+    PLATFORM "${NANO_ROS_PLATFORM}"
     NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
-    SUBDIRS  src/talker_pkg
-             src/listener_pkg
-             src/native_entry
-             src/native_entry_robot1
-             src/native_entry_robot2
-    # Phase 219.D — `src/native_entry/CMakeLists.txt` calls
-    # `nano_ros_entry(LAUNCH "demo_bringup:system.launch.xml")`. The
-    # cmake fn shells `nros codegen entry --lang cpp` at configure
-    # time, emits the canonical `int main()` body into the build dir,
-    # and auto-links the matching Node-pkg static libs. Their CMake
-    # target names still end in `_component` for ABI compatibility.
-)
+    SUBDIRS  ${_ws_subdirs})

@@ -60,6 +60,9 @@ build-examples:
     # by tests/c_threadx_entry_e2e.rs. Builds into its own build-subdir (one board
     # per CMake configure), so it never clashes with the posix workspace fixtures.
     bash scripts/build/workspace-fixtures-build.sh threadx-linux c
+    # phase-263 C2c — the embedded C++ workspace LAUNCH entry, consumed by
+    # tests/cpp_threadx_entry_e2e.rs.
+    bash scripts/build/workspace-fixtures-build.sh threadx-linux cpp
     echo "ThreadX Linux examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

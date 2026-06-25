@@ -239,6 +239,11 @@ static THREADX_LINUX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new
 /// entry (`nano_ros_entry(BOARD mps2-an385-freertos …)`, the first QEMU-cross entry).
 static FREERTOS_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 C2c — cached paths to the C++ embedded workspace entries (threadx-linux host
+/// sim + FreeRTOS QEMU), the C++ siblings of the C2a/C2b C entries.
+static THREADX_LINUX_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static FREERTOS_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native C++ workspace Entry pkg binary.
 static NATIVE_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -889,6 +894,34 @@ pub fn build_freertos_workspace_c_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-c-freertos",
                 "c",
+                "build-workspace-fixtures-freertos",
+                "freertos_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 C2c — the threadx-linux C++ workspace embedded entry (cached).
+pub fn build_threadx_linux_workspace_cpp_entry() -> TestResult<&'static Path> {
+    THREADX_LINUX_WORKSPACE_CPP_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-cpp-threadx-linux",
+                "cpp",
+                "build-workspace-fixtures-threadx",
+                "threadx_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 C2c — the FreeRTOS (QEMU MPS2-AN385) C++ workspace embedded entry (cached).
+pub fn build_freertos_workspace_cpp_entry() -> TestResult<&'static Path> {
+    FREERTOS_WORKSPACE_CPP_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-cpp-freertos",
+                "cpp",
                 "build-workspace-fixtures-freertos",
                 "freertos_entry",
             )

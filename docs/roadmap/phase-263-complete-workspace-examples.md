@@ -443,8 +443,12 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       `NROS_PKG_NAME`), or (b) cross-compile the `<pkg>_component` libs for `armv7a-nuttx-eabihf`
       (with their per-pkg define) and link the ARM archives — a workspace-wide cross-build change.
       Either is a standalone subproject; the WIP scaffold was reverted (a non-building entry is a
-      landmine). **C2c — C++ + mixed** across the working boards (threadx-linux + freertos; reuse
-      the wiring). **C2d — zephyr** (west lane, build). Design + gaps captured here + in 0097.
+      landmine). **C2c — C++ DONE (2026-06-25)** — `tests/cpp_threadx_entry_e2e.rs` +
+      `tests/cpp_freertos_entry_e2e.rs` GREEN: the C++ workspace's threadx-linux + FreeRTOS-QEMU
+      entries deliver `/chatter` cross-process, reusing the C2a/C2b wiring VERBATIM through the C++
+      emitter (only the cpp workspace root needed the same toolchain-map + conditional-subdir
+      restructure the C root got). **mixed** (Rust+C++) across those boards remains. **C2d —
+      zephyr** (west lane, build). Design + gaps captured here + in 0097.
       Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx (arm-none-eabi/riscv),
       threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
 

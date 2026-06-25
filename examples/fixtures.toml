@@ -456,6 +456,33 @@ entry = "native_entry_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
+# entries). Same per-board wiring (locator bake, header ordering, FreeRTOS app_config,
+# cross toolchain), reused verbatim through the C++ emitter. Own build_subdir per board
+# (one board per CMake configure). Consumed by tests/cpp_threadx_entry_e2e.rs /
+# tests/cpp_freertos_entry_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "threadx_entry"
+build_subdir = "build-workspace-fixtures-threadx"
+cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:17803" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-freertos"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "freertos_entry"
+build_subdir = "build-workspace-fixtures-freertos"
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17811" }
+
 [[workspace_fixture]]
 id = "workspace-mixed-native"
 platform = "native"
