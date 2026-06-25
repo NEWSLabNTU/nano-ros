@@ -78,6 +78,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `plan.build.transports` + `plan.bridges` — it emits only `bridged_rmws`. So a bridged system
   links both backends but `is_bridge()` is false and the relay codegen (gated on non-empty
   `plan.bridges`) never fires. Bounded planner transform. Blocks phase-263 B3 (`ws-bridge-rust`).
+- **#100** — [baremetal standalone examples split into a sibling node
+  pkg](0100-baremetal-standalone-examples-split-into-sibling-node-pkg.md): the
+  `qemu-arm-baremetal`/`stm32f4` rust examples are an Entry binary that path-deps + `[patch]`es
+  up into a sibling `*_pkg` dir holding the node + `package.xml` + `generated/`, so copying the
+  example dir out doesn't build (walk-up to a sibling example breaks the standalone copy-out
+  contract). Fix: collapse into one self-contained crate like `examples/native/rust/talker`.
+  Surfaced from `just check` dep-chain / `native::check` binding failures.
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):
