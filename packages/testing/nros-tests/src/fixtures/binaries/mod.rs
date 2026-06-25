@@ -244,6 +244,9 @@ static FREERTOS_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_LINUX_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-263 C2c — cached path to the MIXED (C + C++ + Rust) threadx-linux embedded entry.
+static THREADX_LINUX_WORKSPACE_MIXED_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native C++ workspace Entry pkg binary.
 static NATIVE_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -924,6 +927,21 @@ pub fn build_freertos_workspace_cpp_entry() -> TestResult<&'static Path> {
                 "cpp",
                 "build-workspace-fixtures-freertos",
                 "freertos_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-263 C2c — the MIXED (C + C++ + Rust) threadx-linux embedded entry (cached). The
+/// Rust heartbeat node links via the `nros_ws_runtime` umbrella (host x86_64 triple).
+pub fn build_threadx_linux_workspace_mixed_entry() -> TestResult<&'static Path> {
+    THREADX_LINUX_WORKSPACE_MIXED_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-mixed-threadx-linux",
+                "mixed",
+                "build-workspace-fixtures-threadx",
+                "threadx_entry",
             )
         })
         .map(|p| p.as_path())

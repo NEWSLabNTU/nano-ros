@@ -447,8 +447,13 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       `tests/cpp_freertos_entry_e2e.rs` GREEN: the C++ workspace's threadx-linux + FreeRTOS-QEMU
       entries deliver `/chatter` cross-process, reusing the C2a/C2b wiring VERBATIM through the C++
       emitter (only the cpp workspace root needed the same toolchain-map + conditional-subdir
-      restructure the C root got). **mixed** (Rust+C++) across those boards remains. **C2d —
-      zephyr** (west lane, build). Design + gaps captured here + in 0097.
+      restructure the C root got). **mixed (C+C++/Rust) on threadx-linux DONE (2026-06-25)** —
+      `tests/mixed_threadx_entry_e2e.rs` GREEN: the Rust heartbeat node links via the
+      `nros_ws_runtime` umbrella, which on threadx-linux targets the host x86_64 triple (ThreadX
+      sim = pthreads), so the Rust node compiles host-side like the native mixed entry — bootable
+      C+C++/Rust image, cross-process `/chatter` delivery. **mixed on FreeRTOS** (the umbrella
+      must cross-compile the Rust node to thumbv7m no_std + link into the ELF — a new axis) and
+      **C2d — zephyr** (west lane, build) remain. Design + gaps captured here + in 0097.
       Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx (arm-none-eabi/riscv),
       threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
 

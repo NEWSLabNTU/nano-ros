@@ -63,6 +63,9 @@ build-examples:
     # phase-263 C2c — the embedded C++ workspace LAUNCH entry, consumed by
     # tests/cpp_threadx_entry_e2e.rs.
     bash scripts/build/workspace-fixtures-build.sh threadx-linux cpp
+    # phase-263 C2c — the embedded MIXED (C+C++/Rust) workspace LAUNCH entry, consumed
+    # by tests/mixed_threadx_entry_e2e.rs.
+    bash scripts/build/workspace-fixtures-build.sh threadx-linux mixed
     echo "ThreadX Linux examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

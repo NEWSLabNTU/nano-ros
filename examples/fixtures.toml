@@ -519,6 +519,22 @@ entry = "native_entry_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build-workspace-fixtures"
 
+# phase-263 C2c — the MIXED (C talker + C++ listener + Rust heartbeat) embedded workspace
+# entry on threadx-linux. The Rust node links via the `nros_ws_runtime` umbrella, which on
+# threadx-linux targets the host x86_64 triple (ThreadX runs as pthreads), so the Rust node
+# compiles host-side like the native mixed entry. Own build_subdir (one board per CMake
+# configure). Consumed by tests/mixed_threadx_entry_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-mixed-threadx-linux"
+platform = "threadx-linux"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/mixed"
+bringup = "src/demo_bringup"
+entry = "threadx_entry"
+build_subdir = "build-workspace-fixtures-threadx"
+cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:17821" }
+
 # ===========================================================================
 # native — Rust (host, profile nros-fast-release)
 # ===========================================================================
