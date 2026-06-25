@@ -722,10 +722,7 @@ fn schema_plan_json(
     // codegen tools (`generate`/`bake`) from `system.toml` + node `callback_groups`,
     // which the language-agnostic planner can't see. The plan carries exactly the
     // implicit `default_executor`; every callback binds to it.
-    let plan_instances = instances
-        .iter()
-        .map(schema_instance)
-        .collect::<Vec<_>>();
+    let plan_instances = instances.iter().map(schema_instance).collect::<Vec<_>>();
     let interfaces = schema_interfaces(&plan_instances);
     let callback_chains = infer_callback_chains(&plan_instances);
     let callback_groups = infer_callback_groups(&plan_instances, &callback_chains);
@@ -809,6 +806,21 @@ fn schema_plan_json(
             .collect::<Vec<_>>();
         obj.insert("executables".to_string(), json!(plan_executables));
     }
+    // Issue 0099 / phase-263 B3 — cross-RMW `[[bridge]]`s, before `build` (NrosPlan
+    // field order). Each `[[bridge]]` becomes a `PlanBridge` whose endpoints
+    // byte-match the per-endpoint transports `schema_build_json` emits, so the
+    // (code-complete) relay codegen — gated on a non-empty `plan.bridges` — fires.
+    // The forwarded topic set is every declared pub/sub topic (RFC-0009
+    // resolve-from-interfaces). Absent `[[bridge]]` ⇒ omitted, plan byte-identical.
+    if let Some(s) = system_caps.as_ref()
+        && !s.bridges.is_empty()
+    {
+        let topics = forwarded_topics(&plan_instances);
+        obj.insert(
+            "bridges".to_string(),
+            json!(bridge_plan_entries(s, &topics)),
+        );
+    }
     obj.insert("build".to_string(), build);
     plan
 }
@@ -889,8 +901,144 @@ fn schema_build_json(
         && !s.bridges.is_empty()
     {
         obj.insert("bridged_rmws".to_string(), json!(s.bridged_rmws()));
+        // Issue 0099 / phase-263 B3 — a bridged system runs one RMW session per
+        // bridge endpoint. Emit one `[[transport]]` per distinct endpoint so
+        // `PlanBuildOptions::is_bridge()` (transports.len() > 1) is true and the
+        // generated `SESSION_SPECS` / `Executor::open_multi` open every session.
+        // The endpoints in `plan.bridges` (emitted by `schema_plan_json`) carry
+        // the SAME (rmw, domain, locator) so `bridge_endpoint_session_idx`
+        // resolves each to its slot.
+        let transports = bridge_transports(s);
+        if !transports.is_empty() {
+            obj.insert("transports".to_string(), json!(transports));
+        }
     }
     build
+}
+
+/// Issue 0099 — resolve a `[[bridge]]` endpoint selector to `(rmw, domain_id,
+/// locator)`. Mirrors [`SystemToml::bridged_rmws`] parsing: `"<rmw>:<domain>"`
+/// splits on `:` (prefix = rmw, suffix = a `[[domain]]` name resolved to its
+/// `id`); a bare endpoint is a `[[domain]]` name resolved to its `rmw` + `id`.
+/// The locator is `[system].locator` for the endpoint on the system's own rmw
+/// (the other side is a DDS/multicast peer discovered by domain, no locator).
+fn resolve_bridge_endpoint(
+    sys: &super::cargo_metadata_schema::SystemToml,
+    endpoint: &str,
+) -> (String, u32, Option<String>) {
+    let (rmw, domain_name) = match endpoint.split_once(':') {
+        Some((rmw, domain)) => (rmw.to_string(), domain.to_string()),
+        None => {
+            let rmw = sys
+                .domains
+                .iter()
+                .find(|d| d.name == endpoint)
+                .map(|d| d.rmw.clone())
+                .unwrap_or_default();
+            (rmw, endpoint.to_string())
+        }
+    };
+    let domain_id = sys
+        .domains
+        .iter()
+        .find(|d| d.name == domain_name)
+        .map(|d| d.id)
+        .unwrap_or(sys.system.domain_id);
+    let locator = if rmw == sys.system.rmw {
+        sys.system.locator.clone()
+    } else {
+        None
+    };
+    (rmw, domain_id, locator)
+}
+
+/// Issue 0099 — one `plan.build.transports` entry per distinct bridge endpoint
+/// (deduped by `(rmw, domain, locator)`). `kind = "ethernet"` (bridge sessions
+/// are IP-based on the host; the network fields stay `None`). Consumed by
+/// `SESSION_SPECS` codegen, which reads only `rmw` / `locator` / `domain`.
+fn bridge_transports(sys: &super::cargo_metadata_schema::SystemToml) -> Vec<Value> {
+    let mut seen: Vec<(String, u32, Option<String>)> = Vec::new();
+    let mut out: Vec<Value> = Vec::new();
+    for bridge in &sys.bridges {
+        for endpoint in [&bridge.from, &bridge.to] {
+            let (rmw, domain, locator) = resolve_bridge_endpoint(sys, endpoint);
+            if rmw.is_empty() {
+                continue;
+            }
+            let key = (rmw.clone(), domain, locator.clone());
+            if seen.contains(&key) {
+                continue;
+            }
+            seen.push(key);
+            out.push(json!({
+                "kind": "ethernet",
+                "rmw": rmw,
+                "domain": domain,
+                "locator": locator,
+            }));
+        }
+    }
+    out
+}
+
+/// Issue 0099 — one `plan.bridges` entry per `[[bridge]]`: `connect` = the two
+/// resolved endpoints (byte-matching the transports emitted by
+/// [`bridge_transports`] so `bridge_endpoint_session_idx` resolves each slot),
+/// `topics` = every forwarded topic. RFC-0009 resolves each topic's type from
+/// the plan interfaces, so `topics` is the set of declared pub/sub topic names.
+fn bridge_plan_entries(
+    sys: &super::cargo_metadata_schema::SystemToml,
+    topics: &[String],
+) -> Vec<Value> {
+    let endpoint = |e: &str| {
+        let (rmw, domain, locator) = resolve_bridge_endpoint(sys, e);
+        json!({ "rmw": rmw, "domain": domain, "locator": locator })
+    };
+    sys.bridges
+        .iter()
+        .map(|b| {
+            json!({
+                "name": b.name,
+                "connect": [endpoint(&b.from), endpoint(&b.to)],
+                "topics": topics,
+            })
+        })
+        .collect()
+}
+
+/// Issue 0099 — the declared pub/sub topic names across all instances, in
+/// first-seen order, deduped. The `topics` a bridge forwards (RFC-0009
+/// resolve-from-interfaces; a bridge with no explicit topic list forwards every
+/// declared topic).
+fn forwarded_topics(instances: &[Value]) -> Vec<String> {
+    let mut topics: Vec<String> = Vec::new();
+    for inst in instances {
+        for node in inst
+            .get("nodes")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            for ent in node
+                .get("entities")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let kind = ent.get("kind").and_then(Value::as_str).unwrap_or("");
+                if kind != "publisher" && kind != "subscriber" {
+                    continue;
+                }
+                if let Some(name) = ent.get("resolved_name").and_then(Value::as_str)
+                    && !name.is_empty()
+                    && !topics.iter().any(|t| t == name)
+                {
+                    topics.push(name.to_string());
+                }
+            }
+        }
+    }
+    topics
 }
 
 fn schema_components(metadata: &[JsonArtifact]) -> Vec<Value> {
@@ -3384,6 +3532,86 @@ mod tests {
         assert!(plain.get("bridged_rmws").is_none());
     }
 
+    /// Issue 0099 — a bridged system emits one `[[transport]]` per distinct
+    /// endpoint, so `is_bridge()` is true and `SESSION_SPECS` opens both
+    /// sessions. The system-rmw endpoint carries `[system].locator`; the peer
+    /// endpoint (a DDS/multicast side) carries none.
+    #[test]
+    fn schema_build_json_emits_bridge_transports() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/127.0.0.1:7447\"\n\
+             [[domain]]\nname=\"zen\"\nrmw=\"zenoh\"\nid=0\n\
+             [[domain]]\nname=\"dds\"\nrmw=\"cyclonedds\"\nid=5\n\
+             [[bridge]]\nname=\"gw\"\nfrom=\"zenoh:zen\"\nto=\"cyclonedds:dds\"\n",
+        )
+        .unwrap();
+
+        let build = schema_build_json(Some(&st), None, None);
+        // Deserializing proves the emitted JSON is a valid transports table; two
+        // entries ⇒ bridge mode.
+        let opts: crate::orchestration::plan::PlanBuildOptions =
+            serde_json::from_value(build).unwrap();
+        assert!(opts.is_bridge());
+        assert_eq!(opts.transports.len(), 2);
+        assert_eq!(opts.transports[0].rmw.as_deref(), Some("zenoh"));
+        assert_eq!(opts.transports[0].domain, Some(0));
+        assert_eq!(
+            opts.transports[0].locator.as_deref(),
+            Some("tcp/127.0.0.1:7447")
+        );
+        assert_eq!(opts.transports[1].rmw.as_deref(), Some("cyclonedds"));
+        assert_eq!(opts.transports[1].domain, Some(5));
+        assert_eq!(opts.transports[1].locator, None);
+    }
+
+    /// Issue 0099 — `[[bridge]]` → `PlanBridge`: endpoints resolve to
+    /// `(rmw, domain, locator)` byte-matching the transports, topics carry the
+    /// forwarded set. Deserializing into `PlanBridge` validates the wire shape.
+    #[test]
+    fn bridge_plan_entries_resolve_endpoints_and_topics() {
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/h:7447\"\n\
+             [[domain]]\nname=\"zen\"\nrmw=\"zenoh\"\nid=0\n\
+             [[domain]]\nname=\"dds\"\nrmw=\"cyclonedds\"\nid=5\n\
+             [[bridge]]\nname=\"gw\"\nfrom=\"zenoh:zen\"\nto=\"cyclonedds:dds\"\n",
+        )
+        .unwrap();
+        let topics = vec!["/chatter".to_string()];
+        let bridges: Vec<crate::orchestration::plan::PlanBridge> =
+            serde_json::from_value(json!(bridge_plan_entries(&sys, &topics))).unwrap();
+        assert_eq!(bridges.len(), 1);
+        assert_eq!(bridges[0].name, "gw");
+        assert_eq!(bridges[0].connect.len(), 2);
+        assert_eq!(bridges[0].connect[0].rmw, "zenoh");
+        assert_eq!(bridges[0].connect[0].domain, 0);
+        assert_eq!(bridges[0].connect[0].locator.as_deref(), Some("tcp/h:7447"));
+        assert_eq!(bridges[0].connect[1].rmw, "cyclonedds");
+        assert_eq!(bridges[0].connect[1].domain, 5);
+        assert_eq!(bridges[0].connect[1].locator, None);
+        assert_eq!(bridges[0].topics, vec!["/chatter".to_string()]);
+    }
+
+    /// Issue 0099 — forwarded topics are the declared pub/sub `resolved_name`s,
+    /// first-seen order, deduped; non-pub/sub + empty names are skipped.
+    #[test]
+    fn forwarded_topics_collects_pub_sub_resolved_names() {
+        let instances = vec![json!({
+            "nodes": [{ "entities": [
+                {"kind": "publisher", "resolved_name": "/chatter"},
+                {"kind": "subscriber", "resolved_name": "/cmd"},
+                {"kind": "timer", "resolved_name": ""},
+                {"kind": "publisher", "resolved_name": "/chatter"},
+            ]}]
+        })];
+        assert_eq!(
+            forwarded_topics(&instances),
+            vec!["/chatter".to_string(), "/cmd".to_string()]
+        );
+    }
+
     /// Phase 256 — planner target-awareness: `[deploy.<t>].rmw` now reaches the
     /// plan (the phase-255 stub resolved at target=None, so it never did). The
     /// selected target comes from `--target`, else `default_target`, else the
@@ -3418,10 +3646,7 @@ mod tests {
              [deploy.a]\nkind=\"self\"\nrmw=\"xrce\"\n[deploy.b]\nkind=\"self\"\n",
         )
         .unwrap();
-        assert_eq!(
-            schema_build_json(Some(&st2), None, None)["rmw"],
-            "xrce"
-        );
+        assert_eq!(schema_build_json(Some(&st2), None, None)["rmw"], "xrce");
         // --target b → b has no rmw → falls to [system].rmw.
         assert_eq!(
             schema_build_json(Some(&st2), None, Some("b"))["rmw"],
@@ -3957,7 +4182,10 @@ topics:
         // [safety] + zenoh → CRC carried → no warn.
         assert_eq!(check(plan("zenoh", true), "safety-zenoh.json").warnings, 0);
         // no [safety] + cyclonedds → nothing to warn about.
-        assert_eq!(check(plan("cyclonedds", false), "no-safety-cyclone.json").warnings, 0);
+        assert_eq!(
+            check(plan("cyclonedds", false), "no-safety-cyclone.json").warnings,
+            0
+        );
     }
 
     #[cfg(feature = "play-launch-parser")]
@@ -4119,11 +4347,12 @@ topics:
 
         // Generic params: only the non-qos, non-metadata one survives.
         let plain = schema_parameters("node_x", Some(&params));
-        let names: Vec<&str> = plain
-            .iter()
-            .map(|p| p["name"].as_str().unwrap())
-            .collect();
-        assert_eq!(names, vec!["rate_hz"], "qos_overrides leaked into parameters");
+        let names: Vec<&str> = plain.iter().map(|p| p["name"].as_str().unwrap()).collect();
+        assert_eq!(
+            names,
+            vec!["rate_hz"],
+            "qos_overrides leaked into parameters"
+        );
 
         // QoS overrides: decomposed + topic with `/` preserved, sorted.
         let qos = schema_qos_overrides(Some(&params));
@@ -4231,7 +4460,10 @@ topics:
             .iter()
             .find(|i| i["host_id"].is_null() || i.get("host_id").is_none())
             .expect("a host_id-less instance");
-        assert!(without.get("host_id").is_none(), "host_id should be omitted when no machine");
+        assert!(
+            without.get("host_id").is_none(),
+            "host_id should be omitted when no machine"
+        );
     }
 
     /// Phase 211.H — end-to-end planner: a launch `<param qos_overrides…>` (as
@@ -4323,7 +4555,9 @@ topics:
         assert_eq!(pnames, vec!["rate_hz"], "qos param leaked into parameters");
 
         // ... and lowered into the typed qos_overrides block, decomposed.
-        let qos = inst["qos_overrides"].as_array().expect("qos_overrides block");
+        let qos = inst["qos_overrides"]
+            .as_array()
+            .expect("qos_overrides block");
         assert_eq!(qos.len(), 2, "got {qos:?}");
         // Sorted (topic, role, policy): depth before reliability.
         assert_eq!(qos[0]["topic"], "/chatter");
