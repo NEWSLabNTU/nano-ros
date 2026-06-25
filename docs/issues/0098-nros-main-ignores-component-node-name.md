@@ -7,18 +7,40 @@ area: core
 related: [phase-264, rfc-0004]
 ---
 
-## Status (2026-06-25)
+## Status (2026-06-26)
 
-**Single-node launch: RESOLVED.** A single-node launch now threads the component `name`
-into the primary session via `DeployOverlay.node_name`, so `ros2 node list` shows
-`/param_talker` (verified) instead of `/node`. The `ws-params-rust` interop test asserts
-the proper name. **Multi-node launch: still open** — N components share one primary session,
-so per-node graph naming + per-node param-store scoping remain the deferred piece (see Fix
-direction). This issue stays `open` until the multi-node case is addressed.
+**Single-node launch on POSIX/Native: RESOLVED.** A single-node launch threads the
+component `name` into the primary session via `DeployOverlay.node_name`, so `ros2 node list`
+shows `/param_talker` (verified) instead of `/node`. The `ws-params-rust` interop test
+asserts the proper name. Changed: `DeployOverlay.node_name` (`nros-platform`); `nros::main!`
+bakes it when the launch declares exactly one node (`nros-macros`); `PosixBoard`/`NativeBoard`
+apply it before `Executor::open` (`nros-board-posix`, `nros-board-native`).
 
-Changed: `DeployOverlay.node_name` (`nros-platform`); `nros::main!` bakes it when the launch
-declares exactly one node (`nros-macros`); `PosixBoard`/`NativeBoard` apply it before
-`Executor::open` (`nros-board-posix`, `nros-board-native`).
+**Still open — the fix lands on only 2 of ~10 boards.** A 2026-06-26 board audit found the
+`DeployOverlay.node_name` the macro bakes is honored ONLY by `PosixBoard`/`NativeBoard`.
+Every other board ignores it, so the same single-node launch that names `/param_talker` on
+native still shows `/nros_app` (or worse) on embedded:
+
+| Board(s) | node_name behavior | Defect |
+| --- | --- | --- |
+| `PosixBoard`, `NativeBoard` | `deploy.node_name` applied | ✅ fixed |
+| `stm32f4`, `mps2-an385` (bare + FreeRTOS), `esp32`, `threadx` (linux+riscv) | hardcoded `"nros_app"` at `ExecutorConfig::new(..).node_name("nros_app")` | overlay dropped in the boot closure before `Executor::open` |
+| **NuttX** (`qemu-arm`, `qemu-riscv`) | **no `run_with_deploy` override at all** (`entry_212n.rs`) — trait default drops the whole overlay → `deploy.node_name`/locator/domain all inert | worst case |
+| RTIC, Embassy (`stm32f4`) | compile-time `option_env!("NROS_NODE_NAME")`, no launch path | can't be set per-deployment |
+
+Evidence (file:line): `nros-board-stm32f4/src/entry.rs:115`, `nros-board-mps2-an385/src/entry.rs:138`,
+`nros-board-esp32-qemu/.../board_entry.rs:177`, `nros-board-nuttx-qemu-arm/src/entry_212n.rs`
+(no `run_with_deploy`), `nros-board-rtic-stm32f4/src/lib.rs:476`. Contrast the working path:
+`nros-board-posix/src/lib.rs:199-201`.
+
+**Multi-node launch: also still open** — N components share one primary session, so per-node
+graph naming + per-node param-store scoping remain deferred (see Fix direction).
+
+This node-name divergence is one symptom of a broader boot-config-is-not-unified problem
+(node_name + locator + domain resolve 4 different ways across boards) tracked in
+[#101](0101-board-boot-config-not-unified.md); the durable fix for #98 is the uniform
+`DeployOverlay`→`ExecutorConfig` path described there. This issue stays `open` until node
+naming is consistent across all boards.
 
 ## Summary
 

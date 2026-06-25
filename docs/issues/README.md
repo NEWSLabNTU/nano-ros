@@ -67,9 +67,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   `/node`](0098-nros-main-ignores-component-node-name.md): the board opened the primary
   session under the `from_env()` default `"node"`, so `ros2 node list` showed `/node` not
   the configured component name. **Single-node launch fixed** (2026-06-25) — the name is
-  threaded via `DeployOverlay.node_name`, so `ros2 node list` shows `/param_talker`; the
-  multi-node case (N components, one primary session) stays open. Surfaced from the
-  phase-264 W4c known limitation.
+  threaded via `DeployOverlay.node_name`, so `ros2 node list` shows `/param_talker`. **But a
+  board audit (2026-06-26) found the fix lands on only 2 of ~10 boards** — every embedded board
+  hardcodes `"nros_app"` or (NuttX) drops the overlay entirely; RTIC/Embassy use compile-time
+  env. Plus the multi-node case stays open. One symptom of the broader boot-config divergence
+  in #101. Surfaced from the phase-264 W4c known limitation.
 - **#99** — [declarative `[[bridge]]` does not
   forward](0099-declarative-bridge-planner-population.md): the whole cross-RMW bridge pipeline
   (schema, `PlanBridge`/`PlanTransport` IR, `validate_bridges` + relay codegen, `nros-bridge`
@@ -85,6 +87,24 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
   example dir out doesn't build (walk-up to a sibling example breaks the standalone copy-out
   contract). Fix: collapse into one self-contained crate like `examples/native/rust/talker`.
   Surfaced from `just check` dep-chain / `native::check` binding failures.
+- **#101** — [per-board boot config not
+  unified](0101-board-boot-config-not-unified.md): node_name + locator + domain resolve four
+  different ways across boards (runtime env / baked `Config` / compile-time `option_env!` /
+  NuttX drops the overlay entirely), so the same `system.toml` + `[deploy.*]` yields different
+  runtime identity per target. #98 node-naming is one symptom (works on 2/10 boards). Fix:
+  one `DeployOverlay`→`ExecutorConfig` path applied before `Executor::open` on every board.
+- **#102** — [~60 examples ship untested; advanced capabilities
+  native-only](0102-example-fixture-coverage-holes.md): zephyr (22), freertos/nuttx C/C++ (24)
+  single-node examples exist + are claimed in the RFC-0026 matrix but have zero fixtures; native
+  C/C++ variants + Rust async untested; lifecycle/params/safety/QoS/tiers/multihost exercised on
+  native only. Add fixtures or honestly de-scope the matrix. (C/C++ embedded *workspace-entry*
+  e2e is landing under phase-263 C2x — narrows the workspace axis, not the single-node holes.)
+- **#103** — [cross-language capability surface
+  uneven](0103-cross-language-capability-surface-gaps.md): core entity APIs (pub/sub/service/
+  action/QoS/bridge) are present in Rust+C+C++, but multi-type parameters are string-only in
+  C/C++, C++ has no lifecycle wrapper (must call C), and RT tiers are Rust-only (C none, C++
+  affinity-only). Param/lifecycle services are declarative in Rust but manual in C/C++. Parity
+  enhancement; sequence after #98/#101/#102.
 
 Resolved issues live in [`archived/`](archived/). Recently resolved: **#94** —
 [`nros ws sync` line-based TOML editor](archived/0094-ws-sync-toml-line-scanner-fragility.md):
