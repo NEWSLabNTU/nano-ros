@@ -321,9 +321,11 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
   fixtures `workspace-{cpp,mixed}-native-robot{1,2}`. So all three CMake workspaces now
   reach Rust's multihost parity from the single `HOST` passthrough.
 - **C2 — embedded entries (freertos / nuttx / zephyr / threadx; esp32 skipped). DESIGN
-  LOCKED (2026-06-25); C2-pre + C2a (threadx-linux C) + C2b-freertos (QEMU C) DONE +
-  runtime-verified (2026-06-25); C2b-nuttx BLOCKED (per-`NROS_PKG_NAME` kernel-link wall —
-  see below); C2c/d remain.** Two-agent framework exploration found the
+  LOCKED (2026-06-25). DONE + runtime-verified (2026-06-25): C2-pre, C2a (threadx-linux C),
+  C2b-freertos (QEMU C), C2c-cpp (threadx-linux + freertos C++), C2c-mixed (threadx-linux
+  C+C++/Rust) — 6 GREEN e2e tests. BLOCKED: C2b-nuttx (per-`NROS_PKG_NAME` kernel-link wall),
+  C2c-mixed-freertos (std Rust node vs no_std target). REMAINS: C2d-zephyr (west lane,
+  build-only). See below.** Two-agent framework exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
   just two gaps + wiring:
   - **The embedded carrier mechanism already exists** in `nano_ros_node_register`
@@ -451,9 +453,16 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       `tests/mixed_threadx_entry_e2e.rs` GREEN: the Rust heartbeat node links via the
       `nros_ws_runtime` umbrella, which on threadx-linux targets the host x86_64 triple (ThreadX
       sim = pthreads), so the Rust node compiles host-side like the native mixed entry — bootable
-      C+C++/Rust image, cross-process `/chatter` delivery. **mixed on FreeRTOS** (the umbrella
-      must cross-compile the Rust node to thumbv7m no_std + link into the ELF — a new axis) and
-      **C2d — zephyr** (west lane, build) remain. Design + gaps captured here + in 0097.
+      C+C++/Rust image, cross-process `/chatter` delivery. **mixed on FreeRTOS: BLOCKED
+      (2026-06-25) — std Rust node vs no_std target.** `rust_heartbeat_pkg` depends on `nros` with
+      the `std` feature (no `#![no_std]`); FreeRTOS is `thumbv7m-none-eabi` (no_std), where a std
+      crate cannot compile. threadx-linux worked only because its cargo triple is the host
+      `x86_64`. Unblock needs the workspace's Rust node made `no_std` (nros `alloc`-only) AND the
+      `nros_ws_runtime` umbrella selecting no_std features + the cross triple per active platform
+      (it currently pins one feature set workspace-wide) — a standalone subproject; the same wall
+      hits FreeRTOS/NuttX *Rust* workspaces generally. **C2d — zephyr** (west lane, build-only — a
+      different build system from the cmake workspace-fixtures lane) remains. Design + gaps
+      captured here + in 0097.
       Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx (arm-none-eabi/riscv),
       threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.
 
