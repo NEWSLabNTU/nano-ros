@@ -21,18 +21,24 @@ arm (else the codegen emitted the native runner), the `NROS_APP_CONFIG` TU gener
 `nano_ros_entry` (ThreadX's `nros_platform_link_app` bakes its own; FreeRTOS's doesn't), and
 the ws-c root mapping the board → arm-none-eabi `CMAKE_TOOLCHAIN_FILE` before `project()`.
 
-**NuttX multi-node C is BLOCKED (architectural, distinct from this issue's gaps).** The
+**NuttX multi-node C: BUILD blocker RESOLVED (2026-06-26); runtime QEMU-console pending.** The
 NuttX image links the entry INTO the kernel via the cargo `nros-nuttx-ffi` build, which
-compiles `APP_EXTRA_SOURCES` in ONE `cc-rs` invocation with a SINGLE `APP_COMPILE_DEFS`.
+*compiled* `APP_EXTRA_SOURCES` in ONE `cc-rs` invocation with a SINGLE `APP_COMPILE_DEFS`.
 `NROS_C_COMPONENT` names each seam `__nros_c_component_<NROS_PKG_NAME>_*` via
 `-DNROS_PKG_NAME=<pkg>` (component.h), so a multi-node entry needs each component source
-compiled with its OWN `NROS_PKG_NAME` — two different defines in one compile, impossible.
-The single-node carrier and the Rust entry (linkme) both sidestep it; host-prebuilt
-component libs can't be linked (kernel link is `armv7a-nuttx-eabihf`). Unblock needs per-file
-defines in `nros-nuttx-ffi` OR cross-building the `<pkg>_component` libs for the NuttX target.
-Two genuine fixes found en route (NUTTX_DIR/APPS_DIR CACHE promotion for the entry's sibling
-subdir scope; the kernel link silently drops non-`_ffi_lib` LINK_INTERFACES) were reverted
-with the WIP scaffold since they don't reach a buildable entry. → phase-263 C2b.
+compiled with its OWN `NROS_PKG_NAME`. **Fixed via per-source `cc::Build`** (Option A —
+cc-rs supports many builds with different defines): each mapped component source compiles
+solo with its pkg's define, ordered AFTER the shared `app_cpp` entry archive (static-link
+order, so the entry's seam refs pull the component objects). Three layers: component-lib
+`NROS_COMPONENT_PKG_SYM` property; `nuttx_ffi_build.rs` `APP_EXTRA_SOURCE_PKGS` per-source
+loop; board cmake extracts each component lib's SOURCES+pkg+includes from `LINK_INTERFACES`
+(instead of linking the wrong-arch host `.a`). Plus the NUTTX_DIR/APPS_DIR CACHE-promotion.
+**Verified: the ws-c NuttX entry builds a bootable `armv7a-nuttx-eabihf` ELF with both
+component seams resolved** (`nm`). Same idea as Zephyr's separate component static libs (C2d).
+Back-compat: empty `APP_EXTRA_SOURCE_PKGS` → original single-archive path (the single-node
+carrier compiles its node as a direct source, no component lib in `LINK_LIBRARIES`). RUNTIME:
+the QEMU image boots (virtio-net activity) but emits no console output — a nuttx-qemu console
+matter separate from the per-pkg wall; no fixture/test until that's resolved. → phase-263 C2b.
 
 The codegen + cmake half (W1–W3) is done and verified on threadx-linux C:
 - **W1 (C++ emitter, `emit_cpp.rs`):** for non-native boards, emit `nros_app_main` +

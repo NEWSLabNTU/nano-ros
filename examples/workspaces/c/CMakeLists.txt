@@ -41,6 +41,19 @@ elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
     list(APPEND _ws_subdirs src/native_threadx_entry)
 elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
     list(APPEND _ws_subdirs src/freertos_entry)
+elseif(NANO_ROS_BOARD STREQUAL "nuttx-qemu-arm")
+    list(APPEND _ws_subdirs src/nuttx_entry)
+    # phase-263 C2b — the NuttX kernel-link custom command (cargo nros-nuttx-ffi) bakes the
+    # NUTTX_DIR / NUTTX_APPS_DIR CMAKE vars at configure time. In a standalone example the
+    # board overlay + carrier share one scope so the vars are visible; in this workspace the
+    # entry pkg is a SIBLING subdir of `nano_ros`, so a directory-scope var set by the board
+    # overlay never reaches it. Promote the env to CACHE (global) so every subdir sees it.
+    if(DEFINED ENV{NUTTX_DIR} AND NOT NUTTX_DIR)
+        set(NUTTX_DIR "$ENV{NUTTX_DIR}" CACHE PATH "NuttX kernel tree")
+    endif()
+    if(DEFINED ENV{NUTTX_APPS_DIR} AND NOT NUTTX_APPS_DIR)
+        set(NUTTX_APPS_DIR "$ENV{NUTTX_APPS_DIR}" CACHE PATH "NuttX apps tree")
+    endif()
 endif()
 
 nano_ros_workspace(

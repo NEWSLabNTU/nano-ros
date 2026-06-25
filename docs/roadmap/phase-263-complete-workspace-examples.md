@@ -323,9 +323,10 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
 - **C2 — embedded entries (freertos / nuttx / zephyr / threadx; esp32 skipped). DESIGN
   LOCKED (2026-06-25). DONE + runtime-verified (2026-06-25): C2-pre, C2a (threadx-linux C),
   C2b-freertos (QEMU C), C2c-cpp (threadx-linux + freertos C++), C2c-mixed (threadx-linux
-  C+C++/Rust), C2d-zephyr C (native_sim, west lane) — 7 GREEN e2e tests. BLOCKED: C2b-nuttx
-  (per-`NROS_PKG_NAME` kernel-link wall), C2c-mixed-freertos (std Rust node vs no_std target).
-  See below.** Two-agent framework exploration found the
+  C+C++/Rust), C2d-zephyr C (native_sim, west lane) — 7 GREEN e2e tests. C2b-nuttx BUILD blocker
+  RESOLVED (2026-06-26, per-`NROS_PKG_NAME` wall — per-source cc-rs; multi-node ELF builds with
+  seams resolved), runtime QEMU-console pending. BLOCKED: C2c-mixed-freertos (std Rust node vs
+  no_std target). See below.** Two-agent framework exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
   just two gaps + wiring:
   - **The embedded carrier mechanism already exists** in `nano_ros_node_register`
@@ -428,24 +429,31 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       boards need `CMAKE_TOOLCHAIN_FILE` at the first compiler probe). The firmware's static
       `192.0.3.x` lwIP config drives a board-matching QEMU slirp net (`host=192.0.3.1`, a new
       `QemuProcess::start_mps2_an385_freertos_slirp`) + a `tcp/192.0.3.1:<port>` baked locator — no
-      TAP/bridge/root. **C2b — nuttx: BLOCKED (2026-06-25) — architectural, not a small gap.**
-      Diagnosed end-to-end: the NuttX image links the entry INTO the kernel via the cargo
-      `nros-nuttx-ffi` build, which compiles `APP_EXTRA_SOURCES` in ONE `cc-rs` invocation with a
-      SINGLE `APP_COMPILE_DEFS`. But `NROS_C_COMPONENT` names each component's `extern "C"` seam
-      `__nros_c_component_<NROS_PKG_NAME>_*` via `-DNROS_PKG_NAME=<pkg>` (component.h), so a
-      multi-node entry needs Talker.c compiled with `NROS_PKG_NAME=c_talker_pkg` AND Listener.c
-      with `=c_listener_pkg` — two different defines in one compile, impossible. The single-node
-      carrier sidesteps it (one node → one define); the Rust nuttx entry sidesteps it (linkme, no C
-      define). Pre-building the component libs HOST-side and linking them fails (`file format not
-      recognized` — the kernel link is `armv7a-nuttx-eabihf`). En route, two real fixes WERE found
-      (NUTTX_DIR/APPS_DIR must be CACHE-promoted so the entry's sibling subdir scope sees them; the
-      kernel link silently drops non-`_ffi_lib` LINK_INTERFACES) but they only expose the
-      per-`NROS_PKG_NAME` wall. **Unblock needs ONE of:** (a) per-file compile defines in the
-      `nros-nuttx-ffi` `cc-rs`/`build.rs` (compile each component source with its own
-      `NROS_PKG_NAME`), or (b) cross-compile the `<pkg>_component` libs for `armv7a-nuttx-eabihf`
-      (with their per-pkg define) and link the ARM archives — a workspace-wide cross-build change.
-      Either is a standalone subproject; the WIP scaffold was reverted (a non-building entry is a
-      landmine). **C2c — C++ DONE (2026-06-25)** — `tests/cpp_threadx_entry_e2e.rs` +
+      TAP/bridge/root. **C2b — nuttx: BUILD BLOCKER RESOLVED (2026-06-26, the per-`NROS_PKG_NAME`
+      wall) — runtime QEMU-console pending.** The earlier "block": the NuttX image links the entry
+      INTO the kernel via the cargo `nros-nuttx-ffi` build, which compiled `APP_EXTRA_SOURCES` in
+      ONE `cc-rs` invocation with a SINGLE `APP_COMPILE_DEFS`; `NROS_C_COMPONENT` names each seam
+      `__nros_c_component_<NROS_PKG_NAME>_*` via `-DNROS_PKG_NAME=<pkg>`, so a multi-node entry
+      needs Talker.c with `=c_talker_pkg` AND Listener.c with `=c_listener_pkg` — two defines in one
+      compile. **Solution (Option A — chosen over cross-building the libs): per-source `cc::Build`.**
+      cc-rs supports many `cc::Build` instances with different defines (the code already made two,
+      one C + one C++); now each mapped component source compiles in its OWN `cc::Build` with its
+      pkg's `NROS_PKG_NAME` → its own archive. Three layers: (0) annotate the component lib with an
+      `NROS_COMPONENT_PKG_SYM` property; (1) `nuttx_ffi_build.rs` parses `APP_EXTRA_SOURCE_PKGS`
+      (`<abs-src>=<pkg>`) and compiles each solo — CRUCIALLY ordered AFTER the shared `app_cpp`
+      entry archive so the entry's seam references pull the component objects (static-link order);
+      (2) the board cmake extracts each component lib's SOURCES + pkg + includes from
+      `LINK_INTERFACES` and hands them to the cc-rs build instead of linking the wrong-arch host
+      `.a`. Plus the en-route fixes (NUTTX_DIR/APPS_DIR CACHE-promotion for the sibling subdir
+      scope). **Verified: the multi-node ws-c NuttX entry now BUILDS a bootable `armv7a-nuttx-eabihf`
+      ELF with BOTH `__nros_c_component_c_{talker,listener}_pkg_*` seams resolved** (`nm` confirms;
+      the original blocker symptom is gone). This is the NuttX analog of how Zephyr (C2d) compiles
+      each component as a separate static lib. Back-compat: empty `APP_EXTRA_SOURCE_PKGS` → the
+      original single-archive behavior (the single-node carrier compiles its node as a direct
+      source, no component lib in `LINK_LIBRARIES`, so the new extraction never fires). RUNTIME
+      pending: the QEMU image boots (virtio-net activity) but emits no console output even at 55s —
+      a nuttx-qemu console/boot matter separate from the per-pkg wall (no working standalone
+      baseline locally to bisect); so no fixture/test yet (scaffold lands as WIP). **C2c — C++ DONE (2026-06-25)** — `tests/cpp_threadx_entry_e2e.rs` +
       `tests/cpp_freertos_entry_e2e.rs` GREEN: the C++ workspace's threadx-linux + FreeRTOS-QEMU
       entries deliver `/chatter` cross-process, reusing the C2a/C2b wiring VERBATIM through the C++
       emitter (only the cpp workspace root needed the same toolchain-map + conditional-subdir

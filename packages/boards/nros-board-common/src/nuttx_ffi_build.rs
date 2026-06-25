@@ -247,24 +247,77 @@ pub fn run_nuttx() {
         }
     }
 
-    // Compile each language's sources in its own archive; both link into the
-    // kernel ELF. The C++ archive carries the entry + the header-only runtime;
-    // the C archive carries the declarative C node(s) with native C linkage.
-    if !cpp_files.is_empty() {
+    // phase-263 C2b — per-component `NROS_PKG_NAME`. A multi-node LAUNCH entry composes
+    // several `NROS_C_COMPONENT(...)` nodes, each of which names its `extern "C"` seam
+    // `__nros_c_component_<NROS_PKG_NAME>_*` from the `-DNROS_PKG_NAME=<pkg>` define. A
+    // single `cc::Build` carries one define for ALL its files, so the cmake side passes
+    // `APP_EXTRA_SOURCE_PKGS="<abs-src>=<pkg>;…"` and each mapped source is compiled in its
+    // OWN `cc::Build` with that pkg's define (its own archive). Unmapped sources + the main
+    // entry keep the shared builds (back-compat with the single-node carrier, where the one
+    // `NROS_PKG_NAME` in `APP_COMPILE_DEFS` is correct). This is the NuttX analog of how
+    // Zephyr compiles each component as a separate static lib (phase-263 C2d).
+    let mut src_pkg: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Ok(map) = env::var("APP_EXTRA_SOURCE_PKGS") {
+        for pair in map.split(';') {
+            if let Some((s, p)) = pair.split_once('=') {
+                if !s.is_empty() && !p.is_empty() {
+                    src_pkg.insert(s.to_string(), p.to_string());
+                }
+            }
+        }
+    }
+
+    // Mapped sources compile solo; the rest stay in the shared per-language archives. The
+    // C++ shared archive carries the entry + header-only runtime; the C shared archive any
+    // declarative C node(s) without a per-source pkg (single-node carrier path).
+    let mut shared_cpp: Vec<String> = Vec::new();
+    let mut shared_c: Vec<String> = Vec::new();
+    let mut solo: Vec<(String, bool, String)> = Vec::new(); // (path, want_cpp, pkg)
+    for f in &cpp_files {
+        if let Some(pkg) = src_pkg.get(f) {
+            solo.push((f.clone(), true, pkg.clone()));
+        } else {
+            shared_cpp.push(f.clone());
+        }
+    }
+    for f in &c_files {
+        if let Some(pkg) = src_pkg.get(f) {
+            solo.push((f.clone(), false, pkg.clone()));
+        } else {
+            shared_c.push(f.clone());
+        }
+    }
+
+    // Compile the SHARED archives FIRST, then the solo per-component ones. cc-rs emits the
+    // `-l` flags in compile order = link order, and a static archive's objects are pulled
+    // only to satisfy references seen EARLIER on the line. The entry TU (in `app_cpp`)
+    // references each component's `__nros_c_component_<pkg>_*` seam, so the entry archive
+    // must precede the `app_pkg_*` archives that define them — else the seams stay
+    // unresolved (the symptom before this ordering).
+    if !shared_cpp.is_empty() {
         let mut build_cpp = cc::Build::new();
         configure(&mut build_cpp, true);
-        for f in &cpp_files {
+        for f in &shared_cpp {
             build_cpp.file(f);
         }
         build_cpp.compile("app_cpp");
     }
-    if !c_files.is_empty() {
+    if !shared_c.is_empty() {
         let mut build_c = cc::Build::new();
         configure(&mut build_c, false);
-        for f in &c_files {
+        for f in &shared_c {
             build_c.file(f);
         }
         build_c.compile("app_c");
+    }
+    // Each mapped source in its OWN archive with a per-component `NROS_PKG_NAME` (last `-D`
+    // wins over the shared one from `APP_COMPILE_DEFS`, so the per-source pkg is effective).
+    for (idx, (path, want_cpp, pkg)) in solo.iter().enumerate() {
+        let mut build = cc::Build::new();
+        configure(&mut build, *want_cpp);
+        build.define("NROS_PKG_NAME", Some(pkg.as_str()));
+        build.file(path);
+        build.compile(&format!("app_pkg_{idx}"));
     }
 
     // ---- NuttX kernel link args ----

@@ -316,6 +316,15 @@ function(nano_ros_node_register)
             target_compile_definitions(${_lib} PRIVATE
                 NROS_PKG_NAME=${_pkg_sym}
                 "NROS_NODE_CLASS_NAME=\"${_NRC_CLASS}\"")
+            # phase-263 C2b — record the pkg sym + language on the component lib so a
+            # consumer that must RECOMPILE this node's sources with the right
+            # `-DNROS_PKG_NAME` (the NuttX kernel link: cc-rs builds each component source
+            # for the ARM target separately, since the host-built `.a` is the wrong arch)
+            # can recover it without re-deriving from the target name. SOURCES + SOURCE_DIR
+            # are standard properties the consumer also reads.
+            set_target_properties(${_lib} PROPERTIES
+                NROS_COMPONENT_PKG_SYM "${_pkg_sym}"
+                NROS_COMPONENT_LANG "${_nrc_lang}")
         endif()
 
         # Phase 220.G.2 — auto-link every `<pkg>__nano_ros_{c,cpp}`

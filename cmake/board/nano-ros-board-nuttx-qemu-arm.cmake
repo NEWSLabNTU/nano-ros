@@ -197,6 +197,8 @@ function(nros_board_link_app target)
     # cc-rs build before the source-tree fallback.
     get_target_property(_libs ${target} LINK_LIBRARIES)
     set(_link_ifaces "")
+    # phase-263 C2b — `<abs-src>=<pkg>` pairs for the per-component NuttX cc-rs compile.
+    set(_source_pkgs "")
     if(_libs)
         foreach(_lib ${_libs})
             if(_lib STREQUAL "NanoRos::NanoRos"
@@ -228,6 +230,35 @@ function(nros_board_link_app target)
                 endif()
                 continue()
             endif()
+            # phase-263 C2b — a node component lib (a `<pkg>_<exec>_component` static lib
+            # carrying `NROS_C_COMPONENT` sources, each compiled with its own
+            # `-DNROS_PKG_NAME`). The host-built `.a` is the WRONG ARCH for the NuttX kernel
+            # link (`armv7a-nuttx-eabihf` → "file format not recognized"), so do NOT link it.
+            # Hand its SOURCES to the cargo cc-rs build to recompile for the ARM target, each
+            # tagged with its pkg via `SOURCE_PKGS` (→ APP_EXTRA_SOURCE_PKGS), so the cc-rs
+            # build gives each its own `-DNROS_PKG_NAME` (a single archive can carry only one).
+            # This is what makes multi-node C work on NuttX (cf. Zephyr's separate static libs).
+            if(TARGET ${_lib})
+                get_target_property(_comp_pkg ${_lib} NROS_COMPONENT_PKG_SYM)
+                if(_comp_pkg)
+                    get_target_property(_comp_srcs ${_lib} SOURCES)
+                    get_target_property(_comp_sdir ${_lib} SOURCE_DIR)
+                    get_target_property(_comp_inc ${_lib} INTERFACE_INCLUDE_DIRECTORIES)
+                    if(_comp_inc)
+                        list(APPEND _incs ${_comp_inc})
+                    endif()
+                    if(_comp_srcs)
+                        foreach(_cs ${_comp_srcs})
+                            if(NOT IS_ABSOLUTE "${_cs}")
+                                set(_cs "${_comp_sdir}/${_cs}")
+                            endif()
+                            list(APPEND _extra_srcs "${_cs}")
+                            list(APPEND _source_pkgs "${_cs}=${_comp_pkg}")
+                        endforeach()
+                    endif()
+                    continue()
+                endif()
+            endif()
             list(APPEND _link_ifaces "${_lib}")
         endforeach()
     endif()
@@ -250,6 +281,7 @@ function(nros_board_link_app target)
         TARGET_TRIPLE   "armv7a-nuttx-eabihf"
         INCLUDE_DIRS    ${_incs}
         SOURCES         ${_extra_srcs}
+        SOURCE_PKGS     ${_source_pkgs}
         COMPILE_DEFS    ${_compile_defs}
         LINK_INTERFACES ${_link_ifaces})
 

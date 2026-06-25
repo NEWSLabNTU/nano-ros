@@ -92,7 +92,7 @@ function(nros_nuttx_build_example)
     cmake_parse_arguments(_NNBE
         ""
         "NAME;MAIN_SOURCE;FFI_CRATE_DIR;TARGET_TRIPLE"
-        "INCLUDE_DIRS;SOURCES;COMPILE_DEFS;LINK_INTERFACES"
+        "INCLUDE_DIRS;SOURCES;SOURCE_PKGS;COMPILE_DEFS;LINK_INTERFACES"
         ${ARGN})
 
     foreach(_req NAME MAIN_SOURCE FFI_CRATE_DIR TARGET_TRIPLE)
@@ -181,6 +181,10 @@ function(nros_nuttx_build_example)
     endforeach()
     string(JOIN ";" _extra_sources_str ${_extra_sources})
 
+    # phase-263 C2b — per-component `<abs-src>=<pkg>` map → APP_EXTRA_SOURCE_PKGS, so the
+    # cc-rs build compiles each component source with its OWN `-DNROS_PKG_NAME`.
+    string(JOIN ";" _source_pkgs_str ${_NNBE_SOURCE_PKGS})
+
     set(_compile_defs "")
     foreach(_def ${_NNBE_COMPILE_DEFS})
         list(APPEND _compile_defs "${_def}")
@@ -245,6 +249,7 @@ function(nros_nuttx_build_example)
             "APP_INCLUDE_DIRS_FILE=${_includes_file}"
             "APP_FFI_LIBS_FILE=${_ffi_libs_file}"
             "APP_EXTRA_SOURCES=${_extra_sources_str}"
+            "APP_EXTRA_SOURCE_PKGS=${_source_pkgs_str}"
             "APP_COMPILE_DEFS=${_compile_defs_str}"
             "NUTTX_DIR=${NUTTX_DIR}"
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
