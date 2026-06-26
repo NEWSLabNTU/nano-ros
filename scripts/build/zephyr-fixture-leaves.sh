@@ -480,6 +480,51 @@ if [ "$include_workspace_entry" = "1" ]; then
             "$wsc_zenoh_locator" "" "$wsc_conf_files" "$wsc_extra_cmake_defs" \
             "$wsc_sig" "$wsc_sig_file" 0 "$pristine"
     fi
+
+    # phase-263 C2c — the C++ WORKSPACE entry (typed std_msgs). Same native_sim/NSOS west
+    # path as the C workspace entry; the Zephyr application dir is
+    # examples/workspaces/cpp/src/zephyr_entry. Distinct zenohd port (17833). Consumed by
+    # tests/cpp_zephyr_entry_e2e.rs.
+    wscpp_board="native_sim/native/64"
+    wscpp_lang="cpp"
+    wscpp_lang_tag="cpp"
+    wscpp_role="entry"
+    wscpp_rmw="zenoh"
+    wscpp_build_name="build-ws-cpp-entry-zenoh"
+    wscpp_build_dir="$build_root/$wscpp_build_name"
+    wscpp_src="workspaces/cpp/src/zephyr_entry"
+    wscpp_src_dir="$nros_root/examples/$wscpp_src"
+    wscpp_conf_files="prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
+    wscpp_zenoh_locator="tcp/127.0.0.1:17833"
+    wscpp_id="zephyr/native_sim/native/64/workspace-entry-cpp"
+    wscpp_target="fixture/zephyr/native_sim/native/64/workspace-entry-cpp"
+    wscpp_filter_haystack="$wscpp_board $wscpp_build_name $wscpp_src $wscpp_conf_files $wscpp_id"
+    if [ -z "$fixture_filter" ] || [[ "$wscpp_filter_haystack" =~ $fixture_filter ]]; then
+        selected=$((selected + 1))
+        wscpp_extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
+        wscpp_extra_cmake_defs="$wscpp_extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$wscpp_zenoh_locator\""
+        wscpp_extra_cmake_defs="$wscpp_extra_cmake_defs -DCONF_FILE=$wscpp_conf_files"
+        wscpp_sccache_launcher=0
+        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            wscpp_sccache_launcher=1
+            wscpp_extra_cmake_defs="$wscpp_extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        fi
+        wscpp_sig_file="$wscpp_build_dir/.nros-zephyr-fixture.sig"
+        wscpp_sig="$(printf '%s\n' \
+            "board=$wscpp_board" \
+            "src=$wscpp_src" \
+            "xrce_port=" \
+            "conf_files=$wscpp_conf_files" \
+            "zenoh_locator=$wscpp_zenoh_locator" \
+            "codegen_tool=$codegen_tool" \
+            "toolchain_cache_dir=$toolchain_cache_dir" \
+            "make=$make_bin" \
+            "sccache_launcher=$wscpp_sccache_launcher")"
+        emit_record fixture "$wscpp_id" "$wscpp_target" "$wscpp_board" "$wscpp_lang" "$wscpp_lang_tag" "$wscpp_role" "$wscpp_rmw" \
+            "$wscpp_src" "$wscpp_src_dir" "$wscpp_build_name" "$wscpp_build_dir" "$log_dir/${wscpp_build_name}.log" "" \
+            "$wscpp_zenoh_locator" "" "$wscpp_conf_files" "$wscpp_extra_cmake_defs" \
+            "$wscpp_sig" "$wscpp_sig_file" 0 "$pristine"
+    fi
 fi
 
 if [ "$selected" -eq 0 ]; then

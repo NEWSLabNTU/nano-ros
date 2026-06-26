@@ -128,6 +128,18 @@ function(nros_generate_interfaces target)
     set(_ARG_LANGUAGE "C")
   endif()
 
+  # phase-263 C2c — idempotent across node pkgs that share an interface. A multi-node Zephyr
+  # workspace entry add_subdirectory's several node pkgs that each `nros_find_interfaces` the
+  # same msg pkg (e.g. talker + listener both → std_msgs); without this guard the 2nd call
+  # re-creates `<target>_<lang>_ffi_build` → "add_custom_target cannot create target …
+  # already exists". The first call generates the headers + FFI staticlib and links them to
+  # `app`; a later call for the same (target, language) is a no-op — consumers (the component
+  # libs) reach the generated headers via app's include set (the C2d entry/app mirror).
+  string(TOLOWER "${_ARG_LANGUAGE}" _nros_iface_lang)
+  if(TARGET ${target}_${_nros_iface_lang}_ffi_build)
+    return()
+  endif()
+
   # --- Resolve or auto-discover interface files ---
   set(_interface_files "")
 

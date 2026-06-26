@@ -323,10 +323,12 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
 - **C2 — embedded entries (freertos / nuttx / zephyr / threadx; esp32 skipped). DESIGN
   LOCKED (2026-06-25). DONE + runtime-verified (2026-06-25): C2-pre, C2a (threadx-linux C),
   C2b-freertos (QEMU C), C2c-cpp (threadx-linux + freertos C++), C2c-mixed (threadx-linux
-  C+C++/Rust), C2d-zephyr C (native_sim, west lane) — 7 GREEN e2e tests. C2b-nuttx BUILD blocker
-  RESOLVED (2026-06-26, per-`NROS_PKG_NAME` wall — per-source cc-rs; multi-node ELF builds with
-  seams resolved), runtime QEMU-console pending. BLOCKED: C2c-mixed-freertos (std Rust node vs
-  no_std target). See below.** Two-agent framework exploration found the
+  C+C++/Rust), C2d-zephyr C (native_sim, west lane), C2c-zephyr C++ (native_sim) — 8 GREEN e2e
+  tests. C2b-nuttx BUILD blocker RESOLVED (2026-06-26, per-`NROS_PKG_NAME` wall — per-source
+  cc-rs; multi-node ELF builds with seams resolved), runtime QEMU-console pending (host issue).
+  BLOCKED: C2c-mixed-freertos + C2c-mixed-zephyr (std Rust node vs no_std target; zephyr also has
+  a rust_cargo_application/nano_ros_entry entry-point conflict). See below.** Two-agent framework
+  exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
   just two gaps + wiring:
   - **The embedded carrier mechanism already exists** in `nano_ros_node_register`
@@ -494,9 +496,36 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       first Zephyr *workspace-entry* runtime test; the Rust one was build-coverage only) +
       `build_zephyr_workspace_c_entry()` resolver + a C workspace-entry record in
       `zephyr-fixture-leaves.sh` under `--include-workspace-entry` (built by `just zephyr
-      build-fixtures`, distinct port 17831). **C2d-zephyr C: DONE.** C++/mixed zephyr reuse the
-      same wiring (C++ direct; mixed inherits the C2c-mixed-freertos no_std-Rust caveat on a real
-      board, but native_sim's host triple sidesteps it like threadx-linux did). Design + gaps
+      build-fixtures`, distinct port 17831). **C2d-zephyr C: DONE.**
+
+      **C2c-zephyr C++: DONE (2026-06-26)** — `tests/cpp_zephyr_entry_e2e.rs` GREEN: the C++
+      workspace's native_sim entry (talker + listener, TYPED `std_msgs::msg::Int32`) delivers
+      `/chatter` cross-process. Reuses the C2d entry-as-app wiring; the typed-interface path
+      needed SIX fixes (the raw-pub C nodes hit none): (1) the Zephyr interface generator made
+      idempotent across node pkgs that share a msg pkg (talker + listener both generate std_msgs
+      → duplicate `std_msgs_cpp_ffi_build` target); (2) `::setvbuf` not `std::setvbuf` in the cpp
+      Talker/Listener (Zephyr picolibc <cstdio> lacks the std:: name — a portability fix, good on
+      every platform); (3) `nano_ros_entry` propagates each component's class-header include dirs
+      onto `app` (the entry TU `#include`s `<pkg>/<Class>.hpp` but is compiled INTO app, which the
+      sidecar's PRIVATE component link doesn't reach); (4) a HARD file-level `OBJECT_DEPENDS` on
+      the per-build sizes headers for the SEPARATE cpp component libs (they pull the full nros-cpp
+      action/client surface → `*_OPAQUE_U64S`; on a pristine multi-node build they raced the cargo
+      header emit — a C node / single-node carrier compiles into `app` and dodges it); (5) skip
+      the `NROS_GENERATED_INTERFACE_LIBS` link on Zephyr (the generated interface is whole-archived
+      into `app`, not a linkable `<pkg>__nano_ros_cpp`); (6) the node-pkg's explicit
+      `target_link_libraries(<comp> PUBLIC std_msgs__nano_ros_cpp)` guarded with `if(TARGET)` —
+      the real culprit (an unresolved `-lstd_msgs__nano_ros_cpp` on Zephyr). All back-compat (the
+      cmake-lane cpp threadx/freertos e2e still pass).
+
+      **C2c-zephyr mixed: BLOCKED (2026-06-26) — double wall, worse than mixed-FreeRTOS.** (1)
+      std-vs-no_std: native_sim Rust targets `x86_64-unknown-none` (bare-metal **no_std**), NOT
+      the host std triple — `modules/lang/rust/CMakeLists.txt:74`. The earlier note here was
+      WRONG: native_sim does NOT sidestep the no_std wall like threadx-linux's host triple did.
+      `rust_heartbeat_pkg` needs `std` → can't compile. (2) Architecture: `rust_cargo_application()`
+      (whole-app Rust: provides `main.c` + `rust_main`) and `nano_ros_entry()` (provides `int main`)
+      both OWN the entry point — mutually exclusive; zephyr-lang-rust has no "Rust node as a linked
+      staticlib" mode, and the `nros_ws_runtime` umbrella is host-only. Unblock = no_std Rust node
+      + new zephyr-specific Rust-staticlib bundling infra (a standalone subproject). Design + gaps
       captured here + in 0097.
       Toolchains present locally: freertos (arm-none-eabi + qemu), nuttx (arm-none-eabi/riscv),
       threadx-linux (host), zephyr (west); esp32 (idf.py) absent → skipped.

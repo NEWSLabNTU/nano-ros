@@ -737,8 +737,15 @@ function(nros_generate_interfaces target)
   # DIRECTORY scope (not GLOBAL) so a workspace with multiple example
   # pkgs (or a colcon workspace) doesn't cross-pollinate one pkg's libs
   # into another pkg's component. Duplicates are de-duped at link time.
-  set_property(DIRECTORY APPEND PROPERTY
-    NROS_GENERATED_INTERFACE_LIBS "${_lib_target}")
+  # phase-263 C2c — on Zephyr the generated interface FFI is whole-archived into `app` by the
+  # Zephyr generator (zephyr/cmake/nros_generate_interfaces.cmake), NOT exposed as a linkable
+  # `<pkg>__nano_ros_cpp` lib; appending it here makes consumers try `-l<name>` → "cannot find
+  # -lstd_msgs__nano_ros_cpp". Skip the registration on Zephyr (the headers reach component
+  # libs via the `app` include mirror).
+  if(NOT NANO_ROS_PLATFORM STREQUAL "zephyr")
+    set_property(DIRECTORY APPEND PROPERTY
+      NROS_GENERATED_INTERFACE_LIBS "${_lib_target}")
+  endif()
 
   # Export variables for downstream
   set(${target}_INCLUDE_DIRS "${_output_dir}" PARENT_SCOPE)

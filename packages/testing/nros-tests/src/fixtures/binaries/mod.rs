@@ -1417,6 +1417,15 @@ pub fn build_zephyr_workspace_c_entry() -> TestResult<PathBuf> {
     require_prebuilt_binary(&binary_path)
 }
 
+/// phase-263 C2c — the Zephyr (native_sim) C++ WORKSPACE embedded entry (talker + listener,
+/// typed `std_msgs::msg::Int32`), built by the west lane into
+/// `<zephyr-build-root>/build-ws-cpp-entry-zenoh/zephyr/zephyr.exe`. Consumed by
+/// `tests/cpp_zephyr_entry_e2e.rs`.
+pub fn build_zephyr_workspace_cpp_entry() -> TestResult<PathBuf> {
+    let binary_path = zephyr_build_root().join("build-ws-cpp-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary(&binary_path)
+}
+
 /// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,

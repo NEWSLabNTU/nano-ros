@@ -339,10 +339,18 @@ function(nano_ros_node_register)
         # DIRECTORY scope — see the property write in
         # NanoRosGenerateInterfaces.cmake.
         if(NOT _nrc_lang STREQUAL "RUST")
-            get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
-            if(_nros_iface_libs)
-                list(REMOVE_DUPLICATES _nros_iface_libs)
-                target_link_libraries(${_lib} PUBLIC ${_nros_iface_libs})
+            # phase-263 C2c — on Zephyr the generated interface FFI is whole-archived into
+            # `app` directly (the Zephyr generator), NOT exposed as a per-pkg
+            # `<pkg>__nano_ros_cpp` linkable lib, so `NROS_GENERATED_INTERFACE_LIBS` may carry
+            # a NON-target name → the component link tries `-l<name>` and fails ("cannot find
+            # -lstd_msgs__nano_ros_cpp"). Skip the interface-lib link on Zephyr; the component
+            # gets the generated msg headers via the `app` include mirror below.
+            if(NOT NANO_ROS_PLATFORM STREQUAL "zephyr")
+                get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
+                if(_nros_iface_libs)
+                    list(REMOVE_DUPLICATES _nros_iface_libs)
+                    target_link_libraries(${_lib} PUBLIC ${_nros_iface_libs})
+                endif()
             endif()
             # Phase 244.C2 — on Zephyr the generated message include dirs
             # (std_msgs.hpp, example_interfaces, …) are added by the Zephyr
@@ -358,6 +366,18 @@ function(nano_ros_node_register)
             if(NANO_ROS_PLATFORM STREQUAL "zephyr" AND TARGET app)
                 target_include_directories(${_lib} PRIVATE
                     $<TARGET_PROPERTY:app,INCLUDE_DIRECTORIES>)
+                # phase-263 C2c — HARD file edge for the per-build sizes headers. A C++
+                # component pulls the full nros-cpp surface (action/client/service →
+                # `<nros/nros_{,cpp_}config_generated.h>`); on a PRISTINE multi-node build a
+                # SEPARATE component lib can compile before the Zephyr cargo build emits those
+                # headers, falling through the include path to the in-tree stub (`#error`).
+                # `_nros_node_register_config_header_deps` (above) orders the target but ninja
+                # can still start the object compile early (issue 0090); a file-level
+                # OBJECT_DEPENDS forces each TU to wait for the generated headers. (A C node /
+                # the single-node carrier compiles into `app`, which already depends on the
+                # cargo build, so neither hits this.)
+                set_source_files_properties(${_NRC_SOURCES} PROPERTIES OBJECT_DEPENDS
+                    "${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h;${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h")
             endif()
         endif()
     endif()

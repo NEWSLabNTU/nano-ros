@@ -31,5 +31,11 @@ nano_ros_node_register(
 # `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
 # carrying generated headers' include dirs. Entry pkg auto-links; Node
 # pkg target uses the legacy `_component` suffix for compatibility.
-target_link_libraries(listener_pkg_listener_component
-    PUBLIC std_msgs__nano_ros_cpp)
+# phase-263 C2c — guard with `if(TARGET)`: on Zephyr the generated interface is whole-archived
+# into `app` (the Zephyr generator), NOT exposed as a `<pkg>__nano_ros_cpp` lib, so this link
+# would become an unresolved `-lstd_msgs__nano_ros_cpp`; the component gets the headers via the
+# `app` include mirror instead.
+if(TARGET std_msgs__nano_ros_cpp)
+    target_link_libraries(listener_pkg_listener_component
+        PUBLIC std_msgs__nano_ros_cpp)
+endif()

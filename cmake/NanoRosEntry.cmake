@@ -232,6 +232,25 @@ function(nano_ros_entry)
         include("${_link_libs_cmake}")
     endif()
 
+    # phase-263 C2c — on Zephyr the generated entry TU is compiled INTO `app` (not into
+    # ${_NRA_NAME}), and a TYPED C++ entry `#include`s each node's component CLASS header
+    # (`<pkg>/<Class>.hpp`). The sidecar above linked the component libs PRIVATE to the
+    # ${_NRA_NAME} placeholder, so their PUBLIC include dirs do NOT reach `app`. Propagate
+    # each linked component's interface include dirs onto `app` so the entry TU finds the
+    # class headers. (Native/embedded entries compile the TU into ${_NRA_NAME}/the exe, which
+    # links the components directly, so they already see these includes.)
+    if(_nra_is_zephyr AND TARGET app AND TARGET ${_NRA_NAME})
+        get_target_property(_nra_comp_libs ${_NRA_NAME} LINK_LIBRARIES)
+        if(_nra_comp_libs)
+            foreach(_nra_comp ${_nra_comp_libs})
+                if(TARGET ${_nra_comp})
+                    target_include_directories(app PRIVATE
+                        $<TARGET_PROPERTY:${_nra_comp},INTERFACE_INCLUDE_DIRECTORIES>)
+                endif()
+            endforeach()
+        endif()
+    endif()
+
     # Phase 249 P4a (issue #57) — wire the strong `nros_app_register_backends()`
     # for native (POSIX/host) C/C++ entries. `nros_cpp_init` / `nros_support_init`
     # call that symbol unconditionally, and P4a removed its weak default — the only
