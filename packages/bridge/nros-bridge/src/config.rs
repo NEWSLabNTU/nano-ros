@@ -127,7 +127,17 @@ struct BridgeEndpointCfg {
 pub fn run_from_config(path: impl AsRef<Path>) -> Result<(), ConfigError> {
     let raw = fs::read_to_string(path.as_ref())
         .map_err(|e| ConfigError::Io(format!("{}: {e}", path.as_ref().display())))?;
-    let cfg: ConfigFile = toml::from_str(&raw).map_err(|e| ConfigError::Parse(format!("{e}")))?;
+    run_from_config_str(&raw)
+}
+
+/// phase-267 W1c/C4 — run a bridge from the config CONTENTS (not a file path).
+///
+/// The `nros::main!` macro `include_str!`s the `nros-bridge.toml` that
+/// `nros sync` generated (so the config is embedded in the binary — no runtime
+/// file path to get wrong) and hands the contents here. Identical wiring to
+/// [`run_from_config`]; only the source differs.
+pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
+    let cfg: ConfigFile = toml::from_str(raw).map_err(|e| ConfigError::Parse(format!("{e}")))?;
 
     // Build one SessionSpec per [[node]]. The first node's session is
     // the primary; the rest open as extras.

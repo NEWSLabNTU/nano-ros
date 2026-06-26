@@ -63,7 +63,7 @@ use nros_node::{
 #[cfg(feature = "config")]
 mod config;
 #[cfg(feature = "config")]
-pub use config::{ConfigError, run_from_config};
+pub use config::{ConfigError, run_from_config, run_from_config_str};
 
 #[cfg(feature = "cffi")]
 mod cffi;

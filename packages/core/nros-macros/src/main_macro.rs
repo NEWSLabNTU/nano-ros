@@ -381,6 +381,11 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // Phase 264 W4b — `[param_services]` declared in `system.toml` (launch arm only) →
     // register the ROS 2 param services + seed the volatile store from the baked params.
     let mut param_services_enabled = false;
+    // phase-267 W1c/C4 — when `system.toml` declares a `[[bridge]]` AND `nros sync`
+    // has generated `<bringup>/nros-bridge.toml`, the entry is a cross-RMW bridge:
+    // the macro emits a `run_from_config_str(include_str!(<that file>))` main
+    // instead of the ordinary register/spin entry. Holds the absolute path.
+    let mut bridge_config_path: Option<PathBuf> = None;
     // Phase 264 W4a — per-node launch `<param name=… value=…/>` initials, parallel to
     // `pkg_idents` (launch arm only). Each entry is the baked `(name, value)` slice that
     // seeds the node's `NodeContext::param` at register time (RFC-0004 §10). Empty in the
@@ -459,6 +464,13 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     tracked.push(st.clone());
                     lifecycle_code = read_lifecycle_autostart(&st);
                     param_services_enabled = read_param_services_enabled(&st);
+                    if read_has_bridge(&st) {
+                        let cfg = bringup_dir.join("nros-bridge.toml");
+                        if cfg.exists() {
+                            tracked.push(cfg.clone());
+                            bridge_config_path = Some(cfg);
+                        }
+                    }
                 }
             }
 
@@ -1558,6 +1570,23 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         }
     };
 
+    // phase-267 W1c/C4 — a `[[bridge]]` system is a cross-RMW gateway: the entry
+    // `include_str!`s the `nros-bridge.toml` `nros sync` generated and runs the
+    // data-driven `nros_bridge::run_from_config_str` (open_multi + a PubSubBridge
+    // per `[[bridge]]` + spin/pump). Replaces the ordinary register/spin body. The
+    // Entry pkg deps `nros-bridge` (config feature) + both RMW backends.
+    if let Some(cfg_path) = &bridge_config_path {
+        let cfg_lit = cfg_path.to_string_lossy();
+        let cfg_lit = cfg_lit.as_ref();
+        let expanded = quote! {
+            #( #tracked_consts )*
+            fn main() -> ::core::result::Result<(), ::nros_bridge::ConfigError> {
+                ::nros_bridge::run_from_config_str(::core::include_str!(#cfg_lit))
+            }
+        };
+        return Ok(expanded);
+    }
+
     let expanded = quote! {
         // Phase 212.N.9 — rebuild-tracking workaround. Stable Rust
         // proc-macros can't use `proc_macro::tracked_path::path()`;
@@ -1799,6 +1828,22 @@ fn read_param_services_enabled(system_toml: &Path) -> bool {
         return false;
     };
     v.get("param_services").is_some()
+}
+
+/// phase-267 W1c/C4 — does `system.toml` declare a non-empty `[[bridge]]`? When it
+/// does (and `nros sync` generated `nros-bridge.toml`), the macro emits a
+/// cross-RMW bridge entry instead of the ordinary register/spin one. Best-effort:
+/// an unreadable / malformed `system.toml` yields `false`.
+fn read_has_bridge(system_toml: &Path) -> bool {
+    let Ok(raw) = std::fs::read_to_string(system_toml) else {
+        return false;
+    };
+    let Ok(v) = toml::from_str::<toml::Value>(&raw) else {
+        return false;
+    };
+    v.get("bridge")
+        .and_then(|b| b.as_array())
+        .is_some_and(|a| !a.is_empty())
 }
 
 // =============================================================================
