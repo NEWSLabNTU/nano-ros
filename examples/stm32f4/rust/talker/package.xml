@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>talker_pkg</name>
+  <name>stm32f4_bsp_talker</name>
   <version>0.1.0</version>
   <description>STM32F4 bare-metal talker example node package (std_msgs/Int32 on /chatter)</description>
   <maintainer email="dev@example.com">Developer</maintainer>
