@@ -800,12 +800,31 @@ pub struct SystemDomainEntry {
 }
 
 /// `[[bridge]]` row.
+///
+/// phase-267 W1c — a bridge forwards declared `topics` (by name; `nros sync`
+/// resolves each to its `type_name` + `type_hash` from the publishing
+/// component's metadata, so the user never writes the opaque RIHS hash). Empty
+/// `topics` ⇒ forward every declared topic (resolve-from-interfaces). Direction
+/// is `from`→`to`; `bidirectional` adds the reverse relay (echo-suppressed).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SystemBridgeEntry {
     pub name: String,
     pub from: String,
     pub to: String,
+    /// Forwarded topic NAMES (e.g. `["/chatter"]`). Empty ⇒ forward all declared
+    /// topics. Types/hashes are resolved by `nros sync`, not written here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub topics: Vec<String>,
+    /// `true` ⇒ also relay `to`→`from` (echo-suppressed). Default one-way.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bidirectional: bool,
+}
+
+/// serde `skip_serializing_if` helper — omit a `false` flag so a one-way bridge
+/// round-trips byte-identically to a pre-W1c `[[bridge]]`.
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 // ---------------------------------------------------------------------------

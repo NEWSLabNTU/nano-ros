@@ -101,6 +101,10 @@ pub struct PlanBridge {
     pub connect: Vec<PlanBridgeEndpoint>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub topics: Vec<String>,
+    /// phase-267 W1c — `true` ⇒ relay both directions (echo-suppressed). Default
+    /// one-way (`connect[0]`→`connect[1]`). Omitted when false (back-compat).
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub bidirectional: bool,
 }
 
 /// One session a bridge connects (`rmw` + ROS `domain` + optional `locator`).

@@ -997,10 +997,20 @@ fn bridge_plan_entries(
     sys.bridges
         .iter()
         .map(|b| {
+            // phase-267 W1c — an explicit `[[bridge]] topics = [...]` selects the
+            // forwarded set; an empty list falls back to forward-all-declared
+            // (RFC-0009 resolve-from-interfaces). `nros sync` later resolves each
+            // name to its type+hash.
+            let forwarded: &[String] = if b.topics.is_empty() {
+                topics
+            } else {
+                &b.topics
+            };
             json!({
                 "name": b.name,
                 "connect": [endpoint(&b.from), endpoint(&b.to)],
-                "topics": topics,
+                "topics": forwarded,
+                "bidirectional": b.bidirectional,
             })
         })
         .collect()
@@ -3569,6 +3579,40 @@ mod tests {
 
     /// Issue 0099 — `[[bridge]]` → `PlanBridge`: endpoints resolve to
     /// `(rmw, domain, locator)` byte-matching the transports, topics carry the
+    /// phase-267 W1c/C1 — an explicit `[[bridge]] topics = [...]` selects the
+    /// forwarded set (over forward-all); `bidirectional` flows to `PlanBridge`.
+    #[test]
+    fn bridge_plan_entries_honour_explicit_topics_and_direction() {
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [[domain]]\nname=\"zen\"\nrmw=\"zenoh\"\nid=0\n\
+             [[domain]]\nname=\"dds\"\nrmw=\"cyclonedds\"\nid=5\n\
+             [[bridge]]\nname=\"gw\"\nfrom=\"zenoh:zen\"\nto=\"cyclonedds:dds\"\n\
+             topics=[\"/chatter\"]\nbidirectional=true\n",
+        )
+        .unwrap();
+        assert_eq!(sys.bridges[0].topics, vec!["/chatter".to_string()]);
+        assert!(sys.bridges[0].bidirectional);
+
+        // forward-all fallback list is IGNORED when the bridge names topics.
+        let bridges: Vec<crate::orchestration::plan::PlanBridge> = serde_json::from_value(json!(
+            bridge_plan_entries(&sys, &["/other".to_string(), "/extra".to_string()])
+        ))
+        .unwrap();
+        assert_eq!(bridges[0].topics, vec!["/chatter".to_string()]);
+        assert!(bridges[0].bidirectional);
+
+        // A bridge with no explicit topics falls back to forward-all.
+        let mut sys2 = sys.clone();
+        sys2.bridges[0].topics.clear();
+        sys2.bridges[0].bidirectional = false;
+        let b2: Vec<crate::orchestration::plan::PlanBridge> =
+            serde_json::from_value(json!(bridge_plan_entries(&sys2, &["/all".to_string()])))
+                .unwrap();
+        assert_eq!(b2[0].topics, vec!["/all".to_string()]);
+        assert!(!b2[0].bidirectional);
+    }
+
     /// forwarded set. Deserializing into `PlanBridge` validates the wire shape.
     #[test]
     fn bridge_plan_entries_resolve_endpoints_and_topics() {
