@@ -1,10 +1,21 @@
 # Phase 267 — Declarative cross-RMW bridge: complete the bake→entry→build flow
 
-Status: **In progress (2026-06-26)** — W0 done (planner transform + cyclone-Rust
-codegen); W1–W5 remaining. · Implements [RFC-0009](../design/0009-bridge-topic-forwarding.md)
-(bridge topic-forwarding) · Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md)
-· Completes [phase-263](phase-263-complete-workspace-examples.md) Track B / B3
+Status: **In progress (2026-06-26)** — W0 done; W1 done (as an investigation that
+inverted the plan — the live entry emitter, not the bake record, is the gap);
+W2–W5 + the new emitter wave remaining. · Implements
+[RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
+Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
+Completes [phase-263](phase-263-complete-workspace-examples.md) Track B / B3
 (`ws-bridge-rust`).
+
+> **Headline (2026-06-26, W1 investigation).** The data path is fine — the live
+> `nros::main!` build (`nros-build` → `plan_system`) already produces an
+> `NrosPlan` with `transports` + `bridges` (W0). The blocker is the **live entry
+> emitter** `nros-build/emit.rs::emit_run_plan`: it renders a single-session
+> `RuntimeCtx` register-dispatch and ignores `plan.bridges`. RFC-0009's
+> Executor-based bridge relay lives only in `generate.rs`, reachable only through
+> `build_generated_package`, which has **zero non-test callers** — a dead path.
+> The phase's heart is wiring a live bridge entry shape (see W1).
 
 > **Origin.** phase-263 B3 set out to ship `examples/workspaces/ws-bridge-rust` —
 > a declarative cross-RMW gateway (`[[bridge]]` in `system.toml`) forwarding
@@ -51,21 +62,62 @@ The reusable, RMW-agnostic core — benefits any bridge pair, not just cyclone.
 
 ## W1 — Carry the bridge plan through the bake emitter
 
-**Gap:** `cmd/codegen_system.rs::render_plan_json` (the `nros codegen-system`
-bake) is a SECOND, thin plan emitter — it writes its own `nros-system/
-nros-plan.json` (a `PlanComponent` host-side record), NOT `planner::
-schema_plan_json`. So the bake tree's plan has `bridged_rmws=null`,
-`transports=null`, `bridges=null` even though `nros plan` populates them.
+**DONE as an investigation (2026-06-26) — the premise was wrong; it rewrote the
+remaining waves.** The original W1 ("the bake's thin `render_plan_json` doesn't
+carry bridges") assumed the bake plan feeds the entry build. Tracing the ACTUAL
+flow proved otherwise — three findings, code-cited:
 
-**Work:** decide the SSoT and converge — either route `codegen-system` through
-`schema_plan_json` (preferred: one plan emitter), or apply the same transform in
-`render_plan_json`. First nail down **which plan the baked entry build actually
-consumes** (`build_generated_package`'s `plan_path`) — the bake's thin record, or
-a planner-produced full plan — and make THAT one carry the bridge fields.
+1. **The live entry build never reads the bake's thin record.** The native-Rust
+   entry is the `nros::main!` proc-macro, whose `build.rs` helper is the
+   `nros-build` crate (`packages/cli/nros-build/src/lib.rs:28`): it calls
+   `planner::plan_system` to produce a **full `NrosPlan`** and emits from THAT.
+   `cmd/codegen_system.rs::render_plan_json` (the `PlanComponent` thin record) is
+   a host-side artifact for `nros check`/`explain` + the C `system_config.h` — NOT
+   the entry-gen plan. So fixing the thin record is moot for the build.
+2. **The live plan ALREADY carries bridges.** `plan_system` calls
+   `schema_plan_json` (the W0 transform), so the `NrosPlan` `nros-build` consumes
+   has `build.transports` + `plan.bridges` populated for a `[[bridge]]` system.
+   The DATA is there in the live path.
+3. **The live EMITTER ignores bridges; the bridge relay is stranded in a dead
+   path.** `nros-build/src/emit.rs::emit_run_plan` (the live native-Rust emitter)
+   renders `run_plan(runtime: &mut ::nros_platform::RuntimeCtx)` as a flat
+   sequence of `<pkg>::register(runtime)` calls — it never reads `plan.bridges`,
+   has no `Executor`, no `open_multi`, no `register_bridges`. The Executor-based
+   bridge relay (`build_executor_bridge` / `render_register_bridges_fn` /
+   `SESSION_SPECS`) lives ONLY in `orchestration/generate.rs`, reachable only via
+   `orchestration/build.rs::build_generated_package` — which has **zero non-test
+   callers** repo-wide (incl. `cargo-nano-ros`, `colcon-nano-ros`). It is
+   dead/test-only; RFC-0009's relay codegen was never wired into the live entry
+   path.
 
-**Acceptance:** `nros codegen-system --bringup demo_bringup` on `ws-bridge-rust`
-writes a plan whose `build.transports` + `bridges` are populated; a unit/golden
-test on the bake output asserts it.
+**Corrected gap (the real W1):** the live `nros-build` entry emitter does not
+emit a bridge relay, and its `RuntimeCtx`-register entry shape cannot host one (a
+bridge needs a multi-session `Executor` via `open_multi`, not the single-session
+`RuntimeCtx`). The Executor-based relay exists but is unreachable.
+
+**Work (now the heart of the phase):** make the live native-Rust entry path emit
+the bridge relay for `is_bridge()` plans. Two routes (a design decision for the
+next wave):
+- **(a) Teach `nros-build`/`emit.rs` a bridge entry shape** — when `plan.bridges`
+  is non-empty, emit an `Executor`-based multi-session entry
+  (`Executor::open_multi(SESSION_SPECS)` + `register_backends` + the
+  generic-sub→pub relay with `nros-bridge` origin codec), porting the proven logic
+  from `generate.rs`. The `nros::main!` macro routes bridge systems to this shape.
+- **(b) Revive `generate.rs`/`build_generated_package`** as the bridge entry
+  builder and wire a live caller (a `nros` subcommand or a `cargo-nano-ros` branch)
+  for native-Rust bridge workspaces.
+
+Route (a) keeps one live emitter (`nros-build`) and is preferred; route (b)
+resurrects a parallel emitter. Either way the unit-tested `generate.rs` relay +
+`nros-bridge` codec are the reference implementation.
+
+**Acceptance:** a `[[bridge]]` native-Rust workspace's generated/baked entry
+contains `Executor::open_multi` + the per-topic generic-sub→pub relay with
+`bridge_origin` echo suppression — built from the live path, not the dead one.
+
+> **Re-sequence.** Old W1 (bake thin-record) is dropped — not consumed. Old W2
+> (metadata→topics) and W3 (build lane) stand. The new heart is the emitter route
+> above (was implicit in old W3); W4 (descriptors) + W5 (runtime) unchanged.
 
 ## W2 — Component metadata so forwarded topics resolve
 
