@@ -18,9 +18,20 @@ Build-verification gaps (pre-existing, environmental, not code defects): NuttX-r
 mps2-an385-freertos / threadx-qemu-riscv64 full builds need `just nuttx setup` / FreeRTOS
 sources; the ARM/host siblings build clean and the per-board edit is uniform.
 
-**Remaining: W5 (C), W6 (C++), W7 (cleanup)** — the C/C++ session-naming source decision
-(`nros_support_init_named` / `nros_cpp_init` / codegen-entry) is a parallel-stack effort,
-deliberately deferred from the Rust land.
+**W5/W6/W7 (C/C++ + cleanup): LANDED on main** (`…b2c3e63f1`, 2026-06-27). C and C++ codegen
+entries now emit the same `repr(C)` `.nros_boot_config` blob (Option A) and pass its node name
+to session open, so `ros2 node list` shows the launch name (VERIFIED: single-node C++ entry =
+`/talker`, was `/nros_cpp`); the unnamed default is unified to `"node"` across all three
+languages. W7 unified the two `board_path_for` maps into `nros-orchestration-ir` (fixing
+`emit_rust.rs`'s missing `freertos`/5 keys + wrong `zephyr` ZST → silent NativeBoard fallback)
+and documented `setup_transport`. A codegen-time length guard rejects node names > 63 bytes.
+Whole-branch review READY-TO-MERGE; `just check` green pre- and post-rebase.
+
+**Phase complete** except the explicit non-goals: **multi-node per-node graph naming** (N
+components share one primary session → one node; needs per-node sessions — same deferred piece
+for Rust and C/C++) and **C `create_node` graph visibility** (struct-only, no liveliness token —
+a separate pre-existing limitation, worth its own issue). Storage-backed override (#80) and the
+config-patch tool / build-time plan image remain RFC-0045 follow-ons.
 
 ## Why
 

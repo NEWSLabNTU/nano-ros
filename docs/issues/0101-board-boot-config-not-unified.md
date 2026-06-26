@@ -20,12 +20,21 @@ node_name; every Rust board (hosted, OwnedSpin, NuttX +`run_with_deploy`, RTIC, 
 resolves it from the single `.nros_boot_config` bake site instead of the former four ad-hoc
 mechanisms. NuttX gained the missing `run_with_deploy`. `just check` green + whole-branch review.
 
-**Still open:** (1) **C/C++ session naming** — `nros_support_init_named` / `nros_cpp_init` /
-codegen-entry don't yet pass the configured name (phase-266 W5/W6); (2) **locator/domain** are
-threaded but, on hosted, deliberately stay env-authoritative (the resolver maps node_name; full
-overlay-authority for locator/domain is a follow-up); (3) **cleanup** — merge the two
-`board_path_for` maps + resolve the near-dead `setup_transport` (phase-266 W7). This issue stays
-`open` until W5–W7 land.
+**C/C++ + cleanup: RESOLVED** (phase-266 W5/W6/W7, landed `…b2c3e63f1`, 2026-06-27). C/C++
+codegen entries now bake + read the same `.nros_boot_config` blob and name their session from it
+(single-node C++ entry verified `/talker`); the two `board_path_for` maps are unified in
+`nros-orchestration-ir` (fixing the `freertos`/`zephyr` fallback bug); `setup_transport`
+documented.
+
+**The core of this issue — boot config resolving four different ways → one unified path across
+all boards and all three languages — is DONE.** Ready to archive once the residuals below are
+split into their own items:
+- **locator/domain on hosted** deliberately stay env-authoritative (the resolver maps node_name;
+  full overlay-authority for hosted locator/domain is a follow-up enhancement, not a divergence).
+- **multi-node per-node graph naming** — deferred non-goal (one primary session per executor;
+  same for all languages); see #98.
+- **C `create_node` graph visibility** — C nodes lack a liveliness token (separate pre-existing
+  limitation; warrants its own issue).
 
 ## Summary
 

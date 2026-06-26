@@ -13,10 +13,18 @@ related: [phase-264, rfc-0004]
 The 2026-06-26 finding below (fix on only 2/10 boards) is closed: the unified resolver
 (RFC-0045 / phase-266) now applies the baked `.nros_boot_config` node name on every board —
 hosted, OwnedSpin embedded, NuttX (which gained a `run_with_deploy` override), RTIC, and
-Embassy. Verified by `just check` + whole-branch review. **Still deferred:** multi-node
-per-node graph naming (N components share one primary session) — see Fix direction; that, plus
-the C/C++ session-naming half, are tracked in phase-266 W5/W6 and #101. The historical detail
-below is retained for context.
+Embassy. Verified by `just check` + whole-branch review.
+
+**C and C++ also RESOLVED** (phase-266 W5/W6, landed `…b2c3e63f1`, 2026-06-27). C/C++ codegen
+entries now bake the same `.nros_boot_config` blob and name their session from it — a single-node
+C++ entry shows `/talker` (was `/nros_cpp`); C analogously (was `/nros_<pid>`). So single-node
+node naming is fixed in all three languages on every board.
+
+**Still deferred (explicit non-goals):** (1) multi-node per-node graph naming — N components
+share one primary session → one graph node; needs per-node sessions (same for all languages).
+(2) C `create_node` graph visibility — C nodes are struct-only (no liveliness token), so they
+don't appear in `ros2 node list` at all regardless of naming; a separate pre-existing limitation
+worth its own issue. The historical detail below is retained for context.
 
 ---
 

@@ -130,7 +130,7 @@ Three thin call-sites map their source into `BootConfig`, then call `resolve`:
 `BakedBootConfig` is `repr(C)` + magic-tagged for exactly this. C/C++ entries do **not** build a
 Rust `BootConfig`; they reuse the bake site directly:
 
-- A C header mirror — `packages/core/nros-c/include/nano_ros/boot_config.h` — declares the same
+- A C header mirror — `packages/core/nros-c/include/nros/boot_config.h` — declares the same
   `repr(C)` layout + `NRBC` magic + `BOOT_SET_*` bits + an inline reader
   `nros_boot_config_node_name(const struct nros_baked_boot_config*) -> const char*`. A
   `sizeof`/offset assertion guards it against drift from `nros-platform-api`.
