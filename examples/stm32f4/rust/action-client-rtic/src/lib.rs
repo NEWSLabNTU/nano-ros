@@ -52,9 +52,9 @@
 #![no_std]
 
 use nros::{
-    Callback, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CdrReader, CdrWriter, DeserError, Deserialize, DispatchStrategy, ExecutableNode,
+    Node, NodeContext, NodeOptions, NodeResult, RosAction, RosMessage, SerError, Serialize,
 };
-use stm32f4_action_server_pkg::PlaceholderAct;
 
 /// Action client component — issues Fibonacci-shaped goals and
 /// (eventually) polls for feedback + result. Phase 216.B.5 skeleton.
@@ -115,3 +115,50 @@ impl ExecutableNode for ActionClient {
 }
 
 nros::node!(ActionClient);
+
+// Placeholder action type (issue 0100) — inlined from the former sibling
+// `action_server_pkg` so this example is self-contained for copy-out. Minimal
+// `RosAction` stand-in so `create_action_client_for_name` type-checks without
+// dragging in `example_interfaces` (+ its transitive action_msgs /
+// unique_identifier_msgs / builtin_interfaces codegen). Goal / Result /
+// Feedback share a 4-byte little-endian `i32` wire shape; the five envelope
+// types alias the same placeholder. The server side keeps an identical copy.
+#[derive(Copy, Clone, Default)]
+pub struct PlaceholderInt32 {
+    pub data: i32,
+}
+
+impl Serialize for PlaceholderInt32 {
+    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+        Ok(())
+    }
+}
+
+impl Deserialize for PlaceholderInt32 {
+    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self { data: 0 })
+    }
+}
+
+impl RosMessage for PlaceholderInt32 {
+    const TYPE_NAME: &'static str = "example_interfaces/msg/Int32";
+    const TYPE_HASH: &'static str = "";
+}
+
+/// Placeholder action — Fibonacci-shaped, all envelope slots aliased to
+/// [`PlaceholderInt32`].
+pub struct PlaceholderAct;
+
+impl RosAction for PlaceholderAct {
+    type Goal = PlaceholderInt32;
+    type Result = PlaceholderInt32;
+    type Feedback = PlaceholderInt32;
+    type SendGoalRequest = PlaceholderInt32;
+    type SendGoalResponse = PlaceholderInt32;
+    type GetResultRequest = PlaceholderInt32;
+    type GetResultResponse = PlaceholderInt32;
+    type FeedbackMessage = PlaceholderInt32;
+
+    const ACTION_NAME: &'static str = "example_interfaces/action/Fibonacci";
+    const ACTION_HASH: &'static str = "";
+}

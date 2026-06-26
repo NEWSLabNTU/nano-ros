@@ -16,12 +16,21 @@ path = "src/main.rs"
 # `nros check` (Phase 216.D.1) — which validates the Node pkg's
 # `DISPATCH = Deferred` against the RTIC framework's
 # `dispatch_strategy() = Deferred`.
+# Self-contained standalone example (issue 0100): node logic in this crate's
+# lib.rs (`nros::node!(ActionServer)` → `register_dispatch`); `node_pkgs`
+# self-references this crate. `main.rs` is the `nros::main!()` RTIC Entry.
+[lib]
+crate-type = ["rlib"]
+
 [package.metadata.nros.entry]
 deploy = "rtic-stm32f4"
-# Phase 216 final wave — Node pkgs the `nros::main!()` macro splices
-# `<pkg>::register_dispatch(&mut executor)?;` calls for into the
-# generated RTIC `#[init]` body.
-node_pkgs = ["stm32f4_action_server_pkg"]
+node_pkgs = ["stm32f4-rtic-action-server"]
+
+[package.metadata.nros.node]
+class = "stm32f4_rtic_action_server::ActionServer"
+name = "fibonacci_server"
+default_namespace = "/"
+dispatch = "deferred"
 
 [dependencies]
 # Phase 216.B.5 — `nros::main!()` proc-macro family. The macro emits
@@ -38,15 +47,6 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # `todo!()` so a flash surfaces the unimplemented panic; the macro
 # emit only needs to compile here.
 nros-board-rtic-stm32f4 = { path = "../../../../packages/boards/nros-board-rtic-stm32f4" }
-# Phase 216.B.5 Node pkg — board-agnostic action server (Deferred
-# dispatch + tag-based action registration). A parallel
-# `action-server-embassy` Entry pkg will share this Node pkg once the
-# C-wave catches up. Listed as a dep so the bin target links the
-# rlib that exports `register` / `nros::node!()`-emitted
-# trampolines, mirroring the `stm32f4_talker_pkg` link from
-# `talker-rtic`.
-stm32f4_action_server_pkg = { path = "../action_server_pkg" }
-
 # RTIC runtime — re-listed because the macro-emitted body references
 # `::rtic::app`, `#[task]`, etc. by absolute path. The Entry pkg owns
 # the rtic version pin (`2.1` matches `nros-board-rtic-stm32f4`).
