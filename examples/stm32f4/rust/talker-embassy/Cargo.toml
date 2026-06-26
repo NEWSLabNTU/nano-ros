@@ -9,17 +9,22 @@ description = "Embassy example for nros on STM32F4 — Phase 216.C.4 nros::main!
 name = "stm32f4-rs-embassy-example"
 path = "src/main.rs"
 
-# Phase 216.C.4 — Entry pkg `[package.metadata.nros.entry] deploy =
-# "embassy-stm32f4"` routes the `nros::main!()` proc-macro onto the
-# C.3 Embassy emit branch (`#[embassy_executor::main] async fn main`
-# that delegates to `EmbassyBoardEntry::init_hardware`). The deploy
-# key also feeds `nros check` (Phase 216.D.1).
+# Self-contained standalone example (issue 0100): the node logic lives in this
+# crate's `lib.rs` (`nros::node!(Talker)` → `register_dispatch`); `node_pkgs`
+# self-references this crate. `main.rs` is the `nros::main!()` Embassy Entry
+# that routes onto the C.3 Embassy emit branch via the `embassy-stm32f4` deploy.
+[lib]
+crate-type = ["rlib"]
+
 [package.metadata.nros.entry]
 deploy = "embassy-stm32f4"
-# Phase 216 final wave — Node pkgs the `nros::main!()` macro splices
-# `<pkg>::register_dispatch(&mut executor)?;` calls for into the
-# generated Embassy `#[embassy_executor::main]` body.
-node_pkgs = ["stm32f4_talker_pkg"]
+node_pkgs = ["stm32f4-rs-embassy-example"]
+
+[package.metadata.nros.node]
+class = "stm32f4_rs_embassy_example::Talker"
+name = "talker"
+default_namespace = "/"
+dispatch = "inline"
 
 [dependencies]
 # Phase 216.C.4 — `nros::main!()` proc-macro family. The macro emits
@@ -34,14 +39,6 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # `todo!()` so a flash surfaces the unimplemented panic; the macro
 # emit only needs to compile here.
 nros-board-embassy-stm32f4 = { path = "../../../../packages/boards/nros-board-embassy-stm32f4" }
-# Phase 216.C.4 Node pkg — board-agnostic talker that the macro
-# wires into the dispatch runtime once the trampoline-registration
-# story lands (216.C follow-up). Listed as a dep so the bin target
-# links the rlib that exports `register` / `nros::node!()`-emitted
-# trampolines, mirroring the n9_workspace fixture's Entry → Node
-# pkg link.
-stm32f4_talker_pkg = { path = "../talker_pkg" }
-
 # Embassy runtime — re-listed because the macro-emitted body
 # references `::embassy_executor::main`, `::embassy_executor::task`,
 # `::embassy_time::Timer`, etc. by absolute path. The Entry pkg owns
