@@ -5,7 +5,10 @@ entry emitter, not the bake record, is the gap); **design DECIDED (W1c,
 2026-06-27): config-driven runtime bridge** — user writes names-only `[[bridge]]`
 + plain `nros::main!`; `nros sync` resolves type+hash; macro bakes + drives the
 runtime `PubSubBridge`. No build.rs, no codegen-relay dup. (W1b route-(a) codegen
-+ S1 superseded.) **C1 (schema) done (`e6865d718`); C2–C6 remaining.** ·
++ S1 superseded.) **C1 (schema) + C2 (runner, already
+existed) + C3-core (resolver) done; C3 wiring decided (names-only via NODE
+ENTITY METADATA — a deep metadata-pipeline addition, sub-steps C3a–C3e); C4–C6
+remaining.** ·
 Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
@@ -276,13 +279,33 @@ pumps them. `nros sync` is the resolver (the existing user step — NOT a build.
   (`manifest.rs::collect_topics`) — NEITHER is available at `nros sync` time for a
   plain workspace, and the user rejected a build.rs (where a post-build resolve
   would live). So names-only + no-build.rs + macro-can't-resolve collide.
-  **Decision (reverses the names-only pick):** make the user name the type in
-  config — `topics = [{ name = "/chatter", type = "std_msgs/Int32" }]`. Sync then
-  needs ZERO topic→type metadata (the type is given); it resolves only sessions
-  (from `[[domain]]`) + the placeholder hash → writes `nros-bridge.toml`. Clean,
-  no build.rs, no metadata pipeline. (Names-only stays a future option once node
-  pkgs declare their entities in Cargo metadata — `collect_topics` already reads
-  that shape.)
+  **Decision (2026-06-27, AskUserQuestion): keep names-only via NODE ENTITY
+  METADATA.** Each node pkg declares its published/subscribed topics+types in its
+  Cargo `[package.metadata.nros.node]`; the planner reads them as SYNTHETIC
+  metadata (pre-build, no sidecar) → `plan.interfaces` → `resolve_topic_interface`
+  resolves the bridge's names. Keeps the clean names-only bridge config; cost is a
+  node-authoring requirement + a metadata-pipeline addition. **Concrete sub-steps
+  (a deep, intricate change — its own wave):**
+  - **C3a — schema.** Add to `ComponentMetadata` (`cargo_metadata_schema.rs`):
+    `publishes: Vec<TopicDecl>` + `subscribes: Vec<TopicDecl>` (`{ topic, type }`).
+    (Services/actions later.) Carry to `CargoComponentSummary`.
+  - **C3b — synthetic emission.** `summary_to_synthetic_json` (`workspace.rs`)
+    must emit an `entities` array in the EXACT shape the planner's `schema_entity`
+    consumes (`{ kind: "publisher"|"subscriber", resolved_name: <topic>, type:
+    <interface{package,name}> }`), nested where `schema_instance` reads it
+    (`nodes[].entities` / instance `entities`). This is the intricate part —
+    match the post-build sidecar entity format so synthetic == sidecar.
+  - **C3c — verify flow.** A planner test: a node with `publishes` Cargo metadata
+    → `plan.interfaces` has the topic → `resolve_topic_interface` resolves it (no
+    build, no sidecar).
+  - **C3d — declarations.** `ws-bridge-rust` `talker_pkg` declares
+    `[[package.metadata.nros.node.publishes]] topic="/chatter" type="std_msgs/Int32"`.
+  - **C3e — sync wiring.** `nros sync` runs the planner per bringup (now resolving
+    via synthetic metadata) → `render_bridge_runtime_config` → writes
+    `<bringup>/nros-bridge.toml`.
+  Done: `render_bridge_runtime_config` resolver core (`8358836f1`) — it consumes
+  whatever `resolve_topic_interface` returns, so C3a–C3c are what make names-only
+  resolve.
 - **C4 — macro bakes.** `nros::main!` reads the resolved sidecar (best-effort,
   like the lifecycle/param reads it already does), bakes `SESSION_SPECS` +
   `BRIDGES`, and emits the `open_multi` + runner spin loop when a bridge exists.
