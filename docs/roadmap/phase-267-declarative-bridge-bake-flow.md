@@ -258,15 +258,31 @@ pumps them. `nros sync` is the resolver (the existing user step — NOT a build.
   `bidirectional` into `PlanBridge`. Tested. The RESOLVED `BridgeSpec` type (the
   sync↔macro sidecar contract) is deferred to C3, where its exact macro-read
   format is defined alongside the sync writer.
-- **C2 — runtime runner.** `nros::bridge` data-driven API: given the resolved
-  specs + a multi-session `Executor`, open the per-endpoint nodes, create the raw
-  sub/pub per topic, build one `PubSubBridge` each, and `pump()` them every spin.
-  Reuses `PubSubBridge` (one relay impl). Unit-testable construction; runtime
-  exchange gated (W5).
-- **C3 — `nros sync` resolves bridges.** Resolve each `[[bridge]]` topic name →
-  `type_name`+`type_hash` from the planner's component interfaces (folds in old
-  W2), resolve `from`/`to` → session specs, emit the RESOLVED spec sidecar (a
-  generated file the macro reads — does NOT mutate the user's `system.toml`).
+- **C2 — runtime runner. DONE — already existed (`8358836f1`).**
+  `nros_bridge::run_from_config(path)` (`packages/bridge/nros-bridge/src/config.rs`)
+  reads a `nros-bridge.toml` (`[[node]]` rmw/locator/domain + `[[bridge]]`
+  type/from/to), opens `open_multi`, creates the nodes, builds a `PubSubBridge`
+  per `[[bridge]]` (a `PumpableBridge` trait erases the const-generic buffers),
+  and spins+pumps forever. The runtime relay is reused, not rebuilt.
+- **C3 — resolver core DONE (`8358836f1`); WIRING BLOCKED (2026-06-27).**
+  `generate.rs render_bridge_runtime_config(plan) -> Option<String>` renders the
+  `nros-bridge.toml` from a `[[bridge]]` plan (`[[node]]` per session,
+  `[[bridge]]` per (topic, direction), ROS type resolved via
+  `resolve_topic_interface`, empty `type_hash`). Unit-tested.
+  **Blocker — "names only" can't resolve type pre-build:** `resolve_topic_interface`
+  needs the topic→type mapping from the plan's `interfaces`, which come from
+  component **entity metadata**. That metadata exists only after building the node
+  pkgs (sidecar JSON) OR from a manifest `[topics]` declaration
+  (`manifest.rs::collect_topics`) — NEITHER is available at `nros sync` time for a
+  plain workspace, and the user rejected a build.rs (where a post-build resolve
+  would live). So names-only + no-build.rs + macro-can't-resolve collide.
+  **Decision (reverses the names-only pick):** make the user name the type in
+  config — `topics = [{ name = "/chatter", type = "std_msgs/Int32" }]`. Sync then
+  needs ZERO topic→type metadata (the type is given); it resolves only sessions
+  (from `[[domain]]`) + the placeholder hash → writes `nros-bridge.toml`. Clean,
+  no build.rs, no metadata pipeline. (Names-only stays a future option once node
+  pkgs declare their entities in Cargo metadata — `collect_topics` already reads
+  that shape.)
 - **C4 — macro bakes.** `nros::main!` reads the resolved sidecar (best-effort,
   like the lifecycle/param reads it already does), bakes `SESSION_SPECS` +
   `BRIDGES`, and emits the `open_multi` + runner spin loop when a bridge exists.
