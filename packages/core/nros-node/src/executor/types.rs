@@ -1553,7 +1553,7 @@ mod baked_boot_config_tests {
     // exceeds the 64-byte node_name buffer.  Do NOT uncomment in CI.
     //
     // const _: BakedBootConfig = BakedBootConfig::new(
-    //     Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), // 65 A's
+    //     Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), // 65 A's (> 64-byte buffer)
     //     None, None, None,
     // );
 }
