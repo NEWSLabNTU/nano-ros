@@ -20,11 +20,17 @@ packages remain). Issue 0094 resolved at W4. · Resolves
 >   primitive; scripts/just/book + the `cargo.sh` capability probe re-pointed.
 > - **W5b** `432d136e3` — migrated 88 standalone example packages (Cargo.toml patch →
 >   `.cargo/config.toml`). Verified: native build, multi-lane `cargo metadata` resolve,
->   idempotent re-sync. **Remaining tail:** full QEMU/SDK embedded build sweep, and ~19
->   classifier-edge packages `nros sync` single-pkg does not yet treat as Rust consumers —
->   Entry/Node-split firmware roots (baremetal, stm32f4), msg-defining-consumers
->   (`native/custom-msg`), px4 xrce, msg-only (`zephyr talker-aemv8r`). These keep their hand
->   Cargo.toml patch and still build.
+>   idempotent re-sync.
+> - **W5b (classifier)** `e7cf17106` + `03c7a89d7` — `nros sync` now recognizes a
+>   node-with-msgs (defines msgs inline AND a Rust node) as a patch consumer
+>   (`WsPkg::needs_patch_authority` drops the wrong `!is_msg_pkg` guard), and single-pkg mode
+>   is dependency-aware (`emitted_msg_dep_closure`) so a node's unconsumed/mis-named
+>   self-codegen crate no longer lands a broken patch path. Migrated `native/custom-msg` +
+>   `zephyr .../talker-aemv8r` (build-verified native; +3 unit tests).
+>   **Remaining tail:** full QEMU/SDK embedded build sweep, and the Entry/Node-split firmware
+>   roots (qemu-arm-baremetal `*`, stm32f4 — Entry pkg lacks `package.xml`, so the patch
+>   authority ≠ the synced pkg) + px4 xrce (`px4_msgs`, no ament pkg). These keep their hand
+>   Cargo.toml patch and still build — a distinct topology problem, not a classifier gap.
 
 > **Goal.** Stop `nros ws sync` from editing a consumer `Cargo.toml`. It writes its
 > `[patch.crates-io]` into a **`.cargo/config.toml`** instead, using a format-preserving
