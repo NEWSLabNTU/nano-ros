@@ -1,8 +1,9 @@
 # Phase 267 — Declarative cross-RMW bridge: complete the bake→entry→build flow
 
 Status: **In progress (2026-06-26)** — W0 done; W1 done (investigation — the live
-entry emitter, not the bake record, is the gap); **W1b route (a) chosen + scoped
-into S1–S6** (live bridge entry emitter — the phase's heart); W2–W5 remaining. ·
+entry emitter, not the bake record, is the gap); **W1b route (a): S1 done
+(`5c98511dc`); S2–S6 remaining** (live bridge entry emitter — the phase's
+heart); W2–W5 remaining. ·
 Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
@@ -147,11 +148,14 @@ one emitter:**
   + BOTH backends registered — the board run path doesn't expose that.
 
 **Sub-steps:**
-- **S1 — carrier.** Get `plan.bridges` / `build.transports` to the native entry
-  codegen. Preferred: emit the bridge relay from `nros-build/emit.rs` (it already
-  has the full `NrosPlan`), and have the macro's OwnedSpin branch call that emitted
-  fn — keeps bridge resolution out of the proc-macro. (Alternative: teach the
-  macro to read `system.toml` bridges via a shared resolver crate.)
+- **S1 — carrier. DONE (2026-06-26, `5c98511dc`).** `generate.rs` exposes
+  `pub fn render_bridge_entry_fns(plan) -> Option<String>` (the single source of
+  truth: `SESSION_SPECS` + `register_backends` + `build_executor_bridge` +
+  `register_bridges` relay; `None` for non-bridge), reusing the existing private
+  relay fns; `nros-build/emit.rs::emit_bridge_entry_fns` delegates to it. The live
+  emitter (which already holds the full `NrosPlan`) can now produce the bridge
+  entry — reachable but unused until S2 splices it. Unit-tested; cli-core suite
+  green (395), no non-bridge behaviour change.
 - **S2 — multi-session entry.** Add an `Executor::open_multi(SESSION_SPECS)`
   board/runtime entry variant (vs the single-session `Executor::open` +
   single-rmw board `run`). `SESSION_SPECS` baked from `plan.build.transports`.
