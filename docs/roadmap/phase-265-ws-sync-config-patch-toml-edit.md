@@ -29,8 +29,10 @@ packages remain). Issue 0094 resolved at W4. · Resolves
 >   `zephyr .../talker-aemv8r` (build-verified native; +3 unit tests).
 >   **Remaining tail:** full QEMU/SDK embedded build sweep, and the Entry/Node-split firmware
 >   roots (qemu-arm-baremetal `*`, stm32f4 — Entry pkg lacks `package.xml`, so the patch
->   authority ≠ the synced pkg) + px4 xrce (`px4_msgs`, no ament pkg). These keep their hand
->   Cargo.toml patch and still build — a distinct topology problem, not a classifier gap.
+>   authority ≠ the synced pkg; tracked as [issue 0100](../issues/0100-baremetal-standalone-examples-split-into-sibling-node-pkg.md),
+>   whose fix collapses the split into one self-contained crate — which then auto-migrates via
+>   single-pkg sync like `custom-msg`) + px4 xrce (`px4_msgs`, no ament pkg). These keep their
+>   hand Cargo.toml patch and still build — a distinct topology problem, not a classifier gap.
 
 > **Goal.** Stop `nros ws sync` from editing a consumer `Cargo.toml`. It writes its
 > `[patch.crates-io]` into a **`.cargo/config.toml`** instead, using a format-preserving
