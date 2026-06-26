@@ -84,10 +84,7 @@
 // "reference-qemu-arm", target_os = "nuttx"))` gate — else a NuttX entry
 // built WITHOUT the feature (e.g. via `nros-board-nuttx-qemu-arm`) compiles
 // this crate as no_std while its `std::` bodies are active → build errors.
-#![cfg_attr(
-    not(any(feature = "reference-qemu-arm", target_os = "nuttx")),
-    no_std
-)]
+#![cfg_attr(not(any(feature = "reference-qemu-arm", target_os = "nuttx")), no_std)]
 
 // Phase 152.4.B — re-export the kernel-agnostic BoardInit trait so
 // overlays can `use nros_board_nuttx::BoardInit` without naming
@@ -222,7 +219,10 @@ where
 /// + without the reference feature skips this body. The `run_entry`
 /// symbol therefore only exists in builds that can actually call it.
 #[cfg(any(feature = "reference-qemu-arm", target_os = "nuttx"))]
-pub fn run_entry<B, F, E>(setup: F) -> Result<(), E>
+pub fn run_entry<B, F, E>(
+    boot_config: Option<&'static nros_platform::BakedBootConfig>,
+    setup: F,
+) -> Result<(), E>
 where
     B: nros_platform::BoardInit,
     F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
@@ -256,7 +256,15 @@ where
     const BAKED_DOMAIN: Option<&str> = option_env!("NROS_DOMAIN_ID");
     let exec_cfg = match BAKED_LOCATOR {
         Some(loc) => {
-            let mut cfg = ::nros::ExecutorConfig::new(loc).node_name("nros_app");
+            // Issue #98 / RFC-0045 — derive the node name from the baked boot
+            // config supplied by `run_with_deploy`; fall back to `"nros_app"` when
+            // called from `run` (boot_config = None) or when the baked config
+            // carries no name.
+            let node_name = boot_config
+                .map(::nros::BootConfig::from_baked)
+                .and_then(|b| b.node_name)
+                .unwrap_or("nros_app");
+            let mut cfg = ::nros::ExecutorConfig::new(loc).node_name(node_name);
             if let Some(d) = BAKED_DOMAIN.and_then(|s| s.parse::<u32>().ok()) {
                 cfg = cfg.domain_id(d);
             }

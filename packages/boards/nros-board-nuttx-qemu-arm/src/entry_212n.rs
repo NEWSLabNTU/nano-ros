@@ -119,6 +119,20 @@ impl nros_platform::BoardEntry for QemuArmVirt {
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        nros_board_nuttx::run_entry::<Self, F, E>(setup)
+        nros_board_nuttx::run_entry::<Self, F, E>(None, setup)
+    }
+
+    /// Issue #98 / RFC-0045 — thread the baked boot-config into the NuttX family
+    /// driver so the node name comes from the launch-baked `.nros_boot_config`
+    /// static rather than the hardcoded `"nros_app"` default. Locator + domain-id
+    /// continue to be baked at compile time via `NROS_LOCATOR` / `NROS_DOMAIN_ID`
+    /// (the `BAKED_LOCATOR` / `BAKED_DOMAIN` constants in `run_entry`); only the
+    /// node-name originates from `deploy.boot_config` here.
+    fn run_with_deploy<F, E>(deploy: &nros_platform::DeployOverlay, setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        nros_board_nuttx::run_entry::<Self, F, E>(deploy.boot_config, setup)
     }
 }
