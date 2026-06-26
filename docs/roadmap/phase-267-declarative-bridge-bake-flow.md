@@ -5,10 +5,12 @@ entry emitter, not the bake record, is the gap); **design DECIDED (W1c,
 2026-06-27): config-driven runtime bridge** — user writes names-only `[[bridge]]`
 + plain `nros::main!`; `nros sync` resolves type+hash; macro bakes + drives the
 runtime `PubSubBridge`. No build.rs, no codegen-relay dup. (W1b route-(a) codegen
-+ S1 superseded.) **C1 (schema) + C2 (runner, already
-existed) + C3-core (resolver) done; C3 wiring decided (names-only via NODE
-ENTITY METADATA — a deep metadata-pipeline addition, sub-steps C3a–C3e); C4–C6
-remaining.** ·
++ S1 superseded.) **C1–C5 DONE (2026-06-27) — the
+declarative zenoh↔cyclonedds bridge BUILDS end-to-end via the clean flow (no
+build.rs, no user bridge code): talker declares `publishes` → `nros sync`
+resolves /chatter→type → `nros-bridge.toml` → plain `nros::main!` macro emits
+`run_from_config_str(include_str!)` → `cargo build` links cyclone+zenoh. Only C6
+(gated runtime e2e) remains.** ·
 Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
