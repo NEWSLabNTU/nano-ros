@@ -95,6 +95,12 @@ logic → `<entry>/src/lib.rs` (replaces the `pub use <pkg>::register` re-export
 - **W4** `c6284c3a1` — `stm32f4/rust/talker` (the one clean 1:1 in stm32f4).
 - **W5** `1956c869b` — `qemu-arm-baremetal/rust/talker-rtic` (RTIC pilot; validates the
   `node_pkgs` self-reference recipe below).
+- **W5 fan-out** `6124de25f` — the 7 remaining baremetal RTIC examples (talker-rtic-mixed,
+  listener-rtic, listener-rtic-mixed, action-{client,server}-rtic, service-{client,server}-rtic).
+
+**qemu-arm-baremetal user examples: DONE** (6 declarative + 8 RTIC = 14, all build-verified).
+Remaining: the two baremetal e2e-fixture `*_pkg` (phase216-rtic-e2e, qemu-baremetal-main-e2e —
+test infra), and all of `stm32f4/rust/` except `talker` (W4).
 
 Done: 6 declarative examples (all build-verified — thumbv7m / thumbv7em). **Remaining splits
 are NOT clean 1:1 declarative folds** and need a dedicated per-shape wave:
