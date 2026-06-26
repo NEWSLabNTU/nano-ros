@@ -1531,12 +1531,18 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
                 #[::embassy_executor::main]
                 async fn main(spawner: ::embassy_executor::Spawner) {
-                    // Sync `init_hardware` — see the
-                    // `EmbassyBoardEntry` trait "Sync
-                    // `init_hardware`" note; matches `RticBoardEntry`.
+                    // Sync `init_hardware_with_deploy` — see the
+                    // `EmbassyBoardEntry` trait "Sync `init_hardware`"
+                    // note; matches `RticBoardEntry`. Phase 244.D1 /
+                    // issue #98 / RFC-0045 — threads the deploy overlay
+                    // so the board can resolve the node name from
+                    // `deploy.boot_config` (the default impl ignores it,
+                    // so boards without a baked boot config are
+                    // unchanged).
                     let (mut executor, runtime) =
-                        <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::init_hardware(
+                        <__NrosBoard as ::nros::__macro_support::nros_platform::EmbassyBoardEntry>::init_hardware_with_deploy(
                             spawner,
+                            &#deploy_overlay_ts,
                         );
                     // Phase 216 final wave — per-Node dispatch
                     // registration. Sibling of the RTIC `#[init]`

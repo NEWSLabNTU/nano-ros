@@ -47,7 +47,7 @@
 //! caveat that `EmbassyBoardEntry` would inherit (it's not
 //! object-safe today and isn't expected to need to be).
 
-use super::{Board, runtime::NodeDispatchRuntime};
+use super::{Board, DeployOverlay, runtime::NodeDispatchRuntime};
 
 /// Board-side hook for Embassy integration (Phase 216.C.1).
 ///
@@ -90,4 +90,23 @@ pub trait EmbassyBoardEntry: Board {
     /// `init_hardware`" note for the trade-off vs the spec's
     /// `async fn` sketch.
     fn init_hardware(spawner: Self::Spawner) -> (Self::Executor, Self::Runtime);
+
+    /// Like [`init_hardware`](Self::init_hardware) but applies a
+    /// deploy-metadata overlay (Phase 244.D1 / issue #98 / RFC-0045)
+    /// before opening the executor. `nros::main!()` calls THIS from the
+    /// generated `#[embassy_executor::main]` body, passing the
+    /// `[package.metadata.nros.deploy.<board>]` block.
+    ///
+    /// The default ignores `deploy` and forwards to
+    /// [`init_hardware`](Self::init_hardware), so existing Embassy boards
+    /// are unchanged. Boards with a baked boot config (e.g.
+    /// `nros-board-embassy-stm32f4`) override it so the node name is
+    /// resolved from `deploy.boot_config` instead of from
+    /// `option_env!("NROS_NODE_NAME")`.
+    fn init_hardware_with_deploy(
+        spawner: Self::Spawner,
+        _deploy: &DeployOverlay,
+    ) -> (Self::Executor, Self::Runtime) {
+        <Self as EmbassyBoardEntry>::init_hardware(spawner)
+    }
 }

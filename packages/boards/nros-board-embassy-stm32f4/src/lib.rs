@@ -93,8 +93,8 @@ use embassy_sync::{
 };
 
 use nros_platform::{
-    BoardExit, BoardInit, BoardPrint, DispatchStrategy, EmbassyBoardEntry, NodeDispatchRuntime,
-    SignaledCallback,
+    BoardExit, BoardInit, BoardPrint, DeployOverlay, DispatchStrategy, EmbassyBoardEntry,
+    NodeDispatchRuntime, SignaledCallback,
 };
 
 /// Channel depth used by [`EmbassyRuntime`]. Mirrors
@@ -388,6 +388,93 @@ impl NodeDispatchRuntime for EmbassyRuntime {
     }
 }
 
+// ---------------------------------------------------------------
+// Private init helper — single-sources the hardware bringup body
+// shared by `init_hardware` (env-var node name) and
+// `init_hardware_with_deploy` (boot_config node name).
+// ---------------------------------------------------------------
+
+/// Core STM32F4 Embassy bringup: HAL init → RMW register →
+/// `Executor::open`.  `node_name` is the caller-resolved string (from
+/// `option_env!` on the non-deploy path, or from `deploy.boot_config`
+/// on the deploy path).
+///
+/// Phase 216.C.2 follow-up — transport config (locator / domain_id)
+/// still comes from `option_env!` / board-default constants.  Only
+/// the node-name source changes between the two call paths.
+///
+/// ### What's still placeholder
+///
+/// - **No transport bringup.** `Executor::open` without a reachable
+///   zenoh-pico transport will fail when `__nros_run_task` first
+///   ticks; a probe-attached run surfaces the failure via `panic!`.
+///   Wiring `embassy_net::Ethernet` + a zenoh-pico bridge is the
+///   next 216.C wave.
+/// - `embassy_stm32::Config::default()` picks HSI; a follow-up bumps
+///   to HSE → PLL 180 MHz to match the sibling RTIC board (168 MHz).
+fn embassy_stm32f4_init(node_name: &'static str) -> (::nros::Executor, EmbassyRuntime) {
+    // Step 1: Embassy HAL bringup. Defaults pick HSI / no PLL; the
+    // chip-init returns a `Peripherals` handle the future transport
+    // wave needs. Today the handle is dropped — no GPIO / Ethernet
+    // wiring yet.
+    let _p = embassy_stm32::init(Default::default());
+
+    // Step 2: explicit RMW backend registration (bare-metal targets
+    // don't walk `.init_array`). Mirrors the sibling RTIC board crate.
+    // `nros_rmw_zenoh::register` is idempotent w.r.t.
+    // double-register (returns `Err(AlreadyRegistered)`); we panic on
+    // any other error so a probe-attached run surfaces the failure.
+    // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
+    // feature so the board can build DDS-/XRCE-only.
+    #[cfg(feature = "rmw-zenoh")]
+    match nros_rmw_zenoh::register() {
+        Ok(()) => {}
+        Err(e) => {
+            defmt::error!(
+                "EmbassyStm32F4::init_hardware: nros_rmw_zenoh::register failed: {:?}",
+                defmt::Debug2Format(&e)
+            );
+            panic!("nros_rmw_zenoh::register failed");
+        }
+    }
+
+    // Step 3: open the Executor against the configured locator +
+    // domain. Transport config comes from build-time env vars with
+    // fallback to the board-default constants (locator /
+    // domain_id). Node name is supplied by the caller — either from
+    // `option_env!("NROS_NODE_NAME")` (non-deploy path) or from
+    // `deploy.boot_config` (deploy path, issue #98 / RFC-0045).
+    //
+    // Override knobs (locator + domain_id only — node_name is the
+    // caller's responsibility):
+    //   - `NROS_LOCATOR`   — overrides the zenoh locator
+    //   - `NROS_DOMAIN_ID` — overrides the ROS domain id (parsed decimal)
+    let locator: &'static str = option_env!("NROS_LOCATOR").unwrap_or(DEFAULT_LOCATOR);
+    let domain_id: u32 = option_env!("NROS_DOMAIN_ID")
+        .and_then(parse_decimal_u32)
+        .unwrap_or(DEFAULT_DOMAIN_ID);
+
+    let exec_config = ::nros::ExecutorConfig::new(locator)
+        .domain_id(domain_id)
+        .node_name(node_name);
+    let executor = match ::nros::Executor::open(&exec_config) {
+        Ok(e) => e,
+        Err(err) => {
+            defmt::error!(
+                "EmbassyStm32F4::init_hardware: Executor::open failed: {:?}",
+                defmt::Debug2Format(&err)
+            );
+            panic!("Executor::open failed");
+        }
+    };
+
+    // Step 4: hand back the executor + runtime pair. The proc-macro
+    // emit (216.C.3) consumes both, stashing the executor in a
+    // `StaticCell` and handing the runtime's backing
+    // `&CALLBACK_CHANNEL` to the long-lived `__nros_run_task`.
+    (executor, EmbassyRuntime::new())
+}
+
 // ---- EmbassyBoardEntry impl (Phase 216.C.1 trait surface) ----
 
 impl EmbassyBoardEntry for EmbassyStm32F4 {
@@ -413,156 +500,29 @@ impl EmbassyBoardEntry for EmbassyStm32F4 {
     // override — STM32F4 callback density fits comfortably in 32.
 
     fn init_hardware(_spawner: Self::Spawner) -> (Self::Executor, Self::Runtime) {
-        // Phase 216.C.2 follow-up — real bringup body. Steps mirror
-        // the pre-migration Pattern A escape-hatch
-        // (`examples/stm32f4/rust/talker-embassy/src/main.rs` before
-        // commit `3598b3a2d`) and the sibling RTIC board crate's
-        // 216.B.2 follow-up. The Embassy variant differs from RTIC
-        // in two places:
-        //
-        // 1. Peripheral bringup goes through `embassy_stm32::init(…)`
-        //    instead of `stm32f4xx_hal::pac::Peripherals::take` +
-        //    `cortex_m::Peripherals::take`. Embassy owns its own
-        //    RCC / PLL configuration story, so the direct-exec
-        //    sibling's `nros_board_stm32f4::init_hardware(&Config,
-        //    pac, core)` free fn is NOT reused here — its
-        //    `pac::Peripherals` argument conflicts with Embassy's
-        //    peripheral split. A future follow-up may introduce a
-        //    shared `nros_board_embassy_stm32f4::init_embassy_hardware(spawner)`
-        //    free fn (mirroring the RTIC reuse pattern) if the
-        //    bringup body grows enough to warrant single-sourcing.
-        //
-        // 2. The Embassy `Spawner` is passed in (used by follow-up
-        //    waves to spawn Ethernet driver + the executor spin
-        //    sidekick). Today's body doesn't spawn any framework
-        //    tasks yet — the proc-macro emit (216.C.3) owns the
-        //    `__nros_spin_task` + `__nros_dispatch_task` sidekicks.
-        //
-        // Steps:
-        //
-        //   1. `embassy_stm32::init(Default::default())` — clock
-        //      tree + peripheral split. Defaults pick HSI / no PLL;
-        //      a future follow-up threads `[[transport]]` knobs from
-        //      `nros.toml` via `BoardTransportConfig` so the same
-        //      board crate covers NUCLEO-F429ZI (HSE → 180 MHz) and
-        //      other STM32F4 variants. The returned `Peripherals`
-        //      handle is dropped today — no transport bringup is
-        //      wired yet (placeholder, see below).
-        //   2. Register the RMW backend before `Executor::open` —
-        //      bare-metal has no `.init_array` walk (same as the
-        //      sibling RTIC board crate; same as the pre-migration
-        //      Pattern A escape-hatch).
-        //   3. `Executor::open` with a config matching the RTIC
-        //      sibling's defaults (zenoh `tcp/127.0.0.1:7447`
-        //      locator, domain 0, node name "nros"). A future
-        //      follow-up threads `nros.toml` knobs in.
-        //   4. Return `(executor, EmbassyRuntime::new())` — the
-        //      runtime wraps a `&'static` borrow of
-        //      `CALLBACK_CHANNEL`; the proc-macro emit's dispatch
-        //      task drains the receiver side.
-        //
-        // ### What's still placeholder
-        //
-        // - **No transport bringup.** The pre-migration
-        //   talker-embassy example only blinked an LED + spawned
-        //   placeholder tasks — it never wired ethernet / serial
-        //   nor opened a real zenoh session. The Pattern A code
-        //   the task brief points us to therefore had no real
-        //   transport either. `Executor::open` without a
-        //   reachable zenoh-pico transport will fail when the
-        //   `__nros_spin_task` first ticks; a probe-attached run
-        //   surfaces the failure via the `panic!` below. Wiring
-        //   `embassy_net::Ethernet` + a `embassy-net`/zenoh-pico
-        //   bridge is the next 216.C wave (parallel to the
-        //   216.B.3 spin task body wiring on the RTIC side).
-        // - `embassy_stm32::Config::default()` picks HSI; a future
-        //   follow-up bumps to HSE → PLL 180 MHz to match the
-        //   sibling RTIC board crate (which clocks at 168 MHz via
-        //   `nros_board_stm32f4`).
-        // - `EmbassyRuntime::register_dispatch_slot_dyn` /
-        //   `spin_once` still return `Err(())` — same skeleton as
-        //   the RTIC sibling; the proc-macro emit wraps an
-        //   `ExecutorNodeRuntime` sink and forwards through.
-        // - The Spawner is accepted but unused today. Embassy
-        //   Ethernet driver task spawn lives in the next wave.
-
-        // Step 1: Embassy HAL bringup. Defaults pick HSI / no PLL;
-        // the chip-init returns a `Peripherals` handle the future
-        // transport wave needs. Today the handle is dropped — no
-        // GPIO / Ethernet wiring yet.
-        let _p = embassy_stm32::init(Default::default());
-
-        // Step 2: explicit RMW backend registration (bare-metal
-        // targets don't walk `.init_array`). Mirrors the sibling
-        // RTIC board crate. `nros_rmw_zenoh::register` is
-        // idempotent w.r.t. double-register (returns
-        // `Err(AlreadyRegistered)`); we panic on any other error so
-        // a probe-attached run surfaces the failure loudly.
-        // Phase 248 C1 (#60 T4) — gated behind the optional `rmw-zenoh`
-        // feature so the board can build DDS-/XRCE-only.
-        #[cfg(feature = "rmw-zenoh")]
-        match nros_rmw_zenoh::register() {
-            Ok(()) => {}
-            Err(e) => {
-                defmt::error!(
-                    "EmbassyStm32F4::init_hardware: nros_rmw_zenoh::register failed: {:?}",
-                    defmt::Debug2Format(&e)
-                );
-                panic!("nros_rmw_zenoh::register failed");
-            }
-        }
-
-        // Step 3: open the Executor against the configured locator
-        // + domain. Phase 216 follow-up — values come from
-        // build-time env vars via [`option_env!`] with a fallback to
-        // the previously hardcoded defaults
-        // (`tcp/127.0.0.1:7447`, domain 0, node name "nros"). The
-        // env-var seam is the pragmatic interim between the
-        // previous hardcoded constants and a full `nros.toml` →
-        // [`nros_platform::BoardTransportConfig`] reader (which
-        // needs a codegen-driven Entry pkg landing first).
-        //
-        // Override knobs:
-        //
-        //   - `NROS_LOCATOR` — overrides the zenoh locator
-        //   - `NROS_DOMAIN_ID` — overrides the ROS domain id
-        //     (parsed decimal)
-        //   - `NROS_NODE_NAME` — overrides the node name
-        //
-        // Default behaviour (no env override) matches the previous
-        // hardcoded shape so a fresh `cargo check` is byte-identical.
-        // Why no `nros_board_stm32f4::Config` here: the direct-exec
-        // sibling board crate depends on `stm32f4xx-hal` which would
-        // collide with `embassy-stm32`'s peripheral split at link
-        // time, so the Embassy crate carries its own minimal
-        // fallback constants rather than reusing the sibling
-        // builder. A future `BoardTransportConfig` reader will land
-        // a board-local `Config` struct here.
-        let locator: &'static str = option_env!("NROS_LOCATOR").unwrap_or(DEFAULT_LOCATOR);
-        let domain_id: u32 = option_env!("NROS_DOMAIN_ID")
-            .and_then(parse_decimal_u32)
-            .unwrap_or(DEFAULT_DOMAIN_ID);
+        // Phase 216.C.2 follow-up — transport config (locator /
+        // domain_id) from build-time env vars; node name falls back to
+        // the board-historical default `"nros"`. The deploy-overlay
+        // path (issue #98 / RFC-0045) goes through
+        // `init_hardware_with_deploy`.
         let node_name: &'static str = option_env!("NROS_NODE_NAME").unwrap_or(DEFAULT_NODE_NAME);
+        embassy_stm32f4_init(node_name)
+    }
 
-        let exec_config = ::nros::ExecutorConfig::new(locator)
-            .domain_id(domain_id)
-            .node_name(node_name);
-        let executor = match ::nros::Executor::open(&exec_config) {
-            Ok(e) => e,
-            Err(err) => {
-                defmt::error!(
-                    "EmbassyStm32F4::init_hardware: Executor::open failed: {:?}",
-                    defmt::Debug2Format(&err)
-                );
-                panic!("Executor::open failed");
-            }
-        };
-
-        // Step 4: hand back the executor + runtime pair. The
-        // proc-macro emit (216.C.3) consumes both, stashing the
-        // executor in a `StaticCell` and handing the runtime's
-        // backing `&CALLBACK_CHANNEL` to the long-lived
-        // `__nros_dispatch_task` sidekick.
-        (executor, EmbassyRuntime::new())
+    /// Issue #98 / RFC-0045 — override the default-delegate impl to
+    /// read the node name from the baked `.nros_boot_config` in
+    /// `deploy.boot_config`, falling back to the board-historical
+    /// `"nros"`.  Locator and domain keep their env-var / board-default
+    /// origin (unchanged from before W4e).
+    fn init_hardware_with_deploy(
+        _spawner: Self::Spawner,
+        deploy: &DeployOverlay,
+    ) -> (Self::Executor, Self::Runtime) {
+        let node_name = deploy
+            .boot_config
+            .map(::nros::BootConfig::from_baked)
+            .and_then(|b| b.node_name)
+            .unwrap_or(DEFAULT_NODE_NAME);
+        embassy_stm32f4_init(node_name)
     }
 }
