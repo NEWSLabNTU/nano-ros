@@ -27,7 +27,15 @@ packages remain). Issue 0094 resolved at W4. · Resolves
 >   is dependency-aware (`emitted_msg_dep_closure`) so a node's unconsumed/mis-named
 >   self-codegen crate no longer lands a broken patch path. Migrated `native/custom-msg` +
 >   `zephyr .../talker-aemv8r` (build-verified native; +3 unit tests).
->   **Remaining tail:** full QEMU/SDK embedded build sweep, and the Entry/Node-split firmware
+> - **W5b (embedded build verify)** 2026-06-24 — the **threadx-linux** lane is build-verified:
+>   `just threadx_linux::build-examples` rust stage builds all 6 standalone examples
+>   (talker/listener/service-{client,server}/action-{client,server}) + the logging-smoke
+>   fixture green via `nros sync` + cargo with the migrated `.cargo/config.toml` patches
+>   (full ThreadX + NetX Duo + zenoh-pico; EXIT=0, zero errors). Plus native `cargo build`.
+>   So phase acceptance "rebuild native + ≥1 embedded lane" is met with real builds; the
+>   other embedded lanes stay `cargo metadata` resolve-verified. (The C-workspace fixture
+>   stage has an unrelated pre-existing cmake `mv .args.tmp` glitch — not patch-related.)
+>   **Remaining tail:** broader QEMU/SDK build sweep of the other lanes, and the Entry/Node-split firmware
 >   roots (qemu-arm-baremetal `*`, stm32f4 — Entry pkg lacks `package.xml`, so the patch
 >   authority ≠ the synced pkg; tracked as [issue 0100](../issues/0100-baremetal-standalone-examples-split-into-sibling-node-pkg.md),
 >   whose fix collapses the split into one self-contained crate — which then auto-migrates via
