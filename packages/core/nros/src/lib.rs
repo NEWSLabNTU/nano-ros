@@ -519,9 +519,10 @@ pub mod internals {
 
 // Re-export types that don't depend on RMW (always available)
 pub use nros_node::{
-    ExecutorConfig, ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
-    NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback, RawSubscriptionCallback,
-    ReadinessSnapshot, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
+    BootConfig, ExecutorConfig, ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet,
+    InvocationMode, NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback,
+    RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
+    SpinPeriodPollingResult, Trigger,
 };
 
 // Re-export RMW-dependent types (require an active transport backend)

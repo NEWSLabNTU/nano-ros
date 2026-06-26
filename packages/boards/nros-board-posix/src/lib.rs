@@ -193,13 +193,19 @@ impl BoardEntry for PosixBoard {
         // entry-poc) still reaches `exit_success()`, while a real
         // workload that tries to register components fails fast with
         // `RuntimeError::ComponentRegister` (no silent no-op).
-        // Issue #98 — the env config names the primary session `"node"`; a
-        // single-node launch overrides it with the component name so the ROS
-        // graph (and `ros2 param …`) keys off the configured name, not `/node`.
-        let mut exec_cfg = ::nros::ExecutorConfig::from_env();
-        if let Some(name) = deploy.node_name {
-            exec_cfg = exec_cfg.node_name(name);
-        }
+        // Issue #98 — route the single-node launch overlay through the W1
+        // resolver (RFC-0045 precedence model A): env > baked > compiled default.
+        // Only `node_name` is mapped from the overlay; locator/domain/namespace
+        // stay `None` so env keeps authority over them (issue #48 preserved).
+        // With `hosted_env=true` + `BootConfig::default()`, `resolve` is
+        // provably equivalent to `from_env()` (W1 regression guard T1).
+        let exec_cfg = ::nros::ExecutorConfig::resolve(
+            ::nros::BootConfig {
+                node_name: deploy.node_name,
+                ..Default::default()
+            },
+            /* hosted_env = */ true,
+        );
         let mut crt_real: Option<::nros::node_runtime::ExecutorNodeRuntime> =
             match ::nros::Executor::open(&exec_cfg) {
                 Ok(e) => Some(::nros::node_runtime::ExecutorNodeRuntime::from_executor(e)),
