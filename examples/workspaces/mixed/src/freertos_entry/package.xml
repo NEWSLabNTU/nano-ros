@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>freertos_entry</name>
+  <version>0.1.0</version>
+  <description>phase-263 C2c — FreeRTOS (QEMU MPS2-AN385) embedded Entry for the mixed (C/C++/Rust) workspace.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>demo_bringup</exec_depend>
+  <exec_depend>c_talker_pkg</exec_depend>
+  <exec_depend>cpp_listener_pkg</exec_depend>
+  <exec_depend>rust_heartbeat_pkg</exec_depend>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

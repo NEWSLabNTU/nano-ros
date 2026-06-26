@@ -99,6 +99,9 @@ build-examples:
     # phase-263 C2c — the embedded C++ workspace LAUNCH entry, consumed by
     # tests/cpp_freertos_entry_e2e.rs.
     bash scripts/build/workspace-fixtures-build.sh freertos cpp
+    # phase-263 C2c — the embedded MIXED (C+C++ + no_std Rust) workspace LAUNCH entry,
+    # consumed by tests/mixed_freertos_entry_e2e.rs.
+    bash scripts/build/workspace-fixtures-build.sh freertos mixed
     echo "FreeRTOS QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

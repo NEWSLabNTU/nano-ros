@@ -535,6 +535,23 @@ entry = "threadx_entry"
 build_subdir = "build-workspace-fixtures-threadx"
 cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:17821" }
 
+# phase-263 C2c — the MIXED (C + C++ + no_std Rust) entry on FreeRTOS QEMU. Unlike the
+# threadx-linux host triple, FreeRTOS is a genuine thumbv7m-none-eabi no_std cross target, so
+# the Rust heartbeat node compiles no_std (`#![no_std]`, alloc-only) and the nros_ws_runtime
+# umbrella cross-compiles + re-points NanoRosCpp for the embedded board. Own build_subdir;
+# board-matching slirp net + baked tcp/192.0.3.1:17841. Consumed by
+# tests/mixed_freertos_entry_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-mixed-freertos"
+platform = "freertos"
+lang = "mixed"
+rmw = "zenoh"
+dir = "examples/workspaces/mixed"
+bringup = "src/demo_bringup"
+entry = "freertos_entry"
+build_subdir = "build-workspace-fixtures-freertos"
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:17841" }
+
 # ===========================================================================
 # native — Rust (host, profile nros-fast-release)
 # ===========================================================================

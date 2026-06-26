@@ -325,11 +325,12 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
 - **C2 — embedded entries (freertos / nuttx / zephyr / threadx; esp32 skipped). DESIGN
   LOCKED (2026-06-25). DONE + runtime-verified (2026-06-25): C2-pre, C2a (threadx-linux C),
   C2b-freertos (QEMU C), C2c-cpp (threadx-linux + freertos C++), C2c-mixed (threadx-linux
-  C+C++/Rust), C2d-zephyr C (native_sim, west lane), C2c-zephyr C++ (native_sim) — 8 GREEN e2e
-  tests. C2b-nuttx BUILD blocker RESOLVED (2026-06-26, per-`NROS_PKG_NAME` wall — per-source
-  cc-rs; multi-node ELF builds with seams resolved), runtime QEMU-console pending (host issue).
-  BLOCKED: C2c-mixed-freertos + C2c-mixed-zephyr (std Rust node vs no_std target; zephyr also has
-  a rust_cargo_application/nano_ros_entry entry-point conflict). See below.** Two-agent framework
+  C+C++/Rust), C2d-zephyr C (native_sim, west lane), C2c-zephyr C++ (native_sim), C2c-mixed-freertos
+  (C+C++ + no_std Rust, thumbv7m) — 9 GREEN e2e tests. C2b-nuttx BUILD blocker RESOLVED
+  (2026-06-26, per-`NROS_PKG_NAME` wall — per-source cc-rs; multi-node ELF builds with seams
+  resolved), runtime QEMU-console pending (host issue). BLOCKED: C2c-mixed-zephyr (no_std node fix
+  applies, but the rust_cargo_application/nano_ros_entry entry-point conflict needs a
+  Rust-node-as-staticlib mode in zephyr-lang-rust). See below.** Two-agent framework
   exploration found the
   embedded build is **far smaller than it looked** — not a single-platform-model rewrite,
   just two gaps + wiring:
@@ -471,14 +472,27 @@ deploy targets. Reuses the Rust workspace's per-platform Entry pattern.
       `tests/mixed_threadx_entry_e2e.rs` GREEN: the Rust heartbeat node links via the
       `nros_ws_runtime` umbrella, which on threadx-linux targets the host x86_64 triple (ThreadX
       sim = pthreads), so the Rust node compiles host-side like the native mixed entry — bootable
-      C+C++/Rust image, cross-process `/chatter` delivery. **mixed on FreeRTOS: BLOCKED
-      (2026-06-25) — std Rust node vs no_std target.** `rust_heartbeat_pkg` depends on `nros` with
-      the `std` feature (no `#![no_std]`); FreeRTOS is `thumbv7m-none-eabi` (no_std), where a std
-      crate cannot compile. threadx-linux worked only because its cargo triple is the host
-      `x86_64`. Unblock needs the workspace's Rust node made `no_std` (nros `alloc`-only) AND the
-      `nros_ws_runtime` umbrella selecting no_std features + the cross triple per active platform
-      (it currently pins one feature set workspace-wide) — a standalone subproject; the same wall
-      hits FreeRTOS/NuttX *Rust* workspaces generally. **C2d — zephyr C: build + native_sim
+      C+C++/Rust image, cross-process `/chatter` delivery. **mixed on FreeRTOS: DONE +
+      runtime-verified (2026-06-26).** `tests/mixed_freertos_entry_e2e.rs` GREEN — a C talker, a
+      C++ listener, AND a no_std Rust heartbeat node in ONE bootable thumbv7m FreeRTOS image,
+      delivering `/chatter` cross-process. The "blocker" (std Rust node vs no_std target) was real
+      but smaller than thought — FOUR fixes: (1) `rust_heartbeat_pkg` made `#![no_std]` + dropped
+      the nros `std` feature (alloc-only; the body was already std-free — nros API + a u32
+      counter); (2) its `crate-type` reduced to `rlib`-only (a workspace node is always BUNDLED
+      into the umbrella, never a standalone staticlib — the staticlib variant on a no_std cross
+      target failed "no global allocator / #[panic_handler] required"; host std silently supplied
+      them); (3) the `nros_ws_runtime` umbrella's platform-features gated on `CMAKE_CROSSCOMPILING`
+      → `alloc;panic-halt;platform-<x>` (matching the board's plain nros-cpp tier; the std tier
+      made nros-serdes/nros-params pull `extern crate std`) + the umbrella crate itself `#![no_std]`
+      on cross; (4) the FreeRTOS app-task stack 256→512 KB (the 3-node + Rust + bigger-runtime
+      image overflowed; the 2 MB heap absorbs it). **CRUCIAL FINDING: the umbrella is NOT host-only
+      — Corrosion ALREADY cross-compiles it for the board triple** (the "Hosted workspaces only"
+      comment was conservative). Back-compat verified: the host umbrella keeps `std` (CMAKE_
+      CROSSCOMPILING false), so the threadx-linux mixed entry + the non-mixed freertos C/C++ e2e
+      all still pass. The same no_std-node + umbrella-cross path is the foundation for any embedded
+      Rust-mixed workspace. **mixed on Zephyr remains BLOCKED** (native_sim Rust = x86_64-unknown-
+      none no_std too — same node fix applies — PLUS the rust_cargo_application/nano_ros_entry
+      entry-point conflict, which needs a Rust-node-as-staticlib mode in zephyr-lang-rust). **C2d — zephyr C: build + native_sim
       runtime delivery PROVEN (2026-06-26), approach A.** The Zephyr build model is
       fundamentally different (west lane, `find_package(Zephyr)` → monolithic `app` target, not
       add_executable + nros_platform_link_app), so `nano_ros_entry` gained a zephyr branch — the

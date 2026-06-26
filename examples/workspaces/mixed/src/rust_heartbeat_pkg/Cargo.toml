@@ -7,7 +7,13 @@ description = "Rust Node pkg for the mixed C/C++/Rust workspace."
 
 [lib]
 path = "src/lib.rs"
-crate-type = ["staticlib", "rlib"]
+# phase-263 C2c — `rlib` only. A workspace Rust NODE is always BUNDLED into the
+# `nros_ws_runtime` umbrella staticlib (which provides the platform's allocator + panic
+# handler via its nros-cpp dep) — it is never a standalone staticlib. Keeping the `staticlib`
+# crate-type made cargo build that variant too, which on a no_std cross target (thumbv7m
+# FreeRTOS / x86_64-unknown-none Zephyr) fails: "no global allocator / #[panic_handler]
+# required" (on host std silently supplied them). The umbrella only ever consumes the rlib.
+crate-type = ["rlib"]
 
 [package.metadata.nros.node]
 class = "rust_heartbeat_pkg::Heartbeat"

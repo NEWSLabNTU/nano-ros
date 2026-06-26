@@ -35,6 +35,8 @@ if(NANO_ROS_PLATFORM STREQUAL "posix")
         src/native_entry_robot2)
 elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
     list(APPEND _ws_subdirs src/threadx_entry)
+elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
+    list(APPEND _ws_subdirs src/freertos_entry)
 endif()
 
 nano_ros_workspace(
