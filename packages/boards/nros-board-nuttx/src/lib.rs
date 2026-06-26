@@ -254,23 +254,24 @@ where
     // baked (hosted/dev use).
     const BAKED_LOCATOR: Option<&str> = option_env!("NROS_LOCATOR");
     const BAKED_DOMAIN: Option<&str> = option_env!("NROS_DOMAIN_ID");
+    // Issue #98 / RFC-0045 — derive the node name from the baked boot config
+    // supplied by `run_with_deploy`; fall back to `"nros_app"` when called from
+    // `run` (boot_config = None) or when the baked config carries no name.
+    // Hoisted out of the BAKED_LOCATOR match so the no-baked-locator path
+    // (`from_env`) also applies the launch-declared node name (W4d fix).
+    let node_name: &'static str = boot_config
+        .map(::nros::BootConfig::from_baked)
+        .and_then(|b| b.node_name)
+        .unwrap_or("nros_app");
     let exec_cfg = match BAKED_LOCATOR {
         Some(loc) => {
-            // Issue #98 / RFC-0045 — derive the node name from the baked boot
-            // config supplied by `run_with_deploy`; fall back to `"nros_app"` when
-            // called from `run` (boot_config = None) or when the baked config
-            // carries no name.
-            let node_name = boot_config
-                .map(::nros::BootConfig::from_baked)
-                .and_then(|b| b.node_name)
-                .unwrap_or("nros_app");
             let mut cfg = ::nros::ExecutorConfig::new(loc).node_name(node_name);
             if let Some(d) = BAKED_DOMAIN.and_then(|s| s.parse::<u32>().ok()) {
                 cfg = cfg.domain_id(d);
             }
             cfg
         }
-        None => ::nros::ExecutorConfig::from_env(),
+        None => ::nros::ExecutorConfig::from_env().node_name(node_name),
     };
 
     // Explicitly register the zenoh RMW backend before opening the executor.
