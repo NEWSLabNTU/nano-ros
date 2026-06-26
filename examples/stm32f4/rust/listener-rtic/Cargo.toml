@@ -9,6 +9,12 @@ description = "RTIC listener example for nros on STM32F4 — Phase 216.B.5 Defer
 name = "stm32f4-rs-rtic-listener-example"
 path = "src/main.rs"
 
+# Self-contained standalone example (issue 0100): the node logic lives in this
+# crate's lib.rs (`nros::node!` -> `register_dispatch`); `node_pkgs`
+# self-references this crate; main.rs is the `nros::main!()` RTIC Entry.
+[lib]
+crate-type = ["rlib"]
+
 # Phase 216.B.5 — Entry pkg `[package.metadata.nros.entry] deploy =
 # "rtic-stm32f4"` routes the `nros::main!()` proc-macro onto the
 # B.3 RTIC emit branch (`#[rtic::app] mod app` body that delegates to
@@ -21,7 +27,13 @@ deploy = "rtic-stm32f4"
 # Phase 216 final wave — Node pkgs the `nros::main!()` macro splices
 # `<pkg>::register_dispatch(&mut executor)?;` calls for into the
 # generated RTIC `#[init]` body.
-node_pkgs = ["stm32f4_listener_pkg_rtic"]
+node_pkgs = ["stm32f4-rs-rtic-listener-example"]
+
+[package.metadata.nros.node]
+class = "stm32f4_rs_rtic_listener_example::Listener"
+name = "listener"
+default_namespace = "/"
+dispatch = "deferred"
 
 [dependencies]
 # Phase 216.B.5 — `nros::main!()` proc-macro family. The macro emits
@@ -38,18 +50,6 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # `todo!()` so a flash surfaces the unimplemented panic; the macro
 # emit only needs to compile here.
 nros-board-rtic-stm32f4 = { path = "../../../../packages/boards/nros-board-rtic-stm32f4" }
-# Phase 216.B.5 Node pkg — RTIC sibling of the Embassy-flavored
-# `listener_pkg` (the latter's `ListenerState` holds an
-# `Option<embassy_executor::Spawner>` for the spawn-from-sync escape,
-# which has no RTIC equivalent — RTIC task spawn is via static
-# `task_name::spawn()` symbols, not a runtime handle). This sibling
-# drops the spawner field and otherwise carries the same Deferred-
-# dispatch + tag-based subscription shape. Listed as a dep so the bin
-# target links the rlib that exports `register` / `nros::node!()`-
-# emitted trampolines, mirroring the `stm32f4_talker_pkg` link from
-# `talker-rtic`.
-stm32f4_listener_pkg_rtic = { path = "../listener_pkg_rtic" }
-
 # RTIC runtime — re-listed because the macro-emitted body references
 # `::rtic::app`, `#[task]`, etc. by absolute path. The Entry pkg owns
 # the rtic version pin (`2.1` matches `nros-board-rtic-stm32f4`).

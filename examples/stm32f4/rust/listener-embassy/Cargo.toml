@@ -9,6 +9,12 @@ description = "Embassy listener example for nros on STM32F4 — Phase 216.C.5 De
 name = "stm32f4-rs-embassy-listener-example"
 path = "src/main.rs"
 
+# Self-contained standalone example (issue 0100): the node logic lives in this
+# crate's lib.rs (`nros::node!` -> `register_dispatch`); `node_pkgs`
+# self-references this crate; main.rs is the `nros::main!()` Embassy Entry.
+[lib]
+crate-type = ["rlib"]
+
 # Phase 216.C.5 — Entry pkg `[package.metadata.nros.entry] deploy =
 # "embassy-stm32f4"` routes the `nros::main!()` proc-macro onto the
 # C.3 Embassy emit branch (`#[embassy_executor::main] async fn main`
@@ -21,7 +27,13 @@ deploy = "embassy-stm32f4"
 # Phase 216 final wave — Node pkgs the `nros::main!()` macro splices
 # `<pkg>::register_dispatch(&mut executor)?;` calls for into the
 # generated Embassy `#[embassy_executor::main]` body.
-node_pkgs = ["stm32f4_listener_pkg"]
+node_pkgs = ["stm32f4-rs-embassy-listener-example"]
+
+[package.metadata.nros.node]
+class = "stm32f4_rs_embassy_listener_example::Listener"
+name = "listener"
+default_namespace = "/"
+dispatch = "deferred"
 
 [dependencies]
 # Phase 216.C.5 — `nros::main!()` proc-macro family. The macro emits
@@ -36,15 +48,6 @@ nros = { path = "../../../../packages/core/nros", default-features = false, feat
 # `todo!()` so a flash surfaces the unimplemented panic; the macro
 # emit only needs to compile here.
 nros-board-embassy-stm32f4 = { path = "../../../../packages/boards/nros-board-embassy-stm32f4" }
-# Phase 216.C.5 Node pkg — board-agnostic listener (Deferred
-# dispatch + tag-based subscription + spawn-from-sync escape) that
-# the macro wires into the dispatch runtime once the trampoline-
-# registration story lands (216.C follow-up). Listed as a dep so
-# the bin target links the rlib that exports `register` /
-# `nros::node!()`-emitted trampolines, mirroring the
-# `stm32f4_talker_pkg` link from `talker-embassy`.
-stm32f4_listener_pkg = { path = "../listener_pkg" }
-
 # Embassy runtime — re-listed because the macro-emitted body
 # references `::embassy_executor::main`, `::embassy_executor::task`,
 # `::embassy_time::Timer`, etc. by absolute path. The Entry pkg owns

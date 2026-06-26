@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>stm32f4_listener_pkg_rtic</name>
+  <name>stm32f4_rs_rtic_listener_example</name>
   <version>0.1.0</version>
   <description>STM32F4 listener Node pkg, RTIC variant (Phase 216 node-lib; consumed by the rtic Entry pkg)</description>
   <maintainer email="dev@example.com">Developer</maintainer>
