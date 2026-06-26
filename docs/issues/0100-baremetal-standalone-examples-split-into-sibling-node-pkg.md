@@ -93,12 +93,14 @@ logic → `<entry>/src/lib.rs` (replaces the `pub use <pkg>::register` re-export
 - **W2** `563350f0d` — `qemu-arm-baremetal/rust/listener`.
 - **W3** `fb3b7b15b` — `qemu-arm-baremetal/rust/{serial-talker,serial-listener,talker-xrce}`.
 - **W4** `c6284c3a1` — `stm32f4/rust/talker` (the one clean 1:1 in stm32f4).
+- **W5** `1956c869b` — `qemu-arm-baremetal/rust/talker-rtic` (RTIC pilot; validates the
+  `node_pkgs` self-reference recipe below).
 
 Done: 6 declarative examples (all build-verified — thumbv7m / thumbv7em). **Remaining splits
 are NOT clean 1:1 declarative folds** and need a dedicated per-shape wave:
 
-- **RTIC** (qemu-arm-baremetal `*-rtic` + `*-rtic-mixed` ≈9; stm32f4 `*-rtic` ≈5) — the
-  `#[rtic::app]` Entry integrates the node differently than `nros::main!()`; study one first.
+- **RTIC / Embassy** (qemu-arm-baremetal `*-rtic` + `*-rtic-mixed`; stm32f4 `*-rtic` +
+  `*-embassy`) — **design validated, recipe below** (pilot `talker-rtic`, `1956c869b`).
 - **Embassy** (stm32f4 `talker-embassy`, `listener-embassy`) — Embassy executor shape.
 - **Shared node pkgs** — stm32f4 `talker_pkg` is path-dep'd by BOTH `talker-rtic` and
   `talker-embassy`; `listener_pkg` by multiple. A 1:1 fold is impossible; collapse must
@@ -107,6 +109,32 @@ are NOT clean 1:1 declarative folds** and need a dedicated per-shape wave:
   `service_client_pkg → service_server_pkg` (a node pkg path-deps another node pkg).
 - **e2e fixtures** — `phase216-rtic-e2e`, `qemu-baremetal-main-e2e` (`*_pkg`): test infra,
   confirm in-scope before touching.
+
+### RTIC / Embassy collapse recipe (validated, pilot `1956c869b`)
+
+RTIC/Embassy Entry pkgs have **no `src/lib.rs` re-export**. `nros::main!()` finds the node set
+from `[package.metadata.nros.entry] node_pkgs = ["<pkg>"]` and emits
+`::<pkg_ident>::register_dispatch(&executor)` per entry (`nros-macros/src/main_macro.rs`
+~902-950; `pkg_to_crate_ident` maps `-`→`_`). The macro accepts a `node_pkgs` entry that
+**self-references the Entry crate**, so each split collapses into one bin+lib crate. (The node
+logic is already the identical declarative `Node` + `ExecutableNode` + `nros::node!` — no RTIC
+code lives in the node; `nros::node!` emits the `register_dispatch` the RTIC path calls.)
+
+Per example (`<entry>` ⇐ `<pkg>`):
+1. `git mv <pkg>/package.xml <entry>/package.xml`; set `<name>` to the entry crate (underscored).
+2. `cp <pkg>/src/lib.rs <entry>/src/lib.rs` (NEW — the entry had none).
+3. `<entry>/Cargo.toml`: add `[lib] crate-type = ["rlib"]`; change
+   `node_pkgs = ["<pkg>"]` → `["<entry-cargo-name>"]` (self); add `[package.metadata.nros.node]`
+   (class `<entry_underscored>::<NodeStruct>`, copy name/default_namespace/dispatch from `<pkg>`);
+   drop the `<pkg>` path-dep; add the node's `nros-log` + `std_msgs` deps; remove the hand `[patch]`.
+4. `rm` `<pkg>/`; `nros sync <entry>` writes the managed patch → own `generated/`. Build-verify.
+
+Note: every RTIC/Embassy entry is **single-node** (`node_pkgs = ["<one>"]`) and has no `_entry`
+suffix, so the self-reference is unambiguous. For the stm32f4 **shared** `stm32f4_talker_pkg`
+(talker-rtic + talker-embassy) the lib.rs is copied into BOTH entries (duplication is correct
+for standalone copy-out). For the **cross-pkg** action/service client examples, the shared
+`PlaceholderAct`/placeholder type in `*_server_pkg` must be inlined into (or duplicated across)
+the client + server entries — they currently `use stm32f4_action_server_pkg::PlaceholderAct`.
 
 Final step (after every baremetal example is self-contained): drop the now-redundant two-pass
 codegen loop in `just/qemu-baremetal.just` (the split was its only reason to exist).
