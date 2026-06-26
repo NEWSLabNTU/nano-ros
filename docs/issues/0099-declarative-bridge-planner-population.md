@@ -4,7 +4,7 @@ title: "Declarative `[[bridge]]` in system.toml does not forward — the planner
 status: open
 type: bug
 area: cli
-related: [phase-263, phase-266, rfc-0009]
+related: [phase-263, phase-267, rfc-0009]
 ---
 
 ## Summary
@@ -76,7 +76,7 @@ interfaces.
 ## Status (2026-06-25) — planner transform DONE; cascade of further gaps found
 
 > The cascade below is now tracked as a dedicated phase:
-> [phase-266](../roadmap/phase-266-declarative-bridge-bake-flow.md) (W0 = the
+> [phase-267](../roadmap/phase-267-declarative-bridge-bake-flow.md) (W0 = the
 > done items here; W1–W5 = the remaining cascade).
 
 

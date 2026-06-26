@@ -1,4 +1,4 @@
-# Phase 266 — Declarative cross-RMW bridge: complete the bake→entry→build flow
+# Phase 267 — Declarative cross-RMW bridge: complete the bake→entry→build flow
 
 Status: **In progress (2026-06-26)** — W0 done (planner transform + cyclone-Rust
 codegen); W1–W5 remaining. · Implements [RFC-0009](../design/0009-bridge-topic-forwarding.md)

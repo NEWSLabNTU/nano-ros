@@ -206,9 +206,9 @@ Each is a minimal product-shaped workspace demonstrating ONE differentiator end-
   is advisory on native; the rate assertion proves both tiers run.) Remaining: project to
   an RTOS deploy (freertos/threadx) where priorities are real tasks.
 - **B3 — `ws-bridge-rust`. PARTIAL (2026-06-25) — engine landed; cascade spun into
-  [phase-266](phase-266-declarative-bridge-bake-flow.md).** A cross-RMW gateway
+  [phase-267](phase-267-declarative-bridge-bake-flow.md).** A cross-RMW gateway
   **zenoh ↔ cyclonedds** declared via `[[bridge]]` in system.toml. The bake→entry→
-  build cascade (gaps 1–4 below) is now tracked as phase-266 (W1–W5); the engine
+  build cascade (gaps 1–4 below) is now tracked as phase-267 (W1–W5); the engine
   foundations (W0) landed here. **Landed this session:** (Step 1) the planner transform
   (`system.{bridges,domains}` → `build.transports` + `plan.bridges`, issue #99
   step 0) — `nros plan` on `ws-bridge-rust` emits a correct bridge plan; (cyclone
