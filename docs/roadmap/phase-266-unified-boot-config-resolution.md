@@ -115,30 +115,61 @@ session name) shows the launch-declared name, not `/nros_app`. The NuttX deploy 
 (locator/domain) is no longer inert (assert the baked values reach the session). Closes the
 all-boards remainder of #98.
 
-### W5 — C call-site (`open_session`) builds `BootConfig`; fix PID node name
-**Files:** `packages/core/nros/src/lib.rs:~470-504` (`internals::open_session`),
-`packages/core/nros-c/src/support.rs:~255`, possibly `packages/core/nros-c/include/...` if a
-new param is exposed.
+### W5/W6 design — confirmed bug + chosen mechanism (Option A: blob reuse, 2026-06-27)
 
-- `open_session` builds `BootConfig` from the C support context's node identity (not a
-  PID-derived string) → `resolve(.., hosted_env = cfg!(std/hosted))` → `RmwConfig`.
-- Thread the user's node name from `nros_support_init` / `nros_node_options_t` into the session
-  identity so `node_name` is no longer a PID placeholder.
+**The bug is real and #98-shaped — verified empirically.** A native C++ workspace entry
+(`examples/workspaces/cpp`, launch nodes `talker`+`listener`) shows **`/nros_cpp`** in
+`ros2 node list`, NOT `/talker`/`/listener`. Cause: the entry's `create_node("talker")` calls
+reuse the primary session (same primary-session-reuse as the Rust #98 root), so the graph shows
+the **session/init default** name. C++ defaults that to `"nros_cpp"` (`node.hpp:602`); C defaults
+to `nros_{pid}` / `"nros"` (`nros-c/src/support.rs:233-253`). The launch name reaches
+`create_node` but never the session, so it never reaches the graph.
 
-**Acceptance:** a native C talker fixture appears in `ros2 node list` under its configured name
-(extend an existing C interop test to assert the name). No PID string in the graph.
+**Chosen mechanism: Option A — reuse the `.nros_boot_config` blob across languages.** RFC-0045
+made `BakedBootConfig` `repr(C)` + magic-tagged precisely so C/C++ can share it. C/C++ read the
+struct's `node_name` field **directly** (plain C struct — verify `magic`/`version`, then the
+NUL-terminated `node_name[64]`); no Rust FFI needed for the read. One bake site, all three
+languages; the future config-patch tool then covers C/C++ too.
 
-### W6 — C++ call-site (`nros_cpp_init`) builds `BootConfig`; fix `"nros_cpp"` default
-**Files:** `packages/core/nros-cpp/src/lib.rs:~475`,
-`packages/core/nros-cpp/include/nros/node.hpp` (`init`),
-`packages/core/nros-cpp/include/nros/main.hpp` (the `NROS_ENTRY_*` macro consumers).
+**Shared prerequisite (W5):** add a C header mirror of the struct —
+`packages/core/nros-c/include/nano_ros/boot_config.h` — declaring the `repr(C)` layout
+(`magic`/`version`/`set_flags`/`domain_id`/`node_name[64]`/`locator[96]`/`namespace[64]`), the
+`NRBC` magic + `BOOT_SET_*` bits, and a small inline reader
+`const char* nros_boot_config_node_name(const struct nros_baked_boot_config*)` returning the
+name or `NULL`. Layout MUST match `nros-platform-api/src/boot_config.rs` exactly (a build-time
+or test assertion on `sizeof`/offsets guards drift).
 
-- `nros_cpp_init` builds `BootConfig` from `NROS_ENTRY_*` / `session_name` → `resolve` →
-  `ExecutorConfig`. Node name defaults to the configured identity, not `"nros_cpp"`.
+### W5 — C entry emits + reads the `.nros_boot_config` blob; fix `nros_<pid>` session name
+**Files:** `packages/core/nros-c/include/nano_ros/boot_config.h` (new, the mirror above);
+`packages/cli/nros-cli-core/src/codegen/entry/emit_c.rs` (the C entry emitter);
+`packages/core/nros-c/src/support.rs` (the null-`session_name` fallback).
 
-**Acceptance:** a native C++ talker fixture appears in `ros2 node list` under its configured
-name (extend an existing C++ interop test). On embedded C++ entries the `.nros_boot_config`
-name is used.
+- `emit_c.rs`: for a single-node entry, emit a `static const struct nros_baked_boot_config
+  NROS_BOOT_CONFIG __attribute__((section(".nros_boot_config"), used)) = { … };` populated from
+  the launch node name (the codegen already has it as `n.name`), and have the generated entry
+  pass `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` as the `session_name` to
+  `nros_support_init_named(...)` (instead of the `NULL` that triggers the PID default).
+- `support.rs`: when `session_name` is `NULL`, fall back to the unified default `"node"` (not
+  `nros_{pid}`), for consistency with the Rust resolver's compiled default.
+
+**Acceptance:** a native C workspace entry shows its configured node name in `ros2 node list`
+(extend a C interop test to assert it), not `/nros_<pid>`. `boot_config.h` layout matches the
+Rust struct (asserted).
+
+### W6 — C++ entry emits + reads the blob; fix `"nros_cpp"` default
+**Files:** `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs` (the C++ entry emitter);
+`packages/core/nros-cpp/include/nros/main.hpp` (board adapters `run_components`);
+`packages/core/nros-cpp/include/nros/node.hpp` (`init` default).
+
+- `emit_cpp.rs`: emit the same `NROS_BOOT_CONFIG` static (reuse the C header `boot_config.h`).
+- `main.hpp` board adapters (`NativeBoard`/`ZephyrBoard`/… `run_components`): read
+  `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` and pass it to
+  `nros::init(locator, domain, name)` instead of calling the 2-arg `init()` that defaults
+  `"nros_cpp"`. When the blob has no name (multi-node / unset), keep the `"node"` default.
+
+**Acceptance:** the native C++ workspace entry that today shows `/nros_cpp` shows its configured
+node name (`/talker` for a single-node launch). Multi-node still collapses to one session node
+(the deferred per-node-session piece, same as Rust). Build-verify native C + C++ + mixed entries.
 
 ### W7 — cleanup: collapse duplicate board-key maps; resolve `setup_transport`
 **Files:** `packages/core/nros-macros/src/main_macro.rs` (`board_path_for`),

@@ -117,13 +117,35 @@ Three thin call-sites map their source into `BootConfig`, then call `resolve`:
   current hardcoded `.node_name("nros_app")`. This is what makes #98 land on *every* board.
   NuttX gains a `run_with_deploy` override (it has none today) so the overlay stops being
   dropped.
-- **C** (`open_session`): build `BootConfig` from the support context + node identity →
-  `resolve` → existing `RmwConfig`. Fixes the PID-session-name defect (node name now flows).
-- **C++** (`nros_cpp_init`): build `BootConfig` from `NROS_ENTRY_*` / init params → `resolve`.
-  Fixes the `"nros_cpp"` default.
+- **C / C++** — via the shared `.nros_boot_config` blob (see below). Confirmed empirically
+  (2026-06-27) to be the same #98-class defect: a native C++ entry whose launch names `talker`
+  shows **`/nros_cpp`** in `ros2 node list`, because `create_node("talker")` reuses the primary
+  session and the graph shows the session/init default. C defaults that to `nros_{pid}`.
 
 `DeployOverlay` keeps its board-network fields (`ip`/`gateway`/`netmask`/`transport`) in
 `nros-platform`; only its session triple maps into `BootConfig` at the board boot site.
+
+### C/C++ reuse the same blob (Option A, decided 2026-06-27)
+
+`BakedBootConfig` is `repr(C)` + magic-tagged for exactly this. C/C++ entries do **not** build a
+Rust `BootConfig`; they reuse the bake site directly:
+
+- A C header mirror — `packages/core/nros-c/include/nano_ros/boot_config.h` — declares the same
+  `repr(C)` layout + `NRBC` magic + `BOOT_SET_*` bits + an inline reader
+  `nros_boot_config_node_name(const struct nros_baked_boot_config*) -> const char*`. A
+  `sizeof`/offset assertion guards it against drift from `nros-platform-api`.
+- The C/C++ codegen entry emitters (`emit_c.rs` / `emit_cpp.rs`) emit the SAME
+  `NROS_BOOT_CONFIG` static into `.nros_boot_config` (they already know the launch node name),
+  using `__attribute__((section(...), used))`.
+- The generated C entry passes `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` as the
+  `session_name` to `nros_support_init_named` (replacing the `NULL` → PID default); the C++ board
+  adapters (`main.hpp::run_components`) pass it to `nros::init(locator, domain, name)` (replacing
+  the 2-arg `init()` that defaults `"nros_cpp"`). When unset (multi-node / no name), both use the
+  unified `"node"` default.
+
+So all three languages bake and read **one** `.nros_boot_config` struct — no Rust FFI on the
+C/C++ read path (it is a plain C struct), and the future config-patch tool covers every language.
+This is the C/C++ realization of phase-266 W5 (C) + W6 (C++).
 
 ### Single embedded bake site: `.nros_boot_config` (seed for the follow-on tracks)
 
