@@ -28,7 +28,7 @@
 
 use std::fmt::Write;
 
-use super::{Plan, QosOverrideSpec, sanitize_pkg};
+use super::{Plan, QosOverrideSpec, emit_boot_config_static, sanitize_pkg};
 
 /// Phase 211.H (issue #52) — map a decomposed [`QosOverrideSpec`] to the C-ABI
 /// `(role, policy, value)` scalar codes the `nros_cpp_qos_override_t` struct
@@ -204,6 +204,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     );
     out.push('\n');
 
+    out.push_str("#include <nros/boot_config.h>\n");
     out.push_str("#include <nros/component.hpp>\n");
     out.push_str("#include <nros/main.hpp>\n");
     out.push_str("#include <nros/nros.hpp>\n");
@@ -413,33 +414,45 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     }
     out.push_str("    return 0;\n}\n\n");
 
+    // Phase 266 (W6) — bake the boot config blob so the session name is both
+    // readable by a post-link tool and passed to the runner at startup.
+    emit_boot_config_static(&mut out, plan);
+    out.push('\n');
+
     let board = board_cpp_path(&plan.board);
     if board_is_zephyr(&plan.board) {
         // phase-263 C2d — Zephyr: the kernel calls `main(void)` directly (no startup.c
-        // app_main). The locator-less `run_components` overload reads the compile-time
-        // `CONFIG_NROS_ZENOH_LOCATOR` Kconfig via `NROS_ENTRY_LOCATOR` (`<nros/main.hpp>`).
+        // app_main). Phase 266: pass the baked node name via the 3-arg
+        // `(NROS_ENTRY_LOCATOR, session_name, setup)` overload so `ros2 node list`
+        // shows the launch node name instead of the default "node".
         out.push_str("int main(void) {\n");
         let _ = writeln!(
             out,
-            "    return static_cast<int>({board}::run_components(&__nros_entry_setup));"
+            "    return static_cast<int>({board}::run_components(\
+NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup));"
         );
         out.push_str("}\n");
     } else if board_is_embedded(&plan.board) {
         // phase-263 C2 — embedded: the board's `startup.c` owns `main` (kernel enter →
-        // app thread) and calls `app_main`. The locator-less `run_components` overload
-        // reads the compile-time `NROS_ENTRY_LOCATOR` macro (the board cmake bakes it).
+        // app thread) and calls `app_main`. Phase 266: pass the baked node name via the
+        // 3-arg `(NROS_ENTRY_LOCATOR, session_name, setup)` named overload.
         out.push_str("extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {\n");
         let _ = writeln!(
             out,
-            "    return {board}::run_components(&__nros_entry_setup);"
+            "    return {board}::run_components(\
+NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);"
         );
         out.push_str("}\n\n");
         out.push_str("NROS_APP_MAIN_REGISTER_VOID();\n");
     } else {
+        // native (NativeBoard): use the 2-arg `(session_name, setup)` named overload.
+        // Phase 266: nros_boot_config_node_name resolves to the launch node name for
+        // single-node entries (NULL for multi-node → "node" default via the overload).
         out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
         let _ = writeln!(
             out,
-            "    return {board}::run_components(&__nros_entry_setup);"
+            "    return {board}::run_components(\
+nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);"
         );
         out.push_str("}\n");
     }
@@ -553,7 +566,8 @@ mod tests {
             ),
         ]);
         let src = emit_typed(&plan).expect("typed emit ok");
-        // headers included
+        // headers included (including boot_config.h for the node-name blob)
+        assert!(src.contains("#include <nros/boot_config.h>"));
         assert!(src.contains("#include \"talker_pkg/Talker.hpp\""));
         assert!(src.contains("#include \"listener_pkg/Listener.hpp\""));
         assert!(src.contains("#include <nros/component.hpp>"));
@@ -565,13 +579,18 @@ mod tests {
         assert!(src.contains("::nros::create_node(__nros_node_0, \"talker\")"));
         assert!(src.contains("__nros_comp_0.configure(__nros_node_0)"));
         assert!(src.contains("__nros_comp_1.configure(__nros_node_1)"));
-        // routes to the real executor (no EntryNodeRuntime / register symbol)
-        assert!(src.contains("::nros::board::NativeBoard::run_components(&__nros_entry_setup)"));
+        // routes to the real executor via the named overload (phase 266)
+        assert!(src.contains(
+            "::nros::board::NativeBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        ));
         assert!(!src.contains("__nros_component_"));
         assert!(!src.contains("NodeContext"));
         // configure shape: no construct-with-handle artifacts.
         assert!(!src.contains("global_handle()"));
         assert!(!src.contains("__nros_comp_buf_"));
+        // multi-node: boot config must be all-unset (no single node name baked)
+        assert!(src.contains(".set_flags  = 0,"));
+        assert!(!src.contains("NROS_BOOT_SET_NODE_NAME"));
     }
 
     /// Phase 211.H (issue #52) — a configure-shape node carrying qos_overrides
@@ -660,8 +679,10 @@ mod tests {
         assert!(!src.contains("static ::nros::Node __nros_node_0;"));
         assert!(!src.contains("__nros_comp_0.configure"));
         assert!(!src.contains("create_node(__nros_node_0"));
-        // still routes to the real executor
-        assert!(src.contains("::nros::board::NativeBoard::run_components(&__nros_entry_setup)"));
+        // still routes to the real executor via the named overload (phase 266)
+        assert!(src.contains(
+            "::nros::board::NativeBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        ));
     }
 
     #[test]
@@ -744,8 +765,10 @@ mod tests {
         assert!(!src.contains("static ::sensor_pkg::Sensor"));
         assert!(!src.contains("#include \"sensor_pkg/Sensor.hpp\""));
         assert!(!src.contains("__nros_comp_0.configure"));
-        // Still routes to the real executor.
-        assert!(src.contains("::nros::board::NativeBoard::run_components(&__nros_entry_setup)"));
+        // Still routes to the real executor via the named overload (phase 266).
+        assert!(src.contains(
+            "::nros::board::NativeBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        ));
     }
 
     #[test]
@@ -779,16 +802,20 @@ mod tests {
 
     #[test]
     fn typed_emit_nuttx_board_uses_nuttxboard_run_components() {
+        // Phase 266: embedded boards use the 3-arg (locator, session_name, setup) overload.
         let mut plan = fixture_plan_typed(&[("t_pkg", "t", "t", "t_pkg::T", "t_pkg/T.hpp")]);
         plan.board = "nuttx".into();
         let src = emit_typed(&plan).expect("typed emit ok");
-        assert!(src.contains("::nros::board::NuttxBoard::run_components(&__nros_entry_setup)"));
+        assert!(src.contains(
+            "::nros::board::NuttxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        ));
     }
 
     #[test]
     fn typed_emit_threadx_board_uses_threadxboard_run_components() {
         // Phase 246 — the ThreadX family keys (host sim + bare-metal riscv64) all
         // route the typed entry to the `ThreadxBoard` adapter's `run_components`.
+        // Phase 266: uses the 3-arg (locator, session_name, setup) named overload.
         for key in [
             "threadx",
             "threadx-linux",
@@ -799,10 +826,31 @@ mod tests {
             plan.board = key.into();
             let src = emit_typed(&plan).expect("typed emit ok");
             assert!(
-                src.contains("::nros::board::ThreadxBoard::run_components(&__nros_entry_setup)"),
-                "board key {key} must map to ThreadxBoard::run_components"
+                src.contains(
+                    "::nros::board::ThreadxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+                ),
+                "board key {key} must map to ThreadxBoard::run_components with named overload"
             );
         }
+    }
+
+    #[test]
+    fn typed_emit_native_single_node_bakes_name_in_boot_config() {
+        // Phase 266 — single-node native entry: boot config carries the node name.
+        let plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+        let src = emit_typed(&plan).expect("typed emit ok");
+        assert!(src.contains("#include <nros/boot_config.h>"));
+        assert!(src.contains("NROS_BOOT_SET_NODE_NAME"));
+        assert!(src.contains(".node_name  = \"talker\""));
+        assert!(src.contains(
+            "::nros::board::NativeBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        ));
     }
 
     #[test]

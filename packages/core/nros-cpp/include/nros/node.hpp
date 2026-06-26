@@ -599,7 +599,8 @@ inline Result init(const char* locator, uint8_t domain_id) {
         }
     }
 #endif
-    return init(locator, domain_id, "nros_cpp");
+    // Phase 266 (W6) — unified default session name "node" across C, C++, and Rust.
+    return init(locator, domain_id, "node");
 }
 
 inline Result init(const char* locator, uint8_t domain_id, const char* session_name) {

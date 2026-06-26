@@ -11,7 +11,7 @@
 
 use std::fmt::Write;
 
-use super::{Plan, sanitize_pkg};
+use super::{Plan, emit_boot_config_static, sanitize_pkg};
 
 /// Phase 257 (W0-A) — a `lang == "c"` node is a `NROS_C_COMPONENT` typed
 /// component the C Entry installs via its `__nros_c_component_<pkg>_*` seam.
@@ -57,7 +57,10 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     );
     out.push('\n');
 
-    out.push_str("#include <nros/main.h>        /* nros_board_native_run_components */\n");
+    out.push_str(
+        "#include <nros/boot_config.h>  /* nros_baked_boot_config + nros_boot_config_node_name */\n",
+    );
+    out.push_str("#include <nros/main.h>         /* nros_board_native_run_components_named */\n");
     // The cbindgen FFI header is the superset: full `nros_cpp_node_t`, `nros_cpp_node_create`,
     // and the `NROS_CPP_RET_*` codes. We do NOT include `<nros/component.h>` — it redefines
     // `struct nros_cpp_qos_t` + the `nros_cpp_*` prototypes, which collide in C (struct
@@ -122,10 +125,18 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     out.push_str("    return 0;\n");
     out.push_str("}\n\n");
 
+    // Phase 266 (W5b) — bake the boot config blob so the session name is both
+    // readable by a post-link tool and passed to the runner at startup.
+    emit_boot_config_static(&mut out, plan);
+    out.push('\n');
+
     out.push_str("int main(int argc, char** argv) {\n");
     out.push_str("    (void)argc;\n");
     out.push_str("    (void)argv;\n");
-    out.push_str("    return nros_board_native_run_components(&__nros_entry_setup);\n");
+    out.push_str(
+        "    return nros_board_native_run_components_named(\
+nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);\n",
+    );
     out.push_str("}\n");
 
     Ok(out)
@@ -175,8 +186,11 @@ mod tests {
         assert!(
             src.contains("__nros_c_component_talker_pkg_configure(&__nros_node_0, executor, self)")
         );
-        // main drives the real-executor lifecycle.
-        assert!(src.contains("nros_board_native_run_components(&__nros_entry_setup)"));
+        // main drives the real-executor lifecycle via the named runner.
+        assert!(src.contains("nros_board_native_run_components_named(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"));
+        // single-node: boot config has the node name baked in.
+        assert!(src.contains("NROS_BOOT_SET_NODE_NAME"));
+        assert!(src.contains(".node_name  = \"talker\""));
     }
 
     #[test]
@@ -209,9 +223,21 @@ mod tests {
     fn typed_emit_has_required_includes() {
         let plan = fixture_plan(&[("talker_pkg", "talker")]);
         let src = emit_typed(&plan).expect("typed C emit ok");
+        assert!(src.contains("#include <nros/boot_config.h>"));
         assert!(src.contains("#include <nros/main.h>"));
         assert!(src.contains("#include <nros/nros_cpp_ffi.h>"));
         assert!(!src.contains("#include <nros/component.h>"));
         assert!(src.contains("int main(int argc, char** argv)"));
+    }
+
+    #[test]
+    fn typed_emit_multi_node_boot_config_unset() {
+        // Multi-node entry → all-unset boot config (node name not baked).
+        let plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
+        let src = emit_typed(&plan).expect("typed C emit ok");
+        assert!(src.contains("NROS_BOOT_CONFIG"));
+        // Multi-node: set_flags must be 0 (not NROS_BOOT_SET_NODE_NAME).
+        assert!(src.contains(".set_flags  = 0,"));
+        assert!(!src.contains("NROS_BOOT_SET_NODE_NAME"));
     }
 }

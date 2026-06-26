@@ -258,6 +258,46 @@ impl PlanNode {
     }
 }
 
+/// Phase 266 (W5b/W6) — emit the `NROS_BOOT_CONFIG` static blob (C/C++ shared helper).
+///
+/// For a **single-node** plan the blob bakes the launch node name into
+/// `.node_name` with `NROS_BOOT_SET_NODE_NAME` set; a post-link tool (or the
+/// runner's inline call to `nros_boot_config_node_name`) can read it back.
+/// For a **multi-node** plan (or when the single node has no resolvable name)
+/// all fields are zero / unset — `nros_boot_config_node_name` returns NULL and
+/// the runner falls back to the unified `"node"` default.
+///
+/// Callers must have already emitted `#include <nros/boot_config.h>`.
+pub fn emit_boot_config_static(out: &mut String, plan: &Plan) {
+    use std::fmt::Write as _;
+    let (set_flags, node_name) = if plan.nodes.len() == 1 {
+        let n = &plan.nodes[0];
+        let raw = n.name.as_deref().unwrap_or(&n.exec);
+        // Escape the literal for embedding in a C string — backslash and quote.
+        let escaped = raw.replace('\\', "\\\\").replace('"', "\\\"");
+        ("NROS_BOOT_SET_NODE_NAME", escaped)
+    } else {
+        ("0", String::new())
+    };
+    let _ = writeln!(
+        out,
+        "/* Phase 266 (RFC-0045) — baked boot config: post-link readable + session name. */\n\
+         static const struct nros_baked_boot_config NROS_BOOT_CONFIG\n\
+         #if defined(__GNUC__) || defined(__clang__)\n\
+             __attribute__((section(\".nros_boot_config\"), used))\n\
+         #endif\n\
+             = {{\n\
+             .magic      = NROS_BOOT_CONFIG_MAGIC,\n\
+             .version    = NROS_BOOT_CONFIG_VERSION,\n\
+             .set_flags  = {set_flags},\n\
+             .domain_id  = 0,\n\
+             .node_name  = \"{node_name}\",\n\
+             .locator    = \"\",\n\
+             .namespace_ = \"\",\n\
+         }};",
+    );
+}
+
 /// Sanitise a pkg name into a valid identifier (`-` → `_`).
 ///
 /// Mirrors the rule the Rust `nros::node!()` macro and the cmake fn

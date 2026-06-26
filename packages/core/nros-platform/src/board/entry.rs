@@ -117,13 +117,24 @@ pub trait BoardEntry: super::Board {
         Self::run(setup)
     }
 
-    /// Install a board custom transport selected by `deploy.transport`, BEFORE
-    /// the linked RMW registers (phase-244.D1). `nros::main!()` calls this on
-    /// `target_os = "none"` immediately before `__register_linked_rmw()` — the
-    /// ordering an XRCE-over-UART vtable needs (`set_custom_transport_ops` must
-    /// precede `register`). The default body is a no-op (the board's built-in
-    /// transport needs no pre-register install); boards with a feature-gated
-    /// custom transport (e.g. mps2-an385 `xrce-transport`) override it. Failures
-    /// are the board's to handle (it owns `exit_failure`).
+    /// **Custom-transport install seam.** Install a board-specific transport
+    /// selected by `deploy.transport`, BEFORE the linked RMW registers
+    /// (phase-244.D1).
+    ///
+    /// `nros::main!()` always emits a `setup_transport` call (gated on
+    /// `target_os = "none"`) immediately before `__register_linked_rmw()`,
+    /// so that the vtable is in place before the XRCE backend registers —
+    /// the ordering `set_custom_transport_ops` requires.
+    ///
+    /// **This method is intentionally kept** — it is not dead code. The
+    /// **default no-op** is correct for every board whose transport is
+    /// registered automatically (Zenoh, native sockets, etc.). The only
+    /// current override is **`nros-board-mps2-an385`** with the
+    /// `xrce-transport` feature, which installs an XRCE-over-UART vtable
+    /// when `deploy.transport == Some("xrce")`. Future boards that need to
+    /// pre-register a custom transport vtable should override this method in
+    /// the same pattern.
+    ///
+    /// Failures are the board's to handle (it owns `exit_failure`).
     fn setup_transport(_deploy: &DeployOverlay) {}
 }

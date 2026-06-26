@@ -43,6 +43,14 @@ extern "C" {
 typedef int32_t (*nros_c_entry_setup_fn)(void* executor);
 NROS_PUBLIC int32_t nros_board_native_run_components(nros_c_entry_setup_fn setup);
 
+/* Phase 266 (W5b) — named variant: `session_name` sets the primary session /
+ * node name visible via `ros2 node list` (the #98 fix for C entries). NULL or
+ * empty → falls back to `"node"`. The generated typed C entry (emitted by
+ * `nros codegen entry --lang c --typed`) calls this from `main`, passing
+ * `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`. Defined in nros-cpp. */
+NROS_PUBLIC int32_t nros_board_native_run_components_named(const char* session_name,
+                                                           nros_c_entry_setup_fn setup);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

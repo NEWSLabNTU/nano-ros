@@ -522,22 +522,37 @@ nros_cpp_ret_t nros_cpp_init(const char *locator,
 nros_cpp_ret_t nros_cpp_fini(void *storage);
 
 /**
- * Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle: the C-ABI sibling of
- * the header-only C++ `nros::board::NativeBoard::run_components`. The generated
- * pure-C entry (`nros codegen entry --lang c --typed`) calls this from `main`,
- * handing it a `setup` callback that creates each node and `configure`s its
- * component on the executor.
+ * Phase 266 (W5b/W6) — named variant of [`nros_board_native_run_components`].
  *
- * Lifecycle: `init` → `setup(executor)` → spin → `fini`. The executor lives in
- * this frame's storage for the whole run (no global state, no `Node::global_storage`
- * — `setup` receives the handle directly). `init`'s locator / domain come from
- * `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` (same env overlay the C++ `nros::init()`
- * applies). The spin loop mirrors `detail::component_spin_loop`: run until killed,
- * or for `$NROS_ENTRY_SPIN_MS` ms when set (the bounded external-observer test path).
+ * `session_name` sets the primary session / node name visible via `ros2 node list`
+ * (the #98 fix for C entries). NULL or empty → falls back to `"node"` (the
+ * unified compiled default — same as the Rust `nros::main!` resolver compiled
+ * default and the C++ 2-arg `nros::init` default after this phase).
+ *
+ * The generated typed C entry (`nros codegen entry --lang c --typed`) calls this
+ * from `main`, passing `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` which
+ * resolves to the launch node name for single-node entries (or NULL for multi-node,
+ * where the "node" default applies).
  *
  * # Safety
+ * `session_name` must be NULL or a valid null-terminated string.
  * `setup` must be a valid function pointer; it is invoked once with the executor
  * handle (a `*mut CppContext`) before the spin loop.
+ */
+int32_t nros_board_native_run_components_named(const char *session_name,
+                                               int32_t (*setup)(void *executor));
+
+/**
+ * Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle (unnamed variant).
+ *
+ * Delegates to [`nros_board_native_run_components_named`] with a NULL session
+ * name, which resolves to the unified default `"node"` (phase 266 default
+ * change). Kept for ABI back-compatibility with callers that do not pass a
+ * name; new generated entries call `nros_board_native_run_components_named`
+ * directly with the baked boot-config node name.
+ *
+ * # Safety
+ * `setup` must be a valid function pointer.
  */
 int32_t nros_board_native_run_components(int32_t (*setup)(void *executor));
 

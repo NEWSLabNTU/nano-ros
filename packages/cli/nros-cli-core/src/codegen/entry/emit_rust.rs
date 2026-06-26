@@ -118,21 +118,13 @@ fn write_header(out: &mut String, plan: &Plan) {
     );
 }
 
-/// Board key → Rust ZST path. Mirrors `main_macro.rs::board_path_for`.
+/// Board key → Rust ZST path.
+///
+/// Delegates to [`nros_orchestration_ir::board_path_for`], the single source
+/// of truth shared with the `nros::main!()` proc-macro. Any board added to
+/// the IR crate is automatically available here with no extra edit.
 fn board_path_for(board: &str) -> Option<&'static str> {
-    Some(match board {
-        "native" | "posix" => "::nros_board_native::NativeBoard",
-        "freertos" | "freertos-qemu-mps2-an385" | "qemu-arm-freertos" => {
-            "::nros_board_mps2_an385_freertos::Mps2An385"
-        }
-        "threadx-linux" => "::nros_board_threadx_linux::ThreadxLinux",
-        "threadx-qemu-riscv64" | "qemu-riscv64-threadx" => {
-            "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
-        }
-        "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
-        "zephyr" => "::nros_board_zephyr::Zephyr",
-        _ => return None,
-    })
+    nros_orchestration_ir::board_path_for(board)
 }
 
 /// Quote a string into a valid Rust string literal (raw form when

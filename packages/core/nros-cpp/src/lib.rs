@@ -544,30 +544,39 @@ pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
     NROS_CPP_RET_OK
 }
 
-/// Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle: the C-ABI sibling of
-/// the header-only C++ `nros::board::NativeBoard::run_components`. The generated
-/// pure-C entry (`nros codegen entry --lang c --typed`) calls this from `main`,
-/// handing it a `setup` callback that creates each node and `configure`s its
-/// component on the executor.
+/// Phase 266 (W5b/W6) — named variant of [`nros_board_native_run_components`].
 ///
-/// Lifecycle: `init` → `setup(executor)` → spin → `fini`. The executor lives in
-/// this frame's storage for the whole run (no global state, no `Node::global_storage`
-/// — `setup` receives the handle directly). `init`'s locator / domain come from
-/// `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` (same env overlay the C++ `nros::init()`
-/// applies). The spin loop mirrors `detail::component_spin_loop`: run until killed,
-/// or for `$NROS_ENTRY_SPIN_MS` ms when set (the bounded external-observer test path).
+/// `session_name` sets the primary session / node name visible via `ros2 node list`
+/// (the #98 fix for C entries). NULL or empty → falls back to `"node"` (the
+/// unified compiled default — same as the Rust `nros::main!` resolver compiled
+/// default and the C++ 2-arg `nros::init` default after this phase).
+///
+/// The generated typed C entry (`nros codegen entry --lang c --typed`) calls this
+/// from `main`, passing `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` which
+/// resolves to the launch node name for single-node entries (or NULL for multi-node,
+/// where the "node" default applies).
 ///
 /// # Safety
+/// `session_name` must be NULL or a valid null-terminated string.
 /// `setup` must be a valid function pointer; it is invoked once with the executor
 /// handle (a `*mut CppContext`) before the spin loop.
 #[cfg(all(feature = "rmw-cffi", feature = "std"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_board_native_run_components(
+pub unsafe extern "C" fn nros_board_native_run_components_named(
+    session_name: *const c_char,
     setup: Option<unsafe extern "C" fn(executor: *mut c_void) -> i32>,
 ) -> i32 {
     let setup = match setup {
         Some(f) => f,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    // Resolve session name: null / empty → "node" (unified default, phase 266).
+    let name_resolved: &core::ffi::CStr = if session_name.is_null() {
+        c"node"
+    } else {
+        let s = unsafe { core::ffi::CStr::from_ptr(session_name) };
+        if s.is_empty() { c"node" } else { s }
     };
 
     // Env overlay (mirrors the C++ `nros::init()` hosted fallback).
@@ -580,7 +589,6 @@ pub unsafe extern "C" fn nros_board_native_run_components(
         .and_then(|s| s.parse::<u32>().ok())
         .filter(|&d| d <= 232)
         .unwrap_or(0) as u8;
-    let name = c"nros_c_entry";
 
     // Executor storage lives for the whole run (init writes a CppContext here).
     let mut storage = core::mem::MaybeUninit::<CppContext>::uninit();
@@ -590,7 +598,7 @@ pub unsafe extern "C" fn nros_board_native_run_components(
         nros_cpp_init(
             locator_ptr,
             domain_id,
-            name.as_ptr(),
+            name_resolved.as_ptr(),
             core::ptr::null(),
             sptr,
         )
@@ -627,6 +635,24 @@ pub unsafe extern "C" fn nros_board_native_run_components(
 
     unsafe { nros_cpp_fini(sptr) };
     ret
+}
+
+/// Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle (unnamed variant).
+///
+/// Delegates to [`nros_board_native_run_components_named`] with a NULL session
+/// name, which resolves to the unified default `"node"` (phase 266 default
+/// change). Kept for ABI back-compatibility with callers that do not pass a
+/// name; new generated entries call `nros_board_native_run_components_named`
+/// directly with the baked boot-config node name.
+///
+/// # Safety
+/// `setup` must be a valid function pointer.
+#[cfg(all(feature = "rmw-cffi", feature = "std"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_board_native_run_components(
+    setup: Option<unsafe extern "C" fn(executor: *mut c_void) -> i32>,
+) -> i32 {
+    unsafe { nros_board_native_run_components_named(core::ptr::null(), setup) }
 }
 
 // ============================================================================

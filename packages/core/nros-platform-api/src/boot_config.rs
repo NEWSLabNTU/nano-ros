@@ -199,4 +199,30 @@ mod baked_boot_config_tests {
     //     Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), // 65 A's (> 64-byte buffer)
     //     None, None, None,
     // );
+
+    // ── T-LAYOUT: layout-drift guard (mirrors C header static_asserts) ────────
+    //
+    // If `BakedBootConfig` ever changes size or field offsets, this test fails
+    // and forces the C header `include/nros/boot_config.h` to be updated in
+    // lockstep.  The C header carries matching _Static_assert / static_assert
+    // guards on the C/C++ side.
+
+    /// Size and field offsets of `BakedBootConfig` must match the C header's
+    /// documented layout (total 236 bytes, no padding).
+    #[test]
+    fn baked_boot_config_layout() {
+        use core::mem::{offset_of, size_of};
+        assert_eq!(size_of::<BakedBootConfig>(), 236, "total size must be 236");
+        assert_eq!(offset_of!(BakedBootConfig, magic), 0, "magic @ 0");
+        assert_eq!(offset_of!(BakedBootConfig, version), 4, "version @ 4");
+        assert_eq!(offset_of!(BakedBootConfig, set_flags), 6, "set_flags @ 6");
+        assert_eq!(offset_of!(BakedBootConfig, domain_id), 8, "domain_id @ 8");
+        assert_eq!(offset_of!(BakedBootConfig, node_name), 12, "node_name @ 12");
+        assert_eq!(offset_of!(BakedBootConfig, locator), 76, "locator @ 76");
+        assert_eq!(
+            offset_of!(BakedBootConfig, namespace),
+            172,
+            "namespace @ 172"
+        );
+    }
 }

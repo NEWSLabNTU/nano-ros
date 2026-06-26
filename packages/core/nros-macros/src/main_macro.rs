@@ -980,11 +980,15 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
-                // Phase 244.D1 — install a board custom transport (e.g. the
-                // XRCE-over-UART vtable) selected by `deploy.transport`, BEFORE
-                // the RMW registers. XRCE's `set_custom_transport_ops` must
-                // precede `register`; the default `setup_transport` is a no-op so
-                // every other board/deploy is byte-identical.
+                // Phase 244.D1 — custom-transport install seam. Install a
+                // board custom transport (e.g. the XRCE-over-UART vtable)
+                // selected by `deploy.transport`, BEFORE the RMW registers.
+                // XRCE's `set_custom_transport_ops` must precede `register`.
+                // The default `setup_transport` is a no-op so boards with a
+                // built-in transport are byte-identical. This call is always
+                // emitted (it is not dead code): see `BoardEntry::setup_transport`
+                // for the design rationale and the current override in
+                // `nros-board-mps2-an385` (`xrce-transport` feature).
                 #[cfg(target_os = "none")]
                 <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::setup_transport(
                     &#deploy_overlay_ts,
@@ -1956,65 +1960,15 @@ fn tier_specs_tokens(table: &ResolvedTierTable) -> proc_macro2::TokenStream {
     quote! { &[ #(#entries),* ] }
 }
 
-/// Map a board key from `[package.metadata.nros.entry] deploy = "X"`
-/// to the tier-1 board crate's ZST type path. Adding a new board
-/// requires a workspace-wide edit anyway; the table stays local.
+/// Map a board key from `[package.metadata.nros.entry] deploy = "X"` to the
+/// tier-1 board crate's ZST type path.
 ///
-/// Per the Phase 212.N.3 tier-1 board crates inventory (run
-/// `ls packages/boards/`):
+/// The table is maintained in [`nros_orchestration_ir::board_path_for`]
+/// (the single source of truth shared with the CLI codegen path). This
+/// wrapper parses the returned string into a [`syn::Path`] for token
+/// emission. Adding a new board requires editing the IR crate only.
 fn board_path_for(deploy: &str) -> Option<SynPath> {
-    let path_str = match deploy {
-        "native" | "posix" => "::nros_board_native::NativeBoard",
-        "freertos" | "freertos-qemu-mps2-an385" | "qemu-arm-freertos" => {
-            "::nros_board_mps2_an385_freertos::Mps2An385"
-        }
-        "threadx-linux" => "::nros_board_threadx_linux::ThreadxLinux",
-        "threadx-qemu-riscv64" | "qemu-riscv64-threadx" => {
-            "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
-        }
-        "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
-        // Phase 225.O — CI-runnable ESP32-C3 QEMU (OpenETH) board. esp32
-        // is its own framework (esp-riscv-rt's `_start` requires the
-        // esp-hal entry registration), routed via `framework_for` to the
-        // `Framework::Esp32` emit shape (`#[esp_hal::main]`). The board
-        // ZST impls the real-runtime `BoardEntry`. (The WiFi-only `"esp32"`
-        // board was dropped 2026-06-14 — untestable in any emulator, see
-        // phase-244 D2.)
-        "esp32-qemu" | "qemu-esp32-baremetal" => "::nros_board_esp32_qemu::Esp32QemuEntry",
-        // Phase 225.P — Zephyr is its own framework (RTOS owns `main`).
-        // `ZephyrBoard` impls `NetworkWait` only (NOT `BoardEntry`); the
-        // macro routes `deploy = "zephyr"` through `framework_for` to the
-        // `Framework::Zephyr` emit shape (`rust_main` staticlib export),
-        // and uses this board path solely for the link-up gate.
-        "zephyr" => "::nros_board_zephyr::ZephyrBoard",
-        // Phase 216.B.3 — RTIC + STM32F4 framework-owned-spin board.
-        // The board ZST impls `RticBoardEntry` (not `BoardEntry`);
-        // the macro routes through `framework_for(deploy)` below to
-        // pick the `#[rtic::app(...)]` emit shape instead of the
-        // direct-exec `BoardEntry::run` shape.
-        "rtic-stm32f4" => "::nros_board_rtic_stm32f4::RticStm32F4",
-        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "::nros_board_rtic_mps2_an385::RticMps2An385",
-        // Phase 244.D1 — pure bare-metal (no-RTOS) MPS2-AN385 direct-exec board.
-        // OwnedSpin framework + a `#[cortex_m_rt::entry]` reset emit (see
-        // `is_baremetal_cortexm_deploy`): the board ZST impls the new
-        // `nros_platform::BoardEntry` (behind its `board-entry` feature) and
-        // drives boot → executor → spin inline on the reset thread. Distinct
-        // from `rtic-mps2-an385`, which routes through the RTIC framework emit.
-        "qemu-mps2-an385" | "mps2-an385" => "::nros_board_mps2_an385::Mps2An385",
-        // Phase 244.C5 — pure bare-metal (no-RTOS) STM32F4 direct-exec board.
-        // Same shape as `mps2-an385`: the board ZST impls `nros_platform::BoardEntry`
-        // (behind its `board-entry` feature) + a `#[cortex_m_rt::entry]` reset emit
-        // (`is_baremetal_cortexm_deploy`). Distinct from `rtic-stm32f4` /
-        // `embassy-stm32f4`, which route through their framework emit shapes.
-        "stm32f4" => "::nros_board_stm32f4::Stm32F4",
-        // Phase 216.C.3 — Embassy + STM32F4 framework-owned-spin board.
-        // Same dispatch story as `rtic-stm32f4`: the board ZST impls
-        // `EmbassyBoardEntry` (not `BoardEntry`); the macro routes
-        // through `framework_for(deploy)` to pick the
-        // `#[embassy_executor::main]` emit shape.
-        "embassy-stm32f4" => "::nros_board_embassy_stm32f4::EmbassyStm32F4",
-        _ => return None,
-    };
+    let path_str = nros_orchestration_ir::board_path_for(deploy)?;
     syn::parse_str::<SynPath>(path_str).ok()
 }
 

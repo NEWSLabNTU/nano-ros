@@ -79,7 +79,9 @@ fn typed_plan_from_template_emits_constructed_components() {
     assert!(src.contains("static ::talker_pkg::Talker __nros_comp_0;"));
     assert!(src.contains("static ::listener_pkg::Listener __nros_comp_1;"));
     assert!(src.contains("__nros_comp_0.configure(__nros_node_0)"));
-    assert!(src.contains("::nros::board::NativeBoard::run_components(&__nros_entry_setup)"));
+    // Phase 266: boot config blob always emitted; session name threaded from it.
+    assert!(src.contains("NROS_BOOT_CONFIG_MAGIC"));
+    assert!(src.contains("::nros::board::NativeBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"));
     // No legacy interpreter seam.
     assert!(!src.contains("__nros_component_"));
     assert!(!src.contains("NodeContext"));

@@ -28,5 +28,6 @@
 #include "nros/node_pkg.h"
 #include "nros/cdr.h"
 #include "nros/clock.h"
+#include "nros/boot_config.h"
 
 #endif /* NROS_H */

@@ -18,11 +18,73 @@
 //! The all-default-tier degenerate case (no `[tiers.*]`, no callback
 //! groups) resolves to a single synthesized `"default"` tier — the
 //! single-task shape that ships today.
+//!
+//! ## Board key mapping
+//!
+//! [`board_path_for`] is also kept here as the **single source of truth**
+//! for the `deploy`-key → board-ZST-path mapping, consumed by both
+//! `nros-macros` and `nros-cli-core`. See [`board_path_for`].
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+// =============================================================================
+// Board key → board ZST path mapping
+// =============================================================================
+
+/// Board deployment key → canonical Rust ZST path (double-colon-prefixed,
+/// ready for `syn::parse_str` or direct string inclusion in generated code).
+///
+/// This is the **single source of truth** for the board-key → board-crate
+/// mapping, consumed by BOTH:
+///
+/// - `nros-macros` (`nros::main!(deploy = "…")`) — wraps the returned string
+///   in `syn::parse_str::<syn::Path>()` to emit a `BoardEntry` impl call, and
+/// - `nros-cli-core` (`nros codegen entry --lang rust`) — includes the string
+///   directly in the emitted `main.rs` body.
+///
+/// Adding a new board requires ONE edit here, not two. Aliases (e.g.
+/// `"qemu-arm-freertos"` for `"freertos"`) are normalised here so callers
+/// need no extra translation.
+///
+/// Keys match the `deploy = "…"` strings in
+/// `[package.metadata.nros.deploy.<board>]` (RFC-0014 §3).
+pub fn board_path_for(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "native" | "posix" => "::nros_board_native::NativeBoard",
+        // FreeRTOS — MPS2-AN385 Cortex-M3 (the only FreeRTOS board today).
+        // The RTOS calls `main()`; the board ZST impls `BoardEntry`.
+        "freertos" | "freertos-qemu-mps2-an385" | "qemu-arm-freertos" => {
+            "::nros_board_mps2_an385_freertos::Mps2An385"
+        }
+        "threadx-linux" => "::nros_board_threadx_linux::ThreadxLinux",
+        "threadx-qemu-riscv64" | "qemu-riscv64-threadx" => {
+            "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
+        }
+        "nuttx" | "qemu-arm-nuttx" => "::nros_board_nuttx_qemu_arm::QemuArmVirt",
+        // Phase 225.O — CI-runnable ESP32-C3 QEMU (OpenETH) board. Routed
+        // through `Framework::Esp32` emit shape in the proc-macro.
+        "esp32-qemu" | "qemu-esp32-baremetal" => "::nros_board_esp32_qemu::Esp32QemuEntry",
+        // Phase 225.P — Zephyr owns `main`; the board ZST impls `NetworkWait`
+        // only (NOT `BoardEntry`). The proc-macro routes through
+        // `Framework::Zephyr` and emits a `rust_main` staticlib export.
+        "zephyr" => "::nros_board_zephyr::ZephyrBoard",
+        // Phase 216.B.3 — RTIC + STM32F4. Board ZST impls `RticBoardEntry`.
+        "rtic-stm32f4" => "::nros_board_rtic_stm32f4::RticStm32F4",
+        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "::nros_board_rtic_mps2_an385::RticMps2An385",
+        // Phase 244.D1 — pure bare-metal (no-RTOS) MPS2-AN385 direct-exec
+        // board. Board ZST impls `nros_platform::BoardEntry`. Distinct from
+        // `rtic-mps2-an385`, which routes through the RTIC framework emit.
+        "qemu-mps2-an385" | "mps2-an385" => "::nros_board_mps2_an385::Mps2An385",
+        // Phase 244.C5 — pure bare-metal STM32F4 direct-exec board.
+        "stm32f4" => "::nros_board_stm32f4::Stm32F4",
+        // Phase 216.C.3 — Embassy + STM32F4. Board ZST impls `EmbassyBoardEntry`.
+        "embassy-stm32f4" => "::nros_board_embassy_stm32f4::EmbassyStm32F4",
+        _ => return None,
+    })
+}
 
 // =============================================================================
 // system.toml schema (tier subset)
@@ -572,5 +634,74 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, TierResolveError::UnknownOverrideNode { .. }));
+    }
+
+    // -------------------------------------------------------------------------
+    // board_path_for tests
+    // -------------------------------------------------------------------------
+
+    /// All primary (canonical) board keys must resolve to a non-None path.
+    #[test]
+    fn known_boards_resolve() {
+        let known = [
+            "native",
+            "posix",
+            "freertos",
+            "freertos-qemu-mps2-an385",
+            "qemu-arm-freertos",
+            "threadx-linux",
+            "threadx-qemu-riscv64",
+            "qemu-riscv64-threadx",
+            "nuttx",
+            "qemu-arm-nuttx",
+            "esp32-qemu",
+            "qemu-esp32-baremetal",
+            "zephyr",
+            "rtic-stm32f4",
+            "rtic-mps2-an385",
+            "qemu-rtic-mps2-an385",
+            "qemu-mps2-an385",
+            "mps2-an385",
+            "stm32f4",
+            "embassy-stm32f4",
+        ];
+        for key in known {
+            assert!(
+                board_path_for(key).is_some(),
+                "board_path_for({key:?}) returned None — missing from the table"
+            );
+        }
+    }
+
+    /// Unknown keys must return None (not silently fall back).
+    #[test]
+    fn unknown_board_returns_none() {
+        assert!(board_path_for("totally-unknown-rtos").is_none());
+    }
+
+    /// `freertos` must map to the FreeRTOS board, not NativeBoard.
+    #[test]
+    fn freertos_key_maps_to_freertos_board() {
+        for key in ["freertos", "freertos-qemu-mps2-an385", "qemu-arm-freertos"] {
+            let path = board_path_for(key).expect("freertos keys must resolve");
+            assert!(
+                path.contains("nros_board_mps2_an385_freertos"),
+                "key {key:?} resolved to {path:?} — expected mps2_an385_freertos"
+            );
+            assert!(
+                !path.contains("NativeBoard"),
+                "key {key:?} fell back to NativeBoard — bug in table"
+            );
+        }
+    }
+
+    /// `zephyr` must map to `ZephyrBoard` (not the old incorrect `Zephyr` name).
+    #[test]
+    fn zephyr_key_maps_to_zephyr_board() {
+        let path = board_path_for("zephyr").expect("zephyr must resolve");
+        assert!(
+            path.contains("ZephyrBoard"),
+            "zephyr resolved to {path:?} — expected ZephyrBoard"
+        );
     }
 }

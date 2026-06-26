@@ -236,20 +236,11 @@ pub unsafe extern "C" fn nros_support_init_named(
             nros_core::heapless::String::try_from(name_cstr.to_str().unwrap_or("nros"))
                 .unwrap_or_else(|_| nros_core::heapless::String::try_from("nros").unwrap())
         } else {
-            // Auto-generate: use PID on std, fallback on no_std
-            #[cfg(feature = "std")]
-            {
-                let mut buf = nros_core::heapless::String::<32>::new();
-                let _ = core::fmt::Write::write_fmt(
-                    &mut buf,
-                    format_args!("nros_{}", std::process::id()),
-                );
-                buf
-            }
-            #[cfg(not(feature = "std"))]
-            {
-                nros_core::heapless::String::try_from("nros").unwrap()
-            }
+            // Phase 266 (W5b) — null/empty name defaults to "node" (unified
+            // compiled default across C, C++, and Rust, matching the Rust
+            // resolver compiled default). The old `nros_{pid}` / "nros"
+            // fallback is replaced for consistent `ros2 node list` output.
+            nros_core::heapless::String::try_from("node").unwrap()
         };
 
         match nros::internals::open_session(

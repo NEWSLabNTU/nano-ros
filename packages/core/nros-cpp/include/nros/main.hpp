@@ -153,12 +153,18 @@ void nros_board_network_wait(void);
 /// `ZephyrBoard` shares them verbatim (only the lifecycle differs).
 class NativeBoard {
   public:
-    /// Phase 240.2 (RFC-0043) — real-executor entry. `setup` (invoked once after
-    /// init, before the spin loop) constructs + `configure`s the user's
-    /// component objects, which bind their real callbacks on the executor.
-    /// `setup` returns 0 on success. No `EntryNodeRuntime` / synthesis.
-    template <typename Setup> static int32_t run_components(Setup&& setup) {
-        nros::Result r = nros::init();
+    /// Phase 266 (W6) — named variant: `session_name` sets the primary session /
+    /// node name visible via `ros2 node list` (the #98 fix for C++ entries). NULL
+    /// or empty → falls back to `"node"` (the unified default). The generated
+    /// typed C++ entry (emitted by `nros codegen entry --lang cpp --typed`) calls
+    /// this overload, passing `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    template <typename Setup>
+    static int32_t run_components(const char* session_name, Setup&& setup) {
+        const char* sn =
+            (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
+        // Phase 266: env overlay (NROS_LOCATOR / ROS_DOMAIN_ID) applies via the
+        // 3-arg init — null locator and 0 domain_id both trigger the env fallback.
+        nros::Result r = nros::init(nullptr, 0, sn);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -168,6 +174,15 @@ class NativeBoard {
         int32_t sc = detail::component_spin_loop();
         nros::shutdown();
         return sc;
+    }
+
+    /// Phase 240.2 (RFC-0043) — real-executor entry. `setup` (invoked once after
+    /// init, before the spin loop) constructs + `configure`s the user's
+    /// component objects, which bind their real callbacks on the executor.
+    /// `setup` returns 0 on success. No `EntryNodeRuntime` / synthesis.
+    /// Phase 266: delegates to the named overload with "node" (the unified default).
+    template <typename Setup> static int32_t run_components(Setup&& setup) {
+        return run_components("node", static_cast<Setup&&>(setup));
     }
 };
 
@@ -226,11 +241,16 @@ class ZephyrBoard {
 #endif
 #endif
 
-    /// Phase 240.2 (RFC-0043) — real-executor entry (Zephyr lifecycle), explicit
-    /// connect locator (Phase 244.C2). `setup` constructs + `configure`s nodes.
-    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name.
+    /// `session_name` sets the primary session / node name (`ros2 node list`).
+    /// NULL or empty → `"node"`. The generated C++ entry calls this with
+    /// `NROS_ENTRY_LOCATOR` and `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    template <typename Setup>
+    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
         nros_board_network_wait();
-        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        const char* sn =
+            (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -242,9 +262,17 @@ class ZephyrBoard {
         return sc;
     }
 
+    /// Phase 240.2 (RFC-0043) — real-executor entry (Zephyr lifecycle), explicit
+    /// connect locator (Phase 244.C2). `setup` constructs + `configure`s nodes.
+    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+        return run_components(locator, "node", static_cast<Setup&&>(setup));
+    }
+
     /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
+    /// Phase 266: delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(Setup&& setup) {
-        return run_components(NROS_ENTRY_LOCATOR, static_cast<Setup&&>(setup));
+        return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 };
 
@@ -280,20 +308,16 @@ class ZephyrBoard {
 
 class NuttxBoard {
   public:
-    /// Run the Entry-pkg lifecycle on a NuttX board with an explicit
-    /// connect `locator`. The bootable-ELF carrier
-    /// (`nano_ros_node_register` NuttX branch) bakes the locator into the
-    /// generated entry TU (`configure_file` of
-    /// `cmake/templates/nuttx_entry_main.cpp.in`) because — unlike Zephyr's
-    /// `CONFIG_NET_CONFIG_AUTO_INIT` peer discovery — the QEMU slirp guest
-    /// must dial the host zenoh router explicitly (`tcp/10.0.2.2:<port>`),
-    /// mirroring the Rust `*_entry` pkg's `[…entry] locator = …` bake.
-    /// `locator == ""` falls back to backend discovery.
-    /// Phase 240.2 (RFC-0043) — real-executor entry (NuttX lifecycle, explicit
-    /// connect locator). `setup` constructs + `configure`s the components.
-    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name.
+    /// `session_name` sets the primary session / node name (`ros2 node list`).
+    /// NULL or empty → `"node"`. The generated C++ entry calls this with
+    /// `NROS_ENTRY_LOCATOR` and `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    template <typename Setup>
+    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
         nros_board_network_wait();
-        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        const char* sn =
+            (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -305,9 +329,25 @@ class NuttxBoard {
         return sc;
     }
 
+    /// Run the Entry-pkg lifecycle on a NuttX board with an explicit
+    /// connect `locator`. The bootable-ELF carrier
+    /// (`nano_ros_node_register` NuttX branch) bakes the locator into the
+    /// generated entry TU (`configure_file` of
+    /// `cmake/templates/nuttx_entry_main.cpp.in`) because — unlike Zephyr's
+    /// `CONFIG_NET_CONFIG_AUTO_INIT` peer discovery — the QEMU slirp guest
+    /// must dial the host zenoh router explicitly (`tcp/10.0.2.2:<port>`),
+    /// mirroring the Rust `*_entry` pkg's `[…entry] locator = …` bake.
+    /// `locator == ""` falls back to backend discovery.
+    /// Phase 240.2 (RFC-0043) — real-executor entry (NuttX lifecycle, explicit
+    /// connect locator). Phase 266: delegates to 3-arg overload with "node" default.
+    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+        return run_components(locator, "node", static_cast<Setup&&>(setup));
+    }
+
     /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
+    /// Phase 266: delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(Setup&& setup) {
-        return run_components(NROS_ENTRY_LOCATOR, static_cast<Setup&&>(setup));
+        return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 };
 
@@ -329,10 +369,16 @@ class NuttxBoard {
 /// was dropped in phase-246 — RFC-0043 §Retirement.)
 class ThreadxBoard {
   public:
-    /// RFC-0043 real-executor entry (ThreadX lifecycle, explicit locator).
-    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name.
+    /// `session_name` sets the primary session / node name (`ros2 node list`).
+    /// NULL or empty → `"node"`. The generated C++ entry calls this with
+    /// `NROS_ENTRY_LOCATOR` and `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    template <typename Setup>
+    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
         nros_board_network_wait();
-        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        const char* sn =
+            (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -344,9 +390,16 @@ class ThreadxBoard {
         return sc;
     }
 
+    /// RFC-0043 real-executor entry (ThreadX lifecycle, explicit locator).
+    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+        return run_components(locator, "node", static_cast<Setup&&>(setup));
+    }
+
     /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
+    /// Phase 266: delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(Setup&& setup) {
-        return run_components(NROS_ENTRY_LOCATOR, static_cast<Setup&&>(setup));
+        return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 };
 
@@ -373,10 +426,16 @@ class ThreadxBoard {
 /// is not provided (RFC-0043 §Retirement), matching [`ThreadxBoard`].
 class FreertosBoard {
   public:
-    /// RFC-0043 real-executor entry (FreeRTOS lifecycle, explicit locator).
-    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name.
+    /// `session_name` sets the primary session / node name (`ros2 node list`).
+    /// NULL or empty → `"node"`. The generated C++ entry calls this with
+    /// `NROS_ENTRY_LOCATOR` and `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`.
+    template <typename Setup>
+    static int32_t run_components(const char* locator, const char* session_name, Setup&& setup) {
         nros_board_network_wait();
-        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID));
+        const char* sn =
+            (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
+        nros::Result r = nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
@@ -388,9 +447,16 @@ class FreertosBoard {
         return sc;
     }
 
+    /// RFC-0043 real-executor entry (FreeRTOS lifecycle, explicit locator).
+    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
+        return run_components(locator, "node", static_cast<Setup&&>(setup));
+    }
+
     /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
+    /// Phase 266: delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(Setup&& setup) {
-        return run_components(NROS_ENTRY_LOCATOR, static_cast<Setup&&>(setup));
+        return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 };
 
