@@ -780,7 +780,7 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         };
         quote! {
             #[used]
-            #[cfg_attr(target_os = "none", link_section = ".nros_boot_config")]
+            #[cfg_attr(target_os = "none", unsafe(link_section = ".nros_boot_config"))]
             #[unsafe(no_mangle)]
             static NROS_BOOT_CONFIG: ::nros::BakedBootConfig =
                 ::nros::BakedBootConfig::new(
