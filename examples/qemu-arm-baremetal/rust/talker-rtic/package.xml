@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>talker_rtic_pkg</name>
+  <name>qemu_rtic_talker</name>
   <version>0.1.0</version>
   <description>Node package for the QEMU RTIC talker example (std_msgs/Int32 on /chatter)</description>
   <maintainer email="dev@example.com">Developer</maintainer>
