@@ -5,7 +5,7 @@ entry emitter, not the bake record, is the gap); **design DECIDED (W1c,
 2026-06-27): config-driven runtime bridge** — user writes names-only `[[bridge]]`
 + plain `nros::main!`; `nros sync` resolves type+hash; macro bakes + drives the
 runtime `PubSubBridge`. No build.rs, no codegen-relay dup. (W1b route-(a) codegen
-+ S1 superseded.) Waves re-sequenced C1–C6. ·
++ S1 superseded.) **C1 (schema) done (`e6865d718`); C2–C6 remaining.** ·
 Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
@@ -252,9 +252,12 @@ runner → `nros::bridge` constructs one `PubSubBridge` per (topic, direction) a
 pumps them. `nros sync` is the resolver (the existing user step — NOT a build.rs).
 
 **Re-sequenced waves (replacing S1–S6):**
-- **C1 — schema.** Extend `SystemBridgeEntry`: `topics: Vec<String>` (names) +
-  `bidirectional: bool`. Add a RESOLVED `BridgeSpec` type (sessions + per-topic
-  `{ name, type_name, type_hash, direction }`) — the sync↔macro contract.
+- **C1 — schema. DONE (2026-06-27, `e6865d718`).** `SystemBridgeEntry` gains
+  `topics: Vec<String>` (names) + `bidirectional: bool` (serde-default,
+  back-compat); the planner honours explicit topics (over forward-all) + flows
+  `bidirectional` into `PlanBridge`. Tested. The RESOLVED `BridgeSpec` type (the
+  sync↔macro sidecar contract) is deferred to C3, where its exact macro-read
+  format is defined alongside the sync writer.
 - **C2 — runtime runner.** `nros::bridge` data-driven API: given the resolved
   specs + a multi-session `Executor`, open the per-endpoint nodes, create the raw
   sub/pub per topic, build one `PubSubBridge` each, and `pump()` them every spin.
