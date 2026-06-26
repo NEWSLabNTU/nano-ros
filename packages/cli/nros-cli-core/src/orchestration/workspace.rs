@@ -174,6 +174,12 @@ pub struct CargoComponentSummary {
     /// Recorded so synthetic JSON artifacts can name a real on-disk path
     /// for diagnostics (matches the file-artifact `path` field shape).
     pub manifest_path: PathBuf,
+    /// phase-267 W1c/C3 — topics the node declares it PUBLISHES, carried from
+    /// `[package.metadata.nros.node].publishes` into the synthetic metadata so
+    /// the planner resolves a `[[bridge]]`'s topic names to types pre-build.
+    pub publishes: Vec<super::cargo_metadata_schema::TopicDecl>,
+    /// phase-267 W1c/C3 — topics the node declares it SUBSCRIBES to.
+    pub subscribes: Vec<super::cargo_metadata_schema::TopicDecl>,
 }
 
 impl Workspace {
@@ -779,6 +785,8 @@ fn synthesise_summary(
         class: component.class.clone(),
         default_namespace: component.default_namespace.clone(),
         manifest_path: manifest_path.to_path_buf(),
+        publishes: component.publishes.clone(),
+        subscribes: component.subscribes.clone(),
     }
 }
 
@@ -850,6 +858,42 @@ fn summary_to_synthetic_json(summary: &CargoComponentSummary) -> JsonValue {
         map.insert(
             "default_namespace".to_string(),
             JsonValue::String(namespace.clone()),
+        );
+    }
+    // phase-267 W1c/C3 — emit the declared topic endpoints as the flat
+    // `publishers` / `subscribers` arrays the planner's `collect_entity_array`
+    // reads (same shape as a post-build sidecar). A `[[bridge]]`'s topic NAMES
+    // then resolve to types via `resolve_topic_interface` with NO build.
+    let topic_entities =
+        |decls: &[super::cargo_metadata_schema::TopicDecl], prefix: &str| -> JsonValue {
+            let arr: Vec<JsonValue> = decls
+                .iter()
+                .map(|d| {
+                    // ROS type `"pkg/msg/Name"` (or `"pkg/Name"`) → {package, name}.
+                    let (package, name) = d.type_name.split_once('/').unwrap_or(("", &d.type_name));
+                    let id = format!(
+                        "{prefix}_{}",
+                        d.topic.trim_start_matches('/').replace('/', "_")
+                    );
+                    json!({
+                        "id": id,
+                        "topic": d.topic,
+                        "type": { "package": package, "name": name, "kind": "message" },
+                    })
+                })
+                .collect();
+            JsonValue::Array(arr)
+        };
+    if !summary.publishes.is_empty() {
+        map.insert(
+            "publishers".to_string(),
+            topic_entities(&summary.publishes, "pub"),
+        );
+    }
+    if !summary.subscribes.is_empty() {
+        map.insert(
+            "subscribers".to_string(),
+            topic_entities(&summary.subscribes, "sub"),
         );
     }
     obj
@@ -957,6 +1001,41 @@ where
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// phase-267 W1c/C3 — a node's declared `publishes` lower into the SYNTHETIC
+    /// metadata as a flat `publishers` array in the exact shape the planner's
+    /// `collect_entity_array` reads (`{ id, topic, type: {package, name, kind} }`),
+    /// so a bridge's topic name resolves to its type with NO build.
+    #[test]
+    fn synthetic_json_emits_declared_topic_entities() {
+        use super::super::cargo_metadata_schema::TopicDecl;
+        let summary = CargoComponentSummary {
+            package: "talker_pkg".into(),
+            component: "talker".into(),
+            executable: "talker".into(),
+            class: Some("talker_pkg::Talker".into()),
+            default_namespace: None,
+            manifest_path: PathBuf::from("/ws/talker_pkg/Cargo.toml"),
+            publishes: vec![TopicDecl {
+                topic: "/chatter".into(),
+                type_name: "std_msgs/msg/Int32".into(),
+            }],
+            subscribes: vec![],
+        };
+        let json = summary_to_synthetic_json(&summary);
+        let pubs = json
+            .get("publishers")
+            .and_then(JsonValue::as_array)
+            .expect("publishers array");
+        assert_eq!(pubs.len(), 1);
+        assert_eq!(pubs[0]["topic"], "/chatter");
+        assert_eq!(pubs[0]["type"]["package"], "std_msgs");
+        assert_eq!(pubs[0]["type"]["name"], "msg/Int32");
+        assert_eq!(pubs[0]["type"]["kind"], "message");
+        // No subscribers declared → key omitted (keeps non-declaring nodes
+        // byte-identical to pre-C3 synthetic JSON).
+        assert!(json.get("subscribers").is_none());
+    }
 
     /// RAII scratch directory under the system temp dir (no `tempfile` dep).
     struct Scratch(PathBuf);

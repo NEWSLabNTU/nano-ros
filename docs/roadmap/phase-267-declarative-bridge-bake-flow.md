@@ -306,6 +306,20 @@ pumps them. `nros sync` is the resolver (the existing user step — NOT a build.
   Done: `render_bridge_runtime_config` resolver core (`8358836f1`) — it consumes
   whatever `resolve_topic_interface` returns, so C3a–C3c are what make names-only
   resolve.
+
+  **Pipeline EXPLORED (2026-06-27) — no hidden blocker.** Synthetic Cargo
+  metadata flows through the SAME entity path as the post-build sidecar:
+  `synthetic_metadata_artifacts` → `planner.rs:88` appends them →
+  `build_node_instance` matches by `(package, executable)` via
+  `find_source_metadata` → `source_entities`/`collect_entity_array` reads
+  top-level `publishers`/`subscribers` arrays → `schema_entity` → `plan.interfaces`
+  → `resolve_topic_interface`. So adding entities to the SYNTHETIC JSON is
+  sufficient — NO planner change. The exact entity shape `collect_entity_array`
+  accepts: `publishers: [{ id, topic, type: { package, name, kind: "message" } }]`
+  (and `subscribers`). Concrete checklist: C3a schema (DONE `8308ef26f`+local) →
+  extend `CargoComponentSummary` with `publishes`/`subscribes` → thread them in
+  `synthesise_summary` → emit `publishers`/`subscribers` arrays in
+  `summary_to_synthetic_json` (parse `"pkg/msg/Name"` → `{package, name}`).
 - **C4 — macro bakes.** `nros::main!` reads the resolved sidecar (best-effort,
   like the lifecycle/param reads it already does), bakes `SESSION_SPECS` +
   `BRIDGES`, and emits the `open_multi` + runner spin loop when a bridge exists.

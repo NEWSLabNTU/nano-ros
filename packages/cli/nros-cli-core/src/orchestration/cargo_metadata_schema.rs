@@ -272,6 +272,30 @@ pub struct ComponentMetadata {
     /// tier (the single-task degenerate case).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub callback_groups: Vec<CallbackGroupDecl>,
+    /// phase-267 W1c/C3a — topics this node PUBLISHES, declared by the node
+    /// author (`[[package.metadata.nros.node.publishes]] topic=… type=…`). Read
+    /// as SYNTHETIC metadata (pre-build, no sidecar) so the planner can resolve a
+    /// `[[bridge]]`'s topic NAMES to their ROS types without building. Empty ⇒ the
+    /// node declares no publishers in metadata (entity resolution falls back to
+    /// the post-build sidecar, as before).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub publishes: Vec<TopicDecl>,
+    /// phase-267 W1c/C3a — topics this node SUBSCRIBES to. Same shape + role as
+    /// [`publishes`](Self::publishes).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subscribes: Vec<TopicDecl>,
+}
+
+/// phase-267 W1c/C3a — one declared topic endpoint in node Cargo metadata:
+/// `{ topic = "/chatter", type = "std_msgs/Int32" }`. The `type` is the ROS type
+/// name (`<pkg>/<Msg>` or `<pkg>/msg/<Msg>`); the planner resolves a bridge's
+/// topic name to it pre-build.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TopicDecl {
+    pub topic: String,
+    #[serde(rename = "type")]
+    pub type_name: String,
 }
 
 /// `[package.metadata.nros.application]` — Phase 212.L.2.
@@ -834,6 +858,36 @@ fn is_false(b: &bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-267 W1c/C3a — a node declares its published topics+types in
+    /// `[package.metadata.nros.node]`; the planner reads them pre-build to
+    /// resolve a bridge's topic names.
+    #[test]
+    fn node_metadata_parses_publishes_and_subscribes() {
+        let raw = r#"
+[node]
+class = "talker_pkg::Talker"
+name = "talker"
+[[node.publishes]]
+topic = "/chatter"
+type = "std_msgs/Int32"
+[[node.subscribes]]
+topic = "/cmd"
+type = "std_msgs/Bool"
+"#;
+        let m: PackageMetadataNros = toml::from_str(raw).expect("parse node metadata");
+        let node = m.node.expect("node table");
+        assert_eq!(node.publishes.len(), 1);
+        assert_eq!(node.publishes[0].topic, "/chatter");
+        assert_eq!(node.publishes[0].type_name, "std_msgs/Int32");
+        assert_eq!(node.subscribes[0].topic, "/cmd");
+        assert_eq!(node.subscribes[0].type_name, "std_msgs/Bool");
+
+        // Back-compat: a node WITHOUT publishes/subscribes still parses.
+        let plain: PackageMetadataNros =
+            toml::from_str("[node]\nclass=\"p::T\"\nname=\"t\"\n").expect("plain node");
+        assert!(plain.node.unwrap().publishes.is_empty());
+    }
 
     /// Round-trip a `[workspace.metadata.nros]` golden through parse +
     /// serialize + reparse and compare structs.
