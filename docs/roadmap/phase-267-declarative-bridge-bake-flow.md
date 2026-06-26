@@ -1,10 +1,11 @@
 # Phase 267 — Declarative cross-RMW bridge: complete the bake→entry→build flow
 
 Status: **In progress (2026-06-26)** — W0 done; W1 done (investigation — the live
-entry emitter, not the bake record, is the gap); **W1b route (a): S1 done
-(`5c98511dc`); S2 BLOCKED** — the macro can't host a bridge (0083 dep ban +
-no entity resolution), so `nros::main!` bridges are infeasible; bridges need a
-build.rs Entry (B1) regardless. Decision pending. ·
+entry emitter, not the bake record, is the gap); **design DECIDED (W1c,
+2026-06-27): config-driven runtime bridge** — user writes names-only `[[bridge]]`
++ plain `nros::main!`; `nros sync` resolves type+hash; macro bakes + drives the
+runtime `PubSubBridge`. No build.rs, no codegen-relay dup. (W1b route-(a) codegen
++ S1 superseded.) Waves re-sequenced C1–C6. ·
 Implements
 [RFC-0009](../design/0009-bridge-topic-forwarding.md) (bridge topic-forwarding) ·
 Resolves [issue 0099](../issues/0099-declarative-bridge-planner-population.md) ·
@@ -204,6 +205,77 @@ one emitter:**
 > **Note.** W1b is the phase's heart and a multi-component effort (proc-macro +
 > board entry + runtime + deps). W2 (metadata→topics) feeds S3's topic list; do W2
 > alongside S1–S3.
+
+## W1c — DECIDED DESIGN (2026-06-27): config-driven runtime bridge
+
+**Supersedes W1b's codegen-relay route (and S1's `render_bridge_entry_fns`
+carrier — now unused).** S2 proved `nros::main!` cannot host a codegen relay
+(macro is dep-lean per 0083 + has no entity resolution). The user's constraint —
+**no user-side build.rs** — plus an explorer pass settled a cleaner shape: drive
+the EXISTING runtime `PubSubBridge` from config the macro bakes. The relay logic
+already lives in the runtime (`nros-bridge::PubSubBridge::new(sub, pubr, origin)`
++ `pump()`), so the macro emits only DATA + a runner call — no codegen relay, no
+heavy macro deps, plain `nros::main!`.
+
+**User-facing surface (locked):**
+
+```toml
+# system.toml — the user writes ONLY this (+ a plain `nros::main!` entry)
+[[domain]]
+name = "zen"; rmw = "zenoh"; id = 0
+[[domain]]
+name = "dds"; rmw = "cyclonedds"; id = 5
+
+[[bridge]]
+name = "gw"
+from = "zenoh:zen"
+to   = "cyclonedds:dds"
+topics = ["/chatter"]      # names only; nros sync resolves type+hash
+# bidirectional = false    # default one-way from→to; opt-in reverse relay
+```
+```rust
+nros::main!(launch = "demo_bringup");   // unchanged; macro bakes the bridge
+```
+
+**Decisions (AskUserQuestion, 2026-06-27):** (1) topics are **names only** —
+`nros sync` resolves each topic→type+hash from the publishing component's
+metadata (the planner has it); the user never writes the opaque RIHS hash. (2)
+direction defaults **one-way `from→to`**, `bidirectional = true` opts into the
+reverse relay (echo-suppressed via `bridge_origin`).
+
+**Data flow:** user `[[bridge]]` (names) → `nros sync` resolves sessions
+(`[[domain]]`+`[system]` → rmw/locator/domain) + topics (name → type_name +
+type_hash via component metadata) → writes a RESOLVED bridge spec sidecar the
+macro reads → `nros::main!` bakes `const BRIDGES: &[BridgeSpec]` + emits
+`Executor::open_multi(SESSION_SPECS)` + a spin-loop call to a runtime bridge
+runner → `nros::bridge` constructs one `PubSubBridge` per (topic, direction) and
+pumps them. `nros sync` is the resolver (the existing user step — NOT a build.rs).
+
+**Re-sequenced waves (replacing S1–S6):**
+- **C1 — schema.** Extend `SystemBridgeEntry`: `topics: Vec<String>` (names) +
+  `bidirectional: bool`. Add a RESOLVED `BridgeSpec` type (sessions + per-topic
+  `{ name, type_name, type_hash, direction }`) — the sync↔macro contract.
+- **C2 — runtime runner.** `nros::bridge` data-driven API: given the resolved
+  specs + a multi-session `Executor`, open the per-endpoint nodes, create the raw
+  sub/pub per topic, build one `PubSubBridge` each, and `pump()` them every spin.
+  Reuses `PubSubBridge` (one relay impl). Unit-testable construction; runtime
+  exchange gated (W5).
+- **C3 — `nros sync` resolves bridges.** Resolve each `[[bridge]]` topic name →
+  `type_name`+`type_hash` from the planner's component interfaces (folds in old
+  W2), resolve `from`/`to` → session specs, emit the RESOLVED spec sidecar (a
+  generated file the macro reads — does NOT mutate the user's `system.toml`).
+- **C4 — macro bakes.** `nros::main!` reads the resolved sidecar (best-effort,
+  like the lifecycle/param reads it already does), bakes `SESSION_SPECS` +
+  `BRIDGES`, and emits the `open_multi` + runner spin loop when a bridge exists.
+  Macro stays dep-lean (only `toml`; reads the generated sidecar).
+- **C5 — `ws-bridge-rust`.** Names-only `[[bridge]]` + plain `nros::main!`;
+  `nros sync` + `cargo build` links both backends (cyclone via the Entry's
+  `nros-rmw-cyclonedds-sys` dep). Build-verify.
+- **C6 — gated runtime e2e** (folds W5): zenohd + the entry + a stock
+  `rmw_cyclonedds_cpp` peer sees `/chatter`.
+
+**Cleanup:** remove the now-unused `render_bridge_entry_fns` + `emit_bridge_entry_fns`
+(S1) and, once the runtime path lands, the dead `build_generated_package` relay.
 
 ## W2 — Component metadata so forwarded topics resolve
 
